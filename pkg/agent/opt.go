@@ -2,9 +2,10 @@ package agent
 
 import (
 	// Packages
-	"github.com/mutablelogic/go-client"
+	client "github.com/mutablelogic/go-client"
 	llm "github.com/mutablelogic/go-llm"
-	"github.com/mutablelogic/go-llm/pkg/ollama"
+	anthropic "github.com/mutablelogic/go-llm/pkg/anthropic"
+	ollama "github.com/mutablelogic/go-llm/pkg/ollama"
 )
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -29,20 +30,40 @@ func apply(opts ...llm.Opt) (*opt, error) {
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-// OPTIONS
+// PUBLIC METHODS
 
 func WithOllama(endpoint string, opts ...client.ClientOpt) llm.Opt {
 	return func(o any) error {
 		client, err := ollama.New(endpoint, opts...)
 		if err != nil {
 			return err
-		}
-		name := client.Name()
-		if _, exists := o.(*opt).agents[name]; exists {
-			return llm.ErrConflict.Withf("Agent %q already exists", name)
 		} else {
-			o.(*opt).agents[name] = client
+			return o.(*opt).withAgent(client)
 		}
-		return nil
 	}
+}
+
+func WithAnthropic(key string, opts ...client.ClientOpt) llm.Opt {
+	return func(o any) error {
+		client, err := anthropic.New(key, opts...)
+		if err != nil {
+			return err
+		} else {
+			return o.(*opt).withAgent(client)
+		}
+	}
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// PRIVATE METHODS
+
+func (o *opt) withAgent(agent llm.Agent) error {
+	name := agent.Name()
+	if _, exists := o.agents[name]; exists {
+		return llm.ErrConflict.Withf("Agent %q already exists", name)
+	} else {
+		o.agents[name] = agent
+	}
+	// Return success
+	return nil
 }
