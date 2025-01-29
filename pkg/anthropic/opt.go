@@ -41,3 +41,58 @@ func apply(opts ...llm.Opt) (*opt, error) {
 
 ////////////////////////////////////////////////////////////////////////////////
 // OPTIONS
+
+func WithTemperature(v float64) llm.Opt {
+	return func(o any) error {
+		if v < 0.0 || v > 1.0 {
+			return llm.ErrBadParameter.With("temperature must be between 0.0 and 1.0")
+		}
+		o.(*opt).Temperature = v
+		return nil
+	}
+}
+
+func WithSystem(v string) llm.Opt {
+	return func(o any) error {
+		o.(*opt).System = v
+		return nil
+	}
+}
+
+func WithMaxTokens(v uint) llm.Opt {
+	return func(o any) error {
+		o.(*opt).MaxTokens = v
+		return nil
+	}
+}
+
+func WithUser(v string) llm.Opt {
+	return func(o any) error {
+		o.(*opt).Metadata = &optmetadata{User: v}
+		return nil
+	}
+}
+
+func WithStopSequences(v ...string) llm.Opt {
+	return func(o any) error {
+		o.(*opt).StopSequences = v
+		return nil
+	}
+}
+
+func WithTopP(v float64) llm.Opt {
+	return func(o any) error {
+		if v < 0.0 || v > 1.0 {
+			return llm.ErrBadParameter.With("top_p must be between 0.0 and 1.0")
+		}
+		o.(*opt).TopP = v
+		return nil
+	}
+}
+
+func WithTopK(v uint) llm.Opt {
+	return func(o any) error {
+		o.(*opt).TopK = v
+		return nil
+	}
+}
