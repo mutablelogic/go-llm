@@ -27,7 +27,13 @@ func Test_messages_001(t *testing.T) {
 		t.FailNow()
 	}
 
-	response, err := client.Messages(context.TODO(), model, client.UserPrompt("hello world"))
+	f, err := os.Open("testdata/guggenheim.jpg")
+	if !assert.NoError(err) {
+		t.FailNow()
+	}
+	defer f.Close()
+
+	response, err := client.Messages(context.TODO(), model, client.UserPrompt("what is this image?", anthropic.WithData(f)))
 	if assert.NoError(err) {
 		t.Log(response)
 	}

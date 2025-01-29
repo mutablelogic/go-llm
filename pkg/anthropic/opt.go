@@ -1,8 +1,9 @@
 package anthropic
 
 import (
-	// Packages
+	"io"
 
+	// Packages
 	llm "github.com/mutablelogic/go-llm"
 )
 
@@ -19,7 +20,8 @@ type opt struct {
 	TopK          uint         `json:"top_k,omitempty"`
 	TopP          float64      `json:"top_p,omitempty"`
 
-	data []Attachment
+	// Attachments for messages
+	data []*Attachment
 }
 
 type optmetadata struct {
@@ -41,6 +43,17 @@ func apply(opts ...llm.Opt) (*opt, error) {
 
 ////////////////////////////////////////////////////////////////////////////////
 // OPTIONS
+
+func WithData(r io.Reader) llm.Opt {
+	return func(o any) error {
+		attachment, err := NewAttachment(r)
+		if err != nil {
+			return err
+		}
+		o.(*opt).data = append(o.(*opt).data, attachment)
+		return nil
+	}
+}
 
 func WithTemperature(v float64) llm.Opt {
 	return func(o any) error {
