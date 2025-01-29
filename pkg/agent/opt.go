@@ -31,7 +31,6 @@ func apply(opts ...llm.Opt) (*opt, error) {
 ////////////////////////////////////////////////////////////////////////////////
 // OPTIONS
 
-// Ollama
 func WithOllama(endpoint string, opts ...client.ClientOpt) llm.Opt {
 	return func(o any) error {
 		client, err := ollama.New(endpoint, opts...)
