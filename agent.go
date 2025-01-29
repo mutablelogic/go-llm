@@ -13,7 +13,7 @@ type Agent interface {
 	Models(context.Context) ([]Model, error)
 
 	// Generate a response from a prompt
-	Generate(context.Context, Model, Context, ...Opt) (*Response, error)
+	Generate(context.Context, Model, Context, ...Opt) (Context, error)
 
 	// Embedding vector generation
 	Embedding(context.Context, Model, string, ...Opt) ([]float64, error)
@@ -22,5 +22,5 @@ type Agent interface {
 	UserPrompt(string, ...Opt) Context
 
 	// Create the result of calling a tool
-	ToolResult(any) Context
+	ToolResult(id string, opts ...Opt) Context
 }

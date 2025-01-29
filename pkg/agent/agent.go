@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"slices"
 	"strings"
 
@@ -14,7 +15,7 @@ import (
 ///////////////////////////////////////////////////////////////////////////////
 // TYPES
 
-type agent struct {
+type Agent struct {
 	*opt
 }
 
@@ -23,14 +24,14 @@ type model struct {
 	llm.Model `json:"model"`
 }
 
-var _ llm.Agent = (*agent)(nil)
+var _ llm.Agent = (*Agent)(nil)
 
 ///////////////////////////////////////////////////////////////////////////////
 // LIFECYCLE
 
-// Return a new agent, composed of several different models from different providers
-func New(opts ...llm.Opt) (*agent, error) {
-	agent := new(agent)
+// Return a new agent, composed of agents and tools
+func New(opts ...llm.Opt) (*Agent, error) {
+	agent := new(Agent)
 	opt, err := apply(opts...)
 	if err != nil {
 		return nil, err
@@ -57,7 +58,7 @@ func (m model) String() string {
 // PUBLIC METHODS
 
 // Return a list of agent names
-func (a *agent) Agents() []string {
+func (a *Agent) Agents() []string {
 	var keys []string
 	for k := range a.agents {
 		keys = append(keys, k)
@@ -65,17 +66,42 @@ func (a *agent) Agents() []string {
 	return keys
 }
 
+// Return a list of tool names
+func (a *Agent) Tools() []string {
+	var keys []string
+	for k := range a.tools {
+		keys = append(keys, k)
+	}
+	return keys
+}
+
 // Return a comma-separated list of agent names
-func (a *agent) Name() string {
+func (a *Agent) Name() string {
 	return strings.Join(a.Agents(), ",")
 }
 
 // Return the models from all agents
-func (a *agent) Models(ctx context.Context) ([]llm.Model, error) {
+func (a *Agent) Models(ctx context.Context) ([]llm.Model, error) {
+	return a.ListModels(ctx)
+}
+
+// Return the models from list of agents
+func (a *Agent) ListModels(ctx context.Context, agents ...string) ([]llm.Model, error) {
 	var result error
 
+	// Ensure all agents are valid
+	for _, agent := range agents {
+		if _, exists := a.agents[agent]; !exists {
+			result = errors.Join(result, llm.ErrNotFound.Withf("agent %q", agent))
+		}
+	}
+
+	// Gather models from all agents
 	models := make([]llm.Model, 0, 100)
 	for _, agent := range a.agents {
+		if len(agents) > 0 && !slices.Contains(agents, agent.Name()) {
+			continue
+		}
 		agentmodels, err := modelsForAgent(ctx, agent)
 		if err != nil {
 			result = errors.Join(result, err)
@@ -91,19 +117,27 @@ func (a *agent) Models(ctx context.Context) ([]llm.Model, error) {
 
 // Return a model by name. If no agents are specified, then all agents are considered.
 // If multiple agents are specified, then the first model found is returned.
-func (a *agent) Model(ctx context.Context, name string, agent ...string) (llm.Model, error) {
-	if len(agent) == 0 {
-		agent = a.Agents()
+func (a *Agent) GetModel(ctx context.Context, name string, agents ...string) (llm.Model, error) {
+	if len(agents) == 0 {
+		agents = a.Agents()
 	}
 
+	// Ensure all agents are valid
 	var result error
-	for _, agent := range agent {
+	for _, agent := range agents {
+		if _, exists := a.agents[agent]; !exists {
+			result = errors.Join(result, llm.ErrNotFound.Withf("agent %q", agent))
+		}
+	}
+
+	// Gather models from agents
+	for _, agent := range agents {
 		models, err := modelsForAgent(ctx, a.agents[agent], name)
 		if err != nil {
 			result = errors.Join(result, err)
 			continue
 		} else if len(models) > 0 {
-			return models[0], nil
+			return models[0], result
 		}
 	}
 
@@ -112,22 +146,33 @@ func (a *agent) Model(ctx context.Context, name string, agent ...string) (llm.Mo
 }
 
 // Generate a response from a prompt
-func (a *agent) Generate(context.Context, llm.Model, llm.Context, ...llm.Opt) (*llm.Response, error) {
+func (a *Agent) Generate(ctx context.Context, m llm.Model, context llm.Context, opts ...llm.Opt) (llm.Context, error) {
+	// Obtain the agent
+	var agent llm.Agent
+	if model, ok := m.(*model); !ok || model == nil {
+		return nil, llm.ErrBadParameter.With("model")
+	} else if agent_, exists := a.agents[model.Agent]; !exists {
+		return nil, llm.ErrNotFound.Withf("agent %q", model.Agent)
+	} else {
+		agent = agent_
+	}
+	fmt.Println(agent)
+
 	return nil, llm.ErrNotImplemented
 }
 
 // Embedding vector generation
-func (a *agent) Embedding(context.Context, llm.Model, string, ...llm.Opt) ([]float64, error) {
+func (a *Agent) Embedding(context.Context, llm.Model, string, ...llm.Opt) ([]float64, error) {
 	return nil, llm.ErrNotImplemented
 }
 
 // Create user message context
-func (a *agent) UserPrompt(string, ...llm.Opt) llm.Context {
+func (a *Agent) UserPrompt(string, ...llm.Opt) llm.Context {
 	return nil
 }
 
 // Create the result of calling a tool
-func (a *agent) ToolResult(any) llm.Context {
+func (a *Agent) ToolResult(id string, opts ...llm.Opt) llm.Context {
 	return nil
 }
 

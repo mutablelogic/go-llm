@@ -234,7 +234,7 @@ func (anthropic *Client) Messages(ctx context.Context, model llm.Model, context 
 }
 
 // Generate a response from a prompt
-func (*Client) Generate(context.Context, llm.Model, llm.Context, ...llm.Opt) (*llm.Response, error) {
+func (*Client) Generate(context.Context, llm.Model, llm.Context, ...llm.Opt) (llm.Context, error) {
 	return nil, llm.ErrNotImplemented
 }
 

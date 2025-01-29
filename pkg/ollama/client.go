@@ -50,6 +50,6 @@ func (*Client) Name() string {
 }
 
 // Generate a response from a prompt
-func (ollama *Client) Generate(ctx context.Context, model llm.Model, context llm.Context, opts ...llm.Opt) (*llm.Response, error) {
+func (ollama *Client) Generate(ctx context.Context, model llm.Model, context llm.Context, opts ...llm.Opt) (llm.Context, error) {
 	return nil, llm.ErrNotImplemented
 }

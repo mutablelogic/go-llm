@@ -13,6 +13,7 @@ import (
 
 type opt struct {
 	agents map[string]llm.Agent
+	tools  map[string]llm.Tool
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -51,6 +52,20 @@ func WithAnthropic(key string, opts ...client.ClientOpt) llm.Opt {
 		} else {
 			return o.(*opt).withAgent(client)
 		}
+	}
+}
+
+func WithTools(tools ...llm.Tool) llm.Opt {
+	return func(o any) error {
+		for _, tool := range tools {
+			name := tool.Name()
+			if _, exists := o.(*opt).tools[name]; exists {
+				return llm.ErrConflict.Withf("Tool %q already exists", name)
+			}
+			o.(*opt).tools[name] = tool
+		}
+		// Return success
+		return nil
 	}
 }
 

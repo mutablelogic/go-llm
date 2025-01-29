@@ -29,28 +29,34 @@ type MessageMeta struct {
 
 type Content struct {
 	Type string `json:"type"` // image, document, text, tool_use
-	ContextText
-	ContextAttachment
-	ContextTool
+	ContentText
+	ContentAttachment
+	ContentTool
+	ContentToolResult
 	CacheControl *cachecontrol `json:"cache_control,omitempty"` // ephemeral
 }
 
-type ContextText struct {
+type ContentText struct {
 	Text string `json:"text,omitempty"` // text content
 }
 
-type ContextTool struct {
+type ContentTool struct {
 	Id        string         `json:"id,omitempty"`           // tool id
 	Name      string         `json:"name,omitempty"`         // tool name
 	Input     map[string]any `json:"input,omitempty"`        // tool input
 	InputJson string         `json:"partial_json,omitempty"` // partial json input (for streaming)
 }
 
-type ContextAttachment struct {
+type ContentAttachment struct {
 	Title     string           `json:"title,omitempty"`     // title of the document
 	Context   string           `json:"context,omitempty"`   // context of the document
 	Citations *contentcitation `json:"citations,omitempty"` // citations of the document
 	Source    *contentsource   `json:"source,omitempty"`    // image or document content
+}
+
+type ContentToolResult struct {
+	Id      string     `json:"tool_use_id,omitempty"` // tool id
+	Content []*Content `json:"content,omitempty"`
 }
 
 type contentsource struct {
@@ -74,7 +80,7 @@ type contentcitation struct {
 func NewTextContent(v string) *Content {
 	content := new(Content)
 	content.Type = "text"
-	content.ContextText.Text = v
+	content.ContentText.Text = v
 	return content
 }
 
@@ -112,7 +118,7 @@ func (*Client) UserPrompt(text string, opts ...llm.Opt) llm.Context {
 		return nil
 	}
 
-	context := &message{}
+	context := new(message)
 	context.MessageMeta.Role = "user"
 	context.MessageMeta.Content = make([]*Content, 0, len(opt.data)+1)
 
@@ -129,8 +135,13 @@ func (*Client) UserPrompt(text string, opts ...llm.Opt) llm.Context {
 }
 
 // Create the result of calling a tool
-func (*Client) ToolResult(any) llm.Context {
-	return nil
+func (*Client) ToolResult(id string, opts ...llm.Opt) llm.Context {
+	context := new(message)
+	context.MessageMeta.Role = "user"
+	context.MessageMeta.Content = make([]*Content, 0, 1)
+
+	// Return the context
+	return context
 }
 
 ///////////////////////////////////////////////////////////////////////////////

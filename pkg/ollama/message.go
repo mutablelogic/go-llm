@@ -63,24 +63,9 @@ func (ollama *Client) UserPrompt(v string, opts ...llm.Opt) llm.Context {
 }
 
 // The result of a tool call
-func (ollama *Client) ToolResult(v any) llm.Context {
-	m := new(message)
-	m.MessageMeta.Role = "tool"
-
-	switch v := v.(type) {
-	case string:
-		m.MessageMeta.Content = v
-	default:
-		// Encode the result into json
-		data, err := json.Marshal(v)
-		if err != nil {
-			return nil
-		}
-		m.MessageMeta.Content = string(data)
-	}
-
-	// Return success
-	return m
+func (ollama *Client) ToolResult(id string, opts ...llm.Opt) llm.Context {
+	// messages.append({'role': 'tool', 'content': str(output), 'name': tool.function.name})
+	return nil
 }
 
 // Return the role of a message
