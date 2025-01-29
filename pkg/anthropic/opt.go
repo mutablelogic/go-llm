@@ -20,8 +20,8 @@ type opt struct {
 	TopK          uint         `json:"top_k,omitempty"`
 	TopP          float64      `json:"top_p,omitempty"`
 
-	// Attachments for messages
-	data []*Attachment
+	// Additional message content
+	data []*Content
 }
 
 type optmetadata struct {
@@ -44,9 +44,9 @@ func apply(opts ...llm.Opt) (*opt, error) {
 ////////////////////////////////////////////////////////////////////////////////
 // OPTIONS
 
-func WithData(r io.Reader) llm.Opt {
+func WithData(r io.Reader, ephemeral, citations bool) llm.Opt {
 	return func(o any) error {
-		attachment, err := NewAttachment(r)
+		attachment, err := ReadContent(r, ephemeral, citations)
 		if err != nil {
 			return err
 		}
