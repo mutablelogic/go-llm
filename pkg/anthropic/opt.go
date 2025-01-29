@@ -14,7 +14,7 @@ type opt struct {
 	MaxTokens     uint         `json:"max_tokens,omitempty"`
 	Metadata      *optmetadata `json:"metadata,omitempty"`
 	StopSequences []string     `json:"stop_sequences,omitempty"`
-	Stream        *bool        `json:"stream,omitempty"`
+	Stream        bool         `json:"stream,omitempty"`
 	System        string       `json:"system,omitempty"`
 	Temperature   float64      `json:"temperature,omitempty"`
 	TopK          uint         `json:"top_k,omitempty"`
@@ -43,6 +43,14 @@ func apply(opts ...llm.Opt) (*opt, error) {
 
 ////////////////////////////////////////////////////////////////////////////////
 // OPTIONS
+
+// Messages: Stream the response as it is received.
+func WithStream() llm.Opt {
+	return func(o any) error {
+		o.(*opt).Stream = true
+		return nil
+	}
+}
 
 func WithData(r io.Reader, ephemeral, citations bool) llm.Opt {
 	return func(o any) error {

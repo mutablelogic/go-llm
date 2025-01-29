@@ -3,6 +3,7 @@ package anthropic
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"strings"
 
 	// Packages
@@ -43,13 +44,21 @@ func (r Response) String() string {
 	return string(data)
 }
 
+func (r opt) String() string {
+	data, err := json.MarshalIndent(r, "", "  ")
+	if err != nil {
+		return err.Error()
+	}
+	return string(data)
+}
+
 ///////////////////////////////////////////////////////////////////////////////
 // PUBLIC METHODS
 
 type reqMessages struct {
 	Model    string         `json:"model"`
 	Messages []*MessageMeta `json:"messages"`
-	*opt
+	opt
 }
 
 func (anthropic *Client) Messages(ctx context.Context, model llm.Model, context llm.Context, opts ...llm.Opt) (*Response, error) {
@@ -58,6 +67,8 @@ func (anthropic *Client) Messages(ctx context.Context, model llm.Model, context 
 	if err != nil {
 		return nil, err
 	}
+
+	fmt.Println(opt)
 
 	// Context to append to the request
 	messages := []*MessageMeta{}
@@ -79,15 +90,91 @@ func (anthropic *Client) Messages(ctx context.Context, model llm.Model, context 
 	req, err := client.NewJSONRequest(reqMessages{
 		Model:    model.Name(),
 		Messages: messages,
-		opt:      opt,
+		opt:      *opt,
 	})
 	if err != nil {
 		return nil, err
 	}
 
-	// Response
+	// Stream
 	var response Response
-	if err := anthropic.DoWithContext(ctx, req, &response, client.OptPath("messages")); err != nil {
+	reqopts := []client.RequestOpt{
+		client.OptPath("messages"),
+	}
+	if opt.Stream {
+		reqopts = append(reqopts, client.OptTextStreamCallback(func(evt client.TextStreamEvent) error {
+			switch evt.Event {
+			case "message_start":
+				// Start of a message
+				var r struct {
+					Type     string   `json:"type"`
+					Response Response `json:"message"`
+				}
+				if err := evt.Json(&r); err != nil {
+					return err
+				} else {
+					response = r.Response
+				}
+			case "content_block_start":
+				// Start of a content block, append to response
+				var r struct {
+					Type    string  `json:"type"`
+					Index   uint    `json:"index"`
+					Content Content `json:"content_block"`
+				}
+				if err := evt.Json(&r); err != nil {
+					return err
+				} else {
+					fmt.Println("content_block_start", r)
+				}
+			case "content_block_delta":
+				// Continuation of a content block, append to content
+				var r struct {
+					Type    string  `json:"type"`
+					Index   uint    `json:"index"`
+					Content Content `json:"delta"`
+				}
+				if err := evt.Json(&r); err != nil {
+					return err
+				} else {
+					fmt.Println("content_block_delta", r)
+				}
+			case "content_block_stop":
+				// End of a content block
+				var r struct {
+					Type  string `json:"type"`
+					Index uint   `json:"index"`
+				}
+				if err := evt.Json(&r); err != nil {
+					return err
+				} else {
+					fmt.Println("content_block_stop", r)
+				}
+			case "message_delta":
+				// Message update
+				var r struct {
+					Type  string   `json:"type"`
+					Delta Response `json:"index"`
+					Usage Metrics  `json:"usage"`
+				}
+				if err := evt.Json(&r); err != nil {
+					return err
+				} else {
+					fmt.Println("message_delta", r)
+				}
+			case "message_stop":
+				// NO-OP
+			case "ping":
+				// NO-OP
+			default:
+				// NO-OP
+			}
+			return nil
+		}))
+	}
+
+	// Response
+	if err := anthropic.DoWithContext(ctx, req, &response, reqopts...); err != nil {
 		return nil, err
 	}
 
