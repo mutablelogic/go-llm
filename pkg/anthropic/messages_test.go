@@ -27,8 +27,8 @@ func Test_messages_001(t *testing.T) {
 		t.FailNow()
 	}
 
-	err = client.Messages(context.TODO(), model, client.UserPrompt("hello world"))
+	response, err := client.Messages(context.TODO(), model, client.UserPrompt("hello world"))
 	if assert.NoError(err) {
-		t.Log("OK")
+		t.Log(response)
 	}
 }

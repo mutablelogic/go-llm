@@ -24,11 +24,9 @@ var _ llm.Agent = (*Client)(nil)
 // GLOBALS
 
 const (
-	endPoint            = "https://api.anthropic.com/v1"
-	defaultVersion      = "2023-06-01"
-	defaultName         = "anthropic"
-	defaultMessageModel = "claude-3-haiku-20240307"
-	defaultMaxTokens    = 1024
+	endPoint       = "https://api.anthropic.com/v1"
+	defaultVersion = "2023-06-01"
+	defaultName    = "anthropic"
 )
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -64,14 +62,4 @@ func (*Client) Generate(context.Context, llm.Model, llm.Context, ...llm.Opt) (*l
 // Embedding vector generation
 func (*Client) Embedding(context.Context, llm.Model, string, ...llm.Opt) ([]float64, error) {
 	return nil, llm.ErrNotImplemented
-}
-
-// Create user message context
-func (*Client) UserPrompt(string, ...llm.Opt) llm.Context {
-	return nil
-}
-
-// Create the result of calling a tool
-func (*Client) ToolResult(any) llm.Context {
-	return nil
 }
