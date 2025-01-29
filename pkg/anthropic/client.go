@@ -54,12 +54,7 @@ func (*Client) Name() string {
 	return defaultName
 }
 
-// Generate a response from a prompt
-func (*Client) Generate(context.Context, llm.Model, llm.Context, ...llm.Opt) (*llm.Response, error) {
-	return nil, llm.ErrNotImplemented
-}
-
-// Embedding vector generation
+// Embedding vector generation - not supported on Anthropic
 func (*Client) Embedding(context.Context, llm.Model, string, ...llm.Opt) ([]float64, error) {
 	return nil, llm.ErrNotImplemented
 }
