@@ -28,13 +28,29 @@ type MessageMeta struct {
 }
 
 type Content struct {
-	Type         string           `json:"type"`                    // image, document, text
-	Text         string           `json:"text,omitempty"`          // text content
-	Title        string           `json:"title,omitempty"`         // title of the document
-	Context      string           `json:"context,omitempty"`       // context of the document
-	Citations    *contentcitation `json:"citations,omitempty"`     // citations of the document
-	Source       *contentsource   `json:"source,omitempty"`        // image or document content
-	CacheControl *cachecontrol    `json:"cache_control,omitempty"` // ephemeral
+	Type string `json:"type"` // image, document, text, tool_use
+	ContextText
+	ContextAttachment
+	ContextTool
+	CacheControl *cachecontrol `json:"cache_control,omitempty"` // ephemeral
+}
+
+type ContextText struct {
+	Text string `json:"text,omitempty"` // text content
+}
+
+type ContextTool struct {
+	Id        string         `json:"id,omitempty"`           // tool id
+	Name      string         `json:"name,omitempty"`         // tool name
+	Input     map[string]any `json:"input,omitempty"`        // tool input
+	InputJson string         `json:"partial_json,omitempty"` // partial json input (for streaming)
+}
+
+type ContextAttachment struct {
+	Title     string           `json:"title,omitempty"`     // title of the document
+	Context   string           `json:"context,omitempty"`   // context of the document
+	Citations *contentcitation `json:"citations,omitempty"` // citations of the document
+	Source    *contentsource   `json:"source,omitempty"`    // image or document content
 }
 
 type contentsource struct {
@@ -52,10 +68,29 @@ type contentcitation struct {
 }
 
 ///////////////////////////////////////////////////////////////////////////////
+// LIFECYCLE
+
+// Return a Content object with text content
+func NewTextContent(v string) *Content {
+	content := new(Content)
+	content.Type = "text"
+	content.ContextText.Text = v
+	return content
+}
+
+///////////////////////////////////////////////////////////////////////////////
 // STRINGIFY
 
 func (m message) String() string {
 	data, err := json.MarshalIndent(m.MessageMeta, "", "  ")
+	if err != nil {
+		return err.Error()
+	}
+	return string(data)
+}
+
+func (m MessageMeta) String() string {
+	data, err := json.MarshalIndent(m, "", "  ")
 	if err != nil {
 		return err.Error()
 	}
@@ -82,10 +117,7 @@ func (*Client) UserPrompt(text string, opts ...llm.Opt) llm.Context {
 	context.MessageMeta.Content = make([]*Content, 0, len(opt.data)+1)
 
 	// Append the text
-	context.MessageMeta.Content = append(context.MessageMeta.Content, &Content{
-		Type: "text",
-		Text: text,
-	})
+	context.MessageMeta.Content = append(context.MessageMeta.Content, NewTextContent(text))
 
 	// Append any additional data
 	for _, data := range opt.data {

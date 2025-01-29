@@ -19,9 +19,10 @@ type opt struct {
 	Temperature   float64      `json:"temperature,omitempty"`
 	TopK          uint         `json:"top_k,omitempty"`
 	TopP          float64      `json:"top_p,omitempty"`
+	Tools         []*Tool      `json:"tools,omitempty"`
 
-	// Additional message content
-	data []*Content
+	data     []*Content      // Additional message content
+	callback func(*Response) // Streaming callback
 }
 
 type optmetadata struct {
@@ -45,13 +46,16 @@ func apply(opts ...llm.Opt) (*opt, error) {
 // OPTIONS
 
 // Messages: Stream the response as it is received.
-func WithStream() llm.Opt {
+func WithStream(fn func(*Response)) llm.Opt {
 	return func(o any) error {
 		o.(*opt).Stream = true
+		o.(*opt).callback = fn
 		return nil
 	}
 }
 
+// Messages: Attach data to the request, which can be cached on the server-side
+// and cited the response.
 func WithData(r io.Reader, ephemeral, citations bool) llm.Opt {
 	return func(o any) error {
 		attachment, err := ReadContent(r, ephemeral, citations)
@@ -114,6 +118,16 @@ func WithTopP(v float64) llm.Opt {
 func WithTopK(v uint) llm.Opt {
 	return func(o any) error {
 		o.(*opt).TopK = v
+		return nil
+	}
+}
+
+// Messages: Append a tool to the request.
+func WithTool(v *Tool) llm.Opt {
+	return func(o any) error {
+		if v != nil {
+			o.(*opt).Tools = append(o.(*opt).Tools, v)
+		}
 		return nil
 	}
 }

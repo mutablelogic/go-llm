@@ -68,8 +68,6 @@ func (anthropic *Client) Messages(ctx context.Context, model llm.Model, context 
 		return nil, err
 	}
 
-	fmt.Println(opt)
-
 	// Context to append to the request
 	messages := []*MessageMeta{}
 	message, ok := context.(*message)
@@ -102,6 +100,28 @@ func (anthropic *Client) Messages(ctx context.Context, model llm.Model, context 
 		client.OptPath("messages"),
 	}
 	if opt.Stream {
+		// Append delta to content
+		appendDelta := func(content []*Content, delta *Content) ([]*Content, error) {
+			if len(content) == 0 {
+				return nil, fmt.Errorf("unexpected delta")
+			}
+
+			// Get the content block we want to append to
+			last := content[len(content)-1]
+
+			// Append text_delta
+			switch {
+			case last.Type == "text" && delta.Type == "text_delta":
+				last.Text += delta.Text
+			case last.Type == "tool_use" && delta.Type == "input_json_delta":
+				last.InputJson += delta.InputJson
+			default:
+				return nil, fmt.Errorf("unexpected delta %s for %s", delta.Type, last.Type)
+			}
+
+			// Return the content
+			return content, nil
+		}
 		reqopts = append(reqopts, client.OptTextStreamCallback(func(evt client.TextStreamEvent) error {
 			switch evt.Event {
 			case "message_start":
@@ -124,8 +144,10 @@ func (anthropic *Client) Messages(ctx context.Context, model llm.Model, context 
 				}
 				if err := evt.Json(&r); err != nil {
 					return err
+				} else if int(r.Index) != len(response.MessageMeta.Content) {
+					return fmt.Errorf("%s: unexpected index %d", r.Type, r.Index)
 				} else {
-					fmt.Println("content_block_start", r)
+					response.MessageMeta.Content = append(response.MessageMeta.Content, &r.Content)
 				}
 			case "content_block_delta":
 				// Continuation of a content block, append to content
@@ -136,8 +158,13 @@ func (anthropic *Client) Messages(ctx context.Context, model llm.Model, context 
 				}
 				if err := evt.Json(&r); err != nil {
 					return err
+				} else if int(r.Index) != len(response.MessageMeta.Content)-1 {
+					fmt.Println(response.MessageMeta)
+					return fmt.Errorf("%s: unexpected index %d", r.Type, r.Index)
+				} else if content, err := appendDelta(response.MessageMeta.Content, &r.Content); err != nil {
+					return err
 				} else {
-					fmt.Println("content_block_delta", r)
+					response.MessageMeta.Content = content
 				}
 			case "content_block_stop":
 				// End of a content block
@@ -147,28 +174,52 @@ func (anthropic *Client) Messages(ctx context.Context, model llm.Model, context 
 				}
 				if err := evt.Json(&r); err != nil {
 					return err
-				} else {
-					fmt.Println("content_block_stop", r)
+				} else if int(r.Index) != len(response.MessageMeta.Content)-1 {
+					return fmt.Errorf("%s: unexpected index %d", r.Type, r.Index)
+				}
+				// We need to convert the partial_json response into a full json object
+				content := response.MessageMeta.Content[r.Index]
+				if content.Type == "tool_use" && content.InputJson != "" {
+					if err := json.Unmarshal([]byte(content.InputJson), &content.Input); err != nil {
+						return err
+					}
 				}
 			case "message_delta":
 				// Message update
 				var r struct {
 					Type  string   `json:"type"`
-					Delta Response `json:"index"`
+					Delta Response `json:"delta"`
 					Usage Metrics  `json:"usage"`
 				}
 				if err := evt.Json(&r); err != nil {
 					return err
-				} else {
-					fmt.Println("message_delta", r)
 				}
+
+				// Update stop reason
+				response.Reason = r.Delta.Reason
+				response.StopSequence = r.Delta.StopSequence
+
+				// Update metrics
+				response.Metrics.InputTokens += r.Usage.InputTokens
+				response.Metrics.OutputTokens += r.Usage.OutputTokens
+				response.Metrics.CacheCreationInputTokens += r.Usage.CacheCreationInputTokens
+				response.Metrics.CacheReadInputTokens += r.Usage.CacheReadInputTokens
 			case "message_stop":
 				// NO-OP
+				return nil
 			case "ping":
 				// NO-OP
+				return nil
 			default:
 				// NO-OP
+				return nil
 			}
+
+			if opt.callback != nil {
+				opt.callback(&response)
+			}
+
+			// Return success
 			return nil
 		}))
 	}
