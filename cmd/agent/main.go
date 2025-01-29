@@ -43,8 +43,9 @@ type CLI struct {
 	Globals
 
 	// Agents, Models and Tools
-	Agents ListAgentsCmd `cmd:"" help:"Return a list of agents"`
-	Models ListModelsCmd `cmd:"" help:"Return a list of models"`
+	Agents   ListAgentsCmd `cmd:"" help:"Return a list of agents"`
+	Models   ListModelsCmd `cmd:"" help:"Return a list of models"`
+	Generate GenerateCmd   `cmd:"" help:"Generate a response"`
 }
 
 ////////////////////////////////////////////////////////////////////////////////

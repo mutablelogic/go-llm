@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"slices"
 	"strings"
 
@@ -141,24 +140,11 @@ func (a *Agent) GetModel(ctx context.Context, name string, agents ...string) (ll
 		}
 	}
 
+	// Return not found
+	result = errors.Join(result, llm.ErrNotFound.Withf("model %q", name))
+
 	// Return any errors
 	return nil, result
-}
-
-// Generate a response from a prompt
-func (a *Agent) Generate(ctx context.Context, m llm.Model, context llm.Context, opts ...llm.Opt) (llm.Context, error) {
-	// Obtain the agent
-	var agent llm.Agent
-	if model, ok := m.(*model); !ok || model == nil {
-		return nil, llm.ErrBadParameter.With("model")
-	} else if agent_, exists := a.agents[model.Agent]; !exists {
-		return nil, llm.ErrNotFound.Withf("agent %q", model.Agent)
-	} else {
-		agent = agent_
-	}
-	fmt.Println(agent)
-
-	return nil, llm.ErrNotImplemented
 }
 
 // Embedding vector generation
