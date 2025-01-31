@@ -23,13 +23,15 @@ func (a *Agent) Generate(ctx context.Context, m llm.Model, context llm.Context, 
 		agent = agent_
 	}
 
-	// Apply the options
-	opts, err := translate(agent, opts...)
-	if err != nil {
-		return nil, err
-	}
+	// Get the options
 
-	log.Print("agent.Generate =>", context, opts)
+	// Apply the options
+	//opts, err := translate(agent, opts...)
+	//if err != nil {
+	//	return nil, err
+	//}
+
+	log.Print("agent.Generate =>", context)
 
 	// Call Generate for the agent
 	return agent.Generate(ctx, m, context, opts...)

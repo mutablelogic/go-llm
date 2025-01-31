@@ -16,7 +16,8 @@ import (
 // TYPES
 
 type GenerateCmd struct {
-	Model string `arg:"" help:"Model name"`
+	Model    string `arg:"" help:"Model name"`
+	NoStream bool   `flag:"nostream" help:"Disable streaming"`
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -35,7 +36,10 @@ func (cmd *GenerateCmd) Run(globals *Globals) error {
 		}
 
 		// Create a session
-		session := model.Context()
+		session, err := model.Context(agent.WithStream(!cmd.NoStream))
+		if err != nil {
+			return err
+		}
 
 		// Continue looping until end of input
 		for {
@@ -58,14 +62,7 @@ func (cmd *GenerateCmd) Run(globals *Globals) error {
 			if err != nil {
 				return err
 			}
-			fmt.Println("RESPONSE=", response.Text())
+			fmt.Println(response.Text())
 		}
-		/*
-			// Generate the content
-
-
-			// Print the response
-			return nil
-		*/
 	})
 }

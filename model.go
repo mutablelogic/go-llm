@@ -6,5 +6,5 @@ type Model interface {
 	Name() string
 
 	// Return a context object, and set options
-	Context(...Opt) Context
+	Context(...Opt) (Context, error)
 }

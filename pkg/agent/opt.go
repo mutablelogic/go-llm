@@ -2,6 +2,8 @@ package agent
 
 import (
 	// Packages
+	"fmt"
+
 	client "github.com/mutablelogic/go-client"
 	llm "github.com/mutablelogic/go-llm"
 	anthropic "github.com/mutablelogic/go-llm/pkg/anthropic"
@@ -15,9 +17,9 @@ type opt struct {
 	agents map[string]llm.Agent
 	tools  map[string]llm.Tool
 
-	// Selected agent
-	agent llm.Agent
-	opts  []llm.Opt
+	// Translated options for each agent implementation
+	ollama    []llm.Opt
+	anthropic []llm.Opt
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -33,28 +35,6 @@ func apply(opts ...llm.Opt) (*opt, error) {
 		}
 	}
 	return o, nil
-}
-
-// Translate options from general to agent-specific
-func translate(agent llm.Agent, opts ...llm.Opt) ([]llm.Opt, error) {
-	o := new(opt)
-
-	// Set agent
-	if agent == nil {
-		return nil, llm.ErrBadParameter.With("agent")
-	} else {
-		o.agent = agent
-	}
-
-	// Apply options
-	for _, opt := range opts {
-		if err := opt(o); err != nil {
-			return nil, err
-		}
-	}
-
-	// Return translated options
-	return o.opts, nil
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -82,6 +62,7 @@ func WithAnthropic(key string, opts ...client.ClientOpt) llm.Opt {
 	}
 }
 
+// Append tools
 func WithTools(tools ...llm.Tool) llm.Opt {
 	return func(o any) error {
 		for _, tool := range tools {
@@ -92,6 +73,19 @@ func WithTools(tools ...llm.Tool) llm.Opt {
 			o.(*opt).tools[name] = tool
 		}
 		// Return success
+		return nil
+	}
+}
+
+// Set streaming function
+func WithStream(v bool) llm.Opt {
+	return func(o any) error {
+		o.(*opt).ollama = append(o.(*opt).ollama, ollama.WithStream(func(r *ollama.Response) {
+			fmt.Println(r)
+		}))
+		o.(*opt).anthropic = append(o.(*opt).anthropic, anthropic.WithStream(func(r *anthropic.Response) {
+			fmt.Println(r)
+		}))
 		return nil
 	}
 }

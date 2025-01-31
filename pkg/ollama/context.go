@@ -12,6 +12,7 @@ import (
 
 // Implementation of a message session, which is a sequence of messages
 type session struct {
+	*opt
 	seq []*MessageMeta
 }
 
@@ -20,9 +21,17 @@ var _ llm.Context = (*session)(nil)
 ///////////////////////////////////////////////////////////////////////////////
 // LIFECYCLE
 
-func (*model) Context(...llm.Opt) llm.Context {
-	// TODO: Currently ignoring options
-	return &session{}
+func (*model) Context(opts ...llm.Opt) (llm.Context, error) {
+	// Apply options
+	opt, err := apply(opts...)
+	if err != nil {
+		return nil, err
+	}
+
+	// Return an empty session
+	return &session{
+		opt: opt,
+	}, nil
 }
 
 ///////////////////////////////////////////////////////////////////////////////

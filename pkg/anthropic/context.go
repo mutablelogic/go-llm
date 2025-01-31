@@ -18,9 +18,9 @@ var _ llm.Context = (*session)(nil)
 ///////////////////////////////////////////////////////////////////////////////
 // LIFECYCLE
 
-func (*model) Context(...llm.Opt) llm.Context {
+func (*model) Context(...llm.Opt) (llm.Context, error) {
 	// TODO: Currently ignoring options
-	return &session{}
+	return &session{}, nil
 }
 
 ///////////////////////////////////////////////////////////////////////////////

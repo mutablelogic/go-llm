@@ -80,13 +80,13 @@ func WithPullStatus(fn func(*PullStatus)) llm.Opt {
 }
 
 // Chat: Stream the response as it is received.
-func WithChatStream(fn func(*Response)) llm.Opt {
+func WithStream(fn func(*Response)) llm.Opt {
 	return func(o any) error {
 		if fn == nil {
 			return llm.ErrBadParameter.With("callback required")
 		}
 		if len(o.(*opt).tools) > 0 {
-			return llm.ErrBadParameter.With("tools not supported with streaming")
+			return llm.ErrBadParameter.With("streaming not supported with tools")
 		}
 		o.(*opt).stream = true
 		o.(*opt).chatcallback = fn
@@ -99,7 +99,7 @@ func WithTool(v *Tool) llm.Opt {
 	return func(o any) error {
 		// We can't use streaming when tools are included
 		if o.(*opt).stream {
-			return llm.ErrBadParameter.With("streaming not supported with tools")
+			return llm.ErrBadParameter.With("tools not supported with streaming")
 		}
 		if v != nil {
 			o.(*opt).tools = append(o.(*opt).tools, v)
