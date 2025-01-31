@@ -56,12 +56,12 @@ func (m model) String() string {
 // PUBLIC METHODS
 
 // Return a list of agent names
-func (a *Agent) Agents() []string {
-	var keys []string
-	for k := range a.agents {
-		keys = append(keys, k)
+func (a *Agent) Agents() []llm.Agent {
+	var result []llm.Agent
+	for _, v := range a.agents {
+		result = append(result, v)
 	}
-	return keys
+	return result
 }
 
 // Return a list of tool names
@@ -75,7 +75,11 @@ func (a *Agent) Tools() []string {
 
 // Return a comma-separated list of agent names
 func (a *Agent) Name() string {
-	return strings.Join(a.Agents(), ",")
+	var keys []string
+	for key := range a.agents {
+		keys = append(keys, key)
+	}
+	return strings.Join(keys, ",")
 }
 
 // Return the models from all agents

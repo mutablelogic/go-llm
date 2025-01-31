@@ -15,12 +15,11 @@ import (
 
 // Chat Response
 type Response struct {
-	Model     string         `json:"model"`
-	CreatedAt time.Time      `json:"created_at"`
-	Message   MessageMeta    `json:"message"`
-	Done      bool           `json:"done"`
-	Reason    string         `json:"done_reason,omitempty"`
-	Context   []*MessageMeta `json:"-"`
+	Model     string      `json:"model"`
+	CreatedAt time.Time   `json:"created_at"`
+	Message   MessageMeta `json:"message"`
+	Done      bool        `json:"done"`
+	Reason    string      `json:"done_reason,omitempty"`
 	Metrics
 }
 
@@ -58,20 +57,16 @@ type reqChat struct {
 	KeepAlive *time.Duration         `json:"keep_alive,omitempty"`
 }
 
-func (ollama *Client) Chat(ctx context.Context, model string, prompt llm.Context, opts ...llm.Opt) (*Response, error) {
+func (ollama *Client) Chat(ctx context.Context, prompt llm.Context, opts ...llm.Opt) (*Response, error) {
 	// Apply options
 	opt, err := apply(opts...)
 	if err != nil {
 		return nil, err
 	}
 
-	// Make a new sequence of messages
-	seq := make([]*MessageMeta, len(prompt.(*session).seq))
-	copy(seq, prompt.(*session).seq)
-
 	// Request
 	req, err := client.NewJSONRequest(reqChat{
-		Model:     model,
+		Model:     prompt.(*session).model.Name(),
 		Messages:  prompt.(*session).seq,
 		Tools:     opt.tools,
 		Format:    opt.format,
@@ -84,20 +79,34 @@ func (ollama *Client) Chat(ctx context.Context, model string, prompt llm.Context
 	}
 
 	//  Response
-	var response Response
-	if err := ollama.DoWithContext(ctx, req, &response, client.OptPath("chat"), client.OptJsonStreamCallback(func(v any) error {
-		if v, ok := v.(*Response); ok && opt.chatcallback != nil {
-			opt.chatcallback(v)
+	var response, delta Response
+	if err := ollama.DoWithContext(ctx, req, &delta, client.OptPath("chat"), client.OptJsonStreamCallback(func(v any) error {
+		if v, ok := v.(*Response); !ok || v == nil {
+			return llm.ErrConflict.Withf("Invalid stream response: %v", v)
+		} else {
+			response.Model = v.Model
+			response.CreatedAt = v.CreatedAt
+			response.Message.Role = v.Message.Role
+			response.Message.Content += v.Message.Content
+			if v.Done {
+				response.Done = v.Done
+				response.Metrics = v.Metrics
+				response.Reason = v.Reason
+			}
+		}
+
+		if opt.chatcallback != nil {
+			opt.chatcallback(&response)
 		}
 		return nil
 	})); err != nil {
 		return nil, err
 	}
 
-	// Append the response message to the context
-	prompt.(*session).seq = append(prompt.(*session).seq, &response.Message)
-	response.Context = prompt.(*session).seq
-
-	// Return success
-	return &response, nil
+	// We return the delta or the response
+	if opt.stream {
+		return &response, nil
+	} else {
+		return &delta, nil
+	}
 }

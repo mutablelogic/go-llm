@@ -134,6 +134,9 @@ func (t *Tool) Params(call ToolCall) (any, error) {
 
 // Return tool parameters from a struct
 func paramsFor(params any) ([]ToolParameter, error) {
+	if params == nil {
+		return []ToolParameter{}, nil
+	}
 	rt := reflect.TypeOf(params)
 	if rt.Kind() == reflect.Ptr {
 		rt = rt.Elem()

@@ -16,6 +16,6 @@ type Context interface {
 	// Generate a response from a user prompt (with attachments)
 	FromUser(context.Context, string, ...Opt) (Context, error)
 
-	// Generate a response from a tool result
-	FromTool(context.Context, ...any) (Context, error)
+	// Generate a response from a tool, passing the call identifier or funtion name, and the result
+	FromTool(context.Context, string, any) (Context, error)
 }

@@ -18,15 +18,16 @@ func Test_chat_001(t *testing.T) {
 	}
 
 	// Pull the model
-	if err := client.PullModel(context.TODO(), "qwen:0.5b", ollama.WithPullStatus(func(status *ollama.PullStatus) {
+	model, err := client.PullModel(context.TODO(), "qwen:0.5b", ollama.WithPullStatus(func(status *ollama.PullStatus) {
 		t.Log(status)
-	})); err != nil {
+	}))
+	if err != nil {
 		t.FailNow()
 	}
 
 	t.Run("ChatStream", func(t *testing.T) {
 		assert := assert.New(t)
-		response, err := client.Chat(context.TODO(), "qwen:0.5b", client.UserPrompt("why is the sky blue?"), ollama.WithChatStream(func(stream *ollama.Response) {
+		response, err := client.Chat(context.TODO(), model.MustUserPrompt("why is the sky blue?"), ollama.WithStream(func(stream *ollama.Response) {
 			t.Log(stream)
 		}))
 		if !assert.NoError(err) {
@@ -37,7 +38,7 @@ func Test_chat_001(t *testing.T) {
 
 	t.Run("ChatNoStream", func(t *testing.T) {
 		assert := assert.New(t)
-		response, err := client.Chat(context.TODO(), "qwen:0.5b", client.UserPrompt("why is the sky green?"))
+		response, err := client.Chat(context.TODO(), model.MustUserPrompt("why is the sky green?"))
 		if !assert.NoError(err) {
 			t.FailNow()
 		}
@@ -52,16 +53,17 @@ func Test_chat_002(t *testing.T) {
 	}
 
 	// Pull the model
-	if err := client.PullModel(context.TODO(), "llama3.2:1b", ollama.WithPullStatus(func(status *ollama.PullStatus) {
+	model, err := client.PullModel(context.TODO(), "llama3.2:1b", ollama.WithPullStatus(func(status *ollama.PullStatus) {
 		t.Log(status)
-	})); err != nil {
+	}))
+	if err != nil {
 		t.FailNow()
 	}
 
 	t.Run("Tools", func(t *testing.T) {
 		assert := assert.New(t)
-		response, err := client.Chat(context.TODO(), "llama3.2:1b",
-			client.UserPrompt("what is the weather in berlin?"),
+		response, err := client.Chat(context.TODO(),
+			model.MustUserPrompt("what is the weather in berlin?"),
 			ollama.WithTool(ollama.MustTool("get_weather", "Return weather conditions in a location", struct {
 				Location string `help:"Location to get weather for" required:""`
 			}{})),
@@ -79,16 +81,15 @@ func Test_chat_003(t *testing.T) {
 		t.FailNow()
 	}
 
-	// Delete model
-	client.DeleteModel(context.TODO(), "llava")
-
 	// Pull the model
-	if err := client.PullModel(context.TODO(), "llava", ollama.WithPullStatus(func(status *ollama.PullStatus) {
+	model, err := client.PullModel(context.TODO(), "llava", ollama.WithPullStatus(func(status *ollama.PullStatus) {
 		t.Log(status)
-	})); err != nil {
+	}))
+	if err != nil {
 		t.FailNow()
 	}
 
+	// Explain the content of an image
 	t.Run("Image", func(t *testing.T) {
 		assert := assert.New(t)
 
@@ -98,8 +99,8 @@ func Test_chat_003(t *testing.T) {
 		}
 		defer f.Close()
 
-		response, err := client.Chat(context.TODO(), "llava",
-			client.UserPrompt("where was this photo taken?", ollama.WithData(f)),
+		response, err := client.Chat(context.TODO(),
+			model.MustUserPrompt("describe this photo to me", ollama.WithData(f)),
 		)
 		if !assert.NoError(err) {
 			t.FailNow()

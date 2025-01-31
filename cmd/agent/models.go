@@ -7,6 +7,7 @@ import (
 	// Packages
 	llm "github.com/mutablelogic/go-llm"
 	agent "github.com/mutablelogic/go-llm/pkg/agent"
+	ollama "github.com/mutablelogic/go-llm/pkg/ollama"
 )
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -17,6 +18,11 @@ type ListModelsCmd struct {
 }
 
 type ListAgentsCmd struct{}
+
+type DownloadModelCmd struct {
+	Agent string `arg:"" help:"Agent name"`
+	Model string `arg:"" help:"Model name"`
+}
 
 ////////////////////////////////////////////////////////////////////////////////
 // PUBLIC METHODS
@@ -49,9 +55,43 @@ func (*ListAgentsCmd) Run(globals *Globals) error {
 	})
 }
 
+func (cmd *DownloadModelCmd) Run(globals *Globals) error {
+	return runagent(globals, func(ctx context.Context, client llm.Agent) error {
+		agent := getagent(client, cmd.Agent)
+		if agent == nil {
+			return fmt.Errorf("No agents found with name %q", cmd.Agent)
+		}
+		// Download the model
+		switch agent.Name() {
+		case "ollama":
+			model, err := agent.(*ollama.Client).PullModel(ctx, cmd.Model)
+			if err != nil {
+				return err
+			}
+			fmt.Println(model)
+		default:
+			return fmt.Errorf("Agent %q does not support model download", agent.Name())
+		}
+		return nil
+	})
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 // PRIVATE METHODS
 
 func runagent(globals *Globals, fn func(ctx context.Context, agent llm.Agent) error) error {
 	return fn(globals.ctx, globals.agent)
+}
+
+func getagent(client llm.Agent, name string) llm.Agent {
+	agent, ok := client.(*agent.Agent)
+	if !ok {
+		return nil
+	}
+	for _, agent := range agent.Agents() {
+		if agent.Name() == name {
+			return agent
+		}
+	}
+	return nil
 }

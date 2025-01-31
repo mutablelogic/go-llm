@@ -43,12 +43,13 @@ func Test_model_001(t *testing.T) {
 
 	t.Run("PullModel", func(t *testing.T) {
 		assert := assert.New(t)
-		err := client.PullModel(context.TODO(), "qwen:0.5b", ollama.WithPullStatus(func(status *ollama.PullStatus) {
+		model, err := client.PullModel(context.TODO(), "qwen:0.5b", ollama.WithPullStatus(func(status *ollama.PullStatus) {
 			t.Log(status)
 		}))
 		if !assert.NoError(err) {
 			t.FailNow()
 		}
+		assert.NotNil(model)
 	})
 
 	t.Run("CopyModel", func(t2 *testing.T) {
