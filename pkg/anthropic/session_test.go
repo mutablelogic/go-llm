@@ -1,4 +1,4 @@
-package ollama_test
+package anthropic_test
 
 import (
 	"context"
@@ -7,18 +7,17 @@ import (
 
 	// Packages
 	opts "github.com/mutablelogic/go-client"
-	ollama "github.com/mutablelogic/go-llm/pkg/ollama"
+	anthropic "github.com/mutablelogic/go-llm/pkg/anthropic"
 	assert "github.com/stretchr/testify/assert"
 )
 
 func Test_session_001(t *testing.T) {
-	client, err := ollama.New(GetEndpoint(t), opts.OptTrace(os.Stderr, true))
+	client, err := anthropic.New(GetApiKey(t), opts.OptTrace(os.Stderr, true))
 	if err != nil {
 		t.FailNow()
 	}
 
-	// Pull the model
-	model, err := client.PullModel(context.TODO(), "qwen:0.5b")
+	model, err := client.GetModel(context.TODO(), "claude-3-haiku-20240307")
 	if err != nil {
 		t.FailNow()
 	}
@@ -26,7 +25,7 @@ func Test_session_001(t *testing.T) {
 	// Session with a single user prompt - streaming
 	t.Run("stream", func(t *testing.T) {
 		assert := assert.New(t)
-		session := model.Context(ollama.WithStream(func(stream *ollama.Response) {
+		session := model.Context(anthropic.WithStream(func(stream *anthropic.Response) {
 			t.Log("SESSION DELTA", stream)
 		}))
 		assert.NotNil(session)
@@ -55,13 +54,12 @@ func Test_session_001(t *testing.T) {
 }
 
 func Test_session_002(t *testing.T) {
-	client, err := ollama.New(GetEndpoint(t), opts.OptTrace(os.Stderr, true))
+	client, err := anthropic.New(GetApiKey(t), opts.OptTrace(os.Stderr, true))
 	if err != nil {
 		t.FailNow()
 	}
 
-	// Pull the model
-	model, err := client.PullModel(context.TODO(), "llama3.2")
+	model, err := client.GetModel(context.TODO(), "claude-3-haiku-20240307")
 	if err != nil {
 		t.FailNow()
 	}
@@ -70,18 +68,21 @@ func Test_session_002(t *testing.T) {
 	t.Run("toolcall", func(t *testing.T) {
 		assert := assert.New(t)
 
-		tool, err := ollama.NewTool("get_weather", "Return the current weather", nil)
+		tool, err := anthropic.NewTool("get_weather", "Return the current weather", nil)
 		if !assert.NoError(err) {
 			t.FailNow()
 		}
 
-		session := model.Context(ollama.WithTool(tool))
+		session := model.Context(anthropic.WithTool(tool))
 		assert.NotNil(session)
 
 		err = session.FromUser(context.TODO(), "What is today's weather?")
 		if !assert.NoError(err) {
 			t.FailNow()
 		}
-		t.Log(session)
+
+		toolcalls := session.ToolCalls()
+		assert.NotEmpty(toolcalls)
+		t.Log(toolcalls)
 	})
 }

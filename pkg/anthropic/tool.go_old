@@ -32,6 +32,10 @@ type ToolParameter struct {
 	index       []int // Field index into prototype for setting a field
 }
 
+type toolcall struct {
+	ContentTool
+}
+
 ///////////////////////////////////////////////////////////////////////////////
 // LIFECYCLE
 
@@ -77,6 +81,14 @@ func NewTool(name, description string, params any) (*Tool, error) {
 	return &tool, nil
 }
 
+// Return a new tool call from a content parameter
+func NewToolCall(content *Content) *toolcall {
+	if content == nil || content.ContentTool.Id == "" || content.ContentTool.Name == "" {
+		return nil
+	}
+	return &toolcall{content.ContentTool}
+}
+
 ///////////////////////////////////////////////////////////////////////////////
 // STRINGIFY
 
@@ -88,11 +100,38 @@ func (t Tool) String() string {
 	return string(data)
 }
 
+func (t toolcall) String() string {
+	data, err := json.MarshalIndent(t, "", "  ")
+	if err != nil {
+		return err.Error()
+	}
+	return string(data)
+}
+
+///////////////////////////////////////////////////////////////////////////////
+// PUBLIC METHODS
+
+func (t *toolcall) Name() string {
+	return t.ContentTool.Name
+}
+
+func (t *toolcall) Id() string {
+	return t.ContentTool.Id
+}
+
+func (t *toolcall) Params() any {
+	// TODO: Convert
+	return t.ContentTool.Input
+}
+
 ///////////////////////////////////////////////////////////////////////////////
 // PRIVATE METHODS
 
 // Return tool parameters from a struct
 func paramsFor(params any) ([]ToolParameter, error) {
+	if params == nil {
+		return []ToolParameter{}, nil
+	}
 	rt := reflect.TypeOf(params)
 	if rt.Kind() == reflect.Ptr {
 		rt = rt.Elem()

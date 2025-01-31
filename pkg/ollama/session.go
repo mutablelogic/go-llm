@@ -62,18 +62,12 @@ func (session session) String() string {
 // PUBLIC METHODS
 
 // Generate a response from a user prompt (with attachments)
-func (s *session) FromUser(ctx context.Context, prompt string, opts ...llm.Opt) (llm.Context, error) {
-	// Make a new session
-	response := new(session)
-	response.model = s.model
-	response.opts = s.opts
-	response.seq = make([]*MessageMeta, len(s.seq)+1, len(s.seq)+2)
-
+func (s *session) FromUser(ctx context.Context, prompt string, opts ...llm.Opt) error {
 	// Append the user prompt
 	if user, err := userPrompt(prompt, opts...); err != nil {
-		return nil, err
+		return err
 	} else {
-		response.seq[len(response.seq)-1] = user
+		s.seq = append(s.seq, user)
 	}
 
 	// The options come from the session options and the user options
@@ -83,30 +77,24 @@ func (s *session) FromUser(ctx context.Context, prompt string, opts ...llm.Opt) 
 
 	// Call the 'chat' method
 	client := s.model.client
-	r, err := client.Chat(ctx, response, chatopts...)
+	r, err := client.Chat(ctx, s, chatopts...)
 	if err != nil {
-		return nil, err
+		return err
 	} else {
-		response.seq = append(response.seq, &r.Message)
+		s.seq = append(s.seq, &r.Message)
 	}
 
 	// Return success
-	return response, nil
+	return nil
 }
 
 // Generate a response from a tool calling result
-func (s *session) FromTool(ctx context.Context, call string, result any, opts ...llm.Opt) (llm.Context, error) {
-	// Make a new session
-	response := new(session)
-	response.model = s.model
-	response.opts = s.opts
-	response.seq = make([]*MessageMeta, len(s.seq)+1, len(s.seq)+2)
-
+func (s *session) FromTool(ctx context.Context, call string, result any, opts ...llm.Opt) error {
 	// Append the tool result
 	if message, err := toolResult(call, result); err != nil {
-		return nil, err
+		return err
 	} else {
-		response.seq[len(response.seq)-1] = message
+		s.seq[len(s.seq)-1] = message
 	}
 
 	// The options come from the session options and the user options
@@ -115,15 +103,15 @@ func (s *session) FromTool(ctx context.Context, call string, result any, opts ..
 	chatopts = append(chatopts, opts...)
 
 	// Call the 'chat' method
-	r, err := s.model.client.Chat(ctx, response, chatopts...)
+	r, err := s.model.client.Chat(ctx, s, chatopts...)
 	if err != nil {
-		return nil, err
+		return err
 	} else {
-		response.seq = append(response.seq, &r.Message)
+		s.seq = append(s.seq, &r.Message)
 	}
 
 	// Return success
-	return response, nil
+	return nil
 }
 
 // Return the role of the last message
@@ -140,6 +128,25 @@ func (session *session) Text() string {
 		return ""
 	}
 	return session.seq[len(session.seq)-1].Content
+}
+
+// Return the tool calls of the last message
+func (session *session) ToolCalls() []llm.ToolCall {
+	// Sanity check for tool call
+	if len(session.seq) == 0 {
+		return nil
+	}
+	meta := session.seq[len(session.seq)-1]
+	if meta.Role != "assistant" {
+		return nil
+	}
+
+	// Gather tool calls
+	var result []llm.ToolCall
+	for _, call := range meta.ToolCalls {
+		result = append(result, NewToolCall(call))
+	}
+	return result
 }
 
 ///////////////////////////////////////////////////////////////////////////////

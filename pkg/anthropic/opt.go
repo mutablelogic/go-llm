@@ -5,6 +5,7 @@ import (
 
 	// Packages
 	llm "github.com/mutablelogic/go-llm"
+	tool "github.com/mutablelogic/go-llm/pkg/tool"
 )
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -19,10 +20,10 @@ type opt struct {
 	Temperature   float64      `json:"temperature,omitempty"`
 	TopK          uint         `json:"top_k,omitempty"`
 	TopP          float64      `json:"top_p,omitempty"`
-	Tools         []*Tool      `json:"tools,omitempty"`
 
 	data     []*Content      // Additional message content
 	callback func(*Response) // Streaming callback
+	toolkit  *tool.ToolKit   // Toolkit for tools
 }
 
 type optmetadata struct {
@@ -40,6 +41,17 @@ func apply(opts ...llm.Opt) (*opt, error) {
 		}
 	}
 	return o, nil
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// PUBLIC METHODS
+
+func (o *opt) Tools() []llm.Tool {
+	if o.toolkit == nil {
+		return nil
+	} else {
+		return o.toolkit.Tools()
+	}
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -122,11 +134,11 @@ func WithTopK(v uint) llm.Opt {
 	}
 }
 
-// Messages: Append a tool to the request.
-func WithTool(v *Tool) llm.Opt {
+// Messages: Append a toolkit to the request
+func WithToolKit(v *tool.ToolKit) llm.Opt {
 	return func(o any) error {
 		if v != nil {
-			o.(*opt).Tools = append(o.(*opt).Tools, v)
+			o.(*opt).toolkit = v
 		}
 		return nil
 	}

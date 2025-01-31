@@ -7,17 +7,25 @@ import (
 ////////////////////////////////////////////////////////////////////////////////
 // TYPES
 
-// A tool can be called from an LLM
 type Tool interface {
-	// Return the name of the tool
+	// The name of the tool
 	Name() string
 
-	// Return the description of the tool
+	// The description of the tool
 	Description() string
 
-	// Tool parameters
-	Params() any
+	// Run the tool with a deadline and return the result
+	Run(context.Context) (any, error)
+}
 
-	// Execute the tool with parameters
-	Run(context.Context, any) error
+// A call-out to a tool
+type ToolCall interface {
+	// The tool name
+	Name() string
+
+	// The tool identifier
+	Id() string
+
+	// The calling parameters
+	Params() any
 }

@@ -15,6 +15,7 @@ import (
 
 // model is the implementation of the llm.Model interface
 type model struct {
+	client *Client
 	ModelMeta
 }
 
@@ -38,14 +39,13 @@ func (anthropic *Client) Models(ctx context.Context) ([]llm.Model, error) {
 
 // Get a model by name
 func (anthropic *Client) GetModel(ctx context.Context, name string) (llm.Model, error) {
-
 	var response ModelMeta
 	if err := anthropic.DoWithContext(ctx, nil, &response, client.OptPath("models", name)); err != nil {
 		return nil, err
 	}
 
 	// Return success
-	return &model{ModelMeta: response}, nil
+	return &model{client: anthropic, ModelMeta: response}, nil
 }
 
 // List models
@@ -68,6 +68,7 @@ func (anthropic *Client) ListModels(ctx context.Context) ([]llm.Model, error) {
 		// Convert to llm.Model
 		for _, meta := range response.Body {
 			result = append(result, &model{
+				client:    anthropic,
 				ModelMeta: meta,
 			})
 		}

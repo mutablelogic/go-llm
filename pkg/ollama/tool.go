@@ -93,6 +93,11 @@ func NewTool(name, description string, params any) (*Tool, error) {
 	return &tool, nil
 }
 
+// Return a new tool call
+func NewToolCall(v ToolCall) *ToolCallFunction {
+	return &v.Function
+}
+
 ///////////////////////////////////////////////////////////////////////////////
 // STRINGIFY
 

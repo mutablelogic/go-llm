@@ -58,6 +58,7 @@ func (r opt) String() string {
 type reqMessages struct {
 	Model    string         `json:"model"`
 	Messages []*MessageMeta `json:"messages"`
+	Tools    []llm.Tool     `json:"tools,omitempty"`
 	opt
 }
 
@@ -77,6 +78,7 @@ func (anthropic *Client) Messages(ctx context.Context, context llm.Context, opts
 	req, err := client.NewJSONRequest(reqMessages{
 		Model:    context.(*session).model.Name(),
 		Messages: context.(*session).seq,
+		Tools:    opt.Tools(),
 		opt:      *opt,
 	})
 	if err != nil {
