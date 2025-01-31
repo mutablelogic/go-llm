@@ -17,10 +17,4 @@ type Agent interface {
 
 	// Embedding vector generation
 	Embedding(context.Context, Model, string, ...Opt) ([]float64, error)
-
-	// Create user message context
-	UserPrompt(string, ...Opt) Context
-
-	// Create the result of calling a tool
-	ToolResult(id string, opts ...Opt) Context
 }

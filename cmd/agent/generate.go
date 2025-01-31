@@ -34,7 +34,7 @@ func (cmd *GenerateCmd) Run(globals *Globals) error {
 		}
 
 		// Generate the content
-		response, err := agent.Generate(ctx, model, agent.UserPrompt(cmd.Text))
+		response, err := agent.Generate(ctx, model, model.UserPrompt(cmd.Text))
 		if err != nil {
 			return err
 		}

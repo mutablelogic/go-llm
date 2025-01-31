@@ -58,31 +58,21 @@ type reqChat struct {
 	KeepAlive *time.Duration         `json:"keep_alive,omitempty"`
 }
 
-func (ollama *Client) Chat(ctx context.Context, name string, prompt llm.Context, opts ...llm.Opt) (*Response, error) {
+func (ollama *Client) Chat(ctx context.Context, model string, prompt llm.Context, opts ...llm.Opt) (*Response, error) {
 	// Apply options
 	opt, err := apply(opts...)
 	if err != nil {
 		return nil, err
 	}
 
-	// Append the context to the set of messages
-	messages := make([]*MessageMeta, 0, len(opt.context)+2)
-	copy(messages, opt.context)
-
-	// Context to append to the request
-	message, ok := prompt.(*message)
-	if !ok || message == nil {
-		return nil, llm.ErrBadParameter.With("incompatible context")
-	} else if message.Role() != "user" {
-		return nil, llm.ErrBadParameter.Withf("invalid role, %q", message.Role())
-	} else {
-		messages = append(messages, &message.MessageMeta)
-	}
+	// Make a new sequence of messages
+	seq := make([]*MessageMeta, len(prompt.(*messages).seq))
+	copy(seq, prompt.(*messages).seq)
 
 	// Request
 	req, err := client.NewJSONRequest(reqChat{
-		Model:     name,
-		Messages:  messages,
+		Model:     model,
+		Messages:  seq,
 		Tools:     opt.tools,
 		Format:    opt.format,
 		Options:   opt.options,
@@ -105,7 +95,7 @@ func (ollama *Client) Chat(ctx context.Context, name string, prompt llm.Context,
 	}
 
 	// Append the response message to the context
-	response.Context = append(messages, &response.Message)
+	response.Context = append(seq, &response.Message)
 
 	// Return success
 	return &response, nil

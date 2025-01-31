@@ -1,7 +1,6 @@
 package ollama
 
 import (
-	"context"
 
 	// Packages
 	client "github.com/mutablelogic/go-client"
@@ -47,9 +46,4 @@ func New(endPoint string, opts ...client.ClientOpt) (*Client, error) {
 // Return the name of the agent
 func (*Client) Name() string {
 	return defaultName
-}
-
-// Generate a response from a prompt
-func (ollama *Client) Generate(ctx context.Context, model llm.Model, context llm.Context, opts ...llm.Opt) (llm.Context, error) {
-	return nil, llm.ErrNotImplemented
 }

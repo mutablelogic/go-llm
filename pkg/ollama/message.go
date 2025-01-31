@@ -10,13 +10,6 @@ import (
 ///////////////////////////////////////////////////////////////////////////////
 // TYPES
 
-// Implementation of a message
-type message struct {
-	MessageMeta
-}
-
-var _ llm.Context = (*message)(nil)
-
 // Chat Message
 type MessageMeta struct {
 	Role      string     `json:"role"`
@@ -25,14 +18,27 @@ type MessageMeta struct {
 	ToolCalls []ToolCall `json:"tool_calls,omitempty"`
 }
 
+// Implementation of a message session, which is a sequence of messages
+type messages struct {
+	seq []*MessageMeta
+}
+
+var _ llm.Context = (*messages)(nil)
+
 // Data represents the raw binary data of an image file.
 type Data []byte
 
 ///////////////////////////////////////////////////////////////////////////////
 // STRINGIFY
 
-func (m message) String() string {
-	data, err := json.MarshalIndent(m.MessageMeta, "", "  ")
+func (m messages) String() string {
+	var data []byte
+	var err error
+	if len(m.seq) == 1 {
+		data, err = json.MarshalIndent(m.seq[0], "", "  ")
+	} else {
+		data, err = json.MarshalIndent(m.seq, "", "  ")
+	}
 	if err != nil {
 		return err.Error()
 	}
@@ -43,32 +49,37 @@ func (m message) String() string {
 // PUBLIC METHODS
 
 // Create user message context, with optional images
-func (ollama *Client) UserPrompt(v string, opts ...llm.Opt) llm.Context {
+func (*model) UserPrompt(v string, opts ...llm.Opt) llm.Context {
 	// Apply options
 	opt, err := apply(opts...)
 	if err != nil {
 		return nil
 	}
 
-	m := new(message)
-	m.MessageMeta.Role = "user"
-	m.MessageMeta.Content = v
+	var meta MessageMeta
+	meta.Role = "user"
+	meta.Content = v
 	if len(opt.data) > 0 {
-		m.MessageMeta.Images = make([]Data, len(opt.data))
-		copy(m.MessageMeta.Images, opt.data)
+		meta.Images = make([]Data, len(opt.data))
+		copy(meta.Images, opt.data)
 	}
 
-	// Return success
-	return m
+	// Return prompt
+	return &messages{
+		seq: []*MessageMeta{&meta},
+	}
 }
 
 // The result of a tool call
-func (ollama *Client) ToolResult(id string, opts ...llm.Opt) llm.Context {
+func (*model) ToolResult(id string, opts ...llm.Opt) llm.Context {
 	// messages.append({'role': 'tool', 'content': str(output), 'name': tool.function.name})
 	return nil
 }
 
-// Return the role of a message
-func (m message) Role() string {
-	return m.MessageMeta.Role
+// Return the role of the last message
+func (m messages) Role() string {
+	if len(m.seq) == 0 {
+		return ""
+	}
+	return m.seq[len(m.seq)-1].Role
 }

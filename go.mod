@@ -3,6 +3,7 @@ module github.com/mutablelogic/go-llm
 go 1.23.5
 
 require (
+	github.com/alecthomas/kong v1.7.0
 	github.com/mutablelogic/go-client v1.0.9
 	github.com/stretchr/testify v1.9.0
 )

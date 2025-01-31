@@ -152,11 +152,6 @@ func (a *Agent) Embedding(context.Context, llm.Model, string, ...llm.Opt) ([]flo
 	return nil, llm.ErrNotImplemented
 }
 
-// Create user message context
-func (a *Agent) UserPrompt(string, ...llm.Opt) llm.Context {
-	return nil
-}
-
 // Create the result of calling a tool
 func (a *Agent) ToolResult(id string, opts ...llm.Opt) llm.Context {
 	return nil

@@ -20,7 +20,6 @@ type opt struct {
 	truncate     *bool
 	keepalive    *time.Duration
 	options      map[string]any
-	context      []*MessageMeta
 	tools        []*Tool
 	data         []Data
 }

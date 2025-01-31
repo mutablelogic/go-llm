@@ -111,7 +111,7 @@ func (m message) Role() string {
 }
 
 // Create user message context
-func (*Client) UserPrompt(text string, opts ...llm.Opt) llm.Context {
+func (*model) UserPrompt(text string, opts ...llm.Opt) llm.Context {
 	// Get attachments
 	opt, err := apply(opts...)
 	if err != nil {
@@ -135,7 +135,7 @@ func (*Client) UserPrompt(text string, opts ...llm.Opt) llm.Context {
 }
 
 // Create the result of calling a tool
-func (*Client) ToolResult(id string, opts ...llm.Opt) llm.Context {
+func (*model) ToolResult(id string, opts ...llm.Opt) llm.Context {
 	context := new(message)
 	context.MessageMeta.Role = "user"
 	context.MessageMeta.Content = make([]*Content, 0, 1)
