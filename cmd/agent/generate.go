@@ -2,7 +2,10 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"io"
+	"strings"
 
 	// Packages
 	llm "github.com/mutablelogic/go-llm"
@@ -14,7 +17,6 @@ import (
 
 type GenerateCmd struct {
 	Model string `arg:"" help:"Model name"`
-	Text  string `arg:"" help:"Text to generate a response for"`
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -23,7 +25,6 @@ type GenerateCmd struct {
 func (cmd *GenerateCmd) Run(globals *Globals) error {
 	return runagent(globals, func(ctx context.Context, client llm.Agent) error {
 		// Get the model
-		// TODO: Model should be cached
 		agent, ok := client.(*agent.Agent)
 		if !ok {
 			return fmt.Errorf("No agents found")
@@ -33,14 +34,38 @@ func (cmd *GenerateCmd) Run(globals *Globals) error {
 			return err
 		}
 
-		// Generate the content
-		response, err := agent.Generate(ctx, model, model.UserPrompt(cmd.Text))
-		if err != nil {
-			return err
-		}
+		// Create a session
+		session := model.Context()
 
-		// Print the response
-		fmt.Println("RESPONSE=", response)
-		return nil
+		// Continue looping until end of input
+		for {
+			input, err := globals.term.ReadLine(model.Name() + "> ")
+			if errors.Is(err, io.EOF) {
+				return nil
+			} else if err != nil {
+				return err
+			} else if err := session.AppendUserPrompt(strings.TrimSpace(input)); err != nil {
+				return err
+			}
+
+			// Ignore empty import
+			if session.Text() == "" {
+				continue
+			}
+
+			// Feed input into the model
+			response, err := agent.Generate(ctx, model, session)
+			if err != nil {
+				return err
+			}
+			fmt.Println("RESPONSE=", response.Text())
+		}
+		/*
+			// Generate the content
+
+
+			// Print the response
+			return nil
+		*/
 	})
 }

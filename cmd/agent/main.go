@@ -11,7 +11,7 @@ import (
 	kong "github.com/alecthomas/kong"
 	client "github.com/mutablelogic/go-client"
 	llm "github.com/mutablelogic/go-llm"
-	"github.com/mutablelogic/go-llm/pkg/agent"
+	agent "github.com/mutablelogic/go-llm/pkg/agent"
 )
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -29,6 +29,7 @@ type Globals struct {
 	// Context
 	ctx   context.Context
 	agent llm.Agent
+	term  *Term
 }
 
 type Ollama struct {
@@ -66,6 +67,15 @@ func main() {
 	ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer cancel()
 	cli.Globals.ctx = ctx
+
+	// Create a terminal
+	term, err := NewTerm(os.Stdout)
+	if err != nil {
+		cmd.FatalIfErrorf(err)
+		return
+	} else {
+		cli.Globals.term = term
+	}
 
 	// Client options
 	clientopts := []client.ClientOpt{}

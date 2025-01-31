@@ -68,17 +68,6 @@ func (anthropic *Client) Messages(ctx context.Context, model llm.Model, context 
 		return nil, err
 	}
 
-	// Context to append to the request
-	messages := []*MessageMeta{}
-	message, ok := context.(*message)
-	if !ok || message == nil {
-		return nil, llm.ErrBadParameter.With("incompatible context")
-	} else if message.Role() != "user" {
-		return nil, llm.ErrBadParameter.Withf("invalid role, %q", message.Role())
-	} else {
-		messages = append(messages, &message.MessageMeta)
-	}
-
 	// Set max_tokens
 	if opt.MaxTokens == 0 {
 		opt.MaxTokens = defaultMaxTokens(model.Name())
@@ -87,7 +76,7 @@ func (anthropic *Client) Messages(ctx context.Context, model llm.Model, context 
 	// Request
 	req, err := client.NewJSONRequest(reqMessages{
 		Model:    model.Name(),
-		Messages: messages,
+		Messages: context.(*session).seq,
 		opt:      *opt,
 	})
 	if err != nil {

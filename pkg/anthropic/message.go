@@ -14,13 +14,6 @@ import (
 ///////////////////////////////////////////////////////////////////////////////
 // TYPES
 
-// Implementation of a message
-type message struct {
-	MessageMeta
-}
-
-var _ llm.Context = (*message)(nil)
-
 // Message with text or object content
 type MessageMeta struct {
 	Role    string     `json:"role"`
@@ -87,61 +80,12 @@ func NewTextContent(v string) *Content {
 ///////////////////////////////////////////////////////////////////////////////
 // STRINGIFY
 
-func (m message) String() string {
-	data, err := json.MarshalIndent(m.MessageMeta, "", "  ")
-	if err != nil {
-		return err.Error()
-	}
-	return string(data)
-}
-
 func (m MessageMeta) String() string {
 	data, err := json.MarshalIndent(m, "", "  ")
 	if err != nil {
 		return err.Error()
 	}
 	return string(data)
-}
-
-///////////////////////////////////////////////////////////////////////////////
-// PUBLIC METHODS
-
-func (m message) Role() string {
-	return m.MessageMeta.Role
-}
-
-// Create user message context
-func (*model) UserPrompt(text string, opts ...llm.Opt) llm.Context {
-	// Get attachments
-	opt, err := apply(opts...)
-	if err != nil {
-		return nil
-	}
-
-	context := new(message)
-	context.MessageMeta.Role = "user"
-	context.MessageMeta.Content = make([]*Content, 0, len(opt.data)+1)
-
-	// Append the text
-	context.MessageMeta.Content = append(context.MessageMeta.Content, NewTextContent(text))
-
-	// Append any additional data
-	for _, data := range opt.data {
-		context.MessageMeta.Content = append(context.MessageMeta.Content, data)
-	}
-
-	// Return the context
-	return context
-}
-
-// Create the result of calling a tool
-func (*model) ToolResult(id string, opts ...llm.Opt) llm.Context {
-	context := new(message)
-	context.MessageMeta.Role = "user"
-	context.MessageMeta.Content = make([]*Content, 0, 1)
-
-	// Return the context
-	return context
 }
 
 ///////////////////////////////////////////////////////////////////////////////

@@ -29,7 +29,7 @@ func (a *Agent) Generate(ctx context.Context, m llm.Model, context llm.Context, 
 		return nil, err
 	}
 
-	log.Print("agent.Generate:", m, context, opts)
+	log.Print("agent.Generate =>", context, opts)
 
 	// Call Generate for the agent
 	return agent.Generate(ctx, m, context, opts...)

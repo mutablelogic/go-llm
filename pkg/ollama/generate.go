@@ -21,5 +21,5 @@ func (ollama *Client) Generate(ctx context.Context, model llm.Model, prompt llm.
 	}
 
 	// Return the response
-	return &messages{seq: response.Context}, nil
+	return &session{seq: response.Context}, nil
 }

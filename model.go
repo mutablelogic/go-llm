@@ -5,9 +5,6 @@ type Model interface {
 	// Return the name of the model
 	Name() string
 
-	// Create user prompt for a model
-	UserPrompt(string, ...Opt) Context
-
-	// Create the result of calling a tool for a model
-	ToolResult(id string, opts ...Opt) Context
+	// Return a context object, and set options
+	Context(...Opt) Context
 }

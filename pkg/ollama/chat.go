@@ -66,13 +66,13 @@ func (ollama *Client) Chat(ctx context.Context, model string, prompt llm.Context
 	}
 
 	// Make a new sequence of messages
-	seq := make([]*MessageMeta, len(prompt.(*messages).seq))
-	copy(seq, prompt.(*messages).seq)
+	seq := make([]*MessageMeta, len(prompt.(*session).seq))
+	copy(seq, prompt.(*session).seq)
 
 	// Request
 	req, err := client.NewJSONRequest(reqChat{
 		Model:     model,
-		Messages:  seq,
+		Messages:  prompt.(*session).seq,
 		Tools:     opt.tools,
 		Format:    opt.format,
 		Options:   opt.options,
@@ -95,7 +95,8 @@ func (ollama *Client) Chat(ctx context.Context, model string, prompt llm.Context
 	}
 
 	// Append the response message to the context
-	response.Context = append(seq, &response.Message)
+	prompt.(*session).seq = append(prompt.(*session).seq, &response.Message)
+	response.Context = prompt.(*session).seq
 
 	// Return success
 	return &response, nil
