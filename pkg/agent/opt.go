@@ -1,9 +1,9 @@
 package agent
 
 import (
-	// Packages
 	"fmt"
 
+	// Packages
 	client "github.com/mutablelogic/go-client"
 	llm "github.com/mutablelogic/go-llm"
 	anthropic "github.com/mutablelogic/go-llm/pkg/anthropic"
@@ -81,10 +81,10 @@ func WithTools(tools ...llm.Tool) llm.Opt {
 func WithStream(v bool) llm.Opt {
 	return func(o any) error {
 		o.(*opt).ollama = append(o.(*opt).ollama, ollama.WithStream(func(r *ollama.Response) {
-			fmt.Println(r)
+			fmt.Println("OLLAMA STREAM", r)
 		}))
 		o.(*opt).anthropic = append(o.(*opt).anthropic, anthropic.WithStream(func(r *anthropic.Response) {
-			fmt.Println(r)
+			fmt.Println("ANTHROPIC STREAM", r)
 		}))
 		return nil
 	}

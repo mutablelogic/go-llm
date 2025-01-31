@@ -3,4 +3,5 @@ package llm
 ///////////////////////////////////////////////////////////////////////////////
 // TYPES
 
+// A generic option type, which can set options on an agent or session
 type Opt func(any) error
