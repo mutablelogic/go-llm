@@ -8,6 +8,7 @@ import (
 	// Packages
 	opts "github.com/mutablelogic/go-client"
 	ollama "github.com/mutablelogic/go-llm/pkg/ollama"
+	"github.com/mutablelogic/go-llm/pkg/tool"
 	assert "github.com/stretchr/testify/assert"
 )
 
@@ -66,16 +67,17 @@ func Test_session_002(t *testing.T) {
 		t.FailNow()
 	}
 
+	// Make a toolkit
+	toolkit := tool.NewToolKit()
+	if err := toolkit.Register(new(weather)); err != nil {
+		t.FailNow()
+	}
+
 	// Session with a tool call
 	t.Run("toolcall", func(t *testing.T) {
 		assert := assert.New(t)
 
-		tool, err := ollama.NewTool("get_weather", "Return the current weather", nil)
-		if !assert.NoError(err) {
-			t.FailNow()
-		}
-
-		session := model.Context(ollama.WithTool(tool))
+		session := model.Context(ollama.WithToolKit(toolkit))
 		assert.NotNil(session)
 
 		err = session.FromUser(context.TODO(), "What is today's weather?")

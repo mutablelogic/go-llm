@@ -2,12 +2,15 @@ package ollama_test
 
 import (
 	"context"
+	"encoding/json"
+	"log"
 	"os"
 	"testing"
 
 	// Packages
 	opts "github.com/mutablelogic/go-client"
 	ollama "github.com/mutablelogic/go-llm/pkg/ollama"
+	"github.com/mutablelogic/go-llm/pkg/tool"
 	assert "github.com/stretchr/testify/assert"
 )
 
@@ -60,13 +63,17 @@ func Test_chat_002(t *testing.T) {
 		t.FailNow()
 	}
 
+	// Make a toolkit
+	toolkit := tool.NewToolKit()
+	if err := toolkit.Register(new(weather)); err != nil {
+		t.FailNow()
+	}
+
 	t.Run("Tools", func(t *testing.T) {
 		assert := assert.New(t)
 		response, err := client.Chat(context.TODO(),
 			model.UserPrompt("what is the weather in berlin?"),
-			ollama.WithTool(ollama.MustTool("get_weather", "Return weather conditions in a location", struct {
-				Location string `help:"Location to get weather for" required:""`
-			}{})),
+			ollama.WithToolKit(toolkit),
 		)
 		if !assert.NoError(err) {
 			t.FailNow()
@@ -107,4 +114,32 @@ func Test_chat_003(t *testing.T) {
 		}
 		t.Log(response)
 	})
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// TOOLS
+
+type weather struct {
+	Location string `json:"location" name:"location" help:"The location to get the weather for" required:"true"`
+}
+
+func (*weather) Name() string {
+	return "weather_in_location"
+}
+
+func (*weather) Description() string {
+	return "Get the weather in a location"
+}
+
+func (weather *weather) String() string {
+	data, err := json.MarshalIndent(weather, "", "  ")
+	if err != nil {
+		return err.Error()
+	}
+	return string(data)
+}
+
+func (weather *weather) Run(ctx context.Context) (any, error) {
+	log.Println("weather_in_location", "=>", weather)
+	return "very sunny today", nil
 }

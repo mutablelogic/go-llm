@@ -3,9 +3,11 @@ package ollama
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 
 	// Packages
 	llm "github.com/mutablelogic/go-llm"
+	"github.com/mutablelogic/go-llm/pkg/tool"
 )
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -144,7 +146,7 @@ func (session *session) ToolCalls() []llm.ToolCall {
 	// Gather tool calls
 	var result []llm.ToolCall
 	for _, call := range meta.ToolCalls {
-		result = append(result, NewToolCall(call))
+		result = append(result, tool.NewCall(fmt.Sprint(call.Function.Index), call.Function.Name, call.Function.Arguments))
 	}
 	return result
 }

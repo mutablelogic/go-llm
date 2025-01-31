@@ -2,7 +2,7 @@ package tool
 
 import (
 	// Packages
-	"bytes"
+
 	"encoding/json"
 )
 
@@ -22,7 +22,7 @@ type call struct {
 ///////////////////////////////////////////////////////////////////////////////
 // LIFECYCLE
 
-func NewCall(name, id string, input map[string]any) *call {
+func NewCall(id, name string, input map[string]any) *call {
 	return &call{
 		meta: CallMeta{
 			Name:  name,
@@ -55,12 +55,9 @@ func (t *call) Id() string {
 }
 
 func (t *call) Decode(v any) error {
-	var buf bytes.Buffer
 	if data, err := json.Marshal(t.meta.Input); err != nil {
 		return err
-	} else if err := json.Unmarshal(data, &buf); err != nil {
-		return err
+	} else {
+		return json.Unmarshal(data, v)
 	}
-	// Return success
-	return nil
 }

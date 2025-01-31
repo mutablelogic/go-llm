@@ -5,7 +5,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"reflect"
 	"sync"
 
 	llm "github.com/mutablelogic/go-llm"
@@ -22,7 +21,7 @@ type ToolKit struct {
 ////////////////////////////////////////////////////////////////////////////////
 // LIFECYCLE
 
-// Create a new empty toolkit
+// Create a new empty toolkit for an agent
 func NewToolKit() *ToolKit {
 	return &ToolKit{
 		functions: make(map[string]tool),
@@ -32,11 +31,18 @@ func NewToolKit() *ToolKit {
 ////////////////////////////////////////////////////////////////////////////////
 // PUBLIC METHODS
 
-// Return all registered tools
-func (kit *ToolKit) Tools() []llm.Tool {
+// Return all registered tools for a specific agent
+func (kit *ToolKit) Tools(agent llm.Agent) []llm.Tool {
 	result := make([]llm.Tool, 0, len(kit.functions))
 	for _, t := range kit.functions {
-		result = append(result, t)
+		switch agent.Name() {
+		case "ollama":
+			t.InputSchema = nil
+			result = append(result, t)
+		default:
+			t.Parameters = nil
+			result = append(result, t)
+		}
 	}
 	return result
 }
@@ -54,33 +60,40 @@ func (kit *ToolKit) Register(v llm.Tool) error {
 
 	// Set the tool
 	t := tool{
+		Tool: v,
 		ToolMeta: ToolMeta{
 			Name:        name,
 			Description: v.Description(),
 		},
-		proto: reflect.TypeOf(v),
 	}
 
-	// Add parameters
-	t.Parameters.Type = "object"
+	// Determine parameters
 	toolparams, err := paramsFor(v)
 	if err != nil {
 		return err
 	}
 
+	// Add parameters
+	parameters := ToolParameters{
+		Type:       "object",
+		Required:   make([]string, 0, len(toolparams)),
+		Properties: make(map[string]ToolParameter, len(toolparams)),
+	}
+
 	// Set parameters
-	t.Parameters.Required = make([]string, 0, len(toolparams))
-	t.Parameters.Properties = make(map[string]ToolParameter, len(toolparams))
 	for _, param := range toolparams {
-		if _, exists := t.Parameters.Properties[param.Name]; exists {
+		if _, exists := parameters.Properties[param.Name]; exists {
 			return llm.ErrConflict.Withf("parameter %q already exists", param.Name)
 		} else {
-			t.Parameters.Properties[param.Name] = param
+			parameters.Properties[param.Name] = param
 		}
 		if param.required {
-			t.Parameters.Required = append(t.Parameters.Required, param.Name)
+			parameters.Required = append(parameters.Required, param.Name)
 		}
 	}
+
+	t.Parameters = &parameters
+	t.InputSchema = &parameters
 
 	// Add to toolkit
 	kit.functions[name] = t
@@ -94,27 +107,25 @@ func (kit *ToolKit) Run(ctx context.Context, calls []llm.ToolCall) error {
 	var wg sync.WaitGroup
 	var result error
 
+	// TODO: Lock each tool so it can only be run in series (although different
+	// tools can be run in parallel)
 	for _, call := range calls {
 		wg.Add(1)
 		go func(call llm.ToolCall) {
 			defer wg.Done()
 
-			// Get the tool
+			fmt.Println(call)
+
+			// Get the tool and run it
 			name := call.Name()
-			t, exists := kit.functions[name]
-			if !exists {
+			if _, exists := kit.functions[name]; !exists {
 				result = errors.Join(result, llm.ErrNotFound.Withf("tool %q not found", name))
-			}
-
-			// Make a new object to decode into
-			v := reflect.New(t.proto).Interface()
-
-			// Decode the input and run the tool
-			if err := call.Decode(&v); err != nil {
+			} else if err := call.Decode(kit.functions[name].Tool); err != nil {
 				result = errors.Join(result, err)
-			} else if out, err := t.Run(ctx, v); err != nil {
+			} else if out, err := kit.functions[name].Run(ctx); err != nil {
 				result = errors.Join(result, err)
 			} else {
+				// TODO: Return the result alongside the call
 				fmt.Println("result of calling", call, "is", out)
 			}
 		}(call)

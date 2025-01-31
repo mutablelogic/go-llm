@@ -44,13 +44,13 @@ func apply(opts ...llm.Opt) (*opt, error) {
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-// PUBLIC METHODS
+// PRIVATE METHODS
 
-func (o *opt) Tools() []llm.Tool {
+func (o *opt) tools(agent llm.Agent) []llm.Tool {
 	if o.toolkit == nil {
 		return nil
 	} else {
-		return o.toolkit.Tools()
+		return o.toolkit.Tools(agent)
 	}
 }
 

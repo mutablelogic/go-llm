@@ -6,6 +6,7 @@ import (
 
 	// Packages
 	llm "github.com/mutablelogic/go-llm"
+	"github.com/mutablelogic/go-llm/pkg/tool"
 )
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -20,8 +21,8 @@ type opt struct {
 	truncate     *bool
 	keepalive    *time.Duration
 	options      map[string]any
-	tools        []*Tool
 	data         []Data
+	toolkit      *tool.ToolKit // Toolkit for tools
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -36,6 +37,20 @@ func apply(opts ...llm.Opt) (*opt, error) {
 		}
 	}
 	return o, nil
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// PRIVATE METHODS
+
+func (o *opt) tools(agent llm.Agent) []ToolFunction {
+	if o.toolkit == nil {
+		return nil
+	}
+	var result []ToolFunction
+	for _, t := range o.toolkit.Tools(agent) {
+		result = append(result, ToolFunction{Type: "function", Function: t})
+	}
+	return result
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -85,24 +100,17 @@ func WithStream(fn func(*Response)) llm.Opt {
 		if fn == nil {
 			return llm.ErrBadParameter.With("callback required")
 		}
-		if len(o.(*opt).tools) > 0 {
-			return llm.ErrBadParameter.With("streaming not supported with tools")
-		}
 		o.(*opt).stream = true
 		o.(*opt).chatcallback = fn
 		return nil
 	}
 }
 
-// Chat: Append a tool to the request.
-func WithTool(v *Tool) llm.Opt {
+// Chat: Append a toolkit to the request
+func WithToolKit(v *tool.ToolKit) llm.Opt {
 	return func(o any) error {
-		// We can't use streaming when tools are included
-		if o.(*opt).stream {
-			return llm.ErrBadParameter.With("tools not supported with streaming")
-		}
 		if v != nil {
-			o.(*opt).tools = append(o.(*opt).tools, v)
+			o.(*opt).toolkit = v
 		}
 		return nil
 	}

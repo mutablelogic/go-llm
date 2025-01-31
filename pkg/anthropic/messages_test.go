@@ -2,12 +2,13 @@ package anthropic_test
 
 import (
 	"context"
+	"encoding/json"
+	"log"
 	"os"
 	"testing"
 
 	// Packages
 	opts "github.com/mutablelogic/go-client"
-	"github.com/mutablelogic/go-llm"
 	anthropic "github.com/mutablelogic/go-llm/pkg/anthropic"
 	"github.com/mutablelogic/go-llm/pkg/tool"
 	assert "github.com/stretchr/testify/assert"
@@ -153,7 +154,7 @@ func Test_messages_005(t *testing.T) {
 // TOOLS
 
 type weather struct {
-	Location string `name:"location" help:"The location to get the weather for" required:"true"`
+	Location string `json:"location" name:"location" help:"The location to get the weather for" required:"true"`
 }
 
 func (*weather) Name() string {
@@ -164,6 +165,15 @@ func (*weather) Description() string {
 	return "Get the weather in a location"
 }
 
-func (*weather) Run(ctx context.Context) (any, error) {
-	return nil, llm.ErrNotImplemented
+func (weather *weather) String() string {
+	data, err := json.MarshalIndent(weather, "", "  ")
+	if err != nil {
+		return err.Error()
+	}
+	return string(data)
+}
+
+func (weather *weather) Run(ctx context.Context) (any, error) {
+	log.Println("weather_in_location", "=>", weather)
+	return "very sunny today", nil
 }

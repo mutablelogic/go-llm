@@ -50,7 +50,7 @@ func (r Response) String() string {
 type reqChat struct {
 	Model     string                 `json:"model"`
 	Messages  []*MessageMeta         `json:"messages"`
-	Tools     []*Tool                `json:"tools,omitempty"`
+	Tools     []ToolFunction         `json:"tools,omitempty"`
 	Format    string                 `json:"format,omitempty"`
 	Options   map[string]interface{} `json:"options,omitempty"`
 	Stream    bool                   `json:"stream"`
@@ -68,7 +68,7 @@ func (ollama *Client) Chat(ctx context.Context, prompt llm.Context, opts ...llm.
 	req, err := client.NewJSONRequest(reqChat{
 		Model:     prompt.(*session).model.Name(),
 		Messages:  prompt.(*session).seq,
-		Tools:     opt.tools,
+		Tools:     opt.tools(ollama),
 		Format:    opt.format,
 		Options:   opt.options,
 		Stream:    opt.stream,

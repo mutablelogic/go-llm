@@ -77,13 +77,14 @@ func Test_session_002(t *testing.T) {
 		session := model.Context(anthropic.WithToolKit(toolkit))
 		assert.NotNil(session)
 
-		err = session.FromUser(context.TODO(), "What is today's weather?")
+		err = session.FromUser(context.TODO(), "What is today's weather, in Berlin?")
 		if !assert.NoError(err) {
 			t.FailNow()
 		}
 
-		toolcalls := session.ToolCalls()
-		assert.NotEmpty(toolcalls)
-		t.Log("TOOLCALLS", toolcalls)
+		err := toolkit.Run(context.TODO(), session.ToolCalls())
+		if !assert.NoError(err) {
+			t.FailNow()
+		}
 	})
 }

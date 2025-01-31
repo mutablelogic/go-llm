@@ -1,5 +1,7 @@
 package ollama
 
+import llm "github.com/mutablelogic/go-llm"
+
 ///////////////////////////////////////////////////////////////////////////////
 // TYPES
 
@@ -12,5 +14,21 @@ type MessageMeta struct {
 	ToolCalls    []ToolCall `json:"tool_calls,omitempty"` // Tool calls from the assistant
 }
 
+type ToolCall struct {
+	Function ToolCallFunction `json:"function"`
+}
+
+type ToolCallFunction struct {
+	Index     int            `json:"index,omitempty"`
+	Name      string         `json:"name"`
+	Arguments map[string]any `json:"arguments"`
+}
+
 // Data represents the raw binary data of an image file.
 type Data []byte
+
+// ToolFunction
+type ToolFunction struct {
+	Type     string   `json:"type"` // function
+	Function llm.Tool `json:"function"`
+}

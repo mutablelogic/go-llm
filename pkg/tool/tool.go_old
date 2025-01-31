@@ -39,18 +39,6 @@ type ToolParameter struct {
 	index       []int // Field index into prototype for setting a field
 }
 
-type ToolCall struct {
-	Function ToolCallFunction `json:"function"`
-}
-
-type ToolCallFunction struct {
-	Index     int                       `json:"index,omitempty"`
-	Name      string                    `json:"name"`
-	Arguments ToolCallFunctionArguments `json:"arguments"`
-}
-
-type ToolCallFunctionArguments map[string]any
-
 ///////////////////////////////////////////////////////////////////////////////
 // LIFECYCLE
 

@@ -78,7 +78,7 @@ func (anthropic *Client) Messages(ctx context.Context, context llm.Context, opts
 	req, err := client.NewJSONRequest(reqMessages{
 		Model:    context.(*session).model.Name(),
 		Messages: context.(*session).seq,
-		Tools:    opt.Tools(),
+		Tools:    opt.tools(anthropic),
 		opt:      *opt,
 	})
 	if err != nil {

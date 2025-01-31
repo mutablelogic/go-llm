@@ -1,7 +1,6 @@
 package tool
 
 import (
-	"context"
 	"reflect"
 	"strings"
 
@@ -12,6 +11,28 @@ import (
 ///////////////////////////////////////////////////////////////////////////////
 // TYPES
 
+type tool struct {
+	llm.Tool `json:"-"`
+	ToolMeta
+}
+
+var _ llm.Tool = (*tool)(nil)
+
+type ToolMeta struct {
+	Name        string `json:"name"`
+	Description string `json:"description"`
+
+	// Variation on how schema is output
+	Parameters  *ToolParameters `json:"parameters,omitempty"`
+	InputSchema *ToolParameters `json:"input_schema,omitempty"`
+}
+
+type ToolParameters struct {
+	Type       string                   `json:"type,omitempty"`
+	Required   []string                 `json:"required,omitempty"`
+	Properties map[string]ToolParameter `json:"properties,omitempty"`
+}
+
 type ToolParameter struct {
 	Name        string   `json:"-"`
 	Type        string   `json:"type"`
@@ -20,23 +41,6 @@ type ToolParameter struct {
 	required    bool
 	index       []int // Field index into prototype for setting a field
 }
-
-type tool struct {
-	ToolMeta
-	proto reflect.Type
-}
-
-type ToolMeta struct {
-	Name        string `json:"name"`
-	Description string `json:"description"`
-	Parameters  struct {
-		Type       string                   `json:"type,omitempty"`
-		Required   []string                 `json:"required,omitempty"`
-		Properties map[string]ToolParameter `json:"properties,omitempty"`
-	} `json:"input_schema"`
-}
-
-var _ llm.Tool = (*tool)(nil)
 
 ///////////////////////////////////////////////////////////////////////////////
 // PUBLIC METHODS
@@ -47,10 +51,6 @@ func (t tool) Name() string {
 
 func (t tool) Description() string {
 	return t.ToolMeta.Description
-}
-
-func (tool) Run(context.Context) (any, error) {
-	return nil, llm.ErrNotImplemented
 }
 
 ///////////////////////////////////////////////////////////////////////////////
