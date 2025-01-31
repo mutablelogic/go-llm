@@ -79,9 +79,14 @@ func (s *session) FromUser(ctx context.Context, prompt string, opts ...llm.Opt) 
 		response.seq[len(response.seq)-1] = user
 	}
 
+	// The options come from the session options and the user options
+	chatopts := make([]llm.Opt, 0, len(s.opts)+len(opts))
+	chatopts = append(chatopts, s.opts...)
+	chatopts = append(chatopts, opts...)
+
 	// Call the 'chat' method
 	client := s.model.client
-	r, err := client.Chat(ctx, response, response.opts...)
+	r, err := client.Chat(ctx, response, chatopts...)
 	if err != nil {
 		return nil, err
 	} else {
@@ -93,7 +98,7 @@ func (s *session) FromUser(ctx context.Context, prompt string, opts ...llm.Opt) 
 }
 
 // Generate a response from a tool calling result
-func (s *session) FromTool(ctx context.Context, call string, result any) (llm.Context, error) {
+func (s *session) FromTool(ctx context.Context, call string, result any, opts ...llm.Opt) (llm.Context, error) {
 	// Make a new session
 	response := new(session)
 	response.model = s.model
@@ -107,8 +112,13 @@ func (s *session) FromTool(ctx context.Context, call string, result any) (llm.Co
 		response.seq[len(response.seq)-1] = message
 	}
 
+	// The options come from the session options and the user options
+	chatopts := make([]llm.Opt, 0, len(s.opts)+len(opts))
+	chatopts = append(chatopts, s.opts...)
+	chatopts = append(chatopts, opts...)
+
 	// Call the 'chat' method
-	r, err := s.model.client.Chat(ctx, response, response.opts...)
+	r, err := s.model.client.Chat(ctx, response, chatopts...)
 	if err != nil {
 		return nil, err
 	} else {
