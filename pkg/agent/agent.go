@@ -28,7 +28,7 @@ var _ llm.Agent = (*Agent)(nil)
 ///////////////////////////////////////////////////////////////////////////////
 // LIFECYCLE
 
-// Return a new agent, composed of  a series of agents and tools
+// Return a new agent, composed of a series of agents and tools
 func New(opts ...llm.Opt) (*Agent, error) {
 	agent := new(Agent)
 	if opt, err := apply(opts...); err != nil {

@@ -7,18 +7,15 @@ import "context"
 
 // Context is fed to the agent to generate a response
 type Context interface {
-	// Generate a response from the context
-	Generate(context.Context, Model) (Context, error)
-
-	// Append user prompt (and attachments) to a context
-	AppendUserPrompt(string, ...Opt) error
-
-	// Append the result of calling a tool to a context
-	AppendToolResult(string, ...Opt) error
-
-	// Return the role, which can be assistant, user, tool, tool_result, ...
+	// Return the role, which can be system, assistant, user, tool, tool_result, ...
 	Role() string
 
 	// Return the text of the context
 	Text() string
+
+	// Generate a response from a user prompt (with attachments)
+	FromUser(context.Context, string, ...Opt) (Context, error)
+
+	// Generate a response from a tool result
+	FromTool(context.Context, ...any) (Context, error)
 }
