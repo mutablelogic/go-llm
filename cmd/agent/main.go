@@ -12,6 +12,8 @@ import (
 	client "github.com/mutablelogic/go-client"
 	llm "github.com/mutablelogic/go-llm"
 	agent "github.com/mutablelogic/go-llm/pkg/agent"
+	"github.com/mutablelogic/go-llm/pkg/newsapi"
+	"github.com/mutablelogic/go-llm/pkg/tool"
 )
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -26,6 +28,9 @@ type Globals struct {
 	Ollama    `embed:"" help:"Ollama configuration"`
 	Anthropic `embed:"" help:"Anthropic configuration"`
 
+	// Tools
+	NewsAPI `embed:"" help:"NewsAPI configuration"`
+
 	// Context
 	ctx   context.Context
 	agent llm.Agent
@@ -38,6 +43,10 @@ type Ollama struct {
 
 type Anthropic struct {
 	AnthropicKey string `env:"ANTHROPIC_API_KEY" help:"Anthropic API Key"`
+}
+
+type NewsAPI struct {
+	NewsKey string `env:"NEWSAPI_KEY" help:"News API Key"`
 }
 
 type CLI struct {
@@ -93,6 +102,20 @@ func main() {
 		opts = append(opts, agent.WithAnthropic(cli.AnthropicKey, clientopts...))
 	}
 
+	// Make a toolkit
+	toolkit := tool.NewToolKit()
+	opts = append(opts, agent.WithToolKit(toolkit))
+
+	// NewsAPI
+	if cli.NewsKey != "" {
+		if client, err := newsapi.New(cli.NewsKey, clientopts...); err != nil {
+			cmd.FatalIfErrorf(err)
+		} else if err := client.RegisterWithToolKit(toolkit); err != nil {
+			cmd.FatalIfErrorf(err)
+		}
+	}
+
+	// Create the agent
 	agent, err := agent.New(opts...)
 	cmd.FatalIfErrorf(err)
 	cli.Globals.agent = agent

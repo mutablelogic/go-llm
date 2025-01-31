@@ -1,6 +1,7 @@
 package tool
 
 import (
+	"fmt"
 	"reflect"
 	"strings"
 
@@ -73,6 +74,14 @@ func paramsFor(params any) ([]ToolParameter, error) {
 	fields := reflect.VisibleFields(rt)
 	result := make([]ToolParameter, 0, len(fields))
 	for _, field := range fields {
+		fmt.Println(field.Name, "=>", field.Index)
+		// Ignore unexported fields
+		name := field.Tag.Get("json")
+		if name == "-" {
+			continue
+		}
+
+		// Determine parameter
 		if param, err := paramFor(field); err != nil {
 			return nil, err
 		} else {
