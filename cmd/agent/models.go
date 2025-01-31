@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 
 	// Packages
@@ -48,9 +49,18 @@ func (*ListAgentsCmd) Run(globals *Globals) error {
 		if !ok {
 			return fmt.Errorf("No agents found")
 		}
+
+		var agents []string
 		for _, agent := range agent.Agents() {
-			fmt.Println(agent)
+			agents = append(agents, agent.Name())
 		}
+
+		data, err := json.MarshalIndent(agents, "", "  ")
+		if err != nil {
+			return err
+		}
+		fmt.Println(string(data))
+
 		return nil
 	})
 }

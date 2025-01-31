@@ -66,11 +66,14 @@ func (a *Agent) Agents() []llm.Agent {
 
 // Return a list of tool names
 func (a *Agent) Tools() []string {
-	var keys []string
-	for k := range a.tools {
-		keys = append(keys, k)
+	if a.toolkit == nil {
+		return nil
 	}
-	return keys
+	var result []string
+	for _, t := range a.toolkit.Tools(a) {
+		result = append(result, t.Name())
+	}
+	return result
 }
 
 // Return a comma-separated list of agent names
@@ -121,7 +124,9 @@ func (a *Agent) ListModels(ctx context.Context, agents ...string) ([]llm.Model, 
 // If multiple agents are specified, then the first model found is returned.
 func (a *Agent) GetModel(ctx context.Context, name string, agents ...string) (llm.Model, error) {
 	if len(agents) == 0 {
-		agents = a.Agents()
+		for _, agent := range a.agents {
+			agents = append(agents, agent.Name())
+		}
 	}
 
 	// Ensure all agents are valid
@@ -153,11 +158,6 @@ func (a *Agent) GetModel(ctx context.Context, name string, agents ...string) (ll
 // Embedding vector generation
 func (a *Agent) Embedding(context.Context, llm.Model, string, ...llm.Opt) ([]float64, error) {
 	return nil, llm.ErrNotImplemented
-}
-
-// Create the result of calling a tool
-func (a *Agent) ToolResult(id string, opts ...llm.Opt) llm.Context {
-	return nil
 }
 
 ///////////////////////////////////////////////////////////////////////////////

@@ -8,14 +8,15 @@ import (
 	llm "github.com/mutablelogic/go-llm"
 	anthropic "github.com/mutablelogic/go-llm/pkg/anthropic"
 	ollama "github.com/mutablelogic/go-llm/pkg/ollama"
+	"github.com/mutablelogic/go-llm/pkg/tool"
 )
 
 ////////////////////////////////////////////////////////////////////////////////
 // TYPES
 
 type opt struct {
-	agents map[string]llm.Agent
-	tools  map[string]llm.Tool
+	agents  map[string]llm.Agent
+	toolkit *tool.ToolKit
 
 	// Translated options for each agent implementation
 	ollama    []llm.Opt
@@ -62,17 +63,12 @@ func WithAnthropic(key string, opts ...client.ClientOpt) llm.Opt {
 	}
 }
 
-// Append tools
-func WithTools(tools ...llm.Tool) llm.Opt {
+// Append toolkit
+func WithToolKit(toolkit *tool.ToolKit) llm.Opt {
 	return func(o any) error {
-		for _, tool := range tools {
-			name := tool.Name()
-			if _, exists := o.(*opt).tools[name]; exists {
-				return llm.ErrConflict.Withf("Tool %q already exists", name)
-			}
-			o.(*opt).tools[name] = tool
-		}
-		// Return success
+		o.(*opt).toolkit = toolkit
+		o.(*opt).ollama = append(o.(*opt).ollama, ollama.WithToolKit(toolkit))
+		o.(*opt).anthropic = append(o.(*opt).anthropic, anthropic.WithToolKit(toolkit))
 		return nil
 	}
 }

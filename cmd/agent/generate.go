@@ -37,9 +37,6 @@ func (cmd *GenerateCmd) Run(globals *Globals) error {
 
 		// Create a session
 		session := model.Context(agent.WithStream(!cmd.NoStream))
-		if err != nil {
-			return err
-		}
 
 		// Continue looping until end of input
 		for {
@@ -57,14 +54,10 @@ func (cmd *GenerateCmd) Run(globals *Globals) error {
 			}
 
 			// Feed input into the model
-			response, err := session.FromUser(ctx, input)
-			if err != nil {
+			if err := session.FromUser(ctx, input); err != nil {
 				return err
 			}
-			fmt.Println(response.Text())
-
-			// Update session
-			session = response
+			fmt.Println(session.Text())
 		}
 	})
 }
