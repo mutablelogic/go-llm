@@ -6,6 +6,7 @@ import (
 
 	// Packages
 	llm "github.com/mutablelogic/go-llm"
+	tool "github.com/mutablelogic/go-llm/pkg/tool"
 )
 
 //////////////////////////////////////////////////////////////////
@@ -103,7 +104,7 @@ func (session *session) ToolCalls() []llm.ToolCall {
 	var result []llm.ToolCall
 	for _, content := range meta.Content {
 		if content.Type == "tool_use" {
-			result = append(result, NewToolCall(content))
+			result = append(result, tool.NewCall(content.ContentTool.Id, content.ContentTool.Name, content.ContentTool.Input))
 		}
 	}
 	return result

@@ -23,7 +23,7 @@ type ToolParameter struct {
 
 type tool struct {
 	ToolMeta
-	proto reflect.Type // Prototype for parameter return
+	proto reflect.Type
 }
 
 type ToolMeta struct {

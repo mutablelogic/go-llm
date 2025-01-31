@@ -1,9 +1,13 @@
 package tool
 
 import (
-	"reflect"
-
 	// Packages
+	"context"
+	"errors"
+	"fmt"
+	"reflect"
+	"sync"
+
 	llm "github.com/mutablelogic/go-llm"
 )
 
@@ -83,4 +87,42 @@ func (kit *ToolKit) Register(v llm.Tool) error {
 
 	// Return success
 	return nil
+}
+
+// Run calls a tool in the toolkit
+func (kit *ToolKit) Run(ctx context.Context, calls []llm.ToolCall) error {
+	var wg sync.WaitGroup
+	var result error
+
+	for _, call := range calls {
+		wg.Add(1)
+		go func(call llm.ToolCall) {
+			defer wg.Done()
+
+			// Get the tool
+			name := call.Name()
+			t, exists := kit.functions[name]
+			if !exists {
+				result = errors.Join(result, llm.ErrNotFound.Withf("tool %q not found", name))
+			}
+
+			// Make a new object to decode into
+			v := reflect.New(t.proto).Interface()
+
+			// Decode the input and run the tool
+			if err := call.Decode(&v); err != nil {
+				result = errors.Join(result, err)
+			} else if out, err := t.Run(ctx, v); err != nil {
+				result = errors.Join(result, err)
+			} else {
+				fmt.Println("result of calling", call, "is", out)
+			}
+		}(call)
+	}
+
+	// Wait for all calls to complete
+	wg.Wait()
+
+	// Return any errors
+	return result
 }

@@ -7,7 +7,9 @@ import (
 
 	// Packages
 	opts "github.com/mutablelogic/go-client"
+	"github.com/mutablelogic/go-llm"
 	anthropic "github.com/mutablelogic/go-llm/pkg/anthropic"
+	"github.com/mutablelogic/go-llm/pkg/tool"
 	assert "github.com/stretchr/testify/assert"
 )
 
@@ -107,14 +109,12 @@ func Test_messages_004(t *testing.T) {
 		t.FailNow()
 	}
 
-	weather, err := anthropic.NewTool("weather_in_location", "Get the weather in a location", struct {
-		Location string `name:"location" help:"The location to get the weather for" required:"true"`
-	}{})
-	if !assert.NoError(err) {
+	toolkit := tool.NewToolKit()
+	if err := toolkit.Register(new(weather)); !assert.NoError(err) {
 		t.FailNow()
 	}
 
-	response, err := client.Messages(context.TODO(), model.UserPrompt("why is the sky blue"), anthropic.WithTool(weather))
+	response, err := client.Messages(context.TODO(), model.UserPrompt("why is the sky blue"), anthropic.WithToolKit(toolkit))
 	if assert.NoError(err) {
 		t.Log(response)
 	}
@@ -136,17 +136,34 @@ func Test_messages_005(t *testing.T) {
 		t.FailNow()
 	}
 
-	weather, err := anthropic.NewTool("weather_in_location", "Get the weather in a location", struct {
-		Location string `name:"location" help:"The location to get the weather for" required:"true"`
-	}{})
-	if !assert.NoError(err) {
+	toolkit := tool.NewToolKit()
+	if err := toolkit.Register(new(weather)); !assert.NoError(err) {
 		t.FailNow()
 	}
 
 	response, err := client.Messages(context.TODO(), model.UserPrompt("why is the sky blue"), anthropic.WithStream(func(r *anthropic.Response) {
 		t.Log(r)
-	}), anthropic.WithTool(weather))
+	}), anthropic.WithToolKit(toolkit))
 	if assert.NoError(err) {
 		t.Log(response)
 	}
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// TOOLS
+
+type weather struct {
+	Location string `name:"location" help:"The location to get the weather for" required:"true"`
+}
+
+func (*weather) Name() string {
+	return "weather_in_location"
+}
+
+func (*weather) Description() string {
+	return "Get the weather in a location"
+}
+
+func (*weather) Run(ctx context.Context) (any, error) {
+	return nil, llm.ErrNotImplemented
 }

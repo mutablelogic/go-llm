@@ -7,6 +7,7 @@ import (
 ////////////////////////////////////////////////////////////////////////////////
 // TYPES
 
+// Definition of a tool
 type Tool interface {
 	// The name of the tool
 	Name() string
@@ -26,6 +27,6 @@ type ToolCall interface {
 	// The tool identifier
 	Id() string
 
-	// The calling parameters
-	Params() any
+	// Decode the calling parameters
+	Decode(v any) error
 }
