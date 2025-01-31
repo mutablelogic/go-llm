@@ -26,7 +26,7 @@ func Test_session_001(t *testing.T) {
 	// Session with a single user prompt - streaming
 	t.Run("stream", func(t *testing.T) {
 		assert := assert.New(t)
-		session, err := model.Context(ollama.WithStream(func(stream *ollama.Response) {
+		session := model.Context(ollama.WithStream(func(stream *ollama.Response) {
 			t.Log("SESSION DELTA", stream)
 		}))
 		assert.NotNil(session)
@@ -42,7 +42,7 @@ func Test_session_001(t *testing.T) {
 	// Session with a single user prompt - not streaming
 	t.Run("nostream", func(t *testing.T) {
 		assert := assert.New(t)
-		session, err := model.Context()
+		session := model.Context()
 		assert.NotNil(session)
 
 		new_session, err := session.FromUser(context.TODO(), "Why is the sky blue?")
@@ -75,10 +75,7 @@ func Test_session_002(t *testing.T) {
 			t.FailNow()
 		}
 
-		session, err := model.Context(ollama.WithTool(tool))
-		if !assert.NoError(err) {
-			t.FailNow()
-		}
+		session := model.Context(ollama.WithTool(tool))
 		assert.NotNil(session)
 		new_session, err := session.FromUser(context.TODO(), "What is today's weather?")
 		if !assert.NoError(err) {

@@ -9,9 +9,9 @@ type Model interface {
 
 	// Return am empty session context object for the model,
 	// setting session options
-	Context(...Opt) (Context, error)
+	Context(...Opt) Context
 
 	// Convenience method to create a session context object
-	// with a user prompt, which panics on error
-	MustUserPrompt(string, ...Opt) Context
+	// with a user prompt
+	UserPrompt(string, ...Opt) Context
 }

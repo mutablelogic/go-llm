@@ -61,7 +61,7 @@ type reqMessages struct {
 	opt
 }
 
-func (anthropic *Client) Messages(ctx context.Context, model llm.Model, context llm.Context, opts ...llm.Opt) (*Response, error) {
+func (anthropic *Client) Messages(ctx context.Context, context llm.Context, opts ...llm.Opt) (*Response, error) {
 	// Apply options
 	opt, err := apply(opts...)
 	if err != nil {
@@ -70,12 +70,12 @@ func (anthropic *Client) Messages(ctx context.Context, model llm.Model, context 
 
 	// Set max_tokens
 	if opt.MaxTokens == 0 {
-		opt.MaxTokens = defaultMaxTokens(model.Name())
+		opt.MaxTokens = defaultMaxTokens(context.(*session).model.Name())
 	}
 
 	// Request
 	req, err := client.NewJSONRequest(reqMessages{
-		Model:    model.Name(),
+		Model:    context.(*session).model.Name(),
 		Messages: context.(*session).seq,
 		opt:      *opt,
 	})
@@ -220,16 +220,6 @@ func (anthropic *Client) Messages(ctx context.Context, model llm.Model, context 
 
 	// Return success
 	return &response, nil
-}
-
-// Generate a response from a prompt
-func (anthropic *Client) Generate(ctx context.Context, model llm.Model, context llm.Context, opts ...llm.Opt) (llm.Context, error) {
-	response, err := anthropic.Messages(ctx, model, context, opts...)
-	if err != nil {
-		return nil, err
-	}
-	fmt.Println(response)
-	return nil, llm.ErrNotImplemented
 }
 
 ///////////////////////////////////////////////////////////////////////////////

@@ -24,19 +24,16 @@ var _ llm.Context = (*session)(nil)
 // LIFECYCLE
 
 // Create a new empty context
-func (model *model) Context(opts ...llm.Opt) (llm.Context, error) {
+func (model *model) Context(opts ...llm.Opt) llm.Context {
 	return &session{
 		model: model,
 		opts:  opts,
-	}, nil
+	}
 }
 
 // Create a new context with a user prompt
-func (model *model) MustUserPrompt(prompt string, opts ...llm.Opt) llm.Context {
-	context, err := model.Context(opts...)
-	if err != nil {
-		panic(err)
-	}
+func (model *model) UserPrompt(prompt string, opts ...llm.Opt) llm.Context {
+	context := model.Context(opts...)
 	context.(*session).seq = append(context.(*session).seq, &MessageMeta{
 		Role:    "user",
 		Content: prompt,

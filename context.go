@@ -13,9 +13,11 @@ type Context interface {
 	// Return the text of the context
 	Text() string
 
-	// Generate a response from a user prompt (with attachments)
+	// Generate a response from a user prompt (with attachments and
+	// other empheral options
 	FromUser(context.Context, string, ...Opt) (Context, error)
 
-	// Generate a response from a tool, passing the call identifier or function name, and the result
+	// Generate a response from a tool, passing the call identifier or
+	// function name, and the result
 	FromTool(context.Context, string, any, ...Opt) (Context, error)
 }

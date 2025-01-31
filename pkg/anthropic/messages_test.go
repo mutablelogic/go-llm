@@ -33,7 +33,7 @@ func Test_messages_001(t *testing.T) {
 	}
 	defer f.Close()
 
-	response, err := client.Messages(context.TODO(), model, client.UserPrompt("what is this image?", anthropic.WithData(f, false, false)))
+	response, err := client.Messages(context.TODO(), model.UserPrompt("what is this image?", anthropic.WithData(f, false, false)))
 	if assert.NoError(err) {
 		t.Log(response)
 	}
@@ -61,7 +61,7 @@ func Test_messages_002(t *testing.T) {
 	}
 	defer f.Close()
 
-	response, err := client.Messages(context.TODO(), model, client.UserPrompt("summarize this document for me", anthropic.WithData(f, false, false)))
+	response, err := client.Messages(context.TODO(), model.UserPrompt("summarize this document for me", anthropic.WithData(f, false, false)))
 	if assert.NoError(err) {
 		t.Log(response)
 	}
@@ -83,7 +83,7 @@ func Test_messages_003(t *testing.T) {
 		t.FailNow()
 	}
 
-	response, err := client.Messages(context.TODO(), model, client.UserPrompt("why is the sky blue"), anthropic.WithStream(func(r *anthropic.Response) {
+	response, err := client.Messages(context.TODO(), model.UserPrompt("why is the sky blue"), anthropic.WithStream(func(r *anthropic.Response) {
 		t.Log(r)
 	}))
 	if assert.NoError(err) {
@@ -114,7 +114,7 @@ func Test_messages_004(t *testing.T) {
 		t.FailNow()
 	}
 
-	response, err := client.Messages(context.TODO(), model, client.UserPrompt("why is the sky blue"), anthropic.WithTool(weather))
+	response, err := client.Messages(context.TODO(), model.UserPrompt("why is the sky blue"), anthropic.WithTool(weather))
 	if assert.NoError(err) {
 		t.Log(response)
 	}
@@ -143,7 +143,7 @@ func Test_messages_005(t *testing.T) {
 		t.FailNow()
 	}
 
-	response, err := client.Messages(context.TODO(), model, client.UserPrompt("why is the sky blue"), anthropic.WithStream(func(r *anthropic.Response) {
+	response, err := client.Messages(context.TODO(), model.UserPrompt("why is the sky blue"), anthropic.WithStream(func(r *anthropic.Response) {
 		t.Log(r)
 	}), anthropic.WithTool(weather))
 	if assert.NoError(err) {
