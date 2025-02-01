@@ -10,22 +10,38 @@ import (
 ///////////////////////////////////////////////////////////////////////////////
 // TYPES
 
+type ResultMeta struct {
+	Call  llm.ToolCall `json:"call"`
+	Value any          `json:"result"`
+}
+
 type result struct {
-	call  llm.ToolCall
-	value any
+	meta ResultMeta
 }
 
 var _ llm.ToolResult = (*result)(nil)
 
 ///////////////////////////////////////////////////////////////////////////////
+// LIFECYCLE
+
+func NewResult(call llm.ToolCall, value any) llm.ToolResult {
+	return &result{
+		meta: ResultMeta{
+			Call:  call,
+			Value: value,
+		},
+	}
+}
+
+///////////////////////////////////////////////////////////////////////////////
 // STRINGIFY
 
+func (r result) MarshalJSON() ([]byte, error) {
+	return json.Marshal(r.meta)
+}
+
 func (r result) String() string {
-	type j struct {
-		Call   llm.ToolCall `json:"call"`
-		Result any          `json:"result"`
-	}
-	data, err := json.MarshalIndent(j{r.call, r.value}, "", "  ")
+	data, err := json.MarshalIndent(r.meta, "", "  ")
 	if err != nil {
 		return err.Error()
 	}
@@ -37,10 +53,10 @@ func (r result) String() string {
 
 // The call associated with the result
 func (r result) Call() llm.ToolCall {
-	return r.call
+	return r.meta.Call
 }
 
 // The result, which can be encoded into json
-func (r result) Result() any {
-	return r.value
+func (r result) Value() any {
+	return r.meta.Value
 }

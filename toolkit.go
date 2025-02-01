@@ -50,5 +50,5 @@ type ToolResult interface {
 	Call() ToolCall
 
 	// The result, which can be encoded into json
-	Result() any
+	Value() any
 }

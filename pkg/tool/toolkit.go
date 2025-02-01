@@ -125,7 +125,7 @@ func (kit *ToolKit) Run(ctx context.Context, calls ...llm.ToolCall) ([]llm.ToolR
 			} else if out, err := kit.functions[name].Tool.Run(ctx); err != nil {
 				errs = errors.Join(errs, err)
 			} else {
-				toolresult = append(toolresult, &result{call, out})
+				toolresult = append(toolresult, NewResult(call, out))
 			}
 		}(call)
 	}

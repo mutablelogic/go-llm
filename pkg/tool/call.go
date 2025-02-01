@@ -35,6 +35,10 @@ func NewCall(id, name string, input map[string]any) *call {
 ///////////////////////////////////////////////////////////////////////////////
 // STRINGIFY
 
+func (t call) MarshalJSON() ([]byte, error) {
+	return json.Marshal(t.meta)
+}
+
 func (t call) String() string {
 	data, err := json.MarshalIndent(t.meta, "", "  ")
 	if err != nil {

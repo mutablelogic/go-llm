@@ -46,8 +46,8 @@ type ContentAttachment struct {
 }
 
 type ContentToolResult struct {
-	Id      string     `json:"tool_use_id,omitempty"` // tool id
-	Content []*Content `json:"content,omitempty"`
+	Id      string `json:"tool_use_id,omitempty"` // tool id
+	Content any    `json:"content,omitempty"`
 }
 
 type contentsource struct {
@@ -72,6 +72,24 @@ func NewTextContent(v string) *Content {
 	content := new(Content)
 	content.Type = "text"
 	content.ContentText.Text = v
+	return content
+}
+
+// Return a Content object with tool result
+func NewToolResultContent(v llm.ToolResult) *Content {
+	content := new(Content)
+	content.Type = "tool_result"
+	content.ContentToolResult.Id = v.Call().Id()
+	//	content.ContentToolResult.Name = v.Call().Name()
+
+	// We only support JSON encoding for the moment
+	data, err := json.Marshal(v.Value())
+	if err != nil {
+		content.ContentToolResult.Content = err.Error()
+	} else {
+		content.ContentToolResult.Content = string(data)
+	}
+
 	return content
 }
 

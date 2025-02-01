@@ -91,21 +91,20 @@ func (s *session) FromUser(ctx context.Context, prompt string, opts ...llm.Opt) 
 }
 
 // Generate a response from a tool calling result
-func (s *session) FromTool(ctx context.Context, call string, result any, opts ...llm.Opt) error {
-	// Append the tool result
-	if message, err := toolResult(call, result); err != nil {
-		return err
-	} else {
-		s.seq[len(s.seq)-1] = message
+func (s *session) FromTool(ctx context.Context, results ...llm.ToolResult) error {
+	if len(results) == 0 {
+		return llm.ErrConflict.Withf("No tool results")
 	}
 
-	// The options come from the session options and the user options
-	chatopts := make([]llm.Opt, 0, len(s.opts)+len(opts))
-	chatopts = append(chatopts, s.opts...)
-	chatopts = append(chatopts, opts...)
+	// Append the tool results
+	for _, result := range results {
+		if message, err := toolResult(result); err != nil {
+			s.seq = append(s.seq, message)
+		}
+	}
 
 	// Call the 'chat' method
-	r, err := s.model.client.Chat(ctx, s, chatopts...)
+	r, err := s.model.client.Chat(ctx, s, s.opts...)
 	if err != nil {
 		return err
 	} else {
@@ -177,9 +176,9 @@ func userPrompt(prompt string, opts ...llm.Opt) (*MessageMeta, error) {
 	return &meta, nil
 }
 
-func toolResult(name string, result any) (*MessageMeta, error) {
+func toolResult(result llm.ToolResult) (*MessageMeta, error) {
 	// Turn result into JSON
-	data, err := json.Marshal(result)
+	data, err := json.Marshal(result.Value())
 	if err != nil {
 		return nil, err
 	}
@@ -187,7 +186,7 @@ func toolResult(name string, result any) (*MessageMeta, error) {
 	// Create a new message
 	var meta MessageMeta
 	meta.Role = "tool"
-	meta.FunctionName = name
+	meta.FunctionName = result.Call().Name()
 	meta.Content = string(data)
 
 	// Return success

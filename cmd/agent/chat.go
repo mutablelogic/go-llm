@@ -79,8 +79,10 @@ func (cmd *ChatCmd) Run(globals *Globals) error {
 			calls := session.ToolCalls()
 			if results, err := globals.toolkit.Run(ctx, calls...); err != nil {
 				return err
+			} else if err := session.FromTool(ctx, results...); err != nil {
+				return err
 			} else {
-				fmt.Println(results)
+				fmt.Println(session.Text())
 			}
 		}
 	})

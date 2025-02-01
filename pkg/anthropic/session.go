@@ -141,8 +141,25 @@ func (session *session) FromUser(ctx context.Context, prompt string, opts ...llm
 
 // Generate a response from a tool, passing the call identifier or
 // function name, and the result
-func (session *session) FromTool(context.Context, string, any, ...llm.Opt) error {
-	return llm.ErrNotImplemented
+func (session *session) FromTool(ctx context.Context, results ...llm.ToolResult) error {
+	meta, err := toolResults(results...)
+	if err != nil {
+		return err
+	} else {
+		session.seq = append(session.seq, meta)
+	}
+
+	// Call the 'chat' method
+	client := session.model.client
+	r, err := client.Messages(ctx, session, session.opts...)
+	if err != nil {
+		return err
+	} else {
+		session.seq = append(session.seq, &r.MessageMeta)
+	}
+
+	// Return success
+	return nil
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -174,6 +191,25 @@ func userPrompt(prompt string, opts ...llm.Opt) (*MessageMeta, error) {
 			return nil, err
 		}
 		meta.Content = append(meta.Content, content)
+	}
+
+	// Return success
+	return &meta, nil
+}
+
+func toolResults(results ...llm.ToolResult) (*MessageMeta, error) {
+	// Check for no results
+	if len(results) == 0 {
+		return nil, llm.ErrBadParameter.Withf("No tool results")
+	}
+
+	// Create user message
+	meta := MessageMeta{
+		Role:    "user",
+		Content: make([]*Content, 0, len(results)),
+	}
+	for _, result := range results {
+		meta.Content = append(meta.Content, NewToolResultContent(result))
 	}
 
 	// Return success
