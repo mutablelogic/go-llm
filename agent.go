@@ -11,4 +11,8 @@ type Agent interface {
 
 	// Return the models
 	Models(context.Context) ([]Model, error)
+
+	// Return a model by name, or nil if not found.
+	// Panics on error.
+	Model(context.Context, string) Model
 }

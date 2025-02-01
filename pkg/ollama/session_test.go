@@ -28,7 +28,7 @@ func Test_session_001(t *testing.T) {
 	// Session with a single user prompt - streaming
 	t.Run("stream", func(t *testing.T) {
 		assert := assert.New(t)
-		session := model.Context(llm.WithStream(func(stream llm.Context) {
+		session := model.Context(llm.WithStream(func(stream llm.ContextContent) {
 			t.Log("SESSION DELTA", stream)
 		}))
 		assert.NotNil(session)

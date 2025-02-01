@@ -91,6 +91,15 @@ func (ollama *Client) Models(ctx context.Context) ([]llm.Model, error) {
 	return ollama.ListModels(ctx)
 }
 
+// Agent interface
+func (ollama *Client) Model(ctx context.Context, name string) llm.Model {
+	model, err := ollama.GetModel(ctx, name)
+	if err != nil {
+		panic(err)
+	}
+	return model
+}
+
 // List models
 func (ollama *Client) ListModels(ctx context.Context) ([]llm.Model, error) {
 	type respListModel struct {

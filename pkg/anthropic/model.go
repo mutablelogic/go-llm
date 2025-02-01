@@ -34,7 +34,38 @@ type ModelMeta struct {
 
 // Agent interface
 func (anthropic *Client) Models(ctx context.Context) ([]llm.Model, error) {
-	return anthropic.ListModels(ctx)
+	// Cache models
+	if len(anthropic.cache) == 0 {
+		models, err := anthropic.ListModels(ctx)
+		if err != nil {
+			return nil, err
+		}
+		for _, model := range models {
+			name := model.Name()
+			anthropic.cache[name] = model
+		}
+	}
+
+	// Return models
+	result := make([]llm.Model, 0, len(anthropic.cache))
+	for _, model := range anthropic.cache {
+		result = append(result, model)
+	}
+	return result, nil
+}
+
+// Agent interface
+func (anthropic *Client) Model(ctx context.Context, model string) llm.Model {
+	// Cache models
+	if len(anthropic.cache) == 0 {
+		_, err := anthropic.Models(ctx)
+		if err != nil {
+			panic(err)
+		}
+	}
+
+	// Return model
+	return anthropic.cache[model]
 }
 
 // Get a model by name

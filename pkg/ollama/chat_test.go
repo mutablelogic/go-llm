@@ -31,7 +31,7 @@ func Test_chat_001(t *testing.T) {
 
 	t.Run("ChatStream", func(t *testing.T) {
 		assert := assert.New(t)
-		response, err := client.Chat(context.TODO(), model.UserPrompt("why is the sky blue?"), llm.WithStream(func(stream llm.Context) {
+		response, err := client.Chat(context.TODO(), model.UserPrompt("why is the sky blue?"), llm.WithStream(func(stream llm.ContextContent) {
 			t.Log(stream)
 		}))
 		if !assert.NoError(err) {

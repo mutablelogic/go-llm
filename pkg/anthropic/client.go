@@ -14,6 +14,7 @@ import (
 
 type Client struct {
 	*client.Client
+	cache map[string]llm.Model
 }
 
 var _ llm.Agent = (*Client)(nil)
@@ -41,7 +42,10 @@ func New(ApiKey string, opts ...client.ClientOpt) (*Client, error) {
 	}
 
 	// Return the client
-	return &Client{client}, nil
+	return &Client{
+		Client: client,
+		cache:  make(map[string]llm.Model),
+	}, nil
 }
 
 ///////////////////////////////////////////////////////////////////////////////

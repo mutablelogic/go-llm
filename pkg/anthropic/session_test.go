@@ -83,9 +83,10 @@ func Test_session_002(t *testing.T) {
 			t.FailNow()
 		}
 
-		err := toolkit.Run(context.TODO(), session.ToolCalls()...)
+		result, err := toolkit.Run(context.TODO(), session.ToolCalls()...)
 		if !assert.NoError(err) {
 			t.FailNow()
 		}
+		assert.NotEmpty(result)
 	})
 }
