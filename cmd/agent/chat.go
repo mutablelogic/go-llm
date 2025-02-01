@@ -40,7 +40,7 @@ func (cmd *ChatCmd) Run(globals *Globals) error {
 		opts := []llm.Opt{}
 		if !cmd.NoStream {
 			opts = append(opts, llm.WithStream(func(cc llm.ContextContent) {
-				fmt.Println(cc)
+				fmt.Println("STREAM", cc)
 			}))
 		}
 		if cmd.System != "" {
@@ -73,17 +73,30 @@ func (cmd *ChatCmd) Run(globals *Globals) error {
 				return err
 			}
 
-			fmt.Println(session.Text())
-
-			// If there are tool calls, then do these
-			calls := session.ToolCalls()
-			if results, err := globals.toolkit.Run(ctx, calls...); err != nil {
-				return err
-			} else if err := session.FromTool(ctx, results...); err != nil {
-				return err
-			} else {
-				fmt.Println(session.Text())
+			// Repeat call tools until no more calls are made
+			for {
+				calls := session.ToolCalls()
+				if len(calls) == 0 {
+					break
+				}
+				if session.Text() != "" {
+					fmt.Println("Calling", session.Text())
+				} else {
+					var names []string
+					for _, call := range calls {
+						names = append(names, call.Name())
+					}
+					fmt.Println("Calling", strings.Join(names, ", "))
+				}
+				if results, err := globals.toolkit.Run(ctx, calls...); err != nil {
+					return err
+				} else if err := session.FromTool(ctx, results...); err != nil {
+					return err
+				}
 			}
+
+			// Print the response
+			fmt.Println("SESSION", session.Text())
 		}
 	})
 }

@@ -64,15 +64,24 @@ func (ollama *Client) Chat(ctx context.Context, prompt llm.Context, opts ...llm.
 		return nil, err
 	}
 
+	// Append the system prompt at the beginning
+	seq := make([]*MessageMeta, 0, len(prompt.(*session).seq)+1)
+	if system := opt.SystemPrompt(); system != "" {
+		seq = append(seq, &MessageMeta{
+			Role:    "system",
+			Content: opt.SystemPrompt(),
+		})
+	}
+	seq = append(seq, prompt.(*session).seq...)
+
 	// Request
 	req, err := client.NewJSONRequest(reqChat{
 		Model:     prompt.(*session).model.Name(),
-		Messages:  prompt.(*session).seq,
+		Messages:  seq,
 		Tools:     optTools(ollama, opt),
 		Format:    optFormat(opt),
 		Options:   optOptions(opt),
 		Stream:    optStream(ollama, opt),
-		System:    optSystemPrompt(opt),
 		KeepAlive: optKeepAlive(opt),
 	})
 	if err != nil {
@@ -97,8 +106,10 @@ func (ollama *Client) Chat(ctx context.Context, prompt llm.Context, opts ...llm.
 		}
 
 		//Call the chat callback
-		if fn := opt.StreamFn(); fn != nil {
-			fn(&response)
+		if optStream(ollama, opt) {
+			if fn := opt.StreamFn(); fn != nil {
+				fn(&response)
+			}
 		}
 		return nil
 	})); err != nil {

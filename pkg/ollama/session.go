@@ -99,6 +99,8 @@ func (s *session) FromTool(ctx context.Context, results ...llm.ToolResult) error
 	// Append the tool results
 	for _, result := range results {
 		if message, err := toolResult(result); err != nil {
+			return err
+		} else {
 			s.seq = append(s.seq, message)
 		}
 	}

@@ -2,6 +2,8 @@ package newsapi
 
 import (
 	"context"
+	"fmt"
+	"slices"
 
 	// Packages
 	llm "github.com/mutablelogic/go-llm"
@@ -11,32 +13,78 @@ import (
 // TYPES
 
 type headlines struct {
-	*Client     `json:"-"`
-	CountryCode string `json:"country_code,omitempty" help:"The two-letter countrycode to return headlines for"`
+	*Client `json:"-"`
+	// CountryCode string `json:"country_code,omitempty" help:"The two-letter countrycode to return headlines for. Leave empty for worldwide headlines."`
+}
+
+type search struct {
+	*Client `json:"-"`
+	Query   string `json:"query" help:"A phrase used to search for news headlines." required:"true"`
+}
+
+type category struct {
+	*Client  `json:"-"`
+	Category string `json:"category" enum:"business, entertainment, health, science, sports, technology" help:"business, entertainment, health, science, sports, technology" required:"true"`
 }
 
 var _ llm.Tool = (*headlines)(nil)
+
+var (
+	categories = []string{"business", "entertainment", "health", "science", "sports", "technology"}
+)
 
 ///////////////////////////////////////////////////////////////////////////////
 // HEADLINES
 
 func (headlines) Name() string {
-	return "current_headlines"
+	return "news_headlines"
 }
 
 func (headlines) Description() string {
-	return "Return the current news headlines, optionally for a specific country"
+	return "Return the current global news headlines"
 }
 
 func (headlines *headlines) Run(ctx context.Context) (any, error) {
-	response, err := headlines.Headlines(OptCategory("general"), OptLimit(5))
-	if err != nil {
-		return nil, err
+	return headlines.Headlines(OptCategory("general"), OptLimit(10))
+}
+
+///////////////////////////////////////////////////////////////////////////////
+// SEARCH
+
+func (search) Name() string {
+	return "news_search"
+}
+
+func (search) Description() string {
+	return "Search the news archive with a search query"
+}
+
+func (search *search) Run(ctx context.Context) (any, error) {
+	if search.Query == "" {
+		return nil, nil
 	}
-	return map[string]any{
-		"type":      "text",
-		"headlines": response,
-	}, nil
+	fmt.Printf("search for %q\n", search.Query)
+	return search.Articles(OptQuery(search.Query), OptLimit(10))
+}
+
+///////////////////////////////////////////////////////////////////////////////
+// CATEGORY
+
+func (category) Name() string {
+	return "news_headlines_category"
+}
+
+func (category) Description() string {
+	return "Return the news headlines for a specific category"
+}
+
+func (category *category) Run(ctx context.Context) (any, error) {
+	if !slices.Contains(categories, category.Category) {
+		fmt.Printf("search for %q\n", category.Category)
+		return category.Articles(OptQuery(category.Category), OptLimit(10))
+	}
+	fmt.Printf("category for %q\n", category.Category)
+	return category.Headlines(OptCategory(category.Category), OptLimit(10))
 }
 
 /*

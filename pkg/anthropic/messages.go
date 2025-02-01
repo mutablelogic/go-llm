@@ -150,7 +150,6 @@ func (anthropic *Client) Messages(ctx context.Context, context llm.Context, opts
 				if err := evt.Json(&r); err != nil {
 					return err
 				} else if int(r.Index) != len(response.MessageMeta.Content)-1 {
-					fmt.Println(response.MessageMeta)
 					return fmt.Errorf("%s: unexpected index %d", r.Type, r.Index)
 				} else if content, err := appendDelta(response.MessageMeta.Content, &r.Content); err != nil {
 					return err
