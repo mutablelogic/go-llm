@@ -1,7 +1,7 @@
 package tool
 
 import (
-	"fmt"
+	"encoding/json"
 	"reflect"
 	"strings"
 
@@ -43,6 +43,17 @@ type ToolParameter struct {
 	index       []int // Field index into prototype for setting a field
 }
 
+////////////////////////////////////////////////////////////////////////////////
+// STRINGIFY
+
+func (t tool) String() string {
+	data, err := json.MarshalIndent(t.ToolMeta, "", "  ")
+	if err != nil {
+		return err.Error()
+	}
+	return string(data)
+}
+
 ///////////////////////////////////////////////////////////////////////////////
 // PUBLIC METHODS
 
@@ -58,7 +69,7 @@ func (t tool) Description() string {
 // PRIVATE METHODS
 
 // Return tool parameters from a struct
-func paramsFor(params any) ([]ToolParameter, error) {
+func paramsFor(root []int, params any) ([]ToolParameter, error) {
 	if params == nil {
 		return []ToolParameter{}, nil
 	}
@@ -70,19 +81,38 @@ func paramsFor(params any) ([]ToolParameter, error) {
 		return nil, llm.ErrBadParameter.With("params must be a struct")
 	}
 
+	return paramsForStruct(root, rt)
+}
+
+func paramsForStruct(root []int, rt reflect.Type) ([]ToolParameter, error) {
+	result := make([]ToolParameter, 0, rt.NumField())
+
 	// Iterate over fields
-	fields := reflect.VisibleFields(rt)
-	result := make([]ToolParameter, 0, len(fields))
-	for _, field := range fields {
-		fmt.Println(field.Name, "=>", field.Index)
+	for i := 0; i < rt.NumField(); i++ {
+		field := rt.Field(i)
+
 		// Ignore unexported fields
-		name := field.Tag.Get("json")
-		if name == "-" {
+		name := fieldName(field)
+		if name == "" {
+			continue
+		}
+
+		// Recurse into struct
+		ft := field.Type
+		if ft.Kind() == reflect.Ptr {
+			ft = field.Type.Elem()
+		}
+		if ft.Kind() == reflect.Struct {
+			if param, err := paramsForStruct(append(root, field.Index...), ft); err != nil {
+				return nil, err
+			} else {
+				result = append(result, param...)
+			}
 			continue
 		}
 
 		// Determine parameter
-		if param, err := paramFor(field); err != nil {
+		if param, err := paramFor(root, field); err != nil {
 			return nil, err
 		} else {
 			result = append(result, param)
@@ -94,13 +124,7 @@ func paramsFor(params any) ([]ToolParameter, error) {
 }
 
 // Return tool parameters from a struct field
-func paramFor(field reflect.StructField) (ToolParameter, error) {
-	// Name
-	name := field.Tag.Get("name")
-	if name == "" {
-		name = field.Name
-	}
-
+func paramFor(root []int, field reflect.StructField) (ToolParameter, error) {
 	// Type
 	typ, err := paramType(field)
 	if err != nil {
@@ -118,13 +142,31 @@ func paramFor(field reflect.StructField) (ToolParameter, error) {
 
 	// Return success
 	return ToolParameter{
-		Name:        field.Name,
+		Name:        fieldName(field),
 		Type:        typ,
 		Description: field.Tag.Get("help"),
 		Enum:        enum,
 		required:    required,
-		index:       field.Index,
+		index:       append(root, field.Index...),
 	}, nil
+}
+
+// Return the name field, or empty name if field
+// should be ignored
+func fieldName(field reflect.StructField) string {
+	name, exists := field.Tag.Lookup("name")
+	if !exists {
+		name, exists = field.Tag.Lookup("json")
+		if names := strings.Split(name, ","); exists && len(names) > 0 {
+			name = names[0]
+		}
+	}
+	if !exists {
+		name = field.Name
+	} else if name == "-" {
+		return ""
+	}
+	return name
 }
 
 var (

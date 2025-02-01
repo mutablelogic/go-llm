@@ -36,7 +36,7 @@ func (cmd *GenerateCmd) Run(globals *Globals) error {
 		}
 
 		// Create a session
-		session := model.Context(agent.WithStream(!cmd.NoStream))
+		session := model.Context()
 
 		// Continue looping until end of input
 		for {

@@ -1,12 +1,12 @@
 package tool
 
 import (
-	// Packages
 	"context"
 	"errors"
 	"fmt"
 	"sync"
 
+	// Packages
 	llm "github.com/mutablelogic/go-llm"
 )
 
@@ -17,6 +17,8 @@ import (
 type ToolKit struct {
 	functions map[string]tool
 }
+
+var _ llm.ToolKit = (*ToolKit)(nil)
 
 ////////////////////////////////////////////////////////////////////////////////
 // LIFECYCLE
@@ -68,7 +70,7 @@ func (kit *ToolKit) Register(v llm.Tool) error {
 	}
 
 	// Determine parameters
-	toolparams, err := paramsFor(v)
+	toolparams, err := paramsFor(nil, v)
 	if err != nil {
 		return err
 	}
@@ -103,7 +105,7 @@ func (kit *ToolKit) Register(v llm.Tool) error {
 }
 
 // Run calls a tool in the toolkit
-func (kit *ToolKit) Run(ctx context.Context, calls []llm.ToolCall) error {
+func (kit *ToolKit) Run(ctx context.Context, calls ...llm.ToolCall) error {
 	var wg sync.WaitGroup
 	var result error
 
@@ -114,7 +116,7 @@ func (kit *ToolKit) Run(ctx context.Context, calls []llm.ToolCall) error {
 		go func(call llm.ToolCall) {
 			defer wg.Done()
 
-			fmt.Println(call)
+			fmt.Println("Running ", call)
 
 			// Get the tool and run it
 			name := call.Name()
@@ -122,7 +124,7 @@ func (kit *ToolKit) Run(ctx context.Context, calls []llm.ToolCall) error {
 				result = errors.Join(result, llm.ErrNotFound.Withf("tool %q not found", name))
 			} else if err := call.Decode(kit.functions[name].Tool); err != nil {
 				result = errors.Join(result, err)
-			} else if out, err := kit.functions[name].Run(ctx); err != nil {
+			} else if out, err := kit.functions[name].Tool.Run(ctx); err != nil {
 				result = errors.Join(result, err)
 			} else {
 				// TODO: Return the result alongside the call

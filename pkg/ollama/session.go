@@ -155,8 +155,8 @@ func (session *session) ToolCalls() []llm.ToolCall {
 // PRIVATE METHODS
 
 func userPrompt(prompt string, opts ...llm.Opt) (*MessageMeta, error) {
-	// Apply options
-	opt, err := apply(opts...)
+	// Apply options for attachments
+	opt, err := llm.ApplyOpts(opts...)
 	if err != nil {
 		return nil, err
 	}
@@ -165,9 +165,12 @@ func userPrompt(prompt string, opts ...llm.Opt) (*MessageMeta, error) {
 	var meta MessageMeta
 	meta.Role = "user"
 	meta.Content = prompt
-	if len(opt.data) > 0 {
-		meta.Images = make([]Data, len(opt.data))
-		copy(meta.Images, opt.data)
+
+	if attachments := opt.Attachments(); len(attachments) > 0 {
+		meta.Images = make([]Data, len(attachments))
+		for i, attachment := range attachments {
+			meta.Images[i] = attachment.Data()
+		}
 	}
 
 	// Return success

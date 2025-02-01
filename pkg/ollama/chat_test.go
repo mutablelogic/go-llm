@@ -9,8 +9,9 @@ import (
 
 	// Packages
 	opts "github.com/mutablelogic/go-client"
+	llm "github.com/mutablelogic/go-llm"
 	ollama "github.com/mutablelogic/go-llm/pkg/ollama"
-	"github.com/mutablelogic/go-llm/pkg/tool"
+	tool "github.com/mutablelogic/go-llm/pkg/tool"
 	assert "github.com/stretchr/testify/assert"
 )
 
@@ -30,7 +31,7 @@ func Test_chat_001(t *testing.T) {
 
 	t.Run("ChatStream", func(t *testing.T) {
 		assert := assert.New(t)
-		response, err := client.Chat(context.TODO(), model.UserPrompt("why is the sky blue?"), ollama.WithStream(func(stream *ollama.Response) {
+		response, err := client.Chat(context.TODO(), model.UserPrompt("why is the sky blue?"), llm.WithStream(func(stream llm.Context) {
 			t.Log(stream)
 		}))
 		if !assert.NoError(err) {
@@ -73,7 +74,7 @@ func Test_chat_002(t *testing.T) {
 		assert := assert.New(t)
 		response, err := client.Chat(context.TODO(),
 			model.UserPrompt("what is the weather in berlin?"),
-			ollama.WithToolKit(toolkit),
+			llm.WithToolKit(toolkit),
 		)
 		if !assert.NoError(err) {
 			t.FailNow()
@@ -107,7 +108,7 @@ func Test_chat_003(t *testing.T) {
 		defer f.Close()
 
 		response, err := client.Chat(context.TODO(),
-			model.UserPrompt("describe this photo to me", ollama.WithData(f)),
+			model.UserPrompt("describe this photo to me", llm.WithAttachment(f)),
 		)
 		if !assert.NoError(err) {
 			t.FailNow()

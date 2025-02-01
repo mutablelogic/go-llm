@@ -211,7 +211,7 @@ func (ollama *Client) PullModel(ctx context.Context, name string, opts ...llm.Op
 	}
 
 	// Apply options
-	opt, err := apply(opts...)
+	opt, err := llm.ApplyOpts(opts...)
 	if err != nil {
 		return nil, err
 	}
@@ -219,8 +219,8 @@ func (ollama *Client) PullModel(ctx context.Context, name string, opts ...llm.Op
 	// Request
 	req, err := client.NewJSONRequest(reqPullModel{
 		Model:    name,
-		Stream:   opt.stream,
-		Insecure: opt.insecure,
+		Stream:   optPullStatus(opt) != nil,
+		Insecure: optInsecure(opt),
 	})
 	if err != nil {
 		return nil, err
@@ -229,8 +229,10 @@ func (ollama *Client) PullModel(ctx context.Context, name string, opts ...llm.Op
 	//  Response
 	var response PullStatus
 	if err := ollama.DoWithContext(ctx, req, &response, client.OptPath("pull"), client.OptNoTimeout(), client.OptJsonStreamCallback(func(v any) error {
-		if v, ok := v.(*PullStatus); ok && opt.pullcallback != nil {
-			opt.pullcallback(v)
+		if v, ok := v.(*PullStatus); ok && v != nil {
+			if fn := optPullStatus(opt); fn != nil {
+				fn(v)
+			}
 		}
 		return nil
 	})); err != nil {

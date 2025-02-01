@@ -31,60 +31,17 @@ type optmetadata struct {
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-// LIFECYCLE
-
-func apply(opts ...llm.Opt) (*opt, error) {
-	o := new(opt)
-	for _, opt := range opts {
-		if err := opt(o); err != nil {
-			return nil, err
-		}
-	}
-	return o, nil
-}
-
-////////////////////////////////////////////////////////////////////////////////
-// PRIVATE METHODS
-
-func (o *opt) tools(agent llm.Agent) []llm.Tool {
-	if o.toolkit == nil {
-		return nil
-	} else {
-		return o.toolkit.Tools(agent)
-	}
-}
-
-////////////////////////////////////////////////////////////////////////////////
 // OPTIONS
-
-// Messages: Stream the response as it is received.
-func WithStream(fn func(*Response)) llm.Opt {
-	return func(o any) error {
-		o.(*opt).Stream = true
-		o.(*opt).callback = fn
-		return nil
-	}
-}
 
 // Messages: Attach data to the request, which can be cached on the server-side
 // and cited the response.
-func WithData(r io.Reader, ephemeral, citations bool) llm.Opt {
-	return func(o any) error {
+func WithAttachment(r io.Reader, ephemeral, citations bool) llm.Opt {
+	return func(o *llm.Opt) error {
 		attachment, err := ReadContent(r, ephemeral, citations)
 		if err != nil {
 			return err
 		}
 		o.(*opt).data = append(o.(*opt).data, attachment)
-		return nil
-	}
-}
-
-func WithTemperature(v float64) llm.Opt {
-	return func(o any) error {
-		if v < 0.0 || v > 1.0 {
-			return llm.ErrBadParameter.With("temperature must be between 0.0 and 1.0")
-		}
-		o.(*opt).Temperature = v
 		return nil
 	}
 }
@@ -113,33 +70,6 @@ func WithUser(v string) llm.Opt {
 func WithStopSequences(v ...string) llm.Opt {
 	return func(o any) error {
 		o.(*opt).StopSequences = v
-		return nil
-	}
-}
-
-func WithTopP(v float64) llm.Opt {
-	return func(o any) error {
-		if v < 0.0 || v > 1.0 {
-			return llm.ErrBadParameter.With("top_p must be between 0.0 and 1.0")
-		}
-		o.(*opt).TopP = v
-		return nil
-	}
-}
-
-func WithTopK(v uint) llm.Opt {
-	return func(o any) error {
-		o.(*opt).TopK = v
-		return nil
-	}
-}
-
-// Messages: Append a toolkit to the request
-func WithToolKit(v *tool.ToolKit) llm.Opt {
-	return func(o any) error {
-		if v != nil {
-			o.(*opt).toolkit = v
-		}
 		return nil
 	}
 }

@@ -11,7 +11,8 @@ import (
 // TYPES
 
 type headlines struct {
-	*Client `json:"-"`
+	*Client     `json:"-"`
+	CountryCode string `json:"country_code,omitempty" help:"The two-letter countrycode to return headlines for"`
 }
 
 var _ llm.Tool = (*headlines)(nil)
@@ -24,7 +25,7 @@ func (headlines) Name() string {
 }
 
 func (headlines) Description() string {
-	return "Return the current news headlines"
+	return "Return the current news headlines, optionally for a specific country"
 }
 
 func (headlines *headlines) Run(ctx context.Context) (any, error) {

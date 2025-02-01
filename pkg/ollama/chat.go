@@ -58,8 +58,7 @@ type reqChat struct {
 }
 
 func (ollama *Client) Chat(ctx context.Context, prompt llm.Context, opts ...llm.Opt) (*Response, error) {
-	// Apply options
-	opt, err := apply(opts...)
+	opt, err := llm.ApplyOpts(opts...)
 	if err != nil {
 		return nil, err
 	}
@@ -68,11 +67,11 @@ func (ollama *Client) Chat(ctx context.Context, prompt llm.Context, opts ...llm.
 	req, err := client.NewJSONRequest(reqChat{
 		Model:     prompt.(*session).model.Name(),
 		Messages:  prompt.(*session).seq,
-		Tools:     opt.tools(ollama),
-		Format:    opt.format,
-		Options:   opt.options,
-		Stream:    opt.stream,
-		KeepAlive: opt.keepalive,
+		Tools:     optTools(ollama, opt),
+		Format:    optFormat(opt),
+		Options:   optOptions(opt),
+		Stream:    optStream(opt),
+		KeepAlive: optKeepAlive(opt),
 	})
 	if err != nil {
 		return nil, err
@@ -95,8 +94,9 @@ func (ollama *Client) Chat(ctx context.Context, prompt llm.Context, opts ...llm.
 			}
 		}
 
-		if opt.chatcallback != nil {
-			opt.chatcallback(&response)
+		//Call the chat callback
+		if fn := opt.StreamFn(); fn != nil {
+			fn(&response)
 		}
 		return nil
 	})); err != nil {
@@ -104,9 +104,29 @@ func (ollama *Client) Chat(ctx context.Context, prompt llm.Context, opts ...llm.
 	}
 
 	// We return the delta or the response
-	if opt.stream {
+	if optStream(opt) {
 		return &response, nil
 	} else {
 		return &delta, nil
 	}
+}
+
+func (response Response) Role() string {
+	return response.Message.Role
+}
+
+func (response Response) Text() string {
+	return response.Message.Content
+}
+
+func (response Response) ToolCalls() []ToolCall {
+	return response.Message.ToolCalls
+}
+
+func (response Response) FromUser(context.Context, string, ...llm.Opt) error {
+	return llm.ErrNotImplemented
+}
+
+func (response Response) FromTool(context.Context, string, any, ...llm.Opt) error {
+	return llm.ErrNotImplemented
 }

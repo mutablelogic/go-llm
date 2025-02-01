@@ -32,9 +32,10 @@ type Globals struct {
 	NewsAPI `embed:"" help:"NewsAPI configuration"`
 
 	// Context
-	ctx   context.Context
-	agent llm.Agent
-	term  *Term
+	ctx     context.Context
+	agent   llm.Agent
+	toolkit *tool.ToolKit
+	term    *Term
 }
 
 type Ollama struct {
@@ -53,10 +54,13 @@ type CLI struct {
 	Globals
 
 	// Agents, Models and Tools
-	Agents   ListAgentsCmd    `cmd:"" help:"Return a list of agents"`
-	Models   ListModelsCmd    `cmd:"" help:"Return a list of models"`
+	Agents ListAgentsCmd `cmd:"" help:"Return a list of agents"`
+	Models ListModelsCmd `cmd:"" help:"Return a list of models"`
+	Tools  ListToolsCmd  `cmd:"" help:"Return a list of tools"`
+
+	// Commands
 	Download DownloadModelCmd `cmd:"" help:"Download a model"`
-	Generate GenerateCmd      `cmd:"" help:"Generate a response"`
+	Generate GenerateCmd      `cmd:"chat" help:"Start a chat session"`
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -104,9 +108,9 @@ func main() {
 
 	// Make a toolkit
 	toolkit := tool.NewToolKit()
-	opts = append(opts, agent.WithToolKit(toolkit))
+	cli.Globals.toolkit = toolkit
 
-	// NewsAPI
+	// Register NewsAPI
 	if cli.NewsKey != "" {
 		if client, err := newsapi.New(cli.NewsKey, clientopts...); err != nil {
 			cmd.FatalIfErrorf(err)
@@ -114,6 +118,9 @@ func main() {
 			cmd.FatalIfErrorf(err)
 		}
 	}
+
+	// Append the toolkit
+	opts = append(opts, llm.WithToolKit(toolkit))
 
 	// Create the agent
 	agent, err := agent.New(opts...)

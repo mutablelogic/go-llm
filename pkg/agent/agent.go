@@ -15,7 +15,7 @@ import (
 // TYPES
 
 type Agent struct {
-	*opt
+	*llm.Opts
 }
 
 type model struct {
@@ -31,10 +31,10 @@ var _ llm.Agent = (*Agent)(nil)
 // Return a new agent, composed of a series of agents and tools
 func New(opts ...llm.Opt) (*Agent, error) {
 	agent := new(Agent)
-	if opt, err := apply(opts...); err != nil {
+	if opts, err := llm.ApplyOpts(opts...); err != nil {
 		return nil, err
 	} else {
-		agent.opt = opt
+		agent.Opts = opts
 	}
 
 	// Return success
@@ -55,22 +55,13 @@ func (m model) String() string {
 ///////////////////////////////////////////////////////////////////////////////
 // PUBLIC METHODS
 
-// Return a list of agent names
-func (a *Agent) Agents() []llm.Agent {
-	var result []llm.Agent
-	for _, v := range a.agents {
-		result = append(result, v)
-	}
-	return result
-}
-
 // Return a list of tool names
 func (a *Agent) Tools() []string {
-	if a.toolkit == nil {
+	if a.ToolKit() == nil {
 		return nil
 	}
 	var result []string
-	for _, t := range a.toolkit.Tools(a) {
+	for _, t := range a.ToolKit().Tools(a) {
 		result = append(result, t.Name())
 	}
 	return result
@@ -79,7 +70,7 @@ func (a *Agent) Tools() []string {
 // Return a comma-separated list of agent names
 func (a *Agent) Name() string {
 	var keys []string
-	for key := range a.agents {
+	for key := range a.Agents() {
 		keys = append(keys, key)
 	}
 	return strings.Join(keys, ",")
@@ -153,11 +144,6 @@ func (a *Agent) GetModel(ctx context.Context, name string, agents ...string) (ll
 
 	// Return any errors
 	return nil, result
-}
-
-// Embedding vector generation
-func (a *Agent) Embedding(context.Context, llm.Model, string, ...llm.Opt) ([]float64, error) {
-	return nil, llm.ErrNotImplemented
 }
 
 ///////////////////////////////////////////////////////////////////////////////

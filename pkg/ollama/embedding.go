@@ -57,7 +57,7 @@ type reqEmbedding struct {
 
 func (ollama *Client) GenerateEmbedding(ctx context.Context, name string, prompt []string, opts ...llm.Opt) (*EmbeddingMeta, error) {
 	// Apply options
-	opt, err := apply(opts...)
+	opt, err := llm.ApplyOpts(opts...)
 	if err != nil {
 		return nil, err
 	}
@@ -71,9 +71,9 @@ func (ollama *Client) GenerateEmbedding(ctx context.Context, name string, prompt
 	req, err := client.NewJSONRequest(reqEmbedding{
 		Model:     name,
 		Input:     prompt,
-		Truncate:  opt.truncate,
-		KeepAlive: opt.keepalive,
-		Options:   opt.options,
+		Truncate:  optTruncate(opt),
+		KeepAlive: optKeepAlive(opt),
+		Options:   optOptions(opt),
 	})
 	if err != nil {
 		return nil, err
@@ -90,6 +90,6 @@ func (ollama *Client) GenerateEmbedding(ctx context.Context, name string, prompt
 }
 
 // Embedding vector generation
-func (ollama *Client) Embedding(context.Context, llm.Model, string, ...llm.Opt) ([]float64, error) {
+func (model *model) Embedding(context.Context, string, ...llm.Opt) ([]float64, error) {
 	return nil, llm.ErrNotImplemented
 }

@@ -4,7 +4,6 @@ anthropic implements an API client for anthropic (https://docs.anthropic.com/en/
 package anthropic
 
 import (
-	"context"
 
 	// Packages
 	client "github.com/mutablelogic/go-client"
@@ -52,9 +51,4 @@ func New(ApiKey string, opts ...client.ClientOpt) (*Client, error) {
 // Return the name of the agent
 func (*Client) Name() string {
 	return defaultName
-}
-
-// Embedding vector generation - not supported on Anthropic
-func (*Client) Embedding(context.Context, llm.Model, string, ...llm.Opt) ([]float64, error) {
-	return nil, llm.ErrNotImplemented
 }

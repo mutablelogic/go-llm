@@ -42,7 +42,7 @@ func New(ApiKey string, opts ...client.ClientOpt) (*Client, error) {
 
 func (newsapi *Client) RegisterWithToolKit(toolkit *tool.ToolKit) error {
 	// Register tools
-	if err := toolkit.Register(&headlines{newsapi}); err != nil {
+	if err := toolkit.Register(&headlines{newsapi, ""}); err != nil {
 		return err
 	}
 

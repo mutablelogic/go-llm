@@ -7,6 +7,7 @@ import (
 
 	// Packages
 	opts "github.com/mutablelogic/go-client"
+	llm "github.com/mutablelogic/go-llm"
 	ollama "github.com/mutablelogic/go-llm/pkg/ollama"
 	"github.com/mutablelogic/go-llm/pkg/tool"
 	assert "github.com/stretchr/testify/assert"
@@ -27,7 +28,7 @@ func Test_session_001(t *testing.T) {
 	// Session with a single user prompt - streaming
 	t.Run("stream", func(t *testing.T) {
 		assert := assert.New(t)
-		session := model.Context(ollama.WithStream(func(stream *ollama.Response) {
+		session := model.Context(llm.WithStream(func(stream llm.Context) {
 			t.Log("SESSION DELTA", stream)
 		}))
 		assert.NotNil(session)
@@ -77,10 +78,10 @@ func Test_session_002(t *testing.T) {
 	t.Run("toolcall", func(t *testing.T) {
 		assert := assert.New(t)
 
-		session := model.Context(ollama.WithToolKit(toolkit))
+		session := model.Context(llm.WithToolKit(toolkit))
 		assert.NotNil(session)
 
-		err = session.FromUser(context.TODO(), "What is today's weather?")
+		err = session.FromUser(context.TODO(), "What is today's weather in Berlin?", llm.WithTemperature(0.5))
 		if !assert.NoError(err) {
 			t.FailNow()
 		}

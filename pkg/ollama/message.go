@@ -1,6 +1,8 @@
 package ollama
 
-import llm "github.com/mutablelogic/go-llm"
+import (
+	llm "github.com/mutablelogic/go-llm"
+)
 
 ///////////////////////////////////////////////////////////////////////////////
 // TYPES

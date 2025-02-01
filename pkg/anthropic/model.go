@@ -89,3 +89,8 @@ func (anthropic *Client) ListModels(ctx context.Context) ([]llm.Model, error) {
 func (model *model) Name() string {
 	return model.ModelMeta.Name
 }
+
+// Embedding vector generation - not supported on Anthropic
+func (*model) Embedding(context.Context, string, ...llm.Opt) ([]float64, error) {
+	return nil, llm.ErrNotImplemented
+}

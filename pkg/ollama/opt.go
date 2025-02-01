@@ -1,139 +1,134 @@
 package ollama
 
 import (
-	"io"
 	"time"
 
 	// Packages
 	llm "github.com/mutablelogic/go-llm"
-	"github.com/mutablelogic/go-llm/pkg/tool"
 )
 
 ////////////////////////////////////////////////////////////////////////////////
-// TYPES
-
-type opt struct {
-	format       string
-	stream       bool
-	pullcallback func(*PullStatus)
-	chatcallback func(*Response)
-	insecure     bool
-	truncate     *bool
-	keepalive    *time.Duration
-	options      map[string]any
-	data         []Data
-	toolkit      *tool.ToolKit // Toolkit for tools
-}
-
-////////////////////////////////////////////////////////////////////////////////
-// LIFECYCLE
-
-func apply(opts ...llm.Opt) (*opt, error) {
-	o := new(opt)
-	o.options = make(map[string]any)
-	for _, opt := range opts {
-		if err := opt(o); err != nil {
-			return nil, err
-		}
-	}
-	return o, nil
-}
-
-////////////////////////////////////////////////////////////////////////////////
-// PRIVATE METHODS
-
-func (o *opt) tools(agent llm.Agent) []ToolFunction {
-	if o.toolkit == nil {
-		return nil
-	}
-	var result []ToolFunction
-	for _, t := range o.toolkit.Tools(agent) {
-		result = append(result, ToolFunction{Type: "function", Function: t})
-	}
-	return result
-}
-
-////////////////////////////////////////////////////////////////////////////////
-// OPTIONS
+// PUBLIC METHODS
 
 // Pull Model: Allow insecure connections for pulling models.
 func WithInsecure() llm.Opt {
-	return func(o any) error {
-		o.(*opt).insecure = true
+	return func(o *llm.Opts) error {
+		o.Set("insecure", true)
 		return nil
 	}
 }
 
 // Embeddings: Does not truncate the end of each input to fit within context length. Returns error if context length is exceeded.
 func WithTruncate(v bool) llm.Opt {
-	return func(o any) error {
-		o.(*opt).truncate = &v
+	return func(o *llm.Opts) error {
+		o.Set("truncate", v)
 		return nil
 	}
 }
 
 // Embeddings & Chat: Controls how long the model will stay loaded into memory following the request.
 func WithKeepAlive(v time.Duration) llm.Opt {
-	return func(o any) error {
-		o.(*opt).keepalive = &v
+	return func(o *llm.Opts) error {
+		if v <= 0 {
+			return llm.ErrBadParameter.With("keepalive must be greater than zero")
+		}
+		o.Set("keepalive", v)
 		return nil
 	}
 }
 
 // Pull Model: Stream the response as it is received.
 func WithPullStatus(fn func(*PullStatus)) llm.Opt {
-	return func(o any) error {
-		if fn == nil {
-			o.(*opt).stream = false
-			o.(*opt).pullcallback = nil
-		} else {
-			o.(*opt).stream = true
-			o.(*opt).pullcallback = fn
-		}
-		return nil
-	}
-}
-
-// Chat: Stream the response as it is received.
-func WithStream(fn func(*Response)) llm.Opt {
-	return func(o any) error {
-		if fn == nil {
-			return llm.ErrBadParameter.With("callback required")
-		}
-		o.(*opt).stream = true
-		o.(*opt).chatcallback = fn
-		return nil
-	}
-}
-
-// Chat: Append a toolkit to the request
-func WithToolKit(v *tool.ToolKit) llm.Opt {
-	return func(o any) error {
-		if v != nil {
-			o.(*opt).toolkit = v
-		}
+	return func(o *llm.Opts) error {
+		o.Set("pullstatus", fn)
 		return nil
 	}
 }
 
 // Embeddings & Chat: model-specific options.
 func WithOption(key string, value any) llm.Opt {
-	return func(o any) error {
-		if value != nil && key != "" {
-			o.(*opt).options[key] = value
+	return func(o *llm.Opts) error {
+		if opts, ok := o.Get("options").(map[string]any); !ok {
+			o.Set("options", map[string]any{key: value})
+		} else {
+			opts[key] = value
 		}
 		return nil
 	}
 }
 
-// Chat: attach data.
-func WithData(r io.Reader) llm.Opt {
-	return func(o any) error {
-		data, err := io.ReadAll(r)
-		if err != nil {
-			return err
-		}
-		o.(*opt).data = append(o.(*opt).data, data)
+////////////////////////////////////////////////////////////////////////////////
+// PRIVATE METHODS
+
+func optInsecure(opts *llm.Opts) bool {
+	return opts.GetBool("insecure")
+}
+
+func optTruncate(opts *llm.Opts) *bool {
+	if !opts.Has("truncate") {
 		return nil
 	}
+	v := opts.GetBool("truncate")
+	return &v
+}
+
+func optPullStatus(opts *llm.Opts) func(*PullStatus) {
+	if fn, ok := opts.Get("pullstatus").(func(*PullStatus)); ok && fn != nil {
+		return fn
+	}
+	return nil
+}
+
+func optTools(agent *Client, opts *llm.Opts) []ToolFunction {
+	toolkit := opts.ToolKit()
+	if toolkit == nil {
+		return nil
+	}
+	tools := toolkit.Tools(agent)
+	result := make([]ToolFunction, 0, len(tools))
+	for _, tool := range tools {
+		result = append(result, ToolFunction{
+			Type:     "function",
+			Function: tool,
+		})
+	}
+	return result
+}
+
+func optFormat(opts *llm.Opts) string {
+	return opts.GetString("format")
+}
+
+func optOptions(opts *llm.Opts) map[string]any {
+	result := make(map[string]any)
+	if o, ok := opts.Get("options").(map[string]any); ok {
+		for k, v := range o {
+			result[k] = v
+		}
+	}
+
+	// copy across temperature, top_p and top_k
+	if opts.Has("temperature") {
+		result["temperature"] = opts.Get("temperature")
+	}
+	if opts.Has("top_p") {
+		result["top_p"] = opts.Get("top_p")
+	}
+	if opts.Has("top_k") {
+		result["top_k"] = opts.Get("top_k")
+	}
+
+	// Return result
+	return result
+}
+
+func optStream(opts *llm.Opts) bool {
+	return opts.StreamFn() != nil
+}
+
+func optKeepAlive(opts *llm.Opts) *time.Duration {
+	if v := opts.GetDuration("keepalive"); v > 0 {
+		return &v
+	}
+	return nil
 }

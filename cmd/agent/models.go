@@ -20,6 +20,8 @@ type ListModelsCmd struct {
 
 type ListAgentsCmd struct{}
 
+type ListToolsCmd struct{}
+
 type DownloadModelCmd struct {
 	Agent string `arg:"" help:"Agent name"`
 	Model string `arg:"" help:"Model name"`
@@ -27,6 +29,14 @@ type DownloadModelCmd struct {
 
 ////////////////////////////////////////////////////////////////////////////////
 // PUBLIC METHODS
+
+func (cmd *ListToolsCmd) Run(globals *Globals) error {
+	return runagent(globals, func(ctx context.Context, client llm.Agent) error {
+		tools := globals.toolkit.Tools(client)
+		fmt.Println(tools)
+		return nil
+	})
+}
 
 func (cmd *ListModelsCmd) Run(globals *Globals) error {
 	return runagent(globals, func(ctx context.Context, client llm.Agent) error {

@@ -11,7 +11,4 @@ type Agent interface {
 
 	// Return the models
 	Models(context.Context) ([]Model, error)
-
-	// Embedding vector generation
-	Embedding(context.Context, Model, string, ...Opt) ([]float64, error)
 }
