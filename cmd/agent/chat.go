@@ -88,7 +88,7 @@ func (cmd *ChatCmd) Run(globals *Globals) error {
 					for _, call := range calls {
 						names = append(names, call.Name())
 					}
-					globals.term.Println("Calling", strings.Join(names, ", "))
+					globals.term.Println("Calling ", strings.Join(names, ", "))
 				}
 				if results, err := globals.toolkit.Run(ctx, calls...); err != nil {
 					return err

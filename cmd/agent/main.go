@@ -71,7 +71,7 @@ func main() {
 	cli := CLI{}
 	cmd := kong.Parse(&cli,
 		kong.Name(execName()),
-		kong.Description("Agent command line interface"),
+		kong.Description("LLM agent command line interface"),
 		kong.UsageOnError(),
 		kong.ConfigureHelp(kong.HelpOptions{Compact: true}),
 		kong.Vars{},

@@ -1,0 +1,80 @@
+name: Create Docker Image
+on:
+  release:
+    types:
+      - created
+
+  workflow_dispatch:
+
+jobs:
+  build:
+    name: Build
+    strategy:
+      matrix:
+        arch: [ amd64, arm64 ]
+    runs-on:
+      - ${{ matrix.arch == 'amd64' && 'ubuntu-latest' || matrix.arch }}
+    env:
+      OS: linux
+      ARCH: ${{ matrix.arch }}
+      DOCKER_REPO: ghcr.io/${{ github.repository }}
+      DOCKER_SOURCE: https://github.com/${{ github.repository }}
+    outputs:
+      tag: ${{ steps.build.outputs.tag }}
+    permissions:
+      contents: read
+      packages: write      
+    steps:
+      - name: Install build tools
+        run: |
+          sudo apt -y update
+          sudo apt -y install build-essential git
+          git config --global advice.detachedHead false    
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Login
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.repository_owner }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Build and Push
+        id: build      
+        run: |
+          make docker && make docker-push && make docker-version >> "$GITHUB_OUTPUT"
+  manifest:
+    name: Manifest
+    needs: build
+    strategy:
+      matrix:
+        tag:
+          - ${{ needs.build.outputs.tag }}
+          - "latest"
+    runs-on: ubuntu-latest
+    permissions:
+      packages: write      
+    steps:
+      - name: Login
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.repository_owner }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Create
+        run: |
+          docker manifest create ghcr.io/${{ github.repository }}:${{ matrix.tag }} \
+            --amend ghcr.io/${{ github.repository }}-linux-amd64:${{ needs.build.outputs.tag }} \
+            --amend ghcr.io/${{ github.repository }}-linux-arm64:${{ needs.build.outputs.tag }}
+      - name: Annotate
+        run: |
+          docker manifest annotate --arch amd64 --os linux \
+            ghcr.io/${{ github.repository }}:${{ matrix.tag }} \
+            ghcr.io/${{ github.repository }}-linux-amd64:${{ needs.build.outputs.tag }}
+          docker manifest annotate --arch arm64 --os linux \
+            ghcr.io/${{ github.repository }}:${{ matrix.tag }} \
+            ghcr.io/${{ github.repository }}-linux-arm64:${{ needs.build.outputs.tag }}
+      - name: Push
+        run: |
+          docker manifest push ghcr.io/${{ github.repository }}:${{ matrix.tag }}
