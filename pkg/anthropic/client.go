@@ -4,7 +4,6 @@ anthropic implements an API client for anthropic (https://docs.anthropic.com/en/
 package anthropic
 
 import (
-
 	// Packages
 	client "github.com/mutablelogic/go-client"
 	llm "github.com/mutablelogic/go-llm"

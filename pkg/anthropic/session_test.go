@@ -7,8 +7,9 @@ import (
 
 	// Packages
 	opts "github.com/mutablelogic/go-client"
+	llm "github.com/mutablelogic/go-llm"
 	anthropic "github.com/mutablelogic/go-llm/pkg/anthropic"
-	"github.com/mutablelogic/go-llm/pkg/tool"
+	tool "github.com/mutablelogic/go-llm/pkg/tool"
 	assert "github.com/stretchr/testify/assert"
 )
 
@@ -26,7 +27,7 @@ func Test_session_001(t *testing.T) {
 	// Session with a single user prompt - streaming
 	t.Run("stream", func(t *testing.T) {
 		assert := assert.New(t)
-		session := model.Context(anthropic.WithStream(func(stream *anthropic.Response) {
+		session := model.Context(llm.WithStream(func(stream llm.ContextContent) {
 			t.Log("SESSION DELTA", stream)
 		}))
 		assert.NotNil(session)
@@ -74,7 +75,7 @@ func Test_session_002(t *testing.T) {
 			t.FailNow()
 		}
 
-		session := model.Context(anthropic.WithToolKit(toolkit))
+		session := model.Context(llm.WithToolKit(toolkit))
 		assert.NotNil(session)
 
 		err = session.FromUser(context.TODO(), "What is today's weather, in Berlin?")
@@ -82,7 +83,7 @@ func Test_session_002(t *testing.T) {
 			t.FailNow()
 		}
 
-		err := toolkit.Run(context.TODO(), session.ToolCalls())
+		err := toolkit.Run(context.TODO(), session.ToolCalls()...)
 		if !assert.NoError(err) {
 			t.FailNow()
 		}

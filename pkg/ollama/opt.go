@@ -79,6 +79,10 @@ func optPullStatus(opts *llm.Opts) func(*PullStatus) {
 	return nil
 }
 
+func optSystemPrompt(opts *llm.Opts) string {
+	return opts.SystemPrompt()
+}
+
 func optTools(agent *Client, opts *llm.Opts) []ToolFunction {
 	toolkit := opts.ToolKit()
 	if toolkit == nil {
@@ -122,7 +126,14 @@ func optOptions(opts *llm.Opts) map[string]any {
 	return result
 }
 
-func optStream(opts *llm.Opts) bool {
+func optStream(agent *Client, opts *llm.Opts) bool {
+	// Streaming only if there is a stream function and no tools
+	toolkit := opts.ToolKit()
+	if toolkit != nil {
+		if tools := toolkit.Tools(agent); len(tools) > 0 {
+			return false
+		}
+	}
 	return opts.StreamFn() != nil
 }
 

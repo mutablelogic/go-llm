@@ -1,30 +1,14 @@
 package anthropic
 
 import (
-	"io"
+	"strings"
 
 	// Packages
 	llm "github.com/mutablelogic/go-llm"
-	tool "github.com/mutablelogic/go-llm/pkg/tool"
 )
 
 ////////////////////////////////////////////////////////////////////////////////
 // TYPES
-
-type opt struct {
-	MaxTokens     uint         `json:"max_tokens,omitempty"`
-	Metadata      *optmetadata `json:"metadata,omitempty"`
-	StopSequences []string     `json:"stop_sequences,omitempty"`
-	Stream        bool         `json:"stream,omitempty"`
-	System        string       `json:"system,omitempty"`
-	Temperature   float64      `json:"temperature,omitempty"`
-	TopK          uint         `json:"top_k,omitempty"`
-	TopP          float64      `json:"top_p,omitempty"`
-
-	data     []*Content      // Additional message content
-	callback func(*Response) // Streaming callback
-	toolkit  *tool.ToolKit   // Toolkit for tools
-}
 
 type optmetadata struct {
 	User string `json:"user_id,omitempty"`
@@ -33,43 +17,104 @@ type optmetadata struct {
 ////////////////////////////////////////////////////////////////////////////////
 // OPTIONS
 
-// Messages: Attach data to the request, which can be cached on the server-side
-// and cited the response.
-func WithAttachment(r io.Reader, ephemeral, citations bool) llm.Opt {
-	return func(o *llm.Opt) error {
-		attachment, err := ReadContent(r, ephemeral, citations)
-		if err != nil {
-			return err
-		}
-		o.(*opt).data = append(o.(*opt).data, attachment)
-		return nil
-	}
-}
-
-func WithSystem(v string) llm.Opt {
-	return func(o any) error {
-		o.(*opt).System = v
-		return nil
-	}
-}
-
 func WithMaxTokens(v uint) llm.Opt {
-	return func(o any) error {
-		o.(*opt).MaxTokens = v
+	return func(o *llm.Opts) error {
+		o.Set("max_tokens", v)
 		return nil
 	}
 }
 
 func WithUser(v string) llm.Opt {
-	return func(o any) error {
-		o.(*opt).Metadata = &optmetadata{User: v}
+	return func(o *llm.Opts) error {
+		o.Set("user", v)
 		return nil
 	}
 }
 
 func WithStopSequences(v ...string) llm.Opt {
-	return func(o any) error {
-		o.(*opt).StopSequences = v
+	return func(o *llm.Opts) error {
+		o.Set("stop", v)
 		return nil
 	}
+}
+
+func WithEphemeral() llm.Opt {
+	return func(o *llm.Opts) error {
+		o.Set("ephemeral", true)
+		return nil
+	}
+}
+
+func WithCitations() llm.Opt {
+	return func(o *llm.Opts) error {
+		o.Set("citations", true)
+		return nil
+	}
+}
+
+///////////////////////////////////////////////////////////////////////////////
+// PRIVATE METHODS
+
+func optCitations(opt *llm.Opts) bool {
+	return opt.GetBool("citations")
+}
+
+func optEphemeral(opt *llm.Opts) bool {
+	return opt.GetBool("ephemeral")
+}
+
+func optTools(agent *Client, opts *llm.Opts) []llm.Tool {
+	toolkit := opts.ToolKit()
+	if toolkit == nil {
+		return nil
+	}
+	return toolkit.Tools(agent)
+}
+
+func optMaxTokens(model llm.Model, opt *llm.Opts) uint {
+	// https://docs.anthropic.com/en/docs/about-claude/models
+	switch {
+	case strings.Contains(model.Name(), "claude-3-5-haiku"):
+		return 8192
+	case strings.Contains(model.Name(), "claude-3-5-sonnet"):
+		return 8192
+	default:
+		return 4096
+	}
+}
+
+func optMetadata(opt *llm.Opts) *optmetadata {
+	if user, ok := opt.Get("user").(string); ok {
+		return &optmetadata{User: user}
+	}
+	return nil
+}
+
+func optStopSequences(opt *llm.Opts) []string {
+	if opt.Has("stop") {
+		if stop, ok := opt.Get("stop").([]string); ok {
+			return stop
+		}
+	}
+	return nil
+}
+
+func optStream(opt *llm.Opts) bool {
+	return opt.StreamFn() != nil
+}
+
+func optSystemPrompt(opt *llm.Opts) string {
+	return opt.SystemPrompt()
+}
+
+func optTemperature(opt *llm.Opts) float64 {
+	return opt.GetFloat64("temperature")
+}
+
+func optTopK(opt *llm.Opts) uint64 {
+	return opt.GetUint64("top_k")
+}
+
+func optTopP(opt *llm.Opts) float64 {
+	return opt.GetFloat64("top_p")
 }

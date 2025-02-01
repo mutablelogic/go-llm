@@ -56,7 +56,7 @@ func (m model) String() string {
 // PUBLIC METHODS
 
 // Return a list of tool names
-func (a *Agent) Tools() []string {
+func (a *Agent) ToolNames() []string {
 	if a.ToolKit() == nil {
 		return nil
 	}
@@ -67,11 +67,35 @@ func (a *Agent) Tools() []string {
 	return result
 }
 
+// Return a list of agent names
+func (a *Agent) AgentNames() []string {
+	var result []string
+	for _, a := range a.Agents() {
+		result = append(result, a.Name())
+	}
+	return result
+}
+
+// Return a list of agents
+func (a *Agent) AgentsWithName(name ...string) []llm.Agent {
+	all := a.Agents()
+	if len(name) == 0 {
+		return all
+	}
+	result := make([]llm.Agent, 0, len(name))
+	for _, a := range all {
+		if slices.Contains(name, a.Name()) {
+			result = append(result, a)
+		}
+	}
+	return result
+}
+
 // Return a comma-separated list of agent names
 func (a *Agent) Name() string {
 	var keys []string
-	for key := range a.Agents() {
-		keys = append(keys, key)
+	for _, agent := range a.Agents() {
+		keys = append(keys, agent.Name())
 	}
 	return strings.Join(keys, ",")
 }
@@ -82,22 +106,13 @@ func (a *Agent) Models(ctx context.Context) ([]llm.Model, error) {
 }
 
 // Return the models from list of agents
-func (a *Agent) ListModels(ctx context.Context, agents ...string) ([]llm.Model, error) {
+func (a *Agent) ListModels(ctx context.Context, names ...string) ([]llm.Model, error) {
 	var result error
 
-	// Ensure all agents are valid
+	// Gather models from agents
+	agents := a.AgentsWithName(names...)
+	models := make([]llm.Model, 0, len(agents)*10)
 	for _, agent := range agents {
-		if _, exists := a.agents[agent]; !exists {
-			result = errors.Join(result, llm.ErrNotFound.Withf("agent %q", agent))
-		}
-	}
-
-	// Gather models from all agents
-	models := make([]llm.Model, 0, 100)
-	for _, agent := range a.agents {
-		if len(agents) > 0 && !slices.Contains(agents, agent.Name()) {
-			continue
-		}
 		agentmodels, err := modelsForAgent(ctx, agent)
 		if err != nil {
 			result = errors.Join(result, err)
@@ -113,24 +128,12 @@ func (a *Agent) ListModels(ctx context.Context, agents ...string) ([]llm.Model, 
 
 // Return a model by name. If no agents are specified, then all agents are considered.
 // If multiple agents are specified, then the first model found is returned.
-func (a *Agent) GetModel(ctx context.Context, name string, agents ...string) (llm.Model, error) {
-	if len(agents) == 0 {
-		for _, agent := range a.agents {
-			agents = append(agents, agent.Name())
-		}
-	}
-
-	// Ensure all agents are valid
+func (a *Agent) GetModel(ctx context.Context, name string, agentnames ...string) (llm.Model, error) {
 	var result error
-	for _, agent := range agents {
-		if _, exists := a.agents[agent]; !exists {
-			result = errors.Join(result, llm.ErrNotFound.Withf("agent %q", agent))
-		}
-	}
 
-	// Gather models from agents
+	agents := a.AgentsWithName(agentnames...)
 	for _, agent := range agents {
-		models, err := modelsForAgent(ctx, a.agents[agent], name)
+		models, err := modelsForAgent(ctx, agent, name)
 		if err != nil {
 			result = errors.Join(result, err)
 			continue

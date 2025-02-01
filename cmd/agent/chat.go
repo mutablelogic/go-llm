@@ -15,15 +15,16 @@ import (
 ////////////////////////////////////////////////////////////////////////////////
 // TYPES
 
-type GenerateCmd struct {
+type ChatCmd struct {
 	Model    string `arg:"" help:"Model name"`
 	NoStream bool   `flag:"nostream" help:"Disable streaming"`
+	System   string `flag:"system" help:"Set the system prompt"`
 }
 
 ////////////////////////////////////////////////////////////////////////////////
 // PUBLIC METHODS
 
-func (cmd *GenerateCmd) Run(globals *Globals) error {
+func (cmd *ChatCmd) Run(globals *Globals) error {
 	return runagent(globals, func(ctx context.Context, client llm.Agent) error {
 		// Get the model
 		a, ok := client.(*agent.Agent)
@@ -35,8 +36,22 @@ func (cmd *GenerateCmd) Run(globals *Globals) error {
 			return err
 		}
 
+		// Set the options
+		opts := []llm.Opt{}
+		if !cmd.NoStream {
+			opts = append(opts, llm.WithStream(func(cc llm.ContextContent) {
+				fmt.Println(cc)
+			}))
+		}
+		if cmd.System != "" {
+			opts = append(opts, llm.WithSystemPrompt(cmd.System))
+		}
+		if globals.toolkit != nil {
+			opts = append(opts, llm.WithToolKit(globals.toolkit))
+		}
+
 		// Create a session
-		session := model.Context()
+		session := model.Context(opts...)
 
 		// Continue looping until end of input
 		for {
@@ -57,7 +72,16 @@ func (cmd *GenerateCmd) Run(globals *Globals) error {
 			if err := session.FromUser(ctx, input); err != nil {
 				return err
 			}
+
 			fmt.Println(session.Text())
+
+			// If there are tool calls, then do these
+			calls := session.ToolCalls()
+			if results, err := globals.toolkit.Run(ctx, calls...); err != nil {
+				return err
+			} else {
+				fmt.Println(results)
+			}
 		}
 	})
 }

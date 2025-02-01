@@ -9,8 +9,9 @@ import (
 
 	// Packages
 	opts "github.com/mutablelogic/go-client"
+	llm "github.com/mutablelogic/go-llm"
 	anthropic "github.com/mutablelogic/go-llm/pkg/anthropic"
-	"github.com/mutablelogic/go-llm/pkg/tool"
+	tool "github.com/mutablelogic/go-llm/pkg/tool"
 	assert "github.com/stretchr/testify/assert"
 )
 
@@ -36,7 +37,7 @@ func Test_messages_001(t *testing.T) {
 	}
 	defer f.Close()
 
-	response, err := client.Messages(context.TODO(), model.UserPrompt("what is this image?", anthropic.WithData(f, false, false)))
+	response, err := client.Messages(context.TODO(), model.UserPrompt("what is this image?", llm.WithAttachment(f)))
 	if assert.NoError(err) {
 		t.Log(response)
 	}
@@ -64,7 +65,7 @@ func Test_messages_002(t *testing.T) {
 	}
 	defer f.Close()
 
-	response, err := client.Messages(context.TODO(), model.UserPrompt("summarize this document for me", anthropic.WithData(f, false, false)))
+	response, err := client.Messages(context.TODO(), model.UserPrompt("summarize this document for me", llm.WithAttachment(f)))
 	if assert.NoError(err) {
 		t.Log(response)
 	}
@@ -86,7 +87,7 @@ func Test_messages_003(t *testing.T) {
 		t.FailNow()
 	}
 
-	response, err := client.Messages(context.TODO(), model.UserPrompt("why is the sky blue"), anthropic.WithStream(func(r *anthropic.Response) {
+	response, err := client.Messages(context.TODO(), model.UserPrompt("why is the sky blue"), llm.WithStream(func(r llm.ContextContent) {
 		t.Log(r)
 	}))
 	if assert.NoError(err) {
@@ -115,7 +116,7 @@ func Test_messages_004(t *testing.T) {
 		t.FailNow()
 	}
 
-	response, err := client.Messages(context.TODO(), model.UserPrompt("why is the sky blue"), anthropic.WithToolKit(toolkit))
+	response, err := client.Messages(context.TODO(), model.UserPrompt("why is the sky blue"), llm.WithToolKit(toolkit))
 	if assert.NoError(err) {
 		t.Log(response)
 	}
@@ -142,9 +143,9 @@ func Test_messages_005(t *testing.T) {
 		t.FailNow()
 	}
 
-	response, err := client.Messages(context.TODO(), model.UserPrompt("why is the sky blue"), anthropic.WithStream(func(r *anthropic.Response) {
+	response, err := client.Messages(context.TODO(), model.UserPrompt("why is the sky blue"), llm.WithStream(func(r llm.ContextContent) {
 		t.Log(r)
-	}), anthropic.WithToolKit(toolkit))
+	}), llm.WithToolKit(toolkit))
 	if assert.NoError(err) {
 		t.Log(response)
 	}

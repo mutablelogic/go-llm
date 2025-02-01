@@ -15,9 +15,8 @@ type ToolKit interface {
 	// Return all the tools
 	Tools(Agent) []Tool
 
-	// Run the tool calls in parallel
-	// TODO: Return tool results
-	Run(context.Context, ...ToolCall) error
+	// Run the tool calls in parallel and return the results
+	Run(context.Context, ...ToolCall) ([]ToolResult, error)
 }
 
 // Definition of a tool
@@ -43,4 +42,13 @@ type ToolCall interface {
 
 	// Decode the calling parameters
 	Decode(v any) error
+}
+
+// Results from calling tools
+type ToolResult interface {
+	// The call associated with the result
+	Call() ToolCall
+
+	// The result, which can be encoded into json
+	Result() any
 }

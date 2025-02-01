@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"strings"
 
 	// Packages
 	client "github.com/mutablelogic/go-client"
@@ -44,42 +43,43 @@ func (r Response) String() string {
 	return string(data)
 }
 
-func (r opt) String() string {
-	data, err := json.MarshalIndent(r, "", "  ")
-	if err != nil {
-		return err.Error()
-	}
-	return string(data)
-}
-
 ///////////////////////////////////////////////////////////////////////////////
 // PUBLIC METHODS
 
 type reqMessages struct {
-	Model    string         `json:"model"`
-	Messages []*MessageMeta `json:"messages"`
-	Tools    []llm.Tool     `json:"tools,omitempty"`
-	opt
+	Model         string         `json:"model"`
+	Messages      []*MessageMeta `json:"messages"`
+	Tools         []llm.Tool     `json:"tools,omitempty"`
+	MaxTokens     uint           `json:"max_tokens,omitempty"`
+	Metadata      *optmetadata   `json:"metadata,omitempty"`
+	StopSequences []string       `json:"stop_sequences,omitempty"`
+	Stream        bool           `json:"stream,omitempty"`
+	System        string         `json:"system,omitempty"`
+	Temperature   float64        `json:"temperature,omitempty"`
+	TopK          uint64         `json:"top_k,omitempty"`
+	TopP          float64        `json:"top_p,omitempty"`
 }
 
 func (anthropic *Client) Messages(ctx context.Context, context llm.Context, opts ...llm.Opt) (*Response, error) {
 	// Apply options
-	opt, err := apply(opts...)
+	opt, err := llm.ApplyOpts(opts...)
 	if err != nil {
 		return nil, err
 	}
 
-	// Set max_tokens
-	if opt.MaxTokens == 0 {
-		opt.MaxTokens = defaultMaxTokens(context.(*session).model.Name())
-	}
-
 	// Request
 	req, err := client.NewJSONRequest(reqMessages{
-		Model:    context.(*session).model.Name(),
-		Messages: context.(*session).seq,
-		Tools:    opt.tools(anthropic),
-		opt:      *opt,
+		Model:         context.(*session).model.Name(),
+		Messages:      context.(*session).seq,
+		Tools:         optTools(anthropic, opt),
+		MaxTokens:     optMaxTokens(context.(*session).model, opt),
+		Metadata:      optMetadata(opt),
+		StopSequences: optStopSequences(opt),
+		Stream:        optStream(opt),
+		System:        optSystemPrompt(opt),
+		Temperature:   optTemperature(opt),
+		TopK:          optTopK(opt),
+		TopP:          optTopP(opt),
 	})
 	if err != nil {
 		return nil, err
@@ -90,7 +90,7 @@ func (anthropic *Client) Messages(ctx context.Context, context llm.Context, opts
 	reqopts := []client.RequestOpt{
 		client.OptPath("messages"),
 	}
-	if opt.Stream {
+	if optStream(opt) {
 		// Append delta to content
 		appendDelta := func(content []*Content, delta *Content) ([]*Content, error) {
 			if len(content) == 0 {
@@ -206,8 +206,8 @@ func (anthropic *Client) Messages(ctx context.Context, context llm.Context, opts
 				return nil
 			}
 
-			if opt.callback != nil {
-				opt.callback(&response)
+			if fn := opt.StreamFn(); fn != nil {
+				fn(&response)
 			}
 
 			// Return success
@@ -225,16 +225,20 @@ func (anthropic *Client) Messages(ctx context.Context, context llm.Context, opts
 }
 
 ///////////////////////////////////////////////////////////////////////////////
-// PRIVATE METHODS
+// INTERFACE - CONTEXT CONTENT
 
-func defaultMaxTokens(model string) uint {
-	// https://docs.anthropic.com/en/docs/about-claude/models
-	switch {
-	case strings.Contains(model, "claude-3-5-haiku"):
-		return 8192
-	case strings.Contains(model, "claude-3-5-sonnet"):
-		return 8192
-	default:
-		return 4096
+func (response Response) Role() string {
+	return response.MessageMeta.Role
+}
+
+func (response Response) Text() string {
+	data, err := json.MarshalIndent(response.MessageMeta.Content, "", "  ")
+	if err != nil {
+		return err.Error()
 	}
+	return string(data)
+}
+
+func (response Response) ToolCalls() []llm.ToolCall {
+	return nil
 }

@@ -35,7 +35,7 @@ func NewCall(id, name string, input map[string]any) *call {
 ///////////////////////////////////////////////////////////////////////////////
 // STRINGIFY
 
-func (t *call) String() string {
+func (t call) String() string {
 	data, err := json.MarshalIndent(t.meta, "", "  ")
 	if err != nil {
 		return err.Error()
@@ -46,15 +46,15 @@ func (t *call) String() string {
 ///////////////////////////////////////////////////////////////////////////////
 // PUBLIC METHODS
 
-func (t *call) Name() string {
+func (t call) Name() string {
 	return t.meta.Name
 }
 
-func (t *call) Id() string {
+func (t call) Id() string {
 	return t.meta.Id
 }
 
-func (t *call) Decode(v any) error {
+func (t call) Decode(v any) error {
 	if data, err := json.Marshal(t.meta.Input); err != nil {
 		return err
 	} else {

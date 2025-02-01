@@ -54,6 +54,7 @@ type reqChat struct {
 	Format    string                 `json:"format,omitempty"`
 	Options   map[string]interface{} `json:"options,omitempty"`
 	Stream    bool                   `json:"stream"`
+	System    string                 `json:"system,omitempty"`
 	KeepAlive *time.Duration         `json:"keep_alive,omitempty"`
 }
 
@@ -70,7 +71,8 @@ func (ollama *Client) Chat(ctx context.Context, prompt llm.Context, opts ...llm.
 		Tools:     optTools(ollama, opt),
 		Format:    optFormat(opt),
 		Options:   optOptions(opt),
-		Stream:    optStream(opt),
+		Stream:    optStream(ollama, opt),
+		System:    optSystemPrompt(opt),
 		KeepAlive: optKeepAlive(opt),
 	})
 	if err != nil {
@@ -104,12 +106,15 @@ func (ollama *Client) Chat(ctx context.Context, prompt llm.Context, opts ...llm.
 	}
 
 	// We return the delta or the response
-	if optStream(opt) {
+	if optStream(ollama, opt) {
 		return &response, nil
 	} else {
 		return &delta, nil
 	}
 }
+
+///////////////////////////////////////////////////////////////////////////////
+// INTERFACE - CONTEXT CONTENT
 
 func (response Response) Role() string {
 	return response.Message.Role
@@ -119,14 +124,6 @@ func (response Response) Text() string {
 	return response.Message.Content
 }
 
-func (response Response) ToolCalls() []ToolCall {
-	return response.Message.ToolCalls
-}
-
-func (response Response) FromUser(context.Context, string, ...llm.Opt) error {
-	return llm.ErrNotImplemented
-}
-
-func (response Response) FromTool(context.Context, string, any, ...llm.Opt) error {
-	return llm.ErrNotImplemented
+func (response Response) ToolCalls() []llm.ToolCall {
+	return nil
 }

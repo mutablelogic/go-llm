@@ -60,7 +60,7 @@ type CLI struct {
 
 	// Commands
 	Download DownloadModelCmd `cmd:"" help:"Download a model"`
-	Generate GenerateCmd      `cmd:"chat" help:"Start a chat session"`
+	Chat     ChatCmd          `cmd:"" help:"Start a chat session"`
 }
 
 ////////////////////////////////////////////////////////////////////////////////

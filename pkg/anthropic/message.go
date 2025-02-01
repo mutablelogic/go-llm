@@ -1,11 +1,8 @@
 package anthropic
 
 import (
-	"bytes"
 	"encoding/json"
-	"io"
 	"net/http"
-	"os"
 	"strings"
 
 	// Packages
@@ -104,14 +101,9 @@ var (
 )
 
 // Read content from an io.Reader
-func ReadContent(r io.Reader, ephemeral, citations bool) (*Content, error) {
-	var data bytes.Buffer
-	if _, err := io.Copy(&data, r); err != nil {
-		return nil, err
-	}
-
+func attachmentContent(attachment *llm.Attachment, ephemeral, citations bool) (*Content, error) {
 	// Detect mimetype
-	mimetype := http.DetectContentType(data.Bytes())
+	mimetype := http.DetectContentType(attachment.Data())
 	if strings.HasPrefix(mimetype, "text/") {
 		// Switch to text/plain - TODO: charsets?
 		mimetype = "text/plain"
@@ -124,56 +116,44 @@ func ReadContent(r io.Reader, ephemeral, citations bool) (*Content, error) {
 	}
 
 	// Create attachment
-	attachment := new(Content)
-	attachment.Type = typ
+	content := new(Content)
+	content.Type = typ
 	if ephemeral {
-		attachment.CacheControl = &cachecontrol{Type: "ephemeral"}
+		content.CacheControl = &cachecontrol{Type: "ephemeral"}
 	}
 
 	// Handle by type
 	switch typ {
 	case "text":
-		attachment.Type = "document"
-		attachment.Source = &contentsource{
+		content.Type = "document"
+		content.Title = attachment.Filename()
+		content.Source = &contentsource{
 			Type:      "text",
 			MediaType: mimetype,
-			Data:      data.String(),
+			Data:      string(attachment.Data()),
 		}
-
-		// Check for filename
-		if f, ok := r.(*os.File); ok && f.Name() != "" {
-			attachment.Title = f.Name()
-		}
-
-		// Check for citations
 		if citations {
-			attachment.Citations = &contentcitation{Enabled: true}
+			content.Citations = &contentcitation{Enabled: true}
 		}
 	case "document":
-		// Check for filename
-		if f, ok := r.(*os.File); ok && f.Name() != "" {
-			attachment.Title = f.Name()
-		}
-
-		// Check for citations
-		if citations {
-			attachment.Citations = &contentcitation{Enabled: true}
-		}
-		attachment.Source = &contentsource{
+		content.Source = &contentsource{
 			Type:      "base64",
 			MediaType: mimetype,
-			Data:      data.Bytes(),
+			Data:      attachment.Data(),
+		}
+		if citations {
+			content.Citations = &contentcitation{Enabled: true}
 		}
 	case "image":
-		attachment.Source = &contentsource{
+		content.Source = &contentsource{
 			Type:      "base64",
 			MediaType: mimetype,
-			Data:      data.Bytes(),
+			Data:      attachment.Data(),
 		}
 	default:
 		return nil, llm.ErrBadParameter.Withf("unsupported attachment type %q", typ)
 	}
 
 	// Return success
-	return attachment, nil
+	return content, nil
 }

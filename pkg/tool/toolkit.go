@@ -3,7 +3,6 @@ package tool
 import (
 	"context"
 	"errors"
-	"fmt"
 	"sync"
 
 	// Packages
@@ -105,9 +104,10 @@ func (kit *ToolKit) Register(v llm.Tool) error {
 }
 
 // Run calls a tool in the toolkit
-func (kit *ToolKit) Run(ctx context.Context, calls ...llm.ToolCall) error {
+func (kit *ToolKit) Run(ctx context.Context, calls ...llm.ToolCall) ([]llm.ToolResult, error) {
 	var wg sync.WaitGroup
-	var result error
+	var errs error
+	var toolresult []llm.ToolResult
 
 	// TODO: Lock each tool so it can only be run in series (although different
 	// tools can be run in parallel)
@@ -116,19 +116,16 @@ func (kit *ToolKit) Run(ctx context.Context, calls ...llm.ToolCall) error {
 		go func(call llm.ToolCall) {
 			defer wg.Done()
 
-			fmt.Println("Running ", call)
-
 			// Get the tool and run it
 			name := call.Name()
 			if _, exists := kit.functions[name]; !exists {
-				result = errors.Join(result, llm.ErrNotFound.Withf("tool %q not found", name))
+				errs = errors.Join(errs, llm.ErrNotFound.Withf("tool %q not found", name))
 			} else if err := call.Decode(kit.functions[name].Tool); err != nil {
-				result = errors.Join(result, err)
+				errs = errors.Join(errs, err)
 			} else if out, err := kit.functions[name].Tool.Run(ctx); err != nil {
-				result = errors.Join(result, err)
+				errs = errors.Join(errs, err)
 			} else {
-				// TODO: Return the result alongside the call
-				fmt.Println("result of calling", call, "is", out)
+				toolresult = append(toolresult, &result{call, out})
 			}
 		}(call)
 	}
@@ -137,5 +134,5 @@ func (kit *ToolKit) Run(ctx context.Context, calls ...llm.ToolCall) error {
 	wg.Wait()
 
 	// Return any errors
-	return result
+	return toolresult, errs
 }

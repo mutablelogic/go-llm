@@ -13,11 +13,12 @@ type Opt func(*Opts) error
 
 // set of options
 type Opts struct {
-	agents      map[string]Agent // Set of agents
-	toolkit     ToolKit          // Toolkit for tools
-	callback    func(Context)    // Streaming callback
-	attachments []*Attachment    // Attachments
-	options     map[string]any   // Additional options
+	agents      map[string]Agent     // Set of agents
+	toolkit     ToolKit              // Toolkit for tools
+	callback    func(ContextContent) // Streaming callback
+	attachments []*Attachment        // Attachments
+	system      string               // System prompt
+	options     map[string]any       // Additional options
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -45,8 +46,13 @@ func (o *Opts) ToolKit() ToolKit {
 }
 
 // Return the stream function
-func (o *Opts) StreamFn() func(Context) {
+func (o *Opts) StreamFn() func(ContextContent) {
 	return o.callback
+}
+
+// Return the system prompt
+func (o *Opts) SystemPrompt() string {
+	return o.system
 }
 
 // Return the array of registered agents
@@ -102,6 +108,26 @@ func (o *Opts) GetBool(key string) bool {
 	return false
 }
 
+// Get an option value as an unsigned integer
+func (o *Opts) GetUint64(key string) uint64 {
+	if value, exists := o.options[key]; exists {
+		if v, ok := value.(uint64); ok {
+			return v
+		}
+	}
+	return 0
+}
+
+// Get an option value as a float64
+func (o *Opts) GetFloat64(key string) float64 {
+	if value, exists := o.options[key]; exists {
+		if v, ok := value.(float64); ok {
+			return v
+		}
+	}
+	return 0
+}
+
 // Get an option value as a duration
 func (o *Opts) GetDuration(key string) time.Duration {
 	if value, exists := o.options[key]; exists {
@@ -124,7 +150,7 @@ func WithToolKit(toolkit ToolKit) Opt {
 }
 
 // Set chat streaming function
-func WithStream(fn func(Context)) Opt {
+func WithStream(fn func(ContextContent)) Opt {
 	return func(o *Opts) error {
 		o.callback = fn
 		return nil
@@ -193,6 +219,14 @@ func WithTopP(v float64) Opt {
 func WithTopK(v uint) Opt {
 	return func(o *Opts) error {
 		o.Set("top_k", v)
+		return nil
+	}
+}
+
+// Set system prompt
+func WithSystemPrompt(v string) Opt {
+	return func(o *Opts) error {
+		o.system = v
 		return nil
 	}
 }

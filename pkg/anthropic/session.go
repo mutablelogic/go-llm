@@ -150,22 +150,30 @@ func (session *session) FromTool(context.Context, string, any, ...llm.Opt) error
 
 func userPrompt(prompt string, opts ...llm.Opt) (*MessageMeta, error) {
 	// Apply attachments
-	opt, err := apply(opts...)
+	opt, err := llm.ApplyOpts(opts...)
 	if err != nil {
 		return nil, err
 	}
 
+	// Get attachments
+	attachments := opt.Attachments()
+
+	// Create user message
 	meta := MessageMeta{
 		Role:    "user",
-		Content: make([]*Content, 1, len(opt.data)+1),
+		Content: make([]*Content, 1, len(attachments)+1),
 	}
 
 	// Append the text
 	meta.Content[0] = NewTextContent(prompt)
 
 	// Append any additional data
-	for _, data := range opt.data {
-		meta.Content = append(meta.Content, data)
+	for _, attachment := range attachments {
+		content, err := attachmentContent(attachment, optEphemeral(opt), optCitations(opt))
+		if err != nil {
+			return nil, err
+		}
+		meta.Content = append(meta.Content, content)
 	}
 
 	// Return success
