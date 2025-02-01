@@ -27,6 +27,7 @@ type Globals struct {
 	// Agents
 	Ollama    `embed:"" help:"Ollama configuration"`
 	Anthropic `embed:"" help:"Anthropic configuration"`
+	Mistral   `embed:"" help:"Mistral configuration"`
 
 	// Tools
 	NewsAPI `embed:"" help:"NewsAPI configuration"`
@@ -44,6 +45,10 @@ type Ollama struct {
 
 type Anthropic struct {
 	AnthropicKey string `env:"ANTHROPIC_API_KEY" help:"Anthropic API Key"`
+}
+
+type Mistral struct {
+	MistralKey string `env:"MISTRAL_API_KEY" help:"Mistral API Key"`
 }
 
 type NewsAPI struct {
@@ -104,6 +109,9 @@ func main() {
 	}
 	if cli.AnthropicKey != "" {
 		opts = append(opts, agent.WithAnthropic(cli.AnthropicKey, clientopts...))
+	}
+	if cli.MistralKey != "" {
+		opts = append(opts, agent.WithMistral(cli.MistralKey, clientopts...))
 	}
 
 	// Make a toolkit

@@ -5,6 +5,7 @@ import (
 	client "github.com/mutablelogic/go-client"
 	llm "github.com/mutablelogic/go-llm"
 	anthropic "github.com/mutablelogic/go-llm/pkg/anthropic"
+	mistral "github.com/mutablelogic/go-llm/pkg/mistral"
 	ollama "github.com/mutablelogic/go-llm/pkg/ollama"
 )
 
@@ -25,6 +26,17 @@ func WithOllama(endpoint string, opts ...client.ClientOpt) llm.Opt {
 func WithAnthropic(key string, opts ...client.ClientOpt) llm.Opt {
 	return func(o *llm.Opts) error {
 		client, err := anthropic.New(key, opts...)
+		if err != nil {
+			return err
+		} else {
+			return llm.WithAgent(client)(o)
+		}
+	}
+}
+
+func WithMistral(key string, opts ...client.ClientOpt) llm.Opt {
+	return func(o *llm.Opts) error {
+		client, err := mistral.New(key, opts...)
 		if err != nil {
 			return err
 		} else {
