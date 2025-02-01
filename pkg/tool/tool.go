@@ -30,8 +30,8 @@ type ToolMeta struct {
 
 type ToolParameters struct {
 	Type       string                   `json:"type,omitempty"`
-	Required   []string                 `json:"required,omitempty"`
-	Properties map[string]ToolParameter `json:"properties,omitempty"`
+	Required   []string                 `json:"required"`
+	Properties map[string]ToolParameter `json:"properties"`
 }
 
 type ToolParameter struct {
@@ -137,7 +137,9 @@ func paramFor(root []int, field reflect.StructField) (ToolParameter, error) {
 	// Enum
 	enum := []string{}
 	if enum_ := field.Tag.Get("enum"); enum_ != "" {
-		enum = strings.Split(enum_, ",")
+		for _, e := range strings.Split(enum_, ",") {
+			enum = append(enum, strings.TrimSpace(e))
+		}
 	}
 
 	// Return success

@@ -48,8 +48,6 @@ func (r Response) String() string {
 
 type reqMessages struct {
 	Model         string         `json:"model"`
-	Messages      []*MessageMeta `json:"messages"`
-	Tools         []llm.Tool     `json:"tools,omitempty"`
 	MaxTokens     uint           `json:"max_tokens,omitempty"`
 	Metadata      *optmetadata   `json:"metadata,omitempty"`
 	StopSequences []string       `json:"stop_sequences,omitempty"`
@@ -58,6 +56,8 @@ type reqMessages struct {
 	Temperature   float64        `json:"temperature,omitempty"`
 	TopK          uint64         `json:"top_k,omitempty"`
 	TopP          float64        `json:"top_p,omitempty"`
+	Messages      []*MessageMeta `json:"messages"`
+	Tools         []llm.Tool     `json:"tools,omitempty"`
 }
 
 func (anthropic *Client) Messages(ctx context.Context, context llm.Context, opts ...llm.Opt) (*Response, error) {
@@ -231,11 +231,7 @@ func (response Response) Role() string {
 }
 
 func (response Response) Text() string {
-	data, err := json.MarshalIndent(response.MessageMeta.Content, "", "  ")
-	if err != nil {
-		return err.Error()
-	}
-	return string(data)
+	return response.MessageMeta.Text()
 }
 
 func (response Response) ToolCalls() []llm.ToolCall {

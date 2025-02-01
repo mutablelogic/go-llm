@@ -40,7 +40,9 @@ func (cmd *ChatCmd) Run(globals *Globals) error {
 		opts := []llm.Opt{}
 		if !cmd.NoStream {
 			opts = append(opts, llm.WithStream(func(cc llm.ContextContent) {
-				fmt.Println("STREAM", cc)
+				if text := cc.Text(); text != "" {
+					fmt.Println(text)
+				}
 			}))
 		}
 		if cmd.System != "" {
@@ -80,13 +82,13 @@ func (cmd *ChatCmd) Run(globals *Globals) error {
 					break
 				}
 				if session.Text() != "" {
-					fmt.Println("Calling", session.Text())
+					globals.term.Println(session.Text())
 				} else {
 					var names []string
 					for _, call := range calls {
 						names = append(names, call.Name())
 					}
-					fmt.Println("Calling", strings.Join(names, ", "))
+					globals.term.Println("Calling", strings.Join(names, ", "))
 				}
 				if results, err := globals.toolkit.Run(ctx, calls...); err != nil {
 					return err
@@ -96,7 +98,7 @@ func (cmd *ChatCmd) Run(globals *Globals) error {
 			}
 
 			// Print the response
-			fmt.Println("SESSION", session.Text())
+			globals.term.Println("\n" + session.Text() + "\n")
 		}
 	})
 }

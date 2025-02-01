@@ -54,7 +54,6 @@ type reqChat struct {
 	Format    string                 `json:"format,omitempty"`
 	Options   map[string]interface{} `json:"options,omitempty"`
 	Stream    bool                   `json:"stream"`
-	System    string                 `json:"system,omitempty"`
 	KeepAlive *time.Duration         `json:"keep_alive,omitempty"`
 }
 

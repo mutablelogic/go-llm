@@ -82,11 +82,7 @@ func (session *session) Text() string {
 		return ""
 	}
 	meta := session.seq[len(session.seq)-1]
-	data, err := json.MarshalIndent(meta.Content, "", "  ")
-	if err != nil {
-		return err.Error()
-	}
-	return string(data)
+	return meta.Text()
 }
 
 // Return the current session tool calls, or empty if no tool calls were made

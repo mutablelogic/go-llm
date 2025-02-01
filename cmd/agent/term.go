@@ -1,11 +1,14 @@
 package main
 
 import (
+	"fmt"
 	"io"
 	"os"
 
 	// Packages
-	"golang.org/x/term"
+	format "github.com/MichaelMure/go-term-text"
+	color "github.com/fatih/color"
+	term "golang.org/x/term"
 )
 
 type Term struct {
@@ -41,6 +44,15 @@ func (t *Term) Size() (int, int) {
 	return 0, 0
 }
 
+func (t *Term) Println(v ...any) {
+	text := fmt.Sprint(v...)
+	w, _ := t.Size()
+	if w > 0 {
+		text, _ = format.Wrap(text, w)
+	}
+	fmt.Fprintln(os.Stdout, text)
+}
+
 func (t *Term) ReadLine(prompt string) (string, error) {
 	// Set terminal raw mode
 	if t.Terminal != nil {
@@ -51,8 +63,9 @@ func (t *Term) ReadLine(prompt string) (string, error) {
 		defer term.Restore(t.fd, state)
 	}
 
-	// Set the prompt
+	// Set the prompt with color
 	if t.Terminal != nil {
+		prompt = color.New(color.Bold).Sprint(prompt)
 		t.Terminal.SetPrompt(prompt)
 	}
 

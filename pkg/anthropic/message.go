@@ -22,7 +22,7 @@ type Content struct {
 	Type string `json:"type"` // image, document, text, tool_use
 	ContentText
 	ContentAttachment
-	ContentTool
+	*ContentTool
 	ContentToolResult
 	CacheControl *cachecontrol `json:"cache_control,omitempty"` // ephemeral
 }
@@ -34,7 +34,7 @@ type ContentText struct {
 type ContentTool struct {
 	Id        string         `json:"id,omitempty"`           // tool id
 	Name      string         `json:"name,omitempty"`         // tool name
-	Input     map[string]any `json:"input,omitempty"`        // tool input
+	Input     map[string]any `json:"input"`                  // tool input
 	InputJson string         `json:"partial_json,omitempty"` // partial json input (for streaming)
 }
 
@@ -102,6 +102,22 @@ func (m MessageMeta) String() string {
 		return err.Error()
 	}
 	return string(data)
+}
+
+///////////////////////////////////////////////////////////////////////////////
+// PRIVATE METHODS
+
+func (m MessageMeta) Text() string {
+	if len(m.Content) == 0 {
+		return ""
+	}
+	var text []string
+	for _, content := range m.Content {
+		if content.Type == "text" {
+			text = append(text, content.ContentText.Text)
+		}
+	}
+	return strings.Join(text, "\n")
 }
 
 ///////////////////////////////////////////////////////////////////////////////
