@@ -1,7 +1,6 @@
 package mistral
 
 import (
-	"bytes"
 	"encoding/json"
 )
 
@@ -14,7 +13,7 @@ type ToolCall struct {
 	Function struct {
 		Name      string `json:"name,omitempty"`      // tool name
 		Arguments string `json:"arguments,omitempty"` // tool arguments
-	}
+	} `json:"function"`
 }
 
 type toolcall struct {
@@ -34,23 +33,4 @@ func (t toolcall) String() string {
 		return err.Error()
 	}
 	return string(data)
-}
-
-///////////////////////////////////////////////////////////////////////////////
-// PUBLIC METHODS - TOOL CALL
-
-func (t toolcall) Id() string {
-	return t.meta.Id
-}
-
-// The tool name
-func (t toolcall) Name() string {
-	return t.meta.Function.Name
-}
-
-// Decode the calling parameters
-func (t toolcall) Decode(v any) error {
-	var buf bytes.Buffer
-	buf.WriteString(t.meta.Function.Arguments)
-	return json.NewDecoder(&buf).Decode(v)
 }

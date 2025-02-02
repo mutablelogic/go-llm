@@ -12,6 +12,7 @@ import (
 // TYPES
 
 type model struct {
+	*Client
 	meta Model
 }
 
@@ -65,7 +66,7 @@ func (c *Client) ListModels(ctx context.Context) ([]llm.Model, error) {
 	//  Make models
 	result := make([]llm.Model, 0, len(response.Data))
 	for _, meta := range response.Data {
-		result = append(result, &model{meta: meta})
+		result = append(result, &model{c, meta})
 	}
 
 	// Return models

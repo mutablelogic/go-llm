@@ -2,7 +2,7 @@ package mistral_test
 
 import (
 	"context"
-	"errors"
+	"fmt"
 	"os"
 	"strings"
 	"testing"
@@ -243,6 +243,6 @@ func (weather) Description() string {
 	return "Get the weather for a city"
 }
 
-func (weather) Run(ctx context.Context) (any, error) {
-	return nil, errors.New("I couldn't retrieve the weather for that city")
+func (w weather) Run(ctx context.Context) (any, error) {
+	return fmt.Sprintf("The weather in %q is sunny and warm", w.City), nil
 }

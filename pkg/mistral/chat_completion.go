@@ -78,11 +78,8 @@ func (mistral *Client) ChatCompletion(ctx context.Context, context llm.Context, 
 	}
 
 	// Always append the first message of each completion
-	for _, completion := range context.(*session).seq {
-		if completion.Num() == 0 {
-			continue
-		}
-		messages = append(messages, completion.Message(0))
+	for _, message := range context.(*session).seq {
+		messages = append(messages, message)
 	}
 
 	// Request
@@ -179,8 +176,10 @@ func appendCompletion(response *Response, c *Completion) {
 		response.Completions = append(response.Completions, Completion{
 			Index: c.Index,
 			Message: &Message{
-				Role:    c.Delta.Role,
-				Content: "",
+				RoleContent: RoleContent{
+					Role:    c.Delta.Role(),
+					Content: "",
+				},
 			},
 		})
 	}
@@ -188,8 +187,8 @@ func appendCompletion(response *Response, c *Completion) {
 	if c.Reason != "" {
 		response.Completions[c.Index].Reason = c.Reason
 	}
-	if c.Delta.Role != "" {
-		response.Completions[c.Index].Message.Role = c.Delta.Role
+	if role := c.Delta.Role(); role != "" {
+		response.Completions[c.Index].Message.RoleContent.Role = role
 	}
 
 	// TODO: We only allow deltas which are strings at the moment...
