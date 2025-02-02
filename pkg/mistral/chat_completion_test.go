@@ -128,7 +128,7 @@ func Test_chat_002(t *testing.T) {
 		}
 	})
 	t.Run("PresencePenalty", func(t *testing.T) {
-		r, err := client.ChatCompletion(context.TODO(), model.UserPrompt("What is the temperature in London?"), mistral.WithPresencePenalty(-2))
+		r, err := client.ChatCompletion(context.TODO(), model.UserPrompt("What is the temperature in London?"), llm.WithPresencePenalty(-2))
 		if assert.NoError(err) {
 			assert.Equal("assistant", r.Role())
 			assert.Equal(1, r.Num())
@@ -137,7 +137,7 @@ func Test_chat_002(t *testing.T) {
 		}
 	})
 	t.Run("FrequencyPenalty", func(t *testing.T) {
-		r, err := client.ChatCompletion(context.TODO(), model.UserPrompt("What is the temperature in London?"), mistral.WithFrequencyPenalty(-2))
+		r, err := client.ChatCompletion(context.TODO(), model.UserPrompt("What is the temperature in London?"), llm.WithFrequencyPenalty(-2))
 		if assert.NoError(err) {
 			assert.Equal("assistant", r.Role())
 			assert.Equal(1, r.Num())
