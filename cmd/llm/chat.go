@@ -42,8 +42,9 @@ func (cmd *ChatCmd) Run(globals *Globals) error {
 		if !cmd.NoStream {
 			opts = append(opts, llm.WithStream(func(cc llm.Completion) {
 				if text := cc.Text(0); text != "" {
-					text = strings.ReplaceAll(text, "\n", " ")
-					fmt.Print("\r" + text)
+					count := strings.Count(text, "\n")
+					fmt.Print(strings.Repeat("\033[F", count) + strings.Repeat(" ", count) + "\r")
+					fmt.Print(text)
 				}
 			}))
 		}
