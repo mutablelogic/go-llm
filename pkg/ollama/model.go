@@ -16,7 +16,7 @@ import (
 
 // model is the implementation of the llm.Model interface
 type model struct {
-	client *Client
+	*Client
 	ModelMeta
 }
 
@@ -103,7 +103,7 @@ func (ollama *Client) Model(ctx context.Context, name string) llm.Model {
 // List models
 func (ollama *Client) ListModels(ctx context.Context) ([]llm.Model, error) {
 	type respListModel struct {
-		Models []*model `json:"models"`
+		Models []ModelMeta `json:"models"`
 	}
 
 	// Send the request
@@ -114,9 +114,8 @@ func (ollama *Client) ListModels(ctx context.Context) ([]llm.Model, error) {
 
 	// Convert to llm.Model
 	result := make([]llm.Model, 0, len(response.Models))
-	for _, model := range response.Models {
-		model.client = ollama
-		result = append(result, model)
+	for _, meta := range response.Models {
+		result = append(result, &model{ollama, meta})
 	}
 
 	// Return models
@@ -126,7 +125,7 @@ func (ollama *Client) ListModels(ctx context.Context) ([]llm.Model, error) {
 // List running models
 func (ollama *Client) ListRunningModels(ctx context.Context) ([]llm.Model, error) {
 	type respListModel struct {
-		Models []*model `json:"models"`
+		Models []ModelMeta `json:"models"`
 	}
 
 	// Send the request
@@ -137,9 +136,8 @@ func (ollama *Client) ListRunningModels(ctx context.Context) ([]llm.Model, error
 
 	// Convert to llm.Model
 	result := make([]llm.Model, 0, len(response.Models))
-	for _, model := range response.Models {
-		model.client = ollama
-		result = append(result, model)
+	for _, meta := range response.Models {
+		result = append(result, &model{ollama, meta})
 	}
 
 	// Return models
@@ -161,16 +159,13 @@ func (ollama *Client) GetModel(ctx context.Context, name string) (llm.Model, err
 	}
 
 	// Response
-	var response model
+	var response ModelMeta
 	if err := ollama.DoWithContext(ctx, req, &response, client.OptPath("show")); err != nil {
 		return nil, err
-	} else {
-		response.client = ollama
-		response.ModelMeta.Name = name
 	}
 
 	// Return success
-	return &response, nil
+	return &model{ollama, response}, nil
 }
 
 // Copy a local model by name
@@ -250,4 +245,47 @@ func (ollama *Client) PullModel(ctx context.Context, name string, opts ...llm.Op
 
 	// Return success
 	return ollama.GetModel(ctx, name)
+}
+
+// Load a model into memory
+func (ollama *Client) LoadModel(ctx context.Context, name string) (llm.Model, error) {
+	type reqLoadModel struct {
+		Model string `json:"model"`
+	}
+
+	// Request
+	req, err := client.NewJSONRequest(reqLoadModel{
+		Model: name,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	// Response
+	if err := ollama.DoWithContext(ctx, req, nil, client.OptPath("generate")); err != nil {
+		return nil, err
+	}
+
+	// Return success
+	return ollama.GetModel(ctx, name)
+}
+
+// Unload a model from memory
+func (ollama *Client) UnloadModel(ctx context.Context, name string) error {
+	type reqLoadModel struct {
+		Model     string `json:"model"`
+		KeepAlive uint   `json:"keepalive"`
+	}
+
+	// Request
+	req, err := client.NewJSONRequest(reqLoadModel{
+		Model:     name,
+		KeepAlive: 0,
+	})
+	if err != nil {
+		return err
+	}
+
+	// Response
+	return ollama.DoWithContext(ctx, req, nil, client.OptPath("generate"))
 }

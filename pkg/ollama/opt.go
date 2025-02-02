@@ -79,24 +79,12 @@ func optPullStatus(opts *llm.Opts) func(*PullStatus) {
 	return nil
 }
 
-func optSystemPrompt(opts *llm.Opts) string {
-	return opts.SystemPrompt()
-}
-
-func optTools(agent *Client, opts *llm.Opts) []ToolFunction {
+func optTools(agent *Client, opts *llm.Opts) []llm.Tool {
 	toolkit := opts.ToolKit()
 	if toolkit == nil {
 		return nil
 	}
-	tools := toolkit.Tools(agent)
-	result := make([]ToolFunction, 0, len(tools))
-	for _, tool := range tools {
-		result = append(result, ToolFunction{
-			Type:     "function",
-			Function: tool,
-		})
-	}
-	return result
+	return toolkit.Tools(agent)
 }
 
 func optFormat(opts *llm.Opts) string {

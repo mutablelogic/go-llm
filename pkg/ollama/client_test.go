@@ -1,7 +1,10 @@
 package ollama_test
 
 import (
+	"flag"
+	"log"
 	"os"
+	"strconv"
 	"testing"
 
 	// Packages
@@ -10,23 +13,46 @@ import (
 	assert "github.com/stretchr/testify/assert"
 )
 
-func Test_client_001(t *testing.T) {
-	assert := assert.New(t)
-	client, err := ollama.New(GetEndpoint(t), opts.OptTrace(os.Stderr, true))
-	if assert.NoError(err) {
-		assert.NotNil(client)
-		t.Log(client)
+///////////////////////////////////////////////////////////////////////////////
+// TEST SET-UP
+
+var (
+	client *ollama.Client
+)
+
+func TestMain(m *testing.M) {
+	var verbose bool
+
+	// Verbose output
+	flag.Parse()
+	if f := flag.Lookup("test.v"); f != nil {
+		if v, err := strconv.ParseBool(f.Value.String()); err == nil {
+			verbose = v
+		}
 	}
+
+	// Endpoint
+	endpoint_url := os.Getenv("OLLAMA_URL")
+	if endpoint_url == "" {
+		log.Print("OLLAMA_URL not set")
+		os.Exit(0)
+	}
+
+	// Create client
+	var err error
+	client, err = ollama.New(endpoint_url, opts.OptTrace(os.Stderr, verbose))
+	if err != nil {
+		log.Println(err)
+		os.Exit(-1)
+	}
+	os.Exit(m.Run())
 }
 
 ///////////////////////////////////////////////////////////////////////////////
-// ENVIRONMENT
+// TESTS
 
-func GetEndpoint(t *testing.T) string {
-	key := os.Getenv("OLLAMA_URL")
-	if key == "" {
-		t.Skip("OLLAMA_URL not set, skipping tests")
-		t.SkipNow()
-	}
-	return key
+func Test_client_001(t *testing.T) {
+	assert := assert.New(t)
+	assert.NotNil(client)
+	t.Log(client)
 }

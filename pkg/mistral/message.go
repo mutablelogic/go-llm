@@ -3,6 +3,7 @@ package mistral
 import (
 	"encoding/json"
 
+	// Packages
 	"github.com/mutablelogic/go-llm"
 	"github.com/mutablelogic/go-llm/pkg/tool"
 )
@@ -23,12 +24,10 @@ type Message struct {
 
 type RoleContent struct {
 	Role    string `json:"role,omitempty"`         // assistant, user, tool, system
+	Content any    `json:"content,omitempty"`      // string or array of text, reference, image_url
 	Id      string `json:"tool_call_id,omitempty"` // tool call - when role is tool
 	Name    string `json:"name,omitempty"`         // function name - when role is tool
-	Content any    `json:"content,omitempty"`      // string or array of text, reference, image_url
 }
-
-var _ llm.Completion = (*Message)(nil)
 
 // Completion Variation
 type Completion struct {
@@ -37,6 +36,8 @@ type Completion struct {
 	Delta   *Message `json:"delta,omitempty"` // For streaming
 	Reason  string   `json:"finish_reason,omitempty"`
 }
+
+var _ llm.Completion = (*Message)(nil)
 
 type Content struct {
 	Type        string                       `json:"type,omitempty"` // text, reference, image_url
