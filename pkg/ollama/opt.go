@@ -91,6 +91,15 @@ func optFormat(opts *llm.Opts) string {
 	return opts.GetString("format")
 }
 
+func optStopSequence(opts *llm.Opts) []string {
+	if opts.Has("stop") {
+		if stop, ok := opts.Get("stop").([]string); ok {
+			return stop
+		}
+	}
+	return nil
+}
+
 func optOptions(opts *llm.Opts) map[string]any {
 	result := make(map[string]any)
 	if o, ok := opts.Get("options").(map[string]any); ok {
@@ -101,13 +110,25 @@ func optOptions(opts *llm.Opts) map[string]any {
 
 	// copy across temperature, top_p and top_k
 	if opts.Has("temperature") {
-		result["temperature"] = opts.Get("temperature")
+		result["temperature"] = opts.Get("temperature").(float64)
 	}
 	if opts.Has("top_p") {
-		result["top_p"] = opts.Get("top_p")
+		result["top_p"] = opts.GetFloat64("top_p")
 	}
 	if opts.Has("top_k") {
-		result["top_k"] = opts.Get("top_k")
+		result["top_k"] = opts.GetUint64("top_k")
+	}
+	if opts.Has("stop") {
+		result["stop"] = opts.Get("stop").([]string)
+	}
+	if opts.Has("seed") {
+		result["seed"] = opts.GetUint64("seed")
+	}
+	if opts.Has("presence_penalty") {
+		result["presence_penalty"] = opts.GetFloat64("presence_penalty")
+	}
+	if opts.Has("frequency_penalty") {
+		result["frequency_penalty"] = opts.GetFloat64("frequency_penalty")
 	}
 
 	// Return result

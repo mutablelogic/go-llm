@@ -68,9 +68,9 @@ func (ollama *Client) Chat(ctx context.Context, context llm.Context, opts ...llm
 
 	// Append the system prompt at the beginning
 	messages := make([]*Message, 0, len(context.(*session).seq)+1)
-	//if system := opt.SystemPrompt(); system != "" {
-	//	messages = append(messages, systemPrompt(system))
-	//}
+	if system := opt.SystemPrompt(); system != "" {
+		messages = append(messages, systemPrompt(system))
+	}
 
 	// Always append the first message of each completion
 	for _, message := range context.(*session).seq {
@@ -92,7 +92,7 @@ func (ollama *Client) Chat(ctx context.Context, context llm.Context, opts ...llm
 	}
 
 	//  Response
-	var response Response
+	var response, delta Response
 	reqopts := []client.RequestOpt{
 		client.OptPath("chat"),
 	}
@@ -111,12 +111,16 @@ func (ollama *Client) Chat(ctx context.Context, context llm.Context, opts ...llm
 	}
 
 	// Response
-	if err := ollama.DoWithContext(ctx, req, &response, reqopts...); err != nil {
+	if err := ollama.DoWithContext(ctx, req, &delta, reqopts...); err != nil {
 		return nil, err
 	}
 
 	// Return success
-	return &response, nil
+	if optStream(ollama, opt) {
+		return &response, nil
+	} else {
+		return &delta, nil
+	}
 }
 
 ///////////////////////////////////////////////////////////////////////////////

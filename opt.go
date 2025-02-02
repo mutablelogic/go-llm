@@ -271,6 +271,26 @@ func WithTopK(v uint64) Opt {
 	}
 }
 
+func WithPresencePenalty(v float64) Opt {
+	return func(o *Opts) error {
+		if v < -2 || v > 2 {
+			return ErrBadParameter.With("presence_penalty")
+		}
+		o.Set("presence_penalty", v)
+		return nil
+	}
+}
+
+func WithFrequencyPenalty(v float64) Opt {
+	return func(o *Opts) error {
+		if v < -2 || v > 2 {
+			return ErrBadParameter.With("frequency_penalty")
+		}
+		o.Set("frequency_penalty", v)
+		return nil
+	}
+}
+
 // The maximum number of tokens to generate in the completion.
 func WithMaxTokens(v uint64) Opt {
 	return func(o *Opts) error {

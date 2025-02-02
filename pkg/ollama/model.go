@@ -162,6 +162,8 @@ func (ollama *Client) GetModel(ctx context.Context, name string) (llm.Model, err
 	var response ModelMeta
 	if err := ollama.DoWithContext(ctx, req, &response, client.OptPath("show")); err != nil {
 		return nil, err
+	} else {
+		response.Name = name
 	}
 
 	// Return success

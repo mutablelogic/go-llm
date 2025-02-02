@@ -202,10 +202,10 @@ The options are as follows:
 | `llm.WithToolKit(llm.ToolKit)` | Cannot be combined with streaming | Yes | Yes | - | The set of tools to use. |
 | `llm.WithStopSequence(string, string, ...)` | Yes | Yes | Yes | - | Stop generation if one of these tokens is detected. |
 | `llm.WithSystemPrompt(string)` | No | Yes | Yes | - | Set the system prompt for the model. |
-| `llm.WithSeed(uint64)` | No | Yes | Yes | - | The seed to use for random sampling. If set, different calls will generate deterministic results. |
-| `llm.WithFormat(string)` | No | Yes | Use `json_format` or `text` | - | The format of the response. For Mistral, you must also instruct the model to produce JSON yourself with a system or a user message. |
-| `mistral.WithPresencePenalty(float64)` | No | No | Yes | - | Determines how much the model penalizes the repetition of words or phrases. A higher presence penalty encourages the model to use a wider variety of words and phrases, making the output more diverse and creative. |
-| `mistral.WithFequencyPenalty(float64)` | No | No | Yes | - | Penalizes the repetition of words based on their frequency in the generated text. A higher frequency penalty discourages the model from repeating words that have already appeared frequently in the output, promoting diversity and reducing repetition. |
+| `llm.WithSeed(uint64)` | Yes | Yes | Yes | - | The seed to use for random sampling. If set, different calls will generate deterministic results. |
+| `llm.WithFormat(string)` | Use `json` | Yes | Use `json_format` or `text` | - | The format of the response. For Mistral, you must also instruct the model to produce JSON yourself with a system or a user message. |
+| `llm.WithPresencePenalty(float64)` | Yes | No | Yes | - | Determines how much the model penalizes the repetition of words or phrases. A higher presence penalty encourages the model to use a wider variety of words and phrases, making the output more diverse and creative. |
+| `llm.WithFequencyPenalty(float64)` | Yes | No | Yes | - | Penalizes the repetition of words based on their frequency in the generated text. A higher frequency penalty discourages the model from repeating words that have already appeared frequently in the output, promoting diversity and reducing repetition. |
 | `mistral.WithPrediction(string)` | No | No | Yes | - | Enable users to specify expected results, optimizing response times by leveraging known or predictable content. This approach is especially effective for updating text documents or code files with minimal changes, reducing latency while maintaining high-quality results. |
 | `llm.WithSafePrompt()` | No | No | Yes | - | Whether to inject a safety prompt before all conversations. |
 | `llm.WithNumCompletions(uint64)` | No | No | Yes | - | Number of completions to return for each request. |

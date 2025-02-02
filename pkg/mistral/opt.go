@@ -9,26 +9,6 @@ import (
 ///////////////////////////////////////////////////////////////////////////////
 // PUBLIC METHODS
 
-func WithPresencePenalty(v float64) llm.Opt {
-	return func(o *llm.Opts) error {
-		if v < -2 || v > 2 {
-			return llm.ErrBadParameter.With("presence_penalty")
-		}
-		o.Set("presence_penalty", v)
-		return nil
-	}
-}
-
-func WithFrequencyPenalty(v float64) llm.Opt {
-	return func(o *llm.Opts) error {
-		if v < -2 || v > 2 {
-			return llm.ErrBadParameter.With("frequency_penalty")
-		}
-		o.Set("frequency_penalty", v)
-		return nil
-	}
-}
-
 func WithPrediction(v string) llm.Opt {
 	return func(o *llm.Opts) error {
 		o.Set("prediction", v)
