@@ -196,7 +196,7 @@ The options are as follows:
 | `llm.WithTemperature(float64)` | Yes | Yes | Yes | - | What sampling temperature to use, between 0.0 and 1.0. Higher values like 0.7 will make the output more random, while lower values like 0.2 will make it more focused and deterministic. |
 | `llm.WithTopP(float64)` | Yes | Yes | Yes | - | Nucleus sampling, where the model considers the results of the tokens with top_p probability mass. So 0.1 means only the tokens comprising the top 10% probability mass are considered. |
 | `llm.WithTopK(uint64)` | Yes | Yes | No | - | Reduces the probability of generating nonsense. A higher value (e.g. 100) will give more diverse answers, while a lower value (e.g. 10) will be more conservative. |
-| `llm.WithMaxTokens(uint64)` | - | Yes | Yes | - | The maximum number of tokens to generate in the response. |
+| `llm.WithMaxTokens(uint64)` | No | Yes | Yes | - | The maximum number of tokens to generate in the response. |
 | `llm.WithStream(func(llm.Completion))` | Can be enabled when tools are not used | Yes | Yes | - | Stream the response to a function. |
 | `llm.WithToolChoice(string, string, ...)` | No | Yes | Use `auto`, `any`, `none`, `required` or a function name. Only the first argument is used. | - | The tool to use for the model. |
 | `llm.WithToolKit(llm.ToolKit)` | Cannot be combined with streaming | Yes | Yes | - | The set of tools to use. |
