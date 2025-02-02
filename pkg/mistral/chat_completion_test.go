@@ -8,7 +8,7 @@ import (
 	"testing"
 
 	// Packages
-	opts "github.com/mutablelogic/go-client"
+
 	"github.com/mutablelogic/go-llm"
 	mistral "github.com/mutablelogic/go-llm/pkg/mistral"
 	"github.com/mutablelogic/go-llm/pkg/tool"
@@ -17,11 +17,8 @@ import (
 
 func Test_chat_001(t *testing.T) {
 	assert := assert.New(t)
-
-	client, err := mistral.New(GetApiKey(t), opts.OptTrace(os.Stderr, true))
-	assert.NoError(err)
-
 	model := client.Model(context.TODO(), "mistral-small-latest")
+
 	if assert.NotNil(model) {
 		response, err := client.ChatCompletion(context.TODO(), model.UserPrompt("Hello, how are you?"))
 		assert.NoError(err)
@@ -32,8 +29,6 @@ func Test_chat_001(t *testing.T) {
 
 func Test_chat_002(t *testing.T) {
 	assert := assert.New(t)
-	client, err := mistral.New(GetApiKey(t), opts.OptTrace(os.Stderr, true))
-	assert.NoError(err)
 	model := client.Model(context.TODO(), "mistral-large-latest")
 	if !assert.NotNil(model) {
 		t.FailNow()
@@ -181,8 +176,6 @@ func Test_chat_002(t *testing.T) {
 
 func Test_chat_003(t *testing.T) {
 	assert := assert.New(t)
-	client, err := mistral.New(GetApiKey(t), opts.OptTrace(os.Stderr, true))
-	assert.NoError(err)
 	model := client.Model(context.TODO(), "pixtral-12b-2409")
 	if !assert.NotNil(model) {
 		t.FailNow()
@@ -206,8 +199,6 @@ func Test_chat_003(t *testing.T) {
 
 func Test_chat_004(t *testing.T) {
 	assert := assert.New(t)
-	client, err := mistral.New(GetApiKey(t), opts.OptTrace(os.Stderr, true))
-	assert.NoError(err)
 	model := client.Model(context.TODO(), "mistral-small-latest")
 	if !assert.NotNil(model) {
 		t.FailNow()

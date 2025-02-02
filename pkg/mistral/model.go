@@ -80,8 +80,3 @@ func (c *Client) ListModels(ctx context.Context) ([]llm.Model, error) {
 func (m model) Name() string {
 	return m.meta.Name
 }
-
-// Embedding vector generation
-func (m model) Embedding(context.Context, string, ...llm.Opt) ([]float64, error) {
-	return nil, llm.ErrNotImplemented
-}

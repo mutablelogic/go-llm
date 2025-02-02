@@ -1,7 +1,10 @@
 package mistral_test
 
 import (
+	"flag"
+	"log"
 	"os"
+	"strconv"
 	"testing"
 
 	// Packages
@@ -10,22 +13,46 @@ import (
 	assert "github.com/stretchr/testify/assert"
 )
 
-func Test_client_001(t *testing.T) {
-	assert := assert.New(t)
-	client, err := mistral.New(GetApiKey(t), opts.OptTrace(os.Stderr, true))
-	assert.NoError(err)
-	assert.NotNil(client)
-	t.Log(client)
+///////////////////////////////////////////////////////////////////////////////
+// TEST SET-UP
+
+var (
+	client *mistral.Client
+)
+
+func TestMain(m *testing.M) {
+	var verbose bool
+
+	// Verbose output
+	flag.Parse()
+	if f := flag.Lookup("test.v"); f != nil {
+		if v, err := strconv.ParseBool(f.Value.String()); err == nil {
+			verbose = v
+		}
+	}
+
+	// API KEY
+	api_key := os.Getenv("MISTRAL_API_KEY")
+	if api_key == "" {
+		log.Print("MISTRAL_API_KEY not set")
+		os.Exit(0)
+	}
+
+	// Create client
+	var err error
+	client, err = mistral.New(api_key, opts.OptTrace(os.Stderr, verbose))
+	if err != nil {
+		log.Println(err)
+		os.Exit(-1)
+	}
+	os.Exit(m.Run())
 }
 
 ///////////////////////////////////////////////////////////////////////////////
-// ENVIRONMENT
+// TESTS
 
-func GetApiKey(t *testing.T) string {
-	key := os.Getenv("MISTRAL_API_KEY")
-	if key == "" {
-		t.Skip("MISTRAL_API_KEY not set")
-		t.SkipNow()
-	}
-	return key
+func Test_client_001(t *testing.T) {
+	assert := assert.New(t)
+	assert.NotNil(client)
+	t.Log(client)
 }
