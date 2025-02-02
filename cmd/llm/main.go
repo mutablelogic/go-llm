@@ -12,8 +12,8 @@ import (
 	client "github.com/mutablelogic/go-client"
 	llm "github.com/mutablelogic/go-llm"
 	agent "github.com/mutablelogic/go-llm/pkg/agent"
-	"github.com/mutablelogic/go-llm/pkg/newsapi"
-	"github.com/mutablelogic/go-llm/pkg/tool"
+	newsapi "github.com/mutablelogic/go-llm/pkg/newsapi"
+	tool "github.com/mutablelogic/go-llm/pkg/tool"
 )
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -107,9 +107,11 @@ func main() {
 	if cli.OllamaEndpoint != "" {
 		opts = append(opts, agent.WithOllama(cli.OllamaEndpoint, clientopts...))
 	}
-	if cli.AnthropicKey != "" {
-		opts = append(opts, agent.WithAnthropic(cli.AnthropicKey, clientopts...))
-	}
+	/*
+		if cli.AnthropicKey != "" {
+			opts = append(opts, agent.WithAnthropic(cli.AnthropicKey, clientopts...))
+		}
+	*/
 	if cli.MistralKey != "" {
 		opts = append(opts, agent.WithMistral(cli.MistralKey, clientopts...))
 	}
