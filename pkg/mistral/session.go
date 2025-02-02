@@ -1,10 +1,10 @@
 package mistral
 
 import (
-	// Packages
 	"context"
 	"encoding/json"
 
+	// Packages
 	llm "github.com/mutablelogic/go-llm"
 )
 
@@ -12,9 +12,9 @@ import (
 // TYPES
 
 type session struct {
-	model *model         // The model used for the session
-	opts  []llm.Opt      // Options to apply to the session
-	seq   []*MessageMeta // Sequence of messages
+	model *model // The model used for the session
+	opts  []llm.Opt // Options to apply to the session
+	seq   []*Message // Sequence of messages
 }
 
 var _ llm.Context = (*session)(nil)
@@ -67,6 +67,16 @@ func (session session) String() string {
 //////////////////////////////////////////////////////////////////
 // PUBLIC METHODS
 
+// Return the number of completions
+func (session *session) Num() int {
+	if len(session.seq) == 0 {
+		return 0
+	}
+	message := session.seq[len(session.seq)-1]
+	message.
+	return session.seq[len(session.seq)-1].Role
+}
+
 // Return the role of the last message
 func (session *session) Role() string {
 	if len(session.seq) == 0 {
@@ -76,7 +86,7 @@ func (session *session) Role() string {
 }
 
 // Return the text of the last message
-func (session *session) Text() string {
+func (session *session) Text(index int) string {
 	if len(session.seq) == 0 {
 		return ""
 	}
@@ -85,7 +95,7 @@ func (session *session) Text() string {
 }
 
 // Return the text of the last message
-func (session *session) ToolCalls() []llm.ToolCall {
+func (session *session) ToolCalls(index int) []llm.ToolCall {
 	return nil
 }
 

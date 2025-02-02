@@ -21,13 +21,6 @@ type Response struct {
 	Metrics `json:"usage,omitempty"`
 }
 
-// Response variation
-type Choice struct {
-	Index   uint64      `json:"index"`
-	Message MessageMeta `json:"message"`
-	Reason  string      `json:"finish_reason,omitempty"`
-}
-
 // Metrics
 type Metrics struct {
 	InputTokens  uint64 `json:"prompt_tokens,omitempty"`

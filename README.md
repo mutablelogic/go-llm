@@ -72,7 +72,7 @@ func main() {
 }
 ```
 
-For Mistral models, you can use:
+For [Mistral](https://pkg.go.dev/github.com/mutablelogic/go-llm/pkg/mistral) models, you can use:
 
 ```go
 import (
@@ -89,6 +89,9 @@ func main() {
 }
 ```
 
+You can append options to the agent creation to set the client/server communication options,
+such as user agent strings, timeouts, debugging, rate limiting, adding custom headers, etc. See [here](https://pkg.go.dev/github.com/mutablelogic/go-client#readme-basic-usage) for more information.
+
 ### Chat Sessions
 
 You create a **chat session** with a model as follows,
@@ -100,7 +103,7 @@ import (
 
 func session(ctx context.Context, agent llm.Agent) error {
   // Create a new chat session
-  session := agent.Model("claude-3-5-haiku-20241022").Context()
+  session := agent.Model(context.TODO(), "claude-3-5-haiku-20241022").Context()
 
   // Repeat forever
   for {
@@ -109,11 +112,27 @@ func session(ctx context.Context, agent llm.Agent) error {
       return err
     }
 
-    // Print the response
-    fmt.Println(session.Text())
+    // Print the response for the zero'th completion
+    fmt.Println(session.Text(0))
   }
 }
 ```
+
+### Embedding Generation
+
+TODO
+
+### Attachments & Image Caption Generation
+
+TODO
+
+### Streaming
+
+TODO
+
+### Tool Support
+
+TODO
 
 ## Options
 
