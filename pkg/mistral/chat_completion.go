@@ -3,6 +3,7 @@ package mistral
 import (
 	"context"
 	"encoding/json"
+	"strings"
 
 	"github.com/mutablelogic/go-client"
 	"github.com/mutablelogic/go-llm"
@@ -13,12 +14,12 @@ import (
 
 // Chat Completion Response
 type Response struct {
-	Id      string   `json:"id"`
-	Type    string   `json:"object"`
-	Created uint64   `json:"created"`
-	Model   string   `json:"model"`
-	Choices []Choice `json:"choices"`
-	Metrics `json:"usage,omitempty"`
+	Id          string `json:"id"`
+	Type        string `json:"object"`
+	Created     uint64 `json:"created"`
+	Model       string `json:"model"`
+	Completions `json:"choices"`
+	Metrics     `json:"usage,omitempty"`
 }
 
 // Metrics
@@ -27,6 +28,8 @@ type Metrics struct {
 	OutputTokens uint   `json:"completion_tokens,omitempty"`
 	TotalTokens  uint   `json:"total_tokens,omitempty"`
 }
+
+var _ llm.Completion = (*Response)(nil)
 
 ///////////////////////////////////////////////////////////////////////////////
 // STRINGIFY
@@ -43,22 +46,22 @@ func (r Response) String() string {
 // PUBLIC METHODS
 
 type reqChatCompletion struct {
-	Model            string         `json:"model"`
-	Temperature      float64        `json:"temperature,omitempty"`
-	TopP             float64        `json:"top_p,omitempty"`
-	MaxTokens        uint64         `json:"max_tokens,omitempty"`
-	Stream           bool           `json:"stream,omitempty"`
-	StopSequences    []string       `json:"stop,omitempty"`
-	Seed             uint64         `json:"random_seed,omitempty"`
-	Messages         []*MessageMeta `json:"messages"`
-	Format           any            `json:"response_format,omitempty"`
-	Tools            []llm.Tool     `json:"tools,omitempty"`
-	ToolChoice       any            `json:"tool_choice,omitempty"`
-	PresencePenalty  float64        `json:"presence_penalty,omitempty"`
-	FrequencyPenalty float64        `json:"frequency_penalty,omitempty"`
-	NumChoices       uint64         `json:"n,omitempty"`
-	Prediction       *Content       `json:"prediction,omitempty"`
-	SafePrompt       bool           `json:"safe_prompt,omitempty"`
+	Model            string     `json:"model"`
+	Temperature      float64    `json:"temperature,omitempty"`
+	TopP             float64    `json:"top_p,omitempty"`
+	MaxTokens        uint64     `json:"max_tokens,omitempty"`
+	Stream           bool       `json:"stream,omitempty"`
+	StopSequences    []string   `json:"stop,omitempty"`
+	Seed             uint64     `json:"random_seed,omitempty"`
+	Messages         []*Message `json:"messages"`
+	Format           any        `json:"response_format,omitempty"`
+	Tools            []llm.Tool `json:"tools,omitempty"`
+	ToolChoice       any        `json:"tool_choice,omitempty"`
+	PresencePenalty  float64    `json:"presence_penalty,omitempty"`
+	FrequencyPenalty float64    `json:"frequency_penalty,omitempty"`
+	NumChoices       uint64     `json:"n,omitempty"`
+	Prediction       *Content   `json:"prediction,omitempty"`
+	SafePrompt       bool       `json:"safe_prompt,omitempty"`
 }
 
 func (mistral *Client) ChatCompletion(ctx context.Context, context llm.Context, opts ...llm.Opt) (*Response, error) {
@@ -69,11 +72,18 @@ func (mistral *Client) ChatCompletion(ctx context.Context, context llm.Context, 
 	}
 
 	// Append the system prompt at the beginning
-	seq := make([]*MessageMeta, 0, len(context.(*session).seq)+1)
+	messages := make([]*Message, 0, len(context.(*session).seq)+1)
 	if system := opt.SystemPrompt(); system != "" {
-		seq = append(seq, systemPrompt(system))
+		messages = append(messages, systemPrompt(system))
 	}
-	seq = append(seq, context.(*session).seq...)
+
+	// Always append the first message of each completion
+	for _, completion := range context.(*session).seq {
+		if completion.Num() == 0 {
+			continue
+		}
+		messages = append(messages, completion.Message(0))
+	}
 
 	// Request
 	req, err := client.NewJSONRequest(reqChatCompletion{
@@ -84,7 +94,7 @@ func (mistral *Client) ChatCompletion(ctx context.Context, context llm.Context, 
 		Stream:           optStream(opt),
 		StopSequences:    optStopSequences(opt),
 		Seed:             optSeed(opt),
-		Messages:         seq,
+		Messages:         messages,
 		Format:           optFormat(opt),
 		Tools:            optTools(mistral, opt),
 		ToolChoice:       optToolChoice(opt),
@@ -98,12 +108,94 @@ func (mistral *Client) ChatCompletion(ctx context.Context, context llm.Context, 
 		return nil, err
 	}
 
-	// Response
 	var response Response
-	if err := mistral.DoWithContext(ctx, req, &response, client.OptPath("chat", "completions")); err != nil {
+	reqopts := []client.RequestOpt{
+		client.OptPath("chat", "completions"),
+	}
+	if optStream(opt) {
+		reqopts = append(reqopts, client.OptTextStreamCallback(func(evt client.TextStreamEvent) error {
+			if err := streamEvent(&response, evt); err != nil {
+				return err
+			}
+			if fn := opt.StreamFn(); fn != nil {
+				fn(&response)
+			}
+			return nil
+		}))
+	}
+
+	// Response
+	if err := mistral.DoWithContext(ctx, req, &response, reqopts...); err != nil {
 		return nil, err
 	}
 
 	// Return success
 	return &response, nil
+}
+
+///////////////////////////////////////////////////////////////////////////////
+// PRIVATE METHODS
+
+func streamEvent(response *Response, evt client.TextStreamEvent) error {
+	var delta Response
+	// If we are done, ignore
+	if strings.TrimSpace(evt.Data) == "[DONE]" {
+		return nil
+	}
+	// Decode the event
+	if err := evt.Json(&delta); err != nil {
+		return err
+	}
+	// Append the delta to the response
+	if delta.Id != "" {
+		response.Id = delta.Id
+	}
+	if delta.Created != 0 {
+		response.Created = delta.Created
+	}
+	if delta.Model != "" {
+		response.Model = delta.Model
+	}
+	for _, completion := range delta.Completions {
+		appendCompletion(response, &completion)
+	}
+	if delta.Metrics.InputTokens > 0 {
+		response.Metrics.InputTokens += delta.Metrics.InputTokens
+	}
+	if delta.Metrics.OutputTokens > 0 {
+		response.Metrics.OutputTokens += delta.Metrics.OutputTokens
+	}
+	if delta.Metrics.TotalTokens > 0 {
+		response.Metrics.TotalTokens += delta.Metrics.TotalTokens
+	}
+	return nil
+}
+
+func appendCompletion(response *Response, c *Completion) {
+	for {
+		if c.Index < uint64(len(response.Completions)) {
+			break
+		}
+		response.Completions = append(response.Completions, Completion{
+			Index: c.Index,
+			Message: &Message{
+				Role:    c.Delta.Role,
+				Content: "",
+			},
+		})
+	}
+	// Add the completion delta
+	if c.Reason != "" {
+		response.Completions[c.Index].Reason = c.Reason
+	}
+	if c.Delta.Role != "" {
+		response.Completions[c.Index].Message.Role = c.Delta.Role
+	}
+
+	// TODO: We only allow deltas which are strings at the moment...
+	if str, ok := c.Delta.Content.(string); ok && str != "" {
+		if text, ok := response.Completions[c.Index].Message.Content.(string); ok {
+			response.Completions[c.Index].Message.Content = text + str
+		}
+	}
 }

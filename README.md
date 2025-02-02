@@ -2,17 +2,20 @@
 
 Large Language Model API interface. This is a simple API interface for large language models
 which run on [Ollama](https://github.com/ollama/ollama/blob/main/docs/api.md),
-[Anthopic](https://docs.anthropic.com/en/api/getting-started) and [Mistral](https://docs.mistral.ai/).
+[Anthopic](https://docs.anthropic.com/en/api/getting-started) and [Mistral](https://docs.mistral.ai/)
+(OpenAI might be added later).
 
 The module includes the ability to utilize:
 
 * Maintaining a session of messages
-* Tool calling support
-* Creating embeddings from text
+* Tool calling support, including using your own tools (aka Tool plugins)
+* Creating embedding vectors from text
 * Streaming responses
+* Multi-modal support (aka, Images and Attachments)
 
 There is a command-line tool included in the module which can be used to interact with the API.
-For example,
+If you have docker installed, you can use the following command to run the tool, without
+installation:
 
 ```bash
 # Display help
@@ -21,12 +24,13 @@ docker run ghcr.io/mutablelogic/go-llm:latest --help
 # Interact with Claude to retrieve news headlines, assuming
 # you have an API key for Anthropic and NewsAPI
 docker run \
-  --interactive -e ANTHROPIC_API_KEY -e NEWSAPI_KEY \
+  --interactive -e MISTRAL_API_KEY -e NEWSAPI_KEY \
   ghcr.io/mutablelogic/go-llm:latest \
-  chat claude-3-5-haiku-20241022
+  chat claude-3-5-haiku-20241022 --prompt "What is the latest news?"
 ```
 
-See below for more information on how to use the command-line tool.
+See below for more information on how to use the command-line tool (or how to install it
+if you have a `go` compiler).
 
 ## Programmatic Usage
 
@@ -46,7 +50,7 @@ import (
 )
 
 func main() {
-  // Create a new agent
+  // Create a new agent - replace the URL with the one to your Ollama instance
   agent, err := ollama.New("https://ollama.com/api/v1/")
   if err != nil {
     panic(err)
@@ -57,7 +61,7 @@ func main() {
 
 To create an
 [Anthropic](https://pkg.go.dev/github.com/mutablelogic/go-llm/pkg/anthropic)
-agent,
+agent with an API key stored as an environment variable,
 
 ```go
 import (
@@ -66,7 +70,7 @@ import (
 
 func main() {
   // Create a new agent
-  agent, err := anthropic.New(os.Getev("ANTHROPIC_API_KEY"))
+  agent, err := anthropic.New(os.Getenv("ANTHROPIC_API_KEY"))
   if err != nil {
     panic(err)
   }
@@ -83,7 +87,7 @@ import (
 
 func main() {
   // Create a new agent
-  agent, err := mistral.New(os.Getev("MISTRAL_API_KEY"))
+  agent, err := mistral.New(os.Getenv("MISTRAL_API_KEY"))
   if err != nil {
     panic(err)
   }
@@ -93,6 +97,28 @@ func main() {
 
 You can append options to the agent creation to set the client/server communication options,
 such as user agent strings, timeouts, debugging, rate limiting, adding custom headers, etc. See [here](https://pkg.go.dev/github.com/mutablelogic/go-client#readme-basic-usage) for more information.
+
+There is also an _aggregated_ agent which can be used to interact with multiple providers at once. This is useful if you want
+to use models from different providers simultaneously.
+
+```go
+import (
+  "github.com/mutablelogic/go-llm/pkg/agent"
+)
+
+func main() {
+  // Create a new agent which aggregates multiple providers
+  agent, err := agent.New(
+    agent.WithAnthropic(os.Getenv("ANTHROPIC_API_KEY")), 
+    agent.WithMistral(os.Getenv("MISTRAL_API_KEY")),
+    agent.WithOllama(os.Getenv("OLLAMA_URL")),
+  )
+  if err != nil {
+    panic(err)
+  }
+  // ...
+}
+```
 
 ### Chat Sessions
 
@@ -120,6 +146,9 @@ func session(ctx context.Context, agent llm.Agent) error {
 }
 ```
 
+The `Context` object will continue to store the current session and options, and will
+ensure the session is maintained across multiple calls.
+
 ### Embedding Generation
 
 TODO
@@ -146,16 +175,16 @@ type Model interface {
   // Set session-wide options
   Context(...Opt) Context
 
-  // Add attachments (images, PDF's) to a user prompt
+  // Add attachments (images, PDF's) to a user prompt for completion
   UserPrompt(string, ...Opt) Context
 
-  // Set embedding options
+  // Create an embedding vector with embedding options
   Embedding(context.Context, string, ...Opt) ([]float64, error)
 }
 
 type Context interface {
   // Add single-use options when calling the model, which override
-  // session options. You can also attach files to a user prompt.
+  // session options. You can attach files to a user prompt.
   FromUser(context.Context, string, ...Opt) error
 }
 ```

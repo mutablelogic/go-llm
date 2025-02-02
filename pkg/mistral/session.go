@@ -12,9 +12,9 @@ import (
 // TYPES
 
 type session struct {
-	model *model // The model used for the session
-	opts  []llm.Opt // Options to apply to the session
-	seq   []*Message // Sequence of messages
+	model *model        // The model used for the session
+	opts  []llm.Opt     // Options to apply to the session
+	seq   []Completions // Sequence of messages
 }
 
 var _ llm.Context = (*session)(nil)
@@ -27,6 +27,7 @@ func (model *model) Context(opts ...llm.Opt) llm.Context {
 	return &session{
 		model: model,
 		opts:  opts,
+		seq:   make([]Completions, 0, 10),
 	}
 }
 
@@ -35,13 +36,16 @@ func (model *model) Context(opts ...llm.Opt) llm.Context {
 func (model *model) UserPrompt(prompt string, opts ...llm.Opt) llm.Context {
 	context := model.Context(opts...)
 
-	meta, err := userPrompt(prompt, opts...)
+	// Create a user prompt
+	message, err := userPrompt(prompt, opts...)
 	if err != nil {
 		panic(err)
 	}
 
 	// Add to the sequence
-	context.(*session).seq = append(context.(*session).seq, meta)
+	context.(*session).seq = append(context.(*session).seq, []Completion{
+		{Message: message},
+	})
 
 	// Return success
 	return context
@@ -72,9 +76,7 @@ func (session *session) Num() int {
 	if len(session.seq) == 0 {
 		return 0
 	}
-	message := session.seq[len(session.seq)-1]
-	message.
-	return session.seq[len(session.seq)-1].Role
+	return session.seq[len(session.seq)-1].Num()
 }
 
 // Return the role of the last message
@@ -82,7 +84,7 @@ func (session *session) Role() string {
 	if len(session.seq) == 0 {
 		return ""
 	}
-	return session.seq[len(session.seq)-1].Role
+	return session.seq[len(session.seq)-1].Role()
 }
 
 // Return the text of the last message
@@ -90,11 +92,10 @@ func (session *session) Text(index int) string {
 	if len(session.seq) == 0 {
 		return ""
 	}
-	meta := session.seq[len(session.seq)-1]
-	return meta.Text()
+	return session.seq[len(session.seq)-1].Text(index)
 }
 
-// Return the text of the last message
+// Return tool calls for the last message
 func (session *session) ToolCalls(index int) []llm.ToolCall {
 	return nil
 }
@@ -114,46 +115,33 @@ func (session *session) FromTool(context.Context, ...llm.ToolResult) error {
 ///////////////////////////////////////////////////////////////////////////////
 // PRIVATE METHODS
 
-func systemPrompt(prompt string) *MessageMeta {
-	return &MessageMeta{
+func systemPrompt(prompt string) *Message {
+	return &Message{
 		Role:    "system",
 		Content: prompt,
 	}
 }
 
-func userPrompt(prompt string, opts ...llm.Opt) (*MessageMeta, error) {
-	// Apply attachments
-	opt, err := llm.ApplyOpts(opts...)
+func userPrompt(prompt string, opts ...llm.Opt) (*Message, error) {
+	// Get attachments
+	opt, err := llm.ApplyPromptOpts(opts...)
 	if err != nil {
 		return nil, err
 	}
 
-	// Get attachments
+	// Get attachments, allocate content
 	attachments := opt.Attachments()
+	content := make([]*Content, 1, len(attachments)+1)
 
-	// Create user message
-	meta := MessageMeta{
-		Role:    "user",
-		Content: make([]*Content, 1, len(attachments)+1),
+	// Append the text and the attachments
+	content[0] = NewTextContent(prompt)
+	for _, attachment := range attachments {
+		content = append(content, NewImageAttachment(attachment))
 	}
-
-	// Append the text
-	meta.Content = []*Content{
-		NewTextContent(prompt),
-	}
-
-	// Append any additional data
-	// TODO
-	/*
-		for _, attachment := range attachments {
-			content, err := attachmentContent(attachment)
-			if err != nil {
-				return nil, err
-			}
-			meta.Content = append(meta.Content, content)
-		}
-	*/
 
 	// Return success
-	return &meta, nil
+	return &Message{
+		Role:    "user",
+		Content: content,
+	}, nil
 }

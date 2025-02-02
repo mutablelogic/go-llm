@@ -1,6 +1,7 @@
 package llm
 
 import (
+	"encoding/json"
 	"io"
 	"time"
 )
@@ -13,6 +14,7 @@ type Opt func(*Opts) error
 
 // set of options
 type Opts struct {
+	prompt      bool
 	agents      map[string]Agent // Set of agents
 	toolkit     ToolKit          // Toolkit for tools
 	callback    func(Completion) // Streaming callback
@@ -26,7 +28,22 @@ type Opts struct {
 
 // ApplyOpts returns a structure of options
 func ApplyOpts(opts ...Opt) (*Opts, error) {
+	return applyOpts(false, opts...)
+}
+
+// ApplyPromptOpts returns a structure of options for a prompt
+func ApplyPromptOpts(opts ...Opt) (*Opts, error) {
+	if opt, err := applyOpts(true, opts...); err != nil {
+		return nil, err
+	} else {
+		return opt, nil
+	}
+}
+
+// ApplySessionOpts returns a structure of options
+func applyOpts(prompt bool, opts ...Opt) (*Opts, error) {
 	o := new(Opts)
+	o.prompt = prompt
 	o.agents = make(map[string]Agent)
 	o.options = make(map[string]any)
 	for _, opt := range opts {
@@ -35,6 +52,33 @@ func ApplyOpts(opts ...Opt) (*Opts, error) {
 		}
 	}
 	return o, nil
+}
+
+///////////////////////////////////////////////////////////////////////////////
+// STRINGIFY
+
+func (o Opts) MarshalJSON() ([]byte, error) {
+	var j struct {
+		ToolKit     ToolKit          `json:"toolkit,omitempty"`
+		Agents      map[string]Agent `json:"agents,omitempty"`
+		System      string           `json:"system,omitempty"`
+		Attachments []*Attachment    `json:"attachments,omitempty"`
+		Options     map[string]any   `json:"options,omitempty"`
+	}
+	j.ToolKit = o.toolkit
+	j.Agents = o.agents
+	j.Attachments = o.attachments
+	j.System = o.system
+	j.Options = o.options
+	return json.Marshal(j)
+}
+
+func (o Opts) String() string {
+	data, err := json.Marshal(o)
+	if err != nil {
+		return err.Error()
+	}
+	return string(data)
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -182,6 +226,10 @@ func WithAgent(agent Agent) Opt {
 // Create an attachment
 func WithAttachment(r io.Reader) Opt {
 	return func(o *Opts) error {
+		// Only attach if prompt is set
+		if !o.prompt {
+			return nil
+		}
 		if attachment, err := ReadAttachment(r); err != nil {
 			return err
 		} else {
