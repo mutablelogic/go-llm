@@ -25,4 +25,4 @@ RUN apt update -y && apt install -y ca-certificates
 LABEL org.opencontainers.image.source=https://${SOURCE}
 
 # Entrypoint when running the server
-ENTRYPOINT [ "/usr/local/bin/agent" ]
+ENTRYPOINT [ "/usr/local/bin/llm" ]

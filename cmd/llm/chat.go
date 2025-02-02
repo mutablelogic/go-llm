@@ -18,6 +18,8 @@ import (
 type ChatCmd struct {
 	Model    string `arg:"" help:"Model name"`
 	NoStream bool   `flag:"nostream" help:"Disable streaming"`
+	NoTools  bool   `flag:"nostream" help:"Disable tool calling"`
+	Prompt   string `flag:"prompt" help:"Set the initial user prompt"`
 	System   string `flag:"system" help:"Set the system prompt"`
 }
 
@@ -39,16 +41,18 @@ func (cmd *ChatCmd) Run(globals *Globals) error {
 		// Set the options
 		opts := []llm.Opt{}
 		if !cmd.NoStream {
-			opts = append(opts, llm.WithStream(func(cc llm.ContextContent) {
-				if text := cc.Text(); text != "" {
-					fmt.Println(text)
+			opts = append(opts, llm.WithStream(func(cc llm.Completion) {
+				if text := cc.Text(0); text != "" {
+					count := strings.Count(text, "\n")
+					fmt.Print(strings.Repeat("\033[F", count) + strings.Repeat(" ", count) + "\r")
+					fmt.Print(text)
 				}
 			}))
 		}
 		if cmd.System != "" {
 			opts = append(opts, llm.WithSystemPrompt(cmd.System))
 		}
-		if globals.toolkit != nil {
+		if globals.toolkit != nil && !cmd.NoTools {
 			opts = append(opts, llm.WithToolKit(globals.toolkit))
 		}
 
@@ -57,11 +61,17 @@ func (cmd *ChatCmd) Run(globals *Globals) error {
 
 		// Continue looping until end of input
 		for {
-			input, err := globals.term.ReadLine(model.Name() + "> ")
-			if errors.Is(err, io.EOF) {
-				return nil
-			} else if err != nil {
-				return err
+			var input string
+			if cmd.Prompt != "" {
+				input = cmd.Prompt
+				cmd.Prompt = ""
+			} else {
+				input, err = globals.term.ReadLine(model.Name() + "> ")
+				if errors.Is(err, io.EOF) {
+					return nil
+				} else if err != nil {
+					return err
+				}
 			}
 
 			// Ignore empty input
@@ -77,12 +87,12 @@ func (cmd *ChatCmd) Run(globals *Globals) error {
 
 			// Repeat call tools until no more calls are made
 			for {
-				calls := session.ToolCalls()
+				calls := session.ToolCalls(0)
 				if len(calls) == 0 {
 					break
 				}
-				if session.Text() != "" {
-					globals.term.Println(session.Text())
+				if session.Text(0) != "" {
+					globals.term.Println(session.Text(0))
 				} else {
 					var names []string
 					for _, call := range calls {
@@ -98,7 +108,7 @@ func (cmd *ChatCmd) Run(globals *Globals) error {
 			}
 
 			// Print the response
-			globals.term.Println("\n" + session.Text() + "\n")
+			globals.term.Println("\n" + session.Text(0) + "\n")
 		}
 	})
 }

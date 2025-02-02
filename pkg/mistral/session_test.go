@@ -1,4 +1,4 @@
-package ollama_test
+package mistral_test
 
 import (
 	"context"
@@ -12,11 +12,10 @@ import (
 
 func Test_session_001(t *testing.T) {
 	assert := assert.New(t)
-	model, err := client.PullModel(context.TODO(), "llama3.2")
-	if !assert.NoError(err) {
+	model := client.Model(context.TODO(), "mistral-small-latest")
+	if !assert.NotNil(model) {
 		t.FailNow()
 	}
-	assert.NotNil(model)
 
 	session := model.Context()
 	if assert.NotNil(session) {
@@ -28,11 +27,10 @@ func Test_session_001(t *testing.T) {
 
 func Test_session_002(t *testing.T) {
 	assert := assert.New(t)
-	model, err := client.PullModel(context.TODO(), "llama3.2")
-	if !assert.NoError(err) {
+	model := client.Model(context.TODO(), "mistral-small-latest")
+	if !assert.NotNil(model) {
 		t.FailNow()
 	}
-	assert.NotNil(model)
 
 	toolkit := tool.NewToolKit()
 	toolkit.Register(&weather{})

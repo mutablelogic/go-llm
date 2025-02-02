@@ -1,4 +1,4 @@
-package ollama_test
+package mistral_test
 
 import (
 	"flag"
@@ -9,7 +9,7 @@ import (
 
 	// Packages
 	opts "github.com/mutablelogic/go-client"
-	ollama "github.com/mutablelogic/go-llm/pkg/ollama"
+	mistral "github.com/mutablelogic/go-llm/pkg/mistral"
 	assert "github.com/stretchr/testify/assert"
 )
 
@@ -17,7 +17,7 @@ import (
 // TEST SET-UP
 
 var (
-	client *ollama.Client
+	client *mistral.Client
 )
 
 func TestMain(m *testing.M) {
@@ -31,16 +31,16 @@ func TestMain(m *testing.M) {
 		}
 	}
 
-	// Endpoint
-	endpoint_url := os.Getenv("OLLAMA_URL")
-	if endpoint_url == "" {
-		log.Print("OLLAMA_URL not set")
+	// API KEY
+	api_key := os.Getenv("MISTRAL_API_KEY")
+	if api_key == "" {
+		log.Print("MISTRAL_API_KEY not set")
 		os.Exit(0)
 	}
 
 	// Create client
 	var err error
-	client, err = ollama.New(endpoint_url, opts.OptTrace(os.Stderr, verbose))
+	client, err = mistral.New(api_key, opts.OptTrace(os.Stderr, verbose))
 	if err != nil {
 		log.Println(err)
 		os.Exit(-1)

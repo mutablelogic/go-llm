@@ -2,13 +2,13 @@ package ollama_test
 
 import (
 	"context"
-	"encoding/json"
-	"log"
+	"fmt"
 	"os"
+	"strings"
 	"testing"
 
 	// Packages
-	opts "github.com/mutablelogic/go-client"
+
 	llm "github.com/mutablelogic/go-llm"
 	ollama "github.com/mutablelogic/go-llm/pkg/ollama"
 	tool "github.com/mutablelogic/go-llm/pkg/tool"
@@ -16,11 +16,6 @@ import (
 )
 
 func Test_chat_001(t *testing.T) {
-	client, err := ollama.New(GetEndpoint(t), opts.OptTrace(os.Stderr, true))
-	if err != nil {
-		t.FailNow()
-	}
-
 	// Pull the model
 	model, err := client.PullModel(context.TODO(), "qwen:0.5b", ollama.WithPullStatus(func(status *ollama.PullStatus) {
 		t.Log(status)
@@ -29,9 +24,35 @@ func Test_chat_001(t *testing.T) {
 		t.FailNow()
 	}
 
-	t.Run("ChatStream", func(t *testing.T) {
+	t.Run("Temperature", func(t *testing.T) {
 		assert := assert.New(t)
-		response, err := client.Chat(context.TODO(), model.UserPrompt("why is the sky blue?"), llm.WithStream(func(stream llm.Context) {
+		response, err := client.Chat(context.TODO(), model.UserPrompt("why is the sky blue?"), llm.WithTemperature(0.5))
+		if !assert.NoError(err) {
+			t.FailNow()
+		}
+		t.Log(response)
+	})
+
+	t.Run("TopP", func(t *testing.T) {
+		assert := assert.New(t)
+		response, err := client.Chat(context.TODO(), model.UserPrompt("why is the sky blue?"), llm.WithTopP(0.5))
+		if !assert.NoError(err) {
+			t.FailNow()
+		}
+		t.Log(response)
+	})
+	t.Run("TopK", func(t *testing.T) {
+		assert := assert.New(t)
+		response, err := client.Chat(context.TODO(), model.UserPrompt("why is the sky blue?"), llm.WithTopK(50))
+		if !assert.NoError(err) {
+			t.FailNow()
+		}
+		t.Log(response)
+	})
+
+	t.Run("Stream", func(t *testing.T) {
+		assert := assert.New(t)
+		response, err := client.Chat(context.TODO(), model.UserPrompt("why is the sky blue?"), llm.WithStream(func(stream llm.Completion) {
 			t.Log(stream)
 		}))
 		if !assert.NoError(err) {
@@ -40,9 +61,54 @@ func Test_chat_001(t *testing.T) {
 		t.Log(response)
 	})
 
-	t.Run("ChatNoStream", func(t *testing.T) {
+	t.Run("Stop", func(t *testing.T) {
 		assert := assert.New(t)
-		response, err := client.Chat(context.TODO(), model.UserPrompt("why is the sky green?"))
+		response, err := client.Chat(context.TODO(), model.UserPrompt("why is the sky blue?"), llm.WithStopSequence("sky"))
+		if !assert.NoError(err) {
+			t.FailNow()
+		}
+		t.Log(response)
+	})
+
+	t.Run("System", func(t *testing.T) {
+		assert := assert.New(t)
+		response, err := client.Chat(context.TODO(), model.UserPrompt("why is the sky blue?"), llm.WithSystemPrompt("reply as if you are shakespeare"))
+		if !assert.NoError(err) {
+			t.FailNow()
+		}
+		t.Log(response)
+	})
+
+	t.Run("Seed", func(t *testing.T) {
+		assert := assert.New(t)
+		response, err := client.Chat(context.TODO(), model.UserPrompt("why is the sky blue?"), llm.WithSeed(1234))
+		if !assert.NoError(err) {
+			t.FailNow()
+		}
+		t.Log(response)
+	})
+
+	t.Run("Format", func(t *testing.T) {
+		assert := assert.New(t)
+		response, err := client.Chat(context.TODO(), model.UserPrompt("why is the sky blue? Reply in JSON format"), llm.WithFormat("json"))
+		if !assert.NoError(err) {
+			t.FailNow()
+		}
+		t.Log(response)
+	})
+
+	t.Run("PresencePenalty", func(t *testing.T) {
+		assert := assert.New(t)
+		response, err := client.Chat(context.TODO(), model.UserPrompt("why is the sky blue?t"), llm.WithPresencePenalty(-1.0))
+		if !assert.NoError(err) {
+			t.FailNow()
+		}
+		t.Log(response)
+	})
+
+	t.Run("FrequencyPenalty", func(t *testing.T) {
+		assert := assert.New(t)
+		response, err := client.Chat(context.TODO(), model.UserPrompt("why is the sky blue?t"), llm.WithFrequencyPenalty(1.0))
 		if !assert.NoError(err) {
 			t.FailNow()
 		}
@@ -51,96 +117,73 @@ func Test_chat_001(t *testing.T) {
 }
 
 func Test_chat_002(t *testing.T) {
-	client, err := ollama.New(GetEndpoint(t), opts.OptTrace(os.Stderr, true))
-	if err != nil {
+	assert := assert.New(t)
+	model, err := client.PullModel(context.TODO(), "llava:7b")
+	if !assert.NoError(err) {
 		t.FailNow()
 	}
+	assert.NotNil(model)
 
-	// Pull the model
-	model, err := client.PullModel(context.TODO(), "llama3.2:1b", ollama.WithPullStatus(func(status *ollama.PullStatus) {
-		t.Log(status)
-	}))
-	if err != nil {
+	f, err := os.Open("testdata/guggenheim.jpg")
+	if !assert.NoError(err) {
 		t.FailNow()
 	}
+	defer f.Close()
 
-	// Make a toolkit
-	toolkit := tool.NewToolKit()
-	if err := toolkit.Register(new(weather)); err != nil {
-		t.FailNow()
+	// Describe an image
+	r, err := client.Chat(context.TODO(), model.UserPrompt("Provide a short caption for this image", llm.WithAttachment(f)))
+	if assert.NoError(err) {
+		assert.Equal("assistant", r.Role())
+		assert.Equal(1, r.Num())
+		assert.NotEmpty(r.Text(0))
+		t.Log(r.Text(0))
 	}
-
-	t.Run("Tools", func(t *testing.T) {
-		assert := assert.New(t)
-		response, err := client.Chat(context.TODO(),
-			model.UserPrompt("what is the weather in berlin?"),
-			llm.WithToolKit(toolkit),
-		)
-		if !assert.NoError(err) {
-			t.FailNow()
-		}
-		t.Log(response)
-	})
 }
 
 func Test_chat_003(t *testing.T) {
-	client, err := ollama.New(GetEndpoint(t), opts.OptTrace(os.Stderr, false))
-	if err != nil {
+	assert := assert.New(t)
+	model, err := client.PullModel(context.TODO(), "llama3.2")
+	if !assert.NoError(err) {
 		t.FailNow()
 	}
+	assert.NotNil(model)
 
-	// Pull the model
-	model, err := client.PullModel(context.TODO(), "llava", ollama.WithPullStatus(func(status *ollama.PullStatus) {
-		t.Log(status)
-	}))
-	if err != nil {
-		t.FailNow()
+	toolkit := tool.NewToolKit()
+	toolkit.Register(&weather{})
+
+	// Get the weather for a city
+	r, err := client.Chat(context.TODO(), model.UserPrompt("What is the weather in the capital city of germany?"), llm.WithToolKit(toolkit))
+	if assert.NoError(err) {
+		assert.Equal("assistant", r.Role())
+		assert.Equal(1, r.Num())
+
+		calls := r.ToolCalls(0)
+		assert.NotEmpty(calls)
+
+		var w weather
+		assert.NoError(calls[0].Decode(&w))
+		assert.Equal("berlin", strings.ToLower(w.City))
 	}
-
-	// Explain the content of an image
-	t.Run("Image", func(t *testing.T) {
-		assert := assert.New(t)
-
-		f, err := os.Open("testdata/guggenheim.jpg")
-		if !assert.NoError(err) {
-			t.FailNow()
-		}
-		defer f.Close()
-
-		response, err := client.Chat(context.TODO(),
-			model.UserPrompt("describe this photo to me", llm.WithAttachment(f)),
-		)
-		if !assert.NoError(err) {
-			t.FailNow()
-		}
-		t.Log(response)
-	})
 }
-
-////////////////////////////////////////////////////////////////////////////////
-// TOOLS
 
 type weather struct {
-	Location string `json:"location" name:"location" help:"The location to get the weather for" required:"true"`
+	City string `json:"city" help:"The city to get the weather for"`
 }
 
-func (*weather) Name() string {
-	return "weather_in_location"
+func (weather) Name() string {
+	return "weather_in_city"
 }
 
-func (*weather) Description() string {
-	return "Get the weather in a location"
+func (weather) Description() string {
+	return "Get the weather for a city"
 }
 
-func (weather *weather) String() string {
-	data, err := json.MarshalIndent(weather, "", "  ")
-	if err != nil {
-		return err.Error()
+func (w weather) Run(ctx context.Context) (any, error) {
+	var result struct {
+		City    string `json:"city"`
+		Weather string `json:"weather"`
 	}
-	return string(data)
-}
-
-func (weather *weather) Run(ctx context.Context) (any, error) {
-	log.Println("weather_in_location", "=>", weather)
-	return "very sunny today", nil
+	result.City = w.City
+	result.Weather = fmt.Sprintf("The weather in %q is sunny and warm", w.City)
+	return result, nil
 }

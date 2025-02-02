@@ -1,4 +1,4 @@
-package ollama
+package mistral
 
 import (
 	"context"
@@ -8,10 +8,9 @@ import (
 	llm "github.com/mutablelogic/go-llm"
 )
 
-///////////////////////////////////////////////////////////////////////////////
+//////////////////////////////////////////////////////////////////
 // TYPES
 
-// Implementation of a message session, which is a sequence of messages
 type session struct {
 	model *model     // The model used for the session
 	opts  []llm.Opt  // Options to apply to the session
@@ -102,10 +101,8 @@ func (session *session) ToolCalls(index int) []llm.ToolCall {
 	return session.seq[len(session.seq)-1].ToolCalls(index)
 }
 
-///////////////////////////////////////////////////////////////////////////////
-// PUBLIC METHODS
-
-// Generate a response from a user prompt (with attachments)
+// Generate a response from a user prompt (with attachments and
+// other options)
 func (session *session) FromUser(ctx context.Context, prompt string, opts ...llm.Opt) error {
 	message, err := userPrompt(prompt, opts...)
 	if err != nil {
@@ -120,20 +117,20 @@ func (session *session) FromUser(ctx context.Context, prompt string, opts ...llm
 	chatopts = append(chatopts, session.opts...)
 	chatopts = append(chatopts, opts...)
 
-	// Call the 'chat' method
-	r, err := session.model.Chat(ctx, session, chatopts...)
+	// Call the 'chat completion' method
+	r, err := session.model.ChatCompletion(ctx, session, chatopts...)
 	if err != nil {
 		return err
 	}
 
-	// Append the message to the sequence
-	session.seq = append(session.seq, &r.Message)
+	// Append the first message from the set of completions
+	session.seq = append(session.seq, r.Completions.Message(0))
 
 	// Return success
 	return nil
 }
 
-// Generate a response from a tool calling result
+// Generate a response from a tool, passing the results from the tool call
 func (session *session) FromTool(ctx context.Context, results ...llm.ToolResult) error {
 	messages, err := toolResults(results...)
 	if err != nil {
@@ -144,13 +141,13 @@ func (session *session) FromTool(ctx context.Context, results ...llm.ToolResult)
 	session.seq = append(session.seq, messages...)
 
 	// Call the 'chat' method
-	r, err := session.model.Chat(ctx, session, session.opts...)
+	r, err := session.model.ChatCompletion(ctx, session, session.opts...)
 	if err != nil {
 		return err
 	}
 
 	// Append the first message from the set of completions
-	session.seq = append(session.seq, &r.Message)
+	session.seq = append(session.seq, r.Completions.Message(0))
 
 	// Return success
 	return nil
@@ -177,17 +174,19 @@ func userPrompt(prompt string, opts ...llm.Opt) (*Message, error) {
 
 	// Get attachments, allocate content
 	attachments := opt.Attachments()
-	data := make([]Data, 0, len(attachments))
+	content := make([]*Content, 1, len(attachments)+1)
+
+	// Append the text and the attachments
+	content[0] = NewTextContent(prompt)
 	for _, attachment := range attachments {
-		data = append(data, attachment.Data())
+		content = append(content, NewImageAttachment(attachment))
 	}
 
 	// Return success
 	return &Message{
 		RoleContent: RoleContent{
 			Role:    "user",
-			Content: prompt,
-			Images:  data,
+			Content: content,
 		},
 	}, nil
 }
@@ -207,10 +206,9 @@ func toolResults(results ...llm.ToolResult) ([]*Message, error) {
 		}
 		messages = append(messages, &Message{
 			RoleContent: RoleContent{
-				Role: "tool",
-				ToolResult: ToolResult{
-					Name: result.Call().Name(),
-				},
+				Role:    "tool",
+				Id:      result.Call().Id(),
+				Name:    result.Call().Name(),
 				Content: string(value),
 			},
 		})

@@ -28,7 +28,6 @@ type Tool interface {
 	Description() string
 
 	// Run the tool with a deadline and return the result
-	// TODO: Change 'any' to ToolResult
 	Run(context.Context) (any, error)
 }
 

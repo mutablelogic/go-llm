@@ -105,6 +105,15 @@ func (a *Agent) Models(ctx context.Context) ([]llm.Model, error) {
 	return a.ListModels(ctx)
 }
 
+// Return a model
+func (a *Agent) Model(ctx context.Context, name string) llm.Model {
+	model, err := a.GetModel(ctx, name)
+	if err != nil {
+		panic(err)
+	}
+	return model
+}
+
 // Return the models from list of agents
 func (a *Agent) ListModels(ctx context.Context, names ...string) ([]llm.Model, error) {
 	var result error

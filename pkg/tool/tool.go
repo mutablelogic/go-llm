@@ -43,11 +43,24 @@ type ToolParameter struct {
 	index       []int // Field index into prototype for setting a field
 }
 
+type ToolFunction struct {
+	Type     string `json:"type"` // function
+	llm.Tool `json:"function"`
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 // STRINGIFY
 
 func (t tool) String() string {
 	data, err := json.MarshalIndent(t.ToolMeta, "", "  ")
+	if err != nil {
+		return err.Error()
+	}
+	return string(data)
+}
+
+func (t ToolFunction) String() string {
+	data, err := json.MarshalIndent(t, "", "  ")
 	if err != nil {
 		return err.Error()
 	}

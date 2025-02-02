@@ -1,8 +1,13 @@
 package llm
 
 import (
+	"encoding/base64"
+	"encoding/json"
 	"io"
+	"mime"
+	"net/http"
 	"os"
+	"path/filepath"
 )
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -32,6 +37,25 @@ func ReadAttachment(r io.Reader) (*Attachment, error) {
 }
 
 ////////////////////////////////////////////////////////////////////////////////
+// STRINGIFY
+
+func (a *Attachment) String() string {
+	var j struct {
+		Filename string `json:"filename"`
+		Type     string `json:"type"`
+		Bytes    uint64 `json:"bytes"`
+	}
+	j.Filename = a.filename
+	j.Type = a.Type()
+	j.Bytes = uint64(len(a.data))
+	data, err := json.MarshalIndent(j, "", "  ")
+	if err != nil {
+		return err.Error()
+	}
+	return string(data)
+}
+
+////////////////////////////////////////////////////////////////////////////////
 // PUBLIC METHODS
 
 func (a *Attachment) Filename() string {
@@ -40,4 +64,18 @@ func (a *Attachment) Filename() string {
 
 func (a *Attachment) Data() []byte {
 	return a.data
+}
+
+func (a *Attachment) Type() string {
+	// Mimetype based on content
+	mimetype := http.DetectContentType(a.data)
+	if mimetype == "application/octet-stream" && a.filename != "" {
+		// Detect mimetype from extension
+		mimetype = mime.TypeByExtension(filepath.Ext(a.filename))
+	}
+	return mimetype
+}
+
+func (a *Attachment) Url() string {
+	return "data:" + a.Type() + ";base64," + base64.StdEncoding.EncodeToString(a.data)
 }

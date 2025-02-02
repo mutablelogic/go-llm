@@ -60,7 +60,7 @@ func (*ListAgentsCmd) Run(globals *Globals) error {
 			return fmt.Errorf("No agents found")
 		}
 
-		var agents []string
+		agents := make([]string, 0, len(agent.Agents()))
 		for _, agent := range agent.Agents() {
 			agents = append(agents, agent.Name())
 		}

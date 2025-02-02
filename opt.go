@@ -1,6 +1,7 @@
 package llm
 
 import (
+	"encoding/json"
 	"io"
 	"time"
 )
@@ -13,12 +14,13 @@ type Opt func(*Opts) error
 
 // set of options
 type Opts struct {
-	agents      map[string]Agent     // Set of agents
-	toolkit     ToolKit              // Toolkit for tools
-	callback    func(ContextContent) // Streaming callback
-	attachments []*Attachment        // Attachments
-	system      string               // System prompt
-	options     map[string]any       // Additional options
+	prompt      bool
+	agents      map[string]Agent // Set of agents
+	toolkit     ToolKit          // Toolkit for tools
+	callback    func(Completion) // Streaming callback
+	attachments []*Attachment    // Attachments
+	system      string           // System prompt
+	options     map[string]any   // Additional options
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -26,7 +28,22 @@ type Opts struct {
 
 // ApplyOpts returns a structure of options
 func ApplyOpts(opts ...Opt) (*Opts, error) {
+	return applyOpts(false, opts...)
+}
+
+// ApplyPromptOpts returns a structure of options for a prompt
+func ApplyPromptOpts(opts ...Opt) (*Opts, error) {
+	if opt, err := applyOpts(true, opts...); err != nil {
+		return nil, err
+	} else {
+		return opt, nil
+	}
+}
+
+// ApplySessionOpts returns a structure of options
+func applyOpts(prompt bool, opts ...Opt) (*Opts, error) {
 	o := new(Opts)
+	o.prompt = prompt
 	o.agents = make(map[string]Agent)
 	o.options = make(map[string]any)
 	for _, opt := range opts {
@@ -38,6 +55,33 @@ func ApplyOpts(opts ...Opt) (*Opts, error) {
 }
 
 ///////////////////////////////////////////////////////////////////////////////
+// STRINGIFY
+
+func (o Opts) MarshalJSON() ([]byte, error) {
+	var j struct {
+		ToolKit     ToolKit          `json:"toolkit,omitempty"`
+		Agents      map[string]Agent `json:"agents,omitempty"`
+		System      string           `json:"system,omitempty"`
+		Attachments []*Attachment    `json:"attachments,omitempty"`
+		Options     map[string]any   `json:"options,omitempty"`
+	}
+	j.ToolKit = o.toolkit
+	j.Agents = o.agents
+	j.Attachments = o.attachments
+	j.System = o.system
+	j.Options = o.options
+	return json.Marshal(j)
+}
+
+func (o Opts) String() string {
+	data, err := json.Marshal(o)
+	if err != nil {
+		return err.Error()
+	}
+	return string(data)
+}
+
+///////////////////////////////////////////////////////////////////////////////
 // PUBLIC METHODS - PROPERTIES
 
 // Return the set of tools
@@ -46,7 +90,7 @@ func (o *Opts) ToolKit() ToolKit {
 }
 
 // Return the stream function
-func (o *Opts) StreamFn() func(ContextContent) {
+func (o *Opts) StreamFn() func(Completion) {
 	return o.callback
 }
 
@@ -150,7 +194,7 @@ func WithToolKit(toolkit ToolKit) Opt {
 }
 
 // Set chat streaming function
-func WithStream(fn func(ContextContent)) Opt {
+func WithStream(fn func(Completion)) Opt {
 	return func(o *Opts) error {
 		o.callback = fn
 		return nil
@@ -182,6 +226,10 @@ func WithAgent(agent Agent) Opt {
 // Create an attachment
 func WithAttachment(r io.Reader) Opt {
 	return func(o *Opts) error {
+		// Only attach if prompt is set
+		if !o.prompt {
+			return nil
+		}
 		if attachment, err := ReadAttachment(r); err != nil {
 			return err
 		} else {
@@ -216,9 +264,37 @@ func WithTopP(v float64) Opt {
 
 // Reduces the probability of generating nonsense. A higher value (e.g. 100) will give more
 // diverse answers, while a lower value (e.g. 10) will be more conservative.
-func WithTopK(v uint) Opt {
+func WithTopK(v uint64) Opt {
 	return func(o *Opts) error {
 		o.Set("top_k", v)
+		return nil
+	}
+}
+
+func WithPresencePenalty(v float64) Opt {
+	return func(o *Opts) error {
+		if v < -2 || v > 2 {
+			return ErrBadParameter.With("presence_penalty")
+		}
+		o.Set("presence_penalty", v)
+		return nil
+	}
+}
+
+func WithFrequencyPenalty(v float64) Opt {
+	return func(o *Opts) error {
+		if v < -2 || v > 2 {
+			return ErrBadParameter.With("frequency_penalty")
+		}
+		o.Set("frequency_penalty", v)
+		return nil
+	}
+}
+
+// The maximum number of tokens to generate in the completion.
+func WithMaxTokens(v uint64) Opt {
+	return func(o *Opts) error {
+		o.Set("max_tokens", v)
 		return nil
 	}
 }
@@ -227,6 +303,57 @@ func WithTopK(v uint) Opt {
 func WithSystemPrompt(v string) Opt {
 	return func(o *Opts) error {
 		o.system = v
+		return nil
+	}
+}
+
+// Set stop sequence
+func WithStopSequence(v ...string) Opt {
+	return func(o *Opts) error {
+		o.Set("stop", v)
+		return nil
+	}
+}
+
+// Set random seed for deterministic behavior
+func WithSeed(v uint64) Opt {
+	return func(o *Opts) error {
+		o.Set("seed", v)
+		return nil
+	}
+}
+
+// Set format
+func WithFormat(v any) Opt {
+	return func(o *Opts) error {
+		o.Set("format", v)
+		return nil
+	}
+}
+
+// Set tool choices: can be auto, none, required, any or a list of tool names
+func WithToolChoice(v ...string) Opt {
+	return func(o *Opts) error {
+		o.Set("tool_choice", v)
+		return nil
+	}
+}
+
+// Number of completions to return for each request
+func WithNumCompletions(v uint64) Opt {
+	return func(o *Opts) error {
+		if v < 1 || v > 8 {
+			return ErrBadParameter.With("num_completions must be between 1 and 8")
+		}
+		o.Set("num_completions", v)
+		return nil
+	}
+}
+
+// Inject a safety prompt before all conversations.
+func WithSafePrompt() Opt {
+	return func(o *Opts) error {
+		o.Set("safe_prompt", true)
 		return nil
 	}
 }

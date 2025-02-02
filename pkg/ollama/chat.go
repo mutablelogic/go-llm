@@ -13,13 +13,13 @@ import (
 ///////////////////////////////////////////////////////////////////////////////
 // TYPES
 
-// Chat Response
+// Chat Completion Response
 type Response struct {
-	Model     string      `json:"model"`
-	CreatedAt time.Time   `json:"created_at"`
-	Message   MessageMeta `json:"message"`
-	Done      bool        `json:"done"`
-	Reason    string      `json:"done_reason,omitempty"`
+	Model     string    `json:"model"`
+	CreatedAt time.Time `json:"created_at"`
+	Done      bool      `json:"done"`
+	Reason    string    `json:"done_reason,omitempty"`
+	Message   `json:"message"`
 	Metrics
 }
 
@@ -32,6 +32,8 @@ type Metrics struct {
 	EvalCount          int           `json:"eval_count,omitempty"`
 	EvalDuration       time.Duration `json:"eval_duration,omitempty"`
 }
+
+var _ llm.Completion = (*Response)(nil)
 
 ///////////////////////////////////////////////////////////////////////////////
 // STRINGIFY
@@ -49,34 +51,36 @@ func (r Response) String() string {
 
 type reqChat struct {
 	Model     string                 `json:"model"`
-	Messages  []*MessageMeta         `json:"messages"`
-	Tools     []ToolFunction         `json:"tools,omitempty"`
+	Messages  []*Message             `json:"messages"`
+	Tools     []llm.Tool             `json:"tools,omitempty"`
 	Format    string                 `json:"format,omitempty"`
 	Options   map[string]interface{} `json:"options,omitempty"`
 	Stream    bool                   `json:"stream"`
 	KeepAlive *time.Duration         `json:"keep_alive,omitempty"`
 }
 
-func (ollama *Client) Chat(ctx context.Context, prompt llm.Context, opts ...llm.Opt) (*Response, error) {
+func (ollama *Client) Chat(ctx context.Context, context llm.Context, opts ...llm.Opt) (*Response, error) {
+	// Apply options
 	opt, err := llm.ApplyOpts(opts...)
 	if err != nil {
 		return nil, err
 	}
 
 	// Append the system prompt at the beginning
-	seq := make([]*MessageMeta, 0, len(prompt.(*session).seq)+1)
+	messages := make([]*Message, 0, len(context.(*session).seq)+1)
 	if system := opt.SystemPrompt(); system != "" {
-		seq = append(seq, &MessageMeta{
-			Role:    "system",
-			Content: opt.SystemPrompt(),
-		})
+		messages = append(messages, systemPrompt(system))
 	}
-	seq = append(seq, prompt.(*session).seq...)
+
+	// Always append the first message of each completion
+	for _, message := range context.(*session).seq {
+		messages = append(messages, message)
+	}
 
 	// Request
 	req, err := client.NewJSONRequest(reqChat{
-		Model:     prompt.(*session).model.Name(),
-		Messages:  seq,
+		Model:     context.(*session).model.Name(),
+		Messages:  messages,
 		Tools:     optTools(ollama, opt),
 		Format:    optFormat(opt),
 		Options:   optOptions(opt),
@@ -89,33 +93,29 @@ func (ollama *Client) Chat(ctx context.Context, prompt llm.Context, opts ...llm.
 
 	//  Response
 	var response, delta Response
-	if err := ollama.DoWithContext(ctx, req, &delta, client.OptPath("chat"), client.OptJsonStreamCallback(func(v any) error {
-		if v, ok := v.(*Response); !ok || v == nil {
-			return llm.ErrConflict.Withf("Invalid stream response: %v", v)
-		} else {
-			response.Model = v.Model
-			response.CreatedAt = v.CreatedAt
-			response.Message.Role = v.Message.Role
-			response.Message.Content += v.Message.Content
-			if v.Done {
-				response.Done = v.Done
-				response.Metrics = v.Metrics
-				response.Reason = v.Reason
+	reqopts := []client.RequestOpt{
+		client.OptPath("chat"),
+	}
+	if optStream(ollama, opt) {
+		reqopts = append(reqopts, client.OptJsonStreamCallback(func(v any) error {
+			if v, ok := v.(*Response); !ok || v == nil {
+				return llm.ErrConflict.Withf("Invalid stream response: %v", v)
+			} else if err := streamEvent(&response, v); err != nil {
+				return err
 			}
-		}
-
-		//Call the chat callback
-		if optStream(ollama, opt) {
 			if fn := opt.StreamFn(); fn != nil {
 				fn(&response)
 			}
-		}
-		return nil
-	})); err != nil {
+			return nil
+		}))
+	}
+
+	// Response
+	if err := ollama.DoWithContext(ctx, req, &delta, reqopts...); err != nil {
 		return nil, err
 	}
 
-	// We return the delta or the response
+	// Return success
 	if optStream(ollama, opt) {
 		return &response, nil
 	} else {
@@ -124,16 +124,25 @@ func (ollama *Client) Chat(ctx context.Context, prompt llm.Context, opts ...llm.
 }
 
 ///////////////////////////////////////////////////////////////////////////////
-// INTERFACE - CONTEXT CONTENT
+// PRIVATE METHODS
 
-func (response Response) Role() string {
-	return response.Message.Role
-}
-
-func (response Response) Text() string {
-	return response.Message.Content
-}
-
-func (response Response) ToolCalls() []llm.ToolCall {
+func streamEvent(response, delta *Response) error {
+	if delta.Model != "" {
+		response.Model = delta.Model
+	}
+	if !delta.CreatedAt.IsZero() {
+		response.CreatedAt = delta.CreatedAt
+	}
+	if delta.Message.RoleContent.Role != "" {
+		response.Message.RoleContent.Role = delta.Message.RoleContent.Role
+	}
+	if delta.Message.RoleContent.Content != "" {
+		response.Message.RoleContent.Content += delta.Message.RoleContent.Content
+	}
+	if delta.Done {
+		response.Done = delta.Done
+		response.Metrics = delta.Metrics
+		response.Reason = delta.Reason
+	}
 	return nil
 }
