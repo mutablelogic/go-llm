@@ -24,13 +24,13 @@ docker run ghcr.io/mutablelogic/go-llm:latest --help
 # Interact with Claude to retrieve news headlines, assuming
 # you have an API key for Anthropic and NewsAPI
 docker run \
-  --interactive -e MISTRAL_API_KEY -e NEWSAPI_KEY \
+  -e OLLAMA_URL -e MISTRAL_API_KEY -e NEWSAPI_KEY \
   ghcr.io/mutablelogic/go-llm:latest \
-  chat claude-3-5-haiku-20241022 --prompt "What is the latest news?"
+  chat mistral-small-latest --prompt "What is the latest news?" --no-stream
 ```
 
-See below for more information on how to use the command-line tool (or how to install it
-if you have a `go` compiler).
+See below for more information on how to use the command-line tool (or how to
+install it if you have a `go` compiler).
 
 ## Programmatic Usage
 
@@ -250,7 +250,7 @@ Run "llm <command> --help" for more information on a command.
 
 ## Contributing & Distribution
 
-*This module is currently in development and subject to change*. Please do file
+_This module is currently in development and subject to change_. Please do file
 feature requests and bugs [here](https://github.com/mutablelogic/go-llm/issues).
 The [license is Apache 2](LICENSE) so feel free to redistribute. Redistributions in either source
 code or binary form must reproduce the copyright notice, and please link back to this
