@@ -16,6 +16,7 @@ import (
 
 type Client struct {
 	*client.Client
+	cache map[string]llm.Model
 }
 
 var _ llm.Agent = (*Client)(nil)
@@ -45,7 +46,7 @@ func New(ApiKey string, opts ...client.ClientOpt) (*Client, error) {
 	}
 
 	// Return the client
-	return &Client{client}, nil
+	return &Client{client, nil}, nil
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -58,11 +59,33 @@ func (Client) Name() string {
 
 // Return the models
 func (c *Client) Models(ctx context.Context) ([]llm.Model, error) {
-	return c.ListModels(ctx)
+	// Cache models
+	if c.cache == nil {
+		models, err := c.ListModels(ctx)
+		if err != nil {
+			return nil, err
+		}
+		c.cache = make(map[string]llm.Model, len(models))
+		for _, model := range models {
+			c.cache[model.Name()] = model
+		}
+	}
+
+	// Return models
+	result := make([]llm.Model, 0, len(c.cache))
+	for _, model := range c.cache {
+		result = append(result, model)
+	}
+	return result, nil
 }
 
 // Return a model by name, or nil if not found.
 // Panics on error.
 func (c *Client) Model(ctx context.Context, name string) llm.Model {
-	return nil
+	if c.cache == nil {
+		if _, err := c.Models(ctx); err != nil {
+			panic(err)
+		}
+	}
+	return c.cache[name]
 }

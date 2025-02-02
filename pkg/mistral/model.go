@@ -80,18 +80,6 @@ func (m model) Name() string {
 	return m.meta.Name
 }
 
-// Return am empty session context object for the model,
-// setting session options
-func (m model) Context(...llm.Opt) llm.Context {
-	return nil
-}
-
-// Convenience method to create a session context object
-// with a user prompt
-func (m model) UserPrompt(string, ...llm.Opt) llm.Context {
-	return nil
-}
-
 // Embedding vector generation
 func (m model) Embedding(context.Context, string, ...llm.Opt) ([]float64, error) {
 	return nil, llm.ErrNotImplemented

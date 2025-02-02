@@ -216,9 +216,17 @@ func WithTopP(v float64) Opt {
 
 // Reduces the probability of generating nonsense. A higher value (e.g. 100) will give more
 // diverse answers, while a lower value (e.g. 10) will be more conservative.
-func WithTopK(v uint) Opt {
+func WithTopK(v uint64) Opt {
 	return func(o *Opts) error {
 		o.Set("top_k", v)
+		return nil
+	}
+}
+
+// The maximum number of tokens to generate in the completion.
+func WithMaxTokens(v uint64) Opt {
+	return func(o *Opts) error {
+		o.Set("max_tokens", v)
 		return nil
 	}
 }
@@ -227,6 +235,57 @@ func WithTopK(v uint) Opt {
 func WithSystemPrompt(v string) Opt {
 	return func(o *Opts) error {
 		o.system = v
+		return nil
+	}
+}
+
+// Set stop sequence
+func WithStopSequence(v ...string) Opt {
+	return func(o *Opts) error {
+		o.Set("stop", v)
+		return nil
+	}
+}
+
+// Set random seed for deterministic behavior
+func WithSeed(v uint64) Opt {
+	return func(o *Opts) error {
+		o.Set("seed", v)
+		return nil
+	}
+}
+
+// Set format
+func WithFormat(v any) Opt {
+	return func(o *Opts) error {
+		o.Set("format", v)
+		return nil
+	}
+}
+
+// Set tool choices: can be auto, none, required, any or a list of tool names
+func WithToolChoice(v ...string) Opt {
+	return func(o *Opts) error {
+		o.Set("tool_choice", v)
+		return nil
+	}
+}
+
+// Number of completions to return for each request
+func WithNumCompletions(v uint64) Opt {
+	return func(o *Opts) error {
+		if v < 1 || v > 8 {
+			return ErrBadParameter.With("num_completions must be between 1 and 8")
+		}
+		o.Set("num_completions", v)
+		return nil
+	}
+}
+
+// Inject a safety prompt before all conversations.
+func WithSafePrompt() Opt {
+	return func(o *Opts) error {
+		o.Set("safe_prompt", true)
 		return nil
 	}
 }

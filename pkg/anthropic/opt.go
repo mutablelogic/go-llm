@@ -17,23 +17,9 @@ type optmetadata struct {
 ////////////////////////////////////////////////////////////////////////////////
 // OPTIONS
 
-func WithMaxTokens(v uint) llm.Opt {
-	return func(o *llm.Opts) error {
-		o.Set("max_tokens", v)
-		return nil
-	}
-}
-
 func WithUser(v string) llm.Opt {
 	return func(o *llm.Opts) error {
 		o.Set("user", v)
-		return nil
-	}
-}
-
-func WithStopSequences(v ...string) llm.Opt {
-	return func(o *llm.Opts) error {
-		o.Set("stop", v)
 		return nil
 	}
 }
