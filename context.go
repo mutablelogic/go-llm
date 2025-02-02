@@ -5,21 +5,28 @@ import "context"
 //////////////////////////////////////////////////////////////////
 // TYPES
 
-// ContextContent is the content of the last context message
-type ContextContent interface {
+// Completion is the content of the last context message
+type Completion interface {
+	// Return the number of completions, which is ususally 1 unless
+	// WithNumCompletions was used when calling the model
+	Num() int
+
 	// Return the current session role, which can be system, assistant, user, tool, tool_result, ...
+	// If this is a completion, the role is usually 'assistant'
 	Role() string
 
-	// Return the current session text, or empty string if no text was returned
-	Text() string
+	// Return the text for the last completion. If multiple completions are not
+	// supported, the argument is ignored.
+	Text(int) string
 
-	// Return the current session tool calls, or empty if no tool calls were made
-	ToolCalls() []ToolCall
+	// Return the current session tool calls given the completion index.
+	// Will return nil if no tool calls were returned
+	ToolCalls(int) []ToolCall
 }
 
 // Context is fed to the agent to generate a response
 type Context interface {
-	ContextContent
+	Completion
 
 	// Generate a response from a user prompt (with attachments and
 	// other options)
