@@ -12,8 +12,8 @@ import (
 // TYPES
 
 type model struct {
-	*Client
-	meta Model
+	*Client `json:"-"`
+	meta    Model
 }
 
 type Model struct {

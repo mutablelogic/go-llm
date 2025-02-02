@@ -16,7 +16,7 @@ import (
 
 // model is the implementation of the llm.Model interface
 type model struct {
-	*Client
+	*Client `json:"-"`
 	ModelMeta
 }
 
@@ -60,8 +60,12 @@ type PullStatus struct {
 ///////////////////////////////////////////////////////////////////////////////
 // STRINGIFY
 
+func (m model) MarshalJSON() ([]byte, error) {
+	return json.Marshal(m.ModelMeta)
+}
+
 func (m model) String() string {
-	data, err := json.MarshalIndent(m.ModelMeta, "", "  ")
+	data, err := json.MarshalIndent(m, "", "  ")
 	if err != nil {
 		return err.Error()
 	}

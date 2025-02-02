@@ -19,6 +19,7 @@ type ChatCmd struct {
 	Model    string `arg:"" help:"Model name"`
 	NoStream bool   `flag:"nostream" help:"Disable streaming"`
 	NoTools  bool   `flag:"nostream" help:"Disable tool calling"`
+	Prompt   string `flag:"prompt" help:"Set the initial user prompt"`
 	System   string `flag:"system" help:"Set the system prompt"`
 }
 
@@ -60,11 +61,17 @@ func (cmd *ChatCmd) Run(globals *Globals) error {
 
 		// Continue looping until end of input
 		for {
-			input, err := globals.term.ReadLine(model.Name() + "> ")
-			if errors.Is(err, io.EOF) {
-				return nil
-			} else if err != nil {
-				return err
+			var input string
+			if cmd.Prompt != "" {
+				input = cmd.Prompt
+				cmd.Prompt = ""
+			} else {
+				input, err = globals.term.ReadLine(model.Name() + "> ")
+				if errors.Is(err, io.EOF) {
+					return nil
+				} else if err != nil {
+					return err
+				}
 			}
 
 			// Ignore empty input
