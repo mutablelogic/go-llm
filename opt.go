@@ -13,12 +13,12 @@ type Opt func(*Opts) error
 
 // set of options
 type Opts struct {
-	agents      map[string]Agent     // Set of agents
-	toolkit     ToolKit              // Toolkit for tools
-	callback    func(ContextContent) // Streaming callback
-	attachments []*Attachment        // Attachments
-	system      string               // System prompt
-	options     map[string]any       // Additional options
+	agents      map[string]Agent // Set of agents
+	toolkit     ToolKit          // Toolkit for tools
+	callback    func(Completion) // Streaming callback
+	attachments []*Attachment    // Attachments
+	system      string           // System prompt
+	options     map[string]any   // Additional options
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -46,7 +46,7 @@ func (o *Opts) ToolKit() ToolKit {
 }
 
 // Return the stream function
-func (o *Opts) StreamFn() func(ContextContent) {
+func (o *Opts) StreamFn() func(Completion) {
 	return o.callback
 }
 
@@ -150,7 +150,7 @@ func WithToolKit(toolkit ToolKit) Opt {
 }
 
 // Set chat streaming function
-func WithStream(fn func(ContextContent)) Opt {
+func WithStream(fn func(Completion)) Opt {
 	return func(o *Opts) error {
 		o.callback = fn
 		return nil

@@ -15,12 +15,13 @@ type Completion interface {
 	// If this is a completion, the role is usually 'assistant'
 	Role() string
 
-	// Return the text for the last completion. If multiple completions are not
+	// Return the text for the last completion, with the argument as the
+	// completion index (usually 0). If multiple completions are not
 	// supported, the argument is ignored.
 	Text(int) string
 
 	// Return the current session tool calls given the completion index.
-	// Will return nil if no tool calls were returned
+	// Will return nil if no tool calls were returned.
 	ToolCalls(int) []ToolCall
 }
 

@@ -26,6 +26,8 @@ docker run \
   chat claude-3-5-haiku-20241022
 ```
 
+See below for more information on how to use the command-line tool.
+
 ## Programmatic Usage
 
 See the documentation [here](https://pkg.go.dev/github.com/mutablelogic/go-llm)
@@ -182,6 +184,40 @@ The options are as follows:
 | `antropic.WithEphemeral()` | No | Yes | No | - | Attachments should be cached server-side |
 | `antropic.WithCitations()` | No | Yes | No | - | Attachments should be used in citations |
 | `antropic.WithUser(string)` | No | Yes | No | - | Indicate the user name for the request, for debugging |
+
+## The Command Line Tool
+
+You can use the command-line tool to interact with the API. To build the tool, you can use the following command:
+
+```bash
+go install github.com/mutablelogic/go-llm/cmd/llm@latest
+llm --help
+```
+
+The output is something like:
+
+```text
+Usage: llm <command> [flags]
+
+LLM agent command line interface
+
+Flags:
+  -h, --help                      Show context-sensitive help.
+      --debug                     Enable debug output
+      --verbose                   Enable verbose output
+      --ollama-endpoint=STRING    Ollama endpoint ($OLLAMA_URL)
+      --anthropic-key=STRING      Anthropic API Key ($ANTHROPIC_API_KEY)
+      --news-key=STRING           News API Key ($NEWSAPI_KEY)
+
+Commands:
+  agents      Return a list of agents
+  models      Return a list of models
+  tools       Return a list of tools
+  download    Download a model
+  chat        Start a chat session
+
+Run "llm <command> --help" for more information on a command.
+```
 
 ## Contributing & Distribution
 
