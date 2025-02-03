@@ -16,6 +16,8 @@ type model struct {
 	meta    Model
 }
 
+var _ llm.Model = (*model)(nil)
+
 type Model struct {
 	Name                    string   `json:"id"`
 	Description             string   `json:"description,omitempty"`

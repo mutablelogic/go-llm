@@ -4,11 +4,11 @@ mistral implements an API client for mistral (https://docs.mistral.ai/api/)
 package mistral
 
 import (
-	// Packages
 	"context"
 
-	"github.com/mutablelogic/go-client"
-	"github.com/mutablelogic/go-llm"
+	// Packages
+	client "github.com/mutablelogic/go-client"
+	llm "github.com/mutablelogic/go-llm"
 )
 
 ///////////////////////////////////////////////////////////////////////////////

@@ -5,6 +5,8 @@ package anthropic
 
 import (
 	// Packages
+	"context"
+
 	client "github.com/mutablelogic/go-client"
 	llm "github.com/mutablelogic/go-llm"
 )
@@ -42,10 +44,7 @@ func New(ApiKey string, opts ...client.ClientOpt) (*Client, error) {
 	}
 
 	// Return the client
-	return &Client{
-		Client: client,
-		cache:  make(map[string]llm.Model),
-	}, nil
+	return &Client{client, nil}, nil
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -54,4 +53,37 @@ func New(ApiKey string, opts ...client.ClientOpt) (*Client, error) {
 // Return the name of the agent
 func (*Client) Name() string {
 	return defaultName
+}
+
+// Return the models
+func (anthropic *Client) Models(ctx context.Context) ([]llm.Model, error) {
+	// Cache models
+	if anthropic.cache == nil {
+		models, err := anthropic.ListModels(ctx)
+		if err != nil {
+			return nil, err
+		}
+		anthropic.cache = make(map[string]llm.Model, len(models))
+		for _, model := range models {
+			anthropic.cache[model.Name()] = model
+		}
+	}
+
+	// Return models
+	result := make([]llm.Model, 0, len(anthropic.cache))
+	for _, model := range anthropic.cache {
+		result = append(result, model)
+	}
+	return result, nil
+}
+
+// Return a model by name, or nil if not found.
+// Panics on error.
+func (anthropic *Client) Model(ctx context.Context, name string) llm.Model {
+	if anthropic.cache == nil {
+		if _, err := anthropic.Models(ctx); err != nil {
+			panic(err)
+		}
+	}
+	return anthropic.cache[name]
 }

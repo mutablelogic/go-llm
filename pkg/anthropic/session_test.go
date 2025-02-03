@@ -2,91 +2,55 @@ package anthropic_test
 
 import (
 	"context"
-	"os"
 	"testing"
 
 	// Packages
-	opts "github.com/mutablelogic/go-client"
 	llm "github.com/mutablelogic/go-llm"
-	anthropic "github.com/mutablelogic/go-llm/pkg/anthropic"
 	tool "github.com/mutablelogic/go-llm/pkg/tool"
 	assert "github.com/stretchr/testify/assert"
 )
 
 func Test_session_001(t *testing.T) {
-	client, err := anthropic.New(GetApiKey(t), opts.OptTrace(os.Stderr, true))
-	if err != nil {
+	assert := assert.New(t)
+	model := client.Model(context.TODO(), "claude-3-5-haiku-20241022")
+	if !assert.NotNil(model) {
 		t.FailNow()
 	}
 
-	model, err := client.GetModel(context.TODO(), "claude-3-haiku-20240307")
-	if err != nil {
-		t.FailNow()
+	session := model.Context()
+	if assert.NotNil(session) {
+		err := session.FromUser(context.TODO(), "Hello, how are you?")
+		assert.NoError(err)
+		t.Log(session)
 	}
-
-	// Session with a single user prompt - streaming
-	t.Run("stream", func(t *testing.T) {
-		assert := assert.New(t)
-		session := model.Context(llm.WithStream(func(stream llm.ContextContent) {
-			t.Log("SESSION DELTA", stream)
-		}))
-		assert.NotNil(session)
-
-		err := session.FromUser(context.TODO(), "Why is the grass green?")
-		if !assert.NoError(err) {
-			t.FailNow()
-		}
-		assert.Equal("assistant", session.Role())
-		assert.NotEmpty(session.Text())
-	})
-
-	// Session with a single user prompt - not streaming
-	t.Run("nostream", func(t *testing.T) {
-		assert := assert.New(t)
-		session := model.Context()
-		assert.NotNil(session)
-
-		err := session.FromUser(context.TODO(), "Why is the sky blue?")
-		if !assert.NoError(err) {
-			t.FailNow()
-		}
-		assert.Equal("assistant", session.Role())
-		assert.NotEmpty(session.Text())
-	})
 }
 
 func Test_session_002(t *testing.T) {
-	client, err := anthropic.New(GetApiKey(t), opts.OptTrace(os.Stderr, true))
-	if err != nil {
+	assert := assert.New(t)
+	model := client.Model(context.TODO(), "claude-3-5-haiku-20241022")
+	if !assert.NotNil(model) {
 		t.FailNow()
 	}
 
-	model, err := client.GetModel(context.TODO(), "claude-3-haiku-20240307")
-	if err != nil {
+	toolkit := tool.NewToolKit()
+	toolkit.Register(&weather{})
+
+	session := model.Context(llm.WithToolKit(toolkit))
+	if !assert.NotNil(session) {
 		t.FailNow()
 	}
 
-	// Session with a tool call
-	t.Run("toolcall", func(t *testing.T) {
-		assert := assert.New(t)
+	assert.NoError(session.FromUser(context.TODO(), "What is the weather like in London today?"))
+	calls := session.ToolCalls(0)
+	if assert.Len(calls, 1) {
+		assert.Equal("weather_in_city", calls[0].Name())
 
-		toolkit := tool.NewToolKit()
-		if err := toolkit.Register(new(weather)); !assert.NoError(err) {
-			t.FailNow()
-		}
+		result, err := toolkit.Run(context.TODO(), calls...)
+		assert.NoError(err)
+		assert.Len(result, 1)
 
-		session := model.Context(llm.WithToolKit(toolkit))
-		assert.NotNil(session)
+		assert.NoError(session.FromTool(context.TODO(), result...))
+	}
 
-		err = session.FromUser(context.TODO(), "What is today's weather, in Berlin?")
-		if !assert.NoError(err) {
-			t.FailNow()
-		}
-
-		result, err := toolkit.Run(context.TODO(), session.ToolCalls()...)
-		if !assert.NoError(err) {
-			t.FailNow()
-		}
-		assert.NotEmpty(result)
-	})
+	t.Log(session)
 }

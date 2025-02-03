@@ -6,7 +6,6 @@ import (
 
 	// Packages
 	llm "github.com/mutablelogic/go-llm"
-	tool "github.com/mutablelogic/go-llm/pkg/tool"
 )
 
 //////////////////////////////////////////////////////////////////
@@ -15,7 +14,7 @@ import (
 type session struct {
 	model *model
 	opts  []llm.Opt
-	seq   []*MessageMeta
+	seq   []*Message
 }
 
 var _ llm.Context = (*session)(nil)
@@ -28,6 +27,7 @@ func (model *model) Context(opts ...llm.Opt) llm.Context {
 	return &session{
 		model: model,
 		opts:  opts,
+		seq:   make([]*Message, 0, 10),
 	}
 }
 
@@ -36,13 +36,13 @@ func (model *model) Context(opts ...llm.Opt) llm.Context {
 func (model *model) UserPrompt(prompt string, opts ...llm.Opt) llm.Context {
 	context := model.Context(opts...)
 
-	meta, err := userPrompt(prompt, opts...)
+	message, err := userPrompt(prompt, opts...)
 	if err != nil {
 		panic(err)
 	}
 
 	// Add to the sequence
-	context.(*session).seq = append(context.(*session).seq, meta)
+	context.(*session).seq = append(context.(*session).seq, message)
 
 	// Return success
 	return context
@@ -68,54 +68,49 @@ func (session session) String() string {
 //////////////////////////////////////////////////////////////////
 // PUBLIC METHODS
 
+// Return the number of completions
+func (session *session) Num() int {
+	if len(session.seq) == 0 {
+		return 0
+	}
+	return 1
+}
+
 // Return the role of the last message
 func (session *session) Role() string {
 	if len(session.seq) == 0 {
 		return ""
 	}
-	return session.seq[len(session.seq)-1].Role
+	return session.seq[len(session.seq)-1].Role()
 }
 
 // Return the text of the last message
-func (session *session) Text() string {
+func (session *session) Text(index int) string {
 	if len(session.seq) == 0 {
 		return ""
 	}
-	meta := session.seq[len(session.seq)-1]
-	return meta.Text()
+	return session.seq[len(session.seq)-1].Text(index)
 }
 
 // Return the current session tool calls, or empty if no tool calls were made
-func (session *session) ToolCalls() []llm.ToolCall {
+func (session *session) ToolCalls(index int) []llm.ToolCall {
 	// Sanity check for tool call
 	if len(session.seq) == 0 {
 		return nil
 	}
-	meta := session.seq[len(session.seq)-1]
-	if meta.Role != "assistant" {
-		return nil
-	}
-
-	// Gather tool calls
-	var result []llm.ToolCall
-	for _, content := range meta.Content {
-		if content.Type == "tool_use" {
-			result = append(result, tool.NewCall(content.ContentTool.Id, content.ContentTool.Name, content.ContentTool.Input))
-		}
-	}
-	return result
+	return session.seq[len(session.seq)-1].ToolCalls(index)
 }
 
 // Generate a response from a user prompt (with attachments) and
 // other empheral options
 func (session *session) FromUser(ctx context.Context, prompt string, opts ...llm.Opt) error {
-	// Append the user prompt to the sequence
-	meta, err := userPrompt(prompt, opts...)
+	message, err := userPrompt(prompt, opts...)
 	if err != nil {
 		return err
-	} else {
-		session.seq = append(session.seq, meta)
 	}
+
+	// Append the user prompt to the sequence
+	session.seq = append(session.seq, message)
 
 	// The options come from the session options and the user options
 	chatopts := make([]llm.Opt, 0, len(session.opts)+len(opts))
@@ -123,13 +118,13 @@ func (session *session) FromUser(ctx context.Context, prompt string, opts ...llm
 	chatopts = append(chatopts, opts...)
 
 	// Call the 'chat' method
-	client := session.model.client
-	r, err := client.Messages(ctx, session, chatopts...)
+	r, err := session.model.Messages(ctx, session, chatopts...)
 	if err != nil {
 		return err
-	} else {
-		session.seq = append(session.seq, &r.MessageMeta)
 	}
+
+	// Append the first message from the set of completions
+	session.seq = append(session.seq, &r.Message)
 
 	// Return success
 	return nil
@@ -138,21 +133,22 @@ func (session *session) FromUser(ctx context.Context, prompt string, opts ...llm
 // Generate a response from a tool, passing the call identifier or
 // function name, and the result
 func (session *session) FromTool(ctx context.Context, results ...llm.ToolResult) error {
-	meta, err := toolResults(results...)
+	message, err := toolResults(results...)
 	if err != nil {
 		return err
-	} else {
-		session.seq = append(session.seq, meta)
 	}
 
+	// Append the tool results to the sequence
+	session.seq = append(session.seq, message)
+
 	// Call the 'chat' method
-	client := session.model.client
-	r, err := client.Messages(ctx, session, session.opts...)
+	r, err := session.model.Messages(ctx, session, session.opts...)
 	if err != nil {
 		return err
-	} else {
-		session.seq = append(session.seq, &r.MessageMeta)
 	}
+
+	// Append the first message from the set of completions
+	session.seq = append(session.seq, &r.Message)
 
 	// Return success
 	return nil
@@ -161,53 +157,53 @@ func (session *session) FromTool(ctx context.Context, results ...llm.ToolResult)
 ///////////////////////////////////////////////////////////////////////////////
 // PRIVATE METHODS
 
-func userPrompt(prompt string, opts ...llm.Opt) (*MessageMeta, error) {
-	// Apply attachments
-	opt, err := llm.ApplyOpts(opts...)
+func userPrompt(prompt string, opts ...llm.Opt) (*Message, error) {
+	// Get attachments
+	opt, err := llm.ApplyPromptOpts(opts...)
 	if err != nil {
 		return nil, err
 	}
 
-	// Get attachments
+	// Get attachments, allocate content
 	attachments := opt.Attachments()
+	content := make([]*Content, 1, len(attachments)+1)
 
-	// Create user message
-	meta := MessageMeta{
-		Role:    "user",
-		Content: make([]*Content, 1, len(attachments)+1),
-	}
-
-	// Append the text
-	meta.Content[0] = NewTextContent(prompt)
-
-	// Append any additional data
+	// Append the text and the attachments
+	content[0] = NewTextContent(prompt)
 	for _, attachment := range attachments {
-		content, err := attachmentContent(attachment, optEphemeral(opt), optCitations(opt))
+		contentData, err := NewAttachment(attachment, optEphemeral(opt), optCitations(opt))
 		if err != nil {
 			return nil, err
 		}
-		meta.Content = append(meta.Content, content)
+		content = append(content, contentData)
 	}
 
 	// Return success
-	return &meta, nil
+	return &Message{
+		RoleContent: RoleContent{
+			Role:    "user",
+			Content: content,
+		},
+	}, nil
 }
 
-func toolResults(results ...llm.ToolResult) (*MessageMeta, error) {
+func toolResults(results ...llm.ToolResult) (*Message, error) {
 	// Check for no results
 	if len(results) == 0 {
 		return nil, llm.ErrBadParameter.Withf("No tool results")
 	}
 
 	// Create user message
-	meta := MessageMeta{
-		Role:    "user",
-		Content: make([]*Content, 0, len(results)),
+	message := Message{
+		RoleContent{
+			Role:    "user",
+			Content: make([]*Content, 0, len(results)),
+		},
 	}
 	for _, result := range results {
-		meta.Content = append(meta.Content, NewToolResultContent(result))
+		message.RoleContent.Content = append(message.RoleContent.Content, NewToolResultContent(result))
 	}
 
 	// Return success
-	return &meta, nil
+	return &message, nil
 }

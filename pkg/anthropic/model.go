@@ -2,6 +2,7 @@ package anthropic
 
 import (
 	"context"
+	"encoding/json"
 	"net/url"
 	"time"
 
@@ -13,16 +14,14 @@ import (
 ///////////////////////////////////////////////////////////////////////////////
 // TYPES
 
-// model is the implementation of the llm.Model interface
 type model struct {
-	client *Client
-	ModelMeta
+	*Client `json:"-"`
+	meta    Model
 }
 
 var _ llm.Model = (*model)(nil)
 
-// ModelMeta is the metadata for an anthropic model
-type ModelMeta struct {
+type Model struct {
 	Name        string     `json:"id"`
 	Description string     `json:"display_name,omitempty"`
 	Type        string     `json:"type,omitempty"`
@@ -30,65 +29,44 @@ type ModelMeta struct {
 }
 
 ///////////////////////////////////////////////////////////////////////////////
-// PUBLIC METHODS
+// STRINGIFY
 
-// Agent interface
-func (anthropic *Client) Models(ctx context.Context) ([]llm.Model, error) {
-	// Cache models
-	if len(anthropic.cache) == 0 {
-		models, err := anthropic.ListModels(ctx)
-		if err != nil {
-			return nil, err
-		}
-		for _, model := range models {
-			name := model.Name()
-			anthropic.cache[name] = model
-		}
-	}
-
-	// Return models
-	result := make([]llm.Model, 0, len(anthropic.cache))
-	for _, model := range anthropic.cache {
-		result = append(result, model)
-	}
-	return result, nil
+func (m model) MarshalJSON() ([]byte, error) {
+	return json.Marshal(m.meta)
 }
 
-// Agent interface
-func (anthropic *Client) Model(ctx context.Context, model string) llm.Model {
-	// Cache models
-	if len(anthropic.cache) == 0 {
-		_, err := anthropic.Models(ctx)
-		if err != nil {
-			panic(err)
-		}
+func (m model) String() string {
+	data, err := json.MarshalIndent(m, "", "  ")
+	if err != nil {
+		return err.Error()
 	}
-
-	// Return model
-	return anthropic.cache[model]
+	return string(data)
 }
+
+///////////////////////////////////////////////////////////////////////////////
+// PUBLIC METHODS - API
 
 // Get a model by name
 func (anthropic *Client) GetModel(ctx context.Context, name string) (llm.Model, error) {
-	var response ModelMeta
+	var response Model
 	if err := anthropic.DoWithContext(ctx, nil, &response, client.OptPath("models", name)); err != nil {
 		return nil, err
 	}
 
 	// Return success
-	return &model{client: anthropic, ModelMeta: response}, nil
+	return &model{anthropic, response}, nil
 }
 
 // List models
 func (anthropic *Client) ListModels(ctx context.Context) ([]llm.Model, error) {
-	// Send the request
 	var response struct {
-		Body    []ModelMeta `json:"data"`
-		HasMore bool        `json:"has_more"`
-		FirstId string      `json:"first_id"`
-		LastId  string      `json:"last_id"`
+		Body    []Model `json:"data"`
+		HasMore bool    `json:"has_more"`
+		FirstId string  `json:"first_id"`
+		LastId  string  `json:"last_id"`
 	}
 
+	// Request
 	request := url.Values{}
 	result := make([]llm.Model, 0, 100)
 	for {
@@ -98,10 +76,7 @@ func (anthropic *Client) ListModels(ctx context.Context) ([]llm.Model, error) {
 
 		// Convert to llm.Model
 		for _, meta := range response.Body {
-			result = append(result, &model{
-				client:    anthropic,
-				ModelMeta: meta,
-			})
+			result = append(result, &model{anthropic, meta})
 		}
 
 		// If there are no more models, return
@@ -118,7 +93,7 @@ func (anthropic *Client) ListModels(ctx context.Context) ([]llm.Model, error) {
 
 // Return the name of a model
 func (model *model) Name() string {
-	return model.ModelMeta.Name
+	return model.meta.Name
 }
 
 // Embedding vector generation - not supported on Anthropic
