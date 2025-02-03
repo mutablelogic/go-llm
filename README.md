@@ -268,12 +268,12 @@ The options are as follows:
 | `llm.WithTopK(uint64)` | Yes | Yes | No | - | Reduces the probability of generating nonsense. A higher value (e.g. 100) will give more diverse answers, while a lower value (e.g. 10) will be more conservative. |
 | `llm.WithMaxTokens(uint64)` | No | Yes | Yes | - | The maximum number of tokens to generate in the response. |
 | `llm.WithStream(func(llm.Completion))` | Can be enabled when tools are not used | Yes | Yes | - | Stream the response to a function. |
-| `llm.WithToolChoice(string, string, ...)` | No | Yes | Use `auto`, `any`, `none`, `required` or a function name. Only the first argument is used. | - | The tool to use for the model. |
+| `llm.WithToolChoice(string, string, ...)` | No | Use `auto`, `any` or a function name. Only the first argument is used. | Use `auto`, `any`, `none`, `required` or a function name. Only the first argument is used. | - | The tool to use for the model. |
 | `llm.WithToolKit(llm.ToolKit)` | Cannot be combined with streaming | Yes | Yes | - | The set of tools to use. |
 | `llm.WithStopSequence(string, string, ...)` | Yes | Yes | Yes | - | Stop generation if one of these tokens is detected. |
 | `llm.WithSystemPrompt(string)` | No | Yes | Yes | - | Set the system prompt for the model. |
-| `llm.WithSeed(uint64)` | Yes | Yes | Yes | - | The seed to use for random sampling. If set, different calls will generate deterministic results. |
-| `llm.WithFormat(string)` | Use `json` | Yes | Use `json_format` or `text` | - | The format of the response. For Mistral, you must also instruct the model to produce JSON yourself with a system or a user message. |
+| `llm.WithSeed(uint64)` | Yes | No | Yes | - | The seed to use for random sampling. If set, different calls will generate deterministic results. |
+| `llm.WithFormat(string)` | Use `json` | No | Use `json_format` or `text` | - | The format of the response. For Mistral, you must also instruct the model to produce JSON yourself with a system or a user message. |
 | `llm.WithPresencePenalty(float64)` | Yes | No | Yes | - | Determines how much the model penalizes the repetition of words or phrases. A higher presence penalty encourages the model to use a wider variety of words and phrases, making the output more diverse and creative. |
 | `llm.WithFequencyPenalty(float64)` | Yes | No | Yes | - | Penalizes the repetition of words based on their frequency in the generated text. A higher frequency penalty discourages the model from repeating words that have already appeared frequently in the output, promoting diversity and reducing repetition. |
 | `mistral.WithPrediction(string)` | No | No | Yes | - | Enable users to specify expected results, optimizing response times by leveraging known or predictable content. This approach is especially effective for updating text documents or code files with minimal changes, reducing latency while maintaining high-quality results. |
@@ -282,7 +282,7 @@ The options are as follows:
 | `llm.WithAttachment(io.Reader)` | Yes | Yes | Yes | - | Attach a file to a user prompt. It is the responsibility of the caller to close the reader. |
 | `antropic.WithEphemeral()` | No | Yes | No | - | Attachments should be cached server-side |
 | `antropic.WithCitations()` | No | Yes | No | - | Attachments should be used in citations |
-| `antropic.WithUser(string)` | No | Yes | No | - | Indicate the user name for the request, for debugging |
+| `antropic.WithUser(string)` | No | Yes | No | - | Indicate the user for the request, for debugging |
 
 ## The Command Line Tool
 
