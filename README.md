@@ -151,17 +151,87 @@ ensure the session is maintained across multiple calls.
 
 ### Embedding Generation
 
-TODO
+You can generate embedding vectors using an appropriate model with Ollama or Mistral models:
+
+```go
+import (
+  "github.com/mutablelogic/go-llm"
+)
+
+func embedding(ctx context.Context, agent llm.Agent) error {
+  // Create a new chat session
+  vector, err := agent.Model(ctx, "mistral-embed").Embedding(ctx, "hello")
+  // ...
+}
+```
 
 ### Attachments & Image Caption Generation
 
-TODO
+Some models have `vision` capability and others can also summarize text. For example, to
+generate captions for an image,
+
+```go
+import (
+  "github.com/mutablelogic/go-llm"
+)
+
+func generate_image_caption(ctx context.Context, agent llm.Agent, path string) (string, error) {
+  f, err := os.Open(path)
+  if err != nil {
+    return "", err
+  }
+  defer f.Close()
+
+  // Describe an image
+  r, err := agent.Model("claude-3-5-sonnet-20241022").UserPrompt(
+      ctx, model.UserPrompt("Provide a short caption for this image", llm.WithAttachment(f))
+  )
+  if err != nil {
+    return "", err
+  }
+
+  // Return success
+  return r.Text(0), err
+}
+```
+
+To summarize a text or PDF docment is exactly the same using an Anthropic model, but maybe with a
+different prompt.
 
 ### Streaming
 
-TODO
+Streaming is supported with all providers, but Ollama cannot be used with streaming and tools
+simultaneously. You provide a callback function of signature `func(llm.Completion)` which will
+be called as a completion is received.
+
+```go
+import (
+  "github.com/mutablelogic/go-llm"
+)
+
+func generate_completion(ctx context.Context, agent llm.Agent, prompt string) (string, error) {
+  r, err := agent.Model("claude-3-5-sonnet-20241022").UserPrompt(
+      ctx, model.UserPrompt("What is the weather in London?"),
+      llm.WithStream(stream_callback),
+  )
+  if err != nil {
+    return "", err
+  }
+
+  // Return success
+  return r.Text(0), err
+}
+
+func stream_callback(completion llm.Completion) {
+  // Print out the completion text on each call
+  fmt.Println(completion.Text(0))
+}
+
+```
 
 ### Tool Support
+
+All providers support tools, but not all models.
 
 TODO
 

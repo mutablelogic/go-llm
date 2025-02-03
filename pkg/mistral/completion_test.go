@@ -8,10 +8,9 @@ import (
 	"testing"
 
 	// Packages
-
-	"github.com/mutablelogic/go-llm"
+	llm "github.com/mutablelogic/go-llm"
 	mistral "github.com/mutablelogic/go-llm/pkg/mistral"
-	"github.com/mutablelogic/go-llm/pkg/tool"
+	tool "github.com/mutablelogic/go-llm/pkg/tool"
 	assert "github.com/stretchr/testify/assert"
 )
 

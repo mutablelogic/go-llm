@@ -15,7 +15,7 @@ type optmetadata struct {
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-// OPTIONS
+// PUBLIC METHODS
 
 func WithUser(v string) llm.Opt {
 	return func(o *llm.Opts) error {
@@ -49,6 +49,13 @@ func optEphemeral(opt *llm.Opts) bool {
 	return opt.GetBool("ephemeral")
 }
 
+func optMetadata(opt *llm.Opts) *optmetadata {
+	if user, ok := opt.Get("user").(string); ok {
+		return &optmetadata{User: user}
+	}
+	return nil
+}
+
 func optTools(agent *Client, opts *llm.Opts) []llm.Tool {
 	toolkit := opts.ToolKit()
 	if toolkit == nil {
@@ -57,23 +64,42 @@ func optTools(agent *Client, opts *llm.Opts) []llm.Tool {
 	return toolkit.Tools(agent)
 }
 
-func optMaxTokens(model llm.Model, opt *llm.Opts) uint {
+func optToolChoice(opts *llm.Opts) any {
+	choices, ok := opts.Get("tool_choice").([]string)
+	if !ok || len(choices) == 0 {
+		return nil
+	}
+
+	// We only support one choice
+	var result struct {
+		Type                   string `json:"type"`
+		Name                   string `json:"name,omitempty"`
+		DisableParallelToolUse bool   `json:"disable_parallel_tool_use,omitempty"`
+	}
+	choice := strings.TrimSpace(strings.ToLower(choices[0]))
+	switch choice {
+	case "":
+		return nil
+	case "auto", "any":
+		result.Type = choice
+	default:
+		result.Type = "tool"
+		result.Name = choice
+	}
+	return result
+}
+
+func optMaxTokens(model llm.Model, opt *llm.Opts) uint64 {
+	if opt.Has("max_tokens") {
+		return opt.GetUint64("max_tokens")
+	}
 	// https://docs.anthropic.com/en/docs/about-claude/models
 	switch {
-	case strings.Contains(model.Name(), "claude-3-5-haiku"):
-		return 8192
-	case strings.Contains(model.Name(), "claude-3-5-sonnet"):
+	case strings.HasPrefix(model.Name(), "claude-3-5"):
 		return 8192
 	default:
 		return 4096
 	}
-}
-
-func optMetadata(opt *llm.Opts) *optmetadata {
-	if user, ok := opt.Get("user").(string); ok {
-		return &optmetadata{User: user}
-	}
-	return nil
 }
 
 func optStopSequences(opt *llm.Opts) []string {

@@ -1,4 +1,4 @@
-package mistral_test
+package anthropic_test
 
 import (
 	"context"

@@ -2,21 +2,27 @@ package anthropic
 
 import (
 	"encoding/json"
-	"net/http"
 	"strings"
 
 	// Packages
 	llm "github.com/mutablelogic/go-llm"
+	"github.com/mutablelogic/go-llm/pkg/tool"
 )
 
 ///////////////////////////////////////////////////////////////////////////////
 // TYPES
 
 // Message with text or object content
-type MessageMeta struct {
+type Message struct {
+	RoleContent
+}
+
+type RoleContent struct {
 	Role    string     `json:"role"`
 	Content []*Content `json:"content,omitempty"`
 }
+
+var _ llm.Completion = (*Message)(nil)
 
 type Content struct {
 	Type string `json:"type"` // image, document, text, tool_use
@@ -65,17 +71,33 @@ type contentcitation struct {
 }
 
 ///////////////////////////////////////////////////////////////////////////////
+// GLOBALS
+
+var (
+	supportedAttachments = map[string]string{
+		"image/jpeg":      "image",
+		"image/png":       "image",
+		"image/gif":       "image",
+		"image/webp":      "image",
+		"application/pdf": "document",
+		"text/plain":      "text",
+	}
+)
+
+///////////////////////////////////////////////////////////////////////////////
 // LIFECYCLE
 
-// Return a Content object with text content
+// Return a content object with text content
 func NewTextContent(v string) *Content {
-	content := new(Content)
-	content.Type = "text"
-	content.ContentText.Text = v
-	return content
+	return &Content{
+		Type: "text",
+		ContentText: ContentText{
+			Text: v,
+		},
+	}
 }
 
-// Return a Content object with tool result
+// Return a content object with tool result
 func NewToolResultContent(v llm.ToolResult) *Content {
 	content := new(Content)
 	content.Type = "tool_result"
@@ -93,51 +115,10 @@ func NewToolResultContent(v llm.ToolResult) *Content {
 	return content
 }
 
-///////////////////////////////////////////////////////////////////////////////
-// STRINGIFY
-
-func (m MessageMeta) String() string {
-	data, err := json.MarshalIndent(m, "", "  ")
-	if err != nil {
-		return err.Error()
-	}
-	return string(data)
-}
-
-///////////////////////////////////////////////////////////////////////////////
-// PRIVATE METHODS
-
-func (m MessageMeta) Text() string {
-	if len(m.Content) == 0 {
-		return ""
-	}
-	var text []string
-	for _, content := range m.Content {
-		if content.Type == "text" {
-			text = append(text, content.ContentText.Text)
-		}
-	}
-	return strings.Join(text, "\n")
-}
-
-///////////////////////////////////////////////////////////////////////////////
-// PRIVATE METHODS
-
-var (
-	supportedAttachments = map[string]string{
-		"image/jpeg":      "image",
-		"image/png":       "image",
-		"image/gif":       "image",
-		"image/webp":      "image",
-		"application/pdf": "document",
-		"text/plain":      "text",
-	}
-)
-
-// Read content from an io.Reader
-func attachmentContent(attachment *llm.Attachment, ephemeral, citations bool) (*Content, error) {
+// Make attachment content
+func NewAttachment(attachment *llm.Attachment, ephemeral, citations bool) (*Content, error) {
 	// Detect mimetype
-	mimetype := http.DetectContentType(attachment.Data())
+	mimetype := attachment.Type()
 	if strings.HasPrefix(mimetype, "text/") {
 		// Switch to text/plain - TODO: charsets?
 		mimetype = "text/plain"
@@ -190,4 +171,54 @@ func attachmentContent(attachment *llm.Attachment, ephemeral, citations bool) (*
 
 	// Return success
 	return content, nil
+}
+
+///////////////////////////////////////////////////////////////////////////////
+// STRINGIFY
+
+func (m Message) String() string {
+	data, err := json.MarshalIndent(m, "", "  ")
+	if err != nil {
+		return err.Error()
+	}
+	return string(data)
+}
+
+///////////////////////////////////////////////////////////////////////////////
+// PUBLIC METHODS - MESSAGE
+
+func (m Message) Num() int {
+	return 1
+}
+
+func (m Message) Role() string {
+	return m.RoleContent.Role
+}
+
+func (m Message) Text(index int) string {
+	if index != 0 {
+		return ""
+	}
+	var text []string
+	for _, content := range m.RoleContent.Content {
+		if content.Type == "text" {
+			text = append(text, content.ContentText.Text)
+		}
+	}
+	return strings.Join(text, "\n")
+}
+
+func (m Message) ToolCalls(index int) []llm.ToolCall {
+	if index != 0 {
+		return nil
+	}
+
+	// Gather tool calls
+	var result []llm.ToolCall
+	for _, content := range m.Content {
+		if content.Type == "tool_use" {
+			result = append(result, tool.NewCall(content.ContentTool.Id, content.ContentTool.Name, content.ContentTool.Input))
+		}
+	}
+	return result
 }
