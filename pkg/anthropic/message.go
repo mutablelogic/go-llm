@@ -6,7 +6,7 @@ import (
 
 	// Packages
 	llm "github.com/mutablelogic/go-llm"
-	"github.com/mutablelogic/go-llm/pkg/tool"
+	tool "github.com/mutablelogic/go-llm/pkg/tool"
 )
 
 ///////////////////////////////////////////////////////////////////////////////

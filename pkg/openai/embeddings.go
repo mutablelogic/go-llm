@@ -32,12 +32,6 @@ type Embedding struct {
 	Vector []float64 `json:"embedding"`
 }
 
-// Metrics
-type Metrics struct {
-	PromptTokens uint64 `json:"prompt_tokens,omitempty"`
-	TotalTokens  uint64 `json:"total_tokens,omitempty"`
-}
-
 ///////////////////////////////////////////////////////////////////////////////
 // STRINGIFY
 
