@@ -3,18 +3,9 @@ package mistral
 import (
 	"strings"
 
+	// Packages
 	"github.com/mutablelogic/go-llm"
 )
-
-///////////////////////////////////////////////////////////////////////////////
-// PUBLIC METHODS
-
-func WithPrediction(v string) llm.Opt {
-	return func(o *llm.Opts) error {
-		o.Set("prediction", v)
-		return nil
-	}
-}
 
 ///////////////////////////////////////////////////////////////////////////////
 // PRIVATE METHODS

@@ -357,3 +357,12 @@ func WithSafePrompt() Opt {
 		return nil
 	}
 }
+
+// Predicted output, which is most common when you are regenerating a file
+// with only minor changes to most of the content.
+func WithPrediction(v string) Opt {
+	return func(o *Opts) error {
+		o.Set("prediction", v)
+		return nil
+	}
+}

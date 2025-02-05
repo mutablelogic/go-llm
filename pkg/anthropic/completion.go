@@ -61,6 +61,11 @@ type reqMessages struct {
 	ToolChoice    any          `json:"tool_choice,omitempty"`
 }
 
+func (model *model) Completion(ctx context.Context, prompt string, opts ...llm.Opt) (llm.Completion, error) {
+	// TODO
+	return nil, llm.ErrNotImplemented
+}
+
 func (anthropic *Client) Messages(ctx context.Context, context llm.Context, opts ...llm.Opt) (*Response, error) {
 	// Apply options
 	opt, err := llm.ApplyOpts(opts...)

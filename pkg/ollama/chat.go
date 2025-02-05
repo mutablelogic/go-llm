@@ -59,6 +59,10 @@ type reqChat struct {
 	KeepAlive *time.Duration         `json:"keep_alive,omitempty"`
 }
 
+func (model *model) Completion(ctx context.Context, prompt string, opts ...llm.Opt) (llm.Completion, error) {
+	// TODO
+	return nil, llm.ErrNotImplemented
+}
 func (ollama *Client) Chat(ctx context.Context, context llm.Context, opts ...llm.Opt) (*Response, error) {
 	// Apply options
 	opt, err := llm.ApplyOpts(opts...)

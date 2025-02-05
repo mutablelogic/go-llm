@@ -64,6 +64,11 @@ type reqChatCompletion struct {
 	SafePrompt       bool       `json:"safe_prompt,omitempty"`
 }
 
+func (model *model) Completion(ctx context.Context, prompt string, opts ...llm.Opt) (llm.Completion, error) {
+	// TODO
+	return nil, llm.ErrNotImplemented
+}
+
 func (mistral *Client) ChatCompletion(ctx context.Context, context llm.Context, opts ...llm.Opt) (*Response, error) {
 	// Apply options
 	opt, err := llm.ApplyOpts(opts...)

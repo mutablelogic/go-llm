@@ -24,6 +24,7 @@ type MessageFactory interface {
 
 // Abstract interface for a message
 type Message interface {
+	llm.Completion
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -41,6 +42,7 @@ var _ llm.Context = (*session)(nil)
 ///////////////////////////////////////////////////////////////////////////////
 // LIFECYCLE
 
+// Create a new empty session with a capacity for 10 messages in the history
 func NewSession(model llm.Model, factory MessageFactory, opts ...llm.Opt) *session {
 	return &session{
 		model: model,
@@ -56,6 +58,7 @@ func NewSession(model llm.Model, factory MessageFactory, opts ...llm.Opt) *sessi
 // prompt is empty, no system prompt is prepended
 func (session *session) WithSystemPrompt(prompt string) []Message {
 	// TODO
+	return nil
 }
 
 // Append a message to the session

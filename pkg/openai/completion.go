@@ -3,12 +3,10 @@ package openai
 import (
 	"context"
 	"encoding/json"
-	"strings"
 
 	// Packages
 	client "github.com/mutablelogic/go-client"
 	llm "github.com/mutablelogic/go-llm"
-	session "github.com/mutablelogic/go-llm/pkg/session"
 )
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -23,6 +21,17 @@ type Response struct {
 	ServiceTier       string `json:"service_tier"`
 	Completions       `json:"choices"`
 	Metrics           `json:"usage,omitempty"`
+}
+
+// Completion choices
+type Completions []Completion
+
+// Completion Variation
+type Completion struct {
+	Index   uint64   `json:"index"`
+	Message *Message `json:"message"`
+	Delta   *Message `json:"delta,omitempty"` // For streaming
+	Reason  string   `json:"finish_reason,omitempty"`
 }
 
 // Metrics
@@ -60,19 +69,19 @@ type reqCompletion struct {
 	Metadata          map[string]string `json:"metadata,omitempty"`
 	FrequencyPenalty  float64           `json:"frequency_penalty,omitempty"`
 	LogitBias         map[uint64]int64  `json:"logit_bias,omitempty"`
-	LogProbs          *bool             `json:"logprobs,omitempty"`
+	LogProbs          bool              `json:"logprobs,omitempty"`
 	TopLogProbs       uint64            `json:"top_logprobs,omitempty"`
 	MaxTokens         uint64            `json:"max_completion_tokens,omitempty"`
-	NumChoices        uint64            `json:"n,omitempty"`
+	NumCompletions    uint64            `json:"n,omitempty"`
 	Modalties         []string          `json:"modalities,omitempty"`
 	Prediction        *Content          `json:"prediction,omitempty"`
 	Audio             *Audio            `json:"audio,omitempty"`
 	PresencePenalty   float64           `json:"presence_penalty,omitempty"`
-	Format            *Format           `json:"response_format,omitempty"`
+	ResponseFormat    *Format           `json:"response_format,omitempty"`
 	Seed              uint64            `json:"random_seed,omitempty"`
 	ServiceTier       string            `json:"service_tier,omitempty"`
 	StopSequences     []string          `json:"stop,omitempty"`
-	Stream            *bool             `json:"stream,omitempty"`
+	Stream            bool              `json:"stream,omitempty"`
 	StreamOptions     *StreamOptions    `json:"stream_options,omitempty"`
 	Temperature       float64           `json:"temperature,omitempty"`
 	TopP              float64           `json:"top_p,omitempty"`
@@ -83,31 +92,48 @@ type reqCompletion struct {
 	Messages          []llm.Completion  `json:"messages"`
 }
 
-func (model *model) Completion(ctx context.Context, session llm.Context, opts ...llm.Opt) (*Response, error) {
+func (model *model) Completion(ctx context.Context, prompt string, opts ...llm.Opt) (llm.Completion, error) {
 	// Apply options
 	opt, err := llm.ApplyOpts(opts...)
 	if err != nil {
 		return nil, err
 	}
 
+	// Create a message
+	message, err := messagefactory{}.UserPrompt(prompt, opts...)
+	if err != nil {
+		return nil, err
+	}
+
 	// Request
 	req, err := client.NewJSONRequest(reqCompletion{
-		Model:            model.Name(),
-		Temperature:      optTemperature(opt),
-		TopP:             optTopP(opt),
-		MaxTokens:        optMaxTokens(opt),
-		Stream:           optStream(opt),
-		StopSequences:    optStopSequences(opt),
-		Seed:             optSeed(opt),
-		Messages:         messages,
-		Format:           optFormat(opt),
-		Tools:            optTools(mistral, opt),
-		ToolChoice:       optToolChoice(opt),
-		PresencePenalty:  optPresencePenalty(opt),
-		FrequencyPenalty: optFrequencyPenalty(opt),
-		NumChoices:       optNumCompletions(opt),
-		Prediction:       optPrediction(opt),
-		SafePrompt:       optSafePrompt(opt),
+		Model:             model.Name(),
+		Store:             optStore(opt),
+		ReasoningEffort:   optReasoningEffort(opt),
+		Metadata:          optMetadata(opt),
+		FrequencyPenalty:  optFrequencyPenalty(opt),
+		LogitBias:         optLogitBias(opt),
+		LogProbs:          optLogProbs(opt),
+		TopLogProbs:       optTopLogProbs(opt),
+		MaxTokens:         optMaxTokens(opt),
+		NumCompletions:    optNumCompletions(opt),
+		Modalties:         optModalities(opt),
+		Prediction:        optPrediction(opt),
+		Audio:             optAudio(opt),
+		PresencePenalty:   optPresencePenalty(opt),
+		ResponseFormat:    optResponseFormat(opt),
+		Seed:              optSeed(opt),
+		ServiceTier:       optServiceTier(opt),
+		StreamOptions:     optStreamOptions(opt),
+		Temperature:       optTemperature(opt),
+		TopP:              optTopP(opt),
+		Stream:            optStream(opt),
+		StopSequences:     optStopSequences(opt),
+		Tools:             optTools(model, opt),
+		ToolChoice:        optToolChoice(opt),
+		ParallelToolCalls: optParallelToolCalls(opt),
+		User:              optUser(opt),
+		Messages:          []llm.Completion{message},
 	})
 	if err != nil {
 		return nil, err
@@ -117,20 +143,9 @@ func (model *model) Completion(ctx context.Context, session llm.Context, opts ..
 	reqopts := []client.RequestOpt{
 		client.OptPath("chat", "completions"),
 	}
-	if optStream(opt) {
-		reqopts = append(reqopts, client.OptTextStreamCallback(func(evt client.TextStreamEvent) error {
-			if err := streamEvent(&response, evt); err != nil {
-				return err
-			}
-			if fn := opt.StreamFn(); fn != nil {
-				fn(&response)
-			}
-			return nil
-		}))
-	}
 
 	// Response
-	if err := mistral.DoWithContext(ctx, req, &response, reqopts...); err != nil {
+	if err := model.DoWithContext(ctx, req, &response, reqopts...); err != nil {
 		return nil, err
 	}
 
@@ -139,88 +154,43 @@ func (model *model) Completion(ctx context.Context, session llm.Context, opts ..
 }
 
 ///////////////////////////////////////////////////////////////////////////////
-// PRIVATE METHODS
+// COMPLETIONS
 
-func streamEvent(response *Response, evt client.TextStreamEvent) error {
-	var delta Response
-	// If we are done, ignore
-	if strings.TrimSpace(evt.Data) == "[DONE]" {
+// Return the number of completions
+func (c Completions) Num() int {
+	return len(c)
+}
+
+// Return message for a specific completion
+func (c Completions) Message(index int) *Message {
+	if index < 0 || index >= len(c) {
 		return nil
 	}
-	// Decode the event
-	if err := evt.Json(&delta); err != nil {
-		return err
-	}
-	// Append the delta to the response
-	if delta.Id != "" {
-		response.Id = delta.Id
-	}
-	if delta.Created != 0 {
-		response.Created = delta.Created
-	}
-	if delta.Model != "" {
-		response.Model = delta.Model
-	}
-	for _, completion := range delta.Completions {
-		appendCompletion(response, &completion)
-	}
-	if delta.Metrics.InputTokens > 0 {
-		response.Metrics.InputTokens += delta.Metrics.InputTokens
-	}
-	if delta.Metrics.OutputTokens > 0 {
-		response.Metrics.OutputTokens += delta.Metrics.OutputTokens
-	}
-	if delta.Metrics.TotalTokens > 0 {
-		response.Metrics.TotalTokens += delta.Metrics.TotalTokens
-	}
-	return nil
+	return c[index].Message
 }
 
-func appendCompletion(response *Response, c *Completion) {
-	for {
-		if c.Index < uint64(len(response.Completions)) {
-			break
-		}
-		response.Completions = append(response.Completions, Completion{
-			Index: c.Index,
-			Message: &Message{
-				RoleContent: RoleContent{
-					Role:    c.Delta.Role(),
-					Content: "",
-				},
-			},
-		})
+// Return the role of the completion
+func (c Completions) Role() string {
+	// The role should be the same for all completions, let's use the first one
+	if len(c) == 0 {
+		return ""
 	}
-	// Add the completion delta
-	if c.Reason != "" {
-		response.Completions[c.Index].Reason = c.Reason
-	}
-	if role := c.Delta.Role(); role != "" {
-		response.Completions[c.Index].Message.RoleContent.Role = role
-	}
-
-	// TODO: We only allow deltas which are strings at the moment...
-	if str, ok := c.Delta.Content.(string); ok && str != "" {
-		if text, ok := response.Completions[c.Index].Message.Content.(string); ok {
-			response.Completions[c.Index].Message.Content = text + str
-		}
-	}
+	return c[0].Message.Role()
 }
 
-///////////////////////////////////////////////////////////////////////////////
-// PUBLIC METHODS
-
-// Generate a completion from a prompt without any history
-func (model *model) Completion(prompt string, opts ...llm.Opt) (llm.Completion, error) {
-	// Create a new session
-	session := session.NewSession(model, &messagefactory{}, opts...)
-
-	// Append a user prompt
-	message, err := messagefactory{}.UserPrompt(prompt, opts...)
-	if err != nil {
-		panic(err)
+// Return the text content for a specific completion
+func (c Completions) Text(index int) string {
+	if index < 0 || index >= len(c) {
+		return ""
 	}
-	session.Append(message)
+	return c[index].Message.Text(0)
+}
 
-	return session
+// Return the current session tool calls given the completion index.
+// Will return nil if no tool calls were returned.
+func (c Completions) ToolCalls(index int) []llm.ToolCall {
+	if index < 0 || index >= len(c) {
+		return nil
+	}
+	return c[index].Message.ToolCalls(0)
 }

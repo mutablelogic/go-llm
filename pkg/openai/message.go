@@ -18,17 +18,6 @@ type Message struct {
 	RoleContent
 }
 
-// Completion choices
-type Completions []Completion
-
-// Completion Variation
-type Completion struct {
-	Index   uint64   `json:"index"`
-	Message *Message `json:"message"`
-	Delta   *Message `json:"delta,omitempty"` // For streaming
-	Reason  string   `json:"finish_reason,omitempty"`
-}
-
 var _ llm.Completion = (*Message)(nil)
 
 type RoleContent struct {
