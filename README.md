@@ -280,9 +280,9 @@ The options are as follows:
 | `llm.WithSafePrompt()` | No | No | Yes | No | Whether to inject a safety prompt before all conversations. |
 | `llm.WithNumCompletions(uint64)` | No | No | Yes | Yes | Number of completions to return for each request. |
 | `llm.WithAttachment(io.Reader)` | Yes | Yes | Yes | - | Attach a file to a user prompt. It is the responsibility of the caller to close the reader. |
+| `llm.WithUser(string)` | No | Yes | No | Yes | A unique identifier representing your end-user |
 | `antropic.WithEphemeral()` | No | Yes | No | - | Attachments should be cached server-side |
 | `antropic.WithCitations()` | No | Yes | No | - | Attachments should be used in citations |
-| `llm.WithUser(string)` | No | Yes | No | Yes | A unique identifier representing your end-user, |
 | `openai.WithStore(bool)` | No | No | No | Yes | Whether or not to store the output of this chat completion request |
 | `openai.WithDimensions(uint64)` | No | No | No | Yes | The number of dimensions the resulting output embeddings should have. Only supported in text-embedding-3 and later models |
 | `openai.WithReasoningEffort(string)` | No | No | No | Yes | The level of effort model should put into reasoning. |
