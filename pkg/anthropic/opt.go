@@ -17,13 +17,6 @@ type optmetadata struct {
 ////////////////////////////////////////////////////////////////////////////////
 // PUBLIC METHODS
 
-func WithUser(v string) llm.Opt {
-	return func(o *llm.Opts) error {
-		o.Set("user", v)
-		return nil
-	}
-}
-
 func WithEphemeral() llm.Opt {
 	return func(o *llm.Opts) error {
 		o.Set("ephemeral", true)

@@ -366,3 +366,11 @@ func WithPrediction(v string) Opt {
 		return nil
 	}
 }
+
+// A unique identifier representing your end-user
+func WithUser(v string) Opt {
+	return func(o *Opts) error {
+		o.Set("user", v)
+		return nil
+	}
+}

@@ -10,7 +10,6 @@ import (
 	// Packages
 
 	llm "github.com/mutablelogic/go-llm"
-	anthropic "github.com/mutablelogic/go-llm/pkg/anthropic"
 	"github.com/mutablelogic/go-llm/pkg/tool"
 	assert "github.com/stretchr/testify/assert"
 )
@@ -101,7 +100,7 @@ func Test_chat_002(t *testing.T) {
 		}
 	})
 	t.Run("User", func(t *testing.T) {
-		r, err := client.Messages(context.TODO(), model.UserPrompt("What is the temperature in London?"), anthropic.WithUser("username"))
+		r, err := client.Messages(context.TODO(), model.UserPrompt("What is the temperature in London?"), llm.WithUser("username"))
 		if assert.NoError(err) {
 			assert.Equal("assistant", r.Role())
 			assert.Equal(1, r.Num())

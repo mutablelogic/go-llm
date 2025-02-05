@@ -20,14 +20,6 @@ func WithDimensions(v uint64) llm.Opt {
 	}
 }
 
-// A unique identifier representing your end-user
-func WithUser(v string) llm.Opt {
-	return func(o *llm.Opts) error {
-		o.Set("user", v)
-		return nil
-	}
-}
-
 // Whether or not to store the output of this chat completion request for use in
 // model distillation or evals products.
 func WithStore(v bool) llm.Opt {
@@ -52,6 +44,12 @@ func WithReasoningEffort(v string) llm.Opt {
 // via API or the dashboard.
 func WithMetadata(k, v string) llm.Opt {
 	return func(o *llm.Opts) error {
+		// Set store to true
+		if err := WithStore(true)(o); err != nil {
+			return err
+		}
+
+		// Add metadata
 		metadata, ok := o.Get("metadata").(map[string]string)
 		if !ok {
 			metadata = make(map[string]string, 16)
@@ -123,7 +121,7 @@ func WithModalities(v ...string) llm.Opt {
 // Parameters for audio output
 func WithAudio(voice, format string) llm.Opt {
 	return func(o *llm.Opts) error {
-		if err := WithModalities("audio")(o); err != nil {
+		if err := WithModalities("text", "audio")(o); err != nil {
 			return err
 		}
 		if audio := NewAudio(voice, format); audio != nil {
@@ -223,7 +221,7 @@ func optMaxTokens(opts *llm.Opts) uint64 {
 }
 
 func optNumCompletions(opts *llm.Opts) uint64 {
-	return opts.GetUint64("num_choices")
+	return opts.GetUint64("num_completions")
 }
 
 func optModalities(opts *llm.Opts) []string {

@@ -103,6 +103,14 @@ func (session *session) Text(index int) string {
 	return session.seq[len(session.seq)-1].Text(index)
 }
 
+// Return audio for the last completion
+func (session *session) Audio(index int) *llm.Attachment {
+	if len(session.seq) == 0 {
+		return nil
+	}
+	return session.seq[len(session.seq)-1].Audio(index)
+}
+
 // Return the current session tool calls given the completion index.
 // Will return nil if no tool calls were returned.
 func (session *session) ToolCalls(index int) []llm.ToolCall {

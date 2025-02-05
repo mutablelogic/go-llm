@@ -14,6 +14,7 @@ import (
 
 // Completion Response
 type Response struct {
+	Id                string `json:"id"`
 	Type              string `json:"object"`
 	Created           uint64 `json:"created"`
 	Model             string `json:"model"`
@@ -36,14 +37,18 @@ type Completion struct {
 
 // Metrics
 type Metrics struct {
-	PromptTokens           uint64 `json:"prompt_tokens,omitempty"`
-	CompletionTokens       uint64 `json:"completion_tokens,omitempty"`
-	TotalTokens            uint64 `json:"total_tokens,omitempty"`
+	PromptTokens       uint64 `json:"prompt_tokens,omitempty"`
+	CompletionTokens   uint64 `json:"completion_tokens,omitempty"`
+	TotalTokens        uint64 `json:"total_tokens,omitempty"`
+	PromptTokenDetails struct {
+		CachedTokens uint64 `json:"cached_tokens,omitempty"`
+		AudioTokens  uint64 `json:"audio_tokens,omitempty"`
+	} `json:"prompt_tokens_details,omitempty"`
 	CompletionTokenDetails struct {
 		ReasoningTokens          uint64 `json:"reasoning_tokens,omitempty"`
 		AcceptedPredictionTokens uint64 `json:"accepted_prediction_tokens,omitempty"`
 		RejectedPredictionTokens uint64 `json:"rejected_prediction_tokens,omitempty"`
-	} `json:"completion_token_details,omitempty"`
+	} `json:"completion_tokens_details,omitempty"`
 }
 
 var _ llm.Completion = (*Response)(nil)
@@ -78,7 +83,7 @@ type reqCompletion struct {
 	Audio             *Audio            `json:"audio,omitempty"`
 	PresencePenalty   float64           `json:"presence_penalty,omitempty"`
 	ResponseFormat    *Format           `json:"response_format,omitempty"`
-	Seed              uint64            `json:"random_seed,omitempty"`
+	Seed              uint64            `json:"seed,omitempty"`
 	ServiceTier       string            `json:"service_tier,omitempty"`
 	StopSequences     []string          `json:"stop,omitempty"`
 	Stream            bool              `json:"stream,omitempty"`
@@ -98,6 +103,8 @@ func (model *model) Completion(ctx context.Context, prompt string, opts ...llm.O
 	if err != nil {
 		return nil, err
 	}
+
+	// TODO: Add a system message
 
 	// Create a message
 	message, err := messagefactory{}.UserPrompt(prompt, opts...)
@@ -184,6 +191,14 @@ func (c Completions) Text(index int) string {
 		return ""
 	}
 	return c[index].Message.Text(0)
+}
+
+// Return audio content for a specific completion
+func (c Completions) Audio(index int) *llm.Attachment {
+	if index < 0 || index >= len(c) {
+		return nil
+	}
+	return c[index].Message.Audio(0)
 }
 
 // Return the current session tool calls given the completion index.

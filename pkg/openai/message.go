@@ -16,6 +16,7 @@ type messagefactory struct{}
 // Message with text or object content
 type Message struct {
 	RoleContent
+	Media *llm.Attachment `json:"audio,omitempty"`
 }
 
 var _ llm.Completion = (*Message)(nil)
@@ -92,11 +93,24 @@ func (message *Message) Text(index int) string {
 		return ""
 	}
 	// If content is text, return it
-	if text, ok := message.Content.(string); ok {
+	if text, ok := message.Content.(string); ok && text != "" {
 		return text
 	}
+	// If content is audio, and there is a caption, return it
+	if audio := message.Audio(0); audio != nil && audio.Caption() != "" {
+		return audio.Caption()
+	}
+
 	// For other kinds, return empty string for the moment
 	return ""
+}
+
+// Return the audio
+func (message *Message) Audio(index int) *llm.Attachment {
+	if index != 0 {
+		return nil
+	}
+	return message.Media
 }
 
 // Return the current session tool calls given the completion index.
