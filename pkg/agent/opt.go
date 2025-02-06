@@ -4,12 +4,13 @@ import (
 	// Packages
 	client "github.com/mutablelogic/go-client"
 	llm "github.com/mutablelogic/go-llm"
+	"github.com/mutablelogic/go-llm/pkg/ollama"
 	openai "github.com/mutablelogic/go-llm/pkg/openai"
 )
 
 ////////////////////////////////////////////////////////////////////////////////
 // PUBLIC METHODS
-/*
+
 func WithOllama(endpoint string, opts ...client.ClientOpt) llm.Opt {
 	return func(o *llm.Opts) error {
 		client, err := ollama.New(endpoint, opts...)
@@ -21,6 +22,7 @@ func WithOllama(endpoint string, opts ...client.ClientOpt) llm.Opt {
 	}
 }
 
+/*
 func WithAnthropic(key string, opts ...client.ClientOpt) llm.Opt {
 	return func(o *llm.Opts) error {
 		client, err := anthropic.New(key, opts...)

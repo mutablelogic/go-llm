@@ -9,6 +9,7 @@ import (
 	// Packages
 	client "github.com/mutablelogic/go-client"
 	llm "github.com/mutablelogic/go-llm"
+	"github.com/mutablelogic/go-llm/pkg/session"
 )
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -81,28 +82,40 @@ func (m PullStatus) String() string {
 }
 
 ///////////////////////////////////////////////////////////////////////////////
-// INTERFACE IMPLEMENTATION
+// PUBLIC METHODS - llm.Model implementation
 
 func (m model) Name() string {
 	return m.ModelMeta.Name
 }
 
-///////////////////////////////////////////////////////////////////////////////
-// PUBLIC METHODS
-
 // Agent interface
 func (ollama *Client) Models(ctx context.Context) ([]llm.Model, error) {
+	// We don't explicitly cache models
 	return ollama.ListModels(ctx)
 }
 
-// Agent interface
+// Return the a model by name
 func (ollama *Client) Model(ctx context.Context, name string) llm.Model {
 	model, err := ollama.GetModel(ctx, name)
 	if err != nil {
 		panic(err)
 	}
+
+	// In the ollama version, we attempt to load the model into
+	// memory here, so that we can use it immediately
+	ollama.LoadModel(ctx, name)
+
+	// Return the model
 	return model
 }
+
+// Return a new empty session
+func (model *model) Context(opts ...llm.Opt) llm.Context {
+	return session.NewSession(model, &messagefactory{}, opts...)
+}
+
+///////////////////////////////////////////////////////////////////////////////
+// API CALLS
 
 // List models
 func (ollama *Client) ListModels(ctx context.Context) ([]llm.Model, error) {

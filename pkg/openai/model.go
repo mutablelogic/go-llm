@@ -7,7 +7,7 @@ import (
 	// Packages
 	client "github.com/mutablelogic/go-client"
 	llm "github.com/mutablelogic/go-llm"
-	"github.com/mutablelogic/go-llm/pkg/session"
+	session "github.com/mutablelogic/go-llm/pkg/session"
 )
 
 ///////////////////////////////////////////////////////////////////////////////

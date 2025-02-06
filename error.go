@@ -13,6 +13,7 @@ const (
 	ErrBadParameter
 	ErrNotImplemented
 	ErrConflict
+	ErrInternalServerError
 )
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -36,6 +37,8 @@ func (e Err) Error() string {
 		return "not implemented"
 	case ErrConflict:
 		return "conflict"
+	case ErrInternalServerError:
+		return "internal server error"
 	}
 	return fmt.Sprintf("error code %d", int(e))
 }

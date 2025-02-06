@@ -5,7 +5,6 @@ https://platform.openai.com/docs/api-reference
 package openai
 
 import (
-
 	// Packages
 	client "github.com/mutablelogic/go-client"
 	llm "github.com/mutablelogic/go-llm"

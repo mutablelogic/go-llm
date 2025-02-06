@@ -6,6 +6,7 @@ import (
 	"os/signal"
 	"path/filepath"
 	"syscall"
+	"time"
 
 	// Packages
 	kong "github.com/alecthomas/kong"
@@ -21,8 +22,9 @@ import (
 
 type Globals struct {
 	// Debugging
-	Debug   bool `name:"debug" help:"Enable debug output"`
-	Verbose bool `name:"verbose" help:"Enable verbose output"`
+	Debug   bool          `name:"debug" help:"Enable debug output"`
+	Verbose bool          `name:"verbose" help:"Enable verbose output"`
+	Timeout time.Duration `name:"timeout" help:"Timeout for the command"`
 
 	// Agents
 	Ollama    `embed:"" help:"Ollama configuration"`
@@ -71,6 +73,7 @@ type CLI struct {
 	// Commands
 	Download DownloadModelCmd `cmd:"" help:"Download a model"`
 	Chat     ChatCmd          `cmd:"" help:"Start a chat session"`
+	Complete CompleteCmd      `cmd:"" help:"Complete a prompt"`
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -106,13 +109,16 @@ func main() {
 	if cli.Debug || cli.Verbose {
 		clientopts = append(clientopts, client.OptTrace(os.Stderr, cli.Verbose))
 	}
+	if cli.Timeout > 0 {
+		clientopts = append(clientopts, client.OptTimeout(cli.Timeout))
+	}
 
 	// Create an agent
 	opts := []llm.Opt{}
+	if cli.OllamaEndpoint != "" {
+		opts = append(opts, agent.WithOllama(cli.OllamaEndpoint, clientopts...))
+	}
 	/*
-		if cli.OllamaEndpoint != "" {
-			opts = append(opts, agent.WithOllama(cli.OllamaEndpoint, clientopts...))
-		}
 		if cli.AnthropicKey != "" {
 			opts = append(opts, agent.WithAnthropic(cli.AnthropicKey, clientopts...))
 		}
