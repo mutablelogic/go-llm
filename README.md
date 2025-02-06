@@ -288,7 +288,7 @@ type Tool interface {
 }
 ```
 
-For example, if you want to implement a tool which adds to numbers,
+For example, if you want to implement a tool which adds two numbers,
 
 ```go
 package addition
@@ -359,6 +359,20 @@ func add_two_numbers(ctx context.Context, agent llm.Agent) (string, error) {
   return context.Text(0)
 }
 ```
+
+Parameters are implemented as struct fields, with tags. The tags you can include are:
+
+* `name:""` - Set the name for the parameter
+* `json:""` - If `name` is not used, then the name is set from the `json` tag
+* `help:":` - Set the description for the parameter
+* `required:""` - The parameter is required as part of the tool call
+* `enum:"a,b,c"` - The parameter value should be one of these comma-separated options
+
+The transation of field types is as follows:
+
+* `string` - Translates as JSON `string`
+* `uint`, `int` - Translates to JSON `integer`
+* `float32`, `float64` - Translates to JSON `number`
 
 ## Options
 
