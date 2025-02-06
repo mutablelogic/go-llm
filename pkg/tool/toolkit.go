@@ -37,15 +37,15 @@ func (kit *ToolKit) Tools(agent llm.Agent) []llm.Tool {
 	result := make([]llm.Tool, 0, len(kit.functions))
 	for _, t := range kit.functions {
 		switch agent.Name() {
-		case "ollama", "mistral":
+		case "anthropic":
+			t.Parameters = nil
+			result = append(result, t)
+		default:
 			t.InputSchema = nil
 			result = append(result, ToolFunction{
 				Type: "function",
 				Tool: t,
 			})
-		default:
-			t.Parameters = nil
-			result = append(result, t)
 		}
 	}
 	return result

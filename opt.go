@@ -197,6 +197,10 @@ func WithToolKit(toolkit ToolKit) Opt {
 func WithStream(fn func(Completion)) Opt {
 	return func(o *Opts) error {
 		o.callback = fn
+
+		// We include usage metrics in the streaming response for openai
+		o.Set("stream_options_include_usage", true)
+
 		return nil
 	}
 }

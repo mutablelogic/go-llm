@@ -3,6 +3,8 @@ package openai
 import (
 	"context"
 	"encoding/json"
+	"fmt"
+	"strings"
 
 	// Packages
 	client "github.com/mutablelogic/go-client"
@@ -21,7 +23,7 @@ type Response struct {
 	SystemFingerprint string `json:"system_fingerprint"`
 	ServiceTier       string `json:"service_tier"`
 	Completions       `json:"choices"`
-	Metrics           `json:"usage,omitempty"`
+	*Metrics          `json:"usage,omitempty"`
 }
 
 // Completion choices
@@ -64,6 +66,22 @@ func (r Response) String() string {
 	return string(data)
 }
 
+func (c Completion) String() string {
+	data, err := json.MarshalIndent(c, "", "  ")
+	if err != nil {
+		return err.Error()
+	}
+	return string(data)
+}
+
+func (m Metrics) String() string {
+	data, err := json.MarshalIndent(m, "", "  ")
+	if err != nil {
+		return err.Error()
+	}
+	return string(data)
+}
+
 ///////////////////////////////////////////////////////////////////////////////
 // PUBLIC METHODS
 
@@ -97,20 +115,29 @@ type reqCompletion struct {
 	Messages          []llm.Completion  `json:"messages"`
 }
 
+// Send a completion request with a single prompt, and return the next completion
 func (model *model) Completion(ctx context.Context, prompt string, opts ...llm.Opt) (llm.Completion, error) {
+	message, err := messagefactory{}.UserPrompt(prompt, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return model.Chat(ctx, []llm.Completion{message}, opts...)
+}
+
+// Send a completion request with multiple completions, and return the next completion
+func (model *model) Chat(ctx context.Context, completions []llm.Completion, opts ...llm.Opt) (llm.Completion, error) {
 	// Apply options
 	opt, err := llm.ApplyOpts(opts...)
 	if err != nil {
 		return nil, err
 	}
 
-	// TODO: Add a system message
-
-	// Create a message
-	message, err := messagefactory{}.UserPrompt(prompt, opts...)
-	if err != nil {
-		return nil, err
+	// Create the completions including the system prompt
+	messages := make([]llm.Completion, 0, len(completions)+1)
+	if system := opt.SystemPrompt(); system != "" {
+		messages = append(messages, messagefactory{}.SystemPrompt(system))
 	}
+	messages = append(messages, completions...)
 
 	// Request
 	req, err := client.NewJSONRequest(reqCompletion{
@@ -140,15 +167,29 @@ func (model *model) Completion(ctx context.Context, prompt string, opts ...llm.O
 		ToolChoice:        optToolChoice(opt),
 		ParallelToolCalls: optParallelToolCalls(opt),
 		User:              optUser(opt),
-		Messages:          []llm.Completion{message},
+		Messages:          messages,
 	})
 	if err != nil {
 		return nil, err
 	}
 
+	// Response options
 	var response Response
 	reqopts := []client.RequestOpt{
 		client.OptPath("chat", "completions"),
+	}
+
+	// Streaming
+	if optStream(opt) {
+		reqopts = append(reqopts, client.OptTextStreamCallback(func(evt client.TextStreamEvent) error {
+			if err := streamEvent(&response, evt); err != nil {
+				return err
+			}
+			if fn := opt.StreamFn(); fn != nil {
+				fn(&response)
+			}
+			return nil
+		}))
 	}
 
 	// Response
@@ -158,6 +199,112 @@ func (model *model) Completion(ctx context.Context, prompt string, opts ...llm.O
 
 	// Return success
 	return &response, nil
+}
+
+///////////////////////////////////////////////////////////////////////////////
+// PRIVATE METHODS - STREAMING
+
+func streamEvent(response *Response, evt client.TextStreamEvent) error {
+	var delta Response
+	// If we are done, ignore
+	if strings.TrimSpace(evt.Data) == "[DONE]" {
+		return nil
+	}
+	// Decode the event
+	if err := evt.Json(&delta); err != nil {
+		return err
+	}
+	// Append the delta to the response
+	if delta.Id != "" {
+		response.Id = delta.Id
+	}
+	if delta.Type != "" {
+		response.Type = delta.Type
+	}
+	if delta.Created != 0 {
+		response.Created = delta.Created
+	}
+	if delta.Model != "" {
+		response.Model = delta.Model
+	}
+	if delta.SystemFingerprint != "" {
+		response.SystemFingerprint = delta.SystemFingerprint
+	}
+	if delta.ServiceTier != "" {
+		response.ServiceTier = delta.ServiceTier
+	}
+
+	// Append the delta to the response
+	for _, completion := range delta.Completions {
+		if err := appendCompletion(response, &completion); err != nil {
+			return err
+		}
+	}
+
+	// Apend the metrics to the response
+	if delta.Metrics != nil {
+		response.Metrics = delta.Metrics
+	}
+	return nil
+}
+
+func appendCompletion(response *Response, c *Completion) error {
+	fmt.Println(c)
+	// Append a new completion
+	for {
+		if c.Index < uint64(len(response.Completions)) {
+			break
+		}
+		response.Completions = append(response.Completions, Completion{
+			Index: c.Index,
+			Message: &Message{
+				RoleContent: RoleContent{
+					Role:    c.Delta.Role(),
+					Content: "",
+				},
+			},
+		})
+	}
+
+	// Add the reason
+	if c.Reason != "" {
+		response.Completions[c.Index].Reason = c.Reason
+	}
+
+	// Get the completion
+	message := response.Completions[c.Index].Message
+	if message == nil {
+		return llm.ErrBadParameter
+	}
+
+	// Add the role
+	if role := c.Delta.Role(); role != "" {
+		message.RoleContent.Role = role
+	}
+
+	// We only allow deltas which are strings at the moment
+	if c.Delta.Content != nil {
+		if str, ok := c.Delta.Content.(string); ok {
+			if text, ok := message.Content.(string); ok {
+				message.Content = text + str
+			} else {
+				message.Content = str
+			}
+		} else {
+			return llm.ErrNotImplemented.Withf("appendCompletion not implemented: %T", c.Delta.Content)
+		}
+	}
+
+	// Append audio data
+	if c.Delta.Media != nil {
+		if message.Media == nil {
+			message.Media = llm.NewAttachment()
+		}
+		message.Media.Append(c.Delta.Media)
+	}
+
+	// Return success
+	return nil
 }
 
 ///////////////////////////////////////////////////////////////////////////////

@@ -5,7 +5,7 @@ import "context"
 //////////////////////////////////////////////////////////////////
 // TYPES
 
-// Completion is the content of the last context message
+// Completion is the content of the last message
 type Completion interface {
 	// Return the number of completions, which is ususally 1 unless
 	// WithNumCompletions was used
@@ -29,7 +29,8 @@ type Completion interface {
 	ToolCalls(int) []ToolCall
 }
 
-// Context is fed to the agent to generate a response
+// Context is a context window fed to the agent to generate a response,
+// with the ability to create the next completion
 type Context interface {
 	Completion
 

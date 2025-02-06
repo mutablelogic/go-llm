@@ -15,12 +15,11 @@ type Model interface {
 	// setting session options
 	Context(...Opt) Context
 
-	// Convenience method to create a session context object
-	// with a user prompt
-	//UserPrompt(string, ...Opt) Context
-
 	// Create a completion from a text prompt
 	Completion(context.Context, string, ...Opt) (Completion, error)
+
+	// Create a completion from a chat session
+	Chat(context.Context, []Completion, ...Opt) (Completion, error)
 
 	// Embedding vector generation
 	Embedding(context.Context, string, ...Opt) ([]float64, error)

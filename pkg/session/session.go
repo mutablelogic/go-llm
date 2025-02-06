@@ -13,18 +13,13 @@ import (
 // Abstract interface for a message factory
 type MessageFactory interface {
 	// Generate a system prompt
-	SystemPrompt(prompt string) Message
+	SystemPrompt(prompt string) llm.Completion
 
 	// Generate a user prompt, with attachments and other options
-	UserPrompt(string, ...llm.Opt) (Message, error)
+	UserPrompt(string, ...llm.Opt) (llm.Completion, error)
 
 	// Generate an array of results from calling tools
-	ToolResults(...llm.ToolResult) ([]Message, error)
-}
-
-// Abstract interface for a message
-type Message interface {
-	llm.Completion
+	ToolResults(...llm.ToolResult) ([]llm.Completion, error)
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -32,9 +27,10 @@ type Message interface {
 
 // A chat session with history
 type session struct {
-	model llm.Model // The model used for the session
-	opts  []llm.Opt // Options to apply to the session
-	seq   []Message // Sequence of messages
+	model   llm.Model        // The model used for the session
+	opts    []llm.Opt        // Options to apply to the session
+	seq     []llm.Completion // Sequence of messages
+	factory MessageFactory   // Factory for generating messages
 }
 
 var _ llm.Context = (*session)(nil)
@@ -42,12 +38,13 @@ var _ llm.Context = (*session)(nil)
 ///////////////////////////////////////////////////////////////////////////////
 // LIFECYCLE
 
-// Create a new empty session with a capacity for 10 messages in the history
+// Create a new empty session to store a context window
 func NewSession(model llm.Model, factory MessageFactory, opts ...llm.Opt) *session {
 	return &session{
-		model: model,
-		opts:  opts,
-		seq:   make([]Message, 0, 10),
+		model:   model,
+		opts:    opts,
+		seq:     make([]llm.Completion, 0, 10),
+		factory: factory,
 	}
 }
 
@@ -56,19 +53,41 @@ func NewSession(model llm.Model, factory MessageFactory, opts ...llm.Opt) *sessi
 
 // Return an array of messages in the session with system prompt. If the
 // prompt is empty, no system prompt is prepended
-func (session *session) WithSystemPrompt(prompt string) []Message {
-	// TODO
-	return nil
+func (session *session) WithSystemPrompt(prompt string) []llm.Completion {
+	messages := make([]llm.Completion, 0, len(session.seq)+1)
+	if prompt != "" {
+		messages = append(messages, session.factory.SystemPrompt(prompt))
+	}
+	return append(messages, session.seq...)
 }
 
 // Append a message to the session
-func (session *session) Append(messages ...Message) {
+// TODO: Trim the context window to a maximum size
+func (session *session) Append(messages ...llm.Completion) {
 	session.seq = append(session.seq, messages...)
 }
 
 // Generate a response from a user prompt (with attachments and other options)
-func (session *session) FromUser(context.Context, string, ...llm.Opt) error {
-	return llm.ErrNotImplemented
+func (session *session) FromUser(ctx context.Context, prompt string, opts ...llm.Opt) error {
+	// Append the user prompt
+	message, err := session.factory.UserPrompt(prompt, opts...)
+	if err != nil {
+		return err
+	} else {
+		session.Append(message)
+	}
+
+	// Generate the completion
+	completion, err := session.model.Chat(ctx, session.seq, session.opts...)
+	if err != nil {
+		return err
+	}
+
+	// Append the completion
+	session.Append(completion)
+
+	// Success
+	return nil
 }
 
 // Generate a response from a tool, passing the results from the tool call

@@ -15,10 +15,10 @@ import (
 
 type AttachmentMeta struct {
 	Id        string `json:"id,omitempty"`
-	Filename  string `json:"filename"`
-	Data      []byte `json:"data"`
+	Filename  string `json:"filename,omitempty"`
 	ExpiresAt uint64 `json:"expires_at,omitempty"`
 	Caption   string `json:"transcript,omitempty"`
+	Data      []byte `json:"data"`
 }
 
 // Attachment for messages
@@ -28,6 +28,11 @@ type Attachment struct {
 
 ////////////////////////////////////////////////////////////////////////////////
 // LIFECYCLE
+
+// NewAttachment creates a new, empty attachment
+func NewAttachment() *Attachment {
+	return new(Attachment)
+}
 
 // ReadAttachment returns an attachment from a reader object.
 // It is the responsibility of the caller to close the reader.
@@ -96,6 +101,10 @@ func (a *Attachment) Caption() string {
 }
 
 func (a *Attachment) Type() string {
+	// If there's no data, return empty
+	if len(a.meta.Data) == 0 {
+		return ""
+	}
 	// Mimetype based on content
 	mimetype := http.DetectContentType(a.meta.Data)
 	if mimetype == "application/octet-stream" && a.meta.Filename != "" {
@@ -107,4 +116,23 @@ func (a *Attachment) Type() string {
 
 func (a *Attachment) Url() string {
 	return "data:" + a.Type() + ";base64," + base64.StdEncoding.EncodeToString(a.meta.Data)
+}
+
+// Streaming includes the ability to append data
+func (a *Attachment) Append(other *Attachment) {
+	if other.meta.Id != "" {
+		a.meta.Id = other.meta.Id
+	}
+	if other.meta.Filename != "" {
+		a.meta.Filename = other.meta.Filename
+	}
+	if other.meta.ExpiresAt != 0 {
+		a.meta.ExpiresAt = other.meta.ExpiresAt
+	}
+	if other.meta.Caption != "" {
+		a.meta.Caption += other.meta.Caption
+	}
+	if len(other.meta.Data) > 0 {
+		a.meta.Data = append(a.meta.Data, other.meta.Data...)
+	}
 }

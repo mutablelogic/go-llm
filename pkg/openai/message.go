@@ -5,7 +5,6 @@ import (
 
 	// Packages
 	llm "github.com/mutablelogic/go-llm"
-	session "github.com/mutablelogic/go-llm/pkg/session"
 )
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -17,6 +16,7 @@ type messagefactory struct{}
 type Message struct {
 	RoleContent
 	Media *llm.Attachment `json:"audio,omitempty"`
+	Calls ToolCalls       `json:"tool_calls,omitempty"`
 }
 
 var _ llm.Completion = (*Message)(nil)
@@ -26,10 +26,12 @@ type RoleContent struct {
 	Content any    `json:"content,omitempty"` // string or array of text, reference, image_url
 }
 
+type ToolCalls []toolcall
+
 ///////////////////////////////////////////////////////////////////////////////
 // PUBLIC METHODS - MESSAGE FACTORY
 
-func (messagefactory) SystemPrompt(prompt string) session.Message {
+func (messagefactory) SystemPrompt(prompt string) llm.Completion {
 	return &Message{
 		RoleContent: RoleContent{
 			Role:    "system",
@@ -38,25 +40,40 @@ func (messagefactory) SystemPrompt(prompt string) session.Message {
 	}
 }
 
-func (messagefactory) UserPrompt(prompt string, opts ...llm.Opt) (session.Message, error) {
-	// TODO: Attachments
+func (messagefactory) UserPrompt(prompt string, opts ...llm.Opt) (llm.Completion, error) {
+	// Get attachments
+	opt, err := llm.ApplyPromptOpts(opts...)
+	if err != nil {
+		return nil, err
+	}
+
+	// Get attachments, allocate content
+	attachments := opt.Attachments()
+	content := make([]*Content, 1, len(attachments)+1)
+
+	// Append the text and the attachments
+	content[0] = NewTextContext(prompt)
+	for _, attachment := range attachments {
+		content = append(content, NewImageData(attachment))
+	}
+
 	// Return success
 	return &Message{
 		RoleContent: RoleContent{
 			Role:    "user",
-			Content: prompt,
+			Content: content,
 		},
 	}, nil
 }
 
-func (messagefactory) ToolResults(results ...llm.ToolResult) ([]session.Message, error) {
+func (messagefactory) ToolResults(results ...llm.ToolResult) ([]llm.Completion, error) {
 	// Check for no results
 	if len(results) == 0 {
 		return nil, llm.ErrBadParameter.Withf("No tool results")
 	}
 
 	// Create results
-	messages := make([]session.Message, 0, len(results))
+	messages := make([]llm.Completion, 0, len(results))
 	for _, result := range results {
 		value, err := json.Marshal(result.Value())
 		if err != nil {
@@ -119,6 +136,9 @@ func (message *Message) ToolCalls(index int) []llm.ToolCall {
 	if index != 0 {
 		return nil
 	}
-	// TODO
-	return nil
+	calls := make([]llm.ToolCall, 0, len(message.Calls))
+	for _, call := range message.Calls {
+		calls = append(calls, call)
+	}
+	return calls
 }
