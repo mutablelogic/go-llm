@@ -1,17 +1,16 @@
 # go-llm
 
-Large Language Model API interface. This is a simple API interface for large language models
+The module implements a simple API interface for large language models
 which run on [Ollama](https://github.com/ollama/ollama/blob/main/docs/api.md),
-[Anthopic](https://docs.anthropic.com/en/api/getting-started) and [Mistral](https://docs.mistral.ai/)
-(OpenAI might be added later).
+[Anthopic](https://docs.anthropic.com/en/api/getting-started), [Mistral](https://docs.mistral.ai/)
+and [OpenAI](https://platform.openai.com/docs/api-reference). The module implements the ability to:
 
-The module includes the ability to utilize:
-
-* Maintaining a session of messages
-* Tool calling support, including using your own tools (aka Tool plugins)
-* Creating embedding vectors from text
-* Streaming responses
-* Multi-modal support (aka, Images and Attachments)
+* Maintain a session of messages;
+* Tool calling support, including using your own tools (aka Tool plugins);
+* Create embedding vectors from text;
+* Stream responses;
+* Multi-modal support (aka, Images, Audio and Attachments);
+* Text-to-speech (OpenAI only) for completions
 
 There is a command-line tool included in the module which can be used to interact with the API.
 If you have docker installed, you can use the following command to run the tool, without
@@ -24,7 +23,8 @@ docker run ghcr.io/mutablelogic/go-llm:latest --help
 # Interact with Claude to retrieve news headlines, assuming
 # you have an API key for Anthropic and NewsAPI
 docker run \
-  -e OLLAMA_URL -e MISTRAL_API_KEY -e NEWSAPI_KEY \
+  -e OLLAMA_URL -e MISTRAL_API_KEY -e ANTHROPIC_API_KEY -e OPENAI_API_KEY \
+  -e NEWSAPI_KEY \
   ghcr.io/mutablelogic/go-llm:latest \
   chat mistral-small-latest --prompt "What is the latest news?" --no-stream
 ```
@@ -35,7 +35,7 @@ install it if you have a `go` compiler).
 ## Programmatic Usage
 
 See the documentation [here](https://pkg.go.dev/github.com/mutablelogic/go-llm)
-for integration into your own Go programs.
+for integration into your own code.
 
 ### Agent Instantiation
 
@@ -95,6 +95,24 @@ func main() {
 }
 ```
 
+Similarly for [OpenAI](https://pkg.go.dev/github.com/mutablelogic/go-llm/pkg/openai)
+models, you can use:
+
+```go
+import (
+  "github.com/mutablelogic/go-llm/pkg/openai"
+)
+
+func main() {
+  // Create a new agent
+  agent, err := openai.New(os.Getenv("OPENAI_API_KEY"))
+  if err != nil {
+    panic(err)
+  }
+  // ...
+}
+```
+
 You can append options to the agent creation to set the client/server communication options,
 such as user agent strings, timeouts, debugging, rate limiting, adding custom headers, etc. See [here](https://pkg.go.dev/github.com/mutablelogic/go-client#readme-basic-usage) for more information.
 
@@ -111,6 +129,7 @@ func main() {
   agent, err := agent.New(
     agent.WithAnthropic(os.Getenv("ANTHROPIC_API_KEY")), 
     agent.WithMistral(os.Getenv("MISTRAL_API_KEY")),
+    agent.WithOpenAI(os.Getenv("OPENAI_API_KEY")),
     agent.WithOllama(os.Getenv("OLLAMA_URL")),
   )
   if err != nil {
@@ -119,6 +138,30 @@ func main() {
   // ...
 }
 ```
+
+### Completion
+
+You can generate a **completion** as follows,
+
+```go
+import (
+  "github.com/mutablelogic/go-llm"
+)
+
+func completion(ctx context.Context, agent llm.Agent) (string, error) {
+  completion, err := agent.
+    Model(ctx, "claude-3-5-haiku-20241022").
+    Completion((ctx, "Why is the sky blue?")
+  if err != nil {
+    return "", err
+  } else {
+    return completion.Text(0), nil
+  }
+}
+```
+
+The zero index argument on `completion.Text(int)` indicates you want the text from the zero'th completion
+choice, for providers who can generate serveral different choices simultaneously.
 
 ### Chat Sessions
 
@@ -131,7 +174,9 @@ import (
 
 func session(ctx context.Context, agent llm.Agent) error {
   // Create a new chat session
-  session := agent.Model(context.TODO(), "claude-3-5-haiku-20241022").Context()
+  session := agent.
+    Model(ctx, "claude-3-5-haiku-20241022").
+    Context()
 
   // Repeat forever
   for {
@@ -147,11 +192,11 @@ func session(ctx context.Context, agent llm.Agent) error {
 ```
 
 The `Context` object will continue to store the current session and options, and will
-ensure the session is maintained across multiple calls.
+ensure the session is maintained across multiple completion calls.
 
 ### Embedding Generation
 
-You can generate embedding vectors using an appropriate model with Ollama or Mistral models:
+You can generate embedding vectors using an appropriate model with Ollama, OpenAI and Mistral models:
 
 ```go
 import (
@@ -159,8 +204,9 @@ import (
 )
 
 func embedding(ctx context.Context, agent llm.Agent) error {
-  // Create a new chat session
-  vector, err := agent.Model(ctx, "mistral-embed").Embedding(ctx, "hello")
+  vector, err := agent.
+    Model(ctx, "mistral-embed").
+    Embedding(ctx, "hello")
   // ...
 }
 ```
@@ -182,21 +228,19 @@ func generate_image_caption(ctx context.Context, agent llm.Agent, path string) (
   }
   defer f.Close()
 
-  // Describe an image
-  r, err := agent.Model("claude-3-5-sonnet-20241022").UserPrompt(
-      ctx, model.UserPrompt("Provide a short caption for this image", llm.WithAttachment(f))
-  )
+  completion, err := agent.
+    Model(ctx, "claude-3-5-sonnet-20241022").
+    Completion((ctx, "Provide a short caption for this image", llm.WithAttachment(f))
   if err != nil {
-    return "", err
-  }
+    return "", err  
+  }    
 
-  // Return success
-  return r.Text(0), err
+  return completion.Text(0), nil
 }
 ```
 
-To summarize a text or PDF docment is exactly the same using an Anthropic model, but maybe with a
-different prompt.
+To summarize a text or PDF document is exactly the same using an Anthropic model, but maybe
+with a different prompt.
 
 ### Streaming
 
@@ -210,16 +254,14 @@ import (
 )
 
 func generate_completion(ctx context.Context, agent llm.Agent, prompt string) (string, error) {
-  r, err := agent.Model("claude-3-5-sonnet-20241022").UserPrompt(
-      ctx, model.UserPrompt("What is the weather in London?"),
-      llm.WithStream(stream_callback),
-  )
+   completion, err := agent.
+    Model(ctx, "claude-3-5-haiku-20241022").
+    Completion((ctx, "Why is the sky blue?", llm.WithStream(stream_callback))
   if err != nil {
     return "", err
+  } else {
+    return completion.Text(0), nil
   }
-
-  // Return success
-  return r.Text(0), err
 }
 
 func stream_callback(completion llm.Completion) {
@@ -231,9 +273,92 @@ func stream_callback(completion llm.Completion) {
 
 ### Tool Support
 
-All providers support tools, but not all models.
+All providers support tools, but not all models. Your own tools should implement the
+following interface:
 
-TODO
+```go
+package llm
+
+// Definition of a tool
+type Tool interface {
+  Name() string                     // The name of the tool
+  Description() string              // The description of the tool
+  Run(context.Context) (any, error) // Run the tool with a deadline and 
+                                    // return the result
+}
+```
+
+For example, if you want to implement a tool which adds to numbers,
+
+```go
+package addition
+
+type Adder struct {
+  A float64 `name:"a" help:"The first number" required:"true"`
+  B float64 `name:"b" help:"The second number" required:"true"`
+}
+
+func (Adder) Name() string {
+  return "add_two_numbers"
+}
+
+func (Adder) Description() string {
+  return "Add two numbers together and return the result"
+}
+
+func (a Adder) Run(context.Context) (any, error) {
+  return a.A + a.B, nil
+}
+```
+
+Then you can include your tool as part of the completion. It's possible that a
+completion will continue to call additional tools, in which case you should
+actually loop through completions until no tool calls are made.
+
+```go
+import (
+  "github.com/mutablelogic/go-llm"
+  "github.com/mutablelogic/go-llm/pkg/tool"
+)
+
+func add_two_numbers(ctx context.Context, agent llm.Agent) (string, error) {
+  context := agent.Model(ctx, "claude-3-5-haiku-20241022").Context()
+  toolkit := tool.NewToolKit()
+  toolkit.Register(Adder{})
+
+  // Get the tool call
+  if err := context.FromUser(ctx, "What is five plus seven?", llm.WithToolKit(toolkit)); err != nil {
+    return "", err
+  }
+
+  // Call tools
+  for {
+    calls := context.ToolCalls(0)
+    if len(calls) == 0 {
+      break
+    }
+
+    // Print out any intermediate messages
+    if context.Text(0) != "" {
+      fmt.Println(context.Text(0))      
+    }
+
+    // Get the results from the toolkit
+    results, err := toolkit.Run(ctx, calls...)
+    if err != nil {
+      return "", err
+    }
+
+    // Get another tool call or a user response
+    if err := context.FromTool(ctx, results...); err != nil {
+      return "", err
+    }
+  }
+
+  // Return the result
+  return context.Text(0)
+}
+```
 
 ## Options
 
@@ -241,20 +366,25 @@ You can add options to sessions, or to prompts. Different providers and models s
 different options.
 
 ```go
+package llm 
+
 type Model interface {
   // Set session-wide options
   Context(...Opt) Context
 
-  // Add attachments (images, PDF's) to a user prompt for completion
-  UserPrompt(string, ...Opt) Context
+  // Create a completion from a text prompt
+  Completion(context.Context, string, ...Opt) (Completion, error)
 
-  // Create an embedding vector with embedding options
+  // Create a completion from a chat session
+  Chat(context.Context, []Completion, ...Opt) (Completion, error)
+
+  // Embedding vector generation
   Embedding(context.Context, string, ...Opt) ([]float64, error)
 }
 
 type Context interface {
-  // Add single-use options when calling the model, which override
-  // session options. You can attach files to a user prompt.
+  // Generate a response from a user prompt (with attachments and
+  // other options)
   FromUser(context.Context, string, ...Opt) error
 }
 ```
