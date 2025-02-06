@@ -20,7 +20,7 @@ type Response struct {
 	CreatedAt time.Time        `json:"created_at"`
 	Done      bool             `json:"done"`
 	Reason    string           `json:"done_reason,omitempty"`
-	Response  *string          `json:"response"` // For completion
+	Response  *string          `json:"response,omitempty"` // For completion
 	Message   `json:"message"` // For chat
 	Metrics
 }
@@ -90,6 +90,7 @@ type reqCompletion struct {
 	Options map[string]any `json:"options,omitempty"`
 }
 
+// Create a completion from a prompt
 func (model *model) Completion(ctx context.Context, prompt string, opts ...llm.Opt) (llm.Completion, error) {
 	// Apply options - including prompt options
 	opt, err := llm.ApplyPromptOpts(opts...)
@@ -125,6 +126,52 @@ func (model *model) Completion(ctx context.Context, prompt string, opts ...llm.O
 	return model.request(ctx, req, opt.StreamFn(), client.OptPath("generate"))
 }
 
+type reqChat struct {
+	Model     string           `json:"model"`
+	Messages  []llm.Completion `json:"messages"`
+	Tools     []llm.Tool       `json:"tools,omitempty"`
+	Format    string           `json:"format,omitempty"`
+	Options   map[string]any   `json:"options,omitempty"`
+	Stream    *bool            `json:"stream"`
+	KeepAlive *time.Duration   `json:"keep_alive,omitempty"`
+}
+
+// Create a completion from a chat session
+func (model *model) Chat(ctx context.Context, completions []llm.Completion, opts ...llm.Opt) (llm.Completion, error) {
+	// Apply options
+	opt, err := llm.ApplyOpts(opts...)
+	if err != nil {
+		return nil, err
+	}
+
+	// Create the completions including the system prompt
+	messages := make([]llm.Completion, 0, len(completions)+1)
+	if system := opt.SystemPrompt(); system != "" {
+		messages = append(messages, messagefactory{}.SystemPrompt(system))
+	}
+	messages = append(messages, completions...)
+
+	// Request
+	req, err := client.NewJSONRequest(reqChat{
+		Model:     model.Name(),
+		Messages:  messages,
+		Tools:     optTools(model.Client, opt),
+		Format:    optFormat(opt),
+		Options:   optOptions(opt),
+		Stream:    optStream(model.Client, opt),
+		KeepAlive: optKeepAlive(opt),
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	// Make the request
+	return model.request(ctx, req, opt.StreamFn(), client.OptPath("chat"))
+}
+
+///////////////////////////////////////////////////////////////////////////////
+// PRIVATE METHODS
+
 func (model *model) request(ctx context.Context, req client.Payload, streamfn func(llm.Completion), opts ...client.RequestOpt) (*Response, error) {
 	var delta, response Response
 	if streamfn != nil {
@@ -156,95 +203,9 @@ func (model *model) request(ctx context.Context, req client.Payload, streamfn fu
 				Content: *delta.Response,
 			},
 		}
-		return &delta, nil
-	} else {
-		return nil, llm.ErrInternalServerError.Withf("No response")
 	}
+	return &delta, nil
 }
-
-// Create a completion from a chat session
-func (model *model) Chat(context.Context, []llm.Completion, ...llm.Opt) (llm.Completion, error) {
-	return nil, llm.ErrNotImplemented
-}
-
-/*
-type reqChat struct {
-	Model     string                 `json:"model"`
-	Messages  []*Message             `json:"messages"`
-	Tools     []llm.Tool             `json:"tools,omitempty"`
-	Format    string                 `json:"format,omitempty"`
-	Options   map[string]interface{} `json:"options,omitempty"`
-	Stream    bool                   `json:"stream"`
-	KeepAlive *time.Duration         `json:"keep_alive,omitempty"`
-}
-
-func (ollama *Client) Chat(ctx context.Context, context llm.Context, opts ...llm.Opt) (*Response, error) {
-	// Apply options
-	opt, err := llm.ApplyOpts(opts...)
-	if err != nil {
-		return nil, err
-	}
-
-	// Append the system prompt at the beginning
-	messages := make([]*Message, 0, len(context.(*session).seq)+1)
-	if system := opt.SystemPrompt(); system != "" {
-		messages = append(messages, systemPrompt(system))
-	}
-
-	// Always append the first message of each completion
-	for _, message := range context.(*session).seq {
-		messages = append(messages, message)
-	}
-
-	// Request
-	req, err := client.NewJSONRequest(reqChat{
-		Model:     context.(*session).model.Name(),
-		Messages:  messages,
-		Tools:     optTools(ollama, opt),
-		Format:    optFormat(opt),
-		Options:   optOptions(opt),
-		Stream:    optStream(ollama, opt),
-		KeepAlive: optKeepAlive(opt),
-	})
-	if err != nil {
-		return nil, err
-	}
-
-	//  Response
-	var response, delta Response
-	reqopts := []client.RequestOpt{
-		client.OptPath("chat"),
-	}
-	if optStream(ollama, opt) {
-		reqopts = append(reqopts, client.OptJsonStreamCallback(func(v any) error {
-			if v, ok := v.(*Response); !ok || v == nil {
-				return llm.ErrConflict.Withf("Invalid stream response: %v", v)
-			} else if err := streamEvent(&response, v); err != nil {
-				return err
-			}
-			if fn := opt.StreamFn(); fn != nil {
-				fn(&response)
-			}
-			return nil
-		}))
-	}
-
-	// Response
-	if err := ollama.DoWithContext(ctx, req, &delta, reqopts...); err != nil {
-		return nil, err
-	}
-
-	// Return success
-	if optStream(ollama, opt) {
-		return &response, nil
-	} else {
-		return &delta, nil
-	}
-}
-*/
-
-///////////////////////////////////////////////////////////////////////////////
-// PRIVATE METHODS
 
 func streamEvent(response, delta *Response) error {
 	// Completion instead of chat
