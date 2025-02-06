@@ -38,15 +38,16 @@ func (cmd *ChatCmd) Run(globals *Globals) error {
 			return err
 		}
 
+		// Current buffer
+		var buf string
+
 		// Set the options
 		opts := []llm.Opt{}
 		if !cmd.NoStream {
 			opts = append(opts, llm.WithStream(func(cc llm.Completion) {
-				if text := cc.Text(0); text != "" {
-					count := strings.Count(text, "\n")
-					fmt.Print(strings.Repeat("\033[F", count) + strings.Repeat(" ", count) + "\r")
-					fmt.Print(text)
-				}
+				text := cc.Text(0)
+				fmt.Print(strings.TrimPrefix(text, buf))
+				buf = text
 			}))
 		}
 		if cmd.System != "" {
@@ -91,6 +92,7 @@ func (cmd *ChatCmd) Run(globals *Globals) error {
 				if len(calls) == 0 {
 					break
 				}
+
 				if session.Text(0) != "" {
 					globals.term.Println(session.Text(0))
 				} else {
@@ -100,6 +102,7 @@ func (cmd *ChatCmd) Run(globals *Globals) error {
 					}
 					globals.term.Println("Calling ", strings.Join(names, ", "))
 				}
+
 				if results, err := globals.toolkit.Run(ctx, calls...); err != nil {
 					return err
 				} else if err := session.FromTool(ctx, results...); err != nil {
@@ -107,8 +110,12 @@ func (cmd *ChatCmd) Run(globals *Globals) error {
 				}
 			}
 
-			// Print the response
-			globals.term.Println("\n" + session.Text(0) + "\n")
+			// Print the response, if not streaming
+			if cmd.NoStream {
+				globals.term.Println("\n" + session.Text(0) + "\n")
+			} else {
+				globals.term.Println()
+			}
 		}
 	})
 }

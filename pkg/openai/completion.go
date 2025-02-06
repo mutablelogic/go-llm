@@ -3,7 +3,6 @@ package openai
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"strings"
 
 	// Packages
@@ -249,7 +248,6 @@ func streamEvent(response *Response, evt client.TextStreamEvent) error {
 }
 
 func appendCompletion(response *Response, c *Completion) error {
-	fmt.Println(c)
 	// Append a new completion
 	for {
 		if c.Index < uint64(len(response.Completions)) {
@@ -301,6 +299,31 @@ func appendCompletion(response *Response, c *Completion) error {
 			message.Media = llm.NewAttachment()
 		}
 		message.Media.Append(c.Delta.Media)
+	}
+
+	// Append tool calls
+	for i := range c.Delta.Calls {
+		if i >= len(message.Calls) {
+			message.Calls = append(message.Calls, toolcall{})
+		}
+	}
+
+	for i, call := range c.Delta.Calls {
+		if call.meta.Id != "" {
+			message.Calls[i].meta.Id = call.meta.Id
+		}
+		if call.meta.Index != 0 {
+			message.Calls[i].meta.Index = call.meta.Index
+		}
+		if call.meta.Type != "" {
+			message.Calls[i].meta.Type = call.meta.Type
+		}
+		if call.meta.Function.Name != "" {
+			message.Calls[i].meta.Function.Name = call.meta.Function.Name
+		}
+		if call.meta.Function.Arguments != "" {
+			message.Calls[i].meta.Function.Arguments += call.meta.Function.Arguments
+		}
 	}
 
 	// Return success

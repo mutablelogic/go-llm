@@ -109,15 +109,17 @@ func main() {
 
 	// Create an agent
 	opts := []llm.Opt{}
-	if cli.OllamaEndpoint != "" {
-		opts = append(opts, agent.WithOllama(cli.OllamaEndpoint, clientopts...))
-	}
-	if cli.AnthropicKey != "" {
-		opts = append(opts, agent.WithAnthropic(cli.AnthropicKey, clientopts...))
-	}
-	if cli.MistralKey != "" {
-		opts = append(opts, agent.WithMistral(cli.MistralKey, clientopts...))
-	}
+	/*
+		if cli.OllamaEndpoint != "" {
+			opts = append(opts, agent.WithOllama(cli.OllamaEndpoint, clientopts...))
+		}
+		if cli.AnthropicKey != "" {
+			opts = append(opts, agent.WithAnthropic(cli.AnthropicKey, clientopts...))
+		}
+		if cli.MistralKey != "" {
+			opts = append(opts, agent.WithMistral(cli.MistralKey, clientopts...))
+		}
+	*/
 	if cli.OpenAIKey != "" {
 		opts = append(opts, agent.WithOpenAI(cli.OpenAIKey, clientopts...))
 	}

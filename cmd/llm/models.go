@@ -8,7 +8,6 @@ import (
 	// Packages
 	llm "github.com/mutablelogic/go-llm"
 	agent "github.com/mutablelogic/go-llm/pkg/agent"
-	ollama "github.com/mutablelogic/go-llm/pkg/ollama"
 )
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -83,12 +82,14 @@ func (cmd *DownloadModelCmd) Run(globals *Globals) error {
 		}
 		// Download the model
 		switch agent.Name() {
-		case "ollama":
-			model, err := agent.(*ollama.Client).PullModel(ctx, cmd.Model)
-			if err != nil {
-				return err
-			}
-			fmt.Println(model)
+		/*
+			case "ollama":
+				model, err := agent.(*ollama.Client).PullModel(ctx, cmd.Model)
+				if err != nil {
+					return err
+				}
+				fmt.Println(model)
+		*/
 		default:
 			return fmt.Errorf("Agent %q does not support model download", agent.Name())
 		}
