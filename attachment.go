@@ -26,6 +26,10 @@ type Attachment struct {
 	meta AttachmentMeta
 }
 
+const (
+	defaultMimetype = "application/octet-stream"
+)
+
 ////////////////////////////////////////////////////////////////////////////////
 // LIFECYCLE
 
@@ -56,10 +60,12 @@ func ReadAttachment(r io.Reader) (*Attachment, error) {
 ////////////////////////////////////////////////////////////////////////////////
 // STRINGIFY
 
+// Convert JSON into an attachment
 func (a *Attachment) UnmarshalJSON(data []byte) error {
 	return json.Unmarshal(data, &a.meta)
 }
 
+// Convert an attachment into JSON
 func (a *Attachment) MarshalJSON() ([]byte, error) {
 	// Create a JSON representation
 	var j struct {
@@ -77,6 +83,7 @@ func (a *Attachment) MarshalJSON() ([]byte, error) {
 	return json.Marshal(j)
 }
 
+// Stringify an attachment
 func (a *Attachment) String() string {
 	data, err := json.MarshalIndent(a.meta, "", "  ")
 	if err != nil {
@@ -88,29 +95,46 @@ func (a *Attachment) String() string {
 ////////////////////////////////////////////////////////////////////////////////
 // PUBLIC METHODS
 
+// Return the filename of an attachment
 func (a *Attachment) Filename() string {
 	return a.meta.Filename
 }
 
+// Return the raw attachment data
 func (a *Attachment) Data() []byte {
 	return a.meta.Data
 }
 
+// Return the caption for the attachment
 func (a *Attachment) Caption() string {
 	return a.meta.Caption
 }
 
+// Return the mime media type for the attachment, based
+// on the data and/or filename extension. Returns an empty string if
+// there is no data or filename
 func (a *Attachment) Type() string {
-	// If there's no data, return empty
-	if len(a.meta.Data) == 0 {
+	// If there's no data or filename, return empty
+	if len(a.meta.Data) == 0 && a.meta.Filename == "" {
 		return ""
 	}
+
 	// Mimetype based on content
-	mimetype := http.DetectContentType(a.meta.Data)
-	if mimetype == "application/octet-stream" && a.meta.Filename != "" {
+	mimetype := defaultMimetype
+	if len(a.meta.Data) > 0 {
+		mimetype = http.DetectContentType(a.meta.Data)
+		if mimetype != defaultMimetype {
+			return mimetype
+		}
+	}
+
+	// Mimetype based on filename
+	if a.meta.Filename != "" {
 		// Detect mimetype from extension
 		mimetype = mime.TypeByExtension(filepath.Ext(a.meta.Filename))
 	}
+
+	// Return the default mimetype
 	return mimetype
 }
 
