@@ -31,6 +31,7 @@ type Globals struct {
 	Anthropic `embed:"" help:"Anthropic configuration"`
 	Mistral   `embed:"" help:"Mistral configuration"`
 	OpenAI    `embed:"" help:"OpenAI configuration"`
+	Gemini    `embed:"" help:"Gemini configuration"`
 
 	// Tools
 	NewsAPI `embed:"" help:"NewsAPI configuration"`
@@ -56,6 +57,10 @@ type Mistral struct {
 
 type OpenAI struct {
 	OpenAIKey string `env:"OPENAI_API_KEY" help:"OpenAI API Key"`
+}
+
+type Gemini struct {
+	GeminiKey string `env:"GEMINI_API_KEY" help:"Gemini API Key"`
 }
 
 type NewsAPI struct {
@@ -128,6 +133,9 @@ func main() {
 	*/
 	if cli.OpenAIKey != "" {
 		opts = append(opts, agent.WithOpenAI(cli.OpenAIKey, clientopts...))
+	}
+	if cli.GeminiKey != "" {
+		opts = append(opts, agent.WithGemini(cli.GeminiKey, clientopts...))
 	}
 
 	// Make a toolkit

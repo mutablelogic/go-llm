@@ -4,7 +4,8 @@ import (
 	// Packages
 	client "github.com/mutablelogic/go-client"
 	llm "github.com/mutablelogic/go-llm"
-	"github.com/mutablelogic/go-llm/pkg/ollama"
+	gemini "github.com/mutablelogic/go-llm/pkg/gemini"
+	ollama "github.com/mutablelogic/go-llm/pkg/ollama"
 	openai "github.com/mutablelogic/go-llm/pkg/openai"
 )
 
@@ -49,6 +50,17 @@ func WithMistral(key string, opts ...client.ClientOpt) llm.Opt {
 func WithOpenAI(key string, opts ...client.ClientOpt) llm.Opt {
 	return func(o *llm.Opts) error {
 		client, err := openai.New(key, opts...)
+		if err != nil {
+			return err
+		} else {
+			return llm.WithAgent(client)(o)
+		}
+	}
+}
+
+func WithGemini(key string, opts ...client.ClientOpt) llm.Opt {
+	return func(o *llm.Opts) error {
+		client, err := gemini.New(key, opts...)
 		if err != nil {
 			return err
 		} else {
