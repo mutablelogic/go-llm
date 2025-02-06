@@ -17,6 +17,7 @@ type Message struct {
 	RoleContent
 	Media *llm.Attachment `json:"audio,omitempty"`
 	Calls ToolCalls       `json:"tool_calls,omitempty"`
+	*ToolResults
 }
 
 var _ llm.Completion = (*Message)(nil)
@@ -27,6 +28,10 @@ type RoleContent struct {
 }
 
 type ToolCalls []toolcall
+
+type ToolResults struct {
+	Id string `json:"tool_call_id,omitempty"`
+}
 
 ///////////////////////////////////////////////////////////////////////////////
 // PUBLIC METHODS - MESSAGE FACTORY
@@ -84,6 +89,9 @@ func (messagefactory) ToolResults(results ...llm.ToolResult) ([]llm.Completion, 
 				Role:    "tool",
 				Content: string(value),
 			},
+			ToolResults: &ToolResults{
+				Id: result.Call().Id(),
+			},
 		})
 	}
 
@@ -102,6 +110,14 @@ func (message *Message) Num() int {
 // Return the current session role
 func (message *Message) Role() string {
 	return message.RoleContent.Role
+}
+
+// Return the completion
+func (message *Message) Choice(index int) llm.Completion {
+	if index != 0 {
+		return nil
+	}
+	return message
 }
 
 // Return the text for the last completion

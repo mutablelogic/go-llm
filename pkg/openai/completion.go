@@ -316,7 +316,7 @@ func (c Completions) Num() int {
 }
 
 // Return message for a specific completion
-func (c Completions) Message(index int) *Message {
+func (c Completions) Choice(index int) llm.Completion {
 	if index < 0 || index >= len(c) {
 		return nil
 	}

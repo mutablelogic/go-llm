@@ -11,6 +11,9 @@ type Completion interface {
 	// WithNumCompletions was used
 	Num() int
 
+	// Return a specific completion
+	Choice(int) Completion
+
 	// Return the current session role, which can be system, assistant,
 	// user, tool, tool_result, ...
 	// If this is a completion, the role is usually 'assistant'

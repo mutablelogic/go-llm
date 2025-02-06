@@ -2,6 +2,7 @@ package session
 
 import (
 	"context"
+	"encoding/json"
 
 	// Packages
 	"github.com/mutablelogic/go-llm"
@@ -49,6 +50,21 @@ func NewSession(model llm.Model, factory MessageFactory, opts ...llm.Opt) *sessi
 }
 
 ///////////////////////////////////////////////////////////////////////////////
+// STRINGIFY
+
+func (session session) MarshalJSON() ([]byte, error) {
+	return json.Marshal(session.seq)
+}
+
+func (session session) String() string {
+	data, err := json.MarshalIndent(session, "", "  ")
+	if err != nil {
+		return err.Error()
+	}
+	return string(data)
+}
+
+///////////////////////////////////////////////////////////////////////////////
 // PUBLIC METHODS
 
 // Return an array of messages in the session with system prompt. If the
@@ -74,25 +90,38 @@ func (session *session) FromUser(ctx context.Context, prompt string, opts ...llm
 	if err != nil {
 		return err
 	} else {
-		session.Append(message)
+		return session.chat(ctx, message)
 	}
-
-	// Generate the completion
-	completion, err := session.model.Chat(ctx, session.seq, session.opts...)
-	if err != nil {
-		return err
-	}
-
-	// Append the completion
-	session.Append(completion)
-
-	// Success
-	return nil
 }
 
 // Generate a response from a tool, passing the results from the tool call
-func (session *session) FromTool(context.Context, ...llm.ToolResult) error {
-	return llm.ErrNotImplemented
+func (session *session) FromTool(ctx context.Context, results ...llm.ToolResult) error {
+	// Append the tool results
+	if results, err := session.factory.ToolResults(results...); err != nil {
+		return err
+	} else {
+		return session.chat(ctx, results...)
+	}
+}
+
+func (session *session) chat(ctx context.Context, messages ...llm.Completion) error {
+	// Append the messages to the chat
+	session.Append(messages...)
+
+	// Generate the completion, and append the first choice of the completion
+	// TODO: Use Opts to select which completion choice to use
+	completion, err := session.model.Chat(ctx, session.seq, session.opts...)
+	if err != nil {
+		return err
+	} else if completion.Num() == 0 {
+		return llm.ErrBadParameter.With("No completion choices returned")
+	}
+
+	// Append the first choice
+	session.Append(completion.Choice(0))
+
+	// Success
+	return nil
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -112,6 +141,14 @@ func (session *session) Role() string {
 		return ""
 	}
 	return session.seq[len(session.seq)-1].Role()
+}
+
+// Return the current session choice
+func (session *session) Choice(index int) llm.Completion {
+	if len(session.seq) == 0 {
+		return nil
+	}
+	return session.seq[len(session.seq)-1].Choice(index)
 }
 
 // Return the text for the last completion
