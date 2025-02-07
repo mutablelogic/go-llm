@@ -21,9 +21,9 @@ func WithInsecure() llm.Opt {
 }
 
 // Embeddings: Does not truncate the end of each input to fit within context length. Returns error if context length is exceeded.
-func WithTruncate(v bool) llm.Opt {
+func WithTruncate() llm.Opt {
 	return func(o *llm.Opts) error {
-		o.Set("truncate", v)
+		o.Set("truncate", true)
 		return nil
 	}
 }

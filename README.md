@@ -374,7 +374,110 @@ The transation of field types is as follows:
 * `uint`, `int` - Translates to JSON `integer`
 * `float32`, `float64` - Translates to JSON `number`
 
-## Options
+## Complete and Chat Options
+
+These are the options you can use with the `Completion` and `Chat` methods.
+
+<table>
+<tr>
+  <th>Ollama</th>
+  <th>Anthropic</th>
+  <th>Mistral</th>
+  <th>OpenAI</th>
+  <th>Gemini</th>
+</tr>
+
+<tr><td colspan="6">
+  <code>llm.WithTemperature(float64)</code>
+  What sampling temperature to use, between 0.0 and 1.0. Higher values like 0.7 will make the output more random, while lower values like 0.2 will make it more focused and deterministic.
+</td></tr>
+<tr style="border-bottom: 2px solid black;">
+  <td>Yes</td>
+  <td>Yes</td>
+  <td>Yes</td>
+  <td>Yes</td>
+  <td>Yes</td>
+</tr>
+
+</table>
+
+## Embedding Options
+
+These are the options you can include for the `Embedding`method.
+
+<table>
+<tr>
+  <th>Ollama</th>
+  <th>Anthropic</th>
+  <th>Mistral</th>
+  <th>OpenAI</th>
+  <th>Gemini</th>
+</tr>
+
+<tr><td colspan="6">
+  <code>ollama.WithKeepAlive(time.Duration)</code>
+  Controls how long the model will stay loaded into memory following the request
+</td></tr>
+<tr style="border-bottom: 2px solid black;">
+  <td>Yes</td>
+  <td>No</td>
+  <td>No</td>
+  <td>No</td>
+  <td>No</td>
+</tr>
+
+<tr><td colspan="6">
+  <code>ollama.WithTruncate()</code>
+  Does not truncate the end of each input to fit within context length. Returns error if context length is exceeded.
+</td></tr>
+<tr style="border-bottom: 2px solid black;">
+  <td>Yes</td>
+  <td>No</td>
+  <td>No</td>
+  <td>No</td>
+  <td>No</td>
+</tr>
+
+<tr><td colspan="6">
+  <code>ollama.WithOption(string, any)</code>
+  Set model-specific option value.
+</td></tr>
+<tr style="border-bottom: 2px solid black;">
+  <td>Yes</td>
+  <td>No</td>
+  <td>No</td>
+  <td>No</td>
+  <td>No</td>
+</tr>
+
+<tr><td colspan="6">
+  <code>openai.WithDimensions(uint64)</code>
+  The number of dimensions the resulting output embeddings
+  should have. Only supported in text-embedding-3 and later models.
+</td></tr>
+<tr style="border-bottom: 2px solid black;">
+  <td>No</td>
+  <td>No</td>
+  <td>No</td>
+  <td>Yes</td>
+  <td>No</td>
+</tr>
+
+<tr><td colspan="6">
+  <code>llm.WithFormat(string)</code>
+  The format to return the embeddings in. Can be either .
+</td></tr>
+<tr style="border-bottom: 2px solid black;">
+  <td>No</td>
+  <td>No</td>
+  <td>'float'</td>
+  <td>'float' or 'base64'</td>
+  <td>No</td>
+</tr>
+
+</table>
+
+## Older Content
 
 You can add options to sessions, or to prompts. Different providers and models support
 different options.
@@ -388,9 +491,6 @@ type Model interface {
 
   // Create a completion from a text prompt
   Completion(context.Context, string, ...Opt) (Completion, error)
-
-  // Create a completion from a chat session
-  Chat(context.Context, []Completion, ...Opt) (Completion, error)
 
   // Embedding vector generation
   Embedding(context.Context, string, ...Opt) ([]float64, error)

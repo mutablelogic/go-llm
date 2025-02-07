@@ -23,12 +23,17 @@ type MessageFactory interface {
 	ToolResults(...llm.ToolResult) ([]llm.Completion, error)
 }
 
+type Model interface {
+	// Additional method for a context object
+	Chat(ctx context.Context, completions []llm.Completion, opts ...llm.Opt) (llm.Completion, error)
+}
+
 ///////////////////////////////////////////////////////////////////////////////
 // TYPES
 
 // A chat session with history
 type session struct {
-	model   llm.Model        // The model used for the session
+	model   Model            // The model used for the session
 	opts    []llm.Opt        // Options to apply to the session
 	seq     []llm.Completion // Sequence of messages
 	factory MessageFactory   // Factory for generating messages
@@ -41,8 +46,12 @@ var _ llm.Context = (*session)(nil)
 
 // Create a new empty session to store a context window
 func NewSession(model llm.Model, factory MessageFactory, opts ...llm.Opt) *session {
+	chatmodel, ok := model.(Model)
+	if !ok || model == nil {
+		panic("Model does not implement the session.Model interface")
+	}
 	return &session{
-		model:   model,
+		model:   chatmodel,
 		opts:    opts,
 		seq:     make([]llm.Completion, 0, 10),
 		factory: factory,
