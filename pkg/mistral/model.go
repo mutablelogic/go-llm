@@ -97,6 +97,16 @@ func (model model) Name() string {
 	return model.meta.Name
 }
 
+// Return model aliases
+func (model model) Aliases() []string {
+	return model.meta.Aliases
+}
+
+// Return model description
+func (model model) Description() string {
+	return model.meta.Description
+}
+
 // Return a new empty session
 func (model *model) Context(opts ...llm.Opt) llm.Context {
 	return impl.NewSession(model, &messagefactory{}, opts...)

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
+	"strings"
 	"time"
 
 	// Packages
@@ -86,6 +87,16 @@ func (m PullStatus) String() string {
 
 func (m model) Name() string {
 	return m.ModelMeta.Name
+}
+
+// Return model name
+func (model) Aliases() []string {
+	return nil
+}
+
+// Return model description
+func (model model) Description() string {
+	return strings.Join(model.ModelMeta.Details.Families, ", ")
 }
 
 // Agent interface

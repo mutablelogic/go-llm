@@ -21,7 +21,7 @@ type CompleteCmd struct {
 	File        []string `type:"file" short:"f" help:"Files to attach"`
 	System      string   `flag:"system" help:"Set the system prompt"`
 	NoStream    bool     `flag:"no-stream" help:"Do not stream output"`
-	Format      string   `flag:"format" enum:"text,json" default:"text" help:"Output format. You may also need to specify the output in the system or user prompt."`
+	Format      string   `flag:"format" enum:"text,markdown,json" default:"text" help:"Output format"`
 	Temperature *float64 `flag:"temperature" short:"t"  help:"Temperature for sampling"`
 }
 
@@ -97,14 +97,30 @@ func (cmd *CompleteCmd) Run(globals *Globals) error {
 
 func (cmd *CompleteCmd) opts() []llm.Opt {
 	opts := []llm.Opt{}
-	if cmd.System != "" {
-		opts = append(opts, llm.WithSystemPrompt(cmd.System))
+
+	// Set system prompt
+	var system []string
+	if cmd.Format == "markdown" {
+		system = append(system, "Return the completion in markdown format.")
+	} else if cmd.Format == "json" {
+		system = append(system, "Return the completion in JSON format.")
 	}
+	if cmd.System != "" {
+		system = append(system, cmd.System)
+	}
+	if len(system) > 0 {
+		opts = append(opts, llm.WithSystemPrompt(strings.Join(system, "\n")))
+	}
+
+	// Set format
 	if cmd.Format == "json" {
 		opts = append(opts, llm.WithFormat("json"))
 	}
+
+	// Set temperature
 	if cmd.Temperature != nil {
 		opts = append(opts, llm.WithTemperature(*cmd.Temperature))
 	}
+
 	return opts
 }

@@ -55,6 +55,16 @@ func (m model) Name() string {
 	return m.meta.Name
 }
 
+// Return model aliases
+func (model model) Aliases() []string {
+	return nil
+}
+
+// Return model description
+func (model model) Description() string {
+	return model.meta.Description
+}
+
 // Return the models
 func (gemini *Client) Models(ctx context.Context) ([]llm.Model, error) {
 	// Cache models

@@ -4,10 +4,15 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"os"
+	"sort"
+	"strings"
 
 	// Packages
+	tablewriter "github.com/djthorpe/go-tablewriter"
 	llm "github.com/mutablelogic/go-llm"
 	agent "github.com/mutablelogic/go-llm/pkg/agent"
+	"github.com/mutablelogic/go-llm/pkg/ollama"
 )
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -39,16 +44,28 @@ func (cmd *ListToolsCmd) Run(globals *Globals) error {
 
 func (cmd *ListModelsCmd) Run(globals *Globals) error {
 	return runagent(globals, func(ctx context.Context, client llm.Agent) error {
-		agent, ok := client.(*agent.Agent)
+		agent_, ok := client.(*agent.Agent)
 		if !ok {
 			return fmt.Errorf("No agents found")
 		}
-		models, err := agent.ListModels(ctx, cmd.Agent...)
+		models, err := agent_.ListModels(ctx, cmd.Agent...)
 		if err != nil {
 			return err
 		}
-		fmt.Println(models)
-		return nil
+		result := make(ModelList, 0, len(models))
+		for _, model := range models {
+			result = append(result, Model{
+				Agent:       model.(*agent.Model).Agent,
+				Model:       model.Name(),
+				Description: model.Description(),
+				Aliases:     strings.Join(model.Aliases(), ", "),
+			})
+		}
+		// Sort models by name
+		sort.Sort(result)
+
+		// Write out the models
+		return tablewriter.New(os.Stdout).Write(result, tablewriter.OptOutputText(), tablewriter.OptHeader())
 	})
 }
 
@@ -82,14 +99,12 @@ func (cmd *DownloadModelCmd) Run(globals *Globals) error {
 		}
 		// Download the model
 		switch agent.Name() {
-		/*
-			case "ollama":
-				model, err := agent.(*ollama.Client).PullModel(ctx, cmd.Model)
-				if err != nil {
-					return err
-				}
-				fmt.Println(model)
-		*/
+		case "ollama":
+			model, err := agent.(*ollama.Client).PullModel(ctx, cmd.Model)
+			if err != nil {
+				return err
+			}
+			fmt.Println(model)
 		default:
 			return fmt.Errorf("Agent %q does not support model download", agent.Name())
 		}
@@ -115,4 +130,28 @@ func getagent(client llm.Agent, name string) llm.Agent {
 		}
 	}
 	return nil
+}
+
+// //////////////////////////////////////////////////////////////////////////////
+// MODEL LIST
+
+type Model struct {
+	Agent       string `json:"agent"  writer:"Agent,width:10"`
+	Model       string `json:"model"  writer:"Model,wrap,width:40"`
+	Description string `json:"description" writer:"Description,wrap,width:60"`
+	Aliases     string `json:"aliases" writer:"Aliases,wrap,width:30"`
+}
+
+type ModelList []Model
+
+func (models ModelList) Len() int {
+	return len(models)
+}
+
+func (models ModelList) Less(a, b int) bool {
+	return strings.Compare(models[a].Model, models[b].Model) < 0
+}
+
+func (models ModelList) Swap(a, b int) {
+	models[a], models[b] = models[b], models[a]
 }

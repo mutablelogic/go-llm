@@ -11,6 +11,12 @@ type Model interface {
 	// Return the name of the model
 	Name() string
 
+	// Return the description of the model
+	Description() string
+
+	// Return any model aliases
+	Aliases() []string
+
 	// Return am empty session context object for the model, setting
 	// session options
 	Context(...Opt) Context

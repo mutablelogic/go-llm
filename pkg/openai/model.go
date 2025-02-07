@@ -86,6 +86,16 @@ func (model model) Name() string {
 	return model.meta.Name
 }
 
+// Return model description
+func (model model) Description() string {
+	return model.meta.OwnedBy
+}
+
+// Return model aliases
+func (model) Aliases() []string {
+	return nil
+}
+
 // Return a new empty session
 func (model *model) Context(opts ...llm.Opt) llm.Context {
 	return impl.NewSession(model, &messagefactory{}, opts...)
