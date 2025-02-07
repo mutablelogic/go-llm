@@ -21,7 +21,8 @@ type Model interface {
 	// session options
 	Context(...Opt) Context
 
-	// Create a completion from a text prompt
+	// Create a completion from a text prompt, including image
+	// and audio (TTS) generation
 	Completion(context.Context, string, ...Opt) (Completion, error)
 
 	// Embedding vector generation

@@ -159,8 +159,14 @@ func completion(ctx context.Context, agent llm.Agent) (string, error) {
 }
 ```
 
-The zero index argument on `completion.Text(int)` indicates you want the text from the zero'th completion
-choice, for providers who can generate serveral different choices simultaneously.
+The zero index argument on `completion.Text(int)` indicates you want the text from the zero'th completion choice, for providers who can generate serveral different choices simultaneously.
+
+Use one of the following options as an argument to the `Completion` method to customize the output format of the completion, which needs to be paired with the right model:
+
+* `llm.WithFormat("text")` - Generate text output (default).
+* `llm.WithFormat("json")` - Generate JSON output.
+* `llm.WithFormat("image", "jpeg")` - Generate JPEG image output (for models which support it).
+* `llm.WithFormat("audio", "mp3")` - Generate audio output (for models which support it). Possible values are `mp3`, `opus`, `aac`, `flac`, `wav`, and `pcm`.
 
 ### Chat Sessions
 
