@@ -56,13 +56,15 @@ func main() {
 	}
 
 	// Register tool
-	session := model.Context()
 	toolkit := tool.NewToolKit()
 	toolkit.Register(&Adder{})
 
-	// Get the tool call
+	// Create a chat session
+	session := model.Context(llm.WithToolKit(toolkit))
+
+	// Make the prompt
 	prompt := fmt.Sprintf("What is %v plus %v?", os.Args[2], os.Args[3])
-	if err := session.FromUser(context.TODO(), prompt, llm.WithToolKit(toolkit), llm.WithToolChoice("any")); err != nil {
+	if err := session.FromUser(context.TODO(), prompt); err != nil {
 		panic(err)
 	}
 
@@ -71,11 +73,6 @@ func main() {
 		calls := session.ToolCalls(0)
 		if len(calls) == 0 {
 			break
-		}
-
-		// Print out any intermediate messages
-		if session.Text(0) != "" {
-			fmt.Println(session.Text(0))
 		}
 
 		// Get the results from the toolkit
