@@ -3,6 +3,7 @@ package impl
 import (
 	"context"
 	"encoding/json"
+	"time"
 
 	// Packages
 	"github.com/mutablelogic/go-llm"
@@ -37,6 +38,7 @@ type session struct {
 	opts    []llm.Opt        // Options to apply to the session
 	seq     []llm.Completion // Sequence of messages
 	factory MessageFactory   // Factory for generating messages
+	last    time.Time        // Last completion time
 }
 
 var _ llm.Context = (*session)(nil)
@@ -129,8 +131,18 @@ func (session *session) chat(ctx context.Context, messages ...llm.Completion) er
 	// Append the first choice
 	session.Append(completion.Choice(0))
 
+	// Update the last completion time
+	session.last = time.Now()
+
 	// Success
 	return nil
+}
+
+func (session *session) SinceLast() time.Duration {
+	if len(session.seq) == 0 || session.last.IsZero() {
+		return 0
+	}
+	return time.Since(session.last)
 }
 
 ///////////////////////////////////////////////////////////////////////////////
