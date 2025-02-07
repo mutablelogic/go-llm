@@ -17,16 +17,15 @@ If you have docker installed, you can use the following command to run the tool,
 installation:
 
 ```bash
-# Display help
-docker run ghcr.io/mutablelogic/go-llm:latest --help
+# Display version, help
+docker run ghcr.io/mutablelogic/go-llm version
+docker run ghcr.io/mutablelogic/go-llm --help
 
 # Interact with Claude to retrieve news headlines, assuming
-# you have an API key for Anthropic and NewsAPI
-docker run \
-  -e OLLAMA_URL -e MISTRAL_API_KEY -e ANTHROPIC_API_KEY -e OPENAI_API_KEY \
-  -e NEWSAPI_KEY \
-  ghcr.io/mutablelogic/go-llm:latest \
-  chat mistral-small-latest --prompt "What is the latest news?" --no-stream
+# you have an API key for both Anthropic and NewsAPI
+docker run -e ANTHROPIC_API_KEY -e NEWSAPI_KEY \
+  ghcr.io/mutablelogic/go-llm \
+  chat mistral-small-latest --prompt "What is the latest news?"
 ```
 
 See below for more information on how to use the command-line tool (or how to
@@ -559,17 +558,24 @@ LLM agent command line interface
 Flags:
   -h, --help                      Show context-sensitive help.
       --debug                     Enable debug output
-      --verbose                   Enable verbose output
+  -v, --verbose                   Enable verbose output
+      --timeout=DURATION          Agent connection timeout
       --ollama-endpoint=STRING    Ollama endpoint ($OLLAMA_URL)
       --anthropic-key=STRING      Anthropic API Key ($ANTHROPIC_API_KEY)
+      --mistral-key=STRING        Mistral API Key ($MISTRAL_API_KEY)
+      --open-ai-key=STRING        OpenAI API Key ($OPENAI_API_KEY)
+      --gemini-key=STRING         Gemini API Key ($GEMINI_API_KEY)
       --news-key=STRING           News API Key ($NEWSAPI_KEY)
 
 Commands:
-  agents      Return a list of agents
-  models      Return a list of models
-  tools       Return a list of tools
-  download    Download a model
-  chat        Start a chat session
+  agents       Return a list of agents
+  models       Return a list of models
+  tools        Return a list of tools
+  download     Download a model
+  chat         Start a chat session
+  complete     Complete a prompt
+  embedding    Generate an embedding
+  version      Print the version of this tool
 
 Run "llm <command> --help" for more information on a command.
 ```
