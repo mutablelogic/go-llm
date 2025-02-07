@@ -124,11 +124,9 @@ func main() {
 	if cli.OllamaEndpoint != "" {
 		opts = append(opts, agent.WithOllama(cli.OllamaEndpoint, clientopts...))
 	}
-	/*
-		if cli.AnthropicKey != "" {
-			opts = append(opts, agent.WithAnthropic(cli.AnthropicKey, clientopts...))
-		}
-	*/
+	if cli.AnthropicKey != "" {
+		opts = append(opts, agent.WithAnthropic(cli.AnthropicKey, clientopts...))
+	}
 	if cli.MistralKey != "" {
 		opts = append(opts, agent.WithMistral(cli.MistralKey, clientopts...))
 	}

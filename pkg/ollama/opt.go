@@ -1,7 +1,6 @@
 package ollama
 
 import (
-	"strconv"
 	"strings"
 	"time"
 
@@ -95,9 +94,9 @@ func optFormat(opts *llm.Opts) string {
 		return ""
 	}
 	if format == "json_format" {
-		return strconv.Quote("json")
+		return "json"
 	}
-	return strconv.Quote(format)
+	return format
 }
 
 func optStopSequence(opts *llm.Opts) []string {

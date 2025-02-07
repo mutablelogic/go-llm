@@ -21,7 +21,7 @@ type Response struct {
 	Reason       string  `json:"stop_reason,omitempty"`
 	StopSequence *string `json:"stop_sequence,omitempty"`
 	Message
-	Metrics `json:"usage,omitempty"`
+	*Metrics `json:"usage,omitempty"`
 }
 
 // Metrics
@@ -43,30 +43,43 @@ func (r Response) String() string {
 	return string(data)
 }
 
+func (m Metrics) String() string {
+	data, err := json.MarshalIndent(m, "", "  ")
+	if err != nil {
+		return err.Error()
+	}
+	return string(data)
+}
+
 ///////////////////////////////////////////////////////////////////////////////
 // PUBLIC METHODS
 
 type reqMessages struct {
-	Model         string       `json:"model"`
-	MaxTokens     uint64       `json:"max_tokens,omitempty"`
-	Metadata      *optmetadata `json:"metadata,omitempty"`
-	StopSequences []string     `json:"stop_sequences,omitempty"`
-	Stream        bool         `json:"stream,omitempty"`
-	System        string       `json:"system,omitempty"`
-	Temperature   float64      `json:"temperature,omitempty"`
-	TopK          uint64       `json:"top_k,omitempty"`
-	TopP          float64      `json:"top_p,omitempty"`
-	Messages      []*Message   `json:"messages"`
-	Tools         []llm.Tool   `json:"tools,omitempty"`
-	ToolChoice    any          `json:"tool_choice,omitempty"`
+	Model         string           `json:"model"`
+	MaxTokens     uint64           `json:"max_tokens,omitempty"`
+	Metadata      *optmetadata     `json:"metadata,omitempty"`
+	StopSequences []string         `json:"stop_sequences,omitempty"`
+	Stream        bool             `json:"stream,omitempty"`
+	System        string           `json:"system,omitempty"`
+	Temperature   float64          `json:"temperature,omitempty"`
+	TopK          uint64           `json:"top_k,omitempty"`
+	TopP          float64          `json:"top_p,omitempty"`
+	Tools         []llm.Tool       `json:"tools,omitempty"`
+	ToolChoice    any              `json:"tool_choice,omitempty"`
+	Messages      []llm.Completion `json:"messages"`
 }
 
+// Send a completion request with a single prompt, and return the next completion
 func (model *model) Completion(ctx context.Context, prompt string, opts ...llm.Opt) (llm.Completion, error) {
-	// TODO
-	return nil, llm.ErrNotImplemented
+	message, err := messagefactory{}.UserPrompt(prompt, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return model.Chat(ctx, []llm.Completion{message}, opts...)
 }
 
-func (anthropic *Client) Messages(ctx context.Context, context llm.Context, opts ...llm.Opt) (*Response, error) {
+// Send a completion request with multiple completions, and return the next completion
+func (model *model) Chat(ctx context.Context, completions []llm.Completion, opts ...llm.Opt) (llm.Completion, error) {
 	// Apply options
 	opt, err := llm.ApplyOpts(opts...)
 	if err != nil {
@@ -75,8 +88,8 @@ func (anthropic *Client) Messages(ctx context.Context, context llm.Context, opts
 
 	// Request
 	req, err := client.NewJSONRequest(reqMessages{
-		Model:         context.(*session).model.Name(),
-		MaxTokens:     optMaxTokens(context.(*session).model, opt),
+		Model:         model.Name(),
+		MaxTokens:     optMaxTokens(model, opt),
 		Metadata:      optMetadata(opt),
 		StopSequences: optStopSequences(opt),
 		Stream:        optStream(opt),
@@ -84,19 +97,21 @@ func (anthropic *Client) Messages(ctx context.Context, context llm.Context, opts
 		Temperature:   optTemperature(opt),
 		TopK:          optTopK(opt),
 		TopP:          optTopP(opt),
-		Messages:      context.(*session).seq,
-		Tools:         optTools(anthropic, opt),
+		Tools:         optTools(model.Client, opt),
 		ToolChoice:    optToolChoice(opt),
+		Messages:      completions,
 	})
 	if err != nil {
 		return nil, err
 	}
 
-	// Stream
+	// Response options
 	var response Response
 	reqopts := []client.RequestOpt{
 		client.OptPath("messages"),
 	}
+
+	// Streaming
 	if optStream(opt) {
 		reqopts = append(reqopts, client.OptTextStreamCallback(func(evt client.TextStreamEvent) error {
 			if err := streamEvent(&response, evt); err != nil {
@@ -110,7 +125,7 @@ func (anthropic *Client) Messages(ctx context.Context, context llm.Context, opts
 	}
 
 	// Response
-	if err := anthropic.DoWithContext(ctx, req, &response, reqopts...); err != nil {
+	if err := model.DoWithContext(ctx, req, &response, reqopts...); err != nil {
 		return nil, err
 	}
 

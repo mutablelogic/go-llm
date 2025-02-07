@@ -94,9 +94,9 @@ func (cmd *CompleteCmd) opts() []llm.Opt {
 	// Set system prompt
 	var system []string
 	if cmd.Format == "markdown" {
-		system = append(system, "Return the completion in markdown format.")
+		system = append(system, "Structure your output in markdown format.")
 	} else if cmd.Format == "json" {
-		system = append(system, "Return the completion in JSON format.")
+		system = append(system, "Structure your output in JSON format.")
 	}
 	if cmd.System != "" {
 		system = append(system, cmd.System)
