@@ -7,7 +7,7 @@ import (
 	// Packages
 	client "github.com/mutablelogic/go-client"
 	llm "github.com/mutablelogic/go-llm"
-	session "github.com/mutablelogic/go-llm/pkg/session"
+	impl "github.com/mutablelogic/go-llm/pkg/internal/impl"
 )
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -43,12 +43,7 @@ func (m model) String() string {
 }
 
 ///////////////////////////////////////////////////////////////////////////////
-// PUBLIC METHODS - llm.Model implementation
-
-// Return model name
-func (m model) Name() string {
-	return m.meta.Name
-}
+// PUBLIC METHODS - llm.Agent
 
 // Return the models
 func (openai *Client) Models(ctx context.Context) ([]llm.Model, error) {
@@ -83,9 +78,17 @@ func (openai *Client) Model(ctx context.Context, name string) llm.Model {
 	return openai.cache[name]
 }
 
+///////////////////////////////////////////////////////////////////////////////
+// PUBLIC METHODS - llm.Model
+
+// Return model name
+func (model model) Name() string {
+	return model.meta.Name
+}
+
 // Return a new empty session
 func (model *model) Context(opts ...llm.Opt) llm.Context {
-	return session.NewSession(model, &messagefactory{}, opts...)
+	return impl.NewSession(model, &messagefactory{}, opts...)
 }
 
 ///////////////////////////////////////////////////////////////////////////////

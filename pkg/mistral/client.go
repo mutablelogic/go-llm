@@ -1,14 +1,14 @@
 /*
-mistral implements an API client for mistral (https://docs.mistral.ai/api/)
+mistral implements an API client for mistral
+https://docs.mistral.ai/api/
 */
 package mistral
 
 import (
-	"context"
-
 	// Packages
 	client "github.com/mutablelogic/go-client"
 	llm "github.com/mutablelogic/go-llm"
+	impl "github.com/mutablelogic/go-llm/pkg/internal/impl"
 )
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -16,7 +16,7 @@ import (
 
 type Client struct {
 	*client.Client
-	cache map[string]llm.Model
+	*impl.ModelCache
 }
 
 var _ llm.Agent = (*Client)(nil)
@@ -46,7 +46,7 @@ func New(ApiKey string, opts ...client.ClientOpt) (*Client, error) {
 	}
 
 	// Return the client
-	return &Client{client, nil}, nil
+	return &Client{client, impl.NewModelCache()}, nil
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -55,37 +55,4 @@ func New(ApiKey string, opts ...client.ClientOpt) (*Client, error) {
 // Return the name of the agent
 func (Client) Name() string {
 	return defaultName
-}
-
-// Return the models
-func (c *Client) Models(ctx context.Context) ([]llm.Model, error) {
-	// Cache models
-	if c.cache == nil {
-		models, err := c.ListModels(ctx)
-		if err != nil {
-			return nil, err
-		}
-		c.cache = make(map[string]llm.Model, len(models))
-		for _, model := range models {
-			c.cache[model.Name()] = model
-		}
-	}
-
-	// Return models
-	result := make([]llm.Model, 0, len(c.cache))
-	for _, model := range c.cache {
-		result = append(result, model)
-	}
-	return result, nil
-}
-
-// Return a model by name, or nil if not found.
-// Panics on error.
-func (c *Client) Model(ctx context.Context, name string) llm.Model {
-	if c.cache == nil {
-		if _, err := c.Models(ctx); err != nil {
-			panic(err)
-		}
-	}
-	return c.cache[name]
 }

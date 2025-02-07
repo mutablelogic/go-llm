@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"strings"
 
+	// Packages
 	"github.com/mutablelogic/go-client"
 	"github.com/mutablelogic/go-llm"
 )
@@ -20,6 +21,17 @@ type Response struct {
 	Model       string `json:"model"`
 	Completions `json:"choices"`
 	Metrics     `json:"usage,omitempty"`
+}
+
+// Possible completions
+type Completions []Completion
+
+// Completion Variation
+type Completion struct {
+	Index   uint64   `json:"index"`
+	Message *Message `json:"message"`
+	Delta   *Message `json:"delta,omitempty"` // For streaming
+	Reason  string   `json:"finish_reason,omitempty"`
 }
 
 // Metrics
@@ -202,4 +214,46 @@ func appendCompletion(response *Response, c *Completion) {
 			response.Completions[c.Index].Message.Content = text + str
 		}
 	}
+}
+
+///////////////////////////////////////////////////////////////////////////////
+// PUBLIC METHODS - COMPLETIONS
+
+// Return the number of completions
+func (c Completions) Num() int {
+	return len(c)
+}
+
+// Return message for a specific completion
+func (c Completions) Message(index int) *Message {
+	if index < 0 || index >= len(c) {
+		return nil
+	}
+	return c[index].Message
+}
+
+// Return the role of the completion
+func (c Completions) Role() string {
+	// The role should be the same for all completions, let's use the first one
+	if len(c) == 0 {
+		return ""
+	}
+	return c[0].Message.Role()
+}
+
+// Return the text content for a specific completion
+func (c Completions) Text(index int) string {
+	if index < 0 || index >= len(c) {
+		return ""
+	}
+	return c[index].Message.Text(0)
+}
+
+// Return the current session tool calls given the completion index.
+// Will return nil if no tool calls were returned.
+func (c Completions) ToolCalls(index int) []llm.ToolCall {
+	if index < 0 || index >= len(c) {
+		return nil
+	}
+	return c[index].Message.ToolCalls(0)
 }

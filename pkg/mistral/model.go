@@ -4,8 +4,10 @@ import (
 	"context"
 	"encoding/json"
 
-	"github.com/mutablelogic/go-client"
-	"github.com/mutablelogic/go-llm"
+	// Packages
+	client "github.com/mutablelogic/go-client"
+	llm "github.com/mutablelogic/go-llm"
+	impl "github.com/mutablelogic/go-llm/pkg/internal/impl"
 )
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -53,32 +55,88 @@ func (m model) String() string {
 }
 
 ///////////////////////////////////////////////////////////////////////////////
+// PUBLIC METHODS - llm.Agent
+
+// Return the models
+func (mistral *Client) Models(ctx context.Context) ([]llm.Model, error) {
+	return mistral.ModelCache.Load(func() ([]llm.Model, error) {
+		return mistral.loadmodels(ctx)
+	})
+}
+
+// Return a model by name, or nil if not found.
+// Panics on error.
+func (mistral *Client) Model(ctx context.Context, name string) llm.Model {
+	model, err := mistral.ModelCache.Get(func() ([]llm.Model, error) {
+		return mistral.loadmodels(ctx)
+	}, name)
+	if err != nil {
+		panic(err)
+	}
+	return model
+}
+
+// Function called to load models
+func (mistral *Client) loadmodels(ctx context.Context) ([]llm.Model, error) {
+	if models, err := mistral.ListModels(ctx); err != nil {
+		return nil, err
+	} else {
+		result := make([]llm.Model, len(models))
+		for i, meta := range models {
+			result[i] = &model{mistral, meta}
+		}
+		return result, nil
+	}
+}
+
+///////////////////////////////////////////////////////////////////////////////
+// PUBLIC METHODS - llm.Model
+
+// Return model name
+func (model model) Name() string {
+	return model.meta.Name
+}
+
+// Return a new empty session
+func (model *model) Context(opts ...llm.Opt) llm.Context {
+	return impl.NewSession(model, &messagefactory{}, opts...)
+}
+
+///////////////////////////////////////////////////////////////////////////////
 // PUBLIC METHODS - API
 
 // ListModels returns all the models
-func (c *Client) ListModels(ctx context.Context) ([]llm.Model, error) {
+func (mistral *Client) ListModels(ctx context.Context) ([]Model, error) {
 	// Response
 	var response struct {
 		Data []Model `json:"data"`
 	}
-	if err := c.DoWithContext(ctx, nil, &response, client.OptPath("models")); err != nil {
+	if err := mistral.DoWithContext(ctx, nil, &response, client.OptPath("models")); err != nil {
 		return nil, err
 	}
 
-	//  Make models
-	result := make([]llm.Model, 0, len(response.Data))
-	for _, meta := range response.Data {
-		result = append(result, &model{c, meta})
-	}
-
-	// Return models
-	return result, nil
+	// Return success
+	return response.Data, nil
 }
 
-///////////////////////////////////////////////////////////////////////////////
-// PUBLIC METHODS - MODEL
+// GetModel returns one model
+func (mistral *Client) GetModel(ctx context.Context, model string) (*Model, error) {
+	// Return the response
+	var response Model
+	if err := mistral.DoWithContext(ctx, nil, &response, client.OptPath("models", model)); err != nil {
+		return nil, err
+	}
 
-// Return the name of the model
-func (m model) Name() string {
-	return m.meta.Name
+	// Return success
+	return &response, nil
+}
+
+// Delete a fine-tuned model
+func (c *Client) DeleteModel(ctx context.Context, model string) error {
+	if err := c.DoWithContext(ctx, client.MethodDelete, nil, client.OptPath("models", model)); err != nil {
+		return err
+	}
+
+	// Return success
+	return nil
 }
