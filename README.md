@@ -323,7 +323,7 @@ import (
 func add_two_numbers(ctx context.Context, agent llm.Agent) (string, error) {
   context := agent.Model(ctx, "claude-3-5-haiku-20241022").Context()
   toolkit := tool.NewToolKit()
-  toolkit.Register(Adder{})
+  toolkit.Register(&Adder{})
 
   // Get the tool call
   if err := context.FromUser(ctx, "What is five plus seven?", llm.WithToolKit(toolkit)); err != nil {
