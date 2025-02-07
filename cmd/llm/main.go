@@ -23,8 +23,8 @@ import (
 type Globals struct {
 	// Debugging
 	Debug   bool          `name:"debug" help:"Enable debug output"`
-	Verbose bool          `name:"verbose" help:"Enable verbose output"`
-	Timeout time.Duration `name:"timeout" help:"Timeout for the command"`
+	Verbose bool          `name:"verbose" short:"v" help:"Enable verbose output"`
+	Timeout time.Duration `name:"timeout" help:"Agent connection timeout"`
 
 	// Agents
 	Ollama    `embed:"" help:"Ollama configuration"`

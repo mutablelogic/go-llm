@@ -16,11 +16,13 @@ import (
 // TYPES
 
 type CompleteCmd struct {
-	Model    string   `arg:"" help:"Model name"`
-	Prompt   string   `arg:"" optional:"" help:"Prompt"`
-	File     []string `type:"file" help:"Files to attach"`
-	System   string   `flag:"system" help:"Set the system prompt"`
-	NoStream bool     `flag:"no-stream" help:"Do not stream output"`
+	Model       string   `arg:"" help:"Model name"`
+	Prompt      string   `arg:"" optional:"" help:"Prompt"`
+	File        []string `type:"file" short:"f" help:"Files to attach"`
+	System      string   `flag:"system" help:"Set the system prompt"`
+	NoStream    bool     `flag:"no-stream" help:"Do not stream output"`
+	Format      string   `flag:"format" enum:"text,json" default:"text" help:"Output format. You may also need to specify the output in the system or user prompt."`
+	Temperature *float64 `flag:"temperature" short:"t"  help:"Temperature for sampling"`
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -97,6 +99,12 @@ func (cmd *CompleteCmd) opts() []llm.Opt {
 	opts := []llm.Opt{}
 	if cmd.System != "" {
 		opts = append(opts, llm.WithSystemPrompt(cmd.System))
+	}
+	if cmd.Format == "json" {
+		opts = append(opts, llm.WithFormat("json"))
+	}
+	if cmd.Temperature != nil {
+		opts = append(opts, llm.WithTemperature(*cmd.Temperature))
 	}
 	return opts
 }

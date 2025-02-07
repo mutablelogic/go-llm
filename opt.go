@@ -3,6 +3,7 @@ package llm
 import (
 	"encoding/json"
 	"io"
+	"strings"
 	"time"
 )
 
@@ -330,6 +331,12 @@ func WithSeed(v uint64) Opt {
 // Set format
 func WithFormat(v any) Opt {
 	return func(o *Opts) error {
+		if v_, ok := v.(string); ok {
+			v_ = strings.TrimSpace(strings.ToLower(v_))
+			if v_ == "json" {
+				v = "json_object"
+			}
+		}
 		o.Set("format", v)
 		return nil
 	}
