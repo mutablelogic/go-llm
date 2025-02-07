@@ -80,6 +80,7 @@ type CLI struct {
 	Chat      ChatCmd          `cmd:"" help:"Start a chat session"`
 	Complete  CompleteCmd      `cmd:"" help:"Complete a prompt"`
 	Embedding EmbeddingCmd     `cmd:"" help:"Generate an embedding"`
+	Version   VersionCmd       `cmd:"" help:"Print the version of this tool"`
 }
 
 ////////////////////////////////////////////////////////////////////////////////
