@@ -23,12 +23,6 @@ type RoleContent struct {
 	Content any    `json:"content,omitempty"` // string or array of text, reference, image_url
 }
 
-type ToolCalls []toolcall
-
-type ToolResults struct {
-	Id string `json:"tool_call_id,omitempty"`
-}
-
 ///////////////////////////////////////////////////////////////////////////////
 // PUBLIC METHODS
 

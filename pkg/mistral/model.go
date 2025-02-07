@@ -142,11 +142,6 @@ func (mistral *Client) GetModel(ctx context.Context, model string) (*Model, erro
 }
 
 // Delete a fine-tuned model
-func (c *Client) DeleteModel(ctx context.Context, model string) error {
-	if err := c.DoWithContext(ctx, client.MethodDelete, nil, client.OptPath("models", model)); err != nil {
-		return err
-	}
-
-	// Return success
-	return nil
+func (mistral *Client) DeleteModel(ctx context.Context, model string) error {
+	return mistral.DoWithContext(ctx, client.MethodDelete, nil, client.OptPath("models", model))
 }

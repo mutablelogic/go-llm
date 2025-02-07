@@ -3,6 +3,7 @@ package openai
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 
 	// Packages
 	client "github.com/mutablelogic/go-client"
@@ -47,35 +48,34 @@ func (m model) String() string {
 
 // Return the models
 func (openai *Client) Models(ctx context.Context) ([]llm.Model, error) {
-	// Cache models
-	if openai.cache == nil {
-		models, err := openai.ListModels(ctx)
-		if err != nil {
-			return nil, err
-		}
-		openai.cache = make(map[string]llm.Model, len(models))
-		for _, m := range models {
-			openai.cache[m.Name] = &model{openai, m}
-		}
-	}
-
-	// Return models
-	result := make([]llm.Model, 0, len(openai.cache))
-	for _, model := range openai.cache {
-		result = append(result, model)
-	}
-	return result, nil
+	return openai.ModelCache.Load(func() ([]llm.Model, error) {
+		return openai.loadmodels(ctx)
+	})
 }
 
 // Return a model by name, or nil if not found.
 // Panics on error.
 func (openai *Client) Model(ctx context.Context, name string) llm.Model {
-	if openai.cache == nil {
-		if _, err := openai.Models(ctx); err != nil {
-			panic(err)
-		}
+	model, err := openai.ModelCache.Get(func() ([]llm.Model, error) {
+		return openai.loadmodels(ctx)
+	}, name)
+	if err != nil {
+		panic(err)
 	}
-	return openai.cache[name]
+	return model
+}
+
+// Function called to load models
+func (openai *Client) loadmodels(ctx context.Context) ([]llm.Model, error) {
+	if models, err := openai.ListModels(ctx); err != nil {
+		return nil, err
+	} else {
+		result := make([]llm.Model, len(models))
+		for i, meta := range models {
+			result[i] = &model{openai, meta}
+		}
+		return result, nil
+	}
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -88,7 +88,7 @@ func (model model) Name() string {
 
 // Return model description
 func (model model) Description() string {
-	return model.meta.OwnedBy
+	return fmt.Sprintf("Owner: %q", model.meta.OwnedBy)
 }
 
 // Return model aliases
@@ -105,12 +105,12 @@ func (model *model) Context(opts ...llm.Opt) llm.Context {
 // API CALLS
 
 // ListModels returns all the models
-func (c *Client) ListModels(ctx context.Context) ([]Model, error) {
+func (openai *Client) ListModels(ctx context.Context) ([]Model, error) {
 	// Return the response
 	var response struct {
 		Data []Model `json:"data"`
 	}
-	if err := c.DoWithContext(ctx, nil, &response, client.OptPath("models")); err != nil {
+	if err := openai.DoWithContext(ctx, nil, &response, client.OptPath("models")); err != nil {
 		return nil, err
 	}
 
@@ -119,10 +119,10 @@ func (c *Client) ListModels(ctx context.Context) ([]Model, error) {
 }
 
 // GetModel returns one model
-func (c *Client) GetModel(ctx context.Context, model string) (*Model, error) {
+func (openai *Client) GetModel(ctx context.Context, model string) (*Model, error) {
 	// Return the response
 	var response Model
-	if err := c.DoWithContext(ctx, nil, &response, client.OptPath("models", model)); err != nil {
+	if err := openai.DoWithContext(ctx, nil, &response, client.OptPath("models", model)); err != nil {
 		return nil, err
 	}
 
@@ -132,11 +132,6 @@ func (c *Client) GetModel(ctx context.Context, model string) (*Model, error) {
 
 // Delete a fine-tuned model. You must have the Owner role in your organization
 // to delete a model.
-func (c *Client) DeleteModel(ctx context.Context, model string) error {
-	if err := c.DoWithContext(ctx, client.MethodDelete, nil, client.OptPath("models", model)); err != nil {
-		return err
-	}
-
-	// Return success
-	return nil
+func (openai *Client) DeleteModel(ctx context.Context, model string) error {
+	return openai.DoWithContext(ctx, client.MethodDelete, nil, client.OptPath("models", model))
 }

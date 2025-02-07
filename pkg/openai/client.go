@@ -8,6 +8,7 @@ import (
 	// Packages
 	client "github.com/mutablelogic/go-client"
 	llm "github.com/mutablelogic/go-llm"
+	impl "github.com/mutablelogic/go-llm/pkg/internal/impl"
 )
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -15,7 +16,7 @@ import (
 
 type Client struct {
 	*client.Client
-	cache map[string]llm.Model
+	*impl.ModelCache
 }
 
 var _ llm.Agent = (*Client)(nil)
@@ -34,16 +35,18 @@ const (
 // Create a new client
 func New(ApiKey string, opts ...client.ClientOpt) (*Client, error) {
 	// Create client
-	client, err := client.New(append(opts, client.OptEndpoint(endPoint), client.OptReqToken(client.Token{
+	opts = append(opts, client.OptEndpoint(endPoint))
+	opts = append(opts, client.OptReqToken(client.Token{
 		Scheme: client.Bearer,
 		Value:  ApiKey,
-	}))...)
+	}))
+	client, err := client.New(opts...)
 	if err != nil {
 		return nil, err
 	}
 
 	// Return the client
-	return &Client{client, nil}, nil
+	return &Client{client, impl.NewModelCache()}, nil
 }
 
 ///////////////////////////////////////////////////////////////////////////////
