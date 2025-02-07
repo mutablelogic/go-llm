@@ -9,7 +9,6 @@ import (
 
 	// Packages
 	llm "github.com/mutablelogic/go-llm"
-	agent "github.com/mutablelogic/go-llm/pkg/agent"
 )
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -27,17 +26,7 @@ type ChatCmd struct {
 // PUBLIC METHODS
 
 func (cmd *ChatCmd) Run(globals *Globals) error {
-	return runagent(globals, func(ctx context.Context, client llm.Agent) error {
-		// Get the model
-		a, ok := client.(*agent.Agent)
-		if !ok {
-			return fmt.Errorf("No agents found")
-		}
-		model, err := a.GetModel(ctx, cmd.Model)
-		if err != nil {
-			return err
-		}
-
+	return run(globals, cmd.Model, func(ctx context.Context, model llm.Model) error {
 		// Current buffer
 		var buf string
 
@@ -67,6 +56,7 @@ func (cmd *ChatCmd) Run(globals *Globals) error {
 				input = cmd.Prompt
 				cmd.Prompt = ""
 			} else {
+				var err error
 				input, err = globals.term.ReadLine(model.Name() + "> ")
 				if errors.Is(err, io.EOF) {
 					return nil

@@ -38,7 +38,7 @@ type Globals struct {
 
 	// Context
 	ctx     context.Context
-	agent   llm.Agent
+	agent   *agent.Agent
 	toolkit *tool.ToolKit
 	term    *Term
 }
@@ -76,9 +76,10 @@ type CLI struct {
 	Tools  ListToolsCmd  `cmd:"" help:"Return a list of tools"`
 
 	// Commands
-	Download DownloadModelCmd `cmd:"" help:"Download a model"`
-	Chat     ChatCmd          `cmd:"" help:"Start a chat session"`
-	Complete CompleteCmd      `cmd:"" help:"Complete a prompt"`
+	Download  DownloadModelCmd `cmd:"" help:"Download a model"`
+	Chat      ChatCmd          `cmd:"" help:"Start a chat session"`
+	Complete  CompleteCmd      `cmd:"" help:"Complete a prompt"`
+	Embedding EmbeddingCmd     `cmd:"" help:"Generate an embedding"`
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -185,4 +186,17 @@ func clientOpts(cli *CLI) []client.ClientOpt {
 		result = append(result, client.OptTrace(os.Stderr, cli.Verbose))
 	}
 	return result
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// PRIVATE METHODS
+
+func run(globals *Globals, name string, fn func(ctx context.Context, model llm.Model) error) error {
+	model, err := globals.agent.GetModel(globals.ctx, name)
+	if err != nil {
+		return err
+	}
+
+	// Get the model
+	return fn(globals.ctx, model)
 }

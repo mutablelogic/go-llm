@@ -9,7 +9,6 @@ import (
 
 	// Packages
 	llm "github.com/mutablelogic/go-llm"
-	agent "github.com/mutablelogic/go-llm/pkg/agent"
 )
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -29,14 +28,8 @@ type CompleteCmd struct {
 // PUBLIC METHODS
 
 func (cmd *CompleteCmd) Run(globals *Globals) error {
-	return runagent(globals, func(ctx context.Context, client llm.Agent) error {
+	return run(globals, cmd.Model, func(ctx context.Context, model llm.Model) error {
 		var prompt []byte
-
-		// Load the model
-		model, err := client.(*agent.Agent).GetModel(ctx, cmd.Model)
-		if err != nil {
-			return err
-		}
 
 		// If we are pipeline content in via stdin
 		fileInfo, err := os.Stdin.Stat()

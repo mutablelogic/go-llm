@@ -1,7 +1,6 @@
 package main
 
 import (
-	"context"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -10,7 +9,6 @@ import (
 
 	// Packages
 	tablewriter "github.com/djthorpe/go-tablewriter"
-	llm "github.com/mutablelogic/go-llm"
 	agent "github.com/mutablelogic/go-llm/pkg/agent"
 	"github.com/mutablelogic/go-llm/pkg/ollama"
 )
@@ -35,104 +33,71 @@ type DownloadModelCmd struct {
 // PUBLIC METHODS
 
 func (cmd *ListToolsCmd) Run(globals *Globals) error {
-	return runagent(globals, func(ctx context.Context, client llm.Agent) error {
-		tools := globals.toolkit.Tools(client)
-		fmt.Println(tools)
-		return nil
-	})
+	tools := globals.toolkit.Tools(globals.agent)
+	fmt.Println(tools)
+	return nil
 }
 
 func (cmd *ListModelsCmd) Run(globals *Globals) error {
-	return runagent(globals, func(ctx context.Context, client llm.Agent) error {
-		agent_, ok := client.(*agent.Agent)
-		if !ok {
-			return fmt.Errorf("No agents found")
-		}
-		models, err := agent_.ListModels(ctx, cmd.Agent...)
-		if err != nil {
-			return err
-		}
-		result := make(ModelList, 0, len(models))
-		for _, model := range models {
-			result = append(result, Model{
-				Agent:       model.(*agent.Model).Agent,
-				Model:       model.Name(),
-				Description: model.Description(),
-				Aliases:     strings.Join(model.Aliases(), ", "),
-			})
-		}
-		// Sort models by name
-		sort.Sort(result)
+	models, err := globals.agent.ListModels(globals.ctx, cmd.Agent...)
+	if err != nil {
+		return err
+	}
+	result := make(ModelList, 0, len(models))
+	for _, model := range models {
+		result = append(result, Model{
+			Agent:       model.(*agent.Model).Agent,
+			Model:       model.Name(),
+			Description: model.Description(),
+			Aliases:     strings.Join(model.Aliases(), ", "),
+		})
+	}
 
-		// Write out the models
-		return tablewriter.New(os.Stdout).Write(result, tablewriter.OptOutputText(), tablewriter.OptHeader())
-	})
+	// Sort models by name
+	sort.Sort(result)
+
+	// Write out the models
+	return tablewriter.New(os.Stdout).Write(result, tablewriter.OptOutputText(), tablewriter.OptHeader())
 }
 
 func (*ListAgentsCmd) Run(globals *Globals) error {
-	return runagent(globals, func(ctx context.Context, client llm.Agent) error {
-		agent, ok := client.(*agent.Agent)
-		if !ok {
-			return fmt.Errorf("No agents found")
-		}
-
-		agents := make([]string, 0, len(agent.Agents()))
-		for _, agent := range agent.Agents() {
-			agents = append(agents, agent.Name())
-		}
-
-		data, err := json.MarshalIndent(agents, "", "  ")
-		if err != nil {
-			return err
-		}
-		fmt.Println(string(data))
-
-		return nil
-	})
+	agents := globals.agent.AgentNames()
+	data, err := json.MarshalIndent(agents, "", "  ")
+	if err != nil {
+		return err
+	}
+	fmt.Println(string(data))
+	return nil
 }
 
 func (cmd *DownloadModelCmd) Run(globals *Globals) error {
-	return runagent(globals, func(ctx context.Context, client llm.Agent) error {
-		agent := getagent(client, cmd.Agent)
-		if agent == nil {
-			return fmt.Errorf("No agents found with name %q", cmd.Agent)
-		}
-		// Download the model
-		switch agent.Name() {
-		case "ollama":
-			model, err := agent.(*ollama.Client).PullModel(ctx, cmd.Model)
-			if err != nil {
-				return err
-			}
-			fmt.Println(model)
-		default:
-			return fmt.Errorf("Agent %q does not support model download", agent.Name())
-		}
-		return nil
-	})
-}
-
-////////////////////////////////////////////////////////////////////////////////
-// PRIVATE METHODS
-
-func runagent(globals *Globals, fn func(ctx context.Context, agent llm.Agent) error) error {
-	return fn(globals.ctx, globals.agent)
-}
-
-func getagent(client llm.Agent, name string) llm.Agent {
-	agent, ok := client.(*agent.Agent)
-	if !ok {
-		return nil
+	agents := globals.agent.AgentsWithName(cmd.Agent)
+	if len(agents) == 0 {
+		return fmt.Errorf("No agents found with name %q", cmd.Agent)
 	}
-	for _, agent := range agent.Agents() {
-		if agent.Name() == name {
-			return agent
+	switch agents[0].Name() {
+	case "ollama":
+		model, err := agents[0].(*ollama.Client).PullModel(globals.ctx, cmd.Model, ollama.WithPullStatus(func(status *ollama.PullStatus) {
+			var pct int64
+			if status.TotalBytes > 0 {
+				pct = status.CompletedBytes * 100 / status.TotalBytes
+			}
+			fmt.Print("\r", status.Status, " ", pct, "%")
+			if status.Status == "success" {
+				fmt.Println("")
+			}
+		}))
+		if err != nil {
+			return err
 		}
+		fmt.Println(model)
+	default:
+		return fmt.Errorf("Agent %q does not support model download", agents[0].Name())
 	}
 	return nil
 }
 
-// //////////////////////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////////////////////
 // MODEL LIST
 
 type Model struct {
