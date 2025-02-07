@@ -1,6 +1,9 @@
 package llm
 
-import "context"
+import (
+	"context"
+	"time"
+)
 
 //////////////////////////////////////////////////////////////////
 // TYPES
@@ -44,4 +47,8 @@ type Context interface {
 	// Generate a response from a tool, passing the results
 	// from the tool call
 	FromTool(context.Context, ...ToolResult) error
+
+	// Return the duration since the last completion was made
+	// or zero
+	SinceLast() time.Duration
 }
