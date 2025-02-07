@@ -359,11 +359,12 @@ func Test_completion_004(t *testing.T) {
 	if !assert.NotNil(model) {
 		t.FailNow()
 	}
-	toolkit := tool.NewToolKit()
-	toolkit.Register(weather{})
 
 	// Test tool support
 	t.Run("Toolkit", func(t *testing.T) {
+		toolkit := tool.NewToolKit()
+		toolkit.Register(weather{})
+
 		r, err := model.Completion(
 			context.TODO(),
 			"What is the weather in the capital city of Germany?",

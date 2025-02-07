@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 
+	// Packages
 	"github.com/mutablelogic/go-client"
 	"github.com/mutablelogic/go-llm"
 )
@@ -78,13 +79,13 @@ func (gemini *Client) Models(ctx context.Context) ([]llm.Model, error) {
 
 // Return a model by name, or nil if not found.
 // Panics on error.
-func (openai *Client) Model(ctx context.Context, name string) llm.Model {
-	if openai.cache == nil {
-		if _, err := openai.Models(ctx); err != nil {
+func (gemini *Client) Model(ctx context.Context, name string) llm.Model {
+	if gemini.cache == nil {
+		if _, err := gemini.Models(ctx); err != nil {
 			panic(err)
 		}
 	}
-	return openai.cache[name]
+	return gemini.cache[name]
 }
 
 ///////////////////////////////////////////////////////////////////////////////

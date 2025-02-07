@@ -6,6 +6,7 @@ import (
 	"os"
 	"strconv"
 	"testing"
+	"time"
 
 	// Packages
 	opts "github.com/mutablelogic/go-client"
@@ -40,7 +41,7 @@ func TestMain(m *testing.M) {
 
 	// Create client
 	var err error
-	client, err = ollama.New(endpoint_url, opts.OptTrace(os.Stderr, verbose))
+	client, err = ollama.New(endpoint_url, opts.OptTrace(os.Stderr, verbose), opts.OptTimeout(5*time.Minute))
 	if err != nil {
 		log.Println(err)
 		os.Exit(-1)

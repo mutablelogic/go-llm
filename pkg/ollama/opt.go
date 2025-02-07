@@ -1,6 +1,7 @@
 package ollama
 
 import (
+	"strconv"
 	"strings"
 	"time"
 
@@ -90,10 +91,13 @@ func optTools(agent *Client, opts *llm.Opts) []llm.Tool {
 
 func optFormat(opts *llm.Opts) string {
 	format := strings.ToLower(opts.GetString("format"))
-	if format == "json_format" {
-		return "json"
+	if format == "" {
+		return ""
 	}
-	return format
+	if format == "json_format" {
+		return strconv.Quote("json")
+	}
+	return strconv.Quote(format)
 }
 
 func optStopSequence(opts *llm.Opts) []string {
