@@ -9,7 +9,7 @@ import (
 	// Packages
 	client "github.com/mutablelogic/go-client"
 	llm "github.com/mutablelogic/go-llm"
-	"github.com/mutablelogic/go-llm/pkg/session"
+	impl "github.com/mutablelogic/go-llm/pkg/internal/impl"
 )
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -111,7 +111,7 @@ func (ollama *Client) Model(ctx context.Context, name string) llm.Model {
 
 // Return a new empty session
 func (model *model) Context(opts ...llm.Opt) llm.Context {
-	return session.NewSession(model, &messagefactory{}, opts...)
+	return impl.NewSession(model, &messagefactory{}, opts...)
 }
 
 ///////////////////////////////////////////////////////////////////////////////

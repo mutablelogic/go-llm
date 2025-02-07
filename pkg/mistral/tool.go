@@ -23,10 +23,6 @@ type toolcall struct {
 	meta ToolCall
 }
 
-type ToolResults struct {
-	Id string `json:"tool_call_id,omitempty"`
-}
-
 ///////////////////////////////////////////////////////////////////////////////
 // STRINGIFY
 

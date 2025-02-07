@@ -66,10 +66,9 @@ func (messagefactory) ToolResults(results ...llm.ToolResult) ([]llm.Completion, 
 		messages = append(messages, &Message{
 			RoleContent: RoleContent{
 				Role:    "tool",
+				Name:    result.Call().Name(),
 				Content: string(value),
-			},
-			ToolResults: &ToolResults{
-				Id: result.Call().Id(),
+				Id:      result.Call().Id(),
 			},
 		})
 	}

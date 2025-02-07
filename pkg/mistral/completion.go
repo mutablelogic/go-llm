@@ -20,7 +20,7 @@ type Response struct {
 	Created     uint64 `json:"created"`
 	Model       string `json:"model"`
 	Completions `json:"choices"`
-	Metrics     `json:"usage,omitempty"`
+	*Metrics    `json:"usage,omitempty"`
 }
 
 // Possible completions
@@ -54,78 +54,98 @@ func (r Response) String() string {
 	return string(data)
 }
 
+func (c Completion) String() string {
+	data, err := json.MarshalIndent(c, "", "  ")
+	if err != nil {
+		return err.Error()
+	}
+	return string(data)
+}
+
+func (m Metrics) String() string {
+	data, err := json.MarshalIndent(m, "", "  ")
+	if err != nil {
+		return err.Error()
+	}
+	return string(data)
+}
+
 ///////////////////////////////////////////////////////////////////////////////
 // PUBLIC METHODS
 
 type reqChatCompletion struct {
-	Model            string     `json:"model"`
-	Temperature      float64    `json:"temperature,omitempty"`
-	TopP             float64    `json:"top_p,omitempty"`
-	MaxTokens        uint64     `json:"max_tokens,omitempty"`
-	Stream           bool       `json:"stream,omitempty"`
-	StopSequences    []string   `json:"stop,omitempty"`
-	Seed             uint64     `json:"random_seed,omitempty"`
-	Messages         []*Message `json:"messages"`
-	Format           any        `json:"response_format,omitempty"`
-	Tools            []llm.Tool `json:"tools,omitempty"`
-	ToolChoice       any        `json:"tool_choice,omitempty"`
-	PresencePenalty  float64    `json:"presence_penalty,omitempty"`
-	FrequencyPenalty float64    `json:"frequency_penalty,omitempty"`
-	NumChoices       uint64     `json:"n,omitempty"`
-	Prediction       *Content   `json:"prediction,omitempty"`
-	SafePrompt       bool       `json:"safe_prompt,omitempty"`
+	Model            string           `json:"model"`
+	Temperature      float64          `json:"temperature,omitempty"`
+	TopP             float64          `json:"top_p,omitempty"`
+	MaxTokens        uint64           `json:"max_tokens,omitempty"`
+	Stream           bool             `json:"stream,omitempty"`
+	StopSequences    []string         `json:"stop,omitempty"`
+	Seed             uint64           `json:"random_seed,omitempty"`
+	Format           any              `json:"response_format,omitempty"`
+	Tools            []llm.Tool       `json:"tools,omitempty"`
+	ToolChoice       any              `json:"tool_choice,omitempty"`
+	PresencePenalty  float64          `json:"presence_penalty,omitempty"`
+	FrequencyPenalty float64          `json:"frequency_penalty,omitempty"`
+	NumCompletions   uint64           `json:"n,omitempty"`
+	Prediction       *Content         `json:"prediction,omitempty"`
+	SafePrompt       bool             `json:"safe_prompt,omitempty"`
+	Messages         []llm.Completion `json:"messages"`
 }
 
+// Send a completion request with a single prompt, and return the next completion
 func (model *model) Completion(ctx context.Context, prompt string, opts ...llm.Opt) (llm.Completion, error) {
-	// TODO
-	return nil, llm.ErrNotImplemented
+	message, err := messagefactory{}.UserPrompt(prompt, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return model.Chat(ctx, []llm.Completion{message}, opts...)
 }
 
-func (mistral *Client) ChatCompletion(ctx context.Context, context llm.Context, opts ...llm.Opt) (*Response, error) {
+// Send a completion request with multiple completions, and return the next completion
+func (model *model) Chat(ctx context.Context, completions []llm.Completion, opts ...llm.Opt) (llm.Completion, error) {
 	// Apply options
 	opt, err := llm.ApplyOpts(opts...)
 	if err != nil {
 		return nil, err
 	}
 
-	// Append the system prompt at the beginning
-	messages := make([]*Message, 0, len(context.(*session).seq)+1)
+	// Create the completions including the system prompt
+	messages := make([]llm.Completion, 0, len(completions)+1)
 	if system := opt.SystemPrompt(); system != "" {
-		messages = append(messages, systemPrompt(system))
+		messages = append(messages, messagefactory{}.SystemPrompt(system))
 	}
-
-	// Always append the first message of each completion
-	for _, message := range context.(*session).seq {
-		messages = append(messages, message)
-	}
+	messages = append(messages, completions...)
 
 	// Request
 	req, err := client.NewJSONRequest(reqChatCompletion{
-		Model:            context.(*session).model.Name(),
+		Model:            model.Name(),
 		Temperature:      optTemperature(opt),
 		TopP:             optTopP(opt),
 		MaxTokens:        optMaxTokens(opt),
 		Stream:           optStream(opt),
 		StopSequences:    optStopSequences(opt),
 		Seed:             optSeed(opt),
-		Messages:         messages,
 		Format:           optFormat(opt),
-		Tools:            optTools(mistral, opt),
+		Tools:            optTools(model.Client, opt),
 		ToolChoice:       optToolChoice(opt),
 		PresencePenalty:  optPresencePenalty(opt),
 		FrequencyPenalty: optFrequencyPenalty(opt),
-		NumChoices:       optNumCompletions(opt),
+		NumCompletions:   optNumCompletions(opt),
 		Prediction:       optPrediction(opt),
 		SafePrompt:       optSafePrompt(opt),
+		Messages:         messages,
 	})
 	if err != nil {
 		return nil, err
 	}
 
+	// Response options
 	var response Response
 	reqopts := []client.RequestOpt{
 		client.OptPath("chat", "completions"),
 	}
+
+	// Streaming
 	if optStream(opt) {
 		reqopts = append(reqopts, client.OptTextStreamCallback(func(evt client.TextStreamEvent) error {
 			if err := streamEvent(&response, evt); err != nil {
@@ -139,7 +159,7 @@ func (mistral *Client) ChatCompletion(ctx context.Context, context llm.Context, 
 	}
 
 	// Response
-	if err := mistral.DoWithContext(ctx, req, &response, reqopts...); err != nil {
+	if err := model.DoWithContext(ctx, req, &response, reqopts...); err != nil {
 		return nil, err
 	}
 
@@ -148,7 +168,7 @@ func (mistral *Client) ChatCompletion(ctx context.Context, context llm.Context, 
 }
 
 ///////////////////////////////////////////////////////////////////////////////
-// PRIVATE METHODS
+// PRIVATE METHODS - STREAMING
 
 func streamEvent(response *Response, evt client.TextStreamEvent) error {
 	var delta Response
@@ -164,28 +184,32 @@ func streamEvent(response *Response, evt client.TextStreamEvent) error {
 	if delta.Id != "" {
 		response.Id = delta.Id
 	}
+	if delta.Type != "" {
+		response.Type = delta.Type
+	}
 	if delta.Created != 0 {
 		response.Created = delta.Created
 	}
 	if delta.Model != "" {
 		response.Model = delta.Model
 	}
+
+	// Append the delta to the response
 	for _, completion := range delta.Completions {
-		appendCompletion(response, &completion)
+		if err := appendCompletion(response, &completion); err != nil {
+			return err
+		}
 	}
-	if delta.Metrics.InputTokens > 0 {
-		response.Metrics.InputTokens += delta.Metrics.InputTokens
-	}
-	if delta.Metrics.OutputTokens > 0 {
-		response.Metrics.OutputTokens += delta.Metrics.OutputTokens
-	}
-	if delta.Metrics.TotalTokens > 0 {
-		response.Metrics.TotalTokens += delta.Metrics.TotalTokens
+
+	// Apend the metrics to the response
+	if delta.Metrics != nil {
+		response.Metrics = delta.Metrics
 	}
 	return nil
 }
 
-func appendCompletion(response *Response, c *Completion) {
+func appendCompletion(response *Response, c *Completion) error {
+	// Append a new completion
 	for {
 		if c.Index < uint64(len(response.Completions)) {
 			break
@@ -200,24 +224,67 @@ func appendCompletion(response *Response, c *Completion) {
 			},
 		})
 	}
-	// Add the completion delta
+
+	// Add the reason
 	if c.Reason != "" {
 		response.Completions[c.Index].Reason = c.Reason
 	}
-	if role := c.Delta.Role(); role != "" {
-		response.Completions[c.Index].Message.RoleContent.Role = role
+
+	// Get the completion
+	message := response.Completions[c.Index].Message
+	if message == nil {
+		return llm.ErrBadParameter
 	}
 
-	// TODO: We only allow deltas which are strings at the moment...
-	if str, ok := c.Delta.Content.(string); ok && str != "" {
-		if text, ok := response.Completions[c.Index].Message.Content.(string); ok {
-			response.Completions[c.Index].Message.Content = text + str
+	// Add the role
+	if role := c.Delta.Role(); role != "" {
+		message.RoleContent.Role = role
+	}
+
+	// We only allow deltas which are strings at the moment
+	if c.Delta.Content != nil {
+		if str, ok := c.Delta.Content.(string); ok {
+			if text, ok := message.Content.(string); ok {
+				message.Content = text + str
+			} else {
+				message.Content = str
+			}
+		} else {
+			return llm.ErrNotImplemented.Withf("appendCompletion not implemented: %T", c.Delta.Content)
 		}
 	}
+
+	// Append tool calls
+	for i := range c.Delta.Calls {
+		if i >= len(message.Calls) {
+			message.Calls = append(message.Calls, toolcall{})
+		}
+	}
+
+	for i, call := range c.Delta.Calls {
+		if call.meta.Id != "" {
+			message.Calls[i].meta.Id = call.meta.Id
+		}
+		if call.meta.Index != 0 {
+			message.Calls[i].meta.Index = call.meta.Index
+		}
+		if call.meta.Type != "" {
+			message.Calls[i].meta.Type = call.meta.Type
+		}
+		if call.meta.Function.Name != "" {
+			message.Calls[i].meta.Function.Name = call.meta.Function.Name
+		}
+		if call.meta.Function.Arguments != "" {
+			message.Calls[i].meta.Function.Arguments += call.meta.Function.Arguments
+		}
+	}
+
+	// Return success
+	return nil
 }
 
 ///////////////////////////////////////////////////////////////////////////////
-// PUBLIC METHODS - COMPLETIONS
+// COMPLETIONS
 
 // Return the number of completions
 func (c Completions) Num() int {
@@ -225,7 +292,7 @@ func (c Completions) Num() int {
 }
 
 // Return message for a specific completion
-func (c Completions) Message(index int) *Message {
+func (c Completions) Choice(index int) llm.Completion {
 	if index < 0 || index >= len(c) {
 		return nil
 	}
@@ -247,6 +314,14 @@ func (c Completions) Text(index int) string {
 		return ""
 	}
 	return c[index].Message.Text(0)
+}
+
+// Return audio content for a specific completion
+func (c Completions) Audio(index int) *llm.Attachment {
+	if index < 0 || index >= len(c) {
+		return nil
+	}
+	return c[index].Message.Audio(0)
 }
 
 // Return the current session tool calls given the completion index.

@@ -12,14 +12,13 @@ import (
 type Message struct {
 	RoleContent
 	Calls ToolCalls `json:"tool_calls,omitempty"`
-	*ToolResults
 }
 
 type RoleContent struct {
 	Role    string `json:"role,omitempty"`         // assistant, user, tool, system
 	Content any    `json:"content,omitempty"`      // string or array of text, reference, image_url
-	Id      string `json:"tool_call_id,omitempty"` // tool call - when role is tool
 	Name    string `json:"name,omitempty"`         // function name - when role is tool
+	Id      string `json:"tool_call_id,omitempty"` // tool call - when role is tool
 }
 
 var _ llm.Completion = (*Message)(nil)
