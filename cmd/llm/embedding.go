@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 
 	// Packages
@@ -21,7 +22,15 @@ type EmbeddingCmd struct {
 
 func (cmd *EmbeddingCmd) Run(globals *Globals) error {
 	return run(globals, cmd.Model, func(ctx context.Context, model llm.Model) error {
-		fmt.Println(model)
+		vector, err := model.Embedding(ctx, cmd.Prompt)
+		if err != nil {
+			return err
+		}
+		data, err := json.Marshal(vector)
+		if err != nil {
+			return err
+		}
+		fmt.Println(string(data))
 		return nil
 	})
 }
