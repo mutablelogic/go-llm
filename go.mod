@@ -6,7 +6,9 @@ require (
 	github.com/MichaelMure/go-term-text v0.3.1
 	github.com/alecthomas/kong v1.7.0
 	github.com/djthorpe/go-errors v1.0.3
+	github.com/djthorpe/go-tablewriter v0.0.7
 	github.com/fatih/color v1.9.0
+	github.com/go-telegram-bot-api/telegram-bot-api/v5 v5.5.1
 	github.com/mutablelogic/go-client v1.0.10
 	github.com/stretchr/testify v1.10.0
 	golang.org/x/term v0.28.0

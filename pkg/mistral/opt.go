@@ -3,18 +3,9 @@ package mistral
 import (
 	"strings"
 
+	// Packages
 	"github.com/mutablelogic/go-llm"
 )
-
-///////////////////////////////////////////////////////////////////////////////
-// PUBLIC METHODS
-
-func WithPrediction(v string) llm.Opt {
-	return func(o *llm.Opts) error {
-		o.Set("prediction", v)
-		return nil
-	}
-}
 
 ///////////////////////////////////////////////////////////////////////////////
 // PRIVATE METHODS
@@ -112,7 +103,7 @@ func optPrediction(opts *llm.Opts) *Content {
 	if prediction == "" {
 		return nil
 	}
-	return NewContent("content", "", prediction)
+	return NewPrediction(Prediction(prediction))
 }
 
 func optSafePrompt(opts *llm.Opts) bool {

@@ -1,7 +1,10 @@
+/*
+ollama implements an API client for ollama
+https://github.com/ollama/ollama/blob/main/docs/api.md
+*/
 package ollama
 
 import (
-
 	// Packages
 	client "github.com/mutablelogic/go-client"
 	llm "github.com/mutablelogic/go-llm"
@@ -14,7 +17,6 @@ type Client struct {
 	*client.Client
 }
 
-// Ensure it satisfies the agent.Agent interface
 var _ llm.Agent = (*Client)(nil)
 
 ///////////////////////////////////////////////////////////////////////////////

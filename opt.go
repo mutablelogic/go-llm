@@ -3,6 +3,7 @@ package llm
 import (
 	"encoding/json"
 	"io"
+	"strings"
 	"time"
 )
 
@@ -197,6 +198,10 @@ func WithToolKit(toolkit ToolKit) Opt {
 func WithStream(fn func(Completion)) Opt {
 	return func(o *Opts) error {
 		o.callback = fn
+
+		// We include usage metrics in the streaming response for openai
+		o.Set("stream_options_include_usage", true)
+
 		return nil
 	}
 }
@@ -326,6 +331,12 @@ func WithSeed(v uint64) Opt {
 // Set format
 func WithFormat(v any) Opt {
 	return func(o *Opts) error {
+		if v_, ok := v.(string); ok {
+			v_ = strings.TrimSpace(strings.ToLower(v_))
+			if v_ == "json" {
+				v = "json_object"
+			}
+		}
 		o.Set("format", v)
 		return nil
 	}
@@ -354,6 +365,23 @@ func WithNumCompletions(v uint64) Opt {
 func WithSafePrompt() Opt {
 	return func(o *Opts) error {
 		o.Set("safe_prompt", true)
+		return nil
+	}
+}
+
+// Predicted output, which is most common when you are regenerating a file
+// with only minor changes to most of the content.
+func WithPrediction(v string) Opt {
+	return func(o *Opts) error {
+		o.Set("prediction", v)
+		return nil
+	}
+}
+
+// A unique identifier representing your end-user
+func WithUser(v string) Opt {
+	return func(o *Opts) error {
+		o.Set("user", v)
 		return nil
 	}
 }

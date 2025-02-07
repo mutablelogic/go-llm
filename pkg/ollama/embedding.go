@@ -90,6 +90,13 @@ func (ollama *Client) GenerateEmbedding(ctx context.Context, name string, prompt
 }
 
 // Embedding vector generation
-func (model *model) Embedding(context.Context, string, ...llm.Opt) ([]float64, error) {
-	return nil, llm.ErrNotImplemented
+func (model *model) Embedding(ctx context.Context, prompt string, opts ...llm.Opt) ([]float64, error) {
+	embedding, err := model.GenerateEmbedding(ctx, model.Name(), []string{prompt}, opts...)
+	if err != nil {
+		return nil, err
+	}
+	if len(embedding.Embeddings) > 0 {
+		return embedding.Embeddings[0], nil
+	}
+	return nil, llm.ErrNotFound.With("no embeddings returned")
 }

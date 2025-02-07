@@ -1,4 +1,4 @@
-package mistral_test
+package openai_test
 
 import (
 	"context"
@@ -12,7 +12,7 @@ import (
 
 func Test_session_001(t *testing.T) {
 	assert := assert.New(t)
-	model := client.Model(context.TODO(), "mistral-small-latest")
+	model := client.Model(context.TODO(), "gpt-4o-mini")
 	if !assert.NotNil(model) {
 		t.FailNow()
 	}
@@ -27,7 +27,7 @@ func Test_session_001(t *testing.T) {
 
 func Test_session_002(t *testing.T) {
 	assert := assert.New(t)
-	model := client.Model(context.TODO(), "mistral-small-latest")
+	model := client.Model(context.TODO(), "gpt-4o-mini")
 	if !assert.NotNil(model) {
 		t.FailNow()
 	}

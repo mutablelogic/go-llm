@@ -6,6 +6,7 @@ import (
 	"os/signal"
 	"path/filepath"
 	"syscall"
+	"time"
 
 	// Packages
 	kong "github.com/alecthomas/kong"
@@ -21,20 +22,23 @@ import (
 
 type Globals struct {
 	// Debugging
-	Debug   bool `name:"debug" help:"Enable debug output"`
-	Verbose bool `name:"verbose" help:"Enable verbose output"`
+	Debug   bool          `name:"debug" help:"Enable debug output"`
+	Verbose bool          `name:"verbose" short:"v" help:"Enable verbose output"`
+	Timeout time.Duration `name:"timeout" help:"Agent connection timeout"`
 
 	// Agents
 	Ollama    `embed:"" help:"Ollama configuration"`
 	Anthropic `embed:"" help:"Anthropic configuration"`
 	Mistral   `embed:"" help:"Mistral configuration"`
+	OpenAI    `embed:"" help:"OpenAI configuration"`
+	Gemini    `embed:"" help:"Gemini configuration"`
 
 	// Tools
 	NewsAPI `embed:"" help:"NewsAPI configuration"`
 
 	// Context
 	ctx     context.Context
-	agent   llm.Agent
+	agent   *agent.Agent
 	toolkit *tool.ToolKit
 	term    *Term
 }
@@ -51,6 +55,14 @@ type Mistral struct {
 	MistralKey string `env:"MISTRAL_API_KEY" help:"Mistral API Key"`
 }
 
+type OpenAI struct {
+	OpenAIKey string `env:"OPENAI_API_KEY" help:"OpenAI API Key"`
+}
+
+type Gemini struct {
+	GeminiKey string `env:"GEMINI_API_KEY" help:"Gemini API Key"`
+}
+
 type NewsAPI struct {
 	NewsKey string `env:"NEWSAPI_KEY" help:"News API Key"`
 }
@@ -64,8 +76,11 @@ type CLI struct {
 	Tools  ListToolsCmd  `cmd:"" help:"Return a list of tools"`
 
 	// Commands
-	Download DownloadModelCmd `cmd:"" help:"Download a model"`
-	Chat     ChatCmd          `cmd:"" help:"Start a chat session"`
+	Download  DownloadModelCmd `cmd:"" help:"Download a model"`
+	Chat      ChatCmd          `cmd:"" help:"Start a chat session"`
+	Complete  CompleteCmd      `cmd:"" help:"Complete a prompt"`
+	Embedding EmbeddingCmd     `cmd:"" help:"Generate an embedding"`
+	Version   VersionCmd       `cmd:"" help:"Print the version of this tool"`
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -101,6 +116,9 @@ func main() {
 	if cli.Debug || cli.Verbose {
 		clientopts = append(clientopts, client.OptTrace(os.Stderr, cli.Verbose))
 	}
+	if cli.Timeout > 0 {
+		clientopts = append(clientopts, client.OptTimeout(cli.Timeout))
+	}
 
 	// Create an agent
 	opts := []llm.Opt{}
@@ -112,6 +130,12 @@ func main() {
 	}
 	if cli.MistralKey != "" {
 		opts = append(opts, agent.WithMistral(cli.MistralKey, clientopts...))
+	}
+	if cli.OpenAIKey != "" {
+		opts = append(opts, agent.WithOpenAI(cli.OpenAIKey, clientopts...))
+	}
+	if cli.GeminiKey != "" {
+		opts = append(opts, agent.WithGemini(cli.GeminiKey, clientopts...))
 	}
 
 	// Make a toolkit
@@ -161,4 +185,17 @@ func clientOpts(cli *CLI) []client.ClientOpt {
 		result = append(result, client.OptTrace(os.Stderr, cli.Verbose))
 	}
 	return result
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// PRIVATE METHODS
+
+func run(globals *Globals, name string, fn func(ctx context.Context, model llm.Model) error) error {
+	model, err := globals.agent.GetModel(globals.ctx, name)
+	if err != nil {
+		return err
+	}
+
+	// Get the model
+	return fn(globals.ctx, model)
 }

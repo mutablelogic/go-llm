@@ -1,14 +1,16 @@
 package main
 
 import (
-	"context"
 	"encoding/json"
 	"fmt"
+	"os"
+	"sort"
+	"strings"
 
 	// Packages
-	llm "github.com/mutablelogic/go-llm"
+	tablewriter "github.com/djthorpe/go-tablewriter"
 	agent "github.com/mutablelogic/go-llm/pkg/agent"
-	ollama "github.com/mutablelogic/go-llm/pkg/ollama"
+	"github.com/mutablelogic/go-llm/pkg/ollama"
 )
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -31,87 +33,90 @@ type DownloadModelCmd struct {
 // PUBLIC METHODS
 
 func (cmd *ListToolsCmd) Run(globals *Globals) error {
-	return runagent(globals, func(ctx context.Context, client llm.Agent) error {
-		tools := globals.toolkit.Tools(client)
-		fmt.Println(tools)
-		return nil
-	})
+	tools := globals.toolkit.Tools(globals.agent)
+	fmt.Println(tools)
+	return nil
 }
 
 func (cmd *ListModelsCmd) Run(globals *Globals) error {
-	return runagent(globals, func(ctx context.Context, client llm.Agent) error {
-		agent, ok := client.(*agent.Agent)
-		if !ok {
-			return fmt.Errorf("No agents found")
-		}
-		models, err := agent.ListModels(ctx, cmd.Agent...)
-		if err != nil {
-			return err
-		}
-		fmt.Println(models)
-		return nil
-	})
+	models, err := globals.agent.ListModels(globals.ctx, cmd.Agent...)
+	if err != nil {
+		return err
+	}
+	result := make(ModelList, 0, len(models))
+	for _, model := range models {
+		result = append(result, Model{
+			Agent:       model.(*agent.Model).Agent,
+			Model:       model.Name(),
+			Description: model.Description(),
+			Aliases:     strings.Join(model.Aliases(), ", "),
+		})
+	}
+
+	// Sort models by name
+	sort.Sort(result)
+
+	// Write out the models
+	return tablewriter.New(os.Stdout).Write(result, tablewriter.OptOutputText(), tablewriter.OptHeader())
 }
 
 func (*ListAgentsCmd) Run(globals *Globals) error {
-	return runagent(globals, func(ctx context.Context, client llm.Agent) error {
-		agent, ok := client.(*agent.Agent)
-		if !ok {
-			return fmt.Errorf("No agents found")
-		}
-
-		agents := make([]string, 0, len(agent.Agents()))
-		for _, agent := range agent.Agents() {
-			agents = append(agents, agent.Name())
-		}
-
-		data, err := json.MarshalIndent(agents, "", "  ")
-		if err != nil {
-			return err
-		}
-		fmt.Println(string(data))
-
-		return nil
-	})
+	agents := globals.agent.AgentNames()
+	data, err := json.MarshalIndent(agents, "", "  ")
+	if err != nil {
+		return err
+	}
+	fmt.Println(string(data))
+	return nil
 }
 
 func (cmd *DownloadModelCmd) Run(globals *Globals) error {
-	return runagent(globals, func(ctx context.Context, client llm.Agent) error {
-		agent := getagent(client, cmd.Agent)
-		if agent == nil {
-			return fmt.Errorf("No agents found with name %q", cmd.Agent)
-		}
-		// Download the model
-		switch agent.Name() {
-		case "ollama":
-			model, err := agent.(*ollama.Client).PullModel(ctx, cmd.Model)
-			if err != nil {
-				return err
+	agents := globals.agent.AgentsWithName(cmd.Agent)
+	if len(agents) == 0 {
+		return fmt.Errorf("No agents found with name %q", cmd.Agent)
+	}
+	switch agents[0].Name() {
+	case "ollama":
+		model, err := agents[0].(*ollama.Client).PullModel(globals.ctx, cmd.Model, ollama.WithPullStatus(func(status *ollama.PullStatus) {
+			var pct int64
+			if status.TotalBytes > 0 {
+				pct = status.CompletedBytes * 100 / status.TotalBytes
 			}
-			fmt.Println(model)
-		default:
-			return fmt.Errorf("Agent %q does not support model download", agent.Name())
+			fmt.Print("\r", status.Status, " ", pct, "%")
+			if status.Status == "success" {
+				fmt.Println("")
+			}
+		}))
+		if err != nil {
+			return err
 		}
-		return nil
-	})
+		fmt.Println(model)
+	default:
+		return fmt.Errorf("Agent %q does not support model download", agents[0].Name())
+	}
+	return nil
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-// PRIVATE METHODS
+// MODEL LIST
 
-func runagent(globals *Globals, fn func(ctx context.Context, agent llm.Agent) error) error {
-	return fn(globals.ctx, globals.agent)
+type Model struct {
+	Agent       string `json:"agent"  writer:"Agent,width:10"`
+	Model       string `json:"model"  writer:"Model,wrap,width:40"`
+	Description string `json:"description" writer:"Description,wrap,width:60"`
+	Aliases     string `json:"aliases" writer:"Aliases,wrap,width:30"`
 }
 
-func getagent(client llm.Agent, name string) llm.Agent {
-	agent, ok := client.(*agent.Agent)
-	if !ok {
-		return nil
-	}
-	for _, agent := range agent.Agents() {
-		if agent.Name() == name {
-			return agent
-		}
-	}
-	return nil
+type ModelList []Model
+
+func (models ModelList) Len() int {
+	return len(models)
+}
+
+func (models ModelList) Less(a, b int) bool {
+	return strings.Compare(models[a].Model, models[b].Model) < 0
+}
+
+func (models ModelList) Swap(a, b int) {
+	models[a], models[b] = models[b], models[a]
 }

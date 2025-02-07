@@ -1,6 +1,7 @@
 package ollama
 
 import (
+	"strings"
 	"time"
 
 	// Packages
@@ -19,9 +20,9 @@ func WithInsecure() llm.Opt {
 }
 
 // Embeddings: Does not truncate the end of each input to fit within context length. Returns error if context length is exceeded.
-func WithTruncate(v bool) llm.Opt {
+func WithTruncate() llm.Opt {
 	return func(o *llm.Opts) error {
-		o.Set("truncate", v)
+		o.Set("truncate", true)
 		return nil
 	}
 }
@@ -88,7 +89,14 @@ func optTools(agent *Client, opts *llm.Opts) []llm.Tool {
 }
 
 func optFormat(opts *llm.Opts) string {
-	return opts.GetString("format")
+	format := strings.ToLower(opts.GetString("format"))
+	if format == "" {
+		return ""
+	}
+	if format == "json_format" {
+		return "json"
+	}
+	return format
 }
 
 func optStopSequence(opts *llm.Opts) []string {
@@ -135,15 +143,24 @@ func optOptions(opts *llm.Opts) map[string]any {
 	return result
 }
 
-func optStream(agent *Client, opts *llm.Opts) bool {
+func optStream(agent *Client, opts *llm.Opts) *bool {
+	var stream bool
+
+	// Based on stream function
+	if opts.StreamFn() != nil {
+		stream = true
+	}
+
 	// Streaming only if there is a stream function and no tools
 	toolkit := opts.ToolKit()
 	if toolkit != nil {
 		if tools := toolkit.Tools(agent); len(tools) > 0 {
-			return false
+			stream = false
 		}
 	}
-	return opts.StreamFn() != nil
+
+	// Return the value
+	return &stream
 }
 
 func optKeepAlive(opts *llm.Opts) *time.Duration {

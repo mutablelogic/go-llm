@@ -18,7 +18,7 @@ type Agent struct {
 	*llm.Opts
 }
 
-type model struct {
+type Model struct {
 	Agent     string `json:"agent"`
 	llm.Model `json:"model"`
 }
@@ -44,7 +44,7 @@ func New(opts ...llm.Opt) (*Agent, error) {
 ///////////////////////////////////////////////////////////////////////////////
 // STRINGIFY
 
-func (m model) String() string {
+func (m Model) String() string {
 	data, err := json.MarshalIndent(m, "", "  ")
 	if err != nil {
 		return err.Error()
@@ -168,13 +168,27 @@ func modelsForAgent(ctx context.Context, agent llm.Agent, names ...string) ([]ll
 		return nil, err
 	}
 
+	match_model := func(model llm.Model, names ...string) bool {
+		if len(names) == 0 {
+			return true
+		}
+		if slices.Contains(names, model.Name()) {
+			return true
+		}
+		for _, alias := range model.Aliases() {
+			if slices.Contains(names, alias) {
+				return true
+			}
+		}
+		return false
+	}
+
 	// Filter models
 	result := make([]llm.Model, 0, len(models))
 	for _, agentmodel := range models {
-		if len(names) > 0 && !slices.Contains(names, agentmodel.Name()) {
-			continue
+		if match_model(agentmodel, names...) {
+			result = append(result, &Model{Agent: agent.Name(), Model: agentmodel})
 		}
-		result = append(result, &model{Agent: agent.Name(), Model: agentmodel})
 	}
 
 	// Return success
