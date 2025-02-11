@@ -133,6 +133,41 @@ func WithAudio(voice, format string) llm.Opt {
 	}
 }
 
+// Parameters for speech output
+func WithAudioSpeed(v float64) llm.Opt {
+	return func(o *llm.Opts) error {
+		if v < 0.25 || v > 4.0 {
+			return llm.ErrBadParameter.With("speed")
+		}
+		o.Set("speed", v)
+		return nil
+	}
+}
+
+// Parameters for image output
+func WithSize(v string) llm.Opt {
+	return func(o *llm.Opts) error {
+		o.Set("size", v)
+		return nil
+	}
+}
+
+// Parameters for image output
+func WithQuality(v string) llm.Opt {
+	return func(o *llm.Opts) error {
+		o.Set("quality", v)
+		return nil
+	}
+}
+
+// Parameters for image output
+func WithStyle(v string) llm.Opt {
+	return func(o *llm.Opts) error {
+		o.Set("style", v)
+		return nil
+	}
+}
+
 // Specifies the latency tier to use for processing the request. Values
 // can be auto or default
 func WithServiceTier(v string) llm.Opt {
@@ -240,8 +275,13 @@ func optPrediction(opts *llm.Opts) *Content {
 }
 
 func optAudio(opts *llm.Opts) *Audio {
-	if v, ok := opts.Get("audio").(*Audio); ok {
+	v, ok := opts.Get("audio").(*Audio)
+	if ok {
 		return v
+	}
+	if v == nil {
+		opts.Set("audio", NewAudio("ash", "mp3"))
+		return optAudio(opts)
 	}
 	return nil
 }

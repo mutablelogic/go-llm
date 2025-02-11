@@ -21,7 +21,7 @@ type EmbeddingCmd struct {
 // PUBLIC METHODS
 
 func (cmd *EmbeddingCmd) Run(globals *Globals) error {
-	return run(globals, cmd.Model, func(ctx context.Context, model llm.Model) error {
+	return run(globals, EmbeddingsType, cmd.Model, func(ctx context.Context, model llm.Model) error {
 		vector, err := model.Embedding(ctx, cmd.Prompt)
 		if err != nil {
 			return err

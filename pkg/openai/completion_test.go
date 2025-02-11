@@ -167,7 +167,7 @@ func Test_completion_002(t *testing.T) {
 			assert.Equal("assistant", r.Role())
 			assert.Equal(1, r.Num())
 			assert.NotEmpty(r.Text(0)) // Returns the audio transcript
-			assert.NotEmpty(r.Audio(0))
+			assert.NotEmpty(r.Attachment(0))
 			t.Log(r)
 		}
 	})
@@ -346,7 +346,7 @@ func Test_completion_003(t *testing.T) {
 			assert.Equal("assistant", r.Role())
 			assert.Equal(1, r.Num())
 			assert.NotEmpty(r.Text(0))
-			assert.NotEmpty(r.Audio(0))
+			assert.NotEmpty(r.Attachment(0))
 		}
 	})
 

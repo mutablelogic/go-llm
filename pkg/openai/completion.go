@@ -116,11 +116,24 @@ type reqCompletion struct {
 
 // Send a completion request with a single prompt, and return the next completion
 func (model *model) Completion(ctx context.Context, prompt string, opts ...llm.Opt) (llm.Completion, error) {
-	message, err := messagefactory{}.UserPrompt(prompt, opts...)
+	// Apply options
+	opt, err := llm.ApplyOpts(opts...)
 	if err != nil {
 		return nil, err
 	}
-	return model.Chat(ctx, []llm.Completion{message}, opts...)
+
+	switch opt.GetString("format") {
+	case "image":
+		return model.imageCompletion(ctx, prompt, opt)
+	case "audio":
+		return model.audioCompletion(ctx, prompt, opt)
+	default:
+		message, err := messagefactory{}.UserPrompt(prompt, opts...)
+		if err != nil {
+			return nil, err
+		}
+		return model.Chat(ctx, []llm.Completion{message}, opts...)
+	}
 }
 
 // Send a completion request with multiple completions, and return the next completion
@@ -363,12 +376,12 @@ func (c Completions) Text(index int) string {
 	return c[index].Message.Text(0)
 }
 
-// Return audio content for a specific completion
-func (c Completions) Audio(index int) *llm.Attachment {
+// Return attachment content for a specific completion
+func (c Completions) Attachment(index int) *llm.Attachment {
 	if index < 0 || index >= len(c) {
 		return nil
 	}
-	return c[index].Message.Audio(0)
+	return c[index].Message.Attachment(0)
 }
 
 // Return the current session tool calls given the completion index.

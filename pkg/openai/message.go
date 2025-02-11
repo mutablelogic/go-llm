@@ -54,7 +54,7 @@ func (message *Message) Text(index int) string {
 		return text
 	}
 	// If content is audio, and there is a caption, return it
-	if audio := message.Audio(0); audio != nil && audio.Caption() != "" {
+	if audio := message.Attachment(0); audio != nil && audio.Caption() != "" {
 		return audio.Caption()
 	}
 
@@ -63,7 +63,7 @@ func (message *Message) Text(index int) string {
 }
 
 // Return the audio
-func (message *Message) Audio(index int) *llm.Attachment {
+func (message *Message) Attachment(index int) *llm.Attachment {
 	if index != 0 {
 		return nil
 	}

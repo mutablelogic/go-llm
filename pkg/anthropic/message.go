@@ -71,7 +71,7 @@ func (message Message) Text(index int) string {
 }
 
 // Return the audio - unsupported
-func (Message) Audio(index int) *llm.Attachment {
+func (Message) Attachment(index int) *llm.Attachment {
 	return nil
 }
 

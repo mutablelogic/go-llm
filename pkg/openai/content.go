@@ -26,11 +26,6 @@ type Text string
 // text content
 type Prediction string
 
-// either a URL or "data:image/png;base64," followed by the base64 encoded image
-type Image struct {
-	Url string `json:"url,omitempty"`
-}
-
 ///////////////////////////////////////////////////////////////////////////////
 // LICECYCLE
 
