@@ -317,11 +317,11 @@ func (c Completions) Text(index int) string {
 }
 
 // Return audio content for a specific completion
-func (c Completions) Audio(index int) *llm.Attachment {
+func (c Completions) Attachment(index int) *llm.Attachment {
 	if index < 0 || index >= len(c) {
 		return nil
 	}
-	return c[index].Message.Audio(0)
+	return c[index].Message.Attachment(0)
 }
 
 // Return the current session tool calls given the completion index.

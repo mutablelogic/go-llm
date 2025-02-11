@@ -133,6 +133,30 @@ func WithAudio(voice, format string) llm.Opt {
 	}
 }
 
+// Parameters for image output
+func WithSize(v string) llm.Opt {
+	return func(o *llm.Opts) error {
+		o.Set("size", v)
+		return nil
+	}
+}
+
+// Parameters for image output
+func WithQuality(v string) llm.Opt {
+	return func(o *llm.Opts) error {
+		o.Set("quality", v)
+		return nil
+	}
+}
+
+// Parameters for image output
+func WithStyle(v string) llm.Opt {
+	return func(o *llm.Opts) error {
+		o.Set("style", v)
+		return nil
+	}
+}
+
 // Specifies the latency tier to use for processing the request. Values
 // can be auto or default
 func WithServiceTier(v string) llm.Opt {

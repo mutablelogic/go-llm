@@ -26,9 +26,9 @@ type Completion interface {
 	// completion index (usually 0).
 	Text(int) string
 
-	// Return audio for the last completion, with the argument as the
-	// completion index (usually 0).
-	Audio(int) *Attachment
+	// Return attachment (audio/image) for the last completion, with the
+	// argument as the completion index (usually 0).
+	Attachment(int) *Attachment
 
 	// Return the current session tool calls given the completion index.
 	// Will return nil if no tool calls were returned.

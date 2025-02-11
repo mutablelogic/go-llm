@@ -57,7 +57,7 @@ func NewTelegramServer(token string, model llm.Model, toolkit llm.ToolKit, opts 
 // PUBLIC METHODS
 
 func (cmd *Chat2Cmd) Run(globals *Globals) error {
-	return run(globals, cmd.Model, func(ctx context.Context, model llm.Model) error {
+	return run(globals, ChatType, cmd.Model, func(ctx context.Context, model llm.Model) error {
 		server, err := NewTelegramServer(cmd.Token, model, globals.toolkit, telegram.WithDebug(globals.Debug))
 		if err != nil {
 			return err

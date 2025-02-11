@@ -26,7 +26,7 @@ type ChatCmd struct {
 // PUBLIC METHODS
 
 func (cmd *ChatCmd) Run(globals *Globals) error {
-	return run(globals, cmd.Model, func(ctx context.Context, model llm.Model) error {
+	return run(globals, AudioType, cmd.Model, func(ctx context.Context, model llm.Model) error {
 		// Current buffer
 		var buf string
 

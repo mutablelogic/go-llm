@@ -55,7 +55,7 @@ func (message *Message) Text(index int) string {
 }
 
 // Unsupported
-func (message *Message) Audio(index int) *llm.Attachment {
+func (message *Message) Attachment(index int) *llm.Attachment {
 	return nil
 }
 

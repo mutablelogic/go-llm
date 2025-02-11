@@ -181,11 +181,11 @@ func (session *session) Text(index int) string {
 }
 
 // Return audio for the last completion
-func (session *session) Audio(index int) *llm.Attachment {
+func (session *session) Attachment(index int) *llm.Attachment {
 	if len(session.seq) == 0 {
 		return nil
 	}
-	return session.seq[len(session.seq)-1].Audio(index)
+	return session.seq[len(session.seq)-1].Attachment(index)
 }
 
 // Return the current session tool calls given the completion index.

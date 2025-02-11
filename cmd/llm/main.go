@@ -41,6 +41,7 @@ type Globals struct {
 	agent   *agent.Agent
 	toolkit *tool.ToolKit
 	term    *Term
+	config  *Config
 }
 
 type Ollama struct {
@@ -102,6 +103,15 @@ func main() {
 	ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer cancel()
 	cli.Globals.ctx = ctx
+
+	// Load any config
+	if config, err := NewConfig(execName()); err != nil {
+		cmd.FatalIfErrorf(err)
+		return
+	} else {
+		cli.Globals.config = config
+		defer config.Save()
+	}
 
 	// Create a terminal
 	term, err := NewTerm(os.Stdout)
@@ -191,12 +201,23 @@ func clientOpts(cli *CLI) []client.ClientOpt {
 ////////////////////////////////////////////////////////////////////////////////
 // PRIVATE METHODS
 
-func run(globals *Globals, name string, fn func(ctx context.Context, model llm.Model) error) error {
-	model, err := globals.agent.GetModel(globals.ctx, name)
-	if err != nil {
-		return err
+func run(globals *Globals, typ Type, name string, fn func(ctx context.Context, model llm.Model) error) error {
+	// Obtain the model name from the type
+	if name == "" {
+		name = globals.config.ModelFor(typ)
+	}
+	if name == "" {
+		return llm.ErrBadParameter.With("No model specified, use --model argument to set model")
 	}
 
 	// Get the model
+	model, err := globals.agent.GetModel(globals.ctx, name)
+	if err != nil {
+		return err
+	} else {
+		globals.config.SetModelFor(typ, model.Name())
+	}
+
+	// Run the function
 	return fn(globals.ctx, model)
 }

@@ -143,7 +143,7 @@ func (m Message) Text(index int) string {
 }
 
 // Return the audio - not supported on ollama
-func (message *Message) Audio(index int) *llm.Attachment {
+func (message *Message) Attachment(index int) *llm.Attachment {
 	return nil
 }
 

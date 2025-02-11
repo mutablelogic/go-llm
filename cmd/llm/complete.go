@@ -9,26 +9,41 @@ import (
 
 	// Packages
 	llm "github.com/mutablelogic/go-llm"
+	"github.com/mutablelogic/go-llm/pkg/openai"
 )
 
 ////////////////////////////////////////////////////////////////////////////////
 // TYPES
 
 type CompleteCmd struct {
-	Model       string   `arg:"" help:"Model name"`
 	Prompt      string   `arg:"" optional:"" help:"Prompt"`
+	Model       string   `flag:"model" help:"Model name"`
 	File        []string `type:"file" short:"f" help:"Files to attach"`
 	System      string   `flag:"system" help:"Set the system prompt"`
 	NoStream    bool     `flag:"no-stream" help:"Do not stream output"`
-	Format      string   `flag:"format" enum:"text,markdown,json" default:"text" help:"Output format"`
+	Format      string   `flag:"format" enum:"text,markdown,json,image,audio" default:"text" help:"Output format"`
+	Size        string   `flag:"size" enum:"256x256,512x512,1024x1024,1792x1024,1024x1792" default:"1024x1024" help:"Image size"`
+	Style       string   `flag:"style" enum:"vivid,natural" default:"vivid" help:"Image style"`
+	Quality     string   `flag:"quality" enum:"standard,hd" default:"standard" help:"Image quality"`
 	Temperature *float64 `flag:"temperature" short:"t"  help:"Temperature for sampling"`
 }
 
 ////////////////////////////////////////////////////////////////////////////////
 // PUBLIC METHODS
 
+func typeFromFormat(format string) Type {
+	switch format {
+	case "image":
+		return ImageType
+	case "audio":
+		return AudioType
+	default:
+		return TextType
+	}
+}
+
 func (cmd *CompleteCmd) Run(globals *Globals) error {
-	return run(globals, cmd.Model, func(ctx context.Context, model llm.Model) error {
+	return run(globals, typeFromFormat(cmd.Format), cmd.Model, func(ctx context.Context, model llm.Model) error {
 		var prompt []byte
 
 		// If we are pipeline content in via stdin
@@ -76,11 +91,18 @@ func (cmd *CompleteCmd) Run(globals *Globals) error {
 			return err
 		}
 
-		// Print the completion
+		// Print the completion - text
 		if cmd.NoStream {
 			fmt.Println(completion.Text(0))
 		} else {
 			fmt.Println("")
+		}
+
+		// Print the completion - attachments
+		for i := 0; i < completion.Num(); i++ {
+			if attachment := completion.Attachment(i); attachment != nil {
+				fmt.Println(attachment)
+			}
 		}
 
 		// Return success
@@ -106,9 +128,12 @@ func (cmd *CompleteCmd) opts() []llm.Opt {
 	}
 
 	// Set format
-	if cmd.Format == "json" {
-		opts = append(opts, llm.WithFormat("json"))
-	}
+	opts = append(opts, llm.WithFormat(cmd.Format))
+
+	// Set image parameters
+	opts = append(opts, openai.WithSize(cmd.Size))
+	opts = append(opts, openai.WithStyle(cmd.Style))
+	opts = append(opts, openai.WithQuality(cmd.Quality))
 
 	// Set temperature
 	if cmd.Temperature != nil {
