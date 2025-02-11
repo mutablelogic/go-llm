@@ -16,7 +16,7 @@ import (
 // TYPES
 
 type Chat2Cmd struct {
-	Model         string `arg:"" help:"Model name"`
+	Model         string `flag:"model" help:"Model name"`
 	TelegramToken string `env:"TELEGRAM_TOKEN" help:"Telegram token" required:""`
 	System        string `flag:"system" help:"Set the system prompt"`
 }

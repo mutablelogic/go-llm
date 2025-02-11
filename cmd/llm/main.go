@@ -15,6 +15,7 @@ import (
 	agent "github.com/mutablelogic/go-llm/pkg/agent"
 	newsapi "github.com/mutablelogic/go-llm/pkg/newsapi"
 	tool "github.com/mutablelogic/go-llm/pkg/tool"
+	"github.com/mutablelogic/go-llm/pkg/weatherapi"
 )
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -34,7 +35,8 @@ type Globals struct {
 	Gemini    `embed:"" help:"Gemini configuration"`
 
 	// Tools
-	NewsAPI `embed:"" help:"NewsAPI configuration"`
+	NewsAPI    `embed:"" help:"NewsAPI configuration"`
+	WeatherAPI `embed:"" help:"WeatherAPI configuration"`
 
 	// Context
 	ctx     context.Context
@@ -66,6 +68,10 @@ type Gemini struct {
 
 type NewsAPI struct {
 	NewsKey string `env:"NEWSAPI_KEY" help:"News API Key"`
+}
+
+type WeatherAPI struct {
+	WeatherKey string `env:"WEATHERAPI_KEY" help:"Weather API Key"`
 }
 
 type CLI struct {
@@ -156,6 +162,15 @@ func main() {
 	// Register NewsAPI
 	if cli.NewsKey != "" {
 		if client, err := newsapi.New(cli.NewsKey, clientopts...); err != nil {
+			cmd.FatalIfErrorf(err)
+		} else if err := client.RegisterWithToolKit(toolkit); err != nil {
+			cmd.FatalIfErrorf(err)
+		}
+	}
+
+	// Register WeatherAPI
+	if cli.WeatherKey != "" {
+		if client, err := weatherapi.New(cli.WeatherKey, clientopts...); err != nil {
 			cmd.FatalIfErrorf(err)
 		} else if err := client.RegisterWithToolKit(toolkit); err != nil {
 			cmd.FatalIfErrorf(err)

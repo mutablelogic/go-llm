@@ -15,7 +15,7 @@ import (
 // TYPES
 
 type ChatCmd struct {
-	Model    string `arg:"" help:"Model name"`
+	Model    string `flag:"model" help:"Model name"`
 	NoStream bool   `flag:"nostream" help:"Disable streaming"`
 	NoTools  bool   `flag:"nostream" help:"Disable tool calling"`
 	Prompt   string `flag:"prompt" help:"Set the initial user prompt"`
@@ -26,7 +26,7 @@ type ChatCmd struct {
 // PUBLIC METHODS
 
 func (cmd *ChatCmd) Run(globals *Globals) error {
-	return run(globals, AudioType, cmd.Model, func(ctx context.Context, model llm.Model) error {
+	return run(globals, ChatType, cmd.Model, func(ctx context.Context, model llm.Model) error {
 		// Current buffer
 		var buf string
 
