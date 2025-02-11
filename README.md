@@ -443,7 +443,7 @@ flag. For example, to have the model generate a caption for the image in the fil
 the following command:
 
 ```bash
-llm complete --model gpt-4o --file picture.png "Explain this image"
+llm complete --file picture.png "Explain this image"
 ```
 
 ### Generate an image
@@ -456,7 +456,22 @@ the following command:
 llm complete --model dall-e-3 --format image "A picture of a cat"
 ```
 
-It will write the file in the current working directory.
+Flags `--size`, `--quality` and `--style` can be used to specify the image parameters. It will write the image
+file in the current working directory.
+
+### Convert text to speech
+
+To have a model generate text from speech:
+
+```bash
+echo book.txt | llm complete --model tts-1 --format mp3 --voice coral
+```
+
+It will write the audio file in the current working directory. You can currently write
+the following audio formats and voices:
+
+* Formats: `--format mp3`, `--format opus`, `--format aac`, `--format flac`, `--format wav`, `--format pcm`
+* Voices: `--voice alloy`, `--voice ash`, `--voice coral`, `--voice echo`, `--voice fable`, `--voice onyx`, `--voice nova`, `--voice sage`, `--voice shimmer`
 
 ## Contributing & Distribution
 

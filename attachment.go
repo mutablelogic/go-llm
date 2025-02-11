@@ -23,6 +23,7 @@ type AttachmentMeta struct {
 	ExpiresAt uint64 `json:"expires_at,omitempty"`
 	Caption   string `json:"transcript,omitempty"`
 	Data      []byte `json:"data"`
+	Type      string `json:"type"`
 }
 
 // OpenAI image metadata
@@ -57,8 +58,8 @@ func NewAttachmentWithImage(image *ImageMeta) *Attachment {
 
 // ReadAttachment returns an attachment from a reader object.
 // It is the responsibility of the caller to close the reader.
-func ReadAttachment(r io.Reader) (*Attachment, error) {
-	var filename string
+func ReadAttachment(r io.Reader, mimetype ...string) (*Attachment, error) {
+	var filename, typ string
 	data, err := io.ReadAll(r)
 	if err != nil {
 		return nil, err
@@ -66,10 +67,14 @@ func ReadAttachment(r io.Reader) (*Attachment, error) {
 	if f, ok := r.(*os.File); ok {
 		filename = f.Name()
 	}
+	if len(mimetype) > 0 {
+		typ = mimetype[0]
+	}
 	return &Attachment{
 		meta: &AttachmentMeta{
 			Filename: filename,
 			Data:     data,
+			Type:     typ,
 		},
 	}, nil
 }
@@ -176,6 +181,11 @@ func (a *Attachment) Caption() string {
 // on the data and/or filename extension. Returns an empty string if
 // there is no data or filename
 func (a *Attachment) Type() string {
+	// If there's a mimetype set, use this
+	if a.meta != nil && a.meta.Type != "" {
+		return a.meta.Type
+	}
+
 	// If there's no data or filename, return empty
 	if len(a.Data()) == 0 && a.Filename() == "" {
 		return ""
@@ -191,9 +201,9 @@ func (a *Attachment) Type() string {
 	}
 
 	// Mimetype based on filename
-	if a.Filename() != "" {
+	if a.meta != nil && a.meta.Filename != "" {
 		// Detect mimetype from extension
-		mimetype = mime.TypeByExtension(filepath.Ext(a.Filename()))
+		mimetype = mime.TypeByExtension(filepath.Ext(a.meta.Filename))
 	}
 
 	// Return the default mimetype

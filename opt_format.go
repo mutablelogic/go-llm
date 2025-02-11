@@ -8,7 +8,6 @@ import "strings"
 const (
 	mimeTypeText = "text/plain"
 	mimeTypeJSON = "application/json"
-	mimeTypeJpeg = "image/jpeg"
 	mimeTypeMP3  = "audio/mpeg"
 	mimeTypeOpus = "audio/opus"
 	mimeTypeAAC  = "audio/aac"
@@ -25,21 +24,20 @@ var (
 		mimeTypeJSON:  "json_object",
 		"json":        "json_object",
 		"json_object": "json_object",
-		mimeTypeJpeg:  "image",
-		"jpeg":        "image",
 		"image":       "image",
-		mimeTypeMP3:   "mp3",
-		mimeTypeOpus:  "opus",
-		mimeTypeAAC:   "aac",
-		mimeTypeFLAC:  "flac",
-		mimeTypeWAV:   "wav",
-		mimeTypePCM:   "pcm",
-		"mp3":         "mp3",
-		"opus":        "opus",
-		"aac":         "aac",
-		"flac":        "flac",
-		"wav":         "wav",
-		"pcm":         "pcm",
+		mimeTypeMP3:   "audio",
+		mimeTypeOpus:  "audio",
+		mimeTypeAAC:   "audio",
+		mimeTypeFLAC:  "audio",
+		mimeTypeWAV:   "audio",
+		mimeTypePCM:   "audio",
+		"audio":       "audio",
+		"mp3":         "audio",
+		"opus":        "audio",
+		"aac":         "audio",
+		"flac":        "audio",
+		"wav":         "audio",
+		"pcm":         "audio",
 	}
 	audioValues = []string{
 		"mp3", "opus", "aac", "flac", "wav", "pcm",

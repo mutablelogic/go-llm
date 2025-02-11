@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"os"
@@ -9,7 +10,7 @@ import (
 
 	// Packages
 	llm "github.com/mutablelogic/go-llm"
-	"github.com/mutablelogic/go-llm/pkg/openai"
+	openai "github.com/mutablelogic/go-llm/pkg/openai"
 )
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -89,14 +90,23 @@ func (cmd *CompleteCmd) Run(globals *Globals) error {
 		completion, err := model.Completion(ctx, string(prompt), opts...)
 		if err != nil {
 			return err
+		} else if completion == nil {
+			return llm.ErrInternalServerError.Withf("No completion returned")
 		}
 
 		// Print the completion - text
 		if cmd.NoStream {
 			fmt.Println(completion.Text(0))
+		} else {
+			fmt.Println()
 		}
 
 		// Output completion attachments
+		type Result struct {
+			Filename string `json:"filename"`
+			Caption  string `json:"caption,omitempty"`
+		}
+		var out []Result
 		for i := 0; i < completion.Num(); i++ {
 			attachment := completion.Attachment(i)
 			if attachment == nil {
@@ -113,9 +123,21 @@ func (cmd *CompleteCmd) Run(globals *Globals) error {
 
 			if _, err := f.Write(attachment.Data()); err != nil {
 				return err
-			} else {
-				fmt.Printf("%q written to %s\n", attachment.Caption(), attachment.Filename())
 			}
+
+			out = append(out, Result{
+				Filename: attachment.Filename(),
+				Caption:  attachment.Caption(),
+			})
+		}
+
+		// Print the completion - attachments
+		if len(out) > 0 {
+			data, err := json.MarshalIndent(out, "", "  ")
+			if err != nil {
+				return err
+			}
+			fmt.Println(string(data))
 		}
 
 		// Return success

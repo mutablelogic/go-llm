@@ -66,12 +66,6 @@ func (model *model) imageCompletion(ctx context.Context, prompt string, opt *llm
 	return &response, nil
 }
 
-// Send a completion request with text for a text-to-speech completion
-// TODO
-func (model *model) audioCompletion(ctx context.Context, prompt string, opt *llm.Opts) (llm.Completion, error) {
-	return nil, llm.ErrNotImplemented
-}
-
 ///////////////////////////////////////////////////////////////////////////////
 // PRIVATE METHODS
 
