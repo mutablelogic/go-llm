@@ -1,8 +1,10 @@
 package llm
 
 import (
+	"crypto/md5"
 	"encoding/base64"
 	"encoding/json"
+	"fmt"
 	"io"
 	"mime"
 	"net/http"
@@ -88,14 +90,16 @@ func (a *Attachment) MarshalJSON() ([]byte, error) {
 		Filename string `json:"filename,omitempty"`
 		Type     string `json:"type"`
 		Bytes    uint64 `json:"bytes"`
+		Hash     string `json:"hash,omitempty"`
 		Caption  string `json:"caption,omitempty"`
 	}
 
 	j.Type = a.Type()
 	j.Caption = a.Caption()
+	j.Hash = a.Hash()
+	j.Filename = a.Filename()
 	if a.meta != nil {
 		j.Id = a.meta.Id
-		j.Filename = a.meta.Filename
 		j.Bytes = uint64(len(a.meta.Data))
 	} else if a.image != nil {
 		j.Bytes = uint64(len(a.image.Data))
@@ -116,6 +120,13 @@ func (a *Attachment) String() string {
 ////////////////////////////////////////////////////////////////////////////////
 // PUBLIC METHODS
 
+// Compute and print the MD5 hash
+func (a *Attachment) Hash() string {
+	hash := md5.New()
+	hash.Write(a.Data())
+	return fmt.Sprintf("%x", hash.Sum(nil))
+}
+
 // Write out attachment
 func (a *Attachment) Write(w io.Writer) (int, error) {
 	if a.meta != nil {
@@ -129,11 +140,14 @@ func (a *Attachment) Write(w io.Writer) (int, error) {
 
 // Return the filename of an attachment
 func (a *Attachment) Filename() string {
-	if a.meta != nil {
+	if a.meta != nil && a.meta.Filename != "" {
 		return a.meta.Filename
-	} else {
-		return ""
 	}
+	// Obtain filename from MD5
+	if ext, err := mime.ExtensionsByType(a.Type()); err == nil && len(ext) > 0 {
+		return a.Hash() + ext[0]
+	}
+	return ""
 }
 
 // Return the raw attachment data

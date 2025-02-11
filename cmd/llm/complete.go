@@ -94,14 +94,27 @@ func (cmd *CompleteCmd) Run(globals *Globals) error {
 		// Print the completion - text
 		if cmd.NoStream {
 			fmt.Println(completion.Text(0))
-		} else {
-			fmt.Println("")
 		}
 
-		// Print the completion - attachments
+		// Output completion attachments
 		for i := 0; i < completion.Num(); i++ {
-			if attachment := completion.Attachment(i); attachment != nil {
-				fmt.Println(attachment)
+			attachment := completion.Attachment(i)
+			if attachment == nil {
+				continue
+			}
+			if attachment.Filename() == "" {
+				continue
+			}
+			f, err := os.Create(attachment.Filename())
+			if err != nil {
+				return err
+			}
+			defer f.Close()
+
+			if _, err := f.Write(attachment.Data()); err != nil {
+				return err
+			} else {
+				fmt.Printf("%q written to %s\n", attachment.Caption(), attachment.Filename())
 			}
 		}
 
