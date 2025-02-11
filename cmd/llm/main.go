@@ -77,10 +77,10 @@ type CLI struct {
 	Tools  ListToolsCmd  `cmd:"" help:"Return a list of tools"`
 
 	// Commands
-	Download  DownloadModelCmd `cmd:"" help:"Download a model"`
+	Download  DownloadModelCmd `cmd:"" help:"Download a model (for Ollama)"`
 	Chat      ChatCmd          `cmd:"" help:"Start a chat session"`
 	Chat2     Chat2Cmd         `cmd:"" help:"Start a chat session (2)"`
-	Complete  CompleteCmd      `cmd:"" help:"Complete a prompt"`
+	Complete  CompleteCmd      `cmd:"" help:"Complete a prompt, generate image or speech from text"`
 	Embedding EmbeddingCmd     `cmd:"" help:"Generate an embedding"`
 	Version   VersionCmd       `cmd:"" help:"Print the version of this tool"`
 }

@@ -405,14 +405,58 @@ Commands:
   agents       Return a list of agents
   models       Return a list of models
   tools        Return a list of tools
-  download     Download a model
+  download     Download a model (for Ollama)
   chat         Start a chat session
-  complete     Complete a prompt
+  complete     Complete a prompt, generate image or speech from text
   embedding    Generate an embedding
   version      Print the version of this tool
 
 Run "llm <command> --help" for more information on a command.
 ```
+
+### Prompt Completion
+
+To have the model respond to a prompt, you can use the `complete` command. For example, to
+have the model respond to the prompt "What is the capital of France?" using the `claude-3-5-haiku-20241022`
+model, you can use the following command:
+
+```bash
+llm complete "What is the capital of France?"
+```
+
+The first time you use the command use the ``--model`` flag to specify the model you want to use. Your
+choice of model will be remembered for subsequent completions.
+
+### Explain computer code
+
+To have the model explain a piece of computer code, you can pipe the code into the `complete` command.
+For example, to have the model explain the code in the file `example.go`, you can use the following command:
+
+```bash
+cat example.go | llm complete
+```
+
+### Caption an image
+
+To have the model generate a caption for an image, you can use the `complete` command with the `--file`
+flag. For example, to have the model generate a caption for the image in the file `example.jpg`, you can use
+the following command:
+
+```bash
+llm complete --model gpt-4o --file picture.png "Explain this image"
+```
+
+### Generate an image
+
+To have the model generate an image from a prompt, you can use the `complete` command with the `--format image`
+option. For example, to have the model generate an image from the prompt "A picture of a cat", you can use
+the following command:
+
+```bash
+llm complete --model dall-e-3 --format image "A picture of a cat"
+```
+
+It will write the file in the current working directory.
 
 ## Contributing & Distribution
 
