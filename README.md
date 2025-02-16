@@ -31,6 +31,127 @@ docker run -e ANTHROPIC_API_KEY -e NEWSAPI_KEY \
 See below for more information on how to use the command-line tool (or how to
 install it if you have a `go` compiler).
 
+## The Command Line Tool
+
+You can use the command-line tool to interact with the API. You can run the tool using Docker or
+as a CLI. To build the tool, you can use the following command:
+
+```bash
+go install github.com/mutablelogic/go-llm/cmd/llm@latest
+llm --help
+```
+
+The output is something like:
+
+```text
+Usage: llm <command> [flags]
+
+LLM agent command line interface
+
+Flags:
+  -h, --help                      Show context-sensitive help.
+      --debug                     Enable debug output
+  -v, --verbose                   Enable verbose output
+      --timeout=DURATION          Agent connection timeout
+      --ollama-endpoint=STRING    Ollama endpoint ($OLLAMA_URL)
+      --anthropic-key=STRING      Anthropic API Key ($ANTHROPIC_API_KEY)
+      --mistral-key=STRING        Mistral API Key ($MISTRAL_API_KEY)
+      --open-ai-key=STRING        OpenAI API Key ($OPENAI_API_KEY)
+      --gemini-key=STRING         Gemini API Key ($GEMINI_API_KEY)
+      --news-key=STRING           News API Key ($NEWSAPI_KEY)
+      --weather-key=STRING        Weather API Key ($WEATHERAPI_KEY)
+
+Commands:
+  agents       Return a list of agents
+  models       Return a list of models
+  tools        Return a list of tools
+  download     Download a model (for Ollama)
+  chat         Start a chat session
+  generate     Generate text, image or speech output
+  embedding    Generate an embedding
+  version      Print the version of this tool
+
+Run "llm <command> --help" for more information on a command.
+```
+
+There are two tools built-in when running the tool in 'chat' mode. One will interact with news,
+and the other with weather. You will need API keys for these services to use them. Models from
+various providers can also be used by supplying API keys as either environment variables or
+flags.
+
+### Generation (Text, Image, Speech)
+
+To have the model respond to a prompt, you can use the `generate` command. For example, to
+have the model respond to the prompt "What is the capital of France?" using the `claude-3-5-haiku-20241022`
+model, you can use the following command:
+
+```bash
+llm generate "What is the capital of France?" --model claude-3-5-haiku-20241022
+```
+
+The first time you use the command use the ``--model`` flag to specify the model you want to use. Your
+choice of model will be remembered for subsequent completions. No need to use the `--model` flag again,
+unless you want to change models.
+
+### Explain computer code
+
+To have the model explain a piece of computer code, you can pipe the code into the `generate` command.
+For example, to have the model explain the code in the file `example.go`, you can use the following command:
+
+```bash
+cat example.go | llm generate "Explain this code"
+```
+
+### Caption an image
+
+To have the model generate a caption for an image, you can use the `generate` command with the `--file`
+flag. For example, to have the model generate a caption for the image in the file `example.jpg`, you can use
+the following command:
+
+```bash
+llm generate --file picture.png "Explain this image" --model claude-3-5-sonnet-20241022 
+```
+
+### Generate an image
+
+To have the model generate an image from a prompt, you can use the `generate` command with the `--format image` option. For example, to have the model generate an image from the prompt "A picture of a cat", you can use
+the following command:
+
+```bash
+llm generate --format image "Three friends enjoying each others' company" --model dall-e-3 
+```
+
+Flags `--size`, `--quality` and `--style` can be used to specify the image parameters, and will write the image file in the current working directory. The output might look like this:
+
+```json
+[
+  {
+    "filename": "f46765e1925fa8f90e4107f05f12fa17.png",
+    "caption": "An image of three friends from different backgrounds enjoying each other's company. One friend is a Caucasian male with short, curly blonde hair and glasses. He's laughing while showing something on his smartphone. The second friend is a Hispanic female with long, straight black hair, dressed in a casual chic outfit. She's grinning and pointing at the smartphone while holding a coffee cup. The third friend is a Middle-Eastern male with a beard and bald head. He's clapping his hands in amusement, bringing a warm and friendly atmosphere to the scene."
+  }
+]
+```
+
+### Convert Text to Speech
+
+To have an OpenAI model generate text from speech:
+
+```bash
+echo book.txt | llm generate --model tts-1 --format mp3 --voice shimmer
+```
+
+It will write the audio file in the current working directory. You can use the following audio 
+formats and voices:
+
+* Formats: `--format mp3`, `--format opus`, `--format aac`, `--format flac`, `--format wav`, `--format pcm`
+* Voices: `--voice alloy`, `--voice ash`, `--voice coral`, `--voice echo`, `--voice fable`, `--voice onyx`, `--voice nova`, `--voice sage`, `--voice shimmer`
+
+(TODO: Neither the format or voice options are currently supported....)
+
+### Convert Speech to Text
+
+TODO
+
 ## Programmatic Usage
 
 See the documentation [here](https://pkg.go.dev/github.com/mutablelogic/go-llm)
@@ -378,106 +499,6 @@ The transation of field types is as follows:
 * `string` - Translates as JSON `string`
 * `uint`, `int` - Translates to JSON `integer`
 * `float32`, `float64` - Translates to JSON `number`
-
-## The Command Line Tool
-
-You can use the command-line tool to interact with the API. To build the tool, you can use the following command:
-
-```bash
-go install github.com/mutablelogic/go-llm/cmd/llm@latest
-llm --help
-```
-
-The output is something like:
-
-```text
-Usage: llm <command> [flags]
-
-LLM agent command line interface
-
-Flags:
-  -h, --help                      Show context-sensitive help.
-      --debug                     Enable debug output
-  -v, --verbose                   Enable verbose output
-      --timeout=DURATION          Agent connection timeout
-      --ollama-endpoint=STRING    Ollama endpoint ($OLLAMA_URL)
-      --anthropic-key=STRING      Anthropic API Key ($ANTHROPIC_API_KEY)
-      --mistral-key=STRING        Mistral API Key ($MISTRAL_API_KEY)
-      --open-ai-key=STRING        OpenAI API Key ($OPENAI_API_KEY)
-      --gemini-key=STRING         Gemini API Key ($GEMINI_API_KEY)
-      --news-key=STRING           News API Key ($NEWSAPI_KEY)
-
-Commands:
-  agents       Return a list of agents
-  models       Return a list of models
-  tools        Return a list of tools
-  download     Download a model (for Ollama)
-  chat         Start a chat session
-  complete     Complete a prompt, generate image or speech from text
-  embedding    Generate an embedding
-  version      Print the version of this tool
-
-Run "llm <command> --help" for more information on a command.
-```
-
-### Prompt Completion
-
-To have the model respond to a prompt, you can use the `complete` command. For example, to
-have the model respond to the prompt "What is the capital of France?" using the `claude-3-5-haiku-20241022`
-model, you can use the following command:
-
-```bash
-llm complete "What is the capital of France?"
-```
-
-The first time you use the command use the ``--model`` flag to specify the model you want to use. Your
-choice of model will be remembered for subsequent completions.
-
-### Explain computer code
-
-To have the model explain a piece of computer code, you can pipe the code into the `complete` command.
-For example, to have the model explain the code in the file `example.go`, you can use the following command:
-
-```bash
-cat example.go | llm complete
-```
-
-### Caption an image
-
-To have the model generate a caption for an image, you can use the `complete` command with the `--file`
-flag. For example, to have the model generate a caption for the image in the file `example.jpg`, you can use
-the following command:
-
-```bash
-llm complete --file picture.png "Explain this image"
-```
-
-### Generate an image
-
-To have the model generate an image from a prompt, you can use the `complete` command with the `--format image`
-option. For example, to have the model generate an image from the prompt "A picture of a cat", you can use
-the following command:
-
-```bash
-llm complete --model dall-e-3 --format image "A picture of a cat"
-```
-
-Flags `--size`, `--quality` and `--style` can be used to specify the image parameters. It will write the image
-file in the current working directory.
-
-### Convert text to speech
-
-To have a model generate text from speech:
-
-```bash
-echo book.txt | llm complete --model tts-1 --format mp3 --voice coral
-```
-
-It will write the audio file in the current working directory. You can currently write
-the following audio formats and voices:
-
-* Formats: `--format mp3`, `--format opus`, `--format aac`, `--format flac`, `--format wav`, `--format pcm`
-* Voices: `--voice alloy`, `--voice ash`, `--voice coral`, `--voice echo`, `--voice fable`, `--voice onyx`, `--voice nova`, `--voice sage`, `--voice shimmer`
 
 ## Contributing & Distribution
 

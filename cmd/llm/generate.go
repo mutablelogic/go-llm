@@ -16,7 +16,7 @@ import (
 ////////////////////////////////////////////////////////////////////////////////
 // TYPES
 
-type CompleteCmd struct {
+type GenerateCmd struct {
 	Prompt      string   `arg:"" optional:"" help:"Prompt"`
 	Model       string   `flag:"model" help:"Model name"`
 	File        []string `type:"file" short:"f" help:"Files to attach"`
@@ -43,7 +43,7 @@ func typeFromFormat(format string) Type {
 	}
 }
 
-func (cmd *CompleteCmd) Run(globals *Globals) error {
+func (cmd *GenerateCmd) Run(globals *Globals) error {
 	return run(globals, typeFromFormat(cmd.Format), cmd.Model, func(ctx context.Context, model llm.Model) error {
 		var prompt []byte
 
@@ -145,7 +145,7 @@ func (cmd *CompleteCmd) Run(globals *Globals) error {
 	})
 }
 
-func (cmd *CompleteCmd) opts() []llm.Opt {
+func (cmd *GenerateCmd) opts() []llm.Opt {
 	opts := []llm.Opt{}
 
 	// Set system prompt
