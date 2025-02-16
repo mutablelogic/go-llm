@@ -5,6 +5,7 @@ import (
 	client "github.com/mutablelogic/go-client"
 	llm "github.com/mutablelogic/go-llm"
 	anthropic "github.com/mutablelogic/go-llm/pkg/anthropic"
+	"github.com/mutablelogic/go-llm/pkg/deepseek"
 	gemini "github.com/mutablelogic/go-llm/pkg/gemini"
 	mistral "github.com/mutablelogic/go-llm/pkg/mistral"
 	ollama "github.com/mutablelogic/go-llm/pkg/ollama"
@@ -61,6 +62,17 @@ func WithOpenAI(key string, opts ...client.ClientOpt) llm.Opt {
 func WithGemini(key string, opts ...client.ClientOpt) llm.Opt {
 	return func(o *llm.Opts) error {
 		client, err := gemini.New(key, opts...)
+		if err != nil {
+			return err
+		} else {
+			return llm.WithAgent(client)(o)
+		}
+	}
+}
+
+func WithDeepSeek(key string, opts ...client.ClientOpt) llm.Opt {
+	return func(o *llm.Opts) error {
+		client, err := deepseek.New(key, opts...)
 		if err != nil {
 			return err
 		} else {
