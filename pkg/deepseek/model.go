@@ -5,8 +5,9 @@ import (
 	"encoding/json"
 
 	// Packages
-	"github.com/mutablelogic/go-client"
-	"github.com/mutablelogic/go-llm"
+	client "github.com/mutablelogic/go-client"
+	llm "github.com/mutablelogic/go-llm"
+	impl "github.com/mutablelogic/go-llm/pkg/internal/impl"
 )
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -115,21 +116,10 @@ func (deepseek *Client) ListModels(ctx context.Context) ([]Model, error) {
 
 // Return a new empty session
 func (model *model) Context(opts ...llm.Opt) llm.Context {
-	return nil
-	// return impl.NewSession(model, &messagefactory{}, opts...)
+	return impl.NewSession(model, &messagefactory{}, opts...)
 }
 
-// Create a completion from a text prompt
-func (model *model) Completion(context.Context, string, ...llm.Opt) (llm.Completion, error) {
-	return nil, llm.ErrNotImplemented
-}
-
-// Create a completion from a chat session
-func (model *model) Chat(context.Context, []llm.Completion, ...llm.Opt) (llm.Completion, error) {
-	return nil, llm.ErrNotImplemented
-}
-
-// Embedding vector generation
+// Embedding vector generation - not supported
 func (model *model) Embedding(context.Context, string, ...llm.Opt) ([]float64, error) {
 	return nil, llm.ErrNotImplemented
 }
