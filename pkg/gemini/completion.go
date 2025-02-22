@@ -1,4 +1,4 @@
-package deepseek
+package gemini
 
 import (
 	"context"
@@ -15,41 +15,40 @@ import (
 
 // Completion Response
 type Response struct {
-	Id                string `json:"id"`
-	Type              string `json:"object"`
-	Created           uint64 `json:"created"`
-	Model             string `json:"model"`
-	SystemFingerprint string `json:"system_fingerprint"`
-	ServiceTier       string `json:"service_tier"`
-	Completions       `json:"choices"`
-	*Metrics          `json:"usage,omitempty"`
+	Candidates      `json:"candidates"`
+	*PromptFeedback `json:"promptFeedback,omitempty"`
+	*Metrics        `json:"usageMetadata,omitempty"`
+	ModelVersion    string `json:"model_version,omitempty"`
 }
 
-// Completion choices
-type Completions []Completion
+// Candidate choices
+type Candidates []Candidate
 
-// Completion Variation
-type Completion struct {
-	Index   uint64   `json:"index"`
-	Message *Message `json:"message"`
-	Delta   *Message `json:"delta,omitempty"` // For streaming
-	Reason  string   `json:"finish_reason,omitempty"`
+// Candidate Variation
+type Candidate struct {
+	Index  uint64 `json:"index"`
+	Reason string `json:"finishReason,omitempty"`
 }
 
 // Metrics
 type Metrics struct {
-	PromptTokens       uint64 `json:"prompt_tokens,omitempty"`
-	CompletionTokens   uint64 `json:"completion_tokens,omitempty"`
-	TotalTokens        uint64 `json:"total_tokens,omitempty"`
-	PromptTokenDetails struct {
-		CachedTokens uint64 `json:"cached_tokens,omitempty"`
-		AudioTokens  uint64 `json:"audio_tokens,omitempty"`
-	} `json:"prompt_tokens_details,omitempty"`
-	CompletionTokenDetails struct {
-		ReasoningTokens          uint64 `json:"reasoning_tokens,omitempty"`
-		AcceptedPredictionTokens uint64 `json:"accepted_prediction_tokens,omitempty"`
-		RejectedPredictionTokens uint64 `json:"rejected_prediction_tokens,omitempty"`
-	} `json:"completion_tokens_details,omitempty"`
+	PromptTokenCount        uint64 `json:"promptTokenCount,omitempty"`
+	CachedContentTokenCount uint64 `json:"cachedContentTokenCount,omitempty"`
+	CandidatesTokenCount    uint64 `json:"candidatesTokenCount,omitempty"`
+	ToolUsePromptTokenCount uint64 `json:"toolUsePromptTokenCount,omitempty"`
+	TotalTokenCount         uint64 `json:"totalTokenCount,omitempty"`
+}
+
+// Prompt Feedback
+type PromptFeedback struct {
+	BlockReason   string         `json:"blockReason,omitempty"`
+	SafetyRatings []SafetyRating `json:"safetyRatings,omitempty"`
+}
+
+type SafetyRating struct {
+	Category    string `json:"category,omitempty"`
+	Probability string `json:"probability,omitempty"`
+	Blocked     bool   `json:"blocked,omitempty"`
 }
 
 var _ llm.Completion = (*Response)(nil)
@@ -65,7 +64,7 @@ func (r Response) String() string {
 	return string(data)
 }
 
-func (c Completion) String() string {
+func (c Candidate) String() string {
 	data, err := json.MarshalIndent(c, "", "  ")
 	if err != nil {
 		return err.Error()
@@ -85,21 +84,6 @@ func (m Metrics) String() string {
 // PUBLIC METHODS
 
 type reqCompletion struct {
-	Model            string               `json:"model"`
-	FrequencyPenalty float64              `json:"frequency_penalty,omitempty"`
-	MaxTokens        uint64               `json:"max_tokens,omitempty"`
-	PresencePenalty  float64              `json:"presence_penalty,omitempty"`
-	ResponseFormat   *impl.ResponseFormat `json:"response_format,omitempty"`
-	StopSequences    []string             `json:"stop,omitempty"`
-	Stream           bool                 `json:"stream,omitempty"`
-	StreamOptions    *impl.StreamOptions  `json:"stream_options,omitempty"`
-	Temperature      float64              `json:"temperature,omitempty"`
-	TopP             float64              `json:"top_p,omitempty"`
-	Tools            []llm.Tool           `json:"tools,omitempty"`
-	ToolChoice       any                  `json:"tool_choice,omitempty"`
-	LogProbs         bool                 `json:"logprobs,omitempty"`
-	TopLogProbs      uint64               `json:"top_logprobs,omitempty"`
-	Messages         []llm.Completion     `json:"messages"`
 }
 
 // Send a completion request with a single prompt, and return the next completion

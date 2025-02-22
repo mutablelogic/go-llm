@@ -96,7 +96,7 @@ func Test_completion_002(t *testing.T) {
 	})
 
 	t.Run("LogProbs", func(t *testing.T) {
-		r, err := model.Completion(context.TODO(), "What is the temperature in London?", openai.WithLogProbs())
+		r, err := model.Completion(context.TODO(), "What is the temperature in London?", llm.WithLogProbs())
 		if assert.NoError(err) {
 			assert.Equal("assistant", r.Role())
 			assert.Equal(1, r.Num())
@@ -106,7 +106,7 @@ func Test_completion_002(t *testing.T) {
 	})
 
 	t.Run("TopLogProbs", func(t *testing.T) {
-		r, err := model.Completion(context.TODO(), "What is the temperature in London?", openai.WithTopLogProbs(3))
+		r, err := model.Completion(context.TODO(), "What is the temperature in London?", llm.WithTopLogProbs(3))
 		if assert.NoError(err) {
 			assert.Equal("assistant", r.Role())
 			assert.Equal(1, r.Num())

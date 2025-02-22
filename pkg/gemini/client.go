@@ -1,5 +1,6 @@
 /*
-gemini implements an API client for Google's Gemini LLM (https://ai.google.dev/gemini-api/docs)
+gemini implements an API client for Google's Gemini LLM
+https://ai.google.dev/gemini-api/docs
 */
 package gemini
 

@@ -370,3 +370,24 @@ func WithUser(v string) Opt {
 		return nil
 	}
 }
+
+// Whether to return log probabilities of the output tokens or not.
+func WithLogProbs() Opt {
+	return func(o *Opts) error {
+		o.Set("logprobs", true)
+		return nil
+	}
+}
+
+// An integer between 0 and 20 specifying the number of most likely tokens
+// to return at each token position, each with an associated log probability.
+func WithTopLogProbs(v uint64) Opt {
+	return func(o *Opts) error {
+		if v > 20 {
+			return ErrBadParameter.With("top_logprobs")
+		}
+		o.Set("logprobs", true)
+		o.Set("top_logprobs", v)
+		return nil
+	}
+}

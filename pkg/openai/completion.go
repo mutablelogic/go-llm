@@ -8,6 +8,7 @@ import (
 	// Packages
 	client "github.com/mutablelogic/go-client"
 	llm "github.com/mutablelogic/go-llm"
+	impl "github.com/mutablelogic/go-llm/pkg/internal/impl"
 )
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -85,33 +86,33 @@ func (m Metrics) String() string {
 // PUBLIC METHODS
 
 type reqCompletion struct {
-	Model             string            `json:"model"`
-	Store             *bool             `json:"store,omitempty"`
-	ReasoningEffort   string            `json:"reasoning_effort,omitempty"`
-	Metadata          map[string]string `json:"metadata,omitempty"`
-	FrequencyPenalty  float64           `json:"frequency_penalty,omitempty"`
-	LogitBias         map[uint64]int64  `json:"logit_bias,omitempty"`
-	LogProbs          bool              `json:"logprobs,omitempty"`
-	TopLogProbs       uint64            `json:"top_logprobs,omitempty"`
-	MaxTokens         uint64            `json:"max_completion_tokens,omitempty"`
-	NumCompletions    uint64            `json:"n,omitempty"`
-	Modalties         []string          `json:"modalities,omitempty"`
-	Prediction        *Content          `json:"prediction,omitempty"`
-	Audio             *Audio            `json:"audio,omitempty"`
-	PresencePenalty   float64           `json:"presence_penalty,omitempty"`
-	ResponseFormat    *Format           `json:"response_format,omitempty"`
-	Seed              uint64            `json:"seed,omitempty"`
-	ServiceTier       string            `json:"service_tier,omitempty"`
-	StopSequences     []string          `json:"stop,omitempty"`
-	Stream            bool              `json:"stream,omitempty"`
-	StreamOptions     *StreamOptions    `json:"stream_options,omitempty"`
-	Temperature       float64           `json:"temperature,omitempty"`
-	TopP              float64           `json:"top_p,omitempty"`
-	Tools             []llm.Tool        `json:"tools,omitempty"`
-	ToolChoice        any               `json:"tool_choice,omitempty"`
-	ParallelToolCalls *bool             `json:"parallel_tool_calls,omitempty"`
-	User              string            `json:"user,omitempty"`
-	Messages          []llm.Completion  `json:"messages"`
+	Model             string               `json:"model"`
+	Store             *bool                `json:"store,omitempty"`
+	ReasoningEffort   string               `json:"reasoning_effort,omitempty"`
+	Metadata          map[string]string    `json:"metadata,omitempty"`
+	FrequencyPenalty  float64              `json:"frequency_penalty,omitempty"`
+	LogitBias         map[uint64]int64     `json:"logit_bias,omitempty"`
+	LogProbs          bool                 `json:"logprobs,omitempty"`
+	TopLogProbs       uint64               `json:"top_logprobs,omitempty"`
+	MaxTokens         uint64               `json:"max_completion_tokens,omitempty"`
+	NumCompletions    uint64               `json:"n,omitempty"`
+	Modalties         []string             `json:"modalities,omitempty"`
+	Prediction        *Content             `json:"prediction,omitempty"`
+	Audio             *Audio               `json:"audio,omitempty"`
+	PresencePenalty   float64              `json:"presence_penalty,omitempty"`
+	ResponseFormat    *impl.ResponseFormat `json:"response_format,omitempty"`
+	Seed              uint64               `json:"seed,omitempty"`
+	ServiceTier       string               `json:"service_tier,omitempty"`
+	StopSequences     []string             `json:"stop,omitempty"`
+	Stream            bool                 `json:"stream,omitempty"`
+	StreamOptions     *impl.StreamOptions  `json:"stream_options,omitempty"`
+	Temperature       float64              `json:"temperature,omitempty"`
+	TopP              float64              `json:"top_p,omitempty"`
+	Tools             []llm.Tool           `json:"tools,omitempty"`
+	ToolChoice        any                  `json:"tool_choice,omitempty"`
+	ParallelToolCalls *bool                `json:"parallel_tool_calls,omitempty"`
+	User              string               `json:"user,omitempty"`
+	Messages          []llm.Completion     `json:"messages"`
 }
 
 // Send a completion request with a single prompt, and return the next completion
@@ -157,26 +158,26 @@ func (model *model) Chat(ctx context.Context, completions []llm.Completion, opts
 		Store:             optStore(opt),
 		ReasoningEffort:   optReasoningEffort(opt),
 		Metadata:          optMetadata(opt),
-		FrequencyPenalty:  optFrequencyPenalty(opt),
+		FrequencyPenalty:  impl.OptFrequencyPenalty(opt),
 		LogitBias:         optLogitBias(opt),
-		LogProbs:          optLogProbs(opt),
-		TopLogProbs:       optTopLogProbs(opt),
-		MaxTokens:         optMaxTokens(opt),
+		LogProbs:          impl.OptLogProbs(opt),
+		TopLogProbs:       impl.OptTopLogProbs(opt),
+		MaxTokens:         impl.OptMaxTokens(model, opt),
 		NumCompletions:    optNumCompletions(opt),
 		Modalties:         optModalities(opt),
 		Prediction:        optPrediction(opt),
 		Audio:             optAudio(opt),
-		PresencePenalty:   optPresencePenalty(opt),
-		ResponseFormat:    optResponseFormat(opt),
+		PresencePenalty:   impl.OptPresencePenalty(opt),
+		ResponseFormat:    impl.OptResponseFormat(opt),
 		Seed:              optSeed(opt),
 		ServiceTier:       optServiceTier(opt),
-		StreamOptions:     optStreamOptions(opt),
-		Temperature:       optTemperature(opt),
-		TopP:              optTopP(opt),
-		Stream:            optStream(opt),
-		StopSequences:     optStopSequences(opt),
-		Tools:             optTools(model, opt),
-		ToolChoice:        optToolChoice(opt),
+		Temperature:       impl.OptTemperature(opt),
+		TopP:              impl.OptTopP(opt),
+		Stream:            impl.OptStream(opt),
+		StreamOptions:     impl.OptStreamOptions(opt),
+		StopSequences:     impl.OptStopSequences(opt),
+		Tools:             impl.OptTools(model, opt),
+		ToolChoice:        impl.OptToolChoice(opt),
 		ParallelToolCalls: optParallelToolCalls(opt),
 		User:              optUser(opt),
 		Messages:          messages,

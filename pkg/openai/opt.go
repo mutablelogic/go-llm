@@ -78,27 +78,6 @@ func WithLogitBias(token uint64, bias int64) llm.Opt {
 	}
 }
 
-// Whether to return log probabilities of the output tokens or not.
-func WithLogProbs() llm.Opt {
-	return func(o *llm.Opts) error {
-		o.Set("logprobs", true)
-		return nil
-	}
-}
-
-// An integer between 0 and 20 specifying the number of most likely tokens
-// to return at each token position, each with an associated log probability.
-func WithTopLogProbs(v uint64) llm.Opt {
-	return func(o *llm.Opts) error {
-		if v > 20 {
-			return llm.ErrBadParameter.With("top_logprobs")
-		}
-		o.Set("logprobs", true)
-		o.Set("top_logprobs", v)
-		return nil
-	}
-}
-
 // Output types that you would like the model to generate for this request.
 // Supported values are: "text", "audio"
 func WithModalities(v ...string) llm.Opt {
@@ -243,18 +222,6 @@ func optLogitBias(opts *llm.Opts) map[uint64]int64 {
 	return nil
 }
 
-func optLogProbs(opts *llm.Opts) bool {
-	return opts.GetBool("logprobs")
-}
-
-func optTopLogProbs(opts *llm.Opts) uint64 {
-	return opts.GetUint64("top_logprobs")
-}
-
-func optMaxTokens(opts *llm.Opts) uint64 {
-	return opts.GetUint64("max_tokens")
-}
-
 func optNumCompletions(opts *llm.Opts) uint64 {
 	return opts.GetUint64("num_completions")
 }
@@ -286,18 +253,6 @@ func optAudio(opts *llm.Opts) *Audio {
 	return nil
 }
 
-func optPresencePenalty(opts *llm.Opts) float64 {
-	return opts.GetFloat64("presence_penalty")
-}
-
-func optResponseFormat(opts *llm.Opts) *Format {
-	if format := NewFormat(optFormat(opts)); format != nil {
-		return format
-	} else {
-		return nil
-	}
-}
-
 func optSeed(opts *llm.Opts) uint64 {
 	return opts.GetUint64("seed")
 }
@@ -306,65 +261,22 @@ func optServiceTier(opts *llm.Opts) string {
 	return opts.GetString("service_tier")
 }
 
-func optStreamOptions(opts *llm.Opts) *StreamOptions {
-	if opts.Has("stream_options_include_usage") {
-		return NewStreamOptions(opts.GetBool("stream_options_include_usage"))
-	} else {
-		return nil
-	}
-}
-
-func optStream(opts *llm.Opts) bool {
-	return opts.StreamFn() != nil
-}
-
-func optTemperature(opts *llm.Opts) float64 {
-	return opts.GetFloat64("temperature")
-}
-
-func optTopP(opts *llm.Opts) float64 {
-	return opts.GetFloat64("top_p")
-}
-
-func optStopSequences(opts *llm.Opts) []string {
-	if opts.Has("stop") {
-		if stop, ok := opts.Get("stop").([]string); ok {
-			return stop
-		}
-	}
-	return nil
-}
-
-func optTools(agent llm.Agent, opts *llm.Opts) []llm.Tool {
-	toolkit := opts.ToolKit()
-	if toolkit == nil {
-		return nil
-	}
-	return toolkit.Tools(agent)
-}
-
-func optToolChoice(opts *llm.Opts) any {
-	choices, ok := opts.Get("tool_choice").([]string)
-	if !ok || len(choices) == 0 {
-		return nil
-	}
-
-	// We only support one choice
-	choice := strings.TrimSpace(strings.ToLower(choices[0]))
-	switch choice {
-	case "auto", "none", "required":
-		return choice
-	case "":
-		return nil
-	default:
-		return NewToolChoice(choice)
-	}
-}
-
 func optParallelToolCalls(opts *llm.Opts) *bool {
 	if opts.Has("parallel_tool_calls") {
 		v := opts.GetBool("parallel_tool_calls")
 		return &v
 	}
 	return nil
+}
+
+func optQuality(opt *llm.Opts) string {
+	return opt.GetString("quality")
+}
+
+func optSize(opt *llm.Opts) string {
+	return opt.GetString("size")
+}
+
+func optStyle(opt *llm.Opts) string {
+	return opt.GetString("style")
 }
