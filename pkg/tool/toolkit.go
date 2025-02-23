@@ -36,8 +36,8 @@ func NewToolKit() *ToolKit {
 func (kit *ToolKit) Tools(agent llm.Agent) []llm.Tool {
 	result := make([]llm.Tool, 0, len(kit.functions))
 	for _, t := range kit.functions {
-		switch agent.Name() {
-		case "anthropic":
+		switch {
+		case agent != nil && agent.Name() == "anthropic":
 			t.Parameters = nil
 			result = append(result, t)
 		default:

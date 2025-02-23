@@ -1,9 +1,9 @@
 package impl
 
 import (
-	// Packages
 	"strings"
 
+	// Packages
 	"github.com/mutablelogic/go-llm"
 )
 
@@ -112,6 +112,13 @@ func OptTools(agent llm.Agent, opts *llm.Opts) []llm.Tool {
 }
 
 func OptToolChoice(opts *llm.Opts) any {
+	// nil if no toolkit is defined
+	toolkit := opts.ToolKit()
+	if toolkit == nil {
+		return nil
+	}
+
+	// Get the tool choice
 	choices, ok := opts.Get("tool_choice").([]string)
 	if !ok || len(choices) == 0 {
 		return nil
