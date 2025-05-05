@@ -32,16 +32,23 @@ func NewToolKit() *ToolKit {
 ////////////////////////////////////////////////////////////////////////////////
 // PUBLIC METHODS
 
-// Return all registered tools for a specific agent
-func (kit *ToolKit) Tools(agent llm.Agent) []llm.Tool {
+// Return all registered tools for a specific agent. Set agent to nil
+// for standard tool format.
+func (kit *ToolKit) Tools(agentName string) []llm.Tool {
 	result := make([]llm.Tool, 0, len(kit.functions))
 	for _, t := range kit.functions {
 		switch {
-		case agent != nil && agent.Name() == "anthropic":
+		case agentName == "mcp":
 			t.Parameters = nil
+			t.InputSchema = nil
+			result = append(result, t)
+		case agentName == "anthropic":
+			t.Parameters = nil
+			t.InputSchema2 = nil
 			result = append(result, t)
 		default:
 			t.InputSchema = nil
+			t.InputSchema2 = nil
 			result = append(result, ToolFunction{
 				Type: "function",
 				Tool: t,
@@ -96,8 +103,10 @@ func (kit *ToolKit) Register(v llm.Tool) error {
 		}
 	}
 
+	// The three cases of parameters (doh!) are "input_schema", "inputSchema" and "parameters"
 	t.Parameters = &parameters
 	t.InputSchema = &parameters
+	t.InputSchema2 = &parameters
 
 	// Add to toolkit
 	kit.functions[name] = t

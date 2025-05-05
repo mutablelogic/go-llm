@@ -54,7 +54,7 @@ func optTools(agent *Client, opts *llm.Opts) []llm.Tool {
 	if toolkit == nil {
 		return nil
 	}
-	return toolkit.Tools(agent)
+	return toolkit.Tools(agent.Name())
 }
 
 func optToolChoice(opts *llm.Opts) any {

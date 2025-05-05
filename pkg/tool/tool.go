@@ -24,13 +24,14 @@ type ToolMeta struct {
 	Description string `json:"description"`
 
 	// Variation on how schema is output
-	Parameters  *ToolParameters `json:"parameters,omitempty"`
-	InputSchema *ToolParameters `json:"input_schema,omitempty"`
+	Parameters   *ToolParameters `json:"parameters,omitempty"`
+	InputSchema  *ToolParameters `json:"input_schema,omitempty"`
+	InputSchema2 *ToolParameters `json:"inputSchema,omitempty"`
 }
 
 type ToolParameters struct {
 	Type       string                   `json:"type,omitempty"`
-	Required   []string                 `json:"required"`
+	Required   []string                 `json:"required,omitempty"`
 	Properties map[string]ToolParameter `json:"properties"`
 }
 

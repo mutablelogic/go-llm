@@ -85,7 +85,7 @@ func optTools(agent *Client, opts *llm.Opts) []llm.Tool {
 	if toolkit == nil {
 		return nil
 	}
-	return toolkit.Tools(agent)
+	return toolkit.Tools(agent.Name())
 }
 
 func optFormat(opts *llm.Opts) string {
@@ -154,7 +154,7 @@ func optStream(agent *Client, opts *llm.Opts) *bool {
 	// Streaming only if there is a stream function and no tools
 	toolkit := opts.ToolKit()
 	if toolkit != nil {
-		if tools := toolkit.Tools(agent); len(tools) > 0 {
+		if tools := toolkit.Tools(agent.Name()); len(tools) > 0 {
 			stream = false
 		}
 	}

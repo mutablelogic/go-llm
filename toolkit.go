@@ -12,8 +12,9 @@ type ToolKit interface {
 	// Register a tool in the toolkit
 	Register(Tool) error
 
-	// Return all the tools
-	Tools(Agent) []Tool
+	// Return all the tools, with the name of the agent
+	// for the flavour of JSON response
+	Tools(string) []Tool
 
 	// Run the tool calls in parallel and return the results
 	Run(context.Context, ...ToolCall) ([]ToolResult, error)

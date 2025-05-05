@@ -108,7 +108,7 @@ func OptTools(agent llm.Agent, opts *llm.Opts) []llm.Tool {
 	if toolkit == nil {
 		return nil
 	}
-	return toolkit.Tools(agent)
+	return toolkit.Tools(agent.Name())
 }
 
 func OptToolChoice(opts *llm.Opts) any {
