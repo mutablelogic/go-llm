@@ -15,7 +15,9 @@ import (
 
 	// Packages
 	"github.com/mutablelogic/go-llm"
+	"github.com/mutablelogic/go-llm/pkg/internal/impl"
 	"github.com/mutablelogic/go-llm/pkg/mcp/schema"
+	"github.com/mutablelogic/go-llm/pkg/tool"
 )
 
 ///////////////////////////////////////////////////////////////////////
@@ -31,7 +33,7 @@ type Server struct {
 	toolkit  llm.ToolKit        // ToolKit for the server
 }
 
-type Handler func(context.Context, any) (any, error)
+type Handler func(context.Context, uint64, json.RawMessage) (any, error)
 
 ///////////////////////////////////////////////////////////////////////
 // LIFECYCLE
@@ -47,7 +49,7 @@ func New(name, version string, opt ...Opt) (*Server, error) {
 	}
 
 	// Set up default handlers - initialize, ping
-	self.HandlerFunc(schema.MessageTypeInitialize, func(ctx context.Context, request any) (any, error) {
+	self.HandlerFunc(schema.MessageTypeInitialize, func(ctx context.Context, _ uint64, _ json.RawMessage) (any, error) {
 		response := new(schema.ResponseInitialize)
 		response.Version = schema.ProtocolVersion
 		response.ServerInfo.Name = name
@@ -64,36 +66,58 @@ func New(name, version string, opt ...Opt) (*Server, error) {
 		}
 		return response, nil
 	})
-	self.HandlerFunc(schema.MessageTypePing, func(ctx context.Context, request any) (any, error) {
+	self.HandlerFunc(schema.MessageTypePing, func(ctx context.Context, _ uint64, _ json.RawMessage) (any, error) {
 		return map[string]any{}, nil
 	})
-	self.HandlerFunc(schema.NotificationTypeInitialize, func(ctx context.Context, request any) (any, error) {
+	self.HandlerFunc(schema.NotificationTypeInitialize, func(ctx context.Context, _ uint64, _ json.RawMessage) (any, error) {
 		self.Initialised = true
 		return nil, nil
 	})
 
 	// Set up default handlers - list resources, tools, prompts
-	self.HandlerFunc(schema.MessageTypeListPrompts, func(ctx context.Context, request any) (any, error) {
+	self.HandlerFunc(schema.MessageTypeListPrompts, func(ctx context.Context, _ uint64, _ json.RawMessage) (any, error) {
 		response := new(schema.ResponseListPrompts)
 		response.Prompts = []llm.Tool{}
 		return response, nil
 	})
-	self.HandlerFunc(schema.MessageTypeListResources, func(ctx context.Context, request any) (any, error) {
+	self.HandlerFunc(schema.MessageTypeListResources, func(ctx context.Context, _ uint64, _ json.RawMessage) (any, error) {
 		response := new(schema.ResponseListResources)
 		response.Resources = []llm.Tool{}
 		return response, nil
 	})
-	self.HandlerFunc(schema.MessageTypeListTools, func(ctx context.Context, request any) (any, error) {
+	self.HandlerFunc(schema.MessageTypeListTools, func(ctx context.Context, _ uint64, _ json.RawMessage) (any, error) {
 		response := new(schema.ResponseListTools)
 		response.Tools = self.toolkit.Tools("mcp")
 		return response, nil
 	})
-	self.HandlerFunc(schema.MessageTypeCallTool, func(ctx context.Context, request any) (any, error) {
-		// Process a tool call
-		fmt.Println(request)
-		response := new(schema.ResponseListTools)
-		response.Tools = self.toolkit.Tools("mcp")
-		return response, nil
+
+	// Process a tool call request
+	self.HandlerFunc(schema.MessageTypeCallTool, func(ctx context.Context, id uint64, payload json.RawMessage) (any, error) {
+		var req schema.RequestToolCall
+		if err := json.Unmarshal(payload, &req); err != nil {
+			return nil, err
+		}
+
+		// Run the tool(s)
+		results, err := self.toolkit.Run(ctx, tool.NewCall(fmt.Sprint(id), req.Name, nil))
+		if err != nil {
+			return nil, err
+		} else if len(results) == 0 {
+			return nil, schema.NewError(schema.ErrorInternalError, "no results returned")
+		}
+
+		// Append results to the response
+		var resp schema.ResponseToolCall
+		for _, result := range results {
+			if content, err := impl.FromValue(result.Value()); err != nil {
+				return nil, err
+			} else {
+				resp.Content = append(resp.Content, content)
+			}
+		}
+
+		// Return the results
+		return resp, nil
 	})
 
 	// Return success
@@ -197,10 +221,10 @@ func (server *Server) processRequest(ctx context.Context, payload string) ([]byt
 	// Encode the response
 	response := schema.Response{Version: "2.0", ID: request.ID}
 	if result, err := server.call(ctx, &request); err != nil {
-		target := new(schema.Error)
+		var target schema.Error
 		if errors.As(err, &target) {
 			// If the error is already a schema.Error, use it
-			response.Err = target
+			response.Err = &target
 		} else {
 			// Use a generic error
 			response.Err = schema.NewError(0, err.Error())
@@ -211,6 +235,9 @@ func (server *Server) processRequest(ctx context.Context, payload string) ([]byt
 	} else {
 		response.Result = result
 	}
+
+	data, _ := json.MarshalIndent(response, "", "  ")
+	fmt.Fprintln(os.Stderr, "Response:", string(data))
 
 	// Return the response
 	return json.Marshal(response)
@@ -227,5 +254,5 @@ func (server *Server) call(ctx context.Context, request *schema.Request) (any, e
 	}
 
 	// Call the handler function and return the result
-	return fn(ctx, request.Payload)
+	return fn(ctx, request.ID, request.Payload)
 }

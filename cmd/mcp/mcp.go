@@ -12,13 +12,18 @@ import (
 	"github.com/mutablelogic/go-llm/pkg/tool"
 )
 
+const (
+	ServerName    = "myserver"
+	ServerVersion = "0.1.0"
+)
+
 func main() {
 	// Create tools
 	toolkit := tool.NewToolKit()
-	toolkit.Register(Weather{})
+	toolkit.Register(&Weather{})
 
 	// Create a new MCP server instance
-	server, err := server.New("myserver", "0.1.0", server.WithToolKit(toolkit))
+	server, err := server.New(ServerName, ServerVersion, server.WithToolKit(toolkit))
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "Error: ", err)
 		os.Exit(-1)
@@ -29,6 +34,7 @@ func main() {
 	defer cancel()
 
 	// Run the server
+	fmt.Fprintln(os.Stderr, "Starting ", ServerName, ServerVersion)
 	if err := server.RunStdio(ctx, os.Stdin, os.Stdout); err != nil {
 		fmt.Fprintln(os.Stderr, "Error: ", err)
 		os.Exit(-1)

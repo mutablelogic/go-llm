@@ -3,6 +3,8 @@ package tool
 import (
 	"context"
 	"errors"
+	"fmt"
+	"os"
 	"sync"
 
 	// Packages
@@ -70,13 +72,10 @@ func (kit *ToolKit) Register(v llm.Tool) error {
 	}
 
 	// Set the tool
-	t := tool{
-		Tool: v,
-		ToolMeta: ToolMeta{
-			Name:        name,
-			Description: v.Description(),
-		},
-	}
+	var t tool
+	t.Tool = v
+	t.ToolMeta.Name = name
+	t.ToolMeta.Description = v.Description()
 
 	// Determine parameters
 	toolparams, err := paramsFor(nil, v)
@@ -119,6 +118,7 @@ func (kit *ToolKit) Register(v llm.Tool) error {
 func (kit *ToolKit) Run(ctx context.Context, calls ...llm.ToolCall) ([]llm.ToolResult, error) {
 	var wg sync.WaitGroup
 	var errs error
+	var lock sync.Mutex
 	var toolresult []llm.ToolResult
 
 	// TODO: Lock each tool so it can only be run in series (although different
@@ -127,6 +127,8 @@ func (kit *ToolKit) Run(ctx context.Context, calls ...llm.ToolCall) ([]llm.ToolR
 		wg.Add(1)
 		go func(call llm.ToolCall) {
 			defer wg.Done()
+
+			fmt.Fprintln(os.Stderr, "Calling", call)
 
 			// Get the tool and run it
 			name := call.Name()
@@ -137,13 +139,17 @@ func (kit *ToolKit) Run(ctx context.Context, calls ...llm.ToolCall) ([]llm.ToolR
 			} else if out, err := kit.functions[name].Tool.Run(ctx); err != nil {
 				errs = errors.Join(errs, err)
 			} else {
+				lock.Lock()
 				toolresult = append(toolresult, NewResult(call, out))
+				lock.Unlock()
 			}
 		}(call)
 	}
 
 	// Wait for all calls to complete
 	wg.Wait()
+
+	fmt.Fprintln(os.Stderr, "All tools returned", len(toolresult), errs)
 
 	// Return any errors
 	return toolresult, errs

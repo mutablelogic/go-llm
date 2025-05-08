@@ -10,9 +10,10 @@ import (
 // TYPES
 
 type CallMeta struct {
-	Name  string         `json:"name"`
-	Id    string         `json:"id,omitempty"`
-	Input map[string]any `json:"input,omitempty"`
+	Name   string         `json:"name"`
+	Id     string         `json:"id,omitempty"`
+	Input  map[string]any `json:"input,omitempty"`
+	Params map[string]any `json:"params,omitempty"`
 }
 
 type call struct {

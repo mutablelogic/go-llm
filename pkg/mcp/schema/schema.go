@@ -1,19 +1,21 @@
 package schema
 
 import (
+	"encoding/json"
 	"fmt"
 
 	// Packages
 	llm "github.com/mutablelogic/go-llm"
+	"github.com/mutablelogic/go-llm/pkg/internal/impl"
 )
 
 ////////////////////////////////////////////////////////////////////////////
 // TYPES
 
 type Request struct {
-	Method  string `json:"method"`
-	ID      uint64 `json:"id"`
-	Payload any    `json:"params,omitempty"`
+	Method  string          `json:"method"`
+	ID      uint64          `json:"id"`
+	Payload json.RawMessage `json:"params,omitempty"`
 }
 
 type Response struct {
@@ -46,6 +48,11 @@ type RequestList struct {
 	Cursor string `json:"cursor,omitempty"`
 }
 
+type RequestToolCall struct {
+	Name      string         `json:"name"`
+	Arguments map[string]any `json:"arguments,omitempty"`
+}
+
 type ResponseListTools struct {
 	Tools      []llm.Tool `json:"tools"`
 	NextCursor string     `json:"nextCursor,omitempty"`
@@ -61,20 +68,33 @@ type ResponseListResources struct {
 	NextCursor string     `json:"nextCursor,omitempty"`
 }
 
+type ResponseToolCall struct {
+	Content []*impl.Content `json:"content"`
+	Error   bool            `json:"isError,omitempty"`
+}
+
 ////////////////////////////////////////////////////////////////////////////
 // GLOBALS
 
 const (
-	RPCVersion                 = "2.0"
-	ProtocolVersion            = "2024-11-05"
-	MessageTypeInitialize      = "initialize"
-	MessageTypePing            = "ping"
-	MessageTypeListTools       = "tools/list"
-	MessageTypeCallTool        = "tools/call"
-	MessageTypeListResources   = "resources/list"
-	MessageTypeListPrompts     = "prompts/list"
+	RPCVersion      = "2.0"
+	ProtocolVersion = "2024-11-05"
+
+	// Message types
+	MessageTypeInitialize    = "initialize"
+	MessageTypePing          = "ping"
+	MessageTypeListTools     = "tools/list"
+	MessageTypeCallTool      = "tools/call"
+	MessageTypeListResources = "resources/list"
+	MessageTypeListPrompts   = "prompts/list"
+
+	// Notification types
 	NotificationTypeInitialize = "notifications/initialized"
+
+	// Error codes
 	ErrorCodeMethodNotFound    = -32601
+	ErrorCodeInvalidParameters = -32602
+	ErrorInternalError         = -32603
 )
 
 ////////////////////////////////////////////////////////////////////////////
@@ -94,10 +114,7 @@ func NewError(code int, message string, data ...any) *Error {
 ////////////////////////////////////////////////////////////////////////////
 // PUBLIC METHODS
 
-func (e *Error) Error() string {
-	if e == nil {
-		return ""
-	}
+func (e Error) Error() string {
 	if e.Data != nil {
 		return fmt.Sprintf("%d: %s (%v)", e.Code, e.Message, e.Data)
 	}
