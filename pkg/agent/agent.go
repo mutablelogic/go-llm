@@ -61,7 +61,7 @@ func (a *Agent) ToolNames() []string {
 		return nil
 	}
 	var result []string
-	for _, t := range a.ToolKit().Tools(a) {
+	for _, t := range a.ToolKit().Tools(a.Name()) {
 		result = append(result, t.Name())
 	}
 	return result

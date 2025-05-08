@@ -193,7 +193,7 @@ func (model *model) Chat(ctx context.Context, completions []llm.Completion, opts
 	}
 
 	// Streaming
-	if optStream(opt) {
+	if impl.OptStream(opt) {
 		reqopts = append(reqopts, client.OptTextStreamCallback(func(evt client.TextStreamEvent) error {
 			if err := streamEvent(&response, evt); err != nil {
 				return err

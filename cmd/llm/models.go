@@ -33,7 +33,7 @@ type DownloadModelCmd struct {
 // PUBLIC METHODS
 
 func (cmd *ListToolsCmd) Run(globals *Globals) error {
-	tools := globals.toolkit.Tools(globals.agent)
+	tools := globals.toolkit.Tools(globals.agent.Name())
 	fmt.Println(tools)
 	return nil
 }

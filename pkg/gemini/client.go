@@ -5,7 +5,6 @@ https://ai.google.dev/gemini-api/docs
 package gemini
 
 import (
-
 	// Packages
 	client "github.com/mutablelogic/go-client"
 	llm "github.com/mutablelogic/go-llm"
