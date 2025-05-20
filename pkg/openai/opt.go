@@ -246,10 +246,6 @@ func optAudio(opts *llm.Opts) *Audio {
 	if ok {
 		return v
 	}
-	if v == nil {
-		opts.Set("audio", NewAudio("ash", "mp3"))
-		return optAudio(opts)
-	}
 	return nil
 }
 
