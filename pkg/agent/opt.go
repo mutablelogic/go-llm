@@ -61,7 +61,7 @@ func WithOpenAI(key string, opts ...client.ClientOpt) llm.Opt {
 
 func WithGemini(key string, opts ...client.ClientOpt) llm.Opt {
 	return func(o *llm.Opts) error {
-		client, err := gemini.New(key, opts...)
+		client, err := gemini.New(key)
 		if err != nil {
 			return err
 		} else {

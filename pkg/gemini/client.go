@@ -6,15 +6,17 @@ package gemini
 
 import (
 	// Packages
-	client "github.com/mutablelogic/go-client"
+	"context"
+
 	llm "github.com/mutablelogic/go-llm"
+	genai "google.golang.org/genai"
 )
 
 ///////////////////////////////////////////////////////////////////////////////
 // TYPES
 
 type Client struct {
-	*client.Client
+	*genai.Client
 	cache map[string]llm.Model
 }
 
@@ -24,7 +26,6 @@ var _ llm.Agent = (*Client)(nil)
 // GLOBALS
 
 const (
-	endPoint    = "https://generativelanguage.googleapis.com/v1beta"
 	defaultName = "gemini"
 )
 
@@ -32,10 +33,11 @@ const (
 // LIFECYCLE
 
 // Create a new client
-func New(ApiKey string, opts ...client.ClientOpt) (*Client, error) {
-	// Create client
-	opts = append(opts, client.OptEndpoint(endPointWithKey(endPoint, ApiKey)))
-	client, err := client.New(opts...)
+func New(ApiKey string) (*Client, error) {
+	client, err := genai.NewClient(context.Background(), &genai.ClientConfig{
+		APIKey:  ApiKey,
+		Backend: genai.BackendGeminiAPI,
+	})
 	if err != nil {
 		return nil, err
 	}
@@ -50,11 +52,4 @@ func New(ApiKey string, opts ...client.ClientOpt) (*Client, error) {
 // Return the name of the agent
 func (Client) Name() string {
 	return defaultName
-}
-
-///////////////////////////////////////////////////////////////////////////////
-// PRIVATE METHODS
-
-func endPointWithKey(endpoint, key string) string {
-	return endpoint + "?key=" + key
 }

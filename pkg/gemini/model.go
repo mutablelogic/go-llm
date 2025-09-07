@@ -5,8 +5,9 @@ import (
 	"encoding/json"
 
 	// Packages
-	"github.com/mutablelogic/go-client"
+
 	"github.com/mutablelogic/go-llm"
+	"google.golang.org/genai"
 )
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -14,23 +15,10 @@ import (
 
 type model struct {
 	*Client `json:"-"`
-	meta    Model
+	meta    *genai.Model
 }
 
 var _ llm.Model = (*model)(nil)
-
-type Model struct {
-	Name                       string   `json:"name"`
-	Version                    string   `json:"version"`
-	DisplayName                string   `json:"displayName"`
-	Description                string   `json:"description"`
-	InputTokenLimit            uint64   `json:"inputTokenLimit"`
-	OutputTokenLimit           uint64   `json:"outputTokenLimit"`
-	SupportedGenerationMethods []string `json:"supportedGenerationMethods"`
-	Temperature                float64  `json:"temperature"`
-	TopP                       float64  `json:"topP"`
-	TopK                       uint64   `json:"topK"`
-}
 
 ///////////////////////////////////////////////////////////////////////////////
 // STRINGIFY
@@ -69,12 +57,8 @@ func (model model) Description() string {
 func (gemini *Client) Models(ctx context.Context) ([]llm.Model, error) {
 	// Cache models
 	if gemini.cache == nil {
-		models, err := gemini.ListModels(ctx)
-		if err != nil {
-			return nil, err
-		}
-		gemini.cache = make(map[string]llm.Model, len(models))
-		for _, m := range models {
+		gemini.cache = make(map[string]llm.Model)
+		for m := range gemini.Client.Models.All(ctx) {
 			gemini.cache[m.Name] = &model{gemini, m}
 		}
 	}
@@ -99,26 +83,9 @@ func (gemini *Client) Model(ctx context.Context, name string) llm.Model {
 }
 
 ///////////////////////////////////////////////////////////////////////////////
-// PUBLIC METHODS - API
-
-// ListModels returns all the models
-func (c *Client) ListModels(ctx context.Context) ([]Model, error) {
-	// Response
-	var response struct {
-		Data []Model `json:"models"`
-	}
-	if err := c.DoWithContext(ctx, nil, &response, client.OptPath("models")); err != nil {
-		return nil, err
-	}
-
-	// Return success
-	return response.Data, nil
-}
-
-///////////////////////////////////////////////////////////////////////////////
 // PUBLIC METHODS - MODEL
 
-// Return am empty session context object for the model,
+// Return an empty session context object for the model,
 // setting session options
 func (m model) Context(...llm.Opt) llm.Context {
 	return nil
@@ -126,11 +93,6 @@ func (m model) Context(...llm.Opt) llm.Context {
 
 // Create a completion from a text prompt
 func (m model) Completion(context.Context, string, ...llm.Opt) (llm.Completion, error) {
-	return nil, llm.ErrNotImplemented
-}
-
-// Create a completion from a chat session
-func (m model) Chat(context.Context, []llm.Completion, ...llm.Opt) (llm.Completion, error) {
 	return nil, llm.ErrNotImplemented
 }
 
