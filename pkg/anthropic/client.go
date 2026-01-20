@@ -15,6 +15,7 @@ import (
 
 type Client struct {
 	*client.Client
+	apiKey string
 }
 
 var _ llm.Client = (*Client)(nil)
@@ -43,7 +44,7 @@ func New(ApiKey string, opts ...client.ClientOpt) (*Client, error) {
 	}
 
 	// Return the client
-	return &Client{client}, nil
+	return &Client{client, ApiKey}, nil
 }
 
 ///////////////////////////////////////////////////////////////////////////////

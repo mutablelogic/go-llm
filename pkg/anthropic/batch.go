@@ -1,7 +1,10 @@
 package anthropic
 
 import (
+	"bufio"
 	"context"
+	"encoding/json"
+	"io"
 	"net/http"
 	"time"
 
@@ -51,6 +54,25 @@ type BatchList struct {
 	HasMore bool    `json:"has_more"`
 	FirstId string  `json:"first_id"`
 	LastId  string  `json:"last_id"`
+}
+
+// BatchResult represents a single result from a batch
+type BatchResult struct {
+	CustomId string             `json:"custom_id"`
+	Result   BatchResultContent `json:"result"`
+}
+
+// BatchResultContent represents the result content which varies by type
+type BatchResultContent struct {
+	Type    string            `json:"type"` // "succeeded", "errored", "canceled", "expired"
+	Message *messagesResponse `json:"message,omitempty"`
+	Error   *BatchError       `json:"error,omitempty"`
+}
+
+// BatchError represents an error in a batch result
+type BatchError struct {
+	Type    string `json:"type"`
+	Message string `json:"message"`
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -127,6 +149,79 @@ func (anthropic *Client) CancelBatch(ctx context.Context, id string) (*Batch, er
 	return &response, nil
 }
 
+// GetBatchResults retrieves the results of a completed batch as a slice of BatchResult.
+// The batch must be in "ended" status for results to be available.
+func (anthropic *Client) GetBatchResults(ctx context.Context, id string) ([]BatchResult, error) {
+	// Get the batch first to check status and get results URL
+	batch, err := anthropic.GetBatch(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+
+	// Check if batch has ended
+	if batch.Status != "ended" {
+		return nil, llm.ErrConflict.Withf("batch is not ended, current status: %s", batch.Status)
+	}
+
+	// Check if results URL is available
+	if batch.ResultsUrl == nil || *batch.ResultsUrl == "" {
+		return nil, llm.ErrNotFound.With("batch results URL not available")
+	}
+
+	// Fetch results from the results URL
+	return anthropic.fetchBatchResults(ctx, *batch.ResultsUrl)
+}
+
+// fetchBatchResults fetches and parses JSONL results from a URL
+func (anthropic *Client) fetchBatchResults(ctx context.Context, resultsUrl string) ([]BatchResult, error) {
+	// Create HTTP request
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, resultsUrl, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	// Add headers
+	req.Header.Set("anthropic-version", defaultVersion)
+	req.Header.Set("x-api-key", anthropic.apiKey)
+
+	// Execute request using standard http client
+	httpClient := &http.Client{}
+	resp, err := httpClient.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	// Check status
+	if resp.StatusCode != http.StatusOK {
+		return nil, llm.ErrInternalServerError.Withf("unexpected status: %s", resp.Status)
+	}
+
+	// Parse JSONL response
+	return parseJSONL(resp.Body)
+}
+
+// parseJSONL parses a JSONL stream into a slice of BatchResult
+func parseJSONL(r io.Reader) ([]BatchResult, error) {
+	var results []BatchResult
+	scanner := bufio.NewScanner(r)
+	for scanner.Scan() {
+		line := scanner.Bytes()
+		if len(line) == 0 {
+			continue
+		}
+		var result BatchResult
+		if err := json.Unmarshal(line, &result); err != nil {
+			return nil, err
+		}
+		results = append(results, result)
+	}
+	if err := scanner.Err(); err != nil {
+		return nil, err
+	}
+	return results, nil
+}
+
 // Delete a batch by ID
 func (anthropic *Client) DeleteBatch(ctx context.Context, id string) error {
 	var response struct {
@@ -153,5 +248,9 @@ func (b Batch) String() string {
 }
 
 func (b BatchList) String() string {
+	return schema.Stringify(b)
+}
+
+func (b BatchResult) String() string {
 	return schema.Stringify(b)
 }

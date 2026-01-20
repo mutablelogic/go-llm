@@ -151,3 +151,36 @@ func Test_batch_007(t *testing.T) {
 
 	t.Log("Batches:", batches)
 }
+
+func Test_batch_008(t *testing.T) {
+	require := require.New(t)
+	require.NotNil(client)
+
+	// List batches to find one that has ended
+	batches, err := client.ListBatches(context.TODO())
+	require.NoError(err)
+	require.NotNil(batches)
+
+	// Find an ended batch with results
+	var endedBatchId string
+	for _, b := range batches.Data {
+		if b.Status == "ended" && b.ResultsUrl != nil {
+			endedBatchId = b.Id
+			break
+		}
+	}
+
+	if endedBatchId == "" {
+		t.Skip("No ended batch with results found")
+	}
+
+	// Get the batch results
+	results, err := client.GetBatchResults(context.TODO(), endedBatchId)
+	require.NoError(err)
+	require.NotNil(results)
+
+	t.Logf("Found %d results for batch %s", len(results), endedBatchId)
+	for i, r := range results {
+		t.Logf("Result %d: %s", i, r)
+	}
+}
