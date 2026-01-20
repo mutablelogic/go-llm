@@ -7,8 +7,8 @@ import (
 
 	// Packages
 	client "github.com/mutablelogic/go-client"
-	"github.com/mutablelogic/go-llm"
-	"github.com/mutablelogic/go-llm/pkg/opt"
+	llm "github.com/mutablelogic/go-llm"
+	opt "github.com/mutablelogic/go-llm/pkg/opt"
 	schema "github.com/mutablelogic/go-llm/pkg/schema"
 )
 
@@ -28,6 +28,7 @@ type batchParams struct {
 
 type Batch struct {
 	Id                string     `json:"id"`
+	Type              string     `json:"type,omitempty"`    // "message_batch"
 	Status            string     `json:"processing_status"` // "in_progress" or "canceling" or "ended"
 	CreatedAt         time.Time  `json:"created_at"`
 	ArchivedAt        *time.Time `json:"archived_at,omitempty"`
@@ -38,7 +39,7 @@ type Batch struct {
 		Processing uint `json:"processing"`
 		Succeeded  uint `json:"succeeded"`
 		Errored    uint `json:"errored"`
-		Cancelled  uint `json:"cancelled"`
+		Canceled   uint `json:"canceled"`
 		Expired    uint `json:"expired"`
 	} `json:"request_counts"`
 	ResultsUrl *string `json:"results_url,omitempty"`
