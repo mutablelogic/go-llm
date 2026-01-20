@@ -8,7 +8,6 @@ import (
 	// Packages
 	client "github.com/mutablelogic/go-client"
 	llm "github.com/mutablelogic/go-llm"
-	impl "github.com/mutablelogic/go-llm/pkg/internal/impl"
 )
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -16,10 +15,9 @@ import (
 
 type Client struct {
 	*client.Client
-	*impl.ModelCache
 }
 
-var _ llm.Agent = (*Client)(nil)
+var _ llm.Client = (*Client)(nil)
 
 ///////////////////////////////////////////////////////////////////////////////
 // GLOBALS
@@ -45,7 +43,7 @@ func New(ApiKey string, opts ...client.ClientOpt) (*Client, error) {
 	}
 
 	// Return the client
-	return &Client{client, impl.NewModelCache()}, nil
+	return &Client{client}, nil
 }
 
 ///////////////////////////////////////////////////////////////////////////////

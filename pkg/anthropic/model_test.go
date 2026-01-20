@@ -12,11 +12,25 @@ import (
 func Test_models_001(t *testing.T) {
 	assert := assert.New(t)
 
-	response, err := client.ListModels(context.TODO())
+	models, err := client.ListModels(context.TODO())
 	assert.NoError(err)
-	assert.NotEmpty(response)
+	assert.NotEmpty(models)
 
-	data, err := json.MarshalIndent(response, "", "  ")
+	data, err := json.MarshalIndent(models, "", "  ")
+	assert.NoError(err)
+	t.Log(string(data))
+}
+
+func Test_models_002(t *testing.T) {
+	assert := assert.New(t)
+
+	// Get a specific model
+	model, err := client.GetModel(context.TODO(), "claude-sonnet-4-20250514")
+	assert.NoError(err)
+	assert.NotNil(model)
+	assert.Equal("claude-sonnet-4-20250514", model.Name)
+
+	data, err := json.MarshalIndent(model, "", "  ")
 	assert.NoError(err)
 	t.Log(string(data))
 }

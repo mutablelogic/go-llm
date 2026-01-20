@@ -1,13 +1,14 @@
 /*
-ollama implements an API client for ollama
-https://github.com/ollama/ollama/blob/main/docs/api.md
+anthropic implements an API client for anthropic
+https://docs.anthropic.com/en/api/getting-started
 */
-package ollama
+package anthropic
 
 import (
 	// Packages
 	client "github.com/mutablelogic/go-client"
 	llm "github.com/mutablelogic/go-llm"
+	impl "github.com/mutablelogic/go-llm/pkg/internal/impl"
 )
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -15,31 +16,36 @@ import (
 
 type Client struct {
 	*client.Client
+	*impl.ModelCache
 }
 
-var _ llm.Client = (*Client)(nil)
+var _ llm.Agent = (*Client)(nil)
 
 ///////////////////////////////////////////////////////////////////////////////
 // GLOBALS
 
 const (
-	defaultName = "ollama"
+	endPoint       = "https://api.anthropic.com/v1"
+	defaultVersion = "2023-06-01"
+	defaultName    = "anthropic"
 )
 
 ///////////////////////////////////////////////////////////////////////////////
 // LIFECYCLE
 
-// Create a new client, with an ollama endpoint, which should be something like
-// "http://localhost:11434/api"
-func New(endPoint string, opts ...client.ClientOpt) (*Client, error) {
+// Create a new client
+func New(ApiKey string, opts ...client.ClientOpt) (*Client, error) {
 	// Create client
-	client, err := client.New(append(opts, client.OptEndpoint(endPoint))...)
+	opts = append(opts, client.OptEndpoint(endPoint))
+	opts = append(opts, client.OptHeader("x-api-key", ApiKey))
+	opts = append(opts, client.OptHeader("anthropic-version", defaultVersion))
+	client, err := client.New(opts...)
 	if err != nil {
 		return nil, err
 	}
 
 	// Return the client
-	return &Client{client}, nil
+	return &Client{client, impl.NewModelCache()}, nil
 }
 
 ///////////////////////////////////////////////////////////////////////////////

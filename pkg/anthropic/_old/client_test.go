@@ -56,8 +56,3 @@ func Test_client_001(t *testing.T) {
 	assert.NotNil(client)
 	t.Log(client)
 }
-
-func Test_client_002(t *testing.T) {
-	assert := assert.New(t)
-	assert.Equal("anthropic", client.Name())
-}

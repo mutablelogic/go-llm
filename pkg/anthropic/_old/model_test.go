@@ -1,4 +1,4 @@
-package ollama_test
+package anthropic_test
 
 import (
 	"context"
@@ -12,11 +12,11 @@ import (
 func Test_models_001(t *testing.T) {
 	assert := assert.New(t)
 
-	models, err := client.ListModels(context.TODO())
+	response, err := client.ListModels(context.TODO())
 	assert.NoError(err)
-	assert.NotEmpty(models)
+	assert.NotEmpty(response)
 
-	data, err := json.MarshalIndent(models, "", "  ")
+	data, err := json.MarshalIndent(response, "", "  ")
 	assert.NoError(err)
 	t.Log(string(data))
 }
