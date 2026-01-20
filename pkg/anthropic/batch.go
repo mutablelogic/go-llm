@@ -13,21 +13,11 @@ import (
 	llm "github.com/mutablelogic/go-llm"
 	opt "github.com/mutablelogic/go-llm/pkg/opt"
 	schema "github.com/mutablelogic/go-llm/pkg/schema"
+	types "github.com/mutablelogic/go-server/pkg/types"
 )
 
 ///////////////////////////////////////////////////////////////////////////////
 // TYPES
-
-type batchRequest struct {
-	Id     string      `json:"custom_id"`
-	Params batchParams `json:"params,omitempty"`
-}
-
-type batchParams struct {
-	MaxTokens uint            `json:"max_tokens,omitempty"`
-	Model     string          `json:"model"`
-	Messages  *schema.Session `json:"messages,omitempty"`
-}
 
 type Batch struct {
 	Id                string     `json:"id"`
@@ -73,6 +63,20 @@ type BatchResultContent struct {
 type BatchError struct {
 	Type    string `json:"type"`
 	Message string `json:"message"`
+}
+
+// batchResults is a wrapper for batch results that implements Unmarshaler for JSONL
+type batchResults []BatchResult
+
+type batchRequest struct {
+	Id     string      `json:"custom_id"`
+	Params batchParams `json:"params,omitempty"`
+}
+
+type batchParams struct {
+	MaxTokens uint            `json:"max_tokens,omitempty"`
+	Model     string          `json:"model"`
+	Messages  *schema.Session `json:"messages,omitempty"`
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -164,61 +168,16 @@ func (anthropic *Client) GetBatchResults(ctx context.Context, id string) ([]Batc
 	}
 
 	// Check if results URL is available
-	if batch.ResultsUrl == nil || *batch.ResultsUrl == "" {
+	var results batchResults
+	if url := types.PtrString(batch.ResultsUrl); url == "" {
 		return nil, llm.ErrNotFound.With("batch results URL not available")
-	}
-
-	// Fetch results from the results URL
-	return anthropic.fetchBatchResults(ctx, *batch.ResultsUrl)
-}
-
-// fetchBatchResults fetches and parses JSONL results from a URL
-func (anthropic *Client) fetchBatchResults(ctx context.Context, resultsUrl string) ([]BatchResult, error) {
-	// Create HTTP request
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, resultsUrl, nil)
-	if err != nil {
+	} else if err := anthropic.DoWithContext(ctx, client.MethodGet, &results,
+		client.OptReqEndpoint(url),
+	); err != nil {
 		return nil, err
 	}
 
-	// Add headers
-	req.Header.Set("anthropic-version", defaultVersion)
-	req.Header.Set("x-api-key", anthropic.apiKey)
-
-	// Execute request using standard http client
-	httpClient := &http.Client{}
-	resp, err := httpClient.Do(req)
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
-
-	// Check status
-	if resp.StatusCode != http.StatusOK {
-		return nil, llm.ErrInternalServerError.Withf("unexpected status: %s", resp.Status)
-	}
-
-	// Parse JSONL response
-	return parseJSONL(resp.Body)
-}
-
-// parseJSONL parses a JSONL stream into a slice of BatchResult
-func parseJSONL(r io.Reader) ([]BatchResult, error) {
-	var results []BatchResult
-	scanner := bufio.NewScanner(r)
-	for scanner.Scan() {
-		line := scanner.Bytes()
-		if len(line) == 0 {
-			continue
-		}
-		var result BatchResult
-		if err := json.Unmarshal(line, &result); err != nil {
-			return nil, err
-		}
-		results = append(results, result)
-	}
-	if err := scanner.Err(); err != nil {
-		return nil, err
-	}
+	// Return success
 	return results, nil
 }
 
@@ -253,4 +212,24 @@ func (b BatchList) String() string {
 
 func (b BatchResult) String() string {
 	return schema.Stringify(b)
+}
+
+///////////////////////////////////////////////////////////////////////////////
+// PRIVATE METHODS
+
+// Unmarshal implements the Unmarshaler interface for JSONL responses
+func (r *batchResults) Unmarshal(header http.Header, body io.Reader) error {
+	scanner := bufio.NewScanner(body)
+	for scanner.Scan() {
+		line := scanner.Bytes()
+		if len(line) == 0 {
+			continue
+		}
+		var result BatchResult
+		if err := json.Unmarshal(line, &result); err != nil {
+			return err
+		}
+		*r = append(*r, result)
+	}
+	return scanner.Err()
 }
