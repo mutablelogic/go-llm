@@ -2,7 +2,6 @@ package anthropic
 
 import (
 	"context"
-	"encoding/json"
 
 	// Packages
 	client "github.com/mutablelogic/go-client"
@@ -74,9 +73,5 @@ func (anthropic *Client) Messages(ctx context.Context, model string, session *sc
 // STRINGIFY
 
 func (r messagesResponse) String() string {
-	data, err := json.MarshalIndent(r, "", "  ")
-	if err != nil {
-		return err.Error()
-	}
-	return string(data)
+	return schema.Stringify(r)
 }

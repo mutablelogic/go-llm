@@ -44,7 +44,7 @@ func (ollama *Client) Chat(ctx context.Context, model string, session *schema.Se
 	}
 
 	// Append the message to the session
-	session.AppendWithUsage(response.Message, 0, 0)
+	session.Append(response.Message)
 
 	// Return success
 	return &response.Message, nil

@@ -18,5 +18,5 @@ type Model struct {
 // STRINGIFY
 
 func (m Model) String() string {
-	return stringify(m)
+	return Stringify(m)
 }

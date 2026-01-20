@@ -46,5 +46,5 @@ func (s Session) Tokens() uint {
 // STRINGIFY
 
 func (s Session) String() string {
-	return stringify(s)
+	return Stringify(s)
 }

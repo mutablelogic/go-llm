@@ -42,7 +42,7 @@ func StringMessage(role, message string) Message {
 // STRINGIFY
 
 func (m Message) String() string {
-	return stringify(m)
+	return Stringify(m)
 }
 
 ////////////////////////////////////////////////////////////////////////////////
