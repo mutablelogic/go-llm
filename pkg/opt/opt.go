@@ -120,7 +120,16 @@ func WithOpts(options ...Opt) Opt {
 	}
 }
 
-func WithString(key string, value ...string) Opt {
+// SetString sets a string value for key, replacing any existing values
+func SetString(key string, value string) Opt {
+	return func(o *opts) error {
+		o.Values.Set(key, value)
+		return nil
+	}
+}
+
+// AddString appends string values for key, preserving any existing values
+func AddString(key string, value ...string) Opt {
 	return func(o *opts) error {
 		for _, v := range value {
 			o.Values.Add(key, v)
@@ -129,7 +138,21 @@ func WithString(key string, value ...string) Opt {
 	}
 }
 
-func WithUint(key string, value ...uint) Opt {
+// WithString is an alias for AddString for backwards compatibility
+func WithString(key string, value ...string) Opt {
+	return AddString(key, value...)
+}
+
+// SetUint sets a uint value for key, replacing any existing values
+func SetUint(key string, value uint) Opt {
+	return func(o *opts) error {
+		o.Values.Set(key, fmt.Sprintf("%d", value))
+		return nil
+	}
+}
+
+// AddUint appends uint values for key, preserving any existing values
+func AddUint(key string, value ...uint) Opt {
 	return func(o *opts) error {
 		for _, v := range value {
 			o.Values.Add(key, fmt.Sprintf("%d", v))
@@ -138,9 +161,36 @@ func WithUint(key string, value ...uint) Opt {
 	}
 }
 
-func WithFloat64(key string, value float64) Opt {
+// WithUint is an alias for AddUint for backwards compatibility
+func WithUint(key string, value ...uint) Opt {
+	return AddUint(key, value...)
+}
+
+// SetFloat64 sets a float64 value for key, replacing any existing values
+func SetFloat64(key string, value float64) Opt {
+	return func(o *opts) error {
+		o.Values.Set(key, strconv.FormatFloat(value, 'f', -1, 64))
+		return nil
+	}
+}
+
+// AddFloat64 appends a float64 value for key, preserving any existing values
+func AddFloat64(key string, value float64) Opt {
 	return func(o *opts) error {
 		o.Values.Add(key, strconv.FormatFloat(value, 'f', -1, 64))
+		return nil
+	}
+}
+
+// WithFloat64 is an alias for AddFloat64 for backwards compatibility
+func WithFloat64(key string, value float64) Opt {
+	return AddFloat64(key, value)
+}
+
+// SetBool sets a boolean value for key, replacing any existing values
+func SetBool(key string, value bool) Opt {
+	return func(o *opts) error {
+		o.Values.Set(key, strconv.FormatBool(value))
 		return nil
 	}
 }
