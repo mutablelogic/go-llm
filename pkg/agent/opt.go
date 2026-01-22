@@ -1,70 +1,22 @@
 package agent
 
 import (
-	// Packages
-	client "github.com/mutablelogic/go-client"
 	llm "github.com/mutablelogic/go-llm"
-	anthropic "github.com/mutablelogic/go-llm/pkg/anthropic"
-	gemini "github.com/mutablelogic/go-llm/pkg/gemini"
-	mistral "github.com/mutablelogic/go-llm/pkg/mistral"
-	ollama "github.com/mutablelogic/go-llm/pkg/ollama"
-	openai "github.com/mutablelogic/go-llm/pkg/openai"
 )
 
-////////////////////////////////////////////////////////////////////////////////
-// PUBLIC METHODS
+///////////////////////////////////////////////////////////////////////////////
+// TYPES
 
-func WithOllama(endpoint string, opts ...client.ClientOpt) llm.Opt {
-	return func(o *llm.Opts) error {
-		client, err := ollama.New(endpoint, opts...)
-		if err != nil {
-			return err
-		} else {
-			return llm.WithAgent(client)(o)
-		}
-	}
-}
+// Opt is a functional option for configuring an agent
+type Opt func(*agent) error
 
-func WithAnthropic(key string, opts ...client.ClientOpt) llm.Opt {
-	return func(o *llm.Opts) error {
-		client, err := anthropic.New(key, opts...)
-		if err != nil {
-			return err
-		} else {
-			return llm.WithAgent(client)(o)
-		}
-	}
-}
+///////////////////////////////////////////////////////////////////////////////
+// OPTIONS
 
-func WithMistral(key string, opts ...client.ClientOpt) llm.Opt {
-	return func(o *llm.Opts) error {
-		client, err := mistral.New(key, opts...)
-		if err != nil {
-			return err
-		} else {
-			return llm.WithAgent(client)(o)
-		}
-	}
-}
-
-func WithOpenAI(key string, opts ...client.ClientOpt) llm.Opt {
-	return func(o *llm.Opts) error {
-		client, err := openai.New(key, opts...)
-		if err != nil {
-			return err
-		} else {
-			return llm.WithAgent(client)(o)
-		}
-	}
-}
-
-func WithGemini(key string, opts ...client.ClientOpt) llm.Opt {
-	return func(o *llm.Opts) error {
-		client, err := gemini.New(key, opts...)
-		if err != nil {
-			return err
-		} else {
-			return llm.WithAgent(client)(o)
-		}
+// WithClient adds an LLM client to the agent
+func WithClient(client llm.Client) Opt {
+	return func(a *agent) error {
+		a.clients[client.Name()] = client
+		return nil
 	}
 }

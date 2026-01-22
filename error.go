@@ -14,6 +14,9 @@ const (
 	ErrNotImplemented
 	ErrConflict
 	ErrInternalServerError
+	ErrMaxTokens
+	ErrRefusal
+	ErrPauseTurn
 )
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -39,6 +42,12 @@ func (e Err) Error() string {
 		return "conflict"
 	case ErrInternalServerError:
 		return "internal server error"
+	case ErrMaxTokens:
+		return "response truncated: max tokens reached"
+	case ErrRefusal:
+		return "model refused to respond"
+	case ErrPauseTurn:
+		return "model paused, continuation required"
 	}
 	return fmt.Sprintf("error code %d", int(e))
 }

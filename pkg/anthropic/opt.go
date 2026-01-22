@@ -1,125 +1,176 @@
 package anthropic
 
 import (
-	"strings"
+	"encoding/json"
+	"fmt"
 
-	// Packages
-	llm "github.com/mutablelogic/go-llm"
+	"github.com/google/jsonschema-go/jsonschema"
+	opt "github.com/mutablelogic/go-llm/pkg/opt"
 )
 
 ////////////////////////////////////////////////////////////////////////////////
-// TYPES
+// ANTHROPIC OPTIONS
 
-type optmetadata struct {
-	User string `json:"user_id,omitempty"`
+func WithAfterId(id string) opt.Opt {
+	return opt.SetString("after_id", id)
 }
 
-////////////////////////////////////////////////////////////////////////////////
-// PUBLIC METHODS
+func WithBeforeId(id string) opt.Opt {
+	return opt.SetString("before_id", id)
+}
 
-func WithEphemeral() llm.Opt {
-	return func(o *llm.Opts) error {
-		o.Set("ephemeral", true)
-		return nil
+func WithLimit(limit uint) opt.Opt {
+	return opt.SetUint("limit", limit)
+}
+
+// WithUser sets the metadata.user_id for the request
+func WithUser(value string) opt.Opt {
+	return opt.SetString("user_id", value)
+}
+
+// WithServiceTier sets the service tier for the request ("auto" or "standard_only")
+func WithServiceTier(value string) opt.Opt {
+	return opt.SetString("service_tier", value)
+}
+
+// WithStopSequences sets custom stop sequences for the request (at least one required)
+func WithStopSequences(values ...string) opt.Opt {
+	if len(values) == 0 {
+		return opt.Error(fmt.Errorf("at least one stop sequence is required"))
 	}
+	return opt.AddString("stop_sequences", values...)
 }
 
-func WithCitations() llm.Opt {
-	return func(o *llm.Opts) error {
-		o.Set("citations", true)
-		return nil
+// WithStream enables streaming for the request
+func WithStream() opt.Opt {
+	return opt.SetBool("stream", true)
+}
+
+// WithSystemPrompt sets the system prompt for the request
+func WithSystemPrompt(value string) opt.Opt {
+	return opt.SetString("system", value)
+}
+
+// WithCachedSystemPrompt sets the system prompt with caching enabled
+func WithCachedSystemPrompt(value string) opt.Opt {
+	return opt.WithOpts(
+		opt.SetString("system", value),
+		opt.SetString("cache_control", "ephemeral"),
+	)
+}
+
+// WithTemperature sets the temperature for the request (0.0 to 1.0)
+func WithTemperature(value float64) opt.Opt {
+	if value < 0 || value > 1 {
+		return opt.Error(fmt.Errorf("temperature must be between 0.0 and 1.0"))
 	}
+	return opt.SetFloat64("temperature", value)
 }
 
-///////////////////////////////////////////////////////////////////////////////
-// PRIVATE METHODS
-
-func optCitations(opt *llm.Opts) bool {
-	return opt.GetBool("citations")
-}
-
-func optEphemeral(opt *llm.Opts) bool {
-	return opt.GetBool("ephemeral")
-}
-
-func optMetadata(opt *llm.Opts) *optmetadata {
-	if user, ok := opt.Get("user").(string); ok {
-		return &optmetadata{User: user}
+// WithThinking enables extended thinking with the specified token budget (minimum 1024)
+func WithThinking(budgetTokens uint) opt.Opt {
+	if budgetTokens < 1024 {
+		return opt.Error(fmt.Errorf("thinking budget must be at least 1024 tokens"))
 	}
-	return nil
+	return opt.SetUint("thinking_budget", budgetTokens)
 }
 
-func optTools(agent *Client, opts *llm.Opts) []llm.Tool {
-	toolkit := opts.ToolKit()
-	if toolkit == nil {
-		return nil
+// WithMaxTokens sets the maximum number of tokens to generate (minimum 1)
+func WithMaxTokens(value uint) opt.Opt {
+	if value < 1 {
+		return opt.Error(fmt.Errorf("max_tokens must be at least 1"))
 	}
-	return toolkit.Tools(agent)
+	return opt.SetUint("max_tokens", value)
 }
 
-func optToolChoice(opts *llm.Opts) any {
-	choices, ok := opts.Get("tool_choice").([]string)
-	if !ok || len(choices) == 0 {
-		return nil
+// WithTopK sets the top K sampling parameter (minimum 1)
+func WithTopK(value uint) opt.Opt {
+	if value < 1 {
+		return opt.Error(fmt.Errorf("top_k must be at least 1"))
 	}
+	return opt.SetUint("top_k", value)
+}
 
-	// We only support one choice
-	var result struct {
-		Type                   string `json:"type"`
-		Name                   string `json:"name,omitempty"`
-		DisableParallelToolUse bool   `json:"disable_parallel_tool_use,omitempty"`
+// WithTopP sets the nucleus sampling parameter (0.0 to 1.0)
+func WithTopP(value float64) opt.Opt {
+	if value < 0 || value > 1 {
+		return opt.Error(fmt.Errorf("top_p must be between 0.0 and 1.0"))
 	}
-	choice := strings.TrimSpace(strings.ToLower(choices[0]))
-	switch choice {
-	case "":
-		return nil
-	case "auto", "any":
-		result.Type = choice
-	default:
-		result.Type = "tool"
-		result.Name = choice
+	return opt.SetFloat64("top_p", value)
+}
+
+// WithOutputConfig sets the output configuration ("low", "medium", or "high")
+func WithOutputConfig(value string) opt.Opt {
+	if value != "low" && value != "medium" && value != "high" {
+		return opt.Error(fmt.Errorf("output_config must be 'low', 'medium', or 'high'"))
 	}
-	return result
+	return opt.SetString("output_config", value)
 }
 
-func optMaxTokens(model llm.Model, opt *llm.Opts) uint64 {
-	if opt.Has("max_tokens") {
-		return opt.GetUint64("max_tokens")
+// WithJSONOutput sets the output format to JSON with the given schema.
+// Use jsonschema.For[T](nil) to infer a schema from a Go type.
+func WithJSONOutput(schema *jsonschema.Schema) opt.Opt {
+	if schema == nil {
+		return opt.Error(fmt.Errorf("schema is required for JSON output"))
 	}
-	// https://docs.anthropic.com/en/docs/about-claude/models
-	switch {
-	case strings.HasPrefix(model.Name(), "claude-3-5"):
-		return 8192
-	default:
-		return 4096
+	// Serialize the schema to JSON for storage
+	data, err := json.Marshal(schema)
+	if err != nil {
+		return opt.Error(fmt.Errorf("failed to serialize JSON schema: %w", err))
 	}
+	return opt.SetString("json_schema", string(data))
 }
 
-func optStopSequences(opt *llm.Opts) []string {
-	if opt.Has("stop") {
-		if stop, ok := opt.Get("stop").([]string); ok {
-			return stop
-		}
+// WithToolChoiceAuto lets the model decide whether to use tools
+func WithToolChoiceAuto() opt.Opt {
+	return opt.SetString("tool_choice", "auto")
+}
+
+// WithToolChoiceAny forces the model to use one of the available tools
+func WithToolChoiceAny() opt.Opt {
+	return opt.SetString("tool_choice", "any")
+}
+
+// WithToolChoiceNone prevents the model from using any tools
+func WithToolChoiceNone() opt.Opt {
+	return opt.SetString("tool_choice", "none")
+}
+
+// WithToolChoice forces the model to use a specific tool by name
+func WithToolChoice(name string) opt.Opt {
+	if name == "" {
+		return opt.Error(fmt.Errorf("tool name is required"))
 	}
-	return nil
+	return opt.WithOpts(
+		opt.SetString("tool_choice", "tool"),
+		opt.SetString("tool_choice_name", name),
+	)
 }
 
-func optStream(opt *llm.Opts) bool {
-	return opt.StreamFn() != nil
+// toolDefinition is the JSON structure for a tool
+type toolDefinition struct {
+	Name        string             `json:"name"`
+	Description string             `json:"description,omitempty"`
+	InputSchema *jsonschema.Schema `json:"input_schema"`
 }
 
-func optSystemPrompt(opt *llm.Opts) string {
-	return opt.SystemPrompt()
-}
-
-func optTemperature(opt *llm.Opts) float64 {
-	return opt.GetFloat64("temperature")
-}
-
-func optTopK(opt *llm.Opts) uint64 {
-	return opt.GetUint64("top_k")
-}
-
-func optTopP(opt *llm.Opts) float64 {
-	return opt.GetFloat64("top_p")
+// WithTool adds a tool definition to the request.
+// Multiple calls append additional tools.
+func WithTool(name, description string, schema *jsonschema.Schema) opt.Opt {
+	if name == "" {
+		return opt.Error(fmt.Errorf("tool name is required"))
+	}
+	if schema == nil {
+		return opt.Error(fmt.Errorf("tool schema is required"))
+	}
+	tool := toolDefinition{
+		Name:        name,
+		Description: description,
+		InputSchema: schema,
+	}
+	data, err := json.Marshal(tool)
+	if err != nil {
+		return opt.Error(fmt.Errorf("failed to serialize tool: %w", err))
+	}
+	return opt.AddString("tools", string(data))
 }
