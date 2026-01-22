@@ -9,9 +9,9 @@ import "time"
 type Model struct {
 	Name        string
 	Description string
-	Created     time.Time
+	Created     time.Time `json:",omitzero"`
 	OwnedBy     string
-	Aliases     []string
+	Aliases     []string `json:",omitzero"`
 }
 
 ////////////////////////////////////////////////////////////////////////////////

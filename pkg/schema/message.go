@@ -129,6 +129,35 @@ func ImageMessage(r io.Reader, mediaType string) (Message, error) {
 }
 
 ////////////////////////////////////////////////////////////////////////////////
+// PUBLIC METHODS
+
+// Text returns the text content of the message, concatenating all text parts
+func (m Message) Text() string {
+	// If content is a simple string
+	if m.Content.Text != nil {
+		return *m.Content.Text
+	}
+
+	// If content is an array of strings
+	if len(m.Content.TextArray) > 0 {
+		return strings.Join(m.Content.TextArray, "\n")
+	}
+
+	// If content is an array of types, extract text from each
+	var texts []string
+	for _, ct := range m.Content.TypeArray {
+		if ct.contentTypeText != nil && ct.contentTypeText.Text != "" {
+			texts = append(texts, ct.contentTypeText.Text)
+		}
+	}
+	if len(texts) > 0 {
+		return strings.Join(texts, "\n")
+	}
+
+	return ""
+}
+
+////////////////////////////////////////////////////////////////////////////////
 // STRINGIFY
 
 func (m Message) String() string {
