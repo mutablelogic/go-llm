@@ -1,122 +1,73 @@
 package main
 
 import (
-	"encoding/json"
 	"fmt"
-	"os"
-	"sort"
-	"strings"
 
 	// Packages
-	tablewriter "github.com/djthorpe/go-tablewriter"
-	agent "github.com/mutablelogic/go-llm/pkg/agent"
-	"github.com/mutablelogic/go-llm/pkg/ollama"
+	otel "github.com/mutablelogic/go-client/pkg/otel"
 )
 
-////////////////////////////////////////////////////////////////////////////////
+///////////////////////////////////////////////////////////////////////////////
 // TYPES
 
-type ListModelsCmd struct {
-	Agent []string `help:"Only return models from a specific agent"`
+type ModelCommands struct {
+	ListModels ListModelsCommand `cmd:"" name:"models" help:"List available models." group:"MODEL"`
+	GetModel   GetModelCommand   `cmd:"" name:"model" help:"Get model information." group:"MODEL"`
 }
 
-type ListAgentsCmd struct{}
+type ListModelsCommand struct{}
 
-type ListToolsCmd struct{}
-
-type DownloadModelCmd struct {
-	Agent string `arg:"" help:"Agent name"`
-	Model string `arg:"" help:"Model name"`
+type GetModelCommand struct {
+	Name string `arg:"" name:"name" help:"Model name"`
 }
 
-////////////////////////////////////////////////////////////////////////////////
-// PUBLIC METHODS
+///////////////////////////////////////////////////////////////////////////////
+// COMMANDS
 
-func (cmd *ListToolsCmd) Run(globals *Globals) error {
-	tools := globals.toolkit.Tools(globals.agent.Name())
-	fmt.Println(tools)
-	return nil
-}
-
-func (cmd *ListModelsCmd) Run(globals *Globals) error {
-	models, err := globals.agent.ListModels(globals.ctx, cmd.Agent...)
+func (cmd *ListModelsCommand) Run(ctx *Globals) (err error) {
+	client, err := ctx.Client()
 	if err != nil {
 		return err
 	}
-	result := make(ModelList, 0, len(models))
+
+	// OTEL tracing
+	parent, endSpan := otel.StartSpan(ctx.tracer, ctx.ctx, "ListModelsCommand")
+	defer func() { endSpan(err) }()
+
+	// List models
+	models, err := client.ListModels(parent)
+	if err != nil {
+		return err
+	}
+
+	// Print each model
 	for _, model := range models {
-		result = append(result, Model{
-			Agent:       model.(*agent.Model).Agent,
-			Model:       model.Name(),
-			Description: model.Description(),
-			Aliases:     strings.Join(model.Aliases(), ", "),
-		})
+		fmt.Printf("%-40s %s\n", model.Name, model.Description)
 	}
 
-	// Sort models by name
-	sort.Sort(result)
-
-	// Write out the models
-	return tablewriter.New(os.Stdout).Write(result, tablewriter.OptOutputText(), tablewriter.OptHeader())
+	return nil
 }
 
-func (*ListAgentsCmd) Run(globals *Globals) error {
-	agents := globals.agent.AgentNames()
-	data, err := json.MarshalIndent(agents, "", "  ")
+func (cmd *GetModelCommand) Run(ctx *Globals) (err error) {
+	client, err := ctx.Client()
 	if err != nil {
 		return err
 	}
-	fmt.Println(string(data))
-	return nil
-}
 
-func (cmd *DownloadModelCmd) Run(globals *Globals) error {
-	agents := globals.agent.AgentsWithName(cmd.Agent)
-	if len(agents) == 0 {
-		return fmt.Errorf("No agents found with name %q", cmd.Agent)
+	// OTEL tracing
+	parent, endSpan := otel.StartSpan(ctx.tracer, ctx.ctx, "GetModelCommand")
+	defer func() { endSpan(err) }()
+
+	// Get model
+	model, err := client.GetModel(parent, cmd.Name)
+	if err != nil {
+		return err
 	}
-	switch agents[0].Name() {
-	case "ollama":
-		model, err := agents[0].(*ollama.Client).PullModel(globals.ctx, cmd.Model, ollama.WithPullStatus(func(status *ollama.PullStatus) {
-			var pct int64
-			if status.TotalBytes > 0 {
-				pct = status.CompletedBytes * 100 / status.TotalBytes
-			}
-			fmt.Print("\r", status.Status, " ", pct, "%")
-			if status.Status == "success" {
-				fmt.Println("")
-			}
-		}))
-		if err != nil {
-			return err
-		}
-		fmt.Println(model)
-	default:
-		return fmt.Errorf("Agent %q does not support model download", agents[0].Name())
-	}
+
+	// Print model details
+	fmt.Printf("Name:        %s\n", model.Name)
+	fmt.Printf("Description: %s\n", model.Description)
+	fmt.Printf("Owner:       %s\n", model.OwnedBy)
+
 	return nil
-}
-
-////////////////////////////////////////////////////////////////////////////////
-// MODEL LIST
-
-type Model struct {
-	Agent       string `json:"agent"  writer:"Agent,width:10"`
-	Model       string `json:"model"  writer:"Model,wrap,width:40"`
-	Description string `json:"description" writer:"Description,wrap,width:60"`
-	Aliases     string `json:"aliases" writer:"Aliases,wrap,width:30"`
-}
-
-type ModelList []Model
-
-func (models ModelList) Len() int {
-	return len(models)
-}
-
-func (models ModelList) Less(a, b int) bool {
-	return strings.Compare(models[a].Model, models[b].Model) < 0
-}
-
-func (models ModelList) Swap(a, b int) {
-	models[a], models[b] = models[b], models[a]
 }

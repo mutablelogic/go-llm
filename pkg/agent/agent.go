@@ -47,12 +47,26 @@ func (a *agent) Name() string {
 	return "agent"
 }
 
-// ListModels returns the list of available models
+// ListModels returns the list of available models from all clients
 func (a *agent) ListModels(ctx context.Context) ([]schema.Model, error) {
-	return nil, llm.ErrNotImplemented
+	var result []schema.Model
+	for _, client := range a.clients {
+		models, err := client.ListModels(ctx)
+		if err != nil {
+			return nil, err
+		}
+		result = append(result, models...)
+	}
+	return result, nil
 }
 
-// GetModel returns the model with the given name
+// GetModel returns the model with the given name from any client
 func (a *agent) GetModel(ctx context.Context, name string) (*schema.Model, error) {
-	return nil, llm.ErrNotImplemented
+	for _, client := range a.clients {
+		model, err := client.GetModel(ctx, name)
+		if err == nil && model != nil {
+			return model, nil
+		}
+	}
+	return nil, llm.ErrNotFound
 }

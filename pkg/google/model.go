@@ -4,6 +4,7 @@ import (
 	"context"
 	"strings"
 
+	// Packages
 	client "github.com/mutablelogic/go-client"
 	schema "github.com/mutablelogic/go-llm/pkg/schema"
 )
@@ -12,11 +13,11 @@ import (
 // TYPES
 
 type listModelsResponse struct {
-	Models        []modelResponse `json:"models"`
-	NextPageToken string          `json:"nextPageToken,omitempty"`
+	Models        []model `json:"models"`
+	NextPageToken string  `json:"nextPageToken,omitempty"`
 }
 
-type modelResponse struct {
+type model struct {
 	Name                       string   `json:"name"`
 	BaseModelId                string   `json:"baseModelId,omitempty"`
 	Version                    string   `json:"version,omitempty"`
@@ -46,7 +47,7 @@ func (c *Client) ListModels(ctx context.Context) ([]schema.Model, error) {
 
 // GetModel returns the model with the given name
 func (c *Client) GetModel(ctx context.Context, name string) (*schema.Model, error) {
-	var response modelResponse
+	var response model
 	if err := c.DoWithContext(ctx, nil, &response, client.OptPath("models", name)); err != nil {
 		return nil, err
 	}
@@ -59,7 +60,7 @@ func (c *Client) GetModel(ctx context.Context, name string) (*schema.Model, erro
 // PRIVATE METHODS
 
 // toSchema converts an API model response to schema.Model
-func (m modelResponse) toSchema() schema.Model {
+func (m model) toSchema() schema.Model {
 	description := m.Description
 	if description == "" {
 		description = m.DisplayName
