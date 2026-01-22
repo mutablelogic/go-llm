@@ -64,6 +64,25 @@ func (ollama *Client) ListModels(ctx context.Context) ([]schema.Model, error) {
 	return result, nil
 }
 
+// GetModel returns the model with the given name
+func (ollama *Client) GetModel(ctx context.Context, name string) (*schema.Model, error) {
+	var response model
+	req, err := client.NewJSONRequest(map[string]string{"name": name})
+	if err != nil {
+		return nil, err
+	}
+	if err := ollama.DoWithContext(ctx, req, &response, client.OptPath("show")); err != nil {
+		return nil, err
+	}
+
+	result := response.toSchema()
+	// The show endpoint doesn't return the name, so set it from the request
+	if result.Name == "" {
+		result.Name = name
+	}
+	return &result, nil
+}
+
 ///////////////////////////////////////////////////////////////////////////////
 // PRIVATE METHODS
 

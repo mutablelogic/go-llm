@@ -15,8 +15,11 @@ import (
 	agent "github.com/mutablelogic/go-llm/pkg/agent"
 	anthropic "github.com/mutablelogic/go-llm/pkg/anthropic"
 	google "github.com/mutablelogic/go-llm/pkg/google"
+	ollama "github.com/mutablelogic/go-llm/pkg/ollama"
 	version "github.com/mutablelogic/go-llm/pkg/version"
+	logger "github.com/mutablelogic/go-server/pkg/logger"
 	trace "go.opentelemetry.io/otel/trace"
+	terminal "golang.org/x/term"
 )
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -38,6 +41,7 @@ type Globals struct {
 	ctx    context.Context
 	cancel context.CancelFunc
 	tracer trace.Tracer
+	log    *logger.Logger
 }
 
 type CLI struct {
@@ -77,6 +81,13 @@ func main() {
 func run(ctx *kong.Context, globals *Globals) int {
 	parent := context.Background()
 
+	// Create Logger - use terminal format if stderr is a terminal, otherwise JSON
+	if terminal.IsTerminal(int(os.Stderr.Fd())) {
+		globals.log = logger.New(os.Stderr, logger.Term, globals.Debug)
+	} else {
+		globals.log = logger.New(os.Stderr, logger.JSON, globals.Debug)
+	}
+
 	// Create the context and cancel function
 	globals.ctx, globals.cancel = signal.NotifyContext(parent, os.Interrupt)
 	defer globals.cancel()
@@ -85,7 +96,7 @@ func run(ctx *kong.Context, globals *Globals) int {
 	if globals.OTel.Endpoint != "" {
 		provider, err := otel.NewProvider(globals.OTel.Endpoint, globals.OTel.Header, globals.OTel.Name)
 		if err != nil {
-			fmt.Fprintln(os.Stderr, "Error:", err)
+			globals.log.Print(globals.ctx, "OTEL error:", err)
 			return -2
 		}
 		defer provider.Shutdown(context.Background())
@@ -96,7 +107,7 @@ func run(ctx *kong.Context, globals *Globals) int {
 
 	// Call the Run() method of the selected parsed command.
 	if err := ctx.Run(globals); err != nil {
-		fmt.Fprintln(os.Stderr, "Error:", err)
+		globals.log.Print(globals.ctx, err)
 		return -1
 	}
 
@@ -133,9 +144,22 @@ func (g *Globals) Client() (llm.Client, error) {
 		opts = append(opts, agent.WithClient(anthropicClient))
 	}
 
+	// Add Ollama client if OLLAMA_URL is set
+	if url := os.Getenv("OLLAMA_URL"); url != "" {
+		ollamaClient, err := ollama.New(url, clientOpts...)
+		if err != nil {
+			return nil, fmt.Errorf("failed to create Ollama client: %w", err)
+		}
+		// Ping to verify connectivity
+		if _, err := ollamaClient.Ping(g.ctx); err != nil {
+			return nil, fmt.Errorf("failed to connect to Ollama at %s: %w", url, err)
+		}
+		opts = append(opts, agent.WithClient(ollamaClient))
+	}
+
 	// Check if at least one client is configured
 	if len(opts) == 0 {
-		return nil, fmt.Errorf("no API keys configured. Set GEMINI_API_KEY and/or ANTHROPIC_API_KEY")
+		return nil, fmt.Errorf("no API keys configured. Set GEMINI_API_KEY, ANTHROPIC_API_KEY, and/or OLLAMA_URL")
 	}
 
 	return agent.NewAgent(opts...)

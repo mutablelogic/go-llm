@@ -7,7 +7,7 @@ import (
 )
 
 ////////////////////////////////////////////////////////////////////////////////
-// GOOGLE OPTIONS
+// GENERATE CONTENT OPTIONS
 
 // WithSystemPrompt sets the system instruction for the request
 func WithSystemPrompt(value string) opt.Opt {
@@ -52,4 +52,41 @@ func WithStopSequences(values ...string) opt.Opt {
 		return opt.Error(fmt.Errorf("at least one stop sequence is required"))
 	}
 	return opt.AddString("stop_sequences", values...)
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// EMBEDDING OPTIONS
+
+// TaskType represents the type of task for which embeddings will be used
+type TaskType string
+
+const (
+	TaskTypeUnspecified       TaskType = "TASK_TYPE_UNSPECIFIED"
+	TaskTypeRetrievalQuery    TaskType = "RETRIEVAL_QUERY"
+	TaskTypeRetrievalDocument TaskType = "RETRIEVAL_DOCUMENT"
+	TaskTypeSemantic          TaskType = "SEMANTIC_SIMILARITY"
+	TaskTypeClassification    TaskType = "CLASSIFICATION"
+	TaskTypeClustering        TaskType = "CLUSTERING"
+	TaskTypeQuestionAnswering TaskType = "QUESTION_ANSWERING"
+	TaskTypeFactVerification  TaskType = "FACT_VERIFICATION"
+	TaskTypeCodeRetrieval     TaskType = "CODE_RETRIEVAL_QUERY"
+)
+
+// WithTaskType sets the task type for embedding generation
+func WithTaskType(value TaskType) opt.Opt {
+	return opt.SetString("task_type", string(value))
+}
+
+// WithOutputDimensionality sets the output dimensionality for embeddings
+// (only supported on newer models, not embedding-001)
+func WithOutputDimensionality(value uint) opt.Opt {
+	if value < 1 {
+		return opt.Error(fmt.Errorf("output_dimensionality must be at least 1"))
+	}
+	return opt.SetUint("output_dimensionality", value)
+}
+
+// WithTitle sets the title for the document (only for RETRIEVAL_DOCUMENT task type)
+func WithTitle(value string) opt.Opt {
+	return opt.SetString("title", value)
 }

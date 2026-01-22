@@ -5,6 +5,8 @@ https://github.com/ollama/ollama/blob/main/docs/api.md
 package ollama
 
 import (
+	"context"
+
 	// Packages
 	client "github.com/mutablelogic/go-client"
 	llm "github.com/mutablelogic/go-llm"
@@ -48,4 +50,18 @@ func New(endPoint string, opts ...client.ClientOpt) (*Client, error) {
 // Return the name of the agent
 func (*Client) Name() string {
 	return defaultName
+}
+
+// versionResponse is the response from the version endpoint
+type versionResponse struct {
+	Version string `json:"version"`
+}
+
+// Ping checks if the Ollama server is reachable and returns the version
+func (c *Client) Ping(ctx context.Context) (string, error) {
+	var response versionResponse
+	if err := c.DoWithContext(ctx, nil, &response, client.OptPath("version")); err != nil {
+		return "", err
+	}
+	return response.Version, nil
 }
