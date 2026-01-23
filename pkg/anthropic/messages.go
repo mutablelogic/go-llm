@@ -5,10 +5,10 @@ import (
 	"encoding/json"
 
 	// Packages
-	"github.com/google/jsonschema-go/jsonschema"
+	jsonschema "github.com/google/jsonschema-go/jsonschema"
 	client "github.com/mutablelogic/go-client"
 	llm "github.com/mutablelogic/go-llm"
-	"github.com/mutablelogic/go-llm/pkg/opt"
+	opt "github.com/mutablelogic/go-llm/pkg/opt"
 	schema "github.com/mutablelogic/go-llm/pkg/schema"
 )
 

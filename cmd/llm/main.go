@@ -14,6 +14,7 @@ import (
 	agent "github.com/mutablelogic/go-llm/pkg/agent"
 	anthropic "github.com/mutablelogic/go-llm/pkg/anthropic"
 	gemini "github.com/mutablelogic/go-llm/pkg/gemini"
+	mistral "github.com/mutablelogic/go-llm/pkg/mistral"
 	newsapi "github.com/mutablelogic/go-llm/pkg/newsapi"
 	ollama "github.com/mutablelogic/go-llm/pkg/ollama"
 	tool "github.com/mutablelogic/go-llm/pkg/tool"
@@ -35,6 +36,7 @@ type Globals struct {
 	// API Keys
 	GeminiAPIKey    string `name:"gemini-api-key" env:"GEMINI_API_KEY" help:"Google Gemini API key"`
 	AnthropicAPIKey string `name:"anthropic-api-key" env:"ANTHROPIC_API_KEY" help:"Anthropic API key"`
+	MistralAPIKey   string `name:"mistral-api-key" env:"MISTRAL_API_KEY" help:"Mistral API key"`
 	OllamaURL       string `name:"ollama-url" env:"OLLAMA_URL" help:"Ollama server URL" default:""`
 	NewsAPIKey      string `name:"newsapi-key" env:"NEWS_API_KEY" help:"NewsAPI key for news tools"`
 	WeatherAPIKey   string `name:"weatherapi-key" env:"WEATHER_API_KEY" help:"WeatherAPI key for weather tools"`
@@ -156,6 +158,15 @@ func (g *Globals) Agent() (agent.Agent, error) {
 			return nil, fmt.Errorf("failed to create Anthropic client: %w", err)
 		}
 		opts = append(opts, agent.WithClient(anthropicClient))
+	}
+
+	// Add Mistral client if API key is set
+	if g.MistralAPIKey != "" {
+		mistralClient, err := mistral.New(g.MistralAPIKey, clientOpts...)
+		if err != nil {
+			return nil, fmt.Errorf("failed to create Mistral client: %w", err)
+		}
+		opts = append(opts, agent.WithClient(mistralClient))
 	}
 
 	// Add Ollama client if URL is set
