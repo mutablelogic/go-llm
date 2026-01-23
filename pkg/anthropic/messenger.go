@@ -5,12 +5,12 @@ import (
 
 	// Packages
 	llm "github.com/mutablelogic/go-llm"
-	"github.com/mutablelogic/go-llm/pkg/opt"
+	opt "github.com/mutablelogic/go-llm/pkg/opt"
 	schema "github.com/mutablelogic/go-llm/pkg/schema"
 )
 
 ///////////////////////////////////////////////////////////////////////////////
-// MESSENGER INTERFACE
+// MESSENGER INTERFACE IMPLEMENTATION
 
 var _ llm.Messenger = (*Client)(nil)
 
