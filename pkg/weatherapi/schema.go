@@ -1,13 +1,14 @@
 package weatherapi
 
 import (
-	"encoding/json"
 	"strconv"
 	"time"
+
+	"github.com/mutablelogic/go-llm/pkg/schema"
 )
 
 ///////////////////////////////////////////////////////////////////////////////
-// TYPES
+// RESPONSE TYPES
 
 type Location struct {
 	Name           string  `json:"name"`
@@ -131,13 +132,11 @@ type Time struct {
 // STRINGIFY
 
 func (w Weather) String() string {
-	data, _ := json.MarshalIndent(w, "", "  ")
-	return string(data)
+	return schema.Stringify(w)
 }
 
 func (f Forecast) String() string {
-	data, _ := json.MarshalIndent(f, "", "  ")
-	return string(data)
+	return schema.Stringify(f)
 }
 
 ///////////////////////////////////////////////////////////////////////////////

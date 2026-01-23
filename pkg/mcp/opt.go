@@ -1,6 +1,6 @@
-package server
+package mcp
 
-import "github.com/mutablelogic/go-llm"
+import "github.com/mutablelogic/go-llm/pkg/tool"
 
 /////////////////////////////////////////////////////////////////////////////////
 // TYPES
@@ -22,7 +22,7 @@ func (server *Server) apply(opts ...Opt) error {
 /////////////////////////////////////////////////////////////////////////////////
 // OPTIONS
 
-func WithToolKit(v llm.ToolKit) Opt {
+func WithToolKit(v *tool.Toolkit) Opt {
 	return func(server *Server) error {
 		server.toolkit = v
 		return nil

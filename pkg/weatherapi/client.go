@@ -5,12 +5,11 @@ https://www.weatherapi.com/docs/
 package weatherapi
 
 import (
-	"net/url"
+	"context"
 
 	// Packages
 	"github.com/mutablelogic/go-client"
 	"github.com/mutablelogic/go-llm"
-	"github.com/mutablelogic/go-llm/pkg/tool"
 )
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -55,65 +54,46 @@ func New(ApiKey string, opts ...client.ClientOpt) (*Client, error) {
 // PUBLIC METHODS
 
 // Current weather
-func (c *Client) Current(q string) (Weather, error) {
+func (c *Client) Current(ctx context.Context, req *CurrentWeatherRequest) (Weather, error) {
 	var response Weather
 
 	// Set defaults
-	response.Query = q
-
-	// Set query parameters
-	query := url.Values{}
-	query.Set("key", c.key)
-	query.Set("q", q)
+	response.Query = req.Query
 
 	// Request -> Response
-	if err := c.Do(nil, &response, client.OptPath("current.json"), client.OptQuery(query)); err != nil {
+	if err := c.Do(nil, &response, client.OptPath("current.json"), client.OptQuery(req.Values(c.key))); err != nil {
 		return Weather{}, err
-	} else {
-		return response, nil
 	}
+
+	return response, nil
 }
 
 // Forecast weather
-func (c *Client) Forecast(q string, opts ...Opt) (Forecast, error) {
-	var request options
+func (c *Client) Forecast(ctx context.Context, req *ForecastWeatherRequest) (Forecast, error) {
 	var response Forecast
 
 	// Set defaults
-	request.Values = url.Values{}
-	response.Query = q
-
-	// Set options
-	for _, opt := range opts {
-		if err := opt(&request); err != nil {
-			return Forecast{}, err
-		}
-	}
-
-	// Set query parameters
-	request.Set("key", c.key)
-	request.Set("q", q)
+	response.Query = req.Query
 
 	// Request -> Response
-	if err := c.Do(nil, &response, client.OptPath("forecast.json"), client.OptQuery(request.Values)); err != nil {
+	if err := c.Do(nil, &response, client.OptPath("forecast.json"), client.OptQuery(req.Values(c.key))); err != nil {
 		return Forecast{}, err
-	} else {
-		return response, nil
 	}
+
+	return response, nil
 }
 
-///////////////////////////////////////////////////////////////////////////////
-// PUBLIC METHODS
+// Alerts weather
+func (c *Client) Alerts(ctx context.Context, req *AlertsWeatherRequest) (Forecast, error) {
+	var response Forecast
 
-func (client *Client) RegisterWithToolKit(toolkit *tool.ToolKit) error {
-	// Register tools
-	if err := toolkit.Register(&current_weather{client, ""}); err != nil {
-		return err
-	}
-	if err := toolkit.Register(&forecast_weather{client, "", 0}); err != nil {
-		return err
+	// Set defaults
+	response.Query = req.Query
+
+	// Request -> Response
+	if err := c.Do(nil, &response, client.OptPath("forecast.json"), client.OptQuery(req.Values(c.key))); err != nil {
+		return Forecast{}, err
 	}
 
-	// Return success
-	return nil
+	return response, nil
 }

@@ -3,10 +3,6 @@ package schema
 import (
 	"encoding/json"
 	"fmt"
-
-	// Packages
-	llm "github.com/mutablelogic/go-llm"
-	"github.com/mutablelogic/go-llm/pkg/internal/impl"
 )
 
 ////////////////////////////////////////////////////////////////////////////
@@ -14,15 +10,15 @@ import (
 
 type Request struct {
 	Method  string          `json:"method"`
-	ID      uint64          `json:"id"`
+	ID      interface{}     `json:"id,omitempty"` // string or number for non-notifications
 	Payload json.RawMessage `json:"params,omitempty"`
 }
 
 type Response struct {
-	Version string `json:"jsonrpc,omitempty"`
-	ID      uint64 `json:"id"`
-	Result  any    `json:"result,omitempty"`
-	Err     *Error `json:"error,omitempty"`
+	Version string      `json:"jsonrpc"`
+	ID      interface{} `json:"id,omitempty"` // string or number
+	Result  any         `json:"result,omitempty"`
+	Err     *Error      `json:"error,omitempty"`
 }
 
 type Error struct {
@@ -53,24 +49,42 @@ type RequestToolCall struct {
 	Arguments map[string]any `json:"arguments,omitempty"`
 }
 
+// Tool represents an MCP tool definition with schema
+type Tool struct {
+	Name        string `json:"name"`
+	Description string `json:"description"`
+	InputSchema any    `json:"inputSchema"`
+}
+
 type ResponseListTools struct {
-	Tools      []llm.Tool `json:"tools"`
-	NextCursor string     `json:"nextCursor,omitempty"`
+	Tools      []*Tool `json:"tools"`
+	NextCursor string  `json:"nextCursor,omitempty"`
 }
 
 type ResponseListPrompts struct {
-	Prompts    []llm.Tool `json:"prompts"` // TODO: Fix
-	NextCursor string     `json:"nextCursor,omitempty"`
+	Prompts    []any  `json:"prompts"`
+	NextCursor string `json:"nextCursor,omitempty"`
 }
 
 type ResponseListResources struct {
-	Resources  []llm.Tool `json:"resources"` // TODO: Fix
-	NextCursor string     `json:"nextCursor,omitempty"`
+	Resources  []any  `json:"resources"`
+	NextCursor string `json:"nextCursor,omitempty"`
 }
 
 type ResponseToolCall struct {
-	Content []*impl.Content `json:"content"`
-	Error   bool            `json:"isError,omitempty"`
+	Content []*Content `json:"content"`
+	Error   bool       `json:"isError,omitempty"`
+}
+
+// Content represents a single piece of content in a tool result
+type Content struct {
+	Type     string `json:"type"` // "text", "image", "audio", "resource_link", "resource"
+	Text     string `json:"text,omitempty"`
+	Data     string `json:"data,omitempty"`
+	MimeType string `json:"mimeType,omitempty"`
+	URI      string `json:"uri,omitempty"`
+	Name     string `json:"name,omitempty"`
+	Resource any    `json:"resource,omitempty"`
 }
 
 ////////////////////////////////////////////////////////////////////////////
@@ -78,7 +92,7 @@ type ResponseToolCall struct {
 
 const (
 	RPCVersion      = "2.0"
-	ProtocolVersion = "2024-11-05"
+	ProtocolVersion = "2025-06-18"
 
 	// Message types
 	MessageTypeInitialize    = "initialize"

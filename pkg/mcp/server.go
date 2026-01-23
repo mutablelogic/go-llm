@@ -1,6 +1,6 @@
 // Implements an MCP server based on the following specification:
 // https://modelcontextprotocol.io/specification/2025-03-26/basic/lifecycle
-package server
+package mcp
 
 import (
 	"bufio"
@@ -14,8 +14,6 @@ import (
 	"sync"
 
 	// Packages
-	"github.com/mutablelogic/go-llm"
-	"github.com/mutablelogic/go-llm/pkg/internal/impl"
 	"github.com/mutablelogic/go-llm/pkg/mcp/schema"
 	"github.com/mutablelogic/go-llm/pkg/tool"
 )
@@ -30,10 +28,10 @@ type Server struct {
 	slock    sync.Mutex         // This is the overall server lock
 	lock     sync.RWMutex       // Handler map lock
 	handlers map[string]Handler // Method handlers
-	toolkit  llm.ToolKit        // ToolKit for the server
+	toolkit  *tool.Toolkit      // Toolkit for the server
 }
 
-type Handler func(context.Context, uint64, json.RawMessage) (any, error)
+type Handler func(context.Context, interface{}, json.RawMessage) (any, error)
 
 ///////////////////////////////////////////////////////////////////////
 // LIFECYCLE
@@ -49,72 +47,83 @@ func New(name, version string, opt ...Opt) (*Server, error) {
 	}
 
 	// Set up default handlers - initialize, ping
-	self.HandlerFunc(schema.MessageTypeInitialize, func(ctx context.Context, _ uint64, _ json.RawMessage) (any, error) {
+	self.HandlerFunc(schema.MessageTypeInitialize, func(ctx context.Context, _ interface{}, _ json.RawMessage) (any, error) {
 		response := new(schema.ResponseInitialize)
 		response.Version = schema.ProtocolVersion
 		response.ServerInfo.Name = name
 		response.ServerInfo.Version = version
 		response.Capabilities.Prompts = map[string]any{
-			"listChanged": false,
+			"listChanged": true,
 		}
 		response.Capabilities.Resources = map[string]any{
-			"listChanged": false,
+			"listChanged": true,
 			"subscribe":   false,
 		}
 		response.Capabilities.Tools = map[string]any{
-			"listChanged": false,
+			"listChanged": true,
 		}
 		return response, nil
 	})
-	self.HandlerFunc(schema.MessageTypePing, func(ctx context.Context, _ uint64, _ json.RawMessage) (any, error) {
+	self.HandlerFunc(schema.MessageTypePing, func(ctx context.Context, _ interface{}, _ json.RawMessage) (any, error) {
 		return map[string]any{}, nil
 	})
-	self.HandlerFunc(schema.NotificationTypeInitialize, func(ctx context.Context, _ uint64, _ json.RawMessage) (any, error) {
+	self.HandlerFunc(schema.NotificationTypeInitialize, func(ctx context.Context, _ interface{}, _ json.RawMessage) (any, error) {
 		self.Initialised = true
 		return nil, nil
 	})
 
 	// Set up default handlers - list resources, tools, prompts
-	self.HandlerFunc(schema.MessageTypeListPrompts, func(ctx context.Context, _ uint64, _ json.RawMessage) (any, error) {
+	self.HandlerFunc(schema.MessageTypeListPrompts, func(ctx context.Context, _ interface{}, _ json.RawMessage) (any, error) {
 		response := new(schema.ResponseListPrompts)
-		response.Prompts = []llm.Tool{}
+		response.Prompts = []any{}
 		return response, nil
 	})
-	self.HandlerFunc(schema.MessageTypeListResources, func(ctx context.Context, _ uint64, _ json.RawMessage) (any, error) {
+	self.HandlerFunc(schema.MessageTypeListResources, func(ctx context.Context, _ interface{}, _ json.RawMessage) (any, error) {
 		response := new(schema.ResponseListResources)
-		response.Resources = []llm.Tool{}
+		response.Resources = []any{}
 		return response, nil
 	})
-	self.HandlerFunc(schema.MessageTypeListTools, func(ctx context.Context, _ uint64, _ json.RawMessage) (any, error) {
+	self.HandlerFunc(schema.MessageTypeListTools, func(ctx context.Context, _ interface{}, _ json.RawMessage) (any, error) {
 		response := new(schema.ResponseListTools)
-		response.Tools = self.toolkit.Tools("mcp")
+		// Convert []tool.Tool to []*schema.Tool
+		for _, t := range self.toolkit.Tools() {
+			// Get the schema for this tool
+			jsonSchema, err := t.Schema()
+			if err != nil {
+				// If schema retrieval fails, use empty object schema
+				jsonSchema = nil
+			}
+
+			// Convert to MCP Tool
+			mcpTool := &schema.Tool{
+				Name:        t.Name(),
+				Description: t.Description(),
+				InputSchema: jsonSchema,
+			}
+			response.Tools = append(response.Tools, mcpTool)
+		}
 		return response, nil
 	})
 
 	// Process a tool call request
-	self.HandlerFunc(schema.MessageTypeCallTool, func(ctx context.Context, id uint64, payload json.RawMessage) (any, error) {
+	self.HandlerFunc(schema.MessageTypeCallTool, func(ctx context.Context, id interface{}, payload json.RawMessage) (any, error) {
 		var req schema.RequestToolCall
 		if err := json.Unmarshal(payload, &req); err != nil {
 			return nil, err
 		}
 
-		// Run the tool(s)
-		results, err := self.toolkit.Run(ctx, tool.NewCall(fmt.Sprint(id), req.Name, nil))
+		// Run the tool
+		result, err := self.toolkit.Run(ctx, req.Name, payload)
 		if err != nil {
 			return nil, err
-		} else if len(results) == 0 {
-			return nil, schema.NewError(schema.ErrorInternalError, "no results returned")
 		}
 
-		// Append results to the response
+		// Convert result to response format
 		var resp schema.ResponseToolCall
-		for _, result := range results {
-			if content, err := impl.FromValue(result.Value()); err != nil {
-				return nil, err
-			} else {
-				resp.Content = append(resp.Content, content)
-			}
-		}
+		var content schema.Content
+		content.Type = "text"
+		content.Text = fmt.Sprint(result)
+		resp.Content = append(resp.Content, &content)
 
 		// Return the results
 		return resp, nil

@@ -39,7 +39,7 @@ func (cmd *ListToolsCommand) Run(ctx *Globals) (err error) {
 
 	tools := toolkit.Tools()
 	if len(tools) == 0 {
-		ctx.log.Print(ctx.ctx, "No tools available. Set NEWSAPI_KEY to enable NewsAPI tools.")
+		ctx.log.Print(ctx.ctx, "No tools available. Set NEWS_API_KEY and/or WEATHER_API_KEY to enable API tools.")
 		return nil
 	}
 

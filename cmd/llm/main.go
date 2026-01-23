@@ -18,6 +18,7 @@ import (
 	ollama "github.com/mutablelogic/go-llm/pkg/ollama"
 	tool "github.com/mutablelogic/go-llm/pkg/tool"
 	version "github.com/mutablelogic/go-llm/pkg/version"
+	weatherapi "github.com/mutablelogic/go-llm/pkg/weatherapi"
 	logger "github.com/mutablelogic/go-server/pkg/logger"
 	trace "go.opentelemetry.io/otel/trace"
 	terminal "golang.org/x/term"
@@ -35,7 +36,8 @@ type Globals struct {
 	GeminiAPIKey    string `name:"gemini-api-key" env:"GEMINI_API_KEY" help:"Google Gemini API key"`
 	AnthropicAPIKey string `name:"anthropic-api-key" env:"ANTHROPIC_API_KEY" help:"Anthropic API key"`
 	OllamaURL       string `name:"ollama-url" env:"OLLAMA_URL" help:"Ollama server URL" default:""`
-	NewsAPIKey      string `name:"newsapi-key" env:"NEWSAPI_KEY" help:"NewsAPI key for news tools"`
+	NewsAPIKey      string `name:"newsapi-key" env:"NEWS_API_KEY" help:"NewsAPI key for news tools"`
+	WeatherAPIKey   string `name:"weatherapi-key" env:"WEATHER_API_KEY" help:"WeatherAPI key for weather tools"`
 
 	// Open Telemetry options
 	OTel struct {
@@ -58,6 +60,7 @@ type CLI struct {
 	ToolCommands
 	EmbeddingCommands
 	SendCommands
+	MCPCommands
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -192,6 +195,15 @@ func (g *Globals) Toolkit() (*tool.Toolkit, error) {
 			return nil, fmt.Errorf("failed to create NewsAPI tools: %w", err)
 		}
 		tools = append(tools, newsTools...)
+	}
+
+	// Add WeatherAPI tools if API key is set
+	if g.WeatherAPIKey != "" {
+		weatherTools, err := weatherapi.NewTools(g.WeatherAPIKey, clientOpts...)
+		if err != nil {
+			return nil, fmt.Errorf("failed to create WeatherAPI tools: %w", err)
+		}
+		tools = append(tools, weatherTools...)
 	}
 
 	// Return empty toolkit if no tools are configured (this is not an error)

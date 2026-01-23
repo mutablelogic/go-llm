@@ -10,3 +10,5 @@ go.work.sum
 vendor/
 build/
 .DS_Store
+llm
+.env
