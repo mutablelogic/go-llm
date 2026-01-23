@@ -1,4 +1,4 @@
-package anthropic
+package gemini
 
 import (
 	"context"
@@ -19,17 +19,20 @@ func (c *Client) Send(ctx context.Context, model schema.Model, message *schema.M
 	// Create a new session with the single message
 	session := schema.Session{message}
 
-	// Use the Messages API to send the message
-	response, err := c.Messages(ctx, model.Name, &session, opts...)
+	// Use the existing Chat method
+	response, err := c.Chat(ctx, model.Name, &session, opts...)
 	if err != nil {
 		return nil, err
 	}
 
-	// Return the response directly from Messages()
 	return response, nil
 }
 
 // WithSession sends a message within a session and returns the response (stateful)
 func (c *Client) WithSession(ctx context.Context, model schema.Model, session *schema.Session, message *schema.Message, opts ...opt.Opt) (*schema.Message, error) {
-	return nil, llm.ErrNotImplemented.With("WithSession is not yet implemented for Anthropic")
+	// Append the new message to the session
+	session.Append(*message)
+
+	// Use the existing Chat method
+	return c.Chat(ctx, model.Name, session, opts...)
 }

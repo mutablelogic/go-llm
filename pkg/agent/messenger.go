@@ -30,8 +30,8 @@ func (a *agent) Send(ctx context.Context, model schema.Model, message *schema.Me
 	return messenger.Send(ctx, model, message, opts...)
 }
 
-// Chat sends a message within a session and returns the response (stateful)
-func (a *agent) Chat(ctx context.Context, model schema.Model, session *schema.Session, message *schema.Message, opts ...opt.Opt) (*schema.Message, error) {
+// WithSession sends a message within a session and returns the response (stateful)
+func (a *agent) WithSession(ctx context.Context, model schema.Model, session *schema.Session, message *schema.Message, opts ...opt.Opt) (*schema.Message, error) {
 	// Get the client for this model
 	client := a.clientForModel(model)
 	if client == nil {
@@ -45,5 +45,5 @@ func (a *agent) Chat(ctx context.Context, model schema.Model, session *schema.Se
 	}
 
 	// Send the message within the session
-	return messenger.Chat(ctx, model, session, message, opts...)
+	return messenger.WithSession(ctx, model, session, message, opts...)
 }

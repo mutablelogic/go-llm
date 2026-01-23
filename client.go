@@ -45,6 +45,6 @@ type Messenger interface {
 	// Send sends a single message and returns the response (stateless)
 	Send(ctx context.Context, model schema.Model, message *schema.Message, opts ...opt.Opt) (*schema.Message, error)
 
-	// Chat sends a message within a session and returns the response (stateful)
-	Chat(ctx context.Context, model schema.Model, session *schema.Session, message *schema.Message, opts ...opt.Opt) (*schema.Message, error)
+	// WithSession sends a message within a session and returns the response (stateful)
+	WithSession(ctx context.Context, model schema.Model, session *schema.Session, message *schema.Message, opts ...opt.Opt) (*schema.Message, error)
 }
