@@ -5,7 +5,7 @@ import (
 	"fmt"
 
 	// Packages
-	"github.com/mutablelogic/go-llm/pkg/opt"
+	opt "github.com/mutablelogic/go-llm/pkg/opt"
 )
 
 ///////////////////////////////////////////////////////////////////////////////
