@@ -2,10 +2,12 @@ package ollama
 
 import (
 	"context"
+	"net/http"
 	"time"
 
 	// Packages
 	client "github.com/mutablelogic/go-client"
+	llm "github.com/mutablelogic/go-llm"
 	schema "github.com/mutablelogic/go-llm/pkg/schema"
 )
 
@@ -64,6 +66,23 @@ func (ollama *Client) ListModels(ctx context.Context) ([]schema.Model, error) {
 	return result, nil
 }
 
+// List running models
+func (ollama *Client) ListRunningModels(ctx context.Context) ([]schema.Model, error) {
+	// Send the request
+	var response listModelsResponse
+	if err := ollama.DoWithContext(ctx, nil, &response, client.OptPath("ps")); err != nil {
+		return nil, err
+	}
+
+	result := make([]schema.Model, len(response.Data))
+	for i, m := range response.Data {
+		result[i] = m.toSchema()
+	}
+
+	// Return models
+	return result, nil
+}
+
 // GetModel returns the model with the given name
 func (ollama *Client) GetModel(ctx context.Context, name string) (*schema.Model, error) {
 	var response model
@@ -81,6 +100,82 @@ func (ollama *Client) GetModel(ctx context.Context, name string) (*schema.Model,
 		result.Name = name
 	}
 	return &result, nil
+}
+
+// Delete a model by name
+func (ollama *Client) DeleteModel(ctx context.Context, model schema.Model) error {
+	type reqGetModel struct {
+		Model string `json:"model"`
+	}
+
+	// Check model
+	if model.Name != ollama.Name() {
+		return llm.ErrBadParameter.With("model does not belong to this client")
+	}
+
+	// Request
+	req, err := client.NewJSONRequestEx(http.MethodDelete, reqGetModel{
+		Model: model.Name,
+	}, client.ContentTypeAny)
+	if err != nil {
+		return err
+	}
+
+	// Response
+	return ollama.DoWithContext(ctx, req, nil, client.OptPath("delete"))
+}
+
+// Load a model into memory
+func (ollama *Client) LoadModel(ctx context.Context, model schema.Model) error {
+	type reqGetModel struct {
+		Model string `json:"model"`
+	}
+
+	// Check model
+	if model.Name != ollama.Name() {
+		return llm.ErrBadParameter.With("model does not belong to this client")
+	}
+
+	// Request
+	req, err := client.NewJSONRequestEx(http.MethodDelete, reqGetModel{
+		Model: model.Name,
+	}, client.ContentTypeAny)
+	if err != nil {
+		return err
+	}
+
+	// Response
+	return ollama.DoWithContext(ctx, req, nil, client.OptPath("generate"))
+}
+
+// Unload a model from memory
+func (ollama *Client) UnloadModel(ctx context.Context, model schema.Model) error {
+	type reqLoadModel struct {
+		Model     string `json:"model"`
+		KeepAlive uint   `json:"keepalive"`
+	}
+
+	// Check model
+	if model.Name != ollama.Name() {
+		return llm.ErrBadParameter.With("model does not belong to this client")
+	}
+
+	// Request
+	req, err := client.NewJSONRequest(reqLoadModel{
+		Model:     model.Name,
+		KeepAlive: 0,
+	})
+	if err != nil {
+		return err
+	}
+
+	// Response
+	return ollama.DoWithContext(ctx, req, nil, client.OptPath("generate"))
+}
+
+// Download (pull) a model by name
+func (ollama *Client) DownloadModel(ctx context.Context, path string) (*schema.Model, error) {
+	return nil, llm.ErrNotImplemented.With("Ollama does not support downloading models via API")
 }
 
 ///////////////////////////////////////////////////////////////////////////////

@@ -20,6 +20,8 @@ type Client struct {
 }
 
 var _ llm.Client = (*Client)(nil)
+var _ llm.Embedder = (*Client)(nil)
+var _ llm.Downloader = (*Client)(nil)
 
 ///////////////////////////////////////////////////////////////////////////////
 // GLOBALS

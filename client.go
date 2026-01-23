@@ -25,8 +25,17 @@ type Client interface {
 // Embedder is an interface for generating text embeddings
 type Embedder interface {
 	// Embedding generates an embedding vector for a single text
-	Embedding(ctx context.Context, model string, text string, opts ...opt.Opt) ([]float64, error)
+	Embedding(ctx context.Context, model schema.Model, text string, opts ...opt.Opt) ([]float64, error)
 
 	// BatchEmbedding generates embedding vectors for multiple texts
-	BatchEmbedding(ctx context.Context, model string, texts []string, opts ...opt.Opt) ([][]float64, error)
+	BatchEmbedding(ctx context.Context, model schema.Model, texts []string, opts ...opt.Opt) ([][]float64, error)
+}
+
+// Downloader is an interface for managing model files
+type Downloader interface {
+	// DownloadModel downloads the specified model, and otherwise loads the model if already present
+	DownloadModel(ctx context.Context, path string) (*schema.Model, error)
+
+	// DeleteModel deletes the specified model from local storage
+	DeleteModel(ctx context.Context, model schema.Model) error
 }

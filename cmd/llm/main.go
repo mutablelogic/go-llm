@@ -14,7 +14,7 @@ import (
 	llm "github.com/mutablelogic/go-llm"
 	agent "github.com/mutablelogic/go-llm/pkg/agent"
 	anthropic "github.com/mutablelogic/go-llm/pkg/anthropic"
-	google "github.com/mutablelogic/go-llm/pkg/google"
+	gemini "github.com/mutablelogic/go-llm/pkg/gemini"
 	ollama "github.com/mutablelogic/go-llm/pkg/ollama"
 	version "github.com/mutablelogic/go-llm/pkg/version"
 	logger "github.com/mutablelogic/go-server/pkg/logger"
@@ -47,6 +47,7 @@ type Globals struct {
 type CLI struct {
 	Globals
 	ModelCommands
+	EmbeddingCommands
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -128,11 +129,11 @@ func (g *Globals) Client() (llm.Client, error) {
 
 	// Add Google client if GEMINI_API_KEY is set
 	if apiKey := os.Getenv("GEMINI_API_KEY"); apiKey != "" {
-		googleClient, err := google.New(apiKey, clientOpts...)
+		geminiClient, err := gemini.New(apiKey, clientOpts...)
 		if err != nil {
-			return nil, fmt.Errorf("failed to create Google client: %w", err)
+			return nil, fmt.Errorf("failed to create Gemini client: %w", err)
 		}
-		opts = append(opts, agent.WithClient(googleClient))
+		opts = append(opts, agent.WithClient(geminiClient))
 	}
 
 	// Add Anthropic client if ANTHROPIC_API_KEY is set
