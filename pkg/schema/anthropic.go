@@ -20,10 +20,10 @@ type anthropicContentBlock struct {
 	// Text block
 	Text *string `json:"text,omitempty"`
 
-	// Image and Document blocks
+	// Image/Document block - both use 'source' at top level
 	Source json.RawMessage `json:"source,omitempty"`
 
-	// Document block
+	// Document-specific fields (in addition to source)
 	Title     *string          `json:"title,omitempty"`
 	Context   *string          `json:"context,omitempty"`
 	Citations *CitationOptions `json:"citations,omitempty"`
@@ -84,13 +84,14 @@ func (am AnthropicMessage) MarshalJSON() ([]byte, error) {
 			}
 
 		case "document":
+			// Document uses source at top level (like images)
 			if block.DocumentSource != nil {
 				sourceData, _ := json.Marshal(block.DocumentSource)
 				anthBlock.Source = sourceData
+				anthBlock.Title = block.DocumentTitle
+				anthBlock.Context = block.DocumentContext
+				anthBlock.Citations = block.Citations
 			}
-			anthBlock.Title = block.DocumentTitle
-			anthBlock.Context = block.DocumentContext
-			anthBlock.Citations = block.Citations
 
 		case "tool_use":
 			// Map universal field names to Anthropic field names
@@ -174,16 +175,17 @@ func (am *AnthropicMessage) UnmarshalJSON(data []byte) error {
 			}
 
 		case "document":
+			// Document has source at top level (like images)
 			if len(anthBlock.Source) > 0 {
 				var docSource DocumentSource
 				if err := json.Unmarshal(anthBlock.Source, &docSource); err != nil {
 					return fmt.Errorf("failed to unmarshal document source: %w", err)
 				}
 				block.DocumentSource = &docSource
+				block.DocumentTitle = anthBlock.Title
+				block.DocumentContext = anthBlock.Context
+				block.Citations = anthBlock.Citations
 			}
-			block.DocumentTitle = anthBlock.Title
-			block.DocumentContext = anthBlock.Context
-			block.Citations = anthBlock.Citations
 
 		case "tool_use":
 			// Map Anthropic field names to universal field names

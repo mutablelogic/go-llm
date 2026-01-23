@@ -24,9 +24,11 @@ var _ llm.Client = (*Client)(nil)
 // GLOBALS
 
 const (
-	endPoint       = "https://api.anthropic.com/v1"
-	defaultVersion = "2023-06-01"
-	defaultName    = "anthropic"
+	endPoint = "https://api.anthropic.com/v1"
+	// Note: Document support requires API version 2024-10-22 or later
+	// Currently using 2023-06-01 as it's the stable version
+	apiVersion  = "2023-06-01"
+	defaultName = "anthropic"
 )
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -37,7 +39,7 @@ func New(ApiKey string, opts ...client.ClientOpt) (*Client, error) {
 	// Create client
 	opts = append(opts, client.OptEndpoint(endPoint))
 	opts = append(opts, client.OptHeader("x-api-key", ApiKey))
-	opts = append(opts, client.OptHeader("anthropic-version", defaultVersion))
+	opts = append(opts, client.OptHeader("anthropic-version", apiVersion))
 	client, err := client.New(opts...)
 	if err != nil {
 		return nil, err

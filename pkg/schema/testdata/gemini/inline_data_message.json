@@ -89,6 +89,23 @@
           }
         ]
       }
+    },
+    {
+      "name": "PDF document",
+      "message": {
+        "role": "user",
+        "parts": [
+          {
+            "text": "Summarize this PDF"
+          },
+          {
+            "inline_data": {
+              "mime_type": "application/pdf",
+              "data": "JVBERi0xLjQK..."
+            }
+          }
+        ]
+      }
     }
   ]
 }

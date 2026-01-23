@@ -64,12 +64,12 @@ type cacheControlEphemeral struct {
 }
 
 type messagesResponse struct {
-	Id                   string `json:"id"`
-	Model                string `json:"model"`
-	Type                 string `json:"type"`
-	schema.AnthropicMessage      // Embeds Role and Content with proper Anthropic format handling
-	StopReason           string  `json:"stop_reason"` // "end_turn", "max_tokens", "stop_sequence", "tool_use", "pause_turn", "refusal"
-	StopSequence         *string `json:"stop_sequence,omitempty"`
+	Id                      string  `json:"id"`
+	Model                   string  `json:"model"`
+	Type                    string  `json:"type"`
+	schema.AnthropicMessage         // Embeds Role and Content with proper Anthropic format handling
+	StopReason              string  `json:"stop_reason"` // "end_turn", "max_tokens", "stop_sequence", "tool_use", "pause_turn", "refusal"
+	StopSequence            *string `json:"stop_sequence,omitempty"`
 	messagesUsage
 }
 
@@ -77,6 +77,54 @@ type messagesUsage struct {
 	InputTokens  uint   `json:"input_tokens"`
 	OutputTokens uint   `json:"output_tokens"`
 	ServiceTier  string `json:"service_tier"` // standard, priority, batch
+}
+
+// MarshalJSON customizes JSON marshaling to wrap messages in AnthropicMessage format
+func (r messagesRequest) MarshalJSON() ([]byte, error) {
+	// Convert Session messages to Anthropic format
+	var anthropicMessages []schema.AnthropicMessage
+	if r.Messages != nil {
+		for _, msg := range *r.Messages {
+			anthropicMessages = append(anthropicMessages, schema.AnthropicMessage{Message: *msg})
+		}
+	}
+
+	// Marshal manually to avoid recursion
+	return json.Marshal(&struct {
+		MaxTokens     int                       `json:"max_tokens,omitempty"`
+		Messages      []schema.AnthropicMessage `json:"messages"`
+		Metadata      *messagesMetadata         `json:"metadata,omitempty"`
+		Model         string                    `json:"model"`
+		OutputConfig  string                    `json:"output_config,omitempty"`
+		OutputFormat  *outputFormat             `json:"output_format,omitempty"`
+		ServiceTier   string                    `json:"service_tier,omitempty"`
+		StopSequences []string                  `json:"stop_sequences,omitempty"`
+		Stream        bool                      `json:"stream,omitempty"`
+		System        any                       `json:"system,omitempty"`
+		Temperature   *float64                  `json:"temperature,omitempty"`
+		Thinking      *thinkingConfig           `json:"thinking,omitempty"`
+		ToolChoice    *toolChoice               `json:"tool_choice,omitempty"`
+		Tools         []json.RawMessage         `json:"tools,omitempty"`
+		TopK          *uint                     `json:"top_k,omitempty"`
+		TopP          *float64                  `json:"top_p,omitempty"`
+	}{
+		MaxTokens:     r.MaxTokens,
+		Messages:      anthropicMessages,
+		Metadata:      r.Metadata,
+		Model:         r.Model,
+		OutputConfig:  r.OutputConfig,
+		OutputFormat:  r.OutputFormat,
+		ServiceTier:   r.ServiceTier,
+		StopSequences: r.StopSequences,
+		Stream:        r.Stream,
+		System:        r.System,
+		Temperature:   r.Temperature,
+		Thinking:      r.Thinking,
+		ToolChoice:    r.ToolChoice,
+		Tools:         r.Tools,
+		TopK:          r.TopK,
+		TopP:          r.TopP,
+	})
 }
 
 ///////////////////////////////////////////////////////////////////////////////

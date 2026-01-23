@@ -87,11 +87,23 @@ func (gm GeminiMessage) MarshalJSON() ([]byte, error) {
 			}
 
 		case "document", "video", "audio":
-			// Gemini uses file_data for all non-inline media
-			if block.DocumentSource != nil && block.DocumentSource.URL != nil {
-				part.FileData = &FileData{
-					MimeType: block.DocumentSource.MediaType,
-					FileURI:  *block.DocumentSource.URL,
+			// Gemini uses inline_data for base64, file_data for URLs
+			if block.DocumentSource != nil {
+				switch block.DocumentSource.Type {
+				case "base64":
+					if block.DocumentSource.Data != nil {
+						part.InlineData = &InlineData{
+							MimeType: block.DocumentSource.MediaType,
+							Data:     *block.DocumentSource.Data,
+						}
+					}
+				case "url":
+					if block.DocumentSource.URL != nil {
+						part.FileData = &FileData{
+							MimeType: block.DocumentSource.MediaType,
+							FileURI:  *block.DocumentSource.URL,
+						}
+					}
 				}
 			}
 

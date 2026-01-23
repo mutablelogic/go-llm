@@ -1,0 +1,40 @@
+{
+    "description": "Ollama message format with text content and optional images",
+    "examples": [
+        {
+            "name": "Simple text message",
+            "message": {
+                "role": "user",
+                "content": "What is the capital of France?"
+            }
+        },
+        {
+            "name": "Message with single image",
+            "message": {
+                "role": "user",
+                "content": "What's in this image?",
+                "images": [
+                    "/9j/4AAQSkZJRg..."
+                ]
+            }
+        },
+        {
+            "name": "Message with multiple images",
+            "message": {
+                "role": "user",
+                "content": "Compare these two images",
+                "images": [
+                    "iVBORw0KGgoAAAANS...",
+                    "R0lGODlhAQABAIAAAA..."
+                ]
+            }
+        },
+        {
+            "name": "Assistant response",
+            "message": {
+                "role": "assistant",
+                "content": "The capital of France is Paris."
+            }
+        }
+    ]
+}

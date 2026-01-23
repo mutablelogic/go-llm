@@ -2,6 +2,7 @@ package schema
 
 import (
 	"encoding/json"
+	"fmt"
 	"strings"
 )
 
@@ -144,6 +145,14 @@ type CacheControl struct {
 	TTL  string `json:"ttl,omitempty"` // time-to-live (e.g., "5m", "1h")
 }
 
+// MessageRole types
+const (
+	MessageRoleUser      = "user"
+	MessageRoleAssistant = "assistant"
+	MessageRoleSystem    = "system"
+	MessageRoleTool      = "tool"
+)
+
 // ContentBlock Types
 const (
 	ContentTypeText        = "text"
@@ -180,6 +189,45 @@ func NewMessage(role, text string, opt ...Opt) (*Message, error) {
 
 ////////////////////////////////////////////////////////////////////////////////
 // PUBLIC METHODS
+
+// UnmarshalJSON handles both string and array content formats
+func (m *Message) UnmarshalJSON(data []byte) error {
+	// Try to unmarshal into a temporary structure with RawMessage for content
+	var temp struct {
+		Role    string          `json:"role"`
+		Content json.RawMessage `json:"content"`
+		Tokens  uint            `json:"-"`
+	}
+
+	if err := json.Unmarshal(data, &temp); err != nil {
+		return err
+	}
+
+	m.Role = temp.Role
+	m.Tokens = temp.Tokens
+
+	// Try to unmarshal content as array first
+	var contentArray []ContentBlock
+	if err := json.Unmarshal(temp.Content, &contentArray); err == nil {
+		m.Content = contentArray
+		return nil
+	}
+
+	// If that fails, try as string
+	var contentString string
+	if err := json.Unmarshal(temp.Content, &contentString); err == nil {
+		m.Content = []ContentBlock{
+			{
+				Type: ContentTypeText,
+				Text: &contentString,
+			},
+		}
+		return nil
+	}
+
+	// If both fail, return error
+	return fmt.Errorf("content must be either string or array")
+}
 
 // Text returns the concatenated text content from all text blocks in the message
 func (m Message) Text() string {

@@ -15,12 +15,12 @@ import (
 
 // Request structure for generateContent
 type generateContentRequest struct {
-	Contents          []contentRequest  `json:"contents"`
-	SystemInstruction *contentRequest   `json:"systemInstruction,omitempty"`
-	GenerationConfig  *generationConfig `json:"generationConfig,omitempty"`
-	SafetySettings    []safetySetting   `json:"safetySettings,omitempty"`
-	Tools             []tool            `json:"tools,omitempty"`
-	ToolConfig        *toolConfig       `json:"toolConfig,omitempty"`
+	Contents          []schema.GeminiMessage `json:"contents"`
+	SystemInstruction *contentRequest        `json:"systemInstruction,omitempty"`
+	GenerationConfig  *generationConfig      `json:"generationConfig,omitempty"`
+	SafetySettings    []safetySetting        `json:"safetySettings,omitempty"`
+	Tools             []tool                 `json:"tools,omitempty"`
+	ToolConfig        *toolConfig            `json:"toolConfig,omitempty"`
 }
 
 type contentRequest struct {
@@ -28,26 +28,9 @@ type contentRequest struct {
 	Parts []part `json:"parts"`
 }
 
+// part is used only for system instruction (simple text part)
 type part struct {
-	Text             string            `json:"text,omitempty"`
-	InlineData       *inlineData       `json:"inlineData,omitempty"`
-	FunctionCall     *functionCall     `json:"functionCall,omitempty"`
-	FunctionResponse *functionResponse `json:"functionResponse,omitempty"`
-}
-
-type inlineData struct {
-	MimeType string `json:"mimeType"`
-	Data     string `json:"data"` // base64-encoded
-}
-
-type functionCall struct {
-	Name string          `json:"name"`
-	Args json.RawMessage `json:"args"`
-}
-
-type functionResponse struct {
-	Name     string          `json:"name"`
-	Response json.RawMessage `json:"response"`
+	Text string `json:"text,omitempty"`
 }
 
 type generationConfig struct {
@@ -226,47 +209,20 @@ func generateContentRequestFromOpts(session *schema.Session, opts ...opt.Opt) (*
 }
 
 // sessionToContents converts a schema session to Google API contents
-func sessionToContents(session *schema.Session) []contentRequest {
+func sessionToContents(session *schema.Session) []schema.GeminiMessage {
 	if session == nil {
 		return nil
 	}
 
-	contents := make([]contentRequest, 0, len(*session))
+	contents := make([]schema.GeminiMessage, 0, len(*session))
 	for _, msg := range *session {
-		content := messageToContent(msg)
-		if content != nil {
-			contents = append(contents, *content)
+		// Skip system messages (handled separately)
+		if msg.Role == "system" {
+			continue
 		}
+		contents = append(contents, schema.GeminiMessage{Message: *msg})
 	}
 	return contents
-}
-
-// messageToContent converts a schema message to a Google API content request
-func messageToContent(msg *schema.Message) *contentRequest {
-	if msg == nil {
-		return nil
-	}
-
-	// Map roles: Google uses "user" and "model"
-	role := msg.Role
-	switch role {
-	case "assistant":
-		role = "model"
-	case "system":
-		// System messages are handled separately in systemInstruction
-		return nil
-	}
-
-	// Get text content from the message
-	text := msg.Text()
-	if text == "" {
-		return nil
-	}
-
-	return &contentRequest{
-		Role:  role,
-		Parts: []part{{Text: text}},
-	}
 }
 
 // toSchemaMessage converts the response to a schema message

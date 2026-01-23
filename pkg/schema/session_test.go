@@ -14,8 +14,10 @@ func TestSessionAppend(t *testing.T) {
 	var session schema.Session
 
 	// Append messages
-	session.Append(schema.NewMessage("user", "Hello"))
-	session.Append(schema.NewMessage("assistant", "Hi there!"))
+	msg1, _ := schema.NewMessage("user", "Hello")
+	session.Append(*msg1)
+	msg2, _ := schema.NewMessage("assistant", "Hi there!")
+	session.Append(*msg2)
 
 	assert.Len(session, 2)
 	assert.Equal("user", session[0].Role)
@@ -28,13 +30,13 @@ func TestSessionTokens(t *testing.T) {
 	var session schema.Session
 
 	// Append messages with tokens set
-	msg1 := schema.NewMessage("user", "Hello")
+	msg1, _ := schema.NewMessage("user", "Hello")
 	msg1.Tokens = 10
-	session.Append(msg1)
+	session.Append(*msg1)
 
-	msg2 := schema.NewMessage("assistant", "Hi there!")
+	msg2, _ := schema.NewMessage("assistant", "Hi there!")
 	msg2.Tokens = 15
-	session.Append(msg2)
+	session.Append(*msg2)
 
 	// Total tokens should be sum
 	assert.Equal(uint(25), session.Tokens())
@@ -53,12 +55,12 @@ func TestSessionAppendWithOutput(t *testing.T) {
 	var session schema.Session
 
 	// First message
-	msg1 := schema.NewMessage("user", "Hello")
-	session.Append(msg1)
+	msg1, _ := schema.NewMessage("user", "Hello")
+	session.Append(*msg1)
 
 	// Append with output - simulates LLM response with token counts
-	msg2 := schema.NewMessage("assistant", "Hi there!")
-	session.AppendWithOuput(msg2, 10, 15) // 10 input tokens, 15 output tokens
+	msg2, _ := schema.NewMessage("assistant", "Hi there!")
+	session.AppendWithOuput(*msg2, 10, 15) // 10 input tokens, 15 output tokens
 
 	assert.Len(session, 2)
 	// The last message before append should have its tokens adjusted
@@ -73,8 +75,10 @@ func TestSessionMarshalJSON(t *testing.T) {
 	assert := assert.New(t)
 
 	var session schema.Session
-	session.Append(schema.NewMessage("user", "Hello"))
-	session.Append(schema.NewMessage("assistant", "Hi there!"))
+	msg1, _ := schema.NewMessage("user", "Hello")
+	session.Append(*msg1)
+	msg2, _ := schema.NewMessage("assistant", "Hi there!")
+	session.Append(*msg2)
 
 	data, err := json.Marshal(session)
 	assert.NoError(err)
@@ -126,9 +130,12 @@ func TestSessionRoundTrip(t *testing.T) {
 	assert := assert.New(t)
 
 	var original schema.Session
-	original.Append(schema.NewMessage("system", "You are a helpful assistant"))
-	original.Append(schema.NewMessage("user", "What is 2+2?"))
-	original.Append(schema.NewMessage("assistant", "2+2 equals 4"))
+	msg1, _ := schema.NewMessage("system", "You are a helpful assistant")
+	original.Append(*msg1)
+	msg2, _ := schema.NewMessage("user", "What is 2+2?")
+	original.Append(*msg2)
+	msg3, _ := schema.NewMessage("assistant", "2+2 equals 4")
+	original.Append(*msg3)
 
 	// Marshal
 	data, err := json.Marshal(original)
@@ -149,7 +156,8 @@ func TestSessionWithToolMessages(t *testing.T) {
 	assert := assert.New(t)
 
 	var session schema.Session
-	session.Append(schema.NewMessage("user", "What's the weather?"))
+	msg, _ := schema.NewMessage("user", "What's the weather?")
+	session.Append(*msg)
 
 	// Create a tool result message manually
 	toolMsg := schema.Message{
@@ -189,22 +197,22 @@ func TestSessionTokenAccumulation(t *testing.T) {
 	var session schema.Session
 
 	// Simulate a multi-turn conversation with token tracking
-	msg1 := schema.NewMessage("user", "Hello")
-	session.Append(msg1)
+	msg1, _ := schema.NewMessage("user", "Hello")
+	session.Append(*msg1)
 
 	// First response: 5 input tokens used, 10 output tokens
-	resp1 := schema.NewMessage("assistant", "Hi!")
-	session.AppendWithOuput(resp1, 5, 10)
+	resp1, _ := schema.NewMessage("assistant", "Hi!")
+	session.AppendWithOuput(*resp1, 5, 10)
 
 	assert.Equal(uint(15), session.Tokens())
 
 	// Second user message
-	msg2 := schema.NewMessage("user", "How are you?")
-	session.Append(msg2)
+	msg2, _ := schema.NewMessage("user", "How are you?")
+	session.Append(*msg2)
 
 	// Second response: 20 total input tokens (including history), 8 output tokens
-	resp2 := schema.NewMessage("assistant", "I'm doing well!")
-	session.AppendWithOuput(resp2, 20, 8)
+	resp2, _ := schema.NewMessage("assistant", "I'm doing well!")
+	session.AppendWithOuput(*resp2, 20, 8)
 
 	// Tokens should accumulate correctly
 	assert.Equal(uint(28), session.Tokens())
@@ -214,7 +222,8 @@ func TestSessionString(t *testing.T) {
 	assert := assert.New(t)
 
 	var session schema.Session
-	session.Append(schema.NewMessage("user", "Test"))
+	msg, _ := schema.NewMessage("user", "Test")
+	session.Append(*msg)
 
 	// String() should return valid JSON
 	str := session.String()

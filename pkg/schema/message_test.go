@@ -12,7 +12,8 @@ func TestNewMessage(t *testing.T) {
 	assert := assert.New(t)
 
 	// Test basic message creation
-	msg := schema.NewMessage("user", "Hello, world!")
+	msg, err := schema.NewMessage("user", "Hello, world!")
+	assert.NoError(err)
 	assert.Equal("user", msg.Role)
 	assert.Len(msg.Content, 1)
 	assert.Equal("text", msg.Content[0].Type)
@@ -24,7 +25,8 @@ func TestMessageText(t *testing.T) {
 	assert := assert.New(t)
 
 	// Test Text() method
-	msg := schema.NewMessage("assistant", "Hello")
+	msg, err := schema.NewMessage("assistant", "Hello")
+	assert.NoError(err)
 	assert.Equal("Hello", msg.Text())
 
 	// Test with multiple text blocks
@@ -53,7 +55,8 @@ func TestMessageMarshalJSON(t *testing.T) {
 	assert := assert.New(t)
 
 	// Test marshaling a simple text message
-	msg := schema.NewMessage("user", "Hello")
+	msg, err := schema.NewMessage("user", "Hello")
+	assert.NoError(err)
 	data, err := json.Marshal(msg)
 	assert.NoError(err)
 

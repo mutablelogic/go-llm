@@ -31,6 +31,12 @@ type Globals struct {
 	Debug   bool             `name:"debug" help:"Enable debug logging"`
 	Version kong.VersionFlag `name:"version" help:"Print version and exit"`
 
+	// API Keys
+	GeminiAPIKey    string `name:"gemini-api-key" env:"GEMINI_API_KEY" help:"Google Gemini API key"`
+	AnthropicAPIKey string `name:"anthropic-api-key" env:"ANTHROPIC_API_KEY" help:"Anthropic API key"`
+	OllamaURL       string `name:"ollama-url" env:"OLLAMA_URL" help:"Ollama server URL" default:""`
+	NewsAPIKey      string `name:"newsapi-key" env:"NEWSAPI_KEY" help:"NewsAPI key for news tools"`
+
 	// Open Telemetry options
 	OTel struct {
 		Endpoint string `env:"OTEL_EXPORTER_OTLP_ENDPOINT" help:"OpenTelemetry endpoint" default:""`
@@ -131,40 +137,40 @@ func (g *Globals) Agent() (agent.Agent, error) {
 		clientOpts = append(clientOpts, client.OptTrace(os.Stderr, true))
 	}
 
-	// Add Google client if GEMINI_API_KEY is set
-	if apiKey := os.Getenv("GEMINI_API_KEY"); apiKey != "" {
-		geminiClient, err := gemini.New(apiKey, clientOpts...)
+	// Add Google client if Gemini API key is set
+	if g.GeminiAPIKey != "" {
+		geminiClient, err := gemini.New(g.GeminiAPIKey, clientOpts...)
 		if err != nil {
 			return nil, fmt.Errorf("failed to create Gemini client: %w", err)
 		}
 		opts = append(opts, agent.WithClient(geminiClient))
 	}
 
-	// Add Anthropic client if ANTHROPIC_API_KEY is set
-	if apiKey := os.Getenv("ANTHROPIC_API_KEY"); apiKey != "" {
-		anthropicClient, err := anthropic.New(apiKey, clientOpts...)
+	// Add Anthropic client if API key is set
+	if g.AnthropicAPIKey != "" {
+		anthropicClient, err := anthropic.New(g.AnthropicAPIKey, clientOpts...)
 		if err != nil {
 			return nil, fmt.Errorf("failed to create Anthropic client: %w", err)
 		}
 		opts = append(opts, agent.WithClient(anthropicClient))
 	}
 
-	// Add Ollama client if OLLAMA_URL is set
-	if url := os.Getenv("OLLAMA_URL"); url != "" {
-		ollamaClient, err := ollama.New(url, clientOpts...)
+	// Add Ollama client if URL is set
+	if g.OllamaURL != "" {
+		ollamaClient, err := ollama.New(g.OllamaURL, clientOpts...)
 		if err != nil {
 			return nil, fmt.Errorf("failed to create Ollama client: %w", err)
 		}
 		// Ping to verify connectivity
 		if _, err := ollamaClient.Ping(g.ctx); err != nil {
-			return nil, fmt.Errorf("failed to connect to Ollama at %s: %w", url, err)
+			return nil, fmt.Errorf("failed to connect to Ollama at %s: %w", g.OllamaURL, err)
 		}
 		opts = append(opts, agent.WithClient(ollamaClient))
 	}
 
 	// Check if at least one client is configured
 	if len(opts) == 0 {
-		return nil, fmt.Errorf("no API keys configured. Set GEMINI_API_KEY, ANTHROPIC_API_KEY, and/or OLLAMA_URL")
+		return nil, fmt.Errorf("no API keys configured. Set --gemini-api-key, --anthropic-api-key, and/or --ollama-url (or use environment variables)")
 	}
 
 	return agent.NewAgent(opts...)
@@ -179,9 +185,9 @@ func (g *Globals) Toolkit() (*tool.Toolkit, error) {
 		clientOpts = append(clientOpts, client.OptTrace(os.Stderr, true))
 	}
 
-	// Add NewsAPI tools if NEWSAPI_KEY is set
-	if apiKey := os.Getenv("NEWSAPI_KEY"); apiKey != "" {
-		newsTools, err := newsapi.NewTools(apiKey, clientOpts...)
+	// Add NewsAPI tools if API key is set
+	if g.NewsAPIKey != "" {
+		newsTools, err := newsapi.NewTools(g.NewsAPIKey, clientOpts...)
 		if err != nil {
 			return nil, fmt.Errorf("failed to create NewsAPI tools: %w", err)
 		}

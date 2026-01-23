@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"os"
 
 	// Packages
 	schema "github.com/mutablelogic/go-llm/pkg/schema"
@@ -15,8 +16,9 @@ type SendCommands struct {
 }
 
 type SendCommand struct {
-	Model string `arg:"" name:"model" help:"Model name"`
-	Text  string `arg:"" name:"text" help:"Message text to send"`
+	Model string   `arg:"" name:"model" help:"Model name"`
+	Text  string   `arg:"" name:"text" help:"Message text to send"`
+	File  []string `name:"file" help:"File path(s) to attach (can be used multiple times)" type:"existingfile"`
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -35,11 +37,28 @@ func (cmd *SendCommand) Run(ctx *Globals) (err error) {
 		return fmt.Errorf("failed to get model %q: %w", cmd.Model, err)
 	}
 
+	// Build options for message
+	var opts []schema.Opt
+
+	// Add files if provided
+	for _, filePath := range cmd.File {
+		file, err := os.Open(filePath)
+		if err != nil {
+			return fmt.Errorf("failed to open file %q: %w", filePath, err)
+		}
+		defer file.Close()
+
+		opts = append(opts, schema.WithFile(file))
+	}
+
 	// Create message
-	message := schema.NewMessage("user", cmd.Text)
+	message, err := schema.NewMessage(schema.MessageRoleUser, cmd.Text, opts...)
+	if err != nil {
+		return fmt.Errorf("failed to create message: %w", err)
+	}
 
 	// Send the message
-	response, err := agent.Send(ctx.ctx, *model, &message)
+	response, err := agent.Send(ctx.ctx, *model, message)
 	if err != nil {
 		return fmt.Errorf("failed to send message: %w", err)
 	}
