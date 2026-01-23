@@ -175,7 +175,7 @@ func (ollama *Client) UnloadModel(ctx context.Context, model schema.Model) error
 
 // Download (pull) a model by name
 func (ollama *Client) DownloadModel(ctx context.Context, path string) (*schema.Model, error) {
-	return nil, llm.ErrNotImplemented.With("Ollama does not support downloading models via API")
+	return nil, llm.ErrNotImplemented.With("TODO Ollama does not support downloading models via API YET")
 }
 
 ///////////////////////////////////////////////////////////////////////////////
