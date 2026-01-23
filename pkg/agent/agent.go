@@ -14,6 +14,10 @@ type Agent interface {
 	llm.Client
 	llm.Embedder
 	llm.Downloader
+	llm.Messenger
+
+	// Clients returns a map of client name to client
+	Clients() map[string]llm.Client
 }
 
 // agent is the concrete implementation of the Agent interface
@@ -45,6 +49,11 @@ func NewAgent(opts ...Opt) (Agent, error) {
 // Name returns the name of the agent
 func (a *agent) Name() string {
 	return "agent"
+}
+
+// Clients returns a map of client name to client
+func (a *agent) Clients() map[string]llm.Client {
+	return a.clients
 }
 
 ///////////////////////////////////////////////////////////////////////////////

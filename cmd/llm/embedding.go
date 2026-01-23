@@ -26,7 +26,7 @@ type EmbeddingCommand struct {
 // COMMANDS
 
 func (cmd *EmbeddingCommand) Run(ctx *Globals) (err error) {
-	client, err := ctx.Client()
+	client, err := ctx.Agent()
 	if err != nil {
 		return err
 	}

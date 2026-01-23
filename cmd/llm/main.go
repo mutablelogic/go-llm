@@ -47,9 +47,11 @@ type Globals struct {
 
 type CLI struct {
 	Globals
+	AgentCommands
 	ModelCommands
 	ToolCommands
 	EmbeddingCommands
+	SendCommands
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -120,8 +122,8 @@ func run(ctx *kong.Context, globals *Globals) int {
 ///////////////////////////////////////////////////////////////////////////////
 // PRIVATE METHODS
 
-// Client returns an agent with all configured LLM clients
-func (g *Globals) Client() (agent.Agent, error) {
+// Agent returns an agent with all configured LLM clients
+func (g *Globals) Agent() (agent.Agent, error) {
 	var opts []agent.Opt
 	var clientOpts []client.ClientOpt
 

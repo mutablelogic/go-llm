@@ -12,7 +12,7 @@ import (
 ////////////////////////////////////////////////////////////////////////////////
 // TYPES
 
-type content struct {
+type Content struct {
 	// If content is a string
 	Text *string
 
@@ -25,29 +25,29 @@ type content struct {
 
 type contentType struct {
 	Type string `json:"type,omitempty"`
-	*contentTypeText
-	*contentTypeToolResult
-	*contentTypeToolUse
-	*contentTypeImage
+	*ContentTypeText
+	*ContentTypeToolResult
+	*ContentTypeToolUse
+	*ContentTypeImage
 }
 
-type contentTypeText struct {
+type ContentTypeText struct {
 	Text string `json:"text,omitempty"`
 }
 
-type contentTypeToolResult struct {
+type ContentTypeToolResult struct {
 	ToolUseId string  `json:"tool_use_id,omitempty"`
-	Content   content `json:"content,omitempty"`
+	Content   Content `json:"content,omitempty"`
 	IsError   bool    `json:"is_error,omitempty"`
 }
 
-type contentTypeToolUse struct {
+type ContentTypeToolUse struct {
 	Id    string          `json:"id,omitempty"`
 	Name  string          `json:"name,omitempty"`
 	Input json.RawMessage `json:"input,omitempty"`
 }
 
-type contentTypeImage struct {
+type ContentTypeImage struct {
 	Source *imageSource `json:"source,omitempty"`
 }
 
@@ -60,7 +60,7 @@ type imageSource struct {
 // Represents content to send to or received from an LLM
 type Message struct {
 	Role    string  `json:"role,omitempty"`    // assistant, user, tool, system
-	Content content `json:"content,omitempty"` // string or array of text, reference, image_url
+	Content Content `json:"content,omitempty"` // string or array of text, reference, image_url
 	Tokens  uint    `json:"-"`                 // number of tokens for the message
 }
 
@@ -70,7 +70,7 @@ type Message struct {
 func StringMessage(role, message string) Message {
 	return Message{
 		Role:    role,
-		Content: content{Text: &message},
+		Content: Content{Text: &message},
 	}
 }
 
@@ -78,12 +78,12 @@ func StringMessage(role, message string) Message {
 func ToolResultMessage(toolUseId, result string, isError bool) Message {
 	return Message{
 		Role: "user",
-		Content: content{
+		Content: Content{
 			TypeArray: []contentType{{
 				Type: "tool_result",
-				contentTypeToolResult: &contentTypeToolResult{
+				ContentTypeToolResult: &ContentTypeToolResult{
 					ToolUseId: toolUseId,
-					Content:   content{Text: &result},
+					Content:   Content{Text: &result},
 					IsError:   isError,
 				},
 			}},
@@ -113,10 +113,10 @@ func ImageMessage(r io.Reader, mediaType string) (Message, error) {
 
 	return Message{
 		Role: "user",
-		Content: content{
+		Content: Content{
 			TypeArray: []contentType{{
 				Type: "image",
-				contentTypeImage: &contentTypeImage{
+				ContentTypeImage: &ContentTypeImage{
 					Source: &imageSource{
 						Type:      "base64",
 						MediaType: mediaType,
@@ -146,8 +146,8 @@ func (m Message) Text() string {
 	// If content is an array of types, extract text from each
 	var texts []string
 	for _, ct := range m.Content.TypeArray {
-		if ct.contentTypeText != nil && ct.contentTypeText.Text != "" {
-			texts = append(texts, ct.contentTypeText.Text)
+		if ct.ContentTypeText != nil && ct.ContentTypeText.Text != "" {
+			texts = append(texts, ct.ContentTypeText.Text)
 		}
 	}
 	if len(texts) > 0 {
@@ -167,7 +167,7 @@ func (m Message) String() string {
 ////////////////////////////////////////////////////////////////////////////////
 // JSON
 
-func (c *content) UnmarshalJSON(data []byte) error {
+func (c *Content) UnmarshalJSON(data []byte) error {
 	// Try string
 	var str string
 	if err := json.Unmarshal(data, &str); err == nil {
@@ -192,7 +192,7 @@ func (c *content) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
-func (c content) MarshalJSON() ([]byte, error) {
+func (c Content) MarshalJSON() ([]byte, error) {
 	if c.Text != nil {
 		return json.Marshal(c.Text)
 	}

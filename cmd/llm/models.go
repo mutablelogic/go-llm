@@ -36,7 +36,7 @@ type DeleteModelCommand struct {
 // COMMANDS
 
 func (cmd *ListModelsCommand) Run(ctx *Globals) (err error) {
-	client, err := ctx.Client()
+	client, err := ctx.Agent()
 	if err != nil {
 		return err
 	}
@@ -60,7 +60,7 @@ func (cmd *ListModelsCommand) Run(ctx *Globals) (err error) {
 }
 
 func (cmd *GetModelCommand) Run(ctx *Globals) (err error) {
-	client, err := ctx.Client()
+	client, err := ctx.Agent()
 	if err != nil {
 		return err
 	}
@@ -84,7 +84,7 @@ func (cmd *GetModelCommand) Run(ctx *Globals) (err error) {
 }
 
 func (cmd *DownloadModelCommand) Run(ctx *Globals) (err error) {
-	client, err := ctx.Client()
+	client, err := ctx.Agent()
 	if err != nil {
 		return err
 	}
@@ -118,7 +118,7 @@ func (cmd *DownloadModelCommand) Run(ctx *Globals) (err error) {
 }
 
 func (cmd *DeleteModelCommand) Run(ctx *Globals) (err error) {
-	client, err := ctx.Client()
+	client, err := ctx.Agent()
 	if err != nil {
 		return err
 	}

@@ -64,13 +64,14 @@ type cacheControlEphemeral struct {
 }
 
 type messagesResponse struct {
-	Id    string `json:"id"`
-	Model string `json:"model"`
-	Type  string `json:"type"`
-	schema.Message
-	StopReason    string  `json:"stop_reason"` // "end_turn", "max_tokens", "stop_sequence", "tool_use", "pause_turn", "refusal"
-	StopSequence  *string `json:"stop_sequence,omitempty"`
-	messagesUsage `json:"usage"`
+	Id           string         `json:"id"`
+	Model        string         `json:"model"`
+	Type         string         `json:"type"`
+	Role         string         `json:"role"`
+	Content      schema.Content `json:"content"`
+	StopReason   string         `json:"stop_reason"` // "end_turn", "max_tokens", "stop_sequence", "tool_use", "pause_turn", "refusal"
+	StopSequence *string        `json:"stop_sequence,omitempty"`
+	messagesUsage
 }
 
 type messagesUsage struct {
@@ -241,19 +242,25 @@ func (anthropic *Client) Messages(ctx context.Context, model string, session *sc
 		return nil, llm.ErrRefusal
 	}
 
+	// Create a message from the response
+	message := schema.Message{
+		Role:    response.Role,
+		Content: response.Content,
+	}
+
 	// Append the message to the session
-	session.AppendWithOuput(response.Message, response.InputTokens, response.OutputTokens)
+	session.AppendWithOuput(message, response.InputTokens, response.OutputTokens)
 
 	// Return error for stop reasons that need caller attention
 	switch response.StopReason {
 	case StopReasonMaxTokens:
-		return &response.Message, llm.ErrMaxTokens
+		return &message, llm.ErrMaxTokens
 	case StopReasonPauseTurn:
-		return &response.Message, llm.ErrPauseTurn
+		return &message, llm.ErrPauseTurn
 	}
 
 	// Return success
-	return &response.Message, nil
+	return &message, nil
 }
 
 ///////////////////////////////////////////////////////////////////////////////
