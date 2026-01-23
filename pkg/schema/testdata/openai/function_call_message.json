@@ -1,0 +1,24 @@
+{
+  "description": "Legacy function calling format (deprecated, replaced by tool calls)",
+  "examples": [
+    {
+      "name": "Assistant message with function call (legacy)",
+      "message": {
+        "role": "assistant",
+        "content": null,
+        "function_call": {
+          "name": "get_current_weather",
+          "arguments": "{\"location\": \"San Francisco, CA\"}"
+        }
+      }
+    },
+    {
+      "name": "Function response message (legacy)",
+      "message": {
+        "role": "function",
+        "name": "get_current_weather",
+        "content": "{\"temperature\": 22, \"condition\": \"sunny\"}"
+      }
+    }
+  ]
+}

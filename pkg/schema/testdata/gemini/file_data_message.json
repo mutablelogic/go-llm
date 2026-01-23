@@ -1,0 +1,70 @@
+{
+  "description": "Message with file references using the File API (for larger files)",
+  "examples": [
+    {
+      "name": "PDF file reference",
+      "message": {
+        "role": "user",
+        "parts": [
+          {
+            "text": "Summarize this document"
+          },
+          {
+            "file_data": {
+              "mime_type": "application/pdf",
+              "file_uri": "https://generativelanguage.googleapis.com/v1beta/files/abc123"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "Video file reference",
+      "message": {
+        "role": "user",
+        "parts": [
+          {
+            "file_data": {
+              "mime_type": "video/mp4",
+              "file_uri": "https://generativelanguage.googleapis.com/v1beta/files/video456"
+            }
+          },
+          {
+            "text": "What are the main topics discussed in this video?"
+          }
+        ]
+      }
+    },
+    {
+      "name": "Image file reference",
+      "message": {
+        "role": "user",
+        "parts": [
+          {
+            "file_data": {
+              "mime_type": "image/png",
+              "file_uri": "https://generativelanguage.googleapis.com/v1beta/files/img789"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "Audio file reference",
+      "message": {
+        "role": "user",
+        "parts": [
+          {
+            "text": "Transcribe and summarize this audio"
+          },
+          {
+            "file_data": {
+              "mime_type": "audio/wav",
+              "file_uri": "https://generativelanguage.googleapis.com/v1beta/files/audio101"
+            }
+          }
+        ]
+      }
+    }
+  ]
+}

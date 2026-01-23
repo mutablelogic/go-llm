@@ -1,0 +1,59 @@
+{
+  "description": "Message containing image content - supports base64, URL, and file sources",
+  "examples": [
+    {
+      "name": "Image with base64 source",
+      "message": {
+        "role": "user",
+        "content": [
+          {
+            "type": "text",
+            "text": "What's in this image?"
+          },
+          {
+            "type": "image",
+            "source": {
+              "type": "base64",
+              "media_type": "image/jpeg",
+              "data": "/9j/4AAQSkZJRg..."
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "Image with URL source",
+      "message": {
+        "role": "user",
+        "content": [
+          {
+            "type": "text",
+            "text": "Describe this image"
+          },
+          {
+            "type": "image",
+            "source": {
+              "type": "url",
+              "url": "https://example.com/image.jpg"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "Image with file source",
+      "message": {
+        "role": "user",
+        "content": [
+          {
+            "type": "image",
+            "source": {
+              "type": "file",
+              "file_id": "file_abc123"
+            }
+          }
+        ]
+      }
+    }
+  ]
+}

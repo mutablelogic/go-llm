@@ -1,0 +1,106 @@
+{
+  "description": "Messages with tool calls and tool responses",
+  "examples": [
+    {
+      "name": "Assistant message with single tool call",
+      "message": {
+        "role": "assistant",
+        "content": "",
+        "tool_calls": [
+          {
+            "type": "function",
+            "function": {
+              "index": 0,
+              "name": "get_temperature",
+              "arguments": {
+                "city": "New York"
+              }
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "Tool response message",
+      "message": {
+        "role": "tool",
+        "tool_name": "get_temperature",
+        "content": "22°C"
+      }
+    },
+    {
+      "name": "Assistant with multiple parallel tool calls",
+      "message": {
+        "role": "assistant",
+        "content": "",
+        "tool_calls": [
+          {
+            "type": "function",
+            "function": {
+              "index": 0,
+              "name": "get_temperature",
+              "arguments": {
+                "city": "New York"
+              }
+            }
+          },
+          {
+            "type": "function",
+            "function": {
+              "index": 1,
+              "name": "get_temperature",
+              "arguments": {
+                "city": "Los Angeles"
+              }
+            }
+          },
+          {
+            "type": "function",
+            "function": {
+              "index": 2,
+              "name": "get_temperature",
+              "arguments": {
+                "city": "Chicago"
+              }
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "Tool response for parallel calls (first result)",
+      "message": {
+        "role": "tool",
+        "tool_name": "get_temperature",
+        "content": "15°C"
+      }
+    },
+    {
+      "name": "Weather tool call",
+      "message": {
+        "role": "assistant",
+        "tool_calls": [
+          {
+            "type": "function",
+            "function": {
+              "index": 0,
+              "name": "get_weather",
+              "arguments": {
+                "location": "San Francisco",
+                "unit": "fahrenheit"
+              }
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "Weather tool response",
+      "message": {
+        "role": "tool",
+        "tool_name": "get_weather",
+        "content": "{\"temperature\": 65, \"conditions\": \"sunny\", \"humidity\": 70}"
+      }
+    }
+  ]
+}

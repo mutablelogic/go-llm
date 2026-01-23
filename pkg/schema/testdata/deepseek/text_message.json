@@ -1,0 +1,34 @@
+{
+  "description": "Simple text message - basic format for DeepSeek chat API",
+  "examples": [
+    {
+      "name": "System message",
+      "message": {
+        "role": "system",
+        "content": "You are a helpful assistant."
+      }
+    },
+    {
+      "name": "User message",
+      "message": {
+        "role": "user",
+        "content": "Hello, how are you?"
+      }
+    },
+    {
+      "name": "Assistant message",
+      "message": {
+        "role": "assistant",
+        "content": "I'm doing well, thank you! How can I help you today?"
+      }
+    },
+    {
+      "name": "User message with name",
+      "message": {
+        "role": "user",
+        "name": "alice",
+        "content": "What's the weather like?"
+      }
+    }
+  ]
+}

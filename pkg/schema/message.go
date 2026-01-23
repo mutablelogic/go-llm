@@ -1,160 +1,220 @@
 package schema
 
 import (
-	"encoding/base64"
 	"encoding/json"
-	"errors"
-	"io"
-	"net/http"
-	"strings"
 )
 
 ////////////////////////////////////////////////////////////////////////////////
 // TYPES
 
-type Content struct {
-	// If content is a string
-	Text *string
-
-	// If content is an array of text
-	TextArray []string
-
-	// If content is an array of types
-	TypeArray []contentType
-}
-
-type contentType struct {
-	Type string `json:"type,omitempty"`
-	*ContentTypeText
-	*ContentTypeToolResult
-	*ContentTypeToolUse
-	*ContentTypeImage
-}
-
-type ContentTypeText struct {
-	Text string `json:"text,omitempty"`
-}
-
-type ContentTypeToolResult struct {
-	ToolUseId string  `json:"tool_use_id,omitempty"`
-	Content   Content `json:"content,omitempty"`
-	IsError   bool    `json:"is_error,omitempty"`
-}
-
-type ContentTypeToolUse struct {
-	Id    string          `json:"id,omitempty"`
-	Name  string          `json:"name,omitempty"`
-	Input json.RawMessage `json:"input,omitempty"`
-}
-
-type ContentTypeImage struct {
-	Source *imageSource `json:"source,omitempty"`
-}
-
-type imageSource struct {
-	Type      string `json:"type"`       // "base64"
-	MediaType string `json:"media_type"` // "image/png", "image/jpeg", etc.
-	Data      string `json:"data"`       // base64-encoded data
-}
-
-// Represents content to send to or received from an LLM
+// Message represents a message in a conversation with an LLM.
+// It uses a universal content block representation that can be marshaled
+// to any provider's format.
 type Message struct {
-	Role    string  `json:"role,omitempty"`    // assistant, user, tool, system
-	Content Content `json:"content,omitempty"` // string or array of text, reference, image_url
-	Tokens  uint    `json:"-"`                 // number of tokens for the message
+	Role    string         `json:"role"`    // "user", "assistant", "system", "tool", etc.
+	Content []ContentBlock `json:"content"` // Array of content blocks
+	Tokens  uint           `json:"-"`       // Number of tokens (not serialized)
+}
+
+// ContentBlock represents a single piece of content within a message.
+// It's a superset of all content types across all providers.
+type ContentBlock struct {
+	Type string `json:"type"` // "text", "image", "tool_use", "tool_result", "thinking", "document", etc.
+
+	// Text content
+	Text *string `json:"text,omitempty"`
+
+	// Image content
+	ImageSource *ImageSource `json:"image_source,omitempty"`
+
+	// Document content (Anthropic)
+	DocumentSource  *DocumentSource  `json:"document_source,omitempty"`
+	DocumentTitle   *string          `json:"document_title,omitempty"`
+	DocumentContext *string          `json:"document_context,omitempty"`
+	Citations       *CitationOptions `json:"citations,omitempty"`
+
+	// Tool Use (assistant → user)
+	ToolUseID *string         `json:"tool_use_id,omitempty"`
+	ToolName  *string         `json:"tool_name,omitempty"`
+	ToolInput json.RawMessage `json:"tool_input,omitempty"`
+
+	// Tool Result (user → assistant)
+	ToolResultID      *string         `json:"tool_result_id,omitempty"`
+	ToolResultContent json.RawMessage `json:"tool_result_content,omitempty"`
+	IsError           *bool           `json:"is_error,omitempty"`
+
+	// Thinking/Reasoning
+	Thinking          *string `json:"thinking,omitempty"`
+	ThinkingSignature *string `json:"thinking_signature,omitempty"` // Anthropic extended thinking
+	ReasoningContent  *string `json:"reasoning_content,omitempty"`  // DeepSeek
+
+	// Redacted Thinking (Anthropic)
+	RedactedThinkingData *string `json:"redacted_thinking_data,omitempty"`
+
+	// Cache Control (Anthropic)
+	CacheControl *CacheControl `json:"cache_control,omitempty"`
+
+	// Server-side tool use metrics (Anthropic)
+	CacheCreation          *CacheMetrics `json:"cache_creation,omitempty"`
+	CacheReadInputTokens   *uint         `json:"cache_read_input_tokens,omitempty"`
+	InputTokens            *uint         `json:"input_tokens,omitempty"`
+	CacheCreationInputTokens *uint       `json:"cache_creation_input_tokens,omitempty"`
+
+	// Function Response (Gemini)
+	FunctionResponse json.RawMessage `json:"function_response,omitempty"`
+}
+
+// ImageSource represents an image in various formats
+type ImageSource struct {
+	Type        string  `json:"type"`                 // "base64", "url", "file"
+	MediaType   string  `json:"media_type,omitempty"` // "image/jpeg", "image/png", etc. (only for base64)
+	Data        *string `json:"data,omitempty"`       // base64 encoded data
+	URL         *string `json:"url,omitempty"`        // image URL
+	FileID      *string `json:"file_id,omitempty"`    // file reference (Anthropic)
+	FileURI     *string `json:"file_uri,omitempty"`   // file URI (Gemini)
+	DisplayName *string `json:"display_name,omitempty"` // display name (Gemini)
+}
+
+// MarshalJSON customizes the JSON marshaling to omit media_type for url/file types
+func (is ImageSource) MarshalJSON() ([]byte, error) {
+	type Alias ImageSource
+	if is.Type == "url" || is.Type == "file" {
+		// For url and file types, omit media_type
+		return json.Marshal(&struct {
+			Type        string  `json:"type"`
+			URL         *string `json:"url,omitempty"`
+			FileID      *string `json:"file_id,omitempty"`
+			FileURI     *string `json:"file_uri,omitempty"`
+			DisplayName *string `json:"display_name,omitempty"`
+		}{
+			Type:        is.Type,
+			URL:         is.URL,
+			FileID:      is.FileID,
+			FileURI:     is.FileURI,
+			DisplayName: is.DisplayName,
+		})
+	}
+	// For base64, include all fields
+	return json.Marshal((Alias)(is))
+}
+
+// DocumentSource represents a document in various formats
+type DocumentSource struct {
+	Type      string         `json:"type"`                 // "base64", "url", "text", "content"
+	MediaType string         `json:"media_type,omitempty"` // "application/pdf", "text/plain", etc.
+	Data      *string        `json:"data,omitempty"`       // base64 encoded data
+	URL       *string        `json:"url,omitempty"`        // document URL
+	Text      *string        `json:"text,omitempty"`       // plain text content
+	Content   []ContentBlock `json:"content,omitempty"`    // content blocks (for type="content")
+}
+
+// MarshalJSON customizes the JSON marshaling to omit media_type for url/content types
+func (ds DocumentSource) MarshalJSON() ([]byte, error) {
+	type Alias DocumentSource
+	if ds.Type == "url" || ds.Type == "content" {
+		// For url and content types, omit media_type
+		return json.Marshal(&struct {
+			Type    string         `json:"type"`
+			URL     *string        `json:"url,omitempty"`
+			Content []ContentBlock `json:"content,omitempty"`
+		}{
+			Type:    ds.Type,
+			URL:     ds.URL,
+			Content: ds.Content,
+		})
+	}
+	// For base64 and text, include all fields
+	return json.Marshal((Alias)(ds))
+}
+
+// CitationOptions represents citation configuration for documents (Anthropic)
+type CitationOptions struct {
+	Enabled bool `json:"enabled"`
+}
+
+// CacheMetrics represents cache creation metrics (Anthropic server-side tools)
+type CacheMetrics struct {
+	InputTokens *uint `json:"input_tokens,omitempty"`
+}
+
+// CacheControl represents prompt caching configuration (Anthropic)
+type CacheControl struct {
+	Type string `json:"type"`          // "ephemeral"
+	TTL  string `json:"ttl,omitempty"` // time-to-live (e.g., "5m", "1h")
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-// LIFECYCLE
+// CONSTRUCTORS
 
-func StringMessage(role, message string) Message {
+// NewMessage creates a new message with a single text content block
+func NewMessage(role, text string) Message {
 	return Message{
-		Role:    role,
-		Content: Content{Text: &message},
-	}
-}
-
-// ToolResultMessage creates a user message containing a tool result
-func ToolResultMessage(toolUseId, result string, isError bool) Message {
-	return Message{
-		Role: "user",
-		Content: Content{
-			TypeArray: []contentType{{
-				Type: "tool_result",
-				ContentTypeToolResult: &ContentTypeToolResult{
-					ToolUseId: toolUseId,
-					Content:   Content{Text: &result},
-					IsError:   isError,
-				},
-			}},
+		Role: role,
+		Content: []ContentBlock{
+			{
+				Type: "text",
+				Text: &text,
+			},
 		},
 	}
-}
-
-// ImageMessage creates a user message containing an image.
-// The image data is read immediately and base64-encoded.
-// If mediaType is empty, it will be detected from the image data.
-// Returns an error if the data cannot be read or is not a valid image type.
-func ImageMessage(r io.Reader, mediaType string) (Message, error) {
-	data, err := io.ReadAll(r)
-	if err != nil {
-		return Message{}, err
-	}
-
-	// Detect media type if not provided
-	if mediaType == "" {
-		mediaType = http.DetectContentType(data)
-	}
-
-	// Validate it's an image
-	if !strings.HasPrefix(mediaType, "image/") {
-		return Message{}, errors.New("invalid image type: " + mediaType)
-	}
-
-	return Message{
-		Role: "user",
-		Content: Content{
-			TypeArray: []contentType{{
-				Type: "image",
-				ContentTypeImage: &ContentTypeImage{
-					Source: &imageSource{
-						Type:      "base64",
-						MediaType: mediaType,
-						Data:      base64.StdEncoding.EncodeToString(data),
-					},
-				},
-			}},
-		},
-	}, nil
 }
 
 ////////////////////////////////////////////////////////////////////////////////
 // PUBLIC METHODS
 
-// Text returns the text content of the message, concatenating all text parts
+// Text returns the concatenated text content from all text blocks in the message
 func (m Message) Text() string {
-	// If content is a simple string
-	if m.Content.Text != nil {
-		return *m.Content.Text
-	}
-
-	// If content is an array of strings
-	if len(m.Content.TextArray) > 0 {
-		return strings.Join(m.Content.TextArray, "\n")
-	}
-
-	// If content is an array of types, extract text from each
-	var texts []string
-	for _, ct := range m.Content.TypeArray {
-		if ct.ContentTypeText != nil && ct.ContentTypeText.Text != "" {
-			texts = append(texts, ct.ContentTypeText.Text)
+	var result string
+	for i, block := range m.Content {
+		if block.Type == "text" && block.Text != nil {
+			if i > 0 {
+				result += "\n"
+			}
+			result += *block.Text
 		}
 	}
-	if len(texts) > 0 {
-		return strings.Join(texts, "\n")
+	return result
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// JSON
+
+// UnmarshalJSON handles both string content and array of content blocks
+func (m *Message) UnmarshalJSON(data []byte) error {
+	// First try the standard unmarshal with array of content blocks
+	type Alias Message
+	aux := &struct {
+		*Alias
+	}{
+		Alias: (*Alias)(m),
 	}
 
-	return ""
+	if err := json.Unmarshal(data, &aux); err == nil {
+		return nil
+	}
+
+	// If that fails, try with string content
+	var stringContent struct {
+		Role    string          `json:"role"`
+		Content string          `json:"content"`
+		Tokens  uint            `json:"-"`
+	}
+
+	if err := json.Unmarshal(data, &stringContent); err != nil {
+		return err
+	}
+
+	// Convert string content to a text block
+	m.Role = stringContent.Role
+	m.Content = []ContentBlock{
+		{
+			Type: "text",
+			Text: &stringContent.Content,
+		},
+	}
+	m.Tokens = stringContent.Tokens
+
+	return nil
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -162,45 +222,4 @@ func (m Message) Text() string {
 
 func (m Message) String() string {
 	return Stringify(m)
-}
-
-////////////////////////////////////////////////////////////////////////////////
-// JSON
-
-func (c *Content) UnmarshalJSON(data []byte) error {
-	// Try string
-	var str string
-	if err := json.Unmarshal(data, &str); err == nil {
-		c.Text = &str
-		return nil
-	}
-
-	// Try array of strings
-	var strArray []string
-	if err := json.Unmarshal(data, &strArray); err == nil {
-		c.TextArray = strArray
-		return nil
-	}
-
-	// Try array of types
-	var typeArray []contentType
-	if err := json.Unmarshal(data, &typeArray); err == nil {
-		c.TypeArray = typeArray
-		return nil
-	}
-
-	return nil
-}
-
-func (c Content) MarshalJSON() ([]byte, error) {
-	if c.Text != nil {
-		return json.Marshal(c.Text)
-	}
-	if c.TextArray != nil {
-		return json.Marshal(c.TextArray)
-	}
-	if c.TypeArray != nil {
-		return json.Marshal(c.TypeArray)
-	}
-	return json.Marshal(nil)
 }

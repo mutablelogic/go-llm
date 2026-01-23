@@ -1,0 +1,46 @@
+{
+  "description": "Message with images for multimodal models (vision models)",
+  "examples": [
+    {
+      "name": "Single image message",
+      "message": {
+        "role": "user",
+        "content": "What's in this image?",
+        "images": [
+          "/9j/4AAQSkZJRg..."
+        ]
+      }
+    },
+    {
+      "name": "Multiple images message",
+      "message": {
+        "role": "user",
+        "content": "Compare these two images",
+        "images": [
+          "iVBORw0KGgoAAAANS...",
+          "iVBORw0KGgoAAAANS..."
+        ]
+      }
+    },
+    {
+      "name": "Image without text prompt",
+      "message": {
+        "role": "user",
+        "content": "Describe this image",
+        "images": [
+          "base64_encoded_image_data"
+        ]
+      }
+    },
+    {
+      "name": "Assistant response with images",
+      "message": {
+        "role": "assistant",
+        "content": "Here's the generated image based on your request",
+        "images": [
+          "generated_image_base64"
+        ]
+      }
+    }
+  ]
+}

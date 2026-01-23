@@ -1,0 +1,117 @@
+{
+  "description": "Message with images for vision models (GPT-4 Vision)",
+  "examples": [
+    {
+      "name": "Image with URL",
+      "message": {
+        "role": "user",
+        "content": [
+          {
+            "type": "text",
+            "text": "What's in this image?"
+          },
+          {
+            "type": "image_url",
+            "image_url": {
+              "url": "https://example.com/image.jpg"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "Image with base64",
+      "message": {
+        "role": "user",
+        "content": [
+          {
+            "type": "text",
+            "text": "Describe this image"
+          },
+          {
+            "type": "image_url",
+            "image_url": {
+              "url": "data:image/jpeg;base64,/9j/4AAQSkZJRg..."
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "Image with detail level",
+      "message": {
+        "role": "user",
+        "content": [
+          {
+            "type": "text",
+            "text": "What's in this image?"
+          },
+          {
+            "type": "image_url",
+            "image_url": {
+              "url": "https://example.com/image.jpg",
+              "detail": "high"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "Multiple images",
+      "message": {
+        "role": "user",
+        "content": [
+          {
+            "type": "text",
+            "text": "Compare these two images"
+          },
+          {
+            "type": "image_url",
+            "image_url": {
+              "url": "https://example.com/image1.jpg"
+            }
+          },
+          {
+            "type": "image_url",
+            "image_url": {
+              "url": "https://example.com/image2.jpg"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "Image only (no text)",
+      "message": {
+        "role": "user",
+        "content": [
+          {
+            "type": "image_url",
+            "image_url": {
+              "url": "https://example.com/image.jpg"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "Image with low detail (faster, cheaper)",
+      "message": {
+        "role": "user",
+        "content": [
+          {
+            "type": "text",
+            "text": "What's the general content?"
+          },
+          {
+            "type": "image_url",
+            "image_url": {
+              "url": "https://example.com/image.jpg",
+              "detail": "low"
+            }
+          }
+        ]
+      }
+    }
+  ]
+}

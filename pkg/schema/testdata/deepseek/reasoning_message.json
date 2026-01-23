@@ -1,0 +1,39 @@
+{
+  "description": "Messages with reasoning/thinking content from deepseek-reasoner model",
+  "examples": [
+    {
+      "name": "Assistant message with reasoning content",
+      "message": {
+        "role": "assistant",
+        "content": "The answer is 42.",
+        "reasoning_content": "Let me think about this step by step. First, I need to understand what the question is asking..."
+      }
+    },
+    {
+      "name": "Assistant with reasoning and tool calls",
+      "message": {
+        "role": "assistant",
+        "content": "",
+        "reasoning_content": "To answer this question, I need to call the weather function to get current data...",
+        "tool_calls": [
+          {
+            "id": "call_abc123",
+            "type": "function",
+            "function": {
+              "name": "get_weather",
+              "arguments": "{\"location\": \"Shanghai\"}"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "Assistant with only reasoning (no final answer yet)",
+      "message": {
+        "role": "assistant",
+        "content": "",
+        "reasoning_content": "I'm analyzing the problem. I need to break this down into smaller components..."
+      }
+    }
+  ]
+}

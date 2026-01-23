@@ -14,7 +14,7 @@ func Test_counttokens_001(t *testing.T) {
 	assert := assert.New(t)
 
 	session := new(schema.Session)
-	session.Append(schema.StringMessage("user", "Why is the sky blue?"))
+	session.Append(schema.NewMessage("user", "Why is the sky blue?"))
 
 	tokens, err := client.CountTokens(context.TODO(), "claude-haiku-4-5-20251001", session)
 	require.NoError(t, err)
@@ -27,9 +27,9 @@ func Test_counttokens_002(t *testing.T) {
 	assert := assert.New(t)
 
 	session := new(schema.Session)
-	session.Append(schema.StringMessage("user", "Hello"))
-	session.Append(schema.StringMessage("assistant", "Hi there!"))
-	session.Append(schema.StringMessage("user", "How are you?"))
+	session.Append(schema.NewMessage("user", "Hello"))
+	session.Append(schema.NewMessage("assistant", "Hi there!"))
+	session.Append(schema.NewMessage("user", "How are you?"))
 
 	tokens, err := client.CountTokens(context.TODO(), "claude-haiku-4-5-20251001", session)
 	require.NoError(t, err)

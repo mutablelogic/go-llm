@@ -64,13 +64,12 @@ type cacheControlEphemeral struct {
 }
 
 type messagesResponse struct {
-	Id           string         `json:"id"`
-	Model        string         `json:"model"`
-	Type         string         `json:"type"`
-	Role         string         `json:"role"`
-	Content      schema.Content `json:"content"`
-	StopReason   string         `json:"stop_reason"` // "end_turn", "max_tokens", "stop_sequence", "tool_use", "pause_turn", "refusal"
-	StopSequence *string        `json:"stop_sequence,omitempty"`
+	Id                   string `json:"id"`
+	Model                string `json:"model"`
+	Type                 string `json:"type"`
+	schema.AnthropicMessage      // Embeds Role and Content with proper Anthropic format handling
+	StopReason           string  `json:"stop_reason"` // "end_turn", "max_tokens", "stop_sequence", "tool_use", "pause_turn", "refusal"
+	StopSequence         *string `json:"stop_sequence,omitempty"`
 	messagesUsage
 }
 
@@ -242,11 +241,8 @@ func (anthropic *Client) Messages(ctx context.Context, model string, session *sc
 		return nil, llm.ErrRefusal
 	}
 
-	// Create a message from the response
-	message := schema.Message{
-		Role:    response.Role,
-		Content: response.Content,
-	}
+	// Extract the universal message (AnthropicMessage already converted it during unmarshal)
+	message := response.AnthropicMessage.Message
 
 	// Append the message to the session
 	session.AppendWithOuput(message, response.InputTokens, response.OutputTokens)

@@ -1,0 +1,80 @@
+{
+  "description": "Messages with tool calls and tool responses for function calling",
+  "examples": [
+    {
+      "name": "Assistant message with tool call",
+      "message": {
+        "role": "assistant",
+        "content": null,
+        "tool_calls": [
+          {
+            "id": "call_abc123",
+            "type": "function",
+            "function": {
+              "name": "get_weather",
+              "arguments": "{\"location\": \"Hangzhou\"}"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "Tool response message",
+      "message": {
+        "role": "tool",
+        "tool_call_id": "call_abc123",
+        "content": "24℃"
+      }
+    },
+    {
+      "name": "Assistant with multiple tool calls",
+      "message": {
+        "role": "assistant",
+        "content": null,
+        "tool_calls": [
+          {
+            "id": "call_xyz789",
+            "type": "function",
+            "function": {
+              "name": "get_weather",
+              "arguments": "{\"location\": \"San Francisco, CA\"}"
+            }
+          },
+          {
+            "id": "call_def456",
+            "type": "function",
+            "function": {
+              "name": "get_weather",
+              "arguments": "{\"location\": \"New York, NY\"}"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "Tool response (first of multiple)",
+      "message": {
+        "role": "tool",
+        "tool_call_id": "call_xyz789",
+        "content": "18°C"
+      }
+    },
+    {
+      "name": "Assistant with text and tool call",
+      "message": {
+        "role": "assistant",
+        "content": "Let me check the weather for you.",
+        "tool_calls": [
+          {
+            "id": "call_weather_1",
+            "type": "function",
+            "function": {
+              "name": "get_weather",
+              "arguments": "{\"location\": \"Beijing\"}"
+            }
+          }
+        ]
+      }
+    }
+  ]
+}

@@ -1,0 +1,38 @@
+{
+  "description": "Simple text message - basic format for Mistral chat API",
+  "examples": [
+    {
+      "name": "User message (string content)",
+      "message": {
+        "role": "user",
+        "content": "What is the best French cheese?"
+      }
+    },
+    {
+      "name": "Assistant message",
+      "message": {
+        "role": "assistant",
+        "content": "The best French cheese is subjective, but Comté is often considered one of the finest..."
+      }
+    },
+    {
+      "name": "System message",
+      "message": {
+        "role": "system",
+        "content": "You are a helpful assistant specialized in French cuisine and culture."
+      }
+    },
+    {
+      "name": "User message (array content with text)",
+      "message": {
+        "role": "user",
+        "content": [
+          {
+            "type": "text",
+            "text": "What is the capital of France?"
+          }
+        ]
+      }
+    }
+  ]
+}

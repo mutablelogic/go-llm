@@ -1,0 +1,27 @@
+{
+  "description": "Chat prefix completion (beta) - last message is assistant with prefix: true",
+  "examples": [
+    {
+      "name": "Assistant message with prefix enabled",
+      "message": {
+        "role": "assistant",
+        "content": "The capital of France is",
+        "prefix": true
+      }
+    },
+    {
+      "name": "Complete conversation for prefix completion",
+      "conversation": [
+        {
+          "role": "user",
+          "content": "What is the capital of France?"
+        },
+        {
+          "role": "assistant",
+          "content": "The capital",
+          "prefix": true
+        }
+      ]
+    }
+  ]
+}

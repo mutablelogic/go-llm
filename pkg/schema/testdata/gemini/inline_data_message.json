@@ -1,0 +1,94 @@
+{
+  "description": "Message with inline data (images, audio, video) embedded as base64",
+  "examples": [
+    {
+      "name": "Image with text",
+      "message": {
+        "role": "user",
+        "parts": [
+          {
+            "text": "What's in this image?"
+          },
+          {
+            "inline_data": {
+              "mime_type": "image/jpeg",
+              "data": "/9j/4AAQSkZJRg..."
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "Image with display name (Gemini 3)",
+      "message": {
+        "role": "user",
+        "parts": [
+          {
+            "inline_data": {
+              "mime_type": "image/png",
+              "data": "iVBORw0KGgoAAAANS...",
+              "display_name": "diagram.png"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "Audio file",
+      "message": {
+        "role": "user",
+        "parts": [
+          {
+            "text": "Transcribe this audio"
+          },
+          {
+            "inline_data": {
+              "mime_type": "audio/mp3",
+              "data": "SUQzBAAAAAAAI1RTU0..."
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "Video file",
+      "message": {
+        "role": "user",
+        "parts": [
+          {
+            "text": "Describe what's happening in this video"
+          },
+          {
+            "inline_data": {
+              "mime_type": "video/mp4",
+              "data": "AAAAIGZ0eXBpc29t..."
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "Multiple images",
+      "message": {
+        "role": "user",
+        "parts": [
+          {
+            "text": "Compare these two images"
+          },
+          {
+            "inline_data": {
+              "mime_type": "image/jpeg",
+              "data": "image1_base64..."
+            }
+          },
+          {
+            "inline_data": {
+              "mime_type": "image/jpeg",
+              "data": "image2_base64..."
+            }
+          }
+        ]
+      }
+    }
+  ]
+}

@@ -1,7 +1,6 @@
 package schema_test
 
 import (
-	"bytes"
 	"encoding/json"
 	"testing"
 
@@ -9,207 +8,282 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-func TestStringMessage(t *testing.T) {
+func TestNewMessage(t *testing.T) {
 	assert := assert.New(t)
 
-	// Test basic user message
-	msg := schema.StringMessage("user", "Hello, world!")
-	data, err := json.Marshal(msg)
-	assert.NoError(err)
-
-	// Should produce: {"role":"user","content":"Hello, world!"}
-	expected := `{"role":"user","content":"Hello, world!"}`
-	assert.JSONEq(expected, string(data))
-
-	// Unmarshal and verify
-	var decoded schema.Message
-	err = json.Unmarshal(data, &decoded)
-	assert.NoError(err)
-	assert.Equal("user", decoded.Role)
+	// Test basic message creation
+	msg := schema.NewMessage("user", "Hello, world!")
+	assert.Equal("user", msg.Role)
+	assert.Len(msg.Content, 1)
+	assert.Equal("text", msg.Content[0].Type)
+	assert.NotNil(msg.Content[0].Text)
+	assert.Equal("Hello, world!", *msg.Content[0].Text)
 }
 
-func TestAssistantMessage(t *testing.T) {
+func TestMessageText(t *testing.T) {
 	assert := assert.New(t)
 
-	// Test assistant message
-	msg := schema.StringMessage("assistant", "I can help you with that.")
-	data, err := json.Marshal(msg)
-	assert.NoError(err)
+	// Test Text() method
+	msg := schema.NewMessage("assistant", "Hello")
+	assert.Equal("Hello", msg.Text())
 
-	expected := `{"role":"assistant","content":"I can help you with that."}`
-	assert.JSONEq(expected, string(data))
-}
-
-func TestSystemMessage(t *testing.T) {
-	assert := assert.New(t)
-
-	// Test system message
-	msg := schema.StringMessage("system", "You are a helpful assistant.")
-	data, err := json.Marshal(msg)
-	assert.NoError(err)
-
-	expected := `{"role":"system","content":"You are a helpful assistant."}`
-	assert.JSONEq(expected, string(data))
-}
-
-func TestToolResultMessage(t *testing.T) {
-	assert := assert.New(t)
-
-	// Test successful tool result
-	msg := schema.ToolResultMessage("tool_123", `{"result": "success"}`, false)
-	data, err := json.Marshal(msg)
-	assert.NoError(err)
-
-	// Anthropic format for tool results
-	var result map[string]any
-	err = json.Unmarshal(data, &result)
-	assert.NoError(err)
-	assert.Equal("user", result["role"])
-
-	content := result["content"].([]any)
-	assert.Len(content, 1)
-
-	toolResult := content[0].(map[string]any)
-	assert.Equal("tool_result", toolResult["type"])
-	assert.Equal("tool_123", toolResult["tool_use_id"])
-}
-
-func TestToolResultMessageWithError(t *testing.T) {
-	assert := assert.New(t)
-
-	// Test tool result with error
-	msg := schema.ToolResultMessage("tool_456", "Something went wrong", true)
-	data, err := json.Marshal(msg)
-	assert.NoError(err)
-
-	var result map[string]any
-	err = json.Unmarshal(data, &result)
-	assert.NoError(err)
-
-	content := result["content"].([]any)
-	toolResult := content[0].(map[string]any)
-	assert.Equal(true, toolResult["is_error"])
-}
-
-func TestImageMessage(t *testing.T) {
-	assert := assert.New(t)
-
-	// Create a minimal PNG (1x1 transparent pixel)
-	pngData := []byte{
-		0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, // PNG signature
-		0x00, 0x00, 0x00, 0x0D, 0x49, 0x48, 0x44, 0x52, // IHDR chunk
-		0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01,
-		0x08, 0x06, 0x00, 0x00, 0x00, 0x1F, 0x15, 0xC4,
-		0x89, 0x00, 0x00, 0x00, 0x0A, 0x49, 0x44, 0x41,
-		0x54, 0x78, 0x9C, 0x63, 0x00, 0x01, 0x00, 0x00,
-		0x05, 0x00, 0x01, 0x0D, 0x0A, 0x2D, 0xB4, 0x00,
-		0x00, 0x00, 0x00, 0x49, 0x45, 0x4E, 0x44, 0xAE,
-		0x42, 0x60, 0x82,
+	// Test with multiple text blocks
+	msg2 := schema.Message{
+		Role: "assistant",
+		Content: []schema.ContentBlock{
+			{Type: "text", Text: ptr("First")},
+			{Type: "text", Text: ptr("Second")},
+		},
 	}
+	assert.Equal("First\nSecond", msg2.Text())
 
-	msg, err := schema.ImageMessage(bytes.NewReader(pngData), "")
-	assert.NoError(err)
+	// Test with mixed content types
+	msg3 := schema.Message{
+		Role: "assistant",
+		Content: []schema.ContentBlock{
+			{Type: "text", Text: ptr("Hello")},
+			{Type: "thinking", Thinking: ptr("reasoning...")},
+			{Type: "text", Text: ptr("World")},
+		},
+	}
+	assert.Equal("Hello\nWorld", msg3.Text())
+}
 
+func TestMessageMarshalJSON(t *testing.T) {
+	assert := assert.New(t)
+
+	// Test marshaling a simple text message
+	msg := schema.NewMessage("user", "Hello")
 	data, err := json.Marshal(msg)
 	assert.NoError(err)
 
-	var result map[string]any
-	err = json.Unmarshal(data, &result)
-	assert.NoError(err)
-	assert.Equal("user", result["role"])
-
-	content := result["content"].([]any)
-	assert.Len(content, 1)
-
-	imageContent := content[0].(map[string]any)
-	assert.Equal("image", imageContent["type"])
-
-	source := imageContent["source"].(map[string]any)
-	assert.Equal("base64", source["type"])
-	assert.Equal("image/png", source["media_type"])
-	assert.NotEmpty(source["data"])
+	expected := `{
+		"role": "user",
+		"content": [
+			{
+				"type": "text",
+				"text": "Hello"
+			}
+		]
+	}`
+	assert.JSONEq(expected, string(data))
 }
 
-func TestImageMessageWithExplicitMediaType(t *testing.T) {
+func TestMessageUnmarshalJSON(t *testing.T) {
 	assert := assert.New(t)
 
-	// Test with explicit media type
-	imageData := []byte{0xFF, 0xD8, 0xFF} // JPEG magic bytes
-	msg, err := schema.ImageMessage(bytes.NewReader(imageData), "image/jpeg")
-	assert.NoError(err)
-
-	data, err := json.Marshal(msg)
-	assert.NoError(err)
-
-	var result map[string]any
-	err = json.Unmarshal(data, &result)
-	assert.NoError(err)
-
-	content := result["content"].([]any)
-	imageContent := content[0].(map[string]any)
-	source := imageContent["source"].(map[string]any)
-	assert.Equal("image/jpeg", source["media_type"])
-}
-
-func TestImageMessageInvalidType(t *testing.T) {
-	assert := assert.New(t)
-
-	// Test with non-image data
-	textData := []byte("This is not an image")
-	_, err := schema.ImageMessage(bytes.NewReader(textData), "")
-	assert.Error(err)
-	assert.Contains(err.Error(), "invalid image type")
-}
-
-func TestMessageUnmarshalStringContent(t *testing.T) {
-	assert := assert.New(t)
-
-	// Unmarshal message with string content (common format)
-	jsonData := `{"role":"user","content":"Hello"}`
-	var msg schema.Message
-	err := json.Unmarshal([]byte(jsonData), &msg)
-	assert.NoError(err)
-	assert.Equal("user", msg.Role)
-}
-
-func TestMessageUnmarshalArrayContent(t *testing.T) {
-	assert := assert.New(t)
-
-	// Unmarshal message with array of text content
-	jsonData := `{"role":"user","content":["Hello","World"]}`
-	var msg schema.Message
-	err := json.Unmarshal([]byte(jsonData), &msg)
-	assert.NoError(err)
-	assert.Equal("user", msg.Role)
-}
-
-func TestMessageUnmarshalTypedContent(t *testing.T) {
-	assert := assert.New(t)
-
-	// Unmarshal message with typed content array (Anthropic format)
+	// Test unmarshaling a message with content blocks
 	jsonData := `{
 		"role": "assistant",
 		"content": [
-			{"type": "text", "text": "Here is the result"},
-			{"type": "tool_use", "id": "tool_1", "name": "calculator", "input": {"x": 1, "y": 2}}
+			{
+				"type": "text",
+				"text": "Here's the result"
+			},
+			{
+				"type": "tool_use",
+				"tool_use_id": "tool_123",
+				"tool_name": "calculator",
+				"tool_input": {"x": 1, "y": 2}
+			}
 		]
 	}`
+
 	var msg schema.Message
 	err := json.Unmarshal([]byte(jsonData), &msg)
 	assert.NoError(err)
 	assert.Equal("assistant", msg.Role)
+	assert.Len(msg.Content, 2)
+	assert.Equal("text", msg.Content[0].Type)
+	assert.Equal("tool_use", msg.Content[1].Type)
+	assert.NotNil(msg.Content[1].ToolName)
+	assert.Equal("calculator", *msg.Content[1].ToolName)
+}
+
+func TestContentBlockToolUse(t *testing.T) {
+	assert := assert.New(t)
+
+	// Test tool use content block
+	toolInput := json.RawMessage(`{"location": "San Francisco"}`)
+	block := schema.ContentBlock{
+		Type:      "tool_use",
+		ToolUseID: ptr("toolu_123"),
+		ToolName:  ptr("get_weather"),
+		ToolInput: toolInput,
+	}
+
+	data, err := json.Marshal(block)
+	assert.NoError(err)
+
+	var decoded schema.ContentBlock
+	err = json.Unmarshal(data, &decoded)
+	assert.NoError(err)
+	assert.Equal("tool_use", decoded.Type)
+	assert.Equal("toolu_123", *decoded.ToolUseID)
+	assert.Equal("get_weather", *decoded.ToolName)
+	assert.JSONEq(`{"location": "San Francisco"}`, string(decoded.ToolInput))
+}
+
+func TestContentBlockToolResult(t *testing.T) {
+	assert := assert.New(t)
+
+	// Test tool result content block
+	resultContent := json.RawMessage(`{"temperature": 72, "conditions": "sunny"}`)
+	block := schema.ContentBlock{
+		Type:              "tool_result",
+		ToolResultID:      ptr("toolu_123"),
+		ToolResultContent: resultContent,
+		IsError:           ptr(false),
+	}
+
+	data, err := json.Marshal(block)
+	assert.NoError(err)
+
+	var decoded schema.ContentBlock
+	err = json.Unmarshal(data, &decoded)
+	assert.NoError(err)
+	assert.Equal("tool_result", decoded.Type)
+	assert.Equal("toolu_123", *decoded.ToolResultID)
+	assert.False(*decoded.IsError)
+	assert.JSONEq(`{"temperature": 72, "conditions": "sunny"}`, string(decoded.ToolResultContent))
+}
+
+func TestContentBlockImage(t *testing.T) {
+	assert := assert.New(t)
+
+	// Test image content block with base64
+	block := schema.ContentBlock{
+		Type: "image",
+		ImageSource: &schema.ImageSource{
+			Type:      "base64",
+			MediaType: "image/jpeg",
+			Data:      ptr("base64encodeddata..."),
+		},
+	}
+
+	data, err := json.Marshal(block)
+	assert.NoError(err)
+
+	var decoded schema.ContentBlock
+	err = json.Unmarshal(data, &decoded)
+	assert.NoError(err)
+	assert.Equal("image", decoded.Type)
+	assert.NotNil(decoded.ImageSource)
+	assert.Equal("base64", decoded.ImageSource.Type)
+	assert.Equal("image/jpeg", decoded.ImageSource.MediaType)
+}
+
+func TestContentBlockDocument(t *testing.T) {
+	assert := assert.New(t)
+
+	// Test document content block
+	block := schema.ContentBlock{
+		Type: "document",
+		DocumentSource: &schema.DocumentSource{
+			Type:      "base64",
+			MediaType: "application/pdf",
+			Data:      ptr("pdfdata..."),
+		},
+		DocumentTitle: ptr("Annual Report"),
+	}
+
+	data, err := json.Marshal(block)
+	assert.NoError(err)
+
+	var decoded schema.ContentBlock
+	err = json.Unmarshal(data, &decoded)
+	assert.NoError(err)
+	assert.Equal("document", decoded.Type)
+	assert.NotNil(decoded.DocumentSource)
+	assert.Equal("application/pdf", decoded.DocumentSource.MediaType)
+	assert.Equal("Annual Report", *decoded.DocumentTitle)
+}
+
+func TestContentBlockThinking(t *testing.T) {
+	assert := assert.New(t)
+
+	// Test thinking content block
+	block := schema.ContentBlock{
+		Type:     "thinking",
+		Thinking: ptr("Let me analyze this step by step..."),
+	}
+
+	data, err := json.Marshal(block)
+	assert.NoError(err)
+
+	var decoded schema.ContentBlock
+	err = json.Unmarshal(data, &decoded)
+	assert.NoError(err)
+	assert.Equal("thinking", decoded.Type)
+	assert.Equal("Let me analyze this step by step...", *decoded.Thinking)
+}
+
+func TestContentBlockCacheControl(t *testing.T) {
+	assert := assert.New(t)
+
+	// Test content block with cache control
+	block := schema.ContentBlock{
+		Type: "text",
+		Text: ptr("This is cached content"),
+		CacheControl: &schema.CacheControl{
+			Type: "ephemeral",
+			TTL:  "5m",
+		},
+	}
+
+	data, err := json.Marshal(block)
+	assert.NoError(err)
+
+	var decoded schema.ContentBlock
+	err = json.Unmarshal(data, &decoded)
+	assert.NoError(err)
+	assert.NotNil(decoded.CacheControl)
+	assert.Equal("ephemeral", decoded.CacheControl.Type)
+	assert.Equal("5m", decoded.CacheControl.TTL)
 }
 
 func TestMessageRoundTrip(t *testing.T) {
 	assert := assert.New(t)
 
-	// Test that messages can be marshaled and unmarshaled
-	original := schema.StringMessage("user", "Test message")
+	// Create a complex message with multiple content types
+	original := schema.Message{
+		Role: "assistant",
+		Content: []schema.ContentBlock{
+			{
+				Type:     "thinking",
+				Thinking: ptr("I need to search for this..."),
+			},
+			{
+				Type: "text",
+				Text: ptr("Let me check that for you."),
+			},
+			{
+				Type:      "tool_use",
+				ToolUseID: ptr("tool_1"),
+				ToolName:  ptr("search"),
+				ToolInput: json.RawMessage(`{"query": "test"}`),
+			},
+		},
+	}
+
+	// Marshal
 	data, err := json.Marshal(original)
 	assert.NoError(err)
 
+	// Unmarshal
 	var decoded schema.Message
 	err = json.Unmarshal(data, &decoded)
 	assert.NoError(err)
+
+	// Verify
 	assert.Equal(original.Role, decoded.Role)
+	assert.Len(decoded.Content, 3)
+	assert.Equal("thinking", decoded.Content[0].Type)
+	assert.Equal("text", decoded.Content[1].Type)
+	assert.Equal("tool_use", decoded.Content[2].Type)
+}
+
+// Helper function
+func ptr[T any](v T) *T {
+	return &v
 }

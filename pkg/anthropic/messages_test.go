@@ -14,14 +14,14 @@ func Test_messages_001(t *testing.T) {
 	assert := assert.New(t)
 
 	session := new(schema.Session)
-	session.Append(schema.StringMessage("user", "Why is the sky blue?"))
+	session.Append(schema.NewMessage("user", "Why is the sky blue?"))
 
 	message, err := client.Messages(context.TODO(), "claude-haiku-4-5-20251001", session)
 	require.NoError(t, err)
 	assert.NotNil(message)
 
 	// Another message
-	session.Append(schema.StringMessage("user", "Blue?"))
+	session.Append(schema.NewMessage("user", "Blue?"))
 	_, err = client.Messages(context.TODO(), "claude-haiku-4-5-20251001", session)
 	require.NoError(t, err)
 

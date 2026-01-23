@@ -92,15 +92,10 @@ type generateContentResponse struct {
 }
 
 type candidate struct {
-	Content       *contentResponse `json:"content,omitempty"`
-	FinishReason  string           `json:"finishReason,omitempty"`
-	Index         int              `json:"index"`
-	SafetyRatings []safetyRating   `json:"safetyRatings,omitempty"`
-}
-
-type contentResponse struct {
-	Role  string `json:"role"`
-	Parts []part `json:"parts"`
+	Content       *schema.GeminiMessage `json:"content,omitempty"` // Embeds Role and Parts with proper Gemini format handling
+	FinishReason  string                `json:"finishReason,omitempty"`
+	Index         int                   `json:"index"`
+	SafetyRatings []safetyRating        `json:"safetyRatings,omitempty"`
 }
 
 type safetyRating struct {
@@ -281,28 +276,12 @@ func (r generateContentResponse) toSchemaMessage() schema.Message {
 	}
 
 	candidate := r.Candidates[0]
-	if candidate.Content == nil || len(candidate.Content.Parts) == 0 {
+	if candidate.Content == nil {
 		return schema.Message{}
 	}
 
-	// Collect all text parts
-	var textParts []string
-	for _, p := range candidate.Content.Parts {
-		if p.Text != "" {
-			textParts = append(textParts, p.Text)
-		}
-	}
-
-	// Create message with combined text
-	text := ""
-	if len(textParts) > 0 {
-		text = textParts[0]
-		for i := 1; i < len(textParts); i++ {
-			text += "\n" + textParts[i]
-		}
-	}
-
-	return schema.StringMessage("assistant", text)
+	// GeminiMessage already converted the response during unmarshal
+	return candidate.Content.Message
 }
 
 ///////////////////////////////////////////////////////////////////////////////

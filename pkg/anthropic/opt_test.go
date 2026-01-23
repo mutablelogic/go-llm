@@ -71,7 +71,7 @@ func Test_opt_005(t *testing.T) {
 	assert := assert.New(t)
 
 	session := new(schema.Session)
-	session.Append(schema.StringMessage("user", "Hello"))
+	session.Append(schema.NewMessage("user", "Hello"))
 
 	req, err := anthropic.MessagesRequest("claude-haiku-4-5-20251001", session)
 	require.NoError(t, err)
@@ -87,7 +87,7 @@ func Test_opt_006(t *testing.T) {
 	assert := assert.New(t)
 
 	session := new(schema.Session)
-	session.Append(schema.StringMessage("user", "Hello"))
+	session.Append(schema.NewMessage("user", "Hello"))
 
 	req, err := anthropic.MessagesRequest("claude-haiku-4-5-20251001", session,
 		anthropic.WithUser("test-user-123"),
@@ -107,7 +107,7 @@ func Test_opt_007(t *testing.T) {
 	assert := assert.New(t)
 
 	session := new(schema.Session)
-	session.Append(schema.StringMessage("user", "Hello"))
+	session.Append(schema.NewMessage("user", "Hello"))
 
 	req, err := anthropic.MessagesRequest("claude-haiku-4-5-20251001", session,
 		anthropic.WithSystemPrompt("You are a helpful assistant"),
@@ -126,7 +126,7 @@ func Test_opt_008(t *testing.T) {
 	assert := assert.New(t)
 
 	session := new(schema.Session)
-	session.Append(schema.StringMessage("user", "Hello"))
+	session.Append(schema.NewMessage("user", "Hello"))
 
 	req, err := anthropic.MessagesRequest("claude-haiku-4-5-20251001", session,
 		anthropic.WithCachedSystemPrompt("You are a helpful assistant"),
@@ -146,7 +146,7 @@ func Test_opt_009(t *testing.T) {
 	assert := assert.New(t)
 
 	session := new(schema.Session)
-	session.Append(schema.StringMessage("user", "Hello"))
+	session.Append(schema.NewMessage("user", "Hello"))
 
 	req, err := anthropic.MessagesRequest("claude-haiku-4-5-20251001", session,
 		anthropic.WithStopSequences("STOP", "END"),
@@ -168,7 +168,7 @@ func Test_opt_010(t *testing.T) {
 	assert := assert.New(t)
 
 	session := new(schema.Session)
-	session.Append(schema.StringMessage("user", "Hello"))
+	session.Append(schema.NewMessage("user", "Hello"))
 
 	req, err := anthropic.MessagesRequest("claude-haiku-4-5-20251001", session,
 		anthropic.WithTemperature(0.7),
@@ -186,7 +186,7 @@ func Test_opt_011(t *testing.T) {
 	assert := assert.New(t)
 
 	session := new(schema.Session)
-	session.Append(schema.StringMessage("user", "Hello"))
+	session.Append(schema.NewMessage("user", "Hello"))
 
 	req, err := anthropic.MessagesRequest("claude-haiku-4-5-20251001", session,
 		anthropic.WithThinking(10000),
@@ -206,7 +206,7 @@ func Test_opt_012(t *testing.T) {
 	assert := assert.New(t)
 
 	session := new(schema.Session)
-	session.Append(schema.StringMessage("user", "Hello"))
+	session.Append(schema.NewMessage("user", "Hello"))
 
 	// WithThinking with budget below minimum should return error
 	_, err := anthropic.MessagesRequest("claude-haiku-4-5-20251001", session,
@@ -220,7 +220,7 @@ func Test_opt_013(t *testing.T) {
 	assert := assert.New(t)
 
 	session := new(schema.Session)
-	session.Append(schema.StringMessage("user", "Hello"))
+	session.Append(schema.NewMessage("user", "Hello"))
 
 	// WithMaxTokens with 0 should return error
 	_, err := anthropic.MessagesRequest("claude-haiku-4-5-20251001", session,
@@ -234,7 +234,7 @@ func Test_opt_014(t *testing.T) {
 	assert := assert.New(t)
 
 	session := new(schema.Session)
-	session.Append(schema.StringMessage("user", "Hello"))
+	session.Append(schema.NewMessage("user", "Hello"))
 
 	// WithMaxTokens with valid value should work
 	req, err := anthropic.MessagesRequest("claude-haiku-4-5-20251001", session,
@@ -253,7 +253,7 @@ func Test_opt_015(t *testing.T) {
 	assert := assert.New(t)
 
 	session := new(schema.Session)
-	session.Append(schema.StringMessage("user", "Hello"))
+	session.Append(schema.NewMessage("user", "Hello"))
 
 	// WithStopSequences with no values should return error
 	_, err := anthropic.MessagesRequest("claude-haiku-4-5-20251001", session,
@@ -267,7 +267,7 @@ func Test_opt_016(t *testing.T) {
 	assert := assert.New(t)
 
 	session := new(schema.Session)
-	session.Append(schema.StringMessage("user", "Hello"))
+	session.Append(schema.NewMessage("user", "Hello"))
 
 	// WithTemperature below 0 should return error
 	_, err := anthropic.MessagesRequest("claude-haiku-4-5-20251001", session,
@@ -281,7 +281,7 @@ func Test_opt_017(t *testing.T) {
 	assert := assert.New(t)
 
 	session := new(schema.Session)
-	session.Append(schema.StringMessage("user", "Hello"))
+	session.Append(schema.NewMessage("user", "Hello"))
 
 	// WithTemperature above 1 should return error
 	_, err := anthropic.MessagesRequest("claude-haiku-4-5-20251001", session,
@@ -295,7 +295,7 @@ func Test_opt_018(t *testing.T) {
 	assert := assert.New(t)
 
 	session := new(schema.Session)
-	session.Append(schema.StringMessage("user", "Hello"))
+	session.Append(schema.NewMessage("user", "Hello"))
 
 	// WithTopK with valid value should work
 	req, err := anthropic.MessagesRequest("claude-haiku-4-5-20251001", session,
@@ -314,7 +314,7 @@ func Test_opt_019(t *testing.T) {
 	assert := assert.New(t)
 
 	session := new(schema.Session)
-	session.Append(schema.StringMessage("user", "Hello"))
+	session.Append(schema.NewMessage("user", "Hello"))
 
 	// WithTopK with 0 should return error
 	_, err := anthropic.MessagesRequest("claude-haiku-4-5-20251001", session,
@@ -328,7 +328,7 @@ func Test_opt_020(t *testing.T) {
 	assert := assert.New(t)
 
 	session := new(schema.Session)
-	session.Append(schema.StringMessage("user", "Hello"))
+	session.Append(schema.NewMessage("user", "Hello"))
 
 	// WithTopP with valid value should work
 	req, err := anthropic.MessagesRequest("claude-haiku-4-5-20251001", session,
@@ -347,7 +347,7 @@ func Test_opt_021(t *testing.T) {
 	assert := assert.New(t)
 
 	session := new(schema.Session)
-	session.Append(schema.StringMessage("user", "Hello"))
+	session.Append(schema.NewMessage("user", "Hello"))
 
 	// WithTopP below 0 should return error
 	_, err := anthropic.MessagesRequest("claude-haiku-4-5-20251001", session,
@@ -361,7 +361,7 @@ func Test_opt_022(t *testing.T) {
 	assert := assert.New(t)
 
 	session := new(schema.Session)
-	session.Append(schema.StringMessage("user", "Hello"))
+	session.Append(schema.NewMessage("user", "Hello"))
 
 	// WithTopP above 1 should return error
 	_, err := anthropic.MessagesRequest("claude-haiku-4-5-20251001", session,
@@ -375,7 +375,7 @@ func Test_opt_023(t *testing.T) {
 	assert := assert.New(t)
 
 	session := new(schema.Session)
-	session.Append(schema.StringMessage("user", "Hello"))
+	session.Append(schema.NewMessage("user", "Hello"))
 
 	// WithOutputConfig with valid value should work
 	req, err := anthropic.MessagesRequest("claude-haiku-4-5-20251001", session,
@@ -394,7 +394,7 @@ func Test_opt_024(t *testing.T) {
 	assert := assert.New(t)
 
 	session := new(schema.Session)
-	session.Append(schema.StringMessage("user", "Hello"))
+	session.Append(schema.NewMessage("user", "Hello"))
 
 	// WithOutputConfig with invalid value should return error
 	_, err := anthropic.MessagesRequest("claude-haiku-4-5-20251001", session,
@@ -408,7 +408,7 @@ func Test_opt_025(t *testing.T) {
 	assert := assert.New(t)
 
 	session := new(schema.Session)
-	session.Append(schema.StringMessage("user", "Hello"))
+	session.Append(schema.NewMessage("user", "Hello"))
 
 	// WithJSONOutput with a valid schema inferred from a Go type
 	type Person struct {
@@ -438,7 +438,7 @@ func Test_opt_026(t *testing.T) {
 	assert := assert.New(t)
 
 	session := new(schema.Session)
-	session.Append(schema.StringMessage("user", "Hello"))
+	session.Append(schema.NewMessage("user", "Hello"))
 
 	// WithJSONOutput with nil schema should return error
 	_, err := anthropic.MessagesRequest("claude-haiku-4-5-20251001", session,
@@ -452,7 +452,7 @@ func Test_opt_027(t *testing.T) {
 	assert := assert.New(t)
 
 	session := new(schema.Session)
-	session.Append(schema.StringMessage("user", "Hello"))
+	session.Append(schema.NewMessage("user", "Hello"))
 
 	// WithToolChoiceAuto
 	req, err := anthropic.MessagesRequest("claude-haiku-4-5-20251001", session,
@@ -472,7 +472,7 @@ func Test_opt_028(t *testing.T) {
 	assert := assert.New(t)
 
 	session := new(schema.Session)
-	session.Append(schema.StringMessage("user", "Hello"))
+	session.Append(schema.NewMessage("user", "Hello"))
 
 	// WithToolChoiceAny
 	req, err := anthropic.MessagesRequest("claude-haiku-4-5-20251001", session,
@@ -492,7 +492,7 @@ func Test_opt_029(t *testing.T) {
 	assert := assert.New(t)
 
 	session := new(schema.Session)
-	session.Append(schema.StringMessage("user", "Hello"))
+	session.Append(schema.NewMessage("user", "Hello"))
 
 	// WithToolChoiceNone
 	req, err := anthropic.MessagesRequest("claude-haiku-4-5-20251001", session,
@@ -512,7 +512,7 @@ func Test_opt_030(t *testing.T) {
 	assert := assert.New(t)
 
 	session := new(schema.Session)
-	session.Append(schema.StringMessage("user", "Hello"))
+	session.Append(schema.NewMessage("user", "Hello"))
 
 	// WithToolChoice with specific tool name
 	req, err := anthropic.MessagesRequest("claude-haiku-4-5-20251001", session,
@@ -533,7 +533,7 @@ func Test_opt_031(t *testing.T) {
 	assert := assert.New(t)
 
 	session := new(schema.Session)
-	session.Append(schema.StringMessage("user", "Hello"))
+	session.Append(schema.NewMessage("user", "Hello"))
 
 	// WithToolChoice with empty name should return error
 	_, err := anthropic.MessagesRequest("claude-haiku-4-5-20251001", session,
@@ -547,7 +547,7 @@ func Test_opt_032(t *testing.T) {
 	assert := assert.New(t)
 
 	session := new(schema.Session)
-	session.Append(schema.StringMessage("user", "Hello"))
+	session.Append(schema.NewMessage("user", "Hello"))
 
 	// WithTool with valid schema
 	type GetWeatherParams struct {
@@ -575,7 +575,7 @@ func Test_opt_033(t *testing.T) {
 	assert := assert.New(t)
 
 	session := new(schema.Session)
-	session.Append(schema.StringMessage("user", "Hello"))
+	session.Append(schema.NewMessage("user", "Hello"))
 
 	// WithTool with empty name should return error
 	type Params struct {
@@ -595,7 +595,7 @@ func Test_opt_034(t *testing.T) {
 	assert := assert.New(t)
 
 	session := new(schema.Session)
-	session.Append(schema.StringMessage("user", "Hello"))
+	session.Append(schema.NewMessage("user", "Hello"))
 
 	// WithTool with nil schema should return error
 	_, err := anthropic.MessagesRequest("claude-haiku-4-5-20251001", session,
@@ -609,7 +609,7 @@ func Test_opt_035(t *testing.T) {
 	assert := assert.New(t)
 
 	session := new(schema.Session)
-	session.Append(schema.StringMessage("user", "Hello"))
+	session.Append(schema.NewMessage("user", "Hello"))
 
 	// Multiple WithTool calls should append tools
 	type WeatherParams struct {
@@ -641,7 +641,7 @@ func Test_opt_036(t *testing.T) {
 	assert := assert.New(t)
 
 	session := new(schema.Session)
-	session.Append(schema.StringMessage("user", "Hello"))
+	session.Append(schema.NewMessage("user", "Hello"))
 
 	// WithTool with empty description should still work (description is optional)
 	type Params struct {

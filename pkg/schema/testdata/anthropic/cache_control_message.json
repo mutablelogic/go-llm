@@ -1,0 +1,62 @@
+{
+  "description": "Messages with cache control for prompt caching",
+  "examples": [
+    {
+      "name": "Text with cache control",
+      "message": {
+        "role": "user",
+        "content": [
+          {
+            "type": "text",
+            "text": "This is a long document that I want to cache...",
+            "cache_control": {
+              "type": "ephemeral",
+              "ttl": "5m"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "Image with cache control",
+      "message": {
+        "role": "user",
+        "content": [
+          {
+            "type": "image",
+            "source": {
+              "type": "base64",
+              "media_type": "image/jpeg",
+              "data": "/9j/4AAQSkZJRg..."
+            },
+            "cache_control": {
+              "type": "ephemeral",
+              "ttl": "1h"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "Document with cache control",
+      "message": {
+        "role": "user",
+        "content": [
+          {
+            "type": "document",
+            "source": {
+              "type": "base64",
+              "media_type": "application/pdf",
+              "data": "JVBERi0xLjQK..."
+            },
+            "title": "Large Reference Document",
+            "cache_control": {
+              "type": "ephemeral",
+              "ttl": "1h"
+            }
+          }
+        ]
+      }
+    }
+  ]
+}

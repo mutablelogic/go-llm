@@ -36,7 +36,7 @@ func (cmd *SendCommand) Run(ctx *Globals) (err error) {
 	}
 
 	// Create message
-	message := schema.StringMessage("user", cmd.Text)
+	message := schema.NewMessage("user", cmd.Text)
 
 	// Send the message
 	response, err := agent.Send(ctx.ctx, *model, &message)

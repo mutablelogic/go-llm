@@ -1,0 +1,82 @@
+{
+  "description": "Message containing document content - supports PDF and text documents",
+  "examples": [
+    {
+      "name": "PDF document with base64",
+      "message": {
+        "role": "user",
+        "content": [
+          {
+            "type": "text",
+            "text": "Summarize this PDF"
+          },
+          {
+            "type": "document",
+            "source": {
+              "type": "base64",
+              "media_type": "application/pdf",
+              "data": "JVBERi0xLjQK..."
+            },
+            "title": "Annual Report 2024"
+          }
+        ]
+      }
+    },
+    {
+      "name": "Text document",
+      "message": {
+        "role": "user",
+        "content": [
+          {
+            "type": "document",
+            "source": {
+              "type": "text",
+              "media_type": "text/plain",
+              "data": "This is the document content..."
+            },
+            "title": "Meeting Notes",
+            "context": "Notes from the Q4 planning meeting"
+          }
+        ]
+      }
+    },
+    {
+      "name": "Document with URL source",
+      "message": {
+        "role": "user",
+        "content": [
+          {
+            "type": "document",
+            "source": {
+              "type": "url",
+              "url": "https://example.com/document.pdf"
+            },
+            "citations": {
+              "enabled": true
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "Document with content block source",
+      "message": {
+        "role": "user",
+        "content": [
+          {
+            "type": "document",
+            "source": {
+              "type": "content",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "Chapter 1: Introduction"
+                }
+              ]
+            }
+          }
+        ]
+      }
+    }
+  ]
+}
