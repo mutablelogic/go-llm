@@ -8,6 +8,7 @@ import (
 	// Packages
 	client "github.com/mutablelogic/go-client"
 	llm "github.com/mutablelogic/go-llm"
+	opt "github.com/mutablelogic/go-llm/pkg/opt"
 	schema "github.com/mutablelogic/go-llm/pkg/schema"
 )
 
@@ -44,6 +45,14 @@ type ModelInfo map[string]any
 // listModelsResponse represents the API response for listing models
 type listModelsResponse struct {
 	Data []model `json:"models"`
+}
+
+// PullStatus provides the status of a pull operation in a callback function
+type PullStatus struct {
+	Status         string `json:"status"`
+	DigestName     string `json:"digest,omitempty"`
+	TotalBytes     int64  `json:"total,omitempty"`
+	CompletedBytes int64  `json:"completed,omitempty"`
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -109,7 +118,7 @@ func (ollama *Client) DeleteModel(ctx context.Context, model schema.Model) error
 	}
 
 	// Check model
-	if model.Name != ollama.Name() {
+	if model.OwnedBy != ollama.Name() {
 		return llm.ErrBadParameter.With("model does not belong to this client")
 	}
 
@@ -132,7 +141,7 @@ func (ollama *Client) LoadModel(ctx context.Context, model schema.Model) error {
 	}
 
 	// Check model
-	if model.Name != ollama.Name() {
+	if model.OwnedBy != ollama.Name() {
 		return llm.ErrBadParameter.With("model does not belong to this client")
 	}
 
@@ -156,7 +165,7 @@ func (ollama *Client) UnloadModel(ctx context.Context, model schema.Model) error
 	}
 
 	// Check model
-	if model.Name != ollama.Name() {
+	if model.OwnedBy != ollama.Name() {
 		return llm.ErrBadParameter.With("model does not belong to this client")
 	}
 
@@ -174,8 +183,58 @@ func (ollama *Client) UnloadModel(ctx context.Context, model schema.Model) error
 }
 
 // Download (pull) a model by name
-func (ollama *Client) DownloadModel(ctx context.Context, path string) (*schema.Model, error) {
-	return nil, llm.ErrNotImplemented.With("TODO Ollama does not support downloading models via API YET")
+func (ollama *Client) DownloadModel(ctx context.Context, name string, opts ...opt.Opt) (*schema.Model, error) {
+	type reqPullModel struct {
+		Model    string `json:"model"`
+		Insecure bool   `json:"insecure,omitempty"`
+		Stream   bool   `json:"stream"`
+	}
+
+	// Apply options to get progress callback
+	options, err := opt.Apply(opts...)
+	if err != nil {
+		return nil, err
+	}
+	progressFn := options.GetProgress()
+
+	// Enable streaming if progress callback is provided
+	stream := progressFn != nil
+
+	// Request
+	req, err := client.NewJSONRequest(reqPullModel{
+		Model:  name,
+		Stream: stream,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	// Response with optional streaming callback
+	var response PullStatus
+	clientOpts := []client.RequestOpt{client.OptPath("pull"), client.OptNoTimeout()}
+
+	// Add streaming callback if progress function is provided
+	if progressFn != nil {
+		clientOpts = append(clientOpts, client.OptJsonStreamCallback(func(v any) error {
+			if status, ok := v.(*PullStatus); ok && status != nil {
+				// Calculate progress percentage
+				var percent float64
+				if status.TotalBytes > 0 {
+					percent = float64(status.CompletedBytes) / float64(status.TotalBytes) * 100.0
+				}
+				// Call progress callback
+				progressFn(status.Status, percent)
+			}
+			return nil
+		}))
+	}
+
+	if err := ollama.DoWithContext(ctx, req, &response, clientOpts...); err != nil {
+		return nil, err
+	}
+
+	// Return the downloaded model
+	return ollama.GetModel(ctx, name)
 }
 
 ///////////////////////////////////////////////////////////////////////////////

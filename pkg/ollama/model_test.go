@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	// Packages
+	opt "github.com/mutablelogic/go-llm/pkg/opt"
 	assert "github.com/stretchr/testify/assert"
 )
 
@@ -70,4 +71,33 @@ func Test_models_delete_load_unload(t *testing.T) {
 	if err != nil {
 		t.Logf("DeleteModel error: %v", err)
 	}
+}
+
+func Test_models_download_with_progress(t *testing.T) {
+	t.Skip("Skipping download test - requires actual download which may be slow")
+
+	assert := assert.New(t)
+
+	// Track progress calls
+	var progressCalls int
+	var lastStatus string
+	var lastPercent float64
+
+	// Create progress callback
+	progressOpt := opt.WithProgress(func(status string, percent float64) {
+		progressCalls++
+		lastStatus = status
+		lastPercent = percent
+		t.Logf("Progress: %s - %.2f%%", status, percent)
+	})
+
+	// Download a small model (this is commented out for CI)
+	model, err := client.DownloadModel(context.TODO(), "mistral:7b", progressOpt)
+	assert.NoError(err)
+	assert.NotNil(model)
+
+	// Verify progress was called
+	assert.Greater(progressCalls, 0, "Expected progress callback to be called")
+	t.Logf("Total progress calls: %d", progressCalls)
+	t.Logf("Last status: %s, Last percent: %.2f%%", lastStatus, lastPercent)
 }

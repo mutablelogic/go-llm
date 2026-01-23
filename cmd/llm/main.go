@@ -11,7 +11,6 @@ import (
 	kong "github.com/alecthomas/kong"
 	client "github.com/mutablelogic/go-client"
 	otel "github.com/mutablelogic/go-client/pkg/otel"
-	llm "github.com/mutablelogic/go-llm"
 	agent "github.com/mutablelogic/go-llm/pkg/agent"
 	anthropic "github.com/mutablelogic/go-llm/pkg/anthropic"
 	gemini "github.com/mutablelogic/go-llm/pkg/gemini"
@@ -119,7 +118,7 @@ func run(ctx *kong.Context, globals *Globals) int {
 // PRIVATE METHODS
 
 // Client returns an agent with all configured LLM clients
-func (g *Globals) Client() (llm.Client, error) {
+func (g *Globals) Client() (agent.Agent, error) {
 	var opts []agent.Opt
 	var clientOpts []client.ClientOpt
 

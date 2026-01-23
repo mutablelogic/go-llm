@@ -16,14 +16,22 @@ type Opt func(*opts) error
 // set of options
 type opts struct {
 	url.Values
+	progress ProgressFn
 }
+
+// ProgressFn is a callback function for progress updates
+// status: descriptive status message (e.g., "downloading", "verifying")
+// percent: progress percentage (0-100)
+type ProgressFn func(status string, percent float64)
 
 ////////////////////////////////////////////////////////////////////////////////
 // LIFECYCLE
 
 // Apply returns a structure of applied options
 func Apply(o ...Opt) (*opts, error) {
-	opts := &opts{Values: make(url.Values)}
+	opts := &opts{
+		Values: make(url.Values),
+	}
 	for _, opt := range o {
 		if err := opt(opts); err != nil {
 			return nil, err
@@ -94,8 +102,43 @@ func (o *opts) GetUint(key string) uint {
 
 // Has returns true if the key exists
 func (o *opts) Has(key string) bool {
-	_, ok := o.Values[key]
-	return ok
+	switch key {
+	case "progressfn":
+		return o.progress != nil
+	default:
+		_, ok := o.Values[key]
+		return ok
+	}
+}
+
+// Get returns the arbitrary value for key, or nil if not set
+func (o *opts) Get(key string) any {
+	switch key {
+	case "progressfn":
+		return o.progress != nil
+	default:
+		return o.Values.Get(key)
+	}
+}
+
+// Set stores an arbitrary value for key
+func (o *opts) Set(key string, value any) error {
+	switch key {
+	case "progressfn":
+		if fn, ok := value.(ProgressFn); !ok || fn == nil {
+			return fmt.Errorf("progressfn must be a non-nil ProgressFn")
+		} else {
+			o.progress = fn
+		}
+		return nil
+	default:
+		if value == nil {
+			o.Values.Del(key)
+		} else {
+			o.Values.Set(key, fmt.Sprintf("%v", value))
+		}
+		return nil
+	}
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -123,8 +166,7 @@ func WithOpts(options ...Opt) Opt {
 // SetString sets a string value for key, replacing any existing values
 func SetString(key string, value string) Opt {
 	return func(o *opts) error {
-		o.Values.Set(key, value)
-		return nil
+		return o.Set(key, value)
 	}
 }
 
@@ -138,16 +180,10 @@ func AddString(key string, value ...string) Opt {
 	}
 }
 
-// WithString is an alias for AddString for backwards compatibility
-func WithString(key string, value ...string) Opt {
-	return AddString(key, value...)
-}
-
 // SetUint sets a uint value for key, replacing any existing values
 func SetUint(key string, value uint) Opt {
 	return func(o *opts) error {
-		o.Values.Set(key, fmt.Sprintf("%d", value))
-		return nil
+		return o.Set(key, value)
 	}
 }
 
@@ -161,16 +197,10 @@ func AddUint(key string, value ...uint) Opt {
 	}
 }
 
-// WithUint is an alias for AddUint for backwards compatibility
-func WithUint(key string, value ...uint) Opt {
-	return AddUint(key, value...)
-}
-
 // SetFloat64 sets a float64 value for key, replacing any existing values
 func SetFloat64(key string, value float64) Opt {
 	return func(o *opts) error {
-		o.Values.Set(key, strconv.FormatFloat(value, 'f', -1, 64))
-		return nil
+		return o.Set(key, strconv.FormatFloat(value, 'f', -1, 64))
 	}
 }
 
@@ -182,15 +212,24 @@ func AddFloat64(key string, value float64) Opt {
 	}
 }
 
-// WithFloat64 is an alias for AddFloat64 for backwards compatibility
-func WithFloat64(key string, value float64) Opt {
-	return AddFloat64(key, value)
-}
-
 // SetBool sets a boolean value for key, replacing any existing values
 func SetBool(key string, value bool) Opt {
 	return func(o *opts) error {
-		o.Values.Set(key, strconv.FormatBool(value))
-		return nil
+		return o.Set(key, strconv.FormatBool(value))
 	}
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// CALLBACK TYPES
+
+// WithProgress sets a progress callback function
+func WithProgress(fn ProgressFn) Opt {
+	return func(o *opts) error {
+		return o.Set("progressfn", fn)
+	}
+}
+
+// GetProgress returns the progress callback function, or nil if not set
+func (o *opts) GetProgress() ProgressFn {
+	return o.progress
 }

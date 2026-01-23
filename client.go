@@ -34,7 +34,7 @@ type Embedder interface {
 // Downloader is an interface for managing model files
 type Downloader interface {
 	// DownloadModel downloads the specified model, and otherwise loads the model if already present
-	DownloadModel(ctx context.Context, path string) (*schema.Model, error)
+	DownloadModel(ctx context.Context, path string, opts ...opt.Opt) (*schema.Model, error)
 
 	// DeleteModel deletes the specified model from local storage
 	DeleteModel(ctx context.Context, model schema.Model) error

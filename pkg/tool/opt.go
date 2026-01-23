@@ -36,7 +36,7 @@ func WithToolkit(toolkit *Toolkit) opt.Opt {
 		if err != nil {
 			return opt.Error(fmt.Errorf("failed to serialize tool %q: %w", t.Name(), err))
 		}
-		opts = append(opts, opt.WithString("tools", string(data)))
+		opts = append(opts, opt.AddString("tools", string(data)))
 	}
 
 	return opt.WithOpts(opts...)

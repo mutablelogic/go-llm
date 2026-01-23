@@ -21,7 +21,7 @@ func Test_opt_002(t *testing.T) {
 	assert := assert.New(t)
 
 	// Apply with WithString
-	opts, err := opt.Apply(opt.WithString("key", "value"))
+	opts, err := opt.Apply(opt.AddString("key", "value"))
 	assert.NoError(err)
 	assert.NotNil(opts)
 
@@ -33,7 +33,7 @@ func Test_opt_003(t *testing.T) {
 	assert := assert.New(t)
 
 	// Apply with multiple string values
-	opts, err := opt.Apply(opt.WithString("key", "value1", "value2"))
+	opts, err := opt.Apply(opt.AddString("key", "value1", "value2"))
 	assert.NoError(err)
 	assert.NotNil(opts)
 
@@ -45,7 +45,7 @@ func Test_opt_004(t *testing.T) {
 	assert := assert.New(t)
 
 	// Apply with WithUint
-	opts, err := opt.Apply(opt.WithUint("limit", 10))
+	opts, err := opt.Apply(opt.AddUint("limit", 10))
 	assert.NoError(err)
 	assert.NotNil(opts)
 
@@ -58,8 +58,8 @@ func Test_opt_005(t *testing.T) {
 
 	// Apply with multiple options
 	opts, err := opt.Apply(
-		opt.WithUint("limit", 25),
-		opt.WithString("custom", "value"),
+		opt.AddUint("limit", 25),
+		opt.AddString("custom", "value"),
 	)
 	assert.NoError(err)
 	assert.NotNil(opts)
@@ -73,7 +73,7 @@ func Test_opt_006(t *testing.T) {
 	assert := assert.New(t)
 
 	// Query with non-existent key returns empty
-	opts, err := opt.Apply(opt.WithString("key", "value"))
+	opts, err := opt.Apply(opt.AddString("key", "value"))
 	assert.NoError(err)
 
 	query := opts.Query("nonexistent")

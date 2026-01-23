@@ -12,6 +12,8 @@ import (
 // Agent represents an AI agent that can process messages and use tools
 type Agent interface {
 	llm.Client
+	llm.Embedder
+	llm.Downloader
 }
 
 // agent is the concrete implementation of the Agent interface
