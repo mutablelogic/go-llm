@@ -14,7 +14,9 @@ import (
 	agent "github.com/mutablelogic/go-llm/pkg/agent"
 	anthropic "github.com/mutablelogic/go-llm/pkg/anthropic"
 	gemini "github.com/mutablelogic/go-llm/pkg/gemini"
+	newsapi "github.com/mutablelogic/go-llm/pkg/newsapi"
 	ollama "github.com/mutablelogic/go-llm/pkg/ollama"
+	tool "github.com/mutablelogic/go-llm/pkg/tool"
 	version "github.com/mutablelogic/go-llm/pkg/version"
 	logger "github.com/mutablelogic/go-server/pkg/logger"
 	trace "go.opentelemetry.io/otel/trace"
@@ -46,6 +48,7 @@ type Globals struct {
 type CLI struct {
 	Globals
 	ModelCommands
+	ToolCommands
 	EmbeddingCommands
 }
 
@@ -163,6 +166,32 @@ func (g *Globals) Client() (agent.Agent, error) {
 	}
 
 	return agent.NewAgent(opts...)
+}
+
+// Toolkit returns a toolkit with all configured tools
+func (g *Globals) Toolkit() (*tool.Toolkit, error) {
+	var tools []tool.Tool
+	var clientOpts []client.ClientOpt
+
+	if g.Debug {
+		clientOpts = append(clientOpts, client.OptTrace(os.Stderr, true))
+	}
+
+	// Add NewsAPI tools if NEWSAPI_KEY is set
+	if apiKey := os.Getenv("NEWSAPI_KEY"); apiKey != "" {
+		newsTools, err := newsapi.NewTools(apiKey, clientOpts...)
+		if err != nil {
+			return nil, fmt.Errorf("failed to create NewsAPI tools: %w", err)
+		}
+		tools = append(tools, newsTools...)
+	}
+
+	// Return empty toolkit if no tools are configured (this is not an error)
+	if len(tools) == 0 {
+		return tool.NewToolkit()
+	}
+
+	return tool.NewToolkit(tools...)
 }
 
 // VersionString returns the version as a string

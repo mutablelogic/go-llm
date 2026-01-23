@@ -2,6 +2,7 @@ package tool
 
 import (
 	"context"
+	"encoding/json"
 
 	// Packages
 	jsonschema "github.com/google/jsonschema-go/jsonschema"
@@ -22,10 +23,10 @@ type Tool interface {
 	Description() string
 
 	// Return the JSON schema for the tool input
-	Schema() *jsonschema.Schema
+	Schema() (*jsonschema.Schema, error)
 
-	// Run the tool with the given input
-	Run(ctx context.Context, input any) (any, error)
+	// Run the tool with the given input as JSON (may be nil)
+	Run(ctx context.Context, input json.RawMessage) (any, error)
 }
 
 // Toolkit is a collection of tools with unique names
@@ -82,6 +83,7 @@ func (tk *Toolkit) Lookup(name string) Tool {
 }
 
 // Run executes a tool by name with the given input.
+// The input should be json.RawMessage or nil.
 // Returns an error if the tool is not found, the input does not match the schema,
 // or the tool execution fails.
 func (tk *Toolkit) Run(ctx context.Context, name string, input any) (any, error) {
@@ -91,19 +93,51 @@ func (tk *Toolkit) Run(ctx context.Context, name string, input any) (any, error)
 		return nil, llm.ErrNotFound.Withf("tool not found: %q", name)
 	}
 
-	// Validate input against schema
-	if schema := tool.Schema(); schema != nil {
-		resolved, err := schema.Resolve(nil)
-		if err != nil {
-			return nil, llm.ErrBadParameter.Withf("schema resolution failed: %v", err)
-		}
-		if err := resolved.Validate(input); err != nil {
-			return nil, llm.ErrBadParameter.Withf("input validation failed: %v", err)
+	// Convert input to json.RawMessage
+	var rawInput json.RawMessage
+	if input != nil {
+		switch v := input.(type) {
+		case json.RawMessage:
+			rawInput = v
+		case []byte:
+			rawInput = json.RawMessage(v)
+		default:
+			// If not JSON, marshal it
+			data, err := json.Marshal(input)
+			if err != nil {
+				return nil, llm.ErrBadParameter.Withf("failed to marshal input: %v", err)
+			}
+			rawInput = json.RawMessage(data)
 		}
 	}
 
-	// Run the tool
-	return tool.Run(ctx, input)
+	// Validate input against schema if provided
+	if len(rawInput) > 0 {
+		schema, err := tool.Schema()
+		if err != nil {
+			return nil, llm.ErrBadParameter.Withf("schema generation failed: %v", err)
+		}
+
+		if schema != nil {
+			// Unmarshal into a map for validation
+			var mapInput map[string]any
+			if err := json.Unmarshal(rawInput, &mapInput); err != nil {
+				return nil, llm.ErrBadParameter.Withf("failed to unmarshal JSON input: %v", err)
+			}
+
+			// Validate against schema
+			resolved, err := schema.Resolve(nil)
+			if err != nil {
+				return nil, llm.ErrBadParameter.Withf("schema resolution failed: %v", err)
+			}
+			if err := resolved.Validate(mapInput); err != nil {
+				return nil, llm.ErrBadParameter.Withf("input validation failed: %v", err)
+			}
+		}
+	}
+
+	// Run the tool with raw JSON
+	return tool.Run(ctx, rawInput)
 }
 
 ///////////////////////////////////////////////////////////////////////////////

@@ -27,10 +27,14 @@ func WithToolkit(toolkit *Toolkit) opt.Opt {
 
 	var opts []opt.Opt
 	for _, t := range toolkit.Tools() {
+		schema, err := t.Schema()
+		if err != nil {
+			return opt.Error(fmt.Errorf("failed to get schema for tool %q: %w", t.Name(), err))
+		}
 		tool := toolDefinition{
 			Name:        t.Name(),
 			Description: t.Description(),
-			InputSchema: t.Schema(),
+			InputSchema: schema,
 		}
 		data, err := json.Marshal(tool)
 		if err != nil {
