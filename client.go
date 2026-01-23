@@ -11,6 +11,7 @@ import (
 ///////////////////////////////////////////////////////////////////////////////
 // TYPES
 
+// Client is the interface that wraps basic LLM client methods
 type Client interface {
 	// Return the provider name
 	Name() string

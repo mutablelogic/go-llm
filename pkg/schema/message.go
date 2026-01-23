@@ -2,6 +2,7 @@ package schema
 
 import (
 	"encoding/json"
+	"strings"
 )
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -55,10 +56,10 @@ type ContentBlock struct {
 	CacheControl *CacheControl `json:"cache_control,omitempty"`
 
 	// Server-side tool use metrics (Anthropic)
-	CacheCreation          *CacheMetrics `json:"cache_creation,omitempty"`
-	CacheReadInputTokens   *uint         `json:"cache_read_input_tokens,omitempty"`
-	InputTokens            *uint         `json:"input_tokens,omitempty"`
-	CacheCreationInputTokens *uint       `json:"cache_creation_input_tokens,omitempty"`
+	CacheCreation            *CacheMetrics `json:"cache_creation,omitempty"`
+	CacheReadInputTokens     *uint         `json:"cache_read_input_tokens,omitempty"`
+	InputTokens              *uint         `json:"input_tokens,omitempty"`
+	CacheCreationInputTokens *uint         `json:"cache_creation_input_tokens,omitempty"`
 
 	// Function Response (Gemini)
 	FunctionResponse json.RawMessage `json:"function_response,omitempty"`
@@ -66,12 +67,12 @@ type ContentBlock struct {
 
 // ImageSource represents an image in various formats
 type ImageSource struct {
-	Type        string  `json:"type"`                 // "base64", "url", "file"
-	MediaType   string  `json:"media_type,omitempty"` // "image/jpeg", "image/png", etc. (only for base64)
-	Data        *string `json:"data,omitempty"`       // base64 encoded data
-	URL         *string `json:"url,omitempty"`        // image URL
-	FileID      *string `json:"file_id,omitempty"`    // file reference (Anthropic)
-	FileURI     *string `json:"file_uri,omitempty"`   // file URI (Gemini)
+	Type        string  `json:"type"`                   // "base64", "url", "file"
+	MediaType   string  `json:"media_type,omitempty"`   // "image/jpeg", "image/png", etc. (only for base64)
+	Data        *string `json:"data,omitempty"`         // base64 encoded data
+	URL         *string `json:"url,omitempty"`          // image URL
+	FileID      *string `json:"file_id,omitempty"`      // file reference (Anthropic)
+	FileURI     *string `json:"file_uri,omitempty"`     // file URI (Gemini)
 	DisplayName *string `json:"display_name,omitempty"` // display name (Gemini)
 }
 
@@ -143,20 +144,38 @@ type CacheControl struct {
 	TTL  string `json:"ttl,omitempty"` // time-to-live (e.g., "5m", "1h")
 }
 
+// ContentBlock Types
+const (
+	ContentTypeText        = "text"
+	ContentTypeImage       = "image"
+	ContentTypeDocument    = "document"
+	ContentTypeToolUse     = "tool_use"
+	ContentTypeToolResult  = "tool_result"
+	ContentTypeThinking    = "thinking"
+	ContentTypeRedacted    = "redacted_thinking"
+	ContentTypeFunctionRes = "function_response"
+)
+
 ////////////////////////////////////////////////////////////////////////////////
 // CONSTRUCTORS
 
 // NewMessage creates a new message with a single text content block
-func NewMessage(role, text string) Message {
-	return Message{
+func NewMessage(role, text string, opt ...Opt) (*Message, error) {
+	self := Message{
 		Role: role,
 		Content: []ContentBlock{
 			{
-				Type: "text",
+				Type: ContentTypeText,
 				Text: &text,
 			},
 		},
 	}
+	for _, o := range opt {
+		if err := o(&self); err != nil {
+			return nil, err
+		}
+	}
+	return &self, nil
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -164,57 +183,13 @@ func NewMessage(role, text string) Message {
 
 // Text returns the concatenated text content from all text blocks in the message
 func (m Message) Text() string {
-	var result string
-	for i, block := range m.Content {
-		if block.Type == "text" && block.Text != nil {
-			if i > 0 {
-				result += "\n"
-			}
-			result += *block.Text
+	var result []string
+	for _, block := range m.Content {
+		if block.Type == ContentTypeText && block.Text != nil {
+			result = append(result, *block.Text)
 		}
 	}
-	return result
-}
-
-////////////////////////////////////////////////////////////////////////////////
-// JSON
-
-// UnmarshalJSON handles both string content and array of content blocks
-func (m *Message) UnmarshalJSON(data []byte) error {
-	// First try the standard unmarshal with array of content blocks
-	type Alias Message
-	aux := &struct {
-		*Alias
-	}{
-		Alias: (*Alias)(m),
-	}
-
-	if err := json.Unmarshal(data, &aux); err == nil {
-		return nil
-	}
-
-	// If that fails, try with string content
-	var stringContent struct {
-		Role    string          `json:"role"`
-		Content string          `json:"content"`
-		Tokens  uint            `json:"-"`
-	}
-
-	if err := json.Unmarshal(data, &stringContent); err != nil {
-		return err
-	}
-
-	// Convert string content to a text block
-	m.Role = stringContent.Role
-	m.Content = []ContentBlock{
-		{
-			Type: "text",
-			Text: &stringContent.Content,
-		},
-	}
-	m.Tokens = stringContent.Tokens
-
-	return nil
+	return strings.Join(result, "\n")
 }
 
 ////////////////////////////////////////////////////////////////////////////////
