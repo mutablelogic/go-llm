@@ -39,3 +39,12 @@ type Downloader interface {
 	// DeleteModel deletes the specified model from local storage
 	DeleteModel(ctx context.Context, model schema.Model) error
 }
+
+// Messenger is an interface for sending messages and conducting conversations
+type Messenger interface {
+	// Send sends a single message and returns the response (stateless)
+	Send(ctx context.Context, message *schema.Message, opts ...opt.Opt) (*schema.Message, error)
+
+	// Chat sends a message within a session and returns the response (stateful)
+	Chat(ctx context.Context, session *schema.Session, message *schema.Message, opts ...opt.Opt) (*schema.Message, error)
+}
