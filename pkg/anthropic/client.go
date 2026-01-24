@@ -6,8 +6,11 @@ package anthropic
 
 import (
 	// Packages
+	"time"
+
 	client "github.com/mutablelogic/go-client"
 	llm "github.com/mutablelogic/go-llm"
+	agent "github.com/mutablelogic/go-llm/pkg/agent"
 )
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -15,7 +18,7 @@ import (
 
 type Client struct {
 	*client.Client
-	apiKey string
+	*agent.ModelCache
 }
 
 var _ llm.Client = (*Client)(nil)
@@ -24,9 +27,7 @@ var _ llm.Client = (*Client)(nil)
 // GLOBALS
 
 const (
-	endPoint = "https://api.anthropic.com/v1"
-	// Note: Document support requires API version 2024-10-22 or later
-	// Currently using 2023-06-01 as it's the stable version
+	endPoint    = "https://api.anthropic.com/v1"
 	apiVersion  = "2023-06-01"
 	defaultName = "anthropic"
 )
@@ -46,7 +47,7 @@ func New(ApiKey string, opts ...client.ClientOpt) (*Client, error) {
 	}
 
 	// Return the client
-	return &Client{client, ApiKey}, nil
+	return &Client{client, agent.NewModelCache(time.Hour, 40)}, nil
 }
 
 ///////////////////////////////////////////////////////////////////////////////

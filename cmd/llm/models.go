@@ -5,6 +5,7 @@ import (
 
 	// Packages
 	otel "github.com/mutablelogic/go-client/pkg/otel"
+	agent "github.com/mutablelogic/go-llm/pkg/agent"
 	opt "github.com/mutablelogic/go-llm/pkg/opt"
 )
 
@@ -18,7 +19,9 @@ type ModelCommands struct {
 	DeleteModel   DeleteModelCommand   `cmd:"" name:"delete" help:"Delete a model." group:"MODEL"`
 }
 
-type ListModelsCommand struct{}
+type ListModelsCommand struct {
+	Provider string `name:"provider" help:"Filter models by provider name" optional:""`
+}
 
 type GetModelCommand struct {
 	Name string `arg:"" name:"name" help:"Model name"`
@@ -45,17 +48,20 @@ func (cmd *ListModelsCommand) Run(ctx *Globals) (err error) {
 	parent, endSpan := otel.StartSpan(ctx.tracer, ctx.ctx, "ListModelsCommand")
 	defer func() { endSpan(err) }()
 
+	// Gather options
+	var opts []opt.Opt
+	if cmd.Provider != "" {
+		opts = append(opts, agent.WithProvider(cmd.Provider))
+	}
+
 	// List models
-	models, err := client.ListModels(parent)
+	models, err := client.ListModels(parent, opts...)
 	if err != nil {
 		return err
 	}
 
-	// Print each model
-	for _, model := range models {
-		fmt.Printf("%-40s %s\n", model.Name, model.Description)
-	}
-
+	// Print models
+	fmt.Println(models)
 	return nil
 }
 
@@ -75,11 +81,7 @@ func (cmd *GetModelCommand) Run(ctx *Globals) (err error) {
 		return err
 	}
 
-	// Print model details
-	fmt.Printf("Name:        %s\n", model.Name)
-	fmt.Printf("Description: %s\n", model.Description)
-	fmt.Printf("Owner:       %s\n", model.OwnedBy)
-
+	fmt.Println(model)
 	return nil
 }
 
@@ -109,11 +111,7 @@ func (cmd *DownloadModelCommand) Run(ctx *Globals) (err error) {
 	fmt.Println()
 
 	// Print model details
-	fmt.Printf("Downloaded model:\n")
-	fmt.Printf("  Name:        %s\n", model.Name)
-	fmt.Printf("  Description: %s\n", model.Description)
-	fmt.Printf("  Owner:       %s\n", model.OwnedBy)
-
+	fmt.Println(model)
 	return nil
 }
 
@@ -138,7 +136,7 @@ func (cmd *DeleteModelCommand) Run(ctx *Globals) (err error) {
 		return err
 	}
 
-	fmt.Printf("Deleted model: %s\n", model.Name)
-
+	// Print model details
+	fmt.Println(model)
 	return nil
 }

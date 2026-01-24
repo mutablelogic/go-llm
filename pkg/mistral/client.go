@@ -2,8 +2,11 @@ package mistral
 
 import (
 	// Packages
+	"time"
+
 	client "github.com/mutablelogic/go-client"
 	llm "github.com/mutablelogic/go-llm"
+	agent "github.com/mutablelogic/go-llm/pkg/agent"
 )
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -11,6 +14,7 @@ import (
 
 type Client struct {
 	*client.Client
+	*agent.ModelCache
 }
 
 var _ llm.Client = (*Client)(nil)
@@ -37,7 +41,7 @@ func New(apiKey string, opts ...client.ClientOpt) (*Client, error) {
 		return nil, err
 	}
 
-	return &Client{Client: c}, nil
+	return &Client{Client: c, ModelCache: agent.NewModelCache(time.Hour, 10)}, nil
 }
 
 ///////////////////////////////////////////////////////////////////////////////

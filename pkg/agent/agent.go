@@ -16,8 +16,8 @@ type Agent interface {
 	llm.Downloader
 	llm.Messenger
 
-	// Clients returns a map of client name to client
-	Clients() map[string]llm.Client
+	// Providers returns all providers registered with the agent
+	Providers() []llm.Client
 }
 
 // agent is the concrete implementation of the Agent interface
@@ -51,9 +51,13 @@ func (a *agent) Name() string {
 	return "agent"
 }
 
-// Clients returns a map of client name to client
-func (a *agent) Clients() map[string]llm.Client {
-	return a.clients
+// Providers returns all providers registered with the agent
+func (a *agent) Providers() []llm.Client {
+	providers := make([]llm.Client, 0, len(a.clients))
+	for _, client := range a.clients {
+		providers = append(providers, client)
+	}
+	return providers
 }
 
 ///////////////////////////////////////////////////////////////////////////////

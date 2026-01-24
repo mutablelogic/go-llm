@@ -6,8 +6,11 @@ package gemini
 
 import (
 	// Packages
+	"time"
+
 	client "github.com/mutablelogic/go-client"
 	llm "github.com/mutablelogic/go-llm"
+	"github.com/mutablelogic/go-llm/pkg/agent"
 )
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -16,6 +19,7 @@ import (
 // Client is a client for the Google Gemini API
 type Client struct {
 	*client.Client
+	*agent.ModelCache
 }
 
 var _ llm.Client = (*Client)(nil)
@@ -42,7 +46,7 @@ func New(apiKey string, opts ...client.ClientOpt) (*Client, error) {
 	}
 
 	// Return the client
-	return &Client{Client: c}, nil
+	return &Client{Client: c, ModelCache: agent.NewModelCache(time.Hour, 40)}, nil
 }
 
 ///////////////////////////////////////////////////////////////////////////////

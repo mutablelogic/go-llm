@@ -61,7 +61,7 @@ type CLI struct {
 	ModelCommands
 	ToolCommands
 	EmbeddingCommands
-	SendCommands
+	MessageCommands
 	MCPCommands
 }
 

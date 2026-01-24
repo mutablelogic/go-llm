@@ -59,7 +59,7 @@ type PullStatus struct {
 // PUBLIC METHODS
 
 // List all models in the Ollama registry
-func (ollama *Client) ListModels(ctx context.Context) ([]schema.Model, error) {
+func (ollama *Client) ListModels(ctx context.Context, opts ...opt.Opt) ([]schema.Model, error) {
 	// Send the request
 	var response listModelsResponse
 	if err := ollama.DoWithContext(ctx, nil, &response, client.OptPath("tags")); err != nil {

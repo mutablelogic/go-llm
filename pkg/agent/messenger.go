@@ -13,7 +13,7 @@ import (
 // PUBLIC METHODS - Messenger
 
 // Send sends a single message and returns the response (stateless)
-func (a *agent) Send(ctx context.Context, model schema.Model, message *schema.Message, opts ...opt.Opt) (*schema.Message, error) {
+func (a *agent) WithoutSession(ctx context.Context, model schema.Model, message *schema.Message, opts ...opt.Opt) (*schema.Message, error) {
 	// Get the client for this model
 	client := a.clientForModel(model)
 	if client == nil {
@@ -27,7 +27,7 @@ func (a *agent) Send(ctx context.Context, model schema.Model, message *schema.Me
 	}
 
 	// Send the message
-	return messenger.Send(ctx, model, message, opts...)
+	return messenger.WithoutSession(ctx, model, message, opts...)
 }
 
 // WithSession sends a message within a session and returns the response (stateful)

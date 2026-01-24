@@ -7,11 +7,12 @@ import "time"
 
 // Represents an LLM model
 type Model struct {
-	Name        string
-	Description string
-	Created     time.Time `json:",omitzero"`
-	OwnedBy     string
-	Aliases     []string `json:",omitzero"`
+	Name        string                 `json:"name,omitzero"`
+	Description string                 `json:"description,omitzero"`
+	Created     time.Time              `json:"created,omitzero"`
+	OwnedBy     string                 `json:"owned_by,omitzero"` // Model provider
+	Aliases     []string               `json:"aliases,omitzero"`  // Model aliases
+	Meta        map[string]interface{} `json:"meta,omitzero"`     // Provider-specific metadata
 }
 
 ////////////////////////////////////////////////////////////////////////////////

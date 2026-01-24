@@ -11,29 +11,29 @@ import (
 // TYPES
 
 type AgentCommands struct {
-	ListAgents ListAgentsCommand `cmd:"" name:"agents" help:"List available agents and their capabilities." group:"AGENT"`
+	ListProviders ListProvidersCommand `cmd:"" name:"providers" help:"List available providers and their capabilities." group:"PROVIDER"`
 }
 
-type ListAgentsCommand struct{}
+type ListProvidersCommand struct{}
 
 ///////////////////////////////////////////////////////////////////////////////
 // COMMANDS
 
-func (cmd *ListAgentsCommand) Run(ctx *Globals) (err error) {
+func (cmd *ListProvidersCommand) Run(ctx *Globals) (err error) {
 	agent, err := ctx.Agent()
 	if err != nil {
 		return err
 	}
 
 	// Get all clients
-	clients := agent.Clients()
+	clients := agent.Providers()
 
 	// Print header
 	fmt.Printf("%-20s %-12s %-12s %-12s\n", "AGENT", "MESSENGER", "EMBEDDER", "DOWNLOADER")
 	fmt.Println("--------------------------------------------------------------------------------")
 
 	// For each client, check interface implementations
-	for name, client := range clients {
+	for _, client := range clients {
 		messenger := "✗"
 		embedder := "✗"
 		downloader := "✗"
@@ -53,7 +53,7 @@ func (cmd *ListAgentsCommand) Run(ctx *Globals) (err error) {
 			downloader = "✓"
 		}
 
-		fmt.Printf("%-20s %-12s %-12s %-12s\n", name, messenger, embedder, downloader)
+		fmt.Printf("%-20s %-12s %-12s %-12s\n", client.Name(), messenger, embedder, downloader)
 	}
 
 	return nil

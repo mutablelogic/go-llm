@@ -19,6 +19,33 @@ type opts struct {
 	progress ProgressFn
 }
 
+// Options is the interface for accessing options
+type Options interface {
+	// Returns true if the key exists
+	Has(key string) bool
+
+	// Return a value for key, or nil
+	Get(key string) any
+
+	// Get a string value for key
+	GetString(key string) string
+
+	// Get a string array for key
+	GetStringArray(key string) []string
+
+	// Get a boolean value for key
+	GetBool(key string) bool
+
+	// Get a float64 value for key
+	GetFloat64(key string) float64
+
+	// Get a uint value for key
+	GetUint(key string) uint
+
+	// Return a set of keys as a url.Values
+	Query(keys ...string) url.Values
+}
+
 // ProgressFn is a callback function for progress updates
 // status: descriptive status message (e.g., "downloading", "verifying")
 // percent: progress percentage (0-100)

@@ -15,7 +15,7 @@ import (
 var _ llm.Messenger = (*Client)(nil)
 
 // Send sends a single message and returns the response (stateless)
-func (c *Client) Send(ctx context.Context, model schema.Model, message *schema.Message, opts ...opt.Opt) (*schema.Message, error) {
+func (c *Client) WithoutSession(ctx context.Context, model schema.Model, message *schema.Message, opts ...opt.Opt) (*schema.Message, error) {
 	// Create a new session with the single message
 	session := schema.Session{message}
 
