@@ -1,9 +1,11 @@
 package gemini
 
 import (
+	"encoding/json"
 	"fmt"
 
 	opt "github.com/mutablelogic/go-llm/pkg/opt"
+	schema "github.com/mutablelogic/go-llm/pkg/schema"
 )
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -52,6 +54,23 @@ func WithStopSequences(values ...string) opt.Opt {
 		return opt.Error(fmt.Errorf("at least one stop sequence is required"))
 	}
 	return opt.AddString("stop_sequences", values...)
+}
+
+// WithTool adds a tool definition to the request (Gemini function-style tools).
+// Multiple calls append additional tools.
+func WithTool(def schema.ToolDefinition) opt.Opt {
+	if def.Name == "" {
+		return opt.Error(fmt.Errorf("tool name is required"))
+	}
+	if def.InputSchema == nil {
+		return opt.Error(fmt.Errorf("tool schema is required"))
+	}
+
+	data, err := json.Marshal(def)
+	if err != nil {
+		return opt.Error(fmt.Errorf("failed to serialize tool: %w", err))
+	}
+	return opt.AddString("tools", string(data))
 }
 
 ////////////////////////////////////////////////////////////////////////////////

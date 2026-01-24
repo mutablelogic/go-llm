@@ -6,6 +6,7 @@ import (
 
 	"github.com/google/jsonschema-go/jsonschema"
 	opt "github.com/mutablelogic/go-llm/pkg/opt"
+	schema "github.com/mutablelogic/go-llm/pkg/schema"
 )
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -147,26 +148,26 @@ func WithToolChoice(name string) opt.Opt {
 	)
 }
 
-// toolDefinition is the JSON structure for a tool
-type toolDefinition struct {
-	Name        string             `json:"name"`
-	Description string             `json:"description,omitempty"`
-	InputSchema *jsonschema.Schema `json:"input_schema"`
-}
-
 // WithTool adds a tool definition to the request.
 // Multiple calls append additional tools.
-func WithTool(name, description string, schema *jsonschema.Schema) opt.Opt {
-	if name == "" {
+func WithTool(def schema.ToolDefinition) opt.Opt {
+	if def.Name == "" {
 		return opt.Error(fmt.Errorf("tool name is required"))
 	}
-	if schema == nil {
+	if def.InputSchema == nil {
 		return opt.Error(fmt.Errorf("tool schema is required"))
 	}
-	tool := toolDefinition{
-		Name:        name,
-		Description: description,
-		InputSchema: schema,
+
+	// If InputSchema is a *jsonschema.Schema, keep it typed for Anthropic
+	var inputSchema any = def.InputSchema
+	if s, ok := def.InputSchema.(*jsonschema.Schema); ok {
+		inputSchema = s
+	}
+
+	tool := schema.ToolDefinition{
+		Name:        def.Name,
+		Description: def.Description,
+		InputSchema: inputSchema,
 	}
 	data, err := json.Marshal(tool)
 	if err != nil {

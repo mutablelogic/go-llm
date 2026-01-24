@@ -4,10 +4,16 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+	"sync"
+
+	"github.com/mutablelogic/go-llm/pkg/types"
 )
 
 ////////////////////////////////////////////////////////////////////////////////
 // TYPES
+
+// The result of generating a message (stopped, error, etc.)
+type ResultType uint
 
 // Message represents a message in a conversation with an LLM.
 // It uses a universal content block representation that can be marshaled
@@ -15,7 +21,11 @@ import (
 type Message struct {
 	Role    string         `json:"role"`    // "user", "assistant", "system", "tool", etc.
 	Content []ContentBlock `json:"content"` // Array of content blocks
-	Tokens  uint           `json:"-"`       // Number of tokens (not serialized)
+	Tokens  uint           `json:"tokens"`  // Number of tokens
+	Result  ResultType     `json:"result"`  // Result type
+
+	// Private fields
+	mu sync.Mutex
 }
 
 // ContentBlock represents a single piece of content within a message.
@@ -35,15 +45,9 @@ type ContentBlock struct {
 	DocumentContext *string          `json:"document_context,omitempty"`
 	Citations       *CitationOptions `json:"citations,omitempty"`
 
-	// Tool Use (assistant → user)
-	ToolUseID *string         `json:"tool_use_id,omitempty"`
-	ToolName  *string         `json:"tool_name,omitempty"`
-	ToolInput json.RawMessage `json:"tool_input,omitempty"`
-
-	// Tool Result (user → assistant)
-	ToolResultID      *string         `json:"tool_result_id,omitempty"`
-	ToolResultContent json.RawMessage `json:"tool_result_content,omitempty"`
-	IsError           *bool           `json:"is_error,omitempty"`
+	// Tools
+	ToolUse
+	ToolResult
 
 	// Thinking/Reasoning
 	Thinking          *string `json:"thinking,omitempty"`
@@ -64,6 +68,21 @@ type ContentBlock struct {
 
 	// Function Response (Gemini)
 	FunctionResponse json.RawMessage `json:"function_response,omitempty"`
+}
+
+// Tool Use (assistant → user)
+type ToolUse struct {
+	ToolUseID *string         `json:"tool_use_id,omitempty"`
+	ToolName  *string         `json:"tool_name,omitempty"`
+	ToolInput json.RawMessage `json:"tool_input,omitempty"`
+}
+
+// Tool Result (user → assistant)
+type ToolResult struct {
+	ToolName          *string         `json:"tool_name,omitempty"`
+	ToolResultID      *string         `json:"tool_result_id,omitempty"`
+	ToolResultContent json.RawMessage `json:"tool_result_content,omitempty"`
+	ToolError         *bool           `json:"is_error,omitempty"`
 }
 
 // ImageSource represents an image in various formats
@@ -187,8 +206,76 @@ func NewMessage(role, text string, opt ...Opt) (*Message, error) {
 	return &self, nil
 }
 
+// NewToolMessage creates a new message for tool results.
+// Tool results are sent in "user" role messages per Anthropic's API.
+func NewToolMessage() *Message {
+	self := Message{
+		Role:    MessageRoleUser,
+		Content: []ContentBlock{},
+	}
+	return &self
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 // PUBLIC METHODS
+
+// UnmarshalJSON handles both string and array content formats
+func (m *Message) AppendToolResult(t ToolUse, result any) error {
+	// Check message role
+	if m.Role != MessageRoleUser {
+		return fmt.Errorf("cannot append tool result to non-user message")
+	}
+
+	// Convert the result to a text block payload for tool_result.content
+	var text string
+	switch v := result.(type) {
+	case nil:
+		text = "null"
+	case string:
+		text = v
+	case []byte:
+		text = string(v)
+	case json.RawMessage:
+		text = string(v)
+	case error:
+		text = v.Error()
+	default:
+		data, err := json.Marshal(v)
+		if err != nil {
+			return fmt.Errorf("failed to marshal tool result: %w", err)
+		}
+		text = string(data)
+	}
+
+	// Wrap in Anthropic-compatible content array: [{"type":"text","text":...}]
+	wrapped, err := json.Marshal([]map[string]string{{"type": "text", "text": text}})
+	if err != nil {
+		return fmt.Errorf("failed to marshal tool result content: %w", err)
+	}
+	raw := json.RawMessage(wrapped)
+
+	// if the result is an error, set ToolError to true
+	var errFlag bool
+	if _, ok := result.(error); ok {
+		errFlag = true
+	}
+
+	// append the tool result block. This can happen concurrently, so lock
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.Content = append(m.Content, ContentBlock{
+		Type: ContentTypeToolResult,
+		ToolResult: ToolResult{
+			ToolName:          t.ToolName,
+			ToolResultID:      t.ToolUseID,
+			ToolResultContent: raw,
+			ToolError:         types.Ptr(errFlag),
+		},
+	})
+
+	// Return success
+	return nil
+}
 
 // UnmarshalJSON handles both string and array content formats
 func (m *Message) UnmarshalJSON(data []byte) error {
@@ -238,6 +325,17 @@ func (m Message) Text() string {
 		}
 	}
 	return strings.Join(result, "\n")
+}
+
+// ToolUse returns any tool use content blocks in the message
+func (m Message) ToolUse() []ToolUse {
+	var result []ToolUse
+	for _, block := range m.Content {
+		if block.Type == ContentTypeToolUse && block.ToolUse.ToolName != nil {
+			result = append(result, block.ToolUse)
+		}
+	}
+	return result
 }
 
 ////////////////////////////////////////////////////////////////////////////////

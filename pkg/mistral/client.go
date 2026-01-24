@@ -1,12 +1,14 @@
 package mistral
 
 import (
-	// Packages
 	"time"
 
+	// Packages
 	client "github.com/mutablelogic/go-client"
 	llm "github.com/mutablelogic/go-llm"
 	agent "github.com/mutablelogic/go-llm/pkg/agent"
+	opt "github.com/mutablelogic/go-llm/pkg/opt"
+	schema "github.com/mutablelogic/go-llm/pkg/schema"
 )
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -18,6 +20,7 @@ type Client struct {
 }
 
 var _ llm.Client = (*Client)(nil)
+var _ llm.ToolOptioner = (*Client)(nil)
 
 ///////////////////////////////////////////////////////////////////////////////
 // GLOBALS
@@ -50,4 +53,9 @@ func New(apiKey string, opts ...client.ClientOpt) (*Client, error) {
 // Name returns the provider name.
 func (*Client) Name() string {
 	return defaultName
+}
+
+// ToolOption implements llm.ToolOptioner by delegating to WithTool.
+func (*Client) ToolOption(def schema.ToolDefinition) (opt.Opt, error) {
+	return WithTool(def), nil
 }

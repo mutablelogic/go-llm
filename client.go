@@ -23,6 +23,11 @@ type Client interface {
 	GetModel(context.Context, string) (*schema.Model, error)
 }
 
+// ToolOptioner allows a client to construct provider-specific tool options.
+type ToolOptioner interface {
+	ToolOption(schema.ToolDefinition) (opt.Opt, error)
+}
+
 // Embedder is an interface for generating text embeddings
 type Embedder interface {
 	// Embedding generates an embedding vector for a single text
@@ -49,3 +54,5 @@ type Messenger interface {
 	// WithSession sends a message within a session and returns the response (stateful)
 	WithSession(context.Context, schema.Model, *schema.Session, *schema.Message, ...opt.Opt) (*schema.Message, error)
 }
+
+type ToolKit interface{}

@@ -11,6 +11,8 @@ import (
 	client "github.com/mutablelogic/go-client"
 	llm "github.com/mutablelogic/go-llm"
 	agent "github.com/mutablelogic/go-llm/pkg/agent"
+	opt "github.com/mutablelogic/go-llm/pkg/opt"
+	schema "github.com/mutablelogic/go-llm/pkg/schema"
 )
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -22,6 +24,7 @@ type Client struct {
 }
 
 var _ llm.Client = (*Client)(nil)
+var _ llm.ToolOptioner = (*Client)(nil)
 
 ///////////////////////////////////////////////////////////////////////////////
 // GLOBALS
@@ -56,4 +59,9 @@ func New(ApiKey string, opts ...client.ClientOpt) (*Client, error) {
 // Return the name of the agent
 func (*Client) Name() string {
 	return defaultName
+}
+
+// ToolOption implements llm.ToolOptioner by delegating to WithTool.
+func (*Client) ToolOption(def schema.ToolDefinition) (opt.Opt, error) {
+	return WithTool(def), nil
 }

@@ -96,10 +96,29 @@ func chatRequestFromOpts(model string, session *schema.Session, opts ...opt.Opt)
 		return nil, llm.ErrBadParameter.With("at least one message is required")
 	}
 
-	// Wrap messages for provider-specific marshaling
+	// Wrap messages for provider-specific marshaling. Mistral requires exactly
+	// one tool_result per message (identified by tool_call_id), so we split any
+	// multi-result message into separate messages to keep the call/response
+	// counts aligned.
 	msgs := make([]schema.MistralMessage, 0, len(*session))
 	for _, msg := range *session {
-		msgs = append(msgs, schema.MistralMessage{Message: *msg})
+		if hasToolResult(msg.Content) {
+			for _, block := range msg.Content {
+				if block.Type != schema.ContentTypeToolResult {
+					continue
+				}
+				msgs = append(msgs, schema.MistralMessage{Message: schema.Message{
+					Role:    schema.MessageRoleTool,
+					Content: []schema.ContentBlock{block},
+				}})
+			}
+			continue
+		}
+
+		// Copy non-tool messages so we can safely adjust roles without mutating
+		// shared session history used by other providers.
+		copyMsg := *msg
+		msgs = append(msgs, schema.MistralMessage{Message: copyMsg})
 	}
 
 	o, err := opt.Apply(opts...)
@@ -159,4 +178,14 @@ func chatRequestFromOpts(model string, session *schema.Session, opts ...opt.Opt)
 	}
 
 	return req, nil
+}
+
+// hasToolResult reports whether any content block is a tool_result.
+func hasToolResult(blocks []schema.ContentBlock) bool {
+	for _, b := range blocks {
+		if b.Type == schema.ContentTypeToolResult {
+			return true
+		}
+	}
+	return false
 }

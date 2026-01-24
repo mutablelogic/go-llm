@@ -15,11 +15,16 @@ type GeminiMessage struct {
 
 // geminiPart represents Gemini's JSON format for message parts
 type geminiPart struct {
-	Text             string          `json:"text,omitempty"`
-	InlineData       *InlineData     `json:"inline_data,omitempty"`
-	FileData         *FileData       `json:"file_data,omitempty"`
-	FunctionCall     *FunctionCall   `json:"function_call,omitempty"`
-	FunctionResponse json.RawMessage `json:"function_response,omitempty"`
+	Text string `json:"text,omitempty"`
+
+	InlineData *InlineData `json:"inline_data,omitempty"`
+	FileData   *FileData   `json:"file_data,omitempty"`
+
+	// Gemini uses camelCase; keep snake_case for backward/defensive parsing.
+	FunctionCall         *FunctionCall   `json:"functionCall,omitempty"`
+	FunctionCallFallback *FunctionCall   `json:"function_call,omitempty"`
+	FunctionResponse     json.RawMessage `json:"functionResponse,omitempty"`
+	FunctionResponseAlt  json.RawMessage `json:"function_response,omitempty"`
 }
 
 // InlineData represents embedded image/video data
@@ -109,16 +114,47 @@ func (gm GeminiMessage) MarshalJSON() ([]byte, error) {
 
 		case "tool_use":
 			// Gemini calls this functionCall
-			if block.ToolName != nil {
+			if block.ToolUse.ToolName != nil {
 				part.FunctionCall = &FunctionCall{
-					Name: *block.ToolName,
-					Args: block.ToolInput,
+					Name: *block.ToolUse.ToolName,
+					Args: block.ToolUse.ToolInput,
 				}
 			}
 
 		case "tool_result":
-			// Gemini calls this functionResponse
-			part.FunctionResponse = block.FunctionResponse
+			// Gemini calls this functionResponse. Prefer explicit FunctionResponse,
+			// else synthesize from ToolResult content/name.
+			switch {
+			case len(block.FunctionResponse) > 0:
+				part.FunctionResponse = block.FunctionResponse
+			default:
+				name := ""
+				if block.ToolResult.ToolName != nil {
+					name = *block.ToolResult.ToolName
+				} else if block.ToolResult.ToolResultID != nil {
+					name = *block.ToolResult.ToolResultID
+				}
+
+				// Build Gemini-style functionResponse shape if we have a name.
+				if name != "" {
+					resp := map[string]interface{}{
+						"name": name,
+						"response": map[string]interface{}{
+							"name":    name,
+							"content": []map[string]string{{"text": string(block.ToolResultContent)}},
+						},
+					}
+					if block.ToolError != nil && *block.ToolError {
+						resp["response"].(map[string]interface{})["is_error"] = true
+					}
+					if raw, err := json.Marshal(resp); err == nil {
+						part.FunctionResponse = raw
+					}
+				} else if len(block.ToolResultContent) > 0 {
+					// Last resort: drop in raw content
+					part.FunctionResponse = block.ToolResultContent
+				}
+			}
 		}
 
 		geminiParts = append(geminiParts, part)
@@ -206,14 +242,29 @@ func (gm *GeminiMessage) UnmarshalJSON(data []byte) error {
 				}
 			}
 
-		} else if part.FunctionCall != nil {
-			block.Type = "tool_use"
-			block.ToolName = &part.FunctionCall.Name
-			block.ToolInput = part.FunctionCall.Args
+		} else {
+			fc := part.FunctionCall
+			if fc == nil {
+				fc = part.FunctionCallFallback
+			}
+			if fc != nil {
+				block.Type = "tool_use"
+				block.ToolUse.ToolName = &fc.Name
+				block.ToolUse.ToolInput = fc.Args
+				universalContent = append(universalContent, block)
+				continue
+			}
 
-		} else if len(part.FunctionResponse) > 0 {
-			block.Type = "tool_result"
-			block.FunctionResponse = part.FunctionResponse
+			fr := part.FunctionResponse
+			if len(fr) == 0 {
+				fr = part.FunctionResponseAlt
+			}
+			if len(fr) > 0 {
+				block.Type = "tool_result"
+				block.FunctionResponse = fr
+				universalContent = append(universalContent, block)
+				continue
+			}
 		}
 
 		universalContent = append(universalContent, block)

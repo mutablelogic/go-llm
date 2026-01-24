@@ -95,14 +95,14 @@ func (am AnthropicMessage) MarshalJSON() ([]byte, error) {
 
 		case "tool_use":
 			// Map universal field names to Anthropic field names
-			anthBlock.ID = block.ToolUseID
-			anthBlock.Name = block.ToolName
-			anthBlock.Input = block.ToolInput
+			anthBlock.ID = block.ToolUse.ToolUseID
+			anthBlock.Name = block.ToolUse.ToolName
+			anthBlock.Input = block.ToolUse.ToolInput
 
 		case "tool_result":
-			anthBlock.ToolUseID = block.ToolResultID
-			anthBlock.Content = block.ToolResultContent
-			anthBlock.IsError = block.IsError
+			anthBlock.ToolUseID = block.ToolResult.ToolResultID
+			anthBlock.Content = block.ToolResult.ToolResultContent
+			anthBlock.IsError = block.ToolResult.ToolError
 
 		case "thinking":
 			anthBlock.Thinking = block.Thinking
@@ -113,14 +113,14 @@ func (am AnthropicMessage) MarshalJSON() ([]byte, error) {
 
 		case "server_tool_use":
 			// Server-side tool use (web_search, web_fetch, code_execution)
-			anthBlock.ID = block.ToolUseID
-			anthBlock.Name = block.ToolName
-			anthBlock.Input = block.ToolInput
+			anthBlock.ID = block.ToolUse.ToolUseID
+			anthBlock.Name = block.ToolUse.ToolName
+			anthBlock.Input = block.ToolUse.ToolInput
 
 		case "web_search_tool_result", "web_fetch_tool_result", "code_execution_tool_result":
 			// Server-side tool results
-			anthBlock.ToolUseID = block.ToolResultID
-			anthBlock.Content = block.ToolResultContent
+			anthBlock.ToolUseID = block.ToolResult.ToolResultID
+			anthBlock.Content = block.ToolResult.ToolResultContent
 		}
 
 		anthContent = append(anthContent, anthBlock)
@@ -189,14 +189,14 @@ func (am *AnthropicMessage) UnmarshalJSON(data []byte) error {
 
 		case "tool_use":
 			// Map Anthropic field names to universal field names
-			block.ToolUseID = anthBlock.ID
-			block.ToolName = anthBlock.Name
-			block.ToolInput = anthBlock.Input
+			block.ToolUse.ToolUseID = anthBlock.ID
+			block.ToolUse.ToolName = anthBlock.Name
+			block.ToolUse.ToolInput = anthBlock.Input
 
 		case "tool_result":
-			block.ToolResultID = anthBlock.ToolUseID
-			block.ToolResultContent = anthBlock.Content
-			block.IsError = anthBlock.IsError
+			block.ToolResult.ToolResultID = anthBlock.ToolUseID
+			block.ToolResult.ToolResultContent = anthBlock.Content
+			block.ToolResult.ToolError = anthBlock.IsError
 
 		case "thinking":
 			block.Thinking = anthBlock.Thinking
@@ -207,14 +207,14 @@ func (am *AnthropicMessage) UnmarshalJSON(data []byte) error {
 
 		case "server_tool_use":
 			// Server-side tool use (web_search, web_fetch, code_execution)
-			block.ToolUseID = anthBlock.ID
-			block.ToolName = anthBlock.Name
-			block.ToolInput = anthBlock.Input
+			block.ToolUse.ToolUseID = anthBlock.ID
+			block.ToolUse.ToolName = anthBlock.Name
+			block.ToolUse.ToolInput = anthBlock.Input
 
 		case "web_search_tool_result", "web_fetch_tool_result", "code_execution_tool_result":
 			// Server-side tool results
-			block.ToolResultID = anthBlock.ToolUseID
-			block.ToolResultContent = anthBlock.Content
+			block.ToolResult.ToolResultID = anthBlock.ToolUseID
+			block.ToolResult.ToolResultContent = anthBlock.Content
 		}
 
 		universalContent = append(universalContent, block)

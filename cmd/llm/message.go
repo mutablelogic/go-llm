@@ -7,7 +7,6 @@ import (
 	// Packages
 	opt "github.com/mutablelogic/go-llm/pkg/opt"
 	schema "github.com/mutablelogic/go-llm/pkg/schema"
-	"github.com/mutablelogic/go-llm/pkg/tool"
 	"github.com/mutablelogic/go-llm/pkg/types"
 )
 
@@ -92,15 +91,14 @@ func (cmd *ChatCommand) Run(ctx *Globals) (err error) {
 		return fmt.Errorf("failed to get model %q: %w", cmd.Model, err)
 	}
 
-	// Build options for session
+	// Build options for session, including toolkit if available
 	var sessionopts []opt.Opt
-
 	toolkit, err := ctx.Toolkit()
 	if err != nil {
 		return err
 	}
 	if toolkit != nil {
-		sessionopts = append(sessionopts, tool.WithToolkit(toolkit))
+		sessionopts = append(sessionopts, opt.WithToolkit(toolkit))
 	}
 
 	// Build options for message

@@ -2,6 +2,7 @@ package schema_test
 
 import (
 	"encoding/json"
+	"fmt"
 	"testing"
 
 	"github.com/mutablelogic/go-llm/pkg/schema"
@@ -67,7 +68,9 @@ func TestMessageMarshalJSON(t *testing.T) {
 				"type": "text",
 				"text": "Hello"
 			}
-		]
+		],
+		"tokens": 0,
+		"result": 0
 	}`
 	assert.JSONEq(expected, string(data))
 }
@@ -109,10 +112,12 @@ func TestContentBlockToolUse(t *testing.T) {
 	// Test tool use content block
 	toolInput := json.RawMessage(`{"location": "San Francisco"}`)
 	block := schema.ContentBlock{
-		Type:      "tool_use",
-		ToolUseID: ptr("toolu_123"),
-		ToolName:  ptr("get_weather"),
-		ToolInput: toolInput,
+		Type: "tool_use",
+		ToolUse: schema.ToolUse{
+			ToolUseID: ptr("toolu_123"),
+			ToolName:  ptr("get_weather"),
+			ToolInput: toolInput,
+		},
 	}
 
 	data, err := json.Marshal(block)
@@ -131,12 +136,14 @@ func TestContentBlockToolResult(t *testing.T) {
 	assert := assert.New(t)
 
 	// Test tool result content block
-	resultContent := json.RawMessage(`{"temperature": 72, "conditions": "sunny"}`)
+	resultContent := json.RawMessage(`[{"type":"text","text":"{\"temperature\": 72, \"conditions\": \"sunny\"}"}]`)
 	block := schema.ContentBlock{
-		Type:              "tool_result",
-		ToolResultID:      ptr("toolu_123"),
-		ToolResultContent: resultContent,
-		IsError:           ptr(false),
+		Type: "tool_result",
+		ToolResult: schema.ToolResult{
+			ToolResultID:      ptr("toolu_123"),
+			ToolResultContent: resultContent,
+			ToolError:         ptr(false),
+		},
 	}
 
 	data, err := json.Marshal(block)
@@ -147,8 +154,8 @@ func TestContentBlockToolResult(t *testing.T) {
 	assert.NoError(err)
 	assert.Equal("tool_result", decoded.Type)
 	assert.Equal("toolu_123", *decoded.ToolResultID)
-	assert.False(*decoded.IsError)
-	assert.JSONEq(`{"temperature": 72, "conditions": "sunny"}`, string(decoded.ToolResultContent))
+	assert.False(*decoded.ToolError)
+	assert.JSONEq(`[{"type":"text","text":"{\"temperature\": 72, \"conditions\": \"sunny\"}"}]`, string(decoded.ToolResultContent))
 }
 
 func TestContentBlockImage(t *testing.T) {
@@ -261,10 +268,12 @@ func TestMessageRoundTrip(t *testing.T) {
 				Text: ptr("Let me check that for you."),
 			},
 			{
-				Type:      "tool_use",
-				ToolUseID: ptr("tool_1"),
-				ToolName:  ptr("search"),
-				ToolInput: json.RawMessage(`{"query": "test"}`),
+				Type: "tool_use",
+				ToolUse: schema.ToolUse{
+					ToolUseID: ptr("tool_1"),
+					ToolName:  ptr("search"),
+					ToolInput: json.RawMessage(`{"query": "test"}`),
+				},
 			},
 		},
 	}
@@ -284,6 +293,148 @@ func TestMessageRoundTrip(t *testing.T) {
 	assert.Equal("thinking", decoded.Content[0].Type)
 	assert.Equal("text", decoded.Content[1].Type)
 	assert.Equal("tool_use", decoded.Content[2].Type)
+}
+
+func TestAppendToolResult_Success(t *testing.T) {
+	assert := assert.New(t)
+
+	// Create a tool message
+	msg := schema.NewToolMessage()
+	assert.Equal("user", msg.Role)
+	assert.Empty(msg.Content)
+
+	// Create a tool use to respond to
+	toolUse := schema.ToolUse{
+		ToolUseID: ptr("toolu_123"),
+		ToolName:  ptr("get_weather"),
+		ToolInput: json.RawMessage(`{"location": "SF"}`),
+	}
+
+	// Append a successful result
+	result := map[string]interface{}{
+		"temperature": 72,
+		"conditions":  "sunny",
+	}
+	err := msg.AppendToolResult(toolUse, result)
+	assert.NoError(err)
+	assert.Len(msg.Content, 1)
+
+	// Verify the content block
+	block := msg.Content[0]
+	assert.Equal("tool_result", block.Type)
+	assert.Equal("toolu_123", *block.ToolResultID)
+	assert.NotNil(block.ToolError)
+	assert.False(*block.ToolError)
+	var content []map[string]string
+	assert.NoError(json.Unmarshal(block.ToolResultContent, &content))
+	assert.Len(content, 1)
+	assert.Equal("text", content[0]["type"])
+	assert.JSONEq(`{"temperature":72,"conditions":"sunny"}`, content[0]["text"])
+}
+
+func TestAppendToolResult_Error(t *testing.T) {
+	assert := assert.New(t)
+
+	msg := schema.NewToolMessage()
+	toolUse := schema.ToolUse{
+		ToolUseID: ptr("toolu_456"),
+		ToolName:  ptr("calculator"),
+	}
+
+	// Append an error result
+	testErr := fmt.Errorf("calculation failed")
+	err := msg.AppendToolResult(toolUse, testErr)
+	assert.NoError(err)
+	assert.Len(msg.Content, 1)
+
+	// Verify error flag is set
+	block := msg.Content[0]
+	assert.Equal("tool_result", block.Type)
+	assert.NotNil(block.ToolError)
+	assert.True(*block.ToolError)
+}
+
+func TestAppendToolResult_Nil(t *testing.T) {
+	assert := assert.New(t)
+
+	msg := schema.NewToolMessage()
+	toolUse := schema.ToolUse{
+		ToolUseID: ptr("toolu_789"),
+	}
+
+	// Append nil result
+	err := msg.AppendToolResult(toolUse, nil)
+	assert.NoError(err)
+	assert.Len(msg.Content, 1)
+
+	block := msg.Content[0]
+	var content []map[string]string
+	assert.NoError(json.Unmarshal(block.ToolResultContent, &content))
+	assert.Len(content, 1)
+	assert.Equal("text", content[0]["type"])
+	assert.Equal("null", content[0]["text"])
+	assert.NotNil(block.ToolError)
+	assert.False(*block.ToolError)
+}
+
+func TestAppendToolResult_RawJSON(t *testing.T) {
+	assert := assert.New(t)
+
+	msg := schema.NewToolMessage()
+	toolUse := schema.ToolUse{
+		ToolUseID: ptr("toolu_raw"),
+	}
+
+	// Append raw JSON
+	raw := json.RawMessage(`{"raw": "data"}`)
+	err := msg.AppendToolResult(toolUse, raw)
+	assert.NoError(err)
+	assert.Len(msg.Content, 1)
+
+	block := msg.Content[0]
+	var content []map[string]string
+	assert.NoError(json.Unmarshal(block.ToolResultContent, &content))
+	assert.Len(content, 1)
+	assert.Equal("text", content[0]["type"])
+	assert.JSONEq(`{"raw":"data"}`, content[0]["text"])
+}
+
+func TestAppendToolResult_WrongRole(t *testing.T) {
+	assert := assert.New(t)
+
+	// Create an assistant message (wrong role for tool results)
+	msg, err := schema.NewMessage("assistant", "Hello")
+	assert.NoError(err)
+
+	toolUse := schema.ToolUse{
+		ToolUseID: ptr("toolu_fail"),
+	}
+
+	// Attempt to append tool result should fail
+	err = msg.AppendToolResult(toolUse, "result")
+	assert.Error(err)
+	assert.Contains(err.Error(), "cannot append tool result to non-user message")
+}
+
+func TestAppendToolResult_Multiple(t *testing.T) {
+	assert := assert.New(t)
+
+	msg := schema.NewToolMessage()
+
+	// Append first tool result
+	toolUse1 := schema.ToolUse{ToolUseID: ptr("tool_1")}
+	err := msg.AppendToolResult(toolUse1, "result1")
+	assert.NoError(err)
+
+	// Append second tool result
+	toolUse2 := schema.ToolUse{ToolUseID: ptr("tool_2")}
+	err = msg.AppendToolResult(toolUse2, "result2")
+	assert.NoError(err)
+
+	// Verify both results are present
+	assert.Len(msg.Content, 2)
+	assert.Equal("tool_1", *msg.Content[0].ToolResultID)
+	assert.Equal("tool_2", *msg.Content[1].ToolResultID)
 }
 
 // Helper function

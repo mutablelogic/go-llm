@@ -1,10 +1,12 @@
 package mistral
 
 import (
+	"encoding/json"
 	"fmt"
 
 	// Packages
 	opt "github.com/mutablelogic/go-llm/pkg/opt"
+	schema "github.com/mutablelogic/go-llm/pkg/schema"
 )
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -91,4 +93,33 @@ func WithToolChoiceAny() opt.Opt {
 // WithToolChoiceNone prevents the model from using any tools
 func WithToolChoiceNone() opt.Opt {
 	return opt.SetString("tool_choice", "none")
+}
+
+// WithTool adds a tool definition to the request using Mistral's function format.
+// Multiple calls append additional tools.
+func WithTool(def schema.ToolDefinition) opt.Opt {
+	if def.Name == "" {
+		return opt.Error(fmt.Errorf("tool name is required"))
+	}
+	if def.InputSchema == nil {
+		return opt.Error(fmt.Errorf("tool schema is required"))
+	}
+
+	wire := struct {
+		Type     string `json:"type"`
+		Function struct {
+			Name        string      `json:"name"`
+			Description string      `json:"description,omitempty"`
+			Parameters  interface{} `json:"parameters,omitempty"`
+		} `json:"function"`
+	}{Type: "function"}
+	wire.Function.Name = def.Name
+	wire.Function.Description = def.Description
+	wire.Function.Parameters = def.InputSchema
+
+	data, err := json.Marshal(wire)
+	if err != nil {
+		return opt.Error(fmt.Errorf("failed to serialize tool: %w", err))
+	}
+	return opt.AddString("tools", string(data))
 }

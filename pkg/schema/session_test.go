@@ -164,10 +164,12 @@ func TestSessionWithToolMessages(t *testing.T) {
 		Role: "user",
 		Content: []schema.ContentBlock{
 			{
-				Type:              "tool_result",
-				ToolResultID:      ptr("tool_123"),
-				ToolResultContent: json.RawMessage(`{"temp": 72}`),
-				IsError:           ptr(false),
+				Type: "tool_result",
+				ToolResult: schema.ToolResult{
+					ToolResultID:      ptr("tool_123"),
+					ToolResultContent: json.RawMessage(`[{"type":"text","text":"{\"temp\": 72}"}]`),
+					ToolError:         ptr(false),
+				},
 			},
 		},
 	}

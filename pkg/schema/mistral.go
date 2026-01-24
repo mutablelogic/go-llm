@@ -31,11 +31,11 @@ type mistralToolCall struct {
 }
 
 type mistralWireMessage struct {
-	Role       string                 `json:"role"`
-	Content    interface{}            `json:"content,omitempty"` // string or []mistralContentBlock
-	ToolCalls  []mistralToolCall      `json:"tool_calls,omitempty"`
-	ToolCallID string                 `json:"tool_call_id,omitempty"`
-	Name       string                 `json:"name,omitempty"`
+	Role       string            `json:"role"`
+	Content    interface{}       `json:"content,omitempty"` // string or []mistralContentBlock
+	ToolCalls  []mistralToolCall `json:"tool_calls,omitempty"`
+	ToolCallID string            `json:"tool_call_id,omitempty"`
+	Name       string            `json:"name,omitempty"`
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -90,27 +90,27 @@ func (mm MistralMessage) MarshalJSON() ([]byte, error) {
 			}
 
 		case ContentTypeToolUse:
-			if block.ToolName == nil {
+			if block.ToolUse.ToolName == nil {
 				return nil, fmt.Errorf("mistral: tool_use requires tool name")
 			}
-			if block.ToolInput == nil {
+			if block.ToolUse.ToolInput == nil {
 				return nil, fmt.Errorf("mistral: tool_use requires tool input")
 			}
 			id := ""
-			if block.ToolUseID != nil {
-				id = *block.ToolUseID
+			if block.ToolUse.ToolUseID != nil {
+				id = *block.ToolUse.ToolUseID
 			}
 			call := mistralToolCall{ID: id, Type: "function"}
-			call.Function.Name = *block.ToolName
-			call.Function.Arguments = string(block.ToolInput)
+			call.Function.Name = *block.ToolUse.ToolName
+			call.Function.Arguments = string(block.ToolUse.ToolInput)
 			toolCalls = append(toolCalls, call)
 
 		case ContentTypeToolResult:
-			if block.ToolResultID != nil {
-				toolCallID = *block.ToolResultID
+			if block.ToolResult.ToolResultID != nil {
+				toolCallID = *block.ToolResult.ToolResultID
 			}
-			if len(block.ToolResultContent) > 0 {
-				textParts = append(textParts, string(block.ToolResultContent))
+			if len(block.ToolResult.ToolResultContent) > 0 {
+				textParts = append(textParts, string(block.ToolResult.ToolResultContent))
 			} else if block.Text != nil {
 				textParts = append(textParts, *block.Text)
 			}
@@ -157,11 +157,11 @@ func (mm MistralMessage) MarshalJSON() ([]byte, error) {
 // UnmarshalJSON converts Mistral's JSON format to the universal Message
 func (mm *MistralMessage) UnmarshalJSON(data []byte) error {
 	var wire struct {
-		Role       string          `json:"role"`
-		Content    json.RawMessage `json:"content,omitempty"`
+		Role       string            `json:"role"`
+		Content    json.RawMessage   `json:"content,omitempty"`
 		ToolCalls  []mistralToolCall `json:"tool_calls,omitempty"`
-		ToolCallID string          `json:"tool_call_id,omitempty"`
-		Name       string          `json:"name,omitempty"`
+		ToolCallID string            `json:"tool_call_id,omitempty"`
+		Name       string            `json:"name,omitempty"`
 	}
 
 	if err := json.Unmarshal(data, &wire); err != nil {
@@ -201,7 +201,9 @@ func (mm *MistralMessage) UnmarshalJSON(data []byte) error {
 						})
 					} else {
 						// Try object format
-						var obj struct{ URL string `json:"url"` }
+						var obj struct {
+							URL string `json:"url"`
+						}
 						imgBytes, _ := json.Marshal(b.ImageURL)
 						if err := json.Unmarshal(imgBytes, &obj); err == nil && obj.URL != "" {
 							contentBlocks = append(contentBlocks, ContentBlock{
@@ -225,10 +227,12 @@ func (mm *MistralMessage) UnmarshalJSON(data []byte) error {
 		callID := call.ID
 		name := call.Function.Name
 		contentBlocks = append(contentBlocks, ContentBlock{
-			Type:      ContentTypeToolUse,
-			ToolUseID: &callID,
-			ToolName:  &name,
-			ToolInput: raw,
+			Type: ContentTypeToolUse,
+			ToolUse: ToolUse{
+				ToolUseID: &callID,
+				ToolName:  &name,
+				ToolInput: raw,
+			},
 		})
 	}
 
@@ -240,9 +244,11 @@ func (mm *MistralMessage) UnmarshalJSON(data []byte) error {
 		raw := rawJSONFromString(rawToString(wire.Content))
 		callID := wire.ToolCallID
 		contentBlocks = append(contentBlocks, ContentBlock{
-			Type:              ContentTypeToolResult,
-			ToolResultID:      &callID,
-			ToolResultContent: raw,
+			Type: ContentTypeToolResult,
+			ToolResult: ToolResult{
+				ToolResultID:      &callID,
+				ToolResultContent: raw,
+			},
 		})
 	}
 

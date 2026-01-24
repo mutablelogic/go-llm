@@ -3,6 +3,7 @@ package gemini
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 
 	// Packages
 	client "github.com/mutablelogic/go-client"
@@ -201,11 +202,96 @@ func generateContentRequestFromOpts(session *schema.Session, opts ...opt.Opt) (*
 		}
 	}
 
+	// Tools
+	var fnDecls []functionDeclaration
+	for _, toolJSON := range options.GetStringArray("tools") {
+		var def schema.ToolDefinition
+		if err := json.Unmarshal([]byte(toolJSON), &def); err != nil {
+			return nil, fmt.Errorf("invalid tool definition: %w", err)
+		}
+
+		var params json.RawMessage
+		if def.InputSchema != nil {
+			schemaValue := sanitizeSchema(def.InputSchema)
+			raw, err := json.Marshal(schemaValue)
+			if err != nil {
+				return nil, fmt.Errorf("invalid tool schema for %q: %w", def.Name, err)
+			}
+			params = raw
+		}
+
+		fnDecls = append(fnDecls, functionDeclaration{
+			Name:        def.Name,
+			Description: def.Description,
+			Parameters:  params,
+		})
+	}
+
+	var tools []tool
+	if len(fnDecls) > 0 {
+		tools = []tool{{FunctionDeclarations: fnDecls}}
+	}
+
+	// Tool configuration
+	var toolCfg *toolConfig
+	if len(fnDecls) > 0 {
+		mode := "AUTO"
+		if tc := options.GetString("tool_choice"); tc != "" {
+			switch tc {
+			case "none", "NONE":
+				mode = "NONE"
+			case "required", "REQUIRED", "any", "ANY":
+				mode = "ANY"
+			default:
+				mode = "AUTO"
+			}
+		}
+		toolCfg = &toolConfig{
+			FunctionCallingConfig: &functionCallingConfig{
+				Mode:                 mode,
+				AllowedFunctionNames: nil,
+			},
+		}
+		if mode == "ANY" {
+			names := make([]string, 0, len(fnDecls))
+			for _, fn := range fnDecls {
+				names = append(names, fn.Name)
+			}
+			toolCfg.FunctionCallingConfig.AllowedFunctionNames = names
+		}
+	}
+
 	return &generateContentRequest{
 		Contents:          contents,
 		SystemInstruction: systemInstruction,
 		GenerationConfig:  genConfig,
+		Tools:             tools,
+		ToolConfig:        toolCfg,
 	}, nil
+}
+
+// sanitizeSchema removes fields not accepted by Gemini functionDeclaration parameters
+// (e.g., additionalProperties) while preserving the structure.
+func sanitizeSchema(v interface{}) interface{} {
+	switch t := v.(type) {
+	case map[string]interface{}:
+		clean := make(map[string]interface{}, len(t))
+		for k, val := range t {
+			if k == "additionalProperties" {
+				continue
+			}
+			clean[k] = sanitizeSchema(val)
+		}
+		return clean
+	case []interface{}:
+		slice := make([]interface{}, 0, len(t))
+		for _, item := range t {
+			slice = append(slice, sanitizeSchema(item))
+		}
+		return slice
+	default:
+		return v
+	}
 }
 
 // sessionToContents converts a schema session to Google API contents

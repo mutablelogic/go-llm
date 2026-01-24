@@ -8,74 +8,62 @@ import (
 	assert "github.com/stretchr/testify/assert"
 )
 
-func Test_opt_001(t *testing.T) {
+func TestApplyEmpty(t *testing.T) {
 	assert := assert.New(t)
-
-	// Apply with no options
 	opts, err := opt.Apply()
 	assert.NoError(err)
 	assert.NotNil(opts)
+	assert.False(opts.Has("missing"))
 }
 
-func Test_opt_002(t *testing.T) {
+func TestStringOptions(t *testing.T) {
 	assert := assert.New(t)
-
-	// Apply with WithString
-	opts, err := opt.Apply(opt.AddString("key", "value"))
-	assert.NoError(err)
-	assert.NotNil(opts)
-
-	query := opts.Query("key")
-	assert.Equal("value", query.Get("key"))
-}
-
-func Test_opt_003(t *testing.T) {
-	assert := assert.New(t)
-
-	// Apply with multiple string values
 	opts, err := opt.Apply(opt.AddString("key", "value1", "value2"))
 	assert.NoError(err)
-	assert.NotNil(opts)
-
+	assert.Equal([]string{"value1", "value2"}, opts.GetStringArray("key"))
+	assert.Equal("value1", opts.GetString("key"))
 	query := opts.Query("key")
 	assert.Equal([]string{"value1", "value2"}, query["key"])
 }
 
-func Test_opt_004(t *testing.T) {
+func TestUintOptions(t *testing.T) {
 	assert := assert.New(t)
-
-	// Apply with WithUint
-	opts, err := opt.Apply(opt.AddUint("limit", 10))
+	opts, err := opt.Apply(opt.AddUint("limit", 10, 20))
 	assert.NoError(err)
-	assert.NotNil(opts)
-
-	query := opts.Query("limit")
-	assert.Equal("10", query.Get("limit"))
+	assert.Equal(uint(10), opts.GetUint("limit"))
+	// Query should expose string slice
+	assert.Equal([]string{"10", "20"}, opts.Query("limit")["limit"])
 }
 
-func Test_opt_005(t *testing.T) {
+func TestFloatOptions(t *testing.T) {
 	assert := assert.New(t)
-
-	// Apply with multiple options
-	opts, err := opt.Apply(
-		opt.AddUint("limit", 25),
-		opt.AddString("custom", "value"),
-	)
+	opts, err := opt.Apply(opt.AddFloat64("score", 1.5))
 	assert.NoError(err)
-	assert.NotNil(opts)
-
-	query := opts.Query("limit", "custom")
-	assert.Equal("25", query.Get("limit"))
-	assert.Equal("value", query.Get("custom"))
+	assert.InDelta(1.5, opts.GetFloat64("score"), 1e-9)
 }
 
-func Test_opt_006(t *testing.T) {
+func TestBoolOptions(t *testing.T) {
 	assert := assert.New(t)
-
-	// Query with non-existent key returns empty
-	opts, err := opt.Apply(opt.AddString("key", "value"))
+	opts, err := opt.Apply(opt.SetBool("flag", true))
 	assert.NoError(err)
+	assert.True(opts.GetBool("flag"))
+}
 
-	query := opts.Query("nonexistent")
-	assert.Empty(query.Get("nonexistent"))
+func TestToolkitStoredAsArbitrary(t *testing.T) {
+	assert := assert.New(t)
+	tk := struct{ Name string }{"toolkit"}
+	opts, err := opt.Apply(opt.WithToolkit(tk))
+	assert.NoError(err)
+	assert.Equal(tk, opts.GetToolkit())
+}
+
+func TestQueryIgnoresNonStrings(t *testing.T) {
+	assert := assert.New(t)
+	opts, err := opt.Apply(opt.SetUint("number", 5))
+	assert.NoError(err)
+	// number stored as string via SetUint, so it should appear
+	assert.Equal("5", opts.Query("number").Get("number"))
+	// arbitrary non-string should not break Query
+	opts.Set("obj", struct{}{})
+	assert.Empty(opts.Query("obj").Get("obj"))
 }
