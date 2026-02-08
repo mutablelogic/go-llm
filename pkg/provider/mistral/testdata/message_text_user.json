@@ -1,0 +1,15 @@
+{
+    "name": "simple user text message",
+    "schema": {
+        "role": "user",
+        "content": [
+            {
+                "text": "What is the best French cheese?"
+            }
+        ]
+    },
+    "mistral": {
+        "role": "user",
+        "content": "What is the best French cheese?"
+    }
+}

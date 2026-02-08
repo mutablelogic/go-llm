@@ -1,0 +1,33 @@
+{
+    "name": "response truncated by max tokens",
+    "mistral": {
+        "id": "cmpl-trunc456",
+        "object": "chat.completion",
+        "created": 1700000000,
+        "model": "mistral-small-latest",
+        "choices": [
+            {
+                "index": 0,
+                "message": {
+                    "role": "assistant",
+                    "content": "This response was cut short because"
+                },
+                "finish_reason": "length"
+            }
+        ],
+        "usage": {
+            "prompt_tokens": 20,
+            "completion_tokens": 100,
+            "total_tokens": 120
+        }
+    },
+    "schema": {
+        "role": "assistant",
+        "content": [
+            {
+                "text": "This response was cut short because"
+            }
+        ],
+        "result": "max_tokens"
+    }
+}

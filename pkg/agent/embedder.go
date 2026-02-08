@@ -71,7 +71,7 @@ func WithTaskType(taskType string) opt.Opt {
 		case schema.Gemini:
 			return google.WithTaskType(taskType)
 		default:
-			return opt.Error(llm.ErrNotImplemented.Withf("%s: task type not supported", provider))
+			return opt.Error(llm.ErrNotImplemented.Withf("%s: WithTaskType not supported", provider))
 		}
 	})
 }
@@ -84,7 +84,7 @@ func WithTitle(title string) opt.Opt {
 		case schema.Gemini:
 			return google.WithTitle(title)
 		default:
-			return opt.Error(llm.ErrNotImplemented.Withf("%s: title not supported", provider))
+			return opt.Error(llm.ErrNotImplemented.Withf("%s: WithTitle not supported", provider))
 		}
 	})
 }
@@ -97,7 +97,7 @@ func WithOutputDimensionality(d uint) opt.Opt {
 		case schema.Gemini:
 			return google.WithOutputDimensionality(d)
 		default:
-			return opt.Error(llm.ErrNotImplemented.Withf("%s: output dimensionality not supported", provider))
+			return opt.Error(llm.ErrNotImplemented.Withf("%s: WithOutputDimensionality not supported", provider))
 		}
 	})
 }

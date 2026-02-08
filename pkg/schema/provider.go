@@ -4,4 +4,5 @@ package schema
 const (
 	Gemini    = "gemini"
 	Anthropic = "anthropic"
+	Mistral   = "mistral"
 )

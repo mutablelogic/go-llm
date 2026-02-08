@@ -28,6 +28,5 @@ const (
 	OutputConfigKey         = "output-config"
 	ToolChoiceKey           = "tool-choice"
 	ToolChoiceNameKey       = "tool-choice-name"
-	ToolsKey                = "tools"
 	MaxIterationsKey        = "max-iterations"
 )

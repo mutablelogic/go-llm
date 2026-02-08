@@ -1,0 +1,20 @@
+{
+    "name": "tool error result",
+    "schema": {
+        "role": "user",
+        "content": [
+            {
+                "tool_result": {
+                    "id": "cErr45678",
+                    "content": "location not found",
+                    "is_error": true
+                }
+            }
+        ]
+    },
+    "mistral": {
+        "role": "tool",
+        "content": "\"location not found\"",
+        "tool_call_id": "cErr45678"
+    }
+}

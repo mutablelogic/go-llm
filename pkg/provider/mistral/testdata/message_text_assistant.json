@@ -1,0 +1,15 @@
+{
+    "name": "simple assistant text message",
+    "schema": {
+        "role": "assistant",
+        "content": [
+            {
+                "text": "Comté is often considered one of the finest French cheeses."
+            }
+        ]
+    },
+    "mistral": {
+        "role": "assistant",
+        "content": "Comté is often considered one of the finest French cheeses."
+    }
+}

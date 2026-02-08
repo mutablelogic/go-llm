@@ -1,0 +1,47 @@
+{
+    "name": "assistant with multiple tool calls",
+    "schema": {
+        "role": "assistant",
+        "content": [
+            {
+                "tool_call": {
+                    "id": "cXyz78901",
+                    "name": "get_current_weather",
+                    "input": {
+                        "location": "New York, NY"
+                    }
+                }
+            },
+            {
+                "tool_call": {
+                    "id": "cDef45678",
+                    "name": "get_current_weather",
+                    "input": {
+                        "location": "London, UK"
+                    }
+                }
+            }
+        ]
+    },
+    "mistral": {
+        "role": "assistant",
+        "tool_calls": [
+            {
+                "id": "cXyz78901",
+                "type": "function",
+                "function": {
+                    "name": "get_current_weather",
+                    "arguments": "{\"location\":\"New York, NY\"}"
+                }
+            },
+            {
+                "id": "cDef45678",
+                "type": "function",
+                "function": {
+                    "name": "get_current_weather",
+                    "arguments": "{\"location\":\"London, UK\"}"
+                }
+            }
+        ]
+    }
+}

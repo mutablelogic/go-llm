@@ -1,0 +1,33 @@
+{
+    "name": "simple text response",
+    "mistral": {
+        "id": "cmpl-abc123",
+        "object": "chat.completion",
+        "created": 1700000000,
+        "model": "mistral-small-latest",
+        "choices": [
+            {
+                "index": 0,
+                "message": {
+                    "role": "assistant",
+                    "content": "Hello! How can I help you today?"
+                },
+                "finish_reason": "stop"
+            }
+        ],
+        "usage": {
+            "prompt_tokens": 10,
+            "completion_tokens": 8,
+            "total_tokens": 18
+        }
+    },
+    "schema": {
+        "role": "assistant",
+        "content": [
+            {
+                "text": "Hello! How can I help you today?"
+            }
+        ],
+        "result": "stop"
+    }
+}

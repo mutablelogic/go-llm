@@ -806,3 +806,132 @@ func Test_opts_016(t *testing.T) {
 	assert.InDelta(0.5, o.GetFloat64(opt.TemperatureKey), 0.001)
 	assert.Equal(uint(100), o.GetUint(opt.MaxTokensKey))
 }
+
+///////////////////////////////////////////////////////////////////////////////
+// MISTRAL OPTION DISPATCH TESTS
+
+// Test convertOptsForClient resolves WithSystemPrompt for mistral
+func Test_opts_mistral_001(t *testing.T) {
+	assert := assert.New(t)
+
+	c := &mockClient{name: schema.Mistral}
+	opts := []opt.Opt{WithSystemPrompt("Be concise")}
+	resolved, err := convertOptsForClient(opts, c)
+	assert.NoError(err)
+	o, err := opt.Apply(resolved...)
+	assert.NoError(err)
+	assert.Equal("Be concise", o.GetString(opt.SystemPromptKey))
+}
+
+// Test convertOptsForClient resolves WithTemperature for mistral
+func Test_opts_mistral_002(t *testing.T) {
+	assert := assert.New(t)
+
+	c := &mockClient{name: schema.Mistral}
+	opts := []opt.Opt{WithTemperature(0.7)}
+	resolved, err := convertOptsForClient(opts, c)
+	assert.NoError(err)
+	o, err := opt.Apply(resolved...)
+	assert.NoError(err)
+	assert.InDelta(0.7, o.GetFloat64(opt.TemperatureKey), 0.001)
+}
+
+// Test convertOptsForClient resolves WithMaxTokens for mistral
+func Test_opts_mistral_003(t *testing.T) {
+	assert := assert.New(t)
+
+	c := &mockClient{name: schema.Mistral}
+	opts := []opt.Opt{WithMaxTokens(500)}
+	resolved, err := convertOptsForClient(opts, c)
+	assert.NoError(err)
+	o, err := opt.Apply(resolved...)
+	assert.NoError(err)
+	assert.Equal(uint(500), o.GetUint(opt.MaxTokensKey))
+}
+
+// Test convertOptsForClient resolves WithTopP for mistral
+func Test_opts_mistral_004(t *testing.T) {
+	assert := assert.New(t)
+
+	c := &mockClient{name: schema.Mistral}
+	opts := []opt.Opt{WithTopP(0.9)}
+	resolved, err := convertOptsForClient(opts, c)
+	assert.NoError(err)
+	o, err := opt.Apply(resolved...)
+	assert.NoError(err)
+	assert.InDelta(0.9, o.GetFloat64(opt.TopPKey), 0.001)
+}
+
+// Test convertOptsForClient resolves WithStopSequences for mistral
+func Test_opts_mistral_005(t *testing.T) {
+	assert := assert.New(t)
+
+	c := &mockClient{name: schema.Mistral}
+	opts := []opt.Opt{WithStopSequences("END", "STOP")}
+	resolved, err := convertOptsForClient(opts, c)
+	assert.NoError(err)
+	o, err := opt.Apply(resolved...)
+	assert.NoError(err)
+	assert.Equal([]string{"END", "STOP"}, o.GetStringArray(opt.StopSequencesKey))
+}
+
+// Test convertOptsForClient resolves WithJSONOutput for mistral
+func Test_opts_mistral_006(t *testing.T) {
+	assert := assert.New(t)
+
+	c := &mockClient{name: schema.Mistral}
+	s := &jsonschema.Schema{Type: "object"}
+	opts := []opt.Opt{WithJSONOutput(s)}
+	resolved, err := convertOptsForClient(opts, c)
+	assert.NoError(err)
+	o, err := opt.Apply(resolved...)
+	assert.NoError(err)
+	assert.NotEmpty(o.GetString(opt.JSONSchemaKey))
+}
+
+// Test convertOptsForClient resolves multiple options for mistral
+func Test_opts_mistral_007(t *testing.T) {
+	assert := assert.New(t)
+
+	c := &mockClient{name: schema.Mistral}
+	opts := []opt.Opt{
+		WithSystemPrompt("Be helpful"),
+		WithTemperature(0.5),
+		WithMaxTokens(100),
+		WithTopP(0.8),
+		WithStopSequences("---"),
+	}
+	resolved, err := convertOptsForClient(opts, c)
+	assert.NoError(err)
+	o, err := opt.Apply(resolved...)
+	assert.NoError(err)
+	assert.Equal("Be helpful", o.GetString(opt.SystemPromptKey))
+	assert.InDelta(0.5, o.GetFloat64(opt.TemperatureKey), 0.001)
+	assert.Equal(uint(100), o.GetUint(opt.MaxTokensKey))
+	assert.InDelta(0.8, o.GetFloat64(opt.TopPKey), 0.001)
+	assert.Equal([]string{"---"}, o.GetStringArray(opt.StopSequencesKey))
+}
+
+// Test WithTopK returns error for mistral (not supported)
+func Test_opts_mistral_008(t *testing.T) {
+	assert := assert.New(t)
+
+	c := &mockClient{name: schema.Mistral}
+	opts := []opt.Opt{WithTopK(40)}
+	resolved, err := convertOptsForClient(opts, c)
+	assert.NoError(err)
+	_, err = opt.Apply(resolved...)
+	assert.Error(err)
+}
+
+// Test WithThinking returns error for mistral (not supported)
+func Test_opts_mistral_009(t *testing.T) {
+	assert := assert.New(t)
+
+	c := &mockClient{name: schema.Mistral}
+	opts := []opt.Opt{WithThinking()}
+	resolved, err := convertOptsForClient(opts, c)
+	assert.NoError(err)
+	_, err = opt.Apply(resolved...)
+	assert.Error(err)
+}

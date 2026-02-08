@@ -1,0 +1,49 @@
+{
+    "name": "tool call response",
+    "mistral": {
+        "id": "cmpl-tool789",
+        "object": "chat.completion",
+        "created": 1700000000,
+        "model": "mistral-small-latest",
+        "choices": [
+            {
+                "index": 0,
+                "message": {
+                    "role": "assistant",
+                    "content": "",
+                    "tool_calls": [
+                        {
+                            "id": "cWeather1",
+                            "type": "function",
+                            "function": {
+                                "name": "get_current_weather",
+                                "arguments": "{\"location\":\"Paris, France\"}"
+                            }
+                        }
+                    ]
+                },
+                "finish_reason": "tool_calls"
+            }
+        ],
+        "usage": {
+            "prompt_tokens": 50,
+            "completion_tokens": 25,
+            "total_tokens": 75
+        }
+    },
+    "schema": {
+        "role": "assistant",
+        "content": [
+            {
+                "tool_call": {
+                    "id": "cWeather1",
+                    "name": "get_current_weather",
+                    "input": {
+                        "location": "Paris, France"
+                    }
+                }
+            }
+        ],
+        "result": "tool_call"
+    }
+}

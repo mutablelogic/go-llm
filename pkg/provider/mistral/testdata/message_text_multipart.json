@@ -1,0 +1,27 @@
+{
+    "name": "multi-part text content",
+    "schema": {
+        "role": "user",
+        "content": [
+            {
+                "text": "First paragraph."
+            },
+            {
+                "text": "Second paragraph."
+            }
+        ]
+    },
+    "mistral": {
+        "role": "user",
+        "content": [
+            {
+                "type": "text",
+                "text": "First paragraph."
+            },
+            {
+                "type": "text",
+                "text": "Second paragraph."
+            }
+        ]
+    }
+}

@@ -7,7 +7,6 @@ import (
 	// Packages
 	jsonschema "github.com/google/jsonschema-go/jsonschema"
 	opt "github.com/mutablelogic/go-llm/pkg/opt"
-	schema "github.com/mutablelogic/go-llm/pkg/schema"
 )
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -151,18 +150,3 @@ func WithToolChoice(name string) opt.Opt {
 	)
 }
 
-// WithTool adds a tool definition to the request.
-// Multiple calls append additional tools.
-func WithTool(def schema.ToolDefinition) opt.Opt {
-	if def.Name == "" {
-		return opt.Error(fmt.Errorf("tool name is required"))
-	}
-	if def.InputSchema == nil {
-		return opt.Error(fmt.Errorf("tool schema is required"))
-	}
-	data, err := json.Marshal(def)
-	if err != nil {
-		return opt.Error(fmt.Errorf("failed to serialize tool: %w", err))
-	}
-	return opt.AddString(opt.ToolsKey, string(data))
-}

@@ -1,0 +1,22 @@
+{
+    "name": "tool result message",
+    "schema": {
+        "role": "user",
+        "content": [
+            {
+                "tool_result": {
+                    "id": "cAbc12345",
+                    "content": {
+                        "temperature": 22,
+                        "condition": "sunny"
+                    }
+                }
+            }
+        ]
+    },
+    "mistral": {
+        "role": "tool",
+        "content": "{\"condition\":\"sunny\",\"temperature\":22}",
+        "tool_call_id": "cAbc12345"
+    }
+}

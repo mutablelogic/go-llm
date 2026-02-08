@@ -341,11 +341,6 @@ func generateRequestFromOpts(model string, session *schema.Session, options opt.
 		}
 	}
 
-	// Tools from direct WithTool option (standalone path)
-	for _, toolJSON := range options.GetStringArray(opt.ToolsKey) {
-		tools = append(tools, json.RawMessage(toolJSON))
-	}
-
 	return &messagesRequest{
 		MaxTokens:     maxTokens,
 		Messages:      messages,

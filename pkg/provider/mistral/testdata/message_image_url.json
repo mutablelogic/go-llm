@@ -1,0 +1,32 @@
+{
+    "name": "user message with image URL",
+    "schema": {
+        "role": "user",
+        "content": [
+            {
+                "text": "What's in this image?"
+            },
+            {
+                "attachment": {
+                    "type": "image/jpeg",
+                    "url": "https://example.com/image.jpg"
+                }
+            }
+        ]
+    },
+    "mistral": {
+        "role": "user",
+        "content": [
+            {
+                "type": "text",
+                "text": "What's in this image?"
+            },
+            {
+                "type": "image_url",
+                "image_url": {
+                    "url": "https://example.com/image.jpg"
+                }
+            }
+        ]
+    }
+}

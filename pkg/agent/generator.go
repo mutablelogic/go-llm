@@ -9,6 +9,7 @@ import (
 	opt "github.com/mutablelogic/go-llm/pkg/opt"
 	"github.com/mutablelogic/go-llm/pkg/provider/anthropic"
 	"github.com/mutablelogic/go-llm/pkg/provider/google"
+	"github.com/mutablelogic/go-llm/pkg/provider/mistral"
 	schema "github.com/mutablelogic/go-llm/pkg/schema"
 	"github.com/mutablelogic/go-llm/pkg/tool"
 )
@@ -146,8 +147,10 @@ func WithSystemPrompt(value string) opt.Opt {
 			return google.WithSystemPrompt(value)
 		case schema.Anthropic:
 			return anthropic.WithSystemPrompt(value)
+		case schema.Mistral:
+			return mistral.WithSystemPrompt(value)
 		default:
-			return opt.Error(llm.ErrNotImplemented.Withf("%s: system prompt not supported", provider))
+			return opt.Error(llm.ErrNotImplemented.Withf("%s: WithSystemPrompt not supported", provider))
 		}
 	})
 }
@@ -161,8 +164,10 @@ func WithTemperature(value float64) opt.Opt {
 			return google.WithTemperature(value)
 		case schema.Anthropic:
 			return anthropic.WithTemperature(value)
+		case schema.Mistral:
+			return mistral.WithTemperature(value)
 		default:
-			return opt.Error(llm.ErrNotImplemented.Withf("%s: temperature not supported", provider))
+			return opt.Error(llm.ErrNotImplemented.Withf("%s: WithTemperature not supported", provider))
 		}
 	})
 }
@@ -176,8 +181,10 @@ func WithMaxTokens(value uint) opt.Opt {
 			return google.WithMaxTokens(value)
 		case schema.Anthropic:
 			return anthropic.WithMaxTokens(value)
+		case schema.Mistral:
+			return mistral.WithMaxTokens(value)
 		default:
-			return opt.Error(llm.ErrNotImplemented.Withf("%s: max tokens not supported", provider))
+			return opt.Error(llm.ErrNotImplemented.Withf("%s: WithMaxTokens not supported", provider))
 		}
 	})
 }
@@ -192,7 +199,7 @@ func WithTopK(value uint) opt.Opt {
 		case schema.Anthropic:
 			return anthropic.WithTopK(value)
 		default:
-			return opt.Error(llm.ErrNotImplemented.Withf("%s: top_k not supported", provider))
+			return opt.Error(llm.ErrNotImplemented.Withf("%s: WithTopK not supported", provider))
 		}
 	})
 }
@@ -206,8 +213,10 @@ func WithTopP(value float64) opt.Opt {
 			return google.WithTopP(value)
 		case schema.Anthropic:
 			return anthropic.WithTopP(value)
+		case schema.Mistral:
+			return mistral.WithTopP(value)
 		default:
-			return opt.Error(llm.ErrNotImplemented.Withf("%s: top_p not supported", provider))
+			return opt.Error(llm.ErrNotImplemented.Withf("%s: WithTopP not supported", provider))
 		}
 	})
 }
@@ -221,8 +230,10 @@ func WithStopSequences(values ...string) opt.Opt {
 			return google.WithStopSequences(values...)
 		case schema.Anthropic:
 			return anthropic.WithStopSequences(values...)
+		case schema.Mistral:
+			return mistral.WithStopSequences(values...)
 		default:
-			return opt.Error(llm.ErrNotImplemented.Withf("%s: stop sequences not supported", provider))
+			return opt.Error(llm.ErrNotImplemented.Withf("%s: WithStopSequences not supported", provider))
 		}
 	})
 }
@@ -237,7 +248,7 @@ func WithThinking() opt.Opt {
 		case schema.Anthropic:
 			return anthropic.WithThinking(10240)
 		default:
-			return opt.Error(llm.ErrNotImplemented.Withf("%s: thinking not supported", provider))
+			return opt.Error(llm.ErrNotImplemented.Withf("%s: WithThinking not supported", provider))
 		}
 	})
 }
@@ -251,8 +262,10 @@ func WithJSONOutput(s *jsonschema.Schema) opt.Opt {
 			return google.WithJSONOutput(s)
 		case schema.Anthropic:
 			return anthropic.WithJSONOutput(s)
+		case schema.Mistral:
+			return mistral.WithJSONOutput(s)
 		default:
-			return opt.Error(llm.ErrNotImplemented.Withf("%s: JSON output not supported", provider))
+			return opt.Error(llm.ErrNotImplemented.Withf("%s: WithJSONOutput not supported", provider))
 		}
 	})
 }

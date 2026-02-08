@@ -16,6 +16,7 @@ import (
 	agent "github.com/mutablelogic/go-llm/pkg/agent"
 	anthropic "github.com/mutablelogic/go-llm/pkg/provider/anthropic"
 	google "github.com/mutablelogic/go-llm/pkg/provider/google"
+	mistral "github.com/mutablelogic/go-llm/pkg/provider/mistral"
 	session "github.com/mutablelogic/go-llm/pkg/session"
 	version "github.com/mutablelogic/go-llm/pkg/version"
 	logger "github.com/mutablelogic/go-server/pkg/logger"
@@ -34,6 +35,7 @@ type Globals struct {
 	// API Keys
 	GeminiAPIKey    string `name:"gemini-api-key" env:"GEMINI_API_KEY" help:"Google Gemini API key"`
 	AnthropicAPIKey string `name:"anthropic-api-key" env:"ANTHROPIC_API_KEY" help:"Anthropic API key"`
+	MistralAPIKey   string `name:"mistral-api-key" env:"MISTRAL_API_KEY" help:"Mistral API key"`
 	NewsAPIKey      string `name:"news-api-key" env:"NEWS_API_KEY" help:"NewsAPI key"`
 	WeatherAPIKey   string `name:"weather-api-key" env:"WEATHER_API_KEY" help:"WeatherAPI key"`
 	HAEndpoint      string `name:"ha-endpoint" env:"HA_ENDPOINT" help:"Home Assistant endpoint URL"`
@@ -184,9 +186,22 @@ func (g *Globals) Agent() (agent.Agent, error) {
 		opts = append(opts, agent.WithClient(anthropicClient))
 	}
 
+	// Add Mistral client if API key is set
+	if g.MistralAPIKey != "" {
+		var clientOpts []client.ClientOpt
+		if g.Debug {
+			clientOpts = append(clientOpts, client.OptTrace(os.Stderr, true))
+		}
+		mistralClient, err := mistral.New(g.MistralAPIKey, clientOpts...)
+		if err != nil {
+			return nil, fmt.Errorf("failed to create Mistral client: %w", err)
+		}
+		opts = append(opts, agent.WithClient(mistralClient))
+	}
+
 	// Check if at least one client is configured
 	if len(opts) == 0 {
-		return nil, fmt.Errorf("no API keys configured. Set --gemini-api-key or --anthropic-api-key (or use environment variables)")
+		return nil, fmt.Errorf("no API keys configured. Set --gemini-api-key, --anthropic-api-key, or --mistral-api-key (or use environment variables)")
 	}
 
 	return agent.NewAgent(opts...)
