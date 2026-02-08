@@ -20,9 +20,10 @@ import (
 // GLOBALS
 
 const (
-	ansiDim   = "\033[2m"  // Dim text for thinking
-	ansiReset = "\033[0m"  // Reset formatting
-	ansiCyan  = "\033[36m" // Cyan for thinking label
+	ansiDim    = "\033[2m"  // Dim text for thinking
+	ansiReset  = "\033[0m"  // Reset formatting
+	ansiCyan   = "\033[36m" // Cyan for thinking label
+	ansiYellow = "\033[33m" // Yellow for tool calls
 )
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -277,10 +278,12 @@ func streamCallback() opt.StreamFn {
 			switch role {
 			case "thinking":
 				fmt.Print(ansiDim + ansiCyan)
+			case "tool":
+				fmt.Print(ansiReset + ansiDim + ansiYellow)
 			default:
 				fmt.Print(ansiReset)
-				if lastRole == "thinking" {
-					fmt.Println() // newline between thinking and assistant
+				if lastRole == "thinking" || lastRole == "tool" {
+					fmt.Println() // newline between thinking/tool and assistant
 				}
 			}
 			lastRole = role

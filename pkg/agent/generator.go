@@ -98,6 +98,13 @@ func (a *agent) WithSession(ctx context.Context, model schema.Model, session *sc
 			break
 		}
 
+		// Report tool calls via the streaming callback
+		if streamfn := o.GetStream(); streamfn != nil {
+			for _, call := range calls {
+				streamfn("tool", tk.Feedback(call)+"\n")
+			}
+		}
+
 		// Execute each tool call and collect result blocks
 		results := make([]schema.ContentBlock, 0, len(calls))
 		for _, call := range calls {

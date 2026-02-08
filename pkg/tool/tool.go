@@ -7,6 +7,7 @@ import (
 	// Packages
 	jsonschema "github.com/google/jsonschema-go/jsonschema"
 	llm "github.com/mutablelogic/go-llm"
+	schema "github.com/mutablelogic/go-llm/pkg/schema"
 	types "github.com/mutablelogic/go-llm/pkg/types"
 )
 
@@ -137,6 +138,15 @@ func (tk *Toolkit) Run(ctx context.Context, name string, input any) (any, error)
 
 	// Run the tool with raw JSON
 	return tool.Run(ctx, rawInput)
+}
+
+// Feedback returns a human-readable description of a tool call, including
+// the tool name and its description when available.
+func (tk *Toolkit) Feedback(call schema.ToolCall) string {
+	if t := tk.Lookup(call.Name); t != nil && t.Description() != "" {
+		return call.Name + ": " + t.Description()
+	}
+	return call.Name
 }
 
 ///////////////////////////////////////////////////////////////////////////////

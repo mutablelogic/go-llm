@@ -36,6 +36,8 @@ type Globals struct {
 	AnthropicAPIKey string `name:"anthropic-api-key" env:"ANTHROPIC_API_KEY" help:"Anthropic API key"`
 	NewsAPIKey      string `name:"news-api-key" env:"NEWS_API_KEY" help:"NewsAPI key"`
 	WeatherAPIKey   string `name:"weather-api-key" env:"WEATHER_API_KEY" help:"WeatherAPI key"`
+	HAEndpoint      string `name:"ha-endpoint" env:"HA_ENDPOINT" help:"Home Assistant endpoint URL"`
+	HAToken         string `name:"ha-token" env:"HA_TOKEN" help:"Home Assistant long-lived access token"`
 
 	// Tool options
 	FsDir string `name:"fs" env:"FS_DIR" help:"Root directory for filesystem tools" type:"existingdir"`
