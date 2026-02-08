@@ -1,0 +1,34 @@
+{
+    "name": "inline image attachment (base64)",
+    "schema": {
+        "role": "user",
+        "content": [
+            {
+                "text": "What's in this image?"
+            },
+            {
+                "attachment": {
+                    "type": "image/jpeg",
+                    "data": "aW1hZ2UtYnl0ZXM="
+                }
+            }
+        ]
+    },
+    "anthropic": {
+        "role": "user",
+        "content": [
+            {
+                "type": "text",
+                "text": "What's in this image?"
+            },
+            {
+                "type": "image",
+                "source": {
+                    "type": "base64",
+                    "media_type": "image/jpeg",
+                    "data": "aW1hZ2UtYnl0ZXM="
+                }
+            }
+        ]
+    }
+}

@@ -1,0 +1,19 @@
+{
+    "name": "simple user text message",
+    "schema": {
+        "role": "user",
+        "content": [
+            {
+                "text": "Hello, how are you?"
+            }
+        ]
+    },
+    "google": {
+        "role": "user",
+        "parts": [
+            {
+                "text": "Hello, how are you?"
+            }
+        ]
+    }
+}

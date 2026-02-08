@@ -1,6 +1,11 @@
 package schema
 
-import "time"
+import (
+	"time"
+
+	// Packages
+	types "github.com/mutablelogic/go-llm/pkg/types"
+)
 
 ////////////////////////////////////////////////////////////////////////////////
 // TYPES
@@ -19,5 +24,5 @@ type Model struct {
 // STRINGIFY
 
 func (m Model) String() string {
-	return Stringify(m)
+	return types.Stringify(m)
 }

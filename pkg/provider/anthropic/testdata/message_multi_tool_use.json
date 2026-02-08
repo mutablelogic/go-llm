@@ -1,0 +1,47 @@
+{
+    "name": "multiple tool calls in one message",
+    "schema": {
+        "role": "assistant",
+        "content": [
+            {
+                "tool_call": {
+                    "id": "toolu_01A",
+                    "name": "get_weather",
+                    "input": {
+                        "city": "London"
+                    }
+                }
+            },
+            {
+                "tool_call": {
+                    "id": "toolu_01B",
+                    "name": "get_weather",
+                    "input": {
+                        "city": "Paris"
+                    }
+                }
+            }
+        ]
+    },
+    "anthropic": {
+        "role": "assistant",
+        "content": [
+            {
+                "type": "tool_use",
+                "id": "toolu_01A",
+                "name": "get_weather",
+                "input": {
+                    "city": "London"
+                }
+            },
+            {
+                "type": "tool_use",
+                "id": "toolu_01B",
+                "name": "get_weather",
+                "input": {
+                    "city": "Paris"
+                }
+            }
+        ]
+    }
+}

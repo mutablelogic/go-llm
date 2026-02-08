@@ -29,18 +29,18 @@ func (cmd *ListProvidersCommand) Run(ctx *Globals) (err error) {
 	clients := agent.Providers()
 
 	// Print header
-	fmt.Printf("%-20s %-12s %-12s %-12s\n", "AGENT", "MESSENGER", "EMBEDDER", "DOWNLOADER")
+	fmt.Printf("%-20s %-12s %-12s %-12s\n", "PROVIDER", "GENERATOR", "EMBEDDER", "DOWNLOADER")
 	fmt.Println("--------------------------------------------------------------------------------")
 
 	// For each client, check interface implementations
 	for _, client := range clients {
-		messenger := "✗"
+		generator := "✗"
 		embedder := "✗"
 		downloader := "✗"
 
-		// Check Messenger interface
-		if _, ok := client.(llm.Messenger); ok {
-			messenger = "✓"
+		// Check Generator interface
+		if _, ok := client.(llm.Generator); ok {
+			generator = "✓"
 		}
 
 		// Check Embedder interface
@@ -53,7 +53,7 @@ func (cmd *ListProvidersCommand) Run(ctx *Globals) (err error) {
 			downloader = "✓"
 		}
 
-		fmt.Printf("%-20s %-12s %-12s %-12s\n", client.Name(), messenger, embedder, downloader)
+		fmt.Printf("%-20s %-12s %-12s %-12s\n", client.Name(), generator, embedder, downloader)
 	}
 
 	return nil

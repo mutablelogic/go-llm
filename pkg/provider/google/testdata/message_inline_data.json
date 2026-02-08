@@ -1,0 +1,31 @@
+{
+    "name": "inline image attachment",
+    "schema": {
+        "role": "user",
+        "content": [
+            {
+                "text": "What's in this image?"
+            },
+            {
+                "attachment": {
+                    "type": "image/jpeg",
+                    "data": "aW1hZ2UtYnl0ZXM="
+                }
+            }
+        ]
+    },
+    "google": {
+        "role": "user",
+        "parts": [
+            {
+                "text": "What's in this image?"
+            },
+            {
+                "inlineData": {
+                    "mimeType": "image/jpeg",
+                    "data": "aW1hZ2UtYnl0ZXM="
+                }
+            }
+        ]
+    }
+}

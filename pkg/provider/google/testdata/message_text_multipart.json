@@ -1,0 +1,25 @@
+{
+    "name": "multi-part text message",
+    "schema": {
+        "role": "user",
+        "content": [
+            {
+                "text": "First paragraph."
+            },
+            {
+                "text": "Second paragraph."
+            }
+        ]
+    },
+    "google": {
+        "role": "user",
+        "parts": [
+            {
+                "text": "First paragraph."
+            },
+            {
+                "text": "Second paragraph."
+            }
+        ]
+    }
+}

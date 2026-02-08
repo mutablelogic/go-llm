@@ -4,7 +4,7 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/mutablelogic/go-llm/pkg/schema"
+	"github.com/mutablelogic/go-llm/pkg/types"
 )
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -132,11 +132,11 @@ type Time struct {
 // STRINGIFY
 
 func (w Weather) String() string {
-	return schema.Stringify(w)
+	return types.Stringify(w)
 }
 
 func (f Forecast) String() string {
-	return schema.Stringify(f)
+	return types.Stringify(f)
 }
 
 ///////////////////////////////////////////////////////////////////////////////

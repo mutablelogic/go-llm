@@ -7,16 +7,18 @@ import (
 
 	// Packages
 	newsapi "github.com/mutablelogic/go-llm/pkg/newsapi"
-	assert "github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/assert"
 )
 
 func Test_sources_001(t *testing.T) {
 	assert := assert.New(t)
 
-	sources, err := client.Sources(context.Background(), newsapi.OptLanguage("en"))
+	sources, err := client.Sources(context.Background(), &newsapi.SourcesRequest{
+		Language: "en",
+	})
 	assert.NoError(err)
 	assert.NotNil(sources)
 
-	body, err := json.MarshalIndent(sources, "", "  ")
+	body, _ := json.MarshalIndent(sources, "", "  ")
 	t.Log(string(body))
 }

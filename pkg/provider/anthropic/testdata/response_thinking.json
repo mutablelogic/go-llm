@@ -1,0 +1,41 @@
+{
+    "name": "response with thinking",
+    "anthropic": {
+        "id": "msg_01KfQMHBw7hGFcPdpPibGWJn",
+        "model": "claude-sonnet-4-20250514",
+        "type": "message",
+        "role": "assistant",
+        "content": [
+            {
+                "type": "thinking",
+                "thinking": "I need to consider several factors here...",
+                "signature": "dGhvdWdodC1zaWc="
+            },
+            {
+                "type": "text",
+                "text": "The answer is 42."
+            }
+        ],
+        "stop_reason": "end_turn",
+        "usage": {
+            "input_tokens": 10,
+            "output_tokens": 30
+        }
+    },
+    "schema": {
+        "role": "assistant",
+        "content": [
+            {
+                "text": "I need to consider several factors here..."
+            },
+            {
+                "text": "The answer is 42."
+            }
+        ],
+        "result": "stop",
+        "meta": {
+            "thought": true,
+            "thought_signature": "dGhvdWdodC1zaWc="
+        }
+    }
+}

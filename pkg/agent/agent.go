@@ -13,8 +13,7 @@ import (
 type Agent interface {
 	llm.Client
 	llm.Embedder
-	llm.Downloader
-	llm.Messenger
+	llm.Generator
 
 	// Providers returns all providers registered with the agent
 	Providers() []llm.Client

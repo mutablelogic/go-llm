@@ -1,0 +1,34 @@
+{
+    "name": "PDF document attachment (base64)",
+    "schema": {
+        "role": "user",
+        "content": [
+            {
+                "text": "Summarize this document"
+            },
+            {
+                "attachment": {
+                    "type": "application/pdf",
+                    "data": "cGRmLWJ5dGVz"
+                }
+            }
+        ]
+    },
+    "anthropic": {
+        "role": "user",
+        "content": [
+            {
+                "type": "text",
+                "text": "Summarize this document"
+            },
+            {
+                "type": "document",
+                "source": {
+                    "type": "base64",
+                    "media_type": "application/pdf",
+                    "data": "cGRmLWJ5dGVz"
+                }
+            }
+        ]
+    }
+}

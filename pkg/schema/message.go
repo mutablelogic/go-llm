@@ -3,336 +3,148 @@ package schema
 import (
 	"encoding/json"
 	"fmt"
+	"io"
+	"net/http"
+	"net/url"
 	"strings"
-	"sync"
 
-	"github.com/mutablelogic/go-llm/pkg/types"
+	// Packages
+	"github.com/mutablelogic/go-llm/pkg/opt"
+	types "github.com/mutablelogic/go-llm/pkg/types"
 )
 
 ////////////////////////////////////////////////////////////////////////////////
 // TYPES
 
-// The result of generating a message (stopped, error, etc.)
-type ResultType uint
-
 // Message represents a message in a conversation with an LLM.
 // It uses a universal content block representation that can be marshaled
 // to any provider's format.
 type Message struct {
-	Role    string         `json:"role"`    // "user", "assistant", "system", "tool", etc.
-	Content []ContentBlock `json:"content"` // Array of content blocks
-	Tokens  uint           `json:"tokens"`  // Number of tokens
-	Result  ResultType     `json:"result"`  // Result type
-
-	// Private fields
-	mu sync.Mutex
+	Role    string         `json:"role"`             // "user", "assistant", "system"
+	Content []ContentBlock `json:"content"`          // Array of content blocks
+	Tokens  uint           `json:"tokens,omitempty"` // Number of tokens
+	Result  ResultType     `json:"result,omitempty"` // Result type
+	Meta    map[string]any `json:"meta,omitzero"`    // Provider-specific metadata
 }
 
 // ContentBlock represents a single piece of content within a message.
-// It's a superset of all content types across all providers.
+// Exactly one of the fields should be non-nil/non-empty.
 type ContentBlock struct {
-	Type string `json:"type"` // "text", "image", "tool_use", "tool_result", "thinking", "document", etc.
-
-	// Text content
-	Text *string `json:"text,omitempty"`
-
-	// Image content
-	ImageSource *ImageSource `json:"image_source,omitempty"`
-
-	// Document content (Anthropic)
-	DocumentSource  *DocumentSource  `json:"document_source,omitempty"`
-	DocumentTitle   *string          `json:"document_title,omitempty"`
-	DocumentContext *string          `json:"document_context,omitempty"`
-	Citations       *CitationOptions `json:"citations,omitempty"`
-
-	// Tools
-	ToolUse
-	ToolResult
-
-	// Thinking/Reasoning
-	Thinking          *string `json:"thinking,omitempty"`
-	ThinkingSignature *string `json:"thinking_signature,omitempty"` // Anthropic extended thinking
-	ReasoningContent  *string `json:"reasoning_content,omitempty"`  // DeepSeek
-
-	// Redacted Thinking (Anthropic)
-	RedactedThinkingData *string `json:"redacted_thinking_data,omitempty"`
-
-	// Cache Control (Anthropic)
-	CacheControl *CacheControl `json:"cache_control,omitempty"`
-
-	// Server-side tool use metrics (Anthropic)
-	CacheCreation            *CacheMetrics `json:"cache_creation,omitempty"`
-	CacheReadInputTokens     *uint         `json:"cache_read_input_tokens,omitempty"`
-	InputTokens              *uint         `json:"input_tokens,omitempty"`
-	CacheCreationInputTokens *uint         `json:"cache_creation_input_tokens,omitempty"`
-
-	// Function Response (Gemini)
-	FunctionResponse json.RawMessage `json:"function_response,omitempty"`
+	Text       *string     `json:"text,omitempty"`        // Text content
+	Attachment *Attachment `json:"attachment,omitempty"`  // Image, document, audio, etc.
+	ToolCall   *ToolCall   `json:"tool_call,omitempty"`   // Tool invocation (assistant → user)
+	ToolResult *ToolResult `json:"tool_result,omitempty"` // Tool response (user → assistant)
 }
 
-// Tool Use (assistant → user)
-type ToolUse struct {
-	ToolUseID *string         `json:"tool_use_id,omitempty"`
-	ToolName  *string         `json:"tool_name,omitempty"`
-	ToolInput json.RawMessage `json:"tool_input,omitempty"`
+// Attachment represents binary or URI-referenced media (images, documents, etc.)
+type Attachment struct {
+	Type string   `json:"type"`           // MIME type: "image/png", "application/pdf", etc.
+	Data []byte   `json:"data,omitempty"` // Raw binary data
+	URL  *url.URL `json:"url,omitempty"`  // URL reference (http, https, gs, file, etc.)
 }
 
-// Tool Result (user → assistant)
+// ToolCall represents a tool invocation requested by the model
+type ToolCall struct {
+	ID    string          `json:"id,omitempty"`    // Provider-assigned call ID
+	Name  string          `json:"name"`            // Tool function name
+	Input json.RawMessage `json:"input,omitempty"` // JSON-encoded arguments
+}
+
+// ToolResult represents the result of running a tool
 type ToolResult struct {
-	ToolName          *string         `json:"tool_name,omitempty"`
-	ToolResultID      *string         `json:"tool_result_id,omitempty"`
-	ToolResultContent json.RawMessage `json:"tool_result_content,omitempty"`
-	ToolError         *bool           `json:"is_error,omitempty"`
+	ID      string          `json:"id,omitempty"`      // Matches the ToolCall ID
+	Name    string          `json:"name,omitempty"`    // Tool function name
+	Content json.RawMessage `json:"content,omitempty"` // JSON-encoded result
+	IsError bool            `json:"is_error,omitempty"`
 }
 
-// ImageSource represents an image in various formats
-type ImageSource struct {
-	Type        string  `json:"type"`                   // "base64", "url", "file"
-	MediaType   string  `json:"media_type,omitempty"`   // "image/jpeg", "image/png", etc. (only for base64)
-	Data        *string `json:"data,omitempty"`         // base64 encoded data
-	URL         *string `json:"url,omitempty"`          // image URL
-	FileID      *string `json:"file_id,omitempty"`      // file reference (Anthropic)
-	FileURI     *string `json:"file_uri,omitempty"`     // file URI (Gemini)
-	DisplayName *string `json:"display_name,omitempty"` // display name (Gemini)
-}
+////////////////////////////////////////////////////////////////////////////////
+// CONSTANTS
 
-// MarshalJSON customizes the JSON marshaling to omit media_type for url/file types
-func (is ImageSource) MarshalJSON() ([]byte, error) {
-	type Alias ImageSource
-	if is.Type == "url" || is.Type == "file" {
-		// For url and file types, omit media_type
-		return json.Marshal(&struct {
-			Type        string  `json:"type"`
-			URL         *string `json:"url,omitempty"`
-			FileID      *string `json:"file_id,omitempty"`
-			FileURI     *string `json:"file_uri,omitempty"`
-			DisplayName *string `json:"display_name,omitempty"`
-		}{
-			Type:        is.Type,
-			URL:         is.URL,
-			FileID:      is.FileID,
-			FileURI:     is.FileURI,
-			DisplayName: is.DisplayName,
-		})
-	}
-	// For base64, include all fields
-	return json.Marshal((Alias)(is))
-}
-
-// DocumentSource represents a document in various formats
-type DocumentSource struct {
-	Type      string         `json:"type"`                 // "base64", "url", "text", "content"
-	MediaType string         `json:"media_type,omitempty"` // "application/pdf", "text/plain", etc.
-	Data      *string        `json:"data,omitempty"`       // base64 encoded data
-	URL       *string        `json:"url,omitempty"`        // document URL
-	Text      *string        `json:"text,omitempty"`       // plain text content
-	Content   []ContentBlock `json:"content,omitempty"`    // content blocks (for type="content")
-}
-
-// MarshalJSON customizes the JSON marshaling to omit media_type for url/content types
-func (ds DocumentSource) MarshalJSON() ([]byte, error) {
-	type Alias DocumentSource
-	if ds.Type == "url" || ds.Type == "content" {
-		// For url and content types, omit media_type
-		return json.Marshal(&struct {
-			Type    string         `json:"type"`
-			URL     *string        `json:"url,omitempty"`
-			Content []ContentBlock `json:"content,omitempty"`
-		}{
-			Type:    ds.Type,
-			URL:     ds.URL,
-			Content: ds.Content,
-		})
-	}
-	// For base64 and text, include all fields
-	return json.Marshal((Alias)(ds))
-}
-
-// CitationOptions represents citation configuration for documents (Anthropic)
-type CitationOptions struct {
-	Enabled bool `json:"enabled"`
-}
-
-// CacheMetrics represents cache creation metrics (Anthropic server-side tools)
-type CacheMetrics struct {
-	InputTokens *uint `json:"input_tokens,omitempty"`
-}
-
-// CacheControl represents prompt caching configuration (Anthropic)
-type CacheControl struct {
-	Type string `json:"type"`          // "ephemeral"
-	TTL  string `json:"ttl,omitempty"` // time-to-live (e.g., "5m", "1h")
-}
-
-// MessageRole types
+// Message role constants
 const (
-	MessageRoleUser      = "user"
-	MessageRoleAssistant = "assistant"
-	MessageRoleSystem    = "system"
-	MessageRoleTool      = "tool"
-)
-
-// ContentBlock Types
-const (
-	ContentTypeText        = "text"
-	ContentTypeImage       = "image"
-	ContentTypeDocument    = "document"
-	ContentTypeToolUse     = "tool_use"
-	ContentTypeToolResult  = "tool_result"
-	ContentTypeThinking    = "thinking"
-	ContentTypeRedacted    = "redacted_thinking"
-	ContentTypeFunctionRes = "function_response"
+	RoleUser      = "user"
+	RoleAssistant = "assistant"
+	RoleSystem    = "system"
+	RoleThinking  = "thinking"
 )
 
 ////////////////////////////////////////////////////////////////////////////////
-// CONSTRUCTORS
+// LIFECYCLE
 
-// NewMessage creates a new message with a single text content block
-func NewMessage(role, text string, opt ...Opt) (*Message, error) {
-	self := Message{
-		Role: role,
-		Content: []ContentBlock{
-			{
-				Type: ContentTypeText,
-				Text: &text,
-			},
-		},
+// Create a new message with the given role and text content
+func NewMessage(role string, text string, opts ...opt.Opt) (*Message, error) {
+	o, err := opt.Apply(opts...)
+	if err != nil {
+		return nil, err
 	}
-	for _, o := range opt {
-		if err := o(&self); err != nil {
-			return nil, err
+
+	// Create content blocks
+	blocks := []ContentBlock{
+		{Text: types.Ptr(text)},
+	}
+	if v := o.Get(opt.ContentBlockKey); v != nil {
+		if attachments, ok := v.([]ContentBlock); !ok {
+			return nil, fmt.Errorf("invalid attachments option")
+		} else {
+			blocks = append(blocks, attachments...)
 		}
 	}
-	return &self, nil
+
+	// Return the message
+	return types.Ptr(Message{
+		Role:    role,
+		Content: blocks,
+	}), nil
 }
 
-// NewToolMessage creates a new message for tool results.
-// Tool results are sent in "user" role messages per Anthropic's API.
-func NewToolMessage() *Message {
-	self := Message{
-		Role:    MessageRoleUser,
-		Content: []ContentBlock{},
+// NewToolResult creates a content block containing a successful tool result
+func NewToolResult(id, name string, v any) ContentBlock {
+	data, err := json.Marshal(v)
+	if err != nil {
+		return NewToolError(id, name, err)
 	}
-	return &self
+	return ContentBlock{
+		ToolResult: &ToolResult{
+			ID:      id,
+			Name:    name,
+			Content: json.RawMessage(data),
+		},
+	}
+}
+
+// NewToolError creates a content block containing a tool error result
+func NewToolError(id, name string, err error) ContentBlock {
+	return ContentBlock{
+		ToolResult: &ToolResult{
+			ID:      id,
+			Name:    name,
+			Content: json.RawMessage(fmt.Sprintf("%q", err.Error())),
+			IsError: true,
+		},
+	}
 }
 
 ////////////////////////////////////////////////////////////////////////////////
 // PUBLIC METHODS
 
-// UnmarshalJSON handles both string and array content formats
-func (m *Message) AppendToolResult(t ToolUse, result any) error {
-	// Check message role
-	if m.Role != MessageRoleUser {
-		return fmt.Errorf("cannot append tool result to non-user message")
-	}
-
-	// Convert the result to a text block payload for tool_result.content
-	var text string
-	switch v := result.(type) {
-	case nil:
-		text = "null"
-	case string:
-		text = v
-	case []byte:
-		text = string(v)
-	case json.RawMessage:
-		text = string(v)
-	case error:
-		text = v.Error()
-	default:
-		data, err := json.Marshal(v)
-		if err != nil {
-			return fmt.Errorf("failed to marshal tool result: %w", err)
-		}
-		text = string(data)
-	}
-
-	// Wrap in Anthropic-compatible content array: [{"type":"text","text":...}]
-	wrapped, err := json.Marshal([]map[string]string{{"type": "text", "text": text}})
-	if err != nil {
-		return fmt.Errorf("failed to marshal tool result content: %w", err)
-	}
-	raw := json.RawMessage(wrapped)
-
-	// if the result is an error, set ToolError to true
-	var errFlag bool
-	if _, ok := result.(error); ok {
-		errFlag = true
-	}
-
-	// append the tool result block. This can happen concurrently, so lock
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	m.Content = append(m.Content, ContentBlock{
-		Type: ContentTypeToolResult,
-		ToolResult: ToolResult{
-			ToolName:          t.ToolName,
-			ToolResultID:      t.ToolUseID,
-			ToolResultContent: raw,
-			ToolError:         types.Ptr(errFlag),
-		},
-	})
-
-	// Return success
-	return nil
-}
-
-// UnmarshalJSON handles both string and array content formats
-func (m *Message) UnmarshalJSON(data []byte) error {
-	// Try to unmarshal into a temporary structure with RawMessage for content
-	var temp struct {
-		Role    string          `json:"role"`
-		Content json.RawMessage `json:"content"`
-		Tokens  uint            `json:"-"`
-	}
-
-	if err := json.Unmarshal(data, &temp); err != nil {
-		return err
-	}
-
-	m.Role = temp.Role
-	m.Tokens = temp.Tokens
-
-	// Try to unmarshal content as array first
-	var contentArray []ContentBlock
-	if err := json.Unmarshal(temp.Content, &contentArray); err == nil {
-		m.Content = contentArray
-		return nil
-	}
-
-	// If that fails, try as string
-	var contentString string
-	if err := json.Unmarshal(temp.Content, &contentString); err == nil {
-		m.Content = []ContentBlock{
-			{
-				Type: ContentTypeText,
-				Text: &contentString,
-			},
-		}
-		return nil
-	}
-
-	// If both fail, return error
-	return fmt.Errorf("content must be either string or array")
-}
-
 // Text returns the concatenated text content from all text blocks in the message
 func (m Message) Text() string {
 	var result []string
 	for _, block := range m.Content {
-		if block.Type == ContentTypeText && block.Text != nil {
+		if block.Text != nil {
 			result = append(result, *block.Text)
 		}
 	}
 	return strings.Join(result, "\n")
 }
 
-// ToolUse returns any tool use content blocks in the message
-func (m Message) ToolUse() []ToolUse {
-	var result []ToolUse
+// ToolCalls returns all tool call blocks in the message
+func (m Message) ToolCalls() []ToolCall {
+	var result []ToolCall
 	for _, block := range m.Content {
-		if block.Type == ContentTypeToolUse && block.ToolUse.ToolName != nil {
-			result = append(result, block.ToolUse)
+		if block.ToolCall != nil {
+			result = append(result, *block.ToolCall)
 		}
 	}
 	return result
@@ -342,5 +154,38 @@ func (m Message) ToolUse() []ToolUse {
 // STRINGIFY
 
 func (m Message) String() string {
-	return Stringify(m)
+	return types.Stringify(m)
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// MESSAGE OPTIONS
+
+// WithAttachmentURL creates an attachment from data read from the provided reader
+// The MIME type is detected from the data. This is suitable for small attachments
+// the caller is responsible for closing the reader after the data is read.
+func WithAttachment(r io.Reader) opt.Opt {
+	data, err := io.ReadAll(r)
+	if err != nil {
+		return opt.Error(err)
+	}
+	return opt.AddAny(opt.ContentBlockKey, ContentBlock{
+		Attachment: types.Ptr(Attachment{
+			Type: http.DetectContentType(data),
+			Data: data,
+		}),
+	})
+}
+
+// WithAttachmentURL creates an attachment from a URL and explicit MIME type
+func WithAttachmentURL(u string, mimetype string) opt.Opt {
+	url, err := url.Parse(u)
+	if err != nil {
+		return opt.Error(fmt.Errorf("invalid URL: %w", err))
+	}
+	return opt.AddAny(opt.ContentBlockKey, ContentBlock{
+		Attachment: types.Ptr(Attachment{
+			Type: mimetype,
+			URL:  url,
+		}),
+	})
 }

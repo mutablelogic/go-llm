@@ -1,0 +1,29 @@
+{
+    "name": "error tool result",
+    "schema": {
+        "role": "user",
+        "content": [
+            {
+                "tool_result": {
+                    "name": "get_weather",
+                    "content": "city not found",
+                    "is_error": true
+                }
+            }
+        ]
+    },
+    "google": {
+        "role": "user",
+        "parts": [
+            {
+                "functionResponse": {
+                    "name": "get_weather",
+                    "response": {
+                        "output": "city not found",
+                        "error": true
+                    }
+                }
+            }
+        ]
+    }
+}

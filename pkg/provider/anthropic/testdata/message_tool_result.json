@@ -1,0 +1,24 @@
+{
+    "name": "user tool result",
+    "schema": {
+        "role": "user",
+        "content": [
+            {
+                "tool_result": {
+                    "id": "toolu_01A",
+                    "content": "65°F and sunny"
+                }
+            }
+        ]
+    },
+    "anthropic": {
+        "role": "user",
+        "content": [
+            {
+                "type": "tool_result",
+                "tool_use_id": "toolu_01A",
+                "content": "65°F and sunny"
+            }
+        ]
+    }
+}

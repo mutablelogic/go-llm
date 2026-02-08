@@ -1,0 +1,33 @@
+package opt
+
+// Option keys used across providers
+const (
+	ToolkitKey              = "toolkit"
+	ContentBlockKey         = "content-block"
+	ThinkingKey             = "thinking"
+	ThinkingBudgetKey       = "thinking-budget"
+	SystemPromptKey         = "system"
+	TemperatureKey          = "temperature"
+	TopPKey                 = "top-p"
+	TopKKey                 = "top-k"
+	MaxTokensKey            = "max-tokens"
+	StopSequencesKey        = "stop-sequences"
+	TaskTypeKey             = "task-type"
+	TitleKey                = "title"
+	OutputDimensionalityKey = "output-dimensionality"
+	SeedKey                 = "seed"
+	PresencePenaltyKey      = "presence-penalty"
+	FrequencyPenaltyKey     = "frequency-penalty"
+	JSONSchemaKey           = "json-schema"
+	AfterIdKey              = "after-id"
+	BeforeIdKey             = "before-id"
+	LimitKey                = "limit"
+	UserIdKey               = "user-id"
+	ServiceTierKey          = "service-tier"
+	CacheControlKey         = "cache-control"
+	OutputConfigKey         = "output-config"
+	ToolChoiceKey           = "tool-choice"
+	ToolChoiceNameKey       = "tool-choice-name"
+	ToolsKey                = "tools"
+	MaxIterationsKey        = "max-iterations"
+)

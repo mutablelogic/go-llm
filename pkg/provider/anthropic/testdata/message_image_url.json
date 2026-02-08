@@ -1,0 +1,33 @@
+{
+    "name": "image attachment (URL reference)",
+    "schema": {
+        "role": "user",
+        "content": [
+            {
+                "text": "Describe this photo"
+            },
+            {
+                "attachment": {
+                    "type": "image/png",
+                    "url": "https://example.com/photo.png"
+                }
+            }
+        ]
+    },
+    "anthropic": {
+        "role": "user",
+        "content": [
+            {
+                "type": "text",
+                "text": "Describe this photo"
+            },
+            {
+                "type": "image",
+                "source": {
+                    "type": "url",
+                    "url": "https://example.com/photo.png"
+                }
+            }
+        ]
+    }
+}

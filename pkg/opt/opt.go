@@ -16,8 +16,10 @@ type Opt func(*opts) error
 
 // set of options
 type opts struct {
-	values   map[string]any
-	progress ProgressFn
+	values     map[string]any
+	progress   ProgressFn
+	stream     StreamFn
+	clientOpts []ClientOptFn
 }
 
 // Options is the interface for accessing options
@@ -52,12 +54,17 @@ type Options interface {
 // percent: progress percentage (0-100)
 type ProgressFn func(status string, percent float64)
 
+// StreamFn is a callback function for streaming text generation.
+// Each invocation receives a role ("assistant" or "thinking") and a text
+// chunk from the model's response as it arrives.
+type StreamFn func(role, text string)
+
 ////////////////////////////////////////////////////////////////////////////////
 // LIFECYCLE
 
 // Apply returns a structure of applied options
 func Apply(o ...Opt) (*opts, error) {
-	opts := &opts{values: make(map[string]any)}
+	opts := &opts{values: make(map[string]any, len(o))}
 	for _, opt := range o {
 		if err := opt(opts); err != nil {
 			return nil, err
@@ -69,6 +76,7 @@ func Apply(o ...Opt) (*opts, error) {
 ////////////////////////////////////////////////////////////////////////////////
 // PUBLIC METHODS
 
+// Query returns a url.Values structure for the specified keys
 func (o *opts) Query(keys ...string) url.Values {
 	query := make(url.Values)
 	for _, key := range keys {
@@ -97,7 +105,7 @@ func (o *opts) GetString(key string) string {
 	return strings.TrimSpace(fmt.Sprint(v))
 }
 
-// GetStringArray returns all values for key, each trimmed
+// GetStringArray returns all values for key, or nil if not set
 func (o *opts) GetStringArray(key string) []string {
 	v := o.Get(key)
 	if v == nil {
@@ -277,6 +285,37 @@ func WithOpts(options ...Opt) Opt {
 	}
 }
 
+// SetAny sets an arbitrary value for key, replacing any existing values
+func SetAny(key string, value any) Opt {
+	return func(o *opts) error {
+		return o.Set(key, value)
+	}
+}
+
+// AddAny appends a value to a typed slice for key. If the key does not exist,
+// a new slice of the value's type is created. If the key exists, the existing
+// value must be a slice of the same element type.
+func AddAny(key string, value any) Opt {
+	return func(o *opts) error {
+		vt := reflect.TypeOf(value)
+		existing, ok := o.values[key]
+		if !ok {
+			// Create a new slice containing the value
+			slice := reflect.MakeSlice(reflect.SliceOf(vt), 0, 1)
+			slice = reflect.Append(slice, reflect.ValueOf(value))
+			o.values[key] = slice.Interface()
+			return nil
+		}
+		// Existing value must be a slice with matching element type
+		ev := reflect.ValueOf(existing)
+		if ev.Kind() != reflect.Slice || ev.Type().Elem() != vt {
+			return fmt.Errorf("AddAny: existing value for %q is %T, expected []%s", key, existing, vt)
+		}
+		o.values[key] = reflect.Append(ev, reflect.ValueOf(value)).Interface()
+		return nil
+	}
+}
+
 // SetString sets a string value for key, replacing any existing values
 func SetString(key string, value string) Opt {
 	return func(o *opts) error {
@@ -336,18 +375,6 @@ func SetBool(key string, value bool) Opt {
 	}
 }
 
-// WithToolkit sets a toolkit for the options (any to avoid import cycles)
-func WithToolkit(toolkit any) Opt {
-	return func(o *opts) error {
-		return o.Set("toolkit", toolkit)
-	}
-}
-
-// GetToolkit returns the toolkit if set, or nil
-func (o *opts) GetToolkit() any {
-	return o.Get("toolkit")
-}
-
 ////////////////////////////////////////////////////////////////////////////////
 // CALLBACK TYPES
 
@@ -362,4 +389,45 @@ func WithProgress(fn ProgressFn) Opt {
 // GetProgress returns the progress callback function, or nil if not set
 func (o *opts) GetProgress() ProgressFn {
 	return o.progress
+}
+
+// WithStream sets a streaming callback function. When set, generators that
+// support streaming will deliver text chunks to fn as they arrive, rather
+// than waiting for the complete response.
+func WithStream(fn StreamFn) Opt {
+	return func(o *opts) error {
+		o.stream = fn
+		return nil
+	}
+}
+
+// GetStream returns the streaming callback function, or nil if not set
+func (o *opts) GetStream() StreamFn {
+	return o.stream
+}
+
+// ClientOptFn is a function that receives a provider name and returns a
+// provider-specific option. Used by agent-level option dispatchers to defer
+// option resolution until the target provider is known.
+type ClientOptFn func(provider string) Opt
+
+// WithClient wraps a ClientOptFn so it can be stored among regular Opts.
+// The returned Opt is a marker; it is not applied immediately. Instead,
+// ConvertOptsForClient resolves it once the target provider is known.
+func WithClient(fn ClientOptFn) Opt {
+	return func(o *opts) error {
+		o.clientOpts = append(o.clientOpts, fn)
+		return nil
+	}
+}
+
+// ConvertOptsForClient walks the accumulated client-aware options and resolves
+// them against the given provider name, returning a flat slice of concrete Opts.
+func ConvertOptsForClient(o *opts, provider string) ([]Opt, error) {
+	resolved := make([]Opt, 0, len(o.clientOpts))
+	for _, fn := range o.clientOpts {
+		resolved = append(resolved, fn(provider))
+	}
+	o.clientOpts = nil
+	return resolved, nil
 }

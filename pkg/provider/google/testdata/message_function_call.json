@@ -1,0 +1,39 @@
+{
+    "name": "model function call",
+    "schema": {
+        "role": "assistant",
+        "content": [
+            {
+                "text": "I'll check the weather for you."
+            },
+            {
+                "tool_call": {
+                    "id": "call_001",
+                    "name": "get_weather",
+                    "input": {
+                        "location": "San Francisco",
+                        "unit": "fahrenheit"
+                    }
+                }
+            }
+        ]
+    },
+    "google": {
+        "role": "model",
+        "parts": [
+            {
+                "text": "I'll check the weather for you."
+            },
+            {
+                "functionCall": {
+                    "id": "call_001",
+                    "name": "get_weather",
+                    "args": {
+                        "location": "San Francisco",
+                        "unit": "fahrenheit"
+                    }
+                }
+            }
+        ]
+    }
+}

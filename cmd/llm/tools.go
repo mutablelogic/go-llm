@@ -3,6 +3,12 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+
+	// Packages
+	fstool "github.com/mutablelogic/go-llm/pkg/fstool"
+	newsapi "github.com/mutablelogic/go-llm/pkg/newsapi"
+	tool "github.com/mutablelogic/go-llm/pkg/tool"
+	weatherapi "github.com/mutablelogic/go-llm/pkg/weatherapi"
 )
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -26,6 +32,43 @@ type ToolInfoCommand struct {
 type RunToolCommand struct {
 	Name  string          `arg:"" name:"name" help:"Tool name"`
 	Input json.RawMessage `arg:"" name:"input" optional:"" help:"JSON input for the tool (optional)"`
+}
+
+///////////////////////////////////////////////////////////////////////////////
+// PRIVATE METHODS
+
+// Toolkit returns a toolkit with all configured tools
+func (g *Globals) Toolkit() (*tool.Toolkit, error) {
+	var tools []tool.Tool
+
+	// Add News API tools if key is set
+	if g.NewsAPIKey != "" {
+		newsTools, err := newsapi.NewTools(g.NewsAPIKey)
+		if err != nil {
+			return nil, fmt.Errorf("failed to create NewsAPI tools: %w", err)
+		}
+		tools = append(tools, newsTools...)
+	}
+
+	// Add Weather API tools if key is set
+	if g.WeatherAPIKey != "" {
+		weatherTools, err := weatherapi.NewTools(g.WeatherAPIKey)
+		if err != nil {
+			return nil, fmt.Errorf("failed to create WeatherAPI tools: %w", err)
+		}
+		tools = append(tools, weatherTools...)
+	}
+
+	// Add filesystem tools if --fs is set
+	if g.FsDir != "" {
+		fsTools, err := fstool.NewTools(g.FsDir)
+		if err != nil {
+			return nil, fmt.Errorf("failed to create filesystem tools: %w", err)
+		}
+		tools = append(tools, fsTools...)
+	}
+
+	return tool.NewToolkit(tools...)
 }
 
 ///////////////////////////////////////////////////////////////////////////////

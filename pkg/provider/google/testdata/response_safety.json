@@ -1,0 +1,39 @@
+{
+    "name": "response blocked by safety",
+    "google": {
+        "candidates": [
+            {
+                "content": {
+                    "role": "model",
+                    "parts": [
+                        {
+                            "text": ""
+                        }
+                    ]
+                },
+                "finishReason": "SAFETY",
+                "safetyRatings": [
+                    {
+                        "category": "HARM_CATEGORY_DANGEROUS_CONTENT",
+                        "probability": "HIGH",
+                        "blocked": true
+                    }
+                ]
+            }
+        ],
+        "usageMetadata": {
+            "promptTokenCount": 12,
+            "candidatesTokenCount": 0,
+            "totalTokenCount": 12
+        }
+    },
+    "schema": {
+        "role": "assistant",
+        "content": [
+            {
+                "text": ""
+            }
+        ],
+        "result": "blocked"
+    }
+}

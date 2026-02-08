@@ -5,7 +5,7 @@ import (
 	"strings"
 
 	// Packages
-	mcppkg "github.com/mutablelogic/go-llm/pkg/mcp"
+	mcp "github.com/mutablelogic/go-llm/pkg/mcp"
 	version "github.com/mutablelogic/go-llm/pkg/version"
 )
 
@@ -42,8 +42,8 @@ func (cmd *MCPServerCommand) Run(ctx *Globals) error {
 	}
 
 	// Create MCP server
-	server, err := mcppkg.New("llm", version.GitTag,
-		mcppkg.WithToolKit(toolkit),
+	server, err := mcp.New("llm", version.GitTag,
+		mcp.WithToolkit(toolkit),
 	)
 	if err != nil {
 		return err

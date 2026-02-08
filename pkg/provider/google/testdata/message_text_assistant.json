@@ -1,0 +1,19 @@
+{
+    "name": "assistant text message (role maps to model)",
+    "schema": {
+        "role": "assistant",
+        "content": [
+            {
+                "text": "I'm doing well, thank you for asking!"
+            }
+        ]
+    },
+    "google": {
+        "role": "model",
+        "parts": [
+            {
+                "text": "I'm doing well, thank you for asking!"
+            }
+        ]
+    }
+}

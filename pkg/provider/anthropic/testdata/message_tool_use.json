@@ -1,0 +1,39 @@
+{
+    "name": "model tool use (function call)",
+    "schema": {
+        "role": "assistant",
+        "content": [
+            {
+                "text": "I'll check the weather for you."
+            },
+            {
+                "tool_call": {
+                    "id": "toolu_01A",
+                    "name": "get_weather",
+                    "input": {
+                        "location": "San Francisco",
+                        "unit": "fahrenheit"
+                    }
+                }
+            }
+        ]
+    },
+    "anthropic": {
+        "role": "assistant",
+        "content": [
+            {
+                "type": "text",
+                "text": "I'll check the weather for you."
+            },
+            {
+                "type": "tool_use",
+                "id": "toolu_01A",
+                "name": "get_weather",
+                "input": {
+                    "location": "San Francisco",
+                    "unit": "fahrenheit"
+                }
+            }
+        ]
+    }
+}

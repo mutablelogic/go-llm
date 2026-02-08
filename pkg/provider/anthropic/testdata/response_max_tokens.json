@@ -1,0 +1,29 @@
+{
+    "name": "response truncated by max tokens",
+    "anthropic": {
+        "id": "msg_01VTP4u7pbByHXwHZLptXR1i",
+        "model": "claude-sonnet-4-20250514",
+        "type": "message",
+        "role": "assistant",
+        "content": [
+            {
+                "type": "text",
+                "text": "This is a partial response that was cut off because"
+            }
+        ],
+        "stop_reason": "max_tokens",
+        "usage": {
+            "input_tokens": 10,
+            "output_tokens": 50
+        }
+    },
+    "schema": {
+        "role": "assistant",
+        "content": [
+            {
+                "text": "This is a partial response that was cut off because"
+            }
+        ],
+        "result": "max_tokens"
+    }
+}

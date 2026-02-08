@@ -1,0 +1,29 @@
+{
+    "name": "response blocked by refusal",
+    "anthropic": {
+        "id": "msg_01ABCDEFGHIJKLMNOPQRST",
+        "model": "claude-sonnet-4-20250514",
+        "type": "message",
+        "role": "assistant",
+        "content": [
+            {
+                "type": "text",
+                "text": ""
+            }
+        ],
+        "stop_reason": "refusal",
+        "usage": {
+            "input_tokens": 12,
+            "output_tokens": 0
+        }
+    },
+    "schema": {
+        "role": "assistant",
+        "content": [
+            {
+                "text": ""
+            }
+        ],
+        "result": "blocked"
+    }
+}

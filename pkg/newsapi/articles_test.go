@@ -13,7 +13,9 @@ import (
 func Test_articles_001(t *testing.T) {
 	assert := assert.New(t)
 
-	articles, err := client.Headlines(context.Background(), newsapi.OptQuery("google"))
+	articles, err := client.Headlines(context.Background(), &newsapi.HeadlinesRequest{
+		Query: "google",
+	})
 	assert.NoError(err)
 	assert.NotNil(articles)
 
@@ -24,7 +26,10 @@ func Test_articles_001(t *testing.T) {
 func Test_articles_002(t *testing.T) {
 	assert := assert.New(t)
 
-	articles, err := client.Articles(context.Background(), newsapi.OptQuery("google"), newsapi.OptLimit(1))
+	articles, err := client.Articles(context.Background(), &newsapi.ArticlesRequest{
+		Query:    "google",
+		PageSize: 1,
+	})
 	assert.NoError(err)
 	assert.NotNil(articles)
 

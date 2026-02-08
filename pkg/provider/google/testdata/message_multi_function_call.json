@@ -1,0 +1,49 @@
+{
+    "name": "multiple function calls in one message",
+    "schema": {
+        "role": "assistant",
+        "content": [
+            {
+                "tool_call": {
+                    "id": "call_a",
+                    "name": "get_weather",
+                    "input": {
+                        "city": "London"
+                    }
+                }
+            },
+            {
+                "tool_call": {
+                    "id": "call_b",
+                    "name": "get_weather",
+                    "input": {
+                        "city": "Paris"
+                    }
+                }
+            }
+        ]
+    },
+    "google": {
+        "role": "model",
+        "parts": [
+            {
+                "functionCall": {
+                    "id": "call_a",
+                    "name": "get_weather",
+                    "args": {
+                        "city": "London"
+                    }
+                }
+            },
+            {
+                "functionCall": {
+                    "id": "call_b",
+                    "name": "get_weather",
+                    "args": {
+                        "city": "Paris"
+                    }
+                }
+            }
+        ]
+    }
+}

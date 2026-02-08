@@ -1,0 +1,50 @@
+{
+    "name": "response with function call (tool use)",
+    "google": {
+        "candidates": [
+            {
+                "content": {
+                    "role": "model",
+                    "parts": [
+                        {
+                            "text": "Let me look that up."
+                        },
+                        {
+                            "functionCall": {
+                                "id": "call_123",
+                                "name": "get_weather",
+                                "args": {
+                                    "city": "Tokyo"
+                                }
+                            }
+                        }
+                    ]
+                },
+                "finishReason": "STOP"
+            }
+        ],
+        "usageMetadata": {
+            "promptTokenCount": 20,
+            "candidatesTokenCount": 15,
+            "totalTokenCount": 35
+        }
+    },
+    "schema": {
+        "role": "assistant",
+        "content": [
+            {
+                "text": "Let me look that up."
+            },
+            {
+                "tool_call": {
+                    "id": "call_123",
+                    "name": "get_weather",
+                    "input": {
+                        "city": "Tokyo"
+                    }
+                }
+            }
+        ],
+        "result": "tool_call"
+    }
+}

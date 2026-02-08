@@ -7,8 +7,7 @@ import (
 	// Packages
 	jsonschema "github.com/google/jsonschema-go/jsonschema"
 	llm "github.com/mutablelogic/go-llm"
-	schema "github.com/mutablelogic/go-llm/pkg/schema"
-	types "github.com/mutablelogic/go-server/pkg/types"
+	types "github.com/mutablelogic/go-llm/pkg/types"
 )
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -144,5 +143,5 @@ func (tk *Toolkit) Run(ctx context.Context, name string, input any) (any, error)
 // STRINGIFY
 
 func (tk *Toolkit) String() string {
-	return schema.Stringify(tk.Tools())
+	return types.Stringify(tk.Tools())
 }

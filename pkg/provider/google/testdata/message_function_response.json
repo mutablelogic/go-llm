@@ -1,0 +1,35 @@
+{
+    "name": "user function response (tool result)",
+    "schema": {
+        "role": "user",
+        "content": [
+            {
+                "tool_result": {
+                    "id": "call_001",
+                    "name": "get_weather",
+                    "content": {
+                        "temperature": 65,
+                        "conditions": "sunny"
+                    }
+                }
+            }
+        ]
+    },
+    "google": {
+        "role": "user",
+        "parts": [
+            {
+                "functionResponse": {
+                    "id": "call_001",
+                    "name": "get_weather",
+                    "response": {
+                        "output": {
+                            "temperature": 65,
+                            "conditions": "sunny"
+                        }
+                    }
+                }
+            }
+        ]
+    }
+}

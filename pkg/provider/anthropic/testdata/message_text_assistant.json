@@ -1,0 +1,20 @@
+{
+    "name": "assistant text message",
+    "schema": {
+        "role": "assistant",
+        "content": [
+            {
+                "text": "I'm doing well, thank you for asking!"
+            }
+        ]
+    },
+    "anthropic": {
+        "role": "assistant",
+        "content": [
+            {
+                "type": "text",
+                "text": "I'm doing well, thank you for asking!"
+            }
+        ]
+    }
+}

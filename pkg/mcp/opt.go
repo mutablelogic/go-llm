@@ -1,30 +1,21 @@
 package mcp
 
-import "github.com/mutablelogic/go-llm/pkg/tool"
+import (
+	"github.com/mutablelogic/go-llm/pkg/opt"
+	"github.com/mutablelogic/go-llm/pkg/tool"
+)
 
 /////////////////////////////////////////////////////////////////////////////////
-// TYPES
+// CONSTANTS
 
-type Opt func(*Server) error
-
-/////////////////////////////////////////////////////////////////////////////////
-// LIFECYCLE
-
-func (server *Server) apply(opts ...Opt) error {
-	for _, opt := range opts {
-		if err := opt(server); err != nil {
-			return err
-		}
-	}
-	return nil
-}
+const (
+	optToolkit = "mcp.toolkit"
+)
 
 /////////////////////////////////////////////////////////////////////////////////
 // OPTIONS
 
-func WithToolKit(v *tool.Toolkit) Opt {
-	return func(server *Server) error {
-		server.toolkit = v
-		return nil
-	}
+// WithToolkit sets the toolkit for the MCP server
+func WithToolkit(v *tool.Toolkit) opt.Opt {
+	return opt.SetAny(optToolkit, v)
 }

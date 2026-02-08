@@ -1,0 +1,31 @@
+{
+    "name": "thinking message with thought signature",
+    "schema": {
+        "role": "assistant",
+        "content": [
+            {
+                "text": "Let me think about this carefully..."
+            },
+            {
+                "text": "The answer is 42."
+            }
+        ],
+        "meta": {
+            "thought": true,
+            "thought_signature": "c2lnbmF0dXJlLWRhdGE="
+        }
+    },
+    "google": {
+        "role": "model",
+        "parts": [
+            {
+                "text": "Let me think about this carefully...",
+                "thought": true,
+                "thoughtSignature": "c2lnbmF0dXJlLWRhdGE="
+            },
+            {
+                "text": "The answer is 42."
+            }
+        ]
+    }
+}

@@ -1,0 +1,14 @@
+{
+    "name": "empty response (no candidates)",
+    "google": {
+        "candidates": [],
+        "usageMetadata": {
+            "promptTokenCount": 5,
+            "totalTokenCount": 5
+        }
+    },
+    "schema": {
+        "role": "",
+        "content": null
+    }
+}

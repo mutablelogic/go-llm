@@ -1,0 +1,31 @@
+{
+    "name": "file data attachment (URI reference)",
+    "schema": {
+        "role": "user",
+        "content": [
+            {
+                "text": "Summarize this document"
+            },
+            {
+                "attachment": {
+                    "type": "application/pdf",
+                    "url": "https://generativelanguage.googleapis.com/v1beta/files/abc123"
+                }
+            }
+        ]
+    },
+    "google": {
+        "role": "user",
+        "parts": [
+            {
+                "text": "Summarize this document"
+            },
+            {
+                "fileData": {
+                    "mimeType": "application/pdf",
+                    "fileUri": "https://generativelanguage.googleapis.com/v1beta/files/abc123"
+                }
+            }
+        ]
+    }
+}

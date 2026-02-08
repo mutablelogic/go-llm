@@ -1,0 +1,32 @@
+{
+    "name": "simple text response",
+    "google": {
+        "candidates": [
+            {
+                "content": {
+                    "role": "model",
+                    "parts": [
+                        {
+                            "text": "Hello! How can I help you today?"
+                        }
+                    ]
+                },
+                "finishReason": "STOP"
+            }
+        ],
+        "usageMetadata": {
+            "promptTokenCount": 5,
+            "candidatesTokenCount": 10,
+            "totalTokenCount": 15
+        }
+    },
+    "schema": {
+        "role": "assistant",
+        "content": [
+            {
+                "text": "Hello! How can I help you today?"
+            }
+        ],
+        "result": "stop"
+    }
+}

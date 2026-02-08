@@ -1,0 +1,29 @@
+{
+    "name": "simple text response",
+    "anthropic": {
+        "id": "msg_01XFDUDYJgAACzvnptvVoYEL",
+        "model": "claude-sonnet-4-20250514",
+        "type": "message",
+        "role": "assistant",
+        "content": [
+            {
+                "type": "text",
+                "text": "Hello! How can I help you today?"
+            }
+        ],
+        "stop_reason": "end_turn",
+        "usage": {
+            "input_tokens": 25,
+            "output_tokens": 15
+        }
+    },
+    "schema": {
+        "role": "assistant",
+        "content": [
+            {
+                "text": "Hello! How can I help you today?"
+            }
+        ],
+        "result": "stop"
+    }
+}

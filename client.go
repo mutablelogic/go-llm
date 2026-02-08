@@ -20,12 +20,7 @@ type Client interface {
 	ListModels(context.Context, ...opt.Opt) ([]schema.Model, error)
 
 	// GetModel returns the model with the given name
-	GetModel(context.Context, string) (*schema.Model, error)
-}
-
-// ToolOptioner allows a client to construct provider-specific tool options.
-type ToolOptioner interface {
-	ToolOption(schema.ToolDefinition) (opt.Opt, error)
+	GetModel(context.Context, string, ...opt.Opt) (*schema.Model, error)
 }
 
 // Embedder is an interface for generating text embeddings
@@ -46,13 +41,11 @@ type Downloader interface {
 	DeleteModel(context.Context, schema.Model) error
 }
 
-// Messenger is an interface for sending messages and conducting conversations
-type Messenger interface {
+// Generator is an interface for generating response messages and conducting conversations
+type Generator interface {
 	// WithoutSession sends a single message and returns the response (stateless)
 	WithoutSession(context.Context, schema.Model, *schema.Message, ...opt.Opt) (*schema.Message, error)
 
 	// WithSession sends a message within a session and returns the response (stateful)
 	WithSession(context.Context, schema.Model, *schema.Session, *schema.Message, ...opt.Opt) (*schema.Message, error)
 }
-
-type ToolKit interface{}

@@ -1,0 +1,26 @@
+{
+    "name": "error tool result",
+    "schema": {
+        "role": "user",
+        "content": [
+            {
+                "tool_result": {
+                    "id": "toolu_01B",
+                    "content": "city not found",
+                    "is_error": true
+                }
+            }
+        ]
+    },
+    "anthropic": {
+        "role": "user",
+        "content": [
+            {
+                "type": "tool_result",
+                "tool_use_id": "toolu_01B",
+                "content": "city not found",
+                "is_error": true
+            }
+        ]
+    }
+}

@@ -7,7 +7,6 @@ import (
 
 	// Packages
 	otel "github.com/mutablelogic/go-client/pkg/otel"
-	llm "github.com/mutablelogic/go-llm"
 )
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -26,15 +25,9 @@ type EmbeddingCommand struct {
 // COMMANDS
 
 func (cmd *EmbeddingCommand) Run(ctx *Globals) (err error) {
-	client, err := ctx.Agent()
+	agent, err := ctx.Agent()
 	if err != nil {
 		return err
-	}
-
-	// Check if the client implements the Embedder interface
-	embedder, ok := client.(llm.Embedder)
-	if !ok {
-		return fmt.Errorf("client does not support embeddings")
 	}
 
 	// OTEL tracing
@@ -42,7 +35,7 @@ func (cmd *EmbeddingCommand) Run(ctx *Globals) (err error) {
 	defer func() { endSpan(err) }()
 
 	// Get the model
-	model, err := client.GetModel(parent, cmd.Model)
+	model, err := agent.GetModel(parent, cmd.Model)
 	if err != nil {
 		return fmt.Errorf("failed to get model %q: %w", cmd.Model, err)
 	}
@@ -54,7 +47,7 @@ func (cmd *EmbeddingCommand) Run(ctx *Globals) (err error) {
 	}
 
 	// Generate embedding
-	vector, err := embedder.Embedding(parent, *model, string(data))
+	vector, err := agent.Embedding(parent, *model, string(data))
 	if err != nil {
 		return fmt.Errorf("failed to generate embedding: %w", err)
 	}

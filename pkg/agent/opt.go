@@ -12,7 +12,7 @@ import (
 type Opt func(*agent) error
 
 ///////////////////////////////////////////////////////////////////////////////
-// OPTIONS
+// AGENT OPTIONS
 
 // WithClient adds an LLM client to the agent
 func WithClient(client llm.Client) Opt {

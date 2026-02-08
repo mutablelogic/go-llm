@@ -1,0 +1,45 @@
+{
+    "name": "response with thinking",
+    "google": {
+        "candidates": [
+            {
+                "content": {
+                    "role": "model",
+                    "parts": [
+                        {
+                            "text": "I need to consider several factors here...",
+                            "thought": true,
+                            "thoughtSignature": "dGhvdWdodC1zaWc="
+                        },
+                        {
+                            "text": "The answer is 42."
+                        }
+                    ]
+                },
+                "finishReason": "STOP"
+            }
+        ],
+        "usageMetadata": {
+            "promptTokenCount": 10,
+            "candidatesTokenCount": 30,
+            "thoughtsTokenCount": 20,
+            "totalTokenCount": 60
+        }
+    },
+    "schema": {
+        "role": "assistant",
+        "content": [
+            {
+                "text": "I need to consider several factors here..."
+            },
+            {
+                "text": "The answer is 42."
+            }
+        ],
+        "result": "stop",
+        "meta": {
+            "thought": true,
+            "thought_signature": "dGhvdWdodC1zaWc="
+        }
+    }
+}

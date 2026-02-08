@@ -1,0 +1,46 @@
+{
+    "name": "response with tool use",
+    "anthropic": {
+        "id": "msg_01YLooMZiT7GWKVmCT8kkHGV",
+        "model": "claude-sonnet-4-20250514",
+        "type": "message",
+        "role": "assistant",
+        "content": [
+            {
+                "type": "text",
+                "text": "Let me look that up."
+            },
+            {
+                "type": "tool_use",
+                "id": "toolu_01A",
+                "name": "get_weather",
+                "input": {
+                    "city": "Tokyo"
+                }
+            }
+        ],
+        "stop_reason": "tool_use",
+        "usage": {
+            "input_tokens": 20,
+            "output_tokens": 35
+        }
+    },
+    "schema": {
+        "role": "assistant",
+        "content": [
+            {
+                "text": "Let me look that up."
+            },
+            {
+                "tool_call": {
+                    "id": "toolu_01A",
+                    "name": "get_weather",
+                    "input": {
+                        "city": "Tokyo"
+                    }
+                }
+            }
+        ],
+        "result": "tool_call"
+    }
+}

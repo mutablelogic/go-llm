@@ -14,7 +14,7 @@ import (
 	"sync"
 
 	// Packages
-	"github.com/mutablelogic/go-llm/pkg/mcp/schema"
+	"github.com/mutablelogic/go-llm/pkg/opt"
 	"github.com/mutablelogic/go-llm/pkg/tool"
 )
 
@@ -22,112 +22,48 @@ import (
 // TYPES
 
 type Server struct {
-	Initialised bool
+	name    string
+	version string
 
 	// Private members
-	slock    sync.Mutex         // This is the overall server lock
-	lock     sync.RWMutex       // Handler map lock
-	handlers map[string]Handler // Method handlers
-	toolkit  *tool.Toolkit      // Toolkit for the server
+	mu          sync.RWMutex       // Handler map lock
+	handlers    map[string]Handler // Method handlers
+	toolkit     *tool.Toolkit      // Toolkit for the server
+	initialised bool
 }
 
-type Handler func(context.Context, interface{}, json.RawMessage) (any, error)
+type Handler func(context.Context, any, json.RawMessage) (any, error)
 
 ///////////////////////////////////////////////////////////////////////
 // LIFECYCLE
 
-// Create a new empty server
-func New(name, version string, opt ...Opt) (*Server, error) {
-	self := new(Server)
-	self.handlers = make(map[string]Handler, 10)
-
+// Create a new MCP server with the given name and version
+func New(name, version string, opts ...opt.Opt) (*Server, error) {
 	// Apply options
-	if err := self.apply(opt...); err != nil {
+	o, err := opt.Apply(opts...)
+	if err != nil {
 		return nil, err
 	}
 
-	// Set up default handlers - initialize, ping
-	self.HandlerFunc(schema.MessageTypeInitialize, func(ctx context.Context, _ interface{}, _ json.RawMessage) (any, error) {
-		response := new(schema.ResponseInitialize)
-		response.Version = schema.ProtocolVersion
-		response.ServerInfo.Name = name
-		response.ServerInfo.Version = version
-		response.Capabilities.Prompts = map[string]any{
-			"listChanged": true,
-		}
-		response.Capabilities.Resources = map[string]any{
-			"listChanged": true,
-			"subscribe":   false,
-		}
-		response.Capabilities.Tools = map[string]any{
-			"listChanged": true,
-		}
-		return response, nil
-	})
-	self.HandlerFunc(schema.MessageTypePing, func(ctx context.Context, _ interface{}, _ json.RawMessage) (any, error) {
-		return map[string]any{}, nil
-	})
-	self.HandlerFunc(schema.NotificationTypeInitialize, func(ctx context.Context, _ interface{}, _ json.RawMessage) (any, error) {
-		self.Initialised = true
-		return nil, nil
-	})
+	self := &Server{
+		name:     name,
+		version:  version,
+		handlers: make(map[string]Handler, 10),
+	}
 
-	// Set up default handlers - list resources, tools, prompts
-	self.HandlerFunc(schema.MessageTypeListPrompts, func(ctx context.Context, _ interface{}, _ json.RawMessage) (any, error) {
-		response := new(schema.ResponseListPrompts)
-		response.Prompts = []any{}
-		return response, nil
-	})
-	self.HandlerFunc(schema.MessageTypeListResources, func(ctx context.Context, _ interface{}, _ json.RawMessage) (any, error) {
-		response := new(schema.ResponseListResources)
-		response.Resources = []any{}
-		return response, nil
-	})
-	self.HandlerFunc(schema.MessageTypeListTools, func(ctx context.Context, _ interface{}, _ json.RawMessage) (any, error) {
-		response := new(schema.ResponseListTools)
-		// Convert []tool.Tool to []*schema.Tool
-		for _, t := range self.toolkit.Tools() {
-			// Get the schema for this tool
-			jsonSchema, err := t.Schema()
-			if err != nil {
-				// If schema retrieval fails, use empty object schema
-				jsonSchema = nil
-			}
+	// Extract toolkit from options
+	if v, ok := o.Get(optToolkit).(*tool.Toolkit); ok {
+		self.toolkit = v
+	}
 
-			// Convert to MCP Tool
-			mcpTool := &schema.Tool{
-				Name:        t.Name(),
-				Description: t.Description(),
-				InputSchema: jsonSchema,
-			}
-			response.Tools = append(response.Tools, mcpTool)
-		}
-		return response, nil
-	})
-
-	// Process a tool call request
-	self.HandlerFunc(schema.MessageTypeCallTool, func(ctx context.Context, id interface{}, payload json.RawMessage) (any, error) {
-		var req schema.RequestToolCall
-		if err := json.Unmarshal(payload, &req); err != nil {
-			return nil, err
-		}
-
-		// Run the tool
-		result, err := self.toolkit.Run(ctx, req.Name, payload)
-		if err != nil {
-			return nil, err
-		}
-
-		// Convert result to response format
-		var resp schema.ResponseToolCall
-		var content schema.Content
-		content.Type = "text"
-		content.Text = fmt.Sprint(result)
-		resp.Content = append(resp.Content, &content)
-
-		// Return the results
-		return resp, nil
-	})
+	// Register default handlers
+	self.HandlerFunc(MessageTypeInitialize, self.handleInitialize)
+	self.HandlerFunc(MessageTypePing, self.handlePing)
+	self.HandlerFunc(NotificationTypeInitialize, self.handleInitialized)
+	self.HandlerFunc(MessageTypeListPrompts, self.handleListPrompts)
+	self.HandlerFunc(MessageTypeListResources, self.handleListResources)
+	self.HandlerFunc(MessageTypeListTools, self.handleListTools)
+	self.HandlerFunc(MessageTypeCallTool, self.handleCallTool)
 
 	// Return success
 	return self, nil
@@ -203,10 +139,10 @@ func (server *Server) RunStdio(ctx context.Context, r io.Reader, w io.Writer) er
 	return nil
 }
 
-// Set a new handler for a method
+// HandlerFunc registers (or removes) a handler for a method
 func (server *Server) HandlerFunc(method string, fn Handler) {
-	server.lock.Lock()
-	defer server.lock.Unlock()
+	server.mu.Lock()
+	defer server.mu.Unlock()
 	if fn == nil {
 		delete(server.handlers, method)
 	} else {
@@ -218,50 +154,143 @@ func (server *Server) HandlerFunc(method string, fn Handler) {
 // PRIVATE METHODS
 
 func (server *Server) processRequest(ctx context.Context, payload string) ([]byte, error) {
-	server.slock.Lock()
-	defer server.slock.Unlock()
-
 	// Decode the request
-	var request schema.Request
+	var request Request
 	if err := json.Unmarshal([]byte(payload), &request); err != nil {
 		return nil, err
 	}
 
-	// Encode the response
-	response := schema.Response{Version: "2.0", ID: request.ID}
+	// Look up and call the handler
+	response := Response{Version: RPCVersion, ID: request.ID}
 	if result, err := server.call(ctx, &request); err != nil {
-		var target schema.Error
+		var target Error
 		if errors.As(err, &target) {
-			// If the error is already a schema.Error, use it
 			response.Err = &target
 		} else {
-			// Use a generic error
-			response.Err = schema.NewError(0, err.Error())
+			response.Err = NewError(0, err.Error())
 		}
 	} else if result == nil {
-		// No result is returned
+		// Notification — no response
 		return nil, nil
 	} else {
 		response.Result = result
 	}
 
-	data, _ := json.MarshalIndent(response, "", "  ")
-	fmt.Fprintln(os.Stderr, "Response:", string(data))
-
 	// Return the response
 	return json.Marshal(response)
 }
 
-func (server *Server) call(ctx context.Context, request *schema.Request) (any, error) {
-	server.lock.RLock()
-	defer server.lock.RUnlock()
+func (server *Server) call(ctx context.Context, request *Request) (any, error) {
+	server.mu.RLock()
+	defer server.mu.RUnlock()
 
-	// Get the handler for the method
 	fn, exists := server.handlers[request.Method]
 	if !exists {
-		return nil, schema.NewError(schema.ErrorCodeMethodNotFound, "method not found", request.Method)
+		return nil, NewError(ErrorCodeMethodNotFound, "method not found", request.Method)
 	}
 
-	// Call the handler function and return the result
 	return fn(ctx, request.ID, request.Payload)
+}
+
+///////////////////////////////////////////////////////////////////////
+// HANDLERS
+
+func (server *Server) handleInitialize(_ context.Context, _ any, _ json.RawMessage) (any, error) {
+	response := new(ResponseInitialize)
+	response.Version = ProtocolVersion
+	response.ServerInfo.Name = server.name
+	response.ServerInfo.Version = server.version
+	response.Capabilities.Prompts = map[string]any{
+		"listChanged": true,
+	}
+	response.Capabilities.Resources = map[string]any{
+		"listChanged": true,
+		"subscribe":   false,
+	}
+	response.Capabilities.Tools = map[string]any{
+		"listChanged": true,
+	}
+	return response, nil
+}
+
+func (server *Server) handlePing(_ context.Context, _ any, _ json.RawMessage) (any, error) {
+	return map[string]any{}, nil
+}
+
+func (server *Server) handleInitialized(_ context.Context, _ any, _ json.RawMessage) (any, error) {
+	server.initialised = true
+	return nil, nil
+}
+
+func (server *Server) handleListPrompts(_ context.Context, _ any, _ json.RawMessage) (any, error) {
+	response := new(ResponseListPrompts)
+	response.Prompts = []any{}
+	return response, nil
+}
+
+func (server *Server) handleListResources(_ context.Context, _ any, _ json.RawMessage) (any, error) {
+	response := new(ResponseListResources)
+	response.Resources = []any{}
+	return response, nil
+}
+
+func (server *Server) handleListTools(_ context.Context, _ any, _ json.RawMessage) (any, error) {
+	response := new(ResponseListTools)
+	if server.toolkit == nil {
+		response.Tools = []*Tool{}
+		return response, nil
+	}
+	for _, t := range server.toolkit.Tools() {
+		jsonSchema, err := t.Schema()
+		if err != nil {
+			jsonSchema = nil
+		}
+		response.Tools = append(response.Tools, &Tool{
+			Name:        t.Name(),
+			Description: t.Description(),
+			InputSchema: jsonSchema,
+		})
+	}
+	return response, nil
+}
+
+func (server *Server) handleCallTool(ctx context.Context, _ any, payload json.RawMessage) (any, error) {
+	if server.toolkit == nil {
+		return nil, NewError(ErrorCodeMethodNotFound, "no tools configured")
+	}
+
+	var req RequestToolCall
+	if err := json.Unmarshal(payload, &req); err != nil {
+		return nil, NewError(ErrorCodeInvalidParameters, err.Error())
+	}
+
+	// Marshal arguments to pass to the toolkit
+	var input json.RawMessage
+	if req.Arguments != nil {
+		data, err := json.Marshal(req.Arguments)
+		if err != nil {
+			return nil, NewError(ErrorCodeInvalidParameters, err.Error())
+		}
+		input = data
+	}
+
+	// Run the tool
+	result, err := server.toolkit.Run(ctx, req.Name, input)
+	if err != nil {
+		// Return the error as a tool error response (not a JSON-RPC error)
+		return &ResponseToolCall{
+			Content: []*Content{{Type: "text", Text: err.Error()}},
+			Error:   true,
+		}, nil
+	}
+
+	// Marshal the result to JSON text
+	data, err := json.Marshal(result)
+	if err != nil {
+		return nil, NewError(ErrorInternalError, err.Error())
+	}
+
+	return &ResponseToolCall{
+		Content: []*Content{{Type: "text", Text: string(data)}},
+	}, nil
 }

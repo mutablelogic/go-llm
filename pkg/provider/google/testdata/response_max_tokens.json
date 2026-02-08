@@ -1,0 +1,32 @@
+{
+    "name": "response truncated by max tokens",
+    "google": {
+        "candidates": [
+            {
+                "content": {
+                    "role": "model",
+                    "parts": [
+                        {
+                            "text": "This is a partial response that was cut off because"
+                        }
+                    ]
+                },
+                "finishReason": "MAX_TOKENS"
+            }
+        ],
+        "usageMetadata": {
+            "promptTokenCount": 10,
+            "candidatesTokenCount": 50,
+            "totalTokenCount": 60
+        }
+    },
+    "schema": {
+        "role": "assistant",
+        "content": [
+            {
+                "text": "This is a partial response that was cut off because"
+            }
+        ],
+        "result": "max_tokens"
+    }
+}

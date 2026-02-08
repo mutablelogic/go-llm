@@ -47,9 +47,21 @@ func (a *agent) ListModels(ctx context.Context, opts ...opt.Opt) ([]schema.Model
 }
 
 // GetModel returns the model with the given name from any client
-func (a *agent) GetModel(ctx context.Context, name string) (*schema.Model, error) {
+func (a *agent) GetModel(ctx context.Context, name string, opts ...opt.Opt) (*schema.Model, error) {
+	// Apply options
+	o, err := opt.Apply(opts...)
+	if err != nil {
+		return nil, err
+	}
+
 	// Get model based on name
 	for _, client := range a.clients {
+		// Match the provider option
+		if !matchProvider(o, client.Name()) {
+			continue
+		}
+
+		// Match the model
 		model, err := client.GetModel(ctx, name)
 		if err == nil && model != nil {
 			return model, nil

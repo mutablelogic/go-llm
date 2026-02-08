@@ -1,5 +1,10 @@
 package schema
 
+import (
+	// Packages
+	types "github.com/mutablelogic/go-llm/pkg/types"
+)
+
 ////////////////////////////////////////////////////////////////////////////////
 // TYPES
 
@@ -46,5 +51,5 @@ func (s Session) Tokens() uint {
 // STRINGIFY
 
 func (s Session) String() string {
-	return Stringify(s)
+	return types.Stringify(s)
 }
