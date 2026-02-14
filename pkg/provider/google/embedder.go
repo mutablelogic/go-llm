@@ -97,7 +97,7 @@ func (c *Client) BatchEmbedding(ctx context.Context, model schema.Model, texts [
 
 // applyEmbedOpts sets optional fields on a geminiEmbedRequest from applied options
 func applyEmbedOpts(req *geminiEmbedRequest, o opt.Options) {
-	if v := o.GetString(opt.TaskTypeKey); v != "" {
+	if v := o.GetString(opt.TaskTypeKey); v != "" && v != "DEFAULT" {
 		req.TaskType = v
 	}
 	if v := o.GetString(opt.TitleKey); v != "" {

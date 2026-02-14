@@ -14,9 +14,9 @@ import (
 ///////////////////////////////////////////////////////////////////////////////
 // SESSION → ANTHROPIC MESSAGES
 
-// anthropicMessagesFromSession converts a schema.Session to Anthropic message format.
+// anthropicMessagesFromSession converts a schema.Conversation to Anthropic message format.
 // System messages are skipped (handled separately via the system parameter).
-func anthropicMessagesFromSession(session *schema.Session) ([]anthropicMessage, error) {
+func anthropicMessagesFromSession(session *schema.Conversation) ([]anthropicMessage, error) {
 	if session == nil {
 		return nil, nil
 	}

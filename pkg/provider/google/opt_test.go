@@ -144,7 +144,7 @@ func Test_opt_toolkit_003(t *testing.T) {
 	assert.NoError(err)
 
 	msg := &schema.Message{Role: "user", Content: []schema.ContentBlock{{Text: strPtr("Hi")}}}
-	session := schema.Session{msg}
+	session := schema.Conversation{msg}
 	o, err := opt.Apply(tool.WithToolkit(tk))
 	assert.NoError(err)
 
@@ -174,7 +174,7 @@ func Test_opt_toolkit_005(t *testing.T) {
 	assert.NoError(err)
 
 	msg := &schema.Message{Role: "user", Content: []schema.ContentBlock{{Text: strPtr("Hi")}}}
-	session := schema.Session{msg}
+	session := schema.Conversation{msg}
 	o, err := opt.Apply(tool.WithToolkit(tk))
 	assert.NoError(err)
 

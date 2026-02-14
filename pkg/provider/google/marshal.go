@@ -14,9 +14,9 @@ import (
 ///////////////////////////////////////////////////////////////////////////////
 // SESSION / MESSAGE → GEMINI WIRE FORMAT (OUTBOUND)
 
-// geminiContentsFromSession converts a schema.Session into gemini wire Content
+// geminiContentsFromSession converts a schema.Conversation into gemini wire Content
 // slices. System messages are skipped (handled via SystemInstruction separately).
-func geminiContentsFromSession(session *schema.Session) ([]*geminiContent, error) {
+func geminiContentsFromSession(session *schema.Conversation) ([]*geminiContent, error) {
 	if session == nil {
 		return nil, nil
 	}

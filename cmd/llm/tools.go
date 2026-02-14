@@ -5,7 +5,6 @@ import (
 	"fmt"
 
 	// Packages
-	fstool "github.com/mutablelogic/go-llm/pkg/fstool"
 	homeassistant "github.com/mutablelogic/go-llm/pkg/homeassistant"
 	newsapi "github.com/mutablelogic/go-llm/pkg/newsapi"
 	tool "github.com/mutablelogic/go-llm/pkg/tool"
@@ -58,15 +57,6 @@ func (g *Globals) Toolkit() (*tool.Toolkit, error) {
 			return nil, fmt.Errorf("failed to create WeatherAPI tools: %w", err)
 		}
 		tools = append(tools, weatherTools...)
-	}
-
-	// Add filesystem tools if --fs is set
-	if g.FsDir != "" {
-		fsTools, err := fstool.NewTools(g.FsDir)
-		if err != nil {
-			return nil, fmt.Errorf("failed to create filesystem tools: %w", err)
-		}
-		tools = append(tools, fsTools...)
 	}
 
 	// Add Home Assistant tools if endpoint and token are set

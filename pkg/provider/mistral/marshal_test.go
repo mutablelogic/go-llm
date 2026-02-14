@@ -110,7 +110,7 @@ func Test_marshal_schema_to_mistral_tool_result(t *testing.T) {
 	a := assert.New(t)
 	msg := decodeSchemaMessage(t, schemaJSON)
 	a.NotNil(msg.Content[0].ToolResult)
-	session := &schema.Session{msg}
+	session := &schema.Conversation{msg}
 	messages, err := mistralMessagesFromSession(session)
 	a.NoError(err)
 	a.Len(messages, 1)
@@ -124,7 +124,7 @@ func Test_marshal_schema_to_mistral_tool_error(t *testing.T) {
 	msg := decodeSchemaMessage(t, schemaJSON)
 	a.NotNil(msg.Content[0].ToolResult)
 	a.True(msg.Content[0].ToolResult.IsError)
-	session := &schema.Session{msg}
+	session := &schema.Conversation{msg}
 	messages, err := mistralMessagesFromSession(session)
 	a.NoError(err)
 	a.Len(messages, 1)
@@ -240,7 +240,7 @@ func Test_marshal_session_multi_turn(t *testing.T) {
 	userText := "What is 2+2?"
 	assistText := "4"
 	followUp := "And 3+3?"
-	session := &schema.Session{
+	session := &schema.Conversation{
 		{Role: schema.RoleUser, Content: []schema.ContentBlock{{Text: &userText}}},
 		{Role: schema.RoleAssistant, Content: []schema.ContentBlock{{Text: &assistText}}},
 		{Role: schema.RoleUser, Content: []schema.ContentBlock{{Text: &followUp}}},
@@ -257,7 +257,7 @@ func Test_marshal_session_with_system(t *testing.T) {
 	a := assert.New(t)
 	sys := "You are a helpful assistant."
 	userText := "Hello"
-	session := &schema.Session{
+	session := &schema.Conversation{
 		{Role: schema.RoleSystem, Content: []schema.ContentBlock{{Text: &sys}}},
 		{Role: schema.RoleUser, Content: []schema.ContentBlock{{Text: &userText}}},
 	}
@@ -278,7 +278,7 @@ func Test_marshal_session_splits_tool_results(t *testing.T) {
 	a := assert.New(t)
 	result1 := json.RawMessage(`{"temp":22}`)
 	result2 := json.RawMessage(`{"temp":18}`)
-	session := &schema.Session{
+	session := &schema.Conversation{
 		{
 			Role: schema.RoleUser,
 			Content: []schema.ContentBlock{
@@ -302,7 +302,7 @@ func Test_marshal_session_splits_tool_results(t *testing.T) {
 // messages receive the same replacement IDs.
 func Test_marshal_session_remaps_invalid_tool_ids(t *testing.T) {
 	a := assert.New(t)
-	session := &schema.Session{
+	session := &schema.Conversation{
 		// Assistant message with two tool calls bearing invalid IDs
 		{
 			Role: schema.RoleAssistant,
@@ -351,7 +351,7 @@ func Test_marshal_session_remaps_invalid_tool_ids(t *testing.T) {
 // already in valid Mistral format are passed through unchanged.
 func Test_marshal_session_preserves_valid_tool_ids(t *testing.T) {
 	a := assert.New(t)
-	session := &schema.Session{
+	session := &schema.Conversation{
 		{
 			Role: schema.RoleAssistant,
 			Content: []schema.ContentBlock{

@@ -17,6 +17,7 @@ import (
 	anthropic "github.com/mutablelogic/go-llm/pkg/provider/anthropic"
 	google "github.com/mutablelogic/go-llm/pkg/provider/google"
 	mistral "github.com/mutablelogic/go-llm/pkg/provider/mistral"
+	schema "github.com/mutablelogic/go-llm/pkg/schema"
 	session "github.com/mutablelogic/go-llm/pkg/session"
 	version "github.com/mutablelogic/go-llm/pkg/version"
 	logger "github.com/mutablelogic/go-server/pkg/logger"
@@ -56,7 +57,7 @@ type Globals struct {
 	cancel context.CancelFunc
 	tracer trace.Tracer
 	log    *logger.Logger
-	store  session.Store
+	store  schema.Store
 }
 
 type CLI struct {
@@ -140,7 +141,7 @@ func run(ctx *kong.Context, globals *Globals) int {
 
 // Store returns the session store, creating it lazily.
 // Sessions are stored in the user's cache directory.
-func (g *Globals) Store() (session.Store, error) {
+func (g *Globals) Store() (schema.Store, error) {
 	if g.store == nil {
 		cache, err := os.UserCacheDir()
 		if err != nil {

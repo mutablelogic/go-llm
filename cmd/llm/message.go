@@ -133,7 +133,7 @@ func (cmd *ChatCommand) Run(ctx *Globals) (err error) {
 	}
 
 	// Resolve session: explicit ID > most recent > create new
-	var sess *session.Session
+	var sess *schema.Session
 	switch {
 	case cmd.Session != "":
 		// Resume a specific session by ID
@@ -208,7 +208,7 @@ func (cmd *ChatCommand) Run(ctx *Globals) (err error) {
 	}
 
 	// Get the underlying message session
-	msgSession := sess.MessageSession()
+	msgSession := sess.Conversation()
 
 	// Interactive loop: read from stdin until CTRL+C or EOF
 	scanner := bufio.NewScanner(os.Stdin)

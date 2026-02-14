@@ -49,7 +49,7 @@ var _ llm.Embedder = (*mockGenerator)(nil)
 func (g *mockGenerator) WithoutSession(_ context.Context, _ schema.Model, _ *schema.Message, _ ...opt.Opt) (*schema.Message, error) {
 	return g.response, nil
 }
-func (g *mockGenerator) WithSession(_ context.Context, _ schema.Model, session *schema.Session, message *schema.Message, _ ...opt.Opt) (*schema.Message, error) {
+func (g *mockGenerator) WithSession(_ context.Context, _ schema.Model, session *schema.Conversation, message *schema.Message, _ ...opt.Opt) (*schema.Message, error) {
 	session.Append(*message)
 	return g.response, nil
 }
@@ -78,7 +78,7 @@ var _ llm.Generator = (*mockToolCallGenerator)(nil)
 func (g *mockToolCallGenerator) WithoutSession(_ context.Context, _ schema.Model, _ *schema.Message, _ ...opt.Opt) (*schema.Message, error) {
 	return g.finalResp, nil
 }
-func (g *mockToolCallGenerator) WithSession(_ context.Context, _ schema.Model, session *schema.Session, message *schema.Message, _ ...opt.Opt) (*schema.Message, error) {
+func (g *mockToolCallGenerator) WithSession(_ context.Context, _ schema.Model, session *schema.Conversation, message *schema.Message, _ ...opt.Opt) (*schema.Message, error) {
 	g.callCount++
 	session.Append(*message)
 
@@ -128,7 +128,7 @@ var _ llm.Generator = (*mockInfiniteToolCallGenerator)(nil)
 func (g *mockInfiniteToolCallGenerator) WithoutSession(_ context.Context, _ schema.Model, _ *schema.Message, _ ...opt.Opt) (*schema.Message, error) {
 	return nil, llm.ErrNotImplemented
 }
-func (g *mockInfiniteToolCallGenerator) WithSession(_ context.Context, _ schema.Model, session *schema.Session, message *schema.Message, _ ...opt.Opt) (*schema.Message, error) {
+func (g *mockInfiniteToolCallGenerator) WithSession(_ context.Context, _ schema.Model, session *schema.Conversation, message *schema.Message, _ ...opt.Opt) (*schema.Message, error) {
 	g.callCount++
 	session.Append(*message)
 	blocks := make([]schema.ContentBlock, 0, len(g.toolCalls))
@@ -376,7 +376,7 @@ func Test_generator_004(t *testing.T) {
 	assert := assert.New(t)
 
 	a, _ := NewAgent()
-	session := make(schema.Session, 0)
+	session := make(schema.Conversation, 0)
 	msg, _ := schema.NewMessage(schema.RoleUser, "hello")
 	_, err := a.WithSession(context.TODO(), schema.Model{Name: "m"}, &session, msg)
 	assert.Error(err)
@@ -392,7 +392,7 @@ func Test_generator_005(t *testing.T) {
 		response:   resp,
 	}
 	a, _ := NewAgent(WithClient(g))
-	session := make(schema.Session, 0)
+	session := make(schema.Conversation, 0)
 	msg, _ := schema.NewMessage(schema.RoleUser, "hello")
 	result, err := a.WithSession(context.TODO(), newMockModel("m", "gen"), &session, msg)
 	assert.NoError(err)
@@ -419,7 +419,7 @@ func Test_generator_006(t *testing.T) {
 		finalResp: finalResp,
 	}
 	a, _ := NewAgent(WithClient(g))
-	session := make(schema.Session, 0)
+	session := make(schema.Conversation, 0)
 	msg, _ := schema.NewMessage(schema.RoleUser, "What's the weather?")
 	result, err := a.WithSession(context.TODO(), newMockModel("m", "gen"), &session, msg, WithToolkit(tk))
 	assert.NoError(err)
@@ -442,7 +442,7 @@ func Test_generator_007(t *testing.T) {
 		finalResp:  toolCallResp,
 	}
 	a, _ := NewAgent(WithClient(g))
-	session := make(schema.Session, 0)
+	session := make(schema.Conversation, 0)
 	msg, _ := schema.NewMessage(schema.RoleUser, "hello")
 	result, err := a.WithSession(context.TODO(), newMockModel("m", "gen"), &session, msg)
 	assert.NoError(err)
@@ -471,7 +471,7 @@ func Test_generator_008(t *testing.T) {
 		finalResp: finalResp,
 	}
 	a, _ := NewAgent(WithClient(g))
-	session := make(schema.Session, 0)
+	session := make(schema.Conversation, 0)
 	msg, _ := schema.NewMessage(schema.RoleUser, "do something")
 	result, err := a.WithSession(context.TODO(), newMockModel("m", "gen"), &session, msg, WithToolkit(tk))
 	assert.NoError(err)
@@ -493,7 +493,7 @@ func Test_generator_009(t *testing.T) {
 		},
 	}
 	a, _ := NewAgent(WithClient(g))
-	session := make(schema.Session, 0)
+	session := make(schema.Conversation, 0)
 	msg, _ := schema.NewMessage(schema.RoleUser, "weather please")
 	_, err := a.WithSession(context.TODO(), newMockModel("m", "gen"), &session, msg, WithToolkit(tk))
 	assert.Error(err)
@@ -516,7 +516,7 @@ func Test_generator_010(t *testing.T) {
 		},
 	}
 	a, _ := NewAgent(WithClient(g))
-	session := make(schema.Session, 0)
+	session := make(schema.Conversation, 0)
 	msg, _ := schema.NewMessage(schema.RoleUser, "weather please")
 	_, err := a.WithSession(context.TODO(), newMockModel("m", "gen"), &session, msg, WithToolkit(tk), WithMaxIterations(3))
 	assert.Error(err)

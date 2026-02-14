@@ -49,7 +49,7 @@ func (m *MemoryStore) Create(_ context.Context, name string, model schema.Model)
 		ID:       uuid.New().String(),
 		Name:     name,
 		Model:    model,
-		Messages: make(schema.Session, 0),
+		Messages: make(schema.Conversation, 0),
 		Created:  now,
 		Modified: now,
 	}

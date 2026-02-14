@@ -47,5 +47,5 @@ type Generator interface {
 	WithoutSession(context.Context, schema.Model, *schema.Message, ...opt.Opt) (*schema.Message, error)
 
 	// WithSession sends a message within a session and returns the response (stateful)
-	WithSession(context.Context, schema.Model, *schema.Session, *schema.Message, ...opt.Opt) (*schema.Message, error)
+	WithSession(context.Context, schema.Model, *schema.Conversation, *schema.Message, ...opt.Opt) (*schema.Message, error)
 }

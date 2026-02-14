@@ -22,7 +22,7 @@ func Test_generateRequest_001(t *testing.T) {
 	assert := assert.New(t)
 
 	msg := &schema.Message{Role: "user", Content: []schema.ContentBlock{{Text: strPtr("Hello")}}}
-	session := schema.Session{msg}
+	session := schema.Conversation{msg}
 	o, err := opt.Apply()
 	assert.NoError(err)
 
@@ -47,7 +47,7 @@ func Test_generateRequest_002(t *testing.T) {
 	assert := assert.New(t)
 
 	msg := &schema.Message{Role: "user", Content: []schema.ContentBlock{{Text: strPtr("Hi")}}}
-	session := schema.Session{msg}
+	session := schema.Conversation{msg}
 	o, err := opt.Apply(WithSystemPrompt("You are a helpful assistant."))
 	assert.NoError(err)
 
@@ -61,7 +61,7 @@ func Test_generateRequest_003(t *testing.T) {
 	assert := assert.New(t)
 
 	msg := &schema.Message{Role: "user", Content: []schema.ContentBlock{{Text: strPtr("Hi")}}}
-	session := schema.Session{msg}
+	session := schema.Conversation{msg}
 	o, err := opt.Apply(WithCachedSystemPrompt("Cached prompt"))
 	assert.NoError(err)
 
@@ -83,7 +83,7 @@ func Test_generateRequest_004(t *testing.T) {
 	assert := assert.New(t)
 
 	msg := &schema.Message{Role: "user", Content: []schema.ContentBlock{{Text: strPtr("Hi")}}}
-	session := schema.Session{msg}
+	session := schema.Conversation{msg}
 	o, err := opt.Apply(WithTemperature(0.7))
 	assert.NoError(err)
 
@@ -98,7 +98,7 @@ func Test_generateRequest_005(t *testing.T) {
 	assert := assert.New(t)
 
 	msg := &schema.Message{Role: "user", Content: []schema.ContentBlock{{Text: strPtr("Hi")}}}
-	session := schema.Session{msg}
+	session := schema.Conversation{msg}
 	o, err := opt.Apply(WithMaxTokens(4096))
 	assert.NoError(err)
 
@@ -112,7 +112,7 @@ func Test_generateRequest_006(t *testing.T) {
 	assert := assert.New(t)
 
 	msg := &schema.Message{Role: "user", Content: []schema.ContentBlock{{Text: strPtr("Hi")}}}
-	session := schema.Session{msg}
+	session := schema.Conversation{msg}
 	o, err := opt.Apply(WithTopK(40), WithTopP(0.95))
 	assert.NoError(err)
 
@@ -129,7 +129,7 @@ func Test_generateRequest_007(t *testing.T) {
 	assert := assert.New(t)
 
 	msg := &schema.Message{Role: "user", Content: []schema.ContentBlock{{Text: strPtr("Hi")}}}
-	session := schema.Session{msg}
+	session := schema.Conversation{msg}
 	o, err := opt.Apply(WithStopSequences("STOP", "END"))
 	assert.NoError(err)
 
@@ -143,7 +143,7 @@ func Test_generateRequest_008(t *testing.T) {
 	assert := assert.New(t)
 
 	msg := &schema.Message{Role: "user", Content: []schema.ContentBlock{{Text: strPtr("Hi")}}}
-	session := schema.Session{msg}
+	session := schema.Conversation{msg}
 	o, err := opt.Apply(WithThinking(2048))
 	assert.NoError(err)
 
@@ -159,7 +159,7 @@ func Test_generateRequest_009(t *testing.T) {
 	assert := assert.New(t)
 
 	msg := &schema.Message{Role: "user", Content: []schema.ContentBlock{{Text: strPtr("Hi")}}}
-	session := schema.Session{msg}
+	session := schema.Conversation{msg}
 	o, err := opt.Apply(
 		WithSystemPrompt("Be concise."),
 		WithTemperature(0.5),
@@ -188,7 +188,7 @@ func Test_generateRequest_010(t *testing.T) {
 	assert := assert.New(t)
 
 	msg := &schema.Message{Role: "user", Content: []schema.ContentBlock{{Text: strPtr("Test")}}}
-	session := schema.Session{msg}
+	session := schema.Conversation{msg}
 	o, err := opt.Apply(WithSystemPrompt("System"), WithTemperature(0.5))
 	assert.NoError(err)
 
@@ -215,7 +215,7 @@ func Test_generateRequest_011(t *testing.T) {
 	user1 := &schema.Message{Role: "user", Content: []schema.ContentBlock{{Text: strPtr("Hello")}}}
 	asst1 := &schema.Message{Role: "assistant", Content: []schema.ContentBlock{{Text: strPtr("Hi there!")}}}
 	user2 := &schema.Message{Role: "user", Content: []schema.ContentBlock{{Text: strPtr("How are you?")}}}
-	session := schema.Session{user1, asst1, user2}
+	session := schema.Conversation{user1, asst1, user2}
 	o, err := opt.Apply()
 	assert.NoError(err)
 
@@ -233,7 +233,7 @@ func Test_generateRequest_012(t *testing.T) {
 
 	sys := &schema.Message{Role: "system", Content: []schema.ContentBlock{{Text: strPtr("You are a bot")}}}
 	user := &schema.Message{Role: "user", Content: []schema.ContentBlock{{Text: strPtr("Hello")}}}
-	session := schema.Session{sys, user}
+	session := schema.Conversation{sys, user}
 	o, err := opt.Apply()
 	assert.NoError(err)
 
@@ -249,7 +249,7 @@ func Test_generateRequest_013(t *testing.T) {
 	assert := assert.New(t)
 
 	msg := &schema.Message{Role: "user", Content: []schema.ContentBlock{{Text: strPtr("Hi")}}}
-	session := schema.Session{msg}
+	session := schema.Conversation{msg}
 	o, err := opt.Apply()
 	assert.NoError(err)
 
@@ -263,7 +263,7 @@ func Test_generateRequest_014(t *testing.T) {
 	assert := assert.New(t)
 
 	msg := &schema.Message{Role: "user", Content: []schema.ContentBlock{{Text: strPtr("Hi")}}}
-	session := schema.Session{msg}
+	session := schema.Conversation{msg}
 	o, err := opt.Apply(WithToolChoiceAuto())
 	assert.NoError(err)
 
@@ -278,7 +278,7 @@ func Test_generateRequest_015(t *testing.T) {
 	assert := assert.New(t)
 
 	msg := &schema.Message{Role: "user", Content: []schema.ContentBlock{{Text: strPtr("Hi")}}}
-	session := schema.Session{msg}
+	session := schema.Conversation{msg}
 	o, err := opt.Apply(WithToolChoice("get_weather"))
 	assert.NoError(err)
 
@@ -300,7 +300,7 @@ func Test_generateRequest_016(t *testing.T) {
 	}
 
 	msg := &schema.Message{Role: "user", Content: []schema.ContentBlock{{Text: strPtr("Hi")}}}
-	session := schema.Session{msg}
+	session := schema.Conversation{msg}
 	o, err := opt.Apply(WithJSONOutput(jsonSchema))
 	assert.NoError(err)
 
@@ -327,7 +327,7 @@ func Test_generateRequest_017(t *testing.T) {
 	assert := assert.New(t)
 
 	msg := &schema.Message{Role: "user", Content: []schema.ContentBlock{{Text: strPtr("Hi")}}}
-	session := schema.Session{msg}
+	session := schema.Conversation{msg}
 	o, err := opt.Apply(WithUser("user-123"))
 	assert.NoError(err)
 
@@ -342,7 +342,7 @@ func Test_generateRequest_018(t *testing.T) {
 	assert := assert.New(t)
 
 	msg := &schema.Message{Role: "user", Content: []schema.ContentBlock{{Text: strPtr("Hi")}}}
-	session := schema.Session{msg}
+	session := schema.Conversation{msg}
 	o, err := opt.Apply(WithOutputConfig("low"))
 	assert.NoError(err)
 
@@ -356,7 +356,7 @@ func Test_generateRequest_019(t *testing.T) {
 	assert := assert.New(t)
 
 	msg := &schema.Message{Role: "user", Content: []schema.ContentBlock{{Text: strPtr("Hi")}}}
-	session := schema.Session{msg}
+	session := schema.Conversation{msg}
 	o, err := opt.Apply()
 	assert.NoError(err)
 
@@ -393,7 +393,7 @@ func Test_generateRequest_020(t *testing.T) {
 	assert := assert.New(t)
 
 	msg := &schema.Message{Role: "user", Content: []schema.ContentBlock{{Text: strPtr("Hi")}}}
-	session := schema.Session{msg}
+	session := schema.Conversation{msg}
 	o, err := opt.Apply(WithThinking(10240))
 	assert.NoError(err)
 
@@ -411,7 +411,7 @@ func Test_generateRequest_021(t *testing.T) {
 	assert := assert.New(t)
 
 	msg := &schema.Message{Role: "user", Content: []schema.ContentBlock{{Text: strPtr("Hi")}}}
-	session := schema.Session{msg}
+	session := schema.Conversation{msg}
 	o, err := opt.Apply(WithThinking(4096), WithMaxTokens(16384))
 	assert.NoError(err)
 
@@ -480,7 +480,7 @@ func Test_processResponse_001(t *testing.T) {
 	assert.NoError(err)
 
 	msg := &schema.Message{Role: "user", Content: []schema.ContentBlock{{Text: strPtr("Hi")}}}
-	session := schema.Session{msg}
+	session := schema.Conversation{msg}
 
 	response := &messagesResponse{
 		Id:         "msg_001",
@@ -513,7 +513,7 @@ func Test_processResponse_002(t *testing.T) {
 	assert.NoError(err)
 
 	msg := &schema.Message{Role: "user", Content: []schema.ContentBlock{{Text: strPtr("Hi")}}}
-	session := schema.Session{msg}
+	session := schema.Conversation{msg}
 
 	response := &messagesResponse{
 		Role:       "assistant",
@@ -539,7 +539,7 @@ func Test_processResponse_003(t *testing.T) {
 	assert.NoError(err)
 
 	msg := &schema.Message{Role: "user", Content: []schema.ContentBlock{{Text: strPtr("Hi")}}}
-	session := schema.Session{msg}
+	session := schema.Conversation{msg}
 
 	response := &messagesResponse{
 		Role:       "assistant",
@@ -563,7 +563,7 @@ func Test_processResponse_004(t *testing.T) {
 	assert.NoError(err)
 
 	msg := &schema.Message{Role: "user", Content: []schema.ContentBlock{{Text: strPtr("What's the weather?")}}}
-	session := schema.Session{msg}
+	session := schema.Conversation{msg}
 
 	response := &messagesResponse{
 		Role:       "assistant",
@@ -597,7 +597,7 @@ func Test_processResponse_005(t *testing.T) {
 	assert.NoError(err)
 
 	msg := &schema.Message{Role: "user", Content: []schema.ContentBlock{{Text: strPtr("Explain physics")}}}
-	session := schema.Session{msg}
+	session := schema.Conversation{msg}
 
 	response := &messagesResponse{
 		Role:       "assistant",
@@ -623,7 +623,7 @@ func Test_processResponse_006(t *testing.T) {
 	assert.NoError(err)
 
 	msg := &schema.Message{Role: "user", Content: []schema.ContentBlock{{Text: strPtr("Hi")}}}
-	session := schema.Session{msg}
+	session := schema.Conversation{msg}
 
 	response := &messagesResponse{
 		Role:       "assistant",
@@ -650,7 +650,7 @@ func Test_processResponse_007(t *testing.T) {
 	assert.NoError(err)
 
 	msg := &schema.Message{Role: "user", Content: []schema.ContentBlock{{Text: strPtr("Hi")}}}
-	session := schema.Session{msg}
+	session := schema.Conversation{msg}
 
 	response := &messagesResponse{
 		Role:       "assistant",
@@ -674,7 +674,7 @@ func Test_GenerateRequest_001(t *testing.T) {
 	assert := assert.New(t)
 
 	msg := &schema.Message{Role: "user", Content: []schema.ContentBlock{{Text: strPtr("Hello")}}}
-	session := schema.Session{msg}
+	session := schema.Conversation{msg}
 
 	result, err := GenerateRequest("claude-sonnet-4-20250514", &session, WithTemperature(0.5), WithMaxTokens(100))
 	assert.NoError(err)
@@ -714,7 +714,7 @@ func Test_WithSession_nil_message(t *testing.T) {
 	c, err := New("test-key")
 	assert.NoError(err)
 
-	session := &schema.Session{}
+	session := &schema.Conversation{}
 	_, err = c.WithSession(context.TODO(), schema.Model{Name: "test"}, session, nil)
 	assert.Error(err)
 }
@@ -790,7 +790,7 @@ func Test_generate_003(t *testing.T) {
 	msg1, err := schema.NewMessage("user", "My name is Alice.")
 	assert.NoError(err)
 
-	session := &schema.Session{}
+	session := &schema.Conversation{}
 	resp1, err := c.WithSession(context.TODO(), model, session, msg1)
 	assert.NoError(err)
 	assert.NotNil(resp1)

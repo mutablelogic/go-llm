@@ -107,7 +107,7 @@ func Test_opt_toolchoice_004(t *testing.T) {
 	assert := assert.New(t)
 
 	msg := &schema.Message{Role: "user", Content: []schema.ContentBlock{{Text: strPtr("Hi")}}}
-	session := schema.Session{msg}
+	session := schema.Conversation{msg}
 	o, err := opt.Apply(WithToolChoiceAny())
 	assert.NoError(err)
 
@@ -122,7 +122,7 @@ func Test_opt_toolchoice_005(t *testing.T) {
 	assert := assert.New(t)
 
 	msg := &schema.Message{Role: "user", Content: []schema.ContentBlock{{Text: strPtr("Hi")}}}
-	session := schema.Session{msg}
+	session := schema.Conversation{msg}
 	o, err := opt.Apply(WithToolChoiceNone())
 	assert.NoError(err)
 
@@ -194,7 +194,7 @@ func Test_opt_toolkit_003(t *testing.T) {
 	assert.NoError(err)
 
 	msg := &schema.Message{Role: "user", Content: []schema.ContentBlock{{Text: strPtr("Hi")}}}
-	session := schema.Session{msg}
+	session := schema.Conversation{msg}
 	o, err := opt.Apply(tool.WithToolkit(tk))
 	assert.NoError(err)
 
@@ -218,7 +218,7 @@ func Test_opt_toolkit_004(t *testing.T) {
 	assert.NoError(err)
 
 	msg := &schema.Message{Role: "user", Content: []schema.ContentBlock{{Text: strPtr("Hi")}}}
-	session := schema.Session{msg}
+	session := schema.Conversation{msg}
 	o, err := opt.Apply(tool.WithToolkit(tk), WithToolChoice("get_weather"))
 	assert.NoError(err)
 

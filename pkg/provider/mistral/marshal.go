@@ -15,10 +15,10 @@ import (
 ///////////////////////////////////////////////////////////////////////////////
 // SESSION → MISTRAL MESSAGES
 
-// mistralMessagesFromSession converts a schema.Session to Mistral message format.
+// mistralMessagesFromSession converts a schema.Conversation to Mistral message format.
 // System messages are kept (Mistral handles them natively in the messages array).
 // Tool result messages are split so each carries exactly one tool_call_id.
-func mistralMessagesFromSession(session *schema.Session) ([]mistralMessage, error) {
+func mistralMessagesFromSession(session *schema.Conversation) ([]mistralMessage, error) {
 	if session == nil {
 		return nil, nil
 	}

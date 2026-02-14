@@ -27,12 +27,12 @@ func (c *Client) WithoutSession(ctx context.Context, model schema.Model, message
 	if message == nil {
 		return nil, llm.ErrBadParameter.With("message is required")
 	}
-	session := schema.Session{message}
+	session := schema.Conversation{message}
 	return c.generate(ctx, model.Name, &session, opts...)
 }
 
 // WithSession sends a message within a session and returns the response (stateful)
-func (c *Client) WithSession(ctx context.Context, model schema.Model, session *schema.Session, message *schema.Message, opts ...opt.Opt) (*schema.Message, error) {
+func (c *Client) WithSession(ctx context.Context, model schema.Model, session *schema.Conversation, message *schema.Message, opts ...opt.Opt) (*schema.Message, error) {
 	if session == nil {
 		return nil, llm.ErrBadParameter.With("session is required")
 	}
@@ -47,7 +47,7 @@ func (c *Client) WithSession(ctx context.Context, model schema.Model, session *s
 // PRIVATE METHODS
 
 // generate is the core method that builds a request from options and sends it
-func (c *Client) generate(ctx context.Context, model string, session *schema.Session, opts ...opt.Opt) (*schema.Message, error) {
+func (c *Client) generate(ctx context.Context, model string, session *schema.Conversation, opts ...opt.Opt) (*schema.Message, error) {
 	// Apply options
 	options, err := opt.Apply(opts...)
 	if err != nil {
@@ -87,7 +87,7 @@ func (c *Client) generate(ctx context.Context, model string, session *schema.Ses
 }
 
 // generateStream handles the SSE streaming response from the Anthropic API
-func (c *Client) generateStream(ctx context.Context, payload client.Payload, session *schema.Session, streamFn opt.StreamFn) (*schema.Message, error) {
+func (c *Client) generateStream(ctx context.Context, payload client.Payload, session *schema.Conversation, streamFn opt.StreamFn) (*schema.Message, error) {
 	// Accumulators for building the final response
 	var (
 		role       string
@@ -210,7 +210,7 @@ func (c *Client) generateStream(ctx context.Context, payload client.Payload, ses
 }
 
 // processResponse handles the non-streaming response
-func (c *Client) processResponse(response *messagesResponse, session *schema.Session) (*schema.Message, error) {
+func (c *Client) processResponse(response *messagesResponse, session *schema.Conversation) (*schema.Message, error) {
 	// Refusal — no message to append
 	if response.StopReason == stopReasonRefusal {
 		return nil, llm.ErrRefusal
@@ -240,7 +240,7 @@ func (c *Client) processResponse(response *messagesResponse, session *schema.Ses
 // REQUEST BUILDING
 
 // generateRequestFromOpts builds a messagesRequest from the session and applied options
-func generateRequestFromOpts(model string, session *schema.Session, options opt.Options) (*messagesRequest, error) {
+func generateRequestFromOpts(model string, session *schema.Conversation, options opt.Options) (*messagesRequest, error) {
 	// Convert session to Anthropic message format
 	messages, err := anthropicMessagesFromSession(session)
 	if err != nil {
@@ -362,7 +362,7 @@ func generateRequestFromOpts(model string, session *schema.Session, options opt.
 
 // GenerateRequest builds a generate request from options without sending it.
 // Useful for testing and debugging.
-func GenerateRequest(model string, session *schema.Session, opts ...opt.Opt) (any, error) {
+func GenerateRequest(model string, session *schema.Conversation, opts ...opt.Opt) (any, error) {
 	options, err := opt.Apply(opts...)
 	if err != nil {
 		return nil, err

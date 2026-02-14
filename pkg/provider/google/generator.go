@@ -27,12 +27,12 @@ func (c *Client) WithoutSession(ctx context.Context, model schema.Model, message
 	if message == nil {
 		return nil, llm.ErrBadParameter.With("message is required")
 	}
-	session := schema.Session{message}
+	session := schema.Conversation{message}
 	return c.generate(ctx, model.Name, &session, opts...)
 }
 
 // WithSession sends a message within a session and returns the response (stateful)
-func (c *Client) WithSession(ctx context.Context, model schema.Model, session *schema.Session, message *schema.Message, opts ...opt.Opt) (*schema.Message, error) {
+func (c *Client) WithSession(ctx context.Context, model schema.Model, session *schema.Conversation, message *schema.Message, opts ...opt.Opt) (*schema.Message, error) {
 	if session == nil {
 		return nil, llm.ErrBadParameter.With("session is required")
 	}
@@ -47,7 +47,7 @@ func (c *Client) WithSession(ctx context.Context, model schema.Model, session *s
 // PRIVATE METHODS
 
 // generate is the core method that builds a request from options and sends it
-func (c *Client) generate(ctx context.Context, model string, session *schema.Session, opts ...opt.Opt) (*schema.Message, error) {
+func (c *Client) generate(ctx context.Context, model string, session *schema.Conversation, opts ...opt.Opt) (*schema.Message, error) {
 	// Apply options
 	options, err := opt.Apply(opts...)
 	if err != nil {
@@ -82,7 +82,7 @@ func (c *Client) generate(ctx context.Context, model string, session *schema.Ses
 }
 
 // generateStream handles the SSE streaming response from the Gemini API
-func (c *Client) generateStream(ctx context.Context, model string, payload client.Payload, session *schema.Session, streamFn opt.StreamFn) (*schema.Message, error) {
+func (c *Client) generateStream(ctx context.Context, model string, payload client.Payload, session *schema.Conversation, streamFn opt.StreamFn) (*schema.Message, error) {
 	// Accumulators for building the final response from streamed chunks
 	var (
 		role        string
@@ -167,7 +167,7 @@ func (c *Client) generateStream(ctx context.Context, model string, payload clien
 }
 
 // processResponse converts a gemini response to a schema message and appends to session
-func (c *Client) processResponse(response *geminiGenerateResponse, session *schema.Session) (*schema.Message, error) {
+func (c *Client) processResponse(response *geminiGenerateResponse, session *schema.Conversation) (*schema.Message, error) {
 	message, err := messageFromGeminiResponse(response)
 	if err != nil {
 		return nil, err
@@ -198,7 +198,7 @@ func (c *Client) processResponse(response *geminiGenerateResponse, session *sche
 // REQUEST BUILDING
 
 // generateRequestFromOpts builds a geminiGenerateRequest from the session and applied options
-func generateRequestFromOpts(model string, session *schema.Session, options opt.Options) (*geminiGenerateRequest, error) {
+func generateRequestFromOpts(model string, session *schema.Conversation, options opt.Options) (*geminiGenerateRequest, error) {
 	// Convert session messages to wire contents
 	contents, err := geminiContentsFromSession(session)
 	if err != nil {
@@ -278,7 +278,7 @@ func generateRequestFromOpts(model string, session *schema.Session, options opt.
 
 // GenerateRequest builds a generate request from options without sending it.
 // Useful for testing and debugging.
-func GenerateRequest(model string, session *schema.Session, opts ...opt.Opt) (any, error) {
+func GenerateRequest(model string, session *schema.Conversation, opts ...opt.Opt) (any, error) {
 	options, err := opt.Apply(opts...)
 	if err != nil {
 		return nil, err

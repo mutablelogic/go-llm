@@ -7,11 +7,11 @@ import (
 	jsonschema "github.com/google/jsonschema-go/jsonschema"
 	llm "github.com/mutablelogic/go-llm"
 	opt "github.com/mutablelogic/go-llm/pkg/opt"
-	"github.com/mutablelogic/go-llm/pkg/provider/anthropic"
-	"github.com/mutablelogic/go-llm/pkg/provider/google"
-	"github.com/mutablelogic/go-llm/pkg/provider/mistral"
+	anthropic "github.com/mutablelogic/go-llm/pkg/provider/anthropic"
+	google "github.com/mutablelogic/go-llm/pkg/provider/google"
+	mistral "github.com/mutablelogic/go-llm/pkg/provider/mistral"
 	schema "github.com/mutablelogic/go-llm/pkg/schema"
-	"github.com/mutablelogic/go-llm/pkg/tool"
+	tool "github.com/mutablelogic/go-llm/pkg/tool"
 )
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -49,7 +49,7 @@ func (a *agent) WithoutSession(ctx context.Context, model schema.Model, message 
 }
 
 // WithSession sends a message within a session and returns the response (stateful)
-func (a *agent) WithSession(ctx context.Context, model schema.Model, session *schema.Session, message *schema.Message, opts ...opt.Opt) (*schema.Message, error) {
+func (a *agent) WithSession(ctx context.Context, model schema.Model, session *schema.Conversation, message *schema.Message, opts ...opt.Opt) (*schema.Message, error) {
 	// Get the client for this model
 	client := a.clientForModel(model)
 	if client == nil {

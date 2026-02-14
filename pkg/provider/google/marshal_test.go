@@ -338,7 +338,7 @@ func Test_marshal_session_skips_system(t *testing.T) {
 
 	sys := "You are a helpful assistant."
 	userText := "Hello"
-	session := &schema.Session{
+	session := &schema.Conversation{
 		{Role: schema.RoleSystem, Content: []schema.ContentBlock{{Text: &sys}}},
 		{Role: schema.RoleUser, Content: []schema.ContentBlock{{Text: &userText}}},
 	}
@@ -355,7 +355,7 @@ func Test_marshal_session_multi_turn(t *testing.T) {
 	userText := "What is 2+2?"
 	assistText := "4"
 	followUp := "And 3+3?"
-	session := &schema.Session{
+	session := &schema.Conversation{
 		{Role: schema.RoleUser, Content: []schema.ContentBlock{{Text: &userText}}},
 		{Role: schema.RoleAssistant, Content: []schema.ContentBlock{{Text: &assistText}}},
 		{Role: schema.RoleUser, Content: []schema.ContentBlock{{Text: &followUp}}},

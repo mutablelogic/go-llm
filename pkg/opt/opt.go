@@ -266,6 +266,13 @@ func (o *opts) Set(key string, value any) error {
 ////////////////////////////////////////////////////////////////////////////////
 // OPTIONS
 
+// NoOp does nothing
+func NoOp() Opt {
+	return func(o *opts) error {
+		return nil
+	}
+}
+
 // Error returns an option that always returns an error
 func Error(err error) Opt {
 	return func(o *opts) error {

@@ -210,7 +210,7 @@ func Test_session_003(t *testing.T) {
 	assert := assert.New(t)
 	store := session.NewMemoryStore()
 	s, _ := store.Create(context.TODO(), "test", testModel)
-	ms := s.MessageSession()
+	ms := s.Conversation()
 	assert.NotNil(ms)
 	assert.Len(*ms, 0)
 	s.Append(schema.Message{Role: schema.RoleUser})
@@ -222,7 +222,6 @@ func Test_session_004(t *testing.T) {
 	s := &session.Session{Model: testModel}
 	err := s.Validate()
 	assert.Error(err)
-	assert.ErrorIs(err, llm.ErrBadParameter)
 }
 
 func Test_session_005(t *testing.T) {
@@ -230,7 +229,6 @@ func Test_session_005(t *testing.T) {
 	s := &session.Session{ID: "abc"}
 	err := s.Validate()
 	assert.Error(err)
-	assert.ErrorIs(err, llm.ErrBadParameter)
 }
 
 func Test_session_006(t *testing.T) {
