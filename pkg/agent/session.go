@@ -4,7 +4,6 @@ import (
 	"context"
 
 	// Packages
-	llm "github.com/mutablelogic/go-llm"
 	schema "github.com/mutablelogic/go-llm/pkg/schema"
 )
 
@@ -12,63 +11,37 @@ import (
 // PUBLIC METHODS
 
 // CreateSession creates a new session for the given model.
-func (m *Manager) CreateSession(ctx context.Context, req schema.CreateSessionRequest) (*schema.Session, error) {
-	if m.store == nil {
-		return nil, llm.ErrNotImplemented.With("no session store configured")
-	}
-
-	// Resolve the model
-	model, err := m.getModel(ctx, req.Provider, req.Model)
+func (m *Manager) CreateSession(ctx context.Context, meta schema.SessionMeta) (*schema.Session, error) {
+	// Resolve the model to ensure it exists, and fill in the provider if not set
+	model, err := m.getModel(ctx, meta.Provider, meta.Model)
 	if err != nil {
 		return nil, err
+	} else {
+		meta.Provider = model.OwnedBy
 	}
 
-	return m.store.Create(ctx, req.Name, *model)
+	// Create the session and return it
+	return m.store.Create(ctx, meta)
 }
 
 // GetSession retrieves a session by ID.
 func (m *Manager) GetSession(ctx context.Context, req schema.GetSessionRequest) (*schema.Session, error) {
-	if m.store == nil {
-		return nil, llm.ErrNotImplemented.With("no session store configured")
-	}
 	return m.store.Get(ctx, req.ID)
 }
 
-// DeleteSession deletes a session by ID.
-func (m *Manager) DeleteSession(ctx context.Context, req schema.DeleteSessionRequest) error {
-	if m.store == nil {
-		return llm.ErrNotImplemented.With("no session store configured")
-	}
-	return m.store.Delete(ctx, req.ID)
-}
-
-// ListSessions returns sessions with pagination support.
-func (m *Manager) ListSessions(ctx context.Context, req schema.ListSessionsRequest) (*schema.ListSessionsResponse, error) {
-	if m.store == nil {
-		return nil, llm.ErrNotImplemented.With("no session store configured")
-	}
-
-	// Fetch all sessions from the store
-	all, err := m.store.List(ctx)
+// DeleteSession deletes a session by ID and returns it.
+func (m *Manager) DeleteSession(ctx context.Context, req schema.DeleteSessionRequest) (*schema.Session, error) {
+	s, err := m.store.Get(ctx, req.ID)
 	if err != nil {
 		return nil, err
 	}
-
-	// Paginate
-	total := uint(len(all))
-	start := req.Offset
-	if start > total {
-		start = total
+	if err := m.store.Delete(ctx, req.ID); err != nil {
+		return nil, err
 	}
-	end := start + req.Limit
-	if req.Limit == 0 || end > total {
-		end = total
-	}
+	return s, nil
+}
 
-	return &schema.ListSessionsResponse{
-		Count:  total,
-		Offset: req.Offset,
-		Limit:  req.Limit,
-		Body:   all[start:end],
-	}, nil
+// ListSessions returns sessions with pagination support.
+func (m *Manager) ListSessions(ctx context.Context, req schema.ListSessionRequest) (*schema.ListSessionResponse, error) {
+	return m.store.List(ctx, req)
 }

@@ -13,7 +13,6 @@ import (
 	agent "github.com/mutablelogic/go-llm/pkg/agent"
 	opt "github.com/mutablelogic/go-llm/pkg/opt"
 	schema "github.com/mutablelogic/go-llm/pkg/schema"
-	session "github.com/mutablelogic/go-llm/pkg/session"
 )
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -144,23 +143,19 @@ func (cmd *ChatCommand) Run(ctx *Globals) (err error) {
 		fmt.Fprintf(os.Stderr, "Resumed session %s (%s, %d messages)\n", sess.ID, sess.Name, len(sess.Messages))
 	default:
 		// Try to continue the most recent session
-		recent, err := store.List(ctx.ctx, session.WithLimit(1))
+		recent, err := store.List(ctx.ctx, schema.ListSessionRequest{Limit: 1})
 		if err != nil {
 			return fmt.Errorf("failed to list sessions: %w", err)
 		}
-		if len(recent) > 0 {
-			sess = recent[0]
+		if len(recent.Body) > 0 {
+			sess = recent.Body[0]
 			fmt.Fprintf(os.Stderr, "Resumed session %s (%s, %d messages)\n", sess.ID, sess.Name, len(sess.Messages))
 		} else {
 			// No sessions exist — create a new one (model is required)
 			if cmd.Model == "" {
 				return fmt.Errorf("no existing sessions; --model is required to start a new session")
 			}
-			model, err := a.GetModel(ctx.ctx, cmd.Model)
-			if err != nil {
-				return fmt.Errorf("failed to get model %q: %w", cmd.Model, err)
-			}
-			sess, err = store.Create(ctx.ctx, cmd.Model, *model)
+			sess, err = store.Create(ctx.ctx, schema.SessionMeta{Name: cmd.Model, Model: cmd.Model})
 			if err != nil {
 				return fmt.Errorf("failed to create session: %w", err)
 			}
@@ -169,19 +164,15 @@ func (cmd *ChatCommand) Run(ctx *Globals) (err error) {
 	}
 
 	// If --model is provided and differs from the session model, switch it
-	if cmd.Model != "" && cmd.Model != sess.Model.Name {
-		model, err := a.GetModel(ctx.ctx, cmd.Model)
-		if err != nil {
-			return fmt.Errorf("failed to get model %q: %w", cmd.Model, err)
-		}
-		sess.Model = *model
+	if cmd.Model != "" && cmd.Model != sess.Model {
+		sess.Model = cmd.Model
 		fmt.Fprintf(os.Stderr, "Switched model to %s\n", cmd.Model)
 	}
 
 	// Resolve the model for generation
-	model, err := a.GetModel(ctx.ctx, sess.Model.Name)
+	model, err := a.GetModel(ctx.ctx, sess.Model)
 	if err != nil {
-		return fmt.Errorf("failed to get model %q: %w", sess.Model.Name, err)
+		return fmt.Errorf("failed to get model %q: %w", sess.Model, err)
 	}
 
 	// Build generation options
@@ -214,7 +205,7 @@ func (cmd *ChatCommand) Run(ctx *Globals) (err error) {
 	scanner := bufio.NewScanner(os.Stdin)
 	for {
 		// Print prompt with model name
-		fmt.Printf("\n%s> ", sess.Model.Name)
+		fmt.Printf("\n%s> ", sess.Model)
 
 		// Read input line
 		if !scanner.Scan() {

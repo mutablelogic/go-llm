@@ -3,10 +3,10 @@ package google
 import (
 	"encoding/base64"
 	"encoding/json"
-	"fmt"
 	"net/url"
 
 	// Packages
+	llm "github.com/mutablelogic/go-llm"
 	schema "github.com/mutablelogic/go-llm/pkg/schema"
 	"github.com/mutablelogic/go-llm/pkg/tool"
 )
@@ -87,7 +87,7 @@ func geminiContentFromMessage(msg *schema.Message) (*geminiContent, error) {
 			args := make(map[string]any)
 			if len(block.ToolCall.Input) > 0 {
 				if err := json.Unmarshal(block.ToolCall.Input, &args); err != nil {
-					return nil, fmt.Errorf("unmarshal tool call args: %w", err)
+					return nil, llm.ErrInternalServerError.Withf("unmarshal tool call args: %v", err)
 				}
 			}
 			parts = append(parts, geminiNewFunctionCallPart(block.ToolCall.ID, block.ToolCall.Name, args))

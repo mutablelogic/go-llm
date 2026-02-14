@@ -10,7 +10,7 @@ import (
 	llm "github.com/mutablelogic/go-llm"
 	opt "github.com/mutablelogic/go-llm/pkg/opt"
 	schema "github.com/mutablelogic/go-llm/pkg/schema"
-	types "github.com/mutablelogic/go-llm/pkg/types"
+	types "github.com/mutablelogic/go-server/pkg/types"
 )
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -63,7 +63,7 @@ func (mc *ModelCache) GetModel(ctx context.Context, name string, fn GetModelFunc
 	// Fetch model
 	model, err := fn(ctx, name)
 	if err == nil {
-		mc.model[model.Name] = modelts{ts: time.Now(), model: types.Val(model)}
+		mc.model[model.Name] = modelts{ts: time.Now(), model: types.Value(model)}
 	} else {
 		// If model no longer exists, ensure cache is invalidated
 		if errors.Is(err, llm.ErrNotFound) {

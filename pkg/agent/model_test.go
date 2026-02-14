@@ -41,12 +41,12 @@ func Test_model_001(t *testing.T) {
 	assert := assert.New(t)
 
 	m, err := NewManager(
-		WithClient(&mockClient{name: "p1", models: []schema.Model{
-			{Name: "zulu", OwnedBy: "p1"},
-			{Name: "alpha", OwnedBy: "p1"},
+		WithClient(&mockClient{name: "provider-1", models: []schema.Model{
+			{Name: "zulu", OwnedBy: "provider-1"},
+			{Name: "alpha", OwnedBy: "provider-1"},
 		}}),
-		WithClient(&mockClient{name: "p2", models: []schema.Model{
-			{Name: "bravo", OwnedBy: "p2"},
+		WithClient(&mockClient{name: "provider-2", models: []schema.Model{
+			{Name: "bravo", OwnedBy: "provider-2"},
 		}}),
 	)
 	assert.NoError(err)
@@ -66,16 +66,16 @@ func Test_model_002(t *testing.T) {
 	assert := assert.New(t)
 
 	m, err := NewManager(
-		WithClient(&mockClient{name: "p1", models: []schema.Model{{Name: "m1", OwnedBy: "p1"}}}),
-		WithClient(&mockClient{name: "p2", models: []schema.Model{{Name: "m2", OwnedBy: "p2"}}}),
+		WithClient(&mockClient{name: "provider-1", models: []schema.Model{{Name: "model-1", OwnedBy: "provider-1"}}}),
+		WithClient(&mockClient{name: "provider-2", models: []schema.Model{{Name: "model-2", OwnedBy: "provider-2"}}}),
 	)
 	assert.NoError(err)
 
-	resp, err := m.ListModels(context.TODO(), schema.ListModelsRequest{Provider: "p1"})
+	resp, err := m.ListModels(context.TODO(), schema.ListModelsRequest{Provider: "provider-1"})
 	assert.NoError(err)
 	assert.Equal(uint(1), resp.Count)
 	assert.Len(resp.Body, 1)
-	assert.Equal("m1", resp.Body[0].Name)
+	assert.Equal("model-1", resp.Body[0].Name)
 }
 
 // Test ListModels with no matching provider returns empty
@@ -83,7 +83,7 @@ func Test_model_003(t *testing.T) {
 	assert := assert.New(t)
 
 	m, err := NewManager(
-		WithClient(&mockClient{name: "p1", models: []schema.Model{{Name: "m1"}}}),
+		WithClient(&mockClient{name: "provider-1", models: []schema.Model{{Name: "model-1"}}}),
 	)
 	assert.NoError(err)
 
@@ -98,16 +98,16 @@ func Test_model_004(t *testing.T) {
 	assert := assert.New(t)
 
 	m, err := NewManager(
-		WithClient(&mockClient{name: "p1", models: []schema.Model{{Name: "m1", OwnedBy: "p1"}}}),
-		WithClient(&mockClient{name: "p2", models: []schema.Model{{Name: "m2", OwnedBy: "p2"}}}),
+		WithClient(&mockClient{name: "provider-1", models: []schema.Model{{Name: "model-1", OwnedBy: "provider-1"}}}),
+		WithClient(&mockClient{name: "provider-2", models: []schema.Model{{Name: "model-2", OwnedBy: "provider-2"}}}),
 	)
 	assert.NoError(err)
 
-	model, err := m.GetModel(context.TODO(), schema.GetModelRequest{Name: "m2"})
+	model, err := m.GetModel(context.TODO(), schema.GetModelRequest{Name: "model-2"})
 	assert.NoError(err)
 	assert.NotNil(model)
-	assert.Equal("m2", model.Name)
-	assert.Equal("p2", model.OwnedBy)
+	assert.Equal("model-2", model.Name)
+	assert.Equal("provider-2", model.OwnedBy)
 }
 
 // Test GetModel returns not found for unknown model
@@ -115,7 +115,7 @@ func Test_model_005(t *testing.T) {
 	assert := assert.New(t)
 
 	m, err := NewManager(
-		WithClient(&mockClient{name: "p1", models: []schema.Model{{Name: "m1"}}}),
+		WithClient(&mockClient{name: "provider-1", models: []schema.Model{{Name: "model-1"}}}),
 	)
 	assert.NoError(err)
 
@@ -128,14 +128,14 @@ func Test_model_006(t *testing.T) {
 	assert := assert.New(t)
 
 	m, err := NewManager(
-		WithClient(&mockClient{name: "p1", models: []schema.Model{{Name: "shared", OwnedBy: "p1"}}}),
-		WithClient(&mockClient{name: "p2", models: []schema.Model{{Name: "shared", OwnedBy: "p2"}}}),
+		WithClient(&mockClient{name: "provider-1", models: []schema.Model{{Name: "shared", OwnedBy: "provider-1"}}}),
+		WithClient(&mockClient{name: "provider-2", models: []schema.Model{{Name: "shared", OwnedBy: "provider-2"}}}),
 	)
 	assert.NoError(err)
 
-	model, err := m.GetModel(context.TODO(), schema.GetModelRequest{Name: "shared", Provider: "p2"})
+	model, err := m.GetModel(context.TODO(), schema.GetModelRequest{Name: "shared", Provider: "provider-2"})
 	assert.NoError(err)
-	assert.Equal("p2", model.OwnedBy)
+	assert.Equal("provider-2", model.OwnedBy)
 }
 
 // Test GetModel with provider filter returns not found when provider doesn't have model
@@ -143,11 +143,11 @@ func Test_model_007(t *testing.T) {
 	assert := assert.New(t)
 
 	m, err := NewManager(
-		WithClient(&mockClient{name: "p1", models: []schema.Model{{Name: "m1", OwnedBy: "p1"}}}),
-		WithClient(&mockClient{name: "p2", models: []schema.Model{{Name: "m2", OwnedBy: "p2"}}}),
+		WithClient(&mockClient{name: "provider-1", models: []schema.Model{{Name: "model-1", OwnedBy: "provider-1"}}}),
+		WithClient(&mockClient{name: "provider-2", models: []schema.Model{{Name: "model-2", OwnedBy: "provider-2"}}}),
 	)
 	assert.NoError(err)
 
-	_, err = m.GetModel(context.TODO(), schema.GetModelRequest{Name: "m1", Provider: "p2"})
+	_, err = m.GetModel(context.TODO(), schema.GetModelRequest{Name: "model-1", Provider: "provider-2"})
 	assert.ErrorIs(err, llm.ErrNotFound)
 }

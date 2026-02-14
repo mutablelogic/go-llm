@@ -9,7 +9,6 @@ import (
 	// Packages
 	uuid "github.com/google/uuid"
 	llm "github.com/mutablelogic/go-llm"
-	opt "github.com/mutablelogic/go-llm/pkg/opt"
 	schema "github.com/mutablelogic/go-llm/pkg/schema"
 )
 
@@ -20,10 +19,10 @@ import (
 // It is safe for concurrent use.
 type MemoryStore struct {
 	mu       sync.RWMutex
-	sessions map[string]*Session
+	sessions map[string]*schema.Session
 }
 
-var _ Store = (*MemoryStore)(nil)
+var _ schema.Store = (*MemoryStore)(nil)
 
 ///////////////////////////////////////////////////////////////////////////////
 // LIFECYCLE
@@ -31,7 +30,7 @@ var _ Store = (*MemoryStore)(nil)
 // NewMemoryStore creates a new empty in-memory session store.
 func NewMemoryStore() *MemoryStore {
 	return &MemoryStore{
-		sessions: make(map[string]*Session),
+		sessions: make(map[string]*schema.Session),
 	}
 }
 
@@ -39,19 +38,18 @@ func NewMemoryStore() *MemoryStore {
 // PUBLIC METHODS
 
 // Create creates a new session with a unique ID and returns it.
-func (m *MemoryStore) Create(_ context.Context, name string, model schema.Model) (*Session, error) {
-	if model.Name == "" {
+func (m *MemoryStore) Create(_ context.Context, meta schema.SessionMeta) (*schema.Session, error) {
+	if meta.Model == "" {
 		return nil, llm.ErrBadParameter.With("model name is required")
 	}
 
 	now := time.Now()
-	s := &Session{
-		ID:       uuid.New().String(),
-		Name:     name,
-		Model:    model,
-		Messages: make(schema.Conversation, 0),
-		Created:  now,
-		Modified: now,
+	s := &schema.Session{
+		ID:          uuid.New().String(),
+		SessionMeta: meta,
+		Messages:    make(schema.Conversation, 0),
+		Created:     now,
+		Modified:    now,
 	}
 
 	m.mu.Lock()
@@ -62,7 +60,7 @@ func (m *MemoryStore) Create(_ context.Context, name string, model schema.Model)
 }
 
 // Get retrieves a session by ID.
-func (m *MemoryStore) Get(_ context.Context, id string) (*Session, error) {
+func (m *MemoryStore) Get(_ context.Context, id string) (*schema.Session, error) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 
@@ -73,17 +71,13 @@ func (m *MemoryStore) Get(_ context.Context, id string) (*Session, error) {
 	return s, nil
 }
 
-// List returns all sessions, ordered by last modified time (most recent first).
-func (m *MemoryStore) List(_ context.Context, opts ...opt.Opt) ([]*Session, error) {
-	o, err := opt.Apply(opts...)
-	if err != nil {
-		return nil, err
-	}
-
+// List returns sessions, ordered by last modified time (most recent first),
+// with pagination support.
+func (m *MemoryStore) List(_ context.Context, req schema.ListSessionRequest) (*schema.ListSessionResponse, error) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 
-	result := make([]*Session, 0, len(m.sessions))
+	result := make([]*schema.Session, 0, len(m.sessions))
 	for _, s := range m.sessions {
 		result = append(result, s)
 	}
@@ -92,11 +86,23 @@ func (m *MemoryStore) List(_ context.Context, opts ...opt.Opt) ([]*Session, erro
 		return result[i].Modified.After(result[j].Modified)
 	})
 
-	if limit := o.GetUint(opt.LimitKey); limit > 0 && int(limit) < len(result) {
-		result = result[:limit]
+	// Paginate
+	total := uint(len(result))
+	start := req.Offset
+	if start > total {
+		start = total
+	}
+	end := start + req.Limit
+	if req.Limit == 0 || end > total {
+		end = total
 	}
 
-	return result, nil
+	return &schema.ListSessionResponse{
+		Count:  total,
+		Offset: req.Offset,
+		Limit:  req.Limit,
+		Body:   result[start:end],
+	}, nil
 }
 
 // Delete removes a session by ID.
@@ -113,6 +119,6 @@ func (m *MemoryStore) Delete(_ context.Context, id string) error {
 
 // Write is a no-op for the memory store since sessions are held
 // as pointers in memory and mutations are visible immediately.
-func (m *MemoryStore) Write(_ *Session) error {
+func (m *MemoryStore) Write(_ *schema.Session) error {
 	return nil
 }

@@ -273,7 +273,7 @@ func NoOp() Opt {
 	}
 }
 
-// Error returns an option that always returns an error
+// Error returns an option that always returns the given error.
 func Error(err error) Opt {
 	return func(o *opts) error {
 		return err

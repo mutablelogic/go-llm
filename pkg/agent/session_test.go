@@ -14,26 +14,31 @@ import (
 ///////////////////////////////////////////////////////////////////////////////
 // SESSION TESTS
 
-// Test operations fail without a session store
+// Test default memory store is used when no store is provided
 func Test_session_001(t *testing.T) {
 	assert := assert.New(t)
 
 	m, err := NewManager(
-		WithClient(&mockClient{name: "p1", models: []schema.Model{{Name: "m1", OwnedBy: "p1"}}}),
+		WithClient(&mockClient{name: "provider-1", models: []schema.Model{{Name: "model-1", OwnedBy: "provider-1"}}}),
 	)
 	assert.NoError(err)
 
-	_, err = m.CreateSession(context.TODO(), schema.CreateSessionRequest{Model: "m1"})
-	assert.ErrorIs(err, llm.ErrNotImplemented)
+	// Should work with the default in-memory store
+	s, err := m.CreateSession(context.TODO(), schema.SessionMeta{Model: "model-1"})
+	assert.NoError(err)
+	assert.NotEmpty(s.ID)
 
-	_, err = m.GetSession(context.TODO(), schema.GetSessionRequest{ID: "abc"})
-	assert.ErrorIs(err, llm.ErrNotImplemented)
+	got, err := m.GetSession(context.TODO(), schema.GetSessionRequest{ID: s.ID})
+	assert.NoError(err)
+	assert.Equal(s.ID, got.ID)
 
-	err = m.DeleteSession(context.TODO(), schema.DeleteSessionRequest{ID: "abc"})
-	assert.ErrorIs(err, llm.ErrNotImplemented)
+	deleted, err := m.DeleteSession(context.TODO(), schema.DeleteSessionRequest{ID: s.ID})
+	assert.NoError(err)
+	assert.Equal(s.ID, deleted.ID)
 
-	_, err = m.ListSessions(context.TODO(), schema.ListSessionsRequest{})
-	assert.ErrorIs(err, llm.ErrNotImplemented)
+	resp, err := m.ListSessions(context.TODO(), schema.ListSessionRequest{})
+	assert.NoError(err)
+	assert.Equal(uint(0), resp.Count)
 }
 
 // Test WithSessionStore rejects nil store
@@ -49,21 +54,21 @@ func Test_session_003(t *testing.T) {
 	assert := assert.New(t)
 
 	m, err := NewManager(
-		WithClient(&mockClient{name: "p1", models: []schema.Model{{Name: "m1", OwnedBy: "p1"}}}),
+		WithClient(&mockClient{name: "provider-1", models: []schema.Model{{Name: "model-1", OwnedBy: "provider-1"}}}),
 		WithSessionStore(session.NewMemoryStore()),
 	)
 	assert.NoError(err)
 
-	s, err := m.CreateSession(context.TODO(), schema.CreateSessionRequest{
+	s, err := m.CreateSession(context.TODO(), schema.SessionMeta{
 		Name:  "my chat",
-		Model: "m1",
+		Model: "model-1",
 	})
 	assert.NoError(err)
 	assert.NotNil(s)
 	assert.NotEmpty(s.ID)
 	assert.Equal("my chat", s.Name)
-	assert.Equal("m1", s.Model.Name)
-	assert.Equal("p1", s.Model.OwnedBy)
+	assert.Equal("model-1", s.Model)
+	assert.Equal("provider-1", s.Provider)
 	assert.Empty(s.Messages)
 	assert.False(s.Created.IsZero())
 }
@@ -73,18 +78,18 @@ func Test_session_004(t *testing.T) {
 	assert := assert.New(t)
 
 	m, err := NewManager(
-		WithClient(&mockClient{name: "p1", models: []schema.Model{{Name: "shared", OwnedBy: "p1"}}}),
-		WithClient(&mockClient{name: "p2", models: []schema.Model{{Name: "shared", OwnedBy: "p2"}}}),
+		WithClient(&mockClient{name: "provider-1", models: []schema.Model{{Name: "shared", OwnedBy: "provider-1"}}}),
+		WithClient(&mockClient{name: "provider-2", models: []schema.Model{{Name: "shared", OwnedBy: "provider-2"}}}),
 		WithSessionStore(session.NewMemoryStore()),
 	)
 	assert.NoError(err)
 
-	s, err := m.CreateSession(context.TODO(), schema.CreateSessionRequest{
-		Provider: "p2",
+	s, err := m.CreateSession(context.TODO(), schema.SessionMeta{
+		Provider: "provider-2",
 		Model:    "shared",
 	})
 	assert.NoError(err)
-	assert.Equal("p2", s.Model.OwnedBy)
+	assert.Equal("provider-2", s.Provider)
 }
 
 // Test CreateSession with unknown model returns not found
@@ -92,12 +97,12 @@ func Test_session_005(t *testing.T) {
 	assert := assert.New(t)
 
 	m, err := NewManager(
-		WithClient(&mockClient{name: "p1", models: []schema.Model{{Name: "m1", OwnedBy: "p1"}}}),
+		WithClient(&mockClient{name: "provider-1", models: []schema.Model{{Name: "model-1", OwnedBy: "provider-1"}}}),
 		WithSessionStore(session.NewMemoryStore()),
 	)
 	assert.NoError(err)
 
-	_, err = m.CreateSession(context.TODO(), schema.CreateSessionRequest{Model: "nonexistent"})
+	_, err = m.CreateSession(context.TODO(), schema.SessionMeta{Model: "nonexistent"})
 	assert.ErrorIs(err, llm.ErrNotFound)
 }
 
@@ -106,14 +111,14 @@ func Test_session_006(t *testing.T) {
 	assert := assert.New(t)
 
 	m, err := NewManager(
-		WithClient(&mockClient{name: "p1", models: []schema.Model{{Name: "m1", OwnedBy: "p1"}}}),
+		WithClient(&mockClient{name: "provider-1", models: []schema.Model{{Name: "model-1", OwnedBy: "provider-1"}}}),
 		WithSessionStore(session.NewMemoryStore()),
 	)
 	assert.NoError(err)
 
-	created, err := m.CreateSession(context.TODO(), schema.CreateSessionRequest{
+	created, err := m.CreateSession(context.TODO(), schema.SessionMeta{
 		Name:  "test",
-		Model: "m1",
+		Model: "model-1",
 	})
 	assert.NoError(err)
 
@@ -121,7 +126,7 @@ func Test_session_006(t *testing.T) {
 	assert.NoError(err)
 	assert.Equal(created.ID, got.ID)
 	assert.Equal("test", got.Name)
-	assert.Equal("m1", got.Model.Name)
+	assert.Equal("model-1", got.Model)
 }
 
 // Test GetSession with unknown ID returns not found
@@ -129,7 +134,7 @@ func Test_session_007(t *testing.T) {
 	assert := assert.New(t)
 
 	m, err := NewManager(
-		WithClient(&mockClient{name: "p1", models: []schema.Model{{Name: "m1", OwnedBy: "p1"}}}),
+		WithClient(&mockClient{name: "provider-1", models: []schema.Model{{Name: "model-1", OwnedBy: "provider-1"}}}),
 		WithSessionStore(session.NewMemoryStore()),
 	)
 	assert.NoError(err)
@@ -143,16 +148,17 @@ func Test_session_008(t *testing.T) {
 	assert := assert.New(t)
 
 	m, err := NewManager(
-		WithClient(&mockClient{name: "p1", models: []schema.Model{{Name: "m1", OwnedBy: "p1"}}}),
+		WithClient(&mockClient{name: "provider-1", models: []schema.Model{{Name: "model-1", OwnedBy: "provider-1"}}}),
 		WithSessionStore(session.NewMemoryStore()),
 	)
 	assert.NoError(err)
 
-	created, err := m.CreateSession(context.TODO(), schema.CreateSessionRequest{Model: "m1"})
+	created, err := m.CreateSession(context.TODO(), schema.SessionMeta{Model: "model-1"})
 	assert.NoError(err)
 
-	err = m.DeleteSession(context.TODO(), schema.DeleteSessionRequest{ID: created.ID})
+	deleted, err := m.DeleteSession(context.TODO(), schema.DeleteSessionRequest{ID: created.ID})
 	assert.NoError(err)
+	assert.Equal(created.ID, deleted.ID)
 
 	_, err = m.GetSession(context.TODO(), schema.GetSessionRequest{ID: created.ID})
 	assert.ErrorIs(err, llm.ErrNotFound)
@@ -163,12 +169,12 @@ func Test_session_009(t *testing.T) {
 	assert := assert.New(t)
 
 	m, err := NewManager(
-		WithClient(&mockClient{name: "p1", models: []schema.Model{{Name: "m1", OwnedBy: "p1"}}}),
+		WithClient(&mockClient{name: "provider-1", models: []schema.Model{{Name: "model-1", OwnedBy: "provider-1"}}}),
 		WithSessionStore(session.NewMemoryStore()),
 	)
 	assert.NoError(err)
 
-	err = m.DeleteSession(context.TODO(), schema.DeleteSessionRequest{ID: "nonexistent"})
+	_, err = m.DeleteSession(context.TODO(), schema.DeleteSessionRequest{ID: "nonexistent"})
 	assert.ErrorIs(err, llm.ErrNotFound)
 }
 
@@ -177,19 +183,19 @@ func Test_session_010(t *testing.T) {
 	assert := assert.New(t)
 
 	m, err := NewManager(
-		WithClient(&mockClient{name: "p1", models: []schema.Model{{Name: "m1", OwnedBy: "p1"}}}),
+		WithClient(&mockClient{name: "provider-1", models: []schema.Model{{Name: "model-1", OwnedBy: "provider-1"}}}),
 		WithSessionStore(session.NewMemoryStore()),
 	)
 	assert.NoError(err)
 
-	_, err = m.CreateSession(context.TODO(), schema.CreateSessionRequest{Name: "first", Model: "m1"})
+	_, err = m.CreateSession(context.TODO(), schema.SessionMeta{Name: "first", Model: "model-1"})
 	assert.NoError(err)
-	_, err = m.CreateSession(context.TODO(), schema.CreateSessionRequest{Name: "second", Model: "m1"})
+	_, err = m.CreateSession(context.TODO(), schema.SessionMeta{Name: "second", Model: "model-1"})
 	assert.NoError(err)
-	_, err = m.CreateSession(context.TODO(), schema.CreateSessionRequest{Name: "third", Model: "m1"})
+	_, err = m.CreateSession(context.TODO(), schema.SessionMeta{Name: "third", Model: "model-1"})
 	assert.NoError(err)
 
-	resp, err := m.ListSessions(context.TODO(), schema.ListSessionsRequest{})
+	resp, err := m.ListSessions(context.TODO(), schema.ListSessionRequest{})
 	assert.NoError(err)
 	assert.Equal(uint(3), resp.Count)
 	assert.Len(resp.Body, 3)
@@ -200,17 +206,17 @@ func Test_session_011(t *testing.T) {
 	assert := assert.New(t)
 
 	m, err := NewManager(
-		WithClient(&mockClient{name: "p1", models: []schema.Model{{Name: "m1", OwnedBy: "p1"}}}),
+		WithClient(&mockClient{name: "provider-1", models: []schema.Model{{Name: "model-1", OwnedBy: "provider-1"}}}),
 		WithSessionStore(session.NewMemoryStore()),
 	)
 	assert.NoError(err)
 
 	for i := 0; i < 5; i++ {
-		_, err = m.CreateSession(context.TODO(), schema.CreateSessionRequest{Model: "m1"})
+		_, err = m.CreateSession(context.TODO(), schema.SessionMeta{Model: "model-1"})
 		assert.NoError(err)
 	}
 
-	resp, err := m.ListSessions(context.TODO(), schema.ListSessionsRequest{Limit: 2})
+	resp, err := m.ListSessions(context.TODO(), schema.ListSessionRequest{Limit: 2})
 	assert.NoError(err)
 	assert.Equal(uint(5), resp.Count)
 	assert.Len(resp.Body, 2)
@@ -221,12 +227,12 @@ func Test_session_012(t *testing.T) {
 	assert := assert.New(t)
 
 	m, err := NewManager(
-		WithClient(&mockClient{name: "p1", models: []schema.Model{{Name: "m1", OwnedBy: "p1"}}}),
+		WithClient(&mockClient{name: "provider-1", models: []schema.Model{{Name: "model-1", OwnedBy: "provider-1"}}}),
 		WithSessionStore(session.NewMemoryStore()),
 	)
 	assert.NoError(err)
 
-	resp, err := m.ListSessions(context.TODO(), schema.ListSessionsRequest{})
+	resp, err := m.ListSessions(context.TODO(), schema.ListSessionRequest{})
 	assert.NoError(err)
 	assert.Equal(uint(0), resp.Count)
 	assert.Empty(resp.Body)
@@ -237,17 +243,17 @@ func Test_session_013(t *testing.T) {
 	assert := assert.New(t)
 
 	m, err := NewManager(
-		WithClient(&mockClient{name: "p1", models: []schema.Model{{Name: "m1", OwnedBy: "p1"}}}),
+		WithClient(&mockClient{name: "provider-1", models: []schema.Model{{Name: "model-1", OwnedBy: "provider-1"}}}),
 		WithSessionStore(session.NewMemoryStore()),
 	)
 	assert.NoError(err)
 
 	for i := 0; i < 5; i++ {
-		_, err = m.CreateSession(context.TODO(), schema.CreateSessionRequest{Model: "m1"})
+		_, err = m.CreateSession(context.TODO(), schema.SessionMeta{Model: "model-1"})
 		assert.NoError(err)
 	}
 
-	resp, err := m.ListSessions(context.TODO(), schema.ListSessionsRequest{Offset: 3})
+	resp, err := m.ListSessions(context.TODO(), schema.ListSessionRequest{Offset: 3})
 	assert.NoError(err)
 	assert.Equal(uint(5), resp.Count)
 	assert.Len(resp.Body, 2)
@@ -258,17 +264,17 @@ func Test_session_014(t *testing.T) {
 	assert := assert.New(t)
 
 	m, err := NewManager(
-		WithClient(&mockClient{name: "p1", models: []schema.Model{{Name: "m1", OwnedBy: "p1"}}}),
+		WithClient(&mockClient{name: "provider-1", models: []schema.Model{{Name: "model-1", OwnedBy: "provider-1"}}}),
 		WithSessionStore(session.NewMemoryStore()),
 	)
 	assert.NoError(err)
 
 	for i := 0; i < 5; i++ {
-		_, err = m.CreateSession(context.TODO(), schema.CreateSessionRequest{Model: "m1"})
+		_, err = m.CreateSession(context.TODO(), schema.SessionMeta{Model: "model-1"})
 		assert.NoError(err)
 	}
 
-	resp, err := m.ListSessions(context.TODO(), schema.ListSessionsRequest{Offset: 1, Limit: 2})
+	resp, err := m.ListSessions(context.TODO(), schema.ListSessionRequest{Offset: 1, Limit: 2})
 	assert.NoError(err)
 	assert.Equal(uint(5), resp.Count)
 	assert.Equal(uint(1), resp.Offset)

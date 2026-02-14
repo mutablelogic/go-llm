@@ -2,10 +2,10 @@ package anthropic
 
 import (
 	"encoding/json"
-	"fmt"
 
 	// Packages
 	jsonschema "github.com/google/jsonschema-go/jsonschema"
+	llm "github.com/mutablelogic/go-llm"
 	opt "github.com/mutablelogic/go-llm/pkg/opt"
 )
 
@@ -43,7 +43,7 @@ func WithServiceTier(value string) opt.Opt {
 // WithStopSequences sets custom stop sequences for the request
 func WithStopSequences(values ...string) opt.Opt {
 	if len(values) == 0 {
-		return opt.Error(fmt.Errorf("at least one stop sequence is required"))
+		return opt.Error(llm.ErrBadParameter.With("at least one stop sequence is required"))
 	}
 	return opt.AddString(opt.StopSequencesKey, values...)
 }
@@ -64,7 +64,7 @@ func WithCachedSystemPrompt(value string) opt.Opt {
 // WithTemperature sets the temperature for the request (0.0 to 1.0)
 func WithTemperature(value float64) opt.Opt {
 	if value < 0 || value > 1 {
-		return opt.Error(fmt.Errorf("temperature must be between 0.0 and 1.0"))
+		return opt.Error(llm.ErrBadParameter.With("temperature must be between 0.0 and 1.0"))
 	}
 	return opt.SetFloat64(opt.TemperatureKey, value)
 }
@@ -72,7 +72,7 @@ func WithTemperature(value float64) opt.Opt {
 // WithThinking enables extended thinking with the specified token budget (minimum 1024)
 func WithThinking(budgetTokens uint) opt.Opt {
 	if budgetTokens < 1024 {
-		return opt.Error(fmt.Errorf("thinking budget must be at least 1024 tokens"))
+		return opt.Error(llm.ErrBadParameter.With("thinking budget must be at least 1024 tokens"))
 	}
 	return opt.SetUint(opt.ThinkingBudgetKey, budgetTokens)
 }
@@ -80,7 +80,7 @@ func WithThinking(budgetTokens uint) opt.Opt {
 // WithMaxTokens sets the maximum number of tokens to generate (minimum 1)
 func WithMaxTokens(value uint) opt.Opt {
 	if value < 1 {
-		return opt.Error(fmt.Errorf("max_tokens must be at least 1"))
+		return opt.Error(llm.ErrBadParameter.With("max_tokens must be at least 1"))
 	}
 	return opt.SetUint(opt.MaxTokensKey, value)
 }
@@ -88,7 +88,7 @@ func WithMaxTokens(value uint) opt.Opt {
 // WithTopK sets the top K sampling parameter (minimum 1)
 func WithTopK(value uint) opt.Opt {
 	if value < 1 {
-		return opt.Error(fmt.Errorf("top_k must be at least 1"))
+		return opt.Error(llm.ErrBadParameter.With("top_k must be at least 1"))
 	}
 	return opt.SetUint(opt.TopKKey, value)
 }
@@ -96,7 +96,7 @@ func WithTopK(value uint) opt.Opt {
 // WithTopP sets the nucleus sampling parameter (0.0 to 1.0)
 func WithTopP(value float64) opt.Opt {
 	if value < 0 || value > 1 {
-		return opt.Error(fmt.Errorf("top_p must be between 0.0 and 1.0"))
+		return opt.Error(llm.ErrBadParameter.With("top_p must be between 0.0 and 1.0"))
 	}
 	return opt.SetFloat64(opt.TopPKey, value)
 }
@@ -104,7 +104,7 @@ func WithTopP(value float64) opt.Opt {
 // WithOutputConfig sets the output effort ("low", "medium", or "high")
 func WithOutputConfig(value string) opt.Opt {
 	if value != "low" && value != "medium" && value != "high" {
-		return opt.Error(fmt.Errorf("output_config must be 'low', 'medium', or 'high'"))
+		return opt.Error(llm.ErrBadParameter.With("output_config must be 'low', 'medium', or 'high'"))
 	}
 	return opt.SetString(opt.OutputConfigKey, value)
 }
@@ -112,11 +112,11 @@ func WithOutputConfig(value string) opt.Opt {
 // WithJSONOutput sets the output format to JSON with the given schema
 func WithJSONOutput(schema *jsonschema.Schema) opt.Opt {
 	if schema == nil {
-		return opt.Error(fmt.Errorf("schema is required for JSON output"))
+		return opt.Error(llm.ErrBadParameter.With("schema is required for JSON output"))
 	}
 	data, err := json.Marshal(schema)
 	if err != nil {
-		return opt.Error(fmt.Errorf("failed to serialize JSON schema: %w", err))
+		return opt.Error(llm.ErrBadParameter.Withf("failed to serialize JSON schema: %v", err))
 	}
 	return opt.SetString(opt.JSONSchemaKey, string(data))
 }
@@ -142,11 +142,10 @@ func WithToolChoiceNone() opt.Opt {
 // WithToolChoice forces the model to use a specific tool by name
 func WithToolChoice(name string) opt.Opt {
 	if name == "" {
-		return opt.Error(fmt.Errorf("tool name is required"))
+		return opt.Error(llm.ErrBadParameter.With("tool name is required"))
 	}
 	return opt.WithOpts(
 		opt.SetString(opt.ToolChoiceKey, "tool"),
 		opt.SetString(opt.ToolChoiceNameKey, name),
 	)
 }
-

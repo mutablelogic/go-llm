@@ -6,8 +6,7 @@ import (
 	"time"
 
 	// Packages
-	opt "github.com/mutablelogic/go-llm/pkg/opt"
-	types "github.com/mutablelogic/go-llm/pkg/types"
+	types "github.com/mutablelogic/go-server/pkg/types"
 )
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -18,9 +17,8 @@ type Conversation []*Message
 
 // Session represents a stored conversation with an LLM.
 type Session struct {
-	ID       string       `json:"id"`
-	Name     string       `json:"name"`
-	Model    Model        `json:"model"`
+	ID string `json:"id"`
+	SessionMeta
 	Messages Conversation `json:"messages,omitempty"`
 	Created  time.Time    `json:"created"`
 	Modified time.Time    `json:"modified"`
@@ -28,17 +26,17 @@ type Session struct {
 
 // Store is the interface for session storage backends.
 type Store interface {
-	// Create creates a new session with the given name and model,
+	// Create creates a new session from the given metadata,
 	// returning the session with a unique ID assigned.
-	Create(ctx context.Context, name string, model Model) (*Session, error)
+	Create(ctx context.Context, meta SessionMeta) (*Session, error)
 
 	// Get retrieves an existing session by ID.
 	// Returns an error if the session does not exist.
 	Get(ctx context.Context, id string) (*Session, error)
 
-	// List returns all sessions, ordered by last modified time (most recent first).
-	// Supports WithLimit to cap the number of results.
-	List(ctx context.Context, opts ...opt.Opt) ([]*Session, error)
+	// List returns sessions matching the request, with pagination support.
+	// Returns offset, limit and total count in the response.
+	List(ctx context.Context, req ListSessionRequest) (*ListSessionResponse, error)
 
 	// Delete removes a session by ID.
 	// Returns an error if the session does not exist.
@@ -109,7 +107,7 @@ func (s *Session) Validate() error {
 	if s.ID == "" {
 		return fmt.Errorf("session id is required")
 	}
-	if s.Model.Name == "" {
+	if s.Model == "" {
 		return fmt.Errorf("session model is required")
 	}
 	return nil

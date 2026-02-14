@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"os"
+	"reflect"
 	"testing"
 
 	// Packages
@@ -54,7 +55,9 @@ func Test_tool_002(t *testing.T) {
 
 	result := runTool(t, tools, "ha_get_states", nil)
 	assert.NotNil(result)
-	t.Logf("ha_get_states: got %d entities", len(result.([]any)))
+	v := reflect.ValueOf(result)
+	assert.Equal(reflect.Slice, v.Kind())
+	t.Logf("ha_get_states: got %d entities", v.Len())
 }
 
 // Test ha_get_states filtered by domain

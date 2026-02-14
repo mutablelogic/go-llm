@@ -1,6 +1,7 @@
 package homeassistant
 
 import (
+	"bytes"
 	"context"
 
 	// Packages
@@ -24,10 +25,10 @@ func (c *Client) Template(ctx context.Context, template string) (string, error) 
 		return "", err
 	}
 
-	var response string
-	if err := c.DoWithContext(ctx, payload, &response, client.OptPath("template")); err != nil {
+	var buf bytes.Buffer
+	if err := c.DoWithContext(ctx, payload, &buf, client.OptPath("template")); err != nil {
 		return "", err
 	}
 
-	return response, nil
+	return buf.String(), nil
 }

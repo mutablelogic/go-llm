@@ -5,9 +5,7 @@ import (
 
 	// Packages
 	"github.com/mutablelogic/go-client"
-
-	// Namespace imports
-	. "github.com/djthorpe/go-errors"
+	llm "github.com/mutablelogic/go-llm"
 )
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -41,7 +39,7 @@ func (c *Client) Sources(ctx context.Context, req *SourcesRequest) ([]Source, er
 	if err := c.DoWithContext(ctx, nil, &response, client.OptPath("top-headlines/sources"), client.OptQuery(req.Values())); err != nil {
 		return nil, err
 	} else if response.Status != "ok" {
-		return nil, ErrBadParameter.Withf("%s: %s", response.Code, response.Message)
+		return nil, llm.ErrBadParameter.Withf("%s: %s", response.Code, response.Message)
 	}
 
 	// Return success

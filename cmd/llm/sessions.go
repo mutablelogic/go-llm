@@ -5,6 +5,9 @@ import (
 	"os"
 	"text/tabwriter"
 	"time"
+
+	// Packages
+	schema "github.com/mutablelogic/go-llm/pkg/schema"
 )
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -38,23 +41,23 @@ func (cmd *ListSessionsCommand) Run(ctx *Globals) error {
 		return err
 	}
 
-	sessions, err := store.List(ctx.ctx)
+	resp, err := store.List(ctx.ctx, schema.ListSessionRequest{})
 	if err != nil {
 		return fmt.Errorf("failed to list sessions: %w", err)
 	}
 
-	if len(sessions) == 0 {
+	if len(resp.Body) == 0 {
 		fmt.Println("No sessions found.")
 		return nil
 	}
 
 	w := tabwriter.NewWriter(os.Stdout, 0, 4, 2, ' ', 0)
 	fmt.Fprintln(w, "ID\tNAME\tMODEL\tMESSAGES\tTOKENS\tMODIFIED")
-	for _, s := range sessions {
+	for _, s := range resp.Body {
 		fmt.Fprintf(w, "%s\t%s\t%s\t%d\t%d\t%s\n",
 			s.ID,
 			s.Name,
-			s.Model.Name,
+			s.Model,
 			len(s.Messages),
 			s.Tokens(),
 			humanTime(s.Modified),
@@ -78,7 +81,7 @@ func (cmd *ShowSessionCommand) Run(ctx *Globals) error {
 
 	fmt.Printf("ID:       %s\n", s.ID)
 	fmt.Printf("Name:     %s\n", s.Name)
-	fmt.Printf("Model:    %s\n", s.Model.Name)
+	fmt.Printf("Model:    %s\n", s.Model)
 	fmt.Printf("Messages: %d\n", len(s.Messages))
 	fmt.Printf("Tokens:   %d\n", s.Tokens())
 	fmt.Printf("Created:  %s\n", s.Created.Format(time.RFC3339))
@@ -115,18 +118,18 @@ func (cmd *DeleteSessionsCommand) Run(ctx *Globals) error {
 		return err
 	}
 
-	sessions, err := store.List(ctx.ctx)
+	resp, err := store.List(ctx.ctx, schema.ListSessionRequest{})
 	if err != nil {
 		return fmt.Errorf("failed to list sessions: %w", err)
 	}
 
-	for _, s := range sessions {
+	for _, s := range resp.Body {
 		if err := store.Delete(ctx.ctx, s.ID); err != nil {
 			return fmt.Errorf("session %q: %w", s.ID, err)
 		}
 	}
 
-	fmt.Fprintf(os.Stderr, "Deleted %d session(s)\n", len(sessions))
+	fmt.Fprintf(os.Stderr, "Deleted %d session(s)\n", len(resp.Body))
 	return nil
 }
 

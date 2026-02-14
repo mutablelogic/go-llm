@@ -3,7 +3,6 @@ package google
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"io"
 
 	// Packages
@@ -255,7 +254,7 @@ func generateRequestFromOpts(model string, session *schema.Conversation, options
 	if schemaJSON := options.GetString(opt.JSONSchemaKey); schemaJSON != "" {
 		var s any
 		if err := json.Unmarshal([]byte(schemaJSON), &s); err != nil {
-			return nil, fmt.Errorf("invalid JSON schema: %w", err)
+			return nil, llm.ErrBadParameter.Withf("invalid JSON schema: %v", err)
 		}
 		request.GenerationConfig.ResponseMIMEType = "application/json"
 		request.GenerationConfig.ResponseJSONSchema = s

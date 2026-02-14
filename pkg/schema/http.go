@@ -1,7 +1,12 @@
 package schema
 
 import (
+	"encoding/json"
+	"io"
+	"net/http"
+
 	// Packages
+	gomultipart "github.com/mutablelogic/go-client/pkg/multipart"
 	types "github.com/mutablelogic/go-server/pkg/types"
 )
 
@@ -53,11 +58,48 @@ type EmbeddingResponse struct {
 	Output [][]float64 `json:"output,omitempty"`
 }
 
-// CreateSessionRequest represents a request to create a new session
-type CreateSessionRequest struct {
-	Name     string `json:"name,omitempty" help:"Session name" optional:""`
-	Provider string `json:"provider,omitempty" help:"Provider name" optional:""`
-	Model    string `json:"model" help:"Model name"`
+// CompletionRequest represents a request to generate content.
+// Accepts JSON or multipart/form-data with file attachments.
+type CompletionRequest struct {
+	Text       string           `json:"text" help:"User input text"`
+	Attachment gomultipart.File `json:"attachment,omitempty" help:"File attachment" optional:""`
+}
+
+// Attachments returns attachment content blocks from the request.
+// If Attachment.Body is set (from multipart upload), it reads and
+// auto-detects the MIME type.
+func (r *CompletionRequest) Attachments() ([]ContentBlock, error) {
+	if r.Attachment.Body == nil {
+		return nil, nil
+	}
+	data, err := io.ReadAll(r.Attachment.Body)
+	if err != nil {
+		return nil, err
+	}
+	if len(data) == 0 {
+		return nil, nil
+	}
+	return []ContentBlock{
+		{Attachment: types.Ptr(Attachment{
+			Type: detectContentType(data),
+			Data: data,
+		})},
+	}, nil
+}
+
+// CompletionResponse represents a response from a completion request.
+type CompletionResponse struct {
+	Role    string         `json:"role"`
+	Content []ContentBlock `json:"content"`
+	Result  ResultType     `json:"result,omitempty"`
+}
+
+// SessionMeta represents the metadata for a session.
+type SessionMeta struct {
+	Name         string `json:"name,omitempty" help:"Session name" optional:""`
+	Provider     string `json:"provider,omitempty" help:"Provider name" optional:""`
+	Model        string `json:"model" help:"Model name"`
+	SystemPrompt string `json:"system_prompt,omitempty" help:"System prompt" optional:""`
 }
 
 // GetSessionRequest represents a request to get a session by ID
@@ -70,18 +112,44 @@ type DeleteSessionRequest struct {
 	ID string `json:"id" help:"Session ID"`
 }
 
-// ListSessionsRequest represents a request to list sessions
-type ListSessionsRequest struct {
+// ListSessionRequest represents a request to list sessions
+type ListSessionRequest struct {
 	Limit  uint `json:"limit,omitempty" help:"Maximum number of sessions to return"`
 	Offset uint `json:"offset,omitempty" help:"Offset for pagination"`
 }
 
-// ListSessionsResponse represents a response containing a list of sessions
-type ListSessionsResponse struct {
+// ListSessionResponse represents a response containing a list of sessions
+type ListSessionResponse struct {
 	Count  uint       `json:"count"`
 	Offset uint       `json:"offset"`
 	Limit  uint       `json:"limit"`
 	Body   []*Session `json:"body"`
+}
+
+// ToolMeta represents a tool's metadata
+type ToolMeta struct {
+	Name        string          `json:"name"`
+	Description string          `json:"description,omitempty"`
+	Schema      json.RawMessage `json:"schema,omitempty"`
+}
+
+// GetToolRequest represents a request to get a tool by name
+type GetToolRequest struct {
+	Name string `json:"name" help:"Tool name"`
+}
+
+// ListToolRequest represents a request to list tools
+type ListToolRequest struct {
+	Limit  uint `json:"limit,omitempty" help:"Maximum number of tools to return"`
+	Offset uint `json:"offset,omitempty" help:"Offset for pagination"`
+}
+
+// ListToolResponse represents a response containing a list of tools
+type ListToolResponse struct {
+	Count  uint       `json:"count"`
+	Offset uint       `json:"offset"`
+	Limit  uint       `json:"limit"`
+	Body   []ToolMeta `json:"body"`
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -107,7 +175,7 @@ func (r EmbeddingResponse) String() string {
 	return types.Stringify(r)
 }
 
-func (r CreateSessionRequest) String() string {
+func (r SessionMeta) String() string {
 	return types.Stringify(r)
 }
 
@@ -119,10 +187,41 @@ func (r DeleteSessionRequest) String() string {
 	return types.Stringify(r)
 }
 
-func (r ListSessionsRequest) String() string {
+func (r ListSessionRequest) String() string {
 	return types.Stringify(r)
 }
 
-func (r ListSessionsResponse) String() string {
+func (r ListSessionResponse) String() string {
 	return types.Stringify(r)
+}
+
+func (r ToolMeta) String() string {
+	return types.Stringify(r)
+}
+
+func (r GetToolRequest) String() string {
+	return types.Stringify(r)
+}
+
+func (r ListToolRequest) String() string {
+	return types.Stringify(r)
+}
+
+func (r ListToolResponse) String() string {
+	return types.Stringify(r)
+}
+
+func (r CompletionRequest) String() string {
+	return types.Stringify(r)
+}
+
+func (r CompletionResponse) String() string {
+	return types.Stringify(r)
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// PRIVATE METHODS
+
+func detectContentType(data []byte) string {
+	return http.DetectContentType(data)
 }

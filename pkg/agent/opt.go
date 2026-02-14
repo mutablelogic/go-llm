@@ -3,10 +3,13 @@ package agent
 import (
 	"strings"
 
+	// Packages
 	llm "github.com/mutablelogic/go-llm"
 	opt "github.com/mutablelogic/go-llm/pkg/opt"
 	google "github.com/mutablelogic/go-llm/pkg/provider/google"
 	schema "github.com/mutablelogic/go-llm/pkg/schema"
+	tool "github.com/mutablelogic/go-llm/pkg/tool"
+	types "github.com/mutablelogic/go-server/pkg/types"
 )
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -21,19 +24,38 @@ type Opt func(*Manager) error
 // WithClient adds an LLM client to the agent
 func WithClient(client llm.Client) Opt {
 	return func(m *Manager) error {
-		m.clients[client.Name()] = client
+		if name := client.Name(); !types.IsIdentifier(name) {
+			return llm.ErrBadParameter.Withf("invalid client name %q", name)
+		} else if _, exists := m.clients[name]; exists {
+			return llm.ErrBadParameter.Withf("duplicate client %q", name)
+		} else {
+			m.clients[name] = client
+		}
+
+		// Return success
 		return nil
 	}
 }
 
 // WithSessionStore sets the session storage backend for the manager.
-// If not set, session operations will return ErrNotImplemented.
+// If not set, an in-memory store is used by default.
 func WithSessionStore(store schema.Store) Opt {
 	return func(m *Manager) error {
 		if store == nil {
 			return llm.ErrBadParameter.With("session store is required")
 		}
 		m.store = store
+		return nil
+	}
+}
+
+// WithToolkit sets the toolkit for the manager.
+func WithToolkit(toolkit *tool.Toolkit) Opt {
+	return func(m *Manager) error {
+		if toolkit == nil {
+			return llm.ErrBadParameter.With("toolkit is required")
+		}
+		m.toolkit = toolkit
 		return nil
 	}
 }
