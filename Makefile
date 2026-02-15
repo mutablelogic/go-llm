@@ -25,7 +25,7 @@ BUILD_LD_FLAGS += -X $(BUILD_MODULE)/pkg/version.GitBranch=$(shell git name-rev 
 BUILD_FLAGS = -ldflags "-s -w ${BUILD_LD_FLAGS}" 
 
 # Docker
-DOCKER_REPO ?= ghcr.io/mutablelogic/go-llm
+DOCKER_REPO ?= ghcr.io/mutablelogic/llm
 DOCKER_SOURCE ?= ${BUILD_MODULE}
 DOCKER_TAG = ${DOCKER_REPO}-${OS}-${ARCH}:${VERSION}
 
