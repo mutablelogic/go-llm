@@ -31,7 +31,7 @@ type Globals struct {
 	// HTTP server options
 	HTTP struct {
 		Prefix  string        `name:"prefix" help:"HTTP path prefix" default:"/api"`
-		Addr    string        `name:"addr" env:"GOLLM_ADDR" help:"HTTP Listen address" default:"localhost:8085"`
+		Addr    string        `name:"addr" env:"LLM_ADDR" help:"HTTP Listen address" default:"localhost:8085"`
 		Timeout time.Duration `name:"timeout" help:"HTTP server read/write timeout" default:"15m"`
 		Origin  string        `name:"origin" help:"Cross-origin protection (CSRF) origin. Empty string for same-origin only, '*' to allow all cross-origin requests, or a specific origin in the form 'scheme://host[:port]'." default:""`
 	} `embed:"" prefix:"http."`

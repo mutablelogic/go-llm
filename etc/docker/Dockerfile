@@ -20,7 +20,7 @@ COPY --from=builder /usr/src/app/build/llm /usr/local/bin/llm
 LABEL org.opencontainers.image.source=https://${SOURCE}
 
 # Entrypoint
-ENV GOLLM_ADDR=:8085
+ENV LLM_ADDR=:8085
 ENV XDG_CACHE_HOME=/data
 VOLUME /data
 EXPOSE 8085
