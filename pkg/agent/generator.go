@@ -115,6 +115,60 @@ func (m *Manager) Chat(ctx context.Context, request schema.ChatRequest, fn opt.S
 		return nil, err
 	}
 
+	// Tool-calling loop: if the model requests tool calls, execute them
+	// and feed results back until we get a final response or hit the limit.
+	// Snapshot the conversation length so we can roll back if we exhaust iterations.
+	maxIter := request.MaxIterations
+	if maxIter == 0 {
+		maxIter = schema.DefaultMaxIterations
+	}
+	msgSnapshot := len(session.Messages)
+	for i := uint(0); i < maxIter && result.Result == schema.ResultToolCall; i++ {
+		toolCalls := result.ToolCalls()
+		if len(toolCalls) == 0 {
+			break
+		}
+
+		// Execute each tool call and collect result blocks
+		var toolResults []schema.ContentBlock
+		for _, call := range toolCalls {
+			output, err := m.toolkit.Run(ctx, call.Name, call.Input)
+			if err != nil {
+				toolResults = append(toolResults, schema.NewToolError(call.ID, call.Name, err))
+			} else {
+				toolResults = append(toolResults, schema.NewToolResult(call.ID, call.Name, output))
+			}
+		}
+
+		// Build a tool-result message and send it back
+		toolMessage := &schema.Message{
+			Role:    schema.RoleUser,
+			Content: toolResults,
+		}
+		var u *schema.Usage
+		result, u, err = generator.WithSession(ctx, *model, session.Conversation(), toolMessage, opts...)
+		if err != nil {
+			return nil, err
+		}
+
+		// Accumulate usage
+		if u != nil {
+			if usage == nil {
+				usage = u
+			} else {
+				usage.InputTokens += u.InputTokens
+				usage.OutputTokens += u.OutputTokens
+			}
+		}
+	}
+
+	// If we exhausted the iteration limit while the model still wants
+	// tool calls, roll back the conversation and report the condition.
+	if result.Result == schema.ResultToolCall {
+		session.Messages = session.Messages[:msgSnapshot]
+		result.Result = schema.ResultMaxIterations
+	}
+
 	// Calculate per-turn overhead (tool schemas, system prompt, etc.)
 	// as the difference between actual input tokens and the sum of
 	// estimated/recorded message content tokens.

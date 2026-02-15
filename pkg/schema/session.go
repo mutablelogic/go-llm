@@ -10,6 +10,13 @@ import (
 )
 
 ////////////////////////////////////////////////////////////////////////////////
+// CONSTANTS
+
+// DefaultMaxIterations is the default maximum number of tool-calling iterations
+// per chat turn.
+const DefaultMaxIterations = 10
+
+////////////////////////////////////////////////////////////////////////////////
 // TYPES
 
 // Conversation is a sequence of messages exchanged with an LLM

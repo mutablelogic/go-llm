@@ -104,10 +104,11 @@ type AskResponse struct {
 
 // ChatRequest represents a stateful chat request within a session.
 type ChatRequest struct {
-	Session     string       `json:"session" help:"Session ID"`
-	Text        string       `json:"text" arg:"" help:"User input text"`
-	Attachments []Attachment `json:"attachments,omitempty" help:"File attachments" optional:""`
-	Tools       []string     `json:"tools,omitempty" help:"Tool names to include (empty means all)" optional:""`
+	Session       string       `json:"session" help:"Session ID"`
+	Text          string       `json:"text" arg:"" help:"User input text"`
+	Attachments   []Attachment `json:"attachments,omitempty" help:"File attachments" optional:""`
+	Tools         []string     `json:"tools,omitempty" help:"Tool names to include (empty means all)" optional:""`
+	MaxIterations uint         `json:"max_iterations,omitempty" help:"Maximum tool-calling iterations (0 uses default)" optional:""`
 }
 
 // MultipartChatRequest is the HTTP-layer request type supporting both JSON
