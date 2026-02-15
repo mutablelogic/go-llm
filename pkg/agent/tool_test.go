@@ -8,7 +8,6 @@ import (
 	// Packages
 	jsonschema "github.com/google/jsonschema-go/jsonschema"
 	llm "github.com/mutablelogic/go-llm"
-	schema "github.com/mutablelogic/go-llm/pkg/schema"
 	tool "github.com/mutablelogic/go-llm/pkg/tool"
 	assert "github.com/stretchr/testify/assert"
 )
@@ -40,7 +39,7 @@ func Test_tool_001(t *testing.T) {
 	m, err := NewManager(WithToolkit(tk))
 	assert.NoError(err)
 
-	meta, err := m.GetTool(context.TODO(), schema.GetToolRequest{Name: "my_tool"})
+	meta, err := m.GetTool(context.TODO(), "my_tool")
 	assert.NoError(err)
 	assert.Equal("my_tool", meta.Name)
 	assert.Equal("A test tool", meta.Description)
@@ -53,7 +52,7 @@ func Test_tool_002(t *testing.T) {
 	m, err := NewManager()
 	assert.NoError(err)
 
-	_, err = m.GetTool(context.TODO(), schema.GetToolRequest{Name: "nonexistent"})
+	_, err = m.GetTool(context.TODO(), "nonexistent")
 	assert.ErrorIs(err, llm.ErrNotFound)
 }
 
@@ -71,7 +70,7 @@ func Test_tool_003(t *testing.T) {
 	m, err := NewManager(WithToolkit(tk))
 	assert.NoError(err)
 
-	meta, err := m.GetTool(context.TODO(), schema.GetToolRequest{Name: "schema_tool"})
+	meta, err := m.GetTool(context.TODO(), "schema_tool")
 	assert.NoError(err)
 	assert.NotNil(meta.Schema)
 	assert.Contains(string(meta.Schema), `"object"`)
@@ -87,7 +86,7 @@ func Test_tool_004(t *testing.T) {
 	m, err := NewManager(WithToolkit(tk))
 	assert.NoError(err)
 
-	meta, err := m.GetTool(context.TODO(), schema.GetToolRequest{Name: "no_schema"})
+	meta, err := m.GetTool(context.TODO(), "no_schema")
 	assert.NoError(err)
 	assert.Nil(meta.Schema)
 }

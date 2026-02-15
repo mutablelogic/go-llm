@@ -17,6 +17,7 @@ import (
 
 type GenerateCommands struct {
 	Ask       AskCommand       `cmd:"" name:"ask" help:"Send a stateless text request to a model." group:"GENERATE"`
+	Chat      ChatCommand      `cmd:"" name:"chat" help:"Send a message within a session (creates one if needed)." group:"GENERATE"`
 	Embedding EmbeddingCommand `cmd:"" name:"embedding" help:"Generate embedding vectors from text." group:"GENERATE"`
 }
 

@@ -12,6 +12,7 @@ import (
 	google "github.com/mutablelogic/go-llm/pkg/provider/google"
 	mistral "github.com/mutablelogic/go-llm/pkg/provider/mistral"
 	schema "github.com/mutablelogic/go-llm/pkg/schema"
+	tool "github.com/mutablelogic/go-llm/pkg/tool"
 )
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -84,6 +85,15 @@ func (m *Manager) Chat(ctx context.Context, request schema.ChatRequest, fn opt.S
 		opts = append(opts, opt.WithStream(fn))
 	}
 
+	// Include tools in the request
+	toolkitOpt, err := m.withTools(request.Tools...)
+	if err != nil {
+		return nil, err
+	}
+	if toolkitOpt != nil {
+		opts = append(opts, toolkitOpt)
+	}
+
 	// Build message options from attachments
 	var msgOpts []opt.Opt
 	for i := range request.Attachments {
@@ -105,9 +115,16 @@ func (m *Manager) Chat(ctx context.Context, request schema.ChatRequest, fn opt.S
 		return nil, err
 	}
 
-	// Append the user message and the response to the session
-	session.Append(*message)
-	session.Append(*result)
+	// Calculate per-turn overhead (tool schemas, system prompt, etc.)
+	// as the difference between actual input tokens and the sum of
+	// estimated/recorded message content tokens.
+	if usage != nil && usage.InputTokens > 0 {
+		// Input tokens cover all messages except the latest response
+		inputMsgTokens := session.Messages.Tokens() - result.Tokens
+		if usage.InputTokens > inputMsgTokens {
+			session.Overhead = usage.InputTokens - inputMsgTokens
+		}
+	}
 
 	// Persist the updated session
 	if err := m.store.Write(session); err != nil {
@@ -233,4 +250,33 @@ func withJSONOutput(data json.RawMessage) opt.Opt {
 			return opt.Error(llm.ErrNotImplemented.Withf("%s: WithJSONOutput not supported", provider))
 		}
 	})
+}
+
+// withTools returns an opt that sets a toolkit for the request. If tool names
+// are provided, only those tools are included; otherwise all tools from the
+// manager's toolkit are included. Returns nil if the toolkit is empty.
+func (m *Manager) withTools(tools ...string) (opt.Opt, error) {
+	if len(tools) == 0 {
+		// No filter — include all tools
+		if len(m.toolkit.Tools()) == 0 {
+			return nil, nil
+		}
+		return tool.WithToolkit(m.toolkit), nil
+	}
+
+	// Build a filtered toolkit with only the requested tools
+	filtered := make([]tool.Tool, 0, len(tools))
+	for _, name := range tools {
+		t := m.toolkit.Lookup(name)
+		if t == nil {
+			return nil, llm.ErrNotFound.Withf("tool %q", name)
+		}
+		filtered = append(filtered, t)
+	}
+
+	tk, err := tool.NewToolkit(filtered...)
+	if err != nil {
+		return nil, err
+	}
+	return tool.WithToolkit(tk), nil
 }

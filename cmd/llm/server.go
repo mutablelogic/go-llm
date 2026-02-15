@@ -229,7 +229,7 @@ func (cmd *RunServer) SessionStore(execName string) (schema.Store, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to determine cache directory: %w", err)
 	}
-	store, err := session.NewFileStore(filepath.Join(cache, execName))
+	store, err := session.NewFileStore(filepath.Join(cache, execName, "sessions"))
 	if err != nil {
 		return nil, fmt.Errorf("failed to create session store: %w", err)
 	}

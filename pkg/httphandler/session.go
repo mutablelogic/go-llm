@@ -62,14 +62,14 @@ func SessionGetHandler(manager *agent.Manager) (string, http.HandlerFunc, *opena
 			id := r.PathValue("session")
 			switch r.Method {
 			case http.MethodGet:
-				resp, err := manager.GetSession(r.Context(), schema.GetSessionRequest{ID: id})
+				resp, err := manager.GetSession(r.Context(), id)
 				if err != nil {
 					_ = httpresponse.Error(w, httpErr(err))
 					return
 				}
 				_ = httpresponse.JSON(w, http.StatusOK, httprequest.Indent(r), resp)
 			case http.MethodDelete:
-				if _, err := manager.DeleteSession(r.Context(), schema.DeleteSessionRequest{ID: id}); err != nil {
+				if _, err := manager.DeleteSession(r.Context(), id); err != nil {
 					_ = httpresponse.Error(w, httpErr(err))
 					return
 				}

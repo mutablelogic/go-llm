@@ -107,6 +107,14 @@ type ChatRequest struct {
 	Session     string       `json:"session" help:"Session ID"`
 	Text        string       `json:"text" arg:"" help:"User input text"`
 	Attachments []Attachment `json:"attachments,omitempty" help:"File attachments" optional:""`
+	Tools       []string     `json:"tools,omitempty" help:"Tool names to include (empty means all)" optional:""`
+}
+
+// MultipartChatRequest is the HTTP-layer request type supporting both JSON
+// (with base64 attachments) and multipart/form-data file uploads for chat.
+type MultipartChatRequest struct {
+	ChatRequest
+	File gomultipart.File `json:"file,omitempty" help:"File attachment (multipart upload)" optional:""`
 }
 
 // ChatResponse represents the response from a chat request.
@@ -114,16 +122,6 @@ type ChatResponse struct {
 	CompletionResponse
 	Session string `json:"session"`
 	Usage   *Usage `json:"usage,omitempty"`
-}
-
-// GetSessionRequest represents a request to get a session by ID
-type GetSessionRequest struct {
-	ID string `json:"id" help:"Session ID"`
-}
-
-// DeleteSessionRequest represents a request to delete a session by ID
-type DeleteSessionRequest struct {
-	ID string `json:"id" help:"Session ID"`
 }
 
 // ListSessionRequest represents a request to list sessions
@@ -138,11 +136,6 @@ type ListSessionResponse struct {
 	Offset uint       `json:"offset,omitzero"`
 	Limit  *uint      `json:"limit,omitzero"`
 	Body   []*Session `json:"body,omitzero"`
-}
-
-// GetToolRequest represents a request to get a tool by name
-type GetToolRequest struct {
-	Name string `json:"name" help:"Tool name"`
 }
 
 // ListToolRequest represents a request to list tools
@@ -197,14 +190,6 @@ func (r SessionMeta) String() string {
 	return types.Stringify(r)
 }
 
-func (r GetSessionRequest) String() string {
-	return types.Stringify(r)
-}
-
-func (r DeleteSessionRequest) String() string {
-	return types.Stringify(r)
-}
-
 func (r ListSessionRequest) String() string {
 	return types.Stringify(r)
 }
@@ -214,10 +199,6 @@ func (r ListSessionResponse) String() string {
 }
 
 func (r ToolMeta) String() string {
-	return types.Stringify(r)
-}
-
-func (r GetToolRequest) String() string {
 	return types.Stringify(r)
 }
 
@@ -256,10 +237,21 @@ func (r ChatResponse) String() string {
 // as an Attachment with auto-detected MIME type. Returns nil if no file
 // was uploaded.
 func (r *MultipartAskRequest) FileAttachment() (*Attachment, error) {
-	if r.File.Body == nil {
+	return fileAttachment(r.File)
+}
+
+// FileAttachment reads the multipart file (if present) and returns it
+// as an Attachment with auto-detected MIME type. Returns nil if no file
+// was uploaded.
+func (r *MultipartChatRequest) FileAttachment() (*Attachment, error) {
+	return fileAttachment(r.File)
+}
+
+func fileAttachment(f gomultipart.File) (*Attachment, error) {
+	if f.Body == nil {
 		return nil, nil
 	}
-	data, err := io.ReadAll(r.File.Body)
+	data, err := io.ReadAll(f.Body)
 	if err != nil {
 		return nil, err
 	}
@@ -270,8 +262,8 @@ func (r *MultipartAskRequest) FileAttachment() (*Attachment, error) {
 		Type: http.DetectContentType(data),
 		Data: data,
 	}
-	if r.File.Path != "" {
-		a.URL = types.Ptr(url.URL{Scheme: "file", Path: r.File.Path})
+	if f.Path != "" {
+		a.URL = types.Ptr(url.URL{Scheme: "file", Path: f.Path})
 	}
 	return a, nil
 }

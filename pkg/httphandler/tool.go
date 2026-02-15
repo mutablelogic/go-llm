@@ -46,10 +46,7 @@ func ToolGetHandler(manager *agent.Manager) (string, http.HandlerFunc, *openapi.
 	return "/tool/{name}", func(w http.ResponseWriter, r *http.Request) {
 			switch r.Method {
 			case http.MethodGet:
-				req := schema.GetToolRequest{
-					Name: r.PathValue("name"),
-				}
-				resp, err := manager.GetTool(r.Context(), req)
+				resp, err := manager.GetTool(r.Context(), r.PathValue("name"))
 				if err != nil {
 					_ = httpresponse.Error(w, httpErr(err))
 					return

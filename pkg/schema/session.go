@@ -20,6 +20,7 @@ type Session struct {
 	ID string `json:"id"`
 	SessionMeta
 	Messages Conversation `json:"messages,omitempty"`
+	Overhead uint         `json:"overhead,omitempty"` // Constant token cost per turn (tools, system prompt)
 	Created  time.Time    `json:"created"`
 	Modified time.Time    `json:"modified"`
 }
@@ -54,19 +55,20 @@ func (s *Conversation) Append(message Message) {
 	*s = append(*s, &message)
 }
 
-// AppendWithOutput adds a message to the conversation, re-calculating token usage
-// for the conversation
+// AppendWithOutput adds a message to the conversation, attributing token
+// counts to individual messages. The last message in the conversation
+// (typically the just-appended user message) receives an estimated token
+// count based on its content rather than absorbing overhead such as tool
+// schemas and system prompts. The response message receives the actual
+// output token count from the provider.
 func (s *Conversation) AppendWithOuput(message Message, input, output uint) {
-	// Calculate the input tokens and adjust the last message to account for the tokens
-	tokens := uint(0)
-	for _, msg := range *s {
-		tokens += msg.Tokens
-	}
-	if input > tokens {
-		(*s)[len(*s)-1].Tokens = input - tokens
+	// Estimate tokens for the last message (the user message just appended
+	// by WithSession) so it reflects only its content cost.
+	if n := len(*s); n > 0 && (*s)[n-1].Tokens == 0 {
+		(*s)[n-1].Tokens = (*s)[n-1].EstimateTokens()
 	}
 
-	// Set the output tokens
+	// Set the output tokens on the response message
 	message.Tokens = output
 
 	// Append the message

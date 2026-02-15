@@ -177,6 +177,55 @@ func (m Message) Text() string {
 	return strings.Join(result, "\n")
 }
 
+// EstimateTokens returns a rough token count for the message content.
+// It estimates ~4 characters per token for text, plus a fixed cost per
+// non-text block (attachments, tool calls/results). This is useful for
+// attributing per-message token costs without a provider-specific tokeniser.
+func (m Message) EstimateTokens() uint {
+	tokens := uint(0)
+	for _, block := range m.Content {
+		switch {
+		case block.Text != nil:
+			// ~4 characters per token, minimum 1
+			n := uint(len(*block.Text)+3) / 4
+			if n == 0 {
+				n = 1
+			}
+			tokens += n
+		case block.Thinking != nil:
+			n := uint(len(*block.Thinking)+3) / 4
+			if n == 0 {
+				n = 1
+			}
+			tokens += n
+		case block.ToolCall != nil:
+			// Tool name + JSON arguments
+			n := uint(len(block.ToolCall.Name)+len(block.ToolCall.Input)+3) / 4
+			if n == 0 {
+				n = 1
+			}
+			tokens += n
+		case block.ToolResult != nil:
+			n := uint(len(block.ToolResult.Content)+3) / 4
+			if n == 0 {
+				n = 1
+			}
+			tokens += n
+		case block.Attachment != nil:
+			// Rough estimate for binary data (images, etc.)
+			n := uint(len(block.Attachment.Data)+3) / 4
+			if n < 10 {
+				n = 10
+			}
+			tokens += n
+		}
+	}
+	if tokens == 0 {
+		tokens = 1
+	}
+	return tokens
+}
+
 // ToolCalls returns all tool call blocks in the message
 func (m Message) ToolCalls() []ToolCall {
 	var result []ToolCall

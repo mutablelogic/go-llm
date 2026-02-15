@@ -29,11 +29,11 @@ func Test_session_001(t *testing.T) {
 	assert.NoError(err)
 	assert.NotEmpty(s.ID)
 
-	got, err := m.GetSession(context.TODO(), schema.GetSessionRequest{ID: s.ID})
+	got, err := m.GetSession(context.TODO(), s.ID)
 	assert.NoError(err)
 	assert.Equal(s.ID, got.ID)
 
-	deleted, err := m.DeleteSession(context.TODO(), schema.DeleteSessionRequest{ID: s.ID})
+	deleted, err := m.DeleteSession(context.TODO(), s.ID)
 	assert.NoError(err)
 	assert.Equal(s.ID, deleted.ID)
 
@@ -122,7 +122,7 @@ func Test_session_006(t *testing.T) {
 	})
 	assert.NoError(err)
 
-	got, err := m.GetSession(context.TODO(), schema.GetSessionRequest{ID: created.ID})
+	got, err := m.GetSession(context.TODO(), created.ID)
 	assert.NoError(err)
 	assert.Equal(created.ID, got.ID)
 	assert.Equal("test", got.Name)
@@ -139,7 +139,7 @@ func Test_session_007(t *testing.T) {
 	)
 	assert.NoError(err)
 
-	_, err = m.GetSession(context.TODO(), schema.GetSessionRequest{ID: "nonexistent"})
+	_, err = m.GetSession(context.TODO(), "nonexistent")
 	assert.ErrorIs(err, llm.ErrNotFound)
 }
 
@@ -156,11 +156,11 @@ func Test_session_008(t *testing.T) {
 	created, err := m.CreateSession(context.TODO(), schema.SessionMeta{GeneratorMeta: schema.GeneratorMeta{Model: "model-1"}})
 	assert.NoError(err)
 
-	deleted, err := m.DeleteSession(context.TODO(), schema.DeleteSessionRequest{ID: created.ID})
+	deleted, err := m.DeleteSession(context.TODO(), created.ID)
 	assert.NoError(err)
 	assert.Equal(created.ID, deleted.ID)
 
-	_, err = m.GetSession(context.TODO(), schema.GetSessionRequest{ID: created.ID})
+	_, err = m.GetSession(context.TODO(), created.ID)
 	assert.ErrorIs(err, llm.ErrNotFound)
 }
 
@@ -174,7 +174,7 @@ func Test_session_009(t *testing.T) {
 	)
 	assert.NoError(err)
 
-	_, err = m.DeleteSession(context.TODO(), schema.DeleteSessionRequest{ID: "nonexistent"})
+	_, err = m.DeleteSession(context.TODO(), "nonexistent")
 	assert.ErrorIs(err, llm.ErrNotFound)
 }
 
@@ -280,4 +280,98 @@ func Test_session_014(t *testing.T) {
 	assert.Equal(uint(1), resp.Offset)
 	assert.Equal(uint(2), types.Value(resp.Limit))
 	assert.Len(resp.Body, 2)
+}
+
+// Test UpdateSession changes name
+func Test_session_015(t *testing.T) {
+	assert := assert.New(t)
+
+	m, err := NewManager(
+		WithClient(&mockClient{name: "provider-1", models: []schema.Model{{Name: "model-1", OwnedBy: "provider-1"}}}),
+		WithSessionStore(session.NewMemoryStore()),
+	)
+	assert.NoError(err)
+
+	s, err := m.CreateSession(context.TODO(), schema.SessionMeta{GeneratorMeta: schema.GeneratorMeta{Model: "model-1"}})
+	assert.NoError(err)
+
+	updated, err := m.UpdateSession(context.TODO(), s.ID, schema.SessionMeta{Name: "new-name"})
+	assert.NoError(err)
+	assert.Equal("new-name", updated.Name)
+	assert.Equal("model-1", updated.Model)
+	assert.Equal("provider-1", updated.Provider)
+}
+
+// Test UpdateSession changes system prompt
+func Test_session_016(t *testing.T) {
+	assert := assert.New(t)
+
+	m, err := NewManager(
+		WithClient(&mockClient{name: "provider-1", models: []schema.Model{{Name: "model-1", OwnedBy: "provider-1"}}}),
+		WithSessionStore(session.NewMemoryStore()),
+	)
+	assert.NoError(err)
+
+	s, err := m.CreateSession(context.TODO(), schema.SessionMeta{
+		GeneratorMeta: schema.GeneratorMeta{Model: "model-1", SystemPrompt: "old prompt"},
+	})
+	assert.NoError(err)
+
+	updated, err := m.UpdateSession(context.TODO(), s.ID, schema.SessionMeta{GeneratorMeta: schema.GeneratorMeta{SystemPrompt: "new prompt"}})
+	assert.NoError(err)
+	assert.Equal("new prompt", updated.SystemPrompt)
+	assert.Equal("model-1", updated.Model)
+}
+
+// Test UpdateSession changes model with validation
+func Test_session_017(t *testing.T) {
+	assert := assert.New(t)
+
+	m, err := NewManager(
+		WithClient(&mockClient{name: "provider-1", models: []schema.Model{
+			{Name: "model-1", OwnedBy: "provider-1"},
+			{Name: "model-2", OwnedBy: "provider-1"},
+		}}),
+		WithSessionStore(session.NewMemoryStore()),
+	)
+	assert.NoError(err)
+
+	s, err := m.CreateSession(context.TODO(), schema.SessionMeta{GeneratorMeta: schema.GeneratorMeta{Model: "model-1"}})
+	assert.NoError(err)
+
+	updated, err := m.UpdateSession(context.TODO(), s.ID, schema.SessionMeta{GeneratorMeta: schema.GeneratorMeta{Model: "model-2"}})
+	assert.NoError(err)
+	assert.Equal("model-2", updated.Model)
+	assert.Equal("provider-1", updated.Provider)
+}
+
+// Test UpdateSession rejects invalid model
+func Test_session_018(t *testing.T) {
+	assert := assert.New(t)
+
+	m, err := NewManager(
+		WithClient(&mockClient{name: "provider-1", models: []schema.Model{{Name: "model-1", OwnedBy: "provider-1"}}}),
+		WithSessionStore(session.NewMemoryStore()),
+	)
+	assert.NoError(err)
+
+	s, err := m.CreateSession(context.TODO(), schema.SessionMeta{GeneratorMeta: schema.GeneratorMeta{Model: "model-1"}})
+	assert.NoError(err)
+
+	_, err = m.UpdateSession(context.TODO(), s.ID, schema.SessionMeta{GeneratorMeta: schema.GeneratorMeta{Model: "nonexistent"}})
+	assert.Error(err)
+}
+
+// Test UpdateSession with nonexistent session returns error
+func Test_session_019(t *testing.T) {
+	assert := assert.New(t)
+
+	m, err := NewManager(
+		WithClient(&mockClient{name: "provider-1", models: []schema.Model{{Name: "model-1", OwnedBy: "provider-1"}}}),
+		WithSessionStore(session.NewMemoryStore()),
+	)
+	assert.NoError(err)
+
+	_, err = m.UpdateSession(context.TODO(), "nonexistent-id", schema.SessionMeta{Name: "test"})
+	assert.Error(err)
 }

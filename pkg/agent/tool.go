@@ -56,10 +56,10 @@ func (m *Manager) ListTools(_ context.Context, req schema.ListToolRequest) (*sch
 }
 
 // GetTool returns tool metadata by name.
-func (m *Manager) GetTool(_ context.Context, req schema.GetToolRequest) (*schema.ToolMeta, error) {
-	t := m.toolkit.Lookup(req.Name)
+func (m *Manager) GetTool(_ context.Context, name string) (*schema.ToolMeta, error) {
+	t := m.toolkit.Lookup(name)
 	if t == nil {
-		return nil, llm.ErrNotFound.Withf("tool %q", req.Name)
+		return nil, llm.ErrNotFound.Withf("tool %q", name)
 	}
 
 	// Create the response
