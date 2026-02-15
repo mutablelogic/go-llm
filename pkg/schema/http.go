@@ -72,7 +72,7 @@ type GeneratorMeta struct {
 	Model          string          `json:"model,omitempty" help:"Model name" optional:""`
 	SystemPrompt   string          `json:"system_prompt,omitempty" help:"System prompt" optional:""`
 	Format         json.RawMessage `json:"format,omitempty" help:"JSON schema for structured output" optional:""`
-	Thinking       bool            `json:"thinking,omitempty" help:"Enable thinking/reasoning" optional:""`
+	Thinking       *bool           `json:"thinking,omitempty" help:"Enable thinking/reasoning" optional:""`
 	ThinkingBudget uint            `json:"thinking_budget,omitempty" help:"Thinking token budget (required for Anthropic, optional for Google)" optional:""`
 }
 

@@ -149,8 +149,8 @@ func (m *MemoryStore) Update(_ context.Context, id string, meta schema.SessionMe
 	if meta.Format != nil {
 		s.Format = meta.Format
 	}
-	if meta.Thinking {
-		s.Thinking = true
+	if meta.Thinking != nil {
+		s.Thinking = meta.Thinking
 	}
 	if meta.ThinkingBudget > 0 {
 		s.ThinkingBudget = meta.ThinkingBudget

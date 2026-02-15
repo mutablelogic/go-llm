@@ -105,6 +105,7 @@ const (
 	RoleAssistant = "assistant"
 	RoleSystem    = "system"
 	RoleThinking  = "thinking"
+	RoleTool      = "tool"
 )
 
 ////////////////////////////////////////////////////////////////////////////////

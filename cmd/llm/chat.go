@@ -16,14 +16,16 @@ import (
 // TYPES
 
 type ChatCommand struct {
-	Text         string   `arg:"" help:"User input text"`
-	Model        string   `name:"model" help:"Model name (used when creating a new session)" optional:""`
-	Session      string   `name:"session" help:"Session ID (overrides stored default)" optional:""`
-	SystemPrompt string   `name:"system-prompt" help:"System prompt (used when creating a new session)" optional:""`
-	File         []string `help:"Path or glob pattern for files to attach (may be repeated)" optional:""`
-	URL          string   `help:"URL to attach as a reference" optional:""`
-	Tool         []string `name:"tool" help:"Tool names to include (may be repeated; empty means all)" optional:""`
-	New          bool     `name:"new" help:"Force creation of a new session" optional:""`
+	Text           string   `arg:"" help:"User input text"`
+	Model          string   `name:"model" help:"Model name (used when creating a new session)" optional:""`
+	Session        string   `name:"session" help:"Session ID (overrides stored default)" optional:""`
+	SystemPrompt   string   `name:"system-prompt" help:"System prompt (used when creating a new session)" optional:""`
+	Thinking       *bool    `name:"thinking" negatable:"" help:"Enable thinking/reasoning" optional:""`
+	ThinkingBudget uint     `name:"thinking-budget" help:"Thinking token budget (required for Anthropic, optional for Google)" optional:""`
+	File           []string `help:"Path or glob pattern for files to attach (may be repeated)" optional:""`
+	URL            string   `help:"URL to attach as a reference" optional:""`
+	Tool           []string `name:"tool" help:"Tool names to include (may be repeated; empty means all)" optional:""`
+	New            bool     `name:"new" help:"Force creation of a new session" optional:""`
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -66,9 +68,11 @@ func (cmd *ChatCommand) Run(ctx *Globals) (err error) {
 
 		session, err := client.CreateSession(parent, schema.SessionMeta{
 			GeneratorMeta: schema.GeneratorMeta{
-				Provider:     provider,
-				Model:        model,
-				SystemPrompt: cmd.SystemPrompt,
+				Provider:       provider,
+				Model:          model,
+				SystemPrompt:   cmd.SystemPrompt,
+				Thinking:       cmd.Thinking,
+				ThinkingBudget: cmd.ThinkingBudget,
 			},
 		})
 		if err != nil {
@@ -79,11 +83,13 @@ func (cmd *ChatCommand) Run(ctx *Globals) (err error) {
 		// If reusing an existing session but parameters were changed, update it
 		meta := schema.SessionMeta{
 			GeneratorMeta: schema.GeneratorMeta{
-				Model:        cmd.Model,
-				SystemPrompt: cmd.SystemPrompt,
+				Model:          cmd.Model,
+				SystemPrompt:   cmd.SystemPrompt,
+				Thinking:       cmd.Thinking,
+				ThinkingBudget: cmd.ThinkingBudget,
 			},
 		}
-		if meta.Model != "" || meta.SystemPrompt != "" {
+		if meta.Model != "" || meta.SystemPrompt != "" || meta.Thinking != nil || meta.ThinkingBudget > 0 {
 			if _, err := client.UpdateSession(parent, sessionID, meta); err != nil {
 				return fmt.Errorf("updating session: %w", err)
 			}

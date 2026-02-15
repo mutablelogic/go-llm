@@ -3,6 +3,7 @@ package agent
 import (
 	"context"
 	"encoding/json"
+	"sync"
 
 	// Packages
 	jsonschema "github.com/google/jsonschema-go/jsonschema"
@@ -129,22 +130,13 @@ func (m *Manager) Chat(ctx context.Context, request schema.ChatRequest, fn opt.S
 			break
 		}
 
-		// Execute each tool call and collect result blocks
-		var toolResults []schema.ContentBlock
-		for _, call := range toolCalls {
-			output, err := m.toolkit.Run(ctx, call.Name, call.Input)
-			if err != nil {
-				toolResults = append(toolResults, schema.NewToolError(call.ID, call.Name, err))
-			} else {
-				toolResults = append(toolResults, schema.NewToolResult(call.ID, call.Name, output))
-			}
-		}
-
-		// Build a tool-result message and send it back
+		// Execute tool calls in parallel then build a tool-result message and send it back
 		toolMessage := &schema.Message{
 			Role:    schema.RoleUser,
-			Content: toolResults,
+			Content: m.runTools(ctx, toolCalls, fn),
 		}
+
+		// Send the tool results back to the model for the next iteration
 		var u *schema.Usage
 		result, u, err = generator.WithSession(ctx, *model, session.Conversation(), toolMessage, opts...)
 		if err != nil {
@@ -231,7 +223,7 @@ func (m *Manager) generatorFromMeta(ctx context.Context, meta schema.GeneratorMe
 	}
 	if meta.ThinkingBudget > 0 {
 		opts = append(opts, withThinkingBudget(meta.ThinkingBudget))
-	} else if meta.Thinking {
+	} else if meta.Thinking != nil && *meta.Thinking {
 		opts = append(opts, withThinking())
 	}
 
@@ -304,6 +296,31 @@ func withJSONOutput(data json.RawMessage) opt.Opt {
 			return opt.Error(llm.ErrNotImplemented.Withf("%s: WithJSONOutput not supported", provider))
 		}
 	})
+}
+
+// runTools executes the given tool calls in parallel and returns the results
+// as content blocks in the same order as the input calls. If fn is non-nil,
+// tool feedback is streamed before execution begins.
+func (m *Manager) runTools(ctx context.Context, calls []schema.ToolCall, fn opt.StreamFn) []schema.ContentBlock {
+	results := make([]schema.ContentBlock, len(calls))
+	var wg sync.WaitGroup
+	for i, call := range calls {
+		if fn != nil {
+			fn(schema.RoleTool, m.toolkit.Feedback(call))
+		}
+		wg.Add(1)
+		go func(i int, call schema.ToolCall) {
+			defer wg.Done()
+			output, err := m.toolkit.Run(ctx, call.Name, call.Input)
+			if err != nil {
+				results[i] = schema.NewToolError(call.ID, call.Name, err)
+			} else {
+				results[i] = schema.NewToolResult(call.ID, call.Name, output)
+			}
+		}(i, call)
+	}
+	wg.Wait()
+	return results
 }
 
 // withTools returns an opt that sets a toolkit for the request. If tool names
