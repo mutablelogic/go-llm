@@ -24,6 +24,7 @@ type modelts struct {
 type ModelCache struct {
 	ttl   time.Duration
 	model map[string]modelts
+	ts    time.Time // timestamp of last ListModels fetch
 }
 
 type GetModelFunc func(context.Context, string) (*schema.Model, error)
@@ -77,32 +78,26 @@ func (mc *ModelCache) GetModel(ctx context.Context, name string, fn GetModelFunc
 }
 
 func (mc *ModelCache) ListModels(ctx context.Context, opts []opt.Opt, fn ListModelsFunc) ([]schema.Model, error) {
-	// If we have a TTL and cached entries, return all non-expired models
-	if mc.ttl > 0 && len(mc.model) > 0 {
-		now := time.Now()
+	// If the list was fetched recently, return cached entries
+	if mc.ttl > 0 && !mc.ts.IsZero() && time.Since(mc.ts) < mc.ttl {
 		cached := make([]schema.Model, 0, len(mc.model))
-		for name, entry := range mc.model {
-			if now.Sub(entry.ts) < mc.ttl {
-				cached = append(cached, entry.model)
-			} else {
-				// Prune expired entries
-				delete(mc.model, name)
-			}
+		for _, entry := range mc.model {
+			cached = append(cached, entry.model)
 		}
-		if len(cached) > 0 {
-			sort.Slice(cached, func(i, j int) bool { return cached[i].Name < cached[j].Name })
-			return cached, nil
-		}
+		sort.Slice(cached, func(i, j int) bool { return cached[i].Name < cached[j].Name })
+		return cached, nil
 	}
 
-	// Fetch models
+	// Fetch models from provider
 	models, err := fn(ctx, opts...)
 	if err != nil {
 		return nil, err
 	}
 
-	// Cache models
+	// Replace cache with fresh list
 	now := time.Now()
+	mc.ts = now
+	mc.model = make(map[string]modelts, len(models))
 	for _, model := range models {
 		mc.model[model.Name] = modelts{ts: now, model: model}
 	}
