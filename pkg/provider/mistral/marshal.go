@@ -65,19 +65,35 @@ func mistralMessagesFromSession(session *schema.Conversation) ([]mistralMessage,
 			return nil, err
 		}
 
+		// Skip empty assistant messages (no content, no tool calls) — these
+		// can occur when another provider (e.g. Gemini) returns a tool call
+		// response with no accompanying text.
+		filtered := mms[:0]
+		for _, mm := range mms {
+			if mm.Role == roleAssistant && len(mm.ToolCalls) == 0 {
+				if s, ok := mm.Content.(string); ok && s == "" {
+					continue
+				}
+			}
+			filtered = append(filtered, mm)
+		}
+		if len(filtered) == 0 {
+			continue
+		}
+
 		// Replace any invalid tool call IDs and queue the generated IDs
 		// so that the subsequent tool-result messages can reference them.
-		for i := range mms {
-			for j := range mms[i].ToolCalls {
-				if !isValidMistralID(mms[i].ToolCalls[j].Id) {
+		for i := range filtered {
+			for j := range filtered[i].ToolCalls {
+				if !isValidMistralID(filtered[i].ToolCalls[j].Id) {
 					newID := generateMistralID()
-					mms[i].ToolCalls[j].Id = newID
+					filtered[i].ToolCalls[j].Id = newID
 					pendingIDs = append(pendingIDs, newID)
 				}
 			}
 		}
 
-		messages = append(messages, mms...)
+		messages = append(messages, filtered...)
 	}
 	return messages, nil
 }

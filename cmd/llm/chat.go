@@ -25,6 +25,7 @@ type ChatCommand struct {
 	File           []string `help:"Path or glob pattern for files to attach (may be repeated)" optional:""`
 	URL            string   `help:"URL to attach as a reference" optional:""`
 	Tool           []string `name:"tool" help:"Tool names to include (may be repeated; empty means all)" optional:""`
+	Stream         bool     `name:"stream" help:"Enable streaming output" optional:""`
 	New            bool     `name:"new" help:"Force creation of a new session" optional:""`
 }
 
@@ -124,6 +125,21 @@ func (cmd *ChatCommand) Run(ctx *Globals) (err error) {
 		opts = append(opts, httpclient.WithChatURL(cmd.URL))
 	}
 
+	// Enable streaming when requested
+	if cmd.Stream {
+		var lastRole string
+		opts = append(opts, httpclient.WithChatStream(func(role, text string) {
+			if role != lastRole {
+				if lastRole != "" {
+					fmt.Println()
+				}
+				fmt.Print(role + ": ")
+				lastRole = role
+			}
+			fmt.Print(text)
+		}))
+	}
+
 	// Build request
 	req := schema.ChatRequest{
 		Session: sessionID,
@@ -135,6 +151,12 @@ func (cmd *ChatCommand) Run(ctx *Globals) (err error) {
 	response, err := client.Chat(parent, req, opts...)
 	if err != nil {
 		return err
+	}
+
+	// When streaming, output was already printed via the callback
+	if cmd.Stream {
+		fmt.Println()
+		return nil
 	}
 
 	// Print

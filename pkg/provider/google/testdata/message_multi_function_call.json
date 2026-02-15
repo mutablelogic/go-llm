@@ -28,7 +28,6 @@
         "parts": [
             {
                 "functionCall": {
-                    "id": "call_a",
                     "name": "get_weather",
                     "args": {
                         "city": "London"
@@ -37,7 +36,6 @@
             },
             {
                 "functionCall": {
-                    "id": "call_b",
                     "name": "get_weather",
                     "args": {
                         "city": "Paris"

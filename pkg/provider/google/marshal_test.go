@@ -594,7 +594,7 @@ func roundTripMessage(t *testing.T, original *schema.Message) {
 		if orig.ToolCall != nil {
 			assert.NotNil(rt.ToolCall, "block %d: tool_call should survive round-trip", i)
 			assert.Equal(orig.ToolCall.Name, rt.ToolCall.Name)
-			assert.Equal(orig.ToolCall.ID, rt.ToolCall.ID)
+			assert.NotEmpty(rt.ToolCall.ID, "block %d: tool_call ID should be generated", i)
 		}
 		if orig.ToolResult != nil {
 			assert.NotNil(rt.ToolResult, "block %d: tool_result should survive round-trip", i)

@@ -66,6 +66,17 @@ type CompletionResponse struct {
 	Result  ResultType     `json:"result"`
 }
 
+// StreamDelta represents a single streamed text chunk in an SSE stream.
+type StreamDelta struct {
+	Role string `json:"role"`
+	Text string `json:"text"`
+}
+
+// StreamError represents an error event in an SSE stream.
+type StreamError struct {
+	Error string `json:"error"`
+}
+
 // GeneratorMeta represents the metadata needed to invoke a generator model.
 type GeneratorMeta struct {
 	Provider       string          `json:"provider,omitempty" help:"Provider name" optional:""`

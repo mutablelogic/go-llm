@@ -6,6 +6,7 @@ import (
 	"net/url"
 
 	// Packages
+	"github.com/google/uuid"
 	llm "github.com/mutablelogic/go-llm"
 	schema "github.com/mutablelogic/go-llm/pkg/schema"
 	"github.com/mutablelogic/go-llm/pkg/tool"
@@ -24,6 +25,11 @@ func geminiContentsFromSession(session *schema.Conversation) ([]*geminiContent, 
 	contents := make([]*geminiContent, 0, len(*session))
 	for _, msg := range *session {
 		if msg.Role == schema.RoleSystem {
+			continue
+		}
+		// Skip empty assistant messages (no content blocks) — these can
+		// occur when the model returns a tool call with no text.
+		if msg.Role == schema.RoleAssistant && len(msg.Content) == 0 {
 			continue
 		}
 		c, err := geminiContentFromMessage(msg)
@@ -89,7 +95,7 @@ func geminiContentFromMessage(msg *schema.Message) (*geminiContent, error) {
 					return nil, llm.ErrInternalServerError.Withf("unmarshal tool call args: %v", err)
 				}
 			}
-			parts = append(parts, geminiNewFunctionCallPart(block.ToolCall.ID, block.ToolCall.Name, args))
+			parts = append(parts, geminiNewFunctionCallPart(block.ToolCall.Name, args))
 			continue
 		}
 
@@ -149,7 +155,7 @@ func geminiPartFromToolResult(tr *schema.ToolResult) *geminiPart {
 		response["error"] = true
 	}
 
-	return geminiNewFunctionResponsePart(tr.ID, name, response)
+	return geminiNewFunctionResponsePart(name, response)
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -288,7 +294,7 @@ func blockFromGeminiPart(part *geminiPart) (schema.ContentBlock, map[string]any)
 		}
 		return schema.ContentBlock{
 			ToolCall: &schema.ToolCall{
-				ID:    part.FunctionCall.ID,
+				ID:    uuid.New().String(),
 				Name:  part.FunctionCall.Name,
 				Input: input,
 			},
@@ -303,7 +309,7 @@ func blockFromGeminiPart(part *geminiPart) (schema.ContentBlock, map[string]any)
 		}
 		return schema.ContentBlock{
 			ToolResult: &schema.ToolResult{
-				ID:      part.FunctionResponse.ID,
+				ID:      uuid.New().String(),
 				Name:    part.FunctionResponse.Name,
 				Content: raw,
 			},

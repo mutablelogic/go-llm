@@ -27,6 +27,11 @@ func anthropicMessagesFromSession(session *schema.Conversation) ([]anthropicMess
 		if msg.Role == schema.RoleSystem {
 			continue
 		}
+		// Skip empty assistant messages (no content blocks) — these can
+		// occur when another provider returns a tool call with no text.
+		if msg.Role == schema.RoleAssistant && len(msg.Content) == 0 {
+			continue
+		}
 		am, err := anthropicMessageFromMessage(msg)
 		if err != nil {
 			return nil, err

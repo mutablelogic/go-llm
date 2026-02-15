@@ -27,7 +27,7 @@ type ListSessionsCommand struct {
 }
 
 type GetSessionCommand struct {
-	ID string `arg:"" name:"id" help:"Session ID"`
+	ID string `arg:"" name:"id" help:"Session ID (defaults to current session)" optional:""`
 }
 
 type CreateSessionCommand struct {
@@ -88,12 +88,21 @@ func (cmd *GetSessionCommand) Run(ctx *Globals) (err error) {
 		return err
 	}
 
+	// Use current session if no ID provided
+	id := cmd.ID
+	if id == "" {
+		id = ctx.defaults.GetString("session")
+	}
+	if id == "" {
+		return fmt.Errorf("no session ID provided and no current session set")
+	}
+
 	// OTEL
 	parent, endSpan := otel.StartSpan(ctx.tracer, ctx.ctx, "GetSessionCommand")
 	defer func() { endSpan(err) }()
 
 	// Get session
-	session, err := client.GetSession(parent, cmd.ID)
+	session, err := client.GetSession(parent, id)
 	if err != nil {
 		return err
 	}
