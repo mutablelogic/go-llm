@@ -1,6 +1,7 @@
 package mistral
 
 import (
+	"encoding/base64"
 	"encoding/json"
 	"net/url"
 	"os"
@@ -8,6 +9,7 @@ import (
 	"runtime"
 	"testing"
 
+	// Packages
 	schema "github.com/mutablelogic/go-llm/pkg/schema"
 	assert "github.com/stretchr/testify/assert"
 )
@@ -110,7 +112,7 @@ func Test_marshal_schema_to_mistral_tool_result(t *testing.T) {
 	a := assert.New(t)
 	msg := decodeSchemaMessage(t, schemaJSON)
 	a.NotNil(msg.Content[0].ToolResult)
-	session := &schema.Session{msg}
+	session := &schema.Conversation{msg}
 	messages, err := mistralMessagesFromSession(session)
 	a.NoError(err)
 	a.Len(messages, 1)
@@ -124,7 +126,7 @@ func Test_marshal_schema_to_mistral_tool_error(t *testing.T) {
 	msg := decodeSchemaMessage(t, schemaJSON)
 	a.NotNil(msg.Content[0].ToolResult)
 	a.True(msg.Content[0].ToolResult.IsError)
-	session := &schema.Session{msg}
+	session := &schema.Conversation{msg}
 	messages, err := mistralMessagesFromSession(session)
 	a.NoError(err)
 	a.Len(messages, 1)
@@ -240,7 +242,7 @@ func Test_marshal_session_multi_turn(t *testing.T) {
 	userText := "What is 2+2?"
 	assistText := "4"
 	followUp := "And 3+3?"
-	session := &schema.Session{
+	session := &schema.Conversation{
 		{Role: schema.RoleUser, Content: []schema.ContentBlock{{Text: &userText}}},
 		{Role: schema.RoleAssistant, Content: []schema.ContentBlock{{Text: &assistText}}},
 		{Role: schema.RoleUser, Content: []schema.ContentBlock{{Text: &followUp}}},
@@ -257,7 +259,7 @@ func Test_marshal_session_with_system(t *testing.T) {
 	a := assert.New(t)
 	sys := "You are a helpful assistant."
 	userText := "Hello"
-	session := &schema.Session{
+	session := &schema.Conversation{
 		{Role: schema.RoleSystem, Content: []schema.ContentBlock{{Text: &sys}}},
 		{Role: schema.RoleUser, Content: []schema.ContentBlock{{Text: &userText}}},
 	}
@@ -266,6 +268,20 @@ func Test_marshal_session_with_system(t *testing.T) {
 	a.Len(messages, 2)
 	a.Equal("system", messages[0].Role)
 	a.Equal("user", messages[1].Role)
+}
+
+func Test_marshal_schema_to_mistral_input_audio(t *testing.T) {
+	mistralJSON, schemaJSON := loadTestPair(t, "message_input_audio.json")
+	a := assert.New(t)
+	msg := decodeSchemaMessage(t, schemaJSON)
+	a.Len(msg.Content, 2)
+	a.NotNil(msg.Content[1].Attachment)
+	a.Equal("audio/mpeg", msg.Content[1].Attachment.Type)
+	a.NotEmpty(msg.Content[1].Attachment.Data)
+	mms, err := mistralMessagesFromMessage(msg)
+	a.NoError(err)
+	a.Len(mms, 1)
+	assertMistralMessageEquals(t, mistralJSON, &mms[0])
 }
 
 func Test_marshal_session_nil(t *testing.T) {
@@ -278,7 +294,7 @@ func Test_marshal_session_splits_tool_results(t *testing.T) {
 	a := assert.New(t)
 	result1 := json.RawMessage(`{"temp":22}`)
 	result2 := json.RawMessage(`{"temp":18}`)
-	session := &schema.Session{
+	session := &schema.Conversation{
 		{
 			Role: schema.RoleUser,
 			Content: []schema.ContentBlock{
@@ -302,7 +318,7 @@ func Test_marshal_session_splits_tool_results(t *testing.T) {
 // messages receive the same replacement IDs.
 func Test_marshal_session_remaps_invalid_tool_ids(t *testing.T) {
 	a := assert.New(t)
-	session := &schema.Session{
+	session := &schema.Conversation{
 		// Assistant message with two tool calls bearing invalid IDs
 		{
 			Role: schema.RoleAssistant,
@@ -351,7 +367,7 @@ func Test_marshal_session_remaps_invalid_tool_ids(t *testing.T) {
 // already in valid Mistral format are passed through unchanged.
 func Test_marshal_session_preserves_valid_tool_ids(t *testing.T) {
 	a := assert.New(t)
-	session := &schema.Session{
+	session := &schema.Conversation{
 		{
 			Role: schema.RoleAssistant,
 			Content: []schema.ContentBlock{
@@ -375,6 +391,7 @@ func Test_marshal_session_preserves_valid_tool_ids(t *testing.T) {
 
 type rawAttachment struct {
 	Type string `json:"type"`
+	Data string `json:"data,omitempty"` // base64-encoded
 	URL  string `json:"url,omitempty"`
 }
 
@@ -417,6 +434,13 @@ func decodeSchemaMessage(t *testing.T, data json.RawMessage) *schema.Message {
 		}
 		if c.Attachment != nil {
 			att := &schema.Attachment{Type: c.Attachment.Type}
+			if c.Attachment.Data != "" {
+				data, err := base64.StdEncoding.DecodeString(c.Attachment.Data)
+				if err != nil {
+					t.Fatalf("bad base64 in fixture: %v", err)
+				}
+				att.Data = data
+			}
 			if c.Attachment.URL != "" {
 				u, err := url.Parse(c.Attachment.URL)
 				if err != nil {

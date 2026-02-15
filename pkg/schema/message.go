@@ -4,17 +4,24 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"mime"
 	"net/http"
 	"net/url"
 	"strings"
 
 	// Packages
 	"github.com/mutablelogic/go-llm/pkg/opt"
-	types "github.com/mutablelogic/go-llm/pkg/types"
+	types "github.com/mutablelogic/go-server/pkg/types"
 )
 
 ////////////////////////////////////////////////////////////////////////////////
 // TYPES
+
+// Usage represents the token usage for a single request/response.
+type Usage struct {
+	InputTokens  uint `json:"input_tokens,omitempty"`
+	OutputTokens uint `json:"output_tokens,omitempty"`
+}
 
 // Message represents a message in a conversation with an LLM.
 // It uses a universal content block representation that can be marshaled
@@ -23,7 +30,7 @@ type Message struct {
 	Role    string         `json:"role"`             // "user", "assistant", "system"
 	Content []ContentBlock `json:"content"`          // Array of content blocks
 	Tokens  uint           `json:"tokens,omitempty"` // Number of tokens
-	Result  ResultType     `json:"result,omitempty"` // Result type
+	Result  ResultType     `json:"result"`           // Result type
 	Meta    map[string]any `json:"meta,omitzero"`    // Provider-specific metadata
 }
 
@@ -31,6 +38,7 @@ type Message struct {
 // Exactly one of the fields should be non-nil/non-empty.
 type ContentBlock struct {
 	Text       *string     `json:"text,omitempty"`        // Text content
+	Thinking   *string     `json:"thinking,omitempty"`    // Thinking/reasoning content
 	Attachment *Attachment `json:"attachment,omitempty"`  // Image, document, audio, etc.
 	ToolCall   *ToolCall   `json:"tool_call,omitempty"`   // Tool invocation (assistant → user)
 	ToolResult *ToolResult `json:"tool_result,omitempty"` // Tool response (user → assistant)
@@ -41,6 +49,36 @@ type Attachment struct {
 	Type string   `json:"type"`           // MIME type: "image/png", "application/pdf", etc.
 	Data []byte   `json:"data,omitempty"` // Raw binary data
 	URL  *url.URL `json:"url,omitempty"`  // URL reference (http, https, gs, file, etc.)
+}
+
+// IsText returns true if the attachment has a text/* MIME type (e.g. text/plain,
+// text/html, text/csv). Handles MIME parameters like charset gracefully.
+// Such attachments can be converted to text blocks when providers don't
+// support them as media uploads.
+func (a Attachment) IsText() bool {
+	mediaType, _, err := mime.ParseMediaType(a.Type)
+	if err != nil {
+		return strings.HasPrefix(a.Type, "text/")
+	}
+	return strings.HasPrefix(mediaType, "text/")
+}
+
+// TextContent returns the attachment's data as a string, optionally prefixed
+// with the filename and content type for context. Only meaningful when
+// IsText() returns true.
+func (a Attachment) TextContent() string {
+	text := string(a.Data)
+	var header string
+	if a.URL != nil && a.URL.Path != "" {
+		header += "File: " + a.URL.Path + "\n"
+	}
+	if a.Type != "" {
+		header += "Content-Type: " + a.Type + "\n"
+	}
+	if header != "" {
+		return header + "\n" + text
+	}
+	return text
 }
 
 // ToolCall represents a tool invocation requested by the model
@@ -67,6 +105,7 @@ const (
 	RoleAssistant = "assistant"
 	RoleSystem    = "system"
 	RoleThinking  = "thinking"
+	RoleTool      = "tool"
 )
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -137,6 +176,55 @@ func (m Message) Text() string {
 		}
 	}
 	return strings.Join(result, "\n")
+}
+
+// EstimateTokens returns a rough token count for the message content.
+// It estimates ~4 characters per token for text, plus a fixed cost per
+// non-text block (attachments, tool calls/results). This is useful for
+// attributing per-message token costs without a provider-specific tokeniser.
+func (m Message) EstimateTokens() uint {
+	tokens := uint(0)
+	for _, block := range m.Content {
+		switch {
+		case block.Text != nil:
+			// ~4 characters per token, minimum 1
+			n := uint(len(*block.Text)+3) / 4
+			if n == 0 {
+				n = 1
+			}
+			tokens += n
+		case block.Thinking != nil:
+			n := uint(len(*block.Thinking)+3) / 4
+			if n == 0 {
+				n = 1
+			}
+			tokens += n
+		case block.ToolCall != nil:
+			// Tool name + JSON arguments
+			n := uint(len(block.ToolCall.Name)+len(block.ToolCall.Input)+3) / 4
+			if n == 0 {
+				n = 1
+			}
+			tokens += n
+		case block.ToolResult != nil:
+			n := uint(len(block.ToolResult.Content)+3) / 4
+			if n == 0 {
+				n = 1
+			}
+			tokens += n
+		case block.Attachment != nil:
+			// Rough estimate for binary data (images, etc.)
+			n := uint(len(block.Attachment.Data)+3) / 4
+			if n < 10 {
+				n = 10
+			}
+			tokens += n
+		}
+	}
+	if tokens == 0 {
+		tokens = 1
+	}
+	return tokens
 }
 
 // ToolCalls returns all tool call blocks in the message

@@ -9,7 +9,7 @@ import (
 	client "github.com/mutablelogic/go-client"
 	opt "github.com/mutablelogic/go-llm/pkg/opt"
 	schema "github.com/mutablelogic/go-llm/pkg/schema"
-	types "github.com/mutablelogic/go-llm/pkg/types"
+	types "github.com/mutablelogic/go-server/pkg/types"
 )
 
 ///////////////////////////////////////////////////////////////////////////////

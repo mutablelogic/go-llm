@@ -1,28 +1,27 @@
 ARG OS
 ARG ARCH
 
-# Run makefile to build all the commands
-FROM --platform=${OS}/${ARCH} golang:latest AS builder
+# Build stage
+FROM --platform=${OS}/${ARCH} golang:1.25 AS builder
 ARG OS
 ARG ARCH
 WORKDIR /usr/src/app
 COPY . .
 
-# Build the server
-RUN \
-    apt update -y && apt upgrade -y && \
-    OS=${OS} ARCH=${ARCH} make build 
+RUN OS=${OS} ARCH=${ARCH} make build
 
-# Copy binaries to /usr/local/bin
-FROM --platform=${OS}/${ARCH} debian:bookworm-slim
-ARG OS
-ARG ARCH
+# Runtime stage
+FROM --platform=${OS}/${ARCH} debian:trixie-slim
 ARG SOURCE
-COPY --from=builder /usr/src/app/build/* /usr/local/bin/
-RUN apt update -y && apt install -y ca-certificates 
+RUN apt-get update -y && apt-get install -y ca-certificates && rm -rf /var/lib/apt/lists/*
+COPY --from=builder /usr/src/app/build/llm /usr/local/bin/llm
 
 # Labels
 LABEL org.opencontainers.image.source=https://${SOURCE}
 
-# Entrypoint when running the server
-ENTRYPOINT [ "/usr/local/bin/llm" ]
+# Entrypoint
+ENV GOLLM_ADDR=:8085
+ENV XDG_CACHE_HOME=/data
+VOLUME /data
+EXPOSE 8085
+ENTRYPOINT ["/usr/local/bin/llm"]

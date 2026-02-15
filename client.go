@@ -44,8 +44,8 @@ type Downloader interface {
 // Generator is an interface for generating response messages and conducting conversations
 type Generator interface {
 	// WithoutSession sends a single message and returns the response (stateless)
-	WithoutSession(context.Context, schema.Model, *schema.Message, ...opt.Opt) (*schema.Message, error)
+	WithoutSession(context.Context, schema.Model, *schema.Message, ...opt.Opt) (*schema.Message, *schema.Usage, error)
 
 	// WithSession sends a message within a session and returns the response (stateful)
-	WithSession(context.Context, schema.Model, *schema.Session, *schema.Message, ...opt.Opt) (*schema.Message, error)
+	WithSession(context.Context, schema.Model, *schema.Conversation, *schema.Message, ...opt.Opt) (*schema.Message, *schema.Usage, error)
 }

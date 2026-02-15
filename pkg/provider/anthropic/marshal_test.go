@@ -336,7 +336,7 @@ func Test_marshal_session_skips_system(t *testing.T) {
 
 	sys := "You are a helpful assistant."
 	userText := "Hello"
-	session := &schema.Session{
+	session := &schema.Conversation{
 		{Role: schema.RoleSystem, Content: []schema.ContentBlock{{Text: &sys}}},
 		{Role: schema.RoleUser, Content: []schema.ContentBlock{{Text: &userText}}},
 	}
@@ -353,7 +353,7 @@ func Test_marshal_session_multi_turn(t *testing.T) {
 	userText := "What is 2+2?"
 	assistText := "4"
 	followUp := "And 3+3?"
-	session := &schema.Session{
+	session := &schema.Conversation{
 		{Role: schema.RoleUser, Content: []schema.ContentBlock{{Text: &userText}}},
 		{Role: schema.RoleAssistant, Content: []schema.ContentBlock{{Text: &assistText}}},
 		{Role: schema.RoleUser, Content: []schema.ContentBlock{{Text: &followUp}}},
@@ -385,6 +385,7 @@ func decodeSchemaMessage(t *testing.T, data json.RawMessage) *schema.Message {
 		Role    string `json:"role"`
 		Content []struct {
 			Text       *string        `json:"text,omitempty"`
+			Thinking   *string        `json:"thinking,omitempty"`
 			Attachment *rawAttachment `json:"attachment,omitempty"`
 			ToolCall   *rawToolCall   `json:"tool_call,omitempty"`
 			ToolResult *rawToolResult `json:"tool_result,omitempty"`
@@ -405,6 +406,9 @@ func decodeSchemaMessage(t *testing.T, data json.RawMessage) *schema.Message {
 
 		if c.Text != nil {
 			block.Text = c.Text
+		}
+		if c.Thinking != nil {
+			block.Thinking = c.Thinking
 		}
 		if c.Attachment != nil {
 			att := &schema.Attachment{Type: c.Attachment.Type}
@@ -559,6 +563,10 @@ func roundTripMessage(t *testing.T, original *schema.Message) {
 		if orig.Text != nil {
 			assert.NotNil(rt.Text, "block %d: text should survive round-trip", i)
 			assert.Equal(*orig.Text, *rt.Text)
+		}
+		if orig.Thinking != nil {
+			assert.NotNil(rt.Thinking, "block %d: thinking should survive round-trip", i)
+			assert.Equal(*orig.Thinking, *rt.Thinking)
 		}
 		if orig.Attachment != nil {
 			assert.NotNil(rt.Attachment, "block %d: attachment should survive round-trip", i)

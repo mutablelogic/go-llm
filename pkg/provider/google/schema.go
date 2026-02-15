@@ -51,14 +51,12 @@ type geminiFileData struct {
 
 // geminiFunctionCall is the model's request to invoke a tool
 type geminiFunctionCall struct {
-	ID   string         `json:"id,omitempty"`
 	Name string         `json:"name"`
 	Args map[string]any `json:"args,omitempty"`
 }
 
 // geminiFunctionResult is the client-supplied result of a tool invocation
 type geminiFunctionResult struct {
-	ID       string         `json:"id,omitempty"`
 	Name     string         `json:"name"`
 	Response map[string]any `json:"response"`
 }
@@ -363,10 +361,9 @@ func geminiNewTextContent(role, text string) *geminiContent {
 }
 
 // geminiNewFunctionCallPart creates a Part for a function call
-func geminiNewFunctionCallPart(id, name string, args map[string]any) *geminiPart {
+func geminiNewFunctionCallPart(name string, args map[string]any) *geminiPart {
 	return &geminiPart{
 		FunctionCall: &geminiFunctionCall{
-			ID:   id,
 			Name: name,
 			Args: args,
 		},
@@ -374,10 +371,9 @@ func geminiNewFunctionCallPart(id, name string, args map[string]any) *geminiPart
 }
 
 // geminiNewFunctionResponsePart creates a Part for a function response
-func geminiNewFunctionResponsePart(id, name string, response map[string]any) *geminiPart {
+func geminiNewFunctionResponsePart(name string, response map[string]any) *geminiPart {
 	return &geminiPart{
 		FunctionResponse: &geminiFunctionResult{
-			ID:       id,
 			Name:     name,
 			Response: response,
 		},

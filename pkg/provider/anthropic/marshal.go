@@ -3,6 +3,7 @@ package anthropic
 import (
 	"encoding/base64"
 	"encoding/json"
+	"mime"
 	"net/url"
 	"strings"
 
@@ -14,9 +15,9 @@ import (
 ///////////////////////////////////////////////////////////////////////////////
 // SESSION → ANTHROPIC MESSAGES
 
-// anthropicMessagesFromSession converts a schema.Session to Anthropic message format.
+// anthropicMessagesFromSession converts a schema.Conversation to Anthropic message format.
 // System messages are skipped (handled separately via the system parameter).
-func anthropicMessagesFromSession(session *schema.Session) ([]anthropicMessage, error) {
+func anthropicMessagesFromSession(session *schema.Conversation) ([]anthropicMessage, error) {
 	if session == nil {
 		return nil, nil
 	}
@@ -24,6 +25,11 @@ func anthropicMessagesFromSession(session *schema.Session) ([]anthropicMessage, 
 	messages := make([]anthropicMessage, 0, len(*session))
 	for _, msg := range *session {
 		if msg.Role == schema.RoleSystem {
+			continue
+		}
+		// Skip empty assistant messages (no content blocks) — these can
+		// occur when another provider returns a tool call with no text.
+		if msg.Role == schema.RoleAssistant && len(msg.Content) == 0 {
 			continue
 		}
 		am, err := anthropicMessageFromMessage(msg)
@@ -36,28 +42,17 @@ func anthropicMessagesFromSession(session *schema.Session) ([]anthropicMessage, 
 }
 
 // anthropicMessageFromMessage converts a single schema.Message to Anthropic format.
-// If the message has meta["thought"]=true, the first text block becomes a thinking block.
 func anthropicMessageFromMessage(msg *schema.Message) (anthropicMessage, error) {
 	blocks := make([]anthropicContentBlock, 0, len(msg.Content))
 
-	// Check if this message contains thinking content
-	hasThought := false
-	if msg.Meta != nil {
-		if thought, ok := msg.Meta["thought"].(bool); ok && thought {
-			hasThought = true
-		}
-	}
-
-	firstText := true
 	for i := range msg.Content {
 		block := &msg.Content[i]
 
-		// First text block in a thinking message → thinking block
-		if block.Text != nil && hasThought && firstText {
-			firstText = false
+		// Thinking block
+		if block.Thinking != nil {
 			ab := anthropicContentBlock{
 				Type:     blockTypeThinking,
-				Thinking: *block.Text,
+				Thinking: *block.Thinking,
 			}
 			if sig, ok := msg.Meta["thought_signature"].(string); ok {
 				ab.Signature = sig
@@ -91,8 +86,15 @@ func anthropicBlockFromContentBlock(block *schema.ContentBlock) (*anthropicConte
 		}, nil
 	}
 
-	// Attachment (image, document)
+	// Attachment — convert text/* to a text block since Anthropic
+	// only supports image and PDF attachments
 	if block.Attachment != nil {
+		if block.Attachment.IsText() && len(block.Attachment.Data) > 0 {
+			return &anthropicContentBlock{
+				Type: blockTypeText,
+				Text: block.Attachment.TextContent(),
+			}, nil
+		}
 		return anthropicBlockFromAttachment(block.Attachment)
 	}
 
@@ -130,14 +132,11 @@ func anthropicBlockFromContentBlock(block *schema.ContentBlock) (*anthropicConte
 	return nil, nil
 }
 
-// anthropicBlockFromAttachment converts an Attachment to an Anthropic content block
+// anthropicBlockFromAttachment converts an Attachment to an Anthropic content block.
+// Anthropic supports "image" (for image/*) and "document" (for application/pdf) block types.
 func anthropicBlockFromAttachment(att *schema.Attachment) (*anthropicContentBlock, error) {
 	if len(att.Data) > 0 {
-		// Base64-encoded inline data
-		blockType := blockTypeImage
-		if strings.HasPrefix(att.Type, "application/pdf") {
-			blockType = blockTypeDocument
-		}
+		blockType := blockTypeForMIME(att.Type)
 		return &anthropicContentBlock{
 			Type: blockType,
 			Source: &anthropicSource{
@@ -148,8 +147,9 @@ func anthropicBlockFromAttachment(att *schema.Attachment) (*anthropicContentBloc
 		}, nil
 	}
 	if att.URL != nil {
+		blockType := blockTypeForMIME(att.Type)
 		return &anthropicContentBlock{
-			Type: blockTypeImage,
+			Type: blockType,
 			Source: &anthropicSource{
 				Type: sourceTypeURL,
 				URL:  att.URL.String(),
@@ -157,6 +157,17 @@ func anthropicBlockFromAttachment(att *schema.Attachment) (*anthropicContentBloc
 		}, nil
 	}
 	return nil, nil
+}
+
+// blockTypeForMIME returns the Anthropic block type for a given MIME type.
+func blockTypeForMIME(mimeType string) string {
+	mediaType, _, _ := mime.ParseMediaType(mimeType)
+	switch {
+	case strings.HasPrefix(mediaType, "image/"):
+		return blockTypeImage
+	default:
+		return blockTypeDocument
+	}
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -202,7 +213,7 @@ func contentBlockFromAnthropicBlock(ab *anthropicContentBlock) (schema.ContentBl
 			meta["thought_signature"] = ab.Signature
 		}
 		return schema.ContentBlock{
-			Text: &ab.Thinking,
+			Thinking: &ab.Thinking,
 		}, meta
 
 	case blockTypeToolUse:

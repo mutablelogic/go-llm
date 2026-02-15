@@ -2,10 +2,10 @@ package mistral
 
 import (
 	"encoding/json"
-	"fmt"
 
 	// Packages
 	jsonschema "github.com/google/jsonschema-go/jsonschema"
+	llm "github.com/mutablelogic/go-llm"
 	opt "github.com/mutablelogic/go-llm/pkg/opt"
 )
 
@@ -23,7 +23,7 @@ func WithSystemPrompt(value string) opt.Opt {
 // Higher values produce more random output, lower values more deterministic.
 func WithTemperature(value float64) opt.Opt {
 	if value < 0 || value > 1.5 {
-		return opt.Error(fmt.Errorf("temperature must be between 0.0 and 1.5"))
+		return opt.Error(llm.ErrBadParameter.With("temperature must be between 0.0 and 1.5"))
 	}
 	return opt.SetFloat64(opt.TemperatureKey, value)
 }
@@ -31,7 +31,7 @@ func WithTemperature(value float64) opt.Opt {
 // WithMaxTokens sets the maximum number of tokens to generate (minimum 1).
 func WithMaxTokens(value uint) opt.Opt {
 	if value < 1 {
-		return opt.Error(fmt.Errorf("max_tokens must be at least 1"))
+		return opt.Error(llm.ErrBadParameter.With("max_tokens must be at least 1"))
 	}
 	return opt.SetUint(opt.MaxTokensKey, value)
 }
@@ -40,7 +40,7 @@ func WithMaxTokens(value uint) opt.Opt {
 // Tokens are selected from the smallest set whose cumulative probability exceeds top_p.
 func WithTopP(value float64) opt.Opt {
 	if value < 0 || value > 1 {
-		return opt.Error(fmt.Errorf("top_p must be between 0.0 and 1.0"))
+		return opt.Error(llm.ErrBadParameter.With("top_p must be between 0.0 and 1.0"))
 	}
 	return opt.SetFloat64(opt.TopPKey, value)
 }
@@ -49,7 +49,7 @@ func WithTopP(value float64) opt.Opt {
 // Generation stops when any of the specified sequences is encountered.
 func WithStopSequences(values ...string) opt.Opt {
 	if len(values) == 0 {
-		return opt.Error(fmt.Errorf("at least one stop sequence is required"))
+		return opt.Error(llm.ErrBadParameter.With("at least one stop sequence is required"))
 	}
 	return opt.AddString(opt.StopSequencesKey, values...)
 }
@@ -64,7 +64,7 @@ func WithSeed(value uint) opt.Opt {
 // the model to talk about new topics.
 func WithPresencePenalty(value float64) opt.Opt {
 	if value < -2 || value > 2 {
-		return opt.Error(fmt.Errorf("presence_penalty must be between -2.0 and 2.0"))
+		return opt.Error(llm.ErrBadParameter.With("presence_penalty must be between -2.0 and 2.0"))
 	}
 	return opt.SetFloat64(opt.PresencePenaltyKey, value)
 }
@@ -74,7 +74,7 @@ func WithPresencePenalty(value float64) opt.Opt {
 // appeared so far, reducing repetition.
 func WithFrequencyPenalty(value float64) opt.Opt {
 	if value < -2 || value > 2 {
-		return opt.Error(fmt.Errorf("frequency_penalty must be between -2.0 and 2.0"))
+		return opt.Error(llm.ErrBadParameter.With("frequency_penalty must be between -2.0 and 2.0"))
 	}
 	return opt.SetFloat64(opt.FrequencyPenaltyKey, value)
 }
@@ -87,11 +87,11 @@ func WithSafePrompt() opt.Opt {
 // WithJSONOutput constrains the model to produce JSON conforming to the given schema.
 func WithJSONOutput(schema *jsonschema.Schema) opt.Opt {
 	if schema == nil {
-		return opt.Error(fmt.Errorf("schema is required for JSON output"))
+		return opt.Error(llm.ErrBadParameter.With("schema is required for JSON output"))
 	}
 	data, err := json.Marshal(schema)
 	if err != nil {
-		return opt.Error(fmt.Errorf("failed to serialize JSON schema: %w", err))
+		return opt.Error(llm.ErrBadParameter.Withf("failed to serialize JSON schema: %v", err))
 	}
 	return opt.SetString(opt.JSONSchemaKey, string(data))
 }

@@ -23,21 +23,21 @@ var _ llm.Generator = (*Client)(nil)
 // PUBLIC METHODS
 
 // WithoutSession sends a single message and returns the response (stateless)
-func (c *Client) WithoutSession(ctx context.Context, model schema.Model, message *schema.Message, opts ...opt.Opt) (*schema.Message, error) {
+func (c *Client) WithoutSession(ctx context.Context, model schema.Model, message *schema.Message, opts ...opt.Opt) (*schema.Message, *schema.Usage, error) {
 	if message == nil {
-		return nil, llm.ErrBadParameter.With("message is required")
+		return nil, nil, llm.ErrBadParameter.With("message is required")
 	}
-	session := schema.Session{message}
+	session := schema.Conversation{message}
 	return c.generate(ctx, model.Name, &session, opts...)
 }
 
 // WithSession sends a message within a session and returns the response (stateful)
-func (c *Client) WithSession(ctx context.Context, model schema.Model, session *schema.Session, message *schema.Message, opts ...opt.Opt) (*schema.Message, error) {
+func (c *Client) WithSession(ctx context.Context, model schema.Model, session *schema.Conversation, message *schema.Message, opts ...opt.Opt) (*schema.Message, *schema.Usage, error) {
 	if session == nil {
-		return nil, llm.ErrBadParameter.With("session is required")
+		return nil, nil, llm.ErrBadParameter.With("session is required")
 	}
 	if message == nil {
-		return nil, llm.ErrBadParameter.With("message is required")
+		return nil, nil, llm.ErrBadParameter.With("message is required")
 	}
 	session.Append(*message)
 	return c.generate(ctx, model.Name, session, opts...)
@@ -47,18 +47,18 @@ func (c *Client) WithSession(ctx context.Context, model schema.Model, session *s
 // PRIVATE METHODS
 
 // generate is the core method that builds a request from options and sends it
-func (c *Client) generate(ctx context.Context, model string, session *schema.Session, opts ...opt.Opt) (*schema.Message, error) {
+func (c *Client) generate(ctx context.Context, model string, session *schema.Conversation, opts ...opt.Opt) (*schema.Message, *schema.Usage, error) {
 	// Apply options
 	options, err := opt.Apply(opts...)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	streamFn := options.GetStream()
 
 	// Build request
 	request, err := generateRequestFromOpts(model, session, options)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	// Force stream flag when streaming callback is set
@@ -69,7 +69,7 @@ func (c *Client) generate(ctx context.Context, model string, session *schema.Ses
 	// Create JSON payload
 	payload, err := client.NewJSONRequest(request)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	// Streaming path
@@ -80,14 +80,14 @@ func (c *Client) generate(ctx context.Context, model string, session *schema.Ses
 	// Non-streaming path
 	var response messagesResponse
 	if err := c.DoWithContext(ctx, payload, &response, client.OptPath("messages")); err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	return c.processResponse(&response, session)
 }
 
 // generateStream handles the SSE streaming response from the Anthropic API
-func (c *Client) generateStream(ctx context.Context, payload client.Payload, session *schema.Session, streamFn opt.StreamFn) (*schema.Message, error) {
+func (c *Client) generateStream(ctx context.Context, payload client.Payload, session *schema.Conversation, streamFn opt.StreamFn) (*schema.Message, *schema.Usage, error) {
 	// Accumulators for building the final response
 	var (
 		role       string
@@ -181,66 +181,78 @@ func (c *Client) generateStream(ctx context.Context, payload client.Payload, ses
 	// Execute with streaming
 	var discard messagesResponse
 	if err := c.DoWithContext(ctx, payload, &discard, client.OptPath("messages"), client.OptTextStreamCallback(callback)); err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	// Refusal — no message to append
 	if stopReason == stopReasonRefusal {
-		return nil, llm.ErrRefusal
+		return nil, nil, llm.ErrRefusal
 	}
 
 	// Build final message from accumulated blocks
 	message, err := messageFromAnthropicResponse(role, blocks, stopReason)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	// Append the message to the session with token counts
 	session.AppendWithOuput(*message, usage.InputTokens, usage.OutputTokens)
 
+	// Build usage
+	usageResult := &schema.Usage{
+		InputTokens:  usage.InputTokens,
+		OutputTokens: usage.OutputTokens,
+	}
+
 	// Return error for stop reasons that need caller attention
 	switch stopReason {
 	case stopReasonMaxTokens:
-		return message, llm.ErrMaxTokens
+		return message, usageResult, llm.ErrMaxTokens
 	case stopReasonPauseTurn:
-		return message, llm.ErrPauseTurn
+		return message, usageResult, llm.ErrPauseTurn
 	}
 
-	return message, nil
+	return message, usageResult, nil
 }
 
 // processResponse handles the non-streaming response
-func (c *Client) processResponse(response *messagesResponse, session *schema.Session) (*schema.Message, error) {
+func (c *Client) processResponse(response *messagesResponse, session *schema.Conversation) (*schema.Message, *schema.Usage, error) {
 	// Refusal — no message to append
 	if response.StopReason == stopReasonRefusal {
-		return nil, llm.ErrRefusal
+		return nil, nil, llm.ErrRefusal
 	}
 
 	// Convert response to schema message
 	message, err := messageFromAnthropicResponse(response.Role, response.Content, response.StopReason)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	// Append the message to the session with token counts
 	session.AppendWithOuput(*message, response.Usage.InputTokens, response.Usage.OutputTokens)
 
+	// Build usage
+	usageResult := &schema.Usage{
+		InputTokens:  response.Usage.InputTokens,
+		OutputTokens: response.Usage.OutputTokens,
+	}
+
 	// Return error for stop reasons that need caller attention
 	switch response.StopReason {
 	case stopReasonMaxTokens:
-		return message, llm.ErrMaxTokens
+		return message, usageResult, llm.ErrMaxTokens
 	case stopReasonPauseTurn:
-		return message, llm.ErrPauseTurn
+		return message, usageResult, llm.ErrPauseTurn
 	}
 
-	return message, nil
+	return message, usageResult, nil
 }
 
 ///////////////////////////////////////////////////////////////////////////////
 // REQUEST BUILDING
 
 // generateRequestFromOpts builds a messagesRequest from the session and applied options
-func generateRequestFromOpts(model string, session *schema.Session, options opt.Options) (*messagesRequest, error) {
+func generateRequestFromOpts(model string, session *schema.Conversation, options opt.Options) (*messagesRequest, error) {
 	// Convert session to Anthropic message format
 	messages, err := anthropicMessagesFromSession(session)
 	if err != nil {
@@ -308,14 +320,22 @@ func generateRequestFromOpts(model string, session *schema.Session, options opt.
 		topP = &v
 	}
 
-	// Output format (JSON schema)
-	var outputFmt *outputFormat
+	// Output config (effort and/or JSON schema format)
+	var outCfg *outputConfig
+	if effort := options.GetString(opt.OutputConfigKey); effort != "" {
+		outCfg = &outputConfig{Effort: effort}
+	}
 	if schemaJSON := options.GetString(opt.JSONSchemaKey); schemaJSON != "" {
 		var s jsonschema.Schema
 		if err := json.Unmarshal([]byte(schemaJSON), &s); err == nil {
-			outputFmt = &outputFormat{
-				Type:       "json_schema",
-				JSONSchema: &s,
+			// Anthropic requires additionalProperties: false on all object types
+			setAdditionalPropertiesFalse(&s)
+			if outCfg == nil {
+				outCfg = &outputConfig{}
+			}
+			outCfg.Format = &outputFormat{
+				Type:   "json_schema",
+				Schema: &s,
 			}
 		}
 	}
@@ -346,8 +366,7 @@ func generateRequestFromOpts(model string, session *schema.Session, options opt.
 		Messages:      messages,
 		Metadata:      metadata,
 		Model:         model,
-		OutputConfig:  options.GetString(opt.OutputConfigKey),
-		OutputFormat:  outputFmt,
+		OutputConfig:  outCfg,
 		ServiceTier:   options.GetString(opt.ServiceTierKey),
 		StopSequences: options.GetStringArray(opt.StopSequencesKey),
 		System:        system,
@@ -362,10 +381,39 @@ func generateRequestFromOpts(model string, session *schema.Session, options opt.
 
 // GenerateRequest builds a generate request from options without sending it.
 // Useful for testing and debugging.
-func GenerateRequest(model string, session *schema.Session, opts ...opt.Opt) (any, error) {
+func GenerateRequest(model string, session *schema.Conversation, opts ...opt.Opt) (any, error) {
 	options, err := opt.Apply(opts...)
 	if err != nil {
 		return nil, err
 	}
 	return generateRequestFromOpts(model, session, options)
+}
+
+// setAdditionalPropertiesFalse recursively walks a JSON schema and sets
+// additionalProperties to false on all object types, as required by Anthropic.
+func setAdditionalPropertiesFalse(s *jsonschema.Schema) {
+	if s == nil {
+		return
+	}
+	if s.Type == "object" && s.AdditionalProperties == nil {
+		s.AdditionalProperties = &jsonschema.Schema{Not: &jsonschema.Schema{}}
+	}
+	for _, sub := range s.Properties {
+		setAdditionalPropertiesFalse(sub)
+	}
+	if s.Items != nil {
+		setAdditionalPropertiesFalse(s.Items)
+	}
+	for _, sub := range s.AllOf {
+		setAdditionalPropertiesFalse(sub)
+	}
+	for _, sub := range s.AnyOf {
+		setAdditionalPropertiesFalse(sub)
+	}
+	for _, sub := range s.OneOf {
+		setAdditionalPropertiesFalse(sub)
+	}
+	if s.AdditionalProperties != nil && s.AdditionalProperties.Not == nil {
+		setAdditionalPropertiesFalse(s.AdditionalProperties)
+	}
 }

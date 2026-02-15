@@ -13,8 +13,8 @@ import (
 	// Packages
 	uuid "github.com/google/uuid"
 	llm "github.com/mutablelogic/go-llm"
-	opt "github.com/mutablelogic/go-llm/pkg/opt"
 	schema "github.com/mutablelogic/go-llm/pkg/schema"
+	types "github.com/mutablelogic/go-server/pkg/types"
 )
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -37,7 +37,7 @@ type FileStore struct {
 	dir string
 }
 
-var _ Store = (*FileStore)(nil)
+var _ schema.Store = (*FileStore)(nil)
 
 ///////////////////////////////////////////////////////////////////////////////
 // LIFECYCLE
@@ -59,24 +59,25 @@ func NewFileStore(dir string) (*FileStore, error) {
 
 // Create creates a new session with a unique ID, writes it to disk,
 // and returns it.
-func (f *FileStore) Create(_ context.Context, name string, model schema.Model) (*Session, error) {
-	if model.Name == "" {
-		return nil, llm.ErrBadParameter.With("model name is required")
-	}
-
-	now := time.Now()
-	s := &Session{
-		ID:       uuid.New().String(),
-		Name:     name,
-		Model:    model,
-		Messages: make(schema.Session, 0),
-		Created:  now,
-		Modified: now,
-	}
-
+func (f *FileStore) Create(_ context.Context, meta schema.SessionMeta) (*schema.Session, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 
+	if meta.Model == "" {
+		return nil, llm.ErrBadParameter.With("model name is required")
+	}
+	if err := validateLabels(meta.Labels); err != nil {
+		return nil, err
+	}
+
+	now := time.Now()
+	s := &schema.Session{
+		ID:          uuid.New().String(),
+		SessionMeta: meta,
+		Messages:    make(schema.Conversation, 0),
+		Created:     now,
+		Modified:    now,
+	}
 	if err := f.write(s); err != nil {
 		return nil, err
 	}
@@ -84,21 +85,16 @@ func (f *FileStore) Create(_ context.Context, name string, model schema.Model) (
 }
 
 // Get retrieves a session by ID from disk.
-func (f *FileStore) Get(_ context.Context, id string) (*Session, error) {
+func (f *FileStore) Get(_ context.Context, id string) (*schema.Session, error) {
 	f.mu.RLock()
 	defer f.mu.RUnlock()
 
 	return f.read(id)
 }
 
-// List returns all sessions from disk, ordered by last modified time
-// (most recent first).
-func (f *FileStore) List(_ context.Context, opts ...opt.Opt) ([]*Session, error) {
-	o, err := opt.Apply(opts...)
-	if err != nil {
-		return nil, err
-	}
-
+// List returns sessions from disk, ordered by last modified time
+// (most recent first), with pagination support.
+func (f *FileStore) List(_ context.Context, req schema.ListSessionRequest) (*schema.ListSessionResponse, error) {
 	f.mu.RLock()
 	defer f.mu.RUnlock()
 
@@ -107,7 +103,7 @@ func (f *FileStore) List(_ context.Context, opts ...opt.Opt) ([]*Session, error)
 		return nil, llm.ErrInternalServerError.Withf("readdir: %v", err)
 	}
 
-	result := make([]*Session, 0, len(entries))
+	result := make([]*schema.Session, 0, len(entries))
 	for _, entry := range entries {
 		if entry.IsDir() || !strings.HasSuffix(entry.Name(), jsonExt) {
 			continue
@@ -117,6 +113,9 @@ func (f *FileStore) List(_ context.Context, opts ...opt.Opt) ([]*Session, error)
 		if err != nil {
 			continue // skip corrupt files
 		}
+		if !matchLabels(s.Labels, req.Label) {
+			continue
+		}
 		result = append(result, s)
 	}
 
@@ -124,11 +123,23 @@ func (f *FileStore) List(_ context.Context, opts ...opt.Opt) ([]*Session, error)
 		return result[i].Modified.After(result[j].Modified)
 	})
 
-	if limit := o.GetUint(opt.LimitKey); limit > 0 && int(limit) < len(result) {
-		result = result[:limit]
+	// Paginate
+	total := uint(len(result))
+	start := req.Offset
+	if start > total {
+		start = total
+	}
+	end := start + types.Value(req.Limit)
+	if req.Limit == nil || end > total {
+		end = total
 	}
 
-	return result, nil
+	return &schema.ListSessionResponse{
+		Count:  total,
+		Offset: req.Offset,
+		Limit:  req.Limit,
+		Body:   result[start:end],
+	}, nil
 }
 
 // Delete removes a session file by ID.
@@ -155,7 +166,7 @@ func (f *FileStore) path(id string) string {
 }
 
 // write serialises a session to its JSON file.
-func (f *FileStore) write(s *Session) error {
+func (f *FileStore) write(s *schema.Session) error {
 	data, err := json.MarshalIndent(s, "", "  ")
 	if err != nil {
 		return llm.ErrInternalServerError.Withf("marshal: %v", err)
@@ -167,7 +178,7 @@ func (f *FileStore) write(s *Session) error {
 }
 
 // read deserialises a session from its JSON file.
-func (f *FileStore) read(id string) (*Session, error) {
+func (f *FileStore) read(id string) (*schema.Session, error) {
 	data, err := os.ReadFile(f.path(id))
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -175,7 +186,7 @@ func (f *FileStore) read(id string) (*Session, error) {
 		}
 		return nil, llm.ErrInternalServerError.Withf("read: %v", err)
 	}
-	var s Session
+	var s schema.Session
 	if err := json.Unmarshal(data, &s); err != nil {
 		return nil, llm.ErrInternalServerError.Withf("unmarshal: %v", err)
 	}
@@ -184,9 +195,64 @@ func (f *FileStore) read(id string) (*Session, error) {
 
 // Write persists a session's current state to disk.
 // This is called after mutations (e.g. Append) to keep the file in sync.
-func (f *FileStore) Write(s *Session) error {
+func (f *FileStore) Write(s *schema.Session) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 
 	return f.write(s)
+}
+
+// Update applies non-zero fields from meta to the session identified by id,
+// persists the result to disk, and returns the updated session.
+func (f *FileStore) Update(_ context.Context, id string, meta schema.SessionMeta) (*schema.Session, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+
+	s, err := f.read(id)
+	if err != nil {
+		return nil, err
+	}
+
+	if meta.Name != "" {
+		s.Name = meta.Name
+	}
+	if meta.Model != "" {
+		s.Model = meta.Model
+	}
+	if meta.Provider != "" {
+		s.Provider = meta.Provider
+	}
+	if meta.SystemPrompt != "" {
+		s.SystemPrompt = meta.SystemPrompt
+	}
+	if meta.Format != nil {
+		s.Format = meta.Format
+	}
+	if meta.Thinking != nil {
+		s.Thinking = meta.Thinking
+	}
+	if meta.ThinkingBudget > 0 {
+		s.ThinkingBudget = meta.ThinkingBudget
+	}
+	if len(meta.Labels) > 0 {
+		if err := validateLabels(meta.Labels); err != nil {
+			return nil, err
+		}
+		if s.Labels == nil {
+			s.Labels = make(map[string]string)
+		}
+		for k, v := range meta.Labels {
+			if v == "" {
+				delete(s.Labels, k)
+			} else {
+				s.Labels[k] = v
+			}
+		}
+	}
+	s.Modified = time.Now()
+
+	if err := f.write(s); err != nil {
+		return nil, err
+	}
+	return s, nil
 }

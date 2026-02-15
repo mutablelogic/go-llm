@@ -3,71 +3,129 @@ package agent
 import (
 	"context"
 	"sort"
+	"sync"
 
 	// Packages
 	llm "github.com/mutablelogic/go-llm"
-	opt "github.com/mutablelogic/go-llm/pkg/opt"
 	schema "github.com/mutablelogic/go-llm/pkg/schema"
+	types "github.com/mutablelogic/go-server/pkg/types"
+	errgroup "golang.org/x/sync/errgroup"
 )
 
 ///////////////////////////////////////////////////////////////////////////////
 // PUBLIC METHODS
 
-// ListModels returns the list of available models from all clients
-func (a *agent) ListModels(ctx context.Context, opts ...opt.Opt) ([]schema.Model, error) {
-	var result []schema.Model
+func (m *Manager) ListModels(ctx context.Context, req schema.ListModelsRequest) (*schema.ListModelsResponse, error) {
+	var mu sync.Mutex
+	var all []schema.Model
 
-	// Apply options
-	o, err := opt.Apply(opts...)
-	if err != nil {
+	// Collect models from all clients in parallel
+	wg, ctx := errgroup.WithContext(ctx)
+	var matched bool
+	for _, client := range m.clients {
+		// Match the provider option (skip filter if empty)
+		if req.Provider != "" && client.Name() != req.Provider {
+			continue
+		}
+		matched = true
+
+		// Fetch in parallel and aggregate results
+		wg.Go(func() error {
+			models, err := client.ListModels(ctx)
+			if err != nil {
+				return err
+			}
+
+			mu.Lock()
+			defer mu.Unlock()
+			all = append(all, models...)
+			return nil
+		})
+	}
+	if err := wg.Wait(); err != nil {
 		return nil, err
 	}
 
-	for _, client := range a.clients {
-		// Match the provider option
-		if !matchProvider(o, client.Name()) {
-			continue
-		}
-
-		// List models for this provider
-		models, err := client.ListModels(ctx)
-		if err != nil {
-			return nil, err
-		}
-
-		// Append the models
-		result = append(result, models...)
+	// Check if provider filter matched
+	if req.Provider != "" && !matched {
+		return nil, llm.ErrNotFound.Withf("provider %q not found", req.Provider)
 	}
 
-	// Sort the models by name
-	sort.Slice(result, func(i, j int) bool { return result[i].Name < result[j].Name })
+	// Sort all models by name
+	sort.Slice(all, func(i, j int) bool { return all[i].Name < all[j].Name })
 
-	// Return the models
-	return result, nil
+	// Paginate
+	total := uint(len(all))
+	start := req.Offset
+	if start > total {
+		start = total
+	}
+	end := start + types.Value(req.Limit)
+	if req.Limit == nil || end > total {
+		end = total
+	}
+
+	// Append provider name
+	provider := make([]string, 0, len(m.clients))
+	for name := range m.clients {
+		provider = append(provider, name)
+	}
+
+	// Return success
+	return &schema.ListModelsResponse{
+		Count:    total,
+		Offset:   req.Offset,
+		Limit:    req.Limit,
+		Provider: provider,
+		Body:     all[start:end],
+	}, nil
 }
 
-// GetModel returns the model with the given name from any client
-func (a *agent) GetModel(ctx context.Context, name string, opts ...opt.Opt) (*schema.Model, error) {
-	// Apply options
-	o, err := opt.Apply(opts...)
-	if err != nil {
-		return nil, err
-	}
+func (m *Manager) GetModel(ctx context.Context, req schema.GetModelRequest) (*schema.Model, error) {
+	var mu sync.Mutex
+	var result *schema.Model
 
-	// Get model based on name
-	for _, client := range a.clients {
-		// Match the provider option
-		if !matchProvider(o, client.Name()) {
+	// Provide cancelable context to short-circuit once we find the model
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+
+	// Search all clients for the model in parallel (filtered by provider if specified)
+	wg, ctx := errgroup.WithContext(ctx)
+	var matched bool
+	for _, client := range m.clients {
+		// Match the provider option (skip filter if empty)
+		if req.Provider != "" && client.Name() != req.Provider {
 			continue
 		}
+		matched = true
 
-		// Match the model
-		model, err := client.GetModel(ctx, name)
-		if err == nil && model != nil {
-			return model, nil
-		}
+		wg.Go(func() error {
+			model, err := client.GetModel(ctx, req.Name)
+			if err != nil {
+				return nil // Swallow per-provider not-found errors
+			}
+
+			mu.Lock()
+			defer mu.Unlock()
+			if result == nil {
+				result = model
+				cancel() // Short-circuit remaining lookups
+			}
+			return nil
+		})
 	}
 
-	// Return "not found" error
-	return nil, llm.ErrNotFound
+	// Return any errors (or not found if result is nil)
+	if err := wg.Wait(); err != nil {
+		return nil, err
+	}
+	if req.Provider != "" && !matched {
+		return nil, llm.ErrNotFound.Withf("provider %q not found", req.Provider)
+	}
+	if result == nil {
+		return nil, llm.ErrNotFound.Withf("model '%s' not found", req.Name)
+	}
+
+	// Return success
+	return result, nil
 }

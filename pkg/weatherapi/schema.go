@@ -4,7 +4,7 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/mutablelogic/go-llm/pkg/types"
+	types "github.com/mutablelogic/go-server/pkg/types"
 )
 
 ///////////////////////////////////////////////////////////////////////////////

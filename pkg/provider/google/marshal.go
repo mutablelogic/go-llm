@@ -3,10 +3,11 @@ package google
 import (
 	"encoding/base64"
 	"encoding/json"
-	"fmt"
 	"net/url"
 
 	// Packages
+	"github.com/google/uuid"
+	llm "github.com/mutablelogic/go-llm"
 	schema "github.com/mutablelogic/go-llm/pkg/schema"
 	"github.com/mutablelogic/go-llm/pkg/tool"
 )
@@ -14,9 +15,9 @@ import (
 ///////////////////////////////////////////////////////////////////////////////
 // SESSION / MESSAGE → GEMINI WIRE FORMAT (OUTBOUND)
 
-// geminiContentsFromSession converts a schema.Session into gemini wire Content
+// geminiContentsFromSession converts a schema.Conversation into gemini wire Content
 // slices. System messages are skipped (handled via SystemInstruction separately).
-func geminiContentsFromSession(session *schema.Session) ([]*geminiContent, error) {
+func geminiContentsFromSession(session *schema.Conversation) ([]*geminiContent, error) {
 	if session == nil {
 		return nil, nil
 	}
@@ -24,6 +25,11 @@ func geminiContentsFromSession(session *schema.Session) ([]*geminiContent, error
 	contents := make([]*geminiContent, 0, len(*session))
 	for _, msg := range *session {
 		if msg.Role == schema.RoleSystem {
+			continue
+		}
+		// Skip empty assistant messages (no content blocks) — these can
+		// occur when the model returns a tool call with no text.
+		if msg.Role == schema.RoleAssistant && len(msg.Content) == 0 {
 			continue
 		}
 		c, err := geminiContentFromMessage(msg)
@@ -40,16 +46,9 @@ func geminiContentsFromSession(session *schema.Session) ([]*geminiContent, error
 func geminiContentFromMessage(msg *schema.Message) (*geminiContent, error) {
 	parts := make([]*geminiPart, 0, len(msg.Content))
 
-	// Extract thinking metadata from the message
-	var (
-		hasThought bool
-		thoughtSig string
-		firstText  = true
-	)
+	// Extract thinking signature from message metadata (for round-trip)
+	var thoughtSig string
 	if msg.Meta != nil {
-		if v, ok := msg.Meta["thought"].(bool); ok {
-			hasThought = v
-		}
 		if v, ok := msg.Meta["thought_signature"].(string); ok {
 			thoughtSig = v
 		}
@@ -58,25 +57,31 @@ func geminiContentFromMessage(msg *schema.Message) (*geminiContent, error) {
 	for i := range msg.Content {
 		block := &msg.Content[i]
 
-		// Text content
-		if block.Text != nil {
-			part := &geminiPart{Text: *block.Text}
-
-			// First text block in a thinking message → mark as thought
-			if hasThought && firstText {
-				firstText = false
-				part.Thought = true
-				if thoughtSig != "" {
-					part.ThoughtSignature = thoughtSig
-				}
+		// Thinking content
+		if block.Thinking != nil {
+			part := &geminiPart{
+				Text:    *block.Thinking,
+				Thought: true,
+			}
+			if thoughtSig != "" {
+				part.ThoughtSignature = thoughtSig
 			}
 			parts = append(parts, part)
 			continue
 		}
 
-		// Attachment (images, documents, audio)
+		// Text content
+		if block.Text != nil {
+			parts = append(parts, &geminiPart{Text: *block.Text})
+			continue
+		}
+
+		// Attachment — convert text/* to a text part since Gemini
+		// doesn't support text MIME types as inline data
 		if block.Attachment != nil {
-			if p := geminiPartFromAttachment(block.Attachment); p != nil {
+			if block.Attachment.IsText() && len(block.Attachment.Data) > 0 {
+				parts = append(parts, &geminiPart{Text: block.Attachment.TextContent()})
+			} else if p := geminiPartFromAttachment(block.Attachment); p != nil {
 				parts = append(parts, p)
 			}
 			continue
@@ -87,10 +92,10 @@ func geminiContentFromMessage(msg *schema.Message) (*geminiContent, error) {
 			args := make(map[string]any)
 			if len(block.ToolCall.Input) > 0 {
 				if err := json.Unmarshal(block.ToolCall.Input, &args); err != nil {
-					return nil, fmt.Errorf("unmarshal tool call args: %w", err)
+					return nil, llm.ErrInternalServerError.Withf("unmarshal tool call args: %v", err)
 				}
 			}
-			parts = append(parts, geminiNewFunctionCallPart(block.ToolCall.ID, block.ToolCall.Name, args))
+			parts = append(parts, geminiNewFunctionCallPart(block.ToolCall.Name, args))
 			continue
 		}
 
@@ -150,7 +155,7 @@ func geminiPartFromToolResult(tr *schema.ToolResult) *geminiPart {
 		response["error"] = true
 	}
 
-	return geminiNewFunctionResponsePart(tr.ID, name, response)
+	return geminiNewFunctionResponsePart(name, response)
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -246,7 +251,7 @@ func blockFromGeminiPart(part *geminiPart) (schema.ContentBlock, map[string]any)
 			meta["thought_signature"] = part.ThoughtSignature
 		}
 		return schema.ContentBlock{
-			Text: &part.Text,
+			Thinking: &part.Text,
 		}, meta
 	}
 
@@ -289,7 +294,7 @@ func blockFromGeminiPart(part *geminiPart) (schema.ContentBlock, map[string]any)
 		}
 		return schema.ContentBlock{
 			ToolCall: &schema.ToolCall{
-				ID:    part.FunctionCall.ID,
+				ID:    uuid.New().String(),
 				Name:  part.FunctionCall.Name,
 				Input: input,
 			},
@@ -304,7 +309,7 @@ func blockFromGeminiPart(part *geminiPart) (schema.ContentBlock, map[string]any)
 		}
 		return schema.ContentBlock{
 			ToolResult: &schema.ToolResult{
-				ID:      part.FunctionResponse.ID,
+				ID:      uuid.New().String(),
 				Name:    part.FunctionResponse.Name,
 				Content: raw,
 			},

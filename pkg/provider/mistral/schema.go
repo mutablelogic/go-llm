@@ -77,9 +77,10 @@ type mistralMessage struct {
 // contentPart represents one element in a multi-part content array
 // (used for vision / multi-modal input).
 type contentPart struct {
-	Type     string    `json:"type"`                // "text" or "image_url"
-	Text     string    `json:"text,omitempty"`      // for type "text"
-	ImageURL *imageURL `json:"image_url,omitempty"` // for type "image_url"
+	Type       string    `json:"type"`                  // "text", "image_url", or "input_audio"
+	Text       string    `json:"text,omitempty"`        // for type "text"
+	ImageURL   *imageURL `json:"image_url,omitempty"`   // for type "image_url"
+	InputAudio string    `json:"input_audio,omitempty"` // for type "input_audio" (base64-encoded audio)
 }
 
 // imageURL carries the URL (or data-URI) for an image content part.
@@ -126,8 +127,14 @@ type toolFunctionDef struct {
 
 // responseFormat constrains the model output format.
 type responseFormat struct {
-	Type       string          `json:"type"`                  // "text", "json_object", "json_schema"
-	JSONSchema json.RawMessage `json:"json_schema,omitempty"` // for type "json_schema"
+	Type       string             `json:"type"`                  // "text", "json_object", "json_schema"
+	JSONSchema *jsonSchemaWrapper `json:"json_schema,omitempty"` // for type "json_schema"
+}
+
+// jsonSchemaWrapper wraps a JSON schema with a name for the Mistral API.
+type jsonSchemaWrapper struct {
+	Name   string          `json:"name"`
+	Schema json.RawMessage `json:"schema"`
 }
 
 ///////////////////////////////////////////////////////////////////////////////

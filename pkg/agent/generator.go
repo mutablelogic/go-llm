@@ -2,145 +2,253 @@ package agent
 
 import (
 	"context"
+	"encoding/json"
+	"sync"
 
 	// Packages
 	jsonschema "github.com/google/jsonschema-go/jsonschema"
 	llm "github.com/mutablelogic/go-llm"
 	opt "github.com/mutablelogic/go-llm/pkg/opt"
-	"github.com/mutablelogic/go-llm/pkg/provider/anthropic"
-	"github.com/mutablelogic/go-llm/pkg/provider/google"
-	"github.com/mutablelogic/go-llm/pkg/provider/mistral"
+	anthropic "github.com/mutablelogic/go-llm/pkg/provider/anthropic"
+	google "github.com/mutablelogic/go-llm/pkg/provider/google"
+	mistral "github.com/mutablelogic/go-llm/pkg/provider/mistral"
 	schema "github.com/mutablelogic/go-llm/pkg/schema"
-	"github.com/mutablelogic/go-llm/pkg/tool"
-)
-
-///////////////////////////////////////////////////////////////////////////////
-// GLOBALS
-
-const (
-	defaultMaxIterations = 10 // Default guard against infinite tool-calling loops
+	tool "github.com/mutablelogic/go-llm/pkg/tool"
 )
 
 ///////////////////////////////////////////////////////////////////////////////
 // PUBLIC METHODS
 
-// WithoutSession sends a single message and returns the response (stateless)
-func (a *agent) WithoutSession(ctx context.Context, model schema.Model, message *schema.Message, opts ...opt.Opt) (*schema.Message, error) {
-	// Get the client for this model
-	client := a.clientForModel(model)
-	if client == nil {
-		return nil, llm.ErrNotFound.Withf("no client found for model: %s", model.Name)
-	}
-
-	// Covert options based on client
-	opts, err := convertOptsForClient(opts, client)
+// Ask processes a message and returns a response, outside of a session context (stateless).
+// If fn is non-nil, text chunks are streamed to the callback as they arrive.
+func (m *Manager) Ask(ctx context.Context, request schema.AskRequest, fn opt.StreamFn) (*schema.AskResponse, error) {
+	// Resolve model, generator, and options from the request meta
+	model, generator, opts, err := m.generatorFromMeta(ctx, request.GeneratorMeta)
 	if err != nil {
 		return nil, err
 	}
 
-	// Check if client implements Generator
-	generator, ok := client.(llm.Generator)
-	if !ok {
-		return nil, llm.ErrNotImplemented.Withf("client %q does not support messaging", client.Name())
+	// Enable streaming when a callback is provided
+	if fn != nil {
+		opts = append(opts, opt.WithStream(fn))
+	}
+
+	// Build message options from attachments
+	var msgOpts []opt.Opt
+	for i := range request.Attachments {
+		a := request.Attachments[i]
+		msgOpts = append(msgOpts, opt.AddAny(opt.ContentBlockKey, schema.ContentBlock{
+			Attachment: &a,
+		}))
+	}
+
+	// Create the user message
+	message, err := schema.NewMessage(schema.RoleUser, request.Text, msgOpts...)
+	if err != nil {
+		return nil, err
 	}
 
 	// Send the message
-	return generator.WithoutSession(ctx, model, message, opts...)
+	result, usage, err := generator.WithoutSession(ctx, *model, message, opts...)
+	if err != nil {
+		return nil, err
+	}
+
+	// Return the response
+	response := &schema.AskResponse{
+		CompletionResponse: schema.CompletionResponse{
+			Role:    result.Role,
+			Content: result.Content,
+			Result:  result.Result,
+		},
+		Usage: usage,
+	}
+	return response, nil
 }
 
-// WithSession sends a message within a session and returns the response (stateful)
-func (a *agent) WithSession(ctx context.Context, model schema.Model, session *schema.Session, message *schema.Message, opts ...opt.Opt) (*schema.Message, error) {
-	// Get the client for this model
-	client := a.clientForModel(model)
-	if client == nil {
-		return nil, llm.ErrNotFound.Withf("no client found for model: %s", model.Name)
-	}
-
-	// Covert options based on client
-	opts, err := convertOptsForClient(opts, client)
+// Chat processes a message within a session context (stateful).
+// If fn is non-nil, text chunks are streamed to the callback as they arrive.
+func (m *Manager) Chat(ctx context.Context, request schema.ChatRequest, fn opt.StreamFn) (*schema.ChatResponse, error) {
+	// Retrieve the session
+	session, err := m.store.Get(ctx, request.Session)
 	if err != nil {
 		return nil, err
 	}
 
-	// Check if client implements Generator
-	generator, ok := client.(llm.Generator)
-	if !ok {
-		return nil, llm.ErrNotImplemented.Withf("client %q does not support messaging", client.Name())
+	// Resolve model, generator, and options from the session meta.
+	// If the request includes a per-request system prompt, merge it with
+	// the session's own system prompt so callers (like the Telegram bot)
+	// can inject formatting instructions on every call.
+	meta := session.GeneratorMeta
+	if request.SystemPrompt != "" {
+		if meta.SystemPrompt != "" {
+			meta.SystemPrompt += "\n\n" + request.SystemPrompt
+		} else {
+			meta.SystemPrompt = request.SystemPrompt
+		}
 	}
-
-	// Apply options
-	o, err := opt.Apply(opts...)
+	model, generator, opts, err := m.generatorFromMeta(ctx, meta)
 	if err != nil {
 		return nil, err
 	}
 
-	// Extract toolkit from options if present
-	var tk *tool.Toolkit
-	if v, ok := o.Get(opt.ToolkitKey).(*tool.Toolkit); ok && v != nil {
-		tk = v
+	// Enable streaming when a callback is provided
+	if fn != nil {
+		opts = append(opts, opt.WithStream(fn))
 	}
 
-	// Extract max iterations from options, falling back to default
-	maxIterations := int(defaultMaxIterations)
-	if v := o.GetUint(opt.MaxIterationsKey); v > 0 {
-		maxIterations = int(v)
+	// Include tools in the request
+	toolkitOpt, err := m.withTools(request.Tools...)
+	if err != nil {
+		return nil, err
+	}
+	if toolkitOpt != nil {
+		opts = append(opts, toolkitOpt)
 	}
 
-	// Send the message
-	resp, err := generator.WithSession(ctx, model, session, message, opts...)
+	// Build message options from attachments
+	var msgOpts []opt.Opt
+	for i := range request.Attachments {
+		a := request.Attachments[i]
+		msgOpts = append(msgOpts, opt.AddAny(opt.ContentBlockKey, schema.ContentBlock{
+			Attachment: &a,
+		}))
+	}
+
+	// Create the user message
+	message, err := schema.NewMessage(schema.RoleUser, request.Text, msgOpts...)
 	if err != nil {
 		return nil, err
 	}
 
-	// Loop while the model requests tool calls
-	for i := 0; tk != nil && resp.Result == schema.ResultToolCall && i < maxIterations; i++ {
-		calls := resp.ToolCalls()
-		if len(calls) == 0 {
+	// Send the message within the session
+	result, usage, err := generator.WithSession(ctx, *model, session.Conversation(), message, opts...)
+	if err != nil {
+		return nil, err
+	}
+
+	// Tool-calling loop: if the model requests tool calls, execute them
+	// and feed results back until we get a final response or hit the limit.
+	// Snapshot the conversation length so we can roll back if we exhaust iterations.
+	maxIter := request.MaxIterations
+	if maxIter == 0 {
+		maxIter = schema.DefaultMaxIterations
+	}
+	msgSnapshot := len(session.Messages)
+	for i := uint(0); i < maxIter && result.Result == schema.ResultToolCall; i++ {
+		toolCalls := result.ToolCalls()
+		if len(toolCalls) == 0 {
 			break
 		}
 
-		// Report tool calls via the streaming callback
-		if streamfn := o.GetStream(); streamfn != nil {
-			for _, call := range calls {
-				streamfn("tool", tk.Feedback(call)+"\n")
-			}
-		}
-
-		// Execute each tool call and collect result blocks
-		results := make([]schema.ContentBlock, 0, len(calls))
-		for _, call := range calls {
-			if result, err := tk.Run(ctx, call.Name, call.Input); err != nil {
-				results = append(results, schema.NewToolError(call.ID, call.Name, err))
-			} else {
-				results = append(results, schema.NewToolResult(call.ID, call.Name, result))
-			}
-		}
-
-		// Feed tool results back to the model
-		resp, err = generator.WithSession(ctx, model, session, &schema.Message{
+		// Execute tool calls in parallel then build a tool-result message and send it back
+		toolMessage := &schema.Message{
 			Role:    schema.RoleUser,
-			Content: results,
-		}, opts...)
+			Content: m.runTools(ctx, toolCalls, fn),
+		}
+
+		// Send the tool results back to the model for the next iteration
+		var u *schema.Usage
+		result, u, err = generator.WithSession(ctx, *model, session.Conversation(), toolMessage, opts...)
 		if err != nil {
 			return nil, err
 		}
+
+		// Accumulate usage
+		if u != nil {
+			if usage == nil {
+				usage = u
+			} else {
+				usage.InputTokens += u.InputTokens
+				usage.OutputTokens += u.OutputTokens
+			}
+		}
 	}
 
-	// If the loop ended because we hit the iteration limit, report an error
-	if tk != nil && resp.Result == schema.ResultToolCall {
-		return nil, llm.ErrInternalServerError.Withf("tool call loop did not resolve after %d iterations", maxIterations)
+	// If we exhausted the iteration limit while the model still wants
+	// tool calls, roll back the conversation and report the condition.
+	if result.Result == schema.ResultToolCall {
+		session.Messages = session.Messages[:msgSnapshot]
+		result.Result = schema.ResultMaxIterations
 	}
 
-	// Return success
-	return resp, nil
+	// Calculate per-turn overhead (tool schemas, system prompt, etc.)
+	// as the difference between actual input tokens and the sum of
+	// estimated/recorded message content tokens.
+	if usage != nil && usage.InputTokens > 0 {
+		// Input tokens cover all messages except the latest response
+		inputMsgTokens := session.Messages.Tokens() - result.Tokens
+		if usage.InputTokens > inputMsgTokens {
+			session.Overhead = usage.InputTokens - inputMsgTokens
+		}
+	}
+
+	// Persist the updated session
+	if err := m.store.Write(session); err != nil {
+		return nil, err
+	}
+
+	// Return the response
+	response := &schema.ChatResponse{
+		CompletionResponse: schema.CompletionResponse{
+			Role:    result.Role,
+			Content: result.Content,
+			Result:  result.Result,
+		},
+		Session: session.ID,
+		Usage:   usage,
+	}
+	return response, nil
 }
 
 ///////////////////////////////////////////////////////////////////////////////
-// AGENT-LEVEL GENERATION OPTIONS
+// PRIVATE METHODS
 
-// WithSystemPrompt sets the system instruction, dispatching to the
-// correct provider-specific option at call time.
-func WithSystemPrompt(value string) opt.Opt {
+// generatorFromMeta resolves the model and generator client from the given
+// GeneratorMeta, and returns provider-specific options derived from the meta
+// fields (e.g. system prompt). This is reusable for both Ask and Chat.
+func (m *Manager) generatorFromMeta(ctx context.Context, meta schema.GeneratorMeta) (*schema.Model, llm.Generator, []opt.Opt, error) {
+	// Get the model
+	model, err := m.getModel(ctx, meta.Provider, meta.Model)
+	if err != nil {
+		return nil, nil, nil, err
+	}
+
+	// Get the client for the model
+	client := m.clientForModel(model)
+	if client == nil {
+		return nil, nil, nil, llm.ErrNotFound.Withf("no provider found for model: %s", meta.Model)
+	}
+	generator, ok := client.(llm.Generator)
+	if !ok {
+		return nil, nil, nil, llm.ErrNotImplemented.Withf("provider %q does not support messaging", client.Name())
+	}
+
+	// Build options from meta fields
+	var opts []opt.Opt
+	if meta.SystemPrompt != "" {
+		opts = append(opts, withSystemPrompt(meta.SystemPrompt))
+	}
+	if len(meta.Format) > 0 {
+		opts = append(opts, withJSONOutput(meta.Format))
+	}
+	if meta.ThinkingBudget > 0 {
+		opts = append(opts, withThinkingBudget(meta.ThinkingBudget))
+	} else if meta.Thinking != nil && *meta.Thinking {
+		opts = append(opts, withThinking())
+	}
+
+	// Convert options for the client
+	opts, err = convertOptsForClient(opts, client)
+	if err != nil {
+		return nil, nil, nil, err
+	}
+
+	return model, generator, opts, nil
+}
+
+// withSystemPrompt dispatches to the correct provider-specific system prompt option.
+func withSystemPrompt(value string) opt.Opt {
 	return opt.WithClient(func(provider string) opt.Opt {
 		switch provider {
 		case schema.Gemini:
@@ -155,151 +263,102 @@ func WithSystemPrompt(value string) opt.Opt {
 	})
 }
 
-// WithTemperature sets the sampling temperature, dispatching to the
-// correct provider-specific option at call time.
-func WithTemperature(value float64) opt.Opt {
-	return opt.WithClient(func(provider string) opt.Opt {
-		switch provider {
-		case schema.Gemini:
-			return google.WithTemperature(value)
-		case schema.Anthropic:
-			return anthropic.WithTemperature(value)
-		case schema.Mistral:
-			return mistral.WithTemperature(value)
-		default:
-			return opt.Error(llm.ErrNotImplemented.Withf("%s: WithTemperature not supported", provider))
-		}
-	})
-}
-
-// WithMaxTokens sets the maximum number of output tokens, dispatching to the
-// correct provider-specific option at call time.
-func WithMaxTokens(value uint) opt.Opt {
-	return opt.WithClient(func(provider string) opt.Opt {
-		switch provider {
-		case schema.Gemini:
-			return google.WithMaxTokens(value)
-		case schema.Anthropic:
-			return anthropic.WithMaxTokens(value)
-		case schema.Mistral:
-			return mistral.WithMaxTokens(value)
-		default:
-			return opt.Error(llm.ErrNotImplemented.Withf("%s: WithMaxTokens not supported", provider))
-		}
-	})
-}
-
-// WithTopK sets the top-K sampling parameter, dispatching to the
-// correct provider-specific option at call time.
-func WithTopK(value uint) opt.Opt {
-	return opt.WithClient(func(provider string) opt.Opt {
-		switch provider {
-		case schema.Gemini:
-			return google.WithTopK(value)
-		case schema.Anthropic:
-			return anthropic.WithTopK(value)
-		default:
-			return opt.Error(llm.ErrNotImplemented.Withf("%s: WithTopK not supported", provider))
-		}
-	})
-}
-
-// WithTopP sets the nucleus sampling parameter, dispatching to the
-// correct provider-specific option at call time.
-func WithTopP(value float64) opt.Opt {
-	return opt.WithClient(func(provider string) opt.Opt {
-		switch provider {
-		case schema.Gemini:
-			return google.WithTopP(value)
-		case schema.Anthropic:
-			return anthropic.WithTopP(value)
-		case schema.Mistral:
-			return mistral.WithTopP(value)
-		default:
-			return opt.Error(llm.ErrNotImplemented.Withf("%s: WithTopP not supported", provider))
-		}
-	})
-}
-
-// WithStopSequences sets custom stop sequences, dispatching to the
-// correct provider-specific option at call time.
-func WithStopSequences(values ...string) opt.Opt {
-	return opt.WithClient(func(provider string) opt.Opt {
-		switch provider {
-		case schema.Gemini:
-			return google.WithStopSequences(values...)
-		case schema.Anthropic:
-			return anthropic.WithStopSequences(values...)
-		case schema.Mistral:
-			return mistral.WithStopSequences(values...)
-		default:
-			return opt.Error(llm.ErrNotImplemented.Withf("%s: WithStopSequences not supported", provider))
-		}
-	})
-}
-
-// WithThinking enables extended thinking/reasoning, dispatching to the
-// correct provider-specific option at call time.
-func WithThinking() opt.Opt {
+// withThinking dispatches to the correct provider-specific thinking option (no budget).
+func withThinking() opt.Opt {
 	return opt.WithClient(func(provider string) opt.Opt {
 		switch provider {
 		case schema.Gemini:
 			return google.WithThinking()
+		default:
+			return opt.Error(llm.ErrBadParameter.Withf("%s: WithThinking without budget not supported (use --thinking-budget)", provider))
+		}
+	})
+}
+
+// withThinkingBudget dispatches to the correct provider-specific thinking option with a token budget.
+func withThinkingBudget(budgetTokens uint) opt.Opt {
+	return opt.WithClient(func(provider string) opt.Opt {
+		switch provider {
+		case schema.Gemini:
+			return google.WithThinkingBudget(budgetTokens)
 		case schema.Anthropic:
-			return anthropic.WithThinking(10240)
+			return anthropic.WithThinking(budgetTokens)
 		default:
 			return opt.Error(llm.ErrNotImplemented.Withf("%s: WithThinking not supported", provider))
 		}
 	})
 }
 
-// WithJSONOutput constrains the model to produce JSON conforming to the given
-// schema, dispatching to the correct provider-specific option at call time.
-func WithJSONOutput(s *jsonschema.Schema) opt.Opt {
+// withJSONOutput dispatches to the correct provider-specific JSON output option.
+func withJSONOutput(data json.RawMessage) opt.Opt {
+	var s jsonschema.Schema
+	if err := json.Unmarshal(data, &s); err != nil {
+		return opt.Error(llm.ErrBadParameter.Withf("invalid JSON schema: %v", err))
+	}
 	return opt.WithClient(func(provider string) opt.Opt {
 		switch provider {
 		case schema.Gemini:
-			return google.WithJSONOutput(s)
+			return google.WithJSONOutput(&s)
 		case schema.Anthropic:
-			return anthropic.WithJSONOutput(s)
+			return anthropic.WithJSONOutput(&s)
 		case schema.Mistral:
-			return mistral.WithJSONOutput(s)
+			return mistral.WithJSONOutput(&s)
 		default:
 			return opt.Error(llm.ErrNotImplemented.Withf("%s: WithJSONOutput not supported", provider))
 		}
 	})
 }
 
-// WithToolkit attaches a toolkit of callable tools to the generation request.
-// This is provider-agnostic — each provider reads the toolkit from the options.
-func WithToolkit(tk *tool.Toolkit) opt.Opt {
-	return tool.WithToolkit(tk)
+// runTools executes the given tool calls in parallel and returns the results
+// as content blocks in the same order as the input calls. If fn is non-nil,
+// tool feedback is streamed before execution begins.
+func (m *Manager) runTools(ctx context.Context, calls []schema.ToolCall, fn opt.StreamFn) []schema.ContentBlock {
+	results := make([]schema.ContentBlock, len(calls))
+	var wg sync.WaitGroup
+	for i, call := range calls {
+		if fn != nil {
+			fn(schema.RoleTool, m.toolkit.Feedback(call))
+		}
+		wg.Add(1)
+		go func(i int, call schema.ToolCall) {
+			defer wg.Done()
+			output, err := m.toolkit.Run(ctx, call.Name, call.Input)
+			if err != nil {
+				results[i] = schema.NewToolError(call.ID, call.Name, err)
+			} else {
+				results[i] = schema.NewToolResult(call.ID, call.Name, output)
+			}
+		}(i, call)
+	}
+	wg.Wait()
+	return results
 }
 
-// WithMaxIterations sets the maximum number of tool-call loop iterations.
-// Defaults to 10 if not specified.
-func WithMaxIterations(n uint) opt.Opt {
-	return opt.SetUint(opt.MaxIterationsKey, n)
-}
+// withTools returns an opt that sets a toolkit for the request. If tool names
+// are provided, only those tools are included; otherwise all tools from the
+// manager's toolkit are included. Returns nil if the toolkit is empty.
+func (m *Manager) withTools(tools ...string) (opt.Opt, error) {
+	if len(tools) == 0 {
+		// No filter — include all tools
+		if len(m.toolkit.Tools()) == 0 {
+			return nil, nil
+		}
+		return tool.WithToolkit(m.toolkit), nil
+	}
 
-///////////////////////////////////////////////////////////////////////////////
-// PRIVATE METHODS
+	// Build a filtered toolkit with only the requested tools
+	filtered := make([]tool.Tool, 0, len(tools))
+	for _, name := range tools {
+		t := m.toolkit.Lookup(name)
+		if t == nil {
+			return nil, llm.ErrNotFound.Withf("tool %q", name)
+		}
+		filtered = append(filtered, t)
+	}
 
-// convertOptsForClient applies options once, resolves any deferred client-aware
-// options, then re-applies the combined set to produce a flat option slice.
-func convertOptsForClient(opts []opt.Opt, client llm.Client) ([]opt.Opt, error) {
-	// First pass: apply options to collect any WithClient markers
-	o, err := opt.Apply(opts...)
+	tk, err := tool.NewToolkit(filtered...)
 	if err != nil {
 		return nil, err
 	}
-
-	// Resolve client-aware options by provider name
-	resolved, err := opt.ConvertOptsForClient(o, client.Name())
-	if err != nil {
-		return nil, err
-	}
-
-	// Return original opts plus the resolved provider-specific opts
-	return append(opts, resolved...), nil
+	return tool.WithToolkit(tk), nil
 }

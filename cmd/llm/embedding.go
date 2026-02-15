@@ -1,63 +1,61 @@
 package main
 
 import (
-	"encoding/json"
 	"fmt"
-	"os"
 
 	// Packages
 	otel "github.com/mutablelogic/go-client/pkg/otel"
+	schema "github.com/mutablelogic/go-llm/pkg/schema"
 )
 
 ///////////////////////////////////////////////////////////////////////////////
 // TYPES
 
-type EmbeddingCommands struct {
-	Embedding EmbeddingCommand `cmd:"" name:"embedding" help:"Generate embedding for a file." group:"EMBEDDING"`
-}
-
 type EmbeddingCommand struct {
-	Model string `arg:"" name:"model" help:"Model name to use for embedding"`
-	File  string `arg:"" name:"file" help:"File to generate embedding for"`
+	schema.EmbeddingRequest
 }
 
 ///////////////////////////////////////////////////////////////////////////////
 // COMMANDS
 
 func (cmd *EmbeddingCommand) Run(ctx *Globals) (err error) {
-	agent, err := ctx.Agent()
+	// Load defaults for model and provider when not explicitly set
+	if cmd.EmbeddingRequest.Model == "" {
+		cmd.EmbeddingRequest.Model = ctx.defaults.GetString("embedding_model")
+	}
+	if cmd.EmbeddingRequest.Provider == "" {
+		cmd.EmbeddingRequest.Provider = ctx.defaults.GetString("embedding_provider")
+	}
+	if cmd.EmbeddingRequest.Model == "" {
+		return fmt.Errorf("model is required (set with --model or store a default)")
+	}
+
+	// Store model and provider as defaults
+	if err := ctx.defaults.Set("embedding_model", cmd.EmbeddingRequest.Model); err != nil {
+		return err
+	}
+	if cmd.EmbeddingRequest.Provider != "" {
+		if err := ctx.defaults.Set("embedding_provider", cmd.EmbeddingRequest.Provider); err != nil {
+			return err
+		}
+	}
+
+	client, err := ctx.Client()
 	if err != nil {
 		return err
 	}
 
-	// OTEL tracing
+	// OTEL
 	parent, endSpan := otel.StartSpan(ctx.tracer, ctx.ctx, "EmbeddingCommand")
 	defer func() { endSpan(err) }()
 
-	// Get the model
-	model, err := agent.GetModel(parent, cmd.Model)
+	// Get embeddings
+	response, err := client.Embedding(parent, cmd.EmbeddingRequest)
 	if err != nil {
-		return fmt.Errorf("failed to get model %q: %w", cmd.Model, err)
+		return err
 	}
 
-	// Read the file
-	data, err := os.ReadFile(cmd.File)
-	if err != nil {
-		return fmt.Errorf("failed to read file %q: %w", cmd.File, err)
-	}
-
-	// Generate embedding
-	vector, err := agent.Embedding(parent, *model, string(data))
-	if err != nil {
-		return fmt.Errorf("failed to generate embedding: %w", err)
-	}
-
-	// Output the embedding as JSON
-	output, err := json.Marshal(vector)
-	if err != nil {
-		return fmt.Errorf("failed to marshal embedding: %w", err)
-	}
-
-	fmt.Println(string(output))
+	// Print
+	fmt.Println(response)
 	return nil
 }
