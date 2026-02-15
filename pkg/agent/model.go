@@ -21,11 +21,13 @@ func (m *Manager) ListModels(ctx context.Context, req schema.ListModelsRequest) 
 
 	// Collect models from all clients in parallel
 	wg, ctx := errgroup.WithContext(ctx)
+	var matched bool
 	for _, client := range m.clients {
 		// Match the provider option (skip filter if empty)
 		if req.Provider != "" && client.Name() != req.Provider {
 			continue
 		}
+		matched = true
 
 		// Fetch in parallel and aggregate results
 		wg.Go(func() error {
@@ -42,6 +44,11 @@ func (m *Manager) ListModels(ctx context.Context, req schema.ListModelsRequest) 
 	}
 	if err := wg.Wait(); err != nil {
 		return nil, err
+	}
+
+	// Check if provider filter matched
+	if req.Provider != "" && !matched {
+		return nil, llm.ErrNotFound.Withf("provider %q not found", req.Provider)
 	}
 
 	// Sort all models by name
@@ -84,11 +91,13 @@ func (m *Manager) GetModel(ctx context.Context, req schema.GetModelRequest) (*sc
 
 	// Search all clients for the model in parallel (filtered by provider if specified)
 	wg, ctx := errgroup.WithContext(ctx)
+	var matched bool
 	for _, client := range m.clients {
 		// Match the provider option (skip filter if empty)
 		if req.Provider != "" && client.Name() != req.Provider {
 			continue
 		}
+		matched = true
 
 		wg.Go(func() error {
 			model, err := client.GetModel(ctx, req.Name)
@@ -109,6 +118,9 @@ func (m *Manager) GetModel(ctx context.Context, req schema.GetModelRequest) (*sc
 	// Return any errors (or not found if result is nil)
 	if err := wg.Wait(); err != nil {
 		return nil, err
+	}
+	if req.Provider != "" && !matched {
+		return nil, llm.ErrNotFound.Withf("provider %q not found", req.Provider)
 	}
 	if result == nil {
 		return nil, llm.ErrNotFound.Withf("model '%s' not found", req.Name)

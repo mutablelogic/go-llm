@@ -106,10 +106,12 @@ func (cmd *CreateSessionCommand) Run(ctx *Globals) (err error) {
 
 	// Create session
 	session, err := client.CreateSession(parent, schema.SessionMeta{
-		Name:         cmd.Name,
-		Provider:     cmd.Provider,
-		Model:        cmd.Model,
-		SystemPrompt: cmd.SystemPrompt,
+		Name: cmd.Name,
+		GeneratorMeta: schema.GeneratorMeta{
+			Provider:     cmd.Provider,
+			Model:        cmd.Model,
+			SystemPrompt: cmd.SystemPrompt,
+		},
 	})
 	if err != nil {
 		return err

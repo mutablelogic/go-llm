@@ -233,9 +233,12 @@ func generateRequestFromOpts(model string, session *schema.Conversation, options
 	if ss := options.GetStringArray(opt.StopSequencesKey); len(ss) > 0 {
 		request.GenerationConfig.StopSequences = ss
 	}
-	if options.GetBool(opt.ThinkingKey) {
+	if options.GetBool(opt.ThinkingKey) || options.Has(opt.ThinkingBudgetKey) {
 		request.GenerationConfig.ThinkingConfig = &geminiThinkingConfig{
 			IncludeThoughts: true,
+		}
+		if options.Has(opt.ThinkingBudgetKey) {
+			request.GenerationConfig.ThinkingConfig.ThinkingBudget = int(options.GetUint(opt.ThinkingBudgetKey))
 		}
 	}
 	if v := options.Get(opt.SeedKey); v != nil {

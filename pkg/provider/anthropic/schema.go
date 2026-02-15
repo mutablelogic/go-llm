@@ -24,8 +24,7 @@ type messagesRequest struct {
 	Messages      []anthropicMessage `json:"messages"`
 	Metadata      *messagesMetadata  `json:"metadata,omitempty"`
 	Model         string             `json:"model"`
-	OutputConfig  string             `json:"output_config,omitempty"`
-	OutputFormat  *outputFormat      `json:"output_format,omitempty"`
+	OutputConfig  *outputConfig      `json:"output_config,omitempty"`
 	ServiceTier   string             `json:"service_tier,omitempty"`
 	StopSequences []string           `json:"stop_sequences,omitempty"`
 	Stream        bool               `json:"stream,omitempty"`
@@ -55,10 +54,16 @@ type toolChoice struct {
 	Name string `json:"name,omitempty"`
 }
 
+// outputConfig controls output configuration (effort level and/or format).
+type outputConfig struct {
+	Effort string        `json:"effort,omitempty"`
+	Format *outputFormat `json:"format,omitempty"`
+}
+
 // outputFormat constrains the response format (e.g. JSON schema).
 type outputFormat struct {
-	Type       string             `json:"type"`
-	JSONSchema *jsonschema.Schema `json:"json_schema,omitempty"`
+	Type   string             `json:"type"`
+	Schema *jsonschema.Schema `json:"schema,omitempty"`
 }
 
 ///////////////////////////////////////////////////////////////////////////////

@@ -84,6 +84,12 @@ func WithThinking() opt.Opt {
 	return opt.SetBool(opt.ThinkingKey, true)
 }
 
+// WithThinkingBudget enables extended thinking with a specific token budget.
+// See: https://ai.google.dev/gemini-api/docs/thinking
+func WithThinkingBudget(budgetTokens uint) opt.Opt {
+	return opt.SetUint(opt.ThinkingBudgetKey, budgetTokens)
+}
+
 // WithJSONOutput constrains the model to produce JSON conforming to the given schema.
 // Sets responseMimeType to "application/json" and responseJsonSchema on the request.
 //

@@ -10,7 +10,7 @@ import (
 	assert "github.com/stretchr/testify/assert"
 )
 
-var testMeta = schema.SessionMeta{Name: "test", Model: "test-model", Provider: "test-provider"}
+var testMeta = schema.SessionMeta{Name: "test", GeneratorMeta: schema.GeneratorMeta{Model: "test-model", Provider: "test-provider"}}
 
 func textPtr(s string) *string { return &s }
 
@@ -23,7 +23,7 @@ func Test_memory_001(t *testing.T) {
 func Test_memory_002(t *testing.T) {
 	assert := assert.New(t)
 	store := session.NewMemoryStore()
-	s, err := store.Create(context.TODO(), schema.SessionMeta{Name: "my chat", Model: "test-model", Provider: "test-provider"})
+	s, err := store.Create(context.TODO(), schema.SessionMeta{Name: "my chat", GeneratorMeta: schema.GeneratorMeta{Model: "test-model", Provider: "test-provider"}})
 	assert.NoError(err)
 	assert.NotNil(s)
 	assert.NotEmpty(s.ID)
@@ -45,9 +45,9 @@ func Test_memory_003(t *testing.T) {
 func Test_memory_004(t *testing.T) {
 	assert := assert.New(t)
 	store := session.NewMemoryStore()
-	s1, err := store.Create(context.TODO(), schema.SessionMeta{Name: "first", Model: "test-model", Provider: "test-provider"})
+	s1, err := store.Create(context.TODO(), schema.SessionMeta{Name: "first", GeneratorMeta: schema.GeneratorMeta{Model: "test-model", Provider: "test-provider"}})
 	assert.NoError(err)
-	s2, err := store.Create(context.TODO(), schema.SessionMeta{Name: "second", Model: "test-model", Provider: "test-provider"})
+	s2, err := store.Create(context.TODO(), schema.SessionMeta{Name: "second", GeneratorMeta: schema.GeneratorMeta{Model: "test-model", Provider: "test-provider"}})
 	assert.NoError(err)
 	assert.NotEqual(s1.ID, s2.ID)
 }
@@ -55,7 +55,7 @@ func Test_memory_004(t *testing.T) {
 func Test_memory_005(t *testing.T) {
 	assert := assert.New(t)
 	store := session.NewMemoryStore()
-	s, err := store.Create(context.TODO(), schema.SessionMeta{Name: "", Model: "test-model", Provider: "test-provider"})
+	s, err := store.Create(context.TODO(), schema.SessionMeta{Name: "", GeneratorMeta: schema.GeneratorMeta{Model: "test-model", Provider: "test-provider"}})
 	assert.NoError(err)
 	assert.Equal("", s.Name)
 }
@@ -63,7 +63,7 @@ func Test_memory_005(t *testing.T) {
 func Test_memory_006(t *testing.T) {
 	assert := assert.New(t)
 	store := session.NewMemoryStore()
-	created, _ := store.Create(context.TODO(), schema.SessionMeta{Name: "test", Model: "test-model", Provider: "test-provider"})
+	created, _ := store.Create(context.TODO(), schema.SessionMeta{Name: "test", GeneratorMeta: schema.GeneratorMeta{Model: "test-model", Provider: "test-provider"}})
 	got, err := store.Get(context.TODO(), created.ID)
 	assert.NoError(err)
 	assert.Equal(created.ID, got.ID)
@@ -80,7 +80,7 @@ func Test_memory_007(t *testing.T) {
 func Test_memory_008(t *testing.T) {
 	assert := assert.New(t)
 	store := session.NewMemoryStore()
-	s, _ := store.Create(context.TODO(), schema.SessionMeta{Name: "test", Model: "test-model", Provider: "test-provider"})
+	s, _ := store.Create(context.TODO(), schema.SessionMeta{Name: "test", GeneratorMeta: schema.GeneratorMeta{Model: "test-model", Provider: "test-provider"}})
 	err := store.Delete(context.TODO(), s.ID)
 	assert.NoError(err)
 	_, err = store.Get(context.TODO(), s.ID)
@@ -105,9 +105,9 @@ func Test_memory_010(t *testing.T) {
 func Test_memory_011(t *testing.T) {
 	assert := assert.New(t)
 	store := session.NewMemoryStore()
-	store.Create(context.TODO(), schema.SessionMeta{Name: "first", Model: "test-model", Provider: "test-provider"})
-	store.Create(context.TODO(), schema.SessionMeta{Name: "second", Model: "test-model", Provider: "test-provider"})
-	store.Create(context.TODO(), schema.SessionMeta{Name: "third", Model: "test-model", Provider: "test-provider"})
+	store.Create(context.TODO(), schema.SessionMeta{Name: "first", GeneratorMeta: schema.GeneratorMeta{Model: "test-model", Provider: "test-provider"}})
+	store.Create(context.TODO(), schema.SessionMeta{Name: "second", GeneratorMeta: schema.GeneratorMeta{Model: "test-model", Provider: "test-provider"}})
+	store.Create(context.TODO(), schema.SessionMeta{Name: "third", GeneratorMeta: schema.GeneratorMeta{Model: "test-model", Provider: "test-provider"}})
 	resp, err := store.List(context.TODO(), schema.ListSessionRequest{})
 	assert.NoError(err)
 	assert.Len(resp.Body, 3)
@@ -116,11 +116,11 @@ func Test_memory_011(t *testing.T) {
 func Test_memory_012(t *testing.T) {
 	assert := assert.New(t)
 	store := session.NewMemoryStore()
-	s1, _ := store.Create(context.TODO(), schema.SessionMeta{Name: "oldest", Model: "test-model", Provider: "test-provider"})
+	s1, _ := store.Create(context.TODO(), schema.SessionMeta{Name: "oldest", GeneratorMeta: schema.GeneratorMeta{Model: "test-model", Provider: "test-provider"}})
 	time.Sleep(10 * time.Millisecond)
-	s2, _ := store.Create(context.TODO(), schema.SessionMeta{Name: "middle", Model: "test-model", Provider: "test-provider"})
+	s2, _ := store.Create(context.TODO(), schema.SessionMeta{Name: "middle", GeneratorMeta: schema.GeneratorMeta{Model: "test-model", Provider: "test-provider"}})
 	time.Sleep(10 * time.Millisecond)
-	s3, _ := store.Create(context.TODO(), schema.SessionMeta{Name: "newest", Model: "test-model", Provider: "test-provider"})
+	s3, _ := store.Create(context.TODO(), schema.SessionMeta{Name: "newest", GeneratorMeta: schema.GeneratorMeta{Model: "test-model", Provider: "test-provider"}})
 	resp, err := store.List(context.TODO(), schema.ListSessionRequest{})
 	assert.NoError(err)
 	assert.Len(resp.Body, 3)
@@ -132,9 +132,9 @@ func Test_memory_012(t *testing.T) {
 func Test_memory_013(t *testing.T) {
 	assert := assert.New(t)
 	store := session.NewMemoryStore()
-	s1, _ := store.Create(context.TODO(), schema.SessionMeta{Name: "first", Model: "test-model", Provider: "test-provider"})
+	s1, _ := store.Create(context.TODO(), schema.SessionMeta{Name: "first", GeneratorMeta: schema.GeneratorMeta{Model: "test-model", Provider: "test-provider"}})
 	time.Sleep(10 * time.Millisecond)
-	store.Create(context.TODO(), schema.SessionMeta{Name: "second", Model: "test-model", Provider: "test-provider"})
+	store.Create(context.TODO(), schema.SessionMeta{Name: "second", GeneratorMeta: schema.GeneratorMeta{Model: "test-model", Provider: "test-provider"}})
 	time.Sleep(10 * time.Millisecond)
 	msg := schema.Message{Role: schema.RoleUser, Content: []schema.ContentBlock{{Text: textPtr("hello")}}}
 	s1.Append(msg)
@@ -146,8 +146,8 @@ func Test_memory_013(t *testing.T) {
 func Test_memory_014(t *testing.T) {
 	assert := assert.New(t)
 	store := session.NewMemoryStore()
-	s, _ := store.Create(context.TODO(), schema.SessionMeta{Name: "doomed", Model: "test-model", Provider: "test-provider"})
-	store.Create(context.TODO(), schema.SessionMeta{Name: "keeper", Model: "test-model", Provider: "test-provider"})
+	s, _ := store.Create(context.TODO(), schema.SessionMeta{Name: "doomed", GeneratorMeta: schema.GeneratorMeta{Model: "test-model", Provider: "test-provider"}})
+	store.Create(context.TODO(), schema.SessionMeta{Name: "keeper", GeneratorMeta: schema.GeneratorMeta{Model: "test-model", Provider: "test-provider"}})
 	store.Delete(context.TODO(), s.ID)
 	resp, err := store.List(context.TODO(), schema.ListSessionRequest{})
 	assert.NoError(err)
@@ -158,7 +158,7 @@ func Test_memory_014(t *testing.T) {
 func Test_session_001(t *testing.T) {
 	assert := assert.New(t)
 	store := session.NewMemoryStore()
-	s, _ := store.Create(context.TODO(), schema.SessionMeta{Name: "test", Model: "test-model", Provider: "test-provider"})
+	s, _ := store.Create(context.TODO(), schema.SessionMeta{Name: "test", GeneratorMeta: schema.GeneratorMeta{Model: "test-model", Provider: "test-provider"}})
 	originalModified := s.Modified
 	time.Sleep(5 * time.Millisecond)
 	msg := schema.Message{Role: schema.RoleUser, Content: []schema.ContentBlock{{Text: textPtr("hello")}}}
@@ -170,7 +170,7 @@ func Test_session_001(t *testing.T) {
 func Test_session_002(t *testing.T) {
 	assert := assert.New(t)
 	store := session.NewMemoryStore()
-	s, _ := store.Create(context.TODO(), schema.SessionMeta{Name: "test", Model: "test-model", Provider: "test-provider"})
+	s, _ := store.Create(context.TODO(), schema.SessionMeta{Name: "test", GeneratorMeta: schema.GeneratorMeta{Model: "test-model", Provider: "test-provider"}})
 	s.Append(schema.Message{Role: schema.RoleUser, Tokens: 10})
 	s.Append(schema.Message{Role: schema.RoleAssistant, Tokens: 25})
 	assert.Equal(uint(35), s.Tokens())
@@ -179,7 +179,7 @@ func Test_session_002(t *testing.T) {
 func Test_session_003(t *testing.T) {
 	assert := assert.New(t)
 	store := session.NewMemoryStore()
-	s, _ := store.Create(context.TODO(), schema.SessionMeta{Name: "test", Model: "test-model", Provider: "test-provider"})
+	s, _ := store.Create(context.TODO(), schema.SessionMeta{Name: "test", GeneratorMeta: schema.GeneratorMeta{Model: "test-model", Provider: "test-provider"}})
 	ms := s.Conversation()
 	assert.NotNil(ms)
 	assert.Len(*ms, 0)
@@ -189,7 +189,7 @@ func Test_session_003(t *testing.T) {
 
 func Test_session_004(t *testing.T) {
 	assert := assert.New(t)
-	s := &schema.Session{SessionMeta: schema.SessionMeta{Model: "test-model"}}
+	s := &schema.Session{SessionMeta: schema.SessionMeta{GeneratorMeta: schema.GeneratorMeta{Model: "test-model"}}}
 	err := s.Validate()
 	assert.Error(err)
 }
@@ -204,13 +204,13 @@ func Test_session_005(t *testing.T) {
 func Test_session_006(t *testing.T) {
 	assert := assert.New(t)
 	store := session.NewMemoryStore()
-	s, _ := store.Create(context.TODO(), schema.SessionMeta{Name: "test", Model: "test-model", Provider: "test-provider"})
+	s, _ := store.Create(context.TODO(), schema.SessionMeta{Name: "test", GeneratorMeta: schema.GeneratorMeta{Model: "test-model", Provider: "test-provider"}})
 	assert.NoError(s.Validate())
 }
 
 func Test_session_007(t *testing.T) {
 	assert := assert.New(t)
 	store := session.NewMemoryStore()
-	s, _ := store.Create(context.TODO(), schema.SessionMeta{Name: "test", Model: "test-model", Provider: "test-provider"})
+	s, _ := store.Create(context.TODO(), schema.SessionMeta{Name: "test", GeneratorMeta: schema.GeneratorMeta{Model: "test-model", Provider: "test-provider"}})
 	assert.NotEmpty(s.String())
 }

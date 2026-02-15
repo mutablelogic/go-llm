@@ -29,6 +29,7 @@ type ListModelsCommand struct {
 type GetModelCommand struct {
 	Name     string `arg:"" name:"name" help:"Model name"`
 	Provider string `name:"provider" help:"Provider name" optional:""`
+	Default  bool   `name:"default" help:"Save as default model" optional:""`
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -115,5 +116,17 @@ func (cmd *GetModelCommand) Run(ctx *Globals) (err error) {
 
 	// Print
 	fmt.Println(model)
+
+	// Save as default if requested
+	if cmd.Default {
+		if err := ctx.defaults.Set("model", model.Name); err != nil {
+			return err
+		}
+		if model.OwnedBy != "" {
+			if err := ctx.defaults.Set("provider", model.OwnedBy); err != nil {
+				return err
+			}
+		}
+	}
 	return nil
 }

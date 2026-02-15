@@ -306,12 +306,13 @@ func Test_generateRequest_016(t *testing.T) {
 
 	req, err := generateRequestFromOpts("claude-sonnet-4-20250514", &session, o)
 	assert.NoError(err)
-	assert.NotNil(req.OutputFormat)
-	assert.Equal("json_schema", req.OutputFormat.Type)
-	assert.NotNil(req.OutputFormat.JSONSchema)
+	assert.NotNil(req.OutputConfig)
+	assert.NotNil(req.OutputConfig.Format)
+	assert.Equal("json_schema", req.OutputConfig.Format.Type)
+	assert.NotNil(req.OutputConfig.Format.Schema)
 
 	// Verify the schema round-trips correctly
-	data, err := json.Marshal(req.OutputFormat.JSONSchema)
+	data, err := json.Marshal(req.OutputConfig.Format.Schema)
 	assert.NoError(err)
 	var m map[string]any
 	assert.NoError(json.Unmarshal(data, &m))
@@ -348,7 +349,8 @@ func Test_generateRequest_018(t *testing.T) {
 
 	req, err := generateRequestFromOpts("claude-sonnet-4-20250514", &session, o)
 	assert.NoError(err)
-	assert.Equal("low", req.OutputConfig)
+	assert.NotNil(req.OutputConfig)
+	assert.Equal("low", req.OutputConfig.Effort)
 }
 
 func Test_generateRequest_019(t *testing.T) {
@@ -379,8 +381,8 @@ func Test_generateRequest_019(t *testing.T) {
 	assert.NotContains(m, "tools")
 	assert.NotContains(m, "metadata")
 	assert.NotContains(m, "output_format")
-	assert.NotContains(m, "service_tier")
 	assert.NotContains(m, "output_config")
+	assert.NotContains(m, "service_tier")
 
 	// Required fields should be present
 	assert.Contains(m, "model")

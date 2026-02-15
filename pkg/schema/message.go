@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"mime"
 	"net/http"
 	"net/url"
 	"strings"
@@ -31,6 +32,7 @@ type Message struct {
 // Exactly one of the fields should be non-nil/non-empty.
 type ContentBlock struct {
 	Text       *string     `json:"text,omitempty"`        // Text content
+	Thinking   *string     `json:"thinking,omitempty"`    // Thinking/reasoning content
 	Attachment *Attachment `json:"attachment,omitempty"`  // Image, document, audio, etc.
 	ToolCall   *ToolCall   `json:"tool_call,omitempty"`   // Tool invocation (assistant → user)
 	ToolResult *ToolResult `json:"tool_result,omitempty"` // Tool response (user → assistant)
@@ -41,6 +43,36 @@ type Attachment struct {
 	Type string   `json:"type"`           // MIME type: "image/png", "application/pdf", etc.
 	Data []byte   `json:"data,omitempty"` // Raw binary data
 	URL  *url.URL `json:"url,omitempty"`  // URL reference (http, https, gs, file, etc.)
+}
+
+// IsText returns true if the attachment has a text/* MIME type (e.g. text/plain,
+// text/html, text/csv). Handles MIME parameters like charset gracefully.
+// Such attachments can be converted to text blocks when providers don't
+// support them as media uploads.
+func (a Attachment) IsText() bool {
+	mediaType, _, err := mime.ParseMediaType(a.Type)
+	if err != nil {
+		return strings.HasPrefix(a.Type, "text/")
+	}
+	return strings.HasPrefix(mediaType, "text/")
+}
+
+// TextContent returns the attachment's data as a string, optionally prefixed
+// with the filename and content type for context. Only meaningful when
+// IsText() returns true.
+func (a Attachment) TextContent() string {
+	text := string(a.Data)
+	var header string
+	if a.URL != nil && a.URL.Path != "" {
+		header += "File: " + a.URL.Path + "\n"
+	}
+	if a.Type != "" {
+		header += "Content-Type: " + a.Type + "\n"
+	}
+	if header != "" {
+		return header + "\n" + text
+	}
+	return text
 }
 
 // ToolCall represents a tool invocation requested by the model

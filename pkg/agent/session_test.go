@@ -25,7 +25,7 @@ func Test_session_001(t *testing.T) {
 	assert.NoError(err)
 
 	// Should work with the default in-memory store
-	s, err := m.CreateSession(context.TODO(), schema.SessionMeta{Model: "model-1"})
+	s, err := m.CreateSession(context.TODO(), schema.SessionMeta{GeneratorMeta: schema.GeneratorMeta{Model: "model-1"}})
 	assert.NoError(err)
 	assert.NotEmpty(s.ID)
 
@@ -61,8 +61,8 @@ func Test_session_003(t *testing.T) {
 	assert.NoError(err)
 
 	s, err := m.CreateSession(context.TODO(), schema.SessionMeta{
-		Name:  "my chat",
-		Model: "model-1",
+		Name:          "my chat",
+		GeneratorMeta: schema.GeneratorMeta{Model: "model-1"},
 	})
 	assert.NoError(err)
 	assert.NotNil(s)
@@ -86,8 +86,7 @@ func Test_session_004(t *testing.T) {
 	assert.NoError(err)
 
 	s, err := m.CreateSession(context.TODO(), schema.SessionMeta{
-		Provider: "provider-2",
-		Model:    "shared",
+		GeneratorMeta: schema.GeneratorMeta{Provider: "provider-2", Model: "shared"},
 	})
 	assert.NoError(err)
 	assert.Equal("provider-2", s.Provider)
@@ -103,7 +102,7 @@ func Test_session_005(t *testing.T) {
 	)
 	assert.NoError(err)
 
-	_, err = m.CreateSession(context.TODO(), schema.SessionMeta{Model: "nonexistent"})
+	_, err = m.CreateSession(context.TODO(), schema.SessionMeta{GeneratorMeta: schema.GeneratorMeta{Model: "nonexistent"}})
 	assert.ErrorIs(err, llm.ErrNotFound)
 }
 
@@ -118,8 +117,8 @@ func Test_session_006(t *testing.T) {
 	assert.NoError(err)
 
 	created, err := m.CreateSession(context.TODO(), schema.SessionMeta{
-		Name:  "test",
-		Model: "model-1",
+		Name:          "test",
+		GeneratorMeta: schema.GeneratorMeta{Model: "model-1"},
 	})
 	assert.NoError(err)
 
@@ -154,7 +153,7 @@ func Test_session_008(t *testing.T) {
 	)
 	assert.NoError(err)
 
-	created, err := m.CreateSession(context.TODO(), schema.SessionMeta{Model: "model-1"})
+	created, err := m.CreateSession(context.TODO(), schema.SessionMeta{GeneratorMeta: schema.GeneratorMeta{Model: "model-1"}})
 	assert.NoError(err)
 
 	deleted, err := m.DeleteSession(context.TODO(), schema.DeleteSessionRequest{ID: created.ID})
@@ -189,11 +188,11 @@ func Test_session_010(t *testing.T) {
 	)
 	assert.NoError(err)
 
-	_, err = m.CreateSession(context.TODO(), schema.SessionMeta{Name: "first", Model: "model-1"})
+	_, err = m.CreateSession(context.TODO(), schema.SessionMeta{Name: "first", GeneratorMeta: schema.GeneratorMeta{Model: "model-1"}})
 	assert.NoError(err)
-	_, err = m.CreateSession(context.TODO(), schema.SessionMeta{Name: "second", Model: "model-1"})
+	_, err = m.CreateSession(context.TODO(), schema.SessionMeta{Name: "second", GeneratorMeta: schema.GeneratorMeta{Model: "model-1"}})
 	assert.NoError(err)
-	_, err = m.CreateSession(context.TODO(), schema.SessionMeta{Name: "third", Model: "model-1"})
+	_, err = m.CreateSession(context.TODO(), schema.SessionMeta{Name: "third", GeneratorMeta: schema.GeneratorMeta{Model: "model-1"}})
 	assert.NoError(err)
 
 	resp, err := m.ListSessions(context.TODO(), schema.ListSessionRequest{})
@@ -213,7 +212,7 @@ func Test_session_011(t *testing.T) {
 	assert.NoError(err)
 
 	for i := 0; i < 5; i++ {
-		_, err = m.CreateSession(context.TODO(), schema.SessionMeta{Model: "model-1"})
+		_, err = m.CreateSession(context.TODO(), schema.SessionMeta{GeneratorMeta: schema.GeneratorMeta{Model: "model-1"}})
 		assert.NoError(err)
 	}
 
@@ -250,7 +249,7 @@ func Test_session_013(t *testing.T) {
 	assert.NoError(err)
 
 	for i := 0; i < 5; i++ {
-		_, err = m.CreateSession(context.TODO(), schema.SessionMeta{Model: "model-1"})
+		_, err = m.CreateSession(context.TODO(), schema.SessionMeta{GeneratorMeta: schema.GeneratorMeta{Model: "model-1"}})
 		assert.NoError(err)
 	}
 
@@ -271,7 +270,7 @@ func Test_session_014(t *testing.T) {
 	assert.NoError(err)
 
 	for i := 0; i < 5; i++ {
-		_, err = m.CreateSession(context.TODO(), schema.SessionMeta{Model: "model-1"})
+		_, err = m.CreateSession(context.TODO(), schema.SessionMeta{GeneratorMeta: schema.GeneratorMeta{Model: "model-1"}})
 		assert.NoError(err)
 	}
 

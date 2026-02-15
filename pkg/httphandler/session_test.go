@@ -40,7 +40,7 @@ func TestSessionList_WithSessions(t *testing.T) {
 	mux := serveMux(mgr)
 
 	for _, name := range []string{"session-1", "session-2"} {
-		body, _ := json.Marshal(schema.SessionMeta{Name: name, Model: "model-a"})
+		body, _ := json.Marshal(schema.SessionMeta{Name: name, GeneratorMeta: schema.GeneratorMeta{Model: "model-a"}})
 		w := httptest.NewRecorder()
 		r := httptest.NewRequest(http.MethodPost, "/session", bytes.NewReader(body))
 		r.Header.Set("Content-Type", "application/json")
@@ -77,7 +77,7 @@ func TestSessionList_WithPagination(t *testing.T) {
 	mux := serveMux(mgr)
 
 	for _, name := range []string{"a", "b", "c"} {
-		body, _ := json.Marshal(schema.SessionMeta{Name: name, Model: "model-a"})
+		body, _ := json.Marshal(schema.SessionMeta{Name: name, GeneratorMeta: schema.GeneratorMeta{Model: "model-a"}})
 		w := httptest.NewRecorder()
 		r := httptest.NewRequest(http.MethodPost, "/session", bytes.NewReader(body))
 		r.Header.Set("Content-Type", "application/json")
@@ -113,7 +113,7 @@ func TestSessionCreate_OK(t *testing.T) {
 	})
 	mux := serveMux(mgr)
 
-	body, _ := json.Marshal(schema.SessionMeta{Name: "my chat", Model: "gpt-4"})
+	body, _ := json.Marshal(schema.SessionMeta{Name: "my chat", GeneratorMeta: schema.GeneratorMeta{Model: "gpt-4"}})
 	w := httptest.NewRecorder()
 	r := httptest.NewRequest(http.MethodPost, "/session", bytes.NewReader(body))
 	r.Header.Set("Content-Type", "application/json")
@@ -148,7 +148,7 @@ func TestSessionCreate_WithProvider(t *testing.T) {
 	})
 	mux := serveMux(mgr)
 
-	body, _ := json.Marshal(schema.SessionMeta{Name: "test", Provider: "provider-2", Model: "model-x"})
+	body, _ := json.Marshal(schema.SessionMeta{Name: "test", GeneratorMeta: schema.GeneratorMeta{Provider: "provider-2", Model: "model-x"}})
 	w := httptest.NewRecorder()
 	r := httptest.NewRequest(http.MethodPost, "/session", bytes.NewReader(body))
 	r.Header.Set("Content-Type", "application/json")
@@ -173,7 +173,7 @@ func TestSessionCreate_ModelNotFound(t *testing.T) {
 	})
 	mux := serveMux(mgr)
 
-	body, _ := json.Marshal(schema.SessionMeta{Name: "test", Model: "nonexistent"})
+	body, _ := json.Marshal(schema.SessionMeta{Name: "test", GeneratorMeta: schema.GeneratorMeta{Model: "nonexistent"}})
 	w := httptest.NewRecorder()
 	r := httptest.NewRequest(http.MethodPost, "/session", bytes.NewReader(body))
 	r.Header.Set("Content-Type", "application/json")
@@ -225,7 +225,7 @@ func TestSessionGet_OK(t *testing.T) {
 	mux := serveMux(mgr)
 
 	// Create a session first
-	body, _ := json.Marshal(schema.SessionMeta{Name: "my chat", Model: "gpt-4"})
+	body, _ := json.Marshal(schema.SessionMeta{Name: "my chat", GeneratorMeta: schema.GeneratorMeta{Model: "gpt-4"}})
 	w := httptest.NewRecorder()
 	r := httptest.NewRequest(http.MethodPost, "/session", bytes.NewReader(body))
 	r.Header.Set("Content-Type", "application/json")
@@ -285,7 +285,7 @@ func TestSessionDelete_OK(t *testing.T) {
 	mux := serveMux(mgr)
 
 	// Create a session
-	body, _ := json.Marshal(schema.SessionMeta{Name: "doomed", Model: "gpt-4"})
+	body, _ := json.Marshal(schema.SessionMeta{Name: "doomed", GeneratorMeta: schema.GeneratorMeta{Model: "gpt-4"}})
 	w := httptest.NewRecorder()
 	r := httptest.NewRequest(http.MethodPost, "/session", bytes.NewReader(body))
 	r.Header.Set("Content-Type", "application/json")

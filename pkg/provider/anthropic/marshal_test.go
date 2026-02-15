@@ -385,6 +385,7 @@ func decodeSchemaMessage(t *testing.T, data json.RawMessage) *schema.Message {
 		Role    string `json:"role"`
 		Content []struct {
 			Text       *string        `json:"text,omitempty"`
+			Thinking   *string        `json:"thinking,omitempty"`
 			Attachment *rawAttachment `json:"attachment,omitempty"`
 			ToolCall   *rawToolCall   `json:"tool_call,omitempty"`
 			ToolResult *rawToolResult `json:"tool_result,omitempty"`
@@ -405,6 +406,9 @@ func decodeSchemaMessage(t *testing.T, data json.RawMessage) *schema.Message {
 
 		if c.Text != nil {
 			block.Text = c.Text
+		}
+		if c.Thinking != nil {
+			block.Thinking = c.Thinking
 		}
 		if c.Attachment != nil {
 			att := &schema.Attachment{Type: c.Attachment.Type}
@@ -559,6 +563,10 @@ func roundTripMessage(t *testing.T, original *schema.Message) {
 		if orig.Text != nil {
 			assert.NotNil(rt.Text, "block %d: text should survive round-trip", i)
 			assert.Equal(*orig.Text, *rt.Text)
+		}
+		if orig.Thinking != nil {
+			assert.NotNil(rt.Thinking, "block %d: thinking should survive round-trip", i)
+			assert.Equal(*orig.Thinking, *rt.Thinking)
 		}
 		if orig.Attachment != nil {
 			assert.NotNil(rt.Attachment, "block %d: attachment should survive round-trip", i)

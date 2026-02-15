@@ -40,16 +40,9 @@ func geminiContentsFromSession(session *schema.Conversation) ([]*geminiContent, 
 func geminiContentFromMessage(msg *schema.Message) (*geminiContent, error) {
 	parts := make([]*geminiPart, 0, len(msg.Content))
 
-	// Extract thinking metadata from the message
-	var (
-		hasThought bool
-		thoughtSig string
-		firstText  = true
-	)
+	// Extract thinking signature from message metadata (for round-trip)
+	var thoughtSig string
 	if msg.Meta != nil {
-		if v, ok := msg.Meta["thought"].(bool); ok {
-			hasThought = v
-		}
 		if v, ok := msg.Meta["thought_signature"].(string); ok {
 			thoughtSig = v
 		}
@@ -58,25 +51,31 @@ func geminiContentFromMessage(msg *schema.Message) (*geminiContent, error) {
 	for i := range msg.Content {
 		block := &msg.Content[i]
 
-		// Text content
-		if block.Text != nil {
-			part := &geminiPart{Text: *block.Text}
-
-			// First text block in a thinking message → mark as thought
-			if hasThought && firstText {
-				firstText = false
-				part.Thought = true
-				if thoughtSig != "" {
-					part.ThoughtSignature = thoughtSig
-				}
+		// Thinking content
+		if block.Thinking != nil {
+			part := &geminiPart{
+				Text:    *block.Thinking,
+				Thought: true,
+			}
+			if thoughtSig != "" {
+				part.ThoughtSignature = thoughtSig
 			}
 			parts = append(parts, part)
 			continue
 		}
 
-		// Attachment (images, documents, audio)
+		// Text content
+		if block.Text != nil {
+			parts = append(parts, &geminiPart{Text: *block.Text})
+			continue
+		}
+
+		// Attachment — convert text/* to a text part since Gemini
+		// doesn't support text MIME types as inline data
 		if block.Attachment != nil {
-			if p := geminiPartFromAttachment(block.Attachment); p != nil {
+			if block.Attachment.IsText() && len(block.Attachment.Data) > 0 {
+				parts = append(parts, &geminiPart{Text: block.Attachment.TextContent()})
+			} else if p := geminiPartFromAttachment(block.Attachment); p != nil {
 				parts = append(parts, p)
 			}
 			continue
@@ -246,7 +245,7 @@ func blockFromGeminiPart(part *geminiPart) (schema.ContentBlock, map[string]any)
 			meta["thought_signature"] = part.ThoughtSignature
 		}
 		return schema.ContentBlock{
-			Text: &part.Text,
+			Thinking: &part.Text,
 		}, meta
 	}
 

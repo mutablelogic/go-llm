@@ -4,7 +4,7 @@
         "role": "assistant",
         "content": [
             {
-                "text": "Let me think about this carefully..."
+                "thinking": "Let me think about this carefully..."
             },
             {
                 "text": "The answer is 42."

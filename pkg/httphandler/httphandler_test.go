@@ -172,9 +172,7 @@ func serveMux(manager *agent.Manager) *http.ServeMux {
 	mux.HandleFunc(path, handler)
 	path, handler, _ = httphandler.SessionGetHandler(manager)
 	mux.HandleFunc(path, handler)
-	path, handler, _ = httphandler.SessionAskHandler(manager)
-	mux.HandleFunc(path, handler)
-	path, handler, _ = httphandler.SessionChatHandler(manager)
+	path, handler, _ = httphandler.AskHandler(manager)
 	mux.HandleFunc(path, handler)
 	return mux
 }

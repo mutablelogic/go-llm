@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"io"
 	"net/http"
+	"net/url"
 
 	// Packages
 	gomultipart "github.com/mutablelogic/go-client/pkg/multipart"
@@ -45,7 +46,7 @@ type GetModelRequest struct {
 // EmbeddingRequest represents a request to embed text
 type EmbeddingRequest struct {
 	Provider             string   `json:"provider,omitempty" help:"Provider name" optional:""`
-	Model                string   `json:"model,omitempty" arg:"" help:"Model name"`
+	Model                string   `json:"model,omitempty" help:"Model name" optional:""`
 	Input                []string `json:"input,omitempty" arg:"" help:"Text inputs to embed"`
 	TaskType             string   `json:"task_type,omitempty" help:"Embedding task type (Google-specific)" enum:"DEFAULT,RETRIEVAL_QUERY,RETRIEVAL_DOCUMENT,SEMANTIC_SIMILARITY,CLASSIFICATION,CLUSTERING,QUESTION_ANSWERING,FACT_VERIFICATION,CODE_RETRIEVAL_QUERY," default:"DEFAULT"`
 	Title                string   `json:"title,omitempty" help:"Document title, used with RETRIEVAL_DOCUMENT task type (Google-specific)"`
@@ -94,12 +95,65 @@ type CompletionResponse struct {
 	Result  ResultType     `json:"result,omitempty"`
 }
 
+// GeneratorMeta represents the metadata needed to invoke a generator model.
+type GeneratorMeta struct {
+	Provider       string          `json:"provider,omitempty" help:"Provider name" optional:""`
+	Model          string          `json:"model,omitempty" help:"Model name" optional:""`
+	SystemPrompt   string          `json:"system_prompt,omitempty" help:"System prompt" optional:""`
+	Format         json.RawMessage `json:"format,omitempty" help:"JSON schema for structured output" optional:""`
+	Thinking       bool            `json:"thinking,omitempty" help:"Enable thinking/reasoning" optional:""`
+	ThinkingBudget uint            `json:"thinking_budget,omitempty" help:"Thinking token budget (required for Anthropic, optional for Google)" optional:""`
+}
+
 // SessionMeta represents the metadata for a session.
 type SessionMeta struct {
-	Name         string `json:"name,omitempty" help:"Session name" optional:""`
-	Provider     string `json:"provider,omitempty" help:"Provider name" optional:""`
-	Model        string `json:"model" help:"Model name"`
-	SystemPrompt string `json:"system_prompt,omitempty" help:"System prompt" optional:""`
+	GeneratorMeta
+	Name string `json:"name,omitempty" help:"Session name" optional:""`
+}
+
+// AskRequest represents a stateless request to generate content.
+type AskRequest struct {
+	GeneratorMeta
+	Text        string       `json:"text" arg:"" help:"User input text"`
+	Attachments []Attachment `json:"attachments,omitempty" help:"File attachments" optional:""`
+}
+
+// MultipartAskRequest is the HTTP-layer request type supporting both JSON
+// (with base64 attachments) and multipart/form-data file uploads.
+type MultipartAskRequest struct {
+	AskRequest
+	File gomultipart.File `json:"file,omitempty" help:"File attachment (multipart upload)" optional:""`
+}
+
+// FileAttachment reads the multipart file (if present) and returns it
+// as an Attachment with auto-detected MIME type. Returns nil if no file
+// was uploaded.
+func (r *MultipartAskRequest) FileAttachment() (*Attachment, error) {
+	if r.File.Body == nil {
+		return nil, nil
+	}
+	data, err := io.ReadAll(r.File.Body)
+	if err != nil {
+		return nil, err
+	}
+	if len(data) == 0 {
+		return nil, nil
+	}
+	a := &Attachment{
+		Type: detectContentType(data),
+		Data: data,
+	}
+	if r.File.Path != "" {
+		a.URL = types.Ptr(url.URL{Scheme: "file", Path: r.File.Path})
+	}
+	return a, nil
+}
+
+// AskResponse represents the response from an ask request.
+type AskResponse struct {
+	CompletionResponse
+	InputTokens  uint `json:"input_tokens,omitempty"`
+	OutputTokens uint `json:"output_tokens,omitempty"`
 }
 
 // GetSessionRequest represents a request to get a session by ID
@@ -175,6 +229,10 @@ func (r EmbeddingResponse) String() string {
 	return types.Stringify(r)
 }
 
+func (r GeneratorMeta) String() string {
+	return types.Stringify(r)
+}
+
 func (r SessionMeta) String() string {
 	return types.Stringify(r)
 }
@@ -216,6 +274,14 @@ func (r CompletionRequest) String() string {
 }
 
 func (r CompletionResponse) String() string {
+	return types.Stringify(r)
+}
+
+func (r AskRequest) String() string {
+	return types.Stringify(r)
+}
+
+func (r AskResponse) String() string {
 	return types.Stringify(r)
 }
 

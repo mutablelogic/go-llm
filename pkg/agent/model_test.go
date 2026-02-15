@@ -78,7 +78,7 @@ func Test_model_002(t *testing.T) {
 	assert.Equal("model-1", resp.Body[0].Name)
 }
 
-// Test ListModels with no matching provider returns empty
+// Test ListModels with no matching provider returns error
 func Test_model_003(t *testing.T) {
 	assert := assert.New(t)
 
@@ -87,10 +87,8 @@ func Test_model_003(t *testing.T) {
 	)
 	assert.NoError(err)
 
-	resp, err := m.ListModels(context.TODO(), schema.ListModelsRequest{Provider: "nonexistent"})
-	assert.NoError(err)
-	assert.Equal(uint(0), resp.Count)
-	assert.Empty(resp.Body)
+	_, err = m.ListModels(context.TODO(), schema.ListModelsRequest{Provider: "nonexistent"})
+	assert.Error(err)
 }
 
 // Test GetModel finds model across providers

@@ -18,6 +18,9 @@ const (
 	ResultOther                       // Other/unknown finish reason
 )
 
+// ResultOK is an alias for ResultStop (normal completion).
+const ResultOK = ResultStop
+
 ////////////////////////////////////////////////////////////////////////////////
 // STRINGIFY
 

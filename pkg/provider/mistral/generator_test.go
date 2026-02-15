@@ -310,11 +310,12 @@ func Test_generateRequest_016(t *testing.T) {
 	assert.NoError(err)
 	assert.NotNil(req.ResponseFormat)
 	assert.Equal(responseFormatJSONSchema, req.ResponseFormat.Type)
-	assert.NotEmpty(req.ResponseFormat.JSONSchema)
+	assert.NotNil(req.ResponseFormat.JSONSchema)
+	assert.Equal("json_output", req.ResponseFormat.JSONSchema.Name)
 
 	// Verify the schema round-trips correctly
 	var m map[string]any
-	assert.NoError(json.Unmarshal(req.ResponseFormat.JSONSchema, &m))
+	assert.NoError(json.Unmarshal(req.ResponseFormat.JSONSchema.Schema, &m))
 	assert.Equal("object", m["type"])
 	props, ok := m["properties"].(map[string]any)
 	assert.True(ok)

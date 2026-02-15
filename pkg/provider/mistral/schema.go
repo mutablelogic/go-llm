@@ -126,8 +126,14 @@ type toolFunctionDef struct {
 
 // responseFormat constrains the model output format.
 type responseFormat struct {
-	Type       string          `json:"type"`                  // "text", "json_object", "json_schema"
-	JSONSchema json.RawMessage `json:"json_schema,omitempty"` // for type "json_schema"
+	Type       string             `json:"type"`                  // "text", "json_object", "json_schema"
+	JSONSchema *jsonSchemaWrapper `json:"json_schema,omitempty"` // for type "json_schema"
+}
+
+// jsonSchemaWrapper wraps a JSON schema with a name for the Mistral API.
+type jsonSchemaWrapper struct {
+	Name   string          `json:"name"`
+	Schema json.RawMessage `json:"schema"`
 }
 
 ///////////////////////////////////////////////////////////////////////////////

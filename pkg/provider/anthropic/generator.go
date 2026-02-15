@@ -308,14 +308,22 @@ func generateRequestFromOpts(model string, session *schema.Conversation, options
 		topP = &v
 	}
 
-	// Output format (JSON schema)
-	var outputFmt *outputFormat
+	// Output config (effort and/or JSON schema format)
+	var outCfg *outputConfig
+	if effort := options.GetString(opt.OutputConfigKey); effort != "" {
+		outCfg = &outputConfig{Effort: effort}
+	}
 	if schemaJSON := options.GetString(opt.JSONSchemaKey); schemaJSON != "" {
 		var s jsonschema.Schema
 		if err := json.Unmarshal([]byte(schemaJSON), &s); err == nil {
-			outputFmt = &outputFormat{
-				Type:       "json_schema",
-				JSONSchema: &s,
+			// Anthropic requires additionalProperties: false on all object types
+			setAdditionalPropertiesFalse(&s)
+			if outCfg == nil {
+				outCfg = &outputConfig{}
+			}
+			outCfg.Format = &outputFormat{
+				Type:   "json_schema",
+				Schema: &s,
 			}
 		}
 	}
@@ -346,8 +354,7 @@ func generateRequestFromOpts(model string, session *schema.Conversation, options
 		Messages:      messages,
 		Metadata:      metadata,
 		Model:         model,
-		OutputConfig:  options.GetString(opt.OutputConfigKey),
-		OutputFormat:  outputFmt,
+		OutputConfig:  outCfg,
 		ServiceTier:   options.GetString(opt.ServiceTierKey),
 		StopSequences: options.GetStringArray(opt.StopSequencesKey),
 		System:        system,
@@ -368,4 +375,33 @@ func GenerateRequest(model string, session *schema.Conversation, opts ...opt.Opt
 		return nil, err
 	}
 	return generateRequestFromOpts(model, session, options)
+}
+
+// setAdditionalPropertiesFalse recursively walks a JSON schema and sets
+// additionalProperties to false on all object types, as required by Anthropic.
+func setAdditionalPropertiesFalse(s *jsonschema.Schema) {
+	if s == nil {
+		return
+	}
+	if s.Type == "object" && s.AdditionalProperties == nil {
+		s.AdditionalProperties = &jsonschema.Schema{Not: &jsonschema.Schema{}}
+	}
+	for _, sub := range s.Properties {
+		setAdditionalPropertiesFalse(sub)
+	}
+	if s.Items != nil {
+		setAdditionalPropertiesFalse(s.Items)
+	}
+	for _, sub := range s.AllOf {
+		setAdditionalPropertiesFalse(sub)
+	}
+	for _, sub := range s.AnyOf {
+		setAdditionalPropertiesFalse(sub)
+	}
+	for _, sub := range s.OneOf {
+		setAdditionalPropertiesFalse(sub)
+	}
+	if s.AdditionalProperties != nil && s.AdditionalProperties.Not == nil {
+		setAdditionalPropertiesFalse(s.AdditionalProperties)
+	}
 }

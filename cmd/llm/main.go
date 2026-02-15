@@ -48,15 +48,16 @@ type Globals struct {
 	cancel   context.CancelFunc
 	tracer   trace.Tracer
 	logger   server.Logger
+	defaults *Defaults
 	execName string
 }
 
 type CLI struct {
 	Globals
+	GenerateCommands
 	ModelCommands
 	SessionCommands
 	ToolCommands
-	EmbeddingCommands
 	ServerCommands
 }
 
@@ -103,6 +104,18 @@ func run(ctx *kong.Context, globals *Globals) int {
 		globals.logger = logger.New(os.Stderr, logger.Term, globals.Debug)
 	} else {
 		globals.logger = logger.New(os.Stderr, logger.JSON, globals.Debug)
+	}
+
+	// Load defaults
+	cacheDir, err := os.UserCacheDir()
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "Error:", err)
+		return -2
+	}
+	globals.defaults, err = NewDefaults(filepath.Join(cacheDir, globals.execName, "defaults.json"))
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "Error:", err)
+		return -2
 	}
 
 	// Create the context and cancel function

@@ -136,15 +136,13 @@ func Test_manager_listmodels_005(t *testing.T) {
 	t.Logf("Provider %q: %d models", provider, filtered.Count)
 }
 
-// Test ListModels with nonexistent provider returns empty
+// Test ListModels with nonexistent provider returns error
 func Test_manager_listmodels_006(t *testing.T) {
 	assert := assert.New(t)
 	m := newManager(t)
 
-	resp, err := m.ListModels(context.Background(), schema.ListModelsRequest{Provider: "nonexistent-provider"})
-	assert.NoError(err)
-	assert.Equal(uint(0), resp.Count)
-	assert.Empty(resp.Body)
+	_, err := m.ListModels(context.Background(), schema.ListModelsRequest{Provider: "nonexistent-provider"})
+	assert.Error(err)
 }
 
 // Test ListModels with offset beyond total returns empty body

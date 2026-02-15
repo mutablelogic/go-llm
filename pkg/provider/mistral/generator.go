@@ -292,8 +292,11 @@ func generateRequestFromOpts(model string, session *schema.Conversation, options
 	// Response format (JSON schema)
 	if schemaJSON := options.GetString(opt.JSONSchemaKey); schemaJSON != "" {
 		request.ResponseFormat = &responseFormat{
-			Type:       responseFormatJSONSchema,
-			JSONSchema: json.RawMessage(schemaJSON),
+			Type: responseFormatJSONSchema,
+			JSONSchema: &jsonSchemaWrapper{
+				Name:   "json_output",
+				Schema: json.RawMessage(schemaJSON),
+			},
 		}
 	}
 

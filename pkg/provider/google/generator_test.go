@@ -540,8 +540,8 @@ func Test_processResponse_006(t *testing.T) {
 	assert.Len(result.Content, 2)
 
 	// First block is thinking
-	assert.NotNil(result.Content[0].Text)
-	assert.Equal("Let me think about this...", *result.Content[0].Text)
+	assert.NotNil(result.Content[0].Thinking)
+	assert.Equal("Let me think about this...", *result.Content[0].Thinking)
 	assert.Equal(true, result.Meta["thought"])
 	assert.Equal("sig123", result.Meta["thought_signature"])
 
