@@ -2,9 +2,11 @@ package mistral
 
 import (
 	"crypto/rand"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"math/big"
+	"mime"
 	"strings"
 
 	// Packages
@@ -112,11 +114,47 @@ func mistralMessagesFromMessage(msg *schema.Message) ([]mistralMessage, error) {
 
 		if block.Attachment != nil {
 			otherCount++
-			if block.Attachment.URL != nil {
+			mediaType, _, _ := mime.ParseMediaType(block.Attachment.Type)
+			isAudio := strings.HasPrefix(mediaType, "audio/")
+			// Text attachments → text content part
+			if block.Attachment.IsText() && len(block.Attachment.Data) > 0 {
+				text := block.Attachment.TextContent()
+				textCount++
+				singleText = &text
+				parts = append(parts, contentPart{
+					Type: "text",
+					Text: text,
+				})
+			} else if isAudio && len(block.Attachment.Data) > 0 {
+				// Audio data → input_audio (base64)
+				parts = append(parts, contentPart{
+					Type:       "input_audio",
+					InputAudio: base64.StdEncoding.EncodeToString(block.Attachment.Data),
+				})
+			} else if isAudio && block.Attachment.URL != nil && block.Attachment.URL.Scheme != "file" {
+				// Remote audio URL → input_audio (URL string)
+				parts = append(parts, contentPart{
+					Type:       "input_audio",
+					InputAudio: block.Attachment.URL.String(),
+				})
+			} else if len(block.Attachment.Data) > 0 {
+				// Image (or other binary) data → data: URI
+				if !strings.HasPrefix(mediaType, "image/") {
+					return nil, fmt.Errorf("unsupported attachment type %q: only image/*, audio/*, and text/* are supported", block.Attachment.Type)
+				}
+				dataURI := "data:" + block.Attachment.Type + ";base64," + base64.StdEncoding.EncodeToString(block.Attachment.Data)
+				parts = append(parts, contentPart{
+					Type:     "image_url",
+					ImageURL: &imageURL{URL: dataURI},
+				})
+			} else if block.Attachment.URL != nil && block.Attachment.URL.Scheme != "file" {
+				// Remote URL (https, etc.) — for images
 				parts = append(parts, contentPart{
 					Type:     "image_url",
 					ImageURL: &imageURL{URL: block.Attachment.URL.String()},
 				})
+			} else {
+				return nil, fmt.Errorf("unsupported attachment: no data and no remote URL")
 			}
 			continue
 		}
@@ -261,6 +299,19 @@ func contentBlocksFromMistralMessage(msg *mistralMessage) ([]schema.ContentBlock
 			case "text":
 				if text, ok := m["text"].(string); ok {
 					blocks = append(blocks, schema.ContentBlock{Text: &text})
+				}
+			case "input_audio":
+				if audio, ok := m["input_audio"].(string); ok {
+					data, err := base64.StdEncoding.DecodeString(audio)
+					if err != nil {
+						return nil, fmt.Errorf("failed to decode input_audio: %w", err)
+					}
+					blocks = append(blocks, schema.ContentBlock{
+						Attachment: &schema.Attachment{
+							Type: "audio/mpeg",
+							Data: data,
+						},
+					})
 				}
 			}
 		}

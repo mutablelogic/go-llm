@@ -1,0 +1,30 @@
+{
+    "name": "user message with audio attachment",
+    "schema": {
+        "role": "user",
+        "content": [
+            {
+                "text": "What's in this audio?"
+            },
+            {
+                "attachment": {
+                    "type": "audio/mpeg",
+                    "data": "SGVsbG8gV29ybGQ="
+                }
+            }
+        ]
+    },
+    "mistral": {
+        "role": "user",
+        "content": [
+            {
+                "type": "text",
+                "text": "What's in this audio?"
+            },
+            {
+                "type": "input_audio",
+                "input_audio": "SGVsbG8gV29ybGQ="
+            }
+        ]
+    }
+}

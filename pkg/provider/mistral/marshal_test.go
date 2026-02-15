@@ -1,6 +1,7 @@
 package mistral
 
 import (
+	"encoding/base64"
 	"encoding/json"
 	"net/url"
 	"os"
@@ -268,6 +269,20 @@ func Test_marshal_session_with_system(t *testing.T) {
 	a.Equal("user", messages[1].Role)
 }
 
+func Test_marshal_schema_to_mistral_input_audio(t *testing.T) {
+	mistralJSON, schemaJSON := loadTestPair(t, "message_input_audio.json")
+	a := assert.New(t)
+	msg := decodeSchemaMessage(t, schemaJSON)
+	a.Len(msg.Content, 2)
+	a.NotNil(msg.Content[1].Attachment)
+	a.Equal("audio/mpeg", msg.Content[1].Attachment.Type)
+	a.NotEmpty(msg.Content[1].Attachment.Data)
+	mms, err := mistralMessagesFromMessage(msg)
+	a.NoError(err)
+	a.Len(mms, 1)
+	assertMistralMessageEquals(t, mistralJSON, &mms[0])
+}
+
 func Test_marshal_session_nil(t *testing.T) {
 	messages, err := mistralMessagesFromSession(nil)
 	assert.NoError(t, err)
@@ -375,6 +390,7 @@ func Test_marshal_session_preserves_valid_tool_ids(t *testing.T) {
 
 type rawAttachment struct {
 	Type string `json:"type"`
+	Data string `json:"data,omitempty"` // base64-encoded
 	URL  string `json:"url,omitempty"`
 }
 
@@ -417,6 +433,13 @@ func decodeSchemaMessage(t *testing.T, data json.RawMessage) *schema.Message {
 		}
 		if c.Attachment != nil {
 			att := &schema.Attachment{Type: c.Attachment.Type}
+			if c.Attachment.Data != "" {
+				data, err := base64.StdEncoding.DecodeString(c.Attachment.Data)
+				if err != nil {
+					t.Fatalf("bad base64 in fixture: %v", err)
+				}
+				att.Data = data
+			}
 			if c.Attachment.URL != "" {
 				u, err := url.Parse(c.Attachment.URL)
 				if err != nil {
