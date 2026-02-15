@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"path/filepath"
 
 	// Packages
 	otel "github.com/mutablelogic/go-client/pkg/otel"
@@ -21,8 +22,8 @@ type GenerateCommands struct {
 
 type AskCommand struct {
 	schema.AskRequest
-	File string `help:"Path to a file to attach" optional:"" type:"existingfile"`
-	URL  string `help:"URL to attach as a reference" optional:""`
+	File []string `help:"Path or glob pattern for files to attach (may be repeated)" optional:""`
+	URL  string   `help:"URL to attach as a reference" optional:""`
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -66,13 +67,22 @@ func (cmd *AskCommand) Run(ctx *Globals) (err error) {
 
 	// Build options
 	var opts []httpclient.AskOpt
-	if cmd.File != "" {
-		f, err := os.Open(cmd.File)
+	for _, pattern := range cmd.File {
+		matches, err := filepath.Glob(pattern)
 		if err != nil {
-			return err
+			return fmt.Errorf("invalid glob pattern %q: %w", pattern, err)
 		}
-		defer f.Close()
-		opts = append(opts, httpclient.WithFile(f.Name(), f))
+		if len(matches) == 0 {
+			return fmt.Errorf("no files match %q", pattern)
+		}
+		for _, path := range matches {
+			f, err := os.Open(path)
+			if err != nil {
+				return err
+			}
+			defer f.Close()
+			opts = append(opts, httpclient.WithFile(f.Name(), f))
+		}
 	}
 	if cmd.URL != "" {
 		opts = append(opts, httpclient.WithURL(cmd.URL))
