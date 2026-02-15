@@ -60,6 +60,7 @@ type historyEntry struct {
 	rawText   string        // raw text before rendering (used for streaming)
 	segments  []textSegment // role-tagged segments accumulated during streaming
 	streaming bool          // true while this entry is being streamed
+	glamoured bool          // true if text was rendered through glamour
 }
 
 // textSegment is a chunk of streamed text tagged with its source role.
@@ -214,9 +215,19 @@ func (t *Terminal) AppendHistory(role, text string) {
 	t.program.Send(appendMsg{role: role, text: text})
 }
 
+// ClearHistory clears all messages from the chat display.
+func (t *Terminal) ClearHistory() {
+	t.program.Send(clearMsg{})
+}
+
 // ClearHistory clears the chat display.
 func (c *termContext) ClearHistory() {
 	c.program.Send(clearMsg{})
+}
+
+// AppendHistory adds a pre-existing message to the chat display.
+func (c *termContext) AppendHistory(role, text string) {
+	c.program.Send(appendMsg{role: role, text: text})
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -322,13 +333,15 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case appendMsg:
 		rendered := msg.text
 		raw := msg.text
-		// Try to render markdown for assistant messages
-		if msg.role == "assistant" && m.renderer != nil {
+		glamoured := false
+		// Try to render markdown for assistant and system messages
+		if (msg.role == "assistant" || msg.role == "system") && m.renderer != nil {
 			if out, err := m.renderer.Render(msg.text); err == nil {
 				rendered = trimGlamour(out)
+				glamoured = true
 			}
 		}
-		m.history = append(m.history, historyEntry{role: msg.role, text: rendered, rawText: raw})
+		m.history = append(m.history, historyEntry{role: msg.role, text: rendered, rawText: raw, glamoured: glamoured})
 		m.typing = false
 		m.updateViewport()
 		return m, nil
@@ -560,14 +573,17 @@ func (m *model) newRenderer() {
 	}
 }
 
-// rerenderHistory re-renders all assistant history entries with the current
-// renderer (e.g. after a terminal resize).
+// rerenderHistory re-renders all glamour-rendered history entries with the
+// current renderer (e.g. after a terminal resize).
 func (m *model) rerenderHistory() {
 	if m.renderer == nil {
 		return
 	}
 	for i := range m.history {
-		if m.history[i].role != "assistant" || m.history[i].streaming {
+		if m.history[i].streaming {
+			continue
+		}
+		if m.history[i].role != "assistant" && m.history[i].role != "system" {
 			continue
 		}
 		raw := m.history[i].rawText
@@ -576,6 +592,7 @@ func (m *model) rerenderHistory() {
 		}
 		if out, err := m.renderer.Render(raw); err == nil {
 			m.history[i].text = trimGlamour(out)
+			m.history[i].glamoured = true
 		}
 	}
 }
@@ -587,7 +604,12 @@ func (m *model) updateViewport() {
 			b.WriteString(m.styleRole(entry.role))
 		}
 		if entry.text != "" {
-			b.WriteString("\n" + indentText(entry.text))
+			if entry.glamoured {
+				// Glamour already handles margins and wrapping
+				b.WriteString("\n" + entry.text)
+			} else {
+				b.WriteString("\n" + indentText(entry.text))
+			}
 		}
 		b.WriteString("\n\n")
 	}

@@ -121,6 +121,7 @@ type ChatRequest struct {
 	Attachments   []Attachment `json:"attachments,omitempty" help:"File attachments" optional:""`
 	Tools         []string     `json:"tools,omitempty" help:"Tool names to include (empty means all)" optional:""`
 	MaxIterations uint         `json:"max_iterations,omitempty" help:"Maximum tool-calling iterations (0 uses default)" optional:""`
+	SystemPrompt  string       `json:"system_prompt,omitempty" help:"Per-request system prompt appended to the session prompt" optional:""`
 }
 
 // MultipartChatRequest is the HTTP-layer request type supporting both JSON

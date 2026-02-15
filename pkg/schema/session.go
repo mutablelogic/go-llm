@@ -79,6 +79,18 @@ func (s *Conversation) AppendWithOuput(message Message, input, output uint) {
 		(*s)[n-1].Tokens = (*s)[n-1].EstimateTokens()
 	}
 
+	// Filter out empty content blocks — some providers (notably Gemini)
+	// produce empty text parts during streaming which are rejected when
+	// sent back as context.
+	filtered := message.Content[:0]
+	for _, block := range message.Content {
+		if block.Text != nil && *block.Text == "" {
+			continue
+		}
+		filtered = append(filtered, block)
+	}
+	message.Content = filtered
+
 	// Set the output tokens on the response message
 	message.Tokens = output
 

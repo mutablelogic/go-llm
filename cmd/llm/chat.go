@@ -6,15 +6,14 @@ import (
 	"io"
 	"os"
 	"path/filepath"
-	"strings"
 
 	// Packages
 	otel "github.com/mutablelogic/go-client/pkg/otel"
 	httpclient "github.com/mutablelogic/go-llm/pkg/httpclient"
-	opt "github.com/mutablelogic/go-llm/pkg/opt"
 	schema "github.com/mutablelogic/go-llm/pkg/schema"
 	"github.com/mutablelogic/go-llm/pkg/ui"
 	btui "github.com/mutablelogic/go-llm/pkg/ui/bubbletea"
+	uicmd "github.com/mutablelogic/go-llm/pkg/ui/command"
 )
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -190,6 +189,33 @@ func (cmd *ChatCommand) runSingleShot(ctx context.Context, globals *Globals, cli
 	return nil
 }
 
+// chatHooks implements command.Hooks for the bubbletea interactive session.
+type chatHooks struct {
+	globals *Globals
+	tui     *btui.Terminal
+	client  *httpclient.Client
+}
+
+func (h *chatHooks) OnSessionChanged(sessionID string) {
+	_ = h.globals.defaults.Set("session", sessionID)
+
+	// Restore chat history from the new session.
+	if session, err := h.client.GetSession(context.Background(), sessionID); err == nil {
+		h.tui.ClearHistory()
+		for _, msg := range session.Messages {
+			text := msg.Text()
+			if text == "" {
+				continue
+			}
+			h.tui.AppendHistory(msg.Role, text)
+		}
+	}
+}
+
+func (h *chatHooks) OnSessionReset() {
+	h.tui.ClearHistory()
+}
+
 // runInteractive launches the bubbletea TUI for an interactive chat session.
 func (cmd *ChatCommand) runInteractive(ctx context.Context, globals *Globals, client *httpclient.Client, sessionID string, baseOpts []httpclient.ChatOpt) error {
 	tui, err := btui.New()
@@ -197,6 +223,13 @@ func (cmd *ChatCommand) runInteractive(ctx context.Context, globals *Globals, cl
 		return fmt.Errorf("initializing terminal UI: %w", err)
 	}
 	defer tui.Close()
+
+	// Shared command handler with bubbletea-specific hooks.
+	cmdHandler := uicmd.New(client, &chatHooks{
+		globals: globals,
+		tui:     tui,
+		client:  client,
+	})
 
 	// Restore previous messages from the session
 	if session, err := client.GetSession(ctx, sessionID); err == nil {
@@ -220,7 +253,7 @@ func (cmd *ChatCommand) runInteractive(ctx context.Context, globals *Globals, cl
 
 		switch evt.Type {
 		case ui.EventCommand:
-			if err := cmd.handleCommand(ctx, evt, globals, client, &sessionID); err != nil {
+			if err := cmd.handleCommand(ctx, evt, cmdHandler, &sessionID); err != nil {
 				evt.Context.SendText(ctx, fmt.Sprintf("Error: %v", err))
 			}
 		case ui.EventText:
@@ -231,108 +264,11 @@ func (cmd *ChatCommand) runInteractive(ctx context.Context, globals *Globals, cl
 	}
 }
 
-// handleCommand processes slash commands in interactive mode.
-func (cmd *ChatCommand) handleCommand(ctx context.Context, evt ui.Event, globals *Globals, client *httpclient.Client, sessionID *string) error {
+// handleCommand processes slash commands in interactive mode. It handles
+// terminal-specific commands (/file, /url) locally and delegates the rest
+// to the shared command handler.
+func (cmd *ChatCommand) handleCommand(ctx context.Context, evt ui.Event, cmdHandler *uicmd.Handler, sessionID *string) error {
 	switch evt.Command {
-	case "model":
-		if len(evt.Args) == 0 {
-			// Query current model
-			session, err := client.GetSession(ctx, *sessionID)
-			if err != nil {
-				return err
-			}
-			return evt.Context.SendText(ctx, fmt.Sprintf("Current model: %s", session.Model))
-		}
-		// Switch model - supports "provider/model" format
-		arg := strings.Join(evt.Args, " ")
-		var provider, newModel string
-		if parts := strings.SplitN(arg, "/", 2); len(parts) == 2 {
-			provider = parts[0]
-			newModel = parts[1]
-		} else {
-			newModel = arg
-		}
-		if _, err := client.UpdateSession(ctx, *sessionID, schema.SessionMeta{
-			GeneratorMeta: schema.GeneratorMeta{Provider: provider, Model: newModel},
-		}); err != nil {
-			return err
-		}
-		display := newModel
-		if provider != "" {
-			display = provider + "/" + newModel
-		}
-		return evt.Context.SendText(ctx, fmt.Sprintf("Switched to model: %s", display))
-
-	case "session":
-		if len(evt.Args) == 0 {
-			session, err := client.GetSession(ctx, *sessionID)
-			if err != nil {
-				return err
-			}
-			var lines []string
-			lines = append(lines, fmt.Sprintf("Session:  %s", session.ID))
-			if session.Name != "" {
-				lines = append(lines, fmt.Sprintf("Name:     %s", session.Name))
-			}
-			model := session.Model
-			if session.Provider != "" {
-				model = session.Provider + "/" + model
-			}
-			if model != "" {
-				lines = append(lines, fmt.Sprintf("Model:    %s", model))
-			}
-			if session.SystemPrompt != "" {
-				lines = append(lines, fmt.Sprintf("System:   %s", session.SystemPrompt))
-			}
-			if session.Thinking != nil {
-				lines = append(lines, fmt.Sprintf("Thinking: %v", *session.Thinking))
-			}
-			lines = append(lines, fmt.Sprintf("Messages: %d", len(session.Messages)))
-			tokens := session.Tokens()
-			if session.Overhead > 0 {
-				lines = append(lines, fmt.Sprintf("Tokens:   %d (+%d overhead/turn)", tokens, session.Overhead))
-			} else {
-				lines = append(lines, fmt.Sprintf("Tokens:   %d", tokens))
-			}
-			lines = append(lines, fmt.Sprintf("Created:  %s", session.Created.Format("2006-01-02 15:04:05")))
-			lines = append(lines, fmt.Sprintf("Modified: %s", session.Modified.Format("2006-01-02 15:04:05")))
-			return evt.Context.SendText(ctx, strings.Join(lines, "\n"))
-		}
-		// Switch to a different session
-		newSessionID := evt.Args[0]
-		if _, err := client.GetSession(ctx, newSessionID); err != nil {
-			return fmt.Errorf("session %q not found", newSessionID)
-		}
-		*sessionID = newSessionID
-		if err := globals.defaults.Set("session", newSessionID); err != nil {
-			return err
-		}
-		return evt.Context.SendText(ctx, fmt.Sprintf("Switched to session: %s", newSessionID))
-
-	case "new":
-		model := globals.defaults.GetString("model")
-		if len(evt.Args) > 0 {
-			model = strings.Join(evt.Args, " ")
-		}
-		if model == "" {
-			return fmt.Errorf("model is required (use /new <model>)")
-		}
-		provider := globals.defaults.GetString("provider")
-		session, err := client.CreateSession(ctx, schema.SessionMeta{
-			GeneratorMeta: schema.GeneratorMeta{
-				Provider: provider,
-				Model:    model,
-			},
-		})
-		if err != nil {
-			return err
-		}
-		*sessionID = session.ID
-		if err := globals.defaults.Set("session", session.ID); err != nil {
-			return err
-		}
-		return evt.Context.SendText(ctx, fmt.Sprintf("New session %s (model: %s)", session.ID, model))
-
 	case "file":
 		if len(evt.Args) == 0 {
 			if len(cmd.pendingOpts) == 0 {
@@ -367,204 +303,9 @@ func (cmd *ChatCommand) handleCommand(ctx context.Context, evt ui.Event, globals
 		cmd.pendingOpts = append(cmd.pendingOpts, httpclient.WithChatURL(u))
 		return evt.Context.SendText(ctx, fmt.Sprintf("Attached URL: %s", u))
 
-	case "system":
-		if len(evt.Args) == 0 {
-			session, err := client.GetSession(ctx, *sessionID)
-			if err != nil {
-				return err
-			}
-			if session.SystemPrompt == "" {
-				return evt.Context.SendText(ctx, "No system prompt set")
-			}
-			return evt.Context.SendText(ctx, fmt.Sprintf("System prompt: %s", session.SystemPrompt))
-		}
-		prompt := strings.Join(evt.Args, " ")
-		if _, err := client.UpdateSession(ctx, *sessionID, schema.SessionMeta{
-			GeneratorMeta: schema.GeneratorMeta{SystemPrompt: prompt},
-		}); err != nil {
-			return err
-		}
-		return evt.Context.SendText(ctx, fmt.Sprintf("System prompt updated"))
-
-	case "thinking":
-		if len(evt.Args) == 0 {
-			session, err := client.GetSession(ctx, *sessionID)
-			if err != nil {
-				return err
-			}
-			if session.Thinking == nil {
-				return evt.Context.SendText(ctx, "Thinking: not set")
-			}
-			return evt.Context.SendText(ctx, fmt.Sprintf("Thinking: %v", *session.Thinking))
-		}
-		arg := strings.ToLower(evt.Args[0])
-		var enabled bool
-		switch arg {
-		case "on", "true", "yes", "1":
-			enabled = true
-		case "off", "false", "no", "0":
-			enabled = false
-		default:
-			return fmt.Errorf("usage: /thinking [on|off]")
-		}
-		if _, err := client.UpdateSession(ctx, *sessionID, schema.SessionMeta{
-			GeneratorMeta: schema.GeneratorMeta{Thinking: &enabled},
-		}); err != nil {
-			return err
-		}
-		if enabled {
-			return evt.Context.SendText(ctx, "Thinking enabled")
-		}
-		return evt.Context.SendText(ctx, "Thinking disabled")
-
-	case "tools":
-		resp, err := client.ListTools(ctx)
-		if err != nil {
-			return err
-		}
-		if len(resp.Body) == 0 {
-			return evt.Context.SendText(ctx, "No tools available")
-		}
-		var lines []string
-		for _, t := range resp.Body {
-			line := t.Name
-			if t.Description != "" {
-				line += " - " + t.Description
-			}
-			lines = append(lines, line)
-		}
-		return evt.Context.SendText(ctx, strings.Join(lines, "\n"))
-
-	case "sessions":
-		resp, err := client.ListSessions(ctx)
-		if err != nil {
-			return err
-		}
-		if len(resp.Body) == 0 {
-			return evt.Context.SendText(ctx, "No sessions found")
-		}
-		var lines []string
-		for _, s := range resp.Body {
-			model := s.Model
-			if s.Provider != "" {
-				model = s.Provider + "/" + model
-			}
-			line := fmt.Sprintf("%s  %s  %d msgs", s.ID, model, len(s.Messages))
-			if s.Name != "" {
-				line += fmt.Sprintf("  (%s)", s.Name)
-			}
-			if s.ID == *sessionID {
-				line = "\033[1m" + line + "\033[0m"
-			}
-			lines = append(lines, line)
-		}
-		return evt.Context.SendText(ctx, strings.Join(lines, "\n"))
-
-	case "name":
-		if len(evt.Args) == 0 {
-			session, err := client.GetSession(ctx, *sessionID)
-			if err != nil {
-				return err
-			}
-			if session.Name == "" {
-				return evt.Context.SendText(ctx, "Session has no name")
-			}
-			return evt.Context.SendText(ctx, fmt.Sprintf("Session name: %s", session.Name))
-		}
-		name := strings.Join(evt.Args, " ")
-		if _, err := client.UpdateSession(ctx, *sessionID, schema.SessionMeta{
-			Name: name,
-		}); err != nil {
-			return err
-		}
-		return evt.Context.SendText(ctx, fmt.Sprintf("Session renamed to: %s", name))
-
-	case "reset":
-		// Get current session's model to create the new one with the same settings
-		current, err := client.GetSession(ctx, *sessionID)
-		if err != nil {
-			return err
-		}
-		session, err := client.CreateSession(ctx, schema.SessionMeta{
-			GeneratorMeta: schema.GeneratorMeta{
-				Provider:     current.Provider,
-				Model:        current.Model,
-				SystemPrompt: current.SystemPrompt,
-				Thinking:     current.Thinking,
-			},
-		})
-		if err != nil {
-			return err
-		}
-		*sessionID = session.ID
-		if err := globals.defaults.Set("session", session.ID); err != nil {
-			return err
-		}
-		cmd.pendingOpts = nil
-		if tui, ok := evt.Context.(interface{ ClearHistory() }); ok {
-			tui.ClearHistory()
-		}
-		model := session.Model
-		if session.Provider != "" {
-			model = session.Provider + "/" + model
-		}
-		return evt.Context.SendText(ctx, fmt.Sprintf("New session %s (%s)", session.ID, model))
-
-	case "models":
-		var opts []opt.Opt
-		if len(evt.Args) > 0 {
-			opts = append(opts, httpclient.WithProvider(evt.Args[0]))
-		}
-		resp, err := client.ListModels(ctx, opts...)
-		if err != nil {
-			return err
-		}
-		if len(resp.Body) == 0 {
-			return evt.Context.SendText(ctx, "No models found")
-		}
-		var lines []string
-		for _, m := range resp.Body {
-			line := m.Name
-			if m.OwnedBy != "" {
-				line = m.OwnedBy + "/" + m.Name
-			}
-			if m.Description != "" {
-				line += " - " + m.Description
-			}
-			lines = append(lines, line)
-		}
-		return evt.Context.SendText(ctx, strings.Join(lines, "\n"))
-
-	case "providers":
-		resp, err := client.ListModels(ctx)
-		if err != nil {
-			return err
-		}
-		if len(resp.Provider) == 0 {
-			return evt.Context.SendText(ctx, "No providers found")
-		}
-		return evt.Context.SendText(ctx, strings.Join(resp.Provider, "\n"))
-
-	case "help":
-		help := "Available commands:\n" +
-			"  /model [provider/model] - Show or switch the current model\n" +
-			"  /models [provider]      - List available models\n" +
-			"  /providers              - List available providers\n" +
-			"  /session [id]           - Show or switch the current session\n" +
-			"  /sessions               - List all sessions\n" +
-			"  /new [model]            - Create a new session\n" +
-			"  /name [name]            - Show or set the session name\n" +
-			"  /system [prompt]        - Show or set the system prompt\n" +
-			"  /thinking [on|off]      - Show or toggle thinking mode\n" +
-			"  /tools                  - List available tools\n" +
-			"  /file <path>            - Attach file(s) to next message\n" +
-			"  /url <url>              - Attach a URL to next message\n" +
-			"  /reset                  - New session and clear display\n" +
-			"  /help                   - Show this help"
-		return evt.Context.SendText(ctx, help)
-
 	default:
-		return fmt.Errorf("unknown command: /%s (try /help)", evt.Command)
+		// Delegate to shared command handler.
+		return cmdHandler.Handle(ctx, evt, sessionID)
 	}
 }
 

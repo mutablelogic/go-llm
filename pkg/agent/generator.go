@@ -75,8 +75,19 @@ func (m *Manager) Chat(ctx context.Context, request schema.ChatRequest, fn opt.S
 		return nil, err
 	}
 
-	// Resolve model, generator, and options from the session meta
-	model, generator, opts, err := m.generatorFromMeta(ctx, session.GeneratorMeta)
+	// Resolve model, generator, and options from the session meta.
+	// If the request includes a per-request system prompt, merge it with
+	// the session's own system prompt so callers (like the Telegram bot)
+	// can inject formatting instructions on every call.
+	meta := session.GeneratorMeta
+	if request.SystemPrompt != "" {
+		if meta.SystemPrompt != "" {
+			meta.SystemPrompt += "\n\n" + request.SystemPrompt
+		} else {
+			meta.SystemPrompt = request.SystemPrompt
+		}
+	}
+	model, generator, opts, err := m.generatorFromMeta(ctx, meta)
 	if err != nil {
 		return nil, err
 	}

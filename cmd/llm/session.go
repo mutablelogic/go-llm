@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"strings"
 
 	// Packages
 	otel "github.com/mutablelogic/go-client/pkg/otel"
@@ -22,8 +23,9 @@ type SessionCommands struct {
 }
 
 type ListSessionsCommand struct {
-	Limit  *uint `name:"limit" help:"Maximum number of sessions to return" optional:""`
-	Offset uint  `name:"offset" help:"Offset for pagination" default:"0"`
+	Limit  *uint    `name:"limit" help:"Maximum number of sessions to return" optional:""`
+	Offset uint     `name:"offset" help:"Offset for pagination" default:"0"`
+	Label  []string `name:"label" help:"Filter by label (key:value)" optional:""`
 }
 
 type GetSessionCommand struct {
@@ -38,11 +40,12 @@ type CreateSessionCommand struct {
 }
 
 type UpdateSessionCommand struct {
-	ID           string `arg:"" name:"id" help:"Session ID"`
-	Name         string `name:"name" help:"Session name" optional:""`
-	Model        string `name:"model" help:"Model name" optional:""`
-	Provider     string `name:"provider" help:"Provider name" optional:""`
-	SystemPrompt string `name:"system-prompt" help:"System prompt" optional:""`
+	ID           string   `arg:"" name:"id" help:"Session ID"`
+	Name         string   `name:"name" help:"Session name" optional:""`
+	Model        string   `name:"model" help:"Model name" optional:""`
+	Provider     string   `name:"provider" help:"Provider name" optional:""`
+	SystemPrompt string   `name:"system-prompt" help:"System prompt" optional:""`
+	Label        []string `name:"label" help:"Set label (key=value)" optional:""`
 }
 
 type DeleteSessionCommand struct {
@@ -69,6 +72,17 @@ func (cmd *ListSessionsCommand) Run(ctx *Globals) (err error) {
 	}
 	if cmd.Offset > 0 {
 		opts = append(opts, httpclient.WithOffset(cmd.Offset))
+	}
+	for _, l := range cmd.Label {
+		k, v, ok := strings.Cut(l, ":")
+		if !ok {
+			// Also accept key=value format
+			k, v, ok = strings.Cut(l, "=")
+		}
+		if !ok || k == "" {
+			return fmt.Errorf("invalid label filter %q (use key:value or key=value)", l)
+		}
+		opts = append(opts, httpclient.WithLabel(k, v))
 	}
 
 	// List sessions
@@ -170,15 +184,29 @@ func (cmd *UpdateSessionCommand) Run(ctx *Globals) (err error) {
 	parent, endSpan := otel.StartSpan(ctx.tracer, ctx.ctx, "UpdateSessionCommand")
 	defer func() { endSpan(err) }()
 
+	// Parse labels
+	labels := make(map[string]string)
+	for _, l := range cmd.Label {
+		k, v, ok := strings.Cut(l, "=")
+		if !ok || k == "" {
+			return fmt.Errorf("invalid label %q (use key=value)", l)
+		}
+		labels[k] = v
+	}
+
 	// Update session
-	session, err := client.UpdateSession(parent, cmd.ID, schema.SessionMeta{
+	meta := schema.SessionMeta{
 		Name: cmd.Name,
 		GeneratorMeta: schema.GeneratorMeta{
 			Provider:     cmd.Provider,
 			Model:        cmd.Model,
 			SystemPrompt: cmd.SystemPrompt,
 		},
-	})
+	}
+	if len(labels) > 0 {
+		meta.Labels = labels
+	}
+	session, err := client.UpdateSession(parent, cmd.ID, meta)
 	if err != nil {
 		return err
 	}
