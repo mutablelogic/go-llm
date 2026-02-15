@@ -2,6 +2,7 @@
 package telegram
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"io"
@@ -59,6 +60,11 @@ func New(token string) (*Telegram, error) {
 	// Register handlers.
 	bot.Handle(tele.OnText, t.onText)
 	bot.Handle(tele.OnDocument, t.onDocument)
+	bot.Handle(tele.OnAudio, t.onAudio)
+	bot.Handle(tele.OnVoice, t.onVoice)
+	bot.Handle(tele.OnPhoto, t.onPhoto)
+	bot.Handle(tele.OnVideo, t.onVideo)
+	bot.Handle(tele.OnVideoNote, t.onVideoNote)
 
 	// Start polling in the background.
 	go func() {
@@ -110,32 +116,136 @@ func (t *Telegram) onDocument(c tele.Context) error {
 	if msg == nil || msg.Document == nil {
 		return nil
 	}
-
-	ctx := newContext(c.Bot(), c.Chat(), c.Sender())
 	doc := msg.Document
+	return t.emitAttachment(c, &doc.File, doc.FileName, doc.MIME, msg.Caption)
+}
 
-	// Download the file contents.
-	rc, err := c.Bot().File(&doc.File)
+func (t *Telegram) onAudio(c tele.Context) error {
+	msg := c.Message()
+	if msg == nil || msg.Audio == nil {
+		return nil
+	}
+	a := msg.Audio
+	filename := a.FileName
+	if filename == "" {
+		filename = "audio" + mimeToExt(a.MIME, ".mp3")
+	}
+	return t.emitAttachment(c, &a.File, filename, a.MIME, msg.Caption)
+}
+
+func (t *Telegram) onVoice(c tele.Context) error {
+	msg := c.Message()
+	if msg == nil || msg.Voice == nil {
+		return nil
+	}
+	v := msg.Voice
+	mime := v.MIME
+	if mime == "" {
+		mime = "audio/ogg"
+	}
+	return t.emitAttachment(c, &v.File, "voice"+mimeToExt(mime, ".ogg"), mime, msg.Caption)
+}
+
+func (t *Telegram) onPhoto(c tele.Context) error {
+	msg := c.Message()
+	if msg == nil || msg.Photo == nil {
+		return nil
+	}
+	return t.emitAttachment(c, &msg.Photo.File, "photo.jpg", "image/jpeg", msg.Caption)
+}
+
+func (t *Telegram) onVideo(c tele.Context) error {
+	msg := c.Message()
+	if msg == nil || msg.Video == nil {
+		return nil
+	}
+	v := msg.Video
+	filename := v.FileName
+	if filename == "" {
+		filename = "video" + mimeToExt(v.MIME, ".mp4")
+	}
+	mime := v.MIME
+	if mime == "" {
+		mime = "video/mp4"
+	}
+	return t.emitAttachment(c, &v.File, filename, mime, msg.Caption)
+}
+
+func (t *Telegram) onVideoNote(c tele.Context) error {
+	msg := c.Message()
+	if msg == nil || msg.VideoNote == nil {
+		return nil
+	}
+	return t.emitAttachment(c, &msg.VideoNote.File, "videonote.mp4", "video/mp4", msg.Caption)
+}
+
+// emitAttachment downloads a file into memory and pushes a ui.EventAttachment.
+// The download is buffered so the data survives past the telebot handler return
+// (the HTTP response body is closed after the handler returns).
+func (t *Telegram) emitAttachment(c tele.Context, file *tele.File, filename, mime, caption string) error {
+	ctx := newContext(c.Bot(), c.Chat(), c.Sender())
+
+	rc, err := c.Bot().File(file)
 	if err != nil {
-		return fmt.Errorf("telegram: downloading document: %w", err)
+		c.Send(fmt.Sprintf("Error downloading file: %v", err))
+		return fmt.Errorf("telegram: downloading file: %w", err)
+	}
+	data, err := io.ReadAll(rc)
+	rc.Close()
+	if err != nil {
+		c.Send(fmt.Sprintf("Error reading file: %v", err))
+		return fmt.Errorf("telegram: reading file: %w", err)
 	}
 
 	evt := ui.Event{
 		Type:    ui.EventAttachment,
 		Context: ctx,
-		Text:    msg.Caption,
+		Text:    caption,
 		Attachments: []ui.InAttachment{{
-			Filename: doc.FileName,
-			Type:     doc.MIME,
-			Data:     rc,
+			Filename: filename,
+			Type:     mime,
+			Data:     bytes.NewReader(data),
 		}},
 	}
 
 	select {
 	case t.events <- evt:
 	default:
+		c.Send("Error: event queue full, attachment dropped")
 	}
 	return nil
+}
+
+// mimeToExt returns a file extension for common MIME types, or the fallback.
+func mimeToExt(mime, fallback string) string {
+	switch mime {
+	case "audio/mpeg", "audio/mp3":
+		return ".mp3"
+	case "audio/ogg":
+		return ".ogg"
+	case "audio/wav", "audio/x-wav":
+		return ".wav"
+	case "audio/flac":
+		return ".flac"
+	case "audio/aac":
+		return ".aac"
+	case "audio/mp4", "audio/m4a":
+		return ".m4a"
+	case "video/mp4":
+		return ".mp4"
+	case "video/webm":
+		return ".webm"
+	case "image/jpeg":
+		return ".jpg"
+	case "image/png":
+		return ".png"
+	case "image/gif":
+		return ".gif"
+	case "image/webp":
+		return ".webp"
+	default:
+		return fallback
+	}
 }
 
 // textEvent converts a telebot text message into a ui.Event, parsing

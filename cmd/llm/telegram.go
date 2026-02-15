@@ -32,8 +32,9 @@ type TelegramCommand struct {
 
 	// sessions caches conversation-ID → session-ID mappings so we don't
 	// query the API on every message.
-	mu       sync.Mutex        `kong:"-"`
-	sessions map[string]string `kong:"-"`
+	mu          sync.Mutex                      `kong:"-"`
+	sessions    map[string]string               `kong:"-"`
+	pendingOpts map[string][]httpclient.ChatOpt `kong:"-"`
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -69,6 +70,20 @@ func (h *telegramHooks) OnSessionReset() {
 	// Nothing extra needed — OnSessionChanged already updated the cache.
 }
 
+func (h *telegramHooks) ResetMeta() *schema.SessionMeta {
+	return &schema.SessionMeta{
+		GeneratorMeta: schema.GeneratorMeta{
+			SystemPrompt:   h.cmd.SystemPrompt,
+			Thinking:       h.cmd.Thinking,
+			ThinkingBudget: h.cmd.ThinkingBudget,
+		},
+		Name: h.uctx.UserName(),
+		Labels: map[string]string{
+			telegramChatLabel: h.conversationID,
+		},
+	}
+}
+
 ///////////////////////////////////////////////////////////////////////////////
 // COMMANDS
 
@@ -100,6 +115,7 @@ func (cmd *TelegramCommand) Run(ctx *Globals) (err error) {
 	defer bot.Close()
 
 	cmd.sessions = make(map[string]string)
+	cmd.pendingOpts = make(map[string][]httpclient.ChatOpt)
 
 	ctx.logger.Print(parent, "Telegram bot started")
 
@@ -123,20 +139,43 @@ func (cmd *TelegramCommand) Run(ctx *Globals) (err error) {
 			if err := cmd.handleChat(parent, evt, client, sessionID); err != nil {
 				evt.Context.SendText(parent, fmt.Sprintf("Error: %v", err))
 			}
+		case ui.EventAttachment:
+			ctx.logger.Print(parent, fmt.Sprintf("Attachment received: %d file(s), caption=%q, conv=%s",
+				len(evt.Attachments), evt.Text, evt.Context.ConversationID()))
+			for i, att := range evt.Attachments {
+				ctx.logger.Print(parent, fmt.Sprintf("  att[%d]: name=%q type=%q", i, att.Filename, att.Type))
+			}
+			sessionID, err := cmd.resolveSession(parent, ctx, client, evt.Context)
+			if err != nil {
+				evt.Context.SendText(parent, fmt.Sprintf("Error: %v", err))
+				continue
+			}
+			// Queue attachments as pending file opts.
+			convID := evt.Context.ConversationID()
+			for _, att := range evt.Attachments {
+				name := att.Filename
+				if name == "" {
+					name = "attachment"
+				}
+				cmd.mu.Lock()
+				cmd.pendingOpts[convID] = append(cmd.pendingOpts[convID], httpclient.WithChatFile(name, att.Data))
+				cmd.mu.Unlock()
+			}
+			// If the attachment has caption text, send it as a chat message immediately.
+			if evt.Text != "" {
+				if err := cmd.handleChat(parent, evt, client, sessionID); err != nil {
+					evt.Context.SendText(parent, fmt.Sprintf("Error: %v", err))
+				}
+			} else {
+				evt.Context.SendText(parent, fmt.Sprintf("Attached %d file(s). Send a message to use them.", len(evt.Attachments)))
+			}
 		case ui.EventCommand:
 			sessionID, err := cmd.resolveSession(parent, ctx, client, evt.Context)
 			if err != nil {
 				evt.Context.SendText(parent, fmt.Sprintf("Error: %v", err))
 				continue
 			}
-			cmdHandler := uicmd.New(client, &telegramHooks{
-				cmd:            cmd,
-				globals:        ctx,
-				client:         client,
-				conversationID: evt.Context.ConversationID(),
-				uctx:           evt.Context,
-			})
-			if err := cmdHandler.Handle(parent, evt, &sessionID); err != nil {
+			if err := cmd.handleTelegramCommand(parent, evt, client, ctx, &sessionID); err != nil {
 				evt.Context.SendText(parent, fmt.Sprintf("Error: %v", err))
 			}
 		}
@@ -198,15 +237,50 @@ func (cmd *TelegramCommand) resolveSession(ctx context.Context, globals *Globals
 	return session.ID, nil
 }
 
+// handleTelegramCommand processes slash commands for Telegram. It handles
+// /url locally and delegates everything else to the shared command handler.
+func (cmd *TelegramCommand) handleTelegramCommand(ctx context.Context, evt ui.Event, client *httpclient.Client, globals *Globals, sessionID *string) error {
+	switch evt.Command {
+	case "url":
+		if len(evt.Args) == 0 {
+			return evt.Context.SendText(ctx, "Usage: /url <url>")
+		}
+		u := evt.Args[0]
+		convID := evt.Context.ConversationID()
+		cmd.mu.Lock()
+		cmd.pendingOpts[convID] = append(cmd.pendingOpts[convID], httpclient.WithChatURL(u))
+		cmd.mu.Unlock()
+		return evt.Context.SendText(ctx, fmt.Sprintf("Attached URL: %s\nSend a message to use it.", u))
+	default:
+		cmdHandler := uicmd.New(client, &telegramHooks{
+			cmd:            cmd,
+			globals:        globals,
+			client:         client,
+			conversationID: evt.Context.ConversationID(),
+			uctx:           evt.Context,
+		})
+		return cmdHandler.Handle(ctx, evt, sessionID)
+	}
+}
+
 func (cmd *TelegramCommand) handleChat(ctx context.Context, evt ui.Event, client *httpclient.Client, sessionID string) error {
 	evt.Context.SetTyping(ctx, true)
 	evt.Context.StreamStart(ctx)
 
-	opts := []httpclient.ChatOpt{
-		httpclient.WithChatStream(func(role, text string) {
-			evt.Context.StreamChunk(ctx, role, text)
-		}),
+	// Consume any pending attachments for this conversation.
+	convID := evt.Context.ConversationID()
+	cmd.mu.Lock()
+	pending := cmd.pendingOpts[convID]
+	delete(cmd.pendingOpts, convID)
+	cmd.mu.Unlock()
+
+	if len(pending) > 0 {
+		fmt.Printf("[telegram] handleChat: consuming %d pending opts for conv=%s\n", len(pending), convID)
 	}
+
+	opts := append(pending, httpclient.WithChatStream(func(role, text string) {
+		evt.Context.StreamChunk(ctx, role, text)
+	}))
 
 	req := schema.ChatRequest{
 		Session:      sessionID,

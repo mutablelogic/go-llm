@@ -216,6 +216,10 @@ func (h *chatHooks) OnSessionReset() {
 	h.tui.ClearHistory()
 }
 
+func (h *chatHooks) ResetMeta() *schema.SessionMeta {
+	return nil
+}
+
 // runInteractive launches the bubbletea TUI for an interactive chat session.
 func (cmd *ChatCommand) runInteractive(ctx context.Context, globals *Globals, client *httpclient.Client, sessionID string, baseOpts []httpclient.ChatOpt) error {
 	tui, err := btui.New()
@@ -302,6 +306,18 @@ func (cmd *ChatCommand) handleCommand(ctx context.Context, evt ui.Event, cmdHand
 		u := evt.Args[0]
 		cmd.pendingOpts = append(cmd.pendingOpts, httpclient.WithChatURL(u))
 		return evt.Context.SendText(ctx, fmt.Sprintf("Attached URL: %s", u))
+
+	case "help":
+		// Show shared help first, then append terminal-only commands.
+		if err := cmdHandler.Handle(ctx, evt, sessionID); err != nil {
+			return err
+		}
+		extra := "Terminal-only commands:\n\n" +
+			"```\n" +
+			"/file <path>            - Attach file(s) to next message\n" +
+			"/url <url>              - Attach a URL to next message\n" +
+			"```"
+		return evt.Context.SendText(ctx, extra)
 
 	default:
 		// Delegate to shared command handler.

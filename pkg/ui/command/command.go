@@ -22,6 +22,7 @@ type Client interface {
 	GetSession(ctx context.Context, id string) (*schema.Session, error)
 	CreateSession(ctx context.Context, meta schema.SessionMeta) (*schema.Session, error)
 	UpdateSession(ctx context.Context, id string, meta schema.SessionMeta) (*schema.Session, error)
+	DeleteSession(ctx context.Context, id string) error
 	ListSessions(ctx context.Context, opts ...opt.Opt) (*schema.ListSessionResponse, error)
 	ListModels(ctx context.Context, opts ...opt.Opt) (*schema.ListModelsResponse, error)
 	ListTools(ctx context.Context, opts ...opt.Opt) (*schema.ListToolResponse, error)
@@ -38,6 +39,10 @@ type Hooks interface {
 	// OnSessionReset is called after /reset creates a new session.
 	// The frontend can clear its message history.
 	OnSessionReset()
+
+	// ResetMeta returns extra session metadata to include when /reset
+	// creates a new session (e.g. labels, name). Return nil for defaults.
+	ResetMeta() *schema.SessionMeta
 }
 
 // Handler processes slash commands against the API.
@@ -80,6 +85,8 @@ func (h *Handler) Handle(ctx context.Context, evt ui.Event, sessionID *string) e
 		return h.cmdProviders(ctx, evt)
 	case "label":
 		return h.cmdLabel(ctx, evt, sessionID)
+	case "delete":
+		return h.cmdDelete(ctx, evt, sessionID)
 	case "help":
 		return h.cmdHelp(ctx, evt)
 	default:
@@ -225,12 +232,29 @@ func (h *Handler) cmdReset(ctx context.Context, evt ui.Event, sessionID *string)
 		provider = current.Provider
 		model = current.Model
 	}
-	session, err := h.client.CreateSession(ctx, schema.SessionMeta{
+	meta := schema.SessionMeta{
 		GeneratorMeta: schema.GeneratorMeta{
 			Provider: provider,
 			Model:    model,
 		},
-	})
+	}
+	// Merge frontend-specific metadata (e.g. Telegram labels/name).
+	if h.hooks != nil {
+		if extra := h.hooks.ResetMeta(); extra != nil {
+			meta.Name = extra.Name
+			meta.Labels = extra.Labels
+			if extra.SystemPrompt != "" {
+				meta.SystemPrompt = extra.SystemPrompt
+			}
+			if extra.Thinking != nil {
+				meta.Thinking = extra.Thinking
+			}
+			if extra.ThinkingBudget > 0 {
+				meta.ThinkingBudget = extra.ThinkingBudget
+			}
+		}
+	}
+	session, err := h.client.CreateSession(ctx, meta)
 	if err != nil {
 		return err
 	}
@@ -404,6 +428,20 @@ func (h *Handler) cmdLabel(ctx context.Context, evt ui.Event, sessionID *string)
 	return evt.Context.SendText(ctx, fmt.Sprintf("Labels updated: %s", strings.Join(parts, ", ")))
 }
 
+func (h *Handler) cmdDelete(ctx context.Context, evt ui.Event, sessionID *string) error {
+	if len(evt.Args) == 0 {
+		return fmt.Errorf("usage: /delete <session-id>")
+	}
+	target := evt.Args[0]
+	if target == *sessionID {
+		return fmt.Errorf("cannot delete the current session (use /reset first)")
+	}
+	if err := h.client.DeleteSession(ctx, target); err != nil {
+		return err
+	}
+	return evt.Context.SendText(ctx, fmt.Sprintf("Deleted session %s", target))
+}
+
 func (h *Handler) cmdHelp(ctx context.Context, evt ui.Event) error {
 	help := "Available commands:\n\n" +
 		"```\n" +
@@ -413,6 +451,7 @@ func (h *Handler) cmdHelp(ctx context.Context, evt ui.Event) error {
 		"/session [id]           - Show or switch the current session\n" +
 		"/sessions               - List all sessions\n" +
 		"/reset [provider/model] - Start a new session\n" +
+		"/delete <session-id>    - Delete a session\n" +
 		"/name [name]            - Show or set the session name\n" +
 		"/system [prompt]        - Show or set the system prompt\n" +
 		"/thinking [on|off]      - Show or toggle thinking mode\n" +
