@@ -131,12 +131,13 @@ func (cmd *TelegramCommand) Run(ctx *Globals) (err error) {
 
 		switch evt.Type {
 		case ui.EventText:
+			ctx.logger.Print(parent, fmt.Sprintf("Text received: conv=%s len=%d", evt.Context.ConversationID(), len(evt.Text)))
 			sessionID, err := cmd.resolveSession(parent, ctx, client, evt.Context)
 			if err != nil {
 				evt.Context.SendText(parent, fmt.Sprintf("Error: %v", err))
 				continue
 			}
-			if err := cmd.handleChat(parent, evt, client, sessionID); err != nil {
+			if err := cmd.handleChat(parent, ctx, evt, client, sessionID); err != nil {
 				evt.Context.SendText(parent, fmt.Sprintf("Error: %v", err))
 			}
 		case ui.EventAttachment:
@@ -163,13 +164,14 @@ func (cmd *TelegramCommand) Run(ctx *Globals) (err error) {
 			}
 			// If the attachment has caption text, send it as a chat message immediately.
 			if evt.Text != "" {
-				if err := cmd.handleChat(parent, evt, client, sessionID); err != nil {
+				if err := cmd.handleChat(parent, ctx, evt, client, sessionID); err != nil {
 					evt.Context.SendText(parent, fmt.Sprintf("Error: %v", err))
 				}
 			} else {
 				evt.Context.SendText(parent, fmt.Sprintf("Attached %d file(s). Send a message to use them.", len(evt.Attachments)))
 			}
 		case ui.EventCommand:
+			ctx.logger.Print(parent, fmt.Sprintf("Command received: /%s %v conv=%s", evt.Command, evt.Args, evt.Context.ConversationID()))
 			sessionID, err := cmd.resolveSession(parent, ctx, client, evt.Context)
 			if err != nil {
 				evt.Context.SendText(parent, fmt.Sprintf("Error: %v", err))
@@ -247,6 +249,7 @@ func (cmd *TelegramCommand) handleTelegramCommand(ctx context.Context, evt ui.Ev
 		}
 		u := evt.Args[0]
 		convID := evt.Context.ConversationID()
+		globals.logger.Print(ctx, fmt.Sprintf("URL queued: url=%s conv=%s", u, convID))
 		cmd.mu.Lock()
 		cmd.pendingOpts[convID] = append(cmd.pendingOpts[convID], httpclient.WithChatURL(u))
 		cmd.mu.Unlock()
@@ -263,7 +266,7 @@ func (cmd *TelegramCommand) handleTelegramCommand(ctx context.Context, evt ui.Ev
 	}
 }
 
-func (cmd *TelegramCommand) handleChat(ctx context.Context, evt ui.Event, client *httpclient.Client, sessionID string) error {
+func (cmd *TelegramCommand) handleChat(ctx context.Context, globals *Globals, evt ui.Event, client *httpclient.Client, sessionID string) error {
 	evt.Context.SetTyping(ctx, true)
 	evt.Context.StreamStart(ctx)
 
@@ -275,7 +278,7 @@ func (cmd *TelegramCommand) handleChat(ctx context.Context, evt ui.Event, client
 	cmd.mu.Unlock()
 
 	if len(pending) > 0 {
-		fmt.Printf("[telegram] handleChat: consuming %d pending opts for conv=%s\n", len(pending), convID)
+		globals.logger.Print(ctx, fmt.Sprintf("Chat: consuming %d pending opts for conv=%s", len(pending), convID))
 	}
 
 	opts := append(pending, httpclient.WithChatStream(func(role, text string) {
