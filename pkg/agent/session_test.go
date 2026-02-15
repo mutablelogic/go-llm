@@ -375,3 +375,121 @@ func Test_session_019(t *testing.T) {
 	_, err = m.UpdateSession(context.TODO(), "nonexistent-id", schema.SessionMeta{Name: "test"})
 	assert.Error(err)
 }
+
+// Test CreateSession with labels
+func Test_session_020(t *testing.T) {
+	assert := assert.New(t)
+
+	m, err := NewManager(
+		WithClient(&mockClient{name: "provider-1", models: []schema.Model{{Name: "model-1", OwnedBy: "provider-1"}}}),
+		WithSessionStore(session.NewMemoryStore()),
+	)
+	assert.NoError(err)
+
+	s, err := m.CreateSession(context.TODO(), schema.SessionMeta{
+		GeneratorMeta: schema.GeneratorMeta{Model: "model-1"},
+		Labels:        map[string]string{"chat-id": "12345", "ui": "telegram"},
+	})
+	assert.NoError(err)
+	assert.Equal("12345", s.Labels["chat-id"])
+	assert.Equal("telegram", s.Labels["ui"])
+}
+
+// Test CreateSession with invalid label key returns error
+func Test_session_021(t *testing.T) {
+	assert := assert.New(t)
+
+	m, err := NewManager(
+		WithClient(&mockClient{name: "provider-1", models: []schema.Model{{Name: "model-1", OwnedBy: "provider-1"}}}),
+		WithSessionStore(session.NewMemoryStore()),
+	)
+	assert.NoError(err)
+
+	_, err = m.CreateSession(context.TODO(), schema.SessionMeta{
+		GeneratorMeta: schema.GeneratorMeta{Model: "model-1"},
+		Labels:        map[string]string{"bad key!": "value"},
+	})
+	assert.Error(err)
+}
+
+// Test ListSessions filters by labels
+func Test_session_022(t *testing.T) {
+	assert := assert.New(t)
+
+	m, err := NewManager(
+		WithClient(&mockClient{name: "provider-1", models: []schema.Model{{Name: "model-1", OwnedBy: "provider-1"}}}),
+		WithSessionStore(session.NewMemoryStore()),
+	)
+	assert.NoError(err)
+
+	_, err = m.CreateSession(context.TODO(), schema.SessionMeta{
+		Name:          "telegram-chat",
+		GeneratorMeta: schema.GeneratorMeta{Model: "model-1"},
+		Labels:        map[string]string{"ui": "telegram", "chat-id": "100"},
+	})
+	assert.NoError(err)
+	_, err = m.CreateSession(context.TODO(), schema.SessionMeta{
+		Name:          "web-chat",
+		GeneratorMeta: schema.GeneratorMeta{Model: "model-1"},
+		Labels:        map[string]string{"ui": "web"},
+	})
+	assert.NoError(err)
+	_, err = m.CreateSession(context.TODO(), schema.SessionMeta{
+		Name:          "no-labels",
+		GeneratorMeta: schema.GeneratorMeta{Model: "model-1"},
+	})
+	assert.NoError(err)
+
+	// Filter by ui:telegram
+	resp, err := m.ListSessions(context.TODO(), schema.ListSessionRequest{Label: []string{"ui:telegram"}})
+	assert.NoError(err)
+	assert.Len(resp.Body, 1)
+	assert.Equal("telegram-chat", resp.Body[0].Name)
+
+	// Filter by ui:web
+	resp, err = m.ListSessions(context.TODO(), schema.ListSessionRequest{Label: []string{"ui:web"}})
+	assert.NoError(err)
+	assert.Len(resp.Body, 1)
+	assert.Equal("web-chat", resp.Body[0].Name)
+
+	// No filter returns all
+	resp, err = m.ListSessions(context.TODO(), schema.ListSessionRequest{})
+	assert.NoError(err)
+	assert.Len(resp.Body, 3)
+}
+
+// Test UpdateSession merges and removes labels
+func Test_session_023(t *testing.T) {
+	assert := assert.New(t)
+
+	m, err := NewManager(
+		WithClient(&mockClient{name: "provider-1", models: []schema.Model{{Name: "model-1", OwnedBy: "provider-1"}}}),
+		WithSessionStore(session.NewMemoryStore()),
+	)
+	assert.NoError(err)
+
+	s, err := m.CreateSession(context.TODO(), schema.SessionMeta{
+		GeneratorMeta: schema.GeneratorMeta{Model: "model-1"},
+		Labels:        map[string]string{"env": "prod", "team": "backend"},
+	})
+	assert.NoError(err)
+
+	// Merge: add new, change existing
+	updated, err := m.UpdateSession(context.TODO(), s.ID, schema.SessionMeta{
+		Labels: map[string]string{"team": "frontend", "region": "us"},
+	})
+	assert.NoError(err)
+	assert.Equal("prod", updated.Labels["env"])
+	assert.Equal("frontend", updated.Labels["team"])
+	assert.Equal("us", updated.Labels["region"])
+
+	// Remove label
+	updated, err = m.UpdateSession(context.TODO(), s.ID, schema.SessionMeta{
+		Labels: map[string]string{"team": ""},
+	})
+	assert.NoError(err)
+	_, exists := updated.Labels["team"]
+	assert.False(exists)
+	assert.Equal("prod", updated.Labels["env"])
+	assert.Equal("us", updated.Labels["region"])
+}

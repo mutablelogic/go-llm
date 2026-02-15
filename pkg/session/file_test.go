@@ -209,6 +209,166 @@ func Test_file_015(t *testing.T) {
 	assert.Equal(uint(15), got.Tokens())
 }
 
+// Test Create with labels
+func Test_file_021(t *testing.T) {
+	assert := assert.New(t)
+	dir := t.TempDir()
+	store, _ := session.NewFileStore(dir)
+	labels := map[string]string{"env": "prod", "team": "backend"}
+	s, err := store.Create(context.TODO(), schema.SessionMeta{
+		Name:          "labeled",
+		GeneratorMeta: schema.GeneratorMeta{Model: "test-model", Provider: "test-provider"},
+		Labels:        labels,
+	})
+	assert.NoError(err)
+	assert.Equal("prod", s.Labels["env"])
+	assert.Equal("backend", s.Labels["team"])
+
+	// Verify labels survive round-trip
+	got, err := store.Get(context.TODO(), s.ID)
+	assert.NoError(err)
+	assert.Equal("prod", got.Labels["env"])
+	assert.Equal("backend", got.Labels["team"])
+}
+
+// Test Create with invalid label key returns error
+func Test_file_022(t *testing.T) {
+	assert := assert.New(t)
+	dir := t.TempDir()
+	store, _ := session.NewFileStore(dir)
+	_, err := store.Create(context.TODO(), schema.SessionMeta{
+		Name:          "bad",
+		GeneratorMeta: schema.GeneratorMeta{Model: "test-model", Provider: "test-provider"},
+		Labels:        map[string]string{"invalid key!": "value"},
+	})
+	assert.Error(err)
+	assert.ErrorIs(err, llm.ErrBadParameter)
+}
+
+// Test List filters by labels
+func Test_file_023(t *testing.T) {
+	assert := assert.New(t)
+	dir := t.TempDir()
+	store, _ := session.NewFileStore(dir)
+	store.Create(context.TODO(), schema.SessionMeta{
+		Name:          "a",
+		GeneratorMeta: schema.GeneratorMeta{Model: "test-model", Provider: "test-provider"},
+		Labels:        map[string]string{"env": "prod"},
+	})
+	store.Create(context.TODO(), schema.SessionMeta{
+		Name:          "b",
+		GeneratorMeta: schema.GeneratorMeta{Model: "test-model", Provider: "test-provider"},
+		Labels:        map[string]string{"env": "dev"},
+	})
+	store.Create(context.TODO(), schema.SessionMeta{
+		Name:          "c",
+		GeneratorMeta: schema.GeneratorMeta{Model: "test-model", Provider: "test-provider"},
+	})
+
+	// Filter by env:prod
+	resp, err := store.List(context.TODO(), schema.ListSessionRequest{Label: []string{"env:prod"}})
+	assert.NoError(err)
+	assert.Len(resp.Body, 1)
+	assert.Equal("a", resp.Body[0].Name)
+
+	// No filter returns all
+	resp, err = store.List(context.TODO(), schema.ListSessionRequest{})
+	assert.NoError(err)
+	assert.Len(resp.Body, 3)
+}
+
+// Test List with multiple label filters (AND logic)
+func Test_file_024(t *testing.T) {
+	assert := assert.New(t)
+	dir := t.TempDir()
+	store, _ := session.NewFileStore(dir)
+	store.Create(context.TODO(), schema.SessionMeta{
+		Name:          "match",
+		GeneratorMeta: schema.GeneratorMeta{Model: "test-model", Provider: "test-provider"},
+		Labels:        map[string]string{"env": "prod", "team": "backend"},
+	})
+	store.Create(context.TODO(), schema.SessionMeta{
+		Name:          "partial",
+		GeneratorMeta: schema.GeneratorMeta{Model: "test-model", Provider: "test-provider"},
+		Labels:        map[string]string{"env": "prod"},
+	})
+
+	resp, err := store.List(context.TODO(), schema.ListSessionRequest{Label: []string{"env:prod", "team:backend"}})
+	assert.NoError(err)
+	assert.Len(resp.Body, 1)
+	assert.Equal("match", resp.Body[0].Name)
+}
+
+// Test Update merges labels
+func Test_file_025(t *testing.T) {
+	assert := assert.New(t)
+	dir := t.TempDir()
+	store, _ := session.NewFileStore(dir)
+	s, _ := store.Create(context.TODO(), schema.SessionMeta{
+		Name:          "test",
+		GeneratorMeta: schema.GeneratorMeta{Model: "test-model", Provider: "test-provider"},
+		Labels:        map[string]string{"env": "prod", "team": "backend"},
+	})
+
+	updated, err := store.Update(context.TODO(), s.ID, schema.SessionMeta{
+		Labels: map[string]string{"team": "frontend", "region": "us"},
+	})
+	assert.NoError(err)
+	assert.Equal("prod", updated.Labels["env"])
+	assert.Equal("frontend", updated.Labels["team"])
+	assert.Equal("us", updated.Labels["region"])
+
+	// Verify persisted
+	got, err := store.Get(context.TODO(), s.ID)
+	assert.NoError(err)
+	assert.Equal("prod", got.Labels["env"])
+	assert.Equal("frontend", got.Labels["team"])
+	assert.Equal("us", got.Labels["region"])
+}
+
+// Test Update removes labels with empty value
+func Test_file_026(t *testing.T) {
+	assert := assert.New(t)
+	dir := t.TempDir()
+	store, _ := session.NewFileStore(dir)
+	s, _ := store.Create(context.TODO(), schema.SessionMeta{
+		Name:          "test",
+		GeneratorMeta: schema.GeneratorMeta{Model: "test-model", Provider: "test-provider"},
+		Labels:        map[string]string{"env": "prod", "team": "backend"},
+	})
+
+	updated, err := store.Update(context.TODO(), s.ID, schema.SessionMeta{
+		Labels: map[string]string{"team": ""},
+	})
+	assert.NoError(err)
+	assert.Equal("prod", updated.Labels["env"])
+	_, exists := updated.Labels["team"]
+	assert.False(exists)
+
+	// Verify persisted
+	got, err := store.Get(context.TODO(), s.ID)
+	assert.NoError(err)
+	_, exists = got.Labels["team"]
+	assert.False(exists)
+}
+
+// Test Update with invalid label key returns error
+func Test_file_027(t *testing.T) {
+	assert := assert.New(t)
+	dir := t.TempDir()
+	store, _ := session.NewFileStore(dir)
+	s, _ := store.Create(context.TODO(), schema.SessionMeta{
+		Name:          "test",
+		GeneratorMeta: schema.GeneratorMeta{Model: "test-model", Provider: "test-provider"},
+	})
+
+	_, err := store.Update(context.TODO(), s.ID, schema.SessionMeta{
+		Labels: map[string]string{"bad key!": "value"},
+	})
+	assert.Error(err)
+	assert.ErrorIs(err, llm.ErrBadParameter)
+}
+
 // Test unique IDs across creates
 func Test_file_016(t *testing.T) {
 	assert := assert.New(t)

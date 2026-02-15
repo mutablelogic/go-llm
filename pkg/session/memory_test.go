@@ -211,6 +211,145 @@ func Test_memory_019(t *testing.T) {
 	assert.True(updated.Modified.After(original))
 }
 
+// Test Create with labels
+func Test_memory_020(t *testing.T) {
+	assert := assert.New(t)
+	store := session.NewMemoryStore()
+	labels := map[string]string{"env": "prod", "team": "backend"}
+	s, err := store.Create(context.TODO(), schema.SessionMeta{
+		Name:          "labeled",
+		GeneratorMeta: schema.GeneratorMeta{Model: "test-model", Provider: "test-provider"},
+		Labels:        labels,
+	})
+	assert.NoError(err)
+	assert.Equal("prod", s.Labels["env"])
+	assert.Equal("backend", s.Labels["team"])
+}
+
+// Test Create with invalid label key returns error
+func Test_memory_021(t *testing.T) {
+	assert := assert.New(t)
+	store := session.NewMemoryStore()
+	_, err := store.Create(context.TODO(), schema.SessionMeta{
+		Name:          "bad",
+		GeneratorMeta: schema.GeneratorMeta{Model: "test-model", Provider: "test-provider"},
+		Labels:        map[string]string{"invalid key!": "value"},
+	})
+	assert.Error(err)
+}
+
+// Test List filters by labels
+func Test_memory_022(t *testing.T) {
+	assert := assert.New(t)
+	store := session.NewMemoryStore()
+	store.Create(context.TODO(), schema.SessionMeta{
+		Name:          "a",
+		GeneratorMeta: schema.GeneratorMeta{Model: "test-model", Provider: "test-provider"},
+		Labels:        map[string]string{"env": "prod"},
+	})
+	store.Create(context.TODO(), schema.SessionMeta{
+		Name:          "b",
+		GeneratorMeta: schema.GeneratorMeta{Model: "test-model", Provider: "test-provider"},
+		Labels:        map[string]string{"env": "dev"},
+	})
+	store.Create(context.TODO(), schema.SessionMeta{
+		Name:          "c",
+		GeneratorMeta: schema.GeneratorMeta{Model: "test-model", Provider: "test-provider"},
+	})
+
+	// Filter by env:prod
+	resp, err := store.List(context.TODO(), schema.ListSessionRequest{Label: []string{"env:prod"}})
+	assert.NoError(err)
+	assert.Len(resp.Body, 1)
+	assert.Equal("a", resp.Body[0].Name)
+
+	// Filter by env:dev
+	resp, err = store.List(context.TODO(), schema.ListSessionRequest{Label: []string{"env:dev"}})
+	assert.NoError(err)
+	assert.Len(resp.Body, 1)
+	assert.Equal("b", resp.Body[0].Name)
+
+	// No filter returns all
+	resp, err = store.List(context.TODO(), schema.ListSessionRequest{})
+	assert.NoError(err)
+	assert.Len(resp.Body, 3)
+}
+
+// Test List with multiple label filters (AND logic)
+func Test_memory_023(t *testing.T) {
+	assert := assert.New(t)
+	store := session.NewMemoryStore()
+	store.Create(context.TODO(), schema.SessionMeta{
+		Name:          "match",
+		GeneratorMeta: schema.GeneratorMeta{Model: "test-model", Provider: "test-provider"},
+		Labels:        map[string]string{"env": "prod", "team": "backend"},
+	})
+	store.Create(context.TODO(), schema.SessionMeta{
+		Name:          "partial",
+		GeneratorMeta: schema.GeneratorMeta{Model: "test-model", Provider: "test-provider"},
+		Labels:        map[string]string{"env": "prod"},
+	})
+
+	resp, err := store.List(context.TODO(), schema.ListSessionRequest{Label: []string{"env:prod", "team:backend"}})
+	assert.NoError(err)
+	assert.Len(resp.Body, 1)
+	assert.Equal("match", resp.Body[0].Name)
+}
+
+// Test Update merges labels
+func Test_memory_024(t *testing.T) {
+	assert := assert.New(t)
+	store := session.NewMemoryStore()
+	s, _ := store.Create(context.TODO(), schema.SessionMeta{
+		Name:          "test",
+		GeneratorMeta: schema.GeneratorMeta{Model: "test-model", Provider: "test-provider"},
+		Labels:        map[string]string{"env": "prod", "team": "backend"},
+	})
+
+	// Merge: add new label, change existing
+	updated, err := store.Update(context.TODO(), s.ID, schema.SessionMeta{
+		Labels: map[string]string{"team": "frontend", "region": "us"},
+	})
+	assert.NoError(err)
+	assert.Equal("prod", updated.Labels["env"])      // preserved
+	assert.Equal("frontend", updated.Labels["team"]) // changed
+	assert.Equal("us", updated.Labels["region"])     // added
+}
+
+// Test Update removes labels with empty value
+func Test_memory_025(t *testing.T) {
+	assert := assert.New(t)
+	store := session.NewMemoryStore()
+	s, _ := store.Create(context.TODO(), schema.SessionMeta{
+		Name:          "test",
+		GeneratorMeta: schema.GeneratorMeta{Model: "test-model", Provider: "test-provider"},
+		Labels:        map[string]string{"env": "prod", "team": "backend"},
+	})
+
+	updated, err := store.Update(context.TODO(), s.ID, schema.SessionMeta{
+		Labels: map[string]string{"team": ""},
+	})
+	assert.NoError(err)
+	assert.Equal("prod", updated.Labels["env"])
+	_, exists := updated.Labels["team"]
+	assert.False(exists)
+}
+
+// Test Update with invalid label key returns error
+func Test_memory_026(t *testing.T) {
+	assert := assert.New(t)
+	store := session.NewMemoryStore()
+	s, _ := store.Create(context.TODO(), schema.SessionMeta{
+		Name:          "test",
+		GeneratorMeta: schema.GeneratorMeta{Model: "test-model", Provider: "test-provider"},
+	})
+
+	_, err := store.Update(context.TODO(), s.ID, schema.SessionMeta{
+		Labels: map[string]string{"bad key!": "value"},
+	})
+	assert.Error(err)
+}
+
 func Test_session_001(t *testing.T) {
 	assert := assert.New(t)
 	store := session.NewMemoryStore()

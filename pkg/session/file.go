@@ -242,7 +242,11 @@ func (f *FileStore) Update(_ context.Context, id string, meta schema.SessionMeta
 			s.Labels = make(map[string]string)
 		}
 		for k, v := range meta.Labels {
-			s.Labels[k] = v
+			if v == "" {
+				delete(s.Labels, k)
+			} else {
+				s.Labels[k] = v
+			}
 		}
 	}
 	s.Modified = time.Now()

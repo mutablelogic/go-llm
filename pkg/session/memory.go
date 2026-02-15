@@ -169,7 +169,11 @@ func (m *MemoryStore) Update(_ context.Context, id string, meta schema.SessionMe
 			s.Labels = make(map[string]string)
 		}
 		for k, v := range meta.Labels {
-			s.Labels[k] = v
+			if v == "" {
+				delete(s.Labels, k)
+			} else {
+				s.Labels[k] = v
+			}
 		}
 	}
 	s.Modified = time.Now()
