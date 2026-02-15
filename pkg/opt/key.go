@@ -31,4 +31,5 @@ const (
 	ToolChoiceKey           = "tool-choice"
 	ToolChoiceNameKey       = "tool-choice-name"
 	MaxIterationsKey        = "max-iterations"
+	LabelKey                = "label"
 )

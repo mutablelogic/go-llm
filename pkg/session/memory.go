@@ -43,6 +43,9 @@ func (m *MemoryStore) Create(_ context.Context, meta schema.SessionMeta) (*schem
 	if meta.Model == "" {
 		return nil, llm.ErrBadParameter.With("model name is required")
 	}
+	if err := validateLabels(meta.Labels); err != nil {
+		return nil, err
+	}
 
 	now := time.Now()
 	s := &schema.Session{
@@ -80,6 +83,9 @@ func (m *MemoryStore) List(_ context.Context, req schema.ListSessionRequest) (*s
 
 	result := make([]*schema.Session, 0, len(m.sessions))
 	for _, s := range m.sessions {
+		if !matchLabels(s.Labels, req.Label) {
+			continue
+		}
 		result = append(result, s)
 	}
 
@@ -154,6 +160,17 @@ func (m *MemoryStore) Update(_ context.Context, id string, meta schema.SessionMe
 	}
 	if meta.ThinkingBudget > 0 {
 		s.ThinkingBudget = meta.ThinkingBudget
+	}
+	if len(meta.Labels) > 0 {
+		if err := validateLabels(meta.Labels); err != nil {
+			return nil, err
+		}
+		if s.Labels == nil {
+			s.Labels = make(map[string]string)
+		}
+		for k, v := range meta.Labels {
+			s.Labels[k] = v
+		}
 	}
 	s.Modified = time.Now()
 

@@ -66,6 +66,9 @@ func (f *FileStore) Create(_ context.Context, meta schema.SessionMeta) (*schema.
 	if meta.Model == "" {
 		return nil, llm.ErrBadParameter.With("model name is required")
 	}
+	if err := validateLabels(meta.Labels); err != nil {
+		return nil, err
+	}
 
 	now := time.Now()
 	s := &schema.Session{
@@ -109,6 +112,9 @@ func (f *FileStore) List(_ context.Context, req schema.ListSessionRequest) (*sch
 		s, err := f.read(id)
 		if err != nil {
 			continue // skip corrupt files
+		}
+		if !matchLabels(s.Labels, req.Label) {
+			continue
 		}
 		result = append(result, s)
 	}
@@ -227,6 +233,17 @@ func (f *FileStore) Update(_ context.Context, id string, meta schema.SessionMeta
 	}
 	if meta.ThinkingBudget > 0 {
 		s.ThinkingBudget = meta.ThinkingBudget
+	}
+	if len(meta.Labels) > 0 {
+		if err := validateLabels(meta.Labels); err != nil {
+			return nil, err
+		}
+		if s.Labels == nil {
+			s.Labels = make(map[string]string)
+		}
+		for k, v := range meta.Labels {
+			s.Labels[k] = v
+		}
 	}
 	s.Modified = time.Now()
 

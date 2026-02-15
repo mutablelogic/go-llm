@@ -1,8 +1,11 @@
 package httpclient
 
 import (
+	"fmt"
+
 	// Packages
 	opt "github.com/mutablelogic/go-llm/pkg/opt"
+	types "github.com/mutablelogic/go-server/pkg/types"
 )
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -29,4 +32,13 @@ func WithOffset(offset uint) opt.Opt {
 // WithProvider filters results by provider name.
 func WithProvider(provider string) opt.Opt {
 	return opt.SetString(opt.ProviderKey, provider)
+}
+
+// WithLabel adds a label filter (key:value) for listing sessions.
+// The key must be a valid identifier. Multiple calls accumulate filters.
+func WithLabel(key, value string) opt.Opt {
+	if !types.IsIdentifier(key) {
+		return opt.Error(fmt.Errorf("invalid label key: %q", key))
+	}
+	return opt.AddString(opt.LabelKey, key+":"+value)
 }

@@ -26,7 +26,7 @@ func (c *Client) ListSessions(ctx context.Context, opts ...opt.Opt) (*schema.Lis
 	// Create request
 	req := client.NewRequest()
 	reqOpts := []client.RequestOpt{client.OptPath("session")}
-	if q := o.Query(opt.LimitKey, opt.OffsetKey); len(q) > 0 {
+	if q := o.Query(opt.LimitKey, opt.OffsetKey, opt.LabelKey); len(q) > 0 {
 		reqOpts = append(reqOpts, client.OptQuery(q))
 	}
 

@@ -90,7 +90,8 @@ type GeneratorMeta struct {
 // SessionMeta represents the metadata for a session.
 type SessionMeta struct {
 	GeneratorMeta
-	Name string `json:"name,omitempty" help:"Session name" optional:""`
+	Name   string            `json:"name,omitempty" help:"Session name" optional:""`
+	Labels map[string]string `json:"labels,omitempty" help:"User-defined labels for UI storage" optional:""`
 }
 
 // AskRequest represents a stateless request to generate content.
@@ -138,8 +139,9 @@ type ChatResponse struct {
 
 // ListSessionRequest represents a request to list sessions
 type ListSessionRequest struct {
-	Limit  *uint `json:"limit,omitempty" help:"Maximum number of sessions to return"`
-	Offset uint  `json:"offset,omitempty" help:"Offset for pagination"`
+	Limit  *uint    `json:"limit,omitempty" help:"Maximum number of sessions to return"`
+	Offset uint     `json:"offset,omitempty" help:"Offset for pagination"`
+	Label  []string `json:"label,omitempty" help:"Filter by labels (key:value)"`
 }
 
 // ListSessionResponse represents a response containing a list of sessions
