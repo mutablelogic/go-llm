@@ -8,6 +8,7 @@ import (
 	// Packages
 	llm "github.com/mutablelogic/go-llm"
 	schema "github.com/mutablelogic/go-llm/pkg/schema"
+	types "github.com/mutablelogic/go-server/pkg/types"
 )
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -41,8 +42,8 @@ func (m *Manager) ListTools(_ context.Context, req schema.ListToolRequest) (*sch
 	if start > total {
 		start = total
 	}
-	end := start + req.Limit
-	if req.Limit == 0 || end > total {
+	end := start + types.Value(req.Limit)
+	if req.Limit == nil || end > total {
 		end = total
 	}
 

@@ -10,6 +10,7 @@ import (
 	uuid "github.com/google/uuid"
 	llm "github.com/mutablelogic/go-llm"
 	schema "github.com/mutablelogic/go-llm/pkg/schema"
+	types "github.com/mutablelogic/go-server/pkg/types"
 )
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -92,8 +93,8 @@ func (m *MemoryStore) List(_ context.Context, req schema.ListSessionRequest) (*s
 	if start > total {
 		start = total
 	}
-	end := start + req.Limit
-	if req.Limit == 0 || end > total {
+	end := start + types.Value(req.Limit)
+	if req.Limit == nil || end > total {
 		end = total
 	}
 

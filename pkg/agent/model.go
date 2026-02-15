@@ -8,6 +8,7 @@ import (
 	// Packages
 	llm "github.com/mutablelogic/go-llm"
 	schema "github.com/mutablelogic/go-llm/pkg/schema"
+	types "github.com/mutablelogic/go-server/pkg/types"
 	errgroup "golang.org/x/sync/errgroup"
 )
 
@@ -52,8 +53,8 @@ func (m *Manager) ListModels(ctx context.Context, req schema.ListModelsRequest) 
 	if start > total {
 		start = total
 	}
-	end := start + req.Limit
-	if req.Limit == 0 || end > total {
+	end := start + types.Value(req.Limit)
+	if req.Limit == nil || end > total {
 		end = total
 	}
 

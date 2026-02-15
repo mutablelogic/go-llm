@@ -22,6 +22,8 @@ const (
 	AfterIdKey              = "after-id"
 	BeforeIdKey             = "before-id"
 	LimitKey                = "limit"
+	OffsetKey               = "offset"
+	ProviderKey             = "provider"
 	UserIdKey               = "user-id"
 	ServiceTierKey          = "service-tier"
 	CacheControlKey         = "cache-control"

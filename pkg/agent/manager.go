@@ -52,6 +52,11 @@ func NewManager(opts ...Opt) (*Manager, error) {
 	return m, nil
 }
 
+func (m *Manager) Close() error {
+	// Close is a no-op
+	return nil
+}
+
 ///////////////////////////////////////////////////////////////////////////////
 // PRIVATE METHODS
 

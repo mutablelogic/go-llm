@@ -8,6 +8,7 @@ import (
 	llm "github.com/mutablelogic/go-llm"
 	schema "github.com/mutablelogic/go-llm/pkg/schema"
 	session "github.com/mutablelogic/go-llm/pkg/session"
+	types "github.com/mutablelogic/go-server/pkg/types"
 	assert "github.com/stretchr/testify/assert"
 )
 
@@ -216,7 +217,7 @@ func Test_session_011(t *testing.T) {
 		assert.NoError(err)
 	}
 
-	resp, err := m.ListSessions(context.TODO(), schema.ListSessionRequest{Limit: 2})
+	resp, err := m.ListSessions(context.TODO(), schema.ListSessionRequest{Limit: types.Ptr(uint(2))})
 	assert.NoError(err)
 	assert.Equal(uint(5), resp.Count)
 	assert.Len(resp.Body, 2)
@@ -274,10 +275,10 @@ func Test_session_014(t *testing.T) {
 		assert.NoError(err)
 	}
 
-	resp, err := m.ListSessions(context.TODO(), schema.ListSessionRequest{Offset: 1, Limit: 2})
+	resp, err := m.ListSessions(context.TODO(), schema.ListSessionRequest{Offset: 1, Limit: types.Ptr(uint(2))})
 	assert.NoError(err)
 	assert.Equal(uint(5), resp.Count)
 	assert.Equal(uint(1), resp.Offset)
-	assert.Equal(uint(2), resp.Limit)
+	assert.Equal(uint(2), types.Value(resp.Limit))
 	assert.Len(resp.Body, 2)
 }

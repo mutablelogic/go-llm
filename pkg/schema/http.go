@@ -23,17 +23,17 @@ const (
 // ListModelsRequest represents a request to list models
 type ListModelsRequest struct {
 	Provider string `json:"provider,omitempty" help:"Filter by provider name" optional:""`
-	Limit    uint   `json:"limit,omitempty" help:"Maximum number of models to return"`
+	Limit    *uint  `json:"limit,omitempty" help:"Maximum number of models to return"`
 	Offset   uint   `json:"offset,omitempty" help:"Offset for pagination"`
 }
 
 // ListModelsResponse represents a response containing a list of models and providers
 type ListModelsResponse struct {
 	Count    uint     `json:"count"`
-	Offset   uint     `json:"offset"`
-	Limit    uint     `json:"limit"`
+	Offset   uint     `json:"offset,omitzero"`
+	Limit    *uint    `json:"limit,omitzero"`
 	Provider []string `json:"provider,omitempty"`
-	Body     []Model  `json:"body"`
+	Body     []Model  `json:"body,omitzero"`
 }
 
 // GetModelRequest represents a request to get a model
@@ -45,8 +45,8 @@ type GetModelRequest struct {
 // EmbeddingRequest represents a request to embed text
 type EmbeddingRequest struct {
 	Provider             string   `json:"provider,omitempty" help:"Provider name" optional:""`
-	Model                string   `json:"model,omitempty" help:"Model name"`
-	Input                []string `json:"input,omitempty" help:"Text inputs to embed"`
+	Model                string   `json:"model,omitempty" arg:"" help:"Model name"`
+	Input                []string `json:"input,omitempty" arg:"" help:"Text inputs to embed"`
 	TaskType             string   `json:"task_type,omitempty" help:"Embedding task type (Google-specific)" enum:"DEFAULT,RETRIEVAL_QUERY,RETRIEVAL_DOCUMENT,SEMANTIC_SIMILARITY,CLASSIFICATION,CLUSTERING,QUESTION_ANSWERING,FACT_VERIFICATION,CODE_RETRIEVAL_QUERY," default:"DEFAULT"`
 	Title                string   `json:"title,omitempty" help:"Document title, used with RETRIEVAL_DOCUMENT task type (Google-specific)"`
 	OutputDimensionality uint     `json:"output_dimensionality,omitempty" help:"Truncate embedding to this many dimensions (Google-specific)"`
@@ -114,16 +114,16 @@ type DeleteSessionRequest struct {
 
 // ListSessionRequest represents a request to list sessions
 type ListSessionRequest struct {
-	Limit  uint `json:"limit,omitempty" help:"Maximum number of sessions to return"`
-	Offset uint `json:"offset,omitempty" help:"Offset for pagination"`
+	Limit  *uint `json:"limit,omitempty" help:"Maximum number of sessions to return"`
+	Offset uint  `json:"offset,omitempty" help:"Offset for pagination"`
 }
 
 // ListSessionResponse represents a response containing a list of sessions
 type ListSessionResponse struct {
 	Count  uint       `json:"count"`
-	Offset uint       `json:"offset"`
-	Limit  uint       `json:"limit"`
-	Body   []*Session `json:"body"`
+	Offset uint       `json:"offset,omitzero"`
+	Limit  *uint      `json:"limit,omitzero"`
+	Body   []*Session `json:"body,omitzero"`
 }
 
 // ToolMeta represents a tool's metadata
@@ -140,16 +140,16 @@ type GetToolRequest struct {
 
 // ListToolRequest represents a request to list tools
 type ListToolRequest struct {
-	Limit  uint `json:"limit,omitempty" help:"Maximum number of tools to return"`
-	Offset uint `json:"offset,omitempty" help:"Offset for pagination"`
+	Limit  *uint `json:"limit,omitempty" help:"Maximum number of tools to return"`
+	Offset uint  `json:"offset,omitempty" help:"Offset for pagination"`
 }
 
 // ListToolResponse represents a response containing a list of tools
 type ListToolResponse struct {
 	Count  uint       `json:"count"`
-	Offset uint       `json:"offset"`
-	Limit  uint       `json:"limit"`
-	Body   []ToolMeta `json:"body"`
+	Offset uint       `json:"offset,omitzero"`
+	Limit  *uint      `json:"limit,omitzero"`
+	Body   []ToolMeta `json:"body,omitzero"`
 }
 
 ////////////////////////////////////////////////////////////////////////////////

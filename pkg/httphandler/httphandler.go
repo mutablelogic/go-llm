@@ -24,13 +24,18 @@ const (
 // TYPES
 
 type Router interface {
-	RegisterFunc(path string, handler http.HandlerFunc, middleware bool, spec *openapi.PathItem)
+	RegisterFunc(path string, handler http.HandlerFunc, middleware bool, spec *openapi.PathItem) error
 }
 
-func RegisterHandlers(manager *agent.Manager, router server.HTTPRouter, middleware bool) {
+func RegisterHandlers(manager *agent.Manager, router server.HTTPRouter, middleware bool) error {
+	var result error
+
+	// Convenience function to register a handler and accumulate any errors
 	register := func(path string, handler http.HandlerFunc, spec *openapi.PathItem) {
-		router.(Router).RegisterFunc(path, handler, true, spec)
+		result = errors.Join(result, router.(Router).RegisterFunc(path, handler, true, spec))
 	}
+
+	// Register handlers
 	register(ModelListHandler(manager))
 	register(ModelGetHandler(manager))
 	register(ToolListHandler(manager))
@@ -38,8 +43,9 @@ func RegisterHandlers(manager *agent.Manager, router server.HTTPRouter, middlewa
 	register(EmbeddingHandler(manager))
 	register(SessionHandler(manager))
 	register(SessionGetHandler(manager))
-	register(SessionAskHandler(manager))
-	register(SessionChatHandler(manager))
+
+	// Return any errors
+	return result
 }
 
 ///////////////////////////////////////////////////////////////////////////////
