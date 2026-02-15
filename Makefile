@@ -33,7 +33,7 @@ DOCKER_TAG = ${DOCKER_REPO}-${OS}-${ARCH}:${VERSION}
 # ALL
 
 .PHONY: all
-all: clean build
+all: build
 
 ###############################################################################
 # BUILD
@@ -46,12 +46,19 @@ $(CMD_DIR): go-dep mkdir
 	@echo Build command $(notdir $@) GOOS=${OS} GOARCH=${ARCH}
 	@GOOS=${OS} GOARCH=${ARCH} ${GO} build ${BUILD_FLAGS} -o ${BUILD_DIR}/$(notdir $@) ./$@
 
+# Build the client-only CLI (no server or telegram)
+.PHONY: llm-client
+llm-client: go-dep mkdir
+	@echo Build llm-client GOOS=${OS} GOARCH=${ARCH}
+	@GOOS=${OS} GOARCH=${ARCH} ${GO} build ${BUILD_FLAGS} -tags client -o ${BUILD_DIR}/llm ./cmd/llm
+
 # Build the docker image
 .PHONY: docker
 docker: docker-dep
 	@echo build docker image ${DOCKER_TAG} OS=${OS} ARCH=${ARCH} SOURCE=${DOCKER_SOURCE} VERSION=${VERSION}
 	@${DOCKER} build \
 		--tag ${DOCKER_TAG} \
+		--provenance=false \
 		--build-arg ARCH=${ARCH} \
 		--build-arg OS=${OS} \
 		--build-arg SOURCE=${DOCKER_SOURCE} \

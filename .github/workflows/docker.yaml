@@ -11,25 +11,24 @@ jobs:
     name: Build
     strategy:
       matrix:
-        arch: [ amd64, arm64 ]
-    runs-on:
-      - ${{ matrix.arch == 'amd64' && 'ubuntu-latest' || matrix.arch }}
+        arch: [amd64, arm64]
+    runs-on: ${{ matrix.arch == 'amd64' && 'ubuntu-24.04' || matrix.arch == 'arm64' && 'ubuntu-24.04-arm' }}
     env:
       OS: linux
       ARCH: ${{ matrix.arch }}
       DOCKER_REPO: ghcr.io/${{ github.repository }}
-      DOCKER_SOURCE: https://github.com/${{ github.repository }}
+      DOCKER_SOURCE: github.com/${{ github.repository }}
     outputs:
       tag: ${{ steps.build.outputs.tag }}
     permissions:
       contents: read
-      packages: write      
+      packages: write
     steps:
       - name: Install build tools
         run: |
           sudo apt -y update
           sudo apt -y install build-essential git
-          git config --global advice.detachedHead false    
+          git config --global advice.detachedHead false
       - name: Checkout
         uses: actions/checkout@v4
         with:
@@ -41,7 +40,7 @@ jobs:
           username: ${{ github.repository_owner }}
           password: ${{ secrets.GITHUB_TOKEN }}
       - name: Build and Push
-        id: build      
+        id: build
         run: |
           make docker && make docker-push && make docker-version >> "$GITHUB_OUTPUT"
   manifest:
@@ -54,7 +53,7 @@ jobs:
           - "latest"
     runs-on: ubuntu-latest
     permissions:
-      packages: write      
+      packages: write
     steps:
       - name: Login
         uses: docker/login-action@v3
