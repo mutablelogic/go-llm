@@ -155,6 +155,62 @@ func Test_memory_014(t *testing.T) {
 	assert.Equal("keeper", resp.Body[0].Name)
 }
 
+// Test Update changes name
+func Test_memory_015(t *testing.T) {
+	assert := assert.New(t)
+	store := session.NewMemoryStore()
+	s, _ := store.Create(context.TODO(), schema.SessionMeta{Name: "original", GeneratorMeta: schema.GeneratorMeta{Model: "test-model", Provider: "test-provider"}})
+	updated, err := store.Update(context.TODO(), s.ID, schema.SessionMeta{Name: "renamed"})
+	assert.NoError(err)
+	assert.Equal("renamed", updated.Name)
+	assert.Equal("test-model", updated.Model)
+	assert.Equal("test-provider", updated.Provider)
+}
+
+// Test Update changes model and provider
+func Test_memory_016(t *testing.T) {
+	assert := assert.New(t)
+	store := session.NewMemoryStore()
+	s, _ := store.Create(context.TODO(), schema.SessionMeta{Name: "test", GeneratorMeta: schema.GeneratorMeta{Model: "model-a", Provider: "provider-a"}})
+	updated, err := store.Update(context.TODO(), s.ID, schema.SessionMeta{GeneratorMeta: schema.GeneratorMeta{Model: "model-b", Provider: "provider-b"}})
+	assert.NoError(err)
+	assert.Equal("model-b", updated.Model)
+	assert.Equal("provider-b", updated.Provider)
+	assert.Equal("test", updated.Name)
+}
+
+// Test Update with nonexistent ID returns error
+func Test_memory_017(t *testing.T) {
+	assert := assert.New(t)
+	store := session.NewMemoryStore()
+	_, err := store.Update(context.TODO(), "nonexistent", schema.SessionMeta{Name: "x"})
+	assert.Error(err)
+}
+
+// Test Update only applies non-zero fields
+func Test_memory_018(t *testing.T) {
+	assert := assert.New(t)
+	store := session.NewMemoryStore()
+	s, _ := store.Create(context.TODO(), schema.SessionMeta{Name: "keep", GeneratorMeta: schema.GeneratorMeta{Model: "test-model", Provider: "test-provider", SystemPrompt: "original"}})
+	updated, err := store.Update(context.TODO(), s.ID, schema.SessionMeta{GeneratorMeta: schema.GeneratorMeta{SystemPrompt: "changed"}})
+	assert.NoError(err)
+	assert.Equal("keep", updated.Name)
+	assert.Equal("test-model", updated.Model)
+	assert.Equal("changed", updated.SystemPrompt)
+}
+
+// Test Update advances Modified timestamp
+func Test_memory_019(t *testing.T) {
+	assert := assert.New(t)
+	store := session.NewMemoryStore()
+	s, _ := store.Create(context.TODO(), schema.SessionMeta{Name: "test", GeneratorMeta: schema.GeneratorMeta{Model: "test-model", Provider: "test-provider"}})
+	original := s.Modified
+	time.Sleep(5 * time.Millisecond)
+	updated, err := store.Update(context.TODO(), s.ID, schema.SessionMeta{Name: "new"})
+	assert.NoError(err)
+	assert.True(updated.Modified.After(original))
+}
+
 func Test_session_001(t *testing.T) {
 	assert := assert.New(t)
 	store := session.NewMemoryStore()

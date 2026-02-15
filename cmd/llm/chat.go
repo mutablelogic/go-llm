@@ -75,6 +75,19 @@ func (cmd *ChatCommand) Run(ctx *Globals) (err error) {
 			return fmt.Errorf("creating session: %w", err)
 		}
 		sessionID = session.ID
+	} else {
+		// If reusing an existing session but parameters were changed, update it
+		meta := schema.SessionMeta{
+			GeneratorMeta: schema.GeneratorMeta{
+				Model:        cmd.Model,
+				SystemPrompt: cmd.SystemPrompt,
+			},
+		}
+		if meta.Model != "" || meta.SystemPrompt != "" {
+			if _, err := client.UpdateSession(parent, sessionID, meta); err != nil {
+				return fmt.Errorf("updating session: %w", err)
+			}
+		}
 	}
 
 	// Persist the session ID as the current default

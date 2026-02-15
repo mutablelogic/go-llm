@@ -350,3 +350,119 @@ func TestSessionGet_MethodNotAllowed(t *testing.T) {
 		t.Fatalf("expected 405, got %d", w.Code)
 	}
 }
+
+///////////////////////////////////////////////////////////////////////////////
+// SESSION PATCH TESTS
+
+func TestSessionPatch_OK(t *testing.T) {
+	mgr := newTestManager(t, []mockClient{
+		{name: "provider-1", models: []schema.Model{{Name: "gpt-4"}}},
+	})
+	mux := serveMux(mgr)
+
+	// Create a session
+	body, _ := json.Marshal(schema.SessionMeta{Name: "original", GeneratorMeta: schema.GeneratorMeta{Model: "gpt-4"}})
+	w := httptest.NewRecorder()
+	r := httptest.NewRequest(http.MethodPost, "/session", bytes.NewReader(body))
+	r.Header.Set("Content-Type", "application/json")
+	mux.ServeHTTP(w, r)
+	if w.Code != http.StatusCreated {
+		t.Fatalf("create: expected 201, got %d: %s", w.Code, w.Body.String())
+	}
+
+	var created schema.Session
+	if err := json.NewDecoder(w.Body).Decode(&created); err != nil {
+		t.Fatal(err)
+	}
+
+	// Patch the session name
+	body, _ = json.Marshal(schema.SessionMeta{Name: "renamed"})
+	w = httptest.NewRecorder()
+	r = httptest.NewRequest(http.MethodPatch, "/session/"+created.ID, bytes.NewReader(body))
+	r.Header.Set("Content-Type", "application/json")
+	mux.ServeHTTP(w, r)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+
+	var updated schema.Session
+	if err := json.NewDecoder(w.Body).Decode(&updated); err != nil {
+		t.Fatal(err)
+	}
+	if updated.Name != "renamed" {
+		t.Fatalf("expected name=renamed, got %q", updated.Name)
+	}
+	if updated.Model != "gpt-4" {
+		t.Fatalf("expected model=gpt-4, got %q", updated.Model)
+	}
+}
+
+func TestSessionPatch_SystemPrompt(t *testing.T) {
+	mgr := newTestManager(t, []mockClient{
+		{name: "provider-1", models: []schema.Model{{Name: "gpt-4"}}},
+	})
+	mux := serveMux(mgr)
+
+	// Create a session
+	body, _ := json.Marshal(schema.SessionMeta{Name: "test", GeneratorMeta: schema.GeneratorMeta{Model: "gpt-4", SystemPrompt: "old"}})
+	w := httptest.NewRecorder()
+	r := httptest.NewRequest(http.MethodPost, "/session", bytes.NewReader(body))
+	r.Header.Set("Content-Type", "application/json")
+	mux.ServeHTTP(w, r)
+	var created schema.Session
+	json.NewDecoder(w.Body).Decode(&created)
+
+	// Patch system prompt only
+	body, _ = json.Marshal(schema.SessionMeta{GeneratorMeta: schema.GeneratorMeta{SystemPrompt: "new"}})
+	w = httptest.NewRecorder()
+	r = httptest.NewRequest(http.MethodPatch, "/session/"+created.ID, bytes.NewReader(body))
+	r.Header.Set("Content-Type", "application/json")
+	mux.ServeHTTP(w, r)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+
+	var updated schema.Session
+	json.NewDecoder(w.Body).Decode(&updated)
+	if updated.SystemPrompt != "new" {
+		t.Fatalf("expected system_prompt=new, got %q", updated.SystemPrompt)
+	}
+	if updated.Name != "test" {
+		t.Fatalf("expected name=test preserved, got %q", updated.Name)
+	}
+}
+
+func TestSessionPatch_NotFound(t *testing.T) {
+	mgr := newTestManager(t, []mockClient{
+		{name: "provider-1", models: []schema.Model{{Name: "model-a"}}},
+	})
+	mux := serveMux(mgr)
+
+	body, _ := json.Marshal(schema.SessionMeta{Name: "x"})
+	w := httptest.NewRecorder()
+	r := httptest.NewRequest(http.MethodPatch, "/session/nonexistent-id", bytes.NewReader(body))
+	r.Header.Set("Content-Type", "application/json")
+	mux.ServeHTTP(w, r)
+
+	if w.Code != http.StatusNotFound {
+		t.Fatalf("expected 404, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestSessionPatch_InvalidJSON(t *testing.T) {
+	mgr := newTestManager(t, []mockClient{
+		{name: "provider-1", models: []schema.Model{{Name: "model-a"}}},
+	})
+	mux := serveMux(mgr)
+
+	w := httptest.NewRecorder()
+	r := httptest.NewRequest(http.MethodPatch, "/session/some-id", bytes.NewBufferString("{invalid"))
+	r.Header.Set("Content-Type", "application/json")
+	mux.ServeHTTP(w, r)
+
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d: %s", w.Code, w.Body.String())
+	}
+}

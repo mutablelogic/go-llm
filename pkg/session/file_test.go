@@ -218,3 +218,55 @@ func Test_file_016(t *testing.T) {
 	s2, _ := store.Create(context.TODO(), schema.SessionMeta{Name: "b", GeneratorMeta: schema.GeneratorMeta{Model: "test-model", Provider: "test-provider"}})
 	assert.NotEqual(s1.ID, s2.ID)
 }
+
+// Test Update changes name and persists to disk
+func Test_file_017(t *testing.T) {
+	assert := assert.New(t)
+	dir := t.TempDir()
+	store, _ := session.NewFileStore(dir)
+	s, _ := store.Create(context.TODO(), schema.SessionMeta{Name: "original", GeneratorMeta: schema.GeneratorMeta{Model: "test-model", Provider: "test-provider"}})
+	updated, err := store.Update(context.TODO(), s.ID, schema.SessionMeta{Name: "renamed"})
+	assert.NoError(err)
+	assert.Equal("renamed", updated.Name)
+	assert.Equal("test-model", updated.Model)
+
+	// Verify persisted by re-reading
+	got, err := store.Get(context.TODO(), s.ID)
+	assert.NoError(err)
+	assert.Equal("renamed", got.Name)
+}
+
+// Test Update with nonexistent ID returns error
+func Test_file_018(t *testing.T) {
+	assert := assert.New(t)
+	dir := t.TempDir()
+	store, _ := session.NewFileStore(dir)
+	_, err := store.Update(context.TODO(), "nonexistent", schema.SessionMeta{Name: "x"})
+	assert.Error(err)
+}
+
+// Test Update only applies non-zero fields
+func Test_file_019(t *testing.T) {
+	assert := assert.New(t)
+	dir := t.TempDir()
+	store, _ := session.NewFileStore(dir)
+	s, _ := store.Create(context.TODO(), schema.SessionMeta{Name: "keep", GeneratorMeta: schema.GeneratorMeta{Model: "test-model", Provider: "test-provider", SystemPrompt: "original"}})
+	updated, err := store.Update(context.TODO(), s.ID, schema.SessionMeta{GeneratorMeta: schema.GeneratorMeta{SystemPrompt: "changed"}})
+	assert.NoError(err)
+	assert.Equal("keep", updated.Name)
+	assert.Equal("test-model", updated.Model)
+	assert.Equal("changed", updated.SystemPrompt)
+}
+
+// Test Update advances Modified timestamp
+func Test_file_020(t *testing.T) {
+	assert := assert.New(t)
+	dir := t.TempDir()
+	store, _ := session.NewFileStore(dir)
+	s, _ := store.Create(context.TODO(), schema.SessionMeta{Name: "test", GeneratorMeta: schema.GeneratorMeta{Model: "test-model", Provider: "test-provider"}})
+	original := s.Modified
+	time.Sleep(5 * time.Millisecond)
+	updated, err := store.Update(context.TODO(), s.ID, schema.SessionMeta{Name: "new"})
+	assert.NoError(err)
+	assert.True(updated.Modified.After(original))
+}

@@ -43,6 +43,10 @@ type Store interface {
 	// Returns an error if the session does not exist.
 	Delete(ctx context.Context, id string) error
 
+	// Update applies non-zero fields from the given metadata to an existing session.
+	// Returns the updated session or an error if the session does not exist.
+	Update(ctx context.Context, id string, meta SessionMeta) (*Session, error)
+
 	// Write persists the current state of a session.
 	Write(s *Session) error
 }

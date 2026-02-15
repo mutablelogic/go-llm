@@ -74,6 +74,18 @@ func SessionGetHandler(manager *agent.Manager) (string, http.HandlerFunc, *opena
 					return
 				}
 				w.WriteHeader(http.StatusNoContent)
+			case http.MethodPatch:
+				var req schema.SessionMeta
+				if err := httprequest.Read(r, &req); err != nil {
+					_ = httpresponse.Error(w, err)
+					return
+				}
+				resp, err := manager.UpdateSession(r.Context(), id, req)
+				if err != nil {
+					_ = httpresponse.Error(w, httpErr(err))
+					return
+				}
+				_ = httpresponse.JSON(w, http.StatusOK, httprequest.Indent(r), resp)
 			default:
 				_ = httpresponse.Error(w, httpresponse.Err(http.StatusMethodNotAllowed), r.Method)
 			}
@@ -83,6 +95,9 @@ func SessionGetHandler(manager *agent.Manager) (string, http.HandlerFunc, *opena
 			},
 			Delete: &openapi.Operation{
 				Description: "Delete a session by ID",
+			},
+			Patch: &openapi.Operation{
+				Description: "Update a session's metadata",
 			},
 		})
 }

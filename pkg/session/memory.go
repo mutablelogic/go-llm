@@ -123,3 +123,39 @@ func (m *MemoryStore) Delete(_ context.Context, id string) error {
 func (m *MemoryStore) Write(_ *schema.Session) error {
 	return nil
 }
+
+// Update applies non-zero fields from meta to the session identified by id.
+func (m *MemoryStore) Update(_ context.Context, id string, meta schema.SessionMeta) (*schema.Session, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	s, ok := m.sessions[id]
+	if !ok {
+		return nil, llm.ErrNotFound.Withf("session %q", id)
+	}
+
+	if meta.Name != "" {
+		s.Name = meta.Name
+	}
+	if meta.Model != "" {
+		s.Model = meta.Model
+	}
+	if meta.Provider != "" {
+		s.Provider = meta.Provider
+	}
+	if meta.SystemPrompt != "" {
+		s.SystemPrompt = meta.SystemPrompt
+	}
+	if meta.Format != nil {
+		s.Format = meta.Format
+	}
+	if meta.Thinking {
+		s.Thinking = true
+	}
+	if meta.ThinkingBudget > 0 {
+		s.ThinkingBudget = meta.ThinkingBudget
+	}
+	s.Modified = time.Now()
+
+	return s, nil
+}

@@ -3,6 +3,7 @@ package httpclient
 import (
 	"context"
 	"fmt"
+	"net/http"
 
 	// Packages
 	client "github.com/mutablelogic/go-client"
@@ -94,4 +95,27 @@ func (c *Client) DeleteSession(ctx context.Context, id string) error {
 
 	// Return success
 	return nil
+}
+
+// UpdateSession updates a session's metadata by ID.
+func (c *Client) UpdateSession(ctx context.Context, id string, meta schema.SessionMeta) (*schema.Session, error) {
+	if id == "" {
+		return nil, fmt.Errorf("session ID cannot be empty")
+	}
+
+	// Create request
+	req, err := client.NewJSONRequestEx(http.MethodPatch, meta, "")
+	if err != nil {
+		return nil, err
+	}
+	reqOpts := []client.RequestOpt{client.OptPath("session", id)}
+
+	// Perform request
+	var response schema.Session
+	if err := c.DoWithContext(ctx, req, &response, reqOpts...); err != nil {
+		return nil, err
+	}
+
+	// Return the response
+	return &response, nil
 }

@@ -17,6 +17,7 @@ type SessionCommands struct {
 	ListSessions  ListSessionsCommand  `cmd:"" name:"sessions" help:"List sessions." group:"SESSION"`
 	GetSession    GetSessionCommand    `cmd:"" name:"session" help:"Get session." group:"SESSION"`
 	CreateSession CreateSessionCommand `cmd:"" name:"create-session" help:"Create a new session." group:"SESSION"`
+	UpdateSession UpdateSessionCommand `cmd:"" name:"update-session" help:"Update a session." group:"SESSION"`
 	DeleteSession DeleteSessionCommand `cmd:"" name:"delete-session" help:"Delete a session." group:"SESSION"`
 }
 
@@ -32,6 +33,14 @@ type GetSessionCommand struct {
 type CreateSessionCommand struct {
 	Model        string `arg:"" name:"model" help:"Model name"`
 	Name         string `name:"name" help:"Session name" optional:""`
+	Provider     string `name:"provider" help:"Provider name" optional:""`
+	SystemPrompt string `name:"system-prompt" help:"System prompt" optional:""`
+}
+
+type UpdateSessionCommand struct {
+	ID           string `arg:"" name:"id" help:"Session ID"`
+	Name         string `name:"name" help:"Session name" optional:""`
+	Model        string `name:"model" help:"Model name" optional:""`
 	Provider     string `name:"provider" help:"Provider name" optional:""`
 	SystemPrompt string `name:"system-prompt" help:"System prompt" optional:""`
 }
@@ -139,5 +148,33 @@ func (cmd *DeleteSessionCommand) Run(ctx *Globals) (err error) {
 
 	// Print
 	fmt.Printf("Deleted session %s\n", cmd.ID)
+	return nil
+}
+
+func (cmd *UpdateSessionCommand) Run(ctx *Globals) (err error) {
+	client, err := ctx.Client()
+	if err != nil {
+		return err
+	}
+
+	// OTEL
+	parent, endSpan := otel.StartSpan(ctx.tracer, ctx.ctx, "UpdateSessionCommand")
+	defer func() { endSpan(err) }()
+
+	// Update session
+	session, err := client.UpdateSession(parent, cmd.ID, schema.SessionMeta{
+		Name: cmd.Name,
+		GeneratorMeta: schema.GeneratorMeta{
+			Provider:     cmd.Provider,
+			Model:        cmd.Model,
+			SystemPrompt: cmd.SystemPrompt,
+		},
+	})
+	if err != nil {
+		return err
+	}
+
+	// Print
+	fmt.Println(session)
 	return nil
 }

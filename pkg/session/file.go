@@ -195,3 +195,43 @@ func (f *FileStore) Write(s *schema.Session) error {
 
 	return f.write(s)
 }
+
+// Update applies non-zero fields from meta to the session identified by id,
+// persists the result to disk, and returns the updated session.
+func (f *FileStore) Update(_ context.Context, id string, meta schema.SessionMeta) (*schema.Session, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+
+	s, err := f.read(id)
+	if err != nil {
+		return nil, err
+	}
+
+	if meta.Name != "" {
+		s.Name = meta.Name
+	}
+	if meta.Model != "" {
+		s.Model = meta.Model
+	}
+	if meta.Provider != "" {
+		s.Provider = meta.Provider
+	}
+	if meta.SystemPrompt != "" {
+		s.SystemPrompt = meta.SystemPrompt
+	}
+	if meta.Format != nil {
+		s.Format = meta.Format
+	}
+	if meta.Thinking {
+		s.Thinking = true
+	}
+	if meta.ThinkingBudget > 0 {
+		s.ThinkingBudget = meta.ThinkingBudget
+	}
+	s.Modified = time.Now()
+
+	if err := f.write(s); err != nil {
+		return nil, err
+	}
+	return s, nil
+}

@@ -49,50 +49,16 @@ func (m *Manager) ListSessions(ctx context.Context, req schema.ListSessionReques
 // UpdateSession updates a session's metadata. If Model or Provider are changed,
 // they are validated against the registered providers first.
 func (m *Manager) UpdateSession(ctx context.Context, id string, meta schema.SessionMeta) (*schema.Session, error) {
-	// Retrieve existing session
-	session, err := m.store.Get(ctx, id)
-	if err != nil {
-		return nil, err
-	}
-
 	// If model or provider is being changed, validate
-	newModel := meta.Model
-	newProvider := meta.Provider
-	if newModel == "" {
-		newModel = session.Model
-	}
-	if newProvider == "" {
-		newProvider = session.Provider
-	}
-	if newModel != session.Model || newProvider != session.Provider {
-		model, err := m.getModel(ctx, newProvider, newModel)
+	if meta.Model != "" || meta.Provider != "" {
+		model, err := m.getModel(ctx, meta.Provider, meta.Model)
 		if err != nil {
 			return nil, err
 		}
-		session.Model = model.Name
-		session.Provider = model.OwnedBy
+		meta.Model = model.Name
+		meta.Provider = model.OwnedBy
 	}
 
-	// Apply non-zero fields
-	if meta.Name != "" {
-		session.Name = meta.Name
-	}
-	if meta.SystemPrompt != "" {
-		session.SystemPrompt = meta.SystemPrompt
-	}
-	if meta.Format != nil {
-		session.Format = meta.Format
-	}
-	if meta.Thinking {
-		session.Thinking = true
-	}
-	if meta.ThinkingBudget > 0 {
-		session.ThinkingBudget = meta.ThinkingBudget
-	}
-
-	// Persist
-	if err := m.store.Write(session); err != nil {
-		return nil, err
-	}
-	return session, nil
+	// Delegate to store
+	return m.store.Update(ctx, id, meta)
 }
