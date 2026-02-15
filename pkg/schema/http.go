@@ -59,40 +59,11 @@ type EmbeddingResponse struct {
 	Output [][]float64 `json:"output,omitempty"`
 }
 
-// CompletionRequest represents a request to generate content.
-// Accepts JSON or multipart/form-data with file attachments.
-type CompletionRequest struct {
-	Text       string           `json:"text" help:"User input text"`
-	Attachment gomultipart.File `json:"attachment,omitempty" help:"File attachment" optional:""`
-}
-
-// Attachments returns attachment content blocks from the request.
-// If Attachment.Body is set (from multipart upload), it reads and
-// auto-detects the MIME type.
-func (r *CompletionRequest) Attachments() ([]ContentBlock, error) {
-	if r.Attachment.Body == nil {
-		return nil, nil
-	}
-	data, err := io.ReadAll(r.Attachment.Body)
-	if err != nil {
-		return nil, err
-	}
-	if len(data) == 0 {
-		return nil, nil
-	}
-	return []ContentBlock{
-		{Attachment: types.Ptr(Attachment{
-			Type: detectContentType(data),
-			Data: data,
-		})},
-	}, nil
-}
-
 // CompletionResponse represents a response from a completion request.
 type CompletionResponse struct {
 	Role    string         `json:"role"`
 	Content []ContentBlock `json:"content"`
-	Result  ResultType     `json:"result,omitempty"`
+	Result  ResultType     `json:"result"`
 }
 
 // GeneratorMeta represents the metadata needed to invoke a generator model.
@@ -125,35 +96,24 @@ type MultipartAskRequest struct {
 	File gomultipart.File `json:"file,omitempty" help:"File attachment (multipart upload)" optional:""`
 }
 
-// FileAttachment reads the multipart file (if present) and returns it
-// as an Attachment with auto-detected MIME type. Returns nil if no file
-// was uploaded.
-func (r *MultipartAskRequest) FileAttachment() (*Attachment, error) {
-	if r.File.Body == nil {
-		return nil, nil
-	}
-	data, err := io.ReadAll(r.File.Body)
-	if err != nil {
-		return nil, err
-	}
-	if len(data) == 0 {
-		return nil, nil
-	}
-	a := &Attachment{
-		Type: detectContentType(data),
-		Data: data,
-	}
-	if r.File.Path != "" {
-		a.URL = types.Ptr(url.URL{Scheme: "file", Path: r.File.Path})
-	}
-	return a, nil
-}
-
 // AskResponse represents the response from an ask request.
 type AskResponse struct {
 	CompletionResponse
-	InputTokens  uint `json:"input_tokens,omitempty"`
-	OutputTokens uint `json:"output_tokens,omitempty"`
+	Usage *Usage `json:"usage,omitempty"`
+}
+
+// ChatRequest represents a stateful chat request within a session.
+type ChatRequest struct {
+	Session     string       `json:"session" help:"Session ID"`
+	Text        string       `json:"text" arg:"" help:"User input text"`
+	Attachments []Attachment `json:"attachments,omitempty" help:"File attachments" optional:""`
+}
+
+// ChatResponse represents the response from a chat request.
+type ChatResponse struct {
+	CompletionResponse
+	Session string `json:"session"`
+	Usage   *Usage `json:"usage,omitempty"`
 }
 
 // GetSessionRequest represents a request to get a session by ID
@@ -180,13 +140,6 @@ type ListSessionResponse struct {
 	Body   []*Session `json:"body,omitzero"`
 }
 
-// ToolMeta represents a tool's metadata
-type ToolMeta struct {
-	Name        string          `json:"name"`
-	Description string          `json:"description,omitempty"`
-	Schema      json.RawMessage `json:"schema,omitempty"`
-}
-
 // GetToolRequest represents a request to get a tool by name
 type GetToolRequest struct {
 	Name string `json:"name" help:"Tool name"`
@@ -204,6 +157,13 @@ type ListToolResponse struct {
 	Offset uint       `json:"offset,omitzero"`
 	Limit  *uint      `json:"limit,omitzero"`
 	Body   []ToolMeta `json:"body,omitzero"`
+}
+
+// ToolMeta represents a tool's metadata
+type ToolMeta struct {
+	Name        string          `json:"name"`
+	Description string          `json:"description,omitempty"`
+	Schema      json.RawMessage `json:"schema,omitempty"`
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -269,10 +229,6 @@ func (r ListToolResponse) String() string {
 	return types.Stringify(r)
 }
 
-func (r CompletionRequest) String() string {
-	return types.Stringify(r)
-}
-
 func (r CompletionResponse) String() string {
 	return types.Stringify(r)
 }
@@ -285,9 +241,37 @@ func (r AskResponse) String() string {
 	return types.Stringify(r)
 }
 
-////////////////////////////////////////////////////////////////////////////////
-// PRIVATE METHODS
+func (r ChatRequest) String() string {
+	return types.Stringify(r)
+}
 
-func detectContentType(data []byte) string {
-	return http.DetectContentType(data)
+func (r ChatResponse) String() string {
+	return types.Stringify(r)
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// PUBLIC METHODS
+
+// FileAttachment reads the multipart file (if present) and returns it
+// as an Attachment with auto-detected MIME type. Returns nil if no file
+// was uploaded.
+func (r *MultipartAskRequest) FileAttachment() (*Attachment, error) {
+	if r.File.Body == nil {
+		return nil, nil
+	}
+	data, err := io.ReadAll(r.File.Body)
+	if err != nil {
+		return nil, err
+	}
+	if len(data) == 0 {
+		return nil, nil
+	}
+	a := &Attachment{
+		Type: http.DetectContentType(data),
+		Data: data,
+	}
+	if r.File.Path != "" {
+		a.URL = types.Ptr(url.URL{Scheme: "file", Path: r.File.Path})
+	}
+	return a, nil
 }

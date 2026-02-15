@@ -17,6 +17,12 @@ import (
 ////////////////////////////////////////////////////////////////////////////////
 // TYPES
 
+// Usage represents the token usage for a single request/response.
+type Usage struct {
+	InputTokens  uint `json:"input_tokens,omitempty"`
+	OutputTokens uint `json:"output_tokens,omitempty"`
+}
+
 // Message represents a message in a conversation with an LLM.
 // It uses a universal content block representation that can be marshaled
 // to any provider's format.
@@ -24,7 +30,7 @@ type Message struct {
 	Role    string         `json:"role"`             // "user", "assistant", "system"
 	Content []ContentBlock `json:"content"`          // Array of content blocks
 	Tokens  uint           `json:"tokens,omitempty"` // Number of tokens
-	Result  ResultType     `json:"result,omitempty"` // Result type
+	Result  ResultType     `json:"result"`           // Result type
 	Meta    map[string]any `json:"meta,omitzero"`    // Provider-specific metadata
 }
 

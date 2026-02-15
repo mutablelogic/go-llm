@@ -9,6 +9,7 @@ import (
 	"runtime"
 	"testing"
 
+	// Packages
 	schema "github.com/mutablelogic/go-llm/pkg/schema"
 	assert "github.com/stretchr/testify/assert"
 )

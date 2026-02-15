@@ -1,5 +1,10 @@
 package schema
 
+import (
+	"encoding/json"
+	"fmt"
+)
+
 ////////////////////////////////////////////////////////////////////////////////
 // TYPES
 
@@ -41,4 +46,35 @@ func (r ResultType) String() string {
 	default:
 		return "unknown"
 	}
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// JSON MARSHAL
+
+func (r ResultType) MarshalJSON() ([]byte, error) {
+	return json.Marshal(r.String())
+}
+
+func (r *ResultType) UnmarshalJSON(data []byte) error {
+	var s string
+	if err := json.Unmarshal(data, &s); err != nil {
+		return err
+	}
+	switch s {
+	case "stop":
+		*r = ResultStop
+	case "max_tokens":
+		*r = ResultMaxTokens
+	case "blocked":
+		*r = ResultBlocked
+	case "tool_call":
+		*r = ResultToolCall
+	case "error":
+		*r = ResultError
+	case "other":
+		*r = ResultOther
+	default:
+		return fmt.Errorf("unknown result type: %q", s)
+	}
+	return nil
 }

@@ -495,7 +495,7 @@ func Test_processResponse_001(t *testing.T) {
 		Usage: messagesUsage{InputTokens: 10, OutputTokens: 5},
 	}
 
-	result, err := c.processResponse(response, &session)
+	result, _, err := c.processResponse(response, &session)
 	assert.NoError(err)
 	assert.NotNil(result)
 	assert.Equal("assistant", result.Role)
@@ -526,7 +526,7 @@ func Test_processResponse_002(t *testing.T) {
 		Usage: messagesUsage{InputTokens: 10, OutputTokens: 100},
 	}
 
-	result, err := c.processResponse(response, &session)
+	result, _, err := c.processResponse(response, &session)
 	assert.ErrorIs(err, llm.ErrMaxTokens)
 	assert.NotNil(result)
 	assert.Equal("Truncated...", *result.Content[0].Text)
@@ -549,7 +549,7 @@ func Test_processResponse_003(t *testing.T) {
 		Content:    []anthropicContentBlock{},
 	}
 
-	result, err := c.processResponse(response, &session)
+	result, _, err := c.processResponse(response, &session)
 	assert.ErrorIs(err, llm.ErrRefusal)
 	assert.Nil(result)
 
@@ -581,7 +581,7 @@ func Test_processResponse_004(t *testing.T) {
 		Usage: messagesUsage{InputTokens: 15, OutputTokens: 20},
 	}
 
-	result, err := c.processResponse(response, &session)
+	result, _, err := c.processResponse(response, &session)
 	assert.NoError(err)
 	assert.NotNil(result)
 	assert.Equal(schema.ResultToolCall, result.Result)
@@ -611,7 +611,7 @@ func Test_processResponse_005(t *testing.T) {
 		Usage: messagesUsage{InputTokens: 10, OutputTokens: 30},
 	}
 
-	result, err := c.processResponse(response, &session)
+	result, _, err := c.processResponse(response, &session)
 	assert.NoError(err)
 	assert.NotNil(result)
 	assert.Len(result.Content, 2)
@@ -636,7 +636,7 @@ func Test_processResponse_006(t *testing.T) {
 		Usage: messagesUsage{InputTokens: 25, OutputTokens: 10},
 	}
 
-	result, err := c.processResponse(response, &session)
+	result, _, err := c.processResponse(response, &session)
 	assert.NoError(err)
 	assert.NotNil(result)
 
@@ -663,7 +663,7 @@ func Test_processResponse_007(t *testing.T) {
 		Usage: messagesUsage{InputTokens: 10, OutputTokens: 5},
 	}
 
-	result, err := c.processResponse(response, &session)
+	result, _, err := c.processResponse(response, &session)
 	assert.ErrorIs(err, llm.ErrPauseTurn)
 	assert.NotNil(result)
 }
@@ -697,7 +697,7 @@ func Test_WithoutSession_nil_message(t *testing.T) {
 	c, err := New("test-key")
 	assert.NoError(err)
 
-	_, err = c.WithoutSession(context.TODO(), schema.Model{Name: "test"}, nil)
+	_, _, err = c.WithoutSession(context.TODO(), schema.Model{Name: "test"}, nil)
 	assert.Error(err)
 }
 
@@ -707,7 +707,7 @@ func Test_WithSession_nil_session(t *testing.T) {
 	assert.NoError(err)
 
 	msg := &schema.Message{Role: "user", Content: []schema.ContentBlock{{Text: strPtr("Hi")}}}
-	_, err = c.WithSession(context.TODO(), schema.Model{Name: "test"}, nil, msg)
+	_, _, err = c.WithSession(context.TODO(), schema.Model{Name: "test"}, nil, msg)
 	assert.Error(err)
 }
 
@@ -717,7 +717,7 @@ func Test_WithSession_nil_message(t *testing.T) {
 	assert.NoError(err)
 
 	session := &schema.Conversation{}
-	_, err = c.WithSession(context.TODO(), schema.Model{Name: "test"}, session, nil)
+	_, _, err = c.WithSession(context.TODO(), schema.Model{Name: "test"}, session, nil)
 	assert.Error(err)
 }
 
@@ -739,7 +739,7 @@ func Test_generate_001(t *testing.T) {
 	msg, err := schema.NewMessage("user", "Say hello in exactly three words.")
 	assert.NoError(err)
 
-	response, err := c.WithoutSession(context.TODO(), model, msg)
+	response, _, err := c.WithoutSession(context.TODO(), model, msg)
 	assert.NoError(err)
 	assert.NotNil(response)
 	assert.Equal("assistant", response.Role)
@@ -768,7 +768,7 @@ func Test_generate_002(t *testing.T) {
 	msg, err := schema.NewMessage("user", "Say hello in exactly three words.")
 	assert.NoError(err)
 
-	response, err := c.WithoutSession(context.TODO(), model, msg, opt.WithStream(streamFn))
+	response, _, err := c.WithoutSession(context.TODO(), model, msg, opt.WithStream(streamFn))
 	assert.NoError(err)
 	assert.NotNil(response)
 	assert.NotEmpty(streamed)
@@ -793,7 +793,7 @@ func Test_generate_003(t *testing.T) {
 	assert.NoError(err)
 
 	session := &schema.Conversation{}
-	resp1, err := c.WithSession(context.TODO(), model, session, msg1)
+	resp1, _, err := c.WithSession(context.TODO(), model, session, msg1)
 	assert.NoError(err)
 	assert.NotNil(resp1)
 	t.Logf("Turn 1: %s", *resp1.Content[0].Text)
@@ -802,7 +802,7 @@ func Test_generate_003(t *testing.T) {
 	msg2, err := schema.NewMessage("user", "What is my name?")
 	assert.NoError(err)
 
-	resp2, err := c.WithSession(context.TODO(), model, session, msg2)
+	resp2, _, err := c.WithSession(context.TODO(), model, session, msg2)
 	assert.NoError(err)
 	assert.NotNil(resp2)
 	assert.NotNil(resp2.Content[0].Text)
@@ -825,7 +825,7 @@ func Test_generate_004(t *testing.T) {
 	msg, err := schema.NewMessage("user", "What are you?")
 	assert.NoError(err)
 
-	response, err := c.WithoutSession(context.TODO(), model, msg,
+	response, _, err := c.WithoutSession(context.TODO(), model, msg,
 		WithSystemPrompt("You are a pirate. Always respond in pirate speak."),
 		WithMaxTokens(200),
 	)
@@ -850,7 +850,7 @@ func Test_generate_005(t *testing.T) {
 	msg, err := schema.NewMessage("user", "Write exactly one word.")
 	assert.NoError(err)
 
-	response, err := c.WithoutSession(context.TODO(), model, msg,
+	response, _, err := c.WithoutSession(context.TODO(), model, msg,
 		WithTemperature(0.0),
 		WithMaxTokens(10),
 	)

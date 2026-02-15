@@ -25,23 +25,23 @@ const (
 // PUBLIC METHODS
 
 // WithoutSession sends a single message and returns the response (stateless)
-func (a *agent) WithoutSession(ctx context.Context, model schema.Model, message *schema.Message, opts ...opt.Opt) (*schema.Message, error) {
+func (a *agent) WithoutSession(ctx context.Context, model schema.Model, message *schema.Message, opts ...opt.Opt) (*schema.Message, *schema.Usage, error) {
 	// Get the client for this model
 	client := a.clientForModel(model)
 	if client == nil {
-		return nil, llm.ErrNotFound.Withf("no client found for model: %s", model.Name)
+		return nil, nil, llm.ErrNotFound.Withf("no client found for model: %s", model.Name)
 	}
 
 	// Covert options based on client
 	opts, err := convertOptsForClient(opts, client)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	// Check if client implements Generator
 	generator, ok := client.(llm.Generator)
 	if !ok {
-		return nil, llm.ErrNotImplemented.Withf("client %q does not support messaging", client.Name())
+		return nil, nil, llm.ErrNotImplemented.Withf("client %q does not support messaging", client.Name())
 	}
 
 	// Send the message
@@ -49,29 +49,29 @@ func (a *agent) WithoutSession(ctx context.Context, model schema.Model, message 
 }
 
 // WithSession sends a message within a session and returns the response (stateful)
-func (a *agent) WithSession(ctx context.Context, model schema.Model, session *schema.Conversation, message *schema.Message, opts ...opt.Opt) (*schema.Message, error) {
+func (a *agent) WithSession(ctx context.Context, model schema.Model, session *schema.Conversation, message *schema.Message, opts ...opt.Opt) (*schema.Message, *schema.Usage, error) {
 	// Get the client for this model
 	client := a.clientForModel(model)
 	if client == nil {
-		return nil, llm.ErrNotFound.Withf("no client found for model: %s", model.Name)
+		return nil, nil, llm.ErrNotFound.Withf("no client found for model: %s", model.Name)
 	}
 
 	// Covert options based on client
 	opts, err := convertOptsForClient(opts, client)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	// Check if client implements Generator
 	generator, ok := client.(llm.Generator)
 	if !ok {
-		return nil, llm.ErrNotImplemented.Withf("client %q does not support messaging", client.Name())
+		return nil, nil, llm.ErrNotImplemented.Withf("client %q does not support messaging", client.Name())
 	}
 
 	// Apply options
 	o, err := opt.Apply(opts...)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	// Extract toolkit from options if present
@@ -87,9 +87,9 @@ func (a *agent) WithSession(ctx context.Context, model schema.Model, session *sc
 	}
 
 	// Send the message
-	resp, err := generator.WithSession(ctx, model, session, message, opts...)
+	resp, usage, err := generator.WithSession(ctx, model, session, message, opts...)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	// Loop while the model requests tool calls
@@ -117,22 +117,22 @@ func (a *agent) WithSession(ctx context.Context, model schema.Model, session *sc
 		}
 
 		// Feed tool results back to the model
-		resp, err = generator.WithSession(ctx, model, session, &schema.Message{
+		resp, usage, err = generator.WithSession(ctx, model, session, &schema.Message{
 			Role:    schema.RoleUser,
 			Content: results,
 		}, opts...)
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 	}
 
 	// If the loop ended because we hit the iteration limit, report an error
 	if tk != nil && resp.Result == schema.ResultToolCall {
-		return nil, llm.ErrInternalServerError.Withf("tool call loop did not resolve after %d iterations", maxIterations)
+		return nil, nil, llm.ErrInternalServerError.Withf("tool call loop did not resolve after %d iterations", maxIterations)
 	}
 
 	// Return success
-	return resp, nil
+	return resp, usage, nil
 }
 
 ///////////////////////////////////////////////////////////////////////////////

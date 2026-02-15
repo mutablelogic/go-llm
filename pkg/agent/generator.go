@@ -12,7 +12,6 @@ import (
 	google "github.com/mutablelogic/go-llm/pkg/provider/google"
 	mistral "github.com/mutablelogic/go-llm/pkg/provider/mistral"
 	schema "github.com/mutablelogic/go-llm/pkg/schema"
-	types "github.com/mutablelogic/go-server/pkg/types"
 )
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -48,20 +47,84 @@ func (m *Manager) Ask(ctx context.Context, request schema.AskRequest, fn opt.Str
 	}
 
 	// Send the message
-	result, err := generator.WithoutSession(ctx, *model, message, opts...)
+	result, usage, err := generator.WithoutSession(ctx, *model, message, opts...)
 	if err != nil {
 		return nil, err
 	}
 
 	// Return the response
-	return types.Ptr(schema.AskResponse{
+	response := &schema.AskResponse{
 		CompletionResponse: schema.CompletionResponse{
 			Role:    result.Role,
 			Content: result.Content,
 			Result:  result.Result,
 		},
-		OutputTokens: result.Tokens,
-	}), nil
+		Usage: usage,
+	}
+	return response, nil
+}
+
+// Chat processes a message within a session context (stateful).
+// If fn is non-nil, text chunks are streamed to the callback as they arrive.
+func (m *Manager) Chat(ctx context.Context, request schema.ChatRequest, fn opt.StreamFn) (*schema.ChatResponse, error) {
+	// Retrieve the session
+	session, err := m.store.Get(ctx, request.Session)
+	if err != nil {
+		return nil, err
+	}
+
+	// Resolve model, generator, and options from the session meta
+	model, generator, opts, err := m.generatorFromMeta(ctx, session.GeneratorMeta)
+	if err != nil {
+		return nil, err
+	}
+
+	// Enable streaming when a callback is provided
+	if fn != nil {
+		opts = append(opts, opt.WithStream(fn))
+	}
+
+	// Build message options from attachments
+	var msgOpts []opt.Opt
+	for i := range request.Attachments {
+		a := request.Attachments[i]
+		msgOpts = append(msgOpts, opt.AddAny(opt.ContentBlockKey, schema.ContentBlock{
+			Attachment: &a,
+		}))
+	}
+
+	// Create the user message
+	message, err := schema.NewMessage(schema.RoleUser, request.Text, msgOpts...)
+	if err != nil {
+		return nil, err
+	}
+
+	// Send the message within the session
+	result, usage, err := generator.WithSession(ctx, *model, session.Conversation(), message, opts...)
+	if err != nil {
+		return nil, err
+	}
+
+	// Append the user message and the response to the session
+	session.Append(*message)
+	session.Append(*result)
+
+	// Persist the updated session
+	if err := m.store.Write(session); err != nil {
+		return nil, err
+	}
+
+	// Return the response
+	response := &schema.ChatResponse{
+		CompletionResponse: schema.CompletionResponse{
+			Role:    result.Role,
+			Content: result.Content,
+			Result:  result.Result,
+		},
+		Session: session.ID,
+		Usage:   usage,
+	}
+	return response, nil
 }
 
 ///////////////////////////////////////////////////////////////////////////////

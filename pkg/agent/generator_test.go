@@ -30,11 +30,11 @@ type mockGeneratorClient struct {
 
 var _ llm.Generator = (*mockGeneratorClient)(nil)
 
-func (c *mockGeneratorClient) WithoutSession(_ context.Context, _ schema.Model, msg *schema.Message, opts ...opt.Opt) (*schema.Message, error) {
+func (c *mockGeneratorClient) WithoutSession(_ context.Context, _ schema.Model, msg *schema.Message, opts ...opt.Opt) (*schema.Message, *schema.Usage, error) {
 	// Check for streaming callback
 	o, err := opt.Apply(opts...)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	streamFn := o.GetStream()
 
@@ -48,23 +48,29 @@ func (c *mockGeneratorClient) WithoutSession(_ context.Context, _ schema.Model, 
 	}
 
 	return &schema.Message{
-		Role: schema.RoleAssistant,
-		Content: []schema.ContentBlock{
-			{Text: types.Ptr(text)},
-		},
-		Result: schema.ResultOK,
-		Tokens: c.tokens,
-	}, nil
+			Role: schema.RoleAssistant,
+			Content: []schema.ContentBlock{
+				{Text: types.Ptr(text)},
+			},
+			Result: schema.ResultOK,
+			Tokens: c.tokens,
+		}, &schema.Usage{
+			InputTokens:  10,
+			OutputTokens: c.tokens,
+		}, nil
 }
 
-func (c *mockGeneratorClient) WithSession(_ context.Context, _ schema.Model, _ *schema.Conversation, msg *schema.Message, _ ...opt.Opt) (*schema.Message, error) {
+func (c *mockGeneratorClient) WithSession(_ context.Context, _ schema.Model, _ *schema.Conversation, msg *schema.Message, _ ...opt.Opt) (*schema.Message, *schema.Usage, error) {
 	return &schema.Message{
-		Role: schema.RoleAssistant,
-		Content: []schema.ContentBlock{
-			{Text: types.Ptr("chat response: " + msg.Text())},
-		},
-		Result: schema.ResultOK,
-	}, nil
+			Role: schema.RoleAssistant,
+			Content: []schema.ContentBlock{
+				{Text: types.Ptr("chat response: " + msg.Text())},
+			},
+			Result: schema.ResultOK,
+		}, &schema.Usage{
+			InputTokens:  10,
+			OutputTokens: 20,
+		}, nil
 }
 
 ///////////////////////////////////////////////////////////////////////////////
