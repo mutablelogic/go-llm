@@ -10,6 +10,7 @@ import (
 	llm "github.com/mutablelogic/go-llm"
 	opt "github.com/mutablelogic/go-llm/pkg/opt"
 	anthropic "github.com/mutablelogic/go-llm/pkg/provider/anthropic"
+	eliza "github.com/mutablelogic/go-llm/pkg/provider/eliza"
 	google "github.com/mutablelogic/go-llm/pkg/provider/google"
 	mistral "github.com/mutablelogic/go-llm/pkg/provider/mistral"
 	schema "github.com/mutablelogic/go-llm/pkg/schema"
@@ -269,6 +270,8 @@ func withThinking() opt.Opt {
 		switch provider {
 		case schema.Gemini:
 			return google.WithThinking()
+		case schema.Eliza:
+			return eliza.WithThinking()
 		default:
 			return opt.Error(llm.ErrBadParameter.Withf("%s: WithThinking without budget not supported (use --thinking-budget)", provider))
 		}
@@ -283,6 +286,8 @@ func withThinkingBudget(budgetTokens uint) opt.Opt {
 			return google.WithThinkingBudget(budgetTokens)
 		case schema.Anthropic:
 			return anthropic.WithThinking(budgetTokens)
+		case schema.Eliza:
+			return eliza.WithThinking()
 		default:
 			return opt.Error(llm.ErrNotImplemented.Withf("%s: WithThinking not supported", provider))
 		}
