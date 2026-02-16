@@ -146,3 +146,86 @@ func FormatCell(v any) string {
 		return s
 	}
 }
+
+// RenderMarkdown renders the table data as a Markdown table string,
+// suitable for platforms that render markdown (Telegram, terminal with glamour).
+func RenderMarkdown(data TableData) string {
+	header := data.Header()
+	if len(header) == 0 {
+		return ""
+	}
+	var buf strings.Builder
+
+	// Header row
+	buf.WriteString("|")
+	for _, h := range header {
+		buf.WriteString(" ")
+		buf.WriteString(h)
+		buf.WriteString(" |")
+	}
+	buf.WriteString("\n|")
+	for range header {
+		buf.WriteString("---|")
+	}
+
+	// Data rows
+	for i := range data.Len() {
+		row := data.Row(i)
+		if row == nil {
+			continue
+		}
+		buf.WriteString("\n|")
+		for j := range header {
+			buf.WriteString(" ")
+			if j < len(row) {
+				buf.WriteString(formatMarkdownCell(row[j]))
+			} else {
+				buf.WriteString("-")
+			}
+			buf.WriteString(" |")
+		}
+	}
+	return buf.String()
+}
+
+// formatMarkdownCell converts a cell value to a plain-text markdown cell string.
+// Bold values are wrapped in ** markers.
+func formatMarkdownCell(v any) string {
+	if v == nil {
+		return "-"
+	}
+	switch val := v.(type) {
+	case Bold:
+		inner := formatMarkdownCell(val.Value)
+		if inner == "-" {
+			return "-"
+		}
+		return "**" + inner + "**"
+	case string:
+		if val == "" {
+			return "-"
+		}
+		return val
+	case time.Time:
+		if val.IsZero() {
+			return "-"
+		}
+		return val.Format("2006-01-02 15:04")
+	case int:
+		if val == 0 {
+			return "-"
+		}
+		return fmt.Sprint(val)
+	case uint:
+		if val == 0 {
+			return "-"
+		}
+		return fmt.Sprint(val)
+	default:
+		s := fmt.Sprint(val)
+		if s == "" {
+			return "-"
+		}
+		return s
+	}
+}

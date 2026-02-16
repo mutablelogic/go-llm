@@ -111,8 +111,9 @@ func (m *Manager) Chat(ctx context.Context, request schema.ChatRequest, fn opt.S
 	// calling with a response JSON schema).
 	var outputToolName string
 	var outputToolOpt opt.Opt
+	var outputTool *tool.OutputTool
 	if toolkitOpt != nil && len(meta.Format) > 0 {
-		outputToolName, outputToolOpt, err = m.addOutputTool(meta.Format)
+		outputToolName, outputTool, outputToolOpt, err = m.addOutputTool(meta.Format)
 		if err != nil {
 			return nil, err
 		}
@@ -187,14 +188,33 @@ func (m *Manager) Chat(ctx context.Context, request schema.ChatRequest, fn opt.S
 		if outputToolName != "" {
 			for _, call := range toolCalls {
 				if call.Name == outputToolName {
-					// The tool's input IS the structured output
+					// Validate the output against the schema
+					if outputTool != nil {
+						if err := outputTool.Validate(call.Input); err != nil {
+							return nil, llm.ErrBadParameter.Withf("%v", err)
+						}
+					}
+					// The tool's input IS the structured output.
+					// Replace the last message in the conversation (the model's
+					// tool-call response) with a clean assistant message containing
+					// only the JSON output. This avoids leaving an orphaned tool
+					// call in the history. Preserve the original token count so
+					// overhead calculations remain correct.
 					text := string(call.Input)
+					var tokens uint
+					if n := len(session.Messages); n > 0 {
+						tokens = session.Messages[n-1].Tokens
+					}
 					result = &schema.Message{
 						Role: schema.RoleAssistant,
 						Content: []schema.ContentBlock{
 							{Text: &text},
 						},
 						Result: schema.ResultStop,
+						Tokens: tokens,
+					}
+					if n := len(session.Messages); n > 0 {
+						session.Messages[n-1] = result
 					}
 					goto done
 				}
@@ -379,13 +399,13 @@ func withJSONOutput(data schema.JSONSchema) opt.Opt {
 // This allows the model to produce structured output by calling this tool,
 // avoiding the conflict between function calling and response JSON schema on
 // providers like Gemini. Returns the tool name and the opt.
-func (m *Manager) addOutputTool(format schema.JSONSchema) (string, opt.Opt, error) {
+func (m *Manager) addOutputTool(format schema.JSONSchema) (string, *tool.OutputTool, opt.Opt, error) {
 	var s jsonschema.Schema
 	if err := json.Unmarshal(format, &s); err != nil {
-		return "", nil, llm.ErrBadParameter.Withf("invalid JSON schema for output tool: %v", err)
+		return "", nil, nil, llm.ErrBadParameter.Withf("invalid JSON schema for output tool: %v", err)
 	}
 	outputTool := tool.NewOutputTool(&s)
-	return tool.OutputToolName, tool.WithTool(outputTool), nil
+	return tool.OutputToolName, outputTool, tool.WithTool(outputTool), nil
 }
 
 // runTools executes the given tool calls in parallel and returns the results

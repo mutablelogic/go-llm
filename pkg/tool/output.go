@@ -3,6 +3,7 @@ package tool
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 
 	// Packages
 	jsonschema "github.com/google/jsonschema-go/jsonschema"
@@ -58,4 +59,24 @@ func (t *OutputTool) Schema() (*jsonschema.Schema, error) {
 func (t *OutputTool) Run(_ context.Context, input json.RawMessage) (any, error) {
 	// The tool's purpose is to capture the structured output — just return it.
 	return input, nil
+}
+
+// Validate checks that the given JSON conforms to the output schema.
+// Returns nil if the data is valid or no schema was provided.
+func (t *OutputTool) Validate(data json.RawMessage) error {
+	if t.schema == nil {
+		return nil
+	}
+	resolved, err := t.schema.Resolve(nil)
+	if err != nil {
+		return fmt.Errorf("resolving output schema: %w", err)
+	}
+	var instance any
+	if err := json.Unmarshal(data, &instance); err != nil {
+		return fmt.Errorf("invalid JSON: %w", err)
+	}
+	if err := resolved.Validate(instance); err != nil {
+		return fmt.Errorf("output validation: %w", err)
+	}
+	return nil
 }

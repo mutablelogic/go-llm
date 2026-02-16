@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -50,10 +51,12 @@ type DeleteAgentCommand struct {
 }
 
 type RunAgentCommand struct {
-	Agent  string `arg:"" name:"agent" help:"Agent ID or name"`
-	Parent string `name:"parent" help:"Parent session ID" optional:""`
-	Input  string `name:"input" help:"JSON input for the agent template" optional:""`
-	Delete bool   `name:"delete" negatable:"" default:"true" help:"Delete the agent session after completion"`
+	Agent  string   `arg:"" name:"agent" help:"Agent ID or name"`
+	Parent string   `name:"parent" help:"Parent session ID" optional:""`
+	Input  string   `name:"input" help:"JSON input for the agent template" optional:""`
+	File   []string `name:"file" help:"Path or glob pattern for files to attach (may be repeated)" optional:""`
+	URL    string   `name:"url" help:"URL to attach as a reference" optional:""`
+	Delete bool     `name:"delete" negatable:"" default:"true" help:"Delete the agent session after completion"`
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -282,6 +285,27 @@ func (cmd *RunAgentCommand) Run(ctx *Globals) (err error) {
 		}),
 	}
 
+	// Add file attachments
+	for _, pattern := range cmd.File {
+		matches, err := filepath.Glob(pattern)
+		if err != nil {
+			return fmt.Errorf("invalid glob pattern %q: %w", pattern, err)
+		}
+		if len(matches) == 0 {
+			return fmt.Errorf("no files match %q", pattern)
+		}
+		for _, path := range matches {
+			f, err := os.Open(path)
+			if err != nil {
+				return err
+			}
+			chatOpts = append(chatOpts, httpclient.WithChatFile(f.Name(), f))
+		}
+	}
+	if cmd.URL != "" {
+		chatOpts = append(chatOpts, httpclient.WithChatURL(cmd.URL))
+	}
+
 	chatResp, err := client.Chat(parent, chatReq, chatOpts...)
 	if err != nil {
 		return err
@@ -310,6 +334,11 @@ func (cmd *RunAgentCommand) Run(ctx *Globals) (err error) {
 	if cmd.Delete {
 		if err := client.DeleteSession(parent, resp.Session); err != nil {
 			return fmt.Errorf("deleting agent session: %w", err)
+		}
+	} else {
+		// Persist as the current default session
+		if err := ctx.defaults.Set("session", resp.Session); err != nil {
+			return err
 		}
 	}
 	return nil

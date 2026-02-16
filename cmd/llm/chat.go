@@ -182,10 +182,27 @@ func (cmd *ChatCommand) runSingleShot(ctx context.Context, globals *Globals, cli
 		Tools:   cmd.Tool,
 	}
 
-	if _, err := client.Chat(ctx, req, opts...); err != nil {
+	chatResp, err := client.Chat(ctx, req, opts...)
+	if err != nil {
 		return err
 	}
-	fmt.Println()
+
+	// If the response contains structured output (e.g. from submit_output),
+	// the streaming callback may have been suppressed — print the result.
+	if chatResp != nil && len(chatResp.Content) > 0 {
+		for _, block := range chatResp.Content {
+			if block.Text != nil && *block.Text != "" {
+				if lastRole != "" {
+					fmt.Println()
+				}
+				fmt.Println(*block.Text)
+				lastRole = ""
+			}
+		}
+	}
+	if lastRole != "" {
+		fmt.Println()
+	}
 	return nil
 }
 
@@ -350,7 +367,18 @@ func (cmd *ChatCommand) handleChat(ctx context.Context, evt ui.Event, client *ht
 		Tools:   cmd.Tool,
 	}
 
-	_, err := client.Chat(ctx, req, opts...)
+	chatResp, err := client.Chat(ctx, req, opts...)
+
+	// If the response contains structured output (e.g. from submit_output),
+	// the streaming callback may have been suppressed — send the result
+	// as a final chunk so the UI renders it.
+	if err == nil && chatResp != nil && len(chatResp.Content) > 0 {
+		for _, block := range chatResp.Content {
+			if block.Text != nil && *block.Text != "" {
+				evt.Context.StreamChunk(ctx, chatResp.Role, *block.Text)
+			}
+		}
+	}
 
 	// Finalise the stream (re-renders with full markdown)
 	evt.Context.StreamEnd(ctx)
