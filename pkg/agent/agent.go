@@ -83,7 +83,10 @@ func Read(r io.Reader) (schema.AgentMeta, error) {
 func ReadFile(path string) (schema.AgentMeta, error) {
 	f, err := os.Open(path)
 	if err != nil {
-		return schema.AgentMeta{}, llm.ErrNotFound.Withf("%v", err)
+		if os.IsNotExist(err) {
+			return schema.AgentMeta{}, llm.ErrNotFound.Withf("%v", err)
+		}
+		return schema.AgentMeta{}, err
 	}
 	defer f.Close()
 	return Read(f)

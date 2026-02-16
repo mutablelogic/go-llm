@@ -19,7 +19,8 @@ multi-turn conversations (`chat`), embeddings, tool use, MCP integration, and a 
 - **MCP Server**: Model Context Protocol (stdio JSON-RPC 2.0) server exposing registered tools and prompts
 - **Telegram Bot**: Full-featured bot with per-conversation sessions, file/image attachments, and slash commands
 - **Attachments**: Send files, images, and URLs as context in chat and ask
-- **Structured Output**: JSON schema-based structured output for ask
+- **Agents**: Reusable, versioned task definitions with input/output schemas, Go templates, and tool selection
+- **Structured Output**: JSON schema-based structured output for ask and agents
 - **Thinking/Reasoning**: Extended thinking support with configurable budgets (Anthropic, Gemini)
 - **OpenTelemetry**: Distributed tracing support for the HTTP API
 
@@ -156,6 +157,45 @@ Sessions represent stateful conversations with context and memory. They can be m
 | `tools` | List registered tools | `llm tools` |
 | `tool` | Get tool details | `llm tool <name>` |
 
+### Agent
+
+Agents are reusable, versioned task definitions that bundle a model, system prompt,
+optional input/output JSON schemas, Go template, and tool list into a single unit.
+They are defined as markdown files with YAML front matter and managed via the CLI or API.
+See the [Agent Definition Files](etc/agent/README.md) documentation for the full
+file format, field reference, template syntax, and examples.
+
+| Command | Description | Example |
+|---------|-------------|---------|
+| `agents` | List agents | `llm agents` |
+| `agent` | Get agent details | `llm agent <name>` |
+| `create-agent` | Create agents from markdown files | `llm create-agent agents/*.md` |
+| `delete-agent` | Delete an agent | `llm delete-agent <name>` |
+| `run-agent` | Run an agent (create session, chat, return result) | `llm run-agent summarizer --input '{"text":"..."}'` |
+
+#### Running an Agent
+
+```bash
+# Create the agent from a file
+llm create-agent agents/summarizer.md
+
+# Run with JSON input
+llm run-agent summarizer --input '{"text": "The quick brown fox..."}'
+
+# Run with file attachments
+llm run-agent caption --file photo.jpg
+
+# Run with URL attachment
+llm run-agent summarizer --url https://example.com/article
+
+# Keep the session after completion (for inspection or follow-up)
+llm run-agent summarizer --no-delete --input '{"text": "..."}'
+```
+
+The `run-agent` command creates a temporary session, sends the templated message,
+and returns the structured JSON result. By default the session is deleted after
+completion; use `--no-delete` to persist it.
+
 ### Server
 
 | Command | Description | Example |
@@ -185,6 +225,8 @@ The `chat` command launches a terminal UI with markdown rendering, streaming res
 | `/system` | Set system prompt |
 | `/thinking` | Toggle thinking/reasoning |
 | `/tools` | Toggle tool use |
+| `/agents` | List agents |
+| `/agent` | Show agent details (running agents from chat is not yet supported) |
 | `/file` | Attach a file |
 | `/url` | Attach a URL |
 | `/reset` | Reset conversation |

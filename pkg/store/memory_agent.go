@@ -170,10 +170,8 @@ func (m *MemoryAgentStore) DeleteAgent(_ context.Context, id string) error {
 	// Try delete by ID
 	if a, ok := m.agents[id]; ok {
 		delete(m.agents, id)
-		// Remove name mapping if no other agent has this name
-		if !m.hasName(a.Name) {
-			delete(m.names, a.Name)
-		}
+		// Update name index: point to the latest remaining version, or remove
+		m.repairNameIndex(a.Name)
 		return nil
 	}
 
@@ -212,15 +210,16 @@ func (m *MemoryAgentStore) UpdateAgent(_ context.Context, id string, meta schema
 		return nil, llm.ErrBadParameter.With("agent name cannot be changed via update")
 	}
 
-	// Use the existing name if not provided
-	if meta.Name == "" {
-		meta.Name = existing.Name
-	}
+	// Merge non-zero fields from meta onto existing
+	merged := existing.AgentMeta
+	mergeAgentMeta(&merged, meta)
 
 	// No-op if nothing has changed
-	if agentMetaEqual(existing.AgentMeta, meta) {
+	if agentMetaEqual(existing.AgentMeta, merged) {
 		return existing, nil
 	}
+
+	meta = merged
 
 	// Generate a unique ID
 	newID := uuid.New().String()
@@ -253,6 +252,66 @@ func (m *MemoryAgentStore) hasName(name string) bool {
 		}
 	}
 	return false
+}
+
+// repairNameIndex updates names[name] to point at the highest-version
+// remaining agent with that name, or removes the entry if none remain.
+// Must be called with the lock held.
+func (m *MemoryAgentStore) repairNameIndex(name string) {
+	var best *schema.Agent
+	for _, a := range m.agents {
+		if a.Name == name && (best == nil || a.Version > best.Version) {
+			best = a
+		}
+	}
+	if best == nil {
+		delete(m.names, name)
+	} else {
+		m.names[name] = best.ID
+	}
+}
+
+// mergeAgentMeta applies non-zero fields from src onto dst.
+func mergeAgentMeta(dst *schema.AgentMeta, src schema.AgentMeta) {
+	// AgentMeta fields
+	if src.Name != "" {
+		dst.Name = src.Name
+	}
+	if src.Title != "" {
+		dst.Title = src.Title
+	}
+	if src.Description != "" {
+		dst.Description = src.Description
+	}
+	if src.Template != "" {
+		dst.Template = src.Template
+	}
+	if len(src.Input) > 0 {
+		dst.Input = src.Input
+	}
+	if src.Tools != nil {
+		dst.Tools = src.Tools
+	}
+
+	// GeneratorMeta fields
+	if src.Provider != "" {
+		dst.Provider = src.Provider
+	}
+	if src.Model != "" {
+		dst.Model = src.Model
+	}
+	if src.SystemPrompt != "" {
+		dst.SystemPrompt = src.SystemPrompt
+	}
+	if len(src.Format) > 0 {
+		dst.Format = src.Format
+	}
+	if src.Thinking != nil {
+		dst.Thinking = src.Thinking
+	}
+	if src.ThinkingBudget != 0 {
+		dst.ThinkingBudget = src.ThinkingBudget
+	}
 }
 
 // agentMetaEqual returns true if two AgentMeta values are identical.

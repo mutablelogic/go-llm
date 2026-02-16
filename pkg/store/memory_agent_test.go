@@ -270,6 +270,9 @@ func Test_memory_agent_018(t *testing.T) {
 	assert.NoError(err)
 	assert.Equal("test-agent", updated.Name)
 	assert.Equal("new-model", updated.Model)
+	assert.Equal("New Title", updated.Title)
+	// Verify existing fields are preserved (not cleared)
+	assert.Equal("test-provider", updated.Provider, "Provider should be preserved from original")
 	assert.Equal(uint(2), updated.Version)
 }
 
@@ -605,4 +608,70 @@ func Test_memory_agent_034(t *testing.T) {
 	assert.NoError(err)
 	assert.Equal(uint(0), resp.Count)
 	assert.Empty(resp.Body)
+}
+
+func Test_memory_agent_035(t *testing.T) {
+	// UpdateAgent with partial meta merges onto existing (not full replacement)
+	assert := assert.New(t)
+	s := store.NewMemoryAgentStore()
+
+	full := schema.AgentMeta{
+		GeneratorMeta: schema.GeneratorMeta{
+			Model:          "gpt-4",
+			Provider:       "openai",
+			SystemPrompt:   "You are helpful",
+			Format:         schema.JSONSchema(`{"type":"object"}`),
+			ThinkingBudget: 500,
+		},
+		Name:        "full-agent",
+		Title:       "Full Agent",
+		Description: "A fully configured agent",
+		Template:    "Hello {{.Name}}",
+		Tools:       []string{"tool-a", "tool-b"},
+	}
+	created, err := s.CreateAgent(context.TODO(), full)
+	assert.NoError(err)
+
+	// Update with only Title — everything else should be preserved
+	partial := schema.AgentMeta{Title: "New Title Only"}
+	updated, err := s.UpdateAgent(context.TODO(), created.ID, partial)
+	assert.NoError(err)
+	assert.Equal(uint(2), updated.Version)
+	assert.Equal("New Title Only", updated.Title)
+
+	// All other fields preserved
+	assert.Equal("full-agent", updated.Name)
+	assert.Equal("A fully configured agent", updated.Description)
+	assert.Equal("Hello {{.Name}}", updated.Template)
+	assert.Equal("gpt-4", updated.Model)
+	assert.Equal("openai", updated.Provider)
+	assert.Equal("You are helpful", updated.SystemPrompt)
+	assert.Equal(uint(500), updated.ThinkingBudget)
+	assert.Equal([]string{"tool-a", "tool-b"}, updated.Tools)
+}
+
+func Test_memory_agent_036(t *testing.T) {
+	// Delete latest version by ID; GetAgent by name returns previous version
+	assert := assert.New(t)
+	s := store.NewMemoryAgentStore()
+
+	created, err := s.CreateAgent(context.TODO(), testAgentMeta)
+	assert.NoError(err)
+
+	meta := testAgentMeta
+	meta.Title = "Version 2"
+	v2, err := s.UpdateAgent(context.TODO(), created.ID, meta)
+	assert.NoError(err)
+	assert.Equal(uint(2), v2.Version)
+
+	// Delete version 2 by its ID
+	err = s.DeleteAgent(context.TODO(), v2.ID)
+	assert.NoError(err)
+
+	// Name lookup should still work and return version 1
+	got, err := s.GetAgent(context.TODO(), "test-agent")
+	assert.NoError(err)
+	assert.Equal(uint(1), got.Version)
+	assert.Equal(created.ID, got.ID)
+	assert.Equal("Test Agent Title", got.Title)
 }
