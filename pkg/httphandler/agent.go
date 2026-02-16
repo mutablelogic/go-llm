@@ -28,6 +28,10 @@ func AgentHandler(manager *manager.Manager) (string, http.HandlerFunc, *openapi.
 					_ = httpresponse.Error(w, err)
 					return
 				}
+				if req.Version != nil && req.Name == "" {
+					_ = httpresponse.Error(w, httpresponse.ErrBadRequest.With("version requires name"))
+					return
+				}
 				resp, err := manager.ListAgents(r.Context(), req)
 				if err != nil {
 					_ = httpresponse.Error(w, httpErr(err))
@@ -50,6 +54,10 @@ func AgentHandler(manager *manager.Manager) (string, http.HandlerFunc, *openapi.
 				req, err := readAgentMeta(r)
 				if err != nil {
 					_ = httpresponse.Error(w, err)
+					return
+				}
+				if req.Name == "" {
+					_ = httpresponse.Error(w, httpresponse.ErrBadRequest.With("name is required for update"))
 					return
 				}
 				existing, err := manager.GetAgent(r.Context(), req.Name)

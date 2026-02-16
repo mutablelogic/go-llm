@@ -165,14 +165,14 @@ func (cmd *RunServer) WithManager(ctx *Globals, fn func(*manager.Manager, string
 	}
 
 	// Create the manager
-	manager, err := manager.NewManager(opts...)
+	mgr, err := manager.NewManager(opts...)
 	if err != nil {
 		return err
 	}
-	defer manager.Close()
+	defer mgr.Close()
 
 	// Run the server with the manager
-	return fn(manager, version.Version())
+	return fn(mgr, version.Version())
 }
 
 // Serve creates the httpserver instance, logs the startup banner, and

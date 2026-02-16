@@ -122,7 +122,7 @@ func (s *Session) Tokens() uint {
 }
 
 // Conversation returns a pointer to the underlying message slice,
-// compatible with manager.WithSession.
+// compatible with generator.WithSession.
 func (s *Session) Conversation() *Conversation {
 	return &s.Messages
 }

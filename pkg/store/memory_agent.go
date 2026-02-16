@@ -76,33 +76,28 @@ func (m *MemoryAgentStore) CreateAgent(_ context.Context, meta schema.AgentMeta)
 }
 
 // GetAgent retrieves an agent by ID or name. If a matching ID is found it is
-// returned directly. Otherwise, the store searches by name and returns the
-// most recently created agent with that name.
+// returned directly. Otherwise, the store looks up the name in the name index
+// and returns the latest version (highest version number) for that name.
 func (m *MemoryAgentStore) GetAgent(_ context.Context, id string) (*schema.Agent, error) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
+	return m.getAgentLocked(id)
+}
 
+// getAgentLocked is the internal lookup helper. The caller must hold at least
+// a read lock.
+func (m *MemoryAgentStore) getAgentLocked(id string) (*schema.Agent, error) {
 	// Try lookup by ID first
 	if a, ok := m.agents[id]; ok {
 		return a, nil
 	}
 
-	// Fall back to lookup by name
-	var matches []*schema.Agent
-	for _, a := range m.agents {
-		if a.Name == id {
-			matches = append(matches, a)
-		}
-	}
-	if len(matches) == 0 {
-		return nil, llm.ErrNotFound.Withf("agent %q", id)
+	// Fall back to lookup by name via the name index (O(1))
+	if agentID, ok := m.names[id]; ok {
+		return m.agents[agentID], nil
 	}
 
-	// Return the most recently created
-	sort.Slice(matches, func(i, j int) bool {
-		return matches[i].Created.After(matches[j].Created)
-	})
-	return matches[0], nil
+	return nil, llm.ErrNotFound.Withf("agent %q", id)
 }
 
 // ListAgents returns agents ordered by creation time (most recent first),
@@ -197,10 +192,13 @@ func (m *MemoryAgentStore) DeleteAgent(_ context.Context, id string) error {
 // can be an agent ID or name. If the metadata is identical to the current
 // version, the existing agent is returned unchanged (no-op). Otherwise a
 // new agent is stored with a new UUID, the same name, and an incremented
-// version number.
-func (m *MemoryAgentStore) UpdateAgent(ctx context.Context, id string, meta schema.AgentMeta) (*schema.Agent, error) {
+// version number. The entire read-modify-write sequence is atomic.
+func (m *MemoryAgentStore) UpdateAgent(_ context.Context, id string, meta schema.AgentMeta) (*schema.Agent, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
 	// Find the existing agent (by ID or name)
-	existing, err := m.GetAgent(ctx, id)
+	existing, err := m.getAgentLocked(id)
 	if err != nil {
 		return nil, err
 	}
@@ -219,9 +217,6 @@ func (m *MemoryAgentStore) UpdateAgent(ctx context.Context, id string, meta sche
 	if agentMetaEqual(existing.AgentMeta, meta) {
 		return existing, nil
 	}
-
-	m.mu.Lock()
-	defer m.mu.Unlock()
 
 	// Generate a unique ID
 	newID := uuid.New().String()
@@ -278,6 +273,15 @@ func agentMetaEqual(a, b schema.AgentMeta) bool {
 	// Compare JSONSchema fields as JSON bytes
 	if !jsonEqual(a.Format, b.Format) || !jsonEqual(a.Input, b.Input) {
 		return false
+	}
+	// Compare Tools slices
+	if len(a.Tools) != len(b.Tools) {
+		return false
+	}
+	for i := range a.Tools {
+		if a.Tools[i] != b.Tools[i] {
+			return false
+		}
 	}
 	return true
 }

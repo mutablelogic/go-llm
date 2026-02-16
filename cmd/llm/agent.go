@@ -93,7 +93,10 @@ func (cmd *GetAgentCommand) Run(ctx *Globals) (err error) {
 	defer func() { endSpan(err) }()
 
 	// Parse name@version
-	name, version := parseAgentID(cmd.ID)
+	name, version, err := parseAgentID(cmd.ID)
+	if err != nil {
+		return err
+	}
 
 	// Get agent
 	if version != nil {
@@ -188,7 +191,10 @@ func (cmd *DeleteAgentCommand) Run(ctx *Globals) (err error) {
 	defer func() { endSpan(err) }()
 
 	// Parse name@version
-	name, version := parseAgentID(cmd.ID)
+	name, version, err := parseAgentID(cmd.ID)
+	if err != nil {
+		return err
+	}
 
 	// Delete agent
 	if version != nil {
@@ -244,16 +250,17 @@ func isNotModified(err error) bool {
 
 // parseAgentID splits an ID string of the form "name@version" into its
 // components. If no "@" is present, the entire string is the name and
-// version is nil.
-func parseAgentID(id string) (string, *uint) {
+// version is nil. Returns an error if a version suffix is present but
+// not a valid unsigned integer.
+func parseAgentID(id string) (string, *uint, error) {
 	name, vstr, ok := strings.Cut(id, "@")
 	if !ok {
-		return id, nil
+		return id, nil, nil
 	}
 	v, err := strconv.ParseUint(vstr, 10, 64)
 	if err != nil {
-		return id, nil
+		return "", nil, fmt.Errorf("invalid version in %q: %w", id, err)
 	}
 	u := uint(v)
-	return name, &u
+	return name, &u, nil
 }

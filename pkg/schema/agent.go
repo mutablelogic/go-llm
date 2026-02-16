@@ -45,8 +45,9 @@ type AgentStore interface {
 	// Returns offset, limit and total count in the response.
 	ListAgents(ctx context.Context, req ListAgentRequest) (*ListAgentResponse, error)
 
-	// DeleteAgent removes an agent by ID.
-	// Returns an error if the agent does not exist.
+	// DeleteAgent removes an agent by ID or name. When a name is provided,
+	// all versions of the agent are deleted. Returns an error if no matching
+	// agent exists.
 	DeleteAgent(ctx context.Context, id string) error
 
 	// UpdateAgent applies non-zero fields from the given metadata to an existing

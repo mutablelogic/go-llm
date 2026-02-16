@@ -97,6 +97,7 @@ func ReadFile(path string) (schema.AgentMeta, error) {
 // at the start of the document.
 func splitFrontMatter(r io.Reader) ([]byte, []byte, error) {
 	scanner := bufio.NewScanner(r)
+	scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024) // support lines up to 1MB
 
 	// Look for opening "---"
 	if !scanner.Scan() {
