@@ -8,6 +8,9 @@ package eliza
 
 import (
 	"context"
+	"fmt"
+	"sort"
+	"strings"
 	"time"
 
 	// Packages
@@ -65,7 +68,7 @@ func New(opts ...Opt) (*Client, error) {
 		}
 	}
 
-	// Create engines for each language
+	// Create one engine per language
 	c.engines = make(map[string]*Engine, len(c.languages))
 	for name, lang := range c.languages {
 		engine, err := NewEngine(lang, c.seed)
@@ -109,11 +112,18 @@ func (c *Client) GetModel(ctx context.Context, name string, opts ...opt.Opt) (*s
 	if lang, ok := c.languages[name]; ok {
 		return types.Ptr(langModel(lang)), nil
 	}
-	// Try provider name as alias (return first available model)
+	// Try provider name as alias (prefer English, then sort for determinism)
 	if name == providerName && len(c.languages) > 0 {
-		for _, lang := range c.languages {
+		if lang, ok := c.languages["eliza-1966-en"]; ok {
 			return types.Ptr(langModel(lang)), nil
 		}
+		// Fall back to first model alphabetically
+		keys := make([]string, 0, len(c.languages))
+		for k := range c.languages {
+			keys = append(keys, k)
+		}
+		sort.Strings(keys)
+		return types.Ptr(langModel(c.languages[keys[0]])), nil
 	}
 	// List available model names for the error message
 	names := make([]string, 0, len(c.languages))
@@ -132,7 +142,12 @@ func (c *Client) WithoutSession(ctx context.Context, model schema.Model, message
 		return nil, nil, llm.ErrBadParameter.With("message is required")
 	}
 
-	engine, err := c.engineForModel(model.Name)
+	// Create a fresh engine for this stateless request
+	lang, ok := c.languages[model.Name]
+	if !ok {
+		return nil, nil, llm.ErrNotFound.Withf("no engine for model %q", model.Name)
+	}
+	engine, err := NewEngine(lang, c.seed)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -170,7 +185,7 @@ func (c *Client) WithoutSession(ctx context.Context, model schema.Model, message
 		return nil, nil, err
 	}
 	if streamFn := options.GetStream(); streamFn != nil {
-		streamFn(schema.RoleAssistant, response)
+		streamWords(streamFn, response)
 	}
 
 	return responseMsg, usage, nil
@@ -185,30 +200,50 @@ func (c *Client) WithSession(ctx context.Context, model schema.Model, session *s
 		return nil, nil, llm.ErrBadParameter.With("message is required")
 	}
 
-	engine, err := c.engineForModel(model.Name)
+	// Look up the engine for this model and infer memory from conversation history
+	engine, ok := c.engines[model.Name]
+	if !ok {
+		return nil, nil, llm.ErrNotFound.Withf("no engine for model %q", model.Name)
+	}
+
+	// Extract and validate text before mutating the session
+	input := message.Text()
+	if input == "" {
+		return nil, nil, llm.ErrBadParameter.With("message text is required")
+	}
+
+	// Infer memory from conversation history, then append the user message
+	engine.InferMemory(*session)
+	session.Append(*message)
+
+	// Parse options
+	options, err := opt.Apply(opts...)
 	if err != nil {
 		return nil, nil, err
 	}
 
-	// Append the user message to the session
-	session.Append(*message)
-
-	// Extract text from the message
-	input := message.Text()
-	if input == "" {
-		return nil, nil, llm.ErrBadParameter.With("message text is required")
+	// If thinking is enabled, emit memory as thinking output
+	var thinkingText string
+	if options.GetBool(opt.ThinkingKey) {
+		thinkingText = formatMemory(engine.Memory())
+		if streamFn := options.GetStream(); streamFn != nil && thinkingText != "" {
+			streamFn(schema.RoleThinking, thinkingText)
+		}
 	}
 
 	// Generate response using the stateful engine
 	response := engine.Response(input)
 
 	// Create response message
+	content := make([]schema.ContentBlock, 0, 2)
+	if thinkingText != "" {
+		content = append(content, schema.ContentBlock{Thinking: types.Ptr(thinkingText)})
+	}
+	content = append(content, schema.ContentBlock{Text: types.Ptr(response)})
 	responseMsg := &schema.Message{
-		Role: schema.RoleAssistant,
-		Content: []schema.ContentBlock{
-			{Text: types.Ptr(response)},
-		},
-		Result: schema.ResultStop,
+		Role:    schema.RoleAssistant,
+		Content: content,
+		Result:  schema.ResultStop,
 	}
 
 	// Estimate token usage
@@ -230,40 +265,22 @@ func (c *Client) WithSession(ctx context.Context, model schema.Model, session *s
 	}
 
 	// Handle streaming callback if provided
-	options, err := opt.Apply(opts...)
-	if err != nil {
-		return nil, nil, err
-	}
 	if streamFn := options.GetStream(); streamFn != nil {
-		streamFn(schema.RoleAssistant, response)
+		streamWords(streamFn, response)
 	}
 
 	return responseMsg, usage, nil
 }
 
-// Reset clears the conversation memory in all ELIZA engines
-func (c *Client) Reset() {
-	for _, engine := range c.engines {
-		engine.Reset()
-	}
-}
-
 ///////////////////////////////////////////////////////////////////////////////
 // PRIVATE METHODS
-
-func (c *Client) engineForModel(name string) (*Engine, error) {
-	if engine, ok := c.engines[name]; ok {
-		return engine, nil
-	}
-	return nil, llm.ErrNotFound.Withf("no engine for model %q", name)
-}
 
 func langModel(lang *Language) schema.Model {
 	return schema.Model{
 		Name:        lang.Model,
 		Description: lang.Description,
 		Created:     time.Date(1966, 1, 1, 0, 0, 0, 0, time.UTC),
-		OwnedBy:    providerName,
+		OwnedBy:     providerName,
 		Meta: map[string]any{
 			"author":      "Joseph Weizenbaum",
 			"institution": "MIT",
@@ -271,4 +288,30 @@ func langModel(lang *Language) schema.Model {
 			"language":    lang.LanguageCode,
 		},
 	}
+}
+
+// streamWords delivers a response word-by-word to the streaming callback,
+// simulating chunked delivery as real LLM providers do.
+func streamWords(fn opt.StreamFn, response string) {
+	words := strings.Fields(response)
+	for i, word := range words {
+		if i > 0 {
+			word = " " + word
+		}
+		fn(schema.RoleAssistant, word)
+	}
+}
+
+// formatMemory returns a human-readable summary of the engine's accumulated
+// memory, suitable for emitting as thinking output.
+func formatMemory(memory []string) string {
+	if len(memory) == 0 {
+		return ""
+	}
+	var b strings.Builder
+	b.WriteString("Recalled memories from conversation:\n")
+	for i, m := range memory {
+		fmt.Fprintf(&b, "  %d. %s\n", i+1, m)
+	}
+	return b.String()
 }

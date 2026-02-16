@@ -40,7 +40,10 @@ func TestNewWithSeed(t *testing.T) {
 
 	// They should produce the same response for the same input
 	ctx := context.Background()
-	model, _ := client1.GetModel(ctx, "eliza-1966-en")
+	model, err := client1.GetModel(ctx, "eliza-1966-en")
+	if err != nil {
+		t.Fatalf("failed to get model: %v", err)
+	}
 
 	msg := &schema.Message{
 		Role:    schema.RoleUser,
@@ -131,7 +134,10 @@ func TestWithoutSession(t *testing.T) {
 	}
 
 	ctx := context.Background()
-	model, _ := client.GetModel(ctx, "eliza-1966-en")
+	model, err := client.GetModel(ctx, "eliza-1966-en")
+	if err != nil {
+		t.Fatalf("failed to get model: %v", err)
+	}
 
 	tests := []struct {
 		name    string
@@ -215,7 +221,10 @@ func TestWithSession(t *testing.T) {
 	}
 
 	ctx := context.Background()
-	model, _ := client.GetModel(ctx, "eliza-1966-en")
+	model, err := client.GetModel(ctx, "eliza-1966-en")
+	if err != nil {
+		t.Fatalf("failed to get model: %v", err)
+	}
 
 	// Create a conversation
 	session := &schema.Conversation{}
@@ -268,7 +277,10 @@ func TestWithSessionGoodbye(t *testing.T) {
 	}
 
 	ctx := context.Background()
-	model, _ := client.GetModel(ctx, "eliza-1966-en")
+	model, err := client.GetModel(ctx, "eliza-1966-en")
+	if err != nil {
+		t.Fatalf("failed to get model: %v", err)
+	}
 	session := &schema.Conversation{}
 
 	msg := &schema.Message{
@@ -297,12 +309,16 @@ func TestStreaming(t *testing.T) {
 	}
 
 	ctx := context.Background()
-	model, _ := client.GetModel(ctx, "eliza-1966-en")
+	model, err := client.GetModel(ctx, "eliza-1966-en")
+	if err != nil {
+		t.Fatalf("failed to get model: %v", err)
+	}
 
-	var streamedRole, streamedText string
+	var streamedRole string
+	var chunks []string
 	streamFn := func(role, text string) {
 		streamedRole = role
-		streamedText = text
+		chunks = append(chunks, text)
 	}
 
 	msg := &schema.Message{
@@ -319,22 +335,36 @@ func TestStreaming(t *testing.T) {
 		t.Errorf("expected streamed role 'assistant', got %q", streamedRole)
 	}
 
-	if streamedText != resp.Text() {
-		t.Errorf("streamed text %q doesn't match response text %q", streamedText, resp.Text())
+	if len(chunks) == 0 {
+		t.Error("expected at least one streamed chunk")
 	}
+
+	// Reassemble chunks and compare to full response
+	reassembled := ""
+	for _, chunk := range chunks {
+		reassembled += chunk
+	}
+	if reassembled != resp.Text() {
+		t.Errorf("reassembled streamed text %q doesn't match response text %q", reassembled, resp.Text())
+	}
+
+	t.Logf("Streamed %d chunks: %v", len(chunks), chunks)
 }
 
-func TestReset(t *testing.T) {
+func TestMemoryInferredFromConversation(t *testing.T) {
 	client, err := eliza.New(eliza.WithSeed(42))
 	if err != nil {
 		t.Fatalf("failed to create client: %v", err)
 	}
 
 	ctx := context.Background()
-	model, _ := client.GetModel(ctx, "eliza-1966-en")
+	model, err := client.GetModel(ctx, "eliza-1966-en")
+	if err != nil {
+		t.Fatalf("failed to get model: %v", err)
+	}
 	session := &schema.Conversation{}
 
-	// Have a conversation to build up memory
+	// Have a conversation to build up memory via memorable rules
 	messages := []string{
 		"I want to be happy",
 		"I need love",
@@ -346,15 +376,140 @@ func TestReset(t *testing.T) {
 			Role:    schema.RoleUser,
 			Content: []schema.ContentBlock{{Text: ptr(input)}},
 		}
-		_, _, _ = client.WithSession(ctx, *model, session, msg)
+		resp, _, err := client.WithSession(ctx, *model, session, msg)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		t.Logf("User: %s -> ELIZA: %s", input, resp.Text())
 	}
 
-	// Reset the engine
-	client.Reset()
+	// Memory is derived from conversation, so starting a fresh session
+	// should have no memory from the previous one
+	freshSession := &schema.Conversation{}
+	msg := &schema.Message{
+		Role:    schema.RoleUser,
+		Content: []schema.ContentBlock{{Text: ptr("hello")}},
+	}
+	resp, _, err := client.WithSession(ctx, *model, freshSession, msg)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	t.Logf("Fresh session: User: hello -> ELIZA: %s", resp.Text())
+}
 
-	// The engine's internal memory should be cleared
-	// (This mainly affects the memory callback feature)
-	t.Log("Engine reset successfully")
+func TestThinkingEmitsMemory(t *testing.T) {
+	client, err := eliza.New(eliza.WithSeed(42))
+	if err != nil {
+		t.Fatalf("failed to create client: %v", err)
+	}
+
+	ctx := context.Background()
+	model, err := client.GetModel(ctx, "eliza-1966-en")
+	if err != nil {
+		t.Fatalf("failed to get model: %v", err)
+	}
+	session := &schema.Conversation{}
+
+	// Build up memory with memorable patterns (e.g. "i need ...")
+	memorableInputs := []string{
+		"I need some help",
+		"I need to feel better",
+	}
+	for _, input := range memorableInputs {
+		msg := &schema.Message{
+			Role:    schema.RoleUser,
+			Content: []schema.ContentBlock{{Text: ptr(input)}},
+		}
+		_, _, err := client.WithSession(ctx, *model, session, msg)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+	}
+
+	// Now send another message with thinking enabled
+	var thinkingChunks []string
+	streamFn := func(role, text string) {
+		if role == schema.RoleThinking {
+			thinkingChunks = append(thinkingChunks, text)
+		}
+	}
+
+	msg := &schema.Message{
+		Role:    schema.RoleUser,
+		Content: []schema.ContentBlock{{Text: ptr("I feel sad")}},
+	}
+	resp, _, err := client.WithSession(ctx, *model, session, msg,
+		opt.SetBool(opt.ThinkingKey, true),
+		opt.WithStream(streamFn),
+	)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	// Verify thinking was streamed
+	if len(thinkingChunks) == 0 {
+		t.Error("expected thinking chunks to be streamed when thinking is enabled")
+	} else {
+		t.Logf("Thinking output: %s", thinkingChunks[0])
+	}
+
+	// Verify the response message contains a thinking content block
+	hasThinking := false
+	for _, block := range resp.Content {
+		if block.Thinking != nil {
+			hasThinking = true
+			t.Logf("Thinking block: %s", *block.Thinking)
+		}
+	}
+	if !hasThinking {
+		t.Error("expected response to contain a thinking content block")
+	}
+
+	// Verify text response is still present
+	if resp.Text() == "" {
+		t.Error("expected non-empty text response")
+	}
+}
+
+func TestThinkingDisabledNoMemory(t *testing.T) {
+	client, err := eliza.New(eliza.WithSeed(42))
+	if err != nil {
+		t.Fatalf("failed to create client: %v", err)
+	}
+
+	ctx := context.Background()
+	model, err := client.GetModel(ctx, "eliza-1966-en")
+	if err != nil {
+		t.Fatalf("failed to get model: %v", err)
+	}
+	session := &schema.Conversation{}
+
+	// Build up memory
+	msg := &schema.Message{
+		Role:    schema.RoleUser,
+		Content: []schema.ContentBlock{{Text: ptr("I need some help")}},
+	}
+	_, _, err = client.WithSession(ctx, *model, session, msg)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	// Send another message WITHOUT thinking enabled
+	msg = &schema.Message{
+		Role:    schema.RoleUser,
+		Content: []schema.ContentBlock{{Text: ptr("I feel sad")}},
+	}
+	resp, _, err := client.WithSession(ctx, *model, session, msg)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	// Verify no thinking content block in the response
+	for _, block := range resp.Content {
+		if block.Thinking != nil {
+			t.Error("expected no thinking content block when thinking is disabled")
+		}
+	}
 }
 
 func TestInterfaceCompliance(t *testing.T) {
@@ -375,7 +530,10 @@ func TestErrorCases(t *testing.T) {
 	}
 
 	ctx := context.Background()
-	model, _ := client.GetModel(ctx, "eliza-1966-en")
+	model, err := client.GetModel(ctx, "eliza-1966-en")
+	if err != nil {
+		t.Fatalf("failed to get model: %v", err)
+	}
 
 	t.Run("nil message", func(t *testing.T) {
 		_, _, err := client.WithoutSession(ctx, *model, nil)

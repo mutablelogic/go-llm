@@ -63,14 +63,16 @@ func TestEngineReflection(t *testing.T) {
 		input    string
 		contains string
 	}{
-		{"I am happy", "you"}, // "I am" should reflect to "you are"
-		{"I feel tired", "you"},
-		{"my problem is", "your"},
+		{"I am happy", "you"},       // "I am" should reflect to "you are"
+		{"I feel tired", "you"},     // "I" should reflect to "you"
+		{"I need my space", "your"}, // "my" should reflect to "your"
 	}
 
 	for _, tt := range tests {
 		response := engine.Response(tt.input)
-		// The reflected pronoun might appear in the response
+		if !strings.Contains(strings.ToLower(response), tt.contains) {
+			t.Errorf("Response for %q = %q, expected it to contain %q", tt.input, response, tt.contains)
+		}
 		t.Logf("Input: %q -> Response: %q", tt.input, response)
 	}
 }
@@ -164,7 +166,16 @@ func TestEngineDeterministic(t *testing.T) {
 func TestEngineKeywords(t *testing.T) {
 	engine := testEngine(t, 42)
 
-	// Test that specific keywords trigger appropriate responses
+	// Collect default responses to verify keyword routing produces different output
+	defaultEngine := testEngine(t, 42)
+	defaultResponses := make(map[string]bool)
+	// Generate many default responses from non-keyword input
+	for i := 0; i < 50; i++ {
+		resp := defaultEngine.Response("xyzzy gibberish")
+		defaultResponses[resp] = true
+	}
+
+	// Test that specific keywords trigger non-default responses
 	tests := []struct {
 		input           string
 		expectRelatedTo string
@@ -174,12 +185,18 @@ func TestEngineKeywords(t *testing.T) {
 		{"maybe I should try", "uncertain"},
 		{"everyone hates me", "everyone"},
 		{"my dreams are weird", "dream"},
-		{"robots are scary", "computer"},
+		{"a robot is scary", "computer"},
 		{"I'm sorry for everything", "apologize"},
 	}
 
 	for _, tt := range tests {
 		response := engine.Response(tt.input)
+		if response == "" {
+			t.Errorf("Keyword [%s]: empty response for %q", tt.expectRelatedTo, tt.input)
+		}
+		if defaultResponses[response] {
+			t.Errorf("Keyword [%s]: input %q got default response %q, expected keyword-specific response", tt.expectRelatedTo, tt.input, response)
+		}
 		t.Logf("Keyword test [%s]: %q -> %q", tt.expectRelatedTo, tt.input, response)
 	}
 }

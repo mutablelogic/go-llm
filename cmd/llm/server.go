@@ -296,7 +296,7 @@ func (g *Globals) Manager() (*agent.Manager, error) {
 
 	// Check if at least one client is configured
 	if len(opts) == 0 {
-		return nil, fmt.Errorf("no API keys configured. Set --gemini-api-key, --anthropic-api-key, or --mistral-api-key (or use environment variables)")
+		return nil, fmt.Errorf("no providers configured. Set --gemini-api-key, --anthropic-api-key, or --mistral-api-key (or use environment variables), or use --eliza for a local provider")
 	}
 
 	return agent.NewAgent(opts...)

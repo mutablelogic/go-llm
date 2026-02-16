@@ -4,6 +4,8 @@ import (
 	"math/rand"
 	"regexp"
 	"strings"
+
+	schema "github.com/mutablelogic/go-llm/pkg/schema"
 )
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -91,8 +93,9 @@ func (e *Engine) Response(input string) string {
 
 	// Maybe recall something from memory
 	if len(e.memory) > 0 && e.rng.Float64() < 0.3 {
-		mem := e.memory[e.rng.Intn(len(e.memory))]
-		e.memory = e.memory[1:] // Remove used memory
+		idx := e.rng.Intn(len(e.memory))
+		mem := e.memory[idx]
+		e.memory = append(e.memory[:idx], e.memory[idx+1:]...) // Remove used memory
 		return e.randomChoice(e.lang.MemoryResponses) + " " + e.reflect(mem) + "?"
 	}
 
@@ -103,6 +106,32 @@ func (e *Engine) Response(input string) string {
 // Reset clears the conversation memory
 func (e *Engine) Reset() {
 	e.memory = e.memory[:0]
+}
+
+// Memory returns the current memory contents
+func (e *Engine) Memory() []string {
+	return e.memory
+}
+
+// InferMemory scans conversation messages and rebuilds the memory list
+// from user messages that match memorable rules. This allows the engine
+// to be created fresh per request while preserving memory state.
+func (e *Engine) InferMemory(messages []*schema.Message) {
+	e.memory = e.memory[:0]
+	for _, msg := range messages {
+		if msg.Role != schema.RoleUser {
+			continue
+		}
+		input := strings.ToLower(strings.TrimRight(strings.TrimSpace(msg.Text()), ".!?"))
+		for _, rule := range e.rules {
+			if !rule.memorable {
+				continue
+			}
+			if match := rule.pattern.FindStringSubmatch(input); match != nil && len(match) > 1 {
+				e.remember(match[1])
+			}
+		}
+	}
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -131,8 +160,30 @@ func (e *Engine) reflect(text string) string {
 }
 
 func (e *Engine) isQuit(input string) bool {
+	words := strings.Fields(input)
 	for _, q := range e.lang.Quits {
-		if strings.Contains(input, q) {
+		qWords := strings.Fields(q)
+		if containsPhrase(words, qWords) {
+			return true
+		}
+	}
+	return false
+}
+
+// containsPhrase checks whether the phrase (sequence of words) appears in the words slice
+func containsPhrase(words, phrase []string) bool {
+	if len(phrase) == 0 || len(phrase) > len(words) {
+		return false
+	}
+	for i := 0; i <= len(words)-len(phrase); i++ {
+		match := true
+		for j, p := range phrase {
+			if words[i+j] != p {
+				match = false
+				break
+			}
+		}
+		if match {
 			return true
 		}
 	}

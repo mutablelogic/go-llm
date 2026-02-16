@@ -150,9 +150,8 @@ func TestLanguageResponsesNonEmpty(t *testing.T) {
 			checkNonEmpty("goodbyeResponses", lang.GoodbyeResponses)
 			checkNonEmpty("defaultResponses", lang.DefaultResponses)
 			checkNonEmpty("memoryResponses", lang.MemoryResponses)
-			for i, rule := range lang.Rules {
+			for _, rule := range lang.Rules {
 				checkNonEmpty("rule "+rule.Pattern, rule.Responses)
-				_ = i
 			}
 		})
 	}

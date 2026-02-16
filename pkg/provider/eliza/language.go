@@ -3,7 +3,7 @@ package eliza
 import (
 	"embed"
 	"encoding/json"
-	"path/filepath"
+	"path"
 	"strings"
 )
 
@@ -50,7 +50,7 @@ func LoadLanguages() (map[string]*Language, error) {
 		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".json") {
 			continue
 		}
-		data, err := langFS.ReadFile(filepath.Join("lang", entry.Name()))
+		data, err := langFS.ReadFile(path.Join("lang", entry.Name()))
 		if err != nil {
 			return nil, err
 		}
