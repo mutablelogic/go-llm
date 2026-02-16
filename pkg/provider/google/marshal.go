@@ -161,10 +161,9 @@ func geminiPartFromToolResult(tr *schema.ToolResult) *geminiPart {
 ///////////////////////////////////////////////////////////////////////////////
 // TOOL CONVERSION
 
-// geminiFunctionDeclsFromToolkit converts all tools in a Toolkit to
+// geminiFunctionDeclsFromTools converts a slice of tools to
 // gemini wire FunctionDeclaration values, using ParametersJsonSchema.
-func geminiFunctionDeclsFromToolkit(tk *tool.Toolkit) []*geminiFunctionDeclaration {
-	tools := tk.Tools()
+func geminiFunctionDeclsFromTools(tools []tool.Tool) []*geminiFunctionDeclaration {
 	decls := make([]*geminiFunctionDeclaration, 0, len(tools))
 	for _, t := range tools {
 		decl := &geminiFunctionDeclaration{

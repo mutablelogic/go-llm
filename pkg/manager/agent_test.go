@@ -2,6 +2,7 @@ package manager
 
 import (
 	"context"
+	"encoding/json"
 	"testing"
 
 	// Packages
@@ -409,4 +410,294 @@ func Test_agent_017(t *testing.T) {
 	assert.Equal(uint(3), resp.Body[0].Version)
 	assert.Equal(uint(2), resp.Body[1].Version)
 	assert.Equal(uint(1), resp.Body[2].Version)
+}
+
+///////////////////////////////////////////////////////////////////////////////
+// CREATE AGENT SESSION TESTS
+
+// Test CreateAgentSession basic: create agent with template, get session + text
+func Test_runagent_001(t *testing.T) {
+	assert := assert.New(t)
+
+	m, err := NewManager(
+		WithClient(&mockGeneratorClient{
+			mockClient: mockClient{name: "provider-1", models: []schema.Model{{Name: "model-1", OwnedBy: "provider-1"}}},
+		}),
+	)
+	assert.NoError(err)
+
+	// Create an agent with a simple template
+	_, err = m.CreateAgent(context.TODO(), schema.AgentMeta{
+		GeneratorMeta: schema.GeneratorMeta{Model: "model-1"},
+		Name:          "greeter",
+		Template:      "Hello, {{ .name }}!",
+	})
+	assert.NoError(err)
+
+	// Create the agent session
+	resp, err := m.CreateAgentSession(context.TODO(), "greeter", schema.CreateAgentSessionRequest{
+		Input: json.RawMessage(`{"name": "World"}`),
+	})
+	assert.NoError(err)
+	assert.NotNil(resp)
+	assert.NotEmpty(resp.Session)
+	assert.Equal("Hello, World!", resp.Text)
+
+	// Verify the session was created with agent labels
+	session, err := m.GetSession(context.TODO(), resp.Session)
+	assert.NoError(err)
+	assert.Equal("greeter", session.Name)
+	assert.Contains(session.Labels["agent"], "greeter@")
+	assert.NotEmpty(session.Labels["agent_id"])
+}
+
+// Test CreateAgentSession with missing agent name
+func Test_runagent_002(t *testing.T) {
+	assert := assert.New(t)
+
+	m, err := NewManager(
+		WithClient(&mockGeneratorClient{
+			mockClient: mockClient{name: "provider-1", models: []schema.Model{{Name: "model-1", OwnedBy: "provider-1"}}},
+		}),
+	)
+	assert.NoError(err)
+
+	_, err = m.CreateAgentSession(context.TODO(), "", schema.CreateAgentSessionRequest{})
+	assert.Error(err)
+	assert.ErrorIs(err, llm.ErrBadParameter)
+}
+
+// Test CreateAgentSession with non-existent agent
+func Test_runagent_003(t *testing.T) {
+	assert := assert.New(t)
+
+	m, err := NewManager(
+		WithClient(&mockGeneratorClient{
+			mockClient: mockClient{name: "provider-1", models: []schema.Model{{Name: "model-1", OwnedBy: "provider-1"}}},
+		}),
+	)
+	assert.NoError(err)
+
+	_, err = m.CreateAgentSession(context.TODO(), "nonexistent", schema.CreateAgentSessionRequest{})
+	assert.Error(err)
+	assert.ErrorIs(err, llm.ErrNotFound)
+}
+
+// Test CreateAgentSession inherits GeneratorMeta from parent session
+func Test_runagent_004(t *testing.T) {
+	assert := assert.New(t)
+
+	m, err := NewManager(
+		WithClient(&mockGeneratorClient{
+			mockClient: mockClient{name: "provider-1", models: []schema.Model{{Name: "model-1", OwnedBy: "provider-1"}}},
+		}),
+	)
+	assert.NoError(err)
+
+	// Create a parent session with a model
+	parentSession, err := m.CreateSession(context.TODO(), schema.SessionMeta{
+		GeneratorMeta: schema.GeneratorMeta{Model: "model-1"},
+		Name:          "parent",
+	})
+	assert.NoError(err)
+
+	// Agent without a model
+	_, err = m.CreateAgent(context.TODO(), schema.AgentMeta{
+		Name:     "no-model-agent",
+		Template: "do something",
+	})
+	assert.NoError(err)
+
+	// Create agent session with parent — inherits model from parent
+	resp, err := m.CreateAgentSession(context.TODO(), "no-model-agent", schema.CreateAgentSessionRequest{
+		Parent: parentSession.ID,
+	})
+	assert.NoError(err)
+	assert.NotNil(resp)
+	assert.NotEmpty(resp.Session)
+	assert.Equal("do something", resp.Text)
+
+	// Verify the child session inherited the model
+	childSession, err := m.GetSession(context.TODO(), resp.Session)
+	assert.NoError(err)
+	assert.Equal("model-1", childSession.Model)
+}
+
+// Test CreateAgentSession with parent session ID in labels
+func Test_runagent_005(t *testing.T) {
+	assert := assert.New(t)
+
+	m, err := NewManager(
+		WithClient(&mockGeneratorClient{
+			mockClient: mockClient{name: "provider-1", models: []schema.Model{{Name: "model-1", OwnedBy: "provider-1"}}},
+		}),
+	)
+	assert.NoError(err)
+
+	// Create a real parent session
+	parentSession, err := m.CreateSession(context.TODO(), schema.SessionMeta{
+		GeneratorMeta: schema.GeneratorMeta{Model: "model-1"},
+		Name:          "parent",
+	})
+	assert.NoError(err)
+
+	_, err = m.CreateAgent(context.TODO(), schema.AgentMeta{
+		GeneratorMeta: schema.GeneratorMeta{Model: "model-1"},
+		Name:          "child-agent",
+		Template:      "child task",
+	})
+	assert.NoError(err)
+
+	resp, err := m.CreateAgentSession(context.TODO(), "child-agent", schema.CreateAgentSessionRequest{
+		Parent: parentSession.ID,
+	})
+	assert.NoError(err)
+
+	session, err := m.GetSession(context.TODO(), resp.Session)
+	assert.NoError(err)
+	assert.Equal(parentSession.ID, session.Labels["parent"])
+}
+
+// Test CreateAgentSession with input validation failure
+func Test_runagent_006(t *testing.T) {
+	assert := assert.New(t)
+
+	m, err := NewManager(
+		WithClient(&mockGeneratorClient{
+			mockClient: mockClient{name: "provider-1", models: []schema.Model{{Name: "model-1", OwnedBy: "provider-1"}}},
+		}),
+	)
+	assert.NoError(err)
+
+	// Agent with input schema requiring a "language" field
+	_, err = m.CreateAgent(context.TODO(), schema.AgentMeta{
+		GeneratorMeta: schema.GeneratorMeta{Model: "model-1"},
+		Name:          "strict-agent",
+		Template:      "translate to {{ .language }}",
+		Input:         schema.JSONSchema(`{"type":"object","properties":{"language":{"type":"string"}},"required":["language"]}`),
+	})
+	assert.NoError(err)
+
+	// Run without providing the required input field
+	_, err = m.CreateAgentSession(context.TODO(), "strict-agent", schema.CreateAgentSessionRequest{
+		Input: json.RawMessage(`{}`),
+	})
+	assert.Error(err)
+	assert.ErrorIs(err, llm.ErrBadParameter)
+}
+
+// Test CreateAgentSession with specific version via ID
+func Test_runagent_007(t *testing.T) {
+	assert := assert.New(t)
+
+	m, err := NewManager(
+		WithClient(&mockGeneratorClient{
+			mockClient: mockClient{name: "provider-1", models: []schema.Model{{Name: "model-1", OwnedBy: "provider-1"}}},
+		}),
+	)
+	assert.NoError(err)
+
+	// Create v1
+	v1, err := m.CreateAgent(context.TODO(), schema.AgentMeta{
+		GeneratorMeta: schema.GeneratorMeta{Model: "model-1"},
+		Name:          "versioned",
+		Template:      "version one",
+	})
+	assert.NoError(err)
+
+	// Update to v2
+	_, err = m.UpdateAgent(context.TODO(), "versioned", schema.AgentMeta{
+		GeneratorMeta: schema.GeneratorMeta{Model: "model-1"},
+		Name:          "versioned",
+		Template:      "version two",
+	})
+	assert.NoError(err)
+
+	// Create session from v1 specifically using its ID
+	resp, err := m.CreateAgentSession(context.TODO(), v1.ID, schema.CreateAgentSessionRequest{})
+	assert.NoError(err)
+	assert.Equal("version one", resp.Text)
+
+	// Create session from latest (v2) by name
+	resp, err = m.CreateAgentSession(context.TODO(), "versioned", schema.CreateAgentSessionRequest{})
+	assert.NoError(err)
+	assert.Equal("version two", resp.Text)
+}
+
+// Test CreateAgentSession with non-existent agent ID
+func Test_runagent_008(t *testing.T) {
+	assert := assert.New(t)
+
+	m, err := NewManager(
+		WithClient(&mockGeneratorClient{
+			mockClient: mockClient{name: "provider-1", models: []schema.Model{{Name: "model-1", OwnedBy: "provider-1"}}},
+		}),
+	)
+	assert.NoError(err)
+
+	_, err = m.CreateAgentSession(context.TODO(), "nonexistent-id-12345", schema.CreateAgentSessionRequest{})
+	assert.Error(err)
+	assert.ErrorIs(err, llm.ErrNotFound)
+}
+
+// Test CreateAgentSession returns tools from agent
+func Test_runagent_009(t *testing.T) {
+	assert := assert.New(t)
+
+	m, err := NewManager(
+		WithClient(&mockGeneratorClient{
+			mockClient: mockClient{name: "provider-1", models: []schema.Model{{Name: "model-1", OwnedBy: "provider-1"}}},
+		}),
+	)
+	assert.NoError(err)
+
+	_, err = m.CreateAgent(context.TODO(), schema.AgentMeta{
+		GeneratorMeta: schema.GeneratorMeta{Model: "model-1"},
+		Name:          "tool-agent",
+		Template:      "use tools",
+		Tools:         []string{"search", "calculator"},
+	})
+	assert.NoError(err)
+
+	resp, err := m.CreateAgentSession(context.TODO(), "tool-agent", schema.CreateAgentSessionRequest{})
+	assert.NoError(err)
+	assert.Equal([]string{"search", "calculator"}, resp.Tools)
+}
+
+// Test CreateAgentSession then Chat (two-phase flow)
+func Test_runagent_010(t *testing.T) {
+	assert := assert.New(t)
+
+	m, err := NewManager(
+		WithClient(&mockGeneratorClient{
+			mockClient: mockClient{name: "provider-1", models: []schema.Model{{Name: "model-1", OwnedBy: "provider-1"}}},
+		}),
+	)
+	assert.NoError(err)
+
+	_, err = m.CreateAgent(context.TODO(), schema.AgentMeta{
+		GeneratorMeta: schema.GeneratorMeta{Model: "model-1"},
+		Name:          "two-phase",
+		Template:      "Hello, {{ .name }}!",
+	})
+	assert.NoError(err)
+
+	// Phase 1: create session
+	agentResp, err := m.CreateAgentSession(context.TODO(), "two-phase", schema.CreateAgentSessionRequest{
+		Input: json.RawMessage(`{"name": "World"}`),
+	})
+	assert.NoError(err)
+	assert.Equal("Hello, World!", agentResp.Text)
+
+	// Phase 2: chat using the returned session, text, and tools
+	chatResp, err := m.Chat(context.TODO(), schema.ChatRequest{
+		Session: agentResp.Session,
+		Text:    agentResp.Text,
+		Tools:   agentResp.Tools,
+	}, nil)
+	assert.NoError(err)
+	assert.NotNil(chatResp)
+	assert.Equal(schema.RoleAssistant, chatResp.Role)
+	assert.Equal(agentResp.Session, chatResp.Session)
+	assert.Contains(*chatResp.Content[0].Text, "Hello, World!")
 }

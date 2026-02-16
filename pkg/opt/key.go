@@ -28,6 +28,7 @@ const (
 	ServiceTierKey          = "service-tier"
 	CacheControlKey         = "cache-control"
 	OutputConfigKey         = "output-config"
+	ToolKey                 = "tool"
 	ToolChoiceKey           = "tool-choice"
 	ToolChoiceNameKey       = "tool-choice-name"
 	MaxIterationsKey        = "max-iterations"

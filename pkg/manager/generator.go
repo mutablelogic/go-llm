@@ -88,6 +88,7 @@ func (m *Manager) Chat(ctx context.Context, request schema.ChatRequest, fn opt.S
 			meta.SystemPrompt = request.SystemPrompt
 		}
 	}
+
 	model, generator, opts, err := m.generatorFromMeta(ctx, meta)
 	if err != nil {
 		return nil, err
@@ -103,8 +104,47 @@ func (m *Manager) Chat(ctx context.Context, request schema.ChatRequest, fn opt.S
 	if err != nil {
 		return nil, err
 	}
+
+	// When both tools and a JSON schema are present, convert the schema
+	// into a "submit_output" tool so the model can call tools AND produce
+	// structured output (some providers like Gemini can't combine function
+	// calling with a response JSON schema).
+	var outputToolName string
+	var outputToolOpt opt.Opt
+	if toolkitOpt != nil && len(meta.Format) > 0 {
+		outputToolName, outputToolOpt, err = m.addOutputTool(meta.Format)
+		if err != nil {
+			return nil, err
+		}
+		// Rebuild opts without the JSON schema but with the output-tool
+		// instruction appended to the system prompt.
+		metaNoFormat := meta
+		metaNoFormat.Format = nil
+		if metaNoFormat.SystemPrompt != "" {
+			metaNoFormat.SystemPrompt += "\n\n"
+		}
+		metaNoFormat.SystemPrompt += tool.OutputToolInstruction
+		_, _, opts, err = m.generatorFromMeta(ctx, metaNoFormat)
+		if err != nil {
+			return nil, err
+		}
+		// Wrap the stream callback to suppress assistant text when the
+		// output tool is active — the model may "think out loud" before
+		// calling submit_output.  We still forward tool and thinking roles.
+		if fn != nil {
+			wrappedFn := opt.StreamFn(func(role, text string) {
+				if role != schema.RoleAssistant {
+					fn(role, text)
+				}
+			})
+			opts = append(opts, opt.WithStream(wrappedFn))
+		}
+	}
 	if toolkitOpt != nil {
 		opts = append(opts, toolkitOpt)
+	}
+	if outputToolOpt != nil {
+		opts = append(opts, outputToolOpt)
 	}
 
 	// Build message options from attachments
@@ -142,6 +182,25 @@ func (m *Manager) Chat(ctx context.Context, request schema.ChatRequest, fn opt.S
 			break
 		}
 
+		// Check if any tool call is the output tool — if so, capture it
+		// as structured output and stop the loop.
+		if outputToolName != "" {
+			for _, call := range toolCalls {
+				if call.Name == outputToolName {
+					// The tool's input IS the structured output
+					text := string(call.Input)
+					result = &schema.Message{
+						Role: schema.RoleAssistant,
+						Content: []schema.ContentBlock{
+							{Text: &text},
+						},
+						Result: schema.ResultStop,
+					}
+					goto done
+				}
+			}
+		}
+
 		// Execute tool calls in parallel then build a tool-result message and send it back
 		toolMessage := &schema.Message{
 			Role:    schema.RoleUser,
@@ -173,6 +232,7 @@ func (m *Manager) Chat(ctx context.Context, request schema.ChatRequest, fn opt.S
 		result.Result = schema.ResultMaxIterations
 	}
 
+done:
 	// Calculate per-turn overhead (tool schemas, system prompt, etc.)
 	// as the difference between actual input tokens and the sum of
 	// estimated/recorded message content tokens.
@@ -314,6 +374,20 @@ func withJSONOutput(data schema.JSONSchema) opt.Opt {
 	})
 }
 
+// addOutputTool creates a "submit_output" tool whose parameter schema matches
+// the provided JSON schema, and returns an opt.Opt that adds it to the request.
+// This allows the model to produce structured output by calling this tool,
+// avoiding the conflict between function calling and response JSON schema on
+// providers like Gemini. Returns the tool name and the opt.
+func (m *Manager) addOutputTool(format schema.JSONSchema) (string, opt.Opt, error) {
+	var s jsonschema.Schema
+	if err := json.Unmarshal(format, &s); err != nil {
+		return "", nil, llm.ErrBadParameter.Withf("invalid JSON schema for output tool: %v", err)
+	}
+	outputTool := tool.NewOutputTool(&s)
+	return tool.OutputToolName, tool.WithTool(outputTool), nil
+}
+
 // runTools executes the given tool calls in parallel and returns the results
 // as content blocks in the same order as the input calls. If fn is non-nil,
 // tool feedback is streamed before execution begins.
@@ -339,9 +413,9 @@ func (m *Manager) runTools(ctx context.Context, calls []schema.ToolCall, fn opt.
 	return results
 }
 
-// withTools returns an opt that sets a toolkit for the request. If tool names
-// are provided, only those tools are included; otherwise all tools from the
-// manager's toolkit are included. Returns nil if the toolkit is empty.
+// withTools returns an opt that sets a toolkit for the request.
+// If tool names are provided, only those tools are included; otherwise all tools from the
+// manager's toolkit are included. Returns nil, nil if the toolkit is empty.
 func (m *Manager) withTools(tools ...string) (opt.Opt, error) {
 	if len(tools) == 0 {
 		// No filter — include all tools

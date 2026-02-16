@@ -138,6 +138,27 @@ type ChatResponse struct {
 	Usage   *Usage `json:"usage,omitempty"`
 }
 
+// CreateAgentSessionRequest represents the body of a request to create a
+// session from an agent definition. The agent is identified by path/query
+// parameters (agent ID or name, optional version) — not included here.
+// The agent's template is executed with Input, and a new session is created
+// with the merged GeneratorMeta and agent labels. If Parent is set, the parent
+// session's GeneratorMeta is used as defaults (agent fields take precedence).
+// The caller can then use the returned text and tools with the Chat endpoint.
+type CreateAgentSessionRequest struct {
+	Parent string          `json:"parent,omitempty" help:"Parent session ID for traceability" optional:""`
+	Input  json.RawMessage `json:"input,omitempty" help:"Input data for the agent template" optional:""`
+}
+
+// CreateAgentSessionResponse is the result of creating a session from an agent.
+// It contains the session ID plus the prepared text and tools, which can be
+// passed directly to a ChatRequest.
+type CreateAgentSessionResponse struct {
+	Session string   `json:"session"`         // Created session ID
+	Text    string   `json:"text"`            // Rendered template text (first user message)
+	Tools   []string `json:"tools,omitempty"` // Tool names the agent is allowed to use
+}
+
 // ListAgentRequest represents a request to list agents
 type ListAgentRequest struct {
 	Name    string `json:"name,omitempty" help:"Filter by agent name" optional:""`
@@ -266,6 +287,14 @@ func (r ChatRequest) String() string {
 }
 
 func (r ChatResponse) String() string {
+	return types.Stringify(r)
+}
+
+func (r CreateAgentSessionRequest) String() string {
+	return types.Stringify(r)
+}
+
+func (r CreateAgentSessionResponse) String() string {
 	return types.Stringify(r)
 }
 

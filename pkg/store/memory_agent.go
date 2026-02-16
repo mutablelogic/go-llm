@@ -94,7 +94,11 @@ func (m *MemoryAgentStore) getAgentLocked(id string) (*schema.Agent, error) {
 
 	// Fall back to lookup by name via the name index (O(1))
 	if agentID, ok := m.names[id]; ok {
-		return m.agents[agentID], nil
+		if a, exists := m.agents[agentID]; exists {
+			return a, nil
+		}
+		// Name index is stale — repair it
+		delete(m.names, id)
 	}
 
 	return nil, llm.ErrNotFound.Withf("agent %q", id)

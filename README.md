@@ -216,6 +216,8 @@ flowchart LR
         REST API`"]
         Agent["`**pkg/manager**
         Manager`"]
+        AgentDef["`**pkg/agent**
+        Agent Parsing`"]
         Sessions["`**pkg/store**
         Memory, File`"]
         Tools["`**pkg/tool**
@@ -251,6 +253,7 @@ flowchart LR
     SDK --> API
     Telegram --> API
     API --> Agent
+    Agent --> AgentDef
     Agent --> Sessions
     Agent --> Tools
     Agent --> Gemini
@@ -309,6 +312,7 @@ func main() {
 | Package | Description |
 |---------|-------------|
 | `pkg/manager` | Central manager orchestrating providers, sessions, and tools |
+| `pkg/agent` | Agent definition parsing (template execution, input validation, funcmap) |
 | `pkg/provider/{google,anthropic,mistral,eliza}` | Provider implementations |
 | `pkg/store` | Storage backends for sessions and agents (in-memory, file-backed JSON) |
 | `pkg/tool` | Tool interface and toolkit registry |

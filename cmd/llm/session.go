@@ -9,6 +9,7 @@ import (
 	httpclient "github.com/mutablelogic/go-llm/pkg/httpclient"
 	opt "github.com/mutablelogic/go-llm/pkg/opt"
 	schema "github.com/mutablelogic/go-llm/pkg/schema"
+	uitable "github.com/mutablelogic/go-llm/pkg/ui/table"
 )
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -92,7 +93,17 @@ func (cmd *ListSessionsCommand) Run(ctx *Globals) (err error) {
 	}
 
 	// Print
-	fmt.Println(response)
+	if ctx.Debug {
+		fmt.Println(response)
+	} else {
+		if len(response.Body) > 0 {
+			fmt.Println(uitable.Render(schema.SessionTable{
+				Sessions:       response.Body,
+				CurrentSession: ctx.defaults.GetString("session"),
+			}))
+		}
+		fmt.Println(TableSummary(len(response.Body), int(response.Offset), int(response.Count)))
+	}
 	return nil
 }
 
@@ -146,6 +157,11 @@ func (cmd *CreateSessionCommand) Run(ctx *Globals) (err error) {
 		},
 	})
 	if err != nil {
+		return err
+	}
+
+	// Set as default session
+	if err := ctx.defaults.Set("session", session.ID); err != nil {
 		return err
 	}
 

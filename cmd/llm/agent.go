@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
@@ -15,6 +16,7 @@ import (
 	httpclient "github.com/mutablelogic/go-llm/pkg/httpclient"
 	opt "github.com/mutablelogic/go-llm/pkg/opt"
 	schema "github.com/mutablelogic/go-llm/pkg/schema"
+	uitable "github.com/mutablelogic/go-llm/pkg/ui/table"
 	httpresponse "github.com/mutablelogic/go-server/pkg/httpresponse"
 )
 
@@ -26,6 +28,7 @@ type AgentCommands struct {
 	GetAgent    GetAgentCommand    `cmd:"" name:"agent" help:"Get an agent." group:"AGENT"`
 	CreateAgent CreateAgentCommand `cmd:"" name:"create-agent" help:"Create agents from markdown files." group:"AGENT"`
 	DeleteAgent DeleteAgentCommand `cmd:"" name:"delete-agent" help:"Delete an agent." group:"AGENT"`
+	RunAgent    RunAgentCommand    `cmd:"" name:"run-agent" help:"Create a session from an agent and chat." group:"AGENT"`
 }
 
 type ListAgentsCommand struct {
@@ -44,6 +47,13 @@ type CreateAgentCommand struct {
 
 type DeleteAgentCommand struct {
 	ID string `arg:"" name:"id" help:"Agent ID or name (use name@version for a specific version)"`
+}
+
+type RunAgentCommand struct {
+	Agent  string `arg:"" name:"agent" help:"Agent ID or name"`
+	Parent string `name:"parent" help:"Parent session ID" optional:""`
+	Input  string `name:"input" help:"JSON input for the agent template" optional:""`
+	Delete bool   `name:"delete" negatable:"" default:"true" help:"Delete the agent session after completion"`
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -78,7 +88,14 @@ func (cmd *ListAgentsCommand) Run(ctx *Globals) (err error) {
 	}
 
 	// Print
-	fmt.Println(response)
+	if ctx.Debug {
+		fmt.Println(response)
+	} else {
+		if len(response.Body) > 0 {
+			fmt.Println(uitable.Render(schema.AgentTable(response.Body)))
+		}
+		fmt.Println(TableSummary(len(response.Body), int(response.Offset), int(response.Count)))
+	}
 	return nil
 }
 
@@ -215,6 +232,86 @@ func (cmd *DeleteAgentCommand) Run(ctx *Globals) (err error) {
 		}
 	}
 
+	return nil
+}
+
+func (cmd *RunAgentCommand) Run(ctx *Globals) (err error) {
+	client, err := ctx.Client()
+	if err != nil {
+		return err
+	}
+
+	// OTEL
+	parent, endSpan := otel.StartSpan(ctx.tracer, ctx.ctx, "RunAgentCommand")
+	defer func() { endSpan(err) }()
+
+	// Build request
+	req := schema.CreateAgentSessionRequest{
+		Parent: cmd.Parent,
+	}
+	if req.Parent == "" {
+		req.Parent = ctx.defaults.GetString("session")
+	}
+	if cmd.Input != "" {
+		req.Input = json.RawMessage(cmd.Input)
+	}
+
+	// Create agent session
+	resp, err := client.CreateAgentSession(parent, cmd.Agent, req)
+	if err != nil {
+		return err
+	}
+
+	// Stream the chat response to stdout
+	var lastRole string
+	chatReq := schema.ChatRequest{
+		Session: resp.Session,
+		Text:    resp.Text,
+		Tools:   resp.Tools,
+	}
+	chatOpts := []httpclient.ChatOpt{
+		httpclient.WithChatStream(func(role, text string) {
+			if role != lastRole {
+				if lastRole != "" {
+					fmt.Println()
+				}
+				fmt.Print(role + ": ")
+				lastRole = role
+			}
+			fmt.Print(text)
+		}),
+	}
+
+	chatResp, err := client.Chat(parent, chatReq, chatOpts...)
+	if err != nil {
+		return err
+	}
+
+	// If the response contains structured output (from submit_output),
+	// print it. The streaming callback may have been suppressed, so the
+	// response body is the authoritative output.
+	if chatResp != nil && len(chatResp.Content) > 0 {
+		for _, block := range chatResp.Content {
+			if block.Text != nil && *block.Text != "" {
+				if lastRole != "" {
+					// A role was already printed by streaming; start a new line
+					fmt.Println()
+				}
+				fmt.Println(*block.Text)
+				lastRole = "" // prevent the trailing newline below
+			}
+		}
+	}
+	if lastRole != "" {
+		fmt.Println()
+	}
+
+	// Delete the agent session unless --no-delete was specified
+	if cmd.Delete {
+		if err := client.DeleteSession(parent, resp.Session); err != nil {
+			return fmt.Errorf("deleting agent session: %w", err)
+		}
+	}
 	return nil
 }
 

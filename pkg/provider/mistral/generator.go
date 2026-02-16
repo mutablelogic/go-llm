@@ -311,16 +311,25 @@ func generateRequestFromOpts(model string, session *schema.Conversation, options
 		request.ToolChoice = tc
 	}
 
-	// Tools from toolkit
+	// Collect tools from toolkit and individual WithTool opts
+	var allTools []tool.Tool
 	if v := options.Get(opt.ToolkitKey); v != nil {
 		if tk, ok := v.(*tool.Toolkit); ok {
-			tools, err := mistralToolsFromToolkit(tk)
-			if err != nil {
-				return nil, err
-			}
-			if len(tools) > 0 {
-				request.Tools = tools
-			}
+			allTools = append(allTools, tk.Tools()...)
+		}
+	}
+	if v := options.Get(opt.ToolKey); v != nil {
+		if extra, ok := v.([]tool.Tool); ok {
+			allTools = append(allTools, extra...)
+		}
+	}
+	if len(allTools) > 0 {
+		tools, err := mistralToolsFromTools(allTools)
+		if err != nil {
+			return nil, err
+		}
+		if len(tools) > 0 {
+			request.Tools = tools
 		}
 	}
 

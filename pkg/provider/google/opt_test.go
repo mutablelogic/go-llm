@@ -94,16 +94,16 @@ func Test_opt_validation_006(t *testing.T) {
 }
 
 ///////////////////////////////////////////////////////////////////////////////
-// TOOLKIT — geminiFunctionDeclsFromToolkit
+// TOOLKIT — geminiFunctionDeclsFromTools
 
 func Test_opt_toolkit_001(t *testing.T) {
-	// Test geminiFunctionDeclsFromToolkit with a single mock tool
+	// Test geminiFunctionDeclsFromTools with a single mock tool
 	assert := assert.New(t)
 
 	tk, err := tool.NewToolkit(newMockTool("get_weather", "Get current weather"))
 	assert.NoError(err)
 
-	decls := geminiFunctionDeclsFromToolkit(tk)
+	decls := geminiFunctionDeclsFromTools(tk.Tools())
 	assert.Len(decls, 1)
 	assert.Equal("get_weather", decls[0].Name)
 	assert.Equal("Get current weather", decls[0].Description)
@@ -116,7 +116,7 @@ func Test_opt_toolkit_001(t *testing.T) {
 }
 
 func Test_opt_toolkit_002(t *testing.T) {
-	// Test geminiFunctionDeclsFromToolkit with multiple tools
+	// Test geminiFunctionDeclsFromTools with multiple tools
 	assert := assert.New(t)
 
 	tk, err := tool.NewToolkit(
@@ -125,7 +125,7 @@ func Test_opt_toolkit_002(t *testing.T) {
 	)
 	assert.NoError(err)
 
-	decls := geminiFunctionDeclsFromToolkit(tk)
+	decls := geminiFunctionDeclsFromTools(tk.Tools())
 	assert.Len(decls, 2)
 
 	names := make(map[string]bool)
@@ -162,7 +162,7 @@ func Test_opt_toolkit_004(t *testing.T) {
 	tk, err := tool.NewToolkit()
 	assert.NoError(err)
 
-	decls := geminiFunctionDeclsFromToolkit(tk)
+	decls := geminiFunctionDeclsFromTools(tk.Tools())
 	assert.Empty(decls)
 }
 

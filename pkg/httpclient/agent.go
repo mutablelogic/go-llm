@@ -116,3 +116,27 @@ func (c *Client) DeleteAgent(ctx context.Context, id string) error {
 	// Return success
 	return nil
 }
+
+// CreateAgentSession creates a new session from an agent definition.
+// The agentID can be an agent ID or name.
+func (c *Client) CreateAgentSession(ctx context.Context, agentID string, request schema.CreateAgentSessionRequest) (*schema.CreateAgentSessionResponse, error) {
+	if agentID == "" {
+		return nil, fmt.Errorf("agent ID cannot be empty")
+	}
+
+	// Create request
+	req, err := client.NewJSONRequest(request)
+	if err != nil {
+		return nil, err
+	}
+	reqOpts := []client.RequestOpt{client.OptPath("agent", agentID)}
+
+	// Perform request
+	var response schema.CreateAgentSessionResponse
+	if err := c.DoWithContext(ctx, req, &response, reqOpts...); err != nil {
+		return nil, err
+	}
+
+	// Return the response
+	return &response, nil
+}

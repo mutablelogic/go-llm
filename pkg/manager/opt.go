@@ -72,6 +72,16 @@ func WithToolkit(toolkit *tool.Toolkit) Opt {
 	}
 }
 
+// WithTool registers a single tool with the manager's toolkit.
+func WithTool(t tool.Tool) Opt {
+	return func(m *Manager) error {
+		if t == nil {
+			return llm.ErrBadParameter.With("tool is required")
+		}
+		return m.toolkit.Register(t)
+	}
+}
+
 // WithOutputDimensionality sets the output dimensionality for embedding requests
 func WithOutputDimensionality(dim uint) opt.Opt {
 	if dim == 0 {

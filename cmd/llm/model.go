@@ -7,6 +7,8 @@ import (
 	otel "github.com/mutablelogic/go-client/pkg/otel"
 	httpclient "github.com/mutablelogic/go-llm/pkg/httpclient"
 	opt "github.com/mutablelogic/go-llm/pkg/opt"
+	schema "github.com/mutablelogic/go-llm/pkg/schema"
+	uitable "github.com/mutablelogic/go-llm/pkg/ui/table"
 )
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -53,8 +55,12 @@ func (cmd *ProvidersCommand) Run(ctx *Globals) (err error) {
 	}
 
 	// Print providers
-	for _, provider := range response.Provider {
-		fmt.Println(provider)
+	if ctx.Debug {
+		for _, provider := range response.Provider {
+			fmt.Println(provider)
+		}
+	} else if len(response.Provider) > 0 {
+		fmt.Println(uitable.Render(schema.ProviderTable(response.Provider)))
 	}
 	return nil
 }
@@ -88,7 +94,17 @@ func (cmd *ListModelsCommand) Run(ctx *Globals) (err error) {
 	}
 
 	// Print
-	fmt.Println(response)
+	if ctx.Debug {
+		fmt.Println(response)
+	} else {
+		if len(response.Body) > 0 {
+			fmt.Println(uitable.Render(schema.ModelTable{
+				Models:       response.Body,
+				CurrentModel: ctx.defaults.GetString("model"),
+			}))
+		}
+		fmt.Println(TableSummary(len(response.Body), int(response.Offset), int(response.Count)))
+	}
 	return nil
 }
 

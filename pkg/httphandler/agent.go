@@ -103,6 +103,18 @@ func AgentGetHandler(manager *manager.Manager) (string, http.HandlerFunc, *opena
 					return
 				}
 				_ = httpresponse.JSON(w, http.StatusOK, httprequest.Indent(r), resp)
+			case http.MethodPost:
+				var req schema.CreateAgentSessionRequest
+				if err := httprequest.Read(r, &req); err != nil {
+					_ = httpresponse.Error(w, err)
+					return
+				}
+				resp, err := manager.CreateAgentSession(r.Context(), id, req)
+				if err != nil {
+					_ = httpresponse.Error(w, httpErr(err))
+					return
+				}
+				_ = httpresponse.JSON(w, http.StatusCreated, httprequest.Indent(r), resp)
 			case http.MethodDelete:
 				if _, err := manager.DeleteAgent(r.Context(), id); err != nil {
 					_ = httpresponse.Error(w, httpErr(err))
@@ -115,6 +127,9 @@ func AgentGetHandler(manager *manager.Manager) (string, http.HandlerFunc, *opena
 		}, types.Ptr(openapi.PathItem{
 			Get: &openapi.Operation{
 				Description: "Get an agent by ID or name",
+			},
+			Post: &openapi.Operation{
+				Description: "Create a session from an agent definition",
 			},
 			Delete: &openapi.Operation{
 				Description: "Delete an agent by ID or name",
