@@ -33,4 +33,5 @@ const (
 	MaxIterationsKey        = "max-iterations"
 	LabelKey                = "label"
 	NameKey                 = "name"
+	VersionKey              = "version"
 )

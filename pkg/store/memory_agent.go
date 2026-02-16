@@ -118,6 +118,9 @@ func (m *MemoryAgentStore) ListAgents(_ context.Context, req schema.ListAgentReq
 		if req.Name != "" && a.Name != req.Name {
 			continue
 		}
+		if req.Version != nil && a.Version != *req.Version {
+			continue
+		}
 		candidates = append(candidates, a)
 	}
 

@@ -564,3 +564,45 @@ func Test_memory_agent_033(t *testing.T) {
 	assert.Equal(uint(1), resp.Count)
 	assert.Empty(resp.Body)
 }
+
+func Test_memory_agent_034(t *testing.T) {
+	// ListAgents with name and version returns specific version
+	assert := assert.New(t)
+	s := store.NewMemoryAgentStore()
+
+	created, err := s.CreateAgent(context.TODO(), testAgentMeta)
+	assert.NoError(err)
+	assert.Equal(uint(1), created.Version)
+
+	// Update to create version 2
+	meta2 := testAgentMeta
+	meta2.Title = "Updated Agent Title"
+	updated, err := s.UpdateAgent(context.TODO(), created.ID, meta2)
+	assert.NoError(err)
+	assert.Equal(uint(2), updated.Version)
+
+	// Get version 1
+	v1 := uintPtr(1)
+	resp, err := s.ListAgents(context.TODO(), schema.ListAgentRequest{Name: testAgentMeta.Name, Version: v1})
+	assert.NoError(err)
+	assert.Equal(uint(1), resp.Count)
+	assert.Len(resp.Body, 1)
+	assert.Equal(uint(1), resp.Body[0].Version)
+	assert.Equal("Test Agent Title", resp.Body[0].Title)
+
+	// Get version 2
+	v2 := uintPtr(2)
+	resp, err = s.ListAgents(context.TODO(), schema.ListAgentRequest{Name: testAgentMeta.Name, Version: v2})
+	assert.NoError(err)
+	assert.Equal(uint(1), resp.Count)
+	assert.Len(resp.Body, 1)
+	assert.Equal(uint(2), resp.Body[0].Version)
+	assert.Equal("Updated Agent Title", resp.Body[0].Title)
+
+	// Get non-existent version
+	v99 := uintPtr(99)
+	resp, err = s.ListAgents(context.TODO(), schema.ListAgentRequest{Name: testAgentMeta.Name, Version: v99})
+	assert.NoError(err)
+	assert.Equal(uint(0), resp.Count)
+	assert.Empty(resp.Body)
+}

@@ -26,7 +26,7 @@ func (c *Client) ListAgents(ctx context.Context, opts ...opt.Opt) (*schema.ListA
 	// Create request
 	req := client.NewRequest()
 	reqOpts := []client.RequestOpt{client.OptPath("agent")}
-	if q := o.Query(opt.LimitKey, opt.OffsetKey, opt.NameKey); len(q) > 0 {
+	if q := o.Query(opt.LimitKey, opt.OffsetKey, opt.NameKey, opt.VersionKey); len(q) > 0 {
 		reqOpts = append(reqOpts, client.OptQuery(q))
 	}
 

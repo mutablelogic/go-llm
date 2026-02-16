@@ -47,3 +47,8 @@ func WithLabel(key, value string) opt.Opt {
 func WithName(name string) opt.Opt {
 	return opt.SetString(opt.NameKey, name)
 }
+
+// WithVersion filters results by version number.
+func WithVersion(version uint) opt.Opt {
+	return opt.SetUint(opt.VersionKey, version)
+}

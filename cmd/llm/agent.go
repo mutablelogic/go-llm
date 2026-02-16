@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"net/http"
 	"path/filepath"
+	"strconv"
+	"strings"
 
 	// Packages
 	otel "github.com/mutablelogic/go-client/pkg/otel"
@@ -33,7 +35,7 @@ type ListAgentsCommand struct {
 }
 
 type GetAgentCommand struct {
-	ID string `arg:"" name:"id" help:"Agent ID or name"`
+	ID string `arg:"" name:"id" help:"Agent ID or name (use name@version for a specific version)"`
 }
 
 type CreateAgentCommand struct {
@@ -41,7 +43,7 @@ type CreateAgentCommand struct {
 }
 
 type DeleteAgentCommand struct {
-	ID string `arg:"" name:"id" help:"Agent ID or name"`
+	ID string `arg:"" name:"id" help:"Agent ID or name (use name@version for a specific version)"`
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -90,14 +92,27 @@ func (cmd *GetAgentCommand) Run(ctx *Globals) (err error) {
 	parent, endSpan := otel.StartSpan(ctx.tracer, ctx.ctx, "GetAgentCommand")
 	defer func() { endSpan(err) }()
 
-	// Get agent
-	agent, err := client.GetAgent(parent, cmd.ID)
-	if err != nil {
-		return err
-	}
+	// Parse name@version
+	name, version := parseAgentID(cmd.ID)
 
-	// Print
-	fmt.Println(agent)
+	// Get agent
+	if version != nil {
+		// Use ListAgents with name + version filter
+		response, err := client.ListAgents(parent, httpclient.WithName(name), httpclient.WithVersion(*version))
+		if err != nil {
+			return err
+		}
+		if len(response.Body) == 0 {
+			return fmt.Errorf("agent %q version %d not found", name, *version)
+		}
+		fmt.Println(response.Body[0])
+	} else {
+		agent, err := client.GetAgent(parent, name)
+		if err != nil {
+			return err
+		}
+		fmt.Println(agent)
+	}
 	return nil
 }
 
@@ -172,9 +187,26 @@ func (cmd *DeleteAgentCommand) Run(ctx *Globals) (err error) {
 	parent, endSpan := otel.StartSpan(ctx.tracer, ctx.ctx, "DeleteAgentCommand")
 	defer func() { endSpan(err) }()
 
+	// Parse name@version
+	name, version := parseAgentID(cmd.ID)
+
 	// Delete agent
-	if err := client.DeleteAgent(parent, cmd.ID); err != nil {
-		return err
+	if version != nil {
+		// Find specific version via ListAgents, then delete by ID
+		response, err := client.ListAgents(parent, httpclient.WithName(name), httpclient.WithVersion(*version))
+		if err != nil {
+			return err
+		}
+		if len(response.Body) == 0 {
+			return fmt.Errorf("agent %q version %d not found", name, *version)
+		}
+		if err := client.DeleteAgent(parent, response.Body[0].ID); err != nil {
+			return err
+		}
+	} else {
+		if err := client.DeleteAgent(parent, name); err != nil {
+			return err
+		}
 	}
 
 	return nil
@@ -208,4 +240,20 @@ func isNotFound(err error) bool {
 func isNotModified(err error) bool {
 	var httpErr httpresponse.Err
 	return err != nil && errors.As(err, &httpErr) && int(httpErr) == http.StatusNotModified
+}
+
+// parseAgentID splits an ID string of the form "name@version" into its
+// components. If no "@" is present, the entire string is the name and
+// version is nil.
+func parseAgentID(id string) (string, *uint) {
+	name, vstr, ok := strings.Cut(id, "@")
+	if !ok {
+		return id, nil
+	}
+	v, err := strconv.ParseUint(vstr, 10, 64)
+	if err != nil {
+		return id, nil
+	}
+	u := uint(v)
+	return name, &u
 }

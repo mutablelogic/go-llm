@@ -140,9 +140,10 @@ type ChatResponse struct {
 
 // ListAgentRequest represents a request to list agents
 type ListAgentRequest struct {
-	Name   string `json:"name,omitempty" help:"Filter by agent name" optional:""`
-	Limit  *uint  `json:"limit,omitempty" help:"Maximum number of agents to return"`
-	Offset uint   `json:"offset,omitempty" help:"Offset for pagination"`
+	Name    string `json:"name,omitempty" help:"Filter by agent name" optional:""`
+	Version *uint  `json:"version,omitempty" help:"Filter by version number (requires name)" optional:""`
+	Limit   *uint  `json:"limit,omitempty" help:"Maximum number of agents to return"`
+	Offset  uint   `json:"offset,omitempty" help:"Offset for pagination"`
 }
 
 // ListAgentResponse represents a response containing a list of agents
