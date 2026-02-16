@@ -5,4 +5,5 @@ const (
 	Gemini    = "gemini"
 	Anthropic = "anthropic"
 	Mistral   = "mistral"
+	Eliza     = "eliza"
 )

@@ -1,0 +1,343 @@
+{
+    "model": "eliza-1966-de",
+    "description": "ELIZA - Eine Simulation eines Rogersianischen Psychotherapeuten (Deutsch)",
+    "language": "de",
+    "quits": [
+        "quit",
+        "ende",
+        "tschüss",
+        "tschüs",
+        "auf wiedersehen",
+        "bis bald",
+        "ciao",
+        "ade"
+    ],
+    "greetings": [
+        "hallo",
+        "hi",
+        "hey",
+        "guten morgen",
+        "guten tag",
+        "guten abend",
+        "grüß gott",
+        "servus",
+        "moin"
+    ],
+    "reflections": {
+        "ich": "Sie",
+        "mich": "Sie",
+        "mir": "Ihnen",
+        "mein": "Ihr",
+        "meine": "Ihre",
+        "meinen": "Ihren",
+        "meinem": "Ihrem",
+        "meiner": "Ihrer",
+        "meines": "Ihres",
+        "bin": "sind",
+        "habe": "haben",
+        "werde": "werden",
+        "will": "wollen",
+        "kann": "können",
+        "muss": "müssen",
+        "soll": "sollen",
+        "darf": "dürfen",
+        "sie": "ich",
+        "ihr": "mein",
+        "ihre": "meine",
+        "ihnen": "mir",
+        "sind": "bin",
+        "haben": "habe",
+        "werden": "werde",
+        "wollen": "will",
+        "können": "kann",
+        "müssen": "muss",
+        "sollen": "soll",
+        "dürfen": "darf",
+        "wir": "Sie",
+        "uns": "Ihnen",
+        "unser": "Ihr",
+        "unsere": "Ihre"
+    },
+    "rules": [
+        {
+            "pattern": "\\b(entschuldigung|tut mir leid|verzeihung|sorry)\\b",
+            "responses": [
+                "Bitte entschuldigen Sie sich nicht.",
+                "Entschuldigungen sind nicht nötig.",
+                "Welche Gefühle haben Sie, wenn Sie sich entschuldigen?",
+                "Seien Sie nicht so defensiv!"
+            ]
+        },
+        {
+            "pattern": "\\b(mutter|vater|mama|papa|eltern|bruder|schwester|familie|geschwister)\\b",
+            "responses": [
+                "Erzählen Sie mir mehr über Ihre Familie.",
+                "Wie fühlen Sie sich in Bezug auf Ihre Familie?",
+                "Welche Rolle spielt die Familie in Ihrem Leben?",
+                "Woran denken Sie, wenn Sie an Familie denken?",
+                "Wie war Ihre Beziehung zu Ihrer Familie beim Aufwachsen?"
+            ]
+        },
+        {
+            "pattern": "ich brauche (.*)",
+            "memorable": true,
+            "responses": [
+                "Warum brauchen Sie %s?",
+                "Würde es Ihnen wirklich helfen, %s zu bekommen?",
+                "Sind Sie sicher, dass Sie %s brauchen?",
+                "Was würde es für Sie bedeuten, wenn Sie %s bekämen?"
+            ]
+        },
+        {
+            "pattern": "warum (?:tun Sie|machen Sie) nicht (.*)",
+            "responses": [
+                "Glauben Sie wirklich, dass ich nicht %s?",
+                "Vielleicht werde ich irgendwann %s.",
+                "Wollen Sie wirklich, dass ich %s?",
+                "Möchten Sie, dass ich %s?"
+            ]
+        },
+        {
+            "pattern": "warum kann ich nicht (.*)",
+            "responses": [
+                "Glauben Sie, dass Sie in der Lage sein sollten, %s?",
+                "Wenn Sie %s könnten, was würden Sie tun?",
+                "Ich weiß nicht -- warum können Sie nicht %s?",
+                "Haben Sie es wirklich versucht?"
+            ]
+        },
+        {
+            "pattern": "ich kann nicht (.*)",
+            "memorable": true,
+            "responses": [
+                "Woher wissen Sie, dass Sie nicht %s können?",
+                "Vielleicht könnten Sie %s, wenn Sie es versuchen würden.",
+                "Was bräuchte es, damit Sie %s?",
+                "Haben Sie versucht zu %s?"
+            ]
+        },
+        {
+            "pattern": "ich bin (.*)",
+            "memorable": true,
+            "responses": [
+                "Sind Sie wegen %s zu mir gekommen?",
+                "Wie lange sind Sie schon %s?",
+                "Wie fühlen Sie sich dabei, %s zu sein?",
+                "Glauben Sie, dass es normal ist, %s zu sein?",
+                "Genießen Sie es, %s zu sein?"
+            ]
+        },
+        {
+            "pattern": "sind sie (.*)",
+            "responses": [
+                "Warum ist es wichtig, ob ich %s bin?",
+                "Wäre es Ihnen lieber, wenn ich nicht %s wäre?",
+                "Vielleicht glauben Sie, dass ich %s bin.",
+                "Ich bin vielleicht %s -- was denken Sie?",
+                "Warum interessiert es Sie, ob ich %s bin oder nicht?"
+            ]
+        },
+        {
+            "pattern": "was (.*)",
+            "responses": [
+                "Warum fragen Sie?",
+                "Wie würde Ihnen eine Antwort darauf helfen?",
+                "Was denken Sie?",
+                "Interessiert Sie diese Frage?"
+            ]
+        },
+        {
+            "pattern": "wie (.*)",
+            "responses": [
+                "Was vermuten Sie?",
+                "Vielleicht können Sie Ihre eigene Frage beantworten.",
+                "Was wollen Sie wirklich wissen?",
+                "Was denken Sie?"
+            ]
+        },
+        {
+            "pattern": "weil (.*)",
+            "responses": [
+                "Ist das der wirkliche Grund?",
+                "Welche anderen Gründe könnte es geben?",
+                "Scheint dieser Grund noch etwas anderes zu erklären?",
+                "Welche anderen Gründe fallen Ihnen ein?"
+            ]
+        },
+        {
+            "pattern": "ich denke (.*)",
+            "memorable": true,
+            "responses": [
+                "Zweifeln Sie an %s?",
+                "Denken Sie das wirklich?",
+                "Aber Sie sind sich nicht sicher über %s?",
+                "Was lässt Sie denken, dass %s?"
+            ]
+        },
+        {
+            "pattern": "ich fühle (.*)",
+            "memorable": true,
+            "responses": [
+                "Erzählen Sie mir mehr darüber, wie Sie sich %s fühlen.",
+                "Fühlen Sie sich oft %s?",
+                "Wann fühlen Sie sich normalerweise %s?",
+                "Wenn Sie sich %s fühlen, was tun Sie dann?"
+            ]
+        },
+        {
+            "pattern": "ich will (.*)",
+            "memorable": true,
+            "responses": [
+                "Was würde es bedeuten, wenn Sie %s bekämen?",
+                "Warum wollen Sie %s?",
+                "Was würden Sie tun, wenn Sie %s bekämen?",
+                "Wenn Sie %s bekämen, was dann?",
+                "Angenommen, Sie bekämen bald %s -- und dann?"
+            ]
+        },
+        {
+            "pattern": "ich wünsche (.*)",
+            "memorable": true,
+            "responses": [
+                "Warum wünschen Sie sich %s?",
+                "Wünschen Sie sich wirklich %s?",
+                "Was würde es bedeuten, wenn %s wahr würde?",
+                "Angenommen, %s würde wahr -- was dann?"
+            ]
+        },
+        {
+            "pattern": "sie sind (.*)",
+            "responses": [
+                "Was lässt Sie denken, dass ich %s bin?",
+                "Gefällt es Ihnen zu denken, dass ich %s bin?",
+                "Vielleicht möchten Sie, dass ich %s bin.",
+                "Vielleicht reden Sie eigentlich über sich selbst?"
+            ]
+        },
+        {
+            "pattern": "^ja$|^ja[,.]|^jawohl|^genau|^stimmt",
+            "responses": [
+                "Sie scheinen sich ziemlich sicher zu sein.",
+                "Ich verstehe.",
+                "Verstehe.",
+                "Können Sie das näher erläutern?"
+            ]
+        },
+        {
+            "pattern": "^nein$|^nein[,.]|^nö|^nee",
+            "responses": [
+                "Warum nicht?",
+                "Sie sind ein wenig negativ.",
+                "Sagen Sie nein, nur um negativ zu sein?",
+                "Warum sagen Sie nein?"
+            ]
+        },
+        {
+            "pattern": "\\b(computer|maschine|roboter|ki|künstliche intelligenz|bot)\\b",
+            "responses": [
+                "Machen Ihnen Computer Sorgen?",
+                "Warum erwähnen Sie Computer?",
+                "Was denken Sie, was Maschinen mit Ihrem Problem zu tun haben?",
+                "Glauben Sie nicht, dass Computer Menschen helfen können?",
+                "Was an Maschinen beunruhigt Sie?",
+                "Was ist es an Maschinen, das Sie beschäftigt?"
+            ]
+        },
+        {
+            "pattern": "\\b(traum|träume|geträumt|alptraum|albtraum)\\b",
+            "memorable": true,
+            "responses": [
+                "Was deutet dieser Traum für Sie an?",
+                "Träumen Sie oft?",
+                "Welche Personen erscheinen in Ihren Träumen?",
+                "Glauben Sie nicht, dass der Traum etwas mit Ihrem Problem zu tun hat?",
+                "Wie fühlen Sie sich bei diesem Traum?"
+            ]
+        },
+        {
+            "pattern": "\\bimmer\\b",
+            "responses": [
+                "Können Sie an ein konkretes Beispiel denken?",
+                "Wann?",
+                "An welchen Vorfall denken Sie?",
+                "Wirklich -- immer?",
+                "Ist das tatsächlich immer der Fall?"
+            ]
+        },
+        {
+            "pattern": "\\bnie\\b|\\bniemals\\b",
+            "responses": [
+                "Nicht einmal?",
+                "Nie ist ein starkes Wort.",
+                "Können Sie genauer sein?",
+                "Sind Sie sich da sicher?"
+            ]
+        },
+        {
+            "pattern": "\\b(vielleicht|möglicherweise|eventuell|womöglich)\\b",
+            "responses": [
+                "Sie scheinen sich nicht ganz sicher zu sein.",
+                "Warum der unsichere Ton?",
+                "Können Sie nicht positiver sein?",
+                "Sie sind sich nicht sicher?",
+                "Wissen Sie es nicht?"
+            ]
+        },
+        {
+            "pattern": "\\b(jeder|alle|niemand|keiner|jemand|irgendwer)\\b",
+            "responses": [
+                "Wirklich, alle?",
+                "Bestimmt nicht alle.",
+                "Können Sie an jemand Bestimmtes denken?",
+                "Wer zum Beispiel?",
+                "Denken Sie an eine bestimmte Person?"
+            ]
+        },
+        {
+            "pattern": "\\b(ähnlich|gleich|dasselbe|identisch)\\b",
+            "responses": [
+                "Inwiefern genau?",
+                "Welche Ähnlichkeit sehen Sie?",
+                "Was bedeutet diese Ähnlichkeit für Sie?",
+                "Welche anderen Zusammenhänge sehen Sie?",
+                "Was glauben Sie, impliziert das?"
+            ]
+        }
+    ],
+    "greetingResponses": [
+        "Hallo. Wie fühlen Sie sich heute?",
+        "Guten Tag. Was beschäftigt Sie?",
+        "Hallo. Was führt Sie heute hierher?",
+        "Willkommen. Wie kann ich Ihnen helfen, Ihre Gedanken zu erforschen?",
+        "Hallo. Erzählen Sie mir, was Sie bedrückt."
+    ],
+    "goodbyeResponses": [
+        "Auf Wiedersehen. Ich hoffe, dieses Gespräch war hilfreich.",
+        "Danke für das Gespräch. Auf Wiedersehen.",
+        "Auf Wiedersehen. Passen Sie auf sich auf.",
+        "Es war schön, mit Ihnen zu sprechen. Auf Wiedersehen.",
+        "Auf Wiedersehen. Denken Sie daran, ich bin hier, wenn Sie reden möchten."
+    ],
+    "defaultResponses": [
+        "Bitte fahren Sie fort.",
+        "Erzählen Sie mir mehr.",
+        "Können Sie das näher erläutern?",
+        "Das ist interessant. Bitte fahren Sie fort.",
+        "Ich verstehe. Und was denken Sie darüber?",
+        "Wie fühlen Sie sich dabei?",
+        "Worüber möchten Sie noch sprechen?",
+        "Sehr interessant.",
+        "Ich bin mir nicht sicher, ob ich Sie vollständig verstehe.",
+        "Bitte erzählen Sie mir mehr darüber.",
+        "Lassen Sie uns das weiter erforschen.",
+        "Empfinden Sie stark, wenn Sie über solche Dinge sprechen?",
+        "Was deutet das für Sie an?"
+    ],
+    "memoryResponses": [
+        "Vorhin erwähnten Sie",
+        "Lassen Sie uns auf etwas zurückkommen, das Sie sagten:",
+        "Sie erwähnten vorhin, dass",
+        "Hat das etwas mit dem zu tun, was Sie über",
+        "Erzählen Sie mir mehr über das, was Sie sagten über"
+    ]
+}
