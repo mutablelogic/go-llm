@@ -269,15 +269,24 @@ func generateRequestFromOpts(model string, session *schema.Conversation, options
 		request.GenerationConfig.ResponseJSONSchema = s
 	}
 
-	// Tools from toolkit
+	// Collect tools from toolkit and individual WithTool opts
+	var allTools []tool.Tool
 	if v := options.Get(opt.ToolkitKey); v != nil {
 		if tk, ok := v.(*tool.Toolkit); ok {
-			decls := geminiFunctionDeclsFromToolkit(tk)
-			if len(decls) > 0 {
-				request.Tools = []*geminiTool{{
-					FunctionDeclarations: decls,
-				}}
-			}
+			allTools = append(allTools, tk.Tools()...)
+		}
+	}
+	if v := options.Get(opt.ToolKey); v != nil {
+		if extra, ok := v.([]tool.Tool); ok {
+			allTools = append(allTools, extra...)
+		}
+	}
+	if len(allTools) > 0 {
+		decls := geminiFunctionDeclsFromTools(allTools)
+		if len(decls) > 0 {
+			request.Tools = []*geminiTool{{
+				FunctionDeclarations: decls,
+			}}
 		}
 	}
 

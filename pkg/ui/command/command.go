@@ -14,6 +14,7 @@ import (
 	"github.com/mutablelogic/go-llm/pkg/opt"
 	"github.com/mutablelogic/go-llm/pkg/schema"
 	"github.com/mutablelogic/go-llm/pkg/ui"
+	uitable "github.com/mutablelogic/go-llm/pkg/ui/table"
 )
 
 // Client is the minimal API surface needed by the command handler.
@@ -26,6 +27,8 @@ type Client interface {
 	ListSessions(ctx context.Context, opts ...opt.Opt) (*schema.ListSessionResponse, error)
 	ListModels(ctx context.Context, opts ...opt.Opt) (*schema.ListModelsResponse, error)
 	ListTools(ctx context.Context, opts ...opt.Opt) (*schema.ListToolResponse, error)
+	ListAgents(ctx context.Context, opts ...opt.Opt) (*schema.ListAgentResponse, error)
+	GetAgent(ctx context.Context, id string) (*schema.Agent, error)
 }
 
 // Hooks allows frontends to inject UI-specific behaviour into certain
@@ -79,6 +82,10 @@ func (h *Handler) Handle(ctx context.Context, evt ui.Event, sessionID *string) e
 		return h.cmdThinking(ctx, evt, sessionID)
 	case "tools":
 		return h.cmdTools(ctx, evt)
+	case "agents":
+		return h.cmdAgents(ctx, evt)
+	case "agent":
+		return h.cmdAgent(ctx, evt)
 	case "models":
 		return h.cmdModels(ctx, evt)
 	case "providers":
@@ -197,21 +204,10 @@ func (h *Handler) cmdSessions(ctx context.Context, evt ui.Event, sessionID *stri
 	if len(resp.Body) == 0 {
 		return evt.Context.SendText(ctx, "No sessions found")
 	}
-	var buf strings.Builder
-	buf.WriteString("| | Session | Model | Msgs | Name |\n")
-	buf.WriteString("|---|---------|-------|------|------|")
-	for _, s := range resp.Body {
-		model := s.Model
-		if s.Provider != "" {
-			model = s.Provider + "/" + model
-		}
-		marker := " "
-		if s.ID == *sessionID {
-			marker = "\u25b8"
-		}
-		buf.WriteString(fmt.Sprintf("\n| %s | %s | %s | %d | %s |", marker, s.ID, model, len(s.Messages), s.Name))
-	}
-	return evt.Context.SendText(ctx, buf.String())
+	return evt.Context.SendText(ctx, uitable.RenderMarkdown(schema.SessionTable{
+		Sessions:       resp.Body,
+		CurrentSession: *sessionID,
+	}))
 }
 
 func (h *Handler) cmdReset(ctx context.Context, evt ui.Event, sessionID *string) error {
@@ -350,13 +346,7 @@ func (h *Handler) cmdTools(ctx context.Context, evt ui.Event) error {
 	if len(resp.Body) == 0 {
 		return evt.Context.SendText(ctx, "No tools available")
 	}
-	var buf strings.Builder
-	buf.WriteString("| Tool | Description |\n")
-	buf.WriteString("|------|-------------|")
-	for _, t := range resp.Body {
-		buf.WriteString(fmt.Sprintf("\n| %s | %s |", t.Name, t.Description))
-	}
-	return evt.Context.SendText(ctx, buf.String())
+	return evt.Context.SendText(ctx, uitable.RenderMarkdown(schema.ToolTable(resp.Body)))
 }
 
 func (h *Handler) cmdModels(ctx context.Context, evt ui.Event) error {
@@ -371,13 +361,9 @@ func (h *Handler) cmdModels(ctx context.Context, evt ui.Event) error {
 	if len(resp.Body) == 0 {
 		return evt.Context.SendText(ctx, "No models found")
 	}
-	var buf strings.Builder
-	buf.WriteString("| Provider | Model | Description |\n")
-	buf.WriteString("|----------|-------|-------------|")
-	for _, m := range resp.Body {
-		buf.WriteString(fmt.Sprintf("\n| %s | %s | %s |", m.OwnedBy, m.Name, m.Description))
-	}
-	return evt.Context.SendText(ctx, buf.String())
+	return evt.Context.SendText(ctx, uitable.RenderMarkdown(schema.ModelTable{
+		Models: resp.Body,
+	}))
 }
 
 func (h *Handler) cmdProviders(ctx context.Context, evt ui.Event) error {
@@ -428,6 +414,56 @@ func (h *Handler) cmdLabel(ctx context.Context, evt ui.Event, sessionID *string)
 	return evt.Context.SendText(ctx, fmt.Sprintf("Labels updated: %s", strings.Join(parts, ", ")))
 }
 
+func (h *Handler) cmdAgents(ctx context.Context, evt ui.Event) error {
+	resp, err := h.client.ListAgents(ctx)
+	if err != nil {
+		return err
+	}
+	if len(resp.Body) == 0 {
+		return evt.Context.SendText(ctx, "No agents found")
+	}
+	return evt.Context.SendText(ctx, uitable.RenderMarkdown(schema.AgentTable(resp.Body)))
+}
+
+func (h *Handler) cmdAgent(ctx context.Context, evt ui.Event) error {
+	if len(evt.Args) == 0 {
+		return fmt.Errorf("usage: /agent <name>")
+	}
+	id := evt.Args[0]
+	a, err := h.client.GetAgent(ctx, id)
+	if err != nil {
+		return fmt.Errorf("agent %q not found", id)
+	}
+	var buf strings.Builder
+	buf.WriteString("| | |\n|---|---|")
+	buf.WriteString(fmt.Sprintf("\n| **Name** | %s |", a.Name))
+	if a.Title != "" {
+		buf.WriteString(fmt.Sprintf("\n| **Title** | %s |", a.Title))
+	}
+	if a.Description != "" {
+		buf.WriteString(fmt.Sprintf("\n| **Description** | %s |", a.Description))
+	}
+	buf.WriteString(fmt.Sprintf("\n| **Version** | %d |", a.Version))
+	if a.Model != "" {
+		model := a.Model
+		if a.Provider != "" {
+			model = a.Provider + "/" + model
+		}
+		buf.WriteString(fmt.Sprintf("\n| **Model** | %s |", model))
+	}
+	if len(a.Tools) > 0 {
+		buf.WriteString(fmt.Sprintf("\n| **Tools** | %s |", strings.Join(a.Tools, ", ")))
+	}
+	if len(a.Format) > 0 {
+		buf.WriteString("\n| **Format** | (JSON schema) |")
+	}
+	if len(a.Input) > 0 {
+		buf.WriteString("\n| **Input** | (JSON schema) |")
+	}
+	buf.WriteString(fmt.Sprintf("\n| **Created** | %s |", a.Created.Format("2006-01-02 15:04:05")))
+	return evt.Context.SendText(ctx, buf.String())
+}
+
 func (h *Handler) cmdDelete(ctx context.Context, evt ui.Event, sessionID *string) error {
 	if len(evt.Args) == 0 {
 		return fmt.Errorf("usage: /delete <session-id>")
@@ -456,6 +492,8 @@ func (h *Handler) cmdHelp(ctx context.Context, evt ui.Event) error {
 		"/system [prompt]        - Show or set the system prompt\n" +
 		"/thinking [on|off]      - Show or toggle thinking mode\n" +
 		"/tools                  - List available tools\n" +
+		"/agents                 - List available agents\n" +
+		"/agent <name>           - Show agent details\n" +
 		"/label [key=value ...]  - Show or set session labels\n" +
 		"/help                   - Show this help\n" +
 		"```"

@@ -62,12 +62,19 @@ func (tk *Toolkit) Tools() []Tool {
 }
 
 // Register adds one or more tools to the toolkit.
-// Returns an error if any tool has an invalid or duplicate name.
+// Returns an error if any tool has an invalid or duplicate name,
+// or if the name is reserved (e.g. "submit_output").
 func (tk *Toolkit) Register(tools ...Tool) error {
 	for _, t := range tools {
 		name := t.Name()
 		if !types.IsIdentifier(name) {
 			return llm.ErrBadParameter.Withf("invalid tool name: %q", name)
+		}
+		// Reject reserved names unless the tool is the internal OutputTool
+		if isReservedToolName(name) {
+			if _, ok := t.(*OutputTool); !ok {
+				return llm.ErrBadParameter.Withf("reserved tool name: %q", name)
+			}
 		}
 		if _, exists := tk.tools[name]; exists {
 			return llm.ErrBadParameter.Withf("duplicate tool name: %q", name)
@@ -75,6 +82,11 @@ func (tk *Toolkit) Register(tools ...Tool) error {
 		tk.tools[name] = t
 	}
 	return nil
+}
+
+// isReservedToolName returns true if the name is reserved for internal use.
+func isReservedToolName(name string) bool {
+	return name == OutputToolName
 }
 
 // Lookup returns a tool by name, or nil if not found

@@ -744,8 +744,7 @@ func Test_generate_001(t *testing.T) {
 	assert.NotNil(response)
 	assert.Equal("assistant", response.Role)
 	assert.NotEmpty(response.Content)
-	assert.NotNil(response.Content[0].Text)
-	t.Logf("Response: %s", *response.Content[0].Text)
+	t.Logf("Response: %s", response.Text())
 }
 
 func Test_generate_002(t *testing.T) {
@@ -796,7 +795,7 @@ func Test_generate_003(t *testing.T) {
 	resp1, _, err := c.WithSession(context.TODO(), model, session, msg1)
 	assert.NoError(err)
 	assert.NotNil(resp1)
-	t.Logf("Turn 1: %s", *resp1.Content[0].Text)
+	t.Logf("Turn 1: %s", resp1.Text())
 
 	// Second turn — model should remember
 	msg2, err := schema.NewMessage("user", "What is my name?")
@@ -805,9 +804,8 @@ func Test_generate_003(t *testing.T) {
 	resp2, _, err := c.WithSession(context.TODO(), model, session, msg2)
 	assert.NoError(err)
 	assert.NotNil(resp2)
-	assert.NotNil(resp2.Content[0].Text)
-	assert.Contains(*resp2.Content[0].Text, "Alice")
-	t.Logf("Turn 2: %s", *resp2.Content[0].Text)
+	assert.Contains(resp2.Text(), "Alice")
+	t.Logf("Turn 2: %s", resp2.Text())
 }
 
 func Test_generate_004(t *testing.T) {
@@ -830,8 +828,8 @@ func Test_generate_004(t *testing.T) {
 		WithMaxTokens(200),
 	)
 	assert.NoError(err)
-	if assert.NotNil(response) && len(response.Content) > 0 && response.Content[0].Text != nil {
-		t.Logf("Response: %s", *response.Content[0].Text)
+	if assert.NotNil(response) {
+		t.Logf("Response: %s", response.Text())
 	}
 }
 
@@ -856,7 +854,7 @@ func Test_generate_005(t *testing.T) {
 	)
 	assert.NoError(err)
 	assert.NotNil(response)
-	t.Logf("Response: %s", *response.Content[0].Text)
+	t.Logf("Response: %s", response.Text())
 }
 
 ///////////////////////////////////////////////////////////////////////////////

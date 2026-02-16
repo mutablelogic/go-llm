@@ -32,30 +32,30 @@ type Session struct {
 	Modified time.Time    `json:"modified"`
 }
 
-// Store is the interface for session storage backends.
-type Store interface {
-	// Create creates a new session from the given metadata,
+// SessionStore is the interface for session storage backends.
+type SessionStore interface {
+	// CreateSession creates a new session from the given metadata,
 	// returning the session with a unique ID assigned.
-	Create(ctx context.Context, meta SessionMeta) (*Session, error)
+	CreateSession(ctx context.Context, meta SessionMeta) (*Session, error)
 
-	// Get retrieves an existing session by ID.
+	// GetSession retrieves an existing session by ID.
 	// Returns an error if the session does not exist.
-	Get(ctx context.Context, id string) (*Session, error)
+	GetSession(ctx context.Context, id string) (*Session, error)
 
-	// List returns sessions matching the request, with pagination support.
+	// ListSessions returns sessions matching the request, with pagination support.
 	// Returns offset, limit and total count in the response.
-	List(ctx context.Context, req ListSessionRequest) (*ListSessionResponse, error)
+	ListSessions(ctx context.Context, req ListSessionRequest) (*ListSessionResponse, error)
 
-	// Delete removes a session by ID.
+	// DeleteSession removes a session by ID.
 	// Returns an error if the session does not exist.
-	Delete(ctx context.Context, id string) error
+	DeleteSession(ctx context.Context, id string) error
 
-	// Update applies non-zero fields from the given metadata to an existing session.
+	// UpdateSession applies non-zero fields from the given metadata to an existing session.
 	// Returns the updated session or an error if the session does not exist.
-	Update(ctx context.Context, id string, meta SessionMeta) (*Session, error)
+	UpdateSession(ctx context.Context, id string, meta SessionMeta) (*Session, error)
 
-	// Write persists the current state of a session.
-	Write(s *Session) error
+	// WriteSession persists the current state of a session.
+	WriteSession(s *Session) error
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -122,7 +122,7 @@ func (s *Session) Tokens() uint {
 }
 
 // Conversation returns a pointer to the underlying message slice,
-// compatible with agent.WithSession.
+// compatible with generator.WithSession.
 func (s *Session) Conversation() *Conversation {
 	return &s.Messages
 }

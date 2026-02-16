@@ -9,8 +9,8 @@ import (
 	// Packages
 	jsonschema "github.com/google/jsonschema-go/jsonschema"
 	llm "github.com/mutablelogic/go-llm"
-	agent "github.com/mutablelogic/go-llm/pkg/agent"
 	httphandler "github.com/mutablelogic/go-llm/pkg/httphandler"
+	manager "github.com/mutablelogic/go-llm/pkg/manager"
 	opt "github.com/mutablelogic/go-llm/pkg/opt"
 	schema "github.com/mutablelogic/go-llm/pkg/schema"
 	tool "github.com/mutablelogic/go-llm/pkg/tool"
@@ -116,47 +116,47 @@ func (c *mockGeneratorClient) WithSession(_ context.Context, _ schema.Model, _ *
 ///////////////////////////////////////////////////////////////////////////////
 // HELPERS
 
-func newTestManager(t *testing.T, clients []mockClient, tools ...tool.Tool) *agent.Manager {
+func newTestManager(t *testing.T, clients []mockClient, tools ...tool.Tool) *manager.Manager {
 	t.Helper()
-	var opts []agent.Opt
+	var opts []manager.Opt
 	for i := range clients {
-		opts = append(opts, agent.WithClient(&clients[i]))
+		opts = append(opts, manager.WithClient(&clients[i]))
 	}
 	if len(tools) > 0 {
 		tk, err := tool.NewToolkit(tools...)
 		if err != nil {
 			t.Fatal(err)
 		}
-		opts = append(opts, agent.WithToolkit(tk))
+		opts = append(opts, manager.WithToolkit(tk))
 	}
-	m, err := agent.NewManager(opts...)
+	m, err := manager.NewManager(opts...)
 	if err != nil {
 		t.Fatal(err)
 	}
 	return m
 }
 
-func newTestManagerWithGenerator(t *testing.T, clients []*mockGeneratorClient, tools ...tool.Tool) *agent.Manager {
+func newTestManagerWithGenerator(t *testing.T, clients []*mockGeneratorClient, tools ...tool.Tool) *manager.Manager {
 	t.Helper()
-	var opts []agent.Opt
+	var opts []manager.Opt
 	for _, c := range clients {
-		opts = append(opts, agent.WithClient(c))
+		opts = append(opts, manager.WithClient(c))
 	}
 	if len(tools) > 0 {
 		tk, err := tool.NewToolkit(tools...)
 		if err != nil {
 			t.Fatal(err)
 		}
-		opts = append(opts, agent.WithToolkit(tk))
+		opts = append(opts, manager.WithToolkit(tk))
 	}
-	m, err := agent.NewManager(opts...)
+	m, err := manager.NewManager(opts...)
 	if err != nil {
 		t.Fatal(err)
 	}
 	return m
 }
 
-func serveMux(manager *agent.Manager) *http.ServeMux {
+func serveMux(manager *manager.Manager) *http.ServeMux {
 	mux := http.NewServeMux()
 	path, handler, _ := httphandler.ModelListHandler(manager)
 	mux.HandleFunc(path, handler)
@@ -171,6 +171,10 @@ func serveMux(manager *agent.Manager) *http.ServeMux {
 	path, handler, _ = httphandler.SessionHandler(manager)
 	mux.HandleFunc(path, handler)
 	path, handler, _ = httphandler.SessionGetHandler(manager)
+	mux.HandleFunc(path, handler)
+	path, handler, _ = httphandler.AgentHandler(manager)
+	mux.HandleFunc(path, handler)
+	path, handler, _ = httphandler.AgentGetHandler(manager)
 	mux.HandleFunc(path, handler)
 	path, handler, _ = httphandler.AskHandler(manager)
 	mux.HandleFunc(path, handler)

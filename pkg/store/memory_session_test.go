@@ -1,0 +1,411 @@
+package store_test
+
+import (
+	"context"
+	"testing"
+	"time"
+
+	schema "github.com/mutablelogic/go-llm/pkg/schema"
+	store "github.com/mutablelogic/go-llm/pkg/store"
+	assert "github.com/stretchr/testify/assert"
+)
+
+var testMeta = schema.SessionMeta{Name: "test", GeneratorMeta: schema.GeneratorMeta{Model: "test-model", Provider: "test-provider"}}
+
+func textPtr(s string) *string { return &s }
+
+func Test_memory_session_001(t *testing.T) {
+	assert := assert.New(t)
+	store := store.NewMemorySessionStore()
+	assert.NotNil(store)
+}
+
+func Test_memory_session_002(t *testing.T) {
+	assert := assert.New(t)
+	store := store.NewMemorySessionStore()
+	s, err := store.CreateSession(context.TODO(), schema.SessionMeta{Name: "my chat", GeneratorMeta: schema.GeneratorMeta{Model: "test-model", Provider: "test-provider"}})
+	assert.NoError(err)
+	assert.NotNil(s)
+	assert.NotEmpty(s.ID)
+	assert.Equal("my chat", s.Name)
+	assert.Equal("test-model", s.Model)
+	assert.Equal("test-provider", s.Provider)
+	assert.Empty(s.Messages)
+	assert.False(s.Created.IsZero())
+	assert.False(s.Modified.IsZero())
+}
+
+func Test_memory_session_003(t *testing.T) {
+	assert := assert.New(t)
+	store := store.NewMemorySessionStore()
+	_, err := store.CreateSession(context.TODO(), schema.SessionMeta{Name: "test"})
+	assert.Error(err)
+}
+
+func Test_memory_session_004(t *testing.T) {
+	assert := assert.New(t)
+	store := store.NewMemorySessionStore()
+	s1, err := store.CreateSession(context.TODO(), schema.SessionMeta{Name: "first", GeneratorMeta: schema.GeneratorMeta{Model: "test-model", Provider: "test-provider"}})
+	assert.NoError(err)
+	s2, err := store.CreateSession(context.TODO(), schema.SessionMeta{Name: "second", GeneratorMeta: schema.GeneratorMeta{Model: "test-model", Provider: "test-provider"}})
+	assert.NoError(err)
+	assert.NotEqual(s1.ID, s2.ID)
+}
+
+func Test_memory_session_005(t *testing.T) {
+	assert := assert.New(t)
+	store := store.NewMemorySessionStore()
+	s, err := store.CreateSession(context.TODO(), schema.SessionMeta{Name: "", GeneratorMeta: schema.GeneratorMeta{Model: "test-model", Provider: "test-provider"}})
+	assert.NoError(err)
+	assert.Equal("", s.Name)
+}
+
+func Test_memory_session_006(t *testing.T) {
+	assert := assert.New(t)
+	store := store.NewMemorySessionStore()
+	created, _ := store.CreateSession(context.TODO(), schema.SessionMeta{Name: "test", GeneratorMeta: schema.GeneratorMeta{Model: "test-model", Provider: "test-provider"}})
+	got, err := store.GetSession(context.TODO(), created.ID)
+	assert.NoError(err)
+	assert.Equal(created.ID, got.ID)
+	assert.Equal(created.Name, got.Name)
+}
+
+func Test_memory_session_007(t *testing.T) {
+	assert := assert.New(t)
+	store := store.NewMemorySessionStore()
+	_, err := store.GetSession(context.TODO(), "nonexistent")
+	assert.Error(err)
+}
+
+func Test_memory_session_008(t *testing.T) {
+	assert := assert.New(t)
+	store := store.NewMemorySessionStore()
+	s, _ := store.CreateSession(context.TODO(), schema.SessionMeta{Name: "test", GeneratorMeta: schema.GeneratorMeta{Model: "test-model", Provider: "test-provider"}})
+	err := store.DeleteSession(context.TODO(), s.ID)
+	assert.NoError(err)
+	_, err = store.GetSession(context.TODO(), s.ID)
+	assert.Error(err)
+}
+
+func Test_memory_session_009(t *testing.T) {
+	assert := assert.New(t)
+	store := store.NewMemorySessionStore()
+	err := store.DeleteSession(context.TODO(), "nonexistent")
+	assert.Error(err)
+}
+
+func Test_memory_session_010(t *testing.T) {
+	assert := assert.New(t)
+	store := store.NewMemorySessionStore()
+	resp, err := store.ListSessions(context.TODO(), schema.ListSessionRequest{})
+	assert.NoError(err)
+	assert.Empty(resp.Body)
+}
+
+func Test_memory_session_011(t *testing.T) {
+	assert := assert.New(t)
+	store := store.NewMemorySessionStore()
+	store.CreateSession(context.TODO(), schema.SessionMeta{Name: "first", GeneratorMeta: schema.GeneratorMeta{Model: "test-model", Provider: "test-provider"}})
+	store.CreateSession(context.TODO(), schema.SessionMeta{Name: "second", GeneratorMeta: schema.GeneratorMeta{Model: "test-model", Provider: "test-provider"}})
+	store.CreateSession(context.TODO(), schema.SessionMeta{Name: "third", GeneratorMeta: schema.GeneratorMeta{Model: "test-model", Provider: "test-provider"}})
+	resp, err := store.ListSessions(context.TODO(), schema.ListSessionRequest{})
+	assert.NoError(err)
+	assert.Len(resp.Body, 3)
+}
+
+func Test_memory_session_012(t *testing.T) {
+	assert := assert.New(t)
+	store := store.NewMemorySessionStore()
+	s1, _ := store.CreateSession(context.TODO(), schema.SessionMeta{Name: "oldest", GeneratorMeta: schema.GeneratorMeta{Model: "test-model", Provider: "test-provider"}})
+	time.Sleep(10 * time.Millisecond)
+	s2, _ := store.CreateSession(context.TODO(), schema.SessionMeta{Name: "middle", GeneratorMeta: schema.GeneratorMeta{Model: "test-model", Provider: "test-provider"}})
+	time.Sleep(10 * time.Millisecond)
+	s3, _ := store.CreateSession(context.TODO(), schema.SessionMeta{Name: "newest", GeneratorMeta: schema.GeneratorMeta{Model: "test-model", Provider: "test-provider"}})
+	resp, err := store.ListSessions(context.TODO(), schema.ListSessionRequest{})
+	assert.NoError(err)
+	assert.Len(resp.Body, 3)
+	assert.Equal(s3.ID, resp.Body[0].ID)
+	assert.Equal(s2.ID, resp.Body[1].ID)
+	assert.Equal(s1.ID, resp.Body[2].ID)
+}
+
+func Test_memory_session_013(t *testing.T) {
+	assert := assert.New(t)
+	store := store.NewMemorySessionStore()
+	s1, _ := store.CreateSession(context.TODO(), schema.SessionMeta{Name: "first", GeneratorMeta: schema.GeneratorMeta{Model: "test-model", Provider: "test-provider"}})
+	time.Sleep(10 * time.Millisecond)
+	store.CreateSession(context.TODO(), schema.SessionMeta{Name: "second", GeneratorMeta: schema.GeneratorMeta{Model: "test-model", Provider: "test-provider"}})
+	time.Sleep(10 * time.Millisecond)
+	msg := schema.Message{Role: schema.RoleUser, Content: []schema.ContentBlock{{Text: textPtr("hello")}}}
+	s1.Append(msg)
+	resp, err := store.ListSessions(context.TODO(), schema.ListSessionRequest{})
+	assert.NoError(err)
+	assert.Equal(s1.ID, resp.Body[0].ID)
+}
+
+func Test_memory_session_014(t *testing.T) {
+	assert := assert.New(t)
+	store := store.NewMemorySessionStore()
+	s, _ := store.CreateSession(context.TODO(), schema.SessionMeta{Name: "doomed", GeneratorMeta: schema.GeneratorMeta{Model: "test-model", Provider: "test-provider"}})
+	store.CreateSession(context.TODO(), schema.SessionMeta{Name: "keeper", GeneratorMeta: schema.GeneratorMeta{Model: "test-model", Provider: "test-provider"}})
+	store.DeleteSession(context.TODO(), s.ID)
+	resp, err := store.ListSessions(context.TODO(), schema.ListSessionRequest{})
+	assert.NoError(err)
+	assert.Len(resp.Body, 1)
+	assert.Equal("keeper", resp.Body[0].Name)
+}
+
+// Test Update changes name
+func Test_memory_session_015(t *testing.T) {
+	assert := assert.New(t)
+	store := store.NewMemorySessionStore()
+	s, _ := store.CreateSession(context.TODO(), schema.SessionMeta{Name: "original", GeneratorMeta: schema.GeneratorMeta{Model: "test-model", Provider: "test-provider"}})
+	updated, err := store.UpdateSession(context.TODO(), s.ID, schema.SessionMeta{Name: "renamed"})
+	assert.NoError(err)
+	assert.Equal("renamed", updated.Name)
+	assert.Equal("test-model", updated.Model)
+	assert.Equal("test-provider", updated.Provider)
+}
+
+// Test Update changes model and provider
+func Test_memory_session_016(t *testing.T) {
+	assert := assert.New(t)
+	store := store.NewMemorySessionStore()
+	s, _ := store.CreateSession(context.TODO(), schema.SessionMeta{Name: "test", GeneratorMeta: schema.GeneratorMeta{Model: "model-a", Provider: "provider-a"}})
+	updated, err := store.UpdateSession(context.TODO(), s.ID, schema.SessionMeta{GeneratorMeta: schema.GeneratorMeta{Model: "model-b", Provider: "provider-b"}})
+	assert.NoError(err)
+	assert.Equal("model-b", updated.Model)
+	assert.Equal("provider-b", updated.Provider)
+	assert.Equal("test", updated.Name)
+}
+
+// Test Update with nonexistent ID returns error
+func Test_memory_session_017(t *testing.T) {
+	assert := assert.New(t)
+	store := store.NewMemorySessionStore()
+	_, err := store.UpdateSession(context.TODO(), "nonexistent", schema.SessionMeta{Name: "x"})
+	assert.Error(err)
+}
+
+// Test Update only applies non-zero fields
+func Test_memory_session_018(t *testing.T) {
+	assert := assert.New(t)
+	store := store.NewMemorySessionStore()
+	s, _ := store.CreateSession(context.TODO(), schema.SessionMeta{Name: "keep", GeneratorMeta: schema.GeneratorMeta{Model: "test-model", Provider: "test-provider", SystemPrompt: "original"}})
+	updated, err := store.UpdateSession(context.TODO(), s.ID, schema.SessionMeta{GeneratorMeta: schema.GeneratorMeta{SystemPrompt: "changed"}})
+	assert.NoError(err)
+	assert.Equal("keep", updated.Name)
+	assert.Equal("test-model", updated.Model)
+	assert.Equal("changed", updated.SystemPrompt)
+}
+
+// Test Update advances Modified timestamp
+func Test_memory_session_019(t *testing.T) {
+	assert := assert.New(t)
+	store := store.NewMemorySessionStore()
+	s, _ := store.CreateSession(context.TODO(), schema.SessionMeta{Name: "test", GeneratorMeta: schema.GeneratorMeta{Model: "test-model", Provider: "test-provider"}})
+	original := s.Modified
+	time.Sleep(5 * time.Millisecond)
+	updated, err := store.UpdateSession(context.TODO(), s.ID, schema.SessionMeta{Name: "new"})
+	assert.NoError(err)
+	assert.True(updated.Modified.After(original))
+}
+
+// Test Create with labels
+func Test_memory_session_020(t *testing.T) {
+	assert := assert.New(t)
+	store := store.NewMemorySessionStore()
+	labels := map[string]string{"env": "prod", "team": "backend"}
+	s, err := store.CreateSession(context.TODO(), schema.SessionMeta{
+		Name:          "labeled",
+		GeneratorMeta: schema.GeneratorMeta{Model: "test-model", Provider: "test-provider"},
+		Labels:        labels,
+	})
+	assert.NoError(err)
+	assert.Equal("prod", s.Labels["env"])
+	assert.Equal("backend", s.Labels["team"])
+}
+
+// Test Create with invalid label key returns error
+func Test_memory_session_021(t *testing.T) {
+	assert := assert.New(t)
+	store := store.NewMemorySessionStore()
+	_, err := store.CreateSession(context.TODO(), schema.SessionMeta{
+		Name:          "bad",
+		GeneratorMeta: schema.GeneratorMeta{Model: "test-model", Provider: "test-provider"},
+		Labels:        map[string]string{"invalid key!": "value"},
+	})
+	assert.Error(err)
+}
+
+// Test List filters by labels
+func Test_memory_session_022(t *testing.T) {
+	assert := assert.New(t)
+	store := store.NewMemorySessionStore()
+	store.CreateSession(context.TODO(), schema.SessionMeta{
+		Name:          "a",
+		GeneratorMeta: schema.GeneratorMeta{Model: "test-model", Provider: "test-provider"},
+		Labels:        map[string]string{"env": "prod"},
+	})
+	store.CreateSession(context.TODO(), schema.SessionMeta{
+		Name:          "b",
+		GeneratorMeta: schema.GeneratorMeta{Model: "test-model", Provider: "test-provider"},
+		Labels:        map[string]string{"env": "dev"},
+	})
+	store.CreateSession(context.TODO(), schema.SessionMeta{
+		Name:          "c",
+		GeneratorMeta: schema.GeneratorMeta{Model: "test-model", Provider: "test-provider"},
+	})
+
+	// Filter by env:prod
+	resp, err := store.ListSessions(context.TODO(), schema.ListSessionRequest{Label: []string{"env:prod"}})
+	assert.NoError(err)
+	assert.Len(resp.Body, 1)
+	assert.Equal("a", resp.Body[0].Name)
+
+	// Filter by env:dev
+	resp, err = store.ListSessions(context.TODO(), schema.ListSessionRequest{Label: []string{"env:dev"}})
+	assert.NoError(err)
+	assert.Len(resp.Body, 1)
+	assert.Equal("b", resp.Body[0].Name)
+
+	// No filter returns all
+	resp, err = store.ListSessions(context.TODO(), schema.ListSessionRequest{})
+	assert.NoError(err)
+	assert.Len(resp.Body, 3)
+}
+
+// Test List with multiple label filters (AND logic)
+func Test_memory_session_023(t *testing.T) {
+	assert := assert.New(t)
+	store := store.NewMemorySessionStore()
+	store.CreateSession(context.TODO(), schema.SessionMeta{
+		Name:          "match",
+		GeneratorMeta: schema.GeneratorMeta{Model: "test-model", Provider: "test-provider"},
+		Labels:        map[string]string{"env": "prod", "team": "backend"},
+	})
+	store.CreateSession(context.TODO(), schema.SessionMeta{
+		Name:          "partial",
+		GeneratorMeta: schema.GeneratorMeta{Model: "test-model", Provider: "test-provider"},
+		Labels:        map[string]string{"env": "prod"},
+	})
+
+	resp, err := store.ListSessions(context.TODO(), schema.ListSessionRequest{Label: []string{"env:prod", "team:backend"}})
+	assert.NoError(err)
+	assert.Len(resp.Body, 1)
+	assert.Equal("match", resp.Body[0].Name)
+}
+
+// Test Update merges labels
+func Test_memory_session_024(t *testing.T) {
+	assert := assert.New(t)
+	store := store.NewMemorySessionStore()
+	s, _ := store.CreateSession(context.TODO(), schema.SessionMeta{
+		Name:          "test",
+		GeneratorMeta: schema.GeneratorMeta{Model: "test-model", Provider: "test-provider"},
+		Labels:        map[string]string{"env": "prod", "team": "backend"},
+	})
+
+	// Merge: add new label, change existing
+	updated, err := store.UpdateSession(context.TODO(), s.ID, schema.SessionMeta{
+		Labels: map[string]string{"team": "frontend", "region": "us"},
+	})
+	assert.NoError(err)
+	assert.Equal("prod", updated.Labels["env"])      // preserved
+	assert.Equal("frontend", updated.Labels["team"]) // changed
+	assert.Equal("us", updated.Labels["region"])     // added
+}
+
+// Test Update removes labels with empty value
+func Test_memory_session_025(t *testing.T) {
+	assert := assert.New(t)
+	store := store.NewMemorySessionStore()
+	s, _ := store.CreateSession(context.TODO(), schema.SessionMeta{
+		Name:          "test",
+		GeneratorMeta: schema.GeneratorMeta{Model: "test-model", Provider: "test-provider"},
+		Labels:        map[string]string{"env": "prod", "team": "backend"},
+	})
+
+	updated, err := store.UpdateSession(context.TODO(), s.ID, schema.SessionMeta{
+		Labels: map[string]string{"team": ""},
+	})
+	assert.NoError(err)
+	assert.Equal("prod", updated.Labels["env"])
+	_, exists := updated.Labels["team"]
+	assert.False(exists)
+}
+
+// Test Update with invalid label key returns error
+func Test_memory_session_026(t *testing.T) {
+	assert := assert.New(t)
+	store := store.NewMemorySessionStore()
+	s, _ := store.CreateSession(context.TODO(), schema.SessionMeta{
+		Name:          "test",
+		GeneratorMeta: schema.GeneratorMeta{Model: "test-model", Provider: "test-provider"},
+	})
+
+	_, err := store.UpdateSession(context.TODO(), s.ID, schema.SessionMeta{
+		Labels: map[string]string{"bad key!": "value"},
+	})
+	assert.Error(err)
+}
+
+func Test_session_001(t *testing.T) {
+	assert := assert.New(t)
+	store := store.NewMemorySessionStore()
+	s, _ := store.CreateSession(context.TODO(), schema.SessionMeta{Name: "test", GeneratorMeta: schema.GeneratorMeta{Model: "test-model", Provider: "test-provider"}})
+	originalModified := s.Modified
+	time.Sleep(5 * time.Millisecond)
+	msg := schema.Message{Role: schema.RoleUser, Content: []schema.ContentBlock{{Text: textPtr("hello")}}}
+	s.Append(msg)
+	assert.Len(s.Messages, 1)
+	assert.True(s.Modified.After(originalModified))
+}
+
+func Test_session_002(t *testing.T) {
+	assert := assert.New(t)
+	store := store.NewMemorySessionStore()
+	s, _ := store.CreateSession(context.TODO(), schema.SessionMeta{Name: "test", GeneratorMeta: schema.GeneratorMeta{Model: "test-model", Provider: "test-provider"}})
+	s.Append(schema.Message{Role: schema.RoleUser, Tokens: 10})
+	s.Append(schema.Message{Role: schema.RoleAssistant, Tokens: 25})
+	assert.Equal(uint(35), s.Tokens())
+}
+
+func Test_session_003(t *testing.T) {
+	assert := assert.New(t)
+	store := store.NewMemorySessionStore()
+	s, _ := store.CreateSession(context.TODO(), schema.SessionMeta{Name: "test", GeneratorMeta: schema.GeneratorMeta{Model: "test-model", Provider: "test-provider"}})
+	ms := s.Conversation()
+	assert.NotNil(ms)
+	assert.Len(*ms, 0)
+	s.Append(schema.Message{Role: schema.RoleUser})
+	assert.Len(*ms, 1)
+}
+
+func Test_session_004(t *testing.T) {
+	assert := assert.New(t)
+	s := &schema.Session{SessionMeta: schema.SessionMeta{GeneratorMeta: schema.GeneratorMeta{Model: "test-model"}}}
+	err := s.Validate()
+	assert.Error(err)
+}
+
+func Test_session_005(t *testing.T) {
+	assert := assert.New(t)
+	s := &schema.Session{ID: "abc"}
+	err := s.Validate()
+	assert.Error(err)
+}
+
+func Test_session_006(t *testing.T) {
+	assert := assert.New(t)
+	store := store.NewMemorySessionStore()
+	s, _ := store.CreateSession(context.TODO(), schema.SessionMeta{Name: "test", GeneratorMeta: schema.GeneratorMeta{Model: "test-model", Provider: "test-provider"}})
+	assert.NoError(s.Validate())
+}
+
+func Test_session_007(t *testing.T) {
+	assert := assert.New(t)
+	store := store.NewMemorySessionStore()
+	s, _ := store.CreateSession(context.TODO(), schema.SessionMeta{Name: "test", GeneratorMeta: schema.GeneratorMeta{Model: "test-model", Provider: "test-provider"}})
+	assert.NotEmpty(s.String())
+}

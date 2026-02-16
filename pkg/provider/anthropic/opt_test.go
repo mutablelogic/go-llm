@@ -133,16 +133,16 @@ func Test_opt_toolchoice_005(t *testing.T) {
 }
 
 ///////////////////////////////////////////////////////////////////////////////
-// TOOLKIT (via anthropicToolsFromToolkit)
+// TOOLKIT (via anthropicToolsFromTools)
 
 func Test_opt_toolkit_001(t *testing.T) {
-	// Test anthropicToolsFromToolkit with a single mock tool
+	// Test anthropicToolsFromTools with a single mock tool
 	assert := assert.New(t)
 
 	tk, err := tool.NewToolkit(newMockTool("get_weather", "Get current weather"))
 	assert.NoError(err)
 
-	tools, err := anthropicToolsFromToolkit(tk)
+	tools, err := anthropicToolsFromTools(tk.Tools())
 	assert.NoError(err)
 	assert.Len(tools, 1)
 
@@ -162,7 +162,7 @@ func Test_opt_toolkit_001(t *testing.T) {
 }
 
 func Test_opt_toolkit_002(t *testing.T) {
-	// Test anthropicToolsFromToolkit with multiple tools
+	// Test anthropicToolsFromTools with multiple tools
 	assert := assert.New(t)
 
 	tk, err := tool.NewToolkit(
@@ -171,7 +171,7 @@ func Test_opt_toolkit_002(t *testing.T) {
 	)
 	assert.NoError(err)
 
-	tools, err := anthropicToolsFromToolkit(tk)
+	tools, err := anthropicToolsFromTools(tk.Tools())
 	assert.NoError(err)
 	assert.Len(tools, 2)
 
@@ -237,7 +237,7 @@ func Test_opt_toolkit_005(t *testing.T) {
 	tk, err := tool.NewToolkit()
 	assert.NoError(err)
 
-	tools, err := anthropicToolsFromToolkit(tk)
+	tools, err := anthropicToolsFromTools(tk.Tools())
 	assert.NoError(err)
 	assert.Empty(tools)
 }

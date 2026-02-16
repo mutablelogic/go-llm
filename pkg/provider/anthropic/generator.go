@@ -349,16 +349,25 @@ func generateRequestFromOpts(model string, session *schema.Conversation, options
 		}
 	}
 
-	// Tools from toolkit (agent path)
-	var tools []json.RawMessage
+	// Collect tools from toolkit and individual WithTool opts
+	var allTools []tool.Tool
 	if v := options.Get(opt.ToolkitKey); v != nil {
 		if tk, ok := v.(*tool.Toolkit); ok {
-			toolsData, err := anthropicToolsFromToolkit(tk)
-			if err != nil {
-				return nil, err
-			}
-			tools = append(tools, toolsData...)
+			allTools = append(allTools, tk.Tools()...)
 		}
+	}
+	if v := options.Get(opt.ToolKey); v != nil {
+		if extra, ok := v.([]tool.Tool); ok {
+			allTools = append(allTools, extra...)
+		}
+	}
+	var tools []json.RawMessage
+	if len(allTools) > 0 {
+		toolsData, err := anthropicToolsFromTools(allTools)
+		if err != nil {
+			return nil, err
+		}
+		tools = append(tools, toolsData...)
 	}
 
 	return &messagesRequest{

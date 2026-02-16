@@ -4,7 +4,7 @@ import (
 	"net/http"
 
 	// Packages
-	agent "github.com/mutablelogic/go-llm/pkg/agent"
+	manager "github.com/mutablelogic/go-llm/pkg/manager"
 	schema "github.com/mutablelogic/go-llm/pkg/schema"
 	httprequest "github.com/mutablelogic/go-server/pkg/httprequest"
 	httpresponse "github.com/mutablelogic/go-server/pkg/httpresponse"
@@ -16,7 +16,7 @@ import (
 // HANDLER FUNCTIONS
 
 // Path: /tool
-func ToolListHandler(manager *agent.Manager) (string, http.HandlerFunc, *openapi.PathItem) {
+func ToolListHandler(manager *manager.Manager) (string, http.HandlerFunc, *openapi.PathItem) {
 	return "/tool", func(w http.ResponseWriter, r *http.Request) {
 			switch r.Method {
 			case http.MethodGet:
@@ -42,7 +42,7 @@ func ToolListHandler(manager *agent.Manager) (string, http.HandlerFunc, *openapi
 }
 
 // Path: /tool/{name}
-func ToolGetHandler(manager *agent.Manager) (string, http.HandlerFunc, *openapi.PathItem) {
+func ToolGetHandler(manager *manager.Manager) (string, http.HandlerFunc, *openapi.PathItem) {
 	return "/tool/{name}", func(w http.ResponseWriter, r *http.Request) {
 			switch r.Method {
 			case http.MethodGet:

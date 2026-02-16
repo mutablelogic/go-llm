@@ -323,6 +323,21 @@ func AddAny(key string, value any) Opt {
 	}
 }
 
+// ModifyAny reads the current value for key (nil if absent), passes it to
+// fn, and stores the returned value. This allows callers to append to
+// interface-typed slices that AddAny cannot handle (since reflect.TypeOf
+// sees the concrete dynamic type, not the interface type).
+func ModifyAny(key string, fn func(existing any) (any, error)) Opt {
+	return func(o *opts) error {
+		val, err := fn(o.values[key])
+		if err != nil {
+			return err
+		}
+		o.values[key] = val
+		return nil
+	}
+}
+
 // SetString sets a string value for key, replacing any existing values
 func SetString(key string, value string) Opt {
 	return func(o *opts) error {

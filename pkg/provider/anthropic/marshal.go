@@ -276,10 +276,10 @@ func attachmentFromSource(src *anthropicSource) *schema.Attachment {
 ///////////////////////////////////////////////////////////////////////////////
 // TOOLS CONVERSION
 
-// anthropicToolsFromToolkit converts a tool.Toolkit to Anthropic tool JSON payloads
-func anthropicToolsFromToolkit(tk *tool.Toolkit) ([]json.RawMessage, error) {
+// anthropicToolsFromTools converts a slice of tools to Anthropic tool JSON payloads
+func anthropicToolsFromTools(tools []tool.Tool) ([]json.RawMessage, error) {
 	var result []json.RawMessage
-	for _, t := range tk.Tools() {
+	for _, t := range tools {
 		s, err := t.Schema()
 		if err != nil {
 			continue

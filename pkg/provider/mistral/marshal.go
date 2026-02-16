@@ -351,10 +351,10 @@ func contentBlocksFromMistralMessage(msg *mistralMessage) ([]schema.ContentBlock
 ///////////////////////////////////////////////////////////////////////////////
 // TOOL CONVERSION
 
-// mistralToolsFromToolkit converts a tool.Toolkit to Mistral tool definitions.
-func mistralToolsFromToolkit(tk *tool.Toolkit) ([]toolDefinition, error) {
+// mistralToolsFromTools converts a slice of tools to Mistral tool definitions.
+func mistralToolsFromTools(tools []tool.Tool) ([]toolDefinition, error) {
 	var result []toolDefinition
-	for _, t := range tk.Tools() {
+	for _, t := range tools {
 		s, err := t.Schema()
 		if err != nil {
 			continue

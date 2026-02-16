@@ -4,7 +4,7 @@ import (
 	"net/http"
 
 	// Packages
-	agent "github.com/mutablelogic/go-llm/pkg/agent"
+	manager "github.com/mutablelogic/go-llm/pkg/manager"
 	schema "github.com/mutablelogic/go-llm/pkg/schema"
 	httprequest "github.com/mutablelogic/go-server/pkg/httprequest"
 	httpresponse "github.com/mutablelogic/go-server/pkg/httpresponse"
@@ -16,7 +16,7 @@ import (
 // HANDLER FUNCTIONS
 
 // Path: /session
-func SessionHandler(manager *agent.Manager) (string, http.HandlerFunc, *openapi.PathItem) {
+func SessionHandler(manager *manager.Manager) (string, http.HandlerFunc, *openapi.PathItem) {
 	return "/session", func(w http.ResponseWriter, r *http.Request) {
 			switch r.Method {
 			case http.MethodGet:
@@ -57,7 +57,7 @@ func SessionHandler(manager *agent.Manager) (string, http.HandlerFunc, *openapi.
 }
 
 // Path: /session/{session}
-func SessionGetHandler(manager *agent.Manager) (string, http.HandlerFunc, *openapi.PathItem) {
+func SessionGetHandler(manager *manager.Manager) (string, http.HandlerFunc, *openapi.PathItem) {
 	return "/session/{session}", func(w http.ResponseWriter, r *http.Request) {
 			id := r.PathValue("session")
 			switch r.Method {

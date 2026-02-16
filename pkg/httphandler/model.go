@@ -5,7 +5,7 @@ import (
 	"strings"
 
 	// Packages
-	agent "github.com/mutablelogic/go-llm/pkg/agent"
+	manager "github.com/mutablelogic/go-llm/pkg/manager"
 	schema "github.com/mutablelogic/go-llm/pkg/schema"
 	httprequest "github.com/mutablelogic/go-server/pkg/httprequest"
 	httpresponse "github.com/mutablelogic/go-server/pkg/httpresponse"
@@ -17,7 +17,7 @@ import (
 // HANDLER FUNCTIONS
 
 // Path: /model
-func ModelListHandler(manager *agent.Manager) (string, http.HandlerFunc, *openapi.PathItem) {
+func ModelListHandler(manager *manager.Manager) (string, http.HandlerFunc, *openapi.PathItem) {
 	return "/model", func(w http.ResponseWriter, r *http.Request) {
 			switch r.Method {
 			case http.MethodGet:
@@ -43,7 +43,7 @@ func ModelListHandler(manager *agent.Manager) (string, http.HandlerFunc, *openap
 }
 
 // Path: /model/{model...}
-func ModelGetHandler(manager *agent.Manager) (string, http.HandlerFunc, *openapi.PathItem) {
+func ModelGetHandler(manager *manager.Manager) (string, http.HandlerFunc, *openapi.PathItem) {
 	return "/model/{model...}", func(w http.ResponseWriter, r *http.Request) {
 			provider_model := strings.SplitN(r.PathValue("model"), PathSeparator, 2)
 			switch r.Method {
