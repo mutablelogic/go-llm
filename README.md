@@ -214,7 +214,7 @@ flowchart LR
         direction TB
         API["`**pkg/httphandler**
         REST API`"]
-        Agent["`**pkg/agent**
+        Agent["`**pkg/manager**
         Manager`"]
         Sessions["`**pkg/session**
         Memory, File`"]
@@ -308,7 +308,7 @@ func main() {
 
 | Package | Description |
 |---------|-------------|
-| `pkg/agent` | Central manager orchestrating providers, sessions, and tools |
+| `pkg/manager` | Central manager orchestrating providers, sessions, and tools |
 | `pkg/provider/{google,anthropic,mistral,eliza}` | Provider implementations |
 | `pkg/session` | Session storage backends (in-memory, file-backed JSON) |
 | `pkg/tool` | Tool interface and toolkit registry |

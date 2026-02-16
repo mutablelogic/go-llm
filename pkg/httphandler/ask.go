@@ -4,7 +4,7 @@ import (
 	"net/http"
 
 	// Packages
-	agent "github.com/mutablelogic/go-llm/pkg/agent"
+	manager "github.com/mutablelogic/go-llm/pkg/manager"
 	schema "github.com/mutablelogic/go-llm/pkg/schema"
 	httprequest "github.com/mutablelogic/go-server/pkg/httprequest"
 	httpresponse "github.com/mutablelogic/go-server/pkg/httpresponse"
@@ -16,7 +16,7 @@ import (
 // HANDLER FUNCTIONS
 
 // Path: /ask
-func AskHandler(manager *agent.Manager) (string, http.HandlerFunc, *openapi.PathItem) {
+func AskHandler(manager *manager.Manager) (string, http.HandlerFunc, *openapi.PathItem) {
 	return "/ask", func(w http.ResponseWriter, r *http.Request) {
 			switch r.Method {
 			case http.MethodPost:

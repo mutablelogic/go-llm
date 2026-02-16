@@ -10,7 +10,7 @@ import (
 
 	// Packages
 	client "github.com/mutablelogic/go-client"
-	agent "github.com/mutablelogic/go-llm/pkg/agent"
+	manager "github.com/mutablelogic/go-llm/pkg/manager"
 	homeassistant "github.com/mutablelogic/go-llm/pkg/homeassistant"
 	httphandler "github.com/mutablelogic/go-llm/pkg/httphandler"
 	newsapi "github.com/mutablelogic/go-llm/pkg/newsapi"
@@ -58,7 +58,7 @@ type RunServer struct {
 // COMMANDS
 
 func (cmd *RunServer) Run(ctx *Globals) error {
-	return cmd.WithManager(ctx, func(manager *agent.Manager, v string) error {
+	return cmd.WithManager(ctx, func(manager *manager.Manager, v string) error {
 		// Start the HTTP server and wait for shutdown
 		return cmd.Serve(ctx, manager, version.Version())
 	})
@@ -67,7 +67,7 @@ func (cmd *RunServer) Run(ctx *Globals) error {
 // WithManager creates the resource manager, registers all resource instances
 // (logger, otel, handlers, router) in dependency order, invokes fn, then
 // closes the manager regardless of whether fn returned an error.
-func (cmd *RunServer) WithManager(ctx *Globals, fn func(*agent.Manager, string) error) error {
+func (cmd *RunServer) WithManager(ctx *Globals, fn func(*manager.Manager, string) error) error {
 	// Make client opts
 	clientOpts := []client.ClientOpt{}
 	if ctx.Debug {
@@ -81,13 +81,13 @@ func (cmd *RunServer) WithManager(ctx *Globals, fn func(*agent.Manager, string) 
 	}
 
 	// Anthropic client
-	opts := []agent.Opt{}
+	opts := []manager.Opt{}
 	if cmd.AnthropicAPIKey != "" {
 		anthropicClient, err := anthropic.New(cmd.AnthropicAPIKey, clientOpts...)
 		if err != nil {
 			return fmt.Errorf("failed to create Anthropic client: %w", err)
 		}
-		opts = append(opts, agent.WithClient(anthropicClient))
+		opts = append(opts, manager.WithClient(anthropicClient))
 	}
 
 	// Google client
@@ -96,7 +96,7 @@ func (cmd *RunServer) WithManager(ctx *Globals, fn func(*agent.Manager, string) 
 		if err != nil {
 			return fmt.Errorf("failed to create Google client: %w", err)
 		}
-		opts = append(opts, agent.WithClient(googleClient))
+		opts = append(opts, manager.WithClient(googleClient))
 	}
 
 	// Mistral client
@@ -105,7 +105,7 @@ func (cmd *RunServer) WithManager(ctx *Globals, fn func(*agent.Manager, string) 
 		if err != nil {
 			return fmt.Errorf("failed to create Mistral client: %w", err)
 		}
-		opts = append(opts, agent.WithClient(mistralClient))
+		opts = append(opts, manager.WithClient(mistralClient))
 	}
 
 	// Eliza
@@ -114,7 +114,7 @@ func (cmd *RunServer) WithManager(ctx *Globals, fn func(*agent.Manager, string) 
 		if err != nil {
 			return fmt.Errorf("failed to create ELIZA client: %w", err)
 		}
-		opts = append(opts, agent.WithClient(elizaClient))
+		opts = append(opts, manager.WithClient(elizaClient))
 	}
 
 	// Check if at least one client is configured
@@ -126,7 +126,7 @@ func (cmd *RunServer) WithManager(ctx *Globals, fn func(*agent.Manager, string) 
 	if store, err := cmd.SessionStore(ctx.execName); err != nil {
 		return err
 	} else {
-		opts = append(opts, agent.WithSessionStore(store))
+		opts = append(opts, manager.WithSessionStore(store))
 	}
 
 	// Add new toolkit with news, weather and home assistant tools if API keys are provided
@@ -134,7 +134,7 @@ func (cmd *RunServer) WithManager(ctx *Globals, fn func(*agent.Manager, string) 
 	if err != nil {
 		return fmt.Errorf("failed to create toolkit: %w", err)
 	} else {
-		opts = append(opts, agent.WithToolkit(toolkit))
+		opts = append(opts, manager.WithToolkit(toolkit))
 	}
 
 	// NewsAPI tool
@@ -165,7 +165,7 @@ func (cmd *RunServer) WithManager(ctx *Globals, fn func(*agent.Manager, string) 
 	}
 
 	// Create the manager
-	manager, err := agent.NewManager(opts...)
+	manager, err := manager.NewManager(opts...)
 	if err != nil {
 		return err
 	}
@@ -178,7 +178,7 @@ func (cmd *RunServer) WithManager(ctx *Globals, fn func(*agent.Manager, string) 
 // Serve creates the httpserver instance, logs the startup banner, and
 // blocks until context cancellation (e.g. SIGINT). The caller is
 // responsible for closing the manager afterwards.
-func (cmd *RunServer) Serve(ctx *Globals, manager *agent.Manager, versionTag string) error {
+func (cmd *RunServer) Serve(ctx *Globals, manager *manager.Manager, versionTag string) error {
 	// Create middleware
 	middleware := []httprouter.HTTPMiddlewareFunc{}
 	if mw, ok := ctx.logger.(server.HTTPMiddleware); ok {
@@ -252,8 +252,8 @@ func (cmd *RunServer) SessionStore(execName string) (schema.Store, error) {
 /*
 
 // Manager returns an agent manager with all configured LLM clients
-func (g *Globals) Manager() (*agent.Manager, error) {
-	var opts []agent.Opt
+func (g *Globals) Manager() (*manager.Manager, error) {
+	var opts []manager.Opt
 
 	// Add Google Gemini client if API key is set
 	if g.GeminiAPIKey != "" {
@@ -265,7 +265,7 @@ func (g *Globals) Manager() (*agent.Manager, error) {
 		if err != nil {
 			return nil, fmt.Errorf("failed to create Gemini client: %w", err)
 		}
-		opts = append(opts, agent.WithClient(geminiClient))
+		opts = append(opts, manager.WithClient(geminiClient))
 	}
 
 	// Add Anthropic client if API key is set
@@ -278,7 +278,7 @@ func (g *Globals) Manager() (*agent.Manager, error) {
 		if err != nil {
 			return nil, fmt.Errorf("failed to create Anthropic client: %w", err)
 		}
-		opts = append(opts, agent.WithClient(anthropicClient))
+		opts = append(opts, manager.WithClient(anthropicClient))
 	}
 
 	// Add Mistral client if API key is set
@@ -291,7 +291,7 @@ func (g *Globals) Manager() (*agent.Manager, error) {
 		if err != nil {
 			return nil, fmt.Errorf("failed to create Mistral client: %w", err)
 		}
-		opts = append(opts, agent.WithClient(mistralClient))
+		opts = append(opts, manager.WithClient(mistralClient))
 	}
 
 	// Check if at least one client is configured
@@ -299,6 +299,6 @@ func (g *Globals) Manager() (*agent.Manager, error) {
 		return nil, fmt.Errorf("no providers configured. Set --gemini-api-key, --anthropic-api-key, or --mistral-api-key (or use environment variables), or use --eliza for a local provider")
 	}
 
-	return agent.NewAgent(opts...)
+	return manager.NewAgent(opts...)
 }
 */

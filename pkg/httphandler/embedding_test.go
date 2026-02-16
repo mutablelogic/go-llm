@@ -7,11 +7,11 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	agent "github.com/mutablelogic/go-llm/pkg/agent"
+	manager "github.com/mutablelogic/go-llm/pkg/manager"
 	schema "github.com/mutablelogic/go-llm/pkg/schema"
 )
 
-func newEmbedderManager(t *testing.T) *agent.Manager {
+func newEmbedderManager(t *testing.T) *manager.Manager {
 	t.Helper()
 	client := &mockEmbedderClient{
 		mockClient: mockClient{
@@ -19,7 +19,7 @@ func newEmbedderManager(t *testing.T) *agent.Manager {
 			models: []schema.Model{{Name: "embed-model"}},
 		},
 	}
-	m, err := agent.NewManager(agent.WithClient(client))
+	m, err := manager.NewManager(manager.WithClient(client))
 	if err != nil {
 		t.Fatal(err)
 	}

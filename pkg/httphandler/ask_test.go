@@ -11,11 +11,11 @@ import (
 	"strings"
 	"testing"
 
-	agent "github.com/mutablelogic/go-llm/pkg/agent"
+	manager "github.com/mutablelogic/go-llm/pkg/manager"
 	schema "github.com/mutablelogic/go-llm/pkg/schema"
 )
 
-func newGeneratorManager(t *testing.T) *agent.Manager {
+func newGeneratorManager(t *testing.T) *manager.Manager {
 	t.Helper()
 	client := &mockGeneratorClient{
 		mockClient: mockClient{

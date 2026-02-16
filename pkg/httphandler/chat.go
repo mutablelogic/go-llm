@@ -5,7 +5,7 @@ import (
 	"strings"
 
 	// Packages
-	agent "github.com/mutablelogic/go-llm/pkg/agent"
+	manager "github.com/mutablelogic/go-llm/pkg/manager"
 	opt "github.com/mutablelogic/go-llm/pkg/opt"
 	schema "github.com/mutablelogic/go-llm/pkg/schema"
 	httprequest "github.com/mutablelogic/go-server/pkg/httprequest"
@@ -18,7 +18,7 @@ import (
 // HANDLER FUNCTIONS
 
 // Path: /chat
-func ChatHandler(manager *agent.Manager) (string, http.HandlerFunc, *openapi.PathItem) {
+func ChatHandler(manager *manager.Manager) (string, http.HandlerFunc, *openapi.PathItem) {
 	return "/chat", func(w http.ResponseWriter, r *http.Request) {
 			switch r.Method {
 			case http.MethodPost:
@@ -56,7 +56,7 @@ func ChatHandler(manager *agent.Manager) (string, http.HandlerFunc, *openapi.Pat
 }
 
 // chatJSON sends the chat response as a single JSON object.
-func chatJSON(w http.ResponseWriter, r *http.Request, manager *agent.Manager, req schema.ChatRequest) {
+func chatJSON(w http.ResponseWriter, r *http.Request, manager *manager.Manager, req schema.ChatRequest) {
 	resp, err := manager.Chat(r.Context(), req, nil)
 	if err != nil {
 		_ = httpresponse.Error(w, httpErr(err))
@@ -67,7 +67,7 @@ func chatJSON(w http.ResponseWriter, r *http.Request, manager *agent.Manager, re
 
 // chatStream sends the chat response as a text/event-stream, emitting
 // delta events for each streamed chunk and a final response event.
-func chatStream(w http.ResponseWriter, r *http.Request, manager *agent.Manager, req schema.ChatRequest) {
+func chatStream(w http.ResponseWriter, r *http.Request, manager *manager.Manager, req schema.ChatRequest) {
 	stream := httpresponse.NewTextStream(w)
 	if stream == nil {
 		_ = httpresponse.Error(w, httpresponse.ErrInternalError)

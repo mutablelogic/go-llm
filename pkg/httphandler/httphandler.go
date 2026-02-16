@@ -6,7 +6,7 @@ import (
 
 	// Package
 	llm "github.com/mutablelogic/go-llm"
-	agent "github.com/mutablelogic/go-llm/pkg/agent"
+	manager "github.com/mutablelogic/go-llm/pkg/manager"
 	server "github.com/mutablelogic/go-server"
 	httpresponse "github.com/mutablelogic/go-server/pkg/httpresponse"
 	openapi "github.com/mutablelogic/go-server/pkg/openapi/schema"
@@ -27,7 +27,7 @@ type Router interface {
 	RegisterFunc(path string, handler http.HandlerFunc, middleware bool, spec *openapi.PathItem) error
 }
 
-func RegisterHandlers(manager *agent.Manager, router server.HTTPRouter, middleware bool) error {
+func RegisterHandlers(manager *manager.Manager, router server.HTTPRouter, middleware bool) error {
 	var result error
 
 	// Convenience function to register a handler and accumulate any errors
