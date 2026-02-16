@@ -127,8 +127,10 @@ func (e *Engine) InferMemory(messages []*schema.Message) {
 			if !rule.memorable {
 				continue
 			}
-			if match := rule.pattern.FindStringSubmatch(input); match != nil && len(match) > 1 {
-				e.remember(match[1])
+			if match := rule.pattern.FindStringSubmatch(input); match != nil {
+				if len(match) > 1 {
+					e.remember(match[1])
+				}
 			}
 		}
 	}
