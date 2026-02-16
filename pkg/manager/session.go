@@ -21,21 +21,21 @@ func (m *Manager) CreateSession(ctx context.Context, meta schema.SessionMeta) (*
 	}
 
 	// Create the session and return it
-	return m.store.Create(ctx, meta)
+	return m.sessionStore.CreateSession(ctx, meta)
 }
 
 // GetSession retrieves a session by ID.
 func (m *Manager) GetSession(ctx context.Context, session string) (*schema.Session, error) {
-	return m.store.Get(ctx, session)
+	return m.sessionStore.GetSession(ctx, session)
 }
 
 // DeleteSession deletes a session by ID and returns it.
 func (m *Manager) DeleteSession(ctx context.Context, session string) (*schema.Session, error) {
-	s, err := m.store.Get(ctx, session)
+	s, err := m.sessionStore.GetSession(ctx, session)
 	if err != nil {
 		return nil, err
 	}
-	if err := m.store.Delete(ctx, session); err != nil {
+	if err := m.sessionStore.DeleteSession(ctx, session); err != nil {
 		return nil, err
 	}
 	return s, nil
@@ -43,7 +43,7 @@ func (m *Manager) DeleteSession(ctx context.Context, session string) (*schema.Se
 
 // ListSessions returns sessions with pagination support.
 func (m *Manager) ListSessions(ctx context.Context, req schema.ListSessionRequest) (*schema.ListSessionResponse, error) {
-	return m.store.List(ctx, req)
+	return m.sessionStore.ListSessions(ctx, req)
 }
 
 // UpdateSession updates a session's metadata. If Model or Provider are changed,
@@ -60,5 +60,5 @@ func (m *Manager) UpdateSession(ctx context.Context, id string, meta schema.Sess
 	}
 
 	// Delegate to store
-	return m.store.Update(ctx, id, meta)
+	return m.sessionStore.UpdateSession(ctx, id, meta)
 }

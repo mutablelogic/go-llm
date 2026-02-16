@@ -216,7 +216,7 @@ flowchart LR
         REST API`"]
         Agent["`**pkg/manager**
         Manager`"]
-        Sessions["`**pkg/session**
+        Sessions["`**pkg/store**
         Memory, File`"]
         Tools["`**pkg/tool**
         Tool Registry`"]
@@ -310,7 +310,7 @@ func main() {
 |---------|-------------|
 | `pkg/manager` | Central manager orchestrating providers, sessions, and tools |
 | `pkg/provider/{google,anthropic,mistral,eliza}` | Provider implementations |
-| `pkg/session` | Session storage backends (in-memory, file-backed JSON) |
+| `pkg/store` | Storage backends for sessions and agents (in-memory, file-backed JSON) |
 | `pkg/tool` | Tool interface and toolkit registry |
 | `pkg/schema` | Core types (Model, Message, ContentBlock, Attachment, Session, etc.) |
 | `pkg/httpclient` | HTTP client for the go-llm API |

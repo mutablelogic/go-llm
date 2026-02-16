@@ -9,8 +9,8 @@ import (
 	// Packages
 	jsonschema "github.com/google/jsonschema-go/jsonschema"
 	llm "github.com/mutablelogic/go-llm"
-	manager "github.com/mutablelogic/go-llm/pkg/manager"
 	httphandler "github.com/mutablelogic/go-llm/pkg/httphandler"
+	manager "github.com/mutablelogic/go-llm/pkg/manager"
 	opt "github.com/mutablelogic/go-llm/pkg/opt"
 	schema "github.com/mutablelogic/go-llm/pkg/schema"
 	tool "github.com/mutablelogic/go-llm/pkg/tool"
@@ -171,6 +171,10 @@ func serveMux(manager *manager.Manager) *http.ServeMux {
 	path, handler, _ = httphandler.SessionHandler(manager)
 	mux.HandleFunc(path, handler)
 	path, handler, _ = httphandler.SessionGetHandler(manager)
+	mux.HandleFunc(path, handler)
+	path, handler, _ = httphandler.AgentHandler(manager)
+	mux.HandleFunc(path, handler)
+	path, handler, _ = httphandler.AgentGetHandler(manager)
 	mux.HandleFunc(path, handler)
 	path, handler, _ = httphandler.AskHandler(manager)
 	mux.HandleFunc(path, handler)

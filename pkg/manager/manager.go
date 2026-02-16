@@ -9,7 +9,7 @@ import (
 	llm "github.com/mutablelogic/go-llm"
 	opt "github.com/mutablelogic/go-llm/pkg/opt"
 	schema "github.com/mutablelogic/go-llm/pkg/schema"
-	session "github.com/mutablelogic/go-llm/pkg/session"
+	store "github.com/mutablelogic/go-llm/pkg/store"
 	tool "github.com/mutablelogic/go-llm/pkg/tool"
 	errgroup "golang.org/x/sync/errgroup"
 )
@@ -18,9 +18,10 @@ import (
 // TYPES
 
 type Manager struct {
-	clients map[string]llm.Client
-	store   schema.Store
-	toolkit *tool.Toolkit
+	clients      map[string]llm.Client
+	sessionStore schema.SessionStore
+	agentStore   schema.AgentStore
+	toolkit      *tool.Toolkit
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -39,8 +40,13 @@ func NewManager(opts ...Opt) (*Manager, error) {
 	}
 
 	// Default to in-memory session store if none was provided
-	if m.store == nil {
-		m.store = session.NewMemoryStore()
+	if m.sessionStore == nil {
+		m.sessionStore = store.NewMemorySessionStore()
+	}
+
+	// Default to in-memory agent store if none was provided
+	if m.agentStore == nil {
+		m.agentStore = store.NewMemoryAgentStore()
 	}
 
 	// Default to empty toolkit if none was provided

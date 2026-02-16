@@ -43,6 +43,8 @@ func RegisterHandlers(manager *manager.Manager, router server.HTTPRouter, middle
 	register(EmbeddingHandler(manager))
 	register(SessionHandler(manager))
 	register(SessionGetHandler(manager))
+	register(AgentHandler(manager))
+	register(AgentGetHandler(manager))
 	register(AskHandler(manager))
 	register(ChatHandler(manager))
 

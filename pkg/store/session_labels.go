@@ -1,8 +1,9 @@
-package session
+package store
 
 import (
 	"strings"
 
+	// Packages
 	llm "github.com/mutablelogic/go-llm"
 	types "github.com/mutablelogic/go-server/pkg/types"
 )

@@ -232,7 +232,7 @@ func Test_ask_007(t *testing.T) {
 	assert.NoError(err)
 
 	// JSON format dispatch fails for unknown provider names
-	format := json.RawMessage(`{"type":"object","properties":{"name":{"type":"string"}}}`)
+	format := schema.JSONSchema(`{"type":"object","properties":{"name":{"type":"string"}}}`)
 	_, err = m.Ask(context.TODO(), schema.AskRequest{
 		GeneratorMeta: schema.GeneratorMeta{
 			Model:  "model-1",
@@ -736,7 +736,7 @@ func Test_ask_009(t *testing.T) {
 	_, err = m.Ask(context.TODO(), schema.AskRequest{
 		GeneratorMeta: schema.GeneratorMeta{
 			Model:  "model-1",
-			Format: json.RawMessage(`{not valid json`),
+			Format: schema.JSONSchema(`{not valid json`),
 		},
 		Text: "hello",
 	}, nil)
@@ -834,7 +834,7 @@ func Test_ask_integration_json_gemini(t *testing.T) {
 	m, err := NewManager(WithClient(c))
 	assert.NoError(err)
 
-	format := json.RawMessage(`{
+	format := schema.JSONSchema(`{
 		"type": "object",
 		"properties": {
 			"capital": { "type": "string" },
@@ -878,7 +878,7 @@ func Test_ask_integration_json_anthropic(t *testing.T) {
 	m, err := NewManager(WithClient(c))
 	assert.NoError(err)
 
-	format := json.RawMessage(`{
+	format := schema.JSONSchema(`{
 		"type": "object",
 		"properties": {
 			"capital": { "type": "string" },
@@ -922,7 +922,7 @@ func Test_ask_integration_json_mistral(t *testing.T) {
 	m, err := NewManager(WithClient(c))
 	assert.NoError(err)
 
-	format := json.RawMessage(`{
+	format := schema.JSONSchema(`{
 		"type": "object",
 		"properties": {
 			"capital": { "type": "string" },

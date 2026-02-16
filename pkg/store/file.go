@@ -1,4 +1,4 @@
-package session
+package store
 
 import (
 	"context"
@@ -37,7 +37,7 @@ type FileStore struct {
 	dir string
 }
 
-var _ schema.Store = (*FileStore)(nil)
+var _ schema.SessionStore = (*FileStore)(nil)
 
 ///////////////////////////////////////////////////////////////////////////////
 // LIFECYCLE
@@ -57,9 +57,9 @@ func NewFileStore(dir string) (*FileStore, error) {
 ///////////////////////////////////////////////////////////////////////////////
 // PUBLIC METHODS
 
-// Create creates a new session with a unique ID, writes it to disk,
+// CreateSession creates a new session with a unique ID, writes it to disk,
 // and returns it.
-func (f *FileStore) Create(_ context.Context, meta schema.SessionMeta) (*schema.Session, error) {
+func (f *FileStore) CreateSession(_ context.Context, meta schema.SessionMeta) (*schema.Session, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 
@@ -84,17 +84,17 @@ func (f *FileStore) Create(_ context.Context, meta schema.SessionMeta) (*schema.
 	return s, nil
 }
 
-// Get retrieves a session by ID from disk.
-func (f *FileStore) Get(_ context.Context, id string) (*schema.Session, error) {
+// GetSession retrieves a session by ID from disk.
+func (f *FileStore) GetSession(_ context.Context, id string) (*schema.Session, error) {
 	f.mu.RLock()
 	defer f.mu.RUnlock()
 
 	return f.read(id)
 }
 
-// List returns sessions from disk, ordered by last modified time
+// ListSessions returns sessions from disk, ordered by last modified time
 // (most recent first), with pagination support.
-func (f *FileStore) List(_ context.Context, req schema.ListSessionRequest) (*schema.ListSessionResponse, error) {
+func (f *FileStore) ListSessions(_ context.Context, req schema.ListSessionRequest) (*schema.ListSessionResponse, error) {
 	f.mu.RLock()
 	defer f.mu.RUnlock()
 
@@ -142,8 +142,8 @@ func (f *FileStore) List(_ context.Context, req schema.ListSessionRequest) (*sch
 	}, nil
 }
 
-// Delete removes a session file by ID.
-func (f *FileStore) Delete(_ context.Context, id string) error {
+// DeleteSession removes a session file by ID.
+func (f *FileStore) DeleteSession(_ context.Context, id string) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 
@@ -193,18 +193,18 @@ func (f *FileStore) read(id string) (*schema.Session, error) {
 	return &s, nil
 }
 
-// Write persists a session's current state to disk.
+// WriteSession persists a session's current state to disk.
 // This is called after mutations (e.g. Append) to keep the file in sync.
-func (f *FileStore) Write(s *schema.Session) error {
+func (f *FileStore) WriteSession(s *schema.Session) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 
 	return f.write(s)
 }
 
-// Update applies non-zero fields from meta to the session identified by id,
+// UpdateSession applies non-zero fields from meta to the session identified by id,
 // persists the result to disk, and returns the updated session.
-func (f *FileStore) Update(_ context.Context, id string, meta schema.SessionMeta) (*schema.Session, error) {
+func (f *FileStore) UpdateSession(_ context.Context, id string, meta schema.SessionMeta) (*schema.Session, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 

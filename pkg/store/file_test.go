@@ -1,4 +1,4 @@
-package session_test
+package store_test
 
 import (
 	"context"
@@ -9,7 +9,7 @@ import (
 
 	llm "github.com/mutablelogic/go-llm"
 	schema "github.com/mutablelogic/go-llm/pkg/schema"
-	session "github.com/mutablelogic/go-llm/pkg/session"
+	store "github.com/mutablelogic/go-llm/pkg/store"
 	assert "github.com/stretchr/testify/assert"
 )
 
@@ -20,7 +20,7 @@ import (
 func Test_file_001(t *testing.T) {
 	assert := assert.New(t)
 	dir := t.TempDir()
-	store, err := session.NewFileStore(filepath.Join(dir, "sessions"))
+	store, err := store.NewFileStore(filepath.Join(dir, "sessions"))
 	assert.NoError(err)
 	assert.NotNil(store)
 	_, err = os.Stat(filepath.Join(dir, "sessions"))
@@ -30,7 +30,7 @@ func Test_file_001(t *testing.T) {
 // Test NewFileStore with empty dir returns error
 func Test_file_002(t *testing.T) {
 	assert := assert.New(t)
-	_, err := session.NewFileStore("")
+	_, err := store.NewFileStore("")
 	assert.Error(err)
 }
 
@@ -38,8 +38,8 @@ func Test_file_002(t *testing.T) {
 func Test_file_003(t *testing.T) {
 	assert := assert.New(t)
 	dir := t.TempDir()
-	store, _ := session.NewFileStore(dir)
-	s, err := store.Create(context.TODO(), schema.SessionMeta{Name: "my chat", GeneratorMeta: schema.GeneratorMeta{Model: "test-model", Provider: "test-provider"}})
+	store, _ := store.NewFileStore(dir)
+	s, err := store.CreateSession(context.TODO(), schema.SessionMeta{Name: "my chat", GeneratorMeta: schema.GeneratorMeta{Model: "test-model", Provider: "test-provider"}})
 	assert.NoError(err)
 	assert.NotEmpty(s.ID)
 	assert.Equal("my chat", s.Name)
@@ -52,8 +52,8 @@ func Test_file_003(t *testing.T) {
 func Test_file_004(t *testing.T) {
 	assert := assert.New(t)
 	dir := t.TempDir()
-	store, _ := session.NewFileStore(dir)
-	_, err := store.Create(context.TODO(), schema.SessionMeta{Name: "test"})
+	store, _ := store.NewFileStore(dir)
+	_, err := store.CreateSession(context.TODO(), schema.SessionMeta{Name: "test"})
 	assert.Error(err)
 	assert.ErrorIs(err, llm.ErrBadParameter)
 }
@@ -62,9 +62,9 @@ func Test_file_004(t *testing.T) {
 func Test_file_005(t *testing.T) {
 	assert := assert.New(t)
 	dir := t.TempDir()
-	store, _ := session.NewFileStore(dir)
-	created, _ := store.Create(context.TODO(), schema.SessionMeta{Name: "test", GeneratorMeta: schema.GeneratorMeta{Model: "test-model", Provider: "test-provider"}})
-	got, err := store.Get(context.TODO(), created.ID)
+	store, _ := store.NewFileStore(dir)
+	created, _ := store.CreateSession(context.TODO(), schema.SessionMeta{Name: "test", GeneratorMeta: schema.GeneratorMeta{Model: "test-model", Provider: "test-provider"}})
+	got, err := store.GetSession(context.TODO(), created.ID)
 	assert.NoError(err)
 	assert.Equal(created.ID, got.ID)
 	assert.Equal(created.Name, got.Name)
@@ -75,8 +75,8 @@ func Test_file_005(t *testing.T) {
 func Test_file_006(t *testing.T) {
 	assert := assert.New(t)
 	dir := t.TempDir()
-	store, _ := session.NewFileStore(dir)
-	_, err := store.Get(context.TODO(), "nonexistent")
+	store, _ := store.NewFileStore(dir)
+	_, err := store.GetSession(context.TODO(), "nonexistent")
 	assert.Error(err)
 	assert.ErrorIs(err, llm.ErrNotFound)
 }
@@ -85,15 +85,15 @@ func Test_file_006(t *testing.T) {
 func Test_file_007(t *testing.T) {
 	assert := assert.New(t)
 	dir := t.TempDir()
-	store, _ := session.NewFileStore(dir)
-	s, _ := store.Create(context.TODO(), schema.SessionMeta{Name: "test", GeneratorMeta: schema.GeneratorMeta{Model: "test-model", Provider: "test-provider"}})
-	err := store.Delete(context.TODO(), s.ID)
+	store, _ := store.NewFileStore(dir)
+	s, _ := store.CreateSession(context.TODO(), schema.SessionMeta{Name: "test", GeneratorMeta: schema.GeneratorMeta{Model: "test-model", Provider: "test-provider"}})
+	err := store.DeleteSession(context.TODO(), s.ID)
 	assert.NoError(err)
 	// File should be gone
 	_, err = os.Stat(filepath.Join(dir, s.ID+".json"))
 	assert.True(os.IsNotExist(err))
 	// Get should fail
-	_, err = store.Get(context.TODO(), s.ID)
+	_, err = store.GetSession(context.TODO(), s.ID)
 	assert.ErrorIs(err, llm.ErrNotFound)
 }
 
@@ -101,8 +101,8 @@ func Test_file_007(t *testing.T) {
 func Test_file_008(t *testing.T) {
 	assert := assert.New(t)
 	dir := t.TempDir()
-	store, _ := session.NewFileStore(dir)
-	err := store.Delete(context.TODO(), "nonexistent")
+	store, _ := store.NewFileStore(dir)
+	err := store.DeleteSession(context.TODO(), "nonexistent")
 	assert.Error(err)
 	assert.ErrorIs(err, llm.ErrNotFound)
 }
@@ -111,8 +111,8 @@ func Test_file_008(t *testing.T) {
 func Test_file_009(t *testing.T) {
 	assert := assert.New(t)
 	dir := t.TempDir()
-	store, _ := session.NewFileStore(dir)
-	resp, err := store.List(context.TODO(), schema.ListSessionRequest{})
+	store, _ := store.NewFileStore(dir)
+	resp, err := store.ListSessions(context.TODO(), schema.ListSessionRequest{})
 	assert.NoError(err)
 	assert.Empty(resp.Body)
 }
@@ -121,11 +121,11 @@ func Test_file_009(t *testing.T) {
 func Test_file_010(t *testing.T) {
 	assert := assert.New(t)
 	dir := t.TempDir()
-	store, _ := session.NewFileStore(dir)
-	store.Create(context.TODO(), schema.SessionMeta{Name: "first", GeneratorMeta: schema.GeneratorMeta{Model: "test-model", Provider: "test-provider"}})
-	store.Create(context.TODO(), schema.SessionMeta{Name: "second", GeneratorMeta: schema.GeneratorMeta{Model: "test-model", Provider: "test-provider"}})
-	store.Create(context.TODO(), schema.SessionMeta{Name: "third", GeneratorMeta: schema.GeneratorMeta{Model: "test-model", Provider: "test-provider"}})
-	resp, err := store.List(context.TODO(), schema.ListSessionRequest{})
+	store, _ := store.NewFileStore(dir)
+	store.CreateSession(context.TODO(), schema.SessionMeta{Name: "first", GeneratorMeta: schema.GeneratorMeta{Model: "test-model", Provider: "test-provider"}})
+	store.CreateSession(context.TODO(), schema.SessionMeta{Name: "second", GeneratorMeta: schema.GeneratorMeta{Model: "test-model", Provider: "test-provider"}})
+	store.CreateSession(context.TODO(), schema.SessionMeta{Name: "third", GeneratorMeta: schema.GeneratorMeta{Model: "test-model", Provider: "test-provider"}})
+	resp, err := store.ListSessions(context.TODO(), schema.ListSessionRequest{})
 	assert.NoError(err)
 	assert.Len(resp.Body, 3)
 }
@@ -134,13 +134,13 @@ func Test_file_010(t *testing.T) {
 func Test_file_011(t *testing.T) {
 	assert := assert.New(t)
 	dir := t.TempDir()
-	store, _ := session.NewFileStore(dir)
-	s1, _ := store.Create(context.TODO(), schema.SessionMeta{Name: "oldest", GeneratorMeta: schema.GeneratorMeta{Model: "test-model", Provider: "test-provider"}})
+	store, _ := store.NewFileStore(dir)
+	s1, _ := store.CreateSession(context.TODO(), schema.SessionMeta{Name: "oldest", GeneratorMeta: schema.GeneratorMeta{Model: "test-model", Provider: "test-provider"}})
 	time.Sleep(10 * time.Millisecond)
-	s2, _ := store.Create(context.TODO(), schema.SessionMeta{Name: "middle", GeneratorMeta: schema.GeneratorMeta{Model: "test-model", Provider: "test-provider"}})
+	s2, _ := store.CreateSession(context.TODO(), schema.SessionMeta{Name: "middle", GeneratorMeta: schema.GeneratorMeta{Model: "test-model", Provider: "test-provider"}})
 	time.Sleep(10 * time.Millisecond)
-	s3, _ := store.Create(context.TODO(), schema.SessionMeta{Name: "newest", GeneratorMeta: schema.GeneratorMeta{Model: "test-model", Provider: "test-provider"}})
-	resp, err := store.List(context.TODO(), schema.ListSessionRequest{})
+	s3, _ := store.CreateSession(context.TODO(), schema.SessionMeta{Name: "newest", GeneratorMeta: schema.GeneratorMeta{Model: "test-model", Provider: "test-provider"}})
+	resp, err := store.ListSessions(context.TODO(), schema.ListSessionRequest{})
 	assert.NoError(err)
 	assert.Len(resp.Body, 3)
 	assert.Equal(s3.ID, resp.Body[0].ID)
@@ -152,12 +152,12 @@ func Test_file_011(t *testing.T) {
 func Test_file_012(t *testing.T) {
 	assert := assert.New(t)
 	dir := t.TempDir()
-	store, _ := session.NewFileStore(dir)
-	store.Create(context.TODO(), schema.SessionMeta{Name: "real", GeneratorMeta: schema.GeneratorMeta{Model: "test-model", Provider: "test-provider"}})
+	store, _ := store.NewFileStore(dir)
+	store.CreateSession(context.TODO(), schema.SessionMeta{Name: "real", GeneratorMeta: schema.GeneratorMeta{Model: "test-model", Provider: "test-provider"}})
 	// Create junk files
 	os.WriteFile(filepath.Join(dir, "notes.txt"), []byte("hello"), 0o600)
 	os.Mkdir(filepath.Join(dir, "subdir"), 0o700)
-	resp, err := store.List(context.TODO(), schema.ListSessionRequest{})
+	resp, err := store.ListSessions(context.TODO(), schema.ListSessionRequest{})
 	assert.NoError(err)
 	assert.Len(resp.Body, 1)
 }
@@ -166,10 +166,10 @@ func Test_file_012(t *testing.T) {
 func Test_file_013(t *testing.T) {
 	assert := assert.New(t)
 	dir := t.TempDir()
-	store, _ := session.NewFileStore(dir)
-	store.Create(context.TODO(), schema.SessionMeta{Name: "good", GeneratorMeta: schema.GeneratorMeta{Model: "test-model", Provider: "test-provider"}})
+	store, _ := store.NewFileStore(dir)
+	store.CreateSession(context.TODO(), schema.SessionMeta{Name: "good", GeneratorMeta: schema.GeneratorMeta{Model: "test-model", Provider: "test-provider"}})
 	os.WriteFile(filepath.Join(dir, "bad-id.json"), []byte("{corrupt"), 0o600)
-	resp, err := store.List(context.TODO(), schema.ListSessionRequest{})
+	resp, err := store.ListSessions(context.TODO(), schema.ListSessionRequest{})
 	assert.NoError(err)
 	assert.Len(resp.Body, 1)
 	assert.Equal("good", resp.Body[0].Name)
@@ -179,13 +179,13 @@ func Test_file_013(t *testing.T) {
 func Test_file_014(t *testing.T) {
 	assert := assert.New(t)
 	dir := t.TempDir()
-	store, _ := session.NewFileStore(dir)
-	s, _ := store.Create(context.TODO(), schema.SessionMeta{Name: "test", GeneratorMeta: schema.GeneratorMeta{Model: "test-model", Provider: "test-provider"}})
+	store, _ := store.NewFileStore(dir)
+	s, _ := store.CreateSession(context.TODO(), schema.SessionMeta{Name: "test", GeneratorMeta: schema.GeneratorMeta{Model: "test-model", Provider: "test-provider"}})
 	s.Append(schema.Message{Role: schema.RoleUser, Content: []schema.ContentBlock{{Text: textPtr("hello")}}})
-	err := store.Write(s)
+	err := store.WriteSession(s)
 	assert.NoError(err)
 	// Read back and verify the message was persisted
-	got, err := store.Get(context.TODO(), s.ID)
+	got, err := store.GetSession(context.TODO(), s.ID)
 	assert.NoError(err)
 	assert.Len(got.Messages, 1)
 	assert.Equal("hello", got.Messages[0].Text())
@@ -195,12 +195,12 @@ func Test_file_014(t *testing.T) {
 func Test_file_015(t *testing.T) {
 	assert := assert.New(t)
 	dir := t.TempDir()
-	store, _ := session.NewFileStore(dir)
-	s, _ := store.Create(context.TODO(), schema.SessionMeta{Name: "round-trip", GeneratorMeta: schema.GeneratorMeta{Model: "test-model", Provider: "test-provider"}})
+	store, _ := store.NewFileStore(dir)
+	s, _ := store.CreateSession(context.TODO(), schema.SessionMeta{Name: "round-trip", GeneratorMeta: schema.GeneratorMeta{Model: "test-model", Provider: "test-provider"}})
 	s.Append(schema.Message{Role: schema.RoleUser, Tokens: 5, Content: []schema.ContentBlock{{Text: textPtr("hi")}}})
 	s.Append(schema.Message{Role: schema.RoleAssistant, Tokens: 10, Content: []schema.ContentBlock{{Text: textPtr("hello")}}})
-	store.Write(s)
-	got, err := store.Get(context.TODO(), s.ID)
+	store.WriteSession(s)
+	got, err := store.GetSession(context.TODO(), s.ID)
 	assert.NoError(err)
 	assert.Equal(s.ID, got.ID)
 	assert.Equal("round-trip", got.Name)
@@ -213,9 +213,9 @@ func Test_file_015(t *testing.T) {
 func Test_file_021(t *testing.T) {
 	assert := assert.New(t)
 	dir := t.TempDir()
-	store, _ := session.NewFileStore(dir)
+	store, _ := store.NewFileStore(dir)
 	labels := map[string]string{"env": "prod", "team": "backend"}
-	s, err := store.Create(context.TODO(), schema.SessionMeta{
+	s, err := store.CreateSession(context.TODO(), schema.SessionMeta{
 		Name:          "labeled",
 		GeneratorMeta: schema.GeneratorMeta{Model: "test-model", Provider: "test-provider"},
 		Labels:        labels,
@@ -225,7 +225,7 @@ func Test_file_021(t *testing.T) {
 	assert.Equal("backend", s.Labels["team"])
 
 	// Verify labels survive round-trip
-	got, err := store.Get(context.TODO(), s.ID)
+	got, err := store.GetSession(context.TODO(), s.ID)
 	assert.NoError(err)
 	assert.Equal("prod", got.Labels["env"])
 	assert.Equal("backend", got.Labels["team"])
@@ -235,8 +235,8 @@ func Test_file_021(t *testing.T) {
 func Test_file_022(t *testing.T) {
 	assert := assert.New(t)
 	dir := t.TempDir()
-	store, _ := session.NewFileStore(dir)
-	_, err := store.Create(context.TODO(), schema.SessionMeta{
+	store, _ := store.NewFileStore(dir)
+	_, err := store.CreateSession(context.TODO(), schema.SessionMeta{
 		Name:          "bad",
 		GeneratorMeta: schema.GeneratorMeta{Model: "test-model", Provider: "test-provider"},
 		Labels:        map[string]string{"invalid key!": "value"},
@@ -249,30 +249,30 @@ func Test_file_022(t *testing.T) {
 func Test_file_023(t *testing.T) {
 	assert := assert.New(t)
 	dir := t.TempDir()
-	store, _ := session.NewFileStore(dir)
-	store.Create(context.TODO(), schema.SessionMeta{
+	store, _ := store.NewFileStore(dir)
+	store.CreateSession(context.TODO(), schema.SessionMeta{
 		Name:          "a",
 		GeneratorMeta: schema.GeneratorMeta{Model: "test-model", Provider: "test-provider"},
 		Labels:        map[string]string{"env": "prod"},
 	})
-	store.Create(context.TODO(), schema.SessionMeta{
+	store.CreateSession(context.TODO(), schema.SessionMeta{
 		Name:          "b",
 		GeneratorMeta: schema.GeneratorMeta{Model: "test-model", Provider: "test-provider"},
 		Labels:        map[string]string{"env": "dev"},
 	})
-	store.Create(context.TODO(), schema.SessionMeta{
+	store.CreateSession(context.TODO(), schema.SessionMeta{
 		Name:          "c",
 		GeneratorMeta: schema.GeneratorMeta{Model: "test-model", Provider: "test-provider"},
 	})
 
 	// Filter by env:prod
-	resp, err := store.List(context.TODO(), schema.ListSessionRequest{Label: []string{"env:prod"}})
+	resp, err := store.ListSessions(context.TODO(), schema.ListSessionRequest{Label: []string{"env:prod"}})
 	assert.NoError(err)
 	assert.Len(resp.Body, 1)
 	assert.Equal("a", resp.Body[0].Name)
 
 	// No filter returns all
-	resp, err = store.List(context.TODO(), schema.ListSessionRequest{})
+	resp, err = store.ListSessions(context.TODO(), schema.ListSessionRequest{})
 	assert.NoError(err)
 	assert.Len(resp.Body, 3)
 }
@@ -281,19 +281,19 @@ func Test_file_023(t *testing.T) {
 func Test_file_024(t *testing.T) {
 	assert := assert.New(t)
 	dir := t.TempDir()
-	store, _ := session.NewFileStore(dir)
-	store.Create(context.TODO(), schema.SessionMeta{
+	store, _ := store.NewFileStore(dir)
+	store.CreateSession(context.TODO(), schema.SessionMeta{
 		Name:          "match",
 		GeneratorMeta: schema.GeneratorMeta{Model: "test-model", Provider: "test-provider"},
 		Labels:        map[string]string{"env": "prod", "team": "backend"},
 	})
-	store.Create(context.TODO(), schema.SessionMeta{
+	store.CreateSession(context.TODO(), schema.SessionMeta{
 		Name:          "partial",
 		GeneratorMeta: schema.GeneratorMeta{Model: "test-model", Provider: "test-provider"},
 		Labels:        map[string]string{"env": "prod"},
 	})
 
-	resp, err := store.List(context.TODO(), schema.ListSessionRequest{Label: []string{"env:prod", "team:backend"}})
+	resp, err := store.ListSessions(context.TODO(), schema.ListSessionRequest{Label: []string{"env:prod", "team:backend"}})
 	assert.NoError(err)
 	assert.Len(resp.Body, 1)
 	assert.Equal("match", resp.Body[0].Name)
@@ -303,14 +303,14 @@ func Test_file_024(t *testing.T) {
 func Test_file_025(t *testing.T) {
 	assert := assert.New(t)
 	dir := t.TempDir()
-	store, _ := session.NewFileStore(dir)
-	s, _ := store.Create(context.TODO(), schema.SessionMeta{
+	store, _ := store.NewFileStore(dir)
+	s, _ := store.CreateSession(context.TODO(), schema.SessionMeta{
 		Name:          "test",
 		GeneratorMeta: schema.GeneratorMeta{Model: "test-model", Provider: "test-provider"},
 		Labels:        map[string]string{"env": "prod", "team": "backend"},
 	})
 
-	updated, err := store.Update(context.TODO(), s.ID, schema.SessionMeta{
+	updated, err := store.UpdateSession(context.TODO(), s.ID, schema.SessionMeta{
 		Labels: map[string]string{"team": "frontend", "region": "us"},
 	})
 	assert.NoError(err)
@@ -319,7 +319,7 @@ func Test_file_025(t *testing.T) {
 	assert.Equal("us", updated.Labels["region"])
 
 	// Verify persisted
-	got, err := store.Get(context.TODO(), s.ID)
+	got, err := store.GetSession(context.TODO(), s.ID)
 	assert.NoError(err)
 	assert.Equal("prod", got.Labels["env"])
 	assert.Equal("frontend", got.Labels["team"])
@@ -330,14 +330,14 @@ func Test_file_025(t *testing.T) {
 func Test_file_026(t *testing.T) {
 	assert := assert.New(t)
 	dir := t.TempDir()
-	store, _ := session.NewFileStore(dir)
-	s, _ := store.Create(context.TODO(), schema.SessionMeta{
+	store, _ := store.NewFileStore(dir)
+	s, _ := store.CreateSession(context.TODO(), schema.SessionMeta{
 		Name:          "test",
 		GeneratorMeta: schema.GeneratorMeta{Model: "test-model", Provider: "test-provider"},
 		Labels:        map[string]string{"env": "prod", "team": "backend"},
 	})
 
-	updated, err := store.Update(context.TODO(), s.ID, schema.SessionMeta{
+	updated, err := store.UpdateSession(context.TODO(), s.ID, schema.SessionMeta{
 		Labels: map[string]string{"team": ""},
 	})
 	assert.NoError(err)
@@ -346,7 +346,7 @@ func Test_file_026(t *testing.T) {
 	assert.False(exists)
 
 	// Verify persisted
-	got, err := store.Get(context.TODO(), s.ID)
+	got, err := store.GetSession(context.TODO(), s.ID)
 	assert.NoError(err)
 	_, exists = got.Labels["team"]
 	assert.False(exists)
@@ -356,13 +356,13 @@ func Test_file_026(t *testing.T) {
 func Test_file_027(t *testing.T) {
 	assert := assert.New(t)
 	dir := t.TempDir()
-	store, _ := session.NewFileStore(dir)
-	s, _ := store.Create(context.TODO(), schema.SessionMeta{
+	store, _ := store.NewFileStore(dir)
+	s, _ := store.CreateSession(context.TODO(), schema.SessionMeta{
 		Name:          "test",
 		GeneratorMeta: schema.GeneratorMeta{Model: "test-model", Provider: "test-provider"},
 	})
 
-	_, err := store.Update(context.TODO(), s.ID, schema.SessionMeta{
+	_, err := store.UpdateSession(context.TODO(), s.ID, schema.SessionMeta{
 		Labels: map[string]string{"bad key!": "value"},
 	})
 	assert.Error(err)
@@ -373,9 +373,9 @@ func Test_file_027(t *testing.T) {
 func Test_file_016(t *testing.T) {
 	assert := assert.New(t)
 	dir := t.TempDir()
-	store, _ := session.NewFileStore(dir)
-	s1, _ := store.Create(context.TODO(), schema.SessionMeta{Name: "a", GeneratorMeta: schema.GeneratorMeta{Model: "test-model", Provider: "test-provider"}})
-	s2, _ := store.Create(context.TODO(), schema.SessionMeta{Name: "b", GeneratorMeta: schema.GeneratorMeta{Model: "test-model", Provider: "test-provider"}})
+	store, _ := store.NewFileStore(dir)
+	s1, _ := store.CreateSession(context.TODO(), schema.SessionMeta{Name: "a", GeneratorMeta: schema.GeneratorMeta{Model: "test-model", Provider: "test-provider"}})
+	s2, _ := store.CreateSession(context.TODO(), schema.SessionMeta{Name: "b", GeneratorMeta: schema.GeneratorMeta{Model: "test-model", Provider: "test-provider"}})
 	assert.NotEqual(s1.ID, s2.ID)
 }
 
@@ -383,15 +383,15 @@ func Test_file_016(t *testing.T) {
 func Test_file_017(t *testing.T) {
 	assert := assert.New(t)
 	dir := t.TempDir()
-	store, _ := session.NewFileStore(dir)
-	s, _ := store.Create(context.TODO(), schema.SessionMeta{Name: "original", GeneratorMeta: schema.GeneratorMeta{Model: "test-model", Provider: "test-provider"}})
-	updated, err := store.Update(context.TODO(), s.ID, schema.SessionMeta{Name: "renamed"})
+	store, _ := store.NewFileStore(dir)
+	s, _ := store.CreateSession(context.TODO(), schema.SessionMeta{Name: "original", GeneratorMeta: schema.GeneratorMeta{Model: "test-model", Provider: "test-provider"}})
+	updated, err := store.UpdateSession(context.TODO(), s.ID, schema.SessionMeta{Name: "renamed"})
 	assert.NoError(err)
 	assert.Equal("renamed", updated.Name)
 	assert.Equal("test-model", updated.Model)
 
 	// Verify persisted by re-reading
-	got, err := store.Get(context.TODO(), s.ID)
+	got, err := store.GetSession(context.TODO(), s.ID)
 	assert.NoError(err)
 	assert.Equal("renamed", got.Name)
 }
@@ -400,8 +400,8 @@ func Test_file_017(t *testing.T) {
 func Test_file_018(t *testing.T) {
 	assert := assert.New(t)
 	dir := t.TempDir()
-	store, _ := session.NewFileStore(dir)
-	_, err := store.Update(context.TODO(), "nonexistent", schema.SessionMeta{Name: "x"})
+	store, _ := store.NewFileStore(dir)
+	_, err := store.UpdateSession(context.TODO(), "nonexistent", schema.SessionMeta{Name: "x"})
 	assert.Error(err)
 }
 
@@ -409,9 +409,9 @@ func Test_file_018(t *testing.T) {
 func Test_file_019(t *testing.T) {
 	assert := assert.New(t)
 	dir := t.TempDir()
-	store, _ := session.NewFileStore(dir)
-	s, _ := store.Create(context.TODO(), schema.SessionMeta{Name: "keep", GeneratorMeta: schema.GeneratorMeta{Model: "test-model", Provider: "test-provider", SystemPrompt: "original"}})
-	updated, err := store.Update(context.TODO(), s.ID, schema.SessionMeta{GeneratorMeta: schema.GeneratorMeta{SystemPrompt: "changed"}})
+	store, _ := store.NewFileStore(dir)
+	s, _ := store.CreateSession(context.TODO(), schema.SessionMeta{Name: "keep", GeneratorMeta: schema.GeneratorMeta{Model: "test-model", Provider: "test-provider", SystemPrompt: "original"}})
+	updated, err := store.UpdateSession(context.TODO(), s.ID, schema.SessionMeta{GeneratorMeta: schema.GeneratorMeta{SystemPrompt: "changed"}})
 	assert.NoError(err)
 	assert.Equal("keep", updated.Name)
 	assert.Equal("test-model", updated.Model)
@@ -422,11 +422,11 @@ func Test_file_019(t *testing.T) {
 func Test_file_020(t *testing.T) {
 	assert := assert.New(t)
 	dir := t.TempDir()
-	store, _ := session.NewFileStore(dir)
-	s, _ := store.Create(context.TODO(), schema.SessionMeta{Name: "test", GeneratorMeta: schema.GeneratorMeta{Model: "test-model", Provider: "test-provider"}})
+	store, _ := store.NewFileStore(dir)
+	s, _ := store.CreateSession(context.TODO(), schema.SessionMeta{Name: "test", GeneratorMeta: schema.GeneratorMeta{Model: "test-model", Provider: "test-provider"}})
 	original := s.Modified
 	time.Sleep(5 * time.Millisecond)
-	updated, err := store.Update(context.TODO(), s.ID, schema.SessionMeta{Name: "new"})
+	updated, err := store.UpdateSession(context.TODO(), s.ID, schema.SessionMeta{Name: "new"})
 	assert.NoError(err)
 	assert.True(updated.Modified.After(original))
 }

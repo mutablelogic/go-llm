@@ -1,4 +1,4 @@
-package session
+package store
 
 import (
 	"context"
@@ -16,21 +16,21 @@ import (
 ///////////////////////////////////////////////////////////////////////////////
 // TYPES
 
-// MemoryStore is an in-memory implementation of Store.
+// MemorySessionStore is an in-memory implementation of Store.
 // It is safe for concurrent use.
-type MemoryStore struct {
+type MemorySessionStore struct {
 	mu       sync.RWMutex
 	sessions map[string]*schema.Session
 }
 
-var _ schema.Store = (*MemoryStore)(nil)
+var _ schema.SessionStore = (*MemorySessionStore)(nil)
 
 ///////////////////////////////////////////////////////////////////////////////
 // LIFECYCLE
 
-// NewMemoryStore creates a new empty in-memory session store.
-func NewMemoryStore() *MemoryStore {
-	return &MemoryStore{
+// NewMemorySessionStore creates a new empty in-memory session store.
+func NewMemorySessionStore() *MemorySessionStore {
+	return &MemorySessionStore{
 		sessions: make(map[string]*schema.Session),
 	}
 }
@@ -38,8 +38,8 @@ func NewMemoryStore() *MemoryStore {
 ///////////////////////////////////////////////////////////////////////////////
 // PUBLIC METHODS
 
-// Create creates a new session with a unique ID and returns it.
-func (m *MemoryStore) Create(_ context.Context, meta schema.SessionMeta) (*schema.Session, error) {
+// CreateSession creates a new session with a unique ID and returns it.
+func (m *MemorySessionStore) CreateSession(_ context.Context, meta schema.SessionMeta) (*schema.Session, error) {
 	if meta.Model == "" {
 		return nil, llm.ErrBadParameter.With("model name is required")
 	}
@@ -63,8 +63,8 @@ func (m *MemoryStore) Create(_ context.Context, meta schema.SessionMeta) (*schem
 	return s, nil
 }
 
-// Get retrieves a session by ID.
-func (m *MemoryStore) Get(_ context.Context, id string) (*schema.Session, error) {
+// GetSession retrieves a session by ID.
+func (m *MemorySessionStore) GetSession(_ context.Context, id string) (*schema.Session, error) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 
@@ -75,9 +75,9 @@ func (m *MemoryStore) Get(_ context.Context, id string) (*schema.Session, error)
 	return s, nil
 }
 
-// List returns sessions, ordered by last modified time (most recent first),
+// ListSessions returns sessions, ordered by last modified time (most recent first),
 // with pagination support.
-func (m *MemoryStore) List(_ context.Context, req schema.ListSessionRequest) (*schema.ListSessionResponse, error) {
+func (m *MemorySessionStore) ListSessions(_ context.Context, req schema.ListSessionRequest) (*schema.ListSessionResponse, error) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 
@@ -112,8 +112,8 @@ func (m *MemoryStore) List(_ context.Context, req schema.ListSessionRequest) (*s
 	}, nil
 }
 
-// Delete removes a session by ID.
-func (m *MemoryStore) Delete(_ context.Context, id string) error {
+// DeleteSession removes a session by ID.
+func (m *MemorySessionStore) DeleteSession(_ context.Context, id string) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
@@ -124,14 +124,14 @@ func (m *MemoryStore) Delete(_ context.Context, id string) error {
 	return nil
 }
 
-// Write is a no-op for the memory store since sessions are held
+// WriteSession is a no-op for the memory store since sessions are held
 // as pointers in memory and mutations are visible immediately.
-func (m *MemoryStore) Write(_ *schema.Session) error {
+func (m *MemorySessionStore) WriteSession(_ *schema.Session) error {
 	return nil
 }
 
-// Update applies non-zero fields from meta to the session identified by id.
-func (m *MemoryStore) Update(_ context.Context, id string, meta schema.SessionMeta) (*schema.Session, error) {
+// UpdateSession applies non-zero fields from meta to the session identified by id.
+func (m *MemorySessionStore) UpdateSession(_ context.Context, id string, meta schema.SessionMeta) (*schema.Session, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 

@@ -79,12 +79,12 @@ type StreamError struct {
 
 // GeneratorMeta represents the metadata needed to invoke a generator model.
 type GeneratorMeta struct {
-	Provider       string          `json:"provider,omitempty" help:"Provider name" optional:""`
-	Model          string          `json:"model,omitempty" help:"Model name" optional:""`
-	SystemPrompt   string          `json:"system_prompt,omitempty" help:"System prompt" optional:""`
-	Format         json.RawMessage `json:"format,omitempty" help:"JSON schema for structured output" optional:""`
-	Thinking       *bool           `json:"thinking,omitempty" help:"Enable thinking/reasoning" optional:""`
-	ThinkingBudget uint            `json:"thinking_budget,omitempty" help:"Thinking token budget (required for Anthropic, optional for Google)" optional:""`
+	Provider       string     `json:"provider,omitempty" yaml:"provider" help:"Provider name" optional:""`
+	Model          string     `json:"model,omitempty" yaml:"model" help:"Model name" optional:""`
+	SystemPrompt   string     `json:"system_prompt,omitempty" yaml:"system_prompt" help:"System prompt" optional:""`
+	Format         JSONSchema `json:"format,omitempty" yaml:"format" help:"JSON schema for structured output" optional:""`
+	Thinking       *bool      `json:"thinking,omitempty" yaml:"thinking" help:"Enable thinking/reasoning" optional:""`
+	ThinkingBudget uint       `json:"thinking_budget,omitempty" yaml:"thinking_budget" help:"Thinking token budget (required for Anthropic, optional for Google)" optional:""`
 }
 
 // SessionMeta represents the metadata for a session.
@@ -136,6 +136,21 @@ type ChatResponse struct {
 	CompletionResponse
 	Session string `json:"session"`
 	Usage   *Usage `json:"usage,omitempty"`
+}
+
+// ListAgentRequest represents a request to list agents
+type ListAgentRequest struct {
+	Name   string `json:"name,omitempty" help:"Filter by agent name" optional:""`
+	Limit  *uint  `json:"limit,omitempty" help:"Maximum number of agents to return"`
+	Offset uint   `json:"offset,omitempty" help:"Offset for pagination"`
+}
+
+// ListAgentResponse represents a response containing a list of agents
+type ListAgentResponse struct {
+	Count  uint     `json:"count"`
+	Offset uint     `json:"offset,omitzero"`
+	Limit  *uint    `json:"limit,omitzero"`
+	Body   []*Agent `json:"body,omitzero"`
 }
 
 // ListSessionRequest represents a request to list sessions
@@ -202,6 +217,14 @@ func (r GeneratorMeta) String() string {
 }
 
 func (r SessionMeta) String() string {
+	return types.Stringify(r)
+}
+
+func (r ListAgentRequest) String() string {
+	return types.Stringify(r)
+}
+
+func (r ListAgentResponse) String() string {
 	return types.Stringify(r)
 }
 

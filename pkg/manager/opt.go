@@ -39,12 +39,24 @@ func WithClient(client llm.Client) Opt {
 
 // WithSessionStore sets the session storage backend for the manager.
 // If not set, an in-memory store is used by default.
-func WithSessionStore(store schema.Store) Opt {
+func WithSessionStore(store schema.SessionStore) Opt {
 	return func(m *Manager) error {
 		if store == nil {
 			return llm.ErrBadParameter.With("session store is required")
 		}
-		m.store = store
+		m.sessionStore = store
+		return nil
+	}
+}
+
+// WithAgentStore sets the agent storage backend for the manager.
+// If not set, an in-memory store is used by default.
+func WithAgentStore(store schema.AgentStore) Opt {
+	return func(m *Manager) error {
+		if store == nil {
+			return llm.ErrBadParameter.With("agent store is required")
+		}
+		m.agentStore = store
 		return nil
 	}
 }

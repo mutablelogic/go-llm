@@ -10,16 +10,16 @@ import (
 
 	// Packages
 	client "github.com/mutablelogic/go-client"
-	manager "github.com/mutablelogic/go-llm/pkg/manager"
 	homeassistant "github.com/mutablelogic/go-llm/pkg/homeassistant"
 	httphandler "github.com/mutablelogic/go-llm/pkg/httphandler"
+	manager "github.com/mutablelogic/go-llm/pkg/manager"
 	newsapi "github.com/mutablelogic/go-llm/pkg/newsapi"
 	anthropic "github.com/mutablelogic/go-llm/pkg/provider/anthropic"
 	"github.com/mutablelogic/go-llm/pkg/provider/eliza"
 	google "github.com/mutablelogic/go-llm/pkg/provider/google"
 	mistral "github.com/mutablelogic/go-llm/pkg/provider/mistral"
 	schema "github.com/mutablelogic/go-llm/pkg/schema"
-	session "github.com/mutablelogic/go-llm/pkg/session"
+	session "github.com/mutablelogic/go-llm/pkg/store"
 	tool "github.com/mutablelogic/go-llm/pkg/tool"
 	version "github.com/mutablelogic/go-llm/pkg/version"
 	weatherapi "github.com/mutablelogic/go-llm/pkg/weatherapi"
@@ -237,7 +237,7 @@ func (cmd *RunServer) Serve(ctx *Globals, manager *manager.Manager, versionTag s
 
 // SessionStore returns the session store, creating it lazily.
 // Sessions are stored in the user's cache directory.
-func (cmd *RunServer) SessionStore(execName string) (schema.Store, error) {
+func (cmd *RunServer) SessionStore(execName string) (schema.SessionStore, error) {
 	cache, err := os.UserCacheDir()
 	if err != nil {
 		return nil, fmt.Errorf("failed to determine cache directory: %w", err)

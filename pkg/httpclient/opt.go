@@ -42,3 +42,8 @@ func WithLabel(key, value string) opt.Opt {
 	}
 	return opt.AddString(opt.LabelKey, key+":"+value)
 }
+
+// WithName filters results by name.
+func WithName(name string) opt.Opt {
+	return opt.SetString(opt.NameKey, name)
+}

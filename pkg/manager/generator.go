@@ -71,7 +71,7 @@ func (m *Manager) Ask(ctx context.Context, request schema.AskRequest, fn opt.Str
 // If fn is non-nil, text chunks are streamed to the callback as they arrive.
 func (m *Manager) Chat(ctx context.Context, request schema.ChatRequest, fn opt.StreamFn) (*schema.ChatResponse, error) {
 	// Retrieve the session
-	session, err := m.store.Get(ctx, request.Session)
+	session, err := m.sessionStore.GetSession(ctx, request.Session)
 	if err != nil {
 		return nil, err
 	}
@@ -185,7 +185,7 @@ func (m *Manager) Chat(ctx context.Context, request schema.ChatRequest, fn opt.S
 	}
 
 	// Persist the updated session
-	if err := m.store.Write(session); err != nil {
+	if err := m.sessionStore.WriteSession(session); err != nil {
 		return nil, err
 	}
 
@@ -295,7 +295,7 @@ func withThinkingBudget(budgetTokens uint) opt.Opt {
 }
 
 // withJSONOutput dispatches to the correct provider-specific JSON output option.
-func withJSONOutput(data json.RawMessage) opt.Opt {
+func withJSONOutput(data schema.JSONSchema) opt.Opt {
 	var s jsonschema.Schema
 	if err := json.Unmarshal(data, &s); err != nil {
 		return opt.Error(llm.ErrBadParameter.Withf("invalid JSON schema: %v", err))
