@@ -58,6 +58,7 @@ Answer the following question: {{ .query }}
 | `system_prompt`   | System prompt sent to the model                      |
 | `format`          | JSON Schema defining the structured output format    |
 | `input`           | JSON Schema defining the expected input variables    |
+| `tools`           | List of tool names the agent is allowed to use       |
 | `thinking`        | Enable thinking/reasoning (`true` or `false`)        |
 | `thinking_budget` | Token budget for thinking (used with Anthropic)      |
 
