@@ -39,7 +39,7 @@ docker run -d --name go-llm \
 
 ### Client
 
-The client-only CLI can be downloaded from the [releases page](https://github.com/mutablelogic/go-llm/releases). It does not include the server or the Telegram bot. Point it at a running server:
+The client-only CLI can be downloaded from the [releases page](https://github.com/mutablelogic/go-llm/releases), or use `go install -tags client github.com/mutablelogic/go-llm/cmd/llm@latest`. It does not include the server or the Telegram bot. Point it at a running server:
 
 ```bash
 export LLM_ADDR="localhost:8085"
@@ -76,17 +76,18 @@ docker run -d --name go-llm-telegram \
 
 ### Providers
 
-API keys are configured on the server via flags or environment variables:
+Providers are sources of models and generation capabilities. Some providers may support additional features like thinking/reasoning, tool use and embeddings. API keys for access to provider models are configured on the server via flags or environment variables:
 
 | Provider | Flag | Env Variable | Models |
 |----------|------|-------------|--------|
 | **Google Gemini** | `--gemini-api-key` | `GEMINI_API_KEY` | Gemini 2.0 Flash, Flash Lite, embedding models, etc. |
 | **Anthropic Claude** | `--anthropic-api-key` | `ANTHROPIC_API_KEY` | Claude Sonnet, Haiku, Opus, etc. |
 | **Mistral** | `--mistral-api-key` | `MISTRAL_API_KEY` | Mistral Large, Small, embedding models, etc. |
+| **ELIZA** | `--eliza` | *(none)* | Mock provider based on Weizenbaum's 1966 chatbot; no API key needed (en, de, fr) |
 
 ### Tools
 
-The following tools are included as examples of how to build tool integrations with the SDK:
+Tools are external functions that can be called by the agent during generation. They are registered with the agent and exposed via the API and MCP server. Tools can be configured with flags or environment variables as needed for authentication or connection details. The following tools are included as examples of how to build tool integrations with the SDK:
 
 | Tool | Flag | Env Variable | Description |
 |------|------|-------------|-------------|
@@ -138,6 +139,8 @@ The `llm` command-line tool can connect to any running go-llm server (set `LLM_A
 
 ### Session
 
+Sessions represent stateful conversations with context and memory. They can be managed via the CLI or API, and are persisted on the server for later retrieval.
+
 | Command | Description | Example |
 |---------|-------------|---------|
 | `sessions` | List sessions | `llm sessions` |
@@ -157,8 +160,8 @@ The `llm` command-line tool can connect to any running go-llm server (set `LLM_A
 
 | Command | Description | Example |
 |---------|-------------|---------|
-| `run` | Start the HTTP API server | `llm run` |
-| `telegram` | Run as a Telegram bot | `llm telegram --model gemini-2.0-flash` |
+| `run` | Start the server | `llm run` |
+| `telegram` | Run as a Telegram bot, requiring a server | `llm telegram --model gemini-2.0-flash` |
 
 Use `llm --help` or `llm <command> --help` for full options.
 
@@ -229,6 +232,8 @@ flowchart LR
         Anthropic Claude`"]
         Mistral["`**pkg/provider/mistral**
         Mistral`"]
+        Eliza["`**pkg/provider/eliza**
+        ELIZA (mock)`"]
     end
 
     subgraph ToolImpls["Example Tools"]
@@ -251,6 +256,7 @@ flowchart LR
     Agent --> Gemini
     Agent --> Claude
     Agent --> Mistral
+    Agent --> Eliza
     Tools --> HA
     Tools --> News
     Tools --> Weather
@@ -303,7 +309,7 @@ func main() {
 | Package | Description |
 |---------|-------------|
 | `pkg/agent` | Central manager orchestrating providers, sessions, and tools |
-| `pkg/provider/{google,anthropic,mistral}` | Provider implementations |
+| `pkg/provider/{google,anthropic,mistral,eliza}` | Provider implementations |
 | `pkg/session` | Session storage backends (in-memory, file-backed JSON) |
 | `pkg/tool` | Tool interface and toolkit registry |
 | `pkg/schema` | Core types (Model, Message, ContentBlock, Attachment, Session, etc.) |

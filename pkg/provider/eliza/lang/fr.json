@@ -1,0 +1,338 @@
+{
+    "model": "eliza-1966-fr",
+    "description": "ELIZA - Une simulation de psychothérapeute rogérien (Français)",
+    "language": "fr",
+    "quits": [
+        "quit",
+        "fin",
+        "au revoir",
+        "adieu",
+        "salut",
+        "à bientôt",
+        "ciao",
+        "bye"
+    ],
+    "greetings": [
+        "bonjour",
+        "salut",
+        "hey",
+        "bonsoir",
+        "coucou",
+        "hello",
+        "hi"
+    ],
+    "reflections": {
+        "je": "vous",
+        "me": "vous",
+        "moi": "vous",
+        "mon": "votre",
+        "ma": "votre",
+        "mes": "vos",
+        "mien": "vôtre",
+        "mienne": "vôtre",
+        "miens": "vôtres",
+        "miennes": "vôtres",
+        "suis": "êtes",
+        "ai": "avez",
+        "serai": "serez",
+        "veux": "voulez",
+        "peux": "pouvez",
+        "dois": "devez",
+        "vous": "je",
+        "votre": "mon",
+        "vos": "mes",
+        "vôtre": "mien",
+        "vôtres": "miens",
+        "êtes": "suis",
+        "avez": "ai",
+        "serez": "serai",
+        "voulez": "veux",
+        "pouvez": "peux",
+        "devez": "dois",
+        "nous": "vous",
+        "notre": "votre",
+        "nos": "vos"
+    },
+    "rules": [
+        {
+            "pattern": "\\b(pardon|excuse[zr]|désolé|désolée|sorry)\\b",
+            "responses": [
+                "Ne vous excusez pas, s'il vous plaît.",
+                "Les excuses ne sont pas nécessaires.",
+                "Quels sentiments avez-vous quand vous vous excusez ?",
+                "Ne soyez pas si défensif !"
+            ]
+        },
+        {
+            "pattern": "\\b(mère|père|maman|papa|parent|frère|sœur|famille)\\b",
+            "responses": [
+                "Parlez-moi davantage de votre famille.",
+                "Comment vous sentez-vous par rapport à votre famille ?",
+                "Quel rôle joue la famille dans votre vie ?",
+                "À quoi pensez-vous quand vous pensez à la famille ?",
+                "Comment était votre relation avec votre famille en grandissant ?"
+            ]
+        },
+        {
+            "pattern": "j'ai besoin (?:de |d')?(.*)",
+            "memorable": true,
+            "responses": [
+                "Pourquoi avez-vous besoin de %s ?",
+                "Est-ce que cela vous aiderait vraiment d'obtenir %s ?",
+                "Êtes-vous sûr d'avoir besoin de %s ?",
+                "Qu'est-ce que cela signifierait pour vous d'obtenir %s ?"
+            ]
+        },
+        {
+            "pattern": "pourquoi ne (?:faites|fais)-vous pas (.*)",
+            "responses": [
+                "Pensez-vous vraiment que je ne fais pas %s ?",
+                "Peut-être que je finirai par %s.",
+                "Voulez-vous vraiment que je %s ?",
+                "Aimeriez-vous que je %s ?"
+            ]
+        },
+        {
+            "pattern": "pourquoi (?:ne puis-je|je ne peux) pas (.*)",
+            "responses": [
+                "Pensez-vous que vous devriez pouvoir %s ?",
+                "Si vous pouviez %s, que feriez-vous ?",
+                "Je ne sais pas -- pourquoi ne pouvez-vous pas %s ?",
+                "Avez-vous vraiment essayé ?"
+            ]
+        },
+        {
+            "pattern": "je ne peux pas (.*)",
+            "memorable": true,
+            "responses": [
+                "Comment savez-vous que vous ne pouvez pas %s ?",
+                "Peut-être pourriez-vous %s si vous essayiez.",
+                "Que faudrait-il pour que vous puissiez %s ?",
+                "Avez-vous essayé de %s ?"
+            ]
+        },
+        {
+            "pattern": "je suis (.*)",
+            "memorable": true,
+            "responses": [
+                "Êtes-vous venu me voir parce que vous êtes %s ?",
+                "Depuis combien de temps êtes-vous %s ?",
+                "Comment vous sentez-vous d'être %s ?",
+                "Pensez-vous qu'il est normal d'être %s ?",
+                "Aimez-vous être %s ?"
+            ]
+        },
+        {
+            "pattern": "êtes-vous (.*)",
+            "responses": [
+                "Pourquoi est-ce important de savoir si je suis %s ?",
+                "Préféreriez-vous que je ne sois pas %s ?",
+                "Peut-être pensez-vous que je suis %s.",
+                "Je suis peut-être %s -- qu'en pensez-vous ?",
+                "Pourquoi vous intéressez-vous à savoir si je suis %s ou non ?"
+            ]
+        },
+        {
+            "pattern": "(?:qu'est-ce que|que|quoi) (.*)",
+            "responses": [
+                "Pourquoi posez-vous la question ?",
+                "En quoi une réponse à cela vous aiderait-elle ?",
+                "Qu'en pensez-vous ?",
+                "Cette question vous intéresse-t-elle ?"
+            ]
+        },
+        {
+            "pattern": "comment (.*)",
+            "responses": [
+                "Que supposez-vous ?",
+                "Peut-être pouvez-vous répondre à votre propre question.",
+                "Que voulez-vous vraiment savoir ?",
+                "Qu'en pensez-vous ?"
+            ]
+        },
+        {
+            "pattern": "parce que (.*)",
+            "responses": [
+                "Est-ce la vraie raison ?",
+                "Quelles autres raisons pourrait-il y avoir ?",
+                "Cette raison semble-t-elle expliquer autre chose ?",
+                "Quelles autres raisons vous viennent à l'esprit ?"
+            ]
+        },
+        {
+            "pattern": "je pense que (.*)",
+            "memorable": true,
+            "responses": [
+                "Doutez-vous de %s ?",
+                "Pensez-vous vraiment cela ?",
+                "Mais vous n'êtes pas sûr de %s ?",
+                "Qu'est-ce qui vous fait penser que %s ?"
+            ]
+        },
+        {
+            "pattern": "je (?:me sens|ressens) (.*)",
+            "memorable": true,
+            "responses": [
+                "Parlez-moi davantage de ce sentiment de %s.",
+                "Vous sentez-vous souvent %s ?",
+                "Quand vous sentez-vous habituellement %s ?",
+                "Quand vous vous sentez %s, que faites-vous ?"
+            ]
+        },
+        {
+            "pattern": "je veux (.*)",
+            "memorable": true,
+            "responses": [
+                "Qu'est-ce que cela signifierait si vous obteniez %s ?",
+                "Pourquoi voulez-vous %s ?",
+                "Que feriez-vous si vous obteniez %s ?",
+                "Si vous obteniez %s, et après ?",
+                "Supposons que vous obteniez bientôt %s -- et ensuite ?"
+            ]
+        },
+        {
+            "pattern": "je souhaite (.*)",
+            "memorable": true,
+            "responses": [
+                "Pourquoi souhaitez-vous %s ?",
+                "Souhaitez-vous vraiment %s ?",
+                "Qu'est-ce que cela signifierait si %s se réalisait ?",
+                "Supposons que %s se réalise -- et ensuite ?"
+            ]
+        },
+        {
+            "pattern": "vous êtes (.*)",
+            "responses": [
+                "Qu'est-ce qui vous fait penser que je suis %s ?",
+                "Cela vous plaît-il de penser que je suis %s ?",
+                "Peut-être aimeriez-vous que je sois %s.",
+                "Peut-être parlez-vous en réalité de vous-même ?"
+            ]
+        },
+        {
+            "pattern": "^oui$|^oui[,.]|^ouais|^bien sûr|^absolument",
+            "responses": [
+                "Vous semblez assez sûr de vous.",
+                "Je vois.",
+                "Je comprends.",
+                "Pouvez-vous développer ?"
+            ]
+        },
+        {
+            "pattern": "^non$|^non[,.]|^pas du tout|^absolument pas",
+            "responses": [
+                "Pourquoi pas ?",
+                "Vous êtes un peu négatif.",
+                "Dites-vous non juste pour être négatif ?",
+                "Pourquoi dites-vous non ?"
+            ]
+        },
+        {
+            "pattern": "\\b(ordinateur|machine|robot|ia|intelligence artificielle|bot)\\b",
+            "responses": [
+                "Les ordinateurs vous inquiètent-ils ?",
+                "Pourquoi mentionnez-vous les ordinateurs ?",
+                "Quel rapport pensez-vous que les machines ont avec votre problème ?",
+                "Ne pensez-vous pas que les ordinateurs peuvent aider les gens ?",
+                "Qu'est-ce qui vous inquiète dans les machines ?",
+                "Qu'est-ce qui vous préoccupe dans les machines ?"
+            ]
+        },
+        {
+            "pattern": "\\b(rêve|rêves|rêvé|cauchemar|cauchemars)\\b",
+            "memorable": true,
+            "responses": [
+                "Que vous suggère ce rêve ?",
+                "Rêvez-vous souvent ?",
+                "Quelles personnes apparaissent dans vos rêves ?",
+                "Ne pensez-vous pas que ce rêve a un rapport avec votre problème ?",
+                "Que ressentez-vous à propos de ce rêve ?"
+            ]
+        },
+        {
+            "pattern": "\\btoujours\\b",
+            "responses": [
+                "Pouvez-vous penser à un exemple précis ?",
+                "Quand ?",
+                "À quel incident pensez-vous ?",
+                "Vraiment -- toujours ?",
+                "Est-ce vraiment toujours le cas ?"
+            ]
+        },
+        {
+            "pattern": "\\bjamais\\b",
+            "responses": [
+                "Pas une seule fois ?",
+                "Jamais est un mot fort.",
+                "Pouvez-vous être plus précis ?",
+                "En êtes-vous sûr ?"
+            ]
+        },
+        {
+            "pattern": "\\b(peut-être|éventuellement|possiblement)\\b",
+            "responses": [
+                "Vous ne semblez pas très sûr.",
+                "Pourquoi ce ton hésitant ?",
+                "Ne pouvez-vous pas être plus positif ?",
+                "Vous n'êtes pas sûr ?",
+                "Vous ne savez pas ?"
+            ]
+        },
+        {
+            "pattern": "\\b(tout le monde|tous|personne|quelqu'un|quelqu'une)\\b",
+            "responses": [
+                "Vraiment, tout le monde ?",
+                "Certainement pas tout le monde.",
+                "Pouvez-vous penser à quelqu'un en particulier ?",
+                "Qui, par exemple ?",
+                "Pensez-vous à une personne en particulier ?"
+            ]
+        },
+        {
+            "pattern": "\\b(semblable|pareil|même|identique)\\b",
+            "responses": [
+                "De quelle manière exactement ?",
+                "Quelle ressemblance voyez-vous ?",
+                "Que signifie cette similitude pour vous ?",
+                "Quels autres liens voyez-vous ?",
+                "Qu'est-ce que cela implique selon vous ?"
+            ]
+        }
+    ],
+    "greetingResponses": [
+        "Bonjour. Comment vous sentez-vous aujourd'hui ?",
+        "Bonjour. Qu'avez-vous en tête ?",
+        "Bonjour. Qu'est-ce qui vous amène aujourd'hui ?",
+        "Bienvenue. Comment puis-je vous aider à explorer vos pensées ?",
+        "Bonjour. Dites-moi ce qui vous préoccupe."
+    ],
+    "goodbyeResponses": [
+        "Au revoir. J'espère que cette conversation vous a été utile.",
+        "Merci d'avoir parlé avec moi. Au revoir.",
+        "Au revoir. Prenez soin de vous.",
+        "C'était agréable de parler avec vous. Au revoir.",
+        "Au revoir. N'oubliez pas, je suis là quand vous avez besoin de parler."
+    ],
+    "defaultResponses": [
+        "Continuez, s'il vous plaît.",
+        "Dites-m'en plus.",
+        "Pouvez-vous développer ?",
+        "C'est intéressant. Continuez, s'il vous plaît.",
+        "Je vois. Et qu'est-ce que cela vous fait penser ?",
+        "Comment cela vous fait-il sentir ?",
+        "De quoi d'autre aimeriez-vous discuter ?",
+        "Très intéressant.",
+        "Je ne suis pas sûr de vous comprendre complètement.",
+        "Dites-m'en plus à ce sujet.",
+        "Explorons cela davantage.",
+        "Ressentez-vous fortement le besoin de discuter de telles choses ?",
+        "Qu'est-ce que cela vous suggère ?"
+    ],
+    "memoryResponses": [
+        "Tout à l'heure, vous avez mentionné",
+        "Revenons à quelque chose que vous avez dit :",
+        "Vous avez mentionné plus tôt que",
+        "Est-ce que cela a un rapport avec ce que vous avez dit sur",
+        "Parlez-moi davantage de ce que vous avez dit sur"
+    ]
+}

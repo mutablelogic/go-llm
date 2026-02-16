@@ -9,19 +9,20 @@ import (
 	"path/filepath"
 
 	// Packages
-	"github.com/mutablelogic/go-client"
+	client "github.com/mutablelogic/go-client"
 	agent "github.com/mutablelogic/go-llm/pkg/agent"
-	"github.com/mutablelogic/go-llm/pkg/homeassistant"
+	homeassistant "github.com/mutablelogic/go-llm/pkg/homeassistant"
 	httphandler "github.com/mutablelogic/go-llm/pkg/httphandler"
-	"github.com/mutablelogic/go-llm/pkg/newsapi"
-	"github.com/mutablelogic/go-llm/pkg/provider/anthropic"
-	"github.com/mutablelogic/go-llm/pkg/provider/google"
-	"github.com/mutablelogic/go-llm/pkg/provider/mistral"
-	"github.com/mutablelogic/go-llm/pkg/schema"
-	"github.com/mutablelogic/go-llm/pkg/session"
-	"github.com/mutablelogic/go-llm/pkg/tool"
+	newsapi "github.com/mutablelogic/go-llm/pkg/newsapi"
+	anthropic "github.com/mutablelogic/go-llm/pkg/provider/anthropic"
+	"github.com/mutablelogic/go-llm/pkg/provider/eliza"
+	google "github.com/mutablelogic/go-llm/pkg/provider/google"
+	mistral "github.com/mutablelogic/go-llm/pkg/provider/mistral"
+	schema "github.com/mutablelogic/go-llm/pkg/schema"
+	session "github.com/mutablelogic/go-llm/pkg/session"
+	tool "github.com/mutablelogic/go-llm/pkg/tool"
 	version "github.com/mutablelogic/go-llm/pkg/version"
-	"github.com/mutablelogic/go-llm/pkg/weatherapi"
+	weatherapi "github.com/mutablelogic/go-llm/pkg/weatherapi"
 	server "github.com/mutablelogic/go-server"
 	httprouter "github.com/mutablelogic/go-server/pkg/httprouter"
 	httpserver "github.com/mutablelogic/go-server/pkg/httpserver"
@@ -37,6 +38,7 @@ type RunServer struct {
 	GeminiAPIKey    string `name:"gemini-api-key" env:"GEMINI_API_KEY" help:"Google Gemini API key"`
 	AnthropicAPIKey string `name:"anthropic-api-key" env:"ANTHROPIC_API_KEY" help:"Anthropic API key"`
 	MistralAPIKey   string `name:"mistral-api-key" env:"MISTRAL_API_KEY" help:"Mistral API key"`
+	Eliza           bool   `name:"eliza" help:"Include ELIZA provider (no API key required)"`
 
 	// Tool API Keys
 	NewsAPIKey    string `name:"news-api-key" env:"NEWS_API_KEY" help:"NewsAPI key"`
@@ -104,6 +106,15 @@ func (cmd *RunServer) WithManager(ctx *Globals, fn func(*agent.Manager, string) 
 			return fmt.Errorf("failed to create Mistral client: %w", err)
 		}
 		opts = append(opts, agent.WithClient(mistralClient))
+	}
+
+	// Eliza
+	if cmd.Eliza {
+		elizaClient, err := eliza.New()
+		if err != nil {
+			return fmt.Errorf("failed to create ELIZA client: %w", err)
+		}
+		opts = append(opts, agent.WithClient(elizaClient))
 	}
 
 	// Check if at least one client is configured
@@ -285,7 +296,7 @@ func (g *Globals) Manager() (*agent.Manager, error) {
 
 	// Check if at least one client is configured
 	if len(opts) == 0 {
-		return nil, fmt.Errorf("no API keys configured. Set --gemini-api-key, --anthropic-api-key, or --mistral-api-key (or use environment variables)")
+		return nil, fmt.Errorf("no providers configured. Set --gemini-api-key, --anthropic-api-key, or --mistral-api-key (or use environment variables), or use --eliza for a local provider")
 	}
 
 	return agent.NewAgent(opts...)
