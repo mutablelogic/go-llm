@@ -9,6 +9,7 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"path"
 	"strings"
 	"sync"
 	"time"
@@ -87,7 +88,7 @@ func OptClientName(name string) LoginOpt {
 // for security reasons.
 func NewCallbackListener(addr string) (net.Listener, string, error) {
 	if addr == "" {
-		addr = "localhost:0"
+		addr = "127.0.0.1:0"
 	}
 
 	// Parse and validate the address
@@ -489,16 +490,25 @@ func (c *Client) discoverOAuth(ctx context.Context, endpoint string) (*schema.OA
 	// Build candidate URLs: root-based (RFC 8414) first, then path-relative (Keycloak)
 	base := fmt.Sprintf("%s://%s", u.Scheme, u.Host)
 	suffixes := []string{schema.OAuthWellKnownPath, schema.OIDCWellKnownPath}
-	candidates := make([]string, 0, len(suffixes)*2)
+	candidates := make([]string, 0, len(suffixes)*4)
 	for _, suffix := range suffixes {
 		candidates = append(candidates, base+suffix) // root: /.well-known/...
 	}
 
-	// Add path-relative candidates (e.g., /realms/master/.well-known/...)
+	// Add path-relative candidates walking up parent segments.
+	// For /realms/master/protocol/sse we try:
+	//   /realms/master/protocol/sse/.well-known/...
+	//   /realms/master/protocol/.well-known/...
+	//   /realms/master/.well-known/...
+	//   /realms/.well-known/...
 	basePath := strings.TrimRight(u.Path, "/")
-	if basePath != "" {
+	for basePath != "" {
 		for _, suffix := range suffixes {
 			candidates = append(candidates, base+basePath+suffix)
+		}
+		basePath = path.Dir(basePath)
+		if basePath == "/" || basePath == "." {
+			break
 		}
 	}
 

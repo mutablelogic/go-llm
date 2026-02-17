@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -20,6 +21,7 @@ import (
 
 type mockOAuthServer struct {
 	*httptest.Server
+	mu               sync.Mutex
 	metadata         *schema.OAuthMetadata
 	registeredClient *schema.OAuthClientInfo
 	deviceCode       string
@@ -95,12 +97,16 @@ func newMockOAuthServer(t *testing.T) *mockOAuthServer {
 
 		case "urn:ietf:params:oauth:grant-type:device_code":
 			deviceCode := r.FormValue("device_code")
-			if deviceCode != mock.deviceCode {
+			mock.mu.Lock()
+			wantCode := mock.deviceCode
+			authorized := mock.deviceAuthorized
+			mock.mu.Unlock()
+			if deviceCode != wantCode {
 				w.WriteHeader(http.StatusBadRequest)
 				json.NewEncoder(w).Encode(map[string]string{"error": "invalid_grant"})
 				return
 			}
-			if !mock.deviceAuthorized {
+			if !authorized {
 				w.WriteHeader(http.StatusBadRequest)
 				json.NewEncoder(w).Encode(map[string]string{"error": "authorization_pending"})
 				return
@@ -145,9 +151,12 @@ func newMockOAuthServer(t *testing.T) *mockOAuthServer {
 			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 			return
 		}
+		mock.mu.Lock()
+		code := mock.deviceCode
+		mock.mu.Unlock()
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]interface{}{
-			"device_code":               mock.deviceCode,
+			"device_code":               code,
 			"user_code":                 "ABCD-1234",
 			"verification_uri":          mock.Server.URL + "/device",
 			"verification_uri_complete": mock.Server.URL + "/device?user_code=ABCD-1234",
@@ -169,6 +178,7 @@ func newMockOAuthServer(t *testing.T) *mockOAuthServer {
 			return
 		}
 
+		mock.mu.Lock()
 		mock.registeredClient = &schema.OAuthClientInfo{
 			ClientID:                "registered-client-id",
 			ClientSecret:            "",
@@ -178,6 +188,7 @@ func newMockOAuthServer(t *testing.T) *mockOAuthServer {
 			ResponseTypes:           req.ResponseTypes,
 			TokenEndpointAuthMethod: req.TokenEndpointAuthMethod,
 		}
+		mock.mu.Unlock()
 
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusCreated)
@@ -207,10 +218,14 @@ func newMockOAuthServer(t *testing.T) *mockOAuthServer {
 }
 
 func (m *mockOAuthServer) AuthorizeDevice() {
+	m.mu.Lock()
 	m.deviceAuthorized = true
+	m.mu.Unlock()
 }
 
 func (m *mockOAuthServer) RegisteredClient() *schema.OAuthClientInfo {
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	return m.registeredClient
 }
 
@@ -233,13 +248,13 @@ func TestInteractiveLogin(t *testing.T) {
 	}
 	defer listener.Close()
 
-	// Start a goroutine to simulate the browser redirect
-	var authURL string
+	// Use a channel to safely pass the auth URL to the simulated browser
+	authURLCh := make(chan string, 1)
 	go func() {
-		// Wait a bit for the server to start
-		time.Sleep(100 * time.Millisecond)
-
-		// Simulate browser: hit the auth URL, which will redirect to our callback
+		authURL, ok := <-authURLCh
+		if !ok {
+			return
+		}
 		resp, err := http.Get(authURL)
 		if err != nil {
 			t.Logf("simulated browser request failed: %v", err)
@@ -257,7 +272,7 @@ func TestInteractiveLogin(t *testing.T) {
 		Endpoint: oauth2.Endpoint{AuthURL: mock.Server.URL},
 	}
 	token, err := c.Login(ctx, cfg, httpclient.OptInteractive(listener, func(url string) {
-		authURL = url
+		authURLCh <- url
 	}))
 	if err != nil {
 		t.Fatal(err)
@@ -295,10 +310,13 @@ func TestInteractiveLogin_AutoRegister(t *testing.T) {
 	}
 	defer listener.Close()
 
-	// Start a goroutine to simulate the browser redirect
-	var authURL string
+	// Use a channel to safely pass the auth URL to the simulated browser
+	authURLCh := make(chan string, 1)
 	go func() {
-		time.Sleep(100 * time.Millisecond)
+		authURL, ok := <-authURLCh
+		if !ok {
+			return
+		}
 		resp, err := http.Get(authURL)
 		if err != nil {
 			t.Logf("simulated browser request failed: %v", err)
@@ -316,7 +334,7 @@ func TestInteractiveLogin_AutoRegister(t *testing.T) {
 		Endpoint: oauth2.Endpoint{AuthURL: mock.Server.URL},
 	}
 	token, err := c.Login(ctx, cfg, httpclient.OptClientName("test-app"), httpclient.OptInteractive(listener, func(url string) {
-		authURL = url
+		authURLCh <- url
 	}))
 	if err != nil {
 		t.Fatal(err)
@@ -678,6 +696,62 @@ func TestDiscovery_PathRelative(t *testing.T) {
 		t.Fatal(err)
 	}
 	if creds.AccessToken != "keycloak-token" {
+		t.Errorf("unexpected access token: %s", creds.AccessToken)
+	}
+}
+
+// TestDiscovery_PathRelativeWalkUp tests that discovery walks up path segments
+// to find metadata at a parent path when the caller passes a deep endpoint URL.
+func TestDiscovery_PathRelativeWalkUp(t *testing.T) {
+	metadata := &schema.OAuthMetadata{}
+
+	mux := http.NewServeMux()
+	// Root paths return 404
+	mux.HandleFunc("/.well-known/oauth-authorization-server", func(w http.ResponseWriter, r *http.Request) {
+		http.NotFound(w, r)
+	})
+	mux.HandleFunc("/.well-known/openid-configuration", func(w http.ResponseWriter, r *http.Request) {
+		http.NotFound(w, r)
+	})
+	// Deep paths return 404 too
+	mux.HandleFunc("/realms/master/protocol/sse/.well-known/", func(w http.ResponseWriter, r *http.Request) {
+		http.NotFound(w, r)
+	})
+	mux.HandleFunc("/realms/master/protocol/.well-known/", func(w http.ResponseWriter, r *http.Request) {
+		http.NotFound(w, r)
+	})
+	// Only the realm-level path has metadata
+	mux.HandleFunc("/realms/master/.well-known/oauth-authorization-server", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(metadata)
+	})
+	mux.HandleFunc("/token", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"access_token": "walked-up-token",
+			"token_type":   "Bearer",
+			"expires_in":   3600,
+		})
+	})
+
+	server := httptest.NewServer(mux)
+	defer server.Close()
+
+	metadata.Issuer = server.URL + "/realms/master"
+	metadata.TokenEndpoint = server.URL + "/token"
+	metadata.GrantTypesSupported = []string{"client_credentials"}
+
+	c, err := httpclient.New(server.URL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Pass a deep endpoint — discovery should walk up and find metadata at /realms/master/.well-known/...
+	cfg := &oauth2.Config{ClientID: "test-client", ClientSecret: "test-secret", Endpoint: oauth2.Endpoint{AuthURL: server.URL + "/realms/master/protocol/sse"}}
+	creds, err := c.Login(context.Background(), cfg, httpclient.OptClientCredentials())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if creds.AccessToken != "walked-up-token" {
 		t.Errorf("unexpected access token: %s", creds.AccessToken)
 	}
 }
