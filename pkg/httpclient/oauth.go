@@ -4,11 +4,14 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"net"
 	"net/http"
 	"net/url"
+	"strings"
 	"sync"
+	"time"
 
 	// Packages
 	client "github.com/mutablelogic/go-client"
@@ -69,16 +72,29 @@ func NewCallbackListener(addr string) (net.Listener, string, error) {
 // It discovers the OAuth metadata from the endpoint, uses the provided listener
 // for callbacks, presents the authorization URL to the user via callback,
 // waits for the callback, and exchanges the code for a token.
-// The caller is responsible for closing the listener after this returns.
-func (c *Client) InteractiveLogin(ctx context.Context, endpoint, clientID string, scopes []string, listener net.Listener, callback AuthURLCallback) (*oauth2.Token, error) {
+// If clientID is empty and clientName is non-empty, it attempts dynamic client
+// registration. The caller is responsible for closing the listener after this returns.
+func (c *Client) InteractiveLogin(ctx context.Context, endpoint, clientID, clientName string, scopes []string, listener net.Listener, callback AuthURLCallback) (*schema.OAuthCredentials, error) {
 	// Discover OAuth metadata
-	metadata, err := c.DiscoverOAuth(ctx, endpoint)
+	metadata, err := c.discoverOAuth(ctx, endpoint)
 	if err != nil {
 		return nil, err
 	}
 
 	// Derive redirect URI from listener
 	redirectURI := fmt.Sprintf("http://%s/callback", listener.Addr().String())
+
+	// Auto-register if no client ID provided
+	if clientID == "" {
+		if clientName == "" {
+			return nil, fmt.Errorf("either client-id or client-name must be provided")
+		}
+		clientInfo, err := c.registerClient(ctx, metadata, clientName, []string{redirectURI})
+		if err != nil {
+			return nil, fmt.Errorf("dynamic client registration failed (you may need to register manually and use --client-id): %w", err)
+		}
+		clientID = clientInfo.ClientID
+	}
 
 	// Create OAuth2 config
 	cfg := &oauth2.Config{
@@ -112,15 +128,51 @@ func (c *Client) InteractiveLogin(ctx context.Context, endpoint, clientID string
 	if err != nil {
 		return nil, fmt.Errorf("token exchange failed: %w", err)
 	}
-	return token, nil
+	return &schema.OAuthCredentials{Token: token, ClientID: clientID, Endpoint: endpoint, TokenURL: metadata.TokenEndpoint}, nil
+}
+
+// RefreshToken exchanges a refresh token for a new access token.
+// If force is false and the token is still valid (with a 30-second buffer),
+// the existing credentials are returned as-is. The provided token must
+// contain a valid refresh token.
+func (c *Client) RefreshToken(ctx context.Context, creds *schema.OAuthCredentials, force bool) (*schema.OAuthCredentials, error) {
+	if creds.RefreshToken == "" {
+		return nil, fmt.Errorf("token does not contain a refresh token")
+	} else if creds.TokenURL == "" {
+		return nil, fmt.Errorf("credentials missing token URL")
+	}
+
+	// If not forcing, return existing credentials if the token is still valid
+	if !force && !creds.Expiry.IsZero() && time.Until(creds.Expiry) > 30*time.Second {
+		return creds, nil
+	}
+
+	// Create OAuth2 config using stored token URL (no discovery needed)
+	cfg := &oauth2.Config{
+		ClientID: creds.ClientID,
+		Endpoint: oauth2.Endpoint{TokenURL: creds.TokenURL},
+	}
+
+	// Use a token copy with an expired time to force the oauth2 library to refresh
+	tok := *creds.Token
+	tok.Expiry = time.Now().Add(-time.Minute)
+
+	// Refresh the token
+	newToken, err := cfg.TokenSource(c.oauthContext(ctx), &tok).Token()
+	if err != nil {
+		return nil, fmt.Errorf("token refresh failed: %w", err)
+	}
+	return &schema.OAuthCredentials{Token: newToken, ClientID: creds.ClientID, Endpoint: creds.Endpoint, TokenURL: creds.TokenURL}, nil
 }
 
 // DeviceLogin performs an OAuth 2.0 Device Authorization flow (RFC 8628).
 // It requests a device code, provides the verification URL and code via callback,
 // then polls until the user completes authorization.
-func (c *Client) DeviceLogin(ctx context.Context, endpoint, clientID string, scopes []string, callback DeviceAuthCallback) (*oauth2.Token, error) {
+// If clientID is empty and clientName is non-empty, it attempts dynamic client
+// registration.
+func (c *Client) DeviceLogin(ctx context.Context, endpoint, clientID, clientName string, scopes []string, callback DeviceAuthCallback) (*schema.OAuthCredentials, error) {
 	// Discover OAuth metadata
-	metadata, err := c.DiscoverOAuth(ctx, endpoint)
+	metadata, err := c.discoverOAuth(ctx, endpoint)
 	if err != nil {
 		return nil, err
 	}
@@ -128,6 +180,18 @@ func (c *Client) DeviceLogin(ctx context.Context, endpoint, clientID string, sco
 	// Check if device flow is supported
 	if !metadata.SupportsDeviceFlow() {
 		return nil, fmt.Errorf("%s does not support device authorization flow", endpoint)
+	}
+
+	// Auto-register if no client ID provided
+	if clientID == "" {
+		if clientName == "" {
+			return nil, fmt.Errorf("either client-id or client-name must be provided")
+		}
+		clientInfo, err := c.registerClient(ctx, metadata, clientName, nil)
+		if err != nil {
+			return nil, fmt.Errorf("dynamic client registration failed (you may need to register manually and use --client-id): %w", err)
+		}
+		clientID = clientInfo.ClientID
 	}
 
 	// Create OAuth2 config
@@ -151,14 +215,14 @@ func (c *Client) DeviceLogin(ctx context.Context, endpoint, clientID string, sco
 	if err != nil {
 		return nil, fmt.Errorf("device token exchange failed: %w", err)
 	}
-	return token, nil
+	return &schema.OAuthCredentials{Token: token, ClientID: clientID, Endpoint: endpoint, TokenURL: metadata.TokenEndpoint}, nil
 }
 
 // ClientCredentialsLogin performs an OAuth 2.0 Client Credentials flow (RFC 6749 Section 4.4).
 // This is used for machine-to-machine authentication where no user is involved.
-func (c *Client) ClientCredentialsLogin(ctx context.Context, endpoint, clientID, clientSecret string, scopes []string) (*oauth2.Token, error) {
+func (c *Client) ClientCredentialsLogin(ctx context.Context, endpoint, clientID, clientSecret string, scopes []string) (*schema.OAuthCredentials, error) {
 	// Discover OAuth metadata
-	metadata, err := c.DiscoverOAuth(ctx, endpoint)
+	metadata, err := c.discoverOAuth(ctx, endpoint)
 	if err != nil {
 		return nil, err
 	}
@@ -182,12 +246,12 @@ func (c *Client) ClientCredentialsLogin(ctx context.Context, endpoint, clientID,
 		return nil, fmt.Errorf("client credentials exchange failed: %w", err)
 	}
 
-	return token, nil
+	return &schema.OAuthCredentials{Token: token, ClientID: clientID, Endpoint: endpoint, TokenURL: metadata.TokenEndpoint}, nil
 }
 
-// RegisterClient performs dynamic client registration (RFC 7591).
+// registerClient performs dynamic client registration (RFC 7591).
 // It registers a new OAuth client with the authorization server and returns the client info.
-func (c *Client) RegisterClient(ctx context.Context, metadata *schema.OAuthMetadata, clientName string, redirectURIs []string) (*schema.OAuthClientInfo, error) {
+func (c *Client) registerClient(ctx context.Context, metadata *schema.OAuthMetadata, clientName string, redirectURIs []string) (*schema.OAuthClientInfo, error) {
 	if !metadata.SupportsRegistration() {
 		return nil, fmt.Errorf("%s does not support dynamic client registration", metadata.Issuer)
 	}
@@ -304,8 +368,9 @@ func (c *Client) waitForAuthCallback(ctx context.Context, listener net.Listener,
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		// Serve returns when server.Shutdown is called
-		_ = server.Serve(listener)
+		if err := server.Serve(listener); err != nil && err != http.ErrServerClosed {
+			sendResult(authResult{err: fmt.Errorf("callback server failed: %w", err)})
+		}
 	}()
 
 	// Wait for callback or context cancellation
@@ -326,17 +391,49 @@ func (c *Client) waitForAuthCallback(ctx context.Context, listener net.Listener,
 	return result.code, nil
 }
 
-// DiscoverOAuth fetches OAuth 2.0 Authorization Server Metadata from the
-// well-known endpoint on the server.
-func (c *Client) DiscoverOAuth(ctx context.Context, endpoint string) (*schema.OAuthMetadata, error) {
+// discoverOAuth fetches OAuth 2.0 Authorization Server Metadata from the
+// well-known endpoint on the server. It tries RFC 8414 root paths first,
+// then falls back to path-relative discovery (e.g., Keycloak realms).
+func (c *Client) discoverOAuth(ctx context.Context, endpoint string) (*schema.OAuthMetadata, error) {
 	u, err := url.Parse(endpoint)
 	if err != nil {
 		return nil, err
+	} else {
+		u.RawQuery = ""
+		u.Fragment = ""
 	}
-	u.Path = schema.OAuthWellKnownPath
-	var metadata schema.OAuthMetadata
-	if err := c.DoWithContext(ctx, nil, &metadata, client.OptReqEndpoint(u.String())); err != nil {
-		return nil, fmt.Errorf("%s does not support OAuth discovery at %s: %w", endpoint, u.String(), err)
+
+	// Build candidate URLs: root-based (RFC 8414) first, then path-relative (Keycloak)
+	suffixes := []string{schema.OAuthWellKnownPath, schema.OIDCWellKnownPath}
+	candidates := make([]string, 0, len(suffixes)*2)
+	for _, suffix := range suffixes {
+		candidates = append(candidates, suffix) // root: /.well-known/...
 	}
-	return &metadata, nil
+
+	// Set base path for path-relative discovery (e.g., /realms/master/.well-known/...)
+	basePath := strings.TrimRight(u.Path, "/")
+	if basePath != "" {
+		for _, suffix := range suffixes {
+			candidates = append(candidates, basePath+suffix) // relative: /realms/master/.well-known/...
+		}
+	}
+
+	// Iterate over candidates and return the first successful metadata response
+	for _, path := range candidates {
+		u.Path = path
+		var metadata schema.OAuthMetadata
+		if err := c.DoWithContext(ctx, nil, &metadata, client.OptReqEndpoint(u.String())); err != nil {
+			// 404 means this path doesn't exist, try the next candidate
+			var httpErr httpresponse.Err
+			if errors.As(err, &httpErr) && int(httpErr) == http.StatusNotFound {
+				continue
+			}
+			// Any other error (network, 500, etc.) is fatal
+			return nil, fmt.Errorf("%s: OAuth discovery failed: %w", endpoint, err)
+		}
+		return &metadata, nil
+	}
+
+	// Return error: couldn't discover metadata from any candidate URL
+	return nil, fmt.Errorf("%s does not support OAuth discovery", endpoint)
 }

@@ -46,12 +46,30 @@ type OAuthClientInfo struct {
 	TokenEndpointAuthMethod string   `json:"token_endpoint_auth_method,omitempty"`
 }
 
+// OAuthCredentials bundles an OAuth token with the metadata needed to
+// refresh or reuse it later without re-discovering or re-registering.
+type OAuthCredentials struct {
+	*oauth2.Token
+
+	// ClientID is the OAuth client ID used to obtain this token.
+	ClientID string `json:"client_id"`
+
+	// Endpoint is the MCP/OAuth server endpoint (used for discovery).
+	Endpoint string `json:"endpoint"`
+
+	// TokenURL is the OAuth token endpoint URL (used for refresh without re-discovery).
+	TokenURL string `json:"token_url"`
+}
+
 ///////////////////////////////////////////////////////////////////////////////
 // CONSTANTS
 
 const (
-	// OAuthWellKnownPath is the standard OAuth 2.0 discovery endpoint path.
+	// OAuthWellKnownPath is the standard OAuth 2.0 Authorization Server Metadata endpoint (RFC 8414).
 	OAuthWellKnownPath = "/.well-known/oauth-authorization-server"
+
+	// OIDCWellKnownPath is the OpenID Connect Discovery endpoint (RFC 5785).
+	OIDCWellKnownPath = "/.well-known/openid-configuration"
 )
 
 ///////////////////////////////////////////////////////////////////////////////

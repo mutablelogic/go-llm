@@ -12,6 +12,7 @@ import (
 
 	httpclient "github.com/mutablelogic/go-llm/pkg/httpclient"
 	schema "github.com/mutablelogic/go-llm/pkg/schema"
+	oauth2 "golang.org/x/oauth2"
 )
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -118,6 +119,20 @@ func newMockOAuthServer(t *testing.T) *mockOAuthServer {
 				"expires_in":   3600,
 			})
 
+		case "refresh_token":
+			refreshToken := r.FormValue("refresh_token")
+			if refreshToken == "" {
+				w.WriteHeader(http.StatusBadRequest)
+				json.NewEncoder(w).Encode(map[string]string{"error": "invalid_grant"})
+				return
+			}
+			json.NewEncoder(w).Encode(map[string]interface{}{
+				"access_token":  "test-refreshed-access-token",
+				"token_type":    "Bearer",
+				"expires_in":    3600,
+				"refresh_token": "test-new-refresh-token",
+			})
+
 		default:
 			w.WriteHeader(http.StatusBadRequest)
 			json.NewEncoder(w).Encode(map[string]string{"error": "unsupported_grant_type"})
@@ -198,83 +213,6 @@ func (m *mockOAuthServer) AuthorizeDevice() {
 ///////////////////////////////////////////////////////////////////////////////
 // TESTS
 
-func TestDiscoverOAuth(t *testing.T) {
-	mock := newMockOAuthServer(t)
-	defer mock.Server.Close()
-
-	c, err := httpclient.New(mock.Server.URL)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	metadata, err := c.DiscoverOAuth(context.Background(), mock.Server.URL)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	if metadata.Issuer != mock.Server.URL {
-		t.Errorf("expected issuer %s, got %s", mock.Server.URL, metadata.Issuer)
-	}
-	if metadata.AuthorizationEndpoint != mock.Server.URL+"/authorize" {
-		t.Errorf("unexpected authorization endpoint: %s", metadata.AuthorizationEndpoint)
-	}
-	if !metadata.SupportsDeviceFlow() {
-		t.Error("expected device flow to be supported")
-	}
-	if !metadata.SupportsRegistration() {
-		t.Error("expected registration to be supported")
-	}
-	if !metadata.SupportsPKCE() {
-		t.Error("expected PKCE to be supported")
-	}
-}
-
-func TestDiscoverOAuth_NotFound(t *testing.T) {
-	// Server without OAuth support
-	server := httptest.NewServer(http.NotFoundHandler())
-	defer server.Close()
-
-	c, err := httpclient.New(server.URL)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	_, err = c.DiscoverOAuth(context.Background(), server.URL)
-	if err == nil {
-		t.Fatal("expected error for server without OAuth support")
-	}
-	if !strings.Contains(err.Error(), "does not support OAuth discovery") {
-		t.Errorf("unexpected error message: %v", err)
-	}
-}
-
-func TestRegisterClient(t *testing.T) {
-	mock := newMockOAuthServer(t)
-	defer mock.Server.Close()
-
-	c, err := httpclient.New(mock.Server.URL)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	metadata, err := c.DiscoverOAuth(context.Background(), mock.Server.URL)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	clientInfo, err := c.RegisterClient(context.Background(), metadata, "test-client", []string{"http://localhost:8080/callback"})
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	if clientInfo.ClientID != "registered-client-id" {
-		t.Errorf("unexpected client ID: %s", clientInfo.ClientID)
-	}
-	if clientInfo.ClientName != "test-client" {
-		t.Errorf("unexpected client name: %s", clientInfo.ClientName)
-	}
-}
-
 func TestInteractiveLogin(t *testing.T) {
 	mock := newMockOAuthServer(t)
 	defer mock.Server.Close()
@@ -309,7 +247,7 @@ func TestInteractiveLogin(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	token, err := c.InteractiveLogin(ctx, mock.Server.URL, "test-client", []string{"openid"}, listener, func(url string) {
+	token, err := c.InteractiveLogin(ctx, mock.Server.URL, "test-client", "", []string{"openid"}, listener, func(url string) {
 		authURL = url
 	})
 	if err != nil {
@@ -321,6 +259,12 @@ func TestInteractiveLogin(t *testing.T) {
 	}
 	if token.RefreshToken != "test-refresh-token" {
 		t.Errorf("unexpected refresh token: %s", token.RefreshToken)
+	}
+	if token.ClientID != "test-client" {
+		t.Errorf("unexpected client ID: %s", token.ClientID)
+	}
+	if token.Endpoint != mock.Server.URL {
+		t.Errorf("unexpected endpoint: %s", token.Endpoint)
 	}
 
 	_ = redirectURI // Used in registration
@@ -364,7 +308,7 @@ func TestDeviceLogin(t *testing.T) {
 	defer cancel()
 
 	var verificationURI, userCode string
-	token, err := c.DeviceLogin(ctx, mock.Server.URL, "test-client", []string{"openid"}, func(uri, code string) {
+	token, err := c.DeviceLogin(ctx, mock.Server.URL, "test-client", "", []string{"openid"}, func(uri, code string) {
 		verificationURI = uri
 		userCode = code
 	})
@@ -414,5 +358,280 @@ func TestNewCallbackListener_MissingPort(t *testing.T) {
 	_, _, err := httpclient.NewCallbackListener("localhost")
 	if err == nil {
 		t.Fatal("expected error for missing port")
+	}
+}
+
+func TestRefreshToken(t *testing.T) {
+	mock := newMockOAuthServer(t)
+	defer mock.Server.Close()
+
+	c, err := httpclient.New(mock.Server.URL)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Create expired credentials with a refresh token
+	oldCreds := &schema.OAuthCredentials{
+		Token: &oauth2.Token{
+			AccessToken:  "expired-access-token",
+			RefreshToken: "test-refresh-token",
+			// Expiry in the past forces a refresh
+			Expiry: time.Now().Add(-time.Hour),
+		},
+		ClientID: "test-client",
+		Endpoint: mock.Server.URL,
+		TokenURL: mock.Server.URL + "/token",
+	}
+
+	newCreds, err := c.RefreshToken(context.Background(), oldCreds, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if newCreds.AccessToken != "test-refreshed-access-token" {
+		t.Errorf("unexpected access token: %s", newCreds.AccessToken)
+	}
+	if newCreds.RefreshToken != "test-new-refresh-token" {
+		t.Errorf("unexpected refresh token: %s", newCreds.RefreshToken)
+	}
+	if newCreds.ClientID != "test-client" {
+		t.Errorf("unexpected client ID: %s", newCreds.ClientID)
+	}
+	if newCreds.Endpoint != mock.Server.URL {
+		t.Errorf("unexpected endpoint: %s", newCreds.Endpoint)
+	}
+	if newCreds.TokenURL != mock.Server.URL+"/token" {
+		t.Errorf("unexpected token URL: %s", newCreds.TokenURL)
+	}
+}
+
+func TestRefreshToken_NoRefreshToken(t *testing.T) {
+	mock := newMockOAuthServer(t)
+	defer mock.Server.Close()
+
+	c, err := httpclient.New(mock.Server.URL)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Credentials without refresh token
+	oldCreds := &schema.OAuthCredentials{
+		Token: &oauth2.Token{
+			AccessToken: "some-access-token",
+		},
+		ClientID: "test-client",
+		Endpoint: mock.Server.URL,
+		TokenURL: mock.Server.URL + "/token",
+	}
+
+	_, err = c.RefreshToken(context.Background(), oldCreds, true)
+	if err == nil {
+		t.Fatal("expected error for token without refresh token")
+	}
+	if !strings.Contains(err.Error(), "does not contain a refresh token") {
+		t.Errorf("unexpected error: %v", err)
+	}
+}
+
+func TestRefreshToken_NotExpired(t *testing.T) {
+	mock := newMockOAuthServer(t)
+	defer mock.Server.Close()
+
+	c, err := httpclient.New(mock.Server.URL)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Credentials that are still valid (expires in 1 hour)
+	oldCreds := &schema.OAuthCredentials{
+		Token: &oauth2.Token{
+			AccessToken:  "still-valid-access-token",
+			RefreshToken: "test-refresh-token",
+			Expiry:       time.Now().Add(time.Hour),
+		},
+		ClientID: "test-client",
+		Endpoint: mock.Server.URL,
+		TokenURL: mock.Server.URL + "/token",
+	}
+
+	// With force=false, should return existing credentials
+	result, err := c.RefreshToken(context.Background(), oldCreds, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.AccessToken != "still-valid-access-token" {
+		t.Errorf("expected original token, got: %s", result.AccessToken)
+	}
+
+	// With force=true, should refresh even though not expired
+	result, err = c.RefreshToken(context.Background(), oldCreds, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.AccessToken != "test-refreshed-access-token" {
+		t.Errorf("expected refreshed token, got: %s", result.AccessToken)
+	}
+}
+
+///////////////////////////////////////////////////////////////////////////////
+// DISCOVERY TESTS
+
+// TestDiscovery_RootOAuth tests that discovery finds metadata at the root
+// RFC 8414 path (/.well-known/oauth-authorization-server).
+func TestDiscovery_RootOAuth(t *testing.T) {
+	mock := newMockOAuthServer(t)
+	defer mock.Server.Close()
+
+	// The standard mock serves at root — ClientCredentialsLogin exercises discovery
+	c, err := httpclient.New(mock.Server.URL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	creds, err := c.ClientCredentialsLogin(context.Background(), mock.Server.URL, "test-client", "test-secret", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if creds.AccessToken != "test-client-credentials-token" {
+		t.Errorf("unexpected access token: %s", creds.AccessToken)
+	}
+}
+
+// TestDiscovery_FallbackOIDC tests that discovery falls back to the
+// OpenID Connect path (/.well-known/openid-configuration) when RFC 8414 returns 404.
+func TestDiscovery_FallbackOIDC(t *testing.T) {
+	metadata := &schema.OAuthMetadata{}
+
+	mux := http.NewServeMux()
+	// RFC 8414 path returns 404
+	mux.HandleFunc("/.well-known/oauth-authorization-server", func(w http.ResponseWriter, r *http.Request) {
+		http.NotFound(w, r)
+	})
+	// OIDC path returns metadata
+	mux.HandleFunc("/.well-known/openid-configuration", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(metadata)
+	})
+	// Token endpoint
+	mux.HandleFunc("/token", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"access_token": "oidc-token",
+			"token_type":   "Bearer",
+			"expires_in":   3600,
+		})
+	})
+
+	server := httptest.NewServer(mux)
+	defer server.Close()
+
+	metadata.Issuer = server.URL
+	metadata.TokenEndpoint = server.URL + "/token"
+	metadata.GrantTypesSupported = []string{"client_credentials"}
+
+	c, err := httpclient.New(server.URL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	creds, err := c.ClientCredentialsLogin(context.Background(), server.URL, "test-client", "test-secret", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if creds.AccessToken != "oidc-token" {
+		t.Errorf("unexpected access token: %s", creds.AccessToken)
+	}
+}
+
+// TestDiscovery_PathRelative tests that discovery finds metadata at a
+// path-relative location (e.g., /realms/master/.well-known/...) when root returns 404.
+func TestDiscovery_PathRelative(t *testing.T) {
+	metadata := &schema.OAuthMetadata{}
+
+	mux := http.NewServeMux()
+	// Root paths return 404
+	mux.HandleFunc("/.well-known/oauth-authorization-server", func(w http.ResponseWriter, r *http.Request) {
+		http.NotFound(w, r)
+	})
+	mux.HandleFunc("/.well-known/openid-configuration", func(w http.ResponseWriter, r *http.Request) {
+		http.NotFound(w, r)
+	})
+	// Path-relative discovery works (Keycloak-style)
+	mux.HandleFunc("/realms/master/.well-known/oauth-authorization-server", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(metadata)
+	})
+	// Token endpoint
+	mux.HandleFunc("/realms/master/protocol/openid-connect/token", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"access_token": "keycloak-token",
+			"token_type":   "Bearer",
+			"expires_in":   3600,
+		})
+	})
+
+	server := httptest.NewServer(mux)
+	defer server.Close()
+
+	metadata.Issuer = server.URL + "/realms/master"
+	metadata.TokenEndpoint = server.URL + "/realms/master/protocol/openid-connect/token"
+	metadata.GrantTypesSupported = []string{"client_credentials"}
+
+	c, err := httpclient.New(server.URL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Pass endpoint with path — discovery should find it at /realms/master/.well-known/...
+	creds, err := c.ClientCredentialsLogin(context.Background(), server.URL+"/realms/master", "test-client", "test-secret", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if creds.AccessToken != "keycloak-token" {
+		t.Errorf("unexpected access token: %s", creds.AccessToken)
+	}
+}
+
+// TestDiscovery_NotFound tests that discovery returns a clear error when
+// no well-known endpoint is available.
+func TestDiscovery_NotFound(t *testing.T) {
+	server := httptest.NewServer(http.NotFoundHandler())
+	defer server.Close()
+
+	c, err := httpclient.New(server.URL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = c.ClientCredentialsLogin(context.Background(), server.URL, "test-client", "test-secret", nil)
+	if err == nil {
+		t.Fatal("expected error for server without OAuth support")
+	}
+	if !strings.Contains(err.Error(), "does not support OAuth discovery") {
+		t.Errorf("unexpected error message: %v", err)
+	}
+}
+
+// TestDiscovery_ServerError tests that a non-404 error (e.g., 500) returns
+// immediately without trying further candidates.
+func TestDiscovery_ServerError(t *testing.T) {
+	requestCount := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requestCount++
+		http.Error(w, "internal error", http.StatusInternalServerError)
+	}))
+	defer server.Close()
+
+	c, err := httpclient.New(server.URL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = c.ClientCredentialsLogin(context.Background(), server.URL, "test-client", "test-secret", nil)
+	if err == nil {
+		t.Fatal("expected error for server returning 500")
+	}
+	if !strings.Contains(err.Error(), "OAuth discovery failed") {
+		t.Errorf("unexpected error message: %v", err)
+	}
+	// Should have stopped after the first request (500 is not 404)
+	if requestCount != 1 {
+		t.Errorf("expected 1 request (early return on 500), got %d", requestCount)
 	}
 }
