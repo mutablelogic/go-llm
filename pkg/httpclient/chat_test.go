@@ -81,8 +81,10 @@ func TestChat_NoAttachments(t *testing.T) {
 	c := newClient(t, srv.URL)
 
 	resp, err := c.Chat(context.Background(), schema.ChatRequest{
-		Session: "session-123",
-		Text:    "hello world",
+		ChatRequestCore: schema.ChatRequestCore{
+			Session: "session-123",
+			Text:    "hello world",
+		},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -108,8 +110,10 @@ func TestChat_WithFile(t *testing.T) {
 
 	fileData := bytes.NewReader([]byte{0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A})
 	resp, err := c.Chat(context.Background(), schema.ChatRequest{
-		Session: "session-123",
-		Text:    "describe this",
+		ChatRequestCore: schema.ChatRequestCore{
+			Session: "session-123",
+			Text:    "describe this",
+		},
 	}, httpclient.WithChatFile("image.png", fileData))
 	if err != nil {
 		t.Fatal(err)
@@ -128,8 +132,10 @@ func TestChat_WithURL(t *testing.T) {
 	c := newClient(t, srv.URL)
 
 	resp, err := c.Chat(context.Background(), schema.ChatRequest{
-		Session: "session-123",
-		Text:    "describe this",
+		ChatRequestCore: schema.ChatRequestCore{
+			Session: "session-123",
+			Text:    "describe this",
+		},
 	}, httpclient.WithChatURL("https://example.com/image.png"))
 	if err != nil {
 		t.Fatal(err)
@@ -150,7 +156,9 @@ func TestChat_EmptySession(t *testing.T) {
 	c := newClient(t, srv.URL)
 
 	_, err := c.Chat(context.Background(), schema.ChatRequest{
-		Text: "hello",
+		ChatRequestCore: schema.ChatRequestCore{
+			Text: "hello",
+		},
 	})
 	if err == nil {
 		t.Fatal("expected error for empty session")
@@ -163,7 +171,9 @@ func TestChat_EmptyText(t *testing.T) {
 	c := newClient(t, srv.URL)
 
 	_, err := c.Chat(context.Background(), schema.ChatRequest{
-		Session: "session-123",
+		ChatRequestCore: schema.ChatRequestCore{
+			Session: "session-123",
+		},
 	})
 	if err == nil {
 		t.Fatal("expected error for empty text")
@@ -176,9 +186,11 @@ func TestChat_WithTools(t *testing.T) {
 	c := newClient(t, srv.URL)
 
 	resp, err := c.Chat(context.Background(), schema.ChatRequest{
-		Session: "session-123",
-		Text:    "use my tools",
-		Tools:   []string{"tool_a", "tool_b"},
+		ChatRequestCore: schema.ChatRequestCore{
+			Session: "session-123",
+			Text:    "use my tools",
+			Tools:   []string{"tool_a", "tool_b"},
+		},
 	})
 	if err != nil {
 		t.Fatal(err)

@@ -10,6 +10,7 @@ import (
 	schema "github.com/mutablelogic/go-llm/pkg/schema"
 	tool "github.com/mutablelogic/go-llm/pkg/tool"
 	types "github.com/mutablelogic/go-server/pkg/types"
+	trace "go.opentelemetry.io/otel/trace"
 )
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -68,6 +69,14 @@ func WithToolkit(toolkit *tool.Toolkit) Opt {
 			return llm.ErrBadParameter.With("toolkit is required")
 		}
 		m.toolkit = toolkit
+		return nil
+	}
+}
+
+// WithTracer sets the OpenTelemetry tracer for distributed tracing.
+func WithTracer(tracer trace.Tracer) Opt {
+	return func(m *Manager) error {
+		m.tracer = tracer
 		return nil
 	}
 }

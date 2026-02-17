@@ -11,6 +11,7 @@ import (
 	schema "github.com/mutablelogic/go-llm/pkg/schema"
 	store "github.com/mutablelogic/go-llm/pkg/store"
 	tool "github.com/mutablelogic/go-llm/pkg/tool"
+	"go.opentelemetry.io/otel/trace"
 	errgroup "golang.org/x/sync/errgroup"
 )
 
@@ -22,6 +23,7 @@ type Manager struct {
 	sessionStore schema.SessionStore
 	agentStore   schema.AgentStore
 	toolkit      *tool.Toolkit
+	tracer       trace.Tracer
 }
 
 ///////////////////////////////////////////////////////////////////////////////

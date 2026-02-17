@@ -177,9 +177,11 @@ func (cmd *ChatCommand) runSingleShot(ctx context.Context, globals *Globals, cli
 	}))
 
 	req := schema.ChatRequest{
-		Session: sessionID,
-		Text:    cmd.Text,
-		Tools:   cmd.Tool,
+		ChatRequestCore: schema.ChatRequestCore{
+			Session: sessionID,
+			Text:    cmd.Text,
+			Tools:   cmd.Tool,
+		},
 	}
 
 	chatResp, err := client.Chat(ctx, req, opts...)
@@ -362,9 +364,11 @@ func (cmd *ChatCommand) handleChat(ctx context.Context, evt ui.Event, client *ht
 	}))
 
 	req := schema.ChatRequest{
-		Session: sessionID,
-		Text:    evt.Text,
-		Tools:   cmd.Tool,
+		ChatRequestCore: schema.ChatRequestCore{
+			Session: sessionID,
+			Text:    evt.Text,
+			Tools:   cmd.Tool,
+		},
 	}
 
 	chatResp, err := client.Chat(ctx, req, opts...)

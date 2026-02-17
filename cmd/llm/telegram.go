@@ -288,10 +288,12 @@ func (cmd *TelegramCommand) handleChat(ctx context.Context, globals *Globals, ev
 	}))
 
 	req := schema.ChatRequest{
-		Session:      sessionID,
-		Text:         evt.Text,
-		Tools:        cmd.Tool,
-		SystemPrompt: telegramSystemSuffix,
+		ChatRequestCore: schema.ChatRequestCore{
+			Session:      sessionID,
+			Text:         evt.Text,
+			Tools:        cmd.Tool,
+			SystemPrompt: telegramSystemSuffix,
+		},
 	}
 
 	_, err := client.Chat(ctx, req, opts...)

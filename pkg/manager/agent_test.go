@@ -728,9 +728,11 @@ func Test_runagent_010(t *testing.T) {
 
 	// Phase 2: chat using the returned session, text, and tools
 	chatResp, err := m.Chat(context.TODO(), schema.ChatRequest{
-		Session: agentResp.Session,
-		Text:    agentResp.Text,
-		Tools:   agentResp.Tools,
+		ChatRequestCore: schema.ChatRequestCore{
+			Session: agentResp.Session,
+			Text:    agentResp.Text,
+			Tools:   agentResp.Tools,
+		},
 	}, nil)
 	assert.NoError(err)
 	assert.NotNil(chatResp)

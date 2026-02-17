@@ -7,6 +7,7 @@ import (
 
 	// Packages
 	jsonschema "github.com/google/jsonschema-go/jsonschema"
+	otel "github.com/mutablelogic/go-client/pkg/otel"
 	llm "github.com/mutablelogic/go-llm"
 	opt "github.com/mutablelogic/go-llm/pkg/opt"
 	anthropic "github.com/mutablelogic/go-llm/pkg/provider/anthropic"
@@ -15,6 +16,7 @@ import (
 	mistral "github.com/mutablelogic/go-llm/pkg/provider/mistral"
 	schema "github.com/mutablelogic/go-llm/pkg/schema"
 	tool "github.com/mutablelogic/go-llm/pkg/tool"
+	attribute "go.opentelemetry.io/otel/attribute"
 )
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -22,7 +24,13 @@ import (
 
 // Ask processes a message and returns a response, outside of a session context (stateless).
 // If fn is non-nil, text chunks are streamed to the callback as they arrive.
-func (m *Manager) Ask(ctx context.Context, request schema.AskRequest, fn opt.StreamFn) (*schema.AskResponse, error) {
+func (m *Manager) Ask(ctx context.Context, request schema.AskRequest, fn opt.StreamFn) (response *schema.AskResponse, err error) {
+	// Otel span
+	ctx, endSpan := otel.StartSpan(m.tracer, ctx, "Ask",
+		attribute.String("request", request.AskRequestCore.String()),
+	)
+	defer func() { endSpan(err) }()
+
 	// Resolve model, generator, and options from the request meta
 	model, generator, opts, err := m.generatorFromMeta(ctx, request.GeneratorMeta)
 	if err != nil {
@@ -56,7 +64,7 @@ func (m *Manager) Ask(ctx context.Context, request schema.AskRequest, fn opt.Str
 	}
 
 	// Return the response
-	response := &schema.AskResponse{
+	response = &schema.AskResponse{
 		CompletionResponse: schema.CompletionResponse{
 			Role:    result.Role,
 			Content: result.Content,
@@ -69,7 +77,13 @@ func (m *Manager) Ask(ctx context.Context, request schema.AskRequest, fn opt.Str
 
 // Chat processes a message within a session context (stateful).
 // If fn is non-nil, text chunks are streamed to the callback as they arrive.
-func (m *Manager) Chat(ctx context.Context, request schema.ChatRequest, fn opt.StreamFn) (*schema.ChatResponse, error) {
+func (m *Manager) Chat(ctx context.Context, request schema.ChatRequest, fn opt.StreamFn) (response *schema.ChatResponse, err error) {
+	// Otel span
+	ctx, endSpan := otel.StartSpan(m.tracer, ctx, "Chat",
+		attribute.String("request", request.ChatRequestCore.String()),
+	)
+	defer func() { endSpan(err) }()
+
 	// Retrieve the session
 	session, err := m.sessionStore.GetSession(ctx, request.Session)
 	if err != nil {
@@ -270,7 +284,7 @@ done:
 	}
 
 	// Return the response
-	response := &schema.ChatResponse{
+	response = &schema.ChatResponse{
 		CompletionResponse: schema.CompletionResponse{
 			Role:    result.Role,
 			Content: result.Content,

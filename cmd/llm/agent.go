@@ -274,9 +274,11 @@ func (cmd *RunAgentCommand) Run(ctx *Globals) (err error) {
 	// Stream the chat response to stdout
 	var lastRole string
 	chatReq := schema.ChatRequest{
-		Session: resp.Session,
-		Text:    resp.Text,
-		Tools:   resp.Tools,
+		ChatRequestCore: schema.ChatRequestCore{
+			Session: resp.Session,
+			Text:    resp.Text,
+			Tools:   resp.Tools,
+		},
 	}
 	chatOpts := []httpclient.ChatOpt{
 		httpclient.WithChatStream(func(role, text string) {

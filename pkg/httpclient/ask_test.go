@@ -92,8 +92,10 @@ func TestAsk_NoAttachments(t *testing.T) {
 	c := newClient(t, srv.URL)
 
 	resp, err := c.Ask(context.Background(), schema.AskRequest{
-		GeneratorMeta: schema.GeneratorMeta{Model: "test-model"},
-		Text:          "hello world",
+		AskRequestCore: schema.AskRequestCore{
+			GeneratorMeta: schema.GeneratorMeta{Model: "test-model"},
+			Text:          "hello world",
+		},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -116,8 +118,10 @@ func TestAsk_WithFile(t *testing.T) {
 
 	fileData := bytes.NewReader([]byte{0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A})
 	resp, err := c.Ask(context.Background(), schema.AskRequest{
-		GeneratorMeta: schema.GeneratorMeta{Model: "test-model"},
-		Text:          "describe this",
+		AskRequestCore: schema.AskRequestCore{
+			GeneratorMeta: schema.GeneratorMeta{Model: "test-model"},
+			Text:          "describe this",
+		},
 	}, httpclient.WithFile("image.png", fileData))
 	if err != nil {
 		t.Fatal(err)
@@ -133,8 +137,10 @@ func TestAsk_WithURL(t *testing.T) {
 	c := newClient(t, srv.URL)
 
 	resp, err := c.Ask(context.Background(), schema.AskRequest{
-		GeneratorMeta: schema.GeneratorMeta{Model: "test-model"},
-		Text:          "describe this",
+		AskRequestCore: schema.AskRequestCore{
+			GeneratorMeta: schema.GeneratorMeta{Model: "test-model"},
+			Text:          "describe this",
+		},
 	}, httpclient.WithURL("https://example.com/image.png"))
 	if err != nil {
 		t.Fatal(err)
@@ -152,8 +158,10 @@ func TestAsk_MultipleAttachments(t *testing.T) {
 	file1 := bytes.NewReader([]byte{0x89, 0x50, 0x4E, 0x47})
 	file2 := bytes.NewReader([]byte{0xFF, 0xD8, 0xFF, 0xE0})
 	resp, err := c.Ask(context.Background(), schema.AskRequest{
-		GeneratorMeta: schema.GeneratorMeta{Model: "test-model"},
-		Text:          "compare these",
+		AskRequestCore: schema.AskRequestCore{
+			GeneratorMeta: schema.GeneratorMeta{Model: "test-model"},
+			Text:          "compare these",
+		},
 	}, httpclient.WithFile("a.png", file1), httpclient.WithFile("b.jpg", file2))
 	if err != nil {
 		t.Fatal(err)
@@ -170,8 +178,10 @@ func TestAsk_MixedAttachments(t *testing.T) {
 
 	fileData := bytes.NewReader([]byte{0x89, 0x50, 0x4E, 0x47})
 	resp, err := c.Ask(context.Background(), schema.AskRequest{
-		GeneratorMeta: schema.GeneratorMeta{Model: "test-model"},
-		Text:          "compare these",
+		AskRequestCore: schema.AskRequestCore{
+			GeneratorMeta: schema.GeneratorMeta{Model: "test-model"},
+			Text:          "compare these",
+		},
 	}, httpclient.WithFile("a.png", fileData), httpclient.WithURL("https://example.com/b.png"))
 	if err != nil {
 		t.Fatal(err)
@@ -187,7 +197,9 @@ func TestAsk_EmptyModel(t *testing.T) {
 	c := newClient(t, srv.URL)
 
 	_, err := c.Ask(context.Background(), schema.AskRequest{
-		Text: "hello",
+		AskRequestCore: schema.AskRequestCore{
+			Text: "hello",
+		},
 	})
 	if err == nil {
 		t.Fatal("expected error for empty model")
@@ -200,7 +212,9 @@ func TestAsk_EmptyText(t *testing.T) {
 	c := newClient(t, srv.URL)
 
 	_, err := c.Ask(context.Background(), schema.AskRequest{
-		GeneratorMeta: schema.GeneratorMeta{Model: "test-model"},
+		AskRequestCore: schema.AskRequestCore{
+			GeneratorMeta: schema.GeneratorMeta{Model: "test-model"},
+		},
 	})
 	if err == nil {
 		t.Fatal("expected error for empty text")
