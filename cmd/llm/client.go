@@ -17,39 +17,15 @@ import (
 
 // Client returns an httpclient.Client configured from the global HTTP flags.
 func (g *Globals) Client() (*httpclient.Client, error) {
-	endpoint, opts, err := g.clientEndpoint()
+	endpoint, err := g.clientEndpoint()
 	if err != nil {
 		return nil, err
 	}
-	return httpclient.New(endpoint, opts...)
+	return httpclient.New(endpoint, g.ClientOpts()...)
 }
 
-///////////////////////////////////////////////////////////////////////////////
-// PRIVATE METHODS
-
-// clientEndpoint returns the endpoint URL and client options for the given path suffix.
-func (g *Globals) clientEndpoint() (string, []client.ClientOpt, error) {
-	scheme := "http"
-	host, port, err := net.SplitHostPort(g.HTTP.Addr)
-	if err != nil {
-		return "", nil, err
-	}
-
-	// Default host to localhost if empty (e.g., ":8084")
-	if host == "" {
-		host = "localhost"
-	}
-
-	// Parse port
-	portn, err := strconv.ParseUint(port, 10, 16)
-	if err != nil {
-		return "", nil, err
-	}
-	if portn == 443 {
-		scheme = "https"
-	}
-
-	// Client options
+// ClientOpts returns the client options from global flags.
+func (g *Globals) ClientOpts() []client.ClientOpt {
 	opts := []client.ClientOpt{}
 	if g.Debug || g.Verbose {
 		opts = append(opts, client.OptTrace(os.Stderr, g.Verbose))
@@ -60,6 +36,33 @@ func (g *Globals) clientEndpoint() (string, []client.ClientOpt, error) {
 	if g.HTTP.Timeout > 0 {
 		opts = append(opts, client.OptTimeout(g.HTTP.Timeout))
 	}
+	return opts
+}
 
-	return fmt.Sprintf("%s://%s:%v%s", scheme, host, portn, types.NormalisePath(g.HTTP.Prefix)), opts, nil
+///////////////////////////////////////////////////////////////////////////////
+// PRIVATE METHODS
+
+// clientEndpoint returns the endpoint URL derived from the global HTTP flags.
+func (g *Globals) clientEndpoint() (string, error) {
+	scheme := "http"
+	host, port, err := net.SplitHostPort(g.HTTP.Addr)
+	if err != nil {
+		return "", err
+	}
+
+	// Default host to localhost if empty (e.g., ":8084")
+	if host == "" {
+		host = "localhost"
+	}
+
+	// Parse port
+	portn, err := strconv.ParseUint(port, 10, 16)
+	if err != nil {
+		return "", err
+	}
+	if portn == 443 {
+		scheme = "https"
+	}
+
+	return fmt.Sprintf("%s://%s:%v%s", scheme, host, portn, types.NormalisePath(g.HTTP.Prefix)), nil
 }
