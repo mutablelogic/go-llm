@@ -247,9 +247,14 @@ func TestInteractiveLogin(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	token, err := c.InteractiveLogin(ctx, mock.Server.URL, "test-client", "", []string{"openid"}, listener, func(url string) {
+	cfg := &oauth2.Config{
+		ClientID: "test-client",
+		Scopes:   []string{"openid"},
+		Endpoint: oauth2.Endpoint{AuthURL: mock.Server.URL},
+	}
+	token, err := c.Login(ctx, cfg, httpclient.OptInteractive(listener, func(url string) {
 		authURL = url
-	})
+	}))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -279,7 +284,13 @@ func TestClientCredentialsLogin(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	token, err := c.ClientCredentialsLogin(context.Background(), mock.Server.URL, "test-client", "test-secret", []string{"api"})
+	cfg := &oauth2.Config{
+		ClientID:     "test-client",
+		ClientSecret: "test-secret",
+		Scopes:       []string{"api"},
+		Endpoint:     oauth2.Endpoint{AuthURL: mock.Server.URL},
+	}
+	token, err := c.Login(context.Background(), cfg, httpclient.OptClientCredentials())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -308,10 +319,15 @@ func TestDeviceLogin(t *testing.T) {
 	defer cancel()
 
 	var verificationURI, userCode string
-	token, err := c.DeviceLogin(ctx, mock.Server.URL, "test-client", "", []string{"openid"}, func(uri, code string) {
+	cfg := &oauth2.Config{
+		ClientID: "test-client",
+		Scopes:   []string{"openid"},
+		Endpoint: oauth2.Endpoint{AuthURL: mock.Server.URL},
+	}
+	token, err := c.Login(ctx, cfg, httpclient.OptDevice(func(uri, code string) {
 		verificationURI = uri
 		userCode = code
-	})
+	}))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -482,12 +498,13 @@ func TestDiscovery_RootOAuth(t *testing.T) {
 	mock := newMockOAuthServer(t)
 	defer mock.Server.Close()
 
-	// The standard mock serves at root — ClientCredentialsLogin exercises discovery
+	// The standard mock serves at root — Login with OptClientCredentials exercises discovery
 	c, err := httpclient.New(mock.Server.URL)
 	if err != nil {
 		t.Fatal(err)
 	}
-	creds, err := c.ClientCredentialsLogin(context.Background(), mock.Server.URL, "test-client", "test-secret", nil)
+	cfg := &oauth2.Config{ClientID: "test-client", ClientSecret: "test-secret", Endpoint: oauth2.Endpoint{AuthURL: mock.Server.URL}}
+	creds, err := c.Login(context.Background(), cfg, httpclient.OptClientCredentials())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -532,7 +549,8 @@ func TestDiscovery_FallbackOIDC(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	creds, err := c.ClientCredentialsLogin(context.Background(), server.URL, "test-client", "test-secret", nil)
+	cfg := &oauth2.Config{ClientID: "test-client", ClientSecret: "test-secret", Endpoint: oauth2.Endpoint{AuthURL: server.URL}}
+	creds, err := c.Login(context.Background(), cfg, httpclient.OptClientCredentials())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -581,7 +599,8 @@ func TestDiscovery_PathRelative(t *testing.T) {
 		t.Fatal(err)
 	}
 	// Pass endpoint with path — discovery should find it at /realms/master/.well-known/...
-	creds, err := c.ClientCredentialsLogin(context.Background(), server.URL+"/realms/master", "test-client", "test-secret", nil)
+	cfg := &oauth2.Config{ClientID: "test-client", ClientSecret: "test-secret", Endpoint: oauth2.Endpoint{AuthURL: server.URL + "/realms/master"}}
+	creds, err := c.Login(context.Background(), cfg, httpclient.OptClientCredentials())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -600,7 +619,8 @@ func TestDiscovery_NotFound(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, err = c.ClientCredentialsLogin(context.Background(), server.URL, "test-client", "test-secret", nil)
+	cfg := &oauth2.Config{ClientID: "test-client", ClientSecret: "test-secret", Endpoint: oauth2.Endpoint{AuthURL: server.URL}}
+	_, err = c.Login(context.Background(), cfg, httpclient.OptClientCredentials())
 	if err == nil {
 		t.Fatal("expected error for server without OAuth support")
 	}
@@ -623,7 +643,8 @@ func TestDiscovery_ServerError(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, err = c.ClientCredentialsLogin(context.Background(), server.URL, "test-client", "test-secret", nil)
+	cfg := &oauth2.Config{ClientID: "test-client", ClientSecret: "test-secret", Endpoint: oauth2.Endpoint{AuthURL: server.URL}}
+	_, err = c.Login(context.Background(), cfg, httpclient.OptClientCredentials())
 	if err == nil {
 		t.Fatal("expected error for server returning 500")
 	}

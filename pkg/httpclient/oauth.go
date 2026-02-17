@@ -32,6 +32,52 @@ type AuthURLCallback func(authURL string)
 // The callback should present the verification URI and user code to the user.
 type DeviceAuthCallback func(verificationURI, userCode string)
 
+// LoginOpt is a functional option for the Login method.
+type LoginOpt func(*loginOpts)
+
+type loginOpts struct {
+	listener       net.Listener
+	authCallback   AuthURLCallback
+	deviceCallback DeviceAuthCallback
+	clientName     string
+	clientCreds    bool
+}
+
+// OptInteractive selects the Authorization Code flow with PKCE.
+// The listener is used for the OAuth callback server, and the callback
+// is invoked with the authorization URL for the user to visit.
+func OptInteractive(listener net.Listener, callback AuthURLCallback) LoginOpt {
+	return func(o *loginOpts) {
+		o.listener = listener
+		o.authCallback = callback
+	}
+}
+
+// OptDevice selects the Device Authorization flow (RFC 8628).
+// The callback is invoked with the verification URI and user code.
+func OptDevice(callback DeviceAuthCallback) LoginOpt {
+	return func(o *loginOpts) {
+		o.deviceCallback = callback
+	}
+}
+
+// OptClientCredentials selects the Client Credentials flow (RFC 6749 Section 4.4).
+// The oauth2.Config must have ClientSecret set.
+func OptClientCredentials() LoginOpt {
+	return func(o *loginOpts) {
+		o.clientCreds = true
+	}
+}
+
+// OptClientName sets the client name for dynamic client registration (RFC 7591).
+// If the oauth2.Config has an empty ClientID, registration is attempted
+// using this name.
+func OptClientName(name string) LoginOpt {
+	return func(o *loginOpts) {
+		o.clientName = name
+	}
+}
+
 ///////////////////////////////////////////////////////////////////////////////
 // PUBLIC METHODS
 
@@ -68,42 +114,93 @@ func NewCallbackListener(addr string) (net.Listener, string, error) {
 	return listener, redirectURI, nil
 }
 
-// InteractiveLogin performs an OAuth 2.0 Authorization Code flow with PKCE.
-// It discovers the OAuth metadata from the endpoint, uses the provided listener
-// for callbacks, presents the authorization URL to the user via callback,
-// waits for the callback, and exchanges the code for a token.
-// If clientID is empty and clientName is non-empty, it attempts dynamic client
-// registration. The caller is responsible for closing the listener after this returns.
-func (c *Client) InteractiveLogin(ctx context.Context, endpoint, clientID, clientName string, scopes []string, listener net.Listener, callback AuthURLCallback) (*schema.OAuthCredentials, error) {
-	// Discover OAuth metadata
+// Login performs an OAuth 2.0 login flow. It discovers OAuth metadata using
+// cfg.Endpoint.AuthURL as the base server URL, then replaces cfg.Endpoint
+// with the discovered authorization and token URLs.
+//
+// Flow is selected by the provided options:
+//
+//   - OptInteractive: Authorization Code flow with PKCE (default for user-facing apps)
+//   - OptDevice: Device Authorization flow (RFC 8628)
+//   - OptClientCredentials: Client Credentials flow (machine-to-machine)
+//
+// If cfg.ClientID is empty and OptClientName is set, dynamic client registration
+// is attempted. cfg.ClientSecret is passed through for confidential clients.
+func (c *Client) Login(ctx context.Context, cfg *oauth2.Config, opts ...LoginOpt) (*schema.OAuthCredentials, error) {
+	// Apply options
+	var o loginOpts
+	for _, opt := range opts {
+		opt(&o)
+	}
+
+	// Use AuthURL as the base server URL for discovery
+	endpoint := cfg.Endpoint.AuthURL
+	if endpoint == "" {
+		return nil, fmt.Errorf("cfg.Endpoint.AuthURL must be set to the server URL")
+	}
+
+	// Discover OAuth metadata and replace the endpoint
 	metadata, err := c.discoverOAuth(ctx, endpoint)
 	if err != nil {
 		return nil, err
 	}
-
-	// Derive redirect URI from listener
-	redirectURI := fmt.Sprintf("http://%s/callback", listener.Addr().String())
+	cfg.Endpoint = metadata.Endpoint()
 
 	// Auto-register if no client ID provided
-	if clientID == "" {
-		if clientName == "" {
+	if cfg.ClientID == "" {
+		if o.clientName == "" {
 			return nil, fmt.Errorf("either client-id or client-name must be provided")
 		}
-		clientInfo, err := c.registerClient(ctx, metadata, clientName, []string{redirectURI})
+		var redirectURIs []string
+		if o.listener != nil {
+			redirectURIs = []string{fmt.Sprintf("http://%s/callback", o.listener.Addr().String())}
+		}
+		clientInfo, err := c.registerClient(ctx, metadata, o.clientName, redirectURIs)
 		if err != nil {
 			return nil, fmt.Errorf("dynamic client registration failed (you may need to register manually and use --client-id): %w", err)
 		}
-		clientID = clientInfo.ClientID
+		cfg.ClientID = clientInfo.ClientID
 	}
 
-	// Create OAuth2 config
-	cfg := &oauth2.Config{
-		ClientID:    clientID,
-		Scopes:      scopes,
-		Endpoint:    metadata.Endpoint(),
-		RedirectURL: redirectURI,
+	// Dispatch to the appropriate flow
+	var token *oauth2.Token
+
+	switch {
+	case o.listener != nil && o.authCallback != nil:
+		// Interactive: Authorization Code with PKCE
+		cfg.RedirectURL = fmt.Sprintf("http://%s/callback", o.listener.Addr().String())
+		token, err = c.interactiveFlow(ctx, cfg, o.listener, o.authCallback)
+
+	case o.deviceCallback != nil:
+		// Device Authorization flow
+		if !metadata.SupportsDeviceFlow() {
+			return nil, fmt.Errorf("%s does not support device authorization flow", endpoint)
+		}
+		token, err = c.deviceFlow(ctx, cfg, o.deviceCallback)
+
+	case o.clientCreds:
+		// Client Credentials flow
+		if cfg.ClientSecret == "" {
+			return nil, fmt.Errorf("client secret is required for client credentials flow")
+		}
+		if !metadata.SupportsGrantType("client_credentials") {
+			return nil, fmt.Errorf("%s does not support client_credentials grant", endpoint)
+		}
+		token, err = c.clientCredentialsFlow(ctx, cfg, metadata)
+
+	default:
+		return nil, fmt.Errorf("no login flow specified: use OptInteractive, OptDevice, or OptClientCredentials")
 	}
 
+	if err != nil {
+		return nil, err
+	}
+
+	return &schema.OAuthCredentials{Token: token, ClientID: cfg.ClientID, Endpoint: endpoint, TokenURL: metadata.TokenEndpoint}, nil
+}
+
+// interactiveFlow performs the Authorization Code exchange with PKCE.
+func (c *Client) interactiveFlow(ctx context.Context, cfg *oauth2.Config, listener net.Listener, callback AuthURLCallback) (*oauth2.Token, error) {
 	// Generate PKCE verifier and state
 	verifier := oauth2.GenerateVerifier()
 	state, err := generateState()
@@ -111,10 +208,8 @@ func (c *Client) InteractiveLogin(ctx context.Context, endpoint, clientID, clien
 		return nil, fmt.Errorf("failed to generate state: %w", err)
 	}
 
-	// Build authorization URL
+	// Build authorization URL and notify caller
 	authURL := cfg.AuthCodeURL(state, oauth2.S256ChallengeOption(verifier))
-
-	// Notify caller of the URL
 	callback(authURL)
 
 	// Wait for authorization code via callback server
@@ -123,12 +218,46 @@ func (c *Client) InteractiveLogin(ctx context.Context, endpoint, clientID, clien
 		return nil, err
 	}
 
-	// Exchange code for token (use our HTTP client)
+	// Exchange code for token
 	token, err := cfg.Exchange(c.oauthContext(ctx), code, oauth2.VerifierOption(verifier))
 	if err != nil {
 		return nil, fmt.Errorf("token exchange failed: %w", err)
 	}
-	return &schema.OAuthCredentials{Token: token, ClientID: clientID, Endpoint: endpoint, TokenURL: metadata.TokenEndpoint}, nil
+	return token, nil
+}
+
+// deviceFlow performs the Device Authorization exchange.
+func (c *Client) deviceFlow(ctx context.Context, cfg *oauth2.Config, callback DeviceAuthCallback) (*oauth2.Token, error) {
+	// Request device code
+	deviceResp, err := cfg.DeviceAuth(c.oauthContext(ctx))
+	if err != nil {
+		return nil, fmt.Errorf("device code request failed: %w", err)
+	}
+
+	// Notify caller of verification details
+	callback(deviceResp.VerificationURI, deviceResp.UserCode)
+
+	// Poll for token
+	token, err := cfg.DeviceAccessToken(c.oauthContext(ctx), deviceResp)
+	if err != nil {
+		return nil, fmt.Errorf("device token exchange failed: %w", err)
+	}
+	return token, nil
+}
+
+// clientCredentialsFlow performs the Client Credentials exchange.
+func (c *Client) clientCredentialsFlow(ctx context.Context, cfg *oauth2.Config, metadata *schema.OAuthMetadata) (*oauth2.Token, error) {
+	ccCfg := &clientcredentials.Config{
+		ClientID:     cfg.ClientID,
+		ClientSecret: cfg.ClientSecret,
+		TokenURL:     metadata.TokenEndpoint,
+		Scopes:       cfg.Scopes,
+	}
+	token, err := ccCfg.Token(c.oauthContext(ctx))
+	if err != nil {
+		return nil, fmt.Errorf("client credentials exchange failed: %w", err)
+	}
+	return token, nil
 }
 
 // RefreshToken exchanges a refresh token for a new access token.
@@ -163,90 +292,6 @@ func (c *Client) RefreshToken(ctx context.Context, creds *schema.OAuthCredential
 		return nil, fmt.Errorf("token refresh failed: %w", err)
 	}
 	return &schema.OAuthCredentials{Token: newToken, ClientID: creds.ClientID, Endpoint: creds.Endpoint, TokenURL: creds.TokenURL}, nil
-}
-
-// DeviceLogin performs an OAuth 2.0 Device Authorization flow (RFC 8628).
-// It requests a device code, provides the verification URL and code via callback,
-// then polls until the user completes authorization.
-// If clientID is empty and clientName is non-empty, it attempts dynamic client
-// registration.
-func (c *Client) DeviceLogin(ctx context.Context, endpoint, clientID, clientName string, scopes []string, callback DeviceAuthCallback) (*schema.OAuthCredentials, error) {
-	// Discover OAuth metadata
-	metadata, err := c.discoverOAuth(ctx, endpoint)
-	if err != nil {
-		return nil, err
-	}
-
-	// Check if device flow is supported
-	if !metadata.SupportsDeviceFlow() {
-		return nil, fmt.Errorf("%s does not support device authorization flow", endpoint)
-	}
-
-	// Auto-register if no client ID provided
-	if clientID == "" {
-		if clientName == "" {
-			return nil, fmt.Errorf("either client-id or client-name must be provided")
-		}
-		clientInfo, err := c.registerClient(ctx, metadata, clientName, nil)
-		if err != nil {
-			return nil, fmt.Errorf("dynamic client registration failed (you may need to register manually and use --client-id): %w", err)
-		}
-		clientID = clientInfo.ClientID
-	}
-
-	// Create OAuth2 config
-	cfg := &oauth2.Config{
-		ClientID: clientID,
-		Scopes:   scopes,
-		Endpoint: metadata.Endpoint(),
-	}
-
-	// Request device code (use our HTTP client)
-	deviceResp, err := cfg.DeviceAuth(c.oauthContext(ctx))
-	if err != nil {
-		return nil, fmt.Errorf("device code request failed: %w", err)
-	}
-
-	// Notify caller of verification details
-	callback(deviceResp.VerificationURI, deviceResp.UserCode)
-
-	// Poll for token (oauth2 handles polling internally, use our HTTP client)
-	token, err := cfg.DeviceAccessToken(c.oauthContext(ctx), deviceResp)
-	if err != nil {
-		return nil, fmt.Errorf("device token exchange failed: %w", err)
-	}
-	return &schema.OAuthCredentials{Token: token, ClientID: clientID, Endpoint: endpoint, TokenURL: metadata.TokenEndpoint}, nil
-}
-
-// ClientCredentialsLogin performs an OAuth 2.0 Client Credentials flow (RFC 6749 Section 4.4).
-// This is used for machine-to-machine authentication where no user is involved.
-func (c *Client) ClientCredentialsLogin(ctx context.Context, endpoint, clientID, clientSecret string, scopes []string) (*schema.OAuthCredentials, error) {
-	// Discover OAuth metadata
-	metadata, err := c.discoverOAuth(ctx, endpoint)
-	if err != nil {
-		return nil, err
-	}
-
-	// Check if client_credentials grant is supported
-	if !metadata.SupportsGrantType("client_credentials") {
-		return nil, fmt.Errorf("%s does not support client_credentials grant", endpoint)
-	}
-
-	// Create client credentials config
-	cfg := &clientcredentials.Config{
-		ClientID:     clientID,
-		ClientSecret: clientSecret,
-		TokenURL:     metadata.TokenEndpoint,
-		Scopes:       scopes,
-	}
-
-	// Get token (use our HTTP client)
-	token, err := cfg.Token(c.oauthContext(ctx))
-	if err != nil {
-		return nil, fmt.Errorf("client credentials exchange failed: %w", err)
-	}
-
-	return &schema.OAuthCredentials{Token: token, ClientID: clientID, Endpoint: endpoint, TokenURL: metadata.TokenEndpoint}, nil
 }
 
 // registerClient performs dynamic client registration (RFC 7591).
@@ -355,8 +400,8 @@ func (c *Client) waitForAuthCallback(ctx context.Context, listener net.Listener,
 
 		sendResult(authResult{code: code})
 		_ = httpresponse.JSON(w, http.StatusOK, 0, map[string]string{
-			"status":  "success",
-			"message": "Authentication successful! You can close this window.",
+			"status":  "ok",
+			"message": "Authorization code received. You can close this window.",
 		})
 	})
 
