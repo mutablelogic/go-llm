@@ -95,6 +95,9 @@ func (cmd *TelegramCommand) Run(ctx *Globals) (err error) {
 		return err
 	}
 
+	// Use the global context as parent (no OTEL span for long-running server)
+	parent := ctx.ctx
+
 	// Resolve default model
 	model := cmd.Model
 	if model == "" {

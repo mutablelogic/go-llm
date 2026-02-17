@@ -24,6 +24,26 @@ func (g *Globals) Client() (*httpclient.Client, error) {
 	return httpclient.New(endpoint, opts...)
 }
 
+// ClientWithURL returns an httpclient.Client for the given URL with global options.
+func (g *Globals) ClientWithURL(url string) (*httpclient.Client, error) {
+	return httpclient.New(url, g.ClientOpts()...)
+}
+
+// ClientOpts returns the client options from global flags.
+func (g *Globals) ClientOpts() []client.ClientOpt {
+	opts := []client.ClientOpt{}
+	if g.Debug || g.Verbose {
+		opts = append(opts, client.OptTrace(os.Stderr, g.Verbose))
+	}
+	if g.tracer != nil {
+		opts = append(opts, client.OptTracer(g.tracer))
+	}
+	if g.HTTP.Timeout > 0 {
+		opts = append(opts, client.OptTimeout(g.HTTP.Timeout))
+	}
+	return opts
+}
+
 ///////////////////////////////////////////////////////////////////////////////
 // PRIVATE METHODS
 
