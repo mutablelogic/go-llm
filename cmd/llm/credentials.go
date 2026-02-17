@@ -4,11 +4,11 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"net"
 
 	// Packages
 	otel "github.com/mutablelogic/go-client/pkg/otel"
 	httpclient "github.com/mutablelogic/go-llm/pkg/httpclient"
+	schema "github.com/mutablelogic/go-llm/pkg/schema"
 	types "github.com/mutablelogic/go-server/pkg/types"
 	"go.opentelemetry.io/otel/attribute"
 )
@@ -72,7 +72,7 @@ func (cmd *LoginCommand) Run(ctx *Globals) (err error) {
 
 		clientID := cmd.ClientID
 		if clientID == "" {
-			clientID, err = cmd.autoRegister(parent, client, ctx, nil)
+			clientID, err = cmd.autoRegister(parent, client, ctx, metadata, nil)
 			if err != nil {
 				return err
 			}
@@ -87,22 +87,21 @@ func (cmd *LoginCommand) Run(ctx *Globals) (err error) {
 
 	default:
 		// Interactive: Authorization Code with PKCE
+		// Create listener to get redirect URI for registration
+		listener, redirectURI, err := httpclient.NewCallbackListener("")
+		if err != nil {
+			return err
+		}
+		defer listener.Close()
+
 		clientID := cmd.ClientID
-		var redirectURI string
 		if clientID == "" {
-			// Start listener to get redirect URI for registration
-			listener, err := net.Listen("tcp", "localhost:0")
-			if err != nil {
-				return fmt.Errorf("failed to start callback server: %w", err)
-			}
-			redirectURI = fmt.Sprintf("http://%s/callback", listener.Addr().String())
-			listener.Close() // Close it - InteractiveLogin will rebind to same address
-			clientID, err = cmd.autoRegister(parent, client, ctx, []string{redirectURI})
+			clientID, err = cmd.autoRegister(parent, client, ctx, nil, []string{redirectURI})
 			if err != nil {
 				return err
 			}
 		}
-		token, err = client.InteractiveLogin(parent, cmd.URL, clientID, cmd.Scopes, redirectURI, func(authURL string) {
+		token, err = client.InteractiveLogin(parent, cmd.URL, clientID, cmd.Scopes, listener, func(authURL string) {
 			ctx.logger.Printf(parent, "Open this URL in your browser to authenticate:")
 			ctx.logger.Printf(parent, "%s", authURL)
 		})
@@ -122,11 +121,15 @@ func (cmd *LoginCommand) Run(ctx *Globals) (err error) {
 }
 
 // autoRegister attempts to dynamically register a client if the server supports it.
-func (cmd *LoginCommand) autoRegister(parent context.Context, client *httpclient.Client, ctx *Globals, redirectURIs []string) (string, error) {
-	// Discover OAuth metadata
-	metadata, err := client.DiscoverOAuth(parent, cmd.URL)
-	if err != nil {
-		return "", err
+// If metadata is nil, it will be discovered from the server.
+func (cmd *LoginCommand) autoRegister(parent context.Context, client *httpclient.Client, ctx *Globals, metadata *schema.OAuthMetadata, redirectURIs []string) (string, error) {
+	// Discover OAuth metadata if not provided
+	if metadata == nil {
+		var err error
+		metadata, err = client.DiscoverOAuth(parent, cmd.URL)
+		if err != nil {
+			return "", err
+		}
 	}
 
 	if !metadata.SupportsRegistration() {

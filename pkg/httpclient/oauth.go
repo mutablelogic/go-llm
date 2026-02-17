@@ -8,6 +8,7 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"sync"
 
 	// Packages
 	client "github.com/mutablelogic/go-client"
@@ -31,39 +32,53 @@ type DeviceAuthCallback func(verificationURI, userCode string)
 ///////////////////////////////////////////////////////////////////////////////
 // PUBLIC METHODS
 
+// NewCallbackListener creates a TCP listener for OAuth callbacks and returns
+// both the listener and the redirect URI to use. If addr is empty, a random
+// available port on localhost is used. Only loopback addresses are allowed
+// for security reasons.
+func NewCallbackListener(addr string) (net.Listener, string, error) {
+	if addr == "" {
+		addr = "localhost:0"
+	}
+
+	// Parse and validate the address
+	host, port, err := net.SplitHostPort(addr)
+	if err != nil {
+		return nil, "", fmt.Errorf("invalid callback address %q: %w", addr, err)
+	}
+
+	// Validate loopback only
+	if !isLoopback(host) {
+		return nil, "", fmt.Errorf("callback address must be loopback (localhost/127.0.0.1/::1), got %q", host)
+	}
+
+	// Validate port is present (can be "0" for random)
+	if port == "" {
+		return nil, "", fmt.Errorf("callback address %q missing port", addr)
+	}
+
+	listener, err := net.Listen("tcp", addr)
+	if err != nil {
+		return nil, "", fmt.Errorf("failed to start callback server on %s: %w", addr, err)
+	}
+	redirectURI := fmt.Sprintf("http://%s/callback", listener.Addr().String())
+	return listener, redirectURI, nil
+}
+
 // InteractiveLogin performs an OAuth 2.0 Authorization Code flow with PKCE.
-// It discovers the OAuth metadata from the endpoint, starts a local callback server,
-// presents the authorization URL to the user via callback, waits for the callback, and exchanges
-// the code for a token.
-// If redirectURI is empty, a random local port is used.
-func (c *Client) InteractiveLogin(ctx context.Context, endpoint, clientID string, scopes []string, redirectURI string, callback AuthURLCallback) (*oauth2.Token, error) {
+// It discovers the OAuth metadata from the endpoint, uses the provided listener
+// for callbacks, presents the authorization URL to the user via callback,
+// waits for the callback, and exchanges the code for a token.
+// The caller is responsible for closing the listener after this returns.
+func (c *Client) InteractiveLogin(ctx context.Context, endpoint, clientID string, scopes []string, listener net.Listener, callback AuthURLCallback) (*oauth2.Token, error) {
 	// Discover OAuth metadata
 	metadata, err := c.DiscoverOAuth(ctx, endpoint)
 	if err != nil {
 		return nil, err
 	}
 
-	// Parse redirect URI to get the host:port for listener
-	var listener net.Listener
-	if redirectURI == "" {
-		// Start local callback server on random port
-		listener, err = net.Listen("tcp", "localhost:0")
-		if err != nil {
-			return nil, fmt.Errorf("failed to start callback server: %w", err)
-		}
-		redirectURI = fmt.Sprintf("http://%s/callback", listener.Addr().String())
-	} else {
-		// Parse the provided redirect URI and bind to that address
-		u, err := url.Parse(redirectURI)
-		if err != nil {
-			return nil, fmt.Errorf("invalid redirect URI: %w", err)
-		}
-		listener, err = net.Listen("tcp", u.Host)
-		if err != nil {
-			return nil, fmt.Errorf("failed to start callback server on %s: %w", u.Host, err)
-		}
-	}
-	defer listener.Close()
+	// Derive redirect URI from listener
+	redirectURI := fmt.Sprintf("http://%s/callback", listener.Addr().String())
 
 	// Create OAuth2 config
 	cfg := &oauth2.Config{
@@ -86,69 +101,18 @@ func (c *Client) InteractiveLogin(ctx context.Context, endpoint, clientID string
 	// Notify caller of the URL
 	callback(authURL)
 
-	// Channel to receive the authorization code or error
-	type authResult struct {
-		code string
-		err  error
+	// Wait for authorization code via callback server
+	code, err := c.waitForAuthCallback(ctx, listener, state)
+	if err != nil {
+		return nil, err
 	}
-	resultCh := make(chan authResult, 1)
 
-	// Set up callback handler
-	mux := http.NewServeMux()
-	mux.HandleFunc("/callback", func(w http.ResponseWriter, r *http.Request) {
-		// Verify state
-		if r.URL.Query().Get("state") != state {
-			resultCh <- authResult{err: fmt.Errorf("state mismatch")}
-			_ = httpresponse.Error(w, httpresponse.ErrBadRequest.With("state mismatch"))
-			return
-		}
-
-		// Check for error
-		if errParam := r.URL.Query().Get("error"); errParam != "" {
-			errDesc := r.URL.Query().Get("error_description")
-			resultCh <- authResult{err: fmt.Errorf("authorization error: %s: %s", errParam, errDesc)}
-			_ = httpresponse.Error(w, httpresponse.ErrBadRequest.With(errDesc))
-			return
-		}
-
-		// Get authorization code
-		code := r.URL.Query().Get("code")
-		if code == "" {
-			resultCh <- authResult{err: fmt.Errorf("no authorization code received")}
-			_ = httpresponse.Error(w, httpresponse.ErrBadRequest.With("no authorization code received"))
-			return
-		}
-
-		resultCh <- authResult{code: code}
-		_ = httpresponse.JSON(w, http.StatusOK, 0, map[string]string{
-			"status":  "success",
-			"message": "Authentication successful! You can close this window.",
-		})
-	})
-
-	// Start server in goroutine
-	server := &http.Server{Handler: mux}
-	go func() {
-		server.Serve(listener)
-	}()
-	defer server.Shutdown(context.Background())
-
-	// Wait for callback or context cancellation
-	select {
-	case <-ctx.Done():
-		return nil, ctx.Err()
-	case result := <-resultCh:
-		if result.err != nil {
-			return nil, result.err
-		}
-
-		// Exchange code for token (use our HTTP client)
-		token, err := cfg.Exchange(c.oauthContext(ctx), result.code, oauth2.VerifierOption(verifier))
-		if err != nil {
-			return nil, fmt.Errorf("token exchange failed: %w", err)
-		}
-		return token, nil
+	// Exchange code for token (use our HTTP client)
+	token, err := cfg.Exchange(c.oauthContext(ctx), code, oauth2.VerifierOption(verifier))
+	if err != nil {
+		return nil, fmt.Errorf("token exchange failed: %w", err)
 	}
+	return token, nil
 }
 
 // DeviceLogin performs an OAuth 2.0 Device Authorization flow (RFC 8628).
@@ -267,6 +231,99 @@ func generateState() (string, error) {
 		return "", err
 	}
 	return hex.EncodeToString(b), nil
+}
+
+// isLoopback returns true if the host is a loopback address.
+func isLoopback(host string) bool {
+	if host == "localhost" {
+		return true
+	}
+	ip := net.ParseIP(host)
+	return ip != nil && ip.IsLoopback()
+}
+
+// authResult holds the result from the OAuth callback handler.
+type authResult struct {
+	code string
+	err  error
+}
+
+// waitForAuthCallback starts an HTTP server on the given listener, waits for
+// an OAuth callback with the expected state, and returns the authorization code.
+// It properly shuts down the server and waits for all goroutines to complete.
+func (c *Client) waitForAuthCallback(ctx context.Context, listener net.Listener, expectedState string) (string, error) {
+	resultCh := make(chan authResult, 1)
+	var once sync.Once
+
+	// sendResult sends a result to the channel exactly once, preventing
+	// duplicate callbacks from blocking handler goroutines.
+	sendResult := func(r authResult) {
+		once.Do(func() {
+			resultCh <- r
+		})
+	}
+
+	// Set up callback handler
+	mux := http.NewServeMux()
+	mux.HandleFunc("/callback", func(w http.ResponseWriter, r *http.Request) {
+		// Verify state
+		if r.URL.Query().Get("state") != expectedState {
+			sendResult(authResult{err: fmt.Errorf("state mismatch")})
+			_ = httpresponse.Error(w, httpresponse.ErrBadRequest.With("state mismatch"))
+			return
+		}
+
+		// Check for error from authorization server
+		if errParam := r.URL.Query().Get("error"); errParam != "" {
+			errDesc := r.URL.Query().Get("error_description")
+			sendResult(authResult{err: fmt.Errorf("authorization error: %s: %s", errParam, errDesc)})
+			_ = httpresponse.Error(w, httpresponse.ErrBadRequest.With(errDesc))
+			return
+		}
+
+		// Get authorization code
+		code := r.URL.Query().Get("code")
+		if code == "" {
+			sendResult(authResult{err: fmt.Errorf("no authorization code received")})
+			_ = httpresponse.Error(w, httpresponse.ErrBadRequest.With("no authorization code received"))
+			return
+		}
+
+		sendResult(authResult{code: code})
+		_ = httpresponse.JSON(w, http.StatusOK, 0, map[string]string{
+			"status":  "success",
+			"message": "Authentication successful! You can close this window.",
+		})
+	})
+
+	// Create server
+	server := &http.Server{Handler: mux}
+
+	// WaitGroup to ensure server goroutine completes
+	var wg sync.WaitGroup
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		// Serve returns when server.Shutdown is called
+		_ = server.Serve(listener)
+	}()
+
+	// Wait for callback or context cancellation
+	var result authResult
+	select {
+	case <-ctx.Done():
+		result = authResult{err: ctx.Err()}
+	case result = <-resultCh:
+	}
+
+	// Shutdown server and wait for goroutine to complete
+	_ = server.Shutdown(context.Background())
+	wg.Wait()
+
+	if result.err != nil {
+		return "", result.err
+	}
+	return result.code, nil
 }
 
 // DiscoverOAuth fetches OAuth 2.0 Authorization Server Metadata from the

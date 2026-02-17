@@ -78,10 +78,12 @@ func (m *OAuthMetadata) SupportsS256() bool {
 }
 
 // SupportsGrantType returns true if the server supports the given grant type.
+// Per RFC 8414, grant_types_supported is optional - when omitted, we return true
+// to avoid blocking flows that might be supported.
 func (m *OAuthMetadata) SupportsGrantType(grantType string) bool {
-	// If not specified, assume standard grant types are supported
+	// If not specified, don't block - the grant type might still be supported
 	if len(m.GrantTypesSupported) == 0 {
-		return grantType == "authorization_code" || grantType == "refresh_token"
+		return true
 	}
 	for _, gt := range m.GrantTypesSupported {
 		if gt == grantType {
@@ -101,9 +103,9 @@ func (m *OAuthMetadata) Endpoint() oauth2.Endpoint {
 }
 
 // SupportsDeviceFlow returns true if the server supports the device authorization grant.
+// The presence of device_authorization_endpoint is the primary indicator.
 func (m *OAuthMetadata) SupportsDeviceFlow() bool {
-	return m.DeviceAuthorizationEndpoint != "" &&
-		m.SupportsGrantType("urn:ietf:params:oauth:grant-type:device_code")
+	return m.DeviceAuthorizationEndpoint != ""
 }
 
 // SupportsRegistration returns true if the server supports dynamic client registration.
