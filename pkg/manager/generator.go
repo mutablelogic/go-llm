@@ -434,15 +434,21 @@ func (m *Manager) runTools(ctx context.Context, calls []schema.ToolCall, fn opt.
 }
 
 // withTools returns an opt that sets a toolkit for the request.
-// If tool names are provided, only those tools are included; otherwise all tools from the
-// manager's toolkit are included. Returns nil, nil if the toolkit is empty.
+// If no tool names are provided (nil slice), all tools from the manager's
+// toolkit are included. If an empty non-nil slice is passed, no tools are
+// included. If specific names are given, only those tools are included.
 func (m *Manager) withTools(tools ...string) (opt.Opt, error) {
-	if len(tools) == 0 {
+	if tools == nil {
 		// No filter — include all tools
 		if len(m.toolkit.Tools()) == 0 {
 			return nil, nil
 		}
 		return tool.WithToolkit(m.toolkit), nil
+	}
+
+	// Explicitly empty — no tools requested
+	if len(tools) == 0 {
+		return nil, nil
 	}
 
 	// Build a filtered toolkit with only the requested tools

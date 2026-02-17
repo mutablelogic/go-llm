@@ -2,8 +2,6 @@ package store
 
 import (
 	"context"
-	"encoding/json"
-	"sort"
 	"sync"
 	"time"
 
@@ -11,7 +9,6 @@ import (
 	uuid "github.com/google/uuid"
 	llm "github.com/mutablelogic/go-llm"
 	schema "github.com/mutablelogic/go-llm/pkg/schema"
-	types "github.com/mutablelogic/go-server/pkg/types"
 )
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -48,8 +45,8 @@ func (m *MemoryAgentStore) CreateAgent(_ context.Context, meta schema.AgentMeta)
 	defer m.mu.Unlock()
 
 	// Check name validity
-	if !types.IsIdentifier(meta.Name) {
-		return nil, llm.ErrBadParameter.Withf("agent name: must be a valid identifier, got %q", meta.Name)
+	if err := validateAgentName(meta.Name); err != nil {
+		return nil, err
 	} else if _, exists := m.names[meta.Name]; exists {
 		return nil, llm.ErrConflict.Withf("agent name %q already exists", meta.Name)
 	}
@@ -111,53 +108,22 @@ func (m *MemoryAgentStore) ListAgents(_ context.Context, req schema.ListAgentReq
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 
-	// Collect candidates
-	var candidates []*schema.Agent
+	// Collect all agents
+	all := make([]*schema.Agent, 0, len(m.agents))
 	for _, a := range m.agents {
-		if req.Name != "" && a.Name != req.Name {
-			continue
-		}
-		if req.Version != nil && a.Version != *req.Version {
-			continue
-		}
-		candidates = append(candidates, a)
+		all = append(all, a)
 	}
 
-	// Sort by creation time, most recent first
-	sort.Slice(candidates, func(i, j int) bool {
-		return candidates[i].Created.After(candidates[j].Created)
-	})
-
-	// When no name filter, keep only the latest version per name
-	var result []*schema.Agent
-	if req.Name == "" {
-		seen := make(map[string]bool)
-		for _, a := range candidates {
-			if !seen[a.Name] {
-				seen[a.Name] = true
-				result = append(result, a)
-			}
-		}
-	} else {
-		result = candidates
-	}
+	// Filter, sort, and deduplicate
+	result := filterAgents(all, req)
 
 	// Paginate
-	total := uint(len(result))
-	start := req.Offset
-	if start > total {
-		start = total
-	}
-	end := start + types.Value(req.Limit)
-	if req.Limit == nil || end > total {
-		end = total
-	}
-
+	body, total := paginate(result, req.Offset, req.Limit)
 	return &schema.ListAgentResponse{
 		Count:  total,
 		Offset: req.Offset,
 		Limit:  req.Limit,
-		Body:   result[start:end],
+		Body:   body,
 	}, nil
 }
 
@@ -205,37 +171,22 @@ func (m *MemoryAgentStore) UpdateAgent(_ context.Context, id string, meta schema
 		return nil, err
 	}
 
-	// If the name is changing, validate the new name
-	if meta.Name != "" && meta.Name != existing.Name {
-		return nil, llm.ErrBadParameter.With("agent name cannot be changed via update")
+	// Validate and create new version
+	a, err := newAgentVersion(existing, meta)
+	if err != nil {
+		return nil, err
+	}
+	if a == existing {
+		return a, nil // no-op
 	}
 
-	// Merge non-zero fields from meta onto existing
-	merged := existing.AgentMeta
-	mergeAgentMeta(&merged, meta)
-
-	// No-op if nothing has changed
-	if agentMetaEqual(existing.AgentMeta, merged) {
-		return existing, nil
+	// Ensure unique ID in our map
+	for _, exists := m.agents[a.ID]; exists; _, exists = m.agents[a.ID] {
+		a.ID = uuid.New().String()
 	}
 
-	meta = merged
-
-	// Generate a unique ID
-	newID := uuid.New().String()
-	for _, exists := m.agents[newID]; exists; _, exists = m.agents[newID] {
-		newID = uuid.New().String()
-	}
-
-	a := &schema.Agent{
-		ID:        newID,
-		Created:   time.Now(),
-		Version:   existing.Version + 1,
-		AgentMeta: meta,
-	}
-
-	m.agents[newID] = a
-	m.names[meta.Name] = newID
+	m.agents[a.ID] = a
+	m.names[a.Name] = a.ID
 
 	return a, nil
 }
@@ -269,100 +220,4 @@ func (m *MemoryAgentStore) repairNameIndex(name string) {
 	} else {
 		m.names[name] = best.ID
 	}
-}
-
-// mergeAgentMeta applies non-zero fields from src onto dst.
-func mergeAgentMeta(dst *schema.AgentMeta, src schema.AgentMeta) {
-	// AgentMeta fields
-	if src.Name != "" {
-		dst.Name = src.Name
-	}
-	if src.Title != "" {
-		dst.Title = src.Title
-	}
-	if src.Description != "" {
-		dst.Description = src.Description
-	}
-	if src.Template != "" {
-		dst.Template = src.Template
-	}
-	if len(src.Input) > 0 {
-		dst.Input = src.Input
-	}
-	if src.Tools != nil {
-		dst.Tools = src.Tools
-	}
-
-	// GeneratorMeta fields
-	if src.Provider != "" {
-		dst.Provider = src.Provider
-	}
-	if src.Model != "" {
-		dst.Model = src.Model
-	}
-	if src.SystemPrompt != "" {
-		dst.SystemPrompt = src.SystemPrompt
-	}
-	if len(src.Format) > 0 {
-		dst.Format = src.Format
-	}
-	if src.Thinking != nil {
-		dst.Thinking = src.Thinking
-	}
-	if src.ThinkingBudget != 0 {
-		dst.ThinkingBudget = src.ThinkingBudget
-	}
-}
-
-// agentMetaEqual returns true if two AgentMeta values are identical.
-func agentMetaEqual(a, b schema.AgentMeta) bool {
-	if a.Name != b.Name || a.Title != b.Title || a.Description != b.Description || a.Template != b.Template {
-		return false
-	}
-	if a.Provider != b.Provider || a.Model != b.Model || a.SystemPrompt != b.SystemPrompt {
-		return false
-	}
-	if a.ThinkingBudget != b.ThinkingBudget {
-		return false
-	}
-	// Compare *bool Thinking
-	switch {
-	case a.Thinking == nil && b.Thinking == nil:
-	case a.Thinking == nil || b.Thinking == nil:
-		return false
-	case *a.Thinking != *b.Thinking:
-		return false
-	}
-	// Compare JSONSchema fields as JSON bytes
-	if !jsonEqual(a.Format, b.Format) || !jsonEqual(a.Input, b.Input) {
-		return false
-	}
-	// Compare Tools slices
-	if len(a.Tools) != len(b.Tools) {
-		return false
-	}
-	for i := range a.Tools {
-		if a.Tools[i] != b.Tools[i] {
-			return false
-		}
-	}
-	return true
-}
-
-// jsonEqual compares two JSONSchema values as byte slices.
-func jsonEqual(a, b schema.JSONSchema) bool {
-	if len(a) == 0 && len(b) == 0 {
-		return true
-	}
-	// Normalize by re-marshalling through json
-	var va, vb any
-	if err := json.Unmarshal(a, &va); err != nil {
-		return string(a) == string(b)
-	}
-	if err := json.Unmarshal(b, &vb); err != nil {
-		return string(a) == string(b)
-	}
-	na, _ := json.Marshal(va)
-	nb, _ := json.Marshal(vb)
-	return string(na) == string(nb)
 }

@@ -15,7 +15,7 @@ import (
 	manager "github.com/mutablelogic/go-llm/pkg/manager"
 	newsapi "github.com/mutablelogic/go-llm/pkg/newsapi"
 	anthropic "github.com/mutablelogic/go-llm/pkg/provider/anthropic"
-	"github.com/mutablelogic/go-llm/pkg/provider/eliza"
+	eliza "github.com/mutablelogic/go-llm/pkg/provider/eliza"
 	google "github.com/mutablelogic/go-llm/pkg/provider/google"
 	mistral "github.com/mutablelogic/go-llm/pkg/provider/mistral"
 	schema "github.com/mutablelogic/go-llm/pkg/schema"
@@ -29,7 +29,6 @@ import (
 )
 
 type ServerCommands struct {
-	// Commands
 	RunServer RunServer `cmd:"" name:"run" help:"Run server." group:"SERVER"`
 }
 
@@ -127,6 +126,13 @@ func (cmd *RunServer) WithManager(ctx *Globals, fn func(*manager.Manager, string
 		return err
 	} else {
 		opts = append(opts, manager.WithSessionStore(store))
+	}
+
+	// Add an agent store
+	if store, err := cmd.AgentStore(ctx.execName); err != nil {
+		return err
+	} else {
+		opts = append(opts, manager.WithAgentStore(store))
 	}
 
 	// Add new toolkit with news, weather and home assistant tools if API keys are provided
@@ -242,63 +248,23 @@ func (cmd *RunServer) SessionStore(execName string) (schema.SessionStore, error)
 	if err != nil {
 		return nil, fmt.Errorf("failed to determine cache directory: %w", err)
 	}
-	store, err := session.NewFileStore(filepath.Join(cache, execName, "sessions"))
+	store, err := session.NewFileSessionStore(filepath.Join(cache, execName, "sessions"))
 	if err != nil {
 		return nil, fmt.Errorf("failed to create session store: %w", err)
 	}
 	return store, nil
 }
 
-/*
-
-// Manager returns an agent manager with all configured LLM clients
-func (g *Globals) Manager() (*manager.Manager, error) {
-	var opts []manager.Opt
-
-	// Add Google Gemini client if API key is set
-	if g.GeminiAPIKey != "" {
-		var clientOpts []client.ClientOpt
-		if g.Debug {
-			clientOpts = append(clientOpts, client.OptTrace(os.Stderr, true))
-		}
-		geminiClient, err := google.New(g.GeminiAPIKey, clientOpts...)
-		if err != nil {
-			return nil, fmt.Errorf("failed to create Gemini client: %w", err)
-		}
-		opts = append(opts, manager.WithClient(geminiClient))
+// AgentStore returns the agent store, creating it lazily.
+// Agents are stored in the user's cache directory.
+func (cmd *RunServer) AgentStore(execName string) (schema.AgentStore, error) {
+	cache, err := os.UserCacheDir()
+	if err != nil {
+		return nil, fmt.Errorf("failed to determine cache directory: %w", err)
 	}
-
-	// Add Anthropic client if API key is set
-	if g.AnthropicAPIKey != "" {
-		var clientOpts []client.ClientOpt
-		if g.Debug {
-			clientOpts = append(clientOpts, client.OptTrace(os.Stderr, true))
-		}
-		anthropicClient, err := anthropic.New(g.AnthropicAPIKey, clientOpts...)
-		if err != nil {
-			return nil, fmt.Errorf("failed to create Anthropic client: %w", err)
-		}
-		opts = append(opts, manager.WithClient(anthropicClient))
+	store, err := session.NewFileAgentStore(filepath.Join(cache, execName, "agents"))
+	if err != nil {
+		return nil, fmt.Errorf("failed to create agent store: %w", err)
 	}
-
-	// Add Mistral client if API key is set
-	if g.MistralAPIKey != "" {
-		var clientOpts []client.ClientOpt
-		if g.Debug {
-			clientOpts = append(clientOpts, client.OptTrace(os.Stderr, true))
-		}
-		mistralClient, err := mistral.New(g.MistralAPIKey, clientOpts...)
-		if err != nil {
-			return nil, fmt.Errorf("failed to create Mistral client: %w", err)
-		}
-		opts = append(opts, manager.WithClient(mistralClient))
-	}
-
-	// Check if at least one client is configured
-	if len(opts) == 0 {
-		return nil, fmt.Errorf("no providers configured. Set --gemini-api-key, --anthropic-api-key, or --mistral-api-key (or use environment variables), or use --eliza for a local provider")
-	}
-
-	return manager.NewAgent(opts...)
+	return store, nil
 }
-*/

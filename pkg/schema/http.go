@@ -2,6 +2,7 @@ package schema
 
 import (
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"net/url"
@@ -119,7 +120,7 @@ type ChatRequest struct {
 	Session       string       `json:"session" help:"Session ID"`
 	Text          string       `json:"text" arg:"" help:"User input text"`
 	Attachments   []Attachment `json:"attachments,omitempty" help:"File attachments" optional:""`
-	Tools         []string     `json:"tools,omitempty" help:"Tool names to include (empty means all)" optional:""`
+	Tools         []string     `json:"tools,omitzero" help:"Tool names to include (nil means all, empty means none)" optional:""`
 	MaxIterations uint         `json:"max_iterations,omitempty" help:"Maximum tool-calling iterations (0 uses default)" optional:""`
 	SystemPrompt  string       `json:"system_prompt,omitempty" help:"Per-request system prompt appended to the session prompt" optional:""`
 }
@@ -206,9 +207,42 @@ type ListToolResponse struct {
 
 // ToolMeta represents a tool's metadata
 type ToolMeta struct {
-	Name        string          `json:"name"`
-	Description string          `json:"description,omitempty"`
-	Schema      json.RawMessage `json:"schema,omitempty"`
+	Name        string     `json:"name"`
+	Description string     `json:"description,omitempty"`
+	Input       JSONSchema `json:"input,omitempty"`
+}
+
+// CallToolRequest represents a request to call a tool directly
+type CallToolRequest struct {
+	Input json.RawMessage `json:"input,omitempty"`
+}
+
+// CallToolResponse represents the result of calling a tool
+type CallToolResponse struct {
+	Tool   string          `json:"tool"`
+	Result json.RawMessage `json:"result"`
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// LIFECYCLE
+
+// NewToolMeta creates a ToolMeta with the given name, description and optional
+// input schema. The schema value (if non-nil) is marshalled to JSON.
+func NewToolMeta(name, description string, inputSchema any) (ToolMeta, error) {
+	meta := ToolMeta{
+		Name:        name,
+		Description: description,
+	}
+	if inputSchema != nil {
+		data, err := json.Marshal(inputSchema)
+		if err != nil {
+			return meta, fmt.Errorf("tool %q schema: %w", name, err)
+		}
+		if string(data) != "null" {
+			meta.Input = NewJSONSchema(data)
+		}
+	}
+	return meta, nil
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -267,6 +301,14 @@ func (r ListToolRequest) String() string {
 }
 
 func (r ListToolResponse) String() string {
+	return types.Stringify(r)
+}
+
+func (r CallToolRequest) String() string {
+	return types.Stringify(r)
+}
+
+func (r CallToolResponse) String() string {
 	return types.Stringify(r)
 }
 

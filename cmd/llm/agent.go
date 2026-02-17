@@ -261,6 +261,12 @@ func (cmd *RunAgentCommand) Run(ctx *Globals) (err error) {
 
 	// Create agent session
 	resp, err := client.CreateAgentSession(parent, cmd.Agent, req)
+	if err != nil && isNotFound(err) && req.Parent != "" && cmd.Parent == "" {
+		// The default session no longer exists — retry without a parent
+		req.Parent = ""
+		ctx.defaults.Set("session", "")
+		resp, err = client.CreateAgentSession(parent, cmd.Agent, req)
+	}
 	if err != nil {
 		return err
 	}

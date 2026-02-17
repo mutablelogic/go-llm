@@ -24,14 +24,13 @@ func (m *Manager) ListTools(_ context.Context, req schema.ListToolRequest) (*sch
 	// Build metadata
 	all := make([]schema.ToolMeta, 0, len(tools))
 	for _, t := range tools {
-		meta := schema.ToolMeta{
-			Name:        t.Name(),
-			Description: t.Description(),
+		s, err := t.Schema()
+		if err != nil {
+			return nil, err
 		}
-		if s, err := t.Schema(); err == nil && s != nil {
-			if data, err := json.Marshal(s); err == nil {
-				meta.Schema = data
-			}
+		meta, err := schema.NewToolMeta(t.Name(), t.Description(), s)
+		if err != nil {
+			return nil, err
 		}
 		all = append(all, meta)
 	}
@@ -55,25 +54,38 @@ func (m *Manager) ListTools(_ context.Context, req schema.ListToolRequest) (*sch
 	}, nil
 }
 
+// CallTool executes a tool by name with the given input and returns the result.
+func (m *Manager) CallTool(ctx context.Context, name string, input json.RawMessage) (*schema.CallToolResponse, error) {
+	result, err := m.toolkit.Run(ctx, name, input)
+	if err != nil {
+		return nil, err
+	}
+
+	// Marshal the result to JSON
+	data, err := json.Marshal(result)
+	if err != nil {
+		return nil, llm.ErrInternalServerError.Withf("marshalling tool result: %v", err)
+	}
+
+	return &schema.CallToolResponse{
+		Tool:   name,
+		Result: data,
+	}, nil
+}
+
 // GetTool returns tool metadata by name.
 func (m *Manager) GetTool(_ context.Context, name string) (*schema.ToolMeta, error) {
 	t := m.toolkit.Lookup(name)
 	if t == nil {
 		return nil, llm.ErrNotFound.Withf("tool %q", name)
 	}
-
-	// Create the response
-	meta := &schema.ToolMeta{
-		Name:        t.Name(),
-		Description: t.Description(),
+	s, err := t.Schema()
+	if err != nil {
+		return nil, err
 	}
-
-	// Marshal the JSON schema if available
-	if s, err := t.Schema(); err == nil && s != nil {
-		if data, err := json.Marshal(s); err == nil {
-			meta.Schema = data
-		}
+	meta, err := schema.NewToolMeta(t.Name(), t.Description(), s)
+	if err != nil {
+		return nil, err
 	}
-
-	return meta, nil
+	return &meta, nil
 }

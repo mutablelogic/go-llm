@@ -76,6 +76,12 @@ func Read(r io.Reader) (schema.AgentMeta, error) {
 	// Set the template from the markdown body
 	meta.Template = strings.TrimSpace(string(body))
 
+	// Ensure Tools is always non-nil so agents are always restricted
+	// (nil would mean "all tools", empty means "no tools")
+	if meta.Tools == nil {
+		meta.Tools = []string{}
+	}
+
 	return meta, nil
 }
 

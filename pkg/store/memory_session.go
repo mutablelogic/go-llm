@@ -4,13 +4,10 @@ import (
 	"context"
 	"sort"
 	"sync"
-	"time"
 
 	// Packages
-	uuid "github.com/google/uuid"
 	llm "github.com/mutablelogic/go-llm"
 	schema "github.com/mutablelogic/go-llm/pkg/schema"
-	types "github.com/mutablelogic/go-server/pkg/types"
 )
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -40,20 +37,9 @@ func NewMemorySessionStore() *MemorySessionStore {
 
 // CreateSession creates a new session with a unique ID and returns it.
 func (m *MemorySessionStore) CreateSession(_ context.Context, meta schema.SessionMeta) (*schema.Session, error) {
-	if meta.Model == "" {
-		return nil, llm.ErrBadParameter.With("model name is required")
-	}
-	if err := validateLabels(meta.Labels); err != nil {
+	s, err := newSession(meta)
+	if err != nil {
 		return nil, err
-	}
-
-	now := time.Now()
-	s := &schema.Session{
-		ID:          uuid.New().String(),
-		SessionMeta: meta,
-		Messages:    make(schema.Conversation, 0),
-		Created:     now,
-		Modified:    now,
 	}
 
 	m.mu.Lock()
@@ -93,22 +79,12 @@ func (m *MemorySessionStore) ListSessions(_ context.Context, req schema.ListSess
 		return result[i].Modified.After(result[j].Modified)
 	})
 
-	// Paginate
-	total := uint(len(result))
-	start := req.Offset
-	if start > total {
-		start = total
-	}
-	end := start + types.Value(req.Limit)
-	if req.Limit == nil || end > total {
-		end = total
-	}
-
+	body, total := paginate(result, req.Offset, req.Limit)
 	return &schema.ListSessionResponse{
 		Count:  total,
 		Offset: req.Offset,
 		Limit:  req.Limit,
-		Body:   result[start:end],
+		Body:   body,
 	}, nil
 }
 
@@ -140,43 +116,8 @@ func (m *MemorySessionStore) UpdateSession(_ context.Context, id string, meta sc
 		return nil, llm.ErrNotFound.Withf("session %q", id)
 	}
 
-	if meta.Name != "" {
-		s.Name = meta.Name
+	if err := mergeSessionMeta(s, meta); err != nil {
+		return nil, err
 	}
-	if meta.Model != "" {
-		s.Model = meta.Model
-	}
-	if meta.Provider != "" {
-		s.Provider = meta.Provider
-	}
-	if meta.SystemPrompt != "" {
-		s.SystemPrompt = meta.SystemPrompt
-	}
-	if meta.Format != nil {
-		s.Format = meta.Format
-	}
-	if meta.Thinking != nil {
-		s.Thinking = meta.Thinking
-	}
-	if meta.ThinkingBudget > 0 {
-		s.ThinkingBudget = meta.ThinkingBudget
-	}
-	if len(meta.Labels) > 0 {
-		if err := validateLabels(meta.Labels); err != nil {
-			return nil, err
-		}
-		if s.Labels == nil {
-			s.Labels = make(map[string]string)
-		}
-		for k, v := range meta.Labels {
-			if v == "" {
-				delete(s.Labels, k)
-			} else {
-				s.Labels[k] = v
-			}
-		}
-	}
-	s.Modified = time.Now()
-
 	return s, nil
 }

@@ -129,6 +129,16 @@ func (cmd *GetSessionCommand) Run(ctx *Globals) (err error) {
 	// Get session
 	session, err := client.GetSession(parent, id)
 	if err != nil {
+		// If the default session is stale, clear it
+		if cmd.ID == "" && isNotFound(err) {
+			ctx.defaults.Set("session", "")
+			return fmt.Errorf("no session ID provided and no current session set")
+		}
+		return err
+	}
+
+	// Persist as current default session
+	if err := ctx.defaults.Set("session", session.ID); err != nil {
 		return err
 	}
 

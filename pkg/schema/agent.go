@@ -20,7 +20,7 @@ type AgentMeta struct {
 	Description   string     `json:"description,omitempty" yaml:"description" help:"Agent description" optional:""`
 	Template      string     `json:"template,omitempty" yaml:"-" help:"Go template for the user message" optional:""`
 	Input         JSONSchema `json:"input,omitempty" yaml:"input" help:"JSON schema for agent input" optional:""`
-	Tools         []string   `json:"tools,omitempty" yaml:"tools" help:"Tool names the agent is allowed to use" optional:""`
+	Tools         []string   `json:"tools,omitzero" yaml:"tools" help:"Tool names the agent is allowed to use" optional:""`
 }
 
 // Agent is a versioned, stored agent definition.

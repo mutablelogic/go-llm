@@ -36,6 +36,43 @@ func Test_agent_001(t *testing.T) {
 	assert.Equal(uint(1), a.Version)
 }
 
+// Test CreateAgent normalizes nil Tools to empty slice
+func Test_agent_001a(t *testing.T) {
+	assert := assert.New(t)
+
+	m, err := NewManager(
+		WithClient(&mockClient{name: "provider-1", models: []schema.Model{{Name: "model-1", OwnedBy: "provider-1"}}}),
+	)
+	assert.NoError(err)
+
+	// Tools not set — should be normalized to empty, not nil
+	a, err := m.CreateAgent(context.TODO(), schema.AgentMeta{
+		GeneratorMeta: schema.GeneratorMeta{Model: "model-1"},
+		Name:          "no-tools-agent",
+	})
+	assert.NoError(err)
+	assert.NotNil(a.Tools)
+	assert.Empty(a.Tools)
+}
+
+// Test CreateAgent preserves explicit tools
+func Test_agent_001b(t *testing.T) {
+	assert := assert.New(t)
+
+	m, err := NewManager(
+		WithClient(&mockClient{name: "provider-1", models: []schema.Model{{Name: "model-1", OwnedBy: "provider-1"}}}),
+	)
+	assert.NoError(err)
+
+	a, err := m.CreateAgent(context.TODO(), schema.AgentMeta{
+		GeneratorMeta: schema.GeneratorMeta{Model: "model-1"},
+		Name:          "tools-agent",
+		Tools:         []string{"search", "calc"},
+	})
+	assert.NoError(err)
+	assert.Equal([]string{"search", "calc"}, a.Tools)
+}
+
 // Test CreateAgent fills in provider from model resolution
 func Test_agent_002(t *testing.T) {
 	assert := assert.New(t)

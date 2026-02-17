@@ -35,6 +35,35 @@ func Test_read_003(t *testing.T) {
 	assert.Empty(meta.Template)
 }
 
+func Test_read_003a(t *testing.T) {
+	// Tools defaults to empty (not nil) when not specified
+	assert := assert.New(t)
+	doc := "---\nname: no-tools\ntitle: No Tools Agent\n---\n"
+	meta, err := agent.Read(strings.NewReader(doc))
+	assert.NoError(err)
+	assert.NotNil(meta.Tools)
+	assert.Empty(meta.Tools)
+}
+
+func Test_read_003b(t *testing.T) {
+	// Explicit tools are preserved
+	assert := assert.New(t)
+	doc := "---\nname: with-tools\ntitle: With Tools Agent\ntools:\n  - search\n  - calculator\n---\n"
+	meta, err := agent.Read(strings.NewReader(doc))
+	assert.NoError(err)
+	assert.Equal([]string{"search", "calculator"}, meta.Tools)
+}
+
+func Test_read_003c(t *testing.T) {
+	// Explicit empty tools list is preserved as empty (not nil)
+	assert := assert.New(t)
+	doc := "---\nname: empty-tools\ntitle: Empty Tools Agent\ntools: []\n---\n"
+	meta, err := agent.Read(strings.NewReader(doc))
+	assert.NoError(err)
+	assert.NotNil(meta.Tools)
+	assert.Empty(meta.Tools)
+}
+
 func Test_read_004(t *testing.T) {
 	assert := assert.New(t)
 	doc := "---\nname: summarizer\ntitle: Summarizer Agent\ndescription: Summarizes text input\nmodel: gemini-2.0-flash\nprovider: gemini\n---\nYou are a summarization agent.\n\nGiven the following text, provide a concise summary.\n\n{{ .Input }}\n"

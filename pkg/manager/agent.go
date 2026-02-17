@@ -14,6 +14,11 @@ import (
 
 // CreateAgent creates a new agent from the given metadata.
 func (m *Manager) CreateAgent(ctx context.Context, meta schema.AgentMeta) (*schema.Agent, error) {
+	// Ensure Tools is always non-nil so agents are always restricted
+	if meta.Tools == nil {
+		meta.Tools = []string{}
+	}
+
 	// Resolve the model to ensure it exists, and fill in the provider if not set
 	if meta.Model != "" {
 		model, err := m.getModel(ctx, meta.Provider, meta.Model)
