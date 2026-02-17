@@ -337,6 +337,15 @@ func TestInteractiveLogin_AutoRegister(t *testing.T) {
 	if mock.RegisteredClient().ClientName != "test-app" {
 		t.Errorf("unexpected registered client name: %s", mock.RegisteredClient().ClientName)
 	}
+
+	// Verify flow-appropriate grant types were sent
+	grantTypes := mock.RegisteredClient().GrantTypes
+	if len(grantTypes) != 2 || grantTypes[0] != "authorization_code" || grantTypes[1] != "refresh_token" {
+		t.Errorf("expected [authorization_code refresh_token], got: %v", grantTypes)
+	}
+	if mock.RegisteredClient().TokenEndpointAuthMethod != "none" {
+		t.Errorf("expected token_endpoint_auth_method=none, got: %s", mock.RegisteredClient().TokenEndpointAuthMethod)
+	}
 }
 
 func TestClientCredentialsLogin(t *testing.T) {

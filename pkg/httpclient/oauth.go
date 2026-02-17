@@ -146,35 +146,39 @@ func (c *Client) Login(ctx context.Context, cfg *oauth2.Config, opts ...LoginOpt
 	}
 	cfg.Endpoint = metadata.Endpoint()
 
-	// Auto-register if no client ID provided
-	if cfg.ClientID == "" {
-		if o.clientName == "" {
-			return nil, fmt.Errorf("either client-id or client-name must be provided")
-		}
-		var redirectURIs []string
-		if o.listener != nil {
-			redirectURIs = []string{fmt.Sprintf("http://%s/callback", o.listener.Addr().String())}
-		}
-		clientInfo, err := c.registerClient(ctx, metadata, o.clientName, redirectURIs, cfg.Scopes)
-		if err != nil {
-			return nil, fmt.Errorf("dynamic client registration failed (you may need to register manually and use --client-id): %w", err)
-		}
-		cfg.ClientID = clientInfo.ClientID
-	}
-
-	// Dispatch to the appropriate flow
+	// Dispatch to the appropriate flow, auto-registering if needed
 	var token *oauth2.Token
 
 	switch {
 	case o.listener != nil && o.authCallback != nil:
 		// Interactive: Authorization Code with PKCE
 		cfg.RedirectURL = fmt.Sprintf("http://%s/callback", o.listener.Addr().String())
+		if cfg.ClientID == "" {
+			if err := c.autoRegister(ctx, metadata, cfg, o.clientName,
+				[]string{cfg.RedirectURL},
+				[]string{"authorization_code", "refresh_token"},
+				[]string{"code"},
+				"none",
+			); err != nil {
+				return nil, err
+			}
+		}
 		token, err = c.interactiveFlow(ctx, cfg, metadata, o.listener, o.authCallback)
 
 	case o.deviceCallback != nil:
 		// Device Authorization flow
 		if !metadata.SupportsDeviceFlow() {
 			return nil, fmt.Errorf("%s does not support device authorization flow", endpoint)
+		}
+		if cfg.ClientID == "" {
+			if err := c.autoRegister(ctx, metadata, cfg, o.clientName,
+				nil,
+				[]string{"urn:ietf:params:oauth:grant-type:device_code", "refresh_token"},
+				nil,
+				"none",
+			); err != nil {
+				return nil, err
+			}
 		}
 		token, err = c.deviceFlow(ctx, cfg, o.deviceCallback)
 
@@ -185,6 +189,11 @@ func (c *Client) Login(ctx context.Context, cfg *oauth2.Config, opts ...LoginOpt
 		}
 		if !metadata.SupportsGrantType("client_credentials") {
 			return nil, fmt.Errorf("%s does not support client_credentials grant", endpoint)
+		}
+		// No auto-registration for client_credentials: it requires a
+		// pre-registered confidential client with a secret.
+		if cfg.ClientID == "" {
+			return nil, fmt.Errorf("client-id is required for client credentials flow")
 		}
 		token, err = c.clientCredentialsFlow(ctx, cfg, metadata)
 
@@ -308,9 +317,23 @@ func (c *Client) RefreshToken(ctx context.Context, creds *schema.OAuthCredential
 	return &schema.OAuthCredentials{Token: newToken, ClientID: creds.ClientID, ClientSecret: creds.ClientSecret, Endpoint: creds.Endpoint, TokenURL: creds.TokenURL}, nil
 }
 
+// autoRegister performs dynamic client registration if no ClientID is set.
+// It validates the client name and delegates to registerClient with flow-specific parameters.
+func (c *Client) autoRegister(ctx context.Context, metadata *schema.OAuthMetadata, cfg *oauth2.Config, clientName string, redirectURIs, grantTypes, responseTypes []string, authMethod string) error {
+	if clientName == "" {
+		return fmt.Errorf("either client-id or client-name must be provided")
+	}
+	clientInfo, err := c.registerClient(ctx, metadata, clientName, redirectURIs, cfg.Scopes, grantTypes, responseTypes, authMethod)
+	if err != nil {
+		return fmt.Errorf("dynamic client registration failed (you may need to register manually and use --client-id): %w", err)
+	}
+	cfg.ClientID = clientInfo.ClientID
+	return nil
+}
+
 // registerClient performs dynamic client registration (RFC 7591).
 // It registers a new OAuth client with the authorization server and returns the client info.
-func (c *Client) registerClient(ctx context.Context, metadata *schema.OAuthMetadata, clientName string, redirectURIs []string, scopes []string) (*schema.OAuthClientInfo, error) {
+func (c *Client) registerClient(ctx context.Context, metadata *schema.OAuthMetadata, clientName string, redirectURIs []string, scopes []string, grantTypes []string, responseTypes []string, authMethod string) (*schema.OAuthClientInfo, error) {
 	if !metadata.SupportsRegistration() {
 		return nil, fmt.Errorf("%s does not support dynamic client registration", metadata.Issuer)
 	}
@@ -319,9 +342,9 @@ func (c *Client) registerClient(ctx context.Context, metadata *schema.OAuthMetad
 	regReq := &schema.OAuthClientRegistration{
 		ClientName:              clientName,
 		RedirectURIs:            redirectURIs,
-		GrantTypes:              []string{"authorization_code", "refresh_token"},
-		ResponseTypes:           []string{"code"},
-		TokenEndpointAuthMethod: "none", // Public client (no secret)
+		GrantTypes:              grantTypes,
+		ResponseTypes:           responseTypes,
+		TokenEndpointAuthMethod: authMethod,
 		Scope:                   strings.Join(scopes, " "),
 	}
 
