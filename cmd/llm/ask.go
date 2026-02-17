@@ -10,6 +10,8 @@ import (
 	otel "github.com/mutablelogic/go-client/pkg/otel"
 	httpclient "github.com/mutablelogic/go-llm/pkg/httpclient"
 	schema "github.com/mutablelogic/go-llm/pkg/schema"
+	types "github.com/mutablelogic/go-server/pkg/types"
+	"go.opentelemetry.io/otel/attribute"
 )
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -63,7 +65,9 @@ func (cmd *AskCommand) Run(ctx *Globals) (err error) {
 	}
 
 	// OTEL
-	parent, endSpan := otel.StartSpan(ctx.tracer, ctx.ctx, "AskCommand")
+	parent, endSpan := otel.StartSpan(ctx.tracer, ctx.ctx, "AskCommand",
+		attribute.String("request", types.Stringify(cmd)),
+	)
 	defer func() { endSpan(err) }()
 
 	// Build options

@@ -9,6 +9,8 @@ import (
 	opt "github.com/mutablelogic/go-llm/pkg/opt"
 	schema "github.com/mutablelogic/go-llm/pkg/schema"
 	uitable "github.com/mutablelogic/go-llm/pkg/ui/table"
+	types "github.com/mutablelogic/go-server/pkg/types"
+	"go.opentelemetry.io/otel/attribute"
 )
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -72,7 +74,9 @@ func (cmd *ListModelsCommand) Run(ctx *Globals) (err error) {
 	}
 
 	// OTEL
-	parent, endSpan := otel.StartSpan(ctx.tracer, ctx.ctx, "ListModelsCommand")
+	parent, endSpan := otel.StartSpan(ctx.tracer, ctx.ctx, "ListModelsCommand",
+		attribute.String("request", types.Stringify(cmd)),
+	)
 	defer func() { endSpan(err) }()
 
 	// Build options
@@ -115,7 +119,9 @@ func (cmd *GetModelCommand) Run(ctx *Globals) (err error) {
 	}
 
 	// OTEL
-	parent, endSpan := otel.StartSpan(ctx.tracer, ctx.ctx, "GetModelCommand")
+	parent, endSpan := otel.StartSpan(ctx.tracer, ctx.ctx, "GetModelCommand",
+		attribute.String("request", types.Stringify(cmd)),
+	)
 	defer func() { endSpan(err) }()
 
 	// Build options

@@ -6,6 +6,8 @@ import (
 	// Packages
 	otel "github.com/mutablelogic/go-client/pkg/otel"
 	schema "github.com/mutablelogic/go-llm/pkg/schema"
+	types "github.com/mutablelogic/go-server/pkg/types"
+	"go.opentelemetry.io/otel/attribute"
 )
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -46,7 +48,9 @@ func (cmd *EmbeddingCommand) Run(ctx *Globals) (err error) {
 	}
 
 	// OTEL
-	parent, endSpan := otel.StartSpan(ctx.tracer, ctx.ctx, "EmbeddingCommand")
+	parent, endSpan := otel.StartSpan(ctx.tracer, ctx.ctx, "EmbeddingCommand",
+		attribute.String("request", types.Stringify(cmd)),
+	)
 	defer func() { endSpan(err) }()
 
 	// Get embeddings

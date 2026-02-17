@@ -34,8 +34,10 @@ func TestChat_OK(t *testing.T) {
 
 	// Send a chat message
 	chatBody, _ := json.Marshal(schema.ChatRequest{
-		Session: session.ID,
-		Text:    "hello from chat",
+		ChatRequestCore: schema.ChatRequestCore{
+			Session: session.ID,
+			Text:    "hello from chat",
+		},
 	})
 	w = httptest.NewRecorder()
 	r = httptest.NewRequest(http.MethodPost, "/chat", bytes.NewReader(chatBody))
@@ -113,7 +115,7 @@ func TestChat_MultiTurn(t *testing.T) {
 	}
 
 	// First message
-	chatBody, _ := json.Marshal(schema.ChatRequest{Session: session.ID, Text: "first"})
+	chatBody, _ := json.Marshal(schema.ChatRequest{ChatRequestCore: schema.ChatRequestCore{Session: session.ID, Text: "first"}})
 	w = httptest.NewRecorder()
 	r = httptest.NewRequest(http.MethodPost, "/chat", bytes.NewReader(chatBody))
 	r.Header.Set("Content-Type", "application/json")
@@ -124,7 +126,7 @@ func TestChat_MultiTurn(t *testing.T) {
 	}
 
 	// Second message
-	chatBody, _ = json.Marshal(schema.ChatRequest{Session: session.ID, Text: "second"})
+	chatBody, _ = json.Marshal(schema.ChatRequest{ChatRequestCore: schema.ChatRequestCore{Session: session.ID, Text: "second"}})
 	w = httptest.NewRecorder()
 	r = httptest.NewRequest(http.MethodPost, "/chat", bytes.NewReader(chatBody))
 	r.Header.Set("Content-Type", "application/json")
@@ -163,8 +165,10 @@ func TestChat_Stream_OK(t *testing.T) {
 
 	// Send a streaming chat request
 	chatBody, _ := json.Marshal(schema.ChatRequest{
-		Session: session.ID,
-		Text:    "hello stream",
+		ChatRequestCore: schema.ChatRequestCore{
+			Session: session.ID,
+			Text:    "hello stream",
+		},
 	})
 	w = httptest.NewRecorder()
 	r = httptest.NewRequest(http.MethodPost, "/chat", bytes.NewReader(chatBody))
@@ -276,7 +280,7 @@ func TestChat_NoAcceptHeader_DefaultsJSON(t *testing.T) {
 	}
 
 	// Send chat without Accept header — should get JSON
-	chatBody, _ := json.Marshal(schema.ChatRequest{Session: session.ID, Text: "hello"})
+	chatBody, _ := json.Marshal(schema.ChatRequest{ChatRequestCore: schema.ChatRequestCore{Session: session.ID, Text: "hello"}})
 	w = httptest.NewRecorder()
 	r = httptest.NewRequest(http.MethodPost, "/chat", bytes.NewReader(chatBody))
 	r.Header.Set("Content-Type", "application/json")
@@ -316,7 +320,7 @@ func TestChat_UnsupportedAccept(t *testing.T) {
 	}
 
 	// Send chat with unsupported Accept header
-	chatBody, _ := json.Marshal(schema.ChatRequest{Session: session.ID, Text: "hello"})
+	chatBody, _ := json.Marshal(schema.ChatRequest{ChatRequestCore: schema.ChatRequestCore{Session: session.ID, Text: "hello"}})
 	w = httptest.NewRecorder()
 	r = httptest.NewRequest(http.MethodPost, "/chat", bytes.NewReader(chatBody))
 	r.Header.Set("Content-Type", "application/json")

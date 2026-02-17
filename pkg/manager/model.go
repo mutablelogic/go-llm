@@ -6,18 +6,26 @@ import (
 	"sync"
 
 	// Packages
+	"github.com/mutablelogic/go-client/pkg/otel"
 	llm "github.com/mutablelogic/go-llm"
 	schema "github.com/mutablelogic/go-llm/pkg/schema"
 	types "github.com/mutablelogic/go-server/pkg/types"
+	"go.opentelemetry.io/otel/attribute"
 	errgroup "golang.org/x/sync/errgroup"
 )
 
 ///////////////////////////////////////////////////////////////////////////////
 // PUBLIC METHODS
 
-func (m *Manager) ListModels(ctx context.Context, req schema.ListModelsRequest) (*schema.ListModelsResponse, error) {
+func (m *Manager) ListModels(ctx context.Context, req schema.ListModelsRequest) (result *schema.ListModelsResponse, err error) {
 	var mu sync.Mutex
 	var all []schema.Model
+
+	// Otel span
+	ctx, endSpan := otel.StartSpan(m.tracer, ctx, "ListModels",
+		attribute.String("request", req.String()),
+	)
+	defer func() { endSpan(err) }()
 
 	// Collect models from all clients in parallel
 	wg, ctx := errgroup.WithContext(ctx)
@@ -81,9 +89,14 @@ func (m *Manager) ListModels(ctx context.Context, req schema.ListModelsRequest) 
 	}, nil
 }
 
-func (m *Manager) GetModel(ctx context.Context, req schema.GetModelRequest) (*schema.Model, error) {
+func (m *Manager) GetModel(ctx context.Context, req schema.GetModelRequest) (result *schema.Model, err error) {
 	var mu sync.Mutex
-	var result *schema.Model
+
+	// Otel span
+	ctx, endSpan := otel.StartSpan(m.tracer, ctx, "GetModel",
+		attribute.String("request", req.String()),
+	)
+	defer func() { endSpan(err) }()
 
 	// Provide cancelable context to short-circuit once we find the model
 	ctx, cancel := context.WithCancel(ctx)

@@ -10,6 +10,7 @@ import (
 
 	// Packages
 	client "github.com/mutablelogic/go-client"
+	"github.com/mutablelogic/go-client/pkg/otel"
 	homeassistant "github.com/mutablelogic/go-llm/pkg/homeassistant"
 	httphandler "github.com/mutablelogic/go-llm/pkg/httphandler"
 	manager "github.com/mutablelogic/go-llm/pkg/manager"
@@ -170,6 +171,11 @@ func (cmd *RunServer) WithManager(ctx *Globals, fn func(*manager.Manager, string
 		}
 	}
 
+	// Add tracer if configured
+	if ctx.tracer != nil {
+		opts = append(opts, manager.WithTracer(ctx.tracer))
+	}
+
 	// Create the manager
 	mgr, err := manager.NewManager(opts...)
 	if err != nil {
@@ -189,6 +195,9 @@ func (cmd *RunServer) Serve(ctx *Globals, manager *manager.Manager, versionTag s
 	middleware := []httprouter.HTTPMiddlewareFunc{}
 	if mw, ok := ctx.logger.(server.HTTPMiddleware); ok {
 		middleware = append(middleware, mw.WrapFunc)
+	}
+	if ctx.tracer != nil {
+		middleware = append(middleware, otel.HTTPHandlerFunc(ctx.tracer))
 	}
 
 	// Create the TLS config if TLS options are provided

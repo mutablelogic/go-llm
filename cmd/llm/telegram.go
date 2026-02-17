@@ -9,7 +9,7 @@ import (
 	"sync"
 
 	// Packages
-	otel "github.com/mutablelogic/go-client/pkg/otel"
+
 	httpclient "github.com/mutablelogic/go-llm/pkg/httpclient"
 	schema "github.com/mutablelogic/go-llm/pkg/schema"
 	ui "github.com/mutablelogic/go-llm/pkg/ui"
@@ -94,10 +94,6 @@ func (cmd *TelegramCommand) Run(ctx *Globals) (err error) {
 	if err != nil {
 		return err
 	}
-
-	// OTEL
-	parent, endSpan := otel.StartSpan(ctx.tracer, ctx.ctx, "TelegramCommand")
-	defer func() { endSpan(err) }()
 
 	// Resolve default model
 	model := cmd.Model
@@ -288,10 +284,12 @@ func (cmd *TelegramCommand) handleChat(ctx context.Context, globals *Globals, ev
 	}))
 
 	req := schema.ChatRequest{
-		Session:      sessionID,
-		Text:         evt.Text,
-		Tools:        cmd.Tool,
-		SystemPrompt: telegramSystemSuffix,
+		ChatRequestCore: schema.ChatRequestCore{
+			Session:      sessionID,
+			Text:         evt.Text,
+			Tools:        cmd.Tool,
+			SystemPrompt: telegramSystemSuffix,
+		},
 	}
 
 	_, err := client.Chat(ctx, req, opts...)

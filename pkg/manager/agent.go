@@ -4,16 +4,24 @@ import (
 	"context"
 
 	// Packages
+	"github.com/mutablelogic/go-client/pkg/otel"
 	llm "github.com/mutablelogic/go-llm"
 	agent "github.com/mutablelogic/go-llm/pkg/agent"
 	schema "github.com/mutablelogic/go-llm/pkg/schema"
+	"go.opentelemetry.io/otel/attribute"
 )
 
 ///////////////////////////////////////////////////////////////////////////////
 // PUBLIC METHODS
 
 // CreateAgent creates a new agent from the given metadata.
-func (m *Manager) CreateAgent(ctx context.Context, meta schema.AgentMeta) (*schema.Agent, error) {
+func (m *Manager) CreateAgent(ctx context.Context, meta schema.AgentMeta) (result *schema.Agent, err error) {
+	// Otel span
+	ctx, endSpan := otel.StartSpan(m.tracer, ctx, "CreateAgent",
+		attribute.String("request", meta.String()),
+	)
+	defer func() { endSpan(err) }()
+
 	// Ensure Tools is always non-nil so agents are always restricted
 	if meta.Tools == nil {
 		meta.Tools = []string{}
@@ -33,12 +41,24 @@ func (m *Manager) CreateAgent(ctx context.Context, meta schema.AgentMeta) (*sche
 }
 
 // GetAgent retrieves an agent by ID or name.
-func (m *Manager) GetAgent(ctx context.Context, id string) (*schema.Agent, error) {
+func (m *Manager) GetAgent(ctx context.Context, id string) (result *schema.Agent, err error) {
+	// Otel span
+	ctx, endSpan := otel.StartSpan(m.tracer, ctx, "GetAgent",
+		attribute.String("id", id),
+	)
+	defer func() { endSpan(err) }()
+
 	return m.agentStore.GetAgent(ctx, id)
 }
 
 // DeleteAgent deletes an agent by ID or name and returns it.
-func (m *Manager) DeleteAgent(ctx context.Context, id string) (*schema.Agent, error) {
+func (m *Manager) DeleteAgent(ctx context.Context, id string) (result *schema.Agent, err error) {
+	// Otel span
+	ctx, endSpan := otel.StartSpan(m.tracer, ctx, "DeleteAgent",
+		attribute.String("id", id),
+	)
+	defer func() { endSpan(err) }()
+
 	a, err := m.agentStore.GetAgent(ctx, id)
 	if err != nil {
 		return nil, err
@@ -50,13 +70,25 @@ func (m *Manager) DeleteAgent(ctx context.Context, id string) (*schema.Agent, er
 }
 
 // ListAgents returns agents with pagination support.
-func (m *Manager) ListAgents(ctx context.Context, req schema.ListAgentRequest) (*schema.ListAgentResponse, error) {
+func (m *Manager) ListAgents(ctx context.Context, req schema.ListAgentRequest) (result *schema.ListAgentResponse, err error) {
+	// Otel span
+	ctx, endSpan := otel.StartSpan(m.tracer, ctx, "ListAgents",
+		attribute.String("request", req.String()),
+	)
+	defer func() { endSpan(err) }()
+
 	return m.agentStore.ListAgents(ctx, req)
 }
 
 // UpdateAgent updates an agent's metadata and creates a new version.
 // If Model or Provider are changed, they are validated against the registered providers first.
-func (m *Manager) UpdateAgent(ctx context.Context, id string, meta schema.AgentMeta) (*schema.Agent, error) {
+func (m *Manager) UpdateAgent(ctx context.Context, id string, meta schema.AgentMeta) (result *schema.Agent, err error) {
+	// Otel span
+	ctx, endSpan := otel.StartSpan(m.tracer, ctx, "UpdateAgent",
+		attribute.String("request", meta.String()),
+	)
+	defer func() { endSpan(err) }()
+
 	// If model or provider is being changed, validate
 	if meta.Model != "" || meta.Provider != "" {
 		model, err := m.getModel(ctx, meta.Provider, meta.Model)
@@ -77,7 +109,13 @@ func (m *Manager) UpdateAgent(ctx context.Context, id string, meta schema.AgentM
 // If Parent is provided, the parent session's GeneratorMeta is used
 // as defaults (agent fields take precedence). The returned response contains
 // the session ID, rendered text, and tools, which the caller can pass to Chat.
-func (m *Manager) CreateAgentSession(ctx context.Context, id string, request schema.CreateAgentSessionRequest) (*schema.CreateAgentSessionResponse, error) {
+func (m *Manager) CreateAgentSession(ctx context.Context, id string, request schema.CreateAgentSessionRequest) (result *schema.CreateAgentSessionResponse, err error) {
+	// Otel span
+	ctx, endSpan := otel.StartSpan(m.tracer, ctx, "CreateAgentSession",
+		attribute.String("request", request.String()),
+	)
+	defer func() { endSpan(err) }()
+
 	if id == "" {
 		return nil, llm.ErrBadParameter.With("agent is required")
 	}
@@ -99,20 +137,20 @@ func (m *Manager) CreateAgentSession(ctx context.Context, id string, request sch
 	}
 
 	// Prepare: validate input, execute template, merge GeneratorMeta
-	result, err := agent.Prepare(agentDef, request.Parent, defaults, request.Input)
+	prepared, err := agent.Prepare(agentDef, request.Parent, defaults, request.Input)
 	if err != nil {
 		return nil, err
 	}
 
 	// Create a new session from the prepared metadata
-	session, err := m.CreateSession(ctx, result.SessionMeta)
+	session, err := m.CreateSession(ctx, prepared.SessionMeta)
 	if err != nil {
 		return nil, err
 	}
 
 	return &schema.CreateAgentSessionResponse{
 		Session: session.ID,
-		Text:    result.Text,
-		Tools:   result.Tools,
+		Text:    prepared.Text,
+		Tools:   prepared.Tools,
 	}, nil
 }

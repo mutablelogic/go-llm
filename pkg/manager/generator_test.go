@@ -93,8 +93,10 @@ func Test_ask_001(t *testing.T) {
 	assert.NoError(err)
 
 	resp, err := m.Ask(context.TODO(), schema.AskRequest{
-		GeneratorMeta: schema.GeneratorMeta{Model: "model-1"},
-		Text:          "hello",
+		AskRequestCore: schema.AskRequestCore{
+			GeneratorMeta: schema.GeneratorMeta{Model: "model-1"},
+			Text:          "hello",
+		},
 	}, nil)
 	assert.NoError(err)
 	assert.NotNil(resp)
@@ -118,8 +120,10 @@ func Test_ask_002(t *testing.T) {
 	assert.NoError(err)
 
 	_, err = m.Ask(context.TODO(), schema.AskRequest{
-		GeneratorMeta: schema.GeneratorMeta{Model: "nonexistent"},
-		Text:          "hello",
+		AskRequestCore: schema.AskRequestCore{
+			GeneratorMeta: schema.GeneratorMeta{Model: "nonexistent"},
+			Text:          "hello",
+		},
 	}, nil)
 	assert.Error(err)
 	assert.ErrorIs(err, llm.ErrNotFound)
@@ -140,8 +144,10 @@ func Test_ask_003(t *testing.T) {
 	assert.NoError(err)
 
 	resp, err := m.Ask(context.TODO(), schema.AskRequest{
-		GeneratorMeta: schema.GeneratorMeta{Provider: "provider-2", Model: "shared"},
-		Text:          "hello",
+		AskRequestCore: schema.AskRequestCore{
+			GeneratorMeta: schema.GeneratorMeta{Provider: "provider-2", Model: "shared"},
+			Text:          "hello",
+		},
 	}, nil)
 	assert.NoError(err)
 	assert.NotNil(resp)
@@ -158,8 +164,10 @@ func Test_ask_004(t *testing.T) {
 	assert.NoError(err)
 
 	_, err = m.Ask(context.TODO(), schema.AskRequest{
-		GeneratorMeta: schema.GeneratorMeta{Model: "model-1"},
-		Text:          "hello",
+		AskRequestCore: schema.AskRequestCore{
+			GeneratorMeta: schema.GeneratorMeta{Model: "model-1"},
+			Text:          "hello",
+		},
 	}, nil)
 	assert.Error(err)
 	assert.ErrorIs(err, llm.ErrNotImplemented)
@@ -185,8 +193,10 @@ func Test_ask_005(t *testing.T) {
 	}
 
 	resp, err := m.Ask(context.TODO(), schema.AskRequest{
-		GeneratorMeta: schema.GeneratorMeta{Model: "model-1"},
-		Text:          "hello",
+		AskRequestCore: schema.AskRequestCore{
+			GeneratorMeta: schema.GeneratorMeta{Model: "model-1"},
+			Text:          "hello",
+		},
 	}, fn)
 	assert.NoError(err)
 	assert.NotNil(resp)
@@ -210,11 +220,13 @@ func Test_ask_006(t *testing.T) {
 
 	// System prompt dispatch fails for unknown provider names
 	_, err = m.Ask(context.TODO(), schema.AskRequest{
-		GeneratorMeta: schema.GeneratorMeta{
-			Model:        "model-1",
-			SystemPrompt: "You are a pirate.",
+		AskRequestCore: schema.AskRequestCore{
+			GeneratorMeta: schema.GeneratorMeta{
+				Model:        "model-1",
+				SystemPrompt: "You are a pirate.",
+			},
+			Text: "hello",
 		},
-		Text: "hello",
 	}, nil)
 	assert.Error(err)
 	assert.ErrorIs(err, llm.ErrNotImplemented)
@@ -234,11 +246,13 @@ func Test_ask_007(t *testing.T) {
 	// JSON format dispatch fails for unknown provider names
 	format := schema.JSONSchema(`{"type":"object","properties":{"name":{"type":"string"}}}`)
 	_, err = m.Ask(context.TODO(), schema.AskRequest{
-		GeneratorMeta: schema.GeneratorMeta{
-			Model:  "model-1",
-			Format: format,
+		AskRequestCore: schema.AskRequestCore{
+			GeneratorMeta: schema.GeneratorMeta{
+				Model:  "model-1",
+				Format: format,
+			},
+			Text: "give me a name",
 		},
-		Text: "give me a name",
 	}, nil)
 	assert.Error(err)
 	assert.ErrorIs(err, llm.ErrNotImplemented)
@@ -256,8 +270,10 @@ func Test_ask_008(t *testing.T) {
 	assert.NoError(err)
 
 	resp, err := m.Ask(context.TODO(), schema.AskRequest{
-		GeneratorMeta: schema.GeneratorMeta{Model: "model-1"},
-		Text:          "",
+		AskRequestCore: schema.AskRequestCore{
+			GeneratorMeta: schema.GeneratorMeta{Model: "model-1"},
+			Text:          "",
+		},
 	}, nil)
 	assert.NoError(err)
 	assert.NotNil(resp)
@@ -288,8 +304,10 @@ func Test_chat_001(t *testing.T) {
 
 	// Send a chat message
 	resp, err := m.Chat(context.TODO(), schema.ChatRequest{
-		Session: s.ID,
-		Text:    "hello",
+		ChatRequestCore: schema.ChatRequestCore{
+			Session: s.ID,
+			Text:    "hello",
+		},
 	}, nil)
 	assert.NoError(err)
 	assert.NotNil(resp)
@@ -315,8 +333,10 @@ func Test_chat_002(t *testing.T) {
 	assert.NoError(err)
 
 	_, err = m.Chat(context.TODO(), schema.ChatRequest{
-		Session: "nonexistent-session-id",
-		Text:    "hello",
+		ChatRequestCore: schema.ChatRequestCore{
+			Session: "nonexistent-session-id",
+			Text:    "hello",
+		},
 	}, nil)
 	assert.Error(err)
 }
@@ -341,8 +361,10 @@ func Test_chat_003(t *testing.T) {
 
 	// First message
 	resp1, err := m.Chat(context.TODO(), schema.ChatRequest{
-		Session: s.ID,
-		Text:    "first",
+		ChatRequestCore: schema.ChatRequestCore{
+			Session: s.ID,
+			Text:    "first",
+		},
 	}, nil)
 	assert.NoError(err)
 	assert.Equal(s.ID, resp1.Session)
@@ -350,8 +372,10 @@ func Test_chat_003(t *testing.T) {
 
 	// Second message
 	resp2, err := m.Chat(context.TODO(), schema.ChatRequest{
-		Session: s.ID,
-		Text:    "second",
+		ChatRequestCore: schema.ChatRequestCore{
+			Session: s.ID,
+			Text:    "second",
+		},
 	}, nil)
 	assert.NoError(err)
 	assert.Equal(s.ID, resp2.Session)
@@ -382,8 +406,10 @@ func Test_chat_004(t *testing.T) {
 	assert.NoError(err)
 
 	_, err = m.Chat(context.TODO(), schema.ChatRequest{
-		Session: s.ID,
-		Text:    "hello",
+		ChatRequestCore: schema.ChatRequestCore{
+			Session: s.ID,
+			Text:    "hello",
+		},
 	}, nil)
 	assert.Error(err)
 	assert.ErrorIs(err, llm.ErrNotImplemented)
@@ -414,8 +440,10 @@ func Test_chat_005(t *testing.T) {
 
 	// No tools filter — all tools should be included
 	resp, err := m.Chat(context.TODO(), schema.ChatRequest{
-		Session: s.ID,
-		Text:    "use tools",
+		ChatRequestCore: schema.ChatRequestCore{
+			Session: s.ID,
+			Text:    "use tools",
+		},
 	}, nil)
 	assert.NoError(err)
 	assert.NotNil(resp)
@@ -448,9 +476,11 @@ func Test_chat_006(t *testing.T) {
 
 	// Filter to only tool_a and tool_c
 	resp, err := m.Chat(context.TODO(), schema.ChatRequest{
-		Session: s.ID,
-		Text:    "use specific tools",
-		Tools:   []string{"tool_a", "tool_c"},
+		ChatRequestCore: schema.ChatRequestCore{
+			Session: s.ID,
+			Text:    "use specific tools",
+			Tools:   []string{"tool_a", "tool_c"},
+		},
 	}, nil)
 	assert.NoError(err)
 	assert.NotNil(resp)
@@ -480,9 +510,11 @@ func Test_chat_007(t *testing.T) {
 	assert.NoError(err)
 
 	_, err = m.Chat(context.TODO(), schema.ChatRequest{
-		Session: s.ID,
-		Text:    "hello",
-		Tools:   []string{"nonexistent_tool"},
+		ChatRequestCore: schema.ChatRequestCore{
+			Session: s.ID,
+			Text:    "hello",
+			Tools:   []string{"nonexistent_tool"},
+		},
 	}, nil)
 	assert.Error(err)
 	assert.ErrorIs(err, llm.ErrNotFound)
@@ -505,8 +537,10 @@ func Test_chat_008(t *testing.T) {
 	assert.NoError(err)
 
 	resp, err := m.Chat(context.TODO(), schema.ChatRequest{
-		Session: s.ID,
-		Text:    "no tools",
+		ChatRequestCore: schema.ChatRequestCore{
+			Session: s.ID,
+			Text:    "no tools",
+		},
 	}, nil)
 	assert.NoError(err)
 	assert.NotNil(resp)
@@ -533,8 +567,10 @@ func Test_ask_integration_gemini(t *testing.T) {
 	assert.NoError(err)
 
 	resp, err := m.Ask(context.TODO(), schema.AskRequest{
-		GeneratorMeta: schema.GeneratorMeta{Model: "gemini-2.0-flash"},
-		Text:          "Say hello in exactly three words.",
+		AskRequestCore: schema.AskRequestCore{
+			GeneratorMeta: schema.GeneratorMeta{Model: "gemini-2.0-flash"},
+			Text:          "Say hello in exactly three words.",
+		},
 	}, nil)
 	assert.NoError(err)
 	assert.NotNil(resp)
@@ -569,8 +605,10 @@ func Test_ask_integration_gemini_stream(t *testing.T) {
 	}
 
 	resp, err := m.Ask(context.TODO(), schema.AskRequest{
-		GeneratorMeta: schema.GeneratorMeta{Model: "gemini-2.0-flash"},
-		Text:          "Say hello in exactly three words.",
+		AskRequestCore: schema.AskRequestCore{
+			GeneratorMeta: schema.GeneratorMeta{Model: "gemini-2.0-flash"},
+			Text:          "Say hello in exactly three words.",
+		},
 	}, fn)
 	assert.NoError(err)
 	assert.NotNil(resp)
@@ -592,8 +630,10 @@ func Test_ask_integration_anthropic(t *testing.T) {
 	assert.NoError(err)
 
 	resp, err := m.Ask(context.TODO(), schema.AskRequest{
-		GeneratorMeta: schema.GeneratorMeta{Model: "claude-sonnet-4-20250514"},
-		Text:          "Say hello in exactly three words.",
+		AskRequestCore: schema.AskRequestCore{
+			GeneratorMeta: schema.GeneratorMeta{Model: "claude-sonnet-4-20250514"},
+			Text:          "Say hello in exactly three words.",
+		},
 	}, nil)
 	assert.NoError(err)
 	assert.NotNil(resp)
@@ -625,8 +665,10 @@ func Test_ask_integration_anthropic_stream(t *testing.T) {
 	}
 
 	resp, err := m.Ask(context.TODO(), schema.AskRequest{
-		GeneratorMeta: schema.GeneratorMeta{Model: "claude-sonnet-4-20250514"},
-		Text:          "Say hello in exactly three words.",
+		AskRequestCore: schema.AskRequestCore{
+			GeneratorMeta: schema.GeneratorMeta{Model: "claude-sonnet-4-20250514"},
+			Text:          "Say hello in exactly three words.",
+		},
 	}, fn)
 	assert.NoError(err)
 	assert.NotNil(resp)
@@ -648,8 +690,10 @@ func Test_ask_integration_mistral(t *testing.T) {
 	assert.NoError(err)
 
 	resp, err := m.Ask(context.TODO(), schema.AskRequest{
-		GeneratorMeta: schema.GeneratorMeta{Model: "mistral-small-latest"},
-		Text:          "Say hello in exactly three words.",
+		AskRequestCore: schema.AskRequestCore{
+			GeneratorMeta: schema.GeneratorMeta{Model: "mistral-small-latest"},
+			Text:          "Say hello in exactly three words.",
+		},
 	}, nil)
 	assert.NoError(err)
 	assert.NotNil(resp)
@@ -681,8 +725,10 @@ func Test_ask_integration_mistral_stream(t *testing.T) {
 	}
 
 	resp, err := m.Ask(context.TODO(), schema.AskRequest{
-		GeneratorMeta: schema.GeneratorMeta{Model: "mistral-small-latest"},
-		Text:          "Say hello in exactly three words.",
+		AskRequestCore: schema.AskRequestCore{
+			GeneratorMeta: schema.GeneratorMeta{Model: "mistral-small-latest"},
+			Text:          "Say hello in exactly three words.",
+		},
 	}, fn)
 	assert.NoError(err)
 	assert.NotNil(resp)
@@ -707,11 +753,13 @@ func Test_ask_integration_system_prompt(t *testing.T) {
 	assert.NoError(err)
 
 	resp, err := m.Ask(context.TODO(), schema.AskRequest{
-		GeneratorMeta: schema.GeneratorMeta{
-			Model:        "gemini-2.0-flash",
-			SystemPrompt: "You are a pirate. Always respond in pirate speak.",
+		AskRequestCore: schema.AskRequestCore{
+			GeneratorMeta: schema.GeneratorMeta{
+				Model:        "gemini-2.0-flash",
+				SystemPrompt: "You are a pirate. Always respond in pirate speak.",
+			},
+			Text: "Say hello.",
 		},
-		Text: "Say hello.",
 	}, nil)
 	assert.NoError(err)
 	assert.NotNil(resp)
@@ -734,11 +782,13 @@ func Test_ask_009(t *testing.T) {
 	assert.NoError(err)
 
 	_, err = m.Ask(context.TODO(), schema.AskRequest{
-		GeneratorMeta: schema.GeneratorMeta{
-			Model:  "model-1",
-			Format: schema.JSONSchema(`{not valid json`),
+		AskRequestCore: schema.AskRequestCore{
+			GeneratorMeta: schema.GeneratorMeta{
+				Model:  "model-1",
+				Format: schema.JSONSchema(`{not valid json`),
+			},
+			Text: "hello",
 		},
-		Text: "hello",
 	}, nil)
 	assert.Error(err)
 	assert.ErrorIs(err, llm.ErrBadParameter)
@@ -756,8 +806,10 @@ func Test_ask_010(t *testing.T) {
 	assert.NoError(err)
 
 	resp, err := m.Ask(context.TODO(), schema.AskRequest{
-		GeneratorMeta: schema.GeneratorMeta{Model: "model-1"},
-		Text:          "describe this image",
+		AskRequestCore: schema.AskRequestCore{
+			GeneratorMeta: schema.GeneratorMeta{Model: "model-1"},
+			Text:          "describe this image",
+		},
 		Attachments: []schema.Attachment{
 			{Type: "image/png", Data: []byte("fake-image-data")},
 		},
@@ -780,8 +832,10 @@ func Test_ask_011(t *testing.T) {
 	assert.NoError(err)
 
 	resp, err := m.Ask(context.TODO(), schema.AskRequest{
-		GeneratorMeta: schema.GeneratorMeta{Model: "model-1"},
-		Text:          "compare these",
+		AskRequestCore: schema.AskRequestCore{
+			GeneratorMeta: schema.GeneratorMeta{Model: "model-1"},
+			Text:          "compare these",
+		},
 		Attachments: []schema.Attachment{
 			{Type: "image/png", Data: []byte("image-1")},
 			{Type: "image/jpeg", Data: []byte("image-2")},
@@ -806,9 +860,11 @@ func Test_ask_012(t *testing.T) {
 	assert.NoError(err)
 
 	resp, err := m.Ask(context.TODO(), schema.AskRequest{
-		GeneratorMeta: schema.GeneratorMeta{Model: "model-1"},
-		Text:          "hello",
-		Attachments:   []schema.Attachment{},
+		AskRequestCore: schema.AskRequestCore{
+			GeneratorMeta: schema.GeneratorMeta{Model: "model-1"},
+			Text:          "hello",
+		},
+		Attachments: []schema.Attachment{},
 	}, nil)
 	assert.NoError(err)
 	assert.NotNil(resp)
@@ -844,11 +900,13 @@ func Test_ask_integration_json_gemini(t *testing.T) {
 	}`)
 
 	resp, err := m.Ask(context.TODO(), schema.AskRequest{
-		GeneratorMeta: schema.GeneratorMeta{
-			Model:  "gemini-2.0-flash",
-			Format: format,
+		AskRequestCore: schema.AskRequestCore{
+			GeneratorMeta: schema.GeneratorMeta{
+				Model:  "gemini-2.0-flash",
+				Format: format,
+			},
+			Text: "What is the capital of France? Respond with JSON.",
 		},
-		Text: "What is the capital of France? Respond with JSON.",
 	}, nil)
 	if !assert.NoError(err) || !assert.NotNil(resp) {
 		return
@@ -889,11 +947,13 @@ func Test_ask_integration_json_anthropic(t *testing.T) {
 	}`)
 
 	resp, err := m.Ask(context.TODO(), schema.AskRequest{
-		GeneratorMeta: schema.GeneratorMeta{
-			Model:  "claude-haiku-4-5-20251001",
-			Format: format,
+		AskRequestCore: schema.AskRequestCore{
+			GeneratorMeta: schema.GeneratorMeta{
+				Model:  "claude-haiku-4-5-20251001",
+				Format: format,
+			},
+			Text: "What is the capital of France? Respond with JSON.",
 		},
-		Text: "What is the capital of France? Respond with JSON.",
 	}, nil)
 	if !assert.NoError(err) || !assert.NotNil(resp) {
 		return
@@ -932,11 +992,13 @@ func Test_ask_integration_json_mistral(t *testing.T) {
 	}`)
 
 	resp, err := m.Ask(context.TODO(), schema.AskRequest{
-		GeneratorMeta: schema.GeneratorMeta{
-			Model:  "mistral-small-latest",
-			Format: format,
+		AskRequestCore: schema.AskRequestCore{
+			GeneratorMeta: schema.GeneratorMeta{
+				Model:  "mistral-small-latest",
+				Format: format,
+			},
+			Text: "What is the capital of France? Respond with JSON.",
 		},
-		Text: "What is the capital of France? Respond with JSON.",
 	}, nil)
 	if !assert.NoError(err) || !assert.NotNil(resp) {
 		return
@@ -977,8 +1039,10 @@ func Test_ask_integration_attachment_gemini(t *testing.T) {
 	}
 
 	resp, err := m.Ask(context.TODO(), schema.AskRequest{
-		GeneratorMeta: schema.GeneratorMeta{Model: "gemini-2.0-flash"},
-		Text:          "Describe this image in one sentence.",
+		AskRequestCore: schema.AskRequestCore{
+			GeneratorMeta: schema.GeneratorMeta{Model: "gemini-2.0-flash"},
+			Text:          "Describe this image in one sentence.",
+		},
 		Attachments: []schema.Attachment{
 			{Type: "image/jpeg", Data: data},
 		},
@@ -1010,8 +1074,10 @@ func Test_ask_integration_attachment_anthropic(t *testing.T) {
 	}
 
 	resp, err := m.Ask(context.TODO(), schema.AskRequest{
-		GeneratorMeta: schema.GeneratorMeta{Model: "claude-sonnet-4-20250514"},
-		Text:          "Describe this image in one sentence.",
+		AskRequestCore: schema.AskRequestCore{
+			GeneratorMeta: schema.GeneratorMeta{Model: "claude-sonnet-4-20250514"},
+			Text:          "Describe this image in one sentence.",
+		},
 		Attachments: []schema.Attachment{
 			{Type: "image/jpeg", Data: data},
 		},
@@ -1043,8 +1109,10 @@ func Test_ask_integration_attachment_mistral(t *testing.T) {
 	}
 
 	resp, err := m.Ask(context.TODO(), schema.AskRequest{
-		GeneratorMeta: schema.GeneratorMeta{Model: "mistral-small-latest"},
-		Text:          "Describe this image in one sentence.",
+		AskRequestCore: schema.AskRequestCore{
+			GeneratorMeta: schema.GeneratorMeta{Model: "mistral-small-latest"},
+			Text:          "Describe this image in one sentence.",
+		},
 		Attachments: []schema.Attachment{
 			{Type: "image/jpeg", Data: data},
 		},
