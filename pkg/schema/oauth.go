@@ -72,7 +72,7 @@ const (
 	// OAuthWellKnownPath is the standard OAuth 2.0 Authorization Server Metadata endpoint (RFC 8414).
 	OAuthWellKnownPath = "/.well-known/oauth-authorization-server"
 
-	// OIDCWellKnownPath is the OpenID Connect Discovery endpoint (RFC 5785).
+	// OIDCWellKnownPath is the OpenID Connect Discovery endpoint (OpenID Connect Discovery 1.0).
 	OIDCWellKnownPath = "/.well-known/openid-configuration"
 )
 

@@ -219,20 +219,24 @@ func (c *Client) interactiveFlow(ctx context.Context, cfg *oauth2.Config, metada
 	}
 
 	// Build authorization URL with PKCE challenge method based on server support
-	var challengeOpt oauth2.AuthCodeOption
+	var challengeOpts []oauth2.AuthCodeOption
 	switch {
 	case metadata.SupportsS256():
-		challengeOpt = oauth2.S256ChallengeOption(verifier)
+		challengeOpts = []oauth2.AuthCodeOption{oauth2.S256ChallengeOption(verifier)}
 	case metadata.SupportsPKCE():
 		// Server supports PKCE but not S256 — fall back to plain
-		challengeOpt = oauth2.SetAuthURLParam("code_challenge", verifier)
+		// RFC 7636 requires both code_challenge and code_challenge_method parameters
+		challengeOpts = []oauth2.AuthCodeOption{
+			oauth2.SetAuthURLParam("code_challenge", verifier),
+			oauth2.SetAuthURLParam("code_challenge_method", "plain"),
+		}
 	default:
 		// Server didn't advertise PKCE support — use S256 anyway (widely supported,
 		// required by OAuth 2.1, and many servers omit code_challenge_methods_supported)
-		challengeOpt = oauth2.S256ChallengeOption(verifier)
+		challengeOpts = []oauth2.AuthCodeOption{oauth2.S256ChallengeOption(verifier)}
 	}
 
-	authURL := cfg.AuthCodeURL(state, challengeOpt)
+	authURL := cfg.AuthCodeURL(state, challengeOpts...)
 	callback(authURL)
 
 	// Wait for authorization code via callback server
@@ -329,6 +333,7 @@ func (c *Client) autoRegister(ctx context.Context, metadata *schema.OAuthMetadat
 		return fmt.Errorf("dynamic client registration failed (you may need to register manually and use --client-id): %w", err)
 	}
 	cfg.ClientID = clientInfo.ClientID
+	cfg.ClientSecret = clientInfo.ClientSecret
 	return nil
 }
 
