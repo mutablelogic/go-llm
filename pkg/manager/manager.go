@@ -11,7 +11,7 @@ import (
 	schema "github.com/mutablelogic/go-llm/pkg/schema"
 	store "github.com/mutablelogic/go-llm/pkg/store"
 	tool "github.com/mutablelogic/go-llm/pkg/tool"
-	"go.opentelemetry.io/otel/trace"
+	trace "go.opentelemetry.io/otel/trace"
 	errgroup "golang.org/x/sync/errgroup"
 )
 

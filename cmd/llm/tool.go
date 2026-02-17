@@ -9,6 +9,8 @@ import (
 	opt "github.com/mutablelogic/go-llm/pkg/opt"
 	schema "github.com/mutablelogic/go-llm/pkg/schema"
 	uitable "github.com/mutablelogic/go-llm/pkg/ui/table"
+	types "github.com/mutablelogic/go-server/pkg/types"
+	"go.opentelemetry.io/otel/attribute"
 )
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -38,7 +40,9 @@ func (cmd *ListToolsCommand) Run(ctx *Globals) (err error) {
 	}
 
 	// OTEL
-	parent, endSpan := otel.StartSpan(ctx.tracer, ctx.ctx, "ListToolsCommand")
+	parent, endSpan := otel.StartSpan(ctx.tracer, ctx.ctx, "ListToolsCommand",
+		attribute.String("request", types.Stringify(cmd)),
+	)
 	defer func() { endSpan(err) }()
 
 	// Build options
@@ -75,7 +79,9 @@ func (cmd *GetToolCommand) Run(ctx *Globals) (err error) {
 	}
 
 	// OTEL
-	parent, endSpan := otel.StartSpan(ctx.tracer, ctx.ctx, "GetToolCommand")
+	parent, endSpan := otel.StartSpan(ctx.tracer, ctx.ctx, "GetToolCommand",
+		attribute.String("request", types.Stringify(cmd)),
+	)
 	defer func() { endSpan(err) }()
 
 	// Get tool

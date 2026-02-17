@@ -19,6 +19,8 @@ import (
 	schema "github.com/mutablelogic/go-llm/pkg/schema"
 	uitable "github.com/mutablelogic/go-llm/pkg/ui/table"
 	httpresponse "github.com/mutablelogic/go-server/pkg/httpresponse"
+	types "github.com/mutablelogic/go-server/pkg/types"
+	"go.opentelemetry.io/otel/attribute"
 )
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -69,7 +71,9 @@ func (cmd *ListAgentsCommand) Run(ctx *Globals) (err error) {
 	}
 
 	// OTEL
-	parent, endSpan := otel.StartSpan(ctx.tracer, ctx.ctx, "ListAgentsCommand")
+	parent, endSpan := otel.StartSpan(ctx.tracer, ctx.ctx, "ListAgentsCommand",
+		attribute.String("request", types.Stringify(cmd)),
+	)
 	defer func() { endSpan(err) }()
 
 	// Build options
@@ -109,7 +113,9 @@ func (cmd *GetAgentCommand) Run(ctx *Globals) (err error) {
 	}
 
 	// OTEL
-	parent, endSpan := otel.StartSpan(ctx.tracer, ctx.ctx, "GetAgentCommand")
+	parent, endSpan := otel.StartSpan(ctx.tracer, ctx.ctx, "GetAgentCommand",
+		attribute.String("request", types.Stringify(cmd)),
+	)
 	defer func() { endSpan(err) }()
 
 	// Parse name@version
@@ -146,7 +152,9 @@ func (cmd *CreateAgentCommand) Run(ctx *Globals) (err error) {
 	}
 
 	// OTEL
-	parent, endSpan := otel.StartSpan(ctx.tracer, ctx.ctx, "CreateAgentCommand")
+	parent, endSpan := otel.StartSpan(ctx.tracer, ctx.ctx, "CreateAgentCommand",
+		attribute.String("request", types.Stringify(cmd)),
+	)
 	defer func() { endSpan(err) }()
 
 	// Expand globs and parse files
@@ -207,7 +215,9 @@ func (cmd *DeleteAgentCommand) Run(ctx *Globals) (err error) {
 	}
 
 	// OTEL
-	parent, endSpan := otel.StartSpan(ctx.tracer, ctx.ctx, "DeleteAgentCommand")
+	parent, endSpan := otel.StartSpan(ctx.tracer, ctx.ctx, "DeleteAgentCommand",
+		attribute.String("request", types.Stringify(cmd)),
+	)
 	defer func() { endSpan(err) }()
 
 	// Parse name@version
@@ -245,7 +255,9 @@ func (cmd *RunAgentCommand) Run(ctx *Globals) (err error) {
 	}
 
 	// OTEL
-	parent, endSpan := otel.StartSpan(ctx.tracer, ctx.ctx, "RunAgentCommand")
+	parent, endSpan := otel.StartSpan(ctx.tracer, ctx.ctx, "RunAgentCommand",
+		attribute.String("request", types.Stringify(cmd)),
+	)
 	defer func() { endSpan(err) }()
 
 	// Build request

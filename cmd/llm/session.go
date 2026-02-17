@@ -10,6 +10,8 @@ import (
 	opt "github.com/mutablelogic/go-llm/pkg/opt"
 	schema "github.com/mutablelogic/go-llm/pkg/schema"
 	uitable "github.com/mutablelogic/go-llm/pkg/ui/table"
+	types "github.com/mutablelogic/go-server/pkg/types"
+	"go.opentelemetry.io/otel/attribute"
 )
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -63,7 +65,9 @@ func (cmd *ListSessionsCommand) Run(ctx *Globals) (err error) {
 	}
 
 	// OTEL
-	parent, endSpan := otel.StartSpan(ctx.tracer, ctx.ctx, "ListSessionsCommand")
+	parent, endSpan := otel.StartSpan(ctx.tracer, ctx.ctx, "ListSessionsCommand",
+		attribute.String("request", types.Stringify(cmd)),
+	)
 	defer func() { endSpan(err) }()
 
 	// Build options
@@ -123,7 +127,9 @@ func (cmd *GetSessionCommand) Run(ctx *Globals) (err error) {
 	}
 
 	// OTEL
-	parent, endSpan := otel.StartSpan(ctx.tracer, ctx.ctx, "GetSessionCommand")
+	parent, endSpan := otel.StartSpan(ctx.tracer, ctx.ctx, "GetSessionCommand",
+		attribute.String("request", types.Stringify(cmd)),
+	)
 	defer func() { endSpan(err) }()
 
 	// Get session
@@ -154,7 +160,9 @@ func (cmd *CreateSessionCommand) Run(ctx *Globals) (err error) {
 	}
 
 	// OTEL
-	parent, endSpan := otel.StartSpan(ctx.tracer, ctx.ctx, "CreateSessionCommand")
+	parent, endSpan := otel.StartSpan(ctx.tracer, ctx.ctx, "CreateSessionCommand",
+		attribute.String("request", types.Stringify(cmd)),
+	)
 	defer func() { endSpan(err) }()
 
 	// Create session
@@ -187,7 +195,9 @@ func (cmd *DeleteSessionCommand) Run(ctx *Globals) (err error) {
 	}
 
 	// OTEL
-	parent, endSpan := otel.StartSpan(ctx.tracer, ctx.ctx, "DeleteSessionCommand")
+	parent, endSpan := otel.StartSpan(ctx.tracer, ctx.ctx, "DeleteSessionCommand",
+		attribute.String("request", types.Stringify(cmd)),
+	)
 	defer func() { endSpan(err) }()
 
 	// Delete session
@@ -207,7 +217,9 @@ func (cmd *UpdateSessionCommand) Run(ctx *Globals) (err error) {
 	}
 
 	// OTEL
-	parent, endSpan := otel.StartSpan(ctx.tracer, ctx.ctx, "UpdateSessionCommand")
+	parent, endSpan := otel.StartSpan(ctx.tracer, ctx.ctx, "UpdateSessionCommand",
+		attribute.String("request", types.Stringify(cmd)),
+	)
 	defer func() { endSpan(err) }()
 
 	// Parse labels

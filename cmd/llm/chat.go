@@ -14,6 +14,8 @@ import (
 	"github.com/mutablelogic/go-llm/pkg/ui"
 	btui "github.com/mutablelogic/go-llm/pkg/ui/bubbletea"
 	uicmd "github.com/mutablelogic/go-llm/pkg/ui/command"
+	types "github.com/mutablelogic/go-server/pkg/types"
+	"go.opentelemetry.io/otel/attribute"
 )
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -46,7 +48,9 @@ func (cmd *ChatCommand) Run(ctx *Globals) (err error) {
 	}
 
 	// OTEL
-	parent, endSpan := otel.StartSpan(ctx.tracer, ctx.ctx, "ChatCommand")
+	parent, endSpan := otel.StartSpan(ctx.tracer, ctx.ctx, "ChatCommand",
+		attribute.String("request", types.Stringify(cmd)),
+	)
 	defer func() { endSpan(err) }()
 
 	// Ensure a session exists
