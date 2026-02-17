@@ -77,6 +77,40 @@ constructs are supported:
 {{ range $i, $item := .items }}{{ if $i }}, {{ end }}{{ $item }}{{ end }}
 ```
 
+## Template Functions
+
+In addition to the [built-in Go template functions](https://pkg.go.dev/text/template#hdr-Functions),
+the following custom functions are available in agent templates:
+
+| Function  | Signature                       | Description                                                    |
+|-----------|---------------------------------|----------------------------------------------------------------|
+| `json`    | `json <value>`                  | Marshals a value to its JSON string representation.            |
+| `default` | `default <fallback> <value>`    | Returns `value` unless it is nil or empty, in which case returns `fallback`. |
+| `join`    | `join <list> <separator>`       | Joins a list of values into a single string with the given separator. |
+| `upper`   | `upper <string>`                | Converts a string to uppercase.                                |
+| `lower`   | `lower <string>`                | Converts a string to lowercase.                                |
+| `trim`    | `trim <string>`                 | Removes leading and trailing whitespace from a string.         |
+
+### Examples
+
+```
+{{/* Render an object as JSON */}}
+{{ .data | json }}
+
+{{/* Use a default value when a field may be omitted */}}
+{{ .language | default "English" }}
+
+{{/* Join a list of items */}}
+{{ .tags | join ", " }}
+
+{{/* Case conversion */}}
+{{ .name | upper }}
+{{ .name | lower }}
+
+{{/* Trim whitespace */}}
+{{ .description | trim }}
+```
+
 ## CLI Usage
 
 ```sh
