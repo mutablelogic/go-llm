@@ -31,12 +31,23 @@ type LoginCommand struct {
 }
 
 ///////////////////////////////////////////////////////////////////////////////
+// STRINGIFY
+
+func (cmd LoginCommand) String() string {
+	v := cmd
+	if v.ClientSecret != "" {
+		v.ClientSecret = "***"
+	}
+	return types.Stringify(v)
+}
+
+///////////////////////////////////////////////////////////////////////////////
 // COMMANDS
 
 func (cmd *LoginCommand) Run(ctx *Globals) (err error) {
 	// OTEL
 	parent, endSpan := otel.StartSpan(ctx.tracer, ctx.ctx, "LoginCommand",
-		attribute.String("request", types.Stringify(cmd)),
+		attribute.String("request", cmd.String()),
 	)
 	defer func() { endSpan(err) }()
 

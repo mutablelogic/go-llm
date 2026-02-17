@@ -54,6 +54,10 @@ type OAuthCredentials struct {
 	// ClientID is the OAuth client ID used to obtain this token.
 	ClientID string `json:"client_id"`
 
+	// ClientSecret is the OAuth client secret, if any (for confidential clients).
+	// Needed for token refresh with servers that require client authentication.
+	ClientSecret string `json:"client_secret,omitempty"`
+
 	// Endpoint is the MCP/OAuth server endpoint (used for discovery).
 	Endpoint string `json:"endpoint"`
 

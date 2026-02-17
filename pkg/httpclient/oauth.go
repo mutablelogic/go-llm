@@ -155,7 +155,7 @@ func (c *Client) Login(ctx context.Context, cfg *oauth2.Config, opts ...LoginOpt
 		if o.listener != nil {
 			redirectURIs = []string{fmt.Sprintf("http://%s/callback", o.listener.Addr().String())}
 		}
-		clientInfo, err := c.registerClient(ctx, metadata, o.clientName, redirectURIs)
+		clientInfo, err := c.registerClient(ctx, metadata, o.clientName, redirectURIs, cfg.Scopes)
 		if err != nil {
 			return nil, fmt.Errorf("dynamic client registration failed (you may need to register manually and use --client-id): %w", err)
 		}
@@ -169,7 +169,7 @@ func (c *Client) Login(ctx context.Context, cfg *oauth2.Config, opts ...LoginOpt
 	case o.listener != nil && o.authCallback != nil:
 		// Interactive: Authorization Code with PKCE
 		cfg.RedirectURL = fmt.Sprintf("http://%s/callback", o.listener.Addr().String())
-		token, err = c.interactiveFlow(ctx, cfg, o.listener, o.authCallback)
+		token, err = c.interactiveFlow(ctx, cfg, metadata, o.listener, o.authCallback)
 
 	case o.deviceCallback != nil:
 		// Device Authorization flow
@@ -196,11 +196,11 @@ func (c *Client) Login(ctx context.Context, cfg *oauth2.Config, opts ...LoginOpt
 		return nil, err
 	}
 
-	return &schema.OAuthCredentials{Token: token, ClientID: cfg.ClientID, Endpoint: endpoint, TokenURL: metadata.TokenEndpoint}, nil
+	return &schema.OAuthCredentials{Token: token, ClientID: cfg.ClientID, ClientSecret: cfg.ClientSecret, Endpoint: endpoint, TokenURL: metadata.TokenEndpoint}, nil
 }
 
 // interactiveFlow performs the Authorization Code exchange with PKCE.
-func (c *Client) interactiveFlow(ctx context.Context, cfg *oauth2.Config, listener net.Listener, callback AuthURLCallback) (*oauth2.Token, error) {
+func (c *Client) interactiveFlow(ctx context.Context, cfg *oauth2.Config, metadata *schema.OAuthMetadata, listener net.Listener, callback AuthURLCallback) (*oauth2.Token, error) {
 	// Generate PKCE verifier and state
 	verifier := oauth2.GenerateVerifier()
 	state, err := generateState()
@@ -208,8 +208,21 @@ func (c *Client) interactiveFlow(ctx context.Context, cfg *oauth2.Config, listen
 		return nil, fmt.Errorf("failed to generate state: %w", err)
 	}
 
-	// Build authorization URL and notify caller
-	authURL := cfg.AuthCodeURL(state, oauth2.S256ChallengeOption(verifier))
+	// Build authorization URL with PKCE challenge method based on server support
+	var challengeOpt oauth2.AuthCodeOption
+	switch {
+	case metadata.SupportsS256():
+		challengeOpt = oauth2.S256ChallengeOption(verifier)
+	case metadata.SupportsPKCE():
+		// Server supports PKCE but not S256 — fall back to plain
+		challengeOpt = oauth2.SetAuthURLParam("code_challenge", verifier)
+	default:
+		// Server didn't advertise PKCE support — use S256 anyway (widely supported,
+		// required by OAuth 2.1, and many servers omit code_challenge_methods_supported)
+		challengeOpt = oauth2.S256ChallengeOption(verifier)
+	}
+
+	authURL := cfg.AuthCodeURL(state, challengeOpt)
 	callback(authURL)
 
 	// Wait for authorization code via callback server
@@ -278,8 +291,9 @@ func (c *Client) RefreshToken(ctx context.Context, creds *schema.OAuthCredential
 
 	// Create OAuth2 config using stored token URL (no discovery needed)
 	cfg := &oauth2.Config{
-		ClientID: creds.ClientID,
-		Endpoint: oauth2.Endpoint{TokenURL: creds.TokenURL},
+		ClientID:     creds.ClientID,
+		ClientSecret: creds.ClientSecret,
+		Endpoint:     oauth2.Endpoint{TokenURL: creds.TokenURL},
 	}
 
 	// Use a token copy with an expired time to force the oauth2 library to refresh
@@ -291,12 +305,12 @@ func (c *Client) RefreshToken(ctx context.Context, creds *schema.OAuthCredential
 	if err != nil {
 		return nil, fmt.Errorf("token refresh failed: %w", err)
 	}
-	return &schema.OAuthCredentials{Token: newToken, ClientID: creds.ClientID, Endpoint: creds.Endpoint, TokenURL: creds.TokenURL}, nil
+	return &schema.OAuthCredentials{Token: newToken, ClientID: creds.ClientID, ClientSecret: creds.ClientSecret, Endpoint: creds.Endpoint, TokenURL: creds.TokenURL}, nil
 }
 
 // registerClient performs dynamic client registration (RFC 7591).
 // It registers a new OAuth client with the authorization server and returns the client info.
-func (c *Client) registerClient(ctx context.Context, metadata *schema.OAuthMetadata, clientName string, redirectURIs []string) (*schema.OAuthClientInfo, error) {
+func (c *Client) registerClient(ctx context.Context, metadata *schema.OAuthMetadata, clientName string, redirectURIs []string, scopes []string) (*schema.OAuthClientInfo, error) {
 	if !metadata.SupportsRegistration() {
 		return nil, fmt.Errorf("%s does not support dynamic client registration", metadata.Issuer)
 	}
@@ -308,6 +322,7 @@ func (c *Client) registerClient(ctx context.Context, metadata *schema.OAuthMetad
 		GrantTypes:              []string{"authorization_code", "refresh_token"},
 		ResponseTypes:           []string{"code"},
 		TokenEndpointAuthMethod: "none", // Public client (no secret)
+		Scope:                   strings.Join(scopes, " "),
 	}
 
 	// Create JSON request payload
@@ -449,25 +464,25 @@ func (c *Client) discoverOAuth(ctx context.Context, endpoint string) (*schema.OA
 	}
 
 	// Build candidate URLs: root-based (RFC 8414) first, then path-relative (Keycloak)
+	base := fmt.Sprintf("%s://%s", u.Scheme, u.Host)
 	suffixes := []string{schema.OAuthWellKnownPath, schema.OIDCWellKnownPath}
 	candidates := make([]string, 0, len(suffixes)*2)
 	for _, suffix := range suffixes {
-		candidates = append(candidates, suffix) // root: /.well-known/...
+		candidates = append(candidates, base+suffix) // root: /.well-known/...
 	}
 
-	// Set base path for path-relative discovery (e.g., /realms/master/.well-known/...)
+	// Add path-relative candidates (e.g., /realms/master/.well-known/...)
 	basePath := strings.TrimRight(u.Path, "/")
 	if basePath != "" {
 		for _, suffix := range suffixes {
-			candidates = append(candidates, basePath+suffix) // relative: /realms/master/.well-known/...
+			candidates = append(candidates, base+basePath+suffix)
 		}
 	}
 
 	// Iterate over candidates and return the first successful metadata response
-	for _, path := range candidates {
-		u.Path = path
+	for _, candidateURL := range candidates {
 		var metadata schema.OAuthMetadata
-		if err := c.DoWithContext(ctx, nil, &metadata, client.OptReqEndpoint(u.String())); err != nil {
+		if err := c.DoWithContext(ctx, nil, &metadata, client.OptReqEndpoint(candidateURL)); err != nil {
 			// 404 means this path doesn't exist, try the next candidate
 			var httpErr httpresponse.Err
 			if errors.As(err, &httpErr) && int(httpErr) == http.StatusNotFound {

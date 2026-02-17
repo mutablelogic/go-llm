@@ -210,6 +210,10 @@ func (m *mockOAuthServer) AuthorizeDevice() {
 	m.deviceAuthorized = true
 }
 
+func (m *mockOAuthServer) RegisteredClient() *schema.OAuthClientInfo {
+	return m.registeredClient
+}
+
 ///////////////////////////////////////////////////////////////////////////////
 // TESTS
 
@@ -273,6 +277,66 @@ func TestInteractiveLogin(t *testing.T) {
 	}
 
 	_ = redirectURI // Used in registration
+}
+
+func TestInteractiveLogin_AutoRegister(t *testing.T) {
+	mock := newMockOAuthServer(t)
+	defer mock.Server.Close()
+
+	c, err := httpclient.New(mock.Server.URL)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Create listener for callback
+	listener, _, err := httpclient.NewCallbackListener("")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer listener.Close()
+
+	// Start a goroutine to simulate the browser redirect
+	var authURL string
+	go func() {
+		time.Sleep(100 * time.Millisecond)
+		resp, err := http.Get(authURL)
+		if err != nil {
+			t.Logf("simulated browser request failed: %v", err)
+			return
+		}
+		resp.Body.Close()
+	}()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	// No ClientID — should auto-register using OptClientName
+	cfg := &oauth2.Config{
+		Scopes:   []string{"openid"},
+		Endpoint: oauth2.Endpoint{AuthURL: mock.Server.URL},
+	}
+	token, err := c.Login(ctx, cfg, httpclient.OptClientName("test-app"), httpclient.OptInteractive(listener, func(url string) {
+		authURL = url
+	}))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Should have received the registered client ID
+	if token.ClientID != "registered-client-id" {
+		t.Errorf("expected registered client ID, got: %s", token.ClientID)
+	}
+	if token.AccessToken != "test-access-token" {
+		t.Errorf("unexpected access token: %s", token.AccessToken)
+	}
+
+	// Verify registration happened on the mock
+	if mock.RegisteredClient() == nil {
+		t.Fatal("expected client to be registered")
+	}
+	if mock.RegisteredClient().ClientName != "test-app" {
+		t.Errorf("unexpected registered client name: %s", mock.RegisteredClient().ClientName)
+	}
 }
 
 func TestClientCredentialsLogin(t *testing.T) {
