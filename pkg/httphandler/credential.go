@@ -80,8 +80,10 @@ func redactString(s string) string {
 	return s[:3] + strings.Repeat("*", len(s)-3)
 }
 
-// redactCredential returns a shallow copy of the credential with sensitive
-// token fields replaced by a placeholder. The original is not modified.
+// redactCredential returns a copy of the credential with sensitive
+// token fields partially masked. For strings longer than 6 characters, the
+// first 3 characters are preserved and the rest replaced with asterisks.
+// Shorter strings are fully replaced.
 func redactCredential(cred *schema.OAuthCredentials) *schema.OAuthCredentials {
 	result := *cred
 	if result.Token != nil {
