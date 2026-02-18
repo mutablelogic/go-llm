@@ -3,6 +3,7 @@ package httphandler
 import (
 	"net/http"
 	"net/url"
+	"strings"
 
 	// Packages
 	manager "github.com/mutablelogic/go-llm/pkg/manager"
@@ -31,7 +32,7 @@ func CredentialHandler(manager *manager.Manager) (string, http.HandlerFunc, *ope
 					_ = httpresponse.Error(w, httpErr(err))
 					return
 				}
-				_ = httpresponse.JSON(w, http.StatusOK, httprequest.Indent(r), resp)
+				_ = httpresponse.JSON(w, http.StatusOK, httprequest.Indent(r), redactCredential(resp))
 			case http.MethodPost:
 				var req schema.OAuthCredentials
 				if err := httprequest.Read(r, &req); err != nil {
@@ -63,4 +64,40 @@ func CredentialHandler(manager *manager.Manager) (string, http.HandlerFunc, *ope
 				Description: "Delete a credential by server URL",
 			},
 		})
+}
+
+///////////////////////////////////////////////////////////////////////////////
+// PRIVATE METHODS
+
+const redacted = "***"
+
+// redactString returns the first 3 characters followed by asterisks for the rest.
+// Returns fully redacted if the string is 6 characters or shorter.
+func redactString(s string) string {
+	if len(s) <= 6 {
+		return redacted
+	}
+	return s[:3] + strings.Repeat("*", len(s)-3)
+}
+
+// redactCredential returns a copy of the credential with sensitive
+// token fields partially masked. For strings longer than 6 characters, the
+// first 3 characters are preserved and the rest replaced with asterisks.
+// Shorter strings are fully replaced.
+func redactCredential(cred *schema.OAuthCredentials) *schema.OAuthCredentials {
+	result := *cred
+	if result.Token != nil {
+		tokenCopy := *result.Token
+		if tokenCopy.AccessToken != "" {
+			tokenCopy.AccessToken = redactString(tokenCopy.AccessToken)
+		}
+		if tokenCopy.RefreshToken != "" {
+			tokenCopy.RefreshToken = redactString(tokenCopy.RefreshToken)
+		}
+		result.Token = &tokenCopy
+	}
+	if result.ClientSecret != "" {
+		result.ClientSecret = redactString(result.ClientSecret)
+	}
+	return &result
 }

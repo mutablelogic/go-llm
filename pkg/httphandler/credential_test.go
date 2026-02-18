@@ -94,8 +94,8 @@ func TestCredential_SetAndGet(t *testing.T) {
 	if err := json.NewDecoder(w.Body).Decode(&got); err != nil {
 		t.Fatal(err)
 	}
-	if got.AccessToken != "access-123" {
-		t.Fatalf("expected AccessToken=access-123, got %q", got.AccessToken)
+	if got.AccessToken != "acc*******" {
+		t.Fatalf("expected AccessToken=acc*******, got %q", got.AccessToken)
 	}
 	if got.ClientID != "client-abc" {
 		t.Fatalf("expected ClientID=client-abc, got %q", got.ClientID)
@@ -219,8 +219,8 @@ func TestCredential_SetOverwrites(t *testing.T) {
 	if err := json.NewDecoder(w.Body).Decode(&got); err != nil {
 		t.Fatal(err)
 	}
-	if got.AccessToken != "new-token" {
-		t.Fatalf("expected AccessToken=new-token, got %q", got.AccessToken)
+	if got.AccessToken != "new******" {
+		t.Fatalf("expected AccessToken=new******, got %q", got.AccessToken)
 	}
 	if got.ClientID != "client-2" {
 		t.Fatalf("expected ClientID=client-2, got %q", got.ClientID)
