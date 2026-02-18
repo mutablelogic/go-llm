@@ -31,7 +31,7 @@ type ListModelsCommand struct {
 }
 
 type GetModelCommand struct {
-	Name     string `arg:"" name:"name" help:"Model name"`
+	Name     string `arg:"" name:"name" help:"Model name" optional:""`
 	Provider string `name:"provider" help:"Provider name" optional:""`
 	Default  bool   `name:"default" help:"Save as default model" optional:""`
 }
@@ -113,6 +113,20 @@ func (cmd *ListModelsCommand) Run(ctx *Globals) (err error) {
 }
 
 func (cmd *GetModelCommand) Run(ctx *Globals) (err error) {
+	// Use default model if no name provided
+	name := cmd.Name
+	if name == "" {
+		name = ctx.defaults.GetString("model")
+		if name == "" {
+			return fmt.Errorf("no model specified and no default model set (use --default to save one)")
+		}
+		// Also use the saved provider if not overridden
+		if cmd.Provider == "" {
+			cmd.Provider = ctx.defaults.GetString("provider")
+		}
+	}
+
+	// Create the http client
 	client, err := ctx.Client()
 	if err != nil {
 		return err
@@ -131,7 +145,7 @@ func (cmd *GetModelCommand) Run(ctx *Globals) (err error) {
 	}
 
 	// Get model
-	model, err := client.GetModel(parent, cmd.Name, opts...)
+	model, err := client.GetModel(parent, name, opts...)
 	if err != nil {
 		return err
 	}
@@ -150,5 +164,7 @@ func (cmd *GetModelCommand) Run(ctx *Globals) (err error) {
 			}
 		}
 	}
+
+	// Return success
 	return nil
 }
