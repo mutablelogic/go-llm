@@ -107,10 +107,7 @@ func mergeSessionMeta(s *schema.Session, meta schema.SessionMeta) error {
 // total count of items before pagination.
 func paginate[T any](items []T, offset uint, limit *uint) ([]T, uint) {
 	total := uint(len(items))
-	start := offset
-	if start > total {
-		start = total
-	}
+	start := min(offset, total)
 	end := start + types.Value(limit)
 	if limit == nil || end > total {
 		end = total

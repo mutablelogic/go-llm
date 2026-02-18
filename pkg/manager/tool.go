@@ -45,10 +45,7 @@ func (m *Manager) ListTools(ctx context.Context, req schema.ListToolRequest) (re
 
 	// Paginate
 	total := uint(len(all))
-	start := req.Offset
-	if start > total {
-		start = total
-	}
+	start := min(req.Offset, total)
 	end := start + types.Value(req.Limit)
 	if req.Limit == nil || end > total {
 		end = total

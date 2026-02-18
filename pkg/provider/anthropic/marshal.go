@@ -3,6 +3,7 @@ package anthropic
 import (
 	"encoding/base64"
 	"encoding/json"
+	"maps"
 	"mime"
 	"net/url"
 	"strings"
@@ -185,9 +186,7 @@ func messageFromAnthropicResponse(role string, content []anthropicContentBlock, 
 			if meta == nil {
 				meta = make(map[string]any)
 			}
-			for k, v := range blockMeta {
-				meta[k] = v
-			}
+			maps.Copy(meta, blockMeta)
 		}
 	}
 

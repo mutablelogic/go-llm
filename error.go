@@ -52,10 +52,10 @@ func (e Err) Error() string {
 	return fmt.Sprintf("error code %d", int(e))
 }
 
-func (e Err) With(args ...interface{}) error {
+func (e Err) With(args ...any) error {
 	return fmt.Errorf("%w: %s", e, fmt.Sprint(args...))
 }
 
-func (e Err) Withf(format string, args ...interface{}) error {
+func (e Err) Withf(format string, args ...any) error {
 	return fmt.Errorf("%w: %s", e, fmt.Sprintf(format, args...))
 }

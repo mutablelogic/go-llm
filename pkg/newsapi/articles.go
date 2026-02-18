@@ -19,7 +19,7 @@ type Article struct {
 	Description string    `json:"description,omitempty"`
 	Url         string    `json:"url,omitempty"`
 	ImageUrl    string    `json:"urlToImage,omitempty"`
-	PublishedAt time.Time `json:"publishedAt,omitempty"`
+	PublishedAt time.Time `json:"publishedAt"`
 	Content     string    `json:"content,omitempty"`
 }
 

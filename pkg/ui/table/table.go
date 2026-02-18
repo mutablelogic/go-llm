@@ -81,7 +81,7 @@ func Render(data TableData) string {
 	if w, _, err := term.GetSize(int(os.Stdout.Fd())); err == nil && w > 0 {
 		// Check the widest line in the rendered output
 		widest := 0
-		for _, line := range strings.Split(result, "\n") {
+		for line := range strings.SplitSeq(result, "\n") {
 			if n := len([]rune(line)); n > widest {
 				widest = n
 			}

@@ -553,10 +553,7 @@ func (m *model) renderSingleSegment(seg textSegment) string {
 // the role prefix and some padding.
 func (m *model) wrapWidth() int {
 	const margin = 14 // "assistant: " + padding
-	w := m.width - margin
-	if w < 20 {
-		w = 20
-	}
+	w := max(m.width-margin, 20)
 	return w
 }
 

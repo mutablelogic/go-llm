@@ -115,7 +115,7 @@ func acceptType(r *http.Request) acceptKind {
 	if header == "" {
 		return acceptJSON
 	}
-	for _, part := range strings.Split(header, ",") {
+	for part := range strings.SplitSeq(header, ",") {
 		mt := strings.TrimSpace(part)
 		// Strip quality parameters (e.g. ";q=0.9")
 		if idx := strings.IndexByte(mt, ';'); idx >= 0 {

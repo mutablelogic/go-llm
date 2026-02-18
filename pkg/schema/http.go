@@ -111,7 +111,7 @@ type AskRequest struct {
 // (with base64 attachments) and multipart/form-data file uploads.
 type MultipartAskRequest struct {
 	AskRequest
-	File gomultipart.File `json:"file,omitempty" help:"File attachment (multipart upload)" optional:""`
+	File gomultipart.File `json:"file" help:"File attachment (multipart upload)" optional:""`
 }
 
 // AskResponse represents the response from an ask request.
@@ -139,7 +139,7 @@ type ChatRequest struct {
 // (with base64 attachments) and multipart/form-data file uploads for chat.
 type MultipartChatRequest struct {
 	ChatRequest
-	File gomultipart.File `json:"file,omitempty" help:"File attachment (multipart upload)" optional:""`
+	File gomultipart.File `json:"file" help:"File attachment (multipart upload)" optional:""`
 }
 
 // ChatResponse represents the response from a chat request.

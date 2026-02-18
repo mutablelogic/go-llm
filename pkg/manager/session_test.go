@@ -211,7 +211,7 @@ func Test_session_011(t *testing.T) {
 	)
 	assert.NoError(err)
 
-	for i := 0; i < 5; i++ {
+	for range 5 {
 		_, err = m.CreateSession(context.TODO(), schema.SessionMeta{GeneratorMeta: schema.GeneratorMeta{Model: "model-1"}})
 		assert.NoError(err)
 	}
@@ -248,7 +248,7 @@ func Test_session_013(t *testing.T) {
 	)
 	assert.NoError(err)
 
-	for i := 0; i < 5; i++ {
+	for range 5 {
 		_, err = m.CreateSession(context.TODO(), schema.SessionMeta{GeneratorMeta: schema.GeneratorMeta{Model: "model-1"}})
 		assert.NoError(err)
 	}
@@ -269,7 +269,7 @@ func Test_session_014(t *testing.T) {
 	)
 	assert.NoError(err)
 
-	for i := 0; i < 5; i++ {
+	for range 5 {
 		_, err = m.CreateSession(context.TODO(), schema.SessionMeta{GeneratorMeta: schema.GeneratorMeta{Model: "model-1"}})
 		assert.NoError(err)
 	}
