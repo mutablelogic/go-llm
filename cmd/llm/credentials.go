@@ -17,7 +17,9 @@ import (
 // TYPES
 
 type CredentialsCommands struct {
-	Login LoginCommand `cmd:"" name:"login" help:"Authenticate with an MCP server." group:"CREDENTIALS"`
+	Login            LoginCommand            `cmd:"" name:"login" help:"Authenticate with an MCP server and store credentials." group:"CREDENTIALS"`
+	GetCredential    GetCredentialCommand    `cmd:"" name:"credentials" help:"Get stored credentials for an MCP server." group:"CREDENTIALS"`
+	DeleteCredential DeleteCredentialCommand `cmd:"" name:"delete-credentials" help:"Delete stored credentials for an MCP server." group:"CREDENTIALS"`
 }
 
 type LoginCommand struct {
@@ -28,6 +30,14 @@ type LoginCommand struct {
 	Device            bool     `name:"device" help:"Use device authorization flow" default:"false"`
 	ClientCredentials bool     `name:"client-credentials" help:"Use client credentials (machine-to-machine) flow" default:"false"`
 	ClientName        string   `name:"client-name" help:"Client name for dynamic registration" default:"${EXECUTABLE_NAME}"`
+}
+
+type GetCredentialCommand struct {
+	URL string `arg:"" name:"url" help:"MCP server URL"`
+}
+
+type DeleteCredentialCommand struct {
+	URL string `arg:"" name:"url" help:"MCP server URL"`
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -115,6 +125,36 @@ func (cmd *LoginCommand) Run(ctx *Globals) (err error) {
 		}
 	}
 
+	// Store credentials on the server
+	if err := client.SetCredential(parent, cmd.URL, *creds); err != nil {
+		return fmt.Errorf("failed to store credentials: %w", err)
+	}
+
+	ctx.logger.Printf(parent, "Credentials stored for %s", cmd.URL)
+	return nil
+}
+
+///////////////////////////////////////////////////////////////////////////////
+// GET CREDENTIAL
+
+func (cmd *GetCredentialCommand) Run(ctx *Globals) (err error) {
+	client, err := ctx.Client()
+	if err != nil {
+		return err
+	}
+
+	// OTEL
+	parent, endSpan := otel.StartSpan(ctx.tracer, ctx.ctx, "GetCredentialCommand",
+		attribute.String("url", cmd.URL),
+	)
+	defer func() { endSpan(err) }()
+
+	// Get credential
+	creds, err := client.GetCredential(parent, cmd.URL)
+	if err != nil {
+		return err
+	}
+
 	// Output credentials as JSON
 	output, err := json.MarshalIndent(creds, "", "  ")
 	if err != nil {
@@ -122,5 +162,29 @@ func (cmd *LoginCommand) Run(ctx *Globals) (err error) {
 	}
 	fmt.Println(string(output))
 
+	return nil
+}
+
+///////////////////////////////////////////////////////////////////////////////
+// DELETE CREDENTIAL
+
+func (cmd *DeleteCredentialCommand) Run(ctx *Globals) (err error) {
+	client, err := ctx.Client()
+	if err != nil {
+		return err
+	}
+
+	// OTEL
+	parent, endSpan := otel.StartSpan(ctx.tracer, ctx.ctx, "DeleteCredentialCommand",
+		attribute.String("url", cmd.URL),
+	)
+	defer func() { endSpan(err) }()
+
+	// Delete credential
+	if err := client.DeleteCredential(parent, cmd.URL); err != nil {
+		return err
+	}
+
+	fmt.Printf("Deleted credentials for %s\n", cmd.URL)
 	return nil
 }

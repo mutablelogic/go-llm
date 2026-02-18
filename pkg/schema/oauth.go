@@ -1,6 +1,10 @@
 package schema
 
-import "golang.org/x/oauth2"
+import (
+	"slices"
+
+	"golang.org/x/oauth2"
+)
 
 ///////////////////////////////////////////////////////////////////////////////
 // TYPES
@@ -81,22 +85,13 @@ const (
 
 // SupportsPKCE returns true if the server supports PKCE.
 func (m *OAuthMetadata) SupportsPKCE() bool {
-	for _, method := range m.CodeChallengeMethodsSupported {
-		if method == "S256" || method == "plain" {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(m.CodeChallengeMethodsSupported, "S256") ||
+		slices.Contains(m.CodeChallengeMethodsSupported, "plain")
 }
 
 // SupportsS256 returns true if the server supports S256 challenge method.
 func (m *OAuthMetadata) SupportsS256() bool {
-	for _, method := range m.CodeChallengeMethodsSupported {
-		if method == "S256" {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(m.CodeChallengeMethodsSupported, "S256")
 }
 
 // SupportsGrantType returns true if the server supports the given grant type.
@@ -107,12 +102,7 @@ func (m *OAuthMetadata) SupportsGrantType(grantType string) bool {
 	if len(m.GrantTypesSupported) == 0 {
 		return true
 	}
-	for _, gt := range m.GrantTypesSupported {
-		if gt == grantType {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(m.GrantTypesSupported, grantType)
 }
 
 // Endpoint returns an oauth2.Endpoint from the metadata.

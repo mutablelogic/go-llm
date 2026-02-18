@@ -180,5 +180,7 @@ func serveMux(manager *manager.Manager) *http.ServeMux {
 	mux.HandleFunc(path, handler)
 	path, handler, _ = httphandler.ChatHandler(manager)
 	mux.HandleFunc(path, handler)
+	path, handler, _ = httphandler.CredentialHandler(manager)
+	mux.HandleFunc(path, handler)
 	return mux
 }

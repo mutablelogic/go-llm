@@ -47,6 +47,7 @@ func RegisterHandlers(manager *manager.Manager, router server.HTTPRouter, middle
 	register(AgentGetHandler(manager))
 	register(AskHandler(manager))
 	register(ChatHandler(manager))
+	register(CredentialHandler(manager))
 
 	// Return any errors
 	return result

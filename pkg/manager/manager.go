@@ -19,11 +19,12 @@ import (
 // TYPES
 
 type Manager struct {
-	clients      map[string]llm.Client
-	sessionStore schema.SessionStore
-	agentStore   schema.AgentStore
-	toolkit      *tool.Toolkit
-	tracer       trace.Tracer
+	clients         map[string]llm.Client
+	sessionStore    schema.SessionStore
+	agentStore      schema.AgentStore
+	credentialStore schema.CredentialStore
+	toolkit         *tool.Toolkit
+	tracer          trace.Tracer
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -50,6 +51,9 @@ func NewManager(opts ...Opt) (*Manager, error) {
 	if m.agentStore == nil {
 		m.agentStore = store.NewMemoryAgentStore()
 	}
+
+	// By default, we don't configure a credential store
+	// since it requires a passphrase.
 
 	// Default to empty toolkit if none was provided
 	if m.toolkit == nil {

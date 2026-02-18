@@ -62,6 +62,18 @@ func WithAgentStore(store schema.AgentStore) Opt {
 	}
 }
 
+// WithCredentialStore sets the credential storage backend for the manager.
+// If not set, credential operations will return an error.
+func WithCredentialStore(store schema.CredentialStore) Opt {
+	return func(m *Manager) error {
+		if store == nil {
+			return llm.ErrBadParameter.With("credential store is required")
+		}
+		m.credentialStore = store
+		return nil
+	}
+}
+
 // WithToolkit sets the toolkit for the manager.
 func WithToolkit(toolkit *tool.Toolkit) Opt {
 	return func(m *Manager) error {

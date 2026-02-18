@@ -1,6 +1,8 @@
 package store
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"os"
 	"path/filepath"
@@ -15,6 +17,7 @@ import (
 
 const (
 	jsonExt              = ".json"
+	credExt              = ".cred"
 	DirPerm  os.FileMode = 0o700 // Directory permission for store directories
 	FilePerm os.FileMode = 0o600 // File permission for store files
 )
@@ -81,4 +84,12 @@ func readJSONDir(dir string) ([]string, error) {
 // jsonPath returns the file path for an ID in the given directory.
 func jsonPath(dir, id string) string {
 	return filepath.Join(dir, id+jsonExt)
+}
+
+// hashPath returns a file path derived from a SHA-256 hash of key,
+// using the given extension. Useful for keys that are not safe as
+// filenames (such as URLs).
+func hashPath(dir, key, ext string) string {
+	h := sha256.Sum256([]byte(key))
+	return filepath.Join(dir, hex.EncodeToString(h[:])+ext)
 }

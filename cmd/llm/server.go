@@ -10,7 +10,7 @@ import (
 
 	// Packages
 	client "github.com/mutablelogic/go-client"
-	"github.com/mutablelogic/go-client/pkg/otel"
+	otel "github.com/mutablelogic/go-client/pkg/otel"
 	homeassistant "github.com/mutablelogic/go-llm/pkg/homeassistant"
 	httphandler "github.com/mutablelogic/go-llm/pkg/httphandler"
 	manager "github.com/mutablelogic/go-llm/pkg/manager"
@@ -45,6 +45,9 @@ type RunServer struct {
 	WeatherAPIKey string `name:"weather-api-key" env:"WEATHER_API_KEY" help:"WeatherAPI key"`
 	HAEndpoint    string `name:"ha-endpoint" env:"HA_ENDPOINT" help:"Home Assistant endpoint URL"`
 	HAToken       string `name:"ha-token" env:"HA_TOKEN" help:"Home Assistant long-lived access token"`
+
+	// Credential store
+	Passphrase string `name:"passphrase" env:"LLM_PASSPHRASE" help:"Passphrase for encrypting stored credentials"`
 
 	// TLS server options
 	TLS struct {
@@ -134,6 +137,17 @@ func (cmd *RunServer) WithManager(ctx *Globals, fn func(*manager.Manager, string
 		return err
 	} else {
 		opts = append(opts, manager.WithAgentStore(store))
+	}
+
+	// Add a credential store (requires passphrase)
+	if cmd.Passphrase != "" {
+		if store, err := cmd.CredentialStore(ctx.execName); err != nil {
+			return err
+		} else {
+			opts = append(opts, manager.WithCredentialStore(store))
+		}
+	} else {
+		ctx.logger.Printf(ctx.ctx, "No --passphrase set; credential store disabled")
 	}
 
 	// Add new toolkit with news, weather and home assistant tools if API keys are provided
@@ -274,6 +288,21 @@ func (cmd *RunServer) AgentStore(execName string) (schema.AgentStore, error) {
 	store, err := session.NewFileAgentStore(filepath.Join(cache, execName, "agents"))
 	if err != nil {
 		return nil, fmt.Errorf("failed to create agent store: %w", err)
+	}
+	return store, nil
+}
+
+// CredentialStore returns the credential store, creating it lazily.
+// Credentials are stored encrypted in the user's cache directory.
+// The passphrase is validated by the store constructor.
+func (cmd *RunServer) CredentialStore(execName string) (schema.CredentialStore, error) {
+	cache, err := os.UserCacheDir()
+	if err != nil {
+		return nil, fmt.Errorf("failed to determine cache directory: %w", err)
+	}
+	store, err := session.NewFileCredentialStore(cmd.Passphrase, filepath.Join(cache, execName, "credentials"))
+	if err != nil {
+		return nil, fmt.Errorf("failed to create credential store: %w", err)
 	}
 	return store, nil
 }
