@@ -92,7 +92,7 @@ func NewCallbackListener(addr string) (net.Listener, string, error) {
 	}
 
 	// Parse and validate the address
-	host, port, err := net.SplitHostPort(addr)
+	host, _, err := net.SplitHostPort(addr)
 	if err != nil {
 		return nil, "", fmt.Errorf("invalid callback address %q: %w", addr, err)
 	}
@@ -100,11 +100,6 @@ func NewCallbackListener(addr string) (net.Listener, string, error) {
 	// Validate loopback only
 	if !isLoopback(host) {
 		return nil, "", fmt.Errorf("callback address must be loopback (localhost/127.0.0.1/::1), got %q", host)
-	}
-
-	// Validate port is present (can be "0" for random)
-	if port == "" {
-		return nil, "", fmt.Errorf("callback address %q missing port", addr)
 	}
 
 	listener, err := net.Listen("tcp", addr)
@@ -206,6 +201,8 @@ func (c *Client) Login(ctx context.Context, cfg *oauth2.Config, opts ...LoginOpt
 		return nil, err
 	}
 
+	// Store the original user-supplied endpoint (not metadata.Issuer) so that
+	// discoverOAuth can re-discover from it later via path-walking.
 	return &schema.OAuthCredentials{Token: token, ClientID: cfg.ClientID, ClientSecret: cfg.ClientSecret, Endpoint: endpoint, TokenURL: metadata.TokenEndpoint}, nil
 }
 
@@ -224,8 +221,10 @@ func (c *Client) interactiveFlow(ctx context.Context, cfg *oauth2.Config, metada
 	case metadata.SupportsS256():
 		challengeOpts = []oauth2.AuthCodeOption{oauth2.S256ChallengeOption(verifier)}
 	case metadata.SupportsPKCE():
-		// Server supports PKCE but not S256 — fall back to plain
-		// RFC 7636 requires both code_challenge and code_challenge_method parameters
+		// Server supports PKCE but not S256 — fall back to plain.
+		// For the "plain" method the code_challenge IS the verifier (RFC 7636 §4.2).
+		// This is intentional: the verifier from oauth2.GenerateVerifier() is
+		// high-entropy, so plain transmission is acceptable as a fallback.
 		challengeOpts = []oauth2.AuthCodeOption{
 			oauth2.SetAuthURLParam("code_challenge", verifier),
 			oauth2.SetAuthURLParam("code_challenge_method", "plain"),
@@ -298,8 +297,10 @@ func (c *Client) RefreshToken(ctx context.Context, creds *schema.OAuthCredential
 		return nil, fmt.Errorf("credentials missing token URL")
 	}
 
-	// If not forcing, return existing credentials if the token is still valid
-	if !force && !creds.Expiry.IsZero() && time.Until(creds.Expiry) > 30*time.Second {
+	// If not forcing, return existing credentials if the token is still valid.
+	// A zero expiry (server didn't return one) is treated as "assume still valid"
+	// to avoid refreshing on every call.
+	if !force && (creds.Expiry.IsZero() || time.Until(creds.Expiry) > 30*time.Second) {
 		return creds, nil
 	}
 
