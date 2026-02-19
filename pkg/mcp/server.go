@@ -83,9 +83,7 @@ func (server *Server) RunStdio(ctx context.Context, r io.Reader, w io.Writer) er
 	writerCh := make(chan []byte)
 	defer close(writerCh)
 
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
+	wg.Go(func() {
 		for data := range writerCh {
 			if _, err := writer.Write(data); err != nil {
 				fmt.Fprintln(os.Stderr, "Error writing to output:", err)
@@ -94,7 +92,7 @@ func (server *Server) RunStdio(ctx context.Context, r io.Reader, w io.Writer) er
 			// Flush the writer to ensure data is sent immediately
 			writer.Flush()
 		}
-	}()
+	})
 
 	// Continue receiving input until the context is done
 	var request string
@@ -118,9 +116,7 @@ func (server *Server) RunStdio(ctx context.Context, r io.Reader, w io.Writer) er
 		}
 
 		// Process a request in the background
-		wg.Add(1)
-		go func(request string) {
-			defer wg.Done()
+		wg.Go(func() {
 			response, err := server.processRequest(ctx, request)
 			if err != nil {
 				fmt.Fprintln(os.Stderr, "Error:", err)
@@ -129,7 +125,7 @@ func (server *Server) RunStdio(ctx context.Context, r io.Reader, w io.Writer) er
 				// Write the response and a newline
 				writerCh <- append(response, '\n')
 			}
-		}(request)
+		})
 
 		// Reset the request
 		request = ""

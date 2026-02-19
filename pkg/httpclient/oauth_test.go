@@ -88,7 +88,7 @@ func newMockOAuthServer(t *testing.T) *mockOAuthServer {
 				json.NewEncoder(w).Encode(map[string]string{"error": "invalid_grant"})
 				return
 			}
-			json.NewEncoder(w).Encode(map[string]interface{}{
+			json.NewEncoder(w).Encode(map[string]any{
 				"access_token":  "test-access-token",
 				"token_type":    "Bearer",
 				"expires_in":    3600,
@@ -111,7 +111,7 @@ func newMockOAuthServer(t *testing.T) *mockOAuthServer {
 				json.NewEncoder(w).Encode(map[string]string{"error": "authorization_pending"})
 				return
 			}
-			json.NewEncoder(w).Encode(map[string]interface{}{
+			json.NewEncoder(w).Encode(map[string]any{
 				"access_token":  "test-device-access-token",
 				"token_type":    "Bearer",
 				"expires_in":    3600,
@@ -119,7 +119,7 @@ func newMockOAuthServer(t *testing.T) *mockOAuthServer {
 			})
 
 		case "client_credentials":
-			json.NewEncoder(w).Encode(map[string]interface{}{
+			json.NewEncoder(w).Encode(map[string]any{
 				"access_token": "test-client-credentials-token",
 				"token_type":   "Bearer",
 				"expires_in":   3600,
@@ -132,7 +132,7 @@ func newMockOAuthServer(t *testing.T) *mockOAuthServer {
 				json.NewEncoder(w).Encode(map[string]string{"error": "invalid_grant"})
 				return
 			}
-			json.NewEncoder(w).Encode(map[string]interface{}{
+			json.NewEncoder(w).Encode(map[string]any{
 				"access_token":  "test-refreshed-access-token",
 				"token_type":    "Bearer",
 				"expires_in":    3600,
@@ -155,7 +155,7 @@ func newMockOAuthServer(t *testing.T) *mockOAuthServer {
 		code := mock.deviceCode
 		mock.mu.Unlock()
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]interface{}{
+		json.NewEncoder(w).Encode(map[string]any{
 			"device_code":               code,
 			"user_code":                 "ABCD-1234",
 			"verification_uri":          mock.Server.URL + "/device",
@@ -622,7 +622,7 @@ func TestDiscovery_FallbackOIDC(t *testing.T) {
 	// Token endpoint
 	mux.HandleFunc("/token", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]interface{}{
+		json.NewEncoder(w).Encode(map[string]any{
 			"access_token": "oidc-token",
 			"token_type":   "Bearer",
 			"expires_in":   3600,
@@ -671,7 +671,7 @@ func TestDiscovery_PathRelative(t *testing.T) {
 	// Token endpoint
 	mux.HandleFunc("/realms/master/protocol/openid-connect/token", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]interface{}{
+		json.NewEncoder(w).Encode(map[string]any{
 			"access_token": "keycloak-token",
 			"token_type":   "Bearer",
 			"expires_in":   3600,
@@ -727,7 +727,7 @@ func TestDiscovery_PathRelativeWalkUp(t *testing.T) {
 	})
 	mux.HandleFunc("/token", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]interface{}{
+		json.NewEncoder(w).Encode(map[string]any{
 			"access_token": "walked-up-token",
 			"token_type":   "Bearer",
 			"expires_in":   3600,

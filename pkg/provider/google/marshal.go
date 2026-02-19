@@ -3,6 +3,7 @@ package google
 import (
 	"encoding/base64"
 	"encoding/json"
+	"maps"
 	"net/url"
 
 	// Packages
@@ -211,9 +212,7 @@ func messageFromGeminiResponse(response *geminiGenerateResponse) (*schema.Messag
 			if meta == nil {
 				meta = make(map[string]any)
 			}
-			for k, v := range partMeta {
-				meta[k] = v
-			}
+			maps.Copy(meta, partMeta)
 		}
 	}
 

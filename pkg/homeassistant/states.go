@@ -15,9 +15,9 @@ import (
 
 type State struct {
 	Entity       string         `json:"entity_id,width:40"`
-	LastChanged  time.Time      `json:"last_changed,omitempty"`
-	LastReported time.Time      `json:"last_reported,omitempty"`
-	LastUpdated  time.Time      `json:"last_updated,omitempty"`
+	LastChanged  time.Time      `json:"last_changed"`
+	LastReported time.Time      `json:"last_reported"`
+	LastUpdated  time.Time      `json:"last_updated"`
 	State        string         `json:"state"`
 	Attributes   map[string]any `json:"attributes"`
 	Context      struct {

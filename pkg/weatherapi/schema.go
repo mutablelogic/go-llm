@@ -18,18 +18,18 @@ type Location struct {
 	Lon            float64 `json:"lon"`
 	Timezone       string  `json:"timezone"`
 	LocaltimeEpoch int64   `json:"localtime_epoch"`
-	Localtime      Time    `json:"localtime,omitempty"`
+	Localtime      Time    `json:"localtime"`
 }
 
 type CurrentConditions struct {
 	LastUpdatedEpoch int64 `json:"last_updated_epoch"`
-	LastUpdated      Time  `json:"last_updated,omitempty"`
+	LastUpdated      Time  `json:"last_updated"`
 	Conditions
 }
 
 type ForecastConditions struct {
 	TimeEpoch int64 `json:"time_epoch"`
-	Time      Time  `json:"time,omitempty"`
+	Time      Time  `json:"time"`
 	Conditions
 }
 
@@ -121,7 +121,7 @@ type Forecast struct {
 	Current  *CurrentConditions `json:"current,omitempty"`
 	Forecast struct {
 		Day []*ForecastDay `json:"forecastday"`
-	} `json:"forecast,omitempty"`
+	} `json:"forecast"`
 }
 
 type Time struct {

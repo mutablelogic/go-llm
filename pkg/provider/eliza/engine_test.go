@@ -170,7 +170,7 @@ func TestEngineKeywords(t *testing.T) {
 	defaultEngine := testEngine(t, 42)
 	defaultResponses := make(map[string]bool)
 	// Generate many default responses from non-keyword input
-	for i := 0; i < 50; i++ {
+	for range 50 {
 		resp := defaultEngine.Response("xyzzy gibberish")
 		defaultResponses[resp] = true
 	}

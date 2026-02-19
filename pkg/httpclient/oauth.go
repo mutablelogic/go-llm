@@ -454,13 +454,11 @@ func (c *Client) waitForAuthCallback(ctx context.Context, listener net.Listener,
 
 	// WaitGroup to ensure server goroutine completes
 	var wg sync.WaitGroup
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
+	wg.Go(func() {
 		if err := server.Serve(listener); err != nil && err != http.ErrServerClosed {
 			sendResult(authResult{err: fmt.Errorf("callback server failed: %w", err)})
 		}
-	}()
+	})
 
 	// Wait for callback or context cancellation
 	var result authResult

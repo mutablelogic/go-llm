@@ -214,10 +214,7 @@ func (m Message) EstimateTokens() uint {
 			tokens += n
 		case block.Attachment != nil:
 			// Rough estimate for binary data (images, etc.)
-			n := uint(len(block.Attachment.Data)+3) / 4
-			if n < 10 {
-				n = 10
-			}
+			n := max(uint(len(block.Attachment.Data)+3)/4, 10)
 			tokens += n
 		}
 	}

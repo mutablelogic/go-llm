@@ -64,10 +64,7 @@ func (m *Manager) ListModels(ctx context.Context, req schema.ListModelsRequest) 
 
 	// Paginate
 	total := uint(len(all))
-	start := req.Offset
-	if start > total {
-		start = total
-	}
+	start := min(req.Offset, total)
 	end := start + types.Value(req.Limit)
 	if req.Limit == nil || end > total {
 		end = total
