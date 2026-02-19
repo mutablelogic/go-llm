@@ -498,31 +498,35 @@ func (c *Client) discoverOAuth(ctx context.Context, endpoint string) (*schema.OA
 		candidates = append(candidates, base+suffix) // root: /.well-known/...
 	}
 
-	// Add path-relative candidates walking up parent segments.
+	// Add path-relative candidates walking up parent segments,
+	// starting from the parent of the resource path.
 	// For /realms/master/protocol/sse we try:
-	//   /realms/master/protocol/sse/.well-known/...
 	//   /realms/master/protocol/.well-known/...
 	//   /realms/master/.well-known/...
 	//   /realms/.well-known/...
-	basePath := strings.TrimRight(u.Path, "/")
-	for basePath != "" {
+	basePath := path.Dir(strings.TrimRight(u.Path, "/"))
+	for basePath != "" && basePath != "/" && basePath != "." {
 		for _, suffix := range suffixes {
 			candidates = append(candidates, base+basePath+suffix)
 		}
 		basePath = path.Dir(basePath)
-		if basePath == "/" || basePath == "." {
-			break
-		}
 	}
 
 	// Iterate over candidates and return the first successful metadata response
 	for _, candidateURL := range candidates {
 		var metadata schema.OAuthMetadata
 		if err := c.DoWithContext(ctx, nil, &metadata, client.OptReqEndpoint(candidateURL)); err != nil {
-			// 404 means this path doesn't exist, try the next candidate
+			// Certain HTTP status codes indicate the well-known path doesn't
+			// exist at this location — skip and try the next candidate.
+			// 401/403 are included because misconfigured auth middleware
+			// sometimes guards non-existent paths.
 			var httpErr httpresponse.Err
-			if errors.As(err, &httpErr) && int(httpErr) == http.StatusNotFound {
-				continue
+			if errors.As(err, &httpErr) {
+				switch int(httpErr) {
+				case http.StatusNotFound, http.StatusUnauthorized,
+					http.StatusForbidden, http.StatusMethodNotAllowed:
+					continue
+				}
 			}
 			// Any other error (network, 500, etc.) is fatal
 			return nil, fmt.Errorf("%s: OAuth discovery failed: %w", endpoint, err)
