@@ -10,9 +10,9 @@ import (
 
 	// Packages
 	client "github.com/mutablelogic/go-client"
-	gomultipart "github.com/mutablelogic/go-client/pkg/multipart"
 	opt "github.com/mutablelogic/go-llm/pkg/opt"
 	schema "github.com/mutablelogic/go-llm/pkg/schema"
+	types "github.com/mutablelogic/go-server/pkg/types"
 )
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -34,7 +34,7 @@ type chatOptions struct {
 func WithChatFile(filename string, r io.Reader) ChatOpt {
 	return func(o *chatOptions) {
 		if r != nil {
-			o.files = append(o.files, askFile{filename: filename, body: r})
+			o.files = append(o.files, askFile{filename: filename, body: io.NopCloser(r)})
 		}
 	}
 }
@@ -104,7 +104,7 @@ func (c *Client) Chat(ctx context.Context, req schema.ChatRequest, opts ...ChatO
 func (c *Client) chatMultipart(ctx context.Context, req schema.ChatRequest, f askFile) (*schema.ChatResponse, error) {
 	httpReq := schema.MultipartChatRequest{
 		ChatRequest: req,
-		File: gomultipart.File{
+		File: types.File{
 			Path: f.filename,
 			Body: f.body,
 		},

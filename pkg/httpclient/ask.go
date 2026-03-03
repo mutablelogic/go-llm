@@ -9,8 +9,8 @@ import (
 
 	// Packages
 	client "github.com/mutablelogic/go-client"
-	gomultipart "github.com/mutablelogic/go-client/pkg/multipart"
 	schema "github.com/mutablelogic/go-llm/pkg/schema"
+	types "github.com/mutablelogic/go-server/pkg/types"
 )
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -26,7 +26,7 @@ type askOptions struct {
 
 type askFile struct {
 	filename string
-	body     io.Reader
+	body     io.ReadCloser
 }
 
 // /////////////////////////////////////////////////////////////////////////////
@@ -35,7 +35,7 @@ type askFile struct {
 func WithFile(filename string, r io.Reader) AskOpt {
 	return func(o *askOptions) {
 		if r != nil {
-			o.files = append(o.files, askFile{filename: filename, body: r})
+			o.files = append(o.files, askFile{filename: filename, body: io.NopCloser(r)})
 		}
 	}
 }
@@ -90,7 +90,7 @@ func (c *Client) Ask(ctx context.Context, req schema.AskRequest, opts ...AskOpt)
 func (c *Client) askMultipart(ctx context.Context, req schema.AskRequest, f askFile) (*schema.AskResponse, error) {
 	httpReq := schema.MultipartAskRequest{
 		AskRequest: req,
-		File: gomultipart.File{
+		File: types.File{
 			Path: f.filename,
 			Body: f.body,
 		},
