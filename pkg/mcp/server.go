@@ -237,7 +237,7 @@ func (server *Server) handleListTools(_ context.Context, _ any, _ json.RawMessag
 		return response, nil
 	}
 	for _, t := range server.toolkit.Tools() {
-		jsonSchema, err := t.Schema()
+		jsonSchema, err := t.InputSchema()
 		if err != nil {
 			jsonSchema = nil
 		}

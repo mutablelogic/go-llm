@@ -279,7 +279,7 @@ func attachmentFromSource(src *anthropicSource) *schema.Attachment {
 func anthropicToolsFromTools(tools []tool.Tool) ([]json.RawMessage, error) {
 	var result []json.RawMessage
 	for _, t := range tools {
-		s, err := t.Schema()
+		s, err := t.InputSchema()
 		if err != nil {
 			continue
 		}

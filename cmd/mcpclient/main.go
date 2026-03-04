@@ -10,123 +10,129 @@ import (
 	"os/exec"
 	"os/signal"
 	"path/filepath"
-	"runtime"
 	"strings"
 	"syscall"
+	"time"
 
 	// Packages
 	kong "github.com/alecthomas/kong"
-	sdkmcp "github.com/modelcontextprotocol/go-sdk/mcp"
 	goclient "github.com/mutablelogic/go-client"
 	oauth "github.com/mutablelogic/go-client/pkg/oauth"
-	client "github.com/mutablelogic/go-llm/pkg/mcp/client"
+	mcpclient "github.com/mutablelogic/go-llm/pkg/mcp/client"
 )
 
 ///////////////////////////////////////////////////////////////////////////////
-// CLI
+// GLOBALS
 
-type CLI struct {
+type Globals struct {
 	Debug        bool   `name:"debug" short:"d" help:"Trace HTTP requests and responses to stderr"`
 	ClientID     string `name:"client-id" help:"OAuth2 client ID"`
 	ClientSecret string `name:"client-secret" help:"OAuth2 client secret"`
 	CallbackPort int    `name:"callback-port" help:"Loopback port for OAuth callback (0 = random); ignored with --oob" default:"0"`
 	OOB          bool   `name:"oob" help:"Out-of-band OAuth: browser displays the code, paste it into the terminal"`
-	URL          string `arg:"" help:"MCP server URL" required:""`
+
+	// Private fields set during main()
+	ctx      context.Context
+	cancel   context.CancelFunc
+	execName string
+}
+
+// Connect creates an MCP client for the given URL, starts the background run
+// loop and blocks until the session is established or an error occurs.
+func (g *Globals) Connect(url string) (*mcpclient.Client, error) {
+	var opts []goclient.ClientOpt
+	if g.Debug {
+		opts = append(opts, goclient.OptTrace(os.Stderr, true))
+	}
+
+	var c *mcpclient.Client
+	var err error
+	c, err = mcpclient.New(url, g.execName, "0", func(ctx context.Context, discoveryURL string) error {
+		return g.authorize(ctx, c, discoveryURL)
+	}, opts...)
+	if err != nil {
+		return nil, fmt.Errorf("create client: %w", err)
+	}
+
+	runErr := make(chan error, 1)
+	go func() { runErr <- c.Run(g.ctx) }()
+
+	// Poll until the session is established or Run fails.
+	for {
+		_, err = c.ListTools(g.ctx)
+		if err == nil {
+			break
+		}
+		if !errors.Is(err, mcpclient.ErrNotConnected) {
+			return nil, fmt.Errorf("connect: %w", err)
+		}
+		select {
+		case e := <-runErr:
+			return nil, fmt.Errorf("connect: %w", e)
+		case <-g.ctx.Done():
+			return nil, g.ctx.Err()
+		case <-time.After(10 * time.Millisecond):
+		}
+	}
+
+	return c, nil
+}
+
+///////////////////////////////////////////////////////////////////////////////
+// CLI
+
+type CLI struct {
+	Globals
+	List ListCmd `cmd:"" help:"List tools advertised by the server"`
+	Call CallCmd `cmd:"" help:"Invoke a named tool on the server"`
 }
 
 ///////////////////////////////////////////////////////////////////////////////
 // MAIN
 
 func main() {
-	// Get execName
-	var clientName string
-	if exeName, err := os.Executable(); err != nil {
-		fatalf("get executable name: %v", err)
+	var execName string
+	if exe, err := os.Executable(); err != nil {
+		fmt.Fprintln(os.Stderr, "Error:", err)
+		os.Exit(1)
 	} else {
-		clientName = filepath.Base(exeName)
+		execName = filepath.Base(exe)
 	}
 
-	var cli CLI
-	kong.Parse(&cli,
-		kong.Name(clientName),
+	cli := new(CLI)
+	kctx := kong.Parse(cli,
+		kong.Name(execName),
 		kong.Description("MCP client"),
 		kong.UsageOnError(),
 	)
 
-	// Build client options.
-	var opts []goclient.ClientOpt
-	if cli.Debug {
-		opts = append(opts, goclient.OptTrace(os.Stderr, true))
+	cli.Globals.execName = execName
+	cli.Globals.ctx, cli.Globals.cancel = signal.NotifyContext(
+		context.Background(), os.Interrupt, syscall.SIGTERM,
+	)
+	defer cli.Globals.cancel()
+
+	if err := kctx.Run(&cli.Globals); err != nil {
+		fmt.Fprintln(os.Stderr, "Error:", err)
+		os.Exit(1)
 	}
-
-	// Create context that is canceled on SIGINT/SIGTERM for graceful shutdown.
-	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
-	defer cancel()
-
-	// Create the client, wiring in the OAuth flow for auth-protected servers.
-	var c *client.Client
-	var err error
-	c, err = client.New(cli.URL, clientName, "0", func(ctx context.Context, discoveryURL string) error {
-		return authorize(ctx, c, discoveryURL, cli.ClientID, cli.ClientSecret, clientName, cli.CallbackPort, cli.OOB)
-	}, opts...)
-	if err != nil {
-		fatalf("create client: %v", err)
-	}
-
-	// Run drives the full connect→session→teardown lifecycle in the background.
-	runErr := make(chan error, 1)
-	go func() { runErr <- c.Run(ctx) }()
-
-	// Wait until the session is established or Run fails.
-	var tools []*sdkmcp.Tool
-	for {
-		tools, err = c.ListTools(ctx)
-		if err == nil {
-			break
-		}
-		if !errors.Is(err, client.ErrNotConnected) {
-			fatalf("list tools: %v", err)
-		}
-		select {
-		case e := <-runErr:
-			fatalf("connect: %v", e)
-		case <-ctx.Done():
-			fatalf("connect: %v", ctx.Err())
-		default:
-			runtime.Gosched()
-		}
-	}
-
-	name, version, protocol := c.ServerInfo()
-	fmt.Printf("Connected to %s %s (protocol %s)\n", name, version, protocol)
-	fmt.Printf("%d tool(s):\n", len(tools))
-	for _, t := range tools {
-		fmt.Printf("  %-30s  %s\n", t.Name, t.Description)
-	}
-
 }
 
-func fatalf(format string, args ...any) {
-	fmt.Fprintf(os.Stderr, "Error: "+format+"\n", args...)
-	os.Exit(1)
-}
+///////////////////////////////////////////////////////////////////////////////
+// OAUTH
 
-// authorize performs the OAuth 2.0 discovery, (optional) dynamic registration,
-// and authorization flow, storing the resulting token on the client so the
-// next Connect attempt can succeed.
-func authorize(ctx context.Context, c *client.Client, discoveryURL, clientID, clientSecret, clientName string, callbackPort int, oob bool) error {
+// authorize performs the OAuth 2.0 discovery, optional dynamic registration,
+// and authorization flow.
+func (g *Globals) authorize(ctx context.Context, c *mcpclient.Client, discoveryURL string) error {
 	flow := c.OAuth()
 
-	// Step 1: discover the authorization server endpoints (RFC 8414 / RFC 9728).
 	metadata, err := flow.Discover(ctx, discoveryURL)
 	if err != nil {
 		return fmt.Errorf("discover authorization server: %w", err)
 	}
 
-	if oob {
-		// OOB flow: register without a redirect URI, then prompt the user to
-		// visit the authorization URL and paste back the code.
-		creds, err := buildCreds(ctx, flow, metadata, clientID, clientSecret, clientName)
+	if g.OOB {
+		creds, err := g.buildCreds(ctx, flow, metadata)
 		if err != nil {
 			return err
 		}
@@ -140,9 +146,7 @@ func authorize(ctx context.Context, c *client.Client, discoveryURL, clientID, cl
 		return err
 	}
 
-	// Browser flow: open a loopback listener first so we know the redirect URI
-	// before registering the client.
-	listener, err := net.Listen("tcp", fmt.Sprintf("127.0.0.1:%d", callbackPort))
+	listener, err := net.Listen("tcp", fmt.Sprintf("127.0.0.1:%d", g.CallbackPort))
 	if err != nil {
 		return fmt.Errorf("start callback listener: %w", err)
 	}
@@ -150,12 +154,12 @@ func authorize(ctx context.Context, c *client.Client, discoveryURL, clientID, cl
 	redirectURI := fmt.Sprintf("http://127.0.0.1:%d/callback", listener.Addr().(*net.TCPAddr).Port)
 
 	var creds *oauth.OAuthCredentials
-	if clientID != "" {
-		creds = &oauth.OAuthCredentials{ClientID: clientID, ClientSecret: clientSecret, TokenURL: metadata.TokenEndpoint, Metadata: metadata}
+	if g.ClientID != "" {
+		creds = &oauth.OAuthCredentials{ClientID: g.ClientID, ClientSecret: g.ClientSecret, TokenURL: metadata.TokenEndpoint, Metadata: metadata}
 	} else if !metadata.SupportsRegistration() {
 		return fmt.Errorf("authorization server does not support dynamic client registration; supply --client-id")
 	} else {
-		creds, err = flow.Register(ctx, metadata, clientName, redirectURI)
+		creds, err = flow.Register(ctx, metadata, g.execName, redirectURI)
 		if err != nil {
 			return fmt.Errorf("register client: %w", err)
 		}
@@ -168,18 +172,16 @@ func authorize(ctx context.Context, c *client.Client, discoveryURL, clientID, cl
 	return err
 }
 
-// buildCreds returns credentials for the OOB flow: uses provided clientID/secret
-// if given, otherwise performs dynamic client registration.
-func buildCreds(ctx context.Context, flow interface {
+func (g *Globals) buildCreds(ctx context.Context, flow interface {
 	Register(context.Context, *oauth.OAuthMetadata, string, ...string) (*oauth.OAuthCredentials, error)
-}, metadata *oauth.OAuthMetadata, clientID, clientSecret, clientName string) (*oauth.OAuthCredentials, error) {
-	if clientID != "" {
-		return &oauth.OAuthCredentials{ClientID: clientID, ClientSecret: clientSecret, TokenURL: metadata.TokenEndpoint, Metadata: metadata}, nil
+}, metadata *oauth.OAuthMetadata) (*oauth.OAuthCredentials, error) {
+	if g.ClientID != "" {
+		return &oauth.OAuthCredentials{ClientID: g.ClientID, ClientSecret: g.ClientSecret, TokenURL: metadata.TokenEndpoint, Metadata: metadata}, nil
 	}
 	if !metadata.SupportsRegistration() {
 		return nil, fmt.Errorf("authorization server does not support dynamic client registration; supply --client-id")
 	}
-	creds, err := flow.Register(ctx, metadata, clientName)
+	creds, err := flow.Register(ctx, metadata, g.execName)
 	if err != nil {
 		return nil, fmt.Errorf("register client: %w", err)
 	}

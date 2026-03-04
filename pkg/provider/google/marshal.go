@@ -173,7 +173,7 @@ func geminiFunctionDeclsFromTools(tools []tool.Tool) []*geminiFunctionDeclaratio
 		}
 
 		// Convert the jsonschema.Schema to map[string]any via JSON round-trip
-		if s, err := t.Schema(); err == nil && s != nil {
+		if s, err := t.InputSchema(); err == nil && s != nil {
 			if data, err := json.Marshal(s); err == nil {
 				var m map[string]any
 				if err := json.Unmarshal(data, &m); err == nil {

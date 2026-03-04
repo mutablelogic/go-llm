@@ -58,7 +58,9 @@ type mockTool struct {
 
 func (t *mockTool) Name() string                                          { return t.name }
 func (t *mockTool) Description() string                                   { return t.description }
-func (t *mockTool) Schema() (*jsonschema.Schema, error)                   { return t.schema, nil }
+func (t *mockTool) InputSchema() (*jsonschema.Schema, error)              { return t.schema, nil }
+func (t *mockTool) OutputSchema() (*jsonschema.Schema, error)             { return nil, nil }
+func (t *mockTool) Meta() tool.ToolMeta                                   { return tool.ToolMeta{} }
 func (t *mockTool) Run(_ context.Context, _ json.RawMessage) (any, error) { return nil, nil }
 
 ///////////////////////////////////////////////////////////////////////////////

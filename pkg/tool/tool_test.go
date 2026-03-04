@@ -15,7 +15,9 @@ type stubTool struct {
 
 func (s *stubTool) Name() string                                          { return s.name }
 func (s *stubTool) Description() string                                   { return "stub" }
-func (s *stubTool) Schema() (*jsonschema.Schema, error)                   { return nil, nil }
+func (s *stubTool) InputSchema() (*jsonschema.Schema, error)              { return nil, nil }
+func (s *stubTool) OutputSchema() (*jsonschema.Schema, error)             { return nil, nil }
+func (s *stubTool) Meta() tool.ToolMeta                                   { return tool.ToolMeta{} }
 func (s *stubTool) Run(_ context.Context, _ json.RawMessage) (any, error) { return nil, nil }
 
 func TestRegister_ReservedName(t *testing.T) {
