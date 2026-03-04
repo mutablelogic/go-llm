@@ -10,7 +10,7 @@ import (
 	schema "github.com/mutablelogic/go-llm/pkg/schema"
 	uitable "github.com/mutablelogic/go-llm/pkg/ui/table"
 	types "github.com/mutablelogic/go-server/pkg/types"
-	"go.opentelemetry.io/otel/attribute"
+	attribute "go.opentelemetry.io/otel/attribute"
 )
 
 ///////////////////////////////////////////////////////////////////////////////
