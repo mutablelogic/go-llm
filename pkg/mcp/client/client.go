@@ -1,6 +1,7 @@
 package httpclient
 
 import (
+	"context"
 	"net/http"
 	"sync"
 
@@ -20,7 +21,9 @@ type Client struct {
 	sdkmcp.Implementation
 
 	// MCP session state
-	url     string
+	url    string
+	authFn func(context.Context, string) error
+
 	session *sdkmcp.ClientSession
 	mu      sync.Mutex
 }
@@ -31,7 +34,10 @@ type Client struct {
 // New creates a new HTTP client with the given base URL and options.
 // The url parameter should point to the MCP server endpoint, e.g.
 // https://mcp.asana.com/sse
-func New(url, name, version string, opts ...client.ClientOpt) (*Client, error) {
+//
+// authFn is called when the server returns 401 to perform the OAuth flow.
+// Pass nil to disable auth.
+func New(url, name, version string, authFn func(context.Context, string) error, opts ...client.ClientOpt) (*Client, error) {
 	c := new(Client)
 
 	// Install a token transport via OptTransport so it is wired into the
@@ -47,14 +53,16 @@ func New(url, name, version string, opts ...client.ClientOpt) (*Client, error) {
 		})
 	})
 
+	// Create the client; this does not establish the session yet. Call Run() to connect and drive the session.
 	if cl, err := client.New(append(opts, client.OptEndpoint(url), tokenOpt)...); err != nil {
 		return nil, err
 	} else {
 		c.Client = cl
 		c.Implementation = sdkmcp.Implementation{Name: name, Version: version}
 		c.url = url
+		c.authFn = authFn
 	}
 
-	// Return the client without connecting; caller should call Connect to start the session.
+	// Return the client; caller should call Run to connect and drive the session.
 	return c, nil
 }

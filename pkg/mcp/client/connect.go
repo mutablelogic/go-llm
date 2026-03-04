@@ -18,20 +18,18 @@ import (
 ///////////////////////////////////////////////////////////////////////////////
 // PUBLIC METHODS
 
-// Connect establishes an MCP session, auto-detecting the transport, and
-// immediately starts it running in a background goroutine.
+// connectWithAuth establishes an MCP session, auto-detecting the transport.
 //
 // It first tries the 2025-03-26 streamable HTTP transport (POST-first).
 // If that fails it retries with the 2024-11-05 SSE transport
-// (GET /sse → endpoint event → POST messages)
 //
-// If the server returns a 401, authFn is called (if non-nil) with the parsed
+// If the server returns a 401, c.authFn is called (if non-nil) with the parsed
 // Www-Authenticate fields so it can perform discovery and authorization.
-// The connection is then retried once. Pass nil to skip the auth retry.
-func (c *Client) Connect(ctx context.Context, authFn func(context.Context, string) error) (*sdkmcp.ClientSession, error) {
+// The connection is then retried once.
+func (c *Client) connectWithAuth(ctx context.Context) (*sdkmcp.ClientSession, error) {
 	session, err := c.connect(ctx)
 	if err != nil {
-		if !IsUnauthorized(err) || authFn == nil {
+		if !IsUnauthorized(err) || c.authFn == nil {
 			return nil, err
 		}
 		// Use the resource_metadata URL from the Www-Authenticate header for
@@ -41,7 +39,7 @@ func (c *Client) Connect(ctx context.Context, authFn func(context.Context, strin
 		if u := AsUnauthorized(err); u != nil && u.ResourceMetadata() != "" {
 			discoveryURL = resolveURL(c.url, u.ResourceMetadata())
 		}
-		if err := authFn(ctx, discoveryURL); err != nil {
+		if err := c.authFn(ctx, discoveryURL); err != nil {
 			return nil, err
 		}
 		return c.connect(ctx)

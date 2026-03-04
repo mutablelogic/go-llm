@@ -16,12 +16,16 @@ import "context"
 // Server-sent log messages and progress notifications are written to the
 // default slog logger while Run is blocking.
 func (c *Client) Run(ctx context.Context) error {
-	c.mu.Lock()
-	session := c.session
-	c.mu.Unlock()
-	if session == nil {
-		return nil
+	// Connect (with auth retry if needed) and store the session on c.
+	session, err := c.connectWithAuth(ctx)
+	if err != nil {
+		return err
 	}
+
+	// Ensure the goroutine below is always unblocked when Run returns,
+	// even if the server closes the session before ctx is cancelled.
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
 
 	// When the caller cancels ctx, close the session so Wait() unblocks.
 	go func() {

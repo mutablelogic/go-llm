@@ -85,8 +85,9 @@ func (e *UnauthorizedError) Keys() []string {
 	return keys
 }
 
-///////////////////////////////////////////////////////////////////////////////
-// PACKAGE FUNCTIONS
+// ErrNotConnected is returned by methods that require an active session when
+// no session has been established yet.
+var ErrNotConnected = errors.New("not connected")
 
 // IsUnauthorized reports whether err is (or wraps) an UnauthorizedError / 401.
 func IsUnauthorized(err error) bool {

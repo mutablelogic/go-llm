@@ -3,17 +3,20 @@ package main
 import (
 	"bufio"
 	"context"
+	"errors"
 	"fmt"
 	"net"
 	"os"
 	"os/exec"
 	"os/signal"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"syscall"
 
 	// Packages
 	kong "github.com/alecthomas/kong"
+	sdkmcp "github.com/modelcontextprotocol/go-sdk/mcp"
 	goclient "github.com/mutablelogic/go-client"
 	oauth "github.com/mutablelogic/go-client/pkg/oauth"
 	client "github.com/mutablelogic/go-llm/pkg/mcp/client"
@@ -56,31 +59,46 @@ func main() {
 		opts = append(opts, goclient.OptTrace(os.Stderr, true))
 	}
 
-	// Create the client.
-	c, err := client.New(cli.URL, clientName, "0", opts...)
-	if err != nil {
-		fatalf("create client: %v", err)
-	}
-
 	// Create context that is canceled on SIGINT/SIGTERM for graceful shutdown.
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer cancel()
 
-	// Connect to the server with optional OAuth authorization.
-	if _, err := c.Connect(ctx, func(ctx context.Context, discoveryURL string) error {
+	// Create the client, wiring in the OAuth flow for auth-protected servers.
+	var c *client.Client
+	var err error
+	c, err = client.New(cli.URL, clientName, "0", func(ctx context.Context, discoveryURL string) error {
 		return authorize(ctx, c, discoveryURL, cli.ClientID, cli.ClientSecret, clientName, cli.CallbackPort, cli.OOB)
-	}); err != nil {
-		fatalf("connect: %v", err)
+	}, opts...)
+	if err != nil {
+		fatalf("create client: %v", err)
+	}
+
+	// Run drives the full connect→session→teardown lifecycle in the background.
+	runErr := make(chan error, 1)
+	go func() { runErr <- c.Run(ctx) }()
+
+	// Wait until the session is established or Run fails.
+	var tools []*sdkmcp.Tool
+	for {
+		tools, err = c.ListTools(ctx)
+		if err == nil {
+			break
+		}
+		if !errors.Is(err, client.ErrNotConnected) {
+			fatalf("list tools: %v", err)
+		}
+		select {
+		case e := <-runErr:
+			fatalf("connect: %v", e)
+		case <-ctx.Done():
+			fatalf("connect: %v", ctx.Err())
+		default:
+			runtime.Gosched()
+		}
 	}
 
 	name, version, protocol := c.ServerInfo()
 	fmt.Printf("Connected to %s %s (protocol %s)\n", name, version, protocol)
-
-	// List tools (session is running in the background).
-	tools, err := c.ListTools(ctx)
-	if err != nil {
-		fatalf("list tools: %v", err)
-	}
 	fmt.Printf("%d tool(s):\n", len(tools))
 	for _, t := range tools {
 		fmt.Printf("  %-30s  %s\n", t.Name, t.Description)
