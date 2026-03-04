@@ -16,7 +16,7 @@ type Connection interface {
 	// Connect establishes the MCP session, auto-detecting the transport.
 	// If the server returns 401 and authFn is non-nil, authFn is called and
 	// the connection is retried once.
-	Connect(ctx context.Context, authFn func(context.Context) error) error
+	Connect(ctx context.Context, authFn func(context.Context, string) error) (*sdkmcp.ClientSession, error)
 
 	// Close tears down the background session goroutines and waits for them
 	// to exit, ensuring no goroutine leaks.

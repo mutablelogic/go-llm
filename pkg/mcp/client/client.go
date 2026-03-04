@@ -1,12 +1,13 @@
 package httpclient
 
 import (
-	"context"
+	"net/http"
 	"sync"
 
 	// Packages
 	sdkmcp "github.com/modelcontextprotocol/go-sdk/mcp"
 	client "github.com/mutablelogic/go-client"
+	transport "github.com/mutablelogic/go-client/pkg/transport"
 )
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -19,11 +20,9 @@ type Client struct {
 	sdkmcp.Implementation
 
 	// MCP session state
-	url       string
-	session   *sdkmcp.ClientSession
-	runCancel context.CancelFunc
-	runWg     sync.WaitGroup
-	mu        sync.Mutex
+	url     string
+	session *sdkmcp.ClientSession
+	mu      sync.Mutex
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -31,10 +30,24 @@ type Client struct {
 
 // New creates a new HTTP client with the given base URL and options.
 // The url parameter should point to the MCP server endpoint, e.g.
-// "http://localhost:8084/api".
+// https://mcp.asana.com/sse
 func New(url, name, version string, opts ...client.ClientOpt) (*Client, error) {
 	c := new(Client)
-	if cl, err := client.New(append(opts, client.OptEndpoint(url))...); err != nil {
+
+	// Install a token transport via OptTransport so it is wired into the
+	// transport chain during client.New. The closure captures c (a pointer)
+	// so AccessToken() is resolved lazily at request time, after c.Client
+	// has been assigned below.
+	tokenOpt := client.OptTransport(func(parent http.RoundTripper) http.RoundTripper {
+		return transport.NewToken(parent, func() string {
+			if c.Client == nil {
+				return ""
+			}
+			return c.Client.AccessToken()
+		})
+	})
+
+	if cl, err := client.New(append(opts, client.OptEndpoint(url), tokenOpt)...); err != nil {
 		return nil, err
 	} else {
 		c.Client = cl

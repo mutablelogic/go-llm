@@ -1,16 +1,21 @@
 package main
 
 import (
+	"bufio"
 	"context"
 	"fmt"
+	"net"
 	"os"
 	"os/exec"
 	"os/signal"
 	"path/filepath"
+	"strings"
 	"syscall"
 
 	// Packages
 	kong "github.com/alecthomas/kong"
+	goclient "github.com/mutablelogic/go-client"
+	oauth "github.com/mutablelogic/go-client/pkg/oauth"
 	client "github.com/mutablelogic/go-llm/pkg/mcp/client"
 )
 
@@ -46,13 +51,13 @@ func main() {
 	)
 
 	// Build client options.
-	var opts []client.ClientOpt
+	var opts []goclient.ClientOpt
 	if cli.Debug {
-		opts = append(opts, client.OptTrace(os.Stderr))
+		opts = append(opts, goclient.OptTrace(os.Stderr, true))
 	}
 
 	// Create the client.
-	c, err := client.New(cli.URL, opts...)
+	c, err := client.New(cli.URL, clientName, "0", opts...)
 	if err != nil {
 		fatalf("create client: %v", err)
 	}
@@ -62,15 +67,11 @@ func main() {
 	defer cancel()
 
 	// Connect to the server with optional OAuth authorization.
-	if err := c.Connect(ctx, func(ctx context.Context) error {
-		return c.Authorize(ctx, cli.URL, cli.ClientID, cli.ClientSecret, clientName, cli.CallbackPort, cli.OOB, func(authURL string) error {
-			fmt.Printf("Opening browser for authorization...\n%s\n", authURL)
-			return exec.Command("open", authURL).Start()
-		})
+	if _, err := c.Connect(ctx, func(ctx context.Context, discoveryURL string) error {
+		return authorize(ctx, c, discoveryURL, cli.ClientID, cli.ClientSecret, clientName, cli.CallbackPort, cli.OOB)
 	}); err != nil {
 		fatalf("connect: %v", err)
 	}
-	defer c.Close()
 
 	name, version, protocol := c.ServerInfo()
 	fmt.Printf("Connected to %s %s (protocol %s)\n", name, version, protocol)
@@ -90,4 +91,79 @@ func main() {
 func fatalf(format string, args ...any) {
 	fmt.Fprintf(os.Stderr, "Error: "+format+"\n", args...)
 	os.Exit(1)
+}
+
+// authorize performs the OAuth 2.0 discovery, (optional) dynamic registration,
+// and authorization flow, storing the resulting token on the client so the
+// next Connect attempt can succeed.
+func authorize(ctx context.Context, c *client.Client, discoveryURL, clientID, clientSecret, clientName string, callbackPort int, oob bool) error {
+	flow := c.OAuth()
+
+	// Step 1: discover the authorization server endpoints (RFC 8414 / RFC 9728).
+	metadata, err := flow.Discover(ctx, discoveryURL)
+	if err != nil {
+		return fmt.Errorf("discover authorization server: %w", err)
+	}
+
+	if oob {
+		// OOB flow: register without a redirect URI, then prompt the user to
+		// visit the authorization URL and paste back the code.
+		creds, err := buildCreds(ctx, flow, metadata, clientID, clientSecret, clientName)
+		if err != nil {
+			return err
+		}
+		_, err = flow.AuthorizeWithCode(ctx, creds, func(authURL string) (string, error) {
+			_ = exec.Command("open", authURL).Start()
+			fmt.Printf("Open this URL to authorize:\n%s\n\nEnter the verification code: ", authURL)
+			scanner := bufio.NewScanner(os.Stdin)
+			scanner.Scan()
+			return strings.TrimSpace(scanner.Text()), scanner.Err()
+		})
+		return err
+	}
+
+	// Browser flow: open a loopback listener first so we know the redirect URI
+	// before registering the client.
+	listener, err := net.Listen("tcp", fmt.Sprintf("127.0.0.1:%d", callbackPort))
+	if err != nil {
+		return fmt.Errorf("start callback listener: %w", err)
+	}
+	defer listener.Close()
+	redirectURI := fmt.Sprintf("http://127.0.0.1:%d/callback", listener.Addr().(*net.TCPAddr).Port)
+
+	var creds *oauth.OAuthCredentials
+	if clientID != "" {
+		creds = &oauth.OAuthCredentials{ClientID: clientID, ClientSecret: clientSecret, TokenURL: metadata.TokenEndpoint, Metadata: metadata}
+	} else if !metadata.SupportsRegistration() {
+		return fmt.Errorf("authorization server does not support dynamic client registration; supply --client-id")
+	} else {
+		creds, err = flow.Register(ctx, metadata, clientName, redirectURI)
+		if err != nil {
+			return fmt.Errorf("register client: %w", err)
+		}
+	}
+
+	_, err = flow.AuthorizeWithBrowser(ctx, creds, listener, func(authURL string) error {
+		fmt.Printf("Opening browser for authorization...\n%s\n", authURL)
+		return exec.Command("open", authURL).Start()
+	})
+	return err
+}
+
+// buildCreds returns credentials for the OOB flow: uses provided clientID/secret
+// if given, otherwise performs dynamic client registration.
+func buildCreds(ctx context.Context, flow interface {
+	Register(context.Context, *oauth.OAuthMetadata, string, ...string) (*oauth.OAuthCredentials, error)
+}, metadata *oauth.OAuthMetadata, clientID, clientSecret, clientName string) (*oauth.OAuthCredentials, error) {
+	if clientID != "" {
+		return &oauth.OAuthCredentials{ClientID: clientID, ClientSecret: clientSecret, TokenURL: metadata.TokenEndpoint, Metadata: metadata}, nil
+	}
+	if !metadata.SupportsRegistration() {
+		return nil, fmt.Errorf("authorization server does not support dynamic client registration; supply --client-id")
+	}
+	creds, err := flow.Register(ctx, metadata, clientName)
+	if err != nil {
+		return nil, fmt.Errorf("register client: %w", err)
+	}
+	return creds, nil
 }
