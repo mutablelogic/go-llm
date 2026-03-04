@@ -2,13 +2,11 @@ package httpclient
 
 import (
 	"context"
-	"net/http"
 	"sync"
 
 	// Packages
 	sdkmcp "github.com/modelcontextprotocol/go-sdk/mcp"
 	client "github.com/mutablelogic/go-client"
-	transport "github.com/mutablelogic/go-client/pkg/transport"
 )
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -40,21 +38,10 @@ type Client struct {
 func New(url, name, version string, authFn func(context.Context, string) error, opts ...client.ClientOpt) (*Client, error) {
 	c := new(Client)
 
-	// Install a token transport via OptTransport so it is wired into the
-	// transport chain during client.New. The closure captures c (a pointer)
-	// so AccessToken() is resolved lazily at request time, after c.Client
-	// has been assigned below.
-	tokenOpt := client.OptTransport(func(parent http.RoundTripper) http.RoundTripper {
-		return transport.NewToken(parent, func() string {
-			if c.Client == nil {
-				return ""
-			}
-			return c.Client.AccessToken()
-		})
-	})
-
-	// Create the client; this does not establish the session yet. Call Run() to connect and drive the session.
-	if cl, err := client.New(append(opts, client.OptEndpoint(url), tokenOpt)...); err != nil {
+	// client.OptToken() installs a transport-layer middleware that lazily reads
+	// c.Client.token on each request, so Bearer tokens obtained during the OAuth
+	// flow are automatically injected without any extra nil-guard closures.
+	if cl, err := client.New(append(opts, client.OptEndpoint(url))...); err != nil {
 		return nil, err
 	} else {
 		c.Client = cl

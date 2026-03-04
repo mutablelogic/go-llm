@@ -14,7 +14,7 @@ require (
 	github.com/modelcontextprotocol/go-sdk v1.4.0
 	github.com/muesli/reflow v0.3.0
 	github.com/muesli/termenv v0.16.0
-	github.com/mutablelogic/go-client v1.4.1
+	github.com/mutablelogic/go-client v1.4.2
 	github.com/mutablelogic/go-server v1.6.13
 	github.com/stretchr/testify v1.11.1
 	github.com/yuin/goldmark v1.7.16
@@ -73,7 +73,7 @@ require (
 	golang.org/x/net v0.51.0 // indirect
 	golang.org/x/sys v0.41.0 // indirect
 	golang.org/x/text v0.34.0 // indirect
-	google.golang.org/genproto v0.0.0-20260226221140-a57be14db171
+	google.golang.org/genproto v0.0.0-20260226221140-a57be14db171 // indirect
 	google.golang.org/genproto/googleapis/api v0.0.0-20260226221140-a57be14db171 // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20260226221140-a57be14db171 // indirect
 	google.golang.org/grpc v1.79.1 // indirect
