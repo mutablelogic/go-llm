@@ -95,7 +95,12 @@ func geminiContentFromMessage(msg *schema.Message) (*geminiContent, error) {
 					return nil, llm.ErrInternalServerError.Withf("unmarshal tool call args: %v", err)
 				}
 			}
-			parts = append(parts, geminiNewFunctionCallPart(block.ToolCall.Name, args))
+			p := geminiNewFunctionCallPart(block.ToolCall.Name, args)
+			// Restore thought_signature so Gemini thinking models don't reject the history.
+			if sig, ok := block.ToolCall.Meta["thought_signature"].(string); ok && sig != "" {
+				p.ThoughtSignature = sig
+			}
+			parts = append(parts, p)
 			continue
 		}
 
@@ -112,6 +117,14 @@ func geminiContentFromMessage(msg *schema.Message) (*geminiContent, error) {
 	role := msg.Role
 	if role == schema.RoleAssistant {
 		role = "model"
+	}
+
+	// Append trailing thought-signature part if present. Gemini thinking models
+	// require this to be echoed back as the last part of the model turn.
+	if msg.Meta != nil {
+		if sig, ok := msg.Meta["trailing_thought_signature"].(string); ok && sig != "" {
+			parts = append(parts, &geminiPart{ThoughtSignature: sig})
+		}
 	}
 
 	return &geminiContent{
@@ -206,7 +219,9 @@ func messageFromGeminiResponse(response *geminiGenerateResponse) (*schema.Messag
 	var meta map[string]any
 	for _, part := range candidate.Content.Parts {
 		block, partMeta := blockFromGeminiPart(part)
-		content = append(content, block)
+		if !isEmptyBlock(block) {
+			content = append(content, block)
+		}
 		if partMeta != nil {
 			if meta == nil {
 				meta = make(map[string]any)
@@ -240,7 +255,20 @@ func messageFromGeminiResponse(response *geminiGenerateResponse) (*schema.Messag
 
 // blockFromGeminiPart converts a gemini wire Part to a schema.ContentBlock.
 // Returns the block and any provider-specific metadata for the message.
+// A zero-value ContentBlock (all nil fields) is returned for parts that carry
+// only metadata (e.g. a trailing thoughtSignature-only part from a thinking
+// model) — callers should skip zero-value blocks from the content slice.
 func blockFromGeminiPart(part *geminiPart) (schema.ContentBlock, map[string]any) {
+	// Trailing thought-signature part: text="", thought=false, thoughtSignature set.
+	// Gemini thinking models append this as the final part to close the thought
+	// context. It must be echoed back verbatim on the next turn. Store it in
+	// message-level meta and return an empty (skip) block.
+	if !part.Thought && part.Text == "" && part.ThoughtSignature != "" &&
+		part.InlineData == nil && part.FileData == nil &&
+		part.FunctionCall == nil && part.FunctionResponse == nil {
+		return schema.ContentBlock{}, map[string]any{"trailing_thought_signature": part.ThoughtSignature}
+	}
+
 	// Thinking — stored as text with provider metadata for round-trip
 	if part.Thought {
 		meta := map[string]any{"thought": true}
@@ -289,13 +317,16 @@ func blockFromGeminiPart(part *geminiPart) (schema.ContentBlock, map[string]any)
 				input = data
 			}
 		}
-		return schema.ContentBlock{
-			ToolCall: &schema.ToolCall{
-				ID:    uuid.New().String(),
-				Name:  part.FunctionCall.Name,
-				Input: input,
-			},
-		}, nil
+		toolCall := &schema.ToolCall{
+			ID:    uuid.New().String(),
+			Name:  part.FunctionCall.Name,
+			Input: input,
+		}
+		// Preserve thought_signature so it can be echoed back in subsequent turns.
+		if part.ThoughtSignature != "" {
+			toolCall.Meta = map[string]any{"thought_signature": part.ThoughtSignature}
+		}
+		return schema.ContentBlock{ToolCall: toolCall}, nil
 	}
 
 	// Function response → ToolResult
@@ -318,6 +349,14 @@ func blockFromGeminiPart(part *geminiPart) (schema.ContentBlock, map[string]any)
 	return schema.ContentBlock{
 		Text: &empty,
 	}, nil
+}
+
+// isEmptyBlock reports whether a ContentBlock carries no data. This is used
+// to skip metadata-only parts (e.g. trailing thought-signature) returned by
+// blockFromGeminiPart.
+func isEmptyBlock(b schema.ContentBlock) bool {
+	return b.Text == nil && b.Thinking == nil && b.Attachment == nil &&
+		b.ToolCall == nil && b.ToolResult == nil
 }
 
 ///////////////////////////////////////////////////////////////////////////////

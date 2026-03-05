@@ -8,6 +8,7 @@ import (
 
 	// Packages
 	llm "github.com/mutablelogic/go-llm"
+	mcpclient "github.com/mutablelogic/go-llm/pkg/mcp/client"
 	schema "github.com/mutablelogic/go-llm/pkg/schema"
 	errgroup "golang.org/x/sync/errgroup"
 )
@@ -85,20 +86,30 @@ func (tk *Toolkit) RemoveConnector(url string) {
 // backoff on non-context errors or unexpected server disconnects. When the
 // session is established the poll fires onState/onTools and exits; Run
 // continues until the context is cancelled or the server disconnects. On
-// final exit the deferred cleanup fires onState/onTools(nil).
+// final exit the deferred cleanup fires onState/onTools(nil) unless an auth
+// error caused the exit, in which case the connector state is left intact so
+// tools remain listed and callers receive per-call errors rather than a full
+// disconnect.
 func (tk *Toolkit) runConnector(ctx context.Context, url string, entry *connEntry) {
 	c := entry.connector
 	defer tk.wg.Done()
 	defer entry.wg.Done()
+
+	// suppressDisconnect prevents the final cleanup from broadcasting a
+	// disconnect notification. Set to true when the session exits due to an
+	// auth error so the connector stays "visible" in the tool list.
+	suppressDisconnect := false
 
 	// Final cleanup: clear tools and notify on exit.
 	defer func() {
 		tk.mu.Lock()
 		entry.tools = nil
 		tk.mu.Unlock()
-		zero := time.Time{}
-		tk.onState(url, schema.ConnectorState{ConnectedAt: &zero})
-		tk.onTools(url, nil)
+		if !suppressDisconnect {
+			zero := time.Time{}
+			tk.onState(url, schema.ConnectorState{ConnectedAt: &zero})
+			tk.onTools(url, nil)
+		}
 	}()
 
 	const (
@@ -163,20 +174,40 @@ func (tk *Toolkit) runConnector(ctx context.Context, url string, entry *connEntr
 			tk.onLog(url, slog.LevelError, "connector exited with error", "err", err)
 		}
 
-		// If we were connected, notify disconnect before retrying.
 		tk.mu.Lock()
 		wasConnected := entry.tools != nil
 		entry.tools = nil
 		tk.mu.Unlock()
-		if wasConnected {
-			zero := time.Time{}
-			tk.onState(url, schema.ConnectorState{ConnectedAt: &zero})
-			tk.onTools(url, nil)
-			backoff = minBackoff // successful session — reset backoff
+
+		switch {
+		case isAuthError(err) && !wasConnected:
+			// Auth failure before the session was ever established — bad
+			// credentials. Don't retry; notify disconnect and stop.
+			tk.onLog(url, slog.LevelError, "connector auth failure, not retrying", "err", err)
+			return
+
+		case isAuthError(err) && wasConnected:
+			// The SDK killed the session because one tools/call HTTP response
+			// returned 403. The tool call error already reached the LLM; the
+			// tool list has not changed. Reconnect silently — no disconnect
+			// notification — so the connector stays visible and subsequent
+			// calls work normally.
+			tk.onLog(url, slog.LevelWarn, "connector session dropped by auth error, reconnecting", "err", err)
+			suppressDisconnect = true
+			backoff = minBackoff
+			// fall through to the backoff sleep and retry
+
+		default:
+			// Real disconnect (server closed, network error, etc.)
+			if wasConnected {
+				zero := time.Time{}
+				tk.onState(url, schema.ConnectorState{ConnectedAt: &zero})
+				tk.onTools(url, nil)
+				backoff = minBackoff // successful session — reset backoff
+			}
+			tk.onLog(url, slog.LevelInfo, "connector disconnected, retrying", "backoff", backoff)
 		}
 
-		// Wait before retrying.
-		tk.onLog(url, slog.LevelInfo, "connector disconnected, retrying", "backoff", backoff)
 		select {
 		case <-ctx.Done():
 			return
@@ -188,6 +219,10 @@ func (tk *Toolkit) runConnector(ctx context.Context, url string, entry *connEntr
 
 func isContextError(err error) bool {
 	return err == context.Canceled || err == context.DeadlineExceeded
+}
+
+func isAuthError(err error) bool {
+	return mcpclient.IsAuthError(err)
 }
 
 func ptrString(s string) *string {

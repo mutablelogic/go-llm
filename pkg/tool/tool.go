@@ -146,9 +146,23 @@ func isReservedToolName(name string) bool {
 	return name == OutputToolName
 }
 
-// Lookup returns a builtin tool by name, or nil if not found
+// Lookup returns a tool by name, searching builtins first then connector tools.
+// Returns nil if not found.
 func (tk *Toolkit) Lookup(name string) llm.Tool {
-	return tk.builtins[name]
+	tk.mu.RLock()
+	defer tk.mu.RUnlock()
+
+	if t, ok := tk.builtins[name]; ok {
+		return t
+	}
+	for _, entry := range tk.conns {
+		for _, t := range entry.tools {
+			if t.Name() == name {
+				return t
+			}
+		}
+	}
+	return nil
 }
 
 // Run executes a tool by name with the given input.

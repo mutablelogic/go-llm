@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"regexp"
+	"strings"
 
 	// Packages
 	"github.com/mutablelogic/go-server/pkg/httpresponse"
@@ -92,6 +93,28 @@ var ErrNotConnected = errors.New("not connected")
 // IsUnauthorized reports whether err is (or wraps) an UnauthorizedError / 401.
 func IsUnauthorized(err error) bool {
 	return errors.Is(err, httpresponse.ErrNotAuthorized)
+}
+
+// IsForbidden reports whether err represents a 403 Forbidden response from the
+// MCP transport layer. The MCP SDK surfaces these as plain-text errors in the
+// form `sending "<method>": Forbidden` — we match that specific pattern rather
+// than any mention of "Forbidden" to avoid false-positives from tool results.
+func IsForbidden(err error) bool {
+	if err == nil {
+		return false
+	}
+	if errors.Is(err, httpresponse.ErrForbidden) {
+		return true
+	}
+	// MCP SDK transport format: `sending "<method>": Forbidden`
+	msg := err.Error()
+	return strings.Contains(msg, `": Forbidden`) || strings.Contains(msg, `': Forbidden`)
+}
+
+// IsAuthError reports whether err is an authentication or authorisation failure
+// (401 or 403) that is unlikely to self-heal on retry.
+func IsAuthError(err error) bool {
+	return IsUnauthorized(err) || IsForbidden(err)
 }
 
 // AsUnauthorized returns the *UnauthorizedError inside err, or nil.
