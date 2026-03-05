@@ -25,6 +25,7 @@ type Manager struct {
 	credentialStore schema.CredentialStore
 	connectorStore  schema.ConnectorStore
 	toolkit         *tool.Toolkit
+	toolkitOpts     []tool.ToolkitOpt
 	tracer          trace.Tracer
 	serverName      string
 	serverVersion   string
@@ -71,18 +72,30 @@ func NewManager(name, ver string, opts ...Opt) (*Manager, error) {
 	// By default, we don't configure a credential store
 	// since it requires a passphrase.
 
-	// Default to empty toolkit if none was provided
-	if m.toolkit == nil {
-		m.toolkit, _ = tool.NewToolkit()
+	// Build the toolkit with the accumulated opts and a state writeback hook.
+	tk, err := tool.NewToolkit(append(m.toolkitOpts,
+		tool.WithStateHandler(m.onConnectorState),
+	)...)
+	if err != nil {
+		return nil, err
 	}
+	m.toolkit = tk
 
 	// Return success
 	return m, nil
 }
 
 func (m *Manager) Close() error {
-	// Close is a no-op
+	if m.toolkit != nil {
+		return m.toolkit.Close()
+	}
 	return nil
+}
+
+// onConnectorState writes connector state back to the connector store.
+// A zero ConnectedAt signals that the connector has disconnected.
+func (m *Manager) onConnectorState(url string, state schema.ConnectorState) {
+	_, _ = m.connectorStore.UpdateConnectorState(context.Background(), url, state)
 }
 
 ///////////////////////////////////////////////////////////////////////////////

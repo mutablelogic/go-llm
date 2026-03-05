@@ -9,7 +9,6 @@ import (
 	jsonschema "github.com/google/jsonschema-go/jsonschema"
 	llm "github.com/mutablelogic/go-llm"
 	schema "github.com/mutablelogic/go-llm/pkg/schema"
-	tool "github.com/mutablelogic/go-llm/pkg/tool"
 	assert "github.com/stretchr/testify/assert"
 )
 
@@ -27,7 +26,7 @@ func (t *mockTool) Name() string                              { return t.name }
 func (t *mockTool) Description() string                       { return t.description }
 func (t *mockTool) InputSchema() (*jsonschema.Schema, error)  { return t.schema, nil }
 func (t *mockTool) OutputSchema() (*jsonschema.Schema, error) { return nil, nil }
-func (t *mockTool) Meta() llm.ToolMeta                       { return llm.ToolMeta{} }
+func (t *mockTool) Meta() llm.ToolMeta                        { return llm.ToolMeta{} }
 func (t *mockTool) Run(ctx context.Context, input json.RawMessage) (any, error) {
 	if t.runFn != nil {
 		return t.runFn(ctx, input)
@@ -42,10 +41,7 @@ func (t *mockTool) Run(ctx context.Context, input json.RawMessage) (any, error) 
 func Test_tool_001(t *testing.T) {
 	assert := assert.New(t)
 
-	tk, err := tool.NewToolkit(&mockTool{name: "my_tool", description: "A test tool"})
-	assert.NoError(err)
-
-	m, err := NewManager("test", "0.0.0", WithToolkit(tk))
+	m, err := NewManager("test", "0.0.0", WithTools(&mockTool{name: "my_tool", description: "A test tool"}))
 	assert.NoError(err)
 
 	meta, err := m.GetTool(context.TODO(), "my_tool")
@@ -73,10 +69,7 @@ func Test_tool_003(t *testing.T) {
 		Type:        "object",
 		Description: "input schema",
 	}
-	tk, err := tool.NewToolkit(&mockTool{name: "schema_tool", description: "Has schema", schema: s})
-	assert.NoError(err)
-
-	m, err := NewManager("test", "0.0.0", WithToolkit(tk))
+	m, err := NewManager("test", "0.0.0", WithTools(&mockTool{name: "schema_tool", description: "Has schema", schema: s}))
 	assert.NoError(err)
 
 	meta, err := m.GetTool(context.TODO(), "schema_tool")
@@ -89,10 +82,7 @@ func Test_tool_003(t *testing.T) {
 func Test_tool_004(t *testing.T) {
 	assert := assert.New(t)
 
-	tk, err := tool.NewToolkit(&mockTool{name: "no_schema", description: "No schema"})
-	assert.NoError(err)
-
-	m, err := NewManager("test", "0.0.0", WithToolkit(tk))
+	m, err := NewManager("test", "0.0.0", WithTools(&mockTool{name: "no_schema", description: "No schema"}))
 	assert.NoError(err)
 
 	meta, err := m.GetTool(context.TODO(), "no_schema")
@@ -104,16 +94,13 @@ func Test_tool_004(t *testing.T) {
 func Test_tool_005(t *testing.T) {
 	assert := assert.New(t)
 
-	tk, err := tool.NewToolkit(&mockTool{
+	m, err := NewManager("test", "0.0.0", WithTools(&mockTool{
 		name:        "echo_tool",
 		description: "Echoes input",
 		runFn: func(_ context.Context, input json.RawMessage) (any, error) {
 			return map[string]string{"echoed": string(input)}, nil
 		},
-	})
-	assert.NoError(err)
-
-	m, err := NewManager("test", "0.0.0", WithToolkit(tk))
+	}))
 	assert.NoError(err)
 
 	resp, err := m.CallTool(context.TODO(), "echo_tool", json.RawMessage(`"hello"`))
@@ -137,15 +124,12 @@ func Test_tool_006(t *testing.T) {
 func Test_tool_007(t *testing.T) {
 	assert := assert.New(t)
 
-	tk, err := tool.NewToolkit(&mockTool{
+	m, err := NewManager("test", "0.0.0", WithTools(&mockTool{
 		name: "nil_input",
 		runFn: func(_ context.Context, input json.RawMessage) (any, error) {
 			return "ok", nil
 		},
-	})
-	assert.NoError(err)
-
-	m, err := NewManager("test", "0.0.0", WithToolkit(tk))
+	}))
 	assert.NoError(err)
 
 	resp, err := m.CallTool(context.TODO(), "nil_input", nil)
@@ -157,15 +141,12 @@ func Test_tool_007(t *testing.T) {
 func Test_tool_008(t *testing.T) {
 	assert := assert.New(t)
 
-	tk, err := tool.NewToolkit(&mockTool{
+	m, err := NewManager("test", "0.0.0", WithTools(&mockTool{
 		name: "fail_tool",
 		runFn: func(_ context.Context, _ json.RawMessage) (any, error) {
 			return nil, llm.ErrBadParameter.With("bad input")
 		},
-	})
-	assert.NoError(err)
-
-	m, err := NewManager("test", "0.0.0", WithToolkit(tk))
+	}))
 	assert.NoError(err)
 
 	_, err = m.CallTool(context.TODO(), "fail_tool", json.RawMessage(`{}`))
@@ -176,14 +157,11 @@ func Test_tool_008(t *testing.T) {
 func Test_tool_009(t *testing.T) {
 	assert := assert.New(t)
 
-	tk, err := tool.NewToolkit(
+	m, err := NewManager("test", "0.0.0", WithTools(
 		&mockTool{name: "charlie", description: "C"},
 		&mockTool{name: "alpha", description: "A"},
 		&mockTool{name: "bravo", description: "B"},
-	)
-	assert.NoError(err)
-
-	m, err := NewManager("test", "0.0.0", WithToolkit(tk))
+	))
 	assert.NoError(err)
 
 	resp, err := m.ListTools(context.TODO(), schema.ListToolRequest{})
@@ -198,14 +176,11 @@ func Test_tool_009(t *testing.T) {
 func Test_tool_010(t *testing.T) {
 	assert := assert.New(t)
 
-	tk, err := tool.NewToolkit(
+	m, err := NewManager("test", "0.0.0", WithTools(
 		&mockTool{name: "alpha"},
 		&mockTool{name: "bravo"},
 		&mockTool{name: "charlie"},
-	)
-	assert.NoError(err)
-
-	m, err := NewManager("test", "0.0.0", WithToolkit(tk))
+	))
 	assert.NoError(err)
 
 	limit := uint(2)
@@ -221,14 +196,11 @@ func Test_tool_010(t *testing.T) {
 func Test_tool_011(t *testing.T) {
 	assert := assert.New(t)
 
-	tk, err := tool.NewToolkit(
+	m, err := NewManager("test", "0.0.0", WithTools(
 		&mockTool{name: "alpha"},
 		&mockTool{name: "bravo"},
 		&mockTool{name: "charlie"},
-	)
-	assert.NoError(err)
-
-	m, err := NewManager("test", "0.0.0", WithToolkit(tk))
+	))
 	assert.NoError(err)
 
 	resp, err := m.ListTools(context.TODO(), schema.ListToolRequest{Offset: 1})
@@ -242,14 +214,11 @@ func Test_tool_011(t *testing.T) {
 func Test_tool_012(t *testing.T) {
 	assert := assert.New(t)
 
-	tk, err := tool.NewToolkit(
+	m, err := NewManager("test", "0.0.0", WithTools(
 		&mockTool{name: "alpha"},
 		&mockTool{name: "bravo"},
 		&mockTool{name: "charlie"},
-	)
-	assert.NoError(err)
-
-	m, err := NewManager("test", "0.0.0", WithToolkit(tk))
+	))
 	assert.NoError(err)
 
 	limit := uint(1)
@@ -277,10 +246,7 @@ func Test_tool_013(t *testing.T) {
 func Test_tool_014(t *testing.T) {
 	assert := assert.New(t)
 
-	tk, err := tool.NewToolkit(&mockTool{name: "alpha"})
-	assert.NoError(err)
-
-	m, err := NewManager("test", "0.0.0", WithToolkit(tk))
+	m, err := NewManager("test", "0.0.0", WithTools(&mockTool{name: "alpha"}))
 	assert.NoError(err)
 
 	resp, err := m.ListTools(context.TODO(), schema.ListToolRequest{Offset: 10})
@@ -294,10 +260,7 @@ func Test_tool_015(t *testing.T) {
 	assert := assert.New(t)
 
 	s := &jsonschema.Schema{Type: "string"}
-	tk, err := tool.NewToolkit(&mockTool{name: "typed_tool", schema: s})
-	assert.NoError(err)
-
-	m, err := NewManager("test", "0.0.0", WithToolkit(tk))
+	m, err := NewManager("test", "0.0.0", WithTools(&mockTool{name: "typed_tool", schema: s}))
 	assert.NoError(err)
 
 	resp, err := m.ListTools(context.TODO(), schema.ListToolRequest{})
@@ -316,15 +279,12 @@ func Test_tool_016(t *testing.T) {
 		Unit string  `json:"unit"`
 	}
 
-	tk, err := tool.NewToolkit(&mockTool{
+	m, err := NewManager("test", "0.0.0", WithTools(&mockTool{
 		name: "get_weather",
 		runFn: func(_ context.Context, _ json.RawMessage) (any, error) {
 			return weatherResult{Temp: 22.5, Unit: "celsius"}, nil
 		},
-	})
-	assert.NoError(err)
-
-	m, err := NewManager("test", "0.0.0", WithToolkit(tk))
+	}))
 	assert.NoError(err)
 
 	resp, err := m.CallTool(context.TODO(), "get_weather", nil)

@@ -142,8 +142,12 @@ func Test_opt_toolkit_001(t *testing.T) {
 	// Test anthropicToolsFromTools with a single mock tool
 	assert := assert.New(t)
 
-	tk, err := tool.NewToolkit(newMockTool("get_weather", "Get current weather"))
+	tk, err := tool.NewToolkit()
+	if err == nil {
+		err = tk.AddBuiltin(newMockTool("get_weather", "Get current weather"))
+	}
 	assert.NoError(err)
+	defer tk.Close()
 
 	tools, err := anthropicToolsFromTools(tk.Tools())
 	assert.NoError(err)
@@ -168,11 +172,13 @@ func Test_opt_toolkit_002(t *testing.T) {
 	// Test anthropicToolsFromTools with multiple tools
 	assert := assert.New(t)
 
-	tk, err := tool.NewToolkit(
-		newMockTool("get_weather", "Get weather"),
-		newMockTool("search_web", "Search the web"),
-	)
+	tk, err := tool.NewToolkit()
+	if err == nil {
+		err = tk.AddBuiltin(newMockTool("get_weather", "Get weather"),
+		newMockTool("search_web", "Search the web"))
+	}
 	assert.NoError(err)
+	defer tk.Close()
 
 	tools, err := anthropicToolsFromTools(tk.Tools())
 	assert.NoError(err)
@@ -193,8 +199,12 @@ func Test_opt_toolkit_003(t *testing.T) {
 	// Test toolkit tools appear in generateRequestFromOpts via WithToolkit
 	assert := assert.New(t)
 
-	tk, err := tool.NewToolkit(newMockTool("get_weather", "Get weather"))
+	tk, err := tool.NewToolkit()
+	if err == nil {
+		err = tk.AddBuiltin(newMockTool("get_weather", "Get weather"))
+	}
 	assert.NoError(err)
+	defer tk.Close()
 
 	msg := &schema.Message{Role: "user", Content: []schema.ContentBlock{{Text: strPtr("Hi")}}}
 	session := schema.Conversation{msg}
@@ -214,11 +224,13 @@ func Test_opt_toolkit_004(t *testing.T) {
 	// Test toolkit with tool choice in request
 	assert := assert.New(t)
 
-	tk, err := tool.NewToolkit(
-		newMockTool("get_weather", "Get weather"),
-		newMockTool("search_web", "Search the web"),
-	)
+	tk, err := tool.NewToolkit()
+	if err == nil {
+		err = tk.AddBuiltin(newMockTool("get_weather", "Get weather"),
+		newMockTool("search_web", "Search the web"))
+	}
 	assert.NoError(err)
+	defer tk.Close()
 
 	msg := &schema.Message{Role: "user", Content: []schema.ContentBlock{{Text: strPtr("Hi")}}}
 	session := schema.Conversation{msg}
@@ -239,6 +251,7 @@ func Test_opt_toolkit_005(t *testing.T) {
 
 	tk, err := tool.NewToolkit()
 	assert.NoError(err)
+	defer tk.Close()
 
 	tools, err := anthropicToolsFromTools(tk.Tools())
 	assert.NoError(err)

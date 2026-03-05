@@ -86,21 +86,10 @@ func WithCredentialStore(store schema.CredentialStore) Opt {
 	}
 }
 
-// WithToolkit sets the toolkit for the manager.
-func WithToolkit(toolkit *tool.Toolkit) Opt {
+// WithTools registers one or more tools with the manager's toolkit.
+func WithTools(tools ...llm.Tool) Opt {
 	return func(m *Manager) error {
-		if toolkit == nil {
-			return llm.ErrBadParameter.With("toolkit is required")
-		}
-		m.toolkit = toolkit
-		return nil
-	}
-}
-
-// WithTracer sets the OpenTelemetry tracer for distributed tracing.
-func WithTracer(tracer trace.Tracer) Opt {
-	return func(m *Manager) error {
-		m.tracer = tracer
+		m.toolkitOpts = append(m.toolkitOpts, tool.WithBuiltin(tools...))
 		return nil
 	}
 }
@@ -111,7 +100,16 @@ func WithTool(t llm.Tool) Opt {
 		if t == nil {
 			return llm.ErrBadParameter.With("tool is required")
 		}
-		return m.toolkit.Register(t)
+		m.toolkitOpts = append(m.toolkitOpts, tool.WithBuiltin(t))
+		return nil
+	}
+}
+
+// WithTracer sets the OpenTelemetry tracer for distributed tracing.
+func WithTracer(tracer trace.Tracer) Opt {
+	return func(m *Manager) error {
+		m.tracer = tracer
+		return nil
 	}
 }
 

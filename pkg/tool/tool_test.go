@@ -26,7 +26,8 @@ func TestRegister_ReservedName(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	err = tk.Register(&stubTool{name: tool.OutputToolName})
+	defer tk.Close()
+	err = tk.AddBuiltin(&stubTool{name: tool.OutputToolName})
 	if err == nil {
 		t.Fatal("expected error when registering a tool with reserved name")
 	}
@@ -38,8 +39,9 @@ func TestRegister_OutputToolAllowed(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	defer tk.Close()
 	outputTool := tool.NewOutputTool(&jsonschema.Schema{})
-	if err := tk.Register(outputTool); err != nil {
+	if err := tk.AddBuiltin(outputTool); err != nil {
 		t.Fatal("OutputTool should be allowed:", err)
 	}
 }
@@ -49,7 +51,8 @@ func TestRegister_NormalToolOK(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := tk.Register(&stubTool{name: "my_tool"}); err != nil {
+	defer tk.Close()
+	if err := tk.AddBuiltin(&stubTool{name: "my_tool"}); err != nil {
 		t.Fatal("normal tool should register:", err)
 	}
 }

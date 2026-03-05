@@ -13,7 +13,6 @@ import (
 	manager "github.com/mutablelogic/go-llm/pkg/manager"
 	opt "github.com/mutablelogic/go-llm/pkg/opt"
 	schema "github.com/mutablelogic/go-llm/pkg/schema"
-	tool "github.com/mutablelogic/go-llm/pkg/tool"
 	types "github.com/mutablelogic/go-server/pkg/types"
 )
 
@@ -60,7 +59,7 @@ func (t *mockTool) Name() string                                          { retu
 func (t *mockTool) Description() string                                   { return t.description }
 func (t *mockTool) InputSchema() (*jsonschema.Schema, error)              { return t.schema, nil }
 func (t *mockTool) OutputSchema() (*jsonschema.Schema, error)             { return nil, nil }
-func (t *mockTool) Meta() llm.ToolMeta                                   { return llm.ToolMeta{} }
+func (t *mockTool) Meta() llm.ToolMeta                                    { return llm.ToolMeta{} }
 func (t *mockTool) Run(_ context.Context, _ json.RawMessage) (any, error) { return nil, nil }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -125,11 +124,7 @@ func newTestManager(t *testing.T, clients []mockClient, tools ...llm.Tool) *mana
 		opts = append(opts, manager.WithClient(&clients[i]))
 	}
 	if len(tools) > 0 {
-		tk, err := tool.NewToolkit(tools...)
-		if err != nil {
-			t.Fatal(err)
-		}
-		opts = append(opts, manager.WithToolkit(tk))
+		opts = append(opts, manager.WithTools(tools...))
 	}
 	m, err := manager.NewManager("test", "0.0.0", opts...)
 	if err != nil {
@@ -145,11 +140,7 @@ func newTestManagerWithGenerator(t *testing.T, clients []*mockGeneratorClient, t
 		opts = append(opts, manager.WithClient(c))
 	}
 	if len(tools) > 0 {
-		tk, err := tool.NewToolkit(tools...)
-		if err != nil {
-			t.Fatal(err)
-		}
-		opts = append(opts, manager.WithToolkit(tk))
+		opts = append(opts, manager.WithTools(tools...))
 	}
 	m, err := manager.NewManager("test", "0.0.0", opts...)
 	if err != nil {

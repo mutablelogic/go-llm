@@ -21,7 +21,6 @@ import (
 	mistral "github.com/mutablelogic/go-llm/pkg/provider/mistral"
 	schema "github.com/mutablelogic/go-llm/pkg/schema"
 	session "github.com/mutablelogic/go-llm/pkg/store"
-	tool "github.com/mutablelogic/go-llm/pkg/tool"
 	version "github.com/mutablelogic/go-llm/pkg/version"
 	weatherapi "github.com/mutablelogic/go-llm/pkg/weatherapi"
 	server "github.com/mutablelogic/go-server"
@@ -157,38 +156,30 @@ func (cmd *RunServer) WithManager(ctx *Globals, fn func(*manager.Manager, string
 		opts = append(opts, manager.WithConnectorStore(store))
 	}
 
-	// Add new toolkit with news, weather and home assistant tools if API keys are provided
-	toolkit, err := tool.NewToolkit()
-	if err != nil {
-		return fmt.Errorf("failed to create toolkit: %w", err)
-	} else {
-		opts = append(opts, manager.WithToolkit(toolkit))
-	}
-
 	// NewsAPI tool
 	if cmd.NewsAPIKey != "" {
-		if tool, err := newsapi.NewTools(cmd.NewsAPIKey, clientOpts...); err != nil {
+		if tools, err := newsapi.NewTools(cmd.NewsAPIKey, clientOpts...); err != nil {
 			return fmt.Errorf("failed to create NewsAPI tool: %w", err)
-		} else if err := toolkit.Register(tool...); err != nil {
-			return fmt.Errorf("failed to add NewsAPI tool to toolkit: %w", err)
+		} else {
+			opts = append(opts, manager.WithTools(tools...))
 		}
 	}
 
 	// WeatherAPI tool
 	if cmd.WeatherAPIKey != "" {
-		if tool, err := weatherapi.NewTools(cmd.WeatherAPIKey, clientOpts...); err != nil {
+		if tools, err := weatherapi.NewTools(cmd.WeatherAPIKey, clientOpts...); err != nil {
 			return fmt.Errorf("failed to create WeatherAPI tool: %w", err)
-		} else if err := toolkit.Register(tool...); err != nil {
-			return fmt.Errorf("failed to add WeatherAPI tool to toolkit: %w", err)
+		} else {
+			opts = append(opts, manager.WithTools(tools...))
 		}
 	}
 
 	// Home Assistant tool
 	if cmd.HAEndpoint != "" && cmd.HAToken != "" {
-		if tool, err := homeassistant.NewTools(cmd.HAEndpoint, cmd.HAToken, clientOpts...); err != nil {
+		if tools, err := homeassistant.NewTools(cmd.HAEndpoint, cmd.HAToken, clientOpts...); err != nil {
 			return fmt.Errorf("failed to create Home Assistant tool: %w", err)
-		} else if err := toolkit.Register(tool...); err != nil {
-			return fmt.Errorf("failed to add Home Assistant tool to toolkit: %w", err)
+		} else {
+			opts = append(opts, manager.WithTools(tools...))
 		}
 	}
 

@@ -475,7 +475,7 @@ func (m *Manager) withTools(tools ...string) (opt.Opt, error) {
 		filtered = append(filtered, t)
 	}
 
-	tk, err := tool.NewToolkit(filtered...)
+	tk, err := tool.NewToolkit(tool.WithBuiltin(filtered...))
 	if err != nil {
 		return nil, err
 	}

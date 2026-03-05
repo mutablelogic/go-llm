@@ -3,6 +3,8 @@ package tool
 import (
 	"context"
 	"encoding/json"
+	"log/slog"
+	"sync"
 
 	// Packages
 	llm "github.com/mutablelogic/go-llm"
@@ -15,40 +17,70 @@ import (
 
 // Toolkit is a collection of tools with unique names
 type Toolkit struct {
-	tools map[string]llm.Tool
+	mu       sync.RWMutex
+	wg       sync.WaitGroup
+	builtins map[string]llm.Tool
+	conns    map[string]*connEntry
+
+	// Callbacks
+	onLog   func(url string, level slog.Level, msg string, args ...any)
+	onState func(url string, state schema.ConnectorState)
+	onTools func(url string, tools []llm.Tool)
 }
 
 ///////////////////////////////////////////////////////////////////////////////
 // LIFECYCLE
 
-// NewToolkit creates a new toolkit with the given tools.
-// Returns an error if any tool has an invalid or duplicate name.
-func NewToolkit(tools ...llm.Tool) (*Toolkit, error) {
+// NewToolkit creates a new toolkit with the given options.
+func NewToolkit(opts ...ToolkitOpt) (*Toolkit, error) {
 	tk := &Toolkit{
-		tools: make(map[string]llm.Tool),
+		builtins: make(map[string]llm.Tool),
+		conns:    make(map[string]*connEntry),
+		onLog:    func(string, slog.Level, string, ...any) {},
+		onState:  func(string, schema.ConnectorState) {},
+		onTools:  func(string, []llm.Tool) {},
 	}
-	if err := tk.Register(tools...); err != nil {
-		return nil, err
+	for _, o := range opts {
+		if err := o(tk); err != nil {
+			return nil, err
+		}
 	}
 	return tk, nil
+}
+
+// Close cancels all active connector goroutines, waits for them to finish,
+// and releases resources.
+func (tk *Toolkit) Close() error {
+	tk.mu.Lock()
+	for _, e := range tk.conns {
+		e.cancel()
+	}
+	tk.conns = make(map[string]*connEntry)
+	tk.mu.Unlock()
+
+	// Wait for all connectors to disconnect
+	tk.wg.Wait()
+
+	// Return success
+	return nil
 }
 
 ///////////////////////////////////////////////////////////////////////////////
 // PUBLIC METHODS
 
-// Tools returns all tools in the toolkit
+// Tools returns all builtin tools in the toolkit
 func (tk *Toolkit) Tools() []llm.Tool {
-	result := make([]llm.Tool, 0, len(tk.tools))
-	for _, t := range tk.tools {
+	result := make([]llm.Tool, 0, len(tk.builtins))
+	for _, t := range tk.builtins {
 		result = append(result, t)
 	}
 	return result
 }
 
-// Register adds one or more tools to the toolkit.
+// AddBuiltin adds one or more locally-implemented tools to the toolkit.
 // Returns an error if any tool has an invalid or duplicate name,
 // or if the name is reserved (e.g. "submit_output").
-func (tk *Toolkit) Register(tools ...llm.Tool) error {
+func (tk *Toolkit) AddBuiltin(tools ...llm.Tool) error {
 	for _, t := range tools {
 		name := t.Name()
 		if !types.IsIdentifier(name) {
@@ -60,10 +92,10 @@ func (tk *Toolkit) Register(tools ...llm.Tool) error {
 				return llm.ErrBadParameter.Withf("reserved tool name: %q", name)
 			}
 		}
-		if _, exists := tk.tools[name]; exists {
+		if _, exists := tk.builtins[name]; exists {
 			return llm.ErrBadParameter.Withf("duplicate tool name: %q", name)
 		}
-		tk.tools[name] = t
+		tk.builtins[name] = t
 	}
 	return nil
 }
@@ -73,9 +105,9 @@ func isReservedToolName(name string) bool {
 	return name == OutputToolName
 }
 
-// Lookup returns a tool by name, or nil if not found
+// Lookup returns a builtin tool by name, or nil if not found
 func (tk *Toolkit) Lookup(name string) llm.Tool {
-	return tk.tools[name]
+	return tk.builtins[name]
 }
 
 // Run executes a tool by name with the given input.

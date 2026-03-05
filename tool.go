@@ -54,3 +54,14 @@ type Tool interface {
 	// Run the tool with the given input as JSON (may be nil)
 	Run(ctx context.Context, input json.RawMessage) (any, error)
 }
+
+// Connector is the interface a remote tool source must implement.
+// pkg/mcp/client.Client satisfies this interface.
+type Connector interface {
+	// Run establishes and drives the connection until ctx is cancelled
+	// or the remote server closes it.
+	Run(ctx context.Context) error
+
+	// ListTools returns all tools advertised by the connected remote server.
+	ListTools(ctx context.Context) ([]Tool, error)
+}

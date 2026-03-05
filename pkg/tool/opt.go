@@ -1,9 +1,9 @@
 package tool
 
 import (
-	// Packages
 	"fmt"
 
+	// Packages
 	llm "github.com/mutablelogic/go-llm"
 	opt "github.com/mutablelogic/go-llm/pkg/opt"
 )

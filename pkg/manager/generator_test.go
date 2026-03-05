@@ -15,7 +15,6 @@ import (
 	google "github.com/mutablelogic/go-llm/pkg/provider/google"
 	mistral "github.com/mutablelogic/go-llm/pkg/provider/mistral"
 	schema "github.com/mutablelogic/go-llm/pkg/schema"
-	tool "github.com/mutablelogic/go-llm/pkg/tool"
 	types "github.com/mutablelogic/go-server/pkg/types"
 	assert "github.com/stretchr/testify/assert"
 )
@@ -84,7 +83,7 @@ func (c *mockGeneratorClient) WithSession(_ context.Context, _ schema.Model, ses
 func Test_ask_001(t *testing.T) {
 	assert := assert.New(t)
 
-	m, err := NewManager("test", "0.0.0", 
+	m, err := NewManager("test", "0.0.0",
 		WithClient(&mockGeneratorClient{
 			mockClient: mockClient{name: "provider-1", models: []schema.Model{{Name: "model-1", OwnedBy: "provider-1"}}},
 			tokens:     42,
@@ -112,7 +111,7 @@ func Test_ask_001(t *testing.T) {
 func Test_ask_002(t *testing.T) {
 	assert := assert.New(t)
 
-	m, err := NewManager("test", "0.0.0", 
+	m, err := NewManager("test", "0.0.0",
 		WithClient(&mockGeneratorClient{
 			mockClient: mockClient{name: "provider-1", models: []schema.Model{{Name: "model-1", OwnedBy: "provider-1"}}},
 		}),
@@ -133,7 +132,7 @@ func Test_ask_002(t *testing.T) {
 func Test_ask_003(t *testing.T) {
 	assert := assert.New(t)
 
-	m, err := NewManager("test", "0.0.0", 
+	m, err := NewManager("test", "0.0.0",
 		WithClient(&mockGeneratorClient{
 			mockClient: mockClient{name: "provider-1", models: []schema.Model{{Name: "shared", OwnedBy: "provider-1"}}},
 		}),
@@ -158,7 +157,7 @@ func Test_ask_003(t *testing.T) {
 func Test_ask_004(t *testing.T) {
 	assert := assert.New(t)
 
-	m, err := NewManager("test", "0.0.0", 
+	m, err := NewManager("test", "0.0.0",
 		WithClient(&mockClient{name: "provider-1", models: []schema.Model{{Name: "model-1", OwnedBy: "provider-1"}}}),
 	)
 	assert.NoError(err)
@@ -177,7 +176,7 @@ func Test_ask_004(t *testing.T) {
 func Test_ask_005(t *testing.T) {
 	assert := assert.New(t)
 
-	m, err := NewManager("test", "0.0.0", 
+	m, err := NewManager("test", "0.0.0",
 		WithClient(&mockGeneratorClient{
 			mockClient: mockClient{name: "provider-1", models: []schema.Model{{Name: "model-1", OwnedBy: "provider-1"}}},
 		}),
@@ -211,7 +210,7 @@ func Test_ask_005(t *testing.T) {
 func Test_ask_006(t *testing.T) {
 	assert := assert.New(t)
 
-	m, err := NewManager("test", "0.0.0", 
+	m, err := NewManager("test", "0.0.0",
 		WithClient(&mockGeneratorClient{
 			mockClient: mockClient{name: "provider-1", models: []schema.Model{{Name: "model-1", OwnedBy: "provider-1"}}},
 		}),
@@ -236,7 +235,7 @@ func Test_ask_006(t *testing.T) {
 func Test_ask_007(t *testing.T) {
 	assert := assert.New(t)
 
-	m, err := NewManager("test", "0.0.0", 
+	m, err := NewManager("test", "0.0.0",
 		WithClient(&mockGeneratorClient{
 			mockClient: mockClient{name: "provider-1", models: []schema.Model{{Name: "model-1", OwnedBy: "provider-1"}}},
 		}),
@@ -262,7 +261,7 @@ func Test_ask_007(t *testing.T) {
 func Test_ask_008(t *testing.T) {
 	assert := assert.New(t)
 
-	m, err := NewManager("test", "0.0.0", 
+	m, err := NewManager("test", "0.0.0",
 		WithClient(&mockGeneratorClient{
 			mockClient: mockClient{name: "provider-1", models: []schema.Model{{Name: "model-1", OwnedBy: "provider-1"}}},
 		}),
@@ -287,7 +286,7 @@ func Test_ask_008(t *testing.T) {
 func Test_chat_001(t *testing.T) {
 	assert := assert.New(t)
 
-	m, err := NewManager("test", "0.0.0", 
+	m, err := NewManager("test", "0.0.0",
 		WithClient(&mockGeneratorClient{
 			mockClient: mockClient{name: "provider-1", models: []schema.Model{{Name: "model-1", OwnedBy: "provider-1"}}},
 		}),
@@ -325,7 +324,7 @@ func Test_chat_001(t *testing.T) {
 func Test_chat_002(t *testing.T) {
 	assert := assert.New(t)
 
-	m, err := NewManager("test", "0.0.0", 
+	m, err := NewManager("test", "0.0.0",
 		WithClient(&mockGeneratorClient{
 			mockClient: mockClient{name: "provider-1", models: []schema.Model{{Name: "model-1", OwnedBy: "provider-1"}}},
 		}),
@@ -345,7 +344,7 @@ func Test_chat_002(t *testing.T) {
 func Test_chat_003(t *testing.T) {
 	assert := assert.New(t)
 
-	m, err := NewManager("test", "0.0.0", 
+	m, err := NewManager("test", "0.0.0",
 		WithClient(&mockGeneratorClient{
 			mockClient: mockClient{name: "provider-1", models: []schema.Model{{Name: "model-1", OwnedBy: "provider-1"}}},
 		}),
@@ -392,7 +391,7 @@ func Test_chat_003(t *testing.T) {
 func Test_chat_004(t *testing.T) {
 	assert := assert.New(t)
 
-	m, err := NewManager("test", "0.0.0", 
+	m, err := NewManager("test", "0.0.0",
 		WithClient(&mockClient{name: "provider-1", models: []schema.Model{{Name: "model-1", OwnedBy: "provider-1"}}}),
 	)
 	assert.NoError(err)
@@ -419,17 +418,11 @@ func Test_chat_004(t *testing.T) {
 func Test_chat_005(t *testing.T) {
 	assert := assert.New(t)
 
-	tk, err := tool.NewToolkit(
-		&mockTool{name: "tool_a", description: "Tool A"},
-		&mockTool{name: "tool_b", description: "Tool B"},
-	)
-	assert.NoError(err)
-
-	m, err := NewManager("test", "0.0.0", 
+	m, err := NewManager("test", "0.0.0",
 		WithClient(&mockGeneratorClient{
 			mockClient: mockClient{name: "provider-1", models: []schema.Model{{Name: "model-1", OwnedBy: "provider-1"}}},
 		}),
-		WithToolkit(tk),
+		WithTools(&mockTool{name: "tool_a", description: "Tool A"}, &mockTool{name: "tool_b", description: "Tool B"}),
 	)
 	assert.NoError(err)
 
@@ -454,18 +447,15 @@ func Test_chat_005(t *testing.T) {
 func Test_chat_006(t *testing.T) {
 	assert := assert.New(t)
 
-	tk, err := tool.NewToolkit(
-		&mockTool{name: "tool_a", description: "Tool A"},
-		&mockTool{name: "tool_b", description: "Tool B"},
-		&mockTool{name: "tool_c", description: "Tool C"},
-	)
-	assert.NoError(err)
-
-	m, err := NewManager("test", "0.0.0", 
+	m, err := NewManager("test", "0.0.0",
 		WithClient(&mockGeneratorClient{
 			mockClient: mockClient{name: "provider-1", models: []schema.Model{{Name: "model-1", OwnedBy: "provider-1"}}},
 		}),
-		WithToolkit(tk),
+		WithTools(
+			&mockTool{name: "tool_a", description: "Tool A"},
+			&mockTool{name: "tool_b", description: "Tool B"},
+			&mockTool{name: "tool_c", description: "Tool C"},
+		),
 	)
 	assert.NoError(err)
 
@@ -491,16 +481,11 @@ func Test_chat_006(t *testing.T) {
 func Test_chat_007(t *testing.T) {
 	assert := assert.New(t)
 
-	tk, err := tool.NewToolkit(
-		&mockTool{name: "tool_a", description: "Tool A"},
-	)
-	assert.NoError(err)
-
-	m, err := NewManager("test", "0.0.0", 
+	m, err := NewManager("test", "0.0.0",
 		WithClient(&mockGeneratorClient{
 			mockClient: mockClient{name: "provider-1", models: []schema.Model{{Name: "model-1", OwnedBy: "provider-1"}}},
 		}),
-		WithToolkit(tk),
+		WithTools(&mockTool{name: "tool_a", description: "Tool A"}),
 	)
 	assert.NoError(err)
 
@@ -524,7 +509,7 @@ func Test_chat_007(t *testing.T) {
 func Test_chat_008(t *testing.T) {
 	assert := assert.New(t)
 
-	m, err := NewManager("test", "0.0.0", 
+	m, err := NewManager("test", "0.0.0",
 		WithClient(&mockGeneratorClient{
 			mockClient: mockClient{name: "provider-1", models: []schema.Model{{Name: "model-1", OwnedBy: "provider-1"}}},
 		}),
@@ -551,6 +536,9 @@ func Test_chat_008(t *testing.T) {
 // INTEGRATION TESTS
 
 func Test_ask_integration_gemini(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping integration test in short mode")
+	}
 	apiKey := os.Getenv("GEMINI_API_KEY")
 	if apiKey == "" {
 		apiKey = os.Getenv("GOOGLE_API_KEY")
@@ -575,15 +563,18 @@ func Test_ask_integration_gemini(t *testing.T) {
 	assert.NoError(err)
 	assert.NotNil(resp)
 	assert.Equal(schema.RoleAssistant, resp.Role)
-	assert.NotEmpty(resp.Content)
-	assert.NotNil(resp.Content[0].Text)
-	t.Logf("Response: %s", *resp.Content[0].Text)
+	if assert.NotEmpty(resp.Content) && assert.NotNil(resp.Content[0].Text) {
+		t.Logf("Response: %s", *resp.Content[0].Text)
+	}
 	if resp.Usage != nil {
 		t.Logf("Usage: input=%d output=%d", resp.Usage.InputTokens, resp.Usage.OutputTokens)
 	}
 }
 
 func Test_ask_integration_gemini_stream(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping integration test in short mode")
+	}
 	apiKey := os.Getenv("GEMINI_API_KEY")
 	if apiKey == "" {
 		apiKey = os.Getenv("GOOGLE_API_KEY")
@@ -617,6 +608,9 @@ func Test_ask_integration_gemini_stream(t *testing.T) {
 }
 
 func Test_ask_integration_anthropic(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping integration test in short mode")
+	}
 	apiKey := os.Getenv("ANTHROPIC_API_KEY")
 	if apiKey == "" {
 		t.Skip("ANTHROPIC_API_KEY not set, skipping")
@@ -638,15 +632,18 @@ func Test_ask_integration_anthropic(t *testing.T) {
 	assert.NoError(err)
 	assert.NotNil(resp)
 	assert.Equal(schema.RoleAssistant, resp.Role)
-	assert.NotEmpty(resp.Content)
-	assert.NotNil(resp.Content[0].Text)
-	t.Logf("Response: %s", *resp.Content[0].Text)
+	if assert.NotEmpty(resp.Content) && assert.NotNil(resp.Content[0].Text) {
+		t.Logf("Response: %s", *resp.Content[0].Text)
+	}
 	if resp.Usage != nil {
 		t.Logf("Usage: input=%d output=%d", resp.Usage.InputTokens, resp.Usage.OutputTokens)
 	}
 }
 
 func Test_ask_integration_anthropic_stream(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping integration test in short mode")
+	}
 	apiKey := os.Getenv("ANTHROPIC_API_KEY")
 	if apiKey == "" {
 		t.Skip("ANTHROPIC_API_KEY not set, skipping")
@@ -677,6 +674,9 @@ func Test_ask_integration_anthropic_stream(t *testing.T) {
 }
 
 func Test_ask_integration_mistral(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping integration test in short mode")
+	}
 	apiKey := os.Getenv("MISTRAL_API_KEY")
 	if apiKey == "" {
 		t.Skip("MISTRAL_API_KEY not set, skipping")
@@ -698,15 +698,18 @@ func Test_ask_integration_mistral(t *testing.T) {
 	assert.NoError(err)
 	assert.NotNil(resp)
 	assert.Equal(schema.RoleAssistant, resp.Role)
-	assert.NotEmpty(resp.Content)
-	assert.NotNil(resp.Content[0].Text)
-	t.Logf("Response: %s", *resp.Content[0].Text)
+	if assert.NotEmpty(resp.Content) && assert.NotNil(resp.Content[0].Text) {
+		t.Logf("Response: %s", *resp.Content[0].Text)
+	}
 	if resp.Usage != nil {
 		t.Logf("Usage: input=%d output=%d", resp.Usage.InputTokens, resp.Usage.OutputTokens)
 	}
 }
 
 func Test_ask_integration_mistral_stream(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping integration test in short mode")
+	}
 	apiKey := os.Getenv("MISTRAL_API_KEY")
 	if apiKey == "" {
 		t.Skip("MISTRAL_API_KEY not set, skipping")
@@ -737,6 +740,9 @@ func Test_ask_integration_mistral_stream(t *testing.T) {
 }
 
 func Test_ask_integration_system_prompt(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping integration test in short mode")
+	}
 	apiKey := os.Getenv("GEMINI_API_KEY")
 	if apiKey == "" {
 		apiKey = os.Getenv("GOOGLE_API_KEY")
@@ -774,7 +780,7 @@ func Test_ask_integration_system_prompt(t *testing.T) {
 func Test_ask_009(t *testing.T) {
 	assert := assert.New(t)
 
-	m, err := NewManager("test", "0.0.0", 
+	m, err := NewManager("test", "0.0.0",
 		WithClient(&mockGeneratorClient{
 			mockClient: mockClient{name: "provider-1", models: []schema.Model{{Name: "model-1", OwnedBy: "provider-1"}}},
 		}),
@@ -798,7 +804,7 @@ func Test_ask_009(t *testing.T) {
 func Test_ask_010(t *testing.T) {
 	assert := assert.New(t)
 
-	m, err := NewManager("test", "0.0.0", 
+	m, err := NewManager("test", "0.0.0",
 		WithClient(&mockGeneratorClient{
 			mockClient: mockClient{name: "provider-1", models: []schema.Model{{Name: "model-1", OwnedBy: "provider-1"}}},
 		}),
@@ -824,7 +830,7 @@ func Test_ask_010(t *testing.T) {
 func Test_ask_011(t *testing.T) {
 	assert := assert.New(t)
 
-	m, err := NewManager("test", "0.0.0", 
+	m, err := NewManager("test", "0.0.0",
 		WithClient(&mockGeneratorClient{
 			mockClient: mockClient{name: "provider-1", models: []schema.Model{{Name: "model-1", OwnedBy: "provider-1"}}},
 		}),
@@ -852,7 +858,7 @@ func Test_ask_011(t *testing.T) {
 func Test_ask_012(t *testing.T) {
 	assert := assert.New(t)
 
-	m, err := NewManager("test", "0.0.0", 
+	m, err := NewManager("test", "0.0.0",
 		WithClient(&mockGeneratorClient{
 			mockClient: mockClient{name: "provider-1", models: []schema.Model{{Name: "model-1", OwnedBy: "provider-1"}}},
 		}),
@@ -875,6 +881,9 @@ func Test_ask_012(t *testing.T) {
 // INTEGRATION TESTS - JSON FORMAT
 
 func Test_ask_integration_json_gemini(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping integration test in short mode")
+	}
 	apiKey := os.Getenv("GEMINI_API_KEY")
 	if apiKey == "" {
 		apiKey = os.Getenv("GOOGLE_API_KEY")
@@ -911,8 +920,9 @@ func Test_ask_integration_json_gemini(t *testing.T) {
 	if !assert.NoError(err) || !assert.NotNil(resp) {
 		return
 	}
-	assert.NotEmpty(resp.Content)
-	assert.NotNil(resp.Content[0].Text)
+	if !assert.NotEmpty(resp.Content) || !assert.NotNil(resp.Content[0].Text) {
+		return
+	}
 
 	// Verify the response is valid JSON with expected fields
 	var result map[string]any
@@ -924,6 +934,9 @@ func Test_ask_integration_json_gemini(t *testing.T) {
 }
 
 func Test_ask_integration_json_anthropic(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping integration test in short mode")
+	}
 	apiKey := os.Getenv("ANTHROPIC_API_KEY")
 	if apiKey == "" {
 		t.Skip("ANTHROPIC_API_KEY not set, skipping")
@@ -958,8 +971,9 @@ func Test_ask_integration_json_anthropic(t *testing.T) {
 	if !assert.NoError(err) || !assert.NotNil(resp) {
 		return
 	}
-	assert.NotEmpty(resp.Content)
-	assert.NotNil(resp.Content[0].Text)
+	if !assert.NotEmpty(resp.Content) || !assert.NotNil(resp.Content[0].Text) {
+		return
+	}
 
 	var result map[string]any
 	err = json.Unmarshal([]byte(*resp.Content[0].Text), &result)
@@ -970,6 +984,9 @@ func Test_ask_integration_json_anthropic(t *testing.T) {
 }
 
 func Test_ask_integration_json_mistral(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping integration test in short mode")
+	}
 	apiKey := os.Getenv("MISTRAL_API_KEY")
 	if apiKey == "" {
 		t.Skip("MISTRAL_API_KEY not set, skipping")
@@ -1003,8 +1020,9 @@ func Test_ask_integration_json_mistral(t *testing.T) {
 	if !assert.NoError(err) || !assert.NotNil(resp) {
 		return
 	}
-	assert.NotEmpty(resp.Content)
-	assert.NotNil(resp.Content[0].Text)
+	if !assert.NotEmpty(resp.Content) || !assert.NotNil(resp.Content[0].Text) {
+		return
+	}
 
 	var result map[string]any
 	err = json.Unmarshal([]byte(*resp.Content[0].Text), &result)
@@ -1018,6 +1036,9 @@ func Test_ask_integration_json_mistral(t *testing.T) {
 // INTEGRATION TESTS - ATTACHMENTS
 
 func Test_ask_integration_attachment_gemini(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping integration test in short mode")
+	}
 	apiKey := os.Getenv("GEMINI_API_KEY")
 	if apiKey == "" {
 		apiKey = os.Getenv("GOOGLE_API_KEY")
@@ -1050,12 +1071,16 @@ func Test_ask_integration_attachment_gemini(t *testing.T) {
 	if !assert.NoError(err) || !assert.NotNil(resp) {
 		return
 	}
-	assert.NotEmpty(resp.Content)
-	assert.NotNil(resp.Content[0].Text)
+	if !assert.NotEmpty(resp.Content) || !assert.NotNil(resp.Content[0].Text) {
+		return
+	}
 	t.Logf("Image description: %s", *resp.Content[0].Text)
 }
 
 func Test_ask_integration_attachment_anthropic(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping integration test in short mode")
+	}
 	apiKey := os.Getenv("ANTHROPIC_API_KEY")
 	if apiKey == "" {
 		t.Skip("ANTHROPIC_API_KEY not set, skipping")
@@ -1085,12 +1110,16 @@ func Test_ask_integration_attachment_anthropic(t *testing.T) {
 	if !assert.NoError(err) || !assert.NotNil(resp) {
 		return
 	}
-	assert.NotEmpty(resp.Content)
-	assert.NotNil(resp.Content[0].Text)
+	if !assert.NotEmpty(resp.Content) || !assert.NotNil(resp.Content[0].Text) {
+		return
+	}
 	t.Logf("Image description: %s", *resp.Content[0].Text)
 }
 
 func Test_ask_integration_attachment_mistral(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping integration test in short mode")
+	}
 	apiKey := os.Getenv("MISTRAL_API_KEY")
 	if apiKey == "" {
 		t.Skip("MISTRAL_API_KEY not set, skipping")
@@ -1120,7 +1149,8 @@ func Test_ask_integration_attachment_mistral(t *testing.T) {
 	if !assert.NoError(err) || !assert.NotNil(resp) {
 		return
 	}
-	assert.NotEmpty(resp.Content)
-	assert.NotNil(resp.Content[0].Text)
+	if !assert.NotEmpty(resp.Content) || !assert.NotNil(resp.Content[0].Text) {
+		return
+	}
 	t.Logf("Image description: %s", *resp.Content[0].Text)
 }

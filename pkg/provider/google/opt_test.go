@@ -103,8 +103,12 @@ func Test_opt_toolkit_001(t *testing.T) {
 	// Test geminiFunctionDeclsFromTools with a single mock tool
 	assert := assert.New(t)
 
-	tk, err := tool.NewToolkit(newMockTool("get_weather", "Get current weather"))
+	tk, err := tool.NewToolkit()
+	if err == nil {
+		err = tk.AddBuiltin(newMockTool("get_weather", "Get current weather"))
+	}
 	assert.NoError(err)
+	defer tk.Close()
 
 	decls := geminiFunctionDeclsFromTools(tk.Tools())
 	assert.Len(decls, 1)
@@ -122,11 +126,13 @@ func Test_opt_toolkit_002(t *testing.T) {
 	// Test geminiFunctionDeclsFromTools with multiple tools
 	assert := assert.New(t)
 
-	tk, err := tool.NewToolkit(
-		newMockTool("get_weather", "Get weather"),
-		newMockTool("search_web", "Search the web"),
-	)
+	tk, err := tool.NewToolkit()
+	if err == nil {
+		err = tk.AddBuiltin(newMockTool("get_weather", "Get weather"),
+		newMockTool("search_web", "Search the web"))
+	}
 	assert.NoError(err)
+	defer tk.Close()
 
 	decls := geminiFunctionDeclsFromTools(tk.Tools())
 	assert.Len(decls, 2)
@@ -143,8 +149,12 @@ func Test_opt_toolkit_003(t *testing.T) {
 	// Test toolkit tools appear in generateRequestFromOpts
 	assert := assert.New(t)
 
-	tk, err := tool.NewToolkit(newMockTool("get_weather", "Get weather"))
+	tk, err := tool.NewToolkit()
+	if err == nil {
+		err = tk.AddBuiltin(newMockTool("get_weather", "Get weather"))
+	}
 	assert.NoError(err)
+	defer tk.Close()
 
 	msg := &schema.Message{Role: "user", Content: []schema.ContentBlock{{Text: strPtr("Hi")}}}
 	session := schema.Conversation{msg}
@@ -164,6 +174,7 @@ func Test_opt_toolkit_004(t *testing.T) {
 
 	tk, err := tool.NewToolkit()
 	assert.NoError(err)
+	defer tk.Close()
 
 	decls := geminiFunctionDeclsFromTools(tk.Tools())
 	assert.Empty(decls)
@@ -175,6 +186,7 @@ func Test_opt_toolkit_005(t *testing.T) {
 
 	tk, err := tool.NewToolkit()
 	assert.NoError(err)
+	defer tk.Close()
 
 	msg := &schema.Message{Role: "user", Content: []schema.ContentBlock{{Text: strPtr("Hi")}}}
 	session := schema.Conversation{msg}
