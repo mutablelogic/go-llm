@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 	"net/url"
+	"path"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -30,29 +32,33 @@ func CanonicalURL(rawURL string) (string, error) {
 	}
 
 	u.Scheme = strings.ToLower(u.Scheme)
-	validScheme := false
-	for _, s := range ConnectorURLSchemes {
-		if u.Scheme == s {
-			validScheme = true
-			break
-		}
-	}
-	if !validScheme {
+	if !slices.Contains(ConnectorURLSchemes, u.Scheme) {
 		return "", fmt.Errorf("connector url: scheme %q not supported (want one of %v)", u.Scheme, ConnectorURLSchemes)
 	}
 
-	host := strings.ToLower(u.Hostname())
+	host := strings.TrimSuffix(strings.ToLower(u.Hostname()), ".")
 	if host == "" {
 		return "", fmt.Errorf("connector url: missing host")
 	}
 
 	if portStr := u.Port(); portStr != "" {
-		port, err := strconv.Atoi(portStr)
-		if err != nil || port < 1 || port > 65535 {
+		port, err := strconv.ParseUint(portStr, 10, 16)
+		if err != nil || port < 1 {
 			return "", fmt.Errorf("connector url: invalid port %q (must be 1-65535)", portStr)
 		}
-		host = host + ":" + portStr
+		// Only include the port if it is non-default for the scheme.
+		if connectorDefaultPorts[u.Scheme] != portStr {
+			host = host + ":" + portStr
+		}
 	}
+
+	// Clean the decoded path; path.Clean("") returns "." so normalise that back.
+	cleanPath := path.Clean(u.Path)
+	if cleanPath == "." {
+		cleanPath = ""
+	}
+	u.Path = cleanPath
+	u.RawPath = ""
 
 	return u.Scheme + "://" + host + u.EscapedPath(), nil
 }
@@ -133,6 +139,13 @@ func (c Connector) String() string      { return types.Stringify(c) }
 // ConnectorURLSchemes lists the URL schemes that are accepted for connector
 // registration. Connectors must use one of these schemes.
 var ConnectorURLSchemes = []string{"http", "https"}
+
+// connectorDefaultPorts maps each supported scheme to its default port string.
+// Ports matching the default are omitted from the canonical URL.
+var connectorDefaultPorts = map[string]string{
+	"http":  "80",
+	"https": "443",
+}
 
 const (
 	// CapabilityTools indicates the server advertises callable tools.
