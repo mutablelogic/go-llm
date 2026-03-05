@@ -68,12 +68,53 @@ func (tk *Toolkit) Close() error {
 ///////////////////////////////////////////////////////////////////////////////
 // PUBLIC METHODS
 
-// Tools returns all builtin tools in the toolkit
-func (tk *Toolkit) Tools() []llm.Tool {
-	result := make([]llm.Tool, 0, len(tk.builtins))
-	for _, t := range tk.builtins {
-		result = append(result, t)
+// ListTools returns tools matching the given request filters.
+// An empty request returns all tools across all namespaces (builtins + connectors).
+func (tk *Toolkit) ListTools(req schema.ListToolsRequest) []llm.Tool {
+	// Build a name-filter set for O(1) lookup; nil means no filter.
+	var nameSet map[string]struct{}
+	if len(req.Name) > 0 {
+		nameSet = make(map[string]struct{}, len(req.Name))
+		for _, n := range req.Name {
+			nameSet[n] = struct{}{}
+		}
 	}
+	matchName := func(name string) bool {
+		if nameSet == nil {
+			return true
+		}
+		_, ok := nameSet[name]
+		return ok
+	}
+
+	tk.mu.RLock()
+	defer tk.mu.RUnlock()
+
+	var result []llm.Tool
+
+	// Builtins
+	if req.Namespace == "" || req.Namespace == schema.BuiltinNamespace {
+		for _, t := range tk.builtins {
+			if !isReservedToolName(t.Name()) && matchName(t.Name()) {
+				result = append(result, t)
+			}
+		}
+	}
+
+	// Connector tools
+	if req.Namespace != schema.BuiltinNamespace {
+		for url, entry := range tk.conns {
+			if req.Namespace != "" && req.Namespace != url {
+				continue
+			}
+			for _, t := range entry.tools {
+				if !isReservedToolName(t.Name()) && matchName(t.Name()) {
+					result = append(result, t)
+				}
+			}
+		}
+	}
+
 	return result
 }
 
@@ -181,5 +222,5 @@ func (tk *Toolkit) Feedback(call schema.ToolCall) string {
 // STRINGIFY
 
 func (tk *Toolkit) String() string {
-	return types.Stringify(tk.Tools())
+	return types.Stringify(tk.ListTools(schema.ListToolsRequest{}))
 }

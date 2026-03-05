@@ -24,7 +24,7 @@ func (m *Manager) ListTools(ctx context.Context, req schema.ListToolRequest) (re
 	)
 	defer func() { endSpan(err) }()
 
-	tools := m.toolkit.Tools()
+	tools := m.toolkit.ListTools(schema.ListToolsRequest{})
 
 	// Sort by name for stable ordering
 	sort.Slice(tools, func(i, j int) bool { return tools[i].Name() < tools[j].Name() })

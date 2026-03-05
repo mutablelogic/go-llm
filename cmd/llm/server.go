@@ -188,6 +188,10 @@ func (cmd *RunServer) WithManager(ctx *Globals, fn func(*manager.Manager, string
 		opts = append(opts, manager.WithTracer(ctx.tracer))
 	}
 
+	// Add the MCP connector factory so CreateConnector probes servers on registration.
+	// clientOpts already includes trace, tracer and timeout flags.
+	opts = append(opts, manager.WithConnectorFactory(manager.MCPConnectorFactory("go-llm", version.Version(), clientOpts...)))
+
 	// Create the manager
 	mgr, err := manager.NewManager("go-llm", version.Version(), opts...)
 	if err != nil {

@@ -15,6 +15,7 @@ import (
 
 	// Packages
 	"github.com/mutablelogic/go-llm/pkg/opt"
+	schema "github.com/mutablelogic/go-llm/pkg/schema"
 	"github.com/mutablelogic/go-llm/pkg/tool"
 )
 
@@ -236,7 +237,7 @@ func (server *Server) handleListTools(_ context.Context, _ any, _ json.RawMessag
 		response.Tools = []*Tool{}
 		return response, nil
 	}
-	for _, t := range server.toolkit.Tools() {
+	for _, t := range server.toolkit.ListTools(schema.ListToolsRequest{}) {
 		jsonSchema, err := t.InputSchema()
 		if err != nil {
 			jsonSchema = nil

@@ -81,16 +81,17 @@ func (tk *Toolkit) RemoveConnector(url string) {
 // PRIVATE METHODS
 
 // runConnector is the per-connector background goroutine. It runs c.Run and
-// a ListTools poll concurrently using an errgroup. When the session is
-// established the poll fires onState/onTools and exits; Run continues until
-// the context is cancelled or the server disconnects. On exit the deferred
-// cleanup fires onTools(url, nil).
+// a ListTools poll concurrently using an errgroup, retrying with exponential
+// backoff on non-context errors or unexpected server disconnects. When the
+// session is established the poll fires onState/onTools and exits; Run
+// continues until the context is cancelled or the server disconnects. On
+// final exit the deferred cleanup fires onState/onTools(nil).
 func (tk *Toolkit) runConnector(ctx context.Context, url string, entry *connEntry) {
 	c := entry.connector
 	defer tk.wg.Done()
 	defer entry.wg.Done()
 
-	// Cleanup: clear tools and notify on exit.
+	// Final cleanup: clear tools and notify on exit.
 	defer func() {
 		tk.mu.Lock()
 		entry.tools = nil
@@ -100,55 +101,88 @@ func (tk *Toolkit) runConnector(ctx context.Context, url string, entry *connEntr
 		tk.onTools(url, nil)
 	}()
 
-	// Task 1: drive the MCP session.
-	eg, egCtx := errgroup.WithContext(ctx)
-	eg.Go(func() error {
-		if err := c.Run(egCtx); err != nil && !isContextError(err) {
-			tk.onLog(url, slog.LevelError, "connector run error", "err", err)
-			return err
-		}
-		return nil
-	})
+	const (
+		minBackoff = time.Second
+		maxBackoff = 5 * time.Minute
+	)
+	backoff := minBackoff
 
-	// Task 2: poll until ListTools succeeds (session is up), then fire callbacks.
-	eg.Go(func() error {
-		const pollInterval = 100 * time.Millisecond
-		timer := time.NewTimer(0)
-		defer timer.Stop()
-		for {
-			select {
-			case <-egCtx.Done():
-				return egCtx.Err()
-			case <-timer.C:
-				tools, err := c.ListTools(egCtx)
-				if err != nil {
-					timer.Reset(pollInterval)
-					continue
-				}
-				// Session is up — store tools and fire callbacks.
-				tk.mu.Lock()
-				entry.tools = tools
-				tk.mu.Unlock()
-
-				if info, ok := c.(connectorInfo); ok {
-					name, version, _ := info.ServerInfo()
-					if name != "" || version != "" {
-						now := time.Now()
-						tk.onState(url, schema.ConnectorState{
-							ConnectedAt: &now,
-							Name:        ptrString(name),
-							Version:     ptrString(version),
-						})
-					}
-				}
-				tk.onTools(url, tools)
-				return nil
+	for {
+		// Task 1: drive the MCP session.
+		eg, egCtx := errgroup.WithContext(ctx)
+		eg.Go(func() error {
+			if err := c.Run(egCtx); err != nil && !isContextError(err) {
+				tk.onLog(url, slog.LevelError, "connector run error", "err", err)
+				return err
 			}
-		}
-	})
+			return nil
+		})
 
-	if err := eg.Wait(); err != nil && !isContextError(err) {
-		tk.onLog(url, slog.LevelError, "connector exited with error", "err", err)
+		// Task 2: poll until ListTools succeeds (session is up), then fire callbacks.
+		eg.Go(func() error {
+			const pollInterval = 100 * time.Millisecond
+			timer := time.NewTimer(0)
+			defer timer.Stop()
+			for {
+				select {
+				case <-egCtx.Done():
+					return egCtx.Err()
+				case <-timer.C:
+					tools, err := c.ListTools(egCtx)
+					if err != nil {
+						timer.Reset(pollInterval)
+						continue
+					}
+					// Session is up — store tools and fire callbacks.
+					tk.mu.Lock()
+					entry.tools = tools
+					tk.mu.Unlock()
+
+					now := time.Now()
+					state := schema.ConnectorState{ConnectedAt: &now}
+					if info, ok := c.(connectorInfo); ok {
+						name, version, _ := info.ServerInfo()
+						state.Name = ptrString(name)
+						state.Version = ptrString(version)
+					}
+					tk.onState(url, state)
+					tk.onTools(url, tools)
+					return nil
+				}
+			}
+		})
+
+		err := eg.Wait()
+
+		// Deliberate shutdown — let the deferred cleanup fire the final notifications.
+		if ctx.Err() != nil {
+			return
+		}
+
+		if err != nil && !isContextError(err) {
+			tk.onLog(url, slog.LevelError, "connector exited with error", "err", err)
+		}
+
+		// If we were connected, notify disconnect before retrying.
+		tk.mu.Lock()
+		wasConnected := entry.tools != nil
+		entry.tools = nil
+		tk.mu.Unlock()
+		if wasConnected {
+			zero := time.Time{}
+			tk.onState(url, schema.ConnectorState{ConnectedAt: &zero})
+			tk.onTools(url, nil)
+			backoff = minBackoff // successful session — reset backoff
+		}
+
+		// Wait before retrying.
+		tk.onLog(url, slog.LevelInfo, "connector disconnected, retrying", "backoff", backoff)
+		select {
+		case <-ctx.Done():
+			return
+		case <-time.After(backoff):
+		}
+		backoff = min(backoff*2, maxBackoff)
 	}
 }
 

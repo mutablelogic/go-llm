@@ -149,7 +149,7 @@ func Test_opt_toolkit_001(t *testing.T) {
 	assert.NoError(err)
 	defer tk.Close()
 
-	tools, err := anthropicToolsFromTools(tk.Tools())
+	tools, err := anthropicToolsFromTools(tk.ListTools(schema.ListToolsRequest{}))
 	assert.NoError(err)
 	assert.Len(tools, 1)
 
@@ -175,12 +175,12 @@ func Test_opt_toolkit_002(t *testing.T) {
 	tk, err := tool.NewToolkit()
 	if err == nil {
 		err = tk.AddBuiltin(newMockTool("get_weather", "Get weather"),
-		newMockTool("search_web", "Search the web"))
+			newMockTool("search_web", "Search the web"))
 	}
 	assert.NoError(err)
 	defer tk.Close()
 
-	tools, err := anthropicToolsFromTools(tk.Tools())
+	tools, err := anthropicToolsFromTools(tk.ListTools(schema.ListToolsRequest{}))
 	assert.NoError(err)
 	assert.Len(tools, 2)
 
@@ -227,7 +227,7 @@ func Test_opt_toolkit_004(t *testing.T) {
 	tk, err := tool.NewToolkit()
 	if err == nil {
 		err = tk.AddBuiltin(newMockTool("get_weather", "Get weather"),
-		newMockTool("search_web", "Search the web"))
+			newMockTool("search_web", "Search the web"))
 	}
 	assert.NoError(err)
 	defer tk.Close()
@@ -253,7 +253,7 @@ func Test_opt_toolkit_005(t *testing.T) {
 	assert.NoError(err)
 	defer tk.Close()
 
-	tools, err := anthropicToolsFromTools(tk.Tools())
+	tools, err := anthropicToolsFromTools(tk.ListTools(schema.ListToolsRequest{}))
 	assert.NoError(err)
 	assert.Empty(tools)
 }
