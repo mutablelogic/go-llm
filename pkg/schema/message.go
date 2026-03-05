@@ -10,7 +10,7 @@ import (
 	"strings"
 
 	// Packages
-	"github.com/mutablelogic/go-llm/pkg/opt"
+	opt "github.com/mutablelogic/go-llm/pkg/opt"
 	types "github.com/mutablelogic/go-server/pkg/types"
 )
 

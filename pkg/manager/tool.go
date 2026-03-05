@@ -6,11 +6,11 @@ import (
 	"sort"
 
 	// Packages
-	"github.com/mutablelogic/go-client/pkg/otel"
+	otel "github.com/mutablelogic/go-client/pkg/otel"
 	llm "github.com/mutablelogic/go-llm"
 	schema "github.com/mutablelogic/go-llm/pkg/schema"
 	types "github.com/mutablelogic/go-server/pkg/types"
-	"go.opentelemetry.io/otel/attribute"
+	attribute "go.opentelemetry.io/otel/attribute"
 )
 
 ///////////////////////////////////////////////////////////////////////////////

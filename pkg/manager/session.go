@@ -4,9 +4,9 @@ import (
 	"context"
 
 	// Packages
-	"github.com/mutablelogic/go-client/pkg/otel"
+	otel "github.com/mutablelogic/go-client/pkg/otel"
 	schema "github.com/mutablelogic/go-llm/pkg/schema"
-	"go.opentelemetry.io/otel/attribute"
+	attribute "go.opentelemetry.io/otel/attribute"
 )
 
 ///////////////////////////////////////////////////////////////////////////////
