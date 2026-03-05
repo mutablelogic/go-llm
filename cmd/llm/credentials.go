@@ -46,17 +46,6 @@ type DeleteCredentialCommand struct {
 }
 
 ///////////////////////////////////////////////////////////////////////////////
-// STRINGIFY
-
-func (cmd LoginCommand) String() string {
-	v := cmd
-	if v.ClientSecret != "" {
-		v.ClientSecret = "***"
-	}
-	return types.Stringify(v)
-}
-
-///////////////////////////////////////////////////////////////////////////////
 // COMMANDS
 
 func (cmd *LoginCommand) Run(g *Globals) (err error) {
