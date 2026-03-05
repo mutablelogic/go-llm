@@ -9,6 +9,7 @@ import (
 	llm "github.com/mutablelogic/go-llm"
 	schema "github.com/mutablelogic/go-llm/pkg/schema"
 	store "github.com/mutablelogic/go-llm/pkg/store"
+	types "github.com/mutablelogic/go-server/pkg/types"
 	assert "github.com/stretchr/testify/assert"
 	oauth2 "golang.org/x/oauth2"
 )
@@ -49,12 +50,12 @@ func Test_connector_001(t *testing.T) {
 
 	m := newManagerWithAuth(t)
 
-	c, err := m.CreateConnector(context.TODO(), testConnectorURL, schema.ConnectorMeta{Enabled: true, Namespace: "mcp"})
+	c, err := m.CreateConnector(context.TODO(), testConnectorURL, schema.ConnectorMeta{Enabled: types.Ptr(true), Namespace: "mcp"})
 	assert.NoError(err)
 	assert.NotNil(c)
 	assert.Equal(testConnectorURL, c.URL)
-	assert.True(c.Enabled)
-	assert.Equal("mcp", c.Namespace)
+	assert.True(*c.Enabled)
+	assert.Equal("mcp", types.Value(c.Namespace))
 	assert.NotNil(c.ConnectedAt)
 }
 
@@ -87,7 +88,7 @@ func Test_connector_004(t *testing.T) {
 	m, err := NewManager("test", "0.0.0")
 	assert.NoError(err)
 
-	_, err = m.CreateConnector(context.TODO(), testConnectorURL, schema.ConnectorMeta{Namespace: "bad namespace"})
+	_, err = m.CreateConnector(context.TODO(), testConnectorURL, schema.ConnectorMeta{Namespace: types.StringPtr("bad namespace")})
 	assert.Error(err)
 }
 
@@ -98,11 +99,11 @@ func Test_connector_005(t *testing.T) {
 	m := newManagerWithAuth(t)
 	var err error
 
-	_, err = m.CreateConnector(context.TODO(), testConnectorURL, schema.ConnectorMeta{Enabled: true})
+	_, err = m.CreateConnector(context.TODO(), testConnectorURL, schema.ConnectorMeta{Enabled: types.Ptr(true)})
 	assert.NoError(err)
 
 	// Second registration is rejected at the store level before any probe.
-	_, err = m.CreateConnector(context.TODO(), testConnectorURL, schema.ConnectorMeta{Enabled: true})
+	_, err = m.CreateConnector(context.TODO(), testConnectorURL, schema.ConnectorMeta{Enabled: types.Ptr(true)})
 	assert.ErrorIs(err, llm.ErrConflict)
 }
 
@@ -116,13 +117,13 @@ func Test_connector_006(t *testing.T) {
 	_, err = m.GetConnector(context.TODO(), testConnectorURL)
 	assert.ErrorIs(err, llm.ErrNotFound)
 
-	_, err = m.CreateConnector(context.TODO(), testConnectorURL, schema.ConnectorMeta{Enabled: true, Namespace: "ns"})
+	_, err = m.CreateConnector(context.TODO(), testConnectorURL, schema.ConnectorMeta{Enabled: types.Ptr(true), Namespace: "ns"})
 	assert.NoError(err)
 
 	got, err := m.GetConnector(context.TODO(), testConnectorURL)
 	assert.NoError(err)
 	assert.Equal(testConnectorURL, got.URL)
-	assert.Equal("ns", got.Namespace)
+	assert.Equal("ns", types.Value(got.Namespace))
 }
 
 // Test UpdateConnector modifies meta and returns updated connector
@@ -132,13 +133,13 @@ func Test_connector_007(t *testing.T) {
 	m := newManagerWithAuth(t)
 	var err error
 
-	_, err = m.CreateConnector(context.TODO(), testConnectorURL, schema.ConnectorMeta{Enabled: false, Namespace: "old"})
+	_, err = m.CreateConnector(context.TODO(), testConnectorURL, schema.ConnectorMeta{Enabled: types.Ptr(false), Namespace: "old"})
 	assert.NoError(err)
 
-	updated, err := m.UpdateConnector(context.TODO(), testConnectorURL, schema.ConnectorMeta{Enabled: true, Namespace: "new"})
+	updated, err := m.UpdateConnector(context.TODO(), testConnectorURL, schema.ConnectorMeta{Enabled: types.Ptr(true), Namespace: "new"})
 	assert.NoError(err)
-	assert.True(updated.Enabled)
-	assert.Equal("new", updated.Namespace)
+	assert.True(*updated.Enabled)
+	assert.Equal("new", types.Value(updated.Namespace))
 }
 
 // Test UpdateConnector returns not-found for unknown URL
@@ -159,7 +160,7 @@ func Test_connector_009(t *testing.T) {
 	m := newManagerWithAuth(t)
 	var err error
 
-	_, err = m.CreateConnector(context.TODO(), testConnectorURL, schema.ConnectorMeta{Enabled: true})
+	_, err = m.CreateConnector(context.TODO(), testConnectorURL, schema.ConnectorMeta{Enabled: types.Ptr(true)})
 	assert.NoError(err)
 
 	assert.NoError(m.DeleteConnector(context.TODO(), testConnectorURL))
@@ -186,7 +187,7 @@ func Test_connector_011(t *testing.T) {
 	m := newManagerWithAuth(t)
 
 	// Upper-case scheme/host and a spurious query param should both be stripped.
-	c, err := m.CreateConnector(context.TODO(), "HTTPS://API.GITHUBCOPILOT.COM/MCP/?token=abc", schema.ConnectorMeta{})
+	c, err := m.CreateConnector(context.TODO(), "HTTPS://API.GITHUBCOPILOT.COM/MCP/?token=abc", schema.ConnectorMeta{Enabled: types.Ptr(true)})
 	assert.NoError(err)
 	assert.Equal(testConnectorURL, c.URL)
 

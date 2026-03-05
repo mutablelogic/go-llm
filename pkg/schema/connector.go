@@ -83,11 +83,13 @@ type Capability string
 type ConnectorMeta struct {
 	// Enabled controls whether the server is active. Disabled servers are
 	// retained in the registry but not connected on startup.
-	Enabled bool `json:"enabled"`
+	// A nil value in a patch request means "preserve the existing value".
+	Enabled *bool `json:"enabled,omitempty"`
 
 	// Namespace is an optional prefix used to disambiguate tools from this
 	// connector when multiple connectors expose tools with the same name.
-	Namespace string `json:"namespace,omitempty"`
+	// A nil value in a patch request means "preserve the existing value".
+	Namespace *string `json:"namespace,omitempty"`
 }
 
 // ConnectorState carries the server-reported runtime state of a connector.

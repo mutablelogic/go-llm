@@ -2,10 +2,12 @@ package schema
 
 import (
 	"fmt"
+	"strings"
 	"time"
 
 	// Packages
 	uitable "github.com/mutablelogic/go-llm/pkg/ui/table"
+	types "github.com/mutablelogic/go-server/pkg/types"
 )
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -133,7 +135,7 @@ func (t ProviderTable) Row(i int) []any {
 // CONNECTOR TABLE (LIST)
 
 func (t ConnectorTable) Header() []string {
-	return []string{"URL", "NAMESPACE", "ENABLED", "NAME", "CONNECTED"}
+	return []string{"URL", "NAMESPACE", "ENABLED", "NAME", "DESCRIPTION", "CAPABILITIES", "CONNECTED"}
 }
 
 func (t ConnectorTable) Len() int {
@@ -142,21 +144,33 @@ func (t ConnectorTable) Len() int {
 
 func (t ConnectorTable) Row(i int) []any {
 	c := t[i]
-	namespace := c.Namespace
+	namespace := types.Value(c.Namespace)
 	if namespace == "" {
 		namespace = "-"
 	}
 	enabled := "no"
-	if c.Enabled {
+	if types.Value(c.Enabled) {
 		enabled = "yes"
 	}
-	name := "-"
-	if c.Name != nil {
-		name = *c.Name
+	name := types.Value(c.Name)
+	if name == "" {
+		name = "-"
+	}
+	description := types.Value(c.Description)
+	if description == "" {
+		description = "-"
+	}
+	capabilities := "-"
+	if len(c.Capabilities) > 0 {
+		caps := make([]string, len(c.Capabilities))
+		for i, cap := range c.Capabilities {
+			caps[i] = string(cap)
+		}
+		capabilities = strings.Join(caps, ", ")
 	}
 	connected := "-"
 	if c.ConnectedAt != nil {
 		connected = c.ConnectedAt.Format(time.RFC3339)
 	}
-	return []any{c.URL, namespace, enabled, name, connected}
+	return []any{c.URL, namespace, enabled, name, description, capabilities, connected}
 }

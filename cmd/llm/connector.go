@@ -36,15 +36,15 @@ type GetConnectorCommand struct {
 }
 
 type AddConnectorCommand struct {
-	URL       string `arg:"" name:"url" help:"MCP server connector URL"`
-	Namespace string `name:"namespace" help:"Namespace prefix for tool disambiguation" optional:""`
-	Enabled   bool   `name:"enabled" help:"Enable the connector immediately" default:"true" negatable:""`
+	URL       string  `arg:"" name:"url" help:"MCP server connector URL"`
+	Namespace *string `name:"namespace" help:"Namespace prefix for tool disambiguation" optional:""`
+	Enabled   bool    `name:"enabled" help:"Enable the connector immediately" default:"true" negatable:""`
 }
 
 type UpdateConnectorCommand struct {
-	URL       string `arg:"" name:"url" help:"MCP server connector URL"`
-	Namespace string `name:"namespace" help:"Namespace prefix" optional:""`
-	Enabled   bool   `name:"enabled" help:"Enable or disable the connector" default:"true" negatable:""`
+	URL       string  `arg:"" name:"url" help:"MCP server connector URL"`
+	Namespace *string `name:"namespace" help:"Namespace prefix" optional:""`
+	Enabled   *bool   `name:"enabled" help:"Enable or disable the connector" optional:"" negatable:""`
 }
 
 type DeleteConnectorCommand struct {
@@ -125,7 +125,7 @@ func (cmd *AddConnectorCommand) Run(ctx *Globals) (err error) {
 
 	connector, err := client.CreateConnector(parent, cmd.URL, schema.ConnectorMeta{
 		Namespace: cmd.Namespace,
-		Enabled:   cmd.Enabled,
+		Enabled:   types.Ptr(cmd.Enabled),
 	})
 	if err != nil {
 		if errors.Is(err, httpresponse.ErrNotAuthorized) {

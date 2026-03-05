@@ -11,6 +11,7 @@ import (
 	// Packages
 	manager "github.com/mutablelogic/go-llm/pkg/manager"
 	schema "github.com/mutablelogic/go-llm/pkg/schema"
+	types "github.com/mutablelogic/go-server/pkg/types"
 )
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -69,7 +70,7 @@ func TestConnector_CreateAndGet(t *testing.T) {
 	mgr := newConnectorManager(t)
 	mux := serveMux(mgr)
 
-	meta := schema.ConnectorMeta{Enabled: true, Namespace: "mcp"}
+	meta := schema.ConnectorMeta{Enabled: types.Ptr(true), Namespace: types.StringPtr("mcp")}
 	body, err := json.Marshal(meta)
 	if err != nil {
 		t.Fatal(err)
@@ -91,11 +92,11 @@ func TestConnector_CreateAndGet(t *testing.T) {
 	if created.URL != "https://example.com/sse" {
 		t.Fatalf("unexpected URL: %q", created.URL)
 	}
-	if !created.Enabled {
+	if !types.Value(created.Enabled) {
 		t.Fatal("expected connector to be enabled")
 	}
-	if created.Namespace != "mcp" {
-		t.Fatalf("expected namespace %q, got %q", "mcp", created.Namespace)
+	if types.Value(created.Namespace) != "mcp" {
+		t.Fatalf("expected namespace %q, got %q", "mcp", types.Value(created.Namespace))
 	}
 
 	// GET to verify round-trip
@@ -118,7 +119,7 @@ func TestConnector_CreateConflict(t *testing.T) {
 	mgr := newConnectorManager(t)
 	mux := serveMux(mgr)
 
-	meta := schema.ConnectorMeta{Enabled: true}
+	meta := schema.ConnectorMeta{Enabled: types.Ptr(true)}
 	body, _ := json.Marshal(meta)
 
 	post := func() *httptest.ResponseRecorder {
@@ -156,7 +157,7 @@ func TestConnector_UpdateAndGet(t *testing.T) {
 	mux := serveMux(mgr)
 
 	// Create
-	body, _ := json.Marshal(schema.ConnectorMeta{Enabled: false, Namespace: "old"})
+	body, _ := json.Marshal(schema.ConnectorMeta{Enabled: types.Ptr(false), Namespace: types.StringPtr("old")})
 	w := httptest.NewRecorder()
 	r := httptest.NewRequest(http.MethodPost, connectorPath("https://example.com/sse"), bytes.NewReader(body))
 	r.Header.Set("Content-Type", "application/json")
@@ -166,7 +167,7 @@ func TestConnector_UpdateAndGet(t *testing.T) {
 	}
 
 	// PATCH
-	body, _ = json.Marshal(schema.ConnectorMeta{Enabled: true, Namespace: "new"})
+	body, _ = json.Marshal(schema.ConnectorMeta{Enabled: types.Ptr(true), Namespace: types.StringPtr("new")})
 	w = httptest.NewRecorder()
 	r = httptest.NewRequest(http.MethodPatch, connectorPath("https://example.com/sse"), bytes.NewReader(body))
 	r.Header.Set("Content-Type", "application/json")
@@ -179,11 +180,11 @@ func TestConnector_UpdateAndGet(t *testing.T) {
 	if err := json.NewDecoder(w.Body).Decode(&updated); err != nil {
 		t.Fatal(err)
 	}
-	if !updated.Enabled {
+	if !types.Value(updated.Enabled) {
 		t.Fatal("expected enabled=true after patch")
 	}
-	if updated.Namespace != "new" {
-		t.Fatalf("expected namespace %q, got %q", "new", updated.Namespace)
+	if types.Value(updated.Namespace) != "new" {
+		t.Fatalf("expected namespace %q, got %q", "new", types.Value(updated.Namespace))
 	}
 }
 
@@ -206,7 +207,7 @@ func TestConnector_DeleteAndVerify(t *testing.T) {
 	mux := serveMux(mgr)
 
 	// Create
-	body, _ := json.Marshal(schema.ConnectorMeta{Enabled: true})
+	body, _ := json.Marshal(schema.ConnectorMeta{Enabled: types.Ptr(true)})
 	w := httptest.NewRecorder()
 	r := httptest.NewRequest(http.MethodPost, connectorPath("https://example.com/sse"), bytes.NewReader(body))
 	r.Header.Set("Content-Type", "application/json")
@@ -252,7 +253,7 @@ func TestConnector_ListWithFilter(t *testing.T) {
 		"https://a.example.com/sse": "ns1",
 		"https://b.example.com/sse": "ns2",
 	} {
-		body, _ := json.Marshal(schema.ConnectorMeta{Enabled: true, Namespace: ns})
+		body, _ := json.Marshal(schema.ConnectorMeta{Enabled: types.Ptr(true), Namespace: types.StringPtr(ns)})
 		w := httptest.NewRecorder()
 		r := httptest.NewRequest(http.MethodPost, connectorPath(rawURL), bytes.NewReader(body))
 		r.Header.Set("Content-Type", "application/json")
@@ -297,7 +298,7 @@ func TestConnector_URLCanonicalisationRoundTrip(t *testing.T) {
 	mgr := newConnectorManager(t)
 	mux := serveMux(mgr)
 
-	body, _ := json.Marshal(schema.ConnectorMeta{Enabled: true})
+	body, _ := json.Marshal(schema.ConnectorMeta{Enabled: types.Ptr(true)})
 	w := httptest.NewRecorder()
 	r := httptest.NewRequest(http.MethodPost, connectorPath("HTTPS://Example.COM/sse?token=abc"), bytes.NewReader(body))
 	r.Header.Set("Content-Type", "application/json")

@@ -31,7 +31,7 @@ func (m *Manager) CreateConnector(ctx context.Context, rawURL string, meta schem
 	if err != nil {
 		return nil, err
 	}
-	if ns := meta.Namespace; ns != "" && !types.IsIdentifier(ns) {
+	if ns := types.Value(meta.Namespace); ns != "" && !types.IsIdentifier(ns) {
 		return nil, llm.ErrBadParameter.Withf("connector namespace %q is not a valid identifier", ns)
 	}
 
@@ -59,8 +59,8 @@ func (m *Manager) CreateConnector(ctx context.Context, rawURL string, meta schem
 	// Probe succeeded — register the connector, then persist its state.
 	// If UpdateConnectorState fails, roll back by deleting the connector.
 	// If no namespace was provided, derive one from the server's name.
-	if meta.Namespace == "" && state.Name != nil && *state.Name != "" {
-		meta.Namespace = schema.CanonicalNamespace(*state.Name)
+	if meta.Namespace == nil && types.Value(state.Name) != "" {
+		meta.Namespace = types.Ptr(schema.CanonicalNamespace(types.Value(state.Name)))
 	}
 	result, err = m.connectorStore.CreateConnector(ctx, url, meta)
 	if err != nil {
@@ -104,7 +104,7 @@ func (m *Manager) UpdateConnector(ctx context.Context, rawURL string, meta schem
 	if err != nil {
 		return nil, err
 	}
-	if ns := meta.Namespace; ns != "" && !types.IsIdentifier(ns) {
+	if ns := types.Value(meta.Namespace); ns != "" && !types.IsIdentifier(ns) {
 		return nil, llm.ErrBadParameter.Withf("connector namespace %q is not a valid identifier", ns)
 	}
 
