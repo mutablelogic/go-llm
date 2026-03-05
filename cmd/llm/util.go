@@ -1,6 +1,10 @@
 package main
 
-import "fmt"
+import (
+	"fmt"
+	"os/exec"
+	"runtime"
+)
 
 // TableSummary returns a human-readable summary of the rows displayed.
 // length is the number of rows shown, offset is the starting row index (0-based),
@@ -13,4 +17,20 @@ func TableSummary(length, offset, total int) string {
 		return fmt.Sprintf("All %d rows displayed", total)
 	}
 	return fmt.Sprintf("Displaying rows %d-%d of %d", offset+1, offset+length, total)
+}
+
+// openBrowser attempts to open the given URL in the system browser.
+// It falls back gracefully on unsupported platforms; the caller should
+// print the URL so the user can copy-paste it if the opener fails.
+func openBrowser(url string) error {
+	var cmd *exec.Cmd
+	switch runtime.GOOS {
+	case "darwin":
+		cmd = exec.Command("open", url)
+	case "windows":
+		cmd = exec.Command("rundll32", "url.dll,FileProtocolHandler", url)
+	default: // linux, freebsd, etc.
+		cmd = exec.Command("xdg-open", url)
+	}
+	return cmd.Start()
 }

@@ -10,6 +10,7 @@ import (
 	"os/exec"
 	"os/signal"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"syscall"
 	"time"
@@ -57,6 +58,12 @@ func (g *Globals) Connect(url string) (*mcpclient.Client, error) {
 	runErr := make(chan error, 1)
 	go func() { runErr <- c.Run(g.ctx) }()
 
+	// stopRun cancels the run goroutine and waits for it to exit.
+	stopRun := func() {
+		g.cancel()
+		<-runErr
+	}
+
 	// Poll until the session is established or Run fails.
 	for {
 		_, err = c.ListTools(g.ctx)
@@ -64,12 +71,14 @@ func (g *Globals) Connect(url string) (*mcpclient.Client, error) {
 			break
 		}
 		if !errors.Is(err, mcpclient.ErrNotConnected) {
+			stopRun()
 			return nil, fmt.Errorf("connect: %w", err)
 		}
 		select {
 		case e := <-runErr:
 			return nil, fmt.Errorf("connect: %w", e)
 		case <-g.ctx.Done():
+			stopRun()
 			return nil, g.ctx.Err()
 		case <-time.After(10 * time.Millisecond):
 		}
@@ -137,7 +146,7 @@ func (g *Globals) authorize(ctx context.Context, c *mcpclient.Client, discoveryU
 			return err
 		}
 		_, err = flow.AuthorizeWithCode(ctx, creds, func(authURL string) (string, error) {
-			_ = exec.Command("open", authURL).Start()
+			_ = openBrowser(authURL)
 			fmt.Printf("Open this URL to authorize:\n%s\n\nEnter the verification code: ", authURL)
 			scanner := bufio.NewScanner(os.Stdin)
 			scanner.Scan()
@@ -167,9 +176,25 @@ func (g *Globals) authorize(ctx context.Context, c *mcpclient.Client, discoveryU
 
 	_, err = flow.AuthorizeWithBrowser(ctx, creds, listener, func(authURL string) error {
 		fmt.Printf("Opening browser for authorization...\n%s\n", authURL)
-		return exec.Command("open", authURL).Start()
+		return openBrowser(authURL)
 	})
 	return err
+}
+
+// openBrowser attempts to open the given URL in the system browser.
+// It falls back gracefully on unsupported platforms (the URL is already printed
+// to stdout by the caller, so the user can copy-paste it).
+func openBrowser(url string) error {
+	var cmd *exec.Cmd
+	switch runtime.GOOS {
+	case "darwin":
+		cmd = exec.Command("open", url)
+	case "windows":
+		cmd = exec.Command("rundll32", "url.dll,FileProtocolHandler", url)
+	default: // linux, freebsd, etc.
+		cmd = exec.Command("xdg-open", url)
+	}
+	return cmd.Start()
 }
 
 func (g *Globals) buildCreds(ctx context.Context, flow interface {

@@ -34,7 +34,11 @@ type chatOptions struct {
 func WithChatFile(filename string, r io.Reader) ChatOpt {
 	return func(o *chatOptions) {
 		if r != nil {
-			o.files = append(o.files, askFile{filename: filename, body: io.NopCloser(r)})
+			rc, ok := r.(io.ReadCloser)
+			if !ok {
+				rc = io.NopCloser(r)
+			}
+			o.files = append(o.files, askFile{filename: filename, body: rc})
 		}
 	}
 }
@@ -102,6 +106,7 @@ func (c *Client) Chat(ctx context.Context, req schema.ChatRequest, opts ...ChatO
 // chatMultipart sends the request via streaming multipart/form-data with
 // a single file attachment.
 func (c *Client) chatMultipart(ctx context.Context, req schema.ChatRequest, f askFile) (*schema.ChatResponse, error) {
+	defer f.body.Close()
 	httpReq := schema.MultipartChatRequest{
 		ChatRequest: req,
 		File: types.File{
@@ -193,6 +198,7 @@ func (c *Client) chatStreamSSE(ctx context.Context, req schema.ChatRequest, fn o
 func collectChatAttachments(req *schema.ChatRequest, o *chatOptions) error {
 	for _, f := range o.files {
 		data, err := io.ReadAll(f.body)
+		f.body.Close()
 		if err != nil {
 			return fmt.Errorf("reading file %q: %w", f.filename, err)
 		}

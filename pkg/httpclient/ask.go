@@ -35,7 +35,11 @@ type askFile struct {
 func WithFile(filename string, r io.Reader) AskOpt {
 	return func(o *askOptions) {
 		if r != nil {
-			o.files = append(o.files, askFile{filename: filename, body: io.NopCloser(r)})
+			rc, ok := r.(io.ReadCloser)
+			if !ok {
+				rc = io.NopCloser(r)
+			}
+			o.files = append(o.files, askFile{filename: filename, body: rc})
 		}
 	}
 }
@@ -88,6 +92,7 @@ func (c *Client) Ask(ctx context.Context, req schema.AskRequest, opts ...AskOpt)
 // askMultipart sends the request via streaming multipart/form-data with
 // a single file attachment.
 func (c *Client) askMultipart(ctx context.Context, req schema.AskRequest, f askFile) (*schema.AskResponse, error) {
+	defer f.body.Close()
 	httpReq := schema.MultipartAskRequest{
 		AskRequest: req,
 		File: types.File{
@@ -126,6 +131,7 @@ func (c *Client) askJSON(ctx context.Context, req schema.AskRequest) (*schema.As
 func collectAttachments(req *schema.AskRequest, o *askOptions) error {
 	for _, f := range o.files {
 		data, err := io.ReadAll(f.body)
+		f.body.Close()
 		if err != nil {
 			return fmt.Errorf("reading file %q: %w", f.filename, err)
 		}

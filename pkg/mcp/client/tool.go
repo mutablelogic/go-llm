@@ -70,7 +70,20 @@ func (m *mcpTool) Run(ctx context.Context, input json.RawMessage) (any, error) {
 // the pkg/tool.Toolkit.Run convention: IsError → Go error, success → plain value.
 func callToolResult(res *sdkmcp.CallToolResult) (any, error) {
 	if res.IsError {
-		return nil, errors.New(contentText(res.Content))
+		if msg := contentText(res.Content); msg != "" {
+			return nil, errors.New(msg)
+		}
+		if res.StructuredContent != nil {
+			if data, err := json.Marshal(res.StructuredContent); err == nil {
+				return nil, errors.New(string(data))
+			}
+		}
+		if len(res.Content) > 0 {
+			if data, err := json.Marshal(res.Content); err == nil {
+				return nil, errors.New(string(data))
+			}
+		}
+		return nil, errors.New("tool returned an error")
 	}
 	if res.StructuredContent != nil {
 		return res.StructuredContent, nil

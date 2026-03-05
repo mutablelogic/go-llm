@@ -5,13 +5,14 @@ import "context"
 ///////////////////////////////////////////////////////////////////////////////
 // PUBLIC METHODS
 
-// Run drives the MCP session until ctx is cancelled or the server closes the
-// connection. It blocks until all in-flight messages have been drained and the
-// underlying transport is torn down cleanly.
+// Run establishes an MCP session (including OAuth if required) and drives it
+// until ctx is cancelled or the server closes the connection. It blocks until
+// all in-flight messages have been drained and the underlying transport is
+// torn down cleanly.
 //
-// Call Connect before Run. If no session is active, Run returns immediately.
 // Run is safe to call concurrently with tool-call methods (CallTool, etc.);
-// those methods continue to work until Run returns.
+// those methods return ErrNotConnected until the session is established and
+// continue to work until Run returns.
 //
 // Server-sent log messages and progress notifications are written to the
 // default slog logger while Run is blocking.
@@ -21,6 +22,14 @@ func (c *Client) Run(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
+
+	// Clear the session pointer when Run exits so callers see ErrNotConnected
+	// rather than stale transport errors.
+	defer func() {
+		c.mu.Lock()
+		c.session = nil
+		c.mu.Unlock()
+	}()
 
 	// Ensure the goroutine below is always unblocked when Run returns,
 	// even if the server closes the session before ctx is cancelled.

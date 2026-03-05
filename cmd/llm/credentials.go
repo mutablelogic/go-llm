@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"net"
 	"os"
-	"os/exec"
 	"time"
 
 	// Packages
@@ -60,17 +59,22 @@ func (cmd LoginCommand) String() string {
 ///////////////////////////////////////////////////////////////////////////////
 // COMMANDS
 
-func (cmd *LoginCommand) Run(g *Globals) error {
+func (cmd *LoginCommand) Run(g *Globals) (err error) {
 	var opts []goclient.ClientOpt
 	if g.Debug {
 		opts = append(opts, goclient.OptTrace(os.Stderr, true))
 	}
 
+	// OTEL
+	parent, endSpan := otel.StartSpan(g.tracer, g.ctx, "LoginCommand",
+		attribute.String("url", cmd.URL),
+	)
+	defer func() { endSpan(err) }()
+
 	// captured is set inside the authFn when OAuth succeeds.
 	var captured *oauth.OAuthCredentials
 
 	var c *mcpclient.Client
-	var err error
 	c, err = mcpclient.New(cmd.URL, cmd.ClientName, "0", func(ctx context.Context, discoveryURL string) error {
 		flow := c.OAuth()
 
@@ -84,6 +88,9 @@ func (cmd *LoginCommand) Run(g *Globals) error {
 			// Machine-to-machine: client ID+secret required.
 			if cmd.ClientID == "" {
 				return fmt.Errorf("--client-id is required for --client-credentials flow")
+			}
+			if cmd.ClientSecret == "" {
+				return fmt.Errorf("--client-secret is required for --client-credentials flow")
 			}
 			creds := &oauth.OAuthCredentials{
 				ClientID:     cmd.ClientID,
@@ -119,7 +126,7 @@ func (cmd *LoginCommand) Run(g *Globals) error {
 			}
 			captured, err = flow.AuthorizeWithBrowser(ctx, creds, listener, func(authURL string) error {
 				fmt.Printf("Opening browser for authorization...\n%s\n", authURL)
-				return exec.Command("open", authURL).Start()
+				return openBrowser(authURL)
 			}, cmd.Scopes...)
 		}
 		return err
@@ -129,7 +136,7 @@ func (cmd *LoginCommand) Run(g *Globals) error {
 	}
 
 	// Drive the connect loop until the session is established (authFn fires on 401).
-	connectCtx, connectCancel := context.WithCancel(g.ctx)
+	connectCtx, connectCancel := context.WithCancel(parent)
 	defer connectCancel()
 	runErr := make(chan error, 1)
 	go func() { runErr <- c.Run(connectCtx) }()
@@ -161,7 +168,7 @@ func (cmd *LoginCommand) Run(g *Globals) error {
 	if err != nil {
 		return err
 	}
-	if err := llmClient.SetCredential(g.ctx, cmd.URL, schema.OAuthCredentials{
+	if err := llmClient.SetCredential(parent, cmd.URL, schema.OAuthCredentials{
 		Token:        captured.Token,
 		ClientID:     captured.ClientID,
 		ClientSecret: captured.ClientSecret,

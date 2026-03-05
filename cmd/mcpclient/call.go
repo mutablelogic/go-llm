@@ -30,6 +30,8 @@ func (cmd *CallCmd) Run(g *Globals) error {
 	args := json.RawMessage(cmd.Args)
 	if len(args) == 0 {
 		args = json.RawMessage("{}")
+	} else if !json.Valid(args) {
+		return fmt.Errorf("args: invalid JSON: %s", cmd.Args)
 	}
 
 	result, err := c.CallTool(g.ctx, cmd.Name, args)
