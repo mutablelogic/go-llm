@@ -15,14 +15,17 @@ import (
 // TYPES
 
 type articles struct {
+	tool.DefaultTool
 	client *Client
 }
 
 type headlines struct {
+	tool.DefaultTool
 	client *Client
 }
 
 type sources struct {
+	tool.DefaultTool
 	client *Client
 }
 
@@ -59,7 +62,7 @@ func (*articles) Description() string {
 }
 
 // Return the JSON schema for the tool input
-func (*articles) Schema() (*jsonschema.Schema, error) {
+func (*articles) InputSchema() (*jsonschema.Schema, error) {
 	schema, err := jsonschema.For[ArticlesRequest](nil)
 	if err != nil {
 		return nil, err
@@ -99,7 +102,7 @@ func (*headlines) Description() string {
 }
 
 // Return the JSON schema for the tool input
-func (*headlines) Schema() (*jsonschema.Schema, error) {
+func (*headlines) InputSchema() (*jsonschema.Schema, error) {
 	schema, err := jsonschema.For[HeadlinesRequest](nil)
 	if err != nil {
 		return nil, err
@@ -139,7 +142,7 @@ func (*sources) Description() string {
 }
 
 // Return the JSON schema for the tool input
-func (*sources) Schema() (*jsonschema.Schema, error) {
+func (*sources) InputSchema() (*jsonschema.Schema, error) {
 	schema, err := jsonschema.For[SourcesRequest](nil)
 	if err != nil {
 		return nil, err

@@ -355,7 +355,7 @@ func contentBlocksFromMistralMessage(msg *mistralMessage) ([]schema.ContentBlock
 func mistralToolsFromTools(tools []tool.Tool) ([]toolDefinition, error) {
 	var result []toolDefinition
 	for _, t := range tools {
-		s, err := t.Schema()
+		s, err := t.InputSchema()
 		if err != nil {
 			continue
 		}

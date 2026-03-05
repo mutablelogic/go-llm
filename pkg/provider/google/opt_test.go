@@ -38,7 +38,9 @@ func newMockTool(name, description string) *mockTool {
 
 func (m *mockTool) Name() string                                          { return m.name }
 func (m *mockTool) Description() string                                   { return m.description }
-func (m *mockTool) Schema() (*jsonschema.Schema, error)                   { return m.schema, nil }
+func (m *mockTool) InputSchema() (*jsonschema.Schema, error)              { return m.schema, nil }
+func (m *mockTool) OutputSchema() (*jsonschema.Schema, error)             { return nil, nil }
+func (m *mockTool) Meta() tool.ToolMeta                                   { return tool.ToolMeta{} }
 func (m *mockTool) Run(_ context.Context, _ json.RawMessage) (any, error) { return "mock result", nil }
 
 ///////////////////////////////////////////////////////////////////////////////

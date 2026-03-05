@@ -52,9 +52,12 @@ func (t *OutputTool) Description() string {
 	return "Submit your final structured output. Call this tool when you have completed your task and are ready to return the result."
 }
 
-func (t *OutputTool) Schema() (*jsonschema.Schema, error) {
+func (t *OutputTool) InputSchema() (*jsonschema.Schema, error) {
 	return t.schema, nil
 }
+
+func (t *OutputTool) OutputSchema() (*jsonschema.Schema, error) { return nil, nil }
+func (t *OutputTool) Meta() ToolMeta                            { return ToolMeta{} }
 
 func (t *OutputTool) Run(_ context.Context, input json.RawMessage) (any, error) {
 	// The tool's purpose is to capture the structured output — just return it.

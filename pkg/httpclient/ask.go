@@ -9,8 +9,8 @@ import (
 
 	// Packages
 	client "github.com/mutablelogic/go-client"
-	gomultipart "github.com/mutablelogic/go-client/pkg/multipart"
 	schema "github.com/mutablelogic/go-llm/pkg/schema"
+	types "github.com/mutablelogic/go-server/pkg/types"
 )
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -26,16 +26,25 @@ type askOptions struct {
 
 type askFile struct {
 	filename string
-	body     io.Reader
+	body     io.ReadCloser
 }
 
 // /////////////////////////////////////////////////////////////////////////////
 // OPTIONS
-// is the only attachment, it is sent via streaming multipart/form-data.
+
+// WithFile adds a file attachment to the ask request.
+// WithFile takes ownership of the reader: it will be closed after the
+// request completes. The returned AskOpt is single-use; passing the same
+// option to multiple Ask calls will fail on the second call because the
+// reader will already be consumed and closed.
 func WithFile(filename string, r io.Reader) AskOpt {
 	return func(o *askOptions) {
 		if r != nil {
-			o.files = append(o.files, askFile{filename: filename, body: r})
+			rc, ok := r.(io.ReadCloser)
+			if !ok {
+				rc = io.NopCloser(r)
+			}
+			o.files = append(o.files, askFile{filename: filename, body: rc})
 		}
 	}
 }
@@ -88,9 +97,10 @@ func (c *Client) Ask(ctx context.Context, req schema.AskRequest, opts ...AskOpt)
 // askMultipart sends the request via streaming multipart/form-data with
 // a single file attachment.
 func (c *Client) askMultipart(ctx context.Context, req schema.AskRequest, f askFile) (*schema.AskResponse, error) {
+	defer f.body.Close()
 	httpReq := schema.MultipartAskRequest{
 		AskRequest: req,
-		File: gomultipart.File{
+		File: types.File{
 			Path: f.filename,
 			Body: f.body,
 		},
@@ -126,6 +136,7 @@ func (c *Client) askJSON(ctx context.Context, req schema.AskRequest) (*schema.As
 func collectAttachments(req *schema.AskRequest, o *askOptions) error {
 	for _, f := range o.files {
 		data, err := io.ReadAll(f.body)
+		f.body.Close()
 		if err != nil {
 			return fmt.Errorf("reading file %q: %w", f.filename, err)
 		}
