@@ -150,6 +150,13 @@ func (cmd *RunServer) WithManager(ctx *Globals, fn func(*manager.Manager, string
 		ctx.logger.Printf(ctx.ctx, "No --passphrase set; credential store disabled")
 	}
 
+	// Add a connector store
+	if store, err := cmd.ConnectorStore(ctx.execName); err != nil {
+		return err
+	} else {
+		opts = append(opts, manager.WithConnectorStore(store))
+	}
+
 	// Add new toolkit with news, weather and home assistant tools if API keys are provided
 	toolkit, err := tool.NewToolkit()
 	if err != nil {
@@ -262,6 +269,20 @@ func (cmd *RunServer) Serve(ctx *Globals, manager *manager.Manager, versionTag s
 	// Return success
 	ctx.logger.Printf(ctx.ctx, "%s@%s stopped", ctx.execName, versionTag)
 	return nil
+}
+
+// ConnectorStore returns the connector store, creating it lazily.
+// Connectors are stored as JSON files in the user's cache directory.
+func (cmd *RunServer) ConnectorStore(execName string) (schema.ConnectorStore, error) {
+	cache, err := os.UserCacheDir()
+	if err != nil {
+		return nil, fmt.Errorf("failed to determine cache directory: %w", err)
+	}
+	store, err := session.NewFileConnectorStore(filepath.Join(cache, execName, "connectors"))
+	if err != nil {
+		return nil, fmt.Errorf("failed to create connector store: %w", err)
+	}
+	return store, nil
 }
 
 // SessionStore returns the session store, creating it lazily.

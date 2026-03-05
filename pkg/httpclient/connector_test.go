@@ -191,7 +191,7 @@ func TestConnectorClient_CreateAndGet(t *testing.T) {
 	defer srv.Close()
 	c := newConnectorClient(t, srv.URL)
 
-	created, err := c.CreateConnector(context.TODO(), "https://example.com/sse", schema.ConnectorMeta{Enabled: types.Ptr(true), Namespace: types.StringPtr("mcp")})
+	created, err := c.CreateConnector(context.TODO(), "https://example.com/sse", schema.ConnectorMeta{Enabled: types.Ptr(true), Namespace: types.Ptr("mcp")})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -219,10 +219,10 @@ func TestConnectorClient_UpdateAndGet(t *testing.T) {
 	defer srv.Close()
 	c := newConnectorClient(t, srv.URL)
 
-	if _, err := c.CreateConnector(context.TODO(), "https://example.com/sse", schema.ConnectorMeta{Enabled: types.Ptr(false), Namespace: types.StringPtr("old")}); err != nil {
+	if _, err := c.CreateConnector(context.TODO(), "https://example.com/sse", schema.ConnectorMeta{Enabled: types.Ptr(false), Namespace: types.Ptr("old")}); err != nil {
 		t.Fatal(err)
 	}
-	updated, err := c.UpdateConnector(context.TODO(), "https://example.com/sse", schema.ConnectorMeta{Enabled: types.Ptr(true), Namespace: types.StringPtr("new")})
+	updated, err := c.UpdateConnector(context.TODO(), "https://example.com/sse", schema.ConnectorMeta{Enabled: types.Ptr(true), Namespace: types.Ptr("new")})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -260,7 +260,7 @@ func TestConnectorClient_ListWithFilter(t *testing.T) {
 		"https://a.example.com/sse": "ns1",
 		"https://b.example.com/sse": "ns2",
 	} {
-		if _, err := c.CreateConnector(context.TODO(), rawURL, schema.ConnectorMeta{Enabled: types.Ptr(true), Namespace: types.StringPtr(ns)}); err != nil {
+		if _, err := c.CreateConnector(context.TODO(), rawURL, schema.ConnectorMeta{Enabled: types.Ptr(true), Namespace: types.Ptr(ns)}); err != nil {
 			t.Fatalf("create %s: %v", rawURL, err)
 		}
 	}

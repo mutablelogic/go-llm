@@ -70,7 +70,7 @@ func TestConnector_CreateAndGet(t *testing.T) {
 	mgr := newConnectorManager(t)
 	mux := serveMux(mgr)
 
-	meta := schema.ConnectorMeta{Enabled: types.Ptr(true), Namespace: types.StringPtr("mcp")}
+	meta := schema.ConnectorMeta{Enabled: types.Ptr(true), Namespace: types.Ptr("mcp")}
 	body, err := json.Marshal(meta)
 	if err != nil {
 		t.Fatal(err)
@@ -157,7 +157,7 @@ func TestConnector_UpdateAndGet(t *testing.T) {
 	mux := serveMux(mgr)
 
 	// Create
-	body, _ := json.Marshal(schema.ConnectorMeta{Enabled: types.Ptr(false), Namespace: types.StringPtr("old")})
+	body, _ := json.Marshal(schema.ConnectorMeta{Enabled: types.Ptr(false), Namespace: types.Ptr("old")})
 	w := httptest.NewRecorder()
 	r := httptest.NewRequest(http.MethodPost, connectorPath("https://example.com/sse"), bytes.NewReader(body))
 	r.Header.Set("Content-Type", "application/json")
@@ -167,7 +167,7 @@ func TestConnector_UpdateAndGet(t *testing.T) {
 	}
 
 	// PATCH
-	body, _ = json.Marshal(schema.ConnectorMeta{Enabled: types.Ptr(true), Namespace: types.StringPtr("new")})
+	body, _ = json.Marshal(schema.ConnectorMeta{Enabled: types.Ptr(true), Namespace: types.Ptr("new")})
 	w = httptest.NewRecorder()
 	r = httptest.NewRequest(http.MethodPatch, connectorPath("https://example.com/sse"), bytes.NewReader(body))
 	r.Header.Set("Content-Type", "application/json")
@@ -253,7 +253,7 @@ func TestConnector_ListWithFilter(t *testing.T) {
 		"https://a.example.com/sse": "ns1",
 		"https://b.example.com/sse": "ns2",
 	} {
-		body, _ := json.Marshal(schema.ConnectorMeta{Enabled: types.Ptr(true), Namespace: types.StringPtr(ns)})
+		body, _ := json.Marshal(schema.ConnectorMeta{Enabled: types.Ptr(true), Namespace: types.Ptr(ns)})
 		w := httptest.NewRecorder()
 		r := httptest.NewRequest(http.MethodPost, connectorPath(rawURL), bytes.NewReader(body))
 		r.Header.Set("Content-Type", "application/json")

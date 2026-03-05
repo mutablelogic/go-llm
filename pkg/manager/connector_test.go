@@ -50,7 +50,7 @@ func Test_connector_001(t *testing.T) {
 
 	m := newManagerWithAuth(t)
 
-	c, err := m.CreateConnector(context.TODO(), testConnectorURL, schema.ConnectorMeta{Enabled: types.Ptr(true), Namespace: "mcp"})
+	c, err := m.CreateConnector(context.TODO(), testConnectorURL, schema.ConnectorMeta{Enabled: types.Ptr(true), Namespace: types.Ptr("mcp")})
 	assert.NoError(err)
 	assert.NotNil(c)
 	assert.Equal(testConnectorURL, c.URL)
@@ -88,7 +88,7 @@ func Test_connector_004(t *testing.T) {
 	m, err := NewManager("test", "0.0.0")
 	assert.NoError(err)
 
-	_, err = m.CreateConnector(context.TODO(), testConnectorURL, schema.ConnectorMeta{Namespace: types.StringPtr("bad namespace")})
+	_, err = m.CreateConnector(context.TODO(), testConnectorURL, schema.ConnectorMeta{Namespace: types.Ptr("bad namespace")})
 	assert.Error(err)
 }
 
@@ -117,7 +117,7 @@ func Test_connector_006(t *testing.T) {
 	_, err = m.GetConnector(context.TODO(), testConnectorURL)
 	assert.ErrorIs(err, llm.ErrNotFound)
 
-	_, err = m.CreateConnector(context.TODO(), testConnectorURL, schema.ConnectorMeta{Enabled: types.Ptr(true), Namespace: "ns"})
+	_, err = m.CreateConnector(context.TODO(), testConnectorURL, schema.ConnectorMeta{Enabled: types.Ptr(true), Namespace: types.Ptr("ns")})
 	assert.NoError(err)
 
 	got, err := m.GetConnector(context.TODO(), testConnectorURL)
@@ -133,10 +133,10 @@ func Test_connector_007(t *testing.T) {
 	m := newManagerWithAuth(t)
 	var err error
 
-	_, err = m.CreateConnector(context.TODO(), testConnectorURL, schema.ConnectorMeta{Enabled: types.Ptr(false), Namespace: "old"})
+	_, err = m.CreateConnector(context.TODO(), testConnectorURL, schema.ConnectorMeta{Enabled: types.Ptr(false), Namespace: types.Ptr("old")})
 	assert.NoError(err)
 
-	updated, err := m.UpdateConnector(context.TODO(), testConnectorURL, schema.ConnectorMeta{Enabled: types.Ptr(true), Namespace: "new"})
+	updated, err := m.UpdateConnector(context.TODO(), testConnectorURL, schema.ConnectorMeta{Enabled: types.Ptr(true), Namespace: types.Ptr("new")})
 	assert.NoError(err)
 	assert.True(*updated.Enabled)
 	assert.Equal("new", types.Value(updated.Namespace))

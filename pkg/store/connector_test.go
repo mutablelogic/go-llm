@@ -20,7 +20,7 @@ var connectorStoreTests = []struct {
 	Fn: func(t *testing.T, s schema.ConnectorStore) {
 		a := assert.New(t)
 		ctx := context.Background()
-		c, err := s.CreateConnector(ctx, "https://example.com/sse", schema.ConnectorMeta{Enabled: types.Ptr(true), Namespace: types.StringPtr("mcp")})
+		c, err := s.CreateConnector(ctx, "https://example.com/sse", schema.ConnectorMeta{Enabled: types.Ptr(true), Namespace: types.Ptr("mcp")})
 		a.NoError(err)
 		a.NotNil(c)
 		a.Equal("https://example.com/sse", c.URL)
@@ -66,10 +66,10 @@ var connectorStoreTests = []struct {
 		a := assert.New(t)
 		ctx := context.Background()
 		// Starts with a digit
-		_, err := s.CreateConnector(ctx, "https://example.com/sse", schema.ConnectorMeta{Namespace: types.StringPtr("1bad")})
+		_, err := s.CreateConnector(ctx, "https://example.com/sse", schema.ConnectorMeta{Namespace: types.Ptr("1bad")})
 		a.Error(err)
 		// Contains spaces
-		_, err = s.CreateConnector(ctx, "https://example.com/sse", schema.ConnectorMeta{Namespace: types.StringPtr("has spaces")})
+		_, err = s.CreateConnector(ctx, "https://example.com/sse", schema.ConnectorMeta{Namespace: types.Ptr("has spaces")})
 		a.Error(err)
 	},
 }, {
@@ -98,9 +98,9 @@ var connectorStoreTests = []struct {
 	Fn: func(t *testing.T, s schema.ConnectorStore) {
 		a := assert.New(t)
 		ctx := context.Background()
-		_, err := s.CreateConnector(ctx, "https://example.com/sse", schema.ConnectorMeta{Enabled: types.Ptr(false), Namespace: types.StringPtr("old")})
+		_, err := s.CreateConnector(ctx, "https://example.com/sse", schema.ConnectorMeta{Enabled: types.Ptr(false), Namespace: types.Ptr("old")})
 		a.NoError(err)
-		updated, err := s.UpdateConnector(ctx, "https://example.com/sse", schema.ConnectorMeta{Enabled: types.Ptr(true), Namespace: types.StringPtr("new")})
+		updated, err := s.UpdateConnector(ctx, "https://example.com/sse", schema.ConnectorMeta{Enabled: types.Ptr(true), Namespace: types.Ptr("new")})
 		a.NoError(err)
 		a.True(types.Value(updated.Enabled))
 		a.Equal("new", types.Value(updated.Namespace))
@@ -119,7 +119,7 @@ var connectorStoreTests = []struct {
 		ctx := context.Background()
 		_, err := s.CreateConnector(ctx, "https://example.com/sse", schema.ConnectorMeta{})
 		a.NoError(err)
-		_, err = s.UpdateConnector(ctx, "https://example.com/sse", schema.ConnectorMeta{Namespace: types.StringPtr("bad namespace")})
+		_, err = s.UpdateConnector(ctx, "https://example.com/sse", schema.ConnectorMeta{Namespace: types.Ptr("bad namespace")})
 		a.Error(err)
 	},
 }, {
@@ -127,15 +127,15 @@ var connectorStoreTests = []struct {
 	Fn: func(t *testing.T, s schema.ConnectorStore) {
 		a := assert.New(t)
 		ctx := context.Background()
-		_, err := s.CreateConnector(ctx, "https://a.example.com/sse", schema.ConnectorMeta{Namespace: types.StringPtr("ns1")})
+		_, err := s.CreateConnector(ctx, "https://a.example.com/sse", schema.ConnectorMeta{Namespace: types.Ptr("ns1")})
 		a.NoError(err)
-		_, err = s.CreateConnector(ctx, "https://b.example.com/sse", schema.ConnectorMeta{Namespace: types.StringPtr("ns2")})
+		_, err = s.CreateConnector(ctx, "https://b.example.com/sse", schema.ConnectorMeta{Namespace: types.Ptr("ns2")})
 		a.NoError(err)
 		// Trying to rename b's namespace to an already-used one must fail.
-		_, err = s.UpdateConnector(ctx, "https://b.example.com/sse", schema.ConnectorMeta{Namespace: types.StringPtr("ns1")})
+		_, err = s.UpdateConnector(ctx, "https://b.example.com/sse", schema.ConnectorMeta{Namespace: types.Ptr("ns1")})
 		a.Error(err)
 		// Updating a connector to its own namespace must succeed (no conflict with self).
-		_, err = s.UpdateConnector(ctx, "https://a.example.com/sse", schema.ConnectorMeta{Namespace: types.StringPtr("ns1")})
+		_, err = s.UpdateConnector(ctx, "https://a.example.com/sse", schema.ConnectorMeta{Namespace: types.Ptr("ns1")})
 		a.NoError(err)
 	},
 }, {
@@ -169,9 +169,9 @@ var connectorStoreTests = []struct {
 	Fn: func(t *testing.T, s schema.ConnectorStore) {
 		a := assert.New(t)
 		ctx := context.Background()
-		_, err := s.CreateConnector(ctx, "https://a.example.com/sse", schema.ConnectorMeta{Enabled: types.Ptr(true), Namespace: types.StringPtr("ns1")})
+		_, err := s.CreateConnector(ctx, "https://a.example.com/sse", schema.ConnectorMeta{Enabled: types.Ptr(true), Namespace: types.Ptr("ns1")})
 		a.NoError(err)
-		_, err = s.CreateConnector(ctx, "https://b.example.com/sse", schema.ConnectorMeta{Enabled: types.Ptr(false), Namespace: types.StringPtr("ns2")})
+		_, err = s.CreateConnector(ctx, "https://b.example.com/sse", schema.ConnectorMeta{Enabled: types.Ptr(false), Namespace: types.Ptr("ns2")})
 		a.NoError(err)
 		resp, err := s.ListConnectors(ctx, schema.ListConnectorsRequest{})
 		a.NoError(err)
@@ -183,9 +183,9 @@ var connectorStoreTests = []struct {
 	Fn: func(t *testing.T, s schema.ConnectorStore) {
 		a := assert.New(t)
 		ctx := context.Background()
-		_, err := s.CreateConnector(ctx, "https://a.example.com/sse", schema.ConnectorMeta{Namespace: types.StringPtr("ns1")})
+		_, err := s.CreateConnector(ctx, "https://a.example.com/sse", schema.ConnectorMeta{Namespace: types.Ptr("ns1")})
 		a.NoError(err)
-		_, err = s.CreateConnector(ctx, "https://b.example.com/sse", schema.ConnectorMeta{Namespace: types.StringPtr("ns1")})
+		_, err = s.CreateConnector(ctx, "https://b.example.com/sse", schema.ConnectorMeta{Namespace: types.Ptr("ns1")})
 		a.Error(err)
 	},
 }, {
@@ -194,11 +194,11 @@ var connectorStoreTests = []struct {
 		a := assert.New(t)
 		ctx := context.Background()
 		// Each namespace is unique; create three connectors with distinct namespaces.
-		_, err := s.CreateConnector(ctx, "https://a.example.com/sse", schema.ConnectorMeta{Enabled: types.Ptr(true), Namespace: types.StringPtr("ns1")})
+		_, err := s.CreateConnector(ctx, "https://a.example.com/sse", schema.ConnectorMeta{Enabled: types.Ptr(true), Namespace: types.Ptr("ns1")})
 		a.NoError(err)
-		_, err = s.CreateConnector(ctx, "https://b.example.com/sse", schema.ConnectorMeta{Enabled: types.Ptr(true), Namespace: types.StringPtr("ns2")})
+		_, err = s.CreateConnector(ctx, "https://b.example.com/sse", schema.ConnectorMeta{Enabled: types.Ptr(true), Namespace: types.Ptr("ns2")})
 		a.NoError(err)
-		_, err = s.CreateConnector(ctx, "https://c.example.com/sse", schema.ConnectorMeta{Enabled: types.Ptr(true), Namespace: types.StringPtr("ns3")})
+		_, err = s.CreateConnector(ctx, "https://c.example.com/sse", schema.ConnectorMeta{Enabled: types.Ptr(true), Namespace: types.Ptr("ns3")})
 		a.NoError(err)
 		// Filter by ns1 should return exactly one result.
 		resp, err := s.ListConnectors(ctx, schema.ListConnectorsRequest{Namespace: "ns1"})
@@ -322,7 +322,7 @@ var connectorStoreTests = []struct {
 	Fn: func(t *testing.T, s schema.ConnectorStore) {
 		a := assert.New(t)
 		ctx := context.Background()
-		_, err := s.CreateConnector(ctx, "https://example.com/sse", schema.ConnectorMeta{Enabled: types.Ptr(true), Namespace: types.StringPtr("ns")})
+		_, err := s.CreateConnector(ctx, "https://example.com/sse", schema.ConnectorMeta{Enabled: types.Ptr(true), Namespace: types.Ptr("ns")})
 		a.NoError(err)
 		name := "srv"
 		updated, err := s.UpdateConnectorState(ctx, "https://example.com/sse", schema.ConnectorState{Name: &name})
