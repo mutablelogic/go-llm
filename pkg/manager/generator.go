@@ -466,7 +466,7 @@ func (m *Manager) withTools(tools ...string) (opt.Opt, error) {
 	}
 
 	// Build a filtered toolkit with only the requested tools
-	filtered := make([]tool.Tool, 0, len(tools))
+	filtered := make([]llm.Tool, 0, len(tools))
 	for _, name := range tools {
 		t := m.toolkit.Lookup(name)
 		if t == nil {

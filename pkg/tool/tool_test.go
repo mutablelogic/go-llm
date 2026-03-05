@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	jsonschema "github.com/google/jsonschema-go/jsonschema"
+	llm "github.com/mutablelogic/go-llm"
 	tool "github.com/mutablelogic/go-llm/pkg/tool"
 )
 
@@ -17,7 +18,7 @@ func (s *stubTool) Name() string                                          { retu
 func (s *stubTool) Description() string                                   { return "stub" }
 func (s *stubTool) InputSchema() (*jsonschema.Schema, error)              { return nil, nil }
 func (s *stubTool) OutputSchema() (*jsonschema.Schema, error)             { return nil, nil }
-func (s *stubTool) Meta() tool.ToolMeta                                   { return tool.ToolMeta{} }
+func (s *stubTool) Meta() llm.ToolMeta                                    { return llm.ToolMeta{} }
 func (s *stubTool) Run(_ context.Context, _ json.RawMessage) (any, error) { return nil, nil }
 
 func TestRegister_ReservedName(t *testing.T) {

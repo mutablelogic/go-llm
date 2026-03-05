@@ -7,6 +7,7 @@ import (
 
 	// Packages
 	jsonschema "github.com/google/jsonschema-go/jsonschema"
+	llm "github.com/mutablelogic/go-llm"
 	opt "github.com/mutablelogic/go-llm/pkg/opt"
 	schema "github.com/mutablelogic/go-llm/pkg/schema"
 	"github.com/mutablelogic/go-llm/pkg/tool"
@@ -16,7 +17,7 @@ import (
 ///////////////////////////////////////////////////////////////////////////////
 // MOCK TOOL
 
-// mockTool implements tool.Tool for testing
+// mockTool implements llm.Tool for testing
 type mockTool struct {
 	name        string
 	description string
@@ -40,7 +41,7 @@ func (m *mockTool) Name() string                                          { retu
 func (m *mockTool) Description() string                                   { return m.description }
 func (m *mockTool) InputSchema() (*jsonschema.Schema, error)              { return m.schema, nil }
 func (m *mockTool) OutputSchema() (*jsonschema.Schema, error)             { return nil, nil }
-func (m *mockTool) Meta() tool.ToolMeta                                   { return tool.ToolMeta{} }
+func (m *mockTool) Meta() llm.ToolMeta                                    { return llm.ToolMeta{} }
 func (m *mockTool) Run(_ context.Context, _ json.RawMessage) (any, error) { return "mock result", nil }
 
 ///////////////////////////////////////////////////////////////////////////////

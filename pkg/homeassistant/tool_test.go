@@ -9,8 +9,8 @@ import (
 
 	// Packages
 	opts "github.com/mutablelogic/go-client"
+	llm "github.com/mutablelogic/go-llm"
 	homeassistant "github.com/mutablelogic/go-llm/pkg/homeassistant"
-	"github.com/mutablelogic/go-llm/pkg/tool"
 	assert "github.com/stretchr/testify/assert"
 )
 
@@ -123,7 +123,7 @@ func Test_tool_006(t *testing.T) {
 ///////////////////////////////////////////////////////////////////////////////
 // HELPERS
 
-func runTool(t *testing.T, tools []tool.Tool, name string, input any) any {
+func runTool(t *testing.T, tools []llm.Tool, name string, input any) any {
 	t.Helper()
 	for _, tl := range tools {
 		if tl.Name() == name {

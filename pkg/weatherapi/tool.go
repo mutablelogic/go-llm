@@ -29,22 +29,22 @@ type alertsWeather struct {
 	client *Client
 }
 
-var _ tool.Tool = (*currentWeather)(nil)
-var _ tool.Tool = (*forecastWeather)(nil)
-var _ tool.Tool = (*alertsWeather)(nil)
+var _ llm.Tool = (*currentWeather)(nil)
+var _ llm.Tool = (*forecastWeather)(nil)
+var _ llm.Tool = (*alertsWeather)(nil)
 
 ///////////////////////////////////////////////////////////////////////////////
 // LIFECYCLE
 
 // NewTools returns a slice of weather tools for use with LLM agents
-func NewTools(apikey string, opts ...client.ClientOpt) ([]tool.Tool, error) {
+func NewTools(apikey string, opts ...client.ClientOpt) ([]llm.Tool, error) {
 	// Create a client
 	client, err := New(apikey, opts...)
 	if err != nil {
 		return nil, err
 	}
 
-	return []tool.Tool{
+	return []llm.Tool{
 		&currentWeather{client: client},
 		&forecastWeather{client: client},
 		&alertsWeather{client: client},

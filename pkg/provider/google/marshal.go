@@ -10,7 +10,6 @@ import (
 	"github.com/google/uuid"
 	llm "github.com/mutablelogic/go-llm"
 	schema "github.com/mutablelogic/go-llm/pkg/schema"
-	"github.com/mutablelogic/go-llm/pkg/tool"
 )
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -164,7 +163,7 @@ func geminiPartFromToolResult(tr *schema.ToolResult) *geminiPart {
 
 // geminiFunctionDeclsFromTools converts a slice of tools to
 // gemini wire FunctionDeclaration values, using ParametersJsonSchema.
-func geminiFunctionDeclsFromTools(tools []tool.Tool) []*geminiFunctionDeclaration {
+func geminiFunctionDeclsFromTools(tools []llm.Tool) []*geminiFunctionDeclaration {
 	decls := make([]*geminiFunctionDeclaration, 0, len(tools))
 	for _, t := range tools {
 		decl := &geminiFunctionDeclaration{

@@ -29,21 +29,21 @@ type sources struct {
 	client *Client
 }
 
-var _ tool.Tool = (*articles)(nil)
-var _ tool.Tool = (*headlines)(nil)
-var _ tool.Tool = (*sources)(nil)
+var _ llm.Tool = (*articles)(nil)
+var _ llm.Tool = (*headlines)(nil)
+var _ llm.Tool = (*sources)(nil)
 
 ///////////////////////////////////////////////////////////////////////////////
 // LIFECYCLE
 
-func NewTools(apikey string, opts ...client.ClientOpt) ([]tool.Tool, error) {
+func NewTools(apikey string, opts ...client.ClientOpt) ([]llm.Tool, error) {
 	// Create a client
 	client, err := New(apikey, opts...)
 	if err != nil {
 		return nil, err
 	}
 
-	return []tool.Tool{
+	return []llm.Tool{
 		&articles{client: client},
 		&headlines{client: client},
 		&sources{client: client},

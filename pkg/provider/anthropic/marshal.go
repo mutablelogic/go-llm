@@ -9,8 +9,8 @@ import (
 	"strings"
 
 	// Packages
+	llm "github.com/mutablelogic/go-llm"
 	schema "github.com/mutablelogic/go-llm/pkg/schema"
-	"github.com/mutablelogic/go-llm/pkg/tool"
 )
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -276,7 +276,7 @@ func attachmentFromSource(src *anthropicSource) *schema.Attachment {
 // TOOLS CONVERSION
 
 // anthropicToolsFromTools converts a slice of tools to Anthropic tool JSON payloads
-func anthropicToolsFromTools(tools []tool.Tool) ([]json.RawMessage, error) {
+func anthropicToolsFromTools(tools []llm.Tool) ([]json.RawMessage, error) {
 	var result []json.RawMessage
 	for _, t := range tools {
 		s, err := t.InputSchema()

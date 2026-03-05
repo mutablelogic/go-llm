@@ -44,13 +44,13 @@ type renderTemplate struct {
 	client *Client
 }
 
-var _ tool.Tool = (*getStates)(nil)
-var _ tool.Tool = (*getState)(nil)
-var _ tool.Tool = (*callService)(nil)
-var _ tool.Tool = (*getServices)(nil)
-var _ tool.Tool = (*setState)(nil)
-var _ tool.Tool = (*fireEvent)(nil)
-var _ tool.Tool = (*renderTemplate)(nil)
+var _ llm.Tool = (*getStates)(nil)
+var _ llm.Tool = (*getState)(nil)
+var _ llm.Tool = (*callService)(nil)
+var _ llm.Tool = (*getServices)(nil)
+var _ llm.Tool = (*setState)(nil)
+var _ llm.Tool = (*fireEvent)(nil)
+var _ llm.Tool = (*renderTemplate)(nil)
 
 ///////////////////////////////////////////////////////////////////////////////
 // REQUEST TYPES
@@ -99,13 +99,13 @@ type RenderTemplateRequest struct {
 // LIFECYCLE
 
 // NewTools returns Home Assistant tools for use with LLM agents.
-func NewTools(endPoint, apiKey string, opts ...client.ClientOpt) ([]tool.Tool, error) {
+func NewTools(endPoint, apiKey string, opts ...client.ClientOpt) ([]llm.Tool, error) {
 	c, err := New(endPoint, apiKey, opts...)
 	if err != nil {
 		return nil, err
 	}
 
-	return []tool.Tool{
+	return []llm.Tool{
 		&getStates{client: c},
 		&getState{client: c},
 		&callService{client: c},

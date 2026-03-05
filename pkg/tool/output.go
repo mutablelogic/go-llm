@@ -7,6 +7,7 @@ import (
 
 	// Packages
 	jsonschema "github.com/google/jsonschema-go/jsonschema"
+	llm "github.com/mutablelogic/go-llm"
 )
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -57,7 +58,7 @@ func (t *OutputTool) InputSchema() (*jsonschema.Schema, error) {
 }
 
 func (t *OutputTool) OutputSchema() (*jsonschema.Schema, error) { return nil, nil }
-func (t *OutputTool) Meta() ToolMeta                            { return ToolMeta{} }
+func (t *OutputTool) Meta() llm.ToolMeta                        { return llm.ToolMeta{} }
 
 func (t *OutputTool) Run(_ context.Context, input json.RawMessage) (any, error) {
 	// The tool's purpose is to capture the structured output — just return it.

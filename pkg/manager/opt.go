@@ -106,7 +106,7 @@ func WithTracer(tracer trace.Tracer) Opt {
 }
 
 // WithTool registers a single tool with the manager's toolkit.
-func WithTool(t tool.Tool) Opt {
+func WithTool(t llm.Tool) Opt {
 	return func(m *Manager) error {
 		if t == nil {
 			return llm.ErrBadParameter.With("tool is required")

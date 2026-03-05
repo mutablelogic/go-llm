@@ -10,8 +10,8 @@ import (
 	"strings"
 
 	// Packages
+	llm "github.com/mutablelogic/go-llm"
 	schema "github.com/mutablelogic/go-llm/pkg/schema"
-	tool "github.com/mutablelogic/go-llm/pkg/tool"
 )
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -352,7 +352,7 @@ func contentBlocksFromMistralMessage(msg *mistralMessage) ([]schema.ContentBlock
 // TOOL CONVERSION
 
 // mistralToolsFromTools converts a slice of tools to Mistral tool definitions.
-func mistralToolsFromTools(tools []tool.Tool) ([]toolDefinition, error) {
+func mistralToolsFromTools(tools []llm.Tool) ([]toolDefinition, error) {
 	var result []toolDefinition
 	for _, t := range tools {
 		s, err := t.InputSchema()

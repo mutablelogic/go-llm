@@ -6,7 +6,7 @@ import (
 
 	// Packages
 	sdkmcp "github.com/modelcontextprotocol/go-sdk/mcp"
-	tool "github.com/mutablelogic/go-llm/pkg/tool"
+	llm "github.com/mutablelogic/go-llm"
 )
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -43,15 +43,15 @@ func (c *Client) ServerInfo() (name, version, protocol string) {
 }
 
 // ListTools returns all tools advertised by the connected MCP server as
-// tool.Tool values. Each returned tool's Run method invokes CallTool on the
+// llm.Tool values. Each returned tool's Run method invokes CallTool on the
 // server. All pages are fetched automatically via the cursor. Returns
 // ErrNotConnected if no session is active.
-func (c *Client) ListTools(ctx context.Context) ([]tool.Tool, error) {
+func (c *Client) ListTools(ctx context.Context) ([]llm.Tool, error) {
 	sess, err := c.getSession()
 	if err != nil {
 		return nil, err
 	}
-	var tools []tool.Tool
+	var tools []llm.Tool
 	var cursor string
 	for {
 		params := &sdkmcp.ListToolsParams{Cursor: cursor}
@@ -71,7 +71,7 @@ func (c *Client) ListTools(ctx context.Context) ([]tool.Tool, error) {
 }
 
 // CallTool invokes a tool on the connected MCP server by name with the given
-// arguments as JSON. Follows the same return convention as pkg/tool.Toolkit.Run:
+// arguments as JSON. Follows the same return convention as pkg/llm.Toolkit.Run:
 // tool errors (IsError==true in the MCP result) are returned as a Go error;
 // on success the plain value is returned: StructuredContent if present,
 // the single content item's value if there is exactly one, or a []any slice

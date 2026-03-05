@@ -9,7 +9,7 @@ import (
 
 	// Packages
 	opts "github.com/mutablelogic/go-client"
-	tool "github.com/mutablelogic/go-llm/pkg/tool"
+	llm "github.com/mutablelogic/go-llm"
 	weatherapi "github.com/mutablelogic/go-llm/pkg/weatherapi"
 	assert "github.com/stretchr/testify/assert"
 )
@@ -19,7 +19,7 @@ import (
 
 var (
 	client *weatherapi.Client
-	tools  []tool.Tool
+	tools  []llm.Tool
 )
 
 func TestMain(m *testing.M) {

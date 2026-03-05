@@ -5,70 +5,17 @@ import (
 	"encoding/json"
 
 	// Packages
-	jsonschema "github.com/google/jsonschema-go/jsonschema"
 	llm "github.com/mutablelogic/go-llm"
 	schema "github.com/mutablelogic/go-llm/pkg/schema"
 	types "github.com/mutablelogic/go-server/pkg/types"
 )
 
 ///////////////////////////////////////////////////////////////////////////////
-// TYPES
-
-// ToolMeta holds optional metadata about a tool, sourced from the MCP
-// ToolAnnotations and protocol _meta fields. All fields are hints only.
-type ToolMeta struct {
-	// Title is a human-readable display name (takes precedence over Name).
-	Title string
-
-	// ReadOnlyHint indicates the tool does not modify its environment.
-	ReadOnlyHint bool
-
-	// DestructiveHint, when non-nil and true, indicates the tool may perform
-	// destructive updates. Meaningful only when ReadOnlyHint is false.
-	DestructiveHint *bool
-
-	// IdempotentHint indicates repeated identical calls have no additional effect.
-	// Meaningful only when ReadOnlyHint is false.
-	IdempotentHint bool
-
-	// OpenWorldHint, when non-nil and true, indicates the tool may interact
-	// with external entities outside a closed domain (e.g. web search).
-	OpenWorldHint *bool
-}
-
-// DefaultTool provides no-op default implementations of the optional Tool
-// interface methods OutputSchema and Meta. Embed it in concrete tool types
-// so they satisfy the full Tool interface without boilerplate.
-type DefaultTool struct{}
-
-func (DefaultTool) OutputSchema() (*jsonschema.Schema, error) { return nil, nil }
-func (DefaultTool) Meta() ToolMeta                            { return ToolMeta{} }
-
-// Tool is an interface for a callable tool with a name, description,
-// input schema, optional output schema, and metadata hints.
-type Tool interface {
-	// Return the name of the tool
-	Name() string
-
-	// Return the description of the tool
-	Description() string
-
-	// Return the JSON schema for the tool input parameters.
-	InputSchema() (*jsonschema.Schema, error)
-
-	// Return the JSON schema for the tool output, or nil if unspecified.
-	OutputSchema() (*jsonschema.Schema, error)
-
-	// Return optional metadata / hints about the tool.
-	Meta() ToolMeta
-
-	// Run the tool with the given input as JSON (may be nil)
-	Run(ctx context.Context, input json.RawMessage) (any, error)
-}
+// TOOLKIT
 
 // Toolkit is a collection of tools with unique names
 type Toolkit struct {
-	tools map[string]Tool
+	tools map[string]llm.Tool
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -76,9 +23,9 @@ type Toolkit struct {
 
 // NewToolkit creates a new toolkit with the given tools.
 // Returns an error if any tool has an invalid or duplicate name.
-func NewToolkit(tools ...Tool) (*Toolkit, error) {
+func NewToolkit(tools ...llm.Tool) (*Toolkit, error) {
 	tk := &Toolkit{
-		tools: make(map[string]Tool),
+		tools: make(map[string]llm.Tool),
 	}
 	if err := tk.Register(tools...); err != nil {
 		return nil, err
@@ -90,8 +37,8 @@ func NewToolkit(tools ...Tool) (*Toolkit, error) {
 // PUBLIC METHODS
 
 // Tools returns all tools in the toolkit
-func (tk *Toolkit) Tools() []Tool {
-	result := make([]Tool, 0, len(tk.tools))
+func (tk *Toolkit) Tools() []llm.Tool {
+	result := make([]llm.Tool, 0, len(tk.tools))
 	for _, t := range tk.tools {
 		result = append(result, t)
 	}
@@ -101,7 +48,7 @@ func (tk *Toolkit) Tools() []Tool {
 // Register adds one or more tools to the toolkit.
 // Returns an error if any tool has an invalid or duplicate name,
 // or if the name is reserved (e.g. "submit_output").
-func (tk *Toolkit) Register(tools ...Tool) error {
+func (tk *Toolkit) Register(tools ...llm.Tool) error {
 	for _, t := range tools {
 		name := t.Name()
 		if !types.IsIdentifier(name) {
@@ -127,7 +74,7 @@ func isReservedToolName(name string) bool {
 }
 
 // Lookup returns a tool by name, or nil if not found
-func (tk *Toolkit) Lookup(name string) Tool {
+func (tk *Toolkit) Lookup(name string) llm.Tool {
 	return tk.tools[name]
 }
 

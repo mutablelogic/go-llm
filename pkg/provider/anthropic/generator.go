@@ -350,14 +350,14 @@ func generateRequestFromOpts(model string, session *schema.Conversation, options
 	}
 
 	// Collect tools from toolkit and individual WithTool opts
-	var allTools []tool.Tool
+	var allTools []llm.Tool
 	if v := options.Get(opt.ToolkitKey); v != nil {
 		if tk, ok := v.(*tool.Toolkit); ok {
 			allTools = append(allTools, tk.Tools()...)
 		}
 	}
 	if v := options.Get(opt.ToolKey); v != nil {
-		if extra, ok := v.([]tool.Tool); ok {
+		if extra, ok := v.([]llm.Tool); ok {
 			allTools = append(allTools, extra...)
 		}
 	}
