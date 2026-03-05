@@ -32,7 +32,7 @@ func (m *Manager) ListTools(ctx context.Context, req schema.ListToolRequest) (re
 	// Build metadata
 	all := make([]schema.ToolMeta, 0, len(tools))
 	for _, t := range tools {
-		s, err := t.Schema()
+		s, err := t.InputSchema()
 		if err != nil {
 			return nil, err
 		}
@@ -98,7 +98,7 @@ func (m *Manager) GetTool(ctx context.Context, name string) (result *schema.Tool
 	if t == nil {
 		return nil, llm.ErrNotFound.Withf("tool %q", name)
 	}
-	s, err := t.Schema()
+	s, err := t.InputSchema()
 	if err != nil {
 		return nil, err
 	}

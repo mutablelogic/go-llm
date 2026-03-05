@@ -15,14 +15,17 @@ import (
 // TYPES
 
 type currentWeather struct {
+	tool.DefaultTool
 	client *Client
 }
 
 type forecastWeather struct {
+	tool.DefaultTool
 	client *Client
 }
 
 type alertsWeather struct {
+	tool.DefaultTool
 	client *Client
 }
 
@@ -60,7 +63,7 @@ func (*currentWeather) Description() string {
 }
 
 // Return the JSON schema for the tool input
-func (*currentWeather) Schema() (*jsonschema.Schema, error) {
+func (*currentWeather) InputSchema() (*jsonschema.Schema, error) {
 	return jsonschema.For[CurrentWeatherRequest](nil)
 }
 
@@ -95,7 +98,7 @@ func (*forecastWeather) Description() string {
 }
 
 // Return the JSON schema for the tool input
-func (*forecastWeather) Schema() (*jsonschema.Schema, error) {
+func (*forecastWeather) InputSchema() (*jsonschema.Schema, error) {
 	schema, err := jsonschema.For[ForecastWeatherRequest](nil)
 	if err != nil {
 		return nil, err
@@ -146,7 +149,7 @@ func (*alertsWeather) Description() string {
 }
 
 // Return the JSON schema for the tool input
-func (*alertsWeather) Schema() (*jsonschema.Schema, error) {
+func (*alertsWeather) InputSchema() (*jsonschema.Schema, error) {
 	return jsonschema.For[AlertsWeatherRequest](nil)
 }
 

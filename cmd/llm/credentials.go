@@ -1,16 +1,21 @@
 package main
 
 import (
-	"encoding/json"
+	"context"
+	"errors"
 	"fmt"
+	"net"
+	"os"
+	"time"
 
 	// Packages
+	goclient "github.com/mutablelogic/go-client"
+	oauth "github.com/mutablelogic/go-client/pkg/oauth"
 	otel "github.com/mutablelogic/go-client/pkg/otel"
-	httpclient "github.com/mutablelogic/go-llm/pkg/httpclient"
+	mcpclient "github.com/mutablelogic/go-llm/pkg/mcp/client"
 	schema "github.com/mutablelogic/go-llm/pkg/schema"
 	types "github.com/mutablelogic/go-server/pkg/types"
 	attribute "go.opentelemetry.io/otel/attribute"
-	oauth2 "golang.org/x/oauth2"
 )
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -41,97 +46,169 @@ type DeleteCredentialCommand struct {
 }
 
 ///////////////////////////////////////////////////////////////////////////////
-// STRINGIFY
-
-func (cmd LoginCommand) String() string {
-	v := cmd
-	if v.ClientSecret != "" {
-		v.ClientSecret = "***"
-	}
-	return types.Stringify(v)
-}
-
-///////////////////////////////////////////////////////////////////////////////
 // COMMANDS
 
-func (cmd *LoginCommand) Run(ctx *Globals) (err error) {
+func (cmd *LoginCommand) Run(g *Globals) (err error) {
+	var opts []goclient.ClientOpt
+	if g.Debug {
+		opts = append(opts, goclient.OptTrace(os.Stderr, true))
+	}
+
 	// OTEL
-	parent, endSpan := otel.StartSpan(ctx.tracer, ctx.ctx, "LoginCommand",
-		attribute.String("request", cmd.String()),
+	parent, endSpan := otel.StartSpan(g.tracer, g.ctx, "LoginCommand",
+		attribute.String("url", cmd.URL),
 	)
 	defer func() { endSpan(err) }()
 
-	// Get the client
-	client, err := ctx.Client()
+	// captured is set inside the authFn when OAuth succeeds.
+	var captured *oauth.OAuthCredentials
+
+	var c *mcpclient.Client
+	c, err = mcpclient.New(cmd.URL, cmd.ClientName, "0", func(ctx context.Context, discoveryURL string) error {
+		flow := c.OAuth()
+
+		metadata, err := flow.Discover(ctx, discoveryURL)
+		if err != nil {
+			return fmt.Errorf("discover: %w", err)
+		}
+
+		switch {
+		case cmd.ClientCredentials:
+			// Machine-to-machine: client ID+secret required.
+			if cmd.ClientID == "" {
+				return fmt.Errorf("--client-id is required for --client-credentials flow")
+			}
+			if cmd.ClientSecret == "" {
+				return fmt.Errorf("--client-secret is required for --client-credentials flow")
+			}
+			creds := &oauth.OAuthCredentials{
+				ClientID:     cmd.ClientID,
+				ClientSecret: cmd.ClientSecret,
+				TokenURL:     metadata.TokenEndpoint,
+				Metadata:     metadata,
+			}
+			captured, err = flow.AuthorizeWithCredentials(ctx, creds, cmd.Scopes...)
+
+		case cmd.Device:
+			// Device authorization grant (RFC 8628).
+			creds, err := loginCreds(ctx, flow, metadata, cmd.ClientID, cmd.ClientSecret, cmd.ClientName)
+			if err != nil {
+				return err
+			}
+			captured, err = flow.AuthorizeWithDevice(ctx, creds, func(userCode, verificationURI string) error {
+				fmt.Printf("Visit %s and enter code: %s\n", verificationURI, userCode)
+				return nil
+			}, cmd.Scopes...)
+
+		default:
+			// Browser-based Authorization Code + PKCE via loopback redirect.
+			listener, err := net.Listen("tcp", "127.0.0.1:0")
+			if err != nil {
+				return fmt.Errorf("start callback listener: %w", err)
+			}
+			defer listener.Close()
+			redirectURI := fmt.Sprintf("http://127.0.0.1:%d/callback", listener.Addr().(*net.TCPAddr).Port)
+
+			creds, err := loginBrowserCreds(ctx, flow, metadata, cmd.ClientID, cmd.ClientSecret, cmd.ClientName, redirectURI)
+			if err != nil {
+				return err
+			}
+			captured, err = flow.AuthorizeWithBrowser(ctx, creds, listener, func(authURL string) error {
+				fmt.Printf("Opening browser for authorization...\n%s\n", authURL)
+				return openBrowser(authURL)
+			}, cmd.Scopes...)
+		}
+		return err
+	}, opts...)
+	if err != nil {
+		return fmt.Errorf("create client: %w", err)
+	}
+
+	// Drive the connect loop until the session is established (authFn fires on 401).
+	connectCtx, connectCancel := context.WithCancel(parent)
+	defer connectCancel()
+	runErr := make(chan error, 1)
+	go func() { runErr <- c.Run(connectCtx) }()
+	for {
+		_, err = c.ListTools(connectCtx)
+		if err == nil {
+			break
+		}
+		if !errors.Is(err, mcpclient.ErrNotConnected) {
+			return fmt.Errorf("connect: %w", err)
+		}
+		select {
+		case e := <-runErr:
+			return fmt.Errorf("connect: %w", e)
+		case <-connectCtx.Done():
+			return connectCtx.Err()
+		case <-time.After(10 * time.Millisecond):
+		}
+	}
+	// Capture server info while the session is still live, then tear down.
+	serverName, _, _ := c.ServerInfo()
+	connectCancel()
+	<-runErr // wait for Run to exit before proceeding
+
+	if captured == nil {
+		fmt.Printf("Server %s is accessible without authentication\n", cmd.URL)
+		return nil
+	}
+
+	// Store credentials via the llm server.
+	llmClient, err := g.Client()
 	if err != nil {
 		return err
 	}
-
-	// Build the OAuth2 config
-	cfg := &oauth2.Config{
-		ClientID:     cmd.ClientID,
-		ClientSecret: cmd.ClientSecret,
-		Scopes:       cmd.Scopes,
-		Endpoint:     oauth2.Endpoint{AuthURL: cmd.URL},
+	if err := llmClient.SetCredential(parent, cmd.URL, schema.OAuthCredentials{
+		Token:        captured.Token,
+		ClientID:     captured.ClientID,
+		ClientSecret: captured.ClientSecret,
+		Endpoint:     cmd.URL,
+		TokenURL:     captured.TokenURL,
+	}); err != nil {
+		return fmt.Errorf("store credential: %w", err)
 	}
 
-	// Build login options
-	loginOpts := []httpclient.LoginOpt{
-		httpclient.OptClientName(cmd.ClientName),
-	}
-
-	// Determine which flow to use
-	var creds *schema.OAuthCredentials
-
-	switch {
-	case cmd.ClientCredentials:
-		// Machine-to-machine: Client Credentials flow
-		if cmd.ClientID == "" {
-			return fmt.Errorf("--client-id is required for client credentials flow")
-		}
-		if cmd.ClientSecret == "" {
-			return fmt.Errorf("--client-secret is required for client credentials flow")
-		}
-		creds, err = client.Login(parent, cfg, append(loginOpts, httpclient.OptClientCredentials())...)
-		if err != nil {
-			return fmt.Errorf("client credentials login failed: %w", err)
-		}
-
-	case cmd.Device:
-		// Device Authorization flow
-		creds, err = client.Login(parent, cfg, append(loginOpts, httpclient.OptDevice(func(verificationURI, userCode string) {
-			ctx.logger.Printf(parent, "To authenticate, visit: %s", verificationURI)
-			ctx.logger.Printf(parent, "Enter code: %s", userCode)
-		}))...)
-		if err != nil {
-			return fmt.Errorf("device login failed: %w", err)
-		}
-
-	default:
-		// Create a listener for the callback and start the interactive login flow
-		listener, _, err := httpclient.NewCallbackListener("")
-		if err != nil {
-			return err
-		}
-		defer listener.Close()
-
-		// Interactive: Authorization Code with PKCE (optional client secret for confidential clients)
-		creds, err = client.Login(parent, cfg, append(loginOpts, httpclient.OptInteractive(listener, func(authURL string) {
-			ctx.logger.Printf(parent, "Open this URL in your browser to authenticate:")
-			ctx.logger.Printf(parent, "%s", authURL)
-		}))...)
-		if err != nil {
-			return fmt.Errorf("interactive login failed: %w", err)
-		}
-	}
-
-	// Store credentials on the server
-	if err := client.SetCredential(parent, cmd.URL, *creds); err != nil {
-		return fmt.Errorf("failed to store credentials: %w", err)
-	}
-
-	ctx.logger.Printf(parent, "Credentials stored for %s", cmd.URL)
+	fmt.Printf("Credentials stored for %s (%s)\n", cmd.URL, serverName)
 	return nil
+}
+
+// loginCreds returns credentials for flows that don't need a redirect URI
+// (device and client-credentials). Performs dynamic registration if no
+// clientID is provided.
+func loginCreds(ctx context.Context, flow interface {
+	Register(context.Context, *oauth.OAuthMetadata, string, ...string) (*oauth.OAuthCredentials, error)
+}, metadata *oauth.OAuthMetadata, clientID, clientSecret, clientName string) (*oauth.OAuthCredentials, error) {
+	if clientID != "" {
+		return &oauth.OAuthCredentials{ClientID: clientID, ClientSecret: clientSecret, TokenURL: metadata.TokenEndpoint, Metadata: metadata}, nil
+	}
+	if !metadata.SupportsRegistration() {
+		return nil, fmt.Errorf("server does not support dynamic client registration; supply --client-id")
+	}
+	creds, err := flow.Register(ctx, metadata, clientName)
+	if err != nil {
+		return nil, fmt.Errorf("register client: %w", err)
+	}
+	return creds, nil
+}
+
+// loginBrowserCreds is like loginCreds but includes redirectURI for
+// browser-based flows that require a loopback redirect.
+func loginBrowserCreds(ctx context.Context, flow interface {
+	Register(context.Context, *oauth.OAuthMetadata, string, ...string) (*oauth.OAuthCredentials, error)
+}, metadata *oauth.OAuthMetadata, clientID, clientSecret, clientName, redirectURI string) (*oauth.OAuthCredentials, error) {
+	if clientID != "" {
+		return &oauth.OAuthCredentials{ClientID: clientID, ClientSecret: clientSecret, TokenURL: metadata.TokenEndpoint, Metadata: metadata}, nil
+	}
+	if !metadata.SupportsRegistration() {
+		return nil, fmt.Errorf("server does not support dynamic client registration; supply --client-id")
+	}
+	creds, err := flow.Register(ctx, metadata, clientName, redirectURI)
+	if err != nil {
+		return nil, fmt.Errorf("register client: %w", err)
+	}
+	return creds, nil
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -156,12 +233,7 @@ func (cmd *GetCredentialCommand) Run(ctx *Globals) (err error) {
 	}
 
 	// Output credentials as JSON
-	output, err := json.MarshalIndent(creds, "", "  ")
-	if err != nil {
-		return err
-	}
-	fmt.Println(string(output))
-
+	fmt.Println(types.Stringify(creds))
 	return nil
 }
 

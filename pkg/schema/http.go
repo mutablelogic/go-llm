@@ -8,7 +8,6 @@ import (
 	"net/url"
 
 	// Packages
-	gomultipart "github.com/mutablelogic/go-client/pkg/multipart"
 	types "github.com/mutablelogic/go-server/pkg/types"
 )
 
@@ -111,7 +110,7 @@ type AskRequest struct {
 // (with base64 attachments) and multipart/form-data file uploads.
 type MultipartAskRequest struct {
 	AskRequest
-	File gomultipart.File `json:"file,omitempty" help:"File attachment (multipart upload)" optional:""`
+	File types.File `json:"file,omitempty" help:"File attachment (multipart upload)" optional:""`
 }
 
 // AskResponse represents the response from an ask request.
@@ -139,7 +138,7 @@ type ChatRequest struct {
 // (with base64 attachments) and multipart/form-data file uploads for chat.
 type MultipartChatRequest struct {
 	ChatRequest
-	File gomultipart.File `json:"file,omitempty" help:"File attachment (multipart upload)" optional:""`
+	File types.File `json:"file,omitempty" help:"File attachment (multipart upload)" optional:""`
 }
 
 // ChatResponse represents the response from a chat request.
@@ -375,7 +374,7 @@ func (r *MultipartChatRequest) FileAttachment() (*Attachment, error) {
 	return fileAttachment(r.File)
 }
 
-func fileAttachment(f gomultipart.File) (*Attachment, error) {
+func fileAttachment(f types.File) (*Attachment, error) {
 	if f.Body == nil {
 		return nil, nil
 	}

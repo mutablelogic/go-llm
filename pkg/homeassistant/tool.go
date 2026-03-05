@@ -15,13 +15,34 @@ import (
 ///////////////////////////////////////////////////////////////////////////////
 // TOOL TYPES
 
-type getStates struct{ client *Client }
-type getState struct{ client *Client }
-type callService struct{ client *Client }
-type getServices struct{ client *Client }
-type setState struct{ client *Client }
-type fireEvent struct{ client *Client }
-type renderTemplate struct{ client *Client }
+type getStates struct {
+	tool.DefaultTool
+	client *Client
+}
+type getState struct {
+	tool.DefaultTool
+	client *Client
+}
+type callService struct {
+	tool.DefaultTool
+	client *Client
+}
+type getServices struct {
+	tool.DefaultTool
+	client *Client
+}
+type setState struct {
+	tool.DefaultTool
+	client *Client
+}
+type fireEvent struct {
+	tool.DefaultTool
+	client *Client
+}
+type renderTemplate struct {
+	tool.DefaultTool
+	client *Client
+}
 
 var _ tool.Tool = (*getStates)(nil)
 var _ tool.Tool = (*getState)(nil)
@@ -106,7 +127,7 @@ func (*getStates) Description() string {
 		"Returns entity ID, state value, friendly name, and key attributes."
 }
 
-func (*getStates) Schema() (*jsonschema.Schema, error) {
+func (*getStates) InputSchema() (*jsonschema.Schema, error) {
 	return jsonschema.For[GetStatesRequest](nil)
 }
 
@@ -168,7 +189,7 @@ func (*getState) Description() string {
 		"Returns the state value, all attributes, and timestamps."
 }
 
-func (*getState) Schema() (*jsonschema.Schema, error) {
+func (*getState) InputSchema() (*jsonschema.Schema, error) {
 	return jsonschema.For[GetStateRequest](nil)
 }
 
@@ -199,7 +220,7 @@ func (*callService) Description() string {
 		"Returns the list of states that changed."
 }
 
-func (*callService) Schema() (*jsonschema.Schema, error) {
+func (*callService) InputSchema() (*jsonschema.Schema, error) {
 	return jsonschema.For[CallServiceRequest](nil)
 }
 
@@ -237,7 +258,7 @@ func (*getServices) Description() string {
 		"Use this before calling ha_call_service if you are unsure which services are available."
 }
 
-func (*getServices) Schema() (*jsonschema.Schema, error) {
+func (*getServices) InputSchema() (*jsonschema.Schema, error) {
 	return jsonschema.For[GetServicesRequest](nil)
 }
 
@@ -291,7 +312,7 @@ func (*setState) Description() string {
 		"Useful for creating virtual sensors or updating helper entities."
 }
 
-func (*setState) Schema() (*jsonschema.Schema, error) {
+func (*setState) InputSchema() (*jsonschema.Schema, error) {
 	return jsonschema.For[SetStateRequest](nil)
 }
 
@@ -322,7 +343,7 @@ func (*fireEvent) Description() string {
 		"This can trigger automations that listen for the specified event type."
 }
 
-func (*fireEvent) Schema() (*jsonschema.Schema, error) {
+func (*fireEvent) InputSchema() (*jsonschema.Schema, error) {
 	return jsonschema.For[FireEventRequest](nil)
 }
 
@@ -357,7 +378,7 @@ func (*renderTemplate) Description() string {
 		"'{{ as_timestamp(now()) - as_timestamp(states.sensor.last_motion.last_changed) | int }} seconds since motion'."
 }
 
-func (*renderTemplate) Schema() (*jsonschema.Schema, error) {
+func (*renderTemplate) InputSchema() (*jsonschema.Schema, error) {
 	return jsonschema.For[RenderTemplateRequest](nil)
 }
 

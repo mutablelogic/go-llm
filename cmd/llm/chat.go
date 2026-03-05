@@ -193,16 +193,12 @@ func (cmd *ChatCommand) runSingleShot(ctx context.Context, globals *Globals, cli
 		return err
 	}
 
-	// If the response contains structured output (e.g. from submit_output),
-	// the streaming callback may have been suppressed — print the result.
-	if chatResp != nil && len(chatResp.Content) > 0 {
+	// If streaming produced no output (e.g. submit_output suppressed it),
+	// fall back to printing the response content directly.
+	if lastRole == "" && chatResp != nil && len(chatResp.Content) > 0 {
 		for _, block := range chatResp.Content {
 			if block.Text != nil && *block.Text != "" {
-				if lastRole != "" {
-					fmt.Println()
-				}
 				fmt.Println(*block.Text)
-				lastRole = ""
 			}
 		}
 	}
@@ -363,7 +359,9 @@ func (cmd *ChatCommand) handleChat(ctx context.Context, evt ui.Event, client *ht
 		cmd.pendingOpts = nil
 	}
 
+	var streamed bool
 	opts = append(opts, httpclient.WithChatStream(func(role, text string) {
+		streamed = true
 		evt.Context.StreamChunk(ctx, role, text)
 	}))
 
@@ -377,10 +375,9 @@ func (cmd *ChatCommand) handleChat(ctx context.Context, evt ui.Event, client *ht
 
 	chatResp, err := client.Chat(ctx, req, opts...)
 
-	// If the response contains structured output (e.g. from submit_output),
-	// the streaming callback may have been suppressed — send the result
-	// as a final chunk so the UI renders it.
-	if err == nil && chatResp != nil && len(chatResp.Content) > 0 {
+	// If streaming produced no output (e.g. submit_output suppressed it),
+	// fall back to sending the response content as a final chunk.
+	if err == nil && !streamed && chatResp != nil && len(chatResp.Content) > 0 {
 		for _, block := range chatResp.Content {
 			if block.Text != nil && *block.Text != "" {
 				evt.Context.StreamChunk(ctx, chatResp.Role, *block.Text)
