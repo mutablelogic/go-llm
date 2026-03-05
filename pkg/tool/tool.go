@@ -44,7 +44,8 @@ type DefaultTool struct{}
 func (DefaultTool) OutputSchema() (*jsonschema.Schema, error) { return nil, nil }
 func (DefaultTool) Meta() ToolMeta                            { return ToolMeta{} }
 
-// Tool is an interface for a tool with a name, description and JSON schema
+// Tool is an interface for a callable tool with a name, description,
+// input schema, optional output schema, and metadata hints.
 type Tool interface {
 	// Return the name of the tool
 	Name() string

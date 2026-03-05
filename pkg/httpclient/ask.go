@@ -31,7 +31,12 @@ type askFile struct {
 
 // /////////////////////////////////////////////////////////////////////////////
 // OPTIONS
-// is the only attachment, it is sent via streaming multipart/form-data.
+
+// WithFile adds a file attachment to the ask request.
+// WithFile takes ownership of the reader: it will be closed after the
+// request completes. The returned AskOpt is single-use; passing the same
+// option to multiple Ask calls will fail on the second call because the
+// reader will already be consumed and closed.
 func WithFile(filename string, r io.Reader) AskOpt {
 	return func(o *askOptions) {
 		if r != nil {

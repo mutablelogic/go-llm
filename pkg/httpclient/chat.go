@@ -31,6 +31,10 @@ type chatOptions struct {
 // OPTIONS
 
 // WithChatFile adds a file attachment to the chat request.
+// WithChatFile takes ownership of the reader: it will be closed after the
+// request completes. The returned ChatOpt is single-use; passing the same
+// option to multiple Chat calls will fail on the second call because the
+// reader will already be consumed and closed.
 func WithChatFile(filename string, r io.Reader) ChatOpt {
 	return func(o *chatOptions) {
 		if r != nil {

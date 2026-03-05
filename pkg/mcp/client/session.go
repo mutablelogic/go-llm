@@ -73,8 +73,9 @@ func (c *Client) ListTools(ctx context.Context) ([]tool.Tool, error) {
 // CallTool invokes a tool on the connected MCP server by name with the given
 // arguments as JSON. Follows the same return convention as pkg/tool.Toolkit.Run:
 // tool errors (IsError==true in the MCP result) are returned as a Go error;
-// on success the plain value is returned (StructuredContent if present,
-// otherwise the text of all Content items joined by newline).
+// on success the plain value is returned: StructuredContent if present,
+// the single content item's value if there is exactly one, or a []any slice
+// of item values for multiple content items.
 // Returns ErrNotConnected if no session is active.
 func (c *Client) CallTool(ctx context.Context, name string, arguments json.RawMessage) (any, error) {
 	sess, err := c.getSession()
@@ -89,6 +90,7 @@ func (c *Client) CallTool(ctx context.Context, name string, arguments json.RawMe
 		args = arguments
 	}
 
+	// Call the tool and convert the result to (any, error) using the pkg/tool
 	res, err := sess.CallTool(ctx, &sdkmcp.CallToolParams{
 		Name:      name,
 		Arguments: args,

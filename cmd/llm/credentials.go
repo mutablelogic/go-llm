@@ -145,7 +145,10 @@ func (cmd *LoginCommand) Run(g *Globals) (err error) {
 		case <-time.After(10 * time.Millisecond):
 		}
 	}
-	connectCancel() // session established; tear it down
+	// Capture server info while the session is still live, then tear down.
+	serverName, _, _ := c.ServerInfo()
+	connectCancel()
+	<-runErr // wait for Run to exit before proceeding
 
 	if captured == nil {
 		fmt.Printf("Server %s is accessible without authentication\n", cmd.URL)
@@ -167,8 +170,7 @@ func (cmd *LoginCommand) Run(g *Globals) (err error) {
 		return fmt.Errorf("store credential: %w", err)
 	}
 
-	name, _, _ := c.ServerInfo()
-	fmt.Printf("Credentials stored for %s (%s)\n", cmd.URL, name)
+	fmt.Printf("Credentials stored for %s (%s)\n", cmd.URL, serverName)
 	return nil
 }
 

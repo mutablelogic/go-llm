@@ -38,9 +38,13 @@ type Client struct {
 func New(url, name, version string, authFn func(context.Context, string) error, opts ...client.ClientOpt) (*Client, error) {
 	c := new(Client)
 
-	// client.OptToken() installs a transport-layer middleware that lazily reads
-	// c.Client.token on each request, so Bearer tokens obtained during the OAuth
-	// flow are automatically injected without any extra nil-guard closures.
+	// client.New() unconditionally installs a transport.NewToken middleware
+	// that calls client.AccessToken() on every request. AccessToken() reads
+	// from an atomicToken field that the OAuthFlow updates via setToken() when
+	// an authorization flow completes. connect() shallow-copies *http.Client,
+	// which keeps the same transport chain and therefore the same token closure,
+	// so Bearer tokens are injected automatically after auth without requiring
+	// any extra option or nil-guard.
 	if cl, err := client.New(append(opts, client.OptEndpoint(url))...); err != nil {
 		return nil, err
 	} else {
