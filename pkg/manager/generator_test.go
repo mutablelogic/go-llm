@@ -84,7 +84,7 @@ func (c *mockGeneratorClient) WithSession(_ context.Context, _ schema.Model, ses
 func Test_ask_001(t *testing.T) {
 	assert := assert.New(t)
 
-	m, err := NewManager(
+	m, err := NewManager("test", "0.0.0", 
 		WithClient(&mockGeneratorClient{
 			mockClient: mockClient{name: "provider-1", models: []schema.Model{{Name: "model-1", OwnedBy: "provider-1"}}},
 			tokens:     42,
@@ -112,7 +112,7 @@ func Test_ask_001(t *testing.T) {
 func Test_ask_002(t *testing.T) {
 	assert := assert.New(t)
 
-	m, err := NewManager(
+	m, err := NewManager("test", "0.0.0", 
 		WithClient(&mockGeneratorClient{
 			mockClient: mockClient{name: "provider-1", models: []schema.Model{{Name: "model-1", OwnedBy: "provider-1"}}},
 		}),
@@ -133,7 +133,7 @@ func Test_ask_002(t *testing.T) {
 func Test_ask_003(t *testing.T) {
 	assert := assert.New(t)
 
-	m, err := NewManager(
+	m, err := NewManager("test", "0.0.0", 
 		WithClient(&mockGeneratorClient{
 			mockClient: mockClient{name: "provider-1", models: []schema.Model{{Name: "shared", OwnedBy: "provider-1"}}},
 		}),
@@ -158,7 +158,7 @@ func Test_ask_003(t *testing.T) {
 func Test_ask_004(t *testing.T) {
 	assert := assert.New(t)
 
-	m, err := NewManager(
+	m, err := NewManager("test", "0.0.0", 
 		WithClient(&mockClient{name: "provider-1", models: []schema.Model{{Name: "model-1", OwnedBy: "provider-1"}}}),
 	)
 	assert.NoError(err)
@@ -177,7 +177,7 @@ func Test_ask_004(t *testing.T) {
 func Test_ask_005(t *testing.T) {
 	assert := assert.New(t)
 
-	m, err := NewManager(
+	m, err := NewManager("test", "0.0.0", 
 		WithClient(&mockGeneratorClient{
 			mockClient: mockClient{name: "provider-1", models: []schema.Model{{Name: "model-1", OwnedBy: "provider-1"}}},
 		}),
@@ -211,7 +211,7 @@ func Test_ask_005(t *testing.T) {
 func Test_ask_006(t *testing.T) {
 	assert := assert.New(t)
 
-	m, err := NewManager(
+	m, err := NewManager("test", "0.0.0", 
 		WithClient(&mockGeneratorClient{
 			mockClient: mockClient{name: "provider-1", models: []schema.Model{{Name: "model-1", OwnedBy: "provider-1"}}},
 		}),
@@ -236,7 +236,7 @@ func Test_ask_006(t *testing.T) {
 func Test_ask_007(t *testing.T) {
 	assert := assert.New(t)
 
-	m, err := NewManager(
+	m, err := NewManager("test", "0.0.0", 
 		WithClient(&mockGeneratorClient{
 			mockClient: mockClient{name: "provider-1", models: []schema.Model{{Name: "model-1", OwnedBy: "provider-1"}}},
 		}),
@@ -262,7 +262,7 @@ func Test_ask_007(t *testing.T) {
 func Test_ask_008(t *testing.T) {
 	assert := assert.New(t)
 
-	m, err := NewManager(
+	m, err := NewManager("test", "0.0.0", 
 		WithClient(&mockGeneratorClient{
 			mockClient: mockClient{name: "provider-1", models: []schema.Model{{Name: "model-1", OwnedBy: "provider-1"}}},
 		}),
@@ -287,7 +287,7 @@ func Test_ask_008(t *testing.T) {
 func Test_chat_001(t *testing.T) {
 	assert := assert.New(t)
 
-	m, err := NewManager(
+	m, err := NewManager("test", "0.0.0", 
 		WithClient(&mockGeneratorClient{
 			mockClient: mockClient{name: "provider-1", models: []schema.Model{{Name: "model-1", OwnedBy: "provider-1"}}},
 		}),
@@ -325,7 +325,7 @@ func Test_chat_001(t *testing.T) {
 func Test_chat_002(t *testing.T) {
 	assert := assert.New(t)
 
-	m, err := NewManager(
+	m, err := NewManager("test", "0.0.0", 
 		WithClient(&mockGeneratorClient{
 			mockClient: mockClient{name: "provider-1", models: []schema.Model{{Name: "model-1", OwnedBy: "provider-1"}}},
 		}),
@@ -345,7 +345,7 @@ func Test_chat_002(t *testing.T) {
 func Test_chat_003(t *testing.T) {
 	assert := assert.New(t)
 
-	m, err := NewManager(
+	m, err := NewManager("test", "0.0.0", 
 		WithClient(&mockGeneratorClient{
 			mockClient: mockClient{name: "provider-1", models: []schema.Model{{Name: "model-1", OwnedBy: "provider-1"}}},
 		}),
@@ -392,7 +392,7 @@ func Test_chat_003(t *testing.T) {
 func Test_chat_004(t *testing.T) {
 	assert := assert.New(t)
 
-	m, err := NewManager(
+	m, err := NewManager("test", "0.0.0", 
 		WithClient(&mockClient{name: "provider-1", models: []schema.Model{{Name: "model-1", OwnedBy: "provider-1"}}}),
 	)
 	assert.NoError(err)
@@ -425,7 +425,7 @@ func Test_chat_005(t *testing.T) {
 	)
 	assert.NoError(err)
 
-	m, err := NewManager(
+	m, err := NewManager("test", "0.0.0", 
 		WithClient(&mockGeneratorClient{
 			mockClient: mockClient{name: "provider-1", models: []schema.Model{{Name: "model-1", OwnedBy: "provider-1"}}},
 		}),
@@ -461,7 +461,7 @@ func Test_chat_006(t *testing.T) {
 	)
 	assert.NoError(err)
 
-	m, err := NewManager(
+	m, err := NewManager("test", "0.0.0", 
 		WithClient(&mockGeneratorClient{
 			mockClient: mockClient{name: "provider-1", models: []schema.Model{{Name: "model-1", OwnedBy: "provider-1"}}},
 		}),
@@ -496,7 +496,7 @@ func Test_chat_007(t *testing.T) {
 	)
 	assert.NoError(err)
 
-	m, err := NewManager(
+	m, err := NewManager("test", "0.0.0", 
 		WithClient(&mockGeneratorClient{
 			mockClient: mockClient{name: "provider-1", models: []schema.Model{{Name: "model-1", OwnedBy: "provider-1"}}},
 		}),
@@ -524,7 +524,7 @@ func Test_chat_007(t *testing.T) {
 func Test_chat_008(t *testing.T) {
 	assert := assert.New(t)
 
-	m, err := NewManager(
+	m, err := NewManager("test", "0.0.0", 
 		WithClient(&mockGeneratorClient{
 			mockClient: mockClient{name: "provider-1", models: []schema.Model{{Name: "model-1", OwnedBy: "provider-1"}}},
 		}),
@@ -563,7 +563,7 @@ func Test_ask_integration_gemini(t *testing.T) {
 	c, err := google.New(apiKey)
 	assert.NoError(err)
 
-	m, err := NewManager(WithClient(c))
+	m, err := NewManager("test", "0.0.0", WithClient(c))
 	assert.NoError(err)
 
 	resp, err := m.Ask(context.TODO(), schema.AskRequest{
@@ -596,7 +596,7 @@ func Test_ask_integration_gemini_stream(t *testing.T) {
 	c, err := google.New(apiKey)
 	assert.NoError(err)
 
-	m, err := NewManager(WithClient(c))
+	m, err := NewManager("test", "0.0.0", WithClient(c))
 	assert.NoError(err)
 
 	var streamed string
@@ -626,7 +626,7 @@ func Test_ask_integration_anthropic(t *testing.T) {
 	c, err := anthropic.New(apiKey)
 	assert.NoError(err)
 
-	m, err := NewManager(WithClient(c))
+	m, err := NewManager("test", "0.0.0", WithClient(c))
 	assert.NoError(err)
 
 	resp, err := m.Ask(context.TODO(), schema.AskRequest{
@@ -656,7 +656,7 @@ func Test_ask_integration_anthropic_stream(t *testing.T) {
 	c, err := anthropic.New(apiKey)
 	assert.NoError(err)
 
-	m, err := NewManager(WithClient(c))
+	m, err := NewManager("test", "0.0.0", WithClient(c))
 	assert.NoError(err)
 
 	var streamed string
@@ -686,7 +686,7 @@ func Test_ask_integration_mistral(t *testing.T) {
 	c, err := mistral.New(apiKey)
 	assert.NoError(err)
 
-	m, err := NewManager(WithClient(c))
+	m, err := NewManager("test", "0.0.0", WithClient(c))
 	assert.NoError(err)
 
 	resp, err := m.Ask(context.TODO(), schema.AskRequest{
@@ -716,7 +716,7 @@ func Test_ask_integration_mistral_stream(t *testing.T) {
 	c, err := mistral.New(apiKey)
 	assert.NoError(err)
 
-	m, err := NewManager(WithClient(c))
+	m, err := NewManager("test", "0.0.0", WithClient(c))
 	assert.NoError(err)
 
 	var streamed string
@@ -749,7 +749,7 @@ func Test_ask_integration_system_prompt(t *testing.T) {
 	c, err := google.New(apiKey)
 	assert.NoError(err)
 
-	m, err := NewManager(WithClient(c))
+	m, err := NewManager("test", "0.0.0", WithClient(c))
 	assert.NoError(err)
 
 	resp, err := m.Ask(context.TODO(), schema.AskRequest{
@@ -774,7 +774,7 @@ func Test_ask_integration_system_prompt(t *testing.T) {
 func Test_ask_009(t *testing.T) {
 	assert := assert.New(t)
 
-	m, err := NewManager(
+	m, err := NewManager("test", "0.0.0", 
 		WithClient(&mockGeneratorClient{
 			mockClient: mockClient{name: "provider-1", models: []schema.Model{{Name: "model-1", OwnedBy: "provider-1"}}},
 		}),
@@ -798,7 +798,7 @@ func Test_ask_009(t *testing.T) {
 func Test_ask_010(t *testing.T) {
 	assert := assert.New(t)
 
-	m, err := NewManager(
+	m, err := NewManager("test", "0.0.0", 
 		WithClient(&mockGeneratorClient{
 			mockClient: mockClient{name: "provider-1", models: []schema.Model{{Name: "model-1", OwnedBy: "provider-1"}}},
 		}),
@@ -824,7 +824,7 @@ func Test_ask_010(t *testing.T) {
 func Test_ask_011(t *testing.T) {
 	assert := assert.New(t)
 
-	m, err := NewManager(
+	m, err := NewManager("test", "0.0.0", 
 		WithClient(&mockGeneratorClient{
 			mockClient: mockClient{name: "provider-1", models: []schema.Model{{Name: "model-1", OwnedBy: "provider-1"}}},
 		}),
@@ -852,7 +852,7 @@ func Test_ask_011(t *testing.T) {
 func Test_ask_012(t *testing.T) {
 	assert := assert.New(t)
 
-	m, err := NewManager(
+	m, err := NewManager("test", "0.0.0", 
 		WithClient(&mockGeneratorClient{
 			mockClient: mockClient{name: "provider-1", models: []schema.Model{{Name: "model-1", OwnedBy: "provider-1"}}},
 		}),
@@ -887,7 +887,7 @@ func Test_ask_integration_json_gemini(t *testing.T) {
 	c, err := google.New(apiKey)
 	assert.NoError(err)
 
-	m, err := NewManager(WithClient(c))
+	m, err := NewManager("test", "0.0.0", WithClient(c))
 	assert.NoError(err)
 
 	format := schema.JSONSchema(`{
@@ -933,7 +933,7 @@ func Test_ask_integration_json_anthropic(t *testing.T) {
 	c, err := anthropic.New(apiKey)
 	assert.NoError(err)
 
-	m, err := NewManager(WithClient(c))
+	m, err := NewManager("test", "0.0.0", WithClient(c))
 	assert.NoError(err)
 
 	format := schema.JSONSchema(`{
@@ -979,7 +979,7 @@ func Test_ask_integration_json_mistral(t *testing.T) {
 	c, err := mistral.New(apiKey)
 	assert.NoError(err)
 
-	m, err := NewManager(WithClient(c))
+	m, err := NewManager("test", "0.0.0", WithClient(c))
 	assert.NoError(err)
 
 	format := schema.JSONSchema(`{
@@ -1030,7 +1030,7 @@ func Test_ask_integration_attachment_gemini(t *testing.T) {
 	c, err := google.New(apiKey)
 	assert.NoError(err)
 
-	m, err := NewManager(WithClient(c))
+	m, err := NewManager("test", "0.0.0", WithClient(c))
 	assert.NoError(err)
 
 	data, err := os.ReadFile("../../etc/testdata/guggenheim.jpg")
@@ -1065,7 +1065,7 @@ func Test_ask_integration_attachment_anthropic(t *testing.T) {
 	c, err := anthropic.New(apiKey)
 	assert.NoError(err)
 
-	m, err := NewManager(WithClient(c))
+	m, err := NewManager("test", "0.0.0", WithClient(c))
 	assert.NoError(err)
 
 	data, err := os.ReadFile("../../etc/testdata/guggenheim.jpg")
@@ -1100,7 +1100,7 @@ func Test_ask_integration_attachment_mistral(t *testing.T) {
 	c, err := mistral.New(apiKey)
 	assert.NoError(err)
 
-	m, err := NewManager(WithClient(c))
+	m, err := NewManager("test", "0.0.0", WithClient(c))
 	assert.NoError(err)
 
 	data, err := os.ReadFile("../../etc/testdata/guggenheim.jpg")

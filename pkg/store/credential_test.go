@@ -108,34 +108,46 @@ var credentialStoreTests = []struct {
 		assert.Equal("c2", got.ClientID)
 	},
 }, {
-	Name: "MultipleURLs",
+	Name: "InvalidURL",
 	Fn: func(t *testing.T, s schema.CredentialStore) {
 		assert := assert.New(t)
 		ctx := context.Background()
-
-		cred1 := schema.OAuthCredentials{
-			Token:    &oauth2.Token{AccessToken: "token-a"},
-			ClientID: "client-a",
-			Endpoint: "https://a.example.com",
-			TokenURL: "https://a.example.com/token",
+		cred := schema.OAuthCredentials{Token: &oauth2.Token{AccessToken: "tok"}}
+		// Missing scheme
+		assert.Error(s.SetCredential(ctx, "example.com", cred))
+		_, err := s.GetCredential(ctx, "example.com")
+		assert.Error(err)
+		assert.Error(s.DeleteCredential(ctx, "example.com"))
+		// Unsupported scheme
+		assert.Error(s.SetCredential(ctx, "ftp://example.com", cred))
+		// Empty string
+		assert.Error(s.SetCredential(ctx, "", cred))
+	},
+}, {
+	Name: "URLCanonicalised",
+	Fn: func(t *testing.T, s schema.CredentialStore) {
+		assert := assert.New(t)
+		ctx := context.Background()
+		cred := schema.OAuthCredentials{
+			Token:    &oauth2.Token{AccessToken: "tok-canon"},
+			ClientID: "c",
+			Endpoint: "https://example.com",
+			TokenURL: "https://example.com/token",
 		}
-		cred2 := schema.OAuthCredentials{
-			Token:    &oauth2.Token{AccessToken: "token-b"},
-			ClientID: "client-b",
-			Endpoint: "https://b.example.com",
-			TokenURL: "https://b.example.com/token",
-		}
-
-		assert.NoError(s.SetCredential(ctx, "https://a.example.com", cred1))
-		assert.NoError(s.SetCredential(ctx, "https://b.example.com", cred2))
-
-		got1, err := s.GetCredential(ctx, "https://a.example.com")
+		// Store with non-canonical URL (uppercase scheme + host, spurious query).
+		assert.NoError(s.SetCredential(ctx, "HTTPS://Example.COM?x=1", cred))
+		// Retrieve with the canonical form.
+		got, err := s.GetCredential(ctx, "https://example.com")
 		assert.NoError(err)
-		assert.Equal("token-a", got1.AccessToken)
-
-		got2, err := s.GetCredential(ctx, "https://b.example.com")
+		assert.Equal("tok-canon", got.AccessToken)
+		// Retrieve with the original non-canonical URL must also work.
+		got2, err := s.GetCredential(ctx, "HTTPS://Example.COM?x=1")
 		assert.NoError(err)
-		assert.Equal("token-b", got2.AccessToken)
+		assert.Equal("tok-canon", got2.AccessToken)
+		// Delete with non-canonical URL.
+		assert.NoError(s.DeleteCredential(ctx, "HTTPS://Example.COM?x=1"))
+		_, err = s.GetCredential(ctx, "https://example.com")
+		assert.Error(err)
 	},
 }}
 

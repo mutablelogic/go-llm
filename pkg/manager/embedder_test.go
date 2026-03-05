@@ -56,7 +56,7 @@ func Test_embedding_001(t *testing.T) {
 		},
 	}
 
-	m, err := NewManager(WithClient(client))
+	m, err := NewManager("test", "0.0.0", WithClient(client))
 	assert.NoError(err)
 
 	resp, err := m.Embedding(context.TODO(), &schema.EmbeddingRequest{
@@ -91,7 +91,7 @@ func Test_embedding_002(t *testing.T) {
 		},
 	}
 
-	m, err := NewManager(WithClient(client))
+	m, err := NewManager("test", "0.0.0", WithClient(client))
 	assert.NoError(err)
 
 	resp, err := m.Embedding(context.TODO(), &schema.EmbeddingRequest{
@@ -119,7 +119,7 @@ func Test_embedding_003(t *testing.T) {
 		},
 	}
 
-	m, err := NewManager(WithClient(client))
+	m, err := NewManager("test", "0.0.0", WithClient(client))
 	assert.NoError(err)
 
 	_, err = m.Embedding(context.TODO(), &schema.EmbeddingRequest{
@@ -141,7 +141,7 @@ func Test_embedding_004(t *testing.T) {
 		},
 	}
 
-	m, err := NewManager(WithClient(client))
+	m, err := NewManager("test", "0.0.0", WithClient(client))
 	assert.NoError(err)
 
 	_, err = m.Embedding(context.TODO(), &schema.EmbeddingRequest{
@@ -162,7 +162,7 @@ func Test_embedding_005(t *testing.T) {
 		models: []schema.Model{{Name: "plain-model", OwnedBy: "plain-provider"}},
 	}
 
-	m, err := NewManager(WithClient(client))
+	m, err := NewManager("test", "0.0.0", WithClient(client))
 	assert.NoError(err)
 
 	_, err = m.Embedding(context.TODO(), &schema.EmbeddingRequest{
@@ -184,7 +184,7 @@ func Test_embedding_006(t *testing.T) {
 		},
 	}
 
-	m, err := NewManager(WithClient(client))
+	m, err := NewManager("test", "0.0.0", WithClient(client))
 	assert.NoError(err)
 
 	resp, err := m.Embedding(context.TODO(), &schema.EmbeddingRequest{
@@ -208,7 +208,7 @@ func Test_embedding_007(t *testing.T) {
 		},
 	}
 
-	m, err := NewManager(WithClient(client))
+	m, err := NewManager("test", "0.0.0", WithClient(client))
 	assert.NoError(err)
 
 	resp, err := m.Embedding(context.TODO(), &schema.EmbeddingRequest{
@@ -232,7 +232,7 @@ func Test_embedding_008(t *testing.T) {
 		},
 	}
 
-	m, err := NewManager(WithClient(client))
+	m, err := NewManager("test", "0.0.0", WithClient(client))
 	assert.NoError(err)
 
 	resp, err := m.Embedding(context.TODO(), &schema.EmbeddingRequest{
@@ -250,7 +250,7 @@ func Test_embedding_008(t *testing.T) {
 func Test_embedding_009(t *testing.T) {
 	assert := assert.New(t)
 
-	m, err := NewManager()
+	m, err := NewManager("test", "0.0.0")
 	assert.NoError(err)
 
 	_, err = m.Embedding(context.TODO(), &schema.EmbeddingRequest{
@@ -272,7 +272,7 @@ func Test_embedding_010(t *testing.T) {
 		},
 	}
 
-	m, err := NewManager(WithClient(client))
+	m, err := NewManager("test", "0.0.0", WithClient(client))
 	assert.NoError(err)
 
 	resp, err := m.Embedding(context.TODO(), &schema.EmbeddingRequest{
@@ -299,7 +299,7 @@ func Test_embedding_011(t *testing.T) {
 		},
 	}
 
-	m, err := NewManager(WithClient(client))
+	m, err := NewManager("test", "0.0.0", WithClient(client))
 	assert.NoError(err)
 
 	_, err = m.Embedding(context.TODO(), &schema.EmbeddingRequest{
@@ -325,7 +325,7 @@ func Test_embedding_012(t *testing.T) {
 		},
 	}
 
-	m, err := NewManager(WithClient(client))
+	m, err := NewManager("test", "0.0.0", WithClient(client))
 	assert.NoError(err)
 
 	_, err = m.Embedding(context.TODO(), &schema.EmbeddingRequest{

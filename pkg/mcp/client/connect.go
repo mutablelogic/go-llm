@@ -127,11 +127,6 @@ func (c *Client) tryConnect(ctx context.Context, recorder *transport.Recorder, t
 	if err != nil && recorder.StatusCode() == http.StatusUnauthorized {
 		return nil, errors.Join(NewUnauthorizedError(recorder.Header()), err)
 	}
-	if err == nil {
-		c.mu.Lock()
-		c.session = session
-		c.mu.Unlock()
-	}
 	return session, err
 }
 

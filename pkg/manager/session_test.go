@@ -19,7 +19,7 @@ import (
 func Test_session_001(t *testing.T) {
 	assert := assert.New(t)
 
-	m, err := NewManager(
+	m, err := NewManager("test", "0.0.0", 
 		WithClient(&mockClient{name: "provider-1", models: []schema.Model{{Name: "model-1", OwnedBy: "provider-1"}}}),
 	)
 	assert.NoError(err)
@@ -46,7 +46,7 @@ func Test_session_001(t *testing.T) {
 func Test_session_002(t *testing.T) {
 	assert := assert.New(t)
 
-	_, err := NewManager(WithSessionStore(nil))
+	_, err := NewManager("test", "0.0.0", WithSessionStore(nil))
 	assert.ErrorIs(err, llm.ErrBadParameter)
 }
 
@@ -54,7 +54,7 @@ func Test_session_002(t *testing.T) {
 func Test_session_003(t *testing.T) {
 	assert := assert.New(t)
 
-	m, err := NewManager(
+	m, err := NewManager("test", "0.0.0", 
 		WithClient(&mockClient{name: "provider-1", models: []schema.Model{{Name: "model-1", OwnedBy: "provider-1"}}}),
 		WithSessionStore(session.NewMemorySessionStore()),
 	)
@@ -78,7 +78,7 @@ func Test_session_003(t *testing.T) {
 func Test_session_004(t *testing.T) {
 	assert := assert.New(t)
 
-	m, err := NewManager(
+	m, err := NewManager("test", "0.0.0", 
 		WithClient(&mockClient{name: "provider-1", models: []schema.Model{{Name: "shared", OwnedBy: "provider-1"}}}),
 		WithClient(&mockClient{name: "provider-2", models: []schema.Model{{Name: "shared", OwnedBy: "provider-2"}}}),
 		WithSessionStore(session.NewMemorySessionStore()),
@@ -96,7 +96,7 @@ func Test_session_004(t *testing.T) {
 func Test_session_005(t *testing.T) {
 	assert := assert.New(t)
 
-	m, err := NewManager(
+	m, err := NewManager("test", "0.0.0", 
 		WithClient(&mockClient{name: "provider-1", models: []schema.Model{{Name: "model-1", OwnedBy: "provider-1"}}}),
 		WithSessionStore(session.NewMemorySessionStore()),
 	)
@@ -110,7 +110,7 @@ func Test_session_005(t *testing.T) {
 func Test_session_006(t *testing.T) {
 	assert := assert.New(t)
 
-	m, err := NewManager(
+	m, err := NewManager("test", "0.0.0", 
 		WithClient(&mockClient{name: "provider-1", models: []schema.Model{{Name: "model-1", OwnedBy: "provider-1"}}}),
 		WithSessionStore(session.NewMemorySessionStore()),
 	)
@@ -133,7 +133,7 @@ func Test_session_006(t *testing.T) {
 func Test_session_007(t *testing.T) {
 	assert := assert.New(t)
 
-	m, err := NewManager(
+	m, err := NewManager("test", "0.0.0", 
 		WithClient(&mockClient{name: "provider-1", models: []schema.Model{{Name: "model-1", OwnedBy: "provider-1"}}}),
 		WithSessionStore(session.NewMemorySessionStore()),
 	)
@@ -147,7 +147,7 @@ func Test_session_007(t *testing.T) {
 func Test_session_008(t *testing.T) {
 	assert := assert.New(t)
 
-	m, err := NewManager(
+	m, err := NewManager("test", "0.0.0", 
 		WithClient(&mockClient{name: "provider-1", models: []schema.Model{{Name: "model-1", OwnedBy: "provider-1"}}}),
 		WithSessionStore(session.NewMemorySessionStore()),
 	)
@@ -168,7 +168,7 @@ func Test_session_008(t *testing.T) {
 func Test_session_009(t *testing.T) {
 	assert := assert.New(t)
 
-	m, err := NewManager(
+	m, err := NewManager("test", "0.0.0", 
 		WithClient(&mockClient{name: "provider-1", models: []schema.Model{{Name: "model-1", OwnedBy: "provider-1"}}}),
 		WithSessionStore(session.NewMemorySessionStore()),
 	)
@@ -182,7 +182,7 @@ func Test_session_009(t *testing.T) {
 func Test_session_010(t *testing.T) {
 	assert := assert.New(t)
 
-	m, err := NewManager(
+	m, err := NewManager("test", "0.0.0", 
 		WithClient(&mockClient{name: "provider-1", models: []schema.Model{{Name: "model-1", OwnedBy: "provider-1"}}}),
 		WithSessionStore(session.NewMemorySessionStore()),
 	)
@@ -205,7 +205,7 @@ func Test_session_010(t *testing.T) {
 func Test_session_011(t *testing.T) {
 	assert := assert.New(t)
 
-	m, err := NewManager(
+	m, err := NewManager("test", "0.0.0", 
 		WithClient(&mockClient{name: "provider-1", models: []schema.Model{{Name: "model-1", OwnedBy: "provider-1"}}}),
 		WithSessionStore(session.NewMemorySessionStore()),
 	)
@@ -226,7 +226,7 @@ func Test_session_011(t *testing.T) {
 func Test_session_012(t *testing.T) {
 	assert := assert.New(t)
 
-	m, err := NewManager(
+	m, err := NewManager("test", "0.0.0", 
 		WithClient(&mockClient{name: "provider-1", models: []schema.Model{{Name: "model-1", OwnedBy: "provider-1"}}}),
 		WithSessionStore(session.NewMemorySessionStore()),
 	)
@@ -242,7 +242,7 @@ func Test_session_012(t *testing.T) {
 func Test_session_013(t *testing.T) {
 	assert := assert.New(t)
 
-	m, err := NewManager(
+	m, err := NewManager("test", "0.0.0", 
 		WithClient(&mockClient{name: "provider-1", models: []schema.Model{{Name: "model-1", OwnedBy: "provider-1"}}}),
 		WithSessionStore(session.NewMemorySessionStore()),
 	)
@@ -263,7 +263,7 @@ func Test_session_013(t *testing.T) {
 func Test_session_014(t *testing.T) {
 	assert := assert.New(t)
 
-	m, err := NewManager(
+	m, err := NewManager("test", "0.0.0", 
 		WithClient(&mockClient{name: "provider-1", models: []schema.Model{{Name: "model-1", OwnedBy: "provider-1"}}}),
 		WithSessionStore(session.NewMemorySessionStore()),
 	)
@@ -286,7 +286,7 @@ func Test_session_014(t *testing.T) {
 func Test_session_015(t *testing.T) {
 	assert := assert.New(t)
 
-	m, err := NewManager(
+	m, err := NewManager("test", "0.0.0", 
 		WithClient(&mockClient{name: "provider-1", models: []schema.Model{{Name: "model-1", OwnedBy: "provider-1"}}}),
 		WithSessionStore(session.NewMemorySessionStore()),
 	)
@@ -306,7 +306,7 @@ func Test_session_015(t *testing.T) {
 func Test_session_016(t *testing.T) {
 	assert := assert.New(t)
 
-	m, err := NewManager(
+	m, err := NewManager("test", "0.0.0", 
 		WithClient(&mockClient{name: "provider-1", models: []schema.Model{{Name: "model-1", OwnedBy: "provider-1"}}}),
 		WithSessionStore(session.NewMemorySessionStore()),
 	)
@@ -327,7 +327,7 @@ func Test_session_016(t *testing.T) {
 func Test_session_017(t *testing.T) {
 	assert := assert.New(t)
 
-	m, err := NewManager(
+	m, err := NewManager("test", "0.0.0", 
 		WithClient(&mockClient{name: "provider-1", models: []schema.Model{
 			{Name: "model-1", OwnedBy: "provider-1"},
 			{Name: "model-2", OwnedBy: "provider-1"},
@@ -349,7 +349,7 @@ func Test_session_017(t *testing.T) {
 func Test_session_018(t *testing.T) {
 	assert := assert.New(t)
 
-	m, err := NewManager(
+	m, err := NewManager("test", "0.0.0", 
 		WithClient(&mockClient{name: "provider-1", models: []schema.Model{{Name: "model-1", OwnedBy: "provider-1"}}}),
 		WithSessionStore(session.NewMemorySessionStore()),
 	)
@@ -366,7 +366,7 @@ func Test_session_018(t *testing.T) {
 func Test_session_019(t *testing.T) {
 	assert := assert.New(t)
 
-	m, err := NewManager(
+	m, err := NewManager("test", "0.0.0", 
 		WithClient(&mockClient{name: "provider-1", models: []schema.Model{{Name: "model-1", OwnedBy: "provider-1"}}}),
 		WithSessionStore(session.NewMemorySessionStore()),
 	)
@@ -380,7 +380,7 @@ func Test_session_019(t *testing.T) {
 func Test_session_020(t *testing.T) {
 	assert := assert.New(t)
 
-	m, err := NewManager(
+	m, err := NewManager("test", "0.0.0", 
 		WithClient(&mockClient{name: "provider-1", models: []schema.Model{{Name: "model-1", OwnedBy: "provider-1"}}}),
 		WithSessionStore(session.NewMemorySessionStore()),
 	)
@@ -399,7 +399,7 @@ func Test_session_020(t *testing.T) {
 func Test_session_021(t *testing.T) {
 	assert := assert.New(t)
 
-	m, err := NewManager(
+	m, err := NewManager("test", "0.0.0", 
 		WithClient(&mockClient{name: "provider-1", models: []schema.Model{{Name: "model-1", OwnedBy: "provider-1"}}}),
 		WithSessionStore(session.NewMemorySessionStore()),
 	)
@@ -416,7 +416,7 @@ func Test_session_021(t *testing.T) {
 func Test_session_022(t *testing.T) {
 	assert := assert.New(t)
 
-	m, err := NewManager(
+	m, err := NewManager("test", "0.0.0", 
 		WithClient(&mockClient{name: "provider-1", models: []schema.Model{{Name: "model-1", OwnedBy: "provider-1"}}}),
 		WithSessionStore(session.NewMemorySessionStore()),
 	)
@@ -462,7 +462,7 @@ func Test_session_022(t *testing.T) {
 func Test_session_023(t *testing.T) {
 	assert := assert.New(t)
 
-	m, err := NewManager(
+	m, err := NewManager("test", "0.0.0", 
 		WithClient(&mockClient{name: "provider-1", models: []schema.Model{{Name: "model-1", OwnedBy: "provider-1"}}}),
 		WithSessionStore(session.NewMemorySessionStore()),
 	)

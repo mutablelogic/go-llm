@@ -19,7 +19,7 @@ func newEmbedderManager(t *testing.T) *manager.Manager {
 			models: []schema.Model{{Name: "embed-model"}},
 		},
 	}
-	m, err := manager.NewManager(manager.WithClient(client))
+	m, err := manager.NewManager("test", "0.0.0", manager.WithClient(client))
 	if err != nil {
 		t.Fatal(err)
 	}

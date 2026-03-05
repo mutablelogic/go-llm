@@ -49,7 +49,7 @@ func newManager(t *testing.T) *Manager {
 		t.Skip("No API keys set (ANTHROPIC_API_KEY, GEMINI_API_KEY, MISTRAL_API_KEY)")
 	}
 
-	m, err := NewManager(opts...)
+	m, err := NewManager("test", "0.0.0", opts...)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -227,7 +227,7 @@ func newGoogleManager(t *testing.T) *Manager {
 	if err != nil {
 		t.Fatal(err)
 	}
-	m, err := NewManager(WithClient(client))
+	m, err := NewManager("test", "0.0.0", WithClient(client))
 	if err != nil {
 		t.Fatal(err)
 	}

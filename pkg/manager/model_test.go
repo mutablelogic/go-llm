@@ -40,7 +40,7 @@ func (c *mockClient) GetModel(_ context.Context, name string, _ ...opt.Opt) (*sc
 func Test_model_001(t *testing.T) {
 	assert := assert.New(t)
 
-	m, err := NewManager(
+	m, err := NewManager("test", "0.0.0", 
 		WithClient(&mockClient{name: "provider-1", models: []schema.Model{
 			{Name: "zulu", OwnedBy: "provider-1"},
 			{Name: "alpha", OwnedBy: "provider-1"},
@@ -65,7 +65,7 @@ func Test_model_001(t *testing.T) {
 func Test_model_002(t *testing.T) {
 	assert := assert.New(t)
 
-	m, err := NewManager(
+	m, err := NewManager("test", "0.0.0", 
 		WithClient(&mockClient{name: "provider-1", models: []schema.Model{{Name: "model-1", OwnedBy: "provider-1"}}}),
 		WithClient(&mockClient{name: "provider-2", models: []schema.Model{{Name: "model-2", OwnedBy: "provider-2"}}}),
 	)
@@ -82,7 +82,7 @@ func Test_model_002(t *testing.T) {
 func Test_model_003(t *testing.T) {
 	assert := assert.New(t)
 
-	m, err := NewManager(
+	m, err := NewManager("test", "0.0.0", 
 		WithClient(&mockClient{name: "provider-1", models: []schema.Model{{Name: "model-1"}}}),
 	)
 	assert.NoError(err)
@@ -95,7 +95,7 @@ func Test_model_003(t *testing.T) {
 func Test_model_004(t *testing.T) {
 	assert := assert.New(t)
 
-	m, err := NewManager(
+	m, err := NewManager("test", "0.0.0", 
 		WithClient(&mockClient{name: "provider-1", models: []schema.Model{{Name: "model-1", OwnedBy: "provider-1"}}}),
 		WithClient(&mockClient{name: "provider-2", models: []schema.Model{{Name: "model-2", OwnedBy: "provider-2"}}}),
 	)
@@ -112,7 +112,7 @@ func Test_model_004(t *testing.T) {
 func Test_model_005(t *testing.T) {
 	assert := assert.New(t)
 
-	m, err := NewManager(
+	m, err := NewManager("test", "0.0.0", 
 		WithClient(&mockClient{name: "provider-1", models: []schema.Model{{Name: "model-1"}}}),
 	)
 	assert.NoError(err)
@@ -125,7 +125,7 @@ func Test_model_005(t *testing.T) {
 func Test_model_006(t *testing.T) {
 	assert := assert.New(t)
 
-	m, err := NewManager(
+	m, err := NewManager("test", "0.0.0", 
 		WithClient(&mockClient{name: "provider-1", models: []schema.Model{{Name: "shared", OwnedBy: "provider-1"}}}),
 		WithClient(&mockClient{name: "provider-2", models: []schema.Model{{Name: "shared", OwnedBy: "provider-2"}}}),
 	)
@@ -140,7 +140,7 @@ func Test_model_006(t *testing.T) {
 func Test_model_007(t *testing.T) {
 	assert := assert.New(t)
 
-	m, err := NewManager(
+	m, err := NewManager("test", "0.0.0", 
 		WithClient(&mockClient{name: "provider-1", models: []schema.Model{{Name: "model-1", OwnedBy: "provider-1"}}}),
 		WithClient(&mockClient{name: "provider-2", models: []schema.Model{{Name: "model-2", OwnedBy: "provider-2"}}}),
 	)

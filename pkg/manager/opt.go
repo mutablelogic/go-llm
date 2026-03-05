@@ -62,6 +62,18 @@ func WithAgentStore(store schema.AgentStore) Opt {
 	}
 }
 
+// WithConnectorStore sets the MCP connector storage backend for the manager.
+// If not set, an in-memory store is used by default.
+func WithConnectorStore(store schema.ConnectorStore) Opt {
+	return func(m *Manager) error {
+		if store == nil {
+			return llm.ErrBadParameter.With("connector store is required")
+		}
+		m.connectorStore = store
+		return nil
+	}
+}
+
 // WithCredentialStore sets the credential storage backend for the manager.
 // If not set, credential operations will return an error.
 func WithCredentialStore(store schema.CredentialStore) Opt {

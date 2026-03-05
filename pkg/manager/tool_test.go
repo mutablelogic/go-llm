@@ -45,7 +45,7 @@ func Test_tool_001(t *testing.T) {
 	tk, err := tool.NewToolkit(&mockTool{name: "my_tool", description: "A test tool"})
 	assert.NoError(err)
 
-	m, err := NewManager(WithToolkit(tk))
+	m, err := NewManager("test", "0.0.0", WithToolkit(tk))
 	assert.NoError(err)
 
 	meta, err := m.GetTool(context.TODO(), "my_tool")
@@ -58,7 +58,7 @@ func Test_tool_001(t *testing.T) {
 func Test_tool_002(t *testing.T) {
 	assert := assert.New(t)
 
-	m, err := NewManager()
+	m, err := NewManager("test", "0.0.0")
 	assert.NoError(err)
 
 	_, err = m.GetTool(context.TODO(), "nonexistent")
@@ -76,7 +76,7 @@ func Test_tool_003(t *testing.T) {
 	tk, err := tool.NewToolkit(&mockTool{name: "schema_tool", description: "Has schema", schema: s})
 	assert.NoError(err)
 
-	m, err := NewManager(WithToolkit(tk))
+	m, err := NewManager("test", "0.0.0", WithToolkit(tk))
 	assert.NoError(err)
 
 	meta, err := m.GetTool(context.TODO(), "schema_tool")
@@ -92,7 +92,7 @@ func Test_tool_004(t *testing.T) {
 	tk, err := tool.NewToolkit(&mockTool{name: "no_schema", description: "No schema"})
 	assert.NoError(err)
 
-	m, err := NewManager(WithToolkit(tk))
+	m, err := NewManager("test", "0.0.0", WithToolkit(tk))
 	assert.NoError(err)
 
 	meta, err := m.GetTool(context.TODO(), "no_schema")
@@ -113,7 +113,7 @@ func Test_tool_005(t *testing.T) {
 	})
 	assert.NoError(err)
 
-	m, err := NewManager(WithToolkit(tk))
+	m, err := NewManager("test", "0.0.0", WithToolkit(tk))
 	assert.NoError(err)
 
 	resp, err := m.CallTool(context.TODO(), "echo_tool", json.RawMessage(`"hello"`))
@@ -126,7 +126,7 @@ func Test_tool_005(t *testing.T) {
 func Test_tool_006(t *testing.T) {
 	assert := assert.New(t)
 
-	m, err := NewManager()
+	m, err := NewManager("test", "0.0.0")
 	assert.NoError(err)
 
 	_, err = m.CallTool(context.TODO(), "nonexistent", nil)
@@ -145,7 +145,7 @@ func Test_tool_007(t *testing.T) {
 	})
 	assert.NoError(err)
 
-	m, err := NewManager(WithToolkit(tk))
+	m, err := NewManager("test", "0.0.0", WithToolkit(tk))
 	assert.NoError(err)
 
 	resp, err := m.CallTool(context.TODO(), "nil_input", nil)
@@ -165,7 +165,7 @@ func Test_tool_008(t *testing.T) {
 	})
 	assert.NoError(err)
 
-	m, err := NewManager(WithToolkit(tk))
+	m, err := NewManager("test", "0.0.0", WithToolkit(tk))
 	assert.NoError(err)
 
 	_, err = m.CallTool(context.TODO(), "fail_tool", json.RawMessage(`{}`))
@@ -183,7 +183,7 @@ func Test_tool_009(t *testing.T) {
 	)
 	assert.NoError(err)
 
-	m, err := NewManager(WithToolkit(tk))
+	m, err := NewManager("test", "0.0.0", WithToolkit(tk))
 	assert.NoError(err)
 
 	resp, err := m.ListTools(context.TODO(), schema.ListToolRequest{})
@@ -205,7 +205,7 @@ func Test_tool_010(t *testing.T) {
 	)
 	assert.NoError(err)
 
-	m, err := NewManager(WithToolkit(tk))
+	m, err := NewManager("test", "0.0.0", WithToolkit(tk))
 	assert.NoError(err)
 
 	limit := uint(2)
@@ -228,7 +228,7 @@ func Test_tool_011(t *testing.T) {
 	)
 	assert.NoError(err)
 
-	m, err := NewManager(WithToolkit(tk))
+	m, err := NewManager("test", "0.0.0", WithToolkit(tk))
 	assert.NoError(err)
 
 	resp, err := m.ListTools(context.TODO(), schema.ListToolRequest{Offset: 1})
@@ -249,7 +249,7 @@ func Test_tool_012(t *testing.T) {
 	)
 	assert.NoError(err)
 
-	m, err := NewManager(WithToolkit(tk))
+	m, err := NewManager("test", "0.0.0", WithToolkit(tk))
 	assert.NoError(err)
 
 	limit := uint(1)
@@ -264,7 +264,7 @@ func Test_tool_012(t *testing.T) {
 func Test_tool_013(t *testing.T) {
 	assert := assert.New(t)
 
-	m, err := NewManager()
+	m, err := NewManager("test", "0.0.0")
 	assert.NoError(err)
 
 	resp, err := m.ListTools(context.TODO(), schema.ListToolRequest{})
@@ -280,7 +280,7 @@ func Test_tool_014(t *testing.T) {
 	tk, err := tool.NewToolkit(&mockTool{name: "alpha"})
 	assert.NoError(err)
 
-	m, err := NewManager(WithToolkit(tk))
+	m, err := NewManager("test", "0.0.0", WithToolkit(tk))
 	assert.NoError(err)
 
 	resp, err := m.ListTools(context.TODO(), schema.ListToolRequest{Offset: 10})
@@ -297,7 +297,7 @@ func Test_tool_015(t *testing.T) {
 	tk, err := tool.NewToolkit(&mockTool{name: "typed_tool", schema: s})
 	assert.NoError(err)
 
-	m, err := NewManager(WithToolkit(tk))
+	m, err := NewManager("test", "0.0.0", WithToolkit(tk))
 	assert.NoError(err)
 
 	resp, err := m.ListTools(context.TODO(), schema.ListToolRequest{})
@@ -324,7 +324,7 @@ func Test_tool_016(t *testing.T) {
 	})
 	assert.NoError(err)
 
-	m, err := NewManager(WithToolkit(tk))
+	m, err := NewManager("test", "0.0.0", WithToolkit(tk))
 	assert.NoError(err)
 
 	resp, err := m.CallTool(context.TODO(), "get_weather", nil)

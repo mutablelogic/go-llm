@@ -214,6 +214,22 @@ type ListToolResponse struct {
 	Body   []ToolMeta `json:"body,omitzero"`
 }
 
+// ListConnectorsRequest represents a request to list registered MCP connectors.
+type ListConnectorsRequest struct {
+	Namespace string `json:"namespace,omitempty" help:"Filter by namespace" optional:""`
+	Enabled   *bool  `json:"enabled,omitempty" help:"Filter by enabled state" optional:""`
+	Limit     *uint  `json:"limit,omitempty" help:"Maximum number of connectors to return"`
+	Offset    uint   `json:"offset,omitempty" help:"Offset for pagination"`
+}
+
+// ListConnectorsResponse represents a response containing a list of MCP connectors.
+type ListConnectorsResponse struct {
+	Count  uint         `json:"count"`
+	Offset uint         `json:"offset,omitzero"`
+	Limit  *uint        `json:"limit,omitzero"`
+	Body   []*Connector `json:"body,omitzero"`
+}
+
 // ToolMeta represents a tool's metadata
 type ToolMeta struct {
 	Name        string     `json:"name"`
@@ -310,6 +326,14 @@ func (r ListToolRequest) String() string {
 }
 
 func (r ListToolResponse) String() string {
+	return types.Stringify(r)
+}
+
+func (r ListConnectorsRequest) String() string {
+	return types.Stringify(r)
+}
+
+func (r ListConnectorsResponse) String() string {
 	return types.Stringify(r)
 }
 

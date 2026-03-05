@@ -55,6 +55,7 @@ type Globals struct {
 type CLI struct {
 	Globals
 	AgentCommands
+	ConnectorCommands
 	CredentialsCommands
 	GenerateCommands
 	ModelCommands

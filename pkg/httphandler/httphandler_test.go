@@ -131,7 +131,7 @@ func newTestManager(t *testing.T, clients []mockClient, tools ...tool.Tool) *man
 		}
 		opts = append(opts, manager.WithToolkit(tk))
 	}
-	m, err := manager.NewManager(opts...)
+	m, err := manager.NewManager("test", "0.0.0", opts...)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -151,7 +151,7 @@ func newTestManagerWithGenerator(t *testing.T, clients []*mockGeneratorClient, t
 		}
 		opts = append(opts, manager.WithToolkit(tk))
 	}
-	m, err := manager.NewManager(opts...)
+	m, err := manager.NewManager("test", "0.0.0", opts...)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -183,6 +183,10 @@ func serveMux(manager *manager.Manager) *http.ServeMux {
 	path, handler, _ = httphandler.ChatHandler(manager)
 	mux.HandleFunc(path, handler)
 	path, handler, _ = httphandler.CredentialHandler(manager)
+	mux.HandleFunc(path, handler)
+	path, handler, _ = httphandler.ConnectorListHandler(manager)
+	mux.HandleFunc(path, handler)
+	path, handler, _ = httphandler.ConnectorHandler(manager)
 	mux.HandleFunc(path, handler)
 	return mux
 }

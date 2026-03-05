@@ -45,28 +45,36 @@ func NewMemoryCredentialStore(passphrase string) (*MemoryCredentialStore, error)
 // PUBLIC METHODS
 
 // GetCredential retrieves the credential for the given server URL.
-func (s *MemoryCredentialStore) GetCredential(_ context.Context, url string) (*schema.OAuthCredentials, error) {
+func (s *MemoryCredentialStore) GetCredential(_ context.Context, rawURL string) (*schema.OAuthCredentials, error) {
+	canonicalURL, err := schema.CanonicalURL(rawURL)
+	if err != nil {
+		return nil, err
+	}
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	blob, ok := s.creds[url]
+	blob, ok := s.creds[canonicalURL]
 	if !ok {
-		return nil, llm.ErrNotFound.Withf("credential not found for %q", url)
+		return nil, llm.ErrNotFound.Withf("credential not found for %q", canonicalURL)
 	}
 
 	plaintext, err := encrypt.Decrypt[[]byte](s.passphrase, blob)
 	if err != nil {
-		return nil, fmt.Errorf("credential decrypt failed for %q: %w", url, err)
+		return nil, fmt.Errorf("credential decrypt failed for %q: %w", canonicalURL, err)
 	}
 
 	var cred schema.OAuthCredentials
 	if err := json.Unmarshal(plaintext, &cred); err != nil {
-		return nil, fmt.Errorf("credential unmarshal failed for %q: %w", url, err)
+		return nil, fmt.Errorf("credential unmarshal failed for %q: %w", canonicalURL, err)
 	}
 	return &cred, nil
 }
 
 // SetCredential stores (or updates) the credential for the given server URL.
-func (s *MemoryCredentialStore) SetCredential(_ context.Context, url string, cred schema.OAuthCredentials) error {
+func (s *MemoryCredentialStore) SetCredential(_ context.Context, rawURL string, cred schema.OAuthCredentials) error {
+	canonicalURL, err := schema.CanonicalURL(rawURL)
+	if err != nil {
+		return err
+	}
 	plaintext, err := json.Marshal(cred)
 	if err != nil {
 		return fmt.Errorf("credential marshal failed: %w", err)
@@ -79,17 +87,21 @@ func (s *MemoryCredentialStore) SetCredential(_ context.Context, url string, cre
 
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	s.creds[url] = blob
+	s.creds[canonicalURL] = blob
 	return nil
 }
 
 // DeleteCredential removes the credential for the given server URL.
-func (s *MemoryCredentialStore) DeleteCredential(_ context.Context, url string) error {
+func (s *MemoryCredentialStore) DeleteCredential(_ context.Context, rawURL string) error {
+	canonicalURL, err := schema.CanonicalURL(rawURL)
+	if err != nil {
+		return err
+	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if _, ok := s.creds[url]; !ok {
-		return llm.ErrNotFound.Withf("credential not found for %q", url)
+	if _, ok := s.creds[canonicalURL]; !ok {
+		return llm.ErrNotFound.Withf("credential not found for %q", canonicalURL)
 	}
-	delete(s.creds, url)
+	delete(s.creds, canonicalURL)
 	return nil
 }
