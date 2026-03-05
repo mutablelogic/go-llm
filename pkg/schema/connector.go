@@ -57,14 +57,14 @@ func CanonicalURL(rawURL string) (string, error) {
 	return u.Scheme + "://" + host + u.EscapedPath(), nil
 }
 
-// CanonicalNamespace normalises a namespace string by removing spaces and
-// replacing "-" and "." characters with underscores.
+// CanonicalNamespace normalises a namespace string by lowercasing it,
+// removing spaces and replacing "-" and "." characters with underscores.
 func CanonicalNamespace(ns string) string {
-	return strings.NewReplacer(
+	return strings.ToLower(strings.NewReplacer(
 		" ", "",
 		"-", "_",
 		".", "_",
-	).Replace(ns)
+	).Replace(ns))
 }
 
 ///////////////////////////////////////////////////////////////////////////////
