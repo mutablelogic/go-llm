@@ -23,17 +23,28 @@ type Manager struct {
 	sessionStore    schema.SessionStore
 	agentStore      schema.AgentStore
 	credentialStore schema.CredentialStore
+	connectorStore  schema.ConnectorStore
 	toolkit         *tool.Toolkit
 	tracer          trace.Tracer
+	serverName      string
+	serverVersion   string
 }
 
 ///////////////////////////////////////////////////////////////////////////////
 // LIFECYCLE
 
-func NewManager(opts ...Opt) (*Manager, error) {
+func NewManager(name, ver string, opts ...Opt) (*Manager, error) {
 	// Create the manager
 	m := new(Manager)
-	m.clients = make(map[string]llm.Client)
+
+	// Validate required parameters
+	if name = strings.TrimSpace(name); name == "" {
+		return nil, llm.ErrBadParameter.With("server name is required")
+	} else {
+		m.serverName = name
+		m.serverVersion = strings.TrimSpace(ver)
+		m.clients = make(map[string]llm.Client)
+	}
 
 	// Apply options
 	for _, opt := range opts {
@@ -50,6 +61,11 @@ func NewManager(opts ...Opt) (*Manager, error) {
 	// Default to in-memory agent store if none was provided
 	if m.agentStore == nil {
 		m.agentStore = store.NewMemoryAgentStore()
+	}
+
+	// Default to in-memory connector store if none was provided
+	if m.connectorStore == nil {
+		m.connectorStore = store.NewMemoryConnectorStore()
 	}
 
 	// By default, we don't configure a credential store

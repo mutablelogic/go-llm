@@ -53,32 +53,40 @@ func NewFileCredentialStore(passphrase, dir string) (*FileCredentialStore, error
 // PUBLIC METHODS
 
 // GetCredential retrieves the credential for the given server URL.
-func (s *FileCredentialStore) GetCredential(_ context.Context, url string) (*schema.OAuthCredentials, error) {
+func (s *FileCredentialStore) GetCredential(_ context.Context, rawURL string) (*schema.OAuthCredentials, error) {
+	canonicalURL, err := schema.CanonicalURL(rawURL)
+	if err != nil {
+		return nil, err
+	}
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
-	blob, err := os.ReadFile(s.path(url))
+	blob, err := os.ReadFile(s.path(canonicalURL))
 	if err != nil {
 		if os.IsNotExist(err) {
-			return nil, llm.ErrNotFound.Withf("credential not found for %q", url)
+			return nil, llm.ErrNotFound.Withf("credential not found for %q", canonicalURL)
 		}
-		return nil, fmt.Errorf("credential read failed for %q: %w", url, err)
+		return nil, fmt.Errorf("credential read failed for %q: %w", canonicalURL, err)
 	}
 
 	plaintext, err := encrypt.Decrypt[[]byte](s.passphrase, blob)
 	if err != nil {
-		return nil, fmt.Errorf("credential decrypt failed for %q: %w", url, err)
+		return nil, fmt.Errorf("credential decrypt failed for %q: %w", canonicalURL, err)
 	}
 
 	var cred schema.OAuthCredentials
 	if err := json.Unmarshal(plaintext, &cred); err != nil {
-		return nil, fmt.Errorf("credential unmarshal failed for %q: %w", url, err)
+		return nil, fmt.Errorf("credential unmarshal failed for %q: %w", canonicalURL, err)
 	}
 	return &cred, nil
 }
 
 // SetCredential stores (or updates) the credential for the given server URL.
-func (s *FileCredentialStore) SetCredential(_ context.Context, url string, cred schema.OAuthCredentials) error {
+func (s *FileCredentialStore) SetCredential(_ context.Context, rawURL string, cred schema.OAuthCredentials) error {
+	canonicalURL, err := schema.CanonicalURL(rawURL)
+	if err != nil {
+		return err
+	}
 	plaintext, err := json.Marshal(cred)
 	if err != nil {
 		return fmt.Errorf("credential marshal failed: %w", err)
@@ -92,22 +100,26 @@ func (s *FileCredentialStore) SetCredential(_ context.Context, url string, cred 
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	if err := os.WriteFile(s.path(url), blob, FilePerm); err != nil {
-		return fmt.Errorf("credential write failed for %q: %w", url, err)
+	if err := os.WriteFile(s.path(canonicalURL), blob, FilePerm); err != nil {
+		return fmt.Errorf("credential write failed for %q: %w", canonicalURL, err)
 	}
 	return nil
 }
 
 // DeleteCredential removes the credential for the given server URL.
-func (s *FileCredentialStore) DeleteCredential(_ context.Context, url string) error {
+func (s *FileCredentialStore) DeleteCredential(_ context.Context, rawURL string) error {
+	canonicalURL, err := schema.CanonicalURL(rawURL)
+	if err != nil {
+		return err
+	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	if err := os.Remove(s.path(url)); err != nil {
+	if err := os.Remove(s.path(canonicalURL)); err != nil {
 		if os.IsNotExist(err) {
-			return llm.ErrNotFound.Withf("credential not found for %q", url)
+			return llm.ErrNotFound.Withf("credential not found for %q", canonicalURL)
 		}
-		return fmt.Errorf("credential delete failed for %q: %w", url, err)
+		return fmt.Errorf("credential delete failed for %q: %w", canonicalURL, err)
 	}
 	return nil
 }

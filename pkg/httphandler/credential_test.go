@@ -24,7 +24,7 @@ func newCredentialManager(t *testing.T) *manager.Manager {
 	if err != nil {
 		t.Fatal(err)
 	}
-	m, err := manager.NewManager(manager.WithCredentialStore(cs))
+	m, err := manager.NewManager("test", "0.0.0", manager.WithCredentialStore(cs))
 	if err != nil {
 		t.Fatal(err)
 	}

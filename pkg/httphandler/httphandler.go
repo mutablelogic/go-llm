@@ -48,6 +48,8 @@ func RegisterHandlers(manager *manager.Manager, router server.HTTPRouter, middle
 	register(AskHandler(manager))
 	register(ChatHandler(manager))
 	register(CredentialHandler(manager))
+	register(ConnectorListHandler(manager))
+	register(ConnectorHandler(manager))
 
 	// Return any errors
 	return result

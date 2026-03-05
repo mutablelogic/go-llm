@@ -1,0 +1,314 @@
+package store_test
+
+import (
+	"context"
+	"testing"
+
+	// Packages
+	schema "github.com/mutablelogic/go-llm/pkg/schema"
+	types "github.com/mutablelogic/go-server/pkg/types"
+	assert "github.com/stretchr/testify/assert"
+)
+
+// connectorStoreTests defines shared behavioural tests for any
+// ConnectorStore implementation.
+var connectorStoreTests = []struct {
+	Name string
+	Fn   func(t *testing.T, s schema.ConnectorStore)
+}{{
+	Name: "CreateAndGet",
+	Fn: func(t *testing.T, s schema.ConnectorStore) {
+		a := assert.New(t)
+		ctx := context.Background()
+		c, err := s.CreateConnector(ctx, "https://example.com/sse", schema.ConnectorMeta{Enabled: true, Namespace: "mcp"})
+		a.NoError(err)
+		a.NotNil(c)
+		a.Equal("https://example.com/sse", c.URL)
+		a.True(c.Enabled)
+		a.Equal("mcp", c.Namespace)
+		a.False(c.CreatedAt.IsZero())
+		got, err := s.GetConnector(ctx, "https://example.com/sse")
+		a.NoError(err)
+		a.Equal(c.URL, got.URL)
+		a.Equal(c.Namespace, got.Namespace)
+	},
+}, {
+	Name: "CreateDuplicateConflict",
+	Fn: func(t *testing.T, s schema.ConnectorStore) {
+		a := assert.New(t)
+		ctx := context.Background()
+		_, err := s.CreateConnector(ctx, "https://example.com/sse", schema.ConnectorMeta{Enabled: true})
+		a.NoError(err)
+		_, err = s.CreateConnector(ctx, "https://example.com/sse", schema.ConnectorMeta{Enabled: true})
+		a.Error(err)
+	},
+}, {
+	Name: "CreateInvalidURL",
+	Fn: func(t *testing.T, s schema.ConnectorStore) {
+		a := assert.New(t)
+		ctx := context.Background()
+		// Missing scheme
+		_, err := s.CreateConnector(ctx, "example.com/sse", schema.ConnectorMeta{})
+		a.Error(err)
+		// Unsupported scheme
+		_, err = s.CreateConnector(ctx, "ftp://example.com/sse", schema.ConnectorMeta{})
+		a.Error(err)
+		// Empty URL
+		_, err = s.CreateConnector(ctx, "", schema.ConnectorMeta{})
+		a.Error(err)
+		// Invalid port
+		_, err = s.CreateConnector(ctx, "https://example.com:99999/sse", schema.ConnectorMeta{})
+		a.Error(err)
+	},
+}, {
+	Name: "CreateInvalidNamespace",
+	Fn: func(t *testing.T, s schema.ConnectorStore) {
+		a := assert.New(t)
+		ctx := context.Background()
+		// Starts with a digit
+		_, err := s.CreateConnector(ctx, "https://example.com/sse", schema.ConnectorMeta{Namespace: "1bad"})
+		a.Error(err)
+		// Contains spaces
+		_, err = s.CreateConnector(ctx, "https://example.com/sse", schema.ConnectorMeta{Namespace: "has spaces"})
+		a.Error(err)
+	},
+}, {
+	Name: "CreateURLCanonicalised",
+	Fn: func(t *testing.T, s schema.ConnectorStore) {
+		a := assert.New(t)
+		ctx := context.Background()
+		// Uppercase scheme and host are lowercased; query and fragment are stripped.
+		c, err := s.CreateConnector(ctx, "HTTPS://Example.COM/sse?token=abc#frag", schema.ConnectorMeta{})
+		a.NoError(err)
+		a.Equal("https://example.com/sse", c.URL)
+		// Lookup with the original (non-canonical) URL must still work.
+		got, err := s.GetConnector(ctx, "HTTPS://Example.COM/sse?token=abc#frag")
+		a.NoError(err)
+		a.Equal("https://example.com/sse", got.URL)
+	},
+}, {
+	Name: "GetNotFound",
+	Fn: func(t *testing.T, s schema.ConnectorStore) {
+		a := assert.New(t)
+		_, err := s.GetConnector(context.Background(), "https://example.com/sse")
+		a.Error(err)
+	},
+}, {
+	Name: "UpdateMeta",
+	Fn: func(t *testing.T, s schema.ConnectorStore) {
+		a := assert.New(t)
+		ctx := context.Background()
+		_, err := s.CreateConnector(ctx, "https://example.com/sse", schema.ConnectorMeta{Enabled: false, Namespace: "old"})
+		a.NoError(err)
+		updated, err := s.UpdateConnector(ctx, "https://example.com/sse", schema.ConnectorMeta{Enabled: true, Namespace: "new"})
+		a.NoError(err)
+		a.True(updated.Enabled)
+		a.Equal("new", updated.Namespace)
+	},
+}, {
+	Name: "UpdateNotFound",
+	Fn: func(t *testing.T, s schema.ConnectorStore) {
+		a := assert.New(t)
+		_, err := s.UpdateConnector(context.Background(), "https://example.com/sse", schema.ConnectorMeta{})
+		a.Error(err)
+	},
+}, {
+	Name: "UpdateInvalidNamespace",
+	Fn: func(t *testing.T, s schema.ConnectorStore) {
+		a := assert.New(t)
+		ctx := context.Background()
+		_, err := s.CreateConnector(ctx, "https://example.com/sse", schema.ConnectorMeta{})
+		a.NoError(err)
+		_, err = s.UpdateConnector(ctx, "https://example.com/sse", schema.ConnectorMeta{Namespace: "bad namespace"})
+		a.Error(err)
+	},
+}, {
+	Name: "Delete",
+	Fn: func(t *testing.T, s schema.ConnectorStore) {
+		a := assert.New(t)
+		ctx := context.Background()
+		_, err := s.CreateConnector(ctx, "https://example.com/sse", schema.ConnectorMeta{Enabled: true})
+		a.NoError(err)
+		a.NoError(s.DeleteConnector(ctx, "https://example.com/sse"))
+		_, err = s.GetConnector(ctx, "https://example.com/sse")
+		a.Error(err)
+	},
+}, {
+	Name: "DeleteNotFound",
+	Fn: func(t *testing.T, s schema.ConnectorStore) {
+		a := assert.New(t)
+		a.Error(s.DeleteConnector(context.Background(), "https://example.com/sse"))
+	},
+}, {
+	Name: "ListEmpty",
+	Fn: func(t *testing.T, s schema.ConnectorStore) {
+		a := assert.New(t)
+		resp, err := s.ListConnectors(context.Background(), schema.ListConnectorsRequest{})
+		a.NoError(err)
+		a.Equal(uint(0), resp.Count)
+		a.Empty(resp.Body)
+	},
+}, {
+	Name: "ListAll",
+	Fn: func(t *testing.T, s schema.ConnectorStore) {
+		a := assert.New(t)
+		ctx := context.Background()
+		_, err := s.CreateConnector(ctx, "https://a.example.com/sse", schema.ConnectorMeta{Enabled: true, Namespace: "ns1"})
+		a.NoError(err)
+		_, err = s.CreateConnector(ctx, "https://b.example.com/sse", schema.ConnectorMeta{Enabled: false, Namespace: "ns2"})
+		a.NoError(err)
+		resp, err := s.ListConnectors(ctx, schema.ListConnectorsRequest{})
+		a.NoError(err)
+		a.Equal(uint(2), resp.Count)
+		a.Len(resp.Body, 2)
+	},
+}, {
+	Name: "ListFilterNamespace",
+	Fn: func(t *testing.T, s schema.ConnectorStore) {
+		a := assert.New(t)
+		ctx := context.Background()
+		_, err := s.CreateConnector(ctx, "https://a.example.com/sse", schema.ConnectorMeta{Enabled: true, Namespace: "ns1"})
+		a.NoError(err)
+		_, err = s.CreateConnector(ctx, "https://b.example.com/sse", schema.ConnectorMeta{Enabled: true, Namespace: "ns2"})
+		a.NoError(err)
+		_, err = s.CreateConnector(ctx, "https://c.example.com/sse", schema.ConnectorMeta{Enabled: true, Namespace: "ns1"})
+		a.NoError(err)
+		resp, err := s.ListConnectors(ctx, schema.ListConnectorsRequest{Namespace: "ns1"})
+		a.NoError(err)
+		a.Equal(uint(2), resp.Count)
+		a.Len(resp.Body, 2)
+		for _, c := range resp.Body {
+			a.Equal("ns1", c.Namespace)
+		}
+	},
+}, {
+	Name: "ListFilterEnabled",
+	Fn: func(t *testing.T, s schema.ConnectorStore) {
+		a := assert.New(t)
+		ctx := context.Background()
+		_, err := s.CreateConnector(ctx, "https://a.example.com/sse", schema.ConnectorMeta{Enabled: true})
+		a.NoError(err)
+		_, err = s.CreateConnector(ctx, "https://b.example.com/sse", schema.ConnectorMeta{Enabled: false})
+		a.NoError(err)
+		_, err = s.CreateConnector(ctx, "https://c.example.com/sse", schema.ConnectorMeta{Enabled: true})
+		a.NoError(err)
+		resp, err := s.ListConnectors(ctx, schema.ListConnectorsRequest{Enabled: types.Ptr(true)})
+		a.NoError(err)
+		a.Equal(uint(2), resp.Count)
+		a.Len(resp.Body, 2)
+		for _, c := range resp.Body {
+			a.True(c.Enabled)
+		}
+		resp, err = s.ListConnectors(ctx, schema.ListConnectorsRequest{Enabled: types.Ptr(false)})
+		a.NoError(err)
+		a.Equal(uint(1), resp.Count)
+		a.Len(resp.Body, 1)
+		a.False(resp.Body[0].Enabled)
+	},
+}, {
+	Name: "ListPaginationLimit",
+	Fn: func(t *testing.T, s schema.ConnectorStore) {
+		a := assert.New(t)
+		ctx := context.Background()
+		for i := range 5 {
+			_, err := s.CreateConnector(ctx, "https://"+string(rune('a'+i))+".example.com/sse", schema.ConnectorMeta{Enabled: true})
+			a.NoError(err)
+		}
+		limit := uint(2)
+		resp, err := s.ListConnectors(ctx, schema.ListConnectorsRequest{Limit: &limit})
+		a.NoError(err)
+		a.Equal(uint(5), resp.Count)
+		a.Len(resp.Body, 2)
+	},
+}, {
+	Name: "ListPaginationOffset",
+	Fn: func(t *testing.T, s schema.ConnectorStore) {
+		a := assert.New(t)
+		ctx := context.Background()
+		for i := range 5 {
+			_, err := s.CreateConnector(ctx, "https://"+string(rune('a'+i))+".example.com/sse", schema.ConnectorMeta{Enabled: true})
+			a.NoError(err)
+		}
+		resp, err := s.ListConnectors(ctx, schema.ListConnectorsRequest{Offset: 3})
+		a.NoError(err)
+		a.Equal(uint(5), resp.Count)
+		a.Len(resp.Body, 2)
+		// Offset beyond total returns empty body.
+		resp, err = s.ListConnectors(ctx, schema.ListConnectorsRequest{Offset: 10})
+		a.NoError(err)
+		a.Equal(uint(5), resp.Count)
+		a.Empty(resp.Body)
+	},
+}, {
+	Name: "UpdateConnectorState",
+	Fn: func(t *testing.T, s schema.ConnectorStore) {
+		a := assert.New(t)
+		ctx := context.Background()
+		_, err := s.CreateConnector(ctx, "https://example.com/sse", schema.ConnectorMeta{Enabled: true})
+		a.NoError(err)
+		name := "my-server"
+		version := "1.2.3"
+		updated, err := s.UpdateConnectorState(ctx, "https://example.com/sse", schema.ConnectorState{
+			Name:    &name,
+			Version: &version,
+		})
+		a.NoError(err)
+		a.Equal(name, *updated.Name)
+		a.Equal(version, *updated.Version)
+		// Fields not set must remain nil.
+		a.Nil(updated.Title)
+		a.Nil(updated.Description)
+		a.Nil(updated.ConnectedAt)
+	},
+}, {
+	Name: "UpdateConnectorStateNotFound",
+	Fn: func(t *testing.T, s schema.ConnectorStore) {
+		a := assert.New(t)
+		name := "x"
+		_, err := s.UpdateConnectorState(context.Background(), "https://example.com/sse", schema.ConnectorState{Name: &name})
+		a.Error(err)
+	},
+}, {
+	Name: "UpdateConnectorStateCapabilities",
+	Fn: func(t *testing.T, s schema.ConnectorStore) {
+		a := assert.New(t)
+		ctx := context.Background()
+		_, err := s.CreateConnector(ctx, "https://example.com/sse", schema.ConnectorMeta{Enabled: true})
+		a.NoError(err)
+		caps := []schema.Capability{schema.CapabilityTools, schema.CapabilityResources}
+		updated, err := s.UpdateConnectorState(ctx, "https://example.com/sse", schema.ConnectorState{Capabilities: caps})
+		a.NoError(err)
+		a.Equal(caps, updated.Capabilities)
+		// Replace capabilities with a different set.
+		caps2 := []schema.Capability{schema.CapabilityPrompts}
+		updated, err = s.UpdateConnectorState(ctx, "https://example.com/sse", schema.ConnectorState{Capabilities: caps2})
+		a.NoError(err)
+		a.Equal(caps2, updated.Capabilities)
+	},
+}, {
+	Name: "UpdateConnectorStatePreservesMeta",
+	Fn: func(t *testing.T, s schema.ConnectorStore) {
+		a := assert.New(t)
+		ctx := context.Background()
+		_, err := s.CreateConnector(ctx, "https://example.com/sse", schema.ConnectorMeta{Enabled: true, Namespace: "ns"})
+		a.NoError(err)
+		name := "srv"
+		updated, err := s.UpdateConnectorState(ctx, "https://example.com/sse", schema.ConnectorState{Name: &name})
+		a.NoError(err)
+		// Meta fields must be untouched.
+		a.True(updated.Enabled)
+		a.Equal("ns", updated.Namespace)
+	},
+}}
+
+// runConnectorStoreTests runs every shared behavioural test against a
+// ConnectorStore implementation. The factory is called once per subtest
+// so each gets a clean, independent store.
+func runConnectorStoreTests(t *testing.T, factory func() schema.ConnectorStore) {
+	t.Helper()
+	for _, tt := range connectorStoreTests {
+		t.Run(tt.Name, func(t *testing.T) {
+			tt.Fn(t, factory())
+		})
+	}
+}

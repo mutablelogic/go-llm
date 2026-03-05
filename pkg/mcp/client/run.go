@@ -23,6 +23,11 @@ func (c *Client) Run(ctx context.Context) error {
 		return err
 	}
 
+	// Expose the session so tool-call methods can use it.
+	c.mu.Lock()
+	c.session = session
+	c.mu.Unlock()
+
 	// Clear the session pointer when Run exits so callers see ErrNotConnected
 	// rather than stale transport errors.
 	defer func() {

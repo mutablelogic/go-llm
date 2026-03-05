@@ -191,7 +191,7 @@ func (cmd *RunServer) WithManager(ctx *Globals, fn func(*manager.Manager, string
 	}
 
 	// Create the manager
-	mgr, err := manager.NewManager(opts...)
+	mgr, err := manager.NewManager("go-llm", version.Version(), opts...)
 	if err != nil {
 		return err
 	}

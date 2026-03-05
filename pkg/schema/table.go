@@ -2,6 +2,7 @@ package schema
 
 import (
 	"fmt"
+	"time"
 
 	uitable "github.com/mutablelogic/go-llm/pkg/ui/table"
 )
@@ -26,6 +27,9 @@ type ModelTable struct {
 	Models       []Model
 	CurrentModel string
 }
+
+// ConnectorTable implements table.TableData for a list of connectors.
+type ConnectorTable []*Connector
 
 // ProviderTable implements table.TableData for a list of provider names.
 type ProviderTable []string
@@ -122,4 +126,36 @@ func (t ProviderTable) Len() int {
 
 func (t ProviderTable) Row(i int) []any {
 	return []any{t[i]}
+}
+
+///////////////////////////////////////////////////////////////////////////////
+// CONNECTOR TABLE (LIST)
+
+func (t ConnectorTable) Header() []string {
+	return []string{"URL", "NAMESPACE", "ENABLED", "NAME", "CONNECTED"}
+}
+
+func (t ConnectorTable) Len() int {
+	return len(t)
+}
+
+func (t ConnectorTable) Row(i int) []any {
+	c := t[i]
+	namespace := c.Namespace
+	if namespace == "" {
+		namespace = "-"
+	}
+	enabled := "no"
+	if c.Enabled {
+		enabled = "yes"
+	}
+	name := "-"
+	if c.Name != nil {
+		name = *c.Name
+	}
+	connected := "-"
+	if c.ConnectedAt != nil {
+		connected = c.ConnectedAt.Format(time.RFC3339)
+	}
+	return []any{c.URL, namespace, enabled, name, connected}
 }

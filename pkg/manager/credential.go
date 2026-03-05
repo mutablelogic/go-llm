@@ -16,13 +16,17 @@ import (
 // PUBLIC METHODS
 
 // GetCredential retrieves the credential for the given server URL.
-func (m *Manager) GetCredential(ctx context.Context, url string) (result *schema.OAuthCredentials, err error) {
+func (m *Manager) GetCredential(ctx context.Context, rawURL string) (result *schema.OAuthCredentials, err error) {
 	// Otel span — redact error to prevent credential leakage into traces
 	ctx, endSpan := otel.StartSpan(m.tracer, ctx, "GetCredential",
-		attribute.String("url", url),
+		attribute.String("url", rawURL),
 	)
 	defer func() { endSpan(redactCredentialErr(err)) }()
 
+	url, err := schema.CanonicalURL(rawURL)
+	if err != nil {
+		return nil, err
+	}
 	if m.credentialStore == nil {
 		return nil, llm.ErrNotImplemented.With("credential store not configured")
 	}
@@ -30,13 +34,17 @@ func (m *Manager) GetCredential(ctx context.Context, url string) (result *schema
 }
 
 // SetCredential stores (or updates) the credential for the given server URL.
-func (m *Manager) SetCredential(ctx context.Context, url string, cred schema.OAuthCredentials) (err error) {
+func (m *Manager) SetCredential(ctx context.Context, rawURL string, cred schema.OAuthCredentials) (err error) {
 	// Otel span — redact error to prevent credential leakage into traces
 	ctx, endSpan := otel.StartSpan(m.tracer, ctx, "SetCredential",
-		attribute.String("url", url),
+		attribute.String("url", rawURL),
 	)
 	defer func() { endSpan(redactCredentialErr(err)) }()
 
+	url, err := schema.CanonicalURL(rawURL)
+	if err != nil {
+		return err
+	}
 	if m.credentialStore == nil {
 		return llm.ErrNotImplemented.With("credential store not configured")
 	}
@@ -44,13 +52,17 @@ func (m *Manager) SetCredential(ctx context.Context, url string, cred schema.OAu
 }
 
 // DeleteCredential removes the credential for the given server URL.
-func (m *Manager) DeleteCredential(ctx context.Context, url string) (err error) {
+func (m *Manager) DeleteCredential(ctx context.Context, rawURL string) (err error) {
 	// Otel span — redact error to prevent credential leakage into traces
 	ctx, endSpan := otel.StartSpan(m.tracer, ctx, "DeleteCredential",
-		attribute.String("url", url),
+		attribute.String("url", rawURL),
 	)
 	defer func() { endSpan(redactCredentialErr(err)) }()
 
+	url, err := schema.CanonicalURL(rawURL)
+	if err != nil {
+		return err
+	}
 	if m.credentialStore == nil {
 		return llm.ErrNotImplemented.With("credential store not configured")
 	}
