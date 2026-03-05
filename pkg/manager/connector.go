@@ -7,8 +7,10 @@ import (
 	// Packages
 	client "github.com/mutablelogic/go-client"
 	otel "github.com/mutablelogic/go-client/pkg/otel"
+	llm "github.com/mutablelogic/go-llm"
 	mcpclient "github.com/mutablelogic/go-llm/pkg/mcp/client"
 	schema "github.com/mutablelogic/go-llm/pkg/schema"
+	types "github.com/mutablelogic/go-server/pkg/types"
 	attribute "go.opentelemetry.io/otel/attribute"
 )
 
@@ -28,6 +30,9 @@ func (m *Manager) CreateConnector(ctx context.Context, rawURL string, meta schem
 	url, err := schema.CanonicalURL(rawURL)
 	if err != nil {
 		return nil, err
+	}
+	if ns := meta.Namespace; ns != "" && !types.IsIdentifier(ns) {
+		return nil, llm.ErrBadParameter.Withf("connector namespace %q is not a valid identifier", ns)
 	}
 
 	// Probe the MCP server before registering it, injecting a bearer token if
@@ -53,6 +58,10 @@ func (m *Manager) CreateConnector(ctx context.Context, rawURL string, meta schem
 
 	// Probe succeeded — register the connector, then persist its state.
 	// If UpdateConnectorState fails, roll back by deleting the connector.
+	// If no namespace was provided, derive one from the server's name.
+	if meta.Namespace == "" && state.Name != nil && *state.Name != "" {
+		meta.Namespace = schema.CanonicalNamespace(*state.Name)
+	}
 	result, err = m.connectorStore.CreateConnector(ctx, url, meta)
 	if err != nil {
 		return nil, err
@@ -94,6 +103,9 @@ func (m *Manager) UpdateConnector(ctx context.Context, rawURL string, meta schem
 	url, err := schema.CanonicalURL(rawURL)
 	if err != nil {
 		return nil, err
+	}
+	if ns := meta.Namespace; ns != "" && !types.IsIdentifier(ns) {
+		return nil, llm.ErrBadParameter.Withf("connector namespace %q is not a valid identifier", ns)
 	}
 
 	return m.connectorStore.UpdateConnector(ctx, url, meta)

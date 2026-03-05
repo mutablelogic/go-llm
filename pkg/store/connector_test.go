@@ -123,6 +123,22 @@ var connectorStoreTests = []struct {
 		a.Error(err)
 	},
 }, {
+	Name: "UpdateDuplicateNamespace",
+	Fn: func(t *testing.T, s schema.ConnectorStore) {
+		a := assert.New(t)
+		ctx := context.Background()
+		_, err := s.CreateConnector(ctx, "https://a.example.com/sse", schema.ConnectorMeta{Namespace: "ns1"})
+		a.NoError(err)
+		_, err = s.CreateConnector(ctx, "https://b.example.com/sse", schema.ConnectorMeta{Namespace: "ns2"})
+		a.NoError(err)
+		// Trying to rename b's namespace to an already-used one must fail.
+		_, err = s.UpdateConnector(ctx, "https://b.example.com/sse", schema.ConnectorMeta{Namespace: "ns1"})
+		a.Error(err)
+		// Updating a connector to its own namespace must succeed (no conflict with self).
+		_, err = s.UpdateConnector(ctx, "https://a.example.com/sse", schema.ConnectorMeta{Namespace: "ns1"})
+		a.NoError(err)
+	},
+}, {
 	Name: "Delete",
 	Fn: func(t *testing.T, s schema.ConnectorStore) {
 		a := assert.New(t)
@@ -163,23 +179,39 @@ var connectorStoreTests = []struct {
 		a.Len(resp.Body, 2)
 	},
 }, {
+	Name: "CreateDuplicateNamespace",
+	Fn: func(t *testing.T, s schema.ConnectorStore) {
+		a := assert.New(t)
+		ctx := context.Background()
+		_, err := s.CreateConnector(ctx, "https://a.example.com/sse", schema.ConnectorMeta{Namespace: "ns1"})
+		a.NoError(err)
+		_, err = s.CreateConnector(ctx, "https://b.example.com/sse", schema.ConnectorMeta{Namespace: "ns1"})
+		a.Error(err)
+	},
+}, {
 	Name: "ListFilterNamespace",
 	Fn: func(t *testing.T, s schema.ConnectorStore) {
 		a := assert.New(t)
 		ctx := context.Background()
+		// Each namespace is unique; create three connectors with distinct namespaces.
 		_, err := s.CreateConnector(ctx, "https://a.example.com/sse", schema.ConnectorMeta{Enabled: true, Namespace: "ns1"})
 		a.NoError(err)
 		_, err = s.CreateConnector(ctx, "https://b.example.com/sse", schema.ConnectorMeta{Enabled: true, Namespace: "ns2"})
 		a.NoError(err)
-		_, err = s.CreateConnector(ctx, "https://c.example.com/sse", schema.ConnectorMeta{Enabled: true, Namespace: "ns1"})
+		_, err = s.CreateConnector(ctx, "https://c.example.com/sse", schema.ConnectorMeta{Enabled: true, Namespace: "ns3"})
 		a.NoError(err)
+		// Filter by ns1 should return exactly one result.
 		resp, err := s.ListConnectors(ctx, schema.ListConnectorsRequest{Namespace: "ns1"})
 		a.NoError(err)
-		a.Equal(uint(2), resp.Count)
-		a.Len(resp.Body, 2)
-		for _, c := range resp.Body {
-			a.Equal("ns1", c.Namespace)
-		}
+		a.Equal(uint(1), resp.Count)
+		a.Len(resp.Body, 1)
+		a.Equal("ns1", resp.Body[0].Namespace)
+		// Filter by ns2 should return exactly one result.
+		resp, err = s.ListConnectors(ctx, schema.ListConnectorsRequest{Namespace: "ns2"})
+		a.NoError(err)
+		a.Equal(uint(1), resp.Count)
+		a.Len(resp.Body, 1)
+		a.Equal("ns2", resp.Body[0].Namespace)
 	},
 }, {
 	Name: "ListFilterEnabled",

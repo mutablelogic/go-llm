@@ -56,6 +56,11 @@ func (s *MemoryConnectorStore) CreateConnector(_ context.Context, url string, me
 	if _, ok := s.connectors[canonicalURL]; ok {
 		return nil, llm.ErrConflict.Withf("connector already exists for %q", canonicalURL)
 	}
+	if meta.Namespace != "" {
+		if matches := s.listConnectors(schema.ListConnectorsRequest{Namespace: meta.Namespace}, ""); len(matches) > 0 {
+			return nil, llm.ErrConflict.Withf("connector namespace %q already in use by %q", meta.Namespace, matches[0].URL)
+		}
+	}
 
 	// Create and store the new connector
 	c := schema.Connector{
@@ -103,6 +108,11 @@ func (s *MemoryConnectorStore) UpdateConnector(_ context.Context, url string, me
 	if !ok {
 		return nil, llm.ErrNotFound.Withf("connector not found for %q", canonicalURL)
 	}
+	if meta.Namespace != "" {
+		if matches := s.listConnectors(schema.ListConnectorsRequest{Namespace: meta.Namespace}, canonicalURL); len(matches) > 0 {
+			return nil, llm.ErrConflict.Withf("connector namespace %q already in use by %q", meta.Namespace, matches[0].URL)
+		}
+	}
 	c.ConnectorMeta = meta
 	s.connectors[canonicalURL] = c
 	return types.Ptr(c), nil
@@ -134,18 +144,7 @@ func (s *MemoryConnectorStore) ListConnectors(_ context.Context, req schema.List
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
-	// Collect matching connectors (deterministic ordering not guaranteed for
-	// in-memory store; callers that need a stable order should use a file store).
-	var matched []schema.Connector
-	for _, c := range s.connectors {
-		if req.Namespace != "" && c.Namespace != req.Namespace {
-			continue
-		}
-		if req.Enabled != nil && c.Enabled != *req.Enabled {
-			continue
-		}
-		matched = append(matched, c)
-	}
+	matched := s.listConnectors(req, "")
 
 	// Sort by creation time, most recent first.
 	sort.Slice(matched, func(i, j int) bool {
@@ -180,6 +179,29 @@ func (s *MemoryConnectorStore) ListConnectors(_ context.Context, req schema.List
 		Limit:  req.Limit,
 		Body:   body,
 	}, nil
+}
+
+///////////////////////////////////////////////////////////////////////////////
+// PRIVATE METHODS
+
+// listConnectors filters s.connectors by req, skipping the connector at
+// excludeURL (pass "" to include all). Pagination fields in req are ignored.
+// Caller must hold at least s.mu.RLock.
+func (s *MemoryConnectorStore) listConnectors(req schema.ListConnectorsRequest, excludeURL string) []schema.Connector {
+	var matched []schema.Connector
+	for url, c := range s.connectors {
+		if url == excludeURL {
+			continue
+		}
+		if req.Namespace != "" && c.Namespace != req.Namespace {
+			continue
+		}
+		if req.Enabled != nil && c.Enabled != *req.Enabled {
+			continue
+		}
+		matched = append(matched, c)
+	}
+	return matched
 }
 
 // UpdateConnectorState merges state into the connector identified by url,

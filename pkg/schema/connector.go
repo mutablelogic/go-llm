@@ -21,9 +21,12 @@ import (
 // non-empty host, and — if a port is present — a valid port in 1–65535.
 // Any userinfo, query string, or fragment is stripped.
 func CanonicalURL(rawURL string) (string, error) {
-	u, err := url.ParseRequestURI(rawURL)
+	u, err := url.Parse(rawURL)
 	if err != nil {
 		return "", fmt.Errorf("connector url: %w", err)
+	}
+	if !u.IsAbs() {
+		return "", fmt.Errorf("connector url: not an absolute URL: %q", rawURL)
 	}
 
 	u.Scheme = strings.ToLower(u.Scheme)
@@ -52,6 +55,16 @@ func CanonicalURL(rawURL string) (string, error) {
 	}
 
 	return u.Scheme + "://" + host + u.EscapedPath(), nil
+}
+
+// CanonicalNamespace normalises a namespace string by removing spaces and
+// replacing "-" and "." characters with underscores.
+func CanonicalNamespace(ns string) string {
+	return strings.NewReplacer(
+		" ", "",
+		"-", "_",
+		".", "_",
+	).Replace(ns)
 }
 
 ///////////////////////////////////////////////////////////////////////////////
