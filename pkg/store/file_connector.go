@@ -61,9 +61,15 @@ func (s *FileConnectorStore) CreateConnector(_ context.Context, url string, meta
 	path := s.path(canonicalURL)
 	if _, err := os.Stat(path); err == nil {
 		return nil, llm.ErrConflict.Withf("connector already exists for %q", canonicalURL)
+	} else if !os.IsNotExist(err) {
+		return nil, fmt.Errorf("stat %q: %w", path, err)
 	}
 	if ns := types.Value(meta.Namespace); ns != "" {
-		if matches := s.filterConnectors(schema.ListConnectorsRequest{Namespace: ns}, ""); len(matches) > 0 {
+		matches, err := s.filterConnectors(schema.ListConnectorsRequest{Namespace: ns}, "")
+		if err != nil {
+			return nil, err
+		}
+		if len(matches) > 0 {
 			return nil, llm.ErrConflict.Withf("connector namespace %q already in use by %q", ns, matches[0].URL)
 		}
 	}
@@ -112,7 +118,11 @@ func (s *FileConnectorStore) UpdateConnector(_ context.Context, url string, meta
 		return nil, err
 	}
 	if ns := types.Value(meta.Namespace); ns != "" {
-		if matches := s.filterConnectors(schema.ListConnectorsRequest{Namespace: ns}, canonicalURL); len(matches) > 0 {
+		matches, err := s.filterConnectors(schema.ListConnectorsRequest{Namespace: ns}, canonicalURL)
+		if err != nil {
+			return nil, err
+		}
+		if len(matches) > 0 {
 			return nil, llm.ErrConflict.Withf("connector namespace %q already in use by %q", ns, matches[0].URL)
 		}
 	}
@@ -157,7 +167,10 @@ func (s *FileConnectorStore) ListConnectors(_ context.Context, req schema.ListCo
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
-	matched := s.filterConnectors(req, "")
+	matched, err := s.filterConnectors(req, "")
+	if err != nil {
+		return nil, err
+	}
 
 	sort.Slice(matched, func(i, j int) bool {
 		return matched[i].CreatedAt.After(matched[j].CreatedAt)
@@ -251,10 +264,10 @@ func (s *FileConnectorStore) read(canonicalURL string) (*schema.Connector, error
 // skips the connector at excludeURL (pass "" to include all).
 // Pagination fields in req are ignored. Corrupt files are silently skipped.
 // Caller must hold at least s.mu.RLock.
-func (s *FileConnectorStore) filterConnectors(req schema.ListConnectorsRequest, excludeURL string) []schema.Connector {
+func (s *FileConnectorStore) filterConnectors(req schema.ListConnectorsRequest, excludeURL string) ([]schema.Connector, error) {
 	entries, err := os.ReadDir(s.dir)
 	if err != nil {
-		return nil
+		return nil, fmt.Errorf("readdir %q: %w", s.dir, err)
 	}
 	var matched []schema.Connector
 	for _, entry := range entries {
@@ -277,5 +290,5 @@ func (s *FileConnectorStore) filterConnectors(req schema.ListConnectorsRequest, 
 		}
 		matched = append(matched, c)
 	}
-	return matched
+	return matched, nil
 }

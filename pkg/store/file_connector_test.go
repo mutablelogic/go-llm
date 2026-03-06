@@ -38,7 +38,10 @@ func Test_file_connector_002(t *testing.T) {
 
 func Test_file_connector_003(t *testing.T) {
 	runConnectorStoreTests(t, func() schema.ConnectorStore {
-		s, _ := store.NewFileConnectorStore(t.TempDir())
+		s, err := store.NewFileConnectorStore(t.TempDir())
+		if err != nil {
+			t.Fatal(err)
+		}
 		return s
 	})
 }

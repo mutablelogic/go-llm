@@ -18,7 +18,7 @@ import (
 // PUBLIC METHODS
 
 // CanonicalURL validates rawURL and returns a canonical form consisting of
-// scheme://host[:port]/path with a lowercased scheme and host.
+// scheme://host[:port]/path with a lowercased scheme, host, and path.
 // The URL must be absolute, use a supported scheme (http or https), have a
 // non-empty host, and — if a port is present — a valid port in 1–65535.
 // Any userinfo, query string, or fragment is stripped.
@@ -53,9 +53,14 @@ func CanonicalURL(rawURL string) (string, error) {
 	}
 
 	// Clean the decoded path; path.Clean("") returns "." so normalise that back.
-	cleanPath := path.Clean(u.Path)
+	// Preserve a trailing slash if the original path had one.
+	hadTrailingSlash := len(u.Path) > 1 && strings.HasSuffix(u.Path, "/")
+	cleanPath := strings.ToLower(path.Clean(u.Path))
 	if cleanPath == "." {
 		cleanPath = ""
+	}
+	if hadTrailingSlash {
+		cleanPath += "/"
 	}
 	u.Path = cleanPath
 	u.RawPath = ""

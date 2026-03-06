@@ -106,6 +106,32 @@ var connectorStoreTests = []struct {
 		a.Equal("new", types.Value(updated.Namespace))
 	},
 }, {
+	Name: "UpdateMetaPartialEnabled",
+	Fn: func(t *testing.T, s schema.ConnectorStore) {
+		a := assert.New(t)
+		ctx := context.Background()
+		_, err := s.CreateConnector(ctx, "https://example.com/sse", schema.ConnectorMeta{Enabled: types.Ptr(false), Namespace: types.Ptr("keep")})
+		a.NoError(err)
+		// Update only Enabled; Namespace is nil and must be preserved.
+		updated, err := s.UpdateConnector(ctx, "https://example.com/sse", schema.ConnectorMeta{Enabled: types.Ptr(true)})
+		a.NoError(err)
+		a.True(types.Value(updated.Enabled))
+		a.Equal("keep", types.Value(updated.Namespace))
+	},
+}, {
+	Name: "UpdateMetaPartialNamespace",
+	Fn: func(t *testing.T, s schema.ConnectorStore) {
+		a := assert.New(t)
+		ctx := context.Background()
+		_, err := s.CreateConnector(ctx, "https://example.com/sse", schema.ConnectorMeta{Enabled: types.Ptr(true), Namespace: types.Ptr("old")})
+		a.NoError(err)
+		// Update only Namespace; Enabled is nil and must be preserved.
+		updated, err := s.UpdateConnector(ctx, "https://example.com/sse", schema.ConnectorMeta{Namespace: types.Ptr("renamed")})
+		a.NoError(err)
+		a.True(types.Value(updated.Enabled))
+		a.Equal("renamed", types.Value(updated.Namespace))
+	},
+}, {
 	Name: "UpdateNotFound",
 	Fn: func(t *testing.T, s schema.ConnectorStore) {
 		a := assert.New(t)
