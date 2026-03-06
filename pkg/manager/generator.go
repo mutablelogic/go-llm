@@ -454,7 +454,7 @@ func (m *Manager) runTools(ctx context.Context, calls []schema.ToolCall, fn opt.
 func (m *Manager) withTools(tools ...string) (opt.Opt, error) {
 	if tools == nil {
 		// No filter — include all tools
-		if len(m.toolkit.Tools()) == 0 {
+		if len(m.toolkit.ListTools(schema.ListToolsRequest{})) == 0 {
 			return nil, nil
 		}
 		return tool.WithToolkit(m.toolkit), nil
@@ -466,7 +466,7 @@ func (m *Manager) withTools(tools ...string) (opt.Opt, error) {
 	}
 
 	// Build a filtered toolkit with only the requested tools
-	filtered := make([]tool.Tool, 0, len(tools))
+	filtered := make([]llm.Tool, 0, len(tools))
 	for _, name := range tools {
 		t := m.toolkit.Lookup(name)
 		if t == nil {
@@ -475,7 +475,7 @@ func (m *Manager) withTools(tools ...string) (opt.Opt, error) {
 		filtered = append(filtered, t)
 	}
 
-	tk, err := tool.NewToolkit(filtered...)
+	tk, err := tool.NewToolkit(tool.WithBuiltin(filtered...))
 	if err != nil {
 		return nil, err
 	}

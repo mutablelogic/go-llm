@@ -3,105 +3,128 @@ package tool
 import (
 	"context"
 	"encoding/json"
+	"log/slog"
+	"sync"
 
 	// Packages
-	jsonschema "github.com/google/jsonschema-go/jsonschema"
 	llm "github.com/mutablelogic/go-llm"
 	schema "github.com/mutablelogic/go-llm/pkg/schema"
 	types "github.com/mutablelogic/go-server/pkg/types"
 )
 
 ///////////////////////////////////////////////////////////////////////////////
-// TYPES
-
-// ToolMeta holds optional metadata about a tool, sourced from the MCP
-// ToolAnnotations and protocol _meta fields. All fields are hints only.
-type ToolMeta struct {
-	// Title is a human-readable display name (takes precedence over Name).
-	Title string
-
-	// ReadOnlyHint indicates the tool does not modify its environment.
-	ReadOnlyHint bool
-
-	// DestructiveHint, when non-nil and true, indicates the tool may perform
-	// destructive updates. Meaningful only when ReadOnlyHint is false.
-	DestructiveHint *bool
-
-	// IdempotentHint indicates repeated identical calls have no additional effect.
-	// Meaningful only when ReadOnlyHint is false.
-	IdempotentHint bool
-
-	// OpenWorldHint, when non-nil and true, indicates the tool may interact
-	// with external entities outside a closed domain (e.g. web search).
-	OpenWorldHint *bool
-}
-
-// DefaultTool provides no-op default implementations of the optional Tool
-// interface methods OutputSchema and Meta. Embed it in concrete tool types
-// so they satisfy the full Tool interface without boilerplate.
-type DefaultTool struct{}
-
-func (DefaultTool) OutputSchema() (*jsonschema.Schema, error) { return nil, nil }
-func (DefaultTool) Meta() ToolMeta                            { return ToolMeta{} }
-
-// Tool is an interface for a callable tool with a name, description,
-// input schema, optional output schema, and metadata hints.
-type Tool interface {
-	// Return the name of the tool
-	Name() string
-
-	// Return the description of the tool
-	Description() string
-
-	// Return the JSON schema for the tool input parameters.
-	InputSchema() (*jsonschema.Schema, error)
-
-	// Return the JSON schema for the tool output, or nil if unspecified.
-	OutputSchema() (*jsonschema.Schema, error)
-
-	// Return optional metadata / hints about the tool.
-	Meta() ToolMeta
-
-	// Run the tool with the given input as JSON (may be nil)
-	Run(ctx context.Context, input json.RawMessage) (any, error)
-}
+// TOOLKIT
 
 // Toolkit is a collection of tools with unique names
 type Toolkit struct {
-	tools map[string]Tool
+	mu       sync.RWMutex
+	wg       sync.WaitGroup
+	builtins map[string]llm.Tool
+	conns    map[string]*connEntry
+
+	// Callbacks
+	onLog   func(url string, level slog.Level, msg string, args ...any)
+	onState func(url string, state schema.ConnectorState)
+	onTools func(url string, tools []llm.Tool)
 }
 
 ///////////////////////////////////////////////////////////////////////////////
 // LIFECYCLE
 
-// NewToolkit creates a new toolkit with the given tools.
-// Returns an error if any tool has an invalid or duplicate name.
-func NewToolkit(tools ...Tool) (*Toolkit, error) {
+// NewToolkit creates a new toolkit with the given options.
+func NewToolkit(opts ...ToolkitOpt) (*Toolkit, error) {
 	tk := &Toolkit{
-		tools: make(map[string]Tool),
+		builtins: make(map[string]llm.Tool),
+		conns:    make(map[string]*connEntry),
+		onLog:    func(string, slog.Level, string, ...any) {},
+		onState:  func(string, schema.ConnectorState) {},
+		onTools:  func(string, []llm.Tool) {},
 	}
-	if err := tk.Register(tools...); err != nil {
-		return nil, err
+	for _, o := range opts {
+		if err := o(tk); err != nil {
+			return nil, err
+		}
 	}
 	return tk, nil
+}
+
+// Close cancels all active connector goroutines, waits for them to finish,
+// and releases resources.
+func (tk *Toolkit) Close() error {
+	tk.mu.Lock()
+	for _, e := range tk.conns {
+		e.cancel()
+	}
+	tk.conns = make(map[string]*connEntry)
+	tk.mu.Unlock()
+
+	// Wait for all connectors to disconnect
+	tk.wg.Wait()
+
+	// Return success
+	return nil
 }
 
 ///////////////////////////////////////////////////////////////////////////////
 // PUBLIC METHODS
 
-// Tools returns all tools in the toolkit
-func (tk *Toolkit) Tools() []Tool {
-	result := make([]Tool, 0, len(tk.tools))
-	for _, t := range tk.tools {
-		result = append(result, t)
+// ListTools returns tools matching the given request filters.
+// An empty request returns all tools across all namespaces (builtins + connectors).
+func (tk *Toolkit) ListTools(req schema.ListToolsRequest) []llm.Tool {
+	// Build a name-filter set for O(1) lookup; nil means no filter.
+	var nameSet map[string]struct{}
+	if len(req.Name) > 0 {
+		nameSet = make(map[string]struct{}, len(req.Name))
+		for _, n := range req.Name {
+			nameSet[n] = struct{}{}
+		}
 	}
+	matchName := func(name string) bool {
+		if nameSet == nil {
+			return true
+		}
+		_, ok := nameSet[name]
+		return ok
+	}
+
+	tk.mu.RLock()
+	defer tk.mu.RUnlock()
+
+	var result []llm.Tool
+
+	// Builtins
+	if req.Namespace == "" || req.Namespace == schema.BuiltinNamespace {
+		for _, t := range tk.builtins {
+			if !isReservedToolName(t.Name()) && matchName(t.Name()) {
+				result = append(result, t)
+			}
+		}
+	}
+
+	// Connector tools
+	if req.Namespace != schema.BuiltinNamespace {
+		for url, entry := range tk.conns {
+			if req.Namespace != "" && req.Namespace != url {
+				continue
+			}
+			for _, t := range entry.tools {
+				if !isReservedToolName(t.Name()) && matchName(t.Name()) {
+					result = append(result, t)
+				}
+			}
+		}
+	}
+
 	return result
 }
 
-// Register adds one or more tools to the toolkit.
+// AddBuiltin adds one or more locally-implemented tools to the toolkit.
 // Returns an error if any tool has an invalid or duplicate name,
 // or if the name is reserved (e.g. "submit_output").
-func (tk *Toolkit) Register(tools ...Tool) error {
+func (tk *Toolkit) AddBuiltin(tools ...llm.Tool) error {
+	tk.mu.Lock()
+	defer tk.mu.Unlock()
+
 	for _, t := range tools {
 		name := t.Name()
 		if !types.IsIdentifier(name) {
@@ -113,10 +136,10 @@ func (tk *Toolkit) Register(tools ...Tool) error {
 				return llm.ErrBadParameter.Withf("reserved tool name: %q", name)
 			}
 		}
-		if _, exists := tk.tools[name]; exists {
+		if _, exists := tk.builtins[name]; exists {
 			return llm.ErrBadParameter.Withf("duplicate tool name: %q", name)
 		}
-		tk.tools[name] = t
+		tk.builtins[name] = t
 	}
 	return nil
 }
@@ -126,9 +149,23 @@ func isReservedToolName(name string) bool {
 	return name == OutputToolName
 }
 
-// Lookup returns a tool by name, or nil if not found
-func (tk *Toolkit) Lookup(name string) Tool {
-	return tk.tools[name]
+// Lookup returns a tool by name, searching builtins first then connector tools.
+// Returns nil if not found.
+func (tk *Toolkit) Lookup(name string) llm.Tool {
+	tk.mu.RLock()
+	defer tk.mu.RUnlock()
+
+	if t, ok := tk.builtins[name]; ok {
+		return t
+	}
+	for _, entry := range tk.conns {
+		for _, t := range entry.tools {
+			if t.Name() == name {
+				return t
+			}
+		}
+	}
+	return nil
 }
 
 // Run executes a tool by name with the given input.
@@ -202,5 +239,5 @@ func (tk *Toolkit) Feedback(call schema.ToolCall) string {
 // STRINGIFY
 
 func (tk *Toolkit) String() string {
-	return types.Stringify(tk.Tools())
+	return types.Stringify(tk.ListTools(schema.ListToolsRequest{}))
 }

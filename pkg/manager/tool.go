@@ -6,11 +6,11 @@ import (
 	"sort"
 
 	// Packages
-	"github.com/mutablelogic/go-client/pkg/otel"
+	otel "github.com/mutablelogic/go-client/pkg/otel"
 	llm "github.com/mutablelogic/go-llm"
 	schema "github.com/mutablelogic/go-llm/pkg/schema"
 	types "github.com/mutablelogic/go-server/pkg/types"
-	"go.opentelemetry.io/otel/attribute"
+	attribute "go.opentelemetry.io/otel/attribute"
 )
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -24,7 +24,7 @@ func (m *Manager) ListTools(ctx context.Context, req schema.ListToolRequest) (re
 	)
 	defer func() { endSpan(err) }()
 
-	tools := m.toolkit.Tools()
+	tools := m.toolkit.ListTools(schema.ListToolsRequest{})
 
 	// Sort by name for stable ordering
 	sort.Slice(tools, func(i, j int) bool { return tools[i].Name() < tools[j].Name() })

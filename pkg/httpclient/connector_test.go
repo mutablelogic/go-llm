@@ -76,10 +76,10 @@ func (s *connectorStore) list(namespace string, enabled *bool) *schema.ListConne
 	defer s.mu.Unlock()
 	var body []*schema.Connector
 	for _, c := range s.data {
-		if namespace != "" && c.Namespace != namespace {
+		if namespace != "" && types.Value(c.Namespace) != namespace {
 			continue
 		}
-		if enabled != nil && c.Enabled != *enabled {
+		if enabled != nil && types.Value(c.Enabled) != types.Value(enabled) {
 			continue
 		}
 		cp := *c
@@ -191,18 +191,18 @@ func TestConnectorClient_CreateAndGet(t *testing.T) {
 	defer srv.Close()
 	c := newConnectorClient(t, srv.URL)
 
-	created, err := c.CreateConnector(context.TODO(), "https://example.com/sse", schema.ConnectorMeta{Enabled: true, Namespace: "mcp"})
+	created, err := c.CreateConnector(context.TODO(), "https://example.com/sse", schema.ConnectorMeta{Enabled: types.Ptr(true), Namespace: types.Ptr("mcp")})
 	if err != nil {
 		t.Fatal(err)
 	}
 	if created.URL != "https://example.com/sse" {
 		t.Fatalf("unexpected URL: %q", created.URL)
 	}
-	if !created.Enabled {
+	if !types.Value(created.Enabled) {
 		t.Fatal("expected enabled")
 	}
-	if created.Namespace != "mcp" {
-		t.Fatalf("expected namespace %q, got %q", "mcp", created.Namespace)
+	if types.Value(created.Namespace) != "mcp" {
+		t.Fatalf("expected namespace %q, got %q", "mcp", types.Value(created.Namespace))
 	}
 
 	got, err := c.GetConnector(context.TODO(), "https://example.com/sse")
@@ -219,18 +219,18 @@ func TestConnectorClient_UpdateAndGet(t *testing.T) {
 	defer srv.Close()
 	c := newConnectorClient(t, srv.URL)
 
-	if _, err := c.CreateConnector(context.TODO(), "https://example.com/sse", schema.ConnectorMeta{Enabled: false, Namespace: "old"}); err != nil {
+	if _, err := c.CreateConnector(context.TODO(), "https://example.com/sse", schema.ConnectorMeta{Enabled: types.Ptr(false), Namespace: types.Ptr("old")}); err != nil {
 		t.Fatal(err)
 	}
-	updated, err := c.UpdateConnector(context.TODO(), "https://example.com/sse", schema.ConnectorMeta{Enabled: true, Namespace: "new"})
+	updated, err := c.UpdateConnector(context.TODO(), "https://example.com/sse", schema.ConnectorMeta{Enabled: types.Ptr(true), Namespace: types.Ptr("new")})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !updated.Enabled {
+	if !types.Value(updated.Enabled) {
 		t.Fatal("expected enabled=true after update")
 	}
-	if updated.Namespace != "new" {
-		t.Fatalf("expected namespace %q, got %q", "new", updated.Namespace)
+	if types.Value(updated.Namespace) != "new" {
+		t.Fatalf("expected namespace %q, got %q", "new", types.Value(updated.Namespace))
 	}
 }
 
@@ -239,7 +239,7 @@ func TestConnectorClient_DeleteAndVerify(t *testing.T) {
 	defer srv.Close()
 	c := newConnectorClient(t, srv.URL)
 
-	if _, err := c.CreateConnector(context.TODO(), "https://example.com/sse", schema.ConnectorMeta{Enabled: true}); err != nil {
+	if _, err := c.CreateConnector(context.TODO(), "https://example.com/sse", schema.ConnectorMeta{Enabled: types.Ptr(true)}); err != nil {
 		t.Fatal(err)
 	}
 	if err := c.DeleteConnector(context.TODO(), "https://example.com/sse"); err != nil {
@@ -260,7 +260,7 @@ func TestConnectorClient_ListWithFilter(t *testing.T) {
 		"https://a.example.com/sse": "ns1",
 		"https://b.example.com/sse": "ns2",
 	} {
-		if _, err := c.CreateConnector(context.TODO(), rawURL, schema.ConnectorMeta{Enabled: true, Namespace: ns}); err != nil {
+		if _, err := c.CreateConnector(context.TODO(), rawURL, schema.ConnectorMeta{Enabled: types.Ptr(true), Namespace: types.Ptr(ns)}); err != nil {
 			t.Fatalf("create %s: %v", rawURL, err)
 		}
 	}

@@ -34,8 +34,12 @@ func Test_tool_002(t *testing.T) {
 	assert := assert.New(t)
 
 	// Create a toolkit
-	toolkit, err := tool.NewToolkit(tools...)
+	toolkit, err := tool.NewToolkit()
+	if err == nil {
+		err = toolkit.AddBuiltin(tools...)
+	}
 	assert.NoError(err)
+	defer toolkit.Close()
 	assert.NotNil(toolkit)
 }
 

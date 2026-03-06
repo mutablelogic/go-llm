@@ -7,6 +7,7 @@ import (
 
 	// Packages
 	jsonschema "github.com/google/jsonschema-go/jsonschema"
+	llm "github.com/mutablelogic/go-llm"
 	opt "github.com/mutablelogic/go-llm/pkg/opt"
 	schema "github.com/mutablelogic/go-llm/pkg/schema"
 	"github.com/mutablelogic/go-llm/pkg/tool"
@@ -16,7 +17,7 @@ import (
 ///////////////////////////////////////////////////////////////////////////////
 // MOCK TOOL
 
-// mockTool implements tool.Tool for testing
+// mockTool implements llm.Tool for testing
 type mockTool struct {
 	name        string
 	description string
@@ -40,7 +41,7 @@ func (m *mockTool) Name() string                                          { retu
 func (m *mockTool) Description() string                                   { return m.description }
 func (m *mockTool) InputSchema() (*jsonschema.Schema, error)              { return m.schema, nil }
 func (m *mockTool) OutputSchema() (*jsonschema.Schema, error)             { return nil, nil }
-func (m *mockTool) Meta() tool.ToolMeta                                   { return tool.ToolMeta{} }
+func (m *mockTool) Meta() llm.ToolMeta                                    { return llm.ToolMeta{} }
 func (m *mockTool) Run(_ context.Context, _ json.RawMessage) (any, error) { return "mock result", nil }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -102,10 +103,14 @@ func Test_opt_toolkit_001(t *testing.T) {
 	// Test geminiFunctionDeclsFromTools with a single mock tool
 	assert := assert.New(t)
 
-	tk, err := tool.NewToolkit(newMockTool("get_weather", "Get current weather"))
+	tk, err := tool.NewToolkit()
+	if err == nil {
+		err = tk.AddBuiltin(newMockTool("get_weather", "Get current weather"))
+	}
 	assert.NoError(err)
+	defer tk.Close()
 
-	decls := geminiFunctionDeclsFromTools(tk.Tools())
+	decls := geminiFunctionDeclsFromTools(tk.ListTools(schema.ListToolsRequest{}))
 	assert.Len(decls, 1)
 	assert.Equal("get_weather", decls[0].Name)
 	assert.Equal("Get current weather", decls[0].Description)
@@ -121,13 +126,15 @@ func Test_opt_toolkit_002(t *testing.T) {
 	// Test geminiFunctionDeclsFromTools with multiple tools
 	assert := assert.New(t)
 
-	tk, err := tool.NewToolkit(
-		newMockTool("get_weather", "Get weather"),
-		newMockTool("search_web", "Search the web"),
-	)
+	tk, err := tool.NewToolkit()
+	if err == nil {
+		err = tk.AddBuiltin(newMockTool("get_weather", "Get weather"),
+			newMockTool("search_web", "Search the web"))
+	}
 	assert.NoError(err)
+	defer tk.Close()
 
-	decls := geminiFunctionDeclsFromTools(tk.Tools())
+	decls := geminiFunctionDeclsFromTools(tk.ListTools(schema.ListToolsRequest{}))
 	assert.Len(decls, 2)
 
 	names := make(map[string]bool)
@@ -142,8 +149,12 @@ func Test_opt_toolkit_003(t *testing.T) {
 	// Test toolkit tools appear in generateRequestFromOpts
 	assert := assert.New(t)
 
-	tk, err := tool.NewToolkit(newMockTool("get_weather", "Get weather"))
+	tk, err := tool.NewToolkit()
+	if err == nil {
+		err = tk.AddBuiltin(newMockTool("get_weather", "Get weather"))
+	}
 	assert.NoError(err)
+	defer tk.Close()
 
 	msg := &schema.Message{Role: "user", Content: []schema.ContentBlock{{Text: strPtr("Hi")}}}
 	session := schema.Conversation{msg}
@@ -163,8 +174,9 @@ func Test_opt_toolkit_004(t *testing.T) {
 
 	tk, err := tool.NewToolkit()
 	assert.NoError(err)
+	defer tk.Close()
 
-	decls := geminiFunctionDeclsFromTools(tk.Tools())
+	decls := geminiFunctionDeclsFromTools(tk.ListTools(schema.ListToolsRequest{}))
 	assert.Empty(decls)
 }
 
@@ -174,6 +186,7 @@ func Test_opt_toolkit_005(t *testing.T) {
 
 	tk, err := tool.NewToolkit()
 	assert.NoError(err)
+	defer tk.Close()
 
 	msg := &schema.Message{Role: "user", Content: []schema.ContentBlock{{Text: strPtr("Hi")}}}
 	session := schema.Conversation{msg}

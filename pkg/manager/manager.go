@@ -2,15 +2,18 @@ package manager
 
 import (
 	"context"
+	"log/slog"
 	"strings"
 	"sync"
 
 	// Packages
+	client "github.com/mutablelogic/go-client"
 	llm "github.com/mutablelogic/go-llm"
 	opt "github.com/mutablelogic/go-llm/pkg/opt"
 	schema "github.com/mutablelogic/go-llm/pkg/schema"
 	store "github.com/mutablelogic/go-llm/pkg/store"
 	tool "github.com/mutablelogic/go-llm/pkg/tool"
+	types "github.com/mutablelogic/go-server/pkg/types"
 	trace "go.opentelemetry.io/otel/trace"
 	errgroup "golang.org/x/sync/errgroup"
 )
@@ -19,15 +22,19 @@ import (
 // TYPES
 
 type Manager struct {
-	clients         map[string]llm.Client
-	sessionStore    schema.SessionStore
-	agentStore      schema.AgentStore
-	credentialStore schema.CredentialStore
-	connectorStore  schema.ConnectorStore
-	toolkit         *tool.Toolkit
-	tracer          trace.Tracer
-	serverName      string
-	serverVersion   string
+	ctx              context.Context
+	cancel           context.CancelFunc
+	clients          map[string]llm.Client
+	sessionStore     schema.SessionStore
+	agentStore       schema.AgentStore
+	credentialStore  schema.CredentialStore
+	connectorStore   schema.ConnectorStore
+	toolkit          *tool.Toolkit
+	toolkitOpts      []tool.ToolkitOpt
+	connectorFactory ConnectorFactory
+	tracer           trace.Tracer
+	serverName       string
+	serverVersion    string
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -36,6 +43,7 @@ type Manager struct {
 func NewManager(name, ver string, opts ...Opt) (*Manager, error) {
 	// Create the manager
 	m := new(Manager)
+	m.ctx, m.cancel = context.WithCancel(context.Background())
 
 	// Validate required parameters
 	if name = strings.TrimSpace(name); name == "" {
@@ -71,9 +79,21 @@ func NewManager(name, ver string, opts ...Opt) (*Manager, error) {
 	// By default, we don't configure a credential store
 	// since it requires a passphrase.
 
-	// Default to empty toolkit if none was provided
-	if m.toolkit == nil {
-		m.toolkit, _ = tool.NewToolkit()
+	// Build the toolkit with the accumulated opts and a state writeback hook.
+	tk, err := tool.NewToolkit(append(m.toolkitOpts,
+		tool.WithLogHandler(m.onConnectorLog),
+		tool.WithStateHandler(m.onConnectorState),
+		tool.WithToolsHandler(m.onConnectorTools),
+	)...)
+	if err != nil {
+		return nil, err
+	}
+	m.toolkit = tk
+
+	// Replay persisted enabled connectors into the toolkit.
+	// Per-connector failures are logged but do not abort startup.
+	if m.connectorFactory != nil {
+		m.replayConnectors()
 	}
 
 	// Return success
@@ -81,8 +101,82 @@ func NewManager(name, ver string, opts ...Opt) (*Manager, error) {
 }
 
 func (m *Manager) Close() error {
-	// Close is a no-op
+	if m.cancel != nil {
+		m.cancel()
+	}
+	if m.toolkit != nil {
+		return m.toolkit.Close()
+	}
 	return nil
+}
+
+// replayConnectors loads all enabled connectors from the store and wires them
+// into the toolkit. Individual failures are logged and skipped.
+func (m *Manager) replayConnectors() {
+	ctx := context.Background()
+	enabled := true
+	resp, err := m.connectorStore.ListConnectors(ctx, schema.ListConnectorsRequest{Enabled: &enabled})
+	if err != nil {
+		slog.Warn("failed to list connectors on startup", "err", err)
+		return
+	}
+	for _, c := range resp.Body {
+		conn, err := m.connectorFactory(ctx, c.URL, m.credOptsFor(ctx, c.URL)...)
+		if err != nil {
+			slog.Warn("connector factory failed on startup", "url", c.URL, "err", err)
+			continue
+		}
+		if err := m.toolkit.AddConnector(c.URL, conn); err != nil {
+			slog.Warn("failed to add connector to toolkit on startup", "url", c.URL, "err", err)
+			continue
+		}
+		slog.Debug("connector queued for connection", "url", c.URL, "namespace", types.Value(c.Namespace))
+	}
+}
+
+// credOptsFor returns client opts that inject auth for the given URL.
+// If the credential has a RefreshToken it installs an oauth2 transport that
+// refreshes automatically; otherwise it falls back to a static bearer token.
+func (m *Manager) credOptsFor(ctx context.Context, url string) []client.ClientOpt {
+	if m.credentialStore == nil {
+		return nil
+	}
+	cred, err := m.credentialStore.GetCredential(ctx, url)
+	if err != nil || cred == nil || cred.Token == nil || cred.Token.AccessToken == "" {
+		return nil
+	}
+	// Prefer a refreshing transport when we have a refresh token.
+	if cred.RefreshToken != "" && cred.TokenURL != "" {
+		return []client.ClientOpt{OAuthClientOpt(m.ctx, url, cred, m.credentialStore)}
+	}
+	return []client.ClientOpt{client.OptReqToken(client.Token{Scheme: "Bearer", Value: cred.Token.AccessToken})}
+}
+
+// onConnectorLog forwards log messages from a connector's MCP session to slog.
+func (m *Manager) onConnectorLog(url string, level slog.Level, msg string, args ...any) {
+	slog.Log(context.Background(), level, msg, append(args, "url", url)...)
+}
+
+// onConnectorState writes connector state back to the connector store.
+// A zero ConnectedAt signals that the connector has disconnected.
+func (m *Manager) onConnectorState(url string, state schema.ConnectorState) {
+	_, _ = m.connectorStore.UpdateConnectorState(context.Background(), url, state)
+	if state.ConnectedAt == nil || state.ConnectedAt.IsZero() {
+		slog.Info("connector disconnected", "url", url)
+	} else if name := types.Value(state.Name); name == "" {
+		slog.Info("connector connected", "url", url)
+	} else {
+		slog.Info("connector connected", "url", url, "name", name, "version", types.Value(state.Version))
+	}
+}
+
+// onConnectorTools logs when a connector's tool list changes.
+func (m *Manager) onConnectorTools(url string, tools []llm.Tool) {
+	if tools == nil {
+		slog.Debug("connector tools cleared", "url", url)
+	} else {
+		slog.Info("connector tools updated", "url", url, "count", len(tools))
+	}
 }
 
 ///////////////////////////////////////////////////////////////////////////////

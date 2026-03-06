@@ -9,8 +9,8 @@ import (
 	"strings"
 
 	// Packages
+	llm "github.com/mutablelogic/go-llm"
 	schema "github.com/mutablelogic/go-llm/pkg/schema"
-	"github.com/mutablelogic/go-llm/pkg/tool"
 )
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -101,11 +101,15 @@ func anthropicBlockFromContentBlock(block *schema.ContentBlock) (*anthropicConte
 
 	// Tool call (model requesting tool use)
 	if block.ToolCall != nil {
+		input := block.ToolCall.Input
+		if len(input) == 0 {
+			input = json.RawMessage("{}")
+		}
 		return &anthropicContentBlock{
 			Type:  blockTypeToolUse,
 			ID:    block.ToolCall.ID,
 			Name:  block.ToolCall.Name,
-			Input: block.ToolCall.Input,
+			Input: input,
 		}, nil
 	}
 
@@ -216,11 +220,15 @@ func contentBlockFromAnthropicBlock(ab *anthropicContentBlock) (schema.ContentBl
 		}, meta
 
 	case blockTypeToolUse:
+		input := ab.Input
+		if len(input) == 0 {
+			input = json.RawMessage("{}")
+		}
 		return schema.ContentBlock{
 			ToolCall: &schema.ToolCall{
 				ID:    ab.ID,
 				Name:  ab.Name,
-				Input: ab.Input,
+				Input: input,
 			},
 		}, nil
 
@@ -276,7 +284,7 @@ func attachmentFromSource(src *anthropicSource) *schema.Attachment {
 // TOOLS CONVERSION
 
 // anthropicToolsFromTools converts a slice of tools to Anthropic tool JSON payloads
-func anthropicToolsFromTools(tools []tool.Tool) ([]json.RawMessage, error) {
+func anthropicToolsFromTools(tools []llm.Tool) ([]json.RawMessage, error) {
 	var result []json.RawMessage
 	for _, t := range tools {
 		s, err := t.InputSchema()

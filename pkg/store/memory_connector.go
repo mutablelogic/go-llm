@@ -46,7 +46,7 @@ func (s *MemoryConnectorStore) CreateConnector(_ context.Context, url string, me
 	if err != nil {
 		return nil, err
 	}
-	if err := validateConnectorNamespace(meta.Namespace); err != nil {
+	if err := validateConnectorNamespace(types.Value(meta.Namespace)); err != nil {
 		return nil, err
 	}
 
@@ -56,9 +56,9 @@ func (s *MemoryConnectorStore) CreateConnector(_ context.Context, url string, me
 	if _, ok := s.connectors[canonicalURL]; ok {
 		return nil, llm.ErrConflict.Withf("connector already exists for %q", canonicalURL)
 	}
-	if meta.Namespace != "" {
-		if matches := s.listConnectors(schema.ListConnectorsRequest{Namespace: meta.Namespace}, ""); len(matches) > 0 {
-			return nil, llm.ErrConflict.Withf("connector namespace %q already in use by %q", meta.Namespace, matches[0].URL)
+	if ns := types.Value(meta.Namespace); ns != "" {
+		if matches := s.listConnectors(schema.ListConnectorsRequest{Namespace: ns}, ""); len(matches) > 0 {
+			return nil, llm.ErrConflict.Withf("connector namespace %q already in use by %q", ns, matches[0].URL)
 		}
 	}
 
@@ -97,7 +97,7 @@ func (s *MemoryConnectorStore) UpdateConnector(_ context.Context, url string, me
 	if err != nil {
 		return nil, err
 	}
-	if err := validateConnectorNamespace(meta.Namespace); err != nil {
+	if err := validateConnectorNamespace(types.Value(meta.Namespace)); err != nil {
 		return nil, err
 	}
 
@@ -108,12 +108,17 @@ func (s *MemoryConnectorStore) UpdateConnector(_ context.Context, url string, me
 	if !ok {
 		return nil, llm.ErrNotFound.Withf("connector not found for %q", canonicalURL)
 	}
-	if meta.Namespace != "" {
-		if matches := s.listConnectors(schema.ListConnectorsRequest{Namespace: meta.Namespace}, canonicalURL); len(matches) > 0 {
-			return nil, llm.ErrConflict.Withf("connector namespace %q already in use by %q", meta.Namespace, matches[0].URL)
+	if ns := types.Value(meta.Namespace); ns != "" {
+		if matches := s.listConnectors(schema.ListConnectorsRequest{Namespace: ns}, canonicalURL); len(matches) > 0 {
+			return nil, llm.ErrConflict.Withf("connector namespace %q already in use by %q", ns, matches[0].URL)
 		}
 	}
-	c.ConnectorMeta = meta
+	if meta.Enabled != nil {
+		c.Enabled = meta.Enabled
+	}
+	if meta.Namespace != nil {
+		c.Namespace = meta.Namespace
+	}
 	s.connectors[canonicalURL] = c
 	return types.Ptr(c), nil
 }
@@ -193,10 +198,10 @@ func (s *MemoryConnectorStore) listConnectors(req schema.ListConnectorsRequest, 
 		if url == excludeURL {
 			continue
 		}
-		if req.Namespace != "" && c.Namespace != req.Namespace {
+		if req.Namespace != "" && types.Value(c.Namespace) != req.Namespace {
 			continue
 		}
-		if req.Enabled != nil && c.Enabled != *req.Enabled {
+		if req.Enabled != nil && types.Value(c.Enabled) != types.Value(req.Enabled) {
 			continue
 		}
 		matched = append(matched, c)

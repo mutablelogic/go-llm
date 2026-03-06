@@ -3,6 +3,7 @@ package schema
 import (
 	"context"
 
+	// Packages
 	oauth2 "golang.org/x/oauth2"
 )
 

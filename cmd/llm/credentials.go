@@ -31,7 +31,7 @@ type LoginCommand struct {
 	URL               string   `arg:"" name:"url" help:"MCP server URL (e.g., https://mcp.asana.com/sse)"`
 	ClientID          string   `name:"client-id" help:"OAuth client ID (auto-registers if not provided and server supports it)" default:""`
 	ClientSecret      string   `name:"client-secret" help:"OAuth client secret (for confidential clients)" default:""`
-	Scopes            []string `name:"scope" help:"OAuth scopes to request" default:"openid"`
+	Scopes            []string `name:"scope" help:"OAuth scopes to request"`
 	Device            bool     `name:"device" help:"Use device authorization flow" default:"false"`
 	ClientCredentials bool     `name:"client-credentials" help:"Use client credentials (machine-to-machine) flow" default:"false"`
 	ClientName        string   `name:"client-name" help:"Client name for dynamic registration" default:"${EXECUTABLE_NAME}"`

@@ -1,10 +1,13 @@
 package manager
 
 import (
+	"context"
 	"strings"
 
 	// Packages
+	client "github.com/mutablelogic/go-client"
 	llm "github.com/mutablelogic/go-llm"
+	mcpclient "github.com/mutablelogic/go-llm/pkg/mcp/client"
 	opt "github.com/mutablelogic/go-llm/pkg/opt"
 	google "github.com/mutablelogic/go-llm/pkg/provider/google"
 	schema "github.com/mutablelogic/go-llm/pkg/schema"
@@ -18,6 +21,21 @@ import (
 
 // Opt is a functional option for configuring an agent
 type Opt func(*Manager) error
+
+// ConnectorFactory creates an llm.Connector for the given URL.
+// The factory owns its static options (tracing, timeout, etc.).
+// extraOpts are appended at call time and are used for per-URL dynamic options
+// such as bearer token injection from a credential store.
+type ConnectorFactory func(ctx context.Context, url string, extraOpts ...client.ClientOpt) (llm.Connector, error)
+
+// MCPConnectorFactory returns a ConnectorFactory that creates MCP SSE clients.
+// name and version are reported to the server during the MCP initialisation handshake.
+// staticOpts are captured at construction time and applied to every connector created.
+func MCPConnectorFactory(name, version string, staticOpts ...client.ClientOpt) ConnectorFactory {
+	return func(ctx context.Context, url string, extraOpts ...client.ClientOpt) (llm.Connector, error) {
+		return mcpclient.New(url, name, version, nil, append(staticOpts, extraOpts...)...)
+	}
+}
 
 ///////////////////////////////////////////////////////////////////////////////
 // AGENT OPTIONS
@@ -86,13 +104,39 @@ func WithCredentialStore(store schema.CredentialStore) Opt {
 	}
 }
 
-// WithToolkit sets the toolkit for the manager.
-func WithToolkit(toolkit *tool.Toolkit) Opt {
+// WithTools registers one or more tools with the manager's toolkit.
+func WithTools(tools ...llm.Tool) Opt {
 	return func(m *Manager) error {
-		if toolkit == nil {
-			return llm.ErrBadParameter.With("toolkit is required")
+		for _, t := range tools {
+			if t == nil {
+				return llm.ErrBadParameter.With("tool is required")
+			}
 		}
-		m.toolkit = toolkit
+		m.toolkitOpts = append(m.toolkitOpts, tool.WithBuiltin(tools...))
+		return nil
+	}
+}
+
+// WithTool registers a single tool with the manager's toolkit.
+func WithTool(t llm.Tool) Opt {
+	return func(m *Manager) error {
+		if t == nil {
+			return llm.ErrBadParameter.With("tool is required")
+		}
+		m.toolkitOpts = append(m.toolkitOpts, tool.WithBuiltin(t))
+		return nil
+	}
+}
+
+// WithConnectorFactory sets the factory used to create MCP connectors.
+// When set, CreateConnector probes the server before registering it.
+// Use MCPConnectorFactory to get the standard MCP SSE implementation.
+func WithConnectorFactory(factory ConnectorFactory) Opt {
+	return func(m *Manager) error {
+		if factory == nil {
+			return llm.ErrBadParameter.With("connector factory is required")
+		}
+		m.connectorFactory = factory
 		return nil
 	}
 }
@@ -102,16 +146,6 @@ func WithTracer(tracer trace.Tracer) Opt {
 	return func(m *Manager) error {
 		m.tracer = tracer
 		return nil
-	}
-}
-
-// WithTool registers a single tool with the manager's toolkit.
-func WithTool(t tool.Tool) Opt {
-	return func(m *Manager) error {
-		if t == nil {
-			return llm.ErrBadParameter.With("tool is required")
-		}
-		return m.toolkit.Register(t)
 	}
 }
 

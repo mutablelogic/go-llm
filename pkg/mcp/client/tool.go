@@ -9,24 +9,24 @@ import (
 	// Packages
 	jsonschema "github.com/google/jsonschema-go/jsonschema"
 	sdkmcp "github.com/modelcontextprotocol/go-sdk/mcp"
-	tool "github.com/mutablelogic/go-llm/pkg/tool"
+	llm "github.com/mutablelogic/go-llm"
 )
 
 ///////////////////////////////////////////////////////////////////////////////
 // TYPES
 
 // mcpTool wraps an *sdkmcp.Tool received from a server and implements
-// tool.Tool, routing Run calls back through the client's CallTool method.
+// llm.Tool, routing Run calls back through the client's CallTool method.
 type mcpTool struct {
 	t      *sdkmcp.Tool
 	client *Client
 }
 
-// Ensure mcpTool implements tool.Tool at compile time.
-var _ tool.Tool = (*mcpTool)(nil)
+// Ensure mcpTool implements llm.Tool at compile time.
+var _ llm.Tool = (*mcpTool)(nil)
 
 ///////////////////////////////////////////////////////////////////////////////
-// tool.Tool INTERFACE
+// llm.Tool INTERFACE
 
 func (m *mcpTool) Name() string { return m.t.Name }
 
@@ -44,12 +44,12 @@ func (m *mcpTool) OutputSchema() (*jsonschema.Schema, error) {
 	return schemaFromAny(m.t.OutputSchema)
 }
 
-// Meta converts MCP ToolAnnotations into tool.ToolMeta.
-func (m *mcpTool) Meta() tool.ToolMeta {
+// Meta converts MCP ToolAnnotations into llm.ToolMeta.
+func (m *mcpTool) Meta() llm.ToolMeta {
 	if m.t.Annotations == nil {
-		return tool.ToolMeta{}
+		return llm.ToolMeta{}
 	}
-	return tool.ToolMeta{
+	return llm.ToolMeta{
 		Title:           m.t.Annotations.Title,
 		ReadOnlyHint:    m.t.Annotations.ReadOnlyHint,
 		DestructiveHint: m.t.Annotations.DestructiveHint,

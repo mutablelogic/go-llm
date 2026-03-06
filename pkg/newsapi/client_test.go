@@ -9,8 +9,8 @@ import (
 
 	// Packages
 	opts "github.com/mutablelogic/go-client"
+	llm "github.com/mutablelogic/go-llm"
 	newsapi "github.com/mutablelogic/go-llm/pkg/newsapi"
-	tool "github.com/mutablelogic/go-llm/pkg/tool"
 	assert "github.com/stretchr/testify/assert"
 )
 
@@ -19,7 +19,7 @@ import (
 
 var (
 	client *newsapi.Client
-	tools  []tool.Tool
+	tools  []llm.Tool
 )
 
 func TestMain(m *testing.M) {

@@ -330,6 +330,71 @@ func Test_marshal_roundtrip_thinking(t *testing.T) {
 	roundTripMessage(t, msg)
 }
 
+func Test_marshal_roundtrip_trailing_thought_signature(t *testing.T) {
+	// Simulate the final Gemini response part: {"text":"","thoughtSignature":"..."}
+	// This must survive round-trip so it can be echoed back on the next turn.
+	assert := assert.New(t)
+	text := "Based on your profile..."
+	sig := "dHJhaWxpbmctc2ln"
+
+	// Build a fake gemini response with text + trailing signature part
+	resp := &geminiGenerateResponse{
+		Candidates: []*geminiCandidate{
+			{
+				Content: &geminiContent{
+					Role: "model",
+					Parts: []*geminiPart{
+						{Text: text},
+						{ThoughtSignature: sig}, // trailing: text="", thought=false
+					},
+				},
+				FinishReason: geminiFinishReasonStop,
+			},
+		},
+	}
+	msg, err := messageFromGeminiResponse(resp)
+	assert.NoError(err)
+
+	// The trailing part should NOT appear as a content block
+	assert.Len(msg.Content, 1, "trailing signature part must not become a content block")
+	assert.Equal(text, *msg.Content[0].Text)
+
+	// The signature must be stored in message meta
+	assert.Equal(sig, msg.Meta["trailing_thought_signature"])
+
+	// Round-trip: serialise back to gemini wire format
+	content, err := geminiContentFromMessage(msg)
+	assert.NoError(err)
+
+	// Should have 2 parts: text + trailing signature
+	assert.Len(content.Parts, 2)
+	assert.Equal(text, content.Parts[0].Text)
+	assert.Equal(sig, content.Parts[1].ThoughtSignature)
+	assert.Empty(content.Parts[1].Text)
+	assert.False(content.Parts[1].Thought)
+}
+
+func Test_marshal_roundtrip_function_call_with_thought_signature(t *testing.T) {
+	// Simulate a function call part returned by a Gemini thinking model that
+	// includes a thought_signature. The signature must be echoed back verbatim
+	// in the next turn to avoid a 400 "missing thought_signature" error.
+	input, _ := json.Marshal(map[string]any{"repo": "go-llm"})
+	msg := &schema.Message{
+		Role: schema.RoleAssistant,
+		Content: []schema.ContentBlock{
+			{
+				ToolCall: &schema.ToolCall{
+					ID:    "call-abc",
+					Name:  "search_issues",
+					Input: input,
+					Meta:  map[string]any{"thought_signature": "dGhvdWdodC1zaWc="},
+				},
+			},
+		},
+	}
+	roundTripMessage(t, msg)
+}
+
 ///////////////////////////////////////////////////////////////////////////////
 // SESSION CONVERSION TESTS
 
@@ -595,6 +660,9 @@ func roundTripMessage(t *testing.T, original *schema.Message) {
 			assert.NotNil(rt.ToolCall, "block %d: tool_call should survive round-trip", i)
 			assert.Equal(orig.ToolCall.Name, rt.ToolCall.Name)
 			assert.NotEmpty(rt.ToolCall.ID, "block %d: tool_call ID should be generated", i)
+			if sig, ok := orig.ToolCall.Meta["thought_signature"].(string); ok {
+				assert.Equal(sig, rt.ToolCall.Meta["thought_signature"], "block %d: thought_signature should survive round-trip", i)
+			}
 		}
 		if orig.ToolResult != nil {
 			assert.NotNil(rt.ToolResult, "block %d: tool_result should survive round-trip", i)

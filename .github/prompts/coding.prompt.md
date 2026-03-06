@@ -1,6 +1,6 @@
 ---
-name: instructions
-description: General instructions 
+name: coding
+description: General instructions for creating code
 ---
 
 # Instructions for Code Generation

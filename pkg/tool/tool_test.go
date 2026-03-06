@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	jsonschema "github.com/google/jsonschema-go/jsonschema"
+	llm "github.com/mutablelogic/go-llm"
 	tool "github.com/mutablelogic/go-llm/pkg/tool"
 )
 
@@ -17,7 +18,7 @@ func (s *stubTool) Name() string                                          { retu
 func (s *stubTool) Description() string                                   { return "stub" }
 func (s *stubTool) InputSchema() (*jsonschema.Schema, error)              { return nil, nil }
 func (s *stubTool) OutputSchema() (*jsonschema.Schema, error)             { return nil, nil }
-func (s *stubTool) Meta() tool.ToolMeta                                   { return tool.ToolMeta{} }
+func (s *stubTool) Meta() llm.ToolMeta                                    { return llm.ToolMeta{} }
 func (s *stubTool) Run(_ context.Context, _ json.RawMessage) (any, error) { return nil, nil }
 
 func TestRegister_ReservedName(t *testing.T) {
@@ -25,7 +26,8 @@ func TestRegister_ReservedName(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	err = tk.Register(&stubTool{name: tool.OutputToolName})
+	defer tk.Close()
+	err = tk.AddBuiltin(&stubTool{name: tool.OutputToolName})
 	if err == nil {
 		t.Fatal("expected error when registering a tool with reserved name")
 	}
@@ -37,8 +39,9 @@ func TestRegister_OutputToolAllowed(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	defer tk.Close()
 	outputTool := tool.NewOutputTool(&jsonschema.Schema{})
-	if err := tk.Register(outputTool); err != nil {
+	if err := tk.AddBuiltin(outputTool); err != nil {
 		t.Fatal("OutputTool should be allowed:", err)
 	}
 }
@@ -48,7 +51,8 @@ func TestRegister_NormalToolOK(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := tk.Register(&stubTool{name: "my_tool"}); err != nil {
+	defer tk.Close()
+	if err := tk.AddBuiltin(&stubTool{name: "my_tool"}); err != nil {
 		t.Fatal("normal tool should register:", err)
 	}
 }

@@ -10,7 +10,7 @@ import (
 	"strings"
 
 	// Packages
-	"github.com/mutablelogic/go-llm/pkg/opt"
+	opt "github.com/mutablelogic/go-llm/pkg/opt"
 	types "github.com/mutablelogic/go-server/pkg/types"
 )
 
@@ -86,6 +86,7 @@ type ToolCall struct {
 	ID    string          `json:"id,omitempty"`    // Provider-assigned call ID
 	Name  string          `json:"name"`            // Tool function name
 	Input json.RawMessage `json:"input,omitempty"` // JSON-encoded arguments
+	Meta  map[string]any  `json:"meta,omitempty"`  // Provider-specific metadata (e.g. thought_signature)
 }
 
 // ToolResult represents the result of running a tool

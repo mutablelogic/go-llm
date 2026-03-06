@@ -21,7 +21,6 @@ import (
 	mistral "github.com/mutablelogic/go-llm/pkg/provider/mistral"
 	schema "github.com/mutablelogic/go-llm/pkg/schema"
 	session "github.com/mutablelogic/go-llm/pkg/store"
-	tool "github.com/mutablelogic/go-llm/pkg/tool"
 	version "github.com/mutablelogic/go-llm/pkg/version"
 	weatherapi "github.com/mutablelogic/go-llm/pkg/weatherapi"
 	server "github.com/mutablelogic/go-server"
@@ -150,38 +149,37 @@ func (cmd *RunServer) WithManager(ctx *Globals, fn func(*manager.Manager, string
 		ctx.logger.Printf(ctx.ctx, "No --passphrase set; credential store disabled")
 	}
 
-	// Add new toolkit with news, weather and home assistant tools if API keys are provided
-	toolkit, err := tool.NewToolkit()
-	if err != nil {
-		return fmt.Errorf("failed to create toolkit: %w", err)
+	// Add a connector store
+	if store, err := cmd.ConnectorStore(ctx.execName); err != nil {
+		return err
 	} else {
-		opts = append(opts, manager.WithToolkit(toolkit))
+		opts = append(opts, manager.WithConnectorStore(store))
 	}
 
 	// NewsAPI tool
 	if cmd.NewsAPIKey != "" {
-		if tool, err := newsapi.NewTools(cmd.NewsAPIKey, clientOpts...); err != nil {
+		if tools, err := newsapi.NewTools(cmd.NewsAPIKey, clientOpts...); err != nil {
 			return fmt.Errorf("failed to create NewsAPI tool: %w", err)
-		} else if err := toolkit.Register(tool...); err != nil {
-			return fmt.Errorf("failed to add NewsAPI tool to toolkit: %w", err)
+		} else {
+			opts = append(opts, manager.WithTools(tools...))
 		}
 	}
 
 	// WeatherAPI tool
 	if cmd.WeatherAPIKey != "" {
-		if tool, err := weatherapi.NewTools(cmd.WeatherAPIKey, clientOpts...); err != nil {
+		if tools, err := weatherapi.NewTools(cmd.WeatherAPIKey, clientOpts...); err != nil {
 			return fmt.Errorf("failed to create WeatherAPI tool: %w", err)
-		} else if err := toolkit.Register(tool...); err != nil {
-			return fmt.Errorf("failed to add WeatherAPI tool to toolkit: %w", err)
+		} else {
+			opts = append(opts, manager.WithTools(tools...))
 		}
 	}
 
 	// Home Assistant tool
 	if cmd.HAEndpoint != "" && cmd.HAToken != "" {
-		if tool, err := homeassistant.NewTools(cmd.HAEndpoint, cmd.HAToken, clientOpts...); err != nil {
+		if tools, err := homeassistant.NewTools(cmd.HAEndpoint, cmd.HAToken, clientOpts...); err != nil {
 			return fmt.Errorf("failed to create Home Assistant tool: %w", err)
-		} else if err := toolkit.Register(tool...); err != nil {
-			return fmt.Errorf("failed to add Home Assistant tool to toolkit: %w", err)
+		} else {
+			opts = append(opts, manager.WithTools(tools...))
 		}
 	}
 
@@ -189,6 +187,10 @@ func (cmd *RunServer) WithManager(ctx *Globals, fn func(*manager.Manager, string
 	if ctx.tracer != nil {
 		opts = append(opts, manager.WithTracer(ctx.tracer))
 	}
+
+	// Add the MCP connector factory so CreateConnector probes servers on registration.
+	// clientOpts already includes trace, tracer and timeout flags.
+	opts = append(opts, manager.WithConnectorFactory(manager.MCPConnectorFactory("go-llm", version.Version(), clientOpts...)))
 
 	// Create the manager
 	mgr, err := manager.NewManager("go-llm", version.Version(), opts...)
@@ -262,6 +264,20 @@ func (cmd *RunServer) Serve(ctx *Globals, manager *manager.Manager, versionTag s
 	// Return success
 	ctx.logger.Printf(ctx.ctx, "%s@%s stopped", ctx.execName, versionTag)
 	return nil
+}
+
+// ConnectorStore returns the connector store, creating it lazily.
+// Connectors are stored as JSON files in the user's cache directory.
+func (cmd *RunServer) ConnectorStore(execName string) (schema.ConnectorStore, error) {
+	cache, err := os.UserCacheDir()
+	if err != nil {
+		return nil, fmt.Errorf("failed to determine cache directory: %w", err)
+	}
+	store, err := session.NewFileConnectorStore(filepath.Join(cache, execName, "connectors"))
+	if err != nil {
+		return nil, fmt.Errorf("failed to create connector store: %w", err)
+	}
+	return store, nil
 }
 
 // SessionStore returns the session store, creating it lazily.

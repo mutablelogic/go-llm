@@ -1,9 +1,10 @@
 package tool
 
 import (
-	// Packages
 	"fmt"
 
+	// Packages
+	llm "github.com/mutablelogic/go-llm"
 	opt "github.com/mutablelogic/go-llm/pkg/opt"
 )
 
@@ -17,14 +18,14 @@ func WithToolkit(toolkit *Toolkit) opt.Opt {
 // WithTool adds an individual tool to the generation options.
 // Individual tools are appended under opt.ToolKey and merged with
 // toolkit tools by each provider.
-func WithTool(t Tool) opt.Opt {
+func WithTool(t llm.Tool) opt.Opt {
 	return opt.ModifyAny(opt.ToolKey, func(existing any) (any, error) {
 		if existing == nil {
-			return []Tool{t}, nil
+			return []llm.Tool{t}, nil
 		}
-		tools, ok := existing.([]Tool)
+		tools, ok := existing.([]llm.Tool)
 		if !ok {
-			return nil, fmt.Errorf("WithTool: existing value for %q is %T, expected []Tool", opt.ToolKey, existing)
+			return nil, fmt.Errorf("WithTool: existing value for %q is %T, expected []llm.Tool", opt.ToolKey, existing)
 		}
 		return append(tools, t), nil
 	})

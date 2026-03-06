@@ -2,38 +2,59 @@ package manager
 
 import (
 	"context"
-	"os"
 	"testing"
+	"time"
 
 	// Packages
+	client "github.com/mutablelogic/go-client"
 	llm "github.com/mutablelogic/go-llm"
 	schema "github.com/mutablelogic/go-llm/pkg/schema"
-	store "github.com/mutablelogic/go-llm/pkg/store"
+	types "github.com/mutablelogic/go-server/pkg/types"
 	assert "github.com/stretchr/testify/assert"
-	oauth2 "golang.org/x/oauth2"
 )
 
 // testConnectorURL is a real MCP server used for integration tests.
 const testConnectorURL = "https://api.githubcopilot.com/mcp/"
 
-// newManagerWithAuth creates a Manager preloaded with the GITHUB_TOKEN bearer
-// credential for testConnectorURL.  The test is skipped if GITHUB_TOKEN is not set.
-func newManagerWithAuth(t *testing.T) *Manager {
+///////////////////////////////////////////////////////////////////////////////
+// MOCK CONNECTOR
+
+// mockConnector is an in-process fake that satisfies llm.Connector and the
+// prober interface so the manager's CreateConnector path can exercise its
+// probe-and-persist logic without hitting an external server.
+type mockConnector struct{}
+
+func (mockConnector) Run(context.Context) error                     { return nil }
+func (mockConnector) ListTools(context.Context) ([]llm.Tool, error) { return nil, nil }
+func (mockConnector) Probe(context.Context) (*schema.ConnectorState, error) {
+	now := time.Now()
+	name := "mock-server"
+	version := "0.0.0-test"
+	return &schema.ConnectorState{
+		ConnectedAt:  &now,
+		Name:         &name,
+		Version:      &version,
+		Capabilities: []schema.Capability{schema.CapabilityTools},
+	}, nil
+}
+
+// mockConnectorFactory returns a ConnectorFactory that always succeeds with a
+// mockConnector, requiring no network access.
+func mockConnectorFactory() ConnectorFactory {
+	return func(_ context.Context, _ string, _ ...client.ClientOpt) (llm.Connector, error) {
+		return mockConnector{}, nil
+	}
+}
+
+///////////////////////////////////////////////////////////////////////////////
+// TEST HELPERS
+
+// newManagerWithFactory creates a Manager that uses a mock connector factory
+// so tests can exercise the full CreateConnector path (including probe) without
+// any external dependency.
+func newManagerWithFactory(t *testing.T) *Manager {
 	t.Helper()
-	token := os.Getenv("GITHUB_TOKEN")
-	if token == "" {
-		t.Skip("GITHUB_TOKEN not set")
-	}
-	credStore, err := store.NewMemoryCredentialStore("test-passphrase-for-manager")
-	if err != nil {
-		t.Fatalf("NewMemoryCredentialStore: %v", err)
-	}
-	if err := credStore.SetCredential(context.Background(), testConnectorURL, schema.OAuthCredentials{
-		Token: &oauth2.Token{AccessToken: token},
-	}); err != nil {
-		t.Fatalf("SetCredential: %v", err)
-	}
-	m, err := NewManager("test", "0.0.0", WithCredentialStore(credStore))
+	m, err := NewManager("test", "0.0.0", WithConnectorFactory(mockConnectorFactory()))
 	if err != nil {
 		t.Fatalf("NewManager: %v", err)
 	}
@@ -43,18 +64,18 @@ func newManagerWithAuth(t *testing.T) *Manager {
 ///////////////////////////////////////////////////////////////////////////////
 // CONNECTOR TESTS
 
-// Test CreateConnector probes the real MCP server and stores its state
+// Test CreateConnector probes and stores connector state
 func Test_connector_001(t *testing.T) {
 	assert := assert.New(t)
 
-	m := newManagerWithAuth(t)
+	m := newManagerWithFactory(t)
 
-	c, err := m.CreateConnector(context.TODO(), testConnectorURL, schema.ConnectorMeta{Enabled: true, Namespace: "mcp"})
+	c, err := m.CreateConnector(context.TODO(), testConnectorURL, schema.ConnectorMeta{Enabled: types.Ptr(true), Namespace: types.Ptr("mcp")})
 	assert.NoError(err)
 	assert.NotNil(c)
 	assert.Equal(testConnectorURL, c.URL)
-	assert.True(c.Enabled)
-	assert.Equal("mcp", c.Namespace)
+	assert.True(*c.Enabled)
+	assert.Equal("mcp", types.Value(c.Namespace))
 	assert.NotNil(c.ConnectedAt)
 }
 
@@ -87,7 +108,7 @@ func Test_connector_004(t *testing.T) {
 	m, err := NewManager("test", "0.0.0")
 	assert.NoError(err)
 
-	_, err = m.CreateConnector(context.TODO(), testConnectorURL, schema.ConnectorMeta{Namespace: "bad namespace"})
+	_, err = m.CreateConnector(context.TODO(), testConnectorURL, schema.ConnectorMeta{Namespace: types.Ptr("bad namespace")})
 	assert.Error(err)
 }
 
@@ -95,14 +116,14 @@ func Test_connector_004(t *testing.T) {
 func Test_connector_005(t *testing.T) {
 	assert := assert.New(t)
 
-	m := newManagerWithAuth(t)
+	m := newManagerWithFactory(t)
 	var err error
 
-	_, err = m.CreateConnector(context.TODO(), testConnectorURL, schema.ConnectorMeta{Enabled: true})
+	_, err = m.CreateConnector(context.TODO(), testConnectorURL, schema.ConnectorMeta{Enabled: types.Ptr(true)})
 	assert.NoError(err)
 
 	// Second registration is rejected at the store level before any probe.
-	_, err = m.CreateConnector(context.TODO(), testConnectorURL, schema.ConnectorMeta{Enabled: true})
+	_, err = m.CreateConnector(context.TODO(), testConnectorURL, schema.ConnectorMeta{Enabled: types.Ptr(true)})
 	assert.ErrorIs(err, llm.ErrConflict)
 }
 
@@ -110,35 +131,35 @@ func Test_connector_005(t *testing.T) {
 func Test_connector_006(t *testing.T) {
 	assert := assert.New(t)
 
-	m := newManagerWithAuth(t)
+	m := newManagerWithFactory(t)
 	var err error
 
 	_, err = m.GetConnector(context.TODO(), testConnectorURL)
 	assert.ErrorIs(err, llm.ErrNotFound)
 
-	_, err = m.CreateConnector(context.TODO(), testConnectorURL, schema.ConnectorMeta{Enabled: true, Namespace: "ns"})
+	_, err = m.CreateConnector(context.TODO(), testConnectorURL, schema.ConnectorMeta{Enabled: types.Ptr(true), Namespace: types.Ptr("ns")})
 	assert.NoError(err)
 
 	got, err := m.GetConnector(context.TODO(), testConnectorURL)
 	assert.NoError(err)
 	assert.Equal(testConnectorURL, got.URL)
-	assert.Equal("ns", got.Namespace)
+	assert.Equal("ns", types.Value(got.Namespace))
 }
 
 // Test UpdateConnector modifies meta and returns updated connector
 func Test_connector_007(t *testing.T) {
 	assert := assert.New(t)
 
-	m := newManagerWithAuth(t)
+	m := newManagerWithFactory(t)
 	var err error
 
-	_, err = m.CreateConnector(context.TODO(), testConnectorURL, schema.ConnectorMeta{Enabled: false, Namespace: "old"})
+	_, err = m.CreateConnector(context.TODO(), testConnectorURL, schema.ConnectorMeta{Enabled: types.Ptr(false), Namespace: types.Ptr("old")})
 	assert.NoError(err)
 
-	updated, err := m.UpdateConnector(context.TODO(), testConnectorURL, schema.ConnectorMeta{Enabled: true, Namespace: "new"})
+	updated, err := m.UpdateConnector(context.TODO(), testConnectorURL, schema.ConnectorMeta{Enabled: types.Ptr(true), Namespace: types.Ptr("new")})
 	assert.NoError(err)
-	assert.True(updated.Enabled)
-	assert.Equal("new", updated.Namespace)
+	assert.True(*updated.Enabled)
+	assert.Equal("new", types.Value(updated.Namespace))
 }
 
 // Test UpdateConnector returns not-found for unknown URL
@@ -156,10 +177,10 @@ func Test_connector_008(t *testing.T) {
 func Test_connector_009(t *testing.T) {
 	assert := assert.New(t)
 
-	m := newManagerWithAuth(t)
+	m := newManagerWithFactory(t)
 	var err error
 
-	_, err = m.CreateConnector(context.TODO(), testConnectorURL, schema.ConnectorMeta{Enabled: true})
+	_, err = m.CreateConnector(context.TODO(), testConnectorURL, schema.ConnectorMeta{Enabled: types.Ptr(true)})
 	assert.NoError(err)
 
 	assert.NoError(m.DeleteConnector(context.TODO(), testConnectorURL))
@@ -183,10 +204,10 @@ func Test_connector_010(t *testing.T) {
 func Test_connector_011(t *testing.T) {
 	assert := assert.New(t)
 
-	m := newManagerWithAuth(t)
+	m := newManagerWithFactory(t)
 
 	// Upper-case scheme/host and a spurious query param should both be stripped.
-	c, err := m.CreateConnector(context.TODO(), "HTTPS://API.GITHUBCOPILOT.COM/MCP/?token=abc", schema.ConnectorMeta{})
+	c, err := m.CreateConnector(context.TODO(), "HTTPS://API.GITHUBCOPILOT.COM/MCP/?token=abc", schema.ConnectorMeta{Enabled: types.Ptr(true)})
 	assert.NoError(err)
 	assert.Equal(testConnectorURL, c.URL)
 

@@ -7,9 +7,9 @@ import (
 
 	// Packages
 	llm "github.com/mutablelogic/go-llm"
-	"github.com/mutablelogic/go-llm/pkg/provider/anthropic"
-	"github.com/mutablelogic/go-llm/pkg/provider/google"
-	"github.com/mutablelogic/go-llm/pkg/provider/mistral"
+	anthropic "github.com/mutablelogic/go-llm/pkg/provider/anthropic"
+	google "github.com/mutablelogic/go-llm/pkg/provider/google"
+	mistral "github.com/mutablelogic/go-llm/pkg/provider/mistral"
 	schema "github.com/mutablelogic/go-llm/pkg/schema"
 	types "github.com/mutablelogic/go-server/pkg/types"
 	assert "github.com/stretchr/testify/assert"
