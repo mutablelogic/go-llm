@@ -102,11 +102,13 @@ func (tk *Toolkit) runConnector(ctx context.Context, url string, entry *connEntr
 	suppressDisconnect := false
 
 	// Final cleanup: clear tools and notify on exit.
+	// Always broadcast disconnect on deliberate shutdown (ctx cancelled) even
+	// if suppressDisconnect is set, so observers never see stale state.
 	defer func() {
 		tk.mu.Lock()
 		entry.tools = nil
 		tk.mu.Unlock()
-		if !suppressDisconnect {
+		if !suppressDisconnect || ctx.Err() != nil {
 			zero := time.Time{}
 			tk.onState(url, schema.ConnectorState{ConnectedAt: &zero})
 			tk.onTools(url, nil)

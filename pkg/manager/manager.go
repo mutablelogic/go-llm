@@ -22,6 +22,8 @@ import (
 // TYPES
 
 type Manager struct {
+	ctx              context.Context
+	cancel           context.CancelFunc
 	clients          map[string]llm.Client
 	sessionStore     schema.SessionStore
 	agentStore       schema.AgentStore
@@ -41,6 +43,7 @@ type Manager struct {
 func NewManager(name, ver string, opts ...Opt) (*Manager, error) {
 	// Create the manager
 	m := new(Manager)
+	m.ctx, m.cancel = context.WithCancel(context.Background())
 
 	// Validate required parameters
 	if name = strings.TrimSpace(name); name == "" {
@@ -98,6 +101,9 @@ func NewManager(name, ver string, opts ...Opt) (*Manager, error) {
 }
 
 func (m *Manager) Close() error {
+	if m.cancel != nil {
+		m.cancel()
+	}
 	if m.toolkit != nil {
 		return m.toolkit.Close()
 	}
@@ -141,7 +147,7 @@ func (m *Manager) credOptsFor(ctx context.Context, url string) []client.ClientOp
 	}
 	// Prefer a refreshing transport when we have a refresh token.
 	if cred.RefreshToken != "" && cred.TokenURL != "" {
-		return []client.ClientOpt{OAuthClientOpt(ctx, url, cred, m.credentialStore)}
+		return []client.ClientOpt{OAuthClientOpt(m.ctx, url, cred, m.credentialStore)}
 	}
 	return []client.ClientOpt{client.OptReqToken(client.Token{Scheme: "Bearer", Value: cred.Token.AccessToken})}
 }
