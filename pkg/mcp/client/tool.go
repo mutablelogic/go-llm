@@ -67,7 +67,7 @@ func (m *mcpTool) Run(ctx context.Context, input json.RawMessage) (any, error) {
 // HELPERS
 
 // callToolResult converts *sdkmcp.CallToolResult to (any, error), preserving
-// the pkg/llm.Toolkit.Run convention: IsError → Go error, success → plain value.
+// the pkg/tool.Toolkit.Run convention: IsError → Go error, success → plain value.
 func callToolResult(res *sdkmcp.CallToolResult) (any, error) {
 	if res.IsError {
 		if msg := contentText(res.Content); msg != "" {

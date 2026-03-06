@@ -22,8 +22,10 @@ type prober interface {
 // PUBLIC METHODS
 
 // CreateConnector registers a new MCP connector and persists its metadata.
-// The connector state (server name, version, capabilities) will be populated
-// asynchronously once the background session establishes.
+// When a connector factory is configured and the connector supports probing,
+// the server state (name, version, capabilities) is fetched synchronously and
+// persisted before returning. Subsequent reconnects update the state
+// asynchronously via the background session.
 func (m *Manager) CreateConnector(ctx context.Context, rawURL string, meta schema.ConnectorMeta) (result *schema.Connector, err error) {
 	ctx, endSpan := otel.StartSpan(m.tracer, ctx, "CreateConnector",
 		attribute.String("url", rawURL),

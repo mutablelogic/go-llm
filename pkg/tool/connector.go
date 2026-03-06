@@ -2,6 +2,7 @@ package tool
 
 import (
 	"context"
+	"errors"
 	"log/slog"
 	"sync"
 	"time"
@@ -176,7 +177,6 @@ func (tk *Toolkit) runConnector(ctx context.Context, url string, entry *connEntr
 
 		tk.mu.Lock()
 		wasConnected := entry.tools != nil
-		entry.tools = nil
 		tk.mu.Unlock()
 
 		switch {
@@ -189,9 +189,9 @@ func (tk *Toolkit) runConnector(ctx context.Context, url string, entry *connEntr
 		case isAuthError(err) && wasConnected:
 			// The SDK killed the session because one tools/call HTTP response
 			// returned 403. The tool call error already reached the LLM; the
-			// tool list has not changed. Reconnect silently — no disconnect
-			// notification — so the connector stays visible and subsequent
-			// calls work normally.
+			// tool list has not changed. Keep entry.tools so tools remain
+			// visible during the reconnect window. Reconnect silently — no
+			// disconnect notification.
 			tk.onLog(url, slog.LevelWarn, "connector session dropped by auth error, reconnecting", "err", err)
 			suppressDisconnect = true
 			backoff = minBackoff
@@ -199,6 +199,10 @@ func (tk *Toolkit) runConnector(ctx context.Context, url string, entry *connEntr
 
 		default:
 			// Real disconnect (server closed, network error, etc.)
+			tk.mu.Lock()
+			entry.tools = nil
+			tk.mu.Unlock()
+			suppressDisconnect = false
 			if wasConnected {
 				zero := time.Time{}
 				tk.onState(url, schema.ConnectorState{ConnectedAt: &zero})
@@ -218,7 +222,7 @@ func (tk *Toolkit) runConnector(ctx context.Context, url string, entry *connEntr
 }
 
 func isContextError(err error) bool {
-	return err == context.Canceled || err == context.DeadlineExceeded
+	return errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded)
 }
 
 func isAuthError(err error) bool {

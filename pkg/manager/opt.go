@@ -107,6 +107,11 @@ func WithCredentialStore(store schema.CredentialStore) Opt {
 // WithTools registers one or more tools with the manager's toolkit.
 func WithTools(tools ...llm.Tool) Opt {
 	return func(m *Manager) error {
+		for _, t := range tools {
+			if t == nil {
+				return llm.ErrBadParameter.With("tool is required")
+			}
+		}
 		m.toolkitOpts = append(m.toolkitOpts, tool.WithBuiltin(tools...))
 		return nil
 	}

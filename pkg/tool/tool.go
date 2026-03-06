@@ -122,6 +122,9 @@ func (tk *Toolkit) ListTools(req schema.ListToolsRequest) []llm.Tool {
 // Returns an error if any tool has an invalid or duplicate name,
 // or if the name is reserved (e.g. "submit_output").
 func (tk *Toolkit) AddBuiltin(tools ...llm.Tool) error {
+	tk.mu.Lock()
+	defer tk.mu.Unlock()
+
 	for _, t := range tools {
 		name := t.Name()
 		if !types.IsIdentifier(name) {
