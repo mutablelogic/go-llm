@@ -222,6 +222,7 @@ result, err := c.CallTool(ctx, "echo", json.RawMessage(`{"message":"hello"}`))
 ```
 
 `CallTool` returns:
+
 - a Go `error` if the tool reported `IsError=true`
 - `json.RawMessage` if the result was tagged `application/json`
 - `string` for plain text results
