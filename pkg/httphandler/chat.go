@@ -10,6 +10,7 @@ import (
 	schema "github.com/mutablelogic/go-llm/pkg/schema"
 	httprequest "github.com/mutablelogic/go-server/pkg/httprequest"
 	httpresponse "github.com/mutablelogic/go-server/pkg/httpresponse"
+	jsonschema "github.com/mutablelogic/go-server/pkg/jsonschema"
 	openapi "github.com/mutablelogic/go-server/pkg/openapi/schema"
 	types "github.com/mutablelogic/go-server/pkg/types"
 )
@@ -19,6 +20,7 @@ import (
 
 // Path: /chat
 func ChatHandler(manager *manager.Manager) (string, http.HandlerFunc, *openapi.PathItem) {
+	reqSchema, _ := jsonschema.For[schema.ChatRequest]()
 	return "/chat", func(w http.ResponseWriter, r *http.Request) {
 			switch r.Method {
 			case http.MethodPost:
@@ -52,6 +54,10 @@ func ChatHandler(manager *manager.Manager) (string, http.HandlerFunc, *openapi.P
 			Post: &openapi.Operation{
 				Tags:        []string{"Chat"},
 				Description: "Send a message within a session and get a response",
+				RequestBody: &openapi.RequestBody{
+					Required: true,
+					Content:  map[string]openapi.MediaType{types.ContentTypeJSON: {Schema: reqSchema}},
+				},
 			},
 		})
 }

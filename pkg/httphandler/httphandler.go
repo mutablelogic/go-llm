@@ -55,6 +55,18 @@ func RegisterHandlers(manager *manager.Manager, router server.HTTPRouter, middle
 	register(ConnectorListHandler(manager))
 	register(ConnectorHandler(manager))
 
+	// Add top-level tag descriptions for documentation tools (e.g. Swagger UI, Redoc)
+	if spec := router.Spec(); spec != nil {
+		spec.AddTag("Model", "Discover and inspect language models available across all configured providers.")
+		spec.AddTag("Tool", "Discover and inspect tools that can be called by language models during inference.")
+		spec.AddTag("Embedding", "Generate vector embeddings for text input using a configured embedding model.")
+		spec.AddTag("Agent", "Create, update, delete and run agents — reusable prompt templates with model and tool bindings.")
+		spec.AddTag("Session", "Manage conversation sessions, which maintain message history across multiple chat turns.")
+		spec.AddTag("Chat", "Send messages to a language model, either statelessly (ask) or within a session (chat).")
+		spec.AddTag("Credential", "Store and retrieve OAuth credentials used by MCP server connectors.")
+		spec.AddTag("Connector", "Register and manage MCP server connectors that expose additional tools to language models.")
+	}
+
 	// Return any errors
 	return result
 }

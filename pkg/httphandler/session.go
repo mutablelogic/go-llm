@@ -8,6 +8,7 @@ import (
 	schema "github.com/mutablelogic/go-llm/pkg/schema"
 	httprequest "github.com/mutablelogic/go-server/pkg/httprequest"
 	httpresponse "github.com/mutablelogic/go-server/pkg/httpresponse"
+	jsonschema "github.com/mutablelogic/go-server/pkg/jsonschema"
 	openapi "github.com/mutablelogic/go-server/pkg/openapi/schema"
 	types "github.com/mutablelogic/go-server/pkg/types"
 )
@@ -17,6 +18,7 @@ import (
 
 // Path: /session
 func SessionHandler(manager *manager.Manager) (string, http.HandlerFunc, *openapi.PathItem) {
+	sessionMetaSchema, _ := jsonschema.For[schema.SessionMeta]()
 	return "/session", func(w http.ResponseWriter, r *http.Request) {
 			switch r.Method {
 			case http.MethodGet:
@@ -54,6 +56,10 @@ func SessionHandler(manager *manager.Manager) (string, http.HandlerFunc, *openap
 			Post: &openapi.Operation{
 				Tags:        []string{"Session"},
 				Description: "Create a new session",
+				RequestBody: &openapi.RequestBody{
+					Required: true,
+					Content:  map[string]openapi.MediaType{types.ContentTypeJSON: {Schema: sessionMetaSchema}},
+				},
 			},
 		})
 }
@@ -67,6 +73,7 @@ func SessionGetHandler(manager *manager.Manager) (string, http.HandlerFunc, *ope
 		Required:    true,
 		Schema:      pathParamSchema,
 	}
+	sessionMetaSchema, _ := jsonschema.For[schema.SessionMeta]()
 	return "/session/{session}", func(w http.ResponseWriter, r *http.Request) {
 			id := r.PathValue("session")
 			switch r.Method {
@@ -113,6 +120,10 @@ func SessionGetHandler(manager *manager.Manager) (string, http.HandlerFunc, *ope
 				Tags:        []string{"Session"},
 				Description: "Update a session's metadata",
 				Parameters:  []openapi.Parameter{sessionParam},
+				RequestBody: &openapi.RequestBody{
+					Required: true,
+					Content:  map[string]openapi.MediaType{types.ContentTypeJSON: {Schema: sessionMetaSchema}},
+				},
 			},
 		})
 }

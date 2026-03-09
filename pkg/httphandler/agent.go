@@ -11,6 +11,7 @@ import (
 	schema "github.com/mutablelogic/go-llm/pkg/schema"
 	httprequest "github.com/mutablelogic/go-server/pkg/httprequest"
 	httpresponse "github.com/mutablelogic/go-server/pkg/httpresponse"
+	jsonschema "github.com/mutablelogic/go-server/pkg/jsonschema"
 	openapi "github.com/mutablelogic/go-server/pkg/openapi/schema"
 	types "github.com/mutablelogic/go-server/pkg/types"
 )
@@ -20,6 +21,7 @@ import (
 
 // Path: /agent
 func AgentHandler(manager *manager.Manager) (string, http.HandlerFunc, *openapi.PathItem) {
+	agentMetaSchema, _ := jsonschema.For[schema.AgentMeta]()
 	return "/agent", func(w http.ResponseWriter, r *http.Request) {
 			switch r.Method {
 			case http.MethodGet:
@@ -86,10 +88,18 @@ func AgentHandler(manager *manager.Manager) (string, http.HandlerFunc, *openapi.
 			Post: &openapi.Operation{
 				Tags:        []string{"Agent"},
 				Description: "Create a new agent",
+				RequestBody: &openapi.RequestBody{
+					Required: true,
+					Content:  map[string]openapi.MediaType{types.ContentTypeJSON: {Schema: agentMetaSchema}},
+				},
 			},
 			Put: &openapi.Operation{
 				Tags:        []string{"Agent"},
 				Description: "Update an existing agent by name",
+				RequestBody: &openapi.RequestBody{
+					Required: true,
+					Content:  map[string]openapi.MediaType{types.ContentTypeJSON: {Schema: agentMetaSchema}},
+				},
 			},
 		})
 }
@@ -103,6 +113,7 @@ func AgentGetHandler(manager *manager.Manager) (string, http.HandlerFunc, *opena
 		Required:    true,
 		Schema:      pathParamSchema,
 	}
+	createAgentSessionSchema, _ := jsonschema.For[schema.CreateAgentSessionRequest]()
 	return "/agent/{agent}", func(w http.ResponseWriter, r *http.Request) {
 			id := r.PathValue("agent")
 			switch r.Method {
@@ -144,6 +155,10 @@ func AgentGetHandler(manager *manager.Manager) (string, http.HandlerFunc, *opena
 				Tags:        []string{"Agent"},
 				Description: "Create a session from an agent definition",
 				Parameters:  []openapi.Parameter{agentParam},
+				RequestBody: &openapi.RequestBody{
+					Required: true,
+					Content:  map[string]openapi.MediaType{types.ContentTypeJSON: {Schema: createAgentSessionSchema}},
+				},
 			},
 			Delete: &openapi.Operation{
 				Tags:        []string{"Agent"},

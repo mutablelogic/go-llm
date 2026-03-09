@@ -9,6 +9,7 @@ import (
 	schema "github.com/mutablelogic/go-llm/pkg/schema"
 	httprequest "github.com/mutablelogic/go-server/pkg/httprequest"
 	httpresponse "github.com/mutablelogic/go-server/pkg/httpresponse"
+	jsonschema "github.com/mutablelogic/go-server/pkg/jsonschema"
 	openapi "github.com/mutablelogic/go-server/pkg/openapi/schema"
 	types "github.com/mutablelogic/go-server/pkg/types"
 )
@@ -52,6 +53,7 @@ func ConnectorHandler(manager *manager.Manager) (string, http.HandlerFunc, *open
 		Required:    true,
 		Schema:      pathParamSchema,
 	}
+	connectorMetaSchema, _ := jsonschema.For[schema.ConnectorMeta]()
 	return "/connector/{url}", func(w http.ResponseWriter, r *http.Request) {
 			rawURL, err := url.PathUnescape(r.PathValue("url"))
 			if err != nil {
@@ -109,11 +111,19 @@ func ConnectorHandler(manager *manager.Manager) (string, http.HandlerFunc, *open
 				Tags:        []string{"Connector"},
 				Description: "Register a new MCP server connector",
 				Parameters:  []openapi.Parameter{urlParam},
+				RequestBody: &openapi.RequestBody{
+					Required: true,
+					Content:  map[string]openapi.MediaType{types.ContentTypeJSON: {Schema: connectorMetaSchema}},
+				},
 			},
 			Patch: &openapi.Operation{
 				Tags:        []string{"Connector"},
 				Description: "Update the metadata for a registered MCP server connector",
 				Parameters:  []openapi.Parameter{urlParam},
+				RequestBody: &openapi.RequestBody{
+					Required: true,
+					Content:  map[string]openapi.MediaType{types.ContentTypeJSON: {Schema: connectorMetaSchema}},
+				},
 			},
 			Delete: &openapi.Operation{
 				Tags:        []string{"Connector"},

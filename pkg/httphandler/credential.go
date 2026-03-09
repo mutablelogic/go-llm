@@ -10,6 +10,7 @@ import (
 	schema "github.com/mutablelogic/go-llm/pkg/schema"
 	httprequest "github.com/mutablelogic/go-server/pkg/httprequest"
 	httpresponse "github.com/mutablelogic/go-server/pkg/httpresponse"
+	jsonschema "github.com/mutablelogic/go-server/pkg/jsonschema"
 	openapi "github.com/mutablelogic/go-server/pkg/openapi/schema"
 	types "github.com/mutablelogic/go-server/pkg/types"
 )
@@ -26,6 +27,7 @@ func CredentialHandler(manager *manager.Manager) (string, http.HandlerFunc, *ope
 		Required:    true,
 		Schema:      pathParamSchema,
 	}
+	credSchema, _ := jsonschema.For[schema.OAuthCredentials]()
 	return "/credential/{url}", func(w http.ResponseWriter, r *http.Request) {
 			rawURL, err := url.PathUnescape(r.PathValue("url"))
 			if err != nil {
@@ -70,6 +72,10 @@ func CredentialHandler(manager *manager.Manager) (string, http.HandlerFunc, *ope
 				Tags:        []string{"Credential"},
 				Description: "Store or update a credential for a server URL",
 				Parameters:  []openapi.Parameter{urlParam},
+				RequestBody: &openapi.RequestBody{
+					Required: true,
+					Content:  map[string]openapi.MediaType{types.ContentTypeJSON: {Schema: credSchema}},
+				},
 			},
 			Delete: &openapi.Operation{
 				Tags:        []string{"Credential"},
