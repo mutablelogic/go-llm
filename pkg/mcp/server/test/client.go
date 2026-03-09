@@ -12,6 +12,7 @@ import (
 	// Packages
 	jsonschema "github.com/google/jsonschema-go/jsonschema"
 	sdkmcp "github.com/modelcontextprotocol/go-sdk/mcp"
+	llm "github.com/mutablelogic/go-llm"
 	server "github.com/mutablelogic/go-llm/pkg/mcp/server"
 	tool "github.com/mutablelogic/go-llm/pkg/tool"
 )
@@ -28,7 +29,7 @@ type MockTool struct {
 	RunFn        func(ctx context.Context, input json.RawMessage) (any, error)
 }
 
-var _ tool.Tool = (*MockTool)(nil)
+var _ llm.Tool = (*MockTool)(nil)
 
 func (m *MockTool) Name() string        { return m.Name_ }
 func (m *MockTool) Description() string { return m.Description_ }
@@ -64,4 +65,3 @@ func Connect(t *testing.T, srv *server.Server) (*httptest.Server, *sdkmcp.Client
 	})
 	return ts, session
 }
-
