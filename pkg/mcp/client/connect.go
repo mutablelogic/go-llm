@@ -3,8 +3,6 @@ package client
 import (
 	"context"
 	"errors"
-	"fmt"
-	"log/slog"
 	"net/http"
 	"net/url"
 	"time"
@@ -67,6 +65,7 @@ func (c *Client) connect(ctx context.Context) (*sdkmcp.ClientSession, error) {
 	if err == nil {
 		return session, nil
 	}
+
 	// Bail on 401 — let Connect() trigger the auth retry.
 	if IsUnauthorized(err) {
 		return nil, err
@@ -84,68 +83,33 @@ func (c *Client) connect(ctx context.Context) (*sdkmcp.ClientSession, error) {
 // tryConnect runs a single transport attempt. On success it stores the session
 // on c. On 401 it returns an UnauthorizedError joined with the transport error.
 func (c *Client) tryConnect(ctx context.Context, recorder *transport.Recorder, t sdkmcp.Transport) (*sdkmcp.ClientSession, error) {
-	mc := sdkmcp.NewClient(types.Ptr(c.Implementation), &sdkmcp.ClientOptions{
+	opts := &sdkmcp.ClientOptions{
 		KeepAlive: 30 * time.Second,
-		LoggingMessageHandler: func(_ context.Context, req *sdkmcp.LoggingMessageRequest) {
+	}
+	if c.onLoggingMessage != nil {
+		fn := c.onLoggingMessage
+		opts.LoggingMessageHandler = func(ctx context.Context, req *sdkmcp.LoggingMessageRequest) {
 			p := req.Params
-			attrs := []any{slog.String("level", string(p.Level))}
-			if p.Logger != "" {
-				attrs = append(attrs, slog.String("logger", p.Logger))
-			}
-			attrs = append(attrs, slog.Any("data", p.Data))
-			c.logger.Info("server log", attrs...)
-		},
-		ProgressNotificationHandler: func(_ context.Context, req *sdkmcp.ProgressNotificationClientRequest) {
+			fn(ctx, string(p.Level), p.Logger, p.Data)
+		}
+	}
+	if c.onProgress != nil {
+		fn := c.onProgress
+		opts.ProgressNotificationHandler = func(ctx context.Context, req *sdkmcp.ProgressNotificationClientRequest) {
 			p := req.Params
-			msg := p.Message
-			if msg == "" {
-				if p.Total > 0 {
-					msg = fmt.Sprintf("%.0f/%.0f", p.Progress, p.Total)
-				} else {
-					msg = fmt.Sprintf("%.0f", p.Progress)
-				}
-			}
-			c.logger.Info("server progress", "token", p.ProgressToken, "message", msg)
-		},
-		ToolListChangedHandler: func(_ context.Context, _ *sdkmcp.ToolListChangedRequest) {
-			c.logger.Info("server notification: tool list changed")
-		},
-		PromptListChangedHandler: func(ctx context.Context, _ *sdkmcp.PromptListChangedRequest) {
-			c.logger.Info("server notification: prompt list changed")
-			sess, err := c.getSession()
-			if err != nil {
-				return
-			}
-			for p, err := range sess.Prompts(ctx, nil) {
-				if err != nil {
-					c.logger.Warn("prompt list changed: listing prompts", "err", err)
-					return
-				}
-				res, err := sess.GetPrompt(ctx, &sdkmcp.GetPromptParams{Name: p.Name})
-				if err != nil {
-					c.logger.Warn("prompt list changed: get prompt", "name", p.Name, "err", err)
-					continue
-				}
-				for _, msg := range res.Messages {
-					switch content := msg.Content.(type) {
-					case *sdkmcp.TextContent:
-						c.logger.Info("prompt fired", "name", p.Name, "title", p.Title, "text", content.Text)
-					default:
-						c.logger.Info("prompt fired", "name", p.Name, "title", p.Title, "content", msg.Content)
-					}
-				}
-			}
-		},
-		ResourceListChangedHandler: func(_ context.Context, _ *sdkmcp.ResourceListChangedRequest) {
-			c.logger.Info("server notification: resource list changed")
-		},
-		ResourceUpdatedHandler: func(_ context.Context, req *sdkmcp.ResourceUpdatedNotificationRequest) {
-			c.logger.Info("server notification: resource updated", "uri", req.Params.URI)
-		},
-		ElicitationCompleteHandler: func(_ context.Context, req *sdkmcp.ElicitationCompleteNotificationRequest) {
-			c.logger.Info("server notification: elicitation complete", "id", req.Params.ElicitationID)
-		},
-	})
+			fn(ctx, p.ProgressToken, p.Progress, p.Total, p.Message)
+		}
+	}
+	opts.ToolListChangedHandler = func(ctx context.Context, _ *sdkmcp.ToolListChangedRequest) { c.refreshTools(ctx) }
+	opts.PromptListChangedHandler = func(ctx context.Context, _ *sdkmcp.PromptListChangedRequest) { c.refreshPrompts(ctx) }
+	opts.ResourceListChangedHandler = func(ctx context.Context, _ *sdkmcp.ResourceListChangedRequest) { c.refreshResources(ctx) }
+	if c.onResourceUpdated != nil {
+		fn := c.onResourceUpdated
+		opts.ResourceUpdatedHandler = func(ctx context.Context, req *sdkmcp.ResourceUpdatedNotificationRequest) {
+			fn(ctx, c.readResource(ctx, req.Params.URI))
+		}
+	}
+	mc := sdkmcp.NewClient(types.Ptr(c.Implementation), opts)
 	session, err := mc.Connect(ctx, t, nil)
 	if err != nil && recorder.StatusCode() == http.StatusUnauthorized {
 		return nil, errors.Join(NewUnauthorizedError(recorder.Header()), err)

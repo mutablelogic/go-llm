@@ -28,11 +28,18 @@ func (c *Client) Run(ctx context.Context) error {
 	c.session = session
 	c.mu.Unlock()
 
-	// Clear the session pointer when Run exits so callers see ErrNotConnected
-	// rather than stale transport errors.
+	// Populate the tool/prompt/resource caches now that the session is live.
+	c.refreshTools(ctx)
+	c.refreshPrompts(ctx)
+	c.refreshResources(ctx)
+
+	// Clear the session pointer and caches when Run exits.
 	defer func() {
 		c.mu.Lock()
 		c.session = nil
+		c.tools = nil
+		c.prompts = nil
+		c.resources = nil
 		c.mu.Unlock()
 	}()
 

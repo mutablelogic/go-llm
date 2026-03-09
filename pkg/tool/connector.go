@@ -22,7 +22,7 @@ type connEntry struct {
 	connector llm.Connector
 	cancel    context.CancelFunc
 	wg        sync.WaitGroup // tracks this connector's runConnector goroutine
-	tools     []llm.Tool     // current tool list; nil when disconnected
+	connected bool           // true while the session is active
 }
 
 // connectorInfo is an optional interface a Connector may implement to expose
@@ -106,7 +106,7 @@ func (tk *Toolkit) runConnector(ctx context.Context, url string, entry *connEntr
 	// if suppressDisconnect is set, so observers never see stale state.
 	defer func() {
 		tk.mu.Lock()
-		entry.tools = nil
+		entry.connected = false
 		tk.mu.Unlock()
 		if !suppressDisconnect || ctx.Err() != nil {
 			zero := time.Time{}
@@ -147,9 +147,9 @@ func (tk *Toolkit) runConnector(ctx context.Context, url string, entry *connEntr
 						timer.Reset(pollInterval)
 						continue
 					}
-					// Session is up — store tools and fire callbacks.
+					// Session is up — mark connected and fire callbacks.
 					tk.mu.Lock()
-					entry.tools = tools
+					entry.connected = true
 					tk.mu.Unlock()
 
 					now := time.Now()
@@ -178,7 +178,7 @@ func (tk *Toolkit) runConnector(ctx context.Context, url string, entry *connEntr
 		}
 
 		tk.mu.Lock()
-		wasConnected := entry.tools != nil
+		wasConnected := entry.connected
 		tk.mu.Unlock()
 
 		switch {
@@ -202,7 +202,7 @@ func (tk *Toolkit) runConnector(ctx context.Context, url string, entry *connEntr
 		default:
 			// Real disconnect (server closed, network error, etc.)
 			tk.mu.Lock()
-			entry.tools = nil
+			entry.connected = false
 			tk.mu.Unlock()
 			suppressDisconnect = false
 			if wasConnected {

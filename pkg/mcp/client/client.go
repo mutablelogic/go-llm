@@ -3,16 +3,18 @@ package client
 import (
 	"context"
 	"fmt"
-	"log/slog"
 	"sync"
 
 	// Packages
 	sdkmcp "github.com/modelcontextprotocol/go-sdk/mcp"
 	client "github.com/mutablelogic/go-client"
+	llm "github.com/mutablelogic/go-llm"
 )
 
 ///////////////////////////////////////////////////////////////////////////////
 // TYPES
+
+// ClientOpt → see opt.go (type Opt func(*Client) error)
 
 // Client is an MCP HTTP client that wraps the base HTTP client
 // and provides typed methods for interacting with the MCP server.
@@ -25,7 +27,22 @@ type Client struct {
 	authFn  func(context.Context, string) error
 	session *sdkmcp.ClientSession
 	mu      sync.Mutex
-	logger  *slog.Logger
+
+	// go-client opts accumulated by WithClientOpt during New(), consumed once.
+	goOpts []client.ClientOpt
+
+	// Cached lists, refreshed after connect and on change notifications.
+	tools     []llm.Tool
+	prompts   []llm.Prompt
+	resources []llm.Resource
+
+	// Notification handlers (nil = ignore)
+	onLoggingMessage      OnLoggingMessage
+	onProgress            OnProgress
+	onToolListChanged     OnToolListChanged
+	onPromptListChanged   OnPromptListChanged
+	onResourceListChanged OnResourceListChanged
+	onResourceUpdated     OnResourceUpdated
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -37,14 +54,22 @@ type Client struct {
 //
 // authFn is called when the server returns 401 to perform the OAuth flow.
 // Pass nil to disable auth.
-func New(url, name, version string, authFn func(context.Context, string) error, opts ...client.ClientOpt) (*Client, error) {
+func New(url, name, version string, opts ...Opt) (*Client, error) {
+	c := new(Client)
+
+	// Check parameters.
 	if url == "" {
 		return nil, fmt.Errorf("url is required")
-	}
-	if name == "" {
+	} else if name == "" {
 		return nil, fmt.Errorf("name is required")
 	}
-	c := new(Client)
+
+	// Apply mcp opts first so WithClientOpt entries are collected into c.goOpts.
+	for _, opt := range opts {
+		if err := opt(c); err != nil {
+			return nil, err
+		}
+	}
 
 	// client.New() unconditionally installs a transport.NewToken middleware
 	// that calls client.AccessToken() on every request. AccessToken() reads
@@ -53,26 +78,15 @@ func New(url, name, version string, authFn func(context.Context, string) error, 
 	// which keeps the same transport chain and therefore the same token closure,
 	// so Bearer tokens are injected automatically after auth without requiring
 	// any extra option or nil-guard.
-	if cl, err := client.New(append(opts, client.OptEndpoint(url))...); err != nil {
+	if cl, err := client.New(append(c.goOpts, client.OptEndpoint(url))...); err != nil {
 		return nil, err
 	} else {
 		c.Client = cl
 		c.Implementation = sdkmcp.Implementation{Name: name, Version: version}
 		c.url = url
-		c.authFn = authFn
-		c.logger = slog.Default()
+		c.goOpts = nil
 	}
 
 	// Return the client; caller should call Run to connect and drive the session.
 	return c, nil
-}
-
-// OptLogger sets the logger used for connection-level notifications and
-// diagnostics. If l is nil, slog.Default() is used.
-func OptLogger(l *slog.Logger) func(*Client) {
-	return func(c *Client) {
-		if l != nil {
-			c.logger = l
-		}
-	}
 }

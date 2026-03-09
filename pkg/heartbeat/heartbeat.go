@@ -83,6 +83,12 @@ func (m *Manager) ListTools(_ context.Context) ([]llm.Tool, error) {
 	}, nil
 }
 
+// ListPrompts returns nil and satisfies the llm.Connector interface.
+func (m *Manager) ListPrompts(_ context.Context) ([]llm.Prompt, error) { return nil, nil }
+
+// ListResources returns nil and satisfies the llm.Connector interface.
+func (m *Manager) ListResources(_ context.Context) ([]llm.Resource, error) { return nil, nil }
+
 ///////////////////////////////////////////////////////////////////////////////
 // PRIVATE METHODS
 

@@ -9,12 +9,12 @@ import (
 	"time"
 
 	// Packages
-	server "github.com/mutablelogic/go-server"
 	goclient "github.com/mutablelogic/go-client"
 	oauth "github.com/mutablelogic/go-client/pkg/oauth"
 	otel "github.com/mutablelogic/go-client/pkg/otel"
 	mcpclient "github.com/mutablelogic/go-llm/pkg/mcp/client"
 	schema "github.com/mutablelogic/go-llm/pkg/schema"
+	server "github.com/mutablelogic/go-server"
 	types "github.com/mutablelogic/go-server/pkg/types"
 	attribute "go.opentelemetry.io/otel/attribute"
 )
@@ -65,62 +65,64 @@ func (cmd *LoginCommand) Run(g server.Cmd) (err error) {
 	var captured *oauth.OAuthCredentials
 
 	var c *mcpclient.Client
-	c, err = mcpclient.New(cmd.URL, cmd.ClientName, "0", func(ctx context.Context, discoveryURL string) error {
-		flow := c.OAuth()
+	c, err = mcpclient.New(cmd.URL, cmd.ClientName, "0",
+		mcpclient.WithAuth(func(ctx context.Context, discoveryURL string) error {
+			flow := c.OAuth()
 
-		metadata, err := flow.Discover(ctx, discoveryURL)
-		if err != nil {
-			return fmt.Errorf("discover: %w", err)
-		}
-
-		switch {
-		case cmd.ClientCredentials:
-			// Machine-to-machine: client ID+secret required.
-			if cmd.ClientID == "" {
-				return fmt.Errorf("--client-id is required for --client-credentials flow")
-			}
-			if cmd.ClientSecret == "" {
-				return fmt.Errorf("--client-secret is required for --client-credentials flow")
-			}
-			creds := &oauth.OAuthCredentials{
-				ClientID:     cmd.ClientID,
-				ClientSecret: cmd.ClientSecret,
-				TokenURL:     metadata.TokenEndpoint,
-				Metadata:     metadata,
-			}
-			captured, err = flow.AuthorizeWithCredentials(ctx, creds, cmd.Scopes...)
-
-		case cmd.Device:
-			// Device authorization grant (RFC 8628).
-			creds, err := loginCreds(ctx, flow, metadata, cmd.ClientID, cmd.ClientSecret, cmd.ClientName)
+			metadata, err := flow.Discover(ctx, discoveryURL)
 			if err != nil {
-				return err
+				return fmt.Errorf("discover: %w", err)
 			}
-			captured, err = flow.AuthorizeWithDevice(ctx, creds, func(userCode, verificationURI string) error {
-				fmt.Printf("Visit %s and enter code: %s\n", verificationURI, userCode)
-				return nil
-			}, cmd.Scopes...)
 
-		default:
-			// Browser-based Authorization Code + PKCE via loopback redirect.
-			listener, err := net.Listen("tcp", "127.0.0.1:0")
-			if err != nil {
-				return fmt.Errorf("start callback listener: %w", err)
-			}
-			defer listener.Close()
-			redirectURI := fmt.Sprintf("http://127.0.0.1:%d/callback", listener.Addr().(*net.TCPAddr).Port)
+			switch {
+			case cmd.ClientCredentials:
+				// Machine-to-machine: client ID+secret required.
+				if cmd.ClientID == "" {
+					return fmt.Errorf("--client-id is required for --client-credentials flow")
+				}
+				if cmd.ClientSecret == "" {
+					return fmt.Errorf("--client-secret is required for --client-credentials flow")
+				}
+				creds := &oauth.OAuthCredentials{
+					ClientID:     cmd.ClientID,
+					ClientSecret: cmd.ClientSecret,
+					TokenURL:     metadata.TokenEndpoint,
+					Metadata:     metadata,
+				}
+				captured, err = flow.AuthorizeWithCredentials(ctx, creds, cmd.Scopes...)
 
-			creds, err := loginBrowserCreds(ctx, flow, metadata, cmd.ClientID, cmd.ClientSecret, cmd.ClientName, redirectURI)
-			if err != nil {
-				return err
+			case cmd.Device:
+				// Device authorization grant (RFC 8628).
+				creds, err := loginCreds(ctx, flow, metadata, cmd.ClientID, cmd.ClientSecret, cmd.ClientName)
+				if err != nil {
+					return err
+				}
+				captured, err = flow.AuthorizeWithDevice(ctx, creds, func(userCode, verificationURI string) error {
+					fmt.Printf("Visit %s and enter code: %s\n", verificationURI, userCode)
+					return nil
+				}, cmd.Scopes...)
+
+			default:
+				// Browser-based Authorization Code + PKCE via loopback redirect.
+				listener, err := net.Listen("tcp", "127.0.0.1:0")
+				if err != nil {
+					return fmt.Errorf("start callback listener: %w", err)
+				}
+				defer listener.Close()
+				redirectURI := fmt.Sprintf("http://127.0.0.1:%d/callback", listener.Addr().(*net.TCPAddr).Port)
+
+				creds, err := loginBrowserCreds(ctx, flow, metadata, cmd.ClientID, cmd.ClientSecret, cmd.ClientName, redirectURI)
+				if err != nil {
+					return err
+				}
+				captured, err = flow.AuthorizeWithBrowser(ctx, creds, listener, func(authURL string) error {
+					fmt.Printf("Opening browser for authorization...\n%s\n", authURL)
+					return openBrowser(authURL)
+				}, cmd.Scopes...)
 			}
-			captured, err = flow.AuthorizeWithBrowser(ctx, creds, listener, func(authURL string) error {
-				fmt.Printf("Opening browser for authorization...\n%s\n", authURL)
-				return openBrowser(authURL)
-			}, cmd.Scopes...)
-		}
-		return err
-	}, opts...)
+			return err
+		}),
+		mcpclient.WithClientOpt(opts...))
 	if err != nil {
 		return fmt.Errorf("create client: %w", err)
 	}

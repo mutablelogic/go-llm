@@ -24,8 +24,10 @@ const testConnectorURL = "https://api.githubcopilot.com/mcp/"
 // probe-and-persist logic without hitting an external server.
 type mockConnector struct{}
 
-func (mockConnector) Run(context.Context) error                     { return nil }
-func (mockConnector) ListTools(context.Context) ([]llm.Tool, error) { return nil, nil }
+func (mockConnector) Run(context.Context) error                             { return nil }
+func (mockConnector) ListTools(context.Context) ([]llm.Tool, error)         { return nil, nil }
+func (mockConnector) ListPrompts(context.Context) ([]llm.Prompt, error)     { return nil, nil }
+func (mockConnector) ListResources(context.Context) ([]llm.Resource, error) { return nil, nil }
 func (mockConnector) Probe(context.Context) (*schema.ConnectorState, error) {
 	now := time.Now()
 	name := "mock-server"

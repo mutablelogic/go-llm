@@ -14,50 +14,19 @@ import (
 ///////////////////////////////////////////////////////////////////////////////
 // PUBLIC METHODS
 
-// AddPrompt registers an agent as an MCP prompt. The prompt's arguments are
-// derived from the AgentMeta's Input JSON Schema, and the handler renders
-// the agent's template with the arguments supplied by the client.
-func (s *Server) AddPrompt(meta schema.AgentMeta) {
-	s.server.AddPrompt(promptFromAgentMeta(meta), promptHandlerFromAgentMeta(meta))
+// AddPrompts registers one or more agents as MCP prompts. Each prompt's
+// arguments are derived from the AgentMeta's Input JSON Schema, and the
+// handler renders the agent's template with the arguments supplied by the client.
+func (s *Server) AddPrompts(metas ...schema.AgentMeta) {
+	for _, meta := range metas {
+		s.server.AddPrompt(promptFromAgentMeta(meta), promptHandlerFromAgentMeta(meta))
+	}
 }
 
 // RemovePrompts removes the named prompts from the server. Unknown names are
 // silently ignored.
 func (s *Server) RemovePrompts(names ...string) {
 	s.server.RemovePrompts(names...)
-}
-
-// NotifyPrompt upserts a no-argument prompt with the given name, title, and
-// body. body is marshalled to JSON and delivered as an embedded resource with
-// MIME type application/json. If a prompt with the same name already exists it
-// is replaced. Every connected client receives a
-// notifications/prompts/list_changed notification so it can discover the update.
-func (s *Server) NotifyPrompt(name, title string, body any) {
-	p := &sdkmcp.Prompt{
-		Name:  name,
-		Title: title,
-	}
-	h := sdkmcp.PromptHandler(func(_ context.Context, _ *sdkmcp.GetPromptRequest) (*sdkmcp.GetPromptResult, error) {
-		raw, err := json.Marshal(body)
-		if err != nil {
-			return nil, err
-		}
-		return &sdkmcp.GetPromptResult{
-			Messages: []*sdkmcp.PromptMessage{
-				{
-					Role: "user",
-					Content: &sdkmcp.EmbeddedResource{
-						Resource: &sdkmcp.ResourceContents{
-							URI:      "heartbeat://" + name,
-							MIMEType: "application/json",
-							Text:     string(raw),
-						},
-					},
-				},
-			},
-		}, nil
-	})
-	s.server.AddPrompt(p, h)
 }
 
 ///////////////////////////////////////////////////////////////////////////////

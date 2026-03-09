@@ -3,15 +3,18 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"path/filepath"
 
 	// Packages
 	goclient "github.com/mutablelogic/go-client"
+	llm "github.com/mutablelogic/go-llm"
 	homeassistant "github.com/mutablelogic/go-llm/pkg/homeassistant"
 	httphandler "github.com/mutablelogic/go-llm/pkg/httphandler"
 	manager "github.com/mutablelogic/go-llm/pkg/manager"
+	mcpclient "github.com/mutablelogic/go-llm/pkg/mcp/client"
 	newsapi "github.com/mutablelogic/go-llm/pkg/newsapi"
 	anthropic "github.com/mutablelogic/go-llm/pkg/provider/anthropic"
 	eliza "github.com/mutablelogic/go-llm/pkg/provider/eliza"
@@ -155,7 +158,12 @@ func (cmd *RunServer) WithManager(ctx server.Cmd, fn func(*manager.Manager, stri
 
 	// Add the MCP connector factory so CreateConnector probes servers on registration.
 	// clientOpts already includes trace, tracer and timeout flags.
-	opts = append(opts, manager.WithConnectorFactory(manager.MCPConnectorFactory(ctx.Name(), ctx.Version(), ctx.Logger(), clientOpts...)))
+	opts = append(opts, manager.WithConnectorFactory(manager.MCPConnectorFactory(ctx.Name(), ctx.Version(),
+		mcpclient.WithClientOpt(clientOpts...),
+		mcpclient.OptOnResourceUpdated(func(c context.Context, r llm.Resource) {
+			ctx.Logger().Info("resource updated", "uri", r.URI(), "name", r.Name())
+		}),
+	)))
 	opts = append(opts, manager.WithLogger(ctx.Logger()))
 
 	// Create the manager

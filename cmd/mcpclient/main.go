@@ -48,9 +48,11 @@ func (g *Globals) Connect(url string) (*mcpclient.Client, error) {
 
 	var c *mcpclient.Client
 	var err error
-	c, err = mcpclient.New(url, g.execName, "0", func(ctx context.Context, discoveryURL string) error {
-		return g.authorize(ctx, c, discoveryURL)
-	}, opts...)
+	c, err = mcpclient.New(url, g.execName, "0",
+		mcpclient.WithAuth(func(ctx context.Context, discoveryURL string) error {
+			return g.authorize(ctx, c, discoveryURL)
+		}),
+		mcpclient.WithClientOpt(opts...))
 	if err != nil {
 		return nil, fmt.Errorf("create client: %w", err)
 	}

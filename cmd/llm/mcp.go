@@ -4,13 +4,16 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	"net/url"
 	"os"
 	"path/filepath"
 
 	// Packages
 	heartbeat "github.com/mutablelogic/go-llm/pkg/heartbeat"
 	mcpserver "github.com/mutablelogic/go-llm/pkg/mcp/server"
+	schema "github.com/mutablelogic/go-llm/pkg/schema"
 	server "github.com/mutablelogic/go-server"
 	gocmd "github.com/mutablelogic/go-server/pkg/cmd"
 	httprouter "github.com/mutablelogic/go-server/pkg/httprouter"
@@ -44,12 +47,14 @@ func (cmd *HeartbeatMCPCommand) Run(ctx server.Cmd) error {
 		return fmt.Errorf("mcp server: %w", err)
 	}
 
-	// Create the heartbeat manager; on each fire, upsert a prompt so connected
-	// clients receive notifications/prompts/list_changed automatically.
+	// Create the heartbeat manager; on each fire, upsert a resource so connected
+	// clients receive notifications/resources/list_changed automatically.
 	mgr, err := heartbeat.New(store,
 		heartbeat.WithLogger(ctx.Logger()),
 		heartbeat.WithOnFire(func(_ context.Context, h *heartbeat.Heartbeat) {
-			srv.NotifyPrompt("heartbeat:"+h.ID, h.Message, h)
+			u, _ := url.Parse("heartbeat:" + h.ID)
+			raw, _ := json.Marshal(h)
+			srv.AddResources(schema.Attachment{Type: "application/json", Data: raw, URL: u}) //nolint:errcheck
 		}))
 	if err != nil {
 		return fmt.Errorf("heartbeat manager: %w", err)
