@@ -19,7 +19,6 @@ import (
 	mistral "github.com/mutablelogic/go-llm/pkg/provider/mistral"
 	schema "github.com/mutablelogic/go-llm/pkg/schema"
 	session "github.com/mutablelogic/go-llm/pkg/store"
-	version "github.com/mutablelogic/go-llm/pkg/version"
 	weatherapi "github.com/mutablelogic/go-llm/pkg/weatherapi"
 	server "github.com/mutablelogic/go-server"
 	gocmd "github.com/mutablelogic/go-server/pkg/cmd"
@@ -159,14 +158,14 @@ func (cmd *RunServer) WithManager(ctx server.Cmd, fn func(*manager.Manager, stri
 	opts = append(opts, manager.WithConnectorFactory(manager.MCPConnectorFactory(ctx.Name(), ctx.Version(), clientOpts...)))
 
 	// Create the manager
-	mgr, err := manager.NewManager("go-llm", version.Version(), opts...)
+	mgr, err := manager.NewManager(ctx.Name(), ctx.Version(), opts...)
 	if err != nil {
 		return err
 	}
 	defer mgr.Close()
 
 	// Run the server with the manager
-	return fn(mgr, version.Version())
+	return fn(mgr, ctx.Version())
 }
 
 // ConnectorStore returns the connector store, creating it lazily.
