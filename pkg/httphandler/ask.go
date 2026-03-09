@@ -45,6 +45,7 @@ func AskHandler(manager *manager.Manager) (string, http.HandlerFunc, *openapi.Pa
 			}
 		}, types.Ptr(openapi.PathItem{
 			Post: &openapi.Operation{
+				Tags:        []string{"Chat"},
 				Description: "Send a stateless message and get a response",
 			},
 		})

@@ -50,6 +50,7 @@ func ChatHandler(manager *manager.Manager) (string, http.HandlerFunc, *openapi.P
 			}
 		}, types.Ptr(openapi.PathItem{
 			Post: &openapi.Operation{
+				Tags:        []string{"Chat"},
 				Description: "Send a message within a session and get a response",
 			},
 		})

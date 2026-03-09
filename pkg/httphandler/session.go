@@ -48,9 +48,11 @@ func SessionHandler(manager *manager.Manager) (string, http.HandlerFunc, *openap
 			}
 		}, types.Ptr(openapi.PathItem{
 			Get: &openapi.Operation{
+				Tags:        []string{"Session"},
 				Description: "List all sessions",
 			},
 			Post: &openapi.Operation{
+				Tags:        []string{"Session"},
 				Description: "Create a new session",
 			},
 		})
@@ -58,6 +60,13 @@ func SessionHandler(manager *manager.Manager) (string, http.HandlerFunc, *openap
 
 // Path: /session/{session}
 func SessionGetHandler(manager *manager.Manager) (string, http.HandlerFunc, *openapi.PathItem) {
+	sessionParam := openapi.Parameter{
+		Name:        "session",
+		In:          openapi.ParameterInPath,
+		Description: "Session ID",
+		Required:    true,
+		Schema:      pathParamSchema,
+	}
 	return "/session/{session}", func(w http.ResponseWriter, r *http.Request) {
 			id := r.PathValue("session")
 			switch r.Method {
@@ -91,13 +100,19 @@ func SessionGetHandler(manager *manager.Manager) (string, http.HandlerFunc, *ope
 			}
 		}, types.Ptr(openapi.PathItem{
 			Get: &openapi.Operation{
+				Tags:        []string{"Session"},
 				Description: "Get a session by ID",
+				Parameters:  []openapi.Parameter{sessionParam},
 			},
 			Delete: &openapi.Operation{
+				Tags:        []string{"Session"},
 				Description: "Delete a session by ID",
+				Parameters:  []openapi.Parameter{sessionParam},
 			},
 			Patch: &openapi.Operation{
+				Tags:        []string{"Session"},
 				Description: "Update a session's metadata",
+				Parameters:  []openapi.Parameter{sessionParam},
 			},
 		})
 }

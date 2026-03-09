@@ -7,9 +7,11 @@ import (
 	"path/filepath"
 
 	// Packages
+	server "github.com/mutablelogic/go-server"
 	otel "github.com/mutablelogic/go-client/pkg/otel"
 	httpclient "github.com/mutablelogic/go-llm/pkg/httpclient"
 	schema "github.com/mutablelogic/go-llm/pkg/schema"
+	gocmd "github.com/mutablelogic/go-server/pkg/cmd"
 	types "github.com/mutablelogic/go-server/pkg/types"
 	"go.opentelemetry.io/otel/attribute"
 )
@@ -32,24 +34,24 @@ type AskCommand struct {
 ///////////////////////////////////////////////////////////////////////////////
 // COMMANDS
 
-func (cmd *AskCommand) Run(ctx *Globals) (err error) {
+func (cmd *AskCommand) Run(ctx server.Cmd) (err error) {
 	// Load defaults for model and provider when not explicitly set
 	if cmd.AskRequest.Model == "" {
-		cmd.AskRequest.Model = ctx.defaults.GetString("model")
+		cmd.AskRequest.Model = ctx.GetString("model")
 	}
 	if cmd.AskRequest.Provider == "" {
-		cmd.AskRequest.Provider = ctx.defaults.GetString("provider")
+		cmd.AskRequest.Provider = ctx.GetString("provider")
 	}
 	if cmd.AskRequest.Model == "" {
 		return fmt.Errorf("model is required (set with --model or store a default)")
 	}
 
 	// Store model and provider as defaults
-	if err := ctx.defaults.Set("model", cmd.AskRequest.Model); err != nil {
+	if err := ctx.Set("model", cmd.AskRequest.Model); err != nil {
 		return err
 	}
 	if cmd.AskRequest.Provider != "" {
-		if err := ctx.defaults.Set("provider", cmd.AskRequest.Provider); err != nil {
+		if err := ctx.Set("provider", cmd.AskRequest.Provider); err != nil {
 			return err
 		}
 	}
@@ -59,13 +61,13 @@ func (cmd *AskCommand) Run(ctx *Globals) (err error) {
 		cmd.AskRequest.SystemPrompt = "Respond with valid JSON only. Do not include any other text or formatting.\n" + cmd.AskRequest.SystemPrompt
 	}
 
-	client, err := ctx.Client()
+	client, err := clientFor(ctx)
 	if err != nil {
 		return err
 	}
 
 	// OTEL
-	parent, endSpan := otel.StartSpan(ctx.tracer, ctx.ctx, "AskCommand",
+	parent, endSpan := otel.StartSpan(ctx.Tracer(), ctx.Context(), "AskCommand",
 		attribute.String("request", types.Stringify(cmd)),
 	)
 	defer func() { endSpan(err) }()
@@ -100,7 +102,7 @@ func (cmd *AskCommand) Run(ctx *Globals) (err error) {
 	}
 
 	// Print
-	if ctx.Debug {
+	if ctx.IsDebug() {
 		fmt.Println(response)
 	} else {
 		// Collect text and thinking from content blocks
@@ -128,7 +130,7 @@ func (cmd *AskCommand) Run(ctx *Globals) (err error) {
 		// Print thinking block if present
 		if thinking != "" {
 			label := "thinking"
-			if isTerminal(os.Stdout) {
+			if gocmd.IsTerminal() {
 				label = "\033[2m" + label + "\033[0m" // dim
 				thinking = "\033[2m" + thinking + "\033[0m"
 			}
@@ -139,7 +141,7 @@ func (cmd *AskCommand) Run(ctx *Globals) (err error) {
 		// Prepend role
 		role := response.Role
 		if role != "" {
-			if isTerminal(os.Stdout) {
+			if gocmd.IsTerminal() {
 				role = "\033[1m" + role + "\033[0m"
 			}
 			text = role + ": " + text

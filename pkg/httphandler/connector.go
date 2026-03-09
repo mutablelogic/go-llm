@@ -37,6 +37,7 @@ func ConnectorListHandler(manager *manager.Manager) (string, http.HandlerFunc, *
 			}
 		}, types.Ptr(openapi.PathItem{
 			Get: &openapi.Operation{
+				Tags:        []string{"Connector"},
 				Description: "List registered MCP server connectors",
 			},
 		})
@@ -44,6 +45,13 @@ func ConnectorListHandler(manager *manager.Manager) (string, http.HandlerFunc, *
 
 // Path: /connector/{url}
 func ConnectorHandler(manager *manager.Manager) (string, http.HandlerFunc, *openapi.PathItem) {
+	urlParam := openapi.Parameter{
+		Name:        "url",
+		In:          openapi.ParameterInPath,
+		Description: "MCP server URL",
+		Required:    true,
+		Schema:      pathParamSchema,
+	}
 	return "/connector/{url}", func(w http.ResponseWriter, r *http.Request) {
 			rawURL, err := url.PathUnescape(r.PathValue("url"))
 			if err != nil {
@@ -93,16 +101,24 @@ func ConnectorHandler(manager *manager.Manager) (string, http.HandlerFunc, *open
 			}
 		}, types.Ptr(openapi.PathItem{
 			Get: &openapi.Operation{
+				Tags:        []string{"Connector"},
 				Description: "Get a registered MCP server connector by URL",
+				Parameters:  []openapi.Parameter{urlParam},
 			},
 			Post: &openapi.Operation{
+				Tags:        []string{"Connector"},
 				Description: "Register a new MCP server connector",
+				Parameters:  []openapi.Parameter{urlParam},
 			},
 			Patch: &openapi.Operation{
+				Tags:        []string{"Connector"},
 				Description: "Update the metadata for a registered MCP server connector",
+				Parameters:  []openapi.Parameter{urlParam},
 			},
 			Delete: &openapi.Operation{
+				Tags:        []string{"Connector"},
 				Description: "Delete a registered MCP server connector",
+				Parameters:  []openapi.Parameter{urlParam},
 			},
 		})
 }

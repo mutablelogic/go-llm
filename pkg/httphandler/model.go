@@ -37,6 +37,7 @@ func ModelListHandler(manager *manager.Manager) (string, http.HandlerFunc, *open
 			}
 		}, types.Ptr(openapi.PathItem{
 			Get: &openapi.Operation{
+				Tags:        []string{"Model"},
 				Description: "List all models",
 			},
 		})
@@ -44,6 +45,13 @@ func ModelListHandler(manager *manager.Manager) (string, http.HandlerFunc, *open
 
 // Path: /model/{model...}
 func ModelGetHandler(manager *manager.Manager) (string, http.HandlerFunc, *openapi.PathItem) {
+	modelParam := openapi.Parameter{
+		Name:        "model",
+		In:          openapi.ParameterInPath,
+		Description: "Provider and model name (e.g. \"anthropic/claude-3\")",
+		Required:    true,
+		Schema:      pathParamSchema,
+	}
 	return "/model/{model...}", func(w http.ResponseWriter, r *http.Request) {
 			provider_model := strings.SplitN(r.PathValue("model"), PathSeparator, 2)
 			switch r.Method {
@@ -69,7 +77,9 @@ func ModelGetHandler(manager *manager.Manager) (string, http.HandlerFunc, *opena
 			}
 		}, types.Ptr(openapi.PathItem{
 			Get: &openapi.Operation{
+				Tags:        []string{"Model"},
 				Description: "Get a model by ID",
+				Parameters:  []openapi.Parameter{modelParam},
 			},
 		})
 }

@@ -9,6 +9,7 @@ import (
 	"time"
 
 	// Packages
+	server "github.com/mutablelogic/go-server"
 	goclient "github.com/mutablelogic/go-client"
 	oauth "github.com/mutablelogic/go-client/pkg/oauth"
 	otel "github.com/mutablelogic/go-client/pkg/otel"
@@ -48,14 +49,14 @@ type DeleteCredentialCommand struct {
 ///////////////////////////////////////////////////////////////////////////////
 // COMMANDS
 
-func (cmd *LoginCommand) Run(g *Globals) (err error) {
+func (cmd *LoginCommand) Run(g server.Cmd) (err error) {
 	var opts []goclient.ClientOpt
-	if g.Debug {
+	if g.IsDebug() {
 		opts = append(opts, goclient.OptTrace(os.Stderr, true))
 	}
 
 	// OTEL
-	parent, endSpan := otel.StartSpan(g.tracer, g.ctx, "LoginCommand",
+	parent, endSpan := otel.StartSpan(g.Tracer(), g.Context(), "LoginCommand",
 		attribute.String("url", cmd.URL),
 	)
 	defer func() { endSpan(err) }()
@@ -156,7 +157,7 @@ func (cmd *LoginCommand) Run(g *Globals) (err error) {
 	}
 
 	// Store credentials via the llm server.
-	llmClient, err := g.Client()
+	llmClient, err := clientFor(g)
 	if err != nil {
 		return err
 	}
@@ -214,14 +215,14 @@ func loginBrowserCreds(ctx context.Context, flow interface {
 ///////////////////////////////////////////////////////////////////////////////
 // GET CREDENTIAL
 
-func (cmd *GetCredentialCommand) Run(ctx *Globals) (err error) {
-	client, err := ctx.Client()
+func (cmd *GetCredentialCommand) Run(ctx server.Cmd) (err error) {
+	client, err := clientFor(ctx)
 	if err != nil {
 		return err
 	}
 
 	// OTEL
-	parent, endSpan := otel.StartSpan(ctx.tracer, ctx.ctx, "GetCredentialCommand",
+	parent, endSpan := otel.StartSpan(ctx.Tracer(), ctx.Context(), "GetCredentialCommand",
 		attribute.String("url", cmd.URL),
 	)
 	defer func() { endSpan(err) }()
@@ -240,14 +241,14 @@ func (cmd *GetCredentialCommand) Run(ctx *Globals) (err error) {
 ///////////////////////////////////////////////////////////////////////////////
 // DELETE CREDENTIAL
 
-func (cmd *DeleteCredentialCommand) Run(ctx *Globals) (err error) {
-	client, err := ctx.Client()
+func (cmd *DeleteCredentialCommand) Run(ctx server.Cmd) (err error) {
+	client, err := clientFor(ctx)
 	if err != nil {
 		return err
 	}
 
 	// OTEL
-	parent, endSpan := otel.StartSpan(ctx.tracer, ctx.ctx, "DeleteCredentialCommand",
+	parent, endSpan := otel.StartSpan(ctx.Tracer(), ctx.Context(), "DeleteCredentialCommand",
 		attribute.String("url", cmd.URL),
 	)
 	defer func() { endSpan(err) }()

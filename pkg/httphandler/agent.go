@@ -80,12 +80,15 @@ func AgentHandler(manager *manager.Manager) (string, http.HandlerFunc, *openapi.
 			}
 		}, types.Ptr(openapi.PathItem{
 			Get: &openapi.Operation{
+				Tags:        []string{"Agent"},
 				Description: "List all agents",
 			},
 			Post: &openapi.Operation{
+				Tags:        []string{"Agent"},
 				Description: "Create a new agent",
 			},
 			Put: &openapi.Operation{
+				Tags:        []string{"Agent"},
 				Description: "Update an existing agent by name",
 			},
 		})
@@ -93,6 +96,13 @@ func AgentHandler(manager *manager.Manager) (string, http.HandlerFunc, *openapi.
 
 // Path: /agent/{agent}
 func AgentGetHandler(manager *manager.Manager) (string, http.HandlerFunc, *openapi.PathItem) {
+	agentParam := openapi.Parameter{
+		Name:        "agent",
+		In:          openapi.ParameterInPath,
+		Description: "Agent ID or name",
+		Required:    true,
+		Schema:      pathParamSchema,
+	}
 	return "/agent/{agent}", func(w http.ResponseWriter, r *http.Request) {
 			id := r.PathValue("agent")
 			switch r.Method {
@@ -126,13 +136,19 @@ func AgentGetHandler(manager *manager.Manager) (string, http.HandlerFunc, *opena
 			}
 		}, types.Ptr(openapi.PathItem{
 			Get: &openapi.Operation{
+				Tags:        []string{"Agent"},
 				Description: "Get an agent by ID or name",
+				Parameters:  []openapi.Parameter{agentParam},
 			},
 			Post: &openapi.Operation{
+				Tags:        []string{"Agent"},
 				Description: "Create a session from an agent definition",
+				Parameters:  []openapi.Parameter{agentParam},
 			},
 			Delete: &openapi.Operation{
+				Tags:        []string{"Agent"},
 				Description: "Delete an agent by ID or name",
+				Parameters:  []openapi.Parameter{agentParam},
 			},
 		})
 }

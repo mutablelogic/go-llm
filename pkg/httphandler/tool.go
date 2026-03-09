@@ -36,6 +36,7 @@ func ToolListHandler(manager *manager.Manager) (string, http.HandlerFunc, *opena
 			}
 		}, types.Ptr(openapi.PathItem{
 			Get: &openapi.Operation{
+				Tags:        []string{"Tool"},
 				Description: "List all tools",
 			},
 		})
@@ -43,6 +44,13 @@ func ToolListHandler(manager *manager.Manager) (string, http.HandlerFunc, *opena
 
 // Path: /tool/{name}
 func ToolGetHandler(manager *manager.Manager) (string, http.HandlerFunc, *openapi.PathItem) {
+	nameParam := openapi.Parameter{
+		Name:        "name",
+		In:          openapi.ParameterInPath,
+		Description: "Tool name",
+		Required:    true,
+		Schema:      pathParamSchema,
+	}
 	return "/tool/{name}", func(w http.ResponseWriter, r *http.Request) {
 			switch r.Method {
 			case http.MethodGet:
@@ -57,7 +65,9 @@ func ToolGetHandler(manager *manager.Manager) (string, http.HandlerFunc, *openap
 			}
 		}, types.Ptr(openapi.PathItem{
 			Get: &openapi.Operation{
+				Tags:        []string{"Tool"},
 				Description: "Get a tool by name",
+				Parameters:  []openapi.Parameter{nameParam},
 			},
 		})
 }

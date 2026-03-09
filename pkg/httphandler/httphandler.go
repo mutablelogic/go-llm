@@ -9,6 +9,7 @@ import (
 	manager "github.com/mutablelogic/go-llm/pkg/manager"
 	server "github.com/mutablelogic/go-server"
 	httpresponse "github.com/mutablelogic/go-server/pkg/httpresponse"
+	jsonschema "github.com/mutablelogic/go-server/pkg/jsonschema"
 	openapi "github.com/mutablelogic/go-server/pkg/openapi/schema"
 )
 
@@ -19,6 +20,9 @@ const (
 	// PathSeparator is used to split provider/model in URL path values
 	PathSeparator = "/"
 )
+
+// pathParamSchema is the JSON schema for string path parameters.
+var pathParamSchema, _ = jsonschema.For[string]()
 
 ///////////////////////////////////////////////////////////////////////////////
 // TYPES

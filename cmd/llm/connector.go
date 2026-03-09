@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	// Packages
+	server "github.com/mutablelogic/go-server"
 	otel "github.com/mutablelogic/go-client/pkg/otel"
 	schema "github.com/mutablelogic/go-llm/pkg/schema"
 	uitable "github.com/mutablelogic/go-llm/pkg/ui/table"
@@ -54,14 +55,14 @@ type DeleteConnectorCommand struct {
 ///////////////////////////////////////////////////////////////////////////////
 // COMMANDS
 
-func (cmd *ListConnectorsCommand) Run(ctx *Globals) (err error) {
-	client, err := ctx.Client()
+func (cmd *ListConnectorsCommand) Run(ctx server.Cmd) (err error) {
+	client, err := clientFor(ctx)
 	if err != nil {
 		return err
 	}
 
 	// OTEL
-	parent, endSpan := otel.StartSpan(ctx.tracer, ctx.ctx, "ListConnectorsCommand",
+	parent, endSpan := otel.StartSpan(ctx.Tracer(), ctx.Context(), "ListConnectorsCommand",
 		attribute.String("request", types.Stringify(cmd)),
 	)
 	defer func() { endSpan(err) }()
@@ -79,7 +80,7 @@ func (cmd *ListConnectorsCommand) Run(ctx *Globals) (err error) {
 	}
 
 	// Print
-	if ctx.Debug {
+	if ctx.IsDebug() {
 		fmt.Println(response)
 	} else {
 		if len(response.Body) > 0 {
@@ -90,14 +91,14 @@ func (cmd *ListConnectorsCommand) Run(ctx *Globals) (err error) {
 	return nil
 }
 
-func (cmd *GetConnectorCommand) Run(ctx *Globals) (err error) {
-	client, err := ctx.Client()
+func (cmd *GetConnectorCommand) Run(ctx server.Cmd) (err error) {
+	client, err := clientFor(ctx)
 	if err != nil {
 		return err
 	}
 
 	// OTEL
-	parent, endSpan := otel.StartSpan(ctx.tracer, ctx.ctx, "GetConnectorCommand",
+	parent, endSpan := otel.StartSpan(ctx.Tracer(), ctx.Context(), "GetConnectorCommand",
 		attribute.String("url", cmd.URL),
 	)
 	defer func() { endSpan(err) }()
@@ -111,14 +112,14 @@ func (cmd *GetConnectorCommand) Run(ctx *Globals) (err error) {
 	return nil
 }
 
-func (cmd *AddConnectorCommand) Run(ctx *Globals) (err error) {
-	client, err := ctx.Client()
+func (cmd *AddConnectorCommand) Run(ctx server.Cmd) (err error) {
+	client, err := clientFor(ctx)
 	if err != nil {
 		return err
 	}
 
 	// OTEL
-	parent, endSpan := otel.StartSpan(ctx.tracer, ctx.ctx, "AddConnectorCommand",
+	parent, endSpan := otel.StartSpan(ctx.Tracer(), ctx.Context(), "AddConnectorCommand",
 		attribute.String("url", cmd.URL),
 	)
 	defer func() { endSpan(err) }()
@@ -138,14 +139,14 @@ func (cmd *AddConnectorCommand) Run(ctx *Globals) (err error) {
 	return nil
 }
 
-func (cmd *UpdateConnectorCommand) Run(ctx *Globals) (err error) {
-	client, err := ctx.Client()
+func (cmd *UpdateConnectorCommand) Run(ctx server.Cmd) (err error) {
+	client, err := clientFor(ctx)
 	if err != nil {
 		return err
 	}
 
 	// OTEL
-	parent, endSpan := otel.StartSpan(ctx.tracer, ctx.ctx, "UpdateConnectorCommand",
+	parent, endSpan := otel.StartSpan(ctx.Tracer(), ctx.Context(), "UpdateConnectorCommand",
 		attribute.String("url", cmd.URL),
 	)
 	defer func() { endSpan(err) }()
@@ -162,14 +163,14 @@ func (cmd *UpdateConnectorCommand) Run(ctx *Globals) (err error) {
 	return nil
 }
 
-func (cmd *DeleteConnectorCommand) Run(ctx *Globals) (err error) {
-	client, err := ctx.Client()
+func (cmd *DeleteConnectorCommand) Run(ctx server.Cmd) (err error) {
+	client, err := clientFor(ctx)
 	if err != nil {
 		return err
 	}
 
 	// OTEL
-	parent, endSpan := otel.StartSpan(ctx.tracer, ctx.ctx, "DeleteConnectorCommand",
+	parent, endSpan := otel.StartSpan(ctx.Tracer(), ctx.Context(), "DeleteConnectorCommand",
 		attribute.String("url", cmd.URL),
 	)
 	defer func() { endSpan(err) }()

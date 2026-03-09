@@ -38,6 +38,7 @@ func EmbeddingHandler(manager *manager.Manager) (string, http.HandlerFunc, *open
 			}
 		}, types.Ptr(openapi.PathItem{
 			Post: &openapi.Operation{
+				Tags:        []string{"Embedding"},
 				Description: "Generate embeddings for text input",
 			},
 		})
