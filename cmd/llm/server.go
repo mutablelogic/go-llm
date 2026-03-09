@@ -3,14 +3,12 @@
 package main
 
 import (
-	"crypto/tls"
 	"fmt"
 	"os"
 	"path/filepath"
 
 	// Packages
-	client "github.com/mutablelogic/go-client"
-	otel "github.com/mutablelogic/go-client/pkg/otel"
+	goclient "github.com/mutablelogic/go-client"
 	homeassistant "github.com/mutablelogic/go-llm/pkg/homeassistant"
 	httphandler "github.com/mutablelogic/go-llm/pkg/httphandler"
 	manager "github.com/mutablelogic/go-llm/pkg/manager"
@@ -21,11 +19,10 @@ import (
 	mistral "github.com/mutablelogic/go-llm/pkg/provider/mistral"
 	schema "github.com/mutablelogic/go-llm/pkg/schema"
 	session "github.com/mutablelogic/go-llm/pkg/store"
-	version "github.com/mutablelogic/go-llm/pkg/version"
 	weatherapi "github.com/mutablelogic/go-llm/pkg/weatherapi"
 	server "github.com/mutablelogic/go-server"
+	gocmd "github.com/mutablelogic/go-server/pkg/cmd"
 	httprouter "github.com/mutablelogic/go-server/pkg/httprouter"
-	httpserver "github.com/mutablelogic/go-server/pkg/httpserver"
 )
 
 type ServerCommands struct {
@@ -33,6 +30,8 @@ type ServerCommands struct {
 }
 
 type RunServer struct {
+	gocmd.RunServer
+
 	// Provider API Keys
 	GeminiAPIKey    string `name:"gemini-api-key" env:"GEMINI_API_KEY" help:"Google Gemini API key"`
 	AnthropicAPIKey string `name:"anthropic-api-key" env:"ANTHROPIC_API_KEY" help:"Anthropic API key"`
@@ -47,76 +46,42 @@ type RunServer struct {
 
 	// Credential store
 	Passphrase string `name:"passphrase" env:"LLM_PASSPHRASE" help:"Passphrase for encrypting stored credentials"`
-
-	// TLS server options
-	TLS struct {
-		ServerName string `name:"name" help:"TLS server name"`
-		CertFile   string `name:"cert" help:"TLS certificate file"`
-		KeyFile    string `name:"key" help:"TLS key file"`
-	} `embed:"" prefix:"tls."`
 }
 
 ///////////////////////////////////////////////////////////////////////////////
 // COMMANDS
 
-func (cmd *RunServer) Run(ctx *Globals) error {
-	return cmd.WithManager(ctx, func(manager *manager.Manager, v string) error {
-		// Start the HTTP server and wait for shutdown
-		return cmd.Serve(ctx, manager, version.Version())
+func (s *RunServer) Run(ctx server.Cmd) error {
+	return s.WithManager(ctx, func(mgr *manager.Manager, v string) error {
+		s.RunServer.Register(func(router *httprouter.Router, c server.Cmd) error {
+			return httphandler.RegisterHandlers(mgr, router, true)
+		})
+		return s.RunServer.Run(ctx)
 	})
 }
 
 // WithManager creates the resource manager, registers all resource instances
 // (logger, otel, handlers, router) in dependency order, invokes fn, then
 // closes the manager regardless of whether fn returned an error.
-func (cmd *RunServer) WithManager(ctx *Globals, fn func(*manager.Manager, string) error) error {
-	// Make client opts
-	clientOpts := []client.ClientOpt{}
-	if ctx.Debug {
-		clientOpts = append(clientOpts, client.OptTrace(os.Stderr, ctx.Verbose))
-	}
-	if ctx.tracer != nil {
-		clientOpts = append(clientOpts, client.OptTracer(ctx.tracer))
-	}
-	if ctx.HTTP.Timeout != 0 {
-		clientOpts = append(clientOpts, client.OptTimeout(ctx.HTTP.Timeout))
+func (cmd *RunServer) WithManager(ctx server.Cmd, fn func(*manager.Manager, string) error) error {
+	// Derive client opts (trace, tracer, timeout) from the global HTTP flags.
+	_, clientOpts, err := ctx.ClientEndpoint()
+	if err != nil {
+		return err
 	}
 
-	// Anthropic client
 	opts := []manager.Opt{}
-	if cmd.AnthropicAPIKey != "" {
-		anthropicClient, err := anthropic.New(cmd.AnthropicAPIKey, clientOpts...)
-		if err != nil {
-			return fmt.Errorf("failed to create Anthropic client: %w", err)
+	for _, fn := range []func(...goclient.ClientOpt) ([]manager.Opt, error){
+		cmd.AnthropicClient,
+		cmd.GeminiClient,
+		cmd.MistralClient,
+		cmd.ElizaClient,
+	} {
+		if o, err := fn(clientOpts...); err != nil {
+			return err
+		} else {
+			opts = append(opts, o...)
 		}
-		opts = append(opts, manager.WithClient(anthropicClient))
-	}
-
-	// Google client
-	if cmd.GeminiAPIKey != "" {
-		googleClient, err := google.New(cmd.GeminiAPIKey, clientOpts...)
-		if err != nil {
-			return fmt.Errorf("failed to create Google client: %w", err)
-		}
-		opts = append(opts, manager.WithClient(googleClient))
-	}
-
-	// Mistral client
-	if cmd.MistralAPIKey != "" {
-		mistralClient, err := mistral.New(cmd.MistralAPIKey, clientOpts...)
-		if err != nil {
-			return fmt.Errorf("failed to create Mistral client: %w", err)
-		}
-		opts = append(opts, manager.WithClient(mistralClient))
-	}
-
-	// Eliza
-	if cmd.Eliza {
-		elizaClient, err := eliza.New()
-		if err != nil {
-			return fmt.Errorf("failed to create ELIZA client: %w", err)
-		}
-		opts = append(opts, manager.WithClient(elizaClient))
 	}
 
 	// Check if at least one client is configured
@@ -125,14 +90,14 @@ func (cmd *RunServer) WithManager(ctx *Globals, fn func(*manager.Manager, string
 	}
 
 	// Add a session store
-	if store, err := cmd.SessionStore(ctx.execName); err != nil {
+	if store, err := cmd.SessionStore(ctx.Name()); err != nil {
 		return err
 	} else {
 		opts = append(opts, manager.WithSessionStore(store))
 	}
 
 	// Add an agent store
-	if store, err := cmd.AgentStore(ctx.execName); err != nil {
+	if store, err := cmd.AgentStore(ctx.Name()); err != nil {
 		return err
 	} else {
 		opts = append(opts, manager.WithAgentStore(store))
@@ -140,17 +105,17 @@ func (cmd *RunServer) WithManager(ctx *Globals, fn func(*manager.Manager, string
 
 	// Add a credential store (requires passphrase)
 	if cmd.Passphrase != "" {
-		if store, err := cmd.CredentialStore(ctx.execName); err != nil {
+		if store, err := cmd.CredentialStore(ctx.Name()); err != nil {
 			return err
 		} else {
 			opts = append(opts, manager.WithCredentialStore(store))
 		}
 	} else {
-		ctx.logger.Printf(ctx.ctx, "No --passphrase set; credential store disabled")
+		ctx.Logger().InfoContext(ctx.Context(), "No --passphrase set; credential store disabled")
 	}
 
 	// Add a connector store
-	if store, err := cmd.ConnectorStore(ctx.execName); err != nil {
+	if store, err := cmd.ConnectorStore(ctx.Name()); err != nil {
 		return err
 	} else {
 		opts = append(opts, manager.WithConnectorStore(store))
@@ -184,86 +149,23 @@ func (cmd *RunServer) WithManager(ctx *Globals, fn func(*manager.Manager, string
 	}
 
 	// Add tracer if configured
-	if ctx.tracer != nil {
-		opts = append(opts, manager.WithTracer(ctx.tracer))
+	if ctx.Tracer() != nil {
+		opts = append(opts, manager.WithTracer(ctx.Tracer()))
 	}
 
 	// Add the MCP connector factory so CreateConnector probes servers on registration.
 	// clientOpts already includes trace, tracer and timeout flags.
-	opts = append(opts, manager.WithConnectorFactory(manager.MCPConnectorFactory("go-llm", version.Version(), clientOpts...)))
+	opts = append(opts, manager.WithConnectorFactory(manager.MCPConnectorFactory(ctx.Name(), ctx.Version(), clientOpts...)))
 
 	// Create the manager
-	mgr, err := manager.NewManager("go-llm", version.Version(), opts...)
+	mgr, err := manager.NewManager(ctx.Name(), ctx.Version(), opts...)
 	if err != nil {
 		return err
 	}
 	defer mgr.Close()
 
 	// Run the server with the manager
-	return fn(mgr, version.Version())
-}
-
-// Serve creates the httpserver instance, logs the startup banner, and
-// blocks until context cancellation (e.g. SIGINT). The caller is
-// responsible for closing the manager afterwards.
-func (cmd *RunServer) Serve(ctx *Globals, manager *manager.Manager, versionTag string) error {
-	// Create middleware
-	middleware := []httprouter.HTTPMiddlewareFunc{}
-	if mw, ok := ctx.logger.(server.HTTPMiddleware); ok {
-		middleware = append(middleware, mw.WrapFunc)
-	}
-	if ctx.tracer != nil {
-		middleware = append(middleware, otel.HTTPHandlerFunc(ctx.tracer))
-	}
-
-	// Create the TLS config if TLS options are provided
-	var tlsConfig *tls.Config
-	if cmd.TLS.CertFile != "" || cmd.TLS.KeyFile != "" {
-		var pemData [][]byte
-		if cmd.TLS.CertFile != "" {
-			certData, err := os.ReadFile(cmd.TLS.CertFile)
-			if err != nil {
-				return fmt.Errorf("failed to read TLS certificate: %w", err)
-			}
-			pemData = append(pemData, certData)
-		}
-		if cmd.TLS.KeyFile != "" {
-			keyData, err := os.ReadFile(cmd.TLS.KeyFile)
-			if err != nil {
-				return fmt.Errorf("failed to read TLS key: %w", err)
-			}
-			pemData = append(pemData, keyData)
-		}
-		var err error
-		tlsConfig, err = httpserver.TLSConfig(cmd.TLS.ServerName, false, pemData...)
-		if err != nil {
-			return fmt.Errorf("failed to create TLS config: %w", err)
-		}
-	}
-
-	// Create the HTTP router
-	router, err := httprouter.NewRouter(ctx.ctx, ctx.HTTP.Prefix, ctx.HTTP.Origin, "LLM Server", versionTag, middleware...)
-	if err != nil {
-		return err
-	} else if err := httphandler.RegisterHandlers(manager, router, true); err != nil {
-		return err
-	}
-
-	// Create the server
-	httpserver, err := httpserver.New(ctx.HTTP.Addr, router, tlsConfig)
-	if err != nil {
-		return err
-	}
-
-	// Run the server
-	ctx.logger.Printf(ctx.ctx, "%s@%s started on %s", ctx.execName, versionTag, ctx.HTTP.Addr)
-	if err := httpserver.Run(ctx.ctx); err != nil {
-		return err
-	}
-
-	// Return success
-	ctx.logger.Printf(ctx.ctx, "%s@%s stopped", ctx.execName, versionTag)
-	return nil
+	return fn(mgr, ctx.Version())
 }
 
 // ConnectorStore returns the connector store, creating it lazily.
@@ -321,4 +223,39 @@ func (cmd *RunServer) CredentialStore(execName string) (schema.CredentialStore, 
 		return nil, fmt.Errorf("failed to create credential store: %w", err)
 	}
 	return store, nil
+}
+
+///////////////////////////////////////////////////////////////////////////////
+// PROVIDER CLIENTS
+
+func (cmd *RunServer) AnthropicClient(opts ...goclient.ClientOpt) ([]manager.Opt, error) {
+	if cmd.AnthropicAPIKey == "" {
+		return nil, nil
+	}
+	c, err := anthropic.New(cmd.AnthropicAPIKey, opts...)
+	return []manager.Opt{manager.WithClient(c)}, err
+}
+
+func (cmd *RunServer) GeminiClient(opts ...goclient.ClientOpt) ([]manager.Opt, error) {
+	if cmd.GeminiAPIKey == "" {
+		return nil, nil
+	}
+	c, err := google.New(cmd.GeminiAPIKey, opts...)
+	return []manager.Opt{manager.WithClient(c)}, err
+}
+
+func (cmd *RunServer) MistralClient(opts ...goclient.ClientOpt) ([]manager.Opt, error) {
+	if cmd.MistralAPIKey == "" {
+		return nil, nil
+	}
+	c, err := mistral.New(cmd.MistralAPIKey, opts...)
+	return []manager.Opt{manager.WithClient(c)}, err
+}
+
+func (cmd *RunServer) ElizaClient(opts ...goclient.ClientOpt) ([]manager.Opt, error) {
+	if !cmd.Eliza {
+		return nil, nil
+	}
+	c, err := eliza.New()
+	return []manager.Opt{manager.WithClient(c)}, err
 }

@@ -4,6 +4,7 @@ import (
 	"fmt"
 
 	// Packages
+	server "github.com/mutablelogic/go-server"
 	otel "github.com/mutablelogic/go-client/pkg/otel"
 	httpclient "github.com/mutablelogic/go-llm/pkg/httpclient"
 	opt "github.com/mutablelogic/go-llm/pkg/opt"
@@ -39,14 +40,14 @@ type GetModelCommand struct {
 ///////////////////////////////////////////////////////////////////////////////
 // COMMANDS
 
-func (cmd *ProvidersCommand) Run(ctx *Globals) (err error) {
-	client, err := ctx.Client()
+func (cmd *ProvidersCommand) Run(ctx server.Cmd) (err error) {
+	client, err := clientFor(ctx)
 	if err != nil {
 		return err
 	}
 
 	// OTEL
-	parent, endSpan := otel.StartSpan(ctx.tracer, ctx.ctx, "ProvidersCommand")
+	parent, endSpan := otel.StartSpan(ctx.Tracer(), ctx.Context(), "ProvidersCommand")
 	defer func() { endSpan(err) }()
 
 	// List models with limit=0 to get only providers
@@ -57,7 +58,7 @@ func (cmd *ProvidersCommand) Run(ctx *Globals) (err error) {
 	}
 
 	// Print providers
-	if ctx.Debug {
+	if ctx.IsDebug() {
 		for _, provider := range response.Provider {
 			fmt.Println(provider)
 		}
@@ -67,14 +68,14 @@ func (cmd *ProvidersCommand) Run(ctx *Globals) (err error) {
 	return nil
 }
 
-func (cmd *ListModelsCommand) Run(ctx *Globals) (err error) {
-	client, err := ctx.Client()
+func (cmd *ListModelsCommand) Run(ctx server.Cmd) (err error) {
+	client, err := clientFor(ctx)
 	if err != nil {
 		return err
 	}
 
 	// OTEL
-	parent, endSpan := otel.StartSpan(ctx.tracer, ctx.ctx, "ListModelsCommand",
+	parent, endSpan := otel.StartSpan(ctx.Tracer(), ctx.Context(), "ListModelsCommand",
 		attribute.String("request", types.Stringify(cmd)),
 	)
 	defer func() { endSpan(err) }()
@@ -98,13 +99,13 @@ func (cmd *ListModelsCommand) Run(ctx *Globals) (err error) {
 	}
 
 	// Print
-	if ctx.Debug {
+	if ctx.IsDebug() {
 		fmt.Println(response)
 	} else {
 		if len(response.Body) > 0 {
 			fmt.Println(uitable.Render(schema.ModelTable{
 				Models:       response.Body,
-				CurrentModel: ctx.defaults.GetString("model"),
+				CurrentModel: ctx.GetString("model"),
 			}))
 		}
 		fmt.Println(TableSummary(len(response.Body), int(response.Offset), int(response.Count)))
@@ -112,28 +113,28 @@ func (cmd *ListModelsCommand) Run(ctx *Globals) (err error) {
 	return nil
 }
 
-func (cmd *GetModelCommand) Run(ctx *Globals) (err error) {
+func (cmd *GetModelCommand) Run(ctx server.Cmd) (err error) {
 	// Use default model if no name provided
 	name := cmd.Name
 	if name == "" {
-		name = ctx.defaults.GetString("model")
+		name = ctx.GetString("model")
 		if name == "" {
 			return fmt.Errorf("no model specified and no default model set (use --default to save one)")
 		}
 		// Also use the saved provider if not overridden
 		if cmd.Provider == "" {
-			cmd.Provider = ctx.defaults.GetString("provider")
+			cmd.Provider = ctx.GetString("provider")
 		}
 	}
 
 	// Create the http client
-	client, err := ctx.Client()
+	client, err := clientFor(ctx)
 	if err != nil {
 		return err
 	}
 
 	// OTEL
-	parent, endSpan := otel.StartSpan(ctx.tracer, ctx.ctx, "GetModelCommand",
+	parent, endSpan := otel.StartSpan(ctx.Tracer(), ctx.Context(), "GetModelCommand",
 		attribute.String("request", types.Stringify(cmd)),
 	)
 	defer func() { endSpan(err) }()
@@ -155,11 +156,11 @@ func (cmd *GetModelCommand) Run(ctx *Globals) (err error) {
 
 	// Save as default if requested
 	if cmd.Default {
-		if err := ctx.defaults.Set("model", model.Name); err != nil {
+		if err := ctx.Set("model", model.Name); err != nil {
 			return err
 		}
 		if model.OwnedBy != "" {
-			if err := ctx.defaults.Set("provider", model.OwnedBy); err != nil {
+			if err := ctx.Set("provider", model.OwnedBy); err != nil {
 				return err
 			}
 		}

@@ -8,6 +8,7 @@ import (
 	schema "github.com/mutablelogic/go-llm/pkg/schema"
 	httprequest "github.com/mutablelogic/go-server/pkg/httprequest"
 	httpresponse "github.com/mutablelogic/go-server/pkg/httpresponse"
+	jsonschema "github.com/mutablelogic/go-server/pkg/jsonschema"
 	openapi "github.com/mutablelogic/go-server/pkg/openapi/schema"
 	types "github.com/mutablelogic/go-server/pkg/types"
 )
@@ -17,6 +18,8 @@ import (
 
 // Path: /ask
 func AskHandler(manager *manager.Manager) (string, http.HandlerFunc, *openapi.PathItem) {
+	reqSchema, _ := jsonschema.For[schema.AskRequest]()
+	respSchema, _ := jsonschema.For[schema.AskResponse]()
 	return "/ask", func(w http.ResponseWriter, r *http.Request) {
 			switch r.Method {
 			case http.MethodPost:
@@ -45,7 +48,16 @@ func AskHandler(manager *manager.Manager) (string, http.HandlerFunc, *openapi.Pa
 			}
 		}, types.Ptr(openapi.PathItem{
 			Post: &openapi.Operation{
+				Tags:        []string{"Chat"},
 				Description: "Send a stateless message and get a response",
+				RequestBody: &openapi.RequestBody{
+					Required: true,
+					Content:  map[string]openapi.MediaType{types.ContentTypeJSON: {Schema: reqSchema}},
+				},
+				Responses: map[string]openapi.Response{
+					"200":     {Description: "Model response", Content: map[string]openapi.MediaType{types.ContentTypeJSON: {Schema: respSchema}}},
+					"default": openapi.ErrorResponse("An error occurred"),
+				},
 			},
 		})
 }
