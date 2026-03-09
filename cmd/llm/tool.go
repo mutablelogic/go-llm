@@ -4,6 +4,7 @@ import (
 	"fmt"
 
 	// Packages
+	server "github.com/mutablelogic/go-server"
 	otel "github.com/mutablelogic/go-client/pkg/otel"
 	httpclient "github.com/mutablelogic/go-llm/pkg/httpclient"
 	opt "github.com/mutablelogic/go-llm/pkg/opt"
@@ -33,14 +34,14 @@ type GetToolCommand struct {
 ///////////////////////////////////////////////////////////////////////////////
 // COMMANDS
 
-func (cmd *ListToolsCommand) Run(ctx *Globals) (err error) {
-	client, err := ctx.Client()
+func (cmd *ListToolsCommand) Run(ctx server.Cmd) (err error) {
+	client, err := clientFor(ctx)
 	if err != nil {
 		return err
 	}
 
 	// OTEL
-	parent, endSpan := otel.StartSpan(ctx.tracer, ctx.ctx, "ListToolsCommand",
+	parent, endSpan := otel.StartSpan(ctx.Tracer(), ctx.Context(), "ListToolsCommand",
 		attribute.String("request", types.Stringify(cmd)),
 	)
 	defer func() { endSpan(err) }()
@@ -61,7 +62,7 @@ func (cmd *ListToolsCommand) Run(ctx *Globals) (err error) {
 	}
 
 	// Print
-	if ctx.Debug {
+	if ctx.IsDebug() {
 		fmt.Println(response)
 	} else {
 		if len(response.Body) > 0 {
@@ -72,14 +73,14 @@ func (cmd *ListToolsCommand) Run(ctx *Globals) (err error) {
 	return nil
 }
 
-func (cmd *GetToolCommand) Run(ctx *Globals) (err error) {
-	client, err := ctx.Client()
+func (cmd *GetToolCommand) Run(ctx server.Cmd) (err error) {
+	client, err := clientFor(ctx)
 	if err != nil {
 		return err
 	}
 
 	// OTEL
-	parent, endSpan := otel.StartSpan(ctx.tracer, ctx.ctx, "GetToolCommand",
+	parent, endSpan := otel.StartSpan(ctx.Tracer(), ctx.Context(), "GetToolCommand",
 		attribute.String("request", types.Stringify(cmd)),
 	)
 	defer func() { endSpan(err) }()

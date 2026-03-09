@@ -19,9 +19,8 @@ type Client struct {
 	sdkmcp.Implementation
 
 	// MCP session state
-	url    string
-	authFn func(context.Context, string) error
-
+	url     string
+	authFn  func(context.Context, string) error
 	session *sdkmcp.ClientSession
 	mu      sync.Mutex
 }

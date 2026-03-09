@@ -8,6 +8,7 @@ import (
 	schema "github.com/mutablelogic/go-llm/pkg/schema"
 	httprequest "github.com/mutablelogic/go-server/pkg/httprequest"
 	httpresponse "github.com/mutablelogic/go-server/pkg/httpresponse"
+	jsonschema "github.com/mutablelogic/go-server/pkg/jsonschema"
 	openapi "github.com/mutablelogic/go-server/pkg/openapi/schema"
 	types "github.com/mutablelogic/go-server/pkg/types"
 )
@@ -17,6 +18,8 @@ import (
 
 // Path: /embedding
 func EmbeddingHandler(manager *manager.Manager) (string, http.HandlerFunc, *openapi.PathItem) {
+	reqSchema, _ := jsonschema.For[schema.EmbeddingRequest]()
+	respSchema, _ := jsonschema.For[schema.EmbeddingResponse]()
 	return "/embedding", func(w http.ResponseWriter, r *http.Request) {
 			switch r.Method {
 			case http.MethodPost:
@@ -38,7 +41,16 @@ func EmbeddingHandler(manager *manager.Manager) (string, http.HandlerFunc, *open
 			}
 		}, types.Ptr(openapi.PathItem{
 			Post: &openapi.Operation{
+				Tags:        []string{"Embedding"},
 				Description: "Generate embeddings for text input",
+				RequestBody: &openapi.RequestBody{
+					Required: true,
+					Content:  map[string]openapi.MediaType{types.ContentTypeJSON: {Schema: reqSchema}},
+				},
+				Responses: map[string]openapi.Response{
+					"200":     {Description: "Embedding vectors", Content: map[string]openapi.MediaType{types.ContentTypeJSON: {Schema: respSchema}}},
+					"default": openapi.ErrorResponse("An error occurred"),
+				},
 			},
 		})
 }

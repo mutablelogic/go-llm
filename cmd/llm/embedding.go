@@ -4,6 +4,7 @@ import (
 	"fmt"
 
 	// Packages
+	server "github.com/mutablelogic/go-server"
 	otel "github.com/mutablelogic/go-client/pkg/otel"
 	schema "github.com/mutablelogic/go-llm/pkg/schema"
 	types "github.com/mutablelogic/go-server/pkg/types"
@@ -20,35 +21,35 @@ type EmbeddingCommand struct {
 ///////////////////////////////////////////////////////////////////////////////
 // COMMANDS
 
-func (cmd *EmbeddingCommand) Run(ctx *Globals) (err error) {
+func (cmd *EmbeddingCommand) Run(ctx server.Cmd) (err error) {
 	// Load defaults for model and provider when not explicitly set
 	if cmd.EmbeddingRequest.Model == "" {
-		cmd.EmbeddingRequest.Model = ctx.defaults.GetString("embedding_model")
+		cmd.EmbeddingRequest.Model = ctx.GetString("embedding_model")
 	}
 	if cmd.EmbeddingRequest.Provider == "" {
-		cmd.EmbeddingRequest.Provider = ctx.defaults.GetString("embedding_provider")
+		cmd.EmbeddingRequest.Provider = ctx.GetString("embedding_provider")
 	}
 	if cmd.EmbeddingRequest.Model == "" {
 		return fmt.Errorf("model is required (set with --model or store a default)")
 	}
 
 	// Store model and provider as defaults
-	if err := ctx.defaults.Set("embedding_model", cmd.EmbeddingRequest.Model); err != nil {
+	if err := ctx.Set("embedding_model", cmd.EmbeddingRequest.Model); err != nil {
 		return err
 	}
 	if cmd.EmbeddingRequest.Provider != "" {
-		if err := ctx.defaults.Set("embedding_provider", cmd.EmbeddingRequest.Provider); err != nil {
+		if err := ctx.Set("embedding_provider", cmd.EmbeddingRequest.Provider); err != nil {
 			return err
 		}
 	}
 
-	client, err := ctx.Client()
+	client, err := clientFor(ctx)
 	if err != nil {
 		return err
 	}
 
 	// OTEL
-	parent, endSpan := otel.StartSpan(ctx.tracer, ctx.ctx, "EmbeddingCommand",
+	parent, endSpan := otel.StartSpan(ctx.Tracer(), ctx.Context(), "EmbeddingCommand",
 		attribute.String("request", types.Stringify(cmd)),
 	)
 	defer func() { endSpan(err) }()

@@ -9,6 +9,7 @@ import (
 	"sync"
 
 	// Packages
+	server "github.com/mutablelogic/go-server"
 
 	httpclient "github.com/mutablelogic/go-llm/pkg/httpclient"
 	schema "github.com/mutablelogic/go-llm/pkg/schema"
@@ -56,7 +57,7 @@ const telegramSystemSuffix = `Format responses for Telegram messenger. ` +
 // telegramHooks implements command.Hooks for the Telegram frontend.
 type telegramHooks struct {
 	cmd            *TelegramCommand
-	globals        *Globals
+	globals        server.Cmd
 	client         *httpclient.Client
 	conversationID string
 	uctx           ui.Context
@@ -89,19 +90,19 @@ func (h *telegramHooks) ResetMeta() *schema.SessionMeta {
 ///////////////////////////////////////////////////////////////////////////////
 // COMMANDS
 
-func (cmd *TelegramCommand) Run(ctx *Globals) (err error) {
-	client, err := ctx.Client()
+func (cmd *TelegramCommand) Run(ctx server.Cmd) (err error) {
+	client, err := clientFor(ctx)
 	if err != nil {
 		return err
 	}
 
 	// Use the global context as parent (no OTEL span for long-running server)
-	parent := ctx.ctx
+	parent := ctx.Context()
 
 	// Resolve default model
 	model := cmd.Model
 	if model == "" {
-		model = ctx.defaults.GetString("model")
+		model = ctx.GetString("model")
 	}
 	if model == "" {
 		return fmt.Errorf("model is required (set with --model or store a default)")
@@ -118,7 +119,7 @@ func (cmd *TelegramCommand) Run(ctx *Globals) (err error) {
 	cmd.sessions = make(map[string]string)
 	cmd.pendingOpts = make(map[string][]httpclient.ChatOpt)
 
-	ctx.logger.Print(parent, "Telegram bot started")
+	ctx.Logger().InfoContext(parent, "Telegram bot started")
 
 	// Event loop
 	for {
@@ -132,7 +133,7 @@ func (cmd *TelegramCommand) Run(ctx *Globals) (err error) {
 
 		switch evt.Type {
 		case ui.EventText:
-			ctx.logger.Print(parent, fmt.Sprintf("Text received: conv=%s len=%d", evt.Context.ConversationID(), len(evt.Text)))
+			ctx.Logger().InfoContext(parent, "Text received", "conv", evt.Context.ConversationID(), "len", len(evt.Text))
 			sessionID, err := cmd.resolveSession(parent, ctx, client, evt.Context)
 			if err != nil {
 				evt.Context.SendText(parent, fmt.Sprintf("Error: %v", err))
@@ -142,10 +143,9 @@ func (cmd *TelegramCommand) Run(ctx *Globals) (err error) {
 				evt.Context.SendText(parent, fmt.Sprintf("Error: %v", err))
 			}
 		case ui.EventAttachment:
-			ctx.logger.Print(parent, fmt.Sprintf("Attachment received: %d file(s), caption=%q, conv=%s",
-				len(evt.Attachments), evt.Text, evt.Context.ConversationID()))
+			ctx.Logger().InfoContext(parent, "Attachment received", "files", len(evt.Attachments), "caption", evt.Text, "conv", evt.Context.ConversationID())
 			for i, att := range evt.Attachments {
-				ctx.logger.Print(parent, fmt.Sprintf("  att[%d]: name=%q type=%q", i, att.Filename, att.Type))
+				ctx.Logger().InfoContext(parent, "attachment", "index", i, "name", att.Filename, "type", att.Type)
 			}
 			sessionID, err := cmd.resolveSession(parent, ctx, client, evt.Context)
 			if err != nil {
@@ -172,7 +172,7 @@ func (cmd *TelegramCommand) Run(ctx *Globals) (err error) {
 				evt.Context.SendText(parent, fmt.Sprintf("Attached %d file(s). Send a message to use them.", len(evt.Attachments)))
 			}
 		case ui.EventCommand:
-			ctx.logger.Print(parent, fmt.Sprintf("Command received: /%s %v conv=%s", evt.Command, evt.Args, evt.Context.ConversationID()))
+			ctx.Logger().InfoContext(parent, "Command received", "command", evt.Command, "args", evt.Args, "conv", evt.Context.ConversationID())
 			sessionID, err := cmd.resolveSession(parent, ctx, client, evt.Context)
 			if err != nil {
 				evt.Context.SendText(parent, fmt.Sprintf("Error: %v", err))
@@ -190,7 +190,7 @@ func (cmd *TelegramCommand) Run(ctx *Globals) (err error) {
 
 // resolveSession finds or creates a session for the given conversation.
 // Sessions are looked up by the label "telegram-chat:<conversation_id>".
-func (cmd *TelegramCommand) resolveSession(ctx context.Context, globals *Globals, client *httpclient.Client, uctx ui.Context) (string, error) {
+func (cmd *TelegramCommand) resolveSession(ctx context.Context, globals server.Cmd, client *httpclient.Client, uctx ui.Context) (string, error) {
 	conversationID := uctx.ConversationID()
 
 	// Fast path: check in-memory cache.
@@ -215,7 +215,7 @@ func (cmd *TelegramCommand) resolveSession(ctx context.Context, globals *Globals
 	}
 
 	// No session yet — create one.
-	provider := globals.defaults.GetString("provider")
+	provider := globals.GetString("provider")
 	session, err := client.CreateSession(ctx, schema.SessionMeta{
 		GeneratorMeta: schema.GeneratorMeta{
 			Provider:       provider,
@@ -242,7 +242,7 @@ func (cmd *TelegramCommand) resolveSession(ctx context.Context, globals *Globals
 
 // handleTelegramCommand processes slash commands for Telegram. It handles
 // /url locally and delegates everything else to the shared command handler.
-func (cmd *TelegramCommand) handleTelegramCommand(ctx context.Context, evt ui.Event, client *httpclient.Client, globals *Globals, sessionID *string) error {
+func (cmd *TelegramCommand) handleTelegramCommand(ctx context.Context, evt ui.Event, client *httpclient.Client, globals server.Cmd, sessionID *string) error {
 	switch evt.Command {
 	case "url":
 		if len(evt.Args) == 0 {
@@ -250,7 +250,7 @@ func (cmd *TelegramCommand) handleTelegramCommand(ctx context.Context, evt ui.Ev
 		}
 		u := evt.Args[0]
 		convID := evt.Context.ConversationID()
-		globals.logger.Print(ctx, fmt.Sprintf("URL queued: url=%s conv=%s", u, convID))
+		globals.Logger().InfoContext(ctx, "URL queued", "url", u, "conv", convID)
 		cmd.mu.Lock()
 		cmd.pendingOpts[convID] = append(cmd.pendingOpts[convID], httpclient.WithChatURL(u))
 		cmd.mu.Unlock()
@@ -267,7 +267,7 @@ func (cmd *TelegramCommand) handleTelegramCommand(ctx context.Context, evt ui.Ev
 	}
 }
 
-func (cmd *TelegramCommand) handleChat(ctx context.Context, globals *Globals, evt ui.Event, client *httpclient.Client, sessionID string) error {
+func (cmd *TelegramCommand) handleChat(ctx context.Context, globals server.Cmd, evt ui.Event, client *httpclient.Client, sessionID string) error {
 	evt.Context.SetTyping(ctx, true)
 	evt.Context.StreamStart(ctx)
 
@@ -279,7 +279,7 @@ func (cmd *TelegramCommand) handleChat(ctx context.Context, globals *Globals, ev
 	cmd.mu.Unlock()
 
 	if len(pending) > 0 {
-		globals.logger.Print(ctx, fmt.Sprintf("Chat: consuming %d pending opts for conv=%s", len(pending), convID))
+		globals.Logger().InfoContext(ctx, "Chat: consuming pending opts", "count", len(pending), "conv", convID)
 	}
 
 	opts := append(pending, httpclient.WithChatStream(func(role, text string) {

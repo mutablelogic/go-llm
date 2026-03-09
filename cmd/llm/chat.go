@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 
 	// Packages
+	server "github.com/mutablelogic/go-server"
 	otel "github.com/mutablelogic/go-client/pkg/otel"
 	httpclient "github.com/mutablelogic/go-llm/pkg/httpclient"
 	schema "github.com/mutablelogic/go-llm/pkg/schema"
@@ -41,14 +42,14 @@ type ChatCommand struct {
 ///////////////////////////////////////////////////////////////////////////////
 // COMMANDS
 
-func (cmd *ChatCommand) Run(ctx *Globals) (err error) {
-	client, err := ctx.Client()
+func (cmd *ChatCommand) Run(ctx server.Cmd) (err error) {
+	client, err := clientFor(ctx)
 	if err != nil {
 		return err
 	}
 
 	// OTEL
-	parent, endSpan := otel.StartSpan(ctx.tracer, ctx.ctx, "ChatCommand",
+	parent, endSpan := otel.StartSpan(ctx.Tracer(), ctx.Context(), "ChatCommand",
 		attribute.String("request", types.Stringify(cmd)),
 	)
 	defer func() { endSpan(err) }()
@@ -75,11 +76,11 @@ func (cmd *ChatCommand) Run(ctx *Globals) (err error) {
 }
 
 // ensureSession resolves or creates a session and persists it as the default.
-func (cmd *ChatCommand) ensureSession(ctx context.Context, globals *Globals, client *httpclient.Client) (string, error) {
+func (cmd *ChatCommand) ensureSession(ctx context.Context, globals server.Cmd, client *httpclient.Client) (string, error) {
 	// Determine session ID: explicit flag > stored default
 	sessionID := cmd.Session
 	if sessionID == "" && !cmd.New {
-		sessionID = globals.defaults.GetString("session")
+		sessionID = globals.GetString("session")
 	}
 
 	// Verify the session still exists; clear it if not
@@ -93,13 +94,13 @@ func (cmd *ChatCommand) ensureSession(ctx context.Context, globals *Globals, cli
 	if sessionID == "" {
 		model := cmd.Model
 		if model == "" {
-			model = globals.defaults.GetString("model")
+			model = globals.GetString("model")
 		}
 		if model == "" {
 			return "", fmt.Errorf("model is required to create a session (set with --model or store a default)")
 		}
 
-		provider := globals.defaults.GetString("provider")
+		provider := globals.GetString("provider")
 
 		session, err := client.CreateSession(ctx, schema.SessionMeta{
 			GeneratorMeta: schema.GeneratorMeta{
@@ -132,7 +133,7 @@ func (cmd *ChatCommand) ensureSession(ctx context.Context, globals *Globals, cli
 	}
 
 	// Persist the session ID as the current default
-	if err := globals.defaults.Set("session", sessionID); err != nil {
+	if err := globals.Set("session", sessionID); err != nil {
 		return "", err
 	}
 
@@ -166,7 +167,7 @@ func (cmd *ChatCommand) chatOpts() ([]httpclient.ChatOpt, error) {
 }
 
 // runSingleShot sends a single message and streams the response to stdout.
-func (cmd *ChatCommand) runSingleShot(ctx context.Context, globals *Globals, client *httpclient.Client, sessionID string, opts []httpclient.ChatOpt) error {
+func (cmd *ChatCommand) runSingleShot(ctx context.Context, globals server.Cmd, client *httpclient.Client, sessionID string, opts []httpclient.ChatOpt) error {
 	// Always stream in single-shot mode
 	var lastRole string
 	opts = append(opts, httpclient.WithChatStream(func(role, text string) {
@@ -210,13 +211,13 @@ func (cmd *ChatCommand) runSingleShot(ctx context.Context, globals *Globals, cli
 
 // chatHooks implements command.Hooks for the bubbletea interactive session.
 type chatHooks struct {
-	globals *Globals
+	globals server.Cmd
 	tui     *btui.Terminal
 	client  *httpclient.Client
 }
 
 func (h *chatHooks) OnSessionChanged(sessionID string) {
-	_ = h.globals.defaults.Set("session", sessionID)
+	_ = h.globals.Set("session", sessionID)
 
 	// Restore chat history from the new session.
 	if session, err := h.client.GetSession(context.Background(), sessionID); err == nil {
@@ -240,7 +241,7 @@ func (h *chatHooks) ResetMeta() *schema.SessionMeta {
 }
 
 // runInteractive launches the bubbletea TUI for an interactive chat session.
-func (cmd *ChatCommand) runInteractive(ctx context.Context, globals *Globals, client *httpclient.Client, sessionID string, baseOpts []httpclient.ChatOpt) error {
+func (cmd *ChatCommand) runInteractive(ctx context.Context, globals server.Cmd, client *httpclient.Client, sessionID string, baseOpts []httpclient.ChatOpt) error {
 	tui, err := btui.New()
 	if err != nil {
 		return fmt.Errorf("initializing terminal UI: %w", err)

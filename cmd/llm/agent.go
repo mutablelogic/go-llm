@@ -12,6 +12,7 @@ import (
 	"strings"
 
 	// Packages
+	server "github.com/mutablelogic/go-server"
 	otel "github.com/mutablelogic/go-client/pkg/otel"
 	agent "github.com/mutablelogic/go-llm/pkg/agent"
 	httpclient "github.com/mutablelogic/go-llm/pkg/httpclient"
@@ -64,14 +65,14 @@ type RunAgentCommand struct {
 ///////////////////////////////////////////////////////////////////////////////
 // COMMANDS
 
-func (cmd *ListAgentsCommand) Run(ctx *Globals) (err error) {
-	client, err := ctx.Client()
+func (cmd *ListAgentsCommand) Run(ctx server.Cmd) (err error) {
+	client, err := clientFor(ctx)
 	if err != nil {
 		return err
 	}
 
 	// OTEL
-	parent, endSpan := otel.StartSpan(ctx.tracer, ctx.ctx, "ListAgentsCommand",
+	parent, endSpan := otel.StartSpan(ctx.Tracer(), ctx.Context(), "ListAgentsCommand",
 		attribute.String("request", types.Stringify(cmd)),
 	)
 	defer func() { endSpan(err) }()
@@ -95,7 +96,7 @@ func (cmd *ListAgentsCommand) Run(ctx *Globals) (err error) {
 	}
 
 	// Print
-	if ctx.Debug {
+	if ctx.IsDebug() {
 		fmt.Println(response)
 	} else {
 		if len(response.Body) > 0 {
@@ -106,14 +107,14 @@ func (cmd *ListAgentsCommand) Run(ctx *Globals) (err error) {
 	return nil
 }
 
-func (cmd *GetAgentCommand) Run(ctx *Globals) (err error) {
-	client, err := ctx.Client()
+func (cmd *GetAgentCommand) Run(ctx server.Cmd) (err error) {
+	client, err := clientFor(ctx)
 	if err != nil {
 		return err
 	}
 
 	// OTEL
-	parent, endSpan := otel.StartSpan(ctx.tracer, ctx.ctx, "GetAgentCommand",
+	parent, endSpan := otel.StartSpan(ctx.Tracer(), ctx.Context(), "GetAgentCommand",
 		attribute.String("request", types.Stringify(cmd)),
 	)
 	defer func() { endSpan(err) }()
@@ -145,14 +146,14 @@ func (cmd *GetAgentCommand) Run(ctx *Globals) (err error) {
 	return nil
 }
 
-func (cmd *CreateAgentCommand) Run(ctx *Globals) (err error) {
-	client, err := ctx.Client()
+func (cmd *CreateAgentCommand) Run(ctx server.Cmd) (err error) {
+	client, err := clientFor(ctx)
 	if err != nil {
 		return err
 	}
 
 	// OTEL
-	parent, endSpan := otel.StartSpan(ctx.tracer, ctx.ctx, "CreateAgentCommand",
+	parent, endSpan := otel.StartSpan(ctx.Tracer(), ctx.Context(), "CreateAgentCommand",
 		attribute.String("request", types.Stringify(cmd)),
 	)
 	defer func() { endSpan(err) }()
@@ -208,14 +209,14 @@ func (cmd *CreateAgentCommand) Run(ctx *Globals) (err error) {
 	return errors.Join(errs...)
 }
 
-func (cmd *DeleteAgentCommand) Run(ctx *Globals) (err error) {
-	client, err := ctx.Client()
+func (cmd *DeleteAgentCommand) Run(ctx server.Cmd) (err error) {
+	client, err := clientFor(ctx)
 	if err != nil {
 		return err
 	}
 
 	// OTEL
-	parent, endSpan := otel.StartSpan(ctx.tracer, ctx.ctx, "DeleteAgentCommand",
+	parent, endSpan := otel.StartSpan(ctx.Tracer(), ctx.Context(), "DeleteAgentCommand",
 		attribute.String("request", types.Stringify(cmd)),
 	)
 	defer func() { endSpan(err) }()
@@ -248,14 +249,14 @@ func (cmd *DeleteAgentCommand) Run(ctx *Globals) (err error) {
 	return nil
 }
 
-func (cmd *RunAgentCommand) Run(ctx *Globals) (err error) {
-	client, err := ctx.Client()
+func (cmd *RunAgentCommand) Run(ctx server.Cmd) (err error) {
+	client, err := clientFor(ctx)
 	if err != nil {
 		return err
 	}
 
 	// OTEL
-	parent, endSpan := otel.StartSpan(ctx.tracer, ctx.ctx, "RunAgentCommand",
+	parent, endSpan := otel.StartSpan(ctx.Tracer(), ctx.Context(), "RunAgentCommand",
 		attribute.String("request", types.Stringify(cmd)),
 	)
 	defer func() { endSpan(err) }()
@@ -265,7 +266,7 @@ func (cmd *RunAgentCommand) Run(ctx *Globals) (err error) {
 		Parent: cmd.Parent,
 	}
 	if req.Parent == "" {
-		req.Parent = ctx.defaults.GetString("session")
+		req.Parent = ctx.GetString("session")
 	}
 	if cmd.Input != "" {
 		req.Input = json.RawMessage(cmd.Input)
@@ -276,7 +277,7 @@ func (cmd *RunAgentCommand) Run(ctx *Globals) (err error) {
 	if err != nil && isNotFound(err) && req.Parent != "" && cmd.Parent == "" {
 		// The default session no longer exists — retry without a parent
 		req.Parent = ""
-		ctx.defaults.Set("session", "")
+		ctx.Set("session", "")
 		resp, err = client.CreateAgentSession(parent, cmd.Agent, req)
 	}
 	if err != nil {
@@ -357,7 +358,7 @@ func (cmd *RunAgentCommand) Run(ctx *Globals) (err error) {
 		}
 	} else {
 		// Persist as the current default session
-		if err := ctx.defaults.Set("session", resp.Session); err != nil {
+		if err := ctx.Set("session", resp.Session); err != nil {
 			return err
 		}
 	}

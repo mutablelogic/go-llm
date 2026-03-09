@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	// Packages
+	server "github.com/mutablelogic/go-server"
 	otel "github.com/mutablelogic/go-client/pkg/otel"
 	httpclient "github.com/mutablelogic/go-llm/pkg/httpclient"
 	opt "github.com/mutablelogic/go-llm/pkg/opt"
@@ -58,14 +59,14 @@ type DeleteSessionCommand struct {
 ///////////////////////////////////////////////////////////////////////////////
 // COMMANDS
 
-func (cmd *ListSessionsCommand) Run(ctx *Globals) (err error) {
-	client, err := ctx.Client()
+func (cmd *ListSessionsCommand) Run(ctx server.Cmd) (err error) {
+	client, err := clientFor(ctx)
 	if err != nil {
 		return err
 	}
 
 	// OTEL
-	parent, endSpan := otel.StartSpan(ctx.tracer, ctx.ctx, "ListSessionsCommand",
+	parent, endSpan := otel.StartSpan(ctx.Tracer(), ctx.Context(), "ListSessionsCommand",
 		attribute.String("request", types.Stringify(cmd)),
 	)
 	defer func() { endSpan(err) }()
@@ -97,13 +98,13 @@ func (cmd *ListSessionsCommand) Run(ctx *Globals) (err error) {
 	}
 
 	// Print
-	if ctx.Debug {
+	if ctx.IsDebug() {
 		fmt.Println(response)
 	} else {
 		if len(response.Body) > 0 {
 			fmt.Println(uitable.Render(schema.SessionTable{
 				Sessions:       response.Body,
-				CurrentSession: ctx.defaults.GetString("session"),
+				CurrentSession: ctx.GetString("session"),
 			}))
 		}
 		fmt.Println(TableSummary(len(response.Body), int(response.Offset), int(response.Count)))
@@ -111,8 +112,8 @@ func (cmd *ListSessionsCommand) Run(ctx *Globals) (err error) {
 	return nil
 }
 
-func (cmd *GetSessionCommand) Run(ctx *Globals) (err error) {
-	client, err := ctx.Client()
+func (cmd *GetSessionCommand) Run(ctx server.Cmd) (err error) {
+	client, err := clientFor(ctx)
 	if err != nil {
 		return err
 	}
@@ -120,14 +121,14 @@ func (cmd *GetSessionCommand) Run(ctx *Globals) (err error) {
 	// Use current session if no ID provided
 	id := cmd.ID
 	if id == "" {
-		id = ctx.defaults.GetString("session")
+		id = ctx.GetString("session")
 	}
 	if id == "" {
 		return fmt.Errorf("no session ID provided and no current session set")
 	}
 
 	// OTEL
-	parent, endSpan := otel.StartSpan(ctx.tracer, ctx.ctx, "GetSessionCommand",
+	parent, endSpan := otel.StartSpan(ctx.Tracer(), ctx.Context(), "GetSessionCommand",
 		attribute.String("request", types.Stringify(cmd)),
 	)
 	defer func() { endSpan(err) }()
@@ -137,14 +138,14 @@ func (cmd *GetSessionCommand) Run(ctx *Globals) (err error) {
 	if err != nil {
 		// If the default session is stale, clear it
 		if cmd.ID == "" && isNotFound(err) {
-			ctx.defaults.Set("session", "")
+			ctx.Set("session", "")
 			return fmt.Errorf("no session ID provided and no current session set")
 		}
 		return err
 	}
 
 	// Persist as current default session
-	if err := ctx.defaults.Set("session", session.ID); err != nil {
+	if err := ctx.Set("session", session.ID); err != nil {
 		return err
 	}
 
@@ -153,14 +154,14 @@ func (cmd *GetSessionCommand) Run(ctx *Globals) (err error) {
 	return nil
 }
 
-func (cmd *CreateSessionCommand) Run(ctx *Globals) (err error) {
-	client, err := ctx.Client()
+func (cmd *CreateSessionCommand) Run(ctx server.Cmd) (err error) {
+	client, err := clientFor(ctx)
 	if err != nil {
 		return err
 	}
 
 	// OTEL
-	parent, endSpan := otel.StartSpan(ctx.tracer, ctx.ctx, "CreateSessionCommand",
+	parent, endSpan := otel.StartSpan(ctx.Tracer(), ctx.Context(), "CreateSessionCommand",
 		attribute.String("request", types.Stringify(cmd)),
 	)
 	defer func() { endSpan(err) }()
@@ -179,7 +180,7 @@ func (cmd *CreateSessionCommand) Run(ctx *Globals) (err error) {
 	}
 
 	// Set as default session
-	if err := ctx.defaults.Set("session", session.ID); err != nil {
+	if err := ctx.Set("session", session.ID); err != nil {
 		return err
 	}
 
@@ -188,14 +189,14 @@ func (cmd *CreateSessionCommand) Run(ctx *Globals) (err error) {
 	return nil
 }
 
-func (cmd *DeleteSessionCommand) Run(ctx *Globals) (err error) {
-	client, err := ctx.Client()
+func (cmd *DeleteSessionCommand) Run(ctx server.Cmd) (err error) {
+	client, err := clientFor(ctx)
 	if err != nil {
 		return err
 	}
 
 	// OTEL
-	parent, endSpan := otel.StartSpan(ctx.tracer, ctx.ctx, "DeleteSessionCommand",
+	parent, endSpan := otel.StartSpan(ctx.Tracer(), ctx.Context(), "DeleteSessionCommand",
 		attribute.String("request", types.Stringify(cmd)),
 	)
 	defer func() { endSpan(err) }()
@@ -210,14 +211,14 @@ func (cmd *DeleteSessionCommand) Run(ctx *Globals) (err error) {
 	return nil
 }
 
-func (cmd *UpdateSessionCommand) Run(ctx *Globals) (err error) {
-	client, err := ctx.Client()
+func (cmd *UpdateSessionCommand) Run(ctx server.Cmd) (err error) {
+	client, err := clientFor(ctx)
 	if err != nil {
 		return err
 	}
 
 	// OTEL
-	parent, endSpan := otel.StartSpan(ctx.tracer, ctx.ctx, "UpdateSessionCommand",
+	parent, endSpan := otel.StartSpan(ctx.Tracer(), ctx.Context(), "UpdateSessionCommand",
 		attribute.String("request", types.Stringify(cmd)),
 	)
 	defer func() { endSpan(err) }()

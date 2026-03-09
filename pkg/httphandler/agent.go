@@ -11,6 +11,7 @@ import (
 	schema "github.com/mutablelogic/go-llm/pkg/schema"
 	httprequest "github.com/mutablelogic/go-server/pkg/httprequest"
 	httpresponse "github.com/mutablelogic/go-server/pkg/httpresponse"
+	jsonschema "github.com/mutablelogic/go-server/pkg/jsonschema"
 	openapi "github.com/mutablelogic/go-server/pkg/openapi/schema"
 	types "github.com/mutablelogic/go-server/pkg/types"
 )
@@ -20,6 +21,9 @@ import (
 
 // Path: /agent
 func AgentHandler(manager *manager.Manager) (string, http.HandlerFunc, *openapi.PathItem) {
+	agentMetaSchema, _ := jsonschema.For[schema.AgentMeta]()
+	listRespSchema, _ := jsonschema.For[schema.ListAgentResponse]()
+	agentSchema, _ := jsonschema.For[schema.Agent]()
 	return "/agent", func(w http.ResponseWriter, r *http.Request) {
 			switch r.Method {
 			case http.MethodGet:
@@ -80,19 +84,59 @@ func AgentHandler(manager *manager.Manager) (string, http.HandlerFunc, *openapi.
 			}
 		}, types.Ptr(openapi.PathItem{
 			Get: &openapi.Operation{
+				Tags:        []string{"Agent"},
 				Description: "List all agents",
+				Parameters: []openapi.Parameter{
+					{Name: "name", In: openapi.ParameterInQuery, Description: "Filter by agent name", Schema: pathParamSchema},
+					{Name: "version", In: openapi.ParameterInQuery, Description: "Filter by version number (requires name)", Schema: queryUintSchema},
+					{Name: "limit", In: openapi.ParameterInQuery, Description: "Maximum number of agents to return", Schema: queryUintSchema},
+					{Name: "offset", In: openapi.ParameterInQuery, Description: "Offset for pagination", Schema: queryUintSchema},
+				},
+				Responses: map[string]openapi.Response{
+					"200":     {Description: "List of agents", Content: map[string]openapi.MediaType{types.ContentTypeJSON: {Schema: listRespSchema}}},
+					"default": openapi.ErrorResponse("An error occurred"),
+				},
 			},
 			Post: &openapi.Operation{
+				Tags:        []string{"Agent"},
 				Description: "Create a new agent",
+				RequestBody: &openapi.RequestBody{
+					Required: true,
+					Content:  map[string]openapi.MediaType{types.ContentTypeJSON: {Schema: agentMetaSchema}},
+				},
+				Responses: map[string]openapi.Response{
+					"201":     {Description: "Agent created", Content: map[string]openapi.MediaType{types.ContentTypeJSON: {Schema: agentSchema}}},
+					"default": openapi.ErrorResponse("An error occurred"),
+				},
 			},
 			Put: &openapi.Operation{
+				Tags:        []string{"Agent"},
 				Description: "Update an existing agent by name",
+				RequestBody: &openapi.RequestBody{
+					Required: true,
+					Content:  map[string]openapi.MediaType{types.ContentTypeJSON: {Schema: agentMetaSchema}},
+				},
+				Responses: map[string]openapi.Response{
+					"200":     {Description: "Updated agent", Content: map[string]openapi.MediaType{types.ContentTypeJSON: {Schema: agentSchema}}},
+					"304":     {Description: "Agent unchanged"},
+					"default": openapi.ErrorResponse("An error occurred"),
+				},
 			},
 		})
 }
 
 // Path: /agent/{agent}
 func AgentGetHandler(manager *manager.Manager) (string, http.HandlerFunc, *openapi.PathItem) {
+	agentParam := openapi.Parameter{
+		Name:        "agent",
+		In:          openapi.ParameterInPath,
+		Description: "Agent ID or name",
+		Required:    true,
+		Schema:      pathParamSchema,
+	}
+	createAgentSessionSchema, _ := jsonschema.For[schema.CreateAgentSessionRequest]()
+	agentSchema, _ := jsonschema.For[schema.Agent]()
+	createAgentSessionRespSchema, _ := jsonschema.For[schema.CreateAgentSessionResponse]()
 	return "/agent/{agent}", func(w http.ResponseWriter, r *http.Request) {
 			id := r.PathValue("agent")
 			switch r.Method {
@@ -126,13 +170,35 @@ func AgentGetHandler(manager *manager.Manager) (string, http.HandlerFunc, *opena
 			}
 		}, types.Ptr(openapi.PathItem{
 			Get: &openapi.Operation{
+				Tags:        []string{"Agent"},
 				Description: "Get an agent by ID or name",
+				Parameters:  []openapi.Parameter{agentParam},
+				Responses: map[string]openapi.Response{
+					"200":     {Description: "Agent details", Content: map[string]openapi.MediaType{types.ContentTypeJSON: {Schema: agentSchema}}},
+					"default": openapi.ErrorResponse("An error occurred"),
+				},
 			},
 			Post: &openapi.Operation{
+				Tags:        []string{"Agent"},
 				Description: "Create a session from an agent definition",
+				Parameters:  []openapi.Parameter{agentParam},
+				RequestBody: &openapi.RequestBody{
+					Required: true,
+					Content:  map[string]openapi.MediaType{types.ContentTypeJSON: {Schema: createAgentSessionSchema}},
+				},
+				Responses: map[string]openapi.Response{
+					"201":     {Description: "Session created", Content: map[string]openapi.MediaType{types.ContentTypeJSON: {Schema: createAgentSessionRespSchema}}},
+					"default": openapi.ErrorResponse("An error occurred"),
+				},
 			},
 			Delete: &openapi.Operation{
+				Tags:        []string{"Agent"},
 				Description: "Delete an agent by ID or name",
+				Parameters:  []openapi.Parameter{agentParam},
+				Responses: map[string]openapi.Response{
+					"204":     {Description: "Agent deleted"},
+					"default": openapi.ErrorResponse("An error occurred"),
+				},
 			},
 		})
 }

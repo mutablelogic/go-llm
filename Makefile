@@ -6,27 +6,20 @@ DOCKER ?= $(shell which docker 2>/dev/null)
 BUILD_DIR ?= build
 CMD_DIR := $(wildcard cmd/*)
 
-# VERBOSE=1
-ifneq ($(VERBOSE),)
-  VERBOSE_FLAG = -v
-else
-  VERBOSE_FLAG =
-endif
-
 # Set OS and Architecture
 ARCH ?= $(shell arch | tr A-Z a-z | sed 's/x86_64/amd64/' | sed 's/i386/amd64/' | sed 's/armv7l/arm/' | sed 's/aarch64/arm64/')
 OS ?= $(shell uname | tr A-Z a-z)
 VERSION ?= $(shell git describe --tags --always | sed 's/^v//')
 
 # Set build flags
-BUILD_MODULE = $(shell cat go.mod | head -1 | cut -d ' ' -f 2)
-BUILD_LD_FLAGS += -X $(BUILD_MODULE)/pkg/version.GitTag=$(shell git describe --tags --always)
-BUILD_LD_FLAGS += -X $(BUILD_MODULE)/pkg/version.GitBranch=$(shell git name-rev HEAD --name-only --always)
+VERSION_PKG = "github.com/mutablelogic/go-server/pkg/version"
+BUILD_LD_FLAGS += -X $(VERSION_PKG)/GitTag=$(shell git describe --tags --always)
+BUILD_LD_FLAGS += -X $(VERSION_PKG)/GitBranch=$(shell git name-rev HEAD --name-only --always)
 BUILD_FLAGS = -ldflags "-s -w ${BUILD_LD_FLAGS}" 
 
 # Docker
 DOCKER_REPO ?= ghcr.io/mutablelogic/llm
-DOCKER_SOURCE ?= ${BUILD_MODULE}
+DOCKER_SOURCE ?= $(shell cat go.mod | head -1 | cut -d ' ' -f 2)
 DOCKER_TAG = ${DOCKER_REPO}-${OS}-${ARCH}:${VERSION}
 
 ###############################################################################
@@ -85,7 +78,7 @@ test: unit-test coverage-test
 .PHONY: unit-test
 unit-test: go-dep
 	@echo Unit Tests
-	@${GO} test ${VERBOSE_FLAG} ./pkg/...
+	@${GO} test ./pkg/...
 
 .PHONY: coverage-test
 coverage-test: go-dep mkdir

@@ -10,6 +10,7 @@ import (
 	schema "github.com/mutablelogic/go-llm/pkg/schema"
 	httprequest "github.com/mutablelogic/go-server/pkg/httprequest"
 	httpresponse "github.com/mutablelogic/go-server/pkg/httpresponse"
+	jsonschema "github.com/mutablelogic/go-server/pkg/jsonschema"
 	openapi "github.com/mutablelogic/go-server/pkg/openapi/schema"
 	types "github.com/mutablelogic/go-server/pkg/types"
 )
@@ -19,6 +20,14 @@ import (
 
 // Path: /credential/{url}
 func CredentialHandler(manager *manager.Manager) (string, http.HandlerFunc, *openapi.PathItem) {
+	urlParam := openapi.Parameter{
+		Name:        "url",
+		In:          openapi.ParameterInPath,
+		Description: "Server URL",
+		Required:    true,
+		Schema:      pathParamSchema,
+	}
+	credSchema, _ := jsonschema.For[schema.OAuthCredentials]()
 	return "/credential/{url}", func(w http.ResponseWriter, r *http.Request) {
 			rawURL, err := url.PathUnescape(r.PathValue("url"))
 			if err != nil {
@@ -55,13 +64,35 @@ func CredentialHandler(manager *manager.Manager) (string, http.HandlerFunc, *ope
 			}
 		}, types.Ptr(openapi.PathItem{
 			Get: &openapi.Operation{
+				Tags:        []string{"Credential"},
 				Description: "Get a credential by server URL",
+				Parameters:  []openapi.Parameter{urlParam},
+				Responses: map[string]openapi.Response{
+					"200":     {Description: "Credential details", Content: map[string]openapi.MediaType{types.ContentTypeJSON: {Schema: credSchema}}},
+					"default": openapi.ErrorResponse("An error occurred"),
+				},
 			},
 			Post: &openapi.Operation{
+				Tags:        []string{"Credential"},
 				Description: "Store or update a credential for a server URL",
+				Parameters:  []openapi.Parameter{urlParam},
+				RequestBody: &openapi.RequestBody{
+					Required: true,
+					Content:  map[string]openapi.MediaType{types.ContentTypeJSON: {Schema: credSchema}},
+				},
+				Responses: map[string]openapi.Response{
+					"204":     {Description: "Credential stored"},
+					"default": openapi.ErrorResponse("An error occurred"),
+				},
 			},
 			Delete: &openapi.Operation{
+				Tags:        []string{"Credential"},
 				Description: "Delete a credential by server URL",
+				Parameters:  []openapi.Parameter{urlParam},
+				Responses: map[string]openapi.Response{
+					"204":     {Description: "Credential deleted"},
+					"default": openapi.ErrorResponse("An error occurred"),
+				},
 			},
 		})
 }
