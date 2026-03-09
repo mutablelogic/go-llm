@@ -38,11 +38,16 @@ http.ListenAndServe(":8080", nil)
 
 ## Registering tools
 
-Implement the `tool.Tool` interface (from `pkg/tool`) and register it with `AddTools`:
+Implement the `llm.Tool` interface (defined at the repo root, `github.com/mutablelogic/go-llm`) and register it with `AddTools`. Embed `tool.DefaultTool` from `pkg/tool` to satisfy the optional `OutputSchema()` and `Meta()` methods without boilerplate:
 
 ```go
 import (
+    "context"
+    "encoding/json"
+
+    llm "github.com/mutablelogic/go-llm"
     jsonschema "github.com/google/jsonschema-go/jsonschema"
+    tool "github.com/mutablelogic/go-llm/pkg/tool"
 )
 
 // echoArgs defines the tool's input parameters. Field names and types are
@@ -52,6 +57,8 @@ type echoArgs struct {
 }
 
 type EchoTool struct{ tool.DefaultTool }
+
+var _ llm.Tool = (*EchoTool)(nil)
 
 func (t *EchoTool) Name() string        { return "echo" }
 func (t *EchoTool) Description() string { return "Echoes the input back" }
@@ -71,7 +78,7 @@ if err := srv.AddTools(&EchoTool{}); err != nil {
 }
 ```
 
-Embed `tool.DefaultTool` to satisfy the optional `OutputSchema()` and `Meta()` methods without boilerplate.
+`tool.DefaultTool` (from `pkg/tool`) provides no-op implementations of the optional `OutputSchema()` and `Meta()` methods.
 
 Multiple tools can be registered in one call: `srv.AddTools(t1, t2, t3)`.
 

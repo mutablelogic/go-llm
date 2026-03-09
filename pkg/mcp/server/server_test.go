@@ -2,7 +2,6 @@ package server_test
 
 import (
 	"context"
-	"net/http/httptest"
 	"testing"
 
 	// Packages
@@ -24,7 +23,6 @@ func TestServerProbe(t *testing.T) {
 
 	// Connect a client and probe the server.
 	c, err := client.New(ts.URL, "test-client", "1.0.0", nil)
-	_ = httptest.NewServer // keep import used
 	if err != nil {
 		t.Fatal(err)
 	}

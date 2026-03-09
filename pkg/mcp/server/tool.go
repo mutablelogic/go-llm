@@ -8,8 +8,8 @@ import (
 
 	// Packages
 	sdkmcp "github.com/modelcontextprotocol/go-sdk/mcp"
+	llm "github.com/mutablelogic/go-llm"
 	schema "github.com/mutablelogic/go-llm/pkg/schema"
-	tool "github.com/mutablelogic/go-llm/pkg/tool"
 )
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -18,7 +18,7 @@ import (
 // AddTools registers one or more tool.Tool values on the server, converting
 // each to the SDK types automatically. Returns an error if any schema cannot
 // be marshalled; tools registered before the error are still active.
-func (s *Server) AddTools(tools ...tool.Tool) error {
+func (s *Server) AddTools(tools ...llm.Tool) error {
 	for _, t := range tools {
 		sdkTool, handler, err := sdkToolFromTool(t)
 		if err != nil {
@@ -39,7 +39,7 @@ func (s *Server) RemoveTools(names ...string) {
 // PRIVATE METHODS
 
 // sdkToolFromTool converts a tool.Tool into an *sdkmcp.Tool and sdkmcp.ToolHandler.
-func sdkToolFromTool(t tool.Tool) (*sdkmcp.Tool, sdkmcp.ToolHandler, error) {
+func sdkToolFromTool(t llm.Tool) (*sdkmcp.Tool, sdkmcp.ToolHandler, error) {
 	// Build input schema — SDK accepts any JSON-marshalable value.
 	inputSchema, err := t.InputSchema()
 	if err != nil {
@@ -82,12 +82,14 @@ func sdkToolFromTool(t tool.Tool) (*sdkmcp.Tool, sdkmcp.ToolHandler, error) {
 
 	handler := sdkmcp.ToolHandler(func(ctx context.Context, req *sdkmcp.CallToolRequest) (*sdkmcp.CallToolResult, error) {
 		// Inject a per-call Session so t.Run can call SessionFromContext(ctx).
-		ctx = withSession(ctx, req.Session, t.Name(), req.Params.GetProgressToken())
-
+		var progressToken any
 		var input json.RawMessage
 		if req.Params != nil {
+			progressToken = req.Params.GetProgressToken()
 			input = req.Params.Arguments
 		}
+		ctx = withSession(ctx, req.Session, t.Name(), progressToken)
+
 		out, err := t.Run(ctx, input)
 		if err != nil {
 			result := &sdkmcp.CallToolResult{}
