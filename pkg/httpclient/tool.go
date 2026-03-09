@@ -2,6 +2,7 @@ package httpclient
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 
 	// Packages
@@ -56,5 +57,23 @@ func (c *Client) GetTool(ctx context.Context, name string) (*schema.ToolMeta, er
 	}
 
 	// Return the response
+	return &response, nil
+}
+
+// CallTool calls a tool by name with the given JSON input and returns the result.
+func (c *Client) CallTool(ctx context.Context, name string, input json.RawMessage) (*schema.CallToolResponse, error) {
+	if name == "" {
+		return nil, fmt.Errorf("tool name cannot be empty")
+	}
+
+	payload, err := client.NewJSONRequest(schema.CallToolRequest{Input: input})
+	if err != nil {
+		return nil, err
+	}
+
+	var response schema.CallToolResponse
+	if err := c.DoWithContext(ctx, payload, &response, client.OptPath("tool", name)); err != nil {
+		return nil, err
+	}
 	return &response, nil
 }

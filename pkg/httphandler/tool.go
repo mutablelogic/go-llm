@@ -71,6 +71,18 @@ func ToolGetHandler(manager *manager.Manager) (string, http.HandlerFunc, *openap
 					return
 				}
 				_ = httpresponse.JSON(w, http.StatusOK, httprequest.Indent(r), resp)
+			case http.MethodPost:
+				var req schema.CallToolRequest
+				if err := httprequest.Read(r, &req); err != nil {
+					_ = httpresponse.Error(w, err)
+					return
+				}
+				resp, err := manager.CallTool(r.Context(), r.PathValue("name"), req.Input)
+				if err != nil {
+					_ = httpresponse.Error(w, httpErr(err))
+					return
+				}
+				_ = httpresponse.JSON(w, http.StatusOK, httprequest.Indent(r), resp)
 			default:
 				_ = httpresponse.Error(w, httpresponse.Err(http.StatusMethodNotAllowed), r.Method)
 			}
@@ -81,6 +93,15 @@ func ToolGetHandler(manager *manager.Manager) (string, http.HandlerFunc, *openap
 				Parameters:  []openapi.Parameter{nameParam},
 				Responses: map[string]openapi.Response{
 					"200":     {Description: "Tool details", Content: map[string]openapi.MediaType{types.ContentTypeJSON: {Schema: toolSchema}}},
+					"default": openapi.ErrorResponse("An error occurred"),
+				},
+			},
+			Post: &openapi.Operation{
+				Tags:        []string{"Tool"},
+				Description: "Call a tool by name",
+				Parameters:  []openapi.Parameter{nameParam},
+				Responses: map[string]openapi.Response{
+					"200":     {Description: "Tool result"},
 					"default": openapi.ErrorResponse("An error occurred"),
 				},
 			},

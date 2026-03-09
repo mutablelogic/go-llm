@@ -17,6 +17,7 @@ type CLI struct {
 	ConnectorCommands
 	CredentialsCommands
 	GenerateCommands
+	MCPCommands
 	ModelCommands
 	SessionCommands
 	ToolCommands

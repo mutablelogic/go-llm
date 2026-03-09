@@ -10,6 +10,7 @@ import (
 	jsonschema "github.com/google/jsonschema-go/jsonschema"
 	sdkmcp "github.com/modelcontextprotocol/go-sdk/mcp"
 	llm "github.com/mutablelogic/go-llm"
+	types "github.com/mutablelogic/go-server/pkg/types"
 )
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -114,9 +115,13 @@ func contentText(contents []sdkmcp.Content) string {
 }
 
 // contentValue returns a plain Go value for a single Content item:
-// TextContent → string, everything else → the original typed value.
+// TextContent with mimetype=application/json → json.RawMessage,
+// plain TextContent → string, everything else → the original typed value.
 func contentValue(c sdkmcp.Content) any {
 	if tc, ok := c.(*sdkmcp.TextContent); ok {
+		if tc.Meta[types.ContentTypeHeader] == types.ContentTypeJSON {
+			return json.RawMessage(tc.Text)
+		}
 		return tc.Text
 	}
 	return c

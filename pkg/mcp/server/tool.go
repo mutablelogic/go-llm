@@ -8,8 +8,8 @@ import (
 
 	// Packages
 	sdkmcp "github.com/modelcontextprotocol/go-sdk/mcp"
+	"github.com/mutablelogic/go-llm"
 	schema "github.com/mutablelogic/go-llm/pkg/schema"
-	tool "github.com/mutablelogic/go-llm/pkg/tool"
 )
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -18,7 +18,7 @@ import (
 // AddTools registers one or more tool.Tool values on the server, converting
 // each to the SDK types automatically. Returns an error if any schema cannot
 // be marshalled; tools registered before the error are still active.
-func (s *Server) AddTools(tools ...tool.Tool) error {
+func (s *Server) AddTools(tools ...llm.Tool) error {
 	for _, t := range tools {
 		sdkTool, handler, err := sdkToolFromTool(t)
 		if err != nil {
@@ -39,7 +39,7 @@ func (s *Server) RemoveTools(names ...string) {
 // PRIVATE METHODS
 
 // sdkToolFromTool converts a tool.Tool into an *sdkmcp.Tool and sdkmcp.ToolHandler.
-func sdkToolFromTool(t tool.Tool) (*sdkmcp.Tool, sdkmcp.ToolHandler, error) {
+func sdkToolFromTool(t llm.Tool) (*sdkmcp.Tool, sdkmcp.ToolHandler, error) {
 	// Build input schema — SDK accepts any JSON-marshalable value.
 	inputSchema, err := t.InputSchema()
 	if err != nil {

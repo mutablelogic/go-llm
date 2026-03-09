@@ -1,15 +1,16 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 
 	// Packages
-	server "github.com/mutablelogic/go-server"
 	otel "github.com/mutablelogic/go-client/pkg/otel"
 	httpclient "github.com/mutablelogic/go-llm/pkg/httpclient"
 	opt "github.com/mutablelogic/go-llm/pkg/opt"
 	schema "github.com/mutablelogic/go-llm/pkg/schema"
 	uitable "github.com/mutablelogic/go-llm/pkg/ui/table"
+	server "github.com/mutablelogic/go-server"
 	types "github.com/mutablelogic/go-server/pkg/types"
 	attribute "go.opentelemetry.io/otel/attribute"
 )
@@ -20,6 +21,7 @@ import (
 type ToolCommands struct {
 	ListTools ListToolsCommand `cmd:"" name:"tools" help:"List tools." group:"TOOL"`
 	GetTool   GetToolCommand   `cmd:"" name:"tool" help:"Get tool." group:"TOOL"`
+	CallTool  CallToolCommand  `cmd:"" name:"call" help:"Call a tool with JSON input." group:"TOOL"`
 }
 
 type ListToolsCommand struct {
@@ -29,6 +31,11 @@ type ListToolsCommand struct {
 
 type GetToolCommand struct {
 	Name string `arg:"" name:"name" help:"Tool name"`
+}
+
+type CallToolCommand struct {
+	Name  string `arg:"" name:"name" help:"Tool name"`
+	Input string `arg:"" name:"input" help:"JSON input for the tool" optional:""`
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -93,5 +100,34 @@ func (cmd *GetToolCommand) Run(ctx server.Cmd) (err error) {
 
 	// Print
 	fmt.Println(tool)
+	return nil
+}
+
+func (cmd *CallToolCommand) Run(ctx server.Cmd) (err error) {
+	client, err := clientFor(ctx)
+	if err != nil {
+		return err
+	}
+
+	// OTEL
+	parent, endSpan := otel.StartSpan(ctx.Tracer(), ctx.Context(), "CallToolCommand",
+		attribute.String("tool", cmd.Name),
+	)
+	defer func() { endSpan(err) }()
+
+	// Parse optional JSON input
+	var input json.RawMessage
+	if cmd.Input != "" {
+		if err := json.Unmarshal([]byte(cmd.Input), &input); err != nil {
+			return fmt.Errorf("invalid JSON input: %w", err)
+		}
+	}
+
+	response, err := client.CallTool(parent, cmd.Name, input)
+	if err != nil {
+		return err
+	}
+
+	fmt.Println(response)
 	return nil
 }
