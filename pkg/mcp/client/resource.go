@@ -108,8 +108,31 @@ func (c *Client) refreshResources(ctx context.Context) {
 	c.mu.Lock()
 	c.resources = resources
 	fn := c.onResourceListChanged
+	updatedFn := c.onResourceUpdated
+	// Collect URIs that need subscribing (only when onResourceUpdated is wired).
+	var toSubscribe []string
+	if updatedFn != nil {
+		if c.subscribed == nil {
+			c.subscribed = make(map[string]struct{})
+		}
+		for _, r := range resources {
+			if _, ok := c.subscribed[r.URI()]; !ok {
+				c.subscribed[r.URI()] = struct{}{}
+				toSubscribe = append(toSubscribe, r.URI())
+			}
+		}
+	}
 	c.mu.Unlock()
 	if fn != nil {
 		fn(ctx)
+	}
+	// For each newly-seen URI: subscribe (so subsequent ResourceUpdated
+	// notifications reach us) and fire onResourceUpdated immediately
+	// (the resource just appeared — its content is new to us).
+	for _, uri := range toSubscribe {
+		sess.Subscribe(ctx, &sdkmcp.SubscribeParams{URI: uri}) //nolint:errcheck
+		if updatedFn != nil {
+			updatedFn(ctx, c.readResource(ctx, uri))
+		}
 	}
 }

@@ -13,7 +13,6 @@ import (
 	// Packages
 	heartbeat "github.com/mutablelogic/go-llm/pkg/heartbeat"
 	mcpserver "github.com/mutablelogic/go-llm/pkg/mcp/server"
-	schema "github.com/mutablelogic/go-llm/pkg/schema"
 	server "github.com/mutablelogic/go-server"
 	gocmd "github.com/mutablelogic/go-server/pkg/cmd"
 	httprouter "github.com/mutablelogic/go-server/pkg/httprouter"
@@ -54,7 +53,11 @@ func (cmd *HeartbeatMCPCommand) Run(ctx server.Cmd) error {
 		heartbeat.WithOnFire(func(_ context.Context, h *heartbeat.Heartbeat) {
 			u, _ := url.Parse("heartbeat:" + h.ID)
 			raw, _ := json.Marshal(h)
-			srv.AddResources(schema.Attachment{Type: "application/json", Data: raw, URL: u}) //nolint:errcheck
+			srv.AddResources(&heartbeatResource{
+				uri:  u.String(),
+				name: h.Message,
+				data: raw,
+			}) //nolint:errcheck
 		}))
 	if err != nil {
 		return fmt.Errorf("heartbeat manager: %w", err)
@@ -83,6 +86,28 @@ func (cmd *HeartbeatMCPCommand) Run(ctx server.Cmd) error {
 
 	return cmd.RunServer.Run(ctx)
 }
+
+///////////////////////////////////////////////////////////////////////////////
+// PRIVATE TYPES
+
+// heartbeatResource implements llm.Resource for a fired heartbeat, exposing
+// the message as the name and the marshalled JSON as readable content.
+type heartbeatResource struct {
+	uri  string
+	name string
+	data []byte
+}
+
+func (r *heartbeatResource) URI() string         { return r.uri }
+func (r *heartbeatResource) Name() string        { return r.name }
+func (r *heartbeatResource) Description() string { return "" }
+func (r *heartbeatResource) MIMEType() string    { return "application/json" }
+func (r *heartbeatResource) Read(_ context.Context) ([]byte, error) {
+	return r.data, nil
+}
+
+///////////////////////////////////////////////////////////////////////////////
+// PRIVATE METHODS
 
 // HeartbeatStore returns the heartbeat store, creating it lazily.
 // Heartbeats are stored in the user's cache directory.

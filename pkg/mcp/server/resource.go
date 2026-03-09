@@ -23,12 +23,28 @@ type Resource = llm.Resource
 // whose URI is invalid; resources registered before the error are still active.
 // AddResources panics if the URI is not absolute (has an empty scheme) — this
 // mirrors the SDK's own behaviour.
+// If a URI was already registered (replace), notifications/resources/updated is
+// sent so subscribed clients are notified of the content change.
 func (s *Server) AddResources(resources ...Resource) error {
 	for _, r := range resources {
 		if r.URI() == "" {
 			return fmt.Errorf("resource name %q: URI is required", r.Name())
 		}
+		s.mu.Lock()
+		_, existed := s.uris[r.URI()]
+		s.uris[r.URI()] = struct{}{}
+		s.mu.Unlock()
+
 		s.server.AddResource(sdkResourceFromResource(r), sdkResourceHandlerFromResource(r))
+
+		// Fire resources/updated for replaced (pre-existing) URIs so clients
+		// with onResourceUpdated handlers are notified without needing
+		// explicit MCP subscriptions.
+		if existed {
+			s.server.ResourceUpdated(context.Background(), &sdkmcp.ResourceUpdatedNotificationParams{ //nolint:errcheck
+				URI: r.URI(),
+			})
+		}
 	}
 	return nil
 }
@@ -36,6 +52,11 @@ func (s *Server) AddResources(resources ...Resource) error {
 // RemoveResources removes the resources with the given URIs from the server.
 // Unknown URIs are silently ignored.
 func (s *Server) RemoveResources(uris ...string) {
+	s.mu.Lock()
+	for _, uri := range uris {
+		delete(s.uris, uri)
+	}
+	s.mu.Unlock()
 	s.server.RemoveResources(uris...)
 }
 

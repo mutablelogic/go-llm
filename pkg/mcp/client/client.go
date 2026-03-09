@@ -32,9 +32,10 @@ type Client struct {
 	goOpts []client.ClientOpt
 
 	// Cached lists, refreshed after connect and on change notifications.
-	tools     []llm.Tool
-	prompts   []llm.Prompt
-	resources []llm.Resource
+	tools      []llm.Tool
+	prompts    []llm.Prompt
+	resources  []llm.Resource
+	subscribed map[string]struct{} // resource URIs we've subscribed to
 
 	// Notification handlers (nil = ignore)
 	onLoggingMessage      OnLoggingMessage

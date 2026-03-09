@@ -40,6 +40,7 @@ func (c *Client) Run(ctx context.Context) error {
 		c.tools = nil
 		c.prompts = nil
 		c.resources = nil
+		c.subscribed = nil
 		c.mu.Unlock()
 	}()
 
