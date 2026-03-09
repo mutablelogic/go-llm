@@ -1,0 +1,49 @@
+// Package mock provides configurable mock implementations of interfaces for
+// use in tests across the go-llm module.
+package mock
+
+import (
+	"context"
+	"encoding/json"
+
+	// Packages
+	jsonschema "github.com/google/jsonschema-go/jsonschema"
+	llm "github.com/mutablelogic/go-llm"
+	tool "github.com/mutablelogic/go-llm/pkg/tool"
+)
+
+// MockTool is a configurable implementation of llm.Tool for use in tests.
+// Set Name_, Description_, and Result_ before registering it on a server.
+// RunFn, if set, overrides Result_ and is called with the raw JSON input.
+// InputSchemaErr_, if set, makes InputSchema() return that error.
+type MockTool struct {
+	tool.DefaultTool
+	Name_           string
+	Description_    string
+	InputSchema_    *jsonschema.Schema
+	InputSchemaErr_ error
+	Result_         any
+	RunFn           func(ctx context.Context, input json.RawMessage) (any, error)
+}
+
+var _ llm.Tool = (*MockTool)(nil)
+
+func (m *MockTool) Name() string        { return m.Name_ }
+func (m *MockTool) Description() string { return m.Description_ }
+
+func (m *MockTool) InputSchema() (*jsonschema.Schema, error) {
+	if m.InputSchemaErr_ != nil {
+		return nil, m.InputSchemaErr_
+	}
+	if m.InputSchema_ != nil {
+		return m.InputSchema_, nil
+	}
+	return &jsonschema.Schema{Type: "object"}, nil
+}
+
+func (m *MockTool) Run(ctx context.Context, input json.RawMessage) (any, error) {
+	if m.RunFn != nil {
+		return m.RunFn(ctx, input)
+	}
+	return m.Result_, nil
+}

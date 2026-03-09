@@ -81,7 +81,17 @@ func sdkToolFromTool(t llm.Tool) (*sdkmcp.Tool, sdkmcp.ToolHandler, error) {
 		sdkTool.OutputSchema = outputSchemaRaw
 	}
 
-	handler := sdkmcp.ToolHandler(func(ctx context.Context, req *sdkmcp.CallToolRequest) (*sdkmcp.CallToolResult, error) {
+	handler := sdkmcp.ToolHandler(func(ctx context.Context, req *sdkmcp.CallToolRequest) (res *sdkmcp.CallToolResult, retErr error) {
+		// Recover from panics in the tool implementation so a misbehaving tool
+		// cannot crash the server session.
+		defer func() {
+			if r := recover(); r != nil {
+				result := &sdkmcp.CallToolResult{}
+				result.SetError(fmt.Errorf("tool %q panicked: %v", t.Name(), r))
+				res, retErr = result, nil
+			}
+		}()
+
 		// Inject a per-call Session so t.Run can call SessionFromContext(ctx).
 		var progressToken any
 		var input json.RawMessage
@@ -125,6 +135,10 @@ func contentFromAny(toolName string, v any) (sdkmcp.Content, error) {
 			// Non-image, non-audio attachment: use text representation.
 			return &sdkmcp.TextContent{Text: a.TextContent(), Meta: meta}, nil
 		}
+	}
+	// Plain strings go through as-is — json.Marshal would add extra quotes.
+	if s, ok := v.(string); ok {
+		return &sdkmcp.TextContent{Text: s}, nil
 	}
 	out, err := json.Marshal(v)
 	if err != nil {

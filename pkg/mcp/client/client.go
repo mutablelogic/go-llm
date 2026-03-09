@@ -2,6 +2,7 @@ package client
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 	"sync"
 
@@ -37,6 +38,12 @@ type Client struct {
 // authFn is called when the server returns 401 to perform the OAuth flow.
 // Pass nil to disable auth.
 func New(url, name, version string, authFn func(context.Context, string) error, opts ...client.ClientOpt) (*Client, error) {
+	if url == "" {
+		return nil, fmt.Errorf("url is required")
+	}
+	if name == "" {
+		return nil, fmt.Errorf("name is required")
+	}
 	c := new(Client)
 
 	// client.New() unconditionally installs a transport.NewToken middleware

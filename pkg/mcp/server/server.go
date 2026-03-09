@@ -1,6 +1,8 @@
 package server
 
 import (
+	"fmt"
+
 	// Packages
 	sdkmcp "github.com/modelcontextprotocol/go-sdk/mcp"
 )
@@ -20,6 +22,9 @@ type Server struct {
 
 // New creates a new MCP server with the given implementation name and version.
 func New(name, version string, optFns ...ServerOpt) (*Server, error) {
+	if name == "" {
+		return nil, fmt.Errorf("name is required")
+	}
 	o := opts{
 		impl: sdkmcp.Implementation{Name: name, Version: version},
 	}

@@ -7,7 +7,6 @@ import (
 	// Packages
 	sdkmcp "github.com/modelcontextprotocol/go-sdk/mcp"
 	server "github.com/mutablelogic/go-llm/pkg/mcp/server"
-	servertest "github.com/mutablelogic/go-llm/pkg/mcp/server/test"
 	schema "github.com/mutablelogic/go-llm/pkg/schema"
 )
 
@@ -25,7 +24,7 @@ func TestServerListPrompts(t *testing.T) {
 		Input:       schema.JSONSchema(`{"type":"object","properties":{"name":{"description":"Name to greet","type":"string"}},"required":["name"]}`),
 	})
 
-	_, session := servertest.Connect(t, srv)
+	_, session := connect(t, srv)
 
 	result, err := session.ListPrompts(context.Background(), nil)
 	if err != nil {
@@ -63,7 +62,7 @@ func TestServerGetPrompt(t *testing.T) {
 		Input:       schema.JSONSchema(`{"type":"object","properties":{"name":{"description":"Name to greet","type":"string"}},"required":["name"]}`),
 	})
 
-	_, session := servertest.Connect(t, srv)
+	_, session := connect(t, srv)
 
 	result, err := session.GetPrompt(context.Background(), &sdkmcp.GetPromptParams{
 		Name:      "greet",
