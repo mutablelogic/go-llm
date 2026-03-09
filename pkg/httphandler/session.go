@@ -19,6 +19,8 @@ import (
 // Path: /session
 func SessionHandler(manager *manager.Manager) (string, http.HandlerFunc, *openapi.PathItem) {
 	sessionMetaSchema, _ := jsonschema.For[schema.SessionMeta]()
+	listRespSchema, _ := jsonschema.For[schema.ListSessionResponse]()
+	sessionSchema, _ := jsonschema.For[schema.Session]()
 	return "/session", func(w http.ResponseWriter, r *http.Request) {
 			switch r.Method {
 			case http.MethodGet:
@@ -52,6 +54,15 @@ func SessionHandler(manager *manager.Manager) (string, http.HandlerFunc, *openap
 			Get: &openapi.Operation{
 				Tags:        []string{"Session"},
 				Description: "List all sessions",
+				Parameters: []openapi.Parameter{
+					{Name: "limit", In: openapi.ParameterInQuery, Description: "Maximum number of sessions to return", Schema: queryUintSchema},
+					{Name: "offset", In: openapi.ParameterInQuery, Description: "Offset for pagination", Schema: queryUintSchema},
+					{Name: "label", In: openapi.ParameterInQuery, Description: "Filter by labels (key:value)", Schema: queryStringArraySchema},
+				},
+				Responses: map[string]openapi.Response{
+					"200":     {Description: "List of sessions", Content: map[string]openapi.MediaType{types.ContentTypeJSON: {Schema: listRespSchema}}},
+					"default": openapi.ErrorResponse("An error occurred"),
+				},
 			},
 			Post: &openapi.Operation{
 				Tags:        []string{"Session"},
@@ -59,6 +70,10 @@ func SessionHandler(manager *manager.Manager) (string, http.HandlerFunc, *openap
 				RequestBody: &openapi.RequestBody{
 					Required: true,
 					Content:  map[string]openapi.MediaType{types.ContentTypeJSON: {Schema: sessionMetaSchema}},
+				},
+				Responses: map[string]openapi.Response{
+					"201":     {Description: "Session created", Content: map[string]openapi.MediaType{types.ContentTypeJSON: {Schema: sessionSchema}}},
+					"default": openapi.ErrorResponse("An error occurred"),
 				},
 			},
 		})
@@ -74,6 +89,7 @@ func SessionGetHandler(manager *manager.Manager) (string, http.HandlerFunc, *ope
 		Schema:      pathParamSchema,
 	}
 	sessionMetaSchema, _ := jsonschema.For[schema.SessionMeta]()
+	sessionSchema, _ := jsonschema.For[schema.Session]()
 	return "/session/{session}", func(w http.ResponseWriter, r *http.Request) {
 			id := r.PathValue("session")
 			switch r.Method {
@@ -110,11 +126,19 @@ func SessionGetHandler(manager *manager.Manager) (string, http.HandlerFunc, *ope
 				Tags:        []string{"Session"},
 				Description: "Get a session by ID",
 				Parameters:  []openapi.Parameter{sessionParam},
+				Responses: map[string]openapi.Response{
+					"200":     {Description: "Session details", Content: map[string]openapi.MediaType{types.ContentTypeJSON: {Schema: sessionSchema}}},
+					"default": openapi.ErrorResponse("An error occurred"),
+				},
 			},
 			Delete: &openapi.Operation{
 				Tags:        []string{"Session"},
 				Description: "Delete a session by ID",
 				Parameters:  []openapi.Parameter{sessionParam},
+				Responses: map[string]openapi.Response{
+					"204":     {Description: "Session deleted"},
+					"default": openapi.ErrorResponse("An error occurred"),
+				},
 			},
 			Patch: &openapi.Operation{
 				Tags:        []string{"Session"},
@@ -123,6 +147,10 @@ func SessionGetHandler(manager *manager.Manager) (string, http.HandlerFunc, *ope
 				RequestBody: &openapi.RequestBody{
 					Required: true,
 					Content:  map[string]openapi.MediaType{types.ContentTypeJSON: {Schema: sessionMetaSchema}},
+				},
+				Responses: map[string]openapi.Response{
+					"200":     {Description: "Updated session", Content: map[string]openapi.MediaType{types.ContentTypeJSON: {Schema: sessionSchema}}},
+					"default": openapi.ErrorResponse("An error occurred"),
 				},
 			},
 		})

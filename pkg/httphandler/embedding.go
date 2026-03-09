@@ -19,6 +19,7 @@ import (
 // Path: /embedding
 func EmbeddingHandler(manager *manager.Manager) (string, http.HandlerFunc, *openapi.PathItem) {
 	reqSchema, _ := jsonschema.For[schema.EmbeddingRequest]()
+	respSchema, _ := jsonschema.For[schema.EmbeddingResponse]()
 	return "/embedding", func(w http.ResponseWriter, r *http.Request) {
 			switch r.Method {
 			case http.MethodPost:
@@ -45,6 +46,10 @@ func EmbeddingHandler(manager *manager.Manager) (string, http.HandlerFunc, *open
 				RequestBody: &openapi.RequestBody{
 					Required: true,
 					Content:  map[string]openapi.MediaType{types.ContentTypeJSON: {Schema: reqSchema}},
+				},
+				Responses: map[string]openapi.Response{
+					"200":     {Description: "Embedding vectors", Content: map[string]openapi.MediaType{types.ContentTypeJSON: {Schema: respSchema}}},
+					"default": openapi.ErrorResponse("An error occurred"),
 				},
 			},
 		})

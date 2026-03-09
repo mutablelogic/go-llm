@@ -8,6 +8,7 @@ import (
 	schema "github.com/mutablelogic/go-llm/pkg/schema"
 	httprequest "github.com/mutablelogic/go-server/pkg/httprequest"
 	httpresponse "github.com/mutablelogic/go-server/pkg/httpresponse"
+	jsonschema "github.com/mutablelogic/go-server/pkg/jsonschema"
 	openapi "github.com/mutablelogic/go-server/pkg/openapi/schema"
 	types "github.com/mutablelogic/go-server/pkg/types"
 )
@@ -17,6 +18,7 @@ import (
 
 // Path: /tool
 func ToolListHandler(manager *manager.Manager) (string, http.HandlerFunc, *openapi.PathItem) {
+	listRespSchema, _ := jsonschema.For[schema.ListToolResponse]()
 	return "/tool", func(w http.ResponseWriter, r *http.Request) {
 			switch r.Method {
 			case http.MethodGet:
@@ -38,6 +40,14 @@ func ToolListHandler(manager *manager.Manager) (string, http.HandlerFunc, *opena
 			Get: &openapi.Operation{
 				Tags:        []string{"Tool"},
 				Description: "List all tools",
+				Parameters: []openapi.Parameter{
+					{Name: "limit", In: openapi.ParameterInQuery, Description: "Maximum number of tools to return", Schema: queryUintSchema},
+					{Name: "offset", In: openapi.ParameterInQuery, Description: "Offset for pagination", Schema: queryUintSchema},
+				},
+				Responses: map[string]openapi.Response{
+					"200":     {Description: "List of tools", Content: map[string]openapi.MediaType{types.ContentTypeJSON: {Schema: listRespSchema}}},
+					"default": openapi.ErrorResponse("An error occurred"),
+				},
 			},
 		})
 }
@@ -51,6 +61,7 @@ func ToolGetHandler(manager *manager.Manager) (string, http.HandlerFunc, *openap
 		Required:    true,
 		Schema:      pathParamSchema,
 	}
+	toolSchema, _ := jsonschema.For[schema.ToolMeta]()
 	return "/tool/{name}", func(w http.ResponseWriter, r *http.Request) {
 			switch r.Method {
 			case http.MethodGet:
@@ -68,6 +79,10 @@ func ToolGetHandler(manager *manager.Manager) (string, http.HandlerFunc, *openap
 				Tags:        []string{"Tool"},
 				Description: "Get a tool by name",
 				Parameters:  []openapi.Parameter{nameParam},
+				Responses: map[string]openapi.Response{
+					"200":     {Description: "Tool details", Content: map[string]openapi.MediaType{types.ContentTypeJSON: {Schema: toolSchema}}},
+					"default": openapi.ErrorResponse("An error occurred"),
+				},
 			},
 		})
 }

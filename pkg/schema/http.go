@@ -24,8 +24,8 @@ const (
 // ListModelsRequest represents a request to list models
 type ListModelsRequest struct {
 	Provider string `json:"provider,omitempty" help:"Filter by provider name" optional:""`
-	Limit    *uint  `json:"limit,omitempty" help:"Maximum number of models to return"`
-	Offset   uint   `json:"offset,omitempty" help:"Offset for pagination"`
+	Limit    *uint  `json:"limit,omitempty" help:"Maximum number of models to return" default:"100"`
+	Offset   uint   `json:"offset,omitempty" help:"Offset for pagination" default:"0"`
 }
 
 // ListModelsResponse represents a response containing a list of models and providers
@@ -173,8 +173,8 @@ type CreateAgentSessionResponse struct {
 type ListAgentRequest struct {
 	Name    string `json:"name,omitempty" help:"Filter by agent name" optional:""`
 	Version *uint  `json:"version,omitempty" help:"Filter by version number (requires name)" optional:""`
-	Limit   *uint  `json:"limit,omitempty" help:"Maximum number of agents to return"`
-	Offset  uint   `json:"offset,omitempty" help:"Offset for pagination"`
+	Limit   *uint  `json:"limit,omitempty" help:"Maximum number of agents to return" default:"100"`
+	Offset  uint   `json:"offset,omitempty" help:"Offset for pagination" default:"0"`
 }
 
 // ListAgentResponse represents a response containing a list of agents
@@ -187,8 +187,8 @@ type ListAgentResponse struct {
 
 // ListSessionRequest represents a request to list sessions
 type ListSessionRequest struct {
-	Limit  *uint    `json:"limit,omitempty" help:"Maximum number of sessions to return"`
-	Offset uint     `json:"offset,omitempty" help:"Offset for pagination"`
+	Limit  *uint    `json:"limit,omitempty" help:"Maximum number of sessions to return" default:"100"`
+	Offset uint     `json:"offset,omitempty" help:"Offset for pagination" default:"0"`
 	Label  []string `json:"label,omitempty" help:"Filter by labels (key:value)"`
 }
 
@@ -202,8 +202,8 @@ type ListSessionResponse struct {
 
 // ListToolRequest represents a request to list tools
 type ListToolRequest struct {
-	Limit  *uint `json:"limit,omitempty" help:"Maximum number of tools to return"`
-	Offset uint  `json:"offset,omitempty" help:"Offset for pagination"`
+	Limit  *uint `json:"limit,omitempty" help:"Maximum number of tools to return" default:"100"`
+	Offset uint  `json:"offset,omitempty" help:"Offset for pagination" default:"0"`
 }
 
 // ListToolResponse represents a response containing a list of tools
@@ -218,8 +218,8 @@ type ListToolResponse struct {
 type ListConnectorsRequest struct {
 	Namespace string `json:"namespace,omitempty" help:"Filter by namespace" optional:""`
 	Enabled   *bool  `json:"enabled,omitempty" help:"Filter by enabled state" optional:""`
-	Limit     *uint  `json:"limit,omitempty" help:"Maximum number of connectors to return"`
-	Offset    uint   `json:"offset,omitempty" help:"Offset for pagination"`
+	Limit     *uint  `json:"limit,omitempty" help:"Maximum number of connectors to return" default:"100"`
+	Offset    uint   `json:"offset,omitempty" help:"Offset for pagination" default:"0"`
 }
 
 // ListConnectorsResponse represents a response containing a list of MCP connectors.

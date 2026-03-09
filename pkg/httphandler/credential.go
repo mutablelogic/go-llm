@@ -67,6 +67,10 @@ func CredentialHandler(manager *manager.Manager) (string, http.HandlerFunc, *ope
 				Tags:        []string{"Credential"},
 				Description: "Get a credential by server URL",
 				Parameters:  []openapi.Parameter{urlParam},
+				Responses: map[string]openapi.Response{
+					"200":     {Description: "Credential details", Content: map[string]openapi.MediaType{types.ContentTypeJSON: {Schema: credSchema}}},
+					"default": openapi.ErrorResponse("An error occurred"),
+				},
 			},
 			Post: &openapi.Operation{
 				Tags:        []string{"Credential"},
@@ -76,11 +80,19 @@ func CredentialHandler(manager *manager.Manager) (string, http.HandlerFunc, *ope
 					Required: true,
 					Content:  map[string]openapi.MediaType{types.ContentTypeJSON: {Schema: credSchema}},
 				},
+				Responses: map[string]openapi.Response{
+					"204":     {Description: "Credential stored"},
+					"default": openapi.ErrorResponse("An error occurred"),
+				},
 			},
 			Delete: &openapi.Operation{
 				Tags:        []string{"Credential"},
 				Description: "Delete a credential by server URL",
 				Parameters:  []openapi.Parameter{urlParam},
+				Responses: map[string]openapi.Response{
+					"204":     {Description: "Credential deleted"},
+					"default": openapi.ErrorResponse("An error occurred"),
+				},
 			},
 		})
 }

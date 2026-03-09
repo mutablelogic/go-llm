@@ -21,6 +21,7 @@ import (
 // Path: /chat
 func ChatHandler(manager *manager.Manager) (string, http.HandlerFunc, *openapi.PathItem) {
 	reqSchema, _ := jsonschema.For[schema.ChatRequest]()
+	respSchema, _ := jsonschema.For[schema.ChatResponse]()
 	return "/chat", func(w http.ResponseWriter, r *http.Request) {
 			switch r.Method {
 			case http.MethodPost:
@@ -57,6 +58,10 @@ func ChatHandler(manager *manager.Manager) (string, http.HandlerFunc, *openapi.P
 				RequestBody: &openapi.RequestBody{
 					Required: true,
 					Content:  map[string]openapi.MediaType{types.ContentTypeJSON: {Schema: reqSchema}},
+				},
+				Responses: map[string]openapi.Response{
+					"200":     {Description: "Model response", Content: map[string]openapi.MediaType{types.ContentTypeJSON: {Schema: respSchema}}},
+					"default": openapi.ErrorResponse("An error occurred"),
 				},
 			},
 		})

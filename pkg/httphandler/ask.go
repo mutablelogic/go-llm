@@ -19,6 +19,7 @@ import (
 // Path: /ask
 func AskHandler(manager *manager.Manager) (string, http.HandlerFunc, *openapi.PathItem) {
 	reqSchema, _ := jsonschema.For[schema.AskRequest]()
+	respSchema, _ := jsonschema.For[schema.AskResponse]()
 	return "/ask", func(w http.ResponseWriter, r *http.Request) {
 			switch r.Method {
 			case http.MethodPost:
@@ -52,6 +53,10 @@ func AskHandler(manager *manager.Manager) (string, http.HandlerFunc, *openapi.Pa
 				RequestBody: &openapi.RequestBody{
 					Required: true,
 					Content:  map[string]openapi.MediaType{types.ContentTypeJSON: {Schema: reqSchema}},
+				},
+				Responses: map[string]openapi.Response{
+					"200":     {Description: "Model response", Content: map[string]openapi.MediaType{types.ContentTypeJSON: {Schema: respSchema}}},
+					"default": openapi.ErrorResponse("An error occurred"),
 				},
 			},
 		})

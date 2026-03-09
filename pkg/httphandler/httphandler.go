@@ -21,8 +21,17 @@ const (
 	PathSeparator = "/"
 )
 
-// pathParamSchema is the JSON schema for string path parameters.
+// pathParamSchema is the JSON schema for string path/query parameters.
 var pathParamSchema, _ = jsonschema.For[string]()
+
+// queryUintSchema is the JSON schema for unsigned integer query parameters.
+var queryUintSchema, _ = jsonschema.For[uint]()
+
+// queryBoolSchema is the JSON schema for boolean query parameters.
+var queryBoolSchema, _ = jsonschema.For[bool]()
+
+// queryStringArraySchema is the JSON schema for string array query parameters.
+var queryStringArraySchema, _ = jsonschema.For[[]string]()
 
 ///////////////////////////////////////////////////////////////////////////////
 // TYPES

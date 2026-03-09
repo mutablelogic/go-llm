@@ -19,6 +19,7 @@ import (
 
 // Path: /connector
 func ConnectorListHandler(manager *manager.Manager) (string, http.HandlerFunc, *openapi.PathItem) {
+	listRespSchema, _ := jsonschema.For[schema.ListConnectorsResponse]()
 	return "/connector", func(w http.ResponseWriter, r *http.Request) {
 			switch r.Method {
 			case http.MethodGet:
@@ -40,6 +41,16 @@ func ConnectorListHandler(manager *manager.Manager) (string, http.HandlerFunc, *
 			Get: &openapi.Operation{
 				Tags:        []string{"Connector"},
 				Description: "List registered MCP server connectors",
+				Parameters: []openapi.Parameter{
+					{Name: "namespace", In: openapi.ParameterInQuery, Description: "Filter by namespace", Schema: pathParamSchema},
+					{Name: "enabled", In: openapi.ParameterInQuery, Description: "Filter by enabled state", Schema: queryBoolSchema},
+					{Name: "limit", In: openapi.ParameterInQuery, Description: "Maximum number of connectors to return", Schema: queryUintSchema},
+					{Name: "offset", In: openapi.ParameterInQuery, Description: "Offset for pagination", Schema: queryUintSchema},
+				},
+				Responses: map[string]openapi.Response{
+					"200":     {Description: "List of connectors", Content: map[string]openapi.MediaType{types.ContentTypeJSON: {Schema: listRespSchema}}},
+					"default": openapi.ErrorResponse("An error occurred"),
+				},
 			},
 		})
 }
@@ -54,6 +65,7 @@ func ConnectorHandler(manager *manager.Manager) (string, http.HandlerFunc, *open
 		Schema:      pathParamSchema,
 	}
 	connectorMetaSchema, _ := jsonschema.For[schema.ConnectorMeta]()
+	connectorSchema, _ := jsonschema.For[schema.Connector]()
 	return "/connector/{url}", func(w http.ResponseWriter, r *http.Request) {
 			rawURL, err := url.PathUnescape(r.PathValue("url"))
 			if err != nil {
@@ -106,6 +118,10 @@ func ConnectorHandler(manager *manager.Manager) (string, http.HandlerFunc, *open
 				Tags:        []string{"Connector"},
 				Description: "Get a registered MCP server connector by URL",
 				Parameters:  []openapi.Parameter{urlParam},
+				Responses: map[string]openapi.Response{
+					"200":     {Description: "Connector details", Content: map[string]openapi.MediaType{types.ContentTypeJSON: {Schema: connectorSchema}}},
+					"default": openapi.ErrorResponse("An error occurred"),
+				},
 			},
 			Post: &openapi.Operation{
 				Tags:        []string{"Connector"},
@@ -114,6 +130,10 @@ func ConnectorHandler(manager *manager.Manager) (string, http.HandlerFunc, *open
 				RequestBody: &openapi.RequestBody{
 					Required: true,
 					Content:  map[string]openapi.MediaType{types.ContentTypeJSON: {Schema: connectorMetaSchema}},
+				},
+				Responses: map[string]openapi.Response{
+					"201":     {Description: "Connector registered", Content: map[string]openapi.MediaType{types.ContentTypeJSON: {Schema: connectorSchema}}},
+					"default": openapi.ErrorResponse("An error occurred"),
 				},
 			},
 			Patch: &openapi.Operation{
@@ -124,11 +144,19 @@ func ConnectorHandler(manager *manager.Manager) (string, http.HandlerFunc, *open
 					Required: true,
 					Content:  map[string]openapi.MediaType{types.ContentTypeJSON: {Schema: connectorMetaSchema}},
 				},
+				Responses: map[string]openapi.Response{
+					"200":     {Description: "Updated connector", Content: map[string]openapi.MediaType{types.ContentTypeJSON: {Schema: connectorSchema}}},
+					"default": openapi.ErrorResponse("An error occurred"),
+				},
 			},
 			Delete: &openapi.Operation{
 				Tags:        []string{"Connector"},
 				Description: "Delete a registered MCP server connector",
 				Parameters:  []openapi.Parameter{urlParam},
+				Responses: map[string]openapi.Response{
+					"204":     {Description: "Connector deleted"},
+					"default": openapi.ErrorResponse("An error occurred"),
+				},
 			},
 		})
 }
