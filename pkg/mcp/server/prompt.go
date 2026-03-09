@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"encoding/json"
+	"sort"
 
 	// Packages
 	sdkmcp "github.com/modelcontextprotocol/go-sdk/mcp"
@@ -106,7 +107,13 @@ func argsFromJSONSchema(s schema.JSONSchema) []*sdkmcp.PromptArgument {
 	}
 
 	args := make([]*sdkmcp.PromptArgument, 0, len(doc.Properties))
-	for name, prop := range doc.Properties {
+	names := make([]string, 0, len(doc.Properties))
+	for name := range doc.Properties {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	for _, name := range names {
+		prop := doc.Properties[name]
 		desc := prop.Description
 		if desc == "" {
 			desc = prop.Title

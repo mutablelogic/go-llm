@@ -8,7 +8,7 @@ import (
 
 	// Packages
 	sdkmcp "github.com/modelcontextprotocol/go-sdk/mcp"
-	"github.com/mutablelogic/go-llm"
+	llm "github.com/mutablelogic/go-llm"
 	schema "github.com/mutablelogic/go-llm/pkg/schema"
 )
 
@@ -82,12 +82,14 @@ func sdkToolFromTool(t llm.Tool) (*sdkmcp.Tool, sdkmcp.ToolHandler, error) {
 
 	handler := sdkmcp.ToolHandler(func(ctx context.Context, req *sdkmcp.CallToolRequest) (*sdkmcp.CallToolResult, error) {
 		// Inject a per-call Session so t.Run can call SessionFromContext(ctx).
-		ctx = withSession(ctx, req.Session, t.Name(), req.Params.GetProgressToken())
-
+		var progressToken any
 		var input json.RawMessage
 		if req.Params != nil {
+			progressToken = req.Params.GetProgressToken()
 			input = req.Params.Arguments
 		}
+		ctx = withSession(ctx, req.Session, t.Name(), progressToken)
+
 		out, err := t.Run(ctx, input)
 		if err != nil {
 			result := &sdkmcp.CallToolResult{}
