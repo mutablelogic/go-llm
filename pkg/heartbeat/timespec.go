@@ -107,6 +107,9 @@ func newFromTime(t time.Time, loc *time.Location) (TimeSpec, error) {
 	if loc == time.UTC {
 		loc = nil
 	}
+	if loc != nil && loc.String() == "Local" {
+		return TimeSpec{}, llm.ErrBadParameter.With("timezone must be a specific IANA name (e.g. Europe/London), not \"Local\"")
+	}
 	return TimeSpec{
 		Year:   types.Ptr(t.Year()),
 		Month:  []int{int(t.Month())},
@@ -124,6 +127,9 @@ func newFromTime(t time.Time, loc *time.Location) (TimeSpec, error) {
 func newFromCron(s string, loc *time.Location) (TimeSpec, error) {
 	if loc == time.UTC {
 		loc = nil
+	}
+	if loc != nil && loc.String() == "Local" {
+		return TimeSpec{}, llm.ErrBadParameter.With("timezone must be a specific IANA name (e.g. Europe/London), not \"Local\"")
 	}
 	fields := strings.Fields(s)
 	if len(fields) != 5 && len(fields) != 6 {
@@ -390,7 +396,7 @@ type timeSpecJSON struct {
 }
 
 // MarshalJSON serialises TimeSpec as {"schedule":"...","timezone":"..."}
-// (timezone field omitted when nil), preserving all information through
+// (timezone field omitted when UTC/unset), preserving all information through
 // a round-trip.
 func (ts TimeSpec) MarshalJSON() ([]byte, error) {
 	var tz string
@@ -427,6 +433,9 @@ func (ts *TimeSpec) UnmarshalJSON(data []byte) error {
 	}
 	var loc *time.Location
 	if j.Timezone != "" {
+		if j.Timezone == "Local" {
+			return llm.ErrBadParameter.With("timezone must be a specific IANA name (e.g. Europe/London), not \"Local\"")
+		}
 		var locErr error
 		loc, locErr = time.LoadLocation(j.Timezone)
 		if locErr != nil {

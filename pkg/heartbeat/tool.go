@@ -44,6 +44,8 @@ func (*addHeartbeat) Name() string { return "add_heartbeat" }
 func (*addHeartbeat) Description() string {
 	return "Schedule a new heartbeat reminder. " +
 		"The message is delivered once the specified time is reached. " +
+		"Always pass a timezone (IANA name, e.g. Europe/London, America/New_York) " +
+		"so the schedule is evaluated in the user's local time. " +
 		"Returns the created heartbeat including its ID."
 }
 
@@ -141,6 +143,8 @@ func (*updateHeartbeat) Name() string { return "update_heartbeat" }
 func (*updateHeartbeat) Description() string {
 	return "Update the message or schedule of an existing heartbeat. " +
 		"Rescheduling a fired heartbeat reactivates it. " +
+		"If changing the schedule, always pass a timezone (IANA name, e.g. Europe/London) " +
+		"so the new schedule is evaluated in the user's local time. " +
 		"Omit any field to leave it unchanged."
 }
 

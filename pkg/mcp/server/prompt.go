@@ -27,6 +27,39 @@ func (s *Server) RemovePrompts(names ...string) {
 	s.server.RemovePrompts(names...)
 }
 
+// NotifyPrompt upserts a no-argument prompt with the given name, title, and
+// body. body is marshalled to JSON and delivered as an embedded resource with
+// MIME type application/json. If a prompt with the same name already exists it
+// is replaced. Every connected client receives a
+// notifications/prompts/list_changed notification so it can discover the update.
+func (s *Server) NotifyPrompt(name, title string, body any) {
+	p := &sdkmcp.Prompt{
+		Name:  name,
+		Title: title,
+	}
+	h := sdkmcp.PromptHandler(func(_ context.Context, _ *sdkmcp.GetPromptRequest) (*sdkmcp.GetPromptResult, error) {
+		raw, err := json.Marshal(body)
+		if err != nil {
+			return nil, err
+		}
+		return &sdkmcp.GetPromptResult{
+			Messages: []*sdkmcp.PromptMessage{
+				{
+					Role: "user",
+					Content: &sdkmcp.EmbeddedResource{
+						Resource: &sdkmcp.ResourceContents{
+							URI:      "heartbeat://" + name,
+							MIMEType: "application/json",
+							Text:     string(raw),
+						},
+					},
+				},
+			},
+		}, nil
+	})
+	s.server.AddPrompt(p, h)
+}
+
 ///////////////////////////////////////////////////////////////////////////////
 // PRIVATE TYPES
 

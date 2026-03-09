@@ -3,6 +3,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -37,16 +38,21 @@ func (cmd *HeartbeatMCPCommand) Run(ctx server.Cmd) error {
 		return err
 	}
 
-	// Create the heartbeat manager
-	mgr, err := heartbeat.New(store)
-	if err != nil {
-		return fmt.Errorf("heartbeat manager: %w", err)
-	}
-
 	// Create the MCP server
 	srv, err := mcpserver.New("heartbeat", version.Version())
 	if err != nil {
 		return fmt.Errorf("mcp server: %w", err)
+	}
+
+	// Create the heartbeat manager; on each fire, upsert a prompt so connected
+	// clients receive notifications/prompts/list_changed automatically.
+	mgr, err := heartbeat.New(store,
+		heartbeat.WithLogger(ctx.Logger()),
+		heartbeat.WithOnFire(func(_ context.Context, h *heartbeat.Heartbeat) {
+			srv.NotifyPrompt("heartbeat:"+h.ID, h.Message, h)
+		}))
+	if err != nil {
+		return fmt.Errorf("heartbeat manager: %w", err)
 	}
 
 	// Register the heartbeat tools with the MCP server

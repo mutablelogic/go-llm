@@ -96,6 +96,8 @@ func (m *Manager) tick(ctx context.Context) {
 	}
 	for _, h := range due {
 		m.logger.Info("heartbeat fired", "id", h.ID, "message", h.Message)
+		// Fire the callback first so last_fired in the payload reflects the
+		// previous occurrence — useful for answering "when did you last remind me?".
 		m.onFire(ctx, h)
 		if err := m.store.MarkFired(h.ID); err != nil {
 			m.logger.Error("heartbeat: failed to mark fired", "id", h.ID, "err", err)

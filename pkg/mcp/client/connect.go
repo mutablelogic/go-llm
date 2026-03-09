@@ -93,7 +93,7 @@ func (c *Client) tryConnect(ctx context.Context, recorder *transport.Recorder, t
 				attrs = append(attrs, slog.String("logger", p.Logger))
 			}
 			attrs = append(attrs, slog.Any("data", p.Data))
-			slog.Default().Info("server log", attrs...)
+			c.logger.Info("server log", attrs...)
 		},
 		ProgressNotificationHandler: func(_ context.Context, req *sdkmcp.ProgressNotificationClientRequest) {
 			p := req.Params
@@ -105,22 +105,45 @@ func (c *Client) tryConnect(ctx context.Context, recorder *transport.Recorder, t
 					msg = fmt.Sprintf("%.0f", p.Progress)
 				}
 			}
-			slog.Default().Info("server progress", "token", p.ProgressToken, "message", msg)
+			c.logger.Info("server progress", "token", p.ProgressToken, "message", msg)
 		},
 		ToolListChangedHandler: func(_ context.Context, _ *sdkmcp.ToolListChangedRequest) {
-			slog.Default().Info("server notification: tool list changed")
+			c.logger.Info("server notification: tool list changed")
 		},
-		PromptListChangedHandler: func(_ context.Context, _ *sdkmcp.PromptListChangedRequest) {
-			slog.Default().Info("server notification: prompt list changed")
+		PromptListChangedHandler: func(ctx context.Context, _ *sdkmcp.PromptListChangedRequest) {
+			c.logger.Info("server notification: prompt list changed")
+			sess, err := c.getSession()
+			if err != nil {
+				return
+			}
+			for p, err := range sess.Prompts(ctx, nil) {
+				if err != nil {
+					c.logger.Warn("prompt list changed: listing prompts", "err", err)
+					return
+				}
+				res, err := sess.GetPrompt(ctx, &sdkmcp.GetPromptParams{Name: p.Name})
+				if err != nil {
+					c.logger.Warn("prompt list changed: get prompt", "name", p.Name, "err", err)
+					continue
+				}
+				for _, msg := range res.Messages {
+					switch content := msg.Content.(type) {
+					case *sdkmcp.TextContent:
+						c.logger.Info("prompt fired", "name", p.Name, "title", p.Title, "text", content.Text)
+					default:
+						c.logger.Info("prompt fired", "name", p.Name, "title", p.Title, "content", msg.Content)
+					}
+				}
+			}
 		},
 		ResourceListChangedHandler: func(_ context.Context, _ *sdkmcp.ResourceListChangedRequest) {
-			slog.Default().Info("server notification: resource list changed")
+			c.logger.Info("server notification: resource list changed")
 		},
 		ResourceUpdatedHandler: func(_ context.Context, req *sdkmcp.ResourceUpdatedNotificationRequest) {
-			slog.Default().Info("server notification: resource updated", "uri", req.Params.URI)
+			c.logger.Info("server notification: resource updated", "uri", req.Params.URI)
 		},
 		ElicitationCompleteHandler: func(_ context.Context, req *sdkmcp.ElicitationCompleteNotificationRequest) {
-			slog.Default().Info("server notification: elicitation complete", "id", req.Params.ElicitationID)
+			c.logger.Info("server notification: elicitation complete", "id", req.Params.ElicitationID)
 		},
 	})
 	session, err := mc.Connect(ctx, t, nil)

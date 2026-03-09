@@ -10,6 +10,7 @@ import (
 	sdkmcp "github.com/modelcontextprotocol/go-sdk/mcp"
 	llm "github.com/mutablelogic/go-llm"
 	schema "github.com/mutablelogic/go-llm/pkg/schema"
+	types "github.com/mutablelogic/go-server/pkg/types"
 )
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -128,6 +129,14 @@ func contentFromAny(toolName string, v any) (sdkmcp.Content, error) {
 	out, err := json.Marshal(v)
 	if err != nil {
 		return nil, fmt.Errorf("tool %q: marshal output: %w", toolName, err)
+	}
+	// Tag JSON objects/arrays with a content-type so the client can decode
+	// them back as json.RawMessage rather than a plain string.
+	if len(out) > 0 && (out[0] == '{' || out[0] == '[') {
+		return &sdkmcp.TextContent{
+			Text: string(out),
+			Meta: sdkmcp.Meta{types.ContentTypeHeader: types.ContentTypeJSON},
+		}, nil
 	}
 	return &sdkmcp.TextContent{Text: string(out)}, nil
 }

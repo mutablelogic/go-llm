@@ -2,6 +2,7 @@ package manager
 
 import (
 	"context"
+	"log/slog"
 	"strings"
 
 	// Packages
@@ -28,12 +29,29 @@ type Opt func(*Manager) error
 // such as bearer token injection from a credential store.
 type ConnectorFactory func(ctx context.Context, url string, extraOpts ...client.ClientOpt) (llm.Connector, error)
 
+// WithLogger sets the logger used for connector state and diagnostic messages.
+// If l is nil, slog.Default() is used.
+func WithLogger(l *slog.Logger) Opt {
+	return func(m *Manager) error {
+		if l != nil {
+			m.logger = l
+		}
+		return nil
+	}
+}
+
 // MCPConnectorFactory returns a ConnectorFactory that creates MCP SSE clients.
 // name and version are reported to the server during the MCP initialisation handshake.
+// logger is forwarded to each created client for notification/diagnostic output.
 // staticOpts are captured at construction time and applied to every connector created.
-func MCPConnectorFactory(name, version string, staticOpts ...client.ClientOpt) ConnectorFactory {
+func MCPConnectorFactory(name, version string, logger *slog.Logger, staticOpts ...client.ClientOpt) ConnectorFactory {
 	return func(ctx context.Context, url string, extraOpts ...client.ClientOpt) (llm.Connector, error) {
-		return mcpclient.New(url, name, version, nil, append(staticOpts, extraOpts...)...)
+		c, err := mcpclient.New(url, name, version, nil, append(staticOpts, extraOpts...)...)
+		if err != nil {
+			return nil, err
+		}
+		mcpclient.OptLogger(logger)(c)
+		return c, nil
 	}
 }
 

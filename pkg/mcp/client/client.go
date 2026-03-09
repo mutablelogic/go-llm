@@ -2,6 +2,7 @@ package client
 
 import (
 	"context"
+	"log/slog"
 	"sync"
 
 	// Packages
@@ -23,6 +24,7 @@ type Client struct {
 	authFn  func(context.Context, string) error
 	session *sdkmcp.ClientSession
 	mu      sync.Mutex
+	logger  *slog.Logger
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -51,8 +53,19 @@ func New(url, name, version string, authFn func(context.Context, string) error, 
 		c.Implementation = sdkmcp.Implementation{Name: name, Version: version}
 		c.url = url
 		c.authFn = authFn
+		c.logger = slog.Default()
 	}
 
 	// Return the client; caller should call Run to connect and drive the session.
 	return c, nil
+}
+
+// OptLogger sets the logger used for connection-level notifications and
+// diagnostics. If l is nil, slog.Default() is used.
+func OptLogger(l *slog.Logger) func(*Client) {
+	return func(c *Client) {
+		if l != nil {
+			c.logger = l
+		}
+	}
 }
