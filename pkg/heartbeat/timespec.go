@@ -412,6 +412,10 @@ func (ts TimeSpec) MarshalJSON() ([]byte, error) {
 // UnmarshalJSON accepts the canonical {"schedule":"...","timezone":"..."}
 // envelope.  For backward-compatibility it also accepts a bare cron/RFC3339
 // string.
+//
+// Note: unlike NewTimeSpec, this does NOT validate that the schedule has a
+// future occurrence.  Stored heartbeats must survive round-trips even after
+// their scheduled time has passed (e.g. a fired one-shot).
 func (ts *TimeSpec) UnmarshalJSON(data []byte) error {
 	if len(data) > 0 && data[0] == '"' {
 		// Legacy bare-string form.
@@ -419,17 +423,15 @@ func (ts *TimeSpec) UnmarshalJSON(data []byte) error {
 		if err := json.Unmarshal(data, &s); err != nil {
 			return err
 		}
-		parsed, err := NewTimeSpec(s, nil)
-		if err != nil {
-			return err
-		}
-		*ts = parsed
-		return nil
+		return ts.unmarshalSchedule(s, nil)
 	}
 	// Object form: expect {"schedule":"...","timezone":"..."}.
 	var j timeSpecJSON
 	if err := json.Unmarshal(data, &j); err != nil {
 		return err
+	}
+	if j.Schedule == "" {
+		return llm.ErrBadParameter.With("schedule field is required")
 	}
 	var loc *time.Location
 	if j.Timezone != "" {
@@ -442,7 +444,21 @@ func (ts *TimeSpec) UnmarshalJSON(data []byte) error {
 			return llm.ErrBadParameter.Withf("unknown timezone %q: %v", j.Timezone, locErr)
 		}
 	}
-	parsed, err := NewTimeSpec(j.Schedule, loc)
+	return ts.unmarshalSchedule(j.Schedule, loc)
+}
+
+// unmarshalSchedule parses a schedule string (RFC3339 or cron) with the given
+// location into ts, without validating future occurrence.
+func (ts *TimeSpec) unmarshalSchedule(s string, loc *time.Location) error {
+	var (
+		parsed TimeSpec
+		err    error
+	)
+	if t, parseErr := time.Parse(time.RFC3339, s); parseErr == nil {
+		parsed, err = newFromTime(t, loc)
+	} else {
+		parsed, err = newFromCron(s, loc)
+	}
 	if err != nil {
 		return err
 	}

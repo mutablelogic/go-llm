@@ -376,3 +376,67 @@ func Test_timespec_037(t *testing.T) {
 	assert.Equal("America/New_York", ts2.Loc.String())
 	assert.Equal("0 9 * * 1-5", ts2.String())
 }
+
+func Test_timespec_038(t *testing.T) {
+	// UnmarshalJSON: legacy bare-string form round-trips correctly
+	assert := assert.New(t)
+	var ts heartbeat.TimeSpec
+	assert.NoError(ts.UnmarshalJSON([]byte(`"0 9 * * 1-5"`)))
+	assert.Equal("0 9 * * 1-5", ts.String())
+	assert.Nil(ts.Loc)
+}
+
+func Test_timespec_039(t *testing.T) {
+	// UnmarshalJSON: "Local" timezone rejected
+	assert := assert.New(t)
+	var ts heartbeat.TimeSpec
+	err := ts.UnmarshalJSON([]byte(`{"schedule":"* * * * *","timezone":"Local"}`))
+	assert.Error(err)
+}
+
+func Test_timespec_040(t *testing.T) {
+	// UnmarshalJSON: unknown timezone rejected
+	assert := assert.New(t)
+	var ts heartbeat.TimeSpec
+	err := ts.UnmarshalJSON([]byte(`{"schedule":"* * * * *","timezone":"Not/ATimezone"}`))
+	assert.Error(err)
+}
+
+func Test_timespec_041(t *testing.T) {
+	// UnmarshalJSON: no timezone field → Loc stays nil
+	assert := assert.New(t)
+	var ts heartbeat.TimeSpec
+	assert.NoError(ts.UnmarshalJSON([]byte(`{"schedule":"* * * * *"}`)))
+	assert.Nil(ts.Loc)
+	assert.Equal("* * * * *", ts.String())
+}
+
+func Test_timespec_042(t *testing.T) {
+	// NewTimeSpec with "Local" location: error
+	assert := assert.New(t)
+	_, err := heartbeat.NewTimeSpec("* * * * *", time.Local)
+	assert.Error(err)
+}
+
+func Test_timespec_043(t *testing.T) {
+	// NewTimeSpec time.Time whose Location() is time.Local: error
+	assert := assert.New(t)
+	localTime := time.Now().In(time.Local)
+	_, err := heartbeat.NewTimeSpec(localTime.Add(time.Hour), nil) // loc=nil → uses t.Location() = Local
+	assert.Error(err)
+}
+
+func Test_timespec_044(t *testing.T) {
+	// UnmarshalJSON must NOT validate future occurrence.
+	// A one-shot schedule for a time in the past must deserialise without error
+	// so that fired heartbeats can be read back from disk.
+	assert := assert.New(t)
+	past := time.Now().UTC().Add(-time.Hour)
+	pastRFC := past.Format(time.RFC3339)
+	data := []byte(`{"schedule":"` + pastRFC + `"}`)
+	var ts heartbeat.TimeSpec
+	assert.NoError(ts.UnmarshalJSON(data))
+	// The parsed cron should represent that specific past minute.
+	assert.Equal(past.UTC().Minute(), ts.Minute[0])
+	assert.Equal(past.UTC().Hour(), ts.Hour[0])
+}
