@@ -11,6 +11,7 @@ import (
 	llm "github.com/mutablelogic/go-llm"
 	opt "github.com/mutablelogic/go-llm/pkg/opt"
 	schema "github.com/mutablelogic/go-llm/pkg/schema"
+	types "github.com/mutablelogic/go-server/pkg/types"
 	assert "github.com/stretchr/testify/assert"
 )
 
@@ -21,7 +22,7 @@ func Test_generateRequest_001(t *testing.T) {
 	// Test minimal request with a single user message
 	assert := assert.New(t)
 
-	msg := &schema.Message{Role: "user", Content: []schema.ContentBlock{{Text: strPtr("Hello")}}}
+	msg := &schema.Message{Role: "user", Content: []schema.ContentBlock{{Text: types.Ptr("Hello")}}}
 	session := schema.Conversation{msg}
 	o, err := opt.Apply()
 	assert.NoError(err)
@@ -51,7 +52,7 @@ func Test_generateRequest_002(t *testing.T) {
 	// Test system prompt is prepended as a system role message
 	assert := assert.New(t)
 
-	msg := &schema.Message{Role: "user", Content: []schema.ContentBlock{{Text: strPtr("Hi")}}}
+	msg := &schema.Message{Role: "user", Content: []schema.ContentBlock{{Text: types.Ptr("Hi")}}}
 	session := schema.Conversation{msg}
 	o, err := opt.Apply(WithSystemPrompt("You are a helpful assistant."))
 	assert.NoError(err)
@@ -68,7 +69,7 @@ func Test_generateRequest_003(t *testing.T) {
 	// Test temperature option
 	assert := assert.New(t)
 
-	msg := &schema.Message{Role: "user", Content: []schema.ContentBlock{{Text: strPtr("Hi")}}}
+	msg := &schema.Message{Role: "user", Content: []schema.ContentBlock{{Text: types.Ptr("Hi")}}}
 	session := schema.Conversation{msg}
 	o, err := opt.Apply(WithTemperature(0.7))
 	assert.NoError(err)
@@ -83,7 +84,7 @@ func Test_generateRequest_004(t *testing.T) {
 	// Test max tokens option overrides default
 	assert := assert.New(t)
 
-	msg := &schema.Message{Role: "user", Content: []schema.ContentBlock{{Text: strPtr("Hi")}}}
+	msg := &schema.Message{Role: "user", Content: []schema.ContentBlock{{Text: types.Ptr("Hi")}}}
 	session := schema.Conversation{msg}
 	o, err := opt.Apply(WithMaxTokens(4096))
 	assert.NoError(err)
@@ -98,7 +99,7 @@ func Test_generateRequest_005(t *testing.T) {
 	// Test top-p option
 	assert := assert.New(t)
 
-	msg := &schema.Message{Role: "user", Content: []schema.ContentBlock{{Text: strPtr("Hi")}}}
+	msg := &schema.Message{Role: "user", Content: []schema.ContentBlock{{Text: types.Ptr("Hi")}}}
 	session := schema.Conversation{msg}
 	o, err := opt.Apply(WithTopP(0.95))
 	assert.NoError(err)
@@ -113,7 +114,7 @@ func Test_generateRequest_006(t *testing.T) {
 	// Test stop sequences option
 	assert := assert.New(t)
 
-	msg := &schema.Message{Role: "user", Content: []schema.ContentBlock{{Text: strPtr("Hi")}}}
+	msg := &schema.Message{Role: "user", Content: []schema.ContentBlock{{Text: types.Ptr("Hi")}}}
 	session := schema.Conversation{msg}
 	o, err := opt.Apply(WithStopSequences("STOP", "END"))
 	assert.NoError(err)
@@ -127,7 +128,7 @@ func Test_generateRequest_007(t *testing.T) {
 	// Test seed option
 	assert := assert.New(t)
 
-	msg := &schema.Message{Role: "user", Content: []schema.ContentBlock{{Text: strPtr("Hi")}}}
+	msg := &schema.Message{Role: "user", Content: []schema.ContentBlock{{Text: types.Ptr("Hi")}}}
 	session := schema.Conversation{msg}
 	o, err := opt.Apply(WithSeed(42))
 	assert.NoError(err)
@@ -142,7 +143,7 @@ func Test_generateRequest_008(t *testing.T) {
 	// Test presence and frequency penalty options
 	assert := assert.New(t)
 
-	msg := &schema.Message{Role: "user", Content: []schema.ContentBlock{{Text: strPtr("Hi")}}}
+	msg := &schema.Message{Role: "user", Content: []schema.ContentBlock{{Text: types.Ptr("Hi")}}}
 	session := schema.Conversation{msg}
 	o, err := opt.Apply(WithPresencePenalty(0.5), WithFrequencyPenalty(-1.0))
 	assert.NoError(err)
@@ -159,7 +160,7 @@ func Test_generateRequest_009(t *testing.T) {
 	// Test all generation options combined
 	assert := assert.New(t)
 
-	msg := &schema.Message{Role: "user", Content: []schema.ContentBlock{{Text: strPtr("Hi")}}}
+	msg := &schema.Message{Role: "user", Content: []schema.ContentBlock{{Text: types.Ptr("Hi")}}}
 	session := schema.Conversation{msg}
 	o, err := opt.Apply(
 		WithSystemPrompt("Be concise."),
@@ -196,7 +197,7 @@ func Test_generateRequest_010(t *testing.T) {
 	// Test request serializes to valid JSON with expected fields
 	assert := assert.New(t)
 
-	msg := &schema.Message{Role: "user", Content: []schema.ContentBlock{{Text: strPtr("Test")}}}
+	msg := &schema.Message{Role: "user", Content: []schema.ContentBlock{{Text: types.Ptr("Test")}}}
 	session := schema.Conversation{msg}
 	o, err := opt.Apply(WithSystemPrompt("System"), WithTemperature(0.5))
 	assert.NoError(err)
@@ -220,9 +221,9 @@ func Test_generateRequest_011(t *testing.T) {
 	// Test multi-turn session produces correct messages
 	assert := assert.New(t)
 
-	user1 := &schema.Message{Role: "user", Content: []schema.ContentBlock{{Text: strPtr("Hello")}}}
-	asst1 := &schema.Message{Role: "assistant", Content: []schema.ContentBlock{{Text: strPtr("Hi there!")}}}
-	user2 := &schema.Message{Role: "user", Content: []schema.ContentBlock{{Text: strPtr("How are you?")}}}
+	user1 := &schema.Message{Role: "user", Content: []schema.ContentBlock{{Text: types.Ptr("Hello")}}}
+	asst1 := &schema.Message{Role: "assistant", Content: []schema.ContentBlock{{Text: types.Ptr("Hi there!")}}}
+	user2 := &schema.Message{Role: "user", Content: []schema.ContentBlock{{Text: types.Ptr("How are you?")}}}
 	session := schema.Conversation{user1, asst1, user2}
 	o, err := opt.Apply()
 	assert.NoError(err)
@@ -239,7 +240,7 @@ func Test_generateRequest_012(t *testing.T) {
 	// Test stream flag is not set by generateRequestFromOpts — it is set by generate()
 	assert := assert.New(t)
 
-	msg := &schema.Message{Role: "user", Content: []schema.ContentBlock{{Text: strPtr("Hi")}}}
+	msg := &schema.Message{Role: "user", Content: []schema.ContentBlock{{Text: types.Ptr("Hi")}}}
 	session := schema.Conversation{msg}
 	o, err := opt.Apply()
 	assert.NoError(err)
@@ -253,7 +254,7 @@ func Test_generateRequest_013(t *testing.T) {
 	// Test tool choice auto
 	assert := assert.New(t)
 
-	msg := &schema.Message{Role: "user", Content: []schema.ContentBlock{{Text: strPtr("Hi")}}}
+	msg := &schema.Message{Role: "user", Content: []schema.ContentBlock{{Text: types.Ptr("Hi")}}}
 	session := schema.Conversation{msg}
 	o, err := opt.Apply(WithToolChoiceAuto())
 	assert.NoError(err)
@@ -267,7 +268,7 @@ func Test_generateRequest_014(t *testing.T) {
 	// Test tool choice none
 	assert := assert.New(t)
 
-	msg := &schema.Message{Role: "user", Content: []schema.ContentBlock{{Text: strPtr("Hi")}}}
+	msg := &schema.Message{Role: "user", Content: []schema.ContentBlock{{Text: types.Ptr("Hi")}}}
 	session := schema.Conversation{msg}
 	o, err := opt.Apply(WithToolChoiceNone())
 	assert.NoError(err)
@@ -281,7 +282,7 @@ func Test_generateRequest_015(t *testing.T) {
 	// Test tool choice any
 	assert := assert.New(t)
 
-	msg := &schema.Message{Role: "user", Content: []schema.ContentBlock{{Text: strPtr("Hi")}}}
+	msg := &schema.Message{Role: "user", Content: []schema.ContentBlock{{Text: types.Ptr("Hi")}}}
 	session := schema.Conversation{msg}
 	o, err := opt.Apply(WithToolChoiceAny())
 	assert.NoError(err)
@@ -301,7 +302,7 @@ func Test_generateRequest_016(t *testing.T) {
 		"age":  {Type: "integer"},
 	}
 
-	msg := &schema.Message{Role: "user", Content: []schema.ContentBlock{{Text: strPtr("Hi")}}}
+	msg := &schema.Message{Role: "user", Content: []schema.ContentBlock{{Text: types.Ptr("Hi")}}}
 	session := schema.Conversation{msg}
 	o, err := opt.Apply(WithJSONOutput(jsonSchema))
 	assert.NoError(err)
@@ -327,7 +328,7 @@ func Test_generateRequest_017(t *testing.T) {
 	// Test safe prompt option
 	assert := assert.New(t)
 
-	msg := &schema.Message{Role: "user", Content: []schema.ContentBlock{{Text: strPtr("Hi")}}}
+	msg := &schema.Message{Role: "user", Content: []schema.ContentBlock{{Text: types.Ptr("Hi")}}}
 	session := schema.Conversation{msg}
 	o, err := opt.Apply(WithSafePrompt())
 	assert.NoError(err)
@@ -341,7 +342,7 @@ func Test_generateRequest_018(t *testing.T) {
 	// Test no optional fields in JSON when no options set (except max_tokens default)
 	assert := assert.New(t)
 
-	msg := &schema.Message{Role: "user", Content: []schema.ContentBlock{{Text: strPtr("Hi")}}}
+	msg := &schema.Message{Role: "user", Content: []schema.ContentBlock{{Text: types.Ptr("Hi")}}}
 	session := schema.Conversation{msg}
 	o, err := opt.Apply()
 	assert.NoError(err)
@@ -438,7 +439,7 @@ func Test_processResponse_001(t *testing.T) {
 	c, err := New("test-key")
 	assert.NoError(err)
 
-	msg := &schema.Message{Role: "user", Content: []schema.ContentBlock{{Text: strPtr("Hi")}}}
+	msg := &schema.Message{Role: "user", Content: []schema.ContentBlock{{Text: types.Ptr("Hi")}}}
 	session := schema.Conversation{msg}
 
 	response := &chatCompletionResponse{
@@ -474,7 +475,7 @@ func Test_processResponse_002(t *testing.T) {
 	c, err := New("test-key")
 	assert.NoError(err)
 
-	msg := &schema.Message{Role: "user", Content: []schema.ContentBlock{{Text: strPtr("Hi")}}}
+	msg := &schema.Message{Role: "user", Content: []schema.ContentBlock{{Text: types.Ptr("Hi")}}}
 	session := schema.Conversation{msg}
 
 	response := &chatCompletionResponse{
@@ -502,7 +503,7 @@ func Test_processResponse_003(t *testing.T) {
 	c, err := New("test-key")
 	assert.NoError(err)
 
-	msg := &schema.Message{Role: "user", Content: []schema.ContentBlock{{Text: strPtr("Hi")}}}
+	msg := &schema.Message{Role: "user", Content: []schema.ContentBlock{{Text: types.Ptr("Hi")}}}
 	session := schema.Conversation{msg}
 
 	response := &chatCompletionResponse{
@@ -527,7 +528,7 @@ func Test_processResponse_004(t *testing.T) {
 	c, err := New("test-key")
 	assert.NoError(err)
 
-	msg := &schema.Message{Role: "user", Content: []schema.ContentBlock{{Text: strPtr("What's the weather?")}}}
+	msg := &schema.Message{Role: "user", Content: []schema.ContentBlock{{Text: types.Ptr("What's the weather?")}}}
 	session := schema.Conversation{msg}
 
 	response := &chatCompletionResponse{
@@ -566,7 +567,7 @@ func Test_processResponse_005(t *testing.T) {
 	c, err := New("test-key")
 	assert.NoError(err)
 
-	msg := &schema.Message{Role: "user", Content: []schema.ContentBlock{{Text: strPtr("Hi")}}}
+	msg := &schema.Message{Role: "user", Content: []schema.ContentBlock{{Text: types.Ptr("Hi")}}}
 	session := schema.Conversation{msg}
 
 	response := &chatCompletionResponse{
@@ -591,7 +592,7 @@ func Test_processResponse_006(t *testing.T) {
 	c, err := New("test-key")
 	assert.NoError(err)
 
-	msg := &schema.Message{Role: "user", Content: []schema.ContentBlock{{Text: strPtr("Hi")}}}
+	msg := &schema.Message{Role: "user", Content: []schema.ContentBlock{{Text: types.Ptr("Hi")}}}
 	session := schema.Conversation{msg}
 
 	response := &chatCompletionResponse{
@@ -620,7 +621,7 @@ func Test_processResponse_007(t *testing.T) {
 	c, err := New("test-key")
 	assert.NoError(err)
 
-	msg := &schema.Message{Role: "user", Content: []schema.ContentBlock{{Text: strPtr("Hi")}}}
+	msg := &schema.Message{Role: "user", Content: []schema.ContentBlock{{Text: types.Ptr("Hi")}}}
 	session := schema.Conversation{msg}
 
 	response := &chatCompletionResponse{}
@@ -637,7 +638,7 @@ func Test_GenerateRequest_001(t *testing.T) {
 	// Test the public GenerateRequest helper
 	assert := assert.New(t)
 
-	msg := &schema.Message{Role: "user", Content: []schema.ContentBlock{{Text: strPtr("Hello")}}}
+	msg := &schema.Message{Role: "user", Content: []schema.ContentBlock{{Text: types.Ptr("Hello")}}}
 	session := schema.Conversation{msg}
 
 	result, err := GenerateRequest("mistral-small-latest", &session, WithTemperature(0.5), WithMaxTokens(100))
@@ -670,7 +671,7 @@ func Test_WithSession_nil_session(t *testing.T) {
 	c, err := New("test-key")
 	assert.NoError(err)
 
-	msg := &schema.Message{Role: "user", Content: []schema.ContentBlock{{Text: strPtr("Hi")}}}
+	msg := &schema.Message{Role: "user", Content: []schema.ContentBlock{{Text: types.Ptr("Hi")}}}
 	_, _, err = c.WithSession(context.TODO(), schema.Model{Name: "test"}, nil, msg)
 	assert.Error(err)
 }
@@ -826,7 +827,3 @@ func Test_generate_005(t *testing.T) {
 
 ///////////////////////////////////////////////////////////////////////////////
 // HELPER
-
-func strPtr(s string) *string {
-	return &s
-}

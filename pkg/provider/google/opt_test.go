@@ -10,7 +10,8 @@ import (
 	llm "github.com/mutablelogic/go-llm"
 	opt "github.com/mutablelogic/go-llm/pkg/opt"
 	schema "github.com/mutablelogic/go-llm/pkg/schema"
-	"github.com/mutablelogic/go-llm/pkg/tool"
+	tool "github.com/mutablelogic/go-llm/pkg/tool"
+	types "github.com/mutablelogic/go-server/pkg/types"
 	assert "github.com/stretchr/testify/assert"
 )
 
@@ -156,7 +157,7 @@ func Test_opt_toolkit_003(t *testing.T) {
 	assert.NoError(err)
 	defer tk.Close()
 
-	msg := &schema.Message{Role: "user", Content: []schema.ContentBlock{{Text: strPtr("Hi")}}}
+	msg := &schema.Message{Role: "user", Content: []schema.ContentBlock{{Text: types.Ptr("Hi")}}}
 	session := schema.Conversation{msg}
 	o, err := opt.Apply(tool.WithToolkit(tk))
 	assert.NoError(err)
@@ -188,7 +189,7 @@ func Test_opt_toolkit_005(t *testing.T) {
 	assert.NoError(err)
 	defer tk.Close()
 
-	msg := &schema.Message{Role: "user", Content: []schema.ContentBlock{{Text: strPtr("Hi")}}}
+	msg := &schema.Message{Role: "user", Content: []schema.ContentBlock{{Text: types.Ptr("Hi")}}}
 	session := schema.Conversation{msg}
 	o, err := opt.Apply(tool.WithToolkit(tk))
 	assert.NoError(err)
