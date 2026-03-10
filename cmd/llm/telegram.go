@@ -9,13 +9,12 @@ import (
 	"sync"
 
 	// Packages
-	server "github.com/mutablelogic/go-server"
-
 	httpclient "github.com/mutablelogic/go-llm/pkg/httpclient"
 	schema "github.com/mutablelogic/go-llm/pkg/schema"
 	ui "github.com/mutablelogic/go-llm/pkg/ui"
 	uicmd "github.com/mutablelogic/go-llm/pkg/ui/command"
 	telegram "github.com/mutablelogic/go-llm/pkg/ui/telegram"
+	server "github.com/mutablelogic/go-server"
 )
 
 ///////////////////////////////////////////////////////////////////////////////

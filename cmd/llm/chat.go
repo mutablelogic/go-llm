@@ -8,15 +8,15 @@ import (
 	"path/filepath"
 
 	// Packages
-	server "github.com/mutablelogic/go-server"
 	otel "github.com/mutablelogic/go-client/pkg/otel"
 	httpclient "github.com/mutablelogic/go-llm/pkg/httpclient"
 	schema "github.com/mutablelogic/go-llm/pkg/schema"
-	"github.com/mutablelogic/go-llm/pkg/ui"
+	ui "github.com/mutablelogic/go-llm/pkg/ui"
 	btui "github.com/mutablelogic/go-llm/pkg/ui/bubbletea"
 	uicmd "github.com/mutablelogic/go-llm/pkg/ui/command"
+	server "github.com/mutablelogic/go-server"
 	types "github.com/mutablelogic/go-server/pkg/types"
-	"go.opentelemetry.io/otel/attribute"
+	attribute "go.opentelemetry.io/otel/attribute"
 )
 
 ///////////////////////////////////////////////////////////////////////////////
