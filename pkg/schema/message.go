@@ -8,6 +8,7 @@ import (
 	"mime"
 	"net/http"
 	"net/url"
+	"os"
 	"path"
 	"strings"
 
@@ -95,7 +96,7 @@ func (a Attachment) URI() string {
 // Name returns the last path segment of the attachment URL, or an empty
 // string for inline data. Satisfies llm.Resource.
 func (a Attachment) Name() string {
-	if a.URL != nil {
+	if a.URL != nil && a.URL.Path != "" {
 		return path.Base(a.URL.Path)
 	}
 	return ""
@@ -130,7 +131,7 @@ func (a Attachment) Read(ctx context.Context) ([]byte, error) {
 		defer resp.Body.Close()
 		return io.ReadAll(resp.Body)
 	case "file":
-		return io.ReadAll(strings.NewReader(a.URL.Path))
+		return os.ReadFile(a.URL.Path)
 	default:
 		return nil, fmt.Errorf("attachment: unsupported URL scheme %q", a.URL.Scheme)
 	}

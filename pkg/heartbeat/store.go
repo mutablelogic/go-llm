@@ -195,9 +195,12 @@ func (s *Store) Due() ([]*Heartbeat, error) {
 		}
 		// For recurring crons, search forward from the last time it fired;
 		// for first-ever checks, search forward from creation time.
+		// Advance by one minute when using LastFired so that Next returns
+		// a strictly later occurrence (Next truncates to the minute, and
+		// would otherwise return the same instant repeatedly).
 		base := h.Created
 		if h.LastFired != nil {
-			base = *h.LastFired
+			base = h.LastFired.Add(time.Minute)
 		}
 		next := h.Schedule.Next(base)
 		if !next.IsZero() && !next.After(now) {

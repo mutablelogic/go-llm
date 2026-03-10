@@ -46,7 +46,7 @@ func (*addHeartbeat) Description() string {
 		"The message is delivered once the specified time is reached. " +
 		"For RFC 3339 schedules that already include a timezone offset (e.g. 2026-06-01T15:00:00+02:00), " +
 		"the timezone is inferred from the timestamp and need not be provided separately. " +
-		"For cron or duration schedules without an embedded offset, pass a timezone (IANA name, e.g. Europe/London) " +
+		"For cron schedules without an embedded offset, pass a timezone (IANA name, e.g. Europe/London) " +
 		"so the schedule is evaluated in the user's local time; omitting it defaults to UTC. " +
 		"Returns the created heartbeat including its ID."
 }
@@ -146,7 +146,7 @@ func (*updateHeartbeat) Description() string {
 	return "Update the message or schedule of an existing heartbeat. " +
 		"Rescheduling a fired heartbeat reactivates it. " +
 		"For RFC 3339 schedules that already include a timezone offset, the timezone is inferred automatically. " +
-		"For cron or duration schedules, pass a timezone (IANA name, e.g. Europe/London) " +
+		"For cron schedules, pass a timezone (IANA name, e.g. Europe/London) " +
 		"so the schedule is evaluated in the user's local time; omitting it defaults to UTC. " +
 		"Omit any field to leave it unchanged."
 }

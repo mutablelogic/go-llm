@@ -14,7 +14,7 @@ type Heartbeat struct {
 
 type AddHeartbeatRequest struct {
 	Message  string `json:"message"            jsonschema:"Short reminder message to deliver when the heartbeat matures."`
-	Schedule string `json:"schedule"           jsonschema:"When and how often to fire: RFC 3339 timestamp (once), duration like 5m or 2h30m (once, relative), or 5-field cron expression like '* * * * *' (recurring)."`
+	Schedule string `json:"schedule"           jsonschema:"When and how often to fire: RFC 3339 timestamp (once, e.g. 2026-06-01T15:00:00Z) or 5-field cron expression like '0 9 * * 1-5' (recurring)."`
 	Timezone string `json:"timezone,omitempty" jsonschema:"Optional IANA timezone for evaluating the schedule (e.g. Europe/London, America/New_York). Not needed for RFC 3339 timestamps that already carry a timezone offset. Cron and duration schedules default to UTC when omitted."`
 }
 
@@ -29,6 +29,6 @@ type ListHeartbeatsRequest struct {
 type UpdateHeartbeatRequest struct {
 	ID       string `json:"id"                 jsonschema:"The unique ID of the heartbeat to update."`
 	Message  string `json:"message,omitempty"  jsonschema:"New message; empty keeps existing."`
-	Schedule string `json:"schedule,omitempty" jsonschema:"New schedule (RFC 3339, duration, or cron); empty keeps existing."`
+	Schedule string `json:"schedule,omitempty" jsonschema:"New schedule (RFC 3339 timestamp or 5-field cron expression); empty keeps existing."`
 	Timezone string `json:"timezone,omitempty" jsonschema:"New IANA timezone for evaluating the schedule (e.g. Europe/London). Not needed for RFC 3339 timestamps that already carry a timezone offset. Cron and duration schedules default to UTC when omitted."`
 }

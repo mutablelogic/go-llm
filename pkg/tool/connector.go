@@ -191,7 +191,7 @@ func (tk *Toolkit) runConnector(ctx context.Context, url string, entry *connEntr
 		case isAuthError(err) && wasConnected:
 			// The SDK killed the session because one tools/call HTTP response
 			// returned 403. The tool call error already reached the LLM; the
-			// tool list has not changed. Keep entry.tools so tools remain
+			// tool list has not changed. Keep entry.connected so tools remain
 			// visible during the reconnect window. Reconnect silently — no
 			// disconnect notification.
 			tk.onLog(url, slog.LevelWarn, "connector session dropped by auth error, reconnecting", "err", err)

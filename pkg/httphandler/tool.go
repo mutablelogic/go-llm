@@ -62,6 +62,8 @@ func ToolGetHandler(manager *manager.Manager) (string, http.HandlerFunc, *openap
 		Schema:      pathParamSchema,
 	}
 	toolSchema, _ := jsonschema.For[schema.ToolMeta]()
+	callReqSchema, _ := jsonschema.For[schema.CallToolRequest]()
+	callRespSchema, _ := jsonschema.For[schema.CallToolResponse]()
 	return "/tool/{name}", func(w http.ResponseWriter, r *http.Request) {
 			switch r.Method {
 			case http.MethodGet:
@@ -100,8 +102,12 @@ func ToolGetHandler(manager *manager.Manager) (string, http.HandlerFunc, *openap
 				Tags:        []string{"Tool"},
 				Description: "Call a tool by name",
 				Parameters:  []openapi.Parameter{nameParam},
+				RequestBody: &openapi.RequestBody{
+					Required: true,
+					Content:  map[string]openapi.MediaType{types.ContentTypeJSON: {Schema: callReqSchema}},
+				},
 				Responses: map[string]openapi.Response{
-					"200":     {Description: "Tool result"},
+					"200":     {Description: "Tool result", Content: map[string]openapi.MediaType{types.ContentTypeJSON: {Schema: callRespSchema}}},
 					"default": openapi.ErrorResponse("An error occurred"),
 				},
 			},

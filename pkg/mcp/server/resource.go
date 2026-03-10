@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"fmt"
+	"unicode/utf8"
 
 	// Packages
 	sdkmcp "github.com/modelcontextprotocol/go-sdk/mcp"
@@ -101,11 +102,5 @@ func isValidUTF8(data []byte) bool {
 			return false
 		}
 	}
-	// strings.ToValidUTF8 would mutate; use a fast path via range over string.
-	for _, r := range string(data) {
-		if r == '\uFFFD' {
-			return false
-		}
-	}
-	return true
+	return utf8.Valid(data)
 }

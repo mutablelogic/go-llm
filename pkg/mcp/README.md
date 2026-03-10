@@ -4,11 +4,9 @@ Package `mcp` provides a concise API for building and consuming [Model Context P
 
 | Sub-package | Purpose |
 |---|---|
-| `pkg/mcp/server` | Build an MCP server that exposes tools and prompts |
+| `pkg/mcp/server` | Build an MCP server that exposes tools, prompts and resources |
 | `pkg/mcp/client` | Connect to any MCP server as a client |
 | `pkg/mcp/mock` | `MockTool` helper for use in tests |
-
-> **Note:** MCP Resources are not currently supported.
 
 ---
 
@@ -176,7 +174,6 @@ c, err := client.New(
     "https://mcp.example.com/mcp", // server URL
     "my-client",                   // client name
     "1.0.0",                       // client version
-    nil,                           // authFn (see OAuth below)
 )
 ```
 
@@ -245,25 +242,27 @@ Returns empty strings if the client is not yet connected.
 
 ### OAuth / authentication
 
-Pass an `authFn` to `New` to handle 401 responses. When the server returns `401`, `authFn` is called with the RFC 9728 `resource_metadata` discovery URL (resolved from the `WWW-Authenticate` header), then the connection is retried:
+Pass `client.WithAuth` to `New` to handle 401 responses. When the server returns `401`, the supplied function is called with the RFC 9728 `resource_metadata` discovery URL (resolved from the `WWW-Authenticate` header), then the connection is retried:
 
 ```go
 c, err := client.New(serverURL, "my-client", "1.0.0",
-    func(ctx context.Context, discoveryURL string) error {
+    client.WithAuth(func(ctx context.Context, discoveryURL string) error {
         // Perform OAuth discovery at discoveryURL, obtain a token,
         // and store it using c's token mechanism.
         return performOAuth(ctx, discoveryURL)
-    },
+    }),
 )
 ```
 
 ### Logging
 
-By default server-sent log messages and progress notifications are written to `slog.Default()`. Override with `client.OptLogger`:
+By default server-sent log messages and progress notifications are written to `slog.Default()`. Override with `client.OptOnLoggingMessage`:
 
 ```go
-c, err := client.New(url, "my-client", "1.0.0", nil,
-    client.OptLogger(myLogger),
+c, err := client.New(url, "my-client", "1.0.0",
+    client.OptOnLoggingMessage(func(ctx context.Context, level, logger string, data any) {
+        slog.Info("mcp", "level", level, "logger", logger, "data", data)
+    }),
 )
 ```
 
