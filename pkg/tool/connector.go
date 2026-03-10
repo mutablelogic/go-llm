@@ -11,6 +11,7 @@ import (
 	llm "github.com/mutablelogic/go-llm"
 	mcpclient "github.com/mutablelogic/go-llm/pkg/mcp/client"
 	schema "github.com/mutablelogic/go-llm/pkg/schema"
+	types "github.com/mutablelogic/go-server/pkg/types"
 	errgroup "golang.org/x/sync/errgroup"
 )
 
@@ -125,7 +126,7 @@ func (tk *Toolkit) runConnector(ctx context.Context, url string, entry *connEntr
 		// Task 1: drive the MCP session.
 		eg, egCtx := errgroup.WithContext(ctx)
 		eg.Go(func() error {
-			if err := c.Run(egCtx); err != nil && !isContextError(err) {
+			if err := c.Run(egCtx); err != nil && !errors.Is(err, context.Canceled) && !errors.Is(err, context.DeadlineExceeded) {
 				tk.onLog(url, slog.LevelError, "connector run error", "err", err)
 				return err
 			}
@@ -156,8 +157,12 @@ func (tk *Toolkit) runConnector(ctx context.Context, url string, entry *connEntr
 					state := schema.ConnectorState{ConnectedAt: &now}
 					if info, ok := c.(connectorInfo); ok {
 						name, version, _ := info.ServerInfo()
-						state.Name = ptrString(name)
-						state.Version = ptrString(version)
+						if name != "" {
+							state.Name = types.Ptr(name)
+						}
+						if version != "" {
+							state.Version = types.Ptr(version)
+						}
 					}
 					tk.onState(url, state)
 					tk.onTools(url, tools)
@@ -173,7 +178,7 @@ func (tk *Toolkit) runConnector(ctx context.Context, url string, entry *connEntr
 			return
 		}
 
-		if err != nil && !isContextError(err) {
+		if err != nil && !errors.Is(err, context.Canceled) && !errors.Is(err, context.DeadlineExceeded) {
 			tk.onLog(url, slog.LevelError, "connector exited with error", "err", err)
 		}
 
@@ -182,13 +187,13 @@ func (tk *Toolkit) runConnector(ctx context.Context, url string, entry *connEntr
 		tk.mu.Unlock()
 
 		switch {
-		case isAuthError(err) && !wasConnected:
+		case mcpclient.IsAuthError(err) && !wasConnected:
 			// Auth failure before the session was ever established — bad
 			// credentials. Don't retry; notify disconnect and stop.
 			tk.onLog(url, slog.LevelError, "connector auth failure, not retrying", "err", err)
 			return
 
-		case isAuthError(err) && wasConnected:
+		case mcpclient.IsAuthError(err) && wasConnected:
 			// The SDK killed the session because one tools/call HTTP response
 			// returned 403. The tool call error already reached the LLM; the
 			// tool list has not changed. Keep entry.connected so tools remain
@@ -221,19 +226,4 @@ func (tk *Toolkit) runConnector(ctx context.Context, url string, entry *connEntr
 		}
 		backoff = min(backoff*2, maxBackoff)
 	}
-}
-
-func isContextError(err error) bool {
-	return errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded)
-}
-
-func isAuthError(err error) bool {
-	return mcpclient.IsAuthError(err)
-}
-
-func ptrString(s string) *string {
-	if s == "" {
-		return nil
-	}
-	return &s
 }
