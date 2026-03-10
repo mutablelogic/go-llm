@@ -15,7 +15,7 @@ require (
 	github.com/muesli/reflow v0.3.0
 	github.com/muesli/termenv v0.16.0
 	github.com/mutablelogic/go-client v1.4.3
-	github.com/mutablelogic/go-server v1.6.15
+	github.com/mutablelogic/go-server v1.6.16
 	github.com/stretchr/testify v1.11.1
 	github.com/yuin/goldmark v1.7.16
 	go.opentelemetry.io/otel v1.42.0
