@@ -12,6 +12,8 @@ import (
 
 	// Packages
 	heartbeat "github.com/mutablelogic/go-llm/pkg/heartbeat"
+	heartbeatfile "github.com/mutablelogic/go-llm/pkg/heartbeat/file"
+	heartbeatpg "github.com/mutablelogic/go-llm/pkg/heartbeat/pg"
 	mcpserver "github.com/mutablelogic/go-llm/pkg/mcp/server"
 	server "github.com/mutablelogic/go-server"
 	gocmd "github.com/mutablelogic/go-server/pkg/cmd"
@@ -48,10 +50,18 @@ func (cmd *HeartbeatMCPCommand) Run(ctx server.Cmd) error {
 		}
 	}()
 
-	// Create the file-backed heartbeat store
-	store, err := cmd.HeartbeatStore(ctx.Name())
-	if err != nil {
-		return err
+	// Create the heartbeat store: prefer database-backed when a pool is available.
+	var store heartbeat.Store
+	if pool != nil {
+		store, err = heartbeatpg.NewStore(ctx.Context(), pool)
+		if err != nil {
+			return fmt.Errorf("failed to create pg heartbeat store: %w", err)
+		}
+	} else {
+		store, err = cmd.HeartbeatStore(ctx.Name())
+		if err != nil {
+			return err
+		}
 	}
 
 	// Create the MCP server
@@ -125,12 +135,12 @@ func (r *heartbeatResource) Read(_ context.Context) ([]byte, error) {
 
 // HeartbeatStore returns the heartbeat store, creating it lazily.
 // Heartbeats are stored in the user's cache directory.
-func (cmd *HeartbeatMCPCommand) HeartbeatStore(execName string) (*heartbeat.Store, error) {
+func (cmd *HeartbeatMCPCommand) HeartbeatStore(execName string) (heartbeat.Store, error) {
 	cache, err := os.UserCacheDir()
 	if err != nil {
 		return nil, fmt.Errorf("failed to determine cache directory: %w", err)
 	}
-	store, err := heartbeat.NewStore(filepath.Join(cache, execName, "heartbeats"))
+	store, err := heartbeatfile.NewStore(filepath.Join(cache, execName, "heartbeats"))
 	if err != nil {
 		return nil, fmt.Errorf("failed to create heartbeat store: %w", err)
 	}

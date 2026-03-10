@@ -32,3 +32,14 @@ type UpdateHeartbeatRequest struct {
 	Schedule string `json:"schedule,omitempty" jsonschema:"New schedule (RFC 3339 timestamp or 5-field cron expression); empty keeps existing."`
 	Timezone string `json:"timezone,omitempty" jsonschema:"New IANA timezone for evaluating the schedule (e.g. Europe/London). Not needed for RFC 3339 timestamps that already carry a timezone offset. Cron expressions default to UTC when omitted."`
 }
+
+// Store is the interface for a heartbeat store.
+type Store interface {
+	Create(message string, schedule TimeSpec) (*Heartbeat, error)
+	Get(id string) (*Heartbeat, error)
+	Delete(id string) error
+	List(includeFired bool) ([]*Heartbeat, error)
+	Update(id, message string, schedule *TimeSpec) (*Heartbeat, error)
+	MarkFired(id string) error
+	Due() ([]*Heartbeat, error)
+}

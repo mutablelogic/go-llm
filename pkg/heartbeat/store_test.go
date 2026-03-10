@@ -6,17 +6,18 @@ import (
 	"time"
 
 	heartbeat "github.com/mutablelogic/go-llm/pkg/heartbeat"
+	file "github.com/mutablelogic/go-llm/pkg/heartbeat/file"
 	assert "github.com/stretchr/testify/assert"
 )
 
-func newTestStore(t *testing.T) *heartbeat.Store {
+func newTestStore(t *testing.T) heartbeat.Store {
 	t.Helper()
 	dir, err := os.MkdirTemp("", "heartbeat-store-*")
 	if err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { os.RemoveAll(dir) })
-	s, err := heartbeat.NewStore(dir)
+	s, err := file.NewStore(dir)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -34,7 +35,7 @@ func futureSpec(t *testing.T) heartbeat.TimeSpec {
 
 func Test_store_001(t *testing.T) {
 	assert := assert.New(t)
-	_, err := heartbeat.NewStore("")
+	_, err := file.NewStore("")
 	assert.Error(err)
 }
 

@@ -1,4 +1,4 @@
-package heartbeat
+package file
 
 import (
 	"encoding/json"
@@ -11,6 +11,7 @@ import (
 	// Packages
 	uuid "github.com/google/uuid"
 	llm "github.com/mutablelogic/go-llm"
+	heartbeat "github.com/mutablelogic/go-llm/pkg/heartbeat"
 	types "github.com/mutablelogic/go-server/pkg/types"
 )
 
@@ -33,6 +34,8 @@ type Store struct {
 	dir string
 }
 
+var _ heartbeat.Store = (*Store)(nil)
+
 ///////////////////////////////////////////////////////////////////////////////
 // LIFECYCLE
 
@@ -53,16 +56,14 @@ func NewStore(dir string) (*Store, error) {
 
 // Create persists a new Heartbeat derived from the supplied fields.
 // A unique ID and timestamps are assigned automatically.
-func (s *Store) Create(message string, schedule TimeSpec) (*Heartbeat, error) {
+func (s *Store) Create(message string, schedule heartbeat.TimeSpec) (*heartbeat.Heartbeat, error) {
 	if message == "" {
 		return nil, llm.ErrBadParameter.With("message is required")
 	}
-
 	s.mu.Lock()
 	defer s.mu.Unlock()
-
 	now := time.Now()
-	h := &Heartbeat{
+	h := &heartbeat.Heartbeat{
 		ID:       uuid.New().String(),
 		Message:  message,
 		Schedule: schedule,
@@ -76,13 +77,12 @@ func (s *Store) Create(message string, schedule TimeSpec) (*Heartbeat, error) {
 }
 
 // Get retrieves a single Heartbeat by ID. Returns ErrNotFound if absent.
-func (s *Store) Get(id string) (*Heartbeat, error) {
+func (s *Store) Get(id string) (*heartbeat.Heartbeat, error) {
 	if err := validateID(id); err != nil {
 		return nil, err
 	}
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-
 	return s.read(id)
 }
 
@@ -94,7 +94,6 @@ func (s *Store) Delete(id string) error {
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
-
 	path := s.path(id)
 	if _, err := os.Stat(path); os.IsNotExist(err) {
 		return llm.ErrNotFound.Withf("heartbeat %q", id)
@@ -107,16 +106,14 @@ func (s *Store) Delete(id string) error {
 
 // List returns all heartbeats in the store.
 // When includeFired is false, already-fired heartbeats are excluded.
-func (s *Store) List(includeFired bool) ([]*Heartbeat, error) {
+func (s *Store) List(includeFired bool) ([]*heartbeat.Heartbeat, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-
 	ids, err := s.listIDs()
 	if err != nil {
 		return nil, err
 	}
-
-	result := make([]*Heartbeat, 0, len(ids))
+	result := make([]*heartbeat.Heartbeat, 0, len(ids))
 	for _, id := range ids {
 		h, err := s.read(id)
 		if err != nil {
@@ -131,20 +128,18 @@ func (s *Store) List(includeFired bool) ([]*Heartbeat, error) {
 }
 
 // Update applies non-zero fields from message and schedule to the heartbeat
-// identified by id.  A non-nil schedule replaces the existing one and resets
+// identified by id. A non-nil schedule replaces the existing one and resets
 // the Fired flag; nil schedule leaves it unchanged.
-func (s *Store) Update(id, message string, schedule *TimeSpec) (*Heartbeat, error) {
+func (s *Store) Update(id, message string, schedule *heartbeat.TimeSpec) (*heartbeat.Heartbeat, error) {
 	if err := validateID(id); err != nil {
 		return nil, err
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
-
 	h, err := s.read(id)
 	if err != nil {
 		return nil, err
 	}
-
 	if message != "" {
 		h.Message = message
 	}
@@ -153,7 +148,6 @@ func (s *Store) Update(id, message string, schedule *TimeSpec) (*Heartbeat, erro
 		h.Fired = false // rescheduling reactivates the heartbeat
 	}
 	h.Modified = time.Now()
-
 	if err := s.write(h); err != nil {
 		return nil, err
 	}
@@ -167,7 +161,6 @@ func (s *Store) MarkFired(id string) error {
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
-
 	h, err := s.read(id)
 	if err != nil {
 		return err
@@ -185,19 +178,17 @@ func (s *Store) MarkFired(id string) error {
 	return s.write(h)
 }
 
-// Due returns all heartbeats whose next scheduled time is ≤ now and that
+// Due returns all heartbeats whose next scheduled time is <= now and that
 // have not yet fired.
-func (s *Store) Due() ([]*Heartbeat, error) {
+func (s *Store) Due() ([]*heartbeat.Heartbeat, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-
 	ids, err := s.listIDs()
 	if err != nil {
 		return nil, err
 	}
-
 	now := time.Now()
-	var result []*Heartbeat
+	var result []*heartbeat.Heartbeat
 	for _, id := range ids {
 		h, err := s.read(id)
 		if err != nil {
@@ -239,7 +230,7 @@ func (s *Store) path(id string) string {
 	return filepath.Join(s.dir, id+jsonExt)
 }
 
-func (s *Store) write(h *Heartbeat) error {
+func (s *Store) write(h *heartbeat.Heartbeat) error {
 	data, err := json.MarshalIndent(h, "", "  ")
 	if err != nil {
 		return llm.ErrInternalServerError.Withf("marshal: %v", err)
@@ -250,7 +241,7 @@ func (s *Store) write(h *Heartbeat) error {
 	return nil
 }
 
-func (s *Store) read(id string) (*Heartbeat, error) {
+func (s *Store) read(id string) (*heartbeat.Heartbeat, error) {
 	data, err := os.ReadFile(s.path(id))
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -258,7 +249,7 @@ func (s *Store) read(id string) (*Heartbeat, error) {
 		}
 		return nil, llm.ErrInternalServerError.Withf("read: %v", err)
 	}
-	var h Heartbeat
+	var h heartbeat.Heartbeat
 	if err := json.Unmarshal(data, &h); err != nil {
 		return nil, llm.ErrInternalServerError.Withf("unmarshal %s: %v", id, err)
 	}

@@ -21,7 +21,7 @@ const defaultPollInterval = 10 * time.Second
 // Manager owns a Store and runs a background loop that fires due heartbeats.
 // Create one with New, register an OnFire callback, then call Run in a goroutine.
 type Manager struct {
-	store        *Store
+	store        Store
 	pollInterval time.Duration
 	logger       *slog.Logger
 	onFire       func(context.Context, *Heartbeat)
@@ -36,7 +36,7 @@ var _ llm.Connector = (*Manager)(nil)
 // LIFECYCLE
 
 // New creates a Manager backed by the given store.
-func New(store *Store, opts ...Opt) (*Manager, error) {
+func New(store Store, opts ...Opt) (*Manager, error) {
 	if store == nil {
 		return nil, llm.ErrBadParameter.With("store is required")
 	}
