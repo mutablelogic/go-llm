@@ -95,11 +95,15 @@ func sdkToolFromTool(t llm.Tool) (*sdkmcp.Tool, sdkmcp.ToolHandler, error) {
 		// Inject a per-call Session so t.Run can call SessionFromContext(ctx).
 		var progressToken any
 		var input json.RawMessage
+		var meta map[string]any
 		if req.Params != nil {
 			progressToken = req.Params.GetProgressToken()
 			input = req.Params.Arguments
+			if len(req.Params.Meta) > 0 {
+				meta = map[string]any(req.Params.Meta)
+			}
 		}
-		ctx = withSession(ctx, req.Session, t.Name(), progressToken)
+		ctx = withSession(ctx, req.Session, t.Name(), progressToken, meta)
 
 		out, err := t.Run(ctx, input)
 		if err != nil {

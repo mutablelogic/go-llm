@@ -7,7 +7,6 @@ import (
 
 	// Packages
 	jsonschema "github.com/google/jsonschema-go/jsonschema"
-	llm "github.com/mutablelogic/go-llm"
 )
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -30,6 +29,7 @@ const (
 // This avoids the conflict in providers like Gemini that don't support
 // function calling combined with a response JSON schema.
 type OutputTool struct {
+	DefaultTool
 	schema *jsonschema.Schema
 }
 
@@ -56,9 +56,6 @@ func (t *OutputTool) Description() string {
 func (t *OutputTool) InputSchema() (*jsonschema.Schema, error) {
 	return t.schema, nil
 }
-
-func (t *OutputTool) OutputSchema() (*jsonschema.Schema, error) { return nil, nil }
-func (t *OutputTool) Meta() llm.ToolMeta                        { return llm.ToolMeta{} }
 
 func (t *OutputTool) Run(_ context.Context, input json.RawMessage) (any, error) {
 	// The tool's purpose is to capture the structured output — just return it.

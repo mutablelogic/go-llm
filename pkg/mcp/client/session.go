@@ -92,7 +92,8 @@ func (c *Client) refreshTools(ctx context.Context) {
 // the single content item's value if there is exactly one, or a []any slice
 // of item values for multiple content items.
 // Returns ErrNotConnected if no session is active.
-func (c *Client) CallTool(ctx context.Context, name string, arguments json.RawMessage) (any, error) {
+// Optional MetaValue values are collected into the protocol _meta object.
+func (c *Client) CallTool(ctx context.Context, name string, arguments json.RawMessage, meta ...MetaValue) (any, error) {
 	sess, err := c.getSession()
 	if err != nil {
 		return nil, err
@@ -105,11 +106,19 @@ func (c *Client) CallTool(ctx context.Context, name string, arguments json.RawMe
 		args = arguments
 	}
 
-	// Call the tool and convert the result to (any, error) using the pkg/tool
-	res, err := sess.CallTool(ctx, &sdkmcp.CallToolParams{
+	params := &sdkmcp.CallToolParams{
 		Name:      name,
 		Arguments: args,
-	})
+	}
+	if len(meta) > 0 {
+		params.Meta = make(sdkmcp.Meta, len(meta))
+		for _, m := range meta {
+			params.Meta[m.Key] = m.Value
+		}
+	}
+
+	// Call the tool and convert the result to (any, error) using the pkg/tool
+	res, err := sess.CallTool(ctx, params)
 	if err != nil {
 		return nil, err
 	}

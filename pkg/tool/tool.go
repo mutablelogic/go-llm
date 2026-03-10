@@ -33,6 +33,7 @@ type Toolkit struct {
 
 // NewToolkit creates a new toolkit with the given options.
 func NewToolkit(opts ...ToolkitOpt) (*Toolkit, error) {
+	// Set defaults
 	tk := &Toolkit{
 		builtins: make(map[string]llm.Tool),
 		conns:    make(map[string]*connEntry),
@@ -40,22 +41,27 @@ func NewToolkit(opts ...ToolkitOpt) (*Toolkit, error) {
 		onState:  func(string, schema.ConnectorState) {},
 		onTools:  func(string, []llm.Tool) {},
 	}
+
+	// Apply options
 	for _, o := range opts {
 		if err := o(tk); err != nil {
 			return nil, err
 		}
 	}
+
+	// Return the toolkit
 	return tk, nil
 }
 
 // Close cancels all active connector goroutines, waits for them to finish,
 // and releases resources.
 func (tk *Toolkit) Close() error {
+	// Disconnect all connectors
 	tk.mu.Lock()
 	for _, e := range tk.conns {
 		e.cancel()
 	}
-	tk.conns = make(map[string]*connEntry)
+	clear(tk.conns)
 	tk.mu.Unlock()
 
 	// Wait for all connectors to disconnect

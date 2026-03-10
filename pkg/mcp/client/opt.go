@@ -14,6 +14,18 @@ import (
 // Opt is a functional option for configuring a Client.
 type Opt func(*Client) error
 
+// MetaValue is a single key/value pair for the MCP _meta field.
+type MetaValue struct {
+	Key   string
+	Value any
+}
+
+// Meta returns a MetaValue that can be passed to CallTool to populate the
+// protocol-level _meta object sent with the request.
+func Meta(key string, value any) MetaValue {
+	return MetaValue{Key: key, Value: value}
+}
+
 // OnLoggingMessage is called when the server sends a logging message.
 type OnLoggingMessage func(ctx context.Context, level, logger string, data any)
 
