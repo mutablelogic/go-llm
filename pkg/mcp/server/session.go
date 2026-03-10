@@ -29,6 +29,10 @@ type Session interface {
 	// the MCP handshake. May return nil if unavailable.
 	Capabilities() *sdkmcp.ClientCapabilities
 
+	// Meta returns the _meta map sent by the client in this tool call.
+	// Returns nil when no _meta was provided.
+	Meta() map[string]any
+
 	// Logger returns a slog.Logger whose output is forwarded to the client
 	// as MCP notifications/message events.
 	Logger() *slog.Logger
@@ -44,6 +48,7 @@ type session struct {
 	id           string
 	clientInfo   *sdkmcp.Implementation
 	capabilities *sdkmcp.ClientCapabilities
+	meta         map[string]any
 	logger       *slog.Logger
 	progress     func(progress, total float64, message string) error
 }
@@ -56,6 +61,7 @@ var _ Session = (*session)(nil)
 func (s *session) ID() string                               { return s.id }
 func (s *session) ClientInfo() *sdkmcp.Implementation       { return s.clientInfo }
 func (s *session) Capabilities() *sdkmcp.ClientCapabilities { return s.capabilities }
+func (s *session) Meta() map[string]any                     { return s.meta }
 func (s *session) Logger() *slog.Logger                     { return s.logger }
 func (s *session) Progress(progress, total float64, message string) error {
 	return s.progress(progress, total, message)
@@ -81,8 +87,8 @@ func SessionFromContext(ctx context.Context) Session {
 // PRIVATE METHODS
 
 // withSession injects a Session into ctx for the given ServerSession, tool
-// name, and (optional) progress token.
-func withSession(ctx context.Context, ss *sdkmcp.ServerSession, loggerName string, token any) context.Context {
+// name, progress token, and _meta map.
+func withSession(ctx context.Context, ss *sdkmcp.ServerSession, loggerName string, token any, meta map[string]any) context.Context {
 	logger := slog.New(sdkmcp.NewLoggingHandler(ss, &sdkmcp.LoggingHandlerOptions{
 		LoggerName: loggerName,
 	}))
@@ -112,6 +118,7 @@ func withSession(ctx context.Context, ss *sdkmcp.ServerSession, loggerName strin
 		id:           ss.ID(),
 		clientInfo:   clientInfo,
 		capabilities: capabilities,
+		meta:         meta,
 		logger:       logger,
 		progress:     progressFn,
 	})

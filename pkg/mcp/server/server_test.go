@@ -7,7 +7,6 @@ import (
 	// Packages
 	client "github.com/mutablelogic/go-llm/pkg/mcp/client"
 	server "github.com/mutablelogic/go-llm/pkg/mcp/server"
-	servertest "github.com/mutablelogic/go-llm/pkg/mcp/server/test"
 )
 
 func TestServerProbe(t *testing.T) {
@@ -18,11 +17,11 @@ func TestServerProbe(t *testing.T) {
 	}
 
 	// Wrap it in an httptest.Server so we get a local URL.
-	ts, _ := servertest.Connect(t, srv)
+	ts, _ := connect(t, srv)
 	_ = ts
 
 	// Connect a client and probe the server.
-	c, err := client.New(ts.URL, "test-client", "1.0.0", nil)
+	c, err := client.New(ts.URL, "test-client", "1.0.0")
 	if err != nil {
 		t.Fatal(err)
 	}

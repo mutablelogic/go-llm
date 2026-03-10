@@ -11,6 +11,7 @@ import (
 
 	// Packages
 	schema "github.com/mutablelogic/go-llm/pkg/schema"
+	types "github.com/mutablelogic/go-server/pkg/types"
 	assert "github.com/stretchr/testify/assert"
 )
 
@@ -323,7 +324,7 @@ func Test_marshal_session_remaps_invalid_tool_ids(t *testing.T) {
 		{
 			Role: schema.RoleAssistant,
 			Content: []schema.ContentBlock{
-				{Text: strPtr("checking")},
+				{Text: types.Ptr("checking")},
 				{ToolCall: &schema.ToolCall{ID: "", Name: "get_state", Input: json.RawMessage(`{"id":"a"}`)}},
 				{ToolCall: &schema.ToolCall{ID: "too_long_id_value", Name: "get_state", Input: json.RawMessage(`{"id":"b"}`)}},
 			},

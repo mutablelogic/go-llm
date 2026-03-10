@@ -17,6 +17,7 @@ import (
 	schema "github.com/mutablelogic/go-llm/pkg/schema"
 	types "github.com/mutablelogic/go-server/pkg/types"
 	assert "github.com/stretchr/testify/assert"
+	require "github.com/stretchr/testify/require"
 )
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -547,6 +548,7 @@ func Test_ask_integration_gemini(t *testing.T) {
 		t.Skip("GEMINI_API_KEY not set, skipping")
 	}
 	assert := assert.New(t)
+	require := require.New(t)
 
 	c, err := google.New(apiKey)
 	assert.NoError(err)
@@ -560,8 +562,8 @@ func Test_ask_integration_gemini(t *testing.T) {
 			Text:          "Say hello in exactly three words.",
 		},
 	}, nil)
-	assert.NoError(err)
-	assert.NotNil(resp)
+	require.NoError(err)
+	require.NotNil(resp)
 	assert.Equal(schema.RoleAssistant, resp.Role)
 	if assert.NotEmpty(resp.Content) && assert.NotNil(resp.Content[0].Text) {
 		t.Logf("Response: %s", *resp.Content[0].Text)
@@ -616,6 +618,7 @@ func Test_ask_integration_anthropic(t *testing.T) {
 		t.Skip("ANTHROPIC_API_KEY not set, skipping")
 	}
 	assert := assert.New(t)
+	require := require.New(t)
 
 	c, err := anthropic.New(apiKey)
 	assert.NoError(err)
@@ -629,8 +632,8 @@ func Test_ask_integration_anthropic(t *testing.T) {
 			Text:          "Say hello in exactly three words.",
 		},
 	}, nil)
-	assert.NoError(err)
-	assert.NotNil(resp)
+	require.NoError(err)
+	require.NotNil(resp)
 	assert.Equal(schema.RoleAssistant, resp.Role)
 	if assert.NotEmpty(resp.Content) && assert.NotNil(resp.Content[0].Text) {
 		t.Logf("Response: %s", *resp.Content[0].Text)
@@ -682,6 +685,7 @@ func Test_ask_integration_mistral(t *testing.T) {
 		t.Skip("MISTRAL_API_KEY not set, skipping")
 	}
 	assert := assert.New(t)
+	require := require.New(t)
 
 	c, err := mistral.New(apiKey)
 	assert.NoError(err)
@@ -695,8 +699,8 @@ func Test_ask_integration_mistral(t *testing.T) {
 			Text:          "Say hello in exactly three words.",
 		},
 	}, nil)
-	assert.NoError(err)
-	assert.NotNil(resp)
+	require.NoError(err)
+	require.NotNil(resp)
 	assert.Equal(schema.RoleAssistant, resp.Role)
 	if assert.NotEmpty(resp.Content) && assert.NotNil(resp.Content[0].Text) {
 		t.Logf("Response: %s", *resp.Content[0].Text)
@@ -751,6 +755,7 @@ func Test_ask_integration_system_prompt(t *testing.T) {
 		t.Skip("GEMINI_API_KEY not set, skipping")
 	}
 	assert := assert.New(t)
+	require := require.New(t)
 
 	c, err := google.New(apiKey)
 	assert.NoError(err)
@@ -767,9 +772,9 @@ func Test_ask_integration_system_prompt(t *testing.T) {
 			Text: "Say hello.",
 		},
 	}, nil)
-	assert.NoError(err)
-	assert.NotNil(resp)
-	assert.NotEmpty(resp.Content)
+	require.NoError(err)
+	require.NotNil(resp)
+	require.NotEmpty(resp.Content)
 	t.Logf("Pirate response: %s", *resp.Content[0].Text)
 }
 

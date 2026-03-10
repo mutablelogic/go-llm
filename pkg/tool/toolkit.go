@@ -33,6 +33,7 @@ type Toolkit struct {
 
 // NewToolkit creates a new toolkit with the given options.
 func NewToolkit(opts ...ToolkitOpt) (*Toolkit, error) {
+	// Set defaults
 	tk := &Toolkit{
 		builtins: make(map[string]llm.Tool),
 		conns:    make(map[string]*connEntry),
@@ -40,22 +41,27 @@ func NewToolkit(opts ...ToolkitOpt) (*Toolkit, error) {
 		onState:  func(string, schema.ConnectorState) {},
 		onTools:  func(string, []llm.Tool) {},
 	}
+
+	// Apply options
 	for _, o := range opts {
 		if err := o(tk); err != nil {
 			return nil, err
 		}
 	}
+
+	// Return the toolkit
 	return tk, nil
 }
 
 // Close cancels all active connector goroutines, waits for them to finish,
 // and releases resources.
 func (tk *Toolkit) Close() error {
+	// Disconnect all connectors
 	tk.mu.Lock()
 	for _, e := range tk.conns {
 		e.cancel()
 	}
-	tk.conns = make(map[string]*connEntry)
+	clear(tk.conns)
 	tk.mu.Unlock()
 
 	// Wait for all connectors to disconnect
@@ -88,11 +94,9 @@ func (tk *Toolkit) ListTools(req schema.ListToolsRequest) []llm.Tool {
 	}
 
 	tk.mu.RLock()
-	defer tk.mu.RUnlock()
 
+	// Snapshot builtins
 	var result []llm.Tool
-
-	// Builtins
 	if req.Namespace == "" || req.Namespace == schema.BuiltinNamespace {
 		for _, t := range tk.builtins {
 			if !isReservedToolName(t.Name()) && matchName(t.Name()) {
@@ -101,16 +105,32 @@ func (tk *Toolkit) ListTools(req schema.ListToolsRequest) []llm.Tool {
 		}
 	}
 
-	// Connector tools
+	// Snapshot connector refs
+	type connRef struct {
+		url  string
+		conn llm.Connector
+	}
+	var refs []connRef
 	if req.Namespace != schema.BuiltinNamespace {
 		for url, entry := range tk.conns {
 			if req.Namespace != "" && req.Namespace != url {
 				continue
 			}
-			for _, t := range entry.tools {
-				if !isReservedToolName(t.Name()) && matchName(t.Name()) {
-					result = append(result, t)
-				}
+			refs = append(refs, connRef{url: url, conn: entry.connector})
+		}
+	}
+
+	tk.mu.RUnlock()
+
+	// Query connectors outside the lock
+	for _, ref := range refs {
+		tools, err := ref.conn.ListTools(context.Background())
+		if err != nil {
+			continue
+		}
+		for _, t := range tools {
+			if !isReservedToolName(t.Name()) && matchName(t.Name()) {
+				result = append(result, t)
 			}
 		}
 	}
@@ -153,13 +173,23 @@ func isReservedToolName(name string) bool {
 // Returns nil if not found.
 func (tk *Toolkit) Lookup(name string) llm.Tool {
 	tk.mu.RLock()
-	defer tk.mu.RUnlock()
-
 	if t, ok := tk.builtins[name]; ok {
+		tk.mu.RUnlock()
 		return t
 	}
+	// Collect connectors to query without holding lock
+	conns := make([]llm.Connector, 0, len(tk.conns))
 	for _, entry := range tk.conns {
-		for _, t := range entry.tools {
+		conns = append(conns, entry.connector)
+	}
+	tk.mu.RUnlock()
+
+	for _, conn := range conns {
+		tools, err := conn.ListTools(context.Background())
+		if err != nil {
+			continue
+		}
+		for _, t := range tools {
 			if t.Name() == name {
 				return t
 			}

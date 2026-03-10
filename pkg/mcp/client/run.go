@@ -1,6 +1,11 @@
 package client
 
-import "context"
+import (
+	"context"
+
+	// Packages
+	llm "github.com/mutablelogic/go-llm"
+)
 
 ///////////////////////////////////////////////////////////////////////////////
 // PUBLIC METHODS
@@ -24,15 +29,26 @@ func (c *Client) Run(ctx context.Context) error {
 	}
 
 	// Expose the session so tool-call methods can use it.
+	// Initialize tools to an empty (non-nil) slice so that ListTools never
+	// returns nil while connected; nil is reserved to signal "disconnected".
 	c.mu.Lock()
 	c.session = session
+	c.tools = make([]llm.Tool, 0)
 	c.mu.Unlock()
 
-	// Clear the session pointer when Run exits so callers see ErrNotConnected
-	// rather than stale transport errors.
+	// Populate the tool/prompt/resource caches now that the session is live.
+	c.refreshTools(ctx)
+	c.refreshPrompts(ctx)
+	c.refreshResources(ctx)
+
+	// Clear the session pointer and caches when Run exits.
 	defer func() {
 		c.mu.Lock()
 		c.session = nil
+		c.tools = nil
+		c.prompts = nil
+		c.resources = nil
+		c.subscribed = nil
 		c.mu.Unlock()
 	}()
 

@@ -7,11 +7,13 @@ import (
 	"testing"
 
 	// Packages
-	"github.com/google/jsonschema-go/jsonschema"
+	jsonschema "github.com/google/jsonschema-go/jsonschema"
 	llm "github.com/mutablelogic/go-llm"
 	opt "github.com/mutablelogic/go-llm/pkg/opt"
 	schema "github.com/mutablelogic/go-llm/pkg/schema"
+	types "github.com/mutablelogic/go-server/pkg/types"
 	assert "github.com/stretchr/testify/assert"
+	require "github.com/stretchr/testify/require"
 )
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -21,15 +23,15 @@ func Test_generateRequest_001(t *testing.T) {
 	// Test minimal request with a single user message
 	assert := assert.New(t)
 
-	msg := &schema.Message{Role: "user", Content: []schema.ContentBlock{{Text: strPtr("Hello")}}}
+	msg := &schema.Message{Role: "user", Content: []schema.ContentBlock{{Text: types.Ptr("Hello")}}}
 	session := schema.Conversation{msg}
 	o, err := opt.Apply()
 	assert.NoError(err)
 
-	req, err := generateRequestFromOpts("claude-sonnet-4-20250514", &session, o)
+	req, err := generateRequestFromOpts(testModel, &session, o)
 	assert.NoError(err)
 	assert.NotNil(req)
-	assert.Equal("claude-sonnet-4-20250514", req.Model)
+	assert.Equal(testModel, req.Model)
 	assert.Equal(defaultMaxTokens, req.MaxTokens)
 	assert.Len(req.Messages, 1)
 	assert.Equal("user", req.Messages[0].Role)
@@ -46,12 +48,12 @@ func Test_generateRequest_002(t *testing.T) {
 	// Test system prompt is set as plain string
 	assert := assert.New(t)
 
-	msg := &schema.Message{Role: "user", Content: []schema.ContentBlock{{Text: strPtr("Hi")}}}
+	msg := &schema.Message{Role: "user", Content: []schema.ContentBlock{{Text: types.Ptr("Hi")}}}
 	session := schema.Conversation{msg}
 	o, err := opt.Apply(WithSystemPrompt("You are a helpful assistant."))
 	assert.NoError(err)
 
-	req, err := generateRequestFromOpts("claude-sonnet-4-20250514", &session, o)
+	req, err := generateRequestFromOpts(testModel, &session, o)
 	assert.NoError(err)
 	assert.Equal("You are a helpful assistant.", req.System)
 }
@@ -60,12 +62,12 @@ func Test_generateRequest_003(t *testing.T) {
 	// Test cached system prompt produces array with cache_control
 	assert := assert.New(t)
 
-	msg := &schema.Message{Role: "user", Content: []schema.ContentBlock{{Text: strPtr("Hi")}}}
+	msg := &schema.Message{Role: "user", Content: []schema.ContentBlock{{Text: types.Ptr("Hi")}}}
 	session := schema.Conversation{msg}
 	o, err := opt.Apply(WithCachedSystemPrompt("Cached prompt"))
 	assert.NoError(err)
 
-	req, err := generateRequestFromOpts("claude-sonnet-4-20250514", &session, o)
+	req, err := generateRequestFromOpts(testModel, &session, o)
 	assert.NoError(err)
 
 	// Should be a []textBlockParam
@@ -82,12 +84,12 @@ func Test_generateRequest_004(t *testing.T) {
 	// Test temperature option
 	assert := assert.New(t)
 
-	msg := &schema.Message{Role: "user", Content: []schema.ContentBlock{{Text: strPtr("Hi")}}}
+	msg := &schema.Message{Role: "user", Content: []schema.ContentBlock{{Text: types.Ptr("Hi")}}}
 	session := schema.Conversation{msg}
 	o, err := opt.Apply(WithTemperature(0.7))
 	assert.NoError(err)
 
-	req, err := generateRequestFromOpts("claude-sonnet-4-20250514", &session, o)
+	req, err := generateRequestFromOpts(testModel, &session, o)
 	assert.NoError(err)
 	assert.NotNil(req.Temperature)
 	assert.InDelta(0.7, *req.Temperature, 1e-9)
@@ -97,12 +99,12 @@ func Test_generateRequest_005(t *testing.T) {
 	// Test max tokens option overrides default
 	assert := assert.New(t)
 
-	msg := &schema.Message{Role: "user", Content: []schema.ContentBlock{{Text: strPtr("Hi")}}}
+	msg := &schema.Message{Role: "user", Content: []schema.ContentBlock{{Text: types.Ptr("Hi")}}}
 	session := schema.Conversation{msg}
 	o, err := opt.Apply(WithMaxTokens(4096))
 	assert.NoError(err)
 
-	req, err := generateRequestFromOpts("claude-sonnet-4-20250514", &session, o)
+	req, err := generateRequestFromOpts(testModel, &session, o)
 	assert.NoError(err)
 	assert.Equal(4096, req.MaxTokens)
 }
@@ -111,12 +113,12 @@ func Test_generateRequest_006(t *testing.T) {
 	// Test top-k and top-p options
 	assert := assert.New(t)
 
-	msg := &schema.Message{Role: "user", Content: []schema.ContentBlock{{Text: strPtr("Hi")}}}
+	msg := &schema.Message{Role: "user", Content: []schema.ContentBlock{{Text: types.Ptr("Hi")}}}
 	session := schema.Conversation{msg}
 	o, err := opt.Apply(WithTopK(40), WithTopP(0.95))
 	assert.NoError(err)
 
-	req, err := generateRequestFromOpts("claude-sonnet-4-20250514", &session, o)
+	req, err := generateRequestFromOpts(testModel, &session, o)
 	assert.NoError(err)
 	assert.NotNil(req.TopK)
 	assert.Equal(uint(40), *req.TopK)
@@ -128,12 +130,12 @@ func Test_generateRequest_007(t *testing.T) {
 	// Test stop sequences option
 	assert := assert.New(t)
 
-	msg := &schema.Message{Role: "user", Content: []schema.ContentBlock{{Text: strPtr("Hi")}}}
+	msg := &schema.Message{Role: "user", Content: []schema.ContentBlock{{Text: types.Ptr("Hi")}}}
 	session := schema.Conversation{msg}
 	o, err := opt.Apply(WithStopSequences("STOP", "END"))
 	assert.NoError(err)
 
-	req, err := generateRequestFromOpts("claude-sonnet-4-20250514", &session, o)
+	req, err := generateRequestFromOpts(testModel, &session, o)
 	assert.NoError(err)
 	assert.Equal([]string{"STOP", "END"}, req.StopSequences)
 }
@@ -142,12 +144,12 @@ func Test_generateRequest_008(t *testing.T) {
 	// Test thinking option
 	assert := assert.New(t)
 
-	msg := &schema.Message{Role: "user", Content: []schema.ContentBlock{{Text: strPtr("Hi")}}}
+	msg := &schema.Message{Role: "user", Content: []schema.ContentBlock{{Text: types.Ptr("Hi")}}}
 	session := schema.Conversation{msg}
 	o, err := opt.Apply(WithThinking(2048))
 	assert.NoError(err)
 
-	req, err := generateRequestFromOpts("claude-sonnet-4-20250514", &session, o)
+	req, err := generateRequestFromOpts(testModel, &session, o)
 	assert.NoError(err)
 	assert.NotNil(req.Thinking)
 	assert.Equal("enabled", req.Thinking.Type)
@@ -158,7 +160,7 @@ func Test_generateRequest_009(t *testing.T) {
 	// Test all generation options combined
 	assert := assert.New(t)
 
-	msg := &schema.Message{Role: "user", Content: []schema.ContentBlock{{Text: strPtr("Hi")}}}
+	msg := &schema.Message{Role: "user", Content: []schema.ContentBlock{{Text: types.Ptr("Hi")}}}
 	session := schema.Conversation{msg}
 	o, err := opt.Apply(
 		WithSystemPrompt("Be concise."),
@@ -171,7 +173,7 @@ func Test_generateRequest_009(t *testing.T) {
 	)
 	assert.NoError(err)
 
-	req, err := generateRequestFromOpts("claude-sonnet-4-20250514", &session, o)
+	req, err := generateRequestFromOpts(testModel, &session, o)
 	assert.NoError(err)
 
 	assert.Equal("Be concise.", req.System)
@@ -187,12 +189,12 @@ func Test_generateRequest_010(t *testing.T) {
 	// Test request serializes to valid JSON with expected fields
 	assert := assert.New(t)
 
-	msg := &schema.Message{Role: "user", Content: []schema.ContentBlock{{Text: strPtr("Test")}}}
+	msg := &schema.Message{Role: "user", Content: []schema.ContentBlock{{Text: types.Ptr("Test")}}}
 	session := schema.Conversation{msg}
 	o, err := opt.Apply(WithSystemPrompt("System"), WithTemperature(0.5))
 	assert.NoError(err)
 
-	req, err := generateRequestFromOpts("claude-sonnet-4-20250514", &session, o)
+	req, err := generateRequestFromOpts(testModel, &session, o)
 	assert.NoError(err)
 
 	data, err := json.Marshal(req)
@@ -212,14 +214,14 @@ func Test_generateRequest_011(t *testing.T) {
 	// Test multi-turn session produces correct messages
 	assert := assert.New(t)
 
-	user1 := &schema.Message{Role: "user", Content: []schema.ContentBlock{{Text: strPtr("Hello")}}}
-	asst1 := &schema.Message{Role: "assistant", Content: []schema.ContentBlock{{Text: strPtr("Hi there!")}}}
-	user2 := &schema.Message{Role: "user", Content: []schema.ContentBlock{{Text: strPtr("How are you?")}}}
+	user1 := &schema.Message{Role: "user", Content: []schema.ContentBlock{{Text: types.Ptr("Hello")}}}
+	asst1 := &schema.Message{Role: "assistant", Content: []schema.ContentBlock{{Text: types.Ptr("Hi there!")}}}
+	user2 := &schema.Message{Role: "user", Content: []schema.ContentBlock{{Text: types.Ptr("How are you?")}}}
 	session := schema.Conversation{user1, asst1, user2}
 	o, err := opt.Apply()
 	assert.NoError(err)
 
-	req, err := generateRequestFromOpts("claude-sonnet-4-20250514", &session, o)
+	req, err := generateRequestFromOpts(testModel, &session, o)
 	assert.NoError(err)
 	assert.Len(req.Messages, 3)
 	assert.Equal("user", req.Messages[0].Role)
@@ -231,13 +233,13 @@ func Test_generateRequest_012(t *testing.T) {
 	// Test system messages are filtered from messages
 	assert := assert.New(t)
 
-	sys := &schema.Message{Role: "system", Content: []schema.ContentBlock{{Text: strPtr("You are a bot")}}}
-	user := &schema.Message{Role: "user", Content: []schema.ContentBlock{{Text: strPtr("Hello")}}}
+	sys := &schema.Message{Role: "system", Content: []schema.ContentBlock{{Text: types.Ptr("You are a bot")}}}
+	user := &schema.Message{Role: "user", Content: []schema.ContentBlock{{Text: types.Ptr("Hello")}}}
 	session := schema.Conversation{sys, user}
 	o, err := opt.Apply()
 	assert.NoError(err)
 
-	req, err := generateRequestFromOpts("claude-sonnet-4-20250514", &session, o)
+	req, err := generateRequestFromOpts(testModel, &session, o)
 	assert.NoError(err)
 	assert.Len(req.Messages, 1)
 	assert.Equal("user", req.Messages[0].Role)
@@ -248,12 +250,12 @@ func Test_generateRequest_013(t *testing.T) {
 	// when a stream callback is provided via opt.WithStream(fn)
 	assert := assert.New(t)
 
-	msg := &schema.Message{Role: "user", Content: []schema.ContentBlock{{Text: strPtr("Hi")}}}
+	msg := &schema.Message{Role: "user", Content: []schema.ContentBlock{{Text: types.Ptr("Hi")}}}
 	session := schema.Conversation{msg}
 	o, err := opt.Apply()
 	assert.NoError(err)
 
-	req, err := generateRequestFromOpts("claude-sonnet-4-20250514", &session, o)
+	req, err := generateRequestFromOpts(testModel, &session, o)
 	assert.NoError(err)
 	assert.False(req.Stream)
 }
@@ -262,12 +264,12 @@ func Test_generateRequest_014(t *testing.T) {
 	// Test tool choice auto
 	assert := assert.New(t)
 
-	msg := &schema.Message{Role: "user", Content: []schema.ContentBlock{{Text: strPtr("Hi")}}}
+	msg := &schema.Message{Role: "user", Content: []schema.ContentBlock{{Text: types.Ptr("Hi")}}}
 	session := schema.Conversation{msg}
 	o, err := opt.Apply(WithToolChoiceAuto())
 	assert.NoError(err)
 
-	req, err := generateRequestFromOpts("claude-sonnet-4-20250514", &session, o)
+	req, err := generateRequestFromOpts(testModel, &session, o)
 	assert.NoError(err)
 	assert.NotNil(req.ToolChoice)
 	assert.Equal("auto", req.ToolChoice.Type)
@@ -277,12 +279,12 @@ func Test_generateRequest_015(t *testing.T) {
 	// Test tool choice with specific tool name
 	assert := assert.New(t)
 
-	msg := &schema.Message{Role: "user", Content: []schema.ContentBlock{{Text: strPtr("Hi")}}}
+	msg := &schema.Message{Role: "user", Content: []schema.ContentBlock{{Text: types.Ptr("Hi")}}}
 	session := schema.Conversation{msg}
 	o, err := opt.Apply(WithToolChoice("get_weather"))
 	assert.NoError(err)
 
-	req, err := generateRequestFromOpts("claude-sonnet-4-20250514", &session, o)
+	req, err := generateRequestFromOpts(testModel, &session, o)
 	assert.NoError(err)
 	assert.NotNil(req.ToolChoice)
 	assert.Equal("tool", req.ToolChoice.Type)
@@ -299,12 +301,12 @@ func Test_generateRequest_016(t *testing.T) {
 		"age":  {Type: "integer"},
 	}
 
-	msg := &schema.Message{Role: "user", Content: []schema.ContentBlock{{Text: strPtr("Hi")}}}
+	msg := &schema.Message{Role: "user", Content: []schema.ContentBlock{{Text: types.Ptr("Hi")}}}
 	session := schema.Conversation{msg}
 	o, err := opt.Apply(WithJSONOutput(jsonSchema))
 	assert.NoError(err)
 
-	req, err := generateRequestFromOpts("claude-sonnet-4-20250514", &session, o)
+	req, err := generateRequestFromOpts(testModel, &session, o)
 	assert.NoError(err)
 	assert.NotNil(req.OutputConfig)
 	assert.NotNil(req.OutputConfig.Format)
@@ -327,12 +329,12 @@ func Test_generateRequest_017(t *testing.T) {
 	// Test user metadata
 	assert := assert.New(t)
 
-	msg := &schema.Message{Role: "user", Content: []schema.ContentBlock{{Text: strPtr("Hi")}}}
+	msg := &schema.Message{Role: "user", Content: []schema.ContentBlock{{Text: types.Ptr("Hi")}}}
 	session := schema.Conversation{msg}
 	o, err := opt.Apply(WithUser("user-123"))
 	assert.NoError(err)
 
-	req, err := generateRequestFromOpts("claude-sonnet-4-20250514", &session, o)
+	req, err := generateRequestFromOpts(testModel, &session, o)
 	assert.NoError(err)
 	assert.NotNil(req.Metadata)
 	assert.Equal("user-123", req.Metadata.UserId)
@@ -342,12 +344,12 @@ func Test_generateRequest_018(t *testing.T) {
 	// Test output config
 	assert := assert.New(t)
 
-	msg := &schema.Message{Role: "user", Content: []schema.ContentBlock{{Text: strPtr("Hi")}}}
+	msg := &schema.Message{Role: "user", Content: []schema.ContentBlock{{Text: types.Ptr("Hi")}}}
 	session := schema.Conversation{msg}
 	o, err := opt.Apply(WithOutputConfig("low"))
 	assert.NoError(err)
 
-	req, err := generateRequestFromOpts("claude-sonnet-4-20250514", &session, o)
+	req, err := generateRequestFromOpts(testModel, &session, o)
 	assert.NoError(err)
 	assert.NotNil(req.OutputConfig)
 	assert.Equal("low", req.OutputConfig.Effort)
@@ -357,12 +359,12 @@ func Test_generateRequest_019(t *testing.T) {
 	// Test no optional fields in JSON when no options set
 	assert := assert.New(t)
 
-	msg := &schema.Message{Role: "user", Content: []schema.ContentBlock{{Text: strPtr("Hi")}}}
+	msg := &schema.Message{Role: "user", Content: []schema.ContentBlock{{Text: types.Ptr("Hi")}}}
 	session := schema.Conversation{msg}
 	o, err := opt.Apply()
 	assert.NoError(err)
 
-	req, err := generateRequestFromOpts("claude-sonnet-4-20250514", &session, o)
+	req, err := generateRequestFromOpts(testModel, &session, o)
 	assert.NoError(err)
 
 	data, err := json.Marshal(req)
@@ -394,12 +396,12 @@ func Test_generateRequest_020(t *testing.T) {
 	// Test that max_tokens is auto-bumped when thinking budget exceeds it
 	assert := assert.New(t)
 
-	msg := &schema.Message{Role: "user", Content: []schema.ContentBlock{{Text: strPtr("Hi")}}}
+	msg := &schema.Message{Role: "user", Content: []schema.ContentBlock{{Text: types.Ptr("Hi")}}}
 	session := schema.Conversation{msg}
 	o, err := opt.Apply(WithThinking(10240))
 	assert.NoError(err)
 
-	req, err := generateRequestFromOpts("claude-sonnet-4-20250514", &session, o)
+	req, err := generateRequestFromOpts(testModel, &session, o)
 	assert.NoError(err)
 	assert.NotNil(req.Thinking)
 	assert.Equal(uint(10240), req.Thinking.BudgetTokens)
@@ -412,12 +414,12 @@ func Test_generateRequest_021(t *testing.T) {
 	// Test that explicit max_tokens larger than budget is preserved
 	assert := assert.New(t)
 
-	msg := &schema.Message{Role: "user", Content: []schema.ContentBlock{{Text: strPtr("Hi")}}}
+	msg := &schema.Message{Role: "user", Content: []schema.ContentBlock{{Text: types.Ptr("Hi")}}}
 	session := schema.Conversation{msg}
 	o, err := opt.Apply(WithThinking(4096), WithMaxTokens(16384))
 	assert.NoError(err)
 
-	req, err := generateRequestFromOpts("claude-sonnet-4-20250514", &session, o)
+	req, err := generateRequestFromOpts(testModel, &session, o)
 	assert.NoError(err)
 	assert.Equal(16384, req.MaxTokens)
 	assert.Equal(uint(4096), req.Thinking.BudgetTokens)
@@ -481,12 +483,12 @@ func Test_processResponse_001(t *testing.T) {
 	c, err := New("test-key")
 	assert.NoError(err)
 
-	msg := &schema.Message{Role: "user", Content: []schema.ContentBlock{{Text: strPtr("Hi")}}}
+	msg := &schema.Message{Role: "user", Content: []schema.ContentBlock{{Text: types.Ptr("Hi")}}}
 	session := schema.Conversation{msg}
 
 	response := &messagesResponse{
 		Id:         "msg_001",
-		Model:      "claude-sonnet-4-20250514",
+		Model:      testModel,
 		Role:       "assistant",
 		StopReason: stopReasonEndTurn,
 		Content: []anthropicContentBlock{
@@ -514,7 +516,7 @@ func Test_processResponse_002(t *testing.T) {
 	c, err := New("test-key")
 	assert.NoError(err)
 
-	msg := &schema.Message{Role: "user", Content: []schema.ContentBlock{{Text: strPtr("Hi")}}}
+	msg := &schema.Message{Role: "user", Content: []schema.ContentBlock{{Text: types.Ptr("Hi")}}}
 	session := schema.Conversation{msg}
 
 	response := &messagesResponse{
@@ -540,7 +542,7 @@ func Test_processResponse_003(t *testing.T) {
 	c, err := New("test-key")
 	assert.NoError(err)
 
-	msg := &schema.Message{Role: "user", Content: []schema.ContentBlock{{Text: strPtr("Hi")}}}
+	msg := &schema.Message{Role: "user", Content: []schema.ContentBlock{{Text: types.Ptr("Hi")}}}
 	session := schema.Conversation{msg}
 
 	response := &messagesResponse{
@@ -564,7 +566,7 @@ func Test_processResponse_004(t *testing.T) {
 	c, err := New("test-key")
 	assert.NoError(err)
 
-	msg := &schema.Message{Role: "user", Content: []schema.ContentBlock{{Text: strPtr("What's the weather?")}}}
+	msg := &schema.Message{Role: "user", Content: []schema.ContentBlock{{Text: types.Ptr("What's the weather?")}}}
 	session := schema.Conversation{msg}
 
 	response := &messagesResponse{
@@ -598,7 +600,7 @@ func Test_processResponse_005(t *testing.T) {
 	c, err := New("test-key")
 	assert.NoError(err)
 
-	msg := &schema.Message{Role: "user", Content: []schema.ContentBlock{{Text: strPtr("Explain physics")}}}
+	msg := &schema.Message{Role: "user", Content: []schema.ContentBlock{{Text: types.Ptr("Explain physics")}}}
 	session := schema.Conversation{msg}
 
 	response := &messagesResponse{
@@ -624,7 +626,7 @@ func Test_processResponse_006(t *testing.T) {
 	c, err := New("test-key")
 	assert.NoError(err)
 
-	msg := &schema.Message{Role: "user", Content: []schema.ContentBlock{{Text: strPtr("Hi")}}}
+	msg := &schema.Message{Role: "user", Content: []schema.ContentBlock{{Text: types.Ptr("Hi")}}}
 	session := schema.Conversation{msg}
 
 	response := &messagesResponse{
@@ -651,7 +653,7 @@ func Test_processResponse_007(t *testing.T) {
 	c, err := New("test-key")
 	assert.NoError(err)
 
-	msg := &schema.Message{Role: "user", Content: []schema.ContentBlock{{Text: strPtr("Hi")}}}
+	msg := &schema.Message{Role: "user", Content: []schema.ContentBlock{{Text: types.Ptr("Hi")}}}
 	session := schema.Conversation{msg}
 
 	response := &messagesResponse{
@@ -675,10 +677,10 @@ func Test_GenerateRequest_001(t *testing.T) {
 	// Test the public GenerateRequest helper
 	assert := assert.New(t)
 
-	msg := &schema.Message{Role: "user", Content: []schema.ContentBlock{{Text: strPtr("Hello")}}}
+	msg := &schema.Message{Role: "user", Content: []schema.ContentBlock{{Text: types.Ptr("Hello")}}}
 	session := schema.Conversation{msg}
 
-	result, err := GenerateRequest("claude-sonnet-4-20250514", &session, WithTemperature(0.5), WithMaxTokens(100))
+	result, err := GenerateRequest(testModel, &session, WithTemperature(0.5), WithMaxTokens(100))
 	assert.NoError(err)
 	assert.NotNil(result)
 
@@ -706,7 +708,7 @@ func Test_WithSession_nil_session(t *testing.T) {
 	c, err := New("test-key")
 	assert.NoError(err)
 
-	msg := &schema.Message{Role: "user", Content: []schema.ContentBlock{{Text: strPtr("Hi")}}}
+	msg := &schema.Message{Role: "user", Content: []schema.ContentBlock{{Text: types.Ptr("Hi")}}}
 	_, _, err = c.WithSession(context.TODO(), schema.Model{Name: "test"}, nil, msg)
 	assert.Error(err)
 }
@@ -731,17 +733,18 @@ func Test_generate_001(t *testing.T) {
 		t.Skip("ANTHROPIC_API_KEY not set, skipping")
 	}
 	assert := assert.New(t)
+	require := require.New(t)
 
 	c, err := New(apiKey)
 	assert.NoError(err)
 
-	model := schema.Model{Name: "claude-haiku-4-5-20251001"}
+	model := schema.Model{Name: testIntegrationModel}
 	msg, err := schema.NewMessage("user", "Say hello in exactly three words.")
 	assert.NoError(err)
 
 	response, _, err := c.WithoutSession(context.TODO(), model, msg)
-	assert.NoError(err)
-	assert.NotNil(response)
+	require.NoError(err)
+	require.NotNil(response)
 	assert.Equal("assistant", response.Role)
 	assert.NotEmpty(response.Content)
 	t.Logf("Response: %s", response.Text())
@@ -763,7 +766,7 @@ func Test_generate_002(t *testing.T) {
 		streamed += text
 	}
 
-	model := schema.Model{Name: "claude-haiku-4-5-20251001"}
+	model := schema.Model{Name: testIntegrationModel}
 	msg, err := schema.NewMessage("user", "Say hello in exactly three words.")
 	assert.NoError(err)
 
@@ -781,11 +784,12 @@ func Test_generate_003(t *testing.T) {
 		t.Skip("ANTHROPIC_API_KEY not set, skipping")
 	}
 	assert := assert.New(t)
+	require := require.New(t)
 
 	c, err := New(apiKey)
 	assert.NoError(err)
 
-	model := schema.Model{Name: "claude-haiku-4-5-20251001"}
+	model := schema.Model{Name: testIntegrationModel}
 
 	// First turn
 	msg1, err := schema.NewMessage("user", "My name is Alice.")
@@ -793,8 +797,8 @@ func Test_generate_003(t *testing.T) {
 
 	session := &schema.Conversation{}
 	resp1, _, err := c.WithSession(context.TODO(), model, session, msg1)
-	assert.NoError(err)
-	assert.NotNil(resp1)
+	require.NoError(err)
+	require.NotNil(resp1)
 	t.Logf("Turn 1: %s", resp1.Text())
 
 	// Second turn — model should remember
@@ -802,8 +806,8 @@ func Test_generate_003(t *testing.T) {
 	assert.NoError(err)
 
 	resp2, _, err := c.WithSession(context.TODO(), model, session, msg2)
-	assert.NoError(err)
-	assert.NotNil(resp2)
+	require.NoError(err)
+	require.NotNil(resp2)
 	assert.Contains(resp2.Text(), "Alice")
 	t.Logf("Turn 2: %s", resp2.Text())
 }
@@ -819,7 +823,7 @@ func Test_generate_004(t *testing.T) {
 	c, err := New(apiKey)
 	assert.NoError(err)
 
-	model := schema.Model{Name: "claude-haiku-4-5-20251001"}
+	model := schema.Model{Name: testIntegrationModel}
 	msg, err := schema.NewMessage("user", "What are you?")
 	assert.NoError(err)
 
@@ -840,11 +844,12 @@ func Test_generate_005(t *testing.T) {
 		t.Skip("ANTHROPIC_API_KEY not set, skipping")
 	}
 	assert := assert.New(t)
+	require := require.New(t)
 
 	c, err := New(apiKey)
 	assert.NoError(err)
 
-	model := schema.Model{Name: "claude-haiku-4-5-20251001"}
+	model := schema.Model{Name: testIntegrationModel}
 	msg, err := schema.NewMessage("user", "Write exactly one word.")
 	assert.NoError(err)
 
@@ -852,14 +857,17 @@ func Test_generate_005(t *testing.T) {
 		WithTemperature(0.0),
 		WithMaxTokens(10),
 	)
-	assert.NoError(err)
-	assert.NotNil(response)
+	require.NoError(err)
+	require.NotNil(response)
 	t.Logf("Response: %s", response.Text())
 }
 
 ///////////////////////////////////////////////////////////////////////////////
 // HELPER
 
-func strPtr(s string) *string {
-	return &s
-}
+const (
+	// testModel is the model used in unit tests (no API calls made).
+	testModel = "claude-sonnet-4-20250514"
+	// testIntegrationModel is the model used in integration tests.
+	testIntegrationModel = "claude-haiku-4-5-20251001"
+)

@@ -1,6 +1,10 @@
 package server
 
 import (
+	"context"
+	"fmt"
+	"sync"
+
 	// Packages
 	sdkmcp "github.com/modelcontextprotocol/go-sdk/mcp"
 )
@@ -13,6 +17,8 @@ import (
 type Server struct {
 	sdkmcp.Implementation
 	server *sdkmcp.Server
+	mu     sync.Mutex
+	uris   map[string]struct{} // URIs currently registered
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -20,6 +26,9 @@ type Server struct {
 
 // New creates a new MCP server with the given implementation name and version.
 func New(name, version string, optFns ...ServerOpt) (*Server, error) {
+	if name == "" {
+		return nil, fmt.Errorf("name is required")
+	}
 	o := opts{
 		impl: sdkmcp.Implementation{Name: name, Version: version},
 	}
@@ -29,7 +38,16 @@ func New(name, version string, optFns ...ServerOpt) (*Server, error) {
 		}
 	}
 
-	s := &Server{Implementation: o.impl}
+	// Enable resource subscription support so that ResourceUpdated
+	// notifications reach subscribed clients. The handlers are no-ops;
+	// the SDK itself tracks which sessions are subscribed per URI.
+	o.sdkOpts.SubscribeHandler = func(_ context.Context, _ *sdkmcp.SubscribeRequest) error { return nil }
+	o.sdkOpts.UnsubscribeHandler = func(_ context.Context, _ *sdkmcp.UnsubscribeRequest) error { return nil }
+
+	s := &Server{
+		Implementation: o.impl,
+		uris:           make(map[string]struct{}),
+	}
 	s.server = sdkmcp.NewServer(&s.Implementation, &o.sdkOpts)
 	return s, nil
 }

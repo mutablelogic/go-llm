@@ -14,11 +14,13 @@ import (
 ///////////////////////////////////////////////////////////////////////////////
 // PUBLIC METHODS
 
-// AddPrompt registers an agent as an MCP prompt. The prompt's arguments are
-// derived from the AgentMeta's Input JSON Schema, and the handler renders
-// the agent's template with the arguments supplied by the client.
-func (s *Server) AddPrompt(meta schema.AgentMeta) {
-	s.server.AddPrompt(promptFromAgentMeta(meta), promptHandlerFromAgentMeta(meta))
+// AddPrompts registers one or more agents as MCP prompts. Each prompt's
+// arguments are derived from the AgentMeta's Input JSON Schema, and the
+// handler renders the agent's template with the arguments supplied by the client.
+func (s *Server) AddPrompts(metas ...schema.AgentMeta) {
+	for _, meta := range metas {
+		s.server.AddPrompt(promptFromAgentMeta(meta), promptHandlerFromAgentMeta(meta))
+	}
 }
 
 // RemovePrompts removes the named prompts from the server. Unknown names are

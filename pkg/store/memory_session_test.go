@@ -8,6 +8,7 @@ import (
 	// Packages
 	schema "github.com/mutablelogic/go-llm/pkg/schema"
 	store "github.com/mutablelogic/go-llm/pkg/store"
+	types "github.com/mutablelogic/go-server/pkg/types"
 	assert "github.com/stretchr/testify/assert"
 )
 
@@ -29,7 +30,7 @@ func Test_session_001(t *testing.T) {
 	s, _ := store.CreateSession(context.TODO(), schema.SessionMeta{Name: "test", GeneratorMeta: schema.GeneratorMeta{Model: "test-model", Provider: "test-provider"}})
 	originalModified := s.Modified
 	time.Sleep(5 * time.Millisecond)
-	msg := schema.Message{Role: schema.RoleUser, Content: []schema.ContentBlock{{Text: textPtr("hello")}}}
+	msg := schema.Message{Role: schema.RoleUser, Content: []schema.ContentBlock{{Text: types.Ptr("hello")}}}
 	s.Append(msg)
 	assert.Len(s.Messages, 1)
 	assert.True(s.Modified.After(originalModified))

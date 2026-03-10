@@ -35,6 +35,7 @@ type Manager struct {
 	tracer           trace.Tracer
 	serverName       string
 	serverVersion    string
+	logger           *slog.Logger
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -59,6 +60,11 @@ func NewManager(name, ver string, opts ...Opt) (*Manager, error) {
 		if err := opt(m); err != nil {
 			return nil, err
 		}
+	}
+
+	// Default logger to slog.Default() if not set by an option.
+	if m.logger == nil {
+		m.logger = slog.Default()
 	}
 
 	// Default to in-memory session store if none was provided
@@ -117,20 +123,20 @@ func (m *Manager) replayConnectors() {
 	enabled := true
 	resp, err := m.connectorStore.ListConnectors(ctx, schema.ListConnectorsRequest{Enabled: &enabled})
 	if err != nil {
-		slog.Warn("failed to list connectors on startup", "err", err)
+		m.logger.Warn("failed to list connectors on startup", "err", err)
 		return
 	}
 	for _, c := range resp.Body {
 		conn, err := m.connectorFactory(ctx, c.URL, m.credOptsFor(ctx, c.URL)...)
 		if err != nil {
-			slog.Warn("connector factory failed on startup", "url", c.URL, "err", err)
+			m.logger.Warn("connector factory failed on startup", "url", c.URL, "err", err)
 			continue
 		}
 		if err := m.toolkit.AddConnector(c.URL, conn); err != nil {
-			slog.Warn("failed to add connector to toolkit on startup", "url", c.URL, "err", err)
+			m.logger.Warn("failed to add connector to toolkit on startup", "url", c.URL, "err", err)
 			continue
 		}
-		slog.Debug("connector queued for connection", "url", c.URL, "namespace", types.Value(c.Namespace))
+		m.logger.Debug("connector queued for connection", "url", c.URL, "namespace", types.Value(c.Namespace))
 	}
 }
 
@@ -152,9 +158,17 @@ func (m *Manager) credOptsFor(ctx context.Context, url string) []client.ClientOp
 	return []client.ClientOpt{client.OptReqToken(client.Token{Scheme: "Bearer", Value: cred.Token.AccessToken})}
 }
 
-// onConnectorLog forwards log messages from a connector's MCP session to slog.
+// onConnectorLog forwards log messages from a connector's MCP session to the manager logger.
+// error values in args are converted to their string representation so they display
+// correctly with all slog handlers (some handlers JSON-marshal values directly,
+// turning an unexported error struct into "{}").
 func (m *Manager) onConnectorLog(url string, level slog.Level, msg string, args ...any) {
-	slog.Log(context.Background(), level, msg, append(args, "url", url)...)
+	for i := 1; i < len(args); i += 2 {
+		if err, ok := args[i].(error); ok {
+			args[i] = err.Error()
+		}
+	}
+	m.logger.Log(context.Background(), level, msg, append(args, "url", url)...)
 }
 
 // onConnectorState writes connector state back to the connector store.
@@ -162,20 +176,20 @@ func (m *Manager) onConnectorLog(url string, level slog.Level, msg string, args 
 func (m *Manager) onConnectorState(url string, state schema.ConnectorState) {
 	_, _ = m.connectorStore.UpdateConnectorState(context.Background(), url, state)
 	if state.ConnectedAt == nil || state.ConnectedAt.IsZero() {
-		slog.Info("connector disconnected", "url", url)
+		m.logger.Info("connector disconnected", "url", url)
 	} else if name := types.Value(state.Name); name == "" {
-		slog.Info("connector connected", "url", url)
+		m.logger.Info("connector connected", "url", url)
 	} else {
-		slog.Info("connector connected", "url", url, "name", name, "version", types.Value(state.Version))
+		m.logger.Info("connector connected", "url", url, "name", name, "version", types.Value(state.Version))
 	}
 }
 
 // onConnectorTools logs when a connector's tool list changes.
 func (m *Manager) onConnectorTools(url string, tools []llm.Tool) {
 	if tools == nil {
-		slog.Debug("connector tools cleared", "url", url)
+		m.logger.Debug("connector tools cleared", "url", url)
 	} else {
-		slog.Info("connector tools updated", "url", url, "count", len(tools))
+		m.logger.Info("connector tools updated", "url", url, "count", len(tools))
 	}
 }
 

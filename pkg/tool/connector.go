@@ -11,6 +11,7 @@ import (
 	llm "github.com/mutablelogic/go-llm"
 	mcpclient "github.com/mutablelogic/go-llm/pkg/mcp/client"
 	schema "github.com/mutablelogic/go-llm/pkg/schema"
+	types "github.com/mutablelogic/go-server/pkg/types"
 	errgroup "golang.org/x/sync/errgroup"
 )
 
@@ -22,7 +23,7 @@ type connEntry struct {
 	connector llm.Connector
 	cancel    context.CancelFunc
 	wg        sync.WaitGroup // tracks this connector's runConnector goroutine
-	tools     []llm.Tool     // current tool list; nil when disconnected
+	connected bool           // true while the session is active
 }
 
 // connectorInfo is an optional interface a Connector may implement to expose
@@ -106,7 +107,7 @@ func (tk *Toolkit) runConnector(ctx context.Context, url string, entry *connEntr
 	// if suppressDisconnect is set, so observers never see stale state.
 	defer func() {
 		tk.mu.Lock()
-		entry.tools = nil
+		entry.connected = false
 		tk.mu.Unlock()
 		if !suppressDisconnect || ctx.Err() != nil {
 			zero := time.Time{}
@@ -125,7 +126,7 @@ func (tk *Toolkit) runConnector(ctx context.Context, url string, entry *connEntr
 		// Task 1: drive the MCP session.
 		eg, egCtx := errgroup.WithContext(ctx)
 		eg.Go(func() error {
-			if err := c.Run(egCtx); err != nil && !isContextError(err) {
+			if err := c.Run(egCtx); err != nil && !errors.Is(err, context.Canceled) && !errors.Is(err, context.DeadlineExceeded) {
 				tk.onLog(url, slog.LevelError, "connector run error", "err", err)
 				return err
 			}
@@ -143,21 +144,27 @@ func (tk *Toolkit) runConnector(ctx context.Context, url string, entry *connEntr
 					return egCtx.Err()
 				case <-timer.C:
 					tools, err := c.ListTools(egCtx)
-					if err != nil {
+					if err != nil || tools == nil {
+						// Not yet ready: err means session not established;
+						// nil tools means the initial refresh hasn't completed.
 						timer.Reset(pollInterval)
 						continue
 					}
-					// Session is up — store tools and fire callbacks.
+					// Session is up — mark connected and fire callbacks.
 					tk.mu.Lock()
-					entry.tools = tools
+					entry.connected = true
 					tk.mu.Unlock()
 
 					now := time.Now()
 					state := schema.ConnectorState{ConnectedAt: &now}
 					if info, ok := c.(connectorInfo); ok {
 						name, version, _ := info.ServerInfo()
-						state.Name = ptrString(name)
-						state.Version = ptrString(version)
+						if name != "" {
+							state.Name = types.Ptr(name)
+						}
+						if version != "" {
+							state.Version = types.Ptr(version)
+						}
 					}
 					tk.onState(url, state)
 					tk.onTools(url, tools)
@@ -173,25 +180,25 @@ func (tk *Toolkit) runConnector(ctx context.Context, url string, entry *connEntr
 			return
 		}
 
-		if err != nil && !isContextError(err) {
+		if err != nil && !errors.Is(err, context.Canceled) && !errors.Is(err, context.DeadlineExceeded) {
 			tk.onLog(url, slog.LevelError, "connector exited with error", "err", err)
 		}
 
 		tk.mu.Lock()
-		wasConnected := entry.tools != nil
+		wasConnected := entry.connected
 		tk.mu.Unlock()
 
 		switch {
-		case isAuthError(err) && !wasConnected:
+		case mcpclient.IsAuthError(err) && !wasConnected:
 			// Auth failure before the session was ever established — bad
 			// credentials. Don't retry; notify disconnect and stop.
 			tk.onLog(url, slog.LevelError, "connector auth failure, not retrying", "err", err)
 			return
 
-		case isAuthError(err) && wasConnected:
+		case mcpclient.IsAuthError(err) && wasConnected:
 			// The SDK killed the session because one tools/call HTTP response
 			// returned 403. The tool call error already reached the LLM; the
-			// tool list has not changed. Keep entry.tools so tools remain
+			// tool list has not changed. Keep entry.connected so tools remain
 			// visible during the reconnect window. Reconnect silently — no
 			// disconnect notification.
 			tk.onLog(url, slog.LevelWarn, "connector session dropped by auth error, reconnecting", "err", err)
@@ -202,7 +209,7 @@ func (tk *Toolkit) runConnector(ctx context.Context, url string, entry *connEntr
 		default:
 			// Real disconnect (server closed, network error, etc.)
 			tk.mu.Lock()
-			entry.tools = nil
+			entry.connected = false
 			tk.mu.Unlock()
 			suppressDisconnect = false
 			if wasConnected {
@@ -221,19 +228,4 @@ func (tk *Toolkit) runConnector(ctx context.Context, url string, entry *connEntr
 		}
 		backoff = min(backoff*2, maxBackoff)
 	}
-}
-
-func isContextError(err error) bool {
-	return errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded)
-}
-
-func isAuthError(err error) bool {
-	return mcpclient.IsAuthError(err)
-}
-
-func ptrString(s string) *string {
-	if s == "" {
-		return nil
-	}
-	return &s
 }

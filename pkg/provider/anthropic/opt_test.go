@@ -10,7 +10,8 @@ import (
 	llm "github.com/mutablelogic/go-llm"
 	opt "github.com/mutablelogic/go-llm/pkg/opt"
 	schema "github.com/mutablelogic/go-llm/pkg/schema"
-	"github.com/mutablelogic/go-llm/pkg/tool"
+	tool "github.com/mutablelogic/go-llm/pkg/tool"
+	types "github.com/mutablelogic/go-server/pkg/types"
 	assert "github.com/stretchr/testify/assert"
 )
 
@@ -109,12 +110,12 @@ func Test_opt_toolchoice_004(t *testing.T) {
 	// Test tool choice any in request
 	assert := assert.New(t)
 
-	msg := &schema.Message{Role: "user", Content: []schema.ContentBlock{{Text: strPtr("Hi")}}}
+	msg := &schema.Message{Role: "user", Content: []schema.ContentBlock{{Text: types.Ptr("Hi")}}}
 	session := schema.Conversation{msg}
 	o, err := opt.Apply(WithToolChoiceAny())
 	assert.NoError(err)
 
-	req, err := generateRequestFromOpts("claude-sonnet-4-20250514", &session, o)
+	req, err := generateRequestFromOpts(testModel, &session, o)
 	assert.NoError(err)
 	assert.NotNil(req.ToolChoice)
 	assert.Equal("any", req.ToolChoice.Type)
@@ -124,12 +125,12 @@ func Test_opt_toolchoice_005(t *testing.T) {
 	// Test tool choice none in request
 	assert := assert.New(t)
 
-	msg := &schema.Message{Role: "user", Content: []schema.ContentBlock{{Text: strPtr("Hi")}}}
+	msg := &schema.Message{Role: "user", Content: []schema.ContentBlock{{Text: types.Ptr("Hi")}}}
 	session := schema.Conversation{msg}
 	o, err := opt.Apply(WithToolChoiceNone())
 	assert.NoError(err)
 
-	req, err := generateRequestFromOpts("claude-sonnet-4-20250514", &session, o)
+	req, err := generateRequestFromOpts(testModel, &session, o)
 	assert.NoError(err)
 	assert.NotNil(req.ToolChoice)
 	assert.Equal("none", req.ToolChoice.Type)
@@ -206,12 +207,12 @@ func Test_opt_toolkit_003(t *testing.T) {
 	assert.NoError(err)
 	defer tk.Close()
 
-	msg := &schema.Message{Role: "user", Content: []schema.ContentBlock{{Text: strPtr("Hi")}}}
+	msg := &schema.Message{Role: "user", Content: []schema.ContentBlock{{Text: types.Ptr("Hi")}}}
 	session := schema.Conversation{msg}
 	o, err := opt.Apply(tool.WithToolkit(tk))
 	assert.NoError(err)
 
-	req, err := generateRequestFromOpts("claude-sonnet-4-20250514", &session, o)
+	req, err := generateRequestFromOpts(testModel, &session, o)
 	assert.NoError(err)
 	assert.Len(req.Tools, 1)
 
@@ -232,12 +233,12 @@ func Test_opt_toolkit_004(t *testing.T) {
 	assert.NoError(err)
 	defer tk.Close()
 
-	msg := &schema.Message{Role: "user", Content: []schema.ContentBlock{{Text: strPtr("Hi")}}}
+	msg := &schema.Message{Role: "user", Content: []schema.ContentBlock{{Text: types.Ptr("Hi")}}}
 	session := schema.Conversation{msg}
 	o, err := opt.Apply(tool.WithToolkit(tk), WithToolChoice("get_weather"))
 	assert.NoError(err)
 
-	req, err := generateRequestFromOpts("claude-sonnet-4-20250514", &session, o)
+	req, err := generateRequestFromOpts(testModel, &session, o)
 	assert.NoError(err)
 	assert.Len(req.Tools, 2)
 	assert.NotNil(req.ToolChoice)

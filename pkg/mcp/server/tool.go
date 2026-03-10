@@ -10,6 +10,7 @@ import (
 	sdkmcp "github.com/modelcontextprotocol/go-sdk/mcp"
 	llm "github.com/mutablelogic/go-llm"
 	schema "github.com/mutablelogic/go-llm/pkg/schema"
+	types "github.com/mutablelogic/go-server/pkg/types"
 )
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -80,15 +81,29 @@ func sdkToolFromTool(t llm.Tool) (*sdkmcp.Tool, sdkmcp.ToolHandler, error) {
 		sdkTool.OutputSchema = outputSchemaRaw
 	}
 
-	handler := sdkmcp.ToolHandler(func(ctx context.Context, req *sdkmcp.CallToolRequest) (*sdkmcp.CallToolResult, error) {
+	handler := sdkmcp.ToolHandler(func(ctx context.Context, req *sdkmcp.CallToolRequest) (res *sdkmcp.CallToolResult, retErr error) {
+		// Recover from panics in the tool implementation so a misbehaving tool
+		// cannot crash the server session.
+		defer func() {
+			if r := recover(); r != nil {
+				result := &sdkmcp.CallToolResult{}
+				result.SetError(fmt.Errorf("tool %q panicked: %v", t.Name(), r))
+				res, retErr = result, nil
+			}
+		}()
+
 		// Inject a per-call Session so t.Run can call SessionFromContext(ctx).
 		var progressToken any
 		var input json.RawMessage
+		var meta map[string]any
 		if req.Params != nil {
 			progressToken = req.Params.GetProgressToken()
 			input = req.Params.Arguments
+			if len(req.Params.Meta) > 0 {
+				meta = map[string]any(req.Params.Meta)
+			}
 		}
-		ctx = withSession(ctx, req.Session, t.Name(), progressToken)
+		ctx = withSession(ctx, req.Session, t.Name(), progressToken, meta)
 
 		out, err := t.Run(ctx, input)
 		if err != nil {
@@ -125,9 +140,21 @@ func contentFromAny(toolName string, v any) (sdkmcp.Content, error) {
 			return &sdkmcp.TextContent{Text: a.TextContent(), Meta: meta}, nil
 		}
 	}
+	// Plain strings go through as-is — json.Marshal would add extra quotes.
+	if s, ok := v.(string); ok {
+		return &sdkmcp.TextContent{Text: s}, nil
+	}
 	out, err := json.Marshal(v)
 	if err != nil {
 		return nil, fmt.Errorf("tool %q: marshal output: %w", toolName, err)
+	}
+	// Tag JSON objects/arrays with a content-type so the client can decode
+	// them back as json.RawMessage rather than a plain string.
+	if len(out) > 0 && (out[0] == '{' || out[0] == '[') {
+		return &sdkmcp.TextContent{
+			Text: string(out),
+			Meta: sdkmcp.Meta{types.ContentTypeHeader: types.ContentTypeJSON},
+		}, nil
 	}
 	return &sdkmcp.TextContent{Text: string(out)}, nil
 }

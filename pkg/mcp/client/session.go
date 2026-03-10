@@ -42,22 +42,31 @@ func (c *Client) ServerInfo() (name, version, protocol string) {
 	return
 }
 
-// ListTools returns all tools advertised by the connected MCP server as
-// llm.Tool values. Each returned tool's Run method invokes CallTool on the
-// server. All pages are fetched automatically via the cursor. Returns
-// ErrNotConnected if no session is active.
-func (c *Client) ListTools(ctx context.Context) ([]llm.Tool, error) {
+// ListTools returns the cached list of tools advertised by the connected
+// MCP server. The cache is populated on connect and refreshed automatically
+// on each ToolListChanged notification. Returns ErrNotConnected if not active.
+func (c *Client) ListTools(_ context.Context) ([]llm.Tool, error) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.session == nil {
+		return nil, ErrNotConnected
+	}
+	return c.tools, nil
+}
+
+// refreshTools fetches the full tool list from the server, stores it in the
+// cache and invokes onToolListChanged if set.
+func (c *Client) refreshTools(ctx context.Context) {
 	sess, err := c.getSession()
 	if err != nil {
-		return nil, err
+		return
 	}
-	var tools []llm.Tool
+	tools := make([]llm.Tool, 0)
 	var cursor string
 	for {
-		params := &sdkmcp.ListToolsParams{Cursor: cursor}
-		result, err := sess.ListTools(ctx, params)
+		result, err := sess.ListTools(ctx, &sdkmcp.ListToolsParams{Cursor: cursor})
 		if err != nil {
-			return nil, err
+			return
 		}
 		for _, t := range result.Tools {
 			tools = append(tools, &mcpTool{t: t, client: c})
@@ -67,7 +76,13 @@ func (c *Client) ListTools(ctx context.Context) ([]llm.Tool, error) {
 		}
 		cursor = result.NextCursor
 	}
-	return tools, nil
+	c.mu.Lock()
+	c.tools = tools
+	fn := c.onToolListChanged
+	c.mu.Unlock()
+	if fn != nil {
+		fn(ctx)
+	}
 }
 
 // CallTool invokes a tool on the connected MCP server by name with the given
@@ -77,7 +92,8 @@ func (c *Client) ListTools(ctx context.Context) ([]llm.Tool, error) {
 // the single content item's value if there is exactly one, or a []any slice
 // of item values for multiple content items.
 // Returns ErrNotConnected if no session is active.
-func (c *Client) CallTool(ctx context.Context, name string, arguments json.RawMessage) (any, error) {
+// Optional MetaValue values are collected into the protocol _meta object.
+func (c *Client) CallTool(ctx context.Context, name string, arguments json.RawMessage, meta ...MetaValue) (any, error) {
 	sess, err := c.getSession()
 	if err != nil {
 		return nil, err
@@ -90,11 +106,19 @@ func (c *Client) CallTool(ctx context.Context, name string, arguments json.RawMe
 		args = arguments
 	}
 
-	// Call the tool and convert the result to (any, error) using the pkg/tool
-	res, err := sess.CallTool(ctx, &sdkmcp.CallToolParams{
+	params := &sdkmcp.CallToolParams{
 		Name:      name,
 		Arguments: args,
-	})
+	}
+	if len(meta) > 0 {
+		params.Meta = make(sdkmcp.Meta, len(meta))
+		for _, m := range meta {
+			params.Meta[m.Key] = m.Value
+		}
+	}
+
+	// Call the tool and convert the result to (any, error) using the pkg/tool
+	res, err := sess.CallTool(ctx, params)
 	if err != nil {
 		return nil, err
 	}

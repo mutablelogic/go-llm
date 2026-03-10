@@ -9,6 +9,7 @@ import (
 
 	llm "github.com/mutablelogic/go-llm"
 	schema "github.com/mutablelogic/go-llm/pkg/schema"
+	types "github.com/mutablelogic/go-server/pkg/types"
 	assert "github.com/stretchr/testify/assert"
 )
 
@@ -19,8 +20,6 @@ var testMeta = schema.SessionMeta{
 	Name:          "test",
 	GeneratorMeta: schema.GeneratorMeta{Model: "test-model", Provider: "test-provider"},
 }
-
-func textPtr(s string) *string { return &s }
 
 ///////////////////////////////////////////////////////////////////////////////
 // SHARED SESSION STORE TESTS
@@ -347,7 +346,7 @@ var sessionStoreTests = []sessionStoreTest{
 	{"WriteSessionPersistsMessages", func(t *testing.T, s schema.SessionStore) {
 		assert := assert.New(t)
 		session, _ := s.CreateSession(context.TODO(), testMeta)
-		session.Append(schema.Message{Role: schema.RoleUser, Content: []schema.ContentBlock{{Text: textPtr("hello")}}})
+		session.Append(schema.Message{Role: schema.RoleUser, Content: []schema.ContentBlock{{Text: types.Ptr("hello")}}})
 		err := s.WriteSession(session)
 		assert.NoError(err)
 		got, err := s.GetSession(context.TODO(), session.ID)
@@ -361,8 +360,8 @@ var sessionStoreTests = []sessionStoreTest{
 			Name:          "round-trip",
 			GeneratorMeta: schema.GeneratorMeta{Model: "test-model", Provider: "test-provider"},
 		})
-		session.Append(schema.Message{Role: schema.RoleUser, Tokens: 5, Content: []schema.ContentBlock{{Text: textPtr("hi")}}})
-		session.Append(schema.Message{Role: schema.RoleAssistant, Tokens: 10, Content: []schema.ContentBlock{{Text: textPtr("hello")}}})
+		session.Append(schema.Message{Role: schema.RoleUser, Tokens: 5, Content: []schema.ContentBlock{{Text: types.Ptr("hi")}}})
+		session.Append(schema.Message{Role: schema.RoleAssistant, Tokens: 10, Content: []schema.ContentBlock{{Text: types.Ptr("hello")}}})
 		s.WriteSession(session)
 		got, err := s.GetSession(context.TODO(), session.ID)
 		assert.NoError(err)
@@ -378,7 +377,7 @@ var sessionStoreTests = []sessionStoreTest{
 		time.Sleep(10 * time.Millisecond)
 		s.CreateSession(context.TODO(), schema.SessionMeta{Name: "second", GeneratorMeta: schema.GeneratorMeta{Model: "test-model", Provider: "test-provider"}})
 		time.Sleep(10 * time.Millisecond)
-		s1.Append(schema.Message{Role: schema.RoleUser, Content: []schema.ContentBlock{{Text: textPtr("hello")}}})
+		s1.Append(schema.Message{Role: schema.RoleUser, Content: []schema.ContentBlock{{Text: types.Ptr("hello")}}})
 		s.WriteSession(s1)
 		resp, err := s.ListSessions(context.TODO(), schema.ListSessionRequest{})
 		assert.NoError(err)
@@ -481,7 +480,7 @@ var sessionStoreTests = []sessionStoreTest{
 			})
 			sessions[i].Append(schema.Message{
 				Role:    schema.RoleUser,
-				Content: []schema.ContentBlock{{Text: textPtr(fmt.Sprintf("msg_%d", i))}},
+				Content: []schema.ContentBlock{{Text: types.Ptr(fmt.Sprintf("msg_%d", i))}},
 			})
 		}
 

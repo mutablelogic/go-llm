@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"testing"
 
+	// Packages
 	encrypt "github.com/mutablelogic/go-llm/pkg/encrypt"
 	assert "github.com/stretchr/testify/assert"
 )
