@@ -28,12 +28,26 @@ type MCPCommands struct {
 
 type HeartbeatMCPCommand struct {
 	gocmd.RunServer
+	PostgresFlags `embed:"" prefix:"pg."`
 }
 
 ///////////////////////////////////////////////////////////////////////////////
 // COMMANDS
 
 func (cmd *HeartbeatMCPCommand) Run(ctx server.Cmd) error {
+	// Optionally connect to the database
+	pool, err := cmd.Connect(ctx)
+	if err != nil {
+		return fmt.Errorf("connecting to database: %w", err)
+	} else if pool != nil {
+		ctx.Logger().InfoContext(ctx.Context(), "connected to database")
+	}
+	defer func() {
+		if pool != nil {
+			pool.Close()
+		}
+	}()
+
 	// Create the file-backed heartbeat store
 	store, err := cmd.HeartbeatStore(ctx.Name())
 	if err != nil {

@@ -988,6 +988,14 @@ github.com/igor-pavlenko/goldmark-telegram v0.2.0 h1:WLN5yZ1XwS1xrEdsNoVEp72rxXI
 github.com/igor-pavlenko/goldmark-telegram v0.2.0/go.mod h1:qBDsD6voX/N52x3U7hqaoQc/1HQF+AhyWUvuWrlP4jM=
 github.com/inconshreveable/mousetrap v1.0.0/go.mod h1:PxqpIevigyE2G7u3NXJIT2ANytuPF1OarO4DADm73n8=
 github.com/influxdata/influxdb1-client v0.0.0-20191209144304-8bf82d3c094d/go.mod h1:qj24IKcXYK6Iy9ceXlo3Tc+vtHo9lIhSX5JddghvEPo=
+github.com/jackc/pgpassfile v1.0.0 h1:/6Hmqy13Ss2zCq62VdNG8tM1wchn8zjSGOBJ6icpsIM=
+github.com/jackc/pgpassfile v1.0.0/go.mod h1:CEx0iS5ambNFdcRtxPj5JhEz+xB6uRky5eyVu/W2HEg=
+github.com/jackc/pgservicefile v0.0.0-20240606120523-5a60cdf6a761 h1:iCEnooe7UlwOQYpKFhBabPMi4aNAfoODPEFNiAnClxo=
+github.com/jackc/pgservicefile v0.0.0-20240606120523-5a60cdf6a761/go.mod h1:5TJZWKEWniPve33vlWYSoGYefn3gLQRzjfDlhSJ9ZKM=
+github.com/jackc/pgx/v5 v5.8.0 h1:TYPDoleBBme0xGSAX3/+NujXXtpZn9HBONkQC7IEZSo=
+github.com/jackc/pgx/v5 v5.8.0/go.mod h1:QVeDInX2m9VyzvNeiCJVjCkNFqzsNb43204HshNSZKw=
+github.com/jackc/puddle/v2 v2.2.2 h1:PR8nw+E/1w0GLuRFSmiioY6UooMp6KJv0/61nB7icHo=
+github.com/jackc/puddle/v2 v2.2.2/go.mod h1:vriiEXHvEE654aYKXXjOvZM39qJ0q+azkZFrfEOc3H4=
 github.com/jezek/xgb v1.0.0/go.mod h1:nrhwO0FX/enq75I7Y7G8iN1ubpSGZEiA3v9e9GyRFlk=
 github.com/jezek/xgb v1.1.1/go.mod h1:nrhwO0FX/enq75I7Y7G8iN1ubpSGZEiA3v9e9GyRFlk=
 github.com/jmespath/go-jmespath v0.0.0-20180206201540-c2b33e8439af/go.mod h1:Nht3zPeWKUH0NzdCt2Blrr5ys8VGpn0CEB0cQHVjt7k=
@@ -1113,6 +1121,8 @@ github.com/muesli/termenv v0.16.0/go.mod h1:ZRfOIKPFDYQoDFF4Olj7/QJbW60Ol/kL1pU3
 github.com/munnerz/goautoneg v0.0.0-20191010083416-a7dc8b61c822/go.mod h1:+n7T8mK8HuQTcFwEeznm/DIxMOiR9yIdICNftLE1DvQ=
 github.com/mutablelogic/go-client v1.4.3 h1:bXBHc9CJrZVUnBX1roiRzx7ctIZjh85SAP4RofDsfso=
 github.com/mutablelogic/go-client v1.4.3/go.mod h1:cKgq1PfpeUlVirp/kL9mRvZtjVBlDjYuh9atwsLREuk=
+github.com/mutablelogic/go-pg v1.1.2 h1:oHtC//mU4dnUdd6hYRt2oGITfpVh/BA51U/bKap+Ou4=
+github.com/mutablelogic/go-pg v1.1.2/go.mod h1:qwdZHszWb7LySx+ILAeWkLC/rQxyCGirQ8FGHw8eBvI=
 github.com/mutablelogic/go-server v1.6.15 h1:ZV1JMK+XiGo2fNySOW1dTrFLu0QlIZeeMNDKxBhI6OY=
 github.com/mutablelogic/go-server v1.6.15/go.mod h1:MiavGu9hapGKdc7VhZCv0mWn03wPyUN00ip77ZX7B0s=
 github.com/mwitkow/go-conntrack v0.0.0-20161129095857-cc309e4a2223/go.mod h1:qRWi+5nqEBWmkhHvq77mSJWrCKwh8bxhgT7d/eI7P4U=
