@@ -59,7 +59,7 @@ func Test_connect_005(t *testing.T) {
 	}))
 	defer ts.Close()
 
-	c, err := New(ts.URL, "test-client", "1.0.0", nil)
+	c, err := New(ts.URL, "test-client", "1.0.0")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -100,11 +100,11 @@ func Test_connect_006(t *testing.T) {
 	defer ts.Close()
 
 	var gotDiscoveryURL string
-	c, err := New(ts.URL, "test-client", "1.0.0", func(_ context.Context, discoveryURL string) error {
+	c, err := New(ts.URL, "test-client", "1.0.0", WithAuth(func(_ context.Context, discoveryURL string) error {
 		gotDiscoveryURL = discoveryURL
 		authDone.Store(true) // open the gate before the retry
 		return nil
-	})
+	}))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -133,9 +133,9 @@ func Test_connect_007(t *testing.T) {
 	defer ts.Close()
 
 	authErr := errors.New("auth failed")
-	c, err := New(ts.URL, "test-client", "1.0.0", func(_ context.Context, _ string) error {
+	c, err := New(ts.URL, "test-client", "1.0.0", WithAuth(func(_ context.Context, _ string) error {
 		return authErr
-	})
+	}))
 	if err != nil {
 		t.Fatal(err)
 	}

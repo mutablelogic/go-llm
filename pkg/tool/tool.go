@@ -94,11 +94,9 @@ func (tk *Toolkit) ListTools(req schema.ListToolsRequest) []llm.Tool {
 	}
 
 	tk.mu.RLock()
-	defer tk.mu.RUnlock()
 
+	// Snapshot builtins
 	var result []llm.Tool
-
-	// Builtins
 	if req.Namespace == "" || req.Namespace == schema.BuiltinNamespace {
 		for _, t := range tk.builtins {
 			if !isReservedToolName(t.Name()) && matchName(t.Name()) {
@@ -107,30 +105,32 @@ func (tk *Toolkit) ListTools(req schema.ListToolsRequest) []llm.Tool {
 		}
 	}
 
-	// Connector tools: collect refs without holding the lock, then query each.
+	// Snapshot connector refs
+	type connRef struct {
+		url  string
+		conn llm.Connector
+	}
+	var refs []connRef
 	if req.Namespace != schema.BuiltinNamespace {
-		type connRef struct {
-			url  string
-			conn llm.Connector
-		}
-		tk.mu.RLock()
-		var refs []connRef
 		for url, entry := range tk.conns {
 			if req.Namespace != "" && req.Namespace != url {
 				continue
 			}
 			refs = append(refs, connRef{url: url, conn: entry.connector})
 		}
-		tk.mu.RUnlock()
-		for _, ref := range refs {
-			tools, err := ref.conn.ListTools(context.Background())
-			if err != nil {
-				continue
-			}
-			for _, t := range tools {
-				if !isReservedToolName(t.Name()) && matchName(t.Name()) {
-					result = append(result, t)
-				}
+	}
+
+	tk.mu.RUnlock()
+
+	// Query connectors outside the lock
+	for _, ref := range refs {
+		tools, err := ref.conn.ListTools(context.Background())
+		if err != nil {
+			continue
+		}
+		for _, t := range tools {
+			if !isReservedToolName(t.Name()) && matchName(t.Name()) {
+				result = append(result, t)
 			}
 		}
 	}

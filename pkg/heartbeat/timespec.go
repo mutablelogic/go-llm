@@ -99,7 +99,7 @@ func NewTimeSpec[T time.Time | string](v T, loc *time.Location) (TimeSpec, error
 // newFromTime pins every TimeSpec field to the exact values of t.
 // The Weekday field is intentionally left empty (it is derivable from year+month+day).
 // loc sets the Loc field; nil or UTC leaves Loc unset.
-// Returns an error if t is in the past.
+// Past-time validation is performed by the caller (NewTimeSpec) via ts.Next.
 func newFromTime(t time.Time, loc *time.Location) (TimeSpec, error) {
 	if loc == nil {
 		loc = t.Location()

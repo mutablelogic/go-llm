@@ -108,6 +108,10 @@ func (a Attachment) Description() string { return "" }
 // MIMEType returns the MIME type of the attachment. Satisfies llm.Resource.
 func (a Attachment) MIMEType() string { return a.Type }
 
+// maxAttachmentBytes caps the amount of data read from a remote URL to
+// prevent unbounded memory use when fetching large responses.
+const maxAttachmentBytes = 32 * 1024 * 1024 // 32 MiB
+
 // Read returns the attachment's raw bytes. If Data is non-empty it is returned
 // directly. If URL is set and has a supported scheme (http, https, file) the
 // content is fetched. Satisfies llm.Resource.
@@ -129,7 +133,10 @@ func (a Attachment) Read(ctx context.Context) ([]byte, error) {
 			return nil, err
 		}
 		defer resp.Body.Close()
-		return io.ReadAll(resp.Body)
+		if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+			return nil, fmt.Errorf("attachment: HTTP %d fetching %s", resp.StatusCode, a.URL)
+		}
+		return io.ReadAll(io.LimitReader(resp.Body, maxAttachmentBytes))
 	case "file":
 		return os.ReadFile(a.URL.Path)
 	default:

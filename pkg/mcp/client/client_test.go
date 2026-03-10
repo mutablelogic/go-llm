@@ -28,7 +28,7 @@ func newTestServer(t *testing.T, srvName, srvVersion string, tools ...*mock.Mock
 		}
 	}
 	ts := httptest.NewServer(srv.Handler())
-	c, err := client.New(ts.URL, "test-client", "1.0.0", nil)
+	c, err := client.New(ts.URL, "test-client", "1.0.0")
 	if err != nil {
 		ts.Close()
 		t.Fatal(err)

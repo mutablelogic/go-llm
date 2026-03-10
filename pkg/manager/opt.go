@@ -40,7 +40,8 @@ func WithLogger(l *slog.Logger) Opt {
 	}
 }
 
-// MCPConnectorFactory returns a ConnectorFactory that creates MCP SSE clients.
+// MCPConnectorFactory returns a ConnectorFactory that creates MCP clients.
+// The client auto-detects the transport (Streamable HTTP, falling back to SSE).
 // name and version are reported to the server during the MCP initialisation handshake.
 // staticOpts are captured at construction time and applied to every connector created.
 func MCPConnectorFactory(name, version string, staticOpts ...mcpclient.Opt) ConnectorFactory {

@@ -11,6 +11,7 @@ import (
 	// Packages
 	uuid "github.com/google/uuid"
 	llm "github.com/mutablelogic/go-llm"
+	types "github.com/mutablelogic/go-server/pkg/types"
 )
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -76,6 +77,9 @@ func (s *Store) Create(message string, schedule TimeSpec) (*Heartbeat, error) {
 
 // Get retrieves a single Heartbeat by ID. Returns ErrNotFound if absent.
 func (s *Store) Get(id string) (*Heartbeat, error) {
+	if err := validateID(id); err != nil {
+		return nil, err
+	}
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
@@ -85,6 +89,9 @@ func (s *Store) Get(id string) (*Heartbeat, error) {
 // Delete removes the heartbeat file for the given ID.
 // Returns ErrNotFound if no such heartbeat exists.
 func (s *Store) Delete(id string) error {
+	if err := validateID(id); err != nil {
+		return err
+	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -127,6 +134,9 @@ func (s *Store) List(includeFired bool) ([]*Heartbeat, error) {
 // identified by id.  A non-nil schedule replaces the existing one and resets
 // the Fired flag; nil schedule leaves it unchanged.
 func (s *Store) Update(id, message string, schedule *TimeSpec) (*Heartbeat, error) {
+	if err := validateID(id); err != nil {
+		return nil, err
+	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -152,6 +162,9 @@ func (s *Store) Update(id, message string, schedule *TimeSpec) (*Heartbeat, erro
 
 // MarkFired sets Fired=true on the heartbeat and persists it.
 func (s *Store) MarkFired(id string) error {
+	if err := validateID(id); err != nil {
+		return err
+	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -212,6 +225,15 @@ func (s *Store) Due() ([]*Heartbeat, error) {
 
 ///////////////////////////////////////////////////////////////////////////////
 // PRIVATE METHODS
+
+// validateID rejects any id that is not a valid UUID, preventing path-traversal
+// attacks where a caller passes a value containing '/' or '..' components.
+func validateID(id string) error {
+	if !types.IsUUID(id) {
+		return llm.ErrBadParameter.Withf("invalid heartbeat id %q", id)
+	}
+	return nil
+}
 
 func (s *Store) path(id string) string {
 	return filepath.Join(s.dir, id+jsonExt)

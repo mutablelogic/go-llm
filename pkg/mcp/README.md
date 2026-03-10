@@ -155,7 +155,7 @@ import "github.com/mutablelogic/go-llm/pkg/agent"
 
 meta, err := agent.ReadFile("summarize.md")
 if err != nil { log.Fatal(err) }
-srv.AddPrompt(meta)
+srv.AddPrompts(meta)
 ```
 
 Remove prompts by name: `srv.RemovePrompts("summarize")`.  

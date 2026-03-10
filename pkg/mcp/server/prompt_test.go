@@ -16,7 +16,7 @@ func TestServerListPrompts(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	srv.AddPrompt(schema.AgentMeta{
+	srv.AddPrompts(schema.AgentMeta{
 		Name:        "greet",
 		Title:       "Greeting Prompt",
 		Description: "Greets someone by name",
@@ -54,7 +54,7 @@ func TestServerGetPrompt(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	srv.AddPrompt(schema.AgentMeta{
+	srv.AddPrompts(schema.AgentMeta{
 		Name:        "greet",
 		Title:       "Greeting Prompt",
 		Description: "Greets someone by name",
