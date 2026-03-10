@@ -4,6 +4,7 @@ import (
 	"log/slog"
 	"testing"
 
+	// Packages
 	llm "github.com/mutablelogic/go-llm"
 	schema "github.com/mutablelogic/go-llm/pkg/schema"
 	tool "github.com/mutablelogic/go-llm/pkg/tool"
