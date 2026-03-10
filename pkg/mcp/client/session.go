@@ -61,7 +61,7 @@ func (c *Client) refreshTools(ctx context.Context) {
 	if err != nil {
 		return
 	}
-	var tools []llm.Tool
+	tools := make([]llm.Tool, 0)
 	var cursor string
 	for {
 		result, err := sess.ListTools(ctx, &sdkmcp.ListToolsParams{Cursor: cursor})

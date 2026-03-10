@@ -21,7 +21,7 @@ func TestServerProbe(t *testing.T) {
 	_ = ts
 
 	// Connect a client and probe the server.
-	c, err := client.New(ts.URL, "test-client", "1.0.0", nil)
+	c, err := client.New(ts.URL, "test-client", "1.0.0")
 	if err != nil {
 		t.Fatal(err)
 	}

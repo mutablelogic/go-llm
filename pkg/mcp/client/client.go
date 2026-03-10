@@ -67,6 +67,9 @@ func New(url, name, version string, opts ...Opt) (*Client, error) {
 
 	// Apply mcp opts first so WithClientOpt entries are collected into c.goOpts.
 	for _, opt := range opts {
+		if opt == nil {
+			continue
+		}
 		if err := opt(c); err != nil {
 			return nil, err
 		}

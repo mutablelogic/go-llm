@@ -144,7 +144,9 @@ func (tk *Toolkit) runConnector(ctx context.Context, url string, entry *connEntr
 					return egCtx.Err()
 				case <-timer.C:
 					tools, err := c.ListTools(egCtx)
-					if err != nil {
+					if err != nil || tools == nil {
+						// Not yet ready: err means session not established;
+						// nil tools means the initial refresh hasn't completed.
 						timer.Reset(pollInterval)
 						continue
 					}
