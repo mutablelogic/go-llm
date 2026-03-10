@@ -7,8 +7,10 @@ import (
 
 	// Packages
 	jsonschema "github.com/google/jsonschema-go/jsonschema"
+	gootel "github.com/mutablelogic/go-client/pkg/otel"
 	llm "github.com/mutablelogic/go-llm"
 	tool "github.com/mutablelogic/go-llm/pkg/tool"
+	attribute "go.opentelemetry.io/otel/attribute"
 )
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -55,7 +57,10 @@ func (*addHeartbeat) InputSchema() (*jsonschema.Schema, error) {
 	return jsonschema.For[AddHeartbeatRequest](nil)
 }
 
-func (t *addHeartbeat) Run(ctx context.Context, input json.RawMessage) (any, error) {
+func (t *addHeartbeat) Run(ctx context.Context, input json.RawMessage) (_ any, err error) {
+	ctx, endSpan := gootel.StartSpan(t.mgr.tracer, ctx, "add_heartbeat", attribute.String("input", string(input)))
+	defer func() { endSpan(err) }()
+
 	var req AddHeartbeatRequest
 	if len(input) > 0 {
 		if err := json.Unmarshal(input, &req); err != nil {
@@ -95,7 +100,10 @@ func (*deleteHeartbeat) InputSchema() (*jsonschema.Schema, error) {
 	return jsonschema.For[DeleteHeartbeatRequest](nil)
 }
 
-func (t *deleteHeartbeat) Run(ctx context.Context, input json.RawMessage) (any, error) {
+func (t *deleteHeartbeat) Run(ctx context.Context, input json.RawMessage) (_ any, err error) {
+	ctx, endSpan := gootel.StartSpan(t.mgr.tracer, ctx, "delete_heartbeat", attribute.String("input", string(input)))
+	defer func() { endSpan(err) }()
+
 	var req DeleteHeartbeatRequest
 	if len(input) > 0 {
 		if err := json.Unmarshal(input, &req); err != nil {
@@ -126,7 +134,10 @@ func (*listHeartbeats) InputSchema() (*jsonschema.Schema, error) {
 	return jsonschema.For[ListHeartbeatsRequest](nil)
 }
 
-func (t *listHeartbeats) Run(ctx context.Context, input json.RawMessage) (any, error) {
+func (t *listHeartbeats) Run(ctx context.Context, input json.RawMessage) (_ any, err error) {
+	ctx, endSpan := gootel.StartSpan(t.mgr.tracer, ctx, "list_heartbeats", attribute.String("input", string(input)))
+	defer func() { endSpan(err) }()
+
 	var req ListHeartbeatsRequest
 	if len(input) > 0 {
 		if err := json.Unmarshal(input, &req); err != nil {
@@ -155,7 +166,10 @@ func (*updateHeartbeat) InputSchema() (*jsonschema.Schema, error) {
 	return jsonschema.For[UpdateHeartbeatRequest](nil)
 }
 
-func (t *updateHeartbeat) Run(ctx context.Context, input json.RawMessage) (any, error) {
+func (t *updateHeartbeat) Run(ctx context.Context, input json.RawMessage) (_ any, err error) {
+	ctx, endSpan := gootel.StartSpan(t.mgr.tracer, ctx, "update_heartbeat", attribute.String("input", string(input)))
+	defer func() { endSpan(err) }()
+
 	var req UpdateHeartbeatRequest
 	if len(input) > 0 {
 		if err := json.Unmarshal(input, &req); err != nil {

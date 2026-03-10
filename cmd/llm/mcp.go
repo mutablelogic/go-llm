@@ -72,17 +72,21 @@ func (cmd *HeartbeatMCPCommand) Run(ctx server.Cmd) error {
 
 	// Create the heartbeat manager; on each fire, upsert a resource so connected
 	// clients receive notifications/resources/list_changed automatically.
-	mgr, err := heartbeat.New(store,
-		heartbeat.WithLogger(ctx.Logger()),
-		heartbeat.WithOnFire(func(_ context.Context, h *heartbeat.Heartbeat) {
-			u, _ := url.Parse("heartbeat:" + h.ID)
-			raw, _ := json.Marshal(h)
-			srv.AddResources(&heartbeatResource{
-				uri:  u.String(),
-				name: h.Message,
-				data: raw,
-			}) //nolint:errcheck
-		}))
+	var mgrOpts []heartbeat.Opt
+	mgrOpts = append(mgrOpts, heartbeat.WithLogger(ctx.Logger()))
+	if t := ctx.Tracer(); t != nil {
+		mgrOpts = append(mgrOpts, heartbeat.WithTracer(t))
+	}
+	mgrOpts = append(mgrOpts, heartbeat.WithOnFire(func(_ context.Context, h *heartbeat.Heartbeat) {
+		u, _ := url.Parse("heartbeat:" + h.ID)
+		raw, _ := json.Marshal(h)
+		srv.AddResources(&heartbeatResource{
+			uri:  u.String(),
+			name: h.Message,
+			data: raw,
+		}) //nolint:errcheck
+	}))
+	mgr, err := heartbeat.New(store, mgrOpts...)
 	if err != nil {
 		return fmt.Errorf("heartbeat manager: %w", err)
 	}

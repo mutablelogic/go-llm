@@ -4,6 +4,9 @@ import (
 	"context"
 	"log/slog"
 	"time"
+
+	// Packages
+	trace "go.opentelemetry.io/otel/trace"
 )
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -42,6 +45,16 @@ func WithOnFire(fn func(context.Context, *Heartbeat)) Opt {
 	return func(m *Manager) error {
 		if fn != nil {
 			m.onFire = fn
+		}
+		return nil
+	}
+}
+
+// WithTracer sets the OpenTelemetry tracer for distributed tracing.
+func WithTracer(t trace.Tracer) Opt {
+	return func(m *Manager) error {
+		if t != nil {
+			m.tracer = t
 		}
 		return nil
 	}
