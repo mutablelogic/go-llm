@@ -18,7 +18,7 @@ import (
 	server "github.com/mutablelogic/go-server"
 	gocmd "github.com/mutablelogic/go-server/pkg/cmd"
 	httprouter "github.com/mutablelogic/go-server/pkg/httprouter"
-	version "github.com/mutablelogic/go-server/pkg/version"
+	errgroup "golang.org/x/sync/errgroup"
 )
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -65,7 +65,7 @@ func (cmd *HeartbeatMCPCommand) Run(ctx server.Cmd) error {
 	}
 
 	// Create the MCP server
-	srv, err := mcpserver.New("heartbeat", version.Version())
+	srv, err := mcpserver.New(ctx.Name()+"/heartbeat", ctx.Version())
 	if err != nil {
 		return fmt.Errorf("mcp server: %w", err)
 	}
@@ -101,14 +101,19 @@ func (cmd *HeartbeatMCPCommand) Run(ctx server.Cmd) error {
 		return router.RegisterFunc("", srv.Handler().ServeHTTP, false, nil)
 	})
 
-	// Run the heartbeat manager alongside the HTTP server
-	go func() {
-		if err := mgr.Run(ctx.Context()); err != nil {
-			ctx.Logger().ErrorContext(ctx.Context(), "heartbeat manager error", "error", err)
-		}
-	}()
+	// Run the heartbeat manager and HTTP server concurrently; wait for both
+	// before returning so the deferred pool.Close() doesn't race with an
+	// in-progress tick.
+	eg, egCtx := errgroup.WithContext(ctx.Context())
+	eg.Go(func() error {
+		return mgr.Run(egCtx)
+	})
+	eg.Go(func() error {
+		return cmd.RunServer.Run(ctx)
+	})
 
-	return cmd.RunServer.Run(ctx)
+	// Wait for both the manager and server to exit (e.g. on context cancellation)
+	return eg.Wait()
 }
 
 ///////////////////////////////////////////////////////////////////////////////

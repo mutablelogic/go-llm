@@ -1,6 +1,7 @@
 package heartbeat_test
 
 import (
+	"context"
 	"os"
 	"testing"
 	"time"
@@ -10,7 +11,7 @@ import (
 	assert "github.com/stretchr/testify/assert"
 )
 
-func newTestStore(t *testing.T) heartbeat.Store {
+func newTestStore(t *testing.T) *file.Store {
 	t.Helper()
 	dir, err := os.MkdirTemp("", "heartbeat-store-*")
 	if err != nil {
@@ -33,6 +34,29 @@ func futureSpec(t *testing.T) heartbeat.TimeSpec {
 	return ts
 }
 
+// nextMinuteSpec returns a one-shot TimeSpec for 1 minute from now (via NewTimeSpec,
+// so it passes future-time validation). Pair with a store whose NowFn advances
+// the clock by >=2 minutes so Next() treats it as due.
+func nextMinuteSpec(t *testing.T) heartbeat.TimeSpec {
+	t.Helper()
+	at := time.Now().UTC().Truncate(time.Minute).Add(time.Minute)
+	ts, err := heartbeat.NewTimeSpec(at, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return ts
+}
+
+// advancedStore returns a *file.Store whose internal clock is 2 minutes ahead
+// of real time, so heartbeats created with nextMinuteSpec / futureSpec are
+// immediately treated as due by Next().
+func advancedStore(t *testing.T) *file.Store {
+	t.Helper()
+	s := newTestStore(t)
+	s.NowFn = func() time.Time { return time.Now().Add(2 * time.Minute) }
+	return s
+}
+
 func Test_store_001(t *testing.T) {
 	assert := assert.New(t)
 	_, err := file.NewStore("")
@@ -48,35 +72,35 @@ func Test_store_002(t *testing.T) {
 func Test_store_003(t *testing.T) {
 	assert := assert.New(t)
 	s := newTestStore(t)
-	_, err := s.Create("", futureSpec(t))
+	_, err := s.Create(context.Background(), heartbeat.HeartbeatMeta{Message: "", Schedule: futureSpec(t)})
 	assert.Error(err)
 }
 
 func Test_store_004(t *testing.T) {
 	assert := assert.New(t)
 	s := newTestStore(t)
-	h, err := s.Create("test message", futureSpec(t))
+	h, err := s.Create(context.Background(), heartbeat.HeartbeatMeta{Message: "test message", Schedule: futureSpec(t)})
 	assert.NoError(err)
 	assert.NotNil(h)
 	assert.NotEmpty(h.ID)
 	assert.Equal("test message", h.Message)
 	assert.False(h.Created.IsZero())
-	assert.False(h.Modified.IsZero())
+	assert.Nil(h.Modified)
 }
 
 func Test_store_005(t *testing.T) {
 	assert := assert.New(t)
 	s := newTestStore(t)
-	_, err := s.Get("does-not-exist")
+	_, err := s.Get(context.Background(), "does-not-exist")
 	assert.Error(err)
 }
 
 func Test_store_006(t *testing.T) {
 	assert := assert.New(t)
 	s := newTestStore(t)
-	created, err := s.Create("hello", futureSpec(t))
+	created, err := s.Create(context.Background(), heartbeat.HeartbeatMeta{Message: "hello", Schedule: futureSpec(t)})
 	assert.NoError(err)
-	got, err := s.Get(created.ID)
+	got, err := s.Get(context.Background(), created.ID)
 	assert.NoError(err)
 	assert.Equal(created.ID, got.ID)
 	assert.Equal(created.Message, got.Message)
@@ -85,24 +109,24 @@ func Test_store_006(t *testing.T) {
 func Test_store_007(t *testing.T) {
 	assert := assert.New(t)
 	s := newTestStore(t)
-	err := s.Delete("does-not-exist")
+	err := s.Delete(context.Background(), "does-not-exist")
 	assert.Error(err)
 }
 
 func Test_store_008(t *testing.T) {
 	assert := assert.New(t)
 	s := newTestStore(t)
-	h, err := s.Create("bye", futureSpec(t))
+	h, err := s.Create(context.Background(), heartbeat.HeartbeatMeta{Message: "bye", Schedule: futureSpec(t)})
 	assert.NoError(err)
-	assert.NoError(s.Delete(h.ID))
-	_, err = s.Get(h.ID)
+	assert.NoError(s.Delete(context.Background(), h.ID))
+	_, err = s.Get(context.Background(), h.ID)
 	assert.Error(err)
 }
 
 func Test_store_009(t *testing.T) {
 	assert := assert.New(t)
 	s := newTestStore(t)
-	list, err := s.List(false)
+	list, err := s.List(context.Background(), false)
 	assert.NoError(err)
 	assert.Empty(list)
 }
@@ -110,11 +134,11 @@ func Test_store_009(t *testing.T) {
 func Test_store_010(t *testing.T) {
 	assert := assert.New(t)
 	s := newTestStore(t)
-	_, err := s.Create("a", futureSpec(t))
+	_, err := s.Create(context.Background(), heartbeat.HeartbeatMeta{Message: "a", Schedule: futureSpec(t)})
 	assert.NoError(err)
-	_, err = s.Create("b", futureSpec(t))
+	_, err = s.Create(context.Background(), heartbeat.HeartbeatMeta{Message: "b", Schedule: futureSpec(t)})
 	assert.NoError(err)
-	all, err := s.List(true)
+	all, err := s.List(context.Background(), true)
 	assert.NoError(err)
 	assert.Len(all, 2)
 }
@@ -122,26 +146,28 @@ func Test_store_010(t *testing.T) {
 func Test_store_011(t *testing.T) {
 	assert := assert.New(t)
 	s := newTestStore(t)
-	h, err := s.Create("original", futureSpec(t))
+	h, err := s.Create(context.Background(), heartbeat.HeartbeatMeta{Message: "original", Schedule: futureSpec(t)})
 	assert.NoError(err)
-	updated, err := s.Update(h.ID, "updated message", nil)
+	updated, err := s.Update(context.Background(), h.ID, heartbeat.HeartbeatMeta{Message: "updated message"})
 	assert.NoError(err)
 	assert.Equal("updated message", updated.Message)
 }
 
 func Test_store_012(t *testing.T) {
 	assert := assert.New(t)
-	s := newTestStore(t)
-	ts, err := heartbeat.NewTimeSpec(time.Now().UTC().Add(2*time.Hour), nil)
+	s := advancedStore(t)
+	h, err := s.Create(context.Background(), heartbeat.HeartbeatMeta{Message: "one-shot", Schedule: nextMinuteSpec(t)})
 	assert.NoError(err)
-	h, err := s.Create("one-shot", ts)
+	fired, err := s.Next(context.Background())
 	assert.NoError(err)
-	assert.NoError(s.MarkFired(h.ID))
-	got, err := s.Get(h.ID)
+	if assert.Len(fired, 1) {
+		assert.Equal(h.ID, fired[0].ID)
+		assert.True(fired[0].Fired)
+	}
+	// Rescheduling a fired one-shot should reset fired=false.
+	newTs, err := heartbeat.NewTimeSpec("0 9 * * 1-5", nil)
 	assert.NoError(err)
-	assert.True(got.Fired)
-	newTs := futureSpec(t)
-	updated, err := s.Update(h.ID, "", &newTs)
+	updated, err := s.Update(context.Background(), h.ID, heartbeat.HeartbeatMeta{Schedule: newTs})
 	assert.NoError(err)
 	assert.False(updated.Fired)
 }
@@ -149,26 +175,18 @@ func Test_store_012(t *testing.T) {
 func Test_store_013(t *testing.T) {
 	assert := assert.New(t)
 	s := newTestStore(t)
-	_, err := s.Update("no-such-id", "msg", nil)
-	assert.Error(err)
-}
-
-func Test_store_014(t *testing.T) {
-	assert := assert.New(t)
-	s := newTestStore(t)
-	err := s.MarkFired("no-such-id")
+	_, err := s.Update(context.Background(), "no-such-id", heartbeat.HeartbeatMeta{Message: "msg"})
 	assert.Error(err)
 }
 
 func Test_store_015(t *testing.T) {
 	assert := assert.New(t)
-	s := newTestStore(t)
-	ts, err := heartbeat.NewTimeSpec(time.Now().UTC().Add(time.Hour), nil)
+	s := advancedStore(t)
+	h, err := s.Create(context.Background(), heartbeat.HeartbeatMeta{Message: "one-shot", Schedule: nextMinuteSpec(t)})
 	assert.NoError(err)
-	h, err := s.Create("one-shot", ts)
+	_, err = s.Next(context.Background())
 	assert.NoError(err)
-	assert.NoError(s.MarkFired(h.ID))
-	got, err := s.Get(h.ID)
+	got, err := s.Get(context.Background(), h.ID)
 	assert.NoError(err)
 	assert.True(got.Fired)
 	assert.Nil(got.LastFired)
@@ -176,11 +194,12 @@ func Test_store_015(t *testing.T) {
 
 func Test_store_016(t *testing.T) {
 	assert := assert.New(t)
-	s := newTestStore(t)
-	h, err := s.Create("recurring", futureSpec(t))
+	s := advancedStore(t)
+	h, err := s.Create(context.Background(), heartbeat.HeartbeatMeta{Message: "recurring", Schedule: futureSpec(t)})
 	assert.NoError(err)
-	assert.NoError(s.MarkFired(h.ID))
-	got, err := s.Get(h.ID)
+	_, err = s.Next(context.Background())
+	assert.NoError(err)
+	got, err := s.Get(context.Background(), h.ID)
 	assert.NoError(err)
 	assert.False(got.Fired)
 	assert.NotNil(got.LastFired)
@@ -189,22 +208,26 @@ func Test_store_016(t *testing.T) {
 func Test_store_017(t *testing.T) {
 	assert := assert.New(t)
 	s := newTestStore(t)
-	due, err := s.Due()
+	fired, err := s.Next(context.Background())
 	assert.NoError(err)
-	assert.Empty(due)
+	assert.Empty(fired)
 }
 
 func Test_store_018(t *testing.T) {
 	assert := assert.New(t)
-	s := newTestStore(t)
-	ts, err := heartbeat.NewTimeSpec(time.Now().UTC().Add(time.Hour), nil)
+	s := advancedStore(t)
+	h, err := s.Create(context.Background(), heartbeat.HeartbeatMeta{Message: "fired", Schedule: nextMinuteSpec(t)})
 	assert.NoError(err)
-	h, err := s.Create("fired", ts)
+	// First Next() should collect and fire it.
+	fired, err := s.Next(context.Background())
 	assert.NoError(err)
-	assert.NoError(s.MarkFired(h.ID))
-	due, err := s.Due()
+	if assert.Len(fired, 1) {
+		assert.Equal(h.ID, fired[0].ID)
+	}
+	// Second Next() must not return it again.
+	again, err := s.Next(context.Background())
 	assert.NoError(err)
-	for _, d := range due {
+	for _, d := range again {
 		assert.NotEqual(h.ID, d.ID)
 	}
 }

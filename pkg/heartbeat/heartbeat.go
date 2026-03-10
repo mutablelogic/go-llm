@@ -95,18 +95,13 @@ func (m *Manager) ListResources(_ context.Context) ([]llm.Resource, error) { ret
 // tick checks for due heartbeats, fires the callback for each, and marks them
 // as fired.  Errors are logged but do not abort the loop.
 func (m *Manager) tick(ctx context.Context) {
-	due, err := m.store.Due()
+	fired, err := m.store.Next(ctx)
 	if err != nil {
-		m.logger.Error("heartbeat: failed to query due heartbeats", "err", err)
+		m.logger.Error("heartbeat: failed to fire due heartbeats", "err", err.Error())
 		return
 	}
-	for _, h := range due {
+	for _, h := range fired {
 		m.logger.Info("heartbeat fired", "id", h.ID, "message", h.Message)
-		// Fire the callback first so last_fired in the payload reflects the
-		// previous occurrence — useful for answering "when did you last remind me?".
 		m.onFire(ctx, h)
-		if err := m.store.MarkFired(h.ID); err != nil {
-			m.logger.Error("heartbeat: failed to mark fired", "id", h.ID, "err", err)
-		}
 	}
 }

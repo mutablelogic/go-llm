@@ -257,6 +257,13 @@ func dedupInts(vals []int) []int {
 ///////////////////////////////////////////////////////////////////////////////
 // PUBLIC METHODS
 
+// IsZero returns true if ts has no constraints and no explicit timezone.
+// A spec with an explicit Loc (even with wildcard fields) is not zero,
+// so that timezone-only updates are treated as schedule changes.
+func (ts TimeSpec) IsZero() bool {
+	return ts.Year == nil && len(ts.Month) == 0 && len(ts.Day) == 0 && len(ts.Weekday) == 0 && len(ts.Hour) == 0 && len(ts.Minute) == 0 && ts.Loc == nil
+}
+
 // Next returns the earliest time on or after from that satisfies every
 // field of ts.  The returned time is expressed in ts.Loc (UTC if nil).
 // Returns the zero time.Time when no match exists within a four-year window

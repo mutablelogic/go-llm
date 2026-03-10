@@ -1,6 +1,7 @@
 package file
 
 import (
+	"context"
 	"encoding/json"
 	"os"
 	"path/filepath"
@@ -30,8 +31,16 @@ const (
 // Store is a file-backed, concurrency-safe store for Heartbeat records.
 // Each heartbeat is persisted as {id}.json inside the configured directory.
 type Store struct {
-	mu  sync.RWMutex
-	dir string
+	mu    sync.RWMutex
+	dir   string
+	NowFn func() time.Time // if non-nil, overrides time.Now (for testing)
+}
+
+func (s *Store) now() time.Time {
+	if s.NowFn != nil {
+		return s.NowFn()
+	}
+	return time.Now()
 }
 
 var _ heartbeat.Store = (*Store)(nil)
@@ -56,19 +65,17 @@ func NewStore(dir string) (*Store, error) {
 
 // Create persists a new Heartbeat derived from the supplied fields.
 // A unique ID and timestamps are assigned automatically.
-func (s *Store) Create(message string, schedule heartbeat.TimeSpec) (*heartbeat.Heartbeat, error) {
-	if message == "" {
+func (s *Store) Create(ctx context.Context, meta heartbeat.HeartbeatMeta) (*heartbeat.Heartbeat, error) {
+	if meta.Message == "" {
 		return nil, llm.ErrBadParameter.With("message is required")
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	now := time.Now()
 	h := &heartbeat.Heartbeat{
-		ID:       uuid.New().String(),
-		Message:  message,
-		Schedule: schedule,
-		Created:  now,
-		Modified: now,
+		ID:            uuid.New().String(),
+		HeartbeatMeta: meta,
+		Created:       now,
 	}
 	if err := s.write(h); err != nil {
 		return nil, err
@@ -77,7 +84,7 @@ func (s *Store) Create(message string, schedule heartbeat.TimeSpec) (*heartbeat.
 }
 
 // Get retrieves a single Heartbeat by ID. Returns ErrNotFound if absent.
-func (s *Store) Get(id string) (*heartbeat.Heartbeat, error) {
+func (s *Store) Get(ctx context.Context, id string) (*heartbeat.Heartbeat, error) {
 	if err := validateID(id); err != nil {
 		return nil, err
 	}
@@ -88,7 +95,7 @@ func (s *Store) Get(id string) (*heartbeat.Heartbeat, error) {
 
 // Delete removes the heartbeat file for the given ID.
 // Returns ErrNotFound if no such heartbeat exists.
-func (s *Store) Delete(id string) error {
+func (s *Store) Delete(ctx context.Context, id string) error {
 	if err := validateID(id); err != nil {
 		return err
 	}
@@ -106,7 +113,7 @@ func (s *Store) Delete(id string) error {
 
 // List returns all heartbeats in the store.
 // When includeFired is false, already-fired heartbeats are excluded.
-func (s *Store) List(includeFired bool) ([]*heartbeat.Heartbeat, error) {
+func (s *Store) List(ctx context.Context, includeFired bool) ([]*heartbeat.Heartbeat, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	ids, err := s.listIDs()
@@ -130,7 +137,7 @@ func (s *Store) List(includeFired bool) ([]*heartbeat.Heartbeat, error) {
 // Update applies non-zero fields from message and schedule to the heartbeat
 // identified by id. A non-nil schedule replaces the existing one and resets
 // the Fired flag; nil schedule leaves it unchanged.
-func (s *Store) Update(id, message string, schedule *heartbeat.TimeSpec) (*heartbeat.Heartbeat, error) {
+func (s *Store) Update(ctx context.Context, id string, meta heartbeat.HeartbeatMeta) (*heartbeat.Heartbeat, error) {
 	if err := validateID(id); err != nil {
 		return nil, err
 	}
@@ -140,54 +147,30 @@ func (s *Store) Update(id, message string, schedule *heartbeat.TimeSpec) (*heart
 	if err != nil {
 		return nil, err
 	}
-	if message != "" {
+	if message := strings.TrimSpace(meta.Message); message != "" {
 		h.Message = message
 	}
-	if schedule != nil {
-		h.Schedule = *schedule
+	if !meta.Schedule.IsZero() {
+		h.Schedule = meta.Schedule
 		h.Fired = false // rescheduling reactivates the heartbeat
 	}
-	h.Modified = time.Now()
+	h.Modified = types.Ptr(time.Now())
 	if err := s.write(h); err != nil {
 		return nil, err
 	}
 	return h, nil
 }
 
-// MarkFired sets Fired=true on the heartbeat and persists it.
-func (s *Store) MarkFired(id string) error {
-	if err := validateID(id); err != nil {
-		return err
-	}
+// Next returns all heartbeats that are due now and atomically marks them fired
+// (under the write lock — the file store has no transaction support).
+func (s *Store) Next(ctx context.Context) ([]*heartbeat.Heartbeat, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	h, err := s.read(id)
-	if err != nil {
-		return err
-	}
-	now := time.Now()
-	if h.Schedule.Year != nil {
-		// One-shot (pinned to a specific year): mark permanently fired.
-		h.Fired = true
-	} else {
-		// Recurring cron: record when it last fired so Due() can find the next
-		// occurrence, but keep Fired=false so the heartbeat stays active.
-		h.LastFired = &now
-	}
-	h.Modified = now
-	return s.write(h)
-}
-
-// Due returns all heartbeats whose next scheduled time is <= now and that
-// have not yet fired.
-func (s *Store) Due() ([]*heartbeat.Heartbeat, error) {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
 	ids, err := s.listIDs()
 	if err != nil {
 		return nil, err
 	}
-	now := time.Now()
+	now := s.now()
 	var result []*heartbeat.Heartbeat
 	for _, id := range ids {
 		h, err := s.read(id)
@@ -197,17 +180,21 @@ func (s *Store) Due() ([]*heartbeat.Heartbeat, error) {
 		if h.Fired {
 			continue
 		}
-		// For recurring crons, search forward from the last time it fired;
-		// for first-ever checks, search forward from creation time.
-		// Advance by one minute when using LastFired so that Next returns
-		// a strictly later occurrence (Next truncates to the minute, and
-		// would otherwise return the same instant repeatedly).
 		base := h.Created
 		if h.LastFired != nil {
 			base = h.LastFired.Add(time.Minute)
 		}
 		next := h.Schedule.Next(base)
 		if !next.IsZero() && !next.After(now) {
+			if h.Schedule.Year != nil {
+				h.Fired = true
+			} else {
+				h.LastFired = &now
+			}
+			h.Modified = &now
+			if err := s.write(h); err != nil {
+				return result, err
+			}
 			result = append(result, h)
 		}
 	}

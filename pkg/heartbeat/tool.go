@@ -55,7 +55,7 @@ func (*addHeartbeat) InputSchema() (*jsonschema.Schema, error) {
 	return jsonschema.For[AddHeartbeatRequest](nil)
 }
 
-func (t *addHeartbeat) Run(_ context.Context, input json.RawMessage) (any, error) {
+func (t *addHeartbeat) Run(ctx context.Context, input json.RawMessage) (any, error) {
 	var req AddHeartbeatRequest
 	if len(input) > 0 {
 		if err := json.Unmarshal(input, &req); err != nil {
@@ -79,7 +79,7 @@ func (t *addHeartbeat) Run(_ context.Context, input json.RawMessage) (any, error
 		return nil, llm.ErrBadParameter.Withf("add_heartbeat: %v", err)
 	}
 
-	return t.mgr.store.Create(req.Message, schedule)
+	return t.mgr.store.Create(ctx, HeartbeatMeta{Message: req.Message, Schedule: schedule})
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -95,7 +95,7 @@ func (*deleteHeartbeat) InputSchema() (*jsonschema.Schema, error) {
 	return jsonschema.For[DeleteHeartbeatRequest](nil)
 }
 
-func (t *deleteHeartbeat) Run(_ context.Context, input json.RawMessage) (any, error) {
+func (t *deleteHeartbeat) Run(ctx context.Context, input json.RawMessage) (any, error) {
 	var req DeleteHeartbeatRequest
 	if len(input) > 0 {
 		if err := json.Unmarshal(input, &req); err != nil {
@@ -105,7 +105,7 @@ func (t *deleteHeartbeat) Run(_ context.Context, input json.RawMessage) (any, er
 	if req.ID == "" {
 		return nil, llm.ErrBadParameter.With("delete_heartbeat: id is required")
 	}
-	if err := t.mgr.store.Delete(req.ID); err != nil {
+	if err := t.mgr.store.Delete(ctx, req.ID); err != nil {
 		return nil, err
 	}
 	return map[string]string{"id": req.ID, "status": "deleted"}, nil
@@ -126,7 +126,7 @@ func (*listHeartbeats) InputSchema() (*jsonschema.Schema, error) {
 	return jsonschema.For[ListHeartbeatsRequest](nil)
 }
 
-func (t *listHeartbeats) Run(_ context.Context, input json.RawMessage) (any, error) {
+func (t *listHeartbeats) Run(ctx context.Context, input json.RawMessage) (any, error) {
 	var req ListHeartbeatsRequest
 	if len(input) > 0 {
 		if err := json.Unmarshal(input, &req); err != nil {
@@ -134,7 +134,7 @@ func (t *listHeartbeats) Run(_ context.Context, input json.RawMessage) (any, err
 		}
 	}
 
-	return t.mgr.store.List(req.IncludeFired)
+	return t.mgr.store.List(ctx, req.IncludeFired)
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -155,7 +155,7 @@ func (*updateHeartbeat) InputSchema() (*jsonschema.Schema, error) {
 	return jsonschema.For[UpdateHeartbeatRequest](nil)
 }
 
-func (t *updateHeartbeat) Run(_ context.Context, input json.RawMessage) (any, error) {
+func (t *updateHeartbeat) Run(ctx context.Context, input json.RawMessage) (any, error) {
 	var req UpdateHeartbeatRequest
 	if len(input) > 0 {
 		if err := json.Unmarshal(input, &req); err != nil {
@@ -182,7 +182,7 @@ func (t *updateHeartbeat) Run(_ context.Context, input json.RawMessage) (any, er
 		schedStr := req.Schedule
 		if schedStr == "" {
 			// Timezone-only change: fetch the existing schedule string.
-			existing, err := t.mgr.store.Get(req.ID)
+			existing, err := t.mgr.store.Get(ctx, req.ID)
 			if err != nil {
 				return nil, err
 			}
@@ -198,5 +198,9 @@ func (t *updateHeartbeat) Run(_ context.Context, input json.RawMessage) (any, er
 		schedule = &s
 	}
 
-	return t.mgr.store.Update(req.ID, req.Message, schedule)
+	meta := HeartbeatMeta{Message: req.Message}
+	if schedule != nil {
+		meta.Schedule = *schedule
+	}
+	return t.mgr.store.Update(ctx, req.ID, meta)
 }
