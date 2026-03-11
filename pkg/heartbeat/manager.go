@@ -8,14 +8,9 @@ import (
 	// Packages
 	gootel "github.com/mutablelogic/go-client/pkg/otel"
 	llm "github.com/mutablelogic/go-llm"
+	schema "github.com/mutablelogic/go-llm/pkg/heartbeat/schema"
 	trace "go.opentelemetry.io/otel/trace"
 )
-
-///////////////////////////////////////////////////////////////////////////////
-// CONSTANTS
-
-// defaultPollInterval is how often the Manager polls the store for due heartbeats.
-const defaultPollInterval = 10 * time.Second
 
 ///////////////////////////////////////////////////////////////////////////////
 // TYPES
@@ -23,10 +18,10 @@ const defaultPollInterval = 10 * time.Second
 // Manager owns a Store and runs a background loop that fires due heartbeats.
 // Create one with New, register an OnFire callback, then call Run in a goroutine.
 type Manager struct {
-	store        Store
+	store        schema.Store
 	pollInterval time.Duration
 	logger       *slog.Logger
-	onFire       func(context.Context, *Heartbeat)
+	onFire       func(context.Context, *schema.Heartbeat)
 	tracer       trace.Tracer
 }
 
@@ -39,7 +34,7 @@ var _ llm.Connector = (*Manager)(nil)
 // LIFECYCLE
 
 // New creates a Manager backed by the given store.
-func New(store Store, opts ...Opt) (*Manager, error) {
+func New(store schema.Store, opts ...Opt) (*Manager, error) {
 	if store == nil {
 		return nil, llm.ErrBadParameter.With("store is required")
 	}
@@ -47,7 +42,7 @@ func New(store Store, opts ...Opt) (*Manager, error) {
 		store:        store,
 		pollInterval: defaultPollInterval,
 		logger:       slog.Default(),
-		onFire:       func(context.Context, *Heartbeat) {},
+		onFire:       func(context.Context, *schema.Heartbeat) {},
 	}
 	for _, o := range opts {
 		if err := o(m); err != nil {
@@ -79,18 +74,19 @@ func (m *Manager) Run(ctx context.Context) error {
 // ListTools returns the heartbeat tools and satisfies the llm.Connector interface.
 func (m *Manager) ListTools(_ context.Context) ([]llm.Tool, error) {
 	return []llm.Tool{
-		&addHeartbeat{mgr: m},
-		&deleteHeartbeat{mgr: m},
-		&listHeartbeats{mgr: m},
-		&updateHeartbeat{mgr: m},
+		addHeartbeat{mgr: m}, deleteHeartbeat{mgr: m}, listHeartbeats{mgr: m}, updateHeartbeat{mgr: m},
 	}, nil
 }
 
 // ListPrompts returns nil and satisfies the llm.Connector interface.
-func (m *Manager) ListPrompts(_ context.Context) ([]llm.Prompt, error) { return nil, nil }
+func (m *Manager) ListPrompts(_ context.Context) ([]llm.Prompt, error) {
+	return nil, nil
+}
 
 // ListResources returns nil and satisfies the llm.Connector interface.
-func (m *Manager) ListResources(_ context.Context) ([]llm.Resource, error) { return nil, nil }
+func (m *Manager) ListResources(_ context.Context) ([]llm.Resource, error) {
+	return nil, nil
+}
 
 ///////////////////////////////////////////////////////////////////////////////
 // PRIVATE METHODS
@@ -103,11 +99,10 @@ func (m *Manager) tick(ctx context.Context) (err error) {
 
 	fired, err := m.store.Next(ctx)
 	if err != nil {
-		m.logger.Error("heartbeat: failed to fire due heartbeats", "err", err.Error())
+		m.logger.ErrorContext(ctx, "heartbeat: failed to fire due heartbeats", "err", err.Error())
 		return
 	}
 	for _, h := range fired {
-		m.logger.Info("heartbeat fired", "id", h.ID, "message", h.Message)
 		m.onFire(ctx, h)
 	}
 	return

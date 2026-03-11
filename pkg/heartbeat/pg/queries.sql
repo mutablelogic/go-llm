@@ -22,10 +22,10 @@ RETURNING
     id, message, schedule, fired, last_fired, created, modified, meta
 
 -- heartbeat.mark_fired
+-- The @fired parameter is computed by Go: true if Next() returns zero (no future occurrence).
 UPDATE ${"schema"}."heartbeat" SET
-    fired      = (schedule->>'year') IS NOT NULL,
-    last_fired = CASE WHEN (schedule->>'year') IS NULL THEN NOW() ELSE last_fired END,
-    modified   = NOW()
+    fired      = @fired,
+    last_fired = CASE WHEN NOT @fired THEN NOW() ELSE last_fired END
 WHERE id = @id
 RETURNING
     id, message, schedule, fired, last_fired, created, modified, meta

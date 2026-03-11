@@ -7,13 +7,11 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/url"
-	"os"
-	"path/filepath"
 
 	// Packages
 	heartbeat "github.com/mutablelogic/go-llm/pkg/heartbeat"
-	heartbeatfile "github.com/mutablelogic/go-llm/pkg/heartbeat/file"
-	heartbeatpg "github.com/mutablelogic/go-llm/pkg/heartbeat/pg"
+	heartbeat_pg "github.com/mutablelogic/go-llm/pkg/heartbeat/pg"
+	heartbeat_schema "github.com/mutablelogic/go-llm/pkg/heartbeat/schema"
 	mcpserver "github.com/mutablelogic/go-llm/pkg/mcp/server"
 	server "github.com/mutablelogic/go-server"
 	gocmd "github.com/mutablelogic/go-server/pkg/cmd"
@@ -37,31 +35,21 @@ type HeartbeatMCPCommand struct {
 // COMMANDS
 
 func (cmd *HeartbeatMCPCommand) Run(ctx server.Cmd) error {
-	// Optionally connect to the database
+	// Connect to the database
 	pool, err := cmd.Connect(ctx)
 	if err != nil {
-		return fmt.Errorf("connecting to database: %w", err)
-	} else if pool != nil {
+		return err
+	} else if pool == nil {
+		return fmt.Errorf("no database connection")
+	} else {
 		ctx.Logger().InfoContext(ctx.Context(), "connected to database")
 	}
-	defer func() {
-		if pool != nil {
-			pool.Close()
-		}
-	}()
+	defer pool.Close()
 
-	// Create the heartbeat store: prefer database-backed when a pool is available.
-	var store heartbeat.Store
-	if pool != nil {
-		store, err = heartbeatpg.NewStore(ctx.Context(), pool)
-		if err != nil {
-			return fmt.Errorf("failed to create pg heartbeat store: %w", err)
-		}
-	} else {
-		store, err = cmd.HeartbeatStore(ctx.Name())
-		if err != nil {
-			return err
-		}
+	// Create the heartbeat store
+	store, err := heartbeat_pg.NewStore(ctx.Context(), pool)
+	if err != nil {
+		return fmt.Errorf("failed to create pg heartbeat store: %w", err)
 	}
 
 	// Create the MCP server
@@ -72,20 +60,19 @@ func (cmd *HeartbeatMCPCommand) Run(ctx server.Cmd) error {
 
 	// Create the heartbeat manager; on each fire, upsert a resource so connected
 	// clients receive notifications/resources/list_changed automatically.
-	var mgrOpts []heartbeat.Opt
-	mgrOpts = append(mgrOpts, heartbeat.WithLogger(ctx.Logger()))
-	if t := ctx.Tracer(); t != nil {
-		mgrOpts = append(mgrOpts, heartbeat.WithTracer(t))
+	mgrOpts := []heartbeat.Opt{
+		heartbeat.WithLogger(ctx.Logger()),
+		heartbeat.WithTracer(ctx.Tracer()),
+		heartbeat.WithOnFire(func(_ context.Context, h *heartbeat_schema.Heartbeat) {
+			u, _ := url.Parse("heartbeat:" + h.ID)
+			raw, _ := json.Marshal(h)
+			srv.AddResources(&heartbeatResource{
+				uri:  u.String(),
+				name: h.Message,
+				data: raw,
+			})
+		}),
 	}
-	mgrOpts = append(mgrOpts, heartbeat.WithOnFire(func(_ context.Context, h *heartbeat.Heartbeat) {
-		u, _ := url.Parse("heartbeat:" + h.ID)
-		raw, _ := json.Marshal(h)
-		srv.AddResources(&heartbeatResource{
-			uri:  u.String(),
-			name: h.Message,
-			data: raw,
-		}) //nolint:errcheck
-	}))
 	mgr, err := heartbeat.New(store, mgrOpts...)
 	if err != nil {
 		return fmt.Errorf("heartbeat manager: %w", err)
@@ -137,21 +124,4 @@ func (r *heartbeatResource) Description() string { return "" }
 func (r *heartbeatResource) MIMEType() string    { return "application/json" }
 func (r *heartbeatResource) Read(_ context.Context) ([]byte, error) {
 	return r.data, nil
-}
-
-///////////////////////////////////////////////////////////////////////////////
-// PRIVATE METHODS
-
-// HeartbeatStore returns the heartbeat store, creating it lazily.
-// Heartbeats are stored in the user's cache directory.
-func (cmd *HeartbeatMCPCommand) HeartbeatStore(execName string) (heartbeat.Store, error) {
-	cache, err := os.UserCacheDir()
-	if err != nil {
-		return nil, fmt.Errorf("failed to determine cache directory: %w", err)
-	}
-	store, err := heartbeatfile.NewStore(filepath.Join(cache, execName, "heartbeats"))
-	if err != nil {
-		return nil, fmt.Errorf("failed to create heartbeat store: %w", err)
-	}
-	return store, nil
 }

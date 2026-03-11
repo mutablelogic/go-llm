@@ -1,7 +1,6 @@
-package heartbeat
+package schema
 
 import (
-	"context"
 	"strings"
 	"time"
 
@@ -12,20 +11,10 @@ import (
 )
 
 ///////////////////////////////////////////////////////////////////////////////
-// INTERFACES
-
-// Store is the interface for a heartbeat store.
-type Store interface {
-	Create(ctx context.Context, meta HeartbeatMeta) (*Heartbeat, error)
-	Get(ctx context.Context, id string) (*Heartbeat, error)
-	Delete(ctx context.Context, id string) error
-	List(ctx context.Context, includeFired bool) ([]*Heartbeat, error)
-	Update(ctx context.Context, id string, meta HeartbeatMeta) (*Heartbeat, error)
-	Next(ctx context.Context) ([]*Heartbeat, error)
-}
-
-///////////////////////////////////////////////////////////////////////////////
 // STORAGE TYPES
+
+// HeartbeatIDSelector selects a single heartbeat by ID for get/update/delete operations.
+type HeartbeatIDSelector string
 
 type HeartbeatMeta struct {
 	Message  string         `json:"message"`
@@ -78,9 +67,6 @@ type UpdateHeartbeatRequest struct {
 
 ///////////////////////////////////////////////////////////////////////////////
 // SELECTORS
-
-// HeartbeatIDSelector selects a single heartbeat by ID for get/update/delete operations.
-type HeartbeatIDSelector string
 
 func (id HeartbeatIDSelector) Select(bind *pg.Bind, op pg.Op) (string, error) {
 	bind.Set("id", string(id))
@@ -163,8 +149,14 @@ func (h HeartbeatMeta) Update(bind *pg.Bind) error {
 	if !h.Schedule.IsZero() {
 		bind.Append("patch", `schedule = `+bind.Set("schedule", h.Schedule))
 
-		// Rescheduling reactivates the heartbeat, so we reset the fired flag when a new schedule is provided.
-		bind.Append("patch", `fired = FALSE`)
+		// Reset fired and last_fired only if the new schedule has a future occurrence.
+		// If the schedule is already in the past (one-shot that's passed), mark it fired.
+		if h.Schedule.Next(time.Now()).IsZero() {
+			bind.Append("patch", `fired = TRUE`)
+		} else {
+			bind.Append("patch", `fired = FALSE`)
+			bind.Append("patch", `last_fired = NULL`)
+		}
 	}
 
 	// Error on updating meta for the moment
@@ -172,12 +164,16 @@ func (h HeartbeatMeta) Update(bind *pg.Bind) error {
 		return llm.ErrBadParameter.With("updating meta is not supported")
 	}
 
-	// Set patch
-	if patch := bind.Join("patch", ", "); patch == "" {
+	// Check that there's at least one field to update before adding modified timestamp
+	if bind.Join("patch", ", ") == "" {
 		return llm.ErrBadParameter.With("no fields to update")
-	} else {
-		bind.Set("patch", patch)
 	}
+
+	// Always update modified timestamp
+	bind.Append("patch", `modified = NOW()`)
+
+	// Set patch
+	bind.Set("patch", bind.Join("patch", ", "))
 
 	// Return success
 	return nil

@@ -1,7 +1,8 @@
-package heartbeat
+package schema
 
 import (
 	"encoding/json"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -318,7 +319,7 @@ func (ts TimeSpec) Next(from time.Time) time.Time {
 		}
 
 		// ── Day-of-month ───────────────────────────────────────────────────
-		if len(ts.Day) > 0 && !containsInt(ts.Day, d) {
+		if len(ts.Day) > 0 && !slices.Contains(ts.Day, d) {
 			next, ok := nextIn(ts.Day, d)
 			if !ok {
 				// No more valid days this month; jump to the first of next month
@@ -332,7 +333,7 @@ func (ts TimeSpec) Next(from time.Time) time.Time {
 		}
 
 		// ── Weekday ────────────────────────────────────────────────────────
-		if len(ts.Weekday) > 0 && !containsInt(ts.Weekday, wd) {
+		if len(ts.Weekday) > 0 && !slices.Contains(ts.Weekday, wd) {
 			next, ok := nextIn(ts.Weekday, wd)
 			var delta int
 			if ok {
@@ -530,13 +531,4 @@ func cronField(vals []int) string {
 		parts[i] = strconv.Itoa(v)
 	}
 	return strings.Join(parts, ",")
-}
-
-func containsInt(vals []int, v int) bool {
-	for _, x := range vals {
-		if x == v {
-			return true
-		}
-	}
-	return false
 }

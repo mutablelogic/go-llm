@@ -29,27 +29,28 @@ func (cmd *PostgresFlags) Connect(ctx server.Cmd) (pg.PoolConn, error) {
 	}
 	opts := []pg.Opt{
 		pg.WithURL(cmd.Url),
+		pg.WithTracer(ctx.Tracer()),
 	}
 	if cmd.Password != "" {
 		opts = append(opts, pg.WithPassword(cmd.Password))
 	}
-	logger := ctx.Logger()
 	opts = append(opts, pg.WithTrace(func(c context.Context, sql string, args any, err error) {
 		if err != nil {
-			logger.Log(c, levelTrace, sql, "args", args, "err", err)
+			ctx.Logger().Log(c, logger.LevelDebug, sql, "args", args, "err", err)
 		} else {
-			logger.Log(c, levelTrace, sql, "args", args)
+			ctx.Logger().Log(c, logger.LevelTrace, sql, "args", args)
 		}
 	}))
-	if tracer := ctx.Tracer(); tracer != nil {
-		opts = append(opts, pg.WithTracer(tracer))
-	}
-	// Connect to the database
+
+	// Connect to the database, ping it
 	pool, err := pg.NewPool(ctx.Context(), opts...)
 	if err != nil {
 		return nil, err
 	} else if err := pool.Ping(ctx.Context()); err != nil {
+		pool.Close()
 		return nil, err
 	}
+
+	// Return success
 	return pool, nil
 }
