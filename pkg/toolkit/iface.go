@@ -87,7 +87,8 @@ type ToolkitHandler interface {
 	List(context.Context, ListRequest) (*ListResponse, error)
 
 	// CreateConnector is called to create a new connector for the given URL.
-	// It is called once on AddConnector, and again on each reconnect, so it must return
-	// a fresh instance each time (allowing auth tokens to be refreshed).
-	CreateConnector(string) (llm.Connector, error)
+	// The onState callback must be called by the connector whenever its state
+	// changes (e.g. after initial connection). The toolkit uses the reported
+	// Name field to register the connector in the namespace map.
+	CreateConnector(url string, onState func(schema.ConnectorState)) (llm.Connector, error)
 }

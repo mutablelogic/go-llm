@@ -58,9 +58,14 @@ func (tk *toolkit) startPendingConnectors(ctx context.Context) {
 			}
 			c.cancel = nil
 			c.ctx = nil
+			// Remove from namespace map on disconnect.
+			if c.namespace != "" {
+				delete(tk.namespace, c.namespace)
+			}
 			// Store unexpected errors (not context cancellation/timeout) for
 			// collection by stopAllConnectors; clear on clean exit.
 			if err != nil && !errors.Is(err, context.Canceled) && !errors.Is(err, context.DeadlineExceeded) {
+				// TODO
 				slog.Error("connector stopped", "error", err)
 				c.err = err
 			} else {

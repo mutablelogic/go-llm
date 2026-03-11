@@ -11,6 +11,7 @@ import (
 
 	// Packages
 	llm "github.com/mutablelogic/go-llm"
+	schema "github.com/mutablelogic/go-llm/pkg/schema"
 )
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -80,6 +81,28 @@ func (tk *toolkit) RemoveConnector(url string) error {
 	return nil
 }
 
+///////////////////////////////////////////////////////////////////////////////
+// PUBLIC METHODS - CONNECTOR (delegates to inner conn)
+
+func (c *connector) Run(ctx context.Context) error {
+	return c.conn.Run(ctx)
+}
+
+func (c *connector) ListTools(ctx context.Context) ([]llm.Tool, error) {
+	return c.conn.ListTools(ctx)
+}
+
+func (c *connector) ListPrompts(ctx context.Context) ([]llm.Prompt, error) {
+	return c.conn.ListPrompts(ctx)
+}
+
+func (c *connector) ListResources(ctx context.Context) ([]llm.Resource, error) {
+	return c.conn.ListResources(ctx)
+}
+
+///////////////////////////////////////////////////////////////////////////////
+// PRIVATE METHODS
+
 // addConnector is the shared implementation for AddConnector and AddConnectorNS.
 // Must NOT be called while tk.mu is held.
 func (tk *toolkit) addConnector(namespace, url string) error {
@@ -103,9 +126,28 @@ func (tk *toolkit) addConnector(namespace, url string) error {
 		return llm.ErrConflict.Withf("connector already added: %q", key)
 	}
 
-	// Create the connector via the handler while still holding the lock so the
-	// map entry and the connector object are consistent from the first moment.
-	conn, err := tk.handler.CreateConnector(key)
+	// Build the connector entry first so the onState callback can capture it.
+	c := &connector{
+		namespace: namespace,
+	}
+
+	// The onState callback is invoked by the connector after a successful
+	// handshake. If the reported Name (and no explicit namespace was given)
+	// we use it as the connector's namespace, then register it in the map.
+	onState := func(state schema.ConnectorState) {
+		if state.Name == nil {
+			return
+		}
+		tk.mu.Lock()
+		if c.namespace == "" {
+			c.namespace = *state.Name
+		}
+		tk.namespace[c.namespace] = c
+		tk.mu.Unlock()
+	}
+
+	// Create the connector via the handler, passing the onState callback.
+	conn, err := tk.handler.CreateConnector(key, onState)
 	if err != nil {
 		return err
 	}
@@ -113,10 +155,8 @@ func (tk *toolkit) addConnector(namespace, url string) error {
 		return llm.ErrInternalServerError.Withf("handler returned nil connector for %q", key)
 	}
 
-	tk.connectors[key] = &connector{
-		namespace: namespace,
-		conn:      conn,
-	}
+	c.conn = conn
+	tk.connectors[key] = c
 	return nil
 }
 
@@ -165,25 +205,3 @@ func canonicalURL(rawURL string) (string, error) {
 
 	return u.Scheme + "://" + host + u.EscapedPath(), nil
 }
-
-///////////////////////////////////////////////////////////////////////////////
-// PUBLIC METHODS - CONNECTOR (delegates to inner conn)
-
-func (c *connector) Run(ctx context.Context) error {
-	return c.conn.Run(ctx)
-}
-
-func (c *connector) ListTools(ctx context.Context) ([]llm.Tool, error) {
-	return c.conn.ListTools(ctx)
-}
-
-func (c *connector) ListPrompts(ctx context.Context) ([]llm.Prompt, error) {
-	return c.conn.ListPrompts(ctx)
-}
-
-func (c *connector) ListResources(ctx context.Context) ([]llm.Resource, error) {
-	return c.conn.ListResources(ctx)
-}
-
-///////////////////////////////////////////////////////////////////////////////
-// PRIVATE METHODS

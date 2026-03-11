@@ -7,9 +7,14 @@ import (
 	"iter"
 	"maps"
 	"slices"
+	"sync"
 
 	llm "github.com/mutablelogic/go-llm"
+	prompt "github.com/mutablelogic/go-llm/pkg/toolkit/prompt"
+	resource "github.com/mutablelogic/go-llm/pkg/toolkit/resource"
+	tool "github.com/mutablelogic/go-llm/pkg/toolkit/tool"
 	"github.com/mutablelogic/go-server/pkg/types"
+	errgroup "golang.org/x/sync/errgroup"
 )
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -62,15 +67,11 @@ const (
 // PUBLIC METHODS
 
 // List returns items of the requested type matching the request.
-// Only the "builtin" namespace is currently supported.
-func (tk *toolkit) List(_ context.Context, req ListRequest) (*ListResponse, error) {
+func (tk *toolkit) List(ctx context.Context, req ListRequest) (*ListResponse, error) {
 	var resp ListResponse
 
-	// Read lock
+	// Collect builtin items and connector candidates under the read lock.
 	tk.mu.RLock()
-	defer tk.mu.RUnlock()
-
-	// Append builtin items when no namespace filter or explicitly "builtin".
 	if req.Namespace == "" || req.Namespace == NamespaceBuiltin {
 		switch req.Type {
 		case ListTypeTools:
@@ -87,8 +88,79 @@ func (tk *toolkit) List(_ context.Context, req ListRequest) (*ListResponse, erro
 			}))
 		}
 	}
+	var candidates []*connector
+	if req.Namespace == "" {
+		for _, c := range tk.namespace {
+			candidates = append(candidates, c)
+		}
+	} else if req.Namespace != NamespaceBuiltin {
+		if c := tk.namespace[req.Namespace]; c != nil {
+			candidates = []*connector{c}
+		}
+	}
+	tk.mu.RUnlock()
 
-	// TODO: Append connector items when connectors are implemented.
+	// Query each connector in parallel and merge results.
+	if len(candidates) > 0 {
+		var mu sync.Mutex
+		var eg errgroup.Group
+		for _, c := range candidates {
+			c := c
+			eg.Go(func() error {
+				switch req.Type {
+				case ListTypeTools:
+					tools, err := c.ListTools(ctx)
+					if err != nil {
+						return err
+					}
+					var wrapped []llm.Tool
+					for _, t := range tools {
+						w := tool.WithNamespace(c.namespace, t)
+						if req.Name == "" || w.Name() == req.Name {
+							wrapped = append(wrapped, w)
+						}
+					}
+					mu.Lock()
+					resp.Tools = append(resp.Tools, wrapped...)
+					mu.Unlock()
+				case ListTypePrompts:
+					prompts, err := c.ListPrompts(ctx)
+					if err != nil {
+						return err
+					}
+					var wrapped []llm.Prompt
+					for _, p := range prompts {
+						w := prompt.WithNamespace(c.namespace, p)
+						if req.Name == "" || w.Name() == req.Name {
+							wrapped = append(wrapped, w)
+						}
+					}
+					mu.Lock()
+					resp.Prompts = append(resp.Prompts, wrapped...)
+					mu.Unlock()
+				case ListTypeResources:
+					resources, err := c.ListResources(ctx)
+					if err != nil {
+						return err
+					}
+					var wrapped []llm.Resource
+					for _, r := range resources {
+						w := resource.WithNamespace(c.namespace, r)
+						if req.Name == "" || w.URI() == req.Name {
+							wrapped = append(wrapped, w)
+						}
+					}
+					mu.Lock()
+					resp.Resources = append(resp.Resources, wrapped...)
+					mu.Unlock()
+				}
+				return nil
+			})
+		}
+		if err := eg.Wait(); err != nil {
+			return nil, err
+		}
+	}
 
 	// TODO: Append user items when user items are implemented.
 

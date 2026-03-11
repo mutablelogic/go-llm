@@ -65,7 +65,7 @@ type mockRunHandler struct {
 	conn *mockRunConnector
 }
 
-func (h *mockRunHandler) CreateConnector(_ string) (llm.Connector, error) {
+func (h *mockRunHandler) CreateConnector(_ string, _ func(schema.ConnectorState)) (llm.Connector, error) {
 	return h.conn, nil
 }
 func (h *mockRunHandler) OnStateChange(llm.Connector, schema.ConnectorState) {}

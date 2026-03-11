@@ -29,8 +29,9 @@ type toolkit struct {
 	prompts   map[string]llm.Prompt
 	resources map[string]llm.Resource
 
-	// Connectors
+	// Connectors by URL and namespace
 	connectors map[string]*connector
+	namespace  map[string]*connector
 
 	// handler receives callbacks for connector lifecycle events, prompt execution, etc
 	handler ToolkitHandler
@@ -62,10 +63,13 @@ var (
 // NewToolkit creates a new Toolkit with the given options.
 func New(opts ...Option) (*toolkit, error) {
 	toolkit := new(toolkit)
+
+	// Builtins
 	toolkit.tools = make(map[string]llm.Tool)
 	toolkit.prompts = make(map[string]llm.Prompt)
 	toolkit.resources = make(map[string]llm.Resource)
 	toolkit.connectors = make(map[string]*connector)
+	toolkit.namespace = make(map[string]*connector)
 
 	// Apply options
 	for _, opt := range opts {
@@ -204,10 +208,10 @@ func (tk *toolkit) RemoveBuiltin(key string) error {
 
 // Lookup finds a tool, prompt, or resource by name, namespace.name, URI,
 // or URI#namespace. Returns (nil, nil) if nothing matches.
-func (tk *toolkit) Lookup(_ context.Context, key string) (any, error) {
+func (tk *toolkit) Lookup(ctx context.Context, key string) (any, error) {
 	// URI or URI#namespace: if the key parses as a URI, only resources can match.
 	if u, namespace, ok := parseURI(key); ok {
-		return tk.lookupURI(namespace, u.String())
+		return tk.lookupResource(ctx, namespace, u.String())
 	}
 
 	// Parse optional namespace prefix and bare name.
@@ -227,12 +231,12 @@ func (tk *toolkit) Lookup(_ context.Context, key string) (any, error) {
 	var eg errgroup.Group
 	eg.Go(func() error {
 		var err error
-		tool, err = tk.lookupTool(namespace, name)
+		tool, err = tk.lookupTool(ctx, namespace, name)
 		return err
 	})
 	eg.Go(func() error {
 		var err error
-		prompt, err = tk.lookupPrompt(namespace, name)
+		prompt, err = tk.lookupPrompt(ctx, namespace, name)
 		return err
 	})
 	if err := eg.Wait(); err != nil {
@@ -252,41 +256,141 @@ func (tk *toolkit) Lookup(_ context.Context, key string) (any, error) {
 }
 
 // lookupTool returns the tool registered under name in the given namespace.
-// Only the builtin namespace (or empty) is supported.
-func (tk *toolkit) lookupTool(namespace, name string) (llm.Tool, error) {
-	if namespace != "" && namespace != NamespaceBuiltin {
-		return nil, nil
-	}
-	// The output tool is always available by its reserved name.
-	if name == tool.OutputToolName {
+// When namespace is empty, builtins are checked first then all connected
+// connectors are searched. When namespace is "builtin", only builtins are
+// searched. Otherwise the named connector namespace is searched via ListTools.
+func (tk *toolkit) lookupTool(ctx context.Context, namespace, name string) (llm.Tool, error) {
+	// The output tool is always available by its reserved name in the builtin (or empty) namespace.
+	if name == tool.OutputToolName && (namespace == "" || namespace == NamespaceBuiltin) {
 		return tool.WithNamespace(NamespaceBuiltin, tool.NewOutputTool(nil)), nil
 	}
+	// Builtin namespace (or no namespace): check the in-process tools map first.
+	if namespace == "" || namespace == NamespaceBuiltin {
+		tk.mu.RLock()
+		t := tk.tools[name]
+		tk.mu.RUnlock()
+		if t != nil || namespace == NamespaceBuiltin {
+			return t, nil
+		}
+		// namespace == "": fall through to search all connected connectors.
+	}
+	// Collect the connectors to search: either one specific namespace or all.
 	tk.mu.RLock()
-	defer tk.mu.RUnlock()
-	return tk.tools[name], nil
+	var candidates []*connector
+	if namespace != "" {
+		if c := tk.namespace[namespace]; c != nil {
+			candidates = []*connector{c}
+		}
+	} else {
+		for _, c := range tk.namespace {
+			candidates = append(candidates, c)
+		}
+	}
+	tk.mu.RUnlock()
+
+	for _, c := range candidates {
+		tools, err := c.ListTools(ctx)
+		if err != nil {
+			return nil, err
+		}
+		for _, t := range tools {
+			if t.Name() == name {
+				return tool.WithNamespace(c.namespace, t), nil
+			}
+		}
+	}
+	return nil, nil
 }
 
 // lookupPrompt returns the prompt registered under name in the given namespace.
-// Only the builtin namespace (or empty) is supported.
-func (tk *toolkit) lookupPrompt(namespace, name string) (llm.Prompt, error) {
-	if namespace != "" && namespace != NamespaceBuiltin {
-		return nil, nil
+// When namespace is empty, builtins are checked first then all connected
+// connectors are searched. When namespace is "builtin", only builtins are
+// searched. Otherwise the named connector namespace is searched via ListPrompts.
+func (tk *toolkit) lookupPrompt(ctx context.Context, namespace, name string) (llm.Prompt, error) {
+	// Builtin namespace (or no namespace): check the in-process prompts map first.
+	if namespace == "" || namespace == NamespaceBuiltin {
+		tk.mu.RLock()
+		p := tk.prompts[name]
+		tk.mu.RUnlock()
+		if p != nil || namespace == NamespaceBuiltin {
+			return p, nil
+		}
+		// namespace == "": fall through to search all connected connectors.
 	}
+	// Collect the connectors to search: either one specific namespace or all.
 	tk.mu.RLock()
-	defer tk.mu.RUnlock()
-	return tk.prompts[name], nil
+	var candidates []*connector
+	if namespace != "" {
+		if c := tk.namespace[namespace]; c != nil {
+			candidates = []*connector{c}
+		}
+	} else {
+		for _, c := range tk.namespace {
+			candidates = append(candidates, c)
+		}
+	}
+	tk.mu.RUnlock()
+
+	for _, c := range candidates {
+		prompts, err := c.ListPrompts(ctx)
+		if err != nil {
+			return nil, err
+		}
+		for _, p := range prompts {
+			if p.Name() == name {
+				return prompt.WithNamespace(c.namespace, p), nil
+			}
+		}
+	}
+	return nil, nil
 }
 
-// lookupURI returns the resource registered under the given namespace and
-// bare URI (fragment already stripped). Only the builtin namespace (or empty)
-// is supported; any other namespace returns nil.
-func (tk *toolkit) lookupURI(namespace, uri string) (llm.Resource, error) {
-	if namespace != "" && namespace != NamespaceBuiltin {
-		return nil, nil
+// lookupResource returns the resource registered under the given namespace and
+// bare URI (fragment already stripped). When namespace is empty, builtins are
+// checked first then all connected connectors are searched. When namespace is
+// "builtin", only builtins are searched. Otherwise the named connector
+// namespace is searched via ListResources.
+// Returns llm.ErrNotFound when no resource matches.
+func (tk *toolkit) lookupResource(ctx context.Context, namespace, uri string) (llm.Resource, error) {
+	// Builtin namespace (or no namespace): check the in-process resources map first.
+	if namespace == "" || namespace == NamespaceBuiltin {
+		tk.mu.RLock()
+		r := tk.resources[uri]
+		tk.mu.RUnlock()
+		if r != nil {
+			return r, nil
+		}
+		if namespace == NamespaceBuiltin {
+			return nil, llm.ErrNotFound.Withf("%q", uri)
+		}
+		// namespace == "": fall through to search all connected connectors.
 	}
+	// Collect the connectors to search: either one specific namespace or all.
 	tk.mu.RLock()
-	defer tk.mu.RUnlock()
-	return tk.resources[uri], nil
+	var candidates []*connector
+	if namespace != "" {
+		if c := tk.namespace[namespace]; c != nil {
+			candidates = []*connector{c}
+		}
+	} else {
+		for _, c := range tk.namespace {
+			candidates = append(candidates, c)
+		}
+	}
+	tk.mu.RUnlock()
+
+	for _, c := range candidates {
+		resources, err := c.ListResources(ctx)
+		if err != nil {
+			return nil, err
+		}
+		for _, r := range resources {
+			if r.URI() == uri {
+				return resource.WithNamespace(c.namespace, r), nil
+			}
+		}
+	}
+	return nil, llm.ErrNotFound.Withf("%q", uri)
 }
 
 // parseURI parses raw into a *url.URL with the fragment stripped, and returns

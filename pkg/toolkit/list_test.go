@@ -2,6 +2,7 @@ package toolkit
 
 import (
 	"context"
+	"errors"
 	"testing"
 
 	// Packages
@@ -402,5 +403,261 @@ func Test_List_Resources_006_resource_interface(t *testing.T) {
 	// URI should be unchanged by WithNamespace wrapping.
 	if got.URI() != r.URI() {
 		t.Fatalf("expected URI %q, got %q", r.URI(), got.URI())
+	}
+}
+
+///////////////////////////////////////////////////////////////////////////////
+// List - connector tools
+
+// List with no namespace returns builtin + connector tools combined.
+func Test_List_Connector_Tools_001(t *testing.T) {
+	conn := &mockListConnector{tools: []llm.Tool{&mockTool{name: "remote_tool"}}}
+	tk := newConnectedToolkit(t, "myserver", conn)
+	_ = tk.AddTool(&mockTool{name: "local_tool"})
+
+	resp, err := tk.List(context.Background(), ListRequest{Type: ListTypeTools})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(resp.Tools) != 2 {
+		t.Fatalf("expected 2 tools (1 builtin + 1 connector), got %d", len(resp.Tools))
+	}
+}
+
+// List with connector namespace returns only that connector's tools.
+func Test_List_Connector_Tools_002(t *testing.T) {
+	conn := &mockListConnector{tools: []llm.Tool{&mockTool{name: "remote_tool"}}}
+	tk := newConnectedToolkit(t, "myserver", conn)
+	_ = tk.AddTool(&mockTool{name: "local_tool"})
+
+	resp, err := tk.List(context.Background(), ListRequest{
+		Type:      ListTypeTools,
+		Namespace: "myserver",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(resp.Tools) != 1 {
+		t.Fatalf("expected 1 connector tool, got %d", len(resp.Tools))
+	}
+	if resp.Tools[0].Name() != "myserver.remote_tool" {
+		t.Fatalf("unexpected tool name %q", resp.Tools[0].Name())
+	}
+}
+
+// List with builtin namespace excludes connector tools.
+func Test_List_Connector_Tools_003(t *testing.T) {
+	conn := &mockListConnector{tools: []llm.Tool{&mockTool{name: "remote_tool"}}}
+	tk := newConnectedToolkit(t, "myserver", conn)
+	_ = tk.AddTool(&mockTool{name: "local_tool"})
+
+	resp, err := tk.List(context.Background(), ListRequest{
+		Type:      ListTypeTools,
+		Namespace: NamespaceBuiltin,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(resp.Tools) != 1 {
+		t.Fatalf("expected 1 builtin tool, got %d", len(resp.Tools))
+	}
+}
+
+// Name filter on a qualified connector tool name works.
+func Test_List_Connector_Tools_004(t *testing.T) {
+	conn := &mockListConnector{tools: []llm.Tool{&mockTool{name: "remote_tool"}, &mockTool{name: "other_tool"}}}
+	tk := newConnectedToolkit(t, "myserver", conn)
+
+	resp, err := tk.List(context.Background(), ListRequest{
+		Type: ListTypeTools,
+		Name: "myserver.remote_tool",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(resp.Tools) != 1 {
+		t.Fatalf("expected 1 tool, got %d", len(resp.Tools))
+	}
+}
+
+// Two connectors: bare list returns tools from both.
+func Test_List_Connector_Tools_005(t *testing.T) {
+	connA := &mockListConnector{tools: []llm.Tool{&mockTool{name: "tool_a"}}}
+	connB := &mockListConnector{tools: []llm.Tool{&mockTool{name: "tool_b"}}}
+	tk, _ := newConnectorToolkit(t)
+	tk.namespace["server_a"] = &connector{namespace: "server_a", conn: connA}
+	tk.namespace["server_b"] = &connector{namespace: "server_b", conn: connB}
+
+	resp, err := tk.List(context.Background(), ListRequest{Type: ListTypeTools})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(resp.Tools) != 2 {
+		t.Fatalf("expected 2 tools from two connectors, got %d", len(resp.Tools))
+	}
+}
+
+///////////////////////////////////////////////////////////////////////////////
+// List - connector prompts
+
+// List with no namespace returns builtin + connector prompts combined.
+func Test_List_Connector_Prompts_001(t *testing.T) {
+	conn := &mockListConnector{prompts: []llm.Prompt{&mockPrompt{name: "remote_prompt"}}}
+	tk := newConnectedToolkit(t, "myserver", conn)
+	_ = tk.AddPrompt(&mockPrompt{name: "local_prompt"})
+
+	resp, err := tk.List(context.Background(), ListRequest{Type: ListTypePrompts})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(resp.Prompts) != 2 {
+		t.Fatalf("expected 2 prompts, got %d", len(resp.Prompts))
+	}
+}
+
+// List with connector namespace returns only that connector's prompts.
+func Test_List_Connector_Prompts_002(t *testing.T) {
+	conn := &mockListConnector{prompts: []llm.Prompt{&mockPrompt{name: "remote_prompt"}}}
+	tk := newConnectedToolkit(t, "myserver", conn)
+
+	resp, err := tk.List(context.Background(), ListRequest{
+		Type:      ListTypePrompts,
+		Namespace: "myserver",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(resp.Prompts) != 1 {
+		t.Fatalf("expected 1 connector prompt, got %d", len(resp.Prompts))
+	}
+	if resp.Prompts[0].Name() != "myserver.remote_prompt" {
+		t.Fatalf("unexpected prompt name %q", resp.Prompts[0].Name())
+	}
+}
+
+///////////////////////////////////////////////////////////////////////////////
+// List - connector resources
+
+// List with no namespace returns builtin + connector resources combined.
+func Test_List_Connector_Resources_001(t *testing.T) {
+	r, _ := resource.Text("remote_doc", "hello")
+	conn := &mockListConnector{resources: []llm.Resource{r}}
+	tk := newConnectedToolkit(t, "myserver", conn)
+	builtin, _ := resource.Text("local_doc", "world")
+	_ = tk.AddResource(builtin)
+
+	resp, err := tk.List(context.Background(), ListRequest{Type: ListTypeResources})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(resp.Resources) != 2 {
+		t.Fatalf("expected 2 resources, got %d", len(resp.Resources))
+	}
+}
+
+// List with connector namespace returns only that connector's resources.
+func Test_List_Connector_Resources_002(t *testing.T) {
+	r, _ := resource.Text("remote_doc", "hello")
+	conn := &mockListConnector{resources: []llm.Resource{r}}
+	tk := newConnectedToolkit(t, "myserver", conn)
+
+	resp, err := tk.List(context.Background(), ListRequest{
+		Type:      ListTypeResources,
+		Namespace: "myserver",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(resp.Resources) != 1 {
+		t.Fatalf("expected 1 connector resource, got %d", len(resp.Resources))
+	}
+	if resp.Resources[0].Name() != "myserver.remote_doc" {
+		t.Fatalf("unexpected resource name %q", resp.Resources[0].Name())
+	}
+}
+
+// URI filter on a connector resource matches by URI (unchanged by namespace wrap).
+func Test_List_Connector_Resources_003(t *testing.T) {
+	r, _ := resource.Text("remote_doc", "hello")
+	other, _ := resource.Text("other_doc", "world")
+	conn := &mockListConnector{resources: []llm.Resource{r, other}}
+	tk := newConnectedToolkit(t, "myserver", conn)
+
+	resp, err := tk.List(context.Background(), ListRequest{
+		Type: ListTypeResources,
+		Name: r.URI(),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(resp.Resources) != 1 {
+		t.Fatalf("expected 1 resource, got %d", len(resp.Resources))
+	}
+}
+
+///////////////////////////////////////////////////////////////////////////////
+// List - connector error paths
+
+// ListTools returning an error propagates through List.
+func Test_List_Connector_Error_001_tools(t *testing.T) {
+	conn := &mockListConnector{listErr: errors.New("list failed")}
+	tk := newConnectedToolkit(t, "myserver", conn)
+
+	_, err := tk.List(context.Background(), ListRequest{Type: ListTypeTools})
+	if err == nil {
+		t.Fatal("expected error, got nil")
+	}
+}
+
+// ListPrompts returning an error propagates through List.
+func Test_List_Connector_Error_002_prompts(t *testing.T) {
+	conn := &mockListConnector{listErr: errors.New("list failed")}
+	tk := newConnectedToolkit(t, "myserver", conn)
+
+	_, err := tk.List(context.Background(), ListRequest{Type: ListTypePrompts})
+	if err == nil {
+		t.Fatal("expected error, got nil")
+	}
+}
+
+// ListResources returning an error propagates through List.
+func Test_List_Connector_Error_003_resources(t *testing.T) {
+	conn := &mockListConnector{listErr: errors.New("list failed")}
+	tk := newConnectedToolkit(t, "myserver", conn)
+
+	_, err := tk.List(context.Background(), ListRequest{Type: ListTypeResources})
+	if err == nil {
+		t.Fatal("expected error, got nil")
+	}
+}
+
+///////////////////////////////////////////////////////////////////////////////
+// filterSeq early-exit path
+
+// A direct call to filterSeq with a consumer that stops after the first item
+// exercises the !yield(v) early-exit branch, which slices.Collect never hits.
+func Test_List_FilterSeq_EarlyExit(t *testing.T) {
+	items := []llm.Tool{
+		&mockTool{name: "alpha"},
+		&mockTool{name: "beta"},
+		&mockTool{name: "gamma"},
+	}
+	seq := func(yield func(llm.Tool) bool) {
+		for _, v := range items {
+			if !yield(v) {
+				return
+			}
+		}
+	}
+	filtered := filterSeq(seq, func(llm.Tool) bool { return true })
+
+	var got []llm.Tool
+	filtered(func(t llm.Tool) bool {
+		got = append(got, t)
+		return len(got) < 1 // stop after first item
+	})
+
+	if len(got) != 1 {
+		t.Fatalf("expected 1 item from early-stop consumer, got %d", len(got))
 	}
 }

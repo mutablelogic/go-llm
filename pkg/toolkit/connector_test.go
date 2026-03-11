@@ -18,6 +18,7 @@ type mockListConnector struct {
 	prompts   []llm.Prompt
 	resources []llm.Resource
 	runErr    error
+	listErr   error
 }
 
 func (m *mockListConnector) Run(ctx context.Context) error {
@@ -28,13 +29,13 @@ func (m *mockListConnector) Run(ctx context.Context) error {
 	return ctx.Err()
 }
 func (m *mockListConnector) ListTools(_ context.Context) ([]llm.Tool, error) {
-	return m.tools, nil
+	return m.tools, m.listErr
 }
 func (m *mockListConnector) ListPrompts(_ context.Context) ([]llm.Prompt, error) {
-	return m.prompts, nil
+	return m.prompts, m.listErr
 }
 func (m *mockListConnector) ListResources(_ context.Context) ([]llm.Resource, error) {
-	return m.resources, nil
+	return m.resources, m.listErr
 }
 
 // mockConnectorHandler creates a new mockListConnector on each CreateConnector call.
@@ -43,7 +44,7 @@ type mockConnectorHandler struct {
 	err  error
 }
 
-func (h *mockConnectorHandler) CreateConnector(_ string) (llm.Connector, error) {
+func (h *mockConnectorHandler) CreateConnector(_ string, _ func(schema.ConnectorState)) (llm.Connector, error) {
 	if h.err != nil {
 		return nil, h.err
 	}

@@ -294,13 +294,10 @@ func Test_Lookup_009_resource_wrong_namespace(t *testing.T) {
 	tk, _ := New()
 	r, _ := resource.Text("greeting", "hello")
 	_ = tk.AddResource(r)
-	// Append a non-builtin fragment; should return nil/nil.
-	v, err := tk.Lookup(context.Background(), r.URI()+"#unknown")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if v != nil {
-		t.Fatalf("expected nil for wrong namespace, got %T", v)
+	// Append a non-builtin fragment; should return ErrNotFound.
+	_, err := tk.Lookup(context.Background(), r.URI()+"#unknown")
+	if !errors.Is(err, llm.ErrNotFound) {
+		t.Fatalf("expected ErrNotFound, got %v", err)
 	}
 }
 
