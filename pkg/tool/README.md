@@ -1,19 +1,22 @@
 
 # Tools, Prompts and Resources
 
-Package `toolkit` provides the `Toolkit` type for managing a collection of callable tools, prompts and resources:
+Package `toolkit` provides the `Toolkit` type — an aggregator that collects tools, prompts and resources from multiple sources and presents them as a unified, queryable surface for LLMs. Sources include locally implemented builtins, remote MCP servers, and a persistent user namespace backed by the manager. At generation time, the toolkit is passed to the model so it can discover and invoke capabilities without needing to know where they came from.
 
-* Tools are callable functions with JSON input. The outputs are generated
+The three kinds of items the toolkit manages are:
+
+* **Tools** are callable functions with JSON input. The outputs are generated
  through running the tool's `Run` method.
-* Prompts (otherwise known as "Agents") are reusable prompt templates, also with JSON input. In order to generate outputs from prompts, they are run through an LLM agent loop with a model.
-* Resources are opaque blobs of data returned by tools that can be stored and retrieved by reference in subsequent tool calls.
+* **Prompts** (otherwise known as "Agents") are reusable prompt templates, also with JSON input. In order to generate outputs from prompts, they are run through an LLM agent loop with a model.
+* **Resources** are opaque blobs of data returned by tools that can be stored and retrieved by reference in subsequent tool calls.
 
 All three of these entities output a `Resource`, which can be text, JSON, audio, video and so forth.
 
-A toolkit holds two kinds of tools:
+A toolkit holds three kinds of tools:
 
 * **Builtins** — locally implemented tools, agents and resources registered with `AddBuiltin`.
 * **Connector Tools, Prompts and Resources** — tools exposed by a remote MCP server, registered with `AddConnector`. Connectors are managed in the background, with automatic reconnection and updates.
+* **User Prompts and Resources** — prompts and resources stored persistently by the manager (e.g. in a database), served from the reserved `"user"` namespace via the handler's `List` method.
 
 ## Toolkits and MCP
 
@@ -92,8 +95,8 @@ The lookup order is:
 
 1. **`<namespace>.<name>`** — exact match scoped to a named connector.
 2. **`<uri>#<namespace>`** — exact URI scoped to a named connector (resources).
-3. **`<name>`** — unscoped name, searching builtins first then connectors in registration order.
-4. **`<uri>`** — unscoped URI, searching builtins first then connectors in registration order.
+3. **`<name>`** — unscoped name, searching builtins first, then connectors in registration order, then the `"user"` namespace.
+4. **`<uri>`** — unscoped URI, searching builtins first, then connectors in registration order, then the `"user"` namespace.
 
 The return type is `any`; use a type switch to distinguish:
 
