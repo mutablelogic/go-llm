@@ -7,6 +7,7 @@ import (
 
 	// Packages
 	sdkmcp "github.com/modelcontextprotocol/go-sdk/mcp"
+	trace "go.opentelemetry.io/otel/trace"
 )
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -19,6 +20,7 @@ type Server struct {
 	server *sdkmcp.Server
 	mu     sync.Mutex
 	uris   map[string]struct{} // URIs currently registered
+	tracer trace.Tracer
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -47,6 +49,7 @@ func New(name, version string, optFns ...ServerOpt) (*Server, error) {
 	s := &Server{
 		Implementation: o.impl,
 		uris:           make(map[string]struct{}),
+		tracer:         o.tracer,
 	}
 	s.server = sdkmcp.NewServer(&s.Implementation, &o.sdkOpts)
 	return s, nil

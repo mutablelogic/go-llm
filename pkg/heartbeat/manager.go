@@ -6,10 +6,8 @@ import (
 	"time"
 
 	// Packages
-	gootel "github.com/mutablelogic/go-client/pkg/otel"
 	llm "github.com/mutablelogic/go-llm"
 	schema "github.com/mutablelogic/go-llm/pkg/heartbeat/schema"
-	trace "go.opentelemetry.io/otel/trace"
 )
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -22,7 +20,6 @@ type Manager struct {
 	pollInterval time.Duration
 	logger       *slog.Logger
 	onFire       func(context.Context, *schema.Heartbeat)
-	tracer       trace.Tracer
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -93,17 +90,14 @@ func (m *Manager) ListResources(_ context.Context) ([]llm.Resource, error) {
 
 // tick checks for due heartbeats, fires the callback for each, and marks them
 // as fired.  Errors are logged but do not abort the loop.
-func (m *Manager) tick(ctx context.Context) (err error) {
-	ctx, endSpan := gootel.StartSpan(m.tracer, ctx, "Tick")
-	defer func() { endSpan(err) }()
-
+func (m *Manager) tick(ctx context.Context) error {
 	fired, err := m.store.Next(ctx)
 	if err != nil {
 		m.logger.ErrorContext(ctx, "heartbeat: failed to fire due heartbeats", "err", err.Error())
-		return
+		return err
 	}
 	for _, h := range fired {
 		m.onFire(ctx, h)
 	}
-	return
+	return nil
 }

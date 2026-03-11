@@ -11,6 +11,7 @@ import (
 	llm "github.com/mutablelogic/go-llm"
 	schema "github.com/mutablelogic/go-llm/pkg/schema"
 	types "github.com/mutablelogic/go-server/pkg/types"
+	trace "go.opentelemetry.io/otel/trace"
 )
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -21,7 +22,7 @@ import (
 // be marshalled; tools registered before the error are still active.
 func (s *Server) AddTools(tools ...llm.Tool) error {
 	for _, t := range tools {
-		sdkTool, handler, err := sdkToolFromTool(t)
+		sdkTool, handler, err := sdkToolFromTool(t, s.tracer)
 		if err != nil {
 			return err
 		}
@@ -40,7 +41,7 @@ func (s *Server) RemoveTools(names ...string) {
 // PRIVATE METHODS
 
 // sdkToolFromTool converts a tool.Tool into an *sdkmcp.Tool and sdkmcp.ToolHandler.
-func sdkToolFromTool(t llm.Tool) (*sdkmcp.Tool, sdkmcp.ToolHandler, error) {
+func sdkToolFromTool(t llm.Tool, tracer trace.Tracer) (*sdkmcp.Tool, sdkmcp.ToolHandler, error) {
 	// Build input schema — SDK accepts any JSON-marshalable value.
 	inputSchema, err := t.InputSchema()
 	if err != nil {
@@ -103,7 +104,7 @@ func sdkToolFromTool(t llm.Tool) (*sdkmcp.Tool, sdkmcp.ToolHandler, error) {
 				meta = map[string]any(req.Params.Meta)
 			}
 		}
-		ctx = withSession(ctx, req.Session, t.Name(), progressToken, meta)
+		ctx = withSession(ctx, req.Session, t.Name(), progressToken, meta, tracer)
 
 		out, err := t.Run(ctx, input)
 		if err != nil {

@@ -6,6 +6,7 @@ import (
 
 	// Packages
 	sdkmcp "github.com/modelcontextprotocol/go-sdk/mcp"
+	trace "go.opentelemetry.io/otel/trace"
 )
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -16,6 +17,7 @@ import (
 type opts struct {
 	impl    sdkmcp.Implementation
 	sdkOpts sdkmcp.ServerOptions
+	tracer  trace.Tracer
 }
 
 // ServerOpt is a functional option for configuring a Server.
@@ -66,6 +68,15 @@ func WithLogger(logger *slog.Logger) ServerOpt {
 func WithKeepAlive(d time.Duration) ServerOpt {
 	return func(o *opts) error {
 		o.sdkOpts.KeepAlive = d
+		return nil
+	}
+}
+
+// WithTracer sets the OpenTelemetry tracer for distributed tracing.
+// If not set, tracing is disabled.
+func WithTracer(t trace.Tracer) ServerOpt {
+	return func(o *opts) error {
+		o.tracer = t
 		return nil
 	}
 }

@@ -8,7 +8,6 @@ import (
 	// Packages
 	llm "github.com/mutablelogic/go-llm"
 	schema "github.com/mutablelogic/go-llm/pkg/heartbeat/schema"
-	trace "go.opentelemetry.io/otel/trace"
 )
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -45,16 +44,6 @@ func WithLogger(l *slog.Logger) Opt {
 			return llm.ErrBadParameter.With("nil logger")
 		}
 		m.logger = l
-		return nil
-	}
-}
-
-// WithTracer sets the OpenTelemetry tracer for distributed tracing.
-func WithTracer(t trace.Tracer) Opt {
-	return func(m *Manager) error {
-		if t != nil {
-			m.tracer = t
-		}
 		return nil
 	}
 }

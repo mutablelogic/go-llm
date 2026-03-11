@@ -9,6 +9,7 @@ import (
 	otel "github.com/mutablelogic/go-client/pkg/otel"
 	llm "github.com/mutablelogic/go-llm"
 	schema "github.com/mutablelogic/go-llm/pkg/heartbeat/schema"
+	server "github.com/mutablelogic/go-llm/pkg/mcp/server"
 	tool "github.com/mutablelogic/go-llm/pkg/tool"
 	attribute "go.opentelemetry.io/otel/attribute"
 )
@@ -42,7 +43,7 @@ func (t listHeartbeats) Run(ctx context.Context, input json.RawMessage) (_ any, 
 	var req schema.ListHeartbeatsRequest
 
 	// Otel
-	ctx, endSpan := otel.StartSpan(t.mgr.tracer, ctx, "list_heartbeats", attribute.String("input", string(input)))
+	ctx, endSpan := otel.StartSpan(server.SessionFromContext(ctx).Tracer(), ctx, "list_heartbeats", attribute.String("input", string(input)))
 	defer func() { endSpan(err) }()
 
 	// Check parameters

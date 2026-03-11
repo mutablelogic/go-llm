@@ -6,6 +6,7 @@ import (
 
 	// Packages
 	sdkmcp "github.com/modelcontextprotocol/go-sdk/mcp"
+	trace "go.opentelemetry.io/otel/trace"
 )
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -41,6 +42,10 @@ type Session interface {
 	// progress is the amount completed so far; total is the total expected
 	// (0 means unknown); message is an optional human-readable status string.
 	Progress(progress, total float64, message string) error
+
+	// Tracer returns the OpenTelemetry tracer for distributed tracing.
+	// May return nil if no tracer was configured.
+	Tracer() trace.Tracer
 }
 
 // session is the concrete, per-call implementation of Session.
@@ -51,6 +56,7 @@ type session struct {
 	meta         map[string]any
 	logger       *slog.Logger
 	progress     func(progress, total float64, message string) error
+	tracer       trace.Tracer
 }
 
 var _ Session = (*session)(nil)
@@ -66,6 +72,7 @@ func (s *session) Logger() *slog.Logger                     { return s.logger }
 func (s *session) Progress(progress, total float64, message string) error {
 	return s.progress(progress, total, message)
 }
+func (s *session) Tracer() trace.Tracer { return s.tracer }
 
 ///////////////////////////////////////////////////////////////////////////////
 // PUBLIC METHODS - CONTEXT
@@ -80,6 +87,7 @@ func SessionFromContext(ctx context.Context) Session {
 	return &session{
 		logger:   slog.Default(),
 		progress: func(_, _ float64, _ string) error { return nil },
+		tracer:   nil,
 	}
 }
 
@@ -87,8 +95,8 @@ func SessionFromContext(ctx context.Context) Session {
 // PRIVATE METHODS
 
 // withSession injects a Session into ctx for the given ServerSession, tool
-// name, progress token, and _meta map.
-func withSession(ctx context.Context, ss *sdkmcp.ServerSession, loggerName string, token any, meta map[string]any) context.Context {
+// name, progress token, _meta map, and optional tracer.
+func withSession(ctx context.Context, ss *sdkmcp.ServerSession, loggerName string, token any, meta map[string]any, tracer trace.Tracer) context.Context {
 	logger := slog.New(sdkmcp.NewLoggingHandler(ss, &sdkmcp.LoggingHandlerOptions{
 		LoggerName: loggerName,
 	}))
@@ -121,5 +129,6 @@ func withSession(ctx context.Context, ss *sdkmcp.ServerSession, loggerName strin
 		meta:         meta,
 		logger:       logger,
 		progress:     progressFn,
+		tracer:       tracer,
 	})
 }
