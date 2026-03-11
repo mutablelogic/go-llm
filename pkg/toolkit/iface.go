@@ -49,8 +49,8 @@ type Toolkit interface {
 	Run(context.Context) error
 
 	// Lookup finds a tool, prompt, or resource by name, namespace.name, URI,
-	// or URI#namespace. Returns nil if nothing matches.
-	Lookup(context.Context, string) any
+	// or URI#namespace. Returns (nil, nil) if nothing matches.
+	Lookup(context.Context, string) (any, error)
 
 	// List returns tools, prompts, and resources matching the request.
 	List(context.Context, ListRequest) (*ListResponse, error)

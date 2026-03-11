@@ -1,16 +1,20 @@
 package toolkit
 
 import (
-	"cmp"
 	"context"
 	"net/url"
 	"slices"
+	"strings"
 	"sync"
 
 	// Packages
 	llm "github.com/mutablelogic/go-llm"
-	"github.com/mutablelogic/go-server/pkg/types"
+	prompt "github.com/mutablelogic/go-llm/pkg/toolkit/prompt"
+	resource "github.com/mutablelogic/go-llm/pkg/toolkit/resource"
+	tool "github.com/mutablelogic/go-llm/pkg/toolkit/tool"
+	types "github.com/mutablelogic/go-server/pkg/types"
 	trace "go.opentelemetry.io/otel/trace"
+	errgroup "golang.org/x/sync/errgroup"
 )
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -44,7 +48,7 @@ const (
 
 var (
 	ReservedNames = []string{
-		"submit_output",
+		tool.OutputToolName,
 	}
 	ReservedNamespaces = []string{
 		NamespaceBuiltin,
@@ -100,7 +104,7 @@ func (tk *toolkit) AddTool(tools ...llm.Tool) error {
 	}
 	for _, t := range tools {
 		if t != nil {
-			tk.tools[t.Name()] = t
+			tk.tools[t.Name()] = tool.WithNamespace(NamespaceBuiltin, t)
 		}
 	}
 
@@ -132,7 +136,7 @@ func (tk *toolkit) AddPrompt(prompts ...llm.Prompt) error {
 	}
 	for _, p := range prompts {
 		if p != nil {
-			tk.prompts[p.Name()] = p
+			tk.prompts[p.Name()] = prompt.WithNamespace(NamespaceBuiltin, p)
 		}
 	}
 
@@ -145,28 +149,17 @@ func (tk *toolkit) AddResource(resources ...llm.Resource) error {
 	tk.mu.Lock()
 	defer tk.mu.Unlock()
 
-	// parseURI parses, validates and canonicalises a resource URI:
-	// the scheme must be a valid identifier, the URI must have a non-empty
-	// opaque part, host, or path, and any fragment is stripped.
-	parseURI := func(r llm.Resource) (string, error) {
-		raw := r.URI()
-		u, err := url.Parse(raw)
-		if err != nil || !types.IsIdentifier(u.Scheme) || (u.Opaque == "" && u.Host == "" && u.Path == "") {
-			return "", llm.ErrBadParameter.Withf("invalid resource URI: %q", raw)
-		}
-		u.Fragment = ""
-		return u.String(), nil
-	}
-
 	seen := make(map[string]struct{}, len(resources))
 	for _, r := range resources {
 		if r == nil {
 			continue
 		}
-		uri, err := parseURI(r)
-		if err != nil {
-			return err
-		} else if _, exists := tk.resources[uri]; exists {
+		u, _, ok := parseURI(r.URI())
+		if !ok {
+			return llm.ErrBadParameter.Withf("invalid resource URI: %q", r.URI())
+		}
+		uri := u.String()
+		if _, exists := tk.resources[uri]; exists {
 			return llm.ErrBadParameter.Withf("duplicate resource URI: %q", uri)
 		} else if _, exists := seen[uri]; exists {
 			return llm.ErrBadParameter.Withf("duplicate resource URI: %q", uri)
@@ -175,8 +168,8 @@ func (tk *toolkit) AddResource(resources ...llm.Resource) error {
 	}
 	for _, r := range resources {
 		if r != nil {
-			uri, _ := parseURI(r)
-			tk.resources[uri] = r
+			u, _, _ := parseURI(r.URI())
+			tk.resources[u.String()] = resource.WithNamespace(NamespaceBuiltin, r)
 		}
 	}
 
@@ -184,109 +177,127 @@ func (tk *toolkit) AddResource(resources ...llm.Resource) error {
 	return nil
 }
 
-// List returns tools, prompts, and resources matching the request.
-// Only the "builtin" namespace is currently supported.
-func (tk *toolkit) List(_ context.Context, req ListRequest) (*ListResponse, error) {
-	tk.mu.RLock()
-	defer tk.mu.RUnlock()
-
-	// Reject unsupported namespaces (user and connectors not yet implemented).
-	if req.Namespace != "" && req.Namespace != NamespaceBuiltin {
-		return nil, llm.ErrNotImplemented
-	}
-
-	// When no type filter is set, include all types.
-	if !req.Tools && !req.Prompts && !req.Resources {
-		req.Tools, req.Prompts, req.Resources = true, true, true
-	}
-
-	resp := &ListResponse{
-		Offset: req.Offset,
-	}
-
-	if req.Tools {
-		for _, t := range tk.tools {
-			resp.Tools = append(resp.Tools, t)
-		}
-		slices.SortFunc(resp.Tools, func(a, b llm.Tool) int {
-			return cmp.Compare(a.Name(), b.Name())
-		})
-	}
-	if req.Prompts {
-		for _, p := range tk.prompts {
-			resp.Prompts = append(resp.Prompts, p)
-		}
-		slices.SortFunc(resp.Prompts, func(a, b llm.Prompt) int {
-			return cmp.Compare(a.Name(), b.Name())
-		})
-	}
-	if req.Resources {
-		for _, r := range tk.resources {
-			resp.Resources = append(resp.Resources, r)
-		}
-		slices.SortFunc(resp.Resources, func(a, b llm.Resource) int {
-			return cmp.Compare(a.URI(), b.URI())
-		})
-	}
-
-	// Count total items before pagination.
-	total := uint(len(resp.Tools) + len(resp.Prompts) + len(resp.Resources))
-	resp.Count = total
-
-	// Apply offset and limit across the flat item count.
-	// For now, pagination is advisory — slices are already small for builtins.
-	if req.Limit != nil {
-		resp.Limit = *req.Limit
-	}
-
-	// Return success
-	return resp, nil
-}
-
 // RemoveBuiltin removes a previously registered builtin tool by name,
-// prompt by name, or resource by URI.
-// Returns an error if the identifier matches zero or more than one item.
-func (tk *toolkit) RemoveBuiltin(string) error {
-	return llm.ErrNotImplemented
-}
-
-// AddConnector registers a remote MCP server. The namespace is inferred from
-// the server (e.g. the hostname or last path segment of the URL). Safe to call
-// before or while Run is active; the connector starts immediately if Run is
-// already running.
-func (tk *toolkit) AddConnector(string) error {
-	return llm.ErrNotImplemented
-}
-
-// AddConnectorNS registers a remote MCP server under an explicit namespace.
-// Safe to call before or while Run is active; the connector starts immediately
-// if Run is already running.
-func (tk *toolkit) AddConnectorNS(namespace, url string) error {
-	return llm.ErrNotImplemented
-}
-
-// RemoveConnector removes a connector by URL. Safe to call before or
-// while Run is active; the connector is stopped immediately if running.
-func (tk *toolkit) RemoveConnector(string) error {
-	return llm.ErrNotImplemented
-}
-
-// Run starts all queued connectors and blocks until ctx is cancelled.
-// It closes the toolkit and waits for all connectors to finish on return.
-func (tk *toolkit) Run(context.Context) error {
-	return llm.ErrNotImplemented
+// prompt by name, or resource by URI. Tools are checked before prompts.
+// Returns llm.ErrNotFound if no match exists.
+func (tk *toolkit) RemoveBuiltin(key string) error {
+	tk.mu.Lock()
+	defer tk.mu.Unlock()
+	if _, ok := tk.tools[key]; ok {
+		delete(tk.tools, key)
+		return nil
+	}
+	if _, ok := tk.prompts[key]; ok {
+		delete(tk.prompts, key)
+		return nil
+	}
+	if u, _, ok := parseURI(key); ok {
+		uri := u.String()
+		if _, ok := tk.resources[uri]; ok {
+			delete(tk.resources, uri)
+			return nil
+		}
+	}
+	return llm.ErrNotFound.Withf("%q", key)
 }
 
 // Lookup finds a tool, prompt, or resource by name, namespace.name, URI,
-// or URI#namespace. Returns nil if nothing matches.
-func (tk *toolkit) Lookup(context.Context, string) any {
-	return llm.ErrNotImplemented
+// or URI#namespace. Returns (nil, nil) if nothing matches.
+func (tk *toolkit) Lookup(_ context.Context, key string) (any, error) {
+	// URI or URI#namespace: if the key parses as a URI, only resources can match.
+	if u, namespace, ok := parseURI(key); ok {
+		return tk.lookupURI(namespace, u.String())
+	}
+
+	// Parse optional namespace prefix and bare name.
+	var namespace, name string
+	if ns, n, ok := strings.Cut(key, "."); ok {
+		namespace, name = ns, n
+	} else {
+		name = key
+	}
+	if !types.IsIdentifier(name) || (namespace != "" && !types.IsIdentifier(namespace)) {
+		return nil, llm.ErrBadParameter.Withf("invalid key: %q", key)
+	}
+
+	// Search tools and prompts concurrently; tools take precedence over prompts.
+	var tool llm.Tool
+	var prompt llm.Prompt
+	var eg errgroup.Group
+	eg.Go(func() error {
+		var err error
+		tool, err = tk.lookupTool(namespace, name)
+		return err
+	})
+	eg.Go(func() error {
+		var err error
+		prompt, err = tk.lookupPrompt(namespace, name)
+		return err
+	})
+	if err := eg.Wait(); err != nil {
+		return nil, err
+	}
+
+	// Tools take precedence over prompts when both match the same name.
+	if tool != nil {
+		return tool, nil
+	}
+	if prompt != nil {
+		return prompt, nil
+	}
+
+	// No match found.
+	return nil, llm.ErrNotFound.Withf("%q", key)
 }
 
-// Call executes a tool or prompt, passing optional resource arguments.
-// For tools, resources are made available via the session context.
-// For prompts, the first resource supplies template variables and any
-// remaining resources are attached to the generated message.
-func (tk *toolkit) Call(context.Context, any, ...llm.Resource) (llm.Resource, error) {
-	return nil, llm.ErrNotImplemented
+// lookupTool returns the tool registered under name in the given namespace.
+// Only the builtin namespace (or empty) is supported.
+func (tk *toolkit) lookupTool(namespace, name string) (llm.Tool, error) {
+	if namespace != "" && namespace != NamespaceBuiltin {
+		return nil, nil
+	}
+	// The output tool is always available by its reserved name.
+	if name == tool.OutputToolName {
+		return tool.WithNamespace(NamespaceBuiltin, tool.NewOutputTool(nil)), nil
+	}
+	tk.mu.RLock()
+	defer tk.mu.RUnlock()
+	return tk.tools[name], nil
+}
+
+// lookupPrompt returns the prompt registered under name in the given namespace.
+// Only the builtin namespace (or empty) is supported.
+func (tk *toolkit) lookupPrompt(namespace, name string) (llm.Prompt, error) {
+	if namespace != "" && namespace != NamespaceBuiltin {
+		return nil, nil
+	}
+	tk.mu.RLock()
+	defer tk.mu.RUnlock()
+	return tk.prompts[name], nil
+}
+
+// lookupURI returns the resource registered under the given namespace and
+// bare URI (fragment already stripped). Only the builtin namespace (or empty)
+// is supported; any other namespace returns nil.
+func (tk *toolkit) lookupURI(namespace, uri string) (llm.Resource, error) {
+	if namespace != "" && namespace != NamespaceBuiltin {
+		return nil, nil
+	}
+	tk.mu.RLock()
+	defer tk.mu.RUnlock()
+	return tk.resources[uri], nil
+}
+
+// parseURI parses raw into a *url.URL with the fragment stripped, and returns
+// the fragment separately. The scheme must be a valid identifier and the URI
+// must have a non-empty opaque part, host, or path. Returns (nil, "", false)
+// on any failure.
+func parseURI(raw string) (*url.URL, string, bool) {
+	u, err := url.Parse(raw)
+	if err != nil || !types.IsIdentifier(u.Scheme) || (u.Opaque == "" && u.Host == "" && u.Path == "") {
+		return nil, "", false
+	}
+	fragment := u.Fragment
+	u.Fragment = ""
+	return u, fragment, true
 }
