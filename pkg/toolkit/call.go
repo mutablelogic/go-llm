@@ -9,6 +9,9 @@ import (
 	types "github.com/mutablelogic/go-server/pkg/types"
 )
 
+///////////////////////////////////////////////////////////////////////////////
+// PUBLIC METHODS
+
 // Call executes a tool or prompt, passing optional resource arguments.
 // The key argument may be a string name, an llm.Tool, or an llm.Prompt.
 // For tools, the first resource's content is used as the JSON input.
@@ -50,6 +53,9 @@ func (tk *toolkit) Call(ctx context.Context, key any, resources ...llm.Resource)
 		return nil, llm.ErrNotFound.Withf("%v", key)
 	}
 }
+
+///////////////////////////////////////////////////////////////////////////////
+// PRIVATE METHODS
 
 // callTool validates and executes a single tool. Only one resource is supported, whose content must be JSON and is passed as input to the tool. The output must be an llm.Resource or nil.
 func callTool(ctx context.Context, t llm.Tool, resources ...llm.Resource) (llm.Resource, error) {

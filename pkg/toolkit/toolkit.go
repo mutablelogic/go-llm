@@ -21,16 +21,16 @@ import (
 // TYPES
 
 type toolkit struct {
+	mu     sync.RWMutex
 	tracer trace.Tracer
 
 	// Builtin tools, prompts, and resources are stored in maps for efficient lookup.
-	mu        sync.RWMutex
 	tools     map[string]llm.Tool
 	prompts   map[string]llm.Prompt
 	resources map[string]llm.Resource
 
-	// Builtin connectors are stored by URL
-	//connector map[string]*conn
+	// Connectors
+	connectors map[string]*connector
 
 	// handler receives callbacks for connector lifecycle events, prompt execution, etc
 	handler ToolkitHandler
@@ -65,6 +65,7 @@ func New(opts ...Option) (*toolkit, error) {
 	toolkit.tools = make(map[string]llm.Tool)
 	toolkit.prompts = make(map[string]llm.Prompt)
 	toolkit.resources = make(map[string]llm.Resource)
+	toolkit.connectors = make(map[string]*connector)
 
 	// Apply options
 	for _, opt := range opts {
