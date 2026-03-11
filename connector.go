@@ -52,9 +52,9 @@ type Resource interface {
 	// Description returns an optional description of the resource.
 	Description() string
 
-	// MIMEType returns the MIME type of the resource content, or an empty
+	// Type returns the MIME type of the resource content, or an empty
 	// string if unknown.
-	MIMEType() string
+	Type() string
 
 	// Read returns the raw bytes of the resource content.
 	Read(ctx context.Context) ([]byte, error)

@@ -49,9 +49,9 @@ type ContentBlock struct {
 
 // Attachment represents binary or URI-referenced media (images, documents, etc.)
 type Attachment struct {
-	Type string   `json:"type"`           // MIME type: "image/png", "application/pdf", etc.
-	Data []byte   `json:"data,omitempty"` // Raw binary data
-	URL  *url.URL `json:"url,omitempty"`  // URL reference (http, https, gs, file, etc.)
+	ContentType string   `json:"type"`           // MIME type: "image/png", "application/pdf", etc.
+	Data        []byte   `json:"data,omitempty"` // Raw binary data
+	URL         *url.URL `json:"url,omitempty"`  // URL reference (http, https, gs, file, etc.)
 }
 
 // IsText returns true if the attachment has a text/* MIME type (e.g. text/plain,
@@ -59,9 +59,9 @@ type Attachment struct {
 // Such attachments can be converted to text blocks when providers don't
 // support them as media uploads.
 func (a Attachment) IsText() bool {
-	mediaType, _, err := mime.ParseMediaType(a.Type)
+	mediaType, _, err := mime.ParseMediaType(a.ContentType)
 	if err != nil {
-		return strings.HasPrefix(a.Type, "text/")
+		return strings.HasPrefix(a.ContentType, "text/")
 	}
 	return strings.HasPrefix(mediaType, "text/")
 }
@@ -75,8 +75,8 @@ func (a Attachment) TextContent() string {
 	if a.URL != nil && a.URL.Path != "" {
 		header += "File: " + a.URL.Path + "\n"
 	}
-	if a.Type != "" {
-		header += "Content-Type: " + a.Type + "\n"
+	if a.ContentType != "" {
+		header += "Content-Type: " + a.ContentType + "\n"
 	}
 	if header != "" {
 		return header + "\n" + text
@@ -105,8 +105,8 @@ func (a Attachment) Name() string {
 // Description returns an empty string. Satisfies llm.Resource.
 func (a Attachment) Description() string { return "" }
 
-// MIMEType returns the MIME type of the attachment. Satisfies llm.Resource.
-func (a Attachment) MIMEType() string { return a.Type }
+// Type returns the MIME type of the attachment. Satisfies llm.Resource.
+func (a Attachment) Type() string { return a.ContentType }
 
 // maxAttachmentBytes caps the amount of data read from a remote URL to
 // prevent unbounded memory use when fetching large responses.
@@ -319,8 +319,8 @@ func WithAttachment(r io.Reader) opt.Opt {
 	}
 	return opt.AddAny(opt.ContentBlockKey, ContentBlock{
 		Attachment: types.Ptr(Attachment{
-			Type: http.DetectContentType(data),
-			Data: data,
+			ContentType: http.DetectContentType(data),
+			Data:        data,
 		}),
 	})
 }
@@ -333,8 +333,8 @@ func WithAttachmentURL(u string, mimetype string) opt.Opt {
 	}
 	return opt.AddAny(opt.ContentBlockKey, ContentBlock{
 		Attachment: types.Ptr(Attachment{
-			Type: mimetype,
-			URL:  url,
+			ContentType: mimetype,
+			URL:         url,
 		}),
 	})
 }

@@ -27,7 +27,7 @@ var _ llm.Resource = (*clientResource)(nil)
 func (r *clientResource) URI() string         { return r.r.URI }
 func (r *clientResource) Name() string        { return r.r.Name }
 func (r *clientResource) Description() string { return r.r.Description }
-func (r *clientResource) MIMEType() string    { return r.r.MIMEType }
+func (r *clientResource) Type() string        { return r.r.MIMEType }
 
 func (r *clientResource) Read(ctx context.Context) ([]byte, error) {
 	result, err := r.sess.ReadResource(ctx, &sdkmcp.ReadResourceParams{URI: r.r.URI})

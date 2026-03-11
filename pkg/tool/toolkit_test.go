@@ -25,7 +25,7 @@ func (s *stubTool) OutputSchema() (*jsonschema.Schema, error)             { retu
 func (s *stubTool) Meta() llm.ToolMeta                                    { return llm.ToolMeta{} }
 func (s *stubTool) Run(_ context.Context, _ json.RawMessage) (any, error) { return nil, nil }
 
-// echoTool echoes its raw input as output.
+// echoTool echoes its raw input as output wrapped in a JSONResource.
 type echoTool struct{ name string }
 
 func (e *echoTool) Name() string                              { return e.name }
@@ -34,7 +34,7 @@ func (e *echoTool) InputSchema() (*jsonschema.Schema, error)  { return nil, nil 
 func (e *echoTool) OutputSchema() (*jsonschema.Schema, error) { return nil, nil }
 func (e *echoTool) Meta() llm.ToolMeta                        { return llm.ToolMeta{} }
 func (e *echoTool) Run(_ context.Context, input json.RawMessage) (any, error) {
-	return input, nil
+	return tool.NewJSONResource(input), nil
 }
 
 // schemaTool is a tool that has a JSON schema for input validation.
@@ -49,7 +49,7 @@ func (s *schemaTool) InputSchema() (*jsonschema.Schema, error)  { return s.schem
 func (s *schemaTool) OutputSchema() (*jsonschema.Schema, error) { return nil, nil }
 func (s *schemaTool) Meta() llm.ToolMeta                        { return llm.ToolMeta{} }
 func (s *schemaTool) Run(_ context.Context, input json.RawMessage) (any, error) {
-	return input, nil
+	return tool.NewJSONResource(input), nil
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -369,16 +369,20 @@ func TestRun_JSONRawMessage(t *testing.T) {
 	if err != nil {
 		t.Fatal("unexpected error:", err)
 	}
-	raw, ok := result.(json.RawMessage)
+	resource, ok := result.(llm.Resource)
 	if !ok {
-		t.Fatalf("expected json.RawMessage, got %T", result)
+		t.Fatalf("expected llm.Resource, got %T", result)
 	}
-	if string(raw) != string(input) {
-		t.Fatalf("expected %q, got %q", string(input), string(raw))
+	data, err := resource.Read(context.Background())
+	if err != nil {
+		t.Fatal("failed to read resource:", err)
+	}
+	if string(data) != string(input) {
+		t.Fatalf("expected %q, got %q", string(input), string(data))
 	}
 }
 
-func TestRun_MarshalInput(t *testing.T) {
+func TestRun_MarshalledInput(t *testing.T) {
 	tk, err := tool.NewToolkit()
 	if err != nil {
 		t.Fatal(err)
@@ -389,14 +393,14 @@ func TestRun_MarshalInput(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Provide a struct — should be marshalled to JSON
-	input := map[string]string{"key": "value"}
+	// Marshal input to JSON before calling Run
+	input, _ := json.Marshal(map[string]string{"key": "value"})
 	result, err := tk.Run(context.Background(), "echo", input)
 	if err != nil {
 		t.Fatal("unexpected error:", err)
 	}
-	if result == nil {
-		t.Fatal("expected non-nil result")
+	if _, ok := result.(llm.Resource); !ok {
+		t.Fatalf("expected llm.Resource, got %T", result)
 	}
 }
 

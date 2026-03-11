@@ -410,8 +410,8 @@ func fileAttachment(f types.File) (*Attachment, error) {
 		return nil, nil
 	}
 	a := &Attachment{
-		Type: http.DetectContentType(data),
-		Data: data,
+		ContentType: http.DetectContentType(data),
+		Data:        data,
 	}
 	if f.Path != "" {
 		a.URL = types.Ptr(url.URL{Scheme: "file", Path: f.Path})

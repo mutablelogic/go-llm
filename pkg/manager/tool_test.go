@@ -9,6 +9,7 @@ import (
 	jsonschema "github.com/google/jsonschema-go/jsonschema"
 	llm "github.com/mutablelogic/go-llm"
 	schema "github.com/mutablelogic/go-llm/pkg/schema"
+	tool "github.com/mutablelogic/go-llm/pkg/tool"
 	assert "github.com/stretchr/testify/assert"
 )
 
@@ -98,7 +99,8 @@ func Test_tool_005(t *testing.T) {
 		name:        "echo_tool",
 		description: "Echoes input",
 		runFn: func(_ context.Context, input json.RawMessage) (any, error) {
-			return map[string]string{"echoed": string(input)}, nil
+			data, _ := json.Marshal(map[string]string{"echoed": string(input)})
+			return tool.NewJSONResource(data), nil
 		},
 	}))
 	assert.NoError(err)
@@ -127,7 +129,7 @@ func Test_tool_007(t *testing.T) {
 	m, err := NewManager("test", "0.0.0", WithTools(&mockTool{
 		name: "nil_input",
 		runFn: func(_ context.Context, input json.RawMessage) (any, error) {
-			return "ok", nil
+			return tool.NewJSONResource([]byte(`"ok"`)), nil
 		},
 	}))
 	assert.NoError(err)
@@ -282,7 +284,8 @@ func Test_tool_016(t *testing.T) {
 	m, err := NewManager("test", "0.0.0", WithTools(&mockTool{
 		name: "get_weather",
 		runFn: func(_ context.Context, _ json.RawMessage) (any, error) {
-			return weatherResult{Temp: 22.5, Unit: "celsius"}, nil
+			data, _ := json.Marshal(weatherResult{Temp: 22.5, Unit: "celsius"})
+			return tool.NewJSONResource(data), nil
 		},
 	}))
 	assert.NoError(err)

@@ -130,7 +130,7 @@ func mistralMessagesFromMessage(msg *schema.Message) ([]mistralMessage, error) {
 
 		if block.Attachment != nil {
 			otherCount++
-			mediaType, _, _ := mime.ParseMediaType(block.Attachment.Type)
+			mediaType, _, _ := mime.ParseMediaType(block.Attachment.ContentType)
 			isAudio := strings.HasPrefix(mediaType, "audio/")
 			// Text attachments → text content part
 			if block.Attachment.IsText() && len(block.Attachment.Data) > 0 {
@@ -156,9 +156,9 @@ func mistralMessagesFromMessage(msg *schema.Message) ([]mistralMessage, error) {
 			} else if len(block.Attachment.Data) > 0 {
 				// Image (or other binary) data → data: URI
 				if !strings.HasPrefix(mediaType, "image/") {
-					return nil, fmt.Errorf("unsupported attachment type %q: only image/*, audio/*, and text/* are supported", block.Attachment.Type)
+					return nil, fmt.Errorf("unsupported attachment type %q: only image/*, audio/*, and text/* are supported", block.Attachment.ContentType)
 				}
-				dataURI := "data:" + block.Attachment.Type + ";base64," + base64.StdEncoding.EncodeToString(block.Attachment.Data)
+				dataURI := "data:" + block.Attachment.ContentType + ";base64," + base64.StdEncoding.EncodeToString(block.Attachment.Data)
 				parts = append(parts, contentPart{
 					Type:     "image_url",
 					ImageURL: &imageURL{URL: dataURI},
@@ -324,8 +324,8 @@ func contentBlocksFromMistralMessage(msg *mistralMessage) ([]schema.ContentBlock
 					}
 					blocks = append(blocks, schema.ContentBlock{
 						Attachment: &schema.Attachment{
-							Type: "audio/mpeg",
-							Data: data,
+							ContentType: "audio/mpeg",
+							Data:        data,
 						},
 					})
 				}

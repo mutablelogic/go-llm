@@ -6,14 +6,12 @@ import (
 
 	// Packages
 	sdkmcp "github.com/modelcontextprotocol/go-sdk/mcp"
+	session "github.com/mutablelogic/go-llm/pkg/tool/session"
 	trace "go.opentelemetry.io/otel/trace"
 )
 
 ///////////////////////////////////////////////////////////////////////////////
 // TYPES
-
-// sessionKey is the context key used to store the per-call Session.
-type sessionKey struct{}
 
 // Session is available inside every tool call via SessionFromContext. It
 // provides logging and progress reporting back to the connected MCP client,
@@ -48,8 +46,8 @@ type Session interface {
 	Tracer() trace.Tracer
 }
 
-// session is the concrete, per-call implementation of Session.
-type session struct {
+// mcpSession is the concrete, per-call implementation of Session.
+type mcpSession struct {
 	id           string
 	clientInfo   *sdkmcp.Implementation
 	capabilities *sdkmcp.ClientCapabilities
@@ -59,20 +57,21 @@ type session struct {
 	tracer       trace.Tracer
 }
 
-var _ Session = (*session)(nil)
+var _ Session = (*mcpSession)(nil)
+var _ session.Session = (*mcpSession)(nil)
 
 ///////////////////////////////////////////////////////////////////////////////
 // PUBLIC METHODS - SESSION
 
-func (s *session) ID() string                               { return s.id }
-func (s *session) ClientInfo() *sdkmcp.Implementation       { return s.clientInfo }
-func (s *session) Capabilities() *sdkmcp.ClientCapabilities { return s.capabilities }
-func (s *session) Meta() map[string]any                     { return s.meta }
-func (s *session) Logger() *slog.Logger                     { return s.logger }
-func (s *session) Progress(progress, total float64, message string) error {
+func (s *mcpSession) ID() string                               { return s.id }
+func (s *mcpSession) ClientInfo() *sdkmcp.Implementation       { return s.clientInfo }
+func (s *mcpSession) Capabilities() *sdkmcp.ClientCapabilities { return s.capabilities }
+func (s *mcpSession) Meta() map[string]any                     { return s.meta }
+func (s *mcpSession) Logger() *slog.Logger                     { return s.logger }
+func (s *mcpSession) Progress(progress, total float64, message string) error {
 	return s.progress(progress, total, message)
 }
-func (s *session) Tracer() trace.Tracer { return s.tracer }
+func (s *mcpSession) Tracer() trace.Tracer { return s.tracer }
 
 ///////////////////////////////////////////////////////////////////////////////
 // PUBLIC METHODS - CONTEXT
@@ -81,10 +80,10 @@ func (s *session) Tracer() trace.Tracer { return s.tracer }
 // tool call. If no session is present (e.g. in unit tests that invoke Run
 // directly), a no-op session backed by slog.Default() is returned.
 func SessionFromContext(ctx context.Context) Session {
-	if s, ok := ctx.Value(sessionKey{}).(Session); ok {
+	if s, ok := session.FromContext(ctx).(Session); ok {
 		return s
 	}
-	return &session{
+	return &mcpSession{
 		logger:   slog.Default(),
 		progress: func(_, _ float64, _ string) error { return nil },
 		tracer:   nil,
@@ -122,7 +121,7 @@ func withSession(ctx context.Context, ss *sdkmcp.ServerSession, loggerName strin
 		capabilities = p.Capabilities
 	}
 
-	return context.WithValue(ctx, sessionKey{}, &session{
+	return session.NewContext(ctx, &mcpSession{
 		id:           ss.ID(),
 		clientInfo:   clientInfo,
 		capabilities: capabilities,

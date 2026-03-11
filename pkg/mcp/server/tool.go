@@ -132,10 +132,10 @@ func contentFromAny(toolName string, v any) (sdkmcp.Content, error) {
 			meta = sdkmcp.Meta{"url": a.URL.String()}
 		}
 		switch {
-		case strings.HasPrefix(a.Type, "image/"):
-			return &sdkmcp.ImageContent{Data: a.Data, MIMEType: a.Type, Meta: meta}, nil
-		case strings.HasPrefix(a.Type, "audio/"):
-			return &sdkmcp.AudioContent{Data: a.Data, MIMEType: a.Type, Meta: meta}, nil
+		case strings.HasPrefix(a.ContentType, "image/"):
+			return &sdkmcp.ImageContent{Data: a.Data, MIMEType: a.ContentType, Meta: meta}, nil
+		case strings.HasPrefix(a.ContentType, "audio/"):
+			return &sdkmcp.AudioContent{Data: a.Data, MIMEType: a.ContentType, Meta: meta}, nil
 		default:
 			// Non-image, non-audio attachment: use text representation.
 			return &sdkmcp.TextContent{Text: a.TextContent(), Meta: meta}, nil

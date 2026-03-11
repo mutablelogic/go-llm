@@ -53,7 +53,7 @@ func (cmd *HeartbeatMCPCommand) Run(ctx server.Cmd) error {
 	}
 
 	// Create the MCP server
-	srv, err := mcpserver.New(ctx.Name()+"/heartbeat", ctx.Version())
+	srv, err := mcpserver.New(ctx.Name()+"/heartbeat", ctx.Version(), mcpserver.WithTracer(ctx.Tracer()))
 	if err != nil {
 		return fmt.Errorf("mcp server: %w", err)
 	}
@@ -62,7 +62,6 @@ func (cmd *HeartbeatMCPCommand) Run(ctx server.Cmd) error {
 	// clients receive notifications/resources/list_changed automatically.
 	mgrOpts := []heartbeat.Opt{
 		heartbeat.WithLogger(ctx.Logger()),
-		heartbeat.WithTracer(ctx.Tracer()),
 		heartbeat.WithOnFire(func(_ context.Context, h *heartbeat_schema.Heartbeat) {
 			u, _ := url.Parse("heartbeat:" + h.ID)
 			raw, _ := json.Marshal(h)
@@ -121,7 +120,7 @@ type heartbeatResource struct {
 func (r *heartbeatResource) URI() string         { return r.uri }
 func (r *heartbeatResource) Name() string        { return r.name }
 func (r *heartbeatResource) Description() string { return "" }
-func (r *heartbeatResource) MIMEType() string    { return "application/json" }
+func (r *heartbeatResource) Type() string        { return "application/json" }
 func (r *heartbeatResource) Read(_ context.Context) ([]byte, error) {
 	return r.data, nil
 }
