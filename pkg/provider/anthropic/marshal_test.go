@@ -411,7 +411,7 @@ func decodeSchemaMessage(t *testing.T, data json.RawMessage) *schema.Message {
 			block.Thinking = c.Thinking
 		}
 		if c.Attachment != nil {
-			att := &schema.Attachment{Type: c.Attachment.Type}
+			att := &schema.Attachment{ContentType: c.Attachment.Type}
 			if c.Attachment.Data != "" {
 				decoded, err := base64.StdEncoding.DecodeString(c.Attachment.Data)
 				if err != nil {
@@ -572,7 +572,7 @@ func roundTripMessage(t *testing.T, original *schema.Message) {
 			assert.NotNil(rt.Attachment, "block %d: attachment should survive round-trip", i)
 			if len(orig.Attachment.Data) > 0 {
 				// Base64 attachments preserve media type
-				assert.Equal(orig.Attachment.Type, rt.Attachment.Type)
+				assert.Equal(orig.Attachment.ContentType, rt.Attachment.ContentType)
 			}
 			if orig.Attachment.URL != nil {
 				// URL attachments preserve URL but not media type

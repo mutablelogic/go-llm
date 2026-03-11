@@ -67,17 +67,18 @@ func (m *Manager) CallTool(ctx context.Context, name string, input json.RawMessa
 	)
 	defer func() { endSpan(err) }()
 
-	var toolResult any
-	toolResult, err = m.toolkit.Run(ctx, name, input)
+	toolResult, err := m.toolkit.Run(ctx, name, input)
 	if err != nil {
 		return nil, err
 	}
 
-	// Marshal the result to JSON
+	// Read the resource content if present
 	var data []byte
-	data, err = json.Marshal(toolResult)
-	if err != nil {
-		return nil, llm.ErrInternalServerError.Withf("marshalling tool result: %v", err)
+	if resource, ok := toolResult.(llm.Resource); ok {
+		data, err = resource.Read(ctx)
+		if err != nil {
+			return nil, llm.ErrInternalServerError.Withf("reading tool result: %v", err)
+		}
 	}
 
 	return &schema.CallToolResponse{

@@ -136,10 +136,10 @@ func geminiContentFromMessage(msg *schema.Message) (*geminiContent, error) {
 // geminiPartFromAttachment converts a schema.Attachment to a gemini wire Part.
 func geminiPartFromAttachment(att *schema.Attachment) *geminiPart {
 	if len(att.Data) > 0 {
-		return geminiNewInlineDataPart(att.Type, base64.StdEncoding.EncodeToString(att.Data))
+		return geminiNewInlineDataPart(att.ContentType, base64.StdEncoding.EncodeToString(att.Data))
 	}
 	if att.URL != nil {
-		return geminiNewFileDataPart(att.Type, att.URL.String())
+		return geminiNewFileDataPart(att.ContentType, att.URL.String())
 	}
 	return nil
 }
@@ -292,8 +292,8 @@ func blockFromGeminiPart(part *geminiPart) (schema.ContentBlock, map[string]any)
 		data, _ := base64.StdEncoding.DecodeString(part.InlineData.Data)
 		return schema.ContentBlock{
 			Attachment: &schema.Attachment{
-				Type: part.InlineData.MIMEType,
-				Data: data,
+				ContentType: part.InlineData.MIMEType,
+				Data:        data,
 			},
 		}, nil
 	}
@@ -303,8 +303,8 @@ func blockFromGeminiPart(part *geminiPart) (schema.ContentBlock, map[string]any)
 		u, _ := url.Parse(part.FileData.FileURI)
 		return schema.ContentBlock{
 			Attachment: &schema.Attachment{
-				Type: part.FileData.MIMEType,
-				URL:  u,
+				ContentType: part.FileData.MIMEType,
+				URL:         u,
 			},
 		}, nil
 	}

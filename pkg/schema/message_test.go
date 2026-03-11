@@ -82,7 +82,7 @@ func Test_NewMessage_005(t *testing.T) {
 
 	// Second block is attachment
 	assert.NotNil(msg.Content[1].Attachment)
-	assert.True(strings.HasPrefix(msg.Content[1].Attachment.Type, "image/jpeg"))
+	assert.True(strings.HasPrefix(msg.Content[1].Attachment.ContentType, "image/jpeg"))
 	assert.Greater(len(msg.Content[1].Attachment.Data), 0)
 	assert.Nil(msg.Content[1].Attachment.URL)
 }
@@ -141,7 +141,7 @@ func Test_NewMessage_009(t *testing.T) {
 	// Second block is URL attachment
 	att := msg.Content[1].Attachment
 	assert.NotNil(att)
-	assert.Equal("image/png", att.Type)
+	assert.Equal("image/png", att.ContentType)
 	assert.Nil(att.Data)
 	assert.NotNil(att.URL)
 	assert.Equal("gs://my-bucket/image.png", att.URL.String())
@@ -171,12 +171,12 @@ func Test_NewMessage_010(t *testing.T) {
 
 	// Second block is inline data attachment
 	assert.NotNil(msg.Content[1].Attachment)
-	assert.True(strings.HasPrefix(msg.Content[1].Attachment.Type, "image/jpeg"))
+	assert.True(strings.HasPrefix(msg.Content[1].Attachment.ContentType, "image/jpeg"))
 	assert.Greater(len(msg.Content[1].Attachment.Data), 0)
 
 	// Third block is URL attachment
 	assert.NotNil(msg.Content[2].Attachment)
-	assert.Equal("image/png", msg.Content[2].Attachment.Type)
+	assert.Equal("image/png", msg.Content[2].Attachment.ContentType)
 	assert.Equal("https://example.com/photo.png", msg.Content[2].Attachment.URL.String())
 }
 

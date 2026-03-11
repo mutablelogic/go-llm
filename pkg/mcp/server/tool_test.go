@@ -189,7 +189,7 @@ func TestToolCallReturnsImage(t *testing.T) {
 	srv := mockServer(t, &mock.MockTool{
 		Name_:        "get_image",
 		Description_: "returns an image",
-		Result_:      &schema.Attachment{Type: "image/png", Data: []byte{0x89, 0x50, 0x4e, 0x47}},
+		Result_:      &schema.Attachment{ContentType: "image/png", Data: []byte{0x89, 0x50, 0x4e, 0x47}},
 	})
 	_, session := connect(t, srv)
 
@@ -213,7 +213,7 @@ func TestToolCallReturnsAudio(t *testing.T) {
 	srv := mockServer(t, &mock.MockTool{
 		Name_:        "get_audio",
 		Description_: "returns audio",
-		Result_:      &schema.Attachment{Type: "audio/wav", Data: []byte{0x52, 0x49, 0x46, 0x46}},
+		Result_:      &schema.Attachment{ContentType: "audio/wav", Data: []byte{0x52, 0x49, 0x46, 0x46}},
 	})
 	_, session := connect(t, srv)
 
@@ -237,7 +237,7 @@ func TestToolCallReturnsBinaryAttachment(t *testing.T) {
 	srv := mockServer(t, &mock.MockTool{
 		Name_:        "get_doc",
 		Description_: "returns a text doc",
-		Result_:      &schema.Attachment{Type: "text/plain", Data: []byte("hello text")},
+		Result_:      &schema.Attachment{ContentType: "text/plain", Data: []byte("hello text")},
 	})
 	_, session := connect(t, srv)
 

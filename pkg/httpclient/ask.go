@@ -141,9 +141,9 @@ func collectAttachments(req *schema.AskRequest, o *askOptions) error {
 			return fmt.Errorf("reading file %q: %w", f.filename, err)
 		}
 		req.Attachments = append(req.Attachments, schema.Attachment{
-			Type: http.DetectContentType(data),
-			Data: data,
-			URL:  &url.URL{Scheme: "file", Path: f.filename},
+			ContentType: http.DetectContentType(data),
+			Data:        data,
+			URL:         &url.URL{Scheme: "file", Path: f.filename},
 		})
 	}
 	for _, u := range o.urls {

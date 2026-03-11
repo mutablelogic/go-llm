@@ -822,7 +822,7 @@ func Test_ask_010(t *testing.T) {
 			Text:          "describe this image",
 		},
 		Attachments: []schema.Attachment{
-			{Type: "image/png", Data: []byte("fake-image-data")},
+			{ContentType: "image/png", Data: []byte("fake-image-data")},
 		},
 	}, nil)
 	assert.NoError(err)
@@ -848,9 +848,9 @@ func Test_ask_011(t *testing.T) {
 			Text:          "compare these",
 		},
 		Attachments: []schema.Attachment{
-			{Type: "image/png", Data: []byte("image-1")},
-			{Type: "image/jpeg", Data: []byte("image-2")},
-			{Type: "application/pdf", Data: []byte("doc-1")},
+			{ContentType: "image/png", Data: []byte("image-1")},
+			{ContentType: "image/jpeg", Data: []byte("image-2")},
+			{ContentType: "application/pdf", Data: []byte("doc-1")},
 		},
 	}, nil)
 	assert.NoError(err)
@@ -1070,7 +1070,7 @@ func Test_ask_integration_attachment_gemini(t *testing.T) {
 			Text:          "Describe this image in one sentence.",
 		},
 		Attachments: []schema.Attachment{
-			{Type: "image/jpeg", Data: data},
+			{ContentType: "image/jpeg", Data: data},
 		},
 	}, nil)
 	if !assert.NoError(err) || !assert.NotNil(resp) {
@@ -1109,7 +1109,7 @@ func Test_ask_integration_attachment_anthropic(t *testing.T) {
 			Text:          "Describe this image in one sentence.",
 		},
 		Attachments: []schema.Attachment{
-			{Type: "image/jpeg", Data: data},
+			{ContentType: "image/jpeg", Data: data},
 		},
 	}, nil)
 	if !assert.NoError(err) || !assert.NotNil(resp) {
@@ -1148,7 +1148,7 @@ func Test_ask_integration_attachment_mistral(t *testing.T) {
 			Text:          "Describe this image in one sentence.",
 		},
 		Attachments: []schema.Attachment{
-			{Type: "image/jpeg", Data: data},
+			{ContentType: "image/jpeg", Data: data},
 		},
 	}, nil)
 	if !assert.NoError(err) || !assert.NotNil(resp) {

@@ -141,18 +141,18 @@ func anthropicBlockFromContentBlock(block *schema.ContentBlock) (*anthropicConte
 // Anthropic supports "image" (for image/*) and "document" (for application/pdf) block types.
 func anthropicBlockFromAttachment(att *schema.Attachment) (*anthropicContentBlock, error) {
 	if len(att.Data) > 0 {
-		blockType := blockTypeForMIME(att.Type)
+		blockType := blockTypeForMIME(att.ContentType)
 		return &anthropicContentBlock{
 			Type: blockType,
 			Source: &anthropicSource{
 				Type:      sourceTypeBase64,
-				MediaType: att.Type,
+				MediaType: att.ContentType,
 				Data:      base64.StdEncoding.EncodeToString(att.Data),
 			},
 		}, nil
 	}
 	if att.URL != nil {
-		blockType := blockTypeForMIME(att.Type)
+		blockType := blockTypeForMIME(att.ContentType)
 		return &anthropicContentBlock{
 			Type: blockType,
 			Source: &anthropicSource{
@@ -263,8 +263,8 @@ func attachmentFromSource(src *anthropicSource) *schema.Attachment {
 			return nil
 		}
 		return &schema.Attachment{
-			Type: src.MediaType,
-			Data: data,
+			ContentType: src.MediaType,
+			Data:        data,
 		}
 	}
 	if src.Type == sourceTypeURL && src.URL != "" {
@@ -273,8 +273,8 @@ func attachmentFromSource(src *anthropicSource) *schema.Attachment {
 			return nil
 		}
 		return &schema.Attachment{
-			Type: src.MediaType,
-			URL:  u,
+			ContentType: src.MediaType,
+			URL:         u,
 		}
 	}
 	return nil

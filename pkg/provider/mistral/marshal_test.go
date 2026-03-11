@@ -277,7 +277,7 @@ func Test_marshal_schema_to_mistral_input_audio(t *testing.T) {
 	msg := decodeSchemaMessage(t, schemaJSON)
 	a.Len(msg.Content, 2)
 	a.NotNil(msg.Content[1].Attachment)
-	a.Equal("audio/mpeg", msg.Content[1].Attachment.Type)
+	a.Equal("audio/mpeg", msg.Content[1].Attachment.ContentType)
 	a.NotEmpty(msg.Content[1].Attachment.Data)
 	mms, err := mistralMessagesFromMessage(msg)
 	a.NoError(err)
@@ -434,7 +434,7 @@ func decodeSchemaMessage(t *testing.T, data json.RawMessage) *schema.Message {
 			block.Text = c.Text
 		}
 		if c.Attachment != nil {
-			att := &schema.Attachment{Type: c.Attachment.Type}
+			att := &schema.Attachment{ContentType: c.Attachment.Type}
 			if c.Attachment.Data != "" {
 				data, err := base64.StdEncoding.DecodeString(c.Attachment.Data)
 				if err != nil {

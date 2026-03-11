@@ -69,7 +69,7 @@ func sdkResourceFromResource(r Resource) *sdkmcp.Resource {
 		URI:         r.URI(),
 		Name:        r.Name(),
 		Description: r.Description(),
-		MIMEType:    r.MIMEType(),
+		MIMEType:    r.Type(),
 	}
 }
 
@@ -81,7 +81,7 @@ func sdkResourceHandlerFromResource(r Resource) sdkmcp.ResourceHandler {
 		}
 		contents := &sdkmcp.ResourceContents{
 			URI:      req.Params.URI,
-			MIMEType: r.MIMEType(),
+			MIMEType: r.Type(),
 		}
 		// Store as text if the content is valid UTF-8, otherwise as blob.
 		if isValidUTF8(data) {

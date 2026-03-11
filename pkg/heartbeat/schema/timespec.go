@@ -1,7 +1,8 @@
-package heartbeat
+package schema
 
 import (
 	"encoding/json"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -257,6 +258,13 @@ func dedupInts(vals []int) []int {
 ///////////////////////////////////////////////////////////////////////////////
 // PUBLIC METHODS
 
+// IsZero returns true if ts has no constraints and no explicit timezone.
+// A spec with an explicit Loc (even with wildcard fields) is not zero,
+// so that timezone-only updates are treated as schedule changes.
+func (ts TimeSpec) IsZero() bool {
+	return ts.Year == nil && len(ts.Month) == 0 && len(ts.Day) == 0 && len(ts.Weekday) == 0 && len(ts.Hour) == 0 && len(ts.Minute) == 0 && ts.Loc == nil
+}
+
 // Next returns the earliest time on or after from that satisfies every
 // field of ts.  The returned time is expressed in ts.Loc (UTC if nil).
 // Returns the zero time.Time when no match exists within a four-year window
@@ -311,7 +319,7 @@ func (ts TimeSpec) Next(from time.Time) time.Time {
 		}
 
 		// ── Day-of-month ───────────────────────────────────────────────────
-		if len(ts.Day) > 0 && !containsInt(ts.Day, d) {
+		if len(ts.Day) > 0 && !slices.Contains(ts.Day, d) {
 			next, ok := nextIn(ts.Day, d)
 			if !ok {
 				// No more valid days this month; jump to the first of next month
@@ -325,7 +333,7 @@ func (ts TimeSpec) Next(from time.Time) time.Time {
 		}
 
 		// ── Weekday ────────────────────────────────────────────────────────
-		if len(ts.Weekday) > 0 && !containsInt(ts.Weekday, wd) {
+		if len(ts.Weekday) > 0 && !slices.Contains(ts.Weekday, wd) {
 			next, ok := nextIn(ts.Weekday, wd)
 			var delta int
 			if ok {
@@ -523,13 +531,4 @@ func cronField(vals []int) string {
 		parts[i] = strconv.Itoa(v)
 	}
 	return strings.Join(parts, ",")
-}
-
-func containsInt(vals []int, v int) bool {
-	for _, x := range vals {
-		if x == v {
-			return true
-		}
-	}
-	return false
 }

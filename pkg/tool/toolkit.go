@@ -198,37 +198,18 @@ func (tk *Toolkit) Lookup(name string) llm.Tool {
 	return nil
 }
 
-// Run executes a tool by name with the given input.
-// The input should be json.RawMessage or nil.
+// Run executes a tool by name with the given JSON input.
 // Returns an error if the tool is not found, the input does not match the schema,
 // or the tool execution fails.
-func (tk *Toolkit) Run(ctx context.Context, name string, input any) (any, error) {
+func (tk *Toolkit) Run(ctx context.Context, name string, input json.RawMessage) (any, error) {
 	// Lookup the tool
 	tool := tk.Lookup(name)
 	if tool == nil {
 		return nil, llm.ErrNotFound.Withf("tool not found: %q", name)
 	}
 
-	// Convert input to json.RawMessage
-	var rawInput json.RawMessage
-	if input != nil {
-		switch v := input.(type) {
-		case json.RawMessage:
-			rawInput = v
-		case []byte:
-			rawInput = json.RawMessage(v)
-		default:
-			// If not JSON, marshal it
-			data, err := json.Marshal(input)
-			if err != nil {
-				return nil, llm.ErrBadParameter.Withf("failed to marshal input: %v", err)
-			}
-			rawInput = json.RawMessage(data)
-		}
-	}
-
 	// Validate input against schema if provided
-	if len(rawInput) > 0 {
+	if len(input) > 0 {
 		schema, err := tool.InputSchema()
 		if err != nil {
 			return nil, llm.ErrBadParameter.Withf("schema generation failed: %v", err)
@@ -237,7 +218,7 @@ func (tk *Toolkit) Run(ctx context.Context, name string, input any) (any, error)
 		if schema != nil {
 			// Unmarshal into a map for validation
 			var mapInput map[string]any
-			if err := json.Unmarshal(rawInput, &mapInput); err != nil {
+			if err := json.Unmarshal(input, &mapInput); err != nil {
 				return nil, llm.ErrBadParameter.Withf("failed to unmarshal JSON input: %v", err)
 			}
 
@@ -252,8 +233,47 @@ func (tk *Toolkit) Run(ctx context.Context, name string, input any) (any, error)
 		}
 	}
 
-	// Run the tool with raw JSON
-	return tool.Run(ctx, rawInput)
+	// Run the tool
+	result, err := tool.Run(ctx, input)
+	if err != nil {
+		return nil, err
+	}
+
+	// Validate output: must be nil or llm.Resource
+	if result == nil {
+		return nil, nil
+	}
+	resource, ok := result.(llm.Resource)
+	if !ok {
+		return nil, llm.ErrBadParameter.Withf("tool output must be nil or llm.Resource, got %T", result)
+	}
+
+	// If application/json and output schema exists, validate content
+	if resource.Type() == types.ContentTypeJSON {
+		outputSchema, err := tool.OutputSchema()
+		if err != nil {
+			return nil, llm.ErrBadParameter.Withf("output schema generation failed: %v", err)
+		}
+		if outputSchema != nil {
+			data, err := resource.Read(ctx)
+			if err != nil {
+				return nil, llm.ErrBadParameter.Withf("failed to read resource for validation: %v", err)
+			}
+			var mapOutput map[string]any
+			if err := json.Unmarshal(data, &mapOutput); err != nil {
+				return nil, llm.ErrBadParameter.Withf("failed to unmarshal JSON output: %v", err)
+			}
+			resolved, err := outputSchema.Resolve(nil)
+			if err != nil {
+				return nil, llm.ErrBadParameter.Withf("output schema resolution failed: %v", err)
+			}
+			if err := resolved.Validate(mapOutput); err != nil {
+				return nil, llm.ErrBadParameter.Withf("output validation failed: %v", err)
+			}
+		}
+	}
+
+	return resource, nil
 }
 
 // Feedback returns a human-readable description of a tool call, including
