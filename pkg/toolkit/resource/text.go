@@ -50,6 +50,8 @@ func (t *textResource) MarshalJSON() ([]byte, error) {
 		URI  string `json:"uri"`
 		Name string `json:"name"`
 		Type string `json:"type"`
-		Data string `json:"data"`
+		Text string `json:"text,omitempty"`
 	}{t.URI(), t.name, t.Type(), t.content})
 }
+
+func (t *textResource) String() string { return types.Stringify(t) }

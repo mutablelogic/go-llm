@@ -16,7 +16,7 @@ import (
 // Call executes a tool or prompt, passing optional resource arguments.
 // The key argument may be a string name, an llm.Tool, or an llm.Prompt.
 // For tools, the first resource's content is used as the JSON input.
-// For prompts, execution is delegated to the handler.
+// For prompts, execution is delegated to the delegate.
 func (tk *toolkit) Call(ctx context.Context, key any, resources ...llm.Resource) (llm.Resource, error) {
 	// Resolve key to a tool or prompt.
 	var t llm.Tool
@@ -46,10 +46,10 @@ func (tk *toolkit) Call(ctx context.Context, key any, resources ...llm.Resource)
 	case t != nil:
 		return tk.callTool(ctx, t, resources...)
 	case p != nil:
-		if tk.handler == nil {
-			return nil, llm.ErrNotImplemented.With("no handler set for prompt execution")
+		if tk.delegate == nil {
+			return nil, llm.ErrNotImplemented.With("no delegate set for prompt execution")
 		}
-		return tk.handler.Call(ctx, p, resources...)
+		return tk.delegate.Call(ctx, p, resources...)
 	default:
 		return nil, llm.ErrNotFound.Withf("%v", key)
 	}
@@ -118,24 +118,34 @@ func (tk *toolkit) callTool(ctx context.Context, t llm.Tool, resources ...llm.Re
 	// Wrap common non-Resource return types into an appropriate llm.Resource.
 	// Tools like OutputTool return json.RawMessage directly; string and []byte
 	// are also accepted as convenience types.
+	// Unwrap any namespace wrapper to get the bare tool name for the resource.
+	type unwrapper interface{ Unwrap() llm.Tool }
+	baseTool := t
+	for {
+		u, ok := baseTool.(unwrapper)
+		if !ok {
+			break
+		}
+		baseTool = u.Unwrap()
+	}
 	var wrapped llm.Resource
 	switch v := result.(type) {
 	case llm.Resource:
 		wrapped = v
 	case json.RawMessage:
-		r, err := resource.JSON(t.Name(), v)
+		r, err := resource.JSON(baseTool.Name(), v)
 		if err != nil {
 			return nil, llm.ErrBadParameter.Withf("wrapping json.RawMessage output: %v", err)
 		}
 		wrapped = r
 	case []byte:
-		r, err := resource.Data(t.Name(), v)
+		r, err := resource.Data(baseTool.Name(), v)
 		if err != nil {
 			return nil, llm.ErrBadParameter.Withf("wrapping []byte output: %v", err)
 		}
 		wrapped = r
 	case string:
-		r, err := resource.Text(t.Name(), v)
+		r, err := resource.Text(baseTool.Name(), v)
 		if err != nil {
 			return nil, llm.ErrBadParameter.Withf("wrapping string output: %v", err)
 		}

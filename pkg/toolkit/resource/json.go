@@ -60,6 +60,8 @@ func (j *jsonResource) MarshalJSON() ([]byte, error) {
 		URI  string          `json:"uri"`
 		Name string          `json:"name"`
 		Type string          `json:"type"`
-		Data json.RawMessage `json:"data"`
+		Text json.RawMessage `json:"text,omitempty"`
 	}{j.URI(), j.name, j.Type(), j.content})
 }
+
+func (j *jsonResource) String() string { return types.Stringify(j) }

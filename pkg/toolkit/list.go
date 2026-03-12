@@ -80,7 +80,7 @@ func (tk *toolkit) List(ctx context.Context, req ListRequest) (*ListResponse, er
 
 	// Collect builtin items and connector candidates under the read lock.
 	tk.mu.RLock()
-	if req.Namespace == "" || req.Namespace == NamespaceBuiltin {
+	if req.Namespace == "" || req.Namespace == BuiltinNamespace {
 		switch req.Type {
 		case ListTypeTools:
 			resp.Tools = slices.Collect(filterSeq(maps.Values(tk.tools), func(t llm.Tool) bool {
@@ -101,7 +101,7 @@ func (tk *toolkit) List(ctx context.Context, req ListRequest) (*ListResponse, er
 		for _, c := range tk.namespace {
 			candidates = append(candidates, c)
 		}
-	} else if req.Namespace != NamespaceBuiltin {
+	} else if req.Namespace != BuiltinNamespace {
 		if c := tk.namespace[req.Namespace]; c != nil {
 			candidates = []*connector{c}
 		}
@@ -169,8 +169,6 @@ func (tk *toolkit) List(ctx context.Context, req ListRequest) (*ListResponse, er
 			return nil, err
 		}
 	}
-
-	// TODO: Append user items when user items are implemented.
 
 	// Sort, count, then paginate
 	slices.SortFunc(resp.Tools, func(a, b llm.Tool) int {

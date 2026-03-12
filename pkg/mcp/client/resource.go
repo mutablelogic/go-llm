@@ -90,9 +90,10 @@ func (c *Client) refreshResources(ctx context.Context) {
 	if err != nil {
 		return
 	}
-	var resources []llm.Resource
-	var cursor string
-	for {
+	c.mu.Lock()
+	resources := make([]llm.Resource, 0, len(c.resources)+10)
+	c.mu.Unlock()
+	for cursor := ""; ; {
 		result, err := sess.ListResources(ctx, &sdkmcp.ListResourcesParams{Cursor: cursor})
 		if err != nil {
 			return
@@ -100,10 +101,9 @@ func (c *Client) refreshResources(ctx context.Context) {
 		for _, r := range result.Resources {
 			resources = append(resources, &clientResource{sess: sess, r: r})
 		}
-		if result.NextCursor == "" {
+		if cursor = result.NextCursor; cursor == "" {
 			break
 		}
-		cursor = result.NextCursor
 	}
 	c.mu.Lock()
 	c.resources = resources

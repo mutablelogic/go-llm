@@ -35,8 +35,8 @@ type toolkit struct {
 	connectors map[string]*connector
 	namespace  map[string]*connector
 
-	// handler receives callbacks for connector lifecycle events, prompt execution, etc
-	handler ToolkitHandler
+	// delegate receives callbacks for connector lifecycle events, prompt execution, etc
+	delegate ToolkitDelegate
 }
 
 var _ Toolkit = (*toolkit)(nil)
@@ -45,8 +45,9 @@ var _ Toolkit = (*toolkit)(nil)
 // GLOBALS
 
 const (
-	NamespaceBuiltin = "builtin"
-	NamespaceUser    = "user"
+	BuiltinNamespace = "builtin"
+	UserNamespace    = "user"
+	UserConnectorURI = "connector:" + UserNamespace
 )
 
 var (
@@ -54,8 +55,8 @@ var (
 		tool.OutputToolName,
 	}
 	ReservedNamespaces = []string{
-		NamespaceBuiltin,
-		NamespaceUser,
+		BuiltinNamespace,
+		UserNamespace,
 	}
 )
 
@@ -70,11 +71,11 @@ func New(opts ...Option) (*toolkit, error) {
 	toolkit.logger = slog.Default()
 
 	// Builtins
-	toolkit.tools = make(map[string]llm.Tool)
-	toolkit.prompts = make(map[string]llm.Prompt)
-	toolkit.resources = make(map[string]llm.Resource)
-	toolkit.connectors = make(map[string]*connector)
-	toolkit.namespace = make(map[string]*connector)
+	toolkit.tools = make(map[string]llm.Tool, 200)
+	toolkit.prompts = make(map[string]llm.Prompt, 200)
+	toolkit.resources = make(map[string]llm.Resource, 200)
+	toolkit.connectors = make(map[string]*connector, 10)
+	toolkit.namespace = make(map[string]*connector, 10)
 
 	// Apply options
 	for _, opt := range opts {
@@ -92,98 +93,135 @@ func New(opts ...Option) (*toolkit, error) {
 
 // AddTool registers one or more builtin tools.
 func (tk *toolkit) AddTool(tools ...llm.Tool) error {
-	tk.mu.Lock()
-	defer tk.mu.Unlock()
+	delegate, err := func() (ToolkitDelegate, error) {
+		tk.mu.Lock()
+		defer tk.mu.Unlock()
 
-	seen := make(map[string]struct{}, len(tools))
-	for _, t := range tools {
-		if t == nil {
-			continue
+		seen := make(map[string]struct{}, len(tools))
+		for _, t := range tools {
+			if t == nil {
+				continue
+			}
+			if name := t.Name(); !types.IsIdentifier(name) {
+				return nil, llm.ErrBadParameter.Withf("invalid tool name: %q", name)
+			} else if slices.Contains(ReservedNames, name) {
+				return nil, llm.ErrBadParameter.Withf("reserved tool name: %q", name)
+			} else if _, exists := tk.tools[name]; exists {
+				return nil, llm.ErrBadParameter.Withf("duplicate tool name: %q", name)
+			} else if _, exists := seen[name]; exists {
+				return nil, llm.ErrBadParameter.Withf("duplicate tool name: %q", name)
+			} else {
+				seen[name] = struct{}{}
+			}
 		}
-		if name := t.Name(); !types.IsIdentifier(name) {
-			return llm.ErrBadParameter.Withf("invalid tool name: %q", name)
-		} else if slices.Contains(ReservedNames, name) {
-			return llm.ErrBadParameter.Withf("reserved tool name: %q", name)
-		} else if _, exists := tk.tools[name]; exists {
-			return llm.ErrBadParameter.Withf("duplicate tool name: %q", name)
-		} else if _, exists := seen[name]; exists {
-			return llm.ErrBadParameter.Withf("duplicate tool name: %q", name)
-		} else {
-			seen[name] = struct{}{}
+		for _, t := range tools {
+			if t != nil {
+				tk.tools[t.Name()] = tool.WithNamespace(BuiltinNamespace, t)
+			}
 		}
+		return tk.delegate, nil
+	}()
+	if err != nil {
+		return err
 	}
-	for _, t := range tools {
-		if t != nil {
-			tk.tools[t.Name()] = tool.WithNamespace(NamespaceBuiltin, t)
-		}
+	if delegate != nil {
+		delegate.OnEvent(ToolListChangeEvent())
 	}
-
-	// Return success
 	return nil
 }
 
 // AddPrompt registers one or more builtin prompts.
 func (tk *toolkit) AddPrompt(prompts ...llm.Prompt) error {
-	tk.mu.Lock()
-	defer tk.mu.Unlock()
+	delegate, err := func() (ToolkitDelegate, error) {
+		tk.mu.Lock()
+		defer tk.mu.Unlock()
 
-	seen := make(map[string]struct{}, len(prompts))
-	for _, p := range prompts {
-		if p == nil {
-			continue
+		seen := make(map[string]struct{}, len(prompts))
+		for _, p := range prompts {
+			if p == nil {
+				continue
+			}
+			if name := p.Name(); !types.IsIdentifier(name) {
+				return nil, llm.ErrBadParameter.Withf("invalid prompt name: %q", name)
+			} else if slices.Contains(ReservedNames, name) {
+				return nil, llm.ErrBadParameter.Withf("reserved prompt name: %q", name)
+			} else if _, exists := tk.prompts[name]; exists {
+				return nil, llm.ErrBadParameter.Withf("duplicate prompt name: %q", name)
+			} else if _, exists := seen[name]; exists {
+				return nil, llm.ErrBadParameter.Withf("duplicate prompt name: %q", name)
+			} else {
+				seen[name] = struct{}{}
+			}
 		}
-		if name := p.Name(); !types.IsIdentifier(name) {
-			return llm.ErrBadParameter.Withf("invalid prompt name: %q", name)
-		} else if slices.Contains(ReservedNames, name) {
-			return llm.ErrBadParameter.Withf("reserved prompt name: %q", name)
-		} else if _, exists := tk.prompts[name]; exists {
-			return llm.ErrBadParameter.Withf("duplicate prompt name: %q", name)
-		} else if _, exists := seen[name]; exists {
-			return llm.ErrBadParameter.Withf("duplicate prompt name: %q", name)
-		} else {
-			seen[name] = struct{}{}
+		for _, p := range prompts {
+			if p != nil {
+				tk.prompts[p.Name()] = prompt.WithNamespace(BuiltinNamespace, p)
+			}
 		}
+		return tk.delegate, nil
+	}()
+	if err != nil {
+		return err
 	}
-	for _, p := range prompts {
-		if p != nil {
-			tk.prompts[p.Name()] = prompt.WithNamespace(NamespaceBuiltin, p)
-		}
+	if delegate != nil {
+		delegate.OnEvent(PromptListChangeEvent())
 	}
-
-	// Return success
 	return nil
 }
 
-// AddResource registers one or more builtin resources.
+// AddResource registers or replaces one or more builtin resources.
+// If the canonical URI already exists the resource is updated in-place and
+// ResourceUpdatedEvent is fired for that URI; new URIs fire ResourceListChangeEvent.
 func (tk *toolkit) AddResource(resources ...llm.Resource) error {
-	tk.mu.Lock()
-	defer tk.mu.Unlock()
+	delegate, newAdded, updatedURIs, err := func() (ToolkitDelegate, bool, []string, error) {
+		tk.mu.Lock()
+		defer tk.mu.Unlock()
 
-	seen := make(map[string]struct{}, len(resources))
-	for _, r := range resources {
-		if r == nil {
-			continue
+		// Validate all inputs before mutating state.
+		seen := make(map[string]struct{}, len(resources))
+		for _, r := range resources {
+			if r == nil {
+				continue
+			}
+			u, _, ok := parseURI(r.URI())
+			if !ok {
+				return nil, false, nil, llm.ErrBadParameter.Withf("invalid resource URI: %q", r.URI())
+			}
+			uri := u.String()
+			if _, exists := seen[uri]; exists {
+				return nil, false, nil, llm.ErrBadParameter.Withf("duplicate resource URI: %q", uri)
+			}
+			seen[uri] = struct{}{}
 		}
-		u, _, ok := parseURI(r.URI())
-		if !ok {
-			return llm.ErrBadParameter.Withf("invalid resource URI: %q", r.URI())
-		}
-		uri := u.String()
-		if _, exists := tk.resources[uri]; exists {
-			return llm.ErrBadParameter.Withf("duplicate resource URI: %q", uri)
-		} else if _, exists := seen[uri]; exists {
-			return llm.ErrBadParameter.Withf("duplicate resource URI: %q", uri)
-		}
-		seen[uri] = struct{}{}
-	}
-	for _, r := range resources {
-		if r != nil {
+
+		var added bool
+		var updated []string
+		for _, r := range resources {
+			if r == nil {
+				continue
+			}
 			u, _, _ := parseURI(r.URI())
-			tk.resources[u.String()] = resource.WithNamespace(NamespaceBuiltin, r)
+			uri := u.String()
+			if _, exists := tk.resources[uri]; exists {
+				updated = append(updated, uri)
+			} else {
+				added = true
+			}
+			tk.resources[uri] = resource.WithNamespace(BuiltinNamespace, r)
+		}
+		return tk.delegate, added, updated, nil
+	}()
+	if err != nil {
+		return err
+	}
+	if delegate != nil {
+		if newAdded {
+			delegate.OnEvent(ResourceListChangeEvent())
+		}
+		for _, uri := range updatedURIs {
+			delegate.OnEvent(ResourceUpdatedEvent(uri))
 		}
 	}
-
-	// Return success
 	return nil
 }
 
@@ -191,24 +229,33 @@ func (tk *toolkit) AddResource(resources ...llm.Resource) error {
 // prompt by name, or resource by URI. Tools are checked before prompts.
 // Returns llm.ErrNotFound if no match exists.
 func (tk *toolkit) RemoveBuiltin(key string) error {
-	tk.mu.Lock()
-	defer tk.mu.Unlock()
-	if _, ok := tk.tools[key]; ok {
-		delete(tk.tools, key)
-		return nil
-	}
-	if _, ok := tk.prompts[key]; ok {
-		delete(tk.prompts, key)
-		return nil
-	}
-	if u, _, ok := parseURI(key); ok {
-		uri := u.String()
-		if _, ok := tk.resources[uri]; ok {
-			delete(tk.resources, uri)
-			return nil
+	delegate, evt, err := func() (ToolkitDelegate, ConnectorEvent, error) {
+		tk.mu.Lock()
+		defer tk.mu.Unlock()
+		if _, ok := tk.tools[key]; ok {
+			delete(tk.tools, key)
+			return tk.delegate, ToolListChangeEvent(), nil
 		}
+		if _, ok := tk.prompts[key]; ok {
+			delete(tk.prompts, key)
+			return tk.delegate, PromptListChangeEvent(), nil
+		}
+		if u, _, ok := parseURI(key); ok {
+			uri := u.String()
+			if _, ok := tk.resources[uri]; ok {
+				delete(tk.resources, uri)
+				return tk.delegate, ResourceListChangeEvent(), nil
+			}
+		}
+		return nil, ConnectorEvent{}, llm.ErrNotFound.Withf("%q", key)
+	}()
+	if err != nil {
+		return err
 	}
-	return llm.ErrNotFound.Withf("%q", key)
+	if delegate != nil {
+		delegate.OnEvent(evt)
+	}
+	return nil
 }
 
 // Lookup finds a tool, prompt, or resource by name, namespace.name, URI,
@@ -267,15 +314,15 @@ func (tk *toolkit) Lookup(ctx context.Context, key string) (any, error) {
 // searched. Otherwise the named connector namespace is searched via ListTools.
 func (tk *toolkit) lookupTool(ctx context.Context, namespace, name string) (llm.Tool, error) {
 	// The output tool is always available by its reserved name in the builtin (or empty) namespace.
-	if name == tool.OutputToolName && (namespace == "" || namespace == NamespaceBuiltin) {
-		return tool.WithNamespace(NamespaceBuiltin, tool.NewOutputTool(nil)), nil
+	if name == tool.OutputToolName && (namespace == "" || namespace == BuiltinNamespace) {
+		return tool.WithNamespace(BuiltinNamespace, tool.NewOutputTool(nil)), nil
 	}
 	// Builtin namespace (or no namespace): check the in-process tools map first.
-	if namespace == "" || namespace == NamespaceBuiltin {
+	if namespace == "" || namespace == BuiltinNamespace {
 		tk.mu.RLock()
 		t := tk.tools[name]
 		tk.mu.RUnlock()
-		if t != nil || namespace == NamespaceBuiltin {
+		if t != nil || namespace == BuiltinNamespace {
 			return t, nil
 		}
 		// namespace == "": fall through to search all connected connectors.
@@ -314,11 +361,11 @@ func (tk *toolkit) lookupTool(ctx context.Context, namespace, name string) (llm.
 // searched. Otherwise the named connector namespace is searched via ListPrompts.
 func (tk *toolkit) lookupPrompt(ctx context.Context, namespace, name string) (llm.Prompt, error) {
 	// Builtin namespace (or no namespace): check the in-process prompts map first.
-	if namespace == "" || namespace == NamespaceBuiltin {
+	if namespace == "" || namespace == BuiltinNamespace {
 		tk.mu.RLock()
 		p := tk.prompts[name]
 		tk.mu.RUnlock()
-		if p != nil || namespace == NamespaceBuiltin {
+		if p != nil || namespace == BuiltinNamespace {
 			return p, nil
 		}
 		// namespace == "": fall through to search all connected connectors.
@@ -359,14 +406,14 @@ func (tk *toolkit) lookupPrompt(ctx context.Context, namespace, name string) (ll
 // Returns llm.ErrNotFound when no resource matches.
 func (tk *toolkit) lookupResource(ctx context.Context, namespace, uri string) (llm.Resource, error) {
 	// Builtin namespace (or no namespace): check the in-process resources map first.
-	if namespace == "" || namespace == NamespaceBuiltin {
+	if namespace == "" || namespace == BuiltinNamespace {
 		tk.mu.RLock()
 		r := tk.resources[uri]
 		tk.mu.RUnlock()
 		if r != nil {
 			return r, nil
 		}
-		if namespace == NamespaceBuiltin {
+		if namespace == BuiltinNamespace {
 			return nil, llm.ErrNotFound.Withf("%q", uri)
 		}
 		// namespace == "": fall through to search all connected connectors.

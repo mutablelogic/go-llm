@@ -38,11 +38,11 @@ func WithResource(items ...llm.Resource) Option {
 	}
 }
 
-// WithHandler sets the ToolkitHandler that receives connector lifecycle callbacks,
+// WithDelegate sets the ToolkitDelegate that receives connector lifecycle callbacks,
 // executes prompts, serves the "user" namespace, and creates connectors.
-func WithHandler(h ToolkitHandler) Option {
+func WithDelegate(h ToolkitDelegate) Option {
 	return func(tk *toolkit) error {
-		tk.handler = h
+		tk.delegate = h
 		return nil
 	}
 }

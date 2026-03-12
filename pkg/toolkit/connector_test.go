@@ -8,6 +8,7 @@ import (
 	// Packages
 	llm "github.com/mutablelogic/go-llm"
 	schema "github.com/mutablelogic/go-llm/pkg/schema"
+	types "github.com/mutablelogic/go-server/pkg/types"
 )
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -44,17 +45,13 @@ type mockConnectorHandler struct {
 	err  error
 }
 
-func (h *mockConnectorHandler) CreateConnector(_ string, _ func(schema.ConnectorState)) (llm.Connector, error) {
+func (h *mockConnectorHandler) CreateConnector(_ string, _ func(ConnectorEvent)) (llm.Connector, error) {
 	if h.err != nil {
 		return nil, h.err
 	}
 	return h.conn, nil
 }
-func (h *mockConnectorHandler) OnStateChange(llm.Connector, schema.ConnectorState) {}
-func (h *mockConnectorHandler) OnToolListChanged(llm.Connector)                    {}
-func (h *mockConnectorHandler) OnPromptListChanged(llm.Connector)                  {}
-func (h *mockConnectorHandler) OnResourceListChanged(llm.Connector)                {}
-func (h *mockConnectorHandler) OnResourceUpdated(llm.Connector, string)            {}
+func (h *mockConnectorHandler) OnEvent(ConnectorEvent) {}
 func (h *mockConnectorHandler) Call(_ context.Context, _ llm.Prompt, _ ...llm.Resource) (llm.Resource, error) {
 	return nil, nil
 }
@@ -66,7 +63,7 @@ func (h *mockConnectorHandler) List(_ context.Context, _ ListRequest) (*ListResp
 func newConnectorToolkit(t *testing.T) (*toolkit, *mockListConnector) {
 	t.Helper()
 	conn := &mockListConnector{}
-	tk, err := New(WithHandler(&mockConnectorHandler{conn: conn}))
+	tk, err := New(WithDelegate(&mockConnectorHandler{conn: conn}))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -106,12 +103,13 @@ func Test_canonicalURL_003_https_default_port(t *testing.T) {
 	}
 }
 
-func Test_canonicalURL_004_uppercased_normalised(t *testing.T) {
-	got, err := canonicalURL("HTTP://EXAMPLE.COM/PATH")
+func Test_canonicalURL_004_scheme_host_lowercased_path_preserved(t *testing.T) {
+	// Scheme and host are normalised to lower-case; path case is preserved.
+	got, err := canonicalURL("HTTP://EXAMPLE.COM/MyPath")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got != "http://example.com/path" {
+	if got != "http://example.com/MyPath" {
 		t.Fatalf("unexpected: %q", got)
 	}
 }
@@ -220,7 +218,7 @@ func Test_AddConnector_004_bad_url(t *testing.T) {
 
 func Test_AddConnector_005_handler_error(t *testing.T) {
 	sentinel := errors.New("handler failure")
-	tk, err := New(WithHandler(&mockConnectorHandler{err: sentinel}))
+	tk, err := New(WithDelegate(&mockConnectorHandler{err: sentinel}))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -274,12 +272,13 @@ func Test_RemoveConnector_003_bad_url(t *testing.T) {
 }
 
 func Test_RemoveConnector_004_url_normalised(t *testing.T) {
-	// Add with one form, remove with a case-variant — both should resolve to the same key.
+	// Scheme and host are normalised; path casing is preserved, so add/remove
+	// must use the same path case to resolve to the same canonical key.
 	tk, _ := newConnectorToolkit(t)
 	if err := tk.AddConnector("http://localhost:8080/path"); err != nil {
 		t.Fatal(err)
 	}
-	if err := tk.RemoveConnector("HTTP://LOCALHOST:8080/PATH"); err != nil {
+	if err := tk.RemoveConnector("HTTP://LOCALHOST:8080/path"); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -322,4 +321,106 @@ func Test_connector_Run_001(t *testing.T) {
 	if err := <-done; !errors.Is(err, context.Canceled) {
 		t.Fatalf("expected context.Canceled, got %v", err)
 	}
+}
+
+///////////////////////////////////////////////////////////////////////////////
+// onConnectorEvent
+
+// newTestConnector builds a bare connector struct for unit tests (no goroutine).
+func newTestConnector(ns string) *connector {
+	return &connector{namespace: ns}
+}
+
+func Test_onConnectorEvent_001_state_change_sets_namespace(t *testing.T) {
+	tk, _ := New()
+	c := newTestConnector("")
+	state := schema.ConnectorState{Name: types.Ptr("myserver"), Version: types.Ptr("1.0")}
+	tk.onConnectorEvent(c, StateChangeEvent(state))
+	if c.namespace != "myserver" {
+		t.Fatalf("expected namespace %q, got %q", "myserver", c.namespace)
+	}
+	if tk.namespace["myserver"] != c {
+		t.Fatal("expected connector registered in namespace map")
+	}
+}
+
+func Test_onConnectorEvent_002_state_change_preserves_existing_namespace(t *testing.T) {
+	// When a namespace is already set, the server-reported name must not override it.
+	tk, _ := New()
+	c := newTestConnector("pinned")
+	tk.namespace["pinned"] = c
+	state := schema.ConnectorState{Name: types.Ptr("othername"), Version: types.Ptr("1.0")}
+	tk.onConnectorEvent(c, StateChangeEvent(state))
+	if c.namespace != "pinned" {
+		t.Fatalf("expected namespace %q unchanged, got %q", "pinned", c.namespace)
+	}
+}
+
+func Test_onConnectorEvent_003_state_change_invalid_name(t *testing.T) {
+	// A server reporting an invalid identifier sets c.err and does not register.
+	tk, _ := New()
+	c := newTestConnector("")
+	state := schema.ConnectorState{Name: types.Ptr("bad name!")}
+	tk.onConnectorEvent(c, StateChangeEvent(state))
+	if c.err == nil {
+		t.Fatal("expected error for invalid namespace name")
+	}
+}
+
+func Test_onConnectorEvent_004_state_change_reserved_name(t *testing.T) {
+	tk, _ := New()
+	c := newTestConnector("")
+	state := schema.ConnectorState{Name: types.Ptr("builtin")}
+	tk.onConnectorEvent(c, StateChangeEvent(state))
+	if c.err == nil {
+		t.Fatal("expected error for reserved namespace")
+	}
+}
+
+func Test_onConnectorEvent_005_state_change_namespace_collision(t *testing.T) {
+	tk, _ := New()
+	other := newTestConnector("taken")
+	tk.namespace["taken"] = other
+	c := newTestConnector("")
+	state := schema.ConnectorState{Name: types.Ptr("taken")}
+	tk.onConnectorEvent(c, StateChangeEvent(state))
+	if c.err == nil {
+		t.Fatal("expected conflict error for colliding namespace")
+	}
+}
+
+func Test_onConnectorEvent_006_state_change_no_name_no_namespace(t *testing.T) {
+	// If server sends no name and connector has no namespace, event is silently ignored.
+	tk, _ := New()
+	c := newTestConnector("")
+	state := schema.ConnectorState{}
+	tk.onConnectorEvent(c, StateChangeEvent(state))
+	if c.namespace != "" {
+		t.Fatalf("expected empty namespace, got %q", c.namespace)
+	}
+}
+
+func Test_onConnectorEvent_007_non_state_forwarded_to_delegate(t *testing.T) {
+	d := &mockDelegate{}
+	tk, _ := New(WithDelegate(d))
+	c := newTestConnector("mymcp")
+	tk.onConnectorEvent(c, ToolListChangeEvent())
+	if len(d.events) != 1 {
+		t.Fatalf("expected 1 event, got %d", len(d.events))
+	}
+	if d.events[0].Kind != ConnectorEventToolListChanged {
+		t.Fatalf("expected ToolListChanged, got %v", d.events[0].Kind)
+	}
+	// Connector field must be injected by the toolkit.
+	if d.events[0].Connector != c {
+		t.Fatalf("expected Connector field to be set")
+	}
+}
+
+func Test_onConnectorEvent_008_non_state_no_delegate(t *testing.T) {
+	// Without a delegate, non-StateChange events are silently dropped.
+	tk, _ := New()
+	c := newTestConnector("mymcp")
+	// Must not panic.
+	tk.onConnectorEvent(c, ToolListChangeEvent())
 }

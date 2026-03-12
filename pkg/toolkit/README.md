@@ -23,68 +23,102 @@ A toolkit holds three kinds of tools:
 To create a toolkit, use `toolkit.New` with any number of options:
 
 ```go
-type ToolkitHandler interface {
-    // OnStateChange is called when a connector connects or reconnects.
-    OnStateChange(llm.Connector, schema.ConnectorState)
-
-    // OnToolListChanged is called when a connector's tool list changes.
-    OnToolListChanged(llm.Connector)
-
-    // OnPromptListChanged is called when a connector's prompt list changes.
-    OnPromptListChanged(llm.Connector)
-
-    // OnResourceListChanged is called when a connector's resource list changes.
-    OnResourceListChanged(llm.Connector)
-
-    // OnResourceUpdated is called when a specific resource (identified by uri) is updated.
-    OnResourceUpdated(llm.Connector, string)
-
-    // Call executes a prompt via the manager, passing optional input resources.
-    Call(context.Context, llm.Prompt, ...llm.Resource) (llm.Resource, error)
-
-    // List is called to enumerate items in the "user" namespace — prompts and resources
-    // stored persistently by the manager (e.g. in a database). Tools are never returned
-    // here because they are compiled code, not data.
-    List(context.Context, ListRequest) (*ListResponse, error)
-
-    // CreateConnector is called to create a new connector for the given URL.
-    // The onState callback must be called by the connector whenever its state
-    // changes (e.g. after initial connection). The toolkit uses the reported
-    // Name field to register the connector in the namespace map.
-    CreateConnector(url string, onState func(schema.ConnectorState)) (llm.Connector, error)
+tk, err := toolkit.New(
+    toolkit.WithTool(myTool1, myTool2),
+    toolkit.WithDelegate(myDelegate),
+)
+if err != nil {
+    log.Fatal(err)
 }
 
-func main() {
-    // Create a toolkit with builtins and a handler for connector events and prompt execution.
-    tk, err := toolkit.New(
-        toolkit.WithTool(myTool1, myTool2),
-        toolkit.WithHandler(myHandler),
-    )
-    if err != nil {
-        log.Fatal(err)
-    }
+// Add a remote MCP connector — namespace inferred from the server.
+// Can be called before or while Run is active.
+if err = tk.AddConnector("http://mcp-server/sse"); err != nil {
+    log.Fatal(err)
+}
 
-    // Add a remote MCP connector — namespace inferred from the server.
-    // Can be called before or while Run is active.
-    if err = tk.AddConnector("http://mcp-server/sse"); err != nil {
-        log.Fatal(err)
-    }
+// Or provide an explicit namespace.
+if err = tk.AddConnectorNS("my-server", "http://mcp-server/sse"); err != nil {
+    log.Fatal(err)
+}
 
-    // Or provide an explicit namespace.
-    if err = tk.AddConnectorNS("my-server", "http://mcp-server/sse"); err != nil {
-        log.Fatal(err)
-    }
-
-    // Run starts all connectors and blocks until ctx is cancelled.
-    // It closes the toolkit and waits for all connectors to finish on return.
-    // Connectors can be added and removed while Run is active.
-    if err = tk.Run(ctx); err != nil {
-        log.Fatal(err)
-    }
+// Run starts all connectors and blocks until ctx is cancelled.
+// It closes the toolkit and waits for all connectors to finish on return.
+// Connectors can be added and removed while Run is active.
+if err = tk.Run(ctx); err != nil {
+    log.Fatal(err)
 }
 ```
 
-The connector passed to each callback is the originating `llm.Connector` instance. The list-changed callbacks are notifications only — the handler typically calls `tk.List` on the toolkit to enumerate the full aggregated contents across all namespaces.
+## Delegates
+
+A `ToolkitDelegate` connects the toolkit to a "delegate" — it executes prompts, creates MCP connector instances, and receives lifecycle events. Pass it to `toolkit.New` with `WithDelegate`:
+
+```go
+type ToolkitDelegate interface {
+    // OnEvent is called when a connector fires a lifecycle or list-change notification.
+    // The event's Connector field is always set to the originating connector.
+    OnEvent(ConnectorEvent)
+
+    // Call executes a prompt via the delegate, passing optional input resources.
+    Call(context.Context, llm.Prompt, ...llm.Resource) (llm.Resource, error)
+
+    // CreateConnector is called to create a new connector for the given URL.
+    // The onEvent callback must be called by the connector to report lifecycle
+    // and list-change events back to the toolkit.
+    CreateConnector(url string, onEvent func(ConnectorEvent)) (llm.Connector, error)
+}
+```
+
+`OnEvent` is called outside the toolkit's internal lock, so the delegate may safely call back into the toolkit (e.g. `tk.List`). The `ConnectorEvent` carries the event kind, the originating connector, and any kind-specific payload:
+
+| `Kind` | Extra fields | When fired |
+|---|---|---|
+| `ConnectorEventToolListChanged` | — | Remote tool list changed |
+| `ConnectorEventPromptListChanged` | — | Remote prompt list changed |
+| `ConnectorEventResourceListChanged` | — | Remote resource list changed |
+| `ConnectorEventResourceUpdated` | `URI string` | A specific resource was updated |
+
+The list-change events are notifications only — the delegate typically calls `tk.List` on the toolkit to enumerate the full aggregated contents across all namespaces.
+
+### Example Delegate
+
+```go
+func (myDelegate) OnEvent(evt tk.ConnectorEvent) {
+    switch evt.Kind {
+    case tk.ConnectorEventToolListChanged:
+        resp, _ := d.toolkit.List(context.Background(), tk.ListRequest{Type: tk.ListTypeTools})
+        log.Printf("tools updated: %d", len(resp.Tools))
+    case tk.ConnectorEventResourceUpdated:
+        log.Printf("resource updated: %s", evt.URI)
+    }
+}
+
+func (myDelegate) Call(ctx context.Context, p llm.Prompt, res ...llm.Resource) (llm.Resource, error) {
+    return nil, llm.ErrNotImplemented
+}
+
+// CreateConnector fires ConnectorEventStateChange with server info after
+// the initial handshake, then forwards list-change notifications.
+func (myDelegate) CreateConnector(url string, onEvent func(tk.ConnectorEvent)) (llm.Connector, error) {
+    return mcp.New(url, "my-app", "1.0.0",
+        mcp.OptOnStateChange(func(ctx context.Context, state *schema.ConnectorState) {
+            onEvent(tk.StateChangeEvent(*state))
+        }),
+        mcp.OptOnToolListChanged(func(context.Context) {
+            onEvent(tk.ToolListChangeEvent())
+        }),
+        mcp.OptOnPromptListChanged(func(context.Context) {
+            onEvent(tk.PromptListChangeEvent())
+        }),
+        mcp.OptOnResourceListChanged(func(context.Context) {
+            onEvent(tk.ResourceListChangeEvent())
+        }),
+    )
+}
+```
+
+> **Note:** See [pkg/toolkit/example/delegate.go](../toolkit/example/delegate.go) for a full working implementation.
 
 ## Lookup
 
@@ -109,15 +143,19 @@ The lookup order is:
 The return type is `any`; use a type switch to distinguish. `llm.ErrNotFound` is returned if nothing matches:
 
 ```go
+import resource "github.com/mutablelogic/go-llm/pkg/toolkit/resource"
+
 v, err := tk.Lookup(ctx, "summarize")
 if err != nil {
     log.Fatal(err) // llm.ErrNotFound or similar
 }
 switch v := v.(type) {
 case llm.Tool:
-    result, err := tk.Call(ctx, v, toolkit.JSONResource(input, ""))
+    input, _ := resource.JSON("input", myParams)
+    result, err := tk.Call(ctx, v, input)
 case llm.Prompt:
-    result, err := tk.Call(ctx, v, toolkit.JSONResource(vars, ""))
+    vars, _ := resource.JSON("vars", myVars)
+    result, err := tk.Call(ctx, v, vars)
 case llm.Resource:
     data, err := v.Read(ctx)
 }
@@ -257,35 +295,64 @@ Summarize the following text:
 
 ### Creating and Registering Prompts
 
-Parse a prompt from a markdown file and register it as a builtin:
+Parse a prompt from a markdown file and register it as a builtin using `prompt.Read` from `pkg/toolkit/prompt`:
 
 ```go
-import "github.com/mutablelogic/go-llm/pkg/agent"
+import (
+    "os"
+    prompt "github.com/mutablelogic/go-llm/pkg/toolkit/prompt"
+)
 
 // From a file on disk
-meta, err := agent.ReadFile("etc/agent/summarize.md")
+f, err := os.Open("etc/agent/summarize.md")
 if err != nil {
     log.Fatal(err)
 }
-if err = tk.AddPrompt(meta); err != nil {
+defer f.Close()
+p, err := prompt.Read(f)
+if err != nil {
+    log.Fatal(err)
+}
+if err = tk.AddPrompt(p); err != nil {
     log.Fatal(err)
 }
 ```
 
-Parse from an `io.Reader` (e.g. an embedded file):
+Parse from an embedded filesystem (walk with `fs.WalkDir` and pass each file to `prompt.Read`):
 
 ```go
-//go:embed etc/agent/summarize.md
-var summarizeMD []byte
+import (
+    "bytes"
+    "embed"
+    "io/fs"
+    prompt "github.com/mutablelogic/go-llm/pkg/toolkit/prompt"
+)
 
-meta, err := agent.Read(bytes.NewReader(summarizeMD))
-if err != nil {
-    log.Fatal(err)
-}
-if err = tk.AddPrompt(meta); err != nil {
+//go:embed etc/agent/*.md
+var agentFS embed.FS
+
+var prompts []llm.Prompt
+fs.WalkDir(agentFS, ".", func(path string, d fs.DirEntry, err error) error {
+    if err != nil || d.IsDir() || filepath.Ext(path) != ".md" {
+        return err
+    }
+    data, err := agentFS.ReadFile(path)
+    if err != nil {
+        return err
+    }
+    p, err := prompt.Read(&namedReader{bytes.NewReader(data), path})
+    if err != nil {
+        return err
+    }
+    prompts = append(prompts, p)
+    return nil
+})
+if err := tk.AddPrompt(prompts...); err != nil {
     log.Fatal(err)
 }
 ```
+
+The `name` is taken from the `name:` front matter field, or derived from the filename if absent. The `title` is taken from the `title:` field, or extracted from the first `# Heading` in the body if absent.
 
 Construct a prompt directly from a `schema.AgentMeta` literal (or unmarshal from JSON). `schema.AgentMeta` implements `llm.Prompt`, so it is passed directly to `AddPrompt`:
 
@@ -324,21 +391,29 @@ if err := tk.RemoveBuiltin("summarize"); err != nil {
 Prompts are executed via the toolkit, which delegates to the handler (typically the manager). The manager renders the template, selects a model, and runs the agent loop:
 
 ```go
+import resource "github.com/mutablelogic/go-llm/pkg/toolkit/resource"
+
 // Look up a builtin or connector-supplied prompt by name.
-prompt := tk.Lookup(ctx, "summarize") // returns nil if not found
+p, err := tk.Lookup(ctx, "summarize")
+if err != nil {
+    log.Fatal(err)
+}
 
 // Pass a plain text string as input.
-text := "The quick brown fox..."
-result, err := tk.Call(ctx, prompt, toolkit.TextResource(text, ""))
+textRes, _ := resource.Text("input", "The quick brown fox...")
+result, err := tk.Call(ctx, p, textRes)
 
 // With optional additional attachments.
-result, err = tk.Call(ctx, prompt,
-    toolkit.TextResource(text, "Text to summarize"),
-    attachment, // optional extra resource
-)
+textRes, _ = resource.Text("input", text)
+result, err = tk.Call(ctx, p, textRes, attachment)
 
-// Call also accepts an llm.Tool directly.
-result, err = tk.Call(ctx, tk.Lookup(ctx, "my_tool"), toolkit.JSONResource(inputMap, ""))
+// Call an llm.Tool directly.
+inputRes, _ := resource.JSON("input", inputMap)
+tool, err := tk.Lookup(ctx, "my_tool")
+if err != nil {
+    // handle error
+}
+result, err = tk.Call(ctx, tool, inputRes)
 ```
 
 The manager:
@@ -362,22 +437,23 @@ Every tool must satisfy the `llm.Tool` interface:
 ```go
 type Tool interface {
     // unique identifier (letters, digits, underscores only)
-    Name()         string          
+    Name()         string
 
     // human-readable description of the tool's purpose and behavior
     Description()  string
 
-    // JSON Schema defining the expected input; must be an object.
-    InputSchema()  json.RawMessage
+    // JSON Schema defining the expected input parameters; must be an object.
+    InputSchema()  (*jsonschema.Schema, error)
 
-    // JSON Schema defining the expected output, or an empty string if no output is defined.
-    OutputSchema() json.RawMessage 
+    // JSON Schema defining the expected output, or nil if unspecified.
+    OutputSchema() (*jsonschema.Schema, error)
 
     // Optional hints about the tool's behavior.
     Meta()         llm.ToolMeta
 
-    // Run executes the tool with the given JSON input, returning an optional output resource.
-    Run(ctx context.Context, input json.RawMessage) (llm.Resource, error)
+    // Run executes the tool with the given JSON input.
+    // Return nil for no output, a string, []byte, json.RawMessage, or llm.Resource.
+    Run(ctx context.Context, input json.RawMessage) (any, error)
 }
 
 // Return optional hints about the tool's behaviour. All fields are advisory:
@@ -402,24 +478,37 @@ type ToolMeta struct {
 }
 ```
 
-`Run` returns an `llm.Resource`, or `nil` if there is no output. Use `toolkit.JSONResource` for JSON output.
+`Run` returns `nil` for no output, or any of: `string`, `[]byte`, `json.RawMessage`, or `llm.Resource`. String and `json.RawMessage` returns are automatically wrapped into the appropriate resource type.
 
-Embed `toolkit.DefaultTool` to get no-op implementations of `OutputSchema` and `Meta`, reducing boilerplate:
+Embed `tool.Base` from `pkg/toolkit/tool` to get no-op implementations of `OutputSchema` and `Meta`, reducing boilerplate. Use `jsonschema.For[T]` to generate an input schema from a request struct:
 
 ```go
+import (
+    jsonschema "github.com/google/jsonschema-go/jsonschema"
+    tool "github.com/mutablelogic/go-llm/pkg/toolkit/tool"
+)
+
+type myRequest struct {
+    Query string `json:"query" jsonschema:"The search query."`
+}
+
 type MyTool struct {
-    toolkit.DefaultTool
+    tool.Base
 }
 
 func (t *MyTool) Name()        string { return "my_tool" }
 func (t *MyTool) Description() string { return "Does something useful." }
 
-func (t *MyTool) InputSchema() json.RawMessage {
-    // return your JSON schema here
+func (t *MyTool) InputSchema() (*jsonschema.Schema, error) {
+    return jsonschema.For[myRequest](nil)
 }
 
-func (t *MyTool) Run(ctx context.Context, input json.RawMessage) (llm.Resource, error) {
-    return toolkit.JSONResource(map[string]string{"result": "ok"}, "")
+func (t *MyTool) Run(ctx context.Context, input json.RawMessage) (any, error) {
+    var req myRequest
+    if err := json.Unmarshal(input, &req); err != nil {
+        return nil, err
+    }
+    return map[string]string{"result": req.Query}, nil
 }
 ```
 
@@ -482,7 +571,7 @@ import "go.opentelemetry.io/otel/trace"
 
 tk, err := toolkit.New(
     toolkit.WithTool(myTool1, myTool2),
-    toolkit.WithHandler(myHandler),
+    toolkit.WithDelegate(myHandler),
     toolkit.WithTracer(tracer),
 )
 ```
@@ -538,42 +627,40 @@ type Resource interface {
 
 ### Built-in Resource Constructors
 
-Three constructors create transient resources:
+Three constructors in `pkg/toolkit/resource` create named resources. The `name` argument must be a valid identifier (letters, digits, underscores):
 
-| Constructor | MIME type | Error |
+| Constructor | MIME type | Notes |
 |---|---|---|
-| `TextResource(text, description string) llm.Resource` | `text/plain` | — |
-| `BinaryResource(r io.Reader, description string) (llm.Resource, error)` | detected from content | read failure |
-| `JSONResource(v any, description string) (llm.Resource, error)` | `application/json` | marshal failure |
-
-`TextResource` wraps a plain-text string:
-
-```go
-return toolkit.TextResource("hello, world", "A greeting message"), nil
-```
-
-`BinaryResource` reads all bytes from an `io.Reader` eagerly and detects the MIME type from the content:
+| `resource.Text(name, content string) (llm.Resource, error)` | `text/plain` | wraps a plain string |
+| `resource.Data(name string, data []byte) (llm.Resource, error)` | sniffed from content, then file extension | auto-transcodes non-UTF-8 text to UTF-8; returns a text resource for `text/*` types |
+| `resource.Read(r io.Reader) (llm.Resource, error)` | sniffed from content | reads `r` eagerly; name derived from `r.Name()` if available |
+| `resource.JSON(name string, v any) (llm.Resource, error)` | `application/json` | marshals any Go value |
 
 ```go
-f, _ := os.Open("image.png")
+import resource "github.com/mutablelogic/go-llm/pkg/toolkit/resource"
+
+// Plain text
+res, err := resource.Text("greeting", "Hello, world")
+
+// Binary / auto-detected MIME
+data, _ := os.ReadFile("image.png")
+res, err = resource.Data("screenshot", data)
+
+// From a reader
+f, _ := os.Open("report.pdf")
 defer f.Close()
-res, err := toolkit.BinaryResource(f, "Screenshot of the dashboard")
+res, err = resource.Read(f)
 
-// No description needed.
-res, err = toolkit.BinaryResource(f, "")
+// JSON from a Go value
+res, err = resource.JSON("result", map[string]string{"status": "ok"})
 ```
 
-`JSONResource` accepts either a `json.RawMessage` / `[]byte` (used as-is) or any Go value (marshalled with `encoding/json`):
+Wrap an existing resource to override its URI or add a description:
 
 ```go
-// From a Go struct — marshalled automatically.
-res, err := toolkit.JSONResource(map[string]string{"result": "ok"}, "Tool output")
-
-// From pre-marshalled bytes — no re-encoding.
-res, err = toolkit.JSONResource(json.RawMessage(`{"result":"ok"}`), "")
+res = resource.WithURI("file:data/report.pdf", res)
+res = resource.WithDescription("Monthly report", res)
 ```
-
-All three constructors set `URI()` to a `data:` URI (e.g. `data:text/plain`, `data:image/png`, `data:application/json`). These are transient identifiers, not named addressable resources.
 
 ### Implementing a Custom Resource
 
@@ -597,11 +684,27 @@ func (r *FileResource) Read(ctx context.Context) ([]byte, error) {
 
 ### Resources as Tool Outputs
 
-`Run` returns `(llm.Resource, error)`. Return `nil` when the tool produces no output:
+`Run` returns `(any, error)`. Return `nil` when the tool produces no output. The toolkit automatically wraps `string`, `[]byte`, and `json.RawMessage` returns:
 
 ```go
-func (t *MyTool) Run(ctx context.Context, input json.RawMessage) (llm.Resource, error) {
-    return toolkit.JSONResource(map[string]string{"result": "ok"}, "")
+// Return a string — wrapped as a text/plain resource.
+func (t *MyTool) Run(ctx context.Context, input json.RawMessage) (any, error) {
+    return "Hello, world", nil
+}
+
+// Return structured JSON — wrapped as an application/json resource.
+func (t *MyTool) Run(ctx context.Context, input json.RawMessage) (any, error) {
+    resp := myResponse{Status: "ok"}
+    data, err := json.Marshal(resp)
+    if err != nil {
+        return nil, err
+    }
+    return json.RawMessage(data), nil
+}
+
+// Return a custom resource directly.
+func (t *MyTool) Run(ctx context.Context, input json.RawMessage) (any, error) {
+    return resource.JSON("result", map[string]string{"status": "ok"})
 }
 ```
 
@@ -633,9 +736,9 @@ They appear in `tk.List` and are retrievable by URI via `tk.Lookup`.
 ### Connector Resources
 
 Resources advertised by a remote MCP server are managed automatically. When the server notifies
-the toolkit that its resource list has changed, `ToolkitHandler.OnResourceListChanged` is called.
-When a specific resource's content is updated, `ToolkitHandler.OnResourceUpdated` is called with
-the resource's URI. The handler can call `c.ListResources(ctx)` directly to retrieve the current
+the toolkit that its resource list has changed, `ToolkitDelegate.OnEvent` is called with `ConnectorEventResourceListChanged`.
+When a specific resource's content is updated, `ToolkitDelegate.OnEvent` is called with
+`ConnectorEventResourceUpdated` and the resource URI in the event's `URI` field. The delegate can call `c.ListResources(ctx)` directly to retrieve the current
 list from the connector.
 
 ## Toolkit as MCP Server
@@ -676,14 +779,14 @@ func (s *MyMCPServer) ListTools(ctx context.Context) ([]llm.Tool, error) {
 }
 ```
 
-The `ToolkitHandler` callbacks also align with the MCP server's responsibility to push change notifications to connected clients:
+The `ToolkitDelegate` callbacks also align with the MCP server's responsibility to push change notifications to connected clients:
 
-| Toolkit callback | MCP notification to send |
+| Event kind | MCP notification to send |
 |---|---|
-| `OnToolListChanged` | `notifications/tools/list_changed` |
-| `OnPromptListChanged` | `notifications/prompts/list_changed` |
-| `OnResourceListChanged` | `notifications/resources/list_changed` |
-| `OnResourceUpdated` | `notifications/resources/updated` |
+| `ConnectorEventToolListChanged` | `notifications/tools/list_changed` |
+| `ConnectorEventPromptListChanged` | `notifications/prompts/list_changed` |
+| `ConnectorEventResourceListChanged` | `notifications/resources/list_changed` |
+| `ConnectorEventResourceUpdated` | `notifications/resources/updated` |
 
 This means when an upstream MCP connector reconnects and its tool list changes, the server can automatically fan the notification out to all of its own connected clients without any additional bookkeeping.
 
@@ -710,14 +813,16 @@ resp, err := model.Generate(ctx, prompt,
 `OutputTool` lets you capture structured output from a model that doesn't support a native response schema alongside function calling (e.g. Gemini). The model is instructed to call `submit_output` with its final answer.
 
 ```go
-s, _ := jsonschema.Reflect(MyOutput{})
-outputTool := toolkit.NewOutputTool(s)
+import tool "github.com/mutablelogic/go-llm/pkg/toolkit/tool"
+
+s, _ := jsonschema.For[MyOutput](nil)
+outputTool := tool.NewOutputTool(s)
 if err := tk.AddTool(outputTool); err != nil {
     log.Fatal(err)
 }
 ```
 
-The constant `toolkit.OutputToolInstruction` provides a ready-made system prompt addition that directs the model to call `submit_output` with its final answer.
+The constant `tool.OutputToolInstruction` provides a ready-made system prompt addition that directs the model to call `submit_output` with its final answer.
 
 ## Toolkit Interface
 
@@ -736,9 +841,9 @@ func WithPrompt(items ...llm.Prompt) Option
 // WithResource registers one or more builtin resources with the toolkit at construction time.
 func WithResource(items ...llm.Resource) Option
 
-// WithHandler sets the ToolkitHandler that receives connector lifecycle callbacks,
+// WithDelegate sets the ToolkitDelegate that receives connector lifecycle callbacks,
 // executes prompts, serves the "user" namespace, and creates connectors.
-func WithHandler(h ToolkitHandler) Option
+func WithDelegate(h ToolkitDelegate) Option
 
 // WithTracer sets an OpenTelemetry tracer. The toolkit starts a span named after
 // the tool before each Run call and embeds it into the ctx.

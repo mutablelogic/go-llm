@@ -12,7 +12,6 @@ import (
 
 	// Packages
 	llm "github.com/mutablelogic/go-llm"
-	schema "github.com/mutablelogic/go-llm/pkg/schema"
 	types "github.com/mutablelogic/go-server/pkg/types"
 )
 
@@ -67,8 +66,14 @@ var _ llm.Connector = (*connector)(nil)
 
 // AddConnector registers a remote MCP server. The namespace is inferred from
 // the server URL. Safe to call before or while Run is active.
-func (tk *toolkit) AddConnector(url string) error {
-	return tk.addConnector("", url)
+//
+// As a special case, passing [UserConnectorURI] ("connector:user") registers
+// the connector under the reserved "user" namespace without a remote URL.
+func (tk *toolkit) AddConnector(rawURL string) error {
+	if rawURL == UserConnectorURI {
+		return tk.addConnector(UserNamespace, rawURL)
+	}
+	return tk.addConnector("", rawURL)
 }
 
 // AddConnectorNS registers a remote MCP server under an explicit namespace.
@@ -80,21 +85,30 @@ func (tk *toolkit) AddConnectorNS(namespace, url string) error {
 	if slices.Contains(ReservedNamespaces, namespace) {
 		return llm.ErrBadParameter.Withf("connector namespace %q is reserved", namespace)
 	}
+	if url == UserConnectorURI {
+		return llm.ErrBadParameter.Withf("connector url: %q is reserved; use AddConnector instead", UserConnectorURI)
+	}
 	return tk.addConnector(namespace, url)
 }
 
 // RemoveConnector removes a connector by URL. The connector is stopped
 // immediately if it is currently running.
-func (tk *toolkit) RemoveConnector(url string) error {
-	key, err := canonicalURL(url)
-	if err != nil {
-		return err
+func (tk *toolkit) RemoveConnector(rawURL string) error {
+	var key string
+	if rawURL == UserConnectorURI {
+		key = rawURL
+	} else {
+		var err error
+		key, err = canonicalURL(rawURL)
+		if err != nil {
+			return err
+		}
 	}
 	tk.mu.Lock()
 	conn, exists := tk.connectors[key]
 	if !exists {
 		tk.mu.Unlock()
-		return llm.ErrNotFound.Withf("connector not found: %q", url)
+		return llm.ErrNotFound.Withf("connector not found: %q", rawURL)
 	}
 	delete(tk.connectors, key)
 	// Remove the namespace entry if it still points at this connector.
@@ -127,13 +141,19 @@ func (c *connector) reset() {
 }
 
 // retry records err, increments the failure count, and advances the exponential
-// backoff delay. Returns false when the retry ceiling has been reached, indicating
-// the connector should be permanently removed. Must be called with tk.mu held.
+// backoff delay. The first failure reconnects immediately; backoff only kicks in
+// from the second failure onwards. Returns false when the retry ceiling has been
+// reached, indicating the connector should be permanently removed.
+// Must be called with tk.mu held.
 func (c *connector) retry(err error) bool {
 	c.err = err
 	c.retryCount++
 	if c.retryCount >= connectorRetryMaxCount {
 		return false
+	}
+	// First failure: reconnect on the next tick with no delay.
+	if c.retryCount == 1 {
+		return true
 	}
 	if c.retryDelay == 0 {
 		c.retryDelay = connectorRetryInitial
@@ -166,15 +186,67 @@ func (c *connector) ListResources(ctx context.Context) ([]llm.Resource, error) {
 ///////////////////////////////////////////////////////////////////////////////
 // PRIVATE METHODS
 
+// onConnectorEvent is invoked by a connector's onEvent callback. State-change
+// events are handled internally (namespace registration, backoff reset, logging)
+// and are not forwarded to the delegate; all other event kinds are forwarded
+// to the delegate.
+func (tk *toolkit) onConnectorEvent(c *connector, evt ConnectorEvent) {
+	switch evt.Kind {
+	case ConnectorEventStateChange:
+		state := evt.State
+		// If no namespace is pre-set and the connector didn't report a name,
+		// we have nothing to register.
+		if state.Name == nil && c.namespace == "" {
+			return
+		}
+		tk.mu.Lock()
+		if c.namespace == "" {
+			// Reject invalid identifiers and reserved namespaces.
+			// TODO: mutate the namespace to make it valid (e.g. by replacing invalid characters with "_") rather than rejecting it outright.
+			ns := types.Value(state.Name)
+			if !types.IsIdentifier(ns) || slices.Contains(ReservedNamespaces, ns) {
+				c.err = llm.ErrConflict.Withf("connector reported reserved or invalid namespace %q", ns)
+				tk.mu.Unlock()
+				return
+			}
+			// Reject collision with a namespace already owned by a different connector.
+			if existing, collision := tk.namespace[ns]; collision && existing != c {
+				c.err = llm.ErrConflict.Withf("connector namespace %q already in use", ns)
+				tk.mu.Unlock()
+				return
+			}
+			c.namespace = ns
+		}
+		tk.namespace[c.namespace] = c
+
+		// Successful handshake — reset backoff so the next reconnect is immediate.
+		tk.logger.InfoContext(context.Background(), "connector connected", "namespace", c.namespace, "name", types.Value(state.Name), "version", types.Value(state.Version))
+		c.reset()
+		tk.mu.Unlock()
+	default:
+		if handler := tk.delegate; handler != nil {
+			evt.Connector = c
+			handler.OnEvent(evt)
+		}
+	}
+}
+
 // addConnector is the shared implementation for AddConnector and AddConnectorNS.
 // Must NOT be called while tk.mu is held.
 func (tk *toolkit) addConnector(namespace, url string) error {
-	key, err := canonicalURL(url)
-	if err != nil {
-		return err
+	// UserConnectorURI is used as its own canonical key; skip URL normalisation.
+	var key string
+	if url == UserConnectorURI {
+		key = url
+	} else {
+		var err error
+		key, err = canonicalURL(url)
+		if err != nil {
+			return err
+		}
 	}
-	if tk.handler == nil {
-		return llm.ErrNotImplemented.With("toolkit handler is not set")
+	if tk.delegate == nil {
+		return llm.ErrNotImplemented.With("toolkit delegate is not set")
 	}
 
 	// Validate and reserve the slot under the lock, but do not hold the lock
@@ -195,49 +267,10 @@ func (tk *toolkit) addConnector(namespace, url string) error {
 	tk.connectors[key] = c
 	tk.mu.Unlock()
 
-	// The onState callback is invoked by the connector after a successful
-	// handshake. If the reported Name (and no explicit namespace was given)
-	// we use it as the connector's namespace, then register it in the map.
-	onState := func(state schema.ConnectorState) {
-		if state.Name == nil {
-			return
-		}
-		tk.mu.Lock()
-		if c.namespace == "" {
-			// Reject invalid identifiers and reserved namespaces.
-			// TODO: mutate the namespace to make it valid (e.g. by replacing invalid characters with "_") rather than rejecting it outright.
-			ns := types.Value(state.Name)
-			if !types.IsIdentifier(ns) || slices.Contains(ReservedNamespaces, ns) {
-				c.err = llm.ErrConflict.Withf("connector reported reserved or invalid namespace %q", ns)
-				tk.mu.Unlock()
-				return
-			}
-
-			// Reject collision with a namespace already owned by a different connector.
-			if existing, collision := tk.namespace[ns]; collision && existing != c {
-				c.err = llm.ErrConflict.Withf("connector namespace %q already in use", ns)
-				tk.mu.Unlock()
-				return
-			}
-			c.namespace = ns
-		}
-		tk.namespace[c.namespace] = c
-
-		// Successful handshake — reset backoff so the next reconnect is immediate.
-		c.reset()
-		tk.logger.InfoContext(context.Background(), "connector connected", "namespace", c.namespace, "name", types.Value(state.Name), "version", types.Value(state.Version))
-		handler := tk.handler
-		tk.mu.Unlock()
-
-		// Notify the handler outside the lock — the handler may call back into
-		// the toolkit (e.g. tk.List) which would deadlock if the lock were held.
-		if handler != nil {
-			handler.OnStateChange(c, state)
-		}
-	}
-
 	// Create the connector outside the lock.
-	conn, err := tk.handler.CreateConnector(key, onState)
+	conn, err := tk.delegate.CreateConnector(key, func(evt ConnectorEvent) {
+		tk.onConnectorEvent(c, evt)
+	})
 	if err != nil {
 		tk.mu.Lock()
 		delete(tk.connectors, key)

@@ -120,7 +120,8 @@ func Test_Data_001(t *testing.T) {
 	assert.NoError(err)
 	assert.NotNil(r)
 	assert.Equal("blob", r.Name())
-	assert.Equal("data:blob", r.URI())
+	// "hello binary" is sniffed as text/plain, so Data() returns a textResource.
+	assert.Equal("text:blob", r.URI())
 	assert.NotEmpty(r.Type())
 	data, err := r.Read(context.Background())
 	assert.NoError(err)
@@ -200,6 +201,78 @@ func Test_WithDescription_001(t *testing.T) {
 	assert.Equal("doc", r2.Name())
 }
 
+func Test_WithURI_001(t *testing.T) {
+	// WithURI overrides the URI while preserving name, type, and data
+	assert := assert.New(t)
+	r, err := resource.Text("item", "content")
+	assert.NoError(err)
+	ur := resource.WithURI("custom:my-uri", r)
+	assert.Equal("custom:my-uri", ur.URI())
+	assert.Equal("item", ur.Name())
+	assert.Equal("text/plain", ur.Type())
+	data, err := ur.Read(context.Background())
+	assert.NoError(err)
+	assert.Equal([]byte("content"), data)
+}
+
+func Test_WithURI_002(t *testing.T) {
+	// MarshalJSON emits the overridden URI
+	assert := assert.New(t)
+	r, err := resource.Text("item", "content")
+	assert.NoError(err)
+	ur := resource.WithURI("custom:my-uri", r)
+	b, err := json.Marshal(ur)
+	assert.NoError(err)
+	var v map[string]any
+	assert.NoError(json.Unmarshal(b, &v))
+	assert.Equal("custom:my-uri", v["uri"])
+	assert.Equal("item", v["name"])
+}
+
+func Test_WithURI_003(t *testing.T) {
+	// WithURI combined with WithNamespace: both overrides appear in marshaled JSON
+	assert := assert.New(t)
+	r, err := resource.Text("item", "content")
+	assert.NoError(err)
+	ur := resource.WithURI("custom:my-uri", resource.WithNamespace("myns", r))
+	b, err := json.Marshal(ur)
+	assert.NoError(err)
+	var v map[string]any
+	assert.NoError(json.Unmarshal(b, &v))
+	assert.Equal("custom:my-uri", v["uri"])
+	assert.Equal("myns.item", v["name"])
+}
+
+func Test_WithURI_004(t *testing.T) {
+	// WithURI combined with WithDescription: both overrides appear in marshaled JSON
+	assert := assert.New(t)
+	r, err := resource.Text("item", "content")
+	assert.NoError(err)
+	ur := resource.WithURI("custom:my-uri", resource.WithDescription("my description", r))
+	b, err := json.Marshal(ur)
+	assert.NoError(err)
+	var v map[string]any
+	assert.NoError(json.Unmarshal(b, &v))
+	assert.Equal("custom:my-uri", v["uri"])
+	assert.Equal("my description", v["description"])
+}
+
+func Test_WithURI_005(t *testing.T) {
+	// MarshalJSON → Unmarshal round-trip preserves an overridden URI
+	assert := assert.New(t)
+	r, err := resource.Text("item", "content")
+	assert.NoError(err)
+	ur := resource.WithURI("custom:my-uri", r)
+	b, err := json.Marshal(ur)
+	assert.NoError(err)
+	r2, err := resource.Unmarshal(b)
+	assert.NoError(err)
+	assert.Equal("custom:my-uri", r2.URI())
+	data, err := r2.Read(context.Background())
+	assert.NoError(err)
+	assert.Equal([]byte("content"), data)
+}
+
 ///////////////////////////////////////////////////////////////////////////////
 // DATA — additional coverage
 
@@ -275,17 +348,18 @@ func Test_Unmarshal_001_malformed_json(t *testing.T) {
 }
 
 func Test_Unmarshal_002_bad_text_data(t *testing.T) {
-	// data field is not a JSON string — triggers text/plain error path.
+	// text field is not a JSON string — triggers text/plain error path.
 	assert := assert.New(t)
-	bad := []byte(`{"uri":"text:x","name":"x","type":"text/plain","data":123}`)
+	bad := []byte(`{"uri":"text:x","name":"x","type":"text/plain","text":123}`)
 	_, err := resource.Unmarshal(bad)
 	assert.Error(err)
 }
 
 func Test_Unmarshal_003_bad_binary_data(t *testing.T) {
-	// data field is not a JSON base64 bytes array — triggers default error path.
+	// blob is expected to be a base64-encoded string (Go's json.Marshal for []byte),
+	// but the value here is not a valid JSON string — triggers the default error path.
 	assert := assert.New(t)
-	bad := []byte(`{"uri":"data:x","name":"x","type":"application/octet-stream","data":"not-base64-array"}`)
+	bad := []byte(`{"uri":"data:x","name":"x","type":"application/octet-stream","blob":"not-base64-array"}`)
 	_, err := resource.Unmarshal(bad)
 	assert.Error(err)
 }

@@ -38,6 +38,7 @@ type Client struct {
 	subscribed map[string]struct{} // resource URIs we've subscribed to
 
 	// Notification handlers (nil = ignore)
+	onStateChange         OnStateChange
 	onLoggingMessage      OnLoggingMessage
 	onProgress            OnProgress
 	onToolListChanged     OnToolListChanged

@@ -1,8 +1,11 @@
 package prompt
 
 import (
+	"encoding/json"
+
 	// Packages
 	llm "github.com/mutablelogic/go-llm"
+	types "github.com/mutablelogic/go-server/pkg/types"
 )
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -29,3 +32,23 @@ func WithNamespace(namespace string, p llm.Prompt) llm.Prompt {
 }
 
 func (n *namespacedPrompt) Name() string { return n.name }
+
+func (n *namespacedPrompt) MarshalJSON() ([]byte, error) {
+	type promptJSON struct {
+		Name        string           `json:"name"`
+		Title       string           `json:"title,omitempty"`
+		Description string           `json:"description,omitempty"`
+		Arguments   []promptArgument `json:"arguments,omitempty"`
+	}
+	v := promptJSON{
+		Name:        n.name,
+		Title:       n.Title(),
+		Description: n.Description(),
+	}
+	if p, ok := n.Prompt.(*prompt); ok {
+		v.Arguments = argsFromInput(p.m.Input)
+	}
+	return json.Marshal(v)
+}
+
+func (n *namespacedPrompt) String() string { return types.Stringify(n) }

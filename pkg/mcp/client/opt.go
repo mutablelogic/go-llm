@@ -6,6 +6,7 @@ import (
 	// Packages
 	client "github.com/mutablelogic/go-client"
 	llm "github.com/mutablelogic/go-llm"
+	schema "github.com/mutablelogic/go-llm/pkg/schema"
 )
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -31,6 +32,11 @@ type OnLoggingMessage func(ctx context.Context, level, logger string, data any)
 
 // OnProgress is called when the server sends a progress notification.
 type OnProgress func(ctx context.Context, token any, progress, total float64, message string)
+
+// OnStateChange is called once after a successful connection handshake.
+// The state carries the server name, version and capabilities from the
+// MCP initialize response.
+type OnStateChange func(ctx context.Context, state *schema.ConnectorState)
 
 // OnToolListChanged is called when the server sends a tool-list-changed notification.
 type OnToolListChanged func(ctx context.Context)
@@ -79,6 +85,16 @@ func OptOnLoggingMessage(fn OnLoggingMessage) Opt {
 func OptOnProgress(fn OnProgress) Opt {
 	return func(c *Client) error {
 		c.onProgress = fn
+		return nil
+	}
+}
+
+// OptOnStateChange registers a callback invoked once after each successful
+// connection handshake. The state carries the server name, version and
+// capabilities from the MCP initialize response.
+func OptOnStateChange(fn OnStateChange) Opt {
+	return func(c *Client) error {
+		c.onStateChange = fn
 		return nil
 	}
 }

@@ -47,7 +47,7 @@ func Test_List_Tools_003_name_filter(t *testing.T) {
 	_ = tk.AddTool(&mockTool{name: "alpha"}, &mockTool{name: "beta"})
 	resp, err := tk.List(context.Background(), ListRequest{
 		Type: ListTypeTools,
-		Name: NamespaceBuiltin + ".alpha",
+		Name: BuiltinNamespace + ".alpha",
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -62,7 +62,7 @@ func Test_List_Tools_004_namespace_builtin(t *testing.T) {
 	_ = tk.AddTool(&mockTool{name: "alpha"})
 	resp, err := tk.List(context.Background(), ListRequest{
 		Type:      ListTypeTools,
-		Namespace: NamespaceBuiltin,
+		Namespace: BuiltinNamespace,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -211,7 +211,7 @@ func Test_List_Prompts_002_name_filter(t *testing.T) {
 	_ = tk.AddPrompt(&mockPrompt{name: "summarize"}, &mockPrompt{name: "translate"})
 	resp, err := tk.List(context.Background(), ListRequest{
 		Type: ListTypePrompts,
-		Name: NamespaceBuiltin + ".summarize",
+		Name: BuiltinNamespace + ".summarize",
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -453,7 +453,7 @@ func Test_List_Connector_Tools_003(t *testing.T) {
 
 	resp, err := tk.List(context.Background(), ListRequest{
 		Type:      ListTypeTools,
-		Namespace: NamespaceBuiltin,
+		Namespace: BuiltinNamespace,
 	})
 	if err != nil {
 		t.Fatal(err)

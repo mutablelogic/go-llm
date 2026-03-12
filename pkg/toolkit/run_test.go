@@ -9,7 +9,6 @@ import (
 
 	// Packages
 	llm "github.com/mutablelogic/go-llm"
-	schema "github.com/mutablelogic/go-llm/pkg/schema"
 )
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -65,18 +64,11 @@ type mockRunHandler struct {
 	conn *mockRunConnector
 }
 
-func (h *mockRunHandler) CreateConnector(_ string, _ func(schema.ConnectorState)) (llm.Connector, error) {
+func (h *mockRunHandler) CreateConnector(_ string, _ func(ConnectorEvent)) (llm.Connector, error) {
 	return h.conn, nil
 }
-func (h *mockRunHandler) OnStateChange(llm.Connector, schema.ConnectorState) {}
-func (h *mockRunHandler) OnToolListChanged(llm.Connector)                    {}
-func (h *mockRunHandler) OnPromptListChanged(llm.Connector)                  {}
-func (h *mockRunHandler) OnResourceListChanged(llm.Connector)                {}
-func (h *mockRunHandler) OnResourceUpdated(llm.Connector, string)            {}
+func (h *mockRunHandler) OnEvent(ConnectorEvent) {}
 func (h *mockRunHandler) Call(_ context.Context, _ llm.Prompt, _ ...llm.Resource) (llm.Resource, error) {
-	return nil, nil
-}
-func (h *mockRunHandler) List(_ context.Context, _ ListRequest) (*ListResponse, error) {
 	return nil, nil
 }
 
@@ -87,7 +79,7 @@ func (h *mockRunHandler) List(_ context.Context, _ ListRequest) (*ListResponse, 
 // the given connector.
 func newRunToolkit(t *testing.T, conn *mockRunConnector) *toolkit {
 	t.Helper()
-	tk, err := New(WithHandler(&mockRunHandler{conn: conn}))
+	tk, err := New(WithDelegate(&mockRunHandler{conn: conn}))
 	if err != nil {
 		t.Fatal(err)
 	}
