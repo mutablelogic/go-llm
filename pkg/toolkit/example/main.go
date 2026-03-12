@@ -19,14 +19,14 @@ import (
 
 func main() {
 	// Create a toolkit with builtins and a handler for connector events and prompt execution.
-	h := NewHandler()
+	d := NewDelegate()
 	tk, err := toolkit.New(
-		toolkit.WithDelegate(h),
+		toolkit.WithDelegate(d),
 	)
 	if err != nil {
 		log.Fatal(err)
 	}
-	h.SetToolkit(tk)
+	d.SetToolkit(tk)
 
 	// Add a remote MCP connector — namespace inferred from the server.
 	// Can be called before or while Run is active.

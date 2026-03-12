@@ -7,6 +7,8 @@ import (
 
 	// Packages
 	llm "github.com/mutablelogic/go-llm"
+	schema "github.com/mutablelogic/go-llm/pkg/schema"
+	types "github.com/mutablelogic/go-server/pkg/types"
 )
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -317,4 +319,106 @@ func Test_connector_Run_001(t *testing.T) {
 	if err := <-done; !errors.Is(err, context.Canceled) {
 		t.Fatalf("expected context.Canceled, got %v", err)
 	}
+}
+
+///////////////////////////////////////////////////////////////////////////////
+// onConnectorEvent
+
+// newTestConnector builds a bare connector struct for unit tests (no goroutine).
+func newTestConnector(ns string) *connector {
+	return &connector{namespace: ns}
+}
+
+func Test_onConnectorEvent_001_state_change_sets_namespace(t *testing.T) {
+	tk, _ := New()
+	c := newTestConnector("")
+	state := schema.ConnectorState{Name: types.Ptr("myserver"), Version: types.Ptr("1.0")}
+	tk.onConnectorEvent(c, StateChangeEvent(state))
+	if c.namespace != "myserver" {
+		t.Fatalf("expected namespace %q, got %q", "myserver", c.namespace)
+	}
+	if tk.namespace["myserver"] != c {
+		t.Fatal("expected connector registered in namespace map")
+	}
+}
+
+func Test_onConnectorEvent_002_state_change_preserves_existing_namespace(t *testing.T) {
+	// When a namespace is already set, the server-reported name must not override it.
+	tk, _ := New()
+	c := newTestConnector("pinned")
+	tk.namespace["pinned"] = c
+	state := schema.ConnectorState{Name: types.Ptr("othername"), Version: types.Ptr("1.0")}
+	tk.onConnectorEvent(c, StateChangeEvent(state))
+	if c.namespace != "pinned" {
+		t.Fatalf("expected namespace %q unchanged, got %q", "pinned", c.namespace)
+	}
+}
+
+func Test_onConnectorEvent_003_state_change_invalid_name(t *testing.T) {
+	// A server reporting an invalid identifier sets c.err and does not register.
+	tk, _ := New()
+	c := newTestConnector("")
+	state := schema.ConnectorState{Name: types.Ptr("bad name!")}
+	tk.onConnectorEvent(c, StateChangeEvent(state))
+	if c.err == nil {
+		t.Fatal("expected error for invalid namespace name")
+	}
+}
+
+func Test_onConnectorEvent_004_state_change_reserved_name(t *testing.T) {
+	tk, _ := New()
+	c := newTestConnector("")
+	state := schema.ConnectorState{Name: types.Ptr("builtin")}
+	tk.onConnectorEvent(c, StateChangeEvent(state))
+	if c.err == nil {
+		t.Fatal("expected error for reserved namespace")
+	}
+}
+
+func Test_onConnectorEvent_005_state_change_namespace_collision(t *testing.T) {
+	tk, _ := New()
+	other := newTestConnector("taken")
+	tk.namespace["taken"] = other
+	c := newTestConnector("")
+	state := schema.ConnectorState{Name: types.Ptr("taken")}
+	tk.onConnectorEvent(c, StateChangeEvent(state))
+	if c.err == nil {
+		t.Fatal("expected conflict error for colliding namespace")
+	}
+}
+
+func Test_onConnectorEvent_006_state_change_no_name_no_namespace(t *testing.T) {
+	// If server sends no name and connector has no namespace, event is silently ignored.
+	tk, _ := New()
+	c := newTestConnector("")
+	state := schema.ConnectorState{}
+	tk.onConnectorEvent(c, StateChangeEvent(state))
+	if c.namespace != "" {
+		t.Fatalf("expected empty namespace, got %q", c.namespace)
+	}
+}
+
+func Test_onConnectorEvent_007_non_state_forwarded_to_delegate(t *testing.T) {
+	d := &mockDelegate{}
+	tk, _ := New(WithDelegate(d))
+	c := newTestConnector("mymcp")
+	tk.onConnectorEvent(c, ToolListChangeEvent())
+	if len(d.events) != 1 {
+		t.Fatalf("expected 1 event, got %d", len(d.events))
+	}
+	if d.events[0].Kind != ConnectorEventToolListChanged {
+		t.Fatalf("expected ToolListChanged, got %v", d.events[0].Kind)
+	}
+	// Connector field must be injected by the toolkit.
+	if d.events[0].Connector != c {
+		t.Fatalf("expected Connector field to be set")
+	}
+}
+
+func Test_onConnectorEvent_008_non_state_no_delegate(t *testing.T) {
+	// Without a delegate, non-StateChange events are silently dropped.
+	tk, _ := New()
+	c := newTestConnector("mymcp")
+	// Must not panic.
+	tk.onConnectorEvent(c, ToolListChangeEvent())
 }

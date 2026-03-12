@@ -10,55 +10,50 @@ import (
 	mcpclient "github.com/mutablelogic/go-llm/pkg/mcp/client"
 	schema "github.com/mutablelogic/go-llm/pkg/schema"
 	toolkit "github.com/mutablelogic/go-llm/pkg/toolkit"
+	"github.com/mutablelogic/go-server/pkg/types"
 )
 
 ///////////////////////////////////////////////////////////////////////////////
 // TYPES
 
-type handler struct {
+type delegate struct {
 	tk toolkit.Toolkit
 }
 
 ///////////////////////////////////////////////////////////////////////////////
 // LIFECYCLE
 
-func NewHandler() *handler {
-	return &handler{}
+func NewDelegate() *delegate {
+	return &delegate{}
 }
 
-func (h *handler) SetToolkit(tk toolkit.Toolkit) {
-	h.tk = tk
+func (d *delegate) SetToolkit(tk toolkit.Toolkit) {
+	d.tk = tk
 }
 
 ///////////////////////////////////////////////////////////////////////////////
 // CALLBACKS
 
-func (h *handler) OnEvent(evt toolkit.ConnectorEvent) {
+func (d *delegate) OnEvent(evt toolkit.ConnectorEvent) {
 	switch evt.Kind {
 	case toolkit.ConnectorEventStateChange:
-		slog.Info("connector state changed", "state", evt.State)
-		// Log out the current lists of tools, prompts, and resources on every
-		// state change for visibility. In a real implementation you would likely
-		// be more selective.
-		h.logTools()
-		h.logPrompts()
-		h.logResources()
+		slog.Info("connector state changed", "state", evt.State, "connector", evt.Connector)
 	case toolkit.ConnectorEventToolListChanged:
-		h.logTools()
+		d.logTools()
 	case toolkit.ConnectorEventPromptListChanged:
-		h.logPrompts()
+		d.logPrompts()
 	case toolkit.ConnectorEventResourceListChanged:
-		h.logResources()
+		d.logResources()
 	case toolkit.ConnectorEventResourceUpdated:
-		slog.Info("resource updated", "uri", evt.URI)
+		slog.Info("resource updated", "uri", evt.URI, "connector", evt.Connector)
 	}
 }
 
-func (h *handler) logTools() {
-	if h.tk == nil {
+func (d *delegate) logTools() {
+	if d.tk == nil {
 		return
 	}
-	resp, err := h.tk.List(context.Background(), toolkit.ListRequest{Type: toolkit.ListTypeTools})
+	resp, err := d.tk.List(context.Background(), toolkit.ListRequest{Type: toolkit.ListTypeTools})
 	if err != nil {
 		slog.Error("failed to list tools", "error", err)
 		return
@@ -68,11 +63,11 @@ func (h *handler) logTools() {
 	}
 }
 
-func (h *handler) logPrompts() {
-	if h.tk == nil {
+func (d *delegate) logPrompts() {
+	if d.tk == nil {
 		return
 	}
-	resp, err := h.tk.List(context.Background(), toolkit.ListRequest{Type: toolkit.ListTypePrompts})
+	resp, err := d.tk.List(context.Background(), toolkit.ListRequest{Type: toolkit.ListTypePrompts})
 	if err != nil {
 		slog.Error("failed to list prompts", "error", err)
 		return
@@ -82,11 +77,11 @@ func (h *handler) logPrompts() {
 	}
 }
 
-func (h *handler) logResources() {
-	if h.tk == nil {
+func (d *delegate) logResources() {
+	if d.tk == nil {
 		return
 	}
-	resp, err := h.tk.List(context.Background(), toolkit.ListRequest{Type: toolkit.ListTypeResources})
+	resp, err := d.tk.List(context.Background(), toolkit.ListRequest{Type: toolkit.ListTypeResources})
 	if err != nil {
 		slog.Error("failed to list resources", "error", err)
 		return
@@ -99,21 +94,21 @@ func (h *handler) logResources() {
 ///////////////////////////////////////////////////////////////////////////////
 // METHODS
 
-func (h *handler) Call(ctx context.Context, p llm.Prompt, resources ...llm.Resource) (llm.Resource, error) {
+func (d *delegate) Call(ctx context.Context, p llm.Prompt, resources ...llm.Resource) (llm.Resource, error) {
 	return nil, llm.ErrNotImplemented.With("prompt execution not supported in this example")
 }
 
-func (h *handler) List(ctx context.Context, req toolkit.ListRequest) (*toolkit.ListResponse, error) {
+func (d *delegate) List(ctx context.Context, req toolkit.ListRequest) (*toolkit.ListResponse, error) {
 	// Returns user-defined items
 	return &toolkit.ListResponse{}, nil
 }
 
 // CreateConnector creates a new MCP HTTP connector for the given URL.
 // onEvent is called to report lifecycle and list-change events back to the toolkit.
-func (h *handler) CreateConnector(url string, onEvent func(toolkit.ConnectorEvent)) (llm.Connector, error) {
+func (d *delegate) CreateConnector(url string, onEvent func(toolkit.ConnectorEvent)) (llm.Connector, error) {
 	return mcpclient.New(url, "go-llm-example", "0.0.1",
 		mcpclient.OptOnStateChange(func(ctx context.Context, state *schema.ConnectorState) {
-			onEvent(toolkit.StateChangeEvent(*state))
+			onEvent(toolkit.StateChangeEvent(types.Value(state)))
 		}),
 		mcpclient.OptOnToolListChanged(func(ctx context.Context) {
 			onEvent(toolkit.ToolListChangeEvent())
