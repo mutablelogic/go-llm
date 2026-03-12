@@ -82,7 +82,7 @@ type GeneratorMeta struct {
 	Provider       string     `json:"provider,omitempty" yaml:"provider" help:"Provider name" optional:""`
 	Model          string     `json:"model,omitempty" yaml:"model" help:"Model name" optional:""`
 	SystemPrompt   string     `json:"system_prompt,omitempty" yaml:"system_prompt" help:"System prompt" optional:""`
-	Format         JSONSchema `json:"format,omitempty" yaml:"format" help:"JSON schema for structured output" optional:""`
+	Format         JSONSchema `json:"format,omitempty" yaml:"output" help:"JSON schema for structured output" optional:""`
 	Thinking       *bool      `json:"thinking,omitempty" yaml:"thinking" help:"Enable thinking/reasoning" optional:""`
 	ThinkingBudget uint       `json:"thinking_budget,omitempty" yaml:"thinking_budget" help:"Thinking token budget (required for Anthropic, optional for Google)" optional:""`
 }
