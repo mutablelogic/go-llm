@@ -11,9 +11,10 @@ import (
 	"syscall"
 
 	// Packages
-	"github.com/mutablelogic/go-llm/pkg/toolkit"
-	"github.com/mutablelogic/go-llm/pkg/toolkit/resource"
-	"golang.org/x/sync/errgroup"
+	llm "github.com/mutablelogic/go-llm"
+	toolkit "github.com/mutablelogic/go-llm/pkg/toolkit"
+	resource "github.com/mutablelogic/go-llm/pkg/toolkit/resource"
+	errgroup "golang.org/x/sync/errgroup"
 )
 
 func main() {
@@ -117,15 +118,10 @@ func main() {
 		return nil
 	})
 
-	// Call fetch once the remote connector is ready — wait on d.Ready() instead
-	// of a fixed time delay so the call is sequenced correctly on any machine.
+	// Call fetch once the remote connector that serves it is ready.
+	// Retry on ErrNotFound, waiting for the next tool-list refresh each time,
+	// so the call succeeds regardless of which connector connects first.
 	g.Go(func() error {
-		select {
-		case <-ctx.Done():
-			return nil
-		case <-d.Ready():
-		}
-
 		// fetchRequest matches the input schema of the mcp-fetch.fetch tool.
 		type fetchRequest struct {
 			URL        string `json:"url"`
@@ -133,29 +129,37 @@ func main() {
 			StartIndex int    `json:"start_index,omitempty"`
 			Raw        bool   `json:"raw,omitempty"`
 		}
-
-		// Call the tool without a namespace, which will route to the remote implementation
 		input, err := resource.JSON("input", fetchRequest{URL: "https://news.bbc.co.uk/", MaxLength: 100})
 		if err != nil {
-			slog.Error("fetch", "err", err)
-			return nil
-		}
-		result, err := tk.Call(ctx, "fetch", input)
-		if err != nil {
-			slog.Error("fetch", "err", err)
-			return nil
+			return err
 		}
 
-		// Log the result if there is one.
-		if result != nil {
-			data, err := result.Read(ctx)
+		for {
+			select {
+			case <-ctx.Done():
+				return nil
+			case <-d.ToolsChanged():
+			}
+
+			result, err := tk.Call(ctx, "fetch", input)
+			if errors.Is(err, llm.ErrNotFound) {
+				// Tool not yet registered; wait for the next refresh.
+				continue
+			}
 			if err != nil {
 				slog.Error("fetch", "err", err)
-			} else {
-				slog.Info("fetch", "result", data)
+				return nil
 			}
+			if result != nil {
+				data, err := result.Read(ctx)
+				if err != nil {
+					slog.Error("fetch", "err", err)
+				} else {
+					slog.Info("fetch", "result", data)
+				}
+			}
+			return nil
 		}
-		return nil
 	})
 
 	// Wait for cancellation and log any errors.

@@ -18,26 +18,28 @@ import (
 // TYPES
 
 type delegate struct {
-	tk    toolkit.Toolkit
-	ready chan struct{}
-	once  sync.Once
+	tk           toolkit.Toolkit
+	mu           sync.Mutex
+	toolsChanged chan struct{} // closed and replaced on each ToolListChanged
 }
 
 ///////////////////////////////////////////////////////////////////////////////
 // LIFECYCLE
 
 func NewDelegate() *delegate {
-	return &delegate{ready: make(chan struct{})}
+	return &delegate{toolsChanged: make(chan struct{})}
 }
 
 func (d *delegate) SetToolkit(tk toolkit.Toolkit) {
 	d.tk = tk
 }
 
-// Ready returns a channel that is closed once at least one remote connector
-// has finished its initial tool-list refresh and is ready to serve calls.
-func (d *delegate) Ready() <-chan struct{} {
-	return d.ready
+// ToolsChanged returns a channel that is closed whenever the tool list changes
+// (from any source). Call it again after waking to get the next signal.
+func (d *delegate) ToolsChanged() <-chan struct{} {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	return d.toolsChanged
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -48,12 +50,17 @@ func (d *delegate) OnEvent(evt toolkit.ConnectorEvent) {
 	case toolkit.ConnectorEventStateChange:
 		slog.Info("connector state changed", "state", evt.State, "connector", evt.Connector)
 	case toolkit.ConnectorEventToolListChanged:
-		d.once.Do(func() { close(d.ready) })
+		// Broadcast: close the current channel and replace it so all waiters wake.
+		d.mu.Lock()
+		old := d.toolsChanged
+		d.toolsChanged = make(chan struct{})
+		d.mu.Unlock()
+		close(old)
 		d.logTools()
 	case toolkit.ConnectorEventPromptListChanged:
-		d.logPrompts()
+		//d.logPrompts()
 	case toolkit.ConnectorEventResourceListChanged:
-		d.logResources()
+		//d.logResources()
 	case toolkit.ConnectorEventResourceUpdated:
 		slog.Info("resource updated", "uri", evt.URI, "connector", evt.Connector)
 	}
