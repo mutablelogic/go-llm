@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"log/slog"
 	"sync"
 	"time"
@@ -17,13 +18,19 @@ import (
 ///////////////////////////////////////////////////////////////////////////////
 // TYPES
 
-type handler struct{}
+type handler struct {
+	tk toolkit.Toolkit
+}
 
 ///////////////////////////////////////////////////////////////////////////////
-// LIFEECYCLE
+// LIFECYCLE
 
 func NewHandler() *handler {
 	return &handler{}
+}
+
+func (h *handler) SetToolkit(tk toolkit.Toolkit) {
+	h.tk = tk
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -31,18 +38,88 @@ func NewHandler() *handler {
 
 func (h *handler) OnStateChange(c llm.Connector, state schema.ConnectorState) {
 	slog.Info("connector state changed", "state", state)
+
+	// Log out the current lists of tools, prompts, and resources on every state change for
+	// visibility in this example. In a real implementation, you would likely want to be
+	// more selective about when to log these.
+	h.OnToolListChanged(c)
+	h.OnPromptListChanged(c)
+	h.OnResourceListChanged(c)
 }
 
-func (h *handler) OnToolListChanged(c llm.Connector) {
-	slog.Info("tool list changed")
+func (h *handler) OnToolListChanged(_ llm.Connector) {
+	if h.tk == nil {
+		return
+	}
+	resp, err := h.tk.List(context.Background(), toolkit.ListRequest{Type: toolkit.ListTypeTools})
+	if err != nil {
+		slog.Error("failed to list tools", "error", err)
+		return
+	}
+	for _, t := range resp.Tools {
+		meta := t.Meta()
+		var inputSchemaJSON, outputSchemaJSON string
+		if inputSchema, err := t.InputSchema(); err != nil {
+			slog.Error("failed to get input schema", "tool", t.Name(), "error", err)
+		} else if inputSchema != nil {
+			if b, err := json.Marshal(inputSchema); err == nil {
+				inputSchemaJSON = string(b)
+			}
+		}
+		if outputSchema, err := t.OutputSchema(); err != nil {
+			slog.Error("failed to get output schema", "tool", t.Name(), "error", err)
+		} else if outputSchema != nil {
+			if b, err := json.Marshal(outputSchema); err == nil {
+				outputSchemaJSON = string(b)
+			}
+		}
+		slog.Info("tool",
+			"name", t.Name(),
+			"title", meta.Title,
+			"description", t.Description(),
+			"read_only", meta.ReadOnlyHint,
+			"idempotent", meta.IdempotentHint,
+			"input_schema", inputSchemaJSON,
+			"output_schema", outputSchemaJSON,
+		)
+	}
 }
 
-func (h *handler) OnPromptListChanged(c llm.Connector) {
-	slog.Info("prompt list changed")
+func (h *handler) OnPromptListChanged(_ llm.Connector) {
+	if h.tk == nil {
+		return
+	}
+	resp, err := h.tk.List(context.Background(), toolkit.ListRequest{Type: toolkit.ListTypePrompts})
+	if err != nil {
+		slog.Error("failed to list prompts", "error", err)
+		return
+	}
+	for _, p := range resp.Prompts {
+		slog.Info("prompt",
+			"name", p.Name(),
+			"title", p.Title(),
+			"description", p.Description(),
+		)
+	}
 }
 
-func (h *handler) OnResourceListChanged(c llm.Connector) {
-	slog.Info("resource list changed")
+func (h *handler) OnResourceListChanged(_ llm.Connector) {
+	if h.tk == nil {
+		return
+	}
+	resp, err := h.tk.List(context.Background(), toolkit.ListRequest{Type: toolkit.ListTypeResources})
+	if err != nil {
+		slog.Error("failed to list resources", "error", err)
+		return
+	}
+	for _, r := range resp.Resources {
+		slog.Info("resource",
+			"uri", r.URI(),
+			"name", r.Name(),
+			"description", r.Description(),
+			"type", r.Type(),
+		)
+	}
 }
 
 func (h *handler) OnResourceUpdated(c llm.Connector, uri string) {
@@ -57,6 +134,7 @@ func (h *handler) Call(ctx context.Context, p llm.Prompt, resources ...llm.Resou
 }
 
 func (h *handler) List(ctx context.Context, req toolkit.ListRequest) (*toolkit.ListResponse, error) {
+	// Returns user-defined items
 	return &toolkit.ListResponse{}, nil
 }
 

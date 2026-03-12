@@ -13,12 +13,14 @@ import (
 
 func main() {
 	// Create a toolkit with builtins and a handler for connector events and prompt execution.
+	h := NewHandler()
 	tk, err := toolkit.New(
-		toolkit.WithHandler(NewHandler()),
+		toolkit.WithHandler(h),
 	)
 	if err != nil {
 		log.Fatal(err)
 	}
+	h.SetToolkit(tk)
 
 	// Add a remote MCP connector — namespace inferred from the server.
 	// Can be called before or while Run is active.
@@ -27,7 +29,7 @@ func main() {
 	}
 
 	// Or provide an explicit namespace.
-	if err = tk.AddConnectorNS("my-server", "http://mcp-server/other"); err != nil {
+	if err = tk.AddConnectorNS("my-server", "https://remote.mcpservers.org/sequentialthinking/mcp"); err != nil {
 		log.Fatal(err)
 	}
 

@@ -31,7 +31,7 @@ const (
 	connectorRetryInitial = 2 * time.Second
 
 	// connectorRetryMax is the ceiling for the exponential backoff delay.
-	connectorRetryMax = 5 * time.Minute
+	connectorRetryMax = 20 * time.Minute
 
 	// connectorRetryMaxCount is the maximum number of reconnect attempts before
 	// the connector is permanently removed.
@@ -193,19 +193,20 @@ func (tk *toolkit) addConnector(namespace, url string) error {
 			return
 		}
 		tk.mu.Lock()
-		defer tk.mu.Unlock()
 		if c.namespace == "" {
 			// Reject invalid identifiers and reserved namespaces.
 			// TODO: mutate the namespace to make it valid (e.g. by replacing invalid characters with "_") rather than rejecting it outright.
 			ns := types.Value(state.Name)
 			if !types.IsIdentifier(ns) || slices.Contains(ReservedNamespaces, ns) {
 				c.err = llm.ErrConflict.Withf("connector reported reserved or invalid namespace %q", ns)
+				tk.mu.Unlock()
 				return
 			}
 
 			// Reject collision with a namespace already owned by a different connector.
 			if existing, collision := tk.namespace[ns]; collision && existing != c {
 				c.err = llm.ErrConflict.Withf("connector namespace %q already in use", ns)
+				tk.mu.Unlock()
 				return
 			}
 			c.namespace = ns
@@ -214,8 +215,14 @@ func (tk *toolkit) addConnector(namespace, url string) error {
 
 		// Successful handshake — reset backoff so the next reconnect is immediate.
 		c.reset()
-		if tk.handler != nil {
-			tk.handler.OnStateChange(c, state)
+		tk.logger.InfoContext(context.Background(), "connector connected", "namespace", c.namespace, "name", types.Value(state.Name), "version", types.Value(state.Version))
+		handler := tk.handler
+		tk.mu.Unlock()
+
+		// Notify the handler outside the lock — the handler may call back into
+		// the toolkit (e.g. tk.List) which would deadlock if the lock were held.
+		if handler != nil {
+			handler.OnStateChange(c, state)
 		}
 	}
 
