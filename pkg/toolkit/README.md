@@ -109,15 +109,19 @@ The lookup order is:
 The return type is `any`; use a type switch to distinguish. `llm.ErrNotFound` is returned if nothing matches:
 
 ```go
+import resource "github.com/mutablelogic/go-llm/pkg/toolkit/resource"
+
 v, err := tk.Lookup(ctx, "summarize")
 if err != nil {
     log.Fatal(err) // llm.ErrNotFound or similar
 }
 switch v := v.(type) {
 case llm.Tool:
-    result, err := tk.Call(ctx, v, toolkit.JSONResource(input, ""))
+    input, _ := resource.JSON("input", myParams)
+    result, err := tk.Call(ctx, v, input)
 case llm.Prompt:
-    result, err := tk.Call(ctx, v, toolkit.JSONResource(vars, ""))
+    vars, _ := resource.JSON("vars", myVars)
+    result, err := tk.Call(ctx, v, vars)
 case llm.Resource:
     data, err := v.Read(ctx)
 }
@@ -257,35 +261,64 @@ Summarize the following text:
 
 ### Creating and Registering Prompts
 
-Parse a prompt from a markdown file and register it as a builtin:
+Parse a prompt from a markdown file and register it as a builtin using `prompt.Read` from `pkg/toolkit/prompt`:
 
 ```go
-import "github.com/mutablelogic/go-llm/pkg/agent"
+import (
+    "os"
+    prompt "github.com/mutablelogic/go-llm/pkg/toolkit/prompt"
+)
 
 // From a file on disk
-meta, err := agent.ReadFile("etc/agent/summarize.md")
+f, err := os.Open("etc/agent/summarize.md")
 if err != nil {
     log.Fatal(err)
 }
-if err = tk.AddPrompt(meta); err != nil {
+defer f.Close()
+p, err := prompt.Read(f)
+if err != nil {
+    log.Fatal(err)
+}
+if err = tk.AddPrompt(p); err != nil {
     log.Fatal(err)
 }
 ```
 
-Parse from an `io.Reader` (e.g. an embedded file):
+Parse from an embedded filesystem (walk with `fs.WalkDir` and pass each file to `prompt.Read`):
 
 ```go
-//go:embed etc/agent/summarize.md
-var summarizeMD []byte
+import (
+    "bytes"
+    "embed"
+    "io/fs"
+    prompt "github.com/mutablelogic/go-llm/pkg/toolkit/prompt"
+)
 
-meta, err := agent.Read(bytes.NewReader(summarizeMD))
-if err != nil {
-    log.Fatal(err)
-}
-if err = tk.AddPrompt(meta); err != nil {
+//go:embed etc/agent/*.md
+var agentFS embed.FS
+
+var prompts []llm.Prompt
+fs.WalkDir(agentFS, ".", func(path string, d fs.DirEntry, err error) error {
+    if err != nil || d.IsDir() || filepath.Ext(path) != ".md" {
+        return err
+    }
+    data, err := agentFS.ReadFile(path)
+    if err != nil {
+        return err
+    }
+    p, err := prompt.Read(&namedReader{bytes.NewReader(data), path})
+    if err != nil {
+        return err
+    }
+    prompts = append(prompts, p)
+    return nil
+})
+if err := tk.AddPrompt(prompts...); err != nil {
     log.Fatal(err)
 }
 ```
+
+The `name` is taken from the `name:` front matter field, or derived from the filename if absent. The `title` is taken from the `title:` field, or extracted from the first `# Heading` in the body if absent.
 
 Construct a prompt directly from a `schema.AgentMeta` literal (or unmarshal from JSON). `schema.AgentMeta` implements `llm.Prompt`, so it is passed directly to `AddPrompt`:
 
@@ -324,21 +357,25 @@ if err := tk.RemoveBuiltin("summarize"); err != nil {
 Prompts are executed via the toolkit, which delegates to the handler (typically the manager). The manager renders the template, selects a model, and runs the agent loop:
 
 ```go
+import resource "github.com/mutablelogic/go-llm/pkg/toolkit/resource"
+
 // Look up a builtin or connector-supplied prompt by name.
-prompt := tk.Lookup(ctx, "summarize") // returns nil if not found
+p, err := tk.Lookup(ctx, "summarize")
+if err != nil {
+    log.Fatal(err)
+}
 
 // Pass a plain text string as input.
-text := "The quick brown fox..."
-result, err := tk.Call(ctx, prompt, toolkit.TextResource(text, ""))
+textRes, _ := resource.Text("input", "The quick brown fox...")
+result, err := tk.Call(ctx, p, textRes)
 
 // With optional additional attachments.
-result, err = tk.Call(ctx, prompt,
-    toolkit.TextResource(text, "Text to summarize"),
-    attachment, // optional extra resource
-)
+textRes, _ = resource.Text("input", text)
+result, err = tk.Call(ctx, p, textRes, attachment)
 
-// Call also accepts an llm.Tool directly.
-result, err = tk.Call(ctx, tk.Lookup(ctx, "my_tool"), toolkit.JSONResource(inputMap, ""))
+// Call an llm.Tool directly.
+inputRes, _ := resource.JSON("input", inputMap)
+result, err = tk.Call(ctx, tk.Lookup(ctx, "my_tool"), inputRes)
 ```
 
 The manager:
@@ -362,22 +399,23 @@ Every tool must satisfy the `llm.Tool` interface:
 ```go
 type Tool interface {
     // unique identifier (letters, digits, underscores only)
-    Name()         string          
+    Name()         string
 
     // human-readable description of the tool's purpose and behavior
     Description()  string
 
-    // JSON Schema defining the expected input; must be an object.
-    InputSchema()  json.RawMessage
+    // JSON Schema defining the expected input parameters; must be an object.
+    InputSchema()  (*jsonschema.Schema, error)
 
-    // JSON Schema defining the expected output, or an empty string if no output is defined.
-    OutputSchema() json.RawMessage 
+    // JSON Schema defining the expected output, or nil if unspecified.
+    OutputSchema() (*jsonschema.Schema, error)
 
     // Optional hints about the tool's behavior.
     Meta()         llm.ToolMeta
 
-    // Run executes the tool with the given JSON input, returning an optional output resource.
-    Run(ctx context.Context, input json.RawMessage) (llm.Resource, error)
+    // Run executes the tool with the given JSON input.
+    // Return nil for no output, a string, []byte, json.RawMessage, or llm.Resource.
+    Run(ctx context.Context, input json.RawMessage) (any, error)
 }
 
 // Return optional hints about the tool's behaviour. All fields are advisory:
@@ -402,24 +440,37 @@ type ToolMeta struct {
 }
 ```
 
-`Run` returns an `llm.Resource`, or `nil` if there is no output. Use `toolkit.JSONResource` for JSON output.
+`Run` returns `nil` for no output, or any of: `string`, `[]byte`, `json.RawMessage`, or `llm.Resource`. String and `json.RawMessage` returns are automatically wrapped into the appropriate resource type.
 
-Embed `toolkit.DefaultTool` to get no-op implementations of `OutputSchema` and `Meta`, reducing boilerplate:
+Embed `tool.Base` from `pkg/toolkit/tool` to get no-op implementations of `OutputSchema` and `Meta`, reducing boilerplate. Use `jsonschema.For[T]` to generate an input schema from a request struct:
 
 ```go
+import (
+    jsonschema "github.com/google/jsonschema-go/jsonschema"
+    tool "github.com/mutablelogic/go-llm/pkg/toolkit/tool"
+)
+
+type myRequest struct {
+    Query string `json:"query" jsonschema:"The search query."`
+}
+
 type MyTool struct {
-    toolkit.DefaultTool
+    tool.Base
 }
 
 func (t *MyTool) Name()        string { return "my_tool" }
 func (t *MyTool) Description() string { return "Does something useful." }
 
-func (t *MyTool) InputSchema() json.RawMessage {
-    // return your JSON schema here
+func (t *MyTool) InputSchema() (*jsonschema.Schema, error) {
+    return jsonschema.For[myRequest](nil)
 }
 
-func (t *MyTool) Run(ctx context.Context, input json.RawMessage) (llm.Resource, error) {
-    return toolkit.JSONResource(map[string]string{"result": "ok"}, "")
+func (t *MyTool) Run(ctx context.Context, input json.RawMessage) (any, error) {
+    var req myRequest
+    if err := json.Unmarshal(input, &req); err != nil {
+        return nil, err
+    }
+    return map[string]string{"result": req.Query}, nil
 }
 ```
 
@@ -538,42 +589,40 @@ type Resource interface {
 
 ### Built-in Resource Constructors
 
-Three constructors create transient resources:
+Three constructors in `pkg/toolkit/resource` create named resources. The `name` argument must be a valid identifier (letters, digits, underscores):
 
-| Constructor | MIME type | Error |
+| Constructor | MIME type | Notes |
 |---|---|---|
-| `TextResource(text, description string) llm.Resource` | `text/plain` | — |
-| `BinaryResource(r io.Reader, description string) (llm.Resource, error)` | detected from content | read failure |
-| `JSONResource(v any, description string) (llm.Resource, error)` | `application/json` | marshal failure |
-
-`TextResource` wraps a plain-text string:
-
-```go
-return toolkit.TextResource("hello, world", "A greeting message"), nil
-```
-
-`BinaryResource` reads all bytes from an `io.Reader` eagerly and detects the MIME type from the content:
+| `resource.Text(name, content string) (llm.Resource, error)` | `text/plain` | wraps a plain string |
+| `resource.Data(name string, data []byte) (llm.Resource, error)` | sniffed from content, then file extension | auto-transcodes non-UTF-8 text to UTF-8; returns a text resource for `text/*` types |
+| `resource.Read(r io.Reader) (llm.Resource, error)` | sniffed from content | reads `r` eagerly; name derived from `r.Name()` if available |
+| `resource.JSON(name string, v any) (llm.Resource, error)` | `application/json` | marshals any Go value |
 
 ```go
-f, _ := os.Open("image.png")
+import resource "github.com/mutablelogic/go-llm/pkg/toolkit/resource"
+
+// Plain text
+res, err := resource.Text("greeting", "Hello, world")
+
+// Binary / auto-detected MIME
+data, _ := os.ReadFile("image.png")
+res, err = resource.Data("screenshot", data)
+
+// From a reader
+f, _ := os.Open("report.pdf")
 defer f.Close()
-res, err := toolkit.BinaryResource(f, "Screenshot of the dashboard")
+res, err = resource.Read(f)
 
-// No description needed.
-res, err = toolkit.BinaryResource(f, "")
+// JSON from a Go value
+res, err = resource.JSON("result", map[string]string{"status": "ok"})
 ```
 
-`JSONResource` accepts either a `json.RawMessage` / `[]byte` (used as-is) or any Go value (marshalled with `encoding/json`):
+Wrap an existing resource to override its URI or add a description:
 
 ```go
-// From a Go struct — marshalled automatically.
-res, err := toolkit.JSONResource(map[string]string{"result": "ok"}, "Tool output")
-
-// From pre-marshalled bytes — no re-encoding.
-res, err = toolkit.JSONResource(json.RawMessage(`{"result":"ok"}`), "")
+res = resource.WithURI("file:data/report.pdf", res)
+res = resource.WithDescription("Monthly report", res)
 ```
-
-All three constructors set `URI()` to a `data:` URI (e.g. `data:text/plain`, `data:image/png`, `data:application/json`). These are transient identifiers, not named addressable resources.
 
 ### Implementing a Custom Resource
 
@@ -597,11 +646,27 @@ func (r *FileResource) Read(ctx context.Context) ([]byte, error) {
 
 ### Resources as Tool Outputs
 
-`Run` returns `(llm.Resource, error)`. Return `nil` when the tool produces no output:
+`Run` returns `(any, error)`. Return `nil` when the tool produces no output. The toolkit automatically wraps `string`, `[]byte`, and `json.RawMessage` returns:
 
 ```go
-func (t *MyTool) Run(ctx context.Context, input json.RawMessage) (llm.Resource, error) {
-    return toolkit.JSONResource(map[string]string{"result": "ok"}, "")
+// Return a string — wrapped as a text/plain resource.
+func (t *MyTool) Run(ctx context.Context, input json.RawMessage) (any, error) {
+    return "Hello, world", nil
+}
+
+// Return structured JSON — wrapped as an application/json resource.
+func (t *MyTool) Run(ctx context.Context, input json.RawMessage) (any, error) {
+    resp := myResponse{Status: "ok"}
+    data, err := json.Marshal(resp)
+    if err != nil {
+        return nil, err
+    }
+    return json.RawMessage(data), nil
+}
+
+// Return a custom resource directly.
+func (t *MyTool) Run(ctx context.Context, input json.RawMessage) (any, error) {
+    return resource.JSON("result", map[string]string{"status": "ok"})
 }
 ```
 
@@ -710,14 +775,16 @@ resp, err := model.Generate(ctx, prompt,
 `OutputTool` lets you capture structured output from a model that doesn't support a native response schema alongside function calling (e.g. Gemini). The model is instructed to call `submit_output` with its final answer.
 
 ```go
-s, _ := jsonschema.Reflect(MyOutput{})
-outputTool := toolkit.NewOutputTool(s)
+import tool "github.com/mutablelogic/go-llm/pkg/toolkit/tool"
+
+s, _ := jsonschema.For[MyOutput](nil)
+outputTool := tool.NewOutputTool(s)
 if err := tk.AddTool(outputTool); err != nil {
     log.Fatal(err)
 }
 ```
 
-The constant `toolkit.OutputToolInstruction` provides a ready-made system prompt addition that directs the model to call `submit_output` with its final answer.
+The constant `tool.OutputToolInstruction` provides a ready-made system prompt addition that directs the model to call `submit_output` with its final answer.
 
 ## Toolkit Interface
 
