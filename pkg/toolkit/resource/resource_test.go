@@ -120,7 +120,8 @@ func Test_Data_001(t *testing.T) {
 	assert.NoError(err)
 	assert.NotNil(r)
 	assert.Equal("blob", r.Name())
-	assert.Equal("data:blob", r.URI())
+	// "hello binary" is sniffed as text/plain, so Data() returns a textResource.
+	assert.Equal("text:blob", r.URI())
 	assert.NotEmpty(r.Type())
 	data, err := r.Read(context.Background())
 	assert.NoError(err)
@@ -275,17 +276,17 @@ func Test_Unmarshal_001_malformed_json(t *testing.T) {
 }
 
 func Test_Unmarshal_002_bad_text_data(t *testing.T) {
-	// data field is not a JSON string — triggers text/plain error path.
+	// text field is not a JSON string — triggers text/plain error path.
 	assert := assert.New(t)
-	bad := []byte(`{"uri":"text:x","name":"x","type":"text/plain","data":123}`)
+	bad := []byte(`{"uri":"text:x","name":"x","type":"text/plain","text":123}`)
 	_, err := resource.Unmarshal(bad)
 	assert.Error(err)
 }
 
 func Test_Unmarshal_003_bad_binary_data(t *testing.T) {
-	// data field is not a JSON base64 bytes array — triggers default error path.
+	// blob field is not a JSON base64 bytes array — triggers default error path.
 	assert := assert.New(t)
-	bad := []byte(`{"uri":"data:x","name":"x","type":"application/octet-stream","data":"not-base64-array"}`)
+	bad := []byte(`{"uri":"data:x","name":"x","type":"application/octet-stream","blob":"not-base64-array"}`)
 	_, err := resource.Unmarshal(bad)
 	assert.Error(err)
 }

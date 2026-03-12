@@ -1,6 +1,7 @@
 package resource
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"io"
@@ -13,6 +14,8 @@ import (
 	// Packages
 	llm "github.com/mutablelogic/go-llm"
 	types "github.com/mutablelogic/go-server/pkg/types"
+	"golang.org/x/text/encoding/htmlindex"
+	"golang.org/x/text/transform"
 )
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -41,13 +44,44 @@ func Data(name string, data []byte) (llm.Resource, error) {
 		return nil, llm.ErrBadParameter.Withf("name: must be a non-empty identifier, got %q", id)
 	}
 
-	// Resolve MIME type: extension wins, content sniffing as fallback
-	mimetype := mime.TypeByExtension(filepath.Ext(name))
+	// Resolve MIME type: content sniffing wins, extension as fallback
+	mimetype := http.DetectContentType(data)
+	if mimetype == types.ContentTypeBinary && strings.Contains(name, ".") {
+		mimetype = mime.TypeByExtension(filepath.Ext(name))
+	}
+
+	// If no MIME type could be resolved, default to application/octet-stream
 	if mimetype == "" {
-		mimetype = http.DetectContentType(data)
+		mimetype = types.ContentTypeBinary
+	}
+
+	// For text/* types, transcode to UTF-8 and return a textResource.
+	mediaType, params, _ := mime.ParseMediaType(mimetype)
+	if strings.HasPrefix(mediaType, "text/") {
+		content := dataToUTF8(data, params["charset"])
+		return &textResource{name: id, content: content}, nil
 	}
 
 	return &dataResource{name: id, mimetype: mimetype, content: data}, nil
+}
+
+// dataToUTF8 converts data from the named charset to a UTF-8 string.
+// On error or empty/utf-8/us-ascii charset the raw bytes are used as-is.
+func dataToUTF8(data []byte, charsetName string) string {
+	lower := strings.ToLower(charsetName)
+	if lower == "" || lower == "utf-8" || lower == "us-ascii" {
+		return string(data)
+	}
+	enc, err := htmlindex.Get(charsetName)
+	if err != nil {
+		return string(data)
+	}
+	reader := transform.NewReader(bytes.NewReader(data), enc.NewDecoder())
+	decoded, err := io.ReadAll(reader)
+	if err != nil {
+		return string(data)
+	}
+	return string(decoded)
 }
 
 // Read reads all bytes from r and returns a resource. If r is an *os.File its
@@ -82,6 +116,8 @@ func (d *dataResource) MarshalJSON() ([]byte, error) {
 		URI  string `json:"uri"`
 		Name string `json:"name"`
 		Type string `json:"type"`
-		Data []byte `json:"data"`
+		Blob []byte `json:"blob,omitempty"`
 	}{d.URI(), d.name, d.Type(), d.content})
 }
+
+func (d *dataResource) String() string { return types.Stringify(d) }

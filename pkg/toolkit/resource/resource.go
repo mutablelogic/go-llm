@@ -5,6 +5,7 @@ import (
 
 	// Packages
 	llm "github.com/mutablelogic/go-llm"
+	types "github.com/mutablelogic/go-server/pkg/types"
 )
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -22,8 +23,15 @@ type describedResource struct {
 	description string
 }
 
+// uriResource wraps an llm.Resource and overrides its URI.
+type uriResource struct {
+	llm.Resource
+	uri string
+}
+
 var _ llm.Resource = (*namespacedResource)(nil)
 var _ llm.Resource = (*describedResource)(nil)
+var _ llm.Resource = (*uriResource)(nil)
 
 ///////////////////////////////////////////////////////////////////////////////
 // PUBLIC METHODS
@@ -41,8 +49,14 @@ func WithDescription(description string, r llm.Resource) llm.Resource {
 	return &describedResource{Resource: r, description: description}
 }
 
+// WithURI returns r with its URI replaced by the given value.
+func WithURI(uri string, r llm.Resource) llm.Resource {
+	return &uriResource{Resource: r, uri: uri}
+}
+
 func (n *namespacedResource) Name() string       { return n.name }
 func (d *describedResource) Description() string { return d.description }
+func (u *uriResource) URI() string               { return u.uri }
 
 ///////////////////////////////////////////////////////////////////////////////
 // json.Marshaler
@@ -52,11 +66,12 @@ type resourceJSON struct {
 	Name        string          `json:"name"`
 	Description string          `json:"description,omitempty"`
 	Type        string          `json:"type"`
-	Data        json.RawMessage `json:"data,omitempty"`
+	Text        json.RawMessage `json:"text,omitempty"`
+	Blob        json.RawMessage `json:"blob,omitempty"`
 }
 
 func marshalResource(r llm.Resource) ([]byte, error) {
-	var data json.RawMessage
+	var text, blob json.RawMessage
 	// Unwrap wrappers to reach the concrete resource that owns the data.
 	if m, ok := unwrapResource(r).(json.Marshaler); ok {
 		inner, err := m.MarshalJSON()
@@ -66,16 +81,17 @@ func marshalResource(r llm.Resource) ([]byte, error) {
 		var v resourceJSON
 		if err := json.Unmarshal(inner, &v); err != nil {
 			return nil, err
-		} else {
-			data = v.Data
 		}
+		text = v.Text
+		blob = v.Blob
 	}
 	return json.Marshal(resourceJSON{
 		URI:         r.URI(),
 		Name:        r.Name(),
 		Description: r.Description(),
 		Type:        r.Type(),
-		Data:        data,
+		Text:        text,
+		Blob:        blob,
 	})
 }
 
@@ -87,6 +103,8 @@ func unwrapResource(r llm.Resource) llm.Resource {
 			r = w.Resource
 		case *describedResource:
 			r = w.Resource
+		case *uriResource:
+			r = w.Resource
 		default:
 			return r
 		}
@@ -95,6 +113,11 @@ func unwrapResource(r llm.Resource) llm.Resource {
 
 func (n *namespacedResource) MarshalJSON() ([]byte, error) { return marshalResource(n) }
 func (d *describedResource) MarshalJSON() ([]byte, error)  { return marshalResource(d) }
+func (u *uriResource) MarshalJSON() ([]byte, error)        { return marshalResource(u) }
+
+func (n *namespacedResource) String() string { return types.Stringify(n) }
+func (d *describedResource) String() string  { return types.Stringify(d) }
+func (u *uriResource) String() string        { return types.Stringify(u) }
 
 ///////////////////////////////////////////////////////////////////////////////
 // json.Unmarshaler
@@ -117,19 +140,19 @@ func Unmarshal(data []byte) (llm.Resource, error) {
 	switch v.Type {
 	case "text/plain":
 		var content string
-		if len(v.Data) > 0 {
-			if err := json.Unmarshal(v.Data, &content); err != nil {
-				return nil, llm.ErrBadParameter.Withf("text data: %v", err)
+		if len(v.Text) > 0 {
+			if err := json.Unmarshal(v.Text, &content); err != nil {
+				return nil, llm.ErrBadParameter.Withf("text: %v", err)
 			}
 		}
 		r = &textResource{name: v.Name, content: content}
 	case "application/json":
-		r = &jsonResource{name: v.Name, content: json.RawMessage(v.Data)}
+		r = &jsonResource{name: v.Name, content: json.RawMessage(v.Text)}
 	default:
 		var content []byte
-		if len(v.Data) > 0 {
-			if err := json.Unmarshal(v.Data, &content); err != nil {
-				return nil, llm.ErrBadParameter.Withf("data: %v", err)
+		if len(v.Blob) > 0 {
+			if err := json.Unmarshal(v.Blob, &content); err != nil {
+				return nil, llm.ErrBadParameter.Withf("blob: %v", err)
 			}
 		}
 		r = &dataResource{name: v.Name, mimetype: v.Type, content: content}

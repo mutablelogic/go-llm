@@ -27,7 +27,7 @@ func Test_Read_001(t *testing.T) {
 	assert.NoError(err)
 	assert.NotNil(p)
 	assert.Equal("no_frontmatter", p.Name())
-	assert.Equal("", p.Title())
+	assert.Equal("No Frontmatter Agent", p.Title())
 	assert.Equal("", p.Description())
 }
 

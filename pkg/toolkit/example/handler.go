@@ -2,7 +2,7 @@ package main
 
 import (
 	"context"
-	"encoding/json"
+	"fmt"
 	"log/slog"
 	"sync"
 	"time"
@@ -57,31 +57,7 @@ func (h *handler) OnToolListChanged(_ llm.Connector) {
 		return
 	}
 	for _, t := range resp.Tools {
-		meta := t.Meta()
-		var inputSchemaJSON, outputSchemaJSON string
-		if inputSchema, err := t.InputSchema(); err != nil {
-			slog.Error("failed to get input schema", "tool", t.Name(), "error", err)
-		} else if inputSchema != nil {
-			if b, err := json.Marshal(inputSchema); err == nil {
-				inputSchemaJSON = string(b)
-			}
-		}
-		if outputSchema, err := t.OutputSchema(); err != nil {
-			slog.Error("failed to get output schema", "tool", t.Name(), "error", err)
-		} else if outputSchema != nil {
-			if b, err := json.Marshal(outputSchema); err == nil {
-				outputSchemaJSON = string(b)
-			}
-		}
-		slog.Info("tool",
-			"name", t.Name(),
-			"title", meta.Title,
-			"description", t.Description(),
-			"read_only", meta.ReadOnlyHint,
-			"idempotent", meta.IdempotentHint,
-			"input_schema", inputSchemaJSON,
-			"output_schema", outputSchemaJSON,
-		)
+		slog.Info("tool", "tool", fmt.Sprint(t))
 	}
 }
 
@@ -95,11 +71,7 @@ func (h *handler) OnPromptListChanged(_ llm.Connector) {
 		return
 	}
 	for _, p := range resp.Prompts {
-		slog.Info("prompt",
-			"name", p.Name(),
-			"title", p.Title(),
-			"description", p.Description(),
-		)
+		slog.Info("prompt", "prompt", fmt.Sprint(p))
 	}
 }
 
@@ -113,12 +85,7 @@ func (h *handler) OnResourceListChanged(_ llm.Connector) {
 		return
 	}
 	for _, r := range resp.Resources {
-		slog.Info("resource",
-			"uri", r.URI(),
-			"name", r.Name(),
-			"description", r.Description(),
-			"type", r.Type(),
-		)
+		slog.Info("resource", "resource", fmt.Sprint(r))
 	}
 }
 

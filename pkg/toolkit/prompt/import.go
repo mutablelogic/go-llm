@@ -5,6 +5,8 @@ import (
 	"errors"
 	"io"
 	"path/filepath"
+	"regexp"
+	"sort"
 	"strings"
 
 	// Packages
@@ -14,6 +16,8 @@ import (
 	types "github.com/mutablelogic/go-server/pkg/types"
 	yaml "gopkg.in/yaml.v3"
 )
+
+var reH1 = regexp.MustCompile(`(?m)^# (.+)$`)
 
 ///////////////////////////////////////////////////////////////////////////////
 // TYPES
@@ -68,6 +72,9 @@ func Read(r io.Reader) (llm.Prompt, error) {
 	if p.m.Name == "" {
 		p.m.Name = extractName(r)
 	}
+	if p.m.Title == "" {
+		p.m.Title = extractH1(p.m.Template)
+	}
 	if !types.IsIdentifier(p.m.Name) {
 		return nil, llm.ErrBadParameter.Withf("name: must be a non-empty identifier, got %q", p.m.Name)
 	}
@@ -105,6 +112,33 @@ func (p *prompt) Name() string        { return p.m.Name }
 func (p *prompt) Title() string       { return p.m.Title }
 func (p *prompt) Description() string { return p.m.Description }
 
+func (p *prompt) MarshalJSON() ([]byte, error) {
+	type promptJSON struct {
+		Name        string           `json:"name"`
+		Title       string           `json:"title,omitempty"`
+		Description string           `json:"description,omitempty"`
+		Arguments   []promptArgument `json:"arguments,omitempty"`
+	}
+	return json.Marshal(promptJSON{
+		Name:        p.m.Name,
+		Title:       p.m.Title,
+		Description: p.m.Description,
+		Arguments:   argsFromInput(p.m.Input),
+	})
+}
+
+func (p *prompt) String() string { return types.Stringify(p) }
+
+///////////////////////////////////////////////////////////////////////////////
+// PRIVATE TYPES
+
+// promptArgument represents a single argument in the MCP wire format.
+type promptArgument struct {
+	Name        string `json:"name"`
+	Description string `json:"description,omitempty"`
+	Required    bool   `json:"required,omitempty"`
+}
+
 ///////////////////////////////////////////////////////////////////////////////
 // PRIVATE METHODS
 
@@ -115,4 +149,56 @@ func extractName(r io.Reader) string {
 		return strings.TrimSuffix(base, filepath.Ext(base))
 	}
 	return ""
+}
+
+// extractH1 returns the text of the first "# Heading" line in the template,
+// or an empty string if none is found.
+func extractH1(template string) string {
+	if m := reH1.FindStringSubmatch(template); m != nil {
+		return strings.TrimSpace(m[1])
+	}
+	return ""
+}
+
+// argsFromInput derives prompt arguments from a JSON Schema's top-level
+// properties, matching the MCP wire format. Properties are sorted alphabetically.
+func argsFromInput(s schema.JSONSchema) []promptArgument {
+	if len(s) == 0 {
+		return nil
+	}
+	type schemaProperty struct {
+		Description string `json:"description"`
+		Title       string `json:"title"`
+	}
+	type schemaDoc struct {
+		Properties map[string]schemaProperty `json:"properties"`
+		Required   []string                  `json:"required"`
+	}
+	var doc schemaDoc
+	if err := json.Unmarshal(s, &doc); err != nil || len(doc.Properties) == 0 {
+		return nil
+	}
+	required := make(map[string]bool, len(doc.Required))
+	for _, r := range doc.Required {
+		required[r] = true
+	}
+	names := make([]string, 0, len(doc.Properties))
+	for name := range doc.Properties {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	args := make([]promptArgument, 0, len(names))
+	for _, name := range names {
+		prop := doc.Properties[name]
+		desc := prop.Description
+		if desc == "" {
+			desc = prop.Title
+		}
+		args = append(args, promptArgument{
+			Name:        name,
+			Description: desc,
+			Required:    required[name],
+		})
+	}
+	return args
 }
