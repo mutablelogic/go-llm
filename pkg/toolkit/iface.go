@@ -84,11 +84,6 @@ type ToolkitHandler interface {
 	// Call executes a prompt via the manager, passing optional input resources.
 	Call(context.Context, llm.Prompt, ...llm.Resource) (llm.Resource, error)
 
-	// List is called to enumerate items in the "user" namespace — prompts and resources
-	// stored persistently by the manager (e.g. in a database). Tools are never returned
-	// here because they are compiled code, not data.
-	List(context.Context, ListRequest) (*ListResponse, error)
-
 	// CreateConnector is called to create a new connector for the given URL.
 	// The onState callback must be called by the connector whenever its state
 	// changes (e.g. after initial connection). The toolkit uses the reported

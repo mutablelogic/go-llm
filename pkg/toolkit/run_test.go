@@ -76,9 +76,6 @@ func (h *mockRunHandler) OnResourceUpdated(llm.Connector, string)            {}
 func (h *mockRunHandler) Call(_ context.Context, _ llm.Prompt, _ ...llm.Resource) (llm.Resource, error) {
 	return nil, nil
 }
-func (h *mockRunHandler) List(_ context.Context, _ ListRequest) (*ListResponse, error) {
-	return nil, nil
-}
 
 ///////////////////////////////////////////////////////////////////////////////
 // HELPERS

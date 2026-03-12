@@ -45,8 +45,9 @@ var _ Toolkit = (*toolkit)(nil)
 // GLOBALS
 
 const (
-	NamespaceBuiltin = "builtin"
-	NamespaceUser    = "user"
+	BuiltinNamespace = "builtin"
+	UserNamespace    = "user"
+	UserConnectorURI = "connector:" + UserNamespace
 )
 
 var (
@@ -54,8 +55,8 @@ var (
 		tool.OutputToolName,
 	}
 	ReservedNamespaces = []string{
-		NamespaceBuiltin,
-		NamespaceUser,
+		BuiltinNamespace,
+		UserNamespace,
 	}
 )
 
@@ -70,11 +71,11 @@ func New(opts ...Option) (*toolkit, error) {
 	toolkit.logger = slog.Default()
 
 	// Builtins
-	toolkit.tools = make(map[string]llm.Tool)
-	toolkit.prompts = make(map[string]llm.Prompt)
-	toolkit.resources = make(map[string]llm.Resource)
-	toolkit.connectors = make(map[string]*connector)
-	toolkit.namespace = make(map[string]*connector)
+	toolkit.tools = make(map[string]llm.Tool, 200)
+	toolkit.prompts = make(map[string]llm.Prompt, 200)
+	toolkit.resources = make(map[string]llm.Resource, 200)
+	toolkit.connectors = make(map[string]*connector, 10)
+	toolkit.namespace = make(map[string]*connector, 10)
 
 	// Apply options
 	for _, opt := range opts {
@@ -114,7 +115,7 @@ func (tk *toolkit) AddTool(tools ...llm.Tool) error {
 	}
 	for _, t := range tools {
 		if t != nil {
-			tk.tools[t.Name()] = tool.WithNamespace(NamespaceBuiltin, t)
+			tk.tools[t.Name()] = tool.WithNamespace(BuiltinNamespace, t)
 		}
 	}
 
@@ -146,7 +147,7 @@ func (tk *toolkit) AddPrompt(prompts ...llm.Prompt) error {
 	}
 	for _, p := range prompts {
 		if p != nil {
-			tk.prompts[p.Name()] = prompt.WithNamespace(NamespaceBuiltin, p)
+			tk.prompts[p.Name()] = prompt.WithNamespace(BuiltinNamespace, p)
 		}
 	}
 
@@ -179,7 +180,7 @@ func (tk *toolkit) AddResource(resources ...llm.Resource) error {
 	for _, r := range resources {
 		if r != nil {
 			u, _, _ := parseURI(r.URI())
-			tk.resources[u.String()] = resource.WithNamespace(NamespaceBuiltin, r)
+			tk.resources[u.String()] = resource.WithNamespace(BuiltinNamespace, r)
 		}
 	}
 
@@ -267,15 +268,15 @@ func (tk *toolkit) Lookup(ctx context.Context, key string) (any, error) {
 // searched. Otherwise the named connector namespace is searched via ListTools.
 func (tk *toolkit) lookupTool(ctx context.Context, namespace, name string) (llm.Tool, error) {
 	// The output tool is always available by its reserved name in the builtin (or empty) namespace.
-	if name == tool.OutputToolName && (namespace == "" || namespace == NamespaceBuiltin) {
-		return tool.WithNamespace(NamespaceBuiltin, tool.NewOutputTool(nil)), nil
+	if name == tool.OutputToolName && (namespace == "" || namespace == BuiltinNamespace) {
+		return tool.WithNamespace(BuiltinNamespace, tool.NewOutputTool(nil)), nil
 	}
 	// Builtin namespace (or no namespace): check the in-process tools map first.
-	if namespace == "" || namespace == NamespaceBuiltin {
+	if namespace == "" || namespace == BuiltinNamespace {
 		tk.mu.RLock()
 		t := tk.tools[name]
 		tk.mu.RUnlock()
-		if t != nil || namespace == NamespaceBuiltin {
+		if t != nil || namespace == BuiltinNamespace {
 			return t, nil
 		}
 		// namespace == "": fall through to search all connected connectors.
@@ -314,11 +315,11 @@ func (tk *toolkit) lookupTool(ctx context.Context, namespace, name string) (llm.
 // searched. Otherwise the named connector namespace is searched via ListPrompts.
 func (tk *toolkit) lookupPrompt(ctx context.Context, namespace, name string) (llm.Prompt, error) {
 	// Builtin namespace (or no namespace): check the in-process prompts map first.
-	if namespace == "" || namespace == NamespaceBuiltin {
+	if namespace == "" || namespace == BuiltinNamespace {
 		tk.mu.RLock()
 		p := tk.prompts[name]
 		tk.mu.RUnlock()
-		if p != nil || namespace == NamespaceBuiltin {
+		if p != nil || namespace == BuiltinNamespace {
 			return p, nil
 		}
 		// namespace == "": fall through to search all connected connectors.
@@ -359,14 +360,14 @@ func (tk *toolkit) lookupPrompt(ctx context.Context, namespace, name string) (ll
 // Returns llm.ErrNotFound when no resource matches.
 func (tk *toolkit) lookupResource(ctx context.Context, namespace, uri string) (llm.Resource, error) {
 	// Builtin namespace (or no namespace): check the in-process resources map first.
-	if namespace == "" || namespace == NamespaceBuiltin {
+	if namespace == "" || namespace == BuiltinNamespace {
 		tk.mu.RLock()
 		r := tk.resources[uri]
 		tk.mu.RUnlock()
 		if r != nil {
 			return r, nil
 		}
-		if namespace == NamespaceBuiltin {
+		if namespace == BuiltinNamespace {
 			return nil, llm.ErrNotFound.Withf("%q", uri)
 		}
 		// namespace == "": fall through to search all connected connectors.

@@ -67,8 +67,14 @@ var _ llm.Connector = (*connector)(nil)
 
 // AddConnector registers a remote MCP server. The namespace is inferred from
 // the server URL. Safe to call before or while Run is active.
-func (tk *toolkit) AddConnector(url string) error {
-	return tk.addConnector("", url)
+//
+// As a special case, passing [UserConnectorURI] ("connector:user") registers
+// the connector under the reserved "user" namespace without a remote URL.
+func (tk *toolkit) AddConnector(rawURL string) error {
+	if rawURL == UserConnectorURI {
+		return tk.addConnector(UserNamespace, rawURL)
+	}
+	return tk.addConnector("", rawURL)
 }
 
 // AddConnectorNS registers a remote MCP server under an explicit namespace.
@@ -80,21 +86,30 @@ func (tk *toolkit) AddConnectorNS(namespace, url string) error {
 	if slices.Contains(ReservedNamespaces, namespace) {
 		return llm.ErrBadParameter.Withf("connector namespace %q is reserved", namespace)
 	}
+	if url == UserConnectorURI {
+		return llm.ErrBadParameter.Withf("connector url: %q is reserved; use AddConnector instead", UserConnectorURI)
+	}
 	return tk.addConnector(namespace, url)
 }
 
 // RemoveConnector removes a connector by URL. The connector is stopped
 // immediately if it is currently running.
-func (tk *toolkit) RemoveConnector(url string) error {
-	key, err := canonicalURL(url)
-	if err != nil {
-		return err
+func (tk *toolkit) RemoveConnector(rawURL string) error {
+	var key string
+	if rawURL == UserConnectorURI {
+		key = rawURL
+	} else {
+		var err error
+		key, err = canonicalURL(rawURL)
+		if err != nil {
+			return err
+		}
 	}
 	tk.mu.Lock()
 	conn, exists := tk.connectors[key]
 	if !exists {
 		tk.mu.Unlock()
-		return llm.ErrNotFound.Withf("connector not found: %q", url)
+		return llm.ErrNotFound.Withf("connector not found: %q", rawURL)
 	}
 	delete(tk.connectors, key)
 	// Remove the namespace entry if it still points at this connector.
@@ -127,13 +142,19 @@ func (c *connector) reset() {
 }
 
 // retry records err, increments the failure count, and advances the exponential
-// backoff delay. Returns false when the retry ceiling has been reached, indicating
-// the connector should be permanently removed. Must be called with tk.mu held.
+// backoff delay. The first failure reconnects immediately; backoff only kicks in
+// from the second failure onwards. Returns false when the retry ceiling has been
+// reached, indicating the connector should be permanently removed.
+// Must be called with tk.mu held.
 func (c *connector) retry(err error) bool {
 	c.err = err
 	c.retryCount++
 	if c.retryCount >= connectorRetryMaxCount {
 		return false
+	}
+	// First failure: reconnect on the next tick with no delay.
+	if c.retryCount == 1 {
+		return true
 	}
 	if c.retryDelay == 0 {
 		c.retryDelay = connectorRetryInitial
@@ -169,9 +190,16 @@ func (c *connector) ListResources(ctx context.Context) ([]llm.Resource, error) {
 // addConnector is the shared implementation for AddConnector and AddConnectorNS.
 // Must NOT be called while tk.mu is held.
 func (tk *toolkit) addConnector(namespace, url string) error {
-	key, err := canonicalURL(url)
-	if err != nil {
-		return err
+	// UserConnectorURI is used as its own canonical key; skip URL normalisation.
+	var key string
+	if url == UserConnectorURI {
+		key = url
+	} else {
+		var err error
+		key, err = canonicalURL(url)
+		if err != nil {
+			return err
+		}
 	}
 	if tk.handler == nil {
 		return llm.ErrNotImplemented.With("toolkit handler is not set")
@@ -199,7 +227,9 @@ func (tk *toolkit) addConnector(namespace, url string) error {
 	// handshake. If the reported Name (and no explicit namespace was given)
 	// we use it as the connector's namespace, then register it in the map.
 	onState := func(state schema.ConnectorState) {
-		if state.Name == nil {
+		// If no namespace is pre-set and the connector didn't report a name,
+		// we have nothing to register.
+		if state.Name == nil && c.namespace == "" {
 			return
 		}
 		tk.mu.Lock()
@@ -265,10 +295,9 @@ func (tk *toolkit) addConnector(namespace, url string) error {
 }
 
 // canonicalURL normalises a connector URL to scheme://host[:port]/path with
-// lowercased scheme and host. Path case is preserved because HTTP path
-// semantics are commonly case-sensitive. Redundant dot-segments are cleaned,
-// but a trailing slash (if present) is retained. Userinfo, query string, and
-// fragment are stripped. Returns ErrBadParameter if the URL is invalid.
+// all components lowercased. Redundant dot-segments are cleaned, but a trailing
+// slash (if present) is retained. Userinfo, query string, and fragment are
+// stripped. Returns ErrBadParameter if the URL is invalid.
 func canonicalURL(rawURL string) (string, error) {
 	u, err := url.Parse(rawURL)
 	if err != nil {
@@ -299,7 +328,7 @@ func canonicalURL(rawURL string) (string, error) {
 	}
 
 	hadTrailingSlash := len(u.Path) > 1 && strings.HasSuffix(u.Path, "/")
-	cleanPath := path.Clean(u.Path) // preserve case; only remove dot-segments
+	cleanPath := path.Clean(strings.ToLower(u.Path)) // normalise case and remove dot-segments
 	if cleanPath == "." {
 		cleanPath = ""
 	}

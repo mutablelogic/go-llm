@@ -77,7 +77,7 @@ func Test_AddTool_005_namespace_prefixed(t *testing.T) {
 	tk, _ := New()
 	_ = tk.AddTool(&mockTool{name: "my_tool"})
 	t.Log(tk.tools["my_tool"].Name())
-	if tk.tools["my_tool"].Name() != NamespaceBuiltin+".my_tool" {
+	if tk.tools["my_tool"].Name() != BuiltinNamespace+".my_tool" {
 		t.Fatalf("expected namespaced name, got %q", tk.tools["my_tool"].Name())
 	}
 }
@@ -224,7 +224,7 @@ func Test_Lookup_002_prompt_by_name(t *testing.T) {
 func Test_Lookup_003_tool_by_namespace_name(t *testing.T) {
 	tk, _ := New()
 	_ = tk.AddTool(&mockTool{name: "my_tool"})
-	v, err := tk.Lookup(context.Background(), NamespaceBuiltin+".my_tool")
+	v, err := tk.Lookup(context.Background(), BuiltinNamespace+".my_tool")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -314,7 +314,7 @@ func Test_Lookup_010_output_tool_by_name(t *testing.T) {
 
 func Test_Lookup_011_output_tool_by_namespace_name(t *testing.T) {
 	tk, _ := New()
-	v, err := tk.Lookup(context.Background(), NamespaceBuiltin+"."+toolpkg.OutputToolName)
+	v, err := tk.Lookup(context.Background(), BuiltinNamespace+"."+toolpkg.OutputToolName)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -322,7 +322,7 @@ func Test_Lookup_011_output_tool_by_namespace_name(t *testing.T) {
 	if !ok {
 		t.Fatalf("expected llm.Tool, got %T", v)
 	}
-	if tool.Name() != NamespaceBuiltin+"."+toolpkg.OutputToolName {
+	if tool.Name() != BuiltinNamespace+"."+toolpkg.OutputToolName {
 		t.Fatalf("expected namespaced name, got %q", tool.Name())
 	}
 }
