@@ -11,7 +11,6 @@ import (
 	"syscall"
 
 	// Packages
-	llm "github.com/mutablelogic/go-llm"
 	toolkit "github.com/mutablelogic/go-llm/pkg/toolkit"
 	resource "github.com/mutablelogic/go-llm/pkg/toolkit/resource"
 	errgroup "golang.org/x/sync/errgroup"
@@ -79,86 +78,41 @@ func main() {
 		return tk.Run(ctx)
 	})
 
-	// Call builtin.greet now — tools are already registered synchronously above.
-	g.Go(func() error {
-		select {
-		case <-ctx.Done():
-			return nil
-		default:
-		}
-
-		// get the user
-		user, err := user.Current()
-		if err != nil {
-			return err
-		}
-
-		// Call the greet tool with the user's name.
-		input, err := resource.JSON("input", greetRequest{Name: user.Name})
-		if err != nil {
-			return err
-		}
-
-		// Call the tool by name, which will route to the local implementation since it's registered as "builtin.greet".
-		result, err := tk.Call(ctx, "builtin.greet", input)
+	// Once both remote connectors have connected, call greet and fetch.
+	d.SetOnReady(func() {
+		u, err := user.Current()
 		if err != nil {
 			slog.Error("greet", "err", err)
-			return nil
+			return
 		}
-
-		// Log the result if there is one.
-		if result != nil {
-			data, err := result.Read(ctx)
-			if err != nil {
+		input, err := resource.JSON("input", greetRequest{Name: u.Name})
+		if err != nil {
+			slog.Error("greet", "err", err)
+			return
+		}
+		if result, err := tk.Call(ctx, "builtin.greet", input); err != nil {
+			slog.Error("greet", "err", err)
+		} else if result != nil {
+			if data, err := result.Read(ctx); err != nil {
 				slog.Error("greet", "err", err)
 			} else {
 				slog.Info("greet", "result", data)
 			}
 		}
-		return nil
-	})
 
-	// Call fetch once the remote connector that serves it is ready.
-	// Retry on ErrNotFound, waiting for the next tool-list refresh each time,
-	// so the call succeeds regardless of which connector connects first.
-	g.Go(func() error {
-		// fetchRequest matches the input schema of the mcp-fetch.fetch tool.
-		type fetchRequest struct {
-			URL        string `json:"url"`
-			MaxLength  int    `json:"max_length,omitempty"`
-			StartIndex int    `json:"start_index,omitempty"`
-			Raw        bool   `json:"raw,omitempty"`
-		}
-		input, err := resource.JSON("input", fetchRequest{URL: "https://news.bbc.co.uk/", MaxLength: 100})
+		input, err = resource.JSON("input", fetchRequest{URL: "https://news.bbc.co.uk/", MaxLength: 100})
 		if err != nil {
-			return err
+			slog.Error("fetch", "err", err)
+			return
 		}
-
-		for {
-			select {
-			case <-ctx.Done():
-				return nil
-			case <-d.ToolsChanged():
-			}
-
-			result, err := tk.Call(ctx, "fetch", input)
-			if errors.Is(err, llm.ErrNotFound) {
-				// Tool not yet registered; wait for the next refresh.
-				continue
-			}
-			if err != nil {
+		if result, err := tk.Call(ctx, "fetch", input); err != nil {
+			slog.Error("fetch", "err", err)
+		} else if result != nil {
+			if data, err := result.Read(ctx); err != nil {
 				slog.Error("fetch", "err", err)
-				return nil
+			} else {
+				slog.Info("fetch", "result", data)
 			}
-			if result != nil {
-				data, err := result.Read(ctx)
-				if err != nil {
-					slog.Error("fetch", "err", err)
-				} else {
-					slog.Info("fetch", "result", data)
-				}
-			}
-			return nil
 		}
 	})
 

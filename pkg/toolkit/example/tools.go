@@ -26,6 +26,13 @@ type greetResponse struct {
 	Greeting string `json:"greeting"`
 }
 
+type fetchRequest struct {
+	URL        string `json:"url"`
+	MaxLength  int    `json:"max_length,omitempty"`
+	StartIndex int    `json:"start_index,omitempty"`
+	Raw        bool   `json:"raw,omitempty"`
+}
+
 var _ llm.Tool = (*greetTool)(nil)
 
 ///////////////////////////////////////////////////////////////////////////////

@@ -11,35 +11,36 @@ import (
 	mcpclient "github.com/mutablelogic/go-llm/pkg/mcp/client"
 	schema "github.com/mutablelogic/go-llm/pkg/schema"
 	toolkit "github.com/mutablelogic/go-llm/pkg/toolkit"
-	"github.com/mutablelogic/go-server/pkg/types"
+	types "github.com/mutablelogic/go-server/pkg/types"
 )
 
 ///////////////////////////////////////////////////////////////////////////////
 // TYPES
 
 type delegate struct {
-	tk           toolkit.Toolkit
-	mu           sync.Mutex
-	toolsChanged chan struct{} // closed and replaced on each ToolListChanged
+	tk        toolkit.Toolkit
+	mu        sync.Mutex
+	connected int
+	onReady   func()
 }
 
 ///////////////////////////////////////////////////////////////////////////////
 // LIFECYCLE
 
 func NewDelegate() *delegate {
-	return &delegate{toolsChanged: make(chan struct{})}
+	return &delegate{}
 }
 
 func (d *delegate) SetToolkit(tk toolkit.Toolkit) {
 	d.tk = tk
 }
 
-// ToolsChanged returns a channel that is closed whenever the tool list changes
-// (from any source). Call it again after waking to get the next signal.
-func (d *delegate) ToolsChanged() <-chan struct{} {
+// SetOnReady registers a callback invoked (in a new goroutine) once both
+// remote connectors have reported a successful connection.
+func (d *delegate) SetOnReady(fn func()) {
 	d.mu.Lock()
 	defer d.mu.Unlock()
-	return d.toolsChanged
+	d.onReady = fn
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -49,18 +50,22 @@ func (d *delegate) OnEvent(evt toolkit.ConnectorEvent) {
 	switch evt.Kind {
 	case toolkit.ConnectorEventStateChange:
 		slog.Info("connector state changed", "state", evt.State, "connector", evt.Connector)
+		if evt.State.ConnectedAt != nil {
+			d.mu.Lock()
+			d.connected++
+			ready := d.connected == 2
+			onReady := d.onReady
+			d.mu.Unlock()
+			if ready && onReady != nil {
+				go onReady()
+			}
+		}
 	case toolkit.ConnectorEventToolListChanged:
-		// Broadcast: close the current channel and replace it so all waiters wake.
-		d.mu.Lock()
-		old := d.toolsChanged
-		d.toolsChanged = make(chan struct{})
-		d.mu.Unlock()
-		close(old)
 		d.logTools()
 	case toolkit.ConnectorEventPromptListChanged:
-		//d.logPrompts()
+		d.logPrompts()
 	case toolkit.ConnectorEventResourceListChanged:
-		//d.logResources()
+		d.logResources()
 	case toolkit.ConnectorEventResourceUpdated:
 		slog.Info("resource updated", "uri", evt.URI, "connector", evt.Connector)
 	}
