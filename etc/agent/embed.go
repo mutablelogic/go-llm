@@ -2,6 +2,5 @@ package testdata
 
 import "embed"
 
-//go:embed *.md
-//go:exclude README.md
+//go:embed extract_entities.md summarize.md translate.md
 var FS embed.FS

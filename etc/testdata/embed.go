@@ -2,6 +2,5 @@ package testdata
 
 import "embed"
 
-//go:embed *
-//go:exclude *.go
+//go:embed LICENSE guggenheim.jpg
 var FS embed.FS

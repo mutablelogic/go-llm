@@ -161,5 +161,8 @@ func Unmarshal(data []byte) (llm.Resource, error) {
 	if v.Description != "" {
 		r = WithDescription(v.Description, r)
 	}
+	if v.URI != "" && v.URI != r.URI() {
+		r = WithURI(v.URI, r)
+	}
 	return r, nil
 }

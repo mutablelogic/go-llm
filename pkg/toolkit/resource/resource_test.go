@@ -257,6 +257,22 @@ func Test_WithURI_004(t *testing.T) {
 	assert.Equal("my description", v["description"])
 }
 
+func Test_WithURI_005(t *testing.T) {
+	// MarshalJSON → Unmarshal round-trip preserves an overridden URI
+	assert := assert.New(t)
+	r, err := resource.Text("item", "content")
+	assert.NoError(err)
+	ur := resource.WithURI("custom:my-uri", r)
+	b, err := json.Marshal(ur)
+	assert.NoError(err)
+	r2, err := resource.Unmarshal(b)
+	assert.NoError(err)
+	assert.Equal("custom:my-uri", r2.URI())
+	data, err := r2.Read(context.Background())
+	assert.NoError(err)
+	assert.Equal([]byte("content"), data)
+}
+
 ///////////////////////////////////////////////////////////////////////////////
 // DATA — additional coverage
 
@@ -340,7 +356,8 @@ func Test_Unmarshal_002_bad_text_data(t *testing.T) {
 }
 
 func Test_Unmarshal_003_bad_binary_data(t *testing.T) {
-	// blob field is not a JSON base64 bytes array — triggers default error path.
+	// blob is expected to be a base64-encoded string (Go's json.Marshal for []byte),
+	// but the value here is not a valid JSON string — triggers the default error path.
 	assert := assert.New(t)
 	bad := []byte(`{"uri":"data:x","name":"x","type":"application/octet-stream","blob":"not-base64-array"}`)
 	_, err := resource.Unmarshal(bad)

@@ -375,7 +375,11 @@ result, err = tk.Call(ctx, p, textRes, attachment)
 
 // Call an llm.Tool directly.
 inputRes, _ := resource.JSON("input", inputMap)
-result, err = tk.Call(ctx, tk.Lookup(ctx, "my_tool"), inputRes)
+tool, err := tk.Lookup(ctx, "my_tool")
+if err != nil {
+    // handle error
+}
+result, err = tk.Call(ctx, tool, inputRes)
 ```
 
 The manager:
