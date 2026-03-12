@@ -23,68 +23,102 @@ A toolkit holds three kinds of tools:
 To create a toolkit, use `toolkit.New` with any number of options:
 
 ```go
-type ToolkitHandler interface {
-    // OnStateChange is called when a connector connects or reconnects.
-    OnStateChange(llm.Connector, schema.ConnectorState)
-
-    // OnToolListChanged is called when a connector's tool list changes.
-    OnToolListChanged(llm.Connector)
-
-    // OnPromptListChanged is called when a connector's prompt list changes.
-    OnPromptListChanged(llm.Connector)
-
-    // OnResourceListChanged is called when a connector's resource list changes.
-    OnResourceListChanged(llm.Connector)
-
-    // OnResourceUpdated is called when a specific resource (identified by uri) is updated.
-    OnResourceUpdated(llm.Connector, string)
-
-    // Call executes a prompt via the manager, passing optional input resources.
-    Call(context.Context, llm.Prompt, ...llm.Resource) (llm.Resource, error)
-
-    // List is called to enumerate items in the "user" namespace — prompts and resources
-    // stored persistently by the manager (e.g. in a database). Tools are never returned
-    // here because they are compiled code, not data.
-    List(context.Context, ListRequest) (*ListResponse, error)
-
-    // CreateConnector is called to create a new connector for the given URL.
-    // The onState callback must be called by the connector whenever its state
-    // changes (e.g. after initial connection). The toolkit uses the reported
-    // Name field to register the connector in the namespace map.
-    CreateConnector(url string, onState func(schema.ConnectorState)) (llm.Connector, error)
+tk, err := toolkit.New(
+    toolkit.WithTool(myTool1, myTool2),
+    toolkit.WithDelegate(myDelegate),
+)
+if err != nil {
+    log.Fatal(err)
 }
 
-func main() {
-    // Create a toolkit with builtins and a handler for connector events and prompt execution.
-    tk, err := toolkit.New(
-        toolkit.WithTool(myTool1, myTool2),
-        toolkit.WithHandler(myHandler),
-    )
-    if err != nil {
-        log.Fatal(err)
-    }
+// Add a remote MCP connector — namespace inferred from the server.
+// Can be called before or while Run is active.
+if err = tk.AddConnector("http://mcp-server/sse"); err != nil {
+    log.Fatal(err)
+}
 
-    // Add a remote MCP connector — namespace inferred from the server.
-    // Can be called before or while Run is active.
-    if err = tk.AddConnector("http://mcp-server/sse"); err != nil {
-        log.Fatal(err)
-    }
+// Or provide an explicit namespace.
+if err = tk.AddConnectorNS("my-server", "http://mcp-server/sse"); err != nil {
+    log.Fatal(err)
+}
 
-    // Or provide an explicit namespace.
-    if err = tk.AddConnectorNS("my-server", "http://mcp-server/sse"); err != nil {
-        log.Fatal(err)
-    }
-
-    // Run starts all connectors and blocks until ctx is cancelled.
-    // It closes the toolkit and waits for all connectors to finish on return.
-    // Connectors can be added and removed while Run is active.
-    if err = tk.Run(ctx); err != nil {
-        log.Fatal(err)
-    }
+// Run starts all connectors and blocks until ctx is cancelled.
+// It closes the toolkit and waits for all connectors to finish on return.
+// Connectors can be added and removed while Run is active.
+if err = tk.Run(ctx); err != nil {
+    log.Fatal(err)
 }
 ```
 
-The connector passed to each callback is the originating `llm.Connector` instance. The list-changed callbacks are notifications only — the handler typically calls `tk.List` on the toolkit to enumerate the full aggregated contents across all namespaces.
+## Delegates
+
+A `ToolkitDelegate` connects the toolkit to a "delegate" — it executes prompts, creates MCP connector instances, and receives lifecycle events. Pass it to `toolkit.New` with `WithDelegate`:
+
+```go
+type ToolkitDelegate interface {
+    // OnEvent is called when a connector fires a lifecycle or list-change notification.
+    // The event's Connector field is always set to the originating connector.
+    OnEvent(ConnectorEvent)
+
+    // Call executes a prompt via the delegate, passing optional input resources.
+    Call(context.Context, llm.Prompt, ...llm.Resource) (llm.Resource, error)
+
+    // CreateConnector is called to create a new connector for the given URL.
+    // The onEvent callback must be called by the connector to report lifecycle
+    // and list-change events back to the toolkit.
+    CreateConnector(url string, onEvent func(ConnectorEvent)) (llm.Connector, error)
+}
+```
+
+`OnEvent` is called outside the toolkit's internal lock, so the delegate may safely call back into the toolkit (e.g. `tk.List`). The `ConnectorEvent` carries the event kind, the originating connector, and any kind-specific payload:
+
+| `Kind` | Extra fields | When fired |
+|---|---|---|
+| `ConnectorEventToolListChanged` | — | Remote tool list changed |
+| `ConnectorEventPromptListChanged` | — | Remote prompt list changed |
+| `ConnectorEventResourceListChanged` | — | Remote resource list changed |
+| `ConnectorEventResourceUpdated` | `URI string` | A specific resource was updated |
+
+The list-change events are notifications only — the delegate typically calls `tk.List` on the toolkit to enumerate the full aggregated contents across all namespaces.
+
+### Example Delegate
+
+```go
+func (myDelegate) OnEvent(evt tk.ConnectorEvent) {
+    switch evt.Kind {
+    case tk.ConnectorEventToolListChanged:
+        resp, _ := d.toolkit.List(context.Background(), tk.ListRequest{Type: tk.ListTypeTools})
+        log.Printf("tools updated: %d", len(resp.Tools))
+    case tk.ConnectorEventResourceUpdated:
+        log.Printf("resource updated: %s", evt.URI)
+    }
+}
+
+func (myDelegate) Call(ctx context.Context, p llm.Prompt, res ...llm.Resource) (llm.Resource, error) {
+    return nil, llm.ErrNotImplemented
+}
+
+// CreateConnector fires ConnectorEventStateChange with server info after
+// the initial handshake, then forwards list-change notifications.
+func (myDelegate) CreateConnector(url string, onEvent func(tk.ConnectorEvent)) (llm.Connector, error) {
+    return mcp.New(url, "my-app", "1.0.0",
+        mcp.OptOnStateChange(func(ctx context.Context, state *schema.ConnectorState) {
+            onEvent(tk.StateChangeEvent(*state))
+        }),
+        mcp.OptOnToolListChanged(func(context.Context) {
+            onEvent(tk.ToolListChangeEvent())
+        }),
+        mcp.OptOnPromptListChanged(func(context.Context) {
+            onEvent(tk.PromptListChangeEvent())
+        }),
+        mcp.OptOnResourceListChanged(func(context.Context) {
+            onEvent(tk.ResourceListChangeEvent())
+        }),
+    )
+}
+```
+
+> **Note:** See [pkg/toolkit/example/handler.go](../toolkit/example/handler.go) for a full working implementation.
 
 ## Lookup
 
@@ -537,7 +571,7 @@ import "go.opentelemetry.io/otel/trace"
 
 tk, err := toolkit.New(
     toolkit.WithTool(myTool1, myTool2),
-    toolkit.WithHandler(myHandler),
+    toolkit.WithDelegate(myHandler),
     toolkit.WithTracer(tracer),
 )
 ```
@@ -702,9 +736,9 @@ They appear in `tk.List` and are retrievable by URI via `tk.Lookup`.
 ### Connector Resources
 
 Resources advertised by a remote MCP server are managed automatically. When the server notifies
-the toolkit that its resource list has changed, `ToolkitHandler.OnResourceListChanged` is called.
-When a specific resource's content is updated, `ToolkitHandler.OnResourceUpdated` is called with
-the resource's URI. The handler can call `c.ListResources(ctx)` directly to retrieve the current
+the toolkit that its resource list has changed, `ToolkitDelegate.OnEvent` is called with `ConnectorEventResourceListChanged`.
+When a specific resource's content is updated, `ToolkitDelegate.OnEvent` is called with
+`ConnectorEventResourceUpdated` and the resource URI in the event's `URI` field. The delegate can call `c.ListResources(ctx)` directly to retrieve the current
 list from the connector.
 
 ## Toolkit as MCP Server
@@ -745,14 +779,14 @@ func (s *MyMCPServer) ListTools(ctx context.Context) ([]llm.Tool, error) {
 }
 ```
 
-The `ToolkitHandler` callbacks also align with the MCP server's responsibility to push change notifications to connected clients:
+The `ToolkitDelegate` callbacks also align with the MCP server's responsibility to push change notifications to connected clients:
 
-| Toolkit callback | MCP notification to send |
+| Event kind | MCP notification to send |
 |---|---|
-| `OnToolListChanged` | `notifications/tools/list_changed` |
-| `OnPromptListChanged` | `notifications/prompts/list_changed` |
-| `OnResourceListChanged` | `notifications/resources/list_changed` |
-| `OnResourceUpdated` | `notifications/resources/updated` |
+| `ConnectorEventToolListChanged` | `notifications/tools/list_changed` |
+| `ConnectorEventPromptListChanged` | `notifications/prompts/list_changed` |
+| `ConnectorEventResourceListChanged` | `notifications/resources/list_changed` |
+| `ConnectorEventResourceUpdated` | `notifications/resources/updated` |
 
 This means when an upstream MCP connector reconnects and its tool list changes, the server can automatically fan the notification out to all of its own connected clients without any additional bookkeeping.
 
@@ -807,9 +841,9 @@ func WithPrompt(items ...llm.Prompt) Option
 // WithResource registers one or more builtin resources with the toolkit at construction time.
 func WithResource(items ...llm.Resource) Option
 
-// WithHandler sets the ToolkitHandler that receives connector lifecycle callbacks,
+// WithDelegate sets the ToolkitDelegate that receives connector lifecycle callbacks,
 // executes prompts, serves the "user" namespace, and creates connectors.
-func WithHandler(h ToolkitHandler) Option
+func WithDelegate(h ToolkitDelegate) Option
 
 // WithTracer sets an OpenTelemetry tracer. The toolkit starts a span named after
 // the tool before each Run call and embeds it into the ctx.

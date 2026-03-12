@@ -7,7 +7,6 @@ import (
 	// Packages
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 	llm "github.com/mutablelogic/go-llm"
-	schema "github.com/mutablelogic/go-llm/pkg/schema"
 )
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -65,30 +64,19 @@ type Toolkit interface {
 	Call(context.Context, any, ...llm.Resource) (llm.Resource, error)
 }
 
-type ToolkitHandler interface {
-	// OnStateChange is called when a connector connects or reconnects.
-	OnStateChange(llm.Connector, schema.ConnectorState)
-
-	// OnToolListChanged is called when a connector's tool list changes.
-	OnToolListChanged(llm.Connector)
-
-	// OnPromptListChanged is called when a connector's prompt list changes.
-	OnPromptListChanged(llm.Connector)
-
-	// OnResourceListChanged is called when a connector's resource list changes.
-	OnResourceListChanged(llm.Connector)
-
-	// OnResourceUpdated is called when a specific resource (identified by uri) is updated.
-	OnResourceUpdated(llm.Connector, string)
+type ToolkitDelegate interface {
+	// OnEvent is called when a connector fires a lifecycle or list-change notification.
+	// The event's Connector field is always set to the originating connector.
+	OnEvent(ConnectorEvent)
 
 	// Call executes a prompt via the manager, passing optional input resources.
 	Call(context.Context, llm.Prompt, ...llm.Resource) (llm.Resource, error)
 
 	// CreateConnector is called to create a new connector for the given URL.
-	// The onState callback must be called by the connector whenever its state
-	// changes (e.g. after initial connection). The toolkit uses the reported
-	// Name field to register the connector in the namespace map.
-	CreateConnector(url string, onState func(schema.ConnectorState)) (llm.Connector, error)
+	// The onEvent callback must be called by the connector to report lifecycle
+	// and list-change events back to the toolkit. The toolkit injects the
+	// Connector field before forwarding to OnEvent, so the caller need not set it.
+	CreateConnector(url string, onEvent func(ConnectorEvent)) (llm.Connector, error)
 }
 
 type Session interface {

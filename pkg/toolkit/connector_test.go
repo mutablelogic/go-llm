@@ -7,7 +7,6 @@ import (
 
 	// Packages
 	llm "github.com/mutablelogic/go-llm"
-	schema "github.com/mutablelogic/go-llm/pkg/schema"
 )
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -44,17 +43,13 @@ type mockConnectorHandler struct {
 	err  error
 }
 
-func (h *mockConnectorHandler) CreateConnector(_ string, _ func(schema.ConnectorState)) (llm.Connector, error) {
+func (h *mockConnectorHandler) CreateConnector(_ string, _ func(ConnectorEvent)) (llm.Connector, error) {
 	if h.err != nil {
 		return nil, h.err
 	}
 	return h.conn, nil
 }
-func (h *mockConnectorHandler) OnStateChange(llm.Connector, schema.ConnectorState) {}
-func (h *mockConnectorHandler) OnToolListChanged(llm.Connector)                    {}
-func (h *mockConnectorHandler) OnPromptListChanged(llm.Connector)                  {}
-func (h *mockConnectorHandler) OnResourceListChanged(llm.Connector)                {}
-func (h *mockConnectorHandler) OnResourceUpdated(llm.Connector, string)            {}
+func (h *mockConnectorHandler) OnEvent(ConnectorEvent) {}
 func (h *mockConnectorHandler) Call(_ context.Context, _ llm.Prompt, _ ...llm.Resource) (llm.Resource, error) {
 	return nil, nil
 }
@@ -66,7 +61,7 @@ func (h *mockConnectorHandler) List(_ context.Context, _ ListRequest) (*ListResp
 func newConnectorToolkit(t *testing.T) (*toolkit, *mockListConnector) {
 	t.Helper()
 	conn := &mockListConnector{}
-	tk, err := New(WithHandler(&mockConnectorHandler{conn: conn}))
+	tk, err := New(WithDelegate(&mockConnectorHandler{conn: conn}))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -220,7 +215,7 @@ func Test_AddConnector_004_bad_url(t *testing.T) {
 
 func Test_AddConnector_005_handler_error(t *testing.T) {
 	sentinel := errors.New("handler failure")
-	tk, err := New(WithHandler(&mockConnectorHandler{err: sentinel}))
+	tk, err := New(WithDelegate(&mockConnectorHandler{err: sentinel}))
 	if err != nil {
 		t.Fatal(err)
 	}

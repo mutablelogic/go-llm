@@ -16,7 +16,7 @@ import (
 // Call executes a tool or prompt, passing optional resource arguments.
 // The key argument may be a string name, an llm.Tool, or an llm.Prompt.
 // For tools, the first resource's content is used as the JSON input.
-// For prompts, execution is delegated to the handler.
+// For prompts, execution is delegated to the delegate.
 func (tk *toolkit) Call(ctx context.Context, key any, resources ...llm.Resource) (llm.Resource, error) {
 	// Resolve key to a tool or prompt.
 	var t llm.Tool
@@ -46,10 +46,10 @@ func (tk *toolkit) Call(ctx context.Context, key any, resources ...llm.Resource)
 	case t != nil:
 		return tk.callTool(ctx, t, resources...)
 	case p != nil:
-		if tk.handler == nil {
-			return nil, llm.ErrNotImplemented.With("no handler set for prompt execution")
+		if tk.delegate == nil {
+			return nil, llm.ErrNotImplemented.With("no delegate set for prompt execution")
 		}
-		return tk.handler.Call(ctx, p, resources...)
+		return tk.delegate.Call(ctx, p, resources...)
 	default:
 		return nil, llm.ErrNotFound.Withf("%v", key)
 	}

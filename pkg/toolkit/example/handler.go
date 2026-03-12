@@ -4,15 +4,12 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
-	"sync"
-	"time"
 
 	// Packages
 	llm "github.com/mutablelogic/go-llm"
 	mcpclient "github.com/mutablelogic/go-llm/pkg/mcp/client"
 	schema "github.com/mutablelogic/go-llm/pkg/schema"
 	toolkit "github.com/mutablelogic/go-llm/pkg/toolkit"
-	types "github.com/mutablelogic/go-server/pkg/types"
 )
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -36,18 +33,28 @@ func (h *handler) SetToolkit(tk toolkit.Toolkit) {
 ///////////////////////////////////////////////////////////////////////////////
 // CALLBACKS
 
-func (h *handler) OnStateChange(c llm.Connector, state schema.ConnectorState) {
-	slog.Info("connector state changed", "state", state)
-
-	// Log out the current lists of tools, prompts, and resources on every state change for
-	// visibility in this example. In a real implementation, you would likely want to be
-	// more selective about when to log these.
-	h.OnToolListChanged(c)
-	h.OnPromptListChanged(c)
-	h.OnResourceListChanged(c)
+func (h *handler) OnEvent(evt toolkit.ConnectorEvent) {
+	switch evt.Kind {
+	case toolkit.ConnectorEventStateChange:
+		slog.Info("connector state changed", "state", evt.State)
+		// Log out the current lists of tools, prompts, and resources on every
+		// state change for visibility. In a real implementation you would likely
+		// be more selective.
+		h.logTools()
+		h.logPrompts()
+		h.logResources()
+	case toolkit.ConnectorEventToolListChanged:
+		h.logTools()
+	case toolkit.ConnectorEventPromptListChanged:
+		h.logPrompts()
+	case toolkit.ConnectorEventResourceListChanged:
+		h.logResources()
+	case toolkit.ConnectorEventResourceUpdated:
+		slog.Info("resource updated", "uri", evt.URI)
+	}
 }
 
-func (h *handler) OnToolListChanged(_ llm.Connector) {
+func (h *handler) logTools() {
 	if h.tk == nil {
 		return
 	}
@@ -61,7 +68,7 @@ func (h *handler) OnToolListChanged(_ llm.Connector) {
 	}
 }
 
-func (h *handler) OnPromptListChanged(_ llm.Connector) {
+func (h *handler) logPrompts() {
 	if h.tk == nil {
 		return
 	}
@@ -75,7 +82,7 @@ func (h *handler) OnPromptListChanged(_ llm.Connector) {
 	}
 }
 
-func (h *handler) OnResourceListChanged(_ llm.Connector) {
+func (h *handler) logResources() {
 	if h.tk == nil {
 		return
 	}
@@ -87,10 +94,6 @@ func (h *handler) OnResourceListChanged(_ llm.Connector) {
 	for _, r := range resp.Resources {
 		slog.Info("resource", "resource", fmt.Sprint(r))
 	}
-}
-
-func (h *handler) OnResourceUpdated(c llm.Connector, uri string) {
-	slog.Info("resource updated", "uri", uri)
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -106,61 +109,20 @@ func (h *handler) List(ctx context.Context, req toolkit.ListRequest) (*toolkit.L
 }
 
 // CreateConnector creates a new MCP HTTP connector for the given URL.
-// onState is called once after the initial connection handshake to report the
-// server's name (used by the toolkit to register the connector's namespace).
-func (h *handler) CreateConnector(url string, onState func(schema.ConnectorState)) (llm.Connector, error) {
-	w := &mcpConnector{onState: onState}
-
-	c, err := mcpclient.New(url, "go-llm-example", "0.0.1",
-		// Report the server name to the toolkit on first tool-list notification,
-		// which fires once during Run's initial refresh after a successful connect.
-		mcpclient.OptOnToolListChanged(func(ctx context.Context) {
-			w.reportStateOnce()
+// onEvent is called to report lifecycle and list-change events back to the toolkit.
+func (h *handler) CreateConnector(url string, onEvent func(toolkit.ConnectorEvent)) (llm.Connector, error) {
+	return mcpclient.New(url, "go-llm-example", "0.0.1",
+		mcpclient.OptOnStateChange(func(ctx context.Context, state *schema.ConnectorState) {
+			onEvent(toolkit.StateChangeEvent(*state))
 		}),
-		// Forward connector-level list-changed notifications to the handler.
+		mcpclient.OptOnToolListChanged(func(ctx context.Context) {
+			onEvent(toolkit.ToolListChangeEvent())
+		}),
 		mcpclient.OptOnPromptListChanged(func(ctx context.Context) {
-			slog.Info("prompt list changed", "url", url)
+			onEvent(toolkit.PromptListChangeEvent())
 		}),
 		mcpclient.OptOnResourceListChanged(func(ctx context.Context) {
-			slog.Info("resource list changed", "url", url)
+			onEvent(toolkit.ResourceListChangeEvent())
 		}),
 	)
-	if err != nil {
-		return nil, err
-	}
-	w.Client = c
-	return w, nil
-}
-
-///////////////////////////////////////////////////////////////////////////////
-// MCP CONNECTOR ADAPTER
-
-// mcpConnector wraps *mcpclient.Client and calls onState once after the initial
-// connection handshake using the server-reported name.
-type mcpConnector struct {
-	*mcpclient.Client
-	onState func(schema.ConnectorState)
-	once    sync.Once
-}
-
-// reportStateOnce is safe to call from any goroutine; it fires onState exactly
-// once with the server information available from ServerInfo().
-func (w *mcpConnector) reportStateOnce() {
-	w.once.Do(func() {
-		if w.onState == nil {
-			return
-		}
-		name, version, _ := w.Client.ServerInfo()
-		now := time.Now()
-		state := schema.ConnectorState{
-			ConnectedAt: &now,
-		}
-		if name != "" {
-			state.Name = types.Ptr(name)
-		}
-		if version != "" {
-			state.Version = types.Ptr(version)
-		}
-		w.onState(state)
-	})
 }

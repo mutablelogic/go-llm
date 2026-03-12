@@ -61,9 +61,10 @@ func (c *Client) refreshTools(ctx context.Context) {
 	if err != nil {
 		return
 	}
-	tools := make([]llm.Tool, 0)
-	var cursor string
-	for {
+	c.mu.Lock()
+	tools := make([]llm.Tool, 0, len(c.tools)+10)
+	c.mu.Unlock()
+	for cursor := ""; ; {
 		result, err := sess.ListTools(ctx, &sdkmcp.ListToolsParams{Cursor: cursor})
 		if err != nil {
 			return
@@ -71,10 +72,9 @@ func (c *Client) refreshTools(ctx context.Context) {
 		for _, t := range result.Tools {
 			tools = append(tools, &mcpTool{t: t, client: c})
 		}
-		if result.NextCursor == "" {
+		if cursor = result.NextCursor; cursor == "" {
 			break
 		}
-		cursor = result.NextCursor
 	}
 	c.mu.Lock()
 	c.tools = tools

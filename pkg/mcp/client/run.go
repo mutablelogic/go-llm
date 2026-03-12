@@ -2,9 +2,13 @@ package client
 
 import (
 	"context"
+	"time"
 
 	// Packages
+	sdkmcp "github.com/modelcontextprotocol/go-sdk/mcp"
 	llm "github.com/mutablelogic/go-llm"
+	schema "github.com/mutablelogic/go-llm/pkg/schema"
+	types "github.com/mutablelogic/go-server/pkg/types"
 )
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -41,6 +45,12 @@ func (c *Client) Run(ctx context.Context) error {
 	c.refreshPrompts(ctx)
 	c.refreshResources(ctx)
 
+	// Fire the state-change callback once after the initial handshake and
+	// cache population, so callers see a fully-populated server state.
+	if c.onStateChange != nil {
+		c.onStateChange(ctx, stateFromSession(session))
+	}
+
 	// Clear the session pointer and caches when Run exits.
 	defer func() {
 		c.mu.Lock()
@@ -65,4 +75,21 @@ func (c *Client) Run(ctx context.Context) error {
 
 	// Block until the session is fully torn down (server close or ctx cancel).
 	return session.Wait()
+}
+
+// stateFromSession builds a ConnectorState from the MCP initialize result.
+func stateFromSession(session *sdkmcp.ClientSession) *schema.ConnectorState {
+	now := time.Now()
+	state := &schema.ConnectorState{ConnectedAt: &now}
+	if res := session.InitializeResult(); res != nil {
+		if res.ServerInfo != nil {
+			if res.ServerInfo.Name != "" {
+				state.Name = types.Ptr(res.ServerInfo.Name)
+			}
+			if res.ServerInfo.Version != "" {
+				state.Version = types.Ptr(res.ServerInfo.Version)
+			}
+		}
+	}
+	return state
 }

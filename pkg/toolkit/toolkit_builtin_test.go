@@ -35,6 +35,18 @@ func (m *mockPrompt) Name() string        { return m.name }
 func (m *mockPrompt) Title() string       { return "mock prompt " + m.name }
 func (m *mockPrompt) Description() string { return "" }
 
+type mockDelegate struct {
+	events []ConnectorEvent
+}
+
+func (m *mockDelegate) OnEvent(evt ConnectorEvent) { m.events = append(m.events, evt) }
+func (m *mockDelegate) Call(_ context.Context, _ llm.Prompt, _ ...llm.Resource) (llm.Resource, error) {
+	return nil, nil
+}
+func (m *mockDelegate) CreateConnector(_ string, _ func(ConnectorEvent)) (llm.Connector, error) {
+	return nil, nil
+}
+
 ///////////////////////////////////////////////////////////////////////////////
 // AddTool
 
@@ -127,12 +139,91 @@ func Test_AddResource_001(t *testing.T) {
 	}
 }
 
-func Test_AddResource_002_duplicate(t *testing.T) {
+func Test_AddResource_002_update_succeeds(t *testing.T) {
+	// Adding a resource whose URI already exists should replace it, not error.
 	tk, _ := New()
+	r1, _ := resource.Text("greeting", "hello")
+	_ = tk.AddResource(r1)
+	r2, _ := resource.Text("greeting", "world")
+	if err := tk.AddResource(r2); err != nil {
+		t.Fatalf("expected success on update, got %v", err)
+	}
+	if len(tk.resources) != 1 {
+		t.Fatalf("expected 1 resource after update, got %d", len(tk.resources))
+	}
+}
+
+func Test_AddResource_004_update_replaces_content(t *testing.T) {
+	// After an update the stored resource should return the new content.
+	tk, _ := New()
+	r1, _ := resource.Text("greeting", "hello")
+	_ = tk.AddResource(r1)
+	r2, _ := resource.Text("greeting", "world")
+	_ = tk.AddResource(r2)
+	v, err := tk.Lookup(context.Background(), r1.URI())
+	if err != nil {
+		t.Fatal(err)
+	}
+	res, ok := v.(llm.Resource)
+	if !ok {
+		t.Fatalf("expected llm.Resource, got %T", v)
+	}
+	data, _ := res.Read(context.Background())
+	if string(data) != "world" {
+		t.Fatalf("expected updated content %q, got %q", "world", string(data))
+	}
+}
+
+func Test_AddResource_005_delegate_new_fires_list_changed(t *testing.T) {
+	d := &mockDelegate{}
+	tk, _ := New(WithDelegate(d))
 	r, _ := resource.Text("greeting", "hello")
 	_ = tk.AddResource(r)
-	if err := tk.AddResource(r); !errors.Is(err, llm.ErrBadParameter) {
-		t.Fatalf("expected ErrBadParameter, got %v", err)
+	if len(d.events) != 1 || d.events[0].Kind != ConnectorEventResourceListChanged {
+		t.Fatalf("expected 1 ResourceListChanged event, got %v", d.events)
+	}
+}
+
+func Test_AddResource_006_delegate_update_fires_resource_updated(t *testing.T) {
+	d := &mockDelegate{}
+	tk, _ := New(WithDelegate(d))
+	r1, _ := resource.Text("greeting", "hello")
+	_ = tk.AddResource(r1)
+	d.events = nil // reset after initial add
+	r2, _ := resource.Text("greeting", "world")
+	_ = tk.AddResource(r2)
+	if len(d.events) != 1 || d.events[0].Kind != ConnectorEventResourceUpdated {
+		t.Fatalf("expected 1 ResourceUpdated event, got %v", d.events)
+	}
+	if d.events[0].URI != r1.URI() {
+		t.Fatalf("expected URI %q, got %q", r1.URI(), d.events[0].URI)
+	}
+}
+
+func Test_AddResource_007_delegate_mixed_fires_both(t *testing.T) {
+	// One call with a new URI and an existing URI should fire both list-changed and updated.
+	d := &mockDelegate{}
+	tk, _ := New(WithDelegate(d))
+	r1, _ := resource.Text("greeting", "hello")
+	_ = tk.AddResource(r1)
+	d.events = nil // reset after initial add
+	r2, _ := resource.Text("farewell", "bye")
+	r1updated, _ := resource.Text("greeting", "world")
+	_ = tk.AddResource(r2, r1updated)
+	var hasList, hasUpdated bool
+	for _, e := range d.events {
+		switch e.Kind {
+		case ConnectorEventResourceListChanged:
+			hasList = true
+		case ConnectorEventResourceUpdated:
+			hasUpdated = true
+		}
+	}
+	if !hasList {
+		t.Fatal("expected ResourceListChanged event for new URI")
+	}
+	if !hasUpdated {
+		t.Fatal("expected ResourceUpdated event for existing URI")
 	}
 }
 

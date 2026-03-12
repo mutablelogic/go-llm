@@ -49,9 +49,10 @@ func (c *Client) refreshPrompts(ctx context.Context) {
 	if err != nil {
 		return
 	}
-	var prompts []llm.Prompt
-	var cursor string
-	for {
+	c.mu.Lock()
+	prompts := make([]llm.Prompt, 0, len(c.prompts)+10)
+	c.mu.Unlock()
+	for cursor := ""; ; {
 		result, err := sess.ListPrompts(ctx, &sdkmcp.ListPromptsParams{Cursor: cursor})
 		if err != nil {
 			return
@@ -59,10 +60,9 @@ func (c *Client) refreshPrompts(ctx context.Context) {
 		for _, p := range result.Prompts {
 			prompts = append(prompts, &mcpPrompt{p: p})
 		}
-		if result.NextCursor == "" {
+		if cursor = result.NextCursor; cursor == "" {
 			break
 		}
-		cursor = result.NextCursor
 	}
 	c.mu.Lock()
 	c.prompts = prompts

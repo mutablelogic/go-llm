@@ -21,7 +21,7 @@ func main() {
 	// Create a toolkit with builtins and a handler for connector events and prompt execution.
 	h := NewHandler()
 	tk, err := toolkit.New(
-		toolkit.WithHandler(h),
+		toolkit.WithDelegate(h),
 	)
 	if err != nil {
 		log.Fatal(err)
