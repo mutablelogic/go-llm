@@ -1,6 +1,7 @@
 package prompt_test
 
 import (
+	"encoding/json"
 	"os"
 	"strings"
 	"testing"
@@ -116,4 +117,114 @@ func Test_Read_010(t *testing.T) {
 	assert := assert.New(t)
 	_, err := prompt.Read(strings.NewReader("hello world"))
 	assert.Error(err)
+}
+
+///////////////////////////////////////////////////////////////////////////////
+// MarshalJSON tests
+
+func Test_JSON_001(t *testing.T) {
+	// no_frontmatter.md: title comes from H1, no arguments → JSON has title but no arguments key
+	assert := assert.New(t)
+	p, err := prompt.Read(openFile(t, "testdata/no_frontmatter.md"))
+	assert.NoError(err)
+	data, err := json.Marshal(p)
+	assert.NoError(err)
+
+	var got map[string]any
+	assert.NoError(json.Unmarshal(data, &got))
+	assert.Equal("no_frontmatter", got["name"])
+	assert.Equal("No Frontmatter Agent", got["title"])
+	assert.Nil(got["arguments"], "no arguments expected for a prompt with no input schema")
+}
+
+func Test_JSON_002(t *testing.T) {
+	// minimal.md: title from front matter, no input schema → no arguments key
+	assert := assert.New(t)
+	p, err := prompt.Read(openFile(t, "testdata/minimal.md"))
+	assert.NoError(err)
+	data, err := json.Marshal(p)
+	assert.NoError(err)
+
+	var got map[string]any
+	assert.NoError(json.Unmarshal(data, &got))
+	assert.Equal("minimal", got["name"])
+	assert.Equal("Minimal Agent", got["title"])
+	assert.Nil(got["arguments"])
+}
+
+func Test_JSON_003(t *testing.T) {
+	// summarizer.md: one required "text" argument with description
+	assert := assert.New(t)
+	p, err := prompt.Read(openFile(t, "testdata/summarizer.md"))
+	assert.NoError(err)
+	data, err := json.Marshal(p)
+	assert.NoError(err)
+
+	type arg struct {
+		Name        string `json:"name"`
+		Description string `json:"description"`
+		Required    bool   `json:"required"`
+	}
+	var got struct {
+		Name      string `json:"name"`
+		Title     string `json:"title"`
+		Arguments []arg  `json:"arguments"`
+	}
+	assert.NoError(json.Unmarshal(data, &got))
+	assert.Equal("summarizer", got.Name)
+	assert.Equal("Text Summarizer", got.Title)
+	if assert.Len(got.Arguments, 1) {
+		assert.Equal("text", got.Arguments[0].Name)
+		assert.Equal("The text to summarize", got.Arguments[0].Description)
+		assert.True(got.Arguments[0].Required)
+	}
+}
+
+func Test_JSON_004(t *testing.T) {
+	// multi_args.md: arguments sorted alphabetically, required flag correct,
+	// description preferred over title, title used as fallback when description absent
+	assert := assert.New(t)
+	p, err := prompt.Read(openFile(t, "testdata/multi_args.md"))
+	assert.NoError(err)
+	data, err := json.Marshal(p)
+	assert.NoError(err)
+
+	type arg struct {
+		Name        string `json:"name"`
+		Description string `json:"description"`
+		Required    bool   `json:"required"`
+	}
+	var got struct {
+		Arguments []arg `json:"arguments"`
+	}
+	assert.NoError(json.Unmarshal(data, &got))
+	if assert.Len(got.Arguments, 3) {
+		// Sorted: apple, mango, zebra
+		assert.Equal("apple", got.Arguments[0].Name)
+		assert.Equal("Apple description", got.Arguments[0].Description)
+		assert.True(got.Arguments[0].Required)
+
+		assert.Equal("mango", got.Arguments[1].Name)
+		assert.Equal("Mango description", got.Arguments[1].Description, "description should win over title")
+		assert.False(got.Arguments[1].Required)
+
+		assert.Equal("zebra", got.Arguments[2].Name)
+		assert.Equal("Zebra title", got.Arguments[2].Description, "title used as fallback when description absent")
+		assert.False(got.Arguments[2].Required)
+	}
+}
+
+func Test_JSON_005(t *testing.T) {
+	// WithNamespace: namespaced name appears in marshaled JSON, other fields unchanged
+	assert := assert.New(t)
+	p, err := prompt.Read(openFile(t, "testdata/minimal.md"))
+	assert.NoError(err)
+	np := prompt.WithNamespace("myns", p)
+	data, err := json.Marshal(np)
+	assert.NoError(err)
+
+	var got map[string]any
+	assert.NoError(json.Unmarshal(data, &got))
+	assert.Equal("myns.minimal", got["name"])
+	assert.Equal("Minimal Agent", got["title"])
 }

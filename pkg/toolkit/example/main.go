@@ -141,7 +141,7 @@ func main() {
 			slog.Error("fetch", "err", err)
 			return nil
 		}
-		result, err := tk.Call(ctx, "mcp-fetch.fetch", input)
+		result, err := tk.Call(ctx, "fetch", input)
 		if err != nil {
 			slog.Error("fetch", "err", err)
 			return nil

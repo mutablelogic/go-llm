@@ -34,9 +34,10 @@ var _ llm.Resource = (*dataResource)(nil)
 // CONSTRUCTOR
 
 // Data returns a new in-memory resource for the given raw bytes. The MIME type
-// is resolved by first checking the file extension of name, then falling back
-// to content sniffing. If name contains path separators or an extension, the
-// bare base name (without extension) is used as the resource identifier.
+// is resolved by content sniffing first; if the sniffed type is
+// application/octet-stream and name has an extension, the extension is used as
+// a fallback. If name contains path separators or an extension, the bare base
+// name (without extension) is used as the resource identifier.
 func Data(name string, data []byte) (llm.Resource, error) {
 	// Derive identifier from filename: strip directory and extension
 	id := strings.TrimSuffix(filepath.Base(name), filepath.Ext(name))

@@ -67,15 +67,23 @@ func (n *namespacedTool) MarshalJSON() ([]byte, error) {
 			OpenWorldHint:   meta.OpenWorldHint,
 		},
 	}
-	if inputSchema, err := n.InputSchema(); err == nil && inputSchema != nil {
-		if raw, err := json.Marshal(inputSchema); err == nil {
-			v.InputSchema = raw
+	if inputSchema, err := n.InputSchema(); err != nil {
+		return nil, err
+	} else if inputSchema != nil {
+		raw, err := json.Marshal(inputSchema)
+		if err != nil {
+			return nil, err
 		}
+		v.InputSchema = raw
 	}
-	if outputSchema, err := n.OutputSchema(); err == nil && outputSchema != nil {
-		if raw, err := json.Marshal(outputSchema); err == nil {
-			v.OutputSchema = raw
+	if outputSchema, err := n.OutputSchema(); err != nil {
+		return nil, err
+	} else if outputSchema != nil {
+		raw, err := json.Marshal(outputSchema)
+		if err != nil {
+			return nil, err
 		}
+		v.OutputSchema = raw
 	}
 	return json.Marshal(v)
 }

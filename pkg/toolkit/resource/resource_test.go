@@ -201,6 +201,62 @@ func Test_WithDescription_001(t *testing.T) {
 	assert.Equal("doc", r2.Name())
 }
 
+func Test_WithURI_001(t *testing.T) {
+	// WithURI overrides the URI while preserving name, type, and data
+	assert := assert.New(t)
+	r, err := resource.Text("item", "content")
+	assert.NoError(err)
+	ur := resource.WithURI("custom:my-uri", r)
+	assert.Equal("custom:my-uri", ur.URI())
+	assert.Equal("item", ur.Name())
+	assert.Equal("text/plain", ur.Type())
+	data, err := ur.Read(context.Background())
+	assert.NoError(err)
+	assert.Equal([]byte("content"), data)
+}
+
+func Test_WithURI_002(t *testing.T) {
+	// MarshalJSON emits the overridden URI
+	assert := assert.New(t)
+	r, err := resource.Text("item", "content")
+	assert.NoError(err)
+	ur := resource.WithURI("custom:my-uri", r)
+	b, err := json.Marshal(ur)
+	assert.NoError(err)
+	var v map[string]any
+	assert.NoError(json.Unmarshal(b, &v))
+	assert.Equal("custom:my-uri", v["uri"])
+	assert.Equal("item", v["name"])
+}
+
+func Test_WithURI_003(t *testing.T) {
+	// WithURI combined with WithNamespace: both overrides appear in marshaled JSON
+	assert := assert.New(t)
+	r, err := resource.Text("item", "content")
+	assert.NoError(err)
+	ur := resource.WithURI("custom:my-uri", resource.WithNamespace("myns", r))
+	b, err := json.Marshal(ur)
+	assert.NoError(err)
+	var v map[string]any
+	assert.NoError(json.Unmarshal(b, &v))
+	assert.Equal("custom:my-uri", v["uri"])
+	assert.Equal("myns.item", v["name"])
+}
+
+func Test_WithURI_004(t *testing.T) {
+	// WithURI combined with WithDescription: both overrides appear in marshaled JSON
+	assert := assert.New(t)
+	r, err := resource.Text("item", "content")
+	assert.NoError(err)
+	ur := resource.WithURI("custom:my-uri", resource.WithDescription("my description", r))
+	b, err := json.Marshal(ur)
+	assert.NoError(err)
+	var v map[string]any
+	assert.NoError(json.Unmarshal(b, &v))
+	assert.Equal("custom:my-uri", v["uri"])
+	assert.Equal("my description", v["description"])
+}
+
 ///////////////////////////////////////////////////////////////////////////////
 // DATA — additional coverage
 
