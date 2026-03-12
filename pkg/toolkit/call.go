@@ -6,6 +6,7 @@ import (
 
 	// Packages
 	llm "github.com/mutablelogic/go-llm"
+	resource "github.com/mutablelogic/go-llm/pkg/toolkit/resource"
 	types "github.com/mutablelogic/go-server/pkg/types"
 )
 
@@ -43,7 +44,7 @@ func (tk *toolkit) Call(ctx context.Context, key any, resources ...llm.Resource)
 	// Perform the call
 	switch {
 	case t != nil:
-		return callTool(ctx, t, resources...)
+		return tk.callTool(ctx, t, resources...)
 	case p != nil:
 		if tk.handler == nil {
 			return nil, llm.ErrNotImplemented.With("no handler set for prompt execution")
@@ -58,7 +59,7 @@ func (tk *toolkit) Call(ctx context.Context, key any, resources ...llm.Resource)
 // PRIVATE METHODS
 
 // callTool validates and executes a single tool. Only one resource is supported, whose content must be JSON and is passed as input to the tool. The output must be an llm.Resource or nil.
-func callTool(ctx context.Context, t llm.Tool, resources ...llm.Resource) (llm.Resource, error) {
+func (tk *toolkit) callTool(ctx context.Context, t llm.Tool, resources ...llm.Resource) (llm.Resource, error) {
 	var input json.RawMessage
 
 	// Check for too many resources. Only one is supported as input to the tool.
@@ -80,27 +81,24 @@ func callTool(ctx context.Context, t llm.Tool, resources ...llm.Resource) (llm.R
 		}
 		if s != nil {
 			// TODO: Validate input against schema
-			var mapInput map[string]any
-			if err := json.Unmarshal(input, &mapInput); err != nil {
+			var instance any
+			if err := json.Unmarshal(input, &instance); err != nil {
 				return nil, llm.ErrBadParameter.Withf("failed to unmarshal JSON input: %v", err)
 			}
 			resolved, err := s.Resolve(nil)
 			if err != nil {
 				return nil, llm.ErrBadParameter.Withf("schema resolution failed: %v", err)
 			}
-			if err := resolved.Validate(mapInput); err != nil {
+			if err := resolved.Validate(instance); err != nil {
 				return nil, llm.ErrBadParameter.Withf("input validation failed: %v", err)
 			}
 		}
 	}
 
-	// TODO: Set up the session for the call - this one is "builtin" session
-	// If this tool is a wrapper for a connector tool, it may set it's own session
-
 	// TODO: Start otel span
 
-	// Execute the tool
-	result, err := t.Run(ctx, input)
+	// Set a session and then execute the tool
+	result, err := t.Run(WithSessionContext(ctx, tk.newSession("", t.Name(), nil)), input)
 	if err != nil {
 		return nil, err
 	}
@@ -117,11 +115,35 @@ func callTool(ctx context.Context, t llm.Tool, resources ...llm.Resource) (llm.R
 		return nil, nil
 	}
 
-	// Output must be an llm.Resource.
-	resource, ok := result.(llm.Resource)
-	if !ok {
-		return nil, llm.ErrBadParameter.Withf("tool output must be nil or llm.Resource, got %T", result)
+	// Wrap common non-Resource return types into an appropriate llm.Resource.
+	// Tools like OutputTool return json.RawMessage directly; string and []byte
+	// are also accepted as convenience types.
+	var wrapped llm.Resource
+	switch v := result.(type) {
+	case llm.Resource:
+		wrapped = v
+	case json.RawMessage:
+		r, err := resource.JSON(t.Name(), v)
+		if err != nil {
+			return nil, llm.ErrBadParameter.Withf("wrapping json.RawMessage output: %v", err)
+		}
+		wrapped = r
+	case []byte:
+		r, err := resource.Data(t.Name(), v)
+		if err != nil {
+			return nil, llm.ErrBadParameter.Withf("wrapping []byte output: %v", err)
+		}
+		wrapped = r
+	case string:
+		r, err := resource.Text(t.Name(), v)
+		if err != nil {
+			return nil, llm.ErrBadParameter.Withf("wrapping string output: %v", err)
+		}
+		wrapped = r
+	default:
+		return nil, llm.ErrBadParameter.Withf("tool output must be nil, llm.Resource, json.RawMessage, []byte, or string, got %T", result)
 	}
+	resource := wrapped
 
 	// If JSON output and an output schema exists, validate the content.
 	if resource.Type() == types.ContentTypeJSON {
@@ -134,15 +156,15 @@ func callTool(ctx context.Context, t llm.Tool, resources ...llm.Resource) (llm.R
 			if err != nil {
 				return nil, llm.ErrBadParameter.Withf("failed to read resource for validation: %v", err)
 			}
-			var mapOutput map[string]any
-			if err := json.Unmarshal(data, &mapOutput); err != nil {
+			var instance any
+			if err := json.Unmarshal(data, &instance); err != nil {
 				return nil, llm.ErrBadParameter.Withf("failed to unmarshal JSON output: %v", err)
 			}
 			resolved, err := outputSchema.Resolve(nil)
 			if err != nil {
 				return nil, llm.ErrBadParameter.Withf("output schema resolution failed: %v", err)
 			}
-			if err := resolved.Validate(mapOutput); err != nil {
+			if err := resolved.Validate(instance); err != nil {
 				return nil, llm.ErrBadParameter.Withf("output validation failed: %v", err)
 			}
 		}

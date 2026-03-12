@@ -2,8 +2,10 @@ package toolkit
 
 import (
 	"context"
+	"log/slog"
 
 	// Packages
+	"github.com/modelcontextprotocol/go-sdk/mcp"
 	llm "github.com/mutablelogic/go-llm"
 	schema "github.com/mutablelogic/go-llm/pkg/schema"
 )
@@ -25,8 +27,8 @@ type Toolkit interface {
 	AddResource(...llm.Resource) error
 
 	// RemoveBuiltin removes a previously registered builtin tool by name,
-	// prompt by name, or resource by URI.
-	// Returns an error if the identifier matches zero or more than one item.
+	// prompt by name, or resource by URI. Tools are checked before prompts.
+	// Returns llm.ErrNotFound if no match exists.
 	RemoveBuiltin(string) error
 
 	// AddConnector registers a remote MCP server. The namespace is inferred from
@@ -49,7 +51,8 @@ type Toolkit interface {
 	Run(context.Context) error
 
 	// Lookup finds a tool, prompt, or resource by name, namespace.name, URI,
-	// or URI#namespace. Returns (nil, nil) if nothing matches.
+	// or URI#namespace. Tools take precedence over prompts when both share a name.
+	// Returns llm.ErrNotFound if nothing matches.
 	Lookup(context.Context, string) (any, error)
 
 	// List returns tools, prompts, and resources matching the request.
@@ -91,4 +94,31 @@ type ToolkitHandler interface {
 	// changes (e.g. after initial connection). The toolkit uses the reported
 	// Name field to register the connector in the namespace map.
 	CreateConnector(url string, onState func(schema.ConnectorState)) (llm.Connector, error)
+}
+
+type Session interface {
+	// ID returns the unique identifier for this client session.
+	ID() string
+
+	// ClientInfo returns the name and version of the connected MCP client.
+	// Returns nil when called outside an MCP session (e.g. in unit tests).
+	ClientInfo() *mcp.Implementation
+
+	// Capabilities returns the capabilities advertised by the client.
+	// Returns nil when called outside an MCP session.
+	Capabilities() *mcp.ClientCapabilities
+
+	// Meta returns the _meta map sent by the client in this tool call.
+	// Returns nil when no _meta was provided.
+	Meta() map[string]any
+
+	// Logger returns a slog.Logger whose output is forwarded to the client
+	// as MCP notifications/message events.
+	Logger() *slog.Logger
+
+	// Progress sends a progress notification back to the MCP caller.
+	// progress is the amount completed so far; total is the total expected
+	// (0 means unknown); message is an optional human-readable status string.
+	// Returns an error if the notification could not be delivered to the client.
+	Progress(progress, total float64, message string) error
 }

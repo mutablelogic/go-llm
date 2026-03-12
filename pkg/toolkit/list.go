@@ -179,10 +179,10 @@ func (tk *toolkit) List(ctx context.Context, req ListRequest) (*ListResponse, er
 	if req.Limit != nil {
 		resp.Limit = types.Ptr(min(resp.Count, min(*req.Limit, listMaxLimit)))
 	}
-	if req.Limit != nil && *req.Limit > 0 {
-		resp.Tools = paginateSlice(resp.Tools, req.Offset, req.Limit)
-		resp.Prompts = paginateSlice(resp.Prompts, req.Offset, req.Limit)
-		resp.Resources = paginateSlice(resp.Resources, req.Offset, req.Limit)
+	if resp.Limit != nil && *resp.Limit > 0 {
+		resp.Tools = paginateSlice(resp.Tools, req.Offset, resp.Limit)
+		resp.Prompts = paginateSlice(resp.Prompts, req.Offset, resp.Limit)
+		resp.Resources = paginateSlice(resp.Resources, req.Offset, resp.Limit)
 	}
 
 	// Return success

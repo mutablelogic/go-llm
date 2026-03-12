@@ -8,10 +8,12 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"time"
 
 	// Packages
 	llm "github.com/mutablelogic/go-llm"
 	schema "github.com/mutablelogic/go-llm/pkg/schema"
+	types "github.com/mutablelogic/go-server/pkg/types"
 )
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -24,16 +26,38 @@ var connectorDefaultPorts = map[string]string{
 	"https": "443",
 }
 
+const (
+	// connectorRetryInitial is the delay before the first reconnect attempt.
+	connectorRetryInitial = 2 * time.Second
+
+	// connectorRetryMax is the ceiling for the exponential backoff delay.
+	connectorRetryMax = 5 * time.Minute
+
+	// connectorRetryMaxCount is the maximum number of reconnect attempts before
+	// the connector is permanently removed.
+	connectorRetryMaxCount = 100
+)
+
 ///////////////////////////////////////////////////////////////////////////////
 // TYPES
 
 type connector struct {
-	ctx       context.Context
-	cancel    context.CancelFunc
+	// Underlying connector implementation provided by the handler.
 	namespace string
 	conn      llm.Connector
-	wg        sync.WaitGroup
-	err       error
+
+	// Managing the connector's goroutine and lifecycle.
+	ctx    context.Context
+	cancel context.CancelFunc
+	wg     sync.WaitGroup
+
+	// Last error encountered by the connector
+	err error
+
+	// Exponential backoff state
+	retryCount int
+	retryDelay time.Duration
+	retryAt    time.Time
 }
 
 var _ llm.Connector = (*connector)(nil)
@@ -82,6 +106,35 @@ func (tk *toolkit) RemoveConnector(url string) error {
 }
 
 ///////////////////////////////////////////////////////////////////////////////
+// PRIVATE METHODS - CONNECTOR
+
+// reset zeroes the error, retry count, and backoff state. Must be called with tk.mu held.
+func (c *connector) reset() {
+	c.err = nil
+	c.retryCount = 0
+	c.retryDelay = 0
+	c.retryAt = time.Time{}
+}
+
+// retry records err, increments the failure count, and advances the exponential
+// backoff delay. Returns false when the retry ceiling has been reached, indicating
+// the connector should be permanently removed. Must be called with tk.mu held.
+func (c *connector) retry(err error) bool {
+	c.err = err
+	c.retryCount++
+	if c.retryCount >= connectorRetryMaxCount {
+		return false
+	}
+	if c.retryDelay == 0 {
+		c.retryDelay = connectorRetryInitial
+	} else {
+		c.retryDelay = min(c.retryDelay*2, connectorRetryMax)
+	}
+	c.retryAt = time.Now().Add(c.retryDelay)
+	return true
+}
+
+///////////////////////////////////////////////////////////////////////////////
 // PUBLIC METHODS - CONNECTOR (delegates to inner conn)
 
 func (c *connector) Run(ctx context.Context) error {
@@ -114,22 +167,23 @@ func (tk *toolkit) addConnector(namespace, url string) error {
 		return llm.ErrNotImplemented.With("toolkit handler is not set")
 	}
 
+	// Validate and reserve the slot under the lock, but do not hold the lock
+	// while calling CreateConnector — the handler or its internal callbacks
+	// may call back into the toolkit and deadlock.
 	tk.mu.Lock()
-	defer tk.mu.Unlock()
-
-	// Initialise the map lazily (handles the case where New didn't set it).
 	if tk.connectors == nil {
 		tk.connectors = make(map[string]*connector)
 	}
-
 	if _, exists := tk.connectors[key]; exists {
+		tk.mu.Unlock()
 		return llm.ErrConflict.Withf("connector already added: %q", key)
 	}
-
-	// Build the connector entry first so the onState callback can capture it.
+	// Reserve the slot so a concurrent call for the same key is rejected.
 	c := &connector{
 		namespace: namespace,
 	}
+	tk.connectors[key] = c
+	tk.mu.Unlock()
 
 	// The onState callback is invoked by the connector after a successful
 	// handshake. If the reported Name (and no explicit namespace was given)
@@ -139,30 +193,65 @@ func (tk *toolkit) addConnector(namespace, url string) error {
 			return
 		}
 		tk.mu.Lock()
+		defer tk.mu.Unlock()
 		if c.namespace == "" {
-			c.namespace = *state.Name
+			// Reject invalid identifiers and reserved namespaces.
+			// TODO: mutate the namespace to make it valid (e.g. by replacing invalid characters with "_") rather than rejecting it outright.
+			ns := types.Value(state.Name)
+			if !types.IsIdentifier(ns) || slices.Contains(ReservedNamespaces, ns) {
+				c.err = llm.ErrConflict.Withf("connector reported reserved or invalid namespace %q", ns)
+				return
+			}
+
+			// Reject collision with a namespace already owned by a different connector.
+			if existing, collision := tk.namespace[ns]; collision && existing != c {
+				c.err = llm.ErrConflict.Withf("connector namespace %q already in use", ns)
+				return
+			}
+			c.namespace = ns
 		}
 		tk.namespace[c.namespace] = c
-		tk.mu.Unlock()
+
+		// Successful handshake — reset backoff so the next reconnect is immediate.
+		c.reset()
+		if tk.handler != nil {
+			tk.handler.OnStateChange(c, state)
+		}
 	}
 
-	// Create the connector via the handler, passing the onState callback.
+	// Create the connector outside the lock.
 	conn, err := tk.handler.CreateConnector(key, onState)
 	if err != nil {
+		tk.mu.Lock()
+		delete(tk.connectors, key)
+		tk.mu.Unlock()
 		return err
 	}
 	if conn == nil {
+		tk.mu.Lock()
+		delete(tk.connectors, key)
+		tk.mu.Unlock()
 		return llm.ErrInternalServerError.Withf("handler returned nil connector for %q", key)
 	}
 
+	// Finalize under the lock. If RemoveConnector ran concurrently while
+	// CreateConnector was in flight the reserved slot will already be gone;
+	// treat that as a conflict rather than silently re-inserting.
+	tk.mu.Lock()
+	if _, still := tk.connectors[key]; !still {
+		tk.mu.Unlock()
+		return llm.ErrConflict.Withf("connector removed while being added: %q", key)
+	}
 	c.conn = conn
-	tk.connectors[key] = c
+	tk.mu.Unlock()
 	return nil
 }
 
 // canonicalURL normalises a connector URL to scheme://host[:port]/path with
-// lowercased scheme, host, and path. Userinfo, query string, and fragment are
-// stripped. Returns ErrBadParameter if the URL is invalid.
+// lowercased scheme and host. Path case is preserved because HTTP path
+// semantics are commonly case-sensitive. Redundant dot-segments are cleaned,
+// but a trailing slash (if present) is retained. Userinfo, query string, and
+// fragment are stripped. Returns ErrBadParameter if the URL is invalid.
 func canonicalURL(rawURL string) (string, error) {
 	u, err := url.Parse(rawURL)
 	if err != nil {
@@ -193,7 +282,7 @@ func canonicalURL(rawURL string) (string, error) {
 	}
 
 	hadTrailingSlash := len(u.Path) > 1 && strings.HasSuffix(u.Path, "/")
-	cleanPath := strings.ToLower(path.Clean(u.Path))
+	cleanPath := path.Clean(u.Path) // preserve case; only remove dot-segments
 	if cleanPath == "." {
 		cleanPath = ""
 	}

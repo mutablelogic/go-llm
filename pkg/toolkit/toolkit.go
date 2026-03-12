@@ -2,6 +2,7 @@ package toolkit
 
 import (
 	"context"
+	"log/slog"
 	"net/url"
 	"slices"
 	"strings"
@@ -23,6 +24,7 @@ import (
 type toolkit struct {
 	mu     sync.RWMutex
 	tracer trace.Tracer
+	logger *slog.Logger
 
 	// Builtin tools, prompts, and resources are stored in maps for efficient lookup.
 	tools     map[string]llm.Tool
@@ -63,6 +65,9 @@ var (
 // NewToolkit creates a new Toolkit with the given options.
 func New(opts ...Option) (*toolkit, error) {
 	toolkit := new(toolkit)
+
+	// Set default logger
+	toolkit.logger = slog.Default()
 
 	// Builtins
 	toolkit.tools = make(map[string]llm.Tool)

@@ -1,9 +1,9 @@
 package toolkit
 
 import (
-	"errors"
-
 	// Packages
+	"log/slog"
+
 	llm "github.com/mutablelogic/go-llm"
 	trace "go.opentelemetry.io/otel/trace"
 )
@@ -20,33 +20,21 @@ type Option func(*toolkit) error
 // WithTool registers one or more builtin tools with the toolkit at construction time.
 func WithTool(items ...llm.Tool) Option {
 	return func(tk *toolkit) error {
-		var result error
-		for _, item := range items {
-			result = errors.Join(result, tk.AddTool(item))
-		}
-		return result
+		return tk.AddTool(items...)
 	}
 }
 
 // WithPrompt registers one or more builtin prompts with the toolkit at construction time.
 func WithPrompt(items ...llm.Prompt) Option {
 	return func(tk *toolkit) error {
-		var result error
-		for _, item := range items {
-			result = errors.Join(result, tk.AddPrompt(item))
-		}
-		return result
+		return tk.AddPrompt(items...)
 	}
 }
 
 // WithResource registers one or more builtin resources with the toolkit at construction time.
 func WithResource(items ...llm.Resource) Option {
 	return func(tk *toolkit) error {
-		var result error
-		for _, item := range items {
-			result = errors.Join(result, tk.AddResource(item))
-		}
-		return result
+		return tk.AddResource(items...)
 	}
 }
 
@@ -64,6 +52,18 @@ func WithHandler(h ToolkitHandler) Option {
 func WithTracer(t trace.Tracer) Option {
 	return func(tk *toolkit) error {
 		tk.tracer = t
+		return nil
+	}
+}
+
+// WithLogger sets a slog.Logger for the toolkit to use for logging.
+func WithLogger(l *slog.Logger) Option {
+	return func(tk *toolkit) error {
+		if l == nil {
+			tk.logger = slog.Default()
+		} else {
+			tk.logger = l
+		}
 		return nil
 	}
 }

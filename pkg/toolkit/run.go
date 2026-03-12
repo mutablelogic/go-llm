@@ -3,7 +3,6 @@ package toolkit
 import (
 	"context"
 	"errors"
-	"log/slog"
 	"time"
 )
 
@@ -35,9 +34,11 @@ func (tk *toolkit) Run(ctx context.Context) error {
 // been started yet (i.e. cancel == nil).
 func (tk *toolkit) startPendingConnectors(ctx context.Context) {
 	tk.mu.Lock()
+
+	// Gather pending connectors and set their context and cancel function
 	var pending []*connector
 	for _, c := range tk.connectors {
-		if c.cancel == nil {
+		if c.cancel == nil && (c.retryAt.IsZero() || !time.Now().Before(c.retryAt)) {
 			connCtx, cancel := context.WithCancel(ctx)
 			c.ctx = connCtx
 			c.cancel = cancel
@@ -45,8 +46,10 @@ func (tk *toolkit) startPendingConnectors(ctx context.Context) {
 			pending = append(pending, c)
 		}
 	}
+
 	tk.mu.Unlock()
 
+	// Run pending connectors in parallel and monitor for unexpected errors.
 	for _, c := range pending {
 		c.wg.Add(1)
 		go func(c *connector) {
@@ -56,21 +59,37 @@ func (tk *toolkit) startPendingConnectors(ctx context.Context) {
 			if c.cancel != nil {
 				c.cancel()
 			}
+
+			// Reset context and cancel so this connector can be restarted if desired;
 			c.cancel = nil
 			c.ctx = nil
-			// Remove from namespace map on disconnect.
-			if c.namespace != "" {
+
+			// Remove from namespace map on disconnect, but only if this
+			// connector still owns the entry — a re-added connector may have
+			// already claimed the same namespace.
+			if c.namespace != "" && tk.namespace[c.namespace] == c {
 				delete(tk.namespace, c.namespace)
 			}
+
 			// Store unexpected errors (not context cancellation/timeout) for
 			// collection by stopAllConnectors; clear on clean exit.
 			if err != nil && !errors.Is(err, context.Canceled) && !errors.Is(err, context.DeadlineExceeded) {
-				// TODO
-				slog.Error("connector stopped", "error", err)
-				c.err = err
+				tk.logger.ErrorContext(c.ctx, "connector stopped", "error", err.Error(), "retries", c.retryCount)
+				if !c.retry(err) {
+					// Retry ceiling reached — permanently remove the connector.
+					tk.logger.ErrorContext(c.ctx, "connector removed after max retries", "retries", c.retryCount)
+					for k, v := range tk.connectors {
+						if v == c {
+							delete(tk.connectors, k)
+							break
+						}
+					}
+				}
 			} else {
-				c.err = nil
+				// Reset error, backoff on clean exit so the next start is immediate.
+				c.reset()
 			}
+
 			tk.mu.Unlock()
 		}(c)
 	}

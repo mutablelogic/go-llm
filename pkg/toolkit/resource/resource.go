@@ -64,7 +64,9 @@ func marshalResource(r llm.Resource) ([]byte, error) {
 			return nil, err
 		}
 		var v resourceJSON
-		if err := json.Unmarshal(inner, &v); err == nil {
+		if err := json.Unmarshal(inner, &v); err != nil {
+			return nil, err
+		} else {
 			data = v.Data
 		}
 	}
