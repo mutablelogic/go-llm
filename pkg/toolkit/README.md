@@ -48,9 +48,10 @@ type ToolkitHandler interface {
     List(context.Context, ListRequest) (*ListResponse, error)
 
     // CreateConnector is called to create a new connector for the given URL.
-    // It is called once on AddConnector, and again on each reconnect, so it must return
-    // a fresh instance each time (allowing auth tokens to be refreshed).
-    CreateConnector(string) (llm.Connector, error)
+    // The onState callback must be called by the connector whenever its state
+    // changes (e.g. after initial connection). The toolkit uses the reported
+    // Name field to register the connector in the namespace map.
+    CreateConnector(url string, onState func(schema.ConnectorState)) (llm.Connector, error)
 }
 
 func main() {
@@ -83,19 +84,19 @@ func main() {
 }
 ```
 
-The connector passed to each callback is the originating `llm.Connector` instance. The list-changed callbacks are notifications only — the handler calls `c.ListTools`, `c.ListPrompts`, or `c.ListResources` directly if it needs the updated contents.
+The connector passed to each callback is the originating `llm.Connector` instance. The list-changed callbacks are notifications only — the handler typically calls `tk.List` on the toolkit to enumerate the full aggregated contents across all namespaces.
 
 ## Lookup
 
 `tk.Lookup` finds a tool, prompt, or resource by name or URI, returning `nil` if nothing matches:
 
 ```go
-item := tk.Lookup(ctx, "summarize")                    // by name
-item  = tk.Lookup(ctx, "my-server.summarize")          // by connector namespace.name
-item  = tk.Lookup(ctx, "builtin.summarize")            // scoped to builtins
-item  = tk.Lookup(ctx, "user.summarize")               // scoped to user namespace
-item  = tk.Lookup(ctx, "file:///data/report")          // by URI (resources)
-item  = tk.Lookup(ctx, "file:///data/report#my-server") // by URI#namespace
+item, err := tk.Lookup(ctx, "summarize")                     // by name
+item, err  = tk.Lookup(ctx, "my-server.summarize")           // by connector namespace.name
+item, err  = tk.Lookup(ctx, "builtin.summarize")             // scoped to builtins
+item, err  = tk.Lookup(ctx, "user.summarize")                // scoped to user namespace
+item, err  = tk.Lookup(ctx, "file:///data/report")           // by URI (resources)
+item, err  = tk.Lookup(ctx, "file:///data/report#my-server") // by URI#namespace
 ```
 
 The lookup order is:
@@ -105,10 +106,14 @@ The lookup order is:
 3. **`<name>`** — unscoped name, searching builtins first, then connectors in registration order, then the `"user"` namespace.
 4. **`<uri>`** — unscoped URI, searching builtins first, then connectors in registration order, then the `"user"` namespace.
 
-The return type is `any`; use a type switch to distinguish:
+The return type is `any`; use a type switch to distinguish. `llm.ErrNotFound` is returned if nothing matches:
 
 ```go
-switch v := tk.Lookup(ctx, "summarize").(type) {
+v, err := tk.Lookup(ctx, "summarize")
+if err != nil {
+    log.Fatal(err) // llm.ErrNotFound or similar
+}
+switch v := v.(type) {
 case llm.Tool:
     result, err := tk.Call(ctx, v, toolkit.JSONResource(input, ""))
 case llm.Prompt:
@@ -123,16 +128,27 @@ case llm.Resource:
 `tk.List` returns tools, prompts, and resources in a single call, controlled by a `ListRequest`:
 
 ```go
+type ListType string
+
+const (
+    ListTypeTools     ListType = "tool"
+    ListTypePrompts   ListType = "prompt"
+    ListTypeResources ListType = "resource"
+)
+
 type ListRequest struct {
     // Namespace restricts results to a single source.
     // Use "builtin", "user", or a connector name. Empty string returns all.
     Namespace string
 
-    // Type filters — set to true to include that type in results.
-    // When all three are false (zero value), all types are returned.
-    Tools     bool
-    Prompts   bool
-    Resources bool
+    // Type selects which kind of item to list.
+    // Use ListTypeTools, ListTypePrompts, or ListTypeResources.
+    // Empty string returns all types.
+    Type ListType
+
+    // Name filters results to items whose name equals this value.
+    // Empty string returns all names.
+    Name string
 
     // Pagination.
     Limit  *uint // nil means no limit
@@ -145,9 +161,9 @@ type ListResponse struct {
     Resources []llm.Resource
 
     // Pagination metadata.
-    Count  uint // total items matched (before pagination)
+    Count  uint  // total items matched (before pagination)
     Offset uint
-    Limit  uint
+    Limit  *uint // effective limit applied (nil if none)
 }
 ```
 
@@ -162,7 +178,7 @@ if err != nil {
 
 // Tools only from one connector.
 resp, err = tk.List(ctx, toolkit.ListRequest{
-    Tools:     true,
+    Type:      toolkit.ListTypeTools,
     Namespace: "my-server",
 })
 if err != nil {
@@ -170,7 +186,7 @@ if err != nil {
 }
 
 // Paginate through all resources.
-resp, err = tk.List(ctx, toolkit.ListRequest{Resources: true, Limit: types.Ptr(uint(10)), Offset: 20})
+resp, err = tk.List(ctx, toolkit.ListRequest{Type: toolkit.ListTypeResources, Limit: types.Ptr(uint(10)), Offset: 20})
 if err != nil {
     log.Fatal(err)
 }
@@ -630,11 +646,11 @@ A toolkit can serve as the capability backend for an MCP server. The toolkit's `
 
 | MCP request | Toolkit equivalent |
 |---|---|
-| `tools/list` | `tk.List(ctx, ListRequest{Tools: true})` |
+| `tools/list` | `tk.List(ctx, ListRequest{Type: ListTypeTools})` |
 | `tools/call` | `tk.Call(ctx, tk.Lookup(ctx, name), ...)` |
-| `prompts/list` | `tk.List(ctx, ListRequest{Prompts: true})` |
+| `prompts/list` | `tk.List(ctx, ListRequest{Type: ListTypePrompts})` |
 | `prompts/get` + run | `tk.Call(ctx, tk.Lookup(ctx, name), ...)` |
-| `resources/list` | `tk.List(ctx, ListRequest{Resources: true})` |
+| `resources/list` | `tk.List(ctx, ListRequest{Type: ListTypeResources})` |
 | `resources/read` | `tk.Lookup(ctx, uri).(llm.Resource).Read(ctx)` |
 
 An MCP server implementation holds a `*Toolkit` and delegates all capability requests to it. This exposes an arbitrary mix of builtins, upstream MCP connectors, and manager-backed user prompts to any MCP client — the toolkit acts as a protocol-neutral aggregation layer that the server wraps with SSE or stdio transport.
@@ -655,7 +671,7 @@ func (s *MyMCPServer) CallTool(ctx context.Context, name string, input json.RawM
 
 // Handle a tools/list request from an MCP client.
 func (s *MyMCPServer) ListTools(ctx context.Context) ([]llm.Tool, error) {
-    resp := s.tk.List(ctx, toolkit.ListRequest{Tools: true})
+    resp, _ := s.tk.List(ctx, toolkit.ListRequest{Type: toolkit.ListTypeTools})
     return resp.Tools, nil
 }
 ```
@@ -745,8 +761,8 @@ type Toolkit interface {
     AddResource(...llm.Resource) error
 
     // RemoveBuiltin removes a previously registered builtin tool by name,
-    // prompt by name, or resource by URI.
-    // Returns an error if the identifier matches zero or more than one item.
+    // prompt by name, or resource by URI. Tools are checked before prompts.
+    // Returns llm.ErrNotFound if no match exists.
     RemoveBuiltin(string) error
 
     // AddConnector registers a remote MCP server. The namespace is inferred from
@@ -769,8 +785,9 @@ type Toolkit interface {
     Run(context.Context) error
 
     // Lookup finds a tool, prompt, or resource by name, namespace.name, URI,
-    // or URI#namespace. Returns nil if nothing matches.
-    Lookup(context.Context, string) any
+    // or URI#namespace. Tools take precedence over prompts when both share a name.
+    // Returns llm.ErrNotFound if nothing matches.
+    Lookup(context.Context, string) (any, error)
 
     // List returns tools, prompts, and resources matching the request.
     List(context.Context, ListRequest) (*ListResponse, error)
