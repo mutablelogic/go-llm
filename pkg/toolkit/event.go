@@ -38,7 +38,9 @@ type ConnectorEvent struct {
 	Kind ConnectorEventKind
 
 	// Connector is the toolkit's connector that fired the event.
-	// Always set by the toolkit before the event reaches the delegate.
+	// Set for connector-originated events (excluding ConnectorEventStateChange,
+	// which is handled internally and never reaches the delegate); nil for
+	// builtin add/remove events.
 	Connector llm.Connector
 
 	// State is populated for ConnectorEventStateChange events.

@@ -118,7 +118,7 @@ func (myDelegate) CreateConnector(url string, onEvent func(tk.ConnectorEvent)) (
 }
 ```
 
-> **Note:** See [pkg/toolkit/example/handler.go](../toolkit/example/handler.go) for a full working implementation.
+> **Note:** See [pkg/toolkit/example/delegate.go](../toolkit/example/delegate.go) for a full working implementation.
 
 ## Lookup
 

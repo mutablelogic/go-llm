@@ -187,8 +187,9 @@ func (c *connector) ListResources(ctx context.Context) ([]llm.Resource, error) {
 // PRIVATE METHODS
 
 // onConnectorEvent is invoked by a connector's onEvent callback. State-change
-// events are handled internally (namespace registration, backoff reset, logging);
-// all other event kinds are forwarded to the delegate.
+// events are handled internally (namespace registration, backoff reset, logging)
+// and are not forwarded to the delegate; all other event kinds are forwarded
+// to the delegate.
 func (tk *toolkit) onConnectorEvent(c *connector, evt ConnectorEvent) {
 	switch evt.Kind {
 	case ConnectorEventStateChange:
@@ -245,7 +246,7 @@ func (tk *toolkit) addConnector(namespace, url string) error {
 		}
 	}
 	if tk.delegate == nil {
-		return llm.ErrNotImplemented.With("toolkit handler is not set")
+		return llm.ErrNotImplemented.With("toolkit delegate is not set")
 	}
 
 	// Validate and reserve the slot under the lock, but do not hold the lock
@@ -297,9 +298,10 @@ func (tk *toolkit) addConnector(namespace, url string) error {
 }
 
 // canonicalURL normalises a connector URL to scheme://host[:port]/path with
-// all components lowercased. Redundant dot-segments are cleaned, but a trailing
-// slash (if present) is retained. Userinfo, query string, and fragment are
-// stripped. Returns ErrBadParameter if the URL is invalid.
+// lowercased scheme and host. Path case is preserved because HTTP path
+// semantics are commonly case-sensitive. Redundant dot-segments are cleaned,
+// but a trailing slash (if present) is retained. Userinfo, query string, and
+// fragment are stripped. Returns ErrBadParameter if the URL is invalid.
 func canonicalURL(rawURL string) (string, error) {
 	u, err := url.Parse(rawURL)
 	if err != nil {

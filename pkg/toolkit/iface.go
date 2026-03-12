@@ -65,8 +65,11 @@ type Toolkit interface {
 }
 
 type ToolkitDelegate interface {
-	// OnEvent is called when a connector fires a lifecycle or list-change notification.
-	// The event's Connector field is always set to the originating connector.
+	// OnEvent is called when a lifecycle or list-change notification is fired.
+	// ConnectorEventStateChange events are handled internally by the toolkit and
+	// are never forwarded here. For all other connector-originated events the
+	// Connector field is set to the originating connector; for builtin add/remove
+	// operations Connector will be nil.
 	OnEvent(ConnectorEvent)
 
 	// Call executes a prompt via the manager, passing optional input resources.
