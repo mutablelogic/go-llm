@@ -50,7 +50,6 @@ func SessionFromContext(ctx context.Context) Session {
 	}
 	return &session{
 		logger: slog.Default(),
-		meta:   make(map[string]any),
 	}
 }
 

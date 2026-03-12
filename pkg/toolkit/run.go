@@ -60,7 +60,7 @@ func (tk *toolkit) startPendingConnectors(ctx context.Context) {
 				c.cancel()
 			}
 
-			// Reset context and cancel so this connector can be restarted if desired;
+			// Reset context and cancel so this connector can be restarted if desired.
 			c.cancel = nil
 			c.ctx = nil
 
@@ -74,10 +74,10 @@ func (tk *toolkit) startPendingConnectors(ctx context.Context) {
 			// Store unexpected errors (not context cancellation/timeout) for
 			// collection by stopAllConnectors; clear on clean exit.
 			if err != nil && !errors.Is(err, context.Canceled) && !errors.Is(err, context.DeadlineExceeded) {
-				tk.logger.ErrorContext(c.ctx, "connector stopped", "error", err.Error(), "retries", c.retryCount)
+				tk.logger.Error("connector stopped", "error", err.Error(), "retries", c.retryCount)
 				if !c.retry(err) {
 					// Retry ceiling reached — permanently remove the connector.
-					tk.logger.ErrorContext(c.ctx, "connector removed after max retries", "retries", c.retryCount)
+					tk.logger.Error("connector removed after max retries", "retries", c.retryCount)
 					for k, v := range tk.connectors {
 						if v == c {
 							delete(tk.connectors, k)

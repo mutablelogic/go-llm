@@ -62,7 +62,7 @@ var (
 ///////////////////////////////////////////////////////////////////////////////
 // LIFECYCLE
 
-// NewToolkit creates a new Toolkit with the given options.
+// New creates a new Toolkit with the given options.
 func New(opts ...Option) (*toolkit, error) {
 	toolkit := new(toolkit)
 
@@ -212,7 +212,8 @@ func (tk *toolkit) RemoveBuiltin(key string) error {
 }
 
 // Lookup finds a tool, prompt, or resource by name, namespace.name, URI,
-// or URI#namespace. Returns (nil, nil) if nothing matches.
+// or URI#namespace. Tools take precedence over prompts when both share a name.
+// Returns llm.ErrNotFound if nothing matches.
 func (tk *toolkit) Lookup(ctx context.Context, key string) (any, error) {
 	// URI or URI#namespace: if the key parses as a URI, only resources can match.
 	if u, namespace, ok := parseURI(key); ok {

@@ -74,6 +74,12 @@ func (tk *toolkit) AddConnector(url string) error {
 // AddConnectorNS registers a remote MCP server under an explicit namespace.
 // Safe to call before or while Run is active.
 func (tk *toolkit) AddConnectorNS(namespace, url string) error {
+	if !types.IsIdentifier(namespace) {
+		return llm.ErrBadParameter.Withf("connector namespace %q is not a valid identifier", namespace)
+	}
+	if slices.Contains(ReservedNamespaces, namespace) {
+		return llm.ErrBadParameter.Withf("connector namespace %q is reserved", namespace)
+	}
 	return tk.addConnector(namespace, url)
 }
 
@@ -91,6 +97,10 @@ func (tk *toolkit) RemoveConnector(url string) error {
 		return llm.ErrNotFound.Withf("connector not found: %q", url)
 	}
 	delete(tk.connectors, key)
+	// Remove the namespace entry if it still points at this connector.
+	if conn.namespace != "" && tk.namespace[conn.namespace] == conn {
+		delete(tk.namespace, conn.namespace)
+	}
 	// Capture and clear cancel under the lock so we don't race with the
 	// goroutine that also writes conn.cancel under the lock.
 	cancelFn := conn.cancel

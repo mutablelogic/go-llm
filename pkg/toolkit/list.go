@@ -70,6 +70,14 @@ const (
 func (tk *toolkit) List(ctx context.Context, req ListRequest) (*ListResponse, error) {
 	var resp ListResponse
 
+	// Validate the type field upfront.
+	switch req.Type {
+	case ListTypeTools, ListTypePrompts, ListTypeResources:
+		// valid
+	default:
+		return nil, llm.ErrBadParameter.Withf("unsupported list type %q (want %q, %q, or %q)", req.Type, ListTypeTools, ListTypePrompts, ListTypeResources)
+	}
+
 	// Collect builtin items and connector candidates under the read lock.
 	tk.mu.RLock()
 	if req.Namespace == "" || req.Namespace == NamespaceBuiltin {
