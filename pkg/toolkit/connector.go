@@ -330,7 +330,7 @@ func canonicalURL(rawURL string) (string, error) {
 	}
 
 	hadTrailingSlash := len(u.Path) > 1 && strings.HasSuffix(u.Path, "/")
-	cleanPath := path.Clean(strings.ToLower(u.Path)) // normalise case and remove dot-segments
+	cleanPath := path.Clean(u.Path) // preserve case; only remove dot-segments
 	if cleanPath == "." {
 		cleanPath = ""
 	}

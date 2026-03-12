@@ -9,7 +9,6 @@ import (
 	"os/signal"
 	"os/user"
 	"syscall"
-	"time"
 
 	// Packages
 	"github.com/mutablelogic/go-llm/pkg/toolkit"
@@ -39,6 +38,32 @@ func main() {
 		log.Fatal(err)
 	}
 
+	// Register prompts, resources, and builtin tools synchronously — all three
+	// methods are safe to call before Run and complete before any Call is made.
+	prompts, err := CreatePrompts()
+	if err != nil {
+		log.Fatal(err)
+	}
+	if err = tk.AddPrompt(prompts...); err != nil {
+		log.Fatal(err)
+	}
+
+	resources, err := CreateResources()
+	if err != nil {
+		log.Fatal(err)
+	}
+	if err = tk.AddResource(resources...); err != nil {
+		log.Fatal(err)
+	}
+
+	tools, err := CreateTools()
+	if err != nil {
+		log.Fatal(err)
+	}
+	if err = tk.AddTool(tools...); err != nil {
+		log.Fatal(err)
+	}
+
 	// Run until CTRL-C.
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer cancel()
@@ -53,39 +78,12 @@ func main() {
 		return tk.Run(ctx)
 	})
 
-	// Register prompts from the embedded agent filesystem.
-	g.Go(func() error {
-		prompts, err := CreatePrompts()
-		if err != nil {
-			return err
-		}
-		return tk.AddPrompt(prompts...)
-	})
-
-	// Register resources from the embedded testdata filesystem.
-	g.Go(func() error {
-		resources, err := CreateResources()
-		if err != nil {
-			return err
-		}
-		return tk.AddResource(resources...)
-	})
-
-	// Register builtin tools.
-	g.Go(func() error {
-		tools, err := CreateTools()
-		if err != nil {
-			return err
-		}
-		return tk.AddTool(tools...)
-	})
-
-	// After a short delay, call builtin.greet with a name.
+	// Call builtin.greet now — tools are already registered synchronously above.
 	g.Go(func() error {
 		select {
 		case <-ctx.Done():
 			return nil
-		case <-time.After(2 * time.Second):
+		default:
 		}
 
 		// get the user
@@ -119,12 +117,13 @@ func main() {
 		return nil
 	})
 
-	// After a short delay, call fetch to get a webpage
+	// Call fetch once the remote connector is ready — wait on d.Ready() instead
+	// of a fixed time delay so the call is sequenced correctly on any machine.
 	g.Go(func() error {
 		select {
 		case <-ctx.Done():
 			return nil
-		case <-time.After(3 * time.Second):
+		case <-d.Ready():
 		}
 
 		// fetchRequest matches the input schema of the mcp-fetch.fetch tool.

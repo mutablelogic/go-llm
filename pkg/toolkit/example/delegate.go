@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"sync"
 
 	// Packages
 	llm "github.com/mutablelogic/go-llm"
@@ -17,18 +18,26 @@ import (
 // TYPES
 
 type delegate struct {
-	tk toolkit.Toolkit
+	tk    toolkit.Toolkit
+	ready chan struct{}
+	once  sync.Once
 }
 
 ///////////////////////////////////////////////////////////////////////////////
 // LIFECYCLE
 
 func NewDelegate() *delegate {
-	return &delegate{}
+	return &delegate{ready: make(chan struct{})}
 }
 
 func (d *delegate) SetToolkit(tk toolkit.Toolkit) {
 	d.tk = tk
+}
+
+// Ready returns a channel that is closed once at least one remote connector
+// has finished its initial tool-list refresh and is ready to serve calls.
+func (d *delegate) Ready() <-chan struct{} {
+	return d.ready
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -39,6 +48,7 @@ func (d *delegate) OnEvent(evt toolkit.ConnectorEvent) {
 	case toolkit.ConnectorEventStateChange:
 		slog.Info("connector state changed", "state", evt.State, "connector", evt.Connector)
 	case toolkit.ConnectorEventToolListChanged:
+		d.once.Do(func() { close(d.ready) })
 		d.logTools()
 	case toolkit.ConnectorEventPromptListChanged:
 		d.logPrompts()

@@ -103,12 +103,13 @@ func Test_canonicalURL_003_https_default_port(t *testing.T) {
 	}
 }
 
-func Test_canonicalURL_004_uppercased_normalised(t *testing.T) {
-	got, err := canonicalURL("HTTP://EXAMPLE.COM/PATH")
+func Test_canonicalURL_004_scheme_host_lowercased_path_preserved(t *testing.T) {
+	// Scheme and host are normalised to lower-case; path case is preserved.
+	got, err := canonicalURL("HTTP://EXAMPLE.COM/MyPath")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got != "http://example.com/path" {
+	if got != "http://example.com/MyPath" {
 		t.Fatalf("unexpected: %q", got)
 	}
 }
@@ -271,12 +272,13 @@ func Test_RemoveConnector_003_bad_url(t *testing.T) {
 }
 
 func Test_RemoveConnector_004_url_normalised(t *testing.T) {
-	// Add with one form, remove with a case-variant — both should resolve to the same key.
+	// Scheme and host are normalised; path casing is preserved, so add/remove
+	// must use the same path case to resolve to the same canonical key.
 	tk, _ := newConnectorToolkit(t)
 	if err := tk.AddConnector("http://localhost:8080/path"); err != nil {
 		t.Fatal(err)
 	}
-	if err := tk.RemoveConnector("HTTP://LOCALHOST:8080/PATH"); err != nil {
+	if err := tk.RemoveConnector("HTTP://LOCALHOST:8080/path"); err != nil {
 		t.Fatal(err)
 	}
 }
