@@ -105,6 +105,5 @@ type Session interface {
 	// Progress sends a progress notification back to the MCP caller.
 	// progress is the amount completed so far; total is the total expected
 	// (0 means unknown); message is an optional human-readable status string.
-	// Returns an error if the notification could not be delivered to the client.
-	Progress(progress, total float64, message string) error
+	Progress(progress, total float64, message ...string) error
 }

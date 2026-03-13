@@ -2,10 +2,15 @@ package toolkit
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
+	"slices"
 
 	// Packages
 	mcp "github.com/modelcontextprotocol/go-sdk/mcp"
+	llm "github.com/mutablelogic/go-llm"
+	schema "github.com/mutablelogic/go-llm/pkg/schema"
+	types "github.com/mutablelogic/go-server/pkg/types"
 )
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -13,13 +18,14 @@ import (
 
 // sessionKey is the context key used to store the per-call Session.
 type sessionKey struct{}
+type metaKey struct{}
 
 // Session provides contextual services for tool execution, such as logging
 // and distributed tracing.
 type session struct {
 	id     string
 	logger *slog.Logger
-	meta   map[string]any
+	meta   []schema.MetaValue
 }
 
 var _ Session = (*session)(nil)
@@ -27,20 +33,20 @@ var _ Session = (*session)(nil)
 ///////////////////////////////////////////////////////////////////////////////
 // LIFECYCLE
 
-func (tk *toolkit) newSession(id, name string, meta map[string]any) Session {
+func (tk *toolkit) newSession(name string, meta ...schema.MetaValue) Session {
 	session := new(session)
 
 	// Set up session defaults
-	session.id = id
-	session.logger = tk.logger.With("id", id, "name", name)
-	session.meta = meta
+	session.id = fmt.Sprint(schema.MetaForKey(meta, "id"))
+	session.logger = tk.logger.With("id", session.id, "name", name)
+	session.meta = slices.Clone(meta)
 
 	// Return the session. The toolkit injects this into the context for tool handlers to use.
 	return session
 }
 
 ///////////////////////////////////////////////////////////////////////////////
-// PUBLIC METHODS
+// PUBLIC METHODS - CONTEXT
 
 // SessionFromContext returns the Session injected into ctx for the current
 // tool call.
@@ -53,13 +59,28 @@ func SessionFromContext(ctx context.Context) Session {
 	}
 }
 
+// WithSession returns a new context with the given session and metadata attached.
+func WithSession(ctx context.Context, id string, meta ...schema.MetaValue) context.Context {
+	return context.WithValue(ctx, metaKey{}, append(meta, schema.Meta("id", id)))
+}
+
+///////////////////////////////////////////////////////////////////////////////
+// PRIVATE METHODS - CONTEXT
+
 // WithSessionContext returns a new context with the given Session attached.
-// Servers use this to inject session context before invoking tool handlers.
-func WithSessionContext(ctx context.Context, s Session) context.Context {
+func withSessionContext(ctx context.Context, s Session) context.Context {
 	if s == nil {
 		return ctx
 	}
 	return context.WithValue(ctx, sessionKey{}, s)
+}
+
+// metaFromContext returns the meta information injected into ctx
+func metaFromContext(ctx context.Context) []schema.MetaValue {
+	if meta, ok := ctx.Value(metaKey{}).([]schema.MetaValue); ok {
+		return meta
+	}
+	return []schema.MetaValue{}
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -78,17 +99,37 @@ func (s *session) Capabilities() *mcp.ClientCapabilities {
 }
 
 func (s *session) Meta() map[string]any {
-	return s.meta
+	return schema.MetaMap(s.meta)
 }
 
 func (s *session) Logger() *slog.Logger {
 	return s.logger
 }
 
-func (s *session) Progress(progress, total float64, message string) error {
+func (s *session) Progress(progress, total float64, message ...string) error {
+	// Error if message is too long
+	if len(message) > 1 {
+		return llm.ErrBadParameter.Withf("too many message arguments: expected at most one, got %d", len(message))
+	}
+
 	// In the default implementation, we don't have a client to send progress updates to, so we'll just log it.
-	s.logger.Info("progress update", "progress", progress, "total", total, "message", message)
+	if len(message) == 1 {
+		s.logger.Info(message[0], "progress", progress, "total", total)
+	} else {
+		s.logger.Info("progress update", "progress", progress, "total", total)
+	}
 
 	// Return success
 	return nil
+}
+
+func (s *session) String() string {
+	type json struct {
+		ID   string         `json:"id,omitempty"`
+		Meta map[string]any `json:"meta,omitempty"`
+	}
+	return types.Stringify(json{
+		ID:   s.id,
+		Meta: schema.MetaMap(s.meta),
+	})
 }

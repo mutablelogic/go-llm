@@ -7,6 +7,7 @@ import (
 	// Packages
 	jsonschema "github.com/google/jsonschema-go/jsonschema"
 	llm "github.com/mutablelogic/go-llm"
+	toolkit "github.com/mutablelogic/go-llm/pkg/toolkit"
 	tool "github.com/mutablelogic/go-llm/pkg/toolkit/tool"
 )
 
@@ -62,16 +63,18 @@ func (*greetTool) OutputSchema() (*jsonschema.Schema, error) {
 	return jsonschema.For[greetResponse](nil)
 }
 
-func (*greetTool) Run(_ context.Context, input json.RawMessage) (any, error) {
+func (*greetTool) Run(ctx context.Context, input json.RawMessage) (any, error) {
 	var req greetRequest
-	if len(input) > 0 {
-		if err := json.Unmarshal(input, &req); err != nil {
-			return nil, llm.ErrBadParameter.Withf("greet: %v", err)
-		}
+	if err := json.Unmarshal(input, &req); err != nil {
+		return nil, llm.ErrBadParameter.Withf("greet: %v", err)
 	}
 	if req.Name == "" {
 		return nil, llm.ErrBadParameter.Withf("greet: name is required")
 	}
+
+	session := toolkit.SessionFromContext(ctx)
+	session.Logger().Info("greet called", "name", req.Name, "session", session)
+
 	resp := greetResponse{
 		Name:     req.Name,
 		Greeting: "Hello, " + req.Name + "!",
@@ -80,5 +83,8 @@ func (*greetTool) Run(_ context.Context, input json.RawMessage) (any, error) {
 	if err != nil {
 		return nil, err
 	}
+
+	session.Progress(100, 100, "Completed")
+
 	return json.RawMessage(data), nil
 }
