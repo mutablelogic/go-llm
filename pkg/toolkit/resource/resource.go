@@ -54,6 +54,25 @@ func WithURI(uri string, r llm.Resource) llm.Resource {
 	return &uriResource{Resource: r, uri: uri}
 }
 
+// Must creates a resource from name and value, panicking on error.
+// V may be string (text resource), json.RawMessage (JSON resource), or []byte (data resource).
+func Must[V string | json.RawMessage | []byte](name string, value V) llm.Resource {
+	var r llm.Resource
+	var err error
+	switch v := any(value).(type) {
+	case string:
+		r, err = Text(name, v)
+	case json.RawMessage:
+		r, err = JSON(name, v)
+	case []byte:
+		r, err = Data(name, v)
+	}
+	if err != nil {
+		panic(err)
+	}
+	return r
+}
+
 func (n *namespacedResource) Name() string       { return n.name }
 func (d *describedResource) Description() string { return d.description }
 func (u *uriResource) URI() string               { return u.uri }
