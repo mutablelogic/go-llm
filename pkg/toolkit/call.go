@@ -64,7 +64,7 @@ func (tk *toolkit) Call(ctx context.Context, key any, resources ...llm.Resource)
 // PRIVATE METHODS
 
 // callTool validates and executes a single tool. Only one resource is supported, whose content must be JSON and is passed as input to the tool. The output must be an llm.Resource or nil.
-func (tk *toolkit) callTool(ctx context.Context, t llm.Tool, resources ...llm.Resource) (llm.Resource, error) {
+func (tk *toolkit) callTool(ctx context.Context, t llm.Tool, resources ...llm.Resource) (_ llm.Resource, spanErr error) {
 	var input json.RawMessage
 
 	// Check for too many resources. Only one is supported as input to the tool.
@@ -102,6 +102,7 @@ func (tk *toolkit) callTool(ctx context.Context, t llm.Tool, resources ...llm.Re
 
 	// Start otel span
 	otelCtx, spanEnd := otel.StartSpan(tk.tracer, ctx, t.Name(), attribute.String("input", string(input)))
+	defer func() { spanEnd(spanErr) }()
 
 	// Set traceparent in the meta for potential downstream propagation
 	meta := metaFromContext(ctx)
@@ -114,10 +115,8 @@ func (tk *toolkit) callTool(ctx context.Context, t llm.Tool, resources ...llm.Re
 	// Set a session and then execute the tool
 	result, err := t.Run(withSessionContext(otelCtx, tk.newSession(t.Name(), meta...)), input)
 	if err != nil {
-		spanEnd(err)
 		return nil, err
 	}
-	spanEnd(nil)
 
 	// If the result is nil, check the output schema.
 	if result == nil {

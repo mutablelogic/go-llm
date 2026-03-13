@@ -392,8 +392,9 @@ func Test_Call_026_output_schema_gen_error_after_result(t *testing.T) {
 
 func Test_Call_027_with_real_tracer_injects_traceparent(t *testing.T) {
 	// Register the W3C TraceContext propagator globally so traceparent is injected.
+	oldPropagator := gootel.GetTextMapPropagator()
 	gootel.SetTextMapPropagator(propagation.TraceContext{})
-	t.Cleanup(func() { gootel.SetTextMapPropagator(propagation.NewCompositeTextMapPropagator()) })
+	t.Cleanup(func() { gootel.SetTextMapPropagator(oldPropagator) })
 
 	// Use the SDK tracer provider so a real span is started.
 	tp := sdktrace.NewTracerProvider()

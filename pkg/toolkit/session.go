@@ -37,7 +37,9 @@ func (tk *toolkit) newSession(name string, meta ...schema.MetaValue) Session {
 	session := new(session)
 
 	// Set up session defaults
-	session.id = fmt.Sprint(schema.MetaForKey(meta, "id"))
+	if v := schema.MetaForKey(meta, "id"); v != nil {
+		session.id = fmt.Sprint(v)
+	}
 	session.logger = tk.logger.With("id", session.id, "name", name)
 	session.meta = slices.Clone(meta)
 
@@ -59,7 +61,8 @@ func SessionFromContext(ctx context.Context) Session {
 	}
 }
 
-// WithSession returns a new context with the given session and metadata attached.
+// WithSession returns a new context with the given session ID and metadata attached.
+// The session ID is stored as a MetaValue with key "id" alongside any provided metadata.
 func WithSession(ctx context.Context, id string, meta ...schema.MetaValue) context.Context {
 	return context.WithValue(ctx, metaKey{}, append(meta, schema.Meta("id", id)))
 }
