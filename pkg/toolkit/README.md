@@ -3,6 +3,44 @@
 
 Package `toolkit` provides the `Toolkit` type — an aggregator that collects tools, prompts and resources from multiple sources and presents them as a unified, queryable surface for LLMs. Sources include locally implemented builtins, remote MCP servers, and a persistent user namespace backed by the manager. At generation time, the toolkit is passed to the model so it can discover and invoke capabilities without needing to know where they came from.
 
+```mermaid
+graph TD
+    Toolkit["Toolkit"]
+
+    Builtins["Builtins\n(namespace: builtin)"]
+    B_Tools["Tools"]
+    B_Prompts["Prompts"]
+    B_Resources["Resources"]
+
+    MCP["MCP Connector\n(namespace: server-name)"]
+    M_Tools["Tools"]
+    M_Prompts["Prompts"]
+    M_Resources["Resources"]
+
+    Store["Persistent Storage Connector\n(namespace: user)"]
+    S_Prompts["Prompts"]
+    S_Resources["Resources"]
+
+    Delegate["Delegate"]
+
+    Toolkit --> Builtins
+    Builtins --> B_Tools
+    Builtins --> B_Prompts
+    Builtins --> B_Resources
+
+    Toolkit --> MCP
+    MCP --> M_Tools
+    MCP --> M_Prompts
+    MCP --> M_Resources
+
+    Toolkit --> Store
+    Store --> S_Prompts
+    Store --> S_Resources
+
+    Toolkit -- "CreateConnector(url)\nPrompt execution" --> Delegate
+    Delegate -- "OnEvent(ConnectorEvent)" --> Toolkit
+```
+
 The three kinds of items the toolkit manages are:
 
 * **Tools** are callable functions with JSON input. The outputs are generated
@@ -12,11 +50,12 @@ The three kinds of items the toolkit manages are:
 
 All three of these entities output a `Resource`, which can be text, JSON, audio, video and so forth.
 
-A toolkit holds three kinds of tools:
+A toolkit holds two kinds of sources:
 
-* **Builtins** — locally implemented tools, agents and resources registered with `AddTool`, `AddPrompt`, or `AddResource`.
-* **Connector Tools, Prompts and Resources** — tools exposed by a remote MCP server, registered with `AddConnector`. Connectors are managed in the background, with automatic reconnection and updates.
-* **User Prompts and Resources** — prompts and resources stored persistently by the manager (e.g. in a database), served from the reserved `"user"` namespace via the handler's `List` method.
+* **Builtins** — locally implemented tools, prompts and resources registered with `AddTool`, `AddPrompt`, or `AddResource`. Served under the `"builtin"` namespace.
+* **Connectors** — external sources registered with `AddConnector`, each assigned its own namespace. Connectors can be added and removed dynamically while the toolkit is running. Two connector types are supported:
+  * **MCP connectors** — tools, prompts and resources exposed by a remote MCP server. Managed in the background with automatic reconnection; the server can push list-change notifications at any time, causing the toolkit's available tools, prompts and resources to update dynamically.
+  * **Persistent storage connectors** — prompts and resources stored in a database, served from the reserved `"user"` namespace via the manager's `List` method. Items can be added, updated or removed at runtime and are reflected immediately in subsequent `List` or `Lookup` calls.
 
 ## Toolkits and MCP
 
@@ -151,10 +190,10 @@ if err != nil {
 }
 switch v := v.(type) {
 case llm.Tool:
-    input, _ := resource.JSON("input", myParams)
+    input := resource.Must("input", json.RawMessage(myParams))
     result, err := tk.Call(ctx, v, input)
 case llm.Prompt:
-    vars, _ := resource.JSON("vars", myVars)
+    vars := resource.Must("vars", json.RawMessage(myVars))
     result, err := tk.Call(ctx, v, vars)
 case llm.Resource:
     data, err := v.Read(ctx)
@@ -318,65 +357,7 @@ if err = tk.AddPrompt(p); err != nil {
 }
 ```
 
-Parse from an embedded filesystem (walk with `fs.WalkDir` and pass each file to `prompt.Read`):
-
-```go
-import (
-    "bytes"
-    "embed"
-    "io/fs"
-    prompt "github.com/mutablelogic/go-llm/pkg/toolkit/prompt"
-)
-
-//go:embed etc/agent/*.md
-var agentFS embed.FS
-
-var prompts []llm.Prompt
-fs.WalkDir(agentFS, ".", func(path string, d fs.DirEntry, err error) error {
-    if err != nil || d.IsDir() || filepath.Ext(path) != ".md" {
-        return err
-    }
-    data, err := agentFS.ReadFile(path)
-    if err != nil {
-        return err
-    }
-    p, err := prompt.Read(&namedReader{bytes.NewReader(data), path})
-    if err != nil {
-        return err
-    }
-    prompts = append(prompts, p)
-    return nil
-})
-if err := tk.AddPrompt(prompts...); err != nil {
-    log.Fatal(err)
-}
-```
-
 The `name` is taken from the `name:` front matter field, or derived from the filename if absent. The `title` is taken from the `title:` field, or extracted from the first `# Heading` in the body if absent.
-
-Construct a prompt directly from a `schema.AgentMeta` literal (or unmarshal from JSON). `schema.AgentMeta` implements `llm.Prompt`, so it is passed directly to `AddPrompt`:
-
-```go
-import "github.com/mutablelogic/go-llm/pkg/schema"
-
-meta := schema.AgentMeta{
-    Name:     "greet",
-    Title:    "Greet the user",
-    Template: "Say hello to {{ .name }}.",
-}
-if err := tk.AddPrompt(meta); err != nil {
-    log.Fatal(err)
-}
-
-// Or unmarshal from JSON:
-var meta schema.AgentMeta
-if err := json.Unmarshal(jsonBytes, &meta); err != nil {
-    log.Fatal(err)
-}
-if err = tk.AddPrompt(meta); err != nil {
-    log.Fatal(err)
-}
-```
 
 Remove a builtin prompt by name:
 
@@ -393,27 +374,14 @@ Prompts are executed via the toolkit, which delegates to the handler (typically 
 ```go
 import resource "github.com/mutablelogic/go-llm/pkg/toolkit/resource"
 
-// Look up a builtin or connector-supplied prompt by name.
-p, err := tk.Lookup(ctx, "summarize")
-if err != nil {
-    log.Fatal(err)
-}
-
-// Pass a plain text string as input.
-textRes, _ := resource.Text("input", "The quick brown fox...")
-result, err := tk.Call(ctx, p, textRes)
+// Call a prompt by name — no Lookup needed.
+result, err := tk.Call(ctx, "summarize", resource.Must("input", "The quick brown fox..."))
 
 // With optional additional attachments.
-textRes, _ = resource.Text("input", text)
-result, err = tk.Call(ctx, p, textRes, attachment)
+result, err = tk.Call(ctx, "summarize", resource.Must("input", text), attachment)
 
-// Call an llm.Tool directly.
-inputRes, _ := resource.JSON("input", inputMap)
-tool, err := tk.Lookup(ctx, "my_tool")
-if err != nil {
-    // handle error
-}
-result, err = tk.Call(ctx, tool, inputRes)
+// Call an llm.Tool by name.
+result, err = tk.Call(ctx, "my_tool", resource.Must("input", json.RawMessage(inputMap)))
 ```
 
 The manager:
@@ -627,10 +595,11 @@ type Resource interface {
 
 ### Built-in Resource Constructors
 
-Three constructors in `pkg/toolkit/resource` create named resources. The `name` argument must be a valid identifier (letters, digits, underscores):
+Four constructors in `pkg/toolkit/resource` create named resources. The `name` argument must be a valid identifier (letters, digits, underscores):
 
 | Constructor | MIME type | Notes |
 |---|---|---|
+| `resource.Must[V](name string, value V) llm.Resource` | inferred from `V` | generic convenience: panics on error; `V` may be `string`, `json.RawMessage`, or `[]byte` |
 | `resource.Text(name, content string) (llm.Resource, error)` | `text/plain` | wraps a plain string |
 | `resource.Data(name string, data []byte) (llm.Resource, error)` | sniffed from content, then file extension | auto-transcodes non-UTF-8 text to UTF-8; returns a text resource for `text/*` types |
 | `resource.Read(r io.Reader) (llm.Resource, error)` | sniffed from content | reads `r` eagerly; name derived from `r.Name()` if available |
@@ -639,19 +608,21 @@ Three constructors in `pkg/toolkit/resource` create named resources. The `name` 
 ```go
 import resource "github.com/mutablelogic/go-llm/pkg/toolkit/resource"
 
-// Plain text
+// Panic-free one-liner for inline use
+res := resource.Must("greeting", "Hello, world")         // string → text/plain
+res  = resource.Must("screenshot", data)                  // []byte → auto-detected MIME
+res  = resource.Must("result", json.RawMessage(jsonData)) // json.RawMessage → application/json
+
+// Or the error-returning variants:
 res, err := resource.Text("greeting", "Hello, world")
 
-// Binary / auto-detected MIME
 data, _ := os.ReadFile("image.png")
 res, err = resource.Data("screenshot", data)
 
-// From a reader
 f, _ := os.Open("report.pdf")
 defer f.Close()
 res, err = resource.Read(f)
 
-// JSON from a Go value
 res, err = resource.JSON("result", map[string]string{"status": "ok"})
 ```
 
