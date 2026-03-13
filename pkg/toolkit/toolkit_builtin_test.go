@@ -9,6 +9,7 @@ import (
 	// Packages
 	jsonschema "github.com/google/jsonschema-go/jsonschema"
 	llm "github.com/mutablelogic/go-llm"
+	"github.com/mutablelogic/go-llm/pkg/opt"
 	resource "github.com/mutablelogic/go-llm/pkg/toolkit/resource"
 	toolpkg "github.com/mutablelogic/go-llm/pkg/toolkit/tool"
 )
@@ -34,6 +35,9 @@ type mockPrompt struct {
 func (m *mockPrompt) Name() string        { return m.name }
 func (m *mockPrompt) Title() string       { return "mock prompt " + m.name }
 func (m *mockPrompt) Description() string { return "" }
+func (m *mockPrompt) Prepare(_ context.Context, _ json.RawMessage) (string, []opt.Opt, error) {
+	return "", nil, nil
+}
 
 type mockDelegate struct {
 	events []ConnectorEvent

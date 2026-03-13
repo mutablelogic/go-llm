@@ -706,7 +706,9 @@ func Test_generate_001(t *testing.T) {
 
 	response, _, err := c.WithoutSession(context.TODO(), model, msg)
 	assert.NoError(err)
-	assert.NotNil(response)
+	if !assert.NotNil(response) {
+		return
+	}
 	assert.Equal("assistant", response.Role)
 	assert.NotEmpty(response.Content)
 	t.Logf("Response: %s", response.Text())
@@ -759,7 +761,9 @@ func Test_generate_003(t *testing.T) {
 	session := &schema.Conversation{}
 	resp1, _, err := c.WithSession(context.TODO(), model, session, msg1)
 	assert.NoError(err)
-	assert.NotNil(resp1)
+	if !assert.NotNil(resp1) {
+		return
+	}
 	t.Logf("Turn 1: %s", resp1.Text())
 
 	// Second turn — model should remember
@@ -768,7 +772,9 @@ func Test_generate_003(t *testing.T) {
 
 	resp2, _, err := c.WithSession(context.TODO(), model, session, msg2)
 	assert.NoError(err)
-	assert.NotNil(resp2)
+	if !assert.NotNil(resp2) {
+		return
+	}
 	assert.Contains(resp2.Text(), "Alice")
 	t.Logf("Turn 2: %s", resp2.Text())
 }
@@ -821,7 +827,9 @@ func Test_generate_005(t *testing.T) {
 	if err != nil {
 		assert.ErrorIs(err, llm.ErrMaxTokens)
 	}
-	assert.NotNil(response)
+	if !assert.NotNil(response) {
+		return
+	}
 	t.Logf("Response: %s", response.Text())
 }
 

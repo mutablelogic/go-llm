@@ -17,8 +17,6 @@ import (
 	yaml "gopkg.in/yaml.v3"
 )
 
-var reH1 = regexp.MustCompile(`(?m)^# (.+)$`)
-
 ///////////////////////////////////////////////////////////////////////////////
 // TYPES
 
@@ -46,7 +44,12 @@ type prompt struct {
 var _ llm.Prompt = (*prompt)(nil)
 
 ///////////////////////////////////////////////////////////////////////////////
-// PUBLIC METHODS
+// GLOBALS
+
+var reH1 = regexp.MustCompile(`(?m)^# (.+)$`)
+
+///////////////////////////////////////////////////////////////////////////////
+// PUBLIC METHODS - READ
 
 // Read parses a markdown file with optional YAML front matter from r and
 // returns an llm.Prompt. The name is taken from the front matter or derived
@@ -90,27 +93,19 @@ func Read(r io.Reader) (llm.Prompt, error) {
 }
 
 ///////////////////////////////////////////////////////////////////////////////
-// PRIVATE METHODS
+// PUBLIC METHODS - PROMPT
 
-// validateJSONSchema returns an error if the schema bytes are non-empty but
-// not a valid JSON schema with a "type" field.
-func validateJSONSchema(v schema.JSONSchema) error {
-	if len(v) == 0 {
-		return nil
-	} else if s, err := jsonschema.FromJSON(json.RawMessage(v)); err != nil {
-		return err
-	} else if s.Type == "" {
-		return errors.New("missing required \"type\" field")
-	}
-	return nil
+func (p *prompt) Name() string {
+	return p.m.Name
 }
 
-///////////////////////////////////////////////////////////////////////////////
-// llm.Prompt INTERFACE
+func (p *prompt) Title() string {
+	return p.m.Title
+}
 
-func (p *prompt) Name() string        { return p.m.Name }
-func (p *prompt) Title() string       { return p.m.Title }
-func (p *prompt) Description() string { return p.m.Description }
+func (p *prompt) Description() string {
+	return p.m.Description
+}
 
 func (p *prompt) MarshalJSON() ([]byte, error) {
 	type promptJSON struct {
@@ -127,7 +122,25 @@ func (p *prompt) MarshalJSON() ([]byte, error) {
 	})
 }
 
-func (p *prompt) String() string { return types.Stringify(p) }
+func (p *prompt) String() string {
+	return types.Stringify(p)
+}
+
+///////////////////////////////////////////////////////////////////////////////
+// PRIVATE METHODS
+
+// validateJSONSchema returns an error if the schema bytes are non-empty but
+// not a valid JSON schema with a "type" field.
+func validateJSONSchema(v schema.JSONSchema) error {
+	if len(v) == 0 {
+		return nil
+	} else if s, err := jsonschema.FromJSON(json.RawMessage(v)); err != nil {
+		return err
+	} else if s.Type == "" {
+		return errors.New("missing required \"type\" field")
+	}
+	return nil
+}
 
 ///////////////////////////////////////////////////////////////////////////////
 // PRIVATE TYPES

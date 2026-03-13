@@ -1,7 +1,7 @@
 ---
 name: bad-schema
 title: Bad Schema Agent
-format:
+output:
   properties:
     x:
       type: string

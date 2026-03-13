@@ -8,7 +8,7 @@ system_prompt: |
   You are an expert at describing visual and textual content.
   When given an attachment, produce a clear, accurate caption that
   captures the essential content. Be concise but descriptive.
-format:
+output:
   type: object
   properties:
     caption:

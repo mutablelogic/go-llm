@@ -10,6 +10,8 @@ import (
 	jsonschema "github.com/google/jsonschema-go/jsonschema"
 	sdkmcp "github.com/modelcontextprotocol/go-sdk/mcp"
 	llm "github.com/mutablelogic/go-llm"
+	schema "github.com/mutablelogic/go-llm/pkg/schema"
+	toolkit "github.com/mutablelogic/go-llm/pkg/toolkit"
 	types "github.com/mutablelogic/go-server/pkg/types"
 )
 
@@ -59,9 +61,15 @@ func (m *mcpTool) Meta() llm.ToolMeta {
 	}
 }
 
-// Run passes input directly to CallTool and returns the converted plain value.
+// Run passes input directly to CallTool, forwarding any session meta
 func (m *mcpTool) Run(ctx context.Context, input json.RawMessage) (any, error) {
-	return m.client.CallTool(ctx, m.t.Name, input)
+	var metaVals []schema.MetaValue
+	if sess := toolkit.SessionFromContext(ctx); sess != nil {
+		for k, v := range sess.Meta() {
+			metaVals = append(metaVals, schema.Meta(k, v))
+		}
+	}
+	return m.client.CallTool(ctx, m.t.Name, input, metaVals...)
 }
 
 ///////////////////////////////////////////////////////////////////////////////

@@ -9,8 +9,10 @@ import (
 	"os/signal"
 	"os/user"
 	"syscall"
+	"time"
 
 	// Packages
+	"github.com/google/uuid"
 	toolkit "github.com/mutablelogic/go-llm/pkg/toolkit"
 	resource "github.com/mutablelogic/go-llm/pkg/toolkit/resource"
 	errgroup "golang.org/x/sync/errgroup"
@@ -78,19 +80,22 @@ func main() {
 		return tk.Run(ctx)
 	})
 
-	// Once both remote connectors have connected, call greet and fetch.
-	d.SetOnReady(func() {
+	session := uuid.New().String()
+
+	// Call greet and fetch concurrently
+	g.Go(func() error {
+		time.Sleep(2 * time.Second)
 		u, err := user.Current()
 		if err != nil {
 			slog.Error("greet", "err", err)
-			return
+			return nil
 		}
 		input, err := resource.JSON("input", greetRequest{Name: u.Name})
 		if err != nil {
 			slog.Error("greet", "err", err)
-			return
+			return nil
 		}
-		if result, err := tk.Call(ctx, "builtin.greet", input); err != nil {
+		if result, err := tk.Call(toolkit.WithSession(ctx, session), "builtin.greet", input); err != nil {
 			slog.Error("greet", "err", err)
 		} else if result != nil {
 			if data, err := result.Read(ctx); err != nil {
@@ -99,13 +104,17 @@ func main() {
 				slog.Info("greet", "result", data)
 			}
 		}
+		return nil
+	})
 
-		input, err = resource.JSON("input", fetchRequest{URL: "https://news.bbc.co.uk/", MaxLength: 100})
+	g.Go(func() error {
+		time.Sleep(2 * time.Second)
+		input, err := resource.JSON("input", fetchRequest{URL: "https://news.bbc.co.uk/", MaxLength: 100})
 		if err != nil {
 			slog.Error("fetch", "err", err)
-			return
+			return nil
 		}
-		if result, err := tk.Call(ctx, "fetch", input); err != nil {
+		if result, err := tk.Call(toolkit.WithSession(ctx, session), "fetch", input); err != nil {
 			slog.Error("fetch", "err", err)
 		} else if result != nil {
 			if data, err := result.Read(ctx); err != nil {
@@ -114,6 +123,7 @@ func main() {
 				slog.Info("fetch", "result", data)
 			}
 		}
+		return nil
 	})
 
 	// Wait for cancellation and log any errors.

@@ -2,10 +2,12 @@ package client
 
 import (
 	"context"
+	"encoding/json"
 
 	// Packages
 	sdkmcp "github.com/modelcontextprotocol/go-sdk/mcp"
 	llm "github.com/mutablelogic/go-llm"
+	opt "github.com/mutablelogic/go-llm/pkg/opt"
 )
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -26,6 +28,12 @@ var _ llm.Prompt = (*mcpPrompt)(nil)
 func (m *mcpPrompt) Name() string        { return m.p.Name }
 func (m *mcpPrompt) Title() string       { return m.p.Title }
 func (m *mcpPrompt) Description() string { return m.p.Description }
+
+// Prepare is not supported for remote MCP prompts — execution is always
+// delegated back through the toolkit's delegate.
+func (m *mcpPrompt) Prepare(_ context.Context, _ json.RawMessage) (string, []opt.Opt, error) {
+	return "", nil, llm.ErrNotImplemented.With("Prepare not supported for MCP prompts")
+}
 
 ///////////////////////////////////////////////////////////////////////////////
 // PUBLIC METHODS

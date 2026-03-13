@@ -7,6 +7,7 @@ import (
 	// Packages
 	sdkmcp "github.com/modelcontextprotocol/go-sdk/mcp"
 	llm "github.com/mutablelogic/go-llm"
+	schema "github.com/mutablelogic/go-llm/pkg/schema"
 )
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -86,14 +87,8 @@ func (c *Client) refreshTools(ctx context.Context) {
 }
 
 // CallTool invokes a tool on the connected MCP server by name with the given
-// arguments as JSON. Follows the same return convention as pkg/llm.Toolkit.Run:
-// tool errors (IsError==true in the MCP result) are returned as a Go error;
-// on success the plain value is returned: StructuredContent if present,
-// the single content item's value if there is exactly one, or a []any slice
-// of item values for multiple content items.
 // Returns ErrNotConnected if no session is active.
-// Optional MetaValue values are collected into the protocol _meta object.
-func (c *Client) CallTool(ctx context.Context, name string, arguments json.RawMessage, meta ...MetaValue) (any, error) {
+func (c *Client) CallTool(ctx context.Context, name string, arguments json.RawMessage, meta ...schema.MetaValue) (any, error) {
 	sess, err := c.getSession()
 	if err != nil {
 		return nil, err

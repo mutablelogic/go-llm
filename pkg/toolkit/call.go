@@ -5,9 +5,14 @@ import (
 	"encoding/json"
 
 	// Packages
+	otel "github.com/mutablelogic/go-client/pkg/otel"
 	llm "github.com/mutablelogic/go-llm"
+	schema "github.com/mutablelogic/go-llm/pkg/schema"
 	resource "github.com/mutablelogic/go-llm/pkg/toolkit/resource"
 	types "github.com/mutablelogic/go-server/pkg/types"
+	gootel "go.opentelemetry.io/otel"
+	attribute "go.opentelemetry.io/otel/attribute"
+	propagation "go.opentelemetry.io/otel/propagation"
 )
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -59,7 +64,7 @@ func (tk *toolkit) Call(ctx context.Context, key any, resources ...llm.Resource)
 // PRIVATE METHODS
 
 // callTool validates and executes a single tool. Only one resource is supported, whose content must be JSON and is passed as input to the tool. The output must be an llm.Resource or nil.
-func (tk *toolkit) callTool(ctx context.Context, t llm.Tool, resources ...llm.Resource) (llm.Resource, error) {
+func (tk *toolkit) callTool(ctx context.Context, t llm.Tool, resources ...llm.Resource) (_ llm.Resource, spanErr error) {
 	var input json.RawMessage
 
 	// Check for too many resources. Only one is supported as input to the tool.
@@ -95,10 +100,20 @@ func (tk *toolkit) callTool(ctx context.Context, t llm.Tool, resources ...llm.Re
 		}
 	}
 
-	// TODO: Start otel span
+	// Start otel span
+	otelCtx, spanEnd := otel.StartSpan(tk.tracer, ctx, t.Name(), attribute.String("input", string(input)))
+	defer func() { spanEnd(spanErr) }()
+
+	// Set traceparent in the meta for potential downstream propagation
+	meta := metaFromContext(ctx)
+	carrier := propagation.MapCarrier{}
+	gootel.GetTextMapPropagator().Inject(otelCtx, carrier)
+	for k, v := range carrier {
+		meta = append(meta, schema.MetaValue{Key: k, Value: v})
+	}
 
 	// Set a session and then execute the tool
-	result, err := t.Run(WithSessionContext(ctx, tk.newSession("", t.Name(), nil)), input)
+	result, err := t.Run(withSessionContext(otelCtx, tk.newSession(t.Name(), meta...)), input)
 	if err != nil {
 		return nil, err
 	}
@@ -153,33 +168,38 @@ func (tk *toolkit) callTool(ctx context.Context, t llm.Tool, resources ...llm.Re
 	default:
 		return nil, llm.ErrBadParameter.Withf("tool output must be nil, llm.Resource, json.RawMessage, []byte, or string, got %T", result)
 	}
-	resource := wrapped
 
-	// If JSON output and an output schema exists, validate the content.
-	if resource.Type() == types.ContentTypeJSON {
-		outputSchema, err := t.OutputSchema()
-		if err != nil {
-			return nil, llm.ErrBadParameter.Withf("output schema generation failed: %v", err)
-		}
-		if outputSchema != nil {
-			data, err := resource.Read(ctx)
-			if err != nil {
-				return nil, llm.ErrBadParameter.Withf("failed to read resource for validation: %v", err)
-			}
-			var instance any
-			if err := json.Unmarshal(data, &instance); err != nil {
-				return nil, llm.ErrBadParameter.Withf("failed to unmarshal JSON output: %v", err)
-			}
-			resolved, err := outputSchema.Resolve(nil)
-			if err != nil {
-				return nil, llm.ErrBadParameter.Withf("output schema resolution failed: %v", err)
-			}
-			if err := resolved.Validate(instance); err != nil {
-				return nil, llm.ErrBadParameter.Withf("output validation failed: %v", err)
-			}
-		}
+	// If there isn't an output schema, return the wrapped resource as-is.
+	outputSchema, err := t.OutputSchema()
+	if err != nil {
+		return nil, llm.ErrBadParameter.Withf("output schema generation failed: %v", err)
+	}
+	if outputSchema == nil {
+		return wrapped, nil
+	}
+
+	// If not JSON output return an error since we won't be able to validate against the schema.
+	if wrapped.Type() != types.ContentTypeJSON {
+		return nil, llm.ErrBadParameter.Withf("output validation failed: output schema is defined but tool did not return JSON content (got %q)", wrapped.Type())
+	}
+
+	// Validate the wrapped resource content against the output schema.
+	data, err := wrapped.Read(ctx)
+	if err != nil {
+		return nil, llm.ErrBadParameter.Withf("failed to read resource for validation: %v", err)
+	}
+	var instance any
+	if err := json.Unmarshal(data, &instance); err != nil {
+		return nil, llm.ErrBadParameter.Withf("failed to unmarshal JSON output: %v", err)
+	}
+	resolved, err := outputSchema.Resolve(nil)
+	if err != nil {
+		return nil, llm.ErrBadParameter.Withf("output schema resolution failed: %v", err)
+	}
+	if err := resolved.Validate(instance); err != nil {
+		return nil, llm.ErrBadParameter.Withf("output validation failed: %v", err)
 	}
 
 	// Return success
-	return resource, nil
+	return wrapped, nil
 }

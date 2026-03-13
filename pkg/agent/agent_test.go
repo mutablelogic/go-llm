@@ -110,7 +110,7 @@ func Test_read_008(t *testing.T) {
 func Test_read_009(t *testing.T) {
 	// Valid format and input schemas (YAML objects with type field)
 	assert := assert.New(t)
-	doc := "---\nname: structured\ntitle: Structured Agent\nformat:\n  type: object\n  properties:\n    summary:\n      type: string\ninput:\n  type: object\n  properties:\n    text:\n      type: string\n  required:\n    - text\n---\nSummarize the input.\n"
+	doc := "---\nname: structured\ntitle: Structured Agent\noutput:\n  type: object\n  properties:\n    summary:\n      type: string\ninput:\n  type: object\n  properties:\n    text:\n      type: string\n  required:\n    - text\n---\nSummarize the input.\n"
 	meta, err := agent.Read(strings.NewReader(doc))
 	assert.NoError(err)
 	assert.Equal("structured", meta.Name)
@@ -123,7 +123,7 @@ func Test_read_009(t *testing.T) {
 func Test_read_010(t *testing.T) {
 	// Format missing "type" field
 	assert := assert.New(t)
-	doc := "---\nname: bad-format\ntitle: Bad Format Agent\nformat:\n  properties:\n    x:\n      type: string\n---\n"
+	doc := "---\nname: bad-format\ntitle: Bad Format Agent\noutput:\n  properties:\n    x:\n      type: string\n---\n"
 	_, err := agent.Read(strings.NewReader(doc))
 	assert.Error(err)
 	assert.Contains(err.Error(), "format")
@@ -143,7 +143,7 @@ func Test_read_011(t *testing.T) {
 func Test_read_012(t *testing.T) {
 	// Format as a non-object (scalar string)
 	assert := assert.New(t)
-	doc := "---\nname: bad-format-scalar\ntitle: Bad Format Scalar\nformat: not-an-object\n---\n"
+	doc := "---\nname: bad-format-scalar\ntitle: Bad Format Scalar\noutput: not-an-object\n---\n"
 	_, err := agent.Read(strings.NewReader(doc))
 	assert.Error(err)
 	assert.Contains(err.Error(), "format")

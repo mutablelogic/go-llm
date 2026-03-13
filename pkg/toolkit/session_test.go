@@ -26,8 +26,8 @@ func Test_Session_001_from_empty_context(t *testing.T) {
 
 func Test_Session_002_with_and_from_context(t *testing.T) {
 	tk, _ := New()
-	sess := tk.newSession("test-id", "my_tool", map[string]any{"k": "v"})
-	ctx := WithSessionContext(context.Background(), sess)
+	sess := tk.newSession("my_tool", schema.Meta("id", "test-id"), schema.Meta("k", "v"))
+	ctx := withSessionContext(context.Background(), sess)
 	got := SessionFromContext(ctx)
 	if got == nil {
 		t.Fatal("expected non-nil session from context")
@@ -39,7 +39,7 @@ func Test_Session_002_with_and_from_context(t *testing.T) {
 
 func Test_Session_003_with_nil_session_is_noop(t *testing.T) {
 	ctx := context.Background()
-	got := WithSessionContext(ctx, nil)
+	got := withSessionContext(ctx, nil)
 	if got != ctx {
 		t.Fatal("expected same context when session is nil")
 	}
@@ -47,8 +47,7 @@ func Test_Session_003_with_nil_session_is_noop(t *testing.T) {
 
 func Test_Session_004_meta(t *testing.T) {
 	tk, _ := New()
-	meta := map[string]any{"foo": "bar"}
-	sess := tk.newSession("", "tool", meta)
+	sess := tk.newSession("tool", schema.Meta("foo", "bar"))
 	if sess.Meta()["foo"] != "bar" {
 		t.Fatalf("expected meta foo=bar, got %v", sess.Meta())
 	}
@@ -56,7 +55,7 @@ func Test_Session_004_meta(t *testing.T) {
 
 func Test_Session_005_logger(t *testing.T) {
 	tk, _ := New()
-	sess := tk.newSession("", "tool", nil)
+	sess := tk.newSession("tool")
 	if sess.Logger() == nil {
 		t.Fatal("expected non-nil logger")
 	}
@@ -64,7 +63,7 @@ func Test_Session_005_logger(t *testing.T) {
 
 func Test_Session_006_capabilities_and_client_info_nil(t *testing.T) {
 	tk, _ := New()
-	sess := tk.newSession("", "tool", nil)
+	sess := tk.newSession("tool")
 	if sess.ClientInfo() != nil {
 		t.Fatalf("expected nil ClientInfo, got %v", sess.ClientInfo())
 	}
@@ -75,9 +74,55 @@ func Test_Session_006_capabilities_and_client_info_nil(t *testing.T) {
 
 func Test_Session_007_progress_does_not_error(t *testing.T) {
 	tk, _ := New()
-	sess := tk.newSession("", "tool", nil)
+	sess := tk.newSession("tool")
 	if err := sess.Progress(0.5, 1.0, "halfway"); err != nil {
 		t.Fatalf("expected no error from Progress, got %v", err)
+	}
+}
+
+func Test_Session_008_progress_no_message(t *testing.T) {
+	tk, _ := New()
+	sess := tk.newSession("tool")
+	if err := sess.Progress(0.0, 1.0); err != nil {
+		t.Fatalf("expected no error from Progress with no message, got %v", err)
+	}
+}
+
+func Test_Session_009_progress_too_many_messages(t *testing.T) {
+	tk, _ := New()
+	sess := tk.newSession("tool")
+	if err := sess.Progress(0.5, 1.0, "a", "b"); err == nil {
+		t.Fatal("expected error for too many message args")
+	}
+}
+
+func Test_Session_010_string(t *testing.T) {
+	tk, _ := New()
+	sess := tk.newSession("tool", schema.Meta("id", "abc"))
+	s := sess.(*session).String()
+	if s == "" {
+		t.Fatal("expected non-empty String()")
+	}
+}
+
+func Test_Session_011_with_session_context(t *testing.T) {
+	ctx := WithSession(context.Background(), "sess-id", schema.Meta("foo", "bar"))
+	meta := metaFromContext(ctx)
+	found := false
+	for _, m := range meta {
+		if m.Key == "id" && m.Value == "sess-id" {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("expected id=sess-id in meta, got %v", meta)
+	}
+}
+
+func Test_Session_012_meta_from_empty_context(t *testing.T) {
+	meta := metaFromContext(context.Background())
+	if len(meta) != 0 {
+		t.Fatalf("expected empty meta from plain context, got %v", meta)
 	}
 }
 

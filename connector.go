@@ -6,6 +6,7 @@ import (
 
 	// Packages
 	jsonschema "github.com/google/jsonschema-go/jsonschema"
+	opt "github.com/mutablelogic/go-llm/pkg/opt"
 )
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -38,6 +39,9 @@ type Prompt interface {
 
 	// Description is a human-readable description of the prompt.
 	Description() string
+
+	// Prepare returns the prompt for execution, given the input arguments as JSON.
+	Prepare(ctx context.Context, input json.RawMessage) (string, []opt.Opt, error)
 }
 
 // Resource is the interface a readable resource must implement.
