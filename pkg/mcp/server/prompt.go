@@ -122,6 +122,7 @@ func argsFromJSONSchema(s schema.JSONSchema) []*sdkmcp.PromptArgument {
 		}
 		args = append(args, &sdkmcp.PromptArgument{
 			Name:        name,
+			Title:       prop.Title,
 			Description: desc,
 			Required:    required[name],
 		})

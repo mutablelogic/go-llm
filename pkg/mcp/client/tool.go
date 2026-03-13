@@ -47,18 +47,22 @@ func (m *mcpTool) OutputSchema() (*jsonschema.Schema, error) {
 	return schemaFromAny(m.t.OutputSchema)
 }
 
-// Meta converts MCP ToolAnnotations into llm.ToolMeta.
+// Meta converts MCP Tool fields into llm.ToolMeta.
+// Per spec, display-name precedence is: Tool.title > Tool.annotations.title > Tool.name.
 func (m *mcpTool) Meta() llm.ToolMeta {
-	if m.t.Annotations == nil {
-		return llm.ToolMeta{}
+	meta := llm.ToolMeta{
+		Title: m.t.Title,
 	}
-	return llm.ToolMeta{
-		Title:           m.t.Annotations.Title,
-		ReadOnlyHint:    m.t.Annotations.ReadOnlyHint,
-		DestructiveHint: m.t.Annotations.DestructiveHint,
-		IdempotentHint:  m.t.Annotations.IdempotentHint,
-		OpenWorldHint:   m.t.Annotations.OpenWorldHint,
+	if m.t.Annotations != nil {
+		if meta.Title == "" {
+			meta.Title = m.t.Annotations.Title
+		}
+		meta.ReadOnlyHint = m.t.Annotations.ReadOnlyHint
+		meta.DestructiveHint = m.t.Annotations.DestructiveHint
+		meta.IdempotentHint = m.t.Annotations.IdempotentHint
+		meta.OpenWorldHint = m.t.Annotations.OpenWorldHint
 	}
+	return meta
 }
 
 // Run passes input directly to CallTool, forwarding any session meta
