@@ -381,7 +381,8 @@ result, err := tk.Call(ctx, "summarize", resource.Must("input", "The quick brown
 result, err = tk.Call(ctx, "summarize", resource.Must("input", text), attachment)
 
 // Call an llm.Tool by name.
-result, err = tk.Call(ctx, "my_tool", resource.Must("input", json.RawMessage(inputMap)))
+inputJSON, _ := json.Marshal(inputMap)
+result, err = tk.Call(ctx, "my_tool", resource.Must("input", json.RawMessage(inputJSON)))
 ```
 
 The manager:
@@ -608,7 +609,7 @@ Four constructors in `pkg/toolkit/resource` create named resources. The `name` a
 ```go
 import resource "github.com/mutablelogic/go-llm/pkg/toolkit/resource"
 
-// Panic-free one-liner for inline use
+// Panic-on-error one-liner for inline use (suitable for static/test initialisation)
 res := resource.Must("greeting", "Hello, world")         // string → text/plain
 res  = resource.Must("screenshot", data)                  // []byte → auto-detected MIME
 res  = resource.Must("result", json.RawMessage(jsonData)) // json.RawMessage → application/json

@@ -339,6 +339,56 @@ func Test_JSON_005_unmarshalable_value(t *testing.T) {
 }
 
 ///////////////////////////////////////////////////////////////////////////////
+// Must
+
+func Test_Must_001_string(t *testing.T) {
+	// string value → text/plain resource
+	assert := assert.New(t)
+	r := resource.Must("greeting", "hello world")
+	assert.NotNil(r)
+	assert.Equal("greeting", r.Name())
+	assert.Equal("text/plain", r.Type())
+	data, err := r.Read(context.Background())
+	assert.NoError(err)
+	assert.Equal([]byte("hello world"), data)
+}
+
+func Test_Must_002_json_raw_message(t *testing.T) {
+	// json.RawMessage value → application/json resource
+	assert := assert.New(t)
+	raw := json.RawMessage(`{"key":"value"}`)
+	r := resource.Must("result", raw)
+	assert.NotNil(r)
+	assert.Equal("result", r.Name())
+	assert.Equal("application/json", r.Type())
+	data, err := r.Read(context.Background())
+	assert.NoError(err)
+	assert.Equal([]byte(`{"key":"value"}`), data)
+}
+
+func Test_Must_003_bytes(t *testing.T) {
+	// []byte value → data resource (MIME sniffed from content)
+	assert := assert.New(t)
+	r := resource.Must("blob", []byte("hello bytes"))
+	assert.NotNil(r)
+	assert.Equal("blob", r.Name())
+	assert.NotEmpty(r.Type())
+}
+
+func Test_Must_004_invalid_name_panics(t *testing.T) {
+	// An invalid name causes the underlying constructor to error, which Must panics on.
+	assert.Panics(t, func() {
+		resource.Must("has space", "content")
+	})
+}
+
+func Test_Must_005_empty_name_panics(t *testing.T) {
+	assert.Panics(t, func() {
+		resource.Must("", json.RawMessage(`{}`))
+	})
+}
+
+///////////////////////////////////////////////////////////////////////////////
 // Unmarshal — additional coverage
 
 func Test_Unmarshal_001_malformed_json(t *testing.T) {
