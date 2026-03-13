@@ -7,7 +7,7 @@ provider: anthropic
 thinking: true
 thinking_budget: 2048
 system_prompt: You are a sentiment analysis expert.
-format:
+output:
   type: object
   properties:
     sentiment:

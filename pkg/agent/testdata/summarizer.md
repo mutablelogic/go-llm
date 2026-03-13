@@ -5,7 +5,7 @@ description: Summarizes input text into a concise paragraph
 model: gemini-2.0-flash
 provider: gemini
 system_prompt: You are a professional text summarizer.
-format:
+output:
   type: object
   properties:
     summary:
