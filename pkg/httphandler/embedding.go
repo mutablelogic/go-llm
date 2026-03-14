@@ -16,11 +16,11 @@ import (
 ///////////////////////////////////////////////////////////////////////////////
 // HANDLER FUNCTIONS
 
-// Path: /embedding
+// Path: embedding
 func EmbeddingHandler(manager *manager.Manager) (string, http.HandlerFunc, *openapi.PathItem) {
 	reqSchema, _ := jsonschema.For[schema.EmbeddingRequest]()
 	respSchema, _ := jsonschema.For[schema.EmbeddingResponse]()
-	return "/embedding", func(w http.ResponseWriter, r *http.Request) {
+	return "embedding", func(w http.ResponseWriter, r *http.Request) {
 			switch r.Method {
 			case http.MethodPost:
 				var req schema.EmbeddingRequest

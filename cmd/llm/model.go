@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"strings"
 
 	// Packages
 	otel "github.com/mutablelogic/go-client/pkg/otel"
@@ -18,9 +19,11 @@ import (
 // TYPES
 
 type ModelCommands struct {
-	Providers  ProvidersCommand  `cmd:"" name:"providers" help:"List providers." group:"MODEL"`
-	ListModels ListModelsCommand `cmd:"" name:"models" help:"List models." group:"MODEL"`
-	GetModel   GetModelCommand   `cmd:"" name:"model" help:"Get model." group:"MODEL"`
+	Providers     ProvidersCommand     `cmd:"" name:"providers" help:"List providers." group:"MODEL"`
+	ListModels    ListModelsCommand    `cmd:"" name:"models" help:"List models." group:"MODEL"`
+	GetModel      GetModelCommand      `cmd:"" name:"model" help:"Get model." group:"MODEL"`
+	DownloadModel DownloadModelCommand `cmd:"" name:"download" help:"Download a model." group:"MODEL"`
+	DeleteModel   DeleteModelCommand   `cmd:"" name:"delete-model" help:"Delete a model." group:"MODEL"`
 }
 
 type ProvidersCommand struct{}
@@ -35,6 +38,17 @@ type GetModelCommand struct {
 	Name     string `arg:"" name:"name" help:"Model name" optional:""`
 	Provider string `name:"provider" help:"Provider name" optional:""`
 	Default  bool   `name:"default" help:"Save as default model" optional:""`
+}
+
+type DownloadModelCommand struct {
+	Name     string `arg:"" name:"name" help:"Model name to download"`
+	Provider string `name:"provider" help:"Provider name" optional:""`
+	Progress bool   `name:"progress" help:"Show download progress" default:"true" negatable:""`
+}
+
+type DeleteModelCommand struct {
+	Name     string `arg:"" name:"name" help:"Model name to delete"`
+	Provider string `name:"provider" help:"Provider name" optional:""`
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -167,5 +181,83 @@ func (cmd *GetModelCommand) Run(ctx server.Cmd) (err error) {
 	}
 
 	// Return success
+	return nil
+}
+
+func (cmd *DownloadModelCommand) Run(ctx server.Cmd) (err error) {
+	client, err := clientFor(ctx)
+	if err != nil {
+		return err
+	}
+
+	// OTEL
+	parent, endSpan := otel.StartSpan(ctx.Tracer(), ctx.Context(), "DownloadModelCommand",
+		attribute.String("request", types.Stringify(cmd)),
+	)
+	defer func() { endSpan(err) }()
+
+	// Build options
+	opts := []opt.Opt{}
+	if cmd.Provider != "" {
+		opts = append(opts, httpclient.WithProvider(cmd.Provider))
+	}
+	const barWidth = 20
+	if cmd.Progress {
+		opts = append(opts, opt.WithProgress(func(status string, percent float64) {
+			if percent > 0 {
+				filled := int(percent / 100.0 * barWidth)
+				if filled > barWidth {
+					filled = barWidth
+				}
+				bar := strings.Repeat("█", filled) + strings.Repeat("░", barWidth-filled)
+				fmt.Printf("\r  %-30s [%s] %5.1f%%", status, bar, percent)
+			} else {
+				fmt.Printf("\r  %-52s", status)
+			}
+		}))
+	}
+
+	// Download model
+	model, err := client.DownloadModel(parent, cmd.Name, opts...)
+	if cmd.Progress {
+		fmt.Println() // newline after progress output
+	}
+	if err != nil {
+		return err
+	}
+
+	// Print
+	if ctx.IsDebug() {
+		fmt.Println(model)
+	} else {
+		fmt.Printf("Downloaded model: %s\n", model.Name)
+	}
+	return nil
+}
+
+func (cmd *DeleteModelCommand) Run(ctx server.Cmd) (err error) {
+	client, err := clientFor(ctx)
+	if err != nil {
+		return err
+	}
+
+	// OTEL
+	parent, endSpan := otel.StartSpan(ctx.Tracer(), ctx.Context(), "DeleteModelCommand",
+		attribute.String("request", types.Stringify(cmd)),
+	)
+	defer func() { endSpan(err) }()
+
+	// Build options
+	opts := []opt.Opt{}
+	if cmd.Provider != "" {
+		opts = append(opts, httpclient.WithProvider(cmd.Provider))
+	}
+
+	// Delete model
+	if err := client.DeleteModel(parent, cmd.Name, opts...); err != nil {
+		return err
+	}
+
+	fmt.Printf("Deleted model: %s\n", cmd.Name)
 	return nil
 }

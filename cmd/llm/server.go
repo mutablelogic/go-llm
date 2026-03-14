@@ -20,6 +20,7 @@ import (
 	eliza "github.com/mutablelogic/go-llm/pkg/provider/eliza"
 	google "github.com/mutablelogic/go-llm/pkg/provider/google"
 	mistral "github.com/mutablelogic/go-llm/pkg/provider/mistral"
+	ollama "github.com/mutablelogic/go-llm/pkg/provider/ollama"
 	schema "github.com/mutablelogic/go-llm/pkg/schema"
 	session "github.com/mutablelogic/go-llm/pkg/store"
 	weatherapi "github.com/mutablelogic/go-llm/pkg/weatherapi"
@@ -39,6 +40,7 @@ type RunServer struct {
 	GeminiAPIKey    string `name:"gemini-api-key" env:"GEMINI_API_KEY" help:"Google Gemini API key"`
 	AnthropicAPIKey string `name:"anthropic-api-key" env:"ANTHROPIC_API_KEY" help:"Anthropic API key"`
 	MistralAPIKey   string `name:"mistral-api-key" env:"MISTRAL_API_KEY" help:"Mistral API key"`
+	OllamaURL       string `name:"ollama-url" env:"OLLAMA_URL" help:"Ollama endpoint URL (e.g. http://localhost:11434/api)"`
 	Eliza           bool   `name:"eliza" help:"Include ELIZA provider (no API key required)"`
 
 	// Tool API Keys
@@ -56,7 +58,7 @@ type RunServer struct {
 
 func (s *RunServer) Run(ctx server.Cmd) error {
 	return s.WithManager(ctx, func(mgr *manager.Manager, v string) error {
-		s.RunServer.Register(func(router *httprouter.Router, c server.Cmd) error {
+		s.RunServer.Register(func(router *httprouter.Router) error {
 			return httphandler.RegisterHandlers(mgr, router, true)
 		})
 		return s.RunServer.Run(ctx)
@@ -78,6 +80,7 @@ func (cmd *RunServer) WithManager(ctx server.Cmd, fn func(*manager.Manager, stri
 		cmd.AnthropicClient,
 		cmd.GeminiClient,
 		cmd.MistralClient,
+		cmd.OllamaClient,
 		cmd.ElizaClient,
 	} {
 		if o, err := fn(clientOpts...); err != nil {
@@ -89,7 +92,7 @@ func (cmd *RunServer) WithManager(ctx server.Cmd, fn func(*manager.Manager, stri
 
 	// Check if at least one client is configured
 	if len(opts) == 0 {
-		return fmt.Errorf("no API keys configured. Set --gemini-api-key, --anthropic-api-key, or --mistral-api-key (or use environment variables)")
+		return fmt.Errorf("no providers configured. Set --gemini-api-key, --anthropic-api-key, --mistral-api-key, --ollama-url (or use environment variables)")
 	}
 
 	// Add a session store
@@ -258,6 +261,14 @@ func (cmd *RunServer) MistralClient(opts ...goclient.ClientOpt) ([]manager.Opt, 
 		return nil, nil
 	}
 	c, err := mistral.New(cmd.MistralAPIKey, opts...)
+	return []manager.Opt{manager.WithClient(c)}, err
+}
+
+func (cmd *RunServer) OllamaClient(opts ...goclient.ClientOpt) ([]manager.Opt, error) {
+	if cmd.OllamaURL == "" {
+		return nil, nil
+	}
+	c, err := ollama.New(cmd.OllamaURL, opts...)
 	return []manager.Opt{manager.WithClient(c)}, err
 }
 

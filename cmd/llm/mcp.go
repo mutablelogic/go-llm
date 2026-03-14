@@ -87,7 +87,7 @@ func (cmd *HeartbeatMCPCommand) Run(ctx server.Cmd) error {
 	}
 
 	// Mount the MCP handler on the router at the HTTP prefix
-	cmd.Register(func(router *httprouter.Router, _ server.Cmd) error {
+	cmd.Register(func(router *httprouter.Router) error {
 		return router.RegisterFunc("", srv.Handler().ServeHTTP, false, nil)
 	})
 

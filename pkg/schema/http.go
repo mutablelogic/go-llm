@@ -43,6 +43,18 @@ type GetModelRequest struct {
 	Name     string `json:"name,omitempty" help:"Model name"`
 }
 
+// DownloadModelRequest represents a request to download a model
+type DownloadModelRequest struct {
+	Provider string `json:"provider,omitempty" help:"Provider name" optional:""`
+	Name     string `json:"name" help:"Model name to download"`
+}
+
+// DeleteModelRequest represents a request to delete a model
+type DeleteModelRequest struct {
+	Provider string `json:"provider,omitempty" help:"Provider name" optional:""`
+	Name     string `json:"name" help:"Model name to delete"`
+}
+
 // EmbeddingRequest represents a request to embed text
 type EmbeddingRequest struct {
 	Provider             string   `json:"provider,omitempty" help:"Provider name" optional:""`
@@ -282,6 +294,14 @@ func (r ListModelsResponse) String() string {
 }
 
 func (r GetModelRequest) String() string {
+	return types.Stringify(r)
+}
+
+func (r DownloadModelRequest) String() string {
+	return types.Stringify(r)
+}
+
+func (r DeleteModelRequest) String() string {
 	return types.Stringify(r)
 }
 

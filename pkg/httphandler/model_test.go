@@ -1,9 +1,12 @@
 package httphandler_test
 
 import (
+	"bufio"
+	"bytes"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	// Packages
@@ -75,7 +78,7 @@ func TestModelList_MethodNotAllowed(t *testing.T) {
 	mux := serveMux(mgr)
 
 	w := httptest.NewRecorder()
-	r := httptest.NewRequest(http.MethodPost, "/model", nil)
+	r := httptest.NewRequest(http.MethodPut, "/model", nil)
 	mux.ServeHTTP(w, r)
 
 	if w.Code != http.StatusMethodNotAllowed {
@@ -144,6 +147,157 @@ func TestModelGet_NotFound(t *testing.T) {
 	mux.ServeHTTP(w, r)
 
 	// llm.ErrNotFound maps to 404 via httpErr
+	if w.Code != http.StatusNotFound {
+		t.Fatalf("expected 404, got %d", w.Code)
+	}
+}
+
+///////////////////////////////////////////////////////////////////////////////
+// MODEL DOWNLOAD TESTS
+
+func TestModelDownload_JSON(t *testing.T) {
+	mgr := newTestManagerWithDownloader(t, []*mockDownloaderClient{
+		{mockClient: mockClient{name: "provider-1"}},
+	})
+	mux := serveMux(mgr)
+
+	body, _ := json.Marshal(schema.DownloadModelRequest{Name: "llama3"})
+	w := httptest.NewRecorder()
+	r := httptest.NewRequest(http.MethodPost, "/model", bytes.NewReader(body))
+	r.Header.Set("Content-Type", "application/json")
+	mux.ServeHTTP(w, r)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+
+	var model schema.Model
+	if err := json.NewDecoder(w.Body).Decode(&model); err != nil {
+		t.Fatal(err)
+	}
+	if model.Name != "llama3" {
+		t.Fatalf("expected name=llama3, got %q", model.Name)
+	}
+}
+
+func TestModelDownload_Stream(t *testing.T) {
+	mgr := newTestManagerWithDownloader(t, []*mockDownloaderClient{
+		{mockClient: mockClient{name: "provider-1"}},
+	})
+	mux := serveMux(mgr)
+
+	body, _ := json.Marshal(schema.DownloadModelRequest{Name: "llama3"})
+	w := httptest.NewRecorder()
+	r := httptest.NewRequest(http.MethodPost, "/model", bytes.NewReader(body))
+	r.Header.Set("Content-Type", "application/json")
+	r.Header.Set("Accept", "text/event-stream")
+	mux.ServeHTTP(w, r)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+	if ct := w.Header().Get("Content-Type"); ct != "text/event-stream" {
+		t.Fatalf("expected Content-Type text/event-stream, got %q", ct)
+	}
+
+	type sseEvent struct{ name, data string }
+	var events []sseEvent
+	scanner := bufio.NewScanner(w.Body)
+	var cur sseEvent
+	for scanner.Scan() {
+		line := scanner.Text()
+		switch {
+		case strings.HasPrefix(line, "event: "):
+			cur.name = strings.TrimPrefix(line, "event: ")
+		case strings.HasPrefix(line, "data: "):
+			cur.data = strings.TrimPrefix(line, "data: ")
+		case line == "":
+			if cur.name != "" || cur.data != "" {
+				events = append(events, cur)
+				cur = sseEvent{}
+			}
+		}
+	}
+
+	var foundResult bool
+	for _, evt := range events {
+		if evt.name == schema.EventResult {
+			foundResult = true
+			var model schema.Model
+			if err := json.Unmarshal([]byte(evt.data), &model); err != nil {
+				t.Fatalf("failed to decode result event: %v", err)
+			}
+			if model.Name != "llama3" {
+				t.Fatalf("expected name=llama3, got %q", model.Name)
+			}
+		}
+	}
+	if !foundResult {
+		t.Fatalf("no 'result' event found in SSE stream; events: %+v", events)
+	}
+}
+
+func TestModelDownload_NotAcceptable(t *testing.T) {
+	mgr := newTestManagerWithDownloader(t, []*mockDownloaderClient{
+		{mockClient: mockClient{name: "provider-1"}},
+	})
+	mux := serveMux(mgr)
+
+	body, _ := json.Marshal(schema.DownloadModelRequest{Name: "llama3"})
+	w := httptest.NewRecorder()
+	r := httptest.NewRequest(http.MethodPost, "/model", bytes.NewReader(body))
+	r.Header.Set("Content-Type", "application/json")
+	r.Header.Set("Accept", "text/plain")
+	mux.ServeHTTP(w, r)
+
+	if w.Code != http.StatusNotAcceptable {
+		t.Fatalf("expected 406, got %d", w.Code)
+	}
+}
+
+///////////////////////////////////////////////////////////////////////////////
+// MODEL DELETE TESTS
+
+func TestModelDelete_OK(t *testing.T) {
+	mgr := newTestManagerWithDownloader(t, []*mockDownloaderClient{
+		{mockClient: mockClient{name: "provider-1", models: []schema.Model{{Name: "llama3"}}}},
+	})
+	mux := serveMux(mgr)
+
+	w := httptest.NewRecorder()
+	r := httptest.NewRequest(http.MethodDelete, "/model/llama3", nil)
+	mux.ServeHTTP(w, r)
+
+	if w.Code != http.StatusNoContent {
+		t.Fatalf("expected 204, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestModelDelete_WithProvider(t *testing.T) {
+	mgr := newTestManagerWithDownloader(t, []*mockDownloaderClient{
+		{mockClient: mockClient{name: "provider-1", models: []schema.Model{{Name: "llama3"}}}},
+	})
+	mux := serveMux(mgr)
+
+	w := httptest.NewRecorder()
+	r := httptest.NewRequest(http.MethodDelete, "/model/provider-1/llama3", nil)
+	mux.ServeHTTP(w, r)
+
+	if w.Code != http.StatusNoContent {
+		t.Fatalf("expected 204, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestModelDelete_NotFound(t *testing.T) {
+	mgr := newTestManagerWithDownloader(t, []*mockDownloaderClient{
+		{mockClient: mockClient{name: "provider-1", models: []schema.Model{{Name: "llama3"}}}},
+	})
+	mux := serveMux(mgr)
+
+	w := httptest.NewRecorder()
+	r := httptest.NewRequest(http.MethodDelete, "/model/nonexistent", nil)
+	mux.ServeHTTP(w, r)
+
 	if w.Code != http.StatusNotFound {
 		t.Fatalf("expected 404, got %d", w.Code)
 	}

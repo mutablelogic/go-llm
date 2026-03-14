@@ -8,6 +8,7 @@ import (
 	// Packages
 	otel "github.com/mutablelogic/go-client/pkg/otel"
 	llm "github.com/mutablelogic/go-llm"
+	opt "github.com/mutablelogic/go-llm/pkg/opt"
 	schema "github.com/mutablelogic/go-llm/pkg/schema"
 	types "github.com/mutablelogic/go-server/pkg/types"
 	attribute "go.opentelemetry.io/otel/attribute"
@@ -109,6 +110,7 @@ func (m *Manager) GetModel(ctx context.Context, req schema.GetModelRequest) (res
 		}
 		matched = true
 
+		client := client
 		wg.Go(func() error {
 			model, err := client.GetModel(ctx, req.Name)
 			if err != nil {
@@ -138,4 +140,91 @@ func (m *Manager) GetModel(ctx context.Context, req schema.GetModelRequest) (res
 
 	// Return success
 	return result, nil
+}
+
+func (m *Manager) DownloadModel(ctx context.Context, req schema.DownloadModelRequest, opts ...opt.Opt) (result *schema.Model, err error) {
+	// Otel span
+	ctx, endSpan := otel.StartSpan(m.tracer, ctx, "DownloadModel",
+		attribute.String("request", req.String()),
+	)
+	defer func() { endSpan(err) }()
+
+	// Find all providers that implement llm.Downloader, optionally filtered by name.
+	var downloaders []llm.Downloader
+	for _, client := range m.clients {
+		if req.Provider != "" && client.Name() != req.Provider {
+			continue
+		}
+		if downloader, ok := client.(llm.Downloader); ok {
+			downloaders = append(downloaders, downloader)
+		}
+	}
+
+	switch len(downloaders) {
+	case 0:
+		if req.Provider != "" {
+			return nil, llm.ErrNotFound.Withf("provider %q not found or does not support model downloads", req.Provider)
+		}
+		return nil, llm.ErrNotFound.With("no provider found that supports model downloads")
+	case 1:
+		return downloaders[0].DownloadModel(ctx, req.Name, opts...)
+	default:
+		return nil, llm.ErrConflict.With("multiple providers support model downloads; specify a provider")
+	}
+}
+
+func (m *Manager) DeleteModel(ctx context.Context, req schema.DeleteModelRequest) (err error) {
+	// Otel span
+	ctx, endSpan := otel.StartSpan(m.tracer, ctx, "DeleteModel",
+		attribute.String("request", req.String()),
+	)
+	defer func() { endSpan(err) }()
+
+	// Collect all providers that match, support deletion, and own the model.
+	type candidate struct {
+		downloader llm.Downloader
+		model      schema.Model
+	}
+	var (
+		mu              sync.Mutex
+		candidates      []candidate
+		providerMatched bool // true if req.Provider matched a downloader-capable client
+	)
+	wg, ctx2 := errgroup.WithContext(ctx)
+	for _, client := range m.clients {
+		if req.Provider != "" && client.Name() != req.Provider {
+			continue
+		}
+		downloader, ok := client.(llm.Downloader)
+		if !ok {
+			continue
+		}
+		providerMatched = true
+		client, downloader := client, downloader
+		wg.Go(func() error {
+			model, err := client.GetModel(ctx2, req.Name)
+			if err != nil || model == nil {
+				return nil // provider doesn't have this model
+			}
+			mu.Lock()
+			candidates = append(candidates, candidate{downloader, types.Value(model)})
+			mu.Unlock()
+			return nil
+		})
+	}
+	if err := wg.Wait(); err != nil {
+		return err
+	}
+
+	switch len(candidates) {
+	case 0:
+		if req.Provider != "" && !providerMatched {
+			return llm.ErrNotFound.Withf("provider %q not found or does not support model deletion", req.Provider)
+		}
+		return llm.ErrNotFound.Withf("model %q not found", req.Name)
+	case 1:
+		return candidates[0].downloader.DeleteModel(ctx, candidates[0].model)
+	default:
+		return llm.ErrConflict.With("multiple providers own this model; specify a provider")
+	}
 }

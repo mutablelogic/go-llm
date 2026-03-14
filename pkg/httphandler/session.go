@@ -16,12 +16,12 @@ import (
 ///////////////////////////////////////////////////////////////////////////////
 // HANDLER FUNCTIONS
 
-// Path: /session
+// Path: session
 func SessionHandler(manager *manager.Manager) (string, http.HandlerFunc, *openapi.PathItem) {
 	sessionMetaSchema, _ := jsonschema.For[schema.SessionMeta]()
 	listRespSchema, _ := jsonschema.For[schema.ListSessionResponse]()
 	sessionSchema, _ := jsonschema.For[schema.Session]()
-	return "/session", func(w http.ResponseWriter, r *http.Request) {
+	return "session", func(w http.ResponseWriter, r *http.Request) {
 			switch r.Method {
 			case http.MethodGet:
 				var req schema.ListSessionRequest
@@ -79,7 +79,7 @@ func SessionHandler(manager *manager.Manager) (string, http.HandlerFunc, *openap
 		})
 }
 
-// Path: /session/{session}
+// Path: session/{session}
 func SessionGetHandler(manager *manager.Manager) (string, http.HandlerFunc, *openapi.PathItem) {
 	sessionParam := openapi.Parameter{
 		Name:        "session",
@@ -90,7 +90,7 @@ func SessionGetHandler(manager *manager.Manager) (string, http.HandlerFunc, *ope
 	}
 	sessionMetaSchema, _ := jsonschema.For[schema.SessionMeta]()
 	sessionSchema, _ := jsonschema.For[schema.Session]()
-	return "/session/{session}", func(w http.ResponseWriter, r *http.Request) {
+	return "session/{session}", func(w http.ResponseWriter, r *http.Request) {
 			id := r.PathValue("session")
 			switch r.Method {
 			case http.MethodGet:

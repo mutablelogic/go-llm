@@ -19,12 +19,12 @@ import (
 ///////////////////////////////////////////////////////////////////////////////
 // HANDLER FUNCTIONS
 
-// Path: /agent
+// Path: agent
 func AgentHandler(manager *manager.Manager) (string, http.HandlerFunc, *openapi.PathItem) {
 	agentMetaSchema, _ := jsonschema.For[schema.AgentMeta]()
 	listRespSchema, _ := jsonschema.For[schema.ListAgentResponse]()
 	agentSchema, _ := jsonschema.For[schema.Agent]()
-	return "/agent", func(w http.ResponseWriter, r *http.Request) {
+	return "agent", func(w http.ResponseWriter, r *http.Request) {
 			switch r.Method {
 			case http.MethodGet:
 				var req schema.ListAgentRequest
@@ -125,7 +125,7 @@ func AgentHandler(manager *manager.Manager) (string, http.HandlerFunc, *openapi.
 		})
 }
 
-// Path: /agent/{agent}
+// Path: agent/{agent}
 func AgentGetHandler(manager *manager.Manager) (string, http.HandlerFunc, *openapi.PathItem) {
 	agentParam := openapi.Parameter{
 		Name:        "agent",
@@ -137,7 +137,7 @@ func AgentGetHandler(manager *manager.Manager) (string, http.HandlerFunc, *opena
 	createAgentSessionSchema, _ := jsonschema.For[schema.CreateAgentSessionRequest]()
 	agentSchema, _ := jsonschema.For[schema.Agent]()
 	createAgentSessionRespSchema, _ := jsonschema.For[schema.CreateAgentSessionResponse]()
-	return "/agent/{agent}", func(w http.ResponseWriter, r *http.Request) {
+	return "agent/{agent}", func(w http.ResponseWriter, r *http.Request) {
 			id := r.PathValue("agent")
 			switch r.Method {
 			case http.MethodGet:

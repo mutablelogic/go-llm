@@ -16,11 +16,11 @@ import (
 ///////////////////////////////////////////////////////////////////////////////
 // HANDLER FUNCTIONS
 
-// Path: /ask
+// Path: ask
 func AskHandler(manager *manager.Manager) (string, http.HandlerFunc, *openapi.PathItem) {
 	reqSchema, _ := jsonschema.For[schema.AskRequest]()
 	respSchema, _ := jsonschema.For[schema.AskResponse]()
-	return "/ask", func(w http.ResponseWriter, r *http.Request) {
+	return "ask", func(w http.ResponseWriter, r *http.Request) {
 			switch r.Method {
 			case http.MethodPost:
 				var req schema.MultipartAskRequest
