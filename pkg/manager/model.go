@@ -148,22 +148,28 @@ func (m *Manager) DownloadModel(ctx context.Context, req schema.DownloadModelReq
 	)
 	defer func() { endSpan(err) }()
 
-	// Find a matching provider that implements llm.Downloader
+	// Find all providers that implement llm.Downloader, optionally filtered by name.
+	var downloaders []llm.Downloader
 	for _, client := range m.clients {
 		if req.Provider != "" && client.Name() != req.Provider {
 			continue
 		}
-		downloader, ok := client.(llm.Downloader)
-		if !ok {
-			continue
+		if downloader, ok := client.(llm.Downloader); ok {
+			downloaders = append(downloaders, downloader)
 		}
-		return downloader.DownloadModel(ctx, req.Name, opts...)
 	}
 
-	if req.Provider != "" {
-		return nil, llm.ErrNotFound.Withf("provider %q not found or does not support model downloads", req.Provider)
+	switch len(downloaders) {
+	case 0:
+		if req.Provider != "" {
+			return nil, llm.ErrNotFound.Withf("provider %q not found or does not support model downloads", req.Provider)
+		}
+		return nil, llm.ErrNotFound.With("no provider found that supports model downloads")
+	case 1:
+		return downloaders[0].DownloadModel(ctx, req.Name, opts...)
+	default:
+		return nil, llm.ErrConflict.With("multiple providers support model downloads; specify a provider")
 	}
-	return nil, llm.ErrNotFound.With("no provider found that supports model downloads")
 }
 
 func (m *Manager) DeleteModel(ctx context.Context, req schema.DeleteModelRequest) (err error) {
@@ -173,22 +179,48 @@ func (m *Manager) DeleteModel(ctx context.Context, req schema.DeleteModelRequest
 	)
 	defer func() { endSpan(err) }()
 
-	// Find the model first so we know which provider owns it
-	model, err := m.GetModel(ctx, schema.GetModelRequest{Provider: req.Provider, Name: req.Name})
-	if err != nil {
+	// Collect all providers that match, support deletion, and own the model.
+	type candidate struct {
+		downloader llm.Downloader
+		model      schema.Model
+	}
+	var (
+		mu         sync.Mutex
+		candidates []candidate
+	)
+	wg, ctx2 := errgroup.WithContext(ctx)
+	for _, client := range m.clients {
+		if req.Provider != "" && client.Name() != req.Provider {
+			continue
+		}
+		downloader, ok := client.(llm.Downloader)
+		if !ok {
+			continue
+		}
+		wg.Go(func() error {
+			model, err := client.GetModel(ctx2, req.Name)
+			if err != nil || model == nil {
+				return nil // provider doesn't have this model
+			}
+			mu.Lock()
+			candidates = append(candidates, candidate{downloader, types.Value(model)})
+			mu.Unlock()
+			return nil
+		})
+	}
+	if err := wg.Wait(); err != nil {
 		return err
 	}
 
-	// Find the owning provider and check it implements llm.Downloader
-	client, ok := m.clients[model.OwnedBy]
-	if !ok {
-		return llm.ErrNotFound.Withf("provider %q not found", model.OwnedBy)
+	switch len(candidates) {
+	case 0:
+		if req.Provider != "" {
+			return llm.ErrNotFound.Withf("provider %q not found or does not support model deletion", req.Provider)
+		}
+		return llm.ErrNotFound.Withf("model %q not found", req.Name)
+	case 1:
+		return candidates[0].downloader.DeleteModel(ctx, candidates[0].model)
+	default:
+		return llm.ErrConflict.With("multiple providers own this model; specify a provider")
 	}
-	downloader, ok := client.(llm.Downloader)
-	if !ok {
-		return llm.ErrNotImplemented.Withf("provider %q does not support model deletion", model.OwnedBy)
-	} else {
-		return downloader.DeleteModel(ctx, types.Value(model))
-	}
-
 }

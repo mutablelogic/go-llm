@@ -16,7 +16,7 @@ import (
 ///////////////////////////////////////////////////////////////////////////////
 // HANDLER FUNCTIONS
 
-// Path: /ask
+// Path: ask
 func AskHandler(manager *manager.Manager) (string, http.HandlerFunc, *openapi.PathItem) {
 	reqSchema, _ := jsonschema.For[schema.AskRequest]()
 	respSchema, _ := jsonschema.For[schema.AskResponse]()

@@ -16,7 +16,7 @@ import (
 ///////////////////////////////////////////////////////////////////////////////
 // HANDLER FUNCTIONS
 
-// Path: /embedding
+// Path: embedding
 func EmbeddingHandler(manager *manager.Manager) (string, http.HandlerFunc, *openapi.PathItem) {
 	reqSchema, _ := jsonschema.For[schema.EmbeddingRequest]()
 	respSchema, _ := jsonschema.For[schema.EmbeddingResponse]()

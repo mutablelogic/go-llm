@@ -17,7 +17,7 @@ import (
 ///////////////////////////////////////////////////////////////////////////////
 // HANDLER FUNCTIONS
 
-// Path: /connector
+// Path: connector
 func ConnectorListHandler(manager *manager.Manager) (string, http.HandlerFunc, *openapi.PathItem) {
 	listRespSchema, _ := jsonschema.For[schema.ListConnectorsResponse]()
 	return "connector", func(w http.ResponseWriter, r *http.Request) {
@@ -55,7 +55,7 @@ func ConnectorListHandler(manager *manager.Manager) (string, http.HandlerFunc, *
 		})
 }
 
-// Path: /connector/{url}
+// Path: connector/{url}
 func ConnectorHandler(manager *manager.Manager) (string, http.HandlerFunc, *openapi.PathItem) {
 	urlParam := openapi.Parameter{
 		Name:        "url",

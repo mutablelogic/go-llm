@@ -18,7 +18,7 @@ import (
 ///////////////////////////////////////////////////////////////////////////////
 // HANDLER FUNCTIONS
 
-// Path: /chat
+// Path: chat
 func ChatHandler(manager *manager.Manager) (string, http.HandlerFunc, *openapi.PathItem) {
 	reqSchema, _ := jsonschema.For[schema.ChatRequest]()
 	respSchema, _ := jsonschema.For[schema.ChatResponse]()

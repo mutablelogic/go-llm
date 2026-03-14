@@ -46,13 +46,15 @@ func ModelListHandler(manager *manager.Manager) (string, http.HandlerFunc, *open
 				switch acceptType(r) {
 				case acceptStream:
 					downloadStream(w, r, manager, req)
-				default:
+				case acceptJSON:
 					resp, err := manager.DownloadModel(r.Context(), req)
 					if err != nil {
 						_ = httpresponse.Error(w, httpErr(err))
 						return
 					}
 					_ = httpresponse.JSON(w, http.StatusOK, httprequest.Indent(r), resp)
+				default:
+					_ = httpresponse.Error(w, httpresponse.Err(http.StatusNotAcceptable))
 				}
 			default:
 				_ = httpresponse.Error(w, httpresponse.Err(http.StatusMethodNotAllowed), r.Method)

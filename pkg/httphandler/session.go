@@ -16,7 +16,7 @@ import (
 ///////////////////////////////////////////////////////////////////////////////
 // HANDLER FUNCTIONS
 
-// Path: /session
+// Path: session
 func SessionHandler(manager *manager.Manager) (string, http.HandlerFunc, *openapi.PathItem) {
 	sessionMetaSchema, _ := jsonschema.For[schema.SessionMeta]()
 	listRespSchema, _ := jsonschema.For[schema.ListSessionResponse]()
@@ -79,7 +79,7 @@ func SessionHandler(manager *manager.Manager) (string, http.HandlerFunc, *openap
 		})
 }
 
-// Path: /session/{session}
+// Path: session/{session}
 func SessionGetHandler(manager *manager.Manager) (string, http.HandlerFunc, *openapi.PathItem) {
 	sessionParam := openapi.Parameter{
 		Name:        "session",

@@ -2,6 +2,8 @@ package ollama_test
 
 import (
 	"context"
+	"errors"
+	"net"
 	"testing"
 
 	// Packages
@@ -16,14 +18,23 @@ import (
 // requireClient creates a client using OLLAMA_URL or skips the test.
 func requireClient(t *testing.T) *ollama.Client {
 	t.Helper()
-	if apiKey == "" {
+	if ollamaURL == "" {
 		t.Skip("OLLAMA_URL not set, skipping")
 	}
-	c, err := ollama.New(apiKey)
+	c, err := ollama.New(ollamaURL)
 	if err != nil {
 		t.Fatalf("ollama.New: %v", err)
 	}
 	return c
+}
+
+// skipIfUnreachable skips the test if err looks like a network connectivity failure.
+func skipIfUnreachable(t *testing.T, err error) {
+	t.Helper()
+	var netErr *net.OpError
+	if errors.As(err, &netErr) {
+		t.Skipf("server unreachable: %v", err)
+	}
 }
 
 // firstModel returns the name of the first available model or skips.
@@ -31,6 +42,7 @@ func firstModel(t *testing.T, c *ollama.Client) string {
 	t.Helper()
 	models, err := c.ListModels(context.Background())
 	if err != nil {
+		skipIfUnreachable(t, err)
 		t.Fatalf("ListModels: %v", err)
 	}
 	if len(models) == 0 {
@@ -47,6 +59,7 @@ func Test_ListModels_ReturnsModels(t *testing.T) {
 	assert := assert.New(t)
 
 	models, err := c.ListModels(context.Background())
+	skipIfUnreachable(t, err)
 	assert.NoError(err)
 	assert.NotEmpty(models)
 	for _, m := range models {
@@ -60,6 +73,7 @@ func Test_ListModels_Cached(t *testing.T) {
 	assert := assert.New(t)
 
 	models1, err := c.ListModels(context.Background())
+	skipIfUnreachable(t, err)
 	assert.NoError(err)
 
 	models2, err := c.ListModels(context.Background())
@@ -76,6 +90,7 @@ func Test_ListRunningModels(t *testing.T) {
 
 	// May be empty if no models are currently loaded
 	models, err := c.ListRunningModels(context.Background())
+	skipIfUnreachable(t, err)
 	assert.NoError(err)
 	for _, m := range models {
 		assert.NotEmpty(m.Name)

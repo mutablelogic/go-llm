@@ -75,7 +75,7 @@ func TestModelList_MethodNotAllowed(t *testing.T) {
 	mux := serveMux(mgr)
 
 	w := httptest.NewRecorder()
-	r := httptest.NewRequest(http.MethodPost, "/model", nil)
+	r := httptest.NewRequest(http.MethodPut, "/model", nil)
 	mux.ServeHTTP(w, r)
 
 	if w.Code != http.StatusMethodNotAllowed {

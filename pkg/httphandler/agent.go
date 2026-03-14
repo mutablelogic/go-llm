@@ -19,7 +19,7 @@ import (
 ///////////////////////////////////////////////////////////////////////////////
 // HANDLER FUNCTIONS
 
-// Path: /agent
+// Path: agent
 func AgentHandler(manager *manager.Manager) (string, http.HandlerFunc, *openapi.PathItem) {
 	agentMetaSchema, _ := jsonschema.For[schema.AgentMeta]()
 	listRespSchema, _ := jsonschema.For[schema.ListAgentResponse]()
@@ -125,7 +125,7 @@ func AgentHandler(manager *manager.Manager) (string, http.HandlerFunc, *openapi.
 		})
 }
 
-// Path: /agent/{agent}
+// Path: agent/{agent}
 func AgentGetHandler(manager *manager.Manager) (string, http.HandlerFunc, *openapi.PathItem) {
 	agentParam := openapi.Parameter{
 		Name:        "agent",

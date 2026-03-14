@@ -18,7 +18,7 @@ import (
 ///////////////////////////////////////////////////////////////////////////////
 // HANDLER FUNCTIONS
 
-// Path: /credential/{url}
+// Path: credential/{url}
 func CredentialHandler(manager *manager.Manager) (string, http.HandlerFunc, *openapi.PathItem) {
 	urlParam := openapi.Parameter{
 		Name:        "url",

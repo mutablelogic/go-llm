@@ -16,7 +16,7 @@ import (
 ///////////////////////////////////////////////////////////////////////////////
 // HANDLER FUNCTIONS
 
-// Path: /tool
+// Path: tool
 func ToolListHandler(manager *manager.Manager) (string, http.HandlerFunc, *openapi.PathItem) {
 	listRespSchema, _ := jsonschema.For[schema.ListToolResponse]()
 	return "tool", func(w http.ResponseWriter, r *http.Request) {
@@ -52,7 +52,7 @@ func ToolListHandler(manager *manager.Manager) (string, http.HandlerFunc, *opena
 		})
 }
 
-// Path: /tool/{name}
+// Path: tool/{name}
 func ToolGetHandler(manager *manager.Manager) (string, http.HandlerFunc, *openapi.PathItem) {
 	nameParam := openapi.Parameter{
 		Name:        "name",
