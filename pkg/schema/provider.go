@@ -6,4 +6,5 @@ const (
 	Anthropic = "anthropic"
 	Mistral   = "mistral"
 	Eliza     = "eliza"
+	Ollama    = "ollama"
 )

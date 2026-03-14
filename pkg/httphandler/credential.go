@@ -28,7 +28,7 @@ func CredentialHandler(manager *manager.Manager) (string, http.HandlerFunc, *ope
 		Schema:      pathParamSchema,
 	}
 	credSchema, _ := jsonschema.For[schema.OAuthCredentials]()
-	return "/credential/{url}", func(w http.ResponseWriter, r *http.Request) {
+	return "credential/{url}", func(w http.ResponseWriter, r *http.Request) {
 			rawURL, err := url.PathUnescape(r.PathValue("url"))
 			if err != nil {
 				_ = httpresponse.Error(w, httpresponse.ErrBadRequest.With(err))

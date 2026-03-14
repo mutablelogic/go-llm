@@ -23,6 +23,7 @@ type modelts struct {
 
 type ModelCache struct {
 	ttl   time.Duration
+	cap   int
 	model map[string]modelts
 	ts    time.Time // timestamp of last ListModels fetch
 }
@@ -42,6 +43,7 @@ func NewModelCache(ttl time.Duration, cap int) *ModelCache {
 	}
 
 	// Set model cache capacity
+	self.cap = cap
 	self.model = make(map[string]modelts, cap)
 
 	// Return the model cache
@@ -107,4 +109,10 @@ func (mc *ModelCache) ListModels(ctx context.Context, opts []opt.Opt, fn ListMod
 
 	// Return sorted list of models
 	return models, nil
+}
+
+// Flush clears all cached model entries, forcing the next read to fetch from the provider.
+func (mc *ModelCache) Flush() {
+	mc.ts = time.Time{}
+	mc.model = make(map[string]modelts, mc.cap)
 }

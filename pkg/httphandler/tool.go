@@ -19,7 +19,7 @@ import (
 // Path: /tool
 func ToolListHandler(manager *manager.Manager) (string, http.HandlerFunc, *openapi.PathItem) {
 	listRespSchema, _ := jsonschema.For[schema.ListToolResponse]()
-	return "/tool", func(w http.ResponseWriter, r *http.Request) {
+	return "tool", func(w http.ResponseWriter, r *http.Request) {
 			switch r.Method {
 			case http.MethodGet:
 				var req schema.ListToolRequest
@@ -64,7 +64,7 @@ func ToolGetHandler(manager *manager.Manager) (string, http.HandlerFunc, *openap
 	toolSchema, _ := jsonschema.For[schema.ToolMeta]()
 	callReqSchema, _ := jsonschema.For[schema.CallToolRequest]()
 	callRespSchema, _ := jsonschema.For[schema.CallToolResponse]()
-	return "/tool/{name}", func(w http.ResponseWriter, r *http.Request) {
+	return "tool/{name}", func(w http.ResponseWriter, r *http.Request) {
 			switch r.Method {
 			case http.MethodGet:
 				resp, err := manager.GetTool(r.Context(), r.PathValue("name"))

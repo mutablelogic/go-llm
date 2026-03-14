@@ -8,6 +8,7 @@ import (
 	// Packages
 	otel "github.com/mutablelogic/go-client/pkg/otel"
 	llm "github.com/mutablelogic/go-llm"
+	opt "github.com/mutablelogic/go-llm/pkg/opt"
 	schema "github.com/mutablelogic/go-llm/pkg/schema"
 	types "github.com/mutablelogic/go-server/pkg/types"
 	attribute "go.opentelemetry.io/otel/attribute"
@@ -138,4 +139,56 @@ func (m *Manager) GetModel(ctx context.Context, req schema.GetModelRequest) (res
 
 	// Return success
 	return result, nil
+}
+
+func (m *Manager) DownloadModel(ctx context.Context, req schema.DownloadModelRequest, opts ...opt.Opt) (result *schema.Model, err error) {
+	// Otel span
+	ctx, endSpan := otel.StartSpan(m.tracer, ctx, "DownloadModel",
+		attribute.String("request", req.String()),
+	)
+	defer func() { endSpan(err) }()
+
+	// Find a matching provider that implements llm.Downloader
+	for _, client := range m.clients {
+		if req.Provider != "" && client.Name() != req.Provider {
+			continue
+		}
+		downloader, ok := client.(llm.Downloader)
+		if !ok {
+			continue
+		}
+		return downloader.DownloadModel(ctx, req.Name, opts...)
+	}
+
+	if req.Provider != "" {
+		return nil, llm.ErrNotFound.Withf("provider %q not found or does not support model downloads", req.Provider)
+	}
+	return nil, llm.ErrNotFound.With("no provider found that supports model downloads")
+}
+
+func (m *Manager) DeleteModel(ctx context.Context, req schema.DeleteModelRequest) (err error) {
+	// Otel span
+	ctx, endSpan := otel.StartSpan(m.tracer, ctx, "DeleteModel",
+		attribute.String("request", req.String()),
+	)
+	defer func() { endSpan(err) }()
+
+	// Find the model first so we know which provider owns it
+	model, err := m.GetModel(ctx, schema.GetModelRequest{Provider: req.Provider, Name: req.Name})
+	if err != nil {
+		return err
+	}
+
+	// Find the owning provider and check it implements llm.Downloader
+	client, ok := m.clients[model.OwnedBy]
+	if !ok {
+		return llm.ErrNotFound.Withf("provider %q not found", model.OwnedBy)
+	}
+	downloader, ok := client.(llm.Downloader)
+	if !ok {
+		return llm.ErrNotImplemented.Withf("provider %q does not support model deletion", model.OwnedBy)
+	} else {
+		return downloader.DeleteModel(ctx, types.Value(model))
+	}
+
 }

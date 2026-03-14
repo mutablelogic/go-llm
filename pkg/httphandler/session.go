@@ -21,7 +21,7 @@ func SessionHandler(manager *manager.Manager) (string, http.HandlerFunc, *openap
 	sessionMetaSchema, _ := jsonschema.For[schema.SessionMeta]()
 	listRespSchema, _ := jsonschema.For[schema.ListSessionResponse]()
 	sessionSchema, _ := jsonschema.For[schema.Session]()
-	return "/session", func(w http.ResponseWriter, r *http.Request) {
+	return "session", func(w http.ResponseWriter, r *http.Request) {
 			switch r.Method {
 			case http.MethodGet:
 				var req schema.ListSessionRequest
@@ -90,7 +90,7 @@ func SessionGetHandler(manager *manager.Manager) (string, http.HandlerFunc, *ope
 	}
 	sessionMetaSchema, _ := jsonschema.For[schema.SessionMeta]()
 	sessionSchema, _ := jsonschema.For[schema.Session]()
-	return "/session/{session}", func(w http.ResponseWriter, r *http.Request) {
+	return "session/{session}", func(w http.ResponseWriter, r *http.Request) {
 			id := r.PathValue("session")
 			switch r.Method {
 			case http.MethodGet:

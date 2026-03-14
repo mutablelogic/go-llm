@@ -6,6 +6,7 @@ import (
 
 	// Packages
 	manager "github.com/mutablelogic/go-llm/pkg/manager"
+	opt "github.com/mutablelogic/go-llm/pkg/opt"
 	schema "github.com/mutablelogic/go-llm/pkg/schema"
 	httprequest "github.com/mutablelogic/go-server/pkg/httprequest"
 	httpresponse "github.com/mutablelogic/go-server/pkg/httpresponse"
@@ -17,10 +18,12 @@ import (
 ///////////////////////////////////////////////////////////////////////////////
 // HANDLER FUNCTIONS
 
-// Path: /model
+// Path: model
 func ModelListHandler(manager *manager.Manager) (string, http.HandlerFunc, *openapi.PathItem) {
 	listRespSchema, _ := jsonschema.For[schema.ListModelsResponse]()
-	return "/model", func(w http.ResponseWriter, r *http.Request) {
+	downloadReqSchema, _ := jsonschema.For[schema.DownloadModelRequest]()
+	modelSchema, _ := jsonschema.For[schema.Model]()
+	return "model", func(w http.ResponseWriter, r *http.Request) {
 			switch r.Method {
 			case http.MethodGet:
 				var req schema.ListModelsRequest
@@ -34,6 +37,23 @@ func ModelListHandler(manager *manager.Manager) (string, http.HandlerFunc, *open
 					return
 				}
 				_ = httpresponse.JSON(w, http.StatusOK, httprequest.Indent(r), resp)
+			case http.MethodPost:
+				var req schema.DownloadModelRequest
+				if err := httprequest.Read(r, &req); err != nil {
+					_ = httpresponse.Error(w, err)
+					return
+				}
+				switch acceptType(r) {
+				case acceptStream:
+					downloadStream(w, r, manager, req)
+				default:
+					resp, err := manager.DownloadModel(r.Context(), req)
+					if err != nil {
+						_ = httpresponse.Error(w, httpErr(err))
+						return
+					}
+					_ = httpresponse.JSON(w, http.StatusOK, httprequest.Indent(r), resp)
+				}
 			default:
 				_ = httpresponse.Error(w, httpresponse.Err(http.StatusMethodNotAllowed), r.Method)
 			}
@@ -51,10 +71,22 @@ func ModelListHandler(manager *manager.Manager) (string, http.HandlerFunc, *open
 					"default": openapi.ErrorResponse("An error occurred"),
 				},
 			},
+			Post: &openapi.Operation{
+				Tags:        []string{"Model"},
+				Description: "Download a model",
+				RequestBody: &openapi.RequestBody{
+					Required: true,
+					Content:  map[string]openapi.MediaType{types.ContentTypeJSON: {Schema: downloadReqSchema}},
+				},
+				Responses: map[string]openapi.Response{
+					"200":     {Description: "Downloaded model details", Content: map[string]openapi.MediaType{types.ContentTypeJSON: {Schema: modelSchema}}},
+					"default": openapi.ErrorResponse("An error occurred"),
+				},
+			},
 		})
 }
 
-// Path: /model/{model...}
+// Path: model/{model...}
 func ModelGetHandler(manager *manager.Manager) (string, http.HandlerFunc, *openapi.PathItem) {
 	modelParam := openapi.Parameter{
 		Name:        "model",
@@ -64,7 +96,7 @@ func ModelGetHandler(manager *manager.Manager) (string, http.HandlerFunc, *opena
 		Schema:      pathParamSchema,
 	}
 	modelSchema, _ := jsonschema.For[schema.Model]()
-	return "/model/{model...}", func(w http.ResponseWriter, r *http.Request) {
+	return "model/{model...}", func(w http.ResponseWriter, r *http.Request) {
 			provider_model := strings.SplitN(r.PathValue("model"), PathSeparator, 2)
 			switch r.Method {
 			case http.MethodGet:
@@ -84,6 +116,22 @@ func ModelGetHandler(manager *manager.Manager) (string, http.HandlerFunc, *opena
 					return
 				}
 				_ = httpresponse.JSON(w, http.StatusOK, httprequest.Indent(r), resp)
+			case http.MethodDelete:
+				// Set model name and provider from path parameter
+				var req schema.DeleteModelRequest
+				if len(provider_model) == 2 {
+					req.Provider = provider_model[0]
+					req.Name = provider_model[1]
+				} else {
+					req.Name = provider_model[0]
+				}
+
+				// Delete the model via the manager
+				if err := manager.DeleteModel(r.Context(), req); err != nil {
+					_ = httpresponse.Error(w, httpErr(err))
+					return
+				}
+				w.WriteHeader(http.StatusNoContent)
 			default:
 				_ = httpresponse.Error(w, httpresponse.Err(http.StatusMethodNotAllowed), r.Method)
 			}
@@ -97,5 +145,36 @@ func ModelGetHandler(manager *manager.Manager) (string, http.HandlerFunc, *opena
 					"default": openapi.ErrorResponse("An error occurred"),
 				},
 			},
+			Delete: &openapi.Operation{
+				Tags:        []string{"Model"},
+				Description: "Delete a model",
+				Parameters:  []openapi.Parameter{modelParam},
+				Responses: map[string]openapi.Response{
+					"204":     {Description: "Model deleted successfully"},
+					"default": openapi.ErrorResponse("An error occurred"),
+				},
+			},
 		})
+}
+
+// downloadStream streams model download progress as SSE events, then emits a
+// final "result" event containing the downloaded model.
+func downloadStream(w http.ResponseWriter, r *http.Request, m *manager.Manager, req schema.DownloadModelRequest) {
+	stream := httpresponse.NewTextStream(w)
+	if stream == nil {
+		_ = httpresponse.Error(w, httpresponse.ErrInternalError)
+		return
+	}
+	defer stream.Close()
+
+	progressFn := opt.ProgressFn(func(status string, percent float64) {
+		stream.Write(schema.EventProgress, schema.ProgressEvent{Status: status, Percent: percent})
+	})
+
+	model, err := m.DownloadModel(r.Context(), req, opt.WithProgress(progressFn))
+	if err != nil {
+		stream.Write(schema.EventError, schema.StreamError{Error: err.Error()})
+		return
+	}
+	stream.Write(schema.EventResult, model)
 }

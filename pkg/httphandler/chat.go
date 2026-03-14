@@ -22,7 +22,7 @@ import (
 func ChatHandler(manager *manager.Manager) (string, http.HandlerFunc, *openapi.PathItem) {
 	reqSchema, _ := jsonschema.For[schema.ChatRequest]()
 	respSchema, _ := jsonschema.For[schema.ChatResponse]()
-	return "/chat", func(w http.ResponseWriter, r *http.Request) {
+	return "chat", func(w http.ResponseWriter, r *http.Request) {
 			switch r.Method {
 			case http.MethodPost:
 				var req schema.MultipartChatRequest
