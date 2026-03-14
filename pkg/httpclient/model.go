@@ -2,7 +2,6 @@ package httpclient
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"net/http"
 
@@ -154,19 +153,22 @@ func (c *Client) downloadModelStream(ctx context.Context, req schema.DownloadMod
 		switch evt.Event {
 		case schema.EventProgress:
 			var p schema.ProgressEvent
-			if err := json.Unmarshal([]byte(evt.Data), &p); err == nil {
-				progressFn(p.Status, p.Percent)
+			if err := evt.Json(&p); err != nil {
+				return fmt.Errorf("malformed progress event: %w", err)
 			}
+			progressFn(p.Status, p.Percent)
 		case schema.EventError:
 			var e schema.StreamError
-			if err := json.Unmarshal([]byte(evt.Data), &e); err == nil {
-				streamErr = fmt.Errorf("%s", e.Error)
+			if err := evt.Json(&e); err != nil {
+				return fmt.Errorf("malformed error event: %w", err)
 			}
+			streamErr = fmt.Errorf("%s", e.Error)
 		case schema.EventResult:
 			var m schema.Model
-			if err := json.Unmarshal([]byte(evt.Data), &m); err == nil {
-				response = &m
+			if err := evt.Json(&m); err != nil {
+				return fmt.Errorf("malformed result event: %w", err)
 			}
+			response = &m
 		}
 		return nil
 	}

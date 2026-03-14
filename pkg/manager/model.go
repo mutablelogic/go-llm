@@ -185,8 +185,9 @@ func (m *Manager) DeleteModel(ctx context.Context, req schema.DeleteModelRequest
 		model      schema.Model
 	}
 	var (
-		mu         sync.Mutex
-		candidates []candidate
+		mu              sync.Mutex
+		candidates      []candidate
+		providerMatched bool // true if req.Provider matched a downloader-capable client
 	)
 	wg, ctx2 := errgroup.WithContext(ctx)
 	for _, client := range m.clients {
@@ -197,6 +198,7 @@ func (m *Manager) DeleteModel(ctx context.Context, req schema.DeleteModelRequest
 		if !ok {
 			continue
 		}
+		providerMatched = true
 		wg.Go(func() error {
 			model, err := client.GetModel(ctx2, req.Name)
 			if err != nil || model == nil {
@@ -214,7 +216,7 @@ func (m *Manager) DeleteModel(ctx context.Context, req schema.DeleteModelRequest
 
 	switch len(candidates) {
 	case 0:
-		if req.Provider != "" {
+		if req.Provider != "" && !providerMatched {
 			return llm.ErrNotFound.Withf("provider %q not found or does not support model deletion", req.Provider)
 		}
 		return llm.ErrNotFound.Withf("model %q not found", req.Name)

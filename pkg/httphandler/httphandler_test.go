@@ -63,6 +63,31 @@ func (t *mockTool) Meta() llm.ToolMeta                                    { retu
 func (t *mockTool) Run(_ context.Context, _ json.RawMessage) (any, error) { return nil, nil }
 
 ///////////////////////////////////////////////////////////////////////////////
+// MOCK DOWNLOADER CLIENT
+
+// mockDownloaderClient implements llm.Client and llm.Downloader.
+type mockDownloaderClient struct {
+	mockClient
+}
+
+var _ llm.Downloader = (*mockDownloaderClient)(nil)
+
+func (c *mockDownloaderClient) DownloadModel(_ context.Context, name string, opts ...opt.Opt) (*schema.Model, error) {
+	// Call the progress fn if one was provided
+	if options, err := opt.Apply(opts...); err == nil {
+		if progressFn := options.GetProgress(); progressFn != nil {
+			progressFn("pulling", 50.0)
+			progressFn("done", 100.0)
+		}
+	}
+	return &schema.Model{Name: name, OwnedBy: c.name}, nil
+}
+
+func (c *mockDownloaderClient) DeleteModel(_ context.Context, model schema.Model) error {
+	return nil
+}
+
+///////////////////////////////////////////////////////////////////////////////
 // MOCK EMBEDDER CLIENT
 
 // mockEmbedderClient implements both llm.Client and llm.Embedder
@@ -125,6 +150,19 @@ func newTestManager(t *testing.T, clients []mockClient, tools ...llm.Tool) *mana
 	}
 	if len(tools) > 0 {
 		opts = append(opts, manager.WithTools(tools...))
+	}
+	m, err := manager.NewManager("test", "0.0.0", opts...)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return m
+}
+
+func newTestManagerWithDownloader(t *testing.T, clients []*mockDownloaderClient) *manager.Manager {
+	t.Helper()
+	var opts []manager.Opt
+	for _, c := range clients {
+		opts = append(opts, manager.WithClient(c))
 	}
 	m, err := manager.NewManager("test", "0.0.0", opts...)
 	if err != nil {
