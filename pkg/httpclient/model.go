@@ -3,7 +3,6 @@ package httpclient
 import (
 	"context"
 	"fmt"
-	"net/http"
 
 	// Packages
 	client "github.com/mutablelogic/go-client"
@@ -117,11 +116,7 @@ func (c *Client) DeleteModel(ctx context.Context, name string, opts ...opt.Opt) 
 		reqOpts = append(reqOpts, client.OptPath("model", name))
 	}
 
-	payload, err := client.NewJSONRequestEx(http.MethodDelete, nil, client.ContentTypeAny)
-	if err != nil {
-		return err
-	}
-	return c.DoWithContext(ctx, payload, nil, reqOpts...)
+	return c.DoWithContext(ctx, client.MethodDelete, nil, reqOpts...)
 }
 
 ///////////////////////////////////////////////////////////////////////////////

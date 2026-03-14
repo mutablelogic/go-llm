@@ -110,6 +110,7 @@ func (m *Manager) GetModel(ctx context.Context, req schema.GetModelRequest) (res
 		}
 		matched = true
 
+		client := client
 		wg.Go(func() error {
 			model, err := client.GetModel(ctx, req.Name)
 			if err != nil {
@@ -199,6 +200,7 @@ func (m *Manager) DeleteModel(ctx context.Context, req schema.DeleteModelRequest
 			continue
 		}
 		providerMatched = true
+		client, downloader := client, downloader
 		wg.Go(func() error {
 			model, err := client.GetModel(ctx2, req.Name)
 			if err != nil || model == nil {
