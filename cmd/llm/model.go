@@ -206,6 +206,9 @@ func (cmd *DownloadModelCommand) Run(ctx server.Cmd) (err error) {
 		opts = append(opts, opt.WithProgress(func(status string, percent float64) {
 			if percent > 0 {
 				filled := int(percent / 100.0 * barWidth)
+				if filled > barWidth {
+					filled = barWidth
+				}
 				bar := strings.Repeat("█", filled) + strings.Repeat("░", barWidth-filled)
 				fmt.Printf("\r  %-30s [%s] %5.1f%%", status, bar, percent)
 			} else {
