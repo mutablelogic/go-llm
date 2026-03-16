@@ -1,0 +1,52 @@
+{
+    "name": "assistant message with multiple tool calls (no text)",
+    "schema": {
+        "role": "assistant",
+        "content": [
+            {
+                "tool_call": {
+                    "id": "call_xyz789",
+                    "name": "get_current_weather",
+                    "input": {
+                        "location": "New York, NY"
+                    }
+                }
+            },
+            {
+                "tool_call": {
+                    "id": "call_def456",
+                    "name": "get_current_weather",
+                    "input": {
+                        "location": "London, UK"
+                    }
+                }
+            }
+        ]
+    },
+    "ollama": {
+        "role": "assistant",
+        "content": "",
+        "tool_calls": [
+            {
+                "id": "call_xyz789",
+                "function": {
+                    "index": 0,
+                    "name": "get_current_weather",
+                    "arguments": {
+                        "location": "New York, NY"
+                    }
+                }
+            },
+            {
+                "id": "call_def456",
+                "function": {
+                    "index": 0,
+                    "name": "get_current_weather",
+                    "arguments": {
+                        "location": "London, UK"
+                    }
+                }
+            }
+        ]
+    }
+}

@@ -6,12 +6,12 @@ import (
 	"io"
 
 	// Packages
-	"github.com/google/jsonschema-go/jsonschema"
+	jsonschema "github.com/google/jsonschema-go/jsonschema"
 	client "github.com/mutablelogic/go-client"
 	llm "github.com/mutablelogic/go-llm"
 	opt "github.com/mutablelogic/go-llm/pkg/opt"
 	schema "github.com/mutablelogic/go-llm/pkg/schema"
-	"github.com/mutablelogic/go-llm/pkg/tool"
+	tool "github.com/mutablelogic/go-llm/pkg/tool"
 )
 
 ///////////////////////////////////////////////////////////////////////////////

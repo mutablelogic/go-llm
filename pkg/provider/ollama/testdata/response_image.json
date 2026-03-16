@@ -1,0 +1,30 @@
+{
+    "name": "image generation response",
+    "ollama": {
+        "model": "x/z-image-turbo",
+        "created_at": "2026-01-20T12:00:00.0Z",
+        "message": {
+            "role": "assistant",
+            "content": "",
+            "images": [
+                "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg=="
+            ]
+        },
+        "done_reason": "stop",
+        "done": true,
+        "total_duration": 8000000000,
+        "eval_count": 1,
+        "eval_duration": 7900000000
+    },
+    "schema": {
+        "role": "assistant",
+        "content": [
+            {
+                "attachment": {
+                    "type": "image/png"
+                }
+            }
+        ],
+        "result": "stop"
+    }
+}

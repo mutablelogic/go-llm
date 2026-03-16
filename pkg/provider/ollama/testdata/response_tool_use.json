@@ -1,0 +1,43 @@
+{
+    "name": "tool call response",
+    "ollama": {
+        "model": "llama3.2",
+        "created_at": "2024-07-22T20:33:28.0Z",
+        "message": {
+            "role": "assistant",
+            "content": "",
+            "tool_calls": [
+                {
+                    "id": "call_weather1",
+                    "function": {
+                        "index": 0,
+                        "name": "get_current_weather",
+                        "arguments": {
+                            "location": "Paris, France"
+                        }
+                    }
+                }
+            ]
+        },
+        "done_reason": "stop",
+        "done": true,
+        "total_duration": 3012345678,
+        "prompt_eval_count": 42,
+        "eval_count": 18
+    },
+    "schema": {
+        "role": "assistant",
+        "content": [
+            {
+                "tool_call": {
+                    "id": "call_weather1",
+                    "name": "get_current_weather",
+                    "input": {
+                        "location": "Paris, France"
+                    }
+                }
+            }
+        ],
+        "result": "tool_call"
+    }
+}

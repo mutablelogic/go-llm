@@ -3,14 +3,15 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"mime"
 	"os"
 	"path/filepath"
 
 	// Packages
-	server "github.com/mutablelogic/go-server"
 	otel "github.com/mutablelogic/go-client/pkg/otel"
 	httpclient "github.com/mutablelogic/go-llm/pkg/httpclient"
 	schema "github.com/mutablelogic/go-llm/pkg/schema"
+	server "github.com/mutablelogic/go-server"
 	gocmd "github.com/mutablelogic/go-server/pkg/cmd"
 	types "github.com/mutablelogic/go-server/pkg/types"
 	"go.opentelemetry.io/otel/attribute"
@@ -105,7 +106,7 @@ func (cmd *AskCommand) Run(ctx server.Cmd) (err error) {
 	if ctx.IsDebug() {
 		fmt.Println(response)
 	} else {
-		// Collect text and thinking from content blocks
+		// Collect text, thinking, and attachments from content blocks
 		var text, thinking string
 		for _, block := range response.Content {
 			if block.Text != nil {
@@ -113,6 +114,11 @@ func (cmd *AskCommand) Run(ctx server.Cmd) (err error) {
 			}
 			if block.Thinking != nil {
 				thinking += *block.Thinking
+			}
+			if block.Attachment != nil && len(block.Attachment.Data) > 0 {
+				if err := saveAttachment(block.Attachment); err != nil {
+					fmt.Fprintf(os.Stderr, "warning: could not save attachment: %v\n", err)
+				}
 			}
 		}
 
@@ -148,5 +154,29 @@ func (cmd *AskCommand) Run(ctx server.Cmd) (err error) {
 		}
 		fmt.Println(text)
 	}
+	return nil
+}
+
+// saveAttachment writes attachment data to a temp file, prints the path, and
+// attempts to open the file in the system viewer.
+func saveAttachment(a *schema.Attachment) error {
+	// Derive a file extension from the MIME type
+	ext := ""
+	if a.ContentType != "" {
+		if exts, err := mime.ExtensionsByType(a.ContentType); err == nil && len(exts) > 0 {
+			ext = exts[len(exts)-1] // prefer the last (most canonical) extension
+		}
+	}
+	f, err := os.CreateTemp("", "llm-*"+ext)
+	if err != nil {
+		return err
+	}
+	if _, err := f.Write(a.Data); err != nil {
+		f.Close()
+		return err
+	}
+	f.Close()
+	fmt.Println("attachment:", f.Name())
+	_ = openBrowser(f.Name())
 	return nil
 }

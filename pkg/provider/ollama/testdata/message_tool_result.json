@@ -1,0 +1,24 @@
+{
+    "name": "tool result message",
+    "schema": {
+        "role": "user",
+        "content": [
+            {
+                "tool_result": {
+                    "id": "call_abc123",
+                    "name": "get_current_weather",
+                    "content": {
+                        "temperature": 22,
+                        "condition": "sunny"
+                    }
+                }
+            }
+        ]
+    },
+    "ollama": {
+        "role": "tool",
+        "content": "{\"condition\":\"sunny\",\"temperature\":22}",
+        "tool_call_id": "call_abc123",
+        "tool_name": "get_current_weather"
+    }
+}
