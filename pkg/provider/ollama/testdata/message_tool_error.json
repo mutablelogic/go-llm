@@ -1,0 +1,22 @@
+{
+    "name": "tool error result message",
+    "schema": {
+        "role": "user",
+        "content": [
+            {
+                "tool_result": {
+                    "id": "call_err456",
+                    "name": "get_current_weather",
+                    "content": "location not found",
+                    "is_error": true
+                }
+            }
+        ]
+    },
+    "ollama": {
+        "role": "tool",
+        "content": "location not found",
+        "tool_call_id": "call_err456",
+        "tool_name": "get_current_weather"
+    }
+}

@@ -2,8 +2,8 @@ package ollama
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
-	"time"
 
 	// Packages
 	client "github.com/mutablelogic/go-client"
@@ -11,49 +11,6 @@ import (
 	opt "github.com/mutablelogic/go-llm/pkg/opt"
 	schema "github.com/mutablelogic/go-llm/pkg/schema"
 )
-
-///////////////////////////////////////////////////////////////////////////////
-// TYPES
-
-// model represents the API response for a model from Ollama
-type model struct {
-	Name       string       `json:"name"`
-	Model      string       `json:"model,omitempty"`
-	ModifiedAt time.Time    `json:"modified_at"`
-	Size       int64        `json:"size,omitempty"`
-	Digest     string       `json:"digest,omitempty"`
-	Details    ModelDetails `json:"details"`
-	File       string       `json:"modelfile,omitempty"`
-	Parameters string       `json:"parameters,omitempty"`
-	Template   string       `json:"template,omitempty"`
-	Info       ModelInfo    `json:"model_info,omitempty"`
-}
-
-// ModelDetails are the details of the model
-type ModelDetails struct {
-	ParentModel       string   `json:"parent_model,omitempty"`
-	Format            string   `json:"format"`
-	Family            string   `json:"family"`
-	Families          []string `json:"families"`
-	ParameterSize     string   `json:"parameter_size"`
-	QuantizationLevel string   `json:"quantization_level"`
-}
-
-// ModelInfo provides additional model parameters
-type ModelInfo map[string]any
-
-// listModelsResponse represents the API response for listing models
-type listModelsResponse struct {
-	Data []model `json:"models"`
-}
-
-// PullStatus provides the status of a pull operation in a callback function
-type PullStatus struct {
-	Status         string `json:"status"`
-	DigestName     string `json:"digest,omitempty"`
-	TotalBytes     int64  `json:"total,omitempty"`
-	CompletedBytes int64  `json:"completed,omitempty"`
-}
 
 ///////////////////////////////////////////////////////////////////////////////
 // PUBLIC METHODS
@@ -246,10 +203,25 @@ func (ollama *Client) DownloadModel(ctx context.Context, name string, opts ...op
 
 // modelToSchema converts an API model response to schema.Model
 func (c *Client) modelToSchema(m model) schema.Model {
-	return schema.Model{
+	result := schema.Model{
 		Name:        m.Name,
 		Description: m.Model,
 		Created:     m.ModifiedAt,
 		OwnedBy:     c.Name(),
 	}
+
+	// Marshal Details to JSON then unmarshal into a map so we use the
+	// canonical JSON encoding rather than the String() representation.
+	meta := make(map[string]any)
+	if data, err := json.Marshal(m.Details); err == nil {
+		_ = json.Unmarshal(data, &meta)
+	}
+	for k, v := range m.Info {
+		meta[k] = v
+	}
+	if len(meta) > 0 {
+		result.Meta = meta
+	}
+
+	return result
 }

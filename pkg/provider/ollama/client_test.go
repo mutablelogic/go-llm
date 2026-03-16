@@ -102,3 +102,29 @@ func Test_client_005(t *testing.T) {
 		t.Logf("model: %v", model)
 	}
 }
+
+func Test_client_006(t *testing.T) {
+	// Test that a host:port endpoint (no scheme) is accepted and normalised
+	assert := assert.New(t)
+	c, err := ollama.New("localhost:11434")
+	assert.NoError(err)
+	assert.NotNil(c)
+	assert.Equal("ollama", c.Name())
+}
+
+func Test_client_007(t *testing.T) {
+	// Test that a URL with no path gets /api appended
+	assert := assert.New(t)
+	c, err := ollama.New("http://localhost:11434")
+	assert.NoError(err)
+	assert.NotNil(c)
+}
+
+func Test_client_008(t *testing.T) {
+	// Test that a URL fragment sets a custom provider name
+	assert := assert.New(t)
+	c, err := ollama.New("http://localhost:11434/api#myprovider")
+	assert.NoError(err)
+	assert.NotNil(c)
+	assert.Equal("ollama-myprovider", c.Name())
+}
