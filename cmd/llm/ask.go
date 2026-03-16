@@ -171,12 +171,8 @@ func saveAttachment(a *schema.Attachment) error {
 	if err != nil {
 		return err
 	}
-	defer func() {
-		if cerr := f.Close(); cerr != nil && err == nil {
-			err = cerr
-		}
-	}()
 	if _, err = f.Write(a.Data); err != nil {
+		f.Close()
 		return err
 	}
 	name := f.Name()
@@ -184,7 +180,8 @@ func saveAttachment(a *schema.Attachment) error {
 	if err = f.Close(); err != nil {
 		return err
 	}
-	fmt.Println("attachment:", name)
+	// Print to stderr to avoid corrupting stdout (e.g. when --format is used).
+	fmt.Fprintln(os.Stderr, "attachment:", name)
 	_ = openBrowser(name)
 	return nil
 }
