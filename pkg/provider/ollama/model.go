@@ -203,18 +203,25 @@ func (ollama *Client) DownloadModel(ctx context.Context, name string, opts ...op
 
 // modelToSchema converts an API model response to schema.Model
 func (c *Client) modelToSchema(m model) schema.Model {
-	meta := make(map[string]any)
-	if err := json.Unmarshal([]byte(m.Details.String()), &meta); err != nil {
-		return schema.Model{}
-	}
-	for k, v := range m.Info {
-		meta[k] = v
-	}
-	return schema.Model{
+	result := schema.Model{
 		Name:        m.Name,
 		Description: m.Model,
 		Created:     m.ModifiedAt,
 		OwnedBy:     c.Name(),
-		Meta:        meta,
 	}
+
+	// Marshal Details to JSON then unmarshal into a map so we use the
+	// canonical JSON encoding rather than the String() representation.
+	meta := make(map[string]any)
+	if data, err := json.Marshal(m.Details); err == nil {
+		_ = json.Unmarshal(data, &meta)
+	}
+	for k, v := range m.Info {
+		meta[k] = v
+	}
+	if len(meta) > 0 {
+		result.Meta = meta
+	}
+
+	return result
 }

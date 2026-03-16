@@ -81,14 +81,22 @@ func (c *Client) generate(ctx context.Context, model string, message *schema.Mes
 // Ollama sends one JSON object per line; the final object has done=true.
 func (c *Client) generateStream(ctx context.Context, payload client.Payload, streamFn opt.StreamFn) (*schema.Message, *schema.Usage, error) {
 	var final generateResponse
+	var accResponse strings.Builder
 
 	callback := func(v any) error {
 		chunk, ok := v.(*generateResponse)
 		if !ok || chunk == nil {
 			return nil
 		}
-		if chunk.Response != "" {
-			streamFn("assistant", chunk.Response)
+		// Read and immediately reset before the next json.Decode call.
+		// json.Decode only sets fields present in the JSON; omitempty fields
+		// are NOT zeroed between chunks, so stale values would leak.
+		response := chunk.Response
+		chunk.Response = ""
+
+		if response != "" {
+			accResponse.WriteString(response)
+			streamFn("assistant", response)
 		}
 		if chunk.Done {
 			final = *chunk
@@ -100,6 +108,10 @@ func (c *Client) generateStream(ctx context.Context, payload client.Payload, str
 	if err := c.DoWithContext(ctx, payload, &discard, client.OptPath("generate"), client.OptJsonStreamCallback(callback)); err != nil {
 		return nil, nil, err
 	}
+
+	// The done=true chunk always has an empty Response; restore the full
+	// accumulated text before passing to processGenerateResponse.
+	final.Response = accResponse.String()
 
 	return c.processGenerateResponse(&final)
 }

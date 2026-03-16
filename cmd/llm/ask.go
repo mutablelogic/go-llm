@@ -171,12 +171,20 @@ func saveAttachment(a *schema.Attachment) error {
 	if err != nil {
 		return err
 	}
-	if _, err := f.Write(a.Data); err != nil {
-		f.Close()
+	defer func() {
+		if cerr := f.Close(); cerr != nil && err == nil {
+			err = cerr
+		}
+	}()
+	if _, err = f.Write(a.Data); err != nil {
 		return err
 	}
-	f.Close()
-	fmt.Println("attachment:", f.Name())
-	_ = openBrowser(f.Name())
+	name := f.Name()
+	// Close before opening in the browser so the file is fully flushed.
+	if err = f.Close(); err != nil {
+		return err
+	}
+	fmt.Println("attachment:", name)
+	_ = openBrowser(name)
 	return nil
 }
