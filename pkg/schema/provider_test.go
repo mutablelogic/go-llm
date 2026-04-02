@@ -26,6 +26,8 @@ func (r providerMockRow) Scan(dest ...any) error {
 			*target = r.values[i].(string)
 		case *bool:
 			*target = r.values[i].(bool)
+		case *[]string:
+			*target = append((*target)[:0], r.values[i].([]string)...)
 		case *time.Time:
 			*target = r.values[i].(time.Time)
 		case **time.Time:
@@ -57,6 +59,8 @@ func TestProviderMetaUpdatePatch(t *testing.T) {
 	err := (schema.ProviderMeta{
 		URL:     &urlValue,
 		Enabled: &enabled,
+		Include: []string{"gpt-.*"},
+		Exclude: []string{"gpt-legacy"},
 		Meta: schema.ProviderMetaMap{
 			"remove": nil,
 			"status": "active",
@@ -69,12 +73,16 @@ func TestProviderMetaUpdatePatch(t *testing.T) {
 	patch, _ := b.Get("patch").(string)
 	assert.Contains(patch, "url = @url")
 	assert.Contains(patch, "enabled = @enabled")
+	assert.Contains(patch, `"include" = @include`)
+	assert.Contains(patch, `"exclude" = @exclude`)
 	assert.Contains(patch, "meta = jsonb_set(")
 	assert.Contains(patch, `COALESCE(meta, '{}'::jsonb)`)
 	assert.Contains(patch, " - @meta_delete_0")
 	assert.Contains(patch, "@meta_value_1::jsonb")
 	assert.Equal("https://api.example.com", b.Get("url"))
 	assert.Equal(false, b.Get("enabled"))
+	assert.Equal([]string{"gpt-.*"}, b.Get("include"))
+	assert.Equal([]string{"gpt-legacy"}, b.Get("exclude"))
 	assert.Equal("remove", b.Get("meta_delete_0"))
 	assert.Equal("status", b.Get("meta_key_1"))
 	assert.Equal(`"active"`, b.Get("meta_value_1"))
@@ -145,6 +153,20 @@ func TestProviderMetaMapUnmarshalJSON(t *testing.T) {
 	assert.Nil(meta["remove"])
 }
 
+func TestNormalizeProviderGroupAllowsSpecialAuthGroup(t *testing.T) {
+	assert := assert.New(t)
+
+	ref := schema.ProviderGroupRef{Provider: "primary", Group: "$admin$"}
+	b := pg.NewBind("schema", "llm", "provider_group.insert", "INSERT")
+	_, err := ref.Insert(b)
+	if !assert.NoError(err) {
+		return
+	}
+
+	assert.Equal("primary", b.Get("provider"))
+	assert.Equal("$admin$", b.Get("group"))
+}
+
 func TestProviderNameSelectorUpdate(t *testing.T) {
 	assert := assert.New(t)
 	b := pg.NewBind("schema", "llm")
@@ -208,6 +230,7 @@ func TestProviderListRequestSelectWithFilters(t *testing.T) {
 	b := pg.NewBind("schema", "llm")
 	_, err := (schema.ProviderListRequest{
 		OffsetLimit: pg.OffsetLimit{Limit: &limit},
+		Name:        " local-ollama ",
 		Provider:    "ollama",
 		Enabled:     &enabled,
 	}).Select(b, pg.List)
@@ -215,10 +238,26 @@ func TestProviderListRequestSelectWithFilters(t *testing.T) {
 		return
 	}
 
-	assert.Equal("WHERE provider.provider = @provider AND provider.enabled = @enabled", b.Get("where"))
+	assert.Equal("WHERE provider.\"name\" = @name AND provider.provider = @provider AND provider.enabled = @enabled", b.Get("where"))
+	assert.Equal("local-ollama", b.Get("name"))
 	assert.Equal("ollama", b.Get("provider"))
 	assert.Equal(true, b.Get("enabled"))
 	assert.Equal("LIMIT 10", b.Get("offsetlimit"))
+}
+
+func TestProviderListRequestSelectWithGroupFilter(t *testing.T) {
+	assert := assert.New(t)
+	b := pg.NewBind("schema", "llm")
+	_, err := (schema.ProviderListRequest{Groups: []string{"admins", "dev"}}).Select(b, pg.List)
+	if !assert.NoError(err) {
+		return
+	}
+
+	where, _ := b.Get("where").(string)
+	assert.Contains(where, `NOT EXISTS (`)
+	assert.Contains(where, `FROM ${"schema"}.provider_group AS provider_group`)
+	assert.Contains(where, `provider_group."group" = ANY(@groups)`)
+	assert.Equal([]string{"admins", "dev"}, b.Get("groups"))
 }
 
 func TestProviderListRequestSelectInvalidProviderFilter(t *testing.T) {
@@ -262,15 +301,26 @@ func TestProviderListRequestQueryPaginationAndFilters(t *testing.T) {
 
 	values := (schema.ProviderListRequest{
 		OffsetLimit: pg.OffsetLimit{Offset: 10, Limit: &limit},
+		Name:        " local-ollama ",
 		Provider:    " ollama ",
 		Enabled:     &enabled,
 	}).Query()
 
 	assert.Equal("10", values.Get("offset"))
 	assert.Equal("25", values.Get("limit"))
+	assert.Equal("local-ollama", values.Get("name"))
 	assert.Equal("ollama", values.Get("provider"))
 	assert.Equal("true", values.Get("enabled"))
-	assert.Len(values, 4)
+	assert.Len(values, 5)
+}
+
+func TestProviderListRequestSelectInvalidNameFilter(t *testing.T) {
+	assert := assert.New(t)
+	b := pg.NewBind("schema", "llm")
+	_, err := (schema.ProviderListRequest{Name: "not valid"}).Select(b, pg.List)
+	if assert.Error(err) {
+		assert.ErrorIs(err, schema.ErrBadParameter)
+	}
 }
 
 func TestProviderListScan(t *testing.T) {
@@ -285,9 +335,12 @@ func TestProviderListScan(t *testing.T) {
 		"ollama",
 		"http://localhost:11434",
 		true,
+		[]string{"llama3.*"},
+		[]string{"legacy"},
 		createdAt,
 		&modifiedAt,
 		meta,
+		[]string{"admins"},
 	}})
 	if !assert.NoError(err) {
 		return
@@ -301,9 +354,12 @@ func TestProviderListScan(t *testing.T) {
 		}
 		assert.NotNil(list.Body[0].Enabled)
 		assert.True(*list.Body[0].Enabled)
+		assert.Equal([]string{"llama3.*"}, list.Body[0].Include)
+		assert.Equal([]string{"legacy"}, list.Body[0].Exclude)
 		assert.Equal(createdAt, list.Body[0].CreatedAt)
 		assert.Equal(&modifiedAt, list.Body[0].ModifiedAt)
 		assert.Equal(meta, list.Body[0].Meta)
+		assert.Equal([]string{"admins"}, list.Body[0].Groups)
 	}
 }
 
@@ -361,4 +417,6 @@ func TestProviderInsertPreservesPreboundCredentialsAndPV(t *testing.T) {
 	assert.Equal("primary", b.Get("name"))
 	assert.Equal("ollama", b.Get("provider"))
 	assert.Equal("http://localhost:11434", b.Get("url"))
+	assert.Equal([]string{}, b.Get("include"))
+	assert.Equal([]string{}, b.Get("exclude"))
 }

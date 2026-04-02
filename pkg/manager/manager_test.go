@@ -64,7 +64,7 @@ func Test_manager_listmodels_001(t *testing.T) {
 	assert := assert.New(t)
 	m := newManager(t)
 
-	resp, err := m.ListModels(context.Background(), schema.ListModelsRequest{})
+	resp, err := m.ListModels(context.Background(), schema.ModelListRequest{})
 	assert.NoError(err)
 	assert.NotNil(resp)
 	assert.Greater(resp.Count, uint(0))
@@ -78,7 +78,7 @@ func Test_manager_listmodels_002(t *testing.T) {
 	assert := assert.New(t)
 	m := newManager(t)
 
-	resp, err := m.ListModels(context.Background(), schema.ListModelsRequest{})
+	resp, err := m.ListModels(context.Background(), schema.ModelListRequest{})
 	assert.NoError(err)
 	for i := 1; i < len(resp.Body); i++ {
 		assert.LessOrEqual(resp.Body[i-1].Name, resp.Body[i].Name, "models should be sorted by name")
@@ -90,7 +90,7 @@ func Test_manager_listmodels_003(t *testing.T) {
 	assert := assert.New(t)
 	m := newManager(t)
 
-	resp, err := m.ListModels(context.Background(), schema.ListModelsRequest{Limit: types.Ptr(uint(3))})
+	resp, err := m.ListModels(context.Background(), schema.ModelListRequest{Limit: types.Ptr(uint(3))})
 	assert.NoError(err)
 	assert.LessOrEqual(len(resp.Body), 3)
 	assert.Greater(resp.Count, uint(0))
@@ -103,12 +103,12 @@ func Test_manager_listmodels_004(t *testing.T) {
 	m := newManager(t)
 
 	// Get first page
-	page1, err := m.ListModels(context.Background(), schema.ListModelsRequest{Limit: types.Ptr(uint(2))})
+	page1, err := m.ListModels(context.Background(), schema.ModelListRequest{Limit: types.Ptr(uint(2))})
 	assert.NoError(err)
 	assert.LessOrEqual(len(page1.Body), 2)
 
 	// Get second page
-	page2, err := m.ListModels(context.Background(), schema.ListModelsRequest{Offset: 2, Limit: types.Ptr(uint(2))})
+	page2, err := m.ListModels(context.Background(), schema.ModelListRequest{Offset: 2, Limit: types.Ptr(uint(2))})
 	assert.NoError(err)
 	assert.LessOrEqual(len(page2.Body), 2)
 
@@ -124,12 +124,12 @@ func Test_manager_listmodels_005(t *testing.T) {
 	m := newManager(t)
 
 	// Get all to find a valid provider name
-	all, err := m.ListModels(context.Background(), schema.ListModelsRequest{})
+	all, err := m.ListModels(context.Background(), schema.ModelListRequest{})
 	assert.NoError(err)
 	assert.NotEmpty(all.Provider)
 
 	provider := all.Provider[0]
-	filtered, err := m.ListModels(context.Background(), schema.ListModelsRequest{Provider: provider})
+	filtered, err := m.ListModels(context.Background(), schema.ModelListRequest{Provider: provider})
 	assert.NoError(err)
 	assert.Greater(filtered.Count, uint(0))
 	assert.LessOrEqual(filtered.Count, all.Count)
@@ -141,7 +141,7 @@ func Test_manager_listmodels_006(t *testing.T) {
 	assert := assert.New(t)
 	m := newManager(t)
 
-	_, err := m.ListModels(context.Background(), schema.ListModelsRequest{Provider: "nonexistent-provider"})
+	_, err := m.ListModels(context.Background(), schema.ModelListRequest{Provider: "nonexistent-provider"})
 	assert.Error(err)
 }
 
@@ -150,7 +150,7 @@ func Test_manager_listmodels_007(t *testing.T) {
 	assert := assert.New(t)
 	m := newManager(t)
 
-	resp, err := m.ListModels(context.Background(), schema.ListModelsRequest{Offset: 99999})
+	resp, err := m.ListModels(context.Background(), schema.ModelListRequest{Offset: 99999})
 	assert.NoError(err)
 	assert.Greater(resp.Count, uint(0))
 	assert.Empty(resp.Body)
@@ -165,7 +165,7 @@ func Test_manager_getmodel_001(t *testing.T) {
 	m := newManager(t)
 
 	// Get a model name to search for
-	resp, err := m.ListModels(context.Background(), schema.ListModelsRequest{Limit: types.Ptr(uint(1))})
+	resp, err := m.ListModels(context.Background(), schema.ModelListRequest{Limit: types.Ptr(uint(1))})
 	assert.NoError(err)
 	assert.NotEmpty(resp.Body)
 
@@ -192,7 +192,7 @@ func Test_manager_getmodel_003(t *testing.T) {
 	m := newManager(t)
 
 	// Get a model with its provider
-	resp, err := m.ListModels(context.Background(), schema.ListModelsRequest{Limit: types.Ptr(uint(1))})
+	resp, err := m.ListModels(context.Background(), schema.ModelListRequest{Limit: types.Ptr(uint(1))})
 	assert.NoError(err)
 	assert.NotEmpty(resp.Body)
 

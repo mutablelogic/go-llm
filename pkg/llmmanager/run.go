@@ -86,6 +86,7 @@ func (m *Manager) Run(ctx context.Context, logger *slog.Logger) error {
 ///////////////////////////////////////////////////////////////////////////////
 // PRIVATE METHODS
 
+// Return true if the change notification matches the given schema, table, and operation (if provided).
 func changeMatches(change broadcaster.ChangeNotification, schema, table, op string) bool {
 	// Check schema
 	if schema != "" && change.Schema != schema {
@@ -105,11 +106,15 @@ func changeMatches(change broadcaster.ChangeNotification, schema, table, op stri
 	return true
 }
 
+// Sync providers with the registry and log any changes. This is called in response to database
+// notifications and periodically to ensure the registry is up to date with the database.
+// Return the names of any providers that were updated or deleted in the registry as a result of the sync.
 func (m *Manager) syncProviders(ctx context.Context) ([]string, []string, error) {
 	var providersWithCredentials []providerWithCredentials
 	var providers []*schema.Provider
 
-	// Iterate over all providers with credentials
+	// Iterate over all providers, and also retrieve their encrypted credentials and PV for
+	// decryption. We do this in batches.
 	var offset uint64
 	for {
 		result, err := m.listProvidersWithCredentials(ctx, schema.ProviderListRequest{

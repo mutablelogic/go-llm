@@ -15,6 +15,7 @@ import (
 
 type CLI struct {
 	llmcmd.ProviderCommands
+	llmcmd.ModelCommands
 	ServerCommands
 }
 

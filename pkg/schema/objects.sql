@@ -15,7 +15,16 @@ CREATE TABLE IF NOT EXISTS ${"schema"}.provider (
     "modified_at" TIMESTAMPTZ,
     "pv"          INT NOT NULL DEFAULT 0,
     "credentials" BYTEA NOT NULL,
+    "include"     TEXT[] NOT NULL DEFAULT '{}',
+    "exclude"     TEXT[] NOT NULL DEFAULT '{}',
     "meta"        JSONB
+);
+
+-- llm.provider_group
+CREATE TABLE IF NOT EXISTS ${"schema"}.provider_group (
+  "provider"   TEXT NOT NULL REFERENCES ${"schema"}.provider ("name") ON DELETE CASCADE,
+  "group"      TEXT NOT NULL REFERENCES ${"auth"}."group" ("name") ON DELETE CASCADE,
+  PRIMARY KEY ("provider", "group")
 );
 
 -- llm.session
@@ -64,6 +73,15 @@ DO $$ BEGIN
   DROP TRIGGER IF EXISTS provider_table_changes_notify ON ${"schema"}.provider;
   CREATE TRIGGER provider_table_changes_notify
   AFTER INSERT OR UPDATE OR DELETE ON ${"schema"}.provider
+  FOR EACH STATEMENT
+  EXECUTE FUNCTION ${"schema"}.notify_table();
+END $$;
+
+-- llm.notify.provider_group.trigger
+DO $$ BEGIN
+  DROP TRIGGER IF EXISTS provider_group_table_changes_notify ON ${"schema"}.provider_group;
+  CREATE TRIGGER provider_group_table_changes_notify
+  AFTER INSERT OR UPDATE OR DELETE ON ${"schema"}.provider_group
   FOR EACH STATEMENT
   EXECUTE FUNCTION ${"schema"}.notify_table();
 END $$;

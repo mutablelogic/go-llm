@@ -18,7 +18,7 @@ import (
 ///////////////////////////////////////////////////////////////////////////////
 // PUBLIC METHODS
 
-func (m *Manager) ListModels(ctx context.Context, req schema.ListModelsRequest) (result *schema.ListModelsResponse, err error) {
+func (m *Manager) ListModels(ctx context.Context, req schema.ModelListRequest) (result *schema.ModelList, err error) {
 	var mu sync.Mutex
 	var all []schema.Model
 
@@ -78,7 +78,7 @@ func (m *Manager) ListModels(ctx context.Context, req schema.ListModelsRequest) 
 	}
 
 	// Return success
-	return &schema.ListModelsResponse{
+	return &schema.ModelList{
 		Count:    total,
 		Offset:   req.Offset,
 		Limit:    req.Limit,

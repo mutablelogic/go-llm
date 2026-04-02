@@ -3,6 +3,7 @@ package manager
 import (
 	"context"
 	"encoding/json"
+	"errors"
 
 	// Packages
 	schema "github.com/mutablelogic/go-llm/pkg/schema"
@@ -27,7 +28,18 @@ func (m *Manager) CreateProvider(ctx context.Context, req schema.ProviderInsert)
 	}
 
 	var result schema.Provider
-	if err := m.PoolConn.With("credentials", credentials, "pv", pv).Insert(ctx, &result, req); err != nil {
+	if err := m.PoolConn.Tx(ctx, func(conn pg.Conn) error {
+		var inserted schema.Provider
+		if err := conn.With("credentials", credentials, "pv", pv).Insert(ctx, &inserted, req); err != nil {
+			return err
+		}
+		if req.Groups != nil {
+			if err := m.syncProviderGroups(ctx, conn, req.Name, req.Groups); err != nil {
+				return err
+			}
+		}
+		return conn.Get(ctx, &result, schema.ProviderNameSelector(req.Name))
+	}); err != nil {
 		return nil, pg.NormalizeError(err)
 	}
 
@@ -55,7 +67,7 @@ func (m *Manager) ListProviders(ctx context.Context, req schema.ProviderListRequ
 func (m *Manager) GetProvider(ctx context.Context, name string) (*schema.Provider, error) {
 	var result schema.Provider
 	if err := m.PoolConn.Get(ctx, &result, schema.ProviderNameSelector(name)); err != nil {
-		return nil, pg.NormalizeError(err)
+		return nil, normalizeProviderError(name, err)
 	}
 
 	// Return success
@@ -65,8 +77,29 @@ func (m *Manager) GetProvider(ctx context.Context, name string) (*schema.Provide
 // UpdateProvider updates the writable metadata for a provider by name and returns the updated provider.
 func (m *Manager) UpdateProvider(ctx context.Context, name string, meta schema.ProviderMeta) (*schema.Provider, error) {
 	var result schema.Provider
-	if err := m.PoolConn.Update(ctx, &result, schema.ProviderNameSelector(name), meta); err != nil {
-		return nil, pg.NormalizeError(err)
+	if !meta.HasTableUpdates() && len(meta.Groups) == 0 {
+		return nil, schema.ErrBadParameter.With("no fields to update")
+	}
+	if err := m.PoolConn.Tx(ctx, func(conn pg.Conn) error {
+		selector := schema.ProviderNameSelector(name)
+		if meta.HasTableUpdates() {
+			var updated schema.Provider
+			if err := conn.Update(ctx, &updated, selector, meta); err != nil {
+				return err
+			}
+		} else {
+			if err := conn.Get(ctx, &result, selector); err != nil {
+				return err
+			}
+		}
+		if len(meta.Groups) > 0 {
+			if err := m.syncProviderGroups(ctx, conn, name, meta.Groups); err != nil {
+				return err
+			}
+		}
+		return conn.Get(ctx, &result, selector)
+	}); err != nil {
+		return nil, normalizeProviderError(name, err)
 	}
 
 	// Return success
@@ -76,8 +109,15 @@ func (m *Manager) UpdateProvider(ctx context.Context, name string, meta schema.P
 // DeleteProvider deletes a single provider by name and returns the deleted provider.
 func (m *Manager) DeleteProvider(ctx context.Context, name string) (*schema.Provider, error) {
 	var result schema.Provider
-	if err := m.PoolConn.Delete(ctx, &result, schema.ProviderNameSelector(name)); err != nil {
-		return nil, pg.NormalizeError(err)
+	if err := m.PoolConn.Tx(ctx, func(conn pg.Conn) error {
+		selector := schema.ProviderNameSelector(name)
+		if err := conn.Get(ctx, &result, selector); err != nil {
+			return err
+		}
+		var deleted schema.Provider
+		return conn.Delete(ctx, &deleted, selector)
+	}); err != nil {
+		return nil, normalizeProviderError(name, err)
 	}
 
 	// Return success
@@ -161,9 +201,12 @@ func (p *providerWithCredentials) Scan(row pg.Row) error {
 		&p.Provider.Provider,
 		&url,
 		&enabled,
+		&p.Provider.Include,
+		&p.Provider.Exclude,
 		&p.Provider.CreatedAt,
 		&p.Provider.ModifiedAt,
 		&p.Provider.Meta,
+		&p.Provider.Groups,
 		&p.PV,
 		&p.Credentials,
 	); err != nil {
@@ -216,4 +259,28 @@ func (list providerWithCredentialsList) Select(bind *pg.Bind, op pg.Op) (string,
 	default:
 		return "", schema.ErrNotImplemented.Withf("unsupported providerWithCredentialsList operation %q", op)
 	}
+}
+
+func (m *Manager) syncProviderGroups(ctx context.Context, conn pg.Conn, provider string, groups []string) error {
+	var deleted schema.ProviderGroupList
+	if err := conn.Delete(ctx, &deleted, schema.ProviderGroupSelector{Provider: provider}); err != nil && !errors.Is(err, pg.ErrNotFound) {
+		return err
+	}
+
+	for _, group := range groups {
+		var inserted schema.ProviderGroupList
+		if err := conn.Insert(ctx, &inserted, schema.ProviderGroupRef{Provider: provider, Group: group}); err != nil && !errors.Is(err, pg.ErrNotFound) {
+			return err
+		}
+	}
+
+	return nil
+}
+
+func normalizeProviderError(name string, err error) error {
+	err = pg.NormalizeError(err)
+	if errors.Is(err, pg.ErrNotFound) || errors.Is(err, schema.ErrNotFound) {
+		return schema.ErrNotFound.Withf("provider %q", name)
+	}
+	return err
 }

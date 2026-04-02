@@ -8,6 +8,7 @@ import (
 	"net/url"
 
 	// Packages
+	"github.com/mutablelogic/go-pg"
 	types "github.com/mutablelogic/go-server/pkg/types"
 )
 
@@ -21,19 +22,17 @@ const (
 ////////////////////////////////////////////////////////////////////////////////
 // TYPES
 
-// ListModelsRequest represents a request to list models
-type ListModelsRequest struct {
+// ModelListRequest represents a request to list models
+type ModelListRequest struct {
+	pg.OffsetLimit
 	Provider string `json:"provider,omitempty" help:"Filter by provider name" optional:""`
-	Limit    *uint  `json:"limit,omitempty" help:"Maximum number of models to return" default:"100"`
-	Offset   uint   `json:"offset,omitempty" help:"Offset for pagination" default:"0"`
 }
 
-// ListModelsResponse represents a response containing a list of models and providers
-type ListModelsResponse struct {
-	Count    uint     `json:"count"`
-	Offset   uint     `json:"offset,omitzero"`
-	Limit    *uint    `json:"limit,omitzero"`
+// ModelList represents a response containing a list of models and providers
+type ModelList struct {
+	ModelListRequest
 	Provider []string `json:"provider,omitempty"`
+	Count    uint     `json:"count"`
 	Body     []Model  `json:"body,omitzero"`
 }
 
@@ -285,11 +284,25 @@ func NewToolMeta(name, description string, inputSchema any) (ToolMeta, error) {
 ////////////////////////////////////////////////////////////////////////////////
 // STRINGIFY
 
-func (r ListModelsRequest) String() string {
+func (r ModelListRequest) String() string {
 	return types.Stringify(r)
 }
 
-func (r ListModelsResponse) String() string {
+func (r ModelListRequest) Query() url.Values {
+	values := url.Values{}
+	if r.Offset > 0 {
+		values.Set("offset", fmt.Sprintf("%d", r.Offset))
+	}
+	if r.Limit != nil {
+		values.Set("limit", fmt.Sprintf("%d", types.Value(r.Limit)))
+	}
+	if r.Provider != "" {
+		values.Set("provider", r.Provider)
+	}
+	return values
+}
+
+func (r ModelList) String() string {
 	return types.Stringify(r)
 }
 

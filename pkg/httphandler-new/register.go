@@ -16,12 +16,13 @@ import (
 // RegisterManagerHandlers registers manager resource handlers with the provided router.
 func RegisterHandlers(router *httprouter.Router, manager *llmmanager.Manager, authmanager *authmanager.Manager, auth bool) error {
 	// Add tag groups and tags
-	router.Spec().AddTagGroup("LLM Management", "Provider")
+	router.Spec().AddTagGroup("LLM Management", "Provider", "Model")
 
 	// TODO: Register the security scheme
 
 	// Register the security schemes, then the paths
 	return errors.Join(
+		router.RegisterPath(ModelHandler(manager)),
 		router.RegisterPath(ProviderHandler(manager)),
 		router.RegisterPath(ProviderResourceHandler(manager)),
 	)

@@ -30,7 +30,7 @@ func TestModelList_OK(t *testing.T) {
 		t.Fatalf("expected 200, got %d", w.Code)
 	}
 
-	var resp schema.ListModelsResponse
+	var resp schema.ModelList
 	if err := json.NewDecoder(w.Body).Decode(&resp); err != nil {
 		t.Fatal(err)
 	}
@@ -56,7 +56,7 @@ func TestModelList_WithPagination(t *testing.T) {
 		t.Fatalf("expected 200, got %d", w.Code)
 	}
 
-	var resp schema.ListModelsResponse
+	var resp schema.ModelList
 	if err := json.NewDecoder(w.Body).Decode(&resp); err != nil {
 		t.Fatal(err)
 	}

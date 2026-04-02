@@ -25,7 +25,7 @@ type Client interface {
 	UpdateSession(ctx context.Context, id string, meta schema.SessionMeta) (*schema.Session, error)
 	DeleteSession(ctx context.Context, id string) error
 	ListSessions(ctx context.Context, opts ...opt.Opt) (*schema.ListSessionResponse, error)
-	ListModels(ctx context.Context, opts ...opt.Opt) (*schema.ListModelsResponse, error)
+	ListModels(ctx context.Context, opts ...opt.Opt) (*schema.ModelList, error)
 	ListTools(ctx context.Context, opts ...opt.Opt) (*schema.ListToolResponse, error)
 	ListAgents(ctx context.Context, opts ...opt.Opt) (*schema.ListAgentResponse, error)
 	GetAgent(ctx context.Context, id string) (*schema.Agent, error)

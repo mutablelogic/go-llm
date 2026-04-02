@@ -40,6 +40,8 @@ func (r providerWithCredentialsMockRow) Scan(dest ...any) error {
 			*target = r.values[i].(string)
 		case *bool:
 			*target = r.values[i].(bool)
+		case *[]string:
+			*target = append((*target)[:0], r.values[i].([]string)...)
 		case *time.Time:
 			*target = r.values[i].(time.Time)
 		case **time.Time:
@@ -102,9 +104,12 @@ func Test_providerWithCredentialsScan(t *testing.T) {
 		"ollama",
 		"http://localhost:11434",
 		true,
+		[]string{"llama3.*"},
+		[]string{"legacy"},
 		createdAt,
 		&modifiedAt,
 		meta,
+		[]string{"admins"},
 		uint64(7),
 		credentials,
 	}})
@@ -119,9 +124,12 @@ func Test_providerWithCredentialsScan(t *testing.T) {
 	}
 	assert.NotNil(provider.Provider.Enabled)
 	assert.True(*provider.Provider.Enabled)
+	assert.Equal([]string{"llama3.*"}, provider.Provider.Include)
+	assert.Equal([]string{"legacy"}, provider.Provider.Exclude)
 	assert.Equal(createdAt, provider.Provider.CreatedAt)
 	assert.Equal(&modifiedAt, provider.Provider.ModifiedAt)
 	assert.Equal(meta, provider.Provider.Meta)
+	assert.Equal([]string{"admins"}, provider.Provider.Groups)
 	assert.Equal(uint64(7), provider.PV)
 	assert.Equal(credentials, provider.Credentials)
 }
@@ -138,9 +146,12 @@ func Test_providerWithCredentialsListScanAndCount(t *testing.T) {
 		"ollama",
 		"http://localhost:11434",
 		true,
+		[]string{"llama3.*"},
+		[]string{"legacy"},
 		createdAt,
 		(*time.Time)(nil),
 		meta,
+		[]string{"admins"},
 		uint64(7),
 		credentials,
 	}})

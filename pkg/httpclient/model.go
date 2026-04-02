@@ -15,7 +15,7 @@ import (
 
 // ListModels returns a list of all available models.
 // Use WithLimit, WithOffset and WithProvider to paginate and filter results.
-func (c *Client) ListModels(ctx context.Context, opts ...opt.Opt) (*schema.ListModelsResponse, error) {
+func (c *Client) ListModels(ctx context.Context, opts ...opt.Opt) (*schema.ModelList, error) {
 	// Apply options
 	o, err := opt.Apply(opts...)
 	if err != nil {
@@ -30,7 +30,7 @@ func (c *Client) ListModels(ctx context.Context, opts ...opt.Opt) (*schema.ListM
 	}
 
 	// Perform request
-	var response schema.ListModelsResponse
+	var response schema.ModelList
 	if err := c.DoWithContext(ctx, req, &response, reqOpts...); err != nil {
 		return nil, err
 	}

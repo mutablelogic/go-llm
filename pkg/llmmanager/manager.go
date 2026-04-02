@@ -58,7 +58,7 @@ func New(ctx context.Context, pool pg.PoolConn, opts ...Opt) (*Manager, error) {
 	bootstrapCtx, endBootstrapSpan := otel.StartSpan(self.tracer, ctx, "llmmanager.bootstrap",
 		attribute.String("schema", self.llmschema),
 	)
-	if err := bootstrap(bootstrapCtx, pool, self.llmschema, true); err != nil {
+	if err := bootstrap(bootstrapCtx, pool, self.llmschema); err != nil {
 		endBootstrapSpan(err)
 		return nil, err
 	} else {
@@ -89,7 +89,7 @@ func New(ctx context.Context, pool pg.PoolConn, opts ...Opt) (*Manager, error) {
 ///////////////////////////////////////////////////////////////////////////////
 // PRIVATE METHODS
 
-func bootstrap(ctx context.Context, conn pg.Conn, schemaName string, includeNotifications bool) error {
+func bootstrap(ctx context.Context, conn pg.Conn, schemaName string) error {
 	// Get all objects
 	objects, err := pg.NewQueries(strings.NewReader(schema.Objects))
 	if err != nil {
@@ -103,9 +103,6 @@ func bootstrap(ctx context.Context, conn pg.Conn, schemaName string, includeNoti
 
 	// Create all objects - not in a transaction
 	for _, key := range objects.Keys() {
-		if !includeNotifications && strings.HasPrefix(key, "llm.notify.") {
-			continue
-		}
 		if err := conn.Exec(ctx, objects.Query(key)); err != nil {
 			return fmt.Errorf("create object %q: %w", key, err)
 		}

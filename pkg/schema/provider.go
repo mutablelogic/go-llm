@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/url"
-	"reflect"
+	"regexp"
 	"slices"
 	"sort"
 	"strconv"
@@ -29,7 +29,8 @@ const (
 )
 
 var (
-	allProviders = []string{Gemini, Anthropic, Mistral, Eliza, Ollama}
+	allProviders   = []string{Gemini, Anthropic, Mistral, Eliza, Ollama}
+	reSpecialGroup = regexp.MustCompile(`^\$[A-Za-z][A-Za-z0-9_-]*\$$`)
 )
 
 const (
@@ -44,6 +45,9 @@ const (
 type ProviderMeta struct {
 	URL     *string         `json:"url,omitempty" name:"url" help:"Provider endpoint URL" optional:""`
 	Enabled *bool           `json:"enabled,omitempty" name:"enabled" help:"Enable the provider" negatable:""`
+	Include []string        `json:"include,omitempty" name:"include" help:"List of models to include (regular expressions)" optional:""`
+	Exclude []string        `json:"exclude,omitempty" name:"exclude" help:"List of models to exclude (regular expressions)" optional:""`
+	Groups  []string        `json:"groups,omitempty" name:"groups" help:"Groups with access to this provider" optional:""`
 	Meta    ProviderMetaMap `json:"meta,omitempty" name:"meta" help:"Provider metadata as a JSON object" optional:""`
 }
 
@@ -65,8 +69,10 @@ type ProviderInsert struct {
 // ProviderListRequest contains pagination for listing providers.
 type ProviderListRequest struct {
 	pg.OffsetLimit
-	Provider string `json:"provider,omitempty" name:"provider" help:"Filter by provider identifier" optional:""`
-	Enabled  *bool  `json:"enabled,omitempty" name:"enabled" help:"Filter by enabled state" negatable:""`
+	Name     string   `json:"name,omitempty" name:"name" help:"Filter by provider name" optional:""`
+	Provider string   `json:"provider,omitempty" name:"provider" help:"Filter by provider identifier" optional:""`
+	Enabled  *bool    `json:"enabled,omitempty" name:"enabled" help:"Filter by enabled state" negatable:""`
+	Groups   []string `json:"groups,omitempty" name:"groups" help:"Filter by accessible groups" optional:""`
 }
 
 // ProviderList represents a paginated list of providers.
@@ -76,8 +82,23 @@ type ProviderList struct {
 	Body  []Provider `json:"body,omitempty"`
 }
 
+// ProviderGroupList is a list of auth group identifiers associated with a provider.
+type ProviderGroupList []string
+
 // ProviderNameSelector selects a provider by name for get, update, and delete operations.
 type ProviderNameSelector string
+
+// ProviderGroupRef represents a single provider-to-group link.
+type ProviderGroupRef struct {
+	Provider string
+	Group    string
+}
+
+// ProviderGroupSelector selects provider_group rows for a provider, optionally scoped to a single group.
+type ProviderGroupSelector struct {
+	Provider string
+	Group    *string
+}
 
 // Provider is the persisted representation of a provider row.
 type Provider struct {
@@ -126,6 +147,9 @@ func (req ProviderListRequest) Query() url.Values {
 	if req.Limit != nil {
 		values.Set("limit", strconv.FormatUint(types.Value(req.Limit), 10))
 	}
+	if name := strings.TrimSpace(req.Name); name != "" {
+		values.Set("name", name)
+	}
 	if provider := strings.TrimSpace(req.Provider); provider != "" {
 		values.Set("provider", provider)
 	}
@@ -139,9 +163,9 @@ func (req ProviderListRequest) Query() url.Values {
 // SELECTORS
 
 func (p ProviderNameSelector) Select(bind *pg.Bind, op pg.Op) (string, error) {
-	name := strings.TrimSpace(string(p))
-	if !types.IsIdentifier(name) {
-		return "", ErrBadParameter.Withf("provider name: must be a valid identifier, got %q", string(p))
+	name, err := normalizeProviderInstanceName(string(p))
+	if err != nil {
+		return "", err
 	}
 	bind.Set("name", name)
 
@@ -160,17 +184,37 @@ func (p ProviderNameSelector) Select(bind *pg.Bind, op pg.Op) (string, error) {
 func (req ProviderListRequest) Select(bind *pg.Bind, op pg.Op) (string, error) {
 	bind.Del("where")
 
-	if provider := strings.TrimSpace(req.Provider); provider != "" {
-		if !types.IsIdentifier(provider) {
-			return "", ErrBadParameter.Withf("provider: must be a valid identifier, got %q", req.Provider)
-		} else if !slices.Contains(allProviders, provider) {
-			return "", ErrNotFound.Withf("provider: must be one of %q, got %q", allProviders, provider)
-		} else {
-			bind.Append("where", `provider.provider = `+bind.Set("provider", provider))
+	if name := strings.TrimSpace(req.Name); name != "" {
+		name, err := normalizeProviderInstanceName(name)
+		if err != nil {
+			return "", err
 		}
+		bind.Append("where", `provider."name" = `+bind.Set("name", name))
+	}
+	if provider := strings.TrimSpace(req.Provider); provider != "" {
+		provider, err := normalizeProviderName(provider)
+		if err != nil {
+			return "", err
+		}
+		bind.Append("where", `provider.provider = `+bind.Set("provider", provider))
 	}
 	if req.Enabled != nil {
 		bind.Append("where", `provider.enabled = `+bind.Set("enabled", types.Value(req.Enabled)))
+	}
+	if len(req.Groups) > 0 {
+		bind.Append("where", `(
+			NOT EXISTS (
+				SELECT 1
+				FROM ${"schema"}.provider_group AS provider_group
+				WHERE provider_group."provider" = provider."name"
+			)
+			OR EXISTS (
+				SELECT 1
+				FROM ${"schema"}.provider_group AS provider_group
+				WHERE provider_group."provider" = provider."name"
+				AND provider_group."group" = ANY(`+bind.Set("groups", req.Groups)+`)
+			)
+		)`)
 	}
 	if where := bind.Join("where", " AND "); where == "" {
 		bind.Set("where", "")
@@ -192,7 +236,7 @@ func (req ProviderListRequest) Select(bind *pg.Bind, op pg.Op) (string, error) {
 // PUBLIC METHODS - READER
 
 // Scan reads a provider row into the receiver.
-// Expected column order: name, provider, url, enabled, created_at, modified_at, meta.
+// Expected column order: name, provider, url, enabled, include, exclude, created_at, modified_at, meta, groups.
 func (p *Provider) Scan(row pg.Row) error {
 	var enabled bool
 	var url string
@@ -201,9 +245,12 @@ func (p *Provider) Scan(row pg.Row) error {
 		&p.Provider,
 		&url,
 		&enabled,
+		&p.Include,
+		&p.Exclude,
 		&p.CreatedAt,
 		&p.ModifiedAt,
 		&p.Meta,
+		&p.Groups,
 	); err != nil {
 		return err
 	}
@@ -216,6 +263,15 @@ func (p *Provider) Scan(row pg.Row) error {
 	if p.Meta == nil {
 		p.Meta = make(ProviderMetaMap)
 	}
+	return nil
+}
+
+func (list *ProviderGroupList) Scan(row pg.Row) error {
+	var group string
+	if err := row.Scan(&group); err != nil {
+		return err
+	}
+	*list = append(*list, group)
 	return nil
 }
 
@@ -240,16 +296,14 @@ func (list *ProviderList) ScanCount(row pg.Row) error {
 
 // Insert binds all required provider fields for an INSERT and returns the named query.
 func (p ProviderInsert) Insert(bind *pg.Bind) (string, error) {
-	if name := strings.TrimSpace(p.Name); !types.IsIdentifier(name) {
-		return "", fmt.Errorf("provider name: must be a valid identifier, got %q", p.Name)
+	if name, err := normalizeProviderInstanceName(p.Name); err != nil {
+		return "", err
 	} else {
 		bind.Set("name", name)
 	}
 
-	if provider := strings.TrimSpace(p.Provider); !types.IsIdentifier(provider) {
-		return "", fmt.Errorf("provider: must be a valid identifier, got %q", p.Provider)
-	} else if !slices.Contains(allProviders, provider) {
-		return "", ErrNotFound.Withf("provider: must be one of %q, got %q", allProviders, provider)
+	if provider, err := normalizeProviderName(p.Provider); err != nil {
+		return "", err
 	} else {
 		bind.Set("provider", provider)
 	}
@@ -258,6 +312,16 @@ func (p ProviderInsert) Insert(bind *pg.Bind) (string, error) {
 		bind.Set("url", "")
 	} else {
 		bind.Set("url", strings.TrimSpace(*p.URL))
+	}
+	if p.Include == nil {
+		bind.Set("include", []string{})
+	} else {
+		bind.Set("include", p.Include)
+	}
+	if p.Exclude == nil {
+		bind.Set("exclude", []string{})
+	} else {
+		bind.Set("exclude", p.Exclude)
 	}
 
 	enabled := true
@@ -298,6 +362,12 @@ func (p ProviderMeta) Update(bind *pg.Bind) error {
 	if p.Enabled != nil {
 		bind.Append("patch", `enabled = `+bind.Set("enabled", types.Value(p.Enabled)))
 	}
+	if p.Include != nil {
+		bind.Append("patch", `"include" = `+bind.Set("include", p.Include))
+	}
+	if p.Exclude != nil {
+		bind.Append("patch", `"exclude" = `+bind.Set("exclude", p.Exclude))
+	}
 	if p.Meta != nil {
 		if expr, err := providerMetaPatch(bind, p.Meta); err != nil {
 			return err
@@ -320,6 +390,63 @@ func (p ProviderMeta) Update(bind *pg.Bind) error {
 // Insert is not supported for ProviderMeta.
 func (p ProviderMeta) Insert(_ *pg.Bind) (string, error) {
 	return "", fmt.Errorf("ProviderMeta: insert: not supported")
+}
+
+// HasTableUpdates reports whether ProviderMeta includes fields stored on the provider table itself.
+func (p ProviderMeta) HasTableUpdates() bool {
+	return p.URL != nil || p.Enabled != nil || p.Include != nil || p.Exclude != nil || p.Meta != nil
+}
+
+// Insert binds a provider_group insert.
+func (p ProviderGroupRef) Insert(bind *pg.Bind) (string, error) {
+	provider, err := normalizeProviderInstanceName(p.Provider)
+	if err != nil {
+		return "", err
+	}
+	group, err := normalizeProviderGroup(p.Group)
+	if err != nil {
+		return "", err
+	}
+	bind.Set("provider", provider)
+	bind.Set("group", group)
+	return bind.Query("provider_group.insert"), nil
+}
+
+// Update is not supported for ProviderGroupRef.
+func (p ProviderGroupRef) Update(_ *pg.Bind) error {
+	return fmt.Errorf("ProviderGroupRef: update: not supported")
+}
+
+// Select binds a provider_group query.
+func (p ProviderGroupSelector) Select(bind *pg.Bind, op pg.Op) (string, error) {
+	provider, err := normalizeProviderInstanceName(p.Provider)
+	if err != nil {
+		return "", err
+	}
+	bind.Set("provider", provider)
+
+	if p.Group != nil {
+		group, err := normalizeProviderGroup(*p.Group)
+		if err != nil {
+			return "", err
+		}
+		bind.Set("group", group)
+	}
+
+	switch op {
+	case pg.List:
+		if p.Group != nil {
+			return "", ErrNotImplemented.With("provider_group: list by provider and group is not supported")
+		}
+		return bind.Query("provider_group.list"), nil
+	case pg.Delete:
+		if p.Group != nil {
+			return bind.Query("provider_group.delete"), nil
+		}
+		return bind.Query("provider_group.delete_all"), nil
+	default:
+		return "", ErrNotImplemented.Withf("unsupported ProviderGroupSelector operation %q", op)
+	}
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -397,7 +524,7 @@ func providerMetaPatch(bind *pg.Bind, meta ProviderMetaMap) (string, error) {
 	changed := false
 	for index, key := range keys {
 		value := meta[key]
-		if isNilValue(value) {
+		if value == nil {
 			expr = `(` + expr + ` - ` + bind.Set(fmt.Sprintf("meta_delete_%d", index), key) + `)`
 			changed = true
 			continue
@@ -418,15 +545,28 @@ func providerMetaPatch(bind *pg.Bind, meta ProviderMetaMap) (string, error) {
 	return expr, nil
 }
 
-func isNilValue(value any) bool {
-	if value == nil {
-		return true
+func normalizeProviderName(name string) (string, error) {
+	name = strings.TrimSpace(name)
+	if !types.IsIdentifier(name) {
+		return "", ErrBadParameter.Withf("provider: must be a valid identifier, got %q", name)
+	} else if !slices.Contains(allProviders, name) {
+		return "", ErrNotFound.Withf("provider: must be one of %q, got %q", allProviders, name)
 	}
-	rv := reflect.ValueOf(value)
-	switch rv.Kind() {
-	case reflect.Chan, reflect.Func, reflect.Interface, reflect.Map, reflect.Pointer, reflect.Slice:
-		return rv.IsNil()
-	default:
-		return false
+	return name, nil
+}
+
+func normalizeProviderInstanceName(name string) (string, error) {
+	name = strings.TrimSpace(name)
+	if !types.IsIdentifier(name) {
+		return "", ErrBadParameter.Withf("provider name: must be a valid identifier, got %q", name)
 	}
+	return name, nil
+}
+
+func normalizeProviderGroup(group string) (string, error) {
+	group = strings.TrimSpace(group)
+	if !types.IsIdentifier(group) && !reSpecialGroup.MatchString(group) {
+		return "", ErrBadParameter.Withf("group: must be a valid identifier, got %q", group)
+	}
+	return group, nil
 }

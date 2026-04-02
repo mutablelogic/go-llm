@@ -20,13 +20,13 @@ import (
 
 // Path: model
 func ModelListHandler(manager *manager.Manager) (string, http.HandlerFunc, *openapi.PathItem) {
-	listRespSchema, _ := jsonschema.For[schema.ListModelsResponse]()
+	listRespSchema, _ := jsonschema.For[schema.ModelList]()
 	downloadReqSchema, _ := jsonschema.For[schema.DownloadModelRequest]()
 	modelSchema, _ := jsonschema.For[schema.Model]()
 	return "model", func(w http.ResponseWriter, r *http.Request) {
 			switch r.Method {
 			case http.MethodGet:
-				var req schema.ListModelsRequest
+				var req schema.ModelListRequest
 				if err := httprequest.Query(r.URL.Query(), &req); err != nil {
 					_ = httpresponse.Error(w, err)
 					return
