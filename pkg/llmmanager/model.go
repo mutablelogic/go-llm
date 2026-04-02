@@ -2,6 +2,7 @@ package manager
 
 import (
 	"context"
+	"errors"
 	"sort"
 	"sync"
 
@@ -74,13 +75,17 @@ func (m *Manager) GetModel(ctx context.Context, req schema.GetModelRequest, user
 		return nil, err
 	}
 
-	// Get all models for the candidate providers, then require exactly one named match.
-	models, err := m.modelsForProviders(ctx, providers)
+	// Get all models for the candidate providers, to require exactly one named match.
+	models, err := m.modelsByName(ctx, providers, req.Name)
 	if err != nil {
 		return nil, err
 	}
-	matches := modelsByName(models, req.Name)
-	return singleModel(matches, req.Name)
+	if len(models) == 0 {
+		return nil, schema.ErrNotFound.Withf("model %q not found", req.Name)
+	} else if len(models) > 1 {
+		return nil, schema.ErrConflict.Withf("multiple models named %q found; specify a provider", req.Name)
+	}
+	return types.Ptr(models[0]), nil
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -117,19 +122,18 @@ func (m *Manager) providersForUser(ctx context.Context, provider, model string, 
 	)
 	group, ctx := errgroup.WithContext(ctx)
 	for _, provider := range result {
+		provider := provider
 		group.Go(func() error {
-			models, err := m.Registry.GetModels(ctx, provider.Name, provider.Include, provider.Exclude)
-			if err != nil {
+			if _, err := m.Registry.GetModel(ctx, &provider, model); err != nil {
+				if errors.Is(err, schema.ErrNotFound) {
+					return nil
+				}
 				return err
 			}
-			for _, candidate := range models {
-				if candidate.Name == model {
-					mu.Lock()
-					filtered = append(filtered, provider)
-					mu.Unlock()
-					break
-				}
-			}
+
+			mu.Lock()
+			filtered = append(filtered, provider)
+			mu.Unlock()
 			return nil
 		})
 	}
@@ -146,8 +150,9 @@ func (m *Manager) modelsForProviders(ctx context.Context, providers []schema.Pro
 	// Fetch models from all providers in parallel, and aggregate results
 	group, ctx := errgroup.WithContext(ctx)
 	for _, provider := range providers {
+		provider := provider
 		group.Go(func() error {
-			models, err := m.Registry.GetModels(ctx, provider.Name, provider.Include, provider.Exclude)
+			models, err := m.Registry.GetModels(ctx, &provider)
 			if err != nil {
 				return err
 			}
@@ -172,23 +177,31 @@ func (m *Manager) modelsForProviders(ctx context.Context, providers []schema.Pro
 	return result, nil
 }
 
-func modelsByName(models []schema.Model, name string) []schema.Model {
-	result := make([]schema.Model, 0, len(models))
-	for _, model := range models {
-		if model.Name == name {
-			result = append(result, model)
-		}
-	}
-	return result
-}
+func (m *Manager) modelsByName(ctx context.Context, providers []schema.Provider, name string) ([]schema.Model, error) {
+	var mu sync.Mutex
+	var result []schema.Model
 
-func singleModel(models []schema.Model, name string) (*schema.Model, error) {
-	switch len(models) {
-	case 0:
-		return nil, schema.ErrNotFound.Withf("model %q not found", name)
-	case 1:
-		return &models[0], nil
-	default:
-		return nil, schema.ErrConflict.Withf("multiple models named %q found; specify a provider", name)
+	// Fetch models from all providers in parallel, and aggregate results
+	group, ctx := errgroup.WithContext(ctx)
+	for _, provider := range providers {
+		provider := provider
+		group.Go(func() error {
+			model, err := m.Registry.GetModel(ctx, &provider, name)
+			if err != nil {
+				return err
+			}
+
+			mu.Lock()
+			result = append(result, model)
+			mu.Unlock()
+			return nil
+		})
 	}
+
+	if err := group.Wait(); err != nil {
+		return nil, err
+	}
+
+	// Return matched models
+	return result, nil
 }

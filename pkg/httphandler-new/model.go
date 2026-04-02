@@ -33,6 +33,36 @@ func ModelHandler(manager *llmmanager.Manager) (string, *jsonschema.Schema, http
 	)
 }
 
+func ModelResourceHandler(manager *llmmanager.Manager) (string, *jsonschema.Schema, httprequest.PathItem) {
+	return "model/{name}", jsonschema.MustFor[schema.ModelNameSelector](), httprequest.NewPathItem(
+		"Model operations",
+		"Get operations on models",
+		"Model",
+	).Get(
+		func(w http.ResponseWriter, r *http.Request) {
+			_ = getModel(r.Context(), manager, w, r, "")
+		},
+		"Get model",
+		opts.WithJSONResponse(200, jsonschema.MustFor[schema.Model]()),
+		opts.WithErrorResponse(404, "Model not found."),
+	)
+}
+
+func ModelProviderResourceHandler(manager *llmmanager.Manager) (string, *jsonschema.Schema, httprequest.PathItem) {
+	return "model/{provider}/{name}", jsonschema.MustFor[schema.ModelProviderSelector](), httprequest.NewPathItem(
+		"Model operations",
+		"Get operations on models with an explicit provider",
+		"Model",
+	).Get(
+		func(w http.ResponseWriter, r *http.Request) {
+			_ = getModel(r.Context(), manager, w, r, r.PathValue("provider"))
+		},
+		"Get model for provider",
+		opts.WithJSONResponse(200, jsonschema.MustFor[schema.Model]()),
+		opts.WithErrorResponse(404, "Model not found."),
+	)
+}
+
 ///////////////////////////////////////////////////////////////////////////////
 // PRIVATE METHODS
 
@@ -46,5 +76,18 @@ func listModels(ctx context.Context, manager *llmmanager.Manager, w http.Respons
 		return httpresponse.Error(w, schema.HTTPErr(err))
 	} else {
 		return httpresponse.JSON(w, http.StatusOK, httprequest.Indent(r), models)
+	}
+}
+
+func getModel(ctx context.Context, manager *llmmanager.Manager, w http.ResponseWriter, r *http.Request, provider string) error {
+	req := schema.GetModelRequest{
+		Provider: provider,
+		Name:     r.PathValue("name"),
+	}
+
+	if model, err := manager.GetModel(ctx, req, middleware.UserFromContext(ctx)); err != nil {
+		return httpresponse.Error(w, schema.HTTPErr(err))
+	} else {
+		return httpresponse.JSON(w, http.StatusOK, httprequest.Indent(r), model)
 	}
 }

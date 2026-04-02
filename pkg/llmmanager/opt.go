@@ -28,10 +28,10 @@ import (
 // TYPES
 
 // Opt configures a Manager during construction.
-type Opt func(*opt) error
+type Opt func(*manageropt) error
 
-// opt combines all configuration options for Manager.
-type opt struct {
+// manageropt combines all configuration options for Manager.
+type manageropt struct {
 	llmschema   string
 	authschema  string
 	channel     string
@@ -43,7 +43,7 @@ type opt struct {
 ///////////////////////////////////////////////////////////////////////////////
 // LIFECYCLE
 
-func (o *opt) apply(opts ...Opt) error {
+func (o *manageropt) apply(opts ...Opt) error {
 	for _, opt := range opts {
 		if opt == nil {
 			continue
@@ -55,7 +55,7 @@ func (o *opt) apply(opts ...Opt) error {
 	return nil
 }
 
-func (o *opt) defaults() {
+func (o *manageropt) defaults() {
 	o.llmschema = schema.DefaultSchema
 	o.authschema = schema.DefaultAuthSchema
 	o.channel = schema.DefaultNotifyChannel
@@ -68,7 +68,7 @@ func (o *opt) defaults() {
 
 // WithSchemas sets the database schema names to use for all queries. If not set the default schemas are used.
 func WithSchemas(llm, auth string) Opt {
-	return func(o *opt) error {
+	return func(o *manageropt) error {
 		if llm != "" {
 			o.llmschema = llm
 		}
@@ -81,7 +81,7 @@ func WithSchemas(llm, auth string) Opt {
 
 // WithTracer sets the OpenTelemetry tracer used for manager spans.
 func WithTracer(tracer trace.Tracer) Opt {
-	return func(o *opt) error {
+	return func(o *manageropt) error {
 		if tracer == nil {
 			return fmt.Errorf("tracer is required")
 		}
@@ -93,7 +93,7 @@ func WithTracer(tracer trace.Tracer) Opt {
 // WithPassphrase registers an in-memory storage passphrase for a certificate
 // passphrase version. Versions are uint64 and passphrases must be non-empty.
 func WithPassphrase(version uint64, passphrase string) Opt {
-	return func(o *opt) error {
+	return func(o *manageropt) error {
 		return o.passphrases.Set(version, passphrase)
 	}
 }
@@ -101,7 +101,7 @@ func WithPassphrase(version uint64, passphrase string) Opt {
 // WithNotificationChannel sets the PostgreSQL LISTEN/NOTIFY channel used by
 // the provider table change trigger created during bootstrap.
 func WithNotificationChannel(name string) Opt {
-	return func(o *opt) error {
+	return func(o *manageropt) error {
 		if name == "" {
 			return fmt.Errorf("notification channel cannot be empty")
 		}
@@ -113,7 +113,7 @@ func WithNotificationChannel(name string) Opt {
 // WithClientOpts provides unified client options for the LLM model
 // providers
 func WithClientOpts(opts ...client.ClientOpt) Opt {
-	return func(o *opt) error {
+	return func(o *manageropt) error {
 		o.clientopts = append(o.clientopts, opts...)
 		return nil
 	}

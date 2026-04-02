@@ -117,17 +117,21 @@ func (r *Registry) Get(name string) llm.Client {
 }
 
 // GetModels returns filtered models for a single provider using optional include/exclude regex patterns.
-func (r *Registry) GetModels(ctx context.Context, name string, include, exclude []string) ([]schema.Model, error) {
-	client := r.Get(name)
-	if client == nil {
-		return nil, schema.ErrNotFound.Withf("provider %q not found", name)
+func (r *Registry) GetModels(ctx context.Context, provider *schema.Provider) ([]schema.Model, error) {
+	if provider == nil {
+		return nil, schema.ErrBadParameter.Withf("provider is nil")
 	}
 
-	includePatterns, err := r.compiledModelPatterns(name, "include", include)
+	client := r.Get(provider.Name)
+	if client == nil {
+		return nil, schema.ErrNotFound.Withf("provider %q not found", provider.Name)
+	}
+
+	includePatterns, err := r.compiledModelPatterns(provider.Name, "include", provider.Include)
 	if err != nil {
 		return nil, err
 	}
-	excludePatterns, err := r.compiledModelPatterns(name, "exclude", exclude)
+	excludePatterns, err := r.compiledModelPatterns(provider.Name, "exclude", provider.Exclude)
 	if err != nil {
 		return nil, err
 	}
@@ -139,19 +143,47 @@ func (r *Registry) GetModels(ctx context.Context, name string, include, exclude 
 
 	result := make([]schema.Model, 0, len(models))
 	for _, model := range models {
-		if len(includePatterns) > 0 && !matchesModelPattern(includePatterns, model.Name) {
+		if !matchesModelFilters(includePatterns, excludePatterns, model.Name) {
 			continue
 		}
-		if len(excludePatterns) > 0 && matchesModelPattern(excludePatterns, model.Name) {
-			continue
-		}
-		if model.OwnedBy == "" {
-			model.OwnedBy = name
-		}
+		model.OwnedBy = provider.Name
 		result = append(result, model)
 	}
 
 	return result, nil
+}
+
+// GetModel returns a single model for a provider when the exact model name matches
+// after include/exclude regex filtering has been applied.
+func (r *Registry) GetModel(ctx context.Context, provider *schema.Provider, name string) (schema.Model, error) {
+	if provider == nil {
+		return schema.Model{}, schema.ErrBadParameter.Withf("provider is nil")
+	}
+
+	client := r.Get(provider.Name)
+	if client == nil {
+		return schema.Model{}, schema.ErrNotFound.Withf("provider %q not found", provider.Name)
+	}
+
+	includePatterns, err := r.compiledModelPatterns(provider.Name, "include", provider.Include)
+	if err != nil {
+		return schema.Model{}, err
+	}
+	excludePatterns, err := r.compiledModelPatterns(provider.Name, "exclude", provider.Exclude)
+	if err != nil {
+		return schema.Model{}, err
+	}
+
+	model, err := client.GetModel(ctx, name)
+	if err != nil {
+		return schema.Model{}, err
+	}
+	if model == nil || model.Name != name || !matchesModelFilters(includePatterns, excludePatterns, model.Name) {
+		return schema.Model{}, schema.ErrNotFound.Withf("model %q not found for provider %q", name, provider.Name)
+	}
+	model.OwnedBy = provider.Name
+
+	return *model, nil
 }
 
 // Sets or updates a provider client by name, if the provider is enabled, and return boolean
@@ -266,4 +298,14 @@ func matchesModelPattern(patterns []*regexp.Regexp, name string) bool {
 		}
 	}
 	return false
+}
+
+func matchesModelFilters(includePatterns, excludePatterns []*regexp.Regexp, name string) bool {
+	if len(includePatterns) > 0 && !matchesModelPattern(includePatterns, name) {
+		return false
+	}
+	if len(excludePatterns) > 0 && matchesModelPattern(excludePatterns, name) {
+		return false
+	}
+	return true
 }

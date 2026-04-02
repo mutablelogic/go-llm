@@ -18,7 +18,7 @@ import (
 // TYPES
 
 type Manager struct {
-	opt
+	manageropt
 	pg.PoolConn
 	broadcaster.Broadcaster
 	*provider.Registry

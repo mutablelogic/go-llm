@@ -36,6 +36,17 @@ type ModelList struct {
 	Body     []Model  `json:"body,omitzero"`
 }
 
+// ModelNameSelector selects a model by name for path-based GET operations.
+type ModelNameSelector struct {
+	Name string `json:"name" help:"Model name"`
+}
+
+// ModelProviderSelector selects a model by provider and name for path-based GET operations.
+type ModelProviderSelector struct {
+	Provider string `json:"provider" help:"Provider name"`
+	Name     string `json:"name" help:"Model name"`
+}
+
 // GetModelRequest represents a request to get a model
 type GetModelRequest struct {
 	Provider string `json:"provider,omitempty" help:"Filter by provider name" optional:""`

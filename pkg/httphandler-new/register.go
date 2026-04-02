@@ -23,6 +23,8 @@ func RegisterHandlers(router *httprouter.Router, manager *llmmanager.Manager, au
 	// Register the security schemes, then the paths
 	return errors.Join(
 		router.RegisterPath(ModelHandler(manager)),
+		router.RegisterPath(ModelResourceHandler(manager)),
+		router.RegisterPath(ModelProviderResourceHandler(manager)),
 		router.RegisterPath(ProviderHandler(manager)),
 		router.RegisterPath(ProviderResourceHandler(manager)),
 	)
