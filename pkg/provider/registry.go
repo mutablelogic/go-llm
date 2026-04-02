@@ -3,6 +3,8 @@ package provider
 import (
 	"context"
 	"errors"
+	"regexp"
+	"strings"
 	"sync"
 
 	// Packages
@@ -22,9 +24,10 @@ import (
 // TYPES
 
 type Registry struct {
-	mu         sync.RWMutex
-	providers  map[string]provider
-	clientopts []client.ClientOpt
+	mu          sync.RWMutex
+	providers   map[string]provider
+	clientopts  []client.ClientOpt
+	regexpCache map[string]*regexp.Regexp
 }
 
 type provider struct {
@@ -39,6 +42,7 @@ type provider struct {
 func New(opts ...client.ClientOpt) *Registry {
 	self := new(Registry)
 	self.providers = make(map[string]provider, 10)
+	self.regexpCache = make(map[string]*regexp.Regexp, 10)
 	self.clientopts = opts
 	return self
 }
@@ -112,6 +116,44 @@ func (r *Registry) Get(name string) llm.Client {
 	return nil
 }
 
+// GetModels returns filtered models for a single provider using optional include/exclude regex patterns.
+func (r *Registry) GetModels(ctx context.Context, name string, include, exclude []string) ([]schema.Model, error) {
+	client := r.Get(name)
+	if client == nil {
+		return nil, schema.ErrNotFound.Withf("provider %q not found", name)
+	}
+
+	includePatterns, err := r.compiledModelPatterns(name, "include", include)
+	if err != nil {
+		return nil, err
+	}
+	excludePatterns, err := r.compiledModelPatterns(name, "exclude", exclude)
+	if err != nil {
+		return nil, err
+	}
+
+	models, err := client.ListModels(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	result := make([]schema.Model, 0, len(models))
+	for _, model := range models {
+		if len(includePatterns) > 0 && !matchesModelPattern(includePatterns, model.Name) {
+			continue
+		}
+		if len(excludePatterns) > 0 && matchesModelPattern(excludePatterns, model.Name) {
+			continue
+		}
+		if model.OwnedBy == "" {
+			model.OwnedBy = name
+		}
+		result = append(result, model)
+	}
+
+	return result, nil
+}
+
 // Sets or updates a provider client by name, if the provider is enabled, and return boolean
 // flags indicating whether the provider was updated or deleted.
 func (r *Registry) Set(schema *schema.Provider, credentials schema.ProviderCredentials) (bool, bool, error) {
@@ -180,4 +222,48 @@ func (r *Registry) setUp(name string, value bool) error {
 		r.providers[name] = provider
 	}
 	return nil
+}
+
+func (r *Registry) compiledModelPatterns(providerName, kind string, patterns []string) ([]*regexp.Regexp, error) {
+	result := make([]*regexp.Regexp, 0, len(patterns))
+	for i, pattern := range patterns {
+		pattern = strings.TrimSpace(pattern)
+		if pattern == "" {
+			continue
+		}
+
+		// Return regular expression from cache
+		r.mu.RLock()
+		re, exists := r.regexpCache[pattern]
+		r.mu.RUnlock()
+		if exists {
+			result = append(result, re)
+			continue
+		}
+
+		// Compile the regular expression and add to cache
+		compiled, err := regexp.Compile(pattern)
+		if err != nil {
+			return nil, schema.ErrBadParameter.Withf("provider %q %s[%d]: %v", providerName, kind, i, err)
+		}
+
+		r.mu.Lock()
+		if re, exists = r.regexpCache[pattern]; !exists {
+			r.regexpCache[pattern] = compiled
+			re = compiled
+		}
+		r.mu.Unlock()
+
+		result = append(result, re)
+	}
+	return result, nil
+}
+
+func matchesModelPattern(patterns []*regexp.Regexp, name string) bool {
+	for _, pattern := range patterns {
+		if pattern.MatchString(name) {
+			return true
+		}
+	}
+	return false
 }
