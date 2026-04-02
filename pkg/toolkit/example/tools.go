@@ -7,6 +7,7 @@ import (
 	// Packages
 	jsonschema "github.com/google/jsonschema-go/jsonschema"
 	llm "github.com/mutablelogic/go-llm"
+	schema "github.com/mutablelogic/go-llm/pkg/schema"
 	toolkit "github.com/mutablelogic/go-llm/pkg/toolkit"
 	tool "github.com/mutablelogic/go-llm/pkg/toolkit/tool"
 )
@@ -66,10 +67,10 @@ func (*greetTool) OutputSchema() (*jsonschema.Schema, error) {
 func (*greetTool) Run(ctx context.Context, input json.RawMessage) (any, error) {
 	var req greetRequest
 	if err := json.Unmarshal(input, &req); err != nil {
-		return nil, llm.ErrBadParameter.Withf("greet: %v", err)
+		return nil, schema.ErrBadParameter.Withf("greet: %v", err)
 	}
 	if req.Name == "" {
-		return nil, llm.ErrBadParameter.Withf("greet: name is required")
+		return nil, schema.ErrBadParameter.Withf("greet: name is required")
 	}
 
 	session := toolkit.SessionFromContext(ctx)

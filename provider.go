@@ -16,6 +16,9 @@ type Client interface {
 	// Return the provider name
 	Name() string
 
+	// Ping checks the connectivity of the client and returns an error if not successful
+	Ping(context.Context) error
+
 	// ListModels returns the list of available models
 	ListModels(context.Context, ...opt.Opt) ([]schema.Model, error)
 

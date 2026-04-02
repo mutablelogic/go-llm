@@ -146,35 +146,35 @@ func Test_canonicalURL_007_no_path(t *testing.T) {
 
 func Test_canonicalURL_008_relative_url_error(t *testing.T) {
 	_, err := canonicalURL("example.com/path")
-	if !errors.Is(err, llm.ErrBadParameter) {
+	if !errors.Is(err, schema.ErrBadParameter) {
 		t.Fatalf("expected ErrBadParameter, got %v", err)
 	}
 }
 
 func Test_canonicalURL_009_unsupported_scheme(t *testing.T) {
 	_, err := canonicalURL("ftp://example.com/path")
-	if !errors.Is(err, llm.ErrBadParameter) {
+	if !errors.Is(err, schema.ErrBadParameter) {
 		t.Fatalf("expected ErrBadParameter, got %v", err)
 	}
 }
 
 func Test_canonicalURL_010_missing_host(t *testing.T) {
 	_, err := canonicalURL("http:///path")
-	if !errors.Is(err, llm.ErrBadParameter) {
+	if !errors.Is(err, schema.ErrBadParameter) {
 		t.Fatalf("expected ErrBadParameter, got %v", err)
 	}
 }
 
 func Test_canonicalURL_011_invalid_port(t *testing.T) {
 	_, err := canonicalURL("http://example.com:99999/path")
-	if !errors.Is(err, llm.ErrBadParameter) {
+	if !errors.Is(err, schema.ErrBadParameter) {
 		t.Fatalf("expected ErrBadParameter, got %v", err)
 	}
 }
 
 func Test_canonicalURL_012_port_zero_error(t *testing.T) {
 	_, err := canonicalURL("http://example.com:0/path")
-	if !errors.Is(err, llm.ErrBadParameter) {
+	if !errors.Is(err, schema.ErrBadParameter) {
 		t.Fatalf("expected ErrBadParameter, got %v", err)
 	}
 }
@@ -197,21 +197,21 @@ func Test_AddConnector_002_duplicate(t *testing.T) {
 	if err := tk.AddConnector("http://localhost:8080"); err != nil {
 		t.Fatal(err)
 	}
-	if err := tk.AddConnector("http://localhost:8080"); !errors.Is(err, llm.ErrConflict) {
+	if err := tk.AddConnector("http://localhost:8080"); !errors.Is(err, schema.ErrConflict) {
 		t.Fatalf("expected ErrConflict, got %v", err)
 	}
 }
 
 func Test_AddConnector_003_no_handler(t *testing.T) {
 	tk, _ := New()
-	if err := tk.AddConnector("http://localhost:8080"); !errors.Is(err, llm.ErrNotImplemented) {
+	if err := tk.AddConnector("http://localhost:8080"); !errors.Is(err, schema.ErrNotImplemented) {
 		t.Fatalf("expected ErrNotImplemented, got %v", err)
 	}
 }
 
 func Test_AddConnector_004_bad_url(t *testing.T) {
 	tk, _ := newConnectorToolkit(t)
-	if err := tk.AddConnector("not-a-url"); !errors.Is(err, llm.ErrBadParameter) {
+	if err := tk.AddConnector("not-a-url"); !errors.Is(err, schema.ErrBadParameter) {
 		t.Fatalf("expected ErrBadParameter, got %v", err)
 	}
 }
@@ -259,14 +259,14 @@ func Test_RemoveConnector_001(t *testing.T) {
 
 func Test_RemoveConnector_002_not_found(t *testing.T) {
 	tk, _ := newConnectorToolkit(t)
-	if err := tk.RemoveConnector("http://localhost:8080"); !errors.Is(err, llm.ErrNotFound) {
+	if err := tk.RemoveConnector("http://localhost:8080"); !errors.Is(err, schema.ErrNotFound) {
 		t.Fatalf("expected ErrNotFound, got %v", err)
 	}
 }
 
 func Test_RemoveConnector_003_bad_url(t *testing.T) {
 	tk, _ := newConnectorToolkit(t)
-	if err := tk.RemoveConnector("not-a-url"); !errors.Is(err, llm.ErrBadParameter) {
+	if err := tk.RemoveConnector("not-a-url"); !errors.Is(err, schema.ErrBadParameter) {
 		t.Fatalf("expected ErrBadParameter, got %v", err)
 	}
 }

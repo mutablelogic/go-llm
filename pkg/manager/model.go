@@ -57,7 +57,7 @@ func (m *Manager) ListModels(ctx context.Context, req schema.ListModelsRequest) 
 
 	// Check if provider filter matched
 	if req.Provider != "" && !matched {
-		return nil, llm.ErrNotFound.Withf("provider %q not found", req.Provider)
+		return nil, schema.ErrNotFound.Withf("provider %q not found", req.Provider)
 	}
 
 	// Sort all models by name
@@ -132,10 +132,10 @@ func (m *Manager) GetModel(ctx context.Context, req schema.GetModelRequest) (res
 		return nil, err
 	}
 	if req.Provider != "" && !matched {
-		return nil, llm.ErrNotFound.Withf("provider %q not found", req.Provider)
+		return nil, schema.ErrNotFound.Withf("provider %q not found", req.Provider)
 	}
 	if result == nil {
-		return nil, llm.ErrNotFound.Withf("model '%s' not found", req.Name)
+		return nil, schema.ErrNotFound.Withf("model '%s' not found", req.Name)
 	}
 
 	// Return success
@@ -163,13 +163,13 @@ func (m *Manager) DownloadModel(ctx context.Context, req schema.DownloadModelReq
 	switch len(downloaders) {
 	case 0:
 		if req.Provider != "" {
-			return nil, llm.ErrNotFound.Withf("provider %q not found or does not support model downloads", req.Provider)
+			return nil, schema.ErrNotFound.Withf("provider %q not found or does not support model downloads", req.Provider)
 		}
-		return nil, llm.ErrNotFound.With("no provider found that supports model downloads")
+		return nil, schema.ErrNotFound.With("no provider found that supports model downloads")
 	case 1:
 		return downloaders[0].DownloadModel(ctx, req.Name, opts...)
 	default:
-		return nil, llm.ErrConflict.With("multiple providers support model downloads; specify a provider")
+		return nil, schema.ErrConflict.With("multiple providers support model downloads; specify a provider")
 	}
 }
 
@@ -219,12 +219,12 @@ func (m *Manager) DeleteModel(ctx context.Context, req schema.DeleteModelRequest
 	switch len(candidates) {
 	case 0:
 		if req.Provider != "" && !providerMatched {
-			return llm.ErrNotFound.Withf("provider %q not found or does not support model deletion", req.Provider)
+			return schema.ErrNotFound.Withf("provider %q not found or does not support model deletion", req.Provider)
 		}
-		return llm.ErrNotFound.Withf("model %q not found", req.Name)
+		return schema.ErrNotFound.Withf("model %q not found", req.Name)
 	case 1:
 		return candidates[0].downloader.DeleteModel(ctx, candidates[0].model)
 	default:
-		return llm.ErrConflict.With("multiple providers own this model; specify a provider")
+		return schema.ErrConflict.With("multiple providers own this model; specify a provider")
 	}
 }

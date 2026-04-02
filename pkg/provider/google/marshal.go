@@ -92,7 +92,7 @@ func geminiContentFromMessage(msg *schema.Message) (*geminiContent, error) {
 			args := make(map[string]any)
 			if len(block.ToolCall.Input) > 0 {
 				if err := json.Unmarshal(block.ToolCall.Input, &args); err != nil {
-					return nil, llm.ErrInternalServerError.Withf("unmarshal tool call args: %v", err)
+					return nil, schema.ErrInternalServerError.Withf("unmarshal tool call args: %v", err)
 				}
 			}
 			p := geminiNewFunctionCallPart(block.ToolCall.Name, args)

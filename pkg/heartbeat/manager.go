@@ -7,7 +7,8 @@ import (
 
 	// Packages
 	llm "github.com/mutablelogic/go-llm"
-	schema "github.com/mutablelogic/go-llm/pkg/heartbeat/schema"
+	hschema "github.com/mutablelogic/go-llm/pkg/heartbeat/schema"
+	schema "github.com/mutablelogic/go-llm/pkg/schema"
 )
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -16,10 +17,10 @@ import (
 // Manager owns a Store and runs a background loop that fires due heartbeats.
 // Create one with New, register an OnFire callback, then call Run in a goroutine.
 type Manager struct {
-	store        schema.Store
+	store        hschema.Store
 	pollInterval time.Duration
 	logger       *slog.Logger
-	onFire       func(context.Context, *schema.Heartbeat)
+	onFire       func(context.Context, *hschema.Heartbeat)
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -31,15 +32,15 @@ var _ llm.Connector = (*Manager)(nil)
 // LIFECYCLE
 
 // New creates a Manager backed by the given store.
-func New(store schema.Store, opts ...Opt) (*Manager, error) {
+func New(store hschema.Store, opts ...Opt) (*Manager, error) {
 	if store == nil {
-		return nil, llm.ErrBadParameter.With("store is required")
+		return nil, schema.ErrBadParameter.With("store is required")
 	}
 	m := &Manager{
 		store:        store,
 		pollInterval: defaultPollInterval,
 		logger:       slog.Default(),
-		onFire:       func(context.Context, *schema.Heartbeat) {},
+		onFire:       func(context.Context, *hschema.Heartbeat) {},
 	}
 	for _, o := range opts {
 		if err := o(m); err != nil {

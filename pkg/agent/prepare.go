@@ -8,7 +8,6 @@ import (
 
 	// Packages
 	jsonschema "github.com/google/jsonschema-go/jsonschema"
-	llm "github.com/mutablelogic/go-llm"
 	schema "github.com/mutablelogic/go-llm/pkg/schema"
 )
 
@@ -33,7 +32,7 @@ type PrepareResult struct {
 // The agent name and version are stored in session labels for traceability.
 func Prepare(agent *schema.Agent, parentID string, defaults schema.GeneratorMeta, input json.RawMessage) (*PrepareResult, error) {
 	if agent == nil {
-		return nil, llm.ErrBadParameter.With("agent is required")
+		return nil, schema.ErrBadParameter.With("agent is required")
 	}
 
 	// Merge GeneratorMeta: agent fields win, defaults fill in blanks
@@ -82,7 +81,7 @@ func validateInput(inputSchema schema.JSONSchema, input json.RawMessage) (map[st
 	var data map[string]any
 	if len(input) > 0 {
 		if err := json.Unmarshal(input, &data); err != nil {
-			return nil, llm.ErrBadParameter.Withf("input: invalid JSON: %v", err)
+			return nil, schema.ErrBadParameter.Withf("input: invalid JSON: %v", err)
 		}
 	}
 
@@ -97,13 +96,13 @@ func validateInput(inputSchema schema.JSONSchema, input json.RawMessage) (map[st
 	// Parse the schema
 	var s jsonschema.Schema
 	if err := json.Unmarshal(inputSchema, &s); err != nil {
-		return nil, llm.ErrBadParameter.Withf("input schema: %v", err)
+		return nil, schema.ErrBadParameter.Withf("input schema: %v", err)
 	}
 
 	// Resolve the schema for validation
 	resolved, err := s.Resolve(nil)
 	if err != nil {
-		return nil, llm.ErrBadParameter.Withf("input schema: %v", err)
+		return nil, schema.ErrBadParameter.Withf("input schema: %v", err)
 	}
 
 	// Validate the input against the schema. The Validate method expects
@@ -113,7 +112,7 @@ func validateInput(inputSchema schema.JSONSchema, input json.RawMessage) (map[st
 		instance = map[string]any{}
 	}
 	if err := resolved.Validate(instance); err != nil {
-		return nil, llm.ErrBadParameter.Withf("input validation: %v", err)
+		return nil, schema.ErrBadParameter.Withf("input validation: %v", err)
 	}
 
 	if data == nil {
@@ -131,12 +130,12 @@ func executeTemplate(name, tmplText string, data map[string]any) (string, error)
 
 	tmpl, err := template.New(name).Funcs(funcMap()).Parse(tmplText)
 	if err != nil {
-		return "", llm.ErrBadParameter.Withf("template: %v", err)
+		return "", schema.ErrBadParameter.Withf("template: %v", err)
 	}
 
 	var buf bytes.Buffer
 	if err := tmpl.Execute(&buf, data); err != nil {
-		return "", llm.ErrBadParameter.Withf("template: %v", err)
+		return "", schema.ErrBadParameter.Withf("template: %v", err)
 	}
 
 	return buf.String(), nil

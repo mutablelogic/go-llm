@@ -5,7 +5,7 @@ import (
 
 	// Packages
 	"github.com/mutablelogic/go-client"
-	llm "github.com/mutablelogic/go-llm"
+	"github.com/mutablelogic/go-llm/pkg/schema"
 )
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -39,7 +39,7 @@ func (c *Client) Sources(ctx context.Context, req *SourcesRequest) ([]Source, er
 	if err := c.DoWithContext(ctx, nil, &response, client.OptPath("top-headlines/sources"), client.OptQuery(req.Values())); err != nil {
 		return nil, err
 	} else if response.Status != "ok" {
-		return nil, llm.ErrBadParameter.Withf("%s: %s", response.Code, response.Message)
+		return nil, schema.ErrBadParameter.Withf("%s: %s", response.Code, response.Message)
 	}
 
 	// Return success

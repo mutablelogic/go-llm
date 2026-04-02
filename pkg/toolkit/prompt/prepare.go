@@ -5,8 +5,9 @@ import (
 	"encoding/json"
 
 	// Packages
-	llm "github.com/mutablelogic/go-llm"
+
 	opt "github.com/mutablelogic/go-llm/pkg/opt"
+	schema "github.com/mutablelogic/go-llm/pkg/schema"
 )
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -16,5 +17,5 @@ import (
 // JSON object) and returns the resulting string along with any opts derived
 // from the prompt's front matter (model, provider, system prompt, etc.).
 func (p *prompt) Prepare(_ context.Context, _ json.RawMessage) (string, []opt.Opt, error) {
-	return "", nil, llm.ErrNotImplemented
+	return "", nil, schema.ErrNotImplemented
 }

@@ -7,7 +7,6 @@ import (
 
 	// Packages
 	otel "github.com/mutablelogic/go-client/pkg/otel"
-	llm "github.com/mutablelogic/go-llm"
 	schema "github.com/mutablelogic/go-llm/pkg/schema"
 	attribute "go.opentelemetry.io/otel/attribute"
 )
@@ -28,7 +27,7 @@ func (m *Manager) GetCredential(ctx context.Context, rawURL string) (result *sch
 		return nil, err
 	}
 	if m.credentialStore == nil {
-		return nil, llm.ErrNotImplemented.With("credential store not configured")
+		return nil, schema.ErrNotImplemented.With("credential store not configured")
 	}
 	return m.credentialStore.GetCredential(ctx, url)
 }
@@ -46,7 +45,7 @@ func (m *Manager) SetCredential(ctx context.Context, rawURL string, cred schema.
 		return err
 	}
 	if m.credentialStore == nil {
-		return llm.ErrNotImplemented.With("credential store not configured")
+		return schema.ErrNotImplemented.With("credential store not configured")
 	}
 	return m.credentialStore.SetCredential(ctx, url, cred)
 }
@@ -64,7 +63,7 @@ func (m *Manager) DeleteCredential(ctx context.Context, rawURL string) (err erro
 		return err
 	}
 	if m.credentialStore == nil {
-		return llm.ErrNotImplemented.With("credential store not configured")
+		return schema.ErrNotImplemented.With("credential store not configured")
 	}
 	return m.credentialStore.DeleteCredential(ctx, url)
 }
@@ -80,7 +79,7 @@ func redactCredentialErr(err error) error {
 	if err == nil {
 		return nil
 	}
-	var llmErr llm.Err
+	var llmErr schema.Err
 	if errors.As(err, &llmErr) {
 		return err // sentinel-wrapped errors are safe — they contain no credential data
 	}

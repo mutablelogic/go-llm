@@ -45,7 +45,7 @@ func (tk *Toolkit) AddConnector(url string, c llm.Connector) error {
 
 	// Check for duplicate URL
 	if _, exists := tk.conns[url]; exists {
-		return llm.ErrBadParameter.Withf("connector already added: %q", url)
+		return schema.ErrBadParameter.Withf("connector already added: %q", url)
 	}
 
 	// Start the connector's background goroutine

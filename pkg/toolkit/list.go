@@ -10,6 +10,7 @@ import (
 	"sync"
 
 	llm "github.com/mutablelogic/go-llm"
+	schema "github.com/mutablelogic/go-llm/pkg/schema"
 	prompt "github.com/mutablelogic/go-llm/pkg/toolkit/prompt"
 	resource "github.com/mutablelogic/go-llm/pkg/toolkit/resource"
 	tool "github.com/mutablelogic/go-llm/pkg/toolkit/tool"
@@ -75,7 +76,7 @@ func (tk *toolkit) List(ctx context.Context, req ListRequest) (*ListResponse, er
 	case ListTypeTools, ListTypePrompts, ListTypeResources:
 		// valid
 	default:
-		return nil, llm.ErrBadParameter.Withf("unsupported list type %q (want %q, %q, or %q)", req.Type, ListTypeTools, ListTypePrompts, ListTypeResources)
+		return nil, schema.ErrBadParameter.Withf("unsupported list type %q (want %q, %q, or %q)", req.Type, ListTypeTools, ListTypePrompts, ListTypeResources)
 	}
 
 	// Collect builtin items and connector candidates under the read lock.

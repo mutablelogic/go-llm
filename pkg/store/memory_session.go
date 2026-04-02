@@ -6,7 +6,7 @@ import (
 	"sync"
 
 	// Packages
-	llm "github.com/mutablelogic/go-llm"
+
 	schema "github.com/mutablelogic/go-llm/pkg/schema"
 )
 
@@ -56,7 +56,7 @@ func (m *MemorySessionStore) GetSession(_ context.Context, id string) (*schema.S
 
 	s, ok := m.sessions[id]
 	if !ok {
-		return nil, llm.ErrNotFound.Withf("session %q", id)
+		return nil, schema.ErrNotFound.Withf("session %q", id)
 	}
 	return s, nil
 }
@@ -94,7 +94,7 @@ func (m *MemorySessionStore) DeleteSession(_ context.Context, id string) error {
 	defer m.mu.Unlock()
 
 	if _, ok := m.sessions[id]; !ok {
-		return llm.ErrNotFound.Withf("session %q", id)
+		return schema.ErrNotFound.Withf("session %q", id)
 	}
 	delete(m.sessions, id)
 	return nil
@@ -113,7 +113,7 @@ func (m *MemorySessionStore) UpdateSession(_ context.Context, id string, meta sc
 
 	s, ok := m.sessions[id]
 	if !ok {
-		return nil, llm.ErrNotFound.Withf("session %q", id)
+		return nil, schema.ErrNotFound.Withf("session %q", id)
 	}
 
 	if err := mergeSessionMeta(s, meta); err != nil {

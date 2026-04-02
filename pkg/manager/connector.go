@@ -36,9 +36,9 @@ func (m *Manager) CreateConnector(ctx context.Context, rawURL string, meta schem
 	// Check incoming parameters
 	url, err := schema.CanonicalURL(rawURL)
 	if err != nil {
-		return nil, llm.ErrBadParameter.With(err)
+		return nil, schema.ErrBadParameter.With(err)
 	} else if ns := types.Value(meta.Namespace); ns != "" && !types.IsIdentifier(ns) {
-		return nil, llm.ErrBadParameter.Withf("connector namespace %q is not a valid identifier", ns)
+		return nil, schema.ErrBadParameter.Withf("connector namespace %q is not a valid identifier", ns)
 	}
 
 	// If a connector factory is configured, use it to probe the server before
@@ -99,7 +99,7 @@ func (m *Manager) GetConnector(ctx context.Context, rawURL string) (result *sche
 
 	url, err := schema.CanonicalURL(rawURL)
 	if err != nil {
-		return nil, llm.ErrBadParameter.With(err)
+		return nil, schema.ErrBadParameter.With(err)
 	}
 
 	return m.connectorStore.GetConnector(ctx, url)
@@ -115,10 +115,10 @@ func (m *Manager) UpdateConnector(ctx context.Context, rawURL string, meta schem
 
 	url, err := schema.CanonicalURL(rawURL)
 	if err != nil {
-		return nil, llm.ErrBadParameter.With(err)
+		return nil, schema.ErrBadParameter.With(err)
 	}
 	if ns := types.Value(meta.Namespace); ns != "" && !types.IsIdentifier(ns) {
-		return nil, llm.ErrBadParameter.Withf("connector namespace %q is not a valid identifier", ns)
+		return nil, schema.ErrBadParameter.Withf("connector namespace %q is not a valid identifier", ns)
 	}
 
 	result, err = m.connectorStore.UpdateConnector(ctx, url, meta)
@@ -155,7 +155,7 @@ func (m *Manager) DeleteConnector(ctx context.Context, rawURL string) (err error
 
 	url, err := schema.CanonicalURL(rawURL)
 	if err != nil {
-		return llm.ErrBadParameter.With(err)
+		return schema.ErrBadParameter.With(err)
 	}
 
 	// Disconnect from the toolkit before removing from the store.

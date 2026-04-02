@@ -65,7 +65,7 @@ func Read(r io.Reader) (llm.Prompt, error) {
 	if after, found := strings.CutPrefix(content, "---\n"); found {
 		if before, body, ok := strings.Cut(after, "\n---"); ok {
 			if err := yaml.Unmarshal([]byte(before), &p.m); err != nil {
-				return nil, llm.ErrBadParameter.Withf("yaml: %v", err)
+				return nil, schema.ErrBadParameter.Withf("yaml: %v", err)
 			}
 			p.m.Template = strings.TrimSpace(strings.TrimPrefix(body, "\n"))
 		}
@@ -79,13 +79,13 @@ func Read(r io.Reader) (llm.Prompt, error) {
 		p.m.Title = extractH1(p.m.Template)
 	}
 	if !types.IsIdentifier(p.m.Name) {
-		return nil, llm.ErrBadParameter.Withf("name: must be a non-empty identifier, got %q", p.m.Name)
+		return nil, schema.ErrBadParameter.Withf("name: must be a non-empty identifier, got %q", p.m.Name)
 	}
 	if err := validateJSONSchema(p.m.Input); err != nil {
-		return nil, llm.ErrBadParameter.Withf("input: %v", err)
+		return nil, schema.ErrBadParameter.Withf("input: %v", err)
 	}
 	if err := validateJSONSchema(schema.JSONSchema(p.m.Format)); err != nil {
-		return nil, llm.ErrBadParameter.Withf("output: %v", err)
+		return nil, schema.ErrBadParameter.Withf("output: %v", err)
 	}
 
 	// Return the prompt with the parsed metadata and template

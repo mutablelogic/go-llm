@@ -9,6 +9,7 @@ import (
 	// Packages
 	jsonschema "github.com/google/jsonschema-go/jsonschema"
 	llm "github.com/mutablelogic/go-llm"
+	schema "github.com/mutablelogic/go-llm/pkg/schema"
 	resource "github.com/mutablelogic/go-llm/pkg/toolkit/resource"
 	toolpkg "github.com/mutablelogic/go-llm/pkg/toolkit/tool"
 )
@@ -70,7 +71,7 @@ func Test_Lookup_Connector_003(t *testing.T) {
 	tk := newConnectedToolkit(t, "myserver", conn)
 
 	_, err := tk.Lookup(context.Background(), "other.remote_tool")
-	if !errors.Is(err, llm.ErrNotFound) {
+	if !errors.Is(err, schema.ErrNotFound) {
 		t.Fatalf("expected ErrNotFound, got %v", err)
 	}
 }
@@ -158,7 +159,7 @@ func Test_Lookup_Connector_008(t *testing.T) {
 	tk := newConnectedToolkit(t, "myserver", conn)
 
 	_, err := tk.Lookup(context.Background(), "other.remote_prompt")
-	if !errors.Is(err, llm.ErrNotFound) {
+	if !errors.Is(err, schema.ErrNotFound) {
 		t.Fatalf("expected ErrNotFound, got %v", err)
 	}
 }
@@ -207,7 +208,7 @@ func Test_Lookup_Connector_011(t *testing.T) {
 	tk := newConnectedToolkit(t, "myserver", conn)
 
 	_, err := tk.Lookup(context.Background(), r.URI()+"#other")
-	if !errors.Is(err, llm.ErrNotFound) {
+	if !errors.Is(err, schema.ErrNotFound) {
 		t.Fatalf("expected ErrNotFound, got %v", err)
 	}
 }
@@ -242,7 +243,7 @@ func Test_Lookup_Connector_013(t *testing.T) {
 	tk := newConnectedToolkit(t, "myserver", conn)
 
 	_, err := tk.Lookup(context.Background(), r.URI()+"#builtin")
-	if !errors.Is(err, llm.ErrNotFound) {
+	if !errors.Is(err, schema.ErrNotFound) {
 		t.Fatalf("expected ErrNotFound, got %v", err)
 	}
 }
@@ -277,7 +278,7 @@ func Test_Lookup_Connector_015(t *testing.T) {
 
 	r, _ := resource.Text("missing_doc", "not here")
 	_, err := tk.Lookup(context.Background(), r.URI())
-	if !errors.Is(err, llm.ErrNotFound) {
+	if !errors.Is(err, schema.ErrNotFound) {
 		t.Fatalf("expected ErrNotFound, got %v", err)
 	}
 }

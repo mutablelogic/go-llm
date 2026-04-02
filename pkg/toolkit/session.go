@@ -8,7 +8,6 @@ import (
 
 	// Packages
 	mcp "github.com/modelcontextprotocol/go-sdk/mcp"
-	llm "github.com/mutablelogic/go-llm"
 	schema "github.com/mutablelogic/go-llm/pkg/schema"
 	types "github.com/mutablelogic/go-server/pkg/types"
 )
@@ -112,7 +111,7 @@ func (s *session) Logger() *slog.Logger {
 func (s *session) Progress(progress, total float64, message ...string) error {
 	// Error if message is too long
 	if len(message) > 1 {
-		return llm.ErrBadParameter.Withf("too many message arguments: expected at most one, got %d", len(message))
+		return schema.ErrBadParameter.Withf("too many message arguments: expected at most one, got %d", len(message))
 	}
 
 	// In the default implementation, we don't have a client to send progress updates to, so we'll just log it.

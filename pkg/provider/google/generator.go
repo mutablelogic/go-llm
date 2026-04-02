@@ -24,7 +24,7 @@ var _ llm.Generator = (*Client)(nil)
 // WithoutSession sends a single message and returns the response (stateless)
 func (c *Client) WithoutSession(ctx context.Context, model schema.Model, message *schema.Message, opts ...opt.Opt) (*schema.Message, *schema.Usage, error) {
 	if message == nil {
-		return nil, nil, llm.ErrBadParameter.With("message is required")
+		return nil, nil, schema.ErrBadParameter.With("message is required")
 	}
 	session := schema.Conversation{message}
 	return c.generate(ctx, model.Name, &session, opts...)
@@ -33,10 +33,10 @@ func (c *Client) WithoutSession(ctx context.Context, model schema.Model, message
 // WithSession sends a message within a session and returns the response (stateful)
 func (c *Client) WithSession(ctx context.Context, model schema.Model, session *schema.Conversation, message *schema.Message, opts ...opt.Opt) (*schema.Message, *schema.Usage, error) {
 	if session == nil {
-		return nil, nil, llm.ErrBadParameter.With("session is required")
+		return nil, nil, schema.ErrBadParameter.With("session is required")
 	}
 	if message == nil {
-		return nil, nil, llm.ErrBadParameter.With("message is required")
+		return nil, nil, schema.ErrBadParameter.With("message is required")
 	}
 	session.Append(*message)
 	return c.generate(ctx, model.Name, session, opts...)
@@ -190,9 +190,9 @@ func (c *Client) processResponse(response *geminiGenerateResponse, session *sche
 	if len(response.Candidates) > 0 {
 		switch response.Candidates[0].FinishReason {
 		case geminiFinishReasonMaxTokens:
-			return message, usageResult, llm.ErrMaxTokens
+			return message, usageResult, schema.ErrMaxTokens
 		case geminiFinishReasonSafety, geminiFinishReasonImageSafety:
-			return message, usageResult, llm.ErrRefusal
+			return message, usageResult, schema.ErrRefusal
 		}
 	}
 
@@ -263,7 +263,7 @@ func generateRequestFromOpts(model string, session *schema.Conversation, options
 	if schemaJSON := options.GetString(opt.JSONSchemaKey); schemaJSON != "" {
 		var s any
 		if err := json.Unmarshal([]byte(schemaJSON), &s); err != nil {
-			return nil, llm.ErrBadParameter.Withf("invalid JSON schema: %v", err)
+			return nil, schema.ErrBadParameter.Withf("invalid JSON schema: %v", err)
 		}
 		request.GenerationConfig.ResponseMIMEType = "application/json"
 		request.GenerationConfig.ResponseJSONSchema = s

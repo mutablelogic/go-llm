@@ -10,7 +10,7 @@ import (
 	"time"
 
 	// Packages
-	llm "github.com/mutablelogic/go-llm"
+
 	schema "github.com/mutablelogic/go-llm/pkg/schema"
 	types "github.com/mutablelogic/go-server/pkg/types"
 )
@@ -60,7 +60,7 @@ func (s *FileConnectorStore) CreateConnector(_ context.Context, url string, meta
 
 	path := s.path(canonicalURL)
 	if _, err := os.Stat(path); err == nil {
-		return nil, llm.ErrConflict.Withf("connector already exists for %q", canonicalURL)
+		return nil, schema.ErrConflict.Withf("connector already exists for %q", canonicalURL)
 	} else if !os.IsNotExist(err) {
 		return nil, fmt.Errorf("stat %q: %w", path, err)
 	}
@@ -70,7 +70,7 @@ func (s *FileConnectorStore) CreateConnector(_ context.Context, url string, meta
 			return nil, err
 		}
 		if len(matches) > 0 {
-			return nil, llm.ErrConflict.Withf("connector namespace %q already in use by %q", ns, matches[0].URL)
+			return nil, schema.ErrConflict.Withf("connector namespace %q already in use by %q", ns, matches[0].URL)
 		}
 	}
 
@@ -123,7 +123,7 @@ func (s *FileConnectorStore) UpdateConnector(_ context.Context, url string, meta
 			return nil, err
 		}
 		if len(matches) > 0 {
-			return nil, llm.ErrConflict.Withf("connector namespace %q already in use by %q", ns, matches[0].URL)
+			return nil, schema.ErrConflict.Withf("connector namespace %q already in use by %q", ns, matches[0].URL)
 		}
 	}
 	if meta.Enabled != nil {
@@ -151,10 +151,10 @@ func (s *FileConnectorStore) DeleteConnector(_ context.Context, url string) erro
 
 	path := s.path(canonicalURL)
 	if _, err := os.Stat(path); os.IsNotExist(err) {
-		return llm.ErrNotFound.Withf("connector not found for %q", canonicalURL)
+		return schema.ErrNotFound.Withf("connector not found for %q", canonicalURL)
 	}
 	if err := os.Remove(path); err != nil {
-		return llm.ErrInternalServerError.Withf("remove: %v", err)
+		return schema.ErrInternalServerError.Withf("remove: %v", err)
 	}
 	return nil
 }

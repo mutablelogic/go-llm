@@ -9,6 +9,7 @@ import (
 	// Packages
 	jsonschema "github.com/google/jsonschema-go/jsonschema"
 	llm "github.com/mutablelogic/go-llm"
+	schema "github.com/mutablelogic/go-llm/pkg/schema"
 	resource "github.com/mutablelogic/go-llm/pkg/toolkit/resource"
 	gootel "go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/propagation"
@@ -59,7 +60,7 @@ func (m *errSchemaTool) OutputSchema() (*jsonschema.Schema, error) {
 func Test_Call_001_bad_key_type(t *testing.T) {
 	tk, _ := New()
 	_, err := tk.Call(context.Background(), 42)
-	if !errors.Is(err, llm.ErrBadParameter) {
+	if !errors.Is(err, schema.ErrBadParameter) {
 		t.Fatalf("expected ErrBadParameter, got %v", err)
 	}
 }
@@ -70,7 +71,7 @@ func Test_Call_001_bad_key_type(t *testing.T) {
 func Test_Call_002_string_key_not_found(t *testing.T) {
 	tk, _ := New()
 	_, err := tk.Call(context.Background(), "nonexistent")
-	if !errors.Is(err, llm.ErrNotFound) {
+	if !errors.Is(err, schema.ErrNotFound) {
 		t.Fatalf("expected ErrNotFound, got %v", err)
 	}
 }
@@ -106,7 +107,7 @@ func Test_Call_004_direct_tool(t *testing.T) {
 func Test_Call_005_direct_prompt_no_delegate(t *testing.T) {
 	tk, _ := New()
 	_, err := tk.Call(context.Background(), &mockPrompt{name: "summarize"})
-	if !errors.Is(err, llm.ErrNotImplemented) {
+	if !errors.Is(err, schema.ErrNotImplemented) {
 		t.Fatalf("expected ErrNotImplemented, got %v", err)
 	}
 }
@@ -192,7 +193,7 @@ func Test_Call_012_tool_returns_bad_type(t *testing.T) {
 	tk, _ := New()
 	tool := &callableTool{name: "greet", result: 12345}
 	_, err := tk.Call(context.Background(), tool)
-	if !errors.Is(err, llm.ErrBadParameter) {
+	if !errors.Is(err, schema.ErrBadParameter) {
 		t.Fatalf("expected ErrBadParameter, got %v", err)
 	}
 }
@@ -215,7 +216,7 @@ func Test_Call_014_too_many_resources(t *testing.T) {
 	r1, _ := resource.Text("a", "x")
 	r2, _ := resource.Text("b", "y")
 	_, err := tk.Call(context.Background(), tool, r1, r2)
-	if !errors.Is(err, llm.ErrBadParameter) {
+	if !errors.Is(err, schema.ErrBadParameter) {
 		t.Fatalf("expected ErrBadParameter, got %v", err)
 	}
 }
@@ -224,7 +225,7 @@ func Test_Call_015_nil_resource(t *testing.T) {
 	tk, _ := New()
 	tool := &callableTool{name: "greet"}
 	_, err := tk.Call(context.Background(), tool, nil)
-	if !errors.Is(err, llm.ErrBadParameter) {
+	if !errors.Is(err, schema.ErrBadParameter) {
 		t.Fatalf("expected ErrBadParameter, got %v", err)
 	}
 }
@@ -234,7 +235,7 @@ func Test_Call_016_non_json_resource(t *testing.T) {
 	tool := &callableTool{name: "greet"}
 	r, _ := resource.Text("input", "not json")
 	_, err := tk.Call(context.Background(), tool, r)
-	if !errors.Is(err, llm.ErrBadParameter) {
+	if !errors.Is(err, schema.ErrBadParameter) {
 		t.Fatalf("expected ErrBadParameter, got %v", err)
 	}
 }
@@ -263,7 +264,7 @@ func Test_Call_018_input_schema_error(t *testing.T) {
 	}
 	r, _ := resource.JSON("input", map[string]string{"x": "y"})
 	_, err := tk.Call(context.Background(), tool, r)
-	if !errors.Is(err, llm.ErrBadParameter) {
+	if !errors.Is(err, schema.ErrBadParameter) {
 		t.Fatalf("expected ErrBadParameter, got %v", err)
 	}
 }
@@ -295,7 +296,7 @@ func Test_Call_020_input_schema_rejects_invalid_input(t *testing.T) {
 	// Pass a number instead of an object — should fail schema validation.
 	r, _ := resource.JSON("input", 42)
 	_, err := tk.Call(context.Background(), tool, r)
-	if !errors.Is(err, llm.ErrBadParameter) {
+	if !errors.Is(err, schema.ErrBadParameter) {
 		t.Fatalf("expected ErrBadParameter for invalid input, got %v", err)
 	}
 }
@@ -311,7 +312,7 @@ func Test_Call_021_nil_result_with_output_schema_errors(t *testing.T) {
 	tk, _ := New()
 	tool := &callableTool{name: "t", result: nil, outputSchema: s}
 	_, err := tk.Call(context.Background(), tool)
-	if !errors.Is(err, llm.ErrBadParameter) {
+	if !errors.Is(err, schema.ErrBadParameter) {
 		t.Fatalf("expected ErrBadParameter when nil result + output schema, got %v", err)
 	}
 }
@@ -323,7 +324,7 @@ func Test_Call_022_nil_result_output_schema_gen_error(t *testing.T) {
 		outputSchemaErr: errors.New("schema gen failed"),
 	}
 	_, err := tk.Call(context.Background(), tool)
-	if !errors.Is(err, llm.ErrBadParameter) {
+	if !errors.Is(err, schema.ErrBadParameter) {
 		t.Fatalf("expected ErrBadParameter, got %v", err)
 	}
 }
@@ -356,7 +357,7 @@ func Test_Call_024_output_schema_rejects_invalid_json_output(t *testing.T) {
 	// Return a number instead of an object.
 	tool := &callableTool{name: "t", result: json.RawMessage(`42`), outputSchema: s}
 	_, err := tk.Call(context.Background(), tool)
-	if !errors.Is(err, llm.ErrBadParameter) {
+	if !errors.Is(err, schema.ErrBadParameter) {
 		t.Fatalf("expected ErrBadParameter for invalid output, got %v", err)
 	}
 }
@@ -370,7 +371,7 @@ func Test_Call_025_output_schema_with_non_json_output_errors(t *testing.T) {
 	// String output is not JSON content-type, so validation should fail.
 	tool := &callableTool{name: "t", result: "plain string", outputSchema: s}
 	_, err := tk.Call(context.Background(), tool)
-	if !errors.Is(err, llm.ErrBadParameter) {
+	if !errors.Is(err, schema.ErrBadParameter) {
 		t.Fatalf("expected ErrBadParameter for non-JSON output with schema, got %v", err)
 	}
 }
@@ -382,7 +383,7 @@ func Test_Call_026_output_schema_gen_error_after_result(t *testing.T) {
 		outputSchemaErr: errors.New("schema gen failed"),
 	}
 	_, err := tk.Call(context.Background(), tool)
-	if !errors.Is(err, llm.ErrBadParameter) {
+	if !errors.Is(err, schema.ErrBadParameter) {
 		t.Fatalf("expected ErrBadParameter, got %v", err)
 	}
 }

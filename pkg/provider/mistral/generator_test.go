@@ -8,7 +8,6 @@ import (
 
 	// Packages
 	jsonschema "github.com/google/jsonschema-go/jsonschema"
-	llm "github.com/mutablelogic/go-llm"
 	opt "github.com/mutablelogic/go-llm/pkg/opt"
 	schema "github.com/mutablelogic/go-llm/pkg/schema"
 	types "github.com/mutablelogic/go-server/pkg/types"
@@ -490,7 +489,7 @@ func Test_processResponse_002(t *testing.T) {
 	}
 
 	result, _, err := c.processResponse(response, &session)
-	assert.ErrorIs(err, llm.ErrMaxTokens)
+	assert.ErrorIs(err, schema.ErrMaxTokens)
 	assert.NotNil(result)
 	assert.Equal("Truncated...", *result.Content[0].Text)
 	assert.Equal(schema.ResultMaxTokens, result.Result)
@@ -517,7 +516,7 @@ func Test_processResponse_003(t *testing.T) {
 	}
 
 	result, _, err := c.processResponse(response, &session)
-	assert.ErrorIs(err, llm.ErrMaxTokens)
+	assert.ErrorIs(err, schema.ErrMaxTokens)
 	assert.NotNil(result)
 }
 
@@ -581,7 +580,7 @@ func Test_processResponse_005(t *testing.T) {
 	}
 
 	result, _, err := c.processResponse(response, &session)
-	assert.ErrorIs(err, llm.ErrInternalServerError)
+	assert.ErrorIs(err, schema.ErrInternalServerError)
 	assert.NotNil(result)
 }
 
@@ -825,7 +824,7 @@ func Test_generate_005(t *testing.T) {
 	)
 	// With only 10 tokens the response may be truncated
 	if err != nil {
-		assert.ErrorIs(err, llm.ErrMaxTokens)
+		assert.ErrorIs(err, schema.ErrMaxTokens)
 	}
 	if !assert.NotNil(response) {
 		return

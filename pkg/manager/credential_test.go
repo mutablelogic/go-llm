@@ -5,7 +5,7 @@ import (
 	"testing"
 
 	// Packages
-	llm "github.com/mutablelogic/go-llm"
+
 	schema "github.com/mutablelogic/go-llm/pkg/schema"
 	store "github.com/mutablelogic/go-llm/pkg/store"
 	assert "github.com/stretchr/testify/assert"
@@ -23,13 +23,13 @@ func Test_credential_001(t *testing.T) {
 	assert.NoError(err)
 
 	_, err = m.GetCredential(context.TODO(), "https://example.com")
-	assert.ErrorIs(err, llm.ErrNotImplemented)
+	assert.ErrorIs(err, schema.ErrNotImplemented)
 
 	err = m.SetCredential(context.TODO(), "https://example.com", schema.OAuthCredentials{})
-	assert.ErrorIs(err, llm.ErrNotImplemented)
+	assert.ErrorIs(err, schema.ErrNotImplemented)
 
 	err = m.DeleteCredential(context.TODO(), "https://example.com")
-	assert.ErrorIs(err, llm.ErrNotImplemented)
+	assert.ErrorIs(err, schema.ErrNotImplemented)
 }
 
 // Test WithCredentialStore rejects nil store
@@ -37,7 +37,7 @@ func Test_credential_002(t *testing.T) {
 	assert := assert.New(t)
 
 	_, err := NewManager("test", "0.0.0", WithCredentialStore(nil))
-	assert.ErrorIs(err, llm.ErrBadParameter)
+	assert.ErrorIs(err, schema.ErrBadParameter)
 }
 
 // Test SetCredential and GetCredential round-trip

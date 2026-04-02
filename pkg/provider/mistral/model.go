@@ -7,7 +7,6 @@ import (
 
 	// Packages
 	client "github.com/mutablelogic/go-client"
-	llm "github.com/mutablelogic/go-llm"
 	opt "github.com/mutablelogic/go-llm/pkg/opt"
 	schema "github.com/mutablelogic/go-llm/pkg/schema"
 	types "github.com/mutablelogic/go-server/pkg/types"
@@ -48,7 +47,7 @@ func (c *Client) GetModel(ctx context.Context, name string, opts ...opt.Opt) (*s
 				return types.Ptr(m), nil
 			}
 		}
-		return nil, llm.ErrNotFound.Withf("model not found: %s", name)
+		return nil, schema.ErrNotFound.Withf("model not found: %s", name)
 	})
 }
 

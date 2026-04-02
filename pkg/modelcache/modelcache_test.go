@@ -7,7 +7,7 @@ import (
 	"time"
 
 	// Packages
-	llm "github.com/mutablelogic/go-llm"
+
 	"github.com/mutablelogic/go-llm/pkg/modelcache"
 	"github.com/mutablelogic/go-llm/pkg/opt"
 	"github.com/mutablelogic/go-llm/pkg/schema"
@@ -82,11 +82,11 @@ func TestGetModel_NotFoundError(t *testing.T) {
 	mc := modelcache.NewModelCache(time.Hour, 10)
 
 	fn := func(_ context.Context, name string) (*schema.Model, error) {
-		return nil, llm.ErrNotFound
+		return nil, schema.ErrNotFound
 	}
 
 	_, err := mc.GetModel(ctx, "missing", fn)
-	assert.ErrorIs(err, llm.ErrNotFound)
+	assert.ErrorIs(err, schema.ErrNotFound)
 }
 
 func TestGetModel_NotFoundPrunesCache(t *testing.T) {
@@ -100,7 +100,7 @@ func TestGetModel_NotFoundPrunesCache(t *testing.T) {
 		return &schema.Model{Name: name}, nil
 	}
 	fnNotFound := func(_ context.Context, name string) (*schema.Model, error) {
-		return nil, llm.ErrNotFound
+		return nil, schema.ErrNotFound
 	}
 
 	// Cache it
@@ -113,7 +113,7 @@ func TestGetModel_NotFoundPrunesCache(t *testing.T) {
 
 	// Now return not found - should prune the entry
 	_, err = mc.GetModel(ctx, "model-b", fnNotFound)
-	assert.ErrorIs(err, llm.ErrNotFound)
+	assert.ErrorIs(err, schema.ErrNotFound)
 
 	// Next call should fetch again
 	_, err = mc.GetModel(ctx, "model-b", fnOk)

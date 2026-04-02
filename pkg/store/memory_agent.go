@@ -7,7 +7,6 @@ import (
 
 	// Packages
 	uuid "github.com/google/uuid"
-	llm "github.com/mutablelogic/go-llm"
 	schema "github.com/mutablelogic/go-llm/pkg/schema"
 )
 
@@ -48,7 +47,7 @@ func (m *MemoryAgentStore) CreateAgent(_ context.Context, meta schema.AgentMeta)
 	if err := validateAgentName(meta.Name); err != nil {
 		return nil, err
 	} else if _, exists := m.names[meta.Name]; exists {
-		return nil, llm.ErrConflict.Withf("agent name %q already exists", meta.Name)
+		return nil, schema.ErrConflict.Withf("agent name %q already exists", meta.Name)
 	}
 
 	// Generate a unique ID
@@ -98,7 +97,7 @@ func (m *MemoryAgentStore) getAgentLocked(id string) (*schema.Agent, error) {
 		delete(m.names, id)
 	}
 
-	return nil, llm.ErrNotFound.Withf("agent %q", id)
+	return nil, schema.ErrNotFound.Withf("agent %q", id)
 }
 
 // ListAgents returns agents ordered by creation time (most recent first),
@@ -150,7 +149,7 @@ func (m *MemoryAgentStore) DeleteAgent(_ context.Context, id string) error {
 		}
 	}
 	if !found {
-		return llm.ErrNotFound.Withf("agent %q", id)
+		return schema.ErrNotFound.Withf("agent %q", id)
 	}
 	delete(m.names, id)
 	return nil

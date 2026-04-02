@@ -8,7 +8,7 @@ import (
 	"sync"
 
 	// Packages
-	llm "github.com/mutablelogic/go-llm"
+
 	encrypt "github.com/mutablelogic/go-llm/pkg/encrypt"
 	schema "github.com/mutablelogic/go-llm/pkg/schema"
 )
@@ -64,7 +64,7 @@ func (s *FileCredentialStore) GetCredential(_ context.Context, rawURL string) (*
 	blob, err := os.ReadFile(s.path(canonicalURL))
 	if err != nil {
 		if os.IsNotExist(err) {
-			return nil, llm.ErrNotFound.Withf("credential not found for %q", canonicalURL)
+			return nil, schema.ErrNotFound.Withf("credential not found for %q", canonicalURL)
 		}
 		return nil, fmt.Errorf("credential read failed for %q: %w", canonicalURL, err)
 	}
@@ -117,7 +117,7 @@ func (s *FileCredentialStore) DeleteCredential(_ context.Context, rawURL string)
 
 	if err := os.Remove(s.path(canonicalURL)); err != nil {
 		if os.IsNotExist(err) {
-			return llm.ErrNotFound.Withf("credential not found for %q", canonicalURL)
+			return schema.ErrNotFound.Withf("credential not found for %q", canonicalURL)
 		}
 		return fmt.Errorf("credential delete failed for %q: %w", canonicalURL, err)
 	}

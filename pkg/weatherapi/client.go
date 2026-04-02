@@ -9,7 +9,7 @@ import (
 
 	// Packages
 	"github.com/mutablelogic/go-client"
-	"github.com/mutablelogic/go-llm"
+	"github.com/mutablelogic/go-llm/pkg/schema"
 )
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -34,7 +34,7 @@ const (
 func New(ApiKey string, opts ...client.ClientOpt) (*Client, error) {
 	// Check for missing API key
 	if ApiKey == "" {
-		return nil, llm.ErrBadParameter.With("missing API key")
+		return nil, schema.ErrBadParameter.With("missing API key")
 	}
 	// Create client
 	opts = append(opts, client.OptEndpoint(endPoint))

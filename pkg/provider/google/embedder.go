@@ -44,7 +44,7 @@ func (c *Client) Embedding(ctx context.Context, model schema.Model, text string,
 		return nil, err
 	}
 	if response.Embedding == nil {
-		return nil, llm.ErrInternalServerError.With("empty embedding response")
+		return nil, schema.ErrInternalServerError.With("empty embedding response")
 	}
 	return response.Embedding.Values, nil
 }
@@ -52,7 +52,7 @@ func (c *Client) Embedding(ctx context.Context, model schema.Model, text string,
 // BatchEmbedding generates embedding vectors for multiple texts using the specified model
 func (c *Client) BatchEmbedding(ctx context.Context, model schema.Model, texts []string, opts ...opt.Opt) ([][]float64, error) {
 	if len(texts) == 0 {
-		return nil, llm.ErrBadParameter.With("at least one text is required")
+		return nil, schema.ErrBadParameter.With("at least one text is required")
 	}
 
 	// Apply options

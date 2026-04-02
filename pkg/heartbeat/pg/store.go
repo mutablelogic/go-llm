@@ -7,8 +7,8 @@ import (
 	"time"
 
 	// Packages
-	llm "github.com/mutablelogic/go-llm"
-	schema "github.com/mutablelogic/go-llm/pkg/heartbeat/schema"
+	hschema "github.com/mutablelogic/go-llm/pkg/heartbeat/schema"
+	schema "github.com/mutablelogic/go-llm/pkg/schema"
 	pg "github.com/mutablelogic/go-pg"
 	types "github.com/mutablelogic/go-server/pkg/types"
 )
@@ -21,7 +21,7 @@ type Store struct {
 	pg.PoolConn
 }
 
-var _ schema.Store = (*Store)(nil)
+var _ hschema.Store = (*Store)(nil)
 
 ///////////////////////////////////////////////////////////////////////////////
 // GLOBALS
@@ -43,7 +43,7 @@ func NewStore(ctx context.Context, pool pg.PoolConn) (*Store, error) {
 
 	// Add the queries to the pool
 	if pool == nil {
-		return nil, llm.ErrBadParameter.With("pool is required")
+		return nil, schema.ErrBadParameter.With("pool is required")
 	} else {
 		// Set pool with default schema
 		pool = pool.WithQueries(queries).With("schema", defaultSchema).(pg.PoolConn)
@@ -94,7 +94,7 @@ type markFiredWriter struct {
 	fired bool
 }
 
-func (markFiredWriter) Insert(*pg.Bind) (string, error) { return "", llm.ErrNotImplemented }
+func (markFiredWriter) Insert(*pg.Bind) (string, error) { return "", schema.ErrNotImplemented }
 func (w markFiredWriter) Update(bind *pg.Bind) error {
 	bind.Set("fired", w.fired)
 	return nil
@@ -104,13 +104,13 @@ func (w markFiredWriter) Update(bind *pg.Bind) error {
 func pgErr(err error) error {
 	switch {
 	case errors.Is(err, pg.ErrNotFound):
-		return llm.ErrNotFound
+		return schema.ErrNotFound
 	case errors.Is(err, pg.ErrNotImplemented):
-		return llm.ErrNotImplemented
+		return schema.ErrNotImplemented
 	case errors.Is(err, pg.ErrBadParameter):
-		return llm.ErrBadParameter
+		return schema.ErrBadParameter
 	case errors.Is(err, pg.ErrNotAvailable):
-		return llm.ErrConflict
+		return schema.ErrConflict
 	default:
 		return err
 	}
@@ -119,36 +119,36 @@ func pgErr(err error) error {
 ///////////////////////////////////////////////////////////////////////////////
 // PUBLIC METHODS
 
-func (s *Store) Create(ctx context.Context, meta schema.HeartbeatMeta) (*schema.Heartbeat, error) {
-	var response schema.Heartbeat
+func (s *Store) Create(ctx context.Context, meta hschema.HeartbeatMeta) (*hschema.Heartbeat, error) {
+	var response hschema.Heartbeat
 	if err := s.PoolConn.Insert(ctx, &response, meta); err != nil {
 		return nil, err
 	}
 	return types.Ptr(response), nil
 }
 
-func (s *Store) Get(ctx context.Context, id string) (*schema.Heartbeat, error) {
-	var response schema.Heartbeat
-	if err := s.PoolConn.Get(ctx, &response, schema.HeartbeatIDSelector(id)); err != nil {
+func (s *Store) Get(ctx context.Context, id string) (*hschema.Heartbeat, error) {
+	var response hschema.Heartbeat
+	if err := s.PoolConn.Get(ctx, &response, hschema.HeartbeatIDSelector(id)); err != nil {
 		return nil, pgErr(err)
 	}
 	return types.Ptr(response), nil
 }
 
-func (s *Store) Delete(ctx context.Context, id string) (*schema.Heartbeat, error) {
-	var response schema.Heartbeat
-	if err := s.PoolConn.Delete(ctx, &response, schema.HeartbeatIDSelector(id)); err != nil {
+func (s *Store) Delete(ctx context.Context, id string) (*hschema.Heartbeat, error) {
+	var response hschema.Heartbeat
+	if err := s.PoolConn.Delete(ctx, &response, hschema.HeartbeatIDSelector(id)); err != nil {
 		return nil, pgErr(err)
 	}
 	return types.Ptr(response), nil
 }
 
-func (s *Store) List(ctx context.Context, includeFired bool) ([]*schema.Heartbeat, error) {
-	var list schema.HeartbeatList
+func (s *Store) List(ctx context.Context, includeFired bool) ([]*hschema.Heartbeat, error) {
+	var list hschema.HeartbeatList
 
 	// When includeFired is false, filter to only non-fired rows.
 	// When true, omit the filter so all rows are returned.
-	req := schema.HeartbeatListRequest{}
+	req := hschema.HeartbeatListRequest{}
 	if !includeFired {
 		req.Fired = types.Ptr(false)
 	}
@@ -160,20 +160,20 @@ func (s *Store) List(ctx context.Context, includeFired bool) ([]*schema.Heartbea
 	return list.Heartbeats, nil
 }
 
-func (s *Store) Update(ctx context.Context, id string, meta schema.HeartbeatMeta) (*schema.Heartbeat, error) {
-	var response schema.Heartbeat
-	if err := s.PoolConn.Update(ctx, &response, schema.HeartbeatIDSelector(id), meta); err != nil {
+func (s *Store) Update(ctx context.Context, id string, meta hschema.HeartbeatMeta) (*hschema.Heartbeat, error) {
+	var response hschema.Heartbeat
+	if err := s.PoolConn.Update(ctx, &response, hschema.HeartbeatIDSelector(id), meta); err != nil {
 		return nil, pgErr(err)
 	}
 	return types.Ptr(response), nil
 }
 
-func (s *Store) Next(ctx context.Context) ([]*schema.Heartbeat, error) {
-	var result []*schema.Heartbeat
+func (s *Store) Next(ctx context.Context) ([]*hschema.Heartbeat, error) {
+	var result []*hschema.Heartbeat
 	if err := s.PoolConn.Tx(ctx, func(conn pg.Conn) error {
 		// List all non-fired heartbeats within the transaction.
-		var list schema.HeartbeatList
-		if err := conn.List(ctx, &list, schema.HeartbeatListRequest{
+		var list hschema.HeartbeatList
+		if err := conn.List(ctx, &list, hschema.HeartbeatListRequest{
 			Fired: types.Ptr(false),
 		}); err != nil {
 			return err
@@ -188,8 +188,8 @@ func (s *Store) Next(ctx context.Context) ([]*schema.Heartbeat, error) {
 			if !next.IsZero() && !next.After(now) {
 				// Check if there's a future occurrence after now
 				futureNext := h.Schedule.Next(now.Add(time.Minute))
-				var fired schema.Heartbeat
-				if err := conn.Update(ctx, &fired, schema.HeartbeatMarkFiredSelector(h.ID), markFiredWriter{fired: futureNext.IsZero()}); err != nil {
+				var fired hschema.Heartbeat
+				if err := conn.Update(ctx, &fired, hschema.HeartbeatMarkFiredSelector(h.ID), markFiredWriter{fired: futureNext.IsZero()}); err != nil {
 					return err
 				}
 				result = append(result, &fired)

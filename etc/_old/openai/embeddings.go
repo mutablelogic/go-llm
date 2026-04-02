@@ -7,6 +7,7 @@ import (
 	// Packages
 	client "github.com/mutablelogic/go-client"
 	llm "github.com/mutablelogic/go-llm"
+	schema "github.com/mutablelogic/go-llm/pkg/schema"
 )
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -65,7 +66,7 @@ type reqEmbedding struct {
 func (openai *Client) GenerateEmbedding(ctx context.Context, model string, prompt []string, opts ...llm.Opt) (*embeddings, error) {
 	// Bail out is no prompt
 	if len(prompt) == 0 {
-		return nil, llm.ErrBadParameter.With("missing prompt")
+		return nil, schema.ErrBadParameter.With("missing prompt")
 	}
 
 	// Apply options
@@ -103,7 +104,7 @@ func (model *model) Embedding(ctx context.Context, prompt string, opts ...llm.Op
 		return nil, err
 	}
 	if len(response.Embeddings.Data) == 0 {
-		return nil, llm.ErrNotFound.With("no embeddings returned")
+		return nil, schema.ErrNotFound.With("no embeddings returned")
 	}
 	return response.Embeddings.Data[0].Vector, nil
 }

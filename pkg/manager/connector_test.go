@@ -86,7 +86,7 @@ func Test_connector_002(t *testing.T) {
 	assert := assert.New(t)
 
 	_, err := NewManager("test", "0.0.0", WithConnectorStore(nil))
-	assert.ErrorIs(err, llm.ErrBadParameter)
+	assert.ErrorIs(err, schema.ErrBadParameter)
 }
 
 // Test CreateConnector rejects invalid URL before any probe
@@ -126,7 +126,7 @@ func Test_connector_005(t *testing.T) {
 
 	// Second registration is rejected at the store level before any probe.
 	_, err = m.CreateConnector(context.TODO(), testConnectorURL, schema.ConnectorMeta{Enabled: types.Ptr(true)})
-	assert.ErrorIs(err, llm.ErrConflict)
+	assert.ErrorIs(err, schema.ErrConflict)
 }
 
 // Test GetConnector round-trip and not-found
@@ -137,7 +137,7 @@ func Test_connector_006(t *testing.T) {
 	var err error
 
 	_, err = m.GetConnector(context.TODO(), testConnectorURL)
-	assert.ErrorIs(err, llm.ErrNotFound)
+	assert.ErrorIs(err, schema.ErrNotFound)
 
 	_, err = m.CreateConnector(context.TODO(), testConnectorURL, schema.ConnectorMeta{Enabled: types.Ptr(true), Namespace: types.Ptr("ns")})
 	assert.NoError(err)
@@ -172,7 +172,7 @@ func Test_connector_008(t *testing.T) {
 	assert.NoError(err)
 
 	_, err = m.UpdateConnector(context.TODO(), testConnectorURL, schema.ConnectorMeta{})
-	assert.ErrorIs(err, llm.ErrNotFound)
+	assert.ErrorIs(err, schema.ErrNotFound)
 }
 
 // Test DeleteConnector removes the connector
@@ -188,7 +188,7 @@ func Test_connector_009(t *testing.T) {
 	assert.NoError(m.DeleteConnector(context.TODO(), testConnectorURL))
 
 	_, err = m.GetConnector(context.TODO(), testConnectorURL)
-	assert.ErrorIs(err, llm.ErrNotFound)
+	assert.ErrorIs(err, schema.ErrNotFound)
 }
 
 // Test DeleteConnector returns not-found for unknown URL
@@ -199,7 +199,7 @@ func Test_connector_010(t *testing.T) {
 	assert.NoError(err)
 
 	err = m.DeleteConnector(context.TODO(), testConnectorURL)
-	assert.ErrorIs(err, llm.ErrNotFound)
+	assert.ErrorIs(err, schema.ErrNotFound)
 }
 
 // Test URL canonicalisation strips query params and normalises case

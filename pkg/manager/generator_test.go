@@ -126,7 +126,7 @@ func Test_ask_002(t *testing.T) {
 		},
 	}, nil)
 	assert.Error(err)
-	assert.ErrorIs(err, llm.ErrNotFound)
+	assert.ErrorIs(err, schema.ErrNotFound)
 }
 
 // Test Ask with provider filter
@@ -170,7 +170,7 @@ func Test_ask_004(t *testing.T) {
 		},
 	}, nil)
 	assert.Error(err)
-	assert.ErrorIs(err, llm.ErrNotImplemented)
+	assert.ErrorIs(err, schema.ErrNotImplemented)
 }
 
 // Test Ask with streaming callback
@@ -229,7 +229,7 @@ func Test_ask_006(t *testing.T) {
 		},
 	}, nil)
 	assert.Error(err)
-	assert.ErrorIs(err, llm.ErrNotImplemented)
+	assert.ErrorIs(err, schema.ErrNotImplemented)
 }
 
 // Test Ask with JSON format for unknown provider returns error
@@ -255,7 +255,7 @@ func Test_ask_007(t *testing.T) {
 		},
 	}, nil)
 	assert.Error(err)
-	assert.ErrorIs(err, llm.ErrNotImplemented)
+	assert.ErrorIs(err, schema.ErrNotImplemented)
 }
 
 // Test Ask with empty text
@@ -412,7 +412,7 @@ func Test_chat_004(t *testing.T) {
 		},
 	}, nil)
 	assert.Error(err)
-	assert.ErrorIs(err, llm.ErrNotImplemented)
+	assert.ErrorIs(err, schema.ErrNotImplemented)
 }
 
 // Test Chat with all tools (no filter)
@@ -503,7 +503,7 @@ func Test_chat_007(t *testing.T) {
 		},
 	}, nil)
 	assert.Error(err)
-	assert.ErrorIs(err, llm.ErrNotFound)
+	assert.ErrorIs(err, schema.ErrNotFound)
 }
 
 // Test Chat with no toolkit and no tools filter works fine
@@ -802,7 +802,7 @@ func Test_ask_009(t *testing.T) {
 		},
 	}, nil)
 	assert.Error(err)
-	assert.ErrorIs(err, llm.ErrBadParameter)
+	assert.ErrorIs(err, schema.ErrBadParameter)
 }
 
 // Test Ask with attachments

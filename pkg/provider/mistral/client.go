@@ -5,6 +5,7 @@ https://docs.mistral.ai/api/
 package mistral
 
 import (
+	"context"
 	"time"
 
 	// Packages
@@ -53,4 +54,10 @@ func New(apiKey string, opts ...client.ClientOpt) (*Client, error) {
 // Name returns the provider name
 func (*Client) Name() string {
 	return schema.Mistral
+}
+
+// Ping checks the connectivity of the client and returns an error if not successful
+func (*Client) Ping(ctx context.Context) error {
+	// TODO: Not implemented for Mistral
+	return nil
 }

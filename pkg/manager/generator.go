@@ -205,7 +205,7 @@ func (m *Manager) Chat(ctx context.Context, request schema.ChatRequest, fn opt.S
 					// Validate the output against the schema
 					if outputTool != nil {
 						if err := outputTool.Validate(call.Input); err != nil {
-							return nil, llm.ErrBadParameter.Withf("%v", err)
+							return nil, schema.ErrBadParameter.Withf("%v", err)
 						}
 					}
 					// The tool's input IS the structured output.
@@ -312,11 +312,11 @@ func (m *Manager) generatorFromMeta(ctx context.Context, meta schema.GeneratorMe
 	// Get the client for the model
 	client := m.clientForModel(model)
 	if client == nil {
-		return nil, nil, nil, llm.ErrNotFound.Withf("no provider found for model: %s", meta.Model)
+		return nil, nil, nil, schema.ErrNotFound.Withf("no provider found for model: %s", meta.Model)
 	}
 	generator, ok := client.(llm.Generator)
 	if !ok {
-		return nil, nil, nil, llm.ErrNotImplemented.Withf("provider %q does not support messaging", client.Name())
+		return nil, nil, nil, schema.ErrNotImplemented.Withf("provider %q does not support messaging", client.Name())
 	}
 
 	// Build options from meta fields
@@ -353,7 +353,7 @@ func withSystemPrompt(value string) opt.Opt {
 		case schema.Mistral:
 			return mistral.WithSystemPrompt(value)
 		default:
-			return opt.Error(llm.ErrNotImplemented.Withf("%s: WithSystemPrompt not supported", provider))
+			return opt.Error(schema.ErrNotImplemented.Withf("%s: WithSystemPrompt not supported", provider))
 		}
 	})
 }
@@ -367,7 +367,7 @@ func withThinking() opt.Opt {
 		case schema.Eliza:
 			return eliza.WithThinking()
 		default:
-			return opt.Error(llm.ErrBadParameter.Withf("%s: WithThinking without budget not supported (use --thinking-budget)", provider))
+			return opt.Error(schema.ErrBadParameter.Withf("%s: WithThinking without budget not supported (use --thinking-budget)", provider))
 		}
 	})
 }
@@ -383,7 +383,7 @@ func withThinkingBudget(budgetTokens uint) opt.Opt {
 		case schema.Eliza:
 			return eliza.WithThinking()
 		default:
-			return opt.Error(llm.ErrNotImplemented.Withf("%s: WithThinking not supported", provider))
+			return opt.Error(schema.ErrNotImplemented.Withf("%s: WithThinking not supported", provider))
 		}
 	})
 }
@@ -392,7 +392,7 @@ func withThinkingBudget(budgetTokens uint) opt.Opt {
 func withJSONOutput(data schema.JSONSchema) opt.Opt {
 	var s jsonschema.Schema
 	if err := json.Unmarshal(data, &s); err != nil {
-		return opt.Error(llm.ErrBadParameter.Withf("invalid JSON schema: %v", err))
+		return opt.Error(schema.ErrBadParameter.Withf("invalid JSON schema: %v", err))
 	}
 	return opt.WithClient(func(provider string) opt.Opt {
 		switch provider {
@@ -403,7 +403,7 @@ func withJSONOutput(data schema.JSONSchema) opt.Opt {
 		case schema.Mistral:
 			return mistral.WithJSONOutput(&s)
 		default:
-			return opt.Error(llm.ErrNotImplemented.Withf("%s: WithJSONOutput not supported", provider))
+			return opt.Error(schema.ErrNotImplemented.Withf("%s: WithJSONOutput not supported", provider))
 		}
 	})
 }
@@ -416,7 +416,7 @@ func withJSONOutput(data schema.JSONSchema) opt.Opt {
 func (m *Manager) addOutputTool(format schema.JSONSchema) (string, *tool.OutputTool, opt.Opt, error) {
 	var s jsonschema.Schema
 	if err := json.Unmarshal(format, &s); err != nil {
-		return "", nil, nil, llm.ErrBadParameter.Withf("invalid JSON schema for output tool: %v", err)
+		return "", nil, nil, schema.ErrBadParameter.Withf("invalid JSON schema for output tool: %v", err)
 	}
 	outputTool := tool.NewOutputTool(&s)
 	return tool.OutputToolName, outputTool, tool.WithTool(outputTool), nil
@@ -470,7 +470,7 @@ func (m *Manager) withTools(tools ...string) (opt.Opt, error) {
 	for _, name := range tools {
 		t := m.toolkit.Lookup(name)
 		if t == nil {
-			return nil, llm.ErrNotFound.Withf("tool %q", name)
+			return nil, schema.ErrNotFound.Withf("tool %q", name)
 		}
 		filtered = append(filtered, t)
 	}

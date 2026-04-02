@@ -7,7 +7,6 @@ import (
 	"testing"
 	"time"
 
-	llm "github.com/mutablelogic/go-llm"
 	schema "github.com/mutablelogic/go-llm/pkg/schema"
 	types "github.com/mutablelogic/go-server/pkg/types"
 	assert "github.com/stretchr/testify/assert"
@@ -51,7 +50,7 @@ var sessionStoreTests = []sessionStoreTest{
 		assert := assert.New(t)
 		_, err := s.CreateSession(context.TODO(), schema.SessionMeta{Name: "test"})
 		assert.Error(err)
-		assert.ErrorIs(err, llm.ErrBadParameter)
+		assert.ErrorIs(err, schema.ErrBadParameter)
 	}},
 	{"CreateUniqueIDs", func(t *testing.T, s schema.SessionStore) {
 		assert := assert.New(t)

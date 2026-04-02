@@ -23,7 +23,7 @@ var _ llm.Generator = (*Client)(nil)
 // returns the response. It does not support tools, thinking, or tool_choice.
 func (c *Client) WithoutSession(ctx context.Context, model schema.Model, message *schema.Message, opts ...opt.Opt) (*schema.Message, *schema.Usage, error) {
 	if message == nil {
-		return nil, nil, llm.ErrBadParameter.With("message is required")
+		return nil, nil, schema.ErrBadParameter.With("message is required")
 	}
 	return c.generate(ctx, model.Name, message, opts...)
 }
@@ -33,10 +33,10 @@ func (c *Client) WithoutSession(ctx context.Context, model schema.Model, message
 // before the request is sent; the assistant reply is appended afterwards.
 func (c *Client) WithSession(ctx context.Context, model schema.Model, session *schema.Conversation, message *schema.Message, opts ...opt.Opt) (*schema.Message, *schema.Usage, error) {
 	if session == nil {
-		return nil, nil, llm.ErrBadParameter.With("session is required")
+		return nil, nil, schema.ErrBadParameter.With("session is required")
 	}
 	if message == nil {
-		return nil, nil, llm.ErrBadParameter.With("message is required")
+		return nil, nil, schema.ErrBadParameter.With("message is required")
 	}
 	session.Append(*message)
 	return c.chat(ctx, model.Name, session, opts...)
@@ -126,7 +126,7 @@ func (c *Client) processGenerateResponse(resp *generateResponse) (*schema.Messag
 		OutputTokens: uint(resp.EvalCount),
 	}
 	if resp.DoneReason == "length" {
-		return message, usage, llm.ErrMaxTokens
+		return message, usage, schema.ErrMaxTokens
 	}
 	return message, usage, nil
 }
@@ -225,7 +225,7 @@ func (c *Client) processChatResponse(session *schema.Conversation, resp *chatRes
 	}
 	session.AppendWithOuput(*message, usage.InputTokens, usage.OutputTokens)
 	if resp.DoneReason == "length" {
-		return message, usage, llm.ErrMaxTokens
+		return message, usage, schema.ErrMaxTokens
 	}
 	return message, usage, nil
 }

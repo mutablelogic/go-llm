@@ -5,7 +5,7 @@ import (
 	"testing"
 
 	// Packages
-	llm "github.com/mutablelogic/go-llm"
+
 	opt "github.com/mutablelogic/go-llm/pkg/opt"
 	schema "github.com/mutablelogic/go-llm/pkg/schema"
 	assert "github.com/stretchr/testify/assert"
@@ -127,7 +127,7 @@ func Test_embedding_003(t *testing.T) {
 		Model:    "embed-model",
 		Input:    []string{},
 	})
-	assert.ErrorIs(err, llm.ErrBadParameter)
+	assert.ErrorIs(err, schema.ErrBadParameter)
 }
 
 // Test model not found returns error
@@ -149,7 +149,7 @@ func Test_embedding_004(t *testing.T) {
 		Model:    "nonexistent",
 		Input:    []string{"hello"},
 	})
-	assert.ErrorIs(err, llm.ErrNotFound)
+	assert.ErrorIs(err, schema.ErrNotFound)
 }
 
 // Test client that does not implement Embedder returns ErrNotImplemented
@@ -170,7 +170,7 @@ func Test_embedding_005(t *testing.T) {
 		Model:    "plain-model",
 		Input:    []string{"hello"},
 	})
-	assert.ErrorIs(err, llm.ErrNotImplemented)
+	assert.ErrorIs(err, schema.ErrNotImplemented)
 }
 
 // Test default task type is applied when empty
@@ -258,7 +258,7 @@ func Test_embedding_009(t *testing.T) {
 		Model:    "some-model",
 		Input:    []string{"hello"},
 	})
-	assert.ErrorIs(err, llm.ErrNotFound)
+	assert.ErrorIs(err, schema.ErrNotFound)
 }
 
 // Test model found without provider filter (searches all clients)
@@ -295,7 +295,7 @@ func Test_embedding_011(t *testing.T) {
 			models: []schema.Model{{Name: "embed-model", OwnedBy: "embed-provider"}},
 		},
 		embeddingFn: func(_ context.Context, _ schema.Model, _ string, _ ...opt.Opt) ([]float64, error) {
-			return nil, llm.ErrBadParameter.With("upstream error")
+			return nil, schema.ErrBadParameter.With("upstream error")
 		},
 	}
 
@@ -308,7 +308,7 @@ func Test_embedding_011(t *testing.T) {
 		Input:    []string{"hello"},
 	})
 	assert.Error(err)
-	assert.ErrorIs(err, llm.ErrBadParameter)
+	assert.ErrorIs(err, schema.ErrBadParameter)
 }
 
 // Test batch embedding error is propagated
@@ -321,7 +321,7 @@ func Test_embedding_012(t *testing.T) {
 			models: []schema.Model{{Name: "embed-model", OwnedBy: "embed-provider"}},
 		},
 		batchEmbeddingFn: func(_ context.Context, _ schema.Model, _ []string, _ ...opt.Opt) ([][]float64, error) {
-			return nil, llm.ErrBadParameter.With("batch upstream error")
+			return nil, schema.ErrBadParameter.With("batch upstream error")
 		},
 	}
 
@@ -334,5 +334,5 @@ func Test_embedding_012(t *testing.T) {
 		Input:    []string{"hello", "world"},
 	})
 	assert.Error(err)
-	assert.ErrorIs(err, llm.ErrBadParameter)
+	assert.ErrorIs(err, schema.ErrBadParameter)
 }

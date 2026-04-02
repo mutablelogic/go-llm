@@ -8,7 +8,8 @@ import (
 	jsonschema "github.com/google/jsonschema-go/jsonschema"
 	otel "github.com/mutablelogic/go-client/pkg/otel"
 	llm "github.com/mutablelogic/go-llm"
-	schema "github.com/mutablelogic/go-llm/pkg/heartbeat/schema"
+	hschema "github.com/mutablelogic/go-llm/pkg/heartbeat/schema"
+	schema "github.com/mutablelogic/go-llm/pkg/schema"
 	tool "github.com/mutablelogic/go-llm/pkg/tool"
 	session "github.com/mutablelogic/go-llm/pkg/tool/session"
 	attribute "go.opentelemetry.io/otel/attribute"
@@ -36,11 +37,11 @@ func (deleteHeartbeat) Description() string {
 }
 
 func (deleteHeartbeat) InputSchema() (*jsonschema.Schema, error) {
-	return jsonschema.For[schema.DeleteHeartbeatRequest](nil)
+	return jsonschema.For[hschema.DeleteHeartbeatRequest](nil)
 }
 
 func (t deleteHeartbeat) Run(ctx context.Context, input json.RawMessage) (_ any, err error) {
-	var req schema.DeleteHeartbeatRequest
+	var req hschema.DeleteHeartbeatRequest
 
 	// Otel
 	ctx, endSpan := otel.StartSpan(session.FromContext(ctx).Tracer(), ctx, "delete_heartbeat", attribute.String("input", string(input)))
@@ -49,11 +50,11 @@ func (t deleteHeartbeat) Run(ctx context.Context, input json.RawMessage) (_ any,
 	// Check parameters
 	if len(input) > 0 {
 		if err := json.Unmarshal(input, &req); err != nil {
-			return nil, llm.ErrBadParameter.Withf("delete_heartbeat: %v", err)
+			return nil, schema.ErrBadParameter.Withf("delete_heartbeat: %v", err)
 		}
 	}
 	if req.ID == "" {
-		return nil, llm.ErrBadParameter.With("delete_heartbeat: id is required")
+		return nil, schema.ErrBadParameter.With("delete_heartbeat: id is required")
 	}
 
 	// Delete from store, and return the deleted heartbeat (or nil if not found)

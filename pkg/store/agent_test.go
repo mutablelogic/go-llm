@@ -7,7 +7,7 @@ import (
 	"testing"
 
 	// Packages
-	llm "github.com/mutablelogic/go-llm"
+
 	schema "github.com/mutablelogic/go-llm/pkg/schema"
 	types "github.com/mutablelogic/go-server/pkg/types"
 	assert "github.com/stretchr/testify/assert"
@@ -57,7 +57,7 @@ var agentStoreTests = []agentStoreTest{
 			Name:          "",
 		})
 		assert.Error(err)
-		assert.ErrorIs(err, llm.ErrBadParameter)
+		assert.ErrorIs(err, schema.ErrBadParameter)
 	}},
 	{"CreateInvalidNameDigit", func(t *testing.T, s schema.AgentStore) {
 		assert := assert.New(t)
@@ -66,7 +66,7 @@ var agentStoreTests = []agentStoreTest{
 			Name:          "123bad",
 		})
 		assert.Error(err)
-		assert.ErrorIs(err, llm.ErrBadParameter)
+		assert.ErrorIs(err, schema.ErrBadParameter)
 	}},
 	{"CreateInvalidNameSpaces", func(t *testing.T, s schema.AgentStore) {
 		assert := assert.New(t)
@@ -75,7 +75,7 @@ var agentStoreTests = []agentStoreTest{
 			Name:          "has spaces",
 		})
 		assert.Error(err)
-		assert.ErrorIs(err, llm.ErrBadParameter)
+		assert.ErrorIs(err, schema.ErrBadParameter)
 	}},
 	{"CreateDuplicateName", func(t *testing.T, s schema.AgentStore) {
 		assert := assert.New(t)
@@ -83,7 +83,7 @@ var agentStoreTests = []agentStoreTest{
 		assert.NoError(err)
 		_, err = s.CreateAgent(context.TODO(), testAgentMeta)
 		assert.Error(err)
-		assert.ErrorIs(err, llm.ErrConflict)
+		assert.ErrorIs(err, schema.ErrConflict)
 	}},
 	{"CreateUniqueIDs", func(t *testing.T, s schema.AgentStore) {
 		assert := assert.New(t)
@@ -148,7 +148,7 @@ var agentStoreTests = []agentStoreTest{
 		assert := assert.New(t)
 		_, err := s.GetAgent(context.TODO(), "nonexistent")
 		assert.Error(err)
-		assert.ErrorIs(err, llm.ErrNotFound)
+		assert.ErrorIs(err, schema.ErrNotFound)
 	}},
 
 	// List

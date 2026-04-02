@@ -43,7 +43,7 @@ func (tk *toolkit) Call(ctx context.Context, key any, resources ...llm.Resource)
 			p = f
 		}
 	default:
-		return nil, llm.ErrBadParameter.Withf("key must be a string, llm.Tool, or llm.Prompt, got %T", key)
+		return nil, schema.ErrBadParameter.Withf("key must be a string, llm.Tool, or llm.Prompt, got %T", key)
 	}
 
 	// Perform the call
@@ -52,11 +52,11 @@ func (tk *toolkit) Call(ctx context.Context, key any, resources ...llm.Resource)
 		return tk.callTool(ctx, t, resources...)
 	case p != nil:
 		if tk.delegate == nil {
-			return nil, llm.ErrNotImplemented.With("no delegate set for prompt execution")
+			return nil, schema.ErrNotImplemented.With("no delegate set for prompt execution")
 		}
 		return tk.delegate.Call(ctx, p, resources...)
 	default:
-		return nil, llm.ErrNotFound.Withf("%v", key)
+		return nil, schema.ErrNotFound.Withf("%v", key)
 	}
 }
 
@@ -69,33 +69,33 @@ func (tk *toolkit) callTool(ctx context.Context, t llm.Tool, resources ...llm.Re
 
 	// Check for too many resources. Only one is supported as input to the tool.
 	if len(resources) > 1 {
-		return nil, llm.ErrBadParameter.Withf("too many resources: zero or one is supported as input to a tool, got %d", len(resources))
+		return nil, schema.ErrBadParameter.Withf("too many resources: zero or one is supported as input to a tool, got %d", len(resources))
 	} else if len(resources) == 1 && resources[0] == nil {
-		return nil, llm.ErrBadParameter.With("resource cannot be nil")
+		return nil, schema.ErrBadParameter.With("resource cannot be nil")
 	} else if len(resources) == 1 && resources[0].Type() != types.ContentTypeJSON {
-		return nil, llm.ErrBadParameter.Withf("invalid resource type: expected %q, got %q", types.ContentTypeJSON, resources[0].Type())
+		return nil, schema.ErrBadParameter.Withf("invalid resource type: expected %q, got %q", types.ContentTypeJSON, resources[0].Type())
 	} else if len(resources) == 1 {
 		data, err := resources[0].Read(ctx)
 		if err != nil {
-			return nil, llm.ErrBadParameter.Withf("reading input resource: %v", err)
+			return nil, schema.ErrBadParameter.Withf("reading input resource: %v", err)
 		}
 		input = json.RawMessage(data)
 		s, err := t.InputSchema()
 		if err != nil {
-			return nil, llm.ErrBadParameter.Withf("schema generation failed: %v", err)
+			return nil, schema.ErrBadParameter.Withf("schema generation failed: %v", err)
 		}
 		if s != nil {
 			// TODO: Validate input against schema
 			var instance any
 			if err := json.Unmarshal(input, &instance); err != nil {
-				return nil, llm.ErrBadParameter.Withf("failed to unmarshal JSON input: %v", err)
+				return nil, schema.ErrBadParameter.Withf("failed to unmarshal JSON input: %v", err)
 			}
 			resolved, err := s.Resolve(nil)
 			if err != nil {
-				return nil, llm.ErrBadParameter.Withf("schema resolution failed: %v", err)
+				return nil, schema.ErrBadParameter.Withf("schema resolution failed: %v", err)
 			}
 			if err := resolved.Validate(instance); err != nil {
-				return nil, llm.ErrBadParameter.Withf("input validation failed: %v", err)
+				return nil, schema.ErrBadParameter.Withf("input validation failed: %v", err)
 			}
 		}
 	}
@@ -122,10 +122,10 @@ func (tk *toolkit) callTool(ctx context.Context, t llm.Tool, resources ...llm.Re
 	if result == nil {
 		outputSchema, err := t.OutputSchema()
 		if err != nil {
-			return nil, llm.ErrBadParameter.Withf("output schema generation failed: %v", err)
+			return nil, schema.ErrBadParameter.Withf("output schema generation failed: %v", err)
 		}
 		if outputSchema != nil {
-			return nil, llm.ErrBadParameter.With("tool returned nil but an output schema is defined")
+			return nil, schema.ErrBadParameter.With("tool returned nil but an output schema is defined")
 		}
 		return nil, nil
 	}
@@ -150,29 +150,29 @@ func (tk *toolkit) callTool(ctx context.Context, t llm.Tool, resources ...llm.Re
 	case json.RawMessage:
 		r, err := resource.JSON(baseTool.Name(), v)
 		if err != nil {
-			return nil, llm.ErrBadParameter.Withf("wrapping json.RawMessage output: %v", err)
+			return nil, schema.ErrBadParameter.Withf("wrapping json.RawMessage output: %v", err)
 		}
 		wrapped = r
 	case []byte:
 		r, err := resource.Data(baseTool.Name(), v)
 		if err != nil {
-			return nil, llm.ErrBadParameter.Withf("wrapping []byte output: %v", err)
+			return nil, schema.ErrBadParameter.Withf("wrapping []byte output: %v", err)
 		}
 		wrapped = r
 	case string:
 		r, err := resource.Text(baseTool.Name(), v)
 		if err != nil {
-			return nil, llm.ErrBadParameter.Withf("wrapping string output: %v", err)
+			return nil, schema.ErrBadParameter.Withf("wrapping string output: %v", err)
 		}
 		wrapped = r
 	default:
-		return nil, llm.ErrBadParameter.Withf("tool output must be nil, llm.Resource, json.RawMessage, []byte, or string, got %T", result)
+		return nil, schema.ErrBadParameter.Withf("tool output must be nil, llm.Resource, json.RawMessage, []byte, or string, got %T", result)
 	}
 
 	// If there isn't an output schema, return the wrapped resource as-is.
 	outputSchema, err := t.OutputSchema()
 	if err != nil {
-		return nil, llm.ErrBadParameter.Withf("output schema generation failed: %v", err)
+		return nil, schema.ErrBadParameter.Withf("output schema generation failed: %v", err)
 	}
 	if outputSchema == nil {
 		return wrapped, nil
@@ -180,24 +180,24 @@ func (tk *toolkit) callTool(ctx context.Context, t llm.Tool, resources ...llm.Re
 
 	// If not JSON output return an error since we won't be able to validate against the schema.
 	if wrapped.Type() != types.ContentTypeJSON {
-		return nil, llm.ErrBadParameter.Withf("output validation failed: output schema is defined but tool did not return JSON content (got %q)", wrapped.Type())
+		return nil, schema.ErrBadParameter.Withf("output validation failed: output schema is defined but tool did not return JSON content (got %q)", wrapped.Type())
 	}
 
 	// Validate the wrapped resource content against the output schema.
 	data, err := wrapped.Read(ctx)
 	if err != nil {
-		return nil, llm.ErrBadParameter.Withf("failed to read resource for validation: %v", err)
+		return nil, schema.ErrBadParameter.Withf("failed to read resource for validation: %v", err)
 	}
 	var instance any
 	if err := json.Unmarshal(data, &instance); err != nil {
-		return nil, llm.ErrBadParameter.Withf("failed to unmarshal JSON output: %v", err)
+		return nil, schema.ErrBadParameter.Withf("failed to unmarshal JSON output: %v", err)
 	}
 	resolved, err := outputSchema.Resolve(nil)
 	if err != nil {
-		return nil, llm.ErrBadParameter.Withf("output schema resolution failed: %v", err)
+		return nil, schema.ErrBadParameter.Withf("output schema resolution failed: %v", err)
 	}
 	if err := resolved.Validate(instance); err != nil {
-		return nil, llm.ErrBadParameter.Withf("output validation failed: %v", err)
+		return nil, schema.ErrBadParameter.Withf("output validation failed: %v", err)
 	}
 
 	// Return success

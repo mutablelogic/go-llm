@@ -8,6 +8,7 @@ import (
 	jsonschema "github.com/google/jsonschema-go/jsonschema"
 	"github.com/mutablelogic/go-client"
 	llm "github.com/mutablelogic/go-llm"
+	"github.com/mutablelogic/go-llm/pkg/schema"
 	"github.com/mutablelogic/go-llm/pkg/tool"
 )
 
@@ -83,7 +84,7 @@ func (a *articles) Run(ctx context.Context, input json.RawMessage) (any, error) 
 	// Unmarshal JSON input if provided
 	if len(input) > 0 {
 		if err := json.Unmarshal(input, &req); err != nil {
-			return nil, llm.ErrBadParameter.Withf("failed to unmarshal input: %v", err)
+			return nil, schema.ErrBadParameter.Withf("failed to unmarshal input: %v", err)
 		}
 	}
 
@@ -123,7 +124,7 @@ func (h *headlines) Run(ctx context.Context, input json.RawMessage) (any, error)
 	// Unmarshal JSON input if provided
 	if len(input) > 0 {
 		if err := json.Unmarshal(input, &req); err != nil {
-			return nil, llm.ErrBadParameter.Withf("failed to unmarshal input: %v", err)
+			return nil, schema.ErrBadParameter.Withf("failed to unmarshal input: %v", err)
 		}
 	}
 
@@ -163,7 +164,7 @@ func (s *sources) Run(ctx context.Context, input json.RawMessage) (any, error) {
 	// Unmarshal JSON input if provided
 	if len(input) > 0 {
 		if err := json.Unmarshal(input, &req); err != nil {
-			return nil, llm.ErrBadParameter.Withf("failed to unmarshal input: %v", err)
+			return nil, schema.ErrBadParameter.Withf("failed to unmarshal input: %v", err)
 		}
 	}
 

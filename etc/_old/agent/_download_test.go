@@ -5,7 +5,7 @@ import (
 	"testing"
 
 	// Packages
-	llm "github.com/mutablelogic/go-llm"
+
 	opt "github.com/mutablelogic/go-llm/pkg/opt"
 	schema "github.com/mutablelogic/go-llm/pkg/schema"
 	"github.com/stretchr/testify/assert"
@@ -28,7 +28,7 @@ func (m *mockClient) ListModels(ctx context.Context) ([]schema.Model, error) {
 }
 
 func (m *mockClient) GetModel(ctx context.Context, name string) (*schema.Model, error) {
-	return nil, llm.ErrNotFound
+	return nil, schema.ErrNotFound
 }
 
 // mockDownloader is a client that supports downloading
@@ -65,18 +65,18 @@ func TestDownloadModel_InvalidPath(t *testing.T) {
 
 	// Try invalid path formats
 	testCases := []string{
-		"invalid",           // no colon
-		"provider:",         // empty model
-		":model",            // empty provider
-		"",                  // empty string
-		"provider:  ",       // whitespace model
-		"  :model",          // whitespace provider
+		"invalid",     // no colon
+		"provider:",   // empty model
+		":model",      // empty provider
+		"",            // empty string
+		"provider:  ", // whitespace model
+		"  :model",    // whitespace provider
 	}
 
 	for _, path := range testCases {
 		_, err = agent.DownloadModel(context.Background(), path)
 		assert.Error(t, err, "path: %q", path)
-		assert.ErrorIs(t, err, llm.ErrBadParameter, "path: %q", path)
+		assert.ErrorIs(t, err, schema.ErrBadParameter, "path: %q", path)
 	}
 }
 
@@ -88,7 +88,7 @@ func TestDownloadModel_NotFound(t *testing.T) {
 	// Try to download from non-existent provider
 	_, err = agent.DownloadModel(context.Background(), "nonexistent:model-name")
 	assert.Error(t, err)
-	assert.ErrorIs(t, err, llm.ErrNotFound)
+	assert.ErrorIs(t, err, schema.ErrNotFound)
 }
 
 func TestDownloadModel_NotImplemented(t *testing.T) {
@@ -100,7 +100,7 @@ func TestDownloadModel_NotImplemented(t *testing.T) {
 	// Try to download from provider that doesn't support it
 	_, err = agent.DownloadModel(context.Background(), "test:model-name")
 	assert.Error(t, err)
-	assert.ErrorIs(t, err, llm.ErrNotImplemented)
+	assert.ErrorIs(t, err, schema.ErrNotImplemented)
 }
 
 func TestDownloadModel_Success(t *testing.T) {
@@ -146,7 +146,7 @@ func TestDeleteModel_NotFound(t *testing.T) {
 	model := schema.Model{Name: "test-model"}
 	err = agent.DeleteModel(context.Background(), model)
 	assert.Error(t, err)
-	assert.ErrorIs(t, err, llm.ErrNotFound)
+	assert.ErrorIs(t, err, schema.ErrNotFound)
 }
 
 func TestDeleteModel_NotImplemented(t *testing.T) {
@@ -159,7 +159,7 @@ func TestDeleteModel_NotImplemented(t *testing.T) {
 	model := schema.Model{Name: "test-model", OwnedBy: "test"}
 	err = agent.DeleteModel(context.Background(), model)
 	assert.Error(t, err)
-	assert.ErrorIs(t, err, llm.ErrNotImplemented)
+	assert.ErrorIs(t, err, schema.ErrNotImplemented)
 }
 
 func TestDeleteModel_Success(t *testing.T) {

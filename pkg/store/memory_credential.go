@@ -7,7 +7,7 @@ import (
 	"sync"
 
 	// Packages
-	llm "github.com/mutablelogic/go-llm"
+
 	encrypt "github.com/mutablelogic/go-llm/pkg/encrypt"
 	schema "github.com/mutablelogic/go-llm/pkg/schema"
 )
@@ -54,7 +54,7 @@ func (s *MemoryCredentialStore) GetCredential(_ context.Context, rawURL string) 
 	defer s.mu.RUnlock()
 	blob, ok := s.creds[canonicalURL]
 	if !ok {
-		return nil, llm.ErrNotFound.Withf("credential not found for %q", canonicalURL)
+		return nil, schema.ErrNotFound.Withf("credential not found for %q", canonicalURL)
 	}
 
 	plaintext, err := encrypt.Decrypt[[]byte](s.passphrase, blob)
@@ -100,7 +100,7 @@ func (s *MemoryCredentialStore) DeleteCredential(_ context.Context, rawURL strin
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if _, ok := s.creds[canonicalURL]; !ok {
-		return llm.ErrNotFound.Withf("credential not found for %q", canonicalURL)
+		return schema.ErrNotFound.Withf("credential not found for %q", canonicalURL)
 	}
 	delete(s.creds, canonicalURL)
 	return nil

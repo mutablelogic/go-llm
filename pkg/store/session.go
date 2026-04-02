@@ -6,7 +6,6 @@ import (
 
 	// Packages
 	uuid "github.com/google/uuid"
-	llm "github.com/mutablelogic/go-llm"
 	schema "github.com/mutablelogic/go-llm/pkg/schema"
 	types "github.com/mutablelogic/go-server/pkg/types"
 )
@@ -18,7 +17,7 @@ import (
 func validateLabels(labels map[string]string) error {
 	for k := range labels {
 		if !types.IsIdentifier(k) {
-			return llm.ErrBadParameter.Withf("invalid label key: %q", k)
+			return schema.ErrBadParameter.Withf("invalid label key: %q", k)
 		}
 	}
 	return nil
@@ -44,7 +43,7 @@ func matchLabels(sessionLabels map[string]string, filter []string) bool {
 // empty conversation, and timestamps set to now.
 func newSession(meta schema.SessionMeta) (*schema.Session, error) {
 	if meta.Model == "" {
-		return nil, llm.ErrBadParameter.With("model name is required")
+		return nil, schema.ErrBadParameter.With("model name is required")
 	}
 	if err := validateLabels(meta.Labels); err != nil {
 		return nil, err

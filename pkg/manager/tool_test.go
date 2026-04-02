@@ -59,7 +59,7 @@ func Test_tool_002(t *testing.T) {
 	assert.NoError(err)
 
 	_, err = m.GetTool(context.TODO(), "nonexistent")
-	assert.ErrorIs(err, llm.ErrNotFound)
+	assert.ErrorIs(err, schema.ErrNotFound)
 }
 
 // Test GetTool includes JSON schema when present
@@ -119,7 +119,7 @@ func Test_tool_006(t *testing.T) {
 	assert.NoError(err)
 
 	_, err = m.CallTool(context.TODO(), "nonexistent", nil)
-	assert.ErrorIs(err, llm.ErrNotFound)
+	assert.ErrorIs(err, schema.ErrNotFound)
 }
 
 // Test CallTool with nil input
@@ -146,13 +146,13 @@ func Test_tool_008(t *testing.T) {
 	m, err := NewManager("test", "0.0.0", WithTools(&mockTool{
 		name: "fail_tool",
 		runFn: func(_ context.Context, _ json.RawMessage) (any, error) {
-			return nil, llm.ErrBadParameter.With("bad input")
+			return nil, schema.ErrBadParameter.With("bad input")
 		},
 	}))
 	assert.NoError(err)
 
 	_, err = m.CallTool(context.TODO(), "fail_tool", json.RawMessage(`{}`))
-	assert.ErrorIs(err, llm.ErrBadParameter)
+	assert.ErrorIs(err, schema.ErrBadParameter)
 }
 
 // Test ListTools returns all tools sorted by name

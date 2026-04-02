@@ -7,7 +7,6 @@ import (
 
 	// Packages
 	client "github.com/mutablelogic/go-client"
-	llm "github.com/mutablelogic/go-llm"
 	opt "github.com/mutablelogic/go-llm/pkg/opt"
 	schema "github.com/mutablelogic/go-llm/pkg/schema"
 )
@@ -71,7 +70,7 @@ func (ollama *Client) DeleteModel(ctx context.Context, model schema.Model) error
 
 	// Check model
 	if model.OwnedBy != ollama.Name() {
-		return llm.ErrBadParameter.With("model does not belong to this client")
+		return schema.ErrBadParameter.With("model does not belong to this client")
 	}
 
 	// Request
@@ -100,7 +99,7 @@ func (ollama *Client) LoadModel(ctx context.Context, model schema.Model) error {
 
 	// Check model
 	if model.OwnedBy != ollama.Name() {
-		return llm.ErrBadParameter.With("model does not belong to this client")
+		return schema.ErrBadParameter.With("model does not belong to this client")
 	}
 
 	// Request
@@ -124,7 +123,7 @@ func (ollama *Client) UnloadModel(ctx context.Context, model schema.Model) error
 
 	// Check model
 	if model.OwnedBy != ollama.Name() {
-		return llm.ErrBadParameter.With("model does not belong to this client")
+		return schema.ErrBadParameter.With("model does not belong to this client")
 	}
 
 	// Request

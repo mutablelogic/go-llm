@@ -5,7 +5,7 @@ import (
 	"testing"
 
 	// Packages
-	llm "github.com/mutablelogic/go-llm"
+
 	schema "github.com/mutablelogic/go-llm/pkg/schema"
 	session "github.com/mutablelogic/go-llm/pkg/store"
 	types "github.com/mutablelogic/go-server/pkg/types"
@@ -47,7 +47,7 @@ func Test_session_002(t *testing.T) {
 	assert := assert.New(t)
 
 	_, err := NewManager("test", "0.0.0", WithSessionStore(nil))
-	assert.ErrorIs(err, llm.ErrBadParameter)
+	assert.ErrorIs(err, schema.ErrBadParameter)
 }
 
 // Test CreateSession creates a session with correct fields
@@ -103,7 +103,7 @@ func Test_session_005(t *testing.T) {
 	assert.NoError(err)
 
 	_, err = m.CreateSession(context.TODO(), schema.SessionMeta{GeneratorMeta: schema.GeneratorMeta{Model: "nonexistent"}})
-	assert.ErrorIs(err, llm.ErrNotFound)
+	assert.ErrorIs(err, schema.ErrNotFound)
 }
 
 // Test GetSession retrieves a created session
@@ -140,7 +140,7 @@ func Test_session_007(t *testing.T) {
 	assert.NoError(err)
 
 	_, err = m.GetSession(context.TODO(), "nonexistent")
-	assert.ErrorIs(err, llm.ErrNotFound)
+	assert.ErrorIs(err, schema.ErrNotFound)
 }
 
 // Test DeleteSession removes a session
@@ -161,7 +161,7 @@ func Test_session_008(t *testing.T) {
 	assert.Equal(created.ID, deleted.ID)
 
 	_, err = m.GetSession(context.TODO(), created.ID)
-	assert.ErrorIs(err, llm.ErrNotFound)
+	assert.ErrorIs(err, schema.ErrNotFound)
 }
 
 // Test DeleteSession with unknown ID returns not found
@@ -175,7 +175,7 @@ func Test_session_009(t *testing.T) {
 	assert.NoError(err)
 
 	_, err = m.DeleteSession(context.TODO(), "nonexistent")
-	assert.ErrorIs(err, llm.ErrNotFound)
+	assert.ErrorIs(err, schema.ErrNotFound)
 }
 
 // Test ListSessions returns all sessions in order

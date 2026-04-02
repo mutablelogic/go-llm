@@ -77,7 +77,7 @@ func (m *Manager) CallTool(ctx context.Context, name string, input json.RawMessa
 	if resource, ok := toolResult.(llm.Resource); ok {
 		data, err = resource.Read(ctx)
 		if err != nil {
-			return nil, llm.ErrInternalServerError.Withf("reading tool result: %v", err)
+			return nil, schema.ErrInternalServerError.Withf("reading tool result: %v", err)
 		}
 	}
 
@@ -97,7 +97,7 @@ func (m *Manager) GetTool(ctx context.Context, name string) (result *schema.Tool
 
 	t := m.toolkit.Lookup(name)
 	if t == nil {
-		return nil, llm.ErrNotFound.Withf("tool %q", name)
+		return nil, schema.ErrNotFound.Withf("tool %q", name)
 	}
 	s, err := t.InputSchema()
 	if err != nil {

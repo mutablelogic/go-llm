@@ -9,7 +9,6 @@ import (
 
 	// Packages
 	uuid "github.com/google/uuid"
-	llm "github.com/mutablelogic/go-llm"
 	schema "github.com/mutablelogic/go-llm/pkg/schema"
 )
 
@@ -54,7 +53,7 @@ func (f *FileAgentStore) CreateAgent(_ context.Context, meta schema.AgentMeta) (
 
 	// Check name uniqueness across existing agents on disk
 	if _, err := f.readByName(meta.Name); err == nil {
-		return nil, llm.ErrConflict.Withf("agent name %q already exists", meta.Name)
+		return nil, schema.ErrConflict.Withf("agent name %q already exists", meta.Name)
 	}
 
 	a := &schema.Agent{
@@ -122,7 +121,7 @@ func (f *FileAgentStore) DeleteAgent(_ context.Context, id string) error {
 	path := jsonPath(f.dir, id)
 	if _, err := os.Stat(path); err == nil {
 		if err := os.Remove(path); err != nil {
-			return llm.ErrInternalServerError.Withf("remove: %v", err)
+			return schema.ErrInternalServerError.Withf("remove: %v", err)
 		}
 		return nil
 	}
@@ -136,13 +135,13 @@ func (f *FileAgentStore) DeleteAgent(_ context.Context, id string) error {
 	for _, a := range agents {
 		if a.Name == id {
 			if err := os.Remove(jsonPath(f.dir, a.ID)); err != nil {
-				return llm.ErrInternalServerError.Withf("remove: %v", err)
+				return schema.ErrInternalServerError.Withf("remove: %v", err)
 			}
 			found = true
 		}
 	}
 	if !found {
-		return llm.ErrNotFound.Withf("agent %q", id)
+		return schema.ErrNotFound.Withf("agent %q", id)
 	}
 	return nil
 }
@@ -229,7 +228,7 @@ func (f *FileAgentStore) readByName(name string) (*schema.Agent, error) {
 		}
 	}
 	if best == nil {
-		return nil, llm.ErrNotFound.Withf("agent %q", name)
+		return nil, schema.ErrNotFound.Withf("agent %q", name)
 	}
 	return best, nil
 }

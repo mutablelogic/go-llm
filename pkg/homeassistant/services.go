@@ -10,7 +10,7 @@ import (
 
 	// Packages
 	"github.com/mutablelogic/go-client"
-	llm "github.com/mutablelogic/go-llm"
+	"github.com/mutablelogic/go-llm/pkg/schema"
 )
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -86,7 +86,7 @@ func (c *Client) Services(ctx context.Context, domain string) ([]*Service, error
 		return slices.Collect(maps.Values(v.Services)), nil
 	}
 	// Return not found
-	return nil, llm.ErrNotFound.Withf("domain not found: %q", domain)
+	return nil, schema.ErrNotFound.Withf("domain not found: %q", domain)
 }
 
 // Call a service for an entity. The serviceData map is sent as the JSON request
@@ -94,10 +94,10 @@ func (c *Client) Services(ctx context.Context, domain string) ([]*Service, error
 // Returns a list of states that changed while the service was being executed.
 func (c *Client) Call(ctx context.Context, domain, service string, serviceData map[string]any) ([]*State, error) {
 	if domain == "" {
-		return nil, llm.ErrBadParameter.With("domain is required")
+		return nil, schema.ErrBadParameter.With("domain is required")
 	}
 	if service == "" {
-		return nil, llm.ErrBadParameter.With("service is required")
+		return nil, schema.ErrBadParameter.With("service is required")
 	}
 
 	// Build payload
@@ -124,10 +124,10 @@ func (c *Client) Call(ctx context.Context, domain, service string, serviceData m
 // (e.g. weather.get_forecasts).
 func (c *Client) CallWithResponse(ctx context.Context, domain, service string, serviceData map[string]any) (*CallResponse, error) {
 	if domain == "" {
-		return nil, llm.ErrBadParameter.With("domain is required")
+		return nil, schema.ErrBadParameter.With("domain is required")
 	}
 	if service == "" {
-		return nil, llm.ErrBadParameter.With("service is required")
+		return nil, schema.ErrBadParameter.With("service is required")
 	}
 
 	// Build payload

@@ -6,7 +6,7 @@ import (
 	"testing"
 
 	// Packages
-	llm "github.com/mutablelogic/go-llm"
+
 	schema "github.com/mutablelogic/go-llm/pkg/schema"
 	assert "github.com/stretchr/testify/assert"
 )
@@ -129,7 +129,7 @@ func Test_agent_005(t *testing.T) {
 	assert := assert.New(t)
 
 	_, err := NewManager("test", "0.0.0", WithAgentStore(nil))
-	assert.ErrorIs(err, llm.ErrBadParameter)
+	assert.ErrorIs(err, schema.ErrBadParameter)
 }
 
 // Test GetAgent by ID
@@ -501,7 +501,7 @@ func Test_runagent_002(t *testing.T) {
 
 	_, err = m.CreateAgentSession(context.TODO(), "", schema.CreateAgentSessionRequest{})
 	assert.Error(err)
-	assert.ErrorIs(err, llm.ErrBadParameter)
+	assert.ErrorIs(err, schema.ErrBadParameter)
 }
 
 // Test CreateAgentSession with non-existent agent
@@ -517,7 +517,7 @@ func Test_runagent_003(t *testing.T) {
 
 	_, err = m.CreateAgentSession(context.TODO(), "nonexistent", schema.CreateAgentSessionRequest{})
 	assert.Error(err)
-	assert.ErrorIs(err, llm.ErrNotFound)
+	assert.ErrorIs(err, schema.ErrNotFound)
 }
 
 // Test CreateAgentSession inherits GeneratorMeta from parent session
@@ -620,7 +620,7 @@ func Test_runagent_006(t *testing.T) {
 		Input: json.RawMessage(`{}`),
 	})
 	assert.Error(err)
-	assert.ErrorIs(err, llm.ErrBadParameter)
+	assert.ErrorIs(err, schema.ErrBadParameter)
 }
 
 // Test CreateAgentSession with specific version via ID
@@ -674,7 +674,7 @@ func Test_runagent_008(t *testing.T) {
 
 	_, err = m.CreateAgentSession(context.TODO(), "nonexistent-id-12345", schema.CreateAgentSessionRequest{})
 	assert.Error(err)
-	assert.ErrorIs(err, llm.ErrNotFound)
+	assert.ErrorIs(err, schema.ErrNotFound)
 }
 
 // Test CreateAgentSession returns tools from agent

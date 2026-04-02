@@ -8,7 +8,7 @@ import (
 	"sync"
 
 	// Packages
-	llm "github.com/mutablelogic/go-llm"
+
 	schema "github.com/mutablelogic/go-llm/pkg/schema"
 )
 
@@ -107,10 +107,10 @@ func (f *FileSessionStore) DeleteSession(_ context.Context, id string) error {
 
 	path := jsonPath(f.dir, id)
 	if _, err := os.Stat(path); os.IsNotExist(err) {
-		return llm.ErrNotFound.Withf("session %q", id)
+		return schema.ErrNotFound.Withf("session %q", id)
 	}
 	if err := os.Remove(path); err != nil {
-		return llm.ErrInternalServerError.Withf("remove: %v", err)
+		return schema.ErrInternalServerError.Withf("remove: %v", err)
 	}
 	return nil
 }

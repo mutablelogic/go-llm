@@ -5,7 +5,7 @@ import (
 	"testing"
 
 	// Packages
-	llm "github.com/mutablelogic/go-llm"
+
 	opt "github.com/mutablelogic/go-llm/pkg/opt"
 	schema "github.com/mutablelogic/go-llm/pkg/schema"
 	assert "github.com/stretchr/testify/assert"
@@ -30,7 +30,7 @@ func (c *mockClient) GetModel(_ context.Context, name string, _ ...opt.Opt) (*sc
 			return &m, nil
 		}
 	}
-	return nil, llm.ErrNotFound
+	return nil, schema.ErrNotFound
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -118,7 +118,7 @@ func Test_model_005(t *testing.T) {
 	assert.NoError(err)
 
 	_, err = m.GetModel(context.TODO(), schema.GetModelRequest{Name: "nonexistent"})
-	assert.ErrorIs(err, llm.ErrNotFound)
+	assert.ErrorIs(err, schema.ErrNotFound)
 }
 
 // Test GetModel with provider filter
@@ -147,5 +147,5 @@ func Test_model_007(t *testing.T) {
 	assert.NoError(err)
 
 	_, err = m.GetModel(context.TODO(), schema.GetModelRequest{Name: "model-1", Provider: "provider-2"})
-	assert.ErrorIs(err, llm.ErrNotFound)
+	assert.ErrorIs(err, schema.ErrNotFound)
 }

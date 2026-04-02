@@ -9,6 +9,7 @@ import (
 	// Packages
 	client "github.com/mutablelogic/go-client"
 	llm "github.com/mutablelogic/go-llm"
+	schema "github.com/mutablelogic/go-llm/pkg/schema"
 )
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -102,7 +103,7 @@ func (model *model) Completion(ctx context.Context, prompt string, opts ...llm.O
 	images := make([]ImageData, 0, len(opt.Attachments()))
 	for _, attachment := range opt.Attachments() {
 		if !strings.HasPrefix(attachment.Type(), "image/") {
-			return nil, llm.ErrBadParameter.Withf("Attachment is not an image: %v", attachment.Filename())
+			return nil, schema.ErrBadParameter.Withf("Attachment is not an image: %v", attachment.Filename())
 		}
 		images = append(images, attachment.Data())
 	}
@@ -177,7 +178,7 @@ func (model *model) request(ctx context.Context, req client.Payload, streamfn fu
 	if streamfn != nil {
 		opts = append(opts, client.OptJsonStreamCallback(func(v any) error {
 			if v, ok := v.(*Response); !ok || v == nil {
-				return llm.ErrConflict.Withf("Invalid stream response: %v", delta)
+				return schema.ErrConflict.Withf("Invalid stream response: %v", delta)
 			} else if err := streamEvent(&response, v); err != nil {
 				return err
 			}

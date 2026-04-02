@@ -25,7 +25,7 @@ var _ llm.Generator = (*Client)(nil)
 // WithoutSession sends a single message and returns the response (stateless)
 func (c *Client) WithoutSession(ctx context.Context, model schema.Model, message *schema.Message, opts ...opt.Opt) (*schema.Message, *schema.Usage, error) {
 	if message == nil {
-		return nil, nil, llm.ErrBadParameter.With("message is required")
+		return nil, nil, schema.ErrBadParameter.With("message is required")
 	}
 	session := schema.Conversation{message}
 	return c.generate(ctx, model.Name, &session, opts...)
@@ -34,10 +34,10 @@ func (c *Client) WithoutSession(ctx context.Context, model schema.Model, message
 // WithSession sends a message within a session and returns the response (stateful)
 func (c *Client) WithSession(ctx context.Context, model schema.Model, session *schema.Conversation, message *schema.Message, opts ...opt.Opt) (*schema.Message, *schema.Usage, error) {
 	if session == nil {
-		return nil, nil, llm.ErrBadParameter.With("session is required")
+		return nil, nil, schema.ErrBadParameter.With("session is required")
 	}
 	if message == nil {
-		return nil, nil, llm.ErrBadParameter.With("message is required")
+		return nil, nil, schema.ErrBadParameter.With("message is required")
 	}
 	session.Append(*message)
 	return c.generate(ctx, model.Name, session, opts...)
@@ -171,7 +171,7 @@ func (c *Client) generateStream(ctx context.Context, payload client.Payload, ses
 		case eventError:
 			// Return error from stream
 			if ev.Delta != nil {
-				return llm.ErrInternalServerError.Withf("stream error: %s", ev.Delta.Text)
+				return schema.ErrInternalServerError.Withf("stream error: %s", ev.Delta.Text)
 			}
 		}
 
@@ -186,7 +186,7 @@ func (c *Client) generateStream(ctx context.Context, payload client.Payload, ses
 
 	// Refusal — no message to append
 	if stopReason == stopReasonRefusal {
-		return nil, nil, llm.ErrRefusal
+		return nil, nil, schema.ErrRefusal
 	}
 
 	// Build final message from accumulated blocks
@@ -207,9 +207,9 @@ func (c *Client) generateStream(ctx context.Context, payload client.Payload, ses
 	// Return error for stop reasons that need caller attention
 	switch stopReason {
 	case stopReasonMaxTokens:
-		return message, usageResult, llm.ErrMaxTokens
+		return message, usageResult, schema.ErrMaxTokens
 	case stopReasonPauseTurn:
-		return message, usageResult, llm.ErrPauseTurn
+		return message, usageResult, schema.ErrPauseTurn
 	}
 
 	return message, usageResult, nil
@@ -219,7 +219,7 @@ func (c *Client) generateStream(ctx context.Context, payload client.Payload, ses
 func (c *Client) processResponse(response *messagesResponse, session *schema.Conversation) (*schema.Message, *schema.Usage, error) {
 	// Refusal — no message to append
 	if response.StopReason == stopReasonRefusal {
-		return nil, nil, llm.ErrRefusal
+		return nil, nil, schema.ErrRefusal
 	}
 
 	// Convert response to schema message
@@ -240,9 +240,9 @@ func (c *Client) processResponse(response *messagesResponse, session *schema.Con
 	// Return error for stop reasons that need caller attention
 	switch response.StopReason {
 	case stopReasonMaxTokens:
-		return message, usageResult, llm.ErrMaxTokens
+		return message, usageResult, schema.ErrMaxTokens
 	case stopReasonPauseTurn:
-		return message, usageResult, llm.ErrPauseTurn
+		return message, usageResult, schema.ErrPauseTurn
 	}
 
 	return message, usageResult, nil

@@ -8,8 +8,8 @@ import (
 	"path/filepath"
 	"strings"
 
+	schema "github.com/mutablelogic/go-llm/pkg/schema"
 	// Packages
-	llm "github.com/mutablelogic/go-llm"
 )
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -28,10 +28,10 @@ const (
 // ensureDir validates that dir is non-empty and creates it if needed.
 func ensureDir(dir string) error {
 	if dir == "" {
-		return llm.ErrBadParameter.With("directory is required")
+		return schema.ErrBadParameter.With("directory is required")
 	}
 	if err := os.MkdirAll(dir, DirPerm); err != nil {
-		return llm.ErrInternalServerError.Withf("mkdir: %v", err)
+		return schema.ErrInternalServerError.Withf("mkdir: %v", err)
 	}
 	return nil
 }
@@ -40,10 +40,10 @@ func ensureDir(dir string) error {
 func writeJSON(path string, v any) error {
 	data, err := json.MarshalIndent(v, "", "  ")
 	if err != nil {
-		return llm.ErrInternalServerError.Withf("marshal: %v", err)
+		return schema.ErrInternalServerError.Withf("marshal: %v", err)
 	}
 	if err := os.WriteFile(path, data, FilePerm); err != nil {
-		return llm.ErrInternalServerError.Withf("write: %v", err)
+		return schema.ErrInternalServerError.Withf("write: %v", err)
 	}
 	return nil
 }
@@ -54,12 +54,12 @@ func readJSON(path string, label string, v any) error {
 	data, err := os.ReadFile(path)
 	if err != nil {
 		if os.IsNotExist(err) {
-			return llm.ErrNotFound.Withf("%s", label)
+			return schema.ErrNotFound.Withf("%s", label)
 		}
-		return llm.ErrInternalServerError.Withf("read: %v", err)
+		return schema.ErrInternalServerError.Withf("read: %v", err)
 	}
 	if err := json.Unmarshal(data, v); err != nil {
-		return llm.ErrInternalServerError.Withf("unmarshal: %v", err)
+		return schema.ErrInternalServerError.Withf("unmarshal: %v", err)
 	}
 	return nil
 }
@@ -69,7 +69,7 @@ func readJSON(path string, label string, v any) error {
 func readJSONDir(dir string) ([]string, error) {
 	entries, err := os.ReadDir(dir)
 	if err != nil {
-		return nil, llm.ErrInternalServerError.Withf("readdir: %v", err)
+		return nil, schema.ErrInternalServerError.Withf("readdir: %v", err)
 	}
 	var ids []string
 	for _, entry := range entries {

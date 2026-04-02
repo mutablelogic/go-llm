@@ -25,7 +25,7 @@ var _ llm.Generator = (*Client)(nil)
 // WithoutSession sends a single message and returns the response (stateless)
 func (c *Client) WithoutSession(ctx context.Context, model schema.Model, message *schema.Message, opts ...opt.Opt) (*schema.Message, *schema.Usage, error) {
 	if message == nil {
-		return nil, nil, llm.ErrBadParameter.With("message is required")
+		return nil, nil, schema.ErrBadParameter.With("message is required")
 	}
 	session := schema.Conversation{message}
 	return c.generate(ctx, model.Name, &session, opts...)
@@ -34,10 +34,10 @@ func (c *Client) WithoutSession(ctx context.Context, model schema.Model, message
 // WithSession sends a message within a session and returns the response (stateful)
 func (c *Client) WithSession(ctx context.Context, model schema.Model, session *schema.Conversation, message *schema.Message, opts ...opt.Opt) (*schema.Message, *schema.Usage, error) {
 	if session == nil {
-		return nil, nil, llm.ErrBadParameter.With("session is required")
+		return nil, nil, schema.ErrBadParameter.With("session is required")
 	}
 	if message == nil {
-		return nil, nil, llm.ErrBadParameter.With("message is required")
+		return nil, nil, schema.ErrBadParameter.With("message is required")
 	}
 	session.Append(*message)
 	return c.generate(ctx, model.Name, session, opts...)
@@ -212,9 +212,9 @@ func (c *Client) processResponse(response *chatCompletionResponse, session *sche
 	if len(response.Choices) > 0 {
 		switch response.Choices[0].FinishReason {
 		case finishReasonLength, finishReasonModelLength:
-			return message, usageResult, llm.ErrMaxTokens
+			return message, usageResult, schema.ErrMaxTokens
 		case finishReasonError:
-			return message, usageResult, llm.ErrInternalServerError
+			return message, usageResult, schema.ErrInternalServerError
 		}
 	}
 

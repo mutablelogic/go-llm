@@ -5,7 +5,6 @@ import (
 
 	// Packages
 	otel "github.com/mutablelogic/go-client/pkg/otel"
-	llm "github.com/mutablelogic/go-llm"
 	agent "github.com/mutablelogic/go-llm/pkg/agent"
 	schema "github.com/mutablelogic/go-llm/pkg/schema"
 	attribute "go.opentelemetry.io/otel/attribute"
@@ -117,7 +116,7 @@ func (m *Manager) CreateAgentSession(ctx context.Context, id string, request sch
 	defer func() { endSpan(err) }()
 
 	if id == "" {
-		return nil, llm.ErrBadParameter.With("agent is required")
+		return nil, schema.ErrBadParameter.With("agent is required")
 	}
 
 	// Resolve the agent definition by ID or name

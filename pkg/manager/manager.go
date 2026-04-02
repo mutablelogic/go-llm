@@ -48,7 +48,7 @@ func NewManager(name, ver string, opts ...Opt) (*Manager, error) {
 
 	// Validate required parameters
 	if name = strings.TrimSpace(name); name == "" {
-		return nil, llm.ErrBadParameter.With("server name is required")
+		return nil, schema.ErrBadParameter.With("server name is required")
 	} else {
 		m.serverName = name
 		m.serverVersion = strings.TrimSpace(ver)
@@ -259,9 +259,9 @@ func (m *Manager) getModel(ctx context.Context, provider, model string) (*schema
 		if result != nil {
 			return result, nil
 		}
-		return nil, llm.ErrNotFound.Withf("model %q not found in any provider", model)
+		return nil, schema.ErrNotFound.Withf("model %q not found in any provider", model)
 	} else if client, ok := m.clients[provider]; !ok {
-		return nil, llm.ErrNotFound.Withf("no client found for provider %q", provider)
+		return nil, schema.ErrNotFound.Withf("no client found for provider %q", provider)
 	} else {
 		return client.GetModel(ctx, model)
 	}

@@ -5,8 +5,9 @@ import (
 	"net/http"
 
 	// Package
-	llm "github.com/mutablelogic/go-llm"
+
 	manager "github.com/mutablelogic/go-llm/pkg/manager"
+	schema "github.com/mutablelogic/go-llm/pkg/schema"
 	server "github.com/mutablelogic/go-server"
 	httpresponse "github.com/mutablelogic/go-server/pkg/httpresponse"
 	jsonschema "github.com/mutablelogic/go-server/pkg/jsonschema"
@@ -83,23 +84,23 @@ func RegisterHandlers(manager *manager.Manager, router server.HTTPRouter, middle
 ///////////////////////////////////////////////////////////////////////////////
 // PRIVATE METHODS
 
-// httpErr converts an llm.Err to an httpresponse.Err, preserving the
+// httpErr converts an schema.Err to an httpresponse.Err, preserving the
 // original error message. Unknown error codes map to 500.
 func httpErr(err error) error {
-	var llmErr llm.Err
+	var llmErr schema.Err
 	if !errors.As(err, &llmErr) {
 		return err
 	}
 	switch llmErr {
-	case llm.ErrNotFound:
+	case schema.ErrNotFound:
 		return httpresponse.ErrNotFound.With(err)
-	case llm.ErrBadParameter:
+	case schema.ErrBadParameter:
 		return httpresponse.ErrBadRequest.With(err)
-	case llm.ErrConflict:
+	case schema.ErrConflict:
 		return httpresponse.ErrConflict.With(err)
-	case llm.ErrNotImplemented:
+	case schema.ErrNotImplemented:
 		return httpresponse.ErrNotImplemented.With(err)
-	case llm.ErrInternalServerError:
+	case schema.ErrInternalServerError:
 		return httpresponse.ErrInternalError.With(err)
 	default:
 		return httpresponse.ErrInternalError.With(err)

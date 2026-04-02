@@ -6,7 +6,7 @@ import (
 	"testing"
 
 	// Packages
-	llm "github.com/mutablelogic/go-llm"
+
 	anthropic "github.com/mutablelogic/go-llm/pkg/provider/anthropic"
 	google "github.com/mutablelogic/go-llm/pkg/provider/google"
 	mistral "github.com/mutablelogic/go-llm/pkg/provider/mistral"
@@ -183,7 +183,7 @@ func Test_manager_getmodel_002(t *testing.T) {
 	m := newManager(t)
 
 	_, err := m.getModel(context.Background(), "", "nonexistent-model-xyz")
-	assert.ErrorIs(err, llm.ErrNotFound)
+	assert.ErrorIs(err, schema.ErrNotFound)
 }
 
 // Test getModel with specific provider
@@ -210,7 +210,7 @@ func Test_manager_getmodel_004(t *testing.T) {
 	m := newManager(t)
 
 	_, err := m.getModel(context.Background(), "unknown-provider", "any-model")
-	assert.ErrorIs(err, llm.ErrNotFound)
+	assert.ErrorIs(err, schema.ErrNotFound)
 }
 
 ///////////////////////////////////////////////////////////////////////////////

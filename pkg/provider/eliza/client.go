@@ -39,7 +39,7 @@ var _ llm.Generator = (*Client)(nil)
 
 const (
 	// Provider name
-	providerName = "eliza"
+	providerName = schema.Eliza
 )
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -97,6 +97,12 @@ func (*Client) Name() string {
 	return providerName
 }
 
+// Ping checks the connectivity of the client and returns an error if not successful
+func (*Client) Ping(ctx context.Context) error {
+	// TODO: Not implemented for ELIZA
+	return nil
+}
+
 // ListModels returns the available models
 func (c *Client) ListModels(ctx context.Context, opts ...opt.Opt) ([]schema.Model, error) {
 	models := make([]schema.Model, 0, len(c.languages))
@@ -130,7 +136,7 @@ func (c *Client) GetModel(ctx context.Context, name string, opts ...opt.Opt) (*s
 	for n := range c.languages {
 		names = append(names, n)
 	}
-	return nil, llm.ErrNotFound.Withf("model %q not found (available: %v)", name, names)
+	return nil, schema.ErrNotFound.Withf("model %q not found (available: %v)", name, names)
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -139,13 +145,13 @@ func (c *Client) GetModel(ctx context.Context, name string, opts ...opt.Opt) (*s
 // WithoutSession sends a single message and returns the response (stateless)
 func (c *Client) WithoutSession(ctx context.Context, model schema.Model, message *schema.Message, opts ...opt.Opt) (*schema.Message, *schema.Usage, error) {
 	if message == nil {
-		return nil, nil, llm.ErrBadParameter.With("message is required")
+		return nil, nil, schema.ErrBadParameter.With("message is required")
 	}
 
 	// Create a fresh engine for this stateless request
 	lang, ok := c.languages[model.Name]
 	if !ok {
-		return nil, nil, llm.ErrNotFound.Withf("no engine for model %q", model.Name)
+		return nil, nil, schema.ErrNotFound.Withf("no engine for model %q", model.Name)
 	}
 	engine, err := NewEngine(lang, c.seed)
 	if err != nil {
@@ -155,7 +161,7 @@ func (c *Client) WithoutSession(ctx context.Context, model schema.Model, message
 	// Extract text from the message
 	input := message.Text()
 	if input == "" {
-		return nil, nil, llm.ErrBadParameter.With("message text is required")
+		return nil, nil, schema.ErrBadParameter.With("message text is required")
 	}
 
 	// Generate response using the engine
@@ -194,22 +200,22 @@ func (c *Client) WithoutSession(ctx context.Context, model schema.Model, message
 // WithSession sends a message within a session and returns the response (stateful)
 func (c *Client) WithSession(ctx context.Context, model schema.Model, session *schema.Conversation, message *schema.Message, opts ...opt.Opt) (*schema.Message, *schema.Usage, error) {
 	if session == nil {
-		return nil, nil, llm.ErrBadParameter.With("session is required")
+		return nil, nil, schema.ErrBadParameter.With("session is required")
 	}
 	if message == nil {
-		return nil, nil, llm.ErrBadParameter.With("message is required")
+		return nil, nil, schema.ErrBadParameter.With("message is required")
 	}
 
 	// Look up the engine for this model and infer memory from conversation history
 	engine, ok := c.engines[model.Name]
 	if !ok {
-		return nil, nil, llm.ErrNotFound.Withf("no engine for model %q", model.Name)
+		return nil, nil, schema.ErrNotFound.Withf("no engine for model %q", model.Name)
 	}
 
 	// Extract and validate text before mutating the session
 	input := message.Text()
 	if input == "" {
-		return nil, nil, llm.ErrBadParameter.With("message text is required")
+		return nil, nil, schema.ErrBadParameter.With("message text is required")
 	}
 
 	// Infer memory from conversation history, then append the user message

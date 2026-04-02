@@ -5,7 +5,7 @@ import (
 	"time"
 
 	// Packages
-	llm "github.com/mutablelogic/go-llm"
+	llmschema "github.com/mutablelogic/go-llm/pkg/schema"
 	pg "github.com/mutablelogic/go-pg"
 	types "github.com/mutablelogic/go-server/pkg/types"
 )
@@ -78,7 +78,7 @@ func (id HeartbeatIDSelector) Select(bind *pg.Bind, op pg.Op) (string, error) {
 	case pg.Delete:
 		return bind.Query("heartbeat.delete"), nil
 	default:
-		return "", llm.ErrInternalServerError.Withf("unsupported HeartbeatIDSelector operation %q", op)
+		return "", llmschema.ErrInternalServerError.Withf("unsupported HeartbeatIDSelector operation %q", op)
 	}
 }
 
@@ -112,7 +112,7 @@ func (h HeartbeatListRequest) Select(bind *pg.Bind, op pg.Op) (string, error) {
 	case pg.List:
 		return bind.Query("heartbeat.list"), nil
 	default:
-		return "", llm.ErrInternalServerError.Withf("Unsupported HeartbeatListRequest operation %q", op)
+		return "", llmschema.ErrInternalServerError.Withf("Unsupported HeartbeatListRequest operation %q", op)
 	}
 }
 
@@ -161,12 +161,12 @@ func (h HeartbeatMeta) Update(bind *pg.Bind) error {
 
 	// Error on updating meta for the moment
 	if len(h.Meta) > 0 {
-		return llm.ErrBadParameter.With("updating meta is not supported")
+		return llmschema.ErrBadParameter.With("updating meta is not supported")
 	}
 
 	// Check that there's at least one field to update before adding modified timestamp
 	if bind.Join("patch", ", ") == "" {
-		return llm.ErrBadParameter.With("no fields to update")
+		return llmschema.ErrBadParameter.With("no fields to update")
 	}
 
 	// Always update modified timestamp
@@ -182,7 +182,7 @@ func (h HeartbeatMeta) Update(bind *pg.Bind) error {
 func (h HeartbeatMeta) Insert(bind *pg.Bind) (string, error) {
 	// Message
 	if message := strings.TrimSpace(h.Message); message == "" {
-		return "", llm.ErrBadParameter.With("message is required")
+		return "", llmschema.ErrBadParameter.With("message is required")
 	} else {
 		bind.Set("message", h.Message)
 	}

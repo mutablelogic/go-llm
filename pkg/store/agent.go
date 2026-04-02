@@ -7,7 +7,6 @@ import (
 
 	// Packages
 	uuid "github.com/google/uuid"
-	llm "github.com/mutablelogic/go-llm"
 	schema "github.com/mutablelogic/go-llm/pkg/schema"
 	types "github.com/mutablelogic/go-server/pkg/types"
 )
@@ -18,7 +17,7 @@ import (
 // validateAgentName checks that name is a valid identifier.
 func validateAgentName(name string) error {
 	if !types.IsIdentifier(name) {
-		return llm.ErrBadParameter.Withf("agent name: must be a valid identifier, got %q", name)
+		return schema.ErrBadParameter.Withf("agent name: must be a valid identifier, got %q", name)
 	}
 	return nil
 }
@@ -68,7 +67,7 @@ func filterAgents(all []*schema.Agent, req schema.ListAgentRequest) []*schema.Ag
 func newAgentVersion(existing *schema.Agent, meta schema.AgentMeta) (*schema.Agent, error) {
 	// Reject name changes
 	if meta.Name != "" && meta.Name != existing.Name {
-		return nil, llm.ErrBadParameter.With("agent name cannot be changed via update")
+		return nil, schema.ErrBadParameter.With("agent name cannot be changed via update")
 	}
 
 	// Merge non-zero fields from meta onto existing

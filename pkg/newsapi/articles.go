@@ -6,7 +6,7 @@ import (
 
 	// Packages
 	"github.com/mutablelogic/go-client"
-	llm "github.com/mutablelogic/go-llm"
+	"github.com/mutablelogic/go-llm/pkg/schema"
 )
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -42,7 +42,7 @@ func (c *Client) Headlines(ctx context.Context, req *HeadlinesRequest) ([]Articl
 	if err := c.DoWithContext(ctx, nil, &response, client.OptPath("top-headlines"), client.OptQuery(req.Values())); err != nil {
 		return nil, err
 	} else if response.Status != "ok" {
-		return nil, llm.ErrBadParameter.Withf("%s: %s", response.Code, response.Message)
+		return nil, schema.ErrBadParameter.Withf("%s: %s", response.Code, response.Message)
 	}
 
 	// Return success
@@ -57,7 +57,7 @@ func (c *Client) Articles(ctx context.Context, req *ArticlesRequest) ([]Article,
 	if err := c.DoWithContext(ctx, nil, &response, client.OptPath("everything"), client.OptQuery(req.Values())); err != nil {
 		return nil, err
 	} else if response.Status != "ok" {
-		return nil, llm.ErrBadParameter.Withf("%s: %s", response.Code, response.Message)
+		return nil, schema.ErrBadParameter.Withf("%s: %s", response.Code, response.Message)
 	}
 
 	// Return success

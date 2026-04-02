@@ -7,7 +7,7 @@ import (
 	"testing"
 
 	// Packages
-	llm "github.com/mutablelogic/go-llm"
+
 	schema "github.com/mutablelogic/go-llm/pkg/schema"
 	store "github.com/mutablelogic/go-llm/pkg/store"
 	assert "github.com/stretchr/testify/assert"
@@ -32,7 +32,7 @@ func Test_file_agent_002(t *testing.T) {
 	assert := assert.New(t)
 	_, err := store.NewFileAgentStore("")
 	assert.Error(err)
-	assert.ErrorIs(err, llm.ErrBadParameter)
+	assert.ErrorIs(err, schema.ErrBadParameter)
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -74,7 +74,7 @@ func Test_file_agent_005(t *testing.T) {
 	s2, _ := store.NewFileAgentStore(dir)
 	_, err = s2.CreateAgent(context.TODO(), testAgentMeta)
 	assert.Error(err)
-	assert.ErrorIs(err, llm.ErrConflict)
+	assert.ErrorIs(err, schema.ErrConflict)
 }
 
 // Test GetAgent persists across store instances

@@ -9,6 +9,7 @@ import (
 	jsonschema "github.com/google/jsonschema-go/jsonschema"
 	"github.com/mutablelogic/go-client"
 	llm "github.com/mutablelogic/go-llm"
+	"github.com/mutablelogic/go-llm/pkg/schema"
 	"github.com/mutablelogic/go-llm/pkg/tool"
 )
 
@@ -135,7 +136,7 @@ func (t *getStates) Run(ctx context.Context, input json.RawMessage) (any, error)
 	var req GetStatesRequest
 	if len(input) > 0 {
 		if err := json.Unmarshal(input, &req); err != nil {
-			return nil, llm.ErrBadParameter.Withf("failed to unmarshal input: %v", err)
+			return nil, schema.ErrBadParameter.Withf("failed to unmarshal input: %v", err)
 		}
 	}
 
@@ -197,11 +198,11 @@ func (t *getState) Run(ctx context.Context, input json.RawMessage) (any, error) 
 	var req GetStateRequest
 	if len(input) > 0 {
 		if err := json.Unmarshal(input, &req); err != nil {
-			return nil, llm.ErrBadParameter.Withf("failed to unmarshal input: %v", err)
+			return nil, schema.ErrBadParameter.Withf("failed to unmarshal input: %v", err)
 		}
 	}
 	if req.EntityId == "" {
-		return nil, llm.ErrBadParameter.With("entity_id is required")
+		return nil, schema.ErrBadParameter.With("entity_id is required")
 	}
 
 	return t.client.State(ctx, req.EntityId)
@@ -228,14 +229,14 @@ func (t *callService) Run(ctx context.Context, input json.RawMessage) (any, erro
 	var req CallServiceRequest
 	if len(input) > 0 {
 		if err := json.Unmarshal(input, &req); err != nil {
-			return nil, llm.ErrBadParameter.Withf("failed to unmarshal input: %v", err)
+			return nil, schema.ErrBadParameter.Withf("failed to unmarshal input: %v", err)
 		}
 	}
 	if req.Domain == "" {
-		return nil, llm.ErrBadParameter.With("domain is required")
+		return nil, schema.ErrBadParameter.With("domain is required")
 	}
 	if req.Service == "" {
-		return nil, llm.ErrBadParameter.With("service is required")
+		return nil, schema.ErrBadParameter.With("service is required")
 	}
 
 	// If entity_id is provided at the top level of data, extract the domain
@@ -266,11 +267,11 @@ func (t *getServices) Run(ctx context.Context, input json.RawMessage) (any, erro
 	var req GetServicesRequest
 	if len(input) > 0 {
 		if err := json.Unmarshal(input, &req); err != nil {
-			return nil, llm.ErrBadParameter.Withf("failed to unmarshal input: %v", err)
+			return nil, schema.ErrBadParameter.Withf("failed to unmarshal input: %v", err)
 		}
 	}
 	if req.Domain == "" {
-		return nil, llm.ErrBadParameter.With("domain is required")
+		return nil, schema.ErrBadParameter.With("domain is required")
 	}
 
 	services, err := t.client.Services(ctx, req.Domain)
@@ -320,14 +321,14 @@ func (t *setState) Run(ctx context.Context, input json.RawMessage) (any, error) 
 	var req SetStateRequest
 	if len(input) > 0 {
 		if err := json.Unmarshal(input, &req); err != nil {
-			return nil, llm.ErrBadParameter.Withf("failed to unmarshal input: %v", err)
+			return nil, schema.ErrBadParameter.Withf("failed to unmarshal input: %v", err)
 		}
 	}
 	if req.EntityId == "" {
-		return nil, llm.ErrBadParameter.With("entity_id is required")
+		return nil, schema.ErrBadParameter.With("entity_id is required")
 	}
 	if req.State == "" {
-		return nil, llm.ErrBadParameter.With("state is required")
+		return nil, schema.ErrBadParameter.With("state is required")
 	}
 
 	return t.client.SetState(ctx, req.EntityId, req.State, req.Attributes)
@@ -351,11 +352,11 @@ func (t *fireEvent) Run(ctx context.Context, input json.RawMessage) (any, error)
 	var req FireEventRequest
 	if len(input) > 0 {
 		if err := json.Unmarshal(input, &req); err != nil {
-			return nil, llm.ErrBadParameter.Withf("failed to unmarshal input: %v", err)
+			return nil, schema.ErrBadParameter.Withf("failed to unmarshal input: %v", err)
 		}
 	}
 	if req.EventType == "" {
-		return nil, llm.ErrBadParameter.With("event_type is required")
+		return nil, schema.ErrBadParameter.With("event_type is required")
 	}
 
 	msg, err := t.client.FireEvent(ctx, req.EventType, req.EventData)
@@ -386,11 +387,11 @@ func (t *renderTemplate) Run(ctx context.Context, input json.RawMessage) (any, e
 	var req RenderTemplateRequest
 	if len(input) > 0 {
 		if err := json.Unmarshal(input, &req); err != nil {
-			return nil, llm.ErrBadParameter.Withf("failed to unmarshal input: %v", err)
+			return nil, schema.ErrBadParameter.Withf("failed to unmarshal input: %v", err)
 		}
 	}
 	if req.Template == "" {
-		return nil, llm.ErrBadParameter.With("template is required")
+		return nil, schema.ErrBadParameter.With("template is required")
 	}
 
 	result, err := t.client.Template(ctx, req.Template)

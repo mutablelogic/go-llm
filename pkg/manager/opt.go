@@ -62,9 +62,9 @@ func MCPConnectorFactory(name, version string, staticOpts ...mcpclient.Opt) Conn
 func WithClient(client llm.Client) Opt {
 	return func(m *Manager) error {
 		if name := client.Name(); !types.IsIdentifier(name) {
-			return llm.ErrBadParameter.Withf("invalid client name %q", name)
+			return schema.ErrBadParameter.Withf("invalid client name %q", name)
 		} else if _, exists := m.clients[name]; exists {
-			return llm.ErrBadParameter.Withf("duplicate client %q", name)
+			return schema.ErrBadParameter.Withf("duplicate client %q", name)
 		} else {
 			m.clients[name] = client
 		}
@@ -79,7 +79,7 @@ func WithClient(client llm.Client) Opt {
 func WithSessionStore(store schema.SessionStore) Opt {
 	return func(m *Manager) error {
 		if store == nil {
-			return llm.ErrBadParameter.With("session store is required")
+			return schema.ErrBadParameter.With("session store is required")
 		}
 		m.sessionStore = store
 		return nil
@@ -91,7 +91,7 @@ func WithSessionStore(store schema.SessionStore) Opt {
 func WithAgentStore(store schema.AgentStore) Opt {
 	return func(m *Manager) error {
 		if store == nil {
-			return llm.ErrBadParameter.With("agent store is required")
+			return schema.ErrBadParameter.With("agent store is required")
 		}
 		m.agentStore = store
 		return nil
@@ -103,7 +103,7 @@ func WithAgentStore(store schema.AgentStore) Opt {
 func WithConnectorStore(store schema.ConnectorStore) Opt {
 	return func(m *Manager) error {
 		if store == nil {
-			return llm.ErrBadParameter.With("connector store is required")
+			return schema.ErrBadParameter.With("connector store is required")
 		}
 		m.connectorStore = store
 		return nil
@@ -115,7 +115,7 @@ func WithConnectorStore(store schema.ConnectorStore) Opt {
 func WithCredentialStore(store schema.CredentialStore) Opt {
 	return func(m *Manager) error {
 		if store == nil {
-			return llm.ErrBadParameter.With("credential store is required")
+			return schema.ErrBadParameter.With("credential store is required")
 		}
 		m.credentialStore = store
 		return nil
@@ -127,7 +127,7 @@ func WithTools(tools ...llm.Tool) Opt {
 	return func(m *Manager) error {
 		for _, t := range tools {
 			if t == nil {
-				return llm.ErrBadParameter.With("tool is required")
+				return schema.ErrBadParameter.With("tool is required")
 			}
 		}
 		m.toolkitOpts = append(m.toolkitOpts, tool.WithBuiltin(tools...))
@@ -139,7 +139,7 @@ func WithTools(tools ...llm.Tool) Opt {
 func WithTool(t llm.Tool) Opt {
 	return func(m *Manager) error {
 		if t == nil {
-			return llm.ErrBadParameter.With("tool is required")
+			return schema.ErrBadParameter.With("tool is required")
 		}
 		m.toolkitOpts = append(m.toolkitOpts, tool.WithBuiltin(t))
 		return nil
@@ -152,7 +152,7 @@ func WithTool(t llm.Tool) Opt {
 func WithConnectorFactory(factory ConnectorFactory) Opt {
 	return func(m *Manager) error {
 		if factory == nil {
-			return llm.ErrBadParameter.With("connector factory is required")
+			return schema.ErrBadParameter.With("connector factory is required")
 		}
 		m.connectorFactory = factory
 		return nil
@@ -177,7 +177,7 @@ func WithOutputDimensionality(dim uint) opt.Opt {
 		case "gemini":
 			return google.WithOutputDimensionality(dim)
 		default:
-			return opt.Error(llm.ErrNotImplemented.Withf("%s: WithOutputDimensionality not supported", provider))
+			return opt.Error(schema.ErrNotImplemented.Withf("%s: WithOutputDimensionality not supported", provider))
 		}
 	})
 }
@@ -193,7 +193,7 @@ func WithTitle(title string) opt.Opt {
 		case "gemini":
 			return google.WithTitle(title)
 		default:
-			return opt.Error(llm.ErrNotImplemented.Withf("%s: WithTitle not supported", provider))
+			return opt.Error(schema.ErrNotImplemented.Withf("%s: WithTitle not supported", provider))
 		}
 	})
 }
@@ -209,7 +209,7 @@ func WithTaskType(taskType string) opt.Opt {
 		case "gemini":
 			return google.WithTaskType(taskType)
 		default:
-			return opt.Error(llm.ErrNotImplemented.Withf("%s: WithTaskType not supported", provider))
+			return opt.Error(schema.ErrNotImplemented.Withf("%s: WithTaskType not supported", provider))
 		}
 	})
 }

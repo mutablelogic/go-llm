@@ -10,6 +10,7 @@ import (
 
 	// Packages
 	llm "github.com/mutablelogic/go-llm"
+	schema "github.com/mutablelogic/go-llm/pkg/schema"
 	prompt "github.com/mutablelogic/go-llm/pkg/toolkit/prompt"
 	resource "github.com/mutablelogic/go-llm/pkg/toolkit/resource"
 	tool "github.com/mutablelogic/go-llm/pkg/toolkit/tool"
@@ -103,13 +104,13 @@ func (tk *toolkit) AddTool(tools ...llm.Tool) error {
 				continue
 			}
 			if name := t.Name(); !types.IsIdentifier(name) {
-				return nil, llm.ErrBadParameter.Withf("invalid tool name: %q", name)
+				return nil, schema.ErrBadParameter.Withf("invalid tool name: %q", name)
 			} else if slices.Contains(ReservedNames, name) {
-				return nil, llm.ErrBadParameter.Withf("reserved tool name: %q", name)
+				return nil, schema.ErrBadParameter.Withf("reserved tool name: %q", name)
 			} else if _, exists := tk.tools[name]; exists {
-				return nil, llm.ErrBadParameter.Withf("duplicate tool name: %q", name)
+				return nil, schema.ErrBadParameter.Withf("duplicate tool name: %q", name)
 			} else if _, exists := seen[name]; exists {
-				return nil, llm.ErrBadParameter.Withf("duplicate tool name: %q", name)
+				return nil, schema.ErrBadParameter.Withf("duplicate tool name: %q", name)
 			} else {
 				seen[name] = struct{}{}
 			}
@@ -142,13 +143,13 @@ func (tk *toolkit) AddPrompt(prompts ...llm.Prompt) error {
 				continue
 			}
 			if name := p.Name(); !types.IsIdentifier(name) {
-				return nil, llm.ErrBadParameter.Withf("invalid prompt name: %q", name)
+				return nil, schema.ErrBadParameter.Withf("invalid prompt name: %q", name)
 			} else if slices.Contains(ReservedNames, name) {
-				return nil, llm.ErrBadParameter.Withf("reserved prompt name: %q", name)
+				return nil, schema.ErrBadParameter.Withf("reserved prompt name: %q", name)
 			} else if _, exists := tk.prompts[name]; exists {
-				return nil, llm.ErrBadParameter.Withf("duplicate prompt name: %q", name)
+				return nil, schema.ErrBadParameter.Withf("duplicate prompt name: %q", name)
 			} else if _, exists := seen[name]; exists {
-				return nil, llm.ErrBadParameter.Withf("duplicate prompt name: %q", name)
+				return nil, schema.ErrBadParameter.Withf("duplicate prompt name: %q", name)
 			} else {
 				seen[name] = struct{}{}
 			}
@@ -185,11 +186,11 @@ func (tk *toolkit) AddResource(resources ...llm.Resource) error {
 			}
 			u, _, ok := parseURI(r.URI())
 			if !ok {
-				return nil, false, nil, llm.ErrBadParameter.Withf("invalid resource URI: %q", r.URI())
+				return nil, false, nil, schema.ErrBadParameter.Withf("invalid resource URI: %q", r.URI())
 			}
 			uri := u.String()
 			if _, exists := seen[uri]; exists {
-				return nil, false, nil, llm.ErrBadParameter.Withf("duplicate resource URI: %q", uri)
+				return nil, false, nil, schema.ErrBadParameter.Withf("duplicate resource URI: %q", uri)
 			}
 			seen[uri] = struct{}{}
 		}
@@ -227,7 +228,7 @@ func (tk *toolkit) AddResource(resources ...llm.Resource) error {
 
 // RemoveBuiltin removes a previously registered builtin tool by name,
 // prompt by name, or resource by URI. Tools are checked before prompts.
-// Returns llm.ErrNotFound if no match exists.
+// Returns schema.ErrNotFound if no match exists.
 func (tk *toolkit) RemoveBuiltin(key string) error {
 	delegate, evt, err := func() (ToolkitDelegate, ConnectorEvent, error) {
 		tk.mu.Lock()
@@ -247,7 +248,7 @@ func (tk *toolkit) RemoveBuiltin(key string) error {
 				return tk.delegate, ResourceListChangeEvent(), nil
 			}
 		}
-		return nil, ConnectorEvent{}, llm.ErrNotFound.Withf("%q", key)
+		return nil, ConnectorEvent{}, schema.ErrNotFound.Withf("%q", key)
 	}()
 	if err != nil {
 		return err
@@ -260,7 +261,7 @@ func (tk *toolkit) RemoveBuiltin(key string) error {
 
 // Lookup finds a tool, prompt, or resource by name, namespace.name, URI,
 // or URI#namespace. Tools take precedence over prompts when both share a name.
-// Returns llm.ErrNotFound if nothing matches.
+// Returns schema.ErrNotFound if nothing matches.
 func (tk *toolkit) Lookup(ctx context.Context, key string) (any, error) {
 	// URI or URI#namespace: if the key parses as a URI, only resources can match.
 	if u, namespace, ok := parseURI(key); ok {
@@ -275,7 +276,7 @@ func (tk *toolkit) Lookup(ctx context.Context, key string) (any, error) {
 		name = key
 	}
 	if !types.IsIdentifier(name) || (namespace != "" && !types.IsIdentifier(namespace)) {
-		return nil, llm.ErrBadParameter.Withf("invalid key: %q", key)
+		return nil, schema.ErrBadParameter.Withf("invalid key: %q", key)
 	}
 
 	// Search tools and prompts concurrently; tools take precedence over prompts.
@@ -305,7 +306,7 @@ func (tk *toolkit) Lookup(ctx context.Context, key string) (any, error) {
 	}
 
 	// No match found.
-	return nil, llm.ErrNotFound.Withf("%q", key)
+	return nil, schema.ErrNotFound.Withf("%q", key)
 }
 
 // lookupTool returns the tool registered under name in the given namespace.
@@ -403,7 +404,7 @@ func (tk *toolkit) lookupPrompt(ctx context.Context, namespace, name string) (ll
 // checked first then all connected connectors are searched. When namespace is
 // "builtin", only builtins are searched. Otherwise the named connector
 // namespace is searched via ListResources.
-// Returns llm.ErrNotFound when no resource matches.
+// Returns schema.ErrNotFound when no resource matches.
 func (tk *toolkit) lookupResource(ctx context.Context, namespace, uri string) (llm.Resource, error) {
 	// Builtin namespace (or no namespace): check the in-process resources map first.
 	if namespace == "" || namespace == BuiltinNamespace {
@@ -414,7 +415,7 @@ func (tk *toolkit) lookupResource(ctx context.Context, namespace, uri string) (l
 			return r, nil
 		}
 		if namespace == BuiltinNamespace {
-			return nil, llm.ErrNotFound.Withf("%q", uri)
+			return nil, schema.ErrNotFound.Withf("%q", uri)
 		}
 		// namespace == "": fall through to search all connected connectors.
 	}
@@ -443,7 +444,7 @@ func (tk *toolkit) lookupResource(ctx context.Context, namespace, uri string) (l
 			}
 		}
 	}
-	return nil, llm.ErrNotFound.Withf("%q", uri)
+	return nil, schema.ErrNotFound.Withf("%q", uri)
 }
 
 // parseURI parses raw into a *url.URL with the fragment stripped, and returns

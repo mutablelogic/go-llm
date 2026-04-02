@@ -9,7 +9,8 @@ import (
 	jsonschema "github.com/google/jsonschema-go/jsonschema"
 	otel "github.com/mutablelogic/go-client/pkg/otel"
 	llm "github.com/mutablelogic/go-llm"
-	schema "github.com/mutablelogic/go-llm/pkg/heartbeat/schema"
+	hschema "github.com/mutablelogic/go-llm/pkg/heartbeat/schema"
+	schema "github.com/mutablelogic/go-llm/pkg/schema"
 	tool "github.com/mutablelogic/go-llm/pkg/tool"
 	session "github.com/mutablelogic/go-llm/pkg/tool/session"
 	attribute "go.opentelemetry.io/otel/attribute"
@@ -40,11 +41,11 @@ func (updateHeartbeat) Description() string {
 }
 
 func (updateHeartbeat) InputSchema() (*jsonschema.Schema, error) {
-	return jsonschema.For[schema.UpdateHeartbeatRequest](nil)
+	return jsonschema.For[hschema.UpdateHeartbeatRequest](nil)
 }
 
 func (t updateHeartbeat) Run(ctx context.Context, input json.RawMessage) (_ any, err error) {
-	var req schema.UpdateHeartbeatRequest
+	var req hschema.UpdateHeartbeatRequest
 
 	// Otel
 	ctx, endSpan := otel.StartSpan(session.FromContext(ctx).Tracer(), ctx, "update_heartbeat", attribute.String("input", string(input)))
@@ -53,15 +54,15 @@ func (t updateHeartbeat) Run(ctx context.Context, input json.RawMessage) (_ any,
 	// Check parameters
 	if len(input) > 0 {
 		if err := json.Unmarshal(input, &req); err != nil {
-			return nil, llm.ErrBadParameter.Withf("update_heartbeat: %v", err)
+			return nil, schema.ErrBadParameter.Withf("update_heartbeat: %v", err)
 		}
 	}
 	if req.ID == "" {
-		return nil, llm.ErrBadParameter.With("update_heartbeat: id is required")
+		return nil, schema.ErrBadParameter.With("update_heartbeat: id is required")
 	}
 
 	// Update the schedule
-	var schedule *schema.TimeSpec
+	var schedule *hschema.TimeSpec
 	if req.Schedule != "" || req.Timezone != "" {
 		var loc *time.Location
 		schedStr := req.Schedule
@@ -69,12 +70,12 @@ func (t updateHeartbeat) Run(ctx context.Context, input json.RawMessage) (_ any,
 		// Load timezone if provided
 		if req.Timezone != "" {
 			if req.Timezone == "Local" {
-				return nil, llm.ErrBadParameter.With("update_heartbeat: timezone must be a specific IANA name (e.g. Europe/London), not \"Local\"")
+				return nil, schema.ErrBadParameter.With("update_heartbeat: timezone must be a specific IANA name (e.g. Europe/London), not \"Local\"")
 			}
 			var err error
 			loc, err = time.LoadLocation(req.Timezone)
 			if err != nil {
-				return nil, llm.ErrBadParameter.Withf("update_heartbeat: unknown timezone %q: %v", req.Timezone, err)
+				return nil, schema.ErrBadParameter.Withf("update_heartbeat: unknown timezone %q: %v", req.Timezone, err)
 			}
 		}
 
@@ -88,15 +89,15 @@ func (t updateHeartbeat) Run(ctx context.Context, input json.RawMessage) (_ any,
 		}
 
 		// Parse the schedule
-		s, err := schema.NewTimeSpec(schedStr, loc)
+		s, err := hschema.NewTimeSpec(schedStr, loc)
 		if err != nil {
-			return nil, llm.ErrBadParameter.Withf("update_heartbeat: %v", err)
+			return nil, schema.ErrBadParameter.Withf("update_heartbeat: %v", err)
 		}
 		schedule = &s
 	}
 
 	// Create updated meta with any provided fields
-	meta := schema.HeartbeatMeta{Message: req.Message}
+	meta := hschema.HeartbeatMeta{Message: req.Message}
 	if schedule != nil {
 		meta.Schedule = *schedule
 	}

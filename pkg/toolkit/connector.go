@@ -12,6 +12,7 @@ import (
 
 	// Packages
 	llm "github.com/mutablelogic/go-llm"
+	schema "github.com/mutablelogic/go-llm/pkg/schema"
 	types "github.com/mutablelogic/go-server/pkg/types"
 )
 
@@ -80,13 +81,13 @@ func (tk *toolkit) AddConnector(rawURL string) error {
 // Safe to call before or while Run is active.
 func (tk *toolkit) AddConnectorNS(namespace, url string) error {
 	if !types.IsIdentifier(namespace) {
-		return llm.ErrBadParameter.Withf("connector namespace %q is not a valid identifier", namespace)
+		return schema.ErrBadParameter.Withf("connector namespace %q is not a valid identifier", namespace)
 	}
 	if slices.Contains(ReservedNamespaces, namespace) {
-		return llm.ErrBadParameter.Withf("connector namespace %q is reserved", namespace)
+		return schema.ErrBadParameter.Withf("connector namespace %q is reserved", namespace)
 	}
 	if url == UserConnectorURI {
-		return llm.ErrBadParameter.Withf("connector url: %q is reserved; use AddConnector instead", UserConnectorURI)
+		return schema.ErrBadParameter.Withf("connector url: %q is reserved; use AddConnector instead", UserConnectorURI)
 	}
 	return tk.addConnector(namespace, url)
 }
@@ -108,7 +109,7 @@ func (tk *toolkit) RemoveConnector(rawURL string) error {
 	conn, exists := tk.connectors[key]
 	if !exists {
 		tk.mu.Unlock()
-		return llm.ErrNotFound.Withf("connector not found: %q", rawURL)
+		return schema.ErrNotFound.Withf("connector not found: %q", rawURL)
 	}
 	delete(tk.connectors, key)
 	// Remove the namespace entry if it still points at this connector.
@@ -205,13 +206,13 @@ func (tk *toolkit) onConnectorEvent(c *connector, evt ConnectorEvent) {
 			// TODO: mutate the namespace to make it valid (e.g. by replacing invalid characters with "_") rather than rejecting it outright.
 			ns := types.Value(state.Name)
 			if !types.IsIdentifier(ns) || slices.Contains(ReservedNamespaces, ns) {
-				c.err = llm.ErrConflict.Withf("connector reported reserved or invalid namespace %q", ns)
+				c.err = schema.ErrConflict.Withf("connector reported reserved or invalid namespace %q", ns)
 				tk.mu.Unlock()
 				return
 			}
 			// Reject collision with a namespace already owned by a different connector.
 			if existing, collision := tk.namespace[ns]; collision && existing != c {
-				c.err = llm.ErrConflict.Withf("connector namespace %q already in use", ns)
+				c.err = schema.ErrConflict.Withf("connector namespace %q already in use", ns)
 				tk.mu.Unlock()
 				return
 			}
@@ -246,7 +247,7 @@ func (tk *toolkit) addConnector(namespace, url string) error {
 		}
 	}
 	if tk.delegate == nil {
-		return llm.ErrNotImplemented.With("toolkit delegate is not set")
+		return schema.ErrNotImplemented.With("toolkit delegate is not set")
 	}
 
 	// Validate and reserve the slot under the lock, but do not hold the lock
@@ -258,7 +259,7 @@ func (tk *toolkit) addConnector(namespace, url string) error {
 	}
 	if _, exists := tk.connectors[key]; exists {
 		tk.mu.Unlock()
-		return llm.ErrConflict.Withf("connector already added: %q", key)
+		return schema.ErrConflict.Withf("connector already added: %q", key)
 	}
 	// Reserve the slot so a concurrent call for the same key is rejected.
 	c := &connector{
@@ -281,7 +282,7 @@ func (tk *toolkit) addConnector(namespace, url string) error {
 		tk.mu.Lock()
 		delete(tk.connectors, key)
 		tk.mu.Unlock()
-		return llm.ErrInternalServerError.Withf("handler returned nil connector for %q", key)
+		return schema.ErrInternalServerError.Withf("handler returned nil connector for %q", key)
 	}
 
 	// Finalize under the lock. If RemoveConnector ran concurrently while
@@ -290,7 +291,7 @@ func (tk *toolkit) addConnector(namespace, url string) error {
 	tk.mu.Lock()
 	if _, still := tk.connectors[key]; !still {
 		tk.mu.Unlock()
-		return llm.ErrConflict.Withf("connector removed while being added: %q", key)
+		return schema.ErrConflict.Withf("connector removed while being added: %q", key)
 	}
 	c.conn = conn
 	tk.mu.Unlock()
@@ -305,26 +306,26 @@ func (tk *toolkit) addConnector(namespace, url string) error {
 func canonicalURL(rawURL string) (string, error) {
 	u, err := url.Parse(rawURL)
 	if err != nil {
-		return "", llm.ErrBadParameter.Withf("connector url: %v", err)
+		return "", schema.ErrBadParameter.Withf("connector url: %v", err)
 	}
 	if !u.IsAbs() {
-		return "", llm.ErrBadParameter.Withf("connector url: not an absolute URL: %q", rawURL)
+		return "", schema.ErrBadParameter.Withf("connector url: not an absolute URL: %q", rawURL)
 	}
 
 	u.Scheme = strings.ToLower(u.Scheme)
 	if !slices.Contains(connectorURLSchemes, u.Scheme) {
-		return "", llm.ErrBadParameter.Withf("connector url: scheme %q not supported (want one of %v)", u.Scheme, connectorURLSchemes)
+		return "", schema.ErrBadParameter.Withf("connector url: scheme %q not supported (want one of %v)", u.Scheme, connectorURLSchemes)
 	}
 
 	host := strings.TrimSuffix(strings.ToLower(u.Hostname()), ".")
 	if host == "" {
-		return "", llm.ErrBadParameter.Withf("connector url: missing host")
+		return "", schema.ErrBadParameter.Withf("connector url: missing host")
 	}
 
 	if portStr := u.Port(); portStr != "" {
 		port, err := strconv.ParseUint(portStr, 10, 16)
 		if err != nil || port < 1 {
-			return "", llm.ErrBadParameter.Withf("connector url: invalid port %q (must be 1-65535)", portStr)
+			return "", schema.ErrBadParameter.Withf("connector url: invalid port %q (must be 1-65535)", portStr)
 		}
 		if connectorDefaultPorts[u.Scheme] != portStr {
 			host = host + ":" + portStr

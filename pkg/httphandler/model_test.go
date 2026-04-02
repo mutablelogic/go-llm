@@ -146,7 +146,7 @@ func TestModelGet_NotFound(t *testing.T) {
 	r := httptest.NewRequest(http.MethodGet, "/model/nonexistent", nil)
 	mux.ServeHTTP(w, r)
 
-	// llm.ErrNotFound maps to 404 via httpErr
+	// schema.ErrNotFound maps to 404 via httpErr
 	if w.Code != http.StatusNotFound {
 		t.Fatalf("expected 404, got %d", w.Code)
 	}

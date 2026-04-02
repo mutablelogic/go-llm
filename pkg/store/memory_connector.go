@@ -7,7 +7,7 @@ import (
 	"time"
 
 	// Packages
-	llm "github.com/mutablelogic/go-llm"
+
 	schema "github.com/mutablelogic/go-llm/pkg/schema"
 	types "github.com/mutablelogic/go-server/pkg/types"
 )
@@ -54,11 +54,11 @@ func (s *MemoryConnectorStore) CreateConnector(_ context.Context, url string, me
 	defer s.mu.Unlock()
 
 	if _, ok := s.connectors[canonicalURL]; ok {
-		return nil, llm.ErrConflict.Withf("connector already exists for %q", canonicalURL)
+		return nil, schema.ErrConflict.Withf("connector already exists for %q", canonicalURL)
 	}
 	if ns := types.Value(meta.Namespace); ns != "" {
 		if matches := s.listConnectors(schema.ListConnectorsRequest{Namespace: ns}, ""); len(matches) > 0 {
-			return nil, llm.ErrConflict.Withf("connector namespace %q already in use by %q", ns, matches[0].URL)
+			return nil, schema.ErrConflict.Withf("connector namespace %q already in use by %q", ns, matches[0].URL)
 		}
 	}
 
@@ -84,7 +84,7 @@ func (s *MemoryConnectorStore) GetConnector(_ context.Context, url string) (*sch
 
 	c, ok := s.connectors[canonicalURL]
 	if !ok {
-		return nil, llm.ErrNotFound.Withf("connector not found for %q", canonicalURL)
+		return nil, schema.ErrNotFound.Withf("connector not found for %q", canonicalURL)
 	}
 	return types.Ptr(c), nil
 }
@@ -106,11 +106,11 @@ func (s *MemoryConnectorStore) UpdateConnector(_ context.Context, url string, me
 
 	c, ok := s.connectors[canonicalURL]
 	if !ok {
-		return nil, llm.ErrNotFound.Withf("connector not found for %q", canonicalURL)
+		return nil, schema.ErrNotFound.Withf("connector not found for %q", canonicalURL)
 	}
 	if ns := types.Value(meta.Namespace); ns != "" {
 		if matches := s.listConnectors(schema.ListConnectorsRequest{Namespace: ns}, canonicalURL); len(matches) > 0 {
-			return nil, llm.ErrConflict.Withf("connector namespace %q already in use by %q", ns, matches[0].URL)
+			return nil, schema.ErrConflict.Withf("connector namespace %q already in use by %q", ns, matches[0].URL)
 		}
 	}
 	if meta.Enabled != nil {
@@ -135,7 +135,7 @@ func (s *MemoryConnectorStore) DeleteConnector(_ context.Context, url string) er
 	defer s.mu.Unlock()
 
 	if _, ok := s.connectors[canonicalURL]; !ok {
-		return llm.ErrNotFound.Withf("connector not found for %q", canonicalURL)
+		return schema.ErrNotFound.Withf("connector not found for %q", canonicalURL)
 	}
 	delete(s.connectors, canonicalURL)
 	return nil
@@ -223,7 +223,7 @@ func (s *MemoryConnectorStore) UpdateConnectorState(_ context.Context, url strin
 
 	c, ok := s.connectors[canonicalURL]
 	if !ok {
-		return nil, llm.ErrNotFound.Withf("connector not found for %q", canonicalURL)
+		return nil, schema.ErrNotFound.Withf("connector not found for %q", canonicalURL)
 	}
 
 	if state.ConnectedAt != nil {

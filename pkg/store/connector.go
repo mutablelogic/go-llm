@@ -1,8 +1,7 @@
 package store
 
 import (
-	// Packages
-	llm "github.com/mutablelogic/go-llm"
+	schema "github.com/mutablelogic/go-llm/pkg/schema"
 	types "github.com/mutablelogic/go-server/pkg/types"
 )
 
@@ -16,7 +15,7 @@ func validateConnectorNamespace(namespace string) error {
 		return nil
 	}
 	if !types.IsIdentifier(namespace) {
-		return llm.ErrBadParameter.Withf("connector namespace: must be a valid identifier or empty, got %q", namespace)
+		return schema.ErrBadParameter.Withf("connector namespace: must be a valid identifier or empty, got %q", namespace)
 	}
 	return nil
 }

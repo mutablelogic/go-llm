@@ -27,7 +27,7 @@ type Toolkit interface {
 
 	// RemoveBuiltin removes a previously registered builtin tool by name,
 	// prompt by name, or resource by URI. Tools are checked before prompts.
-	// Returns llm.ErrNotFound if no match exists.
+	// Returns schema.ErrNotFound if no match exists.
 	RemoveBuiltin(string) error
 
 	// AddConnector registers a remote MCP server. The namespace is inferred from
@@ -51,7 +51,7 @@ type Toolkit interface {
 
 	// Lookup finds a tool, prompt, or resource by name, namespace.name, URI,
 	// or URI#namespace. Tools take precedence over prompts when both share a name.
-	// Returns llm.ErrNotFound if nothing matches.
+	// Returns schema.ErrNotFound if nothing matches.
 	Lookup(context.Context, string) (any, error)
 
 	// List returns tools, prompts, and resources matching the request.

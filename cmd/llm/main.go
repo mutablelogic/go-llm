@@ -5,6 +5,7 @@ import (
 	"os"
 
 	// Packages
+
 	cmd "github.com/mutablelogic/go-server/pkg/cmd"
 	version "github.com/mutablelogic/go-server/pkg/version"
 )

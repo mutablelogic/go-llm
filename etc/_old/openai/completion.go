@@ -9,6 +9,7 @@ import (
 	client "github.com/mutablelogic/go-client"
 	llm "github.com/mutablelogic/go-llm"
 	impl "github.com/mutablelogic/go-llm/pkg/internal/impl"
+	schema "github.com/mutablelogic/go-llm/pkg/schema"
 )
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -286,7 +287,7 @@ func appendCompletion(response *Response, c *Completion) error {
 	// Get the completion
 	message := response.Completions[c.Index].Message
 	if message == nil {
-		return llm.ErrBadParameter
+		return schema.ErrBadParameter
 	}
 
 	// Add the role
@@ -303,7 +304,7 @@ func appendCompletion(response *Response, c *Completion) error {
 				message.Content = str
 			}
 		} else {
-			return llm.ErrNotImplemented.Withf("appendCompletion not implemented: %T", c.Delta.Content)
+			return schema.ErrNotImplemented.Withf("appendCompletion not implemented: %T", c.Delta.Content)
 		}
 	}
 

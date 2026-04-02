@@ -8,6 +8,7 @@ import (
 	jsonschema "github.com/google/jsonschema-go/jsonschema"
 	"github.com/mutablelogic/go-client"
 	llm "github.com/mutablelogic/go-llm"
+	"github.com/mutablelogic/go-llm/pkg/schema"
 	"github.com/mutablelogic/go-llm/pkg/tool"
 )
 
@@ -74,13 +75,13 @@ func (c *currentWeather) Run(ctx context.Context, input json.RawMessage) (any, e
 	// Unmarshal JSON input if provided
 	if len(input) > 0 {
 		if err := json.Unmarshal(input, &req); err != nil {
-			return nil, llm.ErrBadParameter.Withf("failed to unmarshal input: %v", err)
+			return nil, schema.ErrBadParameter.Withf("failed to unmarshal input: %v", err)
 		}
 	}
 
 	// Validate required fields
 	if req.Query == "" {
-		return nil, llm.ErrBadParameter.With("query is required")
+		return nil, schema.ErrBadParameter.With("query is required")
 	}
 
 	return c.client.Current(ctx, &req)
@@ -122,16 +123,16 @@ func (f *forecastWeather) Run(ctx context.Context, input json.RawMessage) (any, 
 	// Unmarshal JSON input if provided
 	if len(input) > 0 {
 		if err := json.Unmarshal(input, &req); err != nil {
-			return nil, llm.ErrBadParameter.Withf("failed to unmarshal input: %v", err)
+			return nil, schema.ErrBadParameter.Withf("failed to unmarshal input: %v", err)
 		}
 	}
 
 	// Validate required fields
 	if req.Query == "" {
-		return nil, llm.ErrBadParameter.With("query is required")
+		return nil, schema.ErrBadParameter.With("query is required")
 	}
 	if req.Days < 1 || req.Days > 14 {
-		return nil, llm.ErrBadParameter.With("days must be between 1 and 14")
+		return nil, schema.ErrBadParameter.With("days must be between 1 and 14")
 	}
 
 	return f.client.Forecast(ctx, &req)
@@ -160,13 +161,13 @@ func (a *alertsWeather) Run(ctx context.Context, input json.RawMessage) (any, er
 	// Unmarshal JSON input if provided
 	if len(input) > 0 {
 		if err := json.Unmarshal(input, &req); err != nil {
-			return nil, llm.ErrBadParameter.Withf("failed to unmarshal input: %v", err)
+			return nil, schema.ErrBadParameter.Withf("failed to unmarshal input: %v", err)
 		}
 	}
 
 	// Validate required fields
 	if req.Query == "" {
-		return nil, llm.ErrBadParameter.With("query is required")
+		return nil, schema.ErrBadParameter.With("query is required")
 	}
 
 	return a.client.Alerts(ctx, &req)

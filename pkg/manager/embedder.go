@@ -28,11 +28,11 @@ func (m *Manager) Embedding(ctx context.Context, request *schema.EmbeddingReques
 	// Get the client for the model
 	client := m.clientForModel(model)
 	if client == nil {
-		return nil, llm.ErrNotFound.Withf("no provider found for model: %s", request.Model)
+		return nil, schema.ErrNotFound.Withf("no provider found for model: %s", request.Model)
 	} else if _, ok := client.(llm.Embedder); !ok {
-		return nil, llm.ErrNotImplemented.Withf("provider %q does not support embeddings", client.Name())
+		return nil, schema.ErrNotImplemented.Withf("provider %q does not support embeddings", client.Name())
 	} else if len(request.Input) == 0 {
-		return nil, llm.ErrBadParameter.With("input text is required for embedding")
+		return nil, schema.ErrBadParameter.With("input text is required for embedding")
 	}
 
 	// Create options for the embedding request

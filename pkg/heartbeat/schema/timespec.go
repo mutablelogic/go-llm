@@ -9,7 +9,7 @@ import (
 	"time"
 
 	// Packages
-	llm "github.com/mutablelogic/go-llm"
+	llmschema "github.com/mutablelogic/go-llm/pkg/schema"
 	types "github.com/mutablelogic/go-server/pkg/types"
 )
 
@@ -92,7 +92,7 @@ func NewTimeSpec[T time.Time | string](v T, loc *time.Location) (TimeSpec, error
 		return TimeSpec{}, err
 	}
 	if ts.Next(time.Now()).IsZero() {
-		return TimeSpec{}, llm.ErrBadParameter.Withf("%v has no future events", v)
+		return TimeSpec{}, llmschema.ErrBadParameter.Withf("%v has no future events", v)
 	}
 	return ts, nil
 }
@@ -109,7 +109,7 @@ func newFromTime(t time.Time, loc *time.Location) (TimeSpec, error) {
 		loc = nil
 	}
 	if loc != nil && loc.String() == "Local" {
-		return TimeSpec{}, llm.ErrBadParameter.With("timezone must be a specific IANA name (e.g. Europe/London), not \"Local\"")
+		return TimeSpec{}, llmschema.ErrBadParameter.With("timezone must be a specific IANA name (e.g. Europe/London), not \"Local\"")
 	}
 	return TimeSpec{
 		Year:   types.Ptr(t.Year()),
@@ -130,31 +130,31 @@ func newFromCron(s string, loc *time.Location) (TimeSpec, error) {
 		loc = nil
 	}
 	if loc != nil && loc.String() == "Local" {
-		return TimeSpec{}, llm.ErrBadParameter.With("timezone must be a specific IANA name (e.g. Europe/London), not \"Local\"")
+		return TimeSpec{}, llmschema.ErrBadParameter.With("timezone must be a specific IANA name (e.g. Europe/London), not \"Local\"")
 	}
 	fields := strings.Fields(s)
 	if len(fields) != 5 && len(fields) != 6 {
-		return TimeSpec{}, llm.ErrBadParameter.Withf("cron expression must have 5 or 6 space-separated fields, got %d in %q", len(fields), s)
+		return TimeSpec{}, llmschema.ErrBadParameter.Withf("cron expression must have 5 or 6 space-separated fields, got %d in %q", len(fields), s)
 	}
 	minute, err := parseCronField(fields[0], 0, 59)
 	if err != nil {
-		return TimeSpec{}, llm.ErrBadParameter.Withf("cron minute %q: %v", fields[0], err)
+		return TimeSpec{}, llmschema.ErrBadParameter.Withf("cron minute %q: %v", fields[0], err)
 	}
 	hour, err := parseCronField(fields[1], 0, 23)
 	if err != nil {
-		return TimeSpec{}, llm.ErrBadParameter.Withf("cron hour %q: %v", fields[1], err)
+		return TimeSpec{}, llmschema.ErrBadParameter.Withf("cron hour %q: %v", fields[1], err)
 	}
 	day, err := parseCronField(fields[2], 1, 31)
 	if err != nil {
-		return TimeSpec{}, llm.ErrBadParameter.Withf("cron day %q: %v", fields[2], err)
+		return TimeSpec{}, llmschema.ErrBadParameter.Withf("cron day %q: %v", fields[2], err)
 	}
 	month, err := parseCronField(fields[3], 1, 12)
 	if err != nil {
-		return TimeSpec{}, llm.ErrBadParameter.Withf("cron month %q: %v", fields[3], err)
+		return TimeSpec{}, llmschema.ErrBadParameter.Withf("cron month %q: %v", fields[3], err)
 	}
 	weekday, err := parseCronField(fields[4], 0, 6)
 	if err != nil {
-		return TimeSpec{}, llm.ErrBadParameter.Withf("cron weekday %q: %v", fields[4], err)
+		return TimeSpec{}, llmschema.ErrBadParameter.Withf("cron weekday %q: %v", fields[4], err)
 	}
 
 	// Deal with year
@@ -162,7 +162,7 @@ func newFromCron(s string, loc *time.Location) (TimeSpec, error) {
 	if len(fields) == 6 && fields[5] != "*" {
 		y, err := strconv.Atoi(fields[5])
 		if err != nil || y < 1970 {
-			return TimeSpec{}, llm.ErrBadParameter.Withf("cron year %q: must be * or a year >= 1970", fields[5])
+			return TimeSpec{}, llmschema.ErrBadParameter.Withf("cron year %q: must be * or a year >= 1970", fields[5])
 		}
 		year = &y
 	}
@@ -204,7 +204,7 @@ func parseCronPart(s string, min, max int) ([]int, error) {
 		var err error
 		step, err = strconv.Atoi(s[i+1:])
 		if err != nil || step <= 0 {
-			return nil, llm.ErrBadParameter.Withf("invalid step %q", s[i+1:])
+			return nil, llmschema.ErrBadParameter.Withf("invalid step %q", s[i+1:])
 		}
 		s = s[:i]
 	}
@@ -215,23 +215,23 @@ func parseCronPart(s string, min, max int) ([]int, error) {
 			var err error
 			start, err = strconv.Atoi(s[:i])
 			if err != nil {
-				return nil, llm.ErrBadParameter.Withf("invalid range start %q", s[:i])
+				return nil, llmschema.ErrBadParameter.Withf("invalid range start %q", s[:i])
 			}
 			end, err = strconv.Atoi(s[i+1:])
 			if err != nil {
-				return nil, llm.ErrBadParameter.Withf("invalid range end %q", s[i+1:])
+				return nil, llmschema.ErrBadParameter.Withf("invalid range end %q", s[i+1:])
 			}
 		} else {
 			v, err := strconv.Atoi(s)
 			if err != nil {
-				return nil, llm.ErrBadParameter.Withf("invalid value %q", s)
+				return nil, llmschema.ErrBadParameter.Withf("invalid value %q", s)
 			}
 			start, end = v, v
 		}
 	}
 
 	if start < min || end > max || start > end {
-		return nil, llm.ErrBadParameter.Withf("value %d-%d out of range [%d-%d]", start, end, min, max)
+		return nil, llmschema.ErrBadParameter.Withf("value %d-%d out of range [%d-%d]", start, end, min, max)
 	}
 
 	var result []int
@@ -439,17 +439,17 @@ func (ts *TimeSpec) UnmarshalJSON(data []byte) error {
 		return err
 	}
 	if j.Schedule == "" {
-		return llm.ErrBadParameter.With("schedule field is required")
+		return llmschema.ErrBadParameter.With("schedule field is required")
 	}
 	var loc *time.Location
 	if j.Timezone != "" {
 		if j.Timezone == "Local" {
-			return llm.ErrBadParameter.With("timezone must be a specific IANA name (e.g. Europe/London), not \"Local\"")
+			return llmschema.ErrBadParameter.With("timezone must be a specific IANA name (e.g. Europe/London), not \"Local\"")
 		}
 		var locErr error
 		loc, locErr = time.LoadLocation(j.Timezone)
 		if locErr != nil {
-			return llm.ErrBadParameter.Withf("unknown timezone %q: %v", j.Timezone, locErr)
+			return llmschema.ErrBadParameter.Withf("unknown timezone %q: %v", j.Timezone, locErr)
 		}
 	}
 	return ts.unmarshalSchedule(j.Schedule, loc)

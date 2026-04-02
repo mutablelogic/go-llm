@@ -5,6 +5,7 @@ https://github.com/ollama/ollama/tree/main/docs/api
 package ollama
 
 import (
+	"context"
 	"net/url"
 	"strings"
 	"time"
@@ -83,4 +84,18 @@ func New(endPoint string, opts ...client.ClientOpt) (*Client, error) {
 // Name returns the provider name
 func (c *Client) Name() string {
 	return c.provider
+}
+
+// versionResponse is the response from the version endpoint
+type versionResponse struct {
+	Version string `json:"version"`
+}
+
+// Ping checks the connectivity of the client and returns an error if not successful
+func (c *Client) Ping(ctx context.Context) error {
+	var response versionResponse
+	if err := c.DoWithContext(ctx, nil, &response, client.OptPath("version")); err != nil {
+		return err
+	}
+	return nil
 }

@@ -17,7 +17,7 @@ import (
 func chatRequestFromOpts(model string, session *schema.Conversation, options opt.Options) (*chatRequest, error) {
 	// Reject options that are incompatible with /api/chat
 	if options.GetBool(imageOutputKey) {
-		return nil, llm.ErrBadParameter.With("WithImageOutput is not supported by /api/chat: use /api/generate for image-generation models")
+		return nil, schema.ErrBadParameter.With("WithImageOutput is not supported by /api/chat: use /api/generate for image-generation models")
 	}
 
 	// Convert session to Ollama message format
