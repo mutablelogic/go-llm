@@ -2,11 +2,13 @@ package cmd
 
 import (
 	"fmt"
+	"os"
 
 	// Packages
 	otel "github.com/mutablelogic/go-client/pkg/otel"
 	httpclient "github.com/mutablelogic/go-llm/pkg/httpclient-new"
 	schema "github.com/mutablelogic/go-llm/pkg/schema"
+	tui "github.com/mutablelogic/go-llm/pkg/tui"
 	server "github.com/mutablelogic/go-server"
 	types "github.com/mutablelogic/go-server/pkg/types"
 	attribute "go.opentelemetry.io/otel/attribute"
@@ -59,8 +61,15 @@ func (cmd *ListProvidersCommand) Run(ctx server.Cmd) (err error) {
 			return err
 		}
 
-		fmt.Println(providers)
-		return nil
+		// Debug output
+		if ctx.IsDebug() {
+			fmt.Println(providers)
+			return nil
+		}
+
+		// Table output
+		_, err = tui.TableFor[schema.Provider]().Write(os.Stdout, providers.Body...)
+		return err
 	})
 }
 

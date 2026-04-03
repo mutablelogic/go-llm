@@ -375,6 +375,27 @@ func TestProviderListScanCount(t *testing.T) {
 	assert.Equal(uint64(3), list.Count)
 }
 
+func TestProviderCellHandlesNilOptionalFields(t *testing.T) {
+	assert := assert.New(t)
+	createdAt := time.Unix(100, 0).UTC()
+
+	provider := schema.Provider{
+		Name:      "local",
+		Provider:  "ollama",
+		CreatedAt: createdAt,
+	}
+
+	assert.Equal("local", provider.Cell(0))
+	assert.Equal("ollama", provider.Cell(1))
+	assert.Equal("", provider.Cell(2))
+	assert.Equal("false", provider.Cell(3))
+	assert.Equal("", provider.Cell(4))
+	assert.Equal("", provider.Cell(5))
+	assert.Equal("1970-01-01 00:01:40", provider.Cell(6))
+	assert.Equal("", provider.Cell(7))
+	assert.Equal("", provider.Cell(99))
+}
+
 func TestProviderInsertRequiresEncryptedCredentialsBinding(t *testing.T) {
 	assert := assert.New(t)
 	b := pg.NewBind("schema", "llm", "provider.insert", "INSERT")
