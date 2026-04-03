@@ -159,6 +159,7 @@ func (server *RunServer) llmManagerOpts(ctx server.Cmd) []llmmanager.Opt {
 	return append(opts,
 		llmmanager.WithSchemas(server.Schema.LLM, server.Schema.Auth),
 		llmmanager.WithTracer(ctx.Tracer()),
+		llmmanager.WithMeter(ctx.Meter()),
 		llmmanager.WithClientOpts(clientopts...),
 	)
 }

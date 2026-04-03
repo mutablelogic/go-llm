@@ -116,6 +116,14 @@ func (r *Registry) Get(name string) llm.Client {
 	return nil
 }
 
+// Count returns the number of providers currently loaded in the registry.
+func (r *Registry) Count() int {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+
+	return len(r.providers)
+}
+
 // GetModels returns filtered models for a single provider using optional include/exclude regex patterns.
 func (r *Registry) GetModels(ctx context.Context, provider *schema.Provider) ([]schema.Model, error) {
 	if provider == nil {

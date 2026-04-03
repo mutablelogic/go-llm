@@ -42,7 +42,7 @@ func (m *Manager) Run(ctx context.Context, logger *slog.Logger) error {
 	if m.Broadcaster != nil {
 		if err := m.Broadcaster.Subscribe(ctx, func(change broadcaster.ChangeNotification) {
 			logger.DebugContext(ctx, "Changes", "schema", change.Schema, "table", change.Table, "action", change.Action)
-			if changeMatches(change, m.opt.llmschema, "provider", "") {
+			if changeMatches(change, m.llmschema, "provider", "") {
 				providerChange <- change
 			}
 		}); err != nil {

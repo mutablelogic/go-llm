@@ -12,6 +12,7 @@ import (
 	pg "github.com/mutablelogic/go-pg"
 	broadcaster "github.com/mutablelogic/go-pg/pkg/broadcaster"
 	attribute "go.opentelemetry.io/otel/attribute"
+	metric "go.opentelemetry.io/otel/metric"
 )
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -82,6 +83,12 @@ func New(ctx context.Context, pool pg.PoolConn, opts ...Opt) (*Manager, error) {
 		self.Registry = registry
 	}
 
+	// Register metrics after the registry has been initialized so callbacks can
+	// safely read manager state during collection.
+	if err := self.registerMetrics(); err != nil {
+		return nil, err
+	}
+
 	// Return success
 	return self, nil
 }
@@ -109,5 +116,28 @@ func bootstrap(ctx context.Context, conn pg.Conn, schemaName string) error {
 	}
 
 	// Return success
+	return nil
+}
+
+func (m *Manager) registerMetrics() error {
+	if m.metrics == nil || m.Registry == nil {
+		return nil
+	}
+
+	gauge, err := m.metrics.Float64ObservableGauge(
+		"llmmanager.providers",
+		metric.WithDescription("Number of providers loaded in the in-memory registry"),
+	)
+	if err != nil {
+		return fmt.Errorf("register llmmanager.providers gauge: %w", err)
+	}
+
+	if _, err := m.metrics.RegisterCallback(func(ctx context.Context, observer metric.Observer) error {
+		observer.ObserveFloat64(gauge, float64(m.Registry.Count()))
+		return nil
+	}, gauge); err != nil {
+		return fmt.Errorf("register llmmanager.providers callback: %w", err)
+	}
+
 	return nil
 }

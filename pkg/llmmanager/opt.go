@@ -21,6 +21,7 @@ import (
 	crypto "github.com/djthorpe/go-auth/pkg/crypto"
 	client "github.com/mutablelogic/go-client"
 	schema "github.com/mutablelogic/go-llm/pkg/schema"
+	metric "go.opentelemetry.io/otel/metric"
 	trace "go.opentelemetry.io/otel/trace"
 )
 
@@ -36,6 +37,7 @@ type manageropt struct {
 	authschema  string
 	channel     string
 	tracer      trace.Tracer
+	metrics     metric.Meter
 	passphrases *crypto.Passphrases
 	clientopts  []client.ClientOpt
 }
@@ -82,10 +84,15 @@ func WithSchemas(llm, auth string) Opt {
 // WithTracer sets the OpenTelemetry tracer used for manager spans.
 func WithTracer(tracer trace.Tracer) Opt {
 	return func(o *manageropt) error {
-		if tracer == nil {
-			return fmt.Errorf("tracer is required")
-		}
 		o.tracer = tracer
+		return nil
+	}
+}
+
+// WithMeter sets the OpenTelemetry meter used for manager metrics.
+func WithMeter(meter metric.Meter) Opt {
+	return func(o *manageropt) error {
+		o.metrics = meter
 		return nil
 	}
 }
