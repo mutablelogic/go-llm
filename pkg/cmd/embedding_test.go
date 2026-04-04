@@ -49,11 +49,6 @@ func TestWriteEmbeddingCSVMismatchedRows(t *testing.T) {
 	assert.Error(t, err)
 }
 
-func TestDefaultEmbeddingOutputPath(t *testing.T) {
-	assert.Equal(t, "/tmp/input.embeddings.csv", defaultEmbeddingOutputPath("/tmp/input.csv"))
-	assert.Equal(t, "/tmp/input.embeddings.csv", defaultEmbeddingOutputPath("/tmp/input"))
-}
-
 func TestEmbeddingCommandInputFromArgs(t *testing.T) {
 	input, err := (EmbeddingCommand{EmbeddingRequest: schema.EmbeddingRequest{Input: []string{"alpha", "beta"}}}).input()
 	if !assert.NoError(t, err) {
@@ -74,8 +69,8 @@ func TestEmbeddingCommandInputMutuallyExclusive(t *testing.T) {
 }
 
 func TestEmbeddingCommandOutputPath(t *testing.T) {
-	assert.Equal(t, "embeddings.csv", (EmbeddingCommand{}).outputPath())
-	assert.Equal(t, "/tmp/input.embeddings.csv", (EmbeddingCommand{CSV: "/tmp/input.csv"}).outputPath())
+	assert.Equal(t, "", (EmbeddingCommand{}).outputPath())
+	assert.Equal(t, "", (EmbeddingCommand{CSV: "/tmp/input.csv"}).outputPath())
 	assert.Equal(t, "/tmp/out.csv", (EmbeddingCommand{Out: "/tmp/out.csv"}).outputPath())
 }
 

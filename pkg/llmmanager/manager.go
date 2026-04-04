@@ -9,6 +9,7 @@ import (
 	otel "github.com/mutablelogic/go-client/pkg/otel"
 	provider "github.com/mutablelogic/go-llm/pkg/provider"
 	schema "github.com/mutablelogic/go-llm/pkg/schema"
+	toolkit "github.com/mutablelogic/go-llm/pkg/toolkit"
 	pg "github.com/mutablelogic/go-pg"
 	broadcaster "github.com/mutablelogic/go-pg/pkg/broadcaster"
 	attribute "go.opentelemetry.io/otel/attribute"
@@ -23,6 +24,7 @@ type Manager struct {
 	pg.PoolConn
 	broadcaster.Broadcaster
 	*provider.Registry
+	toolkit.Toolkit
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -83,6 +85,7 @@ func New(ctx context.Context, pool pg.PoolConn, opts ...Opt) (*Manager, error) {
 		self.Registry = registry
 	}
 
+	// TEST
 	// Register metrics after the registry has been initialized so callbacks can
 	// safely read manager state during collection.
 	if err := self.registerMetrics(); err != nil {

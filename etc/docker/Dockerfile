@@ -8,7 +8,7 @@ ARG ARCH
 WORKDIR /usr/src/app
 COPY . .
 
-RUN OS=${OS} ARCH=${ARCH} make build
+RUN OS=${OS} ARCH=${ARCH} make llm
 
 # Runtime stage
 FROM --platform=${OS}/${ARCH} debian:trixie-slim

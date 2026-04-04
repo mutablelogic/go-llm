@@ -20,6 +20,7 @@ import (
 	// Packages
 	crypto "github.com/djthorpe/go-auth/pkg/crypto"
 	client "github.com/mutablelogic/go-client"
+	"github.com/mutablelogic/go-llm"
 	schema "github.com/mutablelogic/go-llm/pkg/schema"
 	metric "go.opentelemetry.io/otel/metric"
 	trace "go.opentelemetry.io/otel/trace"
@@ -40,6 +41,9 @@ type manageropt struct {
 	metrics     metric.Meter
 	passphrases *crypto.Passphrases
 	clientopts  []client.ClientOpt
+	tools       []llm.Tool
+	prompts     []llm.Prompt
+	resources   []llm.Resource
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -122,6 +126,33 @@ func WithNotificationChannel(name string) Opt {
 func WithClientOpts(opts ...client.ClientOpt) Opt {
 	return func(o *manageropt) error {
 		o.clientopts = append(o.clientopts, opts...)
+		return nil
+	}
+}
+
+// WithTools provides unified tool options for the LLM model
+// providers
+func WithTools(opts ...llm.Tool) Opt {
+	return func(o *manageropt) error {
+		o.tools = append(o.tools, opts...)
+		return nil
+	}
+}
+
+// WithPrompts provides unified prompt options for the LLM model
+// providers
+func WithPrompts(opts ...llm.Prompt) Opt {
+	return func(o *manageropt) error {
+		o.prompts = append(o.prompts, opts...)
+		return nil
+	}
+}
+
+// WithResources provides unified resource options for the LLM model
+// providers
+func WithResources(opts ...llm.Resource) Opt {
+	return func(o *manageropt) error {
+		o.resources = append(o.resources, opts...)
 		return nil
 	}
 }

@@ -7,6 +7,7 @@ import (
 	"regexp"
 	"strings"
 	"sync"
+	"time"
 
 	// Packages
 	client "github.com/mutablelogic/go-client"
@@ -219,7 +220,7 @@ func (r *Registry) Set(schema *schema.Provider, credentials schema.ProviderCrede
 
 	// If the provider has been created but not modified, do not update the client
 	existing, exists := r.providers[schema.Name]
-	if exists && existing.schema.ModifiedAt == schema.ModifiedAt {
+	if exists && sameModifiedAt(existing.schema.ModifiedAt, schema.ModifiedAt) {
 		// No update needed, return early
 		return false, false, nil
 	}
@@ -317,6 +318,13 @@ func matchesModelPattern(patterns []*regexp.Regexp, name string) bool {
 		}
 	}
 	return false
+}
+
+func sameModifiedAt(left, right *time.Time) bool {
+	if left == nil || right == nil {
+		return left == right
+	}
+	return left.Equal(*right)
 }
 
 func matchesModelFilters(includePatterns, excludePatterns []*regexp.Regexp, name string) bool {

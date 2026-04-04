@@ -9,12 +9,13 @@ import (
 	"slices"
 	"sync"
 
+	// Packages
 	llm "github.com/mutablelogic/go-llm"
 	schema "github.com/mutablelogic/go-llm/pkg/schema"
 	prompt "github.com/mutablelogic/go-llm/pkg/toolkit/prompt"
 	resource "github.com/mutablelogic/go-llm/pkg/toolkit/resource"
 	tool "github.com/mutablelogic/go-llm/pkg/toolkit/tool"
-	"github.com/mutablelogic/go-server/pkg/types"
+	types "github.com/mutablelogic/go-server/pkg/types"
 	errgroup "golang.org/x/sync/errgroup"
 )
 

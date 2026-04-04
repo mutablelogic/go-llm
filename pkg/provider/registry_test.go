@@ -3,6 +3,7 @@ package provider
 import (
 	"context"
 	"testing"
+	"time"
 
 	// Packages
 	llm "github.com/mutablelogic/go-llm"
@@ -197,4 +198,69 @@ func TestRegistryGetModelWrapsProviderError(t *testing.T) {
 		assert.Contains(err.Error(), schema.Gemini)
 		assert.Contains(err.Error(), `get model "x/flux2-klein:latest"`)
 	}
+}
+
+func TestRegistrySetSkipsUnchangedModifiedAtValue(t *testing.T) {
+	assert := assert.New(t)
+
+	r := New()
+	modifiedAt := time.Unix(1710000000, 0).UTC()
+	first := &schema.Provider{
+		Name:       "eliza",
+		Provider:   schema.Eliza,
+		ModifiedAt: &modifiedAt,
+	}
+
+	updated, deleted, err := r.Set(first, schema.ProviderCredentials{})
+	if !assert.NoError(err) {
+		return
+	}
+	assert.True(updated)
+	assert.False(deleted)
+
+	// Simulate a fresh DB scan returning the same timestamp value with a new pointer.
+	modifiedAtCopy := modifiedAt
+	second := &schema.Provider{
+		Name:       "eliza",
+		Provider:   schema.Eliza,
+		ModifiedAt: &modifiedAtCopy,
+	}
+
+	updated, deleted, err = r.Set(second, schema.ProviderCredentials{})
+	if !assert.NoError(err) {
+		return
+	}
+	assert.False(updated)
+	assert.False(deleted)
+	assert.NotNil(r.Get("eliza"))
+}
+
+func TestRegistrySetUpdatesWhenModifiedAtChanges(t *testing.T) {
+	assert := assert.New(t)
+
+	r := New()
+	firstTime := time.Unix(1710000000, 0).UTC()
+	secondTime := firstTime.Add(time.Minute)
+
+	updated, deleted, err := r.Set(&schema.Provider{
+		Name:       "eliza",
+		Provider:   schema.Eliza,
+		ModifiedAt: &firstTime,
+	}, schema.ProviderCredentials{})
+	if !assert.NoError(err) {
+		return
+	}
+	assert.True(updated)
+	assert.False(deleted)
+
+	updated, deleted, err = r.Set(&schema.Provider{
+		Name:       "eliza",
+		Provider:   schema.Eliza,
+		ModifiedAt: &secondTime,
+	}, schema.ProviderCredentials{})
+	if !assert.NoError(err) {
+		return
+	}
+	assert.True(updated)
+	assert.False(deleted)
 }

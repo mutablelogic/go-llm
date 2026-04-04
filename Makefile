@@ -4,7 +4,7 @@ DOCKER ?= $(shell which docker 2>/dev/null)
 
 # Locations
 BUILD_DIR ?= build
-CMD_DIR := $(wildcard cmd/*)
+CMD_DIR := $(filter-out cmd/_%,$(wildcard cmd/*))
 
 # Set OS and Architecture
 ARCH ?= $(shell arch | tr A-Z a-z | sed 's/x86_64/amd64/' | sed 's/i386/amd64/' | sed 's/armv7l/arm/' | sed 's/aarch64/arm64/')
@@ -39,11 +39,14 @@ $(CMD_DIR): go-dep mkdir
 	@echo Build command $(notdir $@) GOOS=${OS} GOARCH=${ARCH}
 	@GOOS=${OS} GOARCH=${ARCH} ${GO} build ${BUILD_FLAGS} -o ${BUILD_DIR}/$(notdir $@) ./$@
 
-# Build the client-only CLI (no server or telegram)
-.PHONY: llm-client
-llm-client: go-dep mkdir
-	@echo Build llm-client GOOS=${OS} GOARCH=${ARCH}
-	@GOOS=${OS} GOARCH=${ARCH} ${GO} build ${BUILD_FLAGS} -tags client -o ${BUILD_DIR}/llm ./cmd/llm
+# Build the primary CLI from the active llmserver entrypoint
+.PHONY: llm llm-client
+llm: go-dep mkdir
+	@echo Build llm GOOS=${OS} GOARCH=${ARCH}
+	@GOOS=${OS} GOARCH=${ARCH} ${GO} build ${BUILD_FLAGS} -o ${BUILD_DIR}/llm ./cmd/llmserver
+
+# Legacy alias retained for existing scripts.
+llm-client: llm
 
 # Build the docker image
 .PHONY: docker

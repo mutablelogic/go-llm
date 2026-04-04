@@ -16,12 +16,15 @@ package manager
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 	"sync"
 	"time"
 
 	// Packages
+	llm "github.com/mutablelogic/go-llm"
 	schema "github.com/mutablelogic/go-llm/pkg/schema"
+	toolkit "github.com/mutablelogic/go-llm/pkg/toolkit"
 	pg "github.com/mutablelogic/go-pg"
 	broadcaster "github.com/mutablelogic/go-pg/pkg/broadcaster"
 )
@@ -34,6 +37,45 @@ func (m *Manager) Run(ctx context.Context, logger *slog.Logger) error {
 	var sync sync.Once
 	ticker := time.NewTimer(time.Second)
 	defer ticker.Stop()
+
+	// Create the toolkit and add any tools, prompts, and resources that were
+	// added in the options
+	toolkitOpts := []toolkit.Option{
+		toolkit.WithTracer(m.tracer),
+		toolkit.WithDelegate(m),
+		toolkit.WithLogger(logger),
+	}
+	toolkitOpts = append(toolkitOpts, toolkit.WithTool(m.tools...))
+	toolkitOpts = append(toolkitOpts, toolkit.WithPrompt(m.prompts...))
+	toolkitOpts = append(toolkitOpts, toolkit.WithResource(m.resources...))
+	if tookit, err := toolkit.New(toolkitOpts...); err != nil {
+		return fmt.Errorf("create toolkit: %w", err)
+	} else {
+		m.Toolkit = tookit
+	}
+
+	// Report the initial list of tools, prompts and resources in the toolkit.
+	if resp, err := m.Toolkit.List(ctx, toolkit.ListRequest{
+		Type: toolkit.ListTypeTools,
+	}); err != nil {
+		return err
+	} else if len(resp.Tools) > 0 {
+		logger.InfoContext(ctx, "Toolkit:", "tools", resp)
+	}
+	if resp, err := m.Toolkit.List(ctx, toolkit.ListRequest{
+		Type: toolkit.ListTypePrompts,
+	}); err != nil {
+		return err
+	} else if len(resp.Prompts) > 0 {
+		logger.InfoContext(ctx, "Toolkit:", "prompts", resp)
+	}
+	if resp, err := m.Toolkit.List(ctx, toolkit.ListRequest{
+		Type: toolkit.ListTypeResources,
+	}); err != nil {
+		return err
+	} else if len(resp.Resources) > 0 {
+		logger.InfoContext(ctx, "Toolkit:", "resources", resp)
+	}
 
 	// Subscribe to database notifications, if configured
 	// We provide a small buffered channel to avoid blocking the database listener
@@ -86,6 +128,31 @@ func (m *Manager) Run(ctx context.Context, logger *slog.Logger) error {
 // SyncProviders refreshes the in-memory provider registry from the database.
 func (m *Manager) SyncProviders(ctx context.Context) ([]string, []string, error) {
 	return m.syncProviders(ctx)
+}
+
+///////////////////////////////////////////////////////////////////////////////
+// PRIVATE METHODS - TOOLKIT DELEGATE
+
+// OnEvent is called when a lifecycle or list-change notification is fired.
+// ConnectorEventStateChange events are handled internally by the toolkit and
+// are never forwarded here. For all other connector-originated events the
+// Connector field is set to the originating connector; for builtin add/remove
+// operations Connector will be nil.
+func (m *Manager) OnEvent(evt toolkit.ConnectorEvent) {
+	fmt.Println("Event:", evt.Kind, "Connector:", evt.Connector, "State:", evt.State)
+}
+
+// Call executes a prompt via the manager, passing optional input resources.
+func (m *Manager) Call(context.Context, llm.Prompt, ...llm.Resource) (llm.Resource, error) {
+	return nil, fmt.Errorf("Call is not implemented")
+}
+
+// CreateConnector is called to create a new connector for the given URL.
+// The onEvent callback must be called by the connector to report lifecycle
+// and list-change events back to the toolkit. The toolkit injects the
+// Connector field before forwarding to OnEvent, so the caller need not set it.
+func (m *Manager) CreateConnector(url string, onEvent func(evt toolkit.ConnectorEvent)) (llm.Connector, error) {
+	return nil, fmt.Errorf("CreateConnector is not implemented")
 }
 
 ///////////////////////////////////////////////////////////////////////////////
