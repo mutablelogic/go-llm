@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"bytes"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -64,6 +65,82 @@ func TestAskAttachmentsInvalidGlob(t *testing.T) {
 	_, err := askAttachments([]string{"["})
 	if assert.Error(err) {
 		assert.Contains(err.Error(), "invalid glob pattern")
+	}
+}
+
+func TestAskResponseAttachmentURLUsesOutputDirAndBasename(t *testing.T) {
+	assert := assert.New(t)
+	out := t.TempDir()
+	attachment := &schema.Attachment{
+		ContentType: "image/png",
+		URL:         &url.URL{Scheme: "https", Host: "example.com", Path: "/nested/cat.png"},
+	}
+
+	target, err := askResponseAttachmentURL(attachment, out, 0)
+	if !assert.NoError(err) {
+		return
+	}
+
+	assert.Equal("file", target.Scheme)
+	assert.Equal(filepath.Join(out, "cat.png"), target.Path)
+}
+
+func TestAskResponseAttachmentURLGeneratesFilenameFromContentType(t *testing.T) {
+	assert := assert.New(t)
+	out := t.TempDir()
+	attachment := &schema.Attachment{ContentType: "image/png"}
+
+	target, err := askResponseAttachmentURL(attachment, out, 1)
+	if !assert.NoError(err) {
+		return
+	}
+
+	assert.Equal("file", target.Scheme)
+	assert.Equal(filepath.Join(out, "attachment-002.png"), target.Path)
+}
+
+func TestWriteAskResponseAttachmentWritesFileAndAvoidsCollisions(t *testing.T) {
+	assert := assert.New(t)
+	out := t.TempDir()
+	first := &schema.Attachment{
+		ContentType: "text/plain; charset=utf-8",
+		Data:        []byte("alpha"),
+		URL:         &url.URL{Scheme: "file", Path: "/tmp/report.txt"},
+	}
+	second := &schema.Attachment{
+		ContentType: "text/plain; charset=utf-8",
+		Data:        []byte("beta"),
+		URL:         &url.URL{Scheme: "file", Path: "/tmp/report.txt"},
+	}
+
+	firstTarget, err := writeAskResponseAttachment(first, out, 0)
+	if !assert.NoError(err) {
+		return
+	}
+	secondTarget, err := writeAskResponseAttachment(second, out, 1)
+	if !assert.NoError(err) {
+		return
+	}
+
+	assert.Equal(filepath.Join(out, "report.txt"), firstTarget.Path)
+	assert.Equal(filepath.Join(out, "report-2.txt"), secondTarget.Path)
+
+	firstData, err := os.ReadFile(firstTarget.Path)
+	if !assert.NoError(err) {
+		return
+	}
+	secondData, err := os.ReadFile(secondTarget.Path)
+	if !assert.NoError(err) {
+		return
+	}
+
+	assert.Equal([]byte("alpha"), firstData)
+	assert.Equal([]byte("beta"), secondData)
+	if assert.NotNil(first.URL) {
+		assert.Equal(firstTarget.Path, first.URL.Path)
+	}
+	if assert.NotNil(second.URL) {
+		assert.Equal(secondTarget.Path, second.URL.Path)
 	}
 }
 

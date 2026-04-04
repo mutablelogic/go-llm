@@ -116,6 +116,27 @@ func TestRegistryGetModelsOverwritesOwnedBy(t *testing.T) {
 	}
 }
 
+func TestRegistryGetModelsWrapsProviderError(t *testing.T) {
+	assert := assert.New(t)
+
+	r := New()
+	r.providers["mistral-primary"] = provider{client: &registryModelClient{
+		name: "mistral",
+		err:  schema.ErrBadParameter.With("backend boom"),
+	}}
+
+	_, err := r.GetModels(context.Background(), &schema.Provider{
+		Name:     "mistral-primary",
+		Provider: schema.Mistral,
+	})
+	if assert.Error(err) {
+		assert.ErrorIs(err, schema.ErrBadParameter)
+		assert.Contains(err.Error(), "mistral-primary")
+		assert.Contains(err.Error(), schema.Mistral)
+		assert.Contains(err.Error(), "list models")
+	}
+}
+
 func TestRegistryGetModelIncludeExclude(t *testing.T) {
 	assert := assert.New(t)
 
@@ -155,4 +176,25 @@ func TestRegistryGetModelOverwritesOwnedBy(t *testing.T) {
 		return
 	}
 	assert.Equal("proxy", model.OwnedBy)
+}
+
+func TestRegistryGetModelWrapsProviderError(t *testing.T) {
+	assert := assert.New(t)
+
+	r := New()
+	r.providers["google-prod"] = provider{client: &registryModelClient{
+		name: "google",
+		err:  schema.ErrBadParameter.With("unexpected model name format"),
+	}}
+
+	_, err := r.GetModel(context.Background(), &schema.Provider{
+		Name:     "google-prod",
+		Provider: schema.Gemini,
+	}, "x/flux2-klein:latest")
+	if assert.Error(err) {
+		assert.ErrorIs(err, schema.ErrBadParameter)
+		assert.Contains(err.Error(), "google-prod")
+		assert.Contains(err.Error(), schema.Gemini)
+		assert.Contains(err.Error(), `get model "x/flux2-klein:latest"`)
+	}
 }

@@ -238,16 +238,17 @@ type embedResponse struct {
 
 // model represents the API response for a model from Ollama
 type model struct {
-	Name       string       `json:"name"`
-	Model      string       `json:"model,omitempty"`
-	ModifiedAt time.Time    `json:"modified_at"`
-	Size       int64        `json:"size,omitempty"`
-	Digest     string       `json:"digest,omitempty"`
-	Details    ModelDetails `json:"details"`
-	File       string       `json:"modelfile,omitempty"`
-	Parameters string       `json:"parameters,omitempty"`
-	Template   string       `json:"template,omitempty"`
-	Info       ModelInfo    `json:"model_info,omitempty"`
+	Name         string       `json:"name"`
+	Model        string       `json:"model,omitempty"`
+	ModifiedAt   time.Time    `json:"modified_at"`
+	Size         int64        `json:"size,omitempty"`
+	Digest       string       `json:"digest,omitempty"`
+	Details      ModelDetails `json:"details"`
+	Capabilities []string     `json:"capabilities,omitempty"`
+	File         string       `json:"modelfile,omitempty"`
+	Parameters   string       `json:"parameters,omitempty"`
+	Template     string       `json:"template,omitempty"`
+	Info         ModelInfo    `json:"model_info,omitempty"`
 }
 
 // ModelDetails are the details of the model

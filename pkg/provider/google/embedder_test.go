@@ -94,9 +94,10 @@ func Test_embedding_001(t *testing.T) {
 	assert.NoError(err)
 
 	model := schema.Model{Name: "gemini-embedding-001"}
-	vector, err := client.Embedding(context.TODO(), model, "Hello, world!")
+	vector, usage, err := client.Embedding(context.TODO(), model, "Hello, world!")
 	assert.NoError(err)
 	assert.NotEmpty(vector)
+	assert.Nil(usage)
 	t.Logf("Got embedding vector with %d dimensions", len(vector))
 }
 
@@ -119,9 +120,10 @@ func Test_embedding_002(t *testing.T) {
 		"How are you?",
 		"The quick brown fox jumps over the lazy dog.",
 	}
-	vectors, err := client.BatchEmbedding(context.TODO(), model, texts)
+	vectors, usage, err := client.BatchEmbedding(context.TODO(), model, texts)
 	assert.NoError(err)
 	assert.Len(vectors, len(texts))
+	assert.Nil(usage)
 
 	for i, v := range vectors {
 		assert.NotEmpty(v)
@@ -143,11 +145,12 @@ func Test_embedding_003(t *testing.T) {
 	assert.NoError(err)
 
 	model := schema.Model{Name: "gemini-embedding-001"}
-	vector, err := client.Embedding(context.TODO(), model, "Hello, world!",
+	vector, usage, err := client.Embedding(context.TODO(), model, "Hello, world!",
 		WithOutputDimensionality(256),
 	)
 	assert.NoError(err)
 	assert.Len(vector, 256)
+	assert.Nil(usage)
 	t.Logf("Got embedding vector with %d dimensions", len(vector))
 }
 
@@ -158,7 +161,7 @@ func Test_embedding_004(t *testing.T) {
 	assert.NoError(err)
 
 	model := schema.Model{Name: "gemini-embedding-001"}
-	_, err = client.BatchEmbedding(context.TODO(), model, []string{})
+	_, _, err = client.BatchEmbedding(context.TODO(), model, []string{})
 	assert.Error(err)
 }
 
@@ -176,10 +179,11 @@ func Test_embedding_005(t *testing.T) {
 	assert.NoError(err)
 
 	model := schema.Model{Name: "gemini-embedding-001"}
-	vector, err := client.Embedding(context.TODO(), model, "What is the meaning of life?",
+	vector, usage, err := client.Embedding(context.TODO(), model, "What is the meaning of life?",
 		WithTaskType("RETRIEVAL_QUERY"),
 	)
 	assert.NoError(err)
 	assert.NotEmpty(vector)
+	assert.Nil(usage)
 	t.Logf("Got embedding vector with %d dimensions (task type: RETRIEVAL_QUERY)", len(vector))
 }

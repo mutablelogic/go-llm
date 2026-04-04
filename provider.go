@@ -29,10 +29,10 @@ type Client interface {
 // Embedder is an interface for generating text embeddings
 type Embedder interface {
 	// Embedding generates an embedding vector for a single text
-	Embedding(context.Context, schema.Model, string, ...opt.Opt) ([]float64, error)
+	Embedding(context.Context, schema.Model, string, ...opt.Opt) ([]float64, *schema.UsageMeta, error)
 
 	// BatchEmbedding generates embedding vectors for multiple texts
-	BatchEmbedding(context.Context, schema.Model, []string, ...opt.Opt) ([][]float64, error)
+	BatchEmbedding(context.Context, schema.Model, []string, ...opt.Opt) ([][]float64, *schema.UsageMeta, error)
 }
 
 // Downloader is an interface for managing model files
@@ -47,8 +47,8 @@ type Downloader interface {
 // Generator is an interface for generating response messages and conducting conversations
 type Generator interface {
 	// WithoutSession sends a single message and returns the response (stateless)
-	WithoutSession(context.Context, schema.Model, *schema.Message, ...opt.Opt) (*schema.Message, *schema.Usage, error)
+	WithoutSession(context.Context, schema.Model, *schema.Message, ...opt.Opt) (*schema.Message, *schema.UsageMeta, error)
 
 	// WithSession sends a message within a session and returns the response (stateful)
-	WithSession(context.Context, schema.Model, *schema.Conversation, *schema.Message, ...opt.Opt) (*schema.Message, *schema.Usage, error)
+	WithSession(context.Context, schema.Model, *schema.Conversation, *schema.Message, ...opt.Opt) (*schema.Message, *schema.UsageMeta, error)
 }

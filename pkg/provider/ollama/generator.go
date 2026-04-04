@@ -21,7 +21,7 @@ var _ llm.Generator = (*Client)(nil)
 
 // WithoutSession sends a single stateless message via POST /api/generate and
 // returns the response. It does not support tools, thinking, or tool_choice.
-func (c *Client) WithoutSession(ctx context.Context, model schema.Model, message *schema.Message, opts ...opt.Opt) (*schema.Message, *schema.Usage, error) {
+func (c *Client) WithoutSession(ctx context.Context, model schema.Model, message *schema.Message, opts ...opt.Opt) (*schema.Message, *schema.UsageMeta, error) {
 	if message == nil {
 		return nil, nil, schema.ErrBadParameter.With("message is required")
 	}
@@ -31,7 +31,7 @@ func (c *Client) WithoutSession(ctx context.Context, model schema.Model, message
 // WithSession sends a message within a multi-turn conversation via POST
 // /api/chat and returns the response. The message is appended to the session
 // before the request is sent; the assistant reply is appended afterwards.
-func (c *Client) WithSession(ctx context.Context, model schema.Model, session *schema.Conversation, message *schema.Message, opts ...opt.Opt) (*schema.Message, *schema.Usage, error) {
+func (c *Client) WithSession(ctx context.Context, model schema.Model, session *schema.Conversation, message *schema.Message, opts ...opt.Opt) (*schema.Message, *schema.UsageMeta, error) {
 	if session == nil {
 		return nil, nil, schema.ErrBadParameter.With("session is required")
 	}
@@ -45,7 +45,7 @@ func (c *Client) WithSession(ctx context.Context, model schema.Model, session *s
 ///////////////////////////////////////////////////////////////////////////////
 // PRIVATE METHODS — /api/generate
 
-func (c *Client) generate(ctx context.Context, model string, message *schema.Message, opts ...opt.Opt) (*schema.Message, *schema.Usage, error) {
+func (c *Client) generate(ctx context.Context, model string, message *schema.Message, opts ...opt.Opt) (*schema.Message, *schema.UsageMeta, error) {
 	options, err := opt.Apply(opts...)
 	if err != nil {
 		return nil, nil, err
@@ -79,7 +79,7 @@ func (c *Client) generate(ctx context.Context, model string, message *schema.Mes
 
 // generateStream handles ndjson streaming for /api/generate.
 // Ollama sends one JSON object per line; the final object has done=true.
-func (c *Client) generateStream(ctx context.Context, payload client.Payload, streamFn opt.StreamFn) (*schema.Message, *schema.Usage, error) {
+func (c *Client) generateStream(ctx context.Context, payload client.Payload, streamFn opt.StreamFn) (*schema.Message, *schema.UsageMeta, error) {
 	var final generateResponse
 	var accResponse strings.Builder
 
@@ -116,12 +116,12 @@ func (c *Client) generateStream(ctx context.Context, payload client.Payload, str
 	return c.processGenerateResponse(&final)
 }
 
-func (c *Client) processGenerateResponse(resp *generateResponse) (*schema.Message, *schema.Usage, error) {
+func (c *Client) processGenerateResponse(resp *generateResponse) (*schema.Message, *schema.UsageMeta, error) {
 	message, err := messageFromGenerateResponse(resp)
 	if err != nil {
 		return nil, nil, err
 	}
-	usage := &schema.Usage{
+	usage := &schema.UsageMeta{
 		InputTokens:  uint(resp.PromptEvalCount),
 		OutputTokens: uint(resp.EvalCount),
 	}
@@ -134,7 +134,7 @@ func (c *Client) processGenerateResponse(resp *generateResponse) (*schema.Messag
 ///////////////////////////////////////////////////////////////////////////////
 // PRIVATE METHODS — /api/chat
 
-func (c *Client) chat(ctx context.Context, model string, session *schema.Conversation, opts ...opt.Opt) (*schema.Message, *schema.Usage, error) {
+func (c *Client) chat(ctx context.Context, model string, session *schema.Conversation, opts ...opt.Opt) (*schema.Message, *schema.UsageMeta, error) {
 	options, err := opt.Apply(opts...)
 	if err != nil {
 		return nil, nil, err
@@ -167,7 +167,7 @@ func (c *Client) chat(ctx context.Context, model string, session *schema.Convers
 }
 
 // chatStream handles ndjson streaming for /api/chat.
-func (c *Client) chatStream(ctx context.Context, payload client.Payload, session *schema.Conversation, streamFn opt.StreamFn) (*schema.Message, *schema.Usage, error) {
+func (c *Client) chatStream(ctx context.Context, payload client.Payload, session *schema.Conversation, streamFn opt.StreamFn) (*schema.Message, *schema.UsageMeta, error) {
 	var final chatResponse
 	var accContent, accThinking strings.Builder
 
@@ -214,12 +214,12 @@ func (c *Client) chatStream(ctx context.Context, payload client.Payload, session
 	return c.processChatResponse(session, &final)
 }
 
-func (c *Client) processChatResponse(session *schema.Conversation, resp *chatResponse) (*schema.Message, *schema.Usage, error) {
+func (c *Client) processChatResponse(session *schema.Conversation, resp *chatResponse) (*schema.Message, *schema.UsageMeta, error) {
 	message, err := messageFromOllamaResponse(resp)
 	if err != nil {
 		return nil, nil, err
 	}
-	usage := &schema.Usage{
+	usage := &schema.UsageMeta{
 		InputTokens:  uint(resp.PromptEvalCount),
 		OutputTokens: uint(resp.EvalCount),
 	}

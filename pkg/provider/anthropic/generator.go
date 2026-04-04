@@ -23,7 +23,7 @@ var _ llm.Generator = (*Client)(nil)
 // PUBLIC METHODS
 
 // WithoutSession sends a single message and returns the response (stateless)
-func (c *Client) WithoutSession(ctx context.Context, model schema.Model, message *schema.Message, opts ...opt.Opt) (*schema.Message, *schema.Usage, error) {
+func (c *Client) WithoutSession(ctx context.Context, model schema.Model, message *schema.Message, opts ...opt.Opt) (*schema.Message, *schema.UsageMeta, error) {
 	if message == nil {
 		return nil, nil, schema.ErrBadParameter.With("message is required")
 	}
@@ -32,7 +32,7 @@ func (c *Client) WithoutSession(ctx context.Context, model schema.Model, message
 }
 
 // WithSession sends a message within a session and returns the response (stateful)
-func (c *Client) WithSession(ctx context.Context, model schema.Model, session *schema.Conversation, message *schema.Message, opts ...opt.Opt) (*schema.Message, *schema.Usage, error) {
+func (c *Client) WithSession(ctx context.Context, model schema.Model, session *schema.Conversation, message *schema.Message, opts ...opt.Opt) (*schema.Message, *schema.UsageMeta, error) {
 	if session == nil {
 		return nil, nil, schema.ErrBadParameter.With("session is required")
 	}
@@ -47,7 +47,7 @@ func (c *Client) WithSession(ctx context.Context, model schema.Model, session *s
 // PRIVATE METHODS
 
 // generate is the core method that builds a request from options and sends it
-func (c *Client) generate(ctx context.Context, model string, session *schema.Conversation, opts ...opt.Opt) (*schema.Message, *schema.Usage, error) {
+func (c *Client) generate(ctx context.Context, model string, session *schema.Conversation, opts ...opt.Opt) (*schema.Message, *schema.UsageMeta, error) {
 	// Apply options
 	options, err := opt.Apply(opts...)
 	if err != nil {
@@ -87,7 +87,7 @@ func (c *Client) generate(ctx context.Context, model string, session *schema.Con
 }
 
 // generateStream handles the SSE streaming response from the Anthropic API
-func (c *Client) generateStream(ctx context.Context, payload client.Payload, session *schema.Conversation, streamFn opt.StreamFn) (*schema.Message, *schema.Usage, error) {
+func (c *Client) generateStream(ctx context.Context, payload client.Payload, session *schema.Conversation, streamFn opt.StreamFn) (*schema.Message, *schema.UsageMeta, error) {
 	// Accumulators for building the final response
 	var (
 		role       string
@@ -199,7 +199,7 @@ func (c *Client) generateStream(ctx context.Context, payload client.Payload, ses
 	session.AppendWithOuput(*message, usage.InputTokens, usage.OutputTokens)
 
 	// Build usage
-	usageResult := &schema.Usage{
+	usageResult := &schema.UsageMeta{
 		InputTokens:  usage.InputTokens,
 		OutputTokens: usage.OutputTokens,
 	}
@@ -216,7 +216,7 @@ func (c *Client) generateStream(ctx context.Context, payload client.Payload, ses
 }
 
 // processResponse handles the non-streaming response
-func (c *Client) processResponse(response *messagesResponse, session *schema.Conversation) (*schema.Message, *schema.Usage, error) {
+func (c *Client) processResponse(response *messagesResponse, session *schema.Conversation) (*schema.Message, *schema.UsageMeta, error) {
 	// Refusal — no message to append
 	if response.StopReason == stopReasonRefusal {
 		return nil, nil, schema.ErrRefusal
@@ -232,7 +232,7 @@ func (c *Client) processResponse(response *messagesResponse, session *schema.Con
 	session.AppendWithOuput(*message, response.Usage.InputTokens, response.Usage.OutputTokens)
 
 	// Build usage
-	usageResult := &schema.Usage{
+	usageResult := &schema.UsageMeta{
 		InputTokens:  response.Usage.InputTokens,
 		OutputTokens: response.Usage.OutputTokens,
 	}

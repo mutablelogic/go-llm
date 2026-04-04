@@ -3,6 +3,7 @@ package manager
 import (
 	"context"
 	"errors"
+	"fmt"
 	"testing"
 
 	// Packages
@@ -143,6 +144,23 @@ func TestIsModelNotFound(t *testing.T) {
 	assert.False(isModelNotFound(nil))
 	assert.False(isModelNotFound(schema.ErrConflict))
 	assert.False(isModelNotFound(httpresponse.ErrBadRequest.With("bad request")))
+}
+
+func TestIsIgnorableGetModelError(t *testing.T) {
+	assert := assert.New(t)
+
+	assert.True(isIgnorableGetModelError(schema.ErrNotFound.With("missing")))
+	assert.True(isIgnorableGetModelError(httpresponse.ErrBadRequest.With("bad request")))
+	assert.True(isIgnorableGetModelError(httpresponse.ErrNotAuthorized.With("missing credentials")))
+	assert.True(isIgnorableGetModelError(httpresponse.ErrForbidden.With("forbidden")))
+	assert.True(isIgnorableGetModelError(httpresponse.ErrConflict.With("conflict")))
+	assert.True(isIgnorableGetModelError(fmt.Errorf("provider %q failed to get model %q: %w", "google-prod", "x/flux2-klein:latest", httpresponse.ErrBadRequest.With("unexpected model name format"))))
+	assert.True(isIgnorableGetModelError(fmt.Errorf("provider %q failed to get model %q: %w", "mistral-primary", "x/flux2-klein:latest", schema.ErrBadParameter.With("unexpected model name format"))))
+
+	assert.False(isIgnorableGetModelError(nil))
+	assert.False(isIgnorableGetModelError(context.DeadlineExceeded))
+	assert.False(isIgnorableGetModelError(httpresponse.ErrInternalError.With("boom")))
+	assert.False(isIgnorableGetModelError(schema.ErrServiceUnavailable.With("retry later")))
 }
 
 func TestListModelsIntegration(t *testing.T) {

@@ -79,6 +79,7 @@ type EmbeddingRequest struct {
 type EmbeddingResponse struct {
 	EmbeddingRequest
 	Output [][]float64 `json:"output,omitempty"`
+	Usage  *UsageMeta  `json:"usage,omitempty" help:"Token usage information for the embedding request, when available" example:"{\"input_tokens\":18}"`
 }
 
 // CompletionResponse represents a response from a completion request.
@@ -138,7 +139,7 @@ type MultipartAskRequest struct {
 // AskResponse represents the response from an ask request.
 type AskResponse struct {
 	CompletionResponse
-	Usage *Usage `json:"usage,omitempty" help:"Token usage information for the request, when available" example:"{\"input_tokens\":18,\"output_tokens\":12}"`
+	Usage *UsageMeta `json:"usage,omitempty" help:"Token usage information for the request, when available" example:"{\"input_tokens\":18,\"output_tokens\":12}"`
 }
 
 // ChatRequestCore contains the core fields of a chat request without attachments.
@@ -166,8 +167,8 @@ type MultipartChatRequest struct {
 // ChatResponse represents the response from a chat request.
 type ChatResponse struct {
 	CompletionResponse
-	Session string `json:"session"`
-	Usage   *Usage `json:"usage,omitempty"`
+	Session string     `json:"session"`
+	Usage   *UsageMeta `json:"usage,omitempty"`
 }
 
 // CreateAgentSessionRequest represents the body of a request to create a

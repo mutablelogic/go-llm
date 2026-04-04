@@ -243,7 +243,7 @@ func (m *Manager) Chat(ctx context.Context, request schema.ChatRequest, fn opt.S
 		}
 
 		// Send the tool results back to the model for the next iteration
-		var u *schema.Usage
+		var u *schema.UsageMeta
 		result, u, err = generator.WithSession(ctx, *model, session.Conversation(), toolMessage, opts...)
 		if err != nil {
 			return nil, err

@@ -17,18 +17,18 @@ import (
 // mockEmbedderClient implements llm.Client + llm.Embedder
 type mockEmbedderClient struct {
 	mockClient
-	embeddingFn      func(ctx context.Context, model schema.Model, text string, opts ...opt.Opt) ([]float64, error)
-	batchEmbeddingFn func(ctx context.Context, model schema.Model, texts []string, opts ...opt.Opt) ([][]float64, error)
+	embeddingFn      func(ctx context.Context, model schema.Model, text string, opts ...opt.Opt) ([]float64, *schema.UsageMeta, error)
+	batchEmbeddingFn func(ctx context.Context, model schema.Model, texts []string, opts ...opt.Opt) ([][]float64, *schema.UsageMeta, error)
 }
 
-func (c *mockEmbedderClient) Embedding(ctx context.Context, model schema.Model, text string, opts ...opt.Opt) ([]float64, error) {
+func (c *mockEmbedderClient) Embedding(ctx context.Context, model schema.Model, text string, opts ...opt.Opt) ([]float64, *schema.UsageMeta, error) {
 	if c.embeddingFn != nil {
 		return c.embeddingFn(ctx, model, text, opts...)
 	}
-	return []float64{0.1, 0.2, 0.3}, nil
+	return []float64{0.1, 0.2, 0.3}, nil, nil
 }
 
-func (c *mockEmbedderClient) BatchEmbedding(ctx context.Context, model schema.Model, texts []string, opts ...opt.Opt) ([][]float64, error) {
+func (c *mockEmbedderClient) BatchEmbedding(ctx context.Context, model schema.Model, texts []string, opts ...opt.Opt) ([][]float64, *schema.UsageMeta, error) {
 	if c.batchEmbeddingFn != nil {
 		return c.batchEmbeddingFn(ctx, model, texts, opts...)
 	}
@@ -36,7 +36,7 @@ func (c *mockEmbedderClient) BatchEmbedding(ctx context.Context, model schema.Mo
 	for i := range texts {
 		result[i] = []float64{0.1, 0.2, 0.3}
 	}
-	return result, nil
+	return result, nil, nil
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -51,8 +51,8 @@ func Test_embedding_001(t *testing.T) {
 			name:   "embed-provider",
 			models: []schema.Model{{Name: "embed-model", OwnedBy: "embed-provider"}},
 		},
-		embeddingFn: func(_ context.Context, _ schema.Model, text string, _ ...opt.Opt) ([]float64, error) {
-			return []float64{1.0, 2.0, 3.0, 4.0}, nil
+		embeddingFn: func(_ context.Context, _ schema.Model, text string, _ ...opt.Opt) ([]float64, *schema.UsageMeta, error) {
+			return []float64{1.0, 2.0, 3.0, 4.0}, &schema.UsageMeta{InputTokens: 2}, nil
 		},
 	}
 
@@ -71,6 +71,9 @@ func Test_embedding_001(t *testing.T) {
 	assert.Len(resp.Output, 1)
 	assert.Equal([]float64{1.0, 2.0, 3.0, 4.0}, resp.Output[0])
 	assert.Equal(uint(4), resp.OutputDimensionality)
+	if assert.NotNil(resp.Usage) {
+		assert.Equal(uint(2), resp.Usage.InputTokens)
+	}
 }
 
 // Test successful multi-input (batch) embedding
@@ -82,12 +85,12 @@ func Test_embedding_002(t *testing.T) {
 			name:   "embed-provider",
 			models: []schema.Model{{Name: "embed-model", OwnedBy: "embed-provider"}},
 		},
-		batchEmbeddingFn: func(_ context.Context, _ schema.Model, texts []string, _ ...opt.Opt) ([][]float64, error) {
+		batchEmbeddingFn: func(_ context.Context, _ schema.Model, texts []string, _ ...opt.Opt) ([][]float64, *schema.UsageMeta, error) {
 			result := make([][]float64, len(texts))
 			for i := range texts {
 				result[i] = []float64{float64(i), float64(i + 1)}
 			}
-			return result, nil
+			return result, &schema.UsageMeta{InputTokens: 6}, nil
 		},
 	}
 
@@ -106,6 +109,9 @@ func Test_embedding_002(t *testing.T) {
 	assert.Equal([]float64{1.0, 2.0}, resp.Output[1])
 	assert.Equal([]float64{2.0, 3.0}, resp.Output[2])
 	assert.Equal(uint(2), resp.OutputDimensionality)
+	if assert.NotNil(resp.Usage) {
+		assert.Equal(uint(6), resp.Usage.InputTokens)
+	}
 }
 
 // Test empty input returns error
@@ -294,8 +300,8 @@ func Test_embedding_011(t *testing.T) {
 			name:   "embed-provider",
 			models: []schema.Model{{Name: "embed-model", OwnedBy: "embed-provider"}},
 		},
-		embeddingFn: func(_ context.Context, _ schema.Model, _ string, _ ...opt.Opt) ([]float64, error) {
-			return nil, schema.ErrBadParameter.With("upstream error")
+		embeddingFn: func(_ context.Context, _ schema.Model, _ string, _ ...opt.Opt) ([]float64, *schema.UsageMeta, error) {
+			return nil, nil, schema.ErrBadParameter.With("upstream error")
 		},
 	}
 
@@ -320,8 +326,8 @@ func Test_embedding_012(t *testing.T) {
 			name:   "embed-provider",
 			models: []schema.Model{{Name: "embed-model", OwnedBy: "embed-provider"}},
 		},
-		batchEmbeddingFn: func(_ context.Context, _ schema.Model, _ []string, _ ...opt.Opt) ([][]float64, error) {
-			return nil, schema.ErrBadParameter.With("batch upstream error")
+		batchEmbeddingFn: func(_ context.Context, _ schema.Model, _ []string, _ ...opt.Opt) ([][]float64, *schema.UsageMeta, error) {
+			return nil, nil, schema.ErrBadParameter.With("batch upstream error")
 		},
 	}
 

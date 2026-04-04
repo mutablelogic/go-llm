@@ -3,6 +3,7 @@ package provider
 import (
 	"context"
 	"errors"
+	"fmt"
 	"regexp"
 	"strings"
 	"sync"
@@ -146,7 +147,7 @@ func (r *Registry) GetModels(ctx context.Context, provider *schema.Provider) ([]
 
 	models, err := client.ListModels(ctx)
 	if err != nil {
-		return nil, err
+		return nil, providerModelError(provider, "list models", err)
 	}
 
 	result := make([]schema.Model, 0, len(models))
@@ -184,7 +185,7 @@ func (r *Registry) GetModel(ctx context.Context, provider *schema.Provider, name
 
 	model, err := client.GetModel(ctx, name)
 	if err != nil {
-		return schema.Model{}, err
+		return schema.Model{}, providerModelError(provider, fmt.Sprintf("get model %q", name), err)
 	}
 	if model == nil || model.Name != name || !matchesModelFilters(includePatterns, excludePatterns, model.Name) {
 		return schema.Model{}, schema.ErrNotFound.Withf("model %q not found for provider %q", name, provider.Name)
@@ -192,6 +193,16 @@ func (r *Registry) GetModel(ctx context.Context, provider *schema.Provider, name
 	model.OwnedBy = provider.Name
 
 	return *model, nil
+}
+
+func providerModelError(provider *schema.Provider, action string, err error) error {
+	if err == nil || provider == nil {
+		return err
+	}
+	if provider.Provider != "" {
+		return fmt.Errorf("provider %q (%s) failed to %s: %w", provider.Name, provider.Provider, action, err)
+	}
+	return fmt.Errorf("provider %q failed to %s: %w", provider.Name, action, err)
 }
 
 // Sets or updates a provider client by name, if the provider is enabled, and return boolean

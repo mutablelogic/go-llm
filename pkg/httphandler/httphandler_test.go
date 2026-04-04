@@ -97,16 +97,16 @@ type mockEmbedderClient struct {
 
 var _ llm.Embedder = (*mockEmbedderClient)(nil)
 
-func (c *mockEmbedderClient) Embedding(_ context.Context, model schema.Model, text string, _ ...opt.Opt) ([]float64, error) {
-	return []float64{0.1, 0.2, 0.3}, nil
+func (c *mockEmbedderClient) Embedding(_ context.Context, model schema.Model, text string, _ ...opt.Opt) ([]float64, *schema.UsageMeta, error) {
+	return []float64{0.1, 0.2, 0.3}, nil, nil
 }
 
-func (c *mockEmbedderClient) BatchEmbedding(_ context.Context, model schema.Model, texts []string, _ ...opt.Opt) ([][]float64, error) {
+func (c *mockEmbedderClient) BatchEmbedding(_ context.Context, model schema.Model, texts []string, _ ...opt.Opt) ([][]float64, *schema.UsageMeta, error) {
 	result := make([][]float64, len(texts))
 	for i := range texts {
 		result[i] = []float64{0.1, 0.2, 0.3}
 	}
-	return result, nil
+	return result, nil, nil
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -119,24 +119,24 @@ type mockGeneratorClient struct {
 
 var _ llm.Generator = (*mockGeneratorClient)(nil)
 
-func (c *mockGeneratorClient) WithoutSession(_ context.Context, _ schema.Model, msg *schema.Message, _ ...opt.Opt) (*schema.Message, *schema.Usage, error) {
+func (c *mockGeneratorClient) WithoutSession(_ context.Context, _ schema.Model, msg *schema.Message, _ ...opt.Opt) (*schema.Message, *schema.UsageMeta, error) {
 	return &schema.Message{
 		Role: schema.RoleAssistant,
 		Content: []schema.ContentBlock{
 			{Text: types.Ptr("ask response: " + msg.Text())},
 		},
 		Result: schema.ResultOK,
-	}, &schema.Usage{}, nil
+	}, &schema.UsageMeta{}, nil
 }
 
-func (c *mockGeneratorClient) WithSession(_ context.Context, _ schema.Model, _ *schema.Conversation, msg *schema.Message, _ ...opt.Opt) (*schema.Message, *schema.Usage, error) {
+func (c *mockGeneratorClient) WithSession(_ context.Context, _ schema.Model, _ *schema.Conversation, msg *schema.Message, _ ...opt.Opt) (*schema.Message, *schema.UsageMeta, error) {
 	return &schema.Message{
 		Role: schema.RoleAssistant,
 		Content: []schema.ContentBlock{
 			{Text: types.Ptr("chat response: " + msg.Text())},
 		},
 		Result: schema.ResultOK,
-	}, &schema.Usage{}, nil
+	}, &schema.UsageMeta{}, nil
 }
 
 ///////////////////////////////////////////////////////////////////////////////

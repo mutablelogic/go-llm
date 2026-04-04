@@ -99,3 +99,27 @@ RETURNING "group"::text;
 SELECT "group"::text FROM ${"schema"}.provider_group
 WHERE "provider"=@provider
 ORDER BY "group";
+
+-- usage.insert
+INSERT INTO ${"schema"}.usage (
+	"type", batch, "session", "user", provider, model,
+	input_tokens, output_tokens, cache_read_tokens, cache_write_tokens, reasoning_tokens, meta
+) VALUES (
+	@type, @batch, @session, @user, @provider, @model,
+	@input_tokens, @output_tokens, @cache_read_tokens, @cache_write_tokens, @reasoning_tokens, @meta
+)
+RETURNING
+	id,
+	"type"::text,
+	batch,
+	"session"::text,
+	"user"::text,
+	provider,
+	model,
+	COALESCE(input_tokens, 0),
+	COALESCE(output_tokens, 0),
+	COALESCE(cache_read_tokens, 0),
+	COALESCE(cache_write_tokens, 0),
+	COALESCE(reasoning_tokens, 0),
+	COALESCE(meta, '{}'::jsonb) AS meta,
+	created_at;

@@ -66,6 +66,7 @@ func (m *geminiModel) toSchema() schema.Model {
 	if description == "" {
 		description = m.DisplayName
 	}
+	capabilities := m.capabilities()
 
 	// JSON round-trip to capture all fields as map[string]any
 	var meta map[string]any
@@ -75,9 +76,43 @@ func (m *geminiModel) toSchema() schema.Model {
 
 	// Return the model
 	return schema.Model{
-		Name:        strings.TrimPrefix(m.Name, "models/"),
-		Description: description,
-		OwnedBy:     defaultName,
-		Meta:        meta,
+		Name:             strings.TrimPrefix(m.Name, "models/"),
+		Description:      description,
+		OwnedBy:          defaultName,
+		Meta:             meta,
+		InputTokenLimit:  uintPtrFromPositiveInt(m.InputTokenLimit),
+		OutputTokenLimit: uintPtrFromPositiveInt(m.OutputTokenLimit),
+		Cap:              capabilities,
 	}
+}
+
+func (m *geminiModel) capabilities() schema.ModelCap {
+	var cap schema.ModelCap
+
+	for _, method := range m.SupportedGenerationMethods {
+		switch method {
+		case "embedContent", "batchEmbedContents":
+			cap |= schema.ModelCapEmbeddings
+		case "generateContent", "streamGenerateContent", "generateAnswer":
+			cap |= schema.ModelCapCompletion
+		}
+	}
+
+	if m.Thinking {
+		cap |= schema.ModelCapThinking
+	}
+
+	if cap&(schema.ModelCapCompletion|schema.ModelCapThinking) != 0 {
+		cap |= schema.ModelCapTools
+	}
+
+	return cap
+}
+
+func uintPtrFromPositiveInt(value int) *uint {
+	if value <= 0 {
+		return nil
+	}
+	result := uint(value)
+	return &result
 }

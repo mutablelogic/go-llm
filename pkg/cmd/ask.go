@@ -4,9 +4,11 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"mime"
 	"net/http"
 	"net/url"
 	"os"
+	"path"
 	"path/filepath"
 	"strings"
 
@@ -34,6 +36,7 @@ type AskCommand struct {
 	Text                 string   `arg:"" help:"User input text"`
 	File                 []string `name:"file" help:"Path or glob pattern for files to attach (may be repeated)" optional:""`
 	Stream               bool     `name:"stream" help:"Stream the response as it is generated." default:"true" negatable:""`
+	Out                  string   `name:"out" type:"dir" help:"Path to write response attachments (defaults to stdout)" optional:""`
 }
 
 type markdownStream struct {
@@ -81,12 +84,10 @@ func (cmd *AskCommand) Run(ctx server.Cmd) (err error) {
 		widget := tui.Markdown(markdownOptsForStdout()...)
 		streamRenderer := newMarkdownStream(os.Stdout, widget)
 		var streamFn opt.StreamFn
-		var streamed bool
-		if cmd.Stream && len(req.Format) == 0 && !ctx.IsDebug() {
+		if cmd.Stream && !ctx.IsDebug() {
 			streamFn = func(role, text string) {
 				if role == schema.RoleAssistant {
-					streamed = true
-					_ = streamRenderer.Append(text)
+					streamRenderer.Append(text)
 				}
 			}
 		}
@@ -112,7 +113,22 @@ func (cmd *AskCommand) Run(ctx server.Cmd) (err error) {
 			}
 		}
 
-		if streamed {
+		attachments := askResponseAttachments(response)
+		if len(attachments) > 0 {
+			out, err := cmd.outputFolder(ctx.Name())
+			if err != nil {
+				return err
+			}
+			for index, attachment := range attachments {
+				target, err := writeAskResponseAttachment(attachment, out, index)
+				if err != nil {
+					return err
+				}
+				text += fmt.Sprintf("\n- [Attachment %d](%s)\n", index+1, target)
+			}
+		}
+
+		if cmd.Stream {
 			return streamRenderer.Finish(text)
 		}
 		return writeMarkdown(os.Stdout, widget, text)
@@ -121,6 +137,26 @@ func (cmd *AskCommand) Run(ctx server.Cmd) (err error) {
 
 ///////////////////////////////////////////////////////////////////////////////
 // PRIVATE METHODS
+
+func (cmd AskCommand) outputFolder(defaultDir string) (string, error) {
+	out := cmd.Out
+	if out == "" {
+		cache, err := os.UserCacheDir()
+		if err != nil {
+			return "", fmt.Errorf("getting user cache directory: %w", err)
+		} else {
+			out = filepath.Join(cache, defaultDir)
+		}
+	}
+
+	// Create output directory if it doesn't exist
+	if err := os.MkdirAll(out, 0755); err != nil {
+		return "", fmt.Errorf("creating output directory: %w", err)
+	}
+
+	// Return the output path
+	return out, nil
+}
 
 func (cmd AskCommand) request() (schema.AskRequest, error) {
 	req := schema.AskRequest{
@@ -180,6 +216,103 @@ func askResponseText(response *schema.AskResponse) string {
 	}
 
 	return builder.String()
+}
+
+func askResponseAttachments(response *schema.AskResponse) []*schema.Attachment {
+	if response == nil {
+		return nil
+	}
+
+	attachments := make([]*schema.Attachment, 0)
+	for _, block := range response.Content {
+		if block.Attachment != nil {
+			attachments = append(attachments, block.Attachment)
+		}
+	}
+
+	return attachments
+}
+
+func writeAskResponseAttachment(attachment *schema.Attachment, out string, index int) (*url.URL, error) {
+	if attachment == nil {
+		return nil, fmt.Errorf("attachment is nil")
+	}
+
+	target, err := askResponseAttachmentURL(attachment, out, index)
+	if err != nil {
+		return nil, err
+	}
+	if len(attachment.Data) > 0 {
+		if err := os.WriteFile(target.Path, attachment.Data, 0o600); err != nil {
+			return nil, fmt.Errorf("writing attachment %q: %w", target.Path, err)
+		}
+	}
+	attachment.URL = target
+
+	return target, nil
+}
+
+func askResponseAttachmentURL(attachment *schema.Attachment, out string, index int) (*url.URL, error) {
+	if attachment == nil {
+		return nil, fmt.Errorf("attachment is nil")
+	}
+
+	filename := ""
+	if attachment.URL != nil {
+		parsed, err := url.Parse(attachment.URL.String())
+		if err != nil {
+			return nil, fmt.Errorf("parse attachment url %q: %w", attachment.URL.String(), err)
+		}
+		if base := path.Base(parsed.Path); base != "" && base != "." && base != "/" {
+			filename = base
+		}
+	}
+	if filename == "" {
+		filename = fmt.Sprintf("attachment-%03d%s", index+1, attachmentExtension(attachment.ContentType))
+	} else if path.Ext(filename) == "" {
+		filename += attachmentExtension(attachment.ContentType)
+	}
+
+	targetPath, err := uniqueAttachmentPath(filepath.Join(out, filename))
+	if err != nil {
+		return nil, err
+	}
+
+	return &url.URL{Scheme: "file", Path: targetPath}, nil
+}
+
+func attachmentExtension(contentType string) string {
+	mediaType := strings.TrimSpace(contentType)
+	if parsed, _, err := mime.ParseMediaType(contentType); err == nil {
+		mediaType = parsed
+	}
+	if exts, err := mime.ExtensionsByType(mediaType); err == nil && len(exts) > 0 {
+		return exts[0]
+	}
+	return ".bin"
+}
+
+func uniqueAttachmentPath(targetPath string) (string, error) {
+	if targetPath == "" {
+		return "", fmt.Errorf("attachment path is empty")
+	}
+	if _, err := os.Stat(targetPath); os.IsNotExist(err) {
+		return targetPath, nil
+	} else if err != nil {
+		return "", fmt.Errorf("stat attachment path %q: %w", targetPath, err)
+	}
+
+	ext := filepath.Ext(targetPath)
+	base := strings.TrimSuffix(filepath.Base(targetPath), ext)
+	dir := filepath.Dir(targetPath)
+	for attempt := 2; ; attempt++ {
+		candidate := filepath.Join(dir, fmt.Sprintf("%s-%d%s", base, attempt, ext))
+		if _, err := os.Stat(candidate); os.IsNotExist(err) {
+			return candidate, nil
+		} else if err != nil {
+			return "", fmt.Errorf("stat attachment path %q: %w", candidate, err)
+		}
+	}
 }
 
 func markdownOptsForStdout() []tui.Opt {

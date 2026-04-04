@@ -4,6 +4,7 @@ import (
 	"context"
 	"net/url"
 	"regexp"
+	"strings"
 
 	// Packages
 	client "github.com/mutablelogic/go-client"
@@ -62,6 +63,7 @@ func (c *Client) GetModel(ctx context.Context, name string, opts ...opt.Opt) (*s
 // toSchema converts an API model response to schema.Model
 func (m model) toSchema() schema.Model {
 	variant, version, date := parseModelId(m.Id)
+	capabilities := modelCapabilities(m.Id)
 
 	meta := make(map[string]any)
 	if variant != "" {
@@ -80,6 +82,32 @@ func (m model) toSchema() schema.Model {
 		Created:     m.CreatedAt,
 		OwnedBy:     schema.Anthropic,
 		Meta:        meta,
+		Cap:         capabilities,
+	}
+}
+
+func modelCapabilities(name string) schema.ModelCap {
+	cap := schema.ModelCapCompletion | schema.ModelCapTools
+	if supportsThinking(name) {
+		cap |= schema.ModelCapThinking
+	}
+	return cap
+}
+
+func supportsThinking(name string) bool {
+	switch strings.TrimSpace(strings.ToLower(name)) {
+	case "claude-opus-4-6",
+		"claude-opus-4-5-20251101",
+		"claude-opus-4-1-20250805",
+		"claude-opus-4-20250514",
+		"claude-sonnet-4-6",
+		"claude-sonnet-4-5-20250929",
+		"claude-sonnet-4-20250514",
+		"claude-3-7-sonnet-20250219",
+		"claude-haiku-4-5-20251001":
+		return true
+	default:
+		return false
 	}
 }
 

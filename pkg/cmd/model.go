@@ -66,7 +66,7 @@ func (cmd *ListModelsCommand) Run(ctx server.Cmd) (err error) {
 		}
 
 		// Table output
-		_, err = tui.TableFor[schema.Model](tui.SetWidth(ctx.TermWidth())).Write(os.Stdout, models.Body...)
+		_, err = tui.TableFor[schema.Model](tui.SetWidth(ctx.IsTerm())).Write(os.Stdout, models.Body...)
 		return err
 	})
 }
@@ -78,6 +78,7 @@ func (cmd *GetModelCommand) Run(ctx server.Cmd) (err error) {
 			Name:     cmd.Name,
 		}
 
+		// Otel tracing
 		parent, endSpan := otel.StartSpan(ctx.Tracer(), ctx.Context(), "GetModelCommand",
 			attribute.String("request", types.Stringify(req)),
 		)
@@ -107,7 +108,7 @@ func (cmd *DownloadModelCommand) Run(ctx server.Cmd) (err error) {
 
 		var progressFn func(string, float64)
 		if cmd.Progress {
-			widget := tui.Progress(tui.SetWidth(max(10, min(20, ctx.TermWidth()/3))))
+			widget := tui.Progress(tui.SetWidth(max(10, min(20, ctx.IsTerm()/3))))
 			progressFn = func(status string, percent float64) {
 				fmt.Print("\r")
 				_, _ = widget.Write(os.Stdout, status, percent)

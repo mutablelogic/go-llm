@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	// Packages
@@ -40,7 +41,7 @@ func newAskServer(t *testing.T) *httptest.Server {
 					{Text: types.Ptr("echo: " + req.Text)},
 				},
 			},
-			Usage: &schema.Usage{InputTokens: 5, OutputTokens: 7},
+			Usage: &schema.UsageMeta{InputTokens: 5, OutputTokens: 7},
 		}
 
 		if r.Header.Get(types.ContentAcceptHeader) == types.ContentTypeTextStream {
@@ -129,6 +130,53 @@ func TestAskStream(t *testing.T) {
 	}
 	if got := *response.Content[0].Text; got != "echo: stream me" {
 		t.Fatalf("expected %q, got %q", "echo: stream me", got)
+	}
+}
+
+func TestAskStreamLargeResultEvent(t *testing.T) {
+	large := strings.Repeat("x", 256*1024)
+
+	mux := http.NewServeMux()
+	mux.HandleFunc("/api/ask", func(w http.ResponseWriter, r *http.Request) {
+		response := schema.AskResponse{
+			CompletionResponse: schema.CompletionResponse{
+				Role:   schema.RoleAssistant,
+				Result: schema.ResultStop,
+				Content: []schema.ContentBlock{
+					{Text: types.Ptr(large)},
+				},
+			},
+		}
+
+		stream := fmt.Sprintf(
+			"event: %s\ndata: {\"role\":\"assistant\",\"text\":\"chunk\"}\n\n"+
+				"event: %s\ndata: %s\n\n",
+			schema.EventAssistant,
+			schema.EventResult,
+			mustJSON(t, response),
+		)
+		w.Header().Set(types.ContentTypeHeader, types.ContentTypeTextStream)
+		_, _ = w.Write([]byte(stream))
+	})
+
+	server := httptest.NewServer(mux)
+	defer server.Close()
+
+	client := newAskClient(t, server.URL)
+	response, err := client.Ask(context.Background(), schema.AskRequest{
+		AskRequestCore: schema.AskRequestCore{
+			GeneratorMeta: schema.GeneratorMeta{Model: "test-model"},
+			Text:          "stream me",
+		},
+	}, opt.StreamFn(func(role, text string) {}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if response == nil || len(response.Content) == 0 || response.Content[0].Text == nil {
+		t.Fatalf("unexpected response: %+v", response)
+	}
+	if got := *response.Content[0].Text; got != large {
+		t.Fatalf("expected large result payload of %d bytes, got %d", len(large), len(got))
 	}
 }
 

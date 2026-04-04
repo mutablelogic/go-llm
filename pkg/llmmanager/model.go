@@ -298,6 +298,26 @@ func isModelNotFound(err error) bool {
 	return errors.Is(err, schema.ErrNotFound) || errors.Is(err, httpresponse.ErrNotFound)
 }
 
+func isIgnorableGetModelError(err error) bool {
+	if err == nil {
+		return false
+	}
+	if isModelNotFound(err) {
+		return true
+	}
+
+	var httpErr httpresponse.Err
+	if errors.As(err, &httpErr) {
+		return int(httpErr) >= 400 && int(httpErr) < 500
+	}
+
+	if coerced := schema.HTTPErr(err); errors.As(coerced, &httpErr) {
+		return int(httpErr) >= 400 && int(httpErr) < 500
+	}
+
+	return false
+}
+
 func (m *Manager) modelsForProviders(ctx context.Context, providers []schema.Provider) ([]schema.Model, error) {
 	var mu sync.Mutex
 	var result []schema.Model
@@ -342,7 +362,7 @@ func (m *Manager) modelsByName(ctx context.Context, providers []schema.Provider,
 		group.Go(func() error {
 			model, err := m.Registry.GetModel(ctx, &provider, name)
 			if err != nil {
-				if isModelNotFound(err) {
+				if isIgnorableGetModelError(err) {
 					return nil
 				}
 				return err

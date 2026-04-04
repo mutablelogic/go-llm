@@ -62,15 +62,18 @@ func (m *Manager) Embedding(ctx context.Context, request *schema.EmbeddingReques
 	// Use Embedding or BatchEmbedding based on the number of input texts
 	if len(request.Input) == 1 {
 		var embedding []float64
-		embedding, err = client.(llm.Embedder).Embedding(ctx, types.Value(model), request.Input[0], opts...)
+		var usage *schema.UsageMeta
+		embedding, usage, err = client.(llm.Embedder).Embedding(ctx, types.Value(model), request.Input[0], opts...)
 		if err != nil {
 			return nil, err
 		}
 		response.OutputDimensionality = uint(len(embedding))
 		response.Output = [][]float64{embedding}
+		response.Usage = usage
 	} else if len(request.Input) > 1 {
 		var embeddings [][]float64
-		embeddings, err = client.(llm.Embedder).BatchEmbedding(ctx, types.Value(model), request.Input, opts...)
+		var usage *schema.UsageMeta
+		embeddings, usage, err = client.(llm.Embedder).BatchEmbedding(ctx, types.Value(model), request.Input, opts...)
 		if err != nil {
 			return nil, err
 		}
@@ -78,6 +81,7 @@ func (m *Manager) Embedding(ctx context.Context, request *schema.EmbeddingReques
 			response.OutputDimensionality = uint(len(embeddings[0]))
 		}
 		response.Output = embeddings
+		response.Usage = usage
 	}
 
 	// Return success

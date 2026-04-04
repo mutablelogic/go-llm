@@ -5,6 +5,14 @@ EXCEPTION
   WHEN duplicate_object THEN null;
 END $$;
 
+-- llm.job_type
+DO $$ BEGIN
+  CREATE TYPE ${"schema"}.USAGE_TYPE AS ENUM ('embedding', 'ask', 'chat');
+EXCEPTION
+  WHEN duplicate_object THEN null;
+END $$;
+
+
 -- llm.provider
 CREATE TABLE IF NOT EXISTS ${"schema"}.provider (
     "name"        TEXT NOT NULL PRIMARY KEY CHECK ("name" ~ '^[a-zA-Z][a-zA-Z0-9_-]{0,63}$'),
@@ -30,7 +38,9 @@ CREATE TABLE IF NOT EXISTS ${"schema"}.provider_group (
 -- llm.session
 CREATE TABLE IF NOT EXISTS ${"schema"}.session (
     "id"          UUID NOT NULL DEFAULT gen_random_uuid() PRIMARY KEY,
+    "parent"      UUID REFERENCES ${"schema"}."session" (id) ON DELETE CASCADE,
     "user"        UUID NOT NULL REFERENCES ${"auth"}."user" (id) ON DELETE CASCADE,
+    "name"        TEXT,
     "created_at"  TIMESTAMPTZ NOT NULL DEFAULT now(),
     "modified_at" TIMESTAMPTZ
 );
@@ -46,6 +56,33 @@ CREATE TABLE IF NOT EXISTS ${"schema"}.message (
     "meta"        JSONB,
     "created_at"  TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+
+-- llm.usage
+CREATE TABLE IF NOT EXISTS ${"schema"}.usage (
+    "id"                  BIGSERIAL PRIMARY KEY,
+    "type"                ${"schema"}.USAGE_TYPE NOT NULL,
+    "batch"               TEXT,
+    "session"             UUID REFERENCES ${"schema"}."session" (id) ON DELETE SET NULL,
+    "user"                UUID REFERENCES ${"auth"}."user" (id) ON DELETE SET NULL,
+    "provider"            TEXT REFERENCES ${"schema"}.provider ("name") ON DELETE SET NULL,
+    "model"               TEXT NOT NULL,
+    "input_tokens"        INT,
+    "output_tokens"       INT,
+    "cache_read_tokens"   INT,
+    "cache_write_tokens"  INT,
+    "reasoning_tokens"    INT,
+    "meta"                JSONB,
+    "created_at"          TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+-- llm.usage_index_user
+CREATE INDEX IF NOT EXISTS usage_user_created_at_idx
+    ON ${"schema"}.usage ("user", "created_at");
+
+-- llm.usage_index_session
+CREATE INDEX IF NOT EXISTS usage_session_created_at_idx
+    ON ${"schema"}.usage ("session", "created_at");
+
 
 -- llm.notify.function
 CREATE OR REPLACE FUNCTION ${"schema"}.notify_table()

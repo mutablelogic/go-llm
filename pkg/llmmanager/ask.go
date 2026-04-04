@@ -40,7 +40,7 @@ func (m *Manager) Ask(ctx context.Context, request schema.AskRequest, user *auth
 	defer func() { endSpan(err) }()
 
 	// Resolve model, generator, and options from the request meta
-	model, generator, opts, err := m.generatorFromMeta(ctx, request.GeneratorMeta, user, generationContextAsk)
+	provider, model, generator, opts, err := m.generatorFromMeta(ctx, request.GeneratorMeta, user, generationContextAsk)
 	if err != nil {
 		return nil, err
 	}
@@ -81,6 +81,23 @@ func (m *Manager) Ask(ctx context.Context, request schema.AskRequest, user *auth
 		Usage: usage,
 	})
 
+	// Fold provider metadata into the usage metadata and include the
+	// current trace_id for downstream observability.
+	response.Usage = mergeUsageMeta(ctx, response.Usage, provider.Meta, result)
+
+	// Insert the usage into the database if we have usage information
+	if response.Usage != nil {
+		if _, err := m.CreateUsage(ctx, schema.UsageInsert{
+			Type:      schema.UsageTypeAsk,
+			User:      user.UUID(),
+			Model:     model.Name,
+			Provider:  types.Ptr(model.OwnedBy),
+			UsageMeta: types.Value(response.Usage),
+		}); err != nil {
+			return nil, err
+		}
+	}
+
 	// Return success
 	return response, nil
 }
@@ -91,41 +108,51 @@ func (m *Manager) Ask(ctx context.Context, request schema.AskRequest, user *auth
 // generatorFromMeta resolves the model and generator client from the given
 // GeneratorMeta, and returns provider-specific options derived from the meta
 // fields (e.g. system prompt). This is reusable for both Ask and Chat.
-func (m *Manager) generatorFromMeta(ctx context.Context, meta schema.GeneratorMeta, user *auth.User, context generationContext) (*schema.Model, llm.Generator, []opt.Opt, error) {
+func (m *Manager) generatorFromMeta(ctx context.Context, meta schema.GeneratorMeta, user *auth.User, context generationContext) (*schema.Provider, *schema.Model, llm.Generator, []opt.Opt, error) {
 	// Get candidate providers for user, or all candidates if no user is provided.
 	providers, err := m.providersForUser(ctx, meta.Provider, user)
 	if err != nil {
-		return nil, nil, nil, err
+		return nil, nil, nil, nil, err
 	} else if len(providers) == 0 {
-		return nil, nil, nil, schema.ErrNotFound.Withf("no providers found for model: %s", meta.Model)
+		return nil, nil, nil, nil, schema.ErrNotFound.Withf("no providers found for model: %s", meta.Model)
 	}
 
 	// Get the model
 	models, err := m.modelsByName(ctx, providers, meta.Model)
 	if err != nil {
-		return nil, nil, nil, err
+		return nil, nil, nil, nil, err
 	}
 
 	// If the model name matches multiple providers, require the provider to be specified for disambiguation.
 	var model *schema.Model
+	var provider *schema.Provider
 	if len(models) == 0 {
-		return nil, nil, nil, schema.ErrNotFound.Withf("model %q not found", meta.Model)
+		return nil, nil, nil, nil, schema.ErrNotFound.Withf("model %q not found", meta.Model)
 	} else if len(models) > 1 {
-		return nil, nil, nil, schema.ErrConflict.Withf("multiple models named %q found; specify a provider", meta.Model)
+		return nil, nil, nil, nil, schema.ErrConflict.Withf("multiple models named %q found; specify a provider", meta.Model)
 	} else {
 		model = types.Ptr(models[0])
+		for i := range providers {
+			if providers[i].Name == model.OwnedBy {
+				provider = &providers[i]
+				break
+			}
+		}
+	}
+	if provider == nil {
+		return nil, nil, nil, nil, schema.ErrNotFound.Withf("provider %q not found for model: %s", model.OwnedBy, meta.Model)
 	}
 
 	// Get the provider-specific model
 	client := m.Registry.Get(model.OwnedBy)
 	if client == nil {
-		return nil, nil, nil, schema.ErrNotFound.Withf("no provider found for model: %s", meta.Model)
+		return nil, nil, nil, nil, schema.ErrNotFound.Withf("no provider found for model: %s", meta.Model)
 	}
 
 	// Client needs to be a generator
 	generator, ok := client.(llm.Generator)
 	if !ok {
-		return nil, nil, nil, schema.ErrNotImplemented.Withf("provider %q does not support generation", model.OwnedBy)
+		return nil, nil, nil, nil, schema.ErrNotImplemented.Withf("provider %q does not support generation", model.OwnedBy)
 	}
 
 	// Build options from meta fields
@@ -145,11 +172,11 @@ func (m *Manager) generatorFromMeta(ctx context.Context, meta schema.GeneratorMe
 	// Convert options for the client
 	opts, err = convertOptsForClient(opts, client)
 	if err != nil {
-		return nil, nil, nil, err
+		return nil, nil, nil, nil, err
 	}
 
 	// Return the resolved model, generator, and options
-	return model, generator, opts, nil
+	return provider, model, generator, opts, nil
 }
 
 // withSystemPrompt dispatches to the correct provider-specific system prompt option.

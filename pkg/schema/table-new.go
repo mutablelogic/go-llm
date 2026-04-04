@@ -61,11 +61,11 @@ func (t Provider) Cell(i int) string {
 ///////////////////////////////////////////////////////////////////////////////
 // MODELS TABLE
 
-func (t Model) Header() []string {
-	return []string{"NAME", "PROVIDER", "DESCRIPTION", "CREATED AT", "ALIASES"}
+func (Model) Header() []string {
+	return []string{"NAME", "PROVIDER", "DESCRIPTION", "CAPABILITIES", "ALIASES"}
 }
 
-func (t Model) Width(i int) int {
+func (Model) Width(i int) int {
 	switch i {
 	case 0:
 		return 24
@@ -81,20 +81,20 @@ func (t Model) Width(i int) int {
 	return 0
 }
 
-func (t Model) Cell(i int) string {
+func (m Model) Cell(i int) string {
 	switch i {
 	case 0:
-		return t.Name
+		return m.Name
 	case 1:
-		return t.OwnedBy
+		return m.OwnedBy
 	case 2:
-		return t.Description
+		return m.Description
 	case 3:
-		if !t.Created.IsZero() {
-			return t.Created.Format("2006-01-02 15:04:05")
+		if m.Cap != 0 {
+			return m.Cap.String()
 		}
 	case 4:
-		return strings.Join(t.Aliases, ", ")
+		return strings.Join(m.Aliases, ", ")
 	}
 	return ""
 }

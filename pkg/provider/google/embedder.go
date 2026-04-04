@@ -19,11 +19,11 @@ var _ llm.Embedder = (*Client)(nil)
 // PUBLIC METHODS
 
 // Embedding generates an embedding vector for a single text using the specified model
-func (c *Client) Embedding(ctx context.Context, model schema.Model, text string, opts ...opt.Opt) ([]float64, error) {
+func (c *Client) Embedding(ctx context.Context, model schema.Model, text string, opts ...opt.Opt) ([]float64, *schema.UsageMeta, error) {
 	// Apply options
 	o, err := opt.Apply(opts...)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	// Create request
@@ -35,30 +35,30 @@ func (c *Client) Embedding(ctx context.Context, model schema.Model, text string,
 	// Create payload
 	payload, err := client.NewJSONRequest(request)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	// Execute the request
 	var response geminiEmbedResponse
 	if err := c.DoWithContext(ctx, payload, &response, client.OptPath("models", model.Name+":embedContent")); err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	if response.Embedding == nil {
-		return nil, schema.ErrInternalServerError.With("empty embedding response")
+		return nil, nil, schema.ErrInternalServerError.With("empty embedding response")
 	}
-	return response.Embedding.Values, nil
+	return response.Embedding.Values, nil, nil
 }
 
 // BatchEmbedding generates embedding vectors for multiple texts using the specified model
-func (c *Client) BatchEmbedding(ctx context.Context, model schema.Model, texts []string, opts ...opt.Opt) ([][]float64, error) {
+func (c *Client) BatchEmbedding(ctx context.Context, model schema.Model, texts []string, opts ...opt.Opt) ([][]float64, *schema.UsageMeta, error) {
 	if len(texts) == 0 {
-		return nil, schema.ErrBadParameter.With("at least one text is required")
+		return nil, nil, schema.ErrBadParameter.With("at least one text is required")
 	}
 
 	// Apply options
 	o, err := opt.Apply(opts...)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	// Create batch request
@@ -75,13 +75,13 @@ func (c *Client) BatchEmbedding(ctx context.Context, model schema.Model, texts [
 	// Create payload
 	payload, err := client.NewJSONRequest(&geminiBatchEmbedRequest{Requests: requests})
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	// Execute the request
 	var response geminiBatchEmbedResponse
 	if err := c.DoWithContext(ctx, payload, &response, client.OptPath("models", model.Name+":batchEmbedContents")); err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	// Convert response
@@ -89,7 +89,7 @@ func (c *Client) BatchEmbedding(ctx context.Context, model schema.Model, texts [
 	for _, embedding := range response.Embeddings {
 		result = append(result, embedding.Values)
 	}
-	return result, nil
+	return result, nil, nil
 }
 
 ///////////////////////////////////////////////////////////////////////////////

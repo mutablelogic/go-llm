@@ -143,7 +143,7 @@ func (c *Client) GetModel(ctx context.Context, name string, opts ...opt.Opt) (*s
 // PUBLIC METHODS - llm.Generator
 
 // WithoutSession sends a single message and returns the response (stateless)
-func (c *Client) WithoutSession(ctx context.Context, model schema.Model, message *schema.Message, opts ...opt.Opt) (*schema.Message, *schema.Usage, error) {
+func (c *Client) WithoutSession(ctx context.Context, model schema.Model, message *schema.Message, opts ...opt.Opt) (*schema.Message, *schema.UsageMeta, error) {
 	if message == nil {
 		return nil, nil, schema.ErrBadParameter.With("message is required")
 	}
@@ -180,7 +180,7 @@ func (c *Client) WithoutSession(ctx context.Context, model schema.Model, message
 	inputTokens := uint(len(input)+3) / 4 // ~4 chars per token
 	outputTokens := uint(len(response)+3) / 4
 
-	usage := &schema.Usage{
+	usage := &schema.UsageMeta{
 		InputTokens:  inputTokens,
 		OutputTokens: outputTokens,
 	}
@@ -198,7 +198,7 @@ func (c *Client) WithoutSession(ctx context.Context, model schema.Model, message
 }
 
 // WithSession sends a message within a session and returns the response (stateful)
-func (c *Client) WithSession(ctx context.Context, model schema.Model, session *schema.Conversation, message *schema.Message, opts ...opt.Opt) (*schema.Message, *schema.Usage, error) {
+func (c *Client) WithSession(ctx context.Context, model schema.Model, session *schema.Conversation, message *schema.Message, opts ...opt.Opt) (*schema.Message, *schema.UsageMeta, error) {
 	if session == nil {
 		return nil, nil, schema.ErrBadParameter.With("session is required")
 	}
@@ -265,7 +265,7 @@ func (c *Client) WithSession(ctx context.Context, model schema.Model, session *s
 	responseMsg.Tokens = outputTokens
 	session.Append(*responseMsg)
 
-	usage := &schema.Usage{
+	usage := &schema.UsageMeta{
 		InputTokens:  inputTokens,
 		OutputTokens: outputTokens,
 	}

@@ -20,7 +20,7 @@ func Test_embedding_001(t *testing.T) {
 	a.NoError(err)
 
 	model := schema.Model{Name: "mistral-embed"}
-	_, err = c.BatchEmbedding(context.TODO(), model, []string{})
+	_, _, err = c.BatchEmbedding(context.TODO(), model, []string{})
 	a.Error(err)
 }
 
@@ -45,9 +45,12 @@ func Test_embedding_003(t *testing.T) {
 	a.NoError(err)
 
 	model := schema.Model{Name: "mistral-embed"}
-	vector, err := c.Embedding(context.TODO(), model, "Hello, world!")
+	vector, usage, err := c.Embedding(context.TODO(), model, "Hello, world!")
 	a.NoError(err)
 	a.NotEmpty(vector)
+	if a.NotNil(usage) {
+		a.NotZero(usage.InputTokens)
+	}
 	t.Logf("Got embedding vector with %d dimensions", len(vector))
 }
 
@@ -66,9 +69,12 @@ func Test_embedding_004(t *testing.T) {
 		"How are you?",
 		"The quick brown fox jumps over the lazy dog.",
 	}
-	vectors, err := c.BatchEmbedding(context.TODO(), model, texts)
+	vectors, usage, err := c.BatchEmbedding(context.TODO(), model, texts)
 	a.NoError(err)
 	a.Len(vectors, len(texts))
+	if a.NotNil(usage) {
+		a.NotZero(usage.InputTokens)
+	}
 
 	for i, v := range vectors {
 		a.NotEmpty(v)
@@ -90,9 +96,12 @@ func Test_embedding_005(t *testing.T) {
 		"I love programming in Go.",
 		"The weather in Paris is beautiful today.",
 	}
-	vectors, err := c.BatchEmbedding(context.TODO(), model, texts)
+	vectors, usage, err := c.BatchEmbedding(context.TODO(), model, texts)
 	a.NoError(err)
 	a.Len(vectors, 2)
+	if a.NotNil(usage) {
+		a.NotZero(usage.InputTokens)
+	}
 
 	// The two vectors should not be identical
 	a.NotEqual(vectors[0], vectors[1])
