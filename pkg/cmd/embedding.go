@@ -7,7 +7,6 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
-	"strings"
 
 	// Packages
 	otel "github.com/mutablelogic/go-client/pkg/otel"
@@ -28,7 +27,7 @@ type EmbeddingCommands struct {
 type EmbeddingCommand struct {
 	schema.EmbeddingRequest `embed:""`
 	CSV                     string `name:"csv" type:"file" placeholder:"FILE" help:"Path to input CSV file; the first column is embedded and all other columns are ignored" optional:""`
-	Out                     string `name:"out" help:"Path to output CSV file (defaults to <input>.embeddings.csv)" optional:""`
+	Out                     string `name:"out" type:"file" placeholder:"FILE" help:"Path to output CSV file (defaults to stdout)" optional:""`
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -60,9 +59,9 @@ func (cmd *EmbeddingCommand) Run(ctx server.Cmd) (err error) {
 
 	req := cmd.EmbeddingRequest
 	req.Input = input
-	outputPath := cmd.outputPath()
 
 	return WithClient(ctx, func(client *httpclient.Client, _ string) error {
+		outputPath := cmd.outputPath()
 		parent, endSpan := otel.StartSpan(ctx.Tracer(), ctx.Context(), "EmbeddingCommand",
 			attribute.String("request", types.Stringify(req)),
 			attribute.String("csv", cmd.CSV),
@@ -74,14 +73,22 @@ func (cmd *EmbeddingCommand) Run(ctx server.Cmd) (err error) {
 		if err != nil {
 			return err
 		}
-		if err := writeEmbeddingCSV(outputPath, input, response.Output); err != nil {
-			return err
+		if outputPath == "" {
+			if err := writeEmbeddingCSVToWriter(os.Stdout, input, response.Output); err != nil {
+				return err
+			}
+		} else {
+			if err := writeEmbeddingCSV(outputPath, input, response.Output); err != nil {
+				return err
+			}
 		}
 
 		if ctx.IsDebug() {
 			fmt.Println(response)
 		}
-		fmt.Printf("Wrote %d embeddings to %s\n", len(response.Output), outputPath)
+		if outputPath != "" {
+			fmt.Printf("Wrote %d embeddings to %s\n", len(response.Output), outputPath)
+		}
 		return nil
 	})
 }
@@ -113,10 +120,7 @@ func (cmd EmbeddingCommand) outputPath() string {
 	if cmd.Out != "" {
 		return cmd.Out
 	}
-	if cmd.CSV != "" {
-		return defaultEmbeddingOutputPath(cmd.CSV)
-	}
-	return "embeddings.csv"
+	return ""
 }
 
 func readEmbeddingCSV(path string) ([]string, error) {
@@ -160,7 +164,15 @@ func writeEmbeddingCSV(path string, input []string, output [][]float64) error {
 	}
 	defer file.Close()
 
-	writer := csv.NewWriter(file)
+	return writeEmbeddingCSVToWriter(file, input, output)
+}
+
+func writeEmbeddingCSVToWriter(w io.Writer, input []string, output [][]float64) error {
+	if len(input) != len(output) {
+		return fmt.Errorf("embedding row count mismatch: got %d rows for %d inputs", len(output), len(input))
+	}
+
+	writer := csv.NewWriter(w)
 	for i, text := range input {
 		row := make([]string, 1, len(output[i])+1)
 		row[0] = text
@@ -173,13 +185,4 @@ func writeEmbeddingCSV(path string, input []string, output [][]float64) error {
 	}
 	writer.Flush()
 	return writer.Error()
-}
-
-func defaultEmbeddingOutputPath(path string) string {
-	ext := filepath.Ext(path)
-	base := strings.TrimSuffix(path, ext)
-	if base == "" {
-		return path + ".embeddings.csv"
-	}
-	return base + ".embeddings.csv"
 }

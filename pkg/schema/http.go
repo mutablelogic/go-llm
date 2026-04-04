@@ -69,7 +69,7 @@ type DeleteModelRequest struct {
 type EmbeddingRequest struct {
 	Provider             string   `json:"provider,omitempty" help:"Provider name" optional:""`
 	Model                string   `json:"model,omitempty" help:"Model name" optional:""`
-	Input                []string `json:"input,omitempty" arg:"" help:"Text inputs to embed"`
+	Input                []string `json:"input,omitempty" arg:"" help:"Text inputs to embed" optional:""`
 	TaskType             string   `json:"task_type,omitempty" help:"Embedding task type (Google-specific)" enum:"DEFAULT,RETRIEVAL_QUERY,RETRIEVAL_DOCUMENT,SEMANTIC_SIMILARITY,CLASSIFICATION,CLUSTERING,QUESTION_ANSWERING,FACT_VERIFICATION,CODE_RETRIEVAL_QUERY," default:"DEFAULT"`
 	Title                string   `json:"title,omitempty" help:"Document title, used with RETRIEVAL_DOCUMENT task type (Google-specific)"`
 	OutputDimensionality uint     `json:"output_dimensionality,omitempty" help:"Truncate embedding to this many dimensions (Google-specific)"`
