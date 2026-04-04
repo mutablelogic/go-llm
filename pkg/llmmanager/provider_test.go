@@ -15,6 +15,7 @@
 package manager
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"testing"
@@ -210,4 +211,94 @@ func Test_encryptCredentialsDecryptRoundTrip(t *testing.T) {
 		return
 	}
 	assert.Equal("secret-key", credentials.APIKey)
+}
+
+func TestProviderCRUDIntegration(t *testing.T) {
+	conn, m := newIntegrationManager(t)
+	ctx := context.Background()
+
+	created := createIntegrationProvider(t, m, conn.ProviderInsert())
+	assert := assert.New(t)
+	assert.Equal(conn.Config.Name, created.Name)
+	assert.Equal(conn.Config.Provider, created.Provider)
+	if assert.NotNil(created.URL) {
+		assert.Equal(conn.Config.URL, *created.URL)
+	}
+	assert.Equal(conn.Config.Groups, created.Groups)
+
+	listed, err := m.ListProviders(ctx, schema.ProviderListRequest{Name: created.Name})
+	if !assert.NoError(err) {
+		return
+	}
+	if assert.Len(listed.Body, 1) {
+		assert.Equal(created.Name, listed.Body[0].Name)
+	}
+
+	got, err := m.GetProvider(ctx, created.Name)
+	if !assert.NoError(err) {
+		return
+	}
+	assert.Equal(created.Name, got.Name)
+	assert.Equal(created.Groups, got.Groups)
+
+	updatedURL := conn.Config.URL
+	if updatedURL == "" {
+		updatedURL = "http://localhost:11434/api"
+	}
+	updatedMeta := schema.ProviderMetaMap{"scope": "integration"}
+	updated, err := m.UpdateProvider(ctx, created.Name, schema.ProviderMeta{
+		URL:     &updatedURL,
+		Include: []string{".*"},
+		Meta:    updatedMeta,
+		Groups:  conn.Config.Groups,
+	})
+	if !assert.NoError(err) {
+		return
+	}
+	if assert.NotNil(updated.URL) {
+		assert.Equal(updatedURL, *updated.URL)
+	}
+	assert.Equal([]string{".*"}, updated.Include)
+	assert.Equal(updatedMeta, updated.Meta)
+	assert.NotNil(updated.ModifiedAt)
+
+	deleted, err := m.DeleteProvider(ctx, created.Name)
+	if !assert.NoError(err) {
+		return
+	}
+	assert.Equal(created.Name, deleted.Name)
+
+	_, err = m.GetProvider(ctx, created.Name)
+	if assert.Error(err) {
+		assert.ErrorIs(err, schema.ErrNotFound)
+	}
+}
+
+func TestListProvidersIntegrationWithGroupFilter(t *testing.T) {
+	conn, m := newIntegrationManager(t)
+	ctx := context.Background()
+	assert := assert.New(t)
+
+	restricted := conn.ProviderInsert()
+	restricted.Name = "restricted-ollama"
+	createIntegrationProvider(t, m, restricted)
+
+	public := conn.ProviderInsert()
+	public.Name = "public-ollama"
+	public.Groups = nil
+	publicProvider := createIntegrationProvider(t, m, public)
+
+	admins, err := m.ListProviders(ctx, schema.ProviderListRequest{Groups: []string{"admins"}})
+	if !assert.NoError(err) {
+		return
+	}
+	assert.Len(admins.Body, 2)
+
+	nonMatching, err := m.ListProviders(ctx, schema.ProviderListRequest{Groups: []string{"dev"}})
+	if !assert.NoError(err) {
+		return
+	}
+	if assert.Len(nonMatching.Body, 1) {
+		assert.Equal(publicProvider.Name, nonMatching.Body[0].Name)
+	}
 }

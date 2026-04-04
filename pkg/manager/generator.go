@@ -6,7 +6,7 @@ import (
 	"sync"
 
 	// Packages
-	jsonschema "github.com/google/jsonschema-go/jsonschema"
+	googlejsonschema "github.com/google/jsonschema-go/jsonschema"
 	otel "github.com/mutablelogic/go-client/pkg/otel"
 	llm "github.com/mutablelogic/go-llm"
 	opt "github.com/mutablelogic/go-llm/pkg/opt"
@@ -16,6 +16,7 @@ import (
 	mistral "github.com/mutablelogic/go-llm/pkg/provider/mistral"
 	schema "github.com/mutablelogic/go-llm/pkg/schema"
 	tool "github.com/mutablelogic/go-llm/pkg/tool"
+	serverjsonschema "github.com/mutablelogic/go-server/pkg/jsonschema"
 	attribute "go.opentelemetry.io/otel/attribute"
 )
 
@@ -390,7 +391,7 @@ func withThinkingBudget(budgetTokens uint) opt.Opt {
 
 // withJSONOutput dispatches to the correct provider-specific JSON output option.
 func withJSONOutput(data schema.JSONSchema) opt.Opt {
-	var s jsonschema.Schema
+	var s serverjsonschema.Schema
 	if err := json.Unmarshal(data, &s); err != nil {
 		return opt.Error(schema.ErrBadParameter.Withf("invalid JSON schema: %v", err))
 	}
@@ -414,7 +415,7 @@ func withJSONOutput(data schema.JSONSchema) opt.Opt {
 // avoiding the conflict between function calling and response JSON schema on
 // providers like Gemini. Returns the tool name and the opt.
 func (m *Manager) addOutputTool(format schema.JSONSchema) (string, *tool.OutputTool, opt.Opt, error) {
-	var s jsonschema.Schema
+	var s googlejsonschema.Schema
 	if err := json.Unmarshal(format, &s); err != nil {
 		return "", nil, nil, schema.ErrBadParameter.Withf("invalid JSON schema for output tool: %v", err)
 	}

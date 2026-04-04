@@ -1,7 +1,9 @@
 package schema_test
 
 import (
+	"encoding/json"
 	"errors"
+	"net/url"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -180,6 +182,52 @@ func Test_NewMessage_010(t *testing.T) {
 	assert.Equal("https://example.com/photo.png", msg.Content[2].Attachment.URL.String())
 }
 
+func TestAttachmentMarshalJSONURLAsString(t *testing.T) {
+	assert := assert.New(t)
+	attachment := schema.Attachment{
+		ContentType: "application/pdf",
+		Data:        []byte("pdf"),
+		URL:         urlFromString(t, "file:///Users/djt/Desktop/spec.pdf"),
+	}
+
+	data, err := json.Marshal(attachment)
+	if !assert.NoError(err) {
+		return
+	}
+
+	assert.JSONEq(`{"type":"application/pdf","data":"cGRm","url":"file:///Users/djt/Desktop/spec.pdf"}`, string(data))
+}
+
+func TestAttachmentUnmarshalJSONStringURL(t *testing.T) {
+	assert := assert.New(t)
+	var attachment schema.Attachment
+
+	err := json.Unmarshal([]byte(`{"type":"application/pdf","url":"file:///Users/djt/Desktop/spec.pdf"}`), &attachment)
+	if !assert.NoError(err) {
+		return
+	}
+
+	if assert.NotNil(attachment.URL) {
+		assert.Equal("file:///Users/djt/Desktop/spec.pdf", attachment.URL.String())
+		assert.Equal("/Users/djt/Desktop/spec.pdf", attachment.URL.Path)
+	}
+}
+
+func TestAttachmentUnmarshalLegacyObjectURL(t *testing.T) {
+	assert := assert.New(t)
+	var attachment schema.Attachment
+
+	err := json.Unmarshal([]byte(`{"type":"application/pdf","url":{"Scheme":"file","Host":"","Path":"/Users/djt/Desktop/spec.pdf"}}`), &attachment)
+	if !assert.NoError(err) {
+		return
+	}
+
+	if assert.NotNil(attachment.URL) {
+		assert.Equal("file:///Users/djt/Desktop/spec.pdf", attachment.URL.String())
+		assert.Equal("/Users/djt/Desktop/spec.pdf", attachment.URL.Path)
+	}
+}
+
 func Test_NewToolResult_001(t *testing.T) {
 	// Simple tool result
 	assert := assert.New(t)
@@ -192,6 +240,15 @@ func Test_NewToolResult_001(t *testing.T) {
 	assert.Equal("get_weather", tr.Name)
 	assert.JSONEq(`{"temperature":20,"unit":"celsius"}`, string(tr.Content))
 	assert.False(tr.IsError)
+}
+
+func urlFromString(t *testing.T, raw string) *url.URL {
+	t.Helper()
+	u, err := url.Parse(raw)
+	if err != nil {
+		t.Fatalf("parse url %q: %v", raw, err)
+	}
+	return u
 }
 
 func Test_NewToolError_001(t *testing.T) {

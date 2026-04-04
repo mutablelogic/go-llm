@@ -7,11 +7,13 @@ import (
 	// Packages
 	middleware "github.com/djthorpe/go-auth/pkg/middleware"
 	llmmanager "github.com/mutablelogic/go-llm/pkg/llmmanager"
+	opt "github.com/mutablelogic/go-llm/pkg/opt"
 	schema "github.com/mutablelogic/go-llm/pkg/schema"
 	httprequest "github.com/mutablelogic/go-server/pkg/httprequest"
 	httpresponse "github.com/mutablelogic/go-server/pkg/httpresponse"
 	jsonschema "github.com/mutablelogic/go-server/pkg/jsonschema"
 	opts "github.com/mutablelogic/go-server/pkg/openapi"
+	types "github.com/mutablelogic/go-server/pkg/types"
 )
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -20,8 +22,18 @@ import (
 func ModelHandler(manager *llmmanager.Manager) (string, *jsonschema.Schema, httprequest.PathItem) {
 	return "model", nil, httprequest.NewPathItem(
 		"Model operations",
-		"List operations on models",
+		"List and download operations on models",
 		"Model",
+	).Post(
+		func(w http.ResponseWriter, r *http.Request) {
+			_ = downloadModel(r.Context(), manager, w, r)
+		},
+		"Download model",
+		opts.WithJSONRequest(jsonschema.MustFor[schema.DownloadModelRequest]()),
+		opts.WithJSONResponse(200, jsonschema.MustFor[schema.Model]()),
+		opts.WithTextStreamResponse(200, "SSE stream of progress, error, and result events."),
+		opts.WithErrorResponse(400, "Invalid request body or model download failure."),
+		opts.WithErrorResponse(406, "Unsupported Accept header."),
 	).Get(
 		func(w http.ResponseWriter, r *http.Request) {
 			_ = listModels(r.Context(), manager, w, r)
@@ -36,7 +48,7 @@ func ModelHandler(manager *llmmanager.Manager) (string, *jsonschema.Schema, http
 func ModelResourceHandler(manager *llmmanager.Manager) (string, *jsonschema.Schema, httprequest.PathItem) {
 	return "model/{name}", jsonschema.MustFor[schema.ModelNameSelector](), httprequest.NewPathItem(
 		"Model operations",
-		"Get operations on models",
+		"Get and delete operations on models",
 		"Model",
 	).Get(
 		func(w http.ResponseWriter, r *http.Request) {
@@ -45,19 +57,33 @@ func ModelResourceHandler(manager *llmmanager.Manager) (string, *jsonschema.Sche
 		"Get model",
 		opts.WithJSONResponse(200, jsonschema.MustFor[schema.Model]()),
 		opts.WithErrorResponse(404, "Model not found."),
+	).Delete(
+		func(w http.ResponseWriter, r *http.Request) {
+			_ = deleteModel(r.Context(), manager, w, r, "")
+		},
+		"Delete model",
+		opts.WithJSONResponse(200, jsonschema.MustFor[schema.Model]()),
+		opts.WithErrorResponse(404, "Model not found."),
 	)
 }
 
 func ModelProviderResourceHandler(manager *llmmanager.Manager) (string, *jsonschema.Schema, httprequest.PathItem) {
 	return "model/{provider}/{name}", jsonschema.MustFor[schema.ModelProviderSelector](), httprequest.NewPathItem(
 		"Model operations",
-		"Get operations on models with an explicit provider",
+		"Get and delete operations on models with an explicit provider",
 		"Model",
 	).Get(
 		func(w http.ResponseWriter, r *http.Request) {
 			_ = getModel(r.Context(), manager, w, r, r.PathValue("provider"))
 		},
 		"Get model for provider",
+		opts.WithJSONResponse(200, jsonschema.MustFor[schema.Model]()),
+		opts.WithErrorResponse(404, "Model not found."),
+	).Delete(
+		func(w http.ResponseWriter, r *http.Request) {
+			_ = deleteModel(r.Context(), manager, w, r, r.PathValue("provider"))
+		},
+		"Delete model for provider",
 		opts.WithJSONResponse(200, jsonschema.MustFor[schema.Model]()),
 		opts.WithErrorResponse(404, "Model not found."),
 	)
@@ -89,5 +115,61 @@ func getModel(ctx context.Context, manager *llmmanager.Manager, w http.ResponseW
 		return httpresponse.Error(w, schema.HTTPErr(err))
 	} else {
 		return httpresponse.JSON(w, http.StatusOK, httprequest.Indent(r), model)
+	}
+}
+
+func deleteModel(ctx context.Context, manager *llmmanager.Manager, w http.ResponseWriter, r *http.Request, provider string) error {
+	req := schema.DeleteModelRequest{
+		Provider: provider,
+		Name:     r.PathValue("name"),
+	}
+
+	model, err := manager.DeleteModel(ctx, req, middleware.UserFromContext(ctx))
+	if err != nil {
+		return httpresponse.Error(w, schema.HTTPErr(err))
+	}
+	return httpresponse.JSON(w, http.StatusOK, httprequest.Indent(r), model)
+}
+
+func downloadModel(ctx context.Context, manager *llmmanager.Manager, w http.ResponseWriter, r *http.Request) error {
+	var req schema.DownloadModelRequest
+	if err := httprequest.Read(r, &req); err != nil {
+		return httpresponse.Error(w, httpresponse.ErrBadRequest, err)
+	}
+
+	// Determine the accepted response content type
+	accept, err := types.AcceptContentType(r)
+	if err != nil {
+		return httpresponse.Error(w, httpresponse.ErrBadRequest, err)
+	}
+
+	// Respond
+	switch accept {
+	case types.ContentTypeTextStream:
+		stream := httpresponse.NewTextStream(w)
+		if stream == nil {
+			return httpresponse.Error(w, httpresponse.ErrInternalError)
+		}
+		defer stream.Close()
+
+		progressFn := opt.ProgressFn(func(status string, percent float64) {
+			stream.Write(schema.EventProgress, schema.ProgressEvent{Status: status, Percent: percent})
+		})
+
+		model, err := manager.DownloadModel(ctx, req, middleware.UserFromContext(ctx), opt.WithProgress(progressFn))
+		if err != nil {
+			stream.Write(schema.EventError, schema.StreamError{Error: err.Error()})
+			return nil
+		}
+		stream.Write(schema.EventResult, model)
+		return nil
+	case types.ContentTypeJSON, types.ContentTypeAny:
+		model, err := manager.DownloadModel(ctx, req, middleware.UserFromContext(ctx))
+		if err != nil {
+			return httpresponse.Error(w, schema.HTTPErr(err))
+		}
+		return httpresponse.JSON(w, http.StatusOK, httprequest.Indent(r), model)
+	default:
+		return httpresponse.Error(w, httpresponse.Err(http.StatusNotAcceptable))
 	}
 }

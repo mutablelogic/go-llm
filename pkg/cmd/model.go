@@ -18,8 +18,10 @@ import (
 // TYPES
 
 type ModelCommands struct {
-	ListModels ListModelsCommand `cmd:"" name:"models" help:"List models." group:"PROVIDER MODELS"`
-	GetModel   GetModelCommand   `cmd:"" name:"model" help:"Get a model by name." group:"PROVIDER MODELS"`
+	ListModels    ListModelsCommand    `cmd:"" name:"models" help:"List models." group:"PROVIDER MODELS"`
+	DownloadModel DownloadModelCommand `cmd:"" name:"model-download" help:"Download a model." group:"PROVIDER MODELS"`
+	DeleteModel   DeleteModelCommand   `cmd:"" name:"model-delete" help:"Delete a model by name." group:"PROVIDER MODELS"`
+	GetModel      GetModelCommand      `cmd:"" name:"model" help:"Get a model by name." group:"PROVIDER MODELS"`
 }
 
 type ListModelsCommand struct {
@@ -28,6 +30,17 @@ type ListModelsCommand struct {
 
 type GetModelCommand struct {
 	Name     string `arg:"" name:"name" help:"Model name"`
+	Provider string `name:"provider" help:"Provider name" optional:""`
+}
+
+type DownloadModelCommand struct {
+	Name     string `arg:"" name:"name" help:"Model name to download"`
+	Provider string `name:"provider" help:"Provider name" optional:""`
+	Progress bool   `name:"progress" help:"Show download progress" default:"true" negatable:""`
+}
+
+type DeleteModelCommand struct {
+	Name     string `arg:"" name:"name" help:"Model name to delete"`
 	Provider string `name:"provider" help:"Provider name" optional:""`
 }
 
@@ -76,6 +89,70 @@ func (cmd *GetModelCommand) Run(ctx server.Cmd) (err error) {
 		}
 
 		fmt.Println(model)
+		return nil
+	})
+}
+
+func (cmd *DownloadModelCommand) Run(ctx server.Cmd) (err error) {
+	return WithClient(ctx, func(client *httpclient.Client, _ string) error {
+		req := schema.DownloadModelRequest{
+			Provider: cmd.Provider,
+			Name:     cmd.Name,
+		}
+
+		parent, endSpan := otel.StartSpan(ctx.Tracer(), ctx.Context(), "DownloadModelCommand",
+			attribute.String("request", types.Stringify(req)),
+		)
+		defer func() { endSpan(err) }()
+
+		var progressFn func(string, float64)
+		if cmd.Progress {
+			widget := tui.Progress(tui.SetWidth(max(10, min(20, ctx.TermWidth()/3))))
+			progressFn = func(status string, percent float64) {
+				fmt.Print("\r")
+				_, _ = widget.Write(os.Stdout, status, percent)
+			}
+		}
+
+		model, err := client.DownloadModel(parent, req, progressFn)
+		if cmd.Progress {
+			fmt.Println()
+		}
+		if err != nil {
+			return err
+		}
+
+		if ctx.IsDebug() {
+			fmt.Println(model)
+		} else {
+			fmt.Printf("Downloaded model: %s\n", model.Name)
+		}
+		return nil
+	})
+}
+
+func (cmd *DeleteModelCommand) Run(ctx server.Cmd) (err error) {
+	return WithClient(ctx, func(client *httpclient.Client, _ string) error {
+		req := schema.DeleteModelRequest{
+			Provider: cmd.Provider,
+			Name:     cmd.Name,
+		}
+
+		parent, endSpan := otel.StartSpan(ctx.Tracer(), ctx.Context(), "DeleteModelCommand",
+			attribute.String("request", types.Stringify(req)),
+		)
+		defer func() { endSpan(err) }()
+
+		model, err := client.DeleteModel(parent, req)
+		if err != nil {
+			return err
+		}
+
+		if ctx.IsDebug() {
+			fmt.Println(model)
+		} else {
+			fmt.Printf("Deleted model: %s\n", model.Name)
+		}
 		return nil
 	})
 }

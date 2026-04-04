@@ -15,14 +15,12 @@ import (
 	llm "github.com/mutablelogic/go-llm"
 	modelcache "github.com/mutablelogic/go-llm/pkg/modelcache"
 	schema "github.com/mutablelogic/go-llm/pkg/schema"
-	types "github.com/mutablelogic/go-server/pkg/types"
 )
 
 ///////////////////////////////////////////////////////////////////////////////
 // TYPES
 
 type Client struct {
-	provider string
 	*client.Client
 	*modelcache.ModelCache
 }
@@ -41,8 +39,7 @@ const (
 // LIFECYCLE
 
 // Create a new client, with an ollama endpoint, which should be something like
-// "http://localhost:11434/api" - you can specify a different provider name in
-// the fragment, ie, "http://localhost:11434/api#myprovider"
+// "http://localhost:11434/api".
 func New(endPoint string, opts ...client.ClientOpt) (*Client, error) {
 	// Default endpoint
 	if endPoint == "" {
@@ -60,14 +57,6 @@ func New(endPoint string, opts ...client.ClientOpt) (*Client, error) {
 		endPoint = u.String()
 	}
 
-	// Get provider name from fragment
-	provider := schema.Ollama
-	if u, err := url.Parse(endPoint); err == nil && u.Fragment != "" {
-		if types.IsIdentifier(u.Fragment) {
-			provider = provider + "-" + u.Fragment
-		}
-	}
-
 	// Create client
 	client, err := client.New(append(opts, client.OptEndpoint(endPoint))...)
 	if err != nil {
@@ -75,15 +64,15 @@ func New(endPoint string, opts ...client.ClientOpt) (*Client, error) {
 	}
 
 	// Return the client
-	return &Client{provider: provider, Client: client, ModelCache: modelcache.NewModelCache(time.Minute, 40)}, nil
+	return &Client{Client: client, ModelCache: modelcache.NewModelCache(time.Minute, 40)}, nil
 }
 
 ///////////////////////////////////////////////////////////////////////////////
 // PUBLIC METHODS
 
 // Name returns the provider name
-func (c *Client) Name() string {
-	return c.provider
+func (*Client) Name() string {
+	return schema.Ollama
 }
 
 // versionResponse is the response from the version endpoint

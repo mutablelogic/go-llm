@@ -83,6 +83,11 @@ func (m *Manager) Run(ctx context.Context, logger *slog.Logger) error {
 	}
 }
 
+// SyncProviders refreshes the in-memory provider registry from the database.
+func (m *Manager) SyncProviders(ctx context.Context) ([]string, []string, error) {
+	return m.syncProviders(ctx)
+}
+
 ///////////////////////////////////////////////////////////////////////////////
 // PRIVATE METHODS
 

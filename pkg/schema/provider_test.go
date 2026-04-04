@@ -255,7 +255,7 @@ func TestProviderListRequestSelectWithGroupFilter(t *testing.T) {
 
 	where, _ := b.Get("where").(string)
 	assert.Contains(where, `NOT EXISTS (`)
-	assert.Contains(where, `FROM ${"schema"}.provider_group AS provider_group`)
+	assert.Contains(where, `FROM "llm".provider_group AS provider_group`)
 	assert.Contains(where, `provider_group."group" = ANY(@groups)`)
 	assert.Equal([]string{"admins", "dev"}, b.Get("groups"))
 }

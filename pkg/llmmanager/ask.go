@@ -13,10 +13,18 @@ import (
 	eliza "github.com/mutablelogic/go-llm/pkg/provider/eliza"
 	google "github.com/mutablelogic/go-llm/pkg/provider/google"
 	mistral "github.com/mutablelogic/go-llm/pkg/provider/mistral"
+	ollama "github.com/mutablelogic/go-llm/pkg/provider/ollama"
 	schema "github.com/mutablelogic/go-llm/pkg/schema"
 	jsonschema "github.com/mutablelogic/go-server/pkg/jsonschema"
 	types "github.com/mutablelogic/go-server/pkg/types"
 	attribute "go.opentelemetry.io/otel/attribute"
+)
+
+type generationContext string
+
+const (
+	generationContextAsk  generationContext = "ask"
+	generationContextChat generationContext = "chat"
 )
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -32,7 +40,7 @@ func (m *Manager) Ask(ctx context.Context, request schema.AskRequest, user *auth
 	defer func() { endSpan(err) }()
 
 	// Resolve model, generator, and options from the request meta
-	model, generator, opts, err := m.generatorFromMeta(ctx, request.GeneratorMeta, user)
+	model, generator, opts, err := m.generatorFromMeta(ctx, request.GeneratorMeta, user, generationContextAsk)
 	if err != nil {
 		return nil, err
 	}
@@ -83,9 +91,9 @@ func (m *Manager) Ask(ctx context.Context, request schema.AskRequest, user *auth
 // generatorFromMeta resolves the model and generator client from the given
 // GeneratorMeta, and returns provider-specific options derived from the meta
 // fields (e.g. system prompt). This is reusable for both Ask and Chat.
-func (m *Manager) generatorFromMeta(ctx context.Context, meta schema.GeneratorMeta, user *auth.User) (*schema.Model, llm.Generator, []opt.Opt, error) {
+func (m *Manager) generatorFromMeta(ctx context.Context, meta schema.GeneratorMeta, user *auth.User, context generationContext) (*schema.Model, llm.Generator, []opt.Opt, error) {
 	// Get candidate providers for user, or all candidates if no user is provided.
-	providers, err := m.providersForUser(ctx, meta.Provider, meta.Model, user)
+	providers, err := m.providersForUser(ctx, meta.Provider, user)
 	if err != nil {
 		return nil, nil, nil, err
 	} else if len(providers) == 0 {
@@ -129,9 +137,9 @@ func (m *Manager) generatorFromMeta(ctx context.Context, meta schema.GeneratorMe
 		opts = append(opts, withJSONOutput(meta.Format))
 	}
 	if meta.ThinkingBudget > 0 {
-		opts = append(opts, withThinkingBudget(meta.ThinkingBudget))
+		opts = append(opts, withThinkingBudget(context, meta.ThinkingBudget))
 	} else if meta.Thinking != nil && *meta.Thinking {
-		opts = append(opts, withThinking())
+		opts = append(opts, withThinking(context))
 	}
 
 	// Convert options for the client
@@ -154,6 +162,8 @@ func withSystemPrompt(value string) opt.Opt {
 			return anthropic.WithSystemPrompt(value)
 		case schema.Mistral:
 			return mistral.WithSystemPrompt(value)
+		case schema.Ollama:
+			return opt.SetString(opt.SystemPromptKey, value)
 		default:
 			return opt.Error(schema.ErrNotImplemented.Withf("%s: WithSystemPrompt not supported", provider))
 		}
@@ -161,13 +171,15 @@ func withSystemPrompt(value string) opt.Opt {
 }
 
 // withThinking dispatches to the correct provider-specific thinking option (no budget).
-func withThinking() opt.Opt {
+func withThinking(context generationContext) opt.Opt {
 	return opt.WithClient(func(provider string) opt.Opt {
 		switch provider {
 		case schema.Gemini:
 			return google.WithThinking()
 		case schema.Eliza:
 			return eliza.WithThinking()
+		case schema.Ollama:
+			return ollama.WithThinking(string(context))
 		default:
 			return opt.Error(schema.ErrBadParameter.Withf("%s: WithThinking without budget not supported (use --thinking-budget)", provider))
 		}
@@ -175,7 +187,7 @@ func withThinking() opt.Opt {
 }
 
 // withThinkingBudget dispatches to the correct provider-specific thinking option with a token budget.
-func withThinkingBudget(budgetTokens uint) opt.Opt {
+func withThinkingBudget(context generationContext, budgetTokens uint) opt.Opt {
 	return opt.WithClient(func(provider string) opt.Opt {
 		switch provider {
 		case schema.Gemini:
@@ -183,7 +195,9 @@ func withThinkingBudget(budgetTokens uint) opt.Opt {
 		case schema.Anthropic:
 			return anthropic.WithThinking(budgetTokens)
 		case schema.Eliza:
-			return eliza.WithThinking()
+			return opt.Error(schema.ErrBadParameter.Withf("%s: WithThinkingBudget not supported (use thinking without a budget)", provider))
+		case schema.Ollama:
+			return ollama.WithThinking(string(context), budgetTokens)
 		default:
 			return opt.Error(schema.ErrNotImplemented.Withf("%s: WithThinking not supported", provider))
 		}
@@ -204,6 +218,8 @@ func withJSONOutput(data schema.JSONSchema) opt.Opt {
 			return anthropic.WithJSONOutput(&s)
 		case schema.Mistral:
 			return mistral.WithJSONOutput(&s)
+		case schema.Ollama:
+			return ollama.WithJSONOutput(&s)
 		default:
 			return opt.Error(schema.ErrNotImplemented.Withf("%s: WithJSONOutput not supported", provider))
 		}

@@ -121,10 +121,10 @@ func Test_client_007(t *testing.T) {
 }
 
 func Test_client_008(t *testing.T) {
-	// Test that a URL fragment sets a custom provider name
+	// Test that a URL fragment is ignored and the provider name remains stable
 	assert := assert.New(t)
 	c, err := ollama.New("http://localhost:11434/api#myprovider")
 	assert.NoError(err)
 	assert.NotNil(c)
-	assert.Equal("ollama-myprovider", c.Name())
+	assert.Equal("ollama", c.Name())
 }

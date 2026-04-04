@@ -11,6 +11,7 @@ import (
 	"github.com/mutablelogic/go-llm/pkg/modelcache"
 	"github.com/mutablelogic/go-llm/pkg/opt"
 	"github.com/mutablelogic/go-llm/pkg/schema"
+	httpresponse "github.com/mutablelogic/go-server/pkg/httpresponse"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -117,6 +118,34 @@ func TestGetModel_NotFoundPrunesCache(t *testing.T) {
 
 	// Next call should fetch again
 	_, err = mc.GetModel(ctx, "model-b", fnOk)
+	assert.NoError(err)
+	assert.Equal(2, calls)
+}
+
+func TestGetModel_HTTPNotFoundPrunesCache(t *testing.T) {
+	assert := assert.New(t)
+	ctx := context.Background()
+	mc := modelcache.NewModelCache(1*time.Millisecond, 10)
+
+	calls := 0
+	fnOk := func(_ context.Context, name string) (*schema.Model, error) {
+		calls++
+		return &schema.Model{Name: name}, nil
+	}
+	fnNotFound := func(_ context.Context, name string) (*schema.Model, error) {
+		return nil, httpresponse.ErrNotFound.Withf("model %q not found", name)
+	}
+
+	_, err := mc.GetModel(ctx, "model-http-404", fnOk)
+	assert.NoError(err)
+	assert.Equal(1, calls)
+
+	time.Sleep(5 * time.Millisecond)
+
+	_, err = mc.GetModel(ctx, "model-http-404", fnNotFound)
+	assert.ErrorIs(err, httpresponse.ErrNotFound)
+
+	_, err = mc.GetModel(ctx, "model-http-404", fnOk)
 	assert.NoError(err)
 	assert.Equal(2, calls)
 }

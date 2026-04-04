@@ -1,51 +1,258 @@
 package manager
 
 import (
+	"context"
+	"errors"
 	"testing"
 
 	// Packages
+	auth "github.com/djthorpe/go-auth/schema/auth"
+	llm "github.com/mutablelogic/go-llm"
+	opt "github.com/mutablelogic/go-llm/pkg/opt"
 	schema "github.com/mutablelogic/go-llm/pkg/schema"
+	httpresponse "github.com/mutablelogic/go-server/pkg/httpresponse"
 	assert "github.com/stretchr/testify/assert"
 )
 
-func TestModelsByName(t *testing.T) {
+type modelTestClient struct {
+	name string
+}
+
+func (c *modelTestClient) Name() string { return c.name }
+
+func (c *modelTestClient) Ping(context.Context) error { return nil }
+
+func (c *modelTestClient) ListModels(context.Context, ...opt.Opt) ([]schema.Model, error) {
+	return nil, nil
+}
+
+func (c *modelTestClient) GetModel(context.Context, string, ...opt.Opt) (*schema.Model, error) {
+	return nil, nil
+}
+
+type modelTestDownloader struct {
+	modelTestClient
+}
+
+var _ llm.Downloader = (*modelTestDownloader)(nil)
+
+func (d *modelTestDownloader) DownloadModel(context.Context, string, ...opt.Opt) (*schema.Model, error) {
+	return nil, nil
+}
+
+func (d *modelTestDownloader) DeleteModel(context.Context, schema.Model) error {
+	return nil
+}
+
+func TestProviderAccessibleToUser(t *testing.T) {
+	t.Run("public provider is accessible", func(t *testing.T) {
+		assert := assert.New(t)
+		assert.True(providerAccessibleToUser(schema.Provider{Name: "public"}, &auth.User{}))
+	})
+
+	t.Run("grouped provider denied for user without groups", func(t *testing.T) {
+		assert := assert.New(t)
+		assert.False(providerAccessibleToUser(schema.Provider{ProviderMeta: schema.ProviderMeta{Groups: []string{"admins"}}}, &auth.User{}))
+	})
+
+	t.Run("grouped provider allowed for matching group", func(t *testing.T) {
+		assert := assert.New(t)
+		assert.True(providerAccessibleToUser(
+			schema.Provider{ProviderMeta: schema.ProviderMeta{Groups: []string{"admins"}}},
+			&auth.User{UserMeta: auth.UserMeta{Groups: []string{"admins"}}},
+		))
+	})
+
+	t.Run("grouped provider denied for non-matching group", func(t *testing.T) {
+		assert := assert.New(t)
+		assert.False(providerAccessibleToUser(
+			schema.Provider{ProviderMeta: schema.ProviderMeta{Groups: []string{"admins"}}},
+			&auth.User{UserMeta: auth.UserMeta{Groups: []string{"dev"}}},
+		))
+	})
+}
+
+func TestFilterProvidersForUser(t *testing.T) {
 	assert := assert.New(t)
+	providers := []schema.Provider{
+		{Name: "public"},
+		{Name: "admins", ProviderMeta: schema.ProviderMeta{Groups: []string{"admins"}}},
+	}
 
-	models := modelsByName([]schema.Model{
-		{Name: "claude-sonnet", OwnedBy: "anthropic"},
-		{Name: "gemini-pro", OwnedBy: "google"},
-		{Name: "claude-sonnet", OwnedBy: "proxy"},
-	}, "claude-sonnet")
-
-	if assert.Len(models, 2) {
-		assert.Equal("anthropic", models[0].OwnedBy)
-		assert.Equal("proxy", models[1].OwnedBy)
+	filtered := filterProvidersForUser(providers, &auth.User{})
+	if assert.Len(filtered, 1) {
+		assert.Equal("public", filtered[0].Name)
 	}
 }
 
-func TestSingleModel(t *testing.T) {
-	t.Run("not found", func(t *testing.T) {
+func TestDownloaderCandidatesForProviders(t *testing.T) {
+	assert := assert.New(t)
+	providers := []schema.Provider{{Name: "plain"}, {Name: "downloader"}, {Name: "missing"}}
+	clients := map[string]llm.Client{
+		"plain":      &modelTestClient{name: "plain"},
+		"downloader": &modelTestDownloader{modelTestClient{name: "downloader"}},
+	}
+
+	candidates := downloaderCandidatesForProviders(providers, func(name string) llm.Client {
+		return clients[name]
+	})
+
+	if assert.Len(candidates, 1) {
+		assert.Equal("downloader", candidates[0].provider.Name)
+	}
+}
+
+func TestDeleteCandidatesForModels(t *testing.T) {
+	assert := assert.New(t)
+	downloaderA := &modelTestDownloader{modelTestClient{name: "provider-a"}}
+	downloaderB := &modelTestDownloader{modelTestClient{name: "provider-b"}}
+	candidates := []downloaderCandidate{
+		{provider: schema.Provider{Name: "provider-a"}, downloader: downloaderA},
+		{provider: schema.Provider{Name: "provider-b"}, downloader: downloaderB},
+	}
+	models := []schema.Model{
+		{Name: "keep", OwnedBy: "provider-a"},
+		{Name: "target", OwnedBy: "provider-a"},
+		{Name: "target", OwnedBy: "provider-b"},
+		{Name: "skip", OwnedBy: "provider-c"},
+	}
+
+	deletions := deleteCandidatesForModels([]schema.Model{models[1], models[2]}, candidates)
+	if assert.Len(deletions, 2) {
+		assert.Equal("provider-a", deletions[0].model.OwnedBy)
+		assert.Equal("provider-b", deletions[1].model.OwnedBy)
+	}
+
+	deletions = deleteCandidatesForModels([]schema.Model{models[0]}, candidates)
+	if assert.Len(deletions, 1) {
+		assert.Equal("provider-a", deletions[0].model.OwnedBy)
+	}
+
+	assert.Empty(deleteCandidatesForModels([]schema.Model{{Name: "skip", OwnedBy: "provider-c"}}, candidates))
+}
+
+func TestIsModelNotFound(t *testing.T) {
+	assert := assert.New(t)
+
+	assert.True(isModelNotFound(schema.ErrNotFound))
+	assert.True(isModelNotFound(schema.ErrNotFound.With("missing")))
+	assert.True(isModelNotFound(httpresponse.ErrNotFound))
+	assert.True(isModelNotFound(httpresponse.ErrNotFound.With("provider missing model")))
+	assert.True(isModelNotFound(errors.Join(schema.ErrNotFound, context.Canceled)))
+
+	assert.False(isModelNotFound(nil))
+	assert.False(isModelNotFound(schema.ErrConflict))
+	assert.False(isModelNotFound(httpresponse.ErrBadRequest.With("bad request")))
+}
+
+func TestListModelsIntegration(t *testing.T) {
+	conn, m := newIntegrationManager(t)
+	conn.RequireProvider(t)
+	ctx := context.Background()
+	provider := createIntegrationProvider(t, m, conn.ProviderInsert())
+	admin := integrationAdminUser(conn)
+
+	t.Run("matching group sees provider models", func(t *testing.T) {
 		assert := assert.New(t)
-		_, err := singleModel(nil, "missing")
+		result, err := m.ListModels(ctx, schema.ModelListRequest{Provider: provider.Name}, admin)
+		if isIntegrationUnreachable(err) {
+			t.Skipf("provider unreachable: %v", err)
+		}
+		if !assert.NoError(err) {
+			return
+		}
+		assert.NotEmpty(result.Provider)
+		assert.NotZero(result.Count)
+		assert.NotEmpty(result.Body)
+		assert.Contains(result.Provider, provider.Name)
+	})
+
+	t.Run("user without groups sees no provider models", func(t *testing.T) {
+		assert := assert.New(t)
+		result, err := m.ListModels(ctx, schema.ModelListRequest{Provider: provider.Name}, &auth.User{})
+		if !assert.NoError(err) {
+			return
+		}
+		assert.Empty(result.Provider)
+		assert.Zero(result.Count)
+		assert.Empty(result.Body)
+	})
+}
+
+func TestGetModelIntegration(t *testing.T) {
+	conn, m := newIntegrationManager(t)
+	conn.RequireProvider(t)
+	ctx := context.Background()
+	provider := createIntegrationProvider(t, m, conn.ProviderInsert())
+	admin := integrationAdminUser(conn)
+
+	models, err := m.ListModels(ctx, schema.ModelListRequest{Provider: provider.Name}, admin)
+	if isIntegrationUnreachable(err) {
+		t.Skipf("provider unreachable: %v", err)
+	}
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(models.Body) == 0 {
+		t.Skip("no models available, skipping")
+	}
+
+	modelName := models.Body[0].Name
+	if conn.Config.Model != "" {
+		modelName = conn.Config.Model
+	}
+
+	t.Run("matching group gets model", func(t *testing.T) {
+		assert := assert.New(t)
+		result, err := m.GetModel(ctx, schema.GetModelRequest{Provider: provider.Name, Name: modelName}, admin)
+		if isIntegrationUnreachable(err) {
+			t.Skipf("provider unreachable: %v", err)
+		}
+		if !assert.NoError(err) {
+			return
+		}
+		assert.NotNil(result)
+		assert.Equal(modelName, result.Name)
+		assert.Equal(provider.Name, result.OwnedBy)
+	})
+
+	t.Run("user without groups gets not found", func(t *testing.T) {
+		assert := assert.New(t)
+		_, err := m.GetModel(ctx, schema.GetModelRequest{Provider: provider.Name, Name: modelName}, &auth.User{})
 		if assert.Error(err) {
 			assert.ErrorIs(err, schema.ErrNotFound)
 		}
 	})
+}
 
-	t.Run("single", func(t *testing.T) {
+func TestDownloadModelIntegration(t *testing.T) {
+	conn, m := newIntegrationManager(t)
+	conn.RequireProvider(t)
+	ctx := context.Background()
+	provider := createIntegrationProvider(t, m, conn.ProviderInsert())
+	admin := integrationAdminUser(conn)
+	modelName := integrationModelName(t, m, provider.Name, admin, conn.Config.Model)
+
+	t.Run("matching group can download model", func(t *testing.T) {
 		assert := assert.New(t)
-		model, err := singleModel([]schema.Model{{Name: "claude-sonnet", OwnedBy: "anthropic"}}, "claude-sonnet")
+		result, err := m.DownloadModel(ctx, schema.DownloadModelRequest{Provider: provider.Name, Name: modelName}, admin)
+		if isIntegrationUnreachable(err) {
+			t.Skipf("provider unreachable: %v", err)
+		}
 		if !assert.NoError(err) {
 			return
 		}
-		assert.Equal("anthropic", model.OwnedBy)
+		if assert.NotNil(result) {
+			assert.Equal(modelName, result.Name)
+			assert.Equal(provider.Name, result.OwnedBy)
+		}
 	})
 
-	t.Run("multiple", func(t *testing.T) {
+	t.Run("user without groups gets not found", func(t *testing.T) {
 		assert := assert.New(t)
-		_, err := singleModel([]schema.Model{{Name: "claude-sonnet"}, {Name: "claude-sonnet"}}, "claude-sonnet")
+		_, err := m.DownloadModel(ctx, schema.DownloadModelRequest{Provider: provider.Name, Name: modelName}, &auth.User{})
 		if assert.Error(err) {
-			assert.ErrorIs(err, schema.ErrConflict)
+			assert.ErrorIs(err, schema.ErrNotFound)
 		}
 	})
 }

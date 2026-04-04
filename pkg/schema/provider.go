@@ -202,15 +202,16 @@ func (req ProviderListRequest) Select(bind *pg.Bind, op pg.Op) (string, error) {
 		bind.Append("where", `provider.enabled = `+bind.Set("enabled", types.Value(req.Enabled)))
 	}
 	if len(req.Groups) > 0 {
+		schemaName := fmt.Sprintf("%q", bind.Get("schema"))
 		bind.Append("where", `(
 			NOT EXISTS (
 				SELECT 1
-				FROM ${"schema"}.provider_group AS provider_group
+				FROM `+schemaName+`.provider_group AS provider_group
 				WHERE provider_group."provider" = provider."name"
 			)
 			OR EXISTS (
 				SELECT 1
-				FROM ${"schema"}.provider_group AS provider_group
+				FROM `+schemaName+`.provider_group AS provider_group
 				WHERE provider_group."provider" = provider."name"
 				AND provider_group."group" = ANY(`+bind.Set("groups", req.Groups)+`)
 			)

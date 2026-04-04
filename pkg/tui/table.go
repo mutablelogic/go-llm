@@ -4,7 +4,7 @@ import (
 	"io"
 
 	// Packages
-	"github.com/charmbracelet/lipgloss"
+	lipgloss "github.com/charmbracelet/lipgloss"
 	lgtable "github.com/charmbracelet/lipgloss/table"
 )
 
