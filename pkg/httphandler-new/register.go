@@ -27,6 +27,7 @@ func RegisterHandlers(router *httprouter.Router, manager *llmmanager.Manager, au
 		router.RegisterPath(ModelProviderResourceHandler(manager)),
 		router.RegisterPath(ProviderHandler(manager)),
 		router.RegisterPath(ProviderResourceHandler(manager)),
+		router.RegisterPath(EmbeddingHandler(manager)),
 		router.RegisterPath(AskHandler(manager)),
 	)
 }

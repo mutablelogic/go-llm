@@ -29,8 +29,10 @@ type ListModelsCommand struct {
 }
 
 type GetModelCommand struct {
-	Name     string `arg:"" name:"name" help:"Model name"`
-	Provider string `name:"provider" help:"Provider name" optional:""`
+	Name      string `arg:"" name:"name" help:"Model name" optional:""`
+	Provider  string `name:"provider" help:"Provider name" optional:""`
+	Default   bool   `name:"default" help:"Save as the default model" optional:""`
+	Embedding bool   `name:"embedding" help:"Use the embedding model defaults instead of the completion model defaults" optional:""`
 }
 
 type DownloadModelCommand struct {
@@ -73,6 +75,20 @@ func (cmd *ListModelsCommand) Run(ctx server.Cmd) (err error) {
 
 func (cmd *GetModelCommand) Run(ctx server.Cmd) (err error) {
 	return WithClient(ctx, func(client *httpclient.Client, _ string) error {
+		if cmd.Name == "" {
+			modelKey, providerKey := cmd.defaultKeys()
+			cmd.Name = ctx.GetString(modelKey)
+			if cmd.Provider == "" {
+				cmd.Provider = ctx.GetString(providerKey)
+			}
+			if cmd.Name == "" {
+				if cmd.Embedding {
+					return fmt.Errorf("no embedding model specified and no default embedding model set")
+				}
+				return fmt.Errorf("no model specified and no default model set")
+			}
+		}
+
 		req := schema.GetModelRequest{
 			Provider: cmd.Provider,
 			Name:     cmd.Name,
@@ -89,9 +105,28 @@ func (cmd *GetModelCommand) Run(ctx server.Cmd) (err error) {
 			return err
 		}
 
+		if cmd.Default {
+			modelKey, providerKey := cmd.defaultKeys()
+			if err := ctx.Set(modelKey, model.Name); err != nil {
+				return err
+			}
+			if model.OwnedBy != "" {
+				if err := ctx.Set(providerKey, model.OwnedBy); err != nil {
+					return err
+				}
+			}
+		}
+
 		fmt.Println(model)
 		return nil
 	})
+}
+
+func (cmd GetModelCommand) defaultKeys() (string, string) {
+	if cmd.Embedding {
+		return "embedding_model", "embedding_provider"
+	}
+	return "model", "provider"
 }
 
 func (cmd *DownloadModelCommand) Run(ctx server.Cmd) (err error) {

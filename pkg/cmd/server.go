@@ -51,15 +51,9 @@ func (runner *RunServer) Run(ctx server.Cmd) error {
 	// Create the auth manager, run the server, and return any error
 	return runner.withAuthManager(ctx, conn, func(authmanager *authmanager.Manager) error {
 		return runner.withLLMManager(ctx, conn, func(llmmanager *llmmanager.Manager) error {
-			if updates, deletes, err := llmmanager.SyncProviders(ctx.Context()); err != nil {
+			// Sync providers before starting the server so that any configured providers are available immediately
+			if _, _, err := llmmanager.SyncProviders(ctx.Context()); err != nil {
 				ctx.Logger().ErrorContext(ctx.Context(), "failed to sync llm providers before startup", "error", err.Error())
-			} else {
-				if len(updates) > 0 {
-					ctx.Logger().InfoContext(ctx.Context(), "updated providers", "providers", updates)
-				}
-				if len(deletes) > 0 {
-					ctx.Logger().InfoContext(ctx.Context(), "deleted providers", "providers", deletes)
-				}
 			}
 
 			// Register handlers for authmanager and llmmanager
