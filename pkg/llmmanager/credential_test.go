@@ -44,8 +44,8 @@ func Test_encryptCredentialDataRoundTrip(t *testing.T) {
 	assert.NotZero(pv)
 	assert.NotEqual([]byte("secret"), encrypted)
 
-	decrypted, err := manager.passphrases.Decrypt(pv, string(encrypted))
-	if !assert.NoError(err) {
+	var decrypted []byte
+	if !assert.NoError(manager.decryptCredentials(encrypted, pv, &decrypted)) {
 		return
 	}
 	assert.Equal([]byte("secret"), decrypted)

@@ -58,20 +58,20 @@ CREATE TABLE IF NOT EXISTS ${"schema"}.message (
 
 -- llm.usage
 CREATE TABLE IF NOT EXISTS ${"schema"}.usage (
-    "id"                  BIGSERIAL PRIMARY KEY,
-    "type"                ${"schema"}.USAGE_TYPE NOT NULL,
-    "batch"               TEXT,
-    "session"             UUID REFERENCES ${"schema"}."session" (id) ON DELETE SET NULL,
-    "user"                UUID REFERENCES ${"auth"}."user" (id) ON DELETE SET NULL,
-    "provider"            TEXT REFERENCES ${"schema"}.provider ("name") ON DELETE SET NULL,
-    "model"               TEXT NOT NULL,
-    "input_tokens"        INT,
-    "output_tokens"       INT,
-    "cache_read_tokens"   INT,
-    "cache_write_tokens"  INT,
-    "reasoning_tokens"    INT,
-    "meta"                JSONB,
-    "created_at"          TIMESTAMPTZ NOT NULL DEFAULT now()
+  "id"                  BIGSERIAL PRIMARY KEY,
+  "type"                ${"schema"}.USAGE_TYPE NOT NULL,
+  "batch"               TEXT,
+  "session"             UUID REFERENCES ${"schema"}."session" (id) ON DELETE SET NULL,
+  "user"                UUID REFERENCES ${"auth"}."user" (id) ON DELETE SET NULL,
+  "provider"            TEXT REFERENCES ${"schema"}.provider ("name") ON DELETE SET NULL,
+  "model"               TEXT NOT NULL,
+  "input_tokens"        INT,
+  "output_tokens"       INT,
+  "cache_read_tokens"   INT,
+  "cache_write_tokens"  INT,
+  "reasoning_tokens"    INT,
+  "meta"                JSONB,
+  "created_at"          TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
 -- llm.usage_index_user
@@ -85,16 +85,19 @@ CREATE INDEX IF NOT EXISTS usage_session_created_at_idx
 -- llm.connector
 CREATE TABLE IF NOT EXISTS ${"schema"}.connector (
   "url"                 TEXT NOT NULL PRIMARY KEY,
-    "namespace"           TEXT,
-    "name"                TEXT,
-    "title"               TEXT,
-    "description"         TEXT,
-    "meta"                JSONB,
-    "enabled"             BOOLEAN NOT NULL DEFAULT true,
-    "created_at"          TIMESTAMPTZ NOT NULL DEFAULT now(),
-    "modified_at"         TIMESTAMPTZ,
-	  "connected_at"        TIMESTAMPTZ
+  "namespace"           TEXT NOT NULL,
+  "name"                TEXT,
+  "title"               TEXT,
+  "description"         TEXT,
+  "meta"                JSONB,
+  "enabled"             BOOLEAN NOT NULL DEFAULT true,
+  "created_at"          TIMESTAMPTZ NOT NULL DEFAULT now(),
+  "modified_at"         TIMESTAMPTZ,
+  "connected_at"        TIMESTAMPTZ
 );
+
+CREATE UNIQUE INDEX IF NOT EXISTS connector_namespace_idx
+  ON ${"schema"}.connector ("namespace");
 
 -- llm.connector_group
 CREATE TABLE IF NOT EXISTS ${"schema"}.connector_group (

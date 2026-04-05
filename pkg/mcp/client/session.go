@@ -19,7 +19,7 @@ func (c *Client) getSession() (*sdkmcp.ClientSession, error) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	if c.session == nil {
-		return nil, ErrNotConnected
+		return nil, schema.ErrServiceUnavailable
 	}
 	return c.session, nil
 }
@@ -45,12 +45,12 @@ func (c *Client) ServerInfo() (name, version, protocol string) {
 
 // ListTools returns the cached list of tools advertised by the connected
 // MCP server. The cache is populated on connect and refreshed automatically
-// on each ToolListChanged notification. Returns ErrNotConnected if not active.
+// on each ToolListChanged notification. Returns ErrServiceUnavailable if not active.
 func (c *Client) ListTools(_ context.Context) ([]llm.Tool, error) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	if c.session == nil {
-		return nil, ErrNotConnected
+		return nil, schema.ErrServiceUnavailable
 	}
 	return c.tools, nil
 }

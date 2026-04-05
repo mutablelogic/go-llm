@@ -25,21 +25,21 @@ type ConnectorMeta struct {
 	// Enabled controls whether the server is active. Disabled servers are
 	// retained in the registry but not connected on startup.
 	// A nil value in a patch request means "preserve the existing value".
-	Enabled *bool `json:"enabled,omitempty" negatable:""`
+	Enabled *bool `json:"enabled,omitempty" negatable:"" jsonschema:"Whether the connector is enabled. Disabled connectors are retained but not connected on startup."`
 
 	// Namespace is an optional prefix used to disambiguate tools from this
 	// connector when multiple connectors expose tools with the same name.
 	// A nil value in a patch request means "preserve the existing value".
-	Namespace *string `json:"namespace,omitempty"`
+	Namespace *string `json:"namespace,omitempty" jsonschema:"Unique connector namespace used to disambiguate tools when multiple connectors expose the same names."`
 
 	// Groups holds auth group identifiers that are allowed to access this
 	// connector.
-	Groups []string `json:"groups,omitempty"`
+	Groups []string `json:"groups,omitempty" jsonschema:"Auth groups that are allowed to access this connector. If empty, the connector is accessible to all authenticated users."`
 
 	// Meta holds arbitrary user-managed connector metadata.
 	// A nil value in a patch request means "preserve the existing value".
 	// An empty object clears the metadata.
-	Meta ProviderMetaMap `json:"meta,omitempty"`
+	Meta ProviderMetaMap `json:"meta,omitempty" jsonschema:"Arbitrary user-managed connector metadata as a JSON object."`
 }
 
 // ConnectorInsert contains the fields required to insert a new connector row.
@@ -319,7 +319,7 @@ func (c ConnectorInsert) Insert(bind *pg.Bind) (string, error) {
 	bind.Set("url", url)
 
 	if namespace := strings.TrimSpace(types.Value(c.Namespace)); namespace == "" {
-		bind.Set("namespace", nil)
+		return "", ErrBadParameter.With("connector namespace is required")
 	} else if !types.IsIdentifier(namespace) {
 		return "", ErrBadParameter.Withf("connector namespace %q is not a valid identifier", namespace)
 	} else {
@@ -354,7 +354,7 @@ func (c ConnectorMeta) Update(bind *pg.Bind) error {
 	if c.Namespace != nil {
 		namespace := strings.TrimSpace(types.Value(c.Namespace))
 		if namespace == "" {
-			bind.Append("patch", `namespace = NULL`)
+			return ErrBadParameter.With("connector namespace is required")
 		} else if !types.IsIdentifier(namespace) {
 			return ErrBadParameter.Withf("connector namespace %q is not a valid identifier", namespace)
 		} else {

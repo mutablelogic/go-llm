@@ -215,9 +215,7 @@ func TestGeneratorFromMetaRejectsElizaThinkingBudgetIntegration(t *testing.T) {
 	insert.APIKey = ""
 	provider := llmtest.CreateProvider(t, insert, m.CreateProvider, m.SyncProviders)
 	admin := llmtest.AdminUser(conn)
-	modelName := llmtest.ModelName(t, "", func(ctx context.Context) (*schema.ModelList, error) {
-		return m.ListModels(ctx, schema.ModelListRequest{Provider: provider.Name}, admin)
-	})
+	modelName := llmtest.ModelNameMatching(t, "", syncAndListModels(m, provider.Name, admin), nil, validateAccessibleModel(m, provider.Name, admin))
 
 	_, _, _, opts, err := m.generatorFromMeta(ctx, schema.GeneratorMeta{
 		Provider:       provider.Name,

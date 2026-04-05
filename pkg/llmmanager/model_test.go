@@ -192,7 +192,7 @@ func TestListModelsIntegration(t *testing.T) {
 
 	t.Run("matching group sees provider models", func(t *testing.T) {
 		assert := assert.New(t)
-		result, err := m.ListModels(ctx, schema.ModelListRequest{Provider: provider.Name}, admin)
+		result, err := syncAndListModels(m, provider.Name, admin)(ctx)
 		if llmtest.IsUnreachable(err) {
 			t.Skipf("provider unreachable: %v", err)
 		}
@@ -207,7 +207,7 @@ func TestListModelsIntegration(t *testing.T) {
 
 	t.Run("user without groups sees no provider models", func(t *testing.T) {
 		assert := assert.New(t)
-		result, err := m.ListModels(ctx, schema.ModelListRequest{Provider: provider.Name}, &auth.User{})
+		result, err := syncAndListModels(m, provider.Name, &auth.User{})(ctx)
 		if !assert.NoError(err) {
 			return
 		}

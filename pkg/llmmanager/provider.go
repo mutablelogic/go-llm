@@ -21,7 +21,7 @@ func (m *Manager) CreateProvider(ctx context.Context, req schema.ProviderInsert)
 		req.Provider = req.Name
 	}
 
-	pv, credentials, err := m.encryptCredentials(req)
+	pv, credentials, err := m.encryptCredentials(req.ProviderCredentials)
 	if err != nil {
 		return nil, err
 	}

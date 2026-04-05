@@ -194,7 +194,7 @@ func Test_encryptCredentialsEmptyReturnsNoPayload(t *testing.T) {
 		return
 	}
 
-	pv, credentials, err := manager.encryptCredentials(schema.ProviderInsert{})
+	pv, credentials, err := manager.encryptCredentials(schema.ProviderCredentials{})
 	if !assert.NoError(err) {
 		return
 	}

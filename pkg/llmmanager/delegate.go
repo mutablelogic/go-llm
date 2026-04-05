@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	// Packages
+
 	client "github.com/mutablelogic/go-client"
 	llm "github.com/mutablelogic/go-llm"
 	mcp "github.com/mutablelogic/go-llm/pkg/mcp/client"
@@ -21,6 +22,8 @@ type delegate struct {
 	Version    string
 	ClientOpts []client.ClientOpt
 }
+
+var _ toolkit.ToolkitDelegate = (*delegate)(nil)
 
 ///////////////////////////////////////////////////////////////////////////////
 // LIFECYCLE
@@ -55,7 +58,9 @@ func (d *delegate) Call(context.Context, llm.Prompt, ...llm.Resource) (llm.Resou
 // and list-change events back to the toolkit. The toolkit injects the
 // Connector field before forwarding to OnEvent, so the caller need not set it.
 func (d *delegate) CreateConnector(url string, onEvent func(evt toolkit.ConnectorEvent)) (llm.Connector, error) {
-	opts := make([]mcp.Opt, 0, 5)
+	opts := []mcp.Opt{
+		mcp.WithClientOpt(d.ClientOpts...),
+	}
 	if onEvent != nil {
 		opts = append(opts,
 			mcp.OptOnStateChange(func(ctx context.Context, state *schema.ConnectorState) {
@@ -72,6 +77,5 @@ func (d *delegate) CreateConnector(url string, onEvent func(evt toolkit.Connecto
 			}),
 		)
 	}
-	opts = append(opts, mcp.WithClientOpt(d.ClientOpts...))
 	return mcp.New(url, d.Name, d.Version, opts...)
 }

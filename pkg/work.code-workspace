@@ -1,0 +1,20 @@
+{
+	"folders": [
+		{
+			"name": "go-llm",
+			"path": ".."
+		},
+		{
+			"name": "go-auth",
+			"path": "../../go-auth"
+		},
+		{
+			"name": "go-client",
+			"path": "../../go-client"
+		},
+		{
+			"name": "go-server",
+			"path": "../../go-server"
+		}
+	]
+}

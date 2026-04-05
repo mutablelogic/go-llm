@@ -5,6 +5,7 @@ import (
 	"time"
 
 	// Packages
+
 	sdkmcp "github.com/modelcontextprotocol/go-sdk/mcp"
 	llm "github.com/mutablelogic/go-llm"
 	schema "github.com/mutablelogic/go-llm/pkg/schema"
@@ -27,7 +28,7 @@ import (
 // default slog logger while Run is blocking.
 func (c *Client) Run(ctx context.Context) error {
 	// Connect (with auth retry if needed) and store the session on c.
-	session, err := c.connectWithAuth(ctx)
+	session, err := c.connect(ctx)
 	if err != nil {
 		return err
 	}

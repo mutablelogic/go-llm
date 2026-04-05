@@ -48,6 +48,20 @@ func (m *Manager) CreateCredential(ctx context.Context, req schema.CredentialIns
 // PRIVATE METHODS
 
 func (m *Manager) encryptCredentials(v any) (uint64, []byte, error) {
+	// Preserve the zero-value contract for raw credential payloads.
+	switch value := v.(type) {
+	case nil:
+		return 0, []byte{}, nil
+	case []byte:
+		if len(value) == 0 {
+			return 0, []byte{}, nil
+		}
+	case string:
+		if value == "" {
+			return 0, []byte{}, nil
+		}
+	}
+
 	// Turn the credentials into JSON. If the credentials are empty this will
 	// return an empty JSON object, which we can treat as an empty byte array.
 	data, err := json.Marshal(v)

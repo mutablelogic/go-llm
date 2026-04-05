@@ -5,7 +5,7 @@ import (
 	"log/slog"
 
 	// Packages
-	"github.com/modelcontextprotocol/go-sdk/mcp"
+	mcp "github.com/modelcontextprotocol/go-sdk/mcp"
 	llm "github.com/mutablelogic/go-llm"
 )
 

@@ -3,8 +3,11 @@ package manager
 import (
 	"context"
 	"errors"
+	"fmt"
+	"strings"
 
 	// Packages
+	authclient "github.com/djthorpe/go-auth/pkg/httpclient/auth"
 	auth "github.com/djthorpe/go-auth/schema/auth"
 	otel "github.com/mutablelogic/go-client/pkg/otel"
 	schema "github.com/mutablelogic/go-llm/pkg/schema"
@@ -19,7 +22,7 @@ import (
 // We define the MCP client prober here, so we can get the details of an
 // MCP Server before we insert it into the database
 type ConnectorProbe interface {
-	Probe(ctx context.Context) (*schema.ConnectorState, error)
+	Probe(ctx context.Context, auth func(config *authclient.Config) error) (*schema.ConnectorState, error)
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -46,10 +49,29 @@ func (m *Manager) CreateConnector(ctx context.Context, req schema.ConnectorInser
 	var state schema.ConnectorState
 	if connector, err := m.delegate.CreateConnector(req.URL, nil); err != nil {
 		return nil, schema.ErrBadParameter.Withf("failed to validate connector URL: %v", err)
-	} else if state_, err := connector.(ConnectorProbe).Probe(ctx); err != nil {
+	} else if state_, err := connector.(ConnectorProbe).Probe(ctx, func(config *authclient.Config) error {
+		// Here we would set up authentication using the *auth.User credentials
+		if code_config, err := config.AuthorizationCodeConfig(); err != nil {
+			return err
+		} else {
+			// Use the code_config for authentication
+			fmt.Println("Received auth config for connector probe:", types.Stringify(code_config))
+			return schema.ErrNotImplemented
+		}
+	}); err != nil {
 		return nil, schema.ErrBadParameter.Withf("failed to probe connector URL: %v", err)
 	} else {
 		state = types.Value(state_)
+	}
+
+	// We set the namespace for the connector
+	if types.Value(req.Namespace) == "" {
+		if state := strings.TrimSpace(types.Value(state.Name)); state != "" {
+			req.Namespace = types.Ptr(schema.CanonicalNamespace(state))
+		}
+	}
+	if types.Value(req.Namespace) == "" {
+		return nil, schema.ErrBadParameter.With("connector namespace is required")
 	}
 
 	// Insert the connector record, then sync the groups if provided and return the result

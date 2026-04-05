@@ -41,20 +41,11 @@ type OnResourceUpdated func(ctx context.Context, resource llm.Resource)
 ///////////////////////////////////////////////////////////////////////////////
 // CLIENT OPTIONS
 
-// WithAuth registers a function called when the server returns 401 to perform
-// the OAuth discovery and authorization flow. Pass nil to disable auth.
-func WithAuth(fn func(context.Context, string) error) Opt {
-	return func(c *Client) error {
-		c.authFn = fn
-		return nil
-	}
-}
-
 // WithClientOpt wraps one or more go-client options so they can be passed
 // alongside mcp Opt values to New().
-func WithClientOpt(goOpts ...client.ClientOpt) Opt {
+func WithClientOpt(opts ...client.ClientOpt) Opt {
 	return func(c *Client) error {
-		c.goOpts = append(c.goOpts, goOpts...)
+		c.opts = append(c.opts, opts...)
 		return nil
 	}
 }

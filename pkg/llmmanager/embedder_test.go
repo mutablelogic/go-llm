@@ -62,20 +62,13 @@ func TestEmbeddingRespectsProviderGroupsIntegration(t *testing.T) {
 
 func integrationEmbeddingModelName(t *testing.T, m *Manager, provider string, user *auth.User) string {
 	t.Helper()
-	ctx := llmtest.Context(t)
-
-	models, err := m.ListModels(ctx, schema.ModelListRequest{Provider: provider}, user)
-	if llmtest.IsUnreachable(err) {
-		t.Skipf("provider unreachable: %v", err)
-	}
-	if err != nil {
-		t.Fatal(err)
-	}
-	for _, model := range models.Body {
-		if model.Cap&schema.ModelCapEmbeddings != 0 {
-			return model.Name
-		}
-	}
-	t.Skip("no embedding-capable model available, skipping")
-	return ""
+	return llmtest.ModelNameMatching(
+		t,
+		"",
+		syncAndListModels(m, provider, user),
+		func(model schema.Model) bool {
+			return model.Cap&schema.ModelCapEmbeddings != 0
+		},
+		validateAccessibleModel(m, provider, user),
+	)
 }

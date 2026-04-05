@@ -2,12 +2,10 @@ package client
 
 import (
 	"context"
-	"errors"
-	"net/http"
-	"net/url"
 	"time"
 
 	// Packages
+	authclient "github.com/djthorpe/go-auth/pkg/httpclient/auth"
 	sdkmcp "github.com/modelcontextprotocol/go-sdk/mcp"
 	transport "github.com/mutablelogic/go-client/pkg/transport"
 	types "github.com/mutablelogic/go-server/pkg/types"
@@ -21,25 +19,28 @@ import (
 // It first tries the 2025-03-26 streamable HTTP transport (POST-first).
 // If that fails it retries with the 2024-11-05 SSE transport
 //
-// If the server returns a 401, c.authFn is called (if non-nil) with the parsed
-// Www-Authenticate fields so it can perform discovery and authorization.
-// The connection is then retried once.
-func (c *Client) connectWithAuth(ctx context.Context) (*sdkmcp.ClientSession, error) {
+// If the server returns a 401, c.authFn is called (if non-nil) with any discovered auth
+// server metadata, and the error from the failed attempt is returned for retry by Connect().
+func (c *Client) connectWithAuth(ctx context.Context, authfn func(config *authclient.Config) error) (*sdkmcp.ClientSession, error) {
 	session, err := c.connect(ctx)
 	if err != nil {
-		if !IsUnauthorized(err) || c.authFn == nil {
+		// Only retry if the server returned an auth challenge and we have an
+		// auth callback configured to resolve it.
+		if authclient.AsAuthError(err) == nil {
+			return nil, err
+		} else if authfn == nil {
 			return nil, err
 		}
-		// Use the resource_metadata URL from the Www-Authenticate header for
-		// discovery (RFC 9728); fall back to the server's connect URL.
-		// If resource_metadata is relative, resolve it against the connect URL.
-		discoveryURL := c.url
-		if u := AsUnauthorized(err); u != nil && u.ResourceMetadata() != "" {
-			discoveryURL = resolveURL(c.url, u.ResourceMetadata())
-		}
-		if err := c.authFn(ctx, discoveryURL); err != nil {
+
+		// Discover the OAuth metadata
+		if config, err := c.DiscoverWithError(ctx, err); err != nil {
+			return nil, err
+		} else if err := authfn(config); err != nil {
 			return nil, err
 		}
+
+		// Try and reconnect now that we've hopefully fixed the auth problem.
+		//  If it fails again, just return the error.
 		return c.connect(ctx)
 	}
 	return session, nil
@@ -52,10 +53,9 @@ func (c *Client) connect(ctx context.Context) (*sdkmcp.ClientSession, error) {
 	// token transport wired in) and wrap with an ephemeral recorder so we can
 	// detect 401 responses. The recorder sits outermost. We keep a single
 	// *http.Client pointer so both transport attempts share the same recorder.
-	client := *c.Client.Client
-	recorder := transport.NewRecorder(client.Transport)
-	client.Transport = recorder
-	httpClient := types.Ptr(client)
+	httpClient := types.Ptr(types.Value(c.Client.Client.Client))
+	recorder := transport.NewRecorder(httpClient.Transport)
+	httpClient.Transport = recorder
 
 	// Try the 2025-03-26 streamable HTTP transport first.
 	session, err := c.tryConnect(ctx, recorder, &sdkmcp.StreamableClientTransport{
@@ -64,11 +64,8 @@ func (c *Client) connect(ctx context.Context) (*sdkmcp.ClientSession, error) {
 	})
 	if err == nil {
 		return session, nil
-	}
-
-	// Bail on 401 — let Connect() trigger the auth retry.
-	if IsUnauthorized(err) {
-		return nil, err
+	} else if autherr := authclient.IsUnauthorized(recorder); autherr != nil {
+		return nil, autherr
 	}
 
 	// Streamable failed for a non-auth reason (e.g. server only speaks the
@@ -81,7 +78,7 @@ func (c *Client) connect(ctx context.Context) (*sdkmcp.ClientSession, error) {
 }
 
 // tryConnect runs a single transport attempt. On success it stores the session
-// on c. On 401 it returns an UnauthorizedError joined with the transport error.
+// on c.
 func (c *Client) tryConnect(ctx context.Context, recorder *transport.Recorder, t sdkmcp.Transport) (*sdkmcp.ClientSession, error) {
 	opts := &sdkmcp.ClientOptions{
 		KeepAlive: 30 * time.Second,
@@ -100,37 +97,20 @@ func (c *Client) tryConnect(ctx context.Context, recorder *transport.Recorder, t
 			fn(ctx, p.ProgressToken, p.Progress, p.Total, p.Message)
 		}
 	}
-	opts.ToolListChangedHandler = func(ctx context.Context, _ *sdkmcp.ToolListChangedRequest) { c.refreshTools(ctx) }
-	opts.PromptListChangedHandler = func(ctx context.Context, _ *sdkmcp.PromptListChangedRequest) { c.refreshPrompts(ctx) }
-	opts.ResourceListChangedHandler = func(ctx context.Context, _ *sdkmcp.ResourceListChangedRequest) { c.refreshResources(ctx) }
+	opts.ToolListChangedHandler = func(ctx context.Context, _ *sdkmcp.ToolListChangedRequest) {
+		c.refreshTools(ctx)
+	}
+	opts.PromptListChangedHandler = func(ctx context.Context, _ *sdkmcp.PromptListChangedRequest) {
+		c.refreshPrompts(ctx)
+	}
+	opts.ResourceListChangedHandler = func(ctx context.Context, _ *sdkmcp.ResourceListChangedRequest) {
+		c.refreshResources(ctx)
+	}
 	if c.onResourceUpdated != nil {
 		fn := c.onResourceUpdated
 		opts.ResourceUpdatedHandler = func(ctx context.Context, req *sdkmcp.ResourceUpdatedNotificationRequest) {
 			fn(ctx, c.readResource(ctx, req.Params.URI))
 		}
 	}
-	mc := sdkmcp.NewClient(types.Ptr(c.Implementation), opts)
-	session, err := mc.Connect(ctx, t, nil)
-	if err != nil && recorder.StatusCode() == http.StatusUnauthorized {
-		return nil, errors.Join(NewUnauthorizedError(recorder.Header()), err)
-	}
-	return session, err
-}
-
-// resolveURL resolves ref against base, returning base if either is malformed
-// or the resolved result is not an http/https URL.
-func resolveURL(base, ref string) string {
-	b, err := url.Parse(base)
-	if err != nil {
-		return base
-	}
-	r, err := url.Parse(ref)
-	if err != nil {
-		return base
-	}
-	resolved := b.ResolveReference(r)
-	if resolved.Scheme != "http" && resolved.Scheme != "https" {
-		return base
-	}
-	return resolved.String()
+	return sdkmcp.NewClient(types.Ptr(c.Implementation), opts).Connect(ctx, t, nil)
 }

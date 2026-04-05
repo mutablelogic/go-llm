@@ -302,18 +302,14 @@ func TestConnectorListScanCount(t *testing.T) {
 	assert.Equal(uint(3), list.Count)
 }
 
-func TestConnectorInsertDefaults(t *testing.T) {
+func TestConnectorInsertRequiresNamespace(t *testing.T) {
 	assert := assert.New(t)
 	b := pg.NewBind("schema", "llm", "connector.insert", "INSERT")
 
 	_, err := (schema.ConnectorInsert{URL: "https://example.com/sse"}).Insert(b)
-	if !assert.NoError(err) {
-		return
+	if assert.Error(err) {
+		assert.ErrorIs(err, schema.ErrBadParameter)
 	}
-
-	assert.Nil(b.Get("namespace"))
-	assert.Equal(true, b.Get("enabled"))
-	assert.Equal(schema.ProviderMetaMap{}, b.Get("meta"))
 }
 
 func TestConnectorInsertRejectsInvalidNamespace(t *testing.T) {
@@ -374,6 +370,17 @@ func TestConnectorMetaUpdateNoFields(t *testing.T) {
 	assert := assert.New(t)
 	b := pg.NewBind()
 	err := (schema.ConnectorMeta{}).Update(b)
+	if assert.Error(err) {
+		assert.ErrorIs(err, schema.ErrBadParameter)
+	}
+}
+
+func TestConnectorMetaUpdateRejectsEmptyNamespace(t *testing.T) {
+	assert := assert.New(t)
+	b := pg.NewBind()
+	empty := ""
+
+	err := (schema.ConnectorMeta{Namespace: &empty}).Update(b)
 	if assert.Error(err) {
 		assert.ErrorIs(err, schema.ErrBadParameter)
 	}
