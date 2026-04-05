@@ -25,15 +25,16 @@ type Manager struct {
 	broadcaster.Broadcaster
 	*provider.Registry
 	toolkit.Toolkit
+	delegate *delegate
 }
 
 ///////////////////////////////////////////////////////////////////////////////
 // LIFECYCLE
 
-func New(ctx context.Context, pool pg.PoolConn, opts ...Opt) (*Manager, error) {
+func New(ctx context.Context, name, version string, pool pg.PoolConn, opts ...Opt) (*Manager, error) {
 	// Set default values
 	self := new(Manager)
-	self.defaults()
+	self.defaults(name, version)
 
 	// Check arguments
 	if pool == nil {
@@ -84,6 +85,9 @@ func New(ctx context.Context, pool pg.PoolConn, opts ...Opt) (*Manager, error) {
 	} else {
 		self.Registry = registry
 	}
+
+	// Create a connector delegate, which receives notifications of connector changes
+	self.delegate = NewDelegate(self.name, self.version, self.clientopts...)
 
 	// TEST
 	// Register metrics after the registry has been initialized so callbacks can

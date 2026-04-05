@@ -18,7 +18,7 @@ import (
 
 func (m *Manager) CreateUsage(ctx context.Context, req schema.UsageInsert) (_ *schema.Usage, err error) {
 	// Otel span
-	ctx, endSpan := otel.StartSpan(m.tracer, ctx, "Ask",
+	ctx, endSpan := otel.StartSpan(m.tracer, ctx, "CreateUsage",
 		attribute.String("req", types.Stringify(req)),
 	)
 	defer func() { endSpan(err) }()

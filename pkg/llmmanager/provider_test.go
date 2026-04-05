@@ -22,7 +22,9 @@ import (
 	"time"
 
 	// Packages
+	uuid "github.com/google/uuid"
 	schema "github.com/mutablelogic/go-llm/pkg/schema"
+	llmtest "github.com/mutablelogic/go-llm/pkg/test"
 	pg "github.com/mutablelogic/go-pg"
 	assert "github.com/stretchr/testify/assert"
 )
@@ -81,6 +83,19 @@ func Test_providerWithCredentialsListSelect(t *testing.T) {
 	assert.Equal(true, b.Get("enabled"))
 	assert.Equal(`ORDER BY provider."name" ASC`, b.Get("orderby"))
 	assert.Equal("LIMIT 10", b.Get("offsetlimit"))
+}
+
+func Test_providerWithCredentialsListSelectForUser(t *testing.T) {
+	assert := assert.New(t)
+	b := pg.NewBind("schema", "llm", "auth", "auth", "provider.list", "LIST_ALL", "provider.list_for_user", "LIST_USER", "provider.list_with_credentials", "LIST_ALL_CREDENTIALS", "provider.list_with_credentials_for_user", "LIST_USER_CREDENTIALS")
+	b.Set("user", uuid.New())
+
+	query, err := (providerWithCredentialsList{}).Select(b, pg.List)
+	if !assert.NoError(err) {
+		return
+	}
+
+	assert.Equal("LIST_USER_CREDENTIALS", query)
 }
 
 func Test_providerWithCredentialsListSelectUnsupported(t *testing.T) {
@@ -174,7 +189,7 @@ func Test_encryptCredentialsEmptyReturnsNoPayload(t *testing.T) {
 	assert := assert.New(t)
 
 	var manager Manager
-	manager.defaults()
+	manager.defaults("test", "0.0.0")
 	if err := manager.passphrases.Set(1, "test1234"); !assert.NoError(err) {
 		return
 	}
@@ -192,7 +207,7 @@ func Test_encryptCredentialsDecryptRoundTrip(t *testing.T) {
 	assert := assert.New(t)
 
 	var manager Manager
-	manager.defaults()
+	manager.defaults("test", "0.0.0")
 	if err := manager.passphrases.Set(1, "test1234"); !assert.NoError(err) {
 		return
 	}
@@ -217,7 +232,7 @@ func TestProviderCRUDIntegration(t *testing.T) {
 	conn, m := newIntegrationManager(t)
 	ctx := context.Background()
 
-	created := createIntegrationProvider(t, m, conn.ProviderInsert())
+	created := llmtest.CreateProvider(t, conn.ProviderInsert(), m.CreateProvider, m.SyncProviders)
 	assert := assert.New(t)
 	assert.Equal(conn.Config.Name, created.Name)
 	assert.Equal(conn.Config.Provider, created.Provider)
@@ -281,12 +296,12 @@ func TestListProvidersIntegrationWithGroupFilter(t *testing.T) {
 
 	restricted := conn.ProviderInsert()
 	restricted.Name = "restricted-ollama"
-	createIntegrationProvider(t, m, restricted)
+	llmtest.CreateProvider(t, restricted, m.CreateProvider, m.SyncProviders)
 
 	public := conn.ProviderInsert()
 	public.Name = "public-ollama"
 	public.Groups = nil
-	publicProvider := createIntegrationProvider(t, m, public)
+	publicProvider := llmtest.CreateProvider(t, public, m.CreateProvider, m.SyncProviders)
 
 	admins, err := m.ListProviders(ctx, schema.ProviderListRequest{Groups: []string{"admins"}})
 	if !assert.NoError(err) {
@@ -300,5 +315,40 @@ func TestListProvidersIntegrationWithGroupFilter(t *testing.T) {
 	}
 	if assert.Len(nonMatching.Body, 1) {
 		assert.Equal(publicProvider.Name, nonMatching.Body[0].Name)
+	}
+}
+
+func TestProvidersForUserIntegration(t *testing.T) {
+	conn, m := newIntegrationManager(t)
+	ctx := context.Background()
+	assert := assert.New(t)
+
+	restricted := conn.ProviderInsert()
+	restricted.Name = "restricted-ollama"
+	llmtest.CreateProvider(t, restricted, m.CreateProvider, m.SyncProviders)
+
+	public := conn.ProviderInsert()
+	public.Name = "public-ollama"
+	public.Groups = nil
+	publicProvider := llmtest.CreateProvider(t, public, m.CreateProvider, m.SyncProviders)
+
+	all, err := m.providersForUser(ctx, "", nil)
+	if !assert.NoError(err) {
+		return
+	}
+	assert.Len(all, 2)
+
+	admins, err := m.providersForUser(ctx, "", llmtest.AdminUser(conn))
+	if !assert.NoError(err) {
+		return
+	}
+	assert.Len(admins, 2)
+
+	ungrouped, err := m.providersForUser(ctx, "", llmtest.User(conn))
+	if !assert.NoError(err) {
+		return
+	}
+	if assert.Len(ungrouped, 1) {
+		assert.Equal(publicProvider.Name, ungrouped[0].Name)
 	}
 }

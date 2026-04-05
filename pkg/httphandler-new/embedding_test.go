@@ -2,7 +2,6 @@ package httphandler
 
 import (
 	"bytes"
-	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -30,7 +29,7 @@ func TestEmbeddingJSONIntegration(t *testing.T) {
 	}
 
 	w := httptest.NewRecorder()
-	r := httptest.NewRequest(http.MethodPost, "/embedding", bytes.NewReader(body))
+	r := httptest.NewRequest(http.MethodPost, "/embedding", bytes.NewReader(body)).WithContext(newModelHandlerTestContext(t))
 	r.Header.Set(types.ContentTypeHeader, types.ContentTypeJSON)
 	item.Handler().ServeHTTP(w, r)
 
@@ -74,7 +73,7 @@ func TestEmbeddingBatchIntegration(t *testing.T) {
 	}
 
 	w := httptest.NewRecorder()
-	r := httptest.NewRequest(http.MethodPost, "/embedding", bytes.NewReader(body))
+	r := httptest.NewRequest(http.MethodPost, "/embedding", bytes.NewReader(body)).WithContext(newModelHandlerTestContext(t))
 	r.Header.Set(types.ContentTypeHeader, types.ContentTypeJSON)
 	item.Handler().ServeHTTP(w, r)
 
@@ -101,7 +100,7 @@ func TestEmbeddingEmptyInput(t *testing.T) {
 	}
 
 	w := httptest.NewRecorder()
-	r := httptest.NewRequest(http.MethodPost, "/embedding", bytes.NewReader(body))
+	r := httptest.NewRequest(http.MethodPost, "/embedding", bytes.NewReader(body)).WithContext(newModelHandlerTestContext(t))
 	r.Header.Set(types.ContentTypeHeader, types.ContentTypeJSON)
 	item.Handler().ServeHTTP(w, r)
 
@@ -134,8 +133,7 @@ func TestEmbeddingModelNotFound(t *testing.T) {
 }
 
 func TestEmbeddingInvalidJSON(t *testing.T) {
-	_, manager := newModelHandlerIntegrationManager(t)
-	_, _, item := EmbeddingHandler(manager)
+	_, _, item := EmbeddingHandler(nil)
 
 	w := httptest.NewRecorder()
 	r := httptest.NewRequest(http.MethodPost, "/embedding", bytes.NewBufferString(`{invalid`))
@@ -150,7 +148,8 @@ func TestEmbeddingInvalidJSON(t *testing.T) {
 func requireEmbeddingModel(t *testing.T, conn *llmtest.Conn, manager *llmmanager.Manager) string {
 	t.Helper()
 
-	models, err := manager.ListModels(context.Background(), schema.ModelListRequest{Provider: conn.Config.Name}, nil)
+	ctx := newModelHandlerTestContext(t)
+	models, err := manager.ListModels(ctx, schema.ModelListRequest{Provider: conn.Config.Name}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}

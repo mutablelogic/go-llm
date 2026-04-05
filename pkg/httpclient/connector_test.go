@@ -29,13 +29,20 @@ func newConnectorStore() *connectorStore {
 	return &connectorStore{data: make(map[string]*schema.Connector)}
 }
 
+func connectorInsert(rawURL string, meta schema.ConnectorMeta) schema.ConnectorInsert {
+	return schema.ConnectorInsert{URL: rawURL, ConnectorMeta: meta}
+}
+
 func (s *connectorStore) create(rawURL string, meta schema.ConnectorMeta) (*schema.Connector, int) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if _, exists := s.data[rawURL]; exists {
 		return nil, http.StatusConflict
 	}
-	c := &schema.Connector{URL: rawURL, CreatedAt: time.Now(), ConnectorMeta: meta}
+	c := &schema.Connector{
+		ConnectorInsert: schema.ConnectorInsert{URL: rawURL, ConnectorMeta: meta},
+		CreatedAt:       time.Now(),
+	}
 	s.data[rawURL] = c
 	return c, http.StatusCreated
 }
@@ -71,7 +78,7 @@ func (s *connectorStore) delete(rawURL string) int {
 	return http.StatusNoContent
 }
 
-func (s *connectorStore) list(namespace string, enabled *bool) *schema.ListConnectorsResponse {
+func (s *connectorStore) list(namespace string, enabled *bool) *schema.ConnectorList {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	var body []*schema.Connector
@@ -85,7 +92,7 @@ func (s *connectorStore) list(namespace string, enabled *bool) *schema.ListConne
 		cp := *c
 		body = append(body, &cp)
 	}
-	return &schema.ListConnectorsResponse{Count: uint(len(body)), Body: body}
+	return &schema.ConnectorList{Count: uint(len(body)), Body: body}
 }
 
 // newConnectorTestServer returns an httptest.Server that mimics the connector API.
@@ -177,7 +184,7 @@ func TestConnectorClient_ListEmpty(t *testing.T) {
 	defer srv.Close()
 	c := newConnectorClient(t, srv.URL)
 
-	resp, err := c.ListConnectors(context.TODO(), schema.ListConnectorsRequest{})
+	resp, err := c.ListConnectors(context.TODO(), schema.ConnectorListRequest{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -191,7 +198,7 @@ func TestConnectorClient_CreateAndGet(t *testing.T) {
 	defer srv.Close()
 	c := newConnectorClient(t, srv.URL)
 
-	created, err := c.CreateConnector(context.TODO(), "https://example.com/sse", schema.ConnectorMeta{Enabled: types.Ptr(true), Namespace: types.Ptr("mcp")})
+	created, err := c.CreateConnector(context.TODO(), connectorInsert("https://example.com/sse", schema.ConnectorMeta{Enabled: types.Ptr(true), Namespace: types.Ptr("mcp")}))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -219,7 +226,7 @@ func TestConnectorClient_UpdateAndGet(t *testing.T) {
 	defer srv.Close()
 	c := newConnectorClient(t, srv.URL)
 
-	if _, err := c.CreateConnector(context.TODO(), "https://example.com/sse", schema.ConnectorMeta{Enabled: types.Ptr(false), Namespace: types.Ptr("old")}); err != nil {
+	if _, err := c.CreateConnector(context.TODO(), connectorInsert("https://example.com/sse", schema.ConnectorMeta{Enabled: types.Ptr(false), Namespace: types.Ptr("old")})); err != nil {
 		t.Fatal(err)
 	}
 	updated, err := c.UpdateConnector(context.TODO(), "https://example.com/sse", schema.ConnectorMeta{Enabled: types.Ptr(true), Namespace: types.Ptr("new")})
@@ -239,7 +246,7 @@ func TestConnectorClient_DeleteAndVerify(t *testing.T) {
 	defer srv.Close()
 	c := newConnectorClient(t, srv.URL)
 
-	if _, err := c.CreateConnector(context.TODO(), "https://example.com/sse", schema.ConnectorMeta{Enabled: types.Ptr(true)}); err != nil {
+	if _, err := c.CreateConnector(context.TODO(), connectorInsert("https://example.com/sse", schema.ConnectorMeta{Enabled: types.Ptr(true)})); err != nil {
 		t.Fatal(err)
 	}
 	if err := c.DeleteConnector(context.TODO(), "https://example.com/sse"); err != nil {
@@ -260,12 +267,12 @@ func TestConnectorClient_ListWithFilter(t *testing.T) {
 		"https://a.example.com/sse": "ns1",
 		"https://b.example.com/sse": "ns2",
 	} {
-		if _, err := c.CreateConnector(context.TODO(), rawURL, schema.ConnectorMeta{Enabled: types.Ptr(true), Namespace: types.Ptr(ns)}); err != nil {
+		if _, err := c.CreateConnector(context.TODO(), connectorInsert(rawURL, schema.ConnectorMeta{Enabled: types.Ptr(true), Namespace: types.Ptr(ns)})); err != nil {
 			t.Fatalf("create %s: %v", rawURL, err)
 		}
 	}
 
-	all, err := c.ListConnectors(context.TODO(), schema.ListConnectorsRequest{})
+	all, err := c.ListConnectors(context.TODO(), schema.ConnectorListRequest{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -273,7 +280,7 @@ func TestConnectorClient_ListWithFilter(t *testing.T) {
 		t.Fatalf("expected 2, got %d", all.Count)
 	}
 
-	filtered, err := c.ListConnectors(context.TODO(), schema.ListConnectorsRequest{Namespace: "ns1"})
+	filtered, err := c.ListConnectors(context.TODO(), schema.ConnectorListRequest{Namespace: "ns1"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -281,7 +288,7 @@ func TestConnectorClient_ListWithFilter(t *testing.T) {
 		t.Fatalf("expected 1 for ns1, got %d", filtered.Count)
 	}
 
-	enabledOnly, err := c.ListConnectors(context.TODO(), schema.ListConnectorsRequest{Enabled: types.Ptr(true)})
+	enabledOnly, err := c.ListConnectors(context.TODO(), schema.ConnectorListRequest{Enabled: types.Ptr(true)})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -298,7 +305,7 @@ func TestConnectorClient_EmptyURL(t *testing.T) {
 	if _, err := c.GetConnector(context.TODO(), ""); err == nil {
 		t.Fatal("expected error for empty URL in GetConnector")
 	}
-	if _, err := c.CreateConnector(context.TODO(), "", schema.ConnectorMeta{}); err == nil {
+	if _, err := c.CreateConnector(context.TODO(), connectorInsert("", schema.ConnectorMeta{})); err == nil {
 		t.Fatal("expected error for empty URL in CreateConnector")
 	}
 	if _, err := c.UpdateConnector(context.TODO(), "", schema.ConnectorMeta{}); err == nil {

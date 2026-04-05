@@ -11,6 +11,7 @@ import (
 	// Packages
 	goclient "github.com/mutablelogic/go-client"
 	llm "github.com/mutablelogic/go-llm"
+	session "github.com/mutablelogic/go-llm/pkg/_store"
 	homeassistant "github.com/mutablelogic/go-llm/pkg/homeassistant"
 	httphandler "github.com/mutablelogic/go-llm/pkg/httphandler"
 	manager "github.com/mutablelogic/go-llm/pkg/manager"
@@ -22,7 +23,6 @@ import (
 	mistral "github.com/mutablelogic/go-llm/pkg/provider/mistral"
 	ollama "github.com/mutablelogic/go-llm/pkg/provider/ollama"
 	schema "github.com/mutablelogic/go-llm/pkg/schema"
-	session "github.com/mutablelogic/go-llm/pkg/store"
 	weatherapi "github.com/mutablelogic/go-llm/pkg/weatherapi"
 	server "github.com/mutablelogic/go-server"
 	gocmd "github.com/mutablelogic/go-server/pkg/cmd"

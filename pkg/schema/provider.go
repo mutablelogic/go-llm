@@ -217,20 +217,33 @@ func (req ProviderListRequest) Select(bind *pg.Bind, op pg.Op) (string, error) {
 			)
 		)`)
 	}
-	if where := bind.Join("where", " AND "); where == "" {
-		bind.Set("where", "")
-	} else {
-		bind.Set("where", "WHERE "+where)
-	}
+	where := bind.Join("where", " AND ")
 	bind.Set("orderby", `ORDER BY provider."name" ASC`)
 	req.OffsetLimit.Bind(bind, ProviderListMax)
 
 	switch op {
 	case pg.List:
+		if providerListHasUser(bind) {
+			if where == "" {
+				bind.Set("where", "")
+			} else {
+				bind.Set("where", "AND "+where)
+			}
+			return bind.Query("provider.list_for_user"), nil
+		}
+		if where == "" {
+			bind.Set("where", "")
+		} else {
+			bind.Set("where", "WHERE "+where)
+		}
 		return bind.Query("provider.list"), nil
 	default:
 		return "", ErrNotImplemented.Withf("unsupported ProviderListRequest operation %q", op)
 	}
+}
+
+func providerListHasUser(bind *pg.Bind) bool {
+	return bind.Get("user") != nil
 }
 
 ////////////////////////////////////////////////////////////////////////////////

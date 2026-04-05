@@ -44,7 +44,7 @@ func TestConnector_ListEmpty(t *testing.T) {
 	if w.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
 	}
-	var resp schema.ListConnectorsResponse
+	var resp schema.ConnectorList
 	if err := json.NewDecoder(w.Body).Decode(&resp); err != nil {
 		t.Fatal(err)
 	}
@@ -270,7 +270,7 @@ func TestConnector_ListWithFilter(t *testing.T) {
 	if w.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d", w.Code)
 	}
-	var all schema.ListConnectorsResponse
+	var all schema.ConnectorList
 	if err := json.NewDecoder(w.Body).Decode(&all); err != nil {
 		t.Fatal(err)
 	}
@@ -285,7 +285,7 @@ func TestConnector_ListWithFilter(t *testing.T) {
 	if w.Code != http.StatusOK {
 		t.Fatalf("expected 200 with filter, got %d", w.Code)
 	}
-	var filtered schema.ListConnectorsResponse
+	var filtered schema.ConnectorList
 	if err := json.NewDecoder(w.Body).Decode(&filtered); err != nil {
 		t.Fatal(err)
 	}

@@ -16,6 +16,10 @@ import (
 // testConnectorURL is a real MCP server used for integration tests.
 const testConnectorURL = "https://api.githubcopilot.com/mcp/"
 
+func connectorInsert(rawURL string, meta schema.ConnectorMeta) schema.ConnectorInsert {
+	return schema.ConnectorInsert{URL: rawURL, ConnectorMeta: meta}
+}
+
 ///////////////////////////////////////////////////////////////////////////////
 // MOCK CONNECTOR
 
@@ -36,7 +40,7 @@ func (mockConnector) Probe(context.Context) (*schema.ConnectorState, error) {
 		ConnectedAt:  &now,
 		Name:         &name,
 		Version:      &version,
-		Capabilities: []schema.Capability{schema.CapabilityTools},
+		Capabilities: []schema.ConnectorCapability{schema.CapabilityTools},
 	}, nil
 }
 
@@ -72,7 +76,7 @@ func Test_connector_001(t *testing.T) {
 
 	m := newManagerWithFactory(t)
 
-	c, err := m.CreateConnector(context.TODO(), testConnectorURL, schema.ConnectorMeta{Enabled: types.Ptr(true), Namespace: types.Ptr("mcp")})
+	c, err := m.CreateConnector(context.TODO(), connectorInsert(testConnectorURL, schema.ConnectorMeta{Enabled: types.Ptr(true), Namespace: types.Ptr("mcp")}))
 	assert.NoError(err)
 	assert.NotNil(c)
 	assert.Equal(testConnectorURL, c.URL)
@@ -96,10 +100,10 @@ func Test_connector_003(t *testing.T) {
 	m, err := NewManager("test", "0.0.0")
 	assert.NoError(err)
 
-	_, err = m.CreateConnector(context.TODO(), "ftp://example.com/sse", schema.ConnectorMeta{})
+	_, err = m.CreateConnector(context.TODO(), connectorInsert("ftp://example.com/sse", schema.ConnectorMeta{}))
 	assert.Error(err)
 
-	_, err = m.CreateConnector(context.TODO(), "example.com/sse", schema.ConnectorMeta{})
+	_, err = m.CreateConnector(context.TODO(), connectorInsert("example.com/sse", schema.ConnectorMeta{}))
 	assert.Error(err)
 }
 
@@ -110,7 +114,7 @@ func Test_connector_004(t *testing.T) {
 	m, err := NewManager("test", "0.0.0")
 	assert.NoError(err)
 
-	_, err = m.CreateConnector(context.TODO(), testConnectorURL, schema.ConnectorMeta{Namespace: types.Ptr("bad namespace")})
+	_, err = m.CreateConnector(context.TODO(), connectorInsert(testConnectorURL, schema.ConnectorMeta{Namespace: types.Ptr("bad namespace")}))
 	assert.Error(err)
 }
 
@@ -121,11 +125,11 @@ func Test_connector_005(t *testing.T) {
 	m := newManagerWithFactory(t)
 	var err error
 
-	_, err = m.CreateConnector(context.TODO(), testConnectorURL, schema.ConnectorMeta{Enabled: types.Ptr(true)})
+	_, err = m.CreateConnector(context.TODO(), connectorInsert(testConnectorURL, schema.ConnectorMeta{Enabled: types.Ptr(true)}))
 	assert.NoError(err)
 
 	// Second registration is rejected at the store level before any probe.
-	_, err = m.CreateConnector(context.TODO(), testConnectorURL, schema.ConnectorMeta{Enabled: types.Ptr(true)})
+	_, err = m.CreateConnector(context.TODO(), connectorInsert(testConnectorURL, schema.ConnectorMeta{Enabled: types.Ptr(true)}))
 	assert.ErrorIs(err, schema.ErrConflict)
 }
 
@@ -139,7 +143,7 @@ func Test_connector_006(t *testing.T) {
 	_, err = m.GetConnector(context.TODO(), testConnectorURL)
 	assert.ErrorIs(err, schema.ErrNotFound)
 
-	_, err = m.CreateConnector(context.TODO(), testConnectorURL, schema.ConnectorMeta{Enabled: types.Ptr(true), Namespace: types.Ptr("ns")})
+	_, err = m.CreateConnector(context.TODO(), connectorInsert(testConnectorURL, schema.ConnectorMeta{Enabled: types.Ptr(true), Namespace: types.Ptr("ns")}))
 	assert.NoError(err)
 
 	got, err := m.GetConnector(context.TODO(), testConnectorURL)
@@ -155,7 +159,7 @@ func Test_connector_007(t *testing.T) {
 	m := newManagerWithFactory(t)
 	var err error
 
-	_, err = m.CreateConnector(context.TODO(), testConnectorURL, schema.ConnectorMeta{Enabled: types.Ptr(false), Namespace: types.Ptr("old")})
+	_, err = m.CreateConnector(context.TODO(), connectorInsert(testConnectorURL, schema.ConnectorMeta{Enabled: types.Ptr(false), Namespace: types.Ptr("old")}))
 	assert.NoError(err)
 
 	updated, err := m.UpdateConnector(context.TODO(), testConnectorURL, schema.ConnectorMeta{Enabled: types.Ptr(true), Namespace: types.Ptr("new")})
@@ -182,7 +186,7 @@ func Test_connector_009(t *testing.T) {
 	m := newManagerWithFactory(t)
 	var err error
 
-	_, err = m.CreateConnector(context.TODO(), testConnectorURL, schema.ConnectorMeta{Enabled: types.Ptr(true)})
+	_, err = m.CreateConnector(context.TODO(), connectorInsert(testConnectorURL, schema.ConnectorMeta{Enabled: types.Ptr(true)}))
 	assert.NoError(err)
 
 	assert.NoError(m.DeleteConnector(context.TODO(), testConnectorURL))
@@ -209,7 +213,7 @@ func Test_connector_011(t *testing.T) {
 	m := newManagerWithFactory(t)
 
 	// Upper-case scheme/host and a spurious query param should both be stripped.
-	c, err := m.CreateConnector(context.TODO(), "HTTPS://API.GITHUBCOPILOT.COM/MCP/?token=abc", schema.ConnectorMeta{Enabled: types.Ptr(true)})
+	c, err := m.CreateConnector(context.TODO(), connectorInsert("HTTPS://API.GITHUBCOPILOT.COM/MCP/?token=abc", schema.ConnectorMeta{Enabled: types.Ptr(true)}))
 	assert.NoError(err)
 	assert.Equal(testConnectorURL, c.URL)
 

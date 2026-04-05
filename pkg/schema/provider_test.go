@@ -7,6 +7,7 @@ import (
 	"time"
 
 	// Packages
+	uuid "github.com/google/uuid"
 	schema "github.com/mutablelogic/go-llm/pkg/schema"
 	pg "github.com/mutablelogic/go-pg"
 	assert "github.com/stretchr/testify/assert"
@@ -258,6 +259,20 @@ func TestProviderListRequestSelectWithGroupFilter(t *testing.T) {
 	assert.Contains(where, `FROM "llm".provider_group AS provider_group`)
 	assert.Contains(where, `provider_group."group" = ANY(@groups)`)
 	assert.Equal([]string{"admins", "dev"}, b.Get("groups"))
+}
+
+func TestProviderListRequestSelectForUser(t *testing.T) {
+	assert := assert.New(t)
+	b := pg.NewBind("schema", "llm", "auth", "auth", "provider.list", "LIST_ALL", "provider.list_for_user", "LIST_USER")
+	b.Set("user", uuid.New())
+
+	query, err := (schema.ProviderListRequest{}).Select(b, pg.List)
+	if !assert.NoError(err) {
+		return
+	}
+
+	assert.Equal("LIST_USER", query)
+	assert.Equal("", b.Get("where"))
 }
 
 func TestProviderListRequestSelectInvalidProviderFilter(t *testing.T) {

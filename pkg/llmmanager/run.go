@@ -22,7 +22,6 @@ import (
 	"time"
 
 	// Packages
-	llm "github.com/mutablelogic/go-llm"
 	schema "github.com/mutablelogic/go-llm/pkg/schema"
 	toolkit "github.com/mutablelogic/go-llm/pkg/toolkit"
 	pg "github.com/mutablelogic/go-pg"
@@ -32,17 +31,19 @@ import (
 ///////////////////////////////////////////////////////////////////////////////
 // PUBLIC METHODS
 
-// Run periodically prunes stale sessions until the context is cancelled.
+// Run initializes runtime resources and tears them down when the context ends.
 func (m *Manager) Run(ctx context.Context, logger *slog.Logger) error {
-	var sync sync.Once
 	ticker := time.NewTimer(time.Second)
 	defer ticker.Stop()
+	if closer, ok := m.Broadcaster.(interface{ Close() }); ok {
+		defer closer.Close()
+	}
 
 	// Create the toolkit and add any tools, prompts, and resources that were
 	// added in the options
 	toolkitOpts := []toolkit.Option{
 		toolkit.WithTracer(m.tracer),
-		toolkit.WithDelegate(m),
+		toolkit.WithDelegate(m.delegate),
 		toolkit.WithLogger(logger),
 	}
 	toolkitOpts = append(toolkitOpts, toolkit.WithTool(m.tools...))
@@ -80,17 +81,32 @@ func (m *Manager) Run(ctx context.Context, logger *slog.Logger) error {
 	// Subscribe to database notifications, if configured
 	// We provide a small buffered channel to avoid blocking the database listener
 	providerChange := make(chan broadcaster.ChangeNotification, 16)
-	defer close(providerChange)
 	if m.Broadcaster != nil {
 		if err := m.Broadcaster.Subscribe(ctx, func(change broadcaster.ChangeNotification) {
 			logger.DebugContext(ctx, "Changes", "schema", change.Schema, "table", change.Table, "action", change.Action)
 			if changeMatches(change, m.llmschema, "provider", "") {
-				providerChange <- change
+				select {
+				case providerChange <- change:
+				case <-ctx.Done():
+				}
 			}
 		}); err != nil {
 			return err
 		}
 	}
+
+	// Run the toolkit in the background to process any connections and disconnections
+	var wg sync.WaitGroup
+	toolkit_ctx, toolkit_cancel := context.WithCancel(context.Background())
+	defer func() {
+		toolkit_cancel()
+		wg.Wait()
+	}()
+	wg.Go(func() {
+		if err := m.Toolkit.Run(toolkit_ctx); err != nil {
+			logger.ErrorContext(ctx, "toolkit run error", "error", err.Error())
+		}
+	})
 
 	// Run loop
 	for {
@@ -109,11 +125,6 @@ func (m *Manager) Run(ctx context.Context, logger *slog.Logger) error {
 				logger.InfoContext(ctx, "deleted providers", "providers", deletes)
 			}
 		case <-ticker.C:
-			// Sync providers on first ticker event
-			sync.Do(func() {
-				providerChange <- broadcaster.ChangeNotification{}
-			})
-
 			// Ping the registry to determine status of providers
 			if err := m.Registry.Ping(ctx); err != nil {
 				logger.ErrorContext(ctx, "failed to ping providers", "error", err.Error())
@@ -128,31 +139,6 @@ func (m *Manager) Run(ctx context.Context, logger *slog.Logger) error {
 // SyncProviders refreshes the in-memory provider registry from the database.
 func (m *Manager) SyncProviders(ctx context.Context) ([]string, []string, error) {
 	return m.syncProviders(ctx)
-}
-
-///////////////////////////////////////////////////////////////////////////////
-// PRIVATE METHODS - TOOLKIT DELEGATE
-
-// OnEvent is called when a lifecycle or list-change notification is fired.
-// ConnectorEventStateChange events are handled internally by the toolkit and
-// are never forwarded here. For all other connector-originated events the
-// Connector field is set to the originating connector; for builtin add/remove
-// operations Connector will be nil.
-func (m *Manager) OnEvent(evt toolkit.ConnectorEvent) {
-	fmt.Println("Event:", evt.Kind, "Connector:", evt.Connector, "State:", evt.State)
-}
-
-// Call executes a prompt via the manager, passing optional input resources.
-func (m *Manager) Call(context.Context, llm.Prompt, ...llm.Resource) (llm.Resource, error) {
-	return nil, fmt.Errorf("Call is not implemented")
-}
-
-// CreateConnector is called to create a new connector for the given URL.
-// The onEvent callback must be called by the connector to report lifecycle
-// and list-change events back to the toolkit. The toolkit injects the
-// Connector field before forwarding to OnEvent, so the caller need not set it.
-func (m *Manager) CreateConnector(url string, onEvent func(evt toolkit.ConnectorEvent)) (llm.Connector, error) {
-	return nil, fmt.Errorf("CreateConnector is not implemented")
 }
 
 ///////////////////////////////////////////////////////////////////////////////

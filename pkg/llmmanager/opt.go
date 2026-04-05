@@ -34,6 +34,8 @@ type Opt func(*manageropt) error
 
 // manageropt combines all configuration options for Manager.
 type manageropt struct {
+	name        string
+	version     string
 	llmschema   string
 	authschema  string
 	channel     string
@@ -61,7 +63,9 @@ func (o *manageropt) apply(opts ...Opt) error {
 	return nil
 }
 
-func (o *manageropt) defaults() {
+func (o *manageropt) defaults(name, version string) {
+	o.name = name
+	o.version = version
 	o.llmschema = schema.DefaultSchema
 	o.authschema = schema.DefaultAuthSchema
 	o.channel = schema.DefaultNotifyChannel
@@ -122,7 +126,7 @@ func WithNotificationChannel(name string) Opt {
 }
 
 // WithClientOpts provides unified client options for the LLM model
-// providers
+// providers and connectors
 func WithClientOpts(opts ...client.ClientOpt) Opt {
 	return func(o *manageropt) error {
 		o.clientopts = append(o.clientopts, opts...)

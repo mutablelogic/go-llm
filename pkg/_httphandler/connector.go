@@ -19,11 +19,11 @@ import (
 
 // Path: connector
 func ConnectorListHandler(manager *manager.Manager) (string, http.HandlerFunc, *openapi.PathItem) {
-	listRespSchema, _ := jsonschema.For[schema.ListConnectorsResponse]()
+	listRespSchema, _ := jsonschema.For[schema.ConnectorList]()
 	return "connector", func(w http.ResponseWriter, r *http.Request) {
 			switch r.Method {
 			case http.MethodGet:
-				var req schema.ListConnectorsRequest
+				var req schema.ConnectorListRequest
 				if err := httprequest.Query(r.URL.Query(), &req); err != nil {
 					_ = httpresponse.Error(w, err)
 					return
@@ -86,7 +86,7 @@ func ConnectorHandler(manager *manager.Manager) (string, http.HandlerFunc, *open
 					_ = httpresponse.Error(w, err)
 					return
 				}
-				resp, err := manager.CreateConnector(r.Context(), rawURL, meta)
+				resp, err := manager.CreateConnector(r.Context(), schema.ConnectorInsert{URL: rawURL, ConnectorMeta: meta})
 				if err != nil {
 					_ = httpresponse.Error(w, httpErr(err))
 					return

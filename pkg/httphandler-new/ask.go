@@ -58,8 +58,6 @@ func ask(ctx context.Context, manager *llmmanager.Manager, w http.ResponseWriter
 
 		fn := opt.StreamFn(func(role, text string) {
 			switch role {
-			case schema.RoleAssistant:
-				stream.Write(schema.EventAssistant, schema.StreamDelta{Role: role, Text: text})
 			case schema.RoleThinking:
 				stream.Write(schema.EventThinking, schema.StreamDelta{Role: role, Text: text})
 			case schema.RoleTool:
@@ -82,7 +80,6 @@ func ask(ctx context.Context, manager *llmmanager.Manager, w http.ResponseWriter
 		if err != nil {
 			return httpresponse.Error(w, schema.HTTPErr(err))
 		}
-
 		return httpresponse.JSON(w, http.StatusOK, httprequest.Indent(r), resp)
 	default:
 		return httpresponse.Error(w, httpresponse.Err(http.StatusNotAcceptable))

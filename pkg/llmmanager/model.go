@@ -178,13 +178,10 @@ func (m *Manager) providersForUser(ctx context.Context, provider string, user *a
 		Name:    provider,
 		Enabled: types.Ptr(true),
 	}
-	if user != nil && len(user.Groups) > 0 {
-		providerReq.Groups = user.Groups
-	}
 
 	var result []schema.Provider
 	for {
-		providers, err := m.ListProviders(ctx, providerReq)
+		providers, err := m.listProviders(ctx, providerReq, user)
 		if err != nil {
 			return nil, err
 		} else if len(providers.Body) == 0 {
@@ -194,7 +191,7 @@ func (m *Manager) providersForUser(ctx context.Context, provider string, user *a
 			providerReq.OffsetLimit.Offset += uint64(len(providers.Body))
 		}
 	}
-	result = filterProvidersForUser(result, user)
+
 	return result, nil
 }
 
@@ -363,6 +360,20 @@ func (m *Manager) modelsByName(ctx context.Context, providers []schema.Provider,
 			model, err := m.Registry.GetModel(ctx, &provider, name)
 			if err != nil {
 				if isIgnorableGetModelError(err) {
+					models, listErr := m.Registry.GetModels(ctx, &provider)
+					if listErr != nil {
+						return listErr
+					}
+					for _, candidate := range models {
+						if candidate.Name != name {
+							continue
+						}
+
+						mu.Lock()
+						result = append(result, candidate)
+						mu.Unlock()
+						return nil
+					}
 					return nil
 				}
 				return err

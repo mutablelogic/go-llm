@@ -98,3 +98,53 @@ func (m Model) Cell(i int) string {
 	}
 	return ""
 }
+
+///////////////////////////////////////////////////////////////////////////////
+// CONNECTOR TABLE
+
+func (Connector) Header() []string {
+	return []string{"URL", "NAMESPACE", "ENABLED", "GROUPS", "CREATED AT", "MODIFIED AT"}
+}
+
+func (Connector) Width(i int) int {
+	switch i {
+	case 0:
+		return 40
+	case 1:
+		return 16
+	case 2:
+		return 8
+	case 3:
+		return 24
+	case 4, 5:
+		return 19
+	}
+	return 0
+}
+
+func (c Connector) Cell(i int) string {
+	switch i {
+	case 0:
+		return c.URL
+	case 1:
+		if c.Namespace != nil {
+			return *c.Namespace
+		}
+	case 2:
+		if c.Enabled != nil && *c.Enabled {
+			return "true"
+		}
+		return "false"
+	case 3:
+		return strings.Join(c.Groups, ", ")
+	case 4:
+		if !c.CreatedAt.IsZero() {
+			return c.CreatedAt.Format("2006-01-02 15:04:05")
+		}
+	case 5:
+		if c.ModifiedAt != nil {
+			return c.ModifiedAt.Format("2006-01-02 15:04:05")
+		}
+	}
+	return ""
+}

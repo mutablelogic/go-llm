@@ -61,7 +61,6 @@ func RegisterHandlers(manager *manager.Manager, router server.HTTPRouter, middle
 	register(AgentGetHandler(manager))
 	register(AskHandler(manager))
 	register(ChatHandler(manager))
-	register(CredentialHandler(manager))
 	register(ConnectorListHandler(manager))
 	register(ConnectorHandler(manager))
 
@@ -73,7 +72,6 @@ func RegisterHandlers(manager *manager.Manager, router server.HTTPRouter, middle
 		spec.AddTag("Agent", "Create, update, delete and run agents — reusable prompt templates with model and tool bindings.")
 		spec.AddTag("Session", "Manage conversation sessions, which maintain message history across multiple chat turns.")
 		spec.AddTag("Chat", "Send messages to a language model, either statelessly (ask) or within a session (chat).")
-		spec.AddTag("Credential", "Store and retrieve OAuth credentials used by MCP server connectors.")
 		spec.AddTag("Connector", "Register and manage MCP server connectors that expose additional tools to language models.")
 	}
 

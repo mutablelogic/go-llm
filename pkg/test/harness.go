@@ -173,8 +173,9 @@ func resolveProviderConfig(config ProviderConfig) (ProviderConfig, string, error
 func bootstrapAuth(ctx context.Context, conn pg.Conn, groups []string) error {
 	statements := []string{
 		`CREATE SCHEMA IF NOT EXISTS auth`,
-		`CREATE TABLE IF NOT EXISTS auth."group" ("name" TEXT PRIMARY KEY)`,
+		`CREATE TABLE IF NOT EXISTS auth."group" ("id" TEXT PRIMARY KEY)`,
 		`CREATE TABLE IF NOT EXISTS auth."user" ("id" UUID PRIMARY KEY)`,
+		`CREATE TABLE IF NOT EXISTS auth.user_group ("user" UUID NOT NULL REFERENCES auth."user" ("id") ON DELETE CASCADE, "group" TEXT NOT NULL REFERENCES auth."group" ("id") ON DELETE CASCADE, PRIMARY KEY ("user", "group"))`,
 	}
 	for _, statement := range statements {
 		if err := conn.Exec(ctx, statement); err != nil {
@@ -182,7 +183,7 @@ func bootstrapAuth(ctx context.Context, conn pg.Conn, groups []string) error {
 		}
 	}
 	for _, group := range groups {
-		if err := conn.Exec(ctx, fmt.Sprintf(`INSERT INTO auth."group" ("name") VALUES ('%s') ON CONFLICT DO NOTHING`, group)); err != nil {
+		if err := conn.Exec(ctx, fmt.Sprintf(`INSERT INTO auth."group" ("id") VALUES ('%s') ON CONFLICT DO NOTHING`, group)); err != nil {
 			return err
 		}
 	}

@@ -16,6 +16,7 @@ type registryModelClient struct {
 	name   string
 	models []schema.Model
 	err    error
+	getErr error
 }
 
 func registryProvider(name string, include, exclude []string) *schema.Provider {
@@ -46,6 +47,9 @@ func (c *registryModelClient) ListModels(context.Context, ...opt.Opt) ([]schema.
 }
 
 func (c *registryModelClient) GetModel(_ context.Context, name string, _ ...opt.Opt) (*schema.Model, error) {
+	if c.getErr != nil {
+		return nil, c.getErr
+	}
 	if c.err != nil {
 		return nil, c.err
 	}
@@ -198,6 +202,26 @@ func TestRegistryGetModelWrapsProviderError(t *testing.T) {
 		assert.Contains(err.Error(), schema.Gemini)
 		assert.Contains(err.Error(), `get model "x/flux2-klein:latest"`)
 	}
+}
+
+func TestRegistryGetModelFallsBackToListedModel(t *testing.T) {
+	assert := assert.New(t)
+
+	r := New()
+	r.providers["ollama"] = provider{client: &registryModelClient{
+		name: "ollama",
+		models: []schema.Model{
+			{Name: "lfm2:latest"},
+		},
+		getErr: schema.ErrNotFound.With("show not supported"),
+	}}
+
+	model, err := r.GetModel(context.Background(), &schema.Provider{Name: "ollama", Provider: schema.Ollama}, "lfm2:latest")
+	if !assert.NoError(err) {
+		return
+	}
+	assert.Equal("lfm2:latest", model.Name)
+	assert.Equal("ollama", model.OwnedBy)
 }
 
 func TestRegistrySetSkipsUnchangedModifiedAtValue(t *testing.T) {

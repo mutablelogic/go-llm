@@ -11,6 +11,7 @@ import (
 	llm "github.com/mutablelogic/go-llm"
 	opt "github.com/mutablelogic/go-llm/pkg/opt"
 	schema "github.com/mutablelogic/go-llm/pkg/schema"
+	llmtest "github.com/mutablelogic/go-llm/pkg/test"
 	httpresponse "github.com/mutablelogic/go-server/pkg/httpresponse"
 	assert "github.com/stretchr/testify/assert"
 )
@@ -43,6 +44,25 @@ func (d *modelTestDownloader) DownloadModel(context.Context, string, ...opt.Opt)
 
 func (d *modelTestDownloader) DeleteModel(context.Context, schema.Model) error {
 	return nil
+}
+
+func syncAndListModels(m *Manager, provider string, user *auth.User) func(context.Context) (*schema.ModelList, error) {
+	return func(ctx context.Context) (*schema.ModelList, error) {
+		if _, _, err := m.SyncProviders(ctx); err != nil {
+			return nil, err
+		}
+		return m.ListModels(ctx, schema.ModelListRequest{Provider: provider}, user)
+	}
+}
+
+func validateAccessibleModel(m *Manager, provider string, user *auth.User) func(context.Context, string) error {
+	return func(ctx context.Context, name string) error {
+		if _, _, err := m.SyncProviders(ctx); err != nil {
+			return err
+		}
+		_, err := m.GetModel(ctx, schema.GetModelRequest{Provider: provider, Name: name}, user)
+		return err
+	}
 }
 
 func TestProviderAccessibleToUser(t *testing.T) {
@@ -166,14 +186,14 @@ func TestIsIgnorableGetModelError(t *testing.T) {
 func TestListModelsIntegration(t *testing.T) {
 	conn, m := newIntegrationManager(t)
 	conn.RequireProvider(t)
-	ctx := context.Background()
-	provider := createIntegrationProvider(t, m, conn.ProviderInsert())
-	admin := integrationAdminUser(conn)
+	ctx := llmtest.Context(t)
+	provider := llmtest.CreateProvider(t, conn.ProviderInsert(), m.CreateProvider, m.SyncProviders)
+	admin := llmtest.AdminUser(conn)
 
 	t.Run("matching group sees provider models", func(t *testing.T) {
 		assert := assert.New(t)
 		result, err := m.ListModels(ctx, schema.ModelListRequest{Provider: provider.Name}, admin)
-		if isIntegrationUnreachable(err) {
+		if llmtest.IsUnreachable(err) {
 			t.Skipf("provider unreachable: %v", err)
 		}
 		if !assert.NoError(err) {
@@ -200,30 +220,15 @@ func TestListModelsIntegration(t *testing.T) {
 func TestGetModelIntegration(t *testing.T) {
 	conn, m := newIntegrationManager(t)
 	conn.RequireProvider(t)
-	ctx := context.Background()
-	provider := createIntegrationProvider(t, m, conn.ProviderInsert())
-	admin := integrationAdminUser(conn)
-
-	models, err := m.ListModels(ctx, schema.ModelListRequest{Provider: provider.Name}, admin)
-	if isIntegrationUnreachable(err) {
-		t.Skipf("provider unreachable: %v", err)
-	}
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(models.Body) == 0 {
-		t.Skip("no models available, skipping")
-	}
-
-	modelName := models.Body[0].Name
-	if conn.Config.Model != "" {
-		modelName = conn.Config.Model
-	}
+	ctx := llmtest.Context(t)
+	provider := llmtest.CreateProvider(t, conn.ProviderInsert(), m.CreateProvider, m.SyncProviders)
+	admin := llmtest.AdminUser(conn)
+	modelName := llmtest.ModelNameMatching(t, "", syncAndListModels(m, provider.Name, admin), nil, validateAccessibleModel(m, provider.Name, admin))
 
 	t.Run("matching group gets model", func(t *testing.T) {
 		assert := assert.New(t)
 		result, err := m.GetModel(ctx, schema.GetModelRequest{Provider: provider.Name, Name: modelName}, admin)
-		if isIntegrationUnreachable(err) {
+		if llmtest.IsUnreachable(err) {
 			t.Skipf("provider unreachable: %v", err)
 		}
 		if !assert.NoError(err) {
@@ -246,15 +251,15 @@ func TestGetModelIntegration(t *testing.T) {
 func TestDownloadModelIntegration(t *testing.T) {
 	conn, m := newIntegrationManager(t)
 	conn.RequireProvider(t)
-	ctx := context.Background()
-	provider := createIntegrationProvider(t, m, conn.ProviderInsert())
-	admin := integrationAdminUser(conn)
-	modelName := integrationModelName(t, m, provider.Name, admin, conn.Config.Model)
+	ctx := llmtest.Context(t)
+	provider := llmtest.CreateProvider(t, conn.ProviderInsert(), m.CreateProvider, m.SyncProviders)
+	admin := llmtest.AdminUser(conn)
+	modelName := llmtest.ModelNameMatching(t, "", syncAndListModels(m, provider.Name, admin), nil, validateAccessibleModel(m, provider.Name, admin))
 
 	t.Run("matching group can download model", func(t *testing.T) {
 		assert := assert.New(t)
 		result, err := m.DownloadModel(ctx, schema.DownloadModelRequest{Provider: provider.Name, Name: modelName}, admin)
-		if isIntegrationUnreachable(err) {
+		if llmtest.IsUnreachable(err) {
 			t.Skipf("provider unreachable: %v", err)
 		}
 		if !assert.NoError(err) {

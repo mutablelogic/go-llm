@@ -2,13 +2,12 @@ package manager
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 
 	// Packages
+	auth "github.com/djthorpe/go-auth/schema/auth"
 	schema "github.com/mutablelogic/go-llm/pkg/schema"
 	pg "github.com/mutablelogic/go-pg"
-	httpresponse "github.com/mutablelogic/go-server/pkg/httpresponse"
 	types "github.com/mutablelogic/go-server/pkg/types"
 )
 
@@ -49,8 +48,16 @@ func (m *Manager) CreateProvider(ctx context.Context, req schema.ProviderInsert)
 
 // ListProviders returns a list of providers matching the given request parameters.
 func (m *Manager) ListProviders(ctx context.Context, req schema.ProviderListRequest) (*schema.ProviderList, error) {
+	return m.listProviders(ctx, req, nil)
+}
+
+func (m *Manager) listProviders(ctx context.Context, req schema.ProviderListRequest, user *auth.User) (*schema.ProviderList, error) {
 	result := schema.ProviderList{ProviderListRequest: req}
-	if err := m.PoolConn.List(ctx, &result, req); err != nil {
+	var conn pg.Conn = m.PoolConn
+	if user != nil {
+		conn = conn.With("user", user.UUID())
+	}
+	if err := conn.List(ctx, &result, req); err != nil {
 		return nil, pg.NormalizeError(err)
 	}
 
@@ -127,45 +134,6 @@ func (m *Manager) DeleteProvider(ctx context.Context, name string) (*schema.Prov
 ///////////////////////////////////////////////////////////////////////////////
 // PRIVATE METHODS
 
-func (m *Manager) encryptCredentials(req schema.ProviderInsert) (uint64, []byte, error) {
-	// Check for at least one passphrase configured
-	if len(m.passphrases.Keys()) == 0 {
-		return 0, nil, httpresponse.ErrServiceUnavailable.Withf("no encryption passphrase configured for provider credentials")
-	}
-
-	// Turn the credentials into JSON. If the credentials are empty this will
-	// return an empty JSON object, which we can treat as an empty byte array.
-	data, err := json.Marshal(req.ProviderCredentials)
-	if err != nil {
-		return 0, nil, httpresponse.ErrBadRequest.With(err)
-	} else if string(data) == "{}" {
-		return 0, []byte{}, nil
-	}
-
-	// Get the encryption passphrase for the current passphrase version. If there is no
-	// passphrase configured for the current version, return an error
-	if pv, crypted, err := m.passphrases.Encrypt(0, data); err != nil {
-		return 0, nil, httpresponse.ErrBadRequest.With(err)
-	} else {
-		return pv, []byte(crypted), nil
-	}
-}
-
-func (m *Manager) decryptCredentials(encrypted []byte, pv uint64, decrypted any) error {
-	// Check for at least one passphrase configured
-	if len(m.passphrases.Keys()) == 0 {
-		return httpresponse.ErrServiceUnavailable.Withf("no encryption passphrase configured for provider credentials")
-	}
-
-	if data, err := m.passphrases.Decrypt(pv, string(encrypted)); err != nil {
-		return httpresponse.ErrBadRequest.With(err)
-	} else if err := json.Unmarshal([]byte(data), decrypted); err != nil {
-		return httpresponse.ErrBadRequest.With(err)
-	} else {
-		return nil
-	}
-}
-
 func (m *Manager) listProvidersWithCredentials(ctx context.Context, req schema.ProviderListRequest) (*providerWithCredentialsList, error) {
 	result := providerWithCredentialsList{ProviderListRequest: req}
 	if err := m.PoolConn.List(ctx, &result, result); err != nil {
@@ -197,18 +165,11 @@ func (p *providerWithCredentials) Scan(row pg.Row) error {
 	var enabled bool
 	var url string
 	if err := row.Scan(
-		&p.Provider.Name,
-		&p.Provider.Provider,
-		&url,
-		&enabled,
-		&p.Provider.Include,
-		&p.Provider.Exclude,
-		&p.Provider.CreatedAt,
-		&p.Provider.ModifiedAt,
-		&p.Provider.Meta,
-		&p.Provider.Groups,
-		&p.PV,
-		&p.Credentials,
+		&p.Provider.Name, &p.Provider.Provider, &url,
+		&enabled, &p.Provider.Include, &p.Provider.Exclude,
+		&p.Provider.CreatedAt, &p.Provider.ModifiedAt,
+		&p.Provider.Meta, &p.Provider.Groups,
+		&p.PV, &p.Credentials,
 	); err != nil {
 		return err
 	}
@@ -255,10 +216,17 @@ func (list providerWithCredentialsList) Select(bind *pg.Bind, op pg.Op) (string,
 
 	switch op {
 	case pg.List:
+		if providerWithCredentialsListHasUser(bind) {
+			return bind.Query("provider.list_with_credentials_for_user"), nil
+		}
 		return bind.Query("provider.list_with_credentials"), nil
 	default:
 		return "", schema.ErrNotImplemented.Withf("unsupported providerWithCredentialsList operation %q", op)
 	}
+}
+
+func providerWithCredentialsListHasUser(bind *pg.Bind) bool {
+	return bind.Get("user") != nil
 }
 
 func (m *Manager) syncProviderGroups(ctx context.Context, conn pg.Conn, provider string, groups []string) error {

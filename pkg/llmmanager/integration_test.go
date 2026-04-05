@@ -2,12 +2,10 @@ package manager
 
 import (
 	"context"
-	"errors"
-	"net"
 	"testing"
+	"time"
 
 	// Packages
-	auth "github.com/djthorpe/go-auth/schema/auth"
 	schema "github.com/mutablelogic/go-llm/pkg/schema"
 	llmtest "github.com/mutablelogic/go-llm/pkg/test"
 )
@@ -28,56 +26,20 @@ func newIntegrationManager(t *testing.T) (*llmtest.Conn, *Manager) {
 	conn := integrationConn.Begin(t)
 	t.Cleanup(conn.Close)
 
-	ctx := context.Background()
-	m, err := New(ctx, conn, WithPassphrase(1, "test1234"))
+	ctx := llmtest.Context(t)
+	m, err := New(ctx, "test", "0.0.0", conn, WithPassphrase(1, "test1234"))
 	if err != nil {
 		t.Fatal(err)
 	}
 	if err := m.Exec(ctx, `TRUNCATE llm.provider CASCADE`); err != nil {
 		t.Fatal(err)
 	}
+	llmtest.RunBackground(t, func(ctx context.Context) error {
+		return m.Run(ctx, llmtest.DiscardLogger())
+	})
+	llmtest.WaitUntil(t, 5*time.Second, func() bool {
+		return m.Toolkit != nil
+	}, "timed out waiting for llmmanager Run to initialize toolkit")
 
 	return conn, m
-}
-
-func createIntegrationProvider(t *testing.T, m *Manager, insert schema.ProviderInsert) *schema.Provider {
-	t.Helper()
-
-	provider, err := m.CreateProvider(context.Background(), insert)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, _, err := m.SyncProviders(context.Background()); err != nil {
-		t.Fatal(err)
-	}
-
-	return provider
-}
-
-func integrationAdminUser(conn *llmtest.Conn) *auth.User {
-	return &auth.User{UserMeta: auth.UserMeta{Groups: append([]string(nil), conn.Config.Groups...)}}
-}
-
-func integrationModelName(t *testing.T, m *Manager, provider string, user *auth.User, preferred string) string {
-	t.Helper()
-
-	models, err := m.ListModels(context.Background(), schema.ModelListRequest{Provider: provider}, user)
-	if isIntegrationUnreachable(err) {
-		t.Skipf("provider unreachable: %v", err)
-	}
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(models.Body) == 0 {
-		t.Skip("no models available, skipping")
-	}
-	if preferred != "" {
-		return preferred
-	}
-	return models.Body[0].Name
-}
-
-func isIntegrationUnreachable(err error) bool {
-	var netErr *net.OpError
-	return errors.As(err, &netErr)
 }

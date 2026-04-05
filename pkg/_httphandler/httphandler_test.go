@@ -203,7 +203,6 @@ func serveMux(manager *manager.Manager) *http.ServeMux {
 	register(httphandler.AgentGetHandler(manager))
 	register(httphandler.AskHandler(manager))
 	register(httphandler.ChatHandler(manager))
-	register(httphandler.CredentialHandler(manager))
 	register(httphandler.ConnectorListHandler(manager))
 	register(httphandler.ConnectorHandler(manager))
 	return mux

@@ -43,15 +43,15 @@ func NewFileConnectorStore(dir string) (*FileConnectorStore, error) {
 ///////////////////////////////////////////////////////////////////////////////
 // PUBLIC METHODS
 
-// CreateConnector registers a new MCP server connector keyed by url.
-// Returns an error if url is invalid, namespace is invalid, or a connector
+// CreateConnector registers a new MCP server connector keyed by insert.URL.
+// Returns an error if the URL is invalid, namespace is invalid, or a connector
 // with that URL or namespace already exists.
-func (s *FileConnectorStore) CreateConnector(_ context.Context, url string, meta schema.ConnectorMeta) (*schema.Connector, error) {
-	canonicalURL, err := schema.CanonicalURL(url)
+func (s *FileConnectorStore) CreateConnector(_ context.Context, insert schema.ConnectorInsert) (*schema.Connector, error) {
+	canonicalURL, err := schema.CanonicalURL(insert.URL)
 	if err != nil {
 		return nil, err
 	}
-	if err := validateConnectorNamespace(types.Value(meta.Namespace)); err != nil {
+	if err := validateConnectorNamespace(types.Value(insert.Namespace)); err != nil {
 		return nil, err
 	}
 
@@ -64,8 +64,8 @@ func (s *FileConnectorStore) CreateConnector(_ context.Context, url string, meta
 	} else if !os.IsNotExist(err) {
 		return nil, fmt.Errorf("stat %q: %w", path, err)
 	}
-	if ns := types.Value(meta.Namespace); ns != "" {
-		matches, err := s.filterConnectors(schema.ListConnectorsRequest{Namespace: ns}, "")
+	if ns := types.Value(insert.Namespace); ns != "" {
+		matches, err := s.filterConnectors(schema.ConnectorListRequest{Namespace: ns}, "")
 		if err != nil {
 			return nil, err
 		}
@@ -77,7 +77,7 @@ func (s *FileConnectorStore) CreateConnector(_ context.Context, url string, meta
 	c := schema.Connector{
 		URL:           canonicalURL,
 		CreatedAt:     time.Now(),
-		ConnectorMeta: meta,
+		ConnectorMeta: insert.ConnectorMeta,
 	}
 	if err := writeJSON(path, &c); err != nil {
 		return nil, err
@@ -118,7 +118,7 @@ func (s *FileConnectorStore) UpdateConnector(_ context.Context, url string, meta
 		return nil, err
 	}
 	if ns := types.Value(meta.Namespace); ns != "" {
-		matches, err := s.filterConnectors(schema.ListConnectorsRequest{Namespace: ns}, canonicalURL)
+		matches, err := s.filterConnectors(schema.ConnectorListRequest{Namespace: ns}, canonicalURL)
 		if err != nil {
 			return nil, err
 		}
@@ -131,6 +131,9 @@ func (s *FileConnectorStore) UpdateConnector(_ context.Context, url string, meta
 	}
 	if meta.Namespace != nil {
 		c.Namespace = meta.Namespace
+	}
+	if meta.Meta != nil {
+		c.Meta = meta.Meta
 	}
 	if err := writeJSON(s.path(canonicalURL), c); err != nil {
 		return nil, err
@@ -163,7 +166,7 @@ func (s *FileConnectorStore) DeleteConnector(_ context.Context, url string) erro
 // The Namespace and Enabled filters are applied first; pagination (Offset/Limit)
 // is applied to the filtered slice. The Count field reflects the total number
 // of matching connectors before pagination.
-func (s *FileConnectorStore) ListConnectors(_ context.Context, req schema.ListConnectorsRequest) (*schema.ListConnectorsResponse, error) {
+func (s *FileConnectorStore) ListConnectors(_ context.Context, req schema.ConnectorListRequest) (*schema.LConnectorList error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
@@ -193,7 +196,7 @@ func (s *FileConnectorStore) ListConnectors(_ context.Context, req schema.ListCo
 	for i := range matched {
 		body[i] = types.Ptr(matched[i])
 	}
-	return &schema.ListConnectorsResponse{
+	return &schema.ConnectorList{
 		Count:  total,
 		Offset: req.Offset,
 		Limit:  req.Limit,
@@ -264,7 +267,7 @@ func (s *FileConnectorStore) read(canonicalURL string) (*schema.Connector, error
 // skips the connector at excludeURL (pass "" to include all).
 // Pagination fields in req are ignored. Corrupt files are silently skipped.
 // Caller must hold at least s.mu.RLock.
-func (s *FileConnectorStore) filterConnectors(req schema.ListConnectorsRequest, excludeURL string) ([]schema.Connector, error) {
+func (s *FileConnectorStore) filterConnectors(req schema.ConnectorListRequest, excludeURL string) ([]schema.Connector, error) {
 	entries, err := os.ReadDir(s.dir)
 	if err != nil {
 		return nil, fmt.Errorf("readdir %q: %w", s.dir, err)

@@ -75,6 +75,9 @@ func (r *Registry) Ping(ctx context.Context) error {
 // Syncronizes the registry with the provided list of provider schemas and a decrypter function to obtain credentials.
 // It returns lists of updated and deleted provider names, along with any errors encountered during the sync process.
 func (r *Registry) Sync(schema []*schema.Provider, decrypter func(i int) (schema.ProviderCredentials, error)) (updates []string, deletes []string, err error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
 	var result error
 
 	// Create a set of current provider names for easy lookup
@@ -88,7 +91,7 @@ func (r *Registry) Sync(schema []*schema.Provider, decrypter func(i int) (schema
 		credentials, err := decrypter(i)
 		if err != nil {
 			result = errors.Join(result, err)
-		} else if updated, deleted, err := r.Set(s, credentials); err != nil {
+		} else if updated, deleted, err := r.setLocked(s, credentials); err != nil {
 			result = errors.Join(result, err)
 		} else if updated {
 			updates = append(updates, s.Name)
@@ -186,9 +189,15 @@ func (r *Registry) GetModel(ctx context.Context, provider *schema.Provider, name
 
 	model, err := client.GetModel(ctx, name)
 	if err != nil {
+		if fallback, ok, fallbackErr := r.modelFromList(ctx, client, provider, includePatterns, excludePatterns, name); fallbackErr == nil && ok {
+			return fallback, nil
+		}
 		return schema.Model{}, providerModelError(provider, fmt.Sprintf("get model %q", name), err)
 	}
 	if model == nil || model.Name != name || !matchesModelFilters(includePatterns, excludePatterns, model.Name) {
+		if fallback, ok, err := r.modelFromList(ctx, client, provider, includePatterns, excludePatterns, name); err == nil && ok {
+			return fallback, nil
+		}
 		return schema.Model{}, schema.ErrNotFound.Withf("model %q not found for provider %q", name, provider.Name)
 	}
 	model.OwnedBy = provider.Name
@@ -211,7 +220,10 @@ func providerModelError(provider *schema.Provider, action string, err error) err
 func (r *Registry) Set(schema *schema.Provider, credentials schema.ProviderCredentials) (bool, bool, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
+	return r.setLocked(schema, credentials)
+}
 
+func (r *Registry) setLocked(schema *schema.Provider, credentials schema.ProviderCredentials) (bool, bool, error) {
 	// If the schema "enabled" field is false, delete the provider if it exists
 	if schema.Enabled != nil && !types.Value(schema.Enabled) {
 		delete(r.providers, schema.Name)
@@ -335,4 +347,22 @@ func matchesModelFilters(includePatterns, excludePatterns []*regexp.Regexp, name
 		return false
 	}
 	return true
+}
+
+func (r *Registry) modelFromList(ctx context.Context, client llm.Client, provider *schema.Provider, includePatterns, excludePatterns []*regexp.Regexp, name string) (schema.Model, bool, error) {
+	models, err := client.ListModels(ctx)
+	if err != nil {
+		return schema.Model{}, false, err
+	}
+	for _, model := range models {
+		if model.Name != name {
+			continue
+		}
+		if !matchesModelFilters(includePatterns, excludePatterns, model.Name) {
+			return schema.Model{}, false, nil
+		}
+		model.OwnedBy = provider.Name
+		return model, true, nil
+	}
+	return schema.Model{}, false, nil
 }

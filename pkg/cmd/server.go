@@ -136,7 +136,7 @@ func (server *RunServer) authManagerOpts(ctx server.Cmd) []authmanager.Opt {
 
 func (server *RunServer) withLLMManager(ctx server.Cmd, conn pg.PoolConn, fn func(manager *llmmanager.Manager) error) error {
 	// Create the LLM manager
-	llmmanager, err := llmmanager.New(ctx.Context(), conn, server.llmManagerOpts(ctx)...)
+	llmmanager, err := llmmanager.New(ctx.Context(), ctx.Name(), ctx.Version(), conn, server.llmManagerOpts(ctx)...)
 	if err != nil {
 		return err
 	}

@@ -7,6 +7,7 @@ import (
 	// Packages
 	auth "github.com/djthorpe/go-auth/schema/auth"
 	schema "github.com/mutablelogic/go-llm/pkg/schema"
+	llmtest "github.com/mutablelogic/go-llm/pkg/test"
 	assert "github.com/stretchr/testify/assert"
 )
 
@@ -22,9 +23,9 @@ func TestEmbeddingRequiresInput(t *testing.T) {
 func TestEmbeddingRespectsProviderGroupsIntegration(t *testing.T) {
 	conn, m := newIntegrationManager(t)
 	conn.RequireProvider(t)
-	ctx := context.Background()
-	provider := createIntegrationProvider(t, m, conn.ProviderInsert())
-	admin := integrationAdminUser(conn)
+	ctx := llmtest.Context(t)
+	provider := llmtest.CreateProvider(t, conn.ProviderInsert(), m.CreateProvider, m.SyncProviders)
+	admin := llmtest.AdminUser(conn)
 	modelName := integrationEmbeddingModelName(t, m, provider.Name, admin)
 
 	t.Run("denies user without groups", func(t *testing.T) {
@@ -44,7 +45,7 @@ func TestEmbeddingRespectsProviderGroupsIntegration(t *testing.T) {
 			Model: modelName,
 			Input: []string{"hello world"},
 		}, admin)
-		if isIntegrationUnreachable(err) {
+		if llmtest.IsUnreachable(err) {
 			t.Skipf("provider unreachable: %v", err)
 		}
 		if !assert.NoError(err) {
@@ -61,9 +62,10 @@ func TestEmbeddingRespectsProviderGroupsIntegration(t *testing.T) {
 
 func integrationEmbeddingModelName(t *testing.T, m *Manager, provider string, user *auth.User) string {
 	t.Helper()
+	ctx := llmtest.Context(t)
 
-	models, err := m.ListModels(context.Background(), schema.ModelListRequest{Provider: provider}, user)
-	if isIntegrationUnreachable(err) {
+	models, err := m.ListModels(ctx, schema.ModelListRequest{Provider: provider}, user)
+	if llmtest.IsUnreachable(err) {
 		t.Skipf("provider unreachable: %v", err)
 	}
 	if err != nil {

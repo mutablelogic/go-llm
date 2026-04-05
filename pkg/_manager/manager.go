@@ -7,11 +7,10 @@ import (
 	"sync"
 
 	// Packages
-	client "github.com/mutablelogic/go-client"
 	llm "github.com/mutablelogic/go-llm"
+	store "github.com/mutablelogic/go-llm/pkg/_store"
 	opt "github.com/mutablelogic/go-llm/pkg/opt"
 	schema "github.com/mutablelogic/go-llm/pkg/schema"
-	store "github.com/mutablelogic/go-llm/pkg/store"
 	tool "github.com/mutablelogic/go-llm/pkg/tool"
 	types "github.com/mutablelogic/go-server/pkg/types"
 	trace "go.opentelemetry.io/otel/trace"
@@ -27,7 +26,6 @@ type Manager struct {
 	clients          map[string]llm.Client
 	sessionStore     schema.SessionStore
 	agentStore       schema.AgentStore
-	credentialStore  schema.CredentialStore
 	connectorStore   schema.ConnectorStore
 	toolkit          *tool.Toolkit
 	toolkitOpts      []tool.ToolkitOpt
@@ -121,13 +119,13 @@ func (m *Manager) Close() error {
 func (m *Manager) replayConnectors() {
 	ctx := context.Background()
 	enabled := true
-	resp, err := m.connectorStore.ListConnectors(ctx, schema.ListConnectorsRequest{Enabled: &enabled})
+	resp, err := m.connectorStore.ListConnectors(ctx, schema.ConnectorListRequest{Enabled: &enabled})
 	if err != nil {
 		m.logger.Warn("failed to list connectors on startup", "err", err)
 		return
 	}
 	for _, c := range resp.Body {
-		conn, err := m.connectorFactory(ctx, c.URL, m.credOptsFor(ctx, c.URL)...)
+		conn, err := m.connectorFactory(ctx, c.URL)
 		if err != nil {
 			m.logger.Warn("connector factory failed on startup", "url", c.URL, "err", err)
 			continue
@@ -138,24 +136,6 @@ func (m *Manager) replayConnectors() {
 		}
 		m.logger.Debug("connector queued for connection", "url", c.URL, "namespace", types.Value(c.Namespace))
 	}
-}
-
-// credOptsFor returns client opts that inject auth for the given URL.
-// If the credential has a RefreshToken it installs an oauth2 transport that
-// refreshes automatically; otherwise it falls back to a static bearer token.
-func (m *Manager) credOptsFor(ctx context.Context, url string) []client.ClientOpt {
-	if m.credentialStore == nil {
-		return nil
-	}
-	cred, err := m.credentialStore.GetCredential(ctx, url)
-	if err != nil || cred == nil || cred.Token == nil || cred.Token.AccessToken == "" {
-		return nil
-	}
-	// Prefer a refreshing transport when we have a refresh token.
-	if cred.RefreshToken != "" && cred.TokenURL != "" {
-		return []client.ClientOpt{OAuthClientOpt(m.ctx, url, cred, m.credentialStore)}
-	}
-	return []client.ClientOpt{client.OptReqToken(client.Token{Scheme: "Bearer", Value: cred.Token.AccessToken})}
 }
 
 // onConnectorLog forwards log messages from a connector's MCP session to the manager logger.

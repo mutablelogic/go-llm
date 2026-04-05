@@ -38,6 +38,33 @@ FROM ${"schema"}.provider AS provider
 ${where}
 ${orderby}
 
+-- provider.list_for_user
+SELECT
+	provider."name", provider.provider, provider.url, provider.enabled, provider."include", provider."exclude", provider.created_at, provider.modified_at,
+	COALESCE(provider.meta, '{}'::jsonb) AS meta,
+	COALESCE((
+		SELECT array_agg(pg."group"::text ORDER BY pg."group")
+		FROM ${"schema"}.provider_group AS pg
+		WHERE pg."provider" = provider."name"
+	), '{}'::text[]) AS groups
+FROM ${"schema"}.provider AS provider
+WHERE (
+	NOT EXISTS (
+		SELECT 1
+		FROM ${"schema"}.provider_group AS provider_group
+		WHERE provider_group."provider" = provider."name"
+	)
+	OR EXISTS (
+		SELECT 1
+		FROM ${"schema"}.provider_group AS provider_group
+		JOIN ${"auth"}.user_group AS user_group ON user_group."group" = provider_group."group"
+		WHERE provider_group."provider" = provider."name"
+		AND user_group."user" = @user
+	)
+)
+${where}
+${orderby}
+
 -- provider.list_with_credentials
 SELECT
 	provider."name", provider.provider, provider.url, provider.enabled, provider."include", provider."exclude", provider.created_at, provider.modified_at,
@@ -49,6 +76,34 @@ SELECT
 	), '{}'::text[]) AS groups,
 	provider.pv, provider.credentials
 FROM ${"schema"}.provider AS provider
+${where}
+${orderby}
+
+-- provider.list_with_credentials_for_user
+SELECT
+	provider."name", provider.provider, provider.url, provider.enabled, provider."include", provider."exclude", provider.created_at, provider.modified_at,
+	COALESCE(provider.meta, '{}'::jsonb) AS meta,
+	COALESCE((
+		SELECT array_agg(pg."group"::text ORDER BY pg."group")
+		FROM ${"schema"}.provider_group AS pg
+		WHERE pg."provider" = provider."name"
+	), '{}'::text[]) AS groups,
+	provider.pv, provider.credentials
+FROM ${"schema"}.provider AS provider
+WHERE (
+	NOT EXISTS (
+		SELECT 1
+		FROM ${"schema"}.provider_group AS provider_group
+		WHERE provider_group."provider" = provider."name"
+	)
+	OR EXISTS (
+		SELECT 1
+		FROM ${"schema"}.provider_group AS provider_group
+		JOIN ${"auth"}.user_group AS user_group ON user_group."group" = provider_group."group"
+		WHERE provider_group."provider" = provider."name"
+		AND user_group."user" = @user
+	)
+)
 ${where}
 ${orderby}
 
@@ -98,6 +153,234 @@ RETURNING "group"::text;
 -- provider_group.list
 SELECT "group"::text FROM ${"schema"}.provider_group
 WHERE "provider"=@provider
+ORDER BY "group";
+
+-- credential.insert
+INSERT INTO ${"schema"}.credential (
+	url, "user", pv, credentials
+) VALUES (
+	@url, @user, @pv, @credentials
+)
+RETURNING
+	url, "user", created_at;
+
+-- connector.insert
+INSERT INTO ${"schema"}.connector (
+	url, namespace, enabled, meta
+) VALUES (
+	@url, @namespace, @enabled, @meta
+)
+RETURNING
+	url,
+	namespace,
+	enabled,
+	name,
+	title,
+	description,
+	COALESCE(meta, '{}'::jsonb) AS meta,
+	COALESCE((
+		SELECT array_agg(cg."group"::text ORDER BY cg."group")
+		FROM ${"schema"}.connector_group AS cg
+		WHERE cg."connector" = url
+	), '{}'::text[]) AS groups,
+	created_at,
+	modified_at,
+	connected_at;
+
+-- connector.select
+SELECT
+	connector.url,
+	connector.namespace,
+	connector.enabled,
+	connector.name,
+	connector.title,
+	connector.description,
+	COALESCE(connector.meta, '{}'::jsonb) AS meta,
+	COALESCE((
+		SELECT array_agg(cg."group"::text ORDER BY cg."group")
+		FROM ${"schema"}.connector_group AS cg
+		WHERE cg."connector" = connector.url
+	), '{}'::text[]) AS groups,
+	connector.created_at,
+	connector.modified_at,
+	connector.connected_at
+FROM ${"schema"}.connector AS connector
+WHERE connector.url = @url;
+
+-- connector.select_for_user
+SELECT
+	connector.url,
+	connector.namespace,
+	connector.enabled,
+	connector.name,
+	connector.title,
+	connector.description,
+	COALESCE(connector.meta, '{}'::jsonb) AS meta,
+	COALESCE((
+		SELECT array_agg(cg."group"::text ORDER BY cg."group")
+		FROM ${"schema"}.connector_group AS cg
+		WHERE cg."connector" = connector.url
+	), '{}'::text[]) AS groups,
+	connector.created_at,
+	connector.modified_at,
+	connector.connected_at
+FROM ${"schema"}.connector AS connector
+WHERE connector.url = @url
+AND (
+	NOT EXISTS (
+		SELECT 1
+		FROM ${"schema"}.connector_group AS connector_group
+		WHERE connector_group."connector" = connector.url
+	)
+	OR EXISTS (
+		SELECT 1
+		FROM ${"schema"}.connector_group AS connector_group
+		JOIN ${"auth"}.user_group AS user_group ON user_group."group" = connector_group."group"
+		WHERE connector_group."connector" = connector.url
+		AND user_group."user" = @user
+	)
+);
+
+-- connector.list
+SELECT
+	connector.url,
+	connector.namespace,
+	connector.enabled,
+	connector.name,
+	connector.title,
+	connector.description,
+	COALESCE(connector.meta, '{}'::jsonb) AS meta,
+	COALESCE((
+		SELECT array_agg(cg."group"::text ORDER BY cg."group")
+		FROM ${"schema"}.connector_group AS cg
+		WHERE cg."connector" = connector.url
+	), '{}'::text[]) AS groups,
+	connector.created_at,
+	connector.modified_at,
+	connector.connected_at
+FROM ${"schema"}.connector AS connector
+${where}
+${orderby}
+
+-- connector.list_for_user
+SELECT
+	connector.url,
+	connector.namespace,
+	connector.enabled,
+	connector.name,
+	connector.title,
+	connector.description,
+	COALESCE(connector.meta, '{}'::jsonb) AS meta,
+	COALESCE((
+		SELECT array_agg(cg."group"::text ORDER BY cg."group")
+		FROM ${"schema"}.connector_group AS cg
+		WHERE cg."connector" = connector.url
+	), '{}'::text[]) AS groups,
+	connector.created_at,
+	connector.modified_at,
+	connector.connected_at
+FROM ${"schema"}.connector AS connector
+WHERE (
+	NOT EXISTS (
+		SELECT 1
+		FROM ${"schema"}.connector_group AS connector_group
+		WHERE connector_group."connector" = connector.url
+	)
+	OR EXISTS (
+		SELECT 1
+		FROM ${"schema"}.connector_group AS connector_group
+		JOIN ${"auth"}.user_group AS user_group ON user_group."group" = connector_group."group"
+		WHERE connector_group."connector" = connector.url
+		AND user_group."user" = @user
+	)
+)
+${where}
+${orderby}
+
+-- connector.update
+UPDATE ${"schema"}.connector
+SET
+	${patch},
+	modified_at = NOW()
+WHERE url = @url
+RETURNING
+	url,
+	namespace,
+	enabled,
+	name,
+	title,
+	description,
+	COALESCE(meta, '{}'::jsonb) AS meta,
+	COALESCE((
+		SELECT array_agg(cg."group"::text ORDER BY cg."group")
+		FROM ${"schema"}.connector_group AS cg
+		WHERE cg."connector" = url
+	), '{}'::text[]) AS groups,
+	created_at,
+	modified_at,
+	connected_at;
+
+-- connector.update_state
+UPDATE ${"schema"}.connector
+SET
+	${patch}
+WHERE url = @url
+RETURNING
+	url,
+	namespace,
+	enabled,
+	name,
+	title,
+	description,
+	COALESCE(meta, '{}'::jsonb) AS meta,
+	COALESCE((
+		SELECT array_agg(cg."group"::text ORDER BY cg."group")
+		FROM ${"schema"}.connector_group AS cg
+		WHERE cg."connector" = url
+	), '{}'::text[]) AS groups,
+	created_at,
+	modified_at,
+	connected_at;
+
+-- connector.delete
+DELETE FROM ${"schema"}.connector AS connector
+WHERE connector.url = @url
+RETURNING
+	connector.url,
+	connector.namespace,
+	connector.enabled,
+	connector.name,
+	connector.title,
+	connector.description,
+	COALESCE(connector.meta, '{}'::jsonb) AS meta,
+	COALESCE((
+		SELECT array_agg(cg."group"::text ORDER BY cg."group")
+		FROM ${"schema"}.connector_group AS cg
+		WHERE cg."connector" = connector.url
+	), '{}'::text[]) AS groups,
+	connector.created_at,
+	connector.modified_at,
+	connector.connected_at;
+
+-- connector_group.insert
+INSERT INTO ${"schema"}.connector_group ("connector", "group")
+VALUES (@connector, @group)
+ON CONFLICT DO NOTHING
+RETURNING "group"::text;
+
+-- connector_group.delete
+DELETE FROM ${"schema"}.connector_group
+WHERE "connector"=@connector AND "group"=@group
+RETURNING "group"::text;
+
+-- connector_group.delete_all
+DELETE FROM ${"schema"}.connector_group
+WHERE "connector"=@connector
+RETURNING "group"::text;
+
+-- connector_group.list
+SELECT "group"::text FROM ${"schema"}.connector_group
+WHERE "connector"=@connector
 ORDER BY "group";
 
 -- usage.insert

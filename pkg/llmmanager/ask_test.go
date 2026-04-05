@@ -9,6 +9,7 @@ import (
 	opt "github.com/mutablelogic/go-llm/pkg/opt"
 	ollama "github.com/mutablelogic/go-llm/pkg/provider/ollama"
 	schema "github.com/mutablelogic/go-llm/pkg/schema"
+	llmtest "github.com/mutablelogic/go-llm/pkg/test"
 	assert "github.com/stretchr/testify/assert"
 	trace "go.opentelemetry.io/otel/trace"
 )
@@ -148,16 +149,19 @@ func TestOllamaWithThinking(t *testing.T) {
 func TestGeneratorFromMetaSupportsOllamaSystemPromptIntegration(t *testing.T) {
 	conn, m := newIntegrationManager(t)
 	conn.RequireProvider(t)
-	provider := createIntegrationProvider(t, m, conn.ProviderInsert())
-	admin := integrationAdminUser(conn)
-	modelName := integrationModelName(t, m, provider.Name, admin, conn.Config.Model)
+	ctx := llmtest.Context(t)
+	provider := llmtest.CreateProvider(t, conn.ProviderInsert(), m.CreateProvider, m.SyncProviders)
+	admin := llmtest.AdminUser(conn)
+	modelName := llmtest.ModelNameMatching(t, "", syncAndListModels(m, provider.Name, admin), func(model schema.Model) bool {
+		return model.Cap&schema.ModelCapCompletion != 0
+	}, validateAccessibleModel(m, provider.Name, admin))
 
-	_, _, _, opts, err := m.generatorFromMeta(context.Background(), schema.GeneratorMeta{
+	_, _, _, opts, err := m.generatorFromMeta(ctx, schema.GeneratorMeta{
 		Provider:     provider.Name,
 		Model:        modelName,
 		SystemPrompt: "be concise",
 	}, admin, generationContextAsk)
-	if isIntegrationUnreachable(err) {
+	if llmtest.IsUnreachable(err) {
 		t.Skipf("provider unreachable: %v", err)
 	}
 	if !assert.NoError(t, err) {
@@ -174,17 +178,20 @@ func TestGeneratorFromMetaSupportsOllamaSystemPromptIntegration(t *testing.T) {
 func TestGeneratorFromMetaSupportsOllamaJSONOutputIntegration(t *testing.T) {
 	conn, m := newIntegrationManager(t)
 	conn.RequireProvider(t)
-	provider := createIntegrationProvider(t, m, conn.ProviderInsert())
-	admin := integrationAdminUser(conn)
-	modelName := integrationModelName(t, m, provider.Name, admin, conn.Config.Model)
+	ctx := llmtest.Context(t)
+	provider := llmtest.CreateProvider(t, conn.ProviderInsert(), m.CreateProvider, m.SyncProviders)
+	admin := llmtest.AdminUser(conn)
+	modelName := llmtest.ModelNameMatching(t, "", syncAndListModels(m, provider.Name, admin), func(model schema.Model) bool {
+		return model.Cap&schema.ModelCapCompletion != 0
+	}, validateAccessibleModel(m, provider.Name, admin))
 	rawSchema := schema.JSONSchema(`{"type":"object","properties":{"answer":{"type":"string"}}}`)
 
-	_, _, _, opts, err := m.generatorFromMeta(context.Background(), schema.GeneratorMeta{
+	_, _, _, opts, err := m.generatorFromMeta(ctx, schema.GeneratorMeta{
 		Provider: provider.Name,
 		Model:    modelName,
 		Format:   rawSchema,
 	}, admin, generationContextAsk)
-	if isIntegrationUnreachable(err) {
+	if llmtest.IsUnreachable(err) {
 		t.Skipf("provider unreachable: %v", err)
 	}
 	if !assert.NoError(t, err) {
@@ -200,16 +207,19 @@ func TestGeneratorFromMetaSupportsOllamaJSONOutputIntegration(t *testing.T) {
 
 func TestGeneratorFromMetaRejectsElizaThinkingBudgetIntegration(t *testing.T) {
 	conn, m := newIntegrationManager(t)
+	ctx := llmtest.Context(t)
 	insert := conn.ProviderInsert()
 	insert.Name = "restricted-eliza"
 	insert.Provider = schema.Eliza
 	insert.URL = nil
 	insert.APIKey = ""
-	provider := createIntegrationProvider(t, m, insert)
-	admin := integrationAdminUser(conn)
-	modelName := integrationModelName(t, m, provider.Name, admin, "")
+	provider := llmtest.CreateProvider(t, insert, m.CreateProvider, m.SyncProviders)
+	admin := llmtest.AdminUser(conn)
+	modelName := llmtest.ModelName(t, "", func(ctx context.Context) (*schema.ModelList, error) {
+		return m.ListModels(ctx, schema.ModelListRequest{Provider: provider.Name}, admin)
+	})
 
-	_, _, _, opts, err := m.generatorFromMeta(context.Background(), schema.GeneratorMeta{
+	_, _, _, opts, err := m.generatorFromMeta(ctx, schema.GeneratorMeta{
 		Provider:       provider.Name,
 		Model:          modelName,
 		ThinkingBudget: 2048,
@@ -227,10 +237,12 @@ func TestGeneratorFromMetaRejectsElizaThinkingBudgetIntegration(t *testing.T) {
 func TestAskRespectsProviderGroupsIntegration(t *testing.T) {
 	conn, m := newIntegrationManager(t)
 	conn.RequireProvider(t)
-	ctx := context.Background()
-	provider := createIntegrationProvider(t, m, conn.ProviderInsert())
-	admin := integrationAdminUser(conn)
-	modelName := integrationModelName(t, m, provider.Name, admin, conn.Config.Model)
+	ctx := llmtest.Context(t)
+	provider := llmtest.CreateProvider(t, conn.ProviderInsert(), m.CreateProvider, m.SyncProviders)
+	admin := llmtest.AdminUser(conn)
+	modelName := llmtest.ModelNameMatching(t, "", syncAndListModels(m, provider.Name, admin), func(model schema.Model) bool {
+		return model.Cap&schema.ModelCapCompletion != 0
+	}, validateAccessibleModel(m, provider.Name, admin))
 
 	t.Run("denies user without groups", func(t *testing.T) {
 		assert := assert.New(t)
@@ -253,7 +265,7 @@ func TestAskRespectsProviderGroupsIntegration(t *testing.T) {
 				Text:          "Say hello in exactly three words.",
 			},
 		}, admin, nil)
-		if isIntegrationUnreachable(err) {
+		if llmtest.IsUnreachable(err) {
 			t.Skipf("provider unreachable: %v", err)
 		}
 		if !assert.NoError(err) {

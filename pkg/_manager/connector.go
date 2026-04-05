@@ -26,18 +26,18 @@ type prober interface {
 // the server state (name, version, capabilities) is fetched synchronously and
 // persisted before returning. Subsequent reconnects update the state
 // asynchronously via the background session.
-func (m *Manager) CreateConnector(ctx context.Context, rawURL string, meta schema.ConnectorMeta) (result *schema.Connector, err error) {
+func (m *Manager) CreateConnector(ctx context.Context, insert schema.ConnectorInsert) (result *schema.Connector, err error) {
 	ctx, endSpan := otel.StartSpan(m.tracer, ctx, "CreateConnector",
-		attribute.String("url", rawURL),
-		attribute.String("meta", meta.String()),
+		attribute.String("url", insert.URL),
+		attribute.String("meta", insert.ConnectorMeta.String()),
 	)
 	defer func() { endSpan(err) }()
 
 	// Check incoming parameters
-	url, err := schema.CanonicalURL(rawURL)
+	url, err := schema.CanonicalURL(insert.URL)
 	if err != nil {
 		return nil, schema.ErrBadParameter.With(err)
-	} else if ns := types.Value(meta.Namespace); ns != "" && !types.IsIdentifier(ns) {
+	} else if ns := types.Value(insert.Namespace); ns != "" && !types.IsIdentifier(ns) {
 		return nil, schema.ErrBadParameter.Withf("connector namespace %q is not a valid identifier", ns)
 	}
 
@@ -46,7 +46,7 @@ func (m *Manager) CreateConnector(ctx context.Context, rawURL string, meta schem
 	var state *schema.ConnectorState
 	var conn llm.Connector
 	if m.connectorFactory != nil {
-		conn, err = m.connectorFactory(ctx, url, m.credOptsFor(ctx, url)...)
+		conn, err = m.connectorFactory(ctx, url)
 		if err != nil {
 			return nil, err
 		}
@@ -58,14 +58,15 @@ func (m *Manager) CreateConnector(ctx context.Context, rawURL string, meta schem
 			}
 
 			// Derive namespace from server name if not provided.
-			if types.Value(meta.Namespace) == "" && types.Value(state.Name) != "" {
-				meta.Namespace = types.Ptr(schema.CanonicalNamespace(types.Value(state.Name)))
+			if types.Value(insert.Namespace) == "" && types.Value(state.Name) != "" {
+				insert.Namespace = types.Ptr(schema.CanonicalNamespace(types.Value(state.Name)))
 			}
 		}
 	}
 
 	// Create the connector
-	result, err = m.connectorStore.CreateConnector(ctx, url, meta)
+	insert.URL = url
+	result, err = m.connectorStore.CreateConnector(ctx, insert)
 	if err != nil {
 		return nil, err
 	}
@@ -131,7 +132,7 @@ func (m *Manager) UpdateConnector(ctx context.Context, rawURL string, meta schem
 		if types.Value(result.Enabled) && m.connectorFactory != nil {
 			// Always remove first so a reconnect gets a fresh session.
 			m.toolkit.RemoveConnector(url)
-			conn, connErr := m.connectorFactory(ctx, url, m.credOptsFor(ctx, url)...)
+			conn, connErr := m.connectorFactory(ctx, url)
 			if connErr != nil {
 				return nil, connErr
 			}
@@ -165,7 +166,7 @@ func (m *Manager) DeleteConnector(ctx context.Context, rawURL string) (err error
 }
 
 // ListConnectors returns connectors matching the request filters.
-func (m *Manager) ListConnectors(ctx context.Context, req schema.ListConnectorsRequest) (result *schema.ListConnectorsResponse, err error) {
+func (m *Manager) ListConnectors(ctx context.Context, req schema.ConnectorListRequest) (result *schema.ConnectorList, err error) {
 	ctx, endSpan := otel.StartSpan(m.tracer, ctx, "ListConnectors",
 		attribute.String("req", req.String()),
 	)

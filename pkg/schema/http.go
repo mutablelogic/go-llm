@@ -210,47 +210,41 @@ type ListAgentResponse struct {
 
 // ListSessionRequest represents a request to list sessions
 type ListSessionRequest struct {
-	Limit  *uint    `json:"limit,omitempty" help:"Maximum number of sessions to return" default:"100"`
-	Offset uint     `json:"offset,omitempty" help:"Offset for pagination" default:"0"`
-	Label  []string `json:"label,omitempty" help:"Filter by labels (key:value)"`
+	pg.OffsetLimit
+	Label []string `json:"label,omitempty" help:"Filter by labels (key:value)"`
 }
 
 // ListSessionResponse represents a response containing a list of sessions
 type ListSessionResponse struct {
-	Count  uint       `json:"count"`
-	Offset uint       `json:"offset,omitzero"`
-	Limit  *uint      `json:"limit,omitzero"`
-	Body   []*Session `json:"body,omitzero"`
+	ListSessionRequest
+	Count uint       `json:"count"`
+	Body  []*Session `json:"body,omitzero"`
 }
 
 // ListToolRequest represents a request to list tools
 type ListToolRequest struct {
-	Limit  *uint `json:"limit,omitempty" help:"Maximum number of tools to return" default:"100"`
-	Offset uint  `json:"offset,omitempty" help:"Offset for pagination" default:"0"`
+	pg.OffsetLimit
 }
 
 // ListToolResponse represents a response containing a list of tools
 type ListToolResponse struct {
-	Count  uint       `json:"count"`
-	Offset uint       `json:"offset,omitzero"`
-	Limit  *uint      `json:"limit,omitzero"`
-	Body   []ToolMeta `json:"body,omitzero"`
+	ListToolRequest
+	Count uint       `json:"count"`
+	Body  []ToolMeta `json:"body,omitzero"`
 }
 
-// ListConnectorsRequest represents a request to list registered MCP connectors.
-type ListConnectorsRequest struct {
+// ConnectorListRequest represents a request to list registered MCP connectors.
+type ConnectorListRequest struct {
+	pg.OffsetLimit
 	Namespace string `json:"namespace,omitempty" help:"Filter by namespace" optional:""`
-	Enabled   *bool  `json:"enabled,omitempty" help:"Filter by enabled state" optional:""`
-	Limit     *uint  `json:"limit,omitempty" help:"Maximum number of connectors to return" default:"100"`
-	Offset    uint   `json:"offset,omitempty" help:"Offset for pagination" default:"0"`
+	Enabled   *bool  `json:"enabled,omitempty" help:"Filter by enabled state" negatable:""`
 }
 
-// ListConnectorsResponse represents a response containing a list of MCP connectors.
-type ListConnectorsResponse struct {
-	Count  uint         `json:"count"`
-	Offset uint         `json:"offset,omitzero"`
-	Limit  *uint        `json:"limit,omitzero"`
-	Body   []*Connector `json:"body,omitzero"`
+// ConnectorList represents a response containing a list of MCP connectors.
+type ConnectorList struct {
+	ConnectorListRequest
+	Count uint         `json:"count"`
+	Body  []*Connector `json:"body,omitzero"`
 }
 
 // ToolMeta represents a tool's metadata
@@ -374,11 +368,11 @@ func (r ListToolResponse) String() string {
 	return types.Stringify(r)
 }
 
-func (r ListConnectorsRequest) String() string {
+func (r ConnectorListRequest) String() string {
 	return types.Stringify(r)
 }
 
-func (r ListConnectorsResponse) String() string {
+func (r ConnectorList) String() string {
 	return types.Stringify(r)
 }
 

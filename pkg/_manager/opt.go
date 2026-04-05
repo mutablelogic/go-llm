@@ -110,18 +110,6 @@ func WithConnectorStore(store schema.ConnectorStore) Opt {
 	}
 }
 
-// WithCredentialStore sets the credential storage backend for the manager.
-// If not set, credential operations will return an error.
-func WithCredentialStore(store schema.CredentialStore) Opt {
-	return func(m *Manager) error {
-		if store == nil {
-			return schema.ErrBadParameter.With("credential store is required")
-		}
-		m.credentialStore = store
-		return nil
-	}
-}
-
 // WithTools registers one or more tools with the manager's toolkit.
 func WithTools(tools ...llm.Tool) Opt {
 	return func(m *Manager) error {

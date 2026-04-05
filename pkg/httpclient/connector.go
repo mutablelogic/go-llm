@@ -17,7 +17,7 @@ import (
 
 // ListConnectors returns registered MCP server connectors, with optional
 // filtering by namespace and enabled state, and optional pagination.
-func (c *Client) ListConnectors(ctx context.Context, req schema.ListConnectorsRequest) (*schema.ListConnectorsResponse, error) {
+func (c *Client) ListConnectors(ctx context.Context, req schema.ConnectorListRequest) (*schema.ConnectorList, error) {
 	// Build query parameters
 	q := make(url.Values)
 	if req.Namespace != "" {
@@ -40,7 +40,7 @@ func (c *Client) ListConnectors(ctx context.Context, req schema.ListConnectorsRe
 	}
 
 	// Perform request
-	var response schema.ListConnectorsResponse
+	var response schema.ConnectorList
 	if err := c.DoWithContext(ctx, client.NewRequest(), &response, reqOpts...); err != nil {
 		return nil, err
 	}
@@ -66,22 +66,22 @@ func (c *Client) GetConnector(ctx context.Context, url_ string) (*schema.Connect
 	return &response, nil
 }
 
-// CreateConnector registers a new MCP server connector with the given URL and metadata.
-func (c *Client) CreateConnector(ctx context.Context, url_ string, meta schema.ConnectorMeta) (*schema.Connector, error) {
-	if url_ == "" {
+// CreateConnector registers a new MCP server connector.
+func (c *Client) CreateConnector(ctx context.Context, req schema.ConnectorInsert) (*schema.Connector, error) {
+	if req.URL == "" {
 		return nil, fmt.Errorf("connector URL cannot be empty")
 	}
 
 	// Create request
-	req, err := client.NewJSONRequest(meta)
+	httpReq, err := client.NewJSONRequest(req.ConnectorMeta)
 	if err != nil {
 		return nil, err
 	}
-	reqOpts := []client.RequestOpt{client.OptPath("connector", url.PathEscape(url_))}
+	reqOpts := []client.RequestOpt{client.OptPath("connector", url.PathEscape(req.URL))}
 
 	// Perform request
 	var response schema.Connector
-	if err := c.DoWithContext(ctx, req, &response, reqOpts...); err != nil {
+	if err := c.DoWithContext(ctx, httpReq, &response, reqOpts...); err != nil {
 		return nil, err
 	}
 

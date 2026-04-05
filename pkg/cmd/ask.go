@@ -414,7 +414,13 @@ func splitMarkdownFlushable(text string) (flushable, pending string) {
 		}
 	}
 
-	if inFence || lastBoundary <= 0 || lastBoundary >= len(text) {
+	if inFence || lastBoundary <= 0 {
+		return "", text
+	}
+	if lastBoundary >= len(text) {
+		if strings.HasSuffix(text, "\n\n") {
+			return strings.TrimSpace(text), ""
+		}
 		return "", text
 	}
 	return strings.TrimSpace(text[:lastBoundary]), text[lastBoundary:]

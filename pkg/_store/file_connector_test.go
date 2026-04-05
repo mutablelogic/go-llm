@@ -7,8 +7,8 @@ import (
 	"testing"
 
 	// Packages
+	store "github.com/mutablelogic/go-llm/pkg/_store"
 	schema "github.com/mutablelogic/go-llm/pkg/schema"
-	store "github.com/mutablelogic/go-llm/pkg/store"
 	assert "github.com/stretchr/testify/assert"
 )
 
@@ -56,7 +56,7 @@ func Test_file_connector_004(t *testing.T) {
 	s, err := store.NewFileConnectorStore(dir)
 	assert.NoError(err)
 
-	c, err := s.CreateConnector(context.Background(), "https://example.com/sse", schema.ConnectorMeta{})
+	c, err := s.CreateConnector(context.Background(), connectorInsert("https://example.com/sse", schema.ConnectorMeta{}))
 	assert.NoError(err)
 	assert.NotNil(c)
 
@@ -79,7 +79,7 @@ func Test_file_connector_005(t *testing.T) {
 
 	s1, err := store.NewFileConnectorStore(dir)
 	assert.NoError(err)
-	_, err = s1.CreateConnector(context.Background(), "https://example.com/sse", schema.ConnectorMeta{})
+	_, err = s1.CreateConnector(context.Background(), connectorInsert("https://example.com/sse", schema.ConnectorMeta{}))
 	assert.NoError(err)
 
 	// Open a second store instance pointing at the same directory.

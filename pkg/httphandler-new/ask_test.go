@@ -15,8 +15,8 @@ import (
 )
 
 func TestAskJSONIntegration(t *testing.T) {
+	modelName := requireDownloadModel(t)
 	conn, manager := newModelHandlerIntegrationManager(t)
-	modelName := requireDownloadModel(t, conn)
 	_, _, item := AskHandler(manager)
 
 	body, err := json.Marshal(schema.AskRequest{
@@ -33,7 +33,7 @@ func TestAskJSONIntegration(t *testing.T) {
 	}
 
 	w := httptest.NewRecorder()
-	r := httptest.NewRequest(http.MethodPost, "/ask", bytes.NewReader(body))
+	r := httptest.NewRequest(http.MethodPost, "/ask", bytes.NewReader(body)).WithContext(newModelHandlerTestContext(t))
 	r.Header.Set(types.ContentTypeHeader, types.ContentTypeJSON)
 	item.Handler().ServeHTTP(w, r)
 
@@ -58,8 +58,8 @@ func TestAskJSONIntegration(t *testing.T) {
 }
 
 func TestAskStreamIntegration(t *testing.T) {
+	modelName := requireDownloadModel(t)
 	conn, manager := newModelHandlerIntegrationManager(t)
-	modelName := requireDownloadModel(t, conn)
 	_, _, item := AskHandler(manager)
 
 	body, err := json.Marshal(schema.AskRequest{
@@ -76,7 +76,7 @@ func TestAskStreamIntegration(t *testing.T) {
 	}
 
 	w := httptest.NewRecorder()
-	r := httptest.NewRequest(http.MethodPost, "/ask", bytes.NewReader(body))
+	r := httptest.NewRequest(http.MethodPost, "/ask", bytes.NewReader(body)).WithContext(newModelHandlerTestContext(t))
 	r.Header.Set(types.ContentTypeHeader, types.ContentTypeJSON)
 	r.Header.Set(types.ContentAcceptHeader, types.ContentTypeTextStream)
 	item.Handler().ServeHTTP(w, r)
@@ -147,7 +147,7 @@ func TestAskModelNotFound(t *testing.T) {
 	}
 
 	w := httptest.NewRecorder()
-	r := httptest.NewRequest(http.MethodPost, "/ask", bytes.NewReader(body))
+	r := httptest.NewRequest(http.MethodPost, "/ask", bytes.NewReader(body)).WithContext(newModelHandlerTestContext(t))
 	r.Header.Set(types.ContentTypeHeader, types.ContentTypeJSON)
 	item.Handler().ServeHTTP(w, r)
 
@@ -157,8 +157,7 @@ func TestAskModelNotFound(t *testing.T) {
 }
 
 func TestAskInvalidJSON(t *testing.T) {
-	_, manager := newModelHandlerIntegrationManager(t)
-	_, _, item := AskHandler(manager)
+	_, _, item := AskHandler(nil)
 
 	w := httptest.NewRecorder()
 	r := httptest.NewRequest(http.MethodPost, "/ask", bytes.NewBufferString(`{invalid`))
@@ -171,8 +170,8 @@ func TestAskInvalidJSON(t *testing.T) {
 }
 
 func TestAskNotAcceptable(t *testing.T) {
+	modelName := requireDownloadModel(t)
 	conn, manager := newModelHandlerIntegrationManager(t)
-	modelName := requireDownloadModel(t, conn)
 	_, _, item := AskHandler(manager)
 
 	body, err := json.Marshal(schema.AskRequest{
@@ -189,7 +188,7 @@ func TestAskNotAcceptable(t *testing.T) {
 	}
 
 	w := httptest.NewRecorder()
-	r := httptest.NewRequest(http.MethodPost, "/ask", bytes.NewReader(body))
+	r := httptest.NewRequest(http.MethodPost, "/ask", bytes.NewReader(body)).WithContext(newModelHandlerTestContext(t))
 	r.Header.Set(types.ContentTypeHeader, types.ContentTypeJSON)
 	r.Header.Set(types.ContentAcceptHeader, types.ContentTypeTextPlain)
 	item.Handler().ServeHTTP(w, r)

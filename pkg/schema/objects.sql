@@ -12,7 +12,6 @@ EXCEPTION
   WHEN duplicate_object THEN null;
 END $$;
 
-
 -- llm.provider
 CREATE TABLE IF NOT EXISTS ${"schema"}.provider (
     "name"        TEXT NOT NULL PRIMARY KEY CHECK ("name" ~ '^[a-zA-Z][a-zA-Z0-9_-]{0,63}$'),
@@ -31,7 +30,7 @@ CREATE TABLE IF NOT EXISTS ${"schema"}.provider (
 -- llm.provider_group
 CREATE TABLE IF NOT EXISTS ${"schema"}.provider_group (
   "provider"   TEXT NOT NULL REFERENCES ${"schema"}.provider ("name") ON DELETE CASCADE,
-  "group"      TEXT NOT NULL REFERENCES ${"auth"}."group" ("name") ON DELETE CASCADE,
+  "group"      TEXT NOT NULL REFERENCES ${"auth"}."group" ("id") ON DELETE CASCADE,
   PRIMARY KEY ("provider", "group")
 );
 
@@ -83,6 +82,52 @@ CREATE INDEX IF NOT EXISTS usage_user_created_at_idx
 CREATE INDEX IF NOT EXISTS usage_session_created_at_idx
     ON ${"schema"}.usage ("session", "created_at");
 
+-- llm.connector
+CREATE TABLE IF NOT EXISTS ${"schema"}.connector (
+  "url"                 TEXT NOT NULL PRIMARY KEY,
+    "namespace"           TEXT,
+    "name"                TEXT,
+    "title"               TEXT,
+    "description"         TEXT,
+    "meta"                JSONB,
+    "enabled"             BOOLEAN NOT NULL DEFAULT true,
+    "created_at"          TIMESTAMPTZ NOT NULL DEFAULT now(),
+    "modified_at"         TIMESTAMPTZ,
+	  "connected_at"        TIMESTAMPTZ
+);
+
+-- llm.connector_group
+CREATE TABLE IF NOT EXISTS ${"schema"}.connector_group (
+  "connector"   TEXT NOT NULL REFERENCES ${"schema"}.connector ("url") ON DELETE CASCADE,
+  "group"       TEXT NOT NULL REFERENCES ${"auth"}."group" ("id") ON DELETE CASCADE,
+  PRIMARY KEY ("connector", "group")
+);
+
+-- llm.connector_user
+CREATE TABLE IF NOT EXISTS ${"schema"}.connector_user (
+  "connector"          TEXT NOT NULL REFERENCES ${"schema"}.connector ("url") ON DELETE CASCADE,
+  "user"               UUID NOT NULL REFERENCES ${"auth"}."user" (id) ON DELETE CASCADE,
+  PRIMARY KEY ("connector", "user")
+);
+
+-- llm.credential
+CREATE TABLE IF NOT EXISTS ${"schema"}.credential (
+  "url"                TEXT NOT NULL,
+  "user"               UUID REFERENCES ${"auth"}."user" (id) ON DELETE CASCADE,
+  "pv"                 INT NOT NULL DEFAULT 0,
+  "credentials"        BYTEA NOT NULL,
+  "created_at"         TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+-- llm.credential_index_user
+CREATE UNIQUE INDEX IF NOT EXISTS credential_url_user_idx
+  ON ${"schema"}.credential ("url", "user")
+  WHERE "user" IS NOT NULL;
+
+-- llm.credential_index_global
+CREATE UNIQUE INDEX IF NOT EXISTS credential_url_idx
+  ON ${"schema"}.credential ("url")
+  WHERE "user" IS NULL;
 
 -- llm.notify.function
 CREATE OR REPLACE FUNCTION ${"schema"}.notify_table()
@@ -119,6 +164,42 @@ DO $$ BEGIN
   DROP TRIGGER IF EXISTS provider_group_table_changes_notify ON ${"schema"}.provider_group;
   CREATE TRIGGER provider_group_table_changes_notify
   AFTER INSERT OR UPDATE OR DELETE ON ${"schema"}.provider_group
+  FOR EACH STATEMENT
+  EXECUTE FUNCTION ${"schema"}.notify_table();
+END $$;
+
+-- llm.notify.session.trigger
+DO $$ BEGIN
+  DROP TRIGGER IF EXISTS session_table_changes_notify ON ${"schema"}.session;
+  CREATE TRIGGER session_table_changes_notify
+  AFTER INSERT OR UPDATE OR DELETE ON ${"schema"}.session
+  FOR EACH STATEMENT
+  EXECUTE FUNCTION ${"schema"}.notify_table();
+END $$;
+
+-- llm.notify.connector.trigger
+DO $$ BEGIN
+  DROP TRIGGER IF EXISTS connector_table_changes_notify ON ${"schema"}.connector;
+  CREATE TRIGGER connector_table_changes_notify
+  AFTER INSERT OR UPDATE OR DELETE ON ${"schema"}.connector
+  FOR EACH STATEMENT
+  EXECUTE FUNCTION ${"schema"}.notify_table();
+END $$;
+
+-- llm.notify.connector_group.trigger
+DO $$ BEGIN
+  DROP TRIGGER IF EXISTS connector_group_table_changes_notify ON ${"schema"}.connector_group;
+  CREATE TRIGGER connector_group_table_changes_notify
+  AFTER INSERT OR UPDATE OR DELETE ON ${"schema"}.connector_group
+  FOR EACH STATEMENT
+  EXECUTE FUNCTION ${"schema"}.notify_table();
+END $$;
+
+-- llm.notify.connector_user.trigger
+DO $$ BEGIN
+  DROP TRIGGER IF EXISTS connector_user_table_changes_notify ON ${"schema"}.connector_user;
+  CREATE TRIGGER connector_user_table_changes_notify
+  AFTER INSERT OR UPDATE OR DELETE ON ${"schema"}.connector_user
   FOR EACH STATEMENT
   EXECUTE FUNCTION ${"schema"}.notify_table();
 END $$;

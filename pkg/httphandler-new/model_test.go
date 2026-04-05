@@ -11,6 +11,7 @@ import (
 	"os"
 	"strings"
 	"testing"
+	"time"
 
 	// Packages
 	llmmanager "github.com/mutablelogic/go-llm/pkg/llmmanager"
@@ -21,6 +22,8 @@ import (
 
 var modelHandlerConn llmtest.Conn
 
+const modelHandlerIntegrationTimeout = 2 * time.Minute
+
 func TestMain(m *testing.M) {
 	llmtest.Main(m, &modelHandlerConn, llmtest.ProviderConfig{
 		Name:     "ollama-handler",
@@ -30,8 +33,8 @@ func TestMain(m *testing.M) {
 }
 
 func TestModelDownloadJSONIntegration(t *testing.T) {
+	modelName := requireDownloadModel(t)
 	conn, manager := newModelHandlerIntegrationManager(t)
-	modelName := requireDownloadModel(t, conn)
 	_, _, item := ModelHandler(manager)
 
 	body, err := json.Marshal(schema.DownloadModelRequest{
@@ -43,7 +46,7 @@ func TestModelDownloadJSONIntegration(t *testing.T) {
 	}
 
 	w := httptest.NewRecorder()
-	r := httptest.NewRequest(http.MethodPost, "/model", bytes.NewReader(body))
+	r := httptest.NewRequest(http.MethodPost, "/model", bytes.NewReader(body)).WithContext(newModelHandlerTestContext(t))
 	r.Header.Set(types.ContentTypeHeader, types.ContentTypeJSON)
 	item.Handler().ServeHTTP(w, r)
 
@@ -64,8 +67,8 @@ func TestModelDownloadJSONIntegration(t *testing.T) {
 }
 
 func TestModelDownloadStreamIntegration(t *testing.T) {
+	modelName := requireDownloadModel(t)
 	conn, manager := newModelHandlerIntegrationManager(t)
-	modelName := requireDownloadModel(t, conn)
 	_, _, item := ModelHandler(manager)
 
 	body, err := json.Marshal(schema.DownloadModelRequest{
@@ -77,7 +80,7 @@ func TestModelDownloadStreamIntegration(t *testing.T) {
 	}
 
 	w := httptest.NewRecorder()
-	r := httptest.NewRequest(http.MethodPost, "/model", bytes.NewReader(body))
+	r := httptest.NewRequest(http.MethodPost, "/model", bytes.NewReader(body)).WithContext(newModelHandlerTestContext(t))
 	r.Header.Set(types.ContentTypeHeader, types.ContentTypeJSON)
 	r.Header.Set(types.ContentAcceptHeader, types.ContentTypeTextStream)
 	item.Handler().ServeHTTP(w, r)
@@ -131,8 +134,8 @@ func TestModelDownloadStreamIntegration(t *testing.T) {
 }
 
 func TestModelDownloadNotAcceptable(t *testing.T) {
+	modelName := requireDownloadModel(t)
 	conn, manager := newModelHandlerIntegrationManager(t)
-	modelName := requireDownloadModel(t, conn)
 	_, _, item := ModelHandler(manager)
 
 	body, err := json.Marshal(schema.DownloadModelRequest{
@@ -144,7 +147,7 @@ func TestModelDownloadNotAcceptable(t *testing.T) {
 	}
 
 	w := httptest.NewRecorder()
-	r := httptest.NewRequest(http.MethodPost, "/model", bytes.NewReader(body))
+	r := httptest.NewRequest(http.MethodPost, "/model", bytes.NewReader(body)).WithContext(newModelHandlerTestContext(t))
 	r.Header.Set(types.ContentTypeHeader, types.ContentTypeJSON)
 	r.Header.Set(types.ContentAcceptHeader, types.ContentTypeTextPlain)
 	item.Handler().ServeHTTP(w, r)
@@ -192,29 +195,43 @@ func newModelHandlerIntegrationManager(t *testing.T) (*llmtest.Conn, *llmmanager
 	conn := modelHandlerConn.Begin(t)
 	t.Cleanup(conn.Close)
 	conn.RequireProvider(t)
+	ctx := newModelHandlerTestContext(t)
 
-	m, err := llmmanager.New(context.Background(), conn, llmmanager.WithPassphrase(1, "test1234"))
+	m, err := llmmanager.New(ctx, "test", "0.0.0", conn, llmmanager.WithPassphrase(1, "test1234"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := m.Exec(context.Background(), `TRUNCATE llm.provider CASCADE`); err != nil {
+	llmtest.RunBackground(t, func(ctx context.Context) error {
+		return m.Run(ctx, llmtest.DiscardLogger())
+	})
+	llmtest.WaitUntil(t, 5*time.Second, func() bool {
+		return m.Toolkit != nil
+	}, "timed out waiting for llmmanager Run to initialize toolkit")
+	if err := m.Exec(ctx, `TRUNCATE llm.provider CASCADE`); err != nil {
 		t.Fatal(err)
 	}
 
-	if _, err := m.CreateProvider(context.Background(), conn.ProviderInsert()); err != nil {
+	if _, err := m.CreateProvider(ctx, conn.ProviderInsert()); err != nil {
 		t.Fatal(err)
 	}
-	if _, _, err := m.SyncProviders(context.Background()); err != nil {
+	if _, _, err := m.SyncProviders(ctx); err != nil {
 		t.Fatal(err)
 	}
 
 	return conn, m
 }
 
-func requireDownloadModel(t *testing.T, conn *llmtest.Conn) string {
+func requireDownloadModel(t *testing.T) string {
 	t.Helper()
-	if conn.Config.Model == "" {
+	if modelHandlerConn.Config.Model == "" {
 		t.Skip("OLLAMA_MODEL not set, skipping model download handler test")
 	}
-	return conn.Config.Model
+	return modelHandlerConn.Config.Model
+}
+
+func newModelHandlerTestContext(t *testing.T) context.Context {
+	t.Helper()
+	ctx, cancel := context.WithTimeout(context.Background(), modelHandlerIntegrationTimeout)
+	t.Cleanup(cancel)
+	return ctx
 }

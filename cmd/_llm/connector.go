@@ -5,10 +5,10 @@ import (
 	"fmt"
 
 	// Packages
-	server "github.com/mutablelogic/go-server"
 	otel "github.com/mutablelogic/go-client/pkg/otel"
 	schema "github.com/mutablelogic/go-llm/pkg/schema"
 	uitable "github.com/mutablelogic/go-llm/pkg/ui/table"
+	server "github.com/mutablelogic/go-server"
 	httpresponse "github.com/mutablelogic/go-server/pkg/httpresponse"
 	types "github.com/mutablelogic/go-server/pkg/types"
 	attribute "go.opentelemetry.io/otel/attribute"
@@ -67,7 +67,7 @@ func (cmd *ListConnectorsCommand) Run(ctx server.Cmd) (err error) {
 	)
 	defer func() { endSpan(err) }()
 
-	req := schema.ListConnectorsRequest{
+	req := schema.ConnectorListRequest{
 		Namespace: cmd.Namespace,
 		Enabled:   cmd.Enabled,
 		Limit:     cmd.Limit,
