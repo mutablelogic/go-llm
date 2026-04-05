@@ -47,7 +47,7 @@ func Test_List_Tools_003_name_filter(t *testing.T) {
 	_ = tk.AddTool(&mockTool{name: "alpha"}, &mockTool{name: "beta"})
 	resp, err := tk.List(context.Background(), ListRequest{
 		Type: ListTypeTools,
-		Name: BuiltinNamespace + ".alpha",
+		Name: []string{BuiltinNamespace + ".alpha"},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -57,12 +57,48 @@ func Test_List_Tools_003_name_filter(t *testing.T) {
 	}
 }
 
+func Test_List_Tools_003a_bare_name_filter(t *testing.T) {
+	tk, _ := New()
+	_ = tk.AddTool(&mockTool{name: "alpha"}, &mockTool{name: "beta"})
+	resp, err := tk.List(context.Background(), ListRequest{
+		Type: ListTypeTools,
+		Name: []string{"alpha"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(resp.Tools) != 1 {
+		t.Fatalf("expected 1 tool, got %d", len(resp.Tools))
+	}
+	if resp.Tools[0].Name() != BuiltinNamespace+".alpha" {
+		t.Fatalf("unexpected tool name %q", resp.Tools[0].Name())
+	}
+}
+
+func Test_List_Tools_003b_multiple_name_filter(t *testing.T) {
+	tk, _ := New()
+	_ = tk.AddTool(&mockTool{name: "alpha"}, &mockTool{name: "beta"}, &mockTool{name: "gamma"})
+	resp, err := tk.List(context.Background(), ListRequest{
+		Type: ListTypeTools,
+		Name: []string{"", BuiltinNamespace + ".alpha", "gamma", "alpha"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(resp.Tools) != 2 {
+		t.Fatalf("expected 2 tools, got %d", len(resp.Tools))
+	}
+	if resp.Tools[0].Name() != BuiltinNamespace+".alpha" || resp.Tools[1].Name() != BuiltinNamespace+".gamma" {
+		t.Fatalf("unexpected tool names %q and %q", resp.Tools[0].Name(), resp.Tools[1].Name())
+	}
+}
+
 func Test_List_Tools_004_namespace_builtin(t *testing.T) {
 	tk, _ := New()
 	_ = tk.AddTool(&mockTool{name: "alpha"})
 	resp, err := tk.List(context.Background(), ListRequest{
-		Type:      ListTypeTools,
-		Namespace: BuiltinNamespace,
+		Type:       ListTypeTools,
+		Namespaces: []string{BuiltinNamespace},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -76,8 +112,8 @@ func Test_List_Tools_005_unknown_namespace(t *testing.T) {
 	tk, _ := New()
 	_ = tk.AddTool(&mockTool{name: "alpha"})
 	resp, err := tk.List(context.Background(), ListRequest{
-		Type:      ListTypeTools,
-		Namespace: "other",
+		Type:       ListTypeTools,
+		Namespaces: []string{"other"},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -211,7 +247,7 @@ func Test_List_Prompts_002_name_filter(t *testing.T) {
 	_ = tk.AddPrompt(&mockPrompt{name: "summarize"}, &mockPrompt{name: "translate"})
 	resp, err := tk.List(context.Background(), ListRequest{
 		Type: ListTypePrompts,
-		Name: BuiltinNamespace + ".summarize",
+		Name: []string{BuiltinNamespace + ".summarize"},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -225,8 +261,8 @@ func Test_List_Prompts_003_unknown_namespace(t *testing.T) {
 	tk, _ := New()
 	_ = tk.AddPrompt(&mockPrompt{name: "summarize"})
 	resp, err := tk.List(context.Background(), ListRequest{
-		Type:      ListTypePrompts,
-		Namespace: "other",
+		Type:       ListTypePrompts,
+		Namespaces: []string{"other"},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -276,7 +312,7 @@ func Test_List_Resources_003_uri_filter(t *testing.T) {
 	_ = tk.AddResource(r)
 	resp, err := tk.List(context.Background(), ListRequest{
 		Type: ListTypeResources,
-		Name: r.URI(),
+		Name: []string{r.URI()},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -291,8 +327,8 @@ func Test_List_Resources_004_unknown_namespace(t *testing.T) {
 	r, _ := resource.Text("greeting", "hello")
 	_ = tk.AddResource(r)
 	resp, err := tk.List(context.Background(), ListRequest{
-		Type:      ListTypeResources,
-		Namespace: "other",
+		Type:       ListTypeResources,
+		Namespaces: []string{"other"},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -397,7 +433,7 @@ func Test_List_Resources_006_resource_interface(t *testing.T) {
 		t.Fatal(err)
 	}
 	got := resp.Resources[0]
-	if _, ok := got.(llm.Resource); !ok {
+	if _, ok := any(got).(llm.Resource); !ok {
 		t.Fatalf("expected llm.Resource, got %T", got)
 	}
 	// URI should be unchanged by WithNamespace wrapping.
@@ -431,8 +467,8 @@ func Test_List_Connector_Tools_002(t *testing.T) {
 	_ = tk.AddTool(&mockTool{name: "local_tool"})
 
 	resp, err := tk.List(context.Background(), ListRequest{
-		Type:      ListTypeTools,
-		Namespace: "myserver",
+		Type:       ListTypeTools,
+		Namespaces: []string{"myserver"},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -452,8 +488,8 @@ func Test_List_Connector_Tools_003(t *testing.T) {
 	_ = tk.AddTool(&mockTool{name: "local_tool"})
 
 	resp, err := tk.List(context.Background(), ListRequest{
-		Type:      ListTypeTools,
-		Namespace: BuiltinNamespace,
+		Type:       ListTypeTools,
+		Namespaces: []string{BuiltinNamespace},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -470,13 +506,59 @@ func Test_List_Connector_Tools_004(t *testing.T) {
 
 	resp, err := tk.List(context.Background(), ListRequest{
 		Type: ListTypeTools,
-		Name: "myserver.remote_tool",
+		Name: []string{"myserver.remote_tool"},
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
 	if len(resp.Tools) != 1 {
 		t.Fatalf("expected 1 tool, got %d", len(resp.Tools))
+	}
+}
+
+// Bare-name filter matches any namespace whose underlying tool name matches.
+func Test_List_Connector_Tools_004a_bare_name_filter(t *testing.T) {
+	connA := &mockListConnector{tools: []llm.Tool{&mockTool{name: "shared"}, &mockTool{name: "other_tool"}}}
+	connB := &mockListConnector{tools: []llm.Tool{&mockTool{name: "shared"}}}
+	tk, _ := newConnectorToolkit(t)
+	tk.namespace["server_a"] = &connector{namespace: "server_a", conn: connA}
+	tk.namespace["server_b"] = &connector{namespace: "server_b", conn: connB}
+
+	resp, err := tk.List(context.Background(), ListRequest{
+		Type: ListTypeTools,
+		Name: []string{"shared"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(resp.Tools) != 2 {
+		t.Fatalf("expected 2 tools, got %d", len(resp.Tools))
+	}
+	if resp.Tools[0].Name() != "server_a.shared" || resp.Tools[1].Name() != "server_b.shared" {
+		t.Fatalf("unexpected tool names %q and %q", resp.Tools[0].Name(), resp.Tools[1].Name())
+	}
+}
+
+func Test_List_Connector_Tools_004b_namespace_filter_list(t *testing.T) {
+	connA := &mockListConnector{tools: []llm.Tool{&mockTool{name: "tool_a"}}}
+	connB := &mockListConnector{tools: []llm.Tool{&mockTool{name: "tool_b"}}}
+	tk, _ := newConnectorToolkit(t)
+	tk.namespace["server_a"] = &connector{namespace: "server_a", conn: connA}
+	tk.namespace["server_b"] = &connector{namespace: "server_b", conn: connB}
+	_ = tk.AddTool(&mockTool{name: "local_tool"})
+
+	resp, err := tk.List(context.Background(), ListRequest{
+		Type:       ListTypeTools,
+		Namespaces: []string{BuiltinNamespace, "server_b"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(resp.Tools) != 2 {
+		t.Fatalf("expected 2 tools, got %d", len(resp.Tools))
+	}
+	if resp.Tools[0].Name() != BuiltinNamespace+".local_tool" || resp.Tools[1].Name() != "server_b.tool_b" {
+		t.Fatalf("unexpected tool names %q and %q", resp.Tools[0].Name(), resp.Tools[1].Name())
 	}
 }
 
@@ -521,8 +603,8 @@ func Test_List_Connector_Prompts_002(t *testing.T) {
 	tk := newConnectedToolkit(t, "myserver", conn)
 
 	resp, err := tk.List(context.Background(), ListRequest{
-		Type:      ListTypePrompts,
-		Namespace: "myserver",
+		Type:       ListTypePrompts,
+		Namespaces: []string{"myserver"},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -562,8 +644,8 @@ func Test_List_Connector_Resources_002(t *testing.T) {
 	tk := newConnectedToolkit(t, "myserver", conn)
 
 	resp, err := tk.List(context.Background(), ListRequest{
-		Type:      ListTypeResources,
-		Namespace: "myserver",
+		Type:       ListTypeResources,
+		Namespaces: []string{"myserver"},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -585,7 +667,7 @@ func Test_List_Connector_Resources_003(t *testing.T) {
 
 	resp, err := tk.List(context.Background(), ListRequest{
 		Type: ListTypeResources,
-		Name: r.URI(),
+		Name: []string{r.URI()},
 	})
 	if err != nil {
 		t.Fatal(err)

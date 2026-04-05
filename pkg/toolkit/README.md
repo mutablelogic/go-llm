@@ -255,8 +255,8 @@ if err != nil {
 
 // Tools only from one connector.
 resp, err = tk.List(ctx, toolkit.ListRequest{
-    Type:      toolkit.ListTypeTools,
-    Namespace: "my-server",
+    Type:       toolkit.ListTypeTools,
+    Namespaces: []string{"my-server"},
 })
 if err != nil {
     log.Fatal(err)
@@ -269,7 +269,7 @@ if err != nil {
 }
 ```
 
-An empty `Namespace` (zero value) returns items from all sources combined. Set it to `"builtin"` for locally registered items only, `"user"` for manager-backed items only, or a connector name to scope to a single connector.
+An empty `Namespaces` slice returns items from all sources combined. Set it to `[]string{"builtin"}` for locally registered items only, `[]string{"user"}` for manager-backed items only, or one or more connector names to scope to specific connectors.
 
 The reserved namespace `"user"` is backed by the handler's `List` method — prompts and resources stored persistently by the manager (e.g. in a database). Tools are always compiled code and are never served from the `"user"` namespace.
 

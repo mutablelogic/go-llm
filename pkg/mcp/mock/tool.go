@@ -20,6 +20,7 @@ type MockTool struct {
 	Name_        string
 	Description_ string
 	InputSchema_ *jsonschema.Schema
+	Meta_        llm.ToolMeta
 	Result_      any
 	RunFn        func(ctx context.Context, input json.RawMessage) (any, error)
 }
@@ -28,6 +29,7 @@ var _ llm.Tool = (*MockTool)(nil)
 
 func (m *MockTool) Name() string        { return m.Name_ }
 func (m *MockTool) Description() string { return m.Description_ }
+func (m *MockTool) Meta() llm.ToolMeta  { return m.Meta_ }
 
 func (m *MockTool) InputSchema() *jsonschema.Schema {
 	if m.InputSchema_ != nil {

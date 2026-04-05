@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	// Packages
+	llm "github.com/mutablelogic/go-llm"
 	mock "github.com/mutablelogic/go-llm/pkg/mcp/mock"
 )
 
@@ -92,8 +93,10 @@ func Test_tool_003(t *testing.T) {
 
 // Test_tool_004: Tools returned by ListTools implement llm.Tool correctly.
 func Test_tool_004(t *testing.T) {
+	destructive := true
+	openWorld := true
 	_, c := newTestServer(t, "meta-server", "1.0.0",
-		&mock.MockTool{Name_: "my_tool", Description_: "does things"},
+		&mock.MockTool{Name_: "my_tool", Description_: "does things", Meta_: llm.ToolMeta{Title: "My Tool", ReadOnlyHint: true, IdempotentHint: true, DestructiveHint: &destructive, OpenWorldHint: &openWorld}},
 	)
 	cancel := runClient(t, c)
 	defer cancel()
@@ -115,5 +118,18 @@ func Test_tool_004(t *testing.T) {
 	schema := tool.InputSchema()
 	if schema == nil {
 		t.Error("expected non-nil InputSchema")
+	}
+	meta := tool.Meta()
+	if meta.Title != "My Tool" {
+		t.Errorf("Title: expected %q, got %q", "My Tool", meta.Title)
+	}
+	if !meta.ReadOnlyHint || !meta.IdempotentHint {
+		t.Errorf("expected readonly and idempotent hints, got %+v", meta)
+	}
+	if meta.DestructiveHint == nil || !*meta.DestructiveHint {
+		t.Errorf("expected destructive hint, got %+v", meta.DestructiveHint)
+	}
+	if meta.OpenWorldHint == nil || !*meta.OpenWorldHint {
+		t.Errorf("expected openworld hint, got %+v", meta.OpenWorldHint)
 	}
 }

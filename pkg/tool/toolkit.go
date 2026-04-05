@@ -76,7 +76,7 @@ func (tk *Toolkit) Close() error {
 
 // ListTools returns tools matching the given request filters.
 // An empty request returns all tools across all namespaces (builtins + connectors).
-func (tk *Toolkit) ListTools(req schema.ListToolsRequest) []llm.Tool {
+func (tk *Toolkit) ListTools(req schema.ToolListRequest) []llm.Tool {
 	// Build a name-filter set for O(1) lookup; nil means no filter.
 	var nameSet map[string]struct{}
 	if len(req.Name) > 0 {
@@ -263,5 +263,5 @@ func (tk *Toolkit) Feedback(call schema.ToolCall) string {
 // STRINGIFY
 
 func (tk *Toolkit) String() string {
-	return types.Stringify(tk.ListTools(schema.ListToolsRequest{}))
+	return types.Stringify(tk.ListTools(schema.ToolListRequest{}))
 }

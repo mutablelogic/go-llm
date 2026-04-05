@@ -315,7 +315,7 @@ func generateRequestFromOpts(model string, session *schema.Conversation, options
 	var allTools []llm.Tool
 	if v := options.Get(opt.ToolkitKey); v != nil {
 		if tk, ok := v.(*tool.Toolkit); ok {
-			allTools = append(allTools, tk.ListTools(schema.ListToolsRequest{})...)
+			allTools = append(allTools, tk.ListTools(schema.ToolListRequest{})...)
 		}
 	}
 	if v := options.Get(opt.ToolKey); v != nil {

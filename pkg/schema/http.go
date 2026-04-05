@@ -221,18 +221,6 @@ type ListSessionResponse struct {
 	Body  []*Session `json:"body,omitzero"`
 }
 
-// ListToolRequest represents a request to list tools
-type ListToolRequest struct {
-	pg.OffsetLimit
-}
-
-// ListToolResponse represents a response containing a list of tools
-type ListToolResponse struct {
-	ListToolRequest
-	Count uint       `json:"count"`
-	Body  []ToolMeta `json:"body,omitzero"`
-}
-
 // ConnectorListRequest represents a request to list registered MCP connectors.
 type ConnectorListRequest struct {
 	pg.OffsetLimit
@@ -245,13 +233,6 @@ type ConnectorList struct {
 	ConnectorListRequest
 	Count uint         `json:"count"`
 	Body  []*Connector `json:"body,omitzero"`
-}
-
-// ToolMeta represents a tool's metadata
-type ToolMeta struct {
-	Name        string     `json:"name"`
-	Description string     `json:"description,omitempty"`
-	Input       JSONSchema `json:"input,omitempty"`
 }
 
 // CallToolRequest represents a request to call a tool directly
@@ -267,25 +248,6 @@ type CallToolResponse struct {
 
 ////////////////////////////////////////////////////////////////////////////////
 // LIFECYCLE
-
-// NewToolMeta creates a ToolMeta with the given name, description and optional
-// input schema. The schema value (if non-nil) is marshalled to JSON.
-func NewToolMeta(name, description string, inputSchema any) (ToolMeta, error) {
-	meta := ToolMeta{
-		Name:        name,
-		Description: description,
-	}
-	if inputSchema != nil {
-		data, err := json.Marshal(inputSchema)
-		if err != nil {
-			return meta, fmt.Errorf("tool %q schema: %w", name, err)
-		}
-		if string(data) != "null" {
-			meta.Input = NewJSONSchema(data)
-		}
-	}
-	return meta, nil
-}
 
 ////////////////////////////////////////////////////////////////////////////////
 // STRINGIFY
@@ -353,18 +315,6 @@ func (r ListSessionRequest) String() string {
 }
 
 func (r ListSessionResponse) String() string {
-	return types.Stringify(r)
-}
-
-func (r ToolMeta) String() string {
-	return types.Stringify(r)
-}
-
-func (r ListToolRequest) String() string {
-	return types.Stringify(r)
-}
-
-func (r ListToolResponse) String() string {
 	return types.Stringify(r)
 }
 

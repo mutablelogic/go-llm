@@ -19,15 +19,17 @@ import (
 type mockTool struct {
 	name        string
 	description string
-	schema      *jsonschema.Schema
+	input       *jsonschema.Schema
+	output      *jsonschema.Schema
+	meta        llm.ToolMeta
 	runFn       func(context.Context, json.RawMessage) (any, error)
 }
 
 func (t *mockTool) Name() string                     { return t.name }
 func (t *mockTool) Description() string              { return t.description }
-func (t *mockTool) InputSchema() *jsonschema.Schema  { return t.schema }
-func (t *mockTool) OutputSchema() *jsonschema.Schema { return nil }
-func (t *mockTool) Meta() llm.ToolMeta               { return llm.ToolMeta{} }
+func (t *mockTool) InputSchema() *jsonschema.Schema  { return t.input }
+func (t *mockTool) OutputSchema() *jsonschema.Schema { return t.output }
+func (t *mockTool) Meta() llm.ToolMeta               { return t.meta }
 func (t *mockTool) Run(ctx context.Context, input json.RawMessage) (any, error) {
 	if t.runFn != nil {
 		return t.runFn(ctx, input)
@@ -68,13 +70,20 @@ func Test_tool_003(t *testing.T) {
 
 	s, err := jsonschema.FromJSON(json.RawMessage(`{"type":"object","description":"input schema"}`))
 	assert.NoError(err)
-	m, err := NewManager("test", "0.0.0", WithTools(&mockTool{name: "schema_tool", description: "Has schema", schema: s}))
+	destructive := true
+	openWorld := true
+	m, err := NewManager("test", "0.0.0", WithTools(&mockTool{name: "schema_tool", description: "Has schema", input: s, output: jsonschema.MustFor[string](), meta: llm.ToolMeta{Title: "Schema Tool", DestructiveHint: &destructive, OpenWorldHint: &openWorld}}))
 	assert.NoError(err)
 
 	meta, err := m.GetTool(context.TODO(), "schema_tool")
 	assert.NoError(err)
 	assert.NotNil(meta.Input)
 	assert.Contains(string(meta.Input), `"object"`)
+	assert.NotNil(meta.Output)
+	assert.Contains(string(meta.Output), `"string"`)
+	assert.Equal("Schema Tool", meta.Title)
+	assert.NotNil(meta.Hints)
+	assert.Equal([]string{"destructive", "openworld"}, meta.Hints)
 }
 
 // Test GetTool omits schema when tool has none
@@ -164,7 +173,7 @@ func Test_tool_009(t *testing.T) {
 	))
 	assert.NoError(err)
 
-	resp, err := m.ListTools(context.TODO(), schema.ListToolRequest{})
+	resp, err := m.ListTools(context.TODO(), schema.ToolListRequest{})
 	assert.NoError(err)
 	assert.Equal(uint(3), resp.Count)
 	assert.Equal("alpha", resp.Body[0].Name)
@@ -184,7 +193,7 @@ func Test_tool_010(t *testing.T) {
 	assert.NoError(err)
 
 	limit := uint(2)
-	resp, err := m.ListTools(context.TODO(), schema.ListToolRequest{Limit: &limit})
+	resp, err := m.ListTools(context.TODO(), schema.ToolListRequest{Limit: &limit})
 	assert.NoError(err)
 	assert.Equal(uint(3), resp.Count)
 	assert.Len(resp.Body, 2)
@@ -203,7 +212,7 @@ func Test_tool_011(t *testing.T) {
 	))
 	assert.NoError(err)
 
-	resp, err := m.ListTools(context.TODO(), schema.ListToolRequest{Offset: 1})
+	resp, err := m.ListTools(context.TODO(), schema.ToolListRequest{Offset: 1})
 	assert.NoError(err)
 	assert.Equal(uint(3), resp.Count)
 	assert.Len(resp.Body, 2)
@@ -222,7 +231,7 @@ func Test_tool_012(t *testing.T) {
 	assert.NoError(err)
 
 	limit := uint(1)
-	resp, err := m.ListTools(context.TODO(), schema.ListToolRequest{Limit: &limit, Offset: 1})
+	resp, err := m.ListTools(context.TODO(), schema.ToolListRequest{Limit: &limit, Offset: 1})
 	assert.NoError(err)
 	assert.Equal(uint(3), resp.Count)
 	assert.Len(resp.Body, 1)
@@ -236,7 +245,7 @@ func Test_tool_013(t *testing.T) {
 	m, err := NewManager("test", "0.0.0")
 	assert.NoError(err)
 
-	resp, err := m.ListTools(context.TODO(), schema.ListToolRequest{})
+	resp, err := m.ListTools(context.TODO(), schema.ToolListRequest{})
 	assert.NoError(err)
 	assert.Equal(uint(0), resp.Count)
 	assert.Empty(resp.Body)
@@ -249,7 +258,7 @@ func Test_tool_014(t *testing.T) {
 	m, err := NewManager("test", "0.0.0", WithTools(&mockTool{name: "alpha"}))
 	assert.NoError(err)
 
-	resp, err := m.ListTools(context.TODO(), schema.ListToolRequest{Offset: 10})
+	resp, err := m.ListTools(context.TODO(), schema.ToolListRequest{Offset: 10})
 	assert.NoError(err)
 	assert.Equal(uint(1), resp.Count)
 	assert.Empty(resp.Body)
@@ -259,15 +268,16 @@ func Test_tool_014(t *testing.T) {
 func Test_tool_015(t *testing.T) {
 	assert := assert.New(t)
 
-	s := jsonschema.MustFor[string]()
-	m, err := NewManager("test", "0.0.0", WithTools(&mockTool{name: "typed_tool", schema: s}))
+	m, err := NewManager("test", "0.0.0", WithTools(&mockTool{name: "typed_tool", input: jsonschema.MustFor[string](), output: jsonschema.MustFor[int]()}))
 	assert.NoError(err)
 
-	resp, err := m.ListTools(context.TODO(), schema.ListToolRequest{})
+	resp, err := m.ListTools(context.TODO(), schema.ToolListRequest{})
 	assert.NoError(err)
 	assert.Len(resp.Body, 1)
 	assert.NotNil(resp.Body[0].Input)
 	assert.Contains(string(resp.Body[0].Input), `"string"`)
+	assert.NotNil(resp.Body[0].Output)
+	assert.Contains(string(resp.Body[0].Output), `"integer"`)
 }
 
 // Test CallTool result marshalling

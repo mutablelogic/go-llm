@@ -114,7 +114,7 @@ func Test_opt_toolkit_001(t *testing.T) {
 	assert.NoError(err)
 	defer tk.Close()
 
-	decls := geminiFunctionDeclsFromTools(tk.ListTools(schema.ListToolsRequest{}))
+	decls := geminiFunctionDeclsFromTools(tk.ListTools(schema.ToolListRequest{}))
 	assert.Len(decls, 1)
 	assert.Equal("get_weather", decls[0].Name)
 	assert.Equal("Get current weather", decls[0].Description)
@@ -138,7 +138,7 @@ func Test_opt_toolkit_002(t *testing.T) {
 	assert.NoError(err)
 	defer tk.Close()
 
-	decls := geminiFunctionDeclsFromTools(tk.ListTools(schema.ListToolsRequest{}))
+	decls := geminiFunctionDeclsFromTools(tk.ListTools(schema.ToolListRequest{}))
 	assert.Len(decls, 2)
 
 	names := make(map[string]bool)
@@ -180,7 +180,7 @@ func Test_opt_toolkit_004(t *testing.T) {
 	assert.NoError(err)
 	defer tk.Close()
 
-	decls := geminiFunctionDeclsFromTools(tk.ListTools(schema.ListToolsRequest{}))
+	decls := geminiFunctionDeclsFromTools(tk.ListTools(schema.ToolListRequest{}))
 	assert.Empty(decls)
 }
 

@@ -20,6 +20,7 @@ type CLI struct {
 	llmcmd.ConnectorCommands
 	llmcmd.ProviderCommands
 	llmcmd.ModelCommands
+	llmcmd.ToolCommands
 	ServerCommands
 }
 

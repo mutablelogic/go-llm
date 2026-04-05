@@ -16,7 +16,7 @@ import (
 
 // ListTools returns a list of all available tools.
 // Use WithLimit and WithOffset to paginate results.
-func (c *Client) ListTools(ctx context.Context, opts ...opt.Opt) (*schema.ListToolResponse, error) {
+func (c *Client) ListTools(ctx context.Context, opts ...opt.Opt) (*schema.ToolList, error) {
 	// Apply options
 	o, err := opt.Apply(opts...)
 	if err != nil {
@@ -31,7 +31,7 @@ func (c *Client) ListTools(ctx context.Context, opts ...opt.Opt) (*schema.ListTo
 	}
 
 	// Perform request
-	var response schema.ListToolResponse
+	var response schema.ToolList
 	if err := c.DoWithContext(ctx, req, &response, reqOpts...); err != nil {
 		return nil, err
 	}

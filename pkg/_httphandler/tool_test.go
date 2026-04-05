@@ -30,7 +30,7 @@ func TestToolList_OK(t *testing.T) {
 		t.Fatalf("expected 200, got %d", w.Code)
 	}
 
-	var resp schema.ListToolResponse
+	var resp schema.ToolList
 	if err := json.NewDecoder(w.Body).Decode(&resp); err != nil {
 		t.Fatal(err)
 	}
@@ -64,7 +64,7 @@ func TestToolList_WithPagination(t *testing.T) {
 		t.Fatalf("expected 200, got %d", w.Code)
 	}
 
-	var resp schema.ListToolResponse
+	var resp schema.ToolList
 	if err := json.NewDecoder(w.Body).Decode(&resp); err != nil {
 		t.Fatal(err)
 	}
@@ -93,7 +93,7 @@ func TestToolList_Empty(t *testing.T) {
 		t.Fatalf("expected 200, got %d", w.Code)
 	}
 
-	var resp schema.ListToolResponse
+	var resp schema.ToolList
 	if err := json.NewDecoder(w.Body).Decode(&resp); err != nil {
 		t.Fatal(err)
 	}

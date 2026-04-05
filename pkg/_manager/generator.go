@@ -454,7 +454,7 @@ func (m *Manager) runTools(ctx context.Context, calls []schema.ToolCall, fn opt.
 func (m *Manager) withTools(tools ...string) (opt.Opt, error) {
 	if tools == nil {
 		// No filter — include all tools
-		if len(m.toolkit.ListTools(schema.ListToolsRequest{})) == 0 {
+		if len(m.toolkit.ListTools(schema.ToolListRequest{})) == 0 {
 			return nil, nil
 		}
 		return tool.WithToolkit(m.toolkit), nil

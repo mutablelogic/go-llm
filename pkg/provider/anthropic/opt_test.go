@@ -153,7 +153,7 @@ func Test_opt_toolkit_001(t *testing.T) {
 	assert.NoError(err)
 	defer tk.Close()
 
-	tools, err := anthropicToolsFromTools(tk.ListTools(schema.ListToolsRequest{}))
+	tools, err := anthropicToolsFromTools(tk.ListTools(schema.ToolListRequest{}))
 	assert.NoError(err)
 	assert.Len(tools, 1)
 
@@ -184,7 +184,7 @@ func Test_opt_toolkit_002(t *testing.T) {
 	assert.NoError(err)
 	defer tk.Close()
 
-	tools, err := anthropicToolsFromTools(tk.ListTools(schema.ListToolsRequest{}))
+	tools, err := anthropicToolsFromTools(tk.ListTools(schema.ToolListRequest{}))
 	assert.NoError(err)
 	assert.Len(tools, 2)
 
@@ -257,7 +257,7 @@ func Test_opt_toolkit_005(t *testing.T) {
 	assert.NoError(err)
 	defer tk.Close()
 
-	tools, err := anthropicToolsFromTools(tk.ListTools(schema.ListToolsRequest{}))
+	tools, err := anthropicToolsFromTools(tk.ListTools(schema.ToolListRequest{}))
 	assert.NoError(err)
 	assert.Empty(tools)
 }

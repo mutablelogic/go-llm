@@ -186,7 +186,7 @@ func TestListTools_Empty(t *testing.T) {
 	}
 	defer tk.Close()
 
-	tools := tk.ListTools(schema.ListToolsRequest{})
+	tools := tk.ListTools(schema.ToolListRequest{})
 	if len(tools) != 0 {
 		t.Fatalf("expected 0 tools, got %d", len(tools))
 	}
@@ -203,7 +203,7 @@ func TestListTools_Builtins(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	tools := tk.ListTools(schema.ListToolsRequest{})
+	tools := tk.ListTools(schema.ToolListRequest{})
 	if len(tools) != 2 {
 		t.Fatalf("expected 2 tools, got %d", len(tools))
 	}
@@ -221,7 +221,7 @@ func TestListTools_BuiltinNamespace(t *testing.T) {
 	}
 
 	// Builtin namespace should return the tool
-	tools := tk.ListTools(schema.ListToolsRequest{Namespace: schema.BuiltinNamespace})
+	tools := tk.ListTools(schema.ToolListRequest{Namespace: schema.BuiltinNamespace})
 	if len(tools) != 1 {
 		t.Fatalf("expected 1 tool in builtin namespace, got %d", len(tools))
 	}
@@ -238,7 +238,7 @@ func TestListTools_NameFilter(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	tools := tk.ListTools(schema.ListToolsRequest{Name: []string{"alpha"}})
+	tools := tk.ListTools(schema.ToolListRequest{Name: []string{"alpha"}})
 	if len(tools) != 1 {
 		t.Fatalf("expected 1 tool with name filter, got %d", len(tools))
 	}
@@ -259,7 +259,7 @@ func TestListTools_OutputToolExcluded(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	tools := tk.ListTools(schema.ListToolsRequest{})
+	tools := tk.ListTools(schema.ToolListRequest{})
 	for _, t2 := range tools {
 		if t2.Name() == tool.OutputToolName {
 			t.Fatal("OutputTool should not appear in ListTools results")

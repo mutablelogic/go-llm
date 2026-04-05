@@ -18,11 +18,11 @@ import (
 
 // Path: tool
 func ToolListHandler(manager *manager.Manager) (string, http.HandlerFunc, *openapi.PathItem) {
-	listRespSchema, _ := jsonschema.For[schema.ListToolResponse]()
+	listRespSchema, _ := jsonschema.For[schema.ToolList]()
 	return "tool", func(w http.ResponseWriter, r *http.Request) {
 			switch r.Method {
 			case http.MethodGet:
-				var req schema.ListToolRequest
+				var req schema.ToolListRequest
 				if err := httprequest.Query(r.URL.Query(), &req); err != nil {
 					_ = httpresponse.Error(w, err)
 					return

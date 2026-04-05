@@ -17,14 +17,14 @@ import (
 // PUBLIC METHODS
 
 // ListTools returns paginated tool metadata.
-func (m *Manager) ListTools(ctx context.Context, req schema.ListToolRequest) (result *schema.ListToolResponse, err error) {
+func (m *Manager) ListTools(ctx context.Context, req schema.ToolListRequest) (result *schema.ToolList, err error) {
 	// Otel span
 	_, endSpan := otel.StartSpan(m.tracer, ctx, "ListTools",
 		attribute.String("request", req.String()),
 	)
 	defer func() { endSpan(err) }()
 
-	tools := m.toolkit.ListTools(schema.ListToolsRequest{})
+	tools := m.toolkit.ListTools(schema.ToolListRequest{})
 
 	// Sort by name for stable ordering
 	sort.Slice(tools, func(i, j int) bool { return tools[i].Name() < tools[j].Name() })
@@ -32,11 +32,7 @@ func (m *Manager) ListTools(ctx context.Context, req schema.ListToolRequest) (re
 	// Build metadata
 	all := make([]schema.ToolMeta, 0, len(tools))
 	for _, t := range tools {
-		s, err := t.InputSchema()
-		if err != nil {
-			return nil, err
-		}
-		meta, err := schema.NewToolMeta(t.Name(), t.Description(), s)
+		meta, err := newToolMeta(t)
 		if err != nil {
 			return nil, err
 		}
@@ -51,7 +47,7 @@ func (m *Manager) ListTools(ctx context.Context, req schema.ListToolRequest) (re
 		end = total
 	}
 
-	return &schema.ListToolResponse{
+	return &schema.ToolList{
 		Count:  total,
 		Offset: req.Offset,
 		Limit:  req.Limit,
@@ -99,13 +95,44 @@ func (m *Manager) GetTool(ctx context.Context, name string) (result *schema.Tool
 	if t == nil {
 		return nil, schema.ErrNotFound.Withf("tool %q", name)
 	}
-	s, err := t.InputSchema()
-	if err != nil {
-		return nil, err
-	}
-	meta, err := schema.NewToolMeta(t.Name(), t.Description(), s)
+	meta, err := newToolMeta(t)
 	if err != nil {
 		return nil, err
 	}
 	return &meta, nil
+}
+
+func newToolMeta(tool llm.Tool) (schema.ToolMeta, error) {
+	meta, err := schema.NewToolMeta(tool.Name(), tool.Description(), tool.InputSchema(), tool.OutputSchema())
+	if err != nil {
+		return meta, err
+	}
+	meta.Hints = newToolHints(tool.Meta())
+	return meta, nil
+}
+
+func newToolHints(meta llm.ToolMeta) *schema.ToolHints {
+	hints := &schema.ToolHints{
+		Title:           meta.Title,
+		ReadOnlyHint:    meta.ReadOnlyHint,
+		IdempotentHint:  meta.IdempotentHint,
+		DestructiveHint: meta.DestructiveHint,
+		OpenWorldHint:   meta.OpenWorldHint,
+	}
+	if meta.ReadOnlyHint {
+		hints.Keywords = append(hints.Keywords, "readonly")
+	}
+	if meta.IdempotentHint {
+		hints.Keywords = append(hints.Keywords, "idempotent")
+	}
+	if meta.DestructiveHint != nil && *meta.DestructiveHint {
+		hints.Keywords = append(hints.Keywords, "destructive")
+	}
+	if meta.OpenWorldHint != nil && *meta.OpenWorldHint {
+		hints.Keywords = append(hints.Keywords, "openworld")
+	}
+	if hints.Title == "" && !hints.ReadOnlyHint && !hints.IdempotentHint && hints.DestructiveHint == nil && hints.OpenWorldHint == nil && len(hints.Keywords) == 0 {
+		return nil
+	}
+	return hints
 }
