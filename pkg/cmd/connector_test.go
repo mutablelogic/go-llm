@@ -1,12 +1,60 @@
 package cmd
 
 import (
+	"encoding/json"
+	"errors"
+	"fmt"
+	"strings"
 	"testing"
 
 	// Packages
+	oidc "github.com/djthorpe/go-auth/pkg/oidc"
 	schema "github.com/mutablelogic/go-llm/pkg/schema"
+	httpresponse "github.com/mutablelogic/go-server/pkg/httpresponse"
 	assert "github.com/stretchr/testify/assert"
 )
+
+func TestCreateConnectorCommandUnauthorizedDetailDecode(t *testing.T) {
+	assert := assert.New(t)
+
+	errResponse := httpresponse.ErrResponse{
+		Code:   401,
+		Reason: "Unauthorized",
+		Detail: schema.CreateConnectorUnauthorizedResponse{
+			CodeFlow: &oidc.BaseConfiguration{Issuer: "https://mcp.asana.com"},
+			Scopes:   []string{"default"},
+		},
+	}
+	payload, err := json.Marshal(errResponse)
+	if !assert.NoError(err) {
+		return
+	}
+
+	err = fmt.Errorf("%w: 401 Unauthorized: %s", httpresponse.ErrNotAuthorized, payload)
+
+	var httpErr httpresponse.Err
+	if assert.True(errors.As(err, &httpErr)) {
+		assert.Equal(httpresponse.ErrNotAuthorized, httpErr)
+	}
+
+	text := err.Error()
+	index := strings.IndexByte(text, '{')
+	if !assert.NotEqual(-1, index) {
+		return
+	}
+
+	var response struct {
+		Detail schema.CreateConnectorUnauthorizedResponse `json:"detail"`
+	}
+	if !assert.NoError(json.Unmarshal([]byte(text[index:]), &response)) {
+		return
+	}
+
+	if assert.NotNil(response.Detail.CodeFlow) {
+		assert.Equal("https://mcp.asana.com", response.Detail.CodeFlow.Issuer)
+	}
+	assert.Equal([]string{"default"}, response.Detail.Scopes)
+}
 
 func TestCreateConnectorCommandRequest(t *testing.T) {
 	assert := assert.New(t)

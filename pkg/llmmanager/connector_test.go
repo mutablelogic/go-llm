@@ -22,7 +22,7 @@ func TestCreateConnector(t *testing.T) {
 	enabled := false
 	namespace := "mcp"
 	url := llmtest.ConnectorURL(t, "create-connector") + "?token=abc#frag"
-	created, err := m.CreateConnector(context.Background(), schema.ConnectorInsert{
+	created, _, _, err := m.CreateConnector(context.Background(), schema.ConnectorInsert{
 		URL: url,
 		ConnectorMeta: schema.ConnectorMeta{
 			Enabled:   &enabled,
@@ -66,7 +66,7 @@ func TestCreateConnectorRollsBackGroupFailure(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	_, err := m.CreateConnector(context.Background(), schema.ConnectorInsert{
+	_, _, _, err := m.CreateConnector(context.Background(), schema.ConnectorInsert{
 		URL: url,
 		ConnectorMeta: schema.ConnectorMeta{
 			Groups: []string{"missing-group"},
@@ -90,7 +90,7 @@ func TestDeleteConnector(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	_, err := m.CreateConnector(context.Background(), schema.ConnectorInsert{
+	_, _, _, err := m.CreateConnector(context.Background(), schema.ConnectorInsert{
 		URL: url,
 		ConnectorMeta: schema.ConnectorMeta{
 			Groups: conn.Config.Groups,
@@ -131,10 +131,10 @@ func TestGetConnector(t *testing.T) {
 
 	publicURL := llmtest.ConnectorURL(t, "public-connector")
 	privateURL := llmtest.ConnectorURL(t, "private-connector")
-	if _, err := m.CreateConnector(context.Background(), schema.ConnectorInsert{URL: publicURL}, nil); err != nil {
+	if _, _, _, err := m.CreateConnector(context.Background(), schema.ConnectorInsert{URL: publicURL}, nil); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := m.CreateConnector(context.Background(), schema.ConnectorInsert{
+	if _, _, _, err := m.CreateConnector(context.Background(), schema.ConnectorInsert{
 		URL:           privateURL,
 		ConnectorMeta: schema.ConnectorMeta{Groups: conn.Config.Groups},
 	}, llmtest.AdminUser(conn)); err != nil {
@@ -180,7 +180,7 @@ func TestUpdateConnector(t *testing.T) {
 
 	enabled := false
 	oldNamespace := "mcp"
-	created, err := m.CreateConnector(context.Background(), schema.ConnectorInsert{
+	created, _, _, err := m.CreateConnector(context.Background(), schema.ConnectorInsert{
 		URL: url,
 		ConnectorMeta: schema.ConnectorMeta{
 			Enabled:   &enabled,
@@ -233,10 +233,10 @@ func TestListConnectors(t *testing.T) {
 
 	publicURL := llmtest.ConnectorURL(t, "list-public-connector")
 	privateURL := llmtest.ConnectorURL(t, "list-private-connector")
-	if _, err := m.CreateConnector(context.Background(), schema.ConnectorInsert{URL: publicURL}, nil); err != nil {
+	if _, _, _, err := m.CreateConnector(context.Background(), schema.ConnectorInsert{URL: publicURL}, nil); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := m.CreateConnector(context.Background(), schema.ConnectorInsert{
+	if _, _, _, err := m.CreateConnector(context.Background(), schema.ConnectorInsert{
 		URL:           privateURL,
 		ConnectorMeta: schema.ConnectorMeta{Groups: conn.Config.Groups},
 	}, llmtest.AdminUser(conn)); err != nil {

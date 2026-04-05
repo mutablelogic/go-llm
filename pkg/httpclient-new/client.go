@@ -2,6 +2,7 @@ package httpclient
 
 import (
 	// Packages
+	authclient "github.com/djthorpe/go-auth/pkg/httpclient/auth"
 	client "github.com/mutablelogic/go-client"
 )
 
@@ -11,7 +12,7 @@ import (
 // Client is an LLM HTTP client that wraps the base HTTP client
 // and provides typed methods for interacting with the LLM API.
 type Client struct {
-	*client.Client
+	*authclient.Client
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -22,7 +23,7 @@ type Client struct {
 // "http://localhost:8084/api".
 func New(url string, opts ...client.ClientOpt) (*Client, error) {
 	c := new(Client)
-	if client, err := client.New(append(opts, client.OptEndpoint(url))...); err != nil {
+	if client, err := authclient.New(url, opts...); err != nil {
 		return nil, err
 	} else {
 		c.Client = client

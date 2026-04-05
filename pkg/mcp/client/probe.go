@@ -20,7 +20,7 @@ import (
 //
 // The provided ctx governs the connection timeout; cancelling it before the
 // server responds causes Probe to return ctx.Err().
-func (c *Client) Probe(ctx context.Context, authfn func(config *authclient.Config) error) (*schema.ConnectorState, error) {
+func (c *Client) Probe(ctx context.Context, authfn func(err error, config *authclient.Config) error) (*schema.ConnectorState, error) {
 	// Establish a session (includes auth retry if c.authFn is set).
 	session, err := c.connectWithAuth(ctx, authfn)
 	if err != nil {

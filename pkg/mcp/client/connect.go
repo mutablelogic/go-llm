@@ -2,12 +2,14 @@ package client
 
 import (
 	"context"
+	"net/http"
 	"time"
 
 	// Packages
 	authclient "github.com/djthorpe/go-auth/pkg/httpclient/auth"
 	sdkmcp "github.com/modelcontextprotocol/go-sdk/mcp"
 	transport "github.com/mutablelogic/go-client/pkg/transport"
+	httpresponse "github.com/mutablelogic/go-server/pkg/httpresponse"
 	types "github.com/mutablelogic/go-server/pkg/types"
 )
 
@@ -21,21 +23,22 @@ import (
 //
 // If the server returns a 401, c.authFn is called (if non-nil) with any discovered auth
 // server metadata, and the error from the failed attempt is returned for retry by Connect().
-func (c *Client) connectWithAuth(ctx context.Context, authfn func(config *authclient.Config) error) (*sdkmcp.ClientSession, error) {
+func (c *Client) connectWithAuth(ctx context.Context, authfn func(err error, config *authclient.Config) error) (*sdkmcp.ClientSession, error) {
 	session, err := c.connect(ctx)
 	if err != nil {
+		authErr := err
 		// Only retry if the server returned an auth challenge and we have an
 		// auth callback configured to resolve it.
-		if authclient.AsAuthError(err) == nil {
+		if authclient.AsAuthError(authErr) == nil {
 			return nil, err
 		} else if authfn == nil {
 			return nil, err
 		}
 
 		// Discover the OAuth metadata
-		if config, err := c.DiscoverWithError(ctx, err); err != nil {
+		if config, err := c.DiscoverWithError(ctx, authErr); err != nil {
 			return nil, err
-		} else if err := authfn(config); err != nil {
+		} else if err := authfn(authErr, config); err != nil {
 			return nil, err
 		}
 
@@ -71,10 +74,18 @@ func (c *Client) connect(ctx context.Context) (*sdkmcp.ClientSession, error) {
 	// Streamable failed for a non-auth reason (e.g. server only speaks the
 	// 2024-11-05 SSE protocol). Fall back to SSE transport.
 	recorder.Reset()
-	return c.tryConnect(ctx, recorder, &sdkmcp.SSEClientTransport{
+	session, err = c.tryConnect(ctx, recorder, &sdkmcp.SSEClientTransport{
 		Endpoint:   c.url,
 		HTTPClient: httpClient,
 	})
+	if err == nil {
+		return session, nil
+	} else if autherr := authclient.IsUnauthorized(recorder); autherr != nil {
+		return nil, autherr
+	} else if status := recorder.StatusCode(); status >= http.StatusBadRequest {
+		return nil, httpresponse.Err(status)
+	}
+	return nil, err
 }
 
 // tryConnect runs a single transport attempt. On success it stores the session

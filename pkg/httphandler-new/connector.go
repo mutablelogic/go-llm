@@ -2,6 +2,7 @@ package httphandler
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"net/url"
 
@@ -28,8 +29,10 @@ func ConnectorHandler(manager *llmmanager.Manager) (string, *jsonschema.Schema, 
 			_ = createConnector(r.Context(), manager, w, r)
 		},
 		"Create connector",
+		opts.WithDescription("Registers an MCP connector after probing the target server. Returns the created connector on success, or a standard unauthorized error when the connector requires user authorization before registration can complete. In that case, the error detail contains the authorization code flow metadata and requested scopes."),
 		opts.WithJSONRequest(jsonschema.MustFor[schema.ConnectorInsert]()),
 		opts.WithJSONResponse(201, jsonschema.MustFor[schema.Connector]()),
+		opts.WithErrorResponse(401, "Connector authorization is required before registration can complete. The error detail contains a CreateConnectorUnauthorizedResponse with the authorization code flow metadata and requested scopes."),
 		opts.WithErrorResponse(400, "Invalid request body or connector creation failure."),
 	).Get(
 		func(w http.ResponseWriter, r *http.Request) {
@@ -98,11 +101,17 @@ func createConnector(ctx context.Context, manager *llmmanager.Manager, w http.Re
 		return httpresponse.Error(w, httpresponse.ErrBadRequest, err)
 	}
 
-	connector, err := manager.CreateConnector(ctx, req, middleware.UserFromContext(ctx))
-	if err != nil {
+	connector, codeflow, scopes, err := manager.CreateConnector(ctx, req, middleware.UserFromContext(ctx))
+	if errors.Is(err, httpresponse.ErrNotAuthorized) {
+		return httpresponse.Error(w, err, schema.CreateConnectorUnauthorizedResponse{
+			CodeFlow: codeflow,
+			Scopes:   scopes,
+		})
+	} else if err != nil {
 		return httpresponse.Error(w, schema.HTTPErr(err))
 	}
 
+	// Respond with the connector
 	return httpresponse.JSON(w, http.StatusCreated, httprequest.Indent(r), connector)
 }
 

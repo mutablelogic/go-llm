@@ -96,7 +96,7 @@ func TestConnectorListIntegration(t *testing.T) {
 	enabled := true
 	disabled := false
 	publicURL := llmtest.ConnectorURL(t, "handler-public-connector")
-	if _, err := manager.CreateConnector(context.Background(), schema.ConnectorInsert{
+	if _, _, _, err := manager.CreateConnector(context.Background(), schema.ConnectorInsert{
 		URL: publicURL,
 		ConnectorMeta: schema.ConnectorMeta{
 			Enabled: &enabled,
@@ -106,7 +106,7 @@ func TestConnectorListIntegration(t *testing.T) {
 	}
 	namespace := "mcp"
 	namespacedURL := llmtest.ConnectorURL(t, "handler-namespaced-connector")
-	if _, err := manager.CreateConnector(context.Background(), schema.ConnectorInsert{
+	if _, _, _, err := manager.CreateConnector(context.Background(), schema.ConnectorInsert{
 		URL: namespacedURL,
 		ConnectorMeta: schema.ConnectorMeta{
 			Enabled:   &disabled,
@@ -144,7 +144,7 @@ func TestConnectorListIntegrationWithFilters(t *testing.T) {
 	enabled := true
 	disabled := false
 	publicURL := llmtest.ConnectorURL(t, "handler-filter-public-connector")
-	if _, err := manager.CreateConnector(context.Background(), schema.ConnectorInsert{
+	if _, _, _, err := manager.CreateConnector(context.Background(), schema.ConnectorInsert{
 		URL: publicURL,
 		ConnectorMeta: schema.ConnectorMeta{
 			Enabled: &enabled,
@@ -154,7 +154,7 @@ func TestConnectorListIntegrationWithFilters(t *testing.T) {
 	}
 	namespace := "mcp"
 	namespacedURL := llmtest.ConnectorURL(t, "handler-filter-namespaced-connector")
-	if _, err := manager.CreateConnector(context.Background(), schema.ConnectorInsert{
+	if _, _, _, err := manager.CreateConnector(context.Background(), schema.ConnectorInsert{
 		URL: namespacedURL,
 		ConnectorMeta: schema.ConnectorMeta{
 			Enabled:   &disabled,
@@ -206,7 +206,7 @@ func TestConnectorGetIntegration(t *testing.T) {
 	}
 
 	rawURL := llmtest.ConnectorURL(t, "handler-get-connector")
-	if _, err := manager.CreateConnector(context.Background(), schema.ConnectorInsert{URL: rawURL}, nil); err != nil {
+	if _, _, _, err := manager.CreateConnector(context.Background(), schema.ConnectorInsert{URL: rawURL}, nil); err != nil {
 		t.Fatal(err)
 	}
 
@@ -256,7 +256,7 @@ func TestConnectorUpdateIntegration(t *testing.T) {
 	}
 
 	rawURL := llmtest.ConnectorURL(t, "handler-update-connector")
-	if _, err := manager.CreateConnector(context.Background(), schema.ConnectorInsert{URL: rawURL}, nil); err != nil {
+	if _, _, _, err := manager.CreateConnector(context.Background(), schema.ConnectorInsert{URL: rawURL}, nil); err != nil {
 		t.Fatal(err)
 	}
 

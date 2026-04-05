@@ -13,6 +13,7 @@ import (
 	// Packages
 	authclient "github.com/djthorpe/go-auth/pkg/httpclient/auth"
 	server "github.com/mutablelogic/go-llm/pkg/mcp/server"
+	httpresponse "github.com/mutablelogic/go-server/pkg/httpresponse"
 )
 
 // Test_connect_005: connectWithAuth returns UnauthorizedError when the server
@@ -32,7 +33,7 @@ func Test_connect_005(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	_, err = c.connectWithAuth(ctx)
+	_, err = c.connectWithAuth(ctx, nil)
 	if err := authclient.AsAuthError(err); err == nil {
 		t.Fatalf("expected UnauthorizedError, got %v", err)
 	}
@@ -76,11 +77,7 @@ func Test_connect_006(t *testing.T) {
 	defer ts.Close()
 
 	var gotConfig *authclient.Config
-	c, err := New(ts.URL, "test-client", "1.0.0", WithAuth(func(_ context.Context, config *authclient.Config) error {
-		gotConfig = config
-		authDone.Store(true) // open the gate before the retry
-		return nil
-	}))
+	c, err := New(ts.URL, "test-client", "1.0.0")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -88,7 +85,11 @@ func Test_connect_006(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	session, err := c.connectWithAuth(ctx)
+	session, err := c.connectWithAuth(ctx, func(_ error, config *authclient.Config) error {
+		gotConfig = config
+		authDone.Store(true) // open the gate before the retry
+		return nil
+	})
 	if err != nil {
 		t.Fatalf("expected successful connect after auth, got %v", err)
 	}
@@ -117,9 +118,7 @@ func Test_connect_007(t *testing.T) {
 	defer ts.Close()
 
 	authErr := errors.New("auth failed")
-	c, err := New(ts.URL, "test-client", "1.0.0", WithAuth(func(_ context.Context, _ *authclient.Config) error {
-		return authErr
-	}))
+	c, err := New(ts.URL, "test-client", "1.0.0")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -127,8 +126,32 @@ func Test_connect_007(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	_, err = c.connectWithAuth(ctx)
+	_, err = c.connectWithAuth(ctx, func(_ error, _ *authclient.Config) error {
+		return authErr
+	})
 	if !errors.Is(err, authErr) {
 		t.Errorf("expected authErr, got %v", err)
+	}
+}
+
+// Test_connect_008: connectWithAuth returns HTTP 404 when both transport
+// variants fail with 404 responses.
+func Test_connect_008(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.NotFound(w, r)
+	}))
+	defer ts.Close()
+
+	c, err := New(ts.URL, "test-client", "1.0.0")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	_, err = c.connectWithAuth(ctx, nil)
+	if !errors.Is(err, httpresponse.ErrNotFound) {
+		t.Fatalf("expected 404 error, got %v", err)
 	}
 }

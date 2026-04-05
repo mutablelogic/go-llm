@@ -10,6 +10,7 @@ import (
 	"time"
 
 	// Packages
+	oidc "github.com/djthorpe/go-auth/pkg/oidc"
 	pg "github.com/mutablelogic/go-pg"
 	types "github.com/mutablelogic/go-server/pkg/types"
 )
@@ -108,6 +109,13 @@ type Connector struct {
 	ConnectorState
 }
 
+// CreateConnectorUnauthorizedResponse is placed in the HTTP error detail when
+// connector authorization is required before registration can complete.
+type CreateConnectorUnauthorizedResponse struct {
+	CodeFlow *oidc.BaseConfiguration `json:"codeflow,omitempty"`
+	Scopes   []string                `json:"scopes,omitempty"`
+}
+
 ///////////////////////////////////////////////////////////////////////////////
 // GLOBALS
 
@@ -159,6 +167,10 @@ func (c ConnectorState) String() string {
 }
 
 func (c Connector) String() string {
+	return types.Stringify(c)
+}
+
+func (c CreateConnectorUnauthorizedResponse) String() string {
 	return types.Stringify(c)
 }
 

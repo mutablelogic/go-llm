@@ -1,6 +1,10 @@
 package schema
 
-import "strings"
+import (
+	"strings"
+
+	types "github.com/mutablelogic/go-server/pkg/types"
+)
 
 ///////////////////////////////////////////////////////////////////////////////
 // PROVIDER TABLE
@@ -103,7 +107,7 @@ func (m Model) Cell(i int) string {
 // CONNECTOR TABLE
 
 func (Connector) Header() []string {
-	return []string{"URL", "NAMESPACE", "ENABLED", "GROUPS", "CREATED AT", "MODIFIED AT"}
+	return []string{"URL", "NAMESPACE", "TITLE", "ENABLED", "GROUPS", "CREATED AT", "MODIFIED AT"}
 }
 
 func (Connector) Width(i int) int {
@@ -113,10 +117,12 @@ func (Connector) Width(i int) int {
 	case 1:
 		return 16
 	case 2:
-		return 8
+		return 40
 	case 3:
+		return 8
+	case 4:
 		return 24
-	case 4, 5:
+	case 5, 6:
 		return 19
 	}
 	return 0
@@ -131,17 +137,35 @@ func (c Connector) Cell(i int) string {
 			return *c.Namespace
 		}
 	case 2:
+		var parts []string
+		if s := types.Value(c.Name); s != "" {
+			parts = append(parts, s)
+		}
+		if s := types.Value(c.Title); s != "" {
+			parts = append(parts, s)
+		}
+		if s := types.Value(c.Description); s != "" {
+			parts = append(parts, strings.ReplaceAll(s, "\n", " "))
+		}
+		if len(parts) > 0 {
+			s := strings.Join(parts, " - ")
+			if len(s) > 40 {
+				return s[:37] + "..."
+			}
+			return s
+		}
+	case 3:
 		if c.Enabled != nil && *c.Enabled {
 			return "true"
 		}
 		return "false"
-	case 3:
-		return strings.Join(c.Groups, ", ")
 	case 4:
+		return strings.Join(c.Groups, ", ")
+	case 5:
 		if !c.CreatedAt.IsZero() {
 			return c.CreatedAt.Format("2006-01-02 15:04:05")
 		}
-	case 5:
+	case 6:
 		if c.ModifiedAt != nil {
 			return c.ModifiedAt.Format("2006-01-02 15:04:05")
 		}

@@ -11,7 +11,7 @@ import (
 // Test_probe_001: Probe returns the server name and version.
 func Test_probe_001(t *testing.T) {
 	_, c := newTestServer(t, "probe-server", "2.3.4")
-	state, err := c.Probe(t.Context())
+	state, err := c.Probe(t.Context(), nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -28,7 +28,7 @@ func Test_probe_002(t *testing.T) {
 	_, c := newTestServer(t, "cap-server", "1.0.0",
 		&mock.MockTool{Name_: "tool_x", Description_: "x"},
 	)
-	state, err := c.Probe(t.Context())
+	state, err := c.Probe(t.Context(), nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -46,7 +46,7 @@ func Test_probe_002(t *testing.T) {
 // Test_probe_003: Probe returns a non-nil ConnectedAt timestamp.
 func Test_probe_003(t *testing.T) {
 	_, c := newTestServer(t, "ts-server", "1.0.0")
-	state, err := c.Probe(t.Context())
+	state, err := c.Probe(t.Context(), nil)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -1,7 +1,10 @@
 package cmd
 
 import (
+	"encoding/json"
+	"errors"
 	"fmt"
+	"net/http"
 	"os"
 
 	// Packages
@@ -10,6 +13,7 @@ import (
 	schema "github.com/mutablelogic/go-llm/pkg/schema"
 	tui "github.com/mutablelogic/go-llm/pkg/tui"
 	server "github.com/mutablelogic/go-server"
+	httpresponse "github.com/mutablelogic/go-server/pkg/httpresponse"
 	types "github.com/mutablelogic/go-server/pkg/types"
 	attribute "go.opentelemetry.io/otel/attribute"
 )
@@ -30,8 +34,8 @@ type ListConnectorsCommand struct {
 }
 
 type CreateConnectorCommand struct {
-	URL                  string `arg:"" name:"url" help:"MCP server endpoint URL"`
-	schema.ConnectorMeta `embed:""`
+	URL string `arg:"" name:"url" help:"MCP server endpoint URL"`
+	schema.ConnectorMeta
 }
 
 type DeleteConnectorCommand struct {
@@ -43,8 +47,8 @@ type GetConnectorCommand struct {
 }
 
 type UpdateConnectorCommand struct {
-	URL                  string `arg:"" name:"url" help:"MCP server endpoint URL"`
-	schema.ConnectorMeta `embed:""`
+	URL string `arg:"" name:"url" help:"MCP server endpoint URL"`
+	schema.ConnectorMeta
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -86,7 +90,21 @@ func (cmd *CreateConnectorCommand) Run(ctx server.Cmd) (err error) {
 
 		connector, err := client.CreateConnector(parent, req)
 		if err != nil {
-			return err
+			var httpErr httpresponse.ErrResponse
+			if !errors.As(err, &httpErr) || httpErr.Code != http.StatusUnauthorized {
+				return err
+			}
+			payload, marshalErr := json.Marshal(httpErr.Detail)
+			if marshalErr != nil {
+				return err
+			}
+			var detail schema.CreateConnectorUnauthorizedResponse
+			if unmarshalErr := json.Unmarshal(payload, &detail); unmarshalErr != nil {
+				return err
+			}
+
+			fmt.Println(detail)
+			return nil
 		}
 
 		fmt.Println(connector)

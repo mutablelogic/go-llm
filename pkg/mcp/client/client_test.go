@@ -11,6 +11,7 @@ import (
 	client "github.com/mutablelogic/go-llm/pkg/mcp/client"
 	mock "github.com/mutablelogic/go-llm/pkg/mcp/mock"
 	server "github.com/mutablelogic/go-llm/pkg/mcp/server"
+	schema "github.com/mutablelogic/go-llm/pkg/schema"
 )
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -38,7 +39,7 @@ func newTestServer(t *testing.T, srvName, srvVersion string, tools ...*mock.Mock
 }
 
 // runClient starts c.Run in a background goroutine and returns a cancel func.
-// Polls until ListTools stops returning ErrNotConnected (up to 2s).
+// Polls until ListTools stops returning ErrServiceUnavailable (up to 2s).
 func runClient(t *testing.T, c *client.Client) context.CancelFunc {
 	t.Helper()
 	ctx, cancel := context.WithCancel(context.Background())
@@ -46,7 +47,7 @@ func runClient(t *testing.T, c *client.Client) context.CancelFunc {
 	deadline := time.Now().Add(2 * time.Second)
 	for time.Now().Before(deadline) {
 		_, err := c.ListTools(context.Background())
-		if !errors.Is(err, client.ErrNotConnected) {
+		if !errors.Is(err, schema.ErrServiceUnavailable) {
 			return cancel
 		}
 		time.Sleep(10 * time.Millisecond)
