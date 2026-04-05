@@ -5,13 +5,13 @@ import (
 	"encoding/json"
 
 	// Packages
-	jsonschema "github.com/google/jsonschema-go/jsonschema"
 	otel "github.com/mutablelogic/go-client/pkg/otel"
 	llm "github.com/mutablelogic/go-llm"
 	hschema "github.com/mutablelogic/go-llm/pkg/heartbeat/schema"
 	schema "github.com/mutablelogic/go-llm/pkg/schema"
 	tool "github.com/mutablelogic/go-llm/pkg/tool"
 	session "github.com/mutablelogic/go-llm/pkg/tool/session"
+	jsonschema "github.com/mutablelogic/go-server/pkg/jsonschema"
 	attribute "go.opentelemetry.io/otel/attribute"
 )
 
@@ -36,8 +36,8 @@ func (deleteHeartbeat) Description() string {
 	return "Delete a heartbeat by its ID. The heartbeat is permanently removed."
 }
 
-func (deleteHeartbeat) InputSchema() (*jsonschema.Schema, error) {
-	return jsonschema.For[hschema.DeleteHeartbeatRequest](nil)
+func (deleteHeartbeat) InputSchema() *jsonschema.Schema {
+	return jsonschema.MustFor[hschema.DeleteHeartbeatRequest]()
 }
 
 func (t deleteHeartbeat) Run(ctx context.Context, input json.RawMessage) (_ any, err error) {

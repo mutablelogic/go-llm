@@ -7,11 +7,11 @@ import (
 	"testing"
 
 	// Packages
-	jsonschema "github.com/google/jsonschema-go/jsonschema"
 	llm "github.com/mutablelogic/go-llm"
 	schema "github.com/mutablelogic/go-llm/pkg/schema"
 	resource "github.com/mutablelogic/go-llm/pkg/toolkit/resource"
 	toolpkg "github.com/mutablelogic/go-llm/pkg/toolkit/tool"
+	jsonschema "github.com/mutablelogic/go-server/pkg/jsonschema"
 )
 
 ///////////////////////////////////////////////////////////////////////////////

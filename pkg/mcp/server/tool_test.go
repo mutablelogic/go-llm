@@ -14,6 +14,7 @@ import (
 	mock "github.com/mutablelogic/go-llm/pkg/mcp/mock"
 	server "github.com/mutablelogic/go-llm/pkg/mcp/server"
 	schema "github.com/mutablelogic/go-llm/pkg/schema"
+	jsonschema "github.com/mutablelogic/go-server/pkg/jsonschema"
 	types "github.com/mutablelogic/go-server/pkg/types"
 )
 
@@ -265,13 +266,18 @@ func TestAddToolsBadInputSchema(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	badSchema, err := jsonschema.FromJSON(json.RawMessage(`{"type":"object"}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	badSchema.Enum = []any{make(chan int)}
 	err = srv.AddTools(&mock.MockTool{
-		Name_:           "bad_tool",
-		Description_:    "has bad schema",
-		InputSchemaErr_: errors.New("schema unavailable"),
+		Name_:        "bad_tool",
+		Description_: "has bad schema",
+		InputSchema_: badSchema,
 	})
 	if err == nil {
-		t.Fatal("expected error for tool with failing InputSchema, got nil")
+		t.Fatal("expected error for tool with unmarshalable InputSchema, got nil")
 	}
 }
 

@@ -3,20 +3,20 @@ module github.com/mutablelogic/go-llm
 go 1.25.0
 
 require (
-	github.com/alecthomas/kong v1.15.0
 	github.com/charmbracelet/bubbles v1.0.0
 	github.com/charmbracelet/bubbletea v1.3.10
 	github.com/charmbracelet/glamour v1.0.0
 	github.com/charmbracelet/lipgloss v1.1.1-0.20250404203927-76690c660834
-	github.com/djthorpe/go-auth v0.0.0-20260401100035-828f45e78314
+	github.com/djthorpe/go-auth v0.0.1
 	github.com/google/jsonschema-go v0.4.2
 	github.com/google/uuid v1.6.0
 	github.com/igor-pavlenko/goldmark-telegram v0.2.0
 	github.com/modelcontextprotocol/go-sdk v1.4.1
 	github.com/muesli/reflow v0.3.0
 	github.com/muesli/termenv v0.16.0
-	github.com/mutablelogic/go-client v1.4.5
-	github.com/mutablelogic/go-server v1.6.20
+	github.com/mutablelogic/go-client v1.4.6
+	github.com/mutablelogic/go-pg v1.1.11
+	github.com/mutablelogic/go-server v1.6.22
 	github.com/stretchr/testify v1.11.1
 	github.com/yuin/goldmark v1.8.2
 	go.opentelemetry.io/otel v1.43.0
@@ -27,6 +27,18 @@ require (
 	golang.org/x/term v0.41.0
 	gopkg.in/telebot.v4 v4.0.0-beta.7
 	gopkg.in/yaml.v3 v3.0.1
+)
+
+require (
+	github.com/alecthomas/kong v1.15.0 // indirect
+	go.opentelemetry.io/contrib/bridges/otelslog v0.17.0 // indirect
+	go.opentelemetry.io/otel/exporters/otlp/otlplog/otlploggrpc v0.18.0 // indirect
+	go.opentelemetry.io/otel/exporters/otlp/otlplog/otlploghttp v0.18.0 // indirect
+	go.opentelemetry.io/otel/exporters/otlp/otlpmetric/otlpmetricgrpc v1.42.0 // indirect
+	go.opentelemetry.io/otel/exporters/otlp/otlpmetric/otlpmetrichttp v1.42.0 // indirect
+	go.opentelemetry.io/otel/log v0.18.0 // indirect
+	go.opentelemetry.io/otel/sdk/log v0.18.0 // indirect
+	go.opentelemetry.io/otel/sdk/metric v1.43.0 // indirect
 )
 
 require (
@@ -99,7 +111,6 @@ require (
 	github.com/morikuni/aec v1.1.0 // indirect
 	github.com/muesli/ansi v0.0.0-20230316100256-276c6243b2f6 // indirect
 	github.com/muesli/cancelreader v0.2.2 // indirect
-	github.com/mutablelogic/go-pg v1.1.10
 	github.com/opencontainers/go-digest v1.0.0 // indirect
 	github.com/opencontainers/image-spec v1.1.1 // indirect
 	github.com/pkg/browser v0.0.0-20240102092130-5ac0b6a4141c // indirect

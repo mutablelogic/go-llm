@@ -12,10 +12,7 @@ import (
 
 func Test_Base_001_output_schema(t *testing.T) {
 	b := Base{}
-	s, err := b.OutputSchema()
-	if err != nil {
-		t.Fatal(err)
-	}
+	s := b.OutputSchema()
 	if s != nil {
 		t.Fatalf("expected nil, got %v", s)
 	}

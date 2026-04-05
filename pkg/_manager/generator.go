@@ -6,7 +6,6 @@ import (
 	"sync"
 
 	// Packages
-	googlejsonschema "github.com/google/jsonschema-go/jsonschema"
 	otel "github.com/mutablelogic/go-client/pkg/otel"
 	llm "github.com/mutablelogic/go-llm"
 	opt "github.com/mutablelogic/go-llm/pkg/opt"
@@ -415,11 +414,11 @@ func withJSONOutput(data schema.JSONSchema) opt.Opt {
 // avoiding the conflict between function calling and response JSON schema on
 // providers like Gemini. Returns the tool name and the opt.
 func (m *Manager) addOutputTool(format schema.JSONSchema) (string, *tool.OutputTool, opt.Opt, error) {
-	var s googlejsonschema.Schema
-	if err := json.Unmarshal(format, &s); err != nil {
+	s, err := serverjsonschema.FromJSON(format)
+	if err != nil {
 		return "", nil, nil, schema.ErrBadParameter.Withf("invalid JSON schema for output tool: %v", err)
 	}
-	outputTool := tool.NewOutputTool(&s)
+	outputTool := tool.NewOutputTool(s)
 	return tool.OutputToolName, outputTool, tool.WithTool(outputTool), nil
 }
 

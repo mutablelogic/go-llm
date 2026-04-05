@@ -45,6 +45,10 @@ type Toolkit interface {
 	// while Run is active; the connector is stopped immediately if running.
 	RemoveConnector(string) error
 
+	// ExistsConnector checks if a connector exists by URL. Safe to call before or
+	// while Run is active.
+	ExistsConnector(string) bool
+
 	// Run starts all queued connectors and blocks until ctx is cancelled.
 	// It closes the toolkit and waits for all connectors to finish on return.
 	Run(context.Context) error

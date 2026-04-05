@@ -26,7 +26,7 @@ func TestServerProbe(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	state, err := c.Probe(context.Background())
+	state, err := c.Probe(context.Background(), nil)
 	if err != nil {
 		t.Fatal(err)
 	}

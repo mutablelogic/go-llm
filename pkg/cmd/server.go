@@ -49,6 +49,7 @@ func (runner *RunServer) Run(ctx server.Cmd) error {
 	}
 
 	// Create the auth manager, run the server, and return any error
+	ctx.Logger().InfoContext(ctx.Context(), "starting server", "name", ctx.Name(), "version", ctx.Version())
 	return runner.withAuthManager(ctx, conn, func(authmanager *authmanager.Manager) error {
 		return runner.withLLMManager(ctx, conn, func(llmmanager *llmmanager.Manager) error {
 			// Sync providers before starting the server so that any configured providers are available immediately

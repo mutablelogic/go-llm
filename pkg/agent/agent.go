@@ -10,8 +10,8 @@ import (
 	"strings"
 
 	// Packages
-	jsonschema "github.com/google/jsonschema-go/jsonschema"
 	schema "github.com/mutablelogic/go-llm/pkg/schema"
+	jsonschema "github.com/mutablelogic/go-server/pkg/jsonschema"
 	types "github.com/mutablelogic/go-server/pkg/types"
 	yaml "gopkg.in/yaml.v3"
 )
@@ -175,16 +175,16 @@ func extractName(r io.Reader) string {
 	return ""
 }
 
-// validateJSONSchema validates a JSONSchema value using google/jsonschema-go.
+// validateJSONSchema validates a JSONSchema value.
 // Returns nil if the schema is empty (field not present).
 func validateJSONSchema(v schema.JSONSchema, field string) error {
 	if len(v) == 0 {
 		return nil
 	}
 
-	// Validate by unmarshalling into jsonschema.Schema
-	var s jsonschema.Schema
-	if err := json.Unmarshal(v, &s); err != nil {
+	// Validate by parsing into a resolved schema.
+	s, err := jsonschema.FromJSON(json.RawMessage(v))
+	if err != nil {
 		return schema.ErrBadParameter.Withf("%s: invalid JSON schema: %v", field, err)
 	}
 

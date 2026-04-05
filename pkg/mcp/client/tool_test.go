@@ -112,10 +112,7 @@ func Test_tool_004(t *testing.T) {
 	if tool.Description() != "does things" {
 		t.Errorf("Description: expected %q, got %q", "does things", tool.Description())
 	}
-	schema, err := tool.InputSchema()
-	if err != nil {
-		t.Fatalf("InputSchema error: %v", err)
-	}
+	schema := tool.InputSchema()
 	if schema == nil {
 		t.Error("expected non-nil InputSchema")
 	}

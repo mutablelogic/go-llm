@@ -92,6 +92,23 @@ func (tk *toolkit) AddConnectorNS(namespace, url string) error {
 	return tk.addConnector(namespace, url)
 }
 
+func (tk *toolkit) ExistsConnector(url string) bool {
+	var key string
+	if url == UserConnectorURI {
+		key = url
+	} else {
+		var err error
+		key, err = canonicalURL(url)
+		if err != nil {
+			return false
+		}
+	}
+	tk.mu.RLock()
+	defer tk.mu.RUnlock()
+	_, exists := tk.connectors[key]
+	return exists
+}
+
 // RemoveConnector removes a connector by URL. The connector is stopped
 // immediately if it is currently running.
 func (tk *toolkit) RemoveConnector(rawURL string) error {
@@ -224,6 +241,16 @@ func (tk *toolkit) onConnectorEvent(c *connector, evt ConnectorEvent) {
 		tk.logger.InfoContext(context.Background(), "connector connected", "namespace", c.namespace, "name", types.Value(state.Name), "version", types.Value(state.Version))
 		c.reset()
 		tk.mu.Unlock()
+	case ConnectorEventDisconnected:
+		if evt.Err != nil {
+			tk.logger.WarnContext(context.Background(), "connector disconnected", "namespace", c.namespace, "error", evt.Err.Error())
+		} else if c.namespace != "" {
+			tk.logger.InfoContext(context.Background(), "connector disconnected", "namespace", c.namespace)
+		}
+		if handler := tk.delegate; handler != nil {
+			evt.Connector = c
+			handler.OnEvent(evt)
+		}
 	default:
 		if handler := tk.delegate; handler != nil {
 			evt.Connector = c

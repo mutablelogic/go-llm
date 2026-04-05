@@ -7,11 +7,11 @@ import (
 	"strings"
 
 	// Packages
-	jsonschema "github.com/google/jsonschema-go/jsonschema"
 	sdkmcp "github.com/modelcontextprotocol/go-sdk/mcp"
 	llm "github.com/mutablelogic/go-llm"
 	schema "github.com/mutablelogic/go-llm/pkg/schema"
 	toolkit "github.com/mutablelogic/go-llm/pkg/toolkit"
+	jsonschema "github.com/mutablelogic/go-server/pkg/jsonschema"
 	types "github.com/mutablelogic/go-server/pkg/types"
 )
 
@@ -21,8 +21,10 @@ import (
 // mcpTool wraps an *sdkmcp.Tool received from a server and implements
 // llm.Tool, routing Run calls back through the client's CallTool method.
 type mcpTool struct {
-	t      *sdkmcp.Tool
-	client *Client
+	t            *sdkmcp.Tool
+	client       *Client
+	inputSchema  *jsonschema.Schema
+	outputSchema *jsonschema.Schema
 }
 
 // Ensure mcpTool implements llm.Tool at compile time.
@@ -36,16 +38,12 @@ func (m *mcpTool) Name() string { return m.t.Name }
 func (m *mcpTool) Description() string { return m.t.Description }
 
 // InputSchema unmarshals the server-supplied inputSchema (a map[string]any on
-// the client side) into a *jsonschema.Schema. Returns nil, nil if not set.
-func (m *mcpTool) InputSchema() (*jsonschema.Schema, error) {
-	return schemaFromAny(m.t.InputSchema)
-}
+// the client side) into a *jsonschema.Schema. Malformed schemas are ignored.
+func (m *mcpTool) InputSchema() *jsonschema.Schema { return m.inputSchema }
 
 // OutputSchema unmarshals the optional server-supplied outputSchema. Returns
-// nil, nil if the server did not advertise a structured output schema.
-func (m *mcpTool) OutputSchema() (*jsonschema.Schema, error) {
-	return schemaFromAny(m.t.OutputSchema)
-}
+// nil if the server did not advertise a structured output schema.
+func (m *mcpTool) OutputSchema() *jsonschema.Schema { return m.outputSchema }
 
 // Meta converts MCP Tool fields into llm.ToolMeta.
 // Per spec, display-name precedence is: Tool.title > Tool.annotations.title > Tool.name.
@@ -140,18 +138,18 @@ func contentValue(c sdkmcp.Content) any {
 }
 
 // schemaFromAny re-marshals v (typically map[string]any from JSON) into a
-// *jsonschema.Schema. Returns nil, nil if v is nil.
-func schemaFromAny(v any) (*jsonschema.Schema, error) {
+// resolved *jsonschema.Schema. Malformed schemas are ignored.
+func schemaFromAny(v any) *jsonschema.Schema {
 	if v == nil {
-		return nil, nil
+		return nil
 	}
 	data, err := json.Marshal(v)
 	if err != nil {
-		return nil, err
+		return nil
 	}
-	var s jsonschema.Schema
-	if err := json.Unmarshal(data, &s); err != nil {
-		return nil, err
+	s, err := jsonschema.FromJSON(data)
+	if err != nil {
+		return nil
 	}
-	return &s, nil
+	return s
 }

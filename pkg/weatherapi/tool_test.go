@@ -45,8 +45,7 @@ func TestCurrentWeatherToolInterface(t *testing.T) {
 	assert.NotEmpty(tool.Description())
 
 	// Test schema
-	schema, err := tool.InputSchema()
-	assert.NoError(err)
+	schema := tool.InputSchema()
 	assert.NotNil(schema)
 	assert.Contains(schema.Properties, "query")
 
@@ -76,8 +75,7 @@ func TestForecastWeatherToolInterface(t *testing.T) {
 	assert.NotEmpty(tool.Description())
 
 	// Test schema
-	schema, err := tool.InputSchema()
-	assert.NoError(err)
+	schema := tool.InputSchema()
 	assert.NotNil(schema)
 	assert.Contains(schema.Properties, "query")
 	assert.Contains(schema.Properties, "days")
@@ -114,8 +112,7 @@ func TestAlertsWeatherToolInterface(t *testing.T) {
 	assert.NotEmpty(tool.Description())
 
 	// Test schema
-	schema, err := tool.InputSchema()
-	assert.NoError(err)
+	schema := tool.InputSchema()
 	assert.NotNil(schema)
 	assert.Contains(schema.Properties, "query")
 

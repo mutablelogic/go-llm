@@ -7,8 +7,8 @@ import (
 	"text/template"
 
 	// Packages
-	jsonschema "github.com/google/jsonschema-go/jsonschema"
 	schema "github.com/mutablelogic/go-llm/pkg/schema"
+	jsonschema "github.com/mutablelogic/go-server/pkg/jsonschema"
 )
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -93,25 +93,17 @@ func validateInput(inputSchema schema.JSONSchema, input json.RawMessage) (map[st
 		return data, nil
 	}
 
-	// Parse the schema
-	var s jsonschema.Schema
-	if err := json.Unmarshal(inputSchema, &s); err != nil {
-		return nil, schema.ErrBadParameter.Withf("input schema: %v", err)
-	}
-
-	// Resolve the schema for validation
-	resolved, err := s.Resolve(nil)
+	// Parse and resolve the schema
+	s, err := jsonschema.FromJSON(json.RawMessage(inputSchema))
 	if err != nil {
 		return nil, schema.ErrBadParameter.Withf("input schema: %v", err)
 	}
 
-	// Validate the input against the schema. The Validate method expects
-	// a native Go value (not raw JSON), so we pass the unmarshalled data.
-	var instance any = data
-	if data == nil {
-		instance = map[string]any{}
+	validatedInput := input
+	if len(validatedInput) == 0 {
+		validatedInput = json.RawMessage(`{}`)
 	}
-	if err := resolved.Validate(instance); err != nil {
+	if err := s.Validate(validatedInput); err != nil {
 		return nil, schema.ErrBadParameter.Withf("input validation: %v", err)
 	}
 

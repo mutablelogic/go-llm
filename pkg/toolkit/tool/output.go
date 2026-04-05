@@ -6,7 +6,7 @@ import (
 	"fmt"
 
 	// Packages
-	jsonschema "github.com/google/jsonschema-go/jsonschema"
+	jsonschema "github.com/mutablelogic/go-server/pkg/jsonschema"
 )
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -53,9 +53,7 @@ func (t *OutputTool) Description() string {
 	return "Submit your final structured output. Call this tool when you have completed your task and are ready to return the result."
 }
 
-func (t *OutputTool) InputSchema() (*jsonschema.Schema, error) {
-	return t.schema, nil
-}
+func (t *OutputTool) InputSchema() *jsonschema.Schema { return t.schema }
 
 func (t *OutputTool) Run(_ context.Context, input json.RawMessage) (any, error) {
 	// The tool's purpose is to capture the structured output — just return it.
@@ -68,15 +66,7 @@ func (t *OutputTool) Validate(data json.RawMessage) error {
 	if t.schema == nil {
 		return nil
 	}
-	resolved, err := t.schema.Resolve(nil)
-	if err != nil {
-		return fmt.Errorf("resolving output schema: %w", err)
-	}
-	var instance any
-	if err := json.Unmarshal(data, &instance); err != nil {
-		return fmt.Errorf("invalid JSON: %w", err)
-	}
-	if err := resolved.Validate(instance); err != nil {
+	if err := t.schema.Validate(data); err != nil {
 		return fmt.Errorf("output validation: %w", err)
 	}
 	return nil

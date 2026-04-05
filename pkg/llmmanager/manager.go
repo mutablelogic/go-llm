@@ -22,10 +22,10 @@ import (
 type Manager struct {
 	manageropt
 	pg.PoolConn
-	broadcaster.Broadcaster
 	*provider.Registry
 	toolkit.Toolkit
-	delegate *delegate
+	broadcaster broadcaster.Broadcaster
+	delegate    *delegate
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -72,10 +72,10 @@ func New(ctx context.Context, name, version string, pool pg.PoolConn, opts ...Op
 
 	// Set up notifications of table change if requested
 	if self.channel != "" {
-		if notifications, err := broadcaster.NewBroadcaster(pool, self.channel); err != nil {
+		if broadcaster, err := broadcaster.NewBroadcaster(pool, self.channel); err != nil {
 			return nil, err
 		} else {
-			self.Broadcaster = notifications
+			self.broadcaster = broadcaster
 		}
 	}
 

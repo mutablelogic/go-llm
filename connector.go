@@ -5,8 +5,8 @@ import (
 	"encoding/json"
 
 	// Packages
-	jsonschema "github.com/google/jsonschema-go/jsonschema"
 	opt "github.com/mutablelogic/go-llm/pkg/opt"
+	jsonschema "github.com/mutablelogic/go-server/pkg/jsonschema"
 )
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -74,10 +74,10 @@ type Tool interface {
 	Description() string
 
 	// Return the JSON schema for the tool input parameters.
-	InputSchema() (*jsonschema.Schema, error)
+	InputSchema() *jsonschema.Schema
 
 	// Return the JSON schema for the tool output, or nil if unspecified.
-	OutputSchema() (*jsonschema.Schema, error)
+	OutputSchema() *jsonschema.Schema
 
 	// Return optional metadata / hints about the tool.
 	Meta() ToolMeta

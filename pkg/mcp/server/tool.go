@@ -43,10 +43,8 @@ func (s *Server) RemoveTools(names ...string) {
 // sdkToolFromTool converts a tool.Tool into an *sdkmcp.Tool and sdkmcp.ToolHandler.
 func sdkToolFromTool(t llm.Tool, tracer trace.Tracer) (*sdkmcp.Tool, sdkmcp.ToolHandler, error) {
 	// Build input schema — SDK accepts any JSON-marshalable value.
-	inputSchema, err := t.InputSchema()
-	if err != nil {
-		return nil, nil, fmt.Errorf("tool %q: input schema: %w", t.Name(), err)
-	}
+	inputSchema := t.InputSchema()
+	var err error
 	inputSchemaRaw, err := json.Marshal(inputSchema)
 	if err != nil {
 		return nil, nil, fmt.Errorf("tool %q: marshal input schema: %w", t.Name(), err)
@@ -54,9 +52,7 @@ func sdkToolFromTool(t llm.Tool, tracer trace.Tracer) (*sdkmcp.Tool, sdkmcp.Tool
 
 	// Build optional output schema.
 	var outputSchemaRaw json.RawMessage
-	if outputSchema, err := t.OutputSchema(); err != nil {
-		return nil, nil, fmt.Errorf("tool %q: output schema: %w", t.Name(), err)
-	} else if outputSchema != nil {
+	if outputSchema := t.OutputSchema(); outputSchema != nil {
 		if outputSchemaRaw, err = json.Marshal(outputSchema); err != nil {
 			return nil, nil, fmt.Errorf("tool %q: marshal output schema: %w", t.Name(), err)
 		}

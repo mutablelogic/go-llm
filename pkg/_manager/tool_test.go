@@ -6,10 +6,10 @@ import (
 	"testing"
 
 	// Packages
-	jsonschema "github.com/google/jsonschema-go/jsonschema"
 	llm "github.com/mutablelogic/go-llm"
 	schema "github.com/mutablelogic/go-llm/pkg/schema"
 	tool "github.com/mutablelogic/go-llm/pkg/tool"
+	jsonschema "github.com/mutablelogic/go-server/pkg/jsonschema"
 	assert "github.com/stretchr/testify/assert"
 )
 
@@ -23,11 +23,11 @@ type mockTool struct {
 	runFn       func(context.Context, json.RawMessage) (any, error)
 }
 
-func (t *mockTool) Name() string                              { return t.name }
-func (t *mockTool) Description() string                       { return t.description }
-func (t *mockTool) InputSchema() (*jsonschema.Schema, error)  { return t.schema, nil }
-func (t *mockTool) OutputSchema() (*jsonschema.Schema, error) { return nil, nil }
-func (t *mockTool) Meta() llm.ToolMeta                        { return llm.ToolMeta{} }
+func (t *mockTool) Name() string                     { return t.name }
+func (t *mockTool) Description() string              { return t.description }
+func (t *mockTool) InputSchema() *jsonschema.Schema  { return t.schema }
+func (t *mockTool) OutputSchema() *jsonschema.Schema { return nil }
+func (t *mockTool) Meta() llm.ToolMeta               { return llm.ToolMeta{} }
 func (t *mockTool) Run(ctx context.Context, input json.RawMessage) (any, error) {
 	if t.runFn != nil {
 		return t.runFn(ctx, input)
@@ -66,10 +66,8 @@ func Test_tool_002(t *testing.T) {
 func Test_tool_003(t *testing.T) {
 	assert := assert.New(t)
 
-	s := &jsonschema.Schema{
-		Type:        "object",
-		Description: "input schema",
-	}
+	s, err := jsonschema.FromJSON(json.RawMessage(`{"type":"object","description":"input schema"}`))
+	assert.NoError(err)
 	m, err := NewManager("test", "0.0.0", WithTools(&mockTool{name: "schema_tool", description: "Has schema", schema: s}))
 	assert.NoError(err)
 
@@ -261,7 +259,7 @@ func Test_tool_014(t *testing.T) {
 func Test_tool_015(t *testing.T) {
 	assert := assert.New(t)
 
-	s := &jsonschema.Schema{Type: "string"}
+	s := jsonschema.MustFor[string]()
 	m, err := NewManager("test", "0.0.0", WithTools(&mockTool{name: "typed_tool", schema: s}))
 	assert.NoError(err)
 

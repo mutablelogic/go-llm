@@ -16,6 +16,7 @@ package manager
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"sync"
@@ -26,6 +27,7 @@ import (
 	toolkit "github.com/mutablelogic/go-llm/pkg/toolkit"
 	pg "github.com/mutablelogic/go-pg"
 	broadcaster "github.com/mutablelogic/go-pg/pkg/broadcaster"
+	types "github.com/mutablelogic/go-server/pkg/types"
 )
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -35,9 +37,9 @@ import (
 func (m *Manager) Run(ctx context.Context, logger *slog.Logger) error {
 	ticker := time.NewTimer(time.Second)
 	defer ticker.Stop()
-	if closer, ok := m.Broadcaster.(interface{ Close() }); ok {
-		defer closer.Close()
-	}
+
+	// Close the broadcaster when the manager is stopped
+	defer m.broadcaster.Close()
 
 	// Create the toolkit and add any tools, prompts, and resources that were
 	// added in the options
@@ -55,40 +57,29 @@ func (m *Manager) Run(ctx context.Context, logger *slog.Logger) error {
 		m.Toolkit = tookit
 	}
 
-	// Report the initial list of tools, prompts and resources in the toolkit.
-	if resp, err := m.Toolkit.List(ctx, toolkit.ListRequest{
-		Type: toolkit.ListTypeTools,
-	}); err != nil {
-		return err
-	} else if len(resp.Tools) > 0 {
-		logger.InfoContext(ctx, "Toolkit:", "tools", resp)
-	}
-	if resp, err := m.Toolkit.List(ctx, toolkit.ListRequest{
-		Type: toolkit.ListTypePrompts,
-	}); err != nil {
-		return err
-	} else if len(resp.Prompts) > 0 {
-		logger.InfoContext(ctx, "Toolkit:", "prompts", resp)
-	}
-	if resp, err := m.Toolkit.List(ctx, toolkit.ListRequest{
-		Type: toolkit.ListTypeResources,
-	}); err != nil {
-		return err
-	} else if len(resp.Resources) > 0 {
-		logger.InfoContext(ctx, "Toolkit:", "resources", resp)
+	// Sync connectors
+	if err := m.syncConnectors(ctx); err != nil {
+		return fmt.Errorf("sync connectors: %w", err)
 	}
 
 	// Subscribe to database notifications, if configured
 	// We provide a small buffered channel to avoid blocking the database listener
-	providerChange := make(chan broadcaster.ChangeNotification, 16)
-	if m.Broadcaster != nil {
-		if err := m.Broadcaster.Subscribe(ctx, func(change broadcaster.ChangeNotification) {
-			logger.DebugContext(ctx, "Changes", "schema", change.Schema, "table", change.Table, "action", change.Action)
-			if changeMatches(change, m.llmschema, "provider", "") {
+	providerChange, connectorChange := make(chan broadcaster.ChangeNotification, 16), make(chan broadcaster.ChangeNotification, 16)
+	if m.broadcaster != nil {
+		if err := m.broadcaster.Subscribe(ctx, func(change broadcaster.ChangeNotification) {
+			switch {
+			case change.Matches(m.llmschema, "provider", ""):
 				select {
 				case providerChange <- change:
 				case <-ctx.Done():
 				}
+			case change.Matches(m.llmschema, "connector", ""):
+				select {
+				case connectorChange <- change:
+				case <-ctx.Done():
+				}
+			default:
+				logger.DebugContext(ctx, "Changes", "schema", change.Schema, "table", change.Table, "action", change.Action)
 			}
 		}); err != nil {
 			return err
@@ -124,6 +115,10 @@ func (m *Manager) Run(ctx context.Context, logger *slog.Logger) error {
 			if len(deletes) > 0 {
 				logger.InfoContext(ctx, "deleted providers", "providers", deletes)
 			}
+		case <-connectorChange:
+			if err := m.syncConnectors(ctx); err != nil {
+				logger.ErrorContext(ctx, "failed to sync connectors after change notification", "error", err.Error())
+			}
 		case <-ticker.C:
 			// Ping the registry to determine status of providers
 			if err := m.Registry.Ping(ctx); err != nil {
@@ -143,26 +138,6 @@ func (m *Manager) SyncProviders(ctx context.Context) ([]string, []string, error)
 
 ///////////////////////////////////////////////////////////////////////////////
 // PRIVATE METHODS
-
-// Return true if the change notification matches the given schema, table, and operation (if provided).
-func changeMatches(change broadcaster.ChangeNotification, schema, table, op string) bool {
-	// Check schema
-	if schema != "" && change.Schema != schema {
-		return false
-	}
-
-	// Check table
-	if table != "" && change.Table != table {
-		return false
-	}
-
-	// Check operation
-	if op != "" && change.Action != op {
-		return false
-	}
-
-	return true
-}
 
 // Sync providers with the registry and log any changes. This is called in response to database
 // notifications and periodically to ensure the registry is up to date with the database.
@@ -204,4 +179,50 @@ func (m *Manager) syncProviders(ctx context.Context) ([]string, []string, error)
 			return credentials, nil
 		}
 	})
+}
+
+func (m *Manager) syncConnectors(ctx context.Context) error {
+	// Iterate over all connectors
+	var offset uint64
+	var connectors []*schema.Connector
+	for {
+		result, err := m.ListConnectors(ctx, schema.ConnectorListRequest{
+			OffsetLimit: pg.OffsetLimit{
+				Offset: offset,
+			},
+		}, nil)
+		if err != nil {
+			return err
+		}
+		// Allocate the slice on the first iteration to avoid unnecessary allocations
+		// if there are many connectors
+		if connectors == nil {
+			connectors = make([]*schema.Connector, 0, result.Count)
+		}
+
+		// If no results, we are done, otherwise add to the list and continue
+		if len(result.Body) == 0 {
+			break
+		} else {
+			connectors = append(connectors, result.Body...)
+			offset += uint64(len(result.Body))
+		}
+	}
+
+	// Syncronize the registry with the list of connectors
+	var result error
+	for _, connector := range connectors {
+		enabled := types.Value(connector.Enabled)
+		exists := m.Toolkit.ExistsConnector(connector.URL)
+
+		switch {
+		case enabled && !exists:
+			result = errors.Join(result, m.Toolkit.AddConnectorNS(types.Value(connector.Namespace), connector.URL))
+		case !enabled && exists:
+			result = errors.Join(result, m.Toolkit.RemoveConnector(connector.URL))
+		}
+	}
+
+	// Return any errors
+	return result
 }

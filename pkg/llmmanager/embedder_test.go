@@ -2,6 +2,7 @@ package manager
 
 import (
 	"context"
+	"strings"
 	"testing"
 
 	// Packages
@@ -69,6 +70,19 @@ func integrationEmbeddingModelName(t *testing.T, m *Manager, provider string, us
 		func(model schema.Model) bool {
 			return model.Cap&schema.ModelCapEmbeddings != 0
 		},
-		validateAccessibleModel(m, provider, user),
+		func(ctx context.Context, name string) error {
+			if err := validateAccessibleModel(m, provider, user)(ctx, name); err != nil {
+				return err
+			}
+			_, err := m.Embedding(ctx, schema.EmbeddingRequest{
+				Provider: provider,
+				Model:    name,
+				Input:    []string{"hello world"},
+			}, user)
+			if err != nil && strings.Contains(err.Error(), "does not support embeddings") {
+				return err
+			}
+			return err
+		},
 	)
 }

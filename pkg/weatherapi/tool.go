@@ -5,11 +5,11 @@ import (
 	"encoding/json"
 
 	// Packages
-	jsonschema "github.com/google/jsonschema-go/jsonschema"
 	"github.com/mutablelogic/go-client"
 	llm "github.com/mutablelogic/go-llm"
 	"github.com/mutablelogic/go-llm/pkg/schema"
 	"github.com/mutablelogic/go-llm/pkg/tool"
+	jsonschema "github.com/mutablelogic/go-server/pkg/jsonschema"
 )
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -64,8 +64,8 @@ func (*currentWeather) Description() string {
 }
 
 // Return the JSON schema for the tool input
-func (*currentWeather) InputSchema() (*jsonschema.Schema, error) {
-	return jsonschema.For[CurrentWeatherRequest](nil)
+func (*currentWeather) InputSchema() *jsonschema.Schema {
+	return jsonschema.MustFor[CurrentWeatherRequest]()
 }
 
 // Run the tool with the given input
@@ -99,11 +99,8 @@ func (*forecastWeather) Description() string {
 }
 
 // Return the JSON schema for the tool input
-func (*forecastWeather) InputSchema() (*jsonschema.Schema, error) {
-	schema, err := jsonschema.For[ForecastWeatherRequest](nil)
-	if err != nil {
-		return nil, err
-	}
+func (*forecastWeather) InputSchema() *jsonschema.Schema {
+	schema := jsonschema.MustFor[ForecastWeatherRequest]()
 
 	// Add validation constraints for days
 	if daysField, ok := schema.Properties["days"]; ok && daysField != nil {
@@ -113,7 +110,7 @@ func (*forecastWeather) InputSchema() (*jsonschema.Schema, error) {
 		daysField.Maximum = &max
 	}
 
-	return schema, nil
+	return schema
 }
 
 // Run the tool with the given input
@@ -150,8 +147,8 @@ func (*alertsWeather) Description() string {
 }
 
 // Return the JSON schema for the tool input
-func (*alertsWeather) InputSchema() (*jsonschema.Schema, error) {
-	return jsonschema.For[AlertsWeatherRequest](nil)
+func (*alertsWeather) InputSchema() *jsonschema.Schema {
+	return jsonschema.MustFor[AlertsWeatherRequest]()
 }
 
 // Run the tool with the given input

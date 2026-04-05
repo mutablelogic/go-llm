@@ -5,11 +5,11 @@ import (
 	"encoding/json"
 
 	// Packages
-	jsonschema "github.com/google/jsonschema-go/jsonschema"
 	"github.com/mutablelogic/go-client"
 	llm "github.com/mutablelogic/go-llm"
 	"github.com/mutablelogic/go-llm/pkg/schema"
 	"github.com/mutablelogic/go-llm/pkg/tool"
+	jsonschema "github.com/mutablelogic/go-server/pkg/jsonschema"
 )
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -63,18 +63,15 @@ func (*articles) Description() string {
 }
 
 // Return the JSON schema for the tool input
-func (*articles) InputSchema() (*jsonschema.Schema, error) {
-	schema, err := jsonschema.For[ArticlesRequest](nil)
-	if err != nil {
-		return nil, err
-	}
+func (*articles) InputSchema() *jsonschema.Schema {
+	schema := jsonschema.MustFor[ArticlesRequest]()
 
 	// Add enum constraints for sortBy
 	if sortBy, ok := schema.Properties["sortBy"]; ok && sortBy != nil {
 		sortBy.Enum = []any{"relevancy", "popularity", "publishedAt"}
 	}
 
-	return schema, nil
+	return schema
 }
 
 // Run the tool with the given input
@@ -103,18 +100,15 @@ func (*headlines) Description() string {
 }
 
 // Return the JSON schema for the tool input
-func (*headlines) InputSchema() (*jsonschema.Schema, error) {
-	schema, err := jsonschema.For[HeadlinesRequest](nil)
-	if err != nil {
-		return nil, err
-	}
+func (*headlines) InputSchema() *jsonschema.Schema {
+	schema := jsonschema.MustFor[HeadlinesRequest]()
 
 	// Add enum constraints for category
 	if category, ok := schema.Properties["category"]; ok && category != nil {
 		category.Enum = []any{"business", "entertainment", "general", "health", "science", "sports", "technology"}
 	}
 
-	return schema, nil
+	return schema
 }
 
 // Run the tool with the given input
@@ -143,18 +137,15 @@ func (*sources) Description() string {
 }
 
 // Return the JSON schema for the tool input
-func (*sources) InputSchema() (*jsonschema.Schema, error) {
-	schema, err := jsonschema.For[SourcesRequest](nil)
-	if err != nil {
-		return nil, err
-	}
+func (*sources) InputSchema() *jsonschema.Schema {
+	schema := jsonschema.MustFor[SourcesRequest]()
 
 	// Add enum constraints for category
 	if category, ok := schema.Properties["category"]; ok && category != nil {
 		category.Enum = []any{"business", "entertainment", "general", "health", "science", "sports", "technology"}
 	}
 
-	return schema, nil
+	return schema
 }
 
 // Run the tool with the given input

@@ -111,7 +111,17 @@ func Test_connect_006(t *testing.T) {
 
 // Test_connect_007: connectWithAuth propagates errors returned by authFn.
 func Test_connect_007(t *testing.T) {
-	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	var ts *httptest.Server
+	ts = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/.well-known/oauth-authorization-server" {
+			w.Header().Set("Content-Type", "application/json")
+			fmt.Fprintf(w, `{"issuer":%q,"authorization_endpoint":%q,"token_endpoint":%q}`,
+				ts.URL,
+				ts.URL+"/authorize",
+				ts.URL+"/token",
+			)
+			return
+		}
 		w.Header().Set("WWW-Authenticate", `Bearer realm="test"`)
 		w.WriteHeader(http.StatusUnauthorized)
 	}))

@@ -6,11 +6,11 @@ import (
 	"testing"
 
 	// Packages
-	jsonschema "github.com/google/jsonschema-go/jsonschema"
 	llm "github.com/mutablelogic/go-llm"
 	opt "github.com/mutablelogic/go-llm/pkg/opt"
 	schema "github.com/mutablelogic/go-llm/pkg/schema"
 	tool "github.com/mutablelogic/go-llm/pkg/tool"
+	jsonschema "github.com/mutablelogic/go-server/pkg/jsonschema"
 	types "github.com/mutablelogic/go-server/pkg/types"
 	assert "github.com/stretchr/testify/assert"
 )
@@ -29,19 +29,22 @@ func newMockTool(name, description string) *mockTool {
 	return &mockTool{
 		name:        name,
 		description: description,
-		schema: &jsonschema.Schema{
-			Type: "object",
-			Properties: map[string]*jsonschema.Schema{
-				"location": {Type: "string", Description: "The city name"},
-			},
-		},
+		schema:      mustSchema(`{"type":"object","properties":{"location":{"type":"string","description":"The city name"}}}`),
 	}
+}
+
+func mustSchema(raw string) *jsonschema.Schema {
+	s, err := jsonschema.FromJSON(json.RawMessage(raw))
+	if err != nil {
+		panic(err)
+	}
+	return s
 }
 
 func (m *mockTool) Name() string                                          { return m.name }
 func (m *mockTool) Description() string                                   { return m.description }
-func (m *mockTool) InputSchema() (*jsonschema.Schema, error)              { return m.schema, nil }
-func (m *mockTool) OutputSchema() (*jsonschema.Schema, error)             { return nil, nil }
+func (m *mockTool) InputSchema() *jsonschema.Schema                       { return m.schema }
+func (m *mockTool) OutputSchema() *jsonschema.Schema                      { return nil }
 func (m *mockTool) Meta() llm.ToolMeta                                    { return llm.ToolMeta{} }
 func (m *mockTool) Run(_ context.Context, _ json.RawMessage) (any, error) { return "mock result", nil }
 

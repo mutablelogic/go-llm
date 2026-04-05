@@ -6,13 +6,13 @@ import (
 	"time"
 
 	// Packages
-	jsonschema "github.com/google/jsonschema-go/jsonschema"
 	otel "github.com/mutablelogic/go-client/pkg/otel"
 	llm "github.com/mutablelogic/go-llm"
 	hschema "github.com/mutablelogic/go-llm/pkg/heartbeat/schema"
 	schema "github.com/mutablelogic/go-llm/pkg/schema"
 	tool "github.com/mutablelogic/go-llm/pkg/tool"
 	session "github.com/mutablelogic/go-llm/pkg/tool/session"
+	jsonschema "github.com/mutablelogic/go-server/pkg/jsonschema"
 	attribute "go.opentelemetry.io/otel/attribute"
 )
 
@@ -40,8 +40,8 @@ func (updateHeartbeat) Description() string {
 		"Omit any field to leave it unchanged."
 }
 
-func (updateHeartbeat) InputSchema() (*jsonschema.Schema, error) {
-	return jsonschema.For[hschema.UpdateHeartbeatRequest](nil)
+func (updateHeartbeat) InputSchema() *jsonschema.Schema {
+	return jsonschema.MustFor[hschema.UpdateHeartbeatRequest]()
 }
 
 func (t updateHeartbeat) Run(ctx context.Context, input json.RawMessage) (_ any, err error) {

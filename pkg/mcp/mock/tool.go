@@ -7,23 +7,21 @@ import (
 	"encoding/json"
 
 	// Packages
-	jsonschema "github.com/google/jsonschema-go/jsonschema"
 	llm "github.com/mutablelogic/go-llm"
 	tool "github.com/mutablelogic/go-llm/pkg/tool"
+	jsonschema "github.com/mutablelogic/go-server/pkg/jsonschema"
 )
 
 // MockTool is a configurable implementation of llm.Tool for use in tests.
 // Set Name_, Description_, and Result_ before registering it on a server.
 // RunFn, if set, overrides Result_ and is called with the raw JSON input.
-// InputSchemaErr_, if set, makes InputSchema() return that error.
 type MockTool struct {
 	tool.DefaultTool
-	Name_           string
-	Description_    string
-	InputSchema_    *jsonschema.Schema
-	InputSchemaErr_ error
-	Result_         any
-	RunFn           func(ctx context.Context, input json.RawMessage) (any, error)
+	Name_        string
+	Description_ string
+	InputSchema_ *jsonschema.Schema
+	Result_      any
+	RunFn        func(ctx context.Context, input json.RawMessage) (any, error)
 }
 
 var _ llm.Tool = (*MockTool)(nil)
@@ -31,14 +29,11 @@ var _ llm.Tool = (*MockTool)(nil)
 func (m *MockTool) Name() string        { return m.Name_ }
 func (m *MockTool) Description() string { return m.Description_ }
 
-func (m *MockTool) InputSchema() (*jsonschema.Schema, error) {
-	if m.InputSchemaErr_ != nil {
-		return nil, m.InputSchemaErr_
-	}
+func (m *MockTool) InputSchema() *jsonschema.Schema {
 	if m.InputSchema_ != nil {
-		return m.InputSchema_, nil
+		return m.InputSchema_
 	}
-	return &jsonschema.Schema{Type: "object"}, nil
+	return jsonschema.MustFor[map[string]any]()
 }
 
 func (m *MockTool) Run(ctx context.Context, input json.RawMessage) (any, error) {

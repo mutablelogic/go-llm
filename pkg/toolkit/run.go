@@ -20,7 +20,7 @@ func (tk *toolkit) Run(ctx context.Context) error {
 	for {
 		select {
 		case <-ctx.Done():
-			return errors.Join(ctx.Err(), tk.stopAllConnectors())
+			return tk.stopAllConnectors()
 		case <-ticker.C:
 			tk.startPendingConnectors(ctx)
 		}
@@ -73,11 +73,12 @@ func (tk *toolkit) startPendingConnectors(ctx context.Context) {
 
 			// Store unexpected errors (not context cancellation/timeout) for
 			// collection by stopAllConnectors; clear on clean exit.
+			var disconnectErr error
 			if err != nil && !errors.Is(err, context.Canceled) && !errors.Is(err, context.DeadlineExceeded) {
-				tk.logger.Error("connector stopped", "error", err.Error(), "retries", c.retryCount)
+				disconnectErr = err
 				if !c.retry(err) {
 					// Retry ceiling reached — permanently remove the connector.
-					tk.logger.Error("connector removed after max retries", "retries", c.retryCount)
+					tk.logger.Error("connector removed after max retries", "namespace", c.namespace, "retries", c.retryCount)
 					for k, v := range tk.connectors {
 						if v == c {
 							delete(tk.connectors, k)
@@ -91,6 +92,7 @@ func (tk *toolkit) startPendingConnectors(ctx context.Context) {
 			}
 
 			tk.mu.Unlock()
+			tk.onConnectorEvent(c, DisconnectedEvent(disconnectErr))
 		}(c)
 	}
 }

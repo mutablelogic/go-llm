@@ -80,21 +80,9 @@ func (tk *toolkit) callTool(ctx context.Context, t llm.Tool, resources ...llm.Re
 			return nil, schema.ErrBadParameter.Withf("reading input resource: %v", err)
 		}
 		input = json.RawMessage(data)
-		s, err := t.InputSchema()
-		if err != nil {
-			return nil, schema.ErrBadParameter.Withf("schema generation failed: %v", err)
-		}
+		s := t.InputSchema()
 		if s != nil {
-			// TODO: Validate input against schema
-			var instance any
-			if err := json.Unmarshal(input, &instance); err != nil {
-				return nil, schema.ErrBadParameter.Withf("failed to unmarshal JSON input: %v", err)
-			}
-			resolved, err := s.Resolve(nil)
-			if err != nil {
-				return nil, schema.ErrBadParameter.Withf("schema resolution failed: %v", err)
-			}
-			if err := resolved.Validate(instance); err != nil {
+			if err := s.Validate(input); err != nil {
 				return nil, schema.ErrBadParameter.Withf("input validation failed: %v", err)
 			}
 		}
@@ -120,10 +108,7 @@ func (tk *toolkit) callTool(ctx context.Context, t llm.Tool, resources ...llm.Re
 
 	// If the result is nil, check the output schema.
 	if result == nil {
-		outputSchema, err := t.OutputSchema()
-		if err != nil {
-			return nil, schema.ErrBadParameter.Withf("output schema generation failed: %v", err)
-		}
+		outputSchema := t.OutputSchema()
 		if outputSchema != nil {
 			return nil, schema.ErrBadParameter.With("tool returned nil but an output schema is defined")
 		}
@@ -170,10 +155,7 @@ func (tk *toolkit) callTool(ctx context.Context, t llm.Tool, resources ...llm.Re
 	}
 
 	// If there isn't an output schema, return the wrapped resource as-is.
-	outputSchema, err := t.OutputSchema()
-	if err != nil {
-		return nil, schema.ErrBadParameter.Withf("output schema generation failed: %v", err)
-	}
+	outputSchema := t.OutputSchema()
 	if outputSchema == nil {
 		return wrapped, nil
 	}
@@ -188,15 +170,7 @@ func (tk *toolkit) callTool(ctx context.Context, t llm.Tool, resources ...llm.Re
 	if err != nil {
 		return nil, schema.ErrBadParameter.Withf("failed to read resource for validation: %v", err)
 	}
-	var instance any
-	if err := json.Unmarshal(data, &instance); err != nil {
-		return nil, schema.ErrBadParameter.Withf("failed to unmarshal JSON output: %v", err)
-	}
-	resolved, err := outputSchema.Resolve(nil)
-	if err != nil {
-		return nil, schema.ErrBadParameter.Withf("output schema resolution failed: %v", err)
-	}
-	if err := resolved.Validate(instance); err != nil {
+	if err := outputSchema.Validate(data); err != nil {
 		return nil, schema.ErrBadParameter.Withf("output validation failed: %v", err)
 	}
 

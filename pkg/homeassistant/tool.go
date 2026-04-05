@@ -6,11 +6,11 @@ import (
 	"strings"
 
 	// Packages
-	jsonschema "github.com/google/jsonschema-go/jsonschema"
 	"github.com/mutablelogic/go-client"
 	llm "github.com/mutablelogic/go-llm"
 	"github.com/mutablelogic/go-llm/pkg/schema"
 	"github.com/mutablelogic/go-llm/pkg/tool"
+	jsonschema "github.com/mutablelogic/go-server/pkg/jsonschema"
 )
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -128,9 +128,7 @@ func (*getStates) Description() string {
 		"Returns entity ID, state value, friendly name, and key attributes."
 }
 
-func (*getStates) InputSchema() (*jsonschema.Schema, error) {
-	return jsonschema.For[GetStatesRequest](nil)
-}
+func (*getStates) InputSchema() *jsonschema.Schema { return jsonschema.MustFor[GetStatesRequest]() }
 
 func (t *getStates) Run(ctx context.Context, input json.RawMessage) (any, error) {
 	var req GetStatesRequest
@@ -190,9 +188,7 @@ func (*getState) Description() string {
 		"Returns the state value, all attributes, and timestamps."
 }
 
-func (*getState) InputSchema() (*jsonschema.Schema, error) {
-	return jsonschema.For[GetStateRequest](nil)
-}
+func (*getState) InputSchema() *jsonschema.Schema { return jsonschema.MustFor[GetStateRequest]() }
 
 func (t *getState) Run(ctx context.Context, input json.RawMessage) (any, error) {
 	var req GetStateRequest
@@ -221,9 +217,7 @@ func (*callService) Description() string {
 		"Returns the list of states that changed."
 }
 
-func (*callService) InputSchema() (*jsonschema.Schema, error) {
-	return jsonschema.For[CallServiceRequest](nil)
-}
+func (*callService) InputSchema() *jsonschema.Schema { return jsonschema.MustFor[CallServiceRequest]() }
 
 func (t *callService) Run(ctx context.Context, input json.RawMessage) (any, error) {
 	var req CallServiceRequest
@@ -259,9 +253,7 @@ func (*getServices) Description() string {
 		"Use this before calling ha_call_service if you are unsure which services are available."
 }
 
-func (*getServices) InputSchema() (*jsonschema.Schema, error) {
-	return jsonschema.For[GetServicesRequest](nil)
-}
+func (*getServices) InputSchema() *jsonschema.Schema { return jsonschema.MustFor[GetServicesRequest]() }
 
 func (t *getServices) Run(ctx context.Context, input json.RawMessage) (any, error) {
 	var req GetServicesRequest
@@ -313,9 +305,7 @@ func (*setState) Description() string {
 		"Useful for creating virtual sensors or updating helper entities."
 }
 
-func (*setState) InputSchema() (*jsonschema.Schema, error) {
-	return jsonschema.For[SetStateRequest](nil)
-}
+func (*setState) InputSchema() *jsonschema.Schema { return jsonschema.MustFor[SetStateRequest]() }
 
 func (t *setState) Run(ctx context.Context, input json.RawMessage) (any, error) {
 	var req SetStateRequest
@@ -344,9 +334,7 @@ func (*fireEvent) Description() string {
 		"This can trigger automations that listen for the specified event type."
 }
 
-func (*fireEvent) InputSchema() (*jsonschema.Schema, error) {
-	return jsonschema.For[FireEventRequest](nil)
-}
+func (*fireEvent) InputSchema() *jsonschema.Schema { return jsonschema.MustFor[FireEventRequest]() }
 
 func (t *fireEvent) Run(ctx context.Context, input json.RawMessage) (any, error) {
 	var req FireEventRequest
@@ -379,8 +367,8 @@ func (*renderTemplate) Description() string {
 		"'{{ as_timestamp(now()) - as_timestamp(states.sensor.last_motion.last_changed) | int }} seconds since motion'."
 }
 
-func (*renderTemplate) InputSchema() (*jsonschema.Schema, error) {
-	return jsonschema.For[RenderTemplateRequest](nil)
+func (*renderTemplate) InputSchema() *jsonschema.Schema {
+	return jsonschema.MustFor[RenderTemplateRequest]()
 }
 
 func (t *renderTemplate) Run(ctx context.Context, input json.RawMessage) (any, error) {

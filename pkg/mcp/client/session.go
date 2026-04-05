@@ -71,7 +71,12 @@ func (c *Client) refreshTools(ctx context.Context) {
 			return
 		}
 		for _, t := range result.Tools {
-			tools = append(tools, &mcpTool{t: t, client: c})
+			tools = append(tools, &mcpTool{
+				t:            t,
+				client:       c,
+				inputSchema:  schemaFromAny(t.InputSchema),
+				outputSchema: schemaFromAny(t.OutputSchema),
+			})
 		}
 		if cursor = result.NextCursor; cursor == "" {
 			break

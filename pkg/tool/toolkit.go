@@ -210,24 +210,9 @@ func (tk *Toolkit) Run(ctx context.Context, name string, input json.RawMessage) 
 
 	// Validate input against schema if provided
 	if len(input) > 0 {
-		inputSchema, err := tool.InputSchema()
-		if err != nil {
-			return nil, schema.ErrBadParameter.Withf("schema generation failed: %v", err)
-		}
-
+		inputSchema := tool.InputSchema()
 		if inputSchema != nil {
-			// Unmarshal into a map for validation
-			var mapInput map[string]any
-			if err := json.Unmarshal(input, &mapInput); err != nil {
-				return nil, schema.ErrBadParameter.Withf("failed to unmarshal JSON input: %v", err)
-			}
-
-			// Validate against schema
-			resolved, err := inputSchema.Resolve(nil)
-			if err != nil {
-				return nil, schema.ErrBadParameter.Withf("schema resolution failed: %v", err)
-			}
-			if err := resolved.Validate(mapInput); err != nil {
+			if err := inputSchema.Validate(input); err != nil {
 				return nil, schema.ErrBadParameter.Withf("input validation failed: %v", err)
 			}
 		}
@@ -250,24 +235,13 @@ func (tk *Toolkit) Run(ctx context.Context, name string, input json.RawMessage) 
 
 	// If application/json and output schema exists, validate content
 	if resource.Type() == types.ContentTypeJSON {
-		outputSchema, err := tool.OutputSchema()
-		if err != nil {
-			return nil, schema.ErrBadParameter.Withf("output schema generation failed: %v", err)
-		}
+		outputSchema := tool.OutputSchema()
 		if outputSchema != nil {
 			data, err := resource.Read(ctx)
 			if err != nil {
 				return nil, schema.ErrBadParameter.Withf("failed to read resource for validation: %v", err)
 			}
-			var mapOutput map[string]any
-			if err := json.Unmarshal(data, &mapOutput); err != nil {
-				return nil, schema.ErrBadParameter.Withf("failed to unmarshal JSON output: %v", err)
-			}
-			resolved, err := outputSchema.Resolve(nil)
-			if err != nil {
-				return nil, schema.ErrBadParameter.Withf("output schema resolution failed: %v", err)
-			}
-			if err := resolved.Validate(mapOutput); err != nil {
+			if err := outputSchema.Validate(data); err != nil {
 				return nil, schema.ErrBadParameter.Withf("output validation failed: %v", err)
 			}
 		}

@@ -3,12 +3,11 @@ package tool
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"testing"
 
 	// Packages
-	jsonschema "github.com/google/jsonschema-go/jsonschema"
 	llm "github.com/mutablelogic/go-llm"
+	jsonschema "github.com/mutablelogic/go-server/pkg/jsonschema"
 )
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -21,7 +20,7 @@ type simpleToolForTest struct {
 
 func (s *simpleToolForTest) Name() string                                          { return s.name }
 func (s *simpleToolForTest) Description() string                                   { return "test tool" }
-func (s *simpleToolForTest) InputSchema() (*jsonschema.Schema, error)              { return nil, nil }
+func (s *simpleToolForTest) InputSchema() *jsonschema.Schema                       { return nil }
 func (s *simpleToolForTest) Run(_ context.Context, _ json.RawMessage) (any, error) { return nil, nil }
 
 // richToolForTest extends simpleToolForTest with non-nil schemas and meta.
@@ -37,13 +36,9 @@ type richOutput struct {
 	Result string `json:"result" jsonschema:"Output result"`
 }
 
-func (r *richToolForTest) InputSchema() (*jsonschema.Schema, error) {
-	return jsonschema.For[richInput](nil)
-}
+func (r *richToolForTest) InputSchema() *jsonschema.Schema { return jsonschema.MustFor[richInput]() }
 
-func (r *richToolForTest) OutputSchema() (*jsonschema.Schema, error) {
-	return jsonschema.For[richOutput](nil)
-}
+func (r *richToolForTest) OutputSchema() *jsonschema.Schema { return jsonschema.MustFor[richOutput]() }
 
 func (r *richToolForTest) Meta() llm.ToolMeta {
 	t := true
@@ -52,15 +47,6 @@ func (r *richToolForTest) Meta() llm.ToolMeta {
 		ReadOnlyHint:  true,
 		OpenWorldHint: &t,
 	}
-}
-
-// errSchemaToolForTest returns an error from InputSchema to test error propagation.
-type errSchemaToolForTest struct {
-	simpleToolForTest
-}
-
-func (e *errSchemaToolForTest) InputSchema() (*jsonschema.Schema, error) {
-	return nil, errors.New("schema generation failed")
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -76,10 +62,7 @@ func Test_WithNamespace_001_name(t *testing.T) {
 func Test_WithNamespace_002_delegates_other_methods(t *testing.T) {
 	inner := &simpleToolForTest{name: "mytool"}
 	wrapped := WithNamespace("ns", inner)
-	s, err := wrapped.InputSchema()
-	if err != nil {
-		t.Fatal(err)
-	}
+	s := wrapped.InputSchema()
 	if s != nil {
 		t.Fatalf("expected nil schema from inner, got %v", s)
 	}
@@ -186,14 +169,5 @@ func Test_MarshalJSON_002_with_schemas_and_meta(t *testing.T) {
 	}
 	if got.Annotations.OpenWorldHint == nil || !*got.Annotations.OpenWorldHint {
 		t.Error("annotations.openWorldHint should be true")
-	}
-}
-
-func Test_MarshalJSON_003_input_schema_error_propagated(t *testing.T) {
-	inner := &errSchemaToolForTest{simpleToolForTest: simpleToolForTest{name: "errtool"}}
-	wrapped := WithNamespace("ns", inner)
-	_, err := json.Marshal(wrapped)
-	if err == nil {
-		t.Fatal("expected an error when InputSchema() fails, got nil")
 	}
 }
