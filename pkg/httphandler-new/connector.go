@@ -23,7 +23,7 @@ func ConnectorHandler(manager *llmmanager.Manager) (string, *jsonschema.Schema, 
 	return "connector", nil, httprequest.NewPathItem(
 		"Connector operations",
 		"List and create operations on connectors",
-		"Connector",
+		"Connectors",
 	).Post(
 		func(w http.ResponseWriter, r *http.Request) {
 			_ = createConnector(r.Context(), manager, w, r)
@@ -49,7 +49,7 @@ func ConnectorResourceHandler(manager *llmmanager.Manager) (string, *jsonschema.
 	return "connector/{url}", jsonschema.MustFor[schema.ConnectorURLSelector](), httprequest.NewPathItem(
 		"Connector operations",
 		"Get, update, and delete operations on connectors",
-		"Connector",
+		"Connectors",
 	).Get(
 		func(w http.ResponseWriter, r *http.Request) {
 			_ = getConnector(r.Context(), manager, w, r)

@@ -2,6 +2,32 @@ package schema
 
 import "testing"
 
+func TestAgentMetaTableCells(t *testing.T) {
+	agent := AgentMeta{
+		Name:        "builtin.alpha",
+		Title:       "Alpha Agent",
+		Description: "First line\nsecond line",
+		GeneratorMeta: GeneratorMeta{
+			Provider: "ollama",
+			Model:    "llama3",
+		},
+		Tools: []string{"builtin.search", "builtin.fetch"},
+	}
+
+	if got := agent.Header(); len(got) != 4 || got[1] != "DESCRIPTION" || got[2] != "MODEL" || got[3] != "TOOLS" {
+		t.Fatalf("unexpected headers: %v", got)
+	}
+	if got := agent.Cell(1); got != "Alpha Agent - First line second line" {
+		t.Fatalf("unexpected description cell: %q", got)
+	}
+	if got := agent.Cell(2); got != "ollama/llama3" {
+		t.Fatalf("unexpected model cell: %q", got)
+	}
+	if got := agent.Cell(3); got != "builtin.search, builtin.fetch" {
+		t.Fatalf("unexpected tools cell: %q", got)
+	}
+}
+
 func TestToolMetaTableCells(t *testing.T) {
 	tool := ToolMeta{
 		Name:        "builtin.alpha",

@@ -15,6 +15,7 @@ import (
 // TYPES
 
 type CLI struct {
+	llmcmd.AgentCommands
 	llmcmd.AskCommands
 	llmcmd.EmbeddingCommands
 	llmcmd.ConnectorCommands

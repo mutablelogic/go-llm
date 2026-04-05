@@ -22,7 +22,7 @@ func AskHandler(manager *llmmanager.Manager) (string, *jsonschema.Schema, httpre
 	return "ask", nil, httprequest.NewPathItem(
 		"Ask operations",
 		"Send a stateless prompt and get a response",
-		"Respond",
+		"Responses",
 	).Post(
 		func(w http.ResponseWriter, r *http.Request) {
 			_ = ask(r.Context(), manager, w, r)

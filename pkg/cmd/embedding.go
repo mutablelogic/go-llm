@@ -21,7 +21,7 @@ import (
 // TYPES
 
 type EmbeddingCommands struct {
-	Embedding EmbeddingCommand `cmd:"" name:"embedding" help:"Generate embedding vectors from input text or the first column of a CSV file." group:"RESPOND"`
+	Embedding EmbeddingCommand `cmd:"" name:"embedding" help:"Generate embedding vectors from input text or the first column of a CSV file." group:"RESPONSES"`
 }
 
 type EmbeddingCommand struct {

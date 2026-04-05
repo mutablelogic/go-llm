@@ -23,7 +23,7 @@ func ModelHandler(manager *llmmanager.Manager) (string, *jsonschema.Schema, http
 	return "model", nil, httprequest.NewPathItem(
 		"Model operations",
 		"List and download operations on models",
-		"Model",
+		"Models",
 	).Post(
 		func(w http.ResponseWriter, r *http.Request) {
 			_ = downloadModel(r.Context(), manager, w, r)
@@ -49,7 +49,7 @@ func ModelResourceHandler(manager *llmmanager.Manager) (string, *jsonschema.Sche
 	return "model/{name}", jsonschema.MustFor[schema.ModelNameSelector](), httprequest.NewPathItem(
 		"Model operations",
 		"Get and delete operations on models",
-		"Model",
+		"Models",
 	).Get(
 		func(w http.ResponseWriter, r *http.Request) {
 			_ = getModel(r.Context(), manager, w, r, "")
@@ -71,7 +71,7 @@ func ModelProviderResourceHandler(manager *llmmanager.Manager) (string, *jsonsch
 	return "model/{provider}/{name}", jsonschema.MustFor[schema.ModelProviderSelector](), httprequest.NewPathItem(
 		"Model operations",
 		"Get and delete operations on models with an explicit provider",
-		"Model",
+		"Models",
 	).Get(
 		func(w http.ResponseWriter, r *http.Request) {
 			_ = getModel(r.Context(), manager, w, r, r.PathValue("provider"))

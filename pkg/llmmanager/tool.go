@@ -2,6 +2,7 @@ package manager
 
 import (
 	"context"
+	"encoding/json"
 	"slices"
 
 	// Packages
@@ -10,6 +11,7 @@ import (
 	llm "github.com/mutablelogic/go-llm"
 	schema "github.com/mutablelogic/go-llm/pkg/schema"
 	toolkit "github.com/mutablelogic/go-llm/pkg/toolkit"
+	resource "github.com/mutablelogic/go-llm/pkg/toolkit/resource"
 	types "github.com/mutablelogic/go-server/pkg/types"
 	attribute "go.opentelemetry.io/otel/attribute"
 )
@@ -52,12 +54,48 @@ func (m *Manager) ListTools(ctx context.Context, req schema.ToolListRequest, use
 
 // GetTool returns tool metadata by name, scoped by the user's accessible namespaces.
 func (m *Manager) GetTool(ctx context.Context, name string, user *auth.User) (result *schema.ToolMeta, err error) {
+	// Otel span
 	ctx, endSpan := otel.StartSpan(m.tracer, ctx, "GetTool",
 		attribute.String("name", name),
 		attribute.String("user", types.Stringify(user)),
 	)
 	defer func() { endSpan(err) }()
 
+	// Filter tools by name, which may return multiple matches if the name is not fully qualified with a namespace.
+	tools, _, err := m.listTools(ctx, schema.ToolListRequest{Name: []string{name}}, user)
+	if err != nil {
+		return nil, err
+	}
+
+	// Return errors when number of matches is not exactly 1
+	if len(tools) == 0 {
+		return nil, schema.ErrNotFound.Withf("tool %q", name)
+	}
+	if len(tools) > 1 {
+		return nil, schema.ErrConflict.Withf("multiple tools matched %q; specify a fully-qualified tool name", name)
+	}
+
+	// Convert to response format
+	meta, err := newToolMeta(tools[0])
+	if err != nil {
+		return nil, err
+	}
+
+	// Return success
+	return &meta, nil
+}
+
+// CallTool executes a tool by name with the given input, scoped by the user's accessible namespaces.
+func (m *Manager) CallTool(ctx context.Context, name string, req schema.CallToolRequest, user *auth.User) (result llm.Resource, err error) {
+	// Otel span
+	ctx, endSpan := otel.StartSpan(m.tracer, ctx, "CallTool",
+		attribute.String("name", name),
+		attribute.String("request", req.String()),
+		attribute.String("user", types.Stringify(user)),
+	)
+	defer func() { endSpan(err) }()
+
+	// Filter tools by name, which may return multiple matches if the name is not fully qualified with a namespace.
 	tools, _, err := m.listTools(ctx, schema.ToolListRequest{Name: []string{name}}, user)
 	if err != nil {
 		return nil, err
@@ -69,12 +107,19 @@ func (m *Manager) GetTool(ctx context.Context, name string, user *auth.User) (re
 		return nil, schema.ErrConflict.Withf("multiple tools matched %q; specify a fully-qualified tool name", name)
 	}
 
-	meta, err := newToolMeta(tools[0])
-	if err != nil {
-		return nil, err
+	// Append the json input as a resource if provided, and call the tool
+	var resources []llm.Resource
+	if req.Input != nil {
+		input, err := resource.JSON("input", json.RawMessage(req.Input))
+		if err != nil {
+			return nil, err
+		}
+		resources = append(resources, input)
 	}
 
-	return &meta, nil
+	// Call the tool and return the resource directly so transport layers can
+	// preserve the original content type and payload.
+	return m.Toolkit.Call(ctx, tools[0], resources...)
 }
 
 ///////////////////////////////////////////////////////////////////////////////

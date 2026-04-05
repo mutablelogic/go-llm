@@ -18,11 +18,11 @@ import (
 // TYPES
 
 type ProviderCommands struct {
-	ListProviders  ListProvidersCommand  `cmd:"" name:"providers" help:"List providers." group:"PROVIDER MODELS"`
-	CreateProvider CreateProviderCommand `cmd:"" name:"provider-create" help:"Create a provider." group:"PROVIDER MODELS"`
-	DeleteProvider DeleteProviderCommand `cmd:"" name:"provider-delete" help:"Delete a provider by name." group:"PROVIDER MODELS"`
-	GetProvider    GetProviderCommand    `cmd:"" name:"provider" help:"Get a provider by name." group:"PROVIDER MODELS"`
-	UpdateProvider UpdateProviderCommand `cmd:"" name:"provider-update" help:"Update provider metadata." group:"PROVIDER MODELS"`
+	ListProviders  ListProvidersCommand  `cmd:"" name:"providers" help:"List providers." group:"PROVIDERS"`
+	CreateProvider CreateProviderCommand `cmd:"" name:"provider-create" help:"Create a provider." group:"PROVIDERS"`
+	DeleteProvider DeleteProviderCommand `cmd:"" name:"provider-delete" help:"Delete a provider by name." group:"PROVIDERS"`
+	GetProvider    GetProviderCommand    `cmd:"" name:"provider" help:"Get a provider by name." group:"PROVIDERS"`
+	UpdateProvider UpdateProviderCommand `cmd:"" name:"provider-update" help:"Update provider metadata." group:"PROVIDERS"`
 }
 
 type ListProvidersCommand struct {

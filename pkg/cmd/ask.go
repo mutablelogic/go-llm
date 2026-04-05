@@ -28,7 +28,7 @@ import (
 // TYPES
 
 type AskCommands struct {
-	Ask AskCommand `cmd:"" name:"ask" help:"Send a stateless text request to a model." group:"RESPOND"`
+	Ask AskCommand `cmd:"" name:"ask" help:"Send a stateless text request to a model." group:"RESPONSES"`
 }
 
 type AskCommand struct {

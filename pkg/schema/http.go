@@ -235,19 +235,11 @@ type ConnectorList struct {
 	Body  []*Connector `json:"body,omitzero"`
 }
 
-// CallToolRequest represents a request to call a tool directly
-type CallToolRequest struct {
-	Input json.RawMessage `json:"input,omitempty"`
-}
-
 // CallToolResponse represents the result of calling a tool
 type CallToolResponse struct {
 	Tool   string          `json:"tool"`
 	Result json.RawMessage `json:"result"`
 }
-
-////////////////////////////////////////////////////////////////////////////////
-// LIFECYCLE
 
 ////////////////////////////////////////////////////////////////////////////////
 // STRINGIFY
@@ -323,10 +315,6 @@ func (r ConnectorListRequest) String() string {
 }
 
 func (r ConnectorList) String() string {
-	return types.Stringify(r)
-}
-
-func (r CallToolRequest) String() string {
 	return types.Stringify(r)
 }
 

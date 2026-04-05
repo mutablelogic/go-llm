@@ -65,6 +65,12 @@ func (m *mcpTool) Meta() llm.ToolMeta {
 
 // Run passes input directly to CallTool, forwarding any session meta
 func (m *mcpTool) Run(ctx context.Context, input json.RawMessage) (any, error) {
+	if len(input) == 0 && m.inputSchema != nil {
+		if err := m.inputSchema.Validate(json.RawMessage(`{}`)); err != nil {
+			return nil, schema.ErrBadParameter.Withf("input validation failed: %v", err)
+		}
+	}
+
 	var metaVals []schema.MetaValue
 	if sess := toolkit.SessionFromContext(ctx); sess != nil {
 		for k, v := range sess.Meta() {

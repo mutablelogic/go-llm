@@ -18,10 +18,10 @@ import (
 // TYPES
 
 type ModelCommands struct {
-	ListModels    ListModelsCommand    `cmd:"" name:"models" help:"List models." group:"PROVIDER MODELS"`
-	DownloadModel DownloadModelCommand `cmd:"" name:"model-download" help:"Download a model." group:"PROVIDER MODELS"`
-	DeleteModel   DeleteModelCommand   `cmd:"" name:"model-delete" help:"Delete a model by name." group:"PROVIDER MODELS"`
-	GetModel      GetModelCommand      `cmd:"" name:"model" help:"Get a model by name." group:"PROVIDER MODELS"`
+	ListModels    ListModelsCommand    `cmd:"" name:"models" help:"List models." group:"MODELS"`
+	DownloadModel DownloadModelCommand `cmd:"" name:"model-download" help:"Download a model." group:"MODELS"`
+	DeleteModel   DeleteModelCommand   `cmd:"" name:"model-delete" help:"Delete a model by name." group:"MODELS"`
+	GetModel      GetModelCommand      `cmd:"" name:"model" help:"Get a model by name." group:"MODELS"`
 }
 
 type ListModelsCommand struct {

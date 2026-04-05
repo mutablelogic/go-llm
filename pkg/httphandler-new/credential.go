@@ -20,7 +20,7 @@ func CredentialHandler(manager *llmmanager.Manager) (string, *jsonschema.Schema,
 	return "credential", nil, httprequest.NewPathItem(
 		"Credential operations",
 		"Create operations on credentials",
-		"Connector",
+		"Connectors",
 	).Post(
 		func(w http.ResponseWriter, r *http.Request) {
 			_ = createCredential(r.Context(), manager, w, r)

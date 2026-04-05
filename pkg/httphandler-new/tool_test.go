@@ -1,6 +1,7 @@
 package httphandler
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"net/http"
@@ -13,6 +14,7 @@ import (
 	schema "github.com/mutablelogic/go-llm/pkg/schema"
 	toolkit "github.com/mutablelogic/go-llm/pkg/toolkit"
 	jsonschema "github.com/mutablelogic/go-server/pkg/jsonschema"
+	types "github.com/mutablelogic/go-server/pkg/types"
 )
 
 type toolHandlerMockTool struct {
@@ -21,6 +23,7 @@ type toolHandlerMockTool struct {
 	input       *jsonschema.Schema
 	output      *jsonschema.Schema
 	meta        llm.ToolMeta
+	run         func(context.Context, json.RawMessage) (any, error)
 }
 
 func (t *toolHandlerMockTool) Name() string                     { return t.name }
@@ -28,7 +31,10 @@ func (t *toolHandlerMockTool) Description() string              { return t.descr
 func (t *toolHandlerMockTool) InputSchema() *jsonschema.Schema  { return t.input }
 func (t *toolHandlerMockTool) OutputSchema() *jsonschema.Schema { return t.output }
 func (t *toolHandlerMockTool) Meta() llm.ToolMeta               { return t.meta }
-func (t *toolHandlerMockTool) Run(context.Context, json.RawMessage) (any, error) {
+func (t *toolHandlerMockTool) Run(ctx context.Context, input json.RawMessage) (any, error) {
+	if t.run != nil {
+		return t.run(ctx, input)
+	}
 	return nil, nil
 }
 
@@ -159,6 +165,143 @@ func TestGetToolNotFound(t *testing.T) {
 
 	if w.Code != http.StatusNotFound {
 		t.Fatalf("expected 404, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestGetToolUnescapesName(t *testing.T) {
+	manager := &llmmanager.Manager{Toolkit: mustToolToolkit(t)}
+	_, _, item := ToolResourceHandler(manager)
+
+	w := httptest.NewRecorder()
+	r := httptest.NewRequest(http.MethodGet, "/tool/builtin%2Ealpha", nil)
+	r.SetPathValue("name", "builtin%2Ealpha")
+	item.Handler().ServeHTTP(w, r)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+
+	var resp schema.ToolMeta
+	if err := json.NewDecoder(w.Body).Decode(&resp); err != nil {
+		t.Fatal(err)
+	}
+	if resp.Name != "builtin.alpha" {
+		t.Fatalf("expected unescaped tool name %q, got %q", "builtin.alpha", resp.Name)
+	}
+}
+
+func TestCallTool(t *testing.T) {
+	tk, err := toolkit.New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := tk.AddTool(
+		&toolHandlerMockTool{
+			name:   "alpha",
+			input:  jsonschema.MustFor[map[string]any](),
+			output: jsonschema.MustFor[map[string]any](),
+			run: func(_ context.Context, input json.RawMessage) (any, error) {
+				return input, nil
+			},
+		},
+	); err != nil {
+		t.Fatal(err)
+	}
+
+	manager := &llmmanager.Manager{Toolkit: tk}
+	_, _, item := ToolResourceHandler(manager)
+
+	w := httptest.NewRecorder()
+	r := httptest.NewRequest(http.MethodPost, "/tool/builtin.alpha", bytes.NewReader([]byte(`{"input":{"query":"docs"}}`)))
+	r.Header.Set(types.ContentTypeHeader, types.ContentTypeJSON)
+	r.SetPathValue("name", "builtin.alpha")
+	item.Handler().ServeHTTP(w, r)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+	if got := w.Header().Get(types.ContentTypeHeader); got != types.ContentTypeJSON {
+		t.Fatalf("expected content type %q, got %q", types.ContentTypeJSON, got)
+	}
+	if got := w.Header().Get(types.ContentPathHeader); got != "json:alpha" {
+		t.Fatalf("expected content path %q, got %q", "json:alpha", got)
+	}
+	if got := w.Header().Get(types.ContentNameHeader); got != "alpha" {
+		t.Fatalf("expected content name %q, got %q", "alpha", got)
+	}
+	if got := w.Header().Get(types.ContentDescriptionHeader); got != "" {
+		t.Fatalf("expected empty content description, got %q", got)
+	}
+	if got := w.Body.String(); got != `{"query":"docs"}` {
+		t.Fatalf("unexpected response body: %s", got)
+	}
+}
+
+func TestCallToolNoContent(t *testing.T) {
+	manager := &llmmanager.Manager{Toolkit: mustToolToolkit(t)}
+	_, _, item := ToolResourceHandler(manager)
+
+	w := httptest.NewRecorder()
+	r := httptest.NewRequest(http.MethodPost, "/tool/builtin.bravo", bytes.NewReader([]byte(`{"input":{}}`)))
+	r.Header.Set(types.ContentTypeHeader, types.ContentTypeJSON)
+	r.SetPathValue("name", "builtin.bravo")
+	item.Handler().ServeHTTP(w, r)
+
+	if w.Code != http.StatusNoContent {
+		t.Fatalf("expected 204, got %d: %s", w.Code, w.Body.String())
+	}
+	if w.Body.Len() != 0 {
+		t.Fatalf("expected empty body, got %q", w.Body.String())
+	}
+}
+
+func TestCallToolInvalidBody(t *testing.T) {
+	manager := &llmmanager.Manager{Toolkit: mustToolToolkit(t)}
+	_, _, item := ToolResourceHandler(manager)
+
+	w := httptest.NewRecorder()
+	r := httptest.NewRequest(http.MethodPost, "/tool/builtin.alpha", bytes.NewReader([]byte(`{"input":`)))
+	r.Header.Set(types.ContentTypeHeader, types.ContentTypeJSON)
+	r.SetPathValue("name", "builtin.alpha")
+	item.Handler().ServeHTTP(w, r)
+
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestCallToolUnescapesName(t *testing.T) {
+	tk, err := toolkit.New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := tk.AddTool(
+		&toolHandlerMockTool{
+			name:   "alpha",
+			input:  jsonschema.MustFor[map[string]any](),
+			output: jsonschema.MustFor[map[string]any](),
+			run: func(_ context.Context, input json.RawMessage) (any, error) {
+				return input, nil
+			},
+		},
+	); err != nil {
+		t.Fatal(err)
+	}
+
+	manager := &llmmanager.Manager{Toolkit: tk}
+	_, _, item := ToolResourceHandler(manager)
+
+	w := httptest.NewRecorder()
+	r := httptest.NewRequest(http.MethodPost, "/tool/builtin%2Ealpha", bytes.NewReader([]byte(`{"input":{"query":"docs"}}`)))
+	r.Header.Set(types.ContentTypeHeader, types.ContentTypeJSON)
+	r.SetPathValue("name", "builtin%2Ealpha")
+	item.Handler().ServeHTTP(w, r)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+	if got := w.Body.String(); got != `{"query":"docs"}` {
+		t.Fatalf("unexpected response body: %s", got)
 	}
 }
 

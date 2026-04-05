@@ -22,11 +22,11 @@ import (
 // TYPES
 
 type ConnectorCommands struct {
-	ListConnectors  ListConnectorsCommand  `cmd:"" name:"connectors" help:"List connectors." group:"CONNECTOR"`
-	CreateConnector CreateConnectorCommand `cmd:"" name:"connector-create" help:"Create a connector." group:"CONNECTOR"`
-	DeleteConnector DeleteConnectorCommand `cmd:"" name:"connector-delete" help:"Delete a connector by URL." group:"CONNECTOR"`
-	GetConnector    GetConnectorCommand    `cmd:"" name:"connector" help:"Get a connector by URL." group:"CONNECTOR"`
-	UpdateConnector UpdateConnectorCommand `cmd:"" name:"connector-update" help:"Update connector metadata." group:"CONNECTOR"`
+	ListConnectors  ListConnectorsCommand  `cmd:"" name:"connectors" help:"List connectors." group:"CONNECTORS"`
+	CreateConnector CreateConnectorCommand `cmd:"" name:"connector-create" help:"Create a connector." group:"CONNECTORS"`
+	DeleteConnector DeleteConnectorCommand `cmd:"" name:"connector-delete" help:"Delete a connector by URL." group:"CONNECTORS"`
+	GetConnector    GetConnectorCommand    `cmd:"" name:"connector" help:"Get a connector by URL." group:"CONNECTORS"`
+	UpdateConnector UpdateConnectorCommand `cmd:"" name:"connector-update" help:"Update connector metadata." group:"CONNECTORS"`
 }
 
 type ListConnectorsCommand struct {

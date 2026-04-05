@@ -3,8 +3,11 @@ package client
 import (
 	"context"
 	"encoding/json"
+	"errors"
+	"strings"
 
 	// Packages
+	jsonrpc "github.com/modelcontextprotocol/go-sdk/jsonrpc"
 	sdkmcp "github.com/modelcontextprotocol/go-sdk/mcp"
 	llm "github.com/mutablelogic/go-llm"
 	schema "github.com/mutablelogic/go-llm/pkg/schema"
@@ -120,6 +123,18 @@ func (c *Client) CallTool(ctx context.Context, name string, arguments json.RawMe
 	// Call the tool and convert the result to (any, error) using the pkg/tool
 	res, err := sess.CallTool(ctx, params)
 	if err != nil {
+		var rpcErr *jsonrpc.Error
+		if errors.As(err, &rpcErr) && rpcErr.Code == jsonrpc.CodeInvalidParams {
+			msg := strings.TrimSpace(rpcErr.Message)
+			prefix := "Invalid arguments for tool " + name + ":"
+			if strings.HasPrefix(msg, prefix) {
+				msg = strings.TrimSpace(strings.TrimPrefix(msg, prefix))
+			}
+			if msg == "" {
+				msg = "invalid tool arguments"
+			}
+			return nil, schema.ErrBadParameter.Withf("tool %q: %s", name, msg)
+		}
 		return nil, err
 	}
 	return callToolResult(res)

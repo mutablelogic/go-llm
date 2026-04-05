@@ -20,7 +20,7 @@ func ProviderHandler(manager *llmmanager.Manager) (string, *jsonschema.Schema, h
 	return "provider", nil, httprequest.NewPathItem(
 		"Provider operations",
 		"List and create operations on providers",
-		"Provider",
+		"Providers",
 	).Post(
 		func(w http.ResponseWriter, r *http.Request) {
 			_ = createProvider(r.Context(), manager, w, r)
@@ -44,7 +44,7 @@ func ProviderResourceHandler(manager *llmmanager.Manager) (string, *jsonschema.S
 	return "provider/{name}", nil, httprequest.NewPathItem(
 		"Provider operations",
 		"Get, update, and delete operations on providers",
-		"Provider",
+		"Providers",
 	).Get(
 		func(w http.ResponseWriter, r *http.Request) {
 			_ = getProvider(r.Context(), manager, w, r)

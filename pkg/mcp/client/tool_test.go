@@ -9,6 +9,8 @@ import (
 	// Packages
 	llm "github.com/mutablelogic/go-llm"
 	mock "github.com/mutablelogic/go-llm/pkg/mcp/mock"
+	schema "github.com/mutablelogic/go-llm/pkg/schema"
+	jsonschema "github.com/mutablelogic/go-server/pkg/jsonschema"
 )
 
 // Test_tool_001: CallTool returns a JSON object as json.RawMessage.
@@ -131,5 +133,38 @@ func Test_tool_004(t *testing.T) {
 	}
 	if meta.OpenWorldHint == nil || !*meta.OpenWorldHint {
 		t.Errorf("expected openworld hint, got %+v", meta.OpenWorldHint)
+	}
+}
+
+// Test_tool_005: CallTool returns ErrBadParameter when required input is missing.
+func Test_tool_005(t *testing.T) {
+	type args struct {
+		URL string `json:"url"`
+	}
+	_, c := newTestServer(t, "required-server", "1.0.0",
+		&mock.MockTool{
+			Name_:        "fetch",
+			Description_: "fetches a url",
+			InputSchema_: jsonschema.MustFor[args](),
+			Result_:      "ok",
+		},
+	)
+	cancel := runClient(t, c)
+	defer cancel()
+
+	tools, err := c.ListTools(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(tools) != 1 {
+		t.Fatalf("expected 1 tool, got %d", len(tools))
+	}
+
+	_, err = tools[0].Run(t.Context(), nil)
+	if !errors.Is(err, schema.ErrBadParameter) {
+		t.Fatalf("expected ErrBadParameter, got %v", err)
+	}
+	if err == nil || err.Error() != `bad parameter: input validation failed: validating root: required: missing properties: ["url"]` {
+		t.Fatalf("unexpected error: %v", err)
 	}
 }

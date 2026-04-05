@@ -151,7 +151,11 @@ func (tk *toolkit) callTool(ctx context.Context, t llm.Tool, resources ...llm.Re
 		}
 		wrapped = r
 	default:
-		return nil, schema.ErrBadParameter.Withf("tool output must be nil, llm.Resource, json.RawMessage, []byte, or string, got %T", result)
+		r, err := resource.JSON(baseTool.Name(), v)
+		if err != nil {
+			return nil, schema.ErrBadParameter.Withf("tool output must be nil, llm.Resource, string, []byte, or a JSON-marshalable value, got %T", result)
+		}
+		wrapped = r
 	}
 
 	// If there isn't an output schema, return the wrapped resource as-is.

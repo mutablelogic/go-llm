@@ -23,6 +23,7 @@ type listToolsMockTool struct {
 	input       *jsonschema.Schema
 	output      *jsonschema.Schema
 	meta        llm.ToolMeta
+	run         func(context.Context, json.RawMessage) (any, error)
 }
 
 func (t *listToolsMockTool) Name() string                     { return t.name }
@@ -30,7 +31,10 @@ func (t *listToolsMockTool) Description() string              { return t.descrip
 func (t *listToolsMockTool) InputSchema() *jsonschema.Schema  { return t.input }
 func (t *listToolsMockTool) OutputSchema() *jsonschema.Schema { return t.output }
 func (t *listToolsMockTool) Meta() llm.ToolMeta               { return t.meta }
-func (t *listToolsMockTool) Run(context.Context, json.RawMessage) (any, error) {
+func (t *listToolsMockTool) Run(ctx context.Context, input json.RawMessage) (any, error) {
+	if t.run != nil {
+		return t.run(ctx, input)
+	}
 	return nil, nil
 }
 
@@ -94,6 +98,37 @@ func TestGetToolNotFound(t *testing.T) {
 	m := newListToolsManager(t)
 
 	if _, err := m.GetTool(context.Background(), "builtin.missing", nil); err == nil {
+		t.Fatal("expected not found error, got nil")
+	}
+}
+
+func TestCallTool(t *testing.T) {
+	m := newListToolsManager(t)
+	req := schema.CallToolRequest{Input: json.RawMessage(`{"query":"docs"}`)}
+
+	resp, err := m.CallTool(context.Background(), "builtin.alpha", req, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if resp == nil {
+		t.Fatal("expected tool resource, got nil")
+	}
+	if resp.Name() != "alpha" {
+		t.Fatalf("expected resource name %q, got %q", "alpha", resp.Name())
+	}
+	result, err := resp.Read(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(result) != string(req.Input) {
+		t.Fatalf("expected echoed result %s, got %s", string(req.Input), string(result))
+	}
+}
+
+func TestCallToolNotFound(t *testing.T) {
+	m := newListToolsManager(t)
+
+	if _, err := m.CallTool(context.Background(), "builtin.missing", schema.CallToolRequest{}, nil); err == nil {
 		t.Fatal("expected not found error, got nil")
 	}
 }
@@ -243,6 +278,58 @@ func TestGetToolWithUserScopedNamespaces(t *testing.T) {
 	}
 }
 
+func TestCallToolWithUserScopedNamespaces(t *testing.T) {
+	conn, m := newIntegrationManager(t)
+	ctx := llmtest.Context(t)
+
+	if err := m.Exec(ctx, `TRUNCATE llm.connector CASCADE`); err != nil {
+		t.Fatal(err)
+	}
+
+	publicNamespace := "publictoolcall"
+	privateNamespace := "privatetoolcall"
+	publicURL := llmtest.ConnectorURL(t, "call-tool-public")
+	privateURL := llmtest.ConnectorURL(t, "call-tool-private")
+	if _, _, _, err := m.CreateConnector(ctx, schema.ConnectorInsert{
+		URL:           publicURL,
+		ConnectorMeta: schema.ConnectorMeta{Namespace: types.Ptr(publicNamespace)},
+	}, nil); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, _, err := m.CreateConnector(ctx, schema.ConnectorInsert{
+		URL:           privateURL,
+		ConnectorMeta: schema.ConnectorMeta{Namespace: types.Ptr(privateNamespace), Groups: conn.Config.Groups},
+	}, llmtest.AdminUser(conn)); err != nil {
+		t.Fatal(err)
+	}
+
+	llmtest.WaitUntil(t, 5*time.Second, func() bool {
+		resp, err := m.Toolkit.List(ctx, toolkit.ListRequest{Type: toolkit.ListTypeTools})
+		if err != nil {
+			return false
+		}
+		return resp.Count >= 2
+	}, "timed out waiting for connector tools to appear in toolkit")
+
+	resp, err := m.CallTool(ctx, "remote_tool", schema.CallToolRequest{}, llmtest.User(conn))
+	if err != nil {
+		t.Fatalf("expected public connector tool call to succeed: %v", err)
+	}
+	if resp == nil {
+		t.Fatal("expected remote tool call to return a resource")
+	}
+
+	if _, err := m.CallTool(ctx, privateNamespace+".remote_tool", schema.CallToolRequest{}, llmtest.User(conn)); err == nil {
+		t.Fatal("expected private connector tool call to be denied")
+	}
+	if _, err := m.CallTool(ctx, "remote_tool", schema.CallToolRequest{}, llmtest.AdminUser(conn)); err == nil {
+		t.Fatal("expected bare remote tool call to be ambiguous for admin")
+	}
+	if _, err := m.CallTool(ctx, privateNamespace+".remote_tool", schema.CallToolRequest{}, llmtest.AdminUser(conn)); err != nil {
+		t.Fatalf("expected admin private connector tool call to succeed: %v", err)
+	}
+}
+
 func TestToolNamespacesForUserPagesAllConnectors(t *testing.T) {
 	conn, m := newIntegrationManager(t)
 	ctx := llmtest.Context(t)
@@ -294,7 +381,16 @@ func newListToolsManager(t *testing.T) *Manager {
 	}
 	if err := tk.AddTool(
 		&listToolsMockTool{name: "charlie", description: "C"},
-		&listToolsMockTool{name: "alpha", description: "A", input: jsonschema.MustFor[map[string]any](), output: jsonschema.MustFor[string](), meta: llm.ToolMeta{Title: "Alpha Tool", ReadOnlyHint: true, IdempotentHint: true}},
+		&listToolsMockTool{
+			name:        "alpha",
+			description: "A",
+			input:       jsonschema.MustFor[map[string]any](),
+			output:      jsonschema.MustFor[map[string]any](),
+			meta:        llm.ToolMeta{Title: "Alpha Tool", ReadOnlyHint: true, IdempotentHint: true},
+			run: func(_ context.Context, input json.RawMessage) (any, error) {
+				return input, nil
+			},
+		},
 		&listToolsMockTool{name: "bravo", description: "B"},
 	); err != nil {
 		t.Fatal(err)

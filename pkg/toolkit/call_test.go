@@ -171,16 +171,42 @@ func Test_Call_011_tool_returns_resource(t *testing.T) {
 	}
 }
 
-func Test_Call_012_tool_returns_bad_type(t *testing.T) {
+func Test_Call_012_tool_returns_json_marshable_value(t *testing.T) {
 	tk, _ := New()
-	tool := &callableTool{name: "greet", result: 12345}
+	tool := &callableTool{name: "greet", result: map[string]any{"answer": 42.0, "ok": true}}
+	res, err := tk.Call(context.Background(), tool)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res == nil {
+		t.Fatal("expected non-nil resource")
+	}
+	if res.Type() != "application/json" {
+		t.Fatalf("expected application/json, got %q", res.Type())
+	}
+	data, err := res.Read(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got map[string]any
+	if err := json.Unmarshal(data, &got); err != nil {
+		t.Fatal(err)
+	}
+	if got["answer"] != 42.0 || got["ok"] != true {
+		t.Fatalf("unexpected JSON output: %+v", got)
+	}
+}
+
+func Test_Call_013_tool_returns_bad_type(t *testing.T) {
+	tk, _ := New()
+	tool := &callableTool{name: "greet", result: func() {}}
 	_, err := tk.Call(context.Background(), tool)
 	if !errors.Is(err, schema.ErrBadParameter) {
 		t.Fatalf("expected ErrBadParameter, got %v", err)
 	}
 }
 
-func Test_Call_013_tool_propagates_run_error(t *testing.T) {
+func Test_Call_014_tool_propagates_run_error(t *testing.T) {
 	tk, _ := New()
 	tool := &callableTool{name: "fail", err: errors.New("boom")}
 	_, err := tk.Call(context.Background(), tool)
@@ -192,7 +218,7 @@ func Test_Call_013_tool_propagates_run_error(t *testing.T) {
 ///////////////////////////////////////////////////////////////////////////////
 // callTool — resource input validation
 
-func Test_Call_014_too_many_resources(t *testing.T) {
+func Test_Call_015_too_many_resources(t *testing.T) {
 	tk, _ := New()
 	tool := &callableTool{name: "greet"}
 	r1, _ := resource.Text("a", "x")
@@ -203,7 +229,7 @@ func Test_Call_014_too_many_resources(t *testing.T) {
 	}
 }
 
-func Test_Call_015_nil_resource(t *testing.T) {
+func Test_Call_016_nil_resource(t *testing.T) {
 	tk, _ := New()
 	tool := &callableTool{name: "greet"}
 	_, err := tk.Call(context.Background(), tool, nil)
@@ -212,7 +238,7 @@ func Test_Call_015_nil_resource(t *testing.T) {
 	}
 }
 
-func Test_Call_016_non_json_resource(t *testing.T) {
+func Test_Call_017_non_json_resource(t *testing.T) {
 	tk, _ := New()
 	tool := &callableTool{name: "greet"}
 	r, _ := resource.Text("input", "not json")
@@ -222,7 +248,7 @@ func Test_Call_016_non_json_resource(t *testing.T) {
 	}
 }
 
-func Test_Call_017_json_resource_input(t *testing.T) {
+func Test_Call_018_json_resource_input(t *testing.T) {
 	tk, _ := New()
 	tool := &callableTool{name: "greet", result: "ok"}
 	r, _ := resource.JSON("input", map[string]string{"name": "world"})

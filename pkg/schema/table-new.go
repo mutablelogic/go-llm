@@ -9,6 +9,47 @@ import (
 )
 
 ///////////////////////////////////////////////////////////////////////////////
+// AGENT TABLE
+
+func (AgentMeta) Header() []string {
+	return []string{"NAME", "DESCRIPTION", "MODEL", "TOOLS"}
+}
+
+func (AgentMeta) Width(i int) int {
+	switch i {
+	case 0:
+		return 24
+	case 1:
+		return 40
+	case 2:
+		return 24
+	case 3:
+		return 24
+	}
+	return 0
+}
+
+func (a AgentMeta) Cell(i int) string {
+	switch i {
+	case 0:
+		return a.Name
+	case 1:
+		return toolDescription(ToolMeta{Title: a.Title, Description: a.Description})
+	case 2:
+		if a.Provider != "" && a.Model != "" {
+			return a.Provider + "/" + a.Model
+		}
+		if a.Model != "" {
+			return a.Model
+		}
+		return a.Provider
+	case 3:
+		return strings.Join(a.Tools, ", ")
+	}
+	return ""
+}
+
+///////////////////////////////////////////////////////////////////////////////
 // PROVIDER TABLE
 
 func (t Provider) Header() []string {

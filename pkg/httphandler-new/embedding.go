@@ -21,7 +21,7 @@ func EmbeddingHandler(manager *llmmanager.Manager) (string, *jsonschema.Schema, 
 	return "embedding", nil, httprequest.NewPathItem(
 		"Embedding operations",
 		"Generate embedding vectors for text input",
-		"Respond",
+		"Responses",
 	).Post(
 		func(w http.ResponseWriter, r *http.Request) {
 			_ = embedding(r.Context(), manager, w, r)
