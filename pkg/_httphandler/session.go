@@ -19,12 +19,12 @@ import (
 // Path: session
 func SessionHandler(manager *manager.Manager) (string, http.HandlerFunc, *openapi.PathItem) {
 	sessionMetaSchema, _ := jsonschema.For[schema.SessionMeta]()
-	listRespSchema, _ := jsonschema.For[schema.ListSessionResponse]()
+	listRespSchema, _ := jsonschema.For[schema.SessionList]()
 	sessionSchema, _ := jsonschema.For[schema.Session]()
 	return "session", func(w http.ResponseWriter, r *http.Request) {
 			switch r.Method {
 			case http.MethodGet:
-				var req schema.ListSessionRequest
+				var req schema.SessionListRequest
 				if err := httprequest.Query(r.URL.Query(), &req); err != nil {
 					_ = httpresponse.Error(w, err)
 					return

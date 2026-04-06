@@ -257,6 +257,24 @@ func Test_List_Prompts_002_name_filter(t *testing.T) {
 	}
 }
 
+func Test_List_Prompts_002a_bare_name_filter(t *testing.T) {
+	tk, _ := New()
+	_ = tk.AddPrompt(&mockPrompt{name: "summarize"}, &mockPrompt{name: "translate"})
+	resp, err := tk.List(context.Background(), ListRequest{
+		Type: ListTypePrompts,
+		Name: []string{"summarize"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(resp.Prompts) != 1 {
+		t.Fatalf("expected 1 prompt, got %d", len(resp.Prompts))
+	}
+	if resp.Prompts[0].Name() != BuiltinNamespace+".summarize" {
+		t.Fatalf("expected prompt %q, got %q", BuiltinNamespace+".summarize", resp.Prompts[0].Name())
+	}
+}
+
 func Test_List_Prompts_003_unknown_namespace(t *testing.T) {
 	tk, _ := New()
 	_ = tk.AddPrompt(&mockPrompt{name: "summarize"})

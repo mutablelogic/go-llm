@@ -6,6 +6,7 @@ import (
 
 	// Packages
 	client "github.com/mutablelogic/go-client"
+	llm "github.com/mutablelogic/go-llm"
 	schema "github.com/mutablelogic/go-llm/pkg/schema"
 )
 
@@ -34,4 +35,27 @@ func (c *Client) GetAgent(ctx context.Context, name string) (*schema.AgentMeta, 
 	}
 
 	return &response, nil
+}
+
+// CallAgent executes an agent and returns the raw result as an llm.Resource.
+func (c *Client) CallAgent(ctx context.Context, name string, req schema.CallAgentRequest) (llm.Resource, error) {
+	if name == "" {
+		return nil, fmt.Errorf("agent name cannot be empty")
+	}
+
+	payload, err := client.NewJSONRequest(req)
+	if err != nil {
+		return nil, err
+	}
+
+	resource := new(resource)
+	err = c.DoWithContext(ctx, payload, resource, client.OptPath("agent", name))
+	if err != nil {
+		return nil, err
+	}
+	if resource.empty() {
+		return nil, nil
+	}
+
+	return resource, nil
 }

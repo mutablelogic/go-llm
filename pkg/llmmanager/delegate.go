@@ -49,8 +49,14 @@ func (d *delegate) OnEvent(evt toolkit.ConnectorEvent) {
 }
 
 // Call executes a prompt via the manager, passing optional input resources.
-func (d *delegate) Call(context.Context, llm.Prompt, ...llm.Resource) (llm.Resource, error) {
-	return nil, fmt.Errorf("Call is not implemented")
+func (d *delegate) Call(ctx context.Context, prompt llm.Prompt, resources ...llm.Resource) (llm.Resource, error) {
+	// Let's prepare the prompt and options, then return an error since we haven't implemented this yet
+	// TODO
+	content, opts, err := prompt.Prepare(ctx, nil)
+	if err != nil {
+		return nil, err
+	}
+	return nil, fmt.Errorf("Call is not implemented with content %v and options %v", content, opts)
 }
 
 // CreateConnector is called to create a new connector for the given URL.

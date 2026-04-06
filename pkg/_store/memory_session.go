@@ -63,7 +63,7 @@ func (m *MemorySessionStore) GetSession(_ context.Context, id string) (*schema.S
 
 // ListSessions returns sessions, ordered by last modified time (most recent first),
 // with pagination support.
-func (m *MemorySessionStore) ListSessions(_ context.Context, req schema.ListSessionRequest) (*schema.ListSessionResponse, error) {
+func (m *MemorySessionStore) ListSessions(_ context.Context, req schema.SessionListRequest) (*schema.SessionList, error) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 
@@ -80,7 +80,7 @@ func (m *MemorySessionStore) ListSessions(_ context.Context, req schema.ListSess
 	})
 
 	body, total := paginate(result, req.Offset, req.Limit)
-	return &schema.ListSessionResponse{
+	return &schema.SessionList{
 		Count:  total,
 		Offset: req.Offset,
 		Limit:  req.Limit,

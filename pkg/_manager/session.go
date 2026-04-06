@@ -62,7 +62,7 @@ func (m *Manager) DeleteSession(ctx context.Context, session string) (result *sc
 }
 
 // ListSessions returns sessions with pagination support.
-func (m *Manager) ListSessions(ctx context.Context, req schema.ListSessionRequest) (result *schema.ListSessionResponse, err error) {
+func (m *Manager) ListSessions(ctx context.Context, req schema.SessionListRequest) (result *schema.SessionList, err error) {
 	// Otel span
 	ctx, endSpan := otel.StartSpan(m.tracer, ctx, "ListSessions",
 		attribute.String("request", req.String()),

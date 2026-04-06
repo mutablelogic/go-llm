@@ -16,7 +16,7 @@ import (
 
 // ListSessions returns a list of all sessions.
 // Use WithLimit and WithOffset to paginate results.
-func (c *Client) ListSessions(ctx context.Context, opts ...opt.Opt) (*schema.ListSessionResponse, error) {
+func (c *Client) ListSessions(ctx context.Context, opts ...opt.Opt) (*schema.SessionList, error) {
 	// Apply options
 	o, err := opt.Apply(opts...)
 	if err != nil {
@@ -31,7 +31,7 @@ func (c *Client) ListSessions(ctx context.Context, opts ...opt.Opt) (*schema.Lis
 	}
 
 	// Perform request
-	var response schema.ListSessionResponse
+	var response schema.SessionList
 	if err := c.DoWithContext(ctx, req, &response, reqOpts...); err != nil {
 		return nil, err
 	}

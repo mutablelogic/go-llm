@@ -37,7 +37,7 @@ func Test_session_001(t *testing.T) {
 	assert.NoError(err)
 	assert.Equal(s.ID, deleted.ID)
 
-	resp, err := m.ListSessions(context.TODO(), schema.ListSessionRequest{})
+	resp, err := m.ListSessions(context.TODO(), schema.SessionListRequest{})
 	assert.NoError(err)
 	assert.Equal(uint(0), resp.Count)
 }
@@ -195,7 +195,7 @@ func Test_session_010(t *testing.T) {
 	_, err = m.CreateSession(context.TODO(), schema.SessionMeta{Name: "third", GeneratorMeta: schema.GeneratorMeta{Model: "model-1"}})
 	assert.NoError(err)
 
-	resp, err := m.ListSessions(context.TODO(), schema.ListSessionRequest{})
+	resp, err := m.ListSessions(context.TODO(), schema.SessionListRequest{})
 	assert.NoError(err)
 	assert.Equal(uint(3), resp.Count)
 	assert.Len(resp.Body, 3)
@@ -216,7 +216,7 @@ func Test_session_011(t *testing.T) {
 		assert.NoError(err)
 	}
 
-	resp, err := m.ListSessions(context.TODO(), schema.ListSessionRequest{Limit: types.Ptr(uint(2))})
+	resp, err := m.ListSessions(context.TODO(), schema.SessionListRequest{Limit: types.Ptr(uint(2))})
 	assert.NoError(err)
 	assert.Equal(uint(5), resp.Count)
 	assert.Len(resp.Body, 2)
@@ -232,7 +232,7 @@ func Test_session_012(t *testing.T) {
 	)
 	assert.NoError(err)
 
-	resp, err := m.ListSessions(context.TODO(), schema.ListSessionRequest{})
+	resp, err := m.ListSessions(context.TODO(), schema.SessionListRequest{})
 	assert.NoError(err)
 	assert.Equal(uint(0), resp.Count)
 	assert.Empty(resp.Body)
@@ -253,7 +253,7 @@ func Test_session_013(t *testing.T) {
 		assert.NoError(err)
 	}
 
-	resp, err := m.ListSessions(context.TODO(), schema.ListSessionRequest{Offset: 3})
+	resp, err := m.ListSessions(context.TODO(), schema.SessionListRequest{Offset: 3})
 	assert.NoError(err)
 	assert.Equal(uint(5), resp.Count)
 	assert.Len(resp.Body, 2)
@@ -274,7 +274,7 @@ func Test_session_014(t *testing.T) {
 		assert.NoError(err)
 	}
 
-	resp, err := m.ListSessions(context.TODO(), schema.ListSessionRequest{Offset: 1, Limit: types.Ptr(uint(2))})
+	resp, err := m.ListSessions(context.TODO(), schema.SessionListRequest{Offset: 1, Limit: types.Ptr(uint(2))})
 	assert.NoError(err)
 	assert.Equal(uint(5), resp.Count)
 	assert.Equal(uint(1), resp.Offset)
@@ -441,19 +441,19 @@ func Test_session_022(t *testing.T) {
 	assert.NoError(err)
 
 	// Filter by ui:telegram
-	resp, err := m.ListSessions(context.TODO(), schema.ListSessionRequest{Label: []string{"ui:telegram"}})
+	resp, err := m.ListSessions(context.TODO(), schema.SessionListRequest{Label: []string{"ui:telegram"}})
 	assert.NoError(err)
 	assert.Len(resp.Body, 1)
 	assert.Equal("telegram-chat", resp.Body[0].Name)
 
 	// Filter by ui:web
-	resp, err = m.ListSessions(context.TODO(), schema.ListSessionRequest{Label: []string{"ui:web"}})
+	resp, err = m.ListSessions(context.TODO(), schema.SessionListRequest{Label: []string{"ui:web"}})
 	assert.NoError(err)
 	assert.Len(resp.Body, 1)
 	assert.Equal("web-chat", resp.Body[0].Name)
 
 	// No filter returns all
-	resp, err = m.ListSessions(context.TODO(), schema.ListSessionRequest{})
+	resp, err = m.ListSessions(context.TODO(), schema.SessionListRequest{})
 	assert.NoError(err)
 	assert.Len(resp.Body, 3)
 }

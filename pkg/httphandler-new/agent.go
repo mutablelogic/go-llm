@@ -36,7 +36,7 @@ func AgentHandler(manager *llmmanager.Manager) (string, *jsonschema.Schema, http
 func AgentResourceHandler(manager *llmmanager.Manager) (string, *jsonschema.Schema, httprequest.PathItem) {
 	return "agent/{name}", nil, httprequest.NewPathItem(
 		"Agent operations",
-		"Get operations on agents",
+		"Get and call operations on agents",
 		"Tools & Agents",
 	).Get(
 		func(w http.ResponseWriter, r *http.Request) {
@@ -45,6 +45,18 @@ func AgentResourceHandler(manager *llmmanager.Manager) (string, *jsonschema.Sche
 		"Get agent",
 		opts.WithJSONResponse(200, jsonschema.MustFor[schema.AgentMeta]()),
 		opts.WithErrorResponse(400, "Invalid agent path parameter."),
+		opts.WithErrorResponse(404, "Agent not found."),
+		opts.WithErrorResponse(409, "Multiple agents matched; specify a fully-qualified agent name."),
+	).Post(
+		func(w http.ResponseWriter, r *http.Request) {
+			_ = callAgent(r.Context(), manager, w, r)
+		},
+		"Call agent",
+		opts.WithJSONRequest(jsonschema.MustFor[schema.CallAgentRequest]()),
+		opts.WithResponse(200, "application/json", jsonschema.MustFor[map[string]any](), "Agent result returned as raw resource content. Actual content type may vary by agent."),
+		opts.WithResponse(200, "text/plain", jsonschema.MustFor[string](), "Agent result returned as raw text content. Actual content type may vary by agent."),
+		opts.WithNoContentResponse(204, "Agent returned no content."),
+		opts.WithErrorResponse(400, "Invalid request body, path parameter, or agent call failure."),
 		opts.WithErrorResponse(404, "Agent not found."),
 		opts.WithErrorResponse(409, "Multiple agents matched; specify a fully-qualified agent name."),
 	)
@@ -79,4 +91,23 @@ func getAgent(ctx context.Context, manager *llmmanager.Manager, w http.ResponseW
 	}
 
 	return httpresponse.JSON(w, http.StatusOK, httprequest.Indent(r), agent)
+}
+
+func callAgent(ctx context.Context, manager *llmmanager.Manager, w http.ResponseWriter, r *http.Request) error {
+	name, err := unescapePathValue(r, "name")
+	if err != nil {
+		return httpresponse.Error(w, httpresponse.ErrBadRequest, err)
+	}
+
+	var req schema.CallAgentRequest
+	if err := httprequest.Read(r, &req); err != nil {
+		return httpresponse.Error(w, httpresponse.ErrBadRequest, err)
+	}
+
+	resource, err := manager.CallAgent(ctx, name, req, middleware.UserFromContext(ctx))
+	if err != nil {
+		return httpresponse.Error(w, schema.HTTPErr(err))
+	}
+
+	return writeToolResource(ctx, w, resource)
 }

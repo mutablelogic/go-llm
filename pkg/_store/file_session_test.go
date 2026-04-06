@@ -83,7 +83,7 @@ func Test_file_session_006(t *testing.T) {
 	})
 	os.WriteFile(filepath.Join(dir, "notes.txt"), []byte("hello"), 0o600)
 	os.Mkdir(filepath.Join(dir, "subdir"), 0o700)
-	resp, err := s.ListSessions(context.TODO(), schema.ListSessionRequest{})
+	resp, err := s.ListSessions(context.TODO(), schema.SessionListRequest{})
 	assert.NoError(err)
 	assert.Len(resp.Body, 1)
 }
@@ -98,7 +98,7 @@ func Test_file_session_007(t *testing.T) {
 		GeneratorMeta: schema.GeneratorMeta{Model: "test-model", Provider: "test-provider"},
 	})
 	os.WriteFile(filepath.Join(dir, "bad-id.json"), []byte("{corrupt"), 0o600)
-	resp, err := s.ListSessions(context.TODO(), schema.ListSessionRequest{})
+	resp, err := s.ListSessions(context.TODO(), schema.SessionListRequest{})
 	assert.NoError(err)
 	assert.Len(resp.Body, 1)
 	assert.Equal("good", resp.Body[0].Name)

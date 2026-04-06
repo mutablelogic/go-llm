@@ -51,19 +51,19 @@ func Prepare(agent *schema.Agent, parentID string, defaults schema.GeneratorMeta
 	}
 
 	// Build session labels
-	labels := map[string]string{
-		"agent":    agent.Name + "@" + strconv.FormatUint(uint64(agent.Version), 10),
-		"agent_id": agent.ID,
+	tags := []string{
+		"agent:" + agent.Name + "@" + strconv.FormatUint(uint64(agent.Version), 10),
+		"agent_id:" + agent.ID,
 	}
 	if parentID != "" {
-		labels["parent"] = parentID
+		tags = append(tags, "parent:"+parentID)
 	}
 
 	return &PrepareResult{
 		SessionMeta: schema.SessionMeta{
 			GeneratorMeta: meta,
-			Name:          agent.Name,
-			Labels:        labels,
+			Title:         agent.Name,
+			Tags:          tags,
 		},
 		Text:  text,
 		Tools: agent.Tools,
@@ -136,26 +136,5 @@ func executeTemplate(name, tmplText string, data map[string]any) (string, error)
 // mergeGeneratorMeta merges two GeneratorMeta values. Fields from the agent
 // take precedence; defaults fill in any blank fields.
 func mergeGeneratorMeta(agent, defaults schema.GeneratorMeta) schema.GeneratorMeta {
-	result := agent
-
-	if result.Provider == "" {
-		result.Provider = defaults.Provider
-	}
-	if result.Model == "" {
-		result.Model = defaults.Model
-	}
-	if result.SystemPrompt == "" {
-		result.SystemPrompt = defaults.SystemPrompt
-	}
-	if len(result.Format) == 0 {
-		result.Format = defaults.Format
-	}
-	if result.Thinking == nil {
-		result.Thinking = defaults.Thinking
-	}
-	if result.ThinkingBudget == 0 {
-		result.ThinkingBudget = defaults.ThinkingBudget
-	}
-
-	return result
+	return schema.MergeGeneratorMeta(agent, defaults)
 }

@@ -22,7 +22,7 @@ input:
     - text
     - target_language
   additionalProperties: false
-format:
+output:
   type: object
   properties:
     translated_text:

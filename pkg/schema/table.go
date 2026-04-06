@@ -71,8 +71,13 @@ func (t SessionTable) Row(i int) []any {
 	if n := len(s.Messages); n > 0 {
 		messages = fmt.Sprintf("%d (%d tokens)", n, s.Tokens())
 	}
-	row := []any{s.Name, s.ID, s.Model, messages, s.Modified}
-	if t.CurrentSession != "" && s.ID == t.CurrentSession {
+	generator := s.Generator()
+	modified := any(s.CreatedAt)
+	if s.ModifiedAt != nil {
+		modified = *s.ModifiedAt
+	}
+	row := []any{s.Title, s.ID, generator.Model, messages, modified}
+	if t.CurrentSession != "" && s.ID.String() == t.CurrentSession {
 		for j, v := range row {
 			row[j] = uitable.Bold{Value: v}
 		}

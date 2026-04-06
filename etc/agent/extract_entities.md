@@ -28,7 +28,7 @@ input:
   required:
     - text
   additionalProperties: false
-format:
+output:
   type: object
   properties:
     entities:

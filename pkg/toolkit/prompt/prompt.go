@@ -33,6 +33,9 @@ func WithNamespace(namespace string, p llm.Prompt) llm.Prompt {
 
 func (n *namespacedPrompt) Name() string { return n.name }
 
+// Unwrap returns the underlying prompt, stripping the namespace wrapper.
+func (n *namespacedPrompt) Unwrap() llm.Prompt { return n.Prompt }
+
 func (n *namespacedPrompt) MarshalJSON() ([]byte, error) {
 	type promptJSON struct {
 		Name        string           `json:"name"`

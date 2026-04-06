@@ -109,7 +109,7 @@ var sessionStoreTests = []sessionStoreTest{
 	// List
 	{"ListEmpty", func(t *testing.T, s schema.SessionStore) {
 		assert := assert.New(t)
-		resp, err := s.ListSessions(context.TODO(), schema.ListSessionRequest{})
+		resp, err := s.ListSessions(context.TODO(), schema.SessionListRequest{})
 		assert.NoError(err)
 		assert.Empty(resp.Body)
 	}},
@@ -118,7 +118,7 @@ var sessionStoreTests = []sessionStoreTest{
 		s.CreateSession(context.TODO(), schema.SessionMeta{Name: "first", GeneratorMeta: schema.GeneratorMeta{Model: "test-model", Provider: "test-provider"}})
 		s.CreateSession(context.TODO(), schema.SessionMeta{Name: "second", GeneratorMeta: schema.GeneratorMeta{Model: "test-model", Provider: "test-provider"}})
 		s.CreateSession(context.TODO(), schema.SessionMeta{Name: "third", GeneratorMeta: schema.GeneratorMeta{Model: "test-model", Provider: "test-provider"}})
-		resp, err := s.ListSessions(context.TODO(), schema.ListSessionRequest{})
+		resp, err := s.ListSessions(context.TODO(), schema.SessionListRequest{})
 		assert.NoError(err)
 		assert.Len(resp.Body, 3)
 	}},
@@ -129,7 +129,7 @@ var sessionStoreTests = []sessionStoreTest{
 		s2, _ := s.CreateSession(context.TODO(), schema.SessionMeta{Name: "middle", GeneratorMeta: schema.GeneratorMeta{Model: "test-model", Provider: "test-provider"}})
 		time.Sleep(10 * time.Millisecond)
 		s3, _ := s.CreateSession(context.TODO(), schema.SessionMeta{Name: "newest", GeneratorMeta: schema.GeneratorMeta{Model: "test-model", Provider: "test-provider"}})
-		resp, err := s.ListSessions(context.TODO(), schema.ListSessionRequest{})
+		resp, err := s.ListSessions(context.TODO(), schema.SessionListRequest{})
 		assert.NoError(err)
 		assert.Len(resp.Body, 3)
 		assert.Equal(s3.ID, resp.Body[0].ID)
@@ -141,7 +141,7 @@ var sessionStoreTests = []sessionStoreTest{
 		doomed, _ := s.CreateSession(context.TODO(), schema.SessionMeta{Name: "doomed", GeneratorMeta: schema.GeneratorMeta{Model: "test-model", Provider: "test-provider"}})
 		s.CreateSession(context.TODO(), schema.SessionMeta{Name: "keeper", GeneratorMeta: schema.GeneratorMeta{Model: "test-model", Provider: "test-provider"}})
 		s.DeleteSession(context.TODO(), doomed.ID)
-		resp, err := s.ListSessions(context.TODO(), schema.ListSessionRequest{})
+		resp, err := s.ListSessions(context.TODO(), schema.SessionListRequest{})
 		assert.NoError(err)
 		assert.Len(resp.Body, 1)
 		assert.Equal("keeper", resp.Body[0].Name)
@@ -254,19 +254,19 @@ var sessionStoreTests = []sessionStoreTest{
 		})
 
 		// Filter by env:prod
-		resp, err := s.ListSessions(context.TODO(), schema.ListSessionRequest{Label: []string{"env:prod"}})
+		resp, err := s.ListSessions(context.TODO(), schema.SessionListRequest{Label: []string{"env:prod"}})
 		assert.NoError(err)
 		assert.Len(resp.Body, 1)
 		assert.Equal("a", resp.Body[0].Name)
 
 		// Filter by env:dev
-		resp, err = s.ListSessions(context.TODO(), schema.ListSessionRequest{Label: []string{"env:dev"}})
+		resp, err = s.ListSessions(context.TODO(), schema.SessionListRequest{Label: []string{"env:dev"}})
 		assert.NoError(err)
 		assert.Len(resp.Body, 1)
 		assert.Equal("b", resp.Body[0].Name)
 
 		// No filter returns all
-		resp, err = s.ListSessions(context.TODO(), schema.ListSessionRequest{})
+		resp, err = s.ListSessions(context.TODO(), schema.SessionListRequest{})
 		assert.NoError(err)
 		assert.Len(resp.Body, 3)
 	}},
@@ -283,7 +283,7 @@ var sessionStoreTests = []sessionStoreTest{
 			Labels:        map[string]string{"env": "prod"},
 		})
 
-		resp, err := s.ListSessions(context.TODO(), schema.ListSessionRequest{Label: []string{"env:prod", "team:backend"}})
+		resp, err := s.ListSessions(context.TODO(), schema.SessionListRequest{Label: []string{"env:prod", "team:backend"}})
 		assert.NoError(err)
 		assert.Len(resp.Body, 1)
 		assert.Equal("match", resp.Body[0].Name)
@@ -378,7 +378,7 @@ var sessionStoreTests = []sessionStoreTest{
 		time.Sleep(10 * time.Millisecond)
 		s1.Append(schema.Message{Role: schema.RoleUser, Content: []schema.ContentBlock{{Text: types.Ptr("hello")}}})
 		s.WriteSession(s1)
-		resp, err := s.ListSessions(context.TODO(), schema.ListSessionRequest{})
+		resp, err := s.ListSessions(context.TODO(), schema.SessionListRequest{})
 		assert.NoError(err)
 		assert.Equal(s1.ID, resp.Body[0].ID)
 	}},
@@ -403,7 +403,7 @@ var sessionStoreTests = []sessionStoreTest{
 		for i, err := range errs {
 			assert.NoError(err, "session_%03d", i)
 		}
-		resp, err := s.ListSessions(context.TODO(), schema.ListSessionRequest{})
+		resp, err := s.ListSessions(context.TODO(), schema.SessionListRequest{})
 		assert.NoError(err)
 		assert.Equal(uint(n), resp.Count)
 	}},
@@ -420,7 +420,7 @@ var sessionStoreTests = []sessionStoreTest{
 			}()
 			go func() {
 				defer wg.Done()
-				s.ListSessions(context.TODO(), schema.ListSessionRequest{})
+				s.ListSessions(context.TODO(), schema.SessionListRequest{})
 			}()
 		}
 		wg.Wait()
@@ -455,7 +455,7 @@ var sessionStoreTests = []sessionStoreTest{
 			// List
 			go func() {
 				defer wg.Done()
-				s.ListSessions(context.TODO(), schema.ListSessionRequest{})
+				s.ListSessions(context.TODO(), schema.SessionListRequest{})
 			}()
 			// Update
 			go func(i int) {

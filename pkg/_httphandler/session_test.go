@@ -24,7 +24,7 @@ func TestSessionList_OK(t *testing.T) {
 		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
 	}
 
-	var resp schema.ListSessionResponse
+	var resp schema.SessionList
 	if err := json.NewDecoder(w.Body).Decode(&resp); err != nil {
 		t.Fatal(err)
 	}
@@ -58,7 +58,7 @@ func TestSessionList_WithSessions(t *testing.T) {
 		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
 	}
 
-	var resp schema.ListSessionResponse
+	var resp schema.SessionList
 	if err := json.NewDecoder(w.Body).Decode(&resp); err != nil {
 		t.Fatal(err)
 	}
@@ -95,7 +95,7 @@ func TestSessionList_WithPagination(t *testing.T) {
 		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
 	}
 
-	var resp schema.ListSessionResponse
+	var resp schema.SessionList
 	if err := json.NewDecoder(w.Body).Decode(&resp); err != nil {
 		t.Fatal(err)
 	}
@@ -560,7 +560,7 @@ func TestSessionList_WithLabelFilter(t *testing.T) {
 	if w.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
 	}
-	var resp schema.ListSessionResponse
+	var resp schema.SessionList
 	if err := json.NewDecoder(w.Body).Decode(&resp); err != nil {
 		t.Fatal(err)
 	}
@@ -578,7 +578,7 @@ func TestSessionList_WithLabelFilter(t *testing.T) {
 	if w.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
 	}
-	resp = schema.ListSessionResponse{}
+	resp = schema.SessionList{}
 	if err := json.NewDecoder(w.Body).Decode(&resp); err != nil {
 		t.Fatal(err)
 	}
@@ -596,7 +596,7 @@ func TestSessionList_WithLabelFilter(t *testing.T) {
 	if w.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
 	}
-	resp = schema.ListSessionResponse{}
+	resp = schema.SessionList{}
 	if err := json.NewDecoder(w.Body).Decode(&resp); err != nil {
 		t.Fatal(err)
 	}
@@ -636,7 +636,7 @@ func TestSessionList_WithMultipleLabelFilters(t *testing.T) {
 	if w.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
 	}
-	var resp schema.ListSessionResponse
+	var resp schema.SessionList
 	if err := json.NewDecoder(w.Body).Decode(&resp); err != nil {
 		t.Fatal(err)
 	}

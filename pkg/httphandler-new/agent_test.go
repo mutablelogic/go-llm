@@ -1,6 +1,7 @@
 package httphandler
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"net/http"
@@ -8,10 +9,13 @@ import (
 	"testing"
 
 	// Packages
+	llm "github.com/mutablelogic/go-llm"
 	llmmanager "github.com/mutablelogic/go-llm/pkg/llmmanager"
 	opt "github.com/mutablelogic/go-llm/pkg/opt"
 	schema "github.com/mutablelogic/go-llm/pkg/schema"
 	toolkit "github.com/mutablelogic/go-llm/pkg/toolkit"
+	resource "github.com/mutablelogic/go-llm/pkg/toolkit/resource"
+	types "github.com/mutablelogic/go-server/pkg/types"
 )
 
 type agentHandlerMockPrompt struct {
@@ -25,6 +29,23 @@ func (p *agentHandlerMockPrompt) Title() string       { return p.title }
 func (p *agentHandlerMockPrompt) Description() string { return p.description }
 func (p *agentHandlerMockPrompt) Prepare(context.Context, json.RawMessage) (string, []opt.Opt, error) {
 	return "", nil, nil
+}
+
+type agentHandlerMockDelegate struct {
+	call func(context.Context, llm.Prompt, ...llm.Resource) (llm.Resource, error)
+}
+
+func (d *agentHandlerMockDelegate) OnEvent(toolkit.ConnectorEvent) {}
+
+func (d *agentHandlerMockDelegate) Call(ctx context.Context, prompt llm.Prompt, resources ...llm.Resource) (llm.Resource, error) {
+	if d.call != nil {
+		return d.call(ctx, prompt, resources...)
+	}
+	return nil, nil
+}
+
+func (d *agentHandlerMockDelegate) CreateConnector(string, func(toolkit.ConnectorEvent)) (llm.Connector, error) {
+	return nil, nil
 }
 
 func TestAgentList(t *testing.T) {
@@ -157,9 +178,112 @@ func TestGetAgentNotFound(t *testing.T) {
 	}
 }
 
+func TestCallAgent(t *testing.T) {
+	manager := &llmmanager.Manager{Toolkit: mustAgentToolkitWithDelegate(t, &agentHandlerMockDelegate{
+		call: func(_ context.Context, prompt llm.Prompt, resources ...llm.Resource) (llm.Resource, error) {
+			if prompt.Name() != "builtin.alpha" {
+				t.Fatalf("expected prompt %q, got %q", "builtin.alpha", prompt.Name())
+			}
+			if len(resources) != 1 {
+				t.Fatalf("expected 1 resource, got %d", len(resources))
+			}
+			body, err := resources[0].Read(context.Background())
+			if err != nil {
+				t.Fatal(err)
+			}
+			if string(body) != `{"query":"docs"}` {
+				t.Fatalf("unexpected resource body: %s", string(body))
+			}
+			result, err := resource.Text("answer", "resolved")
+			if err != nil {
+				t.Fatal(err)
+			}
+			return result, nil
+		},
+	})}
+	_, _, item := AgentResourceHandler(manager)
+
+	w := httptest.NewRecorder()
+	r := httptest.NewRequest(http.MethodPost, "/agent/builtin.alpha", bytes.NewReader([]byte(`{"input":{"query":"docs"}}`)))
+	r.Header.Set(types.ContentTypeHeader, types.ContentTypeJSON)
+	r.SetPathValue("name", "builtin.alpha")
+	item.Handler().ServeHTTP(w, r)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+	if got := w.Header().Get(types.ContentTypeHeader); got != types.ContentTypeTextPlain {
+		t.Fatalf("expected content type %q, got %q", types.ContentTypeTextPlain, got)
+	}
+	if got := w.Header().Get(types.ContentPathHeader); got != "text:answer" {
+		t.Fatalf("expected content path %q, got %q", "text:answer", got)
+	}
+	if got := w.Header().Get(types.ContentNameHeader); got != "answer" {
+		t.Fatalf("expected content name %q, got %q", "answer", got)
+	}
+	if got := w.Body.String(); got != "resolved" {
+		t.Fatalf("unexpected response body: %s", got)
+	}
+}
+
+func TestCallAgentInvalidBody(t *testing.T) {
+	manager := &llmmanager.Manager{Toolkit: mustAgentToolkit(t)}
+	_, _, item := AgentResourceHandler(manager)
+
+	w := httptest.NewRecorder()
+	r := httptest.NewRequest(http.MethodPost, "/agent/builtin.alpha", bytes.NewReader([]byte(`{"input":`)))
+	r.Header.Set(types.ContentTypeHeader, types.ContentTypeJSON)
+	r.SetPathValue("name", "builtin.alpha")
+	item.Handler().ServeHTTP(w, r)
+
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestCallAgentUnescapesName(t *testing.T) {
+	manager := &llmmanager.Manager{Toolkit: mustAgentToolkitWithDelegate(t, &agentHandlerMockDelegate{
+		call: func(_ context.Context, prompt llm.Prompt, resources ...llm.Resource) (llm.Resource, error) {
+			if prompt.Name() != "builtin.alpha" {
+				t.Fatalf("expected prompt %q, got %q", "builtin.alpha", prompt.Name())
+			}
+			result, err := resource.Text("answer", "resolved")
+			if err != nil {
+				t.Fatal(err)
+			}
+			return result, nil
+		},
+	})}
+	_, _, item := AgentResourceHandler(manager)
+
+	w := httptest.NewRecorder()
+	r := httptest.NewRequest(http.MethodPost, "/agent/builtin%2Ealpha", bytes.NewReader([]byte(`{"input":{"query":"docs"}}`)))
+	r.Header.Set(types.ContentTypeHeader, types.ContentTypeJSON)
+	r.SetPathValue("name", "builtin%2Ealpha")
+	item.Handler().ServeHTTP(w, r)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+	if got := w.Body.String(); got != "resolved" {
+		t.Fatalf("unexpected response body: %s", got)
+	}
+}
+
 func mustAgentToolkit(t *testing.T) toolkit.Toolkit {
 	t.Helper()
-	tk, err := toolkit.New()
+	return mustAgentToolkitWithDelegate(t, nil)
+}
+
+func mustAgentToolkitWithDelegate(t *testing.T, delegate toolkit.ToolkitDelegate) toolkit.Toolkit {
+	t.Helper()
+	var tk toolkit.Toolkit
+	var err error
+	if delegate != nil {
+		tk, err = toolkit.New(toolkit.WithDelegate(delegate))
+	} else {
+		tk, err = toolkit.New()
+	}
 	if err != nil {
 		t.Fatal(err)
 	}

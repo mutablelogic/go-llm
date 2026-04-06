@@ -383,6 +383,83 @@ SELECT "group"::text FROM ${"schema"}.connector_group
 WHERE "connector"=@connector
 ORDER BY "group";
 
+-- session.insert
+INSERT INTO ${"schema"}.session (
+	parent, "user", title, meta, tags
+) VALUES (
+	@parent, @user, @title, @meta, @tags
+)
+RETURNING
+	id,
+	parent,
+	"user",
+	title,
+	COALESCE(overhead, 0),
+	COALESCE(meta, '{}'::jsonb) AS meta,
+	COALESCE(tags, '{}'::text[]) AS tags,
+	created_at,
+	modified_at;
+
+-- session.select
+SELECT
+	session.id,
+	session.parent,
+	session."user",
+	session.title,
+	COALESCE(session.overhead, 0),
+	COALESCE(session.meta, '{}'::jsonb) AS meta,
+	COALESCE(session.tags, '{}'::text[]) AS tags,
+	session.created_at,
+	session.modified_at
+FROM ${"schema"}.session AS session
+WHERE session.id = @id;
+
+-- session.list
+SELECT
+	session.id,
+	session.parent,
+	session."user",
+	session.title,
+	COALESCE(session.overhead, 0),
+	COALESCE(session.meta, '{}'::jsonb) AS meta,
+	COALESCE(session.tags, '{}'::text[]) AS tags,
+	session.created_at,
+	session.modified_at
+FROM ${"schema"}.session AS session
+${where}
+${orderby};
+
+-- session.update
+UPDATE ${"schema"}.session
+SET
+	${patch},
+	modified_at = NOW()
+WHERE id = @id
+RETURNING
+	id,
+	parent,
+	"user",
+	title,
+	COALESCE(overhead, 0),
+	COALESCE(meta, '{}'::jsonb) AS meta,
+	COALESCE(tags, '{}'::text[]) AS tags,
+	created_at,
+	modified_at;
+
+-- session.delete
+DELETE FROM ${"schema"}.session
+WHERE id = @id
+RETURNING
+	id,
+	parent,
+	"user",
+	title,
+	COALESCE(overhead, 0),
+	COALESCE(meta, '{}'::jsonb) AS meta,
+	COALESCE(tags, '{}'::text[]) AS tags,
+	created_at,
+	modified_at;
+
 -- usage.insert
 INSERT INTO ${"schema"}.usage (
 	"type", batch, "session", "user", provider, model,

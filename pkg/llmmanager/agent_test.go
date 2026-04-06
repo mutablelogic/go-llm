@@ -120,6 +120,18 @@ func TestGetAgent(t *testing.T) {
 	}
 }
 
+func TestGetAgentBareName(t *testing.T) {
+	m := newListAgentsManager(t)
+
+	meta, err := m.GetAgent(context.Background(), "alpha", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if meta.Name != "builtin.alpha" {
+		t.Fatalf("expected agent %q, got %q", "builtin.alpha", meta.Name)
+	}
+}
+
 func TestGetAgentNotFound(t *testing.T) {
 	m := newListAgentsManager(t)
 

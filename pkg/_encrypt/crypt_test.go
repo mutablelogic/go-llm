@@ -1,3 +1,4 @@
+package encrypt
 package encrypt_test
 
 import (
@@ -5,7 +6,7 @@ import (
 	"testing"
 
 	// Packages
-	encrypt "github.com/mutablelogic/go-llm/pkg/encrypt"
+	encrypt "github.com/mutablelogic/go-llm/pkg/_encrypt"
 	assert "github.com/stretchr/testify/assert"
 )
 

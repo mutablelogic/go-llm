@@ -39,14 +39,17 @@ CREATE TABLE IF NOT EXISTS ${"schema"}.session (
     "id"          UUID NOT NULL DEFAULT gen_random_uuid() PRIMARY KEY,
     "parent"      UUID REFERENCES ${"schema"}."session" (id) ON DELETE CASCADE,
     "user"        UUID NOT NULL REFERENCES ${"auth"}."user" (id) ON DELETE CASCADE,
-    "name"        TEXT,
+    "title"       TEXT,
+    "overhead"    INT,
+    "meta"        JSONB,
+    "tags"        TEXT[] NOT NULL DEFAULT '{}',
     "created_at"  TIMESTAMPTZ NOT NULL DEFAULT now(),
     "modified_at" TIMESTAMPTZ
 );
 
 -- llm.message
 CREATE TABLE IF NOT EXISTS ${"schema"}.message (
-    "id"          UUID NOT NULL DEFAULT gen_random_uuid() PRIMARY KEY,
+    "id"          BIGSERIAL PRIMARY KEY,
     "session"     UUID NOT NULL REFERENCES ${"schema"}."session" (id) ON DELETE CASCADE,
     "role"        TEXT NOT NULL,
     "content"     JSONB NOT NULL,

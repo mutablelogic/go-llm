@@ -100,23 +100,6 @@ type StreamError struct {
 	Error string `json:"error"`
 }
 
-// GeneratorMeta represents the metadata needed to invoke a generator model.
-type GeneratorMeta struct {
-	Provider       string     `json:"provider,omitempty" yaml:"provider" help:"Provider name" optional:"" example:"ollama"`
-	Model          string     `json:"model,omitempty" yaml:"model" help:"Model name" optional:"" example:"llama3.2"`
-	SystemPrompt   string     `json:"system_prompt,omitempty" yaml:"system_prompt" help:"System prompt" optional:"" example:"Be concise and answer in one sentence."`
-	Format         JSONSchema `json:"format,omitempty" yaml:"output" help:"JSON schema for structured output" optional:"" example:"{\"type\":\"object\",\"properties\":{\"summary\":{\"type\":\"string\"}}}"`
-	Thinking       *bool      `json:"thinking,omitempty" yaml:"thinking" help:"Enable thinking/reasoning" optional:"" example:"true"`
-	ThinkingBudget uint       `json:"thinking_budget,omitempty" yaml:"thinking_budget" help:"Thinking token budget (required for Anthropic, optional for Google)" optional:"" example:"2048"`
-}
-
-// SessionMeta represents the metadata for a session.
-type SessionMeta struct {
-	GeneratorMeta
-	Name   string            `json:"name,omitempty" help:"Session name" optional:""`
-	Labels map[string]string `json:"labels,omitempty" help:"User-defined labels for UI storage" optional:""`
-}
-
 // AskRequestCore contains the core fields of an ask request without attachments.
 type AskRequestCore struct {
 	GeneratorMeta
@@ -208,19 +191,6 @@ type ListAgentResponse struct {
 	Body   []*Agent `json:"body,omitzero"`
 }
 
-// ListSessionRequest represents a request to list sessions
-type ListSessionRequest struct {
-	pg.OffsetLimit
-	Label []string `json:"label,omitempty" help:"Filter by labels (key:value)"`
-}
-
-// ListSessionResponse represents a response containing a list of sessions
-type ListSessionResponse struct {
-	ListSessionRequest
-	Count uint       `json:"count"`
-	Body  []*Session `json:"body,omitzero"`
-}
-
 // ConnectorListRequest represents a request to list registered MCP connectors.
 type ConnectorListRequest struct {
 	pg.OffsetLimit
@@ -286,27 +256,11 @@ func (r EmbeddingResponse) String() string {
 	return types.Stringify(r)
 }
 
-func (r GeneratorMeta) String() string {
-	return types.Stringify(r)
-}
-
-func (r SessionMeta) String() string {
-	return types.Stringify(r)
-}
-
 func (r ListAgentRequest) String() string {
 	return types.Stringify(r)
 }
 
 func (r ListAgentResponse) String() string {
-	return types.Stringify(r)
-}
-
-func (r ListSessionRequest) String() string {
-	return types.Stringify(r)
-}
-
-func (r ListSessionResponse) String() string {
 	return types.Stringify(r)
 }
 

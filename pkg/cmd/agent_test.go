@@ -1,6 +1,8 @@
 package cmd
 
 import (
+	"bytes"
+	"encoding/json"
 	"testing"
 
 	// Packages
@@ -31,4 +33,57 @@ func TestGetAgentCommandName(t *testing.T) {
 	cmd := GetAgentCommand{Name: "builtin.alpha"}
 
 	assert.Equal("builtin.alpha", cmd.Name)
+}
+
+func TestCallAgentCommandName(t *testing.T) {
+	assert := assert.New(t)
+	cmd := CallAgentCommand{Name: "builtin.alpha"}
+
+	assert.Equal("builtin.alpha", cmd.Name)
+}
+
+func TestCallAgentCommandRequest(t *testing.T) {
+	assert := assert.New(t)
+	cmd := CallAgentCommand{Name: "builtin.alpha", Input: `{"query":"docs"}`}
+
+	req, err := cmd.requestWithInput(nil, false)
+	if assert.NoError(err) {
+		assert.Equal(json.RawMessage(`{"query":"docs"}`), req.Input)
+	}
+}
+
+func TestCallAgentCommandRequestInvalidJSON(t *testing.T) {
+	assert := assert.New(t)
+	cmd := CallAgentCommand{Name: "builtin.alpha", Input: `{"query":`}
+
+	_, err := cmd.requestWithInput(nil, false)
+	assert.Error(err)
+}
+
+func TestCallAgentCommandRequestFromStdin(t *testing.T) {
+	assert := assert.New(t)
+	cmd := CallAgentCommand{Name: "builtin.alpha"}
+
+	req, err := cmd.requestWithInput(bytes.NewBufferString(`{"query":"docs"}`), true)
+	if assert.NoError(err) {
+		assert.Equal(json.RawMessage(`{"query":"docs"}`), req.Input)
+	}
+}
+
+func TestCallAgentCommandRequestPrefersArgOverStdin(t *testing.T) {
+	assert := assert.New(t)
+	cmd := CallAgentCommand{Name: "builtin.alpha", Input: `{"query":"arg"}`}
+
+	req, err := cmd.requestWithInput(bytes.NewBufferString(`{"query":"stdin"}`), true)
+	if assert.NoError(err) {
+		assert.Equal(json.RawMessage(`{"query":"arg"}`), req.Input)
+	}
+}
+
+func TestCallAgentCommandRequestInvalidStdinJSON(t *testing.T) {
+	assert := assert.New(t)
+	cmd := CallAgentCommand{Name: "builtin.alpha"}
+
+	_, err := cmd.requestWithInput(bytes.NewBufferString(`{"query":`), true)
+	assert.Error(err)
 }

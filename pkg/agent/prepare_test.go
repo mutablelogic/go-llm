@@ -28,10 +28,10 @@ func Test_prepare_002(t *testing.T) {
 	}
 	result, err := agent.Prepare(a, "", schema.GeneratorMeta{}, nil)
 	assert.NoError(err)
-	assert.Equal("test", result.SessionMeta.Name)
+	assert.Equal("test", result.SessionMeta.Title)
 	assert.Equal("", result.Text)
-	assert.Equal("test@1", result.SessionMeta.Labels["agent"])
-	assert.Empty(result.SessionMeta.Labels["parent"])
+	assert.Contains(result.SessionMeta.Tags, "agent:test@1")
+	assert.NotContains(result.SessionMeta.Tags, "parent:")
 }
 
 func Test_prepare_003(t *testing.T) {
@@ -45,8 +45,8 @@ func Test_prepare_003(t *testing.T) {
 	}
 	result, err := agent.Prepare(a, "session-123", schema.GeneratorMeta{}, nil)
 	assert.NoError(err)
-	assert.Equal("myagent@3", result.SessionMeta.Labels["agent"])
-	assert.Equal("session-123", result.SessionMeta.Labels["parent"])
+	assert.Contains(result.SessionMeta.Tags, "agent:myagent@3")
+	assert.Contains(result.SessionMeta.Tags, "parent:session-123")
 }
 
 func Test_prepare_004(t *testing.T) {
@@ -68,9 +68,10 @@ func Test_prepare_004(t *testing.T) {
 	}
 	result, err := agent.Prepare(a, "", defaults, nil)
 	assert.NoError(err)
-	assert.Equal("agent-model", result.SessionMeta.Model)           // agent wins
-	assert.Equal("default-provider", result.SessionMeta.Provider)   // default fills in
-	assert.Equal("default-prompt", result.SessionMeta.SystemPrompt) // default fills in
+	generator := result.SessionMeta.Generator()
+	assert.Equal("agent-model", generator.Model)           // agent wins
+	assert.Equal("default-provider", generator.Provider)   // default fills in
+	assert.Equal("default-prompt", generator.SystemPrompt) // default fills in
 }
 
 func Test_prepare_005(t *testing.T) {
@@ -94,9 +95,10 @@ func Test_prepare_005(t *testing.T) {
 	}
 	result, err := agent.Prepare(a, "", defaults, nil)
 	assert.NoError(err)
-	assert.Equal("agent-model", result.SessionMeta.Model)
-	assert.Equal("agent-provider", result.SessionMeta.Provider)
-	assert.Equal("agent-prompt", result.SessionMeta.SystemPrompt)
+	generator := result.SessionMeta.Generator()
+	assert.Equal("agent-model", generator.Model)
+	assert.Equal("agent-provider", generator.Provider)
+	assert.Equal("agent-prompt", generator.SystemPrompt)
 }
 
 func Test_prepare_006(t *testing.T) {
@@ -322,9 +324,10 @@ func Test_prepare_018(t *testing.T) {
 	}
 	result, err := agent.Prepare(a, "", defaults, nil)
 	assert.NoError(err)
-	assert.NotNil(result.SessionMeta.Thinking)
-	assert.True(*result.SessionMeta.Thinking)
-	assert.Equal(uint(1000), result.SessionMeta.ThinkingBudget)
+	generator := result.SessionMeta.Generator()
+	assert.NotNil(generator.Thinking)
+	assert.True(*generator.Thinking)
+	assert.Equal(uint(1000), generator.ThinkingBudget)
 }
 
 func Test_prepare_019(t *testing.T) {
@@ -348,9 +351,10 @@ func Test_prepare_019(t *testing.T) {
 	}
 	result, err := agent.Prepare(a, "", defaults, nil)
 	assert.NoError(err)
-	assert.NotNil(result.SessionMeta.Thinking)
-	assert.False(*result.SessionMeta.Thinking)
-	assert.Equal(uint(500), result.SessionMeta.ThinkingBudget)
+	generator := result.SessionMeta.Generator()
+	assert.NotNil(generator.Thinking)
+	assert.False(*generator.Thinking)
+	assert.Equal(uint(500), generator.ThinkingBudget)
 }
 
 func Test_prepare_020(t *testing.T) {
@@ -371,10 +375,10 @@ func Test_prepare_020(t *testing.T) {
 	input := json.RawMessage(`{"text": "Hello", "target_language": "French"}`)
 	result, err := agent.Prepare(a, "parent-sess", defaults, input)
 	assert.NoError(err)
-	assert.Equal("translate", result.SessionMeta.Name)
-	assert.Equal("translate@2", result.SessionMeta.Labels["agent"])
-	assert.Equal("parent-sess", result.SessionMeta.Labels["parent"])
-	assert.Equal("anthropic", result.SessionMeta.Provider) // default fills in
+	assert.Equal("translate", result.SessionMeta.Title)
+	assert.Contains(result.SessionMeta.Tags, "agent:translate@2")
+	assert.Contains(result.SessionMeta.Tags, "parent:parent-sess")
+	assert.Equal("anthropic", result.SessionMeta.Generator().Provider) // default fills in
 	assert.Contains(result.Text, "Hello")
 	assert.Contains(result.Text, "French")
 }

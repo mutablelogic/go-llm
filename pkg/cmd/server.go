@@ -1,14 +1,19 @@
 package cmd
 
 import (
+	"bytes"
 	"context"
 	"fmt"
+	"io/fs"
 
 	// Packages
 	authmanager "github.com/djthorpe/go-auth/pkg/authmanager"
 	authhanders "github.com/djthorpe/go-auth/pkg/httphandler/authmanager"
+	llm "github.com/mutablelogic/go-llm"
+	agent "github.com/mutablelogic/go-llm/etc/agent"
 	llmhandlers "github.com/mutablelogic/go-llm/pkg/httphandler-new"
 	llmmanager "github.com/mutablelogic/go-llm/pkg/llmmanager"
+	"github.com/mutablelogic/go-llm/pkg/toolkit/prompt"
 	pg "github.com/mutablelogic/go-pg"
 	server "github.com/mutablelogic/go-server"
 	cmd "github.com/mutablelogic/go-server/pkg/cmd"
@@ -135,6 +140,15 @@ func (server *RunServer) authManagerOpts(ctx server.Cmd) []authmanager.Opt {
 ///////////////////////////////////////////////////////////////////////////////
 // PRIVATE METHODS - LLM MANAGER
 
+type namedReader struct {
+	*bytes.Reader
+	name string
+}
+
+func (r *namedReader) Name() string {
+	return r.name
+}
+
 func (server *RunServer) withLLMManager(ctx server.Cmd, conn pg.PoolConn, fn func(manager *llmmanager.Manager) error) error {
 	// Create the LLM manager
 	llmmanager, err := llmmanager.New(ctx.Context(), ctx.Name(), ctx.Version(), conn, server.llmManagerOpts(ctx)...)
@@ -145,6 +159,37 @@ func (server *RunServer) withLLMManager(ctx server.Cmd, conn pg.PoolConn, fn fun
 
 	// Return nil on success
 	return fn(llmmanager)
+}
+
+func (server *RunServer) llmManagerPrompts() ([]llm.Prompt, error) {
+	var prompts []llm.Prompt
+	err := fs.WalkDir(agent.FS, ".", func(path string, entry fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if entry.IsDir() {
+			return nil
+		}
+		data, err := fs.ReadFile(agent.FS, path)
+		if err != nil {
+			return err
+		}
+		if len(data) == 0 {
+			return nil
+		}
+		// Read the prompt from the embedded filesystem and add it to the list of prompts
+		prompt, err := prompt.Read(&namedReader{Reader: bytes.NewReader(data), name: path})
+		if err != nil {
+			return err
+		} else {
+			prompts = append(prompts, prompt)
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	return prompts, nil
 }
 
 func (server *RunServer) llmManagerOpts(ctx server.Cmd) []llmmanager.Opt {
@@ -160,6 +205,13 @@ func (server *RunServer) llmManagerOpts(ctx server.Cmd) []llmmanager.Opt {
 	if err != nil {
 		return nil
 	}
+
+	// Get the prompts from the embedded filesystem and set them on the manager options
+	prompts, err := server.llmManagerPrompts()
+	if err != nil {
+		return nil
+	}
+	opts = append(opts, llmmanager.WithPrompts(prompts...))
 
 	// Return the options with the configured schemas and tracer
 	return append(opts,

@@ -66,7 +66,7 @@ func (f *FileSessionStore) GetSession(_ context.Context, id string) (*schema.Ses
 
 // ListSessions returns sessions from disk, ordered by last modified time
 // (most recent first), with pagination support.
-func (f *FileSessionStore) ListSessions(_ context.Context, req schema.ListSessionRequest) (*schema.ListSessionResponse, error) {
+func (f *FileSessionStore) ListSessions(_ context.Context, req schema.SessionListRequest) (*schema.SessionList, error) {
 	f.mu.RLock()
 	defer f.mu.RUnlock()
 
@@ -92,7 +92,7 @@ func (f *FileSessionStore) ListSessions(_ context.Context, req schema.ListSessio
 	})
 
 	body, total := paginate(result, req.Offset, req.Limit)
-	return &schema.ListSessionResponse{
+	return &schema.SessionList{
 		Count:  total,
 		Offset: req.Offset,
 		Limit:  req.Limit,
