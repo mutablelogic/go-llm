@@ -6,7 +6,7 @@ import (
 
 	// Packages
 	authmanager "github.com/djthorpe/go-auth/pkg/authmanager"
-	llmmanager "github.com/mutablelogic/go-llm/pkg/llmmanager"
+	llmmanager "github.com/mutablelogic/go-llm/pkg/manager"
 	httprouter "github.com/mutablelogic/go-server/pkg/httprouter"
 )
 

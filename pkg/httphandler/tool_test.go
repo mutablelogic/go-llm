@@ -10,7 +10,7 @@ import (
 
 	// Packages
 	llm "github.com/mutablelogic/go-llm"
-	llmmanager "github.com/mutablelogic/go-llm/pkg/llmmanager"
+	llmmanager "github.com/mutablelogic/go-llm/pkg/manager"
 	schema "github.com/mutablelogic/go-llm/pkg/schema"
 	toolkit "github.com/mutablelogic/go-llm/pkg/toolkit"
 	jsonschema "github.com/mutablelogic/go-server/pkg/jsonschema"

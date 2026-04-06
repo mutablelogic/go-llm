@@ -39,11 +39,11 @@ $(CMD_DIR): go-dep mkdir
 	@echo Build command $(notdir $@) GOOS=${OS} GOARCH=${ARCH}
 	@GOOS=${OS} GOARCH=${ARCH} ${GO} build ${BUILD_FLAGS} -o ${BUILD_DIR}/$(notdir $@) ./$@
 
-# Build the primary CLI from the active llmserver entrypoint
+# Build the primary CLI from the active llm entrypoint
 .PHONY: llm llm-client
 llm: go-dep mkdir
 	@echo Build llm GOOS=${OS} GOARCH=${ARCH}
-	@GOOS=${OS} GOARCH=${ARCH} ${GO} build ${BUILD_FLAGS} -o ${BUILD_DIR}/llm ./cmd/llmserver
+	@GOOS=${OS} GOARCH=${ARCH} ${GO} build ${BUILD_FLAGS} -o ${BUILD_DIR}/llm ./cmd/llm
 
 # Legacy alias retained for existing scripts.
 llm-client: llm

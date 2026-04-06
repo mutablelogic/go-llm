@@ -12,7 +12,7 @@ import (
 	llm "github.com/mutablelogic/go-llm"
 	agent "github.com/mutablelogic/go-llm/etc/agent"
 	llmhandlers "github.com/mutablelogic/go-llm/pkg/httphandler"
-	llmmanager "github.com/mutablelogic/go-llm/pkg/llmmanager"
+	llmmanager "github.com/mutablelogic/go-llm/pkg/manager"
 	"github.com/mutablelogic/go-llm/pkg/toolkit/prompt"
 	pg "github.com/mutablelogic/go-pg"
 	server "github.com/mutablelogic/go-server"

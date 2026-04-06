@@ -14,7 +14,7 @@ import (
 	"time"
 
 	// Packages
-	llmmanager "github.com/mutablelogic/go-llm/pkg/llmmanager"
+	llmmanager "github.com/mutablelogic/go-llm/pkg/manager"
 	schema "github.com/mutablelogic/go-llm/pkg/schema"
 	llmtest "github.com/mutablelogic/go-llm/pkg/test"
 	types "github.com/mutablelogic/go-server/pkg/types"
