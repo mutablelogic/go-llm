@@ -34,6 +34,12 @@ func (g GeneratorMeta) String() string {
 ////////////////////////////////////////////////////////////////////////////////
 // PUBLIC METHODS
 
+// IsZero reports whether all generator fields are unset.
+func (g GeneratorMeta) IsZero() bool {
+	return g.Provider == nil && g.Model == nil && g.SystemPrompt == nil &&
+		len(g.Format) == 0 && g.Thinking == nil && g.ThinkingBudget == nil
+}
+
 // Values encodes generator settings as URL values so they can be stored in a
 // session meta JSON object.
 func (g GeneratorMeta) Values() url.Values {

@@ -21,6 +21,7 @@ import (
 // CreateSession validates and persists a new session for the authenticated user.
 // If Parent is set, the parent session must exist, belong to the same user,
 // and its generator settings are used as defaults for the child session.
+// If user is nil, it creates a user-less session.
 func (m *Manager) CreateSession(ctx context.Context, req schema.SessionInsert, user *auth.User) (_ *schema.Session, err error) {
 	// OTel span
 	ctx, endSpan := otel.StartSpan(m.tracer, ctx, "CreateSession",
@@ -29,22 +30,17 @@ func (m *Manager) CreateSession(ctx context.Context, req schema.SessionInsert, u
 	)
 	defer func() { endSpan(err) }()
 
-	// Resolve provider and model outside the transaction (read-only, no DB writes).
-	if provider, model, _, _, err := m.generatorFromMeta(ctx, req.GeneratorMeta, user, generationContextChat); err != nil {
-		return nil, err
-	} else {
-		req.Provider = types.Ptr(provider.Name)
-		req.Model = types.Ptr(model.Name)
-	}
-
-	// Parent lookup, ownership check, meta merge, and insert run in one transaction.
+	// All work runs in a single transaction: parent fetch + ownership check +
+	// meta merge + provider/model resolution + insert.
 	var result schema.Session
 	if err := m.PoolConn.Tx(ctx, func(conn pg.Conn) error {
-		// If a parent session is provided, it must belong to the same user and its
-		// generator settings act as defaults for the child session.
+		conn = conn.With("user", user.UUID())
+
+		// If a parent session is provided, fetch it (no user filter — we check
+		// ownership explicitly), then merge generator settings as defaults.
 		if req.Parent != uuid.Nil {
 			var parent schema.Session
-			if err := conn.Get(ctx, &parent, schema.SessionIDSelector(req.Parent)); err != nil {
+			if err := conn.With("user", uuid.UUID{}).Get(ctx, &parent, schema.SessionIDSelector(req.Parent)); err != nil {
 				return normalizeSessionError(req.Parent, err)
 			}
 			if parent.User != user.UUID() {
@@ -52,7 +48,16 @@ func (m *Manager) CreateSession(ctx context.Context, req schema.SessionInsert, u
 			}
 			req.GeneratorMeta = parent.GeneratorMeta.MergeFrom(req.GeneratorMeta)
 		}
-		return conn.With("user", user.UUID()).Insert(ctx, &result, req)
+
+		// Resolve provider and model (read-only, safe inside transaction).
+		provider, model, _, _, err := m.generatorFromMeta(ctx, req.GeneratorMeta, user, generationContextChat)
+		if err != nil {
+			return err
+		}
+		req.Provider = types.Ptr(provider.Name)
+		req.Model = types.Ptr(model.Name)
+
+		return conn.Insert(ctx, &result, req)
 	}); err != nil {
 		return nil, pg.NormalizeError(err)
 	}
@@ -96,13 +101,27 @@ func (m *Manager) UpdateSession(ctx context.Context, session uuid.UUID, meta sch
 	// Fetch, merge GeneratorMeta, and update in one transaction.
 	var result schema.Session
 	if err := m.PoolConn.Tx(ctx, func(conn pg.Conn) error {
+		conn = conn.With("user", user.UUID())
 		var existing schema.Session
-		if err := conn.With("user", user.UUID()).Get(ctx, &existing, schema.SessionIDSelector(session)); err != nil {
+		if err := conn.Get(ctx, &existing, schema.SessionIDSelector(session)); err != nil {
 			return normalizeSessionError(session, err)
-		} else {
-			meta.GeneratorMeta = existing.GeneratorMeta.MergeFrom(meta.GeneratorMeta)
 		}
-		return conn.With("user", user.UUID()).Update(ctx, &result, schema.SessionIDSelector(session), meta)
+		// Only merge GeneratorMeta from the existing session if the caller
+		// supplied at least one generator field; otherwise leave it nil so
+		// the Update binding detects "no fields to update".
+		if !meta.GeneratorMeta.IsZero() {
+			meta.GeneratorMeta = existing.GeneratorMeta.MergeFrom(meta.GeneratorMeta)
+
+			// If provider or model changed, validate the merged generator resolves
+			// to exactly one accessible model before committing.
+			if meta.GeneratorMeta.Provider != existing.GeneratorMeta.Provider ||
+				meta.GeneratorMeta.Model != existing.GeneratorMeta.Model {
+				if _, _, _, _, err := m.generatorFromMeta(ctx, meta.GeneratorMeta, user, generationContextChat); err != nil {
+					return err
+				}
+			}
+		}
+		return conn.Update(ctx, &result, schema.SessionIDSelector(session), meta)
 	}); err != nil {
 		return nil, normalizeSessionError(session, err)
 	}

@@ -428,7 +428,7 @@ SELECT
 	session.modified_at
 FROM ${"schema"}.session AS session
 WHERE session.id = @id
-AND (@user IS NULL OR session."user" = @user);
+${userwhere};
 
 -- session.update
 UPDATE ${"schema"}.session
@@ -436,7 +436,7 @@ SET
 	${patch},
 	modified_at = NOW()
 WHERE id = @id
-AND (@user IS NULL OR session."user" = @user)
+${userwhere}
 RETURNING
 	id,
 	parent,
@@ -451,7 +451,7 @@ RETURNING
 -- session.delete
 DELETE FROM ${"schema"}.session
 WHERE id = @id
-AND (@user IS NULL OR session."user" = @user)
+${userwhere}
 RETURNING
 	id,
 	parent,

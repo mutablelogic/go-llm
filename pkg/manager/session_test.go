@@ -22,7 +22,7 @@ func TestCreateSessionRequiresUser(t *testing.T) {
 		},
 	}, nil)
 	if assert.Error(t, err) {
-		assert.ErrorIs(t, err, httpresponse.ErrNotAuthorized)
+		assert.ErrorIs(t, err, schema.ErrNotFound)
 	}
 }
 

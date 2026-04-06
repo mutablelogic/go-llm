@@ -73,18 +73,22 @@ func (cmd *ListSessionsCommand) Run(ctx server.Cmd) (err error) {
 }
 
 func (cmd *CreateSessionCommand) Run(ctx server.Cmd) (err error) {
-	if cmd.Model == nil {
-		if s := ctx.GetString("model"); s != "" {
-			cmd.Model = types.Ptr(s)
+	// Only load defaults and require a model when no parent is set.
+	// With a parent, the model/provider are inherited server-side.
+	if cmd.Parent == uuid.Nil {
+		if cmd.Model == nil {
+			if s := ctx.GetString("model"); s != "" {
+				cmd.Model = types.Ptr(s)
+			}
 		}
-	}
-	if cmd.Provider == nil {
-		if s := ctx.GetString("provider"); s != "" {
-			cmd.Provider = types.Ptr(s)
+		if cmd.Provider == nil {
+			if s := ctx.GetString("provider"); s != "" {
+				cmd.Provider = types.Ptr(s)
+			}
 		}
-	}
-	if cmd.Model == nil {
-		return fmt.Errorf("model is required (set with --model or store a default)")
+		if cmd.Model == nil {
+			return fmt.Errorf("model is required (set with --model or store a default)")
+		}
 	}
 
 	return WithClient(ctx, func(client *httpclient.Client, _ string) error {

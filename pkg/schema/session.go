@@ -1,6 +1,7 @@
 package schema
 
 import (
+	"encoding/json"
 	"fmt"
 	"net/url"
 	"strconv"
@@ -79,6 +80,24 @@ const (
 
 func (s Session) String() string {
 	return types.Stringify(s)
+}
+
+// MarshalJSON omits User and Parent when they are the zero UUID.
+func (s Session) MarshalJSON() ([]byte, error) {
+	type alias Session
+	type output struct {
+		alias
+		User   *uuid.UUID `json:"user,omitempty"`
+		Parent *uuid.UUID `json:"parent,omitempty"`
+	}
+	o := output{alias: alias(s)}
+	if s.User != uuid.Nil {
+		o.User = &s.User
+	}
+	if s.Parent != uuid.Nil {
+		o.Parent = &s.Parent
+	}
+	return json.Marshal(o)
 }
 
 func (s SessionMeta) String() string {
@@ -204,9 +223,13 @@ func (s SessionIDSelector) Select(bind *pg.Bind, op pg.Op) (string, error) {
 		bind.Set("id", session)
 	}
 
-	// Normalise: uuid.Nil means no user filter → SQL NULL
-	if user, _ := bind.Get("user").(uuid.UUID); user == uuid.Nil {
-		bind.Set("user", nil)
+	// Set userwhere: if a non-nil user UUID is present, restrict to that user.
+	if user, _ := bind.Get("user").(uuid.UUID); user != uuid.Nil {
+		bind.Set("userwhere", `AND session."user" = @user`)
+		bind.Set("user", user)
+	} else {
+		bind.Set("userwhere", "")
+		bind.Del("user")
 	}
 
 	switch op {
@@ -319,10 +342,10 @@ func (list *SessionList) ScanCount(row pg.Row) error {
 
 func (s SessionInsert) Insert(bind *pg.Bind) (string, error) {
 	if uid, ok := bind.Get("user").(uuid.UUID); ok && uid == uuid.Nil {
-		bind.Set("user", nil)
+		bind.Set("user", (*uuid.UUID)(nil))
 	}
 	if s.Parent == uuid.Nil {
-		bind.Set("parent", nil)
+		bind.Set("parent", (*uuid.UUID)(nil))
 	} else {
 		bind.Set("parent", s.Parent)
 	}
@@ -356,8 +379,14 @@ func (s SessionMeta) Insert(_ *pg.Bind) (string, error) {
 func (s SessionMeta) Update(bind *pg.Bind) error {
 	bind.Del("patch")
 
-	if s.Title != nil && strings.TrimSpace(*s.Title) != "" {
-		bind.Append("patch", `title = `+bind.Set("title", strings.TrimSpace(*s.Title)))
+	if s.Title != nil {
+		t := strings.TrimSpace(*s.Title)
+		if t == "" {
+			// Explicit empty string clears the title.
+			bind.Append("patch", `title = `+bind.Set("title", (*string)(nil)))
+		} else {
+			bind.Append("patch", `title = `+bind.Set("title", t))
+		}
 	}
 	if meta := cloneSessionValues(s.GeneratorMeta.Values()); meta != nil {
 		bind.Append("patch", `meta = `+bind.Set("meta", meta))
