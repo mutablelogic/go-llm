@@ -338,6 +338,26 @@ func ModifyAny(key string, fn func(existing any) (any, error)) Opt {
 	}
 }
 
+// WithTool appends one or more tool-like values under ToolKey while preserving
+// the caller's static type. This is important for interface-typed values such
+// as llm.Tool, where AddAny would otherwise use the concrete dynamic type.
+func WithTool[T any](tools ...T) Opt {
+	if len(tools) == 0 {
+		return NoOp()
+	}
+
+	return ModifyAny(ToolKey, func(existing any) (any, error) {
+		if existing == nil {
+			return append([]T(nil), tools...), nil
+		}
+		existingTools, ok := existing.([]T)
+		if !ok {
+			return nil, fmt.Errorf("WithTool: existing value for %q is %T, expected a matching tool slice", ToolKey, existing)
+		}
+		return append(existingTools, tools...), nil
+	})
+}
+
 // SetString sets a string value for key, replacing any existing values
 func SetString(key string, value string) Opt {
 	return func(o *opts) error {

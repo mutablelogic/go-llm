@@ -1,6 +1,10 @@
 package schema
 
-import "testing"
+import (
+	"testing"
+
+	types "github.com/mutablelogic/go-server/pkg/types"
+)
 
 func TestAgentMetaTableCells(t *testing.T) {
 	provider, model := "ollama", "llama3"
@@ -53,5 +57,55 @@ func TestToolMetaTableCells(t *testing.T) {
 	}
 	if got := tool.Cell(4); got != "readonly, idempotent" {
 		t.Fatalf("unexpected hints cell: %q", got)
+	}
+}
+
+func TestMessageTableCells(t *testing.T) {
+	message := Message{
+		Role:   RoleAssistant,
+		Tokens: 42,
+		Content: []ContentBlock{
+			{Text: types.Ptr("First paragraph with enough words to wrap inside the table output.")},
+			{Thinking: types.Ptr("Reasoning that should still be visible in summarized form.")},
+			{ToolCall: &ToolCall{Name: "search_web"}},
+		},
+	}
+
+	if got := message.Header(); len(got) != 4 || got[0] != "ROLE" || got[1] != "TEXT" || got[2] != "TOKENS" || got[3] != "RESULT" {
+		t.Fatalf("unexpected headers: %v", got)
+	}
+	if got := message.Cell(0); got != "assistant" {
+		t.Fatalf("unexpected role cell: %q", got)
+	}
+	if got := message.Cell(1); got == "" || got == message.Text() {
+		t.Fatalf("expected summarized message text, got %q", got)
+	}
+	if got := message.Cell(2); got != "42" {
+		t.Fatalf("unexpected token cell: %q", got)
+	}
+	if got := message.Cell(3); got != "" {
+		t.Fatalf("unexpected result cell: %q", got)
+	}
+
+	message.Result = ResultToolCall
+	if got := message.Cell(3); got != "tool_call" {
+		t.Fatalf("unexpected result cell: %q", got)
+	}
+}
+
+func TestMessageTableTextTruncates(t *testing.T) {
+	text := truncateTableText("abcdefghijklmnopqrstuvwxyz", 10)
+	if text != "abcdefghi..." {
+		t.Fatalf("unexpected truncated text: %q", text)
+	}
+}
+
+func TestMessageTableTextCompactsWhitespace(t *testing.T) {
+	message := Message{
+		Content: []ContentBlock{{Text: types.Ptr("Line one\n\nLine   two\twith   extra space")}},
+	}
+
+	if got := messageTableText(message); got != "Line one Line two with extra space" {
+		t.Fatalf("unexpected compacted text: %q", got)
 	}
 }

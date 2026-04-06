@@ -8,6 +8,12 @@ import (
 	assert "github.com/stretchr/testify/assert"
 )
 
+type namedTool interface{ Name() string }
+
+type mockNamedTool struct{ name string }
+
+func (m mockNamedTool) Name() string { return m.name }
+
 func TestApplyEmpty(t *testing.T) {
 	assert := assert.New(t)
 	opts, err := opt.Apply()
@@ -137,4 +143,30 @@ func TestAddAnyWithStrings(t *testing.T) {
 	result, ok := opts.Get("tags").([]string)
 	assert.True(ok)
 	assert.Equal([]string{"alpha", "beta"}, result)
+}
+
+func TestWithToolPreservesStaticInterfaceType(t *testing.T) {
+	assert := assert.New(t)
+
+	var first namedTool = mockNamedTool{name: "alpha"}
+	var second namedTool = mockNamedTool{name: "beta"}
+	opts, err := opt.Apply(
+		opt.WithTool(first, second),
+	)
+	assert.NoError(err)
+
+	tools, ok := opts.Get(opt.ToolKey).([]namedTool)
+	assert.True(ok)
+	if assert.Len(tools, 2) {
+		assert.Equal("alpha", tools[0].Name())
+		assert.Equal("beta", tools[1].Name())
+	}
+}
+
+func TestWithToolNoOpOnEmptyInput(t *testing.T) {
+	assert := assert.New(t)
+
+	opts, err := opt.Apply(opt.WithTool[namedTool]())
+	assert.NoError(err)
+	assert.False(opts.Has(opt.ToolKey))
 }

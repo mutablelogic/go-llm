@@ -59,8 +59,7 @@ func (cmd *ListAgentsCommand) Run(ctx server.Cmd) (err error) {
 			return nil
 		}
 
-		_, err = tui.TableFor[*schema.AgentMeta](tui.SetWidth(ctx.IsTerm())).Write(os.Stdout, agents.Body...)
-		return err
+		return writeListTable(agents.Body, agents.Offset, uint64(agents.Count), tui.SetWidth(ctx.IsTerm()))
 	})
 }
 

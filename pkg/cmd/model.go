@@ -67,9 +67,7 @@ func (cmd *ListModelsCommand) Run(ctx server.Cmd) (err error) {
 			return nil
 		}
 
-		// Table output
-		_, err = tui.TableFor[schema.Model](tui.SetWidth(ctx.IsTerm())).Write(os.Stdout, models.Body...)
-		return err
+		return writeListTable(models.Body, models.Offset, uint64(models.Count), tui.SetWidth(ctx.IsTerm()))
 	})
 }
 

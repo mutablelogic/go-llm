@@ -2,7 +2,6 @@ package cmd
 
 import (
 	"fmt"
-	"os"
 
 	// Packages
 	uuid "github.com/google/uuid"
@@ -20,6 +19,7 @@ import (
 
 type SessionCommands struct {
 	ListSessions  ListSessionsCommand  `cmd:"" name:"sessions" help:"List sessions." group:"SESSIONS"`
+	ListMessages  ListMessagesCommand  `cmd:"" name:"session-messages" help:"List messages for a session." group:"SESSIONS"`
 	CreateSession CreateSessionCommand `cmd:"" name:"session-create" help:"Create a new session." group:"SESSIONS"`
 	GetSession    GetSessionCommand    `cmd:"" name:"session" help:"Get a session by ID or the stored current session." group:"SESSIONS"`
 	UpdateSession UpdateSessionCommand `cmd:"" name:"session-update" help:"Update session metadata." group:"SESSIONS"`
@@ -28,6 +28,11 @@ type SessionCommands struct {
 
 type ListSessionsCommand struct {
 	schema.SessionListRequest `embed:""`
+}
+
+type ListMessagesCommand struct {
+	Session                   uuid.UUID `arg:"" name:"id" help:"Session ID (defaults to the stored current session)." optional:""`
+	schema.MessageListRequest `embed:""`
 }
 
 type CreateSessionCommand struct {
@@ -67,8 +72,34 @@ func (cmd *ListSessionsCommand) Run(ctx server.Cmd) (err error) {
 			return nil
 		}
 
-		_, err = tui.TableFor[*schema.Session]().Write(os.Stdout, sessions.Body...)
+		return writeListTable(sessions.Body, sessions.Offset, uint64(sessions.Count), tui.SetWidth(ctx.IsTerm()))
+	})
+}
+
+func (cmd *ListMessagesCommand) Run(ctx server.Cmd) (err error) {
+	id, err := resolveSessionID(cmd.Session, ctx.GetString("session"))
+	if err != nil {
 		return err
+	}
+
+	return WithClient(ctx, func(client *httpclient.Client, _ string) error {
+		parent, endSpan := otel.StartSpan(ctx.Tracer(), ctx.Context(), "ListMessagesCommand",
+			attribute.String("session", id.String()),
+			attribute.String("request", types.Stringify(cmd.MessageListRequest)),
+		)
+		defer func() { endSpan(err) }()
+
+		messages, err := client.ListMessages(parent, id, cmd.MessageListRequest)
+		if err != nil {
+			return err
+		}
+
+		if ctx.IsDebug() {
+			fmt.Println(messages)
+			return nil
+		}
+
+		return writeListTable(messages.Body, messages.Offset, uint64(messages.Count), tui.SetWidth(ctx.IsTerm()))
 	})
 }
 

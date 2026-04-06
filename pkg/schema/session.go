@@ -70,6 +70,14 @@ type SessionList struct {
 // SessionIDSelector selects a session by ID for get, update, and delete operations.
 type SessionIDSelector uuid.UUID
 
+// SessionOverheadSelector selects a session row for overhead-only updates.
+type SessionOverheadSelector uuid.UUID
+
+// SessionOverheadUpdate increments the cumulative session overhead.
+type SessionOverheadUpdate struct {
+	Increment uint `json:"increment,omitempty"`
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 // GLOBALS
 
@@ -302,6 +310,29 @@ func (req SessionListRequest) Select(bind *pg.Bind, op pg.Op) (string, error) {
 	}
 }
 
+func (s SessionOverheadSelector) Select(bind *pg.Bind, op pg.Op) (string, error) {
+	if session := uuid.UUID(s); session == uuid.Nil {
+		return "", ErrBadParameter.With("session is required")
+	} else {
+		bind.Set("id", session)
+	}
+
+	if user, _ := bind.Get("user").(uuid.UUID); user != uuid.Nil {
+		bind.Set("userwhere", `AND session."user" = @user`)
+		bind.Set("user", user)
+	} else {
+		bind.Set("userwhere", "")
+		bind.Del("user")
+	}
+
+	switch op {
+	case pg.Update:
+		return bind.Query("session.update_overhead"), nil
+	default:
+		return "", ErrNotImplemented.Withf("unsupported SessionOverheadSelector operation %q", op)
+	}
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 // PUBLIC METHODS - READER
 
@@ -421,6 +452,18 @@ func (s SessionMeta) Update(bind *pg.Bind) error {
 		return ErrBadParameter.With("no fields to update")
 	}
 	bind.Set("patch", patch)
+	return nil
+}
+
+func (s SessionOverheadUpdate) Insert(_ *pg.Bind) (string, error) {
+	return "", fmt.Errorf("SessionOverheadUpdate: insert: not supported")
+}
+
+func (s SessionOverheadUpdate) Update(bind *pg.Bind) error {
+	if s.Increment == 0 {
+		return ErrBadParameter.With("session overhead increment must be greater than zero")
+	}
+	bind.Set("increment", s.Increment)
 	return nil
 }
 

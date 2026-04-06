@@ -2,7 +2,6 @@ package cmd
 
 import (
 	"fmt"
-	"os"
 
 	// Packages
 	otel "github.com/mutablelogic/go-client/pkg/otel"
@@ -67,9 +66,7 @@ func (cmd *ListProvidersCommand) Run(ctx server.Cmd) (err error) {
 			return nil
 		}
 
-		// Table output
-		_, err = tui.TableFor[*schema.Provider]().Write(os.Stdout, providers.Body...)
-		return err
+		return writeListTable(providers.Body, providers.Offset, providers.Count, tui.SetWidth(ctx.IsTerm()))
 	})
 }
 

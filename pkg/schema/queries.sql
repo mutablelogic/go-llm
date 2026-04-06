@@ -486,6 +486,14 @@ RETURNING
 	created_at,
 	modified_at;
 
+-- session.update_overhead
+UPDATE ${"schema"}.session
+SET
+	overhead = COALESCE(overhead, 0) + @increment,
+	modified_at = NOW()
+WHERE id = @id
+${userwhere};
+
 -- session.delete
 DELETE FROM ${"schema"}.session
 WHERE id = @id

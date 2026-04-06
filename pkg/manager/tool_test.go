@@ -374,6 +374,46 @@ func TestToolNamespacesForUserPagesAllConnectors(t *testing.T) {
 	}
 }
 
+func TestToolsForUserPagesAllTools(t *testing.T) {
+	tk, err := toolkit.New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	total := int(toolSelectionPageSize) + 5
+	tools := make([]llm.Tool, 0, total)
+	for i := range total {
+		tools = append(tools, &listToolsMockTool{name: fmt.Sprintf("tool%03d", i)})
+	}
+	if err := tk.AddTool(tools...); err != nil {
+		t.Fatal(err)
+	}
+
+	m := &Manager{Toolkit: tk}
+	accessible, err := m.toolsForUser(context.Background(), nil, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(accessible) != total {
+		t.Fatalf("expected %d accessible tools, got %d", total, len(accessible))
+	}
+	for i := range total {
+		name := fmt.Sprintf("builtin__tool%03d", i)
+		tool, ok := accessible[name]
+		if !ok {
+			t.Fatalf("expected tool %q to be present", name)
+		}
+		if tool.Name() != name {
+			t.Fatalf("expected wrapped tool name %q, got %q", name, tool.Name())
+		}
+	}
+}
+
+func TestNormalizeToolMapKey(t *testing.T) {
+	if got := normalizeToolMapKey("builtin.weather.current"); got != "builtin__weather__current" {
+		t.Fatalf("expected normalized tool key %q, got %q", "builtin__weather__current", got)
+	}
+}
+
 func newListToolsManager(t *testing.T) *Manager {
 	tk, err := toolkit.New()
 	if err != nil {

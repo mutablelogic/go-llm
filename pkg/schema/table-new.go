@@ -3,6 +3,7 @@ package schema
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"strings"
 
 	uuid "github.com/google/uuid"
@@ -341,4 +342,89 @@ func (s Session) Cell(i int) string {
 		}
 	}
 	return ""
+}
+
+///////////////////////////////////////////////////////////////////////////////
+// MESSAGE TABLE
+
+func (Message) Header() []string {
+	return []string{"ROLE", "TEXT", "TOKENS", "RESULT"}
+}
+
+func (Message) Width(i int) int {
+	switch i {
+	case 0:
+		return 10
+	case 1:
+		return 72
+	case 2:
+		return 8
+	case 3:
+		return 14
+	}
+	return 0
+}
+
+func (m Message) Cell(i int) string {
+	switch i {
+	case 0:
+		return m.Role
+	case 1:
+		return truncateTableText(messageTableText(m), 280)
+	case 2:
+		if m.Tokens > 0 {
+			return fmt.Sprintf("%d", m.Tokens)
+		}
+	case 3:
+		if result := m.Result.String(); result != "" && result != "stop" && result != "unknown" {
+			return result
+		}
+	}
+	return ""
+}
+
+func messageTableText(m Message) string {
+	parts := make([]string, 0, len(m.Content))
+	for _, block := range m.Content {
+		switch {
+		case block.Text != nil:
+			if text := compactTableText(*block.Text); text != "" {
+				parts = append(parts, text)
+			}
+		case block.Thinking != nil:
+			if text := compactTableText(*block.Thinking); text != "" {
+				parts = append(parts, "[thinking] "+text)
+			}
+		case block.ToolCall != nil:
+			parts = append(parts, "[tool call] "+block.ToolCall.Name)
+		case block.ToolResult != nil:
+			parts = append(parts, "[tool result] "+truncateTableText(compactTableText(string(block.ToolResult.Content)), 120))
+		case block.Attachment != nil:
+			attachment := "[attachment]"
+			if block.Attachment.ContentType != "" {
+				attachment += " " + block.Attachment.ContentType
+			}
+			if block.Attachment.URL != nil && block.Attachment.URL.String() != "" {
+				attachment += " " + block.Attachment.URL.String()
+			}
+			parts = append(parts, attachment)
+		}
+	}
+	return strings.Join(parts, " ")
+}
+
+func compactTableText(text string) string {
+	return strings.Join(strings.Fields(strings.TrimSpace(text)), " ")
+}
+
+func truncateTableText(text string, limit int) string {
+	text = strings.TrimSpace(text)
+	if limit <= 0 || text == "" {
+		return text
+	}
+	runes := []rune(text)
+	if len(runes) <= limit {
+		return text
+	}
+	return strings.TrimSpace(string(runes[:limit-1])) + "..."
 }

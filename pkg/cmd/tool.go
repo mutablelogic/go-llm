@@ -61,8 +61,7 @@ func (cmd *ListToolsCommand) Run(ctx server.Cmd) (err error) {
 			return nil
 		}
 
-		_, err = tui.TableFor[*schema.ToolMeta](tui.SetWidth(ctx.IsTerm())).Write(os.Stdout, tools.Body...)
-		return err
+		return writeListTable(tools.Body, tools.Offset, uint64(tools.Count), tui.SetWidth(ctx.IsTerm()))
 	})
 }
 

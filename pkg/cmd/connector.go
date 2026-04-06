@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
-	"os"
 
 	// Packages
 	otel "github.com/mutablelogic/go-client/pkg/otel"
@@ -71,8 +70,7 @@ func (cmd *ListConnectorsCommand) Run(ctx server.Cmd) (err error) {
 			return nil
 		}
 
-		_, err = tui.TableFor[*schema.Connector]().Write(os.Stdout, connectors.Body...)
-		return err
+		return writeListTable(connectors.Body, connectors.Offset, uint64(connectors.Count), tui.SetWidth(ctx.IsTerm()))
 	})
 }
 
