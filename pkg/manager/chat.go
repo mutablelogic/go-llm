@@ -290,6 +290,7 @@ func (m *Manager) nextConversationIteration(ctx context.Context, turn *conversat
 	if len(calls) == 0 {
 		return nil, false, schema.ErrInternalServerError.With("assistant requested tool calls but did not include any tool call blocks")
 	}
+	// TODO: Handle the special structured-output tool here before executing normal tool calls.
 
 	content := make([]schema.ContentBlock, len(calls))
 	var wg sync.WaitGroup
