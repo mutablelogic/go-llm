@@ -10,6 +10,7 @@ import (
 	"net/url"
 	"os"
 	"path"
+	"strconv"
 	"strings"
 
 	// Packages
@@ -26,17 +27,31 @@ import (
 // It uses a universal content block representation that can be marshaled
 // to any provider's format.
 type Message struct {
-	Role    string         `json:"role"`             // "user", "assistant", "system"
-	Content []ContentBlock `json:"content"`          // Array of content blocks
-	Tokens  uint           `json:"tokens,omitempty"` // Number of tokens
-	Result  ResultType     `json:"result"`           // Result type
-	Meta    map[string]any `json:"meta,omitzero"`    // Provider-specific metadata
+	Role    string         `json:"role" help:"Message role" enum:"user,assistant,system,thinking,tool" example:"assistant"`
+	Content []ContentBlock `json:"content" help:"Structured content blocks that make up the message" example:"[{\"text\":\"Unit tests catch regressions early and make refactoring safer.\"}]"`
+	Tokens  uint           `json:"tokens,omitempty" help:"Token count attributed to this message" example:"12"`
+	Result  ResultType     `json:"result" help:"Message result status encoded as a string in JSON" enum:"stop,max_tokens,blocked,tool_call,error,other,max_iterations" example:"stop"`
+	Meta    map[string]any `json:"meta,omitzero" help:"Optional provider-specific message metadata" optional:"" example:"{\"thinking_signature\":\"abc123\"}"`
 }
 
 // MessageInsert persists a message within a session conversation.
 type MessageInsert struct {
 	Session uuid.UUID `json:"session" help:"Session ID"`
 	Message `embed:""`
+}
+
+// MessageListRequest represents a request to list stored messages.
+type MessageListRequest struct {
+	pg.OffsetLimit
+	Role string `json:"role,omitempty" help:"Filter by exact message role" optional:""`
+	Text string `json:"text,omitempty" help:"Case-insensitive text search over message content" optional:""`
+}
+
+// MessageList represents a paginated list of stored messages.
+type MessageList struct {
+	MessageListRequest
+	Count uint       `json:"count" help:"Total number of matching messages" example:"2"`
+	Body  []*Message `json:"body,omitzero" help:"Messages returned for the current page" example:"[{\"role\":\"assistant\",\"content\":[{\"text\":\"Daily news summary\"}],\"tokens\":4,\"result\":\"stop\"}]"`
 }
 
 // ContentBlock represents a single piece of content within a message.
@@ -237,11 +252,12 @@ type ToolResult struct {
 
 // Message role constants
 const (
-	RoleUser      = "user"
-	RoleAssistant = "assistant"
-	RoleSystem    = "system"
-	RoleThinking  = "thinking"
-	RoleTool      = "tool"
+	RoleUser              = "user"
+	RoleAssistant         = "assistant"
+	RoleSystem            = "system"
+	RoleThinking          = "thinking"
+	RoleTool              = "tool"
+	MessageListMax uint64 = 100
 )
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -378,39 +394,116 @@ func (m Message) String() string {
 	return types.Stringify(m)
 }
 
-func (m *MessageInsert) Scan(row pg.Row) error {
-	var content []ContentBlock
-	var result string
-	var meta map[string]any
+func (r MessageListRequest) String() string {
+	return types.Stringify(r)
+}
 
-	if err := row.Scan(&m.Session, &m.Role, &content, &m.Tokens, &result, &meta); err != nil {
+func (r MessageList) String() string {
+	return types.Stringify(r)
+}
+
+func (m *Message) Scan(row pg.Row) error {
+	var result string
+	if err := row.Scan(&m.Role, &m.Content, &m.Tokens, &result, &m.Meta); err != nil {
 		return err
 	}
+	m.Result = parseMessageResult(result)
+	if m.Meta == nil {
+		m.Meta = make(map[string]any)
+	}
+	if m.Content == nil {
+		m.Content = []ContentBlock{}
+	}
+	return nil
+}
 
-	m.Content = content
-	m.Meta = meta
-	switch strings.TrimSpace(result) {
-	case "":
-		m.Result = ResultStop
-	case ResultStop.String():
-		m.Result = ResultStop
-	case ResultMaxTokens.String():
-		m.Result = ResultMaxTokens
-	case ResultBlocked.String():
-		m.Result = ResultBlocked
-	case ResultToolCall.String():
-		m.Result = ResultToolCall
-	case ResultError.String():
-		m.Result = ResultError
-	case ResultOther.String():
-		m.Result = ResultOther
-	case ResultMaxIterations.String():
-		m.Result = ResultMaxIterations
-	default:
-		return fmt.Errorf("unknown result type: %q", result)
+func (m *MessageInsert) Scan(row pg.Row) error {
+	var result string
+
+	if err := row.Scan(&m.Session, &m.Role, &m.Content, &m.Tokens, &result, &m.Meta); err != nil {
+		return err
+	}
+	m.Result = parseMessageResult(result)
+	if m.Meta == nil {
+		m.Meta = make(map[string]any)
+	}
+	if m.Content == nil {
+		m.Content = []ContentBlock{}
+	}
+	return nil
+}
+
+func (list *MessageList) Scan(row pg.Row) error {
+	var message Message
+	if err := message.Scan(row); err != nil {
+		return err
+	}
+	list.Body = append(list.Body, &message)
+	return nil
+}
+
+func (list *MessageList) ScanCount(row pg.Row) error {
+	if err := row.Scan(&list.Count); err != nil {
+		return err
+	}
+	return nil
+}
+
+func (req MessageListRequest) Query() url.Values {
+	values := url.Values{}
+	if req.Offset > 0 {
+		values.Set("offset", strconv.FormatUint(req.Offset, 10))
+	}
+	if req.Limit != nil {
+		values.Set("limit", strconv.FormatUint(types.Value(req.Limit), 10))
+	}
+	if role := strings.TrimSpace(req.Role); role != "" {
+		values.Set("role", role)
+	}
+	if text := strings.TrimSpace(req.Text); text != "" {
+		values.Set("text", text)
+	}
+	return values
+}
+
+func (req MessageListRequest) Select(bind *pg.Bind, op pg.Op) (string, error) {
+	bind.Del("where")
+
+	session, ok := bind.Get("session").(uuid.UUID)
+	if !ok || session == uuid.Nil {
+		return "", ErrBadParameter.With("message session is required")
+	}
+	bind.Append("where", `message.session = `+bind.Set("session", session))
+	if role := strings.TrimSpace(req.Role); role != "" {
+		bind.Append("where", `message.role = `+bind.Set("role", role))
+	}
+	if text := strings.TrimSpace(req.Text); text != "" {
+		bind.Append("where", `message.content::text ILIKE `+bind.Set("text", "%"+text+"%"))
 	}
 
-	return nil
+	where := bind.Join("where", " AND ")
+	bind.Set("orderby", `ORDER BY message.created_at ASC, message.id ASC`)
+	req.OffsetLimit.Bind(bind, MessageListMax)
+
+	switch op {
+	case pg.List:
+		if messageListHasUser(bind) {
+			if where == "" {
+				bind.Set("where", "")
+			} else {
+				bind.Set("where", "AND "+where)
+			}
+			return bind.Query("message.list_for_user"), nil
+		}
+		if where == "" {
+			bind.Set("where", "")
+		} else {
+			bind.Set("where", "WHERE "+where)
+		}
+		return bind.Query("message.list"), nil
+	default:
+		return "", ErrNotImplemented.Withf("unsupported MessageListRequest operation %q", op)
+	}
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -459,6 +552,34 @@ func (m MessageInsert) Insert(bind *pg.Bind) (string, error) {
 
 func (m MessageInsert) Update(_ *pg.Bind) error {
 	return fmt.Errorf("MessageInsert: update: not supported")
+}
+
+func messageListHasUser(bind *pg.Bind) bool {
+	if user, ok := bind.Get("user").(uuid.UUID); ok {
+		return user != uuid.Nil
+	}
+	return false
+}
+
+func parseMessageResult(result string) ResultType {
+	switch strings.TrimSpace(result) {
+	case "", ResultStop.String():
+		return ResultStop
+	case ResultMaxTokens.String():
+		return ResultMaxTokens
+	case ResultBlocked.String():
+		return ResultBlocked
+	case ResultToolCall.String():
+		return ResultToolCall
+	case ResultError.String():
+		return ResultError
+	case ResultOther.String():
+		return ResultOther
+	case ResultMaxIterations.String():
+		return ResultMaxIterations
+	default:
+		return ResultOther
+	}
 }
 
 ////////////////////////////////////////////////////////////////////////////////

@@ -401,7 +401,10 @@ func promptConnectorURL(t *testing.T, name string, metas ...schema.AgentMeta) st
 	srv.AddPrompts(metas...)
 
 	ts := httptest.NewServer(srv.Handler())
-	t.Cleanup(ts.Close)
+	t.Cleanup(func() {
+		ts.CloseClientConnections()
+		ts.Close()
+	})
 
 	return ts.URL
 }

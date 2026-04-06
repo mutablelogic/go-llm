@@ -18,6 +18,31 @@ import (
 	assert "github.com/stretchr/testify/assert"
 )
 
+type messageMockRow struct {
+	values []any
+}
+
+func (r messageMockRow) Scan(dest ...any) error {
+	if len(dest) != len(r.values) {
+		return errors.New("unexpected scan arity")
+	}
+	for i := range dest {
+		switch target := dest[i].(type) {
+		case *string:
+			*target = r.values[i].(string)
+		case *[]schema.ContentBlock:
+			*target = r.values[i].([]schema.ContentBlock)
+		case *uint:
+			*target = r.values[i].(uint)
+		case *map[string]any:
+			*target = r.values[i].(map[string]any)
+		default:
+			return errors.New("unsupported scan target")
+		}
+	}
+	return nil
+}
+
 // testdataPath returns the absolute path to the etc/testdata directory
 func testdataPath(name string) string {
 	_, filename, _, _ := runtime.Caller(0)
@@ -330,6 +355,103 @@ func TestMessageInsertRequiresSessionAndRole(t *testing.T) {
 	}
 
 	_, err = (schema.MessageInsert{Session: uuid.New()}).Insert(b)
+	if assert.Error(err) {
+		assert.ErrorIs(err, schema.ErrBadParameter)
+	}
+}
+
+func TestMessageListRequestQuery(t *testing.T) {
+	assert := assert.New(t)
+	limit := uint64(25)
+	values := (schema.MessageListRequest{
+		OffsetLimit: pg.OffsetLimit{Offset: 5, Limit: &limit},
+		Role:        schema.RoleAssistant,
+		Text:        "release notes",
+	}).Query()
+
+	assert.Equal("5", values.Get("offset"))
+	assert.Equal("25", values.Get("limit"))
+	assert.Equal(schema.RoleAssistant, values.Get("role"))
+	assert.Equal("release notes", values.Get("text"))
+}
+
+func TestMessageListRequestSelect(t *testing.T) {
+	assert := assert.New(t)
+	sessionID := uuid.MustParse("11111111-1111-1111-1111-111111111111")
+	b := pg.NewBind("schema", "llm", "message.list", "LIST")
+	b.Set("session", sessionID)
+
+	query, err := (schema.MessageListRequest{
+		Role: schema.RoleAssistant,
+		Text: "release notes",
+	}).Select(b, pg.List)
+	if !assert.NoError(err) {
+		return
+	}
+
+	assert.Equal("LIST", query)
+	assert.Equal(sessionID, b.Get("session"))
+	assert.Equal(schema.RoleAssistant, b.Get("role"))
+	assert.Equal("%release notes%", b.Get("text"))
+	assert.Contains(b.Get("where").(string), `message.session =`)
+	assert.Contains(b.Get("where").(string), `message.role =`)
+	assert.Contains(b.Get("where").(string), `message.content::text ILIKE`)
+	assert.Equal(`ORDER BY message.created_at ASC, message.id ASC`, b.Get("orderby"))
+}
+
+func TestMessageListRequestSelectForUser(t *testing.T) {
+	assert := assert.New(t)
+	b := pg.NewBind("schema", "llm", "message.list_for_user", "LIST")
+	b.Set("session", uuid.MustParse("11111111-1111-1111-1111-111111111111"))
+	b.Set("user", uuid.MustParse("22222222-2222-2222-2222-222222222222"))
+
+	query, err := (schema.MessageListRequest{Role: schema.RoleUser}).Select(b, pg.List)
+	if !assert.NoError(err) {
+		return
+	}
+
+	assert.Equal("LIST", query)
+	assert.Contains(b.Get("where").(string), `AND message.role =`)
+}
+
+func TestMessageScanAndListScan(t *testing.T) {
+	assert := assert.New(t)
+	message := new(schema.Message)
+	text := types.Ptr("hello")
+	row := messageMockRow{values: []any{schema.RoleAssistant, []schema.ContentBlock{{Text: text}}, uint(7), schema.ResultStop.String(), map[string]any{"source": "test"}}}
+
+	if !assert.NoError(message.Scan(row)) {
+		return
+	}
+
+	assert.Equal(schema.RoleAssistant, message.Role)
+	if assert.Len(message.Content, 1) && assert.NotNil(message.Content[0].Text) {
+		assert.Equal("hello", *message.Content[0].Text)
+	}
+	assert.Equal(uint(7), message.Tokens)
+	assert.Equal(schema.ResultStop, message.Result)
+	assert.Equal(map[string]any{"source": "test"}, message.Meta)
+
+	list := new(schema.MessageList)
+	if !assert.NoError(list.Scan(messageMockRow{values: []any{schema.RoleUser, []schema.ContentBlock{{Text: types.Ptr("hi")}}, uint(3), "", map[string]any{}}})) {
+		return
+	}
+	if assert.Len(list.Body, 1) {
+		assert.Equal(schema.RoleUser, list.Body[0].Role)
+		assert.Equal(schema.ResultStop, list.Body[0].Result)
+	}
+
+	if !assert.NoError(list.ScanCount(messageMockRow{values: []any{uint(42)}})) {
+		return
+	}
+	assert.Equal(uint(42), list.Count)
+}
+
+func TestMessageListRequestRequiresSessionBinding(t *testing.T) {
+	assert := assert.New(t)
+	b := pg.NewBind("schema", "llm", "message.list", "LIST")
+
+	_, err := (schema.MessageListRequest{}).Select(b, pg.List)
 	if assert.Error(err) {
 		assert.ErrorIs(err, schema.ErrBadParameter)
 	}

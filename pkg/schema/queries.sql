@@ -515,17 +515,41 @@ RETURNING
 
 -- message.insert
 INSERT INTO ${"schema"}.message (
-	"session", role, content, tokens, result, meta
+	session, role, content, tokens, result, meta
 ) VALUES (
-	@session, @role, @content, @tokens, @result, @meta
+	@session, @role, @content, @tokens, @result::${"schema"}.MESSAGE_RESULT, @meta
 )
 RETURNING
-	"session"::text,
+	session,
 	role,
-	content,
+	COALESCE(content, '[]'::jsonb) AS content,
 	COALESCE(tokens, 0),
 	COALESCE(result::text, ''),
 	COALESCE(meta, '{}'::jsonb) AS meta;
+
+-- message.list
+SELECT
+	message.role,
+	COALESCE(message.content, '[]'::jsonb) AS content,
+	COALESCE(message.tokens, 0),
+	COALESCE(message.result::text, ''),
+	COALESCE(message.meta, '{}'::jsonb) AS meta
+FROM ${"schema"}.message AS message
+${where}
+${orderby}
+
+-- message.list_for_user
+SELECT
+	message.role,
+	COALESCE(message.content, '[]'::jsonb) AS content,
+	COALESCE(message.tokens, 0),
+	COALESCE(message.result::text, ''),
+	COALESCE(message.meta, '{}'::jsonb) AS meta
+FROM ${"schema"}.message AS message
+JOIN ${"schema"}.session AS session ON session.id = message.session
+WHERE session."user" = @user
+${where}
+${orderby}
 
 -- usage.insert
 INSERT INTO ${"schema"}.usage (

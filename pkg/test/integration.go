@@ -132,7 +132,10 @@ func ConnectorURL(t *testing.T, name string) string {
 	}
 
 	ts := httptest.NewServer(srv.Handler())
-	t.Cleanup(ts.Close)
+	t.Cleanup(func() {
+		ts.CloseClientConnections()
+		ts.Close()
+	})
 
 	return ts.URL
 }
