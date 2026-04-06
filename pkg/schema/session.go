@@ -32,7 +32,9 @@ type Session struct {
 	ID   uuid.UUID `json:"id"`
 	User uuid.UUID `json:"user" help:"User owning the session"`
 	SessionInsert
-	Overhead   uint       `json:"overhead,omitempty" help:"Constant token cost per turn (tools, system prompt)"`
+	Input      uint       `json:"input,omitempty" help:"Cumulative input message tokens for the session"`
+	Output     uint       `json:"output,omitempty" help:"Cumulative output message tokens for the session"`
+	Overhead   uint       `json:"overhead,omitempty" help:"Cumulative non-message input token cost observed across the session"`
 	CreatedAt  time.Time  `json:"created_at" help:"Creation timestamp"`
 	ModifiedAt *time.Time `json:"modified_at,omitempty" help:"Last modification timestamp" optional:""`
 }
@@ -76,11 +78,28 @@ const (
 )
 
 ////////////////////////////////////////////////////////////////////////////////
+// PUBLIC METHODS - CONVERSATION
+
+func (c Conversation) Len() int {
+	return len(c)
+}
+
+func (c Conversation) Last(n int) *Message {
+	if n < 0 || n >= c.Len() {
+		return nil
+	}
+	return c[c.Len()-n-1]
+}
+
+////////////////////////////////////////////////////////////////////////////////
 // PUBLIC METHODS - STRINGIFY
 
 func (s Session) String() string {
 	return types.Stringify(s)
 }
+
+////////////////////////////////////////////////////////////////////////////////
+// PUBLIC METHODS - CONVERSATION
 
 // MarshalJSON omits User and Parent when they are the zero UUID.
 func (s Session) MarshalJSON() ([]byte, error) {
@@ -286,7 +305,7 @@ func (req SessionListRequest) Select(bind *pg.Bind, op pg.Op) (string, error) {
 ////////////////////////////////////////////////////////////////////////////////
 // PUBLIC METHODS - READER
 
-// Expected column order: id, parent, user, title, overhead, meta, tags, created_at, modified_at.
+// Expected column order: id, parent, user, title, input, output, overhead, meta, tags, created_at, modified_at.
 func (s *Session) Scan(row pg.Row) error {
 	var parent *uuid.UUID
 	var user *uuid.UUID
@@ -296,6 +315,8 @@ func (s *Session) Scan(row pg.Row) error {
 		&parent,
 		&user,
 		&s.Title,
+		&s.Input,
+		&s.Output,
 		&s.Overhead,
 		&meta,
 		&s.Tags,

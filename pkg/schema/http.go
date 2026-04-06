@@ -125,35 +125,6 @@ type AskResponse struct {
 	Usage *UsageMeta `json:"usage,omitempty" help:"Token usage information for the request, when available" example:"{\"input_tokens\":18,\"output_tokens\":12}"`
 }
 
-// ChatRequestCore contains the core fields of a chat request without attachments.
-type ChatRequestCore struct {
-	Session       string   `json:"session" help:"Session ID"`
-	Text          string   `json:"text" arg:"" help:"User input text"`
-	Tools         []string `json:"tools,omitzero" help:"Tool names to include (nil means all, empty means none)" optional:""`
-	MaxIterations uint     `json:"max_iterations,omitempty" help:"Maximum tool-calling iterations (0 uses default)" optional:""`
-	SystemPrompt  string   `json:"system_prompt,omitempty" help:"Per-request system prompt appended to the session prompt" optional:""`
-}
-
-// ChatRequest represents a stateful chat request within a session.
-type ChatRequest struct {
-	ChatRequestCore
-	Attachments []Attachment `json:"attachments,omitempty" help:"File attachments" optional:""`
-}
-
-// MultipartChatRequest is the HTTP-layer request type supporting both JSON
-// (with base64 attachments) and multipart/form-data file uploads for chat.
-type MultipartChatRequest struct {
-	ChatRequest
-	File types.File `json:"file,omitempty" help:"File attachment (multipart upload)" optional:""`
-}
-
-// ChatResponse represents the response from a chat request.
-type ChatResponse struct {
-	CompletionResponse
-	Session string     `json:"session"`
-	Usage   *UsageMeta `json:"usage,omitempty"`
-}
-
 // CreateAgentSessionRequest represents the body of a request to create a
 // session from an agent definition. The agent is identified by path/query
 // parameters (agent ID or name, optional version) — not included here.
@@ -292,10 +263,6 @@ func (r AskResponse) String() string {
 	return types.Stringify(r)
 }
 
-func (r ChatRequestCore) String() string {
-	return types.Stringify(r)
-}
-
 func (r ChatRequest) String() string {
 	return types.Stringify(r)
 }
@@ -319,13 +286,6 @@ func (r CreateAgentSessionResponse) String() string {
 // as an Attachment with auto-detected MIME type. Returns nil if no file
 // was uploaded.
 func (r *MultipartAskRequest) FileAttachment() (*Attachment, error) {
-	return fileAttachment(r.File)
-}
-
-// FileAttachment reads the multipart file (if present) and returns it
-// as an Attachment with auto-detected MIME type. Returns nil if no file
-// was uploaded.
-func (r *MultipartChatRequest) FileAttachment() (*Attachment, error) {
 	return fileAttachment(r.File)
 }
 

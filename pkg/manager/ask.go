@@ -35,7 +35,8 @@ const (
 func (m *Manager) Ask(ctx context.Context, request schema.AskRequest, user *auth.User, fn opt.StreamFn) (_ *schema.AskResponse, err error) {
 	// Otel span
 	ctx, endSpan := otel.StartSpan(m.tracer, ctx, "Ask",
-		attribute.String("request", request.AskRequestCore.String()),
+		attribute.String("req", types.Stringify(request.AskRequestCore)),
+		attribute.String("user", types.Stringify(user)),
 	)
 	defer func() { endSpan(err) }()
 

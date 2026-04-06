@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"bytes"
+	"io"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -193,6 +194,26 @@ func TestMarkdownStreamBuffersUntilFinish(t *testing.T) {
 	assert.Contains(out, "\n")
 }
 
+func TestMarkdownStreamFinishDoesNotDuplicateFlushedContent(t *testing.T) {
+	assert := assert.New(t)
+	var buffer bytes.Buffer
+	stream := newMarkdownStream(&buffer, passthroughMarkdownWidget{})
+	full := "Alpha\n\nBeta\n\nGamma"
+
+	if !assert.NoError(stream.Append(full)) {
+		return
+	}
+	if !assert.NoError(stream.Finish(full + "\n\n- [Attachment 1](file:///tmp/result.txt)\n")) {
+		return
+	}
+
+	out := buffer.String()
+	assert.Equal(1, strings.Count(out, "Alpha"))
+	assert.Equal(1, strings.Count(out, "Beta"))
+	assert.Equal(1, strings.Count(out, "Gamma"))
+	assert.Equal(1, strings.Count(out, "Attachment 1"))
+}
+
 func TestSplitMarkdownFlushable(t *testing.T) {
 	assert := assert.New(t)
 
@@ -203,4 +224,10 @@ func TestSplitMarkdownFlushable(t *testing.T) {
 	flushable, pending = splitMarkdownFlushable("```go\nfmt.Println(1)\n")
 	assert.Equal("", flushable)
 	assert.Equal("```go\nfmt.Println(1)\n", pending)
+}
+
+type passthroughMarkdownWidget struct{}
+
+func (passthroughMarkdownWidget) Write(w io.Writer, text string) (int, error) {
+	return io.WriteString(w, text)
 }

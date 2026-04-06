@@ -21,7 +21,7 @@ import (
 type SessionCommands struct {
 	ListSessions  ListSessionsCommand  `cmd:"" name:"sessions" help:"List sessions." group:"SESSIONS"`
 	CreateSession CreateSessionCommand `cmd:"" name:"session-create" help:"Create a new session." group:"SESSIONS"`
-	GetSession    GetSessionCommand    `cmd:"" name:"session" help:"Get a session by ID." group:"SESSIONS"`
+	GetSession    GetSessionCommand    `cmd:"" name:"session" help:"Get a session by ID or the stored current session." group:"SESSIONS"`
 	UpdateSession UpdateSessionCommand `cmd:"" name:"session-update" help:"Update session metadata." group:"SESSIONS"`
 	DeleteSession DeleteSessionCommand `cmd:"" name:"session-delete" help:"Delete a session by ID." group:"SESSIONS"`
 }
@@ -35,7 +35,7 @@ type CreateSessionCommand struct {
 }
 
 type GetSessionCommand struct {
-	ID uuid.UUID `arg:"" name:"id" help:"Session ID."`
+	ID uuid.UUID `arg:"" name:"id" help:"Session ID (defaults to the stored current session)." optional:""`
 }
 
 type DeleteSessionCommand struct {
@@ -108,13 +108,18 @@ func (cmd *CreateSessionCommand) Run(ctx server.Cmd) (err error) {
 }
 
 func (cmd *GetSessionCommand) Run(ctx server.Cmd) (err error) {
+	id, err := resolveSessionID(cmd.ID, ctx.GetString("session"))
+	if err != nil {
+		return err
+	}
+
 	return WithClient(ctx, func(client *httpclient.Client, _ string) error {
 		parent, endSpan := otel.StartSpan(ctx.Tracer(), ctx.Context(), "GetSessionCommand",
-			attribute.String("id", cmd.ID.String()),
+			attribute.String("id", id.String()),
 		)
 		defer func() { endSpan(err) }()
 
-		session, err := client.GetSession(parent, cmd.ID)
+		session, err := client.GetSession(parent, id)
 		if err != nil {
 			return err
 		}
@@ -122,6 +127,20 @@ func (cmd *GetSessionCommand) Run(ctx server.Cmd) (err error) {
 		fmt.Println(session)
 		return nil
 	})
+}
+
+func resolveSessionID(id uuid.UUID, stored string) (uuid.UUID, error) {
+	if id != uuid.Nil {
+		return id, nil
+	}
+	if stored == "" {
+		return uuid.Nil, fmt.Errorf("session is required (pass an id or store a default session)")
+	}
+	parsed, err := uuid.Parse(stored)
+	if err != nil {
+		return uuid.Nil, fmt.Errorf("invalid stored session %q: %w", stored, err)
+	}
+	return parsed, nil
 }
 
 func (cmd *DeleteSessionCommand) Run(ctx server.Cmd) (err error) {

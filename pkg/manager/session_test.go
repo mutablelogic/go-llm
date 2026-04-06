@@ -54,6 +54,8 @@ func TestCreateSessionIntegration(t *testing.T) {
 	assert.Equal(t, modelName, types.Value(created.Model))
 	assert.Equal(t, "test session", types.Value(created.Title))
 	assert.Equal(t, []string{"integration"}, created.Tags)
+	assert.Zero(t, created.Input)
+	assert.Zero(t, created.Output)
 	assert.False(t, created.CreatedAt.IsZero())
 	assert.Nil(t, created.ModifiedAt)
 }

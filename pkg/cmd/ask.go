@@ -44,6 +44,7 @@ type markdownStream struct {
 		Write(io.Writer, string) (int, error)
 	}
 	writer io.Writer
+	raw    strings.Builder
 	text   strings.Builder
 	first  bool
 }
@@ -349,6 +350,7 @@ func (m *markdownStream) Append(chunk string) error {
 	if chunk == "" {
 		return nil
 	}
+	m.raw.WriteString(chunk)
 	m.text.WriteString(chunk)
 	flushable, pending := splitMarkdownFlushable(m.text.String())
 	if flushable == "" {
@@ -365,8 +367,8 @@ func (m *markdownStream) Append(chunk string) error {
 func (m *markdownStream) Finish(text string) error {
 	if text == "" {
 		text = m.text.String()
-	} else {
-		text = m.text.String() + text[len(m.text.String()):]
+	} else if raw := m.raw.String(); strings.HasPrefix(text, raw) {
+		text = m.text.String() + text[len(raw):]
 	}
 	text = strings.TrimSpace(text)
 	if text == "" {

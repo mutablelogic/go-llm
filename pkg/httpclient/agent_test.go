@@ -12,14 +12,14 @@ import (
 	httpclient "github.com/mutablelogic/go-llm/pkg/httpclient"
 	schema "github.com/mutablelogic/go-llm/pkg/schema"
 	pg "github.com/mutablelogic/go-pg"
-	"github.com/mutablelogic/go-server/pkg/types"
+	types "github.com/mutablelogic/go-server/pkg/types"
 )
 
 func newAgentServer(t *testing.T) *httptest.Server {
 	t.Helper()
 
 	mux := http.NewServeMux()
-	agents := []schema.AgentMeta{
+	agents := []*schema.AgentMeta{
 		{Name: "builtin.alpha", Title: "Alpha Agent", Description: "A"},
 		{Name: "builtin.bravo", Title: "Bravo Agent", Description: "B"},
 		{Name: "remote.echo", Title: "Echo Agent", Description: "Echo"},
@@ -30,7 +30,7 @@ func newAgentServer(t *testing.T) *httptest.Server {
 			return
 		}
 
-		filtered := make([]schema.AgentMeta, 0, len(agents))
+		filtered := make([]*schema.AgentMeta, 0, len(agents))
 		for _, agent := range agents {
 			if namespace := r.URL.Query().Get("namespace"); namespace != "" {
 				if len(agent.Name) <= len(namespace) || agent.Name[:len(namespace)] != namespace {

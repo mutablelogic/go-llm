@@ -11,7 +11,9 @@ import (
 	"testing"
 
 	// Packages
+	uuid "github.com/google/uuid"
 	schema "github.com/mutablelogic/go-llm/pkg/schema"
+	pg "github.com/mutablelogic/go-pg"
 	types "github.com/mutablelogic/go-server/pkg/types"
 	assert "github.com/stretchr/testify/assert"
 )
@@ -262,4 +264,73 @@ func Test_NewToolError_001(t *testing.T) {
 	assert.Equal("get_weather", tr.Name)
 	assert.True(tr.IsError)
 	assert.Contains(string(tr.Content), "city not found")
+}
+
+func TestMessageInsertBindsSessionMessage(t *testing.T) {
+	assert := assert.New(t)
+	b := pg.NewBind("schema", "llm", "message.insert", "INSERT")
+	sessionID := uuid.New()
+
+	query, err := (schema.MessageInsert{
+		Session: sessionID,
+		Message: schema.Message{
+			Role: schema.RoleAssistant,
+			Content: []schema.ContentBlock{
+				{Text: types.Ptr("hello")},
+			},
+			Tokens: 12,
+			Result: schema.ResultStop,
+			Meta:   map[string]any{"thought": true},
+		},
+	}).Insert(b)
+	if !assert.NoError(err) {
+		return
+	}
+
+	assert.Equal("INSERT", query)
+	assert.Equal(sessionID, b.Get("session"))
+	assert.Equal(schema.RoleAssistant, b.Get("role"))
+	if content, ok := b.Get("content").([]schema.ContentBlock); assert.True(ok) && assert.Len(content, 1) {
+		if assert.NotNil(content[0].Text) {
+			assert.Equal("hello", *content[0].Text)
+		}
+	}
+	assert.Equal(uint(12), b.Get("tokens"))
+	assert.Equal(schema.ResultStop.String(), b.Get("result"))
+	assert.Equal(map[string]any{"thought": true}, b.Get("meta"))
+}
+
+func TestMessageInsertUserMessageBindsNullResultAndTokens(t *testing.T) {
+	assert := assert.New(t)
+	b := pg.NewBind("schema", "llm", "message.insert", "INSERT")
+
+	_, err := (schema.MessageInsert{
+		Session: uuid.New(),
+		Message: schema.Message{
+			Role:    schema.RoleUser,
+			Content: []schema.ContentBlock{{Text: types.Ptr("hi")}},
+		},
+	}).Insert(b)
+	if !assert.NoError(err) {
+		return
+	}
+
+	assert.Nil(b.Get("tokens"))
+	assert.Nil(b.Get("result"))
+	assert.Nil(b.Get("meta"))
+}
+
+func TestMessageInsertRequiresSessionAndRole(t *testing.T) {
+	assert := assert.New(t)
+	b := pg.NewBind("schema", "llm", "message.insert", "INSERT")
+
+	_, err := (schema.MessageInsert{Message: schema.Message{Role: schema.RoleUser}}).Insert(b)
+	if assert.Error(err) {
+		assert.ErrorIs(err, schema.ErrBadParameter)
+	}
+
+	_, err = (schema.MessageInsert{Session: uuid.New()}).Insert(b)
+	if assert.Error(err) {
+		assert.ErrorIs(err, schema.ErrBadParameter)
+	}
 }

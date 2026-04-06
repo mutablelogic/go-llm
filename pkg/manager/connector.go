@@ -34,7 +34,7 @@ type ConnectorProbe interface {
 func (m *Manager) CreateConnector(ctx context.Context, req schema.ConnectorInsert, user *auth.User) (_ *schema.Connector, _ *oidc.BaseConfiguration, _ []string, err error) {
 	// Otel span
 	ctx, endSpan := otel.StartSpan(m.tracer, ctx, "CreateConnector",
-		attribute.String("req", req.String()),
+		attribute.String("req", types.Stringify(req)),
 		attribute.String("user", types.Stringify(user)),
 	)
 	defer func() { endSpan(err) }()

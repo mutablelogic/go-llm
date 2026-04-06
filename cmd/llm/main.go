@@ -5,7 +5,6 @@ import (
 	"os"
 
 	// Packages
-
 	llmcmd "github.com/mutablelogic/go-llm/pkg/cmd"
 	servercmd "github.com/mutablelogic/go-server/pkg/cmd"
 	version "github.com/mutablelogic/go-server/pkg/version"
@@ -15,14 +14,15 @@ import (
 // TYPES
 
 type CLI struct {
-	llmcmd.AgentCommands
+	llmcmd.SessionCommands
+	llmcmd.ChatCommands
 	llmcmd.AskCommands
 	llmcmd.EmbeddingCommands
 	llmcmd.ConnectorCommands
 	llmcmd.ProviderCommands
 	llmcmd.ModelCommands
 	llmcmd.ToolCommands
-	llmcmd.SessionCommands
+	llmcmd.AgentCommands
 	ServerCommands
 }
 

@@ -13,7 +13,9 @@ import (
 	"strings"
 
 	// Packages
+	uuid "github.com/google/uuid"
 	opt "github.com/mutablelogic/go-llm/pkg/opt"
+	pg "github.com/mutablelogic/go-pg"
 	types "github.com/mutablelogic/go-server/pkg/types"
 )
 
@@ -29,6 +31,12 @@ type Message struct {
 	Tokens  uint           `json:"tokens,omitempty"` // Number of tokens
 	Result  ResultType     `json:"result"`           // Result type
 	Meta    map[string]any `json:"meta,omitzero"`    // Provider-specific metadata
+}
+
+// MessageInsert persists a message within a session conversation.
+type MessageInsert struct {
+	Session uuid.UUID `json:"session" help:"Session ID"`
+	Message `embed:""`
 }
 
 // ContentBlock represents a single piece of content within a message.
@@ -368,6 +376,89 @@ func (m Message) ToolCalls() []ToolCall {
 
 func (m Message) String() string {
 	return types.Stringify(m)
+}
+
+func (m *MessageInsert) Scan(row pg.Row) error {
+	var content []ContentBlock
+	var result string
+	var meta map[string]any
+
+	if err := row.Scan(&m.Session, &m.Role, &content, &m.Tokens, &result, &meta); err != nil {
+		return err
+	}
+
+	m.Content = content
+	m.Meta = meta
+	switch strings.TrimSpace(result) {
+	case "":
+		m.Result = ResultStop
+	case ResultStop.String():
+		m.Result = ResultStop
+	case ResultMaxTokens.String():
+		m.Result = ResultMaxTokens
+	case ResultBlocked.String():
+		m.Result = ResultBlocked
+	case ResultToolCall.String():
+		m.Result = ResultToolCall
+	case ResultError.String():
+		m.Result = ResultError
+	case ResultOther.String():
+		m.Result = ResultOther
+	case ResultMaxIterations.String():
+		m.Result = ResultMaxIterations
+	default:
+		return fmt.Errorf("unknown result type: %q", result)
+	}
+
+	return nil
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// PUBLIC METHODS - WRITER
+
+func (m MessageInsert) Insert(bind *pg.Bind) (string, error) {
+	if m.Session == uuid.Nil {
+		return "", ErrBadParameter.With("message session is required")
+	}
+
+	role := strings.TrimSpace(m.Role)
+	if role == "" {
+		return "", ErrBadParameter.With("message role is required")
+	}
+
+	content := m.Content
+	if content == nil {
+		content = []ContentBlock{}
+	}
+
+	bind.Set("session", m.Session)
+	bind.Set("role", role)
+	bind.Set("content", content)
+
+	if m.Tokens == 0 {
+		bind.Set("tokens", nil)
+	} else {
+		bind.Set("tokens", m.Tokens)
+	}
+
+	result := strings.TrimSpace(m.Result.String())
+	if result == "" || result == "unknown" || (m.Result == ResultStop && role != RoleAssistant && role != RoleThinking && role != RoleTool) {
+		bind.Set("result", nil)
+	} else {
+		bind.Set("result", result)
+	}
+
+	if len(m.Meta) == 0 {
+		bind.Set("meta", nil)
+	} else {
+		bind.Set("meta", m.Meta)
+	}
+
+	return bind.Query("message.insert"), nil
+}
+
+func (m MessageInsert) Update(_ *pg.Bind) error {
+	return fmt.Errorf("MessageInsert: update: not supported")
 }
 
 ////////////////////////////////////////////////////////////////////////////////

@@ -20,7 +20,7 @@ func newToolServer(t *testing.T) *httptest.Server {
 	t.Helper()
 
 	mux := http.NewServeMux()
-	tools := []schema.ToolMeta{
+	tools := []*schema.ToolMeta{
 		{
 			Name:        "builtin.alpha",
 			Title:       "Alpha Tool",
@@ -38,7 +38,7 @@ func newToolServer(t *testing.T) *httptest.Server {
 			return
 		}
 
-		filtered := make([]schema.ToolMeta, 0, len(tools))
+		filtered := make([]*schema.ToolMeta, 0, len(tools))
 		for _, tool := range tools {
 			if namespace := r.URL.Query().Get("namespace"); namespace != "" {
 				if len(tool.Name) <= len(namespace) || tool.Name[:len(namespace)] != namespace {

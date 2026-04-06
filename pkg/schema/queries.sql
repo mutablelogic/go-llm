@@ -394,6 +394,8 @@ RETURNING
 	parent,
 	"user",
 	title,
+	0,
+	0,
 	COALESCE(overhead, 0),
 	COALESCE(meta, '{}'::jsonb) AS meta,
 	COALESCE(tags, '{}'::text[]) AS tags,
@@ -406,6 +408,18 @@ SELECT
 	session.parent,
 	session."user",
 	session.title,
+	COALESCE((
+		SELECT SUM(message.tokens)
+		FROM ${"schema"}.message AS message
+		WHERE message.session = session.id
+		AND message.role = 'user'
+	), 0),
+	COALESCE((
+		SELECT SUM(message.tokens)
+		FROM ${"schema"}.message AS message
+		WHERE message.session = session.id
+		AND message.role <> 'user'
+	), 0),
 	COALESCE(session.overhead, 0),
 	COALESCE(session.meta, '{}'::jsonb) AS meta,
 	COALESCE(session.tags, '{}'::text[]) AS tags,
@@ -421,6 +435,18 @@ SELECT
 	session.parent,
 	session."user",
 	session.title,
+	COALESCE((
+		SELECT SUM(message.tokens)
+		FROM ${"schema"}.message AS message
+		WHERE message.session = session.id
+		AND message.role = 'user'
+	), 0),
+	COALESCE((
+		SELECT SUM(message.tokens)
+		FROM ${"schema"}.message AS message
+		WHERE message.session = session.id
+		AND message.role <> 'user'
+	), 0),
 	COALESCE(session.overhead, 0),
 	COALESCE(session.meta, '{}'::jsonb) AS meta,
 	COALESCE(session.tags, '{}'::text[]) AS tags,
@@ -442,6 +468,18 @@ RETURNING
 	parent,
 	"user",
 	title,
+	COALESCE((
+		SELECT SUM(message.tokens)
+		FROM ${"schema"}.message AS message
+		WHERE message.session = @id
+		AND message.role = 'user'
+	), 0),
+	COALESCE((
+		SELECT SUM(message.tokens)
+		FROM ${"schema"}.message AS message
+		WHERE message.session = @id
+		AND message.role <> 'user'
+	), 0),
 	COALESCE(overhead, 0),
 	COALESCE(meta, '{}'::jsonb) AS meta,
 	COALESCE(tags, '{}'::text[]) AS tags,
@@ -457,11 +495,37 @@ RETURNING
 	parent,
 	"user",
 	title,
+	COALESCE((
+		SELECT SUM(message.tokens)
+		FROM ${"schema"}.message AS message
+		WHERE message.session = @id
+		AND message.role = 'user'
+	), 0),
+	COALESCE((
+		SELECT SUM(message.tokens)
+		FROM ${"schema"}.message AS message
+		WHERE message.session = @id
+		AND message.role <> 'user'
+	), 0),
 	COALESCE(overhead, 0),
 	COALESCE(meta, '{}'::jsonb) AS meta,
 	COALESCE(tags, '{}'::text[]) AS tags,
 	created_at,
 	modified_at;
+
+-- message.insert
+INSERT INTO ${"schema"}.message (
+	"session", role, content, tokens, result, meta
+) VALUES (
+	@session, @role, @content, @tokens, @result, @meta
+)
+RETURNING
+	"session"::text,
+	role,
+	content,
+	COALESCE(tokens, 0),
+	COALESCE(result::text, ''),
+	COALESCE(meta, '{}'::jsonb) AS meta;
 
 -- usage.insert
 INSERT INTO ${"schema"}.usage (
