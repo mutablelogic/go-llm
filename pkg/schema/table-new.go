@@ -36,13 +36,16 @@ func (a AgentMeta) Cell(i int) string {
 	case 1:
 		return toolDescription(ToolMeta{Title: a.Title, Description: a.Description})
 	case 2:
-		if a.Provider != "" && a.Model != "" {
-			return a.Provider + "/" + a.Model
+		if a.Provider != nil && *a.Provider != "" && a.Model != nil && *a.Model != "" {
+			return *a.Provider + "/" + *a.Model
 		}
-		if a.Model != "" {
-			return a.Model
+		if a.Model != nil && *a.Model != "" {
+			return *a.Model
 		}
-		return a.Provider
+		if a.Provider != nil {
+			return *a.Provider
+		}
+		return ""
 	case 3:
 		return strings.Join(a.Tools, ", ")
 	}

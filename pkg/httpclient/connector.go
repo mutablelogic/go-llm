@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
-	"strconv"
 
 	// Packages
 	client "github.com/mutablelogic/go-client"
@@ -15,114 +14,78 @@ import (
 ///////////////////////////////////////////////////////////////////////////////
 // PUBLIC METHODS
 
-// ListConnectors returns registered MCP server connectors, with optional
-// filtering by namespace and enabled state, and optional pagination.
+// ListConnectors returns connectors matching the given request parameters.
 func (c *Client) ListConnectors(ctx context.Context, req schema.ConnectorListRequest) (*schema.ConnectorList, error) {
-	// Build query parameters
-	q := make(url.Values)
-	if req.Namespace != "" {
-		q.Set("namespace", req.Namespace)
-	}
-	if req.Enabled != nil {
-		q.Set("enabled", strconv.FormatBool(*req.Enabled))
-	}
-	if req.Limit != nil {
-		q.Set("limit", strconv.FormatUint(uint64(*req.Limit), 10))
-	}
-	if req.Offset > 0 {
-		q.Set("offset", strconv.FormatUint(uint64(req.Offset), 10))
-	}
-
-	// Create request
-	reqOpts := []client.RequestOpt{client.OptPath("connector")}
-	if len(q) > 0 {
-		reqOpts = append(reqOpts, client.OptQuery(q))
-	}
-
-	// Perform request
 	var response schema.ConnectorList
-	if err := c.DoWithContext(ctx, client.NewRequest(), &response, reqOpts...); err != nil {
+	if err := c.DoWithContext(ctx, client.MethodGet, &response, client.OptPath("connector"), client.OptQuery(req.Query())); err != nil {
 		return nil, err
 	}
 
 	return &response, nil
 }
 
-// GetConnector retrieves the connector registered for the given server URL.
-func (c *Client) GetConnector(ctx context.Context, url_ string) (*schema.Connector, error) {
-	if url_ == "" {
+// GetConnector returns a connector by URL.
+func (c *Client) GetConnector(ctx context.Context, rawURL string) (*schema.Connector, error) {
+	if rawURL == "" {
 		return nil, fmt.Errorf("connector URL cannot be empty")
 	}
 
-	// Create request
-	reqOpts := []client.RequestOpt{client.OptPath("connector", url.PathEscape(url_))}
-
-	// Perform request
 	var response schema.Connector
-	if err := c.DoWithContext(ctx, client.NewRequest(), &response, reqOpts...); err != nil {
+	if err := c.DoWithContext(ctx, client.MethodGet, &response, client.OptPath("connector", url.PathEscape(rawURL))); err != nil {
 		return nil, err
 	}
 
 	return &response, nil
 }
 
-// CreateConnector registers a new MCP server connector.
+// CreateConnector creates a new connector with the given insert data.
 func (c *Client) CreateConnector(ctx context.Context, req schema.ConnectorInsert) (*schema.Connector, error) {
 	if req.URL == "" {
 		return nil, fmt.Errorf("connector URL cannot be empty")
 	}
 
-	// Create request
-	httpReq, err := client.NewJSONRequest(req.ConnectorMeta)
+	httpReq, err := client.NewJSONRequest(req)
 	if err != nil {
 		return nil, err
 	}
-	reqOpts := []client.RequestOpt{client.OptPath("connector", url.PathEscape(req.URL))}
 
-	// Perform request
 	var response schema.Connector
-	if err := c.DoWithContext(ctx, httpReq, &response, reqOpts...); err != nil {
+	if err := c.DoWithContext(ctx, httpReq, &response, client.OptPath("connector")); err != nil {
 		return nil, err
 	}
 
 	return &response, nil
 }
 
-// UpdateConnector updates the metadata for a registered MCP server connector.
-func (c *Client) UpdateConnector(ctx context.Context, url_ string, meta schema.ConnectorMeta) (*schema.Connector, error) {
-	if url_ == "" {
+// UpdateConnector patches connector metadata for the given URL.
+func (c *Client) UpdateConnector(ctx context.Context, rawURL string, req schema.ConnectorMeta) (*schema.Connector, error) {
+	if rawURL == "" {
 		return nil, fmt.Errorf("connector URL cannot be empty")
 	}
 
-	// Create request
-	req, err := client.NewJSONRequestEx(http.MethodPatch, meta, "")
+	httpReq, err := client.NewJSONRequestEx(http.MethodPatch, req, client.ContentTypeAny)
 	if err != nil {
 		return nil, err
 	}
-	reqOpts := []client.RequestOpt{client.OptPath("connector", url.PathEscape(url_))}
 
-	// Perform request
 	var response schema.Connector
-	if err := c.DoWithContext(ctx, req, &response, reqOpts...); err != nil {
+	if err := c.DoWithContext(ctx, httpReq, &response, client.OptPath("connector", url.PathEscape(rawURL))); err != nil {
 		return nil, err
 	}
 
 	return &response, nil
 }
 
-// DeleteConnector removes the connector registered for the given server URL.
-func (c *Client) DeleteConnector(ctx context.Context, url_ string) error {
-	if url_ == "" {
-		return fmt.Errorf("connector URL cannot be empty")
+// DeleteConnector deletes a connector and returns the deleted connector.
+func (c *Client) DeleteConnector(ctx context.Context, rawURL string) (*schema.Connector, error) {
+	if rawURL == "" {
+		return nil, fmt.Errorf("connector URL cannot be empty")
 	}
 
-	// Create request
-	reqOpts := []client.RequestOpt{client.OptPath("connector", url.PathEscape(url_))}
-
-	// Perform request
-	if err := c.DoWithContext(ctx, client.MethodDelete, nil, reqOpts...); err != nil {
-		return err
+	var response schema.Connector
+	if err := c.DoWithContext(ctx, client.MethodDelete, &response, client.OptPath("connector", url.PathEscape(rawURL))); err != nil {
+		return nil, err
 	}
 
-	return nil
+	return &response, nil
 }

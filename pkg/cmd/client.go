@@ -6,7 +6,7 @@ import (
 	"net/http"
 
 	// Packages
-	httpclient "github.com/mutablelogic/go-llm/pkg/httpclient-new"
+	httpclient "github.com/mutablelogic/go-llm/pkg/httpclient"
 	server "github.com/mutablelogic/go-server"
 	httpresponse "github.com/mutablelogic/go-server/pkg/httpresponse"
 )

@@ -38,7 +38,7 @@ CREATE TABLE IF NOT EXISTS ${"schema"}.provider_group (
 CREATE TABLE IF NOT EXISTS ${"schema"}.session (
     "id"          UUID NOT NULL DEFAULT gen_random_uuid() PRIMARY KEY,
     "parent"      UUID REFERENCES ${"schema"}."session" (id) ON DELETE CASCADE,
-    "user"        UUID NOT NULL REFERENCES ${"auth"}."user" (id) ON DELETE CASCADE,
+    "user"        UUID REFERENCES ${"auth"}."user" (id) ON DELETE CASCADE,
     "title"       TEXT,
     "overhead"    INT,
     "meta"        JSONB,

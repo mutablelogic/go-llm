@@ -3,13 +3,14 @@ package schema
 import "testing"
 
 func TestAgentMetaTableCells(t *testing.T) {
+	provider, model := "ollama", "llama3"
 	agent := AgentMeta{
 		Name:        "builtin.alpha",
 		Title:       "Alpha Agent",
 		Description: "First line\nsecond line",
 		GeneratorMeta: GeneratorMeta{
-			Provider: "ollama",
-			Model:    "llama3",
+			Provider: &provider,
+			Model:    &model,
 		},
 		Tools: []string{"builtin.search", "builtin.fetch"},
 	}

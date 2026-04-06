@@ -22,8 +22,8 @@ func TestAskJSONIntegration(t *testing.T) {
 	body, err := json.Marshal(schema.AskRequest{
 		AskRequestCore: schema.AskRequestCore{
 			GeneratorMeta: schema.GeneratorMeta{
-				Provider: conn.Config.Name,
-				Model:    modelName,
+				Provider: types.Ptr(conn.Config.Name),
+				Model:    types.Ptr(modelName),
 			},
 			Text: "Say hello in exactly three words.",
 		},
@@ -65,8 +65,8 @@ func TestAskStreamIntegration(t *testing.T) {
 	body, err := json.Marshal(schema.AskRequest{
 		AskRequestCore: schema.AskRequestCore{
 			GeneratorMeta: schema.GeneratorMeta{
-				Provider: conn.Config.Name,
-				Model:    modelName,
+				Provider: types.Ptr(conn.Config.Name),
+				Model:    types.Ptr(modelName),
 			},
 			Text: "Say hello in exactly three words.",
 		},
@@ -136,8 +136,8 @@ func TestAskModelNotFound(t *testing.T) {
 	body, err := json.Marshal(schema.AskRequest{
 		AskRequestCore: schema.AskRequestCore{
 			GeneratorMeta: schema.GeneratorMeta{
-				Provider: conn.Config.Name,
-				Model:    "missing-model",
+				Provider: types.Ptr(conn.Config.Name),
+				Model:    types.Ptr("missing-model"),
 			},
 			Text: "hello",
 		},
@@ -177,8 +177,8 @@ func TestAskNotAcceptable(t *testing.T) {
 	body, err := json.Marshal(schema.AskRequest{
 		AskRequestCore: schema.AskRequestCore{
 			GeneratorMeta: schema.GeneratorMeta{
-				Provider: conn.Config.Name,
-				Model:    modelName,
+				Provider: types.Ptr(conn.Config.Name),
+				Model:    types.Ptr(modelName),
 			},
 			Text: "hello",
 		},

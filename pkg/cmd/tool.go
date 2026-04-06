@@ -11,7 +11,7 @@ import (
 	// Packages
 	otel "github.com/mutablelogic/go-client/pkg/otel"
 	llm "github.com/mutablelogic/go-llm"
-	httpclient "github.com/mutablelogic/go-llm/pkg/httpclient-new"
+	httpclient "github.com/mutablelogic/go-llm/pkg/httpclient"
 	schema "github.com/mutablelogic/go-llm/pkg/schema"
 	tui "github.com/mutablelogic/go-llm/pkg/tui"
 	server "github.com/mutablelogic/go-server"

@@ -16,12 +16,12 @@ import (
 // GeneratorMeta represents generator settings which are persisted on a session
 // as URL-style values within the session meta object.
 type GeneratorMeta struct {
-	Provider       string     `json:"provider,omitempty" yaml:"provider" help:"Provider name" optional:"" example:"ollama"`
-	Model          string     `json:"model,omitempty" yaml:"model" help:"Model name" optional:"" example:"llama3.2"`
-	SystemPrompt   string     `json:"system_prompt,omitempty" yaml:"system_prompt" help:"System prompt" optional:"" example:"Be concise and answer in one sentence."`
+	Provider       *string    `json:"provider,omitempty" yaml:"provider" help:"Provider name" optional:"" example:"ollama"`
+	Model          *string    `json:"model,omitempty" yaml:"model" help:"Model name" optional:"" example:"llama3.2"`
+	SystemPrompt   *string    `json:"system_prompt,omitempty" yaml:"system_prompt" help:"System prompt" optional:"" example:"Be concise and answer in one sentence."`
 	Format         JSONSchema `json:"format,omitempty" yaml:"output" help:"JSON schema for structured output" optional:"" example:"{\"type\":\"object\",\"properties\":{\"summary\":{\"type\":\"string\"}}}"`
-	Thinking       *bool      `json:"thinking,omitempty" yaml:"thinking" help:"Enable thinking/reasoning" optional:"" example:"true"`
-	ThinkingBudget uint       `json:"thinking_budget,omitempty" yaml:"thinking_budget" help:"Thinking token budget (required for Anthropic, optional for Google)" optional:"" example:"2048"`
+	Thinking       *bool      `json:"thinking,omitempty" yaml:"thinking" help:"Enable thinking/reasoning" optional:"" negatable:"" example:"true"`
+	ThinkingBudget *uint      `json:"thinking_budget,omitempty" yaml:"thinking_budget" help:"Thinking token budget (required for Anthropic, optional for Google)" optional:"" example:"2048"`
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -38,14 +38,20 @@ func (g GeneratorMeta) String() string {
 // session meta JSON object.
 func (g GeneratorMeta) Values() url.Values {
 	values := make(url.Values)
-	if provider := strings.TrimSpace(g.Provider); provider != "" {
-		values.Set("provider", provider)
+	if g.Provider != nil {
+		if provider := strings.TrimSpace(*g.Provider); provider != "" {
+			values.Set("provider", provider)
+		}
 	}
-	if model := strings.TrimSpace(g.Model); model != "" {
-		values.Set("model", model)
+	if g.Model != nil {
+		if model := strings.TrimSpace(*g.Model); model != "" {
+			values.Set("model", model)
+		}
 	}
-	if prompt := strings.TrimSpace(g.SystemPrompt); prompt != "" {
-		values.Set("system_prompt", prompt)
+	if g.SystemPrompt != nil {
+		if prompt := strings.TrimSpace(*g.SystemPrompt); prompt != "" {
+			values.Set("system_prompt", prompt)
+		}
 	}
 	if len(g.Format) > 0 {
 		values.Set("format", string(g.Format))
@@ -53,8 +59,8 @@ func (g GeneratorMeta) Values() url.Values {
 	if g.Thinking != nil {
 		values.Set("thinking", strconv.FormatBool(types.Value(g.Thinking)))
 	}
-	if g.ThinkingBudget > 0 {
-		values.Set("thinking_budget", strconv.FormatUint(uint64(g.ThinkingBudget), 10))
+	if g.ThinkingBudget != nil && *g.ThinkingBudget > 0 {
+		values.Set("thinking_budget", strconv.FormatUint(uint64(*g.ThinkingBudget), 10))
 	}
 	if len(values) == 0 {
 		return nil
@@ -68,9 +74,15 @@ func GeneratorMetaFromValues(values url.Values) GeneratorMeta {
 	if len(values) == 0 {
 		return meta
 	}
-	meta.Provider = strings.TrimSpace(values.Get("provider"))
-	meta.Model = strings.TrimSpace(values.Get("model"))
-	meta.SystemPrompt = strings.TrimSpace(values.Get("system_prompt"))
+	if v := strings.TrimSpace(values.Get("provider")); v != "" {
+		meta.Provider = types.Ptr(v)
+	}
+	if v := strings.TrimSpace(values.Get("model")); v != "" {
+		meta.Model = types.Ptr(v)
+	}
+	if v := strings.TrimSpace(values.Get("system_prompt")); v != "" {
+		meta.SystemPrompt = types.Ptr(v)
+	}
 	if format := strings.TrimSpace(values.Get("format")); format != "" {
 		meta.Format = JSONSchema(json.RawMessage(format))
 	}
@@ -81,7 +93,7 @@ func GeneratorMetaFromValues(values url.Values) GeneratorMeta {
 	}
 	if budget := strings.TrimSpace(values.Get("thinking_budget")); budget != "" {
 		if parsed, err := strconv.ParseUint(budget, 10, 64); err == nil {
-			meta.ThinkingBudget = uint(parsed)
+			meta.ThinkingBudget = types.Ptr(uint(parsed))
 		}
 	}
 	return meta
@@ -106,16 +118,22 @@ func ApplyGeneratorMeta(values url.Values, meta GeneratorMeta) url.Values {
 	return clone
 }
 
-// MergeGeneratorMeta fills blank fields in primary from fallback.
+// MergeFrom returns a new GeneratorMeta using the receiver as the base and
+// filling in any non-blank fields from override.
+func (g GeneratorMeta) MergeFrom(override GeneratorMeta) GeneratorMeta {
+	return MergeGeneratorMeta(override, g)
+}
+
+// MergeGeneratorMeta fills nil fields in primary from fallback.
 func MergeGeneratorMeta(primary, fallback GeneratorMeta) GeneratorMeta {
 	merged := primary
-	if merged.Provider == "" {
+	if merged.Provider == nil {
 		merged.Provider = fallback.Provider
 	}
-	if merged.Model == "" {
+	if merged.Model == nil {
 		merged.Model = fallback.Model
 	}
-	if merged.SystemPrompt == "" {
+	if merged.SystemPrompt == nil {
 		merged.SystemPrompt = fallback.SystemPrompt
 	}
 	if len(merged.Format) == 0 {
@@ -124,7 +142,7 @@ func MergeGeneratorMeta(primary, fallback GeneratorMeta) GeneratorMeta {
 	if merged.Thinking == nil {
 		merged.Thinking = fallback.Thinking
 	}
-	if merged.ThinkingBudget == 0 {
+	if merged.ThinkingBudget == nil {
 		merged.ThinkingBudget = fallback.ThinkingBudget
 	}
 	return merged

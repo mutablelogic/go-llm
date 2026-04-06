@@ -7,6 +7,7 @@ import (
 	// Packages
 	agent "github.com/mutablelogic/go-llm/pkg/agent"
 	schema "github.com/mutablelogic/go-llm/pkg/schema"
+	types "github.com/mutablelogic/go-server/pkg/types"
 	assert "github.com/stretchr/testify/assert"
 )
 
@@ -57,21 +58,21 @@ func Test_prepare_004(t *testing.T) {
 		AgentMeta: schema.AgentMeta{
 			Name: "test",
 			GeneratorMeta: schema.GeneratorMeta{
-				Model: "agent-model",
+				Model: types.Ptr("agent-model"),
 			},
 		},
 	}
 	defaults := schema.GeneratorMeta{
-		Model:        "default-model",
-		Provider:     "default-provider",
-		SystemPrompt: "default-prompt",
+		Model:        types.Ptr("default-model"),
+		Provider:     types.Ptr("default-provider"),
+		SystemPrompt: types.Ptr("default-prompt"),
 	}
 	result, err := agent.Prepare(a, "", defaults, nil)
 	assert.NoError(err)
 	generator := result.SessionMeta.Generator()
-	assert.Equal("agent-model", generator.Model)           // agent wins
-	assert.Equal("default-provider", generator.Provider)   // default fills in
-	assert.Equal("default-prompt", generator.SystemPrompt) // default fills in
+	assert.Equal("agent-model", types.Value(generator.Model))           // agent wins
+	assert.Equal("default-provider", types.Value(generator.Provider))   // default fills in
+	assert.Equal("default-prompt", types.Value(generator.SystemPrompt)) // default fills in
 }
 
 func Test_prepare_005(t *testing.T) {
@@ -82,23 +83,23 @@ func Test_prepare_005(t *testing.T) {
 		AgentMeta: schema.AgentMeta{
 			Name: "test",
 			GeneratorMeta: schema.GeneratorMeta{
-				Model:        "agent-model",
-				Provider:     "agent-provider",
-				SystemPrompt: "agent-prompt",
+				Model:        types.Ptr("agent-model"),
+				Provider:     types.Ptr("agent-provider"),
+				SystemPrompt: types.Ptr("agent-prompt"),
 			},
 		},
 	}
 	defaults := schema.GeneratorMeta{
-		Model:        "default-model",
-		Provider:     "default-provider",
-		SystemPrompt: "default-prompt",
+		Model:        types.Ptr("default-model"),
+		Provider:     types.Ptr("default-provider"),
+		SystemPrompt: types.Ptr("default-prompt"),
 	}
 	result, err := agent.Prepare(a, "", defaults, nil)
 	assert.NoError(err)
 	generator := result.SessionMeta.Generator()
-	assert.Equal("agent-model", generator.Model)
-	assert.Equal("agent-provider", generator.Provider)
-	assert.Equal("agent-prompt", generator.SystemPrompt)
+	assert.Equal("agent-model", types.Value(generator.Model))
+	assert.Equal("agent-provider", types.Value(generator.Provider))
+	assert.Equal("agent-prompt", types.Value(generator.SystemPrompt))
 }
 
 func Test_prepare_006(t *testing.T) {
@@ -320,14 +321,14 @@ func Test_prepare_018(t *testing.T) {
 	}
 	defaults := schema.GeneratorMeta{
 		Thinking:       &thinking,
-		ThinkingBudget: 1000,
+		ThinkingBudget: types.Ptr(uint(1000)),
 	}
 	result, err := agent.Prepare(a, "", defaults, nil)
 	assert.NoError(err)
 	generator := result.SessionMeta.Generator()
 	assert.NotNil(generator.Thinking)
 	assert.True(*generator.Thinking)
-	assert.Equal(uint(1000), generator.ThinkingBudget)
+	assert.Equal(uint(1000), types.Value(generator.ThinkingBudget))
 }
 
 func Test_prepare_019(t *testing.T) {
@@ -341,20 +342,20 @@ func Test_prepare_019(t *testing.T) {
 			Name: "test",
 			GeneratorMeta: schema.GeneratorMeta{
 				Thinking:       &agentThinking,
-				ThinkingBudget: 500,
+				ThinkingBudget: types.Ptr(uint(500)),
 			},
 		},
 	}
 	defaults := schema.GeneratorMeta{
 		Thinking:       &defaultThinking,
-		ThinkingBudget: 2000,
+		ThinkingBudget: types.Ptr(uint(2000)),
 	}
 	result, err := agent.Prepare(a, "", defaults, nil)
 	assert.NoError(err)
 	generator := result.SessionMeta.Generator()
 	assert.NotNil(generator.Thinking)
 	assert.False(*generator.Thinking)
-	assert.Equal(uint(500), generator.ThinkingBudget)
+	assert.Equal(uint(500), types.Value(generator.ThinkingBudget))
 }
 
 func Test_prepare_020(t *testing.T) {
@@ -369,16 +370,16 @@ func Test_prepare_020(t *testing.T) {
 		AgentMeta: meta,
 	}
 	defaults := schema.GeneratorMeta{
-		Provider: "anthropic",
-		Model:    "claude-haiku-4-5-20251001",
+		Provider: types.Ptr("anthropic"),
+		Model:    types.Ptr("claude-haiku-4-5-20251001"),
 	}
 	input := json.RawMessage(`{"text": "Hello", "target_language": "French"}`)
 	result, err := agent.Prepare(a, "parent-sess", defaults, input)
 	assert.NoError(err)
-	assert.Equal("translate", result.SessionMeta.Title)
+	assert.Equal("translate", types.Value(result.SessionMeta.Title))
 	assert.Contains(result.SessionMeta.Tags, "agent:translate@2")
 	assert.Contains(result.SessionMeta.Tags, "parent:parent-sess")
-	assert.Equal("anthropic", result.SessionMeta.Generator().Provider) // default fills in
+	assert.Equal("anthropic", types.Value(result.SessionMeta.Generator().Provider)) // default fills in
 	assert.Contains(result.Text, "Hello")
 	assert.Contains(result.Text, "French")
 }

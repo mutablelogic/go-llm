@@ -10,6 +10,7 @@ import (
 	ollama "github.com/mutablelogic/go-llm/pkg/provider/ollama"
 	schema "github.com/mutablelogic/go-llm/pkg/schema"
 	llmtest "github.com/mutablelogic/go-llm/pkg/test"
+	types "github.com/mutablelogic/go-server/pkg/types"
 	assert "github.com/stretchr/testify/assert"
 	trace "go.opentelemetry.io/otel/trace"
 )
@@ -157,9 +158,9 @@ func TestGeneratorFromMetaSupportsOllamaSystemPromptIntegration(t *testing.T) {
 	}, validateAccessibleModel(m, provider.Name, admin))
 
 	_, _, _, opts, err := m.generatorFromMeta(ctx, schema.GeneratorMeta{
-		Provider:     provider.Name,
-		Model:        modelName,
-		SystemPrompt: "be concise",
+		Provider:     types.Ptr(provider.Name),
+		Model:        types.Ptr(modelName),
+		SystemPrompt: types.Ptr("be concise"),
 	}, admin, generationContextAsk)
 	if llmtest.IsUnreachable(err) {
 		t.Skipf("provider unreachable: %v", err)
@@ -187,8 +188,8 @@ func TestGeneratorFromMetaSupportsOllamaJSONOutputIntegration(t *testing.T) {
 	rawSchema := schema.JSONSchema(`{"type":"object","properties":{"answer":{"type":"string"}}}`)
 
 	_, _, _, opts, err := m.generatorFromMeta(ctx, schema.GeneratorMeta{
-		Provider: provider.Name,
-		Model:    modelName,
+		Provider: types.Ptr(provider.Name),
+		Model:    types.Ptr(modelName),
 		Format:   rawSchema,
 	}, admin, generationContextAsk)
 	if llmtest.IsUnreachable(err) {
@@ -218,9 +219,9 @@ func TestGeneratorFromMetaRejectsElizaThinkingBudgetIntegration(t *testing.T) {
 	modelName := llmtest.ModelNameMatching(t, "", syncAndListModels(m, provider.Name, admin), nil, validateAccessibleModel(m, provider.Name, admin))
 
 	_, _, _, opts, err := m.generatorFromMeta(ctx, schema.GeneratorMeta{
-		Provider:       provider.Name,
-		Model:          modelName,
-		ThinkingBudget: 2048,
+		Provider:       types.Ptr(provider.Name),
+		Model:          types.Ptr(modelName),
+		ThinkingBudget: types.Ptr(uint(2048)),
 	}, admin, generationContextAsk)
 	if !assert.NoError(t, err) {
 		return
@@ -246,7 +247,7 @@ func TestAskRespectsProviderGroupsIntegration(t *testing.T) {
 		assert := assert.New(t)
 		_, err := m.Ask(ctx, schema.AskRequest{
 			AskRequestCore: schema.AskRequestCore{
-				GeneratorMeta: schema.GeneratorMeta{Model: modelName},
+				GeneratorMeta: schema.GeneratorMeta{Model: types.Ptr(modelName)},
 				Text:          "Say hello in exactly three words.",
 			},
 		}, &auth.User{}, nil)
@@ -259,7 +260,7 @@ func TestAskRespectsProviderGroupsIntegration(t *testing.T) {
 		assert := assert.New(t)
 		resp, err := m.Ask(ctx, schema.AskRequest{
 			AskRequestCore: schema.AskRequestCore{
-				GeneratorMeta: schema.GeneratorMeta{Model: modelName},
+				GeneratorMeta: schema.GeneratorMeta{Model: types.Ptr(modelName)},
 				Text:          "Say hello in exactly three words.",
 			},
 		}, admin, nil)

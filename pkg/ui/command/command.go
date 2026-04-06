@@ -63,10 +63,20 @@ func New(client Client, hooks Hooks) *Handler {
 	}
 }
 
+func ptrIfNonEmpty(s string) *string {
+	if s == "" {
+		return nil
+	}
+	return &s
+}
+
 func formatGeneratorModel(generator schema.GeneratorMeta) string {
-	model := generator.Model
-	if generator.Provider != "" {
-		model = generator.Provider + "/" + model
+	var model string
+	if generator.Model != nil {
+		model = *generator.Model
+	}
+	if generator.Provider != nil && *generator.Provider != "" {
+		model = *generator.Provider + "/" + model
 	}
 	return model
 }
@@ -139,8 +149,8 @@ func (h *Handler) cmdModel(ctx context.Context, evt ui.Event, sessionID *string)
 	} else {
 		newModel = arg
 	}
-	generator.Provider = provider
-	generator.Model = newModel
+	generator.Provider = ptrIfNonEmpty(provider)
+	generator.Model = &newModel
 	if _, err := h.client.UpdateSession(ctx, *sessionID, schema.SessionMeta{
 		GeneratorMeta: generator,
 	}); err != nil {
@@ -163,15 +173,15 @@ func (h *Handler) cmdSession(ctx context.Context, evt ui.Event, sessionID *strin
 		generator := session.GeneratorMeta
 		buf.WriteString("| | |\n|---|---|") // header row (empty) + separator
 		buf.WriteString(fmt.Sprintf("\n| **Session** | %s |", session.ID))
-		if session.Title != "" {
-			buf.WriteString(fmt.Sprintf("\n| **Title** | %s |", session.Title))
+		if session.Title != nil && *session.Title != "" {
+			buf.WriteString(fmt.Sprintf("\n| **Title** | %s |", *session.Title))
 		}
 		model := formatGeneratorModel(generator)
 		if model != "" {
 			buf.WriteString(fmt.Sprintf("\n| **Model** | %s |", model))
 		}
-		if generator.SystemPrompt != "" {
-			buf.WriteString(fmt.Sprintf("\n| **System** | %s |", generator.SystemPrompt))
+		if generator.SystemPrompt != nil && *generator.SystemPrompt != "" {
+			buf.WriteString(fmt.Sprintf("\n| **System** | %s |", *generator.SystemPrompt))
 		}
 		if generator.Thinking != nil {
 			buf.WriteString(fmt.Sprintf("\n| **Thinking** | %v |", *generator.Thinking))
@@ -180,13 +190,6 @@ func (h *Handler) cmdSession(ctx context.Context, evt ui.Event, sessionID *strin
 			tags := append([]string(nil), session.Tags...)
 			sort.Strings(tags)
 			buf.WriteString(fmt.Sprintf("\n| **Tags** | %s |", strings.Join(tags, ", ")))
-		}
-		buf.WriteString(fmt.Sprintf("\n| **Messages** | %d |", len(session.Messages)))
-		tokens := session.Tokens()
-		if session.Overhead > 0 {
-			buf.WriteString(fmt.Sprintf("\n| **Tokens** | %d (+%d overhead/turn) |", tokens, session.Overhead))
-		} else {
-			buf.WriteString(fmt.Sprintf("\n| **Tokens** | %d |", tokens))
 		}
 		buf.WriteString(fmt.Sprintf("\n| **Created** | %s |", session.CreatedAt.Format("2006-01-02 15:04:05")))
 		buf.WriteString(fmt.Sprintf("\n| **Modified** | %s |", formatSessionTime(session.ModifiedAt)))
@@ -205,7 +208,7 @@ func (h *Handler) cmdSession(ctx context.Context, evt ui.Event, sessionID *strin
 	}
 
 	model := formatGeneratorModel(session.GeneratorMeta)
-	return evt.Context.SendText(ctx, fmt.Sprintf("Switched to session: %s (%s, %d msgs)", newSessionID, model, len(session.Messages)))
+	return evt.Context.SendText(ctx, fmt.Sprintf("Switched to session: %s (%s)", newSessionID, model))
 }
 
 func (h *Handler) cmdSessions(ctx context.Context, evt ui.Event, sessionID *string) error {
@@ -238,10 +241,21 @@ func (h *Handler) cmdReset(ctx context.Context, evt ui.Event, sessionID *string)
 			return err
 		}
 		generator := current.GeneratorMeta
-		provider = generator.Provider
-		model = generator.Model
+		if generator.Provider != nil {
+			provider = *generator.Provider
+		}
+		if generator.Model != nil {
+			model = *generator.Model
+		}
 	}
-	generator := schema.GeneratorMeta{Provider: provider, Model: model}
+	var g schema.GeneratorMeta
+	if provider != "" {
+		g.Provider = &provider
+	}
+	if model != "" {
+		g.Model = &model
+	}
+	generator := g
 	meta := schema.SessionMeta{
 		GeneratorMeta: generator,
 	}
@@ -276,14 +290,14 @@ func (h *Handler) cmdName(ctx context.Context, evt ui.Event, sessionID *string) 
 		if err != nil {
 			return err
 		}
-		if session.Title == "" {
+		if session.Title == nil || *session.Title == "" {
 			return evt.Context.SendText(ctx, "Session has no title")
 		}
-		return evt.Context.SendText(ctx, fmt.Sprintf("Session title: %s", session.Title))
+		return evt.Context.SendText(ctx, fmt.Sprintf("Session title: %s", *session.Title))
 	}
 	name := strings.Join(evt.Args, " ")
 	if _, err := h.client.UpdateSession(ctx, *sessionID, schema.SessionMeta{
-		Title: name,
+		Title: &name,
 	}); err != nil {
 		return err
 	}
@@ -297,13 +311,13 @@ func (h *Handler) cmdSystem(ctx context.Context, evt ui.Event, sessionID *string
 	}
 	generator := session.GeneratorMeta
 	if len(evt.Args) == 0 {
-		if generator.SystemPrompt == "" {
+		if generator.SystemPrompt == nil || *generator.SystemPrompt == "" {
 			return evt.Context.SendText(ctx, "No system prompt set")
 		}
-		return evt.Context.SendText(ctx, fmt.Sprintf("System prompt: %s", generator.SystemPrompt))
+		return evt.Context.SendText(ctx, fmt.Sprintf("System prompt: %s", *generator.SystemPrompt))
 	}
 	prompt := strings.Join(evt.Args, " ")
-	generator.SystemPrompt = prompt
+	generator.SystemPrompt = &prompt
 	if _, err := h.client.UpdateSession(ctx, *sessionID, schema.SessionMeta{
 		GeneratorMeta: generator,
 	}); err != nil {
@@ -438,10 +452,10 @@ func (h *Handler) cmdAgent(ctx context.Context, evt ui.Event) error {
 		buf.WriteString(fmt.Sprintf("\n| **Description** | %s |", a.Description))
 	}
 	buf.WriteString(fmt.Sprintf("\n| **Version** | %d |", a.Version))
-	if a.Model != "" {
-		model := a.Model
-		if a.Provider != "" {
-			model = a.Provider + "/" + model
+	if a.Model != nil && *a.Model != "" {
+		model := *a.Model
+		if a.Provider != nil && *a.Provider != "" {
+			model = *a.Provider + "/" + model
 		}
 		buf.WriteString(fmt.Sprintf("\n| **Model** | %s |", model))
 	}

@@ -14,7 +14,7 @@ import (
 
 	// Packages
 	otel "github.com/mutablelogic/go-client/pkg/otel"
-	httpclient "github.com/mutablelogic/go-llm/pkg/httpclient-new"
+	httpclient "github.com/mutablelogic/go-llm/pkg/httpclient"
 	opt "github.com/mutablelogic/go-llm/pkg/opt"
 	schema "github.com/mutablelogic/go-llm/pkg/schema"
 	tui "github.com/mutablelogic/go-llm/pkg/tui"
@@ -52,20 +52,24 @@ type markdownStream struct {
 // PUBLIC METHODS
 
 func (cmd *AskCommand) Run(ctx server.Cmd) (err error) {
-	if cmd.Model == "" {
-		cmd.Model = ctx.GetString("model")
+	if cmd.Model == nil {
+		if s := ctx.GetString("model"); s != "" {
+			cmd.Model = types.Ptr(s)
+		}
 	}
-	if cmd.Provider == "" {
-		cmd.Provider = ctx.GetString("provider")
+	if cmd.Provider == nil {
+		if s := ctx.GetString("provider"); s != "" {
+			cmd.Provider = types.Ptr(s)
+		}
 	}
-	if cmd.Model == "" {
+	if cmd.Model == nil {
 		return fmt.Errorf("model is required (set with --model or store a default)")
 	}
-	if err := ctx.Set("model", cmd.Model); err != nil {
+	if err := ctx.Set("model", *cmd.Model); err != nil {
 		return err
 	}
-	if cmd.Provider != "" {
-		if err := ctx.Set("provider", cmd.Provider); err != nil {
+	if cmd.Provider != nil {
+		if err := ctx.Set("provider", *cmd.Provider); err != nil {
 			return err
 		}
 	}

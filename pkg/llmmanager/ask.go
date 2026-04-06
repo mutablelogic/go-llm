@@ -110,15 +110,15 @@ func (m *Manager) Ask(ctx context.Context, request schema.AskRequest, user *auth
 // fields (e.g. system prompt). This is reusable for both Ask and Chat.
 func (m *Manager) generatorFromMeta(ctx context.Context, meta schema.GeneratorMeta, user *auth.User, context generationContext) (*schema.Provider, *schema.Model, llm.Generator, []opt.Opt, error) {
 	// Get candidate providers for user, or all candidates if no user is provided.
-	providers, err := m.providersForUser(ctx, meta.Provider, user)
+	providers, err := m.providersForUser(ctx, types.Value(meta.Provider), user)
 	if err != nil {
 		return nil, nil, nil, nil, err
 	} else if len(providers) == 0 {
-		return nil, nil, nil, nil, schema.ErrNotFound.Withf("no providers found for model: %s", meta.Model)
+		return nil, nil, nil, nil, schema.ErrNotFound.Withf("no providers found for model: %s", types.Value(meta.Model))
 	}
 
 	// Get the model
-	models, err := m.modelsByName(ctx, providers, meta.Model)
+	models, err := m.modelsByName(ctx, providers, types.Value(meta.Model))
 	if err != nil {
 		return nil, nil, nil, nil, err
 	}
@@ -127,9 +127,9 @@ func (m *Manager) generatorFromMeta(ctx context.Context, meta schema.GeneratorMe
 	var model *schema.Model
 	var provider *schema.Provider
 	if len(models) == 0 {
-		return nil, nil, nil, nil, schema.ErrNotFound.Withf("model %q not found", meta.Model)
+		return nil, nil, nil, nil, schema.ErrNotFound.Withf("model %q not found", types.Value(meta.Model))
 	} else if len(models) > 1 {
-		return nil, nil, nil, nil, schema.ErrConflict.Withf("multiple models named %q found; specify a provider", meta.Model)
+		return nil, nil, nil, nil, schema.ErrConflict.Withf("multiple models named %q found; specify a provider", types.Value(meta.Model))
 	} else {
 		model = types.Ptr(models[0])
 		for i := range providers {
@@ -140,13 +140,13 @@ func (m *Manager) generatorFromMeta(ctx context.Context, meta schema.GeneratorMe
 		}
 	}
 	if provider == nil {
-		return nil, nil, nil, nil, schema.ErrNotFound.Withf("provider %q not found for model: %s", model.OwnedBy, meta.Model)
+		return nil, nil, nil, nil, schema.ErrNotFound.Withf("provider %q not found for model: %s", model.OwnedBy, types.Value(meta.Model))
 	}
 
 	// Get the provider-specific model
 	client := m.Registry.Get(model.OwnedBy)
 	if client == nil {
-		return nil, nil, nil, nil, schema.ErrNotFound.Withf("no provider found for model: %s", meta.Model)
+		return nil, nil, nil, nil, schema.ErrNotFound.Withf("no provider found for model: %s", types.Value(meta.Model))
 	}
 
 	// Client needs to be a generator
@@ -157,14 +157,14 @@ func (m *Manager) generatorFromMeta(ctx context.Context, meta schema.GeneratorMe
 
 	// Build options from meta fields
 	var opts []opt.Opt
-	if meta.SystemPrompt != "" {
-		opts = append(opts, withSystemPrompt(meta.SystemPrompt))
+	if meta.SystemPrompt != nil && *meta.SystemPrompt != "" {
+		opts = append(opts, withSystemPrompt(*meta.SystemPrompt))
 	}
 	if len(meta.Format) > 0 {
 		opts = append(opts, withJSONOutput(meta.Format))
 	}
-	if meta.ThinkingBudget > 0 {
-		opts = append(opts, withThinkingBudget(context, meta.ThinkingBudget))
+	if meta.ThinkingBudget != nil && *meta.ThinkingBudget > 0 {
+		opts = append(opts, withThinkingBudget(context, *meta.ThinkingBudget))
 	} else if meta.Thinking != nil && *meta.Thinking {
 		opts = append(opts, withThinking(context))
 	}

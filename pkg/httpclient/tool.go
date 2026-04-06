@@ -2,78 +2,123 @@ package httpclient
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
+	"io"
+	"net/http"
 
 	// Packages
 	client "github.com/mutablelogic/go-client"
-	opt "github.com/mutablelogic/go-llm/pkg/opt"
+	llm "github.com/mutablelogic/go-llm"
 	schema "github.com/mutablelogic/go-llm/pkg/schema"
+	types "github.com/mutablelogic/go-server/pkg/types"
 )
 
 ///////////////////////////////////////////////////////////////////////////////
 // PUBLIC METHODS
 
-// ListTools returns a list of all available tools.
-// Use WithLimit and WithOffset to paginate results.
-func (c *Client) ListTools(ctx context.Context, opts ...opt.Opt) (*schema.ToolList, error) {
-	// Apply options
-	o, err := opt.Apply(opts...)
-	if err != nil {
-		return nil, err
-	}
-
-	// Create request
-	req := client.NewRequest()
-	reqOpts := []client.RequestOpt{client.OptPath("tool")}
-	if q := o.Query(opt.LimitKey, opt.OffsetKey); len(q) > 0 {
-		reqOpts = append(reqOpts, client.OptQuery(q))
-	}
-
-	// Perform request
+// ListTools returns tools matching the given request parameters.
+func (c *Client) ListTools(ctx context.Context, req schema.ToolListRequest) (*schema.ToolList, error) {
 	var response schema.ToolList
-	if err := c.DoWithContext(ctx, req, &response, reqOpts...); err != nil {
+	if err := c.DoWithContext(ctx, client.MethodGet, &response, client.OptPath("tool"), client.OptQuery(req.Query())); err != nil {
 		return nil, err
 	}
 
-	// Return the response
 	return &response, nil
 }
 
-// GetTool retrieves a specific tool by name.
+// GetTool returns metadata for a specific tool by name.
 func (c *Client) GetTool(ctx context.Context, name string) (*schema.ToolMeta, error) {
 	if name == "" {
 		return nil, fmt.Errorf("tool name cannot be empty")
 	}
 
-	// Create request
-	req := client.NewRequest()
-	reqOpts := []client.RequestOpt{client.OptPath("tool", name)}
-
-	// Perform request
 	var response schema.ToolMeta
-	if err := c.DoWithContext(ctx, req, &response, reqOpts...); err != nil {
+	if err := c.DoWithContext(ctx, client.MethodGet, &response, client.OptPath("tool", name)); err != nil {
 		return nil, err
 	}
 
-	// Return the response
 	return &response, nil
 }
 
-// CallTool calls a tool by name with the given JSON input and returns the result.
-func (c *Client) CallTool(ctx context.Context, name string, input json.RawMessage) (*schema.CallToolResponse, error) {
+// CallTool executes a tool and returns the raw result as an llm.Resource.
+func (c *Client) CallTool(ctx context.Context, name string, req schema.CallToolRequest) (llm.Resource, error) {
 	if name == "" {
 		return nil, fmt.Errorf("tool name cannot be empty")
 	}
 
-	payload, err := client.NewJSONRequest(schema.CallToolRequest{Input: input})
+	// Create JSON request
+	payload, err := client.NewJSONRequest(req)
 	if err != nil {
 		return nil, err
 	}
 
-	var response schema.CallToolResponse
-	if err := c.DoWithContext(ctx, payload, &response, client.OptPath("tool", name)); err != nil {
+	// Get the resource
+	resource := new(resource)
+	err = c.DoWithContext(ctx, payload, resource, client.OptPath("tool", name))
+	if err != nil {
 		return nil, err
 	}
-	return &response, nil
+	if resource.empty() {
+		return nil, nil
+	}
+
+	// Return the resource
+	return resource, nil
+}
+
+///////////////////////////////////////////////////////////////////////////////
+// PUBLIC METHODS
+
+type resource struct {
+	uri         string
+	name        string
+	description string
+	contentType string
+	data        []byte
+}
+
+var _ client.Unmarshaler = (*resource)(nil)
+var _ llm.Resource = (*resource)(nil)
+
+func (r *resource) Unmarshal(header http.Header, body io.Reader) error {
+	r.uri = header.Get(types.ContentPathHeader)
+	r.name = header.Get(types.ContentNameHeader)
+	r.description = header.Get(types.ContentDescriptionHeader)
+	r.contentType = types.ContentTypeBinary
+	if value := header.Get(types.ContentTypeHeader); value != "" {
+		if parsed, err := types.ParseContentType(value); err == nil {
+			r.contentType = parsed
+		} else {
+			r.contentType = value
+		}
+	}
+	data, err := io.ReadAll(body)
+	if err != nil {
+		return err
+	}
+	r.data = data
+	return nil
+}
+
+func (r *resource) URI() string {
+	return r.uri
+}
+
+func (r *resource) Name() string {
+	return r.name
+}
+
+func (r *resource) Description() string {
+	return r.description
+}
+func (r *resource) Type() string {
+	return r.contentType
+}
+
+func (r *resource) Read(context.Context) ([]byte, error) {
+	return r.data, nil
+}
+
+func (r *resource) empty() bool {
+	return len(r.data) == 0
 }

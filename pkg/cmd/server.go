@@ -11,7 +11,7 @@ import (
 	authhanders "github.com/djthorpe/go-auth/pkg/httphandler/authmanager"
 	llm "github.com/mutablelogic/go-llm"
 	agent "github.com/mutablelogic/go-llm/etc/agent"
-	llmhandlers "github.com/mutablelogic/go-llm/pkg/httphandler-new"
+	llmhandlers "github.com/mutablelogic/go-llm/pkg/httphandler"
 	llmmanager "github.com/mutablelogic/go-llm/pkg/llmmanager"
 	"github.com/mutablelogic/go-llm/pkg/toolkit/prompt"
 	pg "github.com/mutablelogic/go-pg"

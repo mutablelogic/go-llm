@@ -28,32 +28,31 @@ type Conversation []*Message
 
 // Session represents a stored conversation with an LLM.
 type Session struct {
-	ID uuid.UUID `json:"id"`
+	ID   uuid.UUID `json:"id"`
+	User uuid.UUID `json:"user" help:"User owning the session"`
 	SessionInsert
-	Overhead   uint         `json:"overhead,omitempty" help:"Constant token cost per turn (tools, system prompt)"`
-	Messages   Conversation `json:"messages" help:"Messages in the session conversation"`
-	CreatedAt  time.Time    `json:"created_at" help:"Creation timestamp"`
-	ModifiedAt *time.Time   `json:"modified_at,omitempty" help:"Last modification timestamp" optional:""`
+	Overhead   uint       `json:"overhead,omitempty" help:"Constant token cost per turn (tools, system prompt)"`
+	CreatedAt  time.Time  `json:"created_at" help:"Creation timestamp"`
+	ModifiedAt *time.Time `json:"modified_at,omitempty" help:"Last modification timestamp" optional:""`
 }
 
 // SessionMeta represents the metadata for a session.
 type SessionMeta struct {
 	GeneratorMeta
-	Title string   `json:"title,omitempty" help:"Session title" optional:""`
+	Title *string  `json:"title,omitempty" help:"Session title" optional:""`
 	Tags  []string `json:"tags,omitempty" help:"User-defined tags" optional:""`
 }
 
 type SessionInsert struct {
 	Parent uuid.UUID `json:"parent,omitempty" help:"Parent session for threading" optional:""`
-	User   uuid.UUID `json:"user" help:"User owning the session"`
 	SessionMeta
 }
 
 // SessionListRequest represents a request to list sessions.
 type SessionListRequest struct {
 	pg.OffsetLimit
-	Parent *uuid.UUID `json:"parent,omitempty" help:"Filter by parent session ID" optional:""`
-	User   *uuid.UUID `json:"user,omitempty" help:"Filter by user ID" optional:""`
+	Parent *uuid.UUID `json:"parent,omitzero" help:"Filter by parent session ID" optional:""`
+	User   *uuid.UUID `json:"user,omitzero" help:"Filter by user ID" optional:""`
 	Title  *string    `json:"title,omitempty" help:"Filter by session title (partial match)" optional:""`
 	Tags   []string   `json:"tags,omitempty" help:"Filter by tags (sessions must contain all specified tags)" optional:""`
 }
@@ -154,23 +153,6 @@ func (s Conversation) Tokens() uint {
 ////////////////////////////////////////////////////////////////////////////////
 // PUBLIC METHODS - SESSION
 
-// Append adds a message to the session and updates the modified timestamp.
-func (s *Session) Append(message Message) {
-	s.Messages.Append(message)
-	s.ModifiedAt = types.Ptr(time.Now())
-}
-
-// Tokens returns the total token count across all messages.
-func (s *Session) Tokens() uint {
-	return s.Messages.Tokens() + s.Overhead
-}
-
-// Conversation returns a pointer to the underlying message slice,
-// compatible with generator.WithSession.
-func (s *Session) Conversation() *Conversation {
-	return &s.Messages
-}
-
 // Validate returns an error if the session is missing required fields.
 func (s *Session) Validate() error {
 	return nil
@@ -216,11 +198,16 @@ func (req SessionListRequest) Query() url.Values {
 // SELECTORS
 
 func (s SessionIDSelector) Select(bind *pg.Bind, op pg.Op) (string, error) {
-	id := uuid.UUID(s)
-	if id == uuid.Nil {
-		return "", ErrBadParameter.With("session id is required")
+	if session := uuid.UUID(s); session == uuid.Nil {
+		return "", ErrBadParameter.With("session is required")
+	} else {
+		bind.Set("id", session)
 	}
-	bind.Set("id", id)
+
+	// Normalise: uuid.Nil means no user filter → SQL NULL
+	if user, _ := bind.Get("user").(uuid.UUID); user == uuid.Nil {
+		bind.Set("user", nil)
+	}
 
 	switch op {
 	case pg.Get:
@@ -279,11 +266,12 @@ func (req SessionListRequest) Select(bind *pg.Bind, op pg.Op) (string, error) {
 // Expected column order: id, parent, user, title, overhead, meta, tags, created_at, modified_at.
 func (s *Session) Scan(row pg.Row) error {
 	var parent *uuid.UUID
+	var user *uuid.UUID
 	var meta url.Values
 	if err := row.Scan(
 		&s.ID,
 		&parent,
-		&s.User,
+		&user,
 		&s.Title,
 		&s.Overhead,
 		&meta,
@@ -297,6 +285,11 @@ func (s *Session) Scan(row pg.Row) error {
 		s.Parent = *parent
 	} else {
 		s.Parent = uuid.Nil
+	}
+	if user != nil {
+		s.User = *user
+	} else {
+		s.User = uuid.Nil
 	}
 	s.GeneratorMeta = GeneratorMetaFromValues(meta)
 	if s.Tags == nil {
@@ -325,21 +318,22 @@ func (list *SessionList) ScanCount(row pg.Row) error {
 // PUBLIC METHODS - WRITER
 
 func (s SessionInsert) Insert(bind *pg.Bind) (string, error) {
-	if s.User == uuid.Nil {
-		return "", ErrBadParameter.With("session user is required")
+	if uid, ok := bind.Get("user").(uuid.UUID); ok && uid == uuid.Nil {
+		bind.Set("user", nil)
 	}
 	if s.Parent == uuid.Nil {
 		bind.Set("parent", nil)
 	} else {
 		bind.Set("parent", s.Parent)
 	}
-	bind.Set("user", s.User)
 
-	if title := strings.TrimSpace(s.Title); title != "" {
-		bind.Set("title", title)
-	} else {
-		bind.Set("title", nil)
+	var title *string
+	if s.Title != nil {
+		if t := strings.TrimSpace(*s.Title); t != "" {
+			title = &t
+		}
 	}
+	bind.Set("title", title)
 
 	meta := cloneSessionValues(s.GeneratorMeta.Values())
 	if meta == nil {
@@ -362,8 +356,8 @@ func (s SessionMeta) Insert(_ *pg.Bind) (string, error) {
 func (s SessionMeta) Update(bind *pg.Bind) error {
 	bind.Del("patch")
 
-	if title := strings.TrimSpace(s.Title); title != "" {
-		bind.Append("patch", `title = `+bind.Set("title", title))
+	if s.Title != nil && strings.TrimSpace(*s.Title) != "" {
+		bind.Append("patch", `title = `+bind.Set("title", strings.TrimSpace(*s.Title)))
 	}
 	if meta := cloneSessionValues(s.GeneratorMeta.Values()); meta != nil {
 		bind.Append("patch", `meta = `+bind.Set("meta", meta))

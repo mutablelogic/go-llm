@@ -62,7 +62,7 @@ func Prepare(agent *schema.Agent, parentID string, defaults schema.GeneratorMeta
 	return &PrepareResult{
 		SessionMeta: schema.SessionMeta{
 			GeneratorMeta: meta,
-			Title:         agent.Name,
+			Title:         &agent.Name,
 			Tags:          tags,
 		},
 		Text:  text,

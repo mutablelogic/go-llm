@@ -9,7 +9,7 @@ import (
 	"testing"
 
 	// Packages
-	httpclient "github.com/mutablelogic/go-llm/pkg/httpclient-new"
+	httpclient "github.com/mutablelogic/go-llm/pkg/httpclient"
 	schema "github.com/mutablelogic/go-llm/pkg/schema"
 	types "github.com/mutablelogic/go-server/pkg/types"
 )

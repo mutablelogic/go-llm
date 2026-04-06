@@ -400,20 +400,6 @@ RETURNING
 	created_at,
 	modified_at;
 
--- session.select
-SELECT
-	session.id,
-	session.parent,
-	session."user",
-	session.title,
-	COALESCE(session.overhead, 0),
-	COALESCE(session.meta, '{}'::jsonb) AS meta,
-	COALESCE(session.tags, '{}'::text[]) AS tags,
-	session.created_at,
-	session.modified_at
-FROM ${"schema"}.session AS session
-WHERE session.id = @id;
-
 -- session.list
 SELECT
 	session.id,
@@ -429,12 +415,28 @@ FROM ${"schema"}.session AS session
 ${where}
 ${orderby};
 
+-- session.select
+SELECT
+	session.id,
+	session.parent,
+	session."user",
+	session.title,
+	COALESCE(session.overhead, 0),
+	COALESCE(session.meta, '{}'::jsonb) AS meta,
+	COALESCE(session.tags, '{}'::text[]) AS tags,
+	session.created_at,
+	session.modified_at
+FROM ${"schema"}.session AS session
+WHERE session.id = @id
+AND (@user IS NULL OR session."user" = @user);
+
 -- session.update
 UPDATE ${"schema"}.session
 SET
 	${patch},
 	modified_at = NOW()
 WHERE id = @id
+AND (@user IS NULL OR session."user" = @user)
 RETURNING
 	id,
 	parent,
@@ -449,6 +451,7 @@ RETURNING
 -- session.delete
 DELETE FROM ${"schema"}.session
 WHERE id = @id
+AND (@user IS NULL OR session."user" = @user)
 RETURNING
 	id,
 	parent,

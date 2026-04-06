@@ -11,6 +11,7 @@ import (
 	// Packages
 	schema "github.com/mutablelogic/go-llm/pkg/schema"
 	tui "github.com/mutablelogic/go-llm/pkg/tui"
+	types "github.com/mutablelogic/go-server/pkg/types"
 	assert "github.com/stretchr/testify/assert"
 	require "github.com/stretchr/testify/require"
 )
@@ -24,7 +25,7 @@ func TestAskCommandRequestWithFileAttachments(t *testing.T) {
 	require.NoError(t, os.WriteFile(second, []byte("beta"), 0o600))
 
 	req, err := (AskCommand{
-		GeneratorMeta: schema.GeneratorMeta{Model: "phi4:latest", Provider: "ollama"},
+		GeneratorMeta: schema.GeneratorMeta{Model: types.Ptr("phi4:latest"), Provider: types.Ptr("ollama")},
 		Text:          "summarize these files",
 		File:          []string{filepath.Join(dir, "*.txt")},
 	}).request()
@@ -32,8 +33,8 @@ func TestAskCommandRequestWithFileAttachments(t *testing.T) {
 		return
 	}
 
-	assert.Equal("phi4:latest", req.Model)
-	assert.Equal("ollama", req.Provider)
+	assert.Equal(types.Ptr("phi4:latest"), req.Model)
+	assert.Equal(types.Ptr("ollama"), req.Provider)
 	assert.Equal("summarize these files", req.Text)
 	if assert.Len(req.Attachments, 2) {
 		assert.Equal("text/plain; charset=utf-8", req.Attachments[0].ContentType)

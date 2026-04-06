@@ -51,14 +51,14 @@ func (p *prompt) Prepare(_ context.Context, input json.RawMessage) (string, []op
 func (p *prompt) options() ([]opt.Opt, error) {
 	var opts []opt.Opt
 
-	if p.m.Model != "" {
-		opts = append(opts, opt.SetString(opt.ModelKey, p.m.Model))
+	if p.m.Model != nil && *p.m.Model != "" {
+		opts = append(opts, opt.SetString(opt.ModelKey, *p.m.Model))
 	}
-	if p.m.Provider != "" {
-		opts = append(opts, opt.SetString(opt.ProviderKey, p.m.Provider))
+	if p.m.Provider != nil && *p.m.Provider != "" {
+		opts = append(opts, opt.SetString(opt.ProviderKey, *p.m.Provider))
 	}
-	if p.m.SystemPrompt != "" {
-		opts = append(opts, opt.SetString(opt.SystemPromptKey, p.m.SystemPrompt))
+	if p.m.SystemPrompt != nil && *p.m.SystemPrompt != "" {
+		opts = append(opts, opt.SetString(opt.SystemPromptKey, *p.m.SystemPrompt))
 	}
 	if len(p.m.Format) > 0 {
 		opts = append(opts, opt.SetAny(opt.JSONSchemaKey, p.m.Format))
@@ -66,8 +66,8 @@ func (p *prompt) options() ([]opt.Opt, error) {
 	if p.m.Thinking != nil {
 		opts = append(opts, opt.SetBool(opt.ThinkingKey, types.Value(p.m.Thinking)))
 	}
-	if p.m.ThinkingBudget > 0 {
-		opts = append(opts, opt.SetUint(opt.ThinkingBudgetKey, p.m.ThinkingBudget))
+	if p.m.ThinkingBudget != nil && *p.m.ThinkingBudget > 0 {
+		opts = append(opts, opt.SetUint(opt.ThinkingBudgetKey, *p.m.ThinkingBudget))
 	}
 	if len(p.m.Tools) > 0 {
 		opts = append(opts, opt.AddString(opt.ToolKey, p.m.Tools...))
