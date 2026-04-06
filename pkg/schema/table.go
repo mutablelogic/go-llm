@@ -23,7 +23,7 @@ type SessionTable struct {
 }
 
 // ToolTable implements table.TableData for a list of tools.
-type ToolTable []ToolMeta
+type ToolTable []*ToolMeta
 
 // ModelTable implements table.TableData for a list of models.
 type ModelTable struct {

@@ -68,7 +68,7 @@ func (cmd *ListProvidersCommand) Run(ctx server.Cmd) (err error) {
 		}
 
 		// Table output
-		_, err = tui.TableFor[schema.Provider]().Write(os.Stdout, providers.Body...)
+		_, err = tui.TableFor[*schema.Provider]().Write(os.Stdout, providers.Body...)
 		return err
 	})
 }

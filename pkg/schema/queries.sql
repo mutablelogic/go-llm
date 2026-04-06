@@ -413,7 +413,7 @@ SELECT
 	session.modified_at
 FROM ${"schema"}.session AS session
 ${where}
-${orderby};
+${orderby}
 
 -- session.select
 SELECT

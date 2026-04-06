@@ -78,8 +78,8 @@ type ProviderListRequest struct {
 // ProviderList represents a paginated list of providers.
 type ProviderList struct {
 	ProviderListRequest
-	Count uint64     `json:"count" readonly:""`
-	Body  []Provider `json:"body,omitempty"`
+	Count uint64      `json:"count" readonly:""`
+	Body  []*Provider `json:"body,omitempty"`
 }
 
 // ProviderGroupList is a list of auth group identifiers associated with a provider.
@@ -294,7 +294,7 @@ func (list *ProviderList) Scan(row pg.Row) error {
 	if err := provider.Scan(row); err != nil {
 		return err
 	}
-	list.Body = append(list.Body, provider)
+	list.Body = append(list.Body, &provider)
 	return nil
 }
 

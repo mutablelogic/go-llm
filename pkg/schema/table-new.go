@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"strings"
 
+	uuid "github.com/google/uuid"
 	types "github.com/mutablelogic/go-server/pkg/types"
 )
 
@@ -279,6 +280,64 @@ func (c Connector) Cell(i int) string {
 	case 6:
 		if c.ModifiedAt != nil {
 			return c.ModifiedAt.Format("2006-01-02 15:04:05")
+		}
+	}
+	return ""
+}
+
+///////////////////////////////////////////////////////////////////////////////
+// SESSION TABLE
+
+func (Session) Header() []string {
+	return []string{"ID", "TITLE", "MODEL", "TAGS", "PARENT", "MODIFIED"}
+}
+
+func (Session) Width(i int) int {
+	switch i {
+	case 0:
+		return 36
+	case 1:
+		return 24
+	case 2:
+		return 24
+	case 3:
+		return 24
+	case 4:
+		return 36
+	case 5:
+		return 19
+	}
+	return 0
+}
+
+func (s Session) Cell(i int) string {
+	switch i {
+	case 0:
+		return s.ID.String()
+	case 1:
+		return types.Value(s.Title)
+	case 2:
+		if s.Provider != nil && *s.Provider != "" && s.Model != nil && *s.Model != "" {
+			return *s.Provider + "/" + *s.Model
+		}
+		if s.Model != nil {
+			return *s.Model
+		}
+		if s.Provider != nil {
+			return *s.Provider
+		}
+	case 3:
+		return strings.Join(s.Tags, ", ")
+	case 4:
+		if s.Parent != uuid.Nil {
+			return s.Parent.String()
+		}
+	case 5:
+		if s.ModifiedAt != nil {
+			return s.ModifiedAt.Format("2006-01-02 15:04:05")
+		}
+		if !s.CreatedAt.IsZero() {
+			return s.CreatedAt.Format("2006-01-02 15:04:05")
 		}
 	}
 	return ""

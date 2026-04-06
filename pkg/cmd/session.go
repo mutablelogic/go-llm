@@ -2,12 +2,14 @@ package cmd
 
 import (
 	"fmt"
+	"os"
 
 	// Packages
 	uuid "github.com/google/uuid"
 	otel "github.com/mutablelogic/go-client/pkg/otel"
 	httpclient "github.com/mutablelogic/go-llm/pkg/httpclient"
 	schema "github.com/mutablelogic/go-llm/pkg/schema"
+	tui "github.com/mutablelogic/go-llm/pkg/tui"
 	server "github.com/mutablelogic/go-server"
 	types "github.com/mutablelogic/go-server/pkg/types"
 	attribute "go.opentelemetry.io/otel/attribute"
@@ -17,9 +19,15 @@ import (
 // TYPES
 
 type SessionCommands struct {
+	ListSessions  ListSessionsCommand  `cmd:"" name:"sessions" help:"List sessions." group:"SESSIONS"`
 	CreateSession CreateSessionCommand `cmd:"" name:"session-create" help:"Create a new session." group:"SESSIONS"`
 	GetSession    GetSessionCommand    `cmd:"" name:"session" help:"Get a session by ID." group:"SESSIONS"`
+	UpdateSession UpdateSessionCommand `cmd:"" name:"session-update" help:"Update session metadata." group:"SESSIONS"`
 	DeleteSession DeleteSessionCommand `cmd:"" name:"session-delete" help:"Delete a session by ID." group:"SESSIONS"`
+}
+
+type ListSessionsCommand struct {
+	schema.SessionListRequest `embed:""`
 }
 
 type CreateSessionCommand struct {
@@ -34,8 +42,35 @@ type DeleteSessionCommand struct {
 	ID uuid.UUID `arg:"" name:"id" help:"Session ID."`
 }
 
+type UpdateSessionCommand struct {
+	ID                 uuid.UUID `arg:"" name:"id" help:"Session ID."`
+	schema.SessionMeta `embed:""`
+}
+
 ///////////////////////////////////////////////////////////////////////////////
 // PUBLIC METHODS
+
+func (cmd *ListSessionsCommand) Run(ctx server.Cmd) (err error) {
+	return WithClient(ctx, func(client *httpclient.Client, _ string) error {
+		parent, endSpan := otel.StartSpan(ctx.Tracer(), ctx.Context(), "ListSessionsCommand",
+			attribute.String("request", types.Stringify(cmd.SessionListRequest)),
+		)
+		defer func() { endSpan(err) }()
+
+		sessions, err := client.ListSessions(parent, cmd.SessionListRequest)
+		if err != nil {
+			return err
+		}
+
+		if ctx.IsDebug() {
+			fmt.Println(sessions)
+			return nil
+		}
+
+		_, err = tui.TableFor[*schema.Session]().Write(os.Stdout, sessions.Body...)
+		return err
+	})
+}
 
 func (cmd *CreateSessionCommand) Run(ctx server.Cmd) (err error) {
 	if cmd.Model == nil {
@@ -93,6 +128,24 @@ func (cmd *DeleteSessionCommand) Run(ctx server.Cmd) (err error) {
 		defer func() { endSpan(err) }()
 
 		session, err := client.DeleteSession(parent, cmd.ID)
+		if err != nil {
+			return err
+		}
+
+		fmt.Println(session)
+		return nil
+	})
+}
+
+func (cmd *UpdateSessionCommand) Run(ctx server.Cmd) (err error) {
+	return WithClient(ctx, func(client *httpclient.Client, _ string) error {
+		parent, endSpan := otel.StartSpan(ctx.Tracer(), ctx.Context(), "UpdateSessionCommand",
+			attribute.String("id", cmd.ID.String()),
+			attribute.String("meta", types.Stringify(cmd.SessionMeta)),
+		)
+		defer func() { endSpan(err) }()
+
+		session, err := client.UpdateSession(parent, cmd.ID, cmd.SessionMeta)
 		if err != nil {
 			return err
 		}

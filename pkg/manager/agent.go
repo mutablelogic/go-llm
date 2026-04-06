@@ -36,9 +36,10 @@ func (m *Manager) ListAgents(ctx context.Context, req schema.AgentListRequest, u
 	}
 
 	// Convert prompts to agent metadata
-	body := make([]schema.AgentMeta, 0, len(matched))
+	body := make([]*schema.AgentMeta, 0, len(matched))
 	for _, prompt := range matched {
-		body = append(body, newAgentMeta(prompt))
+		meta := newAgentMeta(prompt)
+		body = append(body, &meta)
 	}
 
 	// Return the list response

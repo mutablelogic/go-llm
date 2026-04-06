@@ -187,7 +187,9 @@ func (m *Manager) providersForUser(ctx context.Context, provider string, user *a
 		} else if len(providers.Body) == 0 {
 			break
 		} else {
-			result = append(result, providers.Body...)
+			for _, p := range providers.Body {
+				result = append(result, *p)
+			}
 			providerReq.OffsetLimit.Offset += uint64(len(providers.Body))
 		}
 	}

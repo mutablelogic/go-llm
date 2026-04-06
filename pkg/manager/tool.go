@@ -35,13 +35,13 @@ func (m *Manager) ListTools(ctx context.Context, req schema.ToolListRequest, use
 	}
 
 	// Convert to response format
-	body := make([]schema.ToolMeta, 0, len(matched))
+	body := make([]*schema.ToolMeta, 0, len(matched))
 	for _, tool := range matched {
 		meta, err := newToolMeta(tool)
 		if err != nil {
 			return nil, err
 		}
-		body = append(body, meta)
+		body = append(body, &meta)
 	}
 
 	// Return success

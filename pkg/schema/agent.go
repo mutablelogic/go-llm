@@ -44,8 +44,8 @@ type AgentListRequest struct {
 // AgentList represents a response containing a list of externally exposed agents.
 type AgentList struct {
 	AgentListRequest
-	Count uint        `json:"count" help:"Total number of matching agents" example:"2"`
-	Body  []AgentMeta `json:"body,omitzero" help:"Agent metadata returned for the current page" example:"[{\"name\":\"builtin.summarize\",\"title\":\"Summarize\"}]"`
+	Count uint         `json:"count" help:"Total number of matching agents" example:"2"`
+	Body  []*AgentMeta `json:"body,omitzero" help:"Agent metadata returned for the current page" example:"[{\"name\":\"builtin.summarize\",\"title\":\"Summarize\"}]"`
 }
 
 // CallAgentRequest represents a request to call an agent directly.

@@ -93,20 +93,16 @@ func (m *Manager) UpdateSession(ctx context.Context, session uuid.UUID, meta sch
 	)
 	defer func() { endSpan(err) }()
 
-	var userID uuid.UUID
-	if user != nil {
-		userID = user.UUID()
-	}
-
 	// Fetch, merge GeneratorMeta, and update in one transaction.
 	var result schema.Session
 	if err := m.PoolConn.Tx(ctx, func(conn pg.Conn) error {
 		var existing schema.Session
-		if err := conn.With("user", userID).Get(ctx, &existing, schema.SessionIDSelector(session)); err != nil {
+		if err := conn.With("user", user.UUID()).Get(ctx, &existing, schema.SessionIDSelector(session)); err != nil {
 			return normalizeSessionError(session, err)
+		} else {
+			meta.GeneratorMeta = existing.GeneratorMeta.MergeFrom(meta.GeneratorMeta)
 		}
-		meta.GeneratorMeta = existing.GeneratorMeta.MergeFrom(meta.GeneratorMeta)
-		return conn.With("user", userID).Update(ctx, &result, schema.SessionIDSelector(session), meta)
+		return conn.With("user", user.UUID()).Update(ctx, &result, schema.SessionIDSelector(session), meta)
 	}); err != nil {
 		return nil, normalizeSessionError(session, err)
 	}
@@ -132,6 +128,25 @@ func (m *Manager) DeleteSession(ctx context.Context, session uuid.UUID, user *au
 	}
 
 	// Return success
+	return types.Ptr(result), nil
+}
+
+// ListSessions returns a paginated list of sessions matching the request.
+// If user is non-nil, only sessions owned by that user are returned.
+func (m *Manager) ListSessions(ctx context.Context, req schema.SessionListRequest, user *auth.User) (_ *schema.SessionList, err error) {
+	// OTel span
+	ctx, endSpan := otel.StartSpan(m.tracer, ctx, "ListSessions",
+		attribute.String("req", req.String()),
+		attribute.String("user", types.Stringify(user)),
+	)
+	defer func() { endSpan(err) }()
+
+	result := schema.SessionList{SessionListRequest: req}
+	if err := m.PoolConn.With("user", user.UUID()).List(ctx, &result, req); err != nil {
+		return nil, pg.NormalizeError(err)
+	}
+	result.OffsetLimit.Clamp(uint64(result.Count))
+
 	return types.Ptr(result), nil
 }
 

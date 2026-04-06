@@ -36,8 +36,8 @@ type ToolListRequest struct {
 // ToolList represents a response containing a list of tools.
 type ToolList struct {
 	ToolListRequest
-	Count uint       `json:"count" help:"Total number of matching tools" example:"2"`
-	Body  []ToolMeta `json:"body,omitzero" help:"Tool metadata returned for the current page" example:"[{\"name\":\"builtin.search_docs\",\"title\":\"Search Docs\"}]"`
+	Count uint        `json:"count" help:"Total number of matching tools" example:"2"`
+	Body  []*ToolMeta `json:"body,omitzero" help:"Tool metadata returned for the current page" example:"[{\"name\":\"builtin.search_docs\",\"title\":\"Search Docs\"}]"`
 }
 
 // ToolMeta represents a tool's metadata.
