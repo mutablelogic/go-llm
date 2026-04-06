@@ -47,6 +47,24 @@ CREATE TABLE IF NOT EXISTS ${"schema"}.session (
     "modified_at" TIMESTAMPTZ
 );
 
+  -- llm.session_index_activity
+  CREATE INDEX IF NOT EXISTS session_activity_idx
+    ON ${"schema"}.session ((COALESCE("modified_at", "created_at")) DESC, "id" ASC);
+
+  -- llm.session_index_user_activity
+  CREATE INDEX IF NOT EXISTS session_user_activity_idx
+    ON ${"schema"}.session ("user", (COALESCE("modified_at", "created_at")) DESC, "id" ASC)
+    WHERE "user" IS NOT NULL;
+
+  -- llm.session_index_parent_activity
+  CREATE INDEX IF NOT EXISTS session_parent_activity_idx
+    ON ${"schema"}.session ("parent", (COALESCE("modified_at", "created_at")) DESC, "id" ASC)
+    WHERE "parent" IS NOT NULL;
+
+  -- llm.session_index_tags
+  CREATE INDEX IF NOT EXISTS session_tags_idx
+    ON ${"schema"}.session USING GIN ("tags");
+
 -- llm.message
 CREATE TABLE IF NOT EXISTS ${"schema"}.message (
     "id"          BIGSERIAL PRIMARY KEY,
@@ -58,6 +76,10 @@ CREATE TABLE IF NOT EXISTS ${"schema"}.message (
     "meta"        JSONB,
     "created_at"  TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+
+  -- llm.message_index_session_created_at
+  CREATE INDEX IF NOT EXISTS message_session_created_at_idx
+    ON ${"schema"}.message ("session", "created_at", "id");
 
 -- llm.usage
 CREATE TABLE IF NOT EXISTS ${"schema"}.usage (
