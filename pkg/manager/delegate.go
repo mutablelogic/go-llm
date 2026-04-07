@@ -64,6 +64,8 @@ func (d *delegate) Call(ctx context.Context, prompt llm.Prompt, resources ...llm
 // and list-change events back to the toolkit. The toolkit injects the
 // Connector field before forwarding to OnEvent, so the caller need not set it.
 func (d *delegate) CreateConnector(url string, onEvent func(evt toolkit.ConnectorEvent)) (llm.Connector, error) {
+	fmt.Println("CreateConnector:", url)
+
 	opts := []mcp.Opt{
 		mcp.WithClientOpt(d.ClientOpts...),
 	}

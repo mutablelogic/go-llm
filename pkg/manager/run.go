@@ -57,6 +57,11 @@ func (m *Manager) Run(ctx context.Context, logger *slog.Logger) error {
 		m.Toolkit = tookit
 	}
 
+	// Add local connectors to the delegate
+	if err := m.Toolkit.AddConnector(toolkit.UserConnectorURI); err != nil {
+		return fmt.Errorf("add user connector: %w", err)
+	}
+
 	// Sync connectors
 	if err := m.syncConnectors(ctx); err != nil {
 		return fmt.Errorf("sync connectors: %w", err)

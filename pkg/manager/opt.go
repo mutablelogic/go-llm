@@ -20,7 +20,7 @@ import (
 	// Packages
 	crypto "github.com/djthorpe/go-auth/pkg/crypto"
 	client "github.com/mutablelogic/go-client"
-	"github.com/mutablelogic/go-llm"
+	llm "github.com/mutablelogic/go-llm"
 	schema "github.com/mutablelogic/go-llm/pkg/schema"
 	metric "go.opentelemetry.io/otel/metric"
 	trace "go.opentelemetry.io/otel/trace"
@@ -46,6 +46,7 @@ type manageropt struct {
 	tools       []llm.Tool
 	prompts     []llm.Prompt
 	resources   []llm.Resource
+	connectors  map[string]llm.Connector
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -71,6 +72,7 @@ func (o *manageropt) defaults(name, version string) {
 	o.channel = schema.DefaultNotifyChannel
 	o.passphrases = crypto.NewPassphrases()
 	o.clientopts = []client.ClientOpt{}
+	o.connectors = make(map[string]llm.Connector)
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -157,6 +159,20 @@ func WithPrompts(opts ...llm.Prompt) Opt {
 func WithResources(opts ...llm.Resource) Opt {
 	return func(o *manageropt) error {
 		o.resources = append(o.resources, opts...)
+		return nil
+	}
+}
+
+// WithConnector adds a local connector to the manager, by URL
+func WithConnector(url string, connector llm.Connector) Opt {
+	return func(o *manageropt) error {
+		if url, err := schema.CanonicalURL(url); err != nil {
+			return fmt.Errorf("invalid connector url %q: %w", url, err)
+		} else if _, exists := o.connectors[url]; exists {
+			return fmt.Errorf("connector url %q already exists", url)
+		} else {
+			o.connectors[url] = connector
+		}
 		return nil
 	}
 }

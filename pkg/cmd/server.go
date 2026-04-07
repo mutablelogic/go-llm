@@ -13,7 +13,8 @@ import (
 	agent "github.com/mutablelogic/go-llm/etc/agent"
 	llmhandlers "github.com/mutablelogic/go-llm/pkg/httphandler"
 	llmmanager "github.com/mutablelogic/go-llm/pkg/manager"
-	"github.com/mutablelogic/go-llm/pkg/toolkit/prompt"
+	memory "github.com/mutablelogic/go-llm/pkg/memory"
+	prompt "github.com/mutablelogic/go-llm/pkg/toolkit/prompt"
 	pg "github.com/mutablelogic/go-pg"
 	server "github.com/mutablelogic/go-server"
 	cmd "github.com/mutablelogic/go-server/pkg/cmd"
@@ -32,13 +33,15 @@ type RunServer struct {
 
 	// Schemas for tenancy
 	Schema struct {
-		Auth string `name:"auth" help:"PostgreSQL schema for auth data." default:"auth"`
-		LLM  string `name:"llm" help:"PostgreSQL schema for LLM data." default:"llm"`
+		Auth   string `name:"auth" help:"PostgreSQL schema for auth data." default:"auth"`
+		LLM    string `name:"llm" help:"PostgreSQL schema for LLM data." default:"llm"`
+		Memory string `name:"memory" help:"PostgreSQL schema for memory data." default:"memory"`
 	} `embed:"" prefix:"schema."`
 
 	// Other flags
 	Passphrases []string `name:"passphrase" env:"${ENV_NAME}_PASSPHRASES" help:"One or more passphrases used to encrypt credentials. "`
 	Auth        bool     `name:"auth" help:"Enable authentication for protected endpoints." default:"true" negatable:""`
+	Memory      bool     `name:"memory" help:"Enable memory and related endpoints." default:"true" negatable:""`
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -56,6 +59,18 @@ func (runner *RunServer) Run(ctx server.Cmd) error {
 	// Create the auth manager, run the server, and return any error
 	ctx.Logger().InfoContext(ctx.Context(), "starting server", "name", ctx.Name(), "version", ctx.Version())
 	return runner.withAuthManager(ctx, conn, func(authmanager *authmanager.Manager) error {
+
+		// Create the memory connector here
+		if runner.Memory {
+			memory, err := memory.New(ctx.Context(), conn, memory.WithSchemas(runner.Schema.Memory, runner.Schema.LLM, runner.Schema.Auth), memory.WithTracer(ctx.Tracer()))
+			if err != nil {
+				return err
+			} else {
+				// TODO
+				ctx.Logger().DebugContext(ctx.Context(), "registering memory connector", "memory", memory)
+			}
+		}
+
 		return runner.withLLMManager(ctx, conn, func(llmmanager *llmmanager.Manager) error {
 			// Sync providers before starting the server so that any configured providers are available immediately
 			if _, _, err := llmmanager.SyncProviders(ctx.Context()); err != nil {
