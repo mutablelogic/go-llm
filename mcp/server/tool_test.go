@@ -10,10 +10,10 @@ import (
 
 	// Packages
 	sdkmcp "github.com/modelcontextprotocol/go-sdk/mcp"
-	homeassistant "github.com/mutablelogic/go-llm/pkg/homeassistant"
+	schema "github.com/mutablelogic/go-llm/kernel/schema"
 	mock "github.com/mutablelogic/go-llm/mcp/mock"
 	server "github.com/mutablelogic/go-llm/mcp/server"
-	schema "github.com/mutablelogic/go-llm/kernel/schema"
+	homeassistant "github.com/mutablelogic/go-llm/pkg/homeassistant"
 	jsonschema "github.com/mutablelogic/go-server/pkg/jsonschema"
 	types "github.com/mutablelogic/go-server/pkg/types"
 )

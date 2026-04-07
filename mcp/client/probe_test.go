@@ -4,8 +4,8 @@ import (
 	"testing"
 
 	// Packages
-	mock "github.com/mutablelogic/go-llm/mcp/mock"
 	schema "github.com/mutablelogic/go-llm/kernel/schema"
+	mock "github.com/mutablelogic/go-llm/mcp/mock"
 )
 
 // Test_probe_001: Probe returns the server name and version.

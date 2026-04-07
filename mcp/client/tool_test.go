@@ -8,8 +8,8 @@ import (
 
 	// Packages
 	llm "github.com/mutablelogic/go-llm"
-	mock "github.com/mutablelogic/go-llm/mcp/mock"
 	schema "github.com/mutablelogic/go-llm/kernel/schema"
+	mock "github.com/mutablelogic/go-llm/mcp/mock"
 	jsonschema "github.com/mutablelogic/go-server/pkg/jsonschema"
 )
 
