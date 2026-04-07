@@ -5,15 +5,13 @@ import (
 	"context"
 
 	"github.com/mutablelogic/go-client"
+	haschema "github.com/mutablelogic/go-llm/homeassistant/schema"
 )
 
 ///////////////////////////////////////////////////////////////////////////////
 // TYPES
 
-type Event struct {
-	Event     string `json:"event"`
-	Listeners uint   `json:"listener_count"`
-}
+type Event = haschema.Event
 
 ///////////////////////////////////////////////////////////////////////////////
 // API CALLS

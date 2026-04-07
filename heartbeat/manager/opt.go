@@ -6,7 +6,7 @@ import (
 	"time"
 
 	// Packages
-	hschema "github.com/mutablelogic/go-llm/pkg/heartbeat/schema"
+	hschema "github.com/mutablelogic/go-llm/heartbeat/schema"
 	schema "github.com/mutablelogic/go-llm/kernel/schema"
 )
 

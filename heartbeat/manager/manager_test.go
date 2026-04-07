@@ -8,8 +8,8 @@ import (
 	"time"
 
 	// Packages
-	heartbeat "github.com/mutablelogic/go-llm/pkg/heartbeat"
-	schema "github.com/mutablelogic/go-llm/pkg/heartbeat/schema"
+	heartbeat "github.com/mutablelogic/go-llm/heartbeat/manager"
+	schema "github.com/mutablelogic/go-llm/heartbeat/schema"
 	assert "github.com/stretchr/testify/assert"
 )
 

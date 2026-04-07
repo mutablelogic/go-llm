@@ -7,8 +7,8 @@ import (
 	"time"
 
 	// Packages
-	heartbeat "github.com/mutablelogic/go-llm/pkg/heartbeat/pg"
-	schema "github.com/mutablelogic/go-llm/pkg/heartbeat/schema"
+	heartbeat "github.com/mutablelogic/go-llm/heartbeat/schema"
+	schema "github.com/mutablelogic/go-llm/heartbeat/schema"
 	test "github.com/mutablelogic/go-pg/pkg/test"
 	assert "github.com/stretchr/testify/assert"
 )

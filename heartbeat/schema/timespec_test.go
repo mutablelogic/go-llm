@@ -6,7 +6,7 @@ import (
 
 	// Packages
 
-	"github.com/mutablelogic/go-llm/pkg/heartbeat/schema"
+	"github.com/mutablelogic/go-llm/heartbeat/schema"
 	assert "github.com/stretchr/testify/assert"
 )
 

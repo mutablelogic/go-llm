@@ -8,7 +8,7 @@ import (
 	// Packages
 	otel "github.com/mutablelogic/go-client/pkg/otel"
 	llm "github.com/mutablelogic/go-llm"
-	hschema "github.com/mutablelogic/go-llm/pkg/heartbeat/schema"
+	hschema "github.com/mutablelogic/go-llm/heartbeat/schema"
 	schema "github.com/mutablelogic/go-llm/kernel/schema"
 	tool "github.com/mutablelogic/go-llm/pkg/tool"
 	session "github.com/mutablelogic/go-llm/pkg/tool/session"

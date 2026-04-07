@@ -2,55 +2,29 @@ package homeassistant
 
 import (
 	"context"
-	"encoding/json"
 	"maps"
 	"net/url"
 	"slices"
-	"strings"
 
 	// Packages
 	"github.com/mutablelogic/go-client"
+	haschema "github.com/mutablelogic/go-llm/homeassistant/schema"
 	"github.com/mutablelogic/go-llm/kernel/schema"
 )
 
 ///////////////////////////////////////////////////////////////////////////////
 // TYPES
 
-type Domain struct {
-	Domain   string              `json:"domain"`
-	Services map[string]*Service `json:"services,omitempty"`
-}
-
-type Service struct {
-	Call        string           `json:"call,omitempty"`
-	Name        string           `json:"name,omitempty"`
-	Description string           `json:"description,omitempty,wrap"`
-	Fields      map[string]Field `json:"fields,omitempty,wrap"`
-}
-
-type Field struct {
-	Required bool                `json:"required,omitempty"`
-	Example  any                 `json:"example,omitempty"`
-	Selector map[string]Selector `json:"selector,omitempty"`
-}
-
-type Selector struct {
-	Text              string  `json:"text,omitempty"`
-	Mode              string  `json:"mode,omitempty"`
-	Min               float32 `json:"min,omitempty"`
-	Max               float32 `json:"max,omitempty"`
-	UnitOfMeasurement string  `json:"unit_of_measurement,omitempty"`
-}
+type Domain = haschema.Domain
+type Service = haschema.Service
+type Field = haschema.Field
+type Selector = haschema.Selector
 
 type reqCall struct {
 	Entity string `json:"entity_id"`
 }
 
-// CallResponse is returned when calling a service with return_response=true.
-type CallResponse struct {
-	ChangedStates   []*State       `json:"changed_states"`
-	ServiceResponse map[string]any `json:"service_response"`
-}
+type CallResponse = haschema.CallResponse
 
 ///////////////////////////////////////////////////////////////////////////////
 // API CALLS
@@ -62,7 +36,6 @@ func (c *Client) Domains(ctx context.Context) ([]*Domain, error) {
 		return nil, err
 	}
 
-	// Return success
 	return response, nil
 }
 
@@ -79,20 +52,19 @@ func (c *Client) Services(ctx context.Context, domain string) ([]*Service, error
 		if len(v.Services) == 0 {
 			return nil, nil
 		}
-		// Populate the Id field
 		for k, v := range v.Services {
 			v.Call = k
 		}
 		return slices.Collect(maps.Values(v.Services)), nil
 	}
-	// Return not found
+
 	return nil, schema.ErrNotFound.Withf("domain not found: %q", domain)
 }
 
 // Call a service for an entity. The serviceData map is sent as the JSON request
 // body and typically includes "entity_id" plus any service-specific fields.
 // Returns a list of states that changed while the service was being executed.
-func (c *Client) Call(ctx context.Context, domain, service string, serviceData map[string]any) ([]*State, error) {
+func (c *Client) Call(ctx context.Context, domain, service string, serviceData map[string]any) ([]*haschema.State, error) {
 	if domain == "" {
 		return nil, schema.ErrBadParameter.With("domain is required")
 	}
@@ -100,7 +72,6 @@ func (c *Client) Call(ctx context.Context, domain, service string, serviceData m
 		return nil, schema.ErrBadParameter.With("service is required")
 	}
 
-	// Build payload
 	if serviceData == nil {
 		serviceData = map[string]any{}
 	}
@@ -109,13 +80,11 @@ func (c *Client) Call(ctx context.Context, domain, service string, serviceData m
 		return nil, err
 	}
 
-	// Call the service
-	var response []*State
+	var response []*haschema.State
 	if err := c.DoWithContext(ctx, payload, &response, client.OptPath("services", domain, service)); err != nil {
 		return nil, err
 	}
 
-	// Return success
 	return response, nil
 }
 
@@ -130,7 +99,6 @@ func (c *Client) CallWithResponse(ctx context.Context, domain, service string, s
 		return nil, schema.ErrBadParameter.With("service is required")
 	}
 
-	// Build payload
 	if serviceData == nil {
 		serviceData = map[string]any{}
 	}
@@ -139,7 +107,6 @@ func (c *Client) CallWithResponse(ctx context.Context, domain, service string, s
 		return nil, err
 	}
 
-	// Call the service with return_response query parameter
 	var response CallResponse
 	if err := c.DoWithContext(ctx, payload, &response,
 		client.OptPath("services", domain, service),
@@ -148,36 +115,5 @@ func (c *Client) CallWithResponse(ctx context.Context, domain, service string, s
 		return nil, err
 	}
 
-	// Return success
 	return &response, nil
-}
-
-///////////////////////////////////////////////////////////////////////////////
-// STRINGIFY
-
-func (v Domain) String() string {
-	data, _ := json.MarshalIndent(v, "", "  ")
-	return string(data)
-}
-
-func (v Service) String() string {
-	data, _ := json.MarshalIndent(v, "", "  ")
-	return string(data)
-}
-
-func (v Field) String() string {
-	data, _ := json.MarshalIndent(v, "", "  ")
-	return string(data)
-}
-
-///////////////////////////////////////////////////////////////////////////////
-// PRIVATE METHODS
-
-func domainForEntity(entity string) string {
-	parts := strings.SplitN(entity, ".", 2)
-	if len(parts) == 2 {
-		return parts[0]
-	} else {
-		return ""
-	}
 }

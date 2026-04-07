@@ -6,7 +6,7 @@ import (
 
 	// Packages
 	opts "github.com/mutablelogic/go-client"
-	homeassistant "github.com/mutablelogic/go-llm/pkg/homeassistant"
+	homeassistant "github.com/mutablelogic/go-llm/homeassistant/httpclient"
 	assert "github.com/stretchr/testify/assert"
 )
 

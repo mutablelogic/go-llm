@@ -10,7 +10,8 @@ import (
 	// Packages
 	opts "github.com/mutablelogic/go-client"
 	llm "github.com/mutablelogic/go-llm"
-	newsapi "github.com/mutablelogic/go-llm/pkg/newsapi"
+	newsapiconnector "github.com/mutablelogic/go-llm/newsapi/connector"
+	newsapi "github.com/mutablelogic/go-llm/newsapi/httpclient"
 	assert "github.com/stretchr/testify/assert"
 )
 
@@ -49,7 +50,7 @@ func TestMain(m *testing.M) {
 	}
 
 	// Create tools
-	tools, err = newsapi.NewTools(api_key, opts.OptTrace(os.Stderr, verbose))
+	tools, err = newsapiconnector.NewTools(api_key, opts.OptTrace(os.Stderr, verbose))
 	if err != nil {
 		log.Println(err)
 		os.Exit(-1)

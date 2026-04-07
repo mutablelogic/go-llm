@@ -6,7 +6,7 @@ import (
 	"testing"
 
 	// Packages
-	newsapi "github.com/mutablelogic/go-llm/pkg/newsapi"
+	newsapi "github.com/mutablelogic/go-llm/newsapi/httpclient"
 	tool "github.com/mutablelogic/go-llm/pkg/tool"
 	assert "github.com/stretchr/testify/assert"
 )
