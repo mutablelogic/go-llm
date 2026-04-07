@@ -12,11 +12,11 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package memory
+package manager
 
 import (
 	// Packages
-	schema "github.com/mutablelogic/go-llm/pkg/schema/memory"
+	schema "github.com/mutablelogic/go-llm/memory/schema"
 	trace "go.opentelemetry.io/otel/trace"
 )
 

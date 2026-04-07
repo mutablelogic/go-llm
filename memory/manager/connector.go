@@ -1,4 +1,4 @@
-package memory
+package manager
 
 import (
 	"context"
@@ -8,7 +8,7 @@ import (
 	// Packages
 	uuid "github.com/google/uuid"
 	llm "github.com/mutablelogic/go-llm"
-	schema "github.com/mutablelogic/go-llm/pkg/schema/memory"
+	schema "github.com/mutablelogic/go-llm/memory/schema"
 	tool "github.com/mutablelogic/go-llm/pkg/tool"
 	toolkit "github.com/mutablelogic/go-llm/pkg/toolkit"
 	jsonschema "github.com/mutablelogic/go-server/pkg/jsonschema"

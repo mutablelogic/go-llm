@@ -1,4 +1,4 @@
-package memory
+package manager
 
 import (
 	"context"
@@ -7,7 +7,7 @@ import (
 
 	// Packages
 	otel "github.com/mutablelogic/go-client/pkg/otel"
-	schema "github.com/mutablelogic/go-llm/pkg/schema/memory"
+	schema "github.com/mutablelogic/go-llm/memory/schema"
 	pg "github.com/mutablelogic/go-pg"
 	attribute "go.opentelemetry.io/otel/attribute"
 )

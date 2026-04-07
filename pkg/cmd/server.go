@@ -11,9 +11,9 @@ import (
 	authhanders "github.com/djthorpe/go-auth/pkg/httphandler/authmanager"
 	llm "github.com/mutablelogic/go-llm"
 	agent "github.com/mutablelogic/go-llm/etc/agent"
+	memory "github.com/mutablelogic/go-llm/memory/manager"
 	llmhandlers "github.com/mutablelogic/go-llm/pkg/httphandler"
 	llmmanager "github.com/mutablelogic/go-llm/pkg/manager"
-	memory "github.com/mutablelogic/go-llm/pkg/memory"
 	prompt "github.com/mutablelogic/go-llm/pkg/toolkit/prompt"
 	pg "github.com/mutablelogic/go-pg"
 	server "github.com/mutablelogic/go-server"
@@ -59,19 +59,20 @@ func (runner *RunServer) Run(ctx server.Cmd) error {
 	// Create the auth manager, run the server, and return any error
 	ctx.Logger().InfoContext(ctx.Context(), "starting server", "name", ctx.Name(), "version", ctx.Version())
 	return runner.withAuthManager(ctx, conn, func(authmanager *authmanager.Manager) error {
+		opts := []llmmanager.Opt{}
 
-		// Create the memory connector here
+		// Add the memory connector, which is used to store and retrieve facts linked to the
+		// user and to sessions
 		if runner.Memory {
 			memory, err := memory.New(ctx.Context(), conn, memory.WithSchemas(runner.Schema.Memory, runner.Schema.LLM, runner.Schema.Auth), memory.WithTracer(ctx.Tracer()))
 			if err != nil {
 				return err
 			} else {
-				// TODO
-				ctx.Logger().DebugContext(ctx.Context(), "registering memory connector", "memory", memory)
+				opts = append(opts, llmmanager.WithConnector("memory", memory))
 			}
 		}
 
-		return runner.withLLMManager(ctx, conn, func(llmmanager *llmmanager.Manager) error {
+		return runner.withLLMManager(ctx, conn, opts, func(llmmanager *llmmanager.Manager) error {
 			// Sync providers before starting the server so that any configured providers are available immediately
 			if _, _, err := llmmanager.SyncProviders(ctx.Context()); err != nil {
 				ctx.Logger().ErrorContext(ctx.Context(), "failed to sync llm providers before startup", "error", err.Error())
@@ -164,9 +165,9 @@ func (r *namedReader) Name() string {
 	return r.name
 }
 
-func (server *RunServer) withLLMManager(ctx server.Cmd, conn pg.PoolConn, fn func(manager *llmmanager.Manager) error) error {
+func (server *RunServer) withLLMManager(ctx server.Cmd, conn pg.PoolConn, opts []llmmanager.Opt, fn func(manager *llmmanager.Manager) error) error {
 	// Create the LLM manager
-	llmmanager, err := llmmanager.New(ctx.Context(), ctx.Name(), ctx.Version(), conn, server.llmManagerOpts(ctx)...)
+	llmmanager, err := llmmanager.New(ctx.Context(), ctx.Name(), ctx.Version(), conn, append(server.llmManagerOpts(ctx), opts...)...)
 	if err != nil {
 		return err
 	}

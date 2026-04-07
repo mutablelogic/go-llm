@@ -1,4 +1,4 @@
-package memory
+package manager
 
 import (
 	"context"
@@ -6,7 +6,7 @@ import (
 	// Packages
 	uuid "github.com/google/uuid"
 	otel "github.com/mutablelogic/go-client/pkg/otel"
-	schema "github.com/mutablelogic/go-llm/pkg/schema/memory"
+	schema "github.com/mutablelogic/go-llm/memory/schema"
 	pg "github.com/mutablelogic/go-pg"
 	types "github.com/mutablelogic/go-server/pkg/types"
 	attribute "go.opentelemetry.io/otel/attribute"
