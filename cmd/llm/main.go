@@ -5,7 +5,7 @@ import (
 	"os"
 
 	// Packages
-	llmcmd "github.com/mutablelogic/go-llm/pkg/cmd"
+	llmcmd "github.com/mutablelogic/go-llm/kernel/cmd"
 	servercmd "github.com/mutablelogic/go-server/pkg/cmd"
 	version "github.com/mutablelogic/go-server/pkg/version"
 )

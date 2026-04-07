@@ -6,7 +6,7 @@ import (
 	"strings"
 
 	"github.com/mutablelogic/go-llm"
-	"github.com/mutablelogic/go-llm/pkg/schema"
+	"github.com/mutablelogic/go-llm/kernel/schema"
 )
 
 ///////////////////////////////////////////////////////////////////////////////

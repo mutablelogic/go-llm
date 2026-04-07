@@ -5,7 +5,7 @@ import (
 	"testing"
 
 	// Packages
-	schema "github.com/mutablelogic/go-llm/pkg/schema"
+	schema "github.com/mutablelogic/go-llm/kernel/schema"
 	assert "github.com/stretchr/testify/assert"
 	require "github.com/stretchr/testify/require"
 )

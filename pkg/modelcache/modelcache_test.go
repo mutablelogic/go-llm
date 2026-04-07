@@ -10,7 +10,7 @@ import (
 
 	"github.com/mutablelogic/go-llm/pkg/modelcache"
 	"github.com/mutablelogic/go-llm/pkg/opt"
-	"github.com/mutablelogic/go-llm/pkg/schema"
+	"github.com/mutablelogic/go-llm/kernel/schema"
 	httpresponse "github.com/mutablelogic/go-server/pkg/httpresponse"
 	"github.com/stretchr/testify/assert"
 )

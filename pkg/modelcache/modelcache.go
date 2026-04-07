@@ -10,7 +10,7 @@ import (
 	// Packages
 
 	opt "github.com/mutablelogic/go-llm/pkg/opt"
-	schema "github.com/mutablelogic/go-llm/pkg/schema"
+	schema "github.com/mutablelogic/go-llm/kernel/schema"
 	httpresponse "github.com/mutablelogic/go-server/pkg/httpresponse"
 	types "github.com/mutablelogic/go-server/pkg/types"
 )
