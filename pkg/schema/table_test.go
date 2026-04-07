@@ -3,6 +3,7 @@ package schema
 import (
 	"testing"
 
+	// Packages
 	types "github.com/mutablelogic/go-server/pkg/types"
 )
 
