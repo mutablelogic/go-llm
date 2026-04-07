@@ -2,8 +2,8 @@ package tool
 
 import (
 	// Packages
-	jsonschema "github.com/google/jsonschema-go/jsonschema"
 	llm "github.com/mutablelogic/go-llm"
+	jsonschema "github.com/mutablelogic/go-server/pkg/jsonschema"
 )
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -17,9 +17,7 @@ type DefaultTool struct{}
 ///////////////////////////////////////////////////////////////////////////////
 // PUBLIC METHODS
 
-func (DefaultTool) OutputSchema() (*jsonschema.Schema, error) {
-	return nil, nil
-}
+func (DefaultTool) OutputSchema() *jsonschema.Schema { return nil }
 
 func (DefaultTool) Meta() llm.ToolMeta {
 	return llm.ToolMeta{}

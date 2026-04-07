@@ -7,11 +7,12 @@ import (
 	"testing"
 
 	// Packages
-	jsonschema "github.com/google/jsonschema-go/jsonschema"
 	llm "github.com/mutablelogic/go-llm"
 	"github.com/mutablelogic/go-llm/pkg/opt"
+	schema "github.com/mutablelogic/go-llm/pkg/schema"
 	resource "github.com/mutablelogic/go-llm/pkg/toolkit/resource"
 	toolpkg "github.com/mutablelogic/go-llm/pkg/toolkit/tool"
+	jsonschema "github.com/mutablelogic/go-server/pkg/jsonschema"
 )
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -23,8 +24,8 @@ type mockTool struct {
 
 func (m *mockTool) Name() string                                          { return m.name }
 func (m *mockTool) Description() string                                   { return "mock tool " + m.name }
-func (m *mockTool) InputSchema() (*jsonschema.Schema, error)              { return nil, nil }
-func (m *mockTool) OutputSchema() (*jsonschema.Schema, error)             { return nil, nil }
+func (m *mockTool) InputSchema() *jsonschema.Schema                       { return nil }
+func (m *mockTool) OutputSchema() *jsonschema.Schema                      { return nil }
 func (m *mockTool) Meta() llm.ToolMeta                                    { return llm.ToolMeta{} }
 func (m *mockTool) Run(_ context.Context, _ json.RawMessage) (any, error) { return nil, nil }
 
@@ -69,14 +70,14 @@ func Test_AddTool_001(t *testing.T) {
 
 func Test_AddTool_002_invalid_name(t *testing.T) {
 	tk, _ := New()
-	if err := tk.AddTool(&mockTool{name: "bad name!"}); !errors.Is(err, llm.ErrBadParameter) {
+	if err := tk.AddTool(&mockTool{name: "bad name!"}); !errors.Is(err, schema.ErrBadParameter) {
 		t.Fatalf("expected ErrBadParameter, got %v", err)
 	}
 }
 
 func Test_AddTool_003_reserved_name(t *testing.T) {
 	tk, _ := New()
-	if err := tk.AddTool(&mockTool{name: "submit_output"}); !errors.Is(err, llm.ErrBadParameter) {
+	if err := tk.AddTool(&mockTool{name: "submit_output"}); !errors.Is(err, schema.ErrBadParameter) {
 		t.Fatalf("expected ErrBadParameter, got %v", err)
 	}
 }
@@ -84,7 +85,7 @@ func Test_AddTool_003_reserved_name(t *testing.T) {
 func Test_AddTool_004_duplicate(t *testing.T) {
 	tk, _ := New()
 	_ = tk.AddTool(&mockTool{name: "my_tool"})
-	if err := tk.AddTool(&mockTool{name: "my_tool"}); !errors.Is(err, llm.ErrBadParameter) {
+	if err := tk.AddTool(&mockTool{name: "my_tool"}); !errors.Is(err, schema.ErrBadParameter) {
 		t.Fatalf("expected ErrBadParameter, got %v", err)
 	}
 }
@@ -113,7 +114,7 @@ func Test_AddPrompt_001(t *testing.T) {
 
 func Test_AddPrompt_002_invalid_name(t *testing.T) {
 	tk, _ := New()
-	if err := tk.AddPrompt(&mockPrompt{name: "bad name!"}); !errors.Is(err, llm.ErrBadParameter) {
+	if err := tk.AddPrompt(&mockPrompt{name: "bad name!"}); !errors.Is(err, schema.ErrBadParameter) {
 		t.Fatalf("expected ErrBadParameter, got %v", err)
 	}
 }
@@ -121,7 +122,7 @@ func Test_AddPrompt_002_invalid_name(t *testing.T) {
 func Test_AddPrompt_003_duplicate(t *testing.T) {
 	tk, _ := New()
 	_ = tk.AddPrompt(&mockPrompt{name: "summarize"})
-	if err := tk.AddPrompt(&mockPrompt{name: "summarize"}); !errors.Is(err, llm.ErrBadParameter) {
+	if err := tk.AddPrompt(&mockPrompt{name: "summarize"}); !errors.Is(err, schema.ErrBadParameter) {
 		t.Fatalf("expected ErrBadParameter, got %v", err)
 	}
 }
@@ -270,7 +271,7 @@ func Test_RemoveBuiltin_003_resource(t *testing.T) {
 
 func Test_RemoveBuiltin_004_not_found(t *testing.T) {
 	tk, _ := New()
-	if err := tk.RemoveBuiltin("nonexistent"); !errors.Is(err, llm.ErrNotFound) {
+	if err := tk.RemoveBuiltin("nonexistent"); !errors.Is(err, schema.ErrNotFound) {
 		t.Fatalf("expected ErrNotFound, got %v", err)
 	}
 }
@@ -362,7 +363,7 @@ func Test_Lookup_005_tool_precedence_over_prompt(t *testing.T) {
 func Test_Lookup_006_not_found(t *testing.T) {
 	tk, _ := New()
 	_, err := tk.Lookup(context.Background(), "nonexistent")
-	if !errors.Is(err, llm.ErrNotFound) {
+	if !errors.Is(err, schema.ErrNotFound) {
 		t.Fatalf("expected ErrNotFound, got %v", err)
 	}
 }
@@ -370,7 +371,7 @@ func Test_Lookup_006_not_found(t *testing.T) {
 func Test_Lookup_007_invalid_key(t *testing.T) {
 	tk, _ := New()
 	_, err := tk.Lookup(context.Background(), "bad key!")
-	if !errors.Is(err, llm.ErrBadParameter) {
+	if !errors.Is(err, schema.ErrBadParameter) {
 		t.Fatalf("expected ErrBadParameter, got %v", err)
 	}
 }
@@ -380,7 +381,7 @@ func Test_Lookup_008_unknown_namespace(t *testing.T) {
 	_ = tk.AddTool(&mockTool{name: "my_tool"})
 	// "other" namespace is not builtin, so nothing should match.
 	_, err := tk.Lookup(context.Background(), "other.my_tool")
-	if !errors.Is(err, llm.ErrNotFound) {
+	if !errors.Is(err, schema.ErrNotFound) {
 		t.Fatalf("expected ErrNotFound, got %v", err)
 	}
 }
@@ -391,7 +392,7 @@ func Test_Lookup_009_resource_wrong_namespace(t *testing.T) {
 	_ = tk.AddResource(r)
 	// Append a non-builtin fragment; should return ErrNotFound.
 	_, err := tk.Lookup(context.Background(), r.URI()+"#unknown")
-	if !errors.Is(err, llm.ErrNotFound) {
+	if !errors.Is(err, schema.ErrNotFound) {
 		t.Fatalf("expected ErrNotFound, got %v", err)
 	}
 }
@@ -428,7 +429,7 @@ func Test_Lookup_011_output_tool_by_namespace_name(t *testing.T) {
 func Test_New_001_option_error(t *testing.T) {
 	// An invalid tool name inside an option should cause New to return an error.
 	_, err := New(WithTool(&mockTool{name: "bad name!"}))
-	if !errors.Is(err, llm.ErrBadParameter) {
+	if !errors.Is(err, schema.ErrBadParameter) {
 		t.Fatalf("expected ErrBadParameter, got %v", err)
 	}
 }
@@ -440,7 +441,7 @@ func Test_AddTool_006_variadic_duplicate(t *testing.T) {
 	// Passing the same-named tool twice in a single variadic call hits the seen map.
 	tk, _ := New()
 	a := &mockTool{name: "dup"}
-	if err := tk.AddTool(a, a); !errors.Is(err, llm.ErrBadParameter) {
+	if err := tk.AddTool(a, a); !errors.Is(err, schema.ErrBadParameter) {
 		t.Fatalf("expected ErrBadParameter, got %v", err)
 	}
 }
@@ -463,7 +464,7 @@ func Test_AddPrompt_004_variadic_duplicate(t *testing.T) {
 	// Passing the same-named prompt twice in a single variadic call hits the seen map.
 	tk, _ := New()
 	p := &mockPrompt{name: "dup"}
-	if err := tk.AddPrompt(p, p); !errors.Is(err, llm.ErrBadParameter) {
+	if err := tk.AddPrompt(p, p); !errors.Is(err, schema.ErrBadParameter) {
 		t.Fatalf("expected ErrBadParameter, got %v", err)
 	}
 }
@@ -486,7 +487,7 @@ func Test_AddResource_003_variadic_duplicate(t *testing.T) {
 	// Passing the same resource twice in a single variadic call hits the seen map.
 	tk, _ := New()
 	r, _ := resource.Text("greeting", "hello")
-	if err := tk.AddResource(r, r); !errors.Is(err, llm.ErrBadParameter) {
+	if err := tk.AddResource(r, r); !errors.Is(err, schema.ErrBadParameter) {
 		t.Fatalf("expected ErrBadParameter, got %v", err)
 	}
 }

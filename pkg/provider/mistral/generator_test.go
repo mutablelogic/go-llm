@@ -7,10 +7,9 @@ import (
 	"testing"
 
 	// Packages
-	jsonschema "github.com/google/jsonschema-go/jsonschema"
-	llm "github.com/mutablelogic/go-llm"
 	opt "github.com/mutablelogic/go-llm/pkg/opt"
 	schema "github.com/mutablelogic/go-llm/pkg/schema"
+	jsonschema "github.com/mutablelogic/go-server/pkg/jsonschema"
 	types "github.com/mutablelogic/go-server/pkg/types"
 	assert "github.com/stretchr/testify/assert"
 )
@@ -296,15 +295,13 @@ func Test_generateRequest_016(t *testing.T) {
 	// Test JSON output with schema
 	assert := assert.New(t)
 
-	jsonSchema := &jsonschema.Schema{Type: "object"}
-	jsonSchema.Properties = map[string]*jsonschema.Schema{
-		"name": {Type: "string"},
-		"age":  {Type: "integer"},
-	}
+	var jsonSchema jsonschema.Schema
+	err := json.Unmarshal([]byte(`{"type":"object","properties":{"name":{"type":"string"},"age":{"type":"integer"}}}`), &jsonSchema)
+	assert.NoError(err)
 
 	msg := &schema.Message{Role: "user", Content: []schema.ContentBlock{{Text: types.Ptr("Hi")}}}
 	session := schema.Conversation{msg}
-	o, err := opt.Apply(WithJSONOutput(jsonSchema))
+	o, err := opt.Apply(WithJSONOutput(&jsonSchema))
 	assert.NoError(err)
 
 	req, err := generateRequestFromOpts("mistral-small-latest", &session, o)
@@ -490,7 +487,7 @@ func Test_processResponse_002(t *testing.T) {
 	}
 
 	result, _, err := c.processResponse(response, &session)
-	assert.ErrorIs(err, llm.ErrMaxTokens)
+	assert.ErrorIs(err, schema.ErrMaxTokens)
 	assert.NotNil(result)
 	assert.Equal("Truncated...", *result.Content[0].Text)
 	assert.Equal(schema.ResultMaxTokens, result.Result)
@@ -517,7 +514,7 @@ func Test_processResponse_003(t *testing.T) {
 	}
 
 	result, _, err := c.processResponse(response, &session)
-	assert.ErrorIs(err, llm.ErrMaxTokens)
+	assert.ErrorIs(err, schema.ErrMaxTokens)
 	assert.NotNil(result)
 }
 
@@ -581,7 +578,7 @@ func Test_processResponse_005(t *testing.T) {
 	}
 
 	result, _, err := c.processResponse(response, &session)
-	assert.ErrorIs(err, llm.ErrInternalServerError)
+	assert.ErrorIs(err, schema.ErrInternalServerError)
 	assert.NotNil(result)
 }
 
@@ -825,7 +822,7 @@ func Test_generate_005(t *testing.T) {
 	)
 	// With only 10 tokens the response may be truncated
 	if err != nil {
-		assert.ErrorIs(err, llm.ErrMaxTokens)
+		assert.ErrorIs(err, schema.ErrMaxTokens)
 	}
 	if !assert.NotNil(response) {
 		return

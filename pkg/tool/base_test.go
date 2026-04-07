@@ -9,10 +9,7 @@ import (
 
 func TestDefaultTool_OutputSchema(t *testing.T) {
 	dt := tool.DefaultTool{}
-	s, err := dt.OutputSchema()
-	if err != nil {
-		t.Fatal("unexpected error:", err)
-	}
+	s := dt.OutputSchema()
 	if s != nil {
 		t.Fatal("expected nil OutputSchema from DefaultTool")
 	}

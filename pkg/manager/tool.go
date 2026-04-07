@@ -3,12 +3,15 @@ package manager
 import (
 	"context"
 	"encoding/json"
-	"sort"
+	"slices"
 
 	// Packages
+	auth "github.com/djthorpe/go-auth/schema/auth"
 	otel "github.com/mutablelogic/go-client/pkg/otel"
 	llm "github.com/mutablelogic/go-llm"
 	schema "github.com/mutablelogic/go-llm/pkg/schema"
+	toolkit "github.com/mutablelogic/go-llm/pkg/toolkit"
+	resource "github.com/mutablelogic/go-llm/pkg/toolkit/resource"
 	types "github.com/mutablelogic/go-server/pkg/types"
 	attribute "go.opentelemetry.io/otel/attribute"
 )
@@ -16,96 +19,207 @@ import (
 ///////////////////////////////////////////////////////////////////////////////
 // PUBLIC METHODS
 
-// ListTools returns paginated tool metadata.
-func (m *Manager) ListTools(ctx context.Context, req schema.ListToolRequest) (result *schema.ListToolResponse, err error) {
+// ListTools returns paginated tool metadata from the current toolkit.
+func (m *Manager) ListTools(ctx context.Context, req schema.ToolListRequest, user *auth.User) (result *schema.ToolList, err error) {
 	// Otel span
-	_, endSpan := otel.StartSpan(m.tracer, ctx, "ListTools",
+	ctx, endSpan := otel.StartSpan(m.tracer, ctx, "ListTools",
 		attribute.String("request", req.String()),
+		attribute.String("user", types.Stringify(user)),
 	)
 	defer func() { endSpan(err) }()
 
-	tools := m.toolkit.ListTools(schema.ListToolsRequest{})
+	// Gather list of tools matching the request, and total count for pagination metadata
+	matched, count, err := m.listTools(ctx, req, user)
+	if err != nil {
+		return nil, err
+	}
 
-	// Sort by name for stable ordering
-	sort.Slice(tools, func(i, j int) bool { return tools[i].Name() < tools[j].Name() })
-
-	// Build metadata
-	all := make([]schema.ToolMeta, 0, len(tools))
-	for _, t := range tools {
-		s, err := t.InputSchema()
+	// Convert to response format
+	body := make([]*schema.ToolMeta, 0, len(matched))
+	for _, tool := range matched {
+		meta, err := newToolMeta(tool)
 		if err != nil {
 			return nil, err
 		}
-		meta, err := schema.NewToolMeta(t.Name(), t.Description(), s)
-		if err != nil {
-			return nil, err
-		}
-		all = append(all, meta)
+		body = append(body, &meta)
 	}
 
-	// Paginate
-	total := uint(len(all))
-	start := min(req.Offset, total)
-	end := start + types.Value(req.Limit)
-	if req.Limit == nil || end > total {
-		end = total
-	}
-
-	return &schema.ListToolResponse{
-		Count:  total,
-		Offset: req.Offset,
-		Limit:  req.Limit,
-		Body:   all[start:end],
+	// Return success
+	return &schema.ToolList{
+		ToolListRequest: req,
+		Count:           count,
+		Body:            body,
 	}, nil
 }
 
-// CallTool executes a tool by name with the given input and returns the result.
-func (m *Manager) CallTool(ctx context.Context, name string, input json.RawMessage) (result *schema.CallToolResponse, err error) {
+// GetTool returns tool metadata by name, scoped by the user's accessible namespaces.
+func (m *Manager) GetTool(ctx context.Context, name string, user *auth.User) (result *schema.ToolMeta, err error) {
+	// Otel span
+	ctx, endSpan := otel.StartSpan(m.tracer, ctx, "GetTool",
+		attribute.String("name", name),
+		attribute.String("user", types.Stringify(user)),
+	)
+	defer func() { endSpan(err) }()
+
+	// Filter tools by name, which may return multiple matches if the name is not fully qualified with a namespace.
+	tools, _, err := m.listTools(ctx, schema.ToolListRequest{Name: []string{name}}, user)
+	if err != nil {
+		return nil, err
+	}
+
+	// Return errors when number of matches is not exactly 1
+	if len(tools) == 0 {
+		return nil, schema.ErrNotFound.Withf("tool %q", name)
+	}
+	if len(tools) > 1 {
+		return nil, schema.ErrConflict.Withf("multiple tools matched %q; specify a fully-qualified tool name", name)
+	}
+
+	// Convert to response format
+	meta, err := newToolMeta(tools[0])
+	if err != nil {
+		return nil, err
+	}
+
+	// Return success
+	return &meta, nil
+}
+
+// CallTool executes a tool by name with the given input, scoped by the user's accessible namespaces.
+func (m *Manager) CallTool(ctx context.Context, name string, req schema.CallToolRequest, user *auth.User) (result llm.Resource, err error) {
 	// Otel span
 	ctx, endSpan := otel.StartSpan(m.tracer, ctx, "CallTool",
-		attribute.String("tool", name),
+		attribute.String("name", name),
+		attribute.String("request", req.String()),
+		attribute.String("user", types.Stringify(user)),
 	)
 	defer func() { endSpan(err) }()
 
-	toolResult, err := m.toolkit.Run(ctx, name, input)
+	// Filter tools by name, which may return multiple matches if the name is not fully qualified with a namespace.
+	tools, _, err := m.listTools(ctx, schema.ToolListRequest{Name: []string{name}}, user)
 	if err != nil {
 		return nil, err
 	}
+	if len(tools) == 0 {
+		return nil, schema.ErrNotFound.Withf("tool %q", name)
+	}
+	if len(tools) > 1 {
+		return nil, schema.ErrConflict.Withf("multiple tools matched %q; specify a fully-qualified tool name", name)
+	}
 
-	// Read the resource content if present
-	var data []byte
-	if resource, ok := toolResult.(llm.Resource); ok {
-		data, err = resource.Read(ctx)
+	// Append the json input as a resource if provided, and call the tool
+	var resources []llm.Resource
+	if req.Input != nil {
+		input, err := resource.JSON("input", json.RawMessage(req.Input))
 		if err != nil {
-			return nil, llm.ErrInternalServerError.Withf("reading tool result: %v", err)
+			return nil, err
+		}
+		resources = append(resources, input)
+	}
+
+	// Call the tool and return the resource directly so transport layers can
+	// preserve the original content type and payload.
+	return m.Toolkit.Call(ctx, tools[0], resources...)
+}
+
+///////////////////////////////////////////////////////////////////////////////
+// PRIVATE METHODS
+
+func (m *Manager) listTools(ctx context.Context, req schema.ToolListRequest, user *auth.User) ([]llm.Tool, uint, error) {
+	var namespaces []string
+	if user == nil {
+		if req.Namespace != "" {
+			namespaces = []string{req.Namespace}
+		}
+	} else {
+		accessible, err := m.toolNamespacesForUser(ctx, user)
+		if err != nil {
+			return nil, 0, err
+		}
+		if req.Namespace == "" {
+			namespaces = accessible
+		} else if slices.Contains(accessible, req.Namespace) {
+			namespaces = []string{req.Namespace}
+		} else {
+			return nil, 0, nil
 		}
 	}
 
-	return &schema.CallToolResponse{
-		Tool:   name,
-		Result: data,
-	}, nil
+	listReq := toolkit.ListRequest{
+		Type:       toolkit.ListTypeTools,
+		Namespaces: namespaces,
+		Name:       req.Name,
+		Offset:     uint(req.Offset),
+	}
+	if req.Limit != nil {
+		listReq.Limit = types.Ptr(uint(types.Value(req.Limit)))
+	}
+
+	resp, err := m.Toolkit.List(ctx, listReq)
+	if err != nil {
+		return nil, 0, err
+	}
+
+	return resp.Tools, resp.Count, nil
 }
 
-// GetTool returns tool metadata by name.
-func (m *Manager) GetTool(ctx context.Context, name string) (result *schema.ToolMeta, err error) {
-	// Otel span
-	_, endSpan := otel.StartSpan(m.tracer, ctx, "GetTool",
-		attribute.String("tool", name),
-	)
-	defer func() { endSpan(err) }()
+func (m *Manager) toolNamespacesForUser(ctx context.Context, user *auth.User) ([]string, error) {
+	if user == nil {
+		return nil, nil
+	}
 
-	t := m.toolkit.Lookup(name)
-	if t == nil {
-		return nil, llm.ErrNotFound.Withf("tool %q", name)
+	// Determine namespaces of connectors accessible to the user, which may grant access to
+	// tools in those namespaces. Always include the builtin namespace.
+	namespaces := []string{schema.BuiltinNamespace}
+	req := schema.ConnectorListRequest{}
+	for {
+		connectors, err := m.ListConnectors(ctx, req, user)
+		if err != nil {
+			return nil, err
+		}
+		if len(connectors.Body) == 0 {
+			break
+		}
+		for _, connector := range connectors.Body {
+			namespaces = append(namespaces, types.Value(connector.Namespace))
+		}
+		req.Offset += uint64(len(connectors.Body))
 	}
-	s, err := t.InputSchema()
-	if err != nil {
-		return nil, err
+
+	// Return success
+	return namespaces, nil
+}
+
+func newToolMeta(tool llm.Tool) (schema.ToolMeta, error) {
+	var meta schema.ToolMeta
+	meta.Name = tool.Name()
+	meta.Description = tool.Description()
+	meta.Title = tool.Meta().Title
+	if in := tool.InputSchema(); in != nil {
+		if bytes, err := in.MarshalJSON(); err != nil {
+			return schema.ToolMeta{}, err
+		} else {
+			meta.Input = schema.JSONSchema(bytes)
+		}
 	}
-	meta, err := schema.NewToolMeta(t.Name(), t.Description(), s)
-	if err != nil {
-		return nil, err
+	if out := tool.OutputSchema(); out != nil {
+		if bytes, err := out.MarshalJSON(); err != nil {
+			return schema.ToolMeta{}, err
+		} else {
+			meta.Output = schema.JSONSchema(bytes)
+		}
 	}
-	return &meta, nil
+	if tool.Meta().ReadOnlyHint {
+		meta.Hints = append(meta.Hints, "readonly")
+	}
+	if tool.Meta().IdempotentHint {
+		meta.Hints = append(meta.Hints, "idempotent")
+	}
+	if tool.Meta().DestructiveHint != nil && types.Value(tool.Meta().DestructiveHint) {
+		meta.Hints = append(meta.Hints, "destructive")
+	}
+	if tool.Meta().OpenWorldHint != nil && types.Value(tool.Meta().OpenWorldHint) {
+		meta.Hints = append(meta.Hints, "openworld")
+	}
+	return meta, nil
 }

@@ -5,6 +5,7 @@ import (
 	"time"
 
 	// Packages
+	authclient "github.com/djthorpe/go-auth/pkg/httpclient/auth"
 	schema "github.com/mutablelogic/go-llm/pkg/schema"
 	types "github.com/mutablelogic/go-server/pkg/types"
 )
@@ -19,9 +20,9 @@ import (
 //
 // The provided ctx governs the connection timeout; cancelling it before the
 // server responds causes Probe to return ctx.Err().
-func (c *Client) Probe(ctx context.Context) (*schema.ConnectorState, error) {
+func (c *Client) Probe(ctx context.Context, authfn func(err error, config *authclient.Config) error) (*schema.ConnectorState, error) {
 	// Establish a session (includes auth retry if c.authFn is set).
-	session, err := c.connectWithAuth(ctx)
+	session, err := c.connectWithAuth(ctx, authfn)
 	if err != nil {
 		return nil, err
 	}

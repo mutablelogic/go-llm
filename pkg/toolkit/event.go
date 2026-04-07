@@ -17,6 +17,10 @@ const (
 	// The State field of ConnectorEvent is populated.
 	ConnectorEventStateChange ConnectorEventKind = iota
 
+	// ConnectorEventDisconnected is fired when a connector stops running.
+	// The Err field is populated for unexpected disconnects.
+	ConnectorEventDisconnected
+
 	// ConnectorEventToolListChanged is fired when the remote tool list changes.
 	ConnectorEventToolListChanged
 
@@ -46,8 +50,34 @@ type ConnectorEvent struct {
 	// State is populated for ConnectorEventStateChange events.
 	State schema.ConnectorState
 
+	// Err is populated for ConnectorEventDisconnected events when the connector
+	// stopped due to an unexpected error.
+	Err error
+
 	// URI is populated for ConnectorEventResourceUpdated events.
 	URI string
+}
+
+///////////////////////////////////////////////////////////////////////////////
+// STRINGIFY
+
+func (e ConnectorEventKind) String() string {
+	switch e {
+	case ConnectorEventStateChange:
+		return "Connected"
+	case ConnectorEventDisconnected:
+		return "Disconnected"
+	case ConnectorEventToolListChanged:
+		return "ToolListChanged"
+	case ConnectorEventPromptListChanged:
+		return "PromptListChanged"
+	case ConnectorEventResourceListChanged:
+		return "ResourceListChanged"
+	case ConnectorEventResourceUpdated:
+		return "ResourceUpdated"
+	default:
+		return "Unknown"
+	}
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -56,6 +86,11 @@ type ConnectorEvent struct {
 // StateChangeEvent returns a ConnectorEventStateChange event with the given state.
 func StateChangeEvent(state schema.ConnectorState) ConnectorEvent {
 	return ConnectorEvent{Kind: ConnectorEventStateChange, State: state}
+}
+
+// DisconnectedEvent returns a ConnectorEventDisconnected event with the given error.
+func DisconnectedEvent(err error) ConnectorEvent {
+	return ConnectorEvent{Kind: ConnectorEventDisconnected, Err: err}
 }
 
 // ToolListChangeEvent returns a ConnectorEventToolListChanged event.

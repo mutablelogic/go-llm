@@ -4,23 +4,22 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	// Packages
 	httpclient "github.com/mutablelogic/go-llm/pkg/httpclient"
+	opt "github.com/mutablelogic/go-llm/pkg/opt"
 	schema "github.com/mutablelogic/go-llm/pkg/schema"
 	types "github.com/mutablelogic/go-server/pkg/types"
 )
 
-///////////////////////////////////////////////////////////////////////////////
-// HELPERS
-
-// newTestServer creates an httptest.Server that mimics the /ask endpoint.
-// It echoes the text from the request back in the response.
-func newTestServer(t *testing.T) *httptest.Server {
+func newAskServer(t *testing.T) *httptest.Server {
 	t.Helper()
+
 	mux := http.NewServeMux()
 	mux.HandleFunc("/api/ask", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
@@ -28,195 +27,193 @@ func newTestServer(t *testing.T) *httptest.Server {
 			return
 		}
 
-		ct := r.Header.Get("Content-Type")
-		var text string
-		var attachments int
-
-		switch {
-		case len(ct) >= 16 && ct[:16] == "application/json":
-			var req schema.AskRequest
-			if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-				http.Error(w, err.Error(), http.StatusBadRequest)
-				return
-			}
-			text = req.Text
-			attachments = len(req.Attachments)
-		case len(ct) >= 19 && ct[:19] == "multipart/form-data":
-			if err := r.ParseMultipartForm(32 << 20); err != nil {
-				http.Error(w, err.Error(), http.StatusBadRequest)
-				return
-			}
-			text = r.FormValue("text")
-			if _, _, err := r.FormFile("file"); err == nil {
-				attachments = 1
-			}
-		default:
-			http.Error(w, "unsupported content type", http.StatusUnsupportedMediaType)
+		var req schema.AskRequest
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
 
-		respText := "echo: " + text
-		if attachments > 0 {
-			respText += " [" + http.StatusText(attachments) + "]"
-		}
-
-		resp := schema.AskResponse{
+		response := schema.AskResponse{
 			CompletionResponse: schema.CompletionResponse{
-				Role: "assistant",
+				Role:   schema.RoleAssistant,
+				Result: schema.ResultStop,
 				Content: []schema.ContentBlock{
-					{Text: types.Ptr(respText)},
+					{Text: types.Ptr("echo: " + req.Text)},
 				},
 			},
+			Usage: &schema.UsageMeta{InputTokens: 5, OutputTokens: 7},
 		}
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(resp)
+
+		if r.Header.Get(types.ContentAcceptHeader) == types.ContentTypeTextStream {
+			stream := fmt.Sprintf(
+				"event: %s\ndata: {\"role\":\"assistant\",\"text\":\"echo: %s\"}\n\n"+
+					"event: %s\ndata: %s\n\n",
+				schema.EventAssistant,
+				req.Text,
+				schema.EventResult,
+				mustJSON(t, response),
+			)
+			w.Header().Set(types.ContentTypeHeader, types.ContentTypeTextStream)
+			_, _ = w.Write([]byte(stream))
+			return
+		}
+
+		w.Header().Set(types.ContentTypeHeader, types.ContentTypeJSON)
+		_ = json.NewEncoder(w).Encode(response)
 	})
+
 	return httptest.NewServer(mux)
 }
 
-func newClient(t *testing.T, serverURL string) *httpclient.Client {
+func newAskClient(t *testing.T, serverURL string) *httpclient.Client {
 	t.Helper()
-	c, err := httpclient.New(serverURL + "/api")
+
+	client, err := httpclient.New(serverURL + "/api")
 	if err != nil {
 		t.Fatal(err)
 	}
-	return c
+	return client
 }
 
-///////////////////////////////////////////////////////////////////////////////
-// TESTS
+func TestAskJSON(t *testing.T) {
+	server := newAskServer(t)
+	defer server.Close()
 
-func TestAsk_NoAttachments(t *testing.T) {
-	srv := newTestServer(t)
-	defer srv.Close()
-	c := newClient(t, srv.URL)
-
-	resp, err := c.Ask(context.Background(), schema.AskRequest{
+	client := newAskClient(t, server.URL)
+	response, err := client.Ask(context.Background(), schema.AskRequest{
 		AskRequestCore: schema.AskRequestCore{
-			GeneratorMeta: schema.GeneratorMeta{Model: "test-model"},
+			GeneratorMeta: schema.GeneratorMeta{Model: types.Ptr("test-model")},
 			Text:          "hello world",
 		},
+	}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if response.Role != schema.RoleAssistant {
+		t.Fatalf("expected role %q, got %q", schema.RoleAssistant, response.Role)
+	}
+	if len(response.Content) == 0 || response.Content[0].Text == nil {
+		t.Fatal("expected content text")
+	}
+	if got := *response.Content[0].Text; got != "echo: hello world" {
+		t.Fatalf("expected %q, got %q", "echo: hello world", got)
+	}
+	if response.Usage == nil || response.Usage.InputTokens != 5 || response.Usage.OutputTokens != 7 {
+		t.Fatalf("unexpected usage: %+v", response.Usage)
+	}
+}
+
+func TestAskStream(t *testing.T) {
+	server := newAskServer(t)
+	defer server.Close()
+
+	client := newAskClient(t, server.URL)
+	var chunks []string
+	streamFn := opt.StreamFn(func(role, text string) {
+		chunks = append(chunks, role+":"+text)
 	})
+
+	response, err := client.Ask(context.Background(), schema.AskRequest{
+		AskRequestCore: schema.AskRequestCore{
+			GeneratorMeta: schema.GeneratorMeta{Model: types.Ptr("test-model")},
+			Text:          "stream me",
+		},
+	}, streamFn)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if resp.Role != "assistant" {
-		t.Fatalf("expected role=assistant, got %q", resp.Role)
+	if len(chunks) != 1 || chunks[0] != "assistant:echo: stream me" {
+		t.Fatalf("unexpected stream chunks: %+v", chunks)
 	}
-	if len(resp.Content) == 0 || resp.Content[0].Text == nil {
-		t.Fatal("expected content with text")
+	if response == nil || len(response.Content) == 0 || response.Content[0].Text == nil {
+		t.Fatalf("unexpected response: %+v", response)
 	}
-	if got := *resp.Content[0].Text; got != "echo: hello world" {
-		t.Fatalf("expected 'echo: hello world', got %q", got)
-	}
-}
-
-func TestAsk_WithFile(t *testing.T) {
-	srv := newTestServer(t)
-	defer srv.Close()
-	c := newClient(t, srv.URL)
-
-	fileData := bytes.NewReader([]byte{0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A})
-	resp, err := c.Ask(context.Background(), schema.AskRequest{
-		AskRequestCore: schema.AskRequestCore{
-			GeneratorMeta: schema.GeneratorMeta{Model: "test-model"},
-			Text:          "describe this",
-		},
-	}, httpclient.WithFile("image.png", fileData))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if resp.Role != "assistant" {
-		t.Fatalf("expected role=assistant, got %q", resp.Role)
+	if got := *response.Content[0].Text; got != "echo: stream me" {
+		t.Fatalf("expected %q, got %q", "echo: stream me", got)
 	}
 }
 
-func TestAsk_WithURL(t *testing.T) {
-	srv := newTestServer(t)
-	defer srv.Close()
-	c := newClient(t, srv.URL)
+func TestAskStreamLargeResultEvent(t *testing.T) {
+	large := strings.Repeat("x", 256*1024)
 
-	resp, err := c.Ask(context.Background(), schema.AskRequest{
-		AskRequestCore: schema.AskRequestCore{
-			GeneratorMeta: schema.GeneratorMeta{Model: "test-model"},
-			Text:          "describe this",
-		},
-	}, httpclient.WithURL("https://example.com/image.png"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if resp.Role != "assistant" {
-		t.Fatalf("expected role=assistant, got %q", resp.Role)
-	}
-}
+	mux := http.NewServeMux()
+	mux.HandleFunc("/api/ask", func(w http.ResponseWriter, r *http.Request) {
+		response := schema.AskResponse{
+			CompletionResponse: schema.CompletionResponse{
+				Role:   schema.RoleAssistant,
+				Result: schema.ResultStop,
+				Content: []schema.ContentBlock{
+					{Text: types.Ptr(large)},
+				},
+			},
+		}
 
-func TestAsk_MultipleAttachments(t *testing.T) {
-	srv := newTestServer(t)
-	defer srv.Close()
-	c := newClient(t, srv.URL)
-
-	file1 := bytes.NewReader([]byte{0x89, 0x50, 0x4E, 0x47})
-	file2 := bytes.NewReader([]byte{0xFF, 0xD8, 0xFF, 0xE0})
-	resp, err := c.Ask(context.Background(), schema.AskRequest{
-		AskRequestCore: schema.AskRequestCore{
-			GeneratorMeta: schema.GeneratorMeta{Model: "test-model"},
-			Text:          "compare these",
-		},
-	}, httpclient.WithFile("a.png", file1), httpclient.WithFile("b.jpg", file2))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if resp.Role != "assistant" {
-		t.Fatalf("expected role=assistant, got %q", resp.Role)
-	}
-}
-
-func TestAsk_MixedAttachments(t *testing.T) {
-	srv := newTestServer(t)
-	defer srv.Close()
-	c := newClient(t, srv.URL)
-
-	fileData := bytes.NewReader([]byte{0x89, 0x50, 0x4E, 0x47})
-	resp, err := c.Ask(context.Background(), schema.AskRequest{
-		AskRequestCore: schema.AskRequestCore{
-			GeneratorMeta: schema.GeneratorMeta{Model: "test-model"},
-			Text:          "compare these",
-		},
-	}, httpclient.WithFile("a.png", fileData), httpclient.WithURL("https://example.com/b.png"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if resp.Role != "assistant" {
-		t.Fatalf("expected role=assistant, got %q", resp.Role)
-	}
-}
-
-func TestAsk_EmptyModel(t *testing.T) {
-	srv := newTestServer(t)
-	defer srv.Close()
-	c := newClient(t, srv.URL)
-
-	_, err := c.Ask(context.Background(), schema.AskRequest{
-		AskRequestCore: schema.AskRequestCore{
-			Text: "hello",
-		},
+		stream := fmt.Sprintf(
+			"event: %s\ndata: {\"role\":\"assistant\",\"text\":\"chunk\"}\n\n"+
+				"event: %s\ndata: %s\n\n",
+			schema.EventAssistant,
+			schema.EventResult,
+			mustJSON(t, response),
+		)
+		w.Header().Set(types.ContentTypeHeader, types.ContentTypeTextStream)
+		_, _ = w.Write([]byte(stream))
 	})
+
+	server := httptest.NewServer(mux)
+	defer server.Close()
+
+	client := newAskClient(t, server.URL)
+	response, err := client.Ask(context.Background(), schema.AskRequest{
+		AskRequestCore: schema.AskRequestCore{
+			GeneratorMeta: schema.GeneratorMeta{Model: types.Ptr("test-model")},
+			Text:          "stream me",
+		},
+	}, opt.StreamFn(func(role, text string) {}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if response == nil || len(response.Content) == 0 || response.Content[0].Text == nil {
+		t.Fatalf("unexpected response: %+v", response)
+	}
+	if got := *response.Content[0].Text; got != large {
+		t.Fatalf("expected large result payload of %d bytes, got %d", len(large), len(got))
+	}
+}
+
+func TestAskEmptyModel(t *testing.T) {
+	server := newAskServer(t)
+	defer server.Close()
+
+	client := newAskClient(t, server.URL)
+	_, err := client.Ask(context.Background(), schema.AskRequest{
+		AskRequestCore: schema.AskRequestCore{Text: "hello"},
+	}, nil)
 	if err == nil {
 		t.Fatal("expected error for empty model")
 	}
 }
 
-func TestAsk_EmptyText(t *testing.T) {
-	srv := newTestServer(t)
-	defer srv.Close()
-	c := newClient(t, srv.URL)
+func TestAskEmptyText(t *testing.T) {
+	server := newAskServer(t)
+	defer server.Close()
 
-	_, err := c.Ask(context.Background(), schema.AskRequest{
+	client := newAskClient(t, server.URL)
+	_, err := client.Ask(context.Background(), schema.AskRequest{
 		AskRequestCore: schema.AskRequestCore{
-			GeneratorMeta: schema.GeneratorMeta{Model: "test-model"},
+			GeneratorMeta: schema.GeneratorMeta{Model: types.Ptr("test-model")},
 		},
-	})
+	}, nil)
 	if err == nil {
 		t.Fatal("expected error for empty text")
 	}
+}
+
+func mustJSON(t *testing.T, value any) string {
+	t.Helper()
+
+	data, err := json.Marshal(value)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return string(bytes.TrimSpace(data))
 }

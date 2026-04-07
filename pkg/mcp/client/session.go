@@ -3,8 +3,11 @@ package client
 import (
 	"context"
 	"encoding/json"
+	"errors"
+	"strings"
 
 	// Packages
+	jsonrpc "github.com/modelcontextprotocol/go-sdk/jsonrpc"
 	sdkmcp "github.com/modelcontextprotocol/go-sdk/mcp"
 	llm "github.com/mutablelogic/go-llm"
 	schema "github.com/mutablelogic/go-llm/pkg/schema"
@@ -19,7 +22,7 @@ func (c *Client) getSession() (*sdkmcp.ClientSession, error) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	if c.session == nil {
-		return nil, ErrNotConnected
+		return nil, schema.ErrServiceUnavailable
 	}
 	return c.session, nil
 }
@@ -45,12 +48,12 @@ func (c *Client) ServerInfo() (name, version, protocol string) {
 
 // ListTools returns the cached list of tools advertised by the connected
 // MCP server. The cache is populated on connect and refreshed automatically
-// on each ToolListChanged notification. Returns ErrNotConnected if not active.
+// on each ToolListChanged notification. Returns ErrServiceUnavailable if not active.
 func (c *Client) ListTools(_ context.Context) ([]llm.Tool, error) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	if c.session == nil {
-		return nil, ErrNotConnected
+		return nil, schema.ErrServiceUnavailable
 	}
 	return c.tools, nil
 }
@@ -71,7 +74,12 @@ func (c *Client) refreshTools(ctx context.Context) {
 			return
 		}
 		for _, t := range result.Tools {
-			tools = append(tools, &mcpTool{t: t, client: c})
+			tools = append(tools, &mcpTool{
+				t:            t,
+				client:       c,
+				inputSchema:  schemaFromAny(t.InputSchema),
+				outputSchema: schemaFromAny(t.OutputSchema),
+			})
 		}
 		if cursor = result.NextCursor; cursor == "" {
 			break
@@ -115,6 +123,18 @@ func (c *Client) CallTool(ctx context.Context, name string, arguments json.RawMe
 	// Call the tool and convert the result to (any, error) using the pkg/tool
 	res, err := sess.CallTool(ctx, params)
 	if err != nil {
+		var rpcErr *jsonrpc.Error
+		if errors.As(err, &rpcErr) && rpcErr.Code == jsonrpc.CodeInvalidParams {
+			msg := strings.TrimSpace(rpcErr.Message)
+			prefix := "Invalid arguments for tool " + name + ":"
+			if strings.HasPrefix(msg, prefix) {
+				msg = strings.TrimSpace(strings.TrimPrefix(msg, prefix))
+			}
+			if msg == "" {
+				msg = "invalid tool arguments"
+			}
+			return nil, schema.ErrBadParameter.Withf("tool %q: %s", name, msg)
+		}
 		return nil, err
 	}
 	return callToolResult(res)

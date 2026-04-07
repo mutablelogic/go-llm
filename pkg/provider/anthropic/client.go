@@ -5,6 +5,7 @@ https://docs.anthropic.com/en/api/getting-started
 package anthropic
 
 import (
+	"context"
 	"time"
 
 	// Packages
@@ -56,4 +57,10 @@ func New(apiKey string, opts ...client.ClientOpt) (*Client, error) {
 // Name returns the provider name
 func (*Client) Name() string {
 	return schema.Anthropic
+}
+
+// Ping checks the connectivity of the client and returns an error if not successful
+func (c *Client) Ping(ctx context.Context) error {
+	// TODO: Not implemented for Anthropic
+	return nil
 }

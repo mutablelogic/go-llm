@@ -28,13 +28,13 @@ func (a *agent) DownloadModel(ctx context.Context, path string, opts ...opt.Opt)
 	// Find the client by provider name
 	client, ok := a.clients[providerName]
 	if !ok {
-		return nil, llm.ErrNotFound.Withf("provider %q not found", providerName)
+		return nil, schema.ErrNotFound.Withf("provider %q not found", providerName)
 	}
 
 	// Check if client implements Downloader
 	downloader, ok := client.(llm.Downloader)
 	if !ok {
-		return nil, llm.ErrNotImplemented.Withf("provider %q does not support downloading models", providerName)
+		return nil, schema.ErrNotImplemented.Withf("provider %q does not support downloading models", providerName)
 	}
 
 	// Download the model
@@ -48,13 +48,13 @@ func (a *agent) DeleteModel(ctx context.Context, model schema.Model) error {
 	// Find the client that owns this model
 	client := a.clientForModel(model)
 	if client == nil {
-		return llm.ErrNotFound.With("no client found for model")
+		return schema.ErrNotFound.With("no client found for model")
 	}
 
 	// Check if client implements Downloader
 	downloader, ok := client.(llm.Downloader)
 	if !ok {
-		return llm.ErrNotImplemented.Withf("provider %q does not support deleting models", client.Name())
+		return schema.ErrNotImplemented.Withf("provider %q does not support deleting models", client.Name())
 	}
 
 	// Delete the model
@@ -69,17 +69,17 @@ func (a *agent) DeleteModel(ctx context.Context, model schema.Model) error {
 func parsePath(path string) (provider, modelPath string, err error) {
 	parts := strings.SplitN(path, ":", 2)
 	if len(parts) != 2 {
-		return "", "", llm.ErrBadParameter.Withf("invalid path format %q, expected \"provider:model\"", path)
+		return "", "", schema.ErrBadParameter.Withf("invalid path format %q, expected \"provider:model\"", path)
 	}
 
 	provider = strings.TrimSpace(parts[0])
 	modelPath = strings.TrimSpace(parts[1])
 
 	if provider == "" {
-		return "", "", llm.ErrBadParameter.With("provider name cannot be empty")
+		return "", "", schema.ErrBadParameter.With("provider name cannot be empty")
 	}
 	if modelPath == "" {
-		return "", "", llm.ErrBadParameter.With("model path cannot be empty")
+		return "", "", schema.ErrBadParameter.With("model path cannot be empty")
 	}
 
 	return provider, modelPath, nil

@@ -1,162 +1,163 @@
 package httphandler
 
 import (
+	"context"
+	"errors"
 	"net/http"
 	"net/url"
 
 	// Packages
-	manager "github.com/mutablelogic/go-llm/pkg/manager"
+	middleware "github.com/djthorpe/go-auth/pkg/middleware"
+	llmmanager "github.com/mutablelogic/go-llm/pkg/manager"
 	schema "github.com/mutablelogic/go-llm/pkg/schema"
 	httprequest "github.com/mutablelogic/go-server/pkg/httprequest"
 	httpresponse "github.com/mutablelogic/go-server/pkg/httpresponse"
 	jsonschema "github.com/mutablelogic/go-server/pkg/jsonschema"
-	openapi "github.com/mutablelogic/go-server/pkg/openapi/schema"
-	types "github.com/mutablelogic/go-server/pkg/types"
+	opts "github.com/mutablelogic/go-server/pkg/openapi"
 )
 
 ///////////////////////////////////////////////////////////////////////////////
-// HANDLER FUNCTIONS
+// PUBLIC METHODS
 
-// Path: connector
-func ConnectorListHandler(manager *manager.Manager) (string, http.HandlerFunc, *openapi.PathItem) {
-	listRespSchema, _ := jsonschema.For[schema.ListConnectorsResponse]()
-	return "connector", func(w http.ResponseWriter, r *http.Request) {
-			switch r.Method {
-			case http.MethodGet:
-				var req schema.ListConnectorsRequest
-				if err := httprequest.Query(r.URL.Query(), &req); err != nil {
-					_ = httpresponse.Error(w, err)
-					return
-				}
-				resp, err := manager.ListConnectors(r.Context(), req)
-				if err != nil {
-					_ = httpresponse.Error(w, httpErr(err))
-					return
-				}
-				_ = httpresponse.JSON(w, http.StatusOK, httprequest.Indent(r), resp)
-			default:
-				_ = httpresponse.Error(w, httpresponse.Err(http.StatusMethodNotAllowed), r.Method)
-			}
-		}, types.Ptr(openapi.PathItem{
-			Get: &openapi.Operation{
-				Tags:        []string{"Connector"},
-				Description: "List registered MCP server connectors",
-				Parameters: []openapi.Parameter{
-					{Name: "namespace", In: openapi.ParameterInQuery, Description: "Filter by namespace", Schema: pathParamSchema},
-					{Name: "enabled", In: openapi.ParameterInQuery, Description: "Filter by enabled state", Schema: queryBoolSchema},
-					{Name: "limit", In: openapi.ParameterInQuery, Description: "Maximum number of connectors to return", Schema: queryUintSchema},
-					{Name: "offset", In: openapi.ParameterInQuery, Description: "Offset for pagination", Schema: queryUintSchema},
-				},
-				Responses: map[string]openapi.Response{
-					"200":     {Description: "List of connectors", Content: map[string]openapi.MediaType{types.ContentTypeJSON: {Schema: listRespSchema}}},
-					"default": openapi.ErrorResponse("An error occurred"),
-				},
-			},
-		})
+func ConnectorHandler(manager *llmmanager.Manager) (string, *jsonschema.Schema, httprequest.PathItem) {
+	return "connector", nil, httprequest.NewPathItem(
+		"Connector operations",
+		"List and create operations on connectors",
+		"Connectors",
+	).Post(
+		func(w http.ResponseWriter, r *http.Request) {
+			_ = createConnector(r.Context(), manager, w, r)
+		},
+		"Create connector",
+		opts.WithDescription("Registers an MCP connector after probing the target server. Returns the created connector on success, or a standard unauthorized error when the connector requires user authorization before registration can complete. In that case, the error detail contains the authorization code flow metadata and requested scopes."),
+		opts.WithJSONRequest(jsonschema.MustFor[schema.ConnectorInsert]()),
+		opts.WithJSONResponse(201, jsonschema.MustFor[schema.Connector]()),
+		opts.WithErrorResponse(401, "Connector authorization is required before registration can complete. The error detail contains a CreateConnectorUnauthorizedResponse with the authorization code flow metadata and requested scopes."),
+		opts.WithErrorResponse(400, "Invalid request body or connector creation failure."),
+	).Get(
+		func(w http.ResponseWriter, r *http.Request) {
+			_ = listConnectors(r.Context(), manager, w, r)
+		},
+		"List connectors",
+		opts.WithQuery(jsonschema.MustFor[schema.ConnectorListRequest]()),
+		opts.WithJSONResponse(200, jsonschema.MustFor[schema.ConnectorList]()),
+		opts.WithErrorResponse(400, "Invalid request parameters or connector listing failure."),
+	)
 }
 
-// Path: connector/{url}
-func ConnectorHandler(manager *manager.Manager) (string, http.HandlerFunc, *openapi.PathItem) {
-	urlParam := openapi.Parameter{
-		Name:        "url",
-		In:          openapi.ParameterInPath,
-		Description: "MCP server URL",
-		Required:    true,
-		Schema:      pathParamSchema,
+func ConnectorResourceHandler(manager *llmmanager.Manager) (string, *jsonschema.Schema, httprequest.PathItem) {
+	return "connector/{url}", jsonschema.MustFor[schema.ConnectorURLSelector](), httprequest.NewPathItem(
+		"Connector operations",
+		"Get, update, and delete operations on connectors",
+		"Connectors",
+	).Get(
+		func(w http.ResponseWriter, r *http.Request) {
+			_ = getConnector(r.Context(), manager, w, r)
+		},
+		"Get connector",
+		opts.WithJSONResponse(200, jsonschema.MustFor[schema.Connector]()),
+		opts.WithErrorResponse(400, "Invalid connector URL."),
+		opts.WithErrorResponse(404, "Connector not found."),
+	).Patch(
+		func(w http.ResponseWriter, r *http.Request) {
+			_ = updateConnector(r.Context(), manager, w, r)
+		},
+		"Update connector",
+		opts.WithJSONRequest(jsonschema.MustFor[schema.ConnectorMeta]()),
+		opts.WithJSONResponse(200, jsonschema.MustFor[schema.Connector]()),
+		opts.WithErrorResponse(400, "Invalid connector URL, request body, or connector update failure."),
+		opts.WithErrorResponse(404, "Connector not found."),
+	).Delete(
+		func(w http.ResponseWriter, r *http.Request) {
+			_ = deleteConnector(r.Context(), manager, w, r)
+		},
+		"Delete connector",
+		opts.WithJSONResponse(200, jsonschema.MustFor[schema.Connector]()),
+		opts.WithErrorResponse(400, "Invalid connector URL."),
+		opts.WithErrorResponse(404, "Connector not found."),
+	)
+}
+
+///////////////////////////////////////////////////////////////////////////////
+// PRIVATE METHODS
+
+func listConnectors(ctx context.Context, manager *llmmanager.Manager, w http.ResponseWriter, r *http.Request) error {
+	var req schema.ConnectorListRequest
+	if err := httprequest.Query(r.URL.Query(), &req); err != nil {
+		return httpresponse.Error(w, httpresponse.ErrBadRequest, err)
 	}
-	connectorMetaSchema, _ := jsonschema.For[schema.ConnectorMeta]()
-	connectorSchema, _ := jsonschema.For[schema.Connector]()
-	return "connector/{url}", func(w http.ResponseWriter, r *http.Request) {
-			rawURL, err := url.PathUnescape(r.PathValue("url"))
-			if err != nil {
-				_ = httpresponse.Error(w, httpresponse.ErrBadRequest.With(err))
-				return
-			}
-			switch r.Method {
-			case http.MethodGet:
-				resp, err := manager.GetConnector(r.Context(), rawURL)
-				if err != nil {
-					_ = httpresponse.Error(w, httpErr(err))
-					return
-				}
-				_ = httpresponse.JSON(w, http.StatusOK, httprequest.Indent(r), resp)
-			case http.MethodPost:
-				var meta schema.ConnectorMeta
-				if err := httprequest.Read(r, &meta); err != nil {
-					_ = httpresponse.Error(w, err)
-					return
-				}
-				resp, err := manager.CreateConnector(r.Context(), rawURL, meta)
-				if err != nil {
-					_ = httpresponse.Error(w, httpErr(err))
-					return
-				}
-				_ = httpresponse.JSON(w, http.StatusCreated, httprequest.Indent(r), resp)
-			case http.MethodPatch:
-				var meta schema.ConnectorMeta
-				if err := httprequest.Read(r, &meta); err != nil {
-					_ = httpresponse.Error(w, err)
-					return
-				}
-				resp, err := manager.UpdateConnector(r.Context(), rawURL, meta)
-				if err != nil {
-					_ = httpresponse.Error(w, httpErr(err))
-					return
-				}
-				_ = httpresponse.JSON(w, http.StatusOK, httprequest.Indent(r), resp)
-			case http.MethodDelete:
-				if err := manager.DeleteConnector(r.Context(), rawURL); err != nil {
-					_ = httpresponse.Error(w, httpErr(err))
-					return
-				}
-				w.WriteHeader(http.StatusNoContent)
-			default:
-				_ = httpresponse.Error(w, httpresponse.Err(http.StatusMethodNotAllowed), r.Method)
-			}
-		}, types.Ptr(openapi.PathItem{
-			Get: &openapi.Operation{
-				Tags:        []string{"Connector"},
-				Description: "Get a registered MCP server connector by URL",
-				Parameters:  []openapi.Parameter{urlParam},
-				Responses: map[string]openapi.Response{
-					"200":     {Description: "Connector details", Content: map[string]openapi.MediaType{types.ContentTypeJSON: {Schema: connectorSchema}}},
-					"default": openapi.ErrorResponse("An error occurred"),
-				},
-			},
-			Post: &openapi.Operation{
-				Tags:        []string{"Connector"},
-				Description: "Register a new MCP server connector",
-				Parameters:  []openapi.Parameter{urlParam},
-				RequestBody: &openapi.RequestBody{
-					Required: true,
-					Content:  map[string]openapi.MediaType{types.ContentTypeJSON: {Schema: connectorMetaSchema}},
-				},
-				Responses: map[string]openapi.Response{
-					"201":     {Description: "Connector registered", Content: map[string]openapi.MediaType{types.ContentTypeJSON: {Schema: connectorSchema}}},
-					"default": openapi.ErrorResponse("An error occurred"),
-				},
-			},
-			Patch: &openapi.Operation{
-				Tags:        []string{"Connector"},
-				Description: "Update the metadata for a registered MCP server connector",
-				Parameters:  []openapi.Parameter{urlParam},
-				RequestBody: &openapi.RequestBody{
-					Required: true,
-					Content:  map[string]openapi.MediaType{types.ContentTypeJSON: {Schema: connectorMetaSchema}},
-				},
-				Responses: map[string]openapi.Response{
-					"200":     {Description: "Updated connector", Content: map[string]openapi.MediaType{types.ContentTypeJSON: {Schema: connectorSchema}}},
-					"default": openapi.ErrorResponse("An error occurred"),
-				},
-			},
-			Delete: &openapi.Operation{
-				Tags:        []string{"Connector"},
-				Description: "Delete a registered MCP server connector",
-				Parameters:  []openapi.Parameter{urlParam},
-				Responses: map[string]openapi.Response{
-					"204":     {Description: "Connector deleted"},
-					"default": openapi.ErrorResponse("An error occurred"),
-				},
-			},
+
+	connectors, err := manager.ListConnectors(ctx, req, middleware.UserFromContext(ctx))
+	if err != nil {
+		return httpresponse.Error(w, schema.HTTPErr(err))
+	}
+
+	return httpresponse.JSON(w, http.StatusOK, httprequest.Indent(r), connectors)
+}
+
+func createConnector(ctx context.Context, manager *llmmanager.Manager, w http.ResponseWriter, r *http.Request) error {
+	var req schema.ConnectorInsert
+	if err := httprequest.Read(r, &req); err != nil {
+		return httpresponse.Error(w, httpresponse.ErrBadRequest, err)
+	}
+
+	connector, codeflow, scopes, err := manager.CreateConnector(ctx, req, middleware.UserFromContext(ctx))
+	if errors.Is(err, httpresponse.ErrNotAuthorized) {
+		return httpresponse.Error(w, err, schema.CreateConnectorUnauthorizedResponse{
+			CodeFlow: codeflow,
+			Scopes:   scopes,
 		})
+	} else if err != nil {
+		return httpresponse.Error(w, schema.HTTPErr(err))
+	}
+
+	// Respond with the connector
+	return httpresponse.JSON(w, http.StatusCreated, httprequest.Indent(r), connector)
+}
+
+func getConnector(ctx context.Context, manager *llmmanager.Manager, w http.ResponseWriter, r *http.Request) error {
+	rawURL, err := url.PathUnescape(r.PathValue("url"))
+	if err != nil {
+		return httpresponse.Error(w, httpresponse.ErrBadRequest, err)
+	}
+
+	connector, err := manager.GetConnector(ctx, rawURL, middleware.UserFromContext(ctx))
+	if err != nil {
+		return httpresponse.Error(w, schema.HTTPErr(err))
+	}
+
+	return httpresponse.JSON(w, http.StatusOK, httprequest.Indent(r), connector)
+}
+
+func updateConnector(ctx context.Context, manager *llmmanager.Manager, w http.ResponseWriter, r *http.Request) error {
+	rawURL, err := url.PathUnescape(r.PathValue("url"))
+	if err != nil {
+		return httpresponse.Error(w, httpresponse.ErrBadRequest, err)
+	}
+
+	var req schema.ConnectorMeta
+	if err := httprequest.Read(r, &req); err != nil {
+		return httpresponse.Error(w, httpresponse.ErrBadRequest, err)
+	}
+
+	connector, err := manager.UpdateConnector(ctx, rawURL, req)
+	if err != nil {
+		return httpresponse.Error(w, schema.HTTPErr(err))
+	}
+
+	return httpresponse.JSON(w, http.StatusOK, httprequest.Indent(r), connector)
+}
+
+func deleteConnector(ctx context.Context, manager *llmmanager.Manager, w http.ResponseWriter, r *http.Request) error {
+	rawURL, err := url.PathUnescape(r.PathValue("url"))
+	if err != nil {
+		return httpresponse.Error(w, httpresponse.ErrBadRequest, err)
+	}
+
+	connector, err := manager.DeleteConnector(ctx, rawURL)
+	if err != nil {
+		return httpresponse.Error(w, schema.HTTPErr(err))
+	}
+
+	return httpresponse.JSON(w, http.StatusOK, httprequest.Indent(r), connector)
 }

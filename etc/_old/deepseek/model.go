@@ -8,6 +8,7 @@ import (
 	client "github.com/mutablelogic/go-client"
 	llm "github.com/mutablelogic/go-llm"
 	impl "github.com/mutablelogic/go-llm/pkg/internal/impl"
+	schema "github.com/mutablelogic/go-llm/pkg/schema"
 )
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -121,5 +122,5 @@ func (model *model) Context(opts ...llm.Opt) llm.Context {
 
 // Embedding vector generation - not supported
 func (model *model) Embedding(context.Context, string, ...llm.Opt) ([]float64, error) {
-	return nil, llm.ErrNotImplemented
+	return nil, schema.ErrNotImplemented
 }

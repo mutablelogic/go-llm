@@ -2,267 +2,149 @@ package manager
 
 import (
 	"context"
-	"log/slog"
+	"fmt"
 	"strings"
-	"sync"
 
 	// Packages
-	client "github.com/mutablelogic/go-client"
-	llm "github.com/mutablelogic/go-llm"
-	opt "github.com/mutablelogic/go-llm/pkg/opt"
+	otel "github.com/mutablelogic/go-client/pkg/otel"
+	provider "github.com/mutablelogic/go-llm/pkg/provider"
 	schema "github.com/mutablelogic/go-llm/pkg/schema"
-	store "github.com/mutablelogic/go-llm/pkg/store"
-	tool "github.com/mutablelogic/go-llm/pkg/tool"
-	types "github.com/mutablelogic/go-server/pkg/types"
-	trace "go.opentelemetry.io/otel/trace"
-	errgroup "golang.org/x/sync/errgroup"
+	toolkit "github.com/mutablelogic/go-llm/pkg/toolkit"
+	pg "github.com/mutablelogic/go-pg"
+	broadcaster "github.com/mutablelogic/go-pg/pkg/broadcaster"
+	attribute "go.opentelemetry.io/otel/attribute"
+	metric "go.opentelemetry.io/otel/metric"
 )
 
 ///////////////////////////////////////////////////////////////////////////////
 // TYPES
 
 type Manager struct {
-	ctx              context.Context
-	cancel           context.CancelFunc
-	clients          map[string]llm.Client
-	sessionStore     schema.SessionStore
-	agentStore       schema.AgentStore
-	credentialStore  schema.CredentialStore
-	connectorStore   schema.ConnectorStore
-	toolkit          *tool.Toolkit
-	toolkitOpts      []tool.ToolkitOpt
-	connectorFactory ConnectorFactory
-	tracer           trace.Tracer
-	serverName       string
-	serverVersion    string
-	logger           *slog.Logger
+	manageropt
+	pg.PoolConn
+	*provider.Registry
+	toolkit.Toolkit
+	broadcaster broadcaster.Broadcaster
+	delegate    *delegate
 }
 
 ///////////////////////////////////////////////////////////////////////////////
 // LIFECYCLE
 
-func NewManager(name, ver string, opts ...Opt) (*Manager, error) {
-	// Create the manager
-	m := new(Manager)
-	m.ctx, m.cancel = context.WithCancel(context.Background())
+func New(ctx context.Context, name, version string, pool pg.PoolConn, opts ...Opt) (*Manager, error) {
+	// Set default values
+	self := new(Manager)
+	self.defaults(name, version)
 
-	// Validate required parameters
-	if name = strings.TrimSpace(name); name == "" {
-		return nil, llm.ErrBadParameter.With("server name is required")
-	} else {
-		m.serverName = name
-		m.serverVersion = strings.TrimSpace(ver)
-		m.clients = make(map[string]llm.Client)
+	// Check arguments
+	if pool == nil {
+		return nil, fmt.Errorf("pool is required")
 	}
 
 	// Apply options
-	for _, opt := range opts {
-		if err := opt(m); err != nil {
+	if err := self.apply(opts...); err != nil {
+		return nil, err
+	}
+
+	// Parse and register named queries so bind.Query(...) can resolve them.
+	queries, err := pg.NewQueries(strings.NewReader(schema.Queries))
+	if err != nil {
+		return nil, fmt.Errorf("parse queries.sql: %w", err)
+	} else {
+		pool = pool.WithQueries(queries).With(
+			"schema", self.llmschema,
+			"auth", self.authschema,
+			"channel", self.channel,
+		).(pg.PoolConn)
+	}
+
+	// Create objects in the database schema. This is not done in a transaction
+	bootstrapCtx, endBootstrapSpan := otel.StartSpan(self.tracer, ctx, "llmmanager.bootstrap",
+		attribute.String("schema", self.llmschema),
+	)
+	if err := bootstrap(bootstrapCtx, pool, self.llmschema); err != nil {
+		endBootstrapSpan(err)
+		return nil, err
+	} else {
+		endBootstrapSpan(nil)
+		self.PoolConn = pool
+	}
+
+	// Set up notifications of table change if requested
+	if self.channel != "" {
+		if broadcaster, err := broadcaster.NewBroadcaster(pool, self.channel); err != nil {
 			return nil, err
+		} else {
+			self.broadcaster = broadcaster
 		}
 	}
 
-	// Default logger to slog.Default() if not set by an option.
-	if m.logger == nil {
-		m.logger = slog.Default()
+	// Create the provider registry
+	if registry := provider.New(self.clientopts...); registry == nil {
+		return nil, fmt.Errorf("create provider registry: %w", err)
+	} else {
+		self.Registry = registry
 	}
 
-	// Default to in-memory session store if none was provided
-	if m.sessionStore == nil {
-		m.sessionStore = store.NewMemorySessionStore()
-	}
+	// Create a connector delegate, which receives notifications of connector changes
+	self.delegate = NewDelegate(self.name, self.version, self.clientopts...)
 
-	// Default to in-memory agent store if none was provided
-	if m.agentStore == nil {
-		m.agentStore = store.NewMemoryAgentStore()
-	}
-
-	// Default to in-memory connector store if none was provided
-	if m.connectorStore == nil {
-		m.connectorStore = store.NewMemoryConnectorStore()
-	}
-
-	// By default, we don't configure a credential store
-	// since it requires a passphrase.
-
-	// Build the toolkit with the accumulated opts and a state writeback hook.
-	tk, err := tool.NewToolkit(append(m.toolkitOpts,
-		tool.WithLogHandler(m.onConnectorLog),
-		tool.WithStateHandler(m.onConnectorState),
-		tool.WithToolsHandler(m.onConnectorTools),
-	)...)
-	if err != nil {
+	// TEST
+	// Register metrics after the registry has been initialized so callbacks can
+	// safely read manager state during collection.
+	if err := self.registerMetrics(); err != nil {
 		return nil, err
-	}
-	m.toolkit = tk
-
-	// Replay persisted enabled connectors into the toolkit.
-	// Per-connector failures are logged but do not abort startup.
-	if m.connectorFactory != nil {
-		m.replayConnectors()
 	}
 
 	// Return success
-	return m, nil
-}
-
-func (m *Manager) Close() error {
-	if m.cancel != nil {
-		m.cancel()
-	}
-	if m.toolkit != nil {
-		return m.toolkit.Close()
-	}
-	return nil
-}
-
-// replayConnectors loads all enabled connectors from the store and wires them
-// into the toolkit. Individual failures are logged and skipped.
-func (m *Manager) replayConnectors() {
-	ctx := context.Background()
-	enabled := true
-	resp, err := m.connectorStore.ListConnectors(ctx, schema.ListConnectorsRequest{Enabled: &enabled})
-	if err != nil {
-		m.logger.Warn("failed to list connectors on startup", "err", err)
-		return
-	}
-	for _, c := range resp.Body {
-		conn, err := m.connectorFactory(ctx, c.URL, m.credOptsFor(ctx, c.URL)...)
-		if err != nil {
-			m.logger.Warn("connector factory failed on startup", "url", c.URL, "err", err)
-			continue
-		}
-		if err := m.toolkit.AddConnector(c.URL, conn); err != nil {
-			m.logger.Warn("failed to add connector to toolkit on startup", "url", c.URL, "err", err)
-			continue
-		}
-		m.logger.Debug("connector queued for connection", "url", c.URL, "namespace", types.Value(c.Namespace))
-	}
-}
-
-// credOptsFor returns client opts that inject auth for the given URL.
-// If the credential has a RefreshToken it installs an oauth2 transport that
-// refreshes automatically; otherwise it falls back to a static bearer token.
-func (m *Manager) credOptsFor(ctx context.Context, url string) []client.ClientOpt {
-	if m.credentialStore == nil {
-		return nil
-	}
-	cred, err := m.credentialStore.GetCredential(ctx, url)
-	if err != nil || cred == nil || cred.Token == nil || cred.Token.AccessToken == "" {
-		return nil
-	}
-	// Prefer a refreshing transport when we have a refresh token.
-	if cred.RefreshToken != "" && cred.TokenURL != "" {
-		return []client.ClientOpt{OAuthClientOpt(m.ctx, url, cred, m.credentialStore)}
-	}
-	return []client.ClientOpt{client.OptReqToken(client.Token{Scheme: "Bearer", Value: cred.Token.AccessToken})}
-}
-
-// onConnectorLog forwards log messages from a connector's MCP session to the manager logger.
-// error values in args are converted to their string representation so they display
-// correctly with all slog handlers (some handlers JSON-marshal values directly,
-// turning an unexported error struct into "{}").
-func (m *Manager) onConnectorLog(url string, level slog.Level, msg string, args ...any) {
-	for i := 1; i < len(args); i += 2 {
-		if err, ok := args[i].(error); ok {
-			args[i] = err.Error()
-		}
-	}
-	m.logger.Log(context.Background(), level, msg, append(args, "url", url)...)
-}
-
-// onConnectorState writes connector state back to the connector store.
-// A zero ConnectedAt signals that the connector has disconnected.
-func (m *Manager) onConnectorState(url string, state schema.ConnectorState) {
-	_, _ = m.connectorStore.UpdateConnectorState(context.Background(), url, state)
-	if state.ConnectedAt == nil || state.ConnectedAt.IsZero() {
-		m.logger.Info("connector disconnected", "url", url)
-	} else if name := types.Value(state.Name); name == "" {
-		m.logger.Info("connector connected", "url", url)
-	} else {
-		m.logger.Info("connector connected", "url", url, "name", name, "version", types.Value(state.Version))
-	}
-}
-
-// onConnectorTools logs when a connector's tool list changes.
-func (m *Manager) onConnectorTools(url string, tools []llm.Tool) {
-	if tools == nil {
-		m.logger.Debug("connector tools cleared", "url", url)
-	} else {
-		m.logger.Info("connector tools updated", "url", url, "count", len(tools))
-	}
+	return self, nil
 }
 
 ///////////////////////////////////////////////////////////////////////////////
 // PRIVATE METHODS
 
-func (m *Manager) clientForModel(model *schema.Model) llm.Client {
-	if model == nil {
+func bootstrap(ctx context.Context, conn pg.Conn, schemaName string) error {
+	// Get all objects
+	objects, err := pg.NewQueries(strings.NewReader(schema.Objects))
+	if err != nil {
+		return fmt.Errorf("parse objects.sql: %w", err)
+	}
+
+	// Create the schema
+	if err := pg.SchemaCreate(ctx, conn, schemaName); err != nil {
+		return fmt.Errorf("create schema %q: %w", schemaName, err)
+	}
+
+	// Create all objects - not in a transaction
+	for _, key := range objects.Keys() {
+		if err := conn.Exec(ctx, objects.Query(key)); err != nil {
+			return fmt.Errorf("create object %q: %w", key, err)
+		}
+	}
+
+	// Return success
+	return nil
+}
+
+func (m *Manager) registerMetrics() error {
+	if m.metrics == nil || m.Registry == nil {
 		return nil
 	}
-	return m.clients[model.OwnedBy]
-}
 
-// convertOptsForClient applies options once, resolves any deferred client-aware
-// options, then re-applies the combined set to produce a flat option slice.
-func convertOptsForClient(opts []opt.Opt, client llm.Client) ([]opt.Opt, error) {
-	// First pass: apply options to collect any WithClient markers
-	o, err := opt.Apply(opts...)
+	gauge, err := m.metrics.Float64ObservableGauge(
+		"llmmanager.providers",
+		metric.WithDescription("Number of providers loaded in the in-memory registry"),
+	)
 	if err != nil {
-		return nil, err
+		return fmt.Errorf("register llmmanager.providers gauge: %w", err)
 	}
 
-	// Resolve client-aware options by provider name
-	resolved, err := opt.ConvertOptsForClient(o, client.Name())
-	if err != nil {
-		return nil, err
+	if _, err := m.metrics.RegisterCallback(func(ctx context.Context, observer metric.Observer) error {
+		observer.ObserveFloat64(gauge, float64(m.Registry.Count()))
+		return nil
+	}, gauge); err != nil {
+		return fmt.Errorf("register llmmanager.providers callback: %w", err)
 	}
 
-	// Return original opts plus the resolved provider-specific opts
-	return append(opts, resolved...), nil
-}
-
-func (m *Manager) getModel(ctx context.Context, provider, model string) (*schema.Model, error) {
-	if provider := strings.TrimSpace(provider); provider == "" {
-		// Search all clients for the model in parallel
-		ctx, cancel := context.WithCancel(ctx)
-		defer cancel()
-
-		var mu sync.Mutex
-		var result *schema.Model
-
-		g, ctx := errgroup.WithContext(ctx)
-		for _, client := range m.clients {
-			g.Go(func() error {
-				models, err := client.ListModels(ctx)
-				if err != nil {
-					return nil // Swallow per-provider errors
-				}
-
-				mu.Lock()
-				defer mu.Unlock()
-				if result != nil {
-					return nil // Already found
-				}
-				for _, m := range models {
-					if m.Name == model {
-						result = &m
-						cancel()
-						return nil
-					}
-				}
-				return nil
-			})
-		}
-		g.Wait()
-
-		if result != nil {
-			return result, nil
-		}
-		return nil, llm.ErrNotFound.Withf("model %q not found in any provider", model)
-	} else if client, ok := m.clients[provider]; !ok {
-		return nil, llm.ErrNotFound.Withf("no client found for provider %q", provider)
-	} else {
-		return client.GetModel(ctx, model)
-	}
+	return nil
 }

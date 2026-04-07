@@ -5,6 +5,7 @@ import (
 
 	// Packages
 	llm "github.com/mutablelogic/go-llm"
+	schema "github.com/mutablelogic/go-llm/pkg/schema"
 )
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -53,7 +54,7 @@ func (messagefactory) UserPrompt(prompt string, opts ...llm.Opt) (llm.Completion
 func (messagefactory) ToolResults(results ...llm.ToolResult) ([]llm.Completion, error) {
 	// Check for no results
 	if len(results) == 0 {
-		return nil, llm.ErrBadParameter.Withf("No tool results")
+		return nil, schema.ErrBadParameter.Withf("No tool results")
 	}
 
 	// Create results

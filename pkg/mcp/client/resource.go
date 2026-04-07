@@ -6,6 +6,7 @@ import (
 	// Packages
 	sdkmcp "github.com/modelcontextprotocol/go-sdk/mcp"
 	llm "github.com/mutablelogic/go-llm"
+	schema "github.com/mutablelogic/go-llm/pkg/schema"
 )
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -49,12 +50,12 @@ func (r *clientResource) Read(ctx context.Context) ([]byte, error) {
 // ListResources returns the cached list of resources advertised by the
 // connected MCP server. The cache is populated on connect and refreshed
 // automatically on each ResourceListChanged notification.
-// Returns ErrNotConnected if no session is active.
+// Returns ErrServiceUnavailable if no session is active.
 func (c *Client) ListResources(_ context.Context) ([]llm.Resource, error) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	if c.session == nil {
-		return nil, ErrNotConnected
+		return nil, schema.ErrServiceUnavailable
 	}
 	return c.resources, nil
 }

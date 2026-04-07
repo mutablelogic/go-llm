@@ -1,157 +1,156 @@
 package httphandler
 
 import (
+	"context"
 	"net/http"
 
 	// Packages
-	manager "github.com/mutablelogic/go-llm/pkg/manager"
+	middleware "github.com/djthorpe/go-auth/pkg/middleware"
+	uuid "github.com/google/uuid"
+	llmmanager "github.com/mutablelogic/go-llm/pkg/manager"
 	schema "github.com/mutablelogic/go-llm/pkg/schema"
 	httprequest "github.com/mutablelogic/go-server/pkg/httprequest"
 	httpresponse "github.com/mutablelogic/go-server/pkg/httpresponse"
 	jsonschema "github.com/mutablelogic/go-server/pkg/jsonschema"
-	openapi "github.com/mutablelogic/go-server/pkg/openapi/schema"
-	types "github.com/mutablelogic/go-server/pkg/types"
+	opts "github.com/mutablelogic/go-server/pkg/openapi"
 )
 
 ///////////////////////////////////////////////////////////////////////////////
-// HANDLER FUNCTIONS
+// PUBLIC METHODS
 
-// Path: session
-func SessionHandler(manager *manager.Manager) (string, http.HandlerFunc, *openapi.PathItem) {
-	sessionMetaSchema, _ := jsonschema.For[schema.SessionMeta]()
-	listRespSchema, _ := jsonschema.For[schema.ListSessionResponse]()
-	sessionSchema, _ := jsonschema.For[schema.Session]()
-	return "session", func(w http.ResponseWriter, r *http.Request) {
-			switch r.Method {
-			case http.MethodGet:
-				var req schema.ListSessionRequest
-				if err := httprequest.Query(r.URL.Query(), &req); err != nil {
-					_ = httpresponse.Error(w, err)
-					return
-				}
-				resp, err := manager.ListSessions(r.Context(), req)
-				if err != nil {
-					_ = httpresponse.Error(w, httpErr(err))
-					return
-				}
-				_ = httpresponse.JSON(w, http.StatusOK, httprequest.Indent(r), resp)
-			case http.MethodPost:
-				var req schema.SessionMeta
-				if err := httprequest.Read(r, &req); err != nil {
-					_ = httpresponse.Error(w, err)
-					return
-				}
-				resp, err := manager.CreateSession(r.Context(), req)
-				if err != nil {
-					_ = httpresponse.Error(w, httpErr(err))
-					return
-				}
-				_ = httpresponse.JSON(w, http.StatusCreated, httprequest.Indent(r), resp)
-			default:
-				_ = httpresponse.Error(w, httpresponse.Err(http.StatusMethodNotAllowed), r.Method)
-			}
-		}, types.Ptr(openapi.PathItem{
-			Get: &openapi.Operation{
-				Tags:        []string{"Session"},
-				Description: "List all sessions",
-				Parameters: []openapi.Parameter{
-					{Name: "limit", In: openapi.ParameterInQuery, Description: "Maximum number of sessions to return", Schema: queryUintSchema},
-					{Name: "offset", In: openapi.ParameterInQuery, Description: "Offset for pagination", Schema: queryUintSchema},
-					{Name: "label", In: openapi.ParameterInQuery, Description: "Filter by labels (key:value)", Schema: queryStringArraySchema},
-				},
-				Responses: map[string]openapi.Response{
-					"200":     {Description: "List of sessions", Content: map[string]openapi.MediaType{types.ContentTypeJSON: {Schema: listRespSchema}}},
-					"default": openapi.ErrorResponse("An error occurred"),
-				},
-			},
-			Post: &openapi.Operation{
-				Tags:        []string{"Session"},
-				Description: "Create a new session",
-				RequestBody: &openapi.RequestBody{
-					Required: true,
-					Content:  map[string]openapi.MediaType{types.ContentTypeJSON: {Schema: sessionMetaSchema}},
-				},
-				Responses: map[string]openapi.Response{
-					"201":     {Description: "Session created", Content: map[string]openapi.MediaType{types.ContentTypeJSON: {Schema: sessionSchema}}},
-					"default": openapi.ErrorResponse("An error occurred"),
-				},
-			},
-		})
+func SessionHandler(manager *llmmanager.Manager) (string, *jsonschema.Schema, httprequest.PathItem) {
+	return "session", nil, httprequest.NewPathItem(
+		"Session operations",
+		"List and create operations on sessions",
+		"Sessions",
+	).Get(
+		func(w http.ResponseWriter, r *http.Request) {
+			_ = listSessions(r.Context(), manager, w, r)
+		},
+		"List sessions",
+		opts.WithQuery(jsonschema.MustFor[schema.SessionListRequest]()),
+		opts.WithJSONResponse(200, jsonschema.MustFor[schema.SessionList]()),
+		opts.WithErrorResponse(400, "Invalid request parameters."),
+	).Post(
+		func(w http.ResponseWriter, r *http.Request) {
+			_ = createSession(r.Context(), manager, w, r)
+		},
+		"Create session",
+		opts.WithJSONRequest(jsonschema.MustFor[schema.SessionInsert]()),
+		opts.WithJSONResponse(201, jsonschema.MustFor[schema.Session]()),
+		opts.WithErrorResponse(400, "Invalid request body or session creation failure."),
+		opts.WithErrorResponse(403, "Parent session belongs to another user."),
+		opts.WithErrorResponse(404, "Parent session, model, or provider not found."),
+		opts.WithErrorResponse(409, "Multiple models matched; specify a provider."),
+	)
 }
 
-// Path: session/{session}
-func SessionGetHandler(manager *manager.Manager) (string, http.HandlerFunc, *openapi.PathItem) {
-	sessionParam := openapi.Parameter{
-		Name:        "session",
-		In:          openapi.ParameterInPath,
-		Description: "Session ID",
-		Required:    true,
-		Schema:      pathParamSchema,
+func SessionResourceHandler(manager *llmmanager.Manager) (string, *jsonschema.Schema, httprequest.PathItem) {
+	return "session/{session}", jsonschema.MustFor[schema.SessionIDSelector](), httprequest.NewPathItem(
+		"Session operations",
+		"Get, update, and delete operations on a session",
+		"Sessions",
+	).Get(
+		func(w http.ResponseWriter, r *http.Request) {
+			_ = getSession(r.Context(), manager, w, r)
+		},
+		"Get session",
+		opts.WithJSONResponse(200, jsonschema.MustFor[schema.Session]()),
+		opts.WithErrorResponse(400, "Invalid session ID."),
+		opts.WithErrorResponse(404, "Session not found."),
+	).Patch(
+		func(w http.ResponseWriter, r *http.Request) {
+			_ = updateSession(r.Context(), manager, w, r)
+		},
+		"Update session",
+		opts.WithJSONRequest(jsonschema.MustFor[schema.SessionMeta]()),
+		opts.WithJSONResponse(200, jsonschema.MustFor[schema.Session]()),
+		opts.WithErrorResponse(400, "Invalid request body or session ID."),
+		opts.WithErrorResponse(404, "Session not found."),
+	).Delete(
+		func(w http.ResponseWriter, r *http.Request) {
+			_ = deleteSession(r.Context(), manager, w, r)
+		},
+		"Delete session",
+		opts.WithJSONResponse(200, jsonschema.MustFor[schema.Session]()),
+		opts.WithErrorResponse(400, "Invalid session ID."),
+		opts.WithErrorResponse(404, "Session not found."),
+	)
+}
+
+///////////////////////////////////////////////////////////////////////////////
+// PRIVATE METHODS
+
+func listSessions(ctx context.Context, manager *llmmanager.Manager, w http.ResponseWriter, r *http.Request) error {
+	var req schema.SessionListRequest
+	if err := httprequest.Query(r.URL.Query(), &req); err != nil {
+		return httpresponse.Error(w, httpresponse.ErrBadRequest, err)
 	}
-	sessionMetaSchema, _ := jsonschema.For[schema.SessionMeta]()
-	sessionSchema, _ := jsonschema.For[schema.Session]()
-	return "session/{session}", func(w http.ResponseWriter, r *http.Request) {
-			id := r.PathValue("session")
-			switch r.Method {
-			case http.MethodGet:
-				resp, err := manager.GetSession(r.Context(), id)
-				if err != nil {
-					_ = httpresponse.Error(w, httpErr(err))
-					return
-				}
-				_ = httpresponse.JSON(w, http.StatusOK, httprequest.Indent(r), resp)
-			case http.MethodDelete:
-				if _, err := manager.DeleteSession(r.Context(), id); err != nil {
-					_ = httpresponse.Error(w, httpErr(err))
-					return
-				}
-				w.WriteHeader(http.StatusNoContent)
-			case http.MethodPatch:
-				var req schema.SessionMeta
-				if err := httprequest.Read(r, &req); err != nil {
-					_ = httpresponse.Error(w, err)
-					return
-				}
-				resp, err := manager.UpdateSession(r.Context(), id, req)
-				if err != nil {
-					_ = httpresponse.Error(w, httpErr(err))
-					return
-				}
-				_ = httpresponse.JSON(w, http.StatusOK, httprequest.Indent(r), resp)
-			default:
-				_ = httpresponse.Error(w, httpresponse.Err(http.StatusMethodNotAllowed), r.Method)
-			}
-		}, types.Ptr(openapi.PathItem{
-			Get: &openapi.Operation{
-				Tags:        []string{"Session"},
-				Description: "Get a session by ID",
-				Parameters:  []openapi.Parameter{sessionParam},
-				Responses: map[string]openapi.Response{
-					"200":     {Description: "Session details", Content: map[string]openapi.MediaType{types.ContentTypeJSON: {Schema: sessionSchema}}},
-					"default": openapi.ErrorResponse("An error occurred"),
-				},
-			},
-			Delete: &openapi.Operation{
-				Tags:        []string{"Session"},
-				Description: "Delete a session by ID",
-				Parameters:  []openapi.Parameter{sessionParam},
-				Responses: map[string]openapi.Response{
-					"204":     {Description: "Session deleted"},
-					"default": openapi.ErrorResponse("An error occurred"),
-				},
-			},
-			Patch: &openapi.Operation{
-				Tags:        []string{"Session"},
-				Description: "Update a session's metadata",
-				Parameters:  []openapi.Parameter{sessionParam},
-				RequestBody: &openapi.RequestBody{
-					Required: true,
-					Content:  map[string]openapi.MediaType{types.ContentTypeJSON: {Schema: sessionMetaSchema}},
-				},
-				Responses: map[string]openapi.Response{
-					"200":     {Description: "Updated session", Content: map[string]openapi.MediaType{types.ContentTypeJSON: {Schema: sessionSchema}}},
-					"default": openapi.ErrorResponse("An error occurred"),
-				},
-			},
-		})
+
+	if sessions, err := manager.ListSessions(ctx, req, middleware.UserFromContext(ctx)); err != nil {
+		return httpresponse.Error(w, schema.HTTPErr(err))
+	} else {
+		return httpresponse.JSON(w, http.StatusOK, httprequest.Indent(r), sessions)
+	}
+}
+
+func createSession(ctx context.Context, manager *llmmanager.Manager, w http.ResponseWriter, r *http.Request) error {
+	var req schema.SessionInsert
+	if err := httprequest.Read(r, &req); err != nil {
+		return httpresponse.Error(w, httpresponse.ErrBadRequest, err)
+	}
+
+	session, err := manager.CreateSession(ctx, req, middleware.UserFromContext(ctx))
+	if err != nil {
+		return httpresponse.Error(w, schema.HTTPErr(err))
+	}
+
+	return httpresponse.JSON(w, http.StatusCreated, httprequest.Indent(r), session)
+}
+
+func getSession(ctx context.Context, manager *llmmanager.Manager, w http.ResponseWriter, r *http.Request) error {
+	id, err := uuid.Parse(r.PathValue("session"))
+	if err != nil {
+		return httpresponse.Error(w, httpresponse.ErrBadRequest, err)
+	}
+
+	session, err := manager.GetSession(ctx, id, middleware.UserFromContext(ctx))
+	if err != nil {
+		return httpresponse.Error(w, schema.HTTPErr(err))
+	}
+
+	return httpresponse.JSON(w, http.StatusOK, httprequest.Indent(r), session)
+}
+
+func deleteSession(ctx context.Context, manager *llmmanager.Manager, w http.ResponseWriter, r *http.Request) error {
+	id, err := uuid.Parse(r.PathValue("session"))
+	if err != nil {
+		return httpresponse.Error(w, httpresponse.ErrBadRequest, err)
+	}
+
+	session, err := manager.DeleteSession(ctx, id, middleware.UserFromContext(ctx))
+	if err != nil {
+		return httpresponse.Error(w, schema.HTTPErr(err))
+	}
+
+	return httpresponse.JSON(w, http.StatusOK, httprequest.Indent(r), session)
+}
+
+func updateSession(ctx context.Context, manager *llmmanager.Manager, w http.ResponseWriter, r *http.Request) error {
+	id, err := uuid.Parse(r.PathValue("session"))
+	if err != nil {
+		return httpresponse.Error(w, httpresponse.ErrBadRequest, err)
+	}
+
+	var meta schema.SessionMeta
+	if err := httprequest.Read(r, &meta); err != nil {
+		return httpresponse.Error(w, httpresponse.ErrBadRequest, err)
+	}
+
+	session, err := manager.UpdateSession(ctx, id, meta, middleware.UserFromContext(ctx))
+	if err != nil {
+		return httpresponse.Error(w, schema.HTTPErr(err))
+	}
+
+	return httpresponse.JSON(w, http.StatusOK, httprequest.Indent(r), session)
 }

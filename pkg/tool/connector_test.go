@@ -131,13 +131,13 @@ func TestAddConnector_ListToolsByNamespace(t *testing.T) {
 	waitForTools(t, toolsCh, 5*time.Second)
 
 	// Query by namespace (the URL)
-	tools := tk.ListTools(schema.ListToolsRequest{Namespace: ts.URL})
+	tools := tk.ListTools(schema.ToolListRequest{Namespace: ts.URL})
 	if len(tools) != 1 {
 		t.Fatalf("expected 1 tool under namespace %q, got %d", ts.URL, len(tools))
 	}
 
 	// Builtin namespace should not contain connector tools
-	builtins := tk.ListTools(schema.ListToolsRequest{Namespace: schema.BuiltinNamespace})
+	builtins := tk.ListTools(schema.ToolListRequest{Namespace: schema.BuiltinNamespace})
 	if len(builtins) != 0 {
 		t.Fatalf("expected 0 builtin tools, got %d", len(builtins))
 	}
@@ -209,7 +209,7 @@ func TestRemoveConnector(t *testing.T) {
 	}
 
 	// After removal, tools should not be visible
-	all := tk.ListTools(schema.ListToolsRequest{Namespace: ts.URL})
+	all := tk.ListTools(schema.ToolListRequest{Namespace: ts.URL})
 	if len(all) != 0 {
 		t.Fatalf("expected 0 tools after RemoveConnector, got %d", len(all))
 	}

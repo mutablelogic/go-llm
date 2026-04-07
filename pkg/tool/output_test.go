@@ -26,10 +26,7 @@ func TestOutputTool_Description(t *testing.T) {
 
 func TestOutputTool_InputSchema_Nil(t *testing.T) {
 	ot := tool.NewOutputTool(nil)
-	s, err := ot.InputSchema()
-	if err != nil {
-		t.Fatal("unexpected error:", err)
-	}
+	s := ot.InputSchema()
 	if s != nil {
 		t.Fatal("expected nil schema when constructed with nil")
 	}

@@ -1,144 +1,86 @@
 package httphandler
 
 import (
+	"context"
 	"net/http"
-	"strings"
 
 	// Packages
-	manager "github.com/mutablelogic/go-llm/pkg/manager"
+	middleware "github.com/djthorpe/go-auth/pkg/middleware"
+	llmmanager "github.com/mutablelogic/go-llm/pkg/manager"
 	opt "github.com/mutablelogic/go-llm/pkg/opt"
 	schema "github.com/mutablelogic/go-llm/pkg/schema"
 	httprequest "github.com/mutablelogic/go-server/pkg/httprequest"
 	httpresponse "github.com/mutablelogic/go-server/pkg/httpresponse"
 	jsonschema "github.com/mutablelogic/go-server/pkg/jsonschema"
-	openapi "github.com/mutablelogic/go-server/pkg/openapi/schema"
-	types "github.com/mutablelogic/go-server/pkg/types"
+	opts "github.com/mutablelogic/go-server/pkg/openapi"
 )
 
 ///////////////////////////////////////////////////////////////////////////////
-// HANDLER FUNCTIONS
+// PUBLIC METHODS
 
-// Path: chat
-func ChatHandler(manager *manager.Manager) (string, http.HandlerFunc, *openapi.PathItem) {
-	reqSchema, _ := jsonschema.For[schema.ChatRequest]()
-	respSchema, _ := jsonschema.For[schema.ChatResponse]()
-	return "chat", func(w http.ResponseWriter, r *http.Request) {
-			switch r.Method {
-			case http.MethodPost:
-				var req schema.MultipartChatRequest
-				// Read the request body into the ChatRequest struct. If a multipart file
-				// was uploaded, convert it to an attachment and add it to the request.
-				if err := httprequest.Read(r, &req); err != nil {
-					_ = httpresponse.Error(w, err)
-					return
-				} else if attachment, err := req.FileAttachment(); err != nil {
-					_ = httpresponse.Error(w, httpresponse.ErrBadRequest.With(err))
-					return
-				} else if attachment != nil {
-					req.Attachments = append(req.Attachments, *attachment)
-				}
+func ChatHandler(manager *llmmanager.Manager) (string, *jsonschema.Schema, httprequest.PathItem) {
+	return "chat", nil, httprequest.NewPathItem(
+		"Chat operations",
+		"Send a message within an existing session and get a response",
+		"Responses",
+	).Post(
+		func(w http.ResponseWriter, r *http.Request) {
+			_ = chat(r.Context(), manager, w, r)
+		},
+		"Chat within session",
+		opts.WithJSONRequest(jsonschema.MustFor[schema.ChatRequest]()),
+		opts.WithJSONResponse(200, jsonschema.MustFor[schema.ChatResponse]()),
+		opts.WithTextStreamResponse(200, "SSE stream of assistant, thinking, tool, error, and result events."),
+		opts.WithErrorResponse(400, "Invalid request body or chat failure."),
+		opts.WithErrorResponse(404, "Session not found."),
+		opts.WithErrorResponse(406, "Unsupported Accept header."),
+		opts.WithErrorResponse(501, "Provider does not support generation."),
+	)
+}
 
-				// Check Accept header for streaming vs JSON
-				accept := acceptType(r)
-				switch accept {
-				case acceptStream:
-					chatStream(w, r, manager, req.ChatRequest)
-				case acceptJSON:
-					chatJSON(w, r, manager, req.ChatRequest)
-				default:
-					_ = httpresponse.Error(w, httpresponse.Err(http.StatusNotAcceptable))
-				}
+///////////////////////////////////////////////////////////////////////////////
+// PRIVATE METHODS
+
+func chat(ctx context.Context, manager *llmmanager.Manager, w http.ResponseWriter, r *http.Request) error {
+	var req schema.ChatRequest
+	if err := httprequest.Read(r, &req); err != nil {
+		return httpresponse.Error(w, httpresponse.ErrBadRequest, err)
+	}
+
+	switch acceptType(r) {
+	case acceptStream:
+		stream := httpresponse.NewTextStream(w)
+		if stream == nil {
+			return httpresponse.Error(w, httpresponse.ErrInternalError)
+		}
+		defer stream.Close()
+
+		fn := opt.StreamFn(func(role, text string) {
+			switch role {
+			case schema.RoleThinking:
+				stream.Write(schema.EventThinking, schema.StreamDelta{Role: role, Text: text})
+			case schema.RoleTool:
+				stream.Write(schema.EventTool, schema.StreamDelta{Role: role, Text: text})
 			default:
-				_ = httpresponse.Error(w, httpresponse.Err(http.StatusMethodNotAllowed), r.Method)
+				stream.Write(schema.EventAssistant, schema.StreamDelta{Role: role, Text: text})
 			}
-		}, types.Ptr(openapi.PathItem{
-			Post: &openapi.Operation{
-				Tags:        []string{"Chat"},
-				Description: "Send a message within a session and get a response",
-				RequestBody: &openapi.RequestBody{
-					Required: true,
-					Content:  map[string]openapi.MediaType{types.ContentTypeJSON: {Schema: reqSchema}},
-				},
-				Responses: map[string]openapi.Response{
-					"200":     {Description: "Model response", Content: map[string]openapi.MediaType{types.ContentTypeJSON: {Schema: respSchema}}},
-					"default": openapi.ErrorResponse("An error occurred"),
-				},
-			},
 		})
-}
 
-// chatJSON sends the chat response as a single JSON object.
-func chatJSON(w http.ResponseWriter, r *http.Request, manager *manager.Manager, req schema.ChatRequest) {
-	resp, err := manager.Chat(r.Context(), req, nil)
-	if err != nil {
-		_ = httpresponse.Error(w, httpErr(err))
-		return
-	}
-	_ = httpresponse.JSON(w, http.StatusOK, httprequest.Indent(r), resp)
-}
-
-// chatStream sends the chat response as a text/event-stream, emitting
-// delta events for each streamed chunk and a final response event.
-func chatStream(w http.ResponseWriter, r *http.Request, manager *manager.Manager, req schema.ChatRequest) {
-	stream := httpresponse.NewTextStream(w)
-	if stream == nil {
-		_ = httpresponse.Error(w, httpresponse.ErrInternalError)
-		return
-	}
-	defer stream.Close()
-
-	// Stream callback: dispatch role to the appropriate SSE event name
-	fn := opt.StreamFn(func(role, text string) {
-		switch role {
-		case schema.RoleAssistant:
-			stream.Write(schema.EventAssistant, schema.StreamDelta{Role: role, Text: text})
-		case schema.RoleThinking:
-			stream.Write(schema.EventThinking, schema.StreamDelta{Role: role, Text: text})
-		case schema.RoleTool:
-			stream.Write(schema.EventTool, schema.StreamDelta{Role: role, Text: text})
-		default:
-			stream.Write(schema.EventAssistant, schema.StreamDelta{Role: role, Text: text})
+		resp, err := manager.Chat(ctx, req, fn, middleware.UserFromContext(ctx))
+		if err != nil {
+			stream.Write(schema.EventError, schema.StreamError{Error: err.Error()})
+			return nil
 		}
-	})
 
-	resp, err := manager.Chat(r.Context(), req, fn)
-	if err != nil {
-		stream.Write(schema.EventError, schema.StreamError{Error: err.Error()})
-		return
-	}
-
-	// Send the final complete response
-	stream.Write(schema.EventResult, resp)
-}
-
-// acceptKind classifies the negotiated response format.
-type acceptKind int
-
-const (
-	acceptJSON        acceptKind = iota // application/json (or no Accept header)
-	acceptStream                        // text/event-stream
-	acceptUnsupported                   // unsupported media type
-)
-
-// acceptType inspects the Accept header and returns the negotiated format.
-// When no Accept header is present, defaults to JSON.
-func acceptType(r *http.Request) acceptKind {
-	header := r.Header.Get("Accept")
-	if header == "" {
-		return acceptJSON
-	}
-	for part := range strings.SplitSeq(header, ",") {
-		mt := strings.TrimSpace(part)
-		// Strip quality parameters (e.g. ";q=0.9")
-		if idx := strings.IndexByte(mt, ';'); idx >= 0 {
-			mt = strings.TrimSpace(mt[:idx])
+		stream.Write(schema.EventResult, resp)
+		return nil
+	case acceptJSON:
+		resp, err := manager.Chat(ctx, req, nil, middleware.UserFromContext(ctx))
+		if err != nil {
+			return httpresponse.Error(w, schema.HTTPErr(err))
 		}
-		switch mt {
-		case "text/event-stream":
-			return acceptStream
-		case "application/json", "*/*":
-			return acceptJSON
-		}
+		return httpresponse.JSON(w, http.StatusOK, httprequest.Indent(r), resp)
+	default:
+		return httpresponse.Error(w, httpresponse.Err(http.StatusNotAcceptable))
 	}
-	return acceptUnsupported
 }

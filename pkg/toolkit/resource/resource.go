@@ -5,6 +5,7 @@ import (
 
 	// Packages
 	llm "github.com/mutablelogic/go-llm"
+	"github.com/mutablelogic/go-llm/pkg/schema"
 	types "github.com/mutablelogic/go-server/pkg/types"
 )
 
@@ -161,7 +162,7 @@ func Unmarshal(data []byte) (llm.Resource, error) {
 		var content string
 		if len(v.Text) > 0 {
 			if err := json.Unmarshal(v.Text, &content); err != nil {
-				return nil, llm.ErrBadParameter.Withf("text: %v", err)
+				return nil, schema.ErrBadParameter.Withf("text: %v", err)
 			}
 		}
 		r = &textResource{name: v.Name, content: content}
@@ -171,7 +172,7 @@ func Unmarshal(data []byte) (llm.Resource, error) {
 		var content []byte
 		if len(v.Blob) > 0 {
 			if err := json.Unmarshal(v.Blob, &content); err != nil {
-				return nil, llm.ErrBadParameter.Withf("blob: %v", err)
+				return nil, schema.ErrBadParameter.Withf("blob: %v", err)
 			}
 		}
 		r = &dataResource{name: v.Name, mimetype: v.Type, content: content}

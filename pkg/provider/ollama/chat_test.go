@@ -7,6 +7,7 @@ import (
 	// Packages
 	opt "github.com/mutablelogic/go-llm/pkg/opt"
 	schema "github.com/mutablelogic/go-llm/pkg/schema"
+	jsonschema "github.com/mutablelogic/go-server/pkg/jsonschema"
 	types "github.com/mutablelogic/go-server/pkg/types"
 	assert "github.com/stretchr/testify/assert"
 )
@@ -181,8 +182,10 @@ func Test_chatRequest_012(t *testing.T) {
 	a := assert.New(t)
 	msg := &schema.Message{Role: "user", Content: []schema.ContentBlock{{Text: types.Ptr("Hi")}}}
 	session := schema.Conversation{msg}
-	schemaJSON := `{"type":"object","properties":{"answer":{"type":"string"}}}`
-	o, err := opt.Apply(opt.SetString(opt.JSONSchemaKey, schemaJSON))
+	var outputSchema jsonschema.Schema
+	err := json.Unmarshal([]byte(`{"type":"object","properties":{"answer":{"type":"string"}}}`), &outputSchema)
+	a.NoError(err)
+	o, err := opt.Apply(WithJSONOutput(&outputSchema))
 	a.NoError(err)
 
 	req, err := chatRequestFromOpts("llama3.2", &session, o)
@@ -191,6 +194,15 @@ func Test_chatRequest_012(t *testing.T) {
 	var m map[string]any
 	a.NoError(json.Unmarshal(req.Format, &m))
 	a.Equal("object", m["type"])
+}
+
+func Test_chatRequest_012a(t *testing.T) {
+	// Nil schema is rejected by WithJSONOutput
+	a := assert.New(t)
+
+	_, err := opt.Apply(WithJSONOutput(nil))
+	a.Error(err)
+	a.ErrorIs(err, schema.ErrBadParameter)
 }
 
 func Test_chatRequest_013(t *testing.T) {

@@ -3,11 +3,11 @@ package mistral
 import (
 	"context"
 	"encoding/json"
+	"strings"
 	"time"
 
 	// Packages
 	client "github.com/mutablelogic/go-client"
-	llm "github.com/mutablelogic/go-llm"
 	opt "github.com/mutablelogic/go-llm/pkg/opt"
 	schema "github.com/mutablelogic/go-llm/pkg/schema"
 	types "github.com/mutablelogic/go-server/pkg/types"
@@ -48,7 +48,7 @@ func (c *Client) GetModel(ctx context.Context, name string, opts ...opt.Opt) (*s
 				return types.Ptr(m), nil
 			}
 		}
-		return nil, llm.ErrNotFound.Withf("model not found: %s", name)
+		return nil, schema.ErrNotFound.Withf("model not found: %s", name)
 	})
 }
 
@@ -101,11 +101,48 @@ func (m model) toSchema() schema.Model {
 	}
 
 	return schema.Model{
-		Name:        m.Id,
-		Description: m.Description,
-		Created:     time.Unix(m.Created, 0),
-		OwnedBy:     schema.Mistral,
-		Aliases:     m.Aliases,
-		Meta:        meta,
+		Name:            m.Id,
+		Description:     m.Description,
+		Created:         time.Unix(m.Created, 0),
+		OwnedBy:         schema.Mistral,
+		Aliases:         m.Aliases,
+		Meta:            meta,
+		InputTokenLimit: uintPtrFromPositiveInt(m.MaxContextLength),
+		Cap:             m.Capabilities.toSchema() | modelNameCapabilities(m.Id),
 	}
+}
+
+func (c capabilities) toSchema() schema.ModelCap {
+	var cap schema.ModelCap
+
+	if c.CompletionChat || c.CompletionFim {
+		cap |= schema.ModelCapCompletion
+	}
+	if c.FunctionCalling {
+		cap |= schema.ModelCapTools
+	}
+	if c.Vision || c.OCR {
+		cap |= schema.ModelCapVision
+	}
+	if c.AudioTranscription {
+		cap |= schema.ModelCapTranscription
+	}
+
+	return cap
+}
+
+func modelNameCapabilities(name string) schema.ModelCap {
+	var cap schema.ModelCap
+	if strings.Contains(strings.ToLower(name), "embed") {
+		cap |= schema.ModelCapEmbeddings
+	}
+	return cap
+}
+
+func uintPtrFromPositiveInt(value int) *uint {
+	if value <= 0 {
+		return nil
+	}
+	result := uint(value)
+	return &result
 }

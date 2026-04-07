@@ -7,7 +7,10 @@ import (
 	"testing"
 
 	// Packages
+	llm "github.com/mutablelogic/go-llm"
 	mock "github.com/mutablelogic/go-llm/pkg/mcp/mock"
+	schema "github.com/mutablelogic/go-llm/pkg/schema"
+	jsonschema "github.com/mutablelogic/go-server/pkg/jsonschema"
 )
 
 // Test_tool_001: CallTool returns a JSON object as json.RawMessage.
@@ -92,8 +95,10 @@ func Test_tool_003(t *testing.T) {
 
 // Test_tool_004: Tools returned by ListTools implement llm.Tool correctly.
 func Test_tool_004(t *testing.T) {
+	destructive := true
+	openWorld := true
 	_, c := newTestServer(t, "meta-server", "1.0.0",
-		&mock.MockTool{Name_: "my_tool", Description_: "does things"},
+		&mock.MockTool{Name_: "my_tool", Description_: "does things", Meta_: llm.ToolMeta{Title: "My Tool", ReadOnlyHint: true, IdempotentHint: true, DestructiveHint: &destructive, OpenWorldHint: &openWorld}},
 	)
 	cancel := runClient(t, c)
 	defer cancel()
@@ -112,11 +117,54 @@ func Test_tool_004(t *testing.T) {
 	if tool.Description() != "does things" {
 		t.Errorf("Description: expected %q, got %q", "does things", tool.Description())
 	}
-	schema, err := tool.InputSchema()
-	if err != nil {
-		t.Fatalf("InputSchema error: %v", err)
-	}
+	schema := tool.InputSchema()
 	if schema == nil {
 		t.Error("expected non-nil InputSchema")
+	}
+	meta := tool.Meta()
+	if meta.Title != "My Tool" {
+		t.Errorf("Title: expected %q, got %q", "My Tool", meta.Title)
+	}
+	if !meta.ReadOnlyHint || !meta.IdempotentHint {
+		t.Errorf("expected readonly and idempotent hints, got %+v", meta)
+	}
+	if meta.DestructiveHint == nil || !*meta.DestructiveHint {
+		t.Errorf("expected destructive hint, got %+v", meta.DestructiveHint)
+	}
+	if meta.OpenWorldHint == nil || !*meta.OpenWorldHint {
+		t.Errorf("expected openworld hint, got %+v", meta.OpenWorldHint)
+	}
+}
+
+// Test_tool_005: CallTool returns ErrBadParameter when required input is missing.
+func Test_tool_005(t *testing.T) {
+	type args struct {
+		URL string `json:"url"`
+	}
+	_, c := newTestServer(t, "required-server", "1.0.0",
+		&mock.MockTool{
+			Name_:        "fetch",
+			Description_: "fetches a url",
+			InputSchema_: jsonschema.MustFor[args](),
+			Result_:      "ok",
+		},
+	)
+	cancel := runClient(t, c)
+	defer cancel()
+
+	tools, err := c.ListTools(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(tools) != 1 {
+		t.Fatalf("expected 1 tool, got %d", len(tools))
+	}
+
+	_, err = tools[0].Run(t.Context(), nil)
+	if !errors.Is(err, schema.ErrBadParameter) {
+		t.Fatalf("expected ErrBadParameter, got %v", err)
+	}
+	if err == nil || err.Error() != `bad parameter: input validation failed: validating root: required: missing properties: ["url"]` {
+		t.Fatalf("unexpected error: %v", err)
 	}
 }

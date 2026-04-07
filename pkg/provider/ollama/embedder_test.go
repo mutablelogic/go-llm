@@ -43,7 +43,7 @@ func Test_embedding_002(t *testing.T) {
 	a.NoError(err)
 
 	model := schema.Model{Name: "test-model"}
-	_, err = c.BatchEmbedding(context.TODO(), model, []string{})
+	_, _, err = c.BatchEmbedding(context.TODO(), model, []string{})
 	a.Error(err)
 }
 
@@ -62,11 +62,12 @@ func Test_embedding_003(t *testing.T) {
 		t.FailNow()
 	}
 
-	vec, err := c.Embedding(context.Background(), *model, "Hello, world!")
+	vec, usage, err := c.Embedding(context.Background(), *model, "Hello, world!")
 	skipIfUnreachable(t, err)
 	skipIfEmbeddingUnsupported(t, err)
 	a.NoError(err)
 	a.NotEmpty(vec)
+	a.Nil(usage)
 	t.Logf("Got embedding vector with %d dimensions", len(vec))
 }
 
@@ -82,10 +83,11 @@ func Test_embedding_004(t *testing.T) {
 		t.FailNow()
 	}
 
-	vecs, err := c.BatchEmbedding(context.Background(), *model, []string{"Hello", "World"})
+	vecs, usage, err := c.BatchEmbedding(context.Background(), *model, []string{"Hello", "World"})
 	skipIfUnreachable(t, err)
 	skipIfEmbeddingUnsupported(t, err)
 	a.NoError(err)
+	a.Nil(usage)
 	if a.Len(vecs, 2) {
 		for _, v := range vecs {
 			a.NotEmpty(v)

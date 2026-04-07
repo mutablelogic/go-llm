@@ -3,173 +3,254 @@ package manager
 import (
 	"context"
 	"errors"
+	"strings"
 
 	// Packages
+	authclient "github.com/djthorpe/go-auth/pkg/httpclient/auth"
+	"github.com/djthorpe/go-auth/pkg/oidc"
+	auth "github.com/djthorpe/go-auth/schema/auth"
 	otel "github.com/mutablelogic/go-client/pkg/otel"
-	llm "github.com/mutablelogic/go-llm"
 	schema "github.com/mutablelogic/go-llm/pkg/schema"
+	pg "github.com/mutablelogic/go-pg"
+	"github.com/mutablelogic/go-server/pkg/httpresponse"
 	types "github.com/mutablelogic/go-server/pkg/types"
 	attribute "go.opentelemetry.io/otel/attribute"
 )
 
-// prober is satisfied by connectors that support a one-shot probe for
-// server metadata (name, version, capabilities). *mcpclient.Client implements this.
-type prober interface {
-	Probe(ctx context.Context) (*schema.ConnectorState, error)
+///////////////////////////////////////////////////////////////////////////////
+// INTERFACES
+
+// We define the MCP client prober here, so we can get the details of an MCP Server
+// before we insert it into the database. If there is a probe authentication failure,
+// we can return the details of the auth failure to the client so they can fix it before retrying.
+type ConnectorProbe interface {
+	Probe(ctx context.Context, auth func(err error, config *authclient.Config) error) (*schema.ConnectorState, error)
 }
 
 ///////////////////////////////////////////////////////////////////////////////
 // PUBLIC METHODS
 
-// CreateConnector registers a new MCP connector and persists its metadata.
-// When a connector factory is configured and the connector supports probing,
-// the server state (name, version, capabilities) is fetched synchronously and
-// persisted before returning. Subsequent reconnects update the state
-// asynchronously via the background session.
-func (m *Manager) CreateConnector(ctx context.Context, rawURL string, meta schema.ConnectorMeta) (result *schema.Connector, err error) {
+// CreateConnector validates and persists a connector insert request.
+func (m *Manager) CreateConnector(ctx context.Context, req schema.ConnectorInsert, user *auth.User) (_ *schema.Connector, _ *oidc.BaseConfiguration, _ []string, err error) {
+	// Otel span
 	ctx, endSpan := otel.StartSpan(m.tracer, ctx, "CreateConnector",
-		attribute.String("url", rawURL),
-		attribute.String("meta", meta.String()),
+		attribute.String("req", types.Stringify(req)),
+		attribute.String("user", types.Stringify(user)),
 	)
 	defer func() { endSpan(err) }()
 
-	// Check incoming parameters
-	url, err := schema.CanonicalURL(rawURL)
-	if err != nil {
-		return nil, llm.ErrBadParameter.With(err)
-	} else if ns := types.Value(meta.Namespace); ns != "" && !types.IsIdentifier(ns) {
-		return nil, llm.ErrBadParameter.Withf("connector namespace %q is not a valid identifier", ns)
+	// Canonicalize the URL
+	if url, err := schema.CanonicalURL(req.URL); err != nil {
+		return nil, nil, nil, schema.ErrBadParameter.Withf("invalid connector URL: %v", err)
+	} else {
+		req.URL = url
 	}
 
-	// If a connector factory is configured, use it to probe the server before
-	// registering so that name, version and capabilities are persisted immediately.
-	var state *schema.ConnectorState
-	var conn llm.Connector
-	if m.connectorFactory != nil {
-		conn, err = m.connectorFactory(ctx, url, m.credOptsFor(ctx, url)...)
+	// Create an MCP client so we can retrieve all the information we need to validate the MCP server
+	// Here we use the *auth.User credentials for authentication, when they have been implemented.
+	var state schema.ConnectorState
+	var scopes []string
+	var codeflow *oidc.BaseConfiguration
+	if connector, err := m.delegate.CreateConnector(req.URL, nil); err != nil {
+		return nil, nil, nil, schema.ErrBadParameter.Withf("failed to validate connector URL: %v", err)
+	} else if state_, err := connector.(ConnectorProbe).Probe(ctx, func(authErr error, config *authclient.Config) error {
+		var err error
+		codeflow, scopes, err = connectorUnauthorizedDetail(config)
 		if err != nil {
-			return nil, err
+			return err
 		}
+		return connectorUnauthorizedError(authErr)
+	}); errors.Is(err, httpresponse.ErrNotAuthorized) {
+		// Return the code flow configuration and the supported scopes (if any) in the error details
+		return nil, codeflow, scopes, err
+	} else if err != nil {
+		return nil, nil, nil, err
+	} else {
+		state = types.Value(state_)
+	}
 
-		if p, ok := conn.(prober); ok {
-			state, err = p.Probe(ctx)
-			if err != nil {
-				return nil, err
+	// We set the namespace for the connector
+	if types.Value(req.Namespace) == "" {
+		if state := strings.TrimSpace(types.Value(state.Name)); state != "" {
+			req.Namespace = types.Ptr(schema.CanonicalNamespace(state))
+		}
+	}
+	if types.Value(req.Namespace) == "" {
+		return nil, nil, nil, schema.ErrBadParameter.With("connector namespace is required")
+	}
+
+	// Insert the connector record, then sync the groups if provided and return the result
+	var result schema.Connector
+	if err := m.PoolConn.Tx(ctx, func(conn pg.Conn) error {
+		var inserted schema.Connector
+		if err := conn.Insert(ctx, &inserted, req); err != nil {
+			return err
+		}
+		if req.Groups != nil {
+			if err := m.syncConnectorGroups(ctx, conn, inserted.URL, req.Groups); err != nil {
+				return err
 			}
-
-			// Derive namespace from server name if not provided.
-			if types.Value(meta.Namespace) == "" && types.Value(state.Name) != "" {
-				meta.Namespace = types.Ptr(schema.CanonicalNamespace(types.Value(state.Name)))
+		}
+		if state.HasTableUpdates() {
+			var updated schema.Connector
+			if err := conn.Update(ctx, &updated, schema.ConnectorStateSelector(inserted.URL), state); err != nil {
+				return err
 			}
 		}
-	}
-
-	// Create the connector
-	result, err = m.connectorStore.CreateConnector(ctx, url, meta)
-	if err != nil {
-		return nil, err
-	}
-
-	// Persist the probed state if we have one; roll back the registration on failure.
-	if state != nil {
-		result, err = m.connectorStore.UpdateConnectorState(ctx, url, *state)
-		if err != nil {
-			return nil, errors.Join(err, m.connectorStore.DeleteConnector(ctx, url))
-		}
-	}
-
-	// Wire into the toolkit so the background session starts.
-	// Roll back the store entry if the toolkit rejects it (e.g. duplicate URL).
-	if conn != nil && types.Value(result.Enabled) {
-		if err = m.toolkit.AddConnector(url, conn); err != nil {
-			return nil, errors.Join(err, m.connectorStore.DeleteConnector(ctx, url))
-		}
+		return conn.Get(ctx, &result, schema.ConnectorURLSelector(inserted.URL))
+	}); err != nil {
+		return nil, nil, nil, pg.NormalizeError(err)
 	}
 
 	// Return success
-	return result, nil
+	return types.Ptr(result), nil, nil, nil
 }
 
-// GetConnector returns the connector for the given URL.
-func (m *Manager) GetConnector(ctx context.Context, rawURL string) (result *schema.Connector, err error) {
-	ctx, endSpan := otel.StartSpan(m.tracer, ctx, "GetConnector",
-		attribute.String("url", rawURL),
+func connectorUnauthorizedDetail(config *authclient.Config) (*oidc.BaseConfiguration, []string, error) {
+	codeConfig, err := config.AuthorizationCodeConfig()
+	if err != nil {
+		return nil, nil, err
+	}
+	return types.Ptr(codeConfig), config.ScopesSupported, nil
+}
+
+func connectorUnauthorizedError(err error) error {
+	if err == nil {
+		return httpresponse.ErrNotAuthorized
+	}
+	if authErr := authclient.AsAuthError(err); authErr != nil {
+		reason := strings.TrimSpace(authErr.Error())
+		if reason == "" || strings.EqualFold(reason, "unauthorized") {
+			return httpresponse.ErrNotAuthorized
+		}
+		return httpresponse.ErrNotAuthorized.With(reason)
+	}
+	return httpresponse.ErrNotAuthorized.With(err)
+}
+
+// DeleteConnector removes the connector for the given URL and returns the deleted connector.
+func (m *Manager) DeleteConnector(ctx context.Context, url string) (_ *schema.Connector, err error) {
+	ctx, endSpan := otel.StartSpan(m.tracer, ctx, "DeleteConnector",
+		attribute.String("url", url),
 	)
 	defer func() { endSpan(err) }()
 
-	url, err := schema.CanonicalURL(rawURL)
-	if err != nil {
-		return nil, llm.ErrBadParameter.With(err)
+	var deleted schema.Connector
+	if err := m.PoolConn.Delete(ctx, &deleted, schema.ConnectorURLSelector(url)); err != nil {
+		return nil, normalizeConnectorError(url, err)
 	}
 
-	return m.connectorStore.GetConnector(ctx, url)
+	return types.Ptr(deleted), nil
 }
 
-// UpdateConnector updates the user-editable metadata for an existing connector.
-func (m *Manager) UpdateConnector(ctx context.Context, rawURL string, meta schema.ConnectorMeta) (result *schema.Connector, err error) {
+// GetConnector returns the connector for the given URL and, when user is set,
+// scopes access to public connectors or those accessible to the user's groups.
+func (m *Manager) GetConnector(ctx context.Context, url string, user *auth.User) (_ *schema.Connector, err error) {
+	ctx, endSpan := otel.StartSpan(m.tracer, ctx, "GetConnector",
+		attribute.String("url", url),
+		attribute.String("user", types.Stringify(user)),
+	)
+	defer func() { endSpan(err) }()
+
+	var result schema.Connector
+	var conn pg.Conn = m.PoolConn
+	if user != nil {
+		conn = conn.With("user", user.UUID())
+	}
+	if err := conn.Get(ctx, &result, schema.ConnectorURLSelector(url)); err != nil {
+		return nil, normalizeConnectorError(url, err)
+	}
+
+	return types.Ptr(result), nil
+}
+
+// UpdateConnector updates the user-editable metadata for the connector and
+// returns the updated connector.
+func (m *Manager) UpdateConnector(ctx context.Context, url string, meta schema.ConnectorMeta) (_ *schema.Connector, err error) {
 	ctx, endSpan := otel.StartSpan(m.tracer, ctx, "UpdateConnector",
-		attribute.String("url", rawURL),
+		attribute.String("url", url),
 		attribute.String("meta", meta.String()),
 	)
 	defer func() { endSpan(err) }()
 
-	url, err := schema.CanonicalURL(rawURL)
-	if err != nil {
-		return nil, llm.ErrBadParameter.With(err)
-	}
-	if ns := types.Value(meta.Namespace); ns != "" && !types.IsIdentifier(ns) {
-		return nil, llm.ErrBadParameter.Withf("connector namespace %q is not a valid identifier", ns)
+	if !meta.HasTableUpdates() && meta.Groups == nil {
+		return nil, schema.ErrBadParameter.With("no fields to update")
 	}
 
-	result, err = m.connectorStore.UpdateConnector(ctx, url, meta)
-	if err != nil {
-		return nil, err
-	}
-
-	// If the enabled flag was explicitly changed, wire or unwire the toolkit.
-	if meta.Enabled != nil {
-		if types.Value(result.Enabled) && m.connectorFactory != nil {
-			// Always remove first so a reconnect gets a fresh session.
-			m.toolkit.RemoveConnector(url)
-			conn, connErr := m.connectorFactory(ctx, url, m.credOptsFor(ctx, url)...)
-			if connErr != nil {
-				return nil, connErr
-			}
-			if err = m.toolkit.AddConnector(url, conn); err != nil {
-				return nil, err
+	var result schema.Connector
+	if err := m.PoolConn.Tx(ctx, func(conn pg.Conn) error {
+		selector := schema.ConnectorURLSelector(url)
+		if meta.HasTableUpdates() {
+			var updated schema.Connector
+			if err := conn.Update(ctx, &updated, selector, meta); err != nil {
+				return err
 			}
 		} else {
-			m.toolkit.RemoveConnector(url)
+			if err := conn.Get(ctx, &result, selector); err != nil {
+				return err
+			}
+		}
+		if meta.Groups != nil {
+			if err := m.syncConnectorGroups(ctx, conn, url, meta.Groups); err != nil {
+				return err
+			}
+		}
+		return conn.Get(ctx, &result, selector)
+	}); err != nil {
+		return nil, normalizeConnectorError(url, err)
+	}
+
+	return types.Ptr(result), nil
+}
+
+// ListConnectors lists connectors matching the request and, when user is set,
+// filters results to public connectors or those accessible to the user's groups.
+func (m *Manager) ListConnectors(ctx context.Context, req schema.ConnectorListRequest, user *auth.User) (_ *schema.ConnectorList, err error) {
+	ctx, endSpan := otel.StartSpan(m.tracer, ctx, "ListConnectors",
+		attribute.String("req", req.String()),
+		attribute.String("user", types.Stringify(user)),
+	)
+	defer func() { endSpan(err) }()
+
+	// List connectors matching the request and user context
+	result := schema.ConnectorList{ConnectorListRequest: req}
+	var conn pg.Conn = m.PoolConn
+	if user != nil {
+		conn = conn.With("user", user.UUID())
+	}
+	if err := conn.List(ctx, &result, req); err != nil {
+		return nil, pg.NormalizeError(err)
+	}
+	result.OffsetLimit = req.OffsetLimit
+	result.OffsetLimit.Clamp(uint64(result.Count))
+
+	// Return success
+	return types.Ptr(result), nil
+}
+
+///////////////////////////////////////////////////////////////////////////////
+// PRIVATE METHODS
+
+func (m *Manager) syncConnectorGroups(ctx context.Context, conn pg.Conn, connector string, groups []string) error {
+	var deleted schema.ConnectorGroupList
+	if err := conn.Delete(ctx, &deleted, schema.ConnectorGroupSelector{Connector: connector}); err != nil && !errors.Is(err, pg.ErrNotFound) {
+		return err
+	}
+
+	for _, group := range groups {
+		var inserted schema.ConnectorGroupList
+		if err := conn.Insert(ctx, &inserted, schema.ConnectorGroupRef{Connector: connector, Group: group}); err != nil && !errors.Is(err, pg.ErrNotFound) {
+			return err
 		}
 	}
 
-	return result, nil
+	return nil
 }
 
-// DeleteConnector removes the connector for the given URL.
-func (m *Manager) DeleteConnector(ctx context.Context, rawURL string) (err error) {
-	ctx, endSpan := otel.StartSpan(m.tracer, ctx, "DeleteConnector",
-		attribute.String("url", rawURL),
-	)
-	defer func() { endSpan(err) }()
-
-	url, err := schema.CanonicalURL(rawURL)
-	if err != nil {
-		return llm.ErrBadParameter.With(err)
+func normalizeConnectorError(url string, err error) error {
+	err = pg.NormalizeError(err)
+	if errors.Is(err, pg.ErrNotFound) || errors.Is(err, schema.ErrNotFound) {
+		return schema.ErrNotFound.Withf("connector %q", url)
 	}
-
-	// Disconnect from the toolkit before removing from the store.
-	m.toolkit.RemoveConnector(url)
-
-	return m.connectorStore.DeleteConnector(ctx, url)
-}
-
-// ListConnectors returns connectors matching the request filters.
-func (m *Manager) ListConnectors(ctx context.Context, req schema.ListConnectorsRequest) (result *schema.ListConnectorsResponse, err error) {
-	ctx, endSpan := otel.StartSpan(m.tracer, ctx, "ListConnectors",
-		attribute.String("req", req.String()),
-	)
-	defer func() { endSpan(err) }()
-
-	return m.connectorStore.ListConnectors(ctx, req)
+	return err
 }

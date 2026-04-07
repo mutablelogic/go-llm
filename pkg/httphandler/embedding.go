@@ -1,56 +1,54 @@
 package httphandler
 
 import (
+	"context"
 	"net/http"
 
 	// Packages
-	manager "github.com/mutablelogic/go-llm/pkg/manager"
+	middleware "github.com/djthorpe/go-auth/pkg/middleware"
+	llmmanager "github.com/mutablelogic/go-llm/pkg/manager"
 	schema "github.com/mutablelogic/go-llm/pkg/schema"
 	httprequest "github.com/mutablelogic/go-server/pkg/httprequest"
 	httpresponse "github.com/mutablelogic/go-server/pkg/httpresponse"
 	jsonschema "github.com/mutablelogic/go-server/pkg/jsonschema"
-	openapi "github.com/mutablelogic/go-server/pkg/openapi/schema"
-	types "github.com/mutablelogic/go-server/pkg/types"
+	opts "github.com/mutablelogic/go-server/pkg/openapi"
 )
 
 ///////////////////////////////////////////////////////////////////////////////
-// HANDLER FUNCTIONS
+// PUBLIC METHODS
 
-// Path: embedding
-func EmbeddingHandler(manager *manager.Manager) (string, http.HandlerFunc, *openapi.PathItem) {
-	reqSchema, _ := jsonschema.For[schema.EmbeddingRequest]()
-	respSchema, _ := jsonschema.For[schema.EmbeddingResponse]()
-	return "embedding", func(w http.ResponseWriter, r *http.Request) {
-			switch r.Method {
-			case http.MethodPost:
-				var req schema.EmbeddingRequest
-				if err := httprequest.Read(r, &req); err != nil {
-					_ = httpresponse.Error(w, err)
-					return
-				}
+func EmbeddingHandler(manager *llmmanager.Manager) (string, *jsonschema.Schema, httprequest.PathItem) {
+	return "embedding", nil, httprequest.NewPathItem(
+		"Embedding operations",
+		"Generate embedding vectors for text input",
+		"Responses",
+	).Post(
+		func(w http.ResponseWriter, r *http.Request) {
+			_ = embedding(r.Context(), manager, w, r)
+		},
+		"Create embeddings",
+		opts.WithJSONRequest(jsonschema.MustFor[schema.EmbeddingRequest]()),
+		opts.WithJSONResponse(200, jsonschema.MustFor[schema.EmbeddingResponse]()),
+		opts.WithErrorResponse(400, "Invalid request body or embedding failure."),
+		opts.WithErrorResponse(404, "Model or provider not found."),
+		opts.WithErrorResponse(409, "Multiple models matched; specify a provider."),
+		opts.WithErrorResponse(501, "Provider does not support embeddings."),
+	)
+}
 
-				// Call the embedding API
-				resp, err := manager.Embedding(r.Context(), &req)
-				if err != nil {
-					_ = httpresponse.Error(w, httpErr(err))
-					return
-				}
-				_ = httpresponse.JSON(w, http.StatusOK, httprequest.Indent(r), resp)
-			default:
-				_ = httpresponse.Error(w, httpresponse.Err(http.StatusMethodNotAllowed), r.Method)
-			}
-		}, types.Ptr(openapi.PathItem{
-			Post: &openapi.Operation{
-				Tags:        []string{"Embedding"},
-				Description: "Generate embeddings for text input",
-				RequestBody: &openapi.RequestBody{
-					Required: true,
-					Content:  map[string]openapi.MediaType{types.ContentTypeJSON: {Schema: reqSchema}},
-				},
-				Responses: map[string]openapi.Response{
-					"200":     {Description: "Embedding vectors", Content: map[string]openapi.MediaType{types.ContentTypeJSON: {Schema: respSchema}}},
-					"default": openapi.ErrorResponse("An error occurred"),
-				},
-			},
-		})
+///////////////////////////////////////////////////////////////////////////////
+// PRIVATE METHODS
+
+func embedding(ctx context.Context, manager *llmmanager.Manager, w http.ResponseWriter, r *http.Request) error {
+	var req schema.EmbeddingRequest
+	if err := httprequest.Read(r, &req); err != nil {
+		return httpresponse.Error(w, httpresponse.ErrBadRequest, err)
+	}
+
+	resp, err := manager.Embedding(ctx, req, middleware.UserFromContext(ctx))
+	if err != nil {
+		return httpresponse.Error(w, schema.HTTPErr(err))
+	}
+
+	return httpresponse.JSON(w, http.StatusOK, httprequest.Indent(r), resp)
 }

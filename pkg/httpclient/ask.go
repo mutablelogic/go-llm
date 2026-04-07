@@ -3,90 +3,38 @@ package httpclient
 import (
 	"context"
 	"fmt"
-	"io"
-	"net/http"
-	"net/url"
+	"strings"
 
 	// Packages
 	client "github.com/mutablelogic/go-client"
+	opt "github.com/mutablelogic/go-llm/pkg/opt"
 	schema "github.com/mutablelogic/go-llm/pkg/schema"
 	types "github.com/mutablelogic/go-server/pkg/types"
 )
 
 ///////////////////////////////////////////////////////////////////////////////
-// TYPES
-
-// AskOpt is a functional option for the Ask method.
-type AskOpt func(*askOptions)
-
-type askOptions struct {
-	files []askFile
-	urls  []string
-}
-
-type askFile struct {
-	filename string
-	body     io.ReadCloser
-}
-
-// /////////////////////////////////////////////////////////////////////////////
-// OPTIONS
-
-// WithFile adds a file attachment to the ask request.
-// WithFile takes ownership of the reader: it will be closed after the
-// request completes. The returned AskOpt is single-use; passing the same
-// option to multiple Ask calls will fail on the second call because the
-// reader will already be consumed and closed.
-func WithFile(filename string, r io.Reader) AskOpt {
-	return func(o *askOptions) {
-		if r != nil {
-			rc, ok := r.(io.ReadCloser)
-			if !ok {
-				rc = io.NopCloser(r)
-			}
-			o.files = append(o.files, askFile{filename: filename, body: rc})
-		}
-	}
-}
-
-// WithURL adds a URL-referenced attachment to the request.
-func WithURL(u string) AskOpt {
-	return func(o *askOptions) {
-		if u != "" {
-			o.urls = append(o.urls, u)
-		}
-	}
-}
-
-///////////////////////////////////////////////////////////////////////////////
 // PUBLIC METHODS
 
-// Ask sends a stateless text request with zero or more attachments.
-// Use WithFile to attach file uploads and WithURL to attach URL references.
-// A single file with no other attachments uses streaming multipart/form-data;
-// all other cases use JSON with base64-encoded file data.
-func (c *Client) Ask(ctx context.Context, req schema.AskRequest, opts ...AskOpt) (*schema.AskResponse, error) {
-	if req.Model == "" {
+// Ask sends a stateless ask request and returns the final response.
+// When streamFn is non-nil, the request is made as an SSE stream and streamed
+// delta events are dispatched to the callback before the final result is returned.
+func (c *Client) Ask(ctx context.Context, req schema.AskRequest, streamFn opt.StreamFn) (*schema.AskResponse, error) {
+	if req.Provider != nil {
+		req.Provider = types.Ptr(strings.TrimSpace(*req.Provider))
+	}
+	if req.Model != nil {
+		req.Model = types.Ptr(strings.TrimSpace(*req.Model))
+	}
+	req.Text = strings.TrimSpace(req.Text)
+	if req.Model == nil || *req.Model == "" {
 		return nil, fmt.Errorf("model name cannot be empty")
 	}
 	if req.Text == "" {
 		return nil, fmt.Errorf("text cannot be empty")
 	}
 
-	// Collect options
-	var o askOptions
-	for _, opt := range opts {
-		opt(&o)
-	}
-
-	// Single file, no URLs → streaming multipart
-	if len(o.files) == 1 && len(o.urls) == 0 && len(req.Attachments) == 0 {
-		return c.askMultipart(ctx, req, o.files[0])
-	}
-
-	// Otherwise, build attachments and send as JSON
-	if err := collectAttachments(&req, &o); err != nil {
-		return nil, err
+	if streamFn != nil {
+		return c.askStream(ctx, req, streamFn)
 	}
 	return c.askJSON(ctx, req)
 }
@@ -94,66 +42,68 @@ func (c *Client) Ask(ctx context.Context, req schema.AskRequest, opts ...AskOpt)
 ///////////////////////////////////////////////////////////////////////////////
 // PRIVATE METHODS
 
-// askMultipart sends the request via streaming multipart/form-data with
-// a single file attachment.
-func (c *Client) askMultipart(ctx context.Context, req schema.AskRequest, f askFile) (*schema.AskResponse, error) {
-	defer f.body.Close()
-	httpReq := schema.MultipartAskRequest{
-		AskRequest: req,
-		File: types.File{
-			Path: f.filename,
-			Body: f.body,
-		},
-	}
-
-	payload, err := client.NewStreamingMultipartRequest(httpReq, client.ContentTypeJson)
-	if err != nil {
-		return nil, err
-	}
-
-	var response schema.AskResponse
-	if err := c.DoWithContext(ctx, payload, &response, client.OptPath("ask")); err != nil {
-		return nil, err
-	}
-	return &response, nil
-}
-
-// askJSON sends the request as JSON with base64-encoded attachments.
 func (c *Client) askJSON(ctx context.Context, req schema.AskRequest) (*schema.AskResponse, error) {
-	payload, err := client.NewJSONRequest(req)
+	httpReq, err := client.NewJSONRequest(req)
 	if err != nil {
 		return nil, err
 	}
 
 	var response schema.AskResponse
-	if err := c.DoWithContext(ctx, payload, &response, client.OptPath("ask")); err != nil {
+	if err := c.DoWithContext(ctx, httpReq, &response, client.OptPath("ask")); err != nil {
 		return nil, err
 	}
+
 	return &response, nil
 }
 
-// collectAttachments reads file data and parses URLs into req.Attachments.
-func collectAttachments(req *schema.AskRequest, o *askOptions) error {
-	for _, f := range o.files {
-		data, err := io.ReadAll(f.body)
-		f.body.Close()
-		if err != nil {
-			return fmt.Errorf("reading file %q: %w", f.filename, err)
-		}
-		req.Attachments = append(req.Attachments, schema.Attachment{
-			ContentType: http.DetectContentType(data),
-			Data:        data,
-			URL:         &url.URL{Scheme: "file", Path: f.filename},
-		})
+func (c *Client) askStream(ctx context.Context, req schema.AskRequest, streamFn opt.StreamFn) (*schema.AskResponse, error) {
+	httpReq, err := client.NewJSONRequest(req)
+	if err != nil {
+		return nil, err
 	}
-	for _, u := range o.urls {
-		parsed, err := url.Parse(u)
-		if err != nil {
-			return fmt.Errorf("parsing URL %q: %w", u, err)
+
+	var response *schema.AskResponse
+	var streamErr error
+
+	callback := func(evt client.TextStreamEvent) error {
+		switch evt.Event {
+		case schema.EventAssistant, schema.EventThinking, schema.EventTool:
+			var delta schema.StreamDelta
+			if err := evt.Json(&delta); err != nil {
+				return fmt.Errorf("malformed delta event: %w", err)
+			}
+			streamFn(delta.Role, delta.Text)
+		case schema.EventError:
+			var streamError schema.StreamError
+			if err := evt.Json(&streamError); err != nil {
+				return fmt.Errorf("malformed error event: %w", err)
+			}
+			streamErr = fmt.Errorf("%s", streamError.Error)
+		case schema.EventResult:
+			var askResponse schema.AskResponse
+			if err := evt.Json(&askResponse); err != nil {
+				return fmt.Errorf("malformed result event: %w", err)
+			}
+			response = &askResponse
 		}
-		req.Attachments = append(req.Attachments, schema.Attachment{
-			URL: parsed,
-		})
+		return nil
 	}
-	return nil
+
+	var discard struct{}
+	if err := c.DoWithContext(ctx, httpReq, &discard,
+		client.OptPath("ask"),
+		client.OptReqHeader("Accept", "text/event-stream"),
+		client.OptTextStreamCallback(callback),
+		client.OptNoTimeout(),
+	); err != nil {
+		return nil, err
+	}
+	if streamErr != nil {
+		return nil, streamErr
+	}
+	if response == nil {
+		return nil, fmt.Errorf("no result event received in stream")
+	}
+
+	return response, nil
 }

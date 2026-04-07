@@ -1,142 +1,41 @@
-package httphandler_test
+package httphandler
 
 import (
+	"bufio"
 	"bytes"
-	"encoding/base64"
 	"encoding/json"
-	"fmt"
-	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
 
-	manager "github.com/mutablelogic/go-llm/pkg/manager"
+	// Packages
 	schema "github.com/mutablelogic/go-llm/pkg/schema"
+	types "github.com/mutablelogic/go-server/pkg/types"
 )
 
-func newGeneratorManager(t *testing.T) *manager.Manager {
-	t.Helper()
-	client := &mockGeneratorClient{
-		mockClient: mockClient{
-			name:   "test-provider",
-			models: []schema.Model{{Name: "test-model"}},
+func TestAskJSONIntegration(t *testing.T) {
+	modelName := requireDownloadModel(t)
+	conn, manager := newModelHandlerIntegrationManager(t)
+	_, _, item := AskHandler(manager)
+
+	body, err := json.Marshal(schema.AskRequest{
+		AskRequestCore: schema.AskRequestCore{
+			GeneratorMeta: schema.GeneratorMeta{
+				Provider: types.Ptr(conn.Config.Name),
+				Model:    types.Ptr(modelName),
+			},
+			Text: "Say hello in exactly three words.",
 		},
-	}
-	return newTestManagerWithGenerator(t, []*mockGeneratorClient{client})
-}
-
-func TestAsk_JSON_OK(t *testing.T) {
-	mgr := newGeneratorManager(t)
-	mux := serveMux(mgr)
-
-	body := `{"model":"test-model","text":"hello"}`
-	w := httptest.NewRecorder()
-	r := httptest.NewRequest(http.MethodPost, "/ask", bytes.NewBufferString(body))
-	r.Header.Set("Content-Type", "application/json")
-	mux.ServeHTTP(w, r)
-
-	if w.Code != http.StatusOK {
-		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
-	}
-
-	var resp schema.AskResponse
-	if err := json.NewDecoder(w.Body).Decode(&resp); err != nil {
-		t.Fatal(err)
-	}
-	if resp.Role != "assistant" {
-		t.Fatalf("expected role=assistant, got %q", resp.Role)
-	}
-	if len(resp.Content) == 0 {
-		t.Fatal("expected at least one content block")
-	}
-	text := resp.Content[0].Text
-	if text == nil || !strings.Contains(*text, "hello") {
-		t.Fatalf("expected response to contain 'hello', got %v", text)
-	}
-}
-
-func TestAsk_JSON_WithProvider(t *testing.T) {
-	mgr := newGeneratorManager(t)
-	mux := serveMux(mgr)
-
-	body := `{"provider":"test-provider","model":"test-model","text":"hi"}`
-	w := httptest.NewRecorder()
-	r := httptest.NewRequest(http.MethodPost, "/ask", bytes.NewBufferString(body))
-	r.Header.Set("Content-Type", "application/json")
-	mux.ServeHTTP(w, r)
-
-	if w.Code != http.StatusOK {
-		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
-	}
-
-	var resp schema.AskResponse
-	if err := json.NewDecoder(w.Body).Decode(&resp); err != nil {
-		t.Fatal(err)
-	}
-	if resp.Role != "assistant" {
-		t.Fatalf("expected role=assistant, got %q", resp.Role)
-	}
-}
-
-func TestAsk_JSON_WithBase64Attachment(t *testing.T) {
-	mgr := newGeneratorManager(t)
-	mux := serveMux(mgr)
-
-	// PNG header bytes
-	pngData := []byte{0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A}
-	encoded := base64.StdEncoding.EncodeToString(pngData)
-
-	body := fmt.Sprintf(`{"model":"test-model","text":"describe this","attachments":[{"type":"image/png","data":"%s"}]}`, encoded)
-	w := httptest.NewRecorder()
-	r := httptest.NewRequest(http.MethodPost, "/ask", bytes.NewBufferString(body))
-	r.Header.Set("Content-Type", "application/json")
-	mux.ServeHTTP(w, r)
-
-	if w.Code != http.StatusOK {
-		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
-	}
-
-	var resp schema.AskResponse
-	if err := json.NewDecoder(w.Body).Decode(&resp); err != nil {
-		t.Fatal(err)
-	}
-	if resp.Role != "assistant" {
-		t.Fatalf("expected role=assistant, got %q", resp.Role)
-	}
-}
-
-func TestAsk_Multipart_OK(t *testing.T) {
-	mgr := newGeneratorManager(t)
-	mux := serveMux(mgr)
-
-	var buf bytes.Buffer
-	writer := multipart.NewWriter(&buf)
-
-	// Add text field
-	if err := writer.WriteField("text", "describe this image"); err != nil {
-		t.Fatal(err)
-	}
-	// Add model field
-	if err := writer.WriteField("model", "test-model"); err != nil {
-		t.Fatal(err)
-	}
-	// Add file
-	part, err := writer.CreateFormFile("file", "test.png")
+	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	// Write some PNG-like bytes
-	pngData := []byte{0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, 0x00, 0x00, 0x00}
-	if _, err := part.Write(pngData); err != nil {
-		t.Fatal(err)
-	}
-	writer.Close()
 
 	w := httptest.NewRecorder()
-	r := httptest.NewRequest(http.MethodPost, "/ask", &buf)
-	r.Header.Set("Content-Type", writer.FormDataContentType())
-	mux.ServeHTTP(w, r)
+	r := httptest.NewRequest(http.MethodPost, "/ask", bytes.NewReader(body)).WithContext(newModelHandlerTestContext(t))
+	r.Header.Set(types.ContentTypeHeader, types.ContentTypeJSON)
+	item.Handler().ServeHTTP(w, r)
 
 	if w.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
@@ -146,49 +45,155 @@ func TestAsk_Multipart_OK(t *testing.T) {
 	if err := json.NewDecoder(w.Body).Decode(&resp); err != nil {
 		t.Fatal(err)
 	}
-	if resp.Role != "assistant" {
-		t.Fatalf("expected role=assistant, got %q", resp.Role)
+	if resp.Role != schema.RoleAssistant {
+		t.Fatalf("expected role %q, got %q", schema.RoleAssistant, resp.Role)
+	}
+	if len(resp.Content) == 0 {
+		t.Fatal("expected response content")
+	}
+	text := resp.Content[0].Text
+	if text == nil || strings.TrimSpace(*text) == "" {
+		t.Fatalf("expected assistant text, got %+v", resp.Content)
 	}
 }
 
-func TestAsk_MethodNotAllowed(t *testing.T) {
-	mgr := newGeneratorManager(t)
-	mux := serveMux(mgr)
+func TestAskStreamIntegration(t *testing.T) {
+	modelName := requireDownloadModel(t)
+	conn, manager := newModelHandlerIntegrationManager(t)
+	_, _, item := AskHandler(manager)
+
+	body, err := json.Marshal(schema.AskRequest{
+		AskRequestCore: schema.AskRequestCore{
+			GeneratorMeta: schema.GeneratorMeta{
+				Provider: types.Ptr(conn.Config.Name),
+				Model:    types.Ptr(modelName),
+			},
+			Text: "Say hello in exactly three words.",
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	w := httptest.NewRecorder()
-	r := httptest.NewRequest(http.MethodGet, "/ask", nil)
-	mux.ServeHTTP(w, r)
+	r := httptest.NewRequest(http.MethodPost, "/ask", bytes.NewReader(body)).WithContext(newModelHandlerTestContext(t))
+	r.Header.Set(types.ContentTypeHeader, types.ContentTypeJSON)
+	r.Header.Set(types.ContentAcceptHeader, types.ContentTypeTextStream)
+	item.Handler().ServeHTTP(w, r)
 
-	if w.Code != http.StatusMethodNotAllowed {
-		t.Fatalf("expected 405, got %d: %s", w.Code, w.Body.String())
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+	if ct := w.Header().Get(types.ContentTypeHeader); ct != types.ContentTypeTextStream {
+		t.Fatalf("expected content type %q, got %q", types.ContentTypeTextStream, ct)
+	}
+
+	type sseEvent struct{ name, data string }
+	var events []sseEvent
+	scanner := bufio.NewScanner(w.Body)
+	var current sseEvent
+	for scanner.Scan() {
+		line := scanner.Text()
+		switch {
+		case strings.HasPrefix(line, "event: "):
+			current.name = strings.TrimPrefix(line, "event: ")
+		case strings.HasPrefix(line, "data: "):
+			current.data = strings.TrimPrefix(line, "data: ")
+		case line == "":
+			if current.name != "" || current.data != "" {
+				events = append(events, current)
+				current = sseEvent{}
+			}
+		}
+	}
+	if err := scanner.Err(); err != nil {
+		t.Fatal(err)
+	}
+
+	var sawResult bool
+	for _, event := range events {
+		if event.name != schema.EventResult {
+			continue
+		}
+		sawResult = true
+		var resp schema.AskResponse
+		if err := json.Unmarshal([]byte(event.data), &resp); err != nil {
+			t.Fatalf("decode result event: %v", err)
+		}
+		if resp.Role != schema.RoleAssistant {
+			t.Fatalf("expected role %q, got %q", schema.RoleAssistant, resp.Role)
+		}
+	}
+	if !sawResult {
+		t.Fatalf("expected result event, got %+v", events)
 	}
 }
 
-func TestAsk_ModelNotFound(t *testing.T) {
-	mgr := newGeneratorManager(t)
-	mux := serveMux(mgr)
+func TestAskModelNotFound(t *testing.T) {
+	conn, manager := newModelHandlerIntegrationManager(t)
+	_, _, item := AskHandler(manager)
 
-	body := `{"model":"nonexistent","text":"hello"}`
+	body, err := json.Marshal(schema.AskRequest{
+		AskRequestCore: schema.AskRequestCore{
+			GeneratorMeta: schema.GeneratorMeta{
+				Provider: types.Ptr(conn.Config.Name),
+				Model:    types.Ptr("missing-model"),
+			},
+			Text: "hello",
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
 	w := httptest.NewRecorder()
-	r := httptest.NewRequest(http.MethodPost, "/ask", bytes.NewBufferString(body))
-	r.Header.Set("Content-Type", "application/json")
-	mux.ServeHTTP(w, r)
+	r := httptest.NewRequest(http.MethodPost, "/ask", bytes.NewReader(body)).WithContext(newModelHandlerTestContext(t))
+	r.Header.Set(types.ContentTypeHeader, types.ContentTypeJSON)
+	item.Handler().ServeHTTP(w, r)
 
-	if w.Code == http.StatusOK {
-		t.Fatalf("expected error status, got 200")
+	if w.Code != http.StatusNotFound {
+		t.Fatalf("expected 404, got %d: %s", w.Code, w.Body.String())
 	}
 }
 
-func TestAsk_InvalidJSON(t *testing.T) {
-	mgr := newGeneratorManager(t)
-	mux := serveMux(mgr)
+func TestAskInvalidJSON(t *testing.T) {
+	_, _, item := AskHandler(nil)
 
 	w := httptest.NewRecorder()
 	r := httptest.NewRequest(http.MethodPost, "/ask", bytes.NewBufferString(`{invalid`))
-	r.Header.Set("Content-Type", "application/json")
-	mux.ServeHTTP(w, r)
+	r.Header.Set(types.ContentTypeHeader, types.ContentTypeJSON)
+	item.Handler().ServeHTTP(w, r)
 
-	if w.Code == http.StatusOK {
-		t.Fatalf("expected error status for invalid JSON, got 200")
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestAskNotAcceptable(t *testing.T) {
+	modelName := requireDownloadModel(t)
+	conn, manager := newModelHandlerIntegrationManager(t)
+	_, _, item := AskHandler(manager)
+
+	body, err := json.Marshal(schema.AskRequest{
+		AskRequestCore: schema.AskRequestCore{
+			GeneratorMeta: schema.GeneratorMeta{
+				Provider: types.Ptr(conn.Config.Name),
+				Model:    types.Ptr(modelName),
+			},
+			Text: "hello",
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	w := httptest.NewRecorder()
+	r := httptest.NewRequest(http.MethodPost, "/ask", bytes.NewReader(body)).WithContext(newModelHandlerTestContext(t))
+	r.Header.Set(types.ContentTypeHeader, types.ContentTypeJSON)
+	r.Header.Set(types.ContentAcceptHeader, types.ContentTypeTextPlain)
+	item.Handler().ServeHTTP(w, r)
+
+	if w.Code != http.StatusNotAcceptable {
+		t.Fatalf("expected 406, got %d: %s", w.Code, w.Body.String())
 	}
 }

@@ -10,48 +10,135 @@ import (
 	"net/url"
 	"os"
 	"path"
+	"strconv"
 	"strings"
 
 	// Packages
+	uuid "github.com/google/uuid"
 	opt "github.com/mutablelogic/go-llm/pkg/opt"
+	pg "github.com/mutablelogic/go-pg"
 	types "github.com/mutablelogic/go-server/pkg/types"
 )
 
 ////////////////////////////////////////////////////////////////////////////////
 // TYPES
 
-// Usage represents the token usage for a single request/response.
-type Usage struct {
-	InputTokens  uint `json:"input_tokens,omitempty"`
-	OutputTokens uint `json:"output_tokens,omitempty"`
-}
-
 // Message represents a message in a conversation with an LLM.
 // It uses a universal content block representation that can be marshaled
 // to any provider's format.
 type Message struct {
-	Role    string         `json:"role"`             // "user", "assistant", "system"
-	Content []ContentBlock `json:"content"`          // Array of content blocks
-	Tokens  uint           `json:"tokens,omitempty"` // Number of tokens
-	Result  ResultType     `json:"result"`           // Result type
-	Meta    map[string]any `json:"meta,omitzero"`    // Provider-specific metadata
+	Role    string         `json:"role" help:"Message role" enum:"user,assistant,system,thinking,tool" example:"assistant"`
+	Content []ContentBlock `json:"content" help:"Structured content blocks that make up the message" example:"[{\"text\":\"Unit tests catch regressions early and make refactoring safer.\"}]"`
+	Tokens  uint           `json:"tokens,omitempty" help:"Token count attributed to this message" example:"12"`
+	Result  ResultType     `json:"result" help:"Message result status encoded as a string in JSON" enum:"stop,max_tokens,blocked,tool_call,error,other,max_iterations" example:"stop"`
+	Meta    map[string]any `json:"meta,omitzero" help:"Optional provider-specific message metadata" optional:"" example:"{\"thinking_signature\":\"abc123\"}"`
+}
+
+// MessageInsert persists a message within a session conversation.
+type MessageInsert struct {
+	Session uuid.UUID `json:"session" help:"Session ID"`
+	Message `embed:""`
+}
+
+// MessageListRequest represents a request to list stored messages.
+type MessageListRequest struct {
+	pg.OffsetLimit
+	Role string `json:"role,omitempty" help:"Filter by exact message role" optional:""`
+	Text string `json:"text,omitempty" help:"Case-insensitive text search over message content" optional:""`
+}
+
+// MessageList represents a paginated list of stored messages.
+type MessageList struct {
+	MessageListRequest
+	Count uint       `json:"count" help:"Total number of matching messages" example:"2"`
+	Body  []*Message `json:"body,omitzero" help:"Messages returned for the current page" example:"[{\"role\":\"assistant\",\"content\":[{\"text\":\"Daily news summary\"}],\"tokens\":4,\"result\":\"stop\"}]"`
 }
 
 // ContentBlock represents a single piece of content within a message.
 // Exactly one of the fields should be non-nil/non-empty.
 type ContentBlock struct {
-	Text       *string     `json:"text,omitempty"`        // Text content
-	Thinking   *string     `json:"thinking,omitempty"`    // Thinking/reasoning content
-	Attachment *Attachment `json:"attachment,omitempty"`  // Image, document, audio, etc.
-	ToolCall   *ToolCall   `json:"tool_call,omitempty"`   // Tool invocation (assistant → user)
-	ToolResult *ToolResult `json:"tool_result,omitempty"` // Tool response (user → assistant)
+	Text       *string     `json:"text,omitempty" help:"Plain text content emitted by the model" example:"Unit tests catch regressions early and make refactoring safer."`
+	Thinking   *string     `json:"thinking,omitempty" help:"Reasoning or thinking text emitted by the model" example:"I should keep this answer brief and concrete."`
+	Attachment *Attachment `json:"attachment,omitempty" help:"Attachment content such as an image, document, or audio asset" example:"{\"type\":\"image/png\",\"url\":\"https://example.com/image.png\"}"`
+	ToolCall   *ToolCall   `json:"tool_call,omitempty" help:"Tool invocation requested by the model" example:"{\"id\":\"call_123\",\"name\":\"get_weather\",\"input\":{\"city\":\"London\"}}"`
+	ToolResult *ToolResult `json:"tool_result,omitempty" help:"Tool execution result returned to the model" example:"{\"id\":\"call_123\",\"name\":\"get_weather\",\"content\":{\"temperature_c\":18},\"is_error\":false}"`
 }
 
 // Attachment represents binary or URI-referenced media (images, documents, etc.)
 type Attachment struct {
-	ContentType string   `json:"type"`           // MIME type: "image/png", "application/pdf", etc.
-	Data        []byte   `json:"data,omitempty"` // Raw binary data
-	URL         *url.URL `json:"url,omitempty"`  // URL reference (http, https, gs, file, etc.)
+	ContentType string   `json:"type" help:"Attachment MIME type, for example image/png or application/pdf" example:"image/png"`
+	Data        []byte   `json:"data,omitempty" help:"Inline attachment payload encoded as a byte string" example:"iVBORw0KGgo="`
+	URL         *url.URL `json:"url,omitempty" help:"Attachment URL reference, for example https, gs, or file" example:"https://example.com/image.png"`
+}
+
+func (a Attachment) MarshalJSON() ([]byte, error) {
+	type attachmentJSON struct {
+		ContentType string `json:"type"`
+		Data        []byte `json:"data,omitempty"`
+		URL         string `json:"url,omitempty"`
+	}
+
+	out := attachmentJSON{
+		ContentType: a.ContentType,
+		Data:        a.Data,
+	}
+	if a.URL != nil {
+		out.URL = a.URL.String()
+	}
+
+	return json.Marshal(out)
+}
+
+func (a *Attachment) UnmarshalJSON(data []byte) error {
+	type attachmentJSON struct {
+		ContentType string          `json:"type"`
+		Data        []byte          `json:"data,omitempty"`
+		URL         json.RawMessage `json:"url,omitempty"`
+	}
+
+	var in attachmentJSON
+	if err := json.Unmarshal(data, &in); err != nil {
+		return err
+	}
+
+	a.ContentType = in.ContentType
+	a.Data = in.Data
+
+	parsed, err := unmarshalAttachmentURL(in.URL)
+	if err != nil {
+		return err
+	}
+	a.URL = parsed
+
+	return nil
+}
+
+func unmarshalAttachmentURL(data json.RawMessage) (*url.URL, error) {
+	if len(data) == 0 || string(data) == "null" {
+		return nil, nil
+	}
+
+	var raw string
+	if err := json.Unmarshal(data, &raw); err == nil {
+		if raw == "" {
+			return nil, nil
+		}
+		parsed, err := url.Parse(raw)
+		if err != nil {
+			return nil, fmt.Errorf("invalid attachment url %q: %w", raw, err)
+		}
+		return parsed, nil
+	}
+
+	// Accept the legacy object encoding for backward compatibility.
+	var parsed url.URL
+	if err := json.Unmarshal(data, &parsed); err != nil {
+		return nil, fmt.Errorf("invalid attachment url: %w", err)
+	}
+	if parsed.String() == "" {
+		return nil, nil
+	}
+	return &parsed, nil
 }
 
 // IsText returns true if the attachment has a text/* MIME type (e.g. text/plain,
@@ -146,18 +233,18 @@ func (a Attachment) Read(ctx context.Context) ([]byte, error) {
 
 // ToolCall represents a tool invocation requested by the model
 type ToolCall struct {
-	ID    string          `json:"id,omitempty"`    // Provider-assigned call ID
-	Name  string          `json:"name"`            // Tool function name
-	Input json.RawMessage `json:"input,omitempty"` // JSON-encoded arguments
-	Meta  map[string]any  `json:"meta,omitempty"`  // Provider-specific metadata (e.g. thought_signature)
+	ID    string          `json:"id,omitempty" help:"Provider-assigned tool call identifier" example:"call_123"`
+	Name  string          `json:"name" help:"Tool name to invoke" example:"get_weather"`
+	Input json.RawMessage `json:"input,omitempty" help:"JSON-encoded arguments passed to the tool" example:"{\"city\":\"London\"}"`
+	Meta  map[string]any  `json:"meta,omitempty" help:"Provider-specific metadata associated with the tool call" example:"{\"provider\":\"demo\"}"`
 }
 
 // ToolResult represents the result of running a tool
 type ToolResult struct {
-	ID      string          `json:"id,omitempty"`      // Matches the ToolCall ID
-	Name    string          `json:"name,omitempty"`    // Tool function name
-	Content json.RawMessage `json:"content,omitempty"` // JSON-encoded result
-	IsError bool            `json:"is_error,omitempty"`
+	ID      string          `json:"id,omitempty" help:"Tool call identifier this result belongs to" example:"call_123"`
+	Name    string          `json:"name,omitempty" help:"Tool name that produced this result" example:"get_weather"`
+	Content json.RawMessage `json:"content,omitempty" help:"JSON-encoded tool output content" example:"{\"temperature_c\":18}"`
+	IsError bool            `json:"is_error,omitempty" help:"Whether the tool result represents an error" example:"false"`
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -165,11 +252,12 @@ type ToolResult struct {
 
 // Message role constants
 const (
-	RoleUser      = "user"
-	RoleAssistant = "assistant"
-	RoleSystem    = "system"
-	RoleThinking  = "thinking"
-	RoleTool      = "tool"
+	RoleUser              = "user"
+	RoleAssistant         = "assistant"
+	RoleSystem            = "system"
+	RoleThinking          = "thinking"
+	RoleTool              = "tool"
+	MessageListMax uint64 = 100
 )
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -304,6 +392,194 @@ func (m Message) ToolCalls() []ToolCall {
 
 func (m Message) String() string {
 	return types.Stringify(m)
+}
+
+func (r MessageListRequest) String() string {
+	return types.Stringify(r)
+}
+
+func (r MessageList) String() string {
+	return types.Stringify(r)
+}
+
+func (m *Message) Scan(row pg.Row) error {
+	var result string
+	if err := row.Scan(&m.Role, &m.Content, &m.Tokens, &result, &m.Meta); err != nil {
+		return err
+	}
+	m.Result = parseMessageResult(result)
+	if m.Meta == nil {
+		m.Meta = make(map[string]any)
+	}
+	if m.Content == nil {
+		m.Content = []ContentBlock{}
+	}
+	return nil
+}
+
+func (m *MessageInsert) Scan(row pg.Row) error {
+	var result string
+
+	if err := row.Scan(&m.Session, &m.Role, &m.Content, &m.Tokens, &result, &m.Meta); err != nil {
+		return err
+	}
+	m.Result = parseMessageResult(result)
+	if m.Meta == nil {
+		m.Meta = make(map[string]any)
+	}
+	if m.Content == nil {
+		m.Content = []ContentBlock{}
+	}
+	return nil
+}
+
+func (list *MessageList) Scan(row pg.Row) error {
+	var message Message
+	if err := message.Scan(row); err != nil {
+		return err
+	}
+	list.Body = append(list.Body, &message)
+	return nil
+}
+
+func (list *MessageList) ScanCount(row pg.Row) error {
+	if err := row.Scan(&list.Count); err != nil {
+		return err
+	}
+	return nil
+}
+
+func (req MessageListRequest) Query() url.Values {
+	values := url.Values{}
+	if req.Offset > 0 {
+		values.Set("offset", strconv.FormatUint(req.Offset, 10))
+	}
+	if req.Limit != nil {
+		values.Set("limit", strconv.FormatUint(types.Value(req.Limit), 10))
+	}
+	if role := strings.TrimSpace(req.Role); role != "" {
+		values.Set("role", role)
+	}
+	if text := strings.TrimSpace(req.Text); text != "" {
+		values.Set("text", text)
+	}
+	return values
+}
+
+func (req MessageListRequest) Select(bind *pg.Bind, op pg.Op) (string, error) {
+	bind.Del("where")
+
+	session, ok := bind.Get("session").(uuid.UUID)
+	if !ok || session == uuid.Nil {
+		return "", ErrBadParameter.With("message session is required")
+	}
+	bind.Append("where", `message.session = `+bind.Set("session", session))
+	if role := strings.TrimSpace(req.Role); role != "" {
+		bind.Append("where", `message.role = `+bind.Set("role", role))
+	}
+	if text := strings.TrimSpace(req.Text); text != "" {
+		bind.Append("where", `message.content::text ILIKE `+bind.Set("text", "%"+text+"%"))
+	}
+
+	where := bind.Join("where", " AND ")
+	bind.Set("orderby", `ORDER BY message.created_at ASC, message.id ASC`)
+	req.OffsetLimit.Bind(bind, MessageListMax)
+
+	switch op {
+	case pg.List:
+		if messageListHasUser(bind) {
+			if where == "" {
+				bind.Set("where", "")
+			} else {
+				bind.Set("where", "AND "+where)
+			}
+			return bind.Query("message.list_for_user"), nil
+		}
+		if where == "" {
+			bind.Set("where", "")
+		} else {
+			bind.Set("where", "WHERE "+where)
+		}
+		return bind.Query("message.list"), nil
+	default:
+		return "", ErrNotImplemented.Withf("unsupported MessageListRequest operation %q", op)
+	}
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// PUBLIC METHODS - WRITER
+
+func (m MessageInsert) Insert(bind *pg.Bind) (string, error) {
+	if m.Session == uuid.Nil {
+		return "", ErrBadParameter.With("message session is required")
+	}
+
+	role := strings.TrimSpace(m.Role)
+	if role == "" {
+		return "", ErrBadParameter.With("message role is required")
+	}
+
+	content := m.Content
+	if content == nil {
+		content = []ContentBlock{}
+	}
+
+	bind.Set("session", m.Session)
+	bind.Set("role", role)
+	bind.Set("content", content)
+
+	if m.Tokens == 0 {
+		bind.Set("tokens", nil)
+	} else {
+		bind.Set("tokens", m.Tokens)
+	}
+
+	result := strings.TrimSpace(m.Result.String())
+	if result == "" || result == "unknown" || (m.Result == ResultStop && role != RoleAssistant && role != RoleThinking && role != RoleTool) {
+		bind.Set("result", nil)
+	} else {
+		bind.Set("result", result)
+	}
+
+	if len(m.Meta) == 0 {
+		bind.Set("meta", nil)
+	} else {
+		bind.Set("meta", m.Meta)
+	}
+
+	return bind.Query("message.insert"), nil
+}
+
+func (m MessageInsert) Update(_ *pg.Bind) error {
+	return fmt.Errorf("MessageInsert: update: not supported")
+}
+
+func messageListHasUser(bind *pg.Bind) bool {
+	if user, ok := bind.Get("user").(uuid.UUID); ok {
+		return user != uuid.Nil
+	}
+	return false
+}
+
+func parseMessageResult(result string) ResultType {
+	switch strings.TrimSpace(result) {
+	case "", ResultStop.String():
+		return ResultStop
+	case ResultMaxTokens.String():
+		return ResultMaxTokens
+	case ResultBlocked.String():
+		return ResultBlocked
+	case ResultToolCall.String():
+		return ResultToolCall
+	case ResultError.String():
+		return ResultError
+	case ResultOther.String():
+		return ResultOther
+	case ResultMaxIterations.String():
+		return ResultMaxIterations
+	default:
+		return ResultOther
+	}
 }
 
 ////////////////////////////////////////////////////////////////////////////////

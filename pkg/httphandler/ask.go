@@ -1,63 +1,87 @@
 package httphandler
 
 import (
+	"context"
 	"net/http"
 
 	// Packages
-	manager "github.com/mutablelogic/go-llm/pkg/manager"
+	middleware "github.com/djthorpe/go-auth/pkg/middleware"
+	llmmanager "github.com/mutablelogic/go-llm/pkg/manager"
+	opt "github.com/mutablelogic/go-llm/pkg/opt"
 	schema "github.com/mutablelogic/go-llm/pkg/schema"
 	httprequest "github.com/mutablelogic/go-server/pkg/httprequest"
 	httpresponse "github.com/mutablelogic/go-server/pkg/httpresponse"
 	jsonschema "github.com/mutablelogic/go-server/pkg/jsonschema"
-	openapi "github.com/mutablelogic/go-server/pkg/openapi/schema"
-	types "github.com/mutablelogic/go-server/pkg/types"
+	opts "github.com/mutablelogic/go-server/pkg/openapi"
 )
 
 ///////////////////////////////////////////////////////////////////////////////
-// HANDLER FUNCTIONS
+// PUBLIC METHODS
 
-// Path: ask
-func AskHandler(manager *manager.Manager) (string, http.HandlerFunc, *openapi.PathItem) {
-	reqSchema, _ := jsonschema.For[schema.AskRequest]()
-	respSchema, _ := jsonschema.For[schema.AskResponse]()
-	return "ask", func(w http.ResponseWriter, r *http.Request) {
-			switch r.Method {
-			case http.MethodPost:
-				var req schema.MultipartAskRequest
-				// Read the request body into the AskRequest struct. If a multipart file
-				// was uploaded, convert it to an attachment and add it to the request.
-				if err := httprequest.Read(r, &req); err != nil {
-					_ = httpresponse.Error(w, err)
-					return
-				} else if attachment, err := req.FileAttachment(); err != nil {
-					_ = httpresponse.Error(w, httpresponse.ErrBadRequest.With(err))
-					return
-				} else if attachment != nil {
-					req.Attachments = append(req.Attachments, *attachment)
-				}
+func AskHandler(manager *llmmanager.Manager) (string, *jsonschema.Schema, httprequest.PathItem) {
+	return "ask", nil, httprequest.NewPathItem(
+		"Ask operations",
+		"Send a stateless prompt and get a response",
+		"Responses",
+	).Post(
+		func(w http.ResponseWriter, r *http.Request) {
+			_ = ask(r.Context(), manager, w, r)
+		},
+		"Ask model",
+		opts.WithJSONRequest(jsonschema.MustFor[schema.AskRequest]()),
+		opts.WithJSONResponse(200, jsonschema.MustFor[schema.AskResponse]()),
+		opts.WithTextStreamResponse(200, "SSE stream of assistant, thinking, tool, error, and result events."),
+		opts.WithErrorResponse(400, "Invalid request body or ask failure."),
+		opts.WithErrorResponse(404, "Model or provider not found."),
+		opts.WithErrorResponse(409, "Multiple models matched; specify a provider."),
+		opts.WithErrorResponse(406, "Unsupported Accept header."),
+		opts.WithErrorResponse(501, "Provider does not support generation."),
+	)
+}
 
-				// Perform operation and return response
-				resp, err := manager.Ask(r.Context(), req.AskRequest, nil)
-				if err != nil {
-					_ = httpresponse.Error(w, httpErr(err))
-					return
-				}
-				_ = httpresponse.JSON(w, http.StatusOK, httprequest.Indent(r), resp)
+///////////////////////////////////////////////////////////////////////////////
+// PRIVATE METHODS
+
+func ask(ctx context.Context, manager *llmmanager.Manager, w http.ResponseWriter, r *http.Request) error {
+	var req schema.AskRequest
+	if err := httprequest.Read(r, &req); err != nil {
+		return httpresponse.Error(w, httpresponse.ErrBadRequest, err)
+	}
+
+	switch acceptType(r) {
+	case acceptStream:
+		stream := httpresponse.NewTextStream(w)
+		if stream == nil {
+			return httpresponse.Error(w, httpresponse.ErrInternalError)
+		}
+		defer stream.Close()
+
+		fn := opt.StreamFn(func(role, text string) {
+			switch role {
+			case schema.RoleThinking:
+				stream.Write(schema.EventThinking, schema.StreamDelta{Role: role, Text: text})
+			case schema.RoleTool:
+				stream.Write(schema.EventTool, schema.StreamDelta{Role: role, Text: text})
 			default:
-				_ = httpresponse.Error(w, httpresponse.Err(http.StatusMethodNotAllowed), r.Method)
+				stream.Write(schema.EventAssistant, schema.StreamDelta{Role: role, Text: text})
 			}
-		}, types.Ptr(openapi.PathItem{
-			Post: &openapi.Operation{
-				Tags:        []string{"Chat"},
-				Description: "Send a stateless message and get a response",
-				RequestBody: &openapi.RequestBody{
-					Required: true,
-					Content:  map[string]openapi.MediaType{types.ContentTypeJSON: {Schema: reqSchema}},
-				},
-				Responses: map[string]openapi.Response{
-					"200":     {Description: "Model response", Content: map[string]openapi.MediaType{types.ContentTypeJSON: {Schema: respSchema}}},
-					"default": openapi.ErrorResponse("An error occurred"),
-				},
-			},
 		})
+
+		resp, err := manager.Ask(ctx, req, middleware.UserFromContext(ctx), fn)
+		if err != nil {
+			stream.Write(schema.EventError, schema.StreamError{Error: err.Error()})
+			return nil
+		}
+
+		stream.Write(schema.EventResult, resp)
+		return nil
+	case acceptJSON:
+		resp, err := manager.Ask(ctx, req, middleware.UserFromContext(ctx), nil)
+		if err != nil {
+			return httpresponse.Error(w, schema.HTTPErr(err))
+		}
+		return httpresponse.JSON(w, http.StatusOK, httprequest.Indent(r), resp)
+	default:
+		return httpresponse.Error(w, httpresponse.Err(http.StatusNotAcceptable))
+	}
 }

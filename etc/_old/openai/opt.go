@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/mutablelogic/go-llm"
+	"github.com/mutablelogic/go-llm/pkg/schema"
 )
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -106,7 +107,7 @@ func WithAudio(voice, format string) llm.Opt {
 		if audio := NewAudio(voice, format); audio != nil {
 			o.Set("audio", audio)
 		} else {
-			return llm.ErrBadParameter.With("audio")
+			return schema.ErrBadParameter.With("audio")
 		}
 		return nil
 	}
@@ -116,7 +117,7 @@ func WithAudio(voice, format string) llm.Opt {
 func WithAudioSpeed(v float64) llm.Opt {
 	return func(o *llm.Opts) error {
 		if v < 0.25 || v > 4.0 {
-			return llm.ErrBadParameter.With("speed")
+			return schema.ErrBadParameter.With("speed")
 		}
 		o.Set("speed", v)
 		return nil

@@ -92,7 +92,7 @@ func geminiContentFromMessage(msg *schema.Message) (*geminiContent, error) {
 			args := make(map[string]any)
 			if len(block.ToolCall.Input) > 0 {
 				if err := json.Unmarshal(block.ToolCall.Input, &args); err != nil {
-					return nil, llm.ErrInternalServerError.Withf("unmarshal tool call args: %v", err)
+					return nil, schema.ErrInternalServerError.Withf("unmarshal tool call args: %v", err)
 				}
 			}
 			p := geminiNewFunctionCallPart(block.ToolCall.Name, args)
@@ -185,7 +185,7 @@ func geminiFunctionDeclsFromTools(tools []llm.Tool) []*geminiFunctionDeclaration
 		}
 
 		// Convert the jsonschema.Schema to map[string]any via JSON round-trip
-		if s, err := t.InputSchema(); err == nil && s != nil {
+		if s := t.InputSchema(); s != nil {
 			if data, err := json.Marshal(s); err == nil {
 				var m map[string]any
 				if err := json.Unmarshal(data, &m); err == nil {

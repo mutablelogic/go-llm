@@ -28,8 +28,7 @@ func Test_tool_001(t *testing.T) {
 	for _, tl := range tools {
 		names[tl.Name()] = true
 		// Verify each tool has a valid schema
-		schema, err := tl.InputSchema()
-		assert.NoError(err)
+		schema := tl.InputSchema()
 		assert.NotNil(schema)
 		// Verify each tool has a description
 		assert.NotEmpty(tl.Description())

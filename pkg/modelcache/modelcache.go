@@ -8,9 +8,10 @@ import (
 	"time"
 
 	// Packages
-	llm "github.com/mutablelogic/go-llm"
+
 	opt "github.com/mutablelogic/go-llm/pkg/opt"
 	schema "github.com/mutablelogic/go-llm/pkg/schema"
+	httpresponse "github.com/mutablelogic/go-server/pkg/httpresponse"
 	types "github.com/mutablelogic/go-server/pkg/types"
 )
 
@@ -80,7 +81,7 @@ func (mc *ModelCache) GetModel(ctx context.Context, name string, fn GetModelFunc
 		mc.mu.Unlock()
 	} else {
 		// If model no longer exists, ensure cache is invalidated
-		if errors.Is(err, llm.ErrNotFound) {
+		if errors.Is(err, schema.ErrNotFound) || errors.Is(err, httpresponse.ErrNotFound) {
 			mc.mu.Lock()
 			delete(mc.model, name)
 			mc.mu.Unlock()

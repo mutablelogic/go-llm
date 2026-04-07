@@ -5,11 +5,19 @@ import (
 	"encoding/json"
 	"testing"
 
-	jsonschema "github.com/google/jsonschema-go/jsonschema"
 	llm "github.com/mutablelogic/go-llm"
 	schema "github.com/mutablelogic/go-llm/pkg/schema"
 	tool "github.com/mutablelogic/go-llm/pkg/tool"
+	jsonschema "github.com/mutablelogic/go-server/pkg/jsonschema"
 )
+
+func mustSchema(raw string) *jsonschema.Schema {
+	s, err := jsonschema.FromJSON(json.RawMessage(raw))
+	if err != nil {
+		panic(err)
+	}
+	return s
+}
 
 ///////////////////////////////////////////////////////////////////////////////
 // Helpers
@@ -20,19 +28,19 @@ type stubTool struct {
 
 func (s *stubTool) Name() string                                          { return s.name }
 func (s *stubTool) Description() string                                   { return "stub" }
-func (s *stubTool) InputSchema() (*jsonschema.Schema, error)              { return nil, nil }
-func (s *stubTool) OutputSchema() (*jsonschema.Schema, error)             { return nil, nil }
+func (s *stubTool) InputSchema() *jsonschema.Schema                       { return nil }
+func (s *stubTool) OutputSchema() *jsonschema.Schema                      { return nil }
 func (s *stubTool) Meta() llm.ToolMeta                                    { return llm.ToolMeta{} }
 func (s *stubTool) Run(_ context.Context, _ json.RawMessage) (any, error) { return nil, nil }
 
 // echoTool echoes its raw input as output wrapped in a JSONResource.
 type echoTool struct{ name string }
 
-func (e *echoTool) Name() string                              { return e.name }
-func (e *echoTool) Description() string                       { return "echo" }
-func (e *echoTool) InputSchema() (*jsonschema.Schema, error)  { return nil, nil }
-func (e *echoTool) OutputSchema() (*jsonschema.Schema, error) { return nil, nil }
-func (e *echoTool) Meta() llm.ToolMeta                        { return llm.ToolMeta{} }
+func (e *echoTool) Name() string                     { return e.name }
+func (e *echoTool) Description() string              { return "echo" }
+func (e *echoTool) InputSchema() *jsonschema.Schema  { return nil }
+func (e *echoTool) OutputSchema() *jsonschema.Schema { return nil }
+func (e *echoTool) Meta() llm.ToolMeta               { return llm.ToolMeta{} }
 func (e *echoTool) Run(_ context.Context, input json.RawMessage) (any, error) {
 	return tool.NewJSONResource(input), nil
 }
@@ -43,11 +51,11 @@ type schemaTool struct {
 	schema *jsonschema.Schema
 }
 
-func (s *schemaTool) Name() string                              { return s.name }
-func (s *schemaTool) Description() string                       { return "schema tool" }
-func (s *schemaTool) InputSchema() (*jsonschema.Schema, error)  { return s.schema, nil }
-func (s *schemaTool) OutputSchema() (*jsonschema.Schema, error) { return nil, nil }
-func (s *schemaTool) Meta() llm.ToolMeta                        { return llm.ToolMeta{} }
+func (s *schemaTool) Name() string                     { return s.name }
+func (s *schemaTool) Description() string              { return "schema tool" }
+func (s *schemaTool) InputSchema() *jsonschema.Schema  { return s.schema }
+func (s *schemaTool) OutputSchema() *jsonschema.Schema { return nil }
+func (s *schemaTool) Meta() llm.ToolMeta               { return llm.ToolMeta{} }
 func (s *schemaTool) Run(_ context.Context, input json.RawMessage) (any, error) {
 	return tool.NewJSONResource(input), nil
 }
@@ -74,7 +82,7 @@ func TestRegister_OutputToolAllowed(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer tk.Close()
-	outputTool := tool.NewOutputTool(&jsonschema.Schema{})
+	outputTool := tool.NewOutputTool(jsonschema.MustFor[map[string]any]())
 	if err := tk.AddBuiltin(outputTool); err != nil {
 		t.Fatal("OutputTool should be allowed:", err)
 	}
@@ -122,14 +130,7 @@ func TestAddBuiltin_InvalidName(t *testing.T) {
 // TestOutputTool_Validate
 
 func TestOutputTool_ValidateValid(t *testing.T) {
-	s := &jsonschema.Schema{
-		Type: "object",
-		Properties: map[string]*jsonschema.Schema{
-			"summary":   {Type: "string"},
-			"sentiment": {Type: "string"},
-		},
-		Required: []string{"summary", "sentiment"},
-	}
+	s := mustSchema(`{"type":"object","properties":{"summary":{"type":"string"},"sentiment":{"type":"string"}},"required":["summary","sentiment"]}`)
 	ot := tool.NewOutputTool(s)
 	valid := json.RawMessage(`{"summary":"hello","sentiment":"positive"}`)
 	if err := ot.Validate(valid); err != nil {
@@ -138,14 +139,7 @@ func TestOutputTool_ValidateValid(t *testing.T) {
 }
 
 func TestOutputTool_ValidateMissingRequired(t *testing.T) {
-	s := &jsonschema.Schema{
-		Type: "object",
-		Properties: map[string]*jsonschema.Schema{
-			"summary":   {Type: "string"},
-			"sentiment": {Type: "string"},
-		},
-		Required: []string{"summary", "sentiment"},
-	}
+	s := mustSchema(`{"type":"object","properties":{"summary":{"type":"string"},"sentiment":{"type":"string"}},"required":["summary","sentiment"]}`)
 	ot := tool.NewOutputTool(s)
 	invalid := json.RawMessage(`{"summary":"hello"}`)
 	if err := ot.Validate(invalid); err == nil {
@@ -156,12 +150,7 @@ func TestOutputTool_ValidateMissingRequired(t *testing.T) {
 }
 
 func TestOutputTool_ValidateWrongType(t *testing.T) {
-	s := &jsonschema.Schema{
-		Type: "object",
-		Properties: map[string]*jsonschema.Schema{
-			"count": {Type: "integer"},
-		},
-	}
+	s := mustSchema(`{"type":"object","properties":{"count":{"type":"integer"}}}`)
 	ot := tool.NewOutputTool(s)
 	invalid := json.RawMessage(`{"count":"not a number"}`)
 	if err := ot.Validate(invalid); err == nil {
@@ -172,7 +161,7 @@ func TestOutputTool_ValidateWrongType(t *testing.T) {
 }
 
 func TestOutputTool_ValidateInvalidJSON(t *testing.T) {
-	ot := tool.NewOutputTool(&jsonschema.Schema{Type: "object"})
+	ot := tool.NewOutputTool(jsonschema.MustFor[map[string]any]())
 	if err := ot.Validate(json.RawMessage(`{not json`)); err == nil {
 		t.Fatal("expected error for invalid JSON")
 	} else {
@@ -197,7 +186,7 @@ func TestListTools_Empty(t *testing.T) {
 	}
 	defer tk.Close()
 
-	tools := tk.ListTools(schema.ListToolsRequest{})
+	tools := tk.ListTools(schema.ToolListRequest{})
 	if len(tools) != 0 {
 		t.Fatalf("expected 0 tools, got %d", len(tools))
 	}
@@ -214,7 +203,7 @@ func TestListTools_Builtins(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	tools := tk.ListTools(schema.ListToolsRequest{})
+	tools := tk.ListTools(schema.ToolListRequest{})
 	if len(tools) != 2 {
 		t.Fatalf("expected 2 tools, got %d", len(tools))
 	}
@@ -232,7 +221,7 @@ func TestListTools_BuiltinNamespace(t *testing.T) {
 	}
 
 	// Builtin namespace should return the tool
-	tools := tk.ListTools(schema.ListToolsRequest{Namespace: schema.BuiltinNamespace})
+	tools := tk.ListTools(schema.ToolListRequest{Namespace: schema.BuiltinNamespace})
 	if len(tools) != 1 {
 		t.Fatalf("expected 1 tool in builtin namespace, got %d", len(tools))
 	}
@@ -249,7 +238,7 @@ func TestListTools_NameFilter(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	tools := tk.ListTools(schema.ListToolsRequest{Name: []string{"alpha"}})
+	tools := tk.ListTools(schema.ToolListRequest{Name: []string{"alpha"}})
 	if len(tools) != 1 {
 		t.Fatalf("expected 1 tool with name filter, got %d", len(tools))
 	}
@@ -270,7 +259,7 @@ func TestListTools_OutputToolExcluded(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	tools := tk.ListTools(schema.ListToolsRequest{})
+	tools := tk.ListTools(schema.ToolListRequest{})
 	for _, t2 := range tools {
 		if t2.Name() == tool.OutputToolName {
 			t.Fatal("OutputTool should not appear in ListTools results")
@@ -412,14 +401,8 @@ func TestRun_SchemaValidationError(t *testing.T) {
 	defer tk.Close()
 
 	st := &schemaTool{
-		name: "strict",
-		schema: &jsonschema.Schema{
-			Type: "object",
-			Properties: map[string]*jsonschema.Schema{
-				"count": {Type: "integer"},
-			},
-			Required: []string{"count"},
-		},
+		name:   "strict",
+		schema: mustSchema(`{"type":"object","properties":{"count":{"type":"integer"}},"required":["count"]}`),
 	}
 	if err := tk.AddBuiltin(st); err != nil {
 		t.Fatal(err)

@@ -1,104 +1,66 @@
-package httphandler_test
+package httphandler
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 
+	// Packages
+	llm "github.com/mutablelogic/go-llm"
+	llmmanager "github.com/mutablelogic/go-llm/pkg/manager"
+	opt "github.com/mutablelogic/go-llm/pkg/opt"
 	schema "github.com/mutablelogic/go-llm/pkg/schema"
+	toolkit "github.com/mutablelogic/go-llm/pkg/toolkit"
+	resource "github.com/mutablelogic/go-llm/pkg/toolkit/resource"
+	types "github.com/mutablelogic/go-server/pkg/types"
 )
 
-///////////////////////////////////////////////////////////////////////////////
-// AGENT LIST TESTS
-
-func TestAgentList_OK(t *testing.T) {
-	mgr := newTestManager(t, []mockClient{
-		{name: "provider-1", models: []schema.Model{{Name: "model-a"}}},
-	})
-	mux := serveMux(mgr)
-
-	w := httptest.NewRecorder()
-	r := httptest.NewRequest(http.MethodGet, "/agent", nil)
-	mux.ServeHTTP(w, r)
-
-	if w.Code != http.StatusOK {
-		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
-	}
-
-	var resp schema.ListAgentResponse
-	if err := json.NewDecoder(w.Body).Decode(&resp); err != nil {
-		t.Fatal(err)
-	}
-	if resp.Count != 0 {
-		t.Fatalf("expected count=0, got %d", resp.Count)
-	}
+type agentHandlerMockPrompt struct {
+	name        string
+	title       string
+	description string
 }
 
-func TestAgentList_WithAgents(t *testing.T) {
-	mgr := newTestManager(t, []mockClient{
-		{name: "provider-1", models: []schema.Model{{Name: "model-a"}}},
-	})
-	mux := serveMux(mgr)
-
-	for _, name := range []string{"agent-one", "agent-two"} {
-		body, _ := json.Marshal(schema.AgentMeta{Name: name})
-		w := httptest.NewRecorder()
-		r := httptest.NewRequest(http.MethodPost, "/agent", bytes.NewReader(body))
-		r.Header.Set("Content-Type", "application/json")
-		mux.ServeHTTP(w, r)
-		if w.Code != http.StatusCreated {
-			t.Fatalf("create %s: expected 201, got %d: %s", name, w.Code, w.Body.String())
-		}
-	}
-
-	w := httptest.NewRecorder()
-	r := httptest.NewRequest(http.MethodGet, "/agent", nil)
-	mux.ServeHTTP(w, r)
-
-	if w.Code != http.StatusOK {
-		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
-	}
-
-	var resp schema.ListAgentResponse
-	if err := json.NewDecoder(w.Body).Decode(&resp); err != nil {
-		t.Fatal(err)
-	}
-	if resp.Count != 2 {
-		t.Fatalf("expected count=2, got %d", resp.Count)
-	}
-	if len(resp.Body) != 2 {
-		t.Fatalf("expected 2 agents, got %d", len(resp.Body))
-	}
+func (p *agentHandlerMockPrompt) Name() string        { return p.name }
+func (p *agentHandlerMockPrompt) Title() string       { return p.title }
+func (p *agentHandlerMockPrompt) Description() string { return p.description }
+func (p *agentHandlerMockPrompt) Prepare(context.Context, json.RawMessage) (string, []opt.Opt, error) {
+	return "", nil, nil
 }
 
-func TestAgentList_WithPagination(t *testing.T) {
-	mgr := newTestManager(t, []mockClient{
-		{name: "provider-1", models: []schema.Model{{Name: "model-a"}}},
-	})
-	mux := serveMux(mgr)
+type agentHandlerMockDelegate struct {
+	call func(context.Context, llm.Prompt, ...llm.Resource) (llm.Resource, error)
+}
 
-	for _, name := range []string{"agent-a", "agent-b", "agent-c"} {
-		body, _ := json.Marshal(schema.AgentMeta{Name: name})
-		w := httptest.NewRecorder()
-		r := httptest.NewRequest(http.MethodPost, "/agent", bytes.NewReader(body))
-		r.Header.Set("Content-Type", "application/json")
-		mux.ServeHTTP(w, r)
-		if w.Code != http.StatusCreated {
-			t.Fatalf("create %s: expected 201, got %d: %s", name, w.Code, w.Body.String())
-		}
+func (d *agentHandlerMockDelegate) OnEvent(toolkit.ConnectorEvent) {}
+
+func (d *agentHandlerMockDelegate) Call(ctx context.Context, prompt llm.Prompt, resources ...llm.Resource) (llm.Resource, error) {
+	if d.call != nil {
+		return d.call(ctx, prompt, resources...)
 	}
+	return nil, nil
+}
+
+func (d *agentHandlerMockDelegate) CreateConnector(string, func(toolkit.ConnectorEvent)) (llm.Connector, error) {
+	return nil, nil
+}
+
+func TestAgentList(t *testing.T) {
+	manager := &llmmanager.Manager{Toolkit: mustAgentToolkit(t)}
+	_, _, item := AgentHandler(manager)
 
 	w := httptest.NewRecorder()
-	r := httptest.NewRequest(http.MethodGet, "/agent?limit=2&offset=1", nil)
-	mux.ServeHTTP(w, r)
+	r := httptest.NewRequest(http.MethodGet, "/agent?limit=2", nil)
+	item.Handler().ServeHTTP(w, r)
 
 	if w.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
 	}
 
-	var resp schema.ListAgentResponse
+	var resp schema.AgentList
 	if err := json.NewDecoder(w.Body).Decode(&resp); err != nil {
 		t.Fatal(err)
 	}
@@ -106,666 +68,232 @@ func TestAgentList_WithPagination(t *testing.T) {
 		t.Fatalf("expected count=3, got %d", resp.Count)
 	}
 	if len(resp.Body) != 2 {
-		t.Fatalf("expected 2 agents in page, got %d", len(resp.Body))
+		t.Fatalf("expected 2 agents, got %d", len(resp.Body))
+	}
+	if resp.Body[0].Name != "builtin.alpha" {
+		t.Fatalf("expected first agent %q, got %q", "builtin.alpha", resp.Body[0].Name)
+	}
+	if resp.Body[0].Title != "Alpha Agent" {
+		t.Fatalf("expected title %q, got %q", "Alpha Agent", resp.Body[0].Title)
+	}
+	if resp.Body[1].Name != "builtin.bravo" {
+		t.Fatalf("expected second agent %q, got %q", "builtin.bravo", resp.Body[1].Name)
 	}
 }
 
-func TestAgentList_FilterByName(t *testing.T) {
-	mgr := newTestManager(t, []mockClient{
-		{name: "provider-1", models: []schema.Model{{Name: "model-a"}}},
-	})
-	mux := serveMux(mgr)
-
-	for _, name := range []string{"alpha", "beta"} {
-		body, _ := json.Marshal(schema.AgentMeta{Name: name})
-		w := httptest.NewRecorder()
-		r := httptest.NewRequest(http.MethodPost, "/agent", bytes.NewReader(body))
-		r.Header.Set("Content-Type", "application/json")
-		mux.ServeHTTP(w, r)
-		if w.Code != http.StatusCreated {
-			t.Fatalf("create %s: expected 201, got %d: %s", name, w.Code, w.Body.String())
-		}
-	}
+func TestAgentListInvalidQuery(t *testing.T) {
+	_, _, item := AgentHandler(&llmmanager.Manager{})
 
 	w := httptest.NewRecorder()
-	r := httptest.NewRequest(http.MethodGet, "/agent?name=alpha", nil)
-	mux.ServeHTTP(w, r)
+	r := httptest.NewRequest(http.MethodGet, "/agent?limit=invalid", nil)
+	item.Handler().ServeHTTP(w, r)
+
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestAgentListWithFilters(t *testing.T) {
+	manager := &llmmanager.Manager{Toolkit: mustAgentToolkit(t)}
+	_, _, item := AgentHandler(manager)
+
+	w := httptest.NewRecorder()
+	r := httptest.NewRequest(http.MethodGet, "/agent?namespace=builtin&name=builtin.bravo&name=builtin.alpha", nil)
+	item.Handler().ServeHTTP(w, r)
 
 	if w.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
 	}
 
-	var resp schema.ListAgentResponse
+	var resp schema.AgentList
 	if err := json.NewDecoder(w.Body).Decode(&resp); err != nil {
 		t.Fatal(err)
 	}
-	if resp.Count != 1 {
-		t.Fatalf("expected count=1, got %d", resp.Count)
+	if resp.Count != 2 || len(resp.Body) != 2 {
+		t.Fatalf("expected 2 filtered agents, got count=%d len=%d", resp.Count, len(resp.Body))
 	}
-	if len(resp.Body) != 1 {
-		t.Fatalf("expected 1 agent, got %d", len(resp.Body))
-	}
-	if resp.Body[0].Name != "alpha" {
-		t.Fatalf("expected name=alpha, got %q", resp.Body[0].Name)
+	if resp.Body[0].Name != "builtin.alpha" || resp.Body[1].Name != "builtin.bravo" {
+		t.Fatalf("unexpected filtered agents: %+v", resp.Body)
 	}
 }
 
-///////////////////////////////////////////////////////////////////////////////
-// AGENT CREATE TESTS
-
-func TestAgentCreate_OK(t *testing.T) {
-	mgr := newTestManager(t, []mockClient{
-		{name: "provider-1", models: []schema.Model{{Name: "gpt-4"}}},
-	})
-	mux := serveMux(mgr)
-
-	body, _ := json.Marshal(schema.AgentMeta{
-		Name:  "my-agent",
-		Title: "My Agent",
-	})
-	w := httptest.NewRecorder()
-	r := httptest.NewRequest(http.MethodPost, "/agent", bytes.NewReader(body))
-	r.Header.Set("Content-Type", "application/json")
-	mux.ServeHTTP(w, r)
-
-	if w.Code != http.StatusCreated {
-		t.Fatalf("expected 201, got %d: %s", w.Code, w.Body.String())
-	}
-
-	var agent schema.Agent
-	if err := json.NewDecoder(w.Body).Decode(&agent); err != nil {
-		t.Fatal(err)
-	}
-	if agent.ID == "" {
-		t.Fatal("expected non-empty agent ID")
-	}
-	if agent.Name != "my-agent" {
-		t.Fatalf("expected name=my-agent, got %q", agent.Name)
-	}
-	if agent.Title != "My Agent" {
-		t.Fatalf("expected title='My Agent', got %q", agent.Title)
-	}
-	if agent.Version != 1 {
-		t.Fatalf("expected version=1, got %d", agent.Version)
-	}
-}
-
-func TestAgentCreate_WithModel(t *testing.T) {
-	mgr := newTestManager(t, []mockClient{
-		{name: "provider-1", models: []schema.Model{{Name: "gpt-4"}}},
-	})
-	mux := serveMux(mgr)
-
-	body, _ := json.Marshal(schema.AgentMeta{
-		Name:          "model-agent",
-		GeneratorMeta: schema.GeneratorMeta{Model: "gpt-4"},
-	})
-	w := httptest.NewRecorder()
-	r := httptest.NewRequest(http.MethodPost, "/agent", bytes.NewReader(body))
-	r.Header.Set("Content-Type", "application/json")
-	mux.ServeHTTP(w, r)
-
-	if w.Code != http.StatusCreated {
-		t.Fatalf("expected 201, got %d: %s", w.Code, w.Body.String())
-	}
-
-	var agent schema.Agent
-	if err := json.NewDecoder(w.Body).Decode(&agent); err != nil {
-		t.Fatal(err)
-	}
-	if agent.Model != "gpt-4" {
-		t.Fatalf("expected model=gpt-4, got %q", agent.Model)
-	}
-	if agent.Provider != "provider-1" {
-		t.Fatalf("expected provider=provider-1, got %q", agent.Provider)
-	}
-}
-
-func TestAgentCreate_DuplicateName(t *testing.T) {
-	mgr := newTestManager(t, []mockClient{
-		{name: "provider-1", models: []schema.Model{{Name: "model-a"}}},
-	})
-	mux := serveMux(mgr)
-
-	body, _ := json.Marshal(schema.AgentMeta{Name: "duplicate"})
-	w := httptest.NewRecorder()
-	r := httptest.NewRequest(http.MethodPost, "/agent", bytes.NewReader(body))
-	r.Header.Set("Content-Type", "application/json")
-	mux.ServeHTTP(w, r)
-	if w.Code != http.StatusCreated {
-		t.Fatalf("create: expected 201, got %d: %s", w.Code, w.Body.String())
-	}
-
-	body, _ = json.Marshal(schema.AgentMeta{Name: "duplicate"})
-	w = httptest.NewRecorder()
-	r = httptest.NewRequest(http.MethodPost, "/agent", bytes.NewReader(body))
-	r.Header.Set("Content-Type", "application/json")
-	mux.ServeHTTP(w, r)
-
-	if w.Code != http.StatusConflict {
-		t.Fatalf("expected 409, got %d: %s", w.Code, w.Body.String())
-	}
-}
-
-func TestAgentCreate_InvalidJSON(t *testing.T) {
-	mgr := newTestManager(t, []mockClient{
-		{name: "provider-1", models: []schema.Model{{Name: "model-a"}}},
-	})
-	mux := serveMux(mgr)
+func TestGetAgent(t *testing.T) {
+	manager := &llmmanager.Manager{Toolkit: mustAgentToolkit(t)}
+	_, _, item := AgentResourceHandler(manager)
 
 	w := httptest.NewRecorder()
-	r := httptest.NewRequest(http.MethodPost, "/agent", bytes.NewBufferString("{invalid"))
-	r.Header.Set("Content-Type", "application/json")
-	mux.ServeHTTP(w, r)
-
-	if w.Code != http.StatusBadRequest {
-		t.Fatalf("expected 400, got %d: %s", w.Code, w.Body.String())
-	}
-}
-
-func TestAgent_MethodNotAllowed(t *testing.T) {
-	mgr := newTestManager(t, []mockClient{
-		{name: "provider-1", models: []schema.Model{{Name: "model-a"}}},
-	})
-	mux := serveMux(mgr)
-
-	w := httptest.NewRecorder()
-	r := httptest.NewRequest(http.MethodDelete, "/agent", nil)
-	mux.ServeHTTP(w, r)
-
-	if w.Code != http.StatusMethodNotAllowed {
-		t.Fatalf("expected 405, got %d", w.Code)
-	}
-}
-
-///////////////////////////////////////////////////////////////////////////////
-// AGENT GET TESTS
-
-func TestAgentGet_ByID(t *testing.T) {
-	mgr := newTestManager(t, []mockClient{
-		{name: "provider-1", models: []schema.Model{{Name: "model-a"}}},
-	})
-	mux := serveMux(mgr)
-
-	body, _ := json.Marshal(schema.AgentMeta{Name: "get-test"})
-	w := httptest.NewRecorder()
-	r := httptest.NewRequest(http.MethodPost, "/agent", bytes.NewReader(body))
-	r.Header.Set("Content-Type", "application/json")
-	mux.ServeHTTP(w, r)
-	if w.Code != http.StatusCreated {
-		t.Fatalf("create: expected 201, got %d: %s", w.Code, w.Body.String())
-	}
-
-	var created schema.Agent
-	if err := json.NewDecoder(w.Body).Decode(&created); err != nil {
-		t.Fatal(err)
-	}
-
-	w = httptest.NewRecorder()
-	r = httptest.NewRequest(http.MethodGet, "/agent/"+created.ID, nil)
-	mux.ServeHTTP(w, r)
+	r := httptest.NewRequest(http.MethodGet, "/agent/builtin.alpha", nil)
+	r.SetPathValue("name", "builtin.alpha")
+	item.Handler().ServeHTTP(w, r)
 
 	if w.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
 	}
 
-	var agent schema.Agent
-	if err := json.NewDecoder(w.Body).Decode(&agent); err != nil {
+	var resp schema.AgentMeta
+	if err := json.NewDecoder(w.Body).Decode(&resp); err != nil {
 		t.Fatal(err)
 	}
-	if agent.ID != created.ID {
-		t.Fatalf("expected id=%s, got %s", created.ID, agent.ID)
+	if resp.Name != "builtin.alpha" {
+		t.Fatalf("expected agent %q, got %q", "builtin.alpha", resp.Name)
 	}
-	if agent.Name != "get-test" {
-		t.Fatalf("expected name=get-test, got %q", agent.Name)
+	if resp.Title != "Alpha Agent" {
+		t.Fatalf("expected title %q, got %q", "Alpha Agent", resp.Title)
 	}
 }
 
-func TestAgentGet_ByName(t *testing.T) {
-	mgr := newTestManager(t, []mockClient{
-		{name: "provider-1", models: []schema.Model{{Name: "model-a"}}},
-	})
-	mux := serveMux(mgr)
+func TestGetAgentUnescapesName(t *testing.T) {
+	manager := &llmmanager.Manager{Toolkit: mustAgentToolkit(t)}
+	_, _, item := AgentResourceHandler(manager)
 
-	body, _ := json.Marshal(schema.AgentMeta{Name: "named-agent"})
 	w := httptest.NewRecorder()
-	r := httptest.NewRequest(http.MethodPost, "/agent", bytes.NewReader(body))
-	r.Header.Set("Content-Type", "application/json")
-	mux.ServeHTTP(w, r)
-	if w.Code != http.StatusCreated {
-		t.Fatalf("create: expected 201, got %d: %s", w.Code, w.Body.String())
-	}
-
-	w = httptest.NewRecorder()
-	r = httptest.NewRequest(http.MethodGet, "/agent/named-agent", nil)
-	mux.ServeHTTP(w, r)
+	r := httptest.NewRequest(http.MethodGet, "/agent/builtin%2Ealpha", nil)
+	r.SetPathValue("name", "builtin%2Ealpha")
+	item.Handler().ServeHTTP(w, r)
 
 	if w.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
 	}
 
-	var agent schema.Agent
-	if err := json.NewDecoder(w.Body).Decode(&agent); err != nil {
+	var resp schema.AgentMeta
+	if err := json.NewDecoder(w.Body).Decode(&resp); err != nil {
 		t.Fatal(err)
 	}
-	if agent.Name != "named-agent" {
-		t.Fatalf("expected name=named-agent, got %q", agent.Name)
+	if resp.Name != "builtin.alpha" {
+		t.Fatalf("expected unescaped agent name %q, got %q", "builtin.alpha", resp.Name)
 	}
 }
 
-func TestAgentGet_NotFound(t *testing.T) {
-	mgr := newTestManager(t, []mockClient{
-		{name: "provider-1", models: []schema.Model{{Name: "model-a"}}},
-	})
-	mux := serveMux(mgr)
+func TestGetAgentNotFound(t *testing.T) {
+	manager := &llmmanager.Manager{Toolkit: mustAgentToolkit(t)}
+	_, _, item := AgentResourceHandler(manager)
 
 	w := httptest.NewRecorder()
-	r := httptest.NewRequest(http.MethodGet, "/agent/nonexistent", nil)
-	mux.ServeHTTP(w, r)
+	r := httptest.NewRequest(http.MethodGet, "/agent/builtin.missing", nil)
+	r.SetPathValue("name", "builtin.missing")
+	item.Handler().ServeHTTP(w, r)
 
 	if w.Code != http.StatusNotFound {
 		t.Fatalf("expected 404, got %d: %s", w.Code, w.Body.String())
 	}
 }
 
-///////////////////////////////////////////////////////////////////////////////
-// AGENT DELETE TESTS
-
-func TestAgentDelete_OK(t *testing.T) {
-	mgr := newTestManager(t, []mockClient{
-		{name: "provider-1", models: []schema.Model{{Name: "model-a"}}},
-	})
-	mux := serveMux(mgr)
-
-	body, _ := json.Marshal(schema.AgentMeta{Name: "doomed"})
-	w := httptest.NewRecorder()
-	r := httptest.NewRequest(http.MethodPost, "/agent", bytes.NewReader(body))
-	r.Header.Set("Content-Type", "application/json")
-	mux.ServeHTTP(w, r)
-	if w.Code != http.StatusCreated {
-		t.Fatalf("create: expected 201, got %d: %s", w.Code, w.Body.String())
-	}
-
-	var created schema.Agent
-	if err := json.NewDecoder(w.Body).Decode(&created); err != nil {
-		t.Fatal(err)
-	}
-
-	w = httptest.NewRecorder()
-	r = httptest.NewRequest(http.MethodDelete, "/agent/"+created.ID, nil)
-	mux.ServeHTTP(w, r)
-
-	if w.Code != http.StatusNoContent {
-		t.Fatalf("expected 204, got %d: %s", w.Code, w.Body.String())
-	}
-	if w.Body.Len() != 0 {
-		t.Fatalf("expected empty body, got %s", w.Body.String())
-	}
-
-	w = httptest.NewRecorder()
-	r = httptest.NewRequest(http.MethodGet, "/agent/"+created.ID, nil)
-	mux.ServeHTTP(w, r)
-
-	if w.Code != http.StatusNotFound {
-		t.Fatalf("expected 404 after delete, got %d: %s", w.Code, w.Body.String())
-	}
-}
-
-func TestAgentDelete_NotFound(t *testing.T) {
-	mgr := newTestManager(t, []mockClient{
-		{name: "provider-1", models: []schema.Model{{Name: "model-a"}}},
-	})
-	mux := serveMux(mgr)
+func TestCallAgent(t *testing.T) {
+	manager := &llmmanager.Manager{Toolkit: mustAgentToolkitWithDelegate(t, &agentHandlerMockDelegate{
+		call: func(_ context.Context, prompt llm.Prompt, resources ...llm.Resource) (llm.Resource, error) {
+			if prompt.Name() != "builtin.alpha" {
+				t.Fatalf("expected prompt %q, got %q", "builtin.alpha", prompt.Name())
+			}
+			if len(resources) != 1 {
+				t.Fatalf("expected 1 resource, got %d", len(resources))
+			}
+			body, err := resources[0].Read(context.Background())
+			if err != nil {
+				t.Fatal(err)
+			}
+			if string(body) != `{"query":"docs"}` {
+				t.Fatalf("unexpected resource body: %s", string(body))
+			}
+			result, err := resource.Text("answer", "resolved")
+			if err != nil {
+				t.Fatal(err)
+			}
+			return result, nil
+		},
+	})}
+	_, _, item := AgentResourceHandler(manager)
 
 	w := httptest.NewRecorder()
-	r := httptest.NewRequest(http.MethodDelete, "/agent/nonexistent", nil)
-	mux.ServeHTTP(w, r)
-
-	if w.Code != http.StatusNotFound {
-		t.Fatalf("expected 404, got %d: %s", w.Code, w.Body.String())
-	}
-}
-
-func TestAgentGet_MethodNotAllowed(t *testing.T) {
-	mgr := newTestManager(t, []mockClient{
-		{name: "provider-1", models: []schema.Model{{Name: "model-a"}}},
-	})
-	mux := serveMux(mgr)
-
-	w := httptest.NewRecorder()
-	r := httptest.NewRequest(http.MethodPatch, "/agent/some-id", nil)
-	mux.ServeHTTP(w, r)
-
-	if w.Code != http.StatusMethodNotAllowed {
-		t.Fatalf("expected 405, got %d", w.Code)
-	}
-}
-
-///////////////////////////////////////////////////////////////////////////////
-// AGENT PUT TESTS
-
-func TestAgentPut_OK(t *testing.T) {
-	mgr := newTestManager(t, []mockClient{
-		{name: "provider-1", models: []schema.Model{{Name: "gpt-4"}}},
-	})
-	mux := serveMux(mgr)
-
-	body, _ := json.Marshal(schema.AgentMeta{Name: "original", Title: "Original Title"})
-	w := httptest.NewRecorder()
-	r := httptest.NewRequest(http.MethodPost, "/agent", bytes.NewReader(body))
-	r.Header.Set("Content-Type", "application/json")
-	mux.ServeHTTP(w, r)
-	if w.Code != http.StatusCreated {
-		t.Fatalf("create: expected 201, got %d: %s", w.Code, w.Body.String())
-	}
-
-	body, _ = json.Marshal(schema.AgentMeta{Name: "original", Title: "Updated Title"})
-	w = httptest.NewRecorder()
-	r = httptest.NewRequest(http.MethodPut, "/agent", bytes.NewReader(body))
-	r.Header.Set("Content-Type", "application/json")
-	mux.ServeHTTP(w, r)
+	r := httptest.NewRequest(http.MethodPost, "/agent/builtin.alpha", bytes.NewReader([]byte(`{"input":{"query":"docs"}}`)))
+	r.Header.Set(types.ContentTypeHeader, types.ContentTypeJSON)
+	r.SetPathValue("name", "builtin.alpha")
+	item.Handler().ServeHTTP(w, r)
 
 	if w.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
 	}
-
-	var updated schema.Agent
-	if err := json.NewDecoder(w.Body).Decode(&updated); err != nil {
-		t.Fatal(err)
+	if got := w.Header().Get(types.ContentTypeHeader); got != types.ContentTypeTextPlain {
+		t.Fatalf("expected content type %q, got %q", types.ContentTypeTextPlain, got)
 	}
-	if updated.Title != "Updated Title" {
-		t.Fatalf("expected title='Updated Title', got %q", updated.Title)
+	if got := w.Header().Get(types.ContentPathHeader); got != "text:answer" {
+		t.Fatalf("expected content path %q, got %q", "text:answer", got)
 	}
-	if updated.Version != 2 {
-		t.Fatalf("expected version=2, got %d", updated.Version)
+	if got := w.Header().Get(types.ContentNameHeader); got != "answer" {
+		t.Fatalf("expected content name %q, got %q", "answer", got)
 	}
-}
-
-func TestAgentPut_NotModified(t *testing.T) {
-	mgr := newTestManager(t, []mockClient{
-		{name: "provider-1", models: []schema.Model{{Name: "gpt-4"}}},
-	})
-	mux := serveMux(mgr)
-
-	body, _ := json.Marshal(schema.AgentMeta{Name: "unchanged", Title: "Same Title Here"})
-	w := httptest.NewRecorder()
-	r := httptest.NewRequest(http.MethodPost, "/agent", bytes.NewReader(body))
-	r.Header.Set("Content-Type", "application/json")
-	mux.ServeHTTP(w, r)
-	if w.Code != http.StatusCreated {
-		t.Fatalf("create: expected 201, got %d: %s", w.Code, w.Body.String())
-	}
-
-	// PUT with identical data
-	body, _ = json.Marshal(schema.AgentMeta{Name: "unchanged", Title: "Same Title Here"})
-	w = httptest.NewRecorder()
-	r = httptest.NewRequest(http.MethodPut, "/agent", bytes.NewReader(body))
-	r.Header.Set("Content-Type", "application/json")
-	mux.ServeHTTP(w, r)
-
-	if w.Code != http.StatusNotModified {
-		t.Fatalf("expected 304, got %d: %s", w.Code, w.Body.String())
-	}
-	if w.Body.Len() != 0 {
-		t.Fatalf("expected empty body for 304, got %s", w.Body.String())
+	if got := w.Body.String(); got != "resolved" {
+		t.Fatalf("unexpected response body: %s", got)
 	}
 }
 
-func TestAgentPut_WithModel(t *testing.T) {
-	mgr := newTestManager(t, []mockClient{
-		{name: "provider-1", models: []schema.Model{{Name: "gpt-4"}}},
-	})
-	mux := serveMux(mgr)
-
-	body, _ := json.Marshal(schema.AgentMeta{Name: "no-model"})
-	w := httptest.NewRecorder()
-	r := httptest.NewRequest(http.MethodPost, "/agent", bytes.NewReader(body))
-	r.Header.Set("Content-Type", "application/json")
-	mux.ServeHTTP(w, r)
-	if w.Code != http.StatusCreated {
-		t.Fatalf("create: expected 201, got %d: %s", w.Code, w.Body.String())
-	}
-
-	body, _ = json.Marshal(schema.AgentMeta{Name: "no-model", GeneratorMeta: schema.GeneratorMeta{Model: "gpt-4"}})
-	w = httptest.NewRecorder()
-	r = httptest.NewRequest(http.MethodPut, "/agent", bytes.NewReader(body))
-	r.Header.Set("Content-Type", "application/json")
-	mux.ServeHTTP(w, r)
-
-	if w.Code != http.StatusOK {
-		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
-	}
-
-	var updated schema.Agent
-	if err := json.NewDecoder(w.Body).Decode(&updated); err != nil {
-		t.Fatal(err)
-	}
-	if updated.Model != "gpt-4" {
-		t.Fatalf("expected model=gpt-4, got %q", updated.Model)
-	}
-	if updated.Provider != "provider-1" {
-		t.Fatalf("expected provider=provider-1, got %q", updated.Provider)
-	}
-}
-
-func TestAgentPut_NotFound(t *testing.T) {
-	mgr := newTestManager(t, []mockClient{
-		{name: "provider-1", models: []schema.Model{{Name: "model-a"}}},
-	})
-	mux := serveMux(mgr)
-
-	body, _ := json.Marshal(schema.AgentMeta{Name: "nonexistent", Title: "Does Not Exist"})
-	w := httptest.NewRecorder()
-	r := httptest.NewRequest(http.MethodPut, "/agent", bytes.NewReader(body))
-	r.Header.Set("Content-Type", "application/json")
-	mux.ServeHTTP(w, r)
-
-	if w.Code != http.StatusNotFound {
-		t.Fatalf("expected 404, got %d: %s", w.Code, w.Body.String())
-	}
-}
-
-func TestAgentPut_InvalidJSON(t *testing.T) {
-	mgr := newTestManager(t, []mockClient{
-		{name: "provider-1", models: []schema.Model{{Name: "model-a"}}},
-	})
-	mux := serveMux(mgr)
+func TestCallAgentInvalidBody(t *testing.T) {
+	manager := &llmmanager.Manager{Toolkit: mustAgentToolkit(t)}
+	_, _, item := AgentResourceHandler(manager)
 
 	w := httptest.NewRecorder()
-	r := httptest.NewRequest(http.MethodPut, "/agent", bytes.NewBufferString("{invalid"))
-	r.Header.Set("Content-Type", "application/json")
-	mux.ServeHTTP(w, r)
+	r := httptest.NewRequest(http.MethodPost, "/agent/builtin.alpha", bytes.NewReader([]byte(`{"input":`)))
+	r.Header.Set(types.ContentTypeHeader, types.ContentTypeJSON)
+	r.SetPathValue("name", "builtin.alpha")
+	item.Handler().ServeHTTP(w, r)
 
 	if w.Code != http.StatusBadRequest {
 		t.Fatalf("expected 400, got %d: %s", w.Code, w.Body.String())
 	}
 }
 
-///////////////////////////////////////////////////////////////////////////////
-// AGENT MARKDOWN/TEXT CONTENT TYPE TESTS
+func TestCallAgentUnescapesName(t *testing.T) {
+	manager := &llmmanager.Manager{Toolkit: mustAgentToolkitWithDelegate(t, &agentHandlerMockDelegate{
+		call: func(_ context.Context, prompt llm.Prompt, resources ...llm.Resource) (llm.Resource, error) {
+			if prompt.Name() != "builtin.alpha" {
+				t.Fatalf("expected prompt %q, got %q", "builtin.alpha", prompt.Name())
+			}
+			result, err := resource.Text("answer", "resolved")
+			if err != nil {
+				t.Fatal(err)
+			}
+			return result, nil
+		},
+	})}
+	_, _, item := AgentResourceHandler(manager)
 
-func TestAgentCreate_Markdown(t *testing.T) {
-	mgr := newTestManager(t, []mockClient{
-		{name: "provider-1", models: []schema.Model{{Name: "gpt-4"}}},
-	})
-	mux := serveMux(mgr)
-
-	md := "---\nname: md-agent\ntitle: Markdown Agent\nmodel: gpt-4\n---\nYou are a helpful assistant.\n"
 	w := httptest.NewRecorder()
-	r := httptest.NewRequest(http.MethodPost, "/agent", bytes.NewBufferString(md))
-	r.Header.Set("Content-Type", "text/markdown")
-	mux.ServeHTTP(w, r)
-
-	if w.Code != http.StatusCreated {
-		t.Fatalf("expected 201, got %d: %s", w.Code, w.Body.String())
-	}
-
-	var agent schema.Agent
-	if err := json.NewDecoder(w.Body).Decode(&agent); err != nil {
-		t.Fatal(err)
-	}
-	if agent.Name != "md-agent" {
-		t.Fatalf("expected name=md-agent, got %q", agent.Name)
-	}
-	if agent.Title != "Markdown Agent" {
-		t.Fatalf("expected title='Markdown Agent', got %q", agent.Title)
-	}
-	if agent.Model != "gpt-4" {
-		t.Fatalf("expected model=gpt-4, got %q", agent.Model)
-	}
-	if agent.Template != "You are a helpful assistant." {
-		t.Fatalf("expected template='You are a helpful assistant.', got %q", agent.Template)
-	}
-}
-
-func TestAgentCreate_TextPlain(t *testing.T) {
-	mgr := newTestManager(t, []mockClient{
-		{name: "provider-1", models: []schema.Model{{Name: "model-a"}}},
-	})
-	mux := serveMux(mgr)
-
-	md := "---\nname: text-agent\ntitle: Text Plain Agent\n---\nPlain text template.\n"
-	w := httptest.NewRecorder()
-	r := httptest.NewRequest(http.MethodPost, "/agent", bytes.NewBufferString(md))
-	r.Header.Set("Content-Type", "text/plain")
-	mux.ServeHTTP(w, r)
-
-	if w.Code != http.StatusCreated {
-		t.Fatalf("expected 201, got %d: %s", w.Code, w.Body.String())
-	}
-
-	var agent schema.Agent
-	if err := json.NewDecoder(w.Body).Decode(&agent); err != nil {
-		t.Fatal(err)
-	}
-	if agent.Name != "text-agent" {
-		t.Fatalf("expected name=text-agent, got %q", agent.Name)
-	}
-	if agent.Template != "Plain text template." {
-		t.Fatalf("expected template='Plain text template.', got %q", agent.Template)
-	}
-}
-
-func TestAgentCreate_MarkdownWithCharset(t *testing.T) {
-	mgr := newTestManager(t, []mockClient{
-		{name: "provider-1", models: []schema.Model{{Name: "model-a"}}},
-	})
-	mux := serveMux(mgr)
-
-	md := "---\nname: charset-agent\ntitle: Charset Agent Test\n---\nTemplate body.\n"
-	w := httptest.NewRecorder()
-	r := httptest.NewRequest(http.MethodPost, "/agent", bytes.NewBufferString(md))
-	r.Header.Set("Content-Type", "text/markdown; charset=utf-8")
-	mux.ServeHTTP(w, r)
-
-	if w.Code != http.StatusCreated {
-		t.Fatalf("expected 201, got %d: %s", w.Code, w.Body.String())
-	}
-
-	var agent schema.Agent
-	if err := json.NewDecoder(w.Body).Decode(&agent); err != nil {
-		t.Fatal(err)
-	}
-	if agent.Name != "charset-agent" {
-		t.Fatalf("expected name=charset-agent, got %q", agent.Name)
-	}
-}
-
-func TestAgentCreate_MarkdownInvalid(t *testing.T) {
-	mgr := newTestManager(t, []mockClient{
-		{name: "provider-1", models: []schema.Model{{Name: "model-a"}}},
-	})
-	mux := serveMux(mgr)
-
-	// Missing closing --- in front matter
-	md := "---\nname: bad\ntitle: Bad Agent\n"
-	w := httptest.NewRecorder()
-	r := httptest.NewRequest(http.MethodPost, "/agent", bytes.NewBufferString(md))
-	r.Header.Set("Content-Type", "text/markdown")
-	mux.ServeHTTP(w, r)
-
-	if w.Code != http.StatusBadRequest {
-		t.Fatalf("expected 400, got %d: %s", w.Code, w.Body.String())
-	}
-}
-
-func TestAgentPut_Markdown(t *testing.T) {
-	mgr := newTestManager(t, []mockClient{
-		{name: "provider-1", models: []schema.Model{{Name: "gpt-4"}}},
-	})
-	mux := serveMux(mgr)
-
-	// Create via JSON first
-	body, _ := json.Marshal(schema.AgentMeta{Name: "put-md", Title: "Put Markdown Test"})
-	w := httptest.NewRecorder()
-	r := httptest.NewRequest(http.MethodPost, "/agent", bytes.NewReader(body))
-	r.Header.Set("Content-Type", "application/json")
-	mux.ServeHTTP(w, r)
-	if w.Code != http.StatusCreated {
-		t.Fatalf("create: expected 201, got %d: %s", w.Code, w.Body.String())
-	}
-
-	// PUT via markdown
-	md := "---\nname: put-md\ntitle: Updated Markdown Title\nmodel: gpt-4\n---\nNew template body.\n"
-	w = httptest.NewRecorder()
-	r = httptest.NewRequest(http.MethodPut, "/agent", bytes.NewBufferString(md))
-	r.Header.Set("Content-Type", "text/markdown")
-	mux.ServeHTTP(w, r)
+	r := httptest.NewRequest(http.MethodPost, "/agent/builtin%2Ealpha", bytes.NewReader([]byte(`{"input":{"query":"docs"}}`)))
+	r.Header.Set(types.ContentTypeHeader, types.ContentTypeJSON)
+	r.SetPathValue("name", "builtin%2Ealpha")
+	item.Handler().ServeHTTP(w, r)
 
 	if w.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
 	}
-
-	var updated schema.Agent
-	if err := json.NewDecoder(w.Body).Decode(&updated); err != nil {
-		t.Fatal(err)
-	}
-	if updated.Title != "Updated Markdown Title" {
-		t.Fatalf("expected title='Updated Markdown Title', got %q", updated.Title)
-	}
-	if updated.Template != "New template body." {
-		t.Fatalf("expected template='New template body.', got %q", updated.Template)
-	}
-	if updated.Version != 2 {
-		t.Fatalf("expected version=2, got %d", updated.Version)
+	if got := w.Body.String(); got != "resolved" {
+		t.Fatalf("unexpected response body: %s", got)
 	}
 }
 
-func TestAgentPut_TextPlain(t *testing.T) {
-	mgr := newTestManager(t, []mockClient{
-		{name: "provider-1", models: []schema.Model{{Name: "model-a"}}},
-	})
-	mux := serveMux(mgr)
+func mustAgentToolkit(t *testing.T) toolkit.Toolkit {
+	t.Helper()
+	return mustAgentToolkitWithDelegate(t, nil)
+}
 
-	// Create via JSON
-	body, _ := json.Marshal(schema.AgentMeta{Name: "put-txt", Title: "Put Text Test!!"})
-	w := httptest.NewRecorder()
-	r := httptest.NewRequest(http.MethodPost, "/agent", bytes.NewReader(body))
-	r.Header.Set("Content-Type", "application/json")
-	mux.ServeHTTP(w, r)
-	if w.Code != http.StatusCreated {
-		t.Fatalf("create: expected 201, got %d: %s", w.Code, w.Body.String())
+func mustAgentToolkitWithDelegate(t *testing.T, delegate toolkit.ToolkitDelegate) toolkit.Toolkit {
+	t.Helper()
+	var tk toolkit.Toolkit
+	var err error
+	if delegate != nil {
+		tk, err = toolkit.New(toolkit.WithDelegate(delegate))
+	} else {
+		tk, err = toolkit.New()
 	}
-
-	// PUT via text/plain
-	md := "---\nname: put-txt\ntitle: Updated Text Title\n---\nUpdated template.\n"
-	w = httptest.NewRecorder()
-	r = httptest.NewRequest(http.MethodPut, "/agent", bytes.NewBufferString(md))
-	r.Header.Set("Content-Type", "text/plain")
-	mux.ServeHTTP(w, r)
-
-	if w.Code != http.StatusOK {
-		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
-	}
-
-	var updated schema.Agent
-	if err := json.NewDecoder(w.Body).Decode(&updated); err != nil {
+	if err != nil {
 		t.Fatal(err)
 	}
-	if updated.Title != "Updated Text Title" {
-		t.Fatalf("expected title='Updated Text Title', got %q", updated.Title)
+	if err := tk.AddPrompt(
+		&agentHandlerMockPrompt{name: "alpha", title: "Alpha Agent", description: "A"},
+		&agentHandlerMockPrompt{name: "bravo", title: "Bravo Agent", description: "B"},
+		&agentHandlerMockPrompt{name: "charlie", title: "Charlie Agent", description: "C"},
+	); err != nil {
+		t.Fatal(err)
 	}
-	if updated.Template != "Updated template." {
-		t.Fatalf("expected template='Updated template.', got %q", updated.Template)
-	}
+
+	return tk
 }

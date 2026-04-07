@@ -6,6 +6,7 @@ import (
 
 	// Packages
 	llm "github.com/mutablelogic/go-llm"
+	schema "github.com/mutablelogic/go-llm/pkg/schema"
 )
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -31,7 +32,7 @@ func WithTruncate() llm.Opt {
 func WithKeepAlive(v time.Duration) llm.Opt {
 	return func(o *llm.Opts) error {
 		if v <= 0 {
-			return llm.ErrBadParameter.With("keepalive must be greater than zero")
+			return schema.ErrBadParameter.With("keepalive must be greater than zero")
 		}
 		o.Set("keepalive", v)
 		return nil

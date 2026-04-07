@@ -3,6 +3,7 @@ package google
 import (
 	"testing"
 
+	schema "github.com/mutablelogic/go-llm/pkg/schema"
 	assert "github.com/stretchr/testify/assert"
 )
 
@@ -49,7 +50,7 @@ func Test_toSchema_003(t *testing.T) {
 }
 
 func Test_toSchema_004(t *testing.T) {
-	// Test that token limits and sampling parameters appear in meta
+	// Test that token limits are copied into schema fields and preserved in meta.
 	assert := assert.New(t)
 	m := &geminiModel{
 		Name:             "models/test-model",
@@ -62,6 +63,12 @@ func Test_toSchema_004(t *testing.T) {
 	}
 	result := m.toSchema()
 
+	if assert.NotNil(result.InputTokenLimit) {
+		assert.EqualValues(1048576, *result.InputTokenLimit)
+	}
+	if assert.NotNil(result.OutputTokenLimit) {
+		assert.EqualValues(8192, *result.OutputTokenLimit)
+	}
 	// JSON round-trip produces float64 values
 	assert.EqualValues(1048576, result.Meta["inputTokenLimit"])
 	assert.EqualValues(8192, result.Meta["outputTokenLimit"])
@@ -72,23 +79,25 @@ func Test_toSchema_004(t *testing.T) {
 }
 
 func Test_toSchema_005(t *testing.T) {
-	// Test that supported generation methods are preserved in meta
+	// Test that supported generation methods are preserved in meta and map to capabilities.
 	assert := assert.New(t)
 	m := &geminiModel{
 		Name:                       "models/test-model",
-		SupportedGenerationMethods: []string{"generateContent", "countTokens"},
+		SupportedGenerationMethods: []string{"generateContent", "countTokens", "embedContent"},
 	}
 	result := m.toSchema()
 
 	methods, ok := result.Meta["supportedGenerationMethods"].([]any)
 	assert.True(ok)
-	assert.Len(methods, 2)
+	assert.Len(methods, 3)
 	assert.Equal("generateContent", methods[0])
 	assert.Equal("countTokens", methods[1])
+	assert.Equal("embedContent", methods[2])
+	assert.Equal(schema.ModelCapCompletion|schema.ModelCapEmbeddings|schema.ModelCapTools, result.Cap)
 }
 
 func Test_toSchema_006(t *testing.T) {
-	// Test that thinking flag appears in meta
+	// Test that thinking flag appears in meta and sets thinking capability.
 	assert := assert.New(t)
 	m := &geminiModel{
 		Name:     "models/thinking-model",
@@ -96,9 +105,30 @@ func Test_toSchema_006(t *testing.T) {
 	}
 	result := m.toSchema()
 	assert.Equal(true, result.Meta["thinking"])
+	assert.Equal(schema.ModelCapThinking|schema.ModelCapTools, result.Cap)
 }
 
 func Test_toSchema_007(t *testing.T) {
+	// Test generateAnswer maps to completion capability.
+	assert := assert.New(t)
+	m := &geminiModel{
+		Name:                       "models/aqa",
+		SupportedGenerationMethods: []string{"generateAnswer"},
+		InputTokenLimit:            7168,
+		OutputTokenLimit:           1024,
+	}
+	result := m.toSchema()
+
+	if assert.NotNil(result.InputTokenLimit) {
+		assert.EqualValues(7168, *result.InputTokenLimit)
+	}
+	if assert.NotNil(result.OutputTokenLimit) {
+		assert.EqualValues(1024, *result.OutputTokenLimit)
+	}
+	assert.Equal(schema.ModelCapCompletion|schema.ModelCapTools, result.Cap)
+}
+
+func Test_toSchema_008(t *testing.T) {
 	// Test with minimal model (empty fields omitted by json omitempty)
 	assert := assert.New(t)
 	m := &geminiModel{
@@ -109,6 +139,9 @@ func Test_toSchema_007(t *testing.T) {
 	assert.Equal("minimal", result.Name)
 	assert.Equal("gemini", result.OwnedBy)
 	assert.Empty(result.Description)
+	assert.Nil(result.InputTokenLimit)
+	assert.Nil(result.OutputTokenLimit)
+	assert.Zero(result.Cap)
 	// Zero-value fields should be omitted by json omitempty
 	assert.Nil(result.Meta["inputTokenLimit"])
 	assert.Nil(result.Meta["outputTokenLimit"])

@@ -117,7 +117,7 @@ func (d *delegate) logResources() {
 // METHODS
 
 func (d *delegate) Call(ctx context.Context, p llm.Prompt, resources ...llm.Resource) (llm.Resource, error) {
-	return nil, llm.ErrNotImplemented.With("prompt execution not supported in this example")
+	return nil, schema.ErrNotImplemented.With("prompt execution not supported in this example")
 }
 
 func (d *delegate) List(ctx context.Context, req toolkit.ListRequest) (*toolkit.ListResponse, error) {

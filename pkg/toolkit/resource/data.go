@@ -13,6 +13,7 @@ import (
 
 	// Packages
 	llm "github.com/mutablelogic/go-llm"
+	"github.com/mutablelogic/go-llm/pkg/schema"
 	types "github.com/mutablelogic/go-server/pkg/types"
 	"golang.org/x/text/encoding/htmlindex"
 	"golang.org/x/text/transform"
@@ -42,7 +43,7 @@ func Data(name string, data []byte) (llm.Resource, error) {
 	// Derive identifier from filename: strip directory and extension
 	id := strings.TrimSuffix(filepath.Base(name), filepath.Ext(name))
 	if !types.IsIdentifier(id) {
-		return nil, llm.ErrBadParameter.Withf("name: must be a non-empty identifier, got %q", id)
+		return nil, schema.ErrBadParameter.Withf("name: must be a non-empty identifier, got %q", id)
 	}
 
 	// Resolve MIME type: content sniffing wins, extension as fallback

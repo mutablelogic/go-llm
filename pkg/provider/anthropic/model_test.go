@@ -4,6 +4,7 @@ import (
 	"testing"
 	"time"
 
+	schema "github.com/mutablelogic/go-llm/pkg/schema"
 	assert "github.com/stretchr/testify/assert"
 )
 
@@ -22,6 +23,7 @@ func Test_toSchema_001(t *testing.T) {
 	assert.Equal("Claude Sonnet 4", result.Description)
 	assert.Equal("anthropic", result.OwnedBy)
 	assert.Equal(time.Date(2025, 5, 22, 0, 0, 0, 0, time.UTC), result.Created)
+	assert.Equal(schema.ModelCapCompletion|schema.ModelCapThinking|schema.ModelCapTools, result.Cap)
 	assert.Equal("sonnet", result.Meta["variant"])
 	assert.Equal("4", result.Meta["version"])
 	assert.Equal("20250514", result.Meta["date"])
@@ -39,6 +41,7 @@ func Test_toSchema_002(t *testing.T) {
 	assert.Equal("some-unknown-model", result.Name)
 	assert.Equal("Unknown", result.Description)
 	assert.Equal("anthropic", result.OwnedBy)
+	assert.Equal(schema.ModelCapCompletion|schema.ModelCapTools, result.Cap)
 	assert.Empty(result.Meta)
 }
 
@@ -67,9 +70,46 @@ func Test_toSchema_004(t *testing.T) {
 
 	assert.Equal("opus", result.Meta["variant"])
 	assert.Equal("4.6", result.Meta["version"])
+	assert.Equal(schema.ModelCapCompletion|schema.ModelCapThinking|schema.ModelCapTools, result.Cap)
 	// No date in this format
 	_, hasDate := result.Meta["date"]
 	assert.False(hasDate)
+}
+
+func Test_toSchema_005(t *testing.T) {
+	assert := assert.New(t)
+	m := model{
+		Id:          "claude-3-haiku-20240307",
+		DisplayName: "Claude Haiku 3",
+	}
+	result := m.toSchema()
+
+	assert.Equal(schema.ModelCapCompletion|schema.ModelCapTools, result.Cap)
+}
+
+func TestSupportsThinking(t *testing.T) {
+	tests := []struct {
+		name     string
+		expected bool
+	}{
+		{"claude-haiku-4-5-20251001", true},
+		{"claude-opus-4-1-20250805", true},
+		{"claude-opus-4-20250514", true},
+		{"claude-opus-4-5-20251101", true},
+		{"claude-opus-4-6", true},
+		{"claude-sonnet-4-20250514", true},
+		{"claude-sonnet-4-5-20250929", true},
+		{"claude-sonnet-4-6", true},
+		{"claude-3-7-sonnet-20250219", true},
+		{"claude-3-haiku-20240307", false},
+		{"some-unknown-model", false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equal(t, tt.expected, supportsThinking(tt.name))
+		})
+	}
 }
 
 func Test_parseModelId_001(t *testing.T) {

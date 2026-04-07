@@ -2,155 +2,174 @@ package manager
 
 import (
 	"context"
+	"encoding/json"
+	"slices"
 
 	// Packages
+	auth "github.com/djthorpe/go-auth/schema/auth"
 	otel "github.com/mutablelogic/go-client/pkg/otel"
 	llm "github.com/mutablelogic/go-llm"
-	agent "github.com/mutablelogic/go-llm/pkg/agent"
 	schema "github.com/mutablelogic/go-llm/pkg/schema"
+	toolkit "github.com/mutablelogic/go-llm/pkg/toolkit"
+	resource "github.com/mutablelogic/go-llm/pkg/toolkit/resource"
+	types "github.com/mutablelogic/go-server/pkg/types"
 	attribute "go.opentelemetry.io/otel/attribute"
 )
 
 ///////////////////////////////////////////////////////////////////////////////
 // PUBLIC METHODS
 
-// CreateAgent creates a new agent from the given metadata.
-func (m *Manager) CreateAgent(ctx context.Context, meta schema.AgentMeta) (result *schema.Agent, err error) {
-	// Otel span
-	ctx, endSpan := otel.StartSpan(m.tracer, ctx, "CreateAgent",
-		attribute.String("request", meta.String()),
-	)
-	defer func() { endSpan(err) }()
-
-	// Ensure Tools is always non-nil so agents are always restricted
-	if meta.Tools == nil {
-		meta.Tools = []string{}
-	}
-
-	// Resolve the model to ensure it exists, and fill in the provider if not set
-	if meta.Model != "" {
-		model, err := m.getModel(ctx, meta.Provider, meta.Model)
-		if err != nil {
-			return nil, err
-		}
-		meta.Provider = model.OwnedBy
-	}
-
-	// Create the agent and return it
-	return m.agentStore.CreateAgent(ctx, meta)
-}
-
-// GetAgent retrieves an agent by ID or name.
-func (m *Manager) GetAgent(ctx context.Context, id string) (result *schema.Agent, err error) {
-	// Otel span
-	ctx, endSpan := otel.StartSpan(m.tracer, ctx, "GetAgent",
-		attribute.String("id", id),
-	)
-	defer func() { endSpan(err) }()
-
-	return m.agentStore.GetAgent(ctx, id)
-}
-
-// DeleteAgent deletes an agent by ID or name and returns it.
-func (m *Manager) DeleteAgent(ctx context.Context, id string) (result *schema.Agent, err error) {
-	// Otel span
-	ctx, endSpan := otel.StartSpan(m.tracer, ctx, "DeleteAgent",
-		attribute.String("id", id),
-	)
-	defer func() { endSpan(err) }()
-
-	a, err := m.agentStore.GetAgent(ctx, id)
-	if err != nil {
-		return nil, err
-	}
-	if err := m.agentStore.DeleteAgent(ctx, id); err != nil {
-		return nil, err
-	}
-	return a, nil
-}
-
-// ListAgents returns agents with pagination support.
-func (m *Manager) ListAgents(ctx context.Context, req schema.ListAgentRequest) (result *schema.ListAgentResponse, err error) {
+// ListAgents returns paginated prompt metadata from the current toolkit,
+// exposing prompts externally as agents.
+func (m *Manager) ListAgents(ctx context.Context, req schema.AgentListRequest, user *auth.User) (result *schema.AgentList, err error) {
 	// Otel span
 	ctx, endSpan := otel.StartSpan(m.tracer, ctx, "ListAgents",
-		attribute.String("request", req.String()),
+		attribute.String("req", req.String()),
+		attribute.String("user", types.Stringify(user)),
 	)
 	defer func() { endSpan(err) }()
 
-	return m.agentStore.ListAgents(ctx, req)
-}
-
-// UpdateAgent updates an agent's metadata and creates a new version.
-// If Model or Provider are changed, they are validated against the registered providers first.
-func (m *Manager) UpdateAgent(ctx context.Context, id string, meta schema.AgentMeta) (result *schema.Agent, err error) {
-	// Otel span
-	ctx, endSpan := otel.StartSpan(m.tracer, ctx, "UpdateAgent",
-		attribute.String("request", meta.String()),
-	)
-	defer func() { endSpan(err) }()
-
-	// If model or provider is being changed, validate
-	if meta.Model != "" || meta.Provider != "" {
-		model, err := m.getModel(ctx, meta.Provider, meta.Model)
-		if err != nil {
-			return nil, err
-		}
-		meta.Model = model.Name
-		meta.Provider = model.OwnedBy
-	}
-
-	// Delegate to store
-	return m.agentStore.UpdateAgent(ctx, id, meta)
-}
-
-// CreateAgentSession resolves an agent by ID or name, validates input against
-// the agent's schema, executes the agent's template, and creates a new session
-// with merged GeneratorMeta and agent labels.
-// If Parent is provided, the parent session's GeneratorMeta is used
-// as defaults (agent fields take precedence). The returned response contains
-// the session ID, rendered text, and tools, which the caller can pass to Chat.
-func (m *Manager) CreateAgentSession(ctx context.Context, id string, request schema.CreateAgentSessionRequest) (result *schema.CreateAgentSessionResponse, err error) {
-	// Otel span
-	ctx, endSpan := otel.StartSpan(m.tracer, ctx, "CreateAgentSession",
-		attribute.String("request", request.String()),
-	)
-	defer func() { endSpan(err) }()
-
-	if id == "" {
-		return nil, llm.ErrBadParameter.With("agent is required")
-	}
-
-	// Resolve the agent definition by ID or name
-	agentDef, err := m.agentStore.GetAgent(ctx, id)
+	// Filter prompts by namespace based on the user's accessible namespaces
+	matched, count, err := m.listAgents(ctx, req, user)
 	if err != nil {
 		return nil, err
 	}
 
-	// If a parent session is provided, use its GeneratorMeta as defaults
-	var defaults schema.GeneratorMeta
-	if request.Parent != "" {
-		parent, err := m.sessionStore.GetSession(ctx, request.Parent)
-		if err != nil {
-			return nil, err
-		}
-		defaults = parent.GeneratorMeta
+	// Convert prompts to agent metadata
+	body := make([]*schema.AgentMeta, 0, len(matched))
+	for _, prompt := range matched {
+		meta := newAgentMeta(prompt)
+		body = append(body, &meta)
 	}
 
-	// Prepare: validate input, execute template, merge GeneratorMeta
-	prepared, err := agent.Prepare(agentDef, request.Parent, defaults, request.Input)
-	if err != nil {
-		return nil, err
-	}
-
-	// Create a new session from the prepared metadata
-	session, err := m.CreateSession(ctx, prepared.SessionMeta)
-	if err != nil {
-		return nil, err
-	}
-
-	return &schema.CreateAgentSessionResponse{
-		Session: session.ID,
-		Text:    prepared.Text,
-		Tools:   prepared.Tools,
+	// Return the list response
+	return &schema.AgentList{
+		AgentListRequest: req,
+		Count:            count,
+		Body:             body,
 	}, nil
+}
+
+// GetAgent returns agent metadata by name, scoped by the user's accessible namespaces.
+func (m *Manager) GetAgent(ctx context.Context, name string, user *auth.User) (result *schema.AgentMeta, err error) {
+	// Otel span
+	ctx, endSpan := otel.StartSpan(m.tracer, ctx, "GetAgent",
+		attribute.String("name", name),
+		attribute.String("user", types.Stringify(user)),
+	)
+	defer func() { endSpan(err) }()
+
+	// Filter prompts by namespace based on the user's accessible namespaces, and return the one matching the given name
+	prompts, _, err := m.listAgents(ctx, schema.AgentListRequest{Name: []string{name}}, user)
+	if err != nil {
+		return nil, err
+	}
+
+	// If there are no matches, return not found. If there are multiple matches, return a conflict error
+	if len(prompts) == 0 {
+		return nil, schema.ErrNotFound.Withf("agent %q", name)
+	}
+	if len(prompts) > 1 {
+		return nil, schema.ErrConflict.Withf("multiple agents matched %q; specify a fully-qualified agent name", name)
+	}
+
+	// Convert the matched prompt to agent metadata and return it
+	meta := newAgentMeta(prompts[0])
+	return types.Ptr(meta), nil
+}
+
+// CallAgent executes an agent by name with the given input, scoped by the user's accessible namespaces.
+func (m *Manager) CallAgent(ctx context.Context, name string, req schema.CallAgentRequest, user *auth.User) (result llm.Resource, err error) {
+	// Otel span
+	ctx, endSpan := otel.StartSpan(m.tracer, ctx, "CallAgent",
+		attribute.String("name", name),
+		attribute.String("req", req.String()),
+		attribute.String("user", types.Stringify(user)),
+	)
+	defer func() { endSpan(err) }()
+
+	// Filter prompts by namespace based on the user's accessible namespaces, and return the one matching the given name
+	prompts, _, err := m.listAgents(ctx, schema.AgentListRequest{Name: []string{name}}, user)
+	if err != nil {
+		return nil, err
+	}
+
+	// If there are no matches, return not found. If there are multiple matches, return a conflict error
+	if len(prompts) == 0 {
+		return nil, schema.ErrNotFound.Withf("agent %q", name)
+	}
+	if len(prompts) > 1 {
+		return nil, schema.ErrConflict.Withf("multiple agents matched %q; specify a fully-qualified agent name", name)
+	}
+
+	// Attach the JSON input as the first prompt resource if provided, then delegate prompt execution through the toolkit.
+	resources := make([]llm.Resource, 0, len(req.Attachments)+1)
+	if req.Input != nil {
+		input, err := resource.JSON("input", json.RawMessage(req.Input))
+		if err != nil {
+			return nil, err
+		}
+		resources = append(resources, input)
+	}
+	for _, attachment := range req.Attachments {
+		if attachment == nil {
+			return nil, schema.ErrBadParameter.With("attachment cannot be nil")
+		}
+		resource, ok := any(attachment).(llm.Resource)
+		if !ok {
+			return nil, schema.ErrBadParameter.Withf("attachment must satisfy llm.Resource, got %T", attachment)
+		}
+		resources = append(resources, resource)
+	}
+
+	return m.Toolkit.Call(ctx, prompts[0], resources...)
+}
+
+///////////////////////////////////////////////////////////////////////////////
+// PRIVATE METHODS
+
+func (m *Manager) listAgents(ctx context.Context, req schema.AgentListRequest, user *auth.User) ([]llm.Prompt, uint, error) {
+	var namespaces []string
+	if user == nil {
+		if req.Namespace != "" {
+			namespaces = []string{req.Namespace}
+		}
+	} else {
+		accessible, err := m.toolNamespacesForUser(ctx, user)
+		if err != nil {
+			return nil, 0, err
+		}
+		if req.Namespace == "" {
+			namespaces = accessible
+		} else if slices.Contains(accessible, req.Namespace) {
+			namespaces = []string{req.Namespace}
+		} else {
+			return nil, 0, nil
+		}
+	}
+
+	listReq := toolkit.ListRequest{
+		Type:       toolkit.ListTypePrompts,
+		Namespaces: namespaces,
+		Name:       req.Name,
+		Offset:     uint(req.Offset),
+	}
+	if req.Limit != nil {
+		listReq.Limit = types.Ptr(uint(types.Value(req.Limit)))
+	}
+
+	resp, err := m.Toolkit.List(ctx, listReq)
+	if err != nil {
+		return nil, 0, err
+	}
+
+	return resp.Prompts, resp.Count, nil
+}
+
+func newAgentMeta(prompt llm.Prompt) schema.AgentMeta {
+	return schema.AgentMeta{
+		Name:        prompt.Name(),
+		Title:       prompt.Title(),
+		Description: prompt.Description(),
+	}
 }

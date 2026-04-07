@@ -7,13 +7,16 @@ import (
 	"iter"
 	"maps"
 	"slices"
+	"strings"
 	"sync"
 
+	// Packages
 	llm "github.com/mutablelogic/go-llm"
+	schema "github.com/mutablelogic/go-llm/pkg/schema"
 	prompt "github.com/mutablelogic/go-llm/pkg/toolkit/prompt"
 	resource "github.com/mutablelogic/go-llm/pkg/toolkit/resource"
 	tool "github.com/mutablelogic/go-llm/pkg/toolkit/tool"
-	"github.com/mutablelogic/go-server/pkg/types"
+	types "github.com/mutablelogic/go-server/pkg/types"
 	errgroup "golang.org/x/sync/errgroup"
 )
 
@@ -23,16 +26,18 @@ import (
 type ListType string
 
 type ListRequest struct {
-	// Namespace restricts results to a single source.
-	// Use "builtin", "user", or a connector name. Empty string returns all.
-	Namespace string
+	// Namespaces restrict results to specific sources.
+	// Use "builtin", "user", or connector names. Empty means all sources.
+	Namespaces []string
 
 	// Type is required and selects which kind of item to list.
 	Type ListType
 
-	// Name filters results to items whose name equals this value.
-	// Empty string returns all names.
-	Name string
+	// Name filters results to specific item names.
+	// Empty means no name filter. Qualified names match exactly
+	// (for example "builtin.alpha"); bare names match any namespace
+	// whose underlying item name equals the filter (for example "alpha").
+	Name []string
 
 	// Pagination.
 	Limit  *uint // nil means no limit
@@ -69,41 +74,39 @@ const (
 // List returns items of the requested type matching the request.
 func (tk *toolkit) List(ctx context.Context, req ListRequest) (*ListResponse, error) {
 	var resp ListResponse
+	matcher := newNameMatcher(req.Name)
+	namespaces := newNamespaceMatcher(req.Namespaces)
 
 	// Validate the type field upfront.
 	switch req.Type {
 	case ListTypeTools, ListTypePrompts, ListTypeResources:
 		// valid
 	default:
-		return nil, llm.ErrBadParameter.Withf("unsupported list type %q (want %q, %q, or %q)", req.Type, ListTypeTools, ListTypePrompts, ListTypeResources)
+		return nil, schema.ErrBadParameter.Withf("unsupported list type %q (want %q, %q, or %q)", req.Type, ListTypeTools, ListTypePrompts, ListTypeResources)
 	}
 
 	// Collect builtin items and connector candidates under the read lock.
 	tk.mu.RLock()
-	if req.Namespace == "" || req.Namespace == BuiltinNamespace {
+	if namespaces.match(BuiltinNamespace) {
 		switch req.Type {
 		case ListTypeTools:
 			resp.Tools = slices.Collect(filterSeq(maps.Values(tk.tools), func(t llm.Tool) bool {
-				return req.Name == "" || t.Name() == req.Name
+				return matcher.matchQualified(t.Name(), bareToolName(t))
 			}))
 		case ListTypePrompts:
 			resp.Prompts = slices.Collect(filterSeq(maps.Values(tk.prompts), func(p llm.Prompt) bool {
-				return req.Name == "" || p.Name() == req.Name
+				return matcher.matchQualified(p.Name(), barePromptName(p))
 			}))
 		case ListTypeResources:
 			resp.Resources = slices.Collect(filterSeq(maps.Values(tk.resources), func(r llm.Resource) bool {
-				return req.Name == "" || r.URI() == req.Name
+				return matcher.matchExact(r.URI())
 			}))
 		}
 	}
 	var candidates []*connector
-	if req.Namespace == "" {
-		for _, c := range tk.namespace {
+	for _, c := range tk.namespace {
+		if namespaces.match(c.namespace) {
 			candidates = append(candidates, c)
-		}
-	} else if req.Namespace != BuiltinNamespace {
-		if c := tk.namespace[req.Namespace]; c != nil {
-			candidates = []*connector{c}
 		}
 	}
 	tk.mu.RUnlock()
@@ -124,7 +127,7 @@ func (tk *toolkit) List(ctx context.Context, req ListRequest) (*ListResponse, er
 					var wrapped []llm.Tool
 					for _, t := range tools {
 						w := tool.WithNamespace(c.namespace, t)
-						if req.Name == "" || w.Name() == req.Name {
+						if matcher.matchQualified(w.Name(), t.Name()) {
 							wrapped = append(wrapped, w)
 						}
 					}
@@ -139,7 +142,7 @@ func (tk *toolkit) List(ctx context.Context, req ListRequest) (*ListResponse, er
 					var wrapped []llm.Prompt
 					for _, p := range prompts {
 						w := prompt.WithNamespace(c.namespace, p)
-						if req.Name == "" || w.Name() == req.Name {
+						if matcher.matchQualified(w.Name(), p.Name()) {
 							wrapped = append(wrapped, w)
 						}
 					}
@@ -154,7 +157,7 @@ func (tk *toolkit) List(ctx context.Context, req ListRequest) (*ListResponse, er
 					var wrapped []llm.Resource
 					for _, r := range resources {
 						w := resource.WithNamespace(c.namespace, r)
-						if req.Name == "" || w.URI() == req.Name {
+						if matcher.matchExact(w.URI()) {
 							wrapped = append(wrapped, w)
 						}
 					}
@@ -221,4 +224,92 @@ func filterSeq[T any](seq iter.Seq[T], keep func(T) bool) iter.Seq[T] {
 			}
 		}
 	}
+}
+
+type nameMatcher struct {
+	all   bool
+	exact map[string]struct{}
+	bare  map[string]struct{}
+}
+
+type namespaceMatcher struct {
+	all     bool
+	allowed map[string]struct{}
+}
+
+func newNameMatcher(filters []string) nameMatcher {
+	matcher := nameMatcher{
+		all:   true,
+		exact: make(map[string]struct{}),
+		bare:  make(map[string]struct{}),
+	}
+	for _, filter := range filters {
+		if filter == "" {
+			continue
+		}
+		matcher.all = false
+		matcher.exact[filter] = struct{}{}
+		if !strings.Contains(filter, ".") {
+			matcher.bare[filter] = struct{}{}
+		}
+	}
+	return matcher
+}
+
+func newNamespaceMatcher(filters []string) namespaceMatcher {
+	matcher := namespaceMatcher{
+		all:     true,
+		allowed: make(map[string]struct{}),
+	}
+	for _, filter := range filters {
+		if filter == "" {
+			continue
+		}
+		matcher.all = false
+		matcher.allowed[filter] = struct{}{}
+	}
+	return matcher
+}
+
+func (matcher namespaceMatcher) match(namespace string) bool {
+	if matcher.all {
+		return true
+	}
+	_, ok := matcher.allowed[namespace]
+	return ok
+}
+
+func (matcher nameMatcher) matchExact(name string) bool {
+	if matcher.all {
+		return true
+	}
+	_, ok := matcher.exact[name]
+	return ok
+}
+
+func (matcher nameMatcher) matchQualified(qualifiedName, bareName string) bool {
+	if matcher.all {
+		return true
+	}
+	if _, ok := matcher.exact[qualifiedName]; ok {
+		return true
+	}
+	_, ok := matcher.bare[bareName]
+	return ok
+}
+
+func bareToolName(tool llm.Tool) string {
+	type unwrapper interface{ Unwrap() llm.Tool }
+	if wrapped, ok := tool.(unwrapper); ok {
+		return wrapped.Unwrap().Name()
+	}
+	return tool.Name()
+}
+
+func barePromptName(prompt llm.Prompt) string {
+	type unwrapper interface{ Unwrap() llm.Prompt }
+	if wrapped, ok := prompt.(unwrapper); ok {
+		return wrapped.Unwrap().Name()
+	}
+	return prompt.Name()
 }

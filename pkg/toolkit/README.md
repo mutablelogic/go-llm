@@ -134,7 +134,7 @@ func (myDelegate) OnEvent(evt tk.ConnectorEvent) {
 }
 
 func (myDelegate) Call(ctx context.Context, p llm.Prompt, res ...llm.Resource) (llm.Resource, error) {
-    return nil, llm.ErrNotImplemented
+    return nil, schema.ErrNotImplemented
 }
 
 // CreateConnector fires ConnectorEventStateChange with server info after
@@ -179,14 +179,14 @@ The lookup order is:
 3. **`<name>`** — unscoped name, searching builtins first, then connectors in registration order, then the `"user"` namespace.
 4. **`<uri>`** — unscoped URI, searching builtins first, then connectors in registration order, then the `"user"` namespace.
 
-The return type is `any`; use a type switch to distinguish. `llm.ErrNotFound` is returned if nothing matches:
+The return type is `any`; use a type switch to distinguish. `schema.ErrNotFound` is returned if nothing matches:
 
 ```go
 import resource "github.com/mutablelogic/go-llm/pkg/toolkit/resource"
 
 v, err := tk.Lookup(ctx, "summarize")
 if err != nil {
-    log.Fatal(err) // llm.ErrNotFound or similar
+    log.Fatal(err) // schema.ErrNotFound or similar
 }
 switch v := v.(type) {
 case llm.Tool:
@@ -255,8 +255,8 @@ if err != nil {
 
 // Tools only from one connector.
 resp, err = tk.List(ctx, toolkit.ListRequest{
-    Type:      toolkit.ListTypeTools,
-    Namespace: "my-server",
+    Type:       toolkit.ListTypeTools,
+    Namespaces: []string{"my-server"},
 })
 if err != nil {
     log.Fatal(err)
@@ -269,7 +269,7 @@ if err != nil {
 }
 ```
 
-An empty `Namespace` (zero value) returns items from all sources combined. Set it to `"builtin"` for locally registered items only, `"user"` for manager-backed items only, or a connector name to scope to a single connector.
+An empty `Namespaces` slice returns items from all sources combined. Set it to `[]string{"builtin"}` for locally registered items only, `[]string{"user"}` for manager-backed items only, or one or more connector names to scope to specific connectors.
 
 The reserved namespace `"user"` is backed by the handler's `List` method — prompts and resources stored persistently by the manager (e.g. in a database). Tools are always compiled code and are never served from the `"user"` namespace.
 
@@ -394,8 +394,8 @@ The manager:
 
 **Errors:**
 
-* `llm.ErrNotFound` — prompt does not exist, or the requested model/provider is not registered.
-* `llm.ErrBadParameter` — no handler was configured on the toolkit (the toolkit has no connection to a manager that can run models).
+* `schema.ErrNotFound` — prompt does not exist, or the requested model/provider is not registered.
+* `schema.ErrBadParameter` — no handler was configured on the toolkit (the toolkit has no connection to a manager that can run models).
 
 > **TODO:** Define a maximum call depth to prevent infinite recursion when a prompt's tool list includes other prompts that in turn call back into the toolkit.
 
@@ -739,7 +739,7 @@ type MyMCPServer struct {
 func (s *MyMCPServer) CallTool(ctx context.Context, name string, input json.RawMessage) (llm.Resource, error) {
     item := s.tk.Lookup(ctx, name)
     if item == nil {
-        return nil, llm.ErrNotFound
+        return nil, schema.ErrNotFound
     }
     return s.tk.Call(ctx, item, toolkit.JSONResource(input, ""))
 }
@@ -839,7 +839,7 @@ type Toolkit interface {
 
     // RemoveBuiltin removes a previously registered builtin tool by name,
     // prompt by name, or resource by URI. Tools are checked before prompts.
-    // Returns llm.ErrNotFound if no match exists.
+    // Returns schema.ErrNotFound if no match exists.
     RemoveBuiltin(string) error
 
     // AddConnector registers a remote MCP server. The namespace is inferred from
@@ -863,7 +863,7 @@ type Toolkit interface {
 
     // Lookup finds a tool, prompt, or resource by name, namespace.name, URI,
     // or URI#namespace. Tools take precedence over prompts when both share a name.
-    // Returns llm.ErrNotFound if nothing matches.
+    // Returns schema.ErrNotFound if nothing matches.
     Lookup(context.Context, string) (any, error)
 
     // List returns tools, prompts, and resources matching the request.

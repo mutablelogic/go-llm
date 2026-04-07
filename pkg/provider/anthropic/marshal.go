@@ -287,10 +287,7 @@ func attachmentFromSource(src *anthropicSource) *schema.Attachment {
 func anthropicToolsFromTools(tools []llm.Tool) ([]json.RawMessage, error) {
 	var result []json.RawMessage
 	for _, t := range tools {
-		s, err := t.InputSchema()
-		if err != nil {
-			continue
-		}
+		s := t.InputSchema()
 		data, err := json.Marshal(struct {
 			Name        string `json:"name"`
 			Description string `json:"description,omitempty"`

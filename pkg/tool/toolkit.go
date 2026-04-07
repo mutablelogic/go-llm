@@ -76,7 +76,7 @@ func (tk *Toolkit) Close() error {
 
 // ListTools returns tools matching the given request filters.
 // An empty request returns all tools across all namespaces (builtins + connectors).
-func (tk *Toolkit) ListTools(req schema.ListToolsRequest) []llm.Tool {
+func (tk *Toolkit) ListTools(req schema.ToolListRequest) []llm.Tool {
 	// Build a name-filter set for O(1) lookup; nil means no filter.
 	var nameSet map[string]struct{}
 	if len(req.Name) > 0 {
@@ -148,16 +148,16 @@ func (tk *Toolkit) AddBuiltin(tools ...llm.Tool) error {
 	for _, t := range tools {
 		name := t.Name()
 		if !types.IsIdentifier(name) {
-			return llm.ErrBadParameter.Withf("invalid tool name: %q", name)
+			return schema.ErrBadParameter.Withf("invalid tool name: %q", name)
 		}
 		// Reject reserved names unless the tool is the internal OutputTool
 		if isReservedToolName(name) {
 			if _, ok := t.(*OutputTool); !ok {
-				return llm.ErrBadParameter.Withf("reserved tool name: %q", name)
+				return schema.ErrBadParameter.Withf("reserved tool name: %q", name)
 			}
 		}
 		if _, exists := tk.builtins[name]; exists {
-			return llm.ErrBadParameter.Withf("duplicate tool name: %q", name)
+			return schema.ErrBadParameter.Withf("duplicate tool name: %q", name)
 		}
 		tk.builtins[name] = t
 	}
@@ -205,30 +205,15 @@ func (tk *Toolkit) Run(ctx context.Context, name string, input json.RawMessage) 
 	// Lookup the tool
 	tool := tk.Lookup(name)
 	if tool == nil {
-		return nil, llm.ErrNotFound.Withf("tool not found: %q", name)
+		return nil, schema.ErrNotFound.Withf("tool not found: %q", name)
 	}
 
 	// Validate input against schema if provided
 	if len(input) > 0 {
-		schema, err := tool.InputSchema()
-		if err != nil {
-			return nil, llm.ErrBadParameter.Withf("schema generation failed: %v", err)
-		}
-
-		if schema != nil {
-			// Unmarshal into a map for validation
-			var mapInput map[string]any
-			if err := json.Unmarshal(input, &mapInput); err != nil {
-				return nil, llm.ErrBadParameter.Withf("failed to unmarshal JSON input: %v", err)
-			}
-
-			// Validate against schema
-			resolved, err := schema.Resolve(nil)
-			if err != nil {
-				return nil, llm.ErrBadParameter.Withf("schema resolution failed: %v", err)
-			}
-			if err := resolved.Validate(mapInput); err != nil {
-				return nil, llm.ErrBadParameter.Withf("input validation failed: %v", err)
+		inputSchema := tool.InputSchema()
+		if inputSchema != nil {
+			if err := inputSchema.Validate(input); err != nil {
+				return nil, schema.ErrBadParameter.Withf("input validation failed: %v", err)
 			}
 		}
 	}
@@ -245,30 +230,19 @@ func (tk *Toolkit) Run(ctx context.Context, name string, input json.RawMessage) 
 	}
 	resource, ok := result.(llm.Resource)
 	if !ok {
-		return nil, llm.ErrBadParameter.Withf("tool output must be nil or llm.Resource, got %T", result)
+		return nil, schema.ErrBadParameter.Withf("tool output must be nil or llm.Resource, got %T", result)
 	}
 
 	// If application/json and output schema exists, validate content
 	if resource.Type() == types.ContentTypeJSON {
-		outputSchema, err := tool.OutputSchema()
-		if err != nil {
-			return nil, llm.ErrBadParameter.Withf("output schema generation failed: %v", err)
-		}
+		outputSchema := tool.OutputSchema()
 		if outputSchema != nil {
 			data, err := resource.Read(ctx)
 			if err != nil {
-				return nil, llm.ErrBadParameter.Withf("failed to read resource for validation: %v", err)
+				return nil, schema.ErrBadParameter.Withf("failed to read resource for validation: %v", err)
 			}
-			var mapOutput map[string]any
-			if err := json.Unmarshal(data, &mapOutput); err != nil {
-				return nil, llm.ErrBadParameter.Withf("failed to unmarshal JSON output: %v", err)
-			}
-			resolved, err := outputSchema.Resolve(nil)
-			if err != nil {
-				return nil, llm.ErrBadParameter.Withf("output schema resolution failed: %v", err)
-			}
-			if err := resolved.Validate(mapOutput); err != nil {
-				return nil, llm.ErrBadParameter.Withf("output validation failed: %v", err)
+			if err := outputSchema.Validate(data); err != nil {
+				return nil, schema.ErrBadParameter.Withf("output validation failed: %v", err)
 			}
 		}
 	}
@@ -289,5 +263,5 @@ func (tk *Toolkit) Feedback(call schema.ToolCall) string {
 // STRINGIFY
 
 func (tk *Toolkit) String() string {
-	return types.Stringify(tk.ListTools(schema.ListToolsRequest{}))
+	return types.Stringify(tk.ListTools(schema.ToolListRequest{}))
 }

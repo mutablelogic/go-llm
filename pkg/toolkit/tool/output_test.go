@@ -6,9 +6,17 @@ import (
 	"testing"
 
 	// Packages
-	jsonschema "github.com/google/jsonschema-go/jsonschema"
 	llm "github.com/mutablelogic/go-llm"
+	jsonschema "github.com/mutablelogic/go-server/pkg/jsonschema"
 )
+
+func mustSchema(raw string) *jsonschema.Schema {
+	s, err := jsonschema.FromJSON(json.RawMessage(raw))
+	if err != nil {
+		panic(err)
+	}
+	return s
+}
 
 ///////////////////////////////////////////////////////////////////////////////
 // OutputTool
@@ -29,22 +37,16 @@ func Test_OutputTool_002_description(t *testing.T) {
 
 func Test_OutputTool_003_input_schema_nil(t *testing.T) {
 	ot := NewOutputTool(nil)
-	s, err := ot.InputSchema()
-	if err != nil {
-		t.Fatal(err)
-	}
+	s := ot.InputSchema()
 	if s != nil {
 		t.Fatalf("expected nil schema, got %v", s)
 	}
 }
 
 func Test_OutputTool_004_input_schema_set(t *testing.T) {
-	schema := &jsonschema.Schema{Type: "object"}
+	schema := jsonschema.MustFor[map[string]any]()
 	ot := NewOutputTool(schema)
-	s, err := ot.InputSchema()
-	if err != nil {
-		t.Fatal(err)
-	}
+	s := ot.InputSchema()
 	if s != schema {
 		t.Fatal("expected returned schema to match the one provided")
 	}
@@ -74,10 +76,7 @@ func Test_OutputTool_006_validate_nil_schema(t *testing.T) {
 }
 
 func Test_OutputTool_007_validate_valid_data(t *testing.T) {
-	schema := &jsonschema.Schema{Type: "object"}
-	schema.Properties = map[string]*jsonschema.Schema{
-		"name": {Type: "string"},
-	}
+	schema := mustSchema(`{"type":"object","properties":{"name":{"type":"string"}}}`)
 	ot := NewOutputTool(schema)
 	if err := ot.Validate(json.RawMessage(`{"name":"Alice"}`)); err != nil {
 		t.Fatalf("expected valid data to pass, got %v", err)
@@ -85,7 +84,7 @@ func Test_OutputTool_007_validate_valid_data(t *testing.T) {
 }
 
 func Test_OutputTool_008_validate_invalid_json(t *testing.T) {
-	schema := &jsonschema.Schema{Type: "object"}
+	schema := jsonschema.MustFor[map[string]any]()
 	ot := NewOutputTool(schema)
 	if err := ot.Validate(json.RawMessage(`not-json`)); err == nil {
 		t.Fatal("expected error for invalid JSON, got nil")

@@ -89,7 +89,7 @@ func newRunToolkit(t *testing.T, conn *mockRunConnector) *toolkit {
 ///////////////////////////////////////////////////////////////////////////////
 // Run
 
-// Test_Run_001: cancelling ctx stops all connectors and Run returns ctx.Err().
+// Test_Run_001: cancelling ctx stops all connectors and Run returns nil.
 func Test_Run_001(t *testing.T) {
 	conn := newMockRunConnector()
 	tk := newRunToolkit(t, conn)
@@ -110,8 +110,8 @@ func Test_Run_001(t *testing.T) {
 	}
 
 	cancel()
-	if err := <-done; !errors.Is(err, context.Canceled) {
-		t.Fatalf("expected context.Canceled, got %v", err)
+	if err := <-done; err != nil {
+		t.Fatalf("expected nil, got %v", err)
 	}
 }
 

@@ -5,206 +5,101 @@ import (
 	"testing"
 
 	// Packages
-	llm "github.com/mutablelogic/go-llm"
 	schema "github.com/mutablelogic/go-llm/pkg/schema"
-	store "github.com/mutablelogic/go-llm/pkg/store"
+	llmtest "github.com/mutablelogic/go-llm/pkg/test"
 	assert "github.com/stretchr/testify/assert"
-	oauth2 "golang.org/x/oauth2"
 )
 
-///////////////////////////////////////////////////////////////////////////////
-// CREDENTIAL TESTS
-
-// Test operations fail when no credential store is configured
-func Test_credential_001(t *testing.T) {
+func Test_encryptCredentialDataEmptyReturnsNoPayload(t *testing.T) {
 	assert := assert.New(t)
 
-	m, err := NewManager("test", "0.0.0")
-	assert.NoError(err)
+	var manager Manager
+	manager.defaults("test", "0.0.0")
+	if err := manager.passphrases.Set(1, "test1234"); !assert.NoError(err) {
+		return
+	}
 
-	_, err = m.GetCredential(context.TODO(), "https://example.com")
-	assert.ErrorIs(err, llm.ErrNotImplemented)
+	pv, credentials, err := manager.encryptCredentials(nil)
+	if !assert.NoError(err) {
+		return
+	}
 
-	err = m.SetCredential(context.TODO(), "https://example.com", schema.OAuthCredentials{})
-	assert.ErrorIs(err, llm.ErrNotImplemented)
-
-	err = m.DeleteCredential(context.TODO(), "https://example.com")
-	assert.ErrorIs(err, llm.ErrNotImplemented)
+	assert.Equal(uint64(0), pv)
+	assert.Empty(credentials)
 }
 
-// Test WithCredentialStore rejects nil store
-func Test_credential_002(t *testing.T) {
+func Test_encryptCredentialDataRoundTrip(t *testing.T) {
 	assert := assert.New(t)
 
-	_, err := NewManager("test", "0.0.0", WithCredentialStore(nil))
-	assert.ErrorIs(err, llm.ErrBadParameter)
+	var manager Manager
+	manager.defaults("test", "0.0.0")
+	if err := manager.passphrases.Set(1, "test1234"); !assert.NoError(err) {
+		return
+	}
+
+	pv, encrypted, err := manager.encryptCredentials([]byte("secret"))
+	if !assert.NoError(err) {
+		return
+	}
+	assert.NotZero(pv)
+	assert.NotEqual([]byte("secret"), encrypted)
+
+	var decrypted []byte
+	if !assert.NoError(manager.decryptCredentials(encrypted, pv, &decrypted)) {
+		return
+	}
+	assert.Equal([]byte("secret"), decrypted)
 }
 
-// Test SetCredential and GetCredential round-trip
-func Test_credential_003(t *testing.T) {
-	assert := assert.New(t)
+func TestCreateCredential(t *testing.T) {
+	conn, m := newIntegrationManager(t)
+	ctx := context.Background()
 
-	cs, err := store.NewMemoryCredentialStore("test-passphrase")
-	assert.NoError(err)
+	if err := m.Exec(ctx, `TRUNCATE llm.credential CASCADE`); err != nil {
+		t.Fatal(err)
+	}
 
-	m, err := NewManager("test", "0.0.0", WithCredentialStore(cs))
-	assert.NoError(err)
-
-	cred := schema.OAuthCredentials{
-		Token: &oauth2.Token{
-			AccessToken:  "access-123",
-			RefreshToken: "refresh-456",
-			TokenType:    "Bearer",
+	user := llmtest.User(conn)
+	userID := user.UUID()
+	created, err := m.CreateCredential(ctx, schema.CredentialInsert{
+		CredentialKey: schema.CredentialKey{
+			URL:  "HTTPS://Example.COM/sse?token=abc#frag",
+			User: &userID,
 		},
-		ClientID: "client-abc",
-		Endpoint: "https://example.com",
-		TokenURL: "https://example.com/token",
+		Credentials: []byte("encrypted"),
+	})
+	if err != nil {
+		t.Fatal(err)
 	}
 
-	err = m.SetCredential(context.TODO(), "https://example.com", cred)
-	assert.NoError(err)
-
-	got, err := m.GetCredential(context.TODO(), "https://example.com")
-	assert.NoError(err)
-	assert.Equal("access-123", got.AccessToken)
-	assert.Equal("refresh-456", got.RefreshToken)
-	assert.Equal("client-abc", got.ClientID)
-	assert.Equal("https://example.com/token", got.TokenURL)
+	assert := assert.New(t)
+	assert.Equal("https://example.com/sse", created.URL)
+	if assert.NotNil(created.User) {
+		assert.Equal(userID, *created.User)
+	}
+	assert.False(created.CreatedAt.IsZero())
 }
 
-// Test GetCredential returns error for unknown URL
-func Test_credential_004(t *testing.T) {
-	assert := assert.New(t)
+func TestCreateCredentialGlobal(t *testing.T) {
+	_, m := newIntegrationManager(t)
+	ctx := context.Background()
 
-	cs, err := store.NewMemoryCredentialStore("test-passphrase")
-	assert.NoError(err)
-
-	m, err := NewManager("test", "0.0.0", WithCredentialStore(cs))
-	assert.NoError(err)
-
-	_, err = m.GetCredential(context.TODO(), "https://unknown.example.com")
-	assert.Error(err)
-}
-
-// Test DeleteCredential removes a credential
-func Test_credential_005(t *testing.T) {
-	assert := assert.New(t)
-
-	cs, err := store.NewMemoryCredentialStore("test-passphrase")
-	assert.NoError(err)
-
-	m, err := NewManager("test", "0.0.0", WithCredentialStore(cs))
-	assert.NoError(err)
-
-	cred := schema.OAuthCredentials{
-		Token:    &oauth2.Token{AccessToken: "token-1"},
-		ClientID: "client-1",
-		Endpoint: "https://example.com",
-		TokenURL: "https://example.com/token",
+	if err := m.Exec(ctx, `TRUNCATE llm.credential CASCADE`); err != nil {
+		t.Fatal(err)
 	}
 
-	assert.NoError(m.SetCredential(context.TODO(), "https://example.com", cred))
-	assert.NoError(m.DeleteCredential(context.TODO(), "https://example.com"))
-
-	_, err = m.GetCredential(context.TODO(), "https://example.com")
-	assert.Error(err)
-}
-
-// Test DeleteCredential returns error for unknown URL
-func Test_credential_006(t *testing.T) {
-	assert := assert.New(t)
-
-	cs, err := store.NewMemoryCredentialStore("test-passphrase")
-	assert.NoError(err)
-
-	m, err := NewManager("test", "0.0.0", WithCredentialStore(cs))
-	assert.NoError(err)
-
-	err = m.DeleteCredential(context.TODO(), "https://unknown.example.com")
-	assert.Error(err)
-}
-
-// Test invalid URL is rejected by all credential operations
-func Test_credential_008(t *testing.T) {
-	assert := assert.New(t)
-
-	cs, err := store.NewMemoryCredentialStore("test-passphrase")
-	assert.NoError(err)
-
-	m, err := NewManager("test", "0.0.0", WithCredentialStore(cs))
-	assert.NoError(err)
-
-	cred := schema.OAuthCredentials{Token: &oauth2.Token{AccessToken: "tok"}}
-
-	// Missing scheme
-	assert.Error(m.SetCredential(context.TODO(), "example.com", cred))
-	_, err = m.GetCredential(context.TODO(), "example.com")
-	assert.Error(err)
-	assert.Error(m.DeleteCredential(context.TODO(), "example.com"))
-
-	// Unsupported scheme
-	assert.Error(m.SetCredential(context.TODO(), "ftp://example.com", cred))
-}
-
-// Test URL canonicalisation: set with non-canonical URL, retrieve with canonical
-func Test_credential_009(t *testing.T) {
-	assert := assert.New(t)
-
-	cs, err := store.NewMemoryCredentialStore("test-passphrase")
-	assert.NoError(err)
-
-	m, err := NewManager("test", "0.0.0", WithCredentialStore(cs))
-	assert.NoError(err)
-
-	cred := schema.OAuthCredentials{
-		Token:    &oauth2.Token{AccessToken: "canon-tok"},
-		ClientID: "c",
-		Endpoint: "https://example.com",
-		TokenURL: "https://example.com/token",
+	created, err := m.CreateCredential(ctx, schema.CredentialInsert{
+		CredentialKey: schema.CredentialKey{
+			URL: "https://example.com/sse",
+		},
+		Credentials: []byte("encrypted"),
+	})
+	if err != nil {
+		t.Fatal(err)
 	}
 
-	// Store with uppercase scheme+host and a spurious query string.
-	assert.NoError(m.SetCredential(context.TODO(), "HTTPS://Example.COM?x=1", cred))
-
-	// Retrieve with canonical URL.
-	got, err := m.GetCredential(context.TODO(), "https://example.com")
-	assert.NoError(err)
-	assert.Equal("canon-tok", got.AccessToken)
-
-	// Delete with non-canonical URL must succeed.
-	assert.NoError(m.DeleteCredential(context.TODO(), "HTTPS://Example.COM?x=1"))
-	_, err = m.GetCredential(context.TODO(), "https://example.com")
-	assert.Error(err)
-}
-
-// Test SetCredential overwrites an existing credential
-func Test_credential_007(t *testing.T) {
 	assert := assert.New(t)
-
-	cs, err := store.NewMemoryCredentialStore("test-passphrase")
-	assert.NoError(err)
-
-	m, err := NewManager("test", "0.0.0", WithCredentialStore(cs))
-	assert.NoError(err)
-
-	cred1 := schema.OAuthCredentials{
-		Token:    &oauth2.Token{AccessToken: "old-token"},
-		ClientID: "old-client",
-		Endpoint: "https://example.com",
-		TokenURL: "https://example.com/token",
-	}
-	cred2 := schema.OAuthCredentials{
-		Token:    &oauth2.Token{AccessToken: "new-token"},
-		ClientID: "new-client",
-		Endpoint: "https://example.com",
-		TokenURL: "https://example.com/token",
-	}
-
-	assert.NoError(m.SetCredential(context.TODO(), "https://example.com", cred1))
-	assert.NoError(m.SetCredential(context.TODO(), "https://example.com", cred2))
-
-	got, err := m.GetCredential(context.TODO(), "https://example.com")
-	assert.NoError(err)
-	assert.Equal("new-token", got.AccessToken)
-	assert.Equal("new-client", got.ClientID)
+	assert.Equal("https://example.com/sse", created.URL)
+	assert.Nil(created.User)
+	assert.False(created.CreatedAt.IsZero())
 }

@@ -1,48 +1,40 @@
-package httphandler_test
+package httphandler
 
 import (
 	"bufio"
 	"bytes"
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
 
+	// Packages
+	auth "github.com/djthorpe/go-auth/schema/auth"
+	uuid "github.com/google/uuid"
 	schema "github.com/mutablelogic/go-llm/pkg/schema"
+	types "github.com/mutablelogic/go-server/pkg/types"
 )
 
-func TestChat_OK(t *testing.T) {
-	mgr := newGeneratorManager(t)
-	mux := serveMux(mgr)
+func TestChatJSONIntegration(t *testing.T) {
+	modelName := requireDownloadModel(t)
+	conn, manager := newModelHandlerIntegrationManager(t)
+	_, _, item := ChatHandler(manager)
+	session := createChatTestSession(t, manager, conn.Config.Name, modelName)
 
-	// Create a session first
-	sessionBody := `{"model":"test-model","name":"test-chat"}`
-	w := httptest.NewRecorder()
-	r := httptest.NewRequest(http.MethodPost, "/session", bytes.NewBufferString(sessionBody))
-	r.Header.Set("Content-Type", "application/json")
-	mux.ServeHTTP(w, r)
-
-	if w.Code != http.StatusCreated {
-		t.Fatalf("create session: expected 201, got %d: %s", w.Code, w.Body.String())
-	}
-
-	var session schema.Session
-	if err := json.NewDecoder(w.Body).Decode(&session); err != nil {
+	body, err := json.Marshal(schema.ChatRequest{
+		Session: session.ID,
+		Text:    "Say hello in exactly three words.",
+	})
+	if err != nil {
 		t.Fatal(err)
 	}
 
-	// Send a chat message
-	chatBody, _ := json.Marshal(schema.ChatRequest{
-		ChatRequestCore: schema.ChatRequestCore{
-			Session: session.ID,
-			Text:    "hello from chat",
-		},
-	})
-	w = httptest.NewRecorder()
-	r = httptest.NewRequest(http.MethodPost, "/chat", bytes.NewReader(chatBody))
-	r.Header.Set("Content-Type", "application/json")
-	mux.ServeHTTP(w, r)
+	w := httptest.NewRecorder()
+	r := httptest.NewRequest(http.MethodPost, "/chat", bytes.NewReader(body)).WithContext(newModelHandlerTestContext(t))
+	r.Header.Set(types.ContentTypeHeader, types.ContentTypeJSON)
+	item.Handler().ServeHTTP(w, r)
 
 	if w.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
@@ -52,145 +44,46 @@ func TestChat_OK(t *testing.T) {
 	if err := json.NewDecoder(w.Body).Decode(&resp); err != nil {
 		t.Fatal(err)
 	}
-	if resp.Role != "assistant" {
-		t.Fatalf("expected role=assistant, got %q", resp.Role)
+	if resp.Role != schema.RoleAssistant {
+		t.Fatalf("expected role %q, got %q", schema.RoleAssistant, resp.Role)
 	}
-	if resp.Session != session.ID {
-		t.Fatalf("expected session=%q, got %q", session.ID, resp.Session)
+	if len(resp.Content) == 0 {
+		t.Fatal("expected response content")
 	}
-	if len(resp.Content) == 0 || resp.Content[0].Text == nil {
-		t.Fatal("expected at least one text content block")
-	}
-	if !strings.Contains(*resp.Content[0].Text, "hello from chat") {
-		t.Fatalf("expected response to contain 'hello from chat', got %q", *resp.Content[0].Text)
+	text := resp.Content[0].Text
+	if text == nil || strings.TrimSpace(*text) == "" {
+		t.Fatalf("expected assistant text, got %+v", resp.Content)
 	}
 }
 
-func TestChat_InvalidSession(t *testing.T) {
-	mgr := newGeneratorManager(t)
-	mux := serveMux(mgr)
+func TestChatStreamIntegration(t *testing.T) {
+	modelName := requireDownloadModel(t)
+	conn, manager := newModelHandlerIntegrationManager(t)
+	_, _, item := ChatHandler(manager)
+	session := createChatTestSession(t, manager, conn.Config.Name, modelName)
 
-	chatBody := `{"session":"nonexistent-id","text":"hello"}`
-	w := httptest.NewRecorder()
-	r := httptest.NewRequest(http.MethodPost, "/chat", bytes.NewBufferString(chatBody))
-	r.Header.Set("Content-Type", "application/json")
-	mux.ServeHTTP(w, r)
-
-	if w.Code == http.StatusOK {
-		t.Fatal("expected error status for invalid session")
-	}
-}
-
-func TestChat_MethodNotAllowed(t *testing.T) {
-	mgr := newGeneratorManager(t)
-	mux := serveMux(mgr)
-
-	w := httptest.NewRecorder()
-	r := httptest.NewRequest(http.MethodGet, "/chat", nil)
-	mux.ServeHTTP(w, r)
-
-	if w.Code != http.StatusMethodNotAllowed {
-		t.Fatalf("expected 405, got %d", w.Code)
-	}
-}
-
-func TestChat_MultiTurn(t *testing.T) {
-	mgr := newGeneratorManager(t)
-	mux := serveMux(mgr)
-
-	// Create a session
-	sessionBody := `{"model":"test-model"}`
-	w := httptest.NewRecorder()
-	r := httptest.NewRequest(http.MethodPost, "/session", bytes.NewBufferString(sessionBody))
-	r.Header.Set("Content-Type", "application/json")
-	mux.ServeHTTP(w, r)
-
-	if w.Code != http.StatusCreated {
-		t.Fatalf("create session: expected 201, got %d: %s", w.Code, w.Body.String())
-	}
-
-	var session schema.Session
-	if err := json.NewDecoder(w.Body).Decode(&session); err != nil {
-		t.Fatal(err)
-	}
-
-	// First message
-	chatBody, _ := json.Marshal(schema.ChatRequest{ChatRequestCore: schema.ChatRequestCore{Session: session.ID, Text: "first"}})
-	w = httptest.NewRecorder()
-	r = httptest.NewRequest(http.MethodPost, "/chat", bytes.NewReader(chatBody))
-	r.Header.Set("Content-Type", "application/json")
-	mux.ServeHTTP(w, r)
-
-	if w.Code != http.StatusOK {
-		t.Fatalf("first chat: expected 200, got %d: %s", w.Code, w.Body.String())
-	}
-
-	// Second message
-	chatBody, _ = json.Marshal(schema.ChatRequest{ChatRequestCore: schema.ChatRequestCore{Session: session.ID, Text: "second"}})
-	w = httptest.NewRecorder()
-	r = httptest.NewRequest(http.MethodPost, "/chat", bytes.NewReader(chatBody))
-	r.Header.Set("Content-Type", "application/json")
-	mux.ServeHTTP(w, r)
-
-	if w.Code != http.StatusOK {
-		t.Fatalf("second chat: expected 200, got %d: %s", w.Code, w.Body.String())
-	}
-
-	var resp schema.ChatResponse
-	if err := json.NewDecoder(w.Body).Decode(&resp); err != nil {
-		t.Fatal(err)
-	}
-	if !strings.Contains(*resp.Content[0].Text, "second") {
-		t.Fatalf("expected response to contain 'second', got %q", *resp.Content[0].Text)
-	}
-}
-
-func TestChat_Stream_OK(t *testing.T) {
-	mgr := newGeneratorManager(t)
-	mux := serveMux(mgr)
-
-	// Create a session
-	sessionBody := `{"model":"test-model"}`
-	w := httptest.NewRecorder()
-	r := httptest.NewRequest(http.MethodPost, "/session", bytes.NewBufferString(sessionBody))
-	r.Header.Set("Content-Type", "application/json")
-	mux.ServeHTTP(w, r)
-	if w.Code != http.StatusCreated {
-		t.Fatalf("create session: expected 201, got %d: %s", w.Code, w.Body.String())
-	}
-	var session schema.Session
-	if err := json.NewDecoder(w.Body).Decode(&session); err != nil {
-		t.Fatal(err)
-	}
-
-	// Send a streaming chat request
-	chatBody, _ := json.Marshal(schema.ChatRequest{
-		ChatRequestCore: schema.ChatRequestCore{
-			Session: session.ID,
-			Text:    "hello stream",
-		},
+	body, err := json.Marshal(schema.ChatRequest{
+		Session: session.ID,
+		Text:    "Say hello in exactly three words.",
 	})
-	w = httptest.NewRecorder()
-	r = httptest.NewRequest(http.MethodPost, "/chat", bytes.NewReader(chatBody))
-	r.Header.Set("Content-Type", "application/json")
-	r.Header.Set("Accept", "text/event-stream")
-	mux.ServeHTTP(w, r)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	w := httptest.NewRecorder()
+	r := httptest.NewRequest(http.MethodPost, "/chat", bytes.NewReader(body)).WithContext(newModelHandlerTestContext(t))
+	r.Header.Set(types.ContentTypeHeader, types.ContentTypeJSON)
+	r.Header.Set(types.ContentAcceptHeader, types.ContentTypeTextStream)
+	item.Handler().ServeHTTP(w, r)
 
 	if w.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
 	}
-
-	// Check content type
-	ct := w.Header().Get("Content-Type")
-	if ct != "text/event-stream" {
-		t.Fatalf("expected Content-Type text/event-stream, got %q", ct)
+	if ct := w.Header().Get(types.ContentTypeHeader); ct != types.ContentTypeTextStream {
+		t.Fatalf("expected content type %q, got %q", types.ContentTypeTextStream, ct)
 	}
 
-	// Parse SSE events from the response body
-	type sseEvent struct {
-		name string
-		data string
-	}
+	type sseEvent struct{ name, data string }
 	var events []sseEvent
 	scanner := bufio.NewScanner(w.Body)
 	var current sseEvent
@@ -208,126 +101,105 @@ func TestChat_Stream_OK(t *testing.T) {
 			}
 		}
 	}
+	if err := scanner.Err(); err != nil {
+		t.Fatal(err)
+	}
 
-	// We expect at least one "result" event
-	var found bool
-	for _, evt := range events {
-		if evt.name == schema.EventResult {
-			found = true
-			var resp schema.ChatResponse
-			if err := json.Unmarshal([]byte(evt.data), &resp); err != nil {
-				t.Fatalf("failed to decode result event: %v", err)
-			}
-			if resp.Role != schema.RoleAssistant {
-				t.Fatalf("expected role=assistant, got %q", resp.Role)
-			}
-			if resp.Session != session.ID {
-				t.Fatalf("expected session=%q, got %q", session.ID, resp.Session)
-			}
-			if len(resp.Content) == 0 || resp.Content[0].Text == nil {
-				t.Fatal("expected at least one text content block")
-			}
-			if !strings.Contains(*resp.Content[0].Text, "hello stream") {
-				t.Fatalf("expected response to contain 'hello stream', got %q", *resp.Content[0].Text)
-			}
+	var sawResult bool
+	for _, event := range events {
+		if event.name != schema.EventResult {
+			continue
+		}
+		sawResult = true
+		var resp schema.ChatResponse
+		if err := json.Unmarshal([]byte(event.data), &resp); err != nil {
+			t.Fatalf("decode result event: %v", err)
+		}
+		if resp.Role != schema.RoleAssistant {
+			t.Fatalf("expected role %q, got %q", schema.RoleAssistant, resp.Role)
 		}
 	}
-	if !found {
-		t.Fatalf("no 'result' event found in SSE stream; events: %+v", events)
+	if !sawResult {
+		t.Fatalf("expected result event, got %+v", events)
 	}
 }
 
-func TestChat_Stream_InvalidSession(t *testing.T) {
-	mgr := newGeneratorManager(t)
-	mux := serveMux(mgr)
+func TestChatSessionNotFound(t *testing.T) {
+	_, manager := newModelHandlerIntegrationManager(t)
+	_, _, item := ChatHandler(manager)
 
-	chatBody := `{"session":"nonexistent","text":"hello"}`
-	w := httptest.NewRecorder()
-	r := httptest.NewRequest(http.MethodPost, "/chat", bytes.NewBufferString(chatBody))
-	r.Header.Set("Content-Type", "application/json")
-	r.Header.Set("Accept", "text/event-stream")
-	mux.ServeHTTP(w, r)
-
-	// Should still get SSE content type
-	ct := w.Header().Get("Content-Type")
-	if ct != "text/event-stream" {
-		t.Fatalf("expected Content-Type text/event-stream, got %q", ct)
-	}
-
-	// Should contain an error event
-	body := w.Body.String()
-	if !strings.Contains(body, "event: "+schema.EventError) {
-		t.Fatalf("expected error event in stream, got: %s", body)
-	}
-}
-
-func TestChat_NoAcceptHeader_DefaultsJSON(t *testing.T) {
-	mgr := newGeneratorManager(t)
-	mux := serveMux(mgr)
-
-	// Create a session
-	sessionBody := `{"model":"test-model"}`
-	w := httptest.NewRecorder()
-	r := httptest.NewRequest(http.MethodPost, "/session", bytes.NewBufferString(sessionBody))
-	r.Header.Set("Content-Type", "application/json")
-	mux.ServeHTTP(w, r)
-	if w.Code != http.StatusCreated {
-		t.Fatalf("create session: expected 201, got %d", w.Code)
-	}
-	var session schema.Session
-	if err := json.NewDecoder(w.Body).Decode(&session); err != nil {
+	body, err := json.Marshal(schema.ChatRequest{
+		Session: uuid.MustParse("00000000-0000-0000-0000-000000000001"),
+		Text:    "hello",
+	})
+	if err != nil {
 		t.Fatal(err)
 	}
 
-	// Send chat without Accept header — should get JSON
-	chatBody, _ := json.Marshal(schema.ChatRequest{ChatRequestCore: schema.ChatRequestCore{Session: session.ID, Text: "hello"}})
-	w = httptest.NewRecorder()
-	r = httptest.NewRequest(http.MethodPost, "/chat", bytes.NewReader(chatBody))
-	r.Header.Set("Content-Type", "application/json")
-	// No Accept header
-	mux.ServeHTTP(w, r)
+	w := httptest.NewRecorder()
+	r := httptest.NewRequest(http.MethodPost, "/chat", bytes.NewReader(body)).WithContext(newModelHandlerTestContext(t))
+	r.Header.Set(types.ContentTypeHeader, types.ContentTypeJSON)
+	item.Handler().ServeHTTP(w, r)
 
-	if w.Code != http.StatusOK {
-		t.Fatalf("expected 200, got %d", w.Code)
-	}
-
-	// Should be JSON, not SSE
-	var resp schema.ChatResponse
-	if err := json.NewDecoder(w.Body).Decode(&resp); err != nil {
-		t.Fatalf("expected valid JSON response: %v", err)
-	}
-	if resp.Role != schema.RoleAssistant {
-		t.Fatalf("expected role=assistant, got %q", resp.Role)
+	if w.Code != http.StatusNotFound {
+		t.Fatalf("expected 404, got %d: %s", w.Code, w.Body.String())
 	}
 }
 
-func TestChat_UnsupportedAccept(t *testing.T) {
-	mgr := newGeneratorManager(t)
-	mux := serveMux(mgr)
+func TestChatInvalidJSON(t *testing.T) {
+	_, _, item := ChatHandler(nil)
 
-	// Create a session
-	sessionBody := `{"model":"test-model"}`
 	w := httptest.NewRecorder()
-	r := httptest.NewRequest(http.MethodPost, "/session", bytes.NewBufferString(sessionBody))
-	r.Header.Set("Content-Type", "application/json")
-	mux.ServeHTTP(w, r)
-	if w.Code != http.StatusCreated {
-		t.Fatalf("create session: expected 201, got %d", w.Code)
+	r := httptest.NewRequest(http.MethodPost, "/chat", bytes.NewBufferString(`{invalid`))
+	r.Header.Set(types.ContentTypeHeader, types.ContentTypeJSON)
+	item.Handler().ServeHTTP(w, r)
+
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d: %s", w.Code, w.Body.String())
 	}
-	var session schema.Session
-	if err := json.NewDecoder(w.Body).Decode(&session); err != nil {
+}
+
+func TestChatNotAcceptable(t *testing.T) {
+	modelName := requireDownloadModel(t)
+	conn, manager := newModelHandlerIntegrationManager(t)
+	_, _, item := ChatHandler(manager)
+	session := createChatTestSession(t, manager, conn.Config.Name, modelName)
+
+	body, err := json.Marshal(schema.ChatRequest{
+		Session: session.ID,
+		Text:    "hello",
+	})
+	if err != nil {
 		t.Fatal(err)
 	}
 
-	// Send chat with unsupported Accept header
-	chatBody, _ := json.Marshal(schema.ChatRequest{ChatRequestCore: schema.ChatRequestCore{Session: session.ID, Text: "hello"}})
-	w = httptest.NewRecorder()
-	r = httptest.NewRequest(http.MethodPost, "/chat", bytes.NewReader(chatBody))
-	r.Header.Set("Content-Type", "application/json")
-	r.Header.Set("Accept", "text/xml")
-	mux.ServeHTTP(w, r)
+	w := httptest.NewRecorder()
+	r := httptest.NewRequest(http.MethodPost, "/chat", bytes.NewReader(body)).WithContext(newModelHandlerTestContext(t))
+	r.Header.Set(types.ContentTypeHeader, types.ContentTypeJSON)
+	r.Header.Set(types.ContentAcceptHeader, types.ContentTypeTextPlain)
+	item.Handler().ServeHTTP(w, r)
 
 	if w.Code != http.StatusNotAcceptable {
 		t.Fatalf("expected 406, got %d: %s", w.Code, w.Body.String())
 	}
+}
+
+func createChatTestSession(t *testing.T, manager interface {
+	CreateSession(ctx context.Context, req schema.SessionInsert, user *auth.User) (*schema.Session, error)
+}, provider, model string) *schema.Session {
+	t.Helper()
+
+	session, err := manager.CreateSession(newModelHandlerTestContext(t), schema.SessionInsert{
+		SessionMeta: schema.SessionMeta{
+			GeneratorMeta: schema.GeneratorMeta{
+				Provider: types.Ptr(provider),
+				Model:    types.Ptr(model),
+			},
+		},
+	}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	return session
 }

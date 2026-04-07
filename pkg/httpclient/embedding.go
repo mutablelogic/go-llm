@@ -3,6 +3,7 @@ package httpclient
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	// Packages
 	client "github.com/mutablelogic/go-client"
@@ -14,6 +15,8 @@ import (
 
 // Embedding generates embedding vectors for the given text inputs.
 func (c *Client) Embedding(ctx context.Context, req schema.EmbeddingRequest) (*schema.EmbeddingResponse, error) {
+	req.Provider = strings.TrimSpace(req.Provider)
+	req.Model = strings.TrimSpace(req.Model)
 	if req.Model == "" {
 		return nil, fmt.Errorf("model name cannot be empty")
 	}
@@ -21,19 +24,15 @@ func (c *Client) Embedding(ctx context.Context, req schema.EmbeddingRequest) (*s
 		return nil, fmt.Errorf("input cannot be empty")
 	}
 
-	// Create request
-	payload, err := client.NewJSONRequest(req)
+	httpReq, err := client.NewJSONRequest(req)
 	if err != nil {
 		return nil, err
 	}
-	reqOpts := []client.RequestOpt{client.OptPath("embedding")}
 
-	// Perform request
 	var response schema.EmbeddingResponse
-	if err := c.DoWithContext(ctx, payload, &response, reqOpts...); err != nil {
+	if err := c.DoWithContext(ctx, httpReq, &response, client.OptPath("embedding")); err != nil {
 		return nil, err
 	}
 
-	// Return the response
 	return &response, nil
 }

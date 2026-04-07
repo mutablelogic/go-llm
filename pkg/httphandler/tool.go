@@ -1,115 +1,148 @@
 package httphandler
 
 import (
+	"context"
+	"io"
 	"net/http"
+	"net/url"
 
 	// Packages
-	manager "github.com/mutablelogic/go-llm/pkg/manager"
+	middleware "github.com/djthorpe/go-auth/pkg/middleware"
+	llm "github.com/mutablelogic/go-llm"
+	llmmanager "github.com/mutablelogic/go-llm/pkg/manager"
 	schema "github.com/mutablelogic/go-llm/pkg/schema"
 	httprequest "github.com/mutablelogic/go-server/pkg/httprequest"
 	httpresponse "github.com/mutablelogic/go-server/pkg/httpresponse"
 	jsonschema "github.com/mutablelogic/go-server/pkg/jsonschema"
-	openapi "github.com/mutablelogic/go-server/pkg/openapi/schema"
+	opts "github.com/mutablelogic/go-server/pkg/openapi"
 	types "github.com/mutablelogic/go-server/pkg/types"
 )
 
 ///////////////////////////////////////////////////////////////////////////////
-// HANDLER FUNCTIONS
+// PUBLIC METHODS
 
-// Path: tool
-func ToolListHandler(manager *manager.Manager) (string, http.HandlerFunc, *openapi.PathItem) {
-	listRespSchema, _ := jsonschema.For[schema.ListToolResponse]()
-	return "tool", func(w http.ResponseWriter, r *http.Request) {
-			switch r.Method {
-			case http.MethodGet:
-				var req schema.ListToolRequest
-				if err := httprequest.Query(r.URL.Query(), &req); err != nil {
-					_ = httpresponse.Error(w, err)
-					return
-				}
-				resp, err := manager.ListTools(r.Context(), req)
-				if err != nil {
-					_ = httpresponse.Error(w, httpErr(err))
-					return
-				}
-				_ = httpresponse.JSON(w, http.StatusOK, httprequest.Indent(r), resp)
-			default:
-				_ = httpresponse.Error(w, httpresponse.Err(http.StatusMethodNotAllowed), r.Method)
-			}
-		}, types.Ptr(openapi.PathItem{
-			Get: &openapi.Operation{
-				Tags:        []string{"Tool"},
-				Description: "List all tools",
-				Parameters: []openapi.Parameter{
-					{Name: "limit", In: openapi.ParameterInQuery, Description: "Maximum number of tools to return", Schema: queryUintSchema},
-					{Name: "offset", In: openapi.ParameterInQuery, Description: "Offset for pagination", Schema: queryUintSchema},
-				},
-				Responses: map[string]openapi.Response{
-					"200":     {Description: "List of tools", Content: map[string]openapi.MediaType{types.ContentTypeJSON: {Schema: listRespSchema}}},
-					"default": openapi.ErrorResponse("An error occurred"),
-				},
-			},
-		})
+func ToolHandler(manager *llmmanager.Manager) (string, *jsonschema.Schema, httprequest.PathItem) {
+	return "tool", nil, httprequest.NewPathItem(
+		"Tool operations",
+		"List operations on tools",
+		"Tools & Agents",
+	).Get(
+		func(w http.ResponseWriter, r *http.Request) {
+			_ = listTools(r.Context(), manager, w, r)
+		},
+		"List tools",
+		opts.WithQuery(jsonschema.MustFor[schema.ToolListRequest]()),
+		opts.WithJSONResponse(200, jsonschema.MustFor[schema.ToolList]()),
+		opts.WithErrorResponse(400, "Invalid request parameters or tool listing failure."),
+	)
 }
 
-// Path: tool/{name}
-func ToolGetHandler(manager *manager.Manager) (string, http.HandlerFunc, *openapi.PathItem) {
-	nameParam := openapi.Parameter{
-		Name:        "name",
-		In:          openapi.ParameterInPath,
-		Description: "Tool name",
-		Required:    true,
-		Schema:      pathParamSchema,
+func ToolResourceHandler(manager *llmmanager.Manager) (string, *jsonschema.Schema, httprequest.PathItem) {
+	return "tool/{name}", nil, httprequest.NewPathItem(
+		"Tool operations",
+		"Get and call operations on tools",
+		"Tools & Agents",
+	).Get(
+		func(w http.ResponseWriter, r *http.Request) {
+			_ = getTool(r.Context(), manager, w, r)
+		},
+		"Get tool",
+		opts.WithJSONResponse(200, jsonschema.MustFor[schema.ToolMeta]()),
+		opts.WithErrorResponse(404, "Tool not found."),
+	).Post(
+		func(w http.ResponseWriter, r *http.Request) {
+			_ = callTool(r.Context(), manager, w, r)
+		},
+		"Call tool",
+		opts.WithJSONRequest(jsonschema.MustFor[schema.CallToolRequest]()),
+		opts.WithResponse(200, types.ContentTypeJSON, jsonschema.MustFor[map[string]any](), "Tool result returned as raw resource content. Actual content type may vary by tool."),
+		opts.WithResponse(200, types.ContentTypeTextPlain, jsonschema.MustFor[string](), "Tool result returned as raw text content. Actual content type may vary by tool."),
+		opts.WithNoContentResponse(204, "Tool returned no content."),
+		opts.WithErrorResponse(400, "Invalid request body or tool call failure."),
+		opts.WithErrorResponse(404, "Tool not found."),
+		opts.WithErrorResponse(409, "Multiple tools matched; specify a fully-qualified tool name."),
+	)
+}
+
+///////////////////////////////////////////////////////////////////////////////
+// PRIVATE METHODS
+
+func listTools(ctx context.Context, manager *llmmanager.Manager, w http.ResponseWriter, r *http.Request) error {
+	var req schema.ToolListRequest
+	if err := httprequest.Query(r.URL.Query(), &req); err != nil {
+		return httpresponse.Error(w, httpresponse.ErrBadRequest, err)
 	}
-	toolSchema, _ := jsonschema.For[schema.ToolMeta]()
-	callReqSchema, _ := jsonschema.For[schema.CallToolRequest]()
-	callRespSchema, _ := jsonschema.For[schema.CallToolResponse]()
-	return "tool/{name}", func(w http.ResponseWriter, r *http.Request) {
-			switch r.Method {
-			case http.MethodGet:
-				resp, err := manager.GetTool(r.Context(), r.PathValue("name"))
-				if err != nil {
-					_ = httpresponse.Error(w, httpErr(err))
-					return
-				}
-				_ = httpresponse.JSON(w, http.StatusOK, httprequest.Indent(r), resp)
-			case http.MethodPost:
-				var req schema.CallToolRequest
-				if err := httprequest.Read(r, &req); err != nil {
-					_ = httpresponse.Error(w, err)
-					return
-				}
-				resp, err := manager.CallTool(r.Context(), r.PathValue("name"), req.Input)
-				if err != nil {
-					_ = httpresponse.Error(w, httpErr(err))
-					return
-				}
-				_ = httpresponse.JSON(w, http.StatusOK, httprequest.Indent(r), resp)
-			default:
-				_ = httpresponse.Error(w, httpresponse.Err(http.StatusMethodNotAllowed), r.Method)
-			}
-		}, types.Ptr(openapi.PathItem{
-			Get: &openapi.Operation{
-				Tags:        []string{"Tool"},
-				Description: "Get a tool by name",
-				Parameters:  []openapi.Parameter{nameParam},
-				Responses: map[string]openapi.Response{
-					"200":     {Description: "Tool details", Content: map[string]openapi.MediaType{types.ContentTypeJSON: {Schema: toolSchema}}},
-					"default": openapi.ErrorResponse("An error occurred"),
-				},
-			},
-			Post: &openapi.Operation{
-				Tags:        []string{"Tool"},
-				Description: "Call a tool by name",
-				Parameters:  []openapi.Parameter{nameParam},
-				RequestBody: &openapi.RequestBody{
-					Required: true,
-					Content:  map[string]openapi.MediaType{types.ContentTypeJSON: {Schema: callReqSchema}},
-				},
-				Responses: map[string]openapi.Response{
-					"200":     {Description: "Tool result", Content: map[string]openapi.MediaType{types.ContentTypeJSON: {Schema: callRespSchema}}},
-					"default": openapi.ErrorResponse("An error occurred"),
-				},
-			},
-		})
+
+	tools, err := manager.ListTools(ctx, req, middleware.UserFromContext(ctx))
+	if err != nil {
+		return httpresponse.Error(w, schema.HTTPErr(err))
+	}
+
+	return httpresponse.JSON(w, http.StatusOK, httprequest.Indent(r), tools)
+}
+
+func getTool(ctx context.Context, manager *llmmanager.Manager, w http.ResponseWriter, r *http.Request) error {
+	name, err := unescapePathValue(r, "name")
+	if err != nil {
+		return httpresponse.Error(w, httpresponse.ErrBadRequest, err)
+	}
+
+	tool, err := manager.GetTool(ctx, name, middleware.UserFromContext(ctx))
+	if err != nil {
+		return httpresponse.Error(w, schema.HTTPErr(err))
+	}
+
+	return httpresponse.JSON(w, http.StatusOK, httprequest.Indent(r), tool)
+}
+
+func callTool(ctx context.Context, manager *llmmanager.Manager, w http.ResponseWriter, r *http.Request) error {
+	name, err := unescapePathValue(r, "name")
+	if err != nil {
+		return httpresponse.Error(w, httpresponse.ErrBadRequest, err)
+	}
+
+	var req schema.CallToolRequest
+	if err := httprequest.Read(r, &req); err != nil {
+		return httpresponse.Error(w, httpresponse.ErrBadRequest, err)
+	}
+
+	resource, err := manager.CallTool(ctx, name, req, middleware.UserFromContext(ctx))
+	if err != nil {
+		return httpresponse.Error(w, schema.HTTPErr(err))
+	}
+
+	return writeToolResource(ctx, w, resource)
+}
+
+func writeToolResource(ctx context.Context, w http.ResponseWriter, resource llm.Resource) error {
+	if resource == nil {
+		return httpresponse.Write(w, http.StatusNoContent, types.ContentTypeTextPlain, nil)
+	}
+
+	data, err := resource.Read(ctx)
+	if err != nil {
+		return httpresponse.Error(w, schema.HTTPErr(schema.ErrInternalServerError.Withf("reading tool result: %v", err)))
+	}
+
+	contentType := resource.Type()
+	if contentType == "" {
+		contentType = types.ContentTypeTextPlain
+	}
+	if uri := resource.URI(); uri != "" {
+		w.Header().Set(types.ContentPathHeader, uri)
+	}
+	if name := resource.Name(); name != "" {
+		w.Header().Set(types.ContentNameHeader, name)
+	}
+	if description := resource.Description(); description != "" {
+		w.Header().Set(types.ContentDescriptionHeader, description)
+	}
+
+	return httpresponse.Write(w, http.StatusOK, contentType, func(writer io.Writer) (int, error) {
+		return writer.Write(data)
+	})
+}
+
+func unescapePathValue(r *http.Request, key string) (string, error) {
+	return url.PathUnescape(r.PathValue(key))
 }

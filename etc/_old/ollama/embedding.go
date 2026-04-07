@@ -66,14 +66,14 @@ func (ollama *Client) Embedding(ctx context.Context, model schema.Model, text st
 	if len(vectors) > 0 {
 		return vectors[0], nil
 	}
-	return nil, llm.ErrNotFound.With("no embeddings returned")
+	return nil, schema.ErrNotFound.With("no embeddings returned")
 }
 
 // BatchEmbedding generates embedding vectors for multiple texts using the specified model
 func (ollama *Client) BatchEmbedding(ctx context.Context, model schema.Model, texts []string, opts ...opt.Opt) ([][]float64, error) {
 	// Bail out if no texts
 	if len(texts) == 0 {
-		return nil, llm.ErrBadParameter.With("at least one text is required")
+		return nil, schema.ErrBadParameter.With("at least one text is required")
 	}
 
 	// Request

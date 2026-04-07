@@ -2,218 +2,279 @@ package manager
 
 import (
 	"context"
+	"errors"
 	"testing"
-	"time"
 
 	// Packages
-	client "github.com/mutablelogic/go-client"
-	llm "github.com/mutablelogic/go-llm"
 	schema "github.com/mutablelogic/go-llm/pkg/schema"
+	llmtest "github.com/mutablelogic/go-llm/pkg/test"
+	pg "github.com/mutablelogic/go-pg"
 	types "github.com/mutablelogic/go-server/pkg/types"
-	assert "github.com/stretchr/testify/assert"
 )
 
-// testConnectorURL is a real MCP server used for integration tests.
-const testConnectorURL = "https://api.githubcopilot.com/mcp/"
+func TestCreateConnector(t *testing.T) {
+	conn, m := newIntegrationManager(t)
 
-///////////////////////////////////////////////////////////////////////////////
-// MOCK CONNECTOR
-
-// mockConnector is an in-process fake that satisfies llm.Connector and the
-// prober interface so the manager's CreateConnector path can exercise its
-// probe-and-persist logic without hitting an external server.
-type mockConnector struct{}
-
-func (mockConnector) Run(context.Context) error                             { return nil }
-func (mockConnector) ListTools(context.Context) ([]llm.Tool, error)         { return nil, nil }
-func (mockConnector) ListPrompts(context.Context) ([]llm.Prompt, error)     { return nil, nil }
-func (mockConnector) ListResources(context.Context) ([]llm.Resource, error) { return nil, nil }
-func (mockConnector) Probe(context.Context) (*schema.ConnectorState, error) {
-	now := time.Now()
-	name := "mock-server"
-	version := "0.0.0-test"
-	return &schema.ConnectorState{
-		ConnectedAt:  &now,
-		Name:         &name,
-		Version:      &version,
-		Capabilities: []schema.Capability{schema.CapabilityTools},
-	}, nil
-}
-
-// mockConnectorFactory returns a ConnectorFactory that always succeeds with a
-// mockConnector, requiring no network access.
-func mockConnectorFactory() ConnectorFactory {
-	return func(_ context.Context, _ string, _ ...client.ClientOpt) (llm.Connector, error) {
-		return mockConnector{}, nil
+	if err := m.Exec(context.Background(), `TRUNCATE llm.connector CASCADE`); err != nil {
+		t.Fatal(err)
 	}
-}
 
-///////////////////////////////////////////////////////////////////////////////
-// TEST HELPERS
-
-// newManagerWithFactory creates a Manager that uses a mock connector factory
-// so tests can exercise the full CreateConnector path (including probe) without
-// any external dependency.
-func newManagerWithFactory(t *testing.T) *Manager {
-	t.Helper()
-	m, err := NewManager("test", "0.0.0", WithConnectorFactory(mockConnectorFactory()))
+	enabled := false
+	namespace := "mcp"
+	url := llmtest.ConnectorURL(t, "create-connector") + "?token=abc#frag"
+	created, _, _, err := m.CreateConnector(context.Background(), schema.ConnectorInsert{
+		URL: url,
+		ConnectorMeta: schema.ConnectorMeta{
+			Enabled:   &enabled,
+			Namespace: &namespace,
+			Groups:    conn.Config.Groups,
+			Meta:      schema.ProviderMetaMap{"env": "dev"},
+		},
+	}, llmtest.AdminUser(conn))
 	if err != nil {
-		t.Fatalf("NewManager: %v", err)
+		t.Fatal(err)
 	}
-	return m
+
+	if created.URL != newConnectorTestURLCanonical(url) {
+		t.Fatalf("unexpected URL: %q", created.URL)
+	}
+	if types.Value(created.Enabled) {
+		t.Fatal("expected connector to be disabled")
+	}
+	if types.Value(created.Namespace) != "mcp" {
+		t.Fatalf("unexpected namespace: %q", types.Value(created.Namespace))
+	}
+	if created.Meta["env"] != "dev" {
+		t.Fatalf("unexpected meta: %v", created.Meta)
+	}
+	if len(created.Groups) != len(conn.Config.Groups) || created.Groups[0] != conn.Config.Groups[0] {
+		t.Fatalf("unexpected groups: %v", created.Groups)
+	}
+	if created.CreatedAt.IsZero() {
+		t.Fatal("expected created_at to be set")
+	}
+	if created.ModifiedAt != nil {
+		t.Fatalf("expected modified_at to be nil, got %v", *created.ModifiedAt)
+	}
 }
 
-///////////////////////////////////////////////////////////////////////////////
-// CONNECTOR TESTS
+func TestCreateConnectorRollsBackGroupFailure(t *testing.T) {
+	_, m := newIntegrationManager(t)
+	url := llmtest.ConnectorURL(t, "rollback-group-failure")
 
-// Test CreateConnector probes and stores connector state
-func Test_connector_001(t *testing.T) {
-	assert := assert.New(t)
+	if err := m.Exec(context.Background(), `TRUNCATE llm.connector CASCADE`); err != nil {
+		t.Fatal(err)
+	}
 
-	m := newManagerWithFactory(t)
+	_, _, _, err := m.CreateConnector(context.Background(), schema.ConnectorInsert{
+		URL: url,
+		ConnectorMeta: schema.ConnectorMeta{
+			Groups: []string{"missing-group"},
+		},
+	}, nil)
+	if err == nil {
+		t.Fatal("expected create connector to fail for missing group")
+	}
 
-	c, err := m.CreateConnector(context.TODO(), testConnectorURL, schema.ConnectorMeta{Enabled: types.Ptr(true), Namespace: types.Ptr("mcp")})
-	assert.NoError(err)
-	assert.NotNil(c)
-	assert.Equal(testConnectorURL, c.URL)
-	assert.True(*c.Enabled)
-	assert.Equal("mcp", types.Value(c.Namespace))
-	assert.NotNil(c.ConnectedAt)
+	var connector schema.Connector
+	if err := m.PoolConn.Get(context.Background(), &connector, schema.ConnectorURLSelector(url)); !errors.Is(pg.NormalizeError(err), pg.ErrNotFound) {
+		t.Fatalf("expected connector row to be rolled back, got err=%v connector=%v", err, connector)
+	}
 }
 
-// Test WithConnectorStore rejects nil store
-func Test_connector_002(t *testing.T) {
-	assert := assert.New(t)
+func TestDeleteConnector(t *testing.T) {
+	conn, m := newIntegrationManager(t)
+	url := llmtest.ConnectorURL(t, "delete-connector")
 
-	_, err := NewManager("test", "0.0.0", WithConnectorStore(nil))
-	assert.ErrorIs(err, llm.ErrBadParameter)
+	if err := m.Exec(context.Background(), `TRUNCATE llm.connector CASCADE`); err != nil {
+		t.Fatal(err)
+	}
+
+	_, _, _, err := m.CreateConnector(context.Background(), schema.ConnectorInsert{
+		URL: url,
+		ConnectorMeta: schema.ConnectorMeta{
+			Groups: conn.Config.Groups,
+		},
+	}, llmtest.AdminUser(conn))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	deleted, err := m.DeleteConnector(context.Background(), url)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if deleted.URL != url {
+		t.Fatalf("unexpected deleted URL: %q", deleted.URL)
+	}
+
+	var connector schema.Connector
+	if err := m.PoolConn.Get(context.Background(), &connector, schema.ConnectorURLSelector(url)); !errors.Is(pg.NormalizeError(err), pg.ErrNotFound) {
+		t.Fatalf("expected connector to be deleted, got err=%v connector=%v", err, connector)
+	}
 }
 
-// Test CreateConnector rejects invalid URL before any probe
-func Test_connector_003(t *testing.T) {
-	assert := assert.New(t)
+func TestDeleteConnectorNotFound(t *testing.T) {
+	_, m := newIntegrationManager(t)
 
-	m, err := NewManager("test", "0.0.0")
-	assert.NoError(err)
-
-	_, err = m.CreateConnector(context.TODO(), "ftp://example.com/sse", schema.ConnectorMeta{})
-	assert.Error(err)
-
-	_, err = m.CreateConnector(context.TODO(), "example.com/sse", schema.ConnectorMeta{})
-	assert.Error(err)
+	if _, err := m.DeleteConnector(context.Background(), "https://example.com/sse"); !errors.Is(err, schema.ErrNotFound) {
+		t.Fatalf("expected not found error, got %v", err)
+	}
 }
 
-// Test CreateConnector rejects invalid namespace before any probe
-func Test_connector_004(t *testing.T) {
-	assert := assert.New(t)
+func TestGetConnector(t *testing.T) {
+	conn, m := newIntegrationManager(t)
 
-	m, err := NewManager("test", "0.0.0")
-	assert.NoError(err)
+	if err := m.Exec(context.Background(), `TRUNCATE llm.connector CASCADE`); err != nil {
+		t.Fatal(err)
+	}
 
-	_, err = m.CreateConnector(context.TODO(), testConnectorURL, schema.ConnectorMeta{Namespace: types.Ptr("bad namespace")})
-	assert.Error(err)
+	publicURL := llmtest.ConnectorURL(t, "public-connector")
+	privateURL := llmtest.ConnectorURL(t, "private-connector")
+	if _, _, _, err := m.CreateConnector(context.Background(), schema.ConnectorInsert{URL: publicURL}, nil); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, _, err := m.CreateConnector(context.Background(), schema.ConnectorInsert{
+		URL:           privateURL,
+		ConnectorMeta: schema.ConnectorMeta{Groups: conn.Config.Groups},
+	}, llmtest.AdminUser(conn)); err != nil {
+		t.Fatal(err)
+	}
+
+	privateAll, err := m.GetConnector(context.Background(), privateURL, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if privateAll.URL != privateURL {
+		t.Fatalf("expected connector URL %q, got %q", privateURL, privateAll.URL)
+	}
+
+	privateAdmin, err := m.GetConnector(context.Background(), privateURL, llmtest.AdminUser(conn))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if privateAdmin.URL != privateURL {
+		t.Fatalf("expected connector URL %q, got %q", privateURL, privateAdmin.URL)
+	}
+
+	publicUngrouped, err := m.GetConnector(context.Background(), publicURL, llmtest.User(conn))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if publicUngrouped.URL != publicURL {
+		t.Fatalf("expected connector URL %q, got %q", publicURL, publicUngrouped.URL)
+	}
+
+	if _, err := m.GetConnector(context.Background(), privateURL, llmtest.User(conn)); !errors.Is(err, schema.ErrNotFound) {
+		t.Fatalf("expected not found for inaccessible connector, got %v", err)
+	}
 }
 
-// Test duplicate CreateConnector returns conflict error
-func Test_connector_005(t *testing.T) {
-	assert := assert.New(t)
+func TestUpdateConnector(t *testing.T) {
+	conn, m := newIntegrationManager(t)
+	url := llmtest.ConnectorURL(t, "update-connector")
 
-	m := newManagerWithFactory(t)
-	var err error
+	if err := m.Exec(context.Background(), `TRUNCATE llm.connector CASCADE`); err != nil {
+		t.Fatal(err)
+	}
 
-	_, err = m.CreateConnector(context.TODO(), testConnectorURL, schema.ConnectorMeta{Enabled: types.Ptr(true)})
-	assert.NoError(err)
+	enabled := false
+	oldNamespace := "mcp"
+	created, _, _, err := m.CreateConnector(context.Background(), schema.ConnectorInsert{
+		URL: url,
+		ConnectorMeta: schema.ConnectorMeta{
+			Enabled:   &enabled,
+			Namespace: &oldNamespace,
+			Groups:    conn.Config.Groups,
+			Meta:      schema.ProviderMetaMap{"env": "dev"},
+		},
+	}, llmtest.AdminUser(conn))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if created.ModifiedAt != nil {
+		t.Fatalf("expected modified_at to be nil, got %v", *created.ModifiedAt)
+	}
 
-	// Second registration is rejected at the store level before any probe.
-	_, err = m.CreateConnector(context.TODO(), testConnectorURL, schema.ConnectorMeta{Enabled: types.Ptr(true)})
-	assert.ErrorIs(err, llm.ErrConflict)
+	newEnabled := true
+	newNamespace := "renamed"
+	updated, err := m.UpdateConnector(context.Background(), url, schema.ConnectorMeta{
+		Enabled:   &newEnabled,
+		Namespace: &newNamespace,
+		Groups:    []string{},
+		Meta:      schema.ProviderMetaMap{"env": "prod"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !types.Value(updated.Enabled) {
+		t.Fatal("expected connector to be enabled after update")
+	}
+	if types.Value(updated.Namespace) != "renamed" {
+		t.Fatalf("expected namespace %q, got %q", "renamed", types.Value(updated.Namespace))
+	}
+	if updated.Meta["env"] != "prod" {
+		t.Fatalf("unexpected meta: %v", updated.Meta)
+	}
+	if len(updated.Groups) != 0 {
+		t.Fatalf("expected groups to be cleared, got %v", updated.Groups)
+	}
+	if updated.ModifiedAt == nil {
+		t.Fatal("expected modified_at to be set")
+	}
 }
 
-// Test GetConnector round-trip and not-found
-func Test_connector_006(t *testing.T) {
-	assert := assert.New(t)
+func TestListConnectors(t *testing.T) {
+	conn, m := newIntegrationManager(t)
 
-	m := newManagerWithFactory(t)
-	var err error
+	if err := m.Exec(context.Background(), `TRUNCATE llm.connector CASCADE`); err != nil {
+		t.Fatal(err)
+	}
 
-	_, err = m.GetConnector(context.TODO(), testConnectorURL)
-	assert.ErrorIs(err, llm.ErrNotFound)
+	publicURL := llmtest.ConnectorURL(t, "list-public-connector")
+	privateURL := llmtest.ConnectorURL(t, "list-private-connector")
+	if _, _, _, err := m.CreateConnector(context.Background(), schema.ConnectorInsert{URL: publicURL}, nil); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, _, err := m.CreateConnector(context.Background(), schema.ConnectorInsert{
+		URL:           privateURL,
+		ConnectorMeta: schema.ConnectorMeta{Groups: conn.Config.Groups},
+	}, llmtest.AdminUser(conn)); err != nil {
+		t.Fatal(err)
+	}
 
-	_, err = m.CreateConnector(context.TODO(), testConnectorURL, schema.ConnectorMeta{Enabled: types.Ptr(true), Namespace: types.Ptr("ns")})
-	assert.NoError(err)
+	all, err := m.ListConnectors(context.Background(), schema.ConnectorListRequest{}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if all.Count != 2 || len(all.Body) != 2 {
+		t.Fatalf("expected 2 connectors, got count=%d len=%d", all.Count, len(all.Body))
+	}
 
-	got, err := m.GetConnector(context.TODO(), testConnectorURL)
-	assert.NoError(err)
-	assert.Equal(testConnectorURL, got.URL)
-	assert.Equal("ns", types.Value(got.Namespace))
+	admins, err := m.ListConnectors(context.Background(), schema.ConnectorListRequest{}, llmtest.AdminUser(conn))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if admins.Count != 2 || len(admins.Body) != 2 {
+		t.Fatalf("expected admin user to see 2 connectors, got count=%d len=%d", admins.Count, len(admins.Body))
+	}
+
+	ungroupedUser, err := m.ListConnectors(context.Background(), schema.ConnectorListRequest{}, llmtest.User(conn))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ungroupedUser.Count != 1 || len(ungroupedUser.Body) != 1 {
+		t.Fatalf("expected ungrouped user to see 1 connector, got count=%d len=%d", ungroupedUser.Count, len(ungroupedUser.Body))
+	}
+	if ungroupedUser.Body[0].URL != publicURL {
+		t.Fatalf("expected public connector %q, got %q", publicURL, ungroupedUser.Body[0].URL)
+	}
 }
 
-// Test UpdateConnector modifies meta and returns updated connector
-func Test_connector_007(t *testing.T) {
-	assert := assert.New(t)
-
-	m := newManagerWithFactory(t)
-	var err error
-
-	_, err = m.CreateConnector(context.TODO(), testConnectorURL, schema.ConnectorMeta{Enabled: types.Ptr(false), Namespace: types.Ptr("old")})
-	assert.NoError(err)
-
-	updated, err := m.UpdateConnector(context.TODO(), testConnectorURL, schema.ConnectorMeta{Enabled: types.Ptr(true), Namespace: types.Ptr("new")})
-	assert.NoError(err)
-	assert.True(*updated.Enabled)
-	assert.Equal("new", types.Value(updated.Namespace))
-}
-
-// Test UpdateConnector returns not-found for unknown URL
-func Test_connector_008(t *testing.T) {
-	assert := assert.New(t)
-
-	m, err := NewManager("test", "0.0.0")
-	assert.NoError(err)
-
-	_, err = m.UpdateConnector(context.TODO(), testConnectorURL, schema.ConnectorMeta{})
-	assert.ErrorIs(err, llm.ErrNotFound)
-}
-
-// Test DeleteConnector removes the connector
-func Test_connector_009(t *testing.T) {
-	assert := assert.New(t)
-
-	m := newManagerWithFactory(t)
-	var err error
-
-	_, err = m.CreateConnector(context.TODO(), testConnectorURL, schema.ConnectorMeta{Enabled: types.Ptr(true)})
-	assert.NoError(err)
-
-	assert.NoError(m.DeleteConnector(context.TODO(), testConnectorURL))
-
-	_, err = m.GetConnector(context.TODO(), testConnectorURL)
-	assert.ErrorIs(err, llm.ErrNotFound)
-}
-
-// Test DeleteConnector returns not-found for unknown URL
-func Test_connector_010(t *testing.T) {
-	assert := assert.New(t)
-
-	m, err := NewManager("test", "0.0.0")
-	assert.NoError(err)
-
-	err = m.DeleteConnector(context.TODO(), testConnectorURL)
-	assert.ErrorIs(err, llm.ErrNotFound)
-}
-
-// Test URL canonicalisation strips query params and normalises case
-func Test_connector_011(t *testing.T) {
-	assert := assert.New(t)
-
-	m := newManagerWithFactory(t)
-
-	// Upper-case scheme/host and a spurious query param should both be stripped.
-	c, err := m.CreateConnector(context.TODO(), "HTTPS://API.GITHUBCOPILOT.COM/MCP/?token=abc", schema.ConnectorMeta{Enabled: types.Ptr(true)})
-	assert.NoError(err)
-	assert.Equal(testConnectorURL, c.URL)
-
-	got, err := m.GetConnector(context.TODO(), "HTTPS://API.GITHUBCOPILOT.COM/MCP/?token=abc")
-	assert.NoError(err)
-	assert.Equal(testConnectorURL, got.URL)
+func newConnectorTestURLCanonical(raw string) string {
+	url, err := schema.CanonicalURL(raw)
+	if err != nil {
+		panic(err)
+	}
+	return url
 }

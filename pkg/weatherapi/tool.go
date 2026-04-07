@@ -5,10 +5,11 @@ import (
 	"encoding/json"
 
 	// Packages
-	jsonschema "github.com/google/jsonschema-go/jsonschema"
 	"github.com/mutablelogic/go-client"
 	llm "github.com/mutablelogic/go-llm"
+	"github.com/mutablelogic/go-llm/pkg/schema"
 	"github.com/mutablelogic/go-llm/pkg/tool"
+	jsonschema "github.com/mutablelogic/go-server/pkg/jsonschema"
 )
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -63,8 +64,8 @@ func (*currentWeather) Description() string {
 }
 
 // Return the JSON schema for the tool input
-func (*currentWeather) InputSchema() (*jsonschema.Schema, error) {
-	return jsonschema.For[CurrentWeatherRequest](nil)
+func (*currentWeather) InputSchema() *jsonschema.Schema {
+	return jsonschema.MustFor[CurrentWeatherRequest]()
 }
 
 // Run the tool with the given input
@@ -74,13 +75,13 @@ func (c *currentWeather) Run(ctx context.Context, input json.RawMessage) (any, e
 	// Unmarshal JSON input if provided
 	if len(input) > 0 {
 		if err := json.Unmarshal(input, &req); err != nil {
-			return nil, llm.ErrBadParameter.Withf("failed to unmarshal input: %v", err)
+			return nil, schema.ErrBadParameter.Withf("failed to unmarshal input: %v", err)
 		}
 	}
 
 	// Validate required fields
 	if req.Query == "" {
-		return nil, llm.ErrBadParameter.With("query is required")
+		return nil, schema.ErrBadParameter.With("query is required")
 	}
 
 	return c.client.Current(ctx, &req)
@@ -98,11 +99,8 @@ func (*forecastWeather) Description() string {
 }
 
 // Return the JSON schema for the tool input
-func (*forecastWeather) InputSchema() (*jsonschema.Schema, error) {
-	schema, err := jsonschema.For[ForecastWeatherRequest](nil)
-	if err != nil {
-		return nil, err
-	}
+func (*forecastWeather) InputSchema() *jsonschema.Schema {
+	schema := jsonschema.MustFor[ForecastWeatherRequest]()
 
 	// Add validation constraints for days
 	if daysField, ok := schema.Properties["days"]; ok && daysField != nil {
@@ -112,7 +110,7 @@ func (*forecastWeather) InputSchema() (*jsonschema.Schema, error) {
 		daysField.Maximum = &max
 	}
 
-	return schema, nil
+	return schema
 }
 
 // Run the tool with the given input
@@ -122,16 +120,16 @@ func (f *forecastWeather) Run(ctx context.Context, input json.RawMessage) (any, 
 	// Unmarshal JSON input if provided
 	if len(input) > 0 {
 		if err := json.Unmarshal(input, &req); err != nil {
-			return nil, llm.ErrBadParameter.Withf("failed to unmarshal input: %v", err)
+			return nil, schema.ErrBadParameter.Withf("failed to unmarshal input: %v", err)
 		}
 	}
 
 	// Validate required fields
 	if req.Query == "" {
-		return nil, llm.ErrBadParameter.With("query is required")
+		return nil, schema.ErrBadParameter.With("query is required")
 	}
 	if req.Days < 1 || req.Days > 14 {
-		return nil, llm.ErrBadParameter.With("days must be between 1 and 14")
+		return nil, schema.ErrBadParameter.With("days must be between 1 and 14")
 	}
 
 	return f.client.Forecast(ctx, &req)
@@ -149,8 +147,8 @@ func (*alertsWeather) Description() string {
 }
 
 // Return the JSON schema for the tool input
-func (*alertsWeather) InputSchema() (*jsonschema.Schema, error) {
-	return jsonschema.For[AlertsWeatherRequest](nil)
+func (*alertsWeather) InputSchema() *jsonschema.Schema {
+	return jsonschema.MustFor[AlertsWeatherRequest]()
 }
 
 // Run the tool with the given input
@@ -160,13 +158,13 @@ func (a *alertsWeather) Run(ctx context.Context, input json.RawMessage) (any, er
 	// Unmarshal JSON input if provided
 	if len(input) > 0 {
 		if err := json.Unmarshal(input, &req); err != nil {
-			return nil, llm.ErrBadParameter.Withf("failed to unmarshal input: %v", err)
+			return nil, schema.ErrBadParameter.Withf("failed to unmarshal input: %v", err)
 		}
 	}
 
 	// Validate required fields
 	if req.Query == "" {
-		return nil, llm.ErrBadParameter.With("query is required")
+		return nil, schema.ErrBadParameter.With("query is required")
 	}
 
 	return a.client.Alerts(ctx, &req)

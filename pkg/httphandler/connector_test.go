@@ -1,7 +1,8 @@
-package httphandler_test
+package httphandler
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -9,309 +10,400 @@ import (
 	"testing"
 
 	// Packages
-	manager "github.com/mutablelogic/go-llm/pkg/manager"
 	schema "github.com/mutablelogic/go-llm/pkg/schema"
+	llmtest "github.com/mutablelogic/go-llm/pkg/test"
 	types "github.com/mutablelogic/go-server/pkg/types"
 )
 
-///////////////////////////////////////////////////////////////////////////////
-// HELPERS
+func TestConnectorCreateJSONIntegration(t *testing.T) {
+	_, manager := newModelHandlerIntegrationManager(t)
+	_, _, item := ConnectorHandler(manager)
 
-func newConnectorManager(t *testing.T) *manager.Manager {
-	t.Helper()
-	m, err := manager.NewManager("test", "0.0.0")
-	if err != nil {
+	if err := manager.Exec(context.Background(), `TRUNCATE llm.connector CASCADE`); err != nil {
 		t.Fatal(err)
 	}
-	return m
-}
-
-func connectorPath(rawURL string) string {
-	return "/connector/" + url.PathEscape(rawURL)
-}
-
-///////////////////////////////////////////////////////////////////////////////
-// TESTS
-
-func TestConnector_ListEmpty(t *testing.T) {
-	mgr := newConnectorManager(t)
-	mux := serveMux(mgr)
-
-	w := httptest.NewRecorder()
-	r := httptest.NewRequest(http.MethodGet, "/connector", nil)
-	mux.ServeHTTP(w, r)
-
-	if w.Code != http.StatusOK {
-		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
-	}
-	var resp schema.ListConnectorsResponse
-	if err := json.NewDecoder(w.Body).Decode(&resp); err != nil {
+	if err := manager.Exec(context.Background(), `INSERT INTO auth."group" ("id") VALUES ('admins') ON CONFLICT DO NOTHING`); err != nil {
 		t.Fatal(err)
 	}
-	if resp.Count != 0 {
-		t.Fatalf("expected 0 connectors, got %d", resp.Count)
-	}
-}
 
-func TestConnector_GetNotFound(t *testing.T) {
-	mgr := newConnectorManager(t)
-	mux := serveMux(mgr)
-
-	w := httptest.NewRecorder()
-	r := httptest.NewRequest(http.MethodGet, connectorPath("https://example.com/sse"), nil)
-	mux.ServeHTTP(w, r)
-
-	if w.Code != http.StatusNotFound {
-		t.Fatalf("expected 404, got %d: %s", w.Code, w.Body.String())
-	}
-}
-
-func TestConnector_CreateAndGet(t *testing.T) {
-	mgr := newConnectorManager(t)
-	mux := serveMux(mgr)
-
-	meta := schema.ConnectorMeta{Enabled: types.Ptr(true), Namespace: types.Ptr("mcp")}
-	body, err := json.Marshal(meta)
+	enabled := false
+	namespace := "mcp"
+	rawURL := llmtest.ConnectorURL(t, "handler-create-connector")
+	body, err := json.Marshal(schema.ConnectorInsert{
+		URL: rawURL,
+		ConnectorMeta: schema.ConnectorMeta{
+			Enabled:   &enabled,
+			Namespace: &namespace,
+			Groups:    []string{"admins"},
+			Meta:      schema.ProviderMetaMap{"env": "dev"},
+		},
+	})
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	// POST to create
 	w := httptest.NewRecorder()
-	r := httptest.NewRequest(http.MethodPost, connectorPath("https://example.com/sse"), bytes.NewReader(body))
-	r.Header.Set("Content-Type", "application/json")
-	mux.ServeHTTP(w, r)
+	r := httptest.NewRequest(http.MethodPost, "/connector", bytes.NewReader(body))
+	r.Header.Set(types.ContentTypeHeader, types.ContentTypeJSON)
+	item.Handler().ServeHTTP(w, r)
+
 	if w.Code != http.StatusCreated {
 		t.Fatalf("expected 201, got %d: %s", w.Code, w.Body.String())
 	}
 
-	var created schema.Connector
-	if err := json.NewDecoder(w.Body).Decode(&created); err != nil {
+	var resp schema.Connector
+	if err := json.NewDecoder(w.Body).Decode(&resp); err != nil {
 		t.Fatal(err)
 	}
-	if created.URL != "https://example.com/sse" {
-		t.Fatalf("unexpected URL: %q", created.URL)
+	if resp.URL != rawURL {
+		t.Fatalf("expected URL %q, got %q", rawURL, resp.URL)
 	}
-	if !types.Value(created.Enabled) {
-		t.Fatal("expected connector to be enabled")
+	if types.Value(resp.Enabled) {
+		t.Fatal("expected connector to be disabled")
 	}
-	if types.Value(created.Namespace) != "mcp" {
-		t.Fatalf("expected namespace %q, got %q", "mcp", types.Value(created.Namespace))
+	if types.Value(resp.Namespace) != namespace {
+		t.Fatalf("expected namespace %q, got %q", namespace, types.Value(resp.Namespace))
 	}
-
-	// GET to verify round-trip
-	w = httptest.NewRecorder()
-	r = httptest.NewRequest(http.MethodGet, connectorPath("https://example.com/sse"), nil)
-	mux.ServeHTTP(w, r)
-	if w.Code != http.StatusOK {
-		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	if len(resp.Groups) != 1 || resp.Groups[0] != "admins" {
+		t.Fatalf("unexpected groups: %v", resp.Groups)
 	}
-	var got schema.Connector
-	if err := json.NewDecoder(w.Body).Decode(&got); err != nil {
-		t.Fatal(err)
-	}
-	if got.URL != created.URL {
-		t.Fatalf("expected URL %q, got %q", created.URL, got.URL)
+	if resp.Meta["env"] != "dev" {
+		t.Fatalf("unexpected meta: %v", resp.Meta)
 	}
 }
 
-func TestConnector_CreateConflict(t *testing.T) {
-	mgr := newConnectorManager(t)
-	mux := serveMux(mgr)
+func TestConnectorCreateInvalidJSON(t *testing.T) {
+	_, _, item := ConnectorHandler(nil)
 
-	meta := schema.ConnectorMeta{Enabled: types.Ptr(true)}
-	body, _ := json.Marshal(meta)
-
-	post := func() *httptest.ResponseRecorder {
-		w := httptest.NewRecorder()
-		r := httptest.NewRequest(http.MethodPost, connectorPath("https://example.com/sse"), bytes.NewReader(body))
-		r.Header.Set("Content-Type", "application/json")
-		mux.ServeHTTP(w, r)
-		return w
-	}
-
-	if w := post(); w.Code != http.StatusCreated {
-		t.Fatalf("expected 201, got %d", w.Code)
-	}
-	if w := post(); w.Code != http.StatusConflict {
-		t.Fatalf("expected 409, got %d: %s", w.Code, w.Body.String())
-	}
-}
-
-func TestConnector_CreateInvalidURL(t *testing.T) {
-	mgr := newConnectorManager(t)
-	mux := serveMux(mgr)
-
-	body, _ := json.Marshal(schema.ConnectorMeta{})
 	w := httptest.NewRecorder()
-	r := httptest.NewRequest(http.MethodPost, connectorPath("ftp://example.com/sse"), bytes.NewReader(body))
-	r.Header.Set("Content-Type", "application/json")
-	mux.ServeHTTP(w, r)
+	r := httptest.NewRequest(http.MethodPost, "/connector", bytes.NewBufferString(`{invalid`))
+	r.Header.Set(types.ContentTypeHeader, types.ContentTypeJSON)
+	item.Handler().ServeHTTP(w, r)
+
 	if w.Code != http.StatusBadRequest {
 		t.Fatalf("expected 400, got %d: %s", w.Code, w.Body.String())
 	}
 }
 
-func TestConnector_UpdateAndGet(t *testing.T) {
-	mgr := newConnectorManager(t)
-	mux := serveMux(mgr)
+func TestConnectorListIntegration(t *testing.T) {
+	_, manager := newModelHandlerIntegrationManager(t)
+	_, _, item := ConnectorHandler(manager)
 
-	// Create
-	body, _ := json.Marshal(schema.ConnectorMeta{Enabled: types.Ptr(false), Namespace: types.Ptr("old")})
-	w := httptest.NewRecorder()
-	r := httptest.NewRequest(http.MethodPost, connectorPath("https://example.com/sse"), bytes.NewReader(body))
-	r.Header.Set("Content-Type", "application/json")
-	mux.ServeHTTP(w, r)
-	if w.Code != http.StatusCreated {
-		t.Fatalf("create failed: %d: %s", w.Code, w.Body.String())
-	}
-
-	// PATCH
-	body, _ = json.Marshal(schema.ConnectorMeta{Enabled: types.Ptr(true), Namespace: types.Ptr("new")})
-	w = httptest.NewRecorder()
-	r = httptest.NewRequest(http.MethodPatch, connectorPath("https://example.com/sse"), bytes.NewReader(body))
-	r.Header.Set("Content-Type", "application/json")
-	mux.ServeHTTP(w, r)
-	if w.Code != http.StatusOK {
-		t.Fatalf("update failed: %d: %s", w.Code, w.Body.String())
-	}
-
-	var updated schema.Connector
-	if err := json.NewDecoder(w.Body).Decode(&updated); err != nil {
+	if err := manager.Exec(context.Background(), `TRUNCATE llm.connector CASCADE`); err != nil {
 		t.Fatal(err)
 	}
-	if !types.Value(updated.Enabled) {
-		t.Fatal("expected enabled=true after patch")
+
+	enabled := true
+	disabled := false
+	publicURL := llmtest.ConnectorURL(t, "handler-public-connector")
+	if _, _, _, err := manager.CreateConnector(context.Background(), schema.ConnectorInsert{
+		URL: publicURL,
+		ConnectorMeta: schema.ConnectorMeta{
+			Enabled: &enabled,
+		},
+	}, nil); err != nil {
+		t.Fatal(err)
 	}
-	if types.Value(updated.Namespace) != "new" {
-		t.Fatalf("expected namespace %q, got %q", "new", types.Value(updated.Namespace))
-	}
-}
-
-func TestConnector_UpdateNotFound(t *testing.T) {
-	mgr := newConnectorManager(t)
-	mux := serveMux(mgr)
-
-	body, _ := json.Marshal(schema.ConnectorMeta{})
-	w := httptest.NewRecorder()
-	r := httptest.NewRequest(http.MethodPatch, connectorPath("https://example.com/sse"), bytes.NewReader(body))
-	r.Header.Set("Content-Type", "application/json")
-	mux.ServeHTTP(w, r)
-	if w.Code != http.StatusNotFound {
-		t.Fatalf("expected 404, got %d: %s", w.Code, w.Body.String())
-	}
-}
-
-func TestConnector_DeleteAndVerify(t *testing.T) {
-	mgr := newConnectorManager(t)
-	mux := serveMux(mgr)
-
-	// Create
-	body, _ := json.Marshal(schema.ConnectorMeta{Enabled: types.Ptr(true)})
-	w := httptest.NewRecorder()
-	r := httptest.NewRequest(http.MethodPost, connectorPath("https://example.com/sse"), bytes.NewReader(body))
-	r.Header.Set("Content-Type", "application/json")
-	mux.ServeHTTP(w, r)
-	if w.Code != http.StatusCreated {
-		t.Fatalf("create failed: %d", w.Code)
+	namespace := "mcp"
+	namespacedURL := llmtest.ConnectorURL(t, "handler-namespaced-connector")
+	if _, _, _, err := manager.CreateConnector(context.Background(), schema.ConnectorInsert{
+		URL: namespacedURL,
+		ConnectorMeta: schema.ConnectorMeta{
+			Enabled:   &disabled,
+			Namespace: &namespace,
+		},
+	}, nil); err != nil {
+		t.Fatal(err)
 	}
 
-	// DELETE
-	w = httptest.NewRecorder()
-	r = httptest.NewRequest(http.MethodDelete, connectorPath("https://example.com/sse"), nil)
-	mux.ServeHTTP(w, r)
-	if w.Code != http.StatusNoContent {
-		t.Fatalf("expected 204, got %d: %s", w.Code, w.Body.String())
-	}
-
-	// GET should now 404
-	w = httptest.NewRecorder()
-	r = httptest.NewRequest(http.MethodGet, connectorPath("https://example.com/sse"), nil)
-	mux.ServeHTTP(w, r)
-	if w.Code != http.StatusNotFound {
-		t.Fatalf("expected 404 after delete, got %d", w.Code)
-	}
-}
-
-func TestConnector_DeleteNotFound(t *testing.T) {
-	mgr := newConnectorManager(t)
-	mux := serveMux(mgr)
-
-	w := httptest.NewRecorder()
-	r := httptest.NewRequest(http.MethodDelete, connectorPath("https://example.com/sse"), nil)
-	mux.ServeHTTP(w, r)
-	if w.Code != http.StatusNotFound {
-		t.Fatalf("expected 404, got %d: %s", w.Code, w.Body.String())
-	}
-}
-
-func TestConnector_ListWithFilter(t *testing.T) {
-	mgr := newConnectorManager(t)
-	mux := serveMux(mgr)
-
-	for rawURL, ns := range map[string]string{
-		"https://a.example.com/sse": "ns1",
-		"https://b.example.com/sse": "ns2",
-	} {
-		body, _ := json.Marshal(schema.ConnectorMeta{Enabled: types.Ptr(true), Namespace: types.Ptr(ns)})
-		w := httptest.NewRecorder()
-		r := httptest.NewRequest(http.MethodPost, connectorPath(rawURL), bytes.NewReader(body))
-		r.Header.Set("Content-Type", "application/json")
-		mux.ServeHTTP(w, r)
-		if w.Code != http.StatusCreated {
-			t.Fatalf("create %s failed: %d", rawURL, w.Code)
-		}
-	}
-
-	// List all
 	w := httptest.NewRecorder()
 	r := httptest.NewRequest(http.MethodGet, "/connector", nil)
-	mux.ServeHTTP(w, r)
+	item.Handler().ServeHTTP(w, r)
+
 	if w.Code != http.StatusOK {
-		t.Fatalf("expected 200, got %d", w.Code)
-	}
-	var all schema.ListConnectorsResponse
-	if err := json.NewDecoder(w.Body).Decode(&all); err != nil {
-		t.Fatal(err)
-	}
-	if all.Count != 2 {
-		t.Fatalf("expected 2 connectors, got %d", all.Count)
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
 	}
 
-	// List filtered by namespace=ns1
-	w = httptest.NewRecorder()
-	r = httptest.NewRequest(http.MethodGet, "/connector?namespace=ns1", nil)
-	mux.ServeHTTP(w, r)
-	if w.Code != http.StatusOK {
-		t.Fatalf("expected 200 with filter, got %d", w.Code)
-	}
-	var filtered schema.ListConnectorsResponse
-	if err := json.NewDecoder(w.Body).Decode(&filtered); err != nil {
+	var resp schema.ConnectorList
+	if err := json.NewDecoder(w.Body).Decode(&resp); err != nil {
 		t.Fatal(err)
 	}
-	if filtered.Count != 1 {
-		t.Fatalf("expected 1 connector for ns1, got %d", filtered.Count)
+	if resp.Count != 2 || len(resp.Body) != 2 {
+		t.Fatalf("expected 2 connectors, got count=%d len=%d", resp.Count, len(resp.Body))
 	}
 }
 
-func TestConnector_URLCanonicalisationRoundTrip(t *testing.T) {
-	mgr := newConnectorManager(t)
-	mux := serveMux(mgr)
+func TestConnectorListIntegrationWithFilters(t *testing.T) {
+	_, manager := newModelHandlerIntegrationManager(t)
+	_, _, item := ConnectorHandler(manager)
 
-	body, _ := json.Marshal(schema.ConnectorMeta{Enabled: types.Ptr(true)})
-	w := httptest.NewRecorder()
-	r := httptest.NewRequest(http.MethodPost, connectorPath("HTTPS://Example.COM/sse?token=abc"), bytes.NewReader(body))
-	r.Header.Set("Content-Type", "application/json")
-	mux.ServeHTTP(w, r)
-	if w.Code != http.StatusCreated {
-		t.Fatalf("expected 201, got %d: %s", w.Code, w.Body.String())
-	}
-
-	var created schema.Connector
-	if err := json.NewDecoder(w.Body).Decode(&created); err != nil {
+	if err := manager.Exec(context.Background(), `TRUNCATE llm.connector CASCADE`); err != nil {
 		t.Fatal(err)
 	}
-	if created.URL != "https://example.com/sse" {
-		t.Fatalf("expected canonical URL, got %q", created.URL)
+
+	enabled := true
+	disabled := false
+	publicURL := llmtest.ConnectorURL(t, "handler-filter-public-connector")
+	if _, _, _, err := manager.CreateConnector(context.Background(), schema.ConnectorInsert{
+		URL: publicURL,
+		ConnectorMeta: schema.ConnectorMeta{
+			Enabled: &enabled,
+		},
+	}, nil); err != nil {
+		t.Fatal(err)
+	}
+	namespace := "mcp"
+	namespacedURL := llmtest.ConnectorURL(t, "handler-filter-namespaced-connector")
+	if _, _, _, err := manager.CreateConnector(context.Background(), schema.ConnectorInsert{
+		URL: namespacedURL,
+		ConnectorMeta: schema.ConnectorMeta{
+			Enabled:   &disabled,
+			Namespace: &namespace,
+		},
+	}, nil); err != nil {
+		t.Fatal(err)
+	}
+
+	w := httptest.NewRecorder()
+	r := httptest.NewRequest(http.MethodGet, "/connector?namespace=mcp&enabled=false", nil)
+	item.Handler().ServeHTTP(w, r)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+
+	var resp schema.ConnectorList
+	if err := json.NewDecoder(w.Body).Decode(&resp); err != nil {
+		t.Fatal(err)
+	}
+	if resp.Count != 1 || len(resp.Body) != 1 {
+		t.Fatalf("expected 1 connector, got count=%d len=%d", resp.Count, len(resp.Body))
+	}
+	if got := resp.Body[0].URL; got != namespacedURL {
+		t.Fatalf("expected filtered connector URL %q, got %q", namespacedURL, got)
+	}
+}
+
+func TestConnectorListInvalidQuery(t *testing.T) {
+	_, manager := newModelHandlerIntegrationManager(t)
+	_, _, item := ConnectorHandler(manager)
+
+	w := httptest.NewRecorder()
+	r := httptest.NewRequest(http.MethodGet, "/connector?enabled=notabool", nil)
+	item.Handler().ServeHTTP(w, r)
+
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestConnectorGetIntegration(t *testing.T) {
+	_, manager := newModelHandlerIntegrationManager(t)
+	_, _, item := ConnectorResourceHandler(manager)
+
+	if err := manager.Exec(context.Background(), `TRUNCATE llm.connector CASCADE`); err != nil {
+		t.Fatal(err)
+	}
+
+	rawURL := llmtest.ConnectorURL(t, "handler-get-connector")
+	if _, _, _, err := manager.CreateConnector(context.Background(), schema.ConnectorInsert{URL: rawURL}, nil); err != nil {
+		t.Fatal(err)
+	}
+
+	w := httptest.NewRecorder()
+	r := httptest.NewRequest(http.MethodGet, "/connector/"+url.PathEscape(rawURL), nil)
+	r.SetPathValue("url", url.PathEscape(rawURL))
+	item.Handler().ServeHTTP(w, r)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+
+	var resp schema.Connector
+	if err := json.NewDecoder(w.Body).Decode(&resp); err != nil {
+		t.Fatal(err)
+	}
+	if resp.URL != rawURL {
+		t.Fatalf("expected URL %q, got %q", rawURL, resp.URL)
+	}
+}
+
+func TestConnectorGetNotFound(t *testing.T) {
+	_, manager := newModelHandlerIntegrationManager(t)
+	_, _, item := ConnectorResourceHandler(manager)
+
+	if err := manager.Exec(context.Background(), `TRUNCATE llm.connector CASCADE`); err != nil {
+		t.Fatal(err)
+	}
+
+	rawURL := "https://example.com/sse"
+	w := httptest.NewRecorder()
+	r := httptest.NewRequest(http.MethodGet, "/connector/"+url.PathEscape(rawURL), nil)
+	r.SetPathValue("url", url.PathEscape(rawURL))
+	item.Handler().ServeHTTP(w, r)
+
+	if w.Code != http.StatusNotFound {
+		t.Fatalf("expected 404, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestConnectorUpdateIntegration(t *testing.T) {
+	_, manager := newModelHandlerIntegrationManager(t)
+	_, _, item := ConnectorResourceHandler(manager)
+
+	if err := manager.Exec(context.Background(), `TRUNCATE llm.connector CASCADE`); err != nil {
+		t.Fatal(err)
+	}
+
+	rawURL := llmtest.ConnectorURL(t, "handler-update-connector")
+	if _, _, _, err := manager.CreateConnector(context.Background(), schema.ConnectorInsert{URL: rawURL}, nil); err != nil {
+		t.Fatal(err)
+	}
+
+	enabled := false
+	namespace := "mcp"
+	body, err := json.Marshal(schema.ConnectorMeta{
+		Enabled:   &enabled,
+		Namespace: &namespace,
+		Meta:      schema.ProviderMetaMap{"env": "dev"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	w := httptest.NewRecorder()
+	r := httptest.NewRequest(http.MethodPatch, "/connector/"+url.PathEscape(rawURL), bytes.NewReader(body))
+	r.Header.Set(types.ContentTypeHeader, types.ContentTypeJSON)
+	r.SetPathValue("url", url.PathEscape(rawURL))
+	item.Handler().ServeHTTP(w, r)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+
+	var resp schema.Connector
+	if err := json.NewDecoder(w.Body).Decode(&resp); err != nil {
+		t.Fatal(err)
+	}
+	if resp.URL != rawURL {
+		t.Fatalf("expected URL %q, got %q", rawURL, resp.URL)
+	}
+	if types.Value(resp.Enabled) {
+		t.Fatal("expected connector to be disabled")
+	}
+	if types.Value(resp.Namespace) != namespace {
+		t.Fatalf("expected namespace %q, got %q", namespace, types.Value(resp.Namespace))
+	}
+	if resp.Meta["env"] != "dev" {
+		t.Fatalf("unexpected meta: %v", resp.Meta)
+	}
+}
+
+func TestConnectorUpdateInvalidJSON(t *testing.T) {
+	_, manager := newModelHandlerIntegrationManager(t)
+	_, _, item := ConnectorResourceHandler(manager)
+
+	rawURL := "https://example.com/sse"
+	w := httptest.NewRecorder()
+	r := httptest.NewRequest(http.MethodPatch, "/connector/"+url.PathEscape(rawURL), bytes.NewBufferString(`{invalid`))
+	r.Header.Set(types.ContentTypeHeader, types.ContentTypeJSON)
+	r.SetPathValue("url", url.PathEscape(rawURL))
+	item.Handler().ServeHTTP(w, r)
+
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestConnectorUpdateNotFound(t *testing.T) {
+	_, manager := newModelHandlerIntegrationManager(t)
+	_, _, item := ConnectorResourceHandler(manager)
+
+	if err := manager.Exec(context.Background(), `TRUNCATE llm.connector CASCADE`); err != nil {
+		t.Fatal(err)
+	}
+
+	enabled := false
+	body, err := json.Marshal(schema.ConnectorMeta{Enabled: &enabled})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	rawURL := "https://example.com/sse"
+	w := httptest.NewRecorder()
+	r := httptest.NewRequest(http.MethodPatch, "/connector/"+url.PathEscape(rawURL), bytes.NewReader(body))
+	r.Header.Set(types.ContentTypeHeader, types.ContentTypeJSON)
+	r.SetPathValue("url", url.PathEscape(rawURL))
+	item.Handler().ServeHTTP(w, r)
+
+	if w.Code != http.StatusNotFound {
+		t.Fatalf("expected 404, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestConnectorDeleteIntegration(t *testing.T) {
+	conn, manager := newModelHandlerIntegrationManager(t)
+	_, _, createItem := ConnectorHandler(manager)
+	_, _, deleteItem := ConnectorResourceHandler(manager)
+
+	if err := manager.Exec(context.Background(), `TRUNCATE llm.connector CASCADE`); err != nil {
+		t.Fatal(err)
+	}
+
+	rawURL := llmtest.ConnectorURL(t, "handler-delete-connector")
+	enabled := true
+	createBody, err := json.Marshal(schema.ConnectorInsert{
+		URL: rawURL,
+		ConnectorMeta: schema.ConnectorMeta{
+			Enabled: &enabled,
+			Groups:  conn.Config.Groups,
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	createW := httptest.NewRecorder()
+	createR := httptest.NewRequest(http.MethodPost, "/connector", bytes.NewReader(createBody))
+	createR.Header.Set(types.ContentTypeHeader, types.ContentTypeJSON)
+	createItem.Handler().ServeHTTP(createW, createR)
+	if createW.Code != http.StatusCreated {
+		t.Fatalf("expected 201, got %d: %s", createW.Code, createW.Body.String())
+	}
+
+	deleteW := httptest.NewRecorder()
+	deleteR := httptest.NewRequest(http.MethodDelete, "/connector/"+url.PathEscape(rawURL), nil)
+	deleteR.SetPathValue("url", url.PathEscape(rawURL))
+	deleteItem.Handler().ServeHTTP(deleteW, deleteR)
+
+	if deleteW.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", deleteW.Code, deleteW.Body.String())
+	}
+
+	var deleted schema.Connector
+	if err := json.NewDecoder(deleteW.Body).Decode(&deleted); err != nil {
+		t.Fatal(err)
+	}
+	if deleted.URL != rawURL {
+		t.Fatalf("expected deleted URL %q, got %q", rawURL, deleted.URL)
+	}
+}
+
+func TestConnectorDeleteNotFound(t *testing.T) {
+	_, manager := newModelHandlerIntegrationManager(t)
+	_, _, item := ConnectorResourceHandler(manager)
+
+	if err := manager.Exec(context.Background(), `TRUNCATE llm.connector CASCADE`); err != nil {
+		t.Fatal(err)
+	}
+
+	rawURL := "https://example.com/sse"
+	w := httptest.NewRecorder()
+	r := httptest.NewRequest(http.MethodDelete, "/connector/"+url.PathEscape(rawURL), nil)
+	r.SetPathValue("url", url.PathEscape(rawURL))
+	item.Handler().ServeHTTP(w, r)
+
+	if w.Code != http.StatusNotFound {
+		t.Fatalf("expected 404, got %d: %s", w.Code, w.Body.String())
 	}
 }

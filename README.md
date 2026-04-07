@@ -38,9 +38,9 @@ docker run -d --name go-llm \
   ghcr.io/mutablelogic/llm run
 ```
 
-### Client
+### CLI
 
-The client-only CLI can be downloaded from the [releases page](https://github.com/mutablelogic/go-llm/releases), or use `go install -tags client github.com/mutablelogic/go-llm/cmd/llm@latest`. It does not include the server or the Telegram bot. Point it at a running server:
+The standalone CLI can be downloaded from the [releases page](https://github.com/mutablelogic/go-llm/releases), or built locally with `make llm`. Point it at a running server:
 
 ```bash
 export LLM_ADDR="localhost:8085"
@@ -242,7 +242,7 @@ The `chat` command launches a terminal UI with markdown rendering, streaming res
 flowchart LR
     subgraph Clients["Clients"]
         direction TB
-        CLI["`**cmd/llm**
+        CLI["`**cmd/llmserver**
         CLI Tool`"]
         TUI["`**pkg/ui/bubbletea**
         Terminal UI`"]
@@ -254,9 +254,9 @@ flowchart LR
 
     subgraph Server["go-llm Server"]
         direction TB
-        API["`**pkg/httphandler**
+        API["`**pkg/httphandler-new**
         REST API`"]
-        Agent["`**pkg/manager**
+        Agent["`**pkg/llmmanager**
         Manager`"]
         AgentDef["`**pkg/agent**
         Agent Parsing`"]
@@ -353,14 +353,14 @@ func main() {
 
 | Package | Description |
 |---------|-------------|
-| `pkg/manager` | Central manager orchestrating providers, sessions, and tools |
+| `pkg/llmmanager` | Central manager orchestrating providers, sessions, and tools |
 | `pkg/agent` | Agent definition parsing (template execution, input validation, funcmap) |
 | `pkg/provider/{google,anthropic,mistral,eliza}` | Provider implementations |
 | `pkg/store` | Storage backends for sessions and agents (in-memory, file-backed JSON) |
 | `pkg/tool` | Tool interface and toolkit registry |
 | `pkg/schema` | Core types (Model, Message, ContentBlock, Attachment, Session, etc.) |
 | `pkg/httpclient` | HTTP client for the go-llm API |
-| `pkg/httphandler` | HTTP handler layer for the REST API server |
+| `pkg/httphandler-new` | HTTP handler layer for the REST API server |
 | `pkg/mcp` | Model Context Protocol server (stdio JSON-RPC 2.0) |
 | `pkg/ui` | Chat UI abstraction (bubbletea terminal UI, Telegram bot, shared command handler) |
 
@@ -381,10 +381,10 @@ cd go-llm
 make
 ```
 
-Build the client-only CLI (no server or Telegram support):
+Build the standalone CLI:
 
 ```bash
-make llm-client
+make llm
 ```
 
 ### Makefile Targets
@@ -392,7 +392,7 @@ make llm-client
 | Target | Description |
 |--------|-------------|
 | `make all` | Build all binaries |
-| `make llm-client` | Build client-only CLI (`-tags client`) |
+| `make llm` | Build the primary CLI binary |
 | `make docker` | Build Docker image |
 | `make docker-push` | Push Docker image to GHCR |
 | `make docker-version` | Print version tag |

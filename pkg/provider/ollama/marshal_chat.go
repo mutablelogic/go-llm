@@ -227,10 +227,7 @@ func contentBlocksFromOllamaMessage(msg *chatMessage) ([]schema.ContentBlock, er
 func ollamaToolsFromTools(tools []llm.Tool) (chatTools, error) {
 	var result chatTools
 	for _, t := range tools {
-		s, err := t.InputSchema()
-		if err != nil {
-			continue
-		}
+		s := t.InputSchema()
 		params, err := json.Marshal(s)
 		if err != nil {
 			continue

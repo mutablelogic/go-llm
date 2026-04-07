@@ -7,10 +7,9 @@ import (
 	"testing"
 
 	// Packages
-	jsonschema "github.com/google/jsonschema-go/jsonschema"
-	llm "github.com/mutablelogic/go-llm"
 	opt "github.com/mutablelogic/go-llm/pkg/opt"
 	schema "github.com/mutablelogic/go-llm/pkg/schema"
+	jsonschema "github.com/mutablelogic/go-server/pkg/jsonschema"
 	types "github.com/mutablelogic/go-server/pkg/types"
 	assert "github.com/stretchr/testify/assert"
 	require "github.com/stretchr/testify/require"
@@ -295,15 +294,13 @@ func Test_generateRequest_016(t *testing.T) {
 	// Test JSON output with schema
 	assert := assert.New(t)
 
-	jsonSchema := &jsonschema.Schema{Type: "object"}
-	jsonSchema.Properties = map[string]*jsonschema.Schema{
-		"name": {Type: "string"},
-		"age":  {Type: "integer"},
-	}
+	var jsonSchema jsonschema.Schema
+	err := json.Unmarshal([]byte(`{"type":"object","properties":{"name":{"type":"string"},"age":{"type":"integer"}}}`), &jsonSchema)
+	assert.NoError(err)
 
 	msg := &schema.Message{Role: "user", Content: []schema.ContentBlock{{Text: types.Ptr("Hi")}}}
 	session := schema.Conversation{msg}
-	o, err := opt.Apply(WithJSONOutput(jsonSchema))
+	o, err := opt.Apply(WithJSONOutput(&jsonSchema))
 	assert.NoError(err)
 
 	req, err := generateRequestFromOpts(testModel, &session, o)
@@ -529,7 +526,7 @@ func Test_processResponse_002(t *testing.T) {
 	}
 
 	result, _, err := c.processResponse(response, &session)
-	assert.ErrorIs(err, llm.ErrMaxTokens)
+	assert.ErrorIs(err, schema.ErrMaxTokens)
 	assert.NotNil(result)
 	assert.Equal("Truncated...", *result.Content[0].Text)
 	assert.Equal(schema.ResultMaxTokens, result.Result)
@@ -552,7 +549,7 @@ func Test_processResponse_003(t *testing.T) {
 	}
 
 	result, _, err := c.processResponse(response, &session)
-	assert.ErrorIs(err, llm.ErrRefusal)
+	assert.ErrorIs(err, schema.ErrRefusal)
 	assert.Nil(result)
 
 	// Session should still have only the original message
@@ -666,7 +663,7 @@ func Test_processResponse_007(t *testing.T) {
 	}
 
 	result, _, err := c.processResponse(response, &session)
-	assert.ErrorIs(err, llm.ErrPauseTurn)
+	assert.ErrorIs(err, schema.ErrPauseTurn)
 	assert.NotNil(result)
 }
 

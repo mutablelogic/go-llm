@@ -5,7 +5,7 @@ import (
 	"log/slog"
 
 	// Packages
-	"github.com/modelcontextprotocol/go-sdk/mcp"
+	mcp "github.com/modelcontextprotocol/go-sdk/mcp"
 	llm "github.com/mutablelogic/go-llm"
 )
 
@@ -27,7 +27,7 @@ type Toolkit interface {
 
 	// RemoveBuiltin removes a previously registered builtin tool by name,
 	// prompt by name, or resource by URI. Tools are checked before prompts.
-	// Returns llm.ErrNotFound if no match exists.
+	// Returns schema.ErrNotFound if no match exists.
 	RemoveBuiltin(string) error
 
 	// AddConnector registers a remote MCP server. The namespace is inferred from
@@ -45,13 +45,17 @@ type Toolkit interface {
 	// while Run is active; the connector is stopped immediately if running.
 	RemoveConnector(string) error
 
+	// ExistsConnector checks if a connector exists by URL. Safe to call before or
+	// while Run is active.
+	ExistsConnector(string) bool
+
 	// Run starts all queued connectors and blocks until ctx is cancelled.
 	// It closes the toolkit and waits for all connectors to finish on return.
 	Run(context.Context) error
 
 	// Lookup finds a tool, prompt, or resource by name, namespace.name, URI,
 	// or URI#namespace. Tools take precedence over prompts when both share a name.
-	// Returns llm.ErrNotFound if nothing matches.
+	// Returns schema.ErrNotFound if nothing matches.
 	Lookup(context.Context, string) (any, error)
 
 	// List returns tools, prompts, and resources matching the request.

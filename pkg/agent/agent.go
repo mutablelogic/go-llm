@@ -10,9 +10,8 @@ import (
 	"strings"
 
 	// Packages
-	jsonschema "github.com/google/jsonschema-go/jsonschema"
-	llm "github.com/mutablelogic/go-llm"
 	schema "github.com/mutablelogic/go-llm/pkg/schema"
+	jsonschema "github.com/mutablelogic/go-server/pkg/jsonschema"
 	types "github.com/mutablelogic/go-server/pkg/types"
 	yaml "gopkg.in/yaml.v3"
 )
@@ -39,7 +38,7 @@ func Read(r io.Reader) (schema.AgentMeta, error) {
 	var meta schema.AgentMeta
 	if len(front) > 0 {
 		if err := yaml.Unmarshal(front, &meta); err != nil {
-			return schema.AgentMeta{}, llm.ErrBadParameter.Withf("yaml: %v", err)
+			return schema.AgentMeta{}, schema.ErrBadParameter.Withf("yaml: %v", err)
 		}
 	}
 
@@ -50,7 +49,7 @@ func Read(r io.Reader) (schema.AgentMeta, error) {
 
 	// Validate name is a non-empty identifier
 	if !types.IsIdentifier(meta.Name) {
-		return schema.AgentMeta{}, llm.ErrBadParameter.Withf("name: must be a non-empty identifier, got %q", meta.Name)
+		return schema.AgentMeta{}, schema.ErrBadParameter.Withf("name: must be a non-empty identifier, got %q", meta.Name)
 	}
 
 	// If no title in front matter, extract from first markdown heading
@@ -60,7 +59,7 @@ func Read(r io.Reader) (schema.AgentMeta, error) {
 
 	// Validate title is non-empty and at least 10 characters
 	if title := strings.TrimSpace(meta.Title); len(title) < 10 {
-		return schema.AgentMeta{}, llm.ErrBadParameter.Withf("title: must be at least 10 characters, got %q", meta.Title)
+		return schema.AgentMeta{}, schema.ErrBadParameter.Withf("title: must be at least 10 characters, got %q", meta.Title)
 	}
 
 	// Validate format schema
@@ -90,7 +89,7 @@ func ReadFile(path string) (schema.AgentMeta, error) {
 	f, err := os.Open(path)
 	if err != nil {
 		if os.IsNotExist(err) {
-			return schema.AgentMeta{}, llm.ErrNotFound.Withf("%v", err)
+			return schema.AgentMeta{}, schema.ErrNotFound.Withf("%v", err)
 		}
 		return schema.AgentMeta{}, err
 	}
@@ -176,22 +175,22 @@ func extractName(r io.Reader) string {
 	return ""
 }
 
-// validateJSONSchema validates a JSONSchema value using google/jsonschema-go.
+// validateJSONSchema validates a JSONSchema value.
 // Returns nil if the schema is empty (field not present).
 func validateJSONSchema(v schema.JSONSchema, field string) error {
 	if len(v) == 0 {
 		return nil
 	}
 
-	// Validate by unmarshalling into jsonschema.Schema
-	var s jsonschema.Schema
-	if err := json.Unmarshal(v, &s); err != nil {
-		return llm.ErrBadParameter.Withf("%s: invalid JSON schema: %v", field, err)
+	// Validate by parsing into a resolved schema.
+	s, err := jsonschema.FromJSON(json.RawMessage(v))
+	if err != nil {
+		return schema.ErrBadParameter.Withf("%s: invalid JSON schema: %v", field, err)
 	}
 
 	// Ensure the schema has a type
 	if s.Type == "" {
-		return llm.ErrBadParameter.Withf("%s: missing required \"type\" field", field)
+		return schema.ErrBadParameter.Withf("%s: missing required \"type\" field", field)
 	}
 
 	return nil

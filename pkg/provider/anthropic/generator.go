@@ -23,21 +23,21 @@ var _ llm.Generator = (*Client)(nil)
 // PUBLIC METHODS
 
 // WithoutSession sends a single message and returns the response (stateless)
-func (c *Client) WithoutSession(ctx context.Context, model schema.Model, message *schema.Message, opts ...opt.Opt) (*schema.Message, *schema.Usage, error) {
+func (c *Client) WithoutSession(ctx context.Context, model schema.Model, message *schema.Message, opts ...opt.Opt) (*schema.Message, *schema.UsageMeta, error) {
 	if message == nil {
-		return nil, nil, llm.ErrBadParameter.With("message is required")
+		return nil, nil, schema.ErrBadParameter.With("message is required")
 	}
 	session := schema.Conversation{message}
 	return c.generate(ctx, model.Name, &session, opts...)
 }
 
 // WithSession sends a message within a session and returns the response (stateful)
-func (c *Client) WithSession(ctx context.Context, model schema.Model, session *schema.Conversation, message *schema.Message, opts ...opt.Opt) (*schema.Message, *schema.Usage, error) {
+func (c *Client) WithSession(ctx context.Context, model schema.Model, session *schema.Conversation, message *schema.Message, opts ...opt.Opt) (*schema.Message, *schema.UsageMeta, error) {
 	if session == nil {
-		return nil, nil, llm.ErrBadParameter.With("session is required")
+		return nil, nil, schema.ErrBadParameter.With("session is required")
 	}
 	if message == nil {
-		return nil, nil, llm.ErrBadParameter.With("message is required")
+		return nil, nil, schema.ErrBadParameter.With("message is required")
 	}
 	session.Append(*message)
 	return c.generate(ctx, model.Name, session, opts...)
@@ -47,7 +47,7 @@ func (c *Client) WithSession(ctx context.Context, model schema.Model, session *s
 // PRIVATE METHODS
 
 // generate is the core method that builds a request from options and sends it
-func (c *Client) generate(ctx context.Context, model string, session *schema.Conversation, opts ...opt.Opt) (*schema.Message, *schema.Usage, error) {
+func (c *Client) generate(ctx context.Context, model string, session *schema.Conversation, opts ...opt.Opt) (*schema.Message, *schema.UsageMeta, error) {
 	// Apply options
 	options, err := opt.Apply(opts...)
 	if err != nil {
@@ -87,7 +87,7 @@ func (c *Client) generate(ctx context.Context, model string, session *schema.Con
 }
 
 // generateStream handles the SSE streaming response from the Anthropic API
-func (c *Client) generateStream(ctx context.Context, payload client.Payload, session *schema.Conversation, streamFn opt.StreamFn) (*schema.Message, *schema.Usage, error) {
+func (c *Client) generateStream(ctx context.Context, payload client.Payload, session *schema.Conversation, streamFn opt.StreamFn) (*schema.Message, *schema.UsageMeta, error) {
 	// Accumulators for building the final response
 	var (
 		role       string
@@ -171,7 +171,7 @@ func (c *Client) generateStream(ctx context.Context, payload client.Payload, ses
 		case eventError:
 			// Return error from stream
 			if ev.Delta != nil {
-				return llm.ErrInternalServerError.Withf("stream error: %s", ev.Delta.Text)
+				return schema.ErrInternalServerError.Withf("stream error: %s", ev.Delta.Text)
 			}
 		}
 
@@ -186,7 +186,7 @@ func (c *Client) generateStream(ctx context.Context, payload client.Payload, ses
 
 	// Refusal — no message to append
 	if stopReason == stopReasonRefusal {
-		return nil, nil, llm.ErrRefusal
+		return nil, nil, schema.ErrRefusal
 	}
 
 	// Build final message from accumulated blocks
@@ -199,7 +199,7 @@ func (c *Client) generateStream(ctx context.Context, payload client.Payload, ses
 	session.AppendWithOuput(*message, usage.InputTokens, usage.OutputTokens)
 
 	// Build usage
-	usageResult := &schema.Usage{
+	usageResult := &schema.UsageMeta{
 		InputTokens:  usage.InputTokens,
 		OutputTokens: usage.OutputTokens,
 	}
@@ -207,19 +207,19 @@ func (c *Client) generateStream(ctx context.Context, payload client.Payload, ses
 	// Return error for stop reasons that need caller attention
 	switch stopReason {
 	case stopReasonMaxTokens:
-		return message, usageResult, llm.ErrMaxTokens
+		return message, usageResult, schema.ErrMaxTokens
 	case stopReasonPauseTurn:
-		return message, usageResult, llm.ErrPauseTurn
+		return message, usageResult, schema.ErrPauseTurn
 	}
 
 	return message, usageResult, nil
 }
 
 // processResponse handles the non-streaming response
-func (c *Client) processResponse(response *messagesResponse, session *schema.Conversation) (*schema.Message, *schema.Usage, error) {
+func (c *Client) processResponse(response *messagesResponse, session *schema.Conversation) (*schema.Message, *schema.UsageMeta, error) {
 	// Refusal — no message to append
 	if response.StopReason == stopReasonRefusal {
-		return nil, nil, llm.ErrRefusal
+		return nil, nil, schema.ErrRefusal
 	}
 
 	// Convert response to schema message
@@ -232,7 +232,7 @@ func (c *Client) processResponse(response *messagesResponse, session *schema.Con
 	session.AppendWithOuput(*message, response.Usage.InputTokens, response.Usage.OutputTokens)
 
 	// Build usage
-	usageResult := &schema.Usage{
+	usageResult := &schema.UsageMeta{
 		InputTokens:  response.Usage.InputTokens,
 		OutputTokens: response.Usage.OutputTokens,
 	}
@@ -240,9 +240,9 @@ func (c *Client) processResponse(response *messagesResponse, session *schema.Con
 	// Return error for stop reasons that need caller attention
 	switch response.StopReason {
 	case stopReasonMaxTokens:
-		return message, usageResult, llm.ErrMaxTokens
+		return message, usageResult, schema.ErrMaxTokens
 	case stopReasonPauseTurn:
-		return message, usageResult, llm.ErrPauseTurn
+		return message, usageResult, schema.ErrPauseTurn
 	}
 
 	return message, usageResult, nil
@@ -353,7 +353,7 @@ func generateRequestFromOpts(model string, session *schema.Conversation, options
 	var allTools []llm.Tool
 	if v := options.Get(opt.ToolkitKey); v != nil {
 		if tk, ok := v.(*tool.Toolkit); ok {
-			allTools = append(allTools, tk.ListTools(schema.ListToolsRequest{})...)
+			allTools = append(allTools, tk.ListTools(schema.ToolListRequest{})...)
 		}
 	}
 	if v := options.Get(opt.ToolKey); v != nil {

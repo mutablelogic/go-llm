@@ -1,7 +1,6 @@
 package tool
 
 import (
-	"fmt"
 	"log/slog"
 
 	// Packages
@@ -66,18 +65,9 @@ func WithToolkit(toolkit *Toolkit) opt.Opt {
 	return opt.SetAny(opt.ToolkitKey, toolkit)
 }
 
-// WithTool adds an individual tool to the generation options.
+// WithTool adds one or more tools to the generation options.
 // Individual tools are appended under opt.ToolKey and merged with
 // toolkit tools by each provider.
-func WithTool(t llm.Tool) opt.Opt {
-	return opt.ModifyAny(opt.ToolKey, func(existing any) (any, error) {
-		if existing == nil {
-			return []llm.Tool{t}, nil
-		}
-		tools, ok := existing.([]llm.Tool)
-		if !ok {
-			return nil, fmt.Errorf("WithTool: existing value for %q is %T, expected []llm.Tool", opt.ToolKey, existing)
-		}
-		return append(tools, t), nil
-	})
+func WithTool(t ...llm.Tool) opt.Opt {
+	return opt.WithTool(t...)
 }

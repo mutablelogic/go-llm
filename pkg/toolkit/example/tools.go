@@ -5,10 +5,11 @@ import (
 	"encoding/json"
 
 	// Packages
-	jsonschema "github.com/google/jsonschema-go/jsonschema"
 	llm "github.com/mutablelogic/go-llm"
+	schema "github.com/mutablelogic/go-llm/pkg/schema"
 	toolkit "github.com/mutablelogic/go-llm/pkg/toolkit"
 	tool "github.com/mutablelogic/go-llm/pkg/toolkit/tool"
+	jsonschema "github.com/mutablelogic/go-server/pkg/jsonschema"
 )
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -55,21 +56,17 @@ func (*greetTool) Description() string {
 	return "Greet a person by name."
 }
 
-func (*greetTool) InputSchema() (*jsonschema.Schema, error) {
-	return jsonschema.For[greetRequest](nil)
-}
+func (*greetTool) InputSchema() *jsonschema.Schema { return jsonschema.MustFor[greetRequest]() }
 
-func (*greetTool) OutputSchema() (*jsonschema.Schema, error) {
-	return jsonschema.For[greetResponse](nil)
-}
+func (*greetTool) OutputSchema() *jsonschema.Schema { return jsonschema.MustFor[greetResponse]() }
 
 func (*greetTool) Run(ctx context.Context, input json.RawMessage) (any, error) {
 	var req greetRequest
 	if err := json.Unmarshal(input, &req); err != nil {
-		return nil, llm.ErrBadParameter.Withf("greet: %v", err)
+		return nil, schema.ErrBadParameter.Withf("greet: %v", err)
 	}
 	if req.Name == "" {
-		return nil, llm.ErrBadParameter.Withf("greet: name is required")
+		return nil, schema.ErrBadParameter.Withf("greet: name is required")
 	}
 
 	session := toolkit.SessionFromContext(ctx)

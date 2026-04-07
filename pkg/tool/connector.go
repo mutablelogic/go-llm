@@ -9,7 +9,6 @@ import (
 
 	// Packages
 	llm "github.com/mutablelogic/go-llm"
-	mcpclient "github.com/mutablelogic/go-llm/pkg/mcp/client"
 	schema "github.com/mutablelogic/go-llm/pkg/schema"
 	types "github.com/mutablelogic/go-server/pkg/types"
 	errgroup "golang.org/x/sync/errgroup"
@@ -45,7 +44,7 @@ func (tk *Toolkit) AddConnector(url string, c llm.Connector) error {
 
 	// Check for duplicate URL
 	if _, exists := tk.conns[url]; exists {
-		return llm.ErrBadParameter.Withf("connector already added: %q", url)
+		return schema.ErrBadParameter.Withf("connector already added: %q", url)
 	}
 
 	// Start the connector's background goroutine
@@ -189,13 +188,13 @@ func (tk *Toolkit) runConnector(ctx context.Context, url string, entry *connEntr
 		tk.mu.Unlock()
 
 		switch {
-		case mcpclient.IsAuthError(err) && !wasConnected:
+		case err != nil && !wasConnected:
 			// Auth failure before the session was ever established — bad
 			// credentials. Don't retry; notify disconnect and stop.
 			tk.onLog(url, slog.LevelError, "connector auth failure, not retrying", "err", err)
 			return
 
-		case mcpclient.IsAuthError(err) && wasConnected:
+		case err != nil && wasConnected:
 			// The SDK killed the session because one tools/call HTTP response
 			// returned 403. The tool call error already reached the LLM; the
 			// tool list has not changed. Keep entry.connected so tools remain

@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 
 	// Packages
-	llm "github.com/mutablelogic/go-llm"
+
 	opt "github.com/mutablelogic/go-llm/pkg/opt"
 	schema "github.com/mutablelogic/go-llm/pkg/schema"
 )
@@ -19,13 +19,13 @@ import (
 func generateRequestFromOpts(model string, message *schema.Message, options opt.Options) (*generateRequest, error) {
 	// Reject options that are incompatible with /api/generate
 	if options.Has(opt.ToolkitKey) || options.Has(opt.ToolKey) {
-		return nil, llm.ErrBadParameter.With("/api/generate does not support tools: use /api/chat instead")
+		return nil, schema.ErrBadParameter.With("/api/generate does not support tools: use /api/chat instead")
 	}
 	if options.Has(opt.ToolChoiceKey) {
-		return nil, llm.ErrBadParameter.With("/api/generate does not support tool_choice: use /api/chat instead")
+		return nil, schema.ErrBadParameter.With("/api/generate does not support tool_choice: use /api/chat instead")
 	}
 	if options.Has(opt.ThinkingKey) {
-		return nil, llm.ErrBadParameter.With("/api/generate does not support thinking: use /api/chat instead")
+		return nil, schema.ErrBadParameter.With("/api/generate does not support thinking: use /api/chat instead")
 	}
 
 	prompt := generatePromptFromMessage(message)

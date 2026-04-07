@@ -146,35 +146,35 @@ func Test_canonicalURL_007_no_path(t *testing.T) {
 
 func Test_canonicalURL_008_relative_url_error(t *testing.T) {
 	_, err := canonicalURL("example.com/path")
-	if !errors.Is(err, llm.ErrBadParameter) {
+	if !errors.Is(err, schema.ErrBadParameter) {
 		t.Fatalf("expected ErrBadParameter, got %v", err)
 	}
 }
 
 func Test_canonicalURL_009_unsupported_scheme(t *testing.T) {
 	_, err := canonicalURL("ftp://example.com/path")
-	if !errors.Is(err, llm.ErrBadParameter) {
+	if !errors.Is(err, schema.ErrBadParameter) {
 		t.Fatalf("expected ErrBadParameter, got %v", err)
 	}
 }
 
 func Test_canonicalURL_010_missing_host(t *testing.T) {
 	_, err := canonicalURL("http:///path")
-	if !errors.Is(err, llm.ErrBadParameter) {
+	if !errors.Is(err, schema.ErrBadParameter) {
 		t.Fatalf("expected ErrBadParameter, got %v", err)
 	}
 }
 
 func Test_canonicalURL_011_invalid_port(t *testing.T) {
 	_, err := canonicalURL("http://example.com:99999/path")
-	if !errors.Is(err, llm.ErrBadParameter) {
+	if !errors.Is(err, schema.ErrBadParameter) {
 		t.Fatalf("expected ErrBadParameter, got %v", err)
 	}
 }
 
 func Test_canonicalURL_012_port_zero_error(t *testing.T) {
 	_, err := canonicalURL("http://example.com:0/path")
-	if !errors.Is(err, llm.ErrBadParameter) {
+	if !errors.Is(err, schema.ErrBadParameter) {
 		t.Fatalf("expected ErrBadParameter, got %v", err)
 	}
 }
@@ -197,21 +197,37 @@ func Test_AddConnector_002_duplicate(t *testing.T) {
 	if err := tk.AddConnector("http://localhost:8080"); err != nil {
 		t.Fatal(err)
 	}
-	if err := tk.AddConnector("http://localhost:8080"); !errors.Is(err, llm.ErrConflict) {
+	if err := tk.AddConnector("http://localhost:8080"); !errors.Is(err, schema.ErrConflict) {
 		t.Fatalf("expected ErrConflict, got %v", err)
+	}
+}
+
+func Test_ExistsConnector_001_canonical_url(t *testing.T) {
+	tk, _ := newConnectorToolkit(t)
+	if err := tk.AddConnector("http://LOCALHOST:80/path?q=1#frag"); err != nil {
+		t.Fatal(err)
+	}
+	if !tk.ExistsConnector("http://localhost/path") {
+		t.Fatal("expected connector to exist for canonical URL")
+	}
+	if !tk.ExistsConnector("http://localhost:80/path") {
+		t.Fatal("expected connector to exist for equivalent URL")
+	}
+	if tk.ExistsConnector("http://localhost/other") {
+		t.Fatal("did not expect different canonical URL to exist")
 	}
 }
 
 func Test_AddConnector_003_no_handler(t *testing.T) {
 	tk, _ := New()
-	if err := tk.AddConnector("http://localhost:8080"); !errors.Is(err, llm.ErrNotImplemented) {
+	if err := tk.AddConnector("http://localhost:8080"); !errors.Is(err, schema.ErrNotImplemented) {
 		t.Fatalf("expected ErrNotImplemented, got %v", err)
 	}
 }
 
 func Test_AddConnector_004_bad_url(t *testing.T) {
 	tk, _ := newConnectorToolkit(t)
-	if err := tk.AddConnector("not-a-url"); !errors.Is(err, llm.ErrBadParameter) {
+	if err := tk.AddConnector("not-a-url"); !errors.Is(err, schema.ErrBadParameter) {
 		t.Fatalf("expected ErrBadParameter, got %v", err)
 	}
 }
@@ -259,14 +275,14 @@ func Test_RemoveConnector_001(t *testing.T) {
 
 func Test_RemoveConnector_002_not_found(t *testing.T) {
 	tk, _ := newConnectorToolkit(t)
-	if err := tk.RemoveConnector("http://localhost:8080"); !errors.Is(err, llm.ErrNotFound) {
+	if err := tk.RemoveConnector("http://localhost:8080"); !errors.Is(err, schema.ErrNotFound) {
 		t.Fatalf("expected ErrNotFound, got %v", err)
 	}
 }
 
 func Test_RemoveConnector_003_bad_url(t *testing.T) {
 	tk, _ := newConnectorToolkit(t)
-	if err := tk.RemoveConnector("not-a-url"); !errors.Is(err, llm.ErrBadParameter) {
+	if err := tk.RemoveConnector("not-a-url"); !errors.Is(err, schema.ErrBadParameter) {
 		t.Fatalf("expected ErrBadParameter, got %v", err)
 	}
 }
@@ -423,4 +439,24 @@ func Test_onConnectorEvent_008_non_state_no_delegate(t *testing.T) {
 	c := newTestConnector("mymcp")
 	// Must not panic.
 	tk.onConnectorEvent(c, ToolListChangeEvent())
+}
+
+func Test_onConnectorEvent_009_disconnected_forwarded_to_delegate(t *testing.T) {
+	d := &mockDelegate{}
+	tk, _ := New(WithDelegate(d))
+	c := newTestConnector("mymcp")
+	err := errors.New("boom")
+	tk.onConnectorEvent(c, DisconnectedEvent(err))
+	if len(d.events) != 1 {
+		t.Fatalf("expected 1 event, got %d", len(d.events))
+	}
+	if d.events[0].Kind != ConnectorEventDisconnected {
+		t.Fatalf("expected Disconnected, got %v", d.events[0].Kind)
+	}
+	if !errors.Is(d.events[0].Err, err) {
+		t.Fatalf("expected disconnect error %v, got %v", err, d.events[0].Err)
+	}
+	if d.events[0].Connector != c {
+		t.Fatalf("expected Connector field to be set")
+	}
 }

@@ -3,140 +3,59 @@ package httpclient
 import (
 	"context"
 	"fmt"
-	"net/http"
 
 	// Packages
 	client "github.com/mutablelogic/go-client"
-	opt "github.com/mutablelogic/go-llm/pkg/opt"
+	llm "github.com/mutablelogic/go-llm"
 	schema "github.com/mutablelogic/go-llm/pkg/schema"
 )
 
 ///////////////////////////////////////////////////////////////////////////////
 // PUBLIC METHODS
 
-// ListAgents returns a list of all agents.
-// Use WithLimit, WithOffset and WithName to filter and paginate results.
-func (c *Client) ListAgents(ctx context.Context, opts ...opt.Opt) (*schema.ListAgentResponse, error) {
-	// Apply options
-	o, err := opt.Apply(opts...)
+// ListAgents returns externally exposed agents matching the given request parameters.
+func (c *Client) ListAgents(ctx context.Context, req schema.AgentListRequest) (*schema.AgentList, error) {
+	var response schema.AgentList
+	if err := c.DoWithContext(ctx, client.MethodGet, &response, client.OptPath("agent"), client.OptQuery(req.Query())); err != nil {
+		return nil, err
+	}
+
+	return &response, nil
+}
+
+// GetAgent returns metadata for a specific agent by name.
+func (c *Client) GetAgent(ctx context.Context, name string) (*schema.AgentMeta, error) {
+	if name == "" {
+		return nil, fmt.Errorf("agent name cannot be empty")
+	}
+
+	var response schema.AgentMeta
+	if err := c.DoWithContext(ctx, client.MethodGet, &response, client.OptPath("agent", name)); err != nil {
+		return nil, err
+	}
+
+	return &response, nil
+}
+
+// CallAgent executes an agent and returns the raw result as an llm.Resource.
+func (c *Client) CallAgent(ctx context.Context, name string, req schema.CallAgentRequest) (llm.Resource, error) {
+	if name == "" {
+		return nil, fmt.Errorf("agent name cannot be empty")
+	}
+
+	payload, err := client.NewJSONRequest(req)
 	if err != nil {
 		return nil, err
 	}
 
-	// Create request
-	req := client.NewRequest()
-	reqOpts := []client.RequestOpt{client.OptPath("agent")}
-	if q := o.Query(opt.LimitKey, opt.OffsetKey, opt.NameKey, opt.VersionKey); len(q) > 0 {
-		reqOpts = append(reqOpts, client.OptQuery(q))
-	}
-
-	// Perform request
-	var response schema.ListAgentResponse
-	if err := c.DoWithContext(ctx, req, &response, reqOpts...); err != nil {
-		return nil, err
-	}
-
-	// Return the response
-	return &response, nil
-}
-
-// GetAgent retrieves an agent by ID or name.
-func (c *Client) GetAgent(ctx context.Context, id string) (*schema.Agent, error) {
-	if id == "" {
-		return nil, fmt.Errorf("agent ID cannot be empty")
-	}
-
-	// Create request
-	req := client.NewRequest()
-	reqOpts := []client.RequestOpt{client.OptPath("agent", id)}
-
-	// Perform request
-	var response schema.Agent
-	if err := c.DoWithContext(ctx, req, &response, reqOpts...); err != nil {
-		return nil, err
-	}
-
-	// Return the response
-	return &response, nil
-}
-
-// CreateAgent creates a new agent with the given metadata (sent as JSON).
-func (c *Client) CreateAgent(ctx context.Context, meta schema.AgentMeta) (*schema.Agent, error) {
-	// Create request
-	req, err := client.NewJSONRequest(meta)
+	resource := new(resource)
+	err = c.DoWithContext(ctx, payload, resource, client.OptPath("agent", name))
 	if err != nil {
 		return nil, err
 	}
-	reqOpts := []client.RequestOpt{client.OptPath("agent")}
-
-	// Perform request
-	var response schema.Agent
-	if err := c.DoWithContext(ctx, req, &response, reqOpts...); err != nil {
-		return nil, err
+	if resource.empty() {
+		return nil, nil
 	}
 
-	// Return the response
-	return &response, nil
-}
-
-// UpdateAgent updates an existing agent by name (sent as JSON).
-// The agent name in the metadata is used to look up the existing agent.
-func (c *Client) UpdateAgent(ctx context.Context, meta schema.AgentMeta) (*schema.Agent, error) {
-	// Create request
-	req, err := client.NewJSONRequestEx(http.MethodPut, meta, "")
-	if err != nil {
-		return nil, err
-	}
-	reqOpts := []client.RequestOpt{client.OptPath("agent")}
-
-	// Perform request
-	var response schema.Agent
-	if err := c.DoWithContext(ctx, req, &response, reqOpts...); err != nil {
-		return nil, err
-	}
-
-	// Return the response
-	return &response, nil
-}
-
-// DeleteAgent deletes an agent by ID or name.
-func (c *Client) DeleteAgent(ctx context.Context, id string) error {
-	if id == "" {
-		return fmt.Errorf("agent ID cannot be empty")
-	}
-
-	// Create request
-	reqOpts := []client.RequestOpt{client.OptPath("agent", id)}
-
-	// Perform request
-	if err := c.DoWithContext(ctx, client.MethodDelete, nil, reqOpts...); err != nil {
-		return err
-	}
-
-	// Return success
-	return nil
-}
-
-// CreateAgentSession creates a new session from an agent definition.
-// The agentID can be an agent ID or name.
-func (c *Client) CreateAgentSession(ctx context.Context, agentID string, request schema.CreateAgentSessionRequest) (*schema.CreateAgentSessionResponse, error) {
-	if agentID == "" {
-		return nil, fmt.Errorf("agent ID cannot be empty")
-	}
-
-	// Create request
-	req, err := client.NewJSONRequest(request)
-	if err != nil {
-		return nil, err
-	}
-	reqOpts := []client.RequestOpt{client.OptPath("agent", agentID)}
-
-	// Perform request
-	var response schema.CreateAgentSessionResponse
-	if err := c.DoWithContext(ctx, req, &response, reqOpts...); err != nil {
-		return nil, err
-	}
-
-	// Return the response
-	return &response, nil
+	return resource, nil
 }

@@ -23,7 +23,7 @@ type SessionTable struct {
 }
 
 // ToolTable implements table.TableData for a list of tools.
-type ToolTable []ToolMeta
+type ToolTable []*ToolMeta
 
 // ModelTable implements table.TableData for a list of models.
 type ModelTable struct {
@@ -58,7 +58,7 @@ func (t AgentTable) Row(i int) []any {
 // SESSION TABLE (LIST)
 
 func (t SessionTable) Header() []string {
-	return []string{"SESSION", "ID", "MODEL", "MESSAGES", "MODIFIED"}
+	return []string{"SESSION", "ID", "MODEL", "MODIFIED"}
 }
 
 func (t SessionTable) Len() int {
@@ -67,12 +67,17 @@ func (t SessionTable) Len() int {
 
 func (t SessionTable) Row(i int) []any {
 	s := t.Sessions[i]
-	messages := "-"
-	if n := len(s.Messages); n > 0 {
-		messages = fmt.Sprintf("%d (%d tokens)", n, s.Tokens())
+	generator := s.Generator()
+	modified := any(s.CreatedAt)
+	if s.ModifiedAt != nil {
+		modified = *s.ModifiedAt
 	}
-	row := []any{s.Name, s.ID, s.Model, messages, s.Modified}
-	if t.CurrentSession != "" && s.ID == t.CurrentSession {
+	var title string
+	if s.Title != nil {
+		title = *s.Title
+	}
+	row := []any{title, s.ID, types.Value(generator.Model), modified}
+	if t.CurrentSession != "" && s.ID.String() == t.CurrentSession {
 		for j, v := range row {
 			row[j] = uitable.Bold{Value: v}
 		}

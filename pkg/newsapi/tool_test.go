@@ -23,8 +23,7 @@ func Test_tool_001(t *testing.T) {
 
 	// Check that schemas are not nil
 	for _, tool := range tools {
-		schema, err := tool.InputSchema()
-		assert.NoError(err)
+		schema := tool.InputSchema()
 		assert.NotNil(schema)
 		t.Logf("%s: %s", tool.Name(), tool.Description())
 	}
@@ -48,8 +47,7 @@ func Test_tool_002a(t *testing.T) {
 
 	// Test that enum values are present in schemas
 	// Articles tool - check sortBy enum
-	articlesSchema, err := tools[0].InputSchema()
-	assert.NoError(err)
+	articlesSchema := tools[0].InputSchema()
 	assert.NotNil(articlesSchema)
 	if sortBy, ok := articlesSchema.Properties["sortBy"]; ok && sortBy != nil {
 		assert.NotNil(sortBy.Enum)
@@ -59,8 +57,7 @@ func Test_tool_002a(t *testing.T) {
 	}
 
 	// Headlines tool - check category enum
-	headlinesSchema, err := tools[1].InputSchema()
-	assert.NoError(err)
+	headlinesSchema := tools[1].InputSchema()
 	assert.NotNil(headlinesSchema)
 	if category, ok := headlinesSchema.Properties["category"]; ok && category != nil {
 		assert.NotNil(category.Enum)
@@ -70,8 +67,7 @@ func Test_tool_002a(t *testing.T) {
 	}
 
 	// Sources tool - check category enum
-	sourcesSchema, err := tools[2].InputSchema()
-	assert.NoError(err)
+	sourcesSchema := tools[2].InputSchema()
 	assert.NotNil(sourcesSchema)
 	if category, ok := sourcesSchema.Properties["category"]; ok && category != nil {
 		assert.NotNil(category.Enum)

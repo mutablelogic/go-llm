@@ -7,9 +7,10 @@ import (
 	"testing"
 
 	// Packages
-	jsonschema "github.com/google/jsonschema-go/jsonschema"
 	llm "github.com/mutablelogic/go-llm"
+	schema "github.com/mutablelogic/go-llm/pkg/schema"
 	resource "github.com/mutablelogic/go-llm/pkg/toolkit/resource"
+	jsonschema "github.com/mutablelogic/go-server/pkg/jsonschema"
 	gootel "go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/propagation"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
@@ -28,30 +29,12 @@ type callableTool struct {
 	outputSchema *jsonschema.Schema
 }
 
-func (m *callableTool) Name() string        { return m.name }
-func (m *callableTool) Description() string { return "callable tool " + m.name }
-func (m *callableTool) InputSchema() (*jsonschema.Schema, error) {
-	return m.inputSchema, nil
-}
-func (m *callableTool) OutputSchema() (*jsonschema.Schema, error) {
-	return m.outputSchema, nil
-}
+func (m *callableTool) Name() string                                          { return m.name }
+func (m *callableTool) Description() string                                   { return "callable tool " + m.name }
+func (m *callableTool) InputSchema() *jsonschema.Schema                       { return m.inputSchema }
+func (m *callableTool) OutputSchema() *jsonschema.Schema                      { return m.outputSchema }
 func (m *callableTool) Meta() llm.ToolMeta                                    { return llm.ToolMeta{} }
 func (m *callableTool) Run(_ context.Context, _ json.RawMessage) (any, error) { return m.result, m.err }
-
-// errSchemaTool returns an error from InputSchema or OutputSchema.
-type errSchemaTool struct {
-	callableTool
-	inputSchemaErr  error
-	outputSchemaErr error
-}
-
-func (m *errSchemaTool) InputSchema() (*jsonschema.Schema, error) {
-	return nil, m.inputSchemaErr
-}
-func (m *errSchemaTool) OutputSchema() (*jsonschema.Schema, error) {
-	return nil, m.outputSchemaErr
-}
 
 ///////////////////////////////////////////////////////////////////////////////
 // Call — bad key type
@@ -59,7 +42,7 @@ func (m *errSchemaTool) OutputSchema() (*jsonschema.Schema, error) {
 func Test_Call_001_bad_key_type(t *testing.T) {
 	tk, _ := New()
 	_, err := tk.Call(context.Background(), 42)
-	if !errors.Is(err, llm.ErrBadParameter) {
+	if !errors.Is(err, schema.ErrBadParameter) {
 		t.Fatalf("expected ErrBadParameter, got %v", err)
 	}
 }
@@ -70,7 +53,7 @@ func Test_Call_001_bad_key_type(t *testing.T) {
 func Test_Call_002_string_key_not_found(t *testing.T) {
 	tk, _ := New()
 	_, err := tk.Call(context.Background(), "nonexistent")
-	if !errors.Is(err, llm.ErrNotFound) {
+	if !errors.Is(err, schema.ErrNotFound) {
 		t.Fatalf("expected ErrNotFound, got %v", err)
 	}
 }
@@ -106,7 +89,7 @@ func Test_Call_004_direct_tool(t *testing.T) {
 func Test_Call_005_direct_prompt_no_delegate(t *testing.T) {
 	tk, _ := New()
 	_, err := tk.Call(context.Background(), &mockPrompt{name: "summarize"})
-	if !errors.Is(err, llm.ErrNotImplemented) {
+	if !errors.Is(err, schema.ErrNotImplemented) {
 		t.Fatalf("expected ErrNotImplemented, got %v", err)
 	}
 }
@@ -188,16 +171,42 @@ func Test_Call_011_tool_returns_resource(t *testing.T) {
 	}
 }
 
-func Test_Call_012_tool_returns_bad_type(t *testing.T) {
+func Test_Call_012_tool_returns_json_marshable_value(t *testing.T) {
 	tk, _ := New()
-	tool := &callableTool{name: "greet", result: 12345}
+	tool := &callableTool{name: "greet", result: map[string]any{"answer": 42.0, "ok": true}}
+	res, err := tk.Call(context.Background(), tool)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res == nil {
+		t.Fatal("expected non-nil resource")
+	}
+	if res.Type() != "application/json" {
+		t.Fatalf("expected application/json, got %q", res.Type())
+	}
+	data, err := res.Read(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got map[string]any
+	if err := json.Unmarshal(data, &got); err != nil {
+		t.Fatal(err)
+	}
+	if got["answer"] != 42.0 || got["ok"] != true {
+		t.Fatalf("unexpected JSON output: %+v", got)
+	}
+}
+
+func Test_Call_013_tool_returns_bad_type(t *testing.T) {
+	tk, _ := New()
+	tool := &callableTool{name: "greet", result: func() {}}
 	_, err := tk.Call(context.Background(), tool)
-	if !errors.Is(err, llm.ErrBadParameter) {
+	if !errors.Is(err, schema.ErrBadParameter) {
 		t.Fatalf("expected ErrBadParameter, got %v", err)
 	}
 }
 
-func Test_Call_013_tool_propagates_run_error(t *testing.T) {
+func Test_Call_014_tool_propagates_run_error(t *testing.T) {
 	tk, _ := New()
 	tool := &callableTool{name: "fail", err: errors.New("boom")}
 	_, err := tk.Call(context.Background(), tool)
@@ -209,37 +218,37 @@ func Test_Call_013_tool_propagates_run_error(t *testing.T) {
 ///////////////////////////////////////////////////////////////////////////////
 // callTool — resource input validation
 
-func Test_Call_014_too_many_resources(t *testing.T) {
+func Test_Call_015_too_many_resources(t *testing.T) {
 	tk, _ := New()
 	tool := &callableTool{name: "greet"}
 	r1, _ := resource.Text("a", "x")
 	r2, _ := resource.Text("b", "y")
 	_, err := tk.Call(context.Background(), tool, r1, r2)
-	if !errors.Is(err, llm.ErrBadParameter) {
+	if !errors.Is(err, schema.ErrBadParameter) {
 		t.Fatalf("expected ErrBadParameter, got %v", err)
 	}
 }
 
-func Test_Call_015_nil_resource(t *testing.T) {
+func Test_Call_016_nil_resource(t *testing.T) {
 	tk, _ := New()
 	tool := &callableTool{name: "greet"}
 	_, err := tk.Call(context.Background(), tool, nil)
-	if !errors.Is(err, llm.ErrBadParameter) {
+	if !errors.Is(err, schema.ErrBadParameter) {
 		t.Fatalf("expected ErrBadParameter, got %v", err)
 	}
 }
 
-func Test_Call_016_non_json_resource(t *testing.T) {
+func Test_Call_017_non_json_resource(t *testing.T) {
 	tk, _ := New()
 	tool := &callableTool{name: "greet"}
 	r, _ := resource.Text("input", "not json")
 	_, err := tk.Call(context.Background(), tool, r)
-	if !errors.Is(err, llm.ErrBadParameter) {
+	if !errors.Is(err, schema.ErrBadParameter) {
 		t.Fatalf("expected ErrBadParameter, got %v", err)
 	}
 }
 
-func Test_Call_017_json_resource_input(t *testing.T) {
+func Test_Call_018_json_resource_input(t *testing.T) {
 	tk, _ := New()
 	tool := &callableTool{name: "greet", result: "ok"}
 	r, _ := resource.JSON("input", map[string]string{"name": "world"})
@@ -255,24 +264,11 @@ func Test_Call_017_json_resource_input(t *testing.T) {
 ///////////////////////////////////////////////////////////////////////////////
 // callTool — input schema validation
 
-func Test_Call_018_input_schema_error(t *testing.T) {
-	tk, _ := New()
-	tool := &errSchemaTool{
-		callableTool:   callableTool{name: "t"},
-		inputSchemaErr: errors.New("schema gen failed"),
-	}
-	r, _ := resource.JSON("input", map[string]string{"x": "y"})
-	_, err := tk.Call(context.Background(), tool, r)
-	if !errors.Is(err, llm.ErrBadParameter) {
-		t.Fatalf("expected ErrBadParameter, got %v", err)
-	}
-}
-
-func Test_Call_019_input_schema_validates_valid_input(t *testing.T) {
+func Test_Call_018_input_schema_validates_valid_input(t *testing.T) {
 	type args struct {
 		Name string `json:"name"`
 	}
-	s, _ := jsonschema.For[args](nil)
+	s := jsonschema.MustFor[args]()
 	tk, _ := New()
 	tool := &callableTool{name: "t", result: "ok", inputSchema: s}
 	r, _ := resource.JSON("input", args{Name: "world"})
@@ -284,18 +280,17 @@ func Test_Call_019_input_schema_validates_valid_input(t *testing.T) {
 		t.Fatal("expected non-nil resource")
 	}
 }
-
-func Test_Call_020_input_schema_rejects_invalid_input(t *testing.T) {
+func Test_Call_019_input_schema_rejects_invalid_input(t *testing.T) {
 	type args struct {
 		Name string `json:"name"`
 	}
-	s, _ := jsonschema.For[args](nil)
+	s := jsonschema.MustFor[args]()
 	tk, _ := New()
 	tool := &callableTool{name: "t", result: "ok", inputSchema: s}
 	// Pass a number instead of an object — should fail schema validation.
 	r, _ := resource.JSON("input", 42)
 	_, err := tk.Call(context.Background(), tool, r)
-	if !errors.Is(err, llm.ErrBadParameter) {
+	if !errors.Is(err, schema.ErrBadParameter) {
 		t.Fatalf("expected ErrBadParameter for invalid input, got %v", err)
 	}
 }
@@ -303,39 +298,27 @@ func Test_Call_020_input_schema_rejects_invalid_input(t *testing.T) {
 ///////////////////////////////////////////////////////////////////////////////
 // callTool — nil result + output schema
 
-func Test_Call_021_nil_result_with_output_schema_errors(t *testing.T) {
+func Test_Call_020_nil_result_with_output_schema_errors(t *testing.T) {
 	type out struct {
 		Value string `json:"value"`
 	}
-	s, _ := jsonschema.For[out](nil)
+	s := jsonschema.MustFor[out]()
 	tk, _ := New()
 	tool := &callableTool{name: "t", result: nil, outputSchema: s}
 	_, err := tk.Call(context.Background(), tool)
-	if !errors.Is(err, llm.ErrBadParameter) {
+	if !errors.Is(err, schema.ErrBadParameter) {
 		t.Fatalf("expected ErrBadParameter when nil result + output schema, got %v", err)
-	}
-}
-
-func Test_Call_022_nil_result_output_schema_gen_error(t *testing.T) {
-	tk, _ := New()
-	tool := &errSchemaTool{
-		callableTool:    callableTool{name: "t", result: nil},
-		outputSchemaErr: errors.New("schema gen failed"),
-	}
-	_, err := tk.Call(context.Background(), tool)
-	if !errors.Is(err, llm.ErrBadParameter) {
-		t.Fatalf("expected ErrBadParameter, got %v", err)
 	}
 }
 
 ///////////////////////////////////////////////////////////////////////////////
 // callTool — output schema validation
 
-func Test_Call_023_output_schema_validates_json_output(t *testing.T) {
+func Test_Call_021_output_schema_validates_json_output(t *testing.T) {
 	type out struct {
 		Value string `json:"value"`
 	}
-	s, _ := jsonschema.For[out](nil)
+	s := jsonschema.MustFor[out]()
 	tk, _ := New()
 	tool := &callableTool{name: "t", result: json.RawMessage(`{"value":"ok"}`), outputSchema: s}
 	res, err := tk.Call(context.Background(), tool)
@@ -347,50 +330,38 @@ func Test_Call_023_output_schema_validates_json_output(t *testing.T) {
 	}
 }
 
-func Test_Call_024_output_schema_rejects_invalid_json_output(t *testing.T) {
+func Test_Call_022_output_schema_rejects_invalid_json_output(t *testing.T) {
 	type out struct {
 		Value string `json:"value"`
 	}
-	s, _ := jsonschema.For[out](nil)
+	s := jsonschema.MustFor[out]()
 	tk, _ := New()
 	// Return a number instead of an object.
 	tool := &callableTool{name: "t", result: json.RawMessage(`42`), outputSchema: s}
 	_, err := tk.Call(context.Background(), tool)
-	if !errors.Is(err, llm.ErrBadParameter) {
+	if !errors.Is(err, schema.ErrBadParameter) {
 		t.Fatalf("expected ErrBadParameter for invalid output, got %v", err)
 	}
 }
 
-func Test_Call_025_output_schema_with_non_json_output_errors(t *testing.T) {
+func Test_Call_023_output_schema_with_non_json_output_errors(t *testing.T) {
 	type out struct {
 		Value string `json:"value"`
 	}
-	s, _ := jsonschema.For[out](nil)
+	s := jsonschema.MustFor[out]()
 	tk, _ := New()
 	// String output is not JSON content-type, so validation should fail.
 	tool := &callableTool{name: "t", result: "plain string", outputSchema: s}
 	_, err := tk.Call(context.Background(), tool)
-	if !errors.Is(err, llm.ErrBadParameter) {
+	if !errors.Is(err, schema.ErrBadParameter) {
 		t.Fatalf("expected ErrBadParameter for non-JSON output with schema, got %v", err)
-	}
-}
-
-func Test_Call_026_output_schema_gen_error_after_result(t *testing.T) {
-	tk, _ := New()
-	tool := &errSchemaTool{
-		callableTool:    callableTool{name: "t", result: "hello"},
-		outputSchemaErr: errors.New("schema gen failed"),
-	}
-	_, err := tk.Call(context.Background(), tool)
-	if !errors.Is(err, llm.ErrBadParameter) {
-		t.Fatalf("expected ErrBadParameter, got %v", err)
 	}
 }
 
 ///////////////////////////////////////////////////////////////////////////////
 // callTool — otel tracer propagates traceparent into session meta
 
-func Test_Call_027_with_real_tracer_injects_traceparent(t *testing.T) {
+func Test_Call_024_with_real_tracer_injects_traceparent(t *testing.T) {
 	// Register the W3C TraceContext propagator globally so traceparent is injected.
 	oldPropagator := gootel.GetTextMapPropagator()
 	gootel.SetTextMapPropagator(propagation.TraceContext{})
@@ -440,11 +411,11 @@ type captureMetaTool struct {
 	meta   *map[string]any
 }
 
-func (m *captureMetaTool) Name() string                              { return m.name }
-func (m *captureMetaTool) Description() string                       { return "capture meta tool" }
-func (m *captureMetaTool) InputSchema() (*jsonschema.Schema, error)  { return nil, nil }
-func (m *captureMetaTool) OutputSchema() (*jsonschema.Schema, error) { return nil, nil }
-func (m *captureMetaTool) Meta() llm.ToolMeta                        { return llm.ToolMeta{} }
+func (m *captureMetaTool) Name() string                     { return m.name }
+func (m *captureMetaTool) Description() string              { return "capture meta tool" }
+func (m *captureMetaTool) InputSchema() *jsonschema.Schema  { return nil }
+func (m *captureMetaTool) OutputSchema() *jsonschema.Schema { return nil }
+func (m *captureMetaTool) Meta() llm.ToolMeta               { return llm.ToolMeta{} }
 func (m *captureMetaTool) Run(ctx context.Context, _ json.RawMessage) (any, error) {
 	sess := SessionFromContext(ctx)
 	if m.meta != nil {

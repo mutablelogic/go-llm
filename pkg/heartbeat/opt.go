@@ -6,8 +6,8 @@ import (
 	"time"
 
 	// Packages
-	llm "github.com/mutablelogic/go-llm"
-	schema "github.com/mutablelogic/go-llm/pkg/heartbeat/schema"
+	hschema "github.com/mutablelogic/go-llm/pkg/heartbeat/schema"
+	schema "github.com/mutablelogic/go-llm/pkg/schema"
 )
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -30,7 +30,7 @@ const defaultPollInterval = 10 * time.Second
 func WithPollInterval(d time.Duration) Opt {
 	return func(m *Manager) error {
 		if d <= 0 {
-			return llm.ErrBadParameter.With("poll interval must be positive")
+			return schema.ErrBadParameter.With("poll interval must be positive")
 		}
 		m.pollInterval = d
 		return nil
@@ -41,7 +41,7 @@ func WithPollInterval(d time.Duration) Opt {
 func WithLogger(l *slog.Logger) Opt {
 	return func(m *Manager) error {
 		if l == nil {
-			return llm.ErrBadParameter.With("nil logger")
+			return schema.ErrBadParameter.With("nil logger")
 		}
 		m.logger = l
 		return nil
@@ -50,10 +50,10 @@ func WithLogger(l *slog.Logger) Opt {
 
 // WithOnFire registers a callback invoked for each heartbeat as it matures.
 // Only one callback can be active; later calls overwrite earlier ones.
-func WithOnFire(fn func(context.Context, *schema.Heartbeat)) Opt {
+func WithOnFire(fn func(context.Context, *hschema.Heartbeat)) Opt {
 	return func(m *Manager) error {
 		if fn == nil {
-			return llm.ErrBadParameter.With("nil callback")
+			return schema.ErrBadParameter.With("nil callback")
 		}
 		m.onFire = fn
 		return nil

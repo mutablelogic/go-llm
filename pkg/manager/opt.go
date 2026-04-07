@@ -1,215 +1,178 @@
+// Copyright 2026 David Thorpe
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
 package manager
 
 import (
-	"context"
-	"log/slog"
-	"strings"
+	"fmt"
 
 	// Packages
+	crypto "github.com/djthorpe/go-auth/pkg/crypto"
 	client "github.com/mutablelogic/go-client"
 	llm "github.com/mutablelogic/go-llm"
-	mcpclient "github.com/mutablelogic/go-llm/pkg/mcp/client"
-	opt "github.com/mutablelogic/go-llm/pkg/opt"
-	google "github.com/mutablelogic/go-llm/pkg/provider/google"
 	schema "github.com/mutablelogic/go-llm/pkg/schema"
-	tool "github.com/mutablelogic/go-llm/pkg/tool"
-	types "github.com/mutablelogic/go-server/pkg/types"
+	metric "go.opentelemetry.io/otel/metric"
 	trace "go.opentelemetry.io/otel/trace"
 )
 
 ///////////////////////////////////////////////////////////////////////////////
 // TYPES
 
-// Opt is a functional option for configuring an agent
-type Opt func(*Manager) error
+// Opt configures a Manager during construction.
+type Opt func(*manageropt) error
 
-// ConnectorFactory creates an llm.Connector for the given URL.
-// The factory owns its static options (tracing, timeout, etc.).
-// extraOpts are appended at call time and are used for per-URL dynamic options
-// such as bearer token injection from a credential store.
-type ConnectorFactory func(ctx context.Context, url string, extraOpts ...client.ClientOpt) (llm.Connector, error)
-
-// WithLogger sets the logger used for connector state and diagnostic messages.
-// If l is nil, slog.Default() is used.
-func WithLogger(l *slog.Logger) Opt {
-	return func(m *Manager) error {
-		if l != nil {
-			m.logger = l
-		}
-		return nil
-	}
-}
-
-// MCPConnectorFactory returns a ConnectorFactory that creates MCP clients.
-// The client auto-detects the transport (Streamable HTTP, falling back to SSE).
-// name and version are reported to the server during the MCP initialisation handshake.
-// staticOpts are captured at construction time and applied to every connector created.
-func MCPConnectorFactory(name, version string, staticOpts ...mcpclient.Opt) ConnectorFactory {
-	return func(ctx context.Context, url string, extraOpts ...client.ClientOpt) (llm.Connector, error) {
-		opts := append([]mcpclient.Opt{mcpclient.WithClientOpt(extraOpts...)}, staticOpts...)
-		c, err := mcpclient.New(url, name, version, opts...)
-		if err != nil {
-			return nil, err
-		}
-		return c, nil
-	}
+// manageropt combines all configuration options for Manager.
+type manageropt struct {
+	name        string
+	version     string
+	llmschema   string
+	authschema  string
+	channel     string
+	tracer      trace.Tracer
+	metrics     metric.Meter
+	passphrases *crypto.Passphrases
+	clientopts  []client.ClientOpt
+	tools       []llm.Tool
+	prompts     []llm.Prompt
+	resources   []llm.Resource
+	connectors  map[string]llm.Connector
 }
 
 ///////////////////////////////////////////////////////////////////////////////
-// AGENT OPTIONS
+// LIFECYCLE
 
-// WithClient adds an LLM client to the agent
-func WithClient(client llm.Client) Opt {
-	return func(m *Manager) error {
-		if name := client.Name(); !types.IsIdentifier(name) {
-			return llm.ErrBadParameter.Withf("invalid client name %q", name)
-		} else if _, exists := m.clients[name]; exists {
-			return llm.ErrBadParameter.Withf("duplicate client %q", name)
-		} else {
-			m.clients[name] = client
+func (o *manageropt) apply(opts ...Opt) error {
+	for _, opt := range opts {
+		if opt == nil {
+			continue
 		}
+		if err := opt(o); err != nil {
+			return err
+		}
+	}
+	return nil
+}
 
-		// Return success
+func (o *manageropt) defaults(name, version string) {
+	o.name = name
+	o.version = version
+	o.llmschema = schema.DefaultSchema
+	o.authschema = schema.DefaultAuthSchema
+	o.channel = schema.DefaultNotifyChannel
+	o.passphrases = crypto.NewPassphrases()
+	o.clientopts = []client.ClientOpt{}
+	o.connectors = make(map[string]llm.Connector)
+}
+
+///////////////////////////////////////////////////////////////////////////////
+// PUBLIC METHODS
+
+// WithSchemas sets the database schema names to use for all queries. If not set the default schemas are used.
+func WithSchemas(llm, auth string) Opt {
+	return func(o *manageropt) error {
+		if llm != "" {
+			o.llmschema = llm
+		}
+		if auth != "" {
+			o.authschema = auth
+		}
 		return nil
 	}
 }
 
-// WithSessionStore sets the session storage backend for the manager.
-// If not set, an in-memory store is used by default.
-func WithSessionStore(store schema.SessionStore) Opt {
-	return func(m *Manager) error {
-		if store == nil {
-			return llm.ErrBadParameter.With("session store is required")
-		}
-		m.sessionStore = store
-		return nil
-	}
-}
-
-// WithAgentStore sets the agent storage backend for the manager.
-// If not set, an in-memory store is used by default.
-func WithAgentStore(store schema.AgentStore) Opt {
-	return func(m *Manager) error {
-		if store == nil {
-			return llm.ErrBadParameter.With("agent store is required")
-		}
-		m.agentStore = store
-		return nil
-	}
-}
-
-// WithConnectorStore sets the MCP connector storage backend for the manager.
-// If not set, an in-memory store is used by default.
-func WithConnectorStore(store schema.ConnectorStore) Opt {
-	return func(m *Manager) error {
-		if store == nil {
-			return llm.ErrBadParameter.With("connector store is required")
-		}
-		m.connectorStore = store
-		return nil
-	}
-}
-
-// WithCredentialStore sets the credential storage backend for the manager.
-// If not set, credential operations will return an error.
-func WithCredentialStore(store schema.CredentialStore) Opt {
-	return func(m *Manager) error {
-		if store == nil {
-			return llm.ErrBadParameter.With("credential store is required")
-		}
-		m.credentialStore = store
-		return nil
-	}
-}
-
-// WithTools registers one or more tools with the manager's toolkit.
-func WithTools(tools ...llm.Tool) Opt {
-	return func(m *Manager) error {
-		for _, t := range tools {
-			if t == nil {
-				return llm.ErrBadParameter.With("tool is required")
-			}
-		}
-		m.toolkitOpts = append(m.toolkitOpts, tool.WithBuiltin(tools...))
-		return nil
-	}
-}
-
-// WithTool registers a single tool with the manager's toolkit.
-func WithTool(t llm.Tool) Opt {
-	return func(m *Manager) error {
-		if t == nil {
-			return llm.ErrBadParameter.With("tool is required")
-		}
-		m.toolkitOpts = append(m.toolkitOpts, tool.WithBuiltin(t))
-		return nil
-	}
-}
-
-// WithConnectorFactory sets the factory used to create MCP connectors.
-// When set, CreateConnector probes the server before registering it.
-// Use MCPConnectorFactory to get the standard MCP SSE implementation.
-func WithConnectorFactory(factory ConnectorFactory) Opt {
-	return func(m *Manager) error {
-		if factory == nil {
-			return llm.ErrBadParameter.With("connector factory is required")
-		}
-		m.connectorFactory = factory
-		return nil
-	}
-}
-
-// WithTracer sets the OpenTelemetry tracer for distributed tracing.
+// WithTracer sets the OpenTelemetry tracer used for manager spans.
 func WithTracer(tracer trace.Tracer) Opt {
-	return func(m *Manager) error {
-		m.tracer = tracer
+	return func(o *manageropt) error {
+		o.tracer = tracer
 		return nil
 	}
 }
 
-// WithOutputDimensionality sets the output dimensionality for embedding requests
-func WithOutputDimensionality(dim uint) opt.Opt {
-	if dim == 0 {
-		return opt.NoOp()
+// WithMeter sets the OpenTelemetry meter used for manager metrics.
+func WithMeter(meter metric.Meter) Opt {
+	return func(o *manageropt) error {
+		o.metrics = meter
+		return nil
 	}
-	return opt.WithClient(func(provider string) opt.Opt {
-		switch provider {
-		case "gemini":
-			return google.WithOutputDimensionality(dim)
-		default:
-			return opt.Error(llm.ErrNotImplemented.Withf("%s: WithOutputDimensionality not supported", provider))
-		}
-	})
 }
 
-// WithTitle sets the title for the agent, which may be used in embedding requests
-func WithTitle(title string) opt.Opt {
-	title = strings.TrimSpace(title)
-	if title == "" {
-		return opt.NoOp()
+// WithPassphrase registers an in-memory storage passphrase for a certificate
+// passphrase version. Versions are uint64 and passphrases must be non-empty.
+func WithPassphrase(version uint64, passphrase string) Opt {
+	return func(o *manageropt) error {
+		return o.passphrases.Set(version, passphrase)
 	}
-	return opt.WithClient(func(provider string) opt.Opt {
-		switch provider {
-		case "gemini":
-			return google.WithTitle(title)
-		default:
-			return opt.Error(llm.ErrNotImplemented.Withf("%s: WithTitle not supported", provider))
-		}
-	})
 }
 
-// WithTaskType sets the task type for embedding requests
-func WithTaskType(taskType string) opt.Opt {
-	taskType = strings.TrimSpace(taskType)
-	if taskType == "" {
-		return opt.NoOp()
-	}
-	return opt.WithClient(func(provider string) opt.Opt {
-		switch provider {
-		case "gemini":
-			return google.WithTaskType(taskType)
-		default:
-			return opt.Error(llm.ErrNotImplemented.Withf("%s: WithTaskType not supported", provider))
+// WithNotificationChannel sets the PostgreSQL LISTEN/NOTIFY channel used by
+// the provider table change trigger created during bootstrap.
+func WithNotificationChannel(name string) Opt {
+	return func(o *manageropt) error {
+		if name == "" {
+			return fmt.Errorf("notification channel cannot be empty")
 		}
-	})
+		o.channel = name
+		return nil
+	}
+}
+
+// WithClientOpts provides unified client options for the LLM model
+// providers and connectors
+func WithClientOpts(opts ...client.ClientOpt) Opt {
+	return func(o *manageropt) error {
+		o.clientopts = append(o.clientopts, opts...)
+		return nil
+	}
+}
+
+// WithTools provides unified tool options for the LLM model
+// providers
+func WithTools(opts ...llm.Tool) Opt {
+	return func(o *manageropt) error {
+		o.tools = append(o.tools, opts...)
+		return nil
+	}
+}
+
+// WithPrompts provides unified prompt options for the LLM model
+// providers
+func WithPrompts(opts ...llm.Prompt) Opt {
+	return func(o *manageropt) error {
+		o.prompts = append(o.prompts, opts...)
+		return nil
+	}
+}
+
+// WithResources provides unified resource options for the LLM model
+// providers
+func WithResources(opts ...llm.Resource) Opt {
+	return func(o *manageropt) error {
+		o.resources = append(o.resources, opts...)
+		return nil
+	}
+}
+
+// WithConnector adds a local connector to the manager, by URL
+func WithConnector(url string, connector llm.Connector) Opt {
+	return func(o *manageropt) error {
+		if url, err := schema.CanonicalURL(url); err != nil {
+			return fmt.Errorf("invalid connector url %q: %w", url, err)
+		} else if _, exists := o.connectors[url]; exists {
+			return fmt.Errorf("connector url %q already exists", url)
+		} else {
+			o.connectors[url] = connector
+		}
+		return nil
+	}
 }
