@@ -9,7 +9,7 @@ import (
 	"strings"
 	"testing"
 
-	schema "github.com/mutablelogic/go-llm/pkg/schema"
+	schema "github.com/mutablelogic/go-llm/kernel/schema"
 )
 
 func TestChat_OK(t *testing.T) {

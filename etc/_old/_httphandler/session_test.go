@@ -7,7 +7,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	schema "github.com/mutablelogic/go-llm/pkg/schema"
+	schema "github.com/mutablelogic/go-llm/kernel/schema"
 )
 
 func TestSessionList_OK(t *testing.T) {

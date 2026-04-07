@@ -4,8 +4,8 @@ import (
 	"net/http"
 
 	// Packages
-	manager "github.com/mutablelogic/go-llm/pkg/manager"
-	schema "github.com/mutablelogic/go-llm/pkg/schema"
+	manager "github.com/mutablelogic/go-llm/kernel/manager"
+	schema "github.com/mutablelogic/go-llm/kernel/schema"
 	httprequest "github.com/mutablelogic/go-server/pkg/httprequest"
 	httpresponse "github.com/mutablelogic/go-server/pkg/httpresponse"
 	jsonschema "github.com/mutablelogic/go-server/pkg/jsonschema"

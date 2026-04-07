@@ -7,7 +7,7 @@ import (
 	// Packages
 	assert "github.com/stretchr/testify/assert"
 
-	schema "github.com/mutablelogic/go-llm/pkg/schema"
+	schema "github.com/mutablelogic/go-llm/kernel/schema"
 )
 
 func Test_embeddings_001(t *testing.T) {

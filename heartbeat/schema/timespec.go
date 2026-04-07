@@ -9,7 +9,7 @@ import (
 	"time"
 
 	// Packages
-	llmschema "github.com/mutablelogic/go-llm/pkg/schema"
+	llmschema "github.com/mutablelogic/go-llm/kernel/schema"
 	types "github.com/mutablelogic/go-server/pkg/types"
 )
 

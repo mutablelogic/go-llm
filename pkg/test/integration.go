@@ -15,9 +15,9 @@ import (
 	// Packages
 	auth "github.com/djthorpe/go-auth/schema/auth"
 	uuid "github.com/google/uuid"
-	mock "github.com/mutablelogic/go-llm/pkg/mcp/mock"
-	mcpserver "github.com/mutablelogic/go-llm/pkg/mcp/server"
-	schema "github.com/mutablelogic/go-llm/pkg/schema"
+	schema "github.com/mutablelogic/go-llm/kernel/schema"
+	mock "github.com/mutablelogic/go-llm/mcp/mock"
+	mcpserver "github.com/mutablelogic/go-llm/mcp/server"
 )
 
 // Context returns a bounded context suitable for integration tests.

@@ -8,7 +8,7 @@ import (
 	// Packages
 	client "github.com/mutablelogic/go-client"
 	opt "github.com/mutablelogic/go-llm/pkg/opt"
-	schema "github.com/mutablelogic/go-llm/pkg/schema"
+	schema "github.com/mutablelogic/go-llm/kernel/schema"
 )
 
 ///////////////////////////////////////////////////////////////////////////////

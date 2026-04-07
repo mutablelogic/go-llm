@@ -321,7 +321,7 @@ import (
     "log"
 
     llm "github.com/mutablelogic/go-llm"
-    "github.com/mutablelogic/go-llm/pkg/provider/google"
+    "github.com/mutablelogic/go-llm/provider/google"
 )
 
 func main() {

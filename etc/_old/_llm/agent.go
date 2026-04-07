@@ -13,10 +13,10 @@ import (
 
 	// Packages
 	otel "github.com/mutablelogic/go-client/pkg/otel"
+	httpclient "github.com/mutablelogic/go-llm/kernel/httpclient"
 	agent "github.com/mutablelogic/go-llm/pkg/agent"
-	httpclient "github.com/mutablelogic/go-llm/pkg/httpclient"
 	opt "github.com/mutablelogic/go-llm/pkg/opt"
-	schema "github.com/mutablelogic/go-llm/pkg/schema"
+	schema "github.com/mutablelogic/go-llm/kernel/schema"
 	uitable "github.com/mutablelogic/go-llm/pkg/ui/table"
 	server "github.com/mutablelogic/go-server"
 	httpresponse "github.com/mutablelogic/go-server/pkg/httpresponse"

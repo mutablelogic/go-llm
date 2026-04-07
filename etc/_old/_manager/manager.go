@@ -10,7 +10,7 @@ import (
 	llm "github.com/mutablelogic/go-llm"
 	store "github.com/mutablelogic/go-llm/pkg/_store"
 	opt "github.com/mutablelogic/go-llm/pkg/opt"
-	schema "github.com/mutablelogic/go-llm/pkg/schema"
+	schema "github.com/mutablelogic/go-llm/kernel/schema"
 	tool "github.com/mutablelogic/go-llm/pkg/tool"
 	types "github.com/mutablelogic/go-server/pkg/types"
 	trace "go.opentelemetry.io/otel/trace"

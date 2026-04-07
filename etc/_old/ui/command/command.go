@@ -13,7 +13,7 @@ import (
 	"time"
 
 	"github.com/mutablelogic/go-llm/pkg/opt"
-	"github.com/mutablelogic/go-llm/pkg/schema"
+	"github.com/mutablelogic/go-llm/kernel/schema"
 	"github.com/mutablelogic/go-llm/pkg/ui"
 	uitable "github.com/mutablelogic/go-llm/pkg/ui/table"
 )

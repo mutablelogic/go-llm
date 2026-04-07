@@ -6,9 +6,9 @@ import (
 
 	// Packages
 	otel "github.com/mutablelogic/go-client/pkg/otel"
-	httpclient "github.com/mutablelogic/go-llm/pkg/httpclient"
+	httpclient "github.com/mutablelogic/go-llm/kernel/httpclient"
 	opt "github.com/mutablelogic/go-llm/pkg/opt"
-	schema "github.com/mutablelogic/go-llm/pkg/schema"
+	schema "github.com/mutablelogic/go-llm/kernel/schema"
 	uitable "github.com/mutablelogic/go-llm/pkg/ui/table"
 	server "github.com/mutablelogic/go-server"
 	types "github.com/mutablelogic/go-server/pkg/types"

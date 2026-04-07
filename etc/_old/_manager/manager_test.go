@@ -7,10 +7,10 @@ import (
 
 	// Packages
 
-	anthropic "github.com/mutablelogic/go-llm/pkg/provider/anthropic"
-	google "github.com/mutablelogic/go-llm/pkg/provider/google"
-	mistral "github.com/mutablelogic/go-llm/pkg/provider/mistral"
-	schema "github.com/mutablelogic/go-llm/pkg/schema"
+	anthropic "github.com/mutablelogic/go-llm/provider/anthropic"
+	google "github.com/mutablelogic/go-llm/provider/google"
+	mistral "github.com/mutablelogic/go-llm/provider/mistral"
+	schema "github.com/mutablelogic/go-llm/kernel/schema"
 	types "github.com/mutablelogic/go-server/pkg/types"
 	assert "github.com/stretchr/testify/assert"
 )

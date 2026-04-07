@@ -7,8 +7,8 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	manager "github.com/mutablelogic/go-llm/pkg/manager"
-	schema "github.com/mutablelogic/go-llm/pkg/schema"
+	manager "github.com/mutablelogic/go-llm/kernel/manager"
+	schema "github.com/mutablelogic/go-llm/kernel/schema"
 )
 
 func newEmbedderManager(t *testing.T) *manager.Manager {

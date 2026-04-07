@@ -6,8 +6,8 @@ import (
 
 	// Packages
 	sdkmcp "github.com/modelcontextprotocol/go-sdk/mcp"
-	server "github.com/mutablelogic/go-llm/pkg/mcp/server"
-	schema "github.com/mutablelogic/go-llm/pkg/schema"
+	schema "github.com/mutablelogic/go-llm/kernel/schema"
+	server "github.com/mutablelogic/go-llm/mcp/server"
 )
 
 func TestServerListPrompts(t *testing.T) {

@@ -10,7 +10,7 @@ import (
 	"strings"
 
 	// Packages
-	schema "github.com/mutablelogic/go-llm/pkg/schema"
+	schema "github.com/mutablelogic/go-llm/kernel/schema"
 	jsonschema "github.com/mutablelogic/go-server/pkg/jsonschema"
 	types "github.com/mutablelogic/go-server/pkg/types"
 	yaml "gopkg.in/yaml.v3"

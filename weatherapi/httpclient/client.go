@@ -9,7 +9,7 @@ import (
 
 	// Packages
 	"github.com/mutablelogic/go-client"
-	"github.com/mutablelogic/go-llm/pkg/schema"
+	"github.com/mutablelogic/go-llm/kernel/schema"
 )
 
 ///////////////////////////////////////////////////////////////////////////////

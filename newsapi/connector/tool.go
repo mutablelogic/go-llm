@@ -7,7 +7,7 @@ import (
 	// Packages
 	"github.com/mutablelogic/go-client"
 	llm "github.com/mutablelogic/go-llm"
-	"github.com/mutablelogic/go-llm/pkg/schema"
+	"github.com/mutablelogic/go-llm/kernel/schema"
 	"github.com/mutablelogic/go-llm/pkg/tool"
 	jsonschema "github.com/mutablelogic/go-server/pkg/jsonschema"
 )

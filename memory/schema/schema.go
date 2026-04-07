@@ -4,7 +4,7 @@ import (
 	_ "embed"
 
 	// Packages
-	llmschema "github.com/mutablelogic/go-llm/pkg/schema"
+	llmschema "github.com/mutablelogic/go-llm/kernel/schema"
 )
 
 ///////////////////////////////////////////////////////////////////////////////

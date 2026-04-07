@@ -2,7 +2,7 @@ package main
 
 import (
 	// Packages
-	httpclient "github.com/mutablelogic/go-llm/pkg/httpclient"
+	httpclient "github.com/mutablelogic/go-llm/kernel/httpclient"
 	server "github.com/mutablelogic/go-server"
 )
 

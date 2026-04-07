@@ -11,7 +11,7 @@ import (
 	"time"
 
 	// Packages
-	schema "github.com/mutablelogic/go-llm/pkg/schema"
+	schema "github.com/mutablelogic/go-llm/kernel/schema"
 	pg "github.com/mutablelogic/go-pg"
 	pgtest "github.com/mutablelogic/go-pg/pkg/test"
 )

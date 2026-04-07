@@ -5,7 +5,7 @@ import (
 
 	// Packages
 	store "github.com/mutablelogic/go-llm/pkg/_store"
-	schema "github.com/mutablelogic/go-llm/pkg/schema"
+	schema "github.com/mutablelogic/go-llm/kernel/schema"
 	assert "github.com/stretchr/testify/assert"
 )
 

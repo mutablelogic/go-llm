@@ -7,10 +7,10 @@ import (
 
 	// Packages
 	llm "github.com/mutablelogic/go-llm"
-	client "github.com/mutablelogic/go-llm/pkg/mcp/client"
-	mock "github.com/mutablelogic/go-llm/pkg/mcp/mock"
-	server "github.com/mutablelogic/go-llm/pkg/mcp/server"
-	schema "github.com/mutablelogic/go-llm/pkg/schema"
+	schema "github.com/mutablelogic/go-llm/kernel/schema"
+	client "github.com/mutablelogic/go-llm/mcp/client"
+	mock "github.com/mutablelogic/go-llm/mcp/mock"
+	server "github.com/mutablelogic/go-llm/mcp/server"
 	tool "github.com/mutablelogic/go-llm/pkg/tool"
 )
 

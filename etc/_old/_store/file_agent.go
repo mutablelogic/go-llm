@@ -9,7 +9,7 @@ import (
 
 	// Packages
 	uuid "github.com/google/uuid"
-	schema "github.com/mutablelogic/go-llm/pkg/schema"
+	schema "github.com/mutablelogic/go-llm/kernel/schema"
 )
 
 ///////////////////////////////////////////////////////////////////////////////

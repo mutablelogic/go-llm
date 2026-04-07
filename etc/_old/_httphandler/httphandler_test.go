@@ -8,10 +8,10 @@ import (
 
 	// Packages
 	llm "github.com/mutablelogic/go-llm"
-	httphandler "github.com/mutablelogic/go-llm/pkg/httphandler"
-	manager "github.com/mutablelogic/go-llm/pkg/manager"
+	httphandler "github.com/mutablelogic/go-llm/kernel/httphandler"
+	manager "github.com/mutablelogic/go-llm/kernel/manager"
 	opt "github.com/mutablelogic/go-llm/pkg/opt"
-	schema "github.com/mutablelogic/go-llm/pkg/schema"
+	schema "github.com/mutablelogic/go-llm/kernel/schema"
 	jsonschema "github.com/mutablelogic/go-server/pkg/jsonschema"
 	types "github.com/mutablelogic/go-server/pkg/types"
 )

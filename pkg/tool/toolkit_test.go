@@ -6,7 +6,7 @@ import (
 	"testing"
 
 	llm "github.com/mutablelogic/go-llm"
-	schema "github.com/mutablelogic/go-llm/pkg/schema"
+	schema "github.com/mutablelogic/go-llm/kernel/schema"
 	tool "github.com/mutablelogic/go-llm/pkg/tool"
 	jsonschema "github.com/mutablelogic/go-server/pkg/jsonschema"
 )

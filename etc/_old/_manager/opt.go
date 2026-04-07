@@ -8,11 +8,11 @@ import (
 	// Packages
 	client "github.com/mutablelogic/go-client"
 	llm "github.com/mutablelogic/go-llm"
-	mcpclient "github.com/mutablelogic/go-llm/pkg/mcp/client"
+	schema "github.com/mutablelogic/go-llm/kernel/schema"
+	mcpclient "github.com/mutablelogic/go-llm/mcp/client"
 	opt "github.com/mutablelogic/go-llm/pkg/opt"
-	google "github.com/mutablelogic/go-llm/pkg/provider/google"
-	schema "github.com/mutablelogic/go-llm/pkg/schema"
 	tool "github.com/mutablelogic/go-llm/pkg/tool"
+	google "github.com/mutablelogic/go-llm/provider/google"
 	types "github.com/mutablelogic/go-server/pkg/types"
 	trace "go.opentelemetry.io/otel/trace"
 )

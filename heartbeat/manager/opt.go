@@ -7,7 +7,7 @@ import (
 
 	// Packages
 	hschema "github.com/mutablelogic/go-llm/pkg/heartbeat/schema"
-	schema "github.com/mutablelogic/go-llm/pkg/schema"
+	schema "github.com/mutablelogic/go-llm/kernel/schema"
 )
 
 ///////////////////////////////////////////////////////////////////////////////
