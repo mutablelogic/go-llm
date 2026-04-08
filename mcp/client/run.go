@@ -2,6 +2,7 @@ package client
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	// Packages
@@ -15,6 +16,55 @@ import (
 ///////////////////////////////////////////////////////////////////////////////
 // PUBLIC METHODS
 
+// Connect establishes an MCP session, populates the tool/prompt/resource
+// caches and leaves the session available for subsequent API calls.
+func (c *Client) Connect(ctx context.Context) error {
+	session, err := c.connectWithAuth(ctx, nil)
+	if err != nil {
+		return err
+	}
+
+	c.mu.Lock()
+	if c.session != nil {
+		c.mu.Unlock()
+		session.Close()
+		return fmt.Errorf("client already connected")
+	}
+	c.session = session
+	c.tools = make([]llm.Tool, 0)
+	c.prompts = make([]llm.Prompt, 0)
+	c.resources = make([]llm.Resource, 0)
+	c.mu.Unlock()
+
+	c.refreshTools(ctx)
+	c.refreshPrompts(ctx)
+	c.refreshResources(ctx)
+
+	if c.onStateChange != nil {
+		c.onStateChange(ctx, stateFromSession(session))
+	}
+
+	return nil
+}
+
+// Close closes the current MCP session and clears all cached state.
+func (c *Client) Close() error {
+	c.mu.Lock()
+	session := c.session
+	c.session = nil
+	c.tools = nil
+	c.prompts = nil
+	c.resources = nil
+	c.subscribed = nil
+	c.mu.Unlock()
+
+	if session == nil {
+		return nil
+	}
+	session.Close()
+	return session.Wait()
+}
+
 // Run establishes an MCP session (including OAuth if required) and drives it
 // until ctx is cancelled or the server closes the connection. It blocks until
 // all in-flight messages have been drained and the underlying transport is
@@ -27,41 +77,14 @@ import (
 // Server-sent log messages and progress notifications are written to the
 // default slog logger while Run is blocking.
 func (c *Client) Run(ctx context.Context) error {
-	// Connect (with auth retry if needed) and store the session on c.
-	session, err := c.connect(ctx)
+	if err := c.Connect(ctx); err != nil {
+		return err
+	}
+	session, err := c.getSession()
 	if err != nil {
 		return err
 	}
-
-	// Expose the session so tool-call methods can use it.
-	// Initialize tools to an empty (non-nil) slice so that ListTools never
-	// returns nil while connected; nil is reserved to signal "disconnected".
-	c.mu.Lock()
-	c.session = session
-	c.tools = make([]llm.Tool, 0)
-	c.mu.Unlock()
-
-	// Populate the tool/prompt/resource caches now that the session is live.
-	c.refreshTools(ctx)
-	c.refreshPrompts(ctx)
-	c.refreshResources(ctx)
-
-	// Fire the state-change callback once after the initial handshake and
-	// cache population, so callers see a fully-populated server state.
-	if c.onStateChange != nil {
-		c.onStateChange(ctx, stateFromSession(session))
-	}
-
-	// Clear the session pointer and caches when Run exits.
-	defer func() {
-		c.mu.Lock()
-		c.session = nil
-		c.tools = nil
-		c.prompts = nil
-		c.resources = nil
-		c.subscribed = nil
-		c.mu.Unlock()
-	}()
+	defer c.Close() //nolint:errcheck
 
 	// Ensure the goroutine below is always unblocked when Run returns,
 	// even if the server closes the session before ctx is cancelled.

@@ -68,6 +68,18 @@ func (c *Client) ListPrompts(_ context.Context) ([]llm.Prompt, error) {
 	return c.prompts, nil
 }
 
+// GetPrompt fetches a prepared prompt from the connected MCP server.
+func (c *Client) GetPrompt(ctx context.Context, name string, arguments map[string]string) (*sdkmcp.GetPromptResult, error) {
+	sess, err := c.getSession()
+	if err != nil {
+		return nil, err
+	}
+	return sess.GetPrompt(ctx, &sdkmcp.GetPromptParams{
+		Name:      name,
+		Arguments: arguments,
+	})
+}
+
 // refreshPrompts fetches the full prompt list from the server, stores it in
 // the cache and invokes onPromptListChanged if set.
 func (c *Client) refreshPrompts(ctx context.Context) {

@@ -60,6 +60,16 @@ func (c *Client) ListResources(_ context.Context) ([]llm.Resource, error) {
 	return c.resources, nil
 }
 
+// GetResource returns a resource handle for the given URI. If the URI does
+// not exist in the cached metadata list, a minimal resource handle is still
+// returned so callers can attempt a direct read.
+func (c *Client) GetResource(ctx context.Context, uri string) (llm.Resource, error) {
+	if _, err := c.getSession(); err != nil {
+		return nil, err
+	}
+	return c.readResource(ctx, uri), nil
+}
+
 // readResource fetches a single resource by URI from the server and wraps it
 // in a clientResource. Returns nil if not connected or the read fails.
 func (c *Client) readResource(ctx context.Context, uri string) llm.Resource {

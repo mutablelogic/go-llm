@@ -1,0 +1,10 @@
+package cmd
+
+///////////////////////////////////////////////////////////////////////////////
+// TYPES
+
+type Commands struct {
+	ToolCommands
+	PromptCommands
+	ResourceCommands
+}
