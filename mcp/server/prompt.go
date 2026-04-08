@@ -3,23 +3,19 @@ package server
 import (
 	"context"
 	"encoding/json"
-	"sort"
 
 	// Packages
 	sdkmcp "github.com/modelcontextprotocol/go-sdk/mcp"
-	agent "github.com/mutablelogic/go-llm/pkg/agent"
-	schema "github.com/mutablelogic/go-llm/kernel/schema"
+	llm "github.com/mutablelogic/go-llm"
 )
 
 ///////////////////////////////////////////////////////////////////////////////
 // PUBLIC METHODS
 
-// AddPrompts registers one or more agents as MCP prompts. Each prompt's
-// arguments are derived from the AgentMeta's Input JSON Schema, and the
-// handler renders the agent's template with the arguments supplied by the client.
-func (s *Server) AddPrompts(metas ...schema.AgentMeta) {
-	for _, meta := range metas {
-		s.server.AddPrompt(promptFromAgentMeta(meta), promptHandlerFromAgentMeta(meta))
+// AddPrompts registers one or more llm.Prompt values as MCP prompts.
+func (s *Server) AddPrompts(prompts ...llm.Prompt) {
+	for _, prompt := range prompts {
+		s.server.AddPrompt(promptFromPrompt(prompt), promptHandlerFromPrompt(prompt))
 	}
 }
 
@@ -30,102 +26,59 @@ func (s *Server) RemovePrompts(names ...string) {
 }
 
 ///////////////////////////////////////////////////////////////////////////////
-// PRIVATE TYPES
-
-// schemaDoc is a minimal JSON Schema document used only to extract property
-// names, descriptions, and required flags for MCP PromptArguments.
-type schemaDoc struct {
-	Properties map[string]schemaProperty `json:"properties"`
-	Required   []string                  `json:"required"`
-}
-
-type schemaProperty struct {
-	Description string `json:"description"`
-	Title       string `json:"title"`
-}
-
-///////////////////////////////////////////////////////////////////////////////
 // PRIVATE METHODS
 
-// promptFromAgentMeta converts an AgentMeta into an *sdkmcp.Prompt. The
-// Prompt's Arguments are derived from the top-level properties of the
-// AgentMeta.Input JSON Schema.
-func promptFromAgentMeta(meta schema.AgentMeta) *sdkmcp.Prompt {
-	return &sdkmcp.Prompt{
-		Name:        meta.Name,
-		Title:       meta.Title,
-		Description: meta.Description,
-		Arguments:   argsFromJSONSchema(meta.Input),
+func promptFromPrompt(prompt llm.Prompt) *sdkmcp.Prompt {
+	result := &sdkmcp.Prompt{
+		Name:        prompt.Name(),
+		Title:       prompt.Title(),
+		Description: prompt.Description(),
 	}
+	if args := promptArgumentsFromPrompt(prompt); len(args) > 0 {
+		result.Arguments = args
+	}
+	return result
 }
 
-// promptHandlerFromAgentMeta returns an sdkmcp.PromptHandler that renders the
-// agent template with the arguments supplied by the MCP client.
-func promptHandlerFromAgentMeta(meta schema.AgentMeta) sdkmcp.PromptHandler {
-	a := &schema.Agent{AgentMeta: meta}
+func promptHandlerFromPrompt(prompt llm.Prompt) sdkmcp.PromptHandler {
 	return func(ctx context.Context, req *sdkmcp.GetPromptRequest) (*sdkmcp.GetPromptResult, error) {
-		// Marshal the client's map[string]string arguments to JSON so that
-		// agent.Prepare can validate them against the input schema and render
-		// the template.
 		var raw json.RawMessage
 		if req.Params != nil && len(req.Params.Arguments) > 0 {
-			var err error
-			if raw, err = json.Marshal(req.Params.Arguments); err != nil {
+			data, err := json.Marshal(req.Params.Arguments)
+			if err != nil {
 				return nil, err
 			}
+			raw = data
 		}
 
-		result, err := agent.Prepare(a, "", schema.GeneratorMeta{}, raw)
+		text, _, err := prompt.Prepare(ctx, raw)
 		if err != nil {
 			return nil, err
 		}
 
 		return &sdkmcp.GetPromptResult{
-			Description: meta.Description,
+			Description: prompt.Description(),
 			Messages: []*sdkmcp.PromptMessage{
 				{
 					Role:    "user",
-					Content: &sdkmcp.TextContent{Text: result.Text},
+					Content: &sdkmcp.TextContent{Text: text},
 				},
 			},
 		}, nil
 	}
 }
 
-// argsFromJSONSchema parses the top-level properties of a JSON Schema and
-// returns them as MCP PromptArguments. Unknown or empty schemas return nil.
-func argsFromJSONSchema(s schema.JSONSchema) []*sdkmcp.PromptArgument {
-	if len(s) == 0 {
-		return nil
-	}
-	var doc schemaDoc
-	if err := json.Unmarshal(s, &doc); err != nil || len(doc.Properties) == 0 {
+func promptArgumentsFromPrompt(prompt llm.Prompt) []*sdkmcp.PromptArgument {
+	data, err := json.Marshal(prompt)
+	if err != nil {
 		return nil
 	}
 
-	required := make(map[string]bool, len(doc.Required))
-	for _, r := range doc.Required {
-		required[r] = true
+	var decoded struct {
+		Arguments []*sdkmcp.PromptArgument `json:"arguments,omitempty"`
 	}
-
-	args := make([]*sdkmcp.PromptArgument, 0, len(doc.Properties))
-	names := make([]string, 0, len(doc.Properties))
-	for name := range doc.Properties {
-		names = append(names, name)
+	if err := json.Unmarshal(data, &decoded); err != nil {
+		return nil
 	}
-	sort.Strings(names)
-	for _, name := range names {
-		prop := doc.Properties[name]
-		desc := prop.Description
-		if desc == "" {
-			desc = prop.Title
-		}
-		args = append(args, &sdkmcp.PromptArgument{
-			Name:        name,
-			Title:       prop.Title,
-			Description: desc,
-			Required:    required[name],
-		})
-	}
-	return args
+	return decoded.Arguments
 }

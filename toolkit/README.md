@@ -157,7 +157,7 @@ func (myDelegate) CreateConnector(url string, onEvent func(tk.ConnectorEvent)) (
 }
 ```
 
-> **Note:** See [pkg/toolkit/example/delegate.go](../toolkit/example/delegate.go) for a full working implementation.
+> **Note:** See [toolkit/example/delegate.go](../toolkit/example/delegate.go) for a full working implementation.
 
 ## Lookup
 
@@ -334,7 +334,7 @@ Summarize the following text:
 
 ### Creating and Registering Prompts
 
-Parse a prompt from a markdown file and register it as a builtin using `prompt.Read` from `pkg/toolkit/prompt`:
+Parse a prompt from a markdown file and register it as a builtin using `prompt.Read` from `toolkit/prompt`:
 
 ```go
 import (
@@ -449,7 +449,7 @@ type ToolMeta struct {
 
 `Run` returns `nil` for no output, or any of: `string`, `[]byte`, `json.RawMessage`, or `llm.Resource`. String and `json.RawMessage` returns are automatically wrapped into the appropriate resource type.
 
-Embed `tool.Base` from `pkg/toolkit/tool` to get no-op implementations of `OutputSchema` and `Meta`, reducing boilerplate. Use `jsonschema.For[T]` to generate an input schema from a request struct:
+Embed `tool.Base` from `toolkit/tool` to get no-op implementations of `OutputSchema` and `Meta`, reducing boilerplate. Use `jsonschema.For[T]` to generate an input schema from a request struct:
 
 ```go
 import (
@@ -596,7 +596,7 @@ type Resource interface {
 
 ### Built-in Resource Constructors
 
-Four constructors in `pkg/toolkit/resource` create named resources. The `name` argument must be a valid identifier (letters, digits, underscores):
+Four constructors in `toolkit/resource` create named resources. The `name` argument must be a valid identifier (letters, digits, underscores):
 
 | Constructor | MIME type | Notes |
 |---|---|---|
@@ -764,19 +764,19 @@ This means when an upstream MCP connector reconnects and its tool list changes, 
 
 ## Using a Toolkit with Generation
 
-Pass the toolkit to a generation call via `toolkit.WithToolkit`:
+Pass tools from the toolkit to a generation call via `opt.WithTool`:
 
 ```go
 resp, err := model.Generate(ctx, prompt,
-    toolkit.WithToolkit(tk),
+    opt.WithTool[llm.Tool](myTool, otherTool),
 )
 ```
 
-To add individual tools without a toolkit, use `toolkit.WithTool`:
+To add individual tools directly, use `opt.WithTool`:
 
 ```go
 resp, err := model.Generate(ctx, prompt,
-    toolkit.WithTool(myTool),
+    opt.WithTool[llm.Tool](myTool),
 )
 ```
 

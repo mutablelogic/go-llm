@@ -7,8 +7,10 @@ import (
 	"testing"
 
 	// Packages
+	uuid "github.com/google/uuid"
 	schema "github.com/mutablelogic/go-llm/kernel/schema"
 	llmtest "github.com/mutablelogic/go-llm/pkg/test"
+	toolkit "github.com/mutablelogic/go-llm/toolkit"
 	types "github.com/mutablelogic/go-server/pkg/types"
 	assert "github.com/stretchr/testify/assert"
 )
@@ -221,7 +223,7 @@ func TestNextConversationIterationRunsTools(t *testing.T) {
 	}
 	var streamed []string
 
-	message, ok, err := m.nextConversationIteration(context.Background(), turn, tools, func(role, text string) {
+	message, ok, err := m.nextConversationIteration(context.Background(), uuid.New(), turn, tools, func(role, text string) {
 		streamed = append(streamed, role+":"+text)
 	})
 	if !assert.NoError(t, err) {
@@ -254,7 +256,7 @@ func TestNextConversationIterationReturnsToolErrorForMissingTool(t *testing.T) {
 		},
 	}
 
-	message, ok, err := m.nextConversationIteration(context.Background(), turn, nil, nil)
+	message, ok, err := m.nextConversationIteration(context.Background(), uuid.New(), turn, nil, nil)
 	if !assert.NoError(t, err) {
 		return
 	}
@@ -269,13 +271,51 @@ func TestNextConversationIterationReturnsToolErrorForMissingTool(t *testing.T) {
 	}
 }
 
+func TestNextConversationIterationInjectsSession(t *testing.T) {
+	m := &Manager{}
+	sessionID := uuid.New()
+	turn := &conversationTurn{
+		Reply: &schema.Message{
+			Role: schema.RoleAssistant,
+			Content: []schema.ContentBlock{{
+				ToolCall: &schema.ToolCall{
+					ID:    "call_1",
+					Name:  "memory__echo_session",
+					Input: json.RawMessage(`{}`),
+				},
+			}},
+			Result: schema.ResultToolCall,
+		},
+	}
+	tools := toolMap{
+		"memory__echo_session": &listToolsMockTool{
+			name: "memory__echo_session",
+			run: func(ctx context.Context, _ json.RawMessage) (any, error) {
+				return map[string]any{"session": toolkit.SessionFromContext(ctx).ID()}, nil
+			},
+		},
+	}
+
+	message, ok, err := m.nextConversationIteration(context.Background(), sessionID, turn, tools, nil)
+	if !assert.NoError(t, err) {
+		return
+	}
+	if assert.True(t, ok) && assert.NotNil(t, message) && assert.Len(t, message.Content, 1) {
+		result := message.Content[0].ToolResult
+		if assert.NotNil(t, result) {
+			assert.False(t, result.IsError)
+			assert.JSONEq(t, fmt.Sprintf(`{"session":%q}`, sessionID.String()), string(result.Content))
+		}
+	}
+}
+
 func TestNextConversationIterationErrorsWithoutToolCalls(t *testing.T) {
 	m := &Manager{}
 	turn := &conversationTurn{
 		Reply: &schema.Message{Role: schema.RoleAssistant, Result: schema.ResultToolCall},
 	}
 
-	message, ok, err := m.nextConversationIteration(context.Background(), turn, nil, nil)
+	message, ok, err := m.nextConversationIteration(context.Background(), uuid.New(), turn, nil, nil)
 	assert.Error(t, err)
 	assert.False(t, ok)
 	assert.Nil(t, message)

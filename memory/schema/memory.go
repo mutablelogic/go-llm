@@ -45,7 +45,7 @@ type MemorySelector struct {
 type MemoryListRequest struct {
 	pg.OffsetLimit
 	Session *uuid.UUID `json:"session,omitzero" help:"Restrict results to a single session" optional:""`
-	Q       string     `json:"q,omitempty" help:"Text query matched against memory keys and values" optional:""`
+	Q       string     `json:"q,omitempty" help:"Web-style text query matched against memory keys and values using PostgreSQL websearch syntax; leave empty or use * to list all memories for the session" optional:""`
 	Start   *time.Time `json:"start,omitempty" help:"Return memories on or after this timestamp" optional:""`
 	End     *time.Time `json:"end,omitempty" help:"Return memories on or before this timestamp" optional:""`
 }
@@ -134,8 +134,8 @@ func (req MemoryListRequest) Select(bind *pg.Bind, op pg.Op) (string, error) {
 		}
 		bind.Append("where", `memory."session" = `+bind.Set("session", *req.Session))
 	}
-	if q := strings.TrimSpace(req.Q); q != "" {
-		bind.Append("where", `to_tsvector('simple', COALESCE(memory."key", '') || ' ' || COALESCE(memory."value", '')) @@ plainto_tsquery('simple', `+bind.Set("q", q)+`)`)
+	if q := strings.TrimSpace(req.Q); q != "" && q != "*" {
+		bind.Append("where", `to_tsvector('simple', COALESCE(memory."key", '') || ' ' || COALESCE(memory."value", '')) @@ websearch_to_tsquery('simple', `+bind.Set("q", q)+`)`)
 	}
 	if req.Start != nil {
 		bind.Append("where", `memory.created_at >= `+bind.Set("start", *req.Start))

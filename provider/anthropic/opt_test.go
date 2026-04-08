@@ -7,9 +7,8 @@ import (
 
 	// Packages
 	llm "github.com/mutablelogic/go-llm"
-	opt "github.com/mutablelogic/go-llm/pkg/opt"
 	schema "github.com/mutablelogic/go-llm/kernel/schema"
-	tool "github.com/mutablelogic/go-llm/pkg/tool"
+	opt "github.com/mutablelogic/go-llm/pkg/opt"
 	jsonschema "github.com/mutablelogic/go-server/pkg/jsonschema"
 	types "github.com/mutablelogic/go-server/pkg/types"
 	assert "github.com/stretchr/testify/assert"
@@ -146,14 +145,7 @@ func Test_opt_toolkit_001(t *testing.T) {
 	// Test anthropicToolsFromTools with a single mock tool
 	assert := assert.New(t)
 
-	tk, err := tool.NewToolkit()
-	if err == nil {
-		err = tk.AddBuiltin(newMockTool("get_weather", "Get current weather"))
-	}
-	assert.NoError(err)
-	defer tk.Close()
-
-	tools, err := anthropicToolsFromTools(tk.ListTools(schema.ToolListRequest{}))
+	tools, err := anthropicToolsFromTools([]llm.Tool{newMockTool("get_weather", "Get current weather")})
 	assert.NoError(err)
 	assert.Len(tools, 1)
 
@@ -176,15 +168,10 @@ func Test_opt_toolkit_002(t *testing.T) {
 	// Test anthropicToolsFromTools with multiple tools
 	assert := assert.New(t)
 
-	tk, err := tool.NewToolkit()
-	if err == nil {
-		err = tk.AddBuiltin(newMockTool("get_weather", "Get weather"),
-			newMockTool("search_web", "Search the web"))
-	}
-	assert.NoError(err)
-	defer tk.Close()
-
-	tools, err := anthropicToolsFromTools(tk.ListTools(schema.ToolListRequest{}))
+	tools, err := anthropicToolsFromTools([]llm.Tool{
+		newMockTool("get_weather", "Get weather"),
+		newMockTool("search_web", "Search the web"),
+	})
 	assert.NoError(err)
 	assert.Len(tools, 2)
 
@@ -203,16 +190,13 @@ func Test_opt_toolkit_003(t *testing.T) {
 	// Test toolkit tools appear in generateRequestFromOpts via WithToolkit
 	assert := assert.New(t)
 
-	tk, err := tool.NewToolkit()
-	if err == nil {
-		err = tk.AddBuiltin(newMockTool("get_weather", "Get weather"))
-	}
+	weatherTool := newMockTool("get_weather", "Get weather")
+	_, err := anthropicToolsFromTools([]llm.Tool{weatherTool})
 	assert.NoError(err)
-	defer tk.Close()
 
 	msg := &schema.Message{Role: "user", Content: []schema.ContentBlock{{Text: types.Ptr("Hi")}}}
 	session := schema.Conversation{msg}
-	o, err := opt.Apply(tool.WithToolkit(tk))
+	o, err := opt.Apply(opt.WithTool[llm.Tool](weatherTool))
 	assert.NoError(err)
 
 	req, err := generateRequestFromOpts(testModel, &session, o)
@@ -228,17 +212,14 @@ func Test_opt_toolkit_004(t *testing.T) {
 	// Test toolkit with tool choice in request
 	assert := assert.New(t)
 
-	tk, err := tool.NewToolkit()
-	if err == nil {
-		err = tk.AddBuiltin(newMockTool("get_weather", "Get weather"),
-			newMockTool("search_web", "Search the web"))
-	}
+	weatherTool := newMockTool("get_weather", "Get weather")
+	searchTool := newMockTool("search_web", "Search the web")
+	_, err := anthropicToolsFromTools([]llm.Tool{weatherTool, searchTool})
 	assert.NoError(err)
-	defer tk.Close()
 
 	msg := &schema.Message{Role: "user", Content: []schema.ContentBlock{{Text: types.Ptr("Hi")}}}
 	session := schema.Conversation{msg}
-	o, err := opt.Apply(tool.WithToolkit(tk), WithToolChoice("get_weather"))
+	o, err := opt.Apply(opt.WithTool[llm.Tool](weatherTool, searchTool), WithToolChoice("get_weather"))
 	assert.NoError(err)
 
 	req, err := generateRequestFromOpts(testModel, &session, o)
@@ -253,11 +234,7 @@ func Test_opt_toolkit_005(t *testing.T) {
 	// Test empty toolkit produces no tools
 	assert := assert.New(t)
 
-	tk, err := tool.NewToolkit()
-	assert.NoError(err)
-	defer tk.Close()
-
-	tools, err := anthropicToolsFromTools(tk.ListTools(schema.ToolListRequest{}))
+	tools, err := anthropicToolsFromTools(nil)
 	assert.NoError(err)
 	assert.Empty(tools)
 }

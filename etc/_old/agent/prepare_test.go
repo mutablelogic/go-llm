@@ -5,7 +5,7 @@ import (
 	"testing"
 
 	// Packages
-	agent "github.com/mutablelogic/go-llm/pkg/agent"
+	agent "github.com/mutablelogic/go-llm/etc/_old/agent"
 	schema "github.com/mutablelogic/go-llm/kernel/schema"
 	types "github.com/mutablelogic/go-server/pkg/types"
 	assert "github.com/stretchr/testify/assert"
@@ -29,7 +29,7 @@ func Test_prepare_002(t *testing.T) {
 	}
 	result, err := agent.Prepare(a, "", schema.GeneratorMeta{}, nil)
 	assert.NoError(err)
-	assert.Equal("test", result.SessionMeta.Title)
+	assert.Equal("test", types.Value(result.SessionMeta.Title))
 	assert.Equal("", result.Text)
 	assert.Contains(result.SessionMeta.Tags, "agent:test@1")
 	assert.NotContains(result.SessionMeta.Tags, "parent:")

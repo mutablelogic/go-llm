@@ -9,10 +9,10 @@ import (
 	"net/url"
 
 	// Packages
+	heartbeat "github.com/mutablelogic/go-llm/heartbeat/manager"
+	heartbeat_pg "github.com/mutablelogic/go-llm/heartbeat/schema"
+	heartbeat_schema "github.com/mutablelogic/go-llm/heartbeat/schema"
 	mcpserver "github.com/mutablelogic/go-llm/mcp/server"
-	heartbeat "github.com/mutablelogic/go-llm/pkg/heartbeat"
-	heartbeat_pg "github.com/mutablelogic/go-llm/pkg/heartbeat/pg"
-	heartbeat_schema "github.com/mutablelogic/go-llm/pkg/heartbeat/schema"
 	server "github.com/mutablelogic/go-server"
 	gocmd "github.com/mutablelogic/go-server/pkg/cmd"
 	httprouter "github.com/mutablelogic/go-server/pkg/httprouter"

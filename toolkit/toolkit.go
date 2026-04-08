@@ -47,8 +47,6 @@ var _ Toolkit = (*toolkit)(nil)
 
 const (
 	BuiltinNamespace = "builtin"
-	UserNamespace    = "user"
-	UserConnectorURI = "connector:" + UserNamespace
 )
 
 var (
@@ -57,7 +55,6 @@ var (
 	}
 	ReservedNamespaces = []string{
 		BuiltinNamespace,
-		UserNamespace,
 	}
 )
 

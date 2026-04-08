@@ -9,8 +9,10 @@ import (
 	// Packages
 	authmanager "github.com/djthorpe/go-auth/pkg/authmanager"
 	authhanders "github.com/djthorpe/go-auth/pkg/httphandler/authmanager"
+	client "github.com/mutablelogic/go-client"
 	llm "github.com/mutablelogic/go-llm"
 	agent "github.com/mutablelogic/go-llm/etc/agent"
+	homeassistant "github.com/mutablelogic/go-llm/homeassistant/connector"
 	llmhandlers "github.com/mutablelogic/go-llm/kernel/httphandler"
 	llmmanager "github.com/mutablelogic/go-llm/kernel/manager"
 	memory "github.com/mutablelogic/go-llm/memory/manager"
@@ -37,6 +39,12 @@ type RunServer struct {
 		LLM    string `name:"llm" help:"PostgreSQL schema for LLM data." default:"llm"`
 		Memory string `name:"memory" help:"PostgreSQL schema for memory data." default:"memory"`
 	} `embed:"" prefix:"schema."`
+
+	// Home Assistant connector options
+	HomeAssistant struct {
+		Endpoint string `help:"Home Assistant endpoint URL." env:"HA_ENDPOINT"`
+		APIKey   string `help:"Home Assistant long-lived access token." env:"HA_TOKEN"`
+	} `embed:"" prefix:"homeassistant."`
 
 	// Other flags
 	Passphrases []string `name:"passphrase" env:"${ENV_NAME}_PASSPHRASES" help:"One or more passphrases used to encrypt credentials. "`
@@ -69,6 +77,17 @@ func (runner *RunServer) Run(ctx server.Cmd) error {
 				return err
 			} else {
 				opts = append(opts, llmmanager.WithConnector("memory", memory))
+			}
+		}
+
+		// Add the home assistant connector, which is used to control a Home Assistant instance
+		if runner.HomeAssistant.Endpoint != "" {
+			clientopt := []client.ClientOpt{}
+			conn, err := homeassistant.New(runner.HomeAssistant.Endpoint, runner.HomeAssistant.APIKey, clientopt...)
+			if err != nil {
+				return err
+			} else {
+				opts = append(opts, llmmanager.WithConnector("homeassistant", conn))
 			}
 		}
 

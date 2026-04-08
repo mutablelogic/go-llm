@@ -8,10 +8,9 @@ import (
 	// Packages
 	otel "github.com/mutablelogic/go-client/pkg/otel"
 	llm "github.com/mutablelogic/go-llm"
-	hschema "github.com/mutablelogic/go-llm/pkg/heartbeat/schema"
+	hschema "github.com/mutablelogic/go-llm/heartbeat/schema"
 	schema "github.com/mutablelogic/go-llm/kernel/schema"
-	tool "github.com/mutablelogic/go-llm/pkg/tool"
-	session "github.com/mutablelogic/go-llm/pkg/tool/session"
+	tool "github.com/mutablelogic/go-llm/toolkit/tool"
 	jsonschema "github.com/mutablelogic/go-server/pkg/jsonschema"
 	attribute "go.opentelemetry.io/otel/attribute"
 )
@@ -20,7 +19,7 @@ import (
 // TYPES
 
 type addHeartbeat struct {
-	tool.DefaultTool
+	tool.Base
 	mgr *Manager
 }
 
@@ -52,7 +51,7 @@ func (t addHeartbeat) Run(ctx context.Context, input json.RawMessage) (_ any, er
 	var loc *time.Location
 
 	// OTEL span
-	ctx, endSpan := otel.StartSpan(session.FromContext(ctx).Tracer(), ctx, "add_heartbeat", attribute.String("input", string(input)))
+	ctx, endSpan := otel.StartSpan(t.mgr.tracer, ctx, "add_heartbeat", attribute.String("input", string(input)))
 	defer func() { endSpan(err) }()
 
 	// Validate parameters

@@ -67,14 +67,24 @@ var _ llm.Connector = (*connector)(nil)
 
 // AddConnector registers a remote MCP server. The namespace is inferred from
 // the server URL. Safe to call before or while Run is active.
-//
-// As a special case, passing [UserConnectorURI] ("connector:user") registers
-// the connector under the reserved "user" namespace without a remote URL.
 func (tk *toolkit) AddConnector(rawURL string) error {
-	if rawURL == UserConnectorURI {
-		return tk.addConnector(UserNamespace, rawURL)
+	key, err := canonicalURL(rawURL)
+	if err != nil {
+		return err
 	}
-	return tk.addConnector("", rawURL)
+	return tk.addConnector("", key)
+}
+
+// AddLocalConnector registers a runtime-local connector under an explicit
+// identifier. Safe to call before or while Run is active.
+func (tk *toolkit) AddLocalConnector(namespace string) error {
+	if !types.IsIdentifier(namespace) {
+		return schema.ErrBadParameter.Withf("connector namespace %q is not a valid identifier", namespace)
+	}
+	if slices.Contains(ReservedNamespaces, namespace) {
+		return schema.ErrBadParameter.Withf("connector namespace %q is reserved", namespace)
+	}
+	return tk.addConnector(namespace, namespace)
 }
 
 // AddConnectorNS registers a remote MCP server under an explicit namespace.
@@ -86,22 +96,17 @@ func (tk *toolkit) AddConnectorNS(namespace, url string) error {
 	if slices.Contains(ReservedNamespaces, namespace) {
 		return schema.ErrBadParameter.Withf("connector namespace %q is reserved", namespace)
 	}
-	if url == UserConnectorURI {
-		return schema.ErrBadParameter.Withf("connector url: %q is reserved; use AddConnector instead", UserConnectorURI)
+	key, err := canonicalURL(url)
+	if err != nil {
+		return err
 	}
-	return tk.addConnector(namespace, url)
+	return tk.addConnector(namespace, key)
 }
 
 func (tk *toolkit) ExistsConnector(url string) bool {
-	var key string
-	if url == UserConnectorURI {
-		key = url
-	} else {
-		var err error
-		key, err = canonicalURL(url)
-		if err != nil {
-			return false
-		}
+	key, err := connectorKey(url)
+	if err != nil {
+		return false
 	}
 	tk.mu.RLock()
 	defer tk.mu.RUnlock()
@@ -112,15 +117,9 @@ func (tk *toolkit) ExistsConnector(url string) bool {
 // RemoveConnector removes a connector by URL. The connector is stopped
 // immediately if it is currently running.
 func (tk *toolkit) RemoveConnector(rawURL string) error {
-	var key string
-	if rawURL == UserConnectorURI {
-		key = rawURL
-	} else {
-		var err error
-		key, err = canonicalURL(rawURL)
-		if err != nil {
-			return err
-		}
+	key, err := connectorKey(rawURL)
+	if err != nil {
+		return err
 	}
 	tk.mu.Lock()
 	conn, exists := tk.connectors[key]
@@ -218,7 +217,8 @@ func (tk *toolkit) onConnectorEvent(c *connector, evt ConnectorEvent) {
 			return
 		}
 		tk.mu.Lock()
-		if c.namespace == "" {
+		namespace := c.namespace
+		if namespace == "" {
 			// Reject invalid identifiers and reserved namespaces.
 			// TODO: mutate the namespace to make it valid (e.g. by replacing invalid characters with "_") rather than rejecting it outright.
 			ns := types.Value(state.Name)
@@ -227,14 +227,20 @@ func (tk *toolkit) onConnectorEvent(c *connector, evt ConnectorEvent) {
 				tk.mu.Unlock()
 				return
 			}
-			// Reject collision with a namespace already owned by a different connector.
-			if existing, collision := tk.namespace[ns]; collision && existing != c {
-				c.err = schema.ErrConflict.Withf("connector namespace %q already in use", ns)
-				tk.mu.Unlock()
-				return
-			}
-			c.namespace = ns
+			namespace = ns
 		}
+		// Reject collision with a namespace already owned by a different connector.
+		if existing, collision := tk.namespace[namespace]; collision && existing != c {
+			c.err = schema.ErrConflict.Withf("connector namespace %q already in use", namespace)
+			tk.mu.Unlock()
+			return
+		}
+		if tk.namespaceInUseLocked(namespace, c) {
+			c.err = schema.ErrConflict.Withf("connector namespace %q already in use", namespace)
+			tk.mu.Unlock()
+			return
+		}
+		c.namespace = namespace
 		tk.namespace[c.namespace] = c
 
 		// Successful handshake — reset backoff so the next reconnect is immediate.
@@ -259,20 +265,9 @@ func (tk *toolkit) onConnectorEvent(c *connector, evt ConnectorEvent) {
 	}
 }
 
-// addConnector is the shared implementation for AddConnector and AddConnectorNS.
-// Must NOT be called while tk.mu is held.
-func (tk *toolkit) addConnector(namespace, url string) error {
-	// UserConnectorURI is used as its own canonical key; skip URL normalisation.
-	var key string
-	if url == UserConnectorURI {
-		key = url
-	} else {
-		var err error
-		key, err = canonicalURL(url)
-		if err != nil {
-			return err
-		}
-	}
+// addConnector is the shared implementation for AddConnector, AddLocalConnector,
+// and AddConnectorNS. Must NOT be called while tk.mu is held.
+func (tk *toolkit) addConnector(namespace, key string) error {
 	if tk.delegate == nil {
 		return schema.ErrNotImplemented.With("toolkit delegate is not set")
 	}
@@ -288,6 +283,11 @@ func (tk *toolkit) addConnector(namespace, url string) error {
 		tk.mu.Unlock()
 		return schema.ErrConflict.Withf("connector already added: %q", key)
 	}
+	if namespace != "" && tk.namespaceInUseLocked(namespace, nil) {
+		tk.mu.Unlock()
+		return schema.ErrConflict.Withf("connector namespace %q already in use", namespace)
+	}
+
 	// Reserve the slot so a concurrent call for the same key is rejected.
 	c := &connector{
 		namespace: namespace,
@@ -323,6 +323,22 @@ func (tk *toolkit) addConnector(namespace, url string) error {
 	c.conn = conn
 	tk.mu.Unlock()
 	return nil
+}
+
+func connectorKey(raw string) (string, error) {
+	if types.IsIdentifier(raw) {
+		return raw, nil
+	}
+	return canonicalURL(raw)
+}
+
+func (tk *toolkit) namespaceInUseLocked(namespace string, current *connector) bool {
+	for _, existing := range tk.connectors {
+		if existing != current && existing.namespace == namespace {
+			return true
+		}
+	}
+	return false
 }
 
 // canonicalURL normalises a connector URL to scheme://host[:port]/path with

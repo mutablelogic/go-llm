@@ -1,14 +1,34 @@
 package server_test
 
 import (
+	"bytes"
 	"context"
 	"testing"
 
 	// Packages
 	sdkmcp "github.com/modelcontextprotocol/go-sdk/mcp"
-	schema "github.com/mutablelogic/go-llm/kernel/schema"
+	llm "github.com/mutablelogic/go-llm"
 	server "github.com/mutablelogic/go-llm/mcp/server"
+	prompt "github.com/mutablelogic/go-llm/toolkit/prompt"
 )
+
+type namedReader struct {
+	*bytes.Reader
+	name string
+}
+
+func (r *namedReader) Name() string {
+	return r.name
+}
+
+func mustReadPrompt(t *testing.T, name, body string) llm.Prompt {
+	t.Helper()
+	p, err := prompt.Read(&namedReader{Reader: bytes.NewReader([]byte(body)), name: name})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return p
+}
 
 func TestServerListPrompts(t *testing.T) {
 	srv, err := server.New("test-server", "1.0.0")
@@ -16,13 +36,21 @@ func TestServerListPrompts(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	srv.AddPrompts(schema.AgentMeta{
-		Name:        "greet",
-		Title:       "Greeting Prompt",
-		Description: "Greets someone by name",
-		Template:    "Hello, {{ .name }}!",
-		Input:       schema.JSONSchema(`{"type":"object","properties":{"name":{"description":"Name to greet","type":"string"}},"required":["name"]}`),
-	})
+	prompt := mustReadPrompt(t, "greet.md", `---
+name: greet
+title: Greeting Prompt
+description: Greets someone by name
+input:
+  type: object
+  properties:
+    name:
+      description: Name to greet
+      type: string
+  required:
+    - name
+---
+Hello, {{ .name }}!`)
+	srv.AddPrompts(prompt)
 
 	_, session := connect(t, srv)
 
@@ -54,13 +82,21 @@ func TestServerGetPrompt(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	srv.AddPrompts(schema.AgentMeta{
-		Name:        "greet",
-		Title:       "Greeting Prompt",
-		Description: "Greets someone by name",
-		Template:    "Hello, {{ .name }}!",
-		Input:       schema.JSONSchema(`{"type":"object","properties":{"name":{"description":"Name to greet","type":"string"}},"required":["name"]}`),
-	})
+	prompt := mustReadPrompt(t, "greet.md", `---
+name: greet
+title: Greeting Prompt
+description: Greets someone by name
+input:
+  type: object
+  properties:
+    name:
+      description: Name to greet
+      type: string
+  required:
+    - name
+---
+Hello, {{ .name }}!`)
+	srv.AddPrompts(prompt)
 
 	_, session := connect(t, srv)
 

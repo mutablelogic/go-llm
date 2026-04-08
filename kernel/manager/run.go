@@ -19,6 +19,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"slices"
 	"sync"
 	"time"
 
@@ -57,9 +58,21 @@ func (m *Manager) Run(ctx context.Context, logger *slog.Logger) error {
 		m.Toolkit = tookit
 	}
 
-	// Add local connectors to the delegate
-	if err := m.Toolkit.AddConnector(toolkit.UserConnectorURI); err != nil {
-		return fmt.Errorf("add user connector: %w", err)
+	// Add runtime-local connectors to the toolkit.
+	if len(m.connectors) > 0 {
+		names := make([]string, 0, len(m.connectors))
+		for name := range m.connectors {
+			names = append(names, name)
+		}
+		slices.Sort(names)
+
+		var result error
+		for _, name := range names {
+			result = errors.Join(result, m.Toolkit.AddLocalConnector(name))
+		}
+		if result != nil {
+			return fmt.Errorf("add local connectors: %w", result)
+		}
 	}
 
 	// Sync connectors

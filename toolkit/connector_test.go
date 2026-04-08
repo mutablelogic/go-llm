@@ -257,6 +257,40 @@ func Test_AddConnectorNS_001(t *testing.T) {
 	}
 }
 
+func Test_AddLocalConnector_001(t *testing.T) {
+	tk, _ := newConnectorToolkit(t)
+	if err := tk.AddLocalConnector("memory"); err != nil {
+		t.Fatal(err)
+	}
+	c := tk.connectors["memory"]
+	if c == nil {
+		t.Fatal("connector not stored")
+	}
+	if c.namespace != "memory" {
+		t.Fatalf("expected namespace %q, got %q", "memory", c.namespace)
+	}
+	if !tk.ExistsConnector("memory") {
+		t.Fatal("expected local connector to exist")
+	}
+}
+
+func Test_AddLocalConnector_002_invalid_identifier(t *testing.T) {
+	tk, _ := newConnectorToolkit(t)
+	if err := tk.AddLocalConnector("bad name"); !errors.Is(err, schema.ErrBadParameter) {
+		t.Fatalf("expected ErrBadParameter, got %v", err)
+	}
+}
+
+func Test_AddConnectorNS_002_duplicate_namespace(t *testing.T) {
+	tk, _ := newConnectorToolkit(t)
+	if err := tk.AddConnectorNS("shared", "http://localhost:9090"); err != nil {
+		t.Fatal(err)
+	}
+	if err := tk.AddLocalConnector("shared"); !errors.Is(err, schema.ErrConflict) {
+		t.Fatalf("expected ErrConflict, got %v", err)
+	}
+}
+
 ///////////////////////////////////////////////////////////////////////////////
 // RemoveConnector
 
@@ -282,12 +316,19 @@ func Test_RemoveConnector_002_not_found(t *testing.T) {
 
 func Test_RemoveConnector_003_bad_url(t *testing.T) {
 	tk, _ := newConnectorToolkit(t)
-	if err := tk.RemoveConnector("not-a-url"); !errors.Is(err, schema.ErrBadParameter) {
+	if err := tk.RemoveConnector("bad name"); !errors.Is(err, schema.ErrBadParameter) {
 		t.Fatalf("expected ErrBadParameter, got %v", err)
 	}
 }
 
-func Test_RemoveConnector_004_url_normalised(t *testing.T) {
+func Test_RemoveConnector_004_missing_local_identifier(t *testing.T) {
+	tk, _ := newConnectorToolkit(t)
+	if err := tk.RemoveConnector("memory"); !errors.Is(err, schema.ErrNotFound) {
+		t.Fatalf("expected ErrNotFound, got %v", err)
+	}
+}
+
+func Test_RemoveConnector_005_url_normalised(t *testing.T) {
 	// Scheme and host are normalised; path casing is preserved, so add/remove
 	// must use the same path case to resolve to the same canonical key.
 	tk, _ := newConnectorToolkit(t)
@@ -296,6 +337,19 @@ func Test_RemoveConnector_004_url_normalised(t *testing.T) {
 	}
 	if err := tk.RemoveConnector("HTTP://LOCALHOST:8080/path"); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func Test_RemoveConnector_006_local_identifier(t *testing.T) {
+	tk, _ := newConnectorToolkit(t)
+	if err := tk.AddLocalConnector("memory"); err != nil {
+		t.Fatal(err)
+	}
+	if err := tk.RemoveConnector("memory"); err != nil {
+		t.Fatal(err)
+	}
+	if tk.ExistsConnector("memory") {
+		t.Fatal("did not expect local connector to remain registered")
 	}
 }
 

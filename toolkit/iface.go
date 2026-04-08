@@ -13,7 +13,7 @@ import (
 // INTERFACES
 
 // Toolkit aggregates tools, prompts, and resources from builtins, remote MCP
-// connectors, and the manager-backed "user" namespace.
+// connectors, and runtime-local connectors.
 type Toolkit interface {
 	// AddTool registers one or more builtin tools.
 	AddTool(...llm.Tool) error
@@ -36,16 +36,21 @@ type Toolkit interface {
 	// already running.
 	AddConnector(string) error
 
+	// AddLocalConnector registers a runtime-local connector under the provided
+	// identifier. The identifier must be a valid namespace and the connector
+	// implementation is created by the toolkit delegate.
+	AddLocalConnector(string) error
+
 	// AddConnectorNS registers a remote MCP server under an explicit namespace.
 	// Safe to call before or while Run is active; the connector starts immediately
 	// if Run is already running.
 	AddConnectorNS(namespace, url string) error
 
-	// RemoveConnector removes a connector by URL. Safe to call before or
+	// RemoveConnector removes a connector by URL or local identifier. Safe to call before or
 	// while Run is active; the connector is stopped immediately if running.
 	RemoveConnector(string) error
 
-	// ExistsConnector checks if a connector exists by URL. Safe to call before or
+	// ExistsConnector checks if a connector exists by URL or local identifier. Safe to call before or
 	// while Run is active.
 	ExistsConnector(string) bool
 
@@ -79,11 +84,12 @@ type ToolkitDelegate interface {
 	// Call executes a prompt via the manager, passing optional input resources.
 	Call(context.Context, llm.Prompt, ...llm.Resource) (llm.Resource, error)
 
-	// CreateConnector is called to create a new connector for the given URL.
+	// CreateConnector is called to create a new connector for the given reference.
+	// Remote connectors pass a canonical URL; local connectors pass an identifier.
 	// The onEvent callback must be called by the connector to report lifecycle
 	// and list-change events back to the toolkit. The toolkit injects the
 	// Connector field before forwarding to OnEvent, so the caller need not set it.
-	CreateConnector(url string, onEvent func(ConnectorEvent)) (llm.Connector, error)
+	CreateConnector(ref string, onEvent func(ConnectorEvent)) (llm.Connector, error)
 }
 
 type Session interface {

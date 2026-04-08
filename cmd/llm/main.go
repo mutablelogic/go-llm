@@ -6,6 +6,7 @@ import (
 
 	// Packages
 	llmcmd "github.com/mutablelogic/go-llm/kernel/cmd"
+	mcpcmd "github.com/mutablelogic/go-llm/mcp/cmd"
 	servercmd "github.com/mutablelogic/go-server/pkg/cmd"
 	version "github.com/mutablelogic/go-server/pkg/version"
 )
@@ -23,6 +24,7 @@ type CLI struct {
 	llmcmd.ModelCommands
 	llmcmd.ToolCommands
 	llmcmd.AgentCommands
+	MCP mcpcmd.Commands `cmd:"" name:"mcp" help:"Interact directly with an MCP server." group:"MCP"`
 	ServerCommands
 }
 

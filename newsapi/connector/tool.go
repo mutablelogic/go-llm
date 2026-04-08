@@ -8,7 +8,8 @@ import (
 	"github.com/mutablelogic/go-client"
 	llm "github.com/mutablelogic/go-llm"
 	"github.com/mutablelogic/go-llm/kernel/schema"
-	"github.com/mutablelogic/go-llm/pkg/tool"
+	httpclient "github.com/mutablelogic/go-llm/newsapi/httpclient"
+	tool "github.com/mutablelogic/go-llm/toolkit/tool"
 	jsonschema "github.com/mutablelogic/go-server/pkg/jsonschema"
 )
 
@@ -16,18 +17,18 @@ import (
 // TYPES
 
 type articles struct {
-	tool.DefaultTool
-	client *Client
+	tool.Base
+	client *httpclient.Client
 }
 
 type headlines struct {
-	tool.DefaultTool
-	client *Client
+	tool.Base
+	client *httpclient.Client
 }
 
 type sources struct {
-	tool.DefaultTool
-	client *Client
+	tool.Base
+	client *httpclient.Client
 }
 
 var _ llm.Tool = (*articles)(nil)
@@ -39,7 +40,7 @@ var _ llm.Tool = (*sources)(nil)
 
 func NewTools(apikey string, opts ...client.ClientOpt) ([]llm.Tool, error) {
 	// Create a client
-	client, err := New(apikey, opts...)
+	client, err := httpclient.New(apikey, opts...)
 	if err != nil {
 		return nil, err
 	}
@@ -64,7 +65,7 @@ func (*articles) Description() string {
 
 // Return the JSON schema for the tool input
 func (*articles) InputSchema() *jsonschema.Schema {
-	schema := jsonschema.MustFor[ArticlesRequest]()
+	schema := jsonschema.MustFor[httpclient.ArticlesRequest]()
 
 	// Add enum constraints for sortBy
 	if sortBy, ok := schema.Properties["sortBy"]; ok && sortBy != nil {
@@ -76,7 +77,7 @@ func (*articles) InputSchema() *jsonschema.Schema {
 
 // Run the tool with the given input
 func (a *articles) Run(ctx context.Context, input json.RawMessage) (any, error) {
-	var req ArticlesRequest
+	var req httpclient.ArticlesRequest
 
 	// Unmarshal JSON input if provided
 	if len(input) > 0 {
@@ -101,7 +102,7 @@ func (*headlines) Description() string {
 
 // Return the JSON schema for the tool input
 func (*headlines) InputSchema() *jsonschema.Schema {
-	schema := jsonschema.MustFor[HeadlinesRequest]()
+	schema := jsonschema.MustFor[httpclient.HeadlinesRequest]()
 
 	// Add enum constraints for category
 	if category, ok := schema.Properties["category"]; ok && category != nil {
@@ -113,7 +114,7 @@ func (*headlines) InputSchema() *jsonschema.Schema {
 
 // Run the tool with the given input
 func (h *headlines) Run(ctx context.Context, input json.RawMessage) (any, error) {
-	var req HeadlinesRequest
+	var req httpclient.HeadlinesRequest
 
 	// Unmarshal JSON input if provided
 	if len(input) > 0 {
@@ -138,7 +139,7 @@ func (*sources) Description() string {
 
 // Return the JSON schema for the tool input
 func (*sources) InputSchema() *jsonschema.Schema {
-	schema := jsonschema.MustFor[SourcesRequest]()
+	schema := jsonschema.MustFor[httpclient.SourcesRequest]()
 
 	// Add enum constraints for category
 	if category, ok := schema.Properties["category"]; ok && category != nil {
@@ -150,7 +151,7 @@ func (*sources) InputSchema() *jsonschema.Schema {
 
 // Run the tool with the given input
 func (s *sources) Run(ctx context.Context, input json.RawMessage) (any, error) {
-	var req SourcesRequest
+	var req httpclient.SourcesRequest
 
 	// Unmarshal JSON input if provided
 	if len(input) > 0 {

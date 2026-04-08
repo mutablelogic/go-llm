@@ -13,8 +13,9 @@ import (
 	uuid "github.com/google/uuid"
 	otel "github.com/mutablelogic/go-client/pkg/otel"
 	llm "github.com/mutablelogic/go-llm"
-	opt "github.com/mutablelogic/go-llm/pkg/opt"
 	schema "github.com/mutablelogic/go-llm/kernel/schema"
+	opt "github.com/mutablelogic/go-llm/pkg/opt"
+	toolkit "github.com/mutablelogic/go-llm/toolkit"
 	pg "github.com/mutablelogic/go-pg"
 	types "github.com/mutablelogic/go-server/pkg/types"
 	attribute "go.opentelemetry.io/otel/attribute"
@@ -135,7 +136,7 @@ func (m *Manager) Chat(ctx context.Context, req schema.ChatRequest, fn opt.Strea
 			}
 
 			var ok bool
-			nextMessage, ok, err = m.nextConversationIteration(loopCtx, turn, tools, fn)
+			nextMessage, ok, err = m.nextConversationIteration(loopCtx, req.Session, turn, tools, fn)
 			if err != nil {
 				return err
 			}
@@ -281,7 +282,7 @@ func shouldEndConversationLoop(reply *schema.Message, iteration, maxIterations u
 	return false
 }
 
-func (m *Manager) nextConversationIteration(ctx context.Context, turn *conversationTurn, tools toolMap, fn opt.StreamFn) (*schema.Message, bool, error) {
+func (m *Manager) nextConversationIteration(ctx context.Context, session uuid.UUID, turn *conversationTurn, tools toolMap, fn opt.StreamFn) (*schema.Message, bool, error) {
 	if turn == nil || turn.Reply == nil {
 		return nil, false, schema.ErrInternalServerError.With("missing conversation reply for tool execution")
 	}
@@ -301,7 +302,7 @@ func (m *Manager) nextConversationIteration(ctx context.Context, turn *conversat
 		wg.Add(1)
 		go func(i int, call schema.ToolCall) {
 			defer wg.Done()
-			content[i] = m.runToolCall(ctx, tools, call, i)
+			content[i] = m.runToolCall(ctx, session, tools, call, i)
 		}(i, call)
 	}
 	wg.Wait()
@@ -320,7 +321,7 @@ func toolFeedback(tool llm.Tool, call schema.ToolCall) string {
 	return call.Name
 }
 
-func (m *Manager) runToolCall(ctx context.Context, tools toolMap, call schema.ToolCall, index int) (result schema.ContentBlock) {
+func (m *Manager) runToolCall(ctx context.Context, session uuid.UUID, tools toolMap, call schema.ToolCall, index int) (result schema.ContentBlock) {
 	var err error
 	ctx, endSpan := otel.StartSpan(m.tracer, ctx, "Chat.ToolCall",
 		attribute.String("call", types.Stringify(call)),
@@ -331,6 +332,9 @@ func (m *Manager) runToolCall(ctx context.Context, tools toolMap, call schema.To
 	if !ok || tool == nil {
 		err = schema.ErrNotFound.Withf("tool %q", call.Name)
 		return schema.NewToolError(call.ID, call.Name, err)
+	}
+	if session != uuid.Nil {
+		ctx = toolkit.WithSession(ctx, session.String())
 	}
 
 	output, err := tool.Run(ctx, call.Input)

@@ -7,8 +7,8 @@ import (
 	// Packages
 	sdkmcp "github.com/modelcontextprotocol/go-sdk/mcp"
 	llm "github.com/mutablelogic/go-llm"
-	opt "github.com/mutablelogic/go-llm/pkg/opt"
 	schema "github.com/mutablelogic/go-llm/kernel/schema"
+	opt "github.com/mutablelogic/go-llm/pkg/opt"
 )
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -36,6 +36,23 @@ func (m *mcpPrompt) Prepare(_ context.Context, _ json.RawMessage) (string, []opt
 	return "", nil, schema.ErrNotImplemented.With("Prepare not supported for MCP prompts")
 }
 
+func (m *mcpPrompt) MarshalJSON() ([]byte, error) {
+	if m == nil || m.p == nil {
+		return []byte("null"), nil
+	}
+	return json.Marshal(struct {
+		Name        string                   `json:"name"`
+		Title       string                   `json:"title,omitempty"`
+		Description string                   `json:"description,omitempty"`
+		Arguments   []*sdkmcp.PromptArgument `json:"arguments,omitempty"`
+	}{
+		Name:        m.p.Name,
+		Title:       m.p.Title,
+		Description: m.p.Description,
+		Arguments:   m.p.Arguments,
+	})
+}
+
 ///////////////////////////////////////////////////////////////////////////////
 // PUBLIC METHODS
 
@@ -49,6 +66,18 @@ func (c *Client) ListPrompts(_ context.Context) ([]llm.Prompt, error) {
 		return nil, schema.ErrServiceUnavailable
 	}
 	return c.prompts, nil
+}
+
+// GetPrompt fetches a prepared prompt from the connected MCP server.
+func (c *Client) GetPrompt(ctx context.Context, name string, arguments map[string]string) (*sdkmcp.GetPromptResult, error) {
+	sess, err := c.getSession()
+	if err != nil {
+		return nil, err
+	}
+	return sess.GetPrompt(ctx, &sdkmcp.GetPromptParams{
+		Name:      name,
+		Arguments: arguments,
+	})
 }
 
 // refreshPrompts fetches the full prompt list from the server, stores it in

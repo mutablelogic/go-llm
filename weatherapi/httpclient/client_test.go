@@ -10,7 +10,8 @@ import (
 	// Packages
 	opts "github.com/mutablelogic/go-client"
 	llm "github.com/mutablelogic/go-llm"
-	weatherapi "github.com/mutablelogic/go-llm/pkg/weatherapi"
+	weatherapiconnector "github.com/mutablelogic/go-llm/weatherapi/connector"
+	weatherapi "github.com/mutablelogic/go-llm/weatherapi/httpclient"
 	assert "github.com/stretchr/testify/assert"
 )
 
@@ -49,7 +50,7 @@ func TestMain(m *testing.M) {
 	}
 
 	// Create tools
-	tools, err = weatherapi.NewTools(api_key, opts.OptTrace(os.Stderr, verbose))
+	tools, err = weatherapiconnector.NewTools(api_key, opts.OptTrace(os.Stderr, verbose))
 	if err != nil {
 		log.Println(err)
 		os.Exit(-1)

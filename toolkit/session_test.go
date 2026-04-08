@@ -117,6 +117,9 @@ func Test_Session_011_with_session_context(t *testing.T) {
 	if !found {
 		t.Fatalf("expected id=sess-id in meta, got %v", meta)
 	}
+	if got := SessionFromContext(ctx).ID(); got != "sess-id" {
+		t.Fatalf("expected session ID %q, got %q", "sess-id", got)
+	}
 }
 
 func Test_Session_012_meta_from_empty_context(t *testing.T) {

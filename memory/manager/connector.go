@@ -9,8 +9,8 @@ import (
 	uuid "github.com/google/uuid"
 	llm "github.com/mutablelogic/go-llm"
 	schema "github.com/mutablelogic/go-llm/memory/schema"
-	tool "github.com/mutablelogic/go-llm/pkg/tool"
 	toolkit "github.com/mutablelogic/go-llm/toolkit"
+	tool "github.com/mutablelogic/go-llm/toolkit/tool"
 	jsonschema "github.com/mutablelogic/go-server/pkg/jsonschema"
 )
 
@@ -18,12 +18,12 @@ import (
 // TYPES
 
 type createMemoryTool struct {
-	tool.DefaultTool
+	tool.Base
 	manager *Manager
 }
 
 type searchMemoryTool struct {
-	tool.DefaultTool
+	tool.Base
 	manager *Manager
 }
 
@@ -33,7 +33,7 @@ type createMemoryRequest struct {
 }
 
 type searchMemoryRequest struct {
-	Q string `json:"q" jsonschema:"Text query used to search memory keys and values."`
+	Q string `json:"q" jsonschema:"Web-style text query used to search memory keys and values. Leave empty or use * to list all memories for the current session."`
 }
 
 var _ llm.Tool = (*createMemoryTool)(nil)
@@ -68,15 +68,15 @@ func (m *Manager) ListTools(ctx context.Context) ([]llm.Tool, error) {
 // PRIVATE METHODS
 
 func memorySessionFromContext(ctx context.Context) (uuid.UUID, error) {
-	id := toolkit.SessionFromContext(ctx).ID()
-	if id == "" {
+	session := toolkit.SessionFromContext(ctx)
+	session.Logger().InfoContext(ctx, "memorySessionFromContext", "session", session, "session_id", session.ID(), "meta", session.Meta())
+	if id := session.ID(); id == "" {
 		return uuid.Nil, fmt.Errorf("memory tool requires a session id in context")
-	}
-	session, err := uuid.Parse(id)
-	if err != nil {
+	} else if id, err := uuid.Parse(id); err != nil {
 		return uuid.Nil, fmt.Errorf("memory tool session id %q is invalid: %w", id, err)
+	} else {
+		return id, nil
 	}
-	return session, nil
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -126,7 +126,7 @@ func (*searchMemoryTool) Name() string {
 }
 
 func (*searchMemoryTool) Description() string {
-	return "Search memory entries for the current session using a text query."
+	return "Search memory entries for the current session using PostgreSQL web-style search syntax. Leave q empty or use * to list all memories for the session."
 }
 
 func (*searchMemoryTool) InputSchema() *jsonschema.Schema {
