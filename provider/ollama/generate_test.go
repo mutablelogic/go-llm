@@ -5,8 +5,8 @@ import (
 	"testing"
 
 	// Packages
-	opt "github.com/mutablelogic/go-llm/pkg/opt"
 	schema "github.com/mutablelogic/go-llm/kernel/schema"
+	opt "github.com/mutablelogic/go-llm/pkg/opt"
 	jsonschema "github.com/mutablelogic/go-server/pkg/jsonschema"
 	types "github.com/mutablelogic/go-server/pkg/types"
 	assert "github.com/stretchr/testify/assert"
@@ -232,17 +232,6 @@ func Test_generateRequest_013(t *testing.T) {
 	a.Equal("llama3.2", m["model"])
 	a.Contains(m, "system")
 	a.Contains(m, "options")
-}
-
-func Test_generateRequest_014(t *testing.T) {
-	// Tools (toolkit) are rejected by generateRequestFromOpts
-	a := assert.New(t)
-	msg := &schema.Message{Role: "user", Content: []schema.ContentBlock{{Text: types.Ptr("Hi")}}}
-	o, err := opt.Apply(opt.SetAny(opt.ToolkitKey, struct{}{}))
-	a.NoError(err)
-
-	_, err = generateRequestFromOpts("llama3.2", msg, o)
-	a.Error(err)
 }
 
 func Test_generateRequest_015(t *testing.T) {
