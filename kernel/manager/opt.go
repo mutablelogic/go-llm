@@ -22,6 +22,7 @@ import (
 	client "github.com/mutablelogic/go-client"
 	llm "github.com/mutablelogic/go-llm"
 	schema "github.com/mutablelogic/go-llm/kernel/schema"
+	types "github.com/mutablelogic/go-server/pkg/types"
 	metric "go.opentelemetry.io/otel/metric"
 	trace "go.opentelemetry.io/otel/trace"
 )
@@ -163,15 +164,15 @@ func WithResources(opts ...llm.Resource) Opt {
 	}
 }
 
-// WithConnector adds a local connector to the manager, by URL
-func WithConnector(url string, connector llm.Connector) Opt {
+// WithConnector adds a runtime-local connector to the manager by identifier.
+func WithConnector(name string, connector llm.Connector) Opt {
 	return func(o *manageropt) error {
-		if url, err := schema.CanonicalURL(url); err != nil {
-			return fmt.Errorf("invalid connector url %q: %w", url, err)
-		} else if _, exists := o.connectors[url]; exists {
-			return fmt.Errorf("connector url %q already exists", url)
+		if !types.IsIdentifier(name) {
+			return fmt.Errorf("invalid connector identifier %q", name)
+		} else if _, exists := o.connectors[name]; exists {
+			return fmt.Errorf("connector identifier %q already exists", name)
 		} else {
-			o.connectors[url] = connector
+			o.connectors[name] = connector
 		}
 		return nil
 	}

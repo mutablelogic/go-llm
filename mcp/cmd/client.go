@@ -72,18 +72,6 @@ func stdinHasData(stdin *os.File) bool {
 	return info.Mode()&os.ModeCharDevice == 0
 }
 
-func rawInput(argument string, stdin io.Reader, piped bool) string {
-	input := strings.TrimSpace(argument)
-	if input != "" || !piped || stdin == nil {
-		return input
-	}
-	data, err := io.ReadAll(stdin)
-	if err != nil {
-		return ""
-	}
-	return strings.TrimSpace(string(data))
-}
-
 func (r tableRow) Header() []string { return r.headers }
 
 func (r tableRow) Cell(index int) string { return r.cells[index] }
@@ -338,11 +326,4 @@ func suggestedWidth(header, value string) int {
 		}
 		return 32
 	}
-}
-
-func max(a, b int) int {
-	if a > b {
-		return a
-	}
-	return b
 }

@@ -7,8 +7,8 @@ import (
 
 	// Packages
 	otel "github.com/mutablelogic/go-client/pkg/otel"
-	provider "github.com/mutablelogic/go-llm/provider"
 	schema "github.com/mutablelogic/go-llm/kernel/schema"
+	provider "github.com/mutablelogic/go-llm/provider"
 	toolkit "github.com/mutablelogic/go-llm/toolkit"
 	pg "github.com/mutablelogic/go-pg"
 	broadcaster "github.com/mutablelogic/go-pg/pkg/broadcaster"
@@ -87,7 +87,7 @@ func New(ctx context.Context, name, version string, pool pg.PoolConn, opts ...Op
 	}
 
 	// Create a connector delegate, which receives notifications of connector changes
-	self.delegate = NewDelegate(self.name, self.version, self.clientopts...)
+	self.delegate = NewDelegate(self.name, self.version, self.connectors, self.clientopts...)
 
 	// TEST
 	// Register metrics after the registry has been initialized so callbacks can

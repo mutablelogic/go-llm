@@ -21,21 +21,24 @@ type delegate struct {
 	Name       string
 	Version    string
 	ClientOpts []client.ClientOpt
+	Connectors map[string]llm.Connector
 }
 
-type reservedConnector struct{}
-
 var _ toolkit.ToolkitDelegate = (*delegate)(nil)
-var _ llm.Connector = (*reservedConnector)(nil)
 
 ///////////////////////////////////////////////////////////////////////////////
 // LIFECYCLE
 
-func NewDelegate(name, version string, clientopts ...client.ClientOpt) *delegate {
+func NewDelegate(name, version string, connectors map[string]llm.Connector, clientopts ...client.ClientOpt) *delegate {
+	local := make(map[string]llm.Connector, len(connectors))
+	for key, conn := range connectors {
+		local[key] = conn
+	}
 	return &delegate{
 		Name:       name,
 		Version:    version,
 		ClientOpts: clientopts,
+		Connectors: local,
 	}
 }
 
@@ -62,17 +65,17 @@ func (d *delegate) Call(ctx context.Context, prompt llm.Prompt, resources ...llm
 	return nil, fmt.Errorf("Call is not implemented with content %v and options %v", content, opts)
 }
 
-// CreateConnector is called to create a new connector for the given URL.
+// CreateConnector is called to create a new connector for the given reference.
 // The onEvent callback must be called by the connector to report lifecycle
 // and list-change events back to the toolkit. The toolkit injects the
 // Connector field before forwarding to OnEvent, so the caller need not set it.
-func (d *delegate) CreateConnector(url string, onEvent func(evt toolkit.ConnectorEvent)) (llm.Connector, error) {
-	fmt.Println("CreateConnector:", url)
-	if url == toolkit.UserConnectorURI {
+func (d *delegate) CreateConnector(ref string, onEvent func(evt toolkit.ConnectorEvent)) (llm.Connector, error) {
+	fmt.Println("CreateConnector:", ref)
+	if conn, exists := d.Connectors[ref]; exists {
 		if onEvent != nil {
 			onEvent(toolkit.StateChangeEvent(schema.ConnectorState{}))
 		}
-		return &reservedConnector{}, nil
+		return conn, nil
 	}
 
 	opts := []mcp.Opt{
@@ -94,22 +97,5 @@ func (d *delegate) CreateConnector(url string, onEvent func(evt toolkit.Connecto
 			}),
 		)
 	}
-	return mcp.New(url, d.Name, d.Version, opts...)
-}
-
-func (*reservedConnector) Run(ctx context.Context) error {
-	<-ctx.Done()
-	return nil
-}
-
-func (*reservedConnector) ListTools(context.Context) ([]llm.Tool, error) {
-	return nil, nil
-}
-
-func (*reservedConnector) ListPrompts(context.Context) ([]llm.Prompt, error) {
-	return nil, nil
-}
-
-func (*reservedConnector) ListResources(context.Context) ([]llm.Resource, error) {
-	return nil, nil
+	return mcp.New(ref, d.Name, d.Version, opts...)
 }

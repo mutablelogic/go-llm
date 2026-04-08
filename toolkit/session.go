@@ -61,9 +61,16 @@ func SessionFromContext(ctx context.Context) Session {
 }
 
 // WithSession returns a new context with the given session ID and metadata attached.
-// The session ID is stored as a MetaValue with key "id" alongside any provided metadata.
+// The session ID is stored as a MetaValue with key "id" alongside any provided metadata,
+// and a default Session is attached so direct tool.Run calls can still retrieve it.
 func WithSession(ctx context.Context, id string, meta ...schema.MetaValue) context.Context {
-	return context.WithValue(ctx, metaKey{}, append(meta, schema.Meta("id", id)))
+	values := append(slices.Clone(meta), schema.Meta("id", id))
+	ctx = context.WithValue(ctx, metaKey{}, values)
+	return withSessionContext(ctx, &session{
+		id:     id,
+		logger: slog.Default().With("id", id),
+		meta:   values,
+	})
 }
 
 ///////////////////////////////////////////////////////////////////////////////
