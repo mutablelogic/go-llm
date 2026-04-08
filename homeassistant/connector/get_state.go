@@ -7,8 +7,8 @@ import (
 	// Packages
 	llm "github.com/mutablelogic/go-llm"
 	httpclient "github.com/mutablelogic/go-llm/homeassistant/httpclient"
-	"github.com/mutablelogic/go-llm/kernel/schema"
-	"github.com/mutablelogic/go-llm/pkg/tool"
+	schema "github.com/mutablelogic/go-llm/kernel/schema"
+	tool "github.com/mutablelogic/go-llm/toolkit/tool"
 	jsonschema "github.com/mutablelogic/go-server/pkg/jsonschema"
 )
 
@@ -21,7 +21,7 @@ type GetStateRequest struct {
 }
 
 type getState struct {
-	tool.DefaultTool
+	tool.Base
 	client *httpclient.Client
 }
 

@@ -3,10 +3,11 @@ package homeassistant
 import (
 	"context"
 
+	// Packages
 	client "github.com/mutablelogic/go-client"
 	llm "github.com/mutablelogic/go-llm"
 	httpclient "github.com/mutablelogic/go-llm/homeassistant/httpclient"
-	"github.com/mutablelogic/go-server/pkg/types"
+	types "github.com/mutablelogic/go-server/pkg/types"
 )
 
 ///////////////////////////////////////////////////////////////////////////////

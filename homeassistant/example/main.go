@@ -11,6 +11,7 @@ import (
 	kong "github.com/alecthomas/kong"
 	homeassistant "github.com/mutablelogic/go-llm/homeassistant/connector"
 	mcpserver "github.com/mutablelogic/go-llm/mcp/server"
+	version "github.com/mutablelogic/go-server/pkg/version"
 )
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -18,14 +19,13 @@ import (
 
 const (
 	serverName         = "homeassistant"
-	serverVersion      = "0.1.0"
 	serverTitle        = "Home Assistant MCP Server"
-	serverInstructions = "Use these tools to inspect and control a Home Assistant instance."
+	serverInstructions = "Inspect and control a Home Assistant instance."
 )
 
 type CLI struct {
-	Endpoint string `help:"Home Assistant base URL." env:"HOME_ASSISTANT_URL" required:""`
-	APIKey   string `help:"Home Assistant long-lived access token." env:"HOME_ASSISTANT_API_KEY" required:""`
+	Endpoint string `help:"Home Assistant base URL." env:"HA_ENDPOINT" required:""`
+	APIKey   string `help:"Home Assistant long-lived access token." env:"HA_TOKEN" required:""`
 	Listen   string `help:"HTTP listen address." default:":8080"`
 }
 
@@ -62,7 +62,7 @@ func run(cli CLI) error {
 
 	srv, err := mcpserver.New(
 		serverName,
-		serverVersion,
+		version.Version(),
 		mcpserver.WithTitle(serverTitle),
 		mcpserver.WithInstructions(serverInstructions),
 	)
