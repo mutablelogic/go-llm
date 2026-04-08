@@ -1,5 +1,4 @@
 package schema
-package schema
 
 import (
 	"strings"
