@@ -7,8 +7,8 @@ import (
 	// Packages
 	sdkmcp "github.com/modelcontextprotocol/go-sdk/mcp"
 	llm "github.com/mutablelogic/go-llm"
-	opt "github.com/mutablelogic/go-llm/pkg/opt"
 	schema "github.com/mutablelogic/go-llm/kernel/schema"
+	opt "github.com/mutablelogic/go-llm/pkg/opt"
 )
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -34,6 +34,23 @@ func (m *mcpPrompt) Description() string { return m.p.Description }
 // delegated back through the toolkit's delegate.
 func (m *mcpPrompt) Prepare(_ context.Context, _ json.RawMessage) (string, []opt.Opt, error) {
 	return "", nil, schema.ErrNotImplemented.With("Prepare not supported for MCP prompts")
+}
+
+func (m *mcpPrompt) MarshalJSON() ([]byte, error) {
+	if m == nil || m.p == nil {
+		return []byte("null"), nil
+	}
+	return json.Marshal(struct {
+		Name        string                   `json:"name"`
+		Title       string                   `json:"title,omitempty"`
+		Description string                   `json:"description,omitempty"`
+		Arguments   []*sdkmcp.PromptArgument `json:"arguments,omitempty"`
+	}{
+		Name:        m.p.Name,
+		Title:       m.p.Title,
+		Description: m.p.Description,
+		Arguments:   m.p.Arguments,
+	})
 }
 
 ///////////////////////////////////////////////////////////////////////////////

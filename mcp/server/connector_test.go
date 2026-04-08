@@ -10,7 +10,7 @@ import (
 	llm "github.com/mutablelogic/go-llm"
 	server "github.com/mutablelogic/go-llm/mcp/server"
 	opt "github.com/mutablelogic/go-llm/pkg/opt"
-	tool "github.com/mutablelogic/go-llm/pkg/tool"
+	tool "github.com/mutablelogic/go-llm/toolkit/tool"
 	jsonschema "github.com/mutablelogic/go-server/pkg/jsonschema"
 )
 
@@ -24,7 +24,7 @@ type mockConnector struct {
 }
 
 type mockTool struct {
-	tool.DefaultTool
+	tool.Base
 	name        string
 	description string
 	input       *jsonschema.Schema
@@ -70,6 +70,24 @@ func (*mockPrompt) Prepare(_ context.Context, input json.RawMessage) (string, []
 		return "hello from prompt", nil, nil
 	}
 	return string(input), nil, nil
+}
+
+func (*mockPrompt) MarshalJSON() ([]byte, error) {
+	return json.Marshal(struct {
+		Name        string                   `json:"name"`
+		Title       string                   `json:"title,omitempty"`
+		Description string                   `json:"description,omitempty"`
+		Arguments   []*sdkmcp.PromptArgument `json:"arguments,omitempty"`
+	}{
+		Name:        "mock_prompt",
+		Title:       "Mock Prompt",
+		Description: "Prompt from connector",
+		Arguments: []*sdkmcp.PromptArgument{{
+			Name:        "name",
+			Description: "Name to echo",
+			Required:    true,
+		}},
+	})
 }
 
 func (*mockResource) URI() string { return "memory://mock-resource" }
@@ -124,6 +142,9 @@ func TestAddConnector(t *testing.T) {
 	}
 	if len(promptList.Prompts) != 1 || promptList.Prompts[0].Name != "mock_prompt" {
 		t.Fatalf("unexpected prompts: %+v", promptList.Prompts)
+	}
+	if len(promptList.Prompts[0].Arguments) != 1 || promptList.Prompts[0].Arguments[0].Name != "name" {
+		t.Fatalf("unexpected prompt arguments: %+v", promptList.Prompts[0].Arguments)
 	}
 
 	promptResult, err := session.GetPrompt(context.Background(), &sdkmcp.GetPromptParams{Name: "mock_prompt"})

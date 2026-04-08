@@ -24,6 +24,8 @@ type session struct {
 	tracer       trace.Tracer
 }
 
+type sessionKey struct{}
+
 var _ llm.ConnectorSession = (*session)(nil)
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -64,7 +66,7 @@ func (s *session) Tracer() trace.Tracer {
 // tool call. If no session is present (e.g. in unit tests that invoke Run
 // directly), a no-op session backed by slog.Default() is returned.
 func SessionFromContext(ctx context.Context) llm.ConnectorSession {
-	if session, ok := ctx.Value(session{}).(llm.ConnectorSession); ok {
+	if session, ok := ctx.Value(sessionKey{}).(llm.ConnectorSession); ok {
 		return session
 	}
 	return &session{
@@ -105,7 +107,7 @@ func withSession(ctx context.Context, ss *sdkmcp.ServerSession, loggerName strin
 		capabilities = p.Capabilities
 	}
 
-	return context.WithValue(ctx, session{}, &session{
+	return context.WithValue(ctx, sessionKey{}, &session{
 		id:           ss.ID(),
 		clientInfo:   clientInfo,
 		capabilities: capabilities,

@@ -7,6 +7,7 @@ import (
 	// Packages
 	llm "github.com/mutablelogic/go-llm"
 	httpclient "github.com/mutablelogic/go-llm/homeassistant/httpclient"
+	homeassistant "github.com/mutablelogic/go-llm/homeassistant/schema"
 	schema "github.com/mutablelogic/go-llm/kernel/schema"
 	tool "github.com/mutablelogic/go-llm/toolkit/tool"
 	jsonschema "github.com/mutablelogic/go-server/pkg/jsonschema"
@@ -15,11 +16,14 @@ import (
 ///////////////////////////////////////////////////////////////////////////////
 // TYPES
 
-// CallServiceRequest calls a Home Assistant service.
 type CallServiceRequest struct {
 	Domain  string         `json:"domain" jsonschema:"The service domain (e.g. light, switch, climate, media_player)."`
 	Service string         `json:"service" jsonschema:"The service to call (e.g. turn_on, turn_off, toggle, set_temperature)."`
 	Data    map[string]any `json:"data,omitempty" jsonschema:"Service data including entity_id and any service-specific fields."`
+}
+
+type CallServiceResponse struct {
+	ChangedStates []homeassistant.State `json:"changed_states" jsonschema:"List of states that changed as a result of the service call."`
 }
 
 type callService struct {
@@ -42,7 +46,13 @@ func (*callService) Description() string {
 		"Returns the list of states that changed."
 }
 
-func (*callService) InputSchema() *jsonschema.Schema { return jsonschema.MustFor[CallServiceRequest]() }
+func (*callService) InputSchema() *jsonschema.Schema {
+	return jsonschema.MustFor[CallServiceRequest]()
+}
+
+func (*callService) OutputSchema() *jsonschema.Schema {
+	return jsonschema.MustFor[CallServiceResponse]()
+}
 
 func (t *callService) Run(ctx context.Context, input json.RawMessage) (any, error) {
 	var req CallServiceRequest

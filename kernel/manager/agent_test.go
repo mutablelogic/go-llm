@@ -228,8 +228,8 @@ func TestListAgentsWithUserScopedNamespaces(t *testing.T) {
 
 	publicNamespace := "publicagents"
 	privateNamespace := "privateagents"
-	publicURL := promptConnectorURL(t, "list-agents-public", schema.AgentMeta{Name: "remote_agent", Title: "Remote Agent"})
-	privateURL := promptConnectorURL(t, "list-agents-private", schema.AgentMeta{Name: "remote_agent", Title: "Remote Agent"})
+	publicURL := promptConnectorURL(t, "list-agents-public", &listAgentsMockPrompt{name: "remote_agent", title: "Remote Agent"})
+	privateURL := promptConnectorURL(t, "list-agents-private", &listAgentsMockPrompt{name: "remote_agent", title: "Remote Agent"})
 	if _, _, _, err := m.CreateConnector(ctx, schema.ConnectorInsert{
 		URL:           publicURL,
 		ConnectorMeta: schema.ConnectorMeta{Namespace: types.Ptr(publicNamespace)},
@@ -291,8 +291,8 @@ func TestGetAgentWithUserScopedNamespaces(t *testing.T) {
 
 	publicNamespace := "publicagentget"
 	privateNamespace := "privateagentget"
-	publicURL := promptConnectorURL(t, "get-agent-public", schema.AgentMeta{Name: "remote_agent", Title: "Remote Agent"})
-	privateURL := promptConnectorURL(t, "get-agent-private", schema.AgentMeta{Name: "remote_agent", Title: "Remote Agent"})
+	publicURL := promptConnectorURL(t, "get-agent-public", &listAgentsMockPrompt{name: "remote_agent", title: "Remote Agent"})
+	privateURL := promptConnectorURL(t, "get-agent-private", &listAgentsMockPrompt{name: "remote_agent", title: "Remote Agent"})
 	if _, _, _, err := m.CreateConnector(ctx, schema.ConnectorInsert{
 		URL:           publicURL,
 		ConnectorMeta: schema.ConnectorMeta{Namespace: types.Ptr(publicNamespace)},
@@ -338,8 +338,8 @@ func TestCallAgentWithUserScopedNamespaces(t *testing.T) {
 
 	publicNamespace := "publicagentcall"
 	privateNamespace := "privateagentcall"
-	publicURL := promptConnectorURL(t, "call-agent-public", schema.AgentMeta{Name: "remote_agent", Title: "Remote Agent"})
-	privateURL := promptConnectorURL(t, "call-agent-private", schema.AgentMeta{Name: "remote_agent", Title: "Remote Agent"})
+	publicURL := promptConnectorURL(t, "call-agent-public", &listAgentsMockPrompt{name: "remote_agent", title: "Remote Agent"})
+	privateURL := promptConnectorURL(t, "call-agent-private", &listAgentsMockPrompt{name: "remote_agent", title: "Remote Agent"})
 	if _, _, _, err := m.CreateConnector(ctx, schema.ConnectorInsert{
 		URL:           publicURL,
 		ConnectorMeta: schema.ConnectorMeta{Namespace: types.Ptr(publicNamespace)},
@@ -391,14 +391,14 @@ func newListAgentsManager(t *testing.T) *Manager {
 	return &Manager{Toolkit: tk}
 }
 
-func promptConnectorURL(t *testing.T, name string, metas ...schema.AgentMeta) string {
+func promptConnectorURL(t *testing.T, name string, prompts ...llm.Prompt) string {
 	t.Helper()
 
 	srv, err := mcpserver.New(name, "1.0.0")
 	if err != nil {
 		t.Fatal(err)
 	}
-	srv.AddPrompts(metas...)
+	srv.AddPrompts(prompts...)
 
 	ts := httptest.NewServer(srv.Handler())
 	t.Cleanup(func() {

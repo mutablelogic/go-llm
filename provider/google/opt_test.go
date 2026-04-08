@@ -7,9 +7,8 @@ import (
 
 	// Packages
 	llm "github.com/mutablelogic/go-llm"
-	opt "github.com/mutablelogic/go-llm/pkg/opt"
 	schema "github.com/mutablelogic/go-llm/kernel/schema"
-	tool "github.com/mutablelogic/go-llm/pkg/tool"
+	opt "github.com/mutablelogic/go-llm/pkg/opt"
 	jsonschema "github.com/mutablelogic/go-server/pkg/jsonschema"
 	types "github.com/mutablelogic/go-server/pkg/types"
 	assert "github.com/stretchr/testify/assert"
@@ -107,14 +106,7 @@ func Test_opt_toolkit_001(t *testing.T) {
 	// Test geminiFunctionDeclsFromTools with a single mock tool
 	assert := assert.New(t)
 
-	tk, err := tool.NewToolkit()
-	if err == nil {
-		err = tk.AddBuiltin(newMockTool("get_weather", "Get current weather"))
-	}
-	assert.NoError(err)
-	defer tk.Close()
-
-	decls := geminiFunctionDeclsFromTools(tk.ListTools(schema.ToolListRequest{}))
+	decls := geminiFunctionDeclsFromTools([]llm.Tool{newMockTool("get_weather", "Get current weather")})
 	assert.Len(decls, 1)
 	assert.Equal("get_weather", decls[0].Name)
 	assert.Equal("Get current weather", decls[0].Description)
@@ -130,15 +122,10 @@ func Test_opt_toolkit_002(t *testing.T) {
 	// Test geminiFunctionDeclsFromTools with multiple tools
 	assert := assert.New(t)
 
-	tk, err := tool.NewToolkit()
-	if err == nil {
-		err = tk.AddBuiltin(newMockTool("get_weather", "Get weather"),
-			newMockTool("search_web", "Search the web"))
-	}
-	assert.NoError(err)
-	defer tk.Close()
-
-	decls := geminiFunctionDeclsFromTools(tk.ListTools(schema.ToolListRequest{}))
+	decls := geminiFunctionDeclsFromTools([]llm.Tool{
+		newMockTool("get_weather", "Get weather"),
+		newMockTool("search_web", "Search the web"),
+	})
 	assert.Len(decls, 2)
 
 	names := make(map[string]bool)
@@ -153,16 +140,13 @@ func Test_opt_toolkit_003(t *testing.T) {
 	// Test toolkit tools appear in generateRequestFromOpts
 	assert := assert.New(t)
 
-	tk, err := tool.NewToolkit()
-	if err == nil {
-		err = tk.AddBuiltin(newMockTool("get_weather", "Get weather"))
-	}
+	weatherTool := newMockTool("get_weather", "Get weather")
+	_, err := opt.Apply(opt.WithTool[llm.Tool](weatherTool))
 	assert.NoError(err)
-	defer tk.Close()
 
 	msg := &schema.Message{Role: "user", Content: []schema.ContentBlock{{Text: types.Ptr("Hi")}}}
 	session := schema.Conversation{msg}
-	o, err := opt.Apply(tool.WithToolkit(tk))
+	o, err := opt.Apply(opt.WithTool[llm.Tool](weatherTool))
 	assert.NoError(err)
 
 	req, err := generateRequestFromOpts("gemini-2.0-flash", &session, o)
@@ -176,11 +160,7 @@ func Test_opt_toolkit_004(t *testing.T) {
 	// Test empty toolkit produces no tools in request
 	assert := assert.New(t)
 
-	tk, err := tool.NewToolkit()
-	assert.NoError(err)
-	defer tk.Close()
-
-	decls := geminiFunctionDeclsFromTools(tk.ListTools(schema.ToolListRequest{}))
+	decls := geminiFunctionDeclsFromTools(nil)
 	assert.Empty(decls)
 }
 
@@ -188,13 +168,9 @@ func Test_opt_toolkit_005(t *testing.T) {
 	// Test empty toolkit does not add tools block to request
 	assert := assert.New(t)
 
-	tk, err := tool.NewToolkit()
-	assert.NoError(err)
-	defer tk.Close()
-
 	msg := &schema.Message{Role: "user", Content: []schema.ContentBlock{{Text: types.Ptr("Hi")}}}
 	session := schema.Conversation{msg}
-	o, err := opt.Apply(tool.WithToolkit(tk))
+	o, err := opt.Apply()
 	assert.NoError(err)
 
 	req, err := generateRequestFromOpts("gemini-2.0-flash", &session, o)

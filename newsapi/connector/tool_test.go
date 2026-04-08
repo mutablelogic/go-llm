@@ -3,16 +3,42 @@ package newsapi_test
 import (
 	"context"
 	"encoding/json"
+	"os"
 	"testing"
 
 	// Packages
+	llm "github.com/mutablelogic/go-llm"
+	connector "github.com/mutablelogic/go-llm/newsapi/connector"
 	newsapi "github.com/mutablelogic/go-llm/newsapi/httpclient"
-	tool "github.com/mutablelogic/go-llm/pkg/tool"
+	toolkit "github.com/mutablelogic/go-llm/toolkit"
 	assert "github.com/stretchr/testify/assert"
 )
 
+func testTools(t *testing.T) []llm.Tool {
+	t.Helper()
+	tools, err := connector.NewTools("test-api-key")
+	if err != nil {
+		t.Fatal(err)
+	}
+	return tools
+}
+
+func liveTools(t *testing.T) []llm.Tool {
+	t.Helper()
+	apikey := os.Getenv("NEWSAPI_API_KEY")
+	if apikey == "" {
+		t.Skip("NEWSAPI_API_KEY not set")
+	}
+	tools, err := connector.NewTools(apikey)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return tools
+}
+
 func Test_tool_001(t *testing.T) {
 	assert := assert.New(t)
+	tools := testTools(t)
 	assert.NotNil(tools)
 	assert.Len(tools, 3)
 
@@ -31,19 +57,20 @@ func Test_tool_001(t *testing.T) {
 
 func Test_tool_002(t *testing.T) {
 	assert := assert.New(t)
+	tools := testTools(t)
 
 	// Create a toolkit
-	toolkit, err := tool.NewToolkit()
+	tk, err := toolkit.New()
 	if err == nil {
-		err = toolkit.AddBuiltin(tools...)
+		err = tk.AddTool(tools...)
 	}
 	assert.NoError(err)
-	defer toolkit.Close()
-	assert.NotNil(toolkit)
+	assert.NotNil(tk)
 }
 
 func Test_tool_002a(t *testing.T) {
 	assert := assert.New(t)
+	tools := testTools(t)
 
 	// Test that enum values are present in schemas
 	// Articles tool - check sortBy enum
@@ -79,6 +106,7 @@ func Test_tool_002a(t *testing.T) {
 
 func Test_tool_003(t *testing.T) {
 	assert := assert.New(t)
+	tools := liveTools(t)
 
 	// Test articles tool with valid input
 	articlesTool := tools[0]
@@ -103,6 +131,7 @@ func Test_tool_003(t *testing.T) {
 
 func Test_tool_004(t *testing.T) {
 	assert := assert.New(t)
+	tools := liveTools(t)
 
 	// Test headlines tool with valid input
 	headlinesTool := tools[1]
@@ -127,6 +156,7 @@ func Test_tool_004(t *testing.T) {
 
 func Test_tool_005(t *testing.T) {
 	assert := assert.New(t)
+	tools := liveTools(t)
 
 	// Test sources tool with valid input
 	sourcesTool := tools[2]
@@ -150,6 +180,7 @@ func Test_tool_005(t *testing.T) {
 
 func Test_tool_006(t *testing.T) {
 	assert := assert.New(t)
+	tools := testTools(t)
 
 	// Test articles tool with invalid JSON input
 	articlesTool := tools[0]
@@ -160,6 +191,7 @@ func Test_tool_006(t *testing.T) {
 
 func Test_tool_007(t *testing.T) {
 	assert := assert.New(t)
+	tools := testTools(t)
 
 	// Test headlines tool with nil input
 	headlinesTool := tools[1]
@@ -174,6 +206,7 @@ func Test_tool_007(t *testing.T) {
 
 func Test_tool_008(t *testing.T) {
 	assert := assert.New(t)
+	tools := liveTools(t)
 
 	// Test sources tool with empty JSON object
 	sourcesTool := tools[2]
@@ -184,6 +217,7 @@ func Test_tool_008(t *testing.T) {
 
 func Test_tool_009(t *testing.T) {
 	assert := assert.New(t)
+	tools := liveTools(t)
 
 	// Test articles tool with minimal input
 	articlesTool := tools[0]
@@ -202,6 +236,7 @@ func Test_tool_009(t *testing.T) {
 
 func Test_tool_010(t *testing.T) {
 	assert := assert.New(t)
+	tools := liveTools(t)
 
 	// Test different sort options
 	articlesTool := tools[0]

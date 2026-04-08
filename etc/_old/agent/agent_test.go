@@ -4,7 +4,8 @@ import (
 	"strings"
 	"testing"
 
-	agent "github.com/mutablelogic/go-llm/pkg/agent"
+	agent "github.com/mutablelogic/go-llm/etc/_old/agent"
+	types "github.com/mutablelogic/go-server/pkg/types"
 	assert "github.com/stretchr/testify/assert"
 )
 
@@ -72,8 +73,8 @@ func Test_read_004(t *testing.T) {
 	assert.Equal("summarizer", meta.Name)
 	assert.Equal("Summarizer Agent", meta.Title)
 	assert.Equal("Summarizes text input", meta.Description)
-	assert.Equal("gemini-2.0-flash", meta.Model)
-	assert.Equal("gemini", meta.Provider)
+	assert.Equal("gemini-2.0-flash", types.Value(meta.Model))
+	assert.Equal("gemini", types.Value(meta.Provider))
 	assert.Contains(meta.Template, "You are a summarization agent.")
 	assert.Contains(meta.Template, "{{ .Input }}")
 }
@@ -86,7 +87,7 @@ func Test_read_005(t *testing.T) {
 	assert.Equal("thinker", meta.Name)
 	assert.NotNil(meta.Thinking)
 	assert.True(*meta.Thinking)
-	assert.Equal(uint(4096), meta.ThinkingBudget)
+	assert.Equal(uint(4096), types.Value(meta.ThinkingBudget))
 }
 
 func Test_read_007(t *testing.T) {
@@ -156,13 +157,13 @@ func Test_readfile_summarizer(t *testing.T) {
 	assert.Equal("summarizer", meta.Name)
 	assert.Equal("Text Summarizer", meta.Title)
 	assert.Equal("Summarizes input text into a concise paragraph", meta.Description)
-	assert.Equal("gemini-2.0-flash", meta.Model)
-	assert.Equal("gemini", meta.Provider)
+	assert.Equal("gemini-2.0-flash", types.Value(meta.Model))
+	assert.Equal("gemini", types.Value(meta.Provider))
 	assert.NotNil(meta.Format)
 	assert.Contains(string(meta.Format), `"summary"`)
 	assert.NotNil(meta.Input)
 	assert.Contains(string(meta.Input), `"text"`)
-	assert.Equal("You are a professional text summarizer.", meta.SystemPrompt)
+	assert.Equal("You are a professional text summarizer.", types.Value(meta.SystemPrompt))
 	assert.Contains(meta.Template, "{{ .text }}")
 	assert.NotContains(meta.Template, "You are a professional")
 	assert.Nil(meta.Thinking)
@@ -174,16 +175,16 @@ func Test_readfile_classifier(t *testing.T) {
 	assert.NoError(err)
 	assert.Equal("classifier", meta.Name)
 	assert.Equal("Sentiment Classifier", meta.Title)
-	assert.Equal("claude-sonnet", meta.Model)
-	assert.Equal("anthropic", meta.Provider)
+	assert.Equal("claude-sonnet", types.Value(meta.Model))
+	assert.Equal("anthropic", types.Value(meta.Provider))
 	assert.NotNil(meta.Thinking)
 	assert.True(*meta.Thinking)
-	assert.Equal(uint(2048), meta.ThinkingBudget)
+	assert.Equal(uint(2048), types.Value(meta.ThinkingBudget))
 	assert.NotNil(meta.Format)
 	assert.Contains(string(meta.Format), `"sentiment"`)
 	assert.Contains(string(meta.Format), `"confidence"`)
 	assert.Nil(meta.Input)
-	assert.Equal("You are a sentiment analysis expert.", meta.SystemPrompt)
+	assert.Equal("You are a sentiment analysis expert.", types.Value(meta.SystemPrompt))
 	assert.Contains(meta.Template, "sentiment")
 	assert.NotContains(meta.Template, "You are a sentiment")
 }
@@ -203,7 +204,7 @@ func Test_readfile_minimal(t *testing.T) {
 	meta, err := agent.ReadFile("testdata/minimal.md")
 	assert.NoError(err)
 	assert.Equal("minimal", meta.Name)
-	assert.Equal("gemini-2.0-flash", meta.Model)
+	assert.Equal("gemini-2.0-flash", types.Value(meta.Model))
 	assert.Equal("Minimal Agent", meta.Title)
 	assert.Empty(meta.Description)
 	assert.Nil(meta.Format)

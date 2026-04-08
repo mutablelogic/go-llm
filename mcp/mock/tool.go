@@ -8,7 +8,7 @@ import (
 
 	// Packages
 	llm "github.com/mutablelogic/go-llm"
-	tool "github.com/mutablelogic/go-llm/pkg/tool"
+	tool "github.com/mutablelogic/go-llm/toolkit/tool"
 	jsonschema "github.com/mutablelogic/go-server/pkg/jsonschema"
 )
 
@@ -16,7 +16,7 @@ import (
 // Set Name_, Description_, and Result_ before registering it on a server.
 // RunFn, if set, overrides Result_ and is called with the raw JSON input.
 type MockTool struct {
-	tool.DefaultTool
+	tool.Base
 	Name_        string
 	Description_ string
 	InputSchema_ *jsonschema.Schema

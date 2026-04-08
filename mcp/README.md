@@ -44,7 +44,7 @@ http.ListenAndServe(":8080", nil)
 
 ### Registering tools
 
-Implement the `llm.Tool` interface and register it with `AddTools`. Embed `tool.DefaultTool` from `pkg/tool` to satisfy the optional `OutputSchema()` and `Meta()` methods without boilerplate:
+Implement the `llm.Tool` interface and register it with `AddTools`. Embed `tool.Base` from `toolkit/tool` to satisfy the optional `OutputSchema()` and `Meta()` methods without boilerplate:
 
 ```go
 import (
@@ -53,14 +53,14 @@ import (
 
     llm        "github.com/mutablelogic/go-llm"
     jsonschema  "github.com/google/jsonschema-go/jsonschema"
-    tool        "github.com/mutablelogic/go-llm/pkg/tool"
+    tool        "github.com/mutablelogic/go-llm/toolkit/tool"
 )
 
 type echoArgs struct {
     Message string `json:"message" description:"The text to echo back"`
 }
 
-type EchoTool struct{ tool.DefaultTool }
+type EchoTool struct{ tool.Base }
 
 func (t *EchoTool) Name() string        { return "echo" }
 func (t *EchoTool) Description() string { return "Echoes the input back" }

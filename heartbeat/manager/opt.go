@@ -8,6 +8,7 @@ import (
 	// Packages
 	hschema "github.com/mutablelogic/go-llm/heartbeat/schema"
 	schema "github.com/mutablelogic/go-llm/kernel/schema"
+	trace "go.opentelemetry.io/otel/trace"
 )
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -44,6 +45,14 @@ func WithLogger(l *slog.Logger) Opt {
 			return schema.ErrBadParameter.With("nil logger")
 		}
 		m.logger = l
+		return nil
+	}
+}
+
+// WithTracer sets the tracer used for tool execution spans.
+func WithTracer(t trace.Tracer) Opt {
+	return func(m *Manager) error {
+		m.tracer = t
 		return nil
 	}
 }

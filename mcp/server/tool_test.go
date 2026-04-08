@@ -41,7 +41,11 @@ func haToken(t *testing.T) string {
 
 func haServer(t *testing.T) *server.Server {
 	t.Helper()
-	tools, err := homeassistant.NewTools(haEndpoint(t), haToken(t))
+	conn, err := homeassistant.New(haEndpoint(t), haToken(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	tools, err := conn.ListTools(context.Background())
 	if err != nil {
 		t.Fatal(err)
 	}

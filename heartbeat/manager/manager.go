@@ -9,6 +9,7 @@ import (
 	llm "github.com/mutablelogic/go-llm"
 	hschema "github.com/mutablelogic/go-llm/heartbeat/schema"
 	schema "github.com/mutablelogic/go-llm/kernel/schema"
+	trace "go.opentelemetry.io/otel/trace"
 )
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -20,6 +21,7 @@ type Manager struct {
 	store        hschema.Store
 	pollInterval time.Duration
 	logger       *slog.Logger
+	tracer       trace.Tracer
 	onFire       func(context.Context, *hschema.Heartbeat)
 }
 

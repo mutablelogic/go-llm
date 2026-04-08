@@ -9,8 +9,8 @@ import (
 	uuid "github.com/google/uuid"
 	llm "github.com/mutablelogic/go-llm"
 	schema "github.com/mutablelogic/go-llm/memory/schema"
-	tool "github.com/mutablelogic/go-llm/pkg/tool"
 	toolkit "github.com/mutablelogic/go-llm/toolkit"
+	tool "github.com/mutablelogic/go-llm/toolkit/tool"
 	jsonschema "github.com/mutablelogic/go-server/pkg/jsonschema"
 )
 
@@ -18,12 +18,12 @@ import (
 // TYPES
 
 type createMemoryTool struct {
-	tool.DefaultTool
+	tool.Base
 	manager *Manager
 }
 
 type searchMemoryTool struct {
-	tool.DefaultTool
+	tool.Base
 	manager *Manager
 }
 

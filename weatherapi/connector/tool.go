@@ -8,7 +8,8 @@ import (
 	"github.com/mutablelogic/go-client"
 	llm "github.com/mutablelogic/go-llm"
 	"github.com/mutablelogic/go-llm/kernel/schema"
-	"github.com/mutablelogic/go-llm/pkg/tool"
+	tool "github.com/mutablelogic/go-llm/toolkit/tool"
+	httpclient "github.com/mutablelogic/go-llm/weatherapi/httpclient"
 	jsonschema "github.com/mutablelogic/go-server/pkg/jsonschema"
 )
 
@@ -16,18 +17,18 @@ import (
 // TYPES
 
 type currentWeather struct {
-	tool.DefaultTool
-	client *Client
+	tool.Base
+	client *httpclient.Client
 }
 
 type forecastWeather struct {
-	tool.DefaultTool
-	client *Client
+	tool.Base
+	client *httpclient.Client
 }
 
 type alertsWeather struct {
-	tool.DefaultTool
-	client *Client
+	tool.Base
+	client *httpclient.Client
 }
 
 var _ llm.Tool = (*currentWeather)(nil)
@@ -40,7 +41,7 @@ var _ llm.Tool = (*alertsWeather)(nil)
 // NewTools returns a slice of weather tools for use with LLM agents
 func NewTools(apikey string, opts ...client.ClientOpt) ([]llm.Tool, error) {
 	// Create a client
-	client, err := New(apikey, opts...)
+	client, err := httpclient.New(apikey, opts...)
 	if err != nil {
 		return nil, err
 	}
@@ -65,12 +66,12 @@ func (*currentWeather) Description() string {
 
 // Return the JSON schema for the tool input
 func (*currentWeather) InputSchema() *jsonschema.Schema {
-	return jsonschema.MustFor[CurrentWeatherRequest]()
+	return jsonschema.MustFor[httpclient.CurrentWeatherRequest]()
 }
 
 // Run the tool with the given input
 func (c *currentWeather) Run(ctx context.Context, input json.RawMessage) (any, error) {
-	var req CurrentWeatherRequest
+	var req httpclient.CurrentWeatherRequest
 
 	// Unmarshal JSON input if provided
 	if len(input) > 0 {
@@ -100,7 +101,7 @@ func (*forecastWeather) Description() string {
 
 // Return the JSON schema for the tool input
 func (*forecastWeather) InputSchema() *jsonschema.Schema {
-	schema := jsonschema.MustFor[ForecastWeatherRequest]()
+	schema := jsonschema.MustFor[httpclient.ForecastWeatherRequest]()
 
 	// Add validation constraints for days
 	if daysField, ok := schema.Properties["days"]; ok && daysField != nil {
@@ -115,7 +116,7 @@ func (*forecastWeather) InputSchema() *jsonschema.Schema {
 
 // Run the tool with the given input
 func (f *forecastWeather) Run(ctx context.Context, input json.RawMessage) (any, error) {
-	var req ForecastWeatherRequest
+	var req httpclient.ForecastWeatherRequest
 
 	// Unmarshal JSON input if provided
 	if len(input) > 0 {
@@ -148,12 +149,12 @@ func (*alertsWeather) Description() string {
 
 // Return the JSON schema for the tool input
 func (*alertsWeather) InputSchema() *jsonschema.Schema {
-	return jsonschema.MustFor[AlertsWeatherRequest]()
+	return jsonschema.MustFor[httpclient.AlertsWeatherRequest]()
 }
 
 // Run the tool with the given input
 func (a *alertsWeather) Run(ctx context.Context, input json.RawMessage) (any, error) {
-	var req AlertsWeatherRequest
+	var req httpclient.AlertsWeatherRequest
 
 	// Unmarshal JSON input if provided
 	if len(input) > 0 {

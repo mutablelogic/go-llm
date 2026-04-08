@@ -23,7 +23,10 @@ type delegate struct {
 	ClientOpts []client.ClientOpt
 }
 
+type reservedConnector struct{}
+
 var _ toolkit.ToolkitDelegate = (*delegate)(nil)
+var _ llm.Connector = (*reservedConnector)(nil)
 
 ///////////////////////////////////////////////////////////////////////////////
 // LIFECYCLE
@@ -65,6 +68,12 @@ func (d *delegate) Call(ctx context.Context, prompt llm.Prompt, resources ...llm
 // Connector field before forwarding to OnEvent, so the caller need not set it.
 func (d *delegate) CreateConnector(url string, onEvent func(evt toolkit.ConnectorEvent)) (llm.Connector, error) {
 	fmt.Println("CreateConnector:", url)
+	if url == toolkit.UserConnectorURI {
+		if onEvent != nil {
+			onEvent(toolkit.StateChangeEvent(schema.ConnectorState{}))
+		}
+		return &reservedConnector{}, nil
+	}
 
 	opts := []mcp.Opt{
 		mcp.WithClientOpt(d.ClientOpts...),
@@ -86,4 +95,21 @@ func (d *delegate) CreateConnector(url string, onEvent func(evt toolkit.Connecto
 		)
 	}
 	return mcp.New(url, d.Name, d.Version, opts...)
+}
+
+func (*reservedConnector) Run(ctx context.Context) error {
+	<-ctx.Done()
+	return nil
+}
+
+func (*reservedConnector) ListTools(context.Context) ([]llm.Tool, error) {
+	return nil, nil
+}
+
+func (*reservedConnector) ListPrompts(context.Context) ([]llm.Prompt, error) {
+	return nil, nil
+}
+
+func (*reservedConnector) ListResources(context.Context) ([]llm.Resource, error) {
+	return nil, nil
 }

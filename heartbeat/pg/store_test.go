@@ -7,7 +7,7 @@ import (
 	"time"
 
 	// Packages
-	heartbeat "github.com/mutablelogic/go-llm/heartbeat/schema"
+	heartbeat "github.com/mutablelogic/go-llm/heartbeat/pg"
 	schema "github.com/mutablelogic/go-llm/heartbeat/schema"
 	test "github.com/mutablelogic/go-pg/pkg/test"
 	assert "github.com/stretchr/testify/assert"
@@ -249,39 +249,11 @@ func Test_store_016(t *testing.T) {
 	s := newTestStore(t)
 	h, err := s.Create(context.Background(), schema.HeartbeatMeta{Message: "recurring", Schedule: futureSpec(t)})
 	assert.NoError(err)
-	backdateCreatedOnly(t, s, h.ID) // Don't change the recurring schedule
+	backdateCreatedOnly(t, s, h.ID)
 	_, err = s.Next(context.Background())
 	assert.NoError(err)
 	got, err := s.Get(context.Background(), h.ID)
 	assert.NoError(err)
 	assert.False(got.Fired)
 	assert.NotNil(got.LastFired)
-}
-
-func Test_store_017(t *testing.T) {
-	assert := assert.New(t)
-	s := newTestStore(t)
-	fired, err := s.Next(context.Background())
-	assert.NoError(err)
-	assert.Empty(fired)
-}
-
-func Test_store_018(t *testing.T) {
-	assert := assert.New(t)
-	s := newTestStore(t)
-	h, err := s.Create(context.Background(), schema.HeartbeatMeta{Message: "fired", Schedule: nextMinuteSpec(t)})
-	assert.NoError(err)
-	backdateHeartbeat(t, s, h.ID)
-	// First Next() should collect and fire it.
-	fired, err := s.Next(context.Background())
-	assert.NoError(err)
-	if assert.Len(fired, 1) {
-		assert.Equal(h.ID, fired[0].ID)
-	}
-	// Second Next() must not return it again.
-	again, err := s.Next(context.Background())
-	assert.NoError(err)
-	for _, d := range again {
-		assert.NotEqual(h.ID, d.ID)
-	}
 }

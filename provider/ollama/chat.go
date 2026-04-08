@@ -5,9 +5,8 @@ import (
 
 	// Packages
 	llm "github.com/mutablelogic/go-llm"
-	opt "github.com/mutablelogic/go-llm/pkg/opt"
 	schema "github.com/mutablelogic/go-llm/kernel/schema"
-	tool "github.com/mutablelogic/go-llm/pkg/tool"
+	opt "github.com/mutablelogic/go-llm/pkg/opt"
 )
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -125,11 +124,6 @@ func chatRequestFromOpts(model string, session *schema.Conversation, options opt
 
 	// Collect tools from toolkit and individual WithTool opts
 	var allTools []llm.Tool
-	if v := options.Get(opt.ToolkitKey); v != nil {
-		if tk, ok := v.(*tool.Toolkit); ok {
-			allTools = append(allTools, tk.ListTools(schema.ToolListRequest{})...)
-		}
-	}
 	if v := options.Get(opt.ToolKey); v != nil {
 		if extra, ok := v.([]llm.Tool); ok {
 			allTools = append(allTools, extra...)
