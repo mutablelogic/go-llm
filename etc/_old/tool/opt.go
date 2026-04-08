@@ -5,8 +5,8 @@ import (
 
 	// Packages
 	llm "github.com/mutablelogic/go-llm"
-	opt "github.com/mutablelogic/go-llm/pkg/opt"
 	schema "github.com/mutablelogic/go-llm/kernel/schema"
+	opt "github.com/mutablelogic/go-llm/pkg/opt"
 )
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -53,16 +53,6 @@ func WithBuiltin(tools ...llm.Tool) ToolkitOpt {
 	return func(tk *Toolkit) error {
 		return tk.AddBuiltin(tools...)
 	}
-}
-
-///////////////////////////////////////////////////////////////////////////////
-// GENERATION OPTIONS
-
-// WithToolkit sets a toolkit for generation options.
-// The toolkit is stored under opt.ToolkitKey and can be retrieved
-// with opts.Get(opt.ToolkitKey) and type-asserted to *Toolkit.
-func WithToolkit(toolkit *Toolkit) opt.Opt {
-	return opt.SetAny(opt.ToolkitKey, toolkit)
 }
 
 // WithTool adds one or more tools to the generation options.

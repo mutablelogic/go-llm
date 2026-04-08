@@ -4,9 +4,8 @@ import (
 	"encoding/json"
 
 	// Packages
-
-	opt "github.com/mutablelogic/go-llm/pkg/opt"
 	schema "github.com/mutablelogic/go-llm/kernel/schema"
+	opt "github.com/mutablelogic/go-llm/pkg/opt"
 )
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -18,7 +17,7 @@ import (
 // tools.
 func generateRequestFromOpts(model string, message *schema.Message, options opt.Options) (*generateRequest, error) {
 	// Reject options that are incompatible with /api/generate
-	if options.Has(opt.ToolkitKey) || options.Has(opt.ToolKey) {
+	if options.Has(opt.ToolKey) {
 		return nil, schema.ErrBadParameter.With("/api/generate does not support tools: use /api/chat instead")
 	}
 	if options.Has(opt.ToolChoiceKey) {

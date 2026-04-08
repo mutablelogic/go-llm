@@ -2,7 +2,6 @@ package opt
 
 // Option keys used across providers
 const (
-	ToolkitKey              = "toolkit"
 	ContentBlockKey         = "content-block"
 	ThinkingKey             = "thinking"
 	ThinkingBudgetKey       = "thinking-budget"

@@ -55,14 +55,6 @@ func TestBoolOptions(t *testing.T) {
 	assert.True(opts.GetBool("flag"))
 }
 
-func TestToolkitStoredAsArbitrary(t *testing.T) {
-	assert := assert.New(t)
-	tk := struct{ Name string }{"toolkit"}
-	opts, err := opt.Apply(opt.SetAny(opt.ToolkitKey, tk))
-	assert.NoError(err)
-	assert.Equal(tk, opts.Get(opt.ToolkitKey))
-}
-
 func TestQueryIgnoresNonStrings(t *testing.T) {
 	assert := assert.New(t)
 	opts, err := opt.Apply(opt.SetUint("number", 5))
