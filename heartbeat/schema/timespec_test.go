@@ -17,19 +17,20 @@ var testFrom = time.Date(2026, time.March, 6, 10, 0, 0, 0, time.UTC)
 // NewTimeSpec[time.Time]
 
 func Test_timespec_001(t *testing.T) {
-	// future time.Time: succeeds, all fields pinned, no Weekday or Timezone
+	// future time.Time: succeeds, all fields pinned, no Weekday, UTC timezone
 	assert := assert.New(t)
 	future := time.Date(2030, time.June, 15, 14, 30, 0, 0, time.UTC)
 	ts, err := schema.NewTimeSpec(future, nil)
 	assert.NoError(err)
-	assert.NotNil(ts.Year)
-	assert.Equal(2030, *ts.Year)
+	if assert.NotNil(ts.Year) {
+		assert.Equal(2030, *ts.Year)
+	}
 	assert.Equal([]int{6}, ts.Month)
 	assert.Equal([]int{15}, ts.Day)
 	assert.Equal([]int{14}, ts.Hour)
 	assert.Equal([]int{30}, ts.Minute)
 	assert.Empty(ts.Weekday)
-	assert.Nil(ts.Loc)
+	assert.Equal(time.UTC, ts.Loc)
 }
 
 func Test_timespec_002(t *testing.T) {
@@ -48,8 +49,9 @@ func Test_timespec_003(t *testing.T) {
 	assert := assert.New(t)
 	ts, err := schema.NewTimeSpec("2030-06-15T14:30:00Z", nil)
 	assert.NoError(err)
-	assert.NotNil(ts.Year)
-	assert.Equal(2030, *ts.Year)
+	if assert.NotNil(ts.Year) {
+		assert.Equal(2030, *ts.Year)
+	}
 	assert.Equal([]int{6}, ts.Month)
 	assert.Equal([]int{15}, ts.Day)
 	assert.Equal([]int{14}, ts.Hour)
@@ -296,8 +298,9 @@ func Test_timespec_030(t *testing.T) {
 
 	var ts2 schema.TimeSpec
 	assert.NoError(ts2.UnmarshalJSON(data))
-	assert.NotNil(ts2.Year)
-	assert.Equal(2030, *ts2.Year)
+	if assert.NotNil(ts2.Year) {
+		assert.Equal(2030, *ts2.Year)
+	}
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -341,8 +344,9 @@ func Test_timespec_035(t *testing.T) {
 	assert := assert.New(t)
 	ts, err := schema.NewTimeSpec("30 14 15 6 * 2030", nil)
 	assert.NoError(err)
-	assert.NotNil(ts.Year)
-	assert.Equal(2030, *ts.Year)
+	if assert.NotNil(ts.Year) {
+		assert.Equal(2030, *ts.Year)
+	}
 	assert.Equal([]int{6}, ts.Month)
 	assert.Equal([]int{15}, ts.Day)
 	assert.Equal([]int{14}, ts.Hour)
@@ -373,18 +377,18 @@ func Test_timespec_037(t *testing.T) {
 
 	var ts2 schema.TimeSpec
 	assert.NoError(ts2.UnmarshalJSON(data))
-	assert.NotNil(ts2.Loc)
-	assert.Equal("America/New_York", ts2.Loc.String())
+	if assert.NotNil(ts2.Loc) {
+		assert.Equal("America/New_York", ts2.Loc.String())
+	}
 	assert.Equal("0 9 * * 1-5", ts2.String())
 }
 
 func Test_timespec_038(t *testing.T) {
-	// UnmarshalJSON: legacy bare-string form round-trips correctly
+	// UnmarshalJSON: legacy bare-string form is not supported
 	assert := assert.New(t)
 	var ts schema.TimeSpec
-	assert.NoError(ts.UnmarshalJSON([]byte(`"0 9 * * 1-5"`)))
-	assert.Equal("0 9 * * 1-5", ts.String())
-	assert.Nil(ts.Loc)
+	err := ts.UnmarshalJSON([]byte(`"0 9 * * 1-5"`))
+	assert.Error(err)
 }
 
 func Test_timespec_039(t *testing.T) {
@@ -404,11 +408,11 @@ func Test_timespec_040(t *testing.T) {
 }
 
 func Test_timespec_041(t *testing.T) {
-	// UnmarshalJSON: no timezone field → Loc stays nil
+	// UnmarshalJSON: no timezone field → UTC is used
 	assert := assert.New(t)
 	var ts schema.TimeSpec
 	assert.NoError(ts.UnmarshalJSON([]byte(`{"schedule":"* * * * *"}`)))
-	assert.Nil(ts.Loc)
+	assert.Equal(time.UTC, ts.Loc)
 	assert.Equal("* * * * *", ts.String())
 }
 
