@@ -74,6 +74,10 @@ func sessionChannel(ctx context.Context, manager *llmmanager.Manager, w http.Res
 			_ = sendSessionChannelError(stream, httpresponse.ErrBadRequest.With(err))
 			return nil
 		}
+		// Blank lines are channel keep-alives.
+		if len(frame) == 0 {
+			continue
+		}
 
 		var req schema.SessionChannelRequest
 		if err := json.Unmarshal(frame, &req); err != nil {
