@@ -5,6 +5,7 @@ import (
 	"time"
 
 	// Packages
+	uuid "github.com/google/uuid"
 	llmschema "github.com/mutablelogic/go-llm/kernel/schema"
 	pg "github.com/mutablelogic/go-pg"
 	types "github.com/mutablelogic/go-server/pkg/types"
@@ -17,9 +18,8 @@ import (
 type HeartbeatIDSelector string
 
 type HeartbeatMeta struct {
-	Message  string         `json:"message"`
-	Schedule TimeSpec       `json:"schedule"`
-	Meta     map[string]any `json:"meta,omitempty"`
+	Message  string   `json:"message"`
+	Schedule TimeSpec `json:"schedule"`
 }
 
 type Heartbeat struct {
@@ -31,38 +31,23 @@ type Heartbeat struct {
 	Modified  *time.Time `json:"modified,omitempty"`
 }
 
+// HeartbeatInsert contains the fields required to create a new heartbeat row.
+type HeartbeatInsert struct {
+	Session uuid.UUID `json:"session"`
+	HeartbeatMeta
+}
+
 // HeartbeatListRequest is the request type for listing heartbeats.
 type HeartbeatListRequest struct {
+	pg.OffsetLimit
 	Fired *bool `json:"fired,omitempty"`
 }
 
 // HeartbeatList is a pg.Reader that accumulates scanned heartbeat rows.
 type HeartbeatList struct {
-	Heartbeats []*Heartbeat `json:"body,omitempty"`
-}
-
-///////////////////////////////////////////////////////////////////////////////
-// ARGUMENT TYPES
-
-type AddHeartbeatRequest struct {
-	Message  string `json:"message"            jsonschema:"Short reminder message to deliver when the heartbeat matures."`
-	Schedule string `json:"schedule"           jsonschema:"When and how often to fire: RFC 3339 timestamp (once, e.g. 2026-06-01T15:00:00Z) or 5-field cron expression like '0 9 * * 1-5' (recurring)."`
-	Timezone string `json:"timezone,omitempty" jsonschema:"Optional IANA timezone for evaluating the schedule (e.g. Europe/London, America/New_York). Not needed for RFC 3339 timestamps that already carry a timezone offset. Cron expressions default to UTC when omitted."`
-}
-
-type DeleteHeartbeatRequest struct {
-	ID string `json:"id" jsonschema:"The unique ID of the heartbeat to delete."`
-}
-
-type ListHeartbeatsRequest struct {
-	IncludeFired bool `json:"include_fired,omitempty" jsonschema:"Include already-fired heartbeats."`
-}
-
-type UpdateHeartbeatRequest struct {
-	ID       string `json:"id"                 jsonschema:"The unique ID of the heartbeat to update."`
-	Message  string `json:"message,omitempty"  jsonschema:"New message; empty keeps existing."`
-	Schedule string `json:"schedule,omitempty" jsonschema:"New schedule (RFC 3339 timestamp or 5-field cron expression); empty keeps existing."`
-	Timezone string `json:"timezone,omitempty" jsonschema:"New IANA timezone for evaluating the schedule (e.g. Europe/London). Not needed for RFC 3339 timestamps that already carry a timezone offset. Cron expressions default to UTC when omitted."`
+	HeartbeatListRequest
+	Count uint         `json:"count"`
+	Body  []*Heartbeat `json:"body,omitempty"`
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -82,7 +67,7 @@ func (id HeartbeatIDSelector) Select(bind *pg.Bind, op pg.Op) (string, error) {
 	}
 }
 
-// HeartbeatMarkFiredSelector selects a heartbeat by ID for the mark-fired UPDATE.
+// HeartbeatMarkFiredSelector selects a heartbeat by ID for the mark-fired update.
 type HeartbeatMarkFiredSelector string
 
 func (id HeartbeatMarkFiredSelector) Select(bind *pg.Bind, op pg.Op) (string, error) {
@@ -97,19 +82,27 @@ func (h HeartbeatListRequest) Select(bind *pg.Bind, op pg.Op) (string, error) {
 		bind.Append("where", "fired="+bind.Set("fired", types.Value(h.Fired)))
 	}
 
-	// Join WHERE clauses with AND
-	if where := bind.Join("where", " AND "); where != "" {
-		bind.Set("where", `WHERE `+where)
-	} else {
-		bind.Set("where", "")
-	}
+	where := bind.Join("where", " AND ")
 
-	// We limit ourselves to 100 results per request to prevent overload; clients can page through results by filtering on created/modified timestamps via the Meta field.
+	// We limit ourselves to 100 results per request to prevent overload.
 	bind.Set("offsetlimit", "LIMIT 100")
 
 	// Return the SQL query name for this operation
 	switch op {
 	case pg.List:
+		if bind.Get("user") != nil {
+			if where != "" {
+				bind.Set("where", `AND `+where)
+			} else {
+				bind.Set("where", "")
+			}
+			return bind.Query("heartbeat.list_for_user"), nil
+		}
+		if where != "" {
+			bind.Set("where", `WHERE `+where)
+		} else {
+			bind.Set("where", "")
+		}
 		return bind.Query("heartbeat.list"), nil
 	default:
 		return "", llmschema.ErrInternalServerError.Withf("Unsupported HeartbeatListRequest operation %q", op)
@@ -120,7 +113,7 @@ func (h HeartbeatListRequest) Select(bind *pg.Bind, op pg.Op) (string, error) {
 // READERS
 
 func (h *Heartbeat) Scan(row pg.Row) error {
-	return row.Scan(&h.ID, &h.Message, &h.Schedule, &h.Fired, &h.LastFired, &h.Created, &h.Modified, &h.Meta)
+	return row.Scan(&h.ID, &h.Message, &h.Schedule, &h.Fired, &h.LastFired, &h.Created, &h.Modified)
 }
 
 func (h *HeartbeatList) Scan(row pg.Row) error {
@@ -128,8 +121,12 @@ func (h *HeartbeatList) Scan(row pg.Row) error {
 	if err := hb.Scan(row); err != nil {
 		return err
 	}
-	h.Heartbeats = append(h.Heartbeats, &hb)
+	h.Body = append(h.Body, &hb)
 	return nil
+}
+
+func (h *HeartbeatList) ScanCount(row pg.Row) error {
+	return row.Scan(&h.Count)
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -159,11 +156,6 @@ func (h HeartbeatMeta) Update(bind *pg.Bind) error {
 		}
 	}
 
-	// Error on updating meta for the moment
-	if len(h.Meta) > 0 {
-		return llmschema.ErrBadParameter.With("updating meta is not supported")
-	}
-
 	// Check that there's at least one field to update before adding modified timestamp
 	if bind.Join("patch", ", ") == "" {
 		return llmschema.ErrBadParameter.With("no fields to update")
@@ -180,6 +172,10 @@ func (h HeartbeatMeta) Update(bind *pg.Bind) error {
 }
 
 func (h HeartbeatMeta) Insert(bind *pg.Bind) (string, error) {
+	if session, _ := bind.Get("session").(uuid.UUID); session == uuid.Nil {
+		return "", llmschema.ErrBadParameter.With("session is required")
+	}
+
 	// Message
 	if message := strings.TrimSpace(h.Message); message == "" {
 		return "", llmschema.ErrBadParameter.With("message is required")
@@ -192,4 +188,12 @@ func (h HeartbeatMeta) Insert(bind *pg.Bind) (string, error) {
 
 	// Return the SQL query name for this operation
 	return bind.Query("heartbeat.insert"), nil
+}
+
+func (h HeartbeatInsert) Insert(bind *pg.Bind) (string, error) {
+	if h.Session == uuid.Nil {
+		return "", llmschema.ErrBadParameter.With("session is required")
+	}
+	bind.Set("session", h.Session)
+	return h.HeartbeatMeta.Insert(bind)
 }

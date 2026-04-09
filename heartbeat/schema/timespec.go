@@ -72,21 +72,33 @@ func NewTimeSpec[T time.Time | string](v T, loc *time.Location) (TimeSpec, error
 	case time.Time:
 		if timespec, err := newFromTime(val, loc); err != nil {
 			return TimeSpec{}, err
+		} else if timespec.IsZero() {
+			return TimeSpec{}, llmschema.ErrBadParameter.With("schedule must constrain at least one field")
 		} else if timespec.Next(time.Now()).IsZero() {
 			return TimeSpec{}, llmschema.ErrBadParameter.Withf("%v has no future events", v)
+		} else {
+			return timespec, nil
 		}
 	case string:
 		if t, parseErr := time.Parse(time.RFC3339, val); parseErr == nil {
 			if timespec, err := newFromTime(t, loc); err != nil {
 				return TimeSpec{}, err
+			} else if timespec.IsZero() {
+				return TimeSpec{}, llmschema.ErrBadParameter.With("schedule must constrain at least one field")
 			} else if timespec.Next(time.Now()).IsZero() {
 				return TimeSpec{}, llmschema.ErrBadParameter.Withf("%v has no future events", v)
+			} else {
+				return timespec, nil
 			}
 		} else {
 			if timespec, err := newFromCron(val, loc); err != nil {
 				return TimeSpec{}, err
+			} else if timespec.IsZero() {
+				return TimeSpec{}, llmschema.ErrBadParameter.With("schedule must constrain at least one field")
 			} else if timespec.Next(time.Now()).IsZero() {
 				return TimeSpec{}, llmschema.ErrBadParameter.Withf("%v has no future events", v)
+			} else {
+				return timespec, nil
 			}
 		}
 	}
@@ -450,6 +462,9 @@ func (ts *TimeSpec) unmarshalSchedule(s string, loc *time.Location) error {
 	}
 	if err != nil {
 		return err
+	}
+	if parsed.IsZero() {
+		return llmschema.ErrBadParameter.With("schedule must constrain at least one field")
 	}
 	*ts = parsed
 	return nil
