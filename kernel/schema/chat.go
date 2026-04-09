@@ -17,6 +17,15 @@ type ChatRequest struct {
 	SystemPrompt  string    `json:"system_prompt,omitempty" help:"Per-request system prompt appended to the session prompt" optional:""`
 }
 
+// SessionChannelRequest represents one inbound channel frame for a session.
+// The session is selected by the path parameter, not the frame body.
+type SessionChannelRequest struct {
+	Text          string   `json:"text" arg:"" help:"User input text"`
+	Tools         []string `json:"tools,omitzero" help:"Tool names to include (nil means all, empty means none)" optional:""`
+	MaxIterations uint     `json:"max_iterations,omitempty" help:"Maximum tool-calling iterations (0 uses default)" optional:""`
+	SystemPrompt  string   `json:"system_prompt,omitempty" help:"Per-request system prompt appended to the session prompt" optional:""`
+}
+
 // ChatResponse represents the response from a chat request.
 type ChatResponse struct {
 	CompletionResponse

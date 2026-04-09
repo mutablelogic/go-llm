@@ -267,6 +267,10 @@ func (r ChatRequest) String() string {
 	return types.Stringify(r)
 }
 
+func (r SessionChannelRequest) String() string {
+	return types.Stringify(r)
+}
+
 func (r ChatResponse) String() string {
 	return types.Stringify(r)
 }

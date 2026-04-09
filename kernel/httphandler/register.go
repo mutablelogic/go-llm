@@ -39,6 +39,7 @@ func RegisterHandlers(router *httprouter.Router, manager *llmmanager.Manager, au
 		router.RegisterPath(ChatHandler(manager)),
 		router.RegisterPath(SessionHandler(manager)),
 		router.RegisterPath(SessionResourceHandler(manager)),
+		router.RegisterPath(SessionChannelHandler(manager)),
 		router.RegisterPath(SessionMessageHandler(manager)),
 	)
 }
