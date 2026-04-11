@@ -528,6 +528,7 @@ INSERT INTO ${"schema"}.message (
 	@session, @role, @content, @tokens, @result::${"schema"}.MESSAGE_RESULT, @meta
 )
 RETURNING
+	id,
 	session,
 	role,
 	COALESCE(content, '[]'::jsonb) AS content,
@@ -537,6 +538,8 @@ RETURNING
 
 -- message.list
 SELECT
+	message.id,
+	message.session,
 	message.role,
 	COALESCE(message.content, '[]'::jsonb) AS content,
 	COALESCE(message.tokens, 0),
@@ -548,6 +551,8 @@ ${orderby}
 
 -- message.list_for_user
 SELECT
+	message.id,
+	message.session,
 	message.role,
 	COALESCE(message.content, '[]'::jsonb) AS content,
 	COALESCE(message.tokens, 0),
@@ -574,6 +579,12 @@ WHERE message.session = ANY(@sessions)
 AND message.id > @after_id
 ORDER BY message.id ASC
 ${offsetlimit}
+
+-- message.last_id
+SELECT
+	COALESCE(MAX(message.id), 0)
+FROM ${"schema"}.message AS message
+${where}
 
 -- usage.insert
 INSERT INTO ${"schema"}.usage (

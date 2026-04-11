@@ -19,6 +19,7 @@ type GeneratorMeta struct {
 	Provider       *string    `json:"provider,omitempty" yaml:"provider" help:"Provider name" optional:"" example:"ollama"`
 	Model          *string    `json:"model,omitempty" yaml:"model" help:"Model name" optional:"" example:"llama3.2"`
 	SystemPrompt   *string    `json:"system_prompt,omitempty" yaml:"system_prompt" help:"System prompt" optional:"" example:"Be concise and answer in one sentence."`
+	MaxTokens      *uint      `json:"max_tokens,omitempty" yaml:"max_tokens" help:"Maximum output tokens to generate" optional:"" example:"4096"`
 	Format         JSONSchema `json:"format,omitempty" yaml:"output" help:"JSON schema for structured output" optional:"" example:"{\"type\":\"object\",\"properties\":{\"summary\":{\"type\":\"string\"}}}"`
 	Thinking       *bool      `json:"thinking,omitempty" yaml:"thinking" help:"Enable thinking/reasoning" optional:"" negatable:"" example:"true"`
 	ThinkingBudget *uint      `json:"thinking_budget,omitempty" yaml:"thinking_budget" help:"Thinking token budget (required for Anthropic, optional for Google)" optional:"" example:"2048"`
@@ -37,7 +38,7 @@ func (g GeneratorMeta) String() string {
 // IsZero reports whether all generator fields are unset.
 func (g GeneratorMeta) IsZero() bool {
 	return g.Provider == nil && g.Model == nil && g.SystemPrompt == nil &&
-		len(g.Format) == 0 && g.Thinking == nil && g.ThinkingBudget == nil
+		g.MaxTokens == nil && len(g.Format) == 0 && g.Thinking == nil && g.ThinkingBudget == nil
 }
 
 // Values encodes generator settings as URL values so they can be stored in a
@@ -58,6 +59,9 @@ func (g GeneratorMeta) Values() url.Values {
 		if prompt := strings.TrimSpace(*g.SystemPrompt); prompt != "" {
 			values.Set("system_prompt", prompt)
 		}
+	}
+	if g.MaxTokens != nil && *g.MaxTokens > 0 {
+		values.Set("max_tokens", strconv.FormatUint(uint64(*g.MaxTokens), 10))
 	}
 	if len(g.Format) > 0 {
 		values.Set("format", string(g.Format))
@@ -89,6 +93,11 @@ func GeneratorMetaFromValues(values url.Values) GeneratorMeta {
 	if v := strings.TrimSpace(values.Get("system_prompt")); v != "" {
 		meta.SystemPrompt = types.Ptr(v)
 	}
+	if maxTokens := strings.TrimSpace(values.Get("max_tokens")); maxTokens != "" {
+		if parsed, err := strconv.ParseUint(maxTokens, 10, 64); err == nil {
+			meta.MaxTokens = types.Ptr(uint(parsed))
+		}
+	}
 	if format := strings.TrimSpace(values.Get("format")); format != "" {
 		meta.Format = JSONSchema(json.RawMessage(format))
 	}
@@ -112,7 +121,7 @@ func ApplyGeneratorMeta(values url.Values, meta GeneratorMeta) url.Values {
 	for key, vals := range values {
 		clone[key] = append([]string(nil), vals...)
 	}
-	for _, key := range []string{"provider", "model", "system_prompt", "format", "thinking", "thinking_budget"} {
+	for _, key := range []string{"provider", "model", "system_prompt", "max_tokens", "format", "thinking", "thinking_budget"} {
 		delete(clone, key)
 	}
 	for key, vals := range meta.Values() {
@@ -141,6 +150,9 @@ func MergeGeneratorMeta(primary, fallback GeneratorMeta) GeneratorMeta {
 	}
 	if merged.SystemPrompt == nil {
 		merged.SystemPrompt = fallback.SystemPrompt
+	}
+	if merged.MaxTokens == nil {
+		merged.MaxTokens = fallback.MaxTokens
 	}
 	if len(merged.Format) == 0 {
 		merged.Format = fallback.Format

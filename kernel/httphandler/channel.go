@@ -8,6 +8,7 @@ import (
 	"strings"
 	"sync"
 	"sync/atomic"
+	"time"
 
 	// Packages
 	middleware "github.com/djthorpe/go-auth/pkg/middleware"
@@ -55,15 +56,46 @@ func SessionChannelHandler(manager *llmmanager.Manager) (string, *jsonschema.Sch
 ///////////////////////////////////////////////////////////////////////////////
 // PRIVATE METHODS
 
+const channelFeedDedupTTL = 15 * time.Minute
+
 func sessionChannel(req *http.Request, manager *llmmanager.Manager, session *schema.Session, stream httpresponse.JSONStream) error {
 	ctx, cancel := context.WithCancel(req.Context())
 	defer cancel()
+	var sendMu sync.Mutex
+	deduper := newChannelDeduper(channelFeedDedupTTL)
+
+	sendRaw := func(payload json.RawMessage) error {
+		sendMu.Lock()
+		defer sendMu.Unlock()
+		return stream.Send(payload)
+	}
+	sendError := func(err error) error {
+		payload, marshalErr := marshalSessionChannelError(err)
+		if marshalErr != nil {
+			return marshalErr
+		}
+		return sendRaw(payload)
+	}
+	sendDelta := func(delta schema.StreamDelta) error {
+		payload, err := json.Marshal(delta)
+		if err != nil {
+			return err
+		}
+		return sendRaw(json.RawMessage(payload))
+	}
+	sendResponse := func(response schema.ChatResponse) error {
+		payload, err := json.Marshal(response)
+		if err != nil {
+			return err
+		}
+		return sendRaw(json.RawMessage(payload))
+	}
 
 	sessionFrame, err := json.Marshal(session)
 	if err != nil {
-		return sendSessionChannelError(stream, httpresponse.ErrInternalError.With(err))
+		return sendError(httpresponse.ErrInternalError.With(err))
 	}
-	if err := stream.Send(json.RawMessage(sessionFrame)); err != nil {
+	if err := sendRaw(json.RawMessage(sessionFrame)); err != nil {
 		return err
 	}
 
@@ -84,9 +116,27 @@ func sessionChannel(req *http.Request, manager *llmmanager.Manager, session *sch
 		}
 	}
 
+	if err := manager.SubscribeSession(ctx, session.ID, func(messages []*schema.Message) {
+		for _, message := range deduper.Filter(messages) {
+			if message == nil {
+				continue
+			}
+			if !channelShouldSendMessage(message) {
+				continue
+			}
+			if err := sendResponse(channelResponseFromMessage(message)); err != nil {
+				reportChatErr(err)
+				return
+			}
+		}
+	}, user); err != nil {
+		return sendError(schema.HTTPErr(err))
+	}
+
 	startChat := func(channelReq schema.SessionChannelRequest) {
 		busy.Store(true)
 		chats.Add(1)
+		deduper.RememberMessage(channelRequestMessage(channelReq))
 
 		go func() {
 			defer chats.Done()
@@ -94,12 +144,14 @@ func sessionChannel(req *http.Request, manager *llmmanager.Manager, session *sch
 
 			chatCtx, chatCancel := context.WithCancel(ctx)
 			defer chatCancel()
+			streamed := make(map[string]string)
 
 			streamFn := func(role, text string) {
 				if strings.TrimSpace(text) == "" {
 					return
 				}
-				if err := sendSessionChannelDelta(stream, schema.StreamDelta{Role: role, Text: text}); err != nil {
+				streamed[role] += text
+				if err := sendDelta(schema.StreamDelta{Role: role, Text: text}); err != nil {
 					reportChatErr(err)
 					chatCancel()
 				}
@@ -116,20 +168,21 @@ func sessionChannel(req *http.Request, manager *llmmanager.Manager, session *sch
 				if chatCtx.Err() != nil {
 					return
 				}
-				reportChatErr(sendSessionChannelError(stream, schema.HTTPErr(err)))
+				reportChatErr(sendError(schema.HTTPErr(err)))
 				return
 			}
 			if chatCtx.Err() != nil {
 				return
 			}
-
-			payload, err := json.Marshal(resp)
-			if err != nil {
-				reportChatErr(sendSessionChannelError(stream, httpresponse.ErrInternalError.With(err)))
+			for role, text := range streamed {
+				deduper.RememberText(role, text)
+			}
+			if resp == nil {
 				return
 			}
+			deduper.RememberResponse(*resp)
 
-			reportChatErr(stream.Send(json.RawMessage(payload)))
+			reportChatErr(sendResponse(*resp))
 		}()
 	}
 
@@ -155,7 +208,7 @@ func sessionChannel(req *http.Request, manager *llmmanager.Manager, session *sch
 
 			var channelReq schema.SessionChannelRequest
 			if err := json.Unmarshal(frame, &channelReq); err != nil {
-				if sendErr := sendSessionChannelError(stream, httpresponse.ErrBadRequest.With(err)); sendErr != nil {
+				if sendErr := sendError(httpresponse.ErrBadRequest.With(err)); sendErr != nil {
 					cancel()
 					chats.Wait()
 					return sendErr
@@ -164,7 +217,7 @@ func sessionChannel(req *http.Request, manager *llmmanager.Manager, session *sch
 			}
 
 			if busy.Load() {
-				if sendErr := sendSessionChannelError(stream, httpresponse.ErrConflict.With("chat already in progress")); sendErr != nil {
+				if sendErr := sendError(httpresponse.ErrConflict.With("chat already in progress")); sendErr != nil {
 					cancel()
 					chats.Wait()
 					return sendErr
@@ -175,6 +228,212 @@ func sessionChannel(req *http.Request, manager *llmmanager.Manager, session *sch
 			startChat(channelReq)
 		}
 	}
+}
+
+type channelDeduper struct {
+	mu   sync.Mutex
+	ttl  time.Duration
+	seen map[string]channelDedupEntry
+}
+
+type channelDedupEntry struct {
+	expiry time.Time
+	count  uint
+}
+
+func newChannelDeduper(ttl time.Duration) *channelDeduper {
+	return &channelDeduper{ttl: ttl, seen: make(map[string]channelDedupEntry)}
+}
+
+func (d *channelDeduper) RememberMessage(message *schema.Message) {
+	if message == nil {
+		return
+	}
+	for _, key := range channelMessageKeys(message) {
+		d.rememberKey(key)
+	}
+}
+
+func (d *channelDeduper) RememberResponse(response schema.ChatResponse) {
+	message := &schema.Message{
+		ID:      response.ID,
+		Session: response.Session,
+		Role:    response.Role,
+		Content: response.Content,
+		Result:  response.Result,
+	}
+	d.RememberMessage(message)
+}
+
+func (d *channelDeduper) RememberText(role, text string) {
+	text = strings.TrimSpace(text)
+	if text == "" {
+		return
+	}
+	message := &schema.Message{Role: role, Content: []schema.ContentBlock{}}
+	if role == schema.RoleThinking {
+		message.Content = append(message.Content, schema.ContentBlock{Thinking: types.Ptr(text)})
+	} else {
+		message.Content = append(message.Content, schema.ContentBlock{Text: types.Ptr(text)})
+	}
+	d.RememberMessage(message)
+}
+
+func (d *channelDeduper) Filter(messages []*schema.Message) []*schema.Message {
+	now := time.Now()
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	d.pruneLocked(now)
+
+	result := make([]*schema.Message, 0, len(messages))
+	for _, message := range messages {
+		if message == nil {
+			continue
+		}
+		keys := channelMessageKeys(message)
+		if len(keys) == 0 {
+			result = append(result, message)
+			continue
+		}
+		if d.consumeLocked(now, keys...) {
+			continue
+		}
+		result = append(result, message)
+	}
+	return result
+}
+
+func (d *channelDeduper) consumeLocked(now time.Time, keys ...string) bool {
+	matched := false
+	for _, key := range keys {
+		if key == "" {
+			continue
+		}
+		entry, exists := d.seen[key]
+		if !exists || !now.Before(entry.expiry) || entry.count == 0 {
+			continue
+		}
+		matched = true
+	}
+	if !matched {
+		return false
+	}
+	for _, key := range keys {
+		if key == "" {
+			continue
+		}
+		entry, exists := d.seen[key]
+		if !exists || !now.Before(entry.expiry) || entry.count == 0 {
+			continue
+		}
+		if entry.count == 1 {
+			delete(d.seen, key)
+		} else {
+			entry.count--
+			d.seen[key] = entry
+		}
+	}
+	return true
+}
+
+func (d *channelDeduper) rememberKey(key string) {
+	if key == "" {
+		return
+	}
+	now := time.Now()
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	d.pruneLocked(now)
+	entry := d.seen[key]
+	entry.count++
+	entry.expiry = now.Add(d.ttl)
+	d.seen[key] = entry
+}
+
+func (d *channelDeduper) pruneLocked(now time.Time) {
+	for key, entry := range d.seen {
+		if !now.Before(entry.expiry) || entry.count == 0 {
+			delete(d.seen, key)
+		}
+	}
+}
+
+func channelRequestMessage(req schema.SessionChannelRequest) *schema.Message {
+	text := strings.TrimSpace(req.Text)
+	if text == "" {
+		return nil
+	}
+	return &schema.Message{
+		Role:    schema.RoleUser,
+		Content: []schema.ContentBlock{{Text: types.Ptr(text)}},
+		Result:  schema.ResultStop,
+	}
+}
+
+func channelResponseFromMessage(message *schema.Message) schema.ChatResponse {
+	if message == nil {
+		return schema.ChatResponse{}
+	}
+	return schema.ChatResponse{
+		ID:      message.ID,
+		Session: message.Session,
+		CompletionResponse: schema.CompletionResponse{
+			Role:    message.Role,
+			Content: message.Content,
+			Result:  message.Result,
+		},
+	}
+}
+
+func channelShouldSendMessage(message *schema.Message) bool {
+	if message == nil {
+		return false
+	}
+	if message.Result == schema.ResultToolCall {
+		return false
+	}
+	for _, block := range message.Content {
+		switch {
+		case block.ToolCall != nil:
+			return false
+		case block.ToolResult != nil:
+			return false
+		}
+	}
+	for _, block := range message.Content {
+		switch {
+		case block.Text != nil && strings.TrimSpace(*block.Text) != "":
+			return true
+		case block.Thinking != nil && strings.TrimSpace(*block.Thinking) != "":
+			return true
+		case block.Attachment != nil:
+			return true
+		}
+	}
+	return false
+}
+
+func channelMessageKeys(message *schema.Message) []string {
+	if message == nil {
+		return nil
+	}
+	keys := make([]string, 0, 2)
+	if message.ID > 0 {
+		keys = append(keys, "id:"+types.Stringify(message.ID))
+	}
+	encoded, err := json.Marshal(struct {
+		Role    string                `json:"role"`
+		Content []schema.ContentBlock `json:"content"`
+		Result  string                `json:"result,omitempty"`
+	}{
+		Role:    message.Role,
+		Content: message.Content,
+		Result:  message.Result.String(),
+	})
+	if err == nil {
+		keys = append(keys, "content:"+string(encoded))
+	}
+	return keys
 }
 
 func getSessionChannelRequest(r *http.Request, manager *llmmanager.Manager) (*schema.Session, error) {

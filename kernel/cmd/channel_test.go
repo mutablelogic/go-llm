@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	// Packages
+	tea "github.com/charmbracelet/bubbletea"
 	schema "github.com/mutablelogic/go-llm/kernel/schema"
 	tui "github.com/mutablelogic/go-llm/pkg/tui"
 	assert "github.com/stretchr/testify/assert"
@@ -135,6 +136,39 @@ func TestChannelModelResponseLeavesViewportContentStable(t *testing.T) {
 
 	assert.NotContains(t, m.viewport.View(), channelCursorGlyph)
 	assert.False(t, m.streaming)
+}
+
+func TestChannelModelWindowResizeResizesViewport(t *testing.T) {
+	m := &channelModel{
+		viewport: tui.NewViewport(tui.SetWidth(60), tui.SetHeight(10)),
+	}
+	require.NoError(t, m.viewport.SetContent("one\n\ntwo\n\nthree\n\nfour\n\nfive\n\nsix"))
+
+	before := m.viewport.View()
+	_, cmd := m.Update(tea.WindowSizeMsg{Width: 60, Height: 4})
+
+	assert.Nil(t, cmd)
+	after := m.viewport.View()
+	assert.NotEqual(t, before, after)
+	assert.LessOrEqual(t, len(strings.Split(after, "\n")), 2)
+}
+
+func TestChannelModelErrorFrameClearsStreamingStatus(t *testing.T) {
+	m := &channelModel{
+		viewport:   tui.NewViewport(tui.SetWidth(60), tui.SetHeight(10)),
+		turn:       1,
+		live:       make(map[string]struct{}),
+		streaming:  true,
+		activeRole: schema.RoleAssistant,
+		status:     "streaming assistant",
+	}
+
+	require.NoError(t, m.applyFrame("recv", json.RawMessage(`{"code":400,"reason":"Bad Request: response truncated: max tokens reached"}`)))
+
+	assert.False(t, m.streaming)
+	assert.Equal(t, "Bad Request: response truncated: max tokens reached", m.status)
+	assert.Contains(t, m.View(), "Bad Request: response truncated: max tokens reached")
+	assert.NotContains(t, m.View(), "replying")
 }
 
 func TestChannelModelViewShowsCursorInStatus(t *testing.T) {

@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"time"
 
 	// Packages
 	otel "github.com/mutablelogic/go-client/pkg/otel"
@@ -91,7 +92,11 @@ func New(ctx context.Context, name, version string, pool pg.PoolConn, opts ...Op
 	self.delegate = NewDelegate(self.name, self.version, self.connectors, self.clientopts...)
 
 	// Create a session feed, which updates listening sessions when new messages are added
-	self.sessionfeed = NewSessionFeed(pool)
+	if sessionfeed, err := NewSessionFeed(ctx, pool, time.Second); err != nil {
+		return nil, err
+	} else {
+		self.sessionfeed = sessionfeed
+	}
 
 	// TEST
 	// Register metrics after the registry has been initialized so callbacks can

@@ -40,7 +40,8 @@ type CreateSessionCommand struct {
 }
 
 type GetSessionCommand struct {
-	ID uuid.UUID `arg:"" name:"id" help:"Session ID (defaults to the stored current session)." optional:""`
+	ID      uuid.UUID `arg:"" name:"id" help:"Session ID (defaults to the stored current session)." optional:""`
+	Default bool      `name:"default" help:"Save as the default session" optional:""`
 }
 
 type DeleteSessionCommand struct {
@@ -157,10 +158,24 @@ func (cmd *GetSessionCommand) Run(ctx server.Cmd) (err error) {
 		if err != nil {
 			return err
 		}
+		if err := maybeStoreDefaultSession(ctx, session.ID, cmd.Default); err != nil {
+			return err
+		}
 
 		fmt.Println(session)
 		return nil
 	})
+}
+
+type sessionSetter interface {
+	Set(string, any) error
+}
+
+func maybeStoreDefaultSession(ctx sessionSetter, id uuid.UUID, isDefault bool) error {
+	if !isDefault || ctx == nil || id == uuid.Nil {
+		return nil
+	}
+	return ctx.Set("session", id.String())
 }
 
 func resolveSessionID(id uuid.UUID, stored string) (uuid.UUID, error) {

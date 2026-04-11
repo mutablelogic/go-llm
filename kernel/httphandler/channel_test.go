@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	// Packages
 	uuid "github.com/google/uuid"
@@ -55,6 +56,12 @@ func TestSessionChannelIntegration(t *testing.T) {
 		t.Fatalf("expected 1 final response, got %d", len(frames.responses))
 	}
 	resp := frames.responses[0]
+	if resp.ID == 0 {
+		t.Fatal("expected persisted response ID")
+	}
+	if resp.Session != session.ID {
+		t.Fatalf("expected response session %q, got %q", session.ID, resp.Session)
+	}
 	if resp.Role != schema.RoleAssistant {
 		t.Fatalf("expected role %q, got %q", schema.RoleAssistant, resp.Role)
 	}
@@ -243,6 +250,138 @@ func TestSessionChannelAcceptsWildcard(t *testing.T) {
 	resp := frames.responses[0]
 	if resp.Role != schema.RoleAssistant {
 		t.Fatalf("expected role %q, got %q", schema.RoleAssistant, resp.Role)
+	}
+}
+
+func TestChannelDeduperFiltersRememberedMessages(t *testing.T) {
+	deduper := newChannelDeduper(time.Minute)
+	userText := "hello"
+	assistantText := "world"
+
+	deduper.RememberMessage(&schema.Message{
+		Role:    schema.RoleUser,
+		Content: []schema.ContentBlock{{Text: &userText}},
+	})
+	deduper.RememberResponse(schema.ChatResponse{CompletionResponse: schema.CompletionResponse{
+		Role:    schema.RoleAssistant,
+		Content: []schema.ContentBlock{{Text: &assistantText}},
+		Result:  schema.ResultStop,
+	}})
+
+	filtered := deduper.Filter([]*schema.Message{
+		{Role: schema.RoleUser, Content: []schema.ContentBlock{{Text: &userText}}},
+		{Role: schema.RoleAssistant, Content: []schema.ContentBlock{{Text: &assistantText}}, Result: schema.ResultStop},
+		{Role: schema.RoleAssistant, Content: []schema.ContentBlock{{Text: types.Ptr("different")}}, Result: schema.ResultStop},
+	})
+
+	if len(filtered) != 1 {
+		t.Fatalf("expected 1 filtered message, got %d", len(filtered))
+	}
+	if filtered[0].Role != schema.RoleAssistant {
+		t.Fatalf("expected assistant message, got %q", filtered[0].Role)
+	}
+	if got := filtered[0].Text(); got != "different" {
+		t.Fatalf("expected remaining message %q, got %q", "different", got)
+	}
+}
+
+func TestChannelDeduperFiltersRememberedMessageIDs(t *testing.T) {
+	deduper := newChannelDeduper(time.Minute)
+	deduper.RememberMessage(&schema.Message{
+		ID:      42,
+		Role:    schema.RoleAssistant,
+		Content: []schema.ContentBlock{{Text: types.Ptr("persisted")}},
+		Result:  schema.ResultStop,
+	})
+
+	filtered := deduper.Filter([]*schema.Message{
+		{ID: 42, Role: schema.RoleAssistant, Content: []schema.ContentBlock{{Text: types.Ptr("persisted")}}, Result: schema.ResultStop},
+		{ID: 43, Role: schema.RoleAssistant, Content: []schema.ContentBlock{{Text: types.Ptr("next")}}, Result: schema.ResultStop},
+	})
+
+	if len(filtered) != 1 {
+		t.Fatalf("expected 1 filtered message, got %d", len(filtered))
+	}
+	if filtered[0].ID != 43 {
+		t.Fatalf("expected remaining message ID %d, got %d", 43, filtered[0].ID)
+	}
+}
+
+func TestChannelShouldSendMessage(t *testing.T) {
+	if !channelShouldSendMessage(&schema.Message{
+		Role:    schema.RoleAssistant,
+		Content: []schema.ContentBlock{{Text: types.Ptr("hello")}},
+	}) {
+		t.Fatal("expected text message to be forwarded")
+	}
+	if channelShouldSendMessage(&schema.Message{
+		Role: schema.RoleAssistant,
+		Content: []schema.ContentBlock{
+			{Text: types.Ptr("Let me check the current date and time for you.")},
+			{ToolCall: &schema.ToolCall{ID: "tool_1", Name: "memory__memory_search"}},
+		},
+		Result: schema.ResultToolCall,
+	}) {
+		t.Fatal("expected mixed text and tool-call message to be suppressed")
+	}
+	if channelShouldSendMessage(&schema.Message{
+		Role: schema.RoleUser,
+		Content: []schema.ContentBlock{{ToolResult: &schema.ToolResult{
+			ID:      "tool_1",
+			Name:    "mcp_fetch__fetch",
+			Content: json.RawMessage(`{"ok":true}`),
+		}}},
+	}) {
+		t.Fatal("expected tool-result-only message to be suppressed")
+	}
+	if channelShouldSendMessage(&schema.Message{
+		Role: schema.RoleAssistant,
+		Content: []schema.ContentBlock{{ToolCall: &schema.ToolCall{
+			ID:   "tool_1",
+			Name: "mcp_fetch__fetch",
+		}}},
+	}) {
+		t.Fatal("expected tool-call-only message to be suppressed")
+	}
+}
+
+func TestChannelDeduperFiltersPersistedUserRequest(t *testing.T) {
+	deduper := newChannelDeduper(time.Minute)
+	deduper.RememberMessage(channelRequestMessage(schema.SessionChannelRequest{Text: "fetch it again"}))
+
+	filtered := deduper.Filter([]*schema.Message{
+		{Role: schema.RoleUser, Content: []schema.ContentBlock{{Text: types.Ptr("fetch it again")}}, Result: schema.ResultStop},
+		{Role: schema.RoleAssistant, Content: []schema.ContentBlock{{Text: types.Ptr("article body")}}, Result: schema.ResultStop},
+	})
+
+	if len(filtered) != 1 {
+		t.Fatalf("expected 1 filtered message, got %d", len(filtered))
+	}
+	if filtered[0].Role != schema.RoleAssistant {
+		t.Fatalf("expected assistant message, got %q", filtered[0].Role)
+	}
+}
+
+func TestChannelDeduperConsumesRememberedMessageOnce(t *testing.T) {
+	deduper := newChannelDeduper(time.Minute)
+	deduper.RememberMessage(channelRequestMessage(schema.SessionChannelRequest{Text: "repeat"}))
+
+	first := deduper.Filter([]*schema.Message{{
+		Role:    schema.RoleUser,
+		Content: []schema.ContentBlock{{Text: types.Ptr("repeat")}},
+		Result:  schema.ResultStop,
+	}})
+	if len(first) != 0 {
+		t.Fatalf("expected first matching replay to be suppressed, got %d messages", len(first))
+	}
+
+	second := deduper.Filter([]*schema.Message{{
+		Role:    schema.RoleUser,
+		Content: []schema.ContentBlock{{Text: types.Ptr("repeat")}},
+		Result:  schema.ResultStop,
+	}})
+	if len(second) != 1 {
+		t.Fatalf("expected second matching message to pass through after consumption, got %d messages", len(second))
 	}
 }
 

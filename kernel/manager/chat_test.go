@@ -9,6 +9,7 @@ import (
 	// Packages
 	uuid "github.com/google/uuid"
 	schema "github.com/mutablelogic/go-llm/kernel/schema"
+	memoryschema "github.com/mutablelogic/go-llm/memory/schema"
 	llmtest "github.com/mutablelogic/go-llm/pkg/test"
 	toolkit "github.com/mutablelogic/go-llm/toolkit"
 	types "github.com/mutablelogic/go-server/pkg/types"
@@ -144,6 +145,66 @@ func TestConversationTurnOverheadIncludesSystemPrompt(t *testing.T) {
 	usage := &schema.UsageMeta{InputTokens: 16 + expected + 2, OutputTokens: 3}
 
 	assert.Equal(t, uint(2), conversationTurnOverhead(conversation, reply, usage, systemPrompt))
+}
+
+func TestMergeSystemPrompt(t *testing.T) {
+	assert.Nil(t, mergeSystemPrompt(nil, " "))
+	assert.Equal(t, "child", types.Value(mergeSystemPrompt(nil, "child")))
+	assert.Equal(t, "parent\n\nchild", types.Value(mergeSystemPrompt(types.Ptr("parent"), "child")))
+}
+
+func TestFirstTurnMemoryPromptUsesMemorySearchTool(t *testing.T) {
+	sessionID := uuid.New()
+	tool := &listToolsMockTool{
+		name: memorySearchToolKey,
+		run: func(ctx context.Context, input json.RawMessage) (any, error) {
+			assert.Equal(t, sessionID.String(), toolkit.SessionFromContext(ctx).ID())
+			assert.JSONEq(t, `{"q":"*"}`, string(input))
+			return memoryschema.MemoryList{Body: []*memoryschema.Memory{
+				{MemoryInsert: memoryschema.MemoryInsert{Key: "timezone"}},
+				{MemoryInsert: memoryschema.MemoryInsert{Key: "date"}},
+			}}, nil
+		},
+	}
+
+	prompt, err := firstTurnMemoryPrompt(context.Background(), sessionID, nil, toolMap{memorySearchToolKey: tool})
+	if !assert.NoError(t, err) {
+		return
+	}
+	assert.Contains(t, prompt, "Current memory keys for this session: date, timezone.")
+	assert.Contains(t, prompt, "The name key is not set yet.")
+}
+
+func TestFirstTurnMemoryPromptSkipsLaterTurns(t *testing.T) {
+	tool := &listToolsMockTool{
+		name: memorySearchToolKey,
+		run: func(context.Context, json.RawMessage) (any, error) {
+			t.Fatal("memory search should not run after the first turn")
+			return nil, nil
+		},
+	}
+	conversation := schema.Conversation{{Role: schema.RoleUser}}
+
+	prompt, err := firstTurnMemoryPrompt(context.Background(), uuid.New(), conversation, toolMap{memorySearchToolKey: tool})
+	if !assert.NoError(t, err) {
+		return
+	}
+	assert.Empty(t, prompt)
+}
+
+func TestFormatMemorySystemPromptOmitsMissingNameReminderWhenPresent(t *testing.T) {
+	prompt := formatMemorySystemPrompt([]string{"date", "name", "timezone"})
+
+	assert.Contains(t, prompt, "Current memory keys for this session: date, name, timezone.")
+	assert.NotContains(t, prompt, "The name key is not set yet.")
+}
+
+func TestMemoryKeysFromSearchResultDeduplicatesAndSorts(t *testing.T) {
+	keys := memoryKeysFromSearchResult(map[string]any{
+		"body": []map[string]any{{"key": "timezone"}, {"key": "date"}, {"key": "timezone"}, {"key": ""}},
+	})
+
+	assert.Equal(t, []string{"date", "timezone"}, keys)
 }
 
 func TestConversationLoopMaxIterationsUsesDefault(t *testing.T) {

@@ -28,6 +28,10 @@ func (r messageMockRow) Scan(dest ...any) error {
 	}
 	for i := range dest {
 		switch target := dest[i].(type) {
+		case *uint64:
+			*target = r.values[i].(uint64)
+		case *uuid.UUID:
+			*target = r.values[i].(uuid.UUID)
 		case *string:
 			*target = r.values[i].(string)
 		case *[]schema.ContentBlock:
@@ -399,6 +403,33 @@ func TestMessageListRequestSelect(t *testing.T) {
 	assert.Equal(`ORDER BY message.created_at ASC, message.id ASC`, b.Get("orderby"))
 }
 
+func TestMessageListRequestSelectForSessionsAndLast(t *testing.T) {
+	assert := assert.New(t)
+	sessions := []uuid.UUID{
+		uuid.MustParse("11111111-1111-1111-1111-111111111111"),
+		uuid.MustParse("22222222-2222-2222-2222-222222222222"),
+	}
+	b := pg.NewBind("schema", "llm", "message.list", "LIST")
+
+	query, err := (schema.MessageListRequest{
+		Sessions: sessions,
+		Last:     42,
+		Until:    84,
+	}).Select(b, pg.List)
+	if !assert.NoError(err) {
+		return
+	}
+
+	assert.Equal("LIST", query)
+	assert.Equal(sessions, b.Get("sessions"))
+	assert.Equal(uint64(42), b.Get("last"))
+	assert.Equal(uint64(84), b.Get("until"))
+	assert.Contains(b.Get("where").(string), `message.session = ANY(`)
+	assert.Contains(b.Get("where").(string), `message.id > `)
+	assert.Contains(b.Get("where").(string), `message.id <= `)
+	assert.Equal(`ORDER BY message.id ASC`, b.Get("orderby"))
+}
+
 func TestMessageListRequestSelectForUser(t *testing.T) {
 	assert := assert.New(t)
 	b := pg.NewBind("schema", "llm", "message.list_for_user", "LIST")
@@ -417,13 +448,16 @@ func TestMessageListRequestSelectForUser(t *testing.T) {
 func TestMessageScanAndListScan(t *testing.T) {
 	assert := assert.New(t)
 	message := new(schema.Message)
+	sessionID := uuid.MustParse("11111111-1111-1111-1111-111111111111")
 	text := types.Ptr("hello")
-	row := messageMockRow{values: []any{schema.RoleAssistant, []schema.ContentBlock{{Text: text}}, uint(7), schema.ResultStop.String(), map[string]any{"source": "test"}}}
+	row := messageMockRow{values: []any{uint64(7), sessionID, schema.RoleAssistant, []schema.ContentBlock{{Text: text}}, uint(7), schema.ResultStop.String(), map[string]any{"source": "test"}}}
 
 	if !assert.NoError(message.Scan(row)) {
 		return
 	}
 
+	assert.Equal(uint64(7), message.ID)
+	assert.Equal(sessionID, message.Session)
 	assert.Equal(schema.RoleAssistant, message.Role)
 	if assert.Len(message.Content, 1) && assert.NotNil(message.Content[0].Text) {
 		assert.Equal("hello", *message.Content[0].Text)
@@ -433,10 +467,12 @@ func TestMessageScanAndListScan(t *testing.T) {
 	assert.Equal(map[string]any{"source": "test"}, message.Meta)
 
 	list := new(schema.MessageList)
-	if !assert.NoError(list.Scan(messageMockRow{values: []any{schema.RoleUser, []schema.ContentBlock{{Text: types.Ptr("hi")}}, uint(3), "", map[string]any{}}})) {
+	if !assert.NoError(list.Scan(messageMockRow{values: []any{uint64(8), sessionID, schema.RoleUser, []schema.ContentBlock{{Text: types.Ptr("hi")}}, uint(3), "", map[string]any{}}})) {
 		return
 	}
 	if assert.Len(list.Body, 1) {
+		assert.Equal(uint64(8), list.Body[0].ID)
+		assert.Equal(sessionID, list.Body[0].Session)
 		assert.Equal(schema.RoleUser, list.Body[0].Role)
 		assert.Equal(schema.ResultStop, list.Body[0].Result)
 	}
@@ -447,12 +483,15 @@ func TestMessageScanAndListScan(t *testing.T) {
 	assert.Equal(uint(42), list.Count)
 }
 
-func TestMessageListRequestRequiresSessionBinding(t *testing.T) {
+func TestMessageListRequestSelectWithoutSessionBinding(t *testing.T) {
 	assert := assert.New(t)
 	b := pg.NewBind("schema", "llm", "message.list", "LIST")
 
-	_, err := (schema.MessageListRequest{}).Select(b, pg.List)
-	if assert.Error(err) {
-		assert.ErrorIs(err, schema.ErrBadParameter)
+	query, err := (schema.MessageListRequest{}).Select(b, pg.List)
+	if !assert.NoError(err) {
+		return
 	}
+
+	assert.Equal("LIST", query)
+	assert.Equal("", b.Get("where"))
 }

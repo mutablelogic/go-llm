@@ -145,6 +145,9 @@ func (m *Manager) DeleteSession(ctx context.Context, session uuid.UUID, user *au
 	if err := m.PoolConn.With("user", user.UUID()).Delete(ctx, &result, schema.SessionIDSelector(session)); err != nil {
 		return nil, normalizeSessionError(session, err)
 	}
+	if m.sessionfeed != nil {
+		m.sessionfeed.unsubscribeSession(session)
+	}
 
 	// Return success
 	return types.Ptr(result), nil
@@ -167,6 +170,18 @@ func (m *Manager) ListSessions(ctx context.Context, req schema.SessionListReques
 	result.OffsetLimit.Clamp(uint64(result.Count))
 
 	return types.Ptr(result), nil
+}
+
+// SubscribeSession registers a callback for new persisted messages for a session.
+// The subscription is automatically removed when ctx is canceled.
+func (m *Manager) SubscribeSession(ctx context.Context, session uuid.UUID, callback SessionFeedCallback, user *auth.User) error {
+	if m.sessionfeed == nil {
+		return schema.ErrInternalServerError.With("session feed is not configured")
+	}
+	if _, err := m.GetSession(ctx, session, user); err != nil {
+		return err
+	}
+	return m.sessionfeed.Subscribe(ctx, session, callback)
 }
 
 ///////////////////////////////////////////////////////////////////////////////

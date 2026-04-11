@@ -28,6 +28,8 @@ type SessionChannelRequest struct {
 
 // ChatResponse represents the response from a chat request.
 type ChatResponse struct {
+	ID      uint64    `json:"id,omitempty" help:"Persisted message row ID for the final reply when available" example:"42"`
+	Session uuid.UUID `json:"session,omitzero" help:"Session owning the final reply when available" optional:""`
 	CompletionResponse
 	Usage *UsageMeta `json:"usage,omitempty"`
 }

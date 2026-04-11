@@ -268,6 +268,9 @@ func (m *channelModel) applyFrame(title string, frame json.RawMessage) error {
 		if err := m.viewport.Append(channelErrorMarkdown(errFrame)); err != nil {
 			return err
 		}
+		if err := m.clearCursor(); err != nil {
+			return err
+		}
 		m.status = errFrame.Reason
 		return nil
 	}
