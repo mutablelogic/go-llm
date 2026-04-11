@@ -205,6 +205,15 @@ DO $$ BEGIN
   EXECUTE FUNCTION ${"schema"}.notify_table();
 END $$;
 
+-- llm.notify.message.trigger
+DO $$ BEGIN
+  DROP TRIGGER IF EXISTS message_table_changes_notify ON ${"schema"}.message;
+  CREATE TRIGGER message_table_changes_notify
+  AFTER INSERT ON ${"schema"}.message
+  FOR EACH STATEMENT
+  EXECUTE FUNCTION ${"schema"}.notify_table();
+END $$;
+
 -- llm.notify.connector.trigger
 DO $$ BEGIN
   DROP TRIGGER IF EXISTS connector_table_changes_notify ON ${"schema"}.connector;

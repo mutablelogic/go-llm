@@ -2,19 +2,27 @@ package ollama
 
 import (
 	"context"
+	"encoding/json"
 	"strings"
 
 	// Packages
 	client "github.com/mutablelogic/go-client"
 	llm "github.com/mutablelogic/go-llm"
-	opt "github.com/mutablelogic/go-llm/pkg/opt"
 	schema "github.com/mutablelogic/go-llm/kernel/schema"
+	opt "github.com/mutablelogic/go-llm/pkg/opt"
 )
 
 ///////////////////////////////////////////////////////////////////////////////
 // INTERFACE CHECK
 
 var _ llm.Generator = (*Client)(nil)
+
+type chatStreamAccumulator struct {
+	role      string
+	toolCalls []chatToolCall
+	content   strings.Builder
+	thinking  strings.Builder
+}
 
 ///////////////////////////////////////////////////////////////////////////////
 // PUBLIC METHODS
@@ -83,10 +91,10 @@ func (c *Client) generateStream(ctx context.Context, payload client.Payload, str
 	var final generateResponse
 	var accResponse strings.Builder
 
-	callback := func(v any) error {
-		chunk, ok := v.(*generateResponse)
-		if !ok || chunk == nil {
-			return nil
+	callback := func(v json.RawMessage) error {
+		var chunk generateResponse
+		if err := json.Unmarshal(v, &chunk); err != nil {
+			return err
 		}
 		// Read and immediately reset before the next json.Decode call.
 		// json.Decode only sets fields present in the JSON; omitempty fields
@@ -99,7 +107,7 @@ func (c *Client) generateStream(ctx context.Context, payload client.Payload, str
 			streamFn("assistant", response)
 		}
 		if chunk.Done {
-			final = *chunk
+			final = chunk
 		}
 		return nil
 	}
@@ -169,32 +177,16 @@ func (c *Client) chat(ctx context.Context, model string, session *schema.Convers
 // chatStream handles ndjson streaming for /api/chat.
 func (c *Client) chatStream(ctx context.Context, payload client.Payload, session *schema.Conversation, streamFn opt.StreamFn) (*schema.Message, *schema.UsageMeta, error) {
 	var final chatResponse
-	var accContent, accThinking strings.Builder
+	var acc chatStreamAccumulator
 
-	callback := func(v any) error {
-		chunk, ok := v.(*chatResponse)
-		if !ok || chunk == nil {
-			return nil
+	callback := func(v json.RawMessage) error {
+		var chunk chatResponse
+		if err := json.Unmarshal(v, &chunk); err != nil {
+			return err
 		}
-		// Read and immediately reset before the next json.Decode call.
-		// json.Decode only sets fields present in the JSON; omitempty fields
-		// (like "thinking") are NOT zeroed between chunks, so stale values
-		// would leak into subsequent content-only chunks.
-		content := chunk.Message.Content
-		thinking := chunk.Message.Thinking
-		chunk.Message.Content = ""
-		chunk.Message.Thinking = ""
-
-		if content != "" {
-			accContent.WriteString(content)
-			streamFn("assistant", content)
-		}
-		if thinking != "" {
-			accThinking.WriteString(thinking)
-			streamFn("thinking", thinking)
-		}
+		acc.consume(&chunk, streamFn)
 		if chunk.Done {
-			final = *chunk
+			final = chunk
 		}
 		return nil
 	}
@@ -204,14 +196,62 @@ func (c *Client) chatStream(ctx context.Context, payload client.Payload, session
 		return nil, nil, err
 	}
 
-	// Populate the final message with accumulated content from streaming chunks.
-	// The done=true chunk always has empty message content, so we restore the
-	// full text here before passing to processChatResponse.
-	final.Message.Role = "assistant"
-	final.Message.Content = accContent.String()
-	final.Message.Thinking = accThinking.String()
+	// Populate the final message with any state streamed in earlier chunks.
+	// Ollama may emit tool calls before the terminal done=true frame, and that
+	// final frame can still report done_reason=stop with an empty message body.
+	acc.apply(&final)
 
 	return c.processChatResponse(session, &final)
+}
+
+func (a *chatStreamAccumulator) consume(chunk *chatResponse, streamFn opt.StreamFn) {
+	if chunk == nil {
+		return
+	}
+	if chunk.Message.Role != "" {
+		a.role = chunk.Message.Role
+	}
+	if content := chunk.Message.Content; content != "" {
+		a.content.WriteString(content)
+		if streamFn != nil {
+			streamFn(schema.RoleAssistant, content)
+		}
+	}
+	if thinking := chunk.Message.Thinking; thinking != "" {
+		a.thinking.WriteString(thinking)
+		if streamFn != nil {
+			streamFn(schema.RoleThinking, thinking)
+		}
+	}
+	if len(chunk.Message.ToolCalls) > 0 {
+		a.toolCalls = cloneChatToolCalls(chunk.Message.ToolCalls)
+	}
+}
+
+func (a *chatStreamAccumulator) apply(final *chatResponse) {
+	if final == nil {
+		return
+	}
+	if a.role != "" {
+		final.Message.Role = a.role
+	}
+	if final.Message.Role == "" {
+		final.Message.Role = schema.RoleAssistant
+	}
+	final.Message.Content = a.content.String()
+	final.Message.Thinking = a.thinking.String()
+	if len(a.toolCalls) > 0 {
+		final.Message.ToolCalls = cloneChatToolCalls(a.toolCalls)
+	}
+}
+
+func cloneChatToolCalls(src []chatToolCall) []chatToolCall {
+	if len(src) == 0 {
+		return nil
+	}
+	dst := make([]chatToolCall, len(src))
+	copy(dst, src)
+	return dst
 }
 
 func (c *Client) processChatResponse(session *schema.Conversation, resp *chatResponse) (*schema.Message, *schema.UsageMeta, error) {

@@ -559,6 +559,22 @@ WHERE session."user" = @user
 ${where}
 ${orderby}
 
+-- message.session_feed
+SELECT
+	message.id,
+	message.session,
+	message.role,
+	COALESCE(message.content, '[]'::jsonb) AS content,
+	COALESCE(message.tokens, 0),
+	COALESCE(message.result::text, ''),
+	COALESCE(message.meta, '{}'::jsonb) AS meta,
+	message.created_at
+FROM ${"schema"}.message AS message
+WHERE message.session = ANY(@sessions)
+AND message.id > @after_id
+ORDER BY message.id ASC
+${offsetlimit}
+
 -- usage.insert
 INSERT INTO ${"schema"}.usage (
 	"type", batch, "session", "user", provider, model,

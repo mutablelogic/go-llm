@@ -20,13 +20,38 @@ type markdown struct {
 // LIFECYCLE
 
 func Markdown(options ...Opt) *markdown {
+	return &markdown{renderer: newMarkdownRenderer(applyOpts(options...))}
+}
+
+///////////////////////////////////////////////////////////////////////////////
+// PUBLIC METHODS
+
+func (m *markdown) Write(w io.Writer, text string) (int, error) {
+	out, err := renderMarkdown(m.renderer, text)
+	if out == "" {
+		return io.WriteString(w, "")
+	}
+	if err != nil {
+		return io.WriteString(w, strings.TrimSpace(text))
+	}
+
+	return io.WriteString(w, strings.TrimSpace(out))
+}
+
+///////////////////////////////////////////////////////////////////////////////
+// PRIVATE METHODS
+
+func applyOpts(options ...Opt) opts {
 	var opts opts
 	for _, opt := range options {
 		if opt != nil {
 			opt(&opts)
 		}
 	}
+	return opts
+}
 
+func newMarkdownRenderer(opts opts) *glamour.TermRenderer {
 	stylePath := "dark"
 	if !termenv.HasDarkBackground() {
 		stylePath = "light"
@@ -40,25 +65,22 @@ func Markdown(options ...Opt) *markdown {
 	}
 
 	renderer, _ := glamour.NewTermRenderer(rendererOptions...)
-	return &markdown{renderer: renderer}
+	return renderer
 }
 
-///////////////////////////////////////////////////////////////////////////////
-// PUBLIC METHODS
-
-func (m *markdown) Write(w io.Writer, text string) (int, error) {
+func renderMarkdown(renderer *glamour.TermRenderer, text string) (string, error) {
 	text = strings.TrimSpace(text)
 	if text == "" {
-		return io.WriteString(w, "")
+		return "", nil
 	}
-	if m == nil || m.renderer == nil {
-		return io.WriteString(w, text)
+	if renderer == nil {
+		return text, nil
 	}
 
-	out, err := m.renderer.Render(text)
+	out, err := renderer.Render(text)
 	if err != nil {
-		return io.WriteString(w, text)
+		return text, err
 	}
 
-	return io.WriteString(w, strings.TrimSpace(out))
+	return strings.TrimSpace(out), nil
 }

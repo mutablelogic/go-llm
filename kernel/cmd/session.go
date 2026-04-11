@@ -132,6 +132,9 @@ func (cmd *CreateSessionCommand) Run(ctx server.Cmd) (err error) {
 		if err != nil {
 			return err
 		}
+		if err := ctx.Set("session", session.ID.String()); err != nil {
+			return err
+		}
 
 		fmt.Println(session)
 		return nil

@@ -15,6 +15,13 @@ import (
 	types "github.com/mutablelogic/go-server/pkg/types"
 )
 
+type channelFrames struct {
+	session   *schema.Session
+	deltas    []schema.StreamDelta
+	responses []schema.ChatResponse
+	errors    []httpresponse.ErrResponse
+}
+
 func TestSessionChannelIntegration(t *testing.T) {
 	modelName := requireDownloadModel(t)
 	conn, manager := newModelHandlerIntegrationManager(t)
@@ -40,18 +47,19 @@ func TestSessionChannelIntegration(t *testing.T) {
 		t.Fatalf("expected content type %q, got %q", types.ContentTypeJSONStream, ct)
 	}
 
-	var resp schema.ChatResponse
-	if err := json.NewDecoder(w.Body).Decode(&resp); err != nil {
-		t.Fatal(err)
+	frames := decodeChannelFrames(t, w.Body)
+	if frames.session == nil {
+		t.Fatal("expected session frame")
 	}
+	if len(frames.responses) != 1 {
+		t.Fatalf("expected 1 final response, got %d", len(frames.responses))
+	}
+	resp := frames.responses[0]
 	if resp.Role != schema.RoleAssistant {
 		t.Fatalf("expected role %q, got %q", schema.RoleAssistant, resp.Role)
 	}
 	if len(resp.Content) == 0 || resp.Content[0].Text == nil || *resp.Content[0].Text == "" {
 		t.Fatalf("expected assistant text, got %+v", resp.Content)
-	}
-	if err := json.NewDecoder(w.Body).Decode(&resp); err != io.EOF {
-		t.Fatalf("expected EOF after first response, got %v", err)
 	}
 }
 
@@ -82,19 +90,19 @@ func TestSessionChannelMultipleFramesIntegration(t *testing.T) {
 		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
 	}
 
-	dec := json.NewDecoder(w.Body)
-	for i := 0; i < 2; i++ {
-		var resp schema.ChatResponse
-		if err := dec.Decode(&resp); err != nil {
-			t.Fatalf("decode response %d: %v", i+1, err)
-		}
-		if resp.Role != schema.RoleAssistant {
-			t.Fatalf("response %d: expected role %q, got %q", i+1, schema.RoleAssistant, resp.Role)
-		}
+	frames := decodeChannelFrames(t, w.Body)
+	if frames.session == nil {
+		t.Fatal("expected session frame")
 	}
-	var extra schema.ChatResponse
-	if err := dec.Decode(&extra); err != io.EOF {
-		t.Fatalf("expected EOF after two responses, got %v", err)
+	if !hasChannelErrorCode(frames.errors, http.StatusConflict) {
+		t.Fatalf("expected busy error frame code 409, got %+v", frames.errors)
+	}
+	if len(frames.responses) != 1 {
+		t.Fatalf("expected 1 final response, got %d", len(frames.responses))
+	}
+	resp := frames.responses[0]
+	if resp.Role != schema.RoleAssistant {
+		t.Fatalf("expected role %q, got %q", schema.RoleAssistant, resp.Role)
 	}
 }
 
@@ -170,24 +178,19 @@ func TestSessionChannelFrameErrorContinues(t *testing.T) {
 		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
 	}
 
-	dec := json.NewDecoder(w.Body)
-	var errFrame httpresponse.ErrResponse
-	if err := dec.Decode(&errFrame); err != nil {
-		t.Fatal(err)
+	frames := decodeChannelFrames(t, w.Body)
+	if frames.session == nil {
+		t.Fatal("expected session frame")
 	}
-	if errFrame.Code != http.StatusBadRequest {
-		t.Fatalf("expected error frame code 400, got %d (%+v)", errFrame.Code, errFrame)
+	if !hasChannelErrorCode(frames.errors, http.StatusBadRequest) {
+		t.Fatalf("expected error frame code 400, got %+v", frames.errors)
 	}
-
-	var resp schema.ChatResponse
-	if err := dec.Decode(&resp); err != nil {
-		t.Fatal(err)
+	if len(frames.responses) != 1 {
+		t.Fatalf("expected 1 final response, got %d", len(frames.responses))
 	}
+	resp := frames.responses[0]
 	if resp.Role != schema.RoleAssistant {
 		t.Fatalf("expected role %q, got %q", schema.RoleAssistant, resp.Role)
-	}
-	if err := dec.Decode(&resp); err != io.EOF {
-		t.Fatalf("expected EOF after error and response frames, got %v", err)
 	}
 }
 
@@ -230,10 +233,14 @@ func TestSessionChannelAcceptsWildcard(t *testing.T) {
 	if w.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
 	}
-	var resp schema.ChatResponse
-	if err := json.NewDecoder(w.Body).Decode(&resp); err != nil {
-		t.Fatal(err)
+	frames := decodeChannelFrames(t, w.Body)
+	if frames.session == nil {
+		t.Fatal("expected session frame")
 	}
+	if len(frames.responses) != 1 {
+		t.Fatalf("expected 1 final response, got %d", len(frames.responses))
+	}
+	resp := frames.responses[0]
 	if resp.Role != schema.RoleAssistant {
 		t.Fatalf("expected role %q, got %q", schema.RoleAssistant, resp.Role)
 	}
@@ -264,11 +271,103 @@ func TestSessionChannelSessionPathOwnsSession(t *testing.T) {
 	if w.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
 	}
-	var resp schema.ChatResponse
-	if err := json.NewDecoder(w.Body).Decode(&resp); err != nil {
-		t.Fatal(err)
+	frames := decodeChannelFrames(t, w.Body)
+	if frames.session == nil {
+		t.Fatal("expected session frame")
 	}
+	if len(frames.responses) != 1 {
+		t.Fatalf("expected 1 final response, got %d", len(frames.responses))
+	}
+	resp := frames.responses[0]
 	if resp.Role != schema.RoleAssistant {
 		t.Fatalf("expected role %q, got %q", schema.RoleAssistant, resp.Role)
 	}
+}
+
+func decodeChannelFrames(t *testing.T, reader io.Reader) channelFrames {
+	t.Helper()
+
+	dec := json.NewDecoder(reader)
+	frames := channelFrames{}
+	for {
+		var raw json.RawMessage
+		if err := dec.Decode(&raw); err != nil {
+			if err == io.EOF {
+				return frames
+			}
+			t.Fatalf("decode frame: %v", err)
+		}
+
+		if session, ok := decodeSessionFrame(raw); ok {
+			frames.session = session
+			continue
+		}
+		if errFrame, ok := decodeChannelError(raw); ok {
+			frames.errors = append(frames.errors, errFrame)
+			continue
+		}
+		if delta, ok := decodeChannelDelta(raw); ok {
+			frames.deltas = append(frames.deltas, delta)
+			continue
+		}
+		if response, ok := decodeChannelResponse(raw); ok {
+			frames.responses = append(frames.responses, response)
+			continue
+		}
+
+		t.Fatalf("unexpected frame: %s", string(raw))
+	}
+}
+
+func decodeSessionFrame(raw json.RawMessage) (*schema.Session, bool) {
+	var session schema.Session
+	if err := json.Unmarshal(raw, &session); err != nil {
+		return nil, false
+	}
+	if session.ID == uuid.Nil {
+		return nil, false
+	}
+	return &session, true
+}
+
+func decodeChannelError(raw json.RawMessage) (httpresponse.ErrResponse, bool) {
+	var errFrame httpresponse.ErrResponse
+	if err := json.Unmarshal(raw, &errFrame); err != nil {
+		return httpresponse.ErrResponse{}, false
+	}
+	if errFrame.Code == 0 {
+		return httpresponse.ErrResponse{}, false
+	}
+	return errFrame, true
+}
+
+func decodeChannelDelta(raw json.RawMessage) (schema.StreamDelta, bool) {
+	var delta schema.StreamDelta
+	if err := json.Unmarshal(raw, &delta); err != nil {
+		return schema.StreamDelta{}, false
+	}
+	if delta.Role == "" || delta.Text == "" {
+		return schema.StreamDelta{}, false
+	}
+	return delta, true
+}
+
+func decodeChannelResponse(raw json.RawMessage) (schema.ChatResponse, bool) {
+	var response schema.ChatResponse
+	if err := json.Unmarshal(raw, &response); err != nil {
+		return schema.ChatResponse{}, false
+	}
+	if len(response.Content) == 0 {
+		return schema.ChatResponse{}, false
+	}
+	return response, true
+}
+
+func hasChannelErrorCode(frames []httpresponse.ErrResponse, code int) bool {
+	for _, frame := range frames {
+		if frame.Code == code {
+			return true
+		}
+	}
+	return false
 }

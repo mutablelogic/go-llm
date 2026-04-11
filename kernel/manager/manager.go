@@ -25,6 +25,7 @@ type Manager struct {
 	*provider.Registry
 	toolkit.Toolkit
 	broadcaster broadcaster.Broadcaster
+	sessionfeed *SessionFeed
 	delegate    *delegate
 }
 
@@ -88,6 +89,9 @@ func New(ctx context.Context, name, version string, pool pg.PoolConn, opts ...Op
 
 	// Create a connector delegate, which receives notifications of connector changes
 	self.delegate = NewDelegate(self.name, self.version, self.connectors, self.clientopts...)
+
+	// Create a session feed, which updates listening sessions when new messages are added
+	self.sessionfeed = NewSessionFeed(pool)
 
 	// TEST
 	// Register metrics after the registry has been initialized so callbacks can
