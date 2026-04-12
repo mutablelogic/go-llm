@@ -128,7 +128,7 @@ func (*searchMemoryTool) Name() string {
 }
 
 func (*searchMemoryTool) Description() string {
-	return "Search memory entries for the current session using PostgreSQL web-style search syntax. Leave q empty or use * to list all memories for the session. Current UTC date, time, datetime, and timezone are returned as dynamic memory entries."
+	return "Search memory entries for the current session and its parent sessions using PostgreSQL web-style search syntax. Leave q empty or use * to list all memories in that ancestry. Current UTC date, time, datetime, and timezone are returned as dynamic memory entries."
 }
 
 func (*searchMemoryTool) InputSchema() *jsonschema.Schema {

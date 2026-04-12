@@ -44,7 +44,7 @@ type MemorySelector struct {
 // MemoryListRequest represents a request to list or search memory entries.
 type MemoryListRequest struct {
 	pg.OffsetLimit
-	Session *uuid.UUID `json:"session,omitzero" help:"Restrict results to a single session" optional:""`
+	Session *uuid.UUID `json:"session,omitzero" help:"Restrict results to a session and recursively include its parent sessions" optional:""`
 	Q       string     `json:"q,omitempty" help:"Web-style text query matched against memory keys and values using PostgreSQL websearch syntax; leave empty or use * to list all memories for the session" optional:""`
 	Start   *time.Time `json:"start,omitempty" help:"Return memories on or after this timestamp" optional:""`
 	End     *time.Time `json:"end,omitempty" help:"Return memories on or before this timestamp" optional:""`
@@ -128,11 +128,13 @@ func (sel MemorySelector) Select(bind *pg.Bind, op pg.Op) (string, error) {
 
 func (req MemoryListRequest) Select(bind *pg.Bind, op pg.Op) (string, error) {
 	bind.Del("where")
+	queryName := "memory.list"
 	if req.Session != nil {
 		if *req.Session == uuid.Nil {
 			return "", fmt.Errorf("memory session cannot be nil")
 		}
-		bind.Append("where", `memory."session" = `+bind.Set("session", *req.Session))
+		bind.Set("session", *req.Session)
+		queryName = "memory.list_recursive"
 	}
 	if q := strings.TrimSpace(req.Q); q != "" && q != "*" {
 		bind.Append("where", `to_tsvector('simple', COALESCE(memory."key", '') || ' ' || COALESCE(memory."value", '')) @@ websearch_to_tsquery('simple', `+bind.Set("q", q)+`)`)
@@ -148,14 +150,18 @@ func (req MemoryListRequest) Select(bind *pg.Bind, op pg.Op) (string, error) {
 	if where == "" {
 		bind.Set("where", "")
 	} else {
-		bind.Set("where", "WHERE "+where)
+		prefix := "WHERE "
+		if queryName == "memory.list_recursive" {
+			prefix = "AND "
+		}
+		bind.Set("where", prefix+where)
 	}
 	bind.Set("orderby", `ORDER BY memory.created_at DESC, memory."session" ASC, memory."key" ASC`)
 	req.OffsetLimit.Bind(bind, MemoryListMax)
 
 	switch op {
 	case pg.List:
-		return bind.Query("memory.list"), nil
+		return bind.Query(queryName), nil
 	default:
 		return "", fmt.Errorf("MemoryListRequest: unsupported operation %q", op)
 	}
