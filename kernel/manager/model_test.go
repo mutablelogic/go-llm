@@ -9,8 +9,8 @@ import (
 	// Packages
 	auth "github.com/djthorpe/go-auth/schema/auth"
 	llm "github.com/mutablelogic/go-llm"
-	opt "github.com/mutablelogic/go-llm/pkg/opt"
 	schema "github.com/mutablelogic/go-llm/kernel/schema"
+	opt "github.com/mutablelogic/go-llm/pkg/opt"
 	llmtest "github.com/mutablelogic/go-llm/pkg/test"
 	httpresponse "github.com/mutablelogic/go-server/pkg/httpresponse"
 	assert "github.com/stretchr/testify/assert"
@@ -22,13 +22,15 @@ type modelTestClient struct {
 
 func (c *modelTestClient) Name() string { return c.name }
 
+func (c *modelTestClient) Self() llm.Client { return c }
+
 func (c *modelTestClient) Ping(context.Context) error { return nil }
 
-func (c *modelTestClient) ListModels(context.Context, ...opt.Opt) ([]schema.Model, error) {
+func (c *modelTestClient) ListModels(context.Context) ([]schema.Model, error) {
 	return nil, nil
 }
 
-func (c *modelTestClient) GetModel(context.Context, string, ...opt.Opt) (*schema.Model, error) {
+func (c *modelTestClient) GetModel(context.Context, string) (*schema.Model, error) {
 	return nil, nil
 }
 

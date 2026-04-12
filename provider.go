@@ -4,8 +4,8 @@ import (
 	"context"
 
 	// Packages
-	opt "github.com/mutablelogic/go-llm/pkg/opt"
 	schema "github.com/mutablelogic/go-llm/kernel/schema"
+	opt "github.com/mutablelogic/go-llm/pkg/opt"
 )
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -16,14 +16,17 @@ type Client interface {
 	// Return the provider name
 	Name() string
 
+	// Self returns the underlying client implementation for capability checks.
+	Self() Client
+
 	// Ping checks the connectivity of the client and returns an error if not successful
 	Ping(context.Context) error
 
 	// ListModels returns the list of available models
-	ListModels(context.Context, ...opt.Opt) ([]schema.Model, error)
+	ListModels(context.Context) ([]schema.Model, error)
 
 	// GetModel returns the model with the given name
-	GetModel(context.Context, string, ...opt.Opt) (*schema.Model, error)
+	GetModel(context.Context, string) (*schema.Model, error)
 }
 
 // Embedder is an interface for generating text embeddings

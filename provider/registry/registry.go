@@ -1,4 +1,4 @@
-package provider
+package registry
 
 import (
 	"context"
@@ -12,12 +12,13 @@ import (
 	// Packages
 	client "github.com/mutablelogic/go-client"
 	llm "github.com/mutablelogic/go-llm"
+	schema "github.com/mutablelogic/go-llm/kernel/schema"
 	anthropic "github.com/mutablelogic/go-llm/provider/anthropic"
 	eliza "github.com/mutablelogic/go-llm/provider/eliza"
 	gemini "github.com/mutablelogic/go-llm/provider/google"
 	mistral "github.com/mutablelogic/go-llm/provider/mistral"
 	ollama "github.com/mutablelogic/go-llm/provider/ollama"
-	schema "github.com/mutablelogic/go-llm/kernel/schema"
+	openai "github.com/mutablelogic/go-llm/provider/openai"
 	httpresponse "github.com/mutablelogic/go-server/pkg/httpresponse"
 	types "github.com/mutablelogic/go-server/pkg/types"
 )
@@ -34,7 +35,7 @@ type Registry struct {
 
 type provider struct {
 	schema schema.Provider
-	client llm.Client
+	client *CachedClient
 	up     bool
 }
 
@@ -98,7 +99,7 @@ func (r *Registry) Sync(schema []*schema.Provider, decrypter func(i int) (schema
 		} else if deleted {
 			deletes = append(deletes, s.Name)
 		}
-		delete(current, s.Name) // Remove from current set to track which providers are still valid
+		delete(current, s.Name)
 	}
 
 	// Any remaining providers in the current set are no longer present in the new schema and should be deleted
@@ -256,23 +257,47 @@ func (r *Registry) setLocked(schema *schema.Provider, credentials schema.Provide
 ///////////////////////////////////////////////////////////////////////////////
 // PRIVATE METHODS
 
-func createClient(provider *schema.Provider, credentials schema.ProviderCredentials, opts ...client.ClientOpt) (llm.Client, error) {
+func createClient(provider *schema.Provider, credentials schema.ProviderCredentials, opts ...client.ClientOpt) (*CachedClient, error) {
 	switch provider.Provider {
 	case schema.Anthropic:
-		if credentials.APIKey == "" {
-			return nil, httpresponse.ErrBadRequest.Withf("missing API key for Anthropic provider")
+		if client, err := anthropic.New(credentials.APIKey, opts...); err != nil {
+			return nil, err
+		} else {
+			return NewCachedClient(client, time.Minute*60), nil
 		}
-		return anthropic.New(credentials.APIKey, opts...)
 	case schema.Ollama:
-		return ollama.New(types.Value(provider.URL), opts...)
+		if client, err := ollama.New(types.Value(provider.URL), opts...); err != nil {
+			return nil, err
+		} else {
+			return NewCachedClient(client, time.Minute*5), nil
+		}
 	case schema.Mistral:
-		return mistral.New(credentials.APIKey, opts...)
+		if client, err := mistral.New(credentials.APIKey, opts...); err != nil {
+			return nil, err
+		} else {
+			return NewCachedClient(client, time.Minute*60), nil
+		}
 	case schema.Gemini:
-		return gemini.New(credentials.APIKey, opts...)
+		if client, err := gemini.New(credentials.APIKey, opts...); err != nil {
+			return nil, err
+		} else {
+			return NewCachedClient(client, time.Minute*60), nil
+		}
 	case schema.Eliza:
-		return eliza.New()
+		if client, err := eliza.New(); err != nil {
+			return nil, err
+		} else {
+			return NewCachedClient(client, 0), nil
+		}
+	case schema.OpenAI:
+		if client, err := openai.New(credentials.APIKey, opts...); err != nil {
+			return nil, err
+		} else {
+			return NewCachedClient(client, time.Minute*60), nil
+		}
+	default:
+		return nil, httpresponse.ErrBadRequest.Withf("unsupported provider: %s", provider.Provider)
 	}
-	return nil, httpresponse.ErrBadRequest.Withf("unsupported provider: %s", provider.Provider)
 }
 
 // Syncronizes the registry with the provided list of provider schemas and a decrypter function to obtain credentials.

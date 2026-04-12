@@ -93,6 +93,23 @@ func TestChannelResponseMarkdownRendersTextBlocks(t *testing.T) {
 	assert.Contains(t, markdown, "_Result: stop_")
 }
 
+func TestChannelResponseMarkdownConcatenatesSplitTextBlocks(t *testing.T) {
+	markdown, err := channelResponseMarkdown(schema.ChatResponse{
+		CompletionResponse: schema.CompletionResponse{
+			Role: schema.RoleAssistant,
+			Content: []schema.ContentBlock{
+				{Text: stringPtr("It")},
+				{Text: stringPtr("'s")},
+				{Text: stringPtr(" working")},
+			},
+			Result: schema.ResultStop,
+		},
+	})
+	require.NoError(t, err)
+	assert.Contains(t, markdown, "It's working")
+	assert.NotContains(t, markdown, "It\n\n'")
+}
+
 func TestChannelModelApplyResponseReplacesLiveAssistantSection(t *testing.T) {
 	text := "hello"
 	m := &channelModel{

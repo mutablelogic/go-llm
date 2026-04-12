@@ -30,9 +30,10 @@ type ProviderConfig struct {
 
 type Conn struct {
 	pg.PoolConn
-	Config     ProviderConfig
-	SkipReason string
-	t          *testing.T
+	Config          ProviderConfig
+	SetupSkipReason string
+	SkipReason      string
+	t               *testing.T
 }
 
 const timeout = 2 * time.Minute
@@ -45,6 +46,11 @@ func Main(m *testing.M, conn *Conn, config ProviderConfig) {
 	defer cancel()
 
 	name, err := os.Executable()
+	if err != nil {
+		panic(err)
+	}
+
+	resolved, skipReason, err := resolveProviderConfig(config)
 	if err != nil {
 		panic(err)
 	}
@@ -63,17 +69,14 @@ func Main(m *testing.M, conn *Conn, config ProviderConfig) {
 		}
 	})
 	if err != nil {
-		panic(err)
+		*conn = Conn{Config: resolved, SetupSkipReason: fmt.Sprintf("skipping integration tests: postgres container unavailable: %v", err), SkipReason: skipReason}
+		os.Exit(m.Run())
 	}
 	defer pool.Close()
 	defer container.Close(ctx)
-
-	resolved, skipReason, err := resolveProviderConfig(config)
-	if err != nil {
-		panic(err)
-	}
 	if err := bootstrapAuth(ctx, pool, resolved.Groups); err != nil {
-		panic(err)
+		*conn = Conn{PoolConn: pool, Config: resolved, SetupSkipReason: fmt.Sprintf("skipping integration tests: bootstrap auth failed: %v", err), SkipReason: skipReason}
+		os.Exit(m.Run())
 	}
 
 	*conn = Conn{PoolConn: pool, Config: resolved, SkipReason: skipReason}
@@ -81,6 +84,10 @@ func Main(m *testing.M, conn *Conn, config ProviderConfig) {
 }
 
 func (c *Conn) Begin(t *testing.T) *Conn {
+	t.Helper()
+	if c.SetupSkipReason != "" {
+		t.Skip(c.SetupSkipReason)
+	}
 	t.Log("Begin", t.Name())
 	return &Conn{PoolConn: c.PoolConn, Config: c.Config, SkipReason: c.SkipReason, t: t}
 }
@@ -160,6 +167,13 @@ func resolveProviderConfig(config ProviderConfig) (ProviderConfig, string, error
 		}
 		if resolved.URL == "" {
 			return resolved, "OLLAMA_URL not set, skipping", nil
+		}
+	case schema.OpenAI:
+		if resolved.APIKey == "" {
+			resolved.APIKey = os.Getenv("OPENAI_API_KEY")
+		}
+		if resolved.APIKey == "" {
+			return resolved, "OPENAI_API_KEY not set, skipping", nil
 		}
 	case schema.Eliza:
 		// No provider-specific env required.

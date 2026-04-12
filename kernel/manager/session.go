@@ -123,7 +123,7 @@ func (m *Manager) UpdateSession(ctx context.Context, session uuid.UUID, meta sch
 		}
 		return conn.Update(ctx, &result, schema.SessionIDSelector(session), meta)
 	}); err != nil {
-		return nil, normalizeSessionError(session, err)
+		return nil, pg.NormalizeError(err)
 	}
 
 	// Return success

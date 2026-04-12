@@ -8,12 +8,10 @@ import (
 	"context"
 	"net/url"
 	"strings"
-	"time"
 
 	// Packages
 	client "github.com/mutablelogic/go-client"
 	llm "github.com/mutablelogic/go-llm"
-	modelcache "github.com/mutablelogic/go-llm/pkg/modelcache"
 	schema "github.com/mutablelogic/go-llm/kernel/schema"
 )
 
@@ -22,7 +20,6 @@ import (
 
 type Client struct {
 	*client.Client
-	*modelcache.ModelCache
 }
 
 var _ llm.Client = (*Client)(nil)
@@ -64,7 +61,7 @@ func New(endPoint string, opts ...client.ClientOpt) (*Client, error) {
 	}
 
 	// Return the client
-	return &Client{Client: client, ModelCache: modelcache.NewModelCache(time.Minute, 40)}, nil
+	return &Client{Client: client}, nil
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -73,6 +70,11 @@ func New(endPoint string, opts ...client.ClientOpt) (*Client, error) {
 // Name returns the provider name
 func (*Client) Name() string {
 	return schema.Ollama
+}
+
+// Self returns the underlying client implementation.
+func (c *Client) Self() llm.Client {
+	return c
 }
 
 // versionResponse is the response from the version endpoint

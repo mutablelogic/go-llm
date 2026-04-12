@@ -128,6 +128,9 @@ func (m *Manager) generatorFromMeta(ctx context.Context, meta schema.GeneratorMe
 	var model *schema.Model
 	var provider *schema.Provider
 	if len(models) == 0 {
+		if providerName := types.Value(meta.Provider); providerName != "" {
+			return nil, nil, nil, nil, schema.ErrNotFound.Withf("model %q not found for provider %q", types.Value(meta.Model), providerName)
+		}
 		return nil, nil, nil, nil, schema.ErrNotFound.Withf("model %q not found", types.Value(meta.Model))
 	} else if len(models) > 1 {
 		return nil, nil, nil, nil, schema.ErrConflict.Withf("multiple models named %q found; specify a provider", types.Value(meta.Model))
@@ -151,7 +154,7 @@ func (m *Manager) generatorFromMeta(ctx context.Context, meta schema.GeneratorMe
 	}
 
 	// Client needs to be a generator
-	generator, ok := client.(llm.Generator)
+	generator, ok := client.Self().(llm.Generator)
 	if !ok {
 		return nil, nil, nil, nil, schema.ErrNotImplemented.Withf("provider %q does not support generation", model.OwnedBy)
 	}

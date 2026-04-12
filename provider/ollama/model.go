@@ -17,18 +17,16 @@ import (
 // PUBLIC METHODS
 
 // List all models in the Ollama registry
-func (ollama *Client) ListModels(ctx context.Context, opts ...opt.Opt) ([]schema.Model, error) {
-	return ollama.ModelCache.ListModels(ctx, opts, func(ctx context.Context, opts ...opt.Opt) ([]schema.Model, error) {
-		var response listModelsResponse
-		if err := ollama.DoWithContext(ctx, nil, &response, client.OptPath("tags")); err != nil {
-			return nil, err
-		}
-		result := make([]schema.Model, len(response.Data))
-		for i, m := range response.Data {
-			result[i] = ollama.modelToSchema(m)
-		}
-		return result, nil
-	})
+func (ollama *Client) ListModels(ctx context.Context) ([]schema.Model, error) {
+	var response listModelsResponse
+	if err := ollama.DoWithContext(ctx, nil, &response, client.OptPath("tags")); err != nil {
+		return nil, err
+	}
+	result := make([]schema.Model, len(response.Data))
+	for i, m := range response.Data {
+		result[i] = ollama.modelToSchema(m)
+	}
+	return result, nil
 }
 
 // List running models
@@ -45,23 +43,20 @@ func (ollama *Client) ListRunningModels(ctx context.Context) ([]schema.Model, er
 }
 
 // GetModel returns the model with the given name
-func (ollama *Client) GetModel(ctx context.Context, name string, opts ...opt.Opt) (*schema.Model, error) {
-	return ollama.ModelCache.GetModel(ctx, name, func(ctx context.Context, name string) (*schema.Model, error) {
-		var response model
-		req, err := client.NewJSONRequest(map[string]string{"name": name})
-		if err != nil {
-			return nil, err
-		}
-		if err := ollama.DoWithContext(ctx, req, &response, client.OptPath("show")); err != nil {
-			return nil, err
-		}
-		result := ollama.modelToSchema(response)
-		// The show endpoint doesn't return the name, so set it from the request
-		if result.Name == "" {
-			result.Name = name
-		}
-		return &result, nil
-	})
+func (ollama *Client) GetModel(ctx context.Context, name string) (*schema.Model, error) {
+	var response model
+	req, err := client.NewJSONRequest(map[string]string{"name": name})
+	if err != nil {
+		return nil, err
+	}
+	if err := ollama.DoWithContext(ctx, req, &response, client.OptPath("show")); err != nil {
+		return nil, err
+	}
+	result := ollama.modelToSchema(response)
+	if result.Name == "" {
+		result.Name = name
+	}
+	return &result, nil
 }
 
 // Delete a model by name
@@ -88,8 +83,6 @@ func (ollama *Client) DeleteModel(ctx context.Context, model schema.Model) error
 		return err
 	}
 
-	// Invalidate the model cache
-	ollama.ModelCache.Flush()
 	return nil
 }
 
@@ -193,9 +186,6 @@ func (ollama *Client) DownloadModel(ctx context.Context, name string, opts ...op
 	if err := ollama.DoWithContext(ctx, req, &response, clientOpts...); err != nil {
 		return nil, err
 	}
-
-	// Invalidate the model cache so the newly downloaded model is fetched fresh
-	ollama.ModelCache.Flush()
 
 	// Return the downloaded model
 	return ollama.GetModel(ctx, name)

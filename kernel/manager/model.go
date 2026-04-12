@@ -11,8 +11,8 @@ import (
 	auth "github.com/djthorpe/go-auth/schema/auth"
 	otel "github.com/mutablelogic/go-client/pkg/otel"
 	llm "github.com/mutablelogic/go-llm"
-	opt "github.com/mutablelogic/go-llm/pkg/opt"
 	schema "github.com/mutablelogic/go-llm/kernel/schema"
+	opt "github.com/mutablelogic/go-llm/pkg/opt"
 	httpresponse "github.com/mutablelogic/go-server/pkg/httpresponse"
 	types "github.com/mutablelogic/go-server/pkg/types"
 	attribute "go.opentelemetry.io/otel/attribute"
@@ -245,7 +245,7 @@ func downloaderCandidatesForProviders(providers []schema.Provider, getClient fun
 		if client == nil {
 			continue
 		}
-		downloader, ok := client.(llm.Downloader)
+		downloader, ok := client.Self().(llm.Downloader)
 		if !ok {
 			continue
 		}

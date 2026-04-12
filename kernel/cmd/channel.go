@@ -29,7 +29,7 @@ import (
 // TYPES
 
 type ChannelCommands struct {
-	Channel ChannelCommand `cmd:"" name:"channel" help:"Open the interactive session channel debug endpoint." group:"RESPONSES"`
+	SessionUI ChannelCommand `cmd:"" name:"session-ui" help:"Open the interactive session UI for an existing session." group:"RESPONSES"`
 }
 
 type ChannelCommand struct {
@@ -78,7 +78,7 @@ var channelSpinnerFrames = []string{"⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "�
 
 func (cmd *ChannelCommand) Run(ctx server.Cmd) (err error) {
 	if !term.IsTerminal(int(os.Stdin.Fd())) || !term.IsTerminal(int(os.Stdout.Fd())) {
-		return fmt.Errorf("channel requires an interactive terminal")
+		return fmt.Errorf("session-ui requires an interactive terminal")
 	}
 
 	id, err := resolveSessionID(cmd.Session, ctx.GetString("session"))
@@ -528,12 +528,12 @@ func channelResponseSections(response schema.ChatResponse) ([]channelResponseSec
 	if len(thinking) > 0 {
 		sections = append(sections, channelResponseSection{
 			role:     "thinking",
-			markdown: channelDeltaMarkdown("thinking", strings.Join(thinking, "\n\n")),
+			markdown: channelDeltaMarkdown("thinking", strings.Join(thinking, "")),
 		})
 	}
 	if len(content) > 0 {
 		role := response.Role
-		markdown := fmt.Sprintf("### %s\n\n%s", strings.Title(role), strings.Join(content, "\n\n"))
+		markdown := fmt.Sprintf("### %s\n\n%s", strings.Title(role), strings.Join(content, ""))
 		if result := response.Result.String(); result != "unknown" {
 			markdown += fmt.Sprintf("\n\n_Result: %s_", result)
 		}
