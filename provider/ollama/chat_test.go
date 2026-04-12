@@ -5,8 +5,8 @@ import (
 	"testing"
 
 	// Packages
-	opt "github.com/mutablelogic/go-llm/pkg/opt"
 	schema "github.com/mutablelogic/go-llm/kernel/schema"
+	opt "github.com/mutablelogic/go-llm/pkg/opt"
 	jsonschema "github.com/mutablelogic/go-server/pkg/jsonschema"
 	types "github.com/mutablelogic/go-server/pkg/types"
 	assert "github.com/stretchr/testify/assert"
@@ -276,4 +276,49 @@ func Test_chatRequest_015(t *testing.T) {
 
 	_, err = chatRequestFromOpts("x/z-image-turbo", &session, o)
 	a.Error(err)
+}
+
+func Test_chatStreamAccumulator_PreservesToolCallsAcrossDoneStop(t *testing.T) {
+	a := assert.New(t)
+	acc := new(chatStreamAccumulator)
+
+	acc.consume(&chatResponse{
+		Model: "qwen3.5:35b",
+		Message: chatMessage{
+			Role:    schema.RoleAssistant,
+			Content: "",
+			ToolCalls: []chatToolCall{{
+				ID: "call_zxhua9ms",
+				Function: chatToolCallFunction{
+					Index:     0,
+					Name:      "memory__memory_search",
+					Arguments: json.RawMessage(`{"q":"*"}`),
+				},
+			}},
+		},
+		Done: false,
+	}, nil)
+
+	final := chatResponse{
+		Model:      "qwen3.5:35b",
+		Done:       true,
+		DoneReason: "stop",
+		Message: chatMessage{
+			Role:    schema.RoleAssistant,
+			Content: "",
+		},
+	}
+	acc.apply(&final)
+
+	msg, err := messageFromOllamaResponse(&final)
+	a.NoError(err)
+	a.Equal(schema.ResultToolCall, msg.Result)
+	if a.Len(msg.Content, 1) {
+		if a.NotNil(msg.Content[0].ToolCall) {
+			a.Equal("memory__memory_search", msg.Content[0].ToolCall.Name)
+			var args map[string]any
+			a.NoError(json.Unmarshal(msg.Content[0].ToolCall.Input, &args))
+			a.Equal("*", args["q"])
+		}
+	}
 }

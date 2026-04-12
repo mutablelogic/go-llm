@@ -82,7 +82,10 @@ func (m *Manager) Run(ctx context.Context, logger *slog.Logger) error {
 
 	// Subscribe to database notifications, if configured
 	// We provide a small buffered channel to avoid blocking the database listener
-	providerChange, connectorChange := make(chan broadcaster.ChangeNotification, 16), make(chan broadcaster.ChangeNotification, 16)
+	providerChange, connectorChange, messageChange :=
+		make(chan broadcaster.ChangeNotification, 16),
+		make(chan broadcaster.ChangeNotification, 16),
+		make(chan broadcaster.ChangeNotification, 16)
 	if m.broadcaster != nil {
 		if err := m.broadcaster.Subscribe(ctx, func(change broadcaster.ChangeNotification) {
 			switch {
@@ -94,6 +97,11 @@ func (m *Manager) Run(ctx context.Context, logger *slog.Logger) error {
 			case change.Matches(m.llmschema, "connector", ""):
 				select {
 				case connectorChange <- change:
+				case <-ctx.Done():
+				}
+			case change.Matches(m.llmschema, "message", "INSERT"):
+				select {
+				case messageChange <- change:
 				case <-ctx.Done():
 				}
 			default:
@@ -136,6 +144,10 @@ func (m *Manager) Run(ctx context.Context, logger *slog.Logger) error {
 		case <-connectorChange:
 			if err := m.syncConnectors(ctx); err != nil {
 				logger.ErrorContext(ctx, "failed to sync connectors after change notification", "error", err.Error())
+			}
+		case <-messageChange:
+			if err := m.sessionfeed.update(ctx); err != nil {
+				logger.ErrorContext(ctx, "failed to update session feed after message change notification", "error", err.Error())
 			}
 		case <-ticker.C:
 			// Ping the registry to determine status of providers

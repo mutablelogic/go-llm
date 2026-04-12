@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	// Packages
+	uuid "github.com/google/uuid"
 	schema "github.com/mutablelogic/go-llm/kernel/schema"
 	llmtest "github.com/mutablelogic/go-llm/pkg/test"
 	types "github.com/mutablelogic/go-server/pkg/types"
@@ -44,7 +45,7 @@ func TestListMessagesIntegration(t *testing.T) {
 		return
 	}
 
-	result, err := m.ListMessages(ctx, session.ID, schema.MessageListRequest{}, admin)
+	result, err := m.ListMessages(ctx, schema.MessageListRequest{Sessions: []uuid.UUID{session.ID}}, admin)
 	if !assert.NoError(t, err) {
 		return
 	}
@@ -54,7 +55,7 @@ func TestListMessagesIntegration(t *testing.T) {
 		assert.Equal(t, schema.RoleAssistant, result.Body[1].Role)
 	}
 
-	filtered, err := m.ListMessages(ctx, session.ID, schema.MessageListRequest{Role: schema.RoleAssistant, Text: "news"}, admin)
+	filtered, err := m.ListMessages(ctx, schema.MessageListRequest{Sessions: []uuid.UUID{session.ID}, Role: schema.RoleAssistant, Text: "news"}, admin)
 	if !assert.NoError(t, err) {
 		return
 	}
@@ -85,7 +86,7 @@ func TestListMessagesRejectsInaccessibleSession(t *testing.T) {
 		return
 	}
 
-	_, err = m.ListMessages(ctx, session.ID, schema.MessageListRequest{}, other)
+	_, err = m.ListMessages(ctx, schema.MessageListRequest{Sessions: []uuid.UUID{session.ID}}, other)
 	if assert.Error(t, err) {
 		assert.ErrorIs(t, err, schema.ErrNotFound)
 	}

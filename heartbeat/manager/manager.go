@@ -2,105 +2,103 @@ package heartbeat
 
 import (
 	"context"
-	"log/slog"
-	"time"
+	"fmt"
+	"strings"
 
 	// Packages
+	otel "github.com/mutablelogic/go-client/pkg/otel"
 	llm "github.com/mutablelogic/go-llm"
-	hschema "github.com/mutablelogic/go-llm/heartbeat/schema"
-	schema "github.com/mutablelogic/go-llm/kernel/schema"
-	trace "go.opentelemetry.io/otel/trace"
+	heartbeatpg "github.com/mutablelogic/go-llm/heartbeat/pg"
+	pg "github.com/mutablelogic/go-pg"
+	attribute "go.opentelemetry.io/otel/attribute"
 )
 
 ///////////////////////////////////////////////////////////////////////////////
 // TYPES
 
-// Manager owns a Store and runs a background loop that fires due heartbeats.
+// Manager owns a database connection and runs a background loop that fires due heartbeats.
 // Create one with New, register an OnFire callback, then call Run in a goroutine.
 type Manager struct {
-	store        hschema.Store
-	pollInterval time.Duration
-	logger       *slog.Logger
-	tracer       trace.Tracer
-	onFire       func(context.Context, *hschema.Heartbeat)
+	opts
+	pg.PoolConn
 }
-
-///////////////////////////////////////////////////////////////////////////////
-// INTERFACE CHECKS
 
 var _ llm.Connector = (*Manager)(nil)
 
 ///////////////////////////////////////////////////////////////////////////////
 // LIFECYCLE
 
-// New creates a Manager backed by the given store.
-func New(store hschema.Store, opts ...Opt) (*Manager, error) {
-	if store == nil {
-		return nil, schema.ErrBadParameter.With("store is required")
+// New creates a Manager backed by a PostgreSQL connection pool.
+func New(ctx context.Context, pool pg.PoolConn, opts ...Opt) (*Manager, error) {
+	self := new(Manager)
+
+	// Apply configuration
+	self.defaults()
+	if err := self.apply(opts...); err != nil {
+		return nil, err
 	}
-	m := &Manager{
-		store:        store,
-		pollInterval: defaultPollInterval,
-		logger:       slog.Default(),
-		onFire:       func(context.Context, *hschema.Heartbeat) {},
+	if pool == nil {
+		return nil, fmt.Errorf("pool is required")
 	}
-	for _, o := range opts {
-		if err := o(m); err != nil {
-			return nil, err
+
+	// Set up the database connection and store
+	queries, err := pg.NewQueries(strings.NewReader(heartbeatpg.Queries))
+	if err != nil {
+		return nil, fmt.Errorf("parse queries.sql: %w", err)
+	}
+	pool = pool.WithQueries(queries).With(
+		"schema", self.schema,
+		"llm", self.llmschema,
+	).(pg.PoolConn)
+
+	bootstrapCtx, endBootstrapSpan := otel.StartSpan(self.tracer, ctx, "heartbeat.manager.bootstrap",
+		attribute.String("schema", self.schema),
+	)
+	if err := bootstrap(bootstrapCtx, pool, self.schema); err != nil {
+		endBootstrapSpan(err)
+		return nil, err
+	} else {
+		self.PoolConn = pool
+	}
+	endBootstrapSpan(nil)
+
+	// Return success
+	return self, nil
+}
+
+func bootstrap(ctx context.Context, conn pg.Conn, schemaName string) error {
+	objects, err := pg.NewQueries(strings.NewReader(heartbeatpg.Objects))
+	if err != nil {
+		return fmt.Errorf("parse objects.sql: %w", err)
+	}
+
+	if err := pg.SchemaCreate(ctx, conn, schemaName); err != nil {
+		return fmt.Errorf("create schema %q: %w", schemaName, err)
+	}
+
+	for _, key := range objects.Keys() {
+		if err := conn.Exec(ctx, objects.Query(key)); err != nil {
+			return fmt.Errorf("create object %q: %w", key, err)
 		}
 	}
-	return m, nil
+
+	return nil
 }
 
 ///////////////////////////////////////////////////////////////////////////////
 // PUBLIC METHODS
 
-// Run starts the maturity-check loop and blocks until ctx is cancelled.
-// It returns nil when ctx is done and satisfies the llm.Connector interface.
-func (m *Manager) Run(ctx context.Context) error {
-	ticker := time.NewTicker(m.pollInterval)
-	defer ticker.Stop()
-
-	for {
-		select {
-		case <-ctx.Done():
-			return nil
-		case <-ticker.C:
-			m.tick(ctx)
-		}
-	}
-}
-
-// ListTools returns the heartbeat tools and satisfies the llm.Connector interface.
-func (m *Manager) ListTools(_ context.Context) ([]llm.Tool, error) {
-	return []llm.Tool{
-		addHeartbeat{mgr: m}, deleteHeartbeat{mgr: m}, listHeartbeats{mgr: m}, updateHeartbeat{mgr: m},
-	}, nil
-}
-
-// ListPrompts returns nil and satisfies the llm.Connector interface.
-func (m *Manager) ListPrompts(_ context.Context) ([]llm.Prompt, error) {
+// ListTools satisfies the llm.Connector interface.
+func (m *Manager) ListTools(context.Context) ([]llm.Tool, error) {
 	return nil, nil
 }
 
-// ListResources returns nil and satisfies the llm.Connector interface.
-func (m *Manager) ListResources(_ context.Context) ([]llm.Resource, error) {
+// ListPrompts satisfies the llm.Connector interface.
+func (m *Manager) ListPrompts(context.Context) ([]llm.Prompt, error) {
 	return nil, nil
 }
 
-///////////////////////////////////////////////////////////////////////////////
-// PRIVATE METHODS
-
-// tick checks for due heartbeats, fires the callback for each, and marks them
-// as fired.  Errors are logged but do not abort the loop.
-func (m *Manager) tick(ctx context.Context) error {
-	fired, err := m.store.Next(ctx)
-	if err != nil {
-		m.logger.ErrorContext(ctx, "heartbeat: failed to fire due heartbeats", "err", err.Error())
-		return err
-	}
-	for _, h := range fired {
-		m.onFire(ctx, h)
-	}
-	return nil
+// ListResources satisfies the llm.Connector interface.
+func (m *Manager) ListResources(context.Context) ([]llm.Resource, error) {
+	return nil, nil
 }

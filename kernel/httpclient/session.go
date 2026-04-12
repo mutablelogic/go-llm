@@ -9,6 +9,7 @@ import (
 	uuid "github.com/google/uuid"
 	client "github.com/mutablelogic/go-client"
 	schema "github.com/mutablelogic/go-llm/kernel/schema"
+	types "github.com/mutablelogic/go-server/pkg/types"
 )
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -73,7 +74,7 @@ func (c *Client) UpdateSession(ctx context.Context, id uuid.UUID, meta schema.Se
 		return nil, fmt.Errorf("session ID cannot be nil")
 	}
 
-	httpReq, err := client.NewJSONRequestEx(http.MethodPatch, meta, client.ContentTypeAny)
+	httpReq, err := client.NewJSONRequestEx(http.MethodPatch, meta, types.ContentTypeAny)
 	if err != nil {
 		return nil, err
 	}

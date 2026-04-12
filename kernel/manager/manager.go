@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"time"
 
 	// Packages
 	otel "github.com/mutablelogic/go-client/pkg/otel"
@@ -25,6 +26,7 @@ type Manager struct {
 	*provider.Registry
 	toolkit.Toolkit
 	broadcaster broadcaster.Broadcaster
+	sessionfeed *SessionFeed
 	delegate    *delegate
 }
 
@@ -88,6 +90,13 @@ func New(ctx context.Context, name, version string, pool pg.PoolConn, opts ...Op
 
 	// Create a connector delegate, which receives notifications of connector changes
 	self.delegate = NewDelegate(self.name, self.version, self.connectors, self.clientopts...)
+
+	// Create a session feed, which updates listening sessions when new messages are added
+	if sessionfeed, err := NewSessionFeed(ctx, pool, time.Second); err != nil {
+		return nil, err
+	} else {
+		self.sessionfeed = sessionfeed
+	}
 
 	// TEST
 	// Register metrics after the registry has been initialized so callbacks can

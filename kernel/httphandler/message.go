@@ -48,8 +48,9 @@ func listMessages(ctx context.Context, manager *llmmanager.Manager, w http.Respo
 	if err := httprequest.Query(r.URL.Query(), &req); err != nil {
 		return httpresponse.Error(w, httpresponse.ErrBadRequest, err)
 	}
+	req.Sessions = []uuid.UUID{session}
 
-	messages, err := manager.ListMessages(ctx, session, req, middleware.UserFromContext(ctx))
+	messages, err := manager.ListMessages(ctx, req, middleware.UserFromContext(ctx))
 	if err != nil {
 		return httpresponse.Error(w, schema.HTTPErr(err))
 	}

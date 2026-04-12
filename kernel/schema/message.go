@@ -27,6 +27,8 @@ import (
 // It uses a universal content block representation that can be marshaled
 // to any provider's format.
 type Message struct {
+	ID      uint64         `json:"id,omitempty" help:"Monotonic message row ID" example:"42"`
+	Session uuid.UUID      `json:"session,omitzero" help:"Session owning the message" optional:""`
 	Role    string         `json:"role" help:"Message role" enum:"user,assistant,system,thinking,tool" example:"assistant"`
 	Content []ContentBlock `json:"content" help:"Structured content blocks that make up the message" example:"[{\"text\":\"Unit tests catch regressions early and make refactoring safer.\"}]"`
 	Tokens  uint           `json:"tokens,omitempty" help:"Token count attributed to this message" example:"12"`
@@ -43,8 +45,11 @@ type MessageInsert struct {
 // MessageListRequest represents a request to list stored messages.
 type MessageListRequest struct {
 	pg.OffsetLimit
-	Role string `json:"role,omitempty" help:"Filter by exact message role" optional:""`
-	Text string `json:"text,omitempty" help:"Case-insensitive text search over message content" optional:""`
+	Sessions []uuid.UUID `json:"-"`
+	Last     uint64      `json:"-"`
+	Until    uint64      `json:"-"`
+	Role     string      `json:"role,omitempty" help:"Filter by exact message role" optional:""`
+	Text     string      `json:"text,omitempty" help:"Case-insensitive text search over message content" optional:""`
 }
 
 // MessageList represents a paginated list of stored messages.
@@ -404,7 +409,7 @@ func (r MessageList) String() string {
 
 func (m *Message) Scan(row pg.Row) error {
 	var result string
-	if err := row.Scan(&m.Role, &m.Content, &m.Tokens, &result, &m.Meta); err != nil {
+	if err := row.Scan(&m.ID, &m.Session, &m.Role, &m.Content, &m.Tokens, &result, &m.Meta); err != nil {
 		return err
 	}
 	m.Result = parseMessageResult(result)
@@ -420,9 +425,10 @@ func (m *Message) Scan(row pg.Row) error {
 func (m *MessageInsert) Scan(row pg.Row) error {
 	var result string
 
-	if err := row.Scan(&m.Session, &m.Role, &m.Content, &m.Tokens, &result, &m.Meta); err != nil {
+	if err := row.Scan(&m.ID, &m.Session, &m.Role, &m.Content, &m.Tokens, &result, &m.Meta); err != nil {
 		return err
 	}
+	m.Message.Session = m.Session
 	m.Result = parseMessageResult(result)
 	if m.Meta == nil {
 		m.Meta = make(map[string]any)
@@ -469,11 +475,17 @@ func (req MessageListRequest) Query() url.Values {
 func (req MessageListRequest) Select(bind *pg.Bind, op pg.Op) (string, error) {
 	bind.Del("where")
 
-	session, ok := bind.Get("session").(uuid.UUID)
-	if !ok || session == uuid.Nil {
-		return "", ErrBadParameter.With("message session is required")
+	if session, ok := bind.Get("session").(uuid.UUID); ok && session != uuid.Nil {
+		bind.Append("where", `message.session = `+bind.Set("session", session))
+	} else if sessions := messageListSessions(bind, req); len(sessions) > 0 {
+		bind.Append("where", `message.session = ANY(`+bind.Set("sessions", sessions)+`)`)
 	}
-	bind.Append("where", `message.session = `+bind.Set("session", session))
+	if last := messageListLast(bind, req); last > 0 {
+		bind.Append("where", `message.id > `+bind.Set("last", last))
+	}
+	if until := messageListUntil(bind, req); until > 0 {
+		bind.Append("where", `message.id <= `+bind.Set("until", until))
+	}
 	if role := strings.TrimSpace(req.Role); role != "" {
 		bind.Append("where", `message.role = `+bind.Set("role", role))
 	}
@@ -482,7 +494,11 @@ func (req MessageListRequest) Select(bind *pg.Bind, op pg.Op) (string, error) {
 	}
 
 	where := bind.Join("where", " AND ")
-	bind.Set("orderby", `ORDER BY message.created_at ASC, message.id ASC`)
+	if len(messageListSessions(bind, req)) > 0 || messageListLast(bind, req) > 0 || messageListUntil(bind, req) > 0 {
+		bind.Set("orderby", `ORDER BY message.id ASC`)
+	} else {
+		bind.Set("orderby", `ORDER BY message.created_at ASC, message.id ASC`)
+	}
 	req.OffsetLimit.Bind(bind, MessageListMax)
 
 	switch op {
@@ -559,6 +575,46 @@ func messageListHasUser(bind *pg.Bind) bool {
 		return user != uuid.Nil
 	}
 	return false
+}
+
+func messageListSessions(bind *pg.Bind, req MessageListRequest) []uuid.UUID {
+	if len(req.Sessions) > 0 {
+		return req.Sessions
+	}
+	if sessions, ok := bind.Get("sessions").([]uuid.UUID); ok {
+		return sessions
+	}
+	return nil
+}
+
+func messageListLast(bind *pg.Bind, req MessageListRequest) uint64 {
+	if req.Last > 0 {
+		return req.Last
+	}
+	switch last := bind.Get("last").(type) {
+	case uint64:
+		return last
+	case int64:
+		if last > 0 {
+			return uint64(last)
+		}
+	}
+	return 0
+}
+
+func messageListUntil(bind *pg.Bind, req MessageListRequest) uint64 {
+	if req.Until > 0 {
+		return req.Until
+	}
+	switch until := bind.Get("until").(type) {
+	case uint64:
+		return until
+	case int64:
+		if until > 0 {
+			return uint64(until)
+		}
+	}
+	return 0
 }
 
 func parseMessageResult(result string) ResultType {

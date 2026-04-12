@@ -8,13 +8,13 @@ import (
 	auth "github.com/djthorpe/go-auth/schema/auth"
 	otel "github.com/mutablelogic/go-client/pkg/otel"
 	llm "github.com/mutablelogic/go-llm"
+	schema "github.com/mutablelogic/go-llm/kernel/schema"
 	opt "github.com/mutablelogic/go-llm/pkg/opt"
 	anthropic "github.com/mutablelogic/go-llm/provider/anthropic"
 	eliza "github.com/mutablelogic/go-llm/provider/eliza"
 	google "github.com/mutablelogic/go-llm/provider/google"
 	mistral "github.com/mutablelogic/go-llm/provider/mistral"
 	ollama "github.com/mutablelogic/go-llm/provider/ollama"
-	schema "github.com/mutablelogic/go-llm/kernel/schema"
 	jsonschema "github.com/mutablelogic/go-server/pkg/jsonschema"
 	types "github.com/mutablelogic/go-server/pkg/types"
 	attribute "go.opentelemetry.io/otel/attribute"
@@ -161,6 +161,9 @@ func (m *Manager) generatorFromMeta(ctx context.Context, meta schema.GeneratorMe
 	if meta.SystemPrompt != nil && *meta.SystemPrompt != "" {
 		opts = append(opts, withSystemPrompt(*meta.SystemPrompt))
 	}
+	if meta.MaxTokens != nil && *meta.MaxTokens > 0 {
+		opts = append(opts, withMaxTokens(*meta.MaxTokens))
+	}
 	if len(meta.Format) > 0 {
 		opts = append(opts, withJSONOutput(meta.Format))
 	}
@@ -194,6 +197,24 @@ func withSystemPrompt(value string) opt.Opt {
 			return opt.SetString(opt.SystemPromptKey, value)
 		default:
 			return opt.Error(schema.ErrNotImplemented.Withf("%s: WithSystemPrompt not supported", provider))
+		}
+	})
+}
+
+// withMaxTokens dispatches to the correct provider-specific max token option.
+func withMaxTokens(value uint) opt.Opt {
+	return opt.WithClient(func(provider string) opt.Opt {
+		switch provider {
+		case schema.Gemini:
+			return google.WithMaxTokens(value)
+		case schema.Anthropic:
+			return anthropic.WithMaxTokens(value)
+		case schema.Mistral:
+			return mistral.WithMaxTokens(value)
+		case schema.Ollama:
+			return opt.SetUint(opt.MaxTokensKey, value)
+		default:
+			return opt.Error(schema.ErrNotImplemented.Withf("%s: WithMaxTokens not supported", provider))
 		}
 	})
 }

@@ -8,6 +8,7 @@ import (
 	// Packages
 	client "github.com/mutablelogic/go-client"
 	schema "github.com/mutablelogic/go-llm/kernel/schema"
+	types "github.com/mutablelogic/go-server/pkg/types"
 )
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -70,7 +71,7 @@ func (c *Client) DeleteProvider(ctx context.Context, name string) (*schema.Provi
 func (c *Client) UpdateProvider(ctx context.Context, name string, req schema.ProviderMeta) (*schema.Provider, error) {
 	name = strings.TrimSpace(name)
 
-	httpReq, err := client.NewJSONRequestEx(http.MethodPatch, req, client.ContentTypeAny)
+	httpReq, err := client.NewJSONRequestEx(http.MethodPatch, req, types.ContentTypeAny)
 	if err != nil {
 		return nil, err
 	}

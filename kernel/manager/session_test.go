@@ -77,6 +77,7 @@ func TestCreateSessionMergesParentGeneratorMeta(t *testing.T) {
 				Model:          types.Ptr(modelName),
 				Provider:       types.Ptr(provider.Name),
 				SystemPrompt:   types.Ptr("parent prompt"),
+				MaxTokens:      types.Ptr(uint(4096)),
 				Thinking:       &thinking,
 				ThinkingBudget: types.Ptr(uint(99)),
 			},
@@ -105,6 +106,7 @@ func TestCreateSessionMergesParentGeneratorMeta(t *testing.T) {
 	assert.Equal(t, modelName, types.Value(child.Model))
 	assert.Equal(t, provider.Name, types.Value(child.Provider))
 	assert.Equal(t, "child prompt", types.Value(child.SystemPrompt))
+	assert.Equal(t, uint(4096), types.Value(child.MaxTokens))
 	if assert.NotNil(t, child.Thinking) {
 		assert.True(t, *child.Thinking)
 	}

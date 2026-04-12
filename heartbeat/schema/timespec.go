@@ -68,48 +68,52 @@ type TimeSpec struct {
 //	NewTimeSpec[string]("*/15 * * * *", nil)               → every 15 minutes
 //	NewTimeSpec[string]("30 14 15 6 * 2030", nil)          → 14:30 on 15 June 2030 (6-field, pinned year)
 func NewTimeSpec[T time.Time | string](v T, loc *time.Location) (TimeSpec, error) {
-	var (
-		ts  TimeSpec
-		err error
-	)
-
-	// Parse the input according to its type.
 	switch val := any(v).(type) {
 	case time.Time:
-		ts, err = newFromTime(val, loc)
+		if timespec, err := newFromTime(val, loc); err != nil {
+			return TimeSpec{}, err
+		} else if timespec.IsZero() {
+			return TimeSpec{}, llmschema.ErrBadParameter.With("schedule must constrain at least one field")
+		} else if timespec.Next(time.Now()).IsZero() {
+			return TimeSpec{}, llmschema.ErrBadParameter.Withf("%v has no future events", v)
+		} else {
+			return timespec, nil
+		}
 	case string:
 		if t, parseErr := time.Parse(time.RFC3339, val); parseErr == nil {
-			ts, err = newFromTime(t, loc)
+			if timespec, err := newFromTime(t, loc); err != nil {
+				return TimeSpec{}, err
+			} else if timespec.IsZero() {
+				return TimeSpec{}, llmschema.ErrBadParameter.With("schedule must constrain at least one field")
+			} else if timespec.Next(time.Now()).IsZero() {
+				return TimeSpec{}, llmschema.ErrBadParameter.Withf("%v has no future events", v)
+			} else {
+				return timespec, nil
+			}
 		} else {
-			ts, err = newFromCron(val, loc)
+			if timespec, err := newFromCron(val, loc); err != nil {
+				return TimeSpec{}, err
+			} else if timespec.IsZero() {
+				return TimeSpec{}, llmschema.ErrBadParameter.With("schedule must constrain at least one field")
+			} else if timespec.Next(time.Now()).IsZero() {
+				return TimeSpec{}, llmschema.ErrBadParameter.Withf("%v has no future events", v)
+			} else {
+				return timespec, nil
+			}
 		}
-	default:
-		panic("unreachable")
 	}
-
-	// Validate that the schedule has a future occurrence.
-	if err != nil {
-		return TimeSpec{}, err
-	}
-	if ts.Next(time.Now()).IsZero() {
-		return TimeSpec{}, llmschema.ErrBadParameter.Withf("%v has no future events", v)
-	}
-	return ts, nil
+	// Unreachable due to the type constraint, but required for compilation.
+	return TimeSpec{}, nil
 }
 
 // newFromTime pins every TimeSpec field to the exact values of t.
 // The Weekday field is intentionally left empty (it is derivable from year+month+day).
-// loc sets the Loc field; nil or UTC leaves Loc unset.
-// Past-time validation is performed by the caller (NewTimeSpec) via ts.Next.
+// loc sets the Loc field; loc will use UTC if unset
 func newFromTime(t time.Time, loc *time.Location) (TimeSpec, error) {
-	if loc == nil {
-		loc = t.Location()
-	}
-	if loc == time.UTC {
-		loc = nil
-	}
 	if loc != nil && loc.String() == "Local" {
 		return TimeSpec{}, llmschema.ErrBadParameter.With("timezone must be a specific IANA name (e.g. Europe/London), not \"Local\"")
+	} else if loc == nil {
+		loc = time.UTC
 	}
 	return TimeSpec{
 		Year:   types.Ptr(t.Year()),
@@ -124,18 +128,21 @@ func newFromTime(t time.Time, loc *time.Location) (TimeSpec, error) {
 // newFromCron parses a 5-field or 6-field cron expression.
 // 5-field order: minute hour day-of-month month day-of-week
 // 6-field order: minute hour day-of-month month day-of-week year
-// loc sets the Loc field; nil or UTC leaves Loc unset.
+// loc will use UTC if unset
 func newFromCron(s string, loc *time.Location) (TimeSpec, error) {
-	if loc == time.UTC {
-		loc = nil
-	}
 	if loc != nil && loc.String() == "Local" {
 		return TimeSpec{}, llmschema.ErrBadParameter.With("timezone must be a specific IANA name (e.g. Europe/London), not \"Local\"")
+	} else if loc == nil {
+		loc = time.UTC
 	}
+
+	// Parse fields
 	fields := strings.Fields(s)
 	if len(fields) != 5 && len(fields) != 6 {
 		return TimeSpec{}, llmschema.ErrBadParameter.Withf("cron expression must have 5 or 6 space-separated fields, got %d in %q", len(fields), s)
 	}
+
+	// Deal with minute, hour, day, month, weekday fields (in that order)
 	minute, err := parseCronField(fields[0], 0, 59)
 	if err != nil {
 		return TimeSpec{}, llmschema.ErrBadParameter.Withf("cron minute %q: %v", fields[0], err)
@@ -258,11 +265,9 @@ func dedupInts(vals []int) []int {
 ///////////////////////////////////////////////////////////////////////////////
 // PUBLIC METHODS
 
-// IsZero returns true if ts has no constraints and no explicit timezone.
-// A spec with an explicit Loc (even with wildcard fields) is not zero,
-// so that timezone-only updates are treated as schedule changes.
+// IsZero returns true if ts has no constraints
 func (ts TimeSpec) IsZero() bool {
-	return ts.Year == nil && len(ts.Month) == 0 && len(ts.Day) == 0 && len(ts.Weekday) == 0 && len(ts.Hour) == 0 && len(ts.Minute) == 0 && ts.Loc == nil
+	return ts.Year == nil && len(ts.Month) == 0 && len(ts.Day) == 0 && len(ts.Weekday) == 0 && len(ts.Hour) == 0 && len(ts.Minute) == 0
 }
 
 // Next returns the earliest time on or after from that satisfies every
@@ -380,6 +385,9 @@ func (ts TimeSpec) Next(from time.Time) time.Time {
 	return time.Time{} // no match within search window
 }
 
+///////////////////////////////////////////////////////////////////////////////
+// STRINGIFYING AND JSON
+
 // String returns the cron expression for this TimeSpec.
 // Recurring schedules produce a 5-field expression: "minute hour day-of-month month day-of-week".
 // One-shot schedules with a pinned year produce a 6-field expression: "minute hour day-of-month month day-of-week year".
@@ -408,7 +416,7 @@ type timeSpecJSON struct {
 // a round-trip.
 func (ts TimeSpec) MarshalJSON() ([]byte, error) {
 	var tz string
-	if ts.Loc != nil {
+	if ts.Loc != nil && ts.Loc != time.UTC {
 		tz = ts.Loc.String()
 	}
 	return json.Marshal(timeSpecJSON{
@@ -418,21 +426,8 @@ func (ts TimeSpec) MarshalJSON() ([]byte, error) {
 }
 
 // UnmarshalJSON accepts the canonical {"schedule":"...","timezone":"..."}
-// envelope.  For backward-compatibility it also accepts a bare cron/RFC3339
-// string.
-//
-// Note: unlike NewTimeSpec, this does NOT validate that the schedule has a
-// future occurrence.  Stored heartbeats must survive round-trips even after
-// their scheduled time has passed (e.g. a fired one-shot).
+// envelope.
 func (ts *TimeSpec) UnmarshalJSON(data []byte) error {
-	if len(data) > 0 && data[0] == '"' {
-		// Legacy bare-string form.
-		var s string
-		if err := json.Unmarshal(data, &s); err != nil {
-			return err
-		}
-		return ts.unmarshalSchedule(s, nil)
-	}
 	// Object form: expect {"schedule":"...","timezone":"..."}.
 	var j timeSpecJSON
 	if err := json.Unmarshal(data, &j); err != nil {
@@ -458,10 +453,8 @@ func (ts *TimeSpec) UnmarshalJSON(data []byte) error {
 // unmarshalSchedule parses a schedule string (RFC3339 or cron) with the given
 // location into ts, without validating future occurrence.
 func (ts *TimeSpec) unmarshalSchedule(s string, loc *time.Location) error {
-	var (
-		parsed TimeSpec
-		err    error
-	)
+	var parsed TimeSpec
+	var err error
 	if t, parseErr := time.Parse(time.RFC3339, s); parseErr == nil {
 		parsed, err = newFromTime(t, loc)
 	} else {
@@ -469,6 +462,9 @@ func (ts *TimeSpec) unmarshalSchedule(s string, loc *time.Location) error {
 	}
 	if err != nil {
 		return err
+	}
+	if parsed.IsZero() {
+		return llmschema.ErrBadParameter.With("schedule must constrain at least one field")
 	}
 	*ts = parsed
 	return nil

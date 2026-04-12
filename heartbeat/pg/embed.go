@@ -3,7 +3,7 @@ package pg
 import _ "embed"
 
 //go:embed objects.sql
-var objects string
+var Objects string
 
 //go:embed queries.sql
-var queries string
+var Queries string

@@ -2,6 +2,7 @@ package manager
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"maps"
 	"slices"
@@ -14,6 +15,7 @@ import (
 	otel "github.com/mutablelogic/go-client/pkg/otel"
 	llm "github.com/mutablelogic/go-llm"
 	schema "github.com/mutablelogic/go-llm/kernel/schema"
+	memoryschema "github.com/mutablelogic/go-llm/memory/schema"
 	opt "github.com/mutablelogic/go-llm/pkg/opt"
 	toolkit "github.com/mutablelogic/go-llm/toolkit"
 	pg "github.com/mutablelogic/go-pg"
@@ -40,6 +42,8 @@ type namedTool struct {
 type toolMap map[string]llm.Tool
 
 const toolSelectionPageSize uint64 = 100
+
+const memorySearchToolKey = "memory__memory_search"
 
 ///////////////////////////////////////////////////////////////////////////////
 // PUBLIC METHODS
@@ -68,11 +72,18 @@ func (m *Manager) Chat(ctx context.Context, req schema.ChatRequest, fn opt.Strea
 
 	// Fold the per-request system prompt into the session prompt.
 	if prompt := strings.TrimSpace(req.SystemPrompt); prompt != "" {
-		if system_prompt := types.Value(session.GeneratorMeta.SystemPrompt); system_prompt != "" {
-			session.GeneratorMeta.SystemPrompt = types.Ptr(system_prompt + "\n\n" + prompt)
-		} else {
-			session.GeneratorMeta.SystemPrompt = types.Ptr(prompt)
-		}
+		session.GeneratorMeta.SystemPrompt = mergeSystemPrompt(session.GeneratorMeta.SystemPrompt, prompt)
+	}
+
+	// Determine the tools we are going to use in this conversation loop.
+	tools, err := m.toolsForUser(ctx, user, req.Tools)
+	if err != nil {
+		return nil, err
+	}
+
+	// On the first chat turn, add a memory-aware prompt when the memory connector is available.
+	if prompt, err := firstTurnMemoryPrompt(ctx, req.Session, conversation, tools); err == nil && prompt != "" {
+		session.GeneratorMeta.SystemPrompt = mergeSystemPrompt(session.GeneratorMeta.SystemPrompt, prompt)
 	}
 
 	// Resolve the model, generator, and provider options for this turn.
@@ -86,11 +97,7 @@ func (m *Manager) Chat(ctx context.Context, req schema.ChatRequest, fn opt.Strea
 		opts = append(opts, opt.WithStream(fn))
 	}
 
-	// Determine the tools we are going to use in this conversation loop and add them to the options.
-	tools, err := m.toolsForUser(ctx, user, req.Tools)
-	if err != nil {
-		return nil, err
-	}
+	// Add tools to the provider options when available.
 	if len(tools) > 0 {
 		opts = append(opts, tools.Opts()...)
 	}
@@ -166,6 +173,8 @@ func (m *Manager) Chat(ctx context.Context, req schema.ChatRequest, fn opt.Strea
 
 	// Build the outward response from the final reply.
 	response := types.Ptr(schema.ChatResponse{
+		ID:      turn.Reply.ID,
+		Session: turn.Reply.Session,
 		CompletionResponse: schema.CompletionResponse{
 			Role:    turn.Reply.Role,
 			Content: turn.Reply.Content,
@@ -240,6 +249,82 @@ func estimateSystemPromptTokens(systemPrompt string) uint {
 			Text: types.Ptr(systemPrompt),
 		}},
 	}.EstimateTokens()
+}
+
+func mergeSystemPrompt(current *string, prompt string) *string {
+	prompt = strings.TrimSpace(prompt)
+	if prompt == "" {
+		return current
+	}
+	if existing := strings.TrimSpace(types.Value(current)); existing != "" {
+		return types.Ptr(existing + "\n\n" + prompt)
+	}
+	return types.Ptr(prompt)
+}
+
+func firstTurnMemoryPrompt(ctx context.Context, session uuid.UUID, conversation schema.Conversation, tools toolMap) (string, error) {
+	if conversation.Len() != 0 {
+		return "", nil
+	}
+	searchTool := tools[memorySearchToolKey]
+	if searchTool == nil {
+		return "", nil
+	}
+	result, err := searchTool.Run(toolkit.WithSession(ctx, session.String()), json.RawMessage(`{"q":"*"}`))
+	if err != nil {
+		return "", err
+	}
+	return formatMemorySystemPrompt(memoryKeysFromSearchResult(result)), nil
+}
+
+func formatMemorySystemPrompt(keys []string) string {
+	if len(keys) == 0 {
+		keys = []string{"none"}
+	}
+	prompt := "Memory is enabled for this chat. Current memory keys for this session: " + strings.Join(keys, ", ") + "."
+	if !slices.Contains(keys, "name") {
+		prompt += ` The name key is not set yet. In your next reply, briefly ask the user what they prefer to be called if they have not already told you in this turn. Later you
+		 can use the memory_search tool to retrieve this information by asking for the name, or ask them to add location, timezone, or other relevant information to memory and retrieve it when needed.`
+	}
+	return prompt
+}
+
+func memoryKeysFromSearchResult(result any) []string {
+	keys := make(map[string]struct{})
+	appendKeys := func(list *memoryschema.MemoryList) {
+		if list == nil {
+			return
+		}
+		for _, memory := range list.Body {
+			if memory == nil {
+				continue
+			}
+			if key := strings.TrimSpace(memory.Key); key != "" {
+				keys[key] = struct{}{}
+			}
+		}
+	}
+
+	switch value := result.(type) {
+	case *memoryschema.MemoryList:
+		appendKeys(value)
+	case memoryschema.MemoryList:
+		appendKeys(&value)
+	default:
+		payload, err := json.Marshal(result)
+		if err != nil {
+			return nil
+		}
+		var list memoryschema.MemoryList
+		if err := json.Unmarshal(payload, &list); err != nil {
+			return nil
+		}
+		appendKeys(&list)
+	}
+
+	resultKeys := slices.Collect(maps.Keys(keys))
+	slices.Sort(resultKeys)
+	return resultKeys
 }
 
 func normalizeToolMapKey(name string) string {
@@ -362,9 +447,11 @@ func (m *Manager) persistChatLoop(ctx context.Context, session uuid.UUID, messag
 			if message == nil {
 				continue
 			}
-			if err := conn.Insert(ctx, nil, schema.MessageInsert{Session: session, Message: types.Value(message)}); err != nil {
+			var inserted schema.MessageInsert
+			if err := conn.Insert(ctx, &inserted, schema.MessageInsert{Session: session, Message: types.Value(message)}); err != nil {
 				return pg.NormalizeError(err)
 			}
+			*message = inserted.Message
 		}
 		for _, usageEntry := range usageEntries {
 			if err := conn.Insert(ctx, nil, usageEntry); err != nil {

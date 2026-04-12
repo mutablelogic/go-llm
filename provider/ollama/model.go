@@ -8,8 +8,9 @@ import (
 
 	// Packages
 	client "github.com/mutablelogic/go-client"
-	opt "github.com/mutablelogic/go-llm/pkg/opt"
 	schema "github.com/mutablelogic/go-llm/kernel/schema"
+	opt "github.com/mutablelogic/go-llm/pkg/opt"
+	"github.com/mutablelogic/go-server/pkg/types"
 )
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -77,7 +78,7 @@ func (ollama *Client) DeleteModel(ctx context.Context, model schema.Model) error
 	// Request
 	req, err := client.NewJSONRequestEx(http.MethodDelete, reqGetModel{
 		Model: model.Name,
-	}, client.ContentTypeAny)
+	}, types.ContentTypeAny)
 	if err != nil {
 		return err
 	}
@@ -106,7 +107,7 @@ func (ollama *Client) LoadModel(ctx context.Context, model schema.Model) error {
 	// Request
 	req, err := client.NewJSONRequestEx(http.MethodPost, reqGetModel{
 		Model: model.Name,
-	}, client.ContentTypeAny)
+	}, types.ContentTypeAny)
 	if err != nil {
 		return err
 	}
@@ -173,16 +174,18 @@ func (ollama *Client) DownloadModel(ctx context.Context, name string, opts ...op
 
 	// Add streaming callback if progress function is provided
 	if progressFn != nil {
-		clientOpts = append(clientOpts, client.OptJsonStreamCallback(func(v any) error {
-			if status, ok := v.(*PullStatus); ok && status != nil {
-				// Calculate progress percentage
-				var percent float64
-				if status.TotalBytes > 0 {
-					percent = float64(status.CompletedBytes) / float64(status.TotalBytes) * 100.0
-				}
-				// Call progress callback
-				progressFn(status.Status, percent)
+		clientOpts = append(clientOpts, client.OptJsonStreamCallback(func(v json.RawMessage) error {
+			var status PullStatus
+			if err := json.Unmarshal(v, &status); err != nil {
+				return err
 			}
+			// Calculate progress percentage
+			var percent float64
+			if status.TotalBytes > 0 {
+				percent = float64(status.CompletedBytes) / float64(status.TotalBytes) * 100.0
+			}
+			// Call progress callback
+			progressFn(status.Status, percent)
 			return nil
 		}))
 	}

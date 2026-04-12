@@ -5,8 +5,7 @@ import (
 	"time"
 
 	// Packages
-
-	"github.com/mutablelogic/go-llm/heartbeat/schema"
+	schema "github.com/mutablelogic/go-llm/heartbeat/schema"
 	assert "github.com/stretchr/testify/assert"
 )
 
@@ -17,19 +16,20 @@ var testFrom = time.Date(2026, time.March, 6, 10, 0, 0, 0, time.UTC)
 // NewTimeSpec[time.Time]
 
 func Test_timespec_001(t *testing.T) {
-	// future time.Time: succeeds, all fields pinned, no Weekday or Timezone
+	// future time.Time: succeeds, all fields pinned, no Weekday, UTC timezone
 	assert := assert.New(t)
 	future := time.Date(2030, time.June, 15, 14, 30, 0, 0, time.UTC)
 	ts, err := schema.NewTimeSpec(future, nil)
 	assert.NoError(err)
-	assert.NotNil(ts.Year)
-	assert.Equal(2030, *ts.Year)
+	if assert.NotNil(ts.Year) {
+		assert.Equal(2030, *ts.Year)
+	}
 	assert.Equal([]int{6}, ts.Month)
 	assert.Equal([]int{15}, ts.Day)
 	assert.Equal([]int{14}, ts.Hour)
 	assert.Equal([]int{30}, ts.Minute)
 	assert.Empty(ts.Weekday)
-	assert.Nil(ts.Loc)
+	assert.Equal(time.UTC, ts.Loc)
 }
 
 func Test_timespec_002(t *testing.T) {
@@ -48,8 +48,9 @@ func Test_timespec_003(t *testing.T) {
 	assert := assert.New(t)
 	ts, err := schema.NewTimeSpec("2030-06-15T14:30:00Z", nil)
 	assert.NoError(err)
-	assert.NotNil(ts.Year)
-	assert.Equal(2030, *ts.Year)
+	if assert.NotNil(ts.Year) {
+		assert.Equal(2030, *ts.Year)
+	}
 	assert.Equal([]int{6}, ts.Month)
 	assert.Equal([]int{15}, ts.Day)
 	assert.Equal([]int{14}, ts.Hour)
@@ -247,9 +248,9 @@ func Test_timespec_025(t *testing.T) {
 // TimeSpec.Next — sub-minute from must advance past the fractional second
 
 func Test_timespec_027(t *testing.T) {
-	// from = 10:07:30 (has sub-minute fraction); "* * * * *" must fire at 10:08, not 10:07
+	// from = 10:07:30 (has sub-minute fraction); "0-59 * * * *" must fire at 10:08, not 10:07
 	assert := assert.New(t)
-	ts, err := schema.NewTimeSpec("* * * * *", nil)
+	ts, err := schema.NewTimeSpec("0-59 * * * *", nil)
 	assert.NoError(err)
 	from := time.Date(2026, time.March, 6, 10, 7, 30, 0, time.UTC)
 	got := ts.Next(from)
@@ -258,9 +259,9 @@ func Test_timespec_027(t *testing.T) {
 }
 
 func Test_timespec_028(t *testing.T) {
-	// from = 10:07:00 exactly (no fraction); "* * * * *" may fire at 10:07
+	// from = 10:07:00 exactly (no fraction); "0-59 * * * *" may fire at 10:07
 	assert := assert.New(t)
-	ts, err := schema.NewTimeSpec("* * * * *", nil)
+	ts, err := schema.NewTimeSpec("0-59 * * * *", nil)
 	assert.NoError(err)
 	from := time.Date(2026, time.March, 6, 10, 7, 0, 0, time.UTC)
 	got := ts.Next(from)
@@ -296,19 +297,19 @@ func Test_timespec_030(t *testing.T) {
 
 	var ts2 schema.TimeSpec
 	assert.NoError(ts2.UnmarshalJSON(data))
-	assert.NotNil(ts2.Year)
-	assert.Equal(2030, *ts2.Year)
+	if assert.NotNil(ts2.Year) {
+		assert.Equal(2030, *ts2.Year)
+	}
 }
 
 ///////////////////////////////////////////////////////////////////////////////
 // TimeSpec.String — cron synthesis
 
 func Test_timespec_031(t *testing.T) {
-	// "* * * * *": all wildcards round-trip exactly
+	// "* * * * *": all wildcards are rejected because they constrain nothing
 	assert := assert.New(t)
-	ts, err := schema.NewTimeSpec("* * * * *", nil)
-	assert.NoError(err)
-	assert.Equal("* * * * *", ts.String())
+	_, err := schema.NewTimeSpec("* * * * *", nil)
+	assert.Error(err)
 }
 
 func Test_timespec_032(t *testing.T) {
@@ -341,8 +342,9 @@ func Test_timespec_035(t *testing.T) {
 	assert := assert.New(t)
 	ts, err := schema.NewTimeSpec("30 14 15 6 * 2030", nil)
 	assert.NoError(err)
-	assert.NotNil(ts.Year)
-	assert.Equal(2030, *ts.Year)
+	if assert.NotNil(ts.Year) {
+		assert.Equal(2030, *ts.Year)
+	}
 	assert.Equal([]int{6}, ts.Month)
 	assert.Equal([]int{15}, ts.Day)
 	assert.Equal([]int{14}, ts.Hour)
@@ -373,18 +375,18 @@ func Test_timespec_037(t *testing.T) {
 
 	var ts2 schema.TimeSpec
 	assert.NoError(ts2.UnmarshalJSON(data))
-	assert.NotNil(ts2.Loc)
-	assert.Equal("America/New_York", ts2.Loc.String())
+	if assert.NotNil(ts2.Loc) {
+		assert.Equal("America/New_York", ts2.Loc.String())
+	}
 	assert.Equal("0 9 * * 1-5", ts2.String())
 }
 
 func Test_timespec_038(t *testing.T) {
-	// UnmarshalJSON: legacy bare-string form round-trips correctly
+	// UnmarshalJSON: legacy bare-string form is not supported
 	assert := assert.New(t)
 	var ts schema.TimeSpec
-	assert.NoError(ts.UnmarshalJSON([]byte(`"0 9 * * 1-5"`)))
-	assert.Equal("0 9 * * 1-5", ts.String())
-	assert.Nil(ts.Loc)
+	err := ts.UnmarshalJSON([]byte(`"0 9 * * 1-5"`))
+	assert.Error(err)
 }
 
 func Test_timespec_039(t *testing.T) {
@@ -404,12 +406,10 @@ func Test_timespec_040(t *testing.T) {
 }
 
 func Test_timespec_041(t *testing.T) {
-	// UnmarshalJSON: no timezone field → Loc stays nil
+	// UnmarshalJSON: wildcard-only schedules are rejected
 	assert := assert.New(t)
 	var ts schema.TimeSpec
-	assert.NoError(ts.UnmarshalJSON([]byte(`{"schedule":"* * * * *"}`)))
-	assert.Nil(ts.Loc)
-	assert.Equal("* * * * *", ts.String())
+	assert.Error(ts.UnmarshalJSON([]byte(`{"schedule":"* * * * *"}`)))
 }
 
 func Test_timespec_042(t *testing.T) {
@@ -420,11 +420,12 @@ func Test_timespec_042(t *testing.T) {
 }
 
 func Test_timespec_043(t *testing.T) {
-	// NewTimeSpec time.Time whose Location() is time.Local: error
+	// NewTimeSpec only rejects an explicit loc == time.Local.
+	// A time.Time carrying time.Local is accepted when loc is nil.
 	assert := assert.New(t)
 	localTime := time.Now().In(time.Local)
-	_, err := schema.NewTimeSpec(localTime.Add(time.Hour), nil) // loc=nil → uses t.Location() = Local
-	assert.Error(err)
+	_, err := schema.NewTimeSpec(localTime.Add(time.Hour), nil)
+	assert.NoError(err)
 }
 
 func Test_timespec_044(t *testing.T) {

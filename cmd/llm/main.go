@@ -17,6 +17,7 @@ import (
 type CLI struct {
 	llmcmd.SessionCommands
 	llmcmd.ChatCommands
+	llmcmd.ChannelCommands
 	llmcmd.AskCommands
 	llmcmd.EmbeddingCommands
 	llmcmd.ConnectorCommands

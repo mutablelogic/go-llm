@@ -9,6 +9,7 @@ import (
 	// Packages
 	client "github.com/mutablelogic/go-client"
 	schema "github.com/mutablelogic/go-llm/kernel/schema"
+	types "github.com/mutablelogic/go-server/pkg/types"
 )
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -63,7 +64,7 @@ func (c *Client) UpdateConnector(ctx context.Context, rawURL string, req schema.
 		return nil, fmt.Errorf("connector URL cannot be empty")
 	}
 
-	httpReq, err := client.NewJSONRequestEx(http.MethodPatch, req, client.ContentTypeAny)
+	httpReq, err := client.NewJSONRequestEx(http.MethodPatch, req, types.ContentTypeAny)
 	if err != nil {
 		return nil, err
 	}

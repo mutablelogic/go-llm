@@ -6,10 +6,10 @@ import (
 
 	// Packages
 	auth "github.com/djthorpe/go-auth/schema/auth"
-	opt "github.com/mutablelogic/go-llm/pkg/opt"
-	ollama "github.com/mutablelogic/go-llm/provider/ollama"
 	schema "github.com/mutablelogic/go-llm/kernel/schema"
+	opt "github.com/mutablelogic/go-llm/pkg/opt"
 	llmtest "github.com/mutablelogic/go-llm/pkg/test"
+	ollama "github.com/mutablelogic/go-llm/provider/ollama"
 	types "github.com/mutablelogic/go-server/pkg/types"
 	assert "github.com/stretchr/testify/assert"
 	trace "go.opentelemetry.io/otel/trace"
@@ -204,6 +204,35 @@ func TestGeneratorFromMetaSupportsOllamaJSONOutputIntegration(t *testing.T) {
 		return
 	}
 	assert.Equal(t, string(rawSchema), applied.GetString(opt.JSONSchemaKey))
+}
+
+func TestGeneratorFromMetaSupportsMaxTokensIntegration(t *testing.T) {
+	conn, m := newIntegrationManager(t)
+	conn.RequireProvider(t)
+	ctx := llmtest.Context(t)
+	provider := llmtest.CreateProvider(t, conn.ProviderInsert(), m.CreateProvider, m.SyncProviders)
+	admin := llmtest.AdminUser(conn)
+	modelName := llmtest.ModelNameMatching(t, "", syncAndListModels(m, provider.Name, admin), func(model schema.Model) bool {
+		return model.Cap&schema.ModelCapCompletion != 0
+	}, validateAccessibleModel(m, provider.Name, admin))
+
+	_, _, _, opts, err := m.generatorFromMeta(ctx, schema.GeneratorMeta{
+		Provider:  types.Ptr(provider.Name),
+		Model:     types.Ptr(modelName),
+		MaxTokens: types.Ptr(uint(4096)),
+	}, admin, generationContextAsk)
+	if llmtest.IsUnreachable(err) {
+		t.Skipf("provider unreachable: %v", err)
+	}
+	if !assert.NoError(t, err) {
+		return
+	}
+
+	applied, err := opt.Apply(opts...)
+	if !assert.NoError(t, err) {
+		return
+	}
+	assert.Equal(t, uint(4096), applied.GetUint(opt.MaxTokensKey))
 }
 
 func TestGeneratorFromMetaRejectsElizaThinkingBudgetIntegration(t *testing.T) {
