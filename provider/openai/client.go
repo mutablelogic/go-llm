@@ -32,7 +32,7 @@ const (
 ///////////////////////////////////////////////////////////////////////////////
 // LIFECYCLE
 
-// New creates a new Mistral API client with the given API key
+// New creates a new OpenAI API client with the given API key
 func New(apiKey string, opts ...client.ClientOpt) (*Client, error) {
 	opts = append(opts,
 		client.OptEndpoint(endPoint),

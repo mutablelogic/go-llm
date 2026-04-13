@@ -83,7 +83,7 @@ func New(ctx context.Context, name, version string, pool pg.PoolConn, opts ...Op
 
 	// Create the provider registry
 	if registry := providerregistry.New(self.clientopts...); registry == nil {
-		return nil, fmt.Errorf("create provider registry: %w", err)
+		return nil, fmt.Errorf("unable to create provider registry")
 	} else {
 		self.Registry = registry
 	}
