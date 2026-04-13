@@ -40,6 +40,8 @@ type modelTestDownloader struct {
 
 var _ llm.Downloader = (*modelTestDownloader)(nil)
 
+func (d *modelTestDownloader) Self() llm.Client { return d }
+
 func (d *modelTestDownloader) DownloadModel(context.Context, string, ...opt.Opt) (*schema.Model, error) {
 	return nil, nil
 }
