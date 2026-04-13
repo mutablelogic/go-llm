@@ -110,6 +110,22 @@ func TestChannelResponseMarkdownConcatenatesSplitTextBlocks(t *testing.T) {
 	assert.NotContains(t, markdown, "It\n\n'")
 }
 
+func TestChannelResponseMarkdownReportsMaxIterationsAsError(t *testing.T) {
+	markdown, err := channelResponseMarkdown(schema.ChatResponse{
+		CompletionResponse: schema.CompletionResponse{
+			Role: schema.RoleAssistant,
+			Content: []schema.ContentBlock{{
+				ToolCall: &schema.ToolCall{Name: "mcp_fetch__fetch"},
+			}},
+			Result: schema.ResultMaxIterations,
+		},
+	})
+	require.NoError(t, err)
+	assert.Contains(t, markdown, "### Error")
+	assert.Contains(t, markdown, "Max iterations reached")
+	assert.NotContains(t, markdown, "### Response")
+}
+
 func TestChannelModelApplyResponseReplacesLiveAssistantSection(t *testing.T) {
 	text := "hello"
 	m := &channelModel{
@@ -152,6 +168,29 @@ func TestChannelModelResponseLeavesViewportContentStable(t *testing.T) {
 	}))
 
 	assert.NotContains(t, m.viewport.View(), channelCursorGlyph)
+	assert.False(t, m.streaming)
+}
+
+func TestChannelModelApplyResponseSetsMaxIterationsStatus(t *testing.T) {
+	m := &channelModel{
+		viewport: tui.NewViewport(tui.SetWidth(60), tui.SetHeight(10)),
+		turn:     1,
+		live:     make(map[string]struct{}),
+	}
+
+	require.NoError(t, m.applyResponse(schema.ChatResponse{
+		CompletionResponse: schema.CompletionResponse{
+			Role: schema.RoleAssistant,
+			Content: []schema.ContentBlock{{
+				ToolCall: &schema.ToolCall{Name: "mcp_fetch__fetch"},
+			}},
+			Result: schema.ResultMaxIterations,
+		},
+	}))
+
+	assert.Equal(t, "max iterations reached", m.status)
+	assert.Contains(t, m.viewport.View(), "Error")
+	assert.Contains(t, m.viewport.View(), "Max iterations reached")
 	assert.False(t, m.streaming)
 }
 

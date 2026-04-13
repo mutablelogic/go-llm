@@ -11,6 +11,7 @@ import (
 	// Packages
 	llm "github.com/mutablelogic/go-llm"
 	schema "github.com/mutablelogic/go-llm/kernel/schema"
+	"github.com/mutablelogic/go-llm/pkg/opt"
 )
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -80,6 +81,35 @@ func (c *CachedClient) GetModel(ctx context.Context, name string) (*schema.Model
 	}
 
 	return c.Client.GetModel(ctx, name)
+}
+
+func (c *CachedClient) DeleteModel(ctx context.Context, model schema.Model) error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if downloader, ok := c.Client.Self().(llm.Downloader); ok {
+		if err := downloader.DeleteModel(ctx, model); err != nil {
+			return err
+		} else {
+			c.last = time.Time{} // Invalidate cache
+			delete(c.models, model.Name)
+		}
+		return nil
+	}
+	return schema.ErrNotImplemented.Withf("client does not support deleting models")
+}
+
+func (c *CachedClient) DownloadModel(ctx context.Context, name string, opts ...opt.Opt) (*schema.Model, error) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if downloader, ok := c.Client.Self().(llm.Downloader); ok {
+		if model, err := downloader.DownloadModel(ctx, name, opts...); err != nil {
+			return nil, err
+		} else {
+			c.last = time.Time{} // Invalidate cache
+			return model, nil
+		}
+	}
+	return nil, schema.ErrNotImplemented.Withf("client does not support downloading models")
 }
 
 ///////////////////////////////////////////////////////////////////////////////

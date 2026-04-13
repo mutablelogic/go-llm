@@ -337,7 +337,11 @@ func (m *channelModel) applyResponse(response schema.ChatResponse) error {
 	}
 	m.live = current
 	m.activeRole = ""
-	m.status = "complete"
+	if response.Result == schema.ResultMaxIterations {
+		m.status = "max iterations reached"
+	} else {
+		m.status = "complete"
+	}
 	return m.clearCursor()
 }
 
@@ -492,6 +496,13 @@ func channelResponseMarkdown(response schema.ChatResponse) (string, error) {
 }
 
 func channelResponseSections(response schema.ChatResponse) ([]channelResponseSection, error) {
+	if response.Result == schema.ResultMaxIterations {
+		return []channelResponseSection{{
+			role:     "error",
+			markdown: "### Error\n\nMax iterations reached before the assistant produced a final response.",
+		}}, nil
+	}
+
 	var thinking []string
 	var content []string
 	for _, block := range response.Content {
