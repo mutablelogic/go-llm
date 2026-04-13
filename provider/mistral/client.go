@@ -6,12 +6,10 @@ package mistral
 
 import (
 	"context"
-	"time"
 
 	// Packages
 	client "github.com/mutablelogic/go-client"
 	llm "github.com/mutablelogic/go-llm"
-	modelcache "github.com/mutablelogic/go-llm/pkg/modelcache"
 	schema "github.com/mutablelogic/go-llm/kernel/schema"
 )
 
@@ -20,7 +18,6 @@ import (
 
 type Client struct {
 	*client.Client
-	*modelcache.ModelCache
 }
 
 var _ llm.Client = (*Client)(nil)
@@ -44,7 +41,7 @@ func New(apiKey string, opts ...client.ClientOpt) (*Client, error) {
 	if c, err := client.New(opts...); err != nil {
 		return nil, err
 	} else {
-		return &Client{c, modelcache.NewModelCache(time.Hour, 40)}, nil
+		return &Client{c}, nil
 	}
 }
 
@@ -54,6 +51,11 @@ func New(apiKey string, opts ...client.ClientOpt) (*Client, error) {
 // Name returns the provider name
 func (*Client) Name() string {
 	return schema.Mistral
+}
+
+// Self returns the underlying client implementation.
+func (c *Client) Self() llm.Client {
+	return c
 }
 
 // Ping checks the connectivity of the client and returns an error if not successful

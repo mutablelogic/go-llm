@@ -49,7 +49,7 @@ type DeleteSessionCommand struct {
 }
 
 type UpdateSessionCommand struct {
-	ID                 uuid.UUID `arg:"" name:"id" help:"Session ID."`
+	ID                 uuid.UUID `arg:"" name:"id" help:"Session ID (defaults to the stored current session)." optional:""`
 	schema.SessionMeta `embed:""`
 }
 
@@ -210,14 +210,19 @@ func (cmd *DeleteSessionCommand) Run(ctx server.Cmd) (err error) {
 }
 
 func (cmd *UpdateSessionCommand) Run(ctx server.Cmd) (err error) {
+	id, err := resolveSessionID(cmd.ID, ctx.GetString("session"))
+	if err != nil {
+		return err
+	}
+
 	return WithClient(ctx, func(client *httpclient.Client, _ string) error {
 		parent, endSpan := otel.StartSpan(ctx.Tracer(), ctx.Context(), "UpdateSessionCommand",
-			attribute.String("id", cmd.ID.String()),
+			attribute.String("id", id.String()),
 			attribute.String("meta", types.Stringify(cmd.SessionMeta)),
 		)
 		defer func() { endSpan(err) }()
 
-		session, err := client.UpdateSession(parent, cmd.ID, cmd.SessionMeta)
+		session, err := client.UpdateSession(parent, id, cmd.SessionMeta)
 		if err != nil {
 			return err
 		}

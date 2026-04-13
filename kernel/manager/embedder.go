@@ -8,9 +8,9 @@ import (
 	auth "github.com/djthorpe/go-auth/schema/auth"
 	otel "github.com/mutablelogic/go-client/pkg/otel"
 	llm "github.com/mutablelogic/go-llm"
+	schema "github.com/mutablelogic/go-llm/kernel/schema"
 	opt "github.com/mutablelogic/go-llm/pkg/opt"
 	google "github.com/mutablelogic/go-llm/provider/google"
-	schema "github.com/mutablelogic/go-llm/kernel/schema"
 	types "github.com/mutablelogic/go-server/pkg/types"
 	attribute "go.opentelemetry.io/otel/attribute"
 )
@@ -66,7 +66,7 @@ func (m *Manager) Embedding(ctx context.Context, request schema.EmbeddingRequest
 	if client == nil {
 		return nil, schema.ErrNotFound.Withf("no provider found for model: %s", request.Model)
 	}
-	embedder, ok := client.(llm.Embedder)
+	embedder, ok := client.Self().(llm.Embedder)
 	if !ok {
 		return nil, schema.ErrNotImplemented.Withf("provider %q does not support embeddings", provider.Name)
 	}

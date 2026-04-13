@@ -160,3 +160,36 @@ func TestCreateSessionRejectsMissingParent(t *testing.T) {
 		assert.ErrorIs(t, err, schema.ErrNotFound)
 	}
 }
+
+func TestUpdateSessionInvalidModelReturnsModelError(t *testing.T) {
+	conn, m := newIntegrationManager(t)
+	conn.RequireProvider(t)
+	ctx := llmtest.Context(t)
+	provider := llmtest.CreateProvider(t, conn.ProviderInsert(), m.CreateProvider, m.SyncProviders)
+	admin := llmtest.AdminUser(conn)
+	modelName := llmtest.ModelNameMatching(t, "", syncAndListModels(m, provider.Name, admin), func(model schema.Model) bool {
+		return model.Cap&schema.ModelCapCompletion != 0
+	}, validateAccessibleModel(m, provider.Name, admin))
+
+	created, err := m.CreateSession(ctx, schema.SessionInsert{
+		SessionMeta: schema.SessionMeta{
+			GeneratorMeta: schema.GeneratorMeta{
+				Model:    types.Ptr(modelName),
+				Provider: types.Ptr(provider.Name),
+			},
+			Title: types.Ptr("test session"),
+		},
+	}, admin)
+	if !assert.NoError(t, err) {
+		return
+	}
+
+	_, err = m.UpdateSession(ctx, created.ID, schema.SessionMeta{
+		GeneratorMeta: schema.GeneratorMeta{Model: types.Ptr("definitely-not-a-real-model")},
+	}, admin)
+	if assert.Error(t, err) {
+		assert.ErrorIs(t, err, schema.ErrNotFound)
+		assert.ErrorContains(t, err, `model "definitely-not-a-real-model" not found for provider `)
+		assert.NotContains(t, err.Error(), `session "`)
+	}
+}

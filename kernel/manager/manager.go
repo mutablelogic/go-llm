@@ -9,7 +9,7 @@ import (
 	// Packages
 	otel "github.com/mutablelogic/go-client/pkg/otel"
 	schema "github.com/mutablelogic/go-llm/kernel/schema"
-	provider "github.com/mutablelogic/go-llm/provider"
+	providerregistry "github.com/mutablelogic/go-llm/provider/registry"
 	toolkit "github.com/mutablelogic/go-llm/toolkit"
 	pg "github.com/mutablelogic/go-pg"
 	broadcaster "github.com/mutablelogic/go-pg/pkg/broadcaster"
@@ -23,7 +23,7 @@ import (
 type Manager struct {
 	manageropt
 	pg.PoolConn
-	*provider.Registry
+	*providerregistry.Registry
 	toolkit.Toolkit
 	broadcaster broadcaster.Broadcaster
 	sessionfeed *SessionFeed
@@ -82,8 +82,8 @@ func New(ctx context.Context, name, version string, pool pg.PoolConn, opts ...Op
 	}
 
 	// Create the provider registry
-	if registry := provider.New(self.clientopts...); registry == nil {
-		return nil, fmt.Errorf("create provider registry: %w", err)
+	if registry := providerregistry.New(self.clientopts...); registry == nil {
+		return nil, fmt.Errorf("unable to create provider registry")
 	} else {
 		self.Registry = registry
 	}

@@ -1,8 +1,8 @@
 /*
-google implements an API client for the Google Gemini REST API.
-https://ai.google.dev/gemini-api/docs
+openai implements an API client for OpenAI
+https://platform.openai.com/docs/api-reference
 */
-package google
+package openai
 
 import (
 	"context"
@@ -10,7 +10,7 @@ import (
 	// Packages
 	client "github.com/mutablelogic/go-client"
 	llm "github.com/mutablelogic/go-llm"
-	schema "github.com/mutablelogic/go-llm/kernel/schema"
+	"github.com/mutablelogic/go-llm/kernel/schema"
 )
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -21,24 +21,22 @@ type Client struct {
 }
 
 var _ llm.Client = (*Client)(nil)
-var _ llm.Generator = (*Client)(nil)
 
 ///////////////////////////////////////////////////////////////////////////////
 // GLOBALS
 
 const (
-	endPoint    = "https://generativelanguage.googleapis.com/v1beta"
-	defaultName = schema.Gemini
+	endPoint = "https://api.openai.com/v1"
 )
 
 ///////////////////////////////////////////////////////////////////////////////
 // LIFECYCLE
 
-// New creates a new Google Gemini API client with the given API key
+// New creates a new OpenAI API client with the given API key
 func New(apiKey string, opts ...client.ClientOpt) (*Client, error) {
 	opts = append(opts,
 		client.OptEndpoint(endPoint),
-		client.OptHeader("x-goog-api-key", apiKey),
+		client.OptReqToken(client.Token{Scheme: client.Bearer, Value: apiKey}),
 	)
 	if c, err := client.New(opts...); err != nil {
 		return nil, err
@@ -52,7 +50,7 @@ func New(apiKey string, opts ...client.ClientOpt) (*Client, error) {
 
 // Name returns the provider name
 func (*Client) Name() string {
-	return defaultName
+	return schema.OpenAI
 }
 
 // Self returns the underlying client implementation.
@@ -62,6 +60,6 @@ func (c *Client) Self() llm.Client {
 
 // Ping checks the connectivity of the client and returns an error if not successful
 func (*Client) Ping(ctx context.Context) error {
-	// TODO: Not implemented for Google Gemini
+	// TODO: Not implemented for OpenAI
 	return nil
 }

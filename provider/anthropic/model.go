@@ -8,7 +8,6 @@ import (
 
 	// Packages
 	client "github.com/mutablelogic/go-client"
-	opt "github.com/mutablelogic/go-llm/pkg/opt"
 	schema "github.com/mutablelogic/go-llm/kernel/schema"
 	types "github.com/mutablelogic/go-server/pkg/types"
 )
@@ -17,44 +16,36 @@ import (
 // PUBLIC METHODS
 
 // ListModels returns all available models from the Anthropic API
-func (c *Client) ListModels(ctx context.Context, opts ...opt.Opt) ([]schema.Model, error) {
-	return c.ModelCache.ListModels(ctx, opts, func(ctx context.Context, opts ...opt.Opt) ([]schema.Model, error) {
-		var response listModelsResponse
+func (c *Client) ListModels(ctx context.Context) ([]schema.Model, error) {
+	var response listModelsResponse
 
-		// Request with pagination
-		request := url.Values{}
-		result := make([]schema.Model, 0, 100)
-		for {
-			if err := c.DoWithContext(ctx, nil, &response, client.OptPath("models"), client.OptQuery(request)); err != nil {
-				return nil, err
-			}
-
-			// Convert to schema.Model
-			for _, m := range response.Data {
-				result = append(result, m.toSchema())
-			}
-
-			// If there are no more models, return
-			if !response.HasMore {
-				break
-			}
-			request.Set("after_id", response.LastId)
+	request := url.Values{}
+	result := make([]schema.Model, 0, 100)
+	for {
+		if err := c.DoWithContext(ctx, nil, &response, client.OptPath("models"), client.OptQuery(request)); err != nil {
+			return nil, err
 		}
 
-		// Return models
-		return result, nil
-	})
+		for _, m := range response.Data {
+			result = append(result, m.toSchema())
+		}
+
+		if !response.HasMore {
+			break
+		}
+		request.Set("after_id", response.LastId)
+	}
+
+	return result, nil
 }
 
 // GetModel returns a specific model by name or ID
-func (c *Client) GetModel(ctx context.Context, name string, opts ...opt.Opt) (*schema.Model, error) {
-	return c.ModelCache.GetModel(ctx, name, func(ctx context.Context, name string) (*schema.Model, error) {
-		var response model
-		if err := c.DoWithContext(ctx, nil, &response, client.OptPath("models", name)); err != nil {
-			return nil, err
-		}
-		return types.Ptr(response.toSchema()), nil
-	})
+func (c *Client) GetModel(ctx context.Context, name string) (*schema.Model, error) {
+	var response model
+	if err := c.DoWithContext(ctx, nil, &response, client.OptPath("models", name)); err != nil {
+		return nil, err
+	}
+	return types.Ptr(response.toSchema()), nil
 }
 
 ///////////////////////////////////////////////////////////////////////////////

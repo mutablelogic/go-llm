@@ -15,8 +15,8 @@ import (
 
 	// Packages
 	llm "github.com/mutablelogic/go-llm"
-	opt "github.com/mutablelogic/go-llm/pkg/opt"
 	schema "github.com/mutablelogic/go-llm/kernel/schema"
+	opt "github.com/mutablelogic/go-llm/pkg/opt"
 	types "github.com/mutablelogic/go-server/pkg/types"
 )
 
@@ -97,6 +97,11 @@ func (*Client) Name() string {
 	return providerName
 }
 
+// Self returns the underlying client implementation.
+func (c *Client) Self() llm.Client {
+	return c
+}
+
 // Ping checks the connectivity of the client and returns an error if not successful
 func (*Client) Ping(ctx context.Context) error {
 	// TODO: Not implemented for ELIZA
@@ -104,7 +109,7 @@ func (*Client) Ping(ctx context.Context) error {
 }
 
 // ListModels returns the available models
-func (c *Client) ListModels(ctx context.Context, opts ...opt.Opt) ([]schema.Model, error) {
+func (c *Client) ListModels(ctx context.Context) ([]schema.Model, error) {
 	models := make([]schema.Model, 0, len(c.languages))
 	for _, lang := range c.languages {
 		models = append(models, langModel(lang))
@@ -113,7 +118,7 @@ func (c *Client) ListModels(ctx context.Context, opts ...opt.Opt) ([]schema.Mode
 }
 
 // GetModel returns an ELIZA model by name
-func (c *Client) GetModel(ctx context.Context, name string, opts ...opt.Opt) (*schema.Model, error) {
+func (c *Client) GetModel(ctx context.Context, name string) (*schema.Model, error) {
 	// Try exact match first
 	if lang, ok := c.languages[name]; ok {
 		return types.Ptr(langModel(lang)), nil

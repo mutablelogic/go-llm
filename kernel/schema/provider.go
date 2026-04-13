@@ -26,10 +26,11 @@ const (
 	Mistral   = "mistral"
 	Eliza     = "eliza"
 	Ollama    = "ollama"
+	OpenAI    = "openai"
 )
 
 var (
-	allProviders   = []string{Gemini, Anthropic, Mistral, Eliza, Ollama}
+	allProviders   = []string{Gemini, Anthropic, Mistral, Eliza, Ollama, OpenAI}
 	reSpecialGroup = regexp.MustCompile(`^\$[A-Za-z][A-Za-z0-9_-]*\$$`)
 )
 

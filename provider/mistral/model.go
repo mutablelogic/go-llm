@@ -8,7 +8,6 @@ import (
 
 	// Packages
 	client "github.com/mutablelogic/go-client"
-	opt "github.com/mutablelogic/go-llm/pkg/opt"
 	schema "github.com/mutablelogic/go-llm/kernel/schema"
 	types "github.com/mutablelogic/go-server/pkg/types"
 )
@@ -17,39 +16,33 @@ import (
 // PUBLIC METHODS
 
 // ListModels returns all available models from the Mistral API
-func (c *Client) ListModels(ctx context.Context, opts ...opt.Opt) ([]schema.Model, error) {
-	return c.ModelCache.ListModels(ctx, opts, func(ctx context.Context, opts ...opt.Opt) ([]schema.Model, error) {
-		var response listModelsResponse
+func (c *Client) ListModels(ctx context.Context) ([]schema.Model, error) {
+	var response listModelsResponse
 
-		if err := c.DoWithContext(ctx, nil, &response, client.OptPath("models")); err != nil {
-			return nil, err
-		}
+	if err := c.DoWithContext(ctx, nil, &response, client.OptPath("models")); err != nil {
+		return nil, err
+	}
 
-		// Convert to schema.Model
-		result := make([]schema.Model, 0, len(response.Data))
-		for _, m := range response.Data {
-			result = append(result, m.toSchema())
-		}
+	result := make([]schema.Model, 0, len(response.Data))
+	for _, m := range response.Data {
+		result = append(result, m.toSchema())
+	}
 
-		return result, nil
-	})
+	return result, nil
 }
 
 // GetModel returns a specific model by name
-func (c *Client) GetModel(ctx context.Context, name string, opts ...opt.Opt) (*schema.Model, error) {
-	return c.ModelCache.GetModel(ctx, name, func(ctx context.Context, name string) (*schema.Model, error) {
-		// Mistral doesn't have a single-model endpoint, so list and find
-		models, err := c.ListModels(ctx, opts...)
-		if err != nil {
-			return nil, err
+func (c *Client) GetModel(ctx context.Context, name string) (*schema.Model, error) {
+	models, err := c.ListModels(ctx)
+	if err != nil {
+		return nil, err
+	}
+	for _, m := range models {
+		if m.Name == name {
+			return types.Ptr(m), nil
 		}
-		for _, m := range models {
-			if m.Name == name {
-				return types.Ptr(m), nil
-			}
-		}
-		return nil, schema.ErrNotFound.Withf("model not found: %s", name)
-	})
+	}
+	return nil, schema.ErrNotFound.Withf("model not found: %s", name)
 }
 
 ///////////////////////////////////////////////////////////////////////////////
