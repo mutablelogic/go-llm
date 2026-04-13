@@ -43,7 +43,6 @@ const timeout = 2 * time.Minute
 
 func Main(m *testing.M, conn *Conn, config ProviderConfig) {
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
-	defer cancel()
 
 	name, err := os.Executable()
 	if err != nil {
@@ -70,17 +69,24 @@ func Main(m *testing.M, conn *Conn, config ProviderConfig) {
 	})
 	if err != nil {
 		*conn = Conn{Config: resolved, SetupSkipReason: fmt.Sprintf("skipping integration tests: postgres container unavailable: %v", err), SkipReason: skipReason}
-		os.Exit(m.Run())
+		exitCode := m.Run()
+		cancel()
+		os.Exit(exitCode)
 	}
-	defer pool.Close()
-	defer container.Close(ctx)
+	runAndExit := func() {
+		exitCode := m.Run()
+		container.Close(ctx)
+		pool.Close()
+		cancel()
+		os.Exit(exitCode)
+	}
 	if err := bootstrapAuth(ctx, pool, resolved.Groups); err != nil {
 		*conn = Conn{PoolConn: pool, Config: resolved, SetupSkipReason: fmt.Sprintf("skipping integration tests: bootstrap auth failed: %v", err), SkipReason: skipReason}
-		os.Exit(m.Run())
+		runAndExit()
 	}
 
 	*conn = Conn{PoolConn: pool, Config: resolved, SkipReason: skipReason}
-	os.Exit(m.Run())
+	runAndExit()
 }
 
 func (c *Conn) Begin(t *testing.T) *Conn {
