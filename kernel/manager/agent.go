@@ -10,6 +10,7 @@ import (
 	otel "github.com/mutablelogic/go-client/pkg/otel"
 	llm "github.com/mutablelogic/go-llm"
 	schema "github.com/mutablelogic/go-llm/kernel/schema"
+	"github.com/mutablelogic/go-llm/pkg/opt"
 	toolkit "github.com/mutablelogic/go-llm/toolkit"
 	resource "github.com/mutablelogic/go-llm/toolkit/resource"
 	types "github.com/mutablelogic/go-server/pkg/types"
@@ -94,11 +95,10 @@ func (m *Manager) CallAgent(ctx context.Context, name string, req schema.CallAge
 		return nil, err
 	}
 
-	// If there are no matches, return not found. If there are multiple matches, return a conflict error
+	// There should be exactly one matching agent
 	if len(prompts) == 0 {
 		return nil, schema.ErrNotFound.Withf("agent %q", name)
-	}
-	if len(prompts) > 1 {
+	} else if len(prompts) > 1 {
 		return nil, schema.ErrConflict.Withf("multiple agents matched %q; specify a fully-qualified agent name", name)
 	}
 
@@ -127,6 +127,14 @@ func (m *Manager) CallAgent(ctx context.Context, name string, req schema.CallAge
 
 ///////////////////////////////////////////////////////////////////////////////
 // PRIVATE METHODS
+
+func newAgentMeta(prompt llm.Prompt) schema.AgentMeta {
+	return schema.AgentMeta{
+		Name:        prompt.Name(),
+		Title:       prompt.Title(),
+		Description: prompt.Description(),
+	}
+}
 
 func (m *Manager) listAgents(ctx context.Context, req schema.AgentListRequest, user *auth.User) ([]llm.Prompt, uint, error) {
 	var namespaces []string
@@ -166,10 +174,24 @@ func (m *Manager) listAgents(ctx context.Context, req schema.AgentListRequest, u
 	return resp.Prompts, resp.Count, nil
 }
 
-func newAgentMeta(prompt llm.Prompt) schema.AgentMeta {
-	return schema.AgentMeta{
-		Name:        prompt.Name(),
-		Title:       prompt.Title(),
-		Description: prompt.Description(),
+func (m *Manager) runAgent(ctx context.Context, prompt llm.Prompt, content string, opts []opt.Opt, resources ...llm.Resource) (_ llm.Resource, err error) {
+	// Extract the provider and the model from the prompt options
+	agentopt, err := opt.Apply(opts...)
+	if err != nil {
+		return nil, err
 	}
+	provider := agentopt.GetString(opt.ProviderKey)
+	model := agentopt.GetString(opt.ModelKey)
+
+	// Otel span
+	ctx, endSpan := otel.StartSpan(m.tracer, ctx, "RunAgent",
+		attribute.String("prompt", types.Stringify(prompt)),
+		attribute.String("content", content),
+		attribute.String("provider", types.Stringify(provider)),
+		attribute.String("model", types.Stringify(model)),
+	)
+	defer func() { endSpan(err) }()
+
+	// Not yet implemented
+	return nil, schema.ErrNotImplemented.Withf("agent execution is not implemented for prompt %q, provider %q, model %q", prompt.Name(), provider, model)
 }
