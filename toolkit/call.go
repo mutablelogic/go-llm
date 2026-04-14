@@ -53,8 +53,9 @@ func (tk *toolkit) Call(ctx context.Context, key any, resources ...llm.Resource)
 	case p != nil:
 		if tk.delegate == nil {
 			return nil, schema.ErrNotImplemented.With("no delegate set for prompt execution")
+		} else {
+			return tk.delegate.Call(ctx, p, resources...)
 		}
-		return tk.delegate.Call(ctx, p, resources...)
 	default:
 		return nil, schema.ErrNotFound.Withf("%v", key)
 	}

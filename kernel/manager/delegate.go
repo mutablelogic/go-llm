@@ -5,11 +5,11 @@ import (
 	"fmt"
 
 	// Packages
-
 	client "github.com/mutablelogic/go-client"
 	llm "github.com/mutablelogic/go-llm"
 	schema "github.com/mutablelogic/go-llm/kernel/schema"
 	mcp "github.com/mutablelogic/go-llm/mcp/client"
+	"github.com/mutablelogic/go-llm/pkg/opt"
 	toolkit "github.com/mutablelogic/go-llm/toolkit"
 	types "github.com/mutablelogic/go-server/pkg/types"
 )
@@ -18,27 +18,31 @@ import (
 // TYPES
 
 type delegate struct {
-	Name       string
-	Version    string
-	ClientOpts []client.ClientOpt
-	Connectors map[string]llm.Connector
+	Name         string
+	Version      string
+	ClientOpts   []client.ClientOpt
+	Connectors   map[string]llm.Connector
+	RunAgentFunc runAgentFunc
 }
 
 var _ toolkit.ToolkitDelegate = (*delegate)(nil)
 
+type runAgentFunc func(ctx context.Context, prompt llm.Prompt, content string, opts []opt.Opt, resources ...llm.Resource) (llm.Resource, error)
+
 ///////////////////////////////////////////////////////////////////////////////
 // LIFECYCLE
 
-func NewDelegate(name, version string, connectors map[string]llm.Connector, clientopts ...client.ClientOpt) *delegate {
+func NewDelegate(name, version string, connectors map[string]llm.Connector, runagent runAgentFunc, clientopts ...client.ClientOpt) *delegate {
 	local := make(map[string]llm.Connector, len(connectors))
 	for key, conn := range connectors {
 		local[key] = conn
 	}
 	return &delegate{
-		Name:       name,
-		Version:    version,
-		ClientOpts: clientopts,
-		Connectors: local,
+		Name:         name,
+		Version:      version,
+		ClientOpts:   clientopts,
+		Connectors:   local,
+		RunAgentFunc: runagent,
 	}
 }
 
@@ -56,13 +60,14 @@ func (d *delegate) OnEvent(evt toolkit.ConnectorEvent) {
 
 // Call executes a prompt via the manager, passing optional input resources.
 func (d *delegate) Call(ctx context.Context, prompt llm.Prompt, resources ...llm.Resource) (llm.Resource, error) {
-	// Let's prepare the prompt and options, then return an error since we haven't implemented this yet
-	// TODO
-	content, opts, err := prompt.Prepare(ctx, nil)
+	// Let's prepare the prompt
+	content, opts, err := prompt.Prepare(ctx, resources...)
 	if err != nil {
 		return nil, err
 	}
-	return nil, fmt.Errorf("Call is not implemented with content %v and options %v", content, opts)
+
+	// Run the agent
+	return d.RunAgentFunc(ctx, prompt, content, opts, resources...)
 }
 
 // CreateConnector is called to create a new connector for the given reference.

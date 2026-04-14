@@ -32,7 +32,7 @@ func (m *mcpPrompt) Description() string { return m.p.Description }
 
 // Prepare is not supported for remote MCP prompts — execution is always
 // delegated back through the toolkit's delegate.
-func (m *mcpPrompt) Prepare(_ context.Context, _ json.RawMessage) (string, []opt.Opt, error) {
+func (m *mcpPrompt) Prepare(_ context.Context, _ ...llm.Resource) (string, []opt.Opt, error) {
 	return "", nil, schema.ErrNotImplemented.With("Prepare not supported for MCP prompts")
 }
 

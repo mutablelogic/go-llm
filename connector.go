@@ -77,7 +77,7 @@ type Prompt interface {
 	Description() string
 
 	// Prepare returns the prompt for execution, given the input arguments as JSON.
-	Prepare(ctx context.Context, input json.RawMessage) (string, []opt.Opt, error)
+	Prepare(context.Context, ...Resource) (string, []opt.Opt, error)
 }
 
 // Resource is the interface a readable resource must implement.

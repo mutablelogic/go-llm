@@ -89,7 +89,7 @@ func New(ctx context.Context, name, version string, pool pg.PoolConn, opts ...Op
 	}
 
 	// Create a connector delegate, which receives notifications of connector changes
-	self.delegate = NewDelegate(self.name, self.version, self.connectors, self.clientopts...)
+	self.delegate = NewDelegate(self.name, self.version, self.connectors, self.runAgent, self.clientopts...)
 
 	// Create a session feed, which updates listening sessions when new messages are added
 	if sessionfeed, err := NewSessionFeed(ctx, pool, time.Second); err != nil {
@@ -98,7 +98,7 @@ func New(ctx context.Context, name, version string, pool pg.PoolConn, opts ...Op
 		self.sessionfeed = sessionfeed
 	}
 
-	// TEST
+	// TEST TODO
 	// Register metrics after the registry has been initialized so callbacks can
 	// safely read manager state during collection.
 	if err := self.registerMetrics(); err != nil {
