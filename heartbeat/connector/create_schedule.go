@@ -46,7 +46,7 @@ func (CreateSchedule) Name() string {
 }
 
 func (CreateSchedule) Description() string {
-	return `Schedule a new heartbeat reminder either recurring (using cron format) or at a specific time in RFC3339 format. Always pass a timezone (IANA name, e.g. Europe/London) so the schedule is evaluated in the user's local time.`
+	return `Schedule a new reminder either recurring (using cron format) or at a specific time in RFC3339 format. Always pass a timezone (IANA name, e.g. Europe/London) so the schedule is evaluated in the user's local time.`
 }
 
 func (CreateSchedule) InputSchema() *jsonschema.Schema {
@@ -54,11 +54,8 @@ func (CreateSchedule) InputSchema() *jsonschema.Schema {
 }
 
 func (tool CreateSchedule) Run(ctx context.Context, input json.RawMessage) (_ any, err error) {
-	toolSession := toolkit.SessionFromContext(ctx)
-	toolSession.Logger().InfoContext(ctx, "create_schedule called", "input", string(input))
-
 	// Parse the session
-	session, err := uuid.Parse(toolSession.ID())
+	session, err := uuid.Parse(toolkit.SessionFromContext(ctx).ID())
 	if err != nil {
 		return nil, err
 	}
@@ -79,7 +76,7 @@ func (tool CreateSchedule) Run(ctx context.Context, input json.RawMessage) (_ an
 		return nil, fmt.Errorf("invalid schedule %q: %w", req.Schedule, err)
 	}
 
-	// Create and return the new heartbeat
+	// Create and return the new reminder
 	return tool.Connector.Manager.Create(ctx, session, schema.HeartbeatMeta{
 		Message:  req.Prompt,
 		Schedule: timespec,

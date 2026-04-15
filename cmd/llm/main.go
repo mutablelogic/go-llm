@@ -5,6 +5,8 @@ import (
 	"os"
 
 	// Packages
+	authcmd "github.com/djthorpe/go-auth/pkg/cmd/auth"
+	authmanager "github.com/djthorpe/go-auth/pkg/cmd/manager"
 	llmcmd "github.com/mutablelogic/go-llm/kernel/cmd"
 	mcpcmd "github.com/mutablelogic/go-llm/mcp/cmd"
 	servercmd "github.com/mutablelogic/go-server/pkg/cmd"
@@ -15,6 +17,8 @@ import (
 // TYPES
 
 type CLI struct {
+	authcmd.AuthCommands
+	Auth authmanager.ManagerCommands `cmd:"" name:"auth" help:"Commands for managing authentication and authorization."`
 	llmcmd.SessionCommands
 	llmcmd.ChatCommands
 	llmcmd.ChannelCommands

@@ -26,7 +26,7 @@ func (m *Manager) Delete(ctx context.Context, session uuid.UUID, heartbeat uuid.
 	// Delete the heartbeat schedule
 	var result schema.Heartbeat
 	if err := m.PoolConn.Tx(ctx, func(conn pg.Conn) error {
-		return conn.With("session", session).Delete(ctx, &result, schema.HeartbeatIDSelector(heartbeat.String()))
+		return conn.With("session", session).Delete(ctx, &result, schema.HeartbeatSelector(heartbeat))
 	}); err != nil {
 		return nil, pg.NormalizeError(err)
 	}

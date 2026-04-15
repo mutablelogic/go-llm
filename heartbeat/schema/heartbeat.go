@@ -15,7 +15,7 @@ import (
 // TYPES
 
 // HeartbeatIDSelector selects a single heartbeat by ID for get/update/delete operations.
-type HeartbeatIDSelector string
+type HeartbeatSelector uuid.UUID
 
 type HeartbeatMeta struct {
 	Message  string   `json:"message"`
@@ -53,8 +53,8 @@ type HeartbeatList struct {
 ///////////////////////////////////////////////////////////////////////////////
 // SELECTORS
 
-func (id HeartbeatIDSelector) Select(bind *pg.Bind, op pg.Op) (string, error) {
-	bind.Set("id", string(id))
+func (id HeartbeatSelector) Select(bind *pg.Bind, op pg.Op) (string, error) {
+	bind.Set("id", id)
 	switch op {
 	case pg.Get:
 		return bind.Query("heartbeat.select"), nil
@@ -63,7 +63,7 @@ func (id HeartbeatIDSelector) Select(bind *pg.Bind, op pg.Op) (string, error) {
 	case pg.Delete:
 		return bind.Query("heartbeat.delete"), nil
 	default:
-		return "", llmschema.ErrInternalServerError.Withf("unsupported HeartbeatIDSelector operation %q", op)
+		return "", llmschema.ErrInternalServerError.Withf("unsupported HeartbeatSelector operation %q", op)
 	}
 }
 

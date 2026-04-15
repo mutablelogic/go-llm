@@ -3,12 +3,16 @@ package cmd
 import (
 	"bytes"
 	"context"
+	"crypto/rsa"
 	"fmt"
 	"io/fs"
 
 	// Packages
 	authmanager "github.com/djthorpe/go-auth/pkg/authmanager"
-	authhanders "github.com/djthorpe/go-auth/pkg/httphandler/authmanager"
+	authcrypto "github.com/djthorpe/go-auth/pkg/crypto"
+	authhandlers "github.com/djthorpe/go-auth/pkg/httphandler/auth"
+	authmanagerhandlers "github.com/djthorpe/go-auth/pkg/httphandler/authmanager"
+	localauthprovider "github.com/djthorpe/go-auth/pkg/provider/local"
 	client "github.com/mutablelogic/go-client"
 	llm "github.com/mutablelogic/go-llm"
 	agent "github.com/mutablelogic/go-llm/etc/agent"
@@ -120,11 +124,14 @@ func (runner *RunServer) Run(ctx server.Cmd) error {
 
 			// Register handlers for authmanager and llmmanager
 			runner.Register(func(router *httprouter.Router) error {
-				ctx.Logger().DebugContext(ctx.Context(), "registering authmanager handlers")
-				return authhanders.RegisterManagerHandlers(authmanager, router, runner.Auth)
+				ctx.Logger().DebugContext(ctx.Context(), "registering auth handlers")
+				return authhandlers.RegisterAuthHandlers(authmanager, router)
 			}).Register(func(router *httprouter.Router) error {
 				ctx.Logger().DebugContext(ctx.Context(), "registering llmmanager handlers")
 				return llmhandlers.RegisterHandlers(router, llmmanager, authmanager, runner.Auth)
+			}).Register(func(router *httprouter.Router) error {
+				ctx.Logger().DebugContext(ctx.Context(), "registering authmanager handlers")
+				return authmanagerhandlers.RegisterManagerHandlers(authmanager, router, runner.Auth)
 			})
 
 			// Create an error context - which will cancel any other goroutine on exit
@@ -174,9 +181,46 @@ func (c *errorgroup) Context() context.Context {
 ///////////////////////////////////////////////////////////////////////////////
 // PRIVATE METHODS - AUTH MANAGER
 
+func (server *RunServer) privateKey(ctx server.Cmd) (*rsa.PrivateKey, error) {
+	pem := ctx.GetString("privatekey")
+	var key *rsa.PrivateKey
+	var err error
+	if pem == "" {
+		key, err = authcrypto.GeneratePrivateKey()
+		if err != nil {
+			return nil, fmt.Errorf("generate private key: %w", err)
+		}
+		pem, err = authcrypto.PrivateKeyPEM(key)
+		if err != nil {
+			return nil, fmt.Errorf("marshal private key: %w", err)
+		}
+		if err := ctx.Set("privatekey", pem); err != nil {
+			return nil, fmt.Errorf("set private key: %w", err)
+		}
+	} else {
+		key, err = authcrypto.ParsePrivateKeyPEM(pem)
+		if err != nil {
+			return nil, fmt.Errorf("parse private key: %w", err)
+		}
+	}
+	return key, nil
+}
+
 func (server *RunServer) withAuthManager(ctx server.Cmd, conn pg.PoolConn, fn func(manager *authmanager.Manager) error) error {
+	// Get the private key for signing tokens
+	key, err := server.privateKey(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to load private key: %w", err)
+	}
+
+	// Add the local provider, which only requires an email address
+	localprovider, err := localauthprovider.New("https://issuer/", key)
+	if err != nil {
+		return fmt.Errorf("failed to create local auth provider: %w", err)
+	}
+
 	// Create the auth manager
-	authmanager, err := authmanager.New(ctx.Context(), conn, server.authManagerOpts(ctx)...)
+	authmanager, err := authmanager.New(ctx.Context(), conn, server.authManagerOpts(ctx, localprovider)...)
 	if err != nil {
 		return err
 	}
@@ -186,10 +230,11 @@ func (server *RunServer) withAuthManager(ctx server.Cmd, conn pg.PoolConn, fn fu
 	return fn(authmanager)
 }
 
-func (server *RunServer) authManagerOpts(ctx server.Cmd) []authmanager.Opt {
+func (server *RunServer) authManagerOpts(ctx server.Cmd, localprovider *localauthprovider.Provider) []authmanager.Opt {
 	return []authmanager.Opt{
 		authmanager.WithSchema(server.Schema.Auth),
 		authmanager.WithTracer(ctx.Tracer()),
+		authmanager.WithProvider(localprovider),
 	}
 }
 
