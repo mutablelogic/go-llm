@@ -12,7 +12,7 @@ import (
 )
 
 ///////////////////////////////////////////////////////////////////////////////
-// STORAGE TYPES
+// TYPES
 
 // HeartbeatIDSelector selects a single heartbeat by ID for get/update/delete operations.
 type HeartbeatIDSelector string
@@ -76,6 +76,9 @@ func (id HeartbeatMarkFiredSelector) Select(bind *pg.Bind, op pg.Op) (string, er
 }
 
 func (h HeartbeatListRequest) Select(bind *pg.Bind, op pg.Op) (string, error) {
+	// Set offset and limit for pagination
+	h.OffsetLimit.Bind(bind, HeartbeatListRequestMax)
+
 	// Set WHERE phrases
 	bind.Del("where")
 	if h.Fired != nil {
@@ -84,26 +87,24 @@ func (h HeartbeatListRequest) Select(bind *pg.Bind, op pg.Op) (string, error) {
 
 	where := bind.Join("where", " AND ")
 
-	// We limit ourselves to 100 results per request to prevent overload.
-	bind.Set("offsetlimit", "LIMIT 100")
-
 	// Return the SQL query name for this operation
 	switch op {
 	case pg.List:
-		if bind.Get("user") != nil {
+		if user := bind.Get("user"); user != nil && user.(uuid.UUID) != uuid.Nil {
 			if where != "" {
 				bind.Set("where", `AND `+where)
 			} else {
 				bind.Set("where", "")
 			}
 			return bind.Query("heartbeat.list_for_user"), nil
-		}
-		if where != "" {
-			bind.Set("where", `WHERE `+where)
 		} else {
-			bind.Set("where", "")
+			if where != "" {
+				bind.Set("where", `WHERE `+where)
+			} else {
+				bind.Set("where", "")
+			}
+			return bind.Query("heartbeat.list"), nil
 		}
-		return bind.Query("heartbeat.list"), nil
 	default:
 		return "", llmschema.ErrInternalServerError.Withf("Unsupported HeartbeatListRequest operation %q", op)
 	}

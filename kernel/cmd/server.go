@@ -12,6 +12,9 @@ import (
 	client "github.com/mutablelogic/go-client"
 	llm "github.com/mutablelogic/go-llm"
 	agent "github.com/mutablelogic/go-llm/etc/agent"
+	heartbeat "github.com/mutablelogic/go-llm/heartbeat/connector"
+	heartbeatmanager "github.com/mutablelogic/go-llm/heartbeat/manager"
+	heartbeatschema "github.com/mutablelogic/go-llm/heartbeat/schema"
 	homeassistant "github.com/mutablelogic/go-llm/homeassistant/connector"
 	llmhandlers "github.com/mutablelogic/go-llm/kernel/httphandler"
 	llmmanager "github.com/mutablelogic/go-llm/kernel/manager"
@@ -35,9 +38,10 @@ type RunServer struct {
 
 	// Schemas for tenancy
 	Schema struct {
-		Auth   string `name:"auth" help:"PostgreSQL schema for auth data." default:"auth"`
-		LLM    string `name:"llm" help:"PostgreSQL schema for LLM data." default:"llm"`
-		Memory string `name:"memory" help:"PostgreSQL schema for memory data." default:"memory"`
+		Auth      string `name:"auth" help:"PostgreSQL schema for auth data." default:"auth"`
+		LLM       string `name:"llm" help:"PostgreSQL schema for LLM data." default:"llm"`
+		Memory    string `name:"memory" help:"PostgreSQL schema for memory data." default:"memory"`
+		Heartbeat string `name:"heartbeat" help:"PostgreSQL schema for heartbeat data." default:"heartbeat"`
 	} `embed:"" prefix:"schema."`
 
 	// Home Assistant connector options
@@ -50,6 +54,7 @@ type RunServer struct {
 	Passphrases []string `name:"passphrase" env:"${ENV_NAME}_PASSPHRASES" help:"One or more passphrases used to encrypt credentials. "`
 	Auth        bool     `name:"auth" help:"Enable authentication for protected endpoints." default:"true" negatable:""`
 	Memory      bool     `name:"memory" help:"Enable memory and related endpoints." default:"true" negatable:""`
+	Heartbeat   bool     `name:"heartbeat" help:"Enable heartbeat and related endpoints." default:"true" negatable:""`
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -77,6 +82,22 @@ func (runner *RunServer) Run(ctx server.Cmd) error {
 				return err
 			} else {
 				opts = append(opts, llmmanager.WithConnector("memory", memory))
+			}
+		}
+
+		// Add the heartbeat connector, which is used to manage and fire scheduled callbacks
+		if runner.Heartbeat {
+			heartbeat, err := heartbeat.New(ctx.Context(), conn,
+				heartbeatmanager.WithSchema(runner.Schema.Heartbeat, runner.Schema.LLM),
+				heartbeatmanager.WithTracer(ctx.Tracer()),
+				heartbeatmanager.WithOnFire(func(parent context.Context, heartbeat *heartbeatschema.Heartbeat) {
+					ctx.Logger().InfoContext(parent, "heartbeat fired", "id", heartbeat.ID, "message", heartbeat.Message)
+				}),
+			)
+			if err != nil {
+				return err
+			} else {
+				opts = append(opts, llmmanager.WithConnector("heartbeat", heartbeat))
 			}
 		}
 

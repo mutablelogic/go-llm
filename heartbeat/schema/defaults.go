@@ -9,6 +9,7 @@ import (
 // GLOBALS
 
 const (
-	DefaultSchema    = "heartbeat"
-	DefaultLLMSchema = llmschema.DefaultSchema
+	DefaultSchema           = "heartbeat"
+	DefaultLLMSchema        = llmschema.DefaultSchema
+	HeartbeatListRequestMax = 100
 )

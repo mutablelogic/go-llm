@@ -1,6 +1,6 @@
 
 -- heartbeat.insert
-INSERT INTO ${"schema"}."heartbeat" (session_id, message, schedule)
+INSERT INTO ${"schema"}."heartbeat" (session, message, schedule)
 VALUES (@session, @message, @schedule)
 RETURNING
     id, message, schedule, fired, last_fired, created, modified
@@ -26,7 +26,7 @@ SELECT
     heartbeat.created,
     heartbeat.modified
 FROM ${"schema"}."heartbeat" AS heartbeat
-JOIN ${"llm"}."session" AS session ON session.id = heartbeat.session_id
+JOIN ${"llm"}."session" AS session ON session.id = heartbeat.session
 WHERE session."user" = @user
 ${where}
 ORDER BY heartbeat.last_fired ASC NULLS FIRST, heartbeat.created ASC

@@ -7,7 +7,6 @@ import (
 
 	// Packages
 	otel "github.com/mutablelogic/go-client/pkg/otel"
-	llm "github.com/mutablelogic/go-llm"
 	heartbeatpg "github.com/mutablelogic/go-llm/heartbeat/pg"
 	pg "github.com/mutablelogic/go-pg"
 	attribute "go.opentelemetry.io/otel/attribute"
@@ -22,8 +21,6 @@ type Manager struct {
 	opts
 	pg.PoolConn
 }
-
-var _ llm.Connector = (*Manager)(nil)
 
 ///////////////////////////////////////////////////////////////////////////////
 // LIFECYCLE
@@ -83,22 +80,4 @@ func bootstrap(ctx context.Context, conn pg.Conn, schemaName string) error {
 	}
 
 	return nil
-}
-
-///////////////////////////////////////////////////////////////////////////////
-// PUBLIC METHODS
-
-// ListTools satisfies the llm.Connector interface.
-func (m *Manager) ListTools(context.Context) ([]llm.Tool, error) {
-	return nil, nil
-}
-
-// ListPrompts satisfies the llm.Connector interface.
-func (m *Manager) ListPrompts(context.Context) ([]llm.Prompt, error) {
-	return nil, nil
-}
-
-// ListResources satisfies the llm.Connector interface.
-func (m *Manager) ListResources(context.Context) ([]llm.Resource, error) {
-	return nil, nil
 }
