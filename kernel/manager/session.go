@@ -5,8 +5,8 @@ import (
 	"errors"
 
 	// Packages
-	auth "github.com/djthorpe/go-auth/schema/auth"
 	uuid "github.com/google/uuid"
+	auth "github.com/mutablelogic/go-auth/auth/schema"
 	otel "github.com/mutablelogic/go-client/pkg/otel"
 	schema "github.com/mutablelogic/go-llm/kernel/schema"
 	pg "github.com/mutablelogic/go-pg"
@@ -22,7 +22,7 @@ import (
 // If Parent is set, the parent session must exist, belong to the same user,
 // and its generator settings are used as defaults for the child session.
 // If user is nil, it creates a user-less session.
-func (m *Manager) CreateSession(ctx context.Context, req schema.SessionInsert, user *auth.User) (_ *schema.Session, err error) {
+func (m *Manager) CreateSession(ctx context.Context, req schema.SessionInsert, user *auth.UserInfo) (_ *schema.Session, err error) {
 	// OTel span
 	ctx, endSpan := otel.StartSpan(m.tracer, ctx, "CreateSession",
 		attribute.String("req", req.String()),
@@ -34,7 +34,7 @@ func (m *Manager) CreateSession(ctx context.Context, req schema.SessionInsert, u
 	// meta merge + provider/model resolution + insert.
 	var result schema.Session
 	if err := m.PoolConn.Tx(ctx, func(conn pg.Conn) error {
-		conn = conn.With("user", user.UUID())
+		conn = conn.With("user", user.Sub)
 
 		// If a parent session is provided, fetch it (no user filter — we check
 		// ownership explicitly), then merge generator settings as defaults.
@@ -43,7 +43,7 @@ func (m *Manager) CreateSession(ctx context.Context, req schema.SessionInsert, u
 			if err := conn.With("user", uuid.UUID{}).Get(ctx, &parent, schema.SessionIDSelector(req.Parent)); err != nil {
 				return normalizeSessionError(req.Parent, err)
 			}
-			if parent.User != user.UUID() {
+			if parent.User != uuid.UUID(user.Sub) {
 				return httpresponse.ErrForbidden.With("parent session belongs to another user")
 			}
 			req.GeneratorMeta = parent.GeneratorMeta.MergeFrom(req.GeneratorMeta)
@@ -68,7 +68,7 @@ func (m *Manager) CreateSession(ctx context.Context, req schema.SessionInsert, u
 
 // GetSession returns a session by ID. If user is non-nil, the session must be
 // owned by that user; otherwise ErrForbidden is returned.
-func (m *Manager) GetSession(ctx context.Context, session uuid.UUID, user *auth.User) (_ *schema.Session, err error) {
+func (m *Manager) GetSession(ctx context.Context, session uuid.UUID, user *auth.UserInfo) (_ *schema.Session, err error) {
 	// OTel span
 	ctx, endSpan := otel.StartSpan(m.tracer, ctx, "GetSession",
 		attribute.String("id", session.String()),
@@ -78,7 +78,7 @@ func (m *Manager) GetSession(ctx context.Context, session uuid.UUID, user *auth.
 
 	// Get the session - if user is provided, ensure session belongs to that user.
 	var result schema.Session
-	if err := m.PoolConn.With("user", user.UUID()).Get(ctx, &result, schema.SessionIDSelector(session)); err != nil {
+	if err := m.PoolConn.With("user", user.Sub).Get(ctx, &result, schema.SessionIDSelector(session)); err != nil {
 		return nil, normalizeSessionError(session, err)
 	}
 
@@ -89,7 +89,7 @@ func (m *Manager) GetSession(ctx context.Context, session uuid.UUID, user *auth.
 // UpdateSession updates the metadata for a session and returns the updated session.
 // If user is non-nil, the session must be owned by that user.
 // The incoming GeneratorMeta is merged over the existing one (incoming fields win).
-func (m *Manager) UpdateSession(ctx context.Context, session uuid.UUID, meta schema.SessionMeta, user *auth.User) (_ *schema.Session, err error) {
+func (m *Manager) UpdateSession(ctx context.Context, session uuid.UUID, meta schema.SessionMeta, user *auth.UserInfo) (_ *schema.Session, err error) {
 	// OTel span
 	ctx, endSpan := otel.StartSpan(m.tracer, ctx, "UpdateSession",
 		attribute.String("id", session.String()),
@@ -101,7 +101,7 @@ func (m *Manager) UpdateSession(ctx context.Context, session uuid.UUID, meta sch
 	// Fetch, merge GeneratorMeta, and update in one transaction.
 	var result schema.Session
 	if err := m.PoolConn.Tx(ctx, func(conn pg.Conn) error {
-		conn = conn.With("user", user.UUID())
+		conn = conn.With("user", user.Sub)
 		var existing schema.Session
 		if err := conn.Get(ctx, &existing, schema.SessionIDSelector(session)); err != nil {
 			return normalizeSessionError(session, err)
@@ -132,7 +132,7 @@ func (m *Manager) UpdateSession(ctx context.Context, session uuid.UUID, meta sch
 
 // DeleteSession removes a session by ID and returns the deleted session.
 // If user is non-nil, the session must be owned by that user.
-func (m *Manager) DeleteSession(ctx context.Context, session uuid.UUID, user *auth.User) (_ *schema.Session, err error) {
+func (m *Manager) DeleteSession(ctx context.Context, session uuid.UUID, user *auth.UserInfo) (_ *schema.Session, err error) {
 	// OTel span
 	ctx, endSpan := otel.StartSpan(m.tracer, ctx, "DeleteSession",
 		attribute.String("id", session.String()),
@@ -142,7 +142,7 @@ func (m *Manager) DeleteSession(ctx context.Context, session uuid.UUID, user *au
 
 	// Delete the session - if user is provided, ensure session belongs to that user.
 	var result schema.Session
-	if err := m.PoolConn.With("user", user.UUID()).Delete(ctx, &result, schema.SessionIDSelector(session)); err != nil {
+	if err := m.PoolConn.With("user", user.Sub).Delete(ctx, &result, schema.SessionIDSelector(session)); err != nil {
 		return nil, normalizeSessionError(session, err)
 	}
 	if m.sessionfeed != nil {
@@ -155,7 +155,7 @@ func (m *Manager) DeleteSession(ctx context.Context, session uuid.UUID, user *au
 
 // ListSessions returns a paginated list of sessions matching the request.
 // If user is non-nil, only sessions owned by that user are returned.
-func (m *Manager) ListSessions(ctx context.Context, req schema.SessionListRequest, user *auth.User) (_ *schema.SessionList, err error) {
+func (m *Manager) ListSessions(ctx context.Context, req schema.SessionListRequest, user *auth.UserInfo) (_ *schema.SessionList, err error) {
 	// OTel span
 	ctx, endSpan := otel.StartSpan(m.tracer, ctx, "ListSessions",
 		attribute.String("req", req.String()),
@@ -164,7 +164,7 @@ func (m *Manager) ListSessions(ctx context.Context, req schema.SessionListReques
 	defer func() { endSpan(err) }()
 
 	result := schema.SessionList{SessionListRequest: req}
-	if err := m.PoolConn.With("user", user.UUID()).List(ctx, &result, req); err != nil {
+	if err := m.PoolConn.With("user", user.Sub).List(ctx, &result, req); err != nil {
 		return nil, pg.NormalizeError(err)
 	}
 	result.OffsetLimit.Clamp(uint64(result.Count))
@@ -174,7 +174,7 @@ func (m *Manager) ListSessions(ctx context.Context, req schema.SessionListReques
 
 // SubscribeSession registers a callback for new persisted messages for a session.
 // The subscription is automatically removed when ctx is canceled.
-func (m *Manager) SubscribeSession(ctx context.Context, session uuid.UUID, callback SessionFeedCallback, user *auth.User) error {
+func (m *Manager) SubscribeSession(ctx context.Context, session uuid.UUID, callback SessionFeedCallback, user *auth.UserInfo) error {
 	if m.sessionfeed == nil {
 		return schema.ErrInternalServerError.With("session feed is not configured")
 	}

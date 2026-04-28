@@ -6,13 +6,13 @@ import (
 	"strings"
 
 	// Packages
-	authclient "github.com/djthorpe/go-auth/pkg/httpclient/auth"
-	"github.com/djthorpe/go-auth/pkg/oidc"
-	auth "github.com/djthorpe/go-auth/schema/auth"
+	authclient "github.com/mutablelogic/go-auth/auth/httpclient"
+	oidc "github.com/mutablelogic/go-auth/auth/oidc"
+	auth "github.com/mutablelogic/go-auth/auth/schema"
 	otel "github.com/mutablelogic/go-client/pkg/otel"
 	schema "github.com/mutablelogic/go-llm/kernel/schema"
 	pg "github.com/mutablelogic/go-pg"
-	"github.com/mutablelogic/go-server/pkg/httpresponse"
+	httpresponse "github.com/mutablelogic/go-server/pkg/httpresponse"
 	types "github.com/mutablelogic/go-server/pkg/types"
 	attribute "go.opentelemetry.io/otel/attribute"
 )
@@ -31,7 +31,7 @@ type ConnectorProbe interface {
 // PUBLIC METHODS
 
 // CreateConnector validates and persists a connector insert request.
-func (m *Manager) CreateConnector(ctx context.Context, req schema.ConnectorInsert, user *auth.User) (_ *schema.Connector, _ *oidc.BaseConfiguration, _ []string, err error) {
+func (m *Manager) CreateConnector(ctx context.Context, req schema.ConnectorInsert, user *auth.UserInfo) (_ *schema.Connector, _ *oidc.BaseConfiguration, _ []string, err error) {
 	// Otel span
 	ctx, endSpan := otel.StartSpan(m.tracer, ctx, "CreateConnector",
 		attribute.String("req", types.Stringify(req)),
@@ -145,7 +145,7 @@ func (m *Manager) DeleteConnector(ctx context.Context, url string) (_ *schema.Co
 
 // GetConnector returns the connector for the given URL and, when user is set,
 // scopes access to public connectors or those accessible to the user's groups.
-func (m *Manager) GetConnector(ctx context.Context, url string, user *auth.User) (_ *schema.Connector, err error) {
+func (m *Manager) GetConnector(ctx context.Context, url string, user *auth.UserInfo) (_ *schema.Connector, err error) {
 	ctx, endSpan := otel.StartSpan(m.tracer, ctx, "GetConnector",
 		attribute.String("url", url),
 		attribute.String("user", types.Stringify(user)),
@@ -155,7 +155,7 @@ func (m *Manager) GetConnector(ctx context.Context, url string, user *auth.User)
 	var result schema.Connector
 	var conn pg.Conn = m.PoolConn
 	if user != nil {
-		conn = conn.With("user", user.UUID())
+		conn = conn.With("user", user.Sub)
 	}
 	if err := conn.Get(ctx, &result, schema.ConnectorURLSelector(url)); err != nil {
 		return nil, normalizeConnectorError(url, err)
@@ -205,7 +205,7 @@ func (m *Manager) UpdateConnector(ctx context.Context, url string, meta schema.C
 
 // ListConnectors lists connectors matching the request and, when user is set,
 // filters results to public connectors or those accessible to the user's groups.
-func (m *Manager) ListConnectors(ctx context.Context, req schema.ConnectorListRequest, user *auth.User) (_ *schema.ConnectorList, err error) {
+func (m *Manager) ListConnectors(ctx context.Context, req schema.ConnectorListRequest, user *auth.UserInfo) (_ *schema.ConnectorList, err error) {
 	ctx, endSpan := otel.StartSpan(m.tracer, ctx, "ListConnectors",
 		attribute.String("req", req.String()),
 		attribute.String("user", types.Stringify(user)),
@@ -216,7 +216,7 @@ func (m *Manager) ListConnectors(ctx context.Context, req schema.ConnectorListRe
 	result := schema.ConnectorList{ConnectorListRequest: req}
 	var conn pg.Conn = m.PoolConn
 	if user != nil {
-		conn = conn.With("user", user.UUID())
+		conn = conn.With("user", user.Sub)
 	}
 	if err := conn.List(ctx, &result, req); err != nil {
 		return nil, pg.NormalizeError(err)

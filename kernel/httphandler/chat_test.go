@@ -11,8 +11,8 @@ import (
 	"testing"
 
 	// Packages
-	auth "github.com/djthorpe/go-auth/schema/auth"
 	uuid "github.com/google/uuid"
+	auth "github.com/mutablelogic/go-auth/auth/schema"
 	schema "github.com/mutablelogic/go-llm/kernel/schema"
 	types "github.com/mutablelogic/go-server/pkg/types"
 )

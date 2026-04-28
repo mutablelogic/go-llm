@@ -6,8 +6,8 @@ import (
 	"time"
 
 	// Packages
-	authclient "github.com/djthorpe/go-auth/pkg/httpclient/auth"
 	sdkmcp "github.com/modelcontextprotocol/go-sdk/mcp"
+	authclient "github.com/mutablelogic/go-auth/auth/httpclient"
 	transport "github.com/mutablelogic/go-client/pkg/transport"
 	httpresponse "github.com/mutablelogic/go-server/pkg/httpresponse"
 	types "github.com/mutablelogic/go-server/pkg/types"

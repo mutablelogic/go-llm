@@ -7,7 +7,7 @@ import (
 	"net/url"
 
 	// Packages
-	middleware "github.com/djthorpe/go-auth/pkg/middleware"
+	middleware "github.com/mutablelogic/go-auth/auth/middleware"
 	llm "github.com/mutablelogic/go-llm"
 	llmmanager "github.com/mutablelogic/go-llm/kernel/manager"
 	schema "github.com/mutablelogic/go-llm/kernel/schema"

@@ -9,7 +9,7 @@ import (
 	llm "github.com/mutablelogic/go-llm"
 	schema "github.com/mutablelogic/go-llm/kernel/schema"
 	mcp "github.com/mutablelogic/go-llm/mcp/client"
-	"github.com/mutablelogic/go-llm/pkg/opt"
+	opt "github.com/mutablelogic/go-llm/pkg/opt"
 	toolkit "github.com/mutablelogic/go-llm/toolkit"
 	types "github.com/mutablelogic/go-server/pkg/types"
 )

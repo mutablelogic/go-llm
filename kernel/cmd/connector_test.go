@@ -8,7 +8,7 @@ import (
 	"testing"
 
 	// Packages
-	oidc "github.com/djthorpe/go-auth/pkg/oidc"
+	oidc "github.com/mutablelogic/go-auth/auth/oidc"
 	schema "github.com/mutablelogic/go-llm/kernel/schema"
 	httpresponse "github.com/mutablelogic/go-server/pkg/httpresponse"
 	assert "github.com/stretchr/testify/assert"

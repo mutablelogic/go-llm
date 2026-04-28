@@ -18,7 +18,7 @@ import (
 	"fmt"
 
 	// Packages
-	crypto "github.com/djthorpe/go-auth/pkg/crypto"
+	crypto "github.com/mutablelogic/go-auth/crypto"
 	client "github.com/mutablelogic/go-client"
 	llm "github.com/mutablelogic/go-llm"
 	schema "github.com/mutablelogic/go-llm/kernel/schema"

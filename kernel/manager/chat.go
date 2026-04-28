@@ -10,8 +10,8 @@ import (
 	"sync"
 
 	// Packages
-	auth "github.com/djthorpe/go-auth/schema/auth"
 	uuid "github.com/google/uuid"
+	auth "github.com/mutablelogic/go-auth/auth/schema"
 	otel "github.com/mutablelogic/go-client/pkg/otel"
 	llm "github.com/mutablelogic/go-llm"
 	schema "github.com/mutablelogic/go-llm/kernel/schema"
@@ -50,7 +50,7 @@ const memorySearchToolKey = "memory__memory_search"
 
 // Chat processes a message within a session context (stateful).
 // If fn is non-nil, text chunks are streamed to the callback as they arrive.
-func (m *Manager) Chat(ctx context.Context, req schema.ChatRequest, fn opt.StreamFn, user *auth.User, attachments ...llm.Resource) (_ *schema.ChatResponse, err error) {
+func (m *Manager) Chat(ctx context.Context, req schema.ChatRequest, fn opt.StreamFn, user *auth.UserInfo, attachments ...llm.Resource) (_ *schema.ChatResponse, err error) {
 	// Otel span
 	ctx, endSpan := otel.StartSpan(m.tracer, ctx, "Chat",
 		attribute.String("req", types.Stringify(req)),
@@ -187,7 +187,7 @@ func (m *Manager) Chat(ctx context.Context, req schema.ChatRequest, fn opt.Strea
 	return response, nil
 }
 
-func (m *Manager) executeConversationTurn(ctx context.Context, session uuid.UUID, user *auth.User, provider *schema.Provider, model *schema.Model, generator llm.Generator, systemPrompt string, conversation *schema.Conversation, message *schema.Message, opts ...opt.Opt) (*conversationTurn, error) {
+func (m *Manager) executeConversationTurn(ctx context.Context, session uuid.UUID, user *auth.UserInfo, provider *schema.Provider, model *schema.Model, generator llm.Generator, systemPrompt string, conversation *schema.Conversation, message *schema.Message, opts ...opt.Opt) (*conversationTurn, error) {
 	startLen := conversation.Len()
 	reply, usage, err := generator.WithSession(ctx, types.Value(model), conversation, message, opts...)
 	if err != nil {
@@ -206,7 +206,7 @@ func (m *Manager) executeConversationTurn(ctx context.Context, session uuid.UUID
 	if turn.Usage != nil {
 		turn.UsageEntry = &schema.UsageInsert{
 			Type:      schema.UsageTypeChat,
-			User:      user.UUID(),
+			User:      uuid.UUID(user.Sub),
 			Session:   session,
 			Model:     model.Name,
 			Provider:  types.Ptr(model.OwnedBy),
@@ -468,8 +468,8 @@ func (m *Manager) persistChatLoop(ctx context.Context, session uuid.UUID, messag
 	})
 }
 
-func (m *Manager) conversationForSession(ctx context.Context, session uuid.UUID, user *auth.User) (schema.Conversation, error) {
-	conn := m.PoolConn.With("session", session, "user", user.UUID())
+func (m *Manager) conversationForSession(ctx context.Context, session uuid.UUID, user *auth.UserInfo) (schema.Conversation, error) {
+	conn := m.PoolConn.With("session", session, "user", user.Sub)
 	req := schema.MessageListRequest{}
 	conversation := make(schema.Conversation, 0)
 	for {
@@ -495,7 +495,7 @@ func (m *Manager) conversationForSession(ctx context.Context, session uuid.UUID,
 	return conversation, nil
 }
 
-func (m *Manager) toolsForUser(ctx context.Context, user *auth.User, tools []string) (toolMap, error) {
+func (m *Manager) toolsForUser(ctx context.Context, user *auth.UserInfo, tools []string) (toolMap, error) {
 	limit := toolSelectionPageSize
 	req := schema.ToolListRequest{
 		OffsetLimit: pg.OffsetLimit{Limit: &limit},

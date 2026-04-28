@@ -5,7 +5,6 @@ import (
 	"testing"
 
 	// Packages
-
 	schema "github.com/mutablelogic/go-llm/kernel/schema"
 )
 

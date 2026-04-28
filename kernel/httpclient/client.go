@@ -2,7 +2,7 @@ package httpclient
 
 import (
 	// Packages
-	authclient "github.com/djthorpe/go-auth/pkg/httpclient/auth"
+	authclient "github.com/mutablelogic/go-auth/auth/httpclient"
 	client "github.com/mutablelogic/go-client"
 )
 
