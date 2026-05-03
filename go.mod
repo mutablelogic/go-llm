@@ -12,8 +12,8 @@ require (
 	github.com/muesli/termenv v0.16.0
 	github.com/mutablelogic/go-auth v0.0.14
 	github.com/mutablelogic/go-client v1.4.9
-	github.com/mutablelogic/go-pg v1.1.14
-	github.com/mutablelogic/go-server v1.6.34
+	github.com/mutablelogic/go-pg v1.1.15
+	github.com/mutablelogic/go-server v1.6.36
 	github.com/stretchr/testify v1.11.1
 	go.opentelemetry.io/otel v1.43.0
 	go.opentelemetry.io/otel/trace v1.43.0
