@@ -6,7 +6,7 @@ import (
 	"slices"
 
 	// Packages
-	auth "github.com/djthorpe/go-auth/schema/auth"
+	auth "github.com/mutablelogic/go-auth/auth/schema"
 	otel "github.com/mutablelogic/go-client/pkg/otel"
 	llm "github.com/mutablelogic/go-llm"
 	schema "github.com/mutablelogic/go-llm/kernel/schema"
@@ -20,7 +20,7 @@ import (
 // PUBLIC METHODS
 
 // ListTools returns paginated tool metadata from the current toolkit.
-func (m *Manager) ListTools(ctx context.Context, req schema.ToolListRequest, user *auth.User) (result *schema.ToolList, err error) {
+func (m *Manager) ListTools(ctx context.Context, req schema.ToolListRequest, user *auth.UserInfo) (result *schema.ToolList, err error) {
 	// Otel span
 	ctx, endSpan := otel.StartSpan(m.tracer, ctx, "ListTools",
 		attribute.String("request", req.String()),
@@ -53,7 +53,7 @@ func (m *Manager) ListTools(ctx context.Context, req schema.ToolListRequest, use
 }
 
 // GetTool returns tool metadata by name, scoped by the user's accessible namespaces.
-func (m *Manager) GetTool(ctx context.Context, name string, user *auth.User) (result *schema.ToolMeta, err error) {
+func (m *Manager) GetTool(ctx context.Context, name string, user *auth.UserInfo) (result *schema.ToolMeta, err error) {
 	// Otel span
 	ctx, endSpan := otel.StartSpan(m.tracer, ctx, "GetTool",
 		attribute.String("name", name),
@@ -86,7 +86,7 @@ func (m *Manager) GetTool(ctx context.Context, name string, user *auth.User) (re
 }
 
 // CallTool executes a tool by name with the given input, scoped by the user's accessible namespaces.
-func (m *Manager) CallTool(ctx context.Context, name string, req schema.CallToolRequest, user *auth.User) (result llm.Resource, err error) {
+func (m *Manager) CallTool(ctx context.Context, name string, req schema.CallToolRequest, user *auth.UserInfo) (result llm.Resource, err error) {
 	// Otel span
 	ctx, endSpan := otel.StartSpan(m.tracer, ctx, "CallTool",
 		attribute.String("name", name),
@@ -125,7 +125,7 @@ func (m *Manager) CallTool(ctx context.Context, name string, req schema.CallTool
 ///////////////////////////////////////////////////////////////////////////////
 // PRIVATE METHODS
 
-func (m *Manager) listTools(ctx context.Context, req schema.ToolListRequest, user *auth.User) ([]llm.Tool, uint, error) {
+func (m *Manager) listTools(ctx context.Context, req schema.ToolListRequest, user *auth.UserInfo) ([]llm.Tool, uint, error) {
 	var namespaces []string
 	if user == nil {
 		if req.Namespace != "" {
@@ -163,7 +163,7 @@ func (m *Manager) listTools(ctx context.Context, req schema.ToolListRequest, use
 	return resp.Tools, resp.Count, nil
 }
 
-func (m *Manager) toolNamespacesForUser(ctx context.Context, user *auth.User) ([]string, error) {
+func (m *Manager) toolNamespacesForUser(ctx context.Context, user *auth.UserInfo) ([]string, error) {
 	if user == nil {
 		return nil, nil
 	}

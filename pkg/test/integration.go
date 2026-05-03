@@ -13,8 +13,8 @@ import (
 	"time"
 
 	// Packages
-	auth "github.com/djthorpe/go-auth/schema/auth"
 	uuid "github.com/google/uuid"
+	auth "github.com/mutablelogic/go-auth/auth/schema"
 	schema "github.com/mutablelogic/go-llm/kernel/schema"
 	mock "github.com/mutablelogic/go-llm/mcp/mock"
 	mcpserver "github.com/mutablelogic/go-llm/mcp/server"

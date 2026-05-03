@@ -5,7 +5,8 @@ import (
 	"encoding/json"
 
 	// Packages
-	auth "github.com/djthorpe/go-auth/schema/auth"
+	uuid "github.com/google/uuid"
+	auth "github.com/mutablelogic/go-auth/auth/schema"
 	otel "github.com/mutablelogic/go-client/pkg/otel"
 	llm "github.com/mutablelogic/go-llm"
 	schema "github.com/mutablelogic/go-llm/kernel/schema"
@@ -32,7 +33,7 @@ const (
 
 // Ask processes a message and returns a response, outside of a session context (stateless).
 // If fn is non-nil, text chunks are streamed to the callback as they arrive.
-func (m *Manager) Ask(ctx context.Context, request schema.AskRequest, user *auth.User, fn opt.StreamFn) (_ *schema.AskResponse, err error) {
+func (m *Manager) Ask(ctx context.Context, request schema.AskRequest, user *auth.UserInfo, fn opt.StreamFn) (_ *schema.AskResponse, err error) {
 	// Otel span
 	ctx, endSpan := otel.StartSpan(m.tracer, ctx, "Ask",
 		attribute.String("req", types.Stringify(request.AskRequestCore)),
@@ -90,7 +91,7 @@ func (m *Manager) Ask(ctx context.Context, request schema.AskRequest, user *auth
 	if response.Usage != nil {
 		if _, err := m.CreateUsage(ctx, schema.UsageInsert{
 			Type:      schema.UsageTypeAsk,
-			User:      user.UUID(),
+			User:      uuid.UUID(user.Sub),
 			Model:     model.Name,
 			Provider:  types.Ptr(model.OwnedBy),
 			UsageMeta: types.Value(response.Usage),
@@ -109,7 +110,7 @@ func (m *Manager) Ask(ctx context.Context, request schema.AskRequest, user *auth
 // generatorFromMeta resolves the model and generator client from the given
 // GeneratorMeta, and returns provider-specific options derived from the meta
 // fields (e.g. system prompt). This is reusable for both Ask and Chat.
-func (m *Manager) generatorFromMeta(ctx context.Context, meta schema.GeneratorMeta, user *auth.User, context generationContext) (*schema.Provider, *schema.Model, llm.Generator, []opt.Opt, error) {
+func (m *Manager) generatorFromMeta(ctx context.Context, meta schema.GeneratorMeta, user *auth.UserInfo, context generationContext) (*schema.Provider, *schema.Model, llm.Generator, []opt.Opt, error) {
 	// Get candidate providers for user, or all candidates if no user is provided.
 	providers, err := m.providersForUser(ctx, types.Value(meta.Provider), user)
 	if err != nil {

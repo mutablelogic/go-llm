@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"strings"
 
+	// Packages
 	uuid "github.com/google/uuid"
 	types "github.com/mutablelogic/go-server/pkg/types"
 )

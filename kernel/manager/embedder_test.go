@@ -6,7 +6,7 @@ import (
 	"testing"
 
 	// Packages
-	auth "github.com/djthorpe/go-auth/schema/auth"
+	auth "github.com/mutablelogic/go-auth/auth/schema"
 	schema "github.com/mutablelogic/go-llm/kernel/schema"
 	llmtest "github.com/mutablelogic/go-llm/pkg/test"
 	assert "github.com/stretchr/testify/assert"

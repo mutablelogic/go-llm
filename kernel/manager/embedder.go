@@ -5,7 +5,8 @@ import (
 	"strings"
 
 	// Packages
-	auth "github.com/djthorpe/go-auth/schema/auth"
+	uuid "github.com/google/uuid"
+	auth "github.com/mutablelogic/go-auth/auth/schema"
 	otel "github.com/mutablelogic/go-client/pkg/otel"
 	llm "github.com/mutablelogic/go-llm"
 	schema "github.com/mutablelogic/go-llm/kernel/schema"
@@ -20,7 +21,7 @@ import (
 
 // Embedding resolves an embedding-capable model for the user-scoped request and
 // returns one output vector per input string.
-func (m *Manager) Embedding(ctx context.Context, request schema.EmbeddingRequest, user *auth.User) (_ *schema.EmbeddingResponse, err error) {
+func (m *Manager) Embedding(ctx context.Context, request schema.EmbeddingRequest, user *auth.UserInfo) (_ *schema.EmbeddingResponse, err error) {
 	// Otel span
 	ctx, endSpan := otel.StartSpan(m.tracer, ctx, "Embedding",
 		attribute.String("request", request.String()),
@@ -119,7 +120,7 @@ func (m *Manager) Embedding(ctx context.Context, request schema.EmbeddingRequest
 	if response.Usage != nil {
 		if _, err := m.CreateUsage(ctx, schema.UsageInsert{
 			Type:      schema.UsageTypeEmbedding,
-			User:      user.UUID(),
+			User:      uuid.UUID(user.Sub),
 			Model:     model.Name,
 			Provider:  types.Ptr(model.OwnedBy),
 			UsageMeta: types.Value(response.Usage),

@@ -6,11 +6,11 @@ import (
 	"slices"
 
 	// Packages
-	auth "github.com/djthorpe/go-auth/schema/auth"
+	auth "github.com/mutablelogic/go-auth/auth/schema"
 	otel "github.com/mutablelogic/go-client/pkg/otel"
 	llm "github.com/mutablelogic/go-llm"
 	schema "github.com/mutablelogic/go-llm/kernel/schema"
-	"github.com/mutablelogic/go-llm/pkg/opt"
+	opt "github.com/mutablelogic/go-llm/pkg/opt"
 	toolkit "github.com/mutablelogic/go-llm/toolkit"
 	resource "github.com/mutablelogic/go-llm/toolkit/resource"
 	types "github.com/mutablelogic/go-server/pkg/types"
@@ -22,7 +22,7 @@ import (
 
 // ListAgents returns paginated prompt metadata from the current toolkit,
 // exposing prompts externally as agents.
-func (m *Manager) ListAgents(ctx context.Context, req schema.AgentListRequest, user *auth.User) (result *schema.AgentList, err error) {
+func (m *Manager) ListAgents(ctx context.Context, req schema.AgentListRequest, user *auth.UserInfo) (result *schema.AgentList, err error) {
 	// Otel span
 	ctx, endSpan := otel.StartSpan(m.tracer, ctx, "ListAgents",
 		attribute.String("req", req.String()),
@@ -52,7 +52,7 @@ func (m *Manager) ListAgents(ctx context.Context, req schema.AgentListRequest, u
 }
 
 // GetAgent returns agent metadata by name, scoped by the user's accessible namespaces.
-func (m *Manager) GetAgent(ctx context.Context, name string, user *auth.User) (result *schema.AgentMeta, err error) {
+func (m *Manager) GetAgent(ctx context.Context, name string, user *auth.UserInfo) (result *schema.AgentMeta, err error) {
 	// Otel span
 	ctx, endSpan := otel.StartSpan(m.tracer, ctx, "GetAgent",
 		attribute.String("name", name),
@@ -80,7 +80,7 @@ func (m *Manager) GetAgent(ctx context.Context, name string, user *auth.User) (r
 }
 
 // CallAgent executes an agent by name with the given input, scoped by the user's accessible namespaces.
-func (m *Manager) CallAgent(ctx context.Context, name string, req schema.CallAgentRequest, user *auth.User) (result llm.Resource, err error) {
+func (m *Manager) CallAgent(ctx context.Context, name string, req schema.CallAgentRequest, user *auth.UserInfo) (result llm.Resource, err error) {
 	// Otel span
 	ctx, endSpan := otel.StartSpan(m.tracer, ctx, "CallAgent",
 		attribute.String("name", name),
@@ -136,7 +136,7 @@ func newAgentMeta(prompt llm.Prompt) schema.AgentMeta {
 	}
 }
 
-func (m *Manager) listAgents(ctx context.Context, req schema.AgentListRequest, user *auth.User) ([]llm.Prompt, uint, error) {
+func (m *Manager) listAgents(ctx context.Context, req schema.AgentListRequest, user *auth.UserInfo) ([]llm.Prompt, uint, error) {
 	var namespaces []string
 	if user == nil {
 		if req.Namespace != "" {

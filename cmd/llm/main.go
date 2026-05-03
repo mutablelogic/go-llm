@@ -5,7 +5,7 @@ import (
 	"os"
 
 	// Packages
-	llmcmd "github.com/mutablelogic/go-llm/kernel/cmd"
+	llm "github.com/mutablelogic/go-llm/kernel/cmd2"
 	mcpcmd "github.com/mutablelogic/go-llm/mcp/cmd"
 	servercmd "github.com/mutablelogic/go-server/pkg/cmd"
 	version "github.com/mutablelogic/go-server/pkg/version"
@@ -15,22 +15,23 @@ import (
 // TYPES
 
 type CLI struct {
-	llmcmd.SessionCommands
-	llmcmd.ChatCommands
-	llmcmd.ChannelCommands
-	llmcmd.AskCommands
-	llmcmd.EmbeddingCommands
-	llmcmd.ConnectorCommands
-	llmcmd.ProviderCommands
-	llmcmd.ModelCommands
-	llmcmd.ToolCommands
-	llmcmd.AgentCommands
+	/*	llm.SessionCommands
+		llm.ChatCommands
+		llm.ChannelCommands
+		llm.AskCommands
+		llm.EmbeddingCommands
+		llm.ConnectorCommands
+		llm.ProviderCommands
+		llm.ModelCommands
+		llm.ToolCommands
+		llm.AgentCommands
+	*/
 	MCP mcpcmd.Commands `cmd:"" name:"mcp" help:"Interact directly with an MCP server." group:"MCP"`
 	ServerCommands
 }
 
 type ServerCommands struct {
-	RunServer llmcmd.RunServer `cmd:"" name:"run" help:"Run the server." group:"SERVER"`
+	RunServer llm.RunServer `cmd:"" name:"run" help:"Run the server." group:"SERVER"`
 	servercmd.OpenAPICommands
 }
 

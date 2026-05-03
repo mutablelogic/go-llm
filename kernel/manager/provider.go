@@ -5,7 +5,7 @@ import (
 	"errors"
 
 	// Packages
-	auth "github.com/djthorpe/go-auth/schema/auth"
+	auth "github.com/mutablelogic/go-auth/auth/schema"
 	schema "github.com/mutablelogic/go-llm/kernel/schema"
 	pg "github.com/mutablelogic/go-pg"
 	types "github.com/mutablelogic/go-server/pkg/types"
@@ -51,11 +51,11 @@ func (m *Manager) ListProviders(ctx context.Context, req schema.ProviderListRequ
 	return m.listProviders(ctx, req, nil)
 }
 
-func (m *Manager) listProviders(ctx context.Context, req schema.ProviderListRequest, user *auth.User) (*schema.ProviderList, error) {
+func (m *Manager) listProviders(ctx context.Context, req schema.ProviderListRequest, user *auth.UserInfo) (*schema.ProviderList, error) {
 	result := schema.ProviderList{ProviderListRequest: req}
 	var conn pg.Conn = m.PoolConn
 	if user != nil {
-		conn = conn.With("user", user.UUID())
+		conn = conn.With("user", user.Sub)
 	}
 	if err := conn.List(ctx, &result, req); err != nil {
 		return nil, pg.NormalizeError(err)

@@ -7,8 +7,8 @@ import (
 	"io/fs"
 
 	// Packages
-	authmanager "github.com/djthorpe/go-auth/pkg/authmanager"
-	authhanders "github.com/djthorpe/go-auth/pkg/httphandler/authmanager"
+	authhanders "github.com/mutablelogic/go-auth/auth/httphandler"
+	authmanager "github.com/mutablelogic/go-auth/auth/manager"
 	client "github.com/mutablelogic/go-client"
 	llm "github.com/mutablelogic/go-llm"
 	agent "github.com/mutablelogic/go-llm/etc/agent"

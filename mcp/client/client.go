@@ -5,8 +5,8 @@ import (
 	"sync"
 
 	// Packages
-	authclient "github.com/djthorpe/go-auth/pkg/httpclient/auth"
 	sdkmcp "github.com/modelcontextprotocol/go-sdk/mcp"
+	authclient "github.com/mutablelogic/go-auth/auth/httpclient"
 	client "github.com/mutablelogic/go-client"
 	llm "github.com/mutablelogic/go-llm"
 )

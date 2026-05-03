@@ -4,7 +4,7 @@ import (
 	"context"
 
 	// Packages
-	auth "github.com/djthorpe/go-auth/schema/auth"
+	auth "github.com/mutablelogic/go-auth/auth/schema"
 	otel "github.com/mutablelogic/go-client/pkg/otel"
 	schema "github.com/mutablelogic/go-llm/heartbeat/schema"
 	pg "github.com/mutablelogic/go-pg"
