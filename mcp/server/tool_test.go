@@ -10,6 +10,7 @@ import (
 
 	// Packages
 	sdkmcp "github.com/modelcontextprotocol/go-sdk/mcp"
+	llm "github.com/mutablelogic/go-llm"
 	homeassistant "github.com/mutablelogic/go-llm/homeassistant/connector"
 	schema "github.com/mutablelogic/go-llm/kernel/schema"
 	mock "github.com/mutablelogic/go-llm/mcp/mock"
@@ -282,6 +283,29 @@ func TestAddToolsBadInputSchema(t *testing.T) {
 	})
 	if err == nil {
 		t.Fatal("expected error for tool with unmarshalable InputSchema, got nil")
+	}
+}
+
+type nilInputSchemaTool struct{}
+
+func (nilInputSchemaTool) Name() string                    { return "nil_input_schema" }
+func (nilInputSchemaTool) Description() string             { return "tool with nil input schema" }
+func (nilInputSchemaTool) InputSchema() *jsonschema.Schema { return nil }
+func (nilInputSchemaTool) OutputSchema() *jsonschema.Schema {
+	return nil
+}
+func (nilInputSchemaTool) Meta() llm.ToolMeta { return llm.ToolMeta{} }
+func (nilInputSchemaTool) Run(context.Context, json.RawMessage) (any, error) {
+	return map[string]any{"ok": true}, nil
+}
+
+func TestAddToolsNilInputSchemaDefaultsToEmptyObject(t *testing.T) {
+	srv, err := server.New("test-server", "1.0.0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := srv.AddTools(nilInputSchemaTool{}); err != nil {
+		t.Fatalf("expected nil input schema to be accepted, got error: %v", err)
 	}
 }
 

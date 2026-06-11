@@ -10,6 +10,7 @@ import (
 	sdkmcp "github.com/modelcontextprotocol/go-sdk/mcp"
 	llm "github.com/mutablelogic/go-llm"
 	schema "github.com/mutablelogic/go-llm/kernel/schema"
+	jsonschema "github.com/mutablelogic/go-server/pkg/jsonschema"
 	types "github.com/mutablelogic/go-server/pkg/types"
 	trace "go.opentelemetry.io/otel/trace"
 )
@@ -44,6 +45,9 @@ func (s *Server) RemoveTools(names ...string) {
 func sdkToolFromTool(t llm.Tool, tracer trace.Tracer) (*sdkmcp.Tool, sdkmcp.ToolHandler, error) {
 	// Build input schema — SDK accepts any JSON-marshalable value.
 	inputSchema := t.InputSchema()
+	if inputSchema == nil {
+		inputSchema = jsonschema.MustFor[struct{}]()
+	}
 	var err error
 	inputSchemaRaw, err := json.Marshal(inputSchema)
 	if err != nil {
