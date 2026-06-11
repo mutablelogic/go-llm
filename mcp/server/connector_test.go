@@ -65,11 +65,15 @@ func (*mockPrompt) Title() string { return "Mock Prompt" }
 
 func (*mockPrompt) Description() string { return "Prompt from connector" }
 
-func (*mockPrompt) Prepare(_ context.Context, input json.RawMessage) (string, []opt.Opt, error) {
+func (*mockPrompt) Prepare(ctx context.Context, input ...llm.Resource) (string, []opt.Opt, error) {
 	if len(input) == 0 {
 		return "hello from prompt", nil, nil
 	}
-	return string(input), nil, nil
+	data, err := input[0].Read(ctx)
+	if err != nil {
+		return "", nil, err
+	}
+	return string(data), nil, nil
 }
 
 func (*mockPrompt) MarshalJSON() ([]byte, error) {
