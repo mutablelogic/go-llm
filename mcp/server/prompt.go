@@ -7,6 +7,7 @@ import (
 	// Packages
 	sdkmcp "github.com/modelcontextprotocol/go-sdk/mcp"
 	llm "github.com/mutablelogic/go-llm"
+	resource "github.com/mutablelogic/go-llm/toolkit/resource"
 )
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -42,6 +43,7 @@ func promptFromPrompt(prompt llm.Prompt) *sdkmcp.Prompt {
 
 func promptHandlerFromPrompt(prompt llm.Prompt) sdkmcp.PromptHandler {
 	return func(ctx context.Context, req *sdkmcp.GetPromptRequest) (*sdkmcp.GetPromptResult, error) {
+		resources := make([]llm.Resource, 0, 1)
 		var raw json.RawMessage
 		if req.Params != nil && len(req.Params.Arguments) > 0 {
 			data, err := json.Marshal(req.Params.Arguments)
@@ -49,9 +51,15 @@ func promptHandlerFromPrompt(prompt llm.Prompt) sdkmcp.PromptHandler {
 				return nil, err
 			}
 			raw = data
+
+			input, err := resource.JSON("arguments", raw)
+			if err != nil {
+				return nil, err
+			}
+			resources = append(resources, input)
 		}
 
-		text, _, err := prompt.Prepare(ctx, raw)
+		text, _, err := prompt.Prepare(ctx, resources...)
 		if err != nil {
 			return nil, err
 		}

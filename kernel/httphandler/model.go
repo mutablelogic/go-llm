@@ -5,10 +5,10 @@ import (
 	"net/http"
 
 	// Packages
-	middleware "github.com/djthorpe/go-auth/pkg/middleware"
+	middleware "github.com/mutablelogic/go-auth/auth/middleware"
 	llmmanager "github.com/mutablelogic/go-llm/kernel/manager"
-	opt "github.com/mutablelogic/go-llm/pkg/opt"
 	schema "github.com/mutablelogic/go-llm/kernel/schema"
+	opt "github.com/mutablelogic/go-llm/pkg/opt"
 	httprequest "github.com/mutablelogic/go-server/pkg/httprequest"
 	httpresponse "github.com/mutablelogic/go-server/pkg/httpresponse"
 	jsonschema "github.com/mutablelogic/go-server/pkg/jsonschema"

@@ -10,7 +10,7 @@ import (
 	schema "github.com/mutablelogic/go-llm/kernel/schema"
 	tui "github.com/mutablelogic/go-llm/pkg/tui"
 	assert "github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
+	require "github.com/stretchr/testify/require"
 )
 
 func TestChannelPayload(t *testing.T) {

@@ -5,7 +5,7 @@ import (
 	"errors"
 
 	// Packages
-	authmanager "github.com/djthorpe/go-auth/pkg/authmanager"
+	authmanager "github.com/mutablelogic/go-auth/auth/manager"
 	llmmanager "github.com/mutablelogic/go-llm/kernel/manager"
 	httprouter "github.com/mutablelogic/go-server/pkg/httprouter"
 )

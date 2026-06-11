@@ -4,7 +4,8 @@ import (
 	"context"
 
 	// Packages
-	auth "github.com/djthorpe/go-auth/schema/auth"
+
+	auth "github.com/mutablelogic/go-auth/auth/schema"
 	otel "github.com/mutablelogic/go-client/pkg/otel"
 	schema "github.com/mutablelogic/go-llm/kernel/schema"
 	pg "github.com/mutablelogic/go-pg"
@@ -17,7 +18,7 @@ import (
 
 // ListMessages returns messages for a single session, optionally filtered by request fields.
 // If user is non-nil, the session must be owned by that user.
-func (m *Manager) ListMessages(ctx context.Context, req schema.MessageListRequest, user *auth.User) (_ *schema.MessageList, err error) {
+func (m *Manager) ListMessages(ctx context.Context, req schema.MessageListRequest, user *auth.UserInfo) (_ *schema.MessageList, err error) {
 	if len(req.Sessions) != 1 {
 		return nil, schema.ErrBadParameter.With("exactly one message session is required")
 	}
@@ -35,7 +36,7 @@ func (m *Manager) ListMessages(ctx context.Context, req schema.MessageListReques
 	}
 
 	result := schema.MessageList{MessageListRequest: req}
-	if err := m.PoolConn.With("user", user.UUID()).List(ctx, &result, req); err != nil {
+	if err := m.PoolConn.With("user", user.Sub).List(ctx, &result, req); err != nil {
 		return nil, pg.NormalizeError(err)
 	}
 	result.OffsetLimit.Clamp(uint64(result.Count))

@@ -8,7 +8,7 @@ import (
 	"sync"
 
 	// Packages
-	auth "github.com/djthorpe/go-auth/schema/auth"
+	auth "github.com/mutablelogic/go-auth/auth/schema"
 	otel "github.com/mutablelogic/go-client/pkg/otel"
 	llm "github.com/mutablelogic/go-llm"
 	schema "github.com/mutablelogic/go-llm/kernel/schema"
@@ -32,7 +32,7 @@ type downloaderCandidate struct {
 ///////////////////////////////////////////////////////////////////////////////
 // PUBLIC METHODS
 
-func (m *Manager) ListModels(ctx context.Context, req schema.ModelListRequest, user *auth.User) (_ *schema.ModelList, err error) {
+func (m *Manager) ListModels(ctx context.Context, req schema.ModelListRequest, user *auth.UserInfo) (_ *schema.ModelList, err error) {
 	// Otel
 	ctx, endSpan := otel.StartSpan(m.tracer, ctx, "ListModels",
 		attribute.String("req", types.Stringify(req)),
@@ -75,7 +75,7 @@ func (m *Manager) ListModels(ctx context.Context, req schema.ModelListRequest, u
 	}, nil
 }
 
-func (m *Manager) GetModel(ctx context.Context, req schema.GetModelRequest, user *auth.User) (_ *schema.Model, err error) {
+func (m *Manager) GetModel(ctx context.Context, req schema.GetModelRequest, user *auth.UserInfo) (_ *schema.Model, err error) {
 	// Otel
 	ctx, endSpan := otel.StartSpan(m.tracer, ctx, "GetModel",
 		attribute.String("req", types.Stringify(req)),
@@ -102,7 +102,7 @@ func (m *Manager) GetModel(ctx context.Context, req schema.GetModelRequest, user
 	return types.Ptr(models[0]), nil
 }
 
-func (m *Manager) DownloadModel(ctx context.Context, req schema.DownloadModelRequest, user *auth.User, opts ...opt.Opt) (result *schema.Model, err error) {
+func (m *Manager) DownloadModel(ctx context.Context, req schema.DownloadModelRequest, user *auth.UserInfo, opts ...opt.Opt) (result *schema.Model, err error) {
 	// Otel span
 	ctx, endSpan := otel.StartSpan(m.tracer, ctx, "DownloadModel",
 		attribute.String("req", types.Stringify(req)),
@@ -131,7 +131,7 @@ func (m *Manager) DownloadModel(ctx context.Context, req schema.DownloadModelReq
 	}
 }
 
-func (m *Manager) DeleteModel(ctx context.Context, req schema.DeleteModelRequest, user *auth.User) (result *schema.Model, err error) {
+func (m *Manager) DeleteModel(ctx context.Context, req schema.DeleteModelRequest, user *auth.UserInfo) (result *schema.Model, err error) {
 	ctx, endSpan := otel.StartSpan(m.tracer, ctx, "DeleteModel",
 		attribute.String("req", types.Stringify(req)),
 		attribute.String("user", types.Stringify(user)),
@@ -173,7 +173,7 @@ func (m *Manager) DeleteModel(ctx context.Context, req schema.DeleteModelRequest
 ///////////////////////////////////////////////////////////////////////////////
 // PRIVATE METHODS
 
-func (m *Manager) providersForUser(ctx context.Context, provider string, user *auth.User) ([]schema.Provider, error) {
+func (m *Manager) providersForUser(ctx context.Context, provider string, user *auth.UserInfo) ([]schema.Provider, error) {
 	providerReq := schema.ProviderListRequest{
 		Name:    provider,
 		Enabled: types.Ptr(true),
@@ -197,7 +197,7 @@ func (m *Manager) providersForUser(ctx context.Context, provider string, user *a
 	return result, nil
 }
 
-func (m *Manager) downloaderCandidates(ctx context.Context, provider string, user *auth.User) ([]downloaderCandidate, error) {
+func (m *Manager) downloaderCandidates(ctx context.Context, provider string, user *auth.UserInfo) ([]downloaderCandidate, error) {
 	providers, err := m.providersForUser(ctx, provider, user)
 	if err != nil {
 		return nil, err

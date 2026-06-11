@@ -11,7 +11,7 @@ import (
 	"time"
 
 	// Packages
-	authclient "github.com/djthorpe/go-auth/pkg/httpclient/auth"
+	authclient "github.com/mutablelogic/go-auth/auth/httpclient"
 	server "github.com/mutablelogic/go-llm/mcp/server"
 	httpresponse "github.com/mutablelogic/go-server/pkg/httpresponse"
 )
