@@ -56,7 +56,7 @@ type ProviderMetaMap map[string]any
 
 // ProviderCredentials contains the secret material used to access a provider.
 type ProviderCredentials struct {
-	APIKey string `json:"api_key,omitempty" name:"api-key" help:"Provider API key" optional:"" env:"LLM_PROVIDER_API_KEY"`
+	APIKey string `json:"api_key,omitempty" name:"api-key" help:"Provider API key" optional:""`
 }
 
 // ProviderInsert contains the fields required to insert a new provider row.
