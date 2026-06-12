@@ -37,7 +37,7 @@ type ProviderModelsCmd struct {
 ///////////////////////////////////////////////////////////////////////////////
 // GLOBALS
 
-const description = "LLM Provider demonstrates how to call providers directly."
+const description = "LLM Provider demonstrates how to register multiple LLM providers."
 
 ///////////////////////////////////////////////////////////////////////////////
 // LIFECYCLE
@@ -65,7 +65,10 @@ func (c ProviderListCmd) Run(ctx server.Cmd) error {
 func (c ProviderModelsCmd) Run(ctx server.Cmd) error {
 	return c.With(ctx, func(registry *provider.Registry) error {
 		models, err := registry.ListModels(ctx.Context(), schema.ListModelsRequest{})
-		fmt.Println("Available models:", registry.Count())
+		if err != nil {
+			return err
+		}
+		fmt.Println("Available models:", len(models))
 		return nil
 	})
 }
