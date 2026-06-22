@@ -53,6 +53,15 @@ func New(opts ...client.ClientOpt) *Registry {
 ///////////////////////////////////////////////////////////////////////////////
 // PUBLIC METHODS
 
+// Validate checks the connectivity of a provider with a ping
+func (r *Registry) Validate(ctx context.Context, provider schema.Provider, credentials schema.ProviderCredentials) error {
+	client, err := createClient(types.Ptr(provider), credentials, r.clientopts...)
+	if err != nil {
+		return err
+	}
+	return client.Ping(ctx)
+}
+
 // Ping checks the connectivity of all providers and returns any errors
 func (r *Registry) Ping(ctx context.Context) error {
 	r.mu.Lock()
