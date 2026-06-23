@@ -53,6 +53,15 @@ func New(opts ...client.ClientOpt) *Registry {
 ///////////////////////////////////////////////////////////////////////////////
 // PUBLIC METHODS
 
+// Validate checks the connectivity of a provider with a ping
+func (r *Registry) Validate(ctx context.Context, provider schema.Provider, credentials schema.ProviderCredentials) error {
+	client, err := createClient(types.Ptr(provider), credentials, r.clientopts...)
+	if err != nil {
+		return err
+	}
+	return client.Ping(ctx)
+}
+
 // Ping checks the connectivity of all providers and returns any errors
 func (r *Registry) Ping(ctx context.Context) error {
 	r.mu.Lock()
@@ -130,18 +139,16 @@ func (r *Registry) Count() int {
 	return len(r.providers)
 }
 
-// GetModels returns filtered models for a single provider using optional include/exclude regex patterns.
-func (r *Registry) GetModels(ctx context.Context, provider *schema.Provider) ([]schema.Model, error) {
-	if provider == nil {
-		return nil, schema.ErrBadParameter.Withf("provider is nil")
-	}
+// ListModels returns filtered models for multiple providers
+/*
+func (r *Registry) ListModels(ctx context.Context, req schema.ListModelsRequest) (*schema.ListModelsResponse, error) {
 
-	client := r.Get(provider.Name)
+	client := r.Get(provider)
 	if client == nil {
-		return nil, schema.ErrNotFound.Withf("provider %q not found", provider.Name)
+		return nil, schema.ErrNotFound.Withf("provider %q not found", provider)
 	}
 
-	includePatterns, err := r.compiledModelPatterns(provider.Name, "include", provider.Include)
+	includePatterns, err := r.compiledModelPatterns(client.Name, "include", provider.Include)
 	if err != nil {
 		return nil, err
 	}
@@ -166,6 +173,7 @@ func (r *Registry) GetModels(ctx context.Context, provider *schema.Provider) ([]
 
 	return result, nil
 }
+*/
 
 // GetModel returns a single model for a provider when the exact model name matches
 // after include/exclude regex filtering has been applied.
