@@ -5,6 +5,7 @@ import (
 	"time"
 
 	// Packages
+	pg "github.com/mutablelogic/go-pg"
 	types "github.com/mutablelogic/go-server/pkg/types"
 )
 
@@ -26,6 +27,17 @@ type Model struct {
 
 // Model Capabilities
 type ModelCap uint32
+
+// List models request and response
+type ListModelsRequest struct {
+	pg.OffsetLimit
+}
+
+type ListModelsResponse struct {
+	ListModelsRequest
+	Count uint     `json:"count"`
+	Body  []*Model `json:"models"`
+}
 
 ////////////////////////////////////////////////////////////////////////////////
 // GLOBALS
@@ -81,4 +93,8 @@ func (c ModelCap) String() string {
 		}
 	}
 	return strings.Join(flags, ", ")
+}
+
+func (m ListModelsResponse) String() string {
+	return types.Stringify(m)
 }

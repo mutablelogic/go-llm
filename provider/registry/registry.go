@@ -130,18 +130,15 @@ func (r *Registry) Count() int {
 	return len(r.providers)
 }
 
-// GetModels returns filtered models for a single provider using optional include/exclude regex patterns.
-func (r *Registry) GetModels(ctx context.Context, provider *schema.Provider) ([]schema.Model, error) {
-	if provider == nil {
-		return nil, schema.ErrBadParameter.Withf("provider is nil")
-	}
+// ListModels returns filtered models for multiple providers
+func (r *Registry) ListModels(ctx context.Context, req schema.ListModelsRequest) (*schema.ListModelsResponse, error) {
 
-	client := r.Get(provider.Name)
+	client := r.Get(provider)
 	if client == nil {
-		return nil, schema.ErrNotFound.Withf("provider %q not found", provider.Name)
+		return nil, schema.ErrNotFound.Withf("provider %q not found", provider)
 	}
 
-	includePatterns, err := r.compiledModelPatterns(provider.Name, "include", provider.Include)
+	includePatterns, err := r.compiledModelPatterns(client.Name, "include", provider.Include)
 	if err != nil {
 		return nil, err
 	}
