@@ -140,6 +140,7 @@ func (r *Registry) Count() int {
 }
 
 // ListModels returns filtered models for multiple providers
+/*
 func (r *Registry) ListModels(ctx context.Context, req schema.ListModelsRequest) (*schema.ListModelsResponse, error) {
 
 	client := r.Get(provider)
@@ -172,6 +173,7 @@ func (r *Registry) ListModels(ctx context.Context, req schema.ListModelsRequest)
 
 	return result, nil
 }
+*/
 
 // GetModel returns a single model for a provider when the exact model name matches
 // after include/exclude regex filtering has been applied.
