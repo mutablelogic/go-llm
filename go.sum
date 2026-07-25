@@ -184,8 +184,8 @@ github.com/mutablelogic/go-client v1.4.9 h1:1JHLha6u0u0mEQEHc4K0Pq6EJMwd8F0DR/ah
 github.com/mutablelogic/go-client v1.4.9/go.mod h1:g8c6RlvIC0wC5rpoqtqk7eznBxormwrxArxH9I5rNRQ=
 github.com/mutablelogic/go-pg v1.1.15 h1:NyJXuznbNHcNQZNWdhcgkkf3NZs38NaDi5Y+g3TYVy0=
 github.com/mutablelogic/go-pg v1.1.15/go.mod h1:qBmZG6ZTL1l3UCAxfH/YrIS/P4hHojyd3zpzmAPaYBk=
-github.com/mutablelogic/go-server v1.6.34 h1:fkeZM4Raaryt86/HDzVruQeXBCpvLoB725PSIpQWHS8=
-github.com/mutablelogic/go-server v1.6.34/go.mod h1:WEitTi2S39tM0xkmhm0aMNzb7NqhkaqJmwfHpaVtycw=
+github.com/mutablelogic/go-server v1.6.36 h1:zJl6Fju8Q0XEa/D3jRWeKNskMCd9LjSC8UyUJAzQC7A=
+github.com/mutablelogic/go-server v1.6.36/go.mod h1:WEitTi2S39tM0xkmhm0aMNzb7NqhkaqJmwfHpaVtycw=
 github.com/mutablelogic/go-tokenizer v0.0.3 h1:6oaa80TaAl+nVpd+M9QhlJPbP7y5/thq4d0dKjreiLs=
 github.com/mutablelogic/go-tokenizer v0.0.3/go.mod h1:zdAyIhfqUKxFXb8MwChbXNwMOZt/5NlUylmx6Qjr4v8=
 github.com/opencontainers/go-digest v1.0.0 h1:apOUWs51W5PlhuyGyz9FCeeBIOUDA/6nW8Oi/yOhh5U=
@@ -309,8 +309,8 @@ google.golang.org/genproto/googleapis/api v0.0.0-20260427160629-7cedc36a6bc4 h1:
 google.golang.org/genproto/googleapis/api v0.0.0-20260427160629-7cedc36a6bc4/go.mod h1:Q9HWtNeE7tM9npdIsEvqXj1QJIvVoeAV3rtXtS715Cw=
 google.golang.org/genproto/googleapis/rpc v0.0.0-20260427160629-7cedc36a6bc4 h1:tEkOQcXgF6dH1G+MVKZrfpYvozGrzb91k6ha7jireSM=
 google.golang.org/genproto/googleapis/rpc v0.0.0-20260427160629-7cedc36a6bc4/go.mod h1:4Hqkh8ycfw05ld/3BWL7rJOSfebL2Q+DVDeRgYgxUU8=
-google.golang.org/grpc v1.80.0 h1:Xr6m2WmWZLETvUNvIUmeD5OAagMw3FiKmMlTdViWsHM=
-google.golang.org/grpc v1.80.0/go.mod h1:ho/dLnxwi3EDJA4Zghp7k2Ec1+c2jqup0bFkw07bwF4=
+google.golang.org/grpc v1.82.1 h1:NnAxzGRA0677vCa4BUkOAnO5+FfQqVl9iUXeD0IqcGE=
+google.golang.org/grpc v1.82.1/go.mod h1:yzTZ1TB1Z3SG+LIYaI+WiE8D5+PZ3ArnrSp8zF3+/ZA=
 google.golang.org/protobuf v1.36.11 h1:fV6ZwhNocDyBLK0dj+fg8ektcVegBBuEolpbTQyBNVE=
 google.golang.org/protobuf v1.36.11/go.mod h1:HTf+CrKn2C3g5S8VImy6tdcUvCska2kB7j23XfzDpco=
 gopkg.in/check.v1 v0.0.0-20161208181325-20d25e280405/go.mod h1:Co6ibVJAznAaIkqp8huTwlJQCZ016jof/cbN4VW5Yz0=
