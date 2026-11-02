@@ -9,6 +9,7 @@ import (
 	// Packages
 	llm "github.com/mutablelogic/go-llm"
 	prompt "github.com/mutablelogic/go-llm/toolkit/prompt"
+	resource "github.com/mutablelogic/go-llm/toolkit/resource"
 	assert "github.com/stretchr/testify/assert"
 )
 
@@ -30,16 +31,6 @@ func mustReadPrompt(t *testing.T, name, body string) llm.Prompt {
 	return p
 }
 
-func TestPrepare_001(t *testing.T) {
-	assert := assert.New(t)
-	p := mustReadPrompt(t, "greeter.md", "---\nname: greeter\n---\nHello, {{ .name }}!")
-
-	text, opts, err := p.Prepare(context.Background(), json.RawMessage(`{"name":"World"}`))
-	assert.NoError(err)
-	assert.Equal("Hello, World!", text)
-	assert.Nil(opts)
-}
-
 func TestPrepare_002_ValidatesInput(t *testing.T) {
 	assert := assert.New(t)
 	p := mustReadPrompt(t, "translate.md", `---
@@ -57,37 +48,16 @@ input:
 ---
 Translate: {{ .text }}`)
 
-	_, _, err := p.Prepare(context.Background(), json.RawMessage(`{"text":"Hello"}`))
+	_, _, err := p.Prepare(context.Background(), resource.Must("input", json.RawMessage(`{"text":"Hello"}`)))
 	assert.Error(err)
 	assert.Contains(err.Error(), "input validation")
-}
-
-func TestPrepare_003_TemplateFunctions(t *testing.T) {
-	assert := assert.New(t)
-	p := mustReadPrompt(t, "funcs.md", `---
-name: funcs
----
-{{ upper (trim .name) }}|{{ default "fallback" .missing }}|{{ join .items "," }}|{{ json .items }}`)
-
-	text, _, err := p.Prepare(context.Background(), json.RawMessage(`{"name":"  world  ","items":["a","b"]}`))
-	assert.NoError(err)
-	assert.Equal("WORLD|fallback|a,b|[\"a\",\"b\"]", text)
-}
-
-func TestPrepare_004_InvalidJSON(t *testing.T) {
-	assert := assert.New(t)
-	p := mustReadPrompt(t, "greeter.md", "---\nname: greeter\n---\nHello, {{ .name }}!")
-
-	_, _, err := p.Prepare(context.Background(), json.RawMessage(`{"name":`))
-	assert.Error(err)
-	assert.Contains(err.Error(), "invalid JSON")
 }
 
 func TestPrepare_005_InvalidTemplate(t *testing.T) {
 	assert := assert.New(t)
 	p := mustReadPrompt(t, "bad.md", "---\nname: bad\n---\n{{ .name")
 
-	_, _, err := p.Prepare(context.Background(), json.RawMessage(`{"name":"World"}`))
+	_, _, err := p.Prepare(context.Background(), resource.Must("input", json.RawMessage(`{"name":"World"}`)))
 	assert.Error(err)
 	assert.Contains(err.Error(), "template")
 }

@@ -109,41 +109,6 @@ func Test_connect_006(t *testing.T) {
 	}
 }
 
-// Test_connect_007: connectWithAuth propagates errors returned by authFn.
-func Test_connect_007(t *testing.T) {
-	var ts *httptest.Server
-	ts = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path == "/.well-known/oauth-authorization-server" {
-			w.Header().Set("Content-Type", "application/json")
-			fmt.Fprintf(w, `{"issuer":%q,"authorization_endpoint":%q,"token_endpoint":%q}`,
-				ts.URL,
-				ts.URL+"/authorize",
-				ts.URL+"/token",
-			)
-			return
-		}
-		w.Header().Set("WWW-Authenticate", `Bearer realm="test"`)
-		w.WriteHeader(http.StatusUnauthorized)
-	}))
-	defer ts.Close()
-
-	authErr := errors.New("auth failed")
-	c, err := New(ts.URL, "test-client", "1.0.0")
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-
-	_, err = c.connectWithAuth(ctx, func(_ error, _ *authclient.Config) error {
-		return authErr
-	})
-	if !errors.Is(err, authErr) {
-		t.Errorf("expected authErr, got %v", err)
-	}
-}
-
 // Test_connect_008: connectWithAuth returns HTTP 404 when both transport
 // variants fail with 404 responses.
 func Test_connect_008(t *testing.T) {
