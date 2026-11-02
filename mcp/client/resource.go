@@ -6,7 +6,6 @@ import (
 	// Packages
 	sdkmcp "github.com/modelcontextprotocol/go-sdk/mcp"
 	llm "github.com/mutablelogic/go-llm"
-	schema "github.com/mutablelogic/go-llm/kernel/schema"
 )
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -30,18 +29,20 @@ func (r *clientResource) Name() string        { return r.r.Name }
 func (r *clientResource) Description() string { return r.r.Description }
 func (r *clientResource) Type() string        { return r.r.MIMEType }
 
-func (r *clientResource) Read(ctx context.Context) ([]byte, error) {
+// Read requests the resource's content from the server, which is read from
+// the function it returns, so an error requesting it is returned by Read
+func (r *clientResource) Read(ctx context.Context) (llm.ReadFunc, error) {
 	result, err := r.sess.ReadResource(ctx, &sdkmcp.ReadResourceParams{URI: r.r.URI})
 	if err != nil {
 		return nil, err
 	}
 	for _, c := range result.Contents {
 		if c.Blob != nil {
-			return c.Blob, nil
+			return llm.ReadBytes(c.Blob), nil
 		}
-		return []byte(c.Text), nil
+		return llm.ReadBytes([]byte(c.Text)), nil
 	}
-	return nil, nil
+	return llm.ReadBytes(nil), nil
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -55,7 +56,7 @@ func (c *Client) ListResources(_ context.Context) ([]llm.Resource, error) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	if c.session == nil {
-		return nil, schema.ErrServiceUnavailable
+		return nil, llm.ErrServiceUnavailable
 	}
 	return c.resources, nil
 }

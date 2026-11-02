@@ -8,7 +8,6 @@ import (
 
 	// Packages
 	llm "github.com/mutablelogic/go-llm"
-	schema "github.com/mutablelogic/go-llm/kernel/schema"
 	mock "github.com/mutablelogic/go-llm/mcp/mock"
 	jsonschema "github.com/mutablelogic/go-server/pkg/jsonschema"
 )
@@ -161,7 +160,7 @@ func Test_tool_005(t *testing.T) {
 	}
 
 	_, err = tools[0].Run(t.Context(), nil)
-	if !errors.Is(err, schema.ErrBadParameter) {
+	if !errors.Is(err, llm.ErrBadParameter) {
 		t.Fatalf("expected ErrBadParameter, got %v", err)
 	}
 	if err == nil || err.Error() != `bad parameter: input validation failed: validating root: required: missing properties: ["url"]` {

@@ -75,7 +75,7 @@ func sdkResourceFromResource(r Resource) *sdkmcp.Resource {
 
 func sdkResourceHandlerFromResource(r Resource) sdkmcp.ResourceHandler {
 	return func(ctx context.Context, req *sdkmcp.ReadResourceRequest) (*sdkmcp.ReadResourceResult, error) {
-		data, err := r.Read(ctx)
+		data, err := llm.ReadAll(ctx, r)
 		if err != nil {
 			return nil, err
 		}

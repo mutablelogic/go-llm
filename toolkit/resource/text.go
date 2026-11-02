@@ -6,7 +6,6 @@ import (
 
 	// Packages
 	llm "github.com/mutablelogic/go-llm"
-	"github.com/mutablelogic/go-llm/kernel/schema"
 	types "github.com/mutablelogic/go-server/pkg/types"
 )
 
@@ -29,7 +28,7 @@ var _ llm.Resource = (*textResource)(nil)
 // Name must be a non-empty identifier.
 func Text(name, content string) (llm.Resource, error) {
 	if !types.IsIdentifier(name) {
-		return nil, schema.ErrBadParameter.Withf("name: must be a non-empty identifier, got %q", name)
+		return nil, llm.ErrBadParameter.Withf("name: must be a non-empty identifier, got %q", name)
 	}
 	return &textResource{name: name, content: content}, nil
 }
@@ -42,8 +41,8 @@ func (t *textResource) Name() string        { return t.name }
 func (t *textResource) Description() string { return "" }
 func (t *textResource) Type() string        { return types.ContentTypeTextPlain }
 
-func (t *textResource) Read(_ context.Context) ([]byte, error) {
-	return []byte(t.content), nil
+func (t *textResource) Read(_ context.Context) (llm.ReadFunc, error) {
+	return llm.ReadBytes([]byte(t.content)), nil
 }
 
 func (t *textResource) MarshalJSON() ([]byte, error) {

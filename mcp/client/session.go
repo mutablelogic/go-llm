@@ -22,7 +22,7 @@ func (c *Client) getSession() (*sdkmcp.ClientSession, error) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	if c.session == nil {
-		return nil, schema.ErrServiceUnavailable
+		return nil, llm.ErrServiceUnavailable
 	}
 	return c.session, nil
 }
@@ -53,7 +53,7 @@ func (c *Client) ListTools(_ context.Context) ([]llm.Tool, error) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	if c.session == nil {
-		return nil, schema.ErrServiceUnavailable
+		return nil, llm.ErrServiceUnavailable
 	}
 	return c.tools, nil
 }
@@ -133,7 +133,7 @@ func (c *Client) CallTool(ctx context.Context, name string, arguments json.RawMe
 			if msg == "" {
 				msg = "invalid tool arguments"
 			}
-			return nil, schema.ErrBadParameter.Withf("tool %q: %s", name, msg)
+			return nil, llm.ErrBadParameter.Withf("tool %q: %s", name, msg)
 		}
 		return nil, err
 	}

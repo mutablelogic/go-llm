@@ -6,7 +6,6 @@ import (
 
 	// Packages
 	llm "github.com/mutablelogic/go-llm"
-	"github.com/mutablelogic/go-llm/kernel/schema"
 	types "github.com/mutablelogic/go-server/pkg/types"
 )
 
@@ -29,7 +28,7 @@ var _ llm.Resource = (*jsonResource)(nil)
 // marshalled to JSON. Name must be a non-empty identifier.
 func JSON(name string, v any) (llm.Resource, error) {
 	if !types.IsIdentifier(name) {
-		return nil, schema.ErrBadParameter.Withf("name: must be a non-empty identifier, got %q", name)
+		return nil, llm.ErrBadParameter.Withf("name: must be a non-empty identifier, got %q", name)
 	}
 	var data json.RawMessage
 	switch val := v.(type) {
@@ -38,7 +37,7 @@ func JSON(name string, v any) (llm.Resource, error) {
 	default:
 		var err error
 		if data, err = json.Marshal(v); err != nil {
-			return nil, schema.ErrBadParameter.Withf("json: %v", err)
+			return nil, llm.ErrBadParameter.Withf("json: %v", err)
 		}
 	}
 	return &jsonResource{name: name, content: data}, nil
@@ -52,8 +51,8 @@ func (j *jsonResource) Name() string        { return j.name }
 func (j *jsonResource) Description() string { return "" }
 func (j *jsonResource) Type() string        { return types.ContentTypeJSON }
 
-func (j *jsonResource) Read(_ context.Context) ([]byte, error) {
-	return j.content, nil
+func (j *jsonResource) Read(_ context.Context) (llm.ReadFunc, error) {
+	return llm.ReadBytes(j.content), nil
 }
 
 func (j *jsonResource) MarshalJSON() ([]byte, error) {

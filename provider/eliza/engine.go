@@ -4,8 +4,6 @@ import (
 	"math/rand"
 	"regexp"
 	"strings"
-
-	schema "github.com/mutablelogic/go-llm/kernel/schema"
 )
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -113,16 +111,13 @@ func (e *Engine) Memory() []string {
 	return e.memory
 }
 
-// InferMemory scans conversation messages and rebuilds the memory list
-// from user messages that match memorable rules. This allows the engine
-// to be created fresh per request while preserving memory state.
-func (e *Engine) InferMemory(messages []*schema.Message) {
+// InferMemory rebuilds the memory from the text of the user's earlier
+// messages which match memorable rules, so the engine can be created fresh
+// for each request while remembering the conversation
+func (e *Engine) InferMemory(inputs []string) {
 	e.memory = e.memory[:0]
-	for _, msg := range messages {
-		if msg.Role != schema.RoleUser {
-			continue
-		}
-		input := strings.ToLower(strings.TrimRight(strings.TrimSpace(msg.Text()), ".!?"))
+	for _, input := range inputs {
+		input = strings.ToLower(strings.TrimRight(strings.TrimSpace(input), ".!?"))
 		for _, rule := range e.rules {
 			if !rule.memorable {
 				continue

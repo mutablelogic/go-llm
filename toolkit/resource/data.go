@@ -13,7 +13,6 @@ import (
 
 	// Packages
 	llm "github.com/mutablelogic/go-llm"
-	"github.com/mutablelogic/go-llm/kernel/schema"
 	types "github.com/mutablelogic/go-server/pkg/types"
 	"golang.org/x/text/encoding/htmlindex"
 	"golang.org/x/text/transform"
@@ -43,7 +42,7 @@ func Data(name string, data []byte) (llm.Resource, error) {
 	// Derive identifier from filename: strip directory and extension
 	id := strings.TrimSuffix(filepath.Base(name), filepath.Ext(name))
 	if !types.IsIdentifier(id) {
-		return nil, schema.ErrBadParameter.Withf("name: must be a non-empty identifier, got %q", id)
+		return nil, llm.ErrBadParameter.Withf("name: must be a non-empty identifier, got %q", id)
 	}
 
 	// Resolve MIME type: content sniffing wins, extension as fallback
@@ -109,8 +108,8 @@ func (d *dataResource) Name() string        { return d.name }
 func (d *dataResource) Description() string { return "" }
 func (d *dataResource) Type() string        { return d.mimetype }
 
-func (d *dataResource) Read(_ context.Context) ([]byte, error) {
-	return d.content, nil
+func (d *dataResource) Read(_ context.Context) (llm.ReadFunc, error) {
+	return llm.ReadBytes(d.content), nil
 }
 
 func (d *dataResource) MarshalJSON() ([]byte, error) {

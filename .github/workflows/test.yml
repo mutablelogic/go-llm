@@ -1,0 +1,45 @@
+name: Test
+
+# Pull requests and pushes to main are tested, and runs by hand
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# A pull request's run is cancelled when it's pushed to again, as only its
+# latest commit is merged, but each push to main is tested
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  test:
+    name: Test (ubuntu-latest)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Set up Go
+        uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+
+      # The server, and the client, which is built with the client tag,
+      # leaving out the server
+      - name: Vet
+        run: |
+          go vet ./...
+          go vet -tags client ./...
+
+      # The tests are run once, with the race detector, which tests as much
+      # as they do without it. The tests which call OpenAI's API, or an
+      # Ollama server, are skipped, with -short, and without their keys and
+      # addresses.
+      - name: Race Test
+        run: go test -race -short ./...

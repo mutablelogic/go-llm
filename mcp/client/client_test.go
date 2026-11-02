@@ -8,7 +8,7 @@ import (
 	"time"
 
 	// Packages
-	schema "github.com/mutablelogic/go-llm/kernel/schema"
+	llm "github.com/mutablelogic/go-llm"
 	client "github.com/mutablelogic/go-llm/mcp/client"
 	mock "github.com/mutablelogic/go-llm/mcp/mock"
 	server "github.com/mutablelogic/go-llm/mcp/server"
@@ -47,7 +47,7 @@ func runClient(t *testing.T, c *client.Client) context.CancelFunc {
 	deadline := time.Now().Add(2 * time.Second)
 	for time.Now().Before(deadline) {
 		_, err := c.ListTools(context.Background())
-		if !errors.Is(err, schema.ErrServiceUnavailable) {
+		if !errors.Is(err, llm.ErrServiceUnavailable) {
 			return cancel
 		}
 		time.Sleep(10 * time.Millisecond)
