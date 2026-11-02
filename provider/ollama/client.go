@@ -6,13 +6,13 @@ package ollama
 
 import (
 	"context"
+	"net"
 	"net/url"
 	"strings"
 
 	// Packages
 	client "github.com/mutablelogic/go-client"
 	llm "github.com/mutablelogic/go-llm"
-	schema "github.com/mutablelogic/go-llm/kernel/schema"
 )
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -20,48 +20,59 @@ import (
 
 type Client struct {
 	*client.Client
+	url *url.URL
 }
 
-var _ llm.Client = (*Client)(nil)
-var _ llm.Downloader = (*Client)(nil)
+var _ llm.Provider = (*Client)(nil)
 
 ///////////////////////////////////////////////////////////////////////////////
 // GLOBALS
 
 const (
 	defaultEndpoint = "http://localhost:11434/api"
+	defaultPort     = "11434"
 )
 
 ///////////////////////////////////////////////////////////////////////////////
 // LIFECYCLE
 
 // Create a new client, with an ollama endpoint, which should be something like
-// "http://localhost:11434/api".
+// "http://localhost:11434/api". As with OLLAMA_HOST, an endpoint without a
+// scheme, such as "localhost", uses http and Ollama's default port, 11434,
+// unless it has a port.
 func New(endPoint string, opts ...client.ClientOpt) (*Client, error) {
 	// Default endpoint
 	if endPoint == "" {
 		endPoint = defaultEndpoint
 	}
 
-	// Normalize: if no scheme, treat as host[:port] and add http:// and /api path
-	if !strings.Contains(endPoint, "://") {
-		endPoint = "http://" + endPoint + "/api"
+	// Normalize: if no scheme, treat as host[:port], with http:// and the
+	// default port
+	scheme := strings.Contains(endPoint, "://")
+	if !scheme {
+		endPoint = "http://" + endPoint
+	}
+	u, err := url.Parse(endPoint)
+	if err != nil {
+		return nil, err
+	}
+	if !scheme && u.Port() == "" && u.Hostname() != "" {
+		u.Host = net.JoinHostPort(u.Hostname(), defaultPort)
 	}
 
 	// Normalize: if path is empty or just "/", append "/api"
-	if u, err := url.Parse(endPoint); err == nil && (u.Path == "" || u.Path == "/") {
+	if u.Path == "" || u.Path == "/" {
 		u.Path = "/api"
-		endPoint = u.String()
 	}
 
 	// Create client
-	client, err := client.New(append(opts, client.OptEndpoint(endPoint))...)
+	client, err := client.New(append(opts, client.OptEndpoint(u.String()))...)
 	if err != nil {
 		return nil, err
 	}
 
 	// Return the client
-	return &Client{Client: client}, nil
+	return &Client{Client: client, url: u}, nil
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -69,24 +80,22 @@ func New(endPoint string, opts ...client.ClientOpt) (*Client, error) {
 
 // Name returns the provider name
 func (*Client) Name() string {
-	return schema.Ollama
+	return llm.Ollama
+}
+
+// URL returns the client's normalized endpoint
+func (c *Client) URL() *url.URL {
+	u := *c.url
+	return &u
 }
 
 // Self returns the underlying client implementation.
-func (c *Client) Self() llm.Client {
+func (c *Client) Self() llm.Provider {
 	return c
-}
-
-// versionResponse is the response from the version endpoint
-type versionResponse struct {
-	Version string `json:"version"`
 }
 
 // Ping checks the connectivity of the client and returns an error if not successful
 func (c *Client) Ping(ctx context.Context) error {
-	var response versionResponse
-	if err := c.DoWithContext(ctx, nil, &response, client.OptPath("version")); err != nil {
-		return err
-	}
-	return nil
+	_, error := c.Version(ctx)
+	return error
 }

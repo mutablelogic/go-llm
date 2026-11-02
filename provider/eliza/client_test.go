@@ -2,570 +2,162 @@ package eliza_test
 
 import (
 	"context"
+	"encoding/json"
+	"strings"
 	"testing"
 
 	// Packages
 	llm "github.com/mutablelogic/go-llm"
-	opt "github.com/mutablelogic/go-llm/pkg/opt"
 	eliza "github.com/mutablelogic/go-llm/provider/eliza"
-	schema "github.com/mutablelogic/go-llm/kernel/schema"
+	schema "github.com/mutablelogic/go-llm/provider/schema"
+	tool "github.com/mutablelogic/go-llm/toolkit/tool"
+	jsonschema "github.com/mutablelogic/go-server/pkg/jsonschema"
+	assert "github.com/stretchr/testify/assert"
+	require "github.com/stretchr/testify/require"
 )
 
-func TestNew(t *testing.T) {
-	client, err := eliza.New()
-	if err != nil {
-		t.Fatalf("failed to create client: %v", err)
-	}
-	if client == nil {
-		t.Fatal("client is nil")
-	}
-
-	// Check provider name
-	if name := client.Name(); name != "eliza" {
-		t.Errorf("expected provider name 'eliza', got %q", name)
-	}
+// user returns a message from the user with the text
+func user(t *testing.T, text string) llm.Message {
+	t.Helper()
+	message, err := schema.NewMessage("user", text)
+	require.NoError(t, err)
+	return message
 }
 
-func TestNewWithSeed(t *testing.T) {
-	// Create two clients with the same seed
-	client1, err := eliza.New(eliza.WithSeed(42))
-	if err != nil {
-		t.Fatalf("failed to create client1: %v", err)
-	}
+// waveTool is a tool, which eliza can't call
+type waveTool struct{ tool.Base }
 
-	client2, err := eliza.New(eliza.WithSeed(42))
-	if err != nil {
-		t.Fatalf("failed to create client2: %v", err)
-	}
+var _ llm.Tool = waveTool{}
 
-	// They should produce the same response for the same input
+func (waveTool) Name() string                                      { return "wave" }
+func (waveTool) Description() string                               { return "Waves" }
+func (waveTool) InputSchema() *jsonschema.Schema                   { return nil }
+func (waveTool) Run(context.Context, json.RawMessage) (any, error) { return nil, nil }
+
+func Test_Models(t *testing.T) {
 	ctx := context.Background()
-	model, err := client1.GetModel(ctx, "eliza-1966-en")
-	if err != nil {
-		t.Fatalf("failed to get model: %v", err)
-	}
-
-	msg := &schema.Message{
-		Role:    schema.RoleUser,
-		Content: []schema.ContentBlock{{Text: ptr("Hello")}},
-	}
-
-	resp1, _, _ := client1.WithoutSession(ctx, *model, msg)
-	resp2, _, _ := client2.WithoutSession(ctx, *model, msg)
-
-	if resp1.Text() != resp2.Text() {
-		t.Errorf("expected same response with same seed, got %q and %q", resp1.Text(), resp2.Text())
-	}
-}
-
-func TestListModels(t *testing.T) {
-	client, err := eliza.New()
-	if err != nil {
-		t.Fatalf("failed to create client: %v", err)
-	}
-
-	ctx := context.Background()
-	models, err := client.ListModels(ctx)
-	if err != nil {
-		t.Fatalf("failed to list models: %v", err)
-	}
-
-	if len(models) == 0 {
-		t.Fatal("expected at least one model")
-	}
-
-	// Check that all models are owned by eliza
-	found := make(map[string]bool)
-	for _, m := range models {
-		if m.OwnedBy != "eliza" {
-			t.Errorf("expected owned_by 'eliza', got %q for model %q", m.OwnedBy, m.Name)
-		}
-		found[m.Name] = true
-	}
-
-	// Check that English is present
-	if !found["eliza-1966-en"] {
-		t.Error("expected model 'eliza-1966-en' to be present")
-	}
-
-	t.Logf("Listed %d models: %v", len(models), found)
-}
-
-func TestGetModel(t *testing.T) {
-	client, err := eliza.New()
-	if err != nil {
-		t.Fatalf("failed to create client: %v", err)
-	}
-
-	ctx := context.Background()
-
-	// Test valid model name
-	model, err := client.GetModel(ctx, "eliza-1966-en")
-	if err != nil {
-		t.Fatalf("failed to get model: %v", err)
-	}
-	if model == nil {
-		t.Fatal("model is nil")
-	}
-	if model.Name != "eliza-1966-en" {
-		t.Errorf("expected model name 'eliza-1966-en', got %q", model.Name)
-	}
-
-	// Test provider name as alias
-	model, err = client.GetModel(ctx, "eliza")
-	if err != nil {
-		t.Fatalf("failed to get model by provider name: %v", err)
-	}
-	if model == nil {
-		t.Fatal("model is nil")
-	}
-
-	// Test invalid model name
-	_, err = client.GetModel(ctx, "gpt-4")
-	if err == nil {
-		t.Error("expected error for invalid model name")
-	}
-}
-
-func TestWithoutSession(t *testing.T) {
 	client, err := eliza.New(eliza.WithSeed(42))
-	if err != nil {
-		t.Fatalf("failed to create client: %v", err)
-	}
+	require.NoError(t, err)
 
+	t.Run("List", func(t *testing.T) {
+		// A model for each language, in order of their names
+		models, err := client.ListModels(ctx)
+		require.NoError(t, err)
+		var names []string
+		for _, model := range models {
+			names = append(names, model.Name())
+			assert.Equal(t, client, model.Provider())
+		}
+		assert.Equal(t, []string{"eliza-1966-de", "eliza-1966-en", "eliza-1966-fr"}, names)
+	})
+
+	t.Run("Get", func(t *testing.T) {
+		// eliza is the English model
+		model, err := client.GetModel(ctx, eliza.ModelName)
+		require.NoError(t, err)
+		assert.Equal(t, "eliza-1966-en", model.Name())
+		assert.Equal(t, []string{eliza.ModelName}, model.Aliases())
+
+		model, err = client.GetModel(ctx, "eliza-1966-de")
+		require.NoError(t, err)
+		assert.Empty(t, model.Aliases())
+		assert.Equal(t, `"de"`, string(model.Meta()["language"]))
+
+		_, err = client.GetModel(ctx, "missing")
+		assert.ErrorIs(t, err, llm.ErrNotFound)
+	})
+}
+
+func Test_WithoutSession(t *testing.T) {
 	ctx := context.Background()
-	model, err := client.GetModel(ctx, "eliza-1966-en")
-	if err != nil {
-		t.Fatalf("failed to get model: %v", err)
-	}
+	client, err := eliza.New(eliza.WithSeed(42))
+	require.NoError(t, err)
+	model, err := client.GetModel(ctx, eliza.ModelName)
+	require.NoError(t, err)
 
-	tests := []struct {
-		name    string
-		input   string
-		wantErr bool
-	}{
-		{
-			name:    "greeting",
-			input:   "Hello",
-			wantErr: false,
-		},
-		{
-			name:    "feeling",
-			input:   "I feel sad",
-			wantErr: false,
-		},
-		{
-			name:    "family",
-			input:   "My mother is annoying",
-			wantErr: false,
-		},
-		{
-			name:    "question",
-			input:   "Are you a computer?",
-			wantErr: false,
-		},
-	}
+	t.Run("Reply", func(t *testing.T) {
+		// Eliza replies to the user's message, and the tokens are estimated
+		reply, usage, err := client.WithoutSession(ctx, model, []llm.Message{user(t, "I feel sad")}, nil, nil)
+		require.NoError(t, err)
+		assert.Equal(t, "assistant", reply.Role())
+		assert.NotEmpty(t, reply.Text())
+		assert.Equal(t, schema.ResultStop, reply.(*schema.Message).Result)
+		assert.Equal(t, uint(3), usage.InputTokens)
+		assert.NotZero(t, usage.OutputTokens)
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			msg := &schema.Message{
-				Role:    schema.RoleUser,
-				Content: []schema.ContentBlock{{Text: ptr(tt.input)}},
-			}
+		// And the same messages, with the same seed, have the same reply
+		again, _, err := client.WithoutSession(ctx, model, []llm.Message{user(t, "I feel sad")}, nil, nil)
+		require.NoError(t, err)
+		assert.Equal(t, reply.Text(), again.Text())
+	})
 
-			resp, usage, err := client.WithoutSession(ctx, *model, msg)
-			if (err != nil) != tt.wantErr {
-				t.Errorf("WithoutSession() error = %v, wantErr %v", err, tt.wantErr)
-				return
-			}
-
-			if resp == nil {
-				t.Fatal("response is nil")
-			}
-
-			if resp.Role != schema.RoleAssistant {
-				t.Errorf("expected role 'assistant', got %q", resp.Role)
-			}
-
-			if resp.Text() == "" {
-				t.Error("response text is empty")
-			}
-
-			if resp.Result != schema.ResultStop {
-				t.Errorf("expected result 'stop', got %q", resp.Result)
-			}
-
-			if usage == nil {
-				t.Fatal("usage is nil")
-			}
-
-			if usage.InputTokens == 0 {
-				t.Error("input tokens should not be zero")
-			}
-
-			if usage.OutputTokens == 0 {
-				t.Error("output tokens should not be zero")
-			}
-
-			t.Logf("Input: %q", tt.input)
-			t.Logf("Response: %q", resp.Text())
-			t.Logf("Usage: input=%d, output=%d", usage.InputTokens, usage.OutputTokens)
+	t.Run("Stream", func(t *testing.T) {
+		// The reply is streamed a word at a time, which make its text
+		var pieces []string
+		reply, _, err := client.WithoutSession(ctx, model, []llm.Message{user(t, "Hello")}, nil, func(kind llm.StreamType, text string) {
+			assert.Equal(t, llm.StreamText, kind)
+			pieces = append(pieces, text)
 		})
-	}
-}
-
-func TestWithSession(t *testing.T) {
-	client, err := eliza.New(eliza.WithSeed(42))
-	if err != nil {
-		t.Fatalf("failed to create client: %v", err)
-	}
-
-	ctx := context.Background()
-	model, err := client.GetModel(ctx, "eliza-1966-en")
-	if err != nil {
-		t.Fatalf("failed to get model: %v", err)
-	}
-
-	// Create a conversation
-	session := &schema.Conversation{}
-
-	messages := []string{
-		"Hello",
-		"I feel anxious about my work",
-		"My boss is always criticizing me",
-		"I want to be more confident",
-	}
-
-	for _, input := range messages {
-		msg := &schema.Message{
-			Role:    schema.RoleUser,
-			Content: []schema.ContentBlock{{Text: ptr(input)}},
-		}
-
-		resp, usage, err := client.WithSession(ctx, *model, session, msg)
-		if err != nil {
-			t.Fatalf("WithSession() error = %v", err)
-		}
-
-		if resp.Text() == "" {
-			t.Error("response text is empty")
-		}
-
-		t.Logf("User: %q", input)
-		t.Logf("ELIZA: %q", resp.Text())
-		t.Logf("Usage: input=%d, output=%d", usage.InputTokens, usage.OutputTokens)
-	}
-
-	// Check that the session has accumulated messages
-	expectedLen := len(messages) * 2 // user + assistant pairs
-	if len(*session) != expectedLen {
-		t.Errorf("expected session length %d, got %d", expectedLen, len(*session))
-	}
-
-	// Check total tokens
-	totalTokens := session.Tokens()
-	if totalTokens == 0 {
-		t.Error("total tokens should not be zero")
-	}
-	t.Logf("Total session tokens: %d", totalTokens)
-}
-
-func TestWithSessionGoodbye(t *testing.T) {
-	client, err := eliza.New(eliza.WithSeed(42))
-	if err != nil {
-		t.Fatalf("failed to create client: %v", err)
-	}
-
-	ctx := context.Background()
-	model, err := client.GetModel(ctx, "eliza-1966-en")
-	if err != nil {
-		t.Fatalf("failed to get model: %v", err)
-	}
-	session := &schema.Conversation{}
-
-	msg := &schema.Message{
-		Role:    schema.RoleUser,
-		Content: []schema.ContentBlock{{Text: ptr("goodbye")}},
-	}
-
-	resp, _, err := client.WithSession(ctx, *model, session, msg)
-	if err != nil {
-		t.Fatalf("WithSession() error = %v", err)
-	}
-
-	t.Logf("Response to 'goodbye': %q", resp.Text())
-
-	// Response should contain goodbye-like content
-	text := resp.Text()
-	if text == "" {
-		t.Error("expected non-empty goodbye response")
-	}
-}
-
-func TestStreaming(t *testing.T) {
-	client, err := eliza.New(eliza.WithSeed(42))
-	if err != nil {
-		t.Fatalf("failed to create client: %v", err)
-	}
-
-	ctx := context.Background()
-	model, err := client.GetModel(ctx, "eliza-1966-en")
-	if err != nil {
-		t.Fatalf("failed to get model: %v", err)
-	}
-
-	var streamedRole string
-	var chunks []string
-	streamFn := func(role, text string) {
-		streamedRole = role
-		chunks = append(chunks, text)
-	}
-
-	msg := &schema.Message{
-		Role:    schema.RoleUser,
-		Content: []schema.ContentBlock{{Text: ptr("I need help")}},
-	}
-
-	resp, _, err := client.WithoutSession(ctx, *model, msg, opt.WithStream(streamFn))
-	if err != nil {
-		t.Fatalf("WithoutSession() error = %v", err)
-	}
-
-	if streamedRole != schema.RoleAssistant {
-		t.Errorf("expected streamed role 'assistant', got %q", streamedRole)
-	}
-
-	if len(chunks) == 0 {
-		t.Error("expected at least one streamed chunk")
-	}
-
-	// Reassemble chunks and compare to full response
-	reassembled := ""
-	for _, chunk := range chunks {
-		reassembled += chunk
-	}
-	if reassembled != resp.Text() {
-		t.Errorf("reassembled streamed text %q doesn't match response text %q", reassembled, resp.Text())
-	}
-
-	t.Logf("Streamed %d chunks: %v", len(chunks), chunks)
-}
-
-func TestMemoryInferredFromConversation(t *testing.T) {
-	client, err := eliza.New(eliza.WithSeed(42))
-	if err != nil {
-		t.Fatalf("failed to create client: %v", err)
-	}
-
-	ctx := context.Background()
-	model, err := client.GetModel(ctx, "eliza-1966-en")
-	if err != nil {
-		t.Fatalf("failed to get model: %v", err)
-	}
-	session := &schema.Conversation{}
-
-	// Have a conversation to build up memory via memorable rules
-	messages := []string{
-		"I want to be happy",
-		"I need love",
-		"I feel lonely",
-	}
-
-	for _, input := range messages {
-		msg := &schema.Message{
-			Role:    schema.RoleUser,
-			Content: []schema.ContentBlock{{Text: ptr(input)}},
-		}
-		resp, _, err := client.WithSession(ctx, *model, session, msg)
-		if err != nil {
-			t.Fatalf("unexpected error: %v", err)
-		}
-		t.Logf("User: %s -> ELIZA: %s", input, resp.Text())
-	}
-
-	// Memory is derived from conversation, so starting a fresh session
-	// should have no memory from the previous one
-	freshSession := &schema.Conversation{}
-	msg := &schema.Message{
-		Role:    schema.RoleUser,
-		Content: []schema.ContentBlock{{Text: ptr("hello")}},
-	}
-	resp, _, err := client.WithSession(ctx, *model, freshSession, msg)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	t.Logf("Fresh session: User: hello -> ELIZA: %s", resp.Text())
-}
-
-func TestThinkingEmitsMemory(t *testing.T) {
-	client, err := eliza.New(eliza.WithSeed(42))
-	if err != nil {
-		t.Fatalf("failed to create client: %v", err)
-	}
-
-	ctx := context.Background()
-	model, err := client.GetModel(ctx, "eliza-1966-en")
-	if err != nil {
-		t.Fatalf("failed to get model: %v", err)
-	}
-	session := &schema.Conversation{}
-
-	// Build up memory with memorable patterns (e.g. "i need ...")
-	memorableInputs := []string{
-		"I need some help",
-		"I need to feel better",
-	}
-	for _, input := range memorableInputs {
-		msg := &schema.Message{
-			Role:    schema.RoleUser,
-			Content: []schema.ContentBlock{{Text: ptr(input)}},
-		}
-		_, _, err := client.WithSession(ctx, *model, session, msg)
-		if err != nil {
-			t.Fatalf("unexpected error: %v", err)
-		}
-	}
-
-	// Now send another message with thinking enabled
-	var thinkingChunks []string
-	streamFn := func(role, text string) {
-		if role == schema.RoleThinking {
-			thinkingChunks = append(thinkingChunks, text)
-		}
-	}
-
-	msg := &schema.Message{
-		Role:    schema.RoleUser,
-		Content: []schema.ContentBlock{{Text: ptr("I feel sad")}},
-	}
-	resp, _, err := client.WithSession(ctx, *model, session, msg,
-		opt.SetBool(opt.ThinkingKey, true),
-		opt.WithStream(streamFn),
-	)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-
-	// Verify thinking was streamed
-	if len(thinkingChunks) == 0 {
-		t.Error("expected thinking chunks to be streamed when thinking is enabled")
-	} else {
-		t.Logf("Thinking output: %s", thinkingChunks[0])
-	}
-
-	// Verify the response message contains a thinking content block
-	hasThinking := false
-	for _, block := range resp.Content {
-		if block.Thinking != nil {
-			hasThinking = true
-			t.Logf("Thinking block: %s", *block.Thinking)
-		}
-	}
-	if !hasThinking {
-		t.Error("expected response to contain a thinking content block")
-	}
-
-	// Verify text response is still present
-	if resp.Text() == "" {
-		t.Error("expected non-empty text response")
-	}
-}
-
-func TestThinkingDisabledNoMemory(t *testing.T) {
-	client, err := eliza.New(eliza.WithSeed(42))
-	if err != nil {
-		t.Fatalf("failed to create client: %v", err)
-	}
-
-	ctx := context.Background()
-	model, err := client.GetModel(ctx, "eliza-1966-en")
-	if err != nil {
-		t.Fatalf("failed to get model: %v", err)
-	}
-	session := &schema.Conversation{}
-
-	// Build up memory
-	msg := &schema.Message{
-		Role:    schema.RoleUser,
-		Content: []schema.ContentBlock{{Text: ptr("I need some help")}},
-	}
-	_, _, err = client.WithSession(ctx, *model, session, msg)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-
-	// Send another message WITHOUT thinking enabled
-	msg = &schema.Message{
-		Role:    schema.RoleUser,
-		Content: []schema.ContentBlock{{Text: ptr("I feel sad")}},
-	}
-	resp, _, err := client.WithSession(ctx, *model, session, msg)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-
-	// Verify no thinking content block in the response
-	for _, block := range resp.Content {
-		if block.Thinking != nil {
-			t.Error("expected no thinking content block when thinking is disabled")
-		}
-	}
-}
-
-func TestInterfaceCompliance(t *testing.T) {
-	client, err := eliza.New()
-	if err != nil {
-		t.Fatalf("failed to create client: %v", err)
-	}
-
-	// Verify interface compliance at runtime
-	var _ llm.Client = client
-	var _ llm.Generator = client
-}
-
-func TestErrorCases(t *testing.T) {
-	client, err := eliza.New()
-	if err != nil {
-		t.Fatalf("failed to create client: %v", err)
-	}
-
-	ctx := context.Background()
-	model, err := client.GetModel(ctx, "eliza-1966-en")
-	if err != nil {
-		t.Fatalf("failed to get model: %v", err)
-	}
-
-	t.Run("nil message", func(t *testing.T) {
-		_, _, err := client.WithoutSession(ctx, *model, nil)
-		if err == nil {
-			t.Error("expected error for nil message")
-		}
+		require.NoError(t, err)
+		assert.Len(t, pieces, len(strings.Fields(reply.Text())))
+		assert.Equal(t, reply.Text(), strings.Join(pieces, ""))
 	})
 
-	t.Run("empty message", func(t *testing.T) {
-		msg := &schema.Message{
-			Role:    schema.RoleUser,
-			Content: []schema.ContentBlock{},
+	t.Run("Thinking", func(t *testing.T) {
+		// With thinking, eliza thinks about what it remembers of the user's
+		// earlier messages, which is streamed before the text
+		messages := []llm.Message{
+			user(t, "I feel lonely since my dog died"),
+			&schema.Message{MessageMeta: schema.MessageMeta{Sender: "assistant", Content: []schema.ContentBlock{}}},
+			user(t, "What should I do?"),
 		}
-		_, _, err := client.WithoutSession(ctx, *model, msg)
-		if err == nil {
-			t.Error("expected error for empty message")
+		var kinds []llm.StreamType
+		reply, _, err := client.WithoutSession(ctx, model, messages, nil, func(kind llm.StreamType, _ string) {
+			kinds = append(kinds, kind)
+		}, llm.WithThinking(true))
+		require.NoError(t, err)
+		thinking := reply.(*schema.Message).Thinking()
+		assert.Contains(t, thinking, "Recalled memories from conversation")
+		if assert.NotEmpty(t, kinds) {
+			assert.Equal(t, llm.StreamThinking, kinds[0])
+			assert.Equal(t, llm.StreamText, kinds[len(kinds)-1])
 		}
+
+		// Without it, there's no thinking
+		reply, _, err = client.WithoutSession(ctx, model, messages, nil, nil)
+		require.NoError(t, err)
+		assert.Empty(t, reply.(*schema.Message).Thinking())
 	})
 
-	t.Run("nil session", func(t *testing.T) {
-		msg := &schema.Message{
-			Role:    schema.RoleUser,
-			Content: []schema.ContentBlock{{Text: ptr("Hello")}},
-		}
-		_, _, err := client.WithSession(ctx, *model, nil, msg)
-		if err == nil {
-			t.Error("expected error for nil session")
+	t.Run("Cancelled", func(t *testing.T) {
+		// Streaming stops when the context is cancelled
+		cancelled, cancel := context.WithCancel(ctx)
+		cancel()
+		_, _, err := client.WithoutSession(cancelled, model, []llm.Message{user(t, "Hello")}, nil, func(llm.StreamType, string) {})
+		assert.ErrorIs(t, err, context.Canceled)
+	})
+
+	t.Run("Errors", func(t *testing.T) {
+		other, err := eliza.New()
+		require.NoError(t, err)
+		otherModel, err := other.GetModel(ctx, eliza.ModelName)
+		require.NoError(t, err)
+		assistant := &schema.Message{MessageMeta: schema.MessageMeta{Sender: "assistant"}}
+
+		for name, test := range map[string]struct {
+			model    llm.Model
+			messages []llm.Message
+			tools    []llm.Tool
+			want     error
+		}{
+			"OtherModel": {otherModel, []llm.Message{user(t, "Hello")}, nil, llm.ErrBadParameter},
+			"NoMessages": {model, nil, nil, llm.ErrBadParameter},
+			"NotUser":    {model, []llm.Message{assistant}, nil, llm.ErrBadParameter},
+			"NoText":     {model, []llm.Message{user(t, "  ")}, nil, llm.ErrBadParameter},
+			"Tools":      {model, []llm.Message{user(t, "Hello")}, []llm.Tool{waveTool{}}, llm.ErrNotImplemented},
+		} {
+			_, _, err := client.WithoutSession(ctx, test.model, test.messages, test.tools, nil)
+			assert.ErrorIs(t, err, test.want, name)
 		}
 	})
-}
-
-// Helper function
-func ptr(s string) *string {
-	return &s
 }

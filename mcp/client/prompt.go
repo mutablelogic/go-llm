@@ -7,8 +7,6 @@ import (
 	// Packages
 	sdkmcp "github.com/modelcontextprotocol/go-sdk/mcp"
 	llm "github.com/mutablelogic/go-llm"
-	schema "github.com/mutablelogic/go-llm/kernel/schema"
-	opt "github.com/mutablelogic/go-llm/pkg/opt"
 )
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -32,8 +30,8 @@ func (m *mcpPrompt) Description() string { return m.p.Description }
 
 // Prepare is not supported for remote MCP prompts — execution is always
 // delegated back through the toolkit's delegate.
-func (m *mcpPrompt) Prepare(_ context.Context, _ ...llm.Resource) (string, []opt.Opt, error) {
-	return "", nil, schema.ErrNotImplemented.With("Prepare not supported for MCP prompts")
+func (m *mcpPrompt) Prepare(_ context.Context, _ ...llm.Resource) (string, []llm.Opt, error) {
+	return "", nil, llm.ErrNotImplemented.With("Prepare not supported for MCP prompts")
 }
 
 func (m *mcpPrompt) MarshalJSON() ([]byte, error) {
@@ -63,7 +61,7 @@ func (c *Client) ListPrompts(_ context.Context) ([]llm.Prompt, error) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	if c.session == nil {
-		return nil, schema.ErrServiceUnavailable
+		return nil, llm.ErrServiceUnavailable
 	}
 	return c.prompts, nil
 }

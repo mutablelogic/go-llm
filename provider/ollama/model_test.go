@@ -2,100 +2,59 @@ package ollama_test
 
 import (
 	"context"
-	"errors"
-	"net"
+	"encoding/json"
+	"net/http"
+	"net/http/httptest"
 	"testing"
 
 	// Packages
-	opt "github.com/mutablelogic/go-llm/pkg/opt"
+	llm "github.com/mutablelogic/go-llm"
 	ollama "github.com/mutablelogic/go-llm/provider/ollama"
 	assert "github.com/stretchr/testify/assert"
+	require "github.com/stretchr/testify/require"
 )
 
 ///////////////////////////////////////////////////////////////////////////////
 // HELPERS
 
-// requireClient creates a client using OLLAMA_URL or skips the test.
-func requireClient(t *testing.T) *ollama.Client {
-	t.Helper()
-	if ollamaURL == "" {
-		t.Skip("OLLAMA_URL not set, skipping")
-	}
-	c, err := ollama.New(ollamaURL)
-	if err != nil {
-		t.Fatalf("ollama.New: %v", err)
-	}
-	return c
-}
-
-// skipIfUnreachable skips the test if err looks like a network connectivity failure.
-func skipIfUnreachable(t *testing.T, err error) {
-	t.Helper()
-	var netErr *net.OpError
-	if errors.As(err, &netErr) {
-		t.Skipf("server unreachable: %v", err)
-	}
-}
-
-// firstModel returns the name of the first available model or skips.
+// firstModel returns the name of the first model available on the server,
+// or skips the test. Different Ollama servers have different models
+// pulled - sometimes none at all - so no test may assume a specific name,
+// or even that one exists.
 func firstModel(t *testing.T, c *ollama.Client) string {
 	t.Helper()
 	models, err := c.ListModels(context.Background())
-	if err != nil {
-		skipIfUnreachable(t, err)
-		t.Fatalf("ListModels: %v", err)
-	}
+	require.NoError(t, err)
 	if len(models) == 0 {
-		t.Skip("no models available, skipping")
+		t.Skip("no models available on this server, skipping")
 	}
-	return models[0].Name
+	return models[0].Name()
 }
 
 ///////////////////////////////////////////////////////////////////////////////
 // ListModels
 
-func Test_ListModels_ReturnsModels(t *testing.T) {
+func Test_ListModels(t *testing.T) {
 	c := requireClient(t)
-	assert := assert.New(t)
 
 	models, err := c.ListModels(context.Background())
-	skipIfUnreachable(t, err)
-	assert.NoError(err)
-	assert.NotEmpty(models)
+	require.NoError(t, err)
+
 	for _, m := range models {
-		assert.NotEmpty(m.Name)
-		assert.Equal(c.Name(), m.OwnedBy)
+		assert.NotEmpty(t, m.Name())
+		assert.Same(t, c, m.Provider())
 	}
 }
 
-func Test_ListModels_Cached(t *testing.T) {
+func Test_ListModels_ImplementsModel(t *testing.T) {
 	c := requireClient(t)
-	assert := assert.New(t)
 
-	models1, err := c.ListModels(context.Background())
-	skipIfUnreachable(t, err)
-	assert.NoError(err)
-
-	models2, err := c.ListModels(context.Background())
-	assert.NoError(err)
-	assert.Equal(len(models1), len(models2))
-}
-
-///////////////////////////////////////////////////////////////////////////////
-// ListRunningModels
-
-func Test_ListRunningModels(t *testing.T) {
-	c := requireClient(t)
-	assert := assert.New(t)
-
-	// May be empty if no models are currently loaded
-	models, err := c.ListRunningModels(context.Background())
-	skipIfUnreachable(t, err)
-	assert.NoError(err)
-	for _, m := range models {
-		assert.NotEmpty(m.Name)
-		assert.Equal(c.Name(), m.OwnedBy)
+	models, err := c.ListModels(context.Background())
+	require.NoError(t, err)
+	if len(models) == 0 {
+		t.Skip("no models available on this server, skipping")
 	}
+	assert.Implements(t, (*llm.Model)(nil), models[0])
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -103,137 +62,115 @@ func Test_ListRunningModels(t *testing.T) {
 
 func Test_GetModel_KnownModel(t *testing.T) {
 	c := requireClient(t)
-	assert := assert.New(t)
-
 	name := firstModel(t, c)
+
 	model, err := c.GetModel(context.Background(), name)
-	assert.NoError(err)
-	if assert.NotNil(model) {
-		assert.Equal(name, model.Name)
-		assert.Equal(c.Name(), model.OwnedBy)
-	}
-}
-
-func Test_GetModel_Cached(t *testing.T) {
-	c := requireClient(t)
-	assert := assert.New(t)
-
-	name := firstModel(t, c)
-
-	m1, err := c.GetModel(context.Background(), name)
-	assert.NoError(err)
-	assert.NotNil(m1)
-
-	m2, err := c.GetModel(context.Background(), name)
-	assert.NoError(err)
-	assert.NotNil(m2)
-	assert.Equal(m1.Name, m2.Name)
+	require.NoError(t, err)
+	require.NotNil(t, model)
+	assert.Equal(t, name, model.Name())
+	assert.Same(t, c, model.Provider())
 }
 
 func Test_GetModel_NotFound(t *testing.T) {
 	c := requireClient(t)
-	assert := assert.New(t)
 
 	_, err := c.GetModel(context.Background(), "nonexistent-model-xyz:latest")
-	assert.Error(err)
+	assert.Error(t, err)
 }
 
-///////////////////////////////////////////////////////////////////////////////
-// DeleteModel - ownership guard
-
-func Test_DeleteModel_WrongOwner(t *testing.T) {
+func Test_GetModel_Meta(t *testing.T) {
 	c := requireClient(t)
-	assert := assert.New(t)
-
-	m, err := c.GetModel(context.Background(), firstModel(t, c))
-	assert.NoError(err)
-	if !assert.NotNil(m) {
-		t.FailNow()
-	}
-	m.OwnedBy = "other-provider"
-	err = c.DeleteModel(context.Background(), *m)
-	assert.Error(err)
-}
-
-///////////////////////////////////////////////////////////////////////////////
-// LoadModel / UnloadModel
-
-func Test_LoadModel_WrongOwner(t *testing.T) {
-	c := requireClient(t)
-	assert := assert.New(t)
-
-	m, err := c.GetModel(context.Background(), firstModel(t, c))
-	assert.NoError(err)
-	if !assert.NotNil(m) {
-		t.FailNow()
-	}
-	m.OwnedBy = "other-provider"
-	err = c.LoadModel(context.Background(), *m)
-	assert.Error(err)
-}
-
-func Test_UnloadModel_WrongOwner(t *testing.T) {
-	c := requireClient(t)
-	assert := assert.New(t)
-
-	m, err := c.GetModel(context.Background(), firstModel(t, c))
-	assert.NoError(err)
-	if !assert.NotNil(m) {
-		t.FailNow()
-	}
-	m.OwnedBy = "other-provider"
-	err = c.UnloadModel(context.Background(), *m)
-	assert.Error(err)
-}
-
-func Test_LoadUnloadModel(t *testing.T) {
-	c := requireClient(t)
-	assert := assert.New(t)
-
-	m, err := c.GetModel(context.Background(), firstModel(t, c))
-	assert.NoError(err)
-	if !assert.NotNil(m) {
-		t.FailNow()
-	}
-
-	assert.NoError(c.LoadModel(context.Background(), *m))
-	assert.NoError(c.UnloadModel(context.Background(), *m))
-}
-
-///////////////////////////////////////////////////////////////////////////////
-// DownloadModel
-
-func Test_DownloadModel_NoProgress(t *testing.T) {
-	c := requireClient(t)
-	assert := assert.New(t)
-
 	name := firstModel(t, c)
-	// Re-pulling an existing model is a fast no-op on the server side
-	model, err := c.DownloadModel(context.Background(), name)
-	assert.NoError(err)
-	if assert.NotNil(model) {
-		assert.Equal(name, model.Name)
-		assert.Equal(c.Name(), model.OwnedBy)
+
+	model, err := c.GetModel(context.Background(), name)
+	require.NoError(t, err)
+	require.NotNil(t, model)
+
+	// GetModel's response (/api/show) includes a "details" object, so
+	// Meta() shouldn't be empty here
+	meta := model.Meta()
+	assert.NotEmpty(t, meta)
+	assert.Contains(t, meta, "details")
+}
+
+func Test_GetModel_InputTokenLimit(t *testing.T) {
+	c := requireClient(t)
+	name := firstModel(t, c)
+
+	model, err := c.GetModel(context.Background(), name)
+	require.NoError(t, err)
+	require.NotNil(t, model)
+
+	// Ollama's /api/show response includes a "<family>.context_length" key
+	// in model_info for every model family seen in practice, but this isn't
+	// documented as guaranteed, so this only logs rather than asserts.
+	limit := model.InputTokenLimit()
+	if limit != nil {
+		t.Logf("model %s: input token limit = %d", model.Name(), *limit)
+	} else {
+		t.Logf("model %s: input token limit = <none>", model.Name())
 	}
 }
 
-func Test_DownloadModel_WithProgress(t *testing.T) {
-	c := requireClient(t)
-	assert := assert.New(t)
+///////////////////////////////////////////////////////////////////////////////
+// STUB SERVER
 
-	name := firstModel(t, c)
-	var progressCalled bool
-	model, err := c.DownloadModel(context.Background(), name,
-		opt.WithProgress(func(status string, percent float64) {
-			progressCalled = true
-			assert.NotEmpty(status)
-			assert.GreaterOrEqual(percent, float64(0))
-			assert.LessOrEqual(percent, float64(100))
-		}),
-	)
-	assert.NoError(err)
-	assert.True(progressCalled, "progress callback should have been called")
-	if assert.NotNil(model) {
-		assert.Equal(name, model.Name)
+// newStubClient returns a client for a stub Ollama server, with a vision
+// model which has more than one context length, and a model which can't be
+// shown
+func newStubClient(t *testing.T) *ollama.Client {
+	t.Helper()
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch r.URL.Path {
+		case "/api/tags":
+			w.Write([]byte(`{"models":[{"name":"llama3.2-vision:latest","details":{}},{"name":"broken:latest","details":{"family":"broken"}}]}`))
+		case "/api/show":
+			var req struct {
+				Name string `json:"name"`
+			}
+			json.NewDecoder(r.Body).Decode(&req)
+			if req.Name != "llama3.2-vision:latest" {
+				w.WriteHeader(http.StatusNotFound)
+				w.Write([]byte(`{"error":"model not found"}`))
+				return
+			}
+			w.Write([]byte(`{"details":{"family":"mllama"},"capabilities":["completion","vision"],"model_info":{"clip.context_length":2048,"mllama.context_length":131072}}`))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	t.Cleanup(server.Close)
+	c, err := ollama.New(server.URL)
+	require.NoError(t, err)
+	return c
+}
+
+func Test_ListModels_Show(t *testing.T) {
+	// Listing shows each model, so the models have their context length
+	models, err := newStubClient(t).ListModels(context.Background())
+	require.NoError(t, err)
+	require.Len(t, models, 2)
+
+	// The context length of the model's family is used, not the projector's
+	vision := models[0]
+	assert.Equal(t, "llama3.2-vision:latest", vision.Name())
+	require.NotNil(t, vision.InputTokenLimit())
+	assert.Equal(t, uint(131072), *vision.InputTokenLimit())
+
+	// A model which can't be shown is listed without it
+	broken := models[1]
+	assert.Equal(t, "broken:latest", broken.Name())
+	assert.Nil(t, broken.InputTokenLimit())
+}
+
+func Test_GetModel_FamilyContextLength(t *testing.T) {
+	// The context length of the model's family is preferred, every time
+	c := newStubClient(t)
+	for range 10 {
+		model, err := c.GetModel(context.Background(), "llama3.2-vision:latest")
+		require.NoError(t, err)
+		require.NotNil(t, model.InputTokenLimit())
+		assert.Equal(t, uint(131072), *model.InputTokenLimit())
 	}
 }

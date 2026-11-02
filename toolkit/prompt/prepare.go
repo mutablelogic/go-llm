@@ -11,7 +11,6 @@ import (
 	// Packages
 	llm "github.com/mutablelogic/go-llm"
 	schema "github.com/mutablelogic/go-llm/kernel/schema"
-	opt "github.com/mutablelogic/go-llm/pkg/opt"
 	jsonschema "github.com/mutablelogic/go-server/pkg/jsonschema"
 	types "github.com/mutablelogic/go-server/pkg/types"
 )
@@ -22,16 +21,16 @@ import (
 // Prepare renders the prompt's Go template against the variables in input (a
 // JSON object) and returns the resulting string along with any opts derived
 // from the prompt's front matter (model, provider, system prompt, etc.).
-func (p *prompt) Prepare(ctx context.Context, resources ...llm.Resource) (string, []opt.Opt, error) {
+func (p *prompt) Prepare(ctx context.Context, resources ...llm.Resource) (string, []llm.Opt, error) {
 
 	// Read the first resource as JSON input, if provided
 	var vars map[string]any
 	if len(p.m.Input) > 0 {
 		if len(resources) == 0 {
-			return "", nil, schema.ErrBadParameter.Withf("input resource required for prompt with input schema")
+			return "", nil, llm.ErrBadParameter.Withf("input resource required for prompt with input schema")
 		} else if resources[0] == nil || resources[0].Type() != types.ContentTypeJSON {
-			return "", nil, schema.ErrBadParameter.Withf("input resource must be of type %q", types.ContentTypeJSON)
-		} else if data, err := resources[0].Read(ctx); err != nil {
+			return "", nil, llm.ErrBadParameter.Withf("input resource must be of type %q", types.ContentTypeJSON)
+		} else if data, err := llm.ReadAll(ctx, resources[0]); err != nil {
 			return "", nil, err
 		} else if vars_, err := validatePrepareInput(p.m.Input, data); err != nil {
 			return "", nil, err
@@ -59,29 +58,29 @@ func (p *prompt) Prepare(ctx context.Context, resources ...llm.Resource) (string
 ///////////////////////////////////////////////////////////////////////////////
 // PRIVATE METHODS
 
-func (p *prompt) options() ([]opt.Opt, error) {
-	var opts []opt.Opt
+func (p *prompt) options() ([]llm.Opt, error) {
+	var opts []llm.Opt
 
 	if p.m.Model != nil && *p.m.Model != "" {
-		opts = append(opts, opt.SetString(opt.ModelKey, *p.m.Model))
+		opts = append(opts, llm.WithModel(*p.m.Model))
 	}
 	if p.m.Provider != nil && *p.m.Provider != "" {
-		opts = append(opts, opt.SetString(opt.ProviderKey, *p.m.Provider))
+		opts = append(opts, llm.WithProvider(*p.m.Provider))
 	}
 	if p.m.SystemPrompt != nil && *p.m.SystemPrompt != "" {
-		opts = append(opts, opt.SetString(opt.SystemPromptKey, *p.m.SystemPrompt))
+		opts = append(opts, llm.WithSystemPrompt(*p.m.SystemPrompt))
 	}
 	if len(p.m.Format) > 0 {
-		opts = append(opts, opt.SetAny(opt.JSONSchemaKey, p.m.Format))
+		opts = append(opts, llm.WithJSONSchema(p.m.Format.Bytes()))
 	}
 	if p.m.Thinking != nil {
-		opts = append(opts, opt.SetBool(opt.ThinkingKey, types.Value(p.m.Thinking)))
+		opts = append(opts, llm.WithThinking(types.Value(p.m.Thinking)))
 	}
 	if p.m.ThinkingBudget != nil && *p.m.ThinkingBudget > 0 {
-		opts = append(opts, opt.SetUint(opt.ThinkingBudgetKey, *p.m.ThinkingBudget))
+		opts = append(opts, llm.WithThinkingBudget(*p.m.ThinkingBudget))
 	}
 	if len(p.m.Tools) > 0 {
-		opts = append(opts, opt.AddString(opt.ToolKey, p.m.Tools...))
+		opts = append(opts, llm.WithTools(p.m.Tools...))
 	}
 
 	// Return options
@@ -94,7 +93,7 @@ func validatePrepareInput(inputSchema schema.JSONSchema, input json.RawMessage) 
 	// Comvert data to map[string]any for templater
 	if len(input) > 0 {
 		if err := json.Unmarshal(input, &data); err != nil {
-			return nil, schema.ErrBadParameter.Withf("input: invalid JSON: %v", err)
+			return nil, llm.ErrBadParameter.Withf("input: invalid JSON: %v", err)
 		}
 	} else {
 		data = make(map[string]any)
@@ -108,9 +107,9 @@ func validatePrepareInput(inputSchema schema.JSONSchema, input json.RawMessage) 
 	// Validate input against schema
 	input_schema, err := jsonschema.FromJSON(json.RawMessage(inputSchema))
 	if err != nil {
-		return nil, schema.ErrBadParameter.Withf("input schema: %v", err)
+		return nil, llm.ErrBadParameter.Withf("input schema: %v", err)
 	} else if err := input_schema.Validate(input); err != nil {
-		return nil, schema.ErrBadParameter.Withf("input validation: %v", err)
+		return nil, llm.ErrBadParameter.Withf("input validation: %v", err)
 	}
 
 	// Return the template variables as a map
@@ -124,12 +123,12 @@ func executeTemplate(name, tmplText string, data map[string]any) (string, error)
 
 	tmpl, err := template.New(name).Funcs(templateFuncMap()).Parse(tmplText)
 	if err != nil {
-		return "", schema.ErrBadParameter.Withf("template: %v", err)
+		return "", llm.ErrBadParameter.Withf("template: %v", err)
 	}
 
 	var buf bytes.Buffer
 	if err := tmpl.Execute(&buf, data); err != nil {
-		return "", schema.ErrBadParameter.Withf("template: %v", err)
+		return "", llm.ErrBadParameter.Withf("template: %v", err)
 	}
 
 	return buf.String(), nil

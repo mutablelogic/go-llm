@@ -3,373 +3,187 @@ package ollama
 import (
 	"context"
 	"encoding/json"
-	"net/http"
+	"fmt"
+	"maps"
+	"slices"
 	"strings"
+	"sync"
+	"time"
 
 	// Packages
 	client "github.com/mutablelogic/go-client"
-	schema "github.com/mutablelogic/go-llm/kernel/schema"
-	opt "github.com/mutablelogic/go-llm/pkg/opt"
-	"github.com/mutablelogic/go-server/pkg/types"
+	llm "github.com/mutablelogic/go-llm"
 )
+
+///////////////////////////////////////////////////////////////////////////////
+// TYPES
+
+// Model represents a single Ollama model, satisfying the llm.Model interface.
+type Model struct {
+	provider *Client
+	data     apiModel
+}
+
+var _ llm.Model = (*Model)(nil)
+
+///////////////////////////////////////////////////////////////////////////////
+// GLOBALS
+
+// showConcurrency is the number of models shown at a time when models are
+// listed
+const showConcurrency = 4
 
 ///////////////////////////////////////////////////////////////////////////////
 // PUBLIC METHODS
 
-// List all models in the Ollama registry
-func (ollama *Client) ListModels(ctx context.Context) ([]schema.Model, error) {
-	var response listModelsResponse
-	if err := ollama.DoWithContext(ctx, nil, &response, client.OptPath("tags")); err != nil {
-		return nil, err
-	}
-	result := make([]schema.Model, len(response.Data))
-	for i, m := range response.Data {
-		result[i] = ollama.modelToSchema(m)
-	}
-	return result, nil
+// Name returns the model name, e.g. "llama3.2:latest"
+func (m *Model) Name() string {
+	return m.data.Name
 }
 
-// List running models
-func (ollama *Client) ListRunningModels(ctx context.Context) ([]schema.Model, error) {
-	var response listModelsResponse
-	if err := ollama.DoWithContext(ctx, nil, &response, client.OptPath("ps")); err != nil {
-		return nil, err
-	}
-	result := make([]schema.Model, len(response.Data))
-	for i, m := range response.Data {
-		result[i] = ollama.modelToSchema(m)
-	}
-	return result, nil
+// Provider returns the client this model came from.
+func (m *Model) Provider() llm.Provider {
+	return m.provider
 }
 
-// GetModel returns the model with the given name
-func (ollama *Client) GetModel(ctx context.Context, name string) (*schema.Model, error) {
-	var response model
-	req, err := client.NewJSONRequest(map[string]string{"name": name})
-	if err != nil {
-		return nil, err
+// Description summarises the model's family and size, e.g.
+// "llama - 3B params, Q4_K_M quantization". Ollama has no separate
+// human-readable description field, so this is derived from Details.
+func (m *Model) Description() string {
+	d := m.data.Details
+	var parts []string
+	if d.Family != "" {
+		parts = append(parts, d.Family)
 	}
-	if err := ollama.DoWithContext(ctx, req, &response, client.OptPath("show")); err != nil {
-		return nil, err
+	if d.ParameterSize != "" {
+		parts = append(parts, fmt.Sprintf("%s params", d.ParameterSize))
 	}
-	result := ollama.modelToSchema(response)
-	if result.Name == "" {
-		result.Name = name
+	if d.QuantizationLevel != "" {
+		parts = append(parts, fmt.Sprintf("%s quantization", d.QuantizationLevel))
 	}
-	return &result, nil
+	return strings.Join(parts, ", ")
 }
 
-// Delete a model by name
-func (ollama *Client) DeleteModel(ctx context.Context, model schema.Model) error {
-	type reqGetModel struct {
-		Model string `json:"model"`
-	}
+// Created returns when the model was last pulled or modified locally -
+// Ollama has no separate "created" timestamp.
+func (m *Model) Created() time.Time {
+	return m.data.ModifiedAt
+}
 
-	// Check model
-	if model.OwnedBy != ollama.Name() {
-		return schema.ErrBadParameter.With("model does not belong to this client")
-	}
-
-	// Request
-	req, err := client.NewJSONRequestEx(http.MethodDelete, reqGetModel{
-		Model: model.Name,
-	}, types.ContentTypeAny)
-	if err != nil {
-		return err
-	}
-
-	// Response
-	if err := ollama.DoWithContext(ctx, req, nil, client.OptPath("delete")); err != nil {
-		return err
-	}
-
+// Aliases returns alternate names for the model. Ollama's API doesn't
+// expose any, so this is always empty.
+func (m *Model) Aliases() []string {
 	return nil
 }
 
-// Load a model into memory
-func (ollama *Client) LoadModel(ctx context.Context, model schema.Model) error {
-	type reqGetModel struct {
-		Model string `json:"model"`
+// Meta returns provider-specific metadata: the model's "details" object,
+// plus "model_info" if the API returned it (only for a single model
+// fetched via GetModel, not for ListModels' summary entries).
+func (m *Model) Meta() map[string]json.RawMessage {
+	meta := make(map[string]json.RawMessage, len(m.data.Info)+1)
+	if data, err := json.Marshal(m.data.Details); err == nil {
+		meta["details"] = data
 	}
-
-	// Check model
-	if model.OwnedBy != ollama.Name() {
-		return schema.ErrBadParameter.With("model does not belong to this client")
+	maps.Copy(meta, m.data.Info)
+	if len(meta) == 0 {
+		return nil
 	}
-
-	// Request
-	req, err := client.NewJSONRequestEx(http.MethodPost, reqGetModel{
-		Model: model.Name,
-	}, types.ContentTypeAny)
-	if err != nil {
-		return err
-	}
-
-	// Response
-	return ollama.DoWithContext(ctx, req, nil, client.OptPath("generate"))
+	return meta
 }
 
-// Unload a model from memory
-func (ollama *Client) UnloadModel(ctx context.Context, model schema.Model) error {
-	type reqLoadModel struct {
-		Model     string `json:"model"`
-		KeepAlive uint   `json:"keep_alive"`
+// InputTokenLimit returns the model's context length, if Ollama reported
+// one in model_info. The context length of the model's family, such as
+// "llama.context_length", is preferred, as model_info can have more than one,
+// such as for a vision model's projector. Otherwise any context length is
+// used, in order of key.
+func (m *Model) InputTokenLimit() *uint {
+	if family := m.data.Details.Family; family != "" {
+		if n := positiveUint(m.data.Info[family+".context_length"]); n != nil {
+			return n
+		}
 	}
-
-	// Check model
-	if model.OwnedBy != ollama.Name() {
-		return schema.ErrBadParameter.With("model does not belong to this client")
+	for _, key := range slices.Sorted(maps.Keys(m.data.Info)) {
+		if key == "context_length" || strings.HasSuffix(key, ".context_length") {
+			if n := positiveUint(m.data.Info[key]); n != nil {
+				return n
+			}
+		}
 	}
-
-	// Request
-	req, err := client.NewJSONRequest(reqLoadModel{
-		Model:     model.Name,
-		KeepAlive: 0,
-	})
-	if err != nil {
-		return err
-	}
-
-	// Response
-	return ollama.DoWithContext(ctx, req, nil, client.OptPath("generate"))
+	return nil
 }
 
-// Download (pull) a model by name
-func (ollama *Client) DownloadModel(ctx context.Context, name string, opts ...opt.Opt) (*schema.Model, error) {
-	type reqPullModel struct {
-		Model    string `json:"model"`
-		Insecure bool   `json:"insecure,omitempty"`
-		Stream   bool   `json:"stream"`
+// OutputTokenLimit is not exposed by Ollama's API.
+func (m *Model) OutputTokenLimit() *uint {
+	return nil
+}
+
+///////////////////////////////////////////////////////////////////////////////
+// PROVIDER METHODS
+
+// ListModels returns the list of models available in the local Ollama
+// registry.
+func (c *Client) ListModels(ctx context.Context) ([]llm.Model, error) {
+	var response listModelsResponse
+	if err := c.DoWithContext(ctx, nil, &response, client.OptPath("tags")); err != nil {
+		return nil, err
 	}
 
-	// Apply options to get progress callback
-	options, err := opt.Apply(opts...)
+	// The list doesn't include each model's model_info, such as its context
+	// length, so show each model, a few at a time. A model which can't be
+	// shown is listed without it.
+	var wg sync.WaitGroup
+	sem := make(chan struct{}, showConcurrency)
+	result := make([]llm.Model, len(response.Models))
+	for i, data := range response.Models {
+		wg.Go(func() {
+			sem <- struct{}{}
+			defer func() { <-sem }()
+			if shown, err := c.show(ctx, data.Name); err == nil {
+				data.Details = shown.Details
+				data.Capabilities = shown.Capabilities
+				data.Info = shown.Info
+			}
+			result[i] = &Model{provider: c, data: data}
+		})
+	}
+	wg.Wait()
+	return result, nil
+}
+
+// GetModel returns details of the model with the given name.
+func (c *Client) GetModel(ctx context.Context, name string) (llm.Model, error) {
+	data, err := c.show(ctx, name)
 	if err != nil {
 		return nil, err
 	}
-	progressFn := options.GetProgress()
-
-	// Enable streaming if progress callback is provided
-	stream := progressFn != nil
-
-	// Request
-	req, err := client.NewJSONRequest(reqPullModel{
-		Model:  name,
-		Stream: stream,
-	})
-	if err != nil {
-		return nil, err
+	if data.Name == "" {
+		data.Name = name
 	}
-
-	// Response with optional streaming callback
-	var response PullStatus
-	clientOpts := []client.RequestOpt{client.OptPath("pull"), client.OptNoTimeout()}
-
-	// Add streaming callback if progress function is provided
-	if progressFn != nil {
-		clientOpts = append(clientOpts, client.OptJsonStreamCallback(func(v json.RawMessage) error {
-			var status PullStatus
-			if err := json.Unmarshal(v, &status); err != nil {
-				return err
-			}
-			// Calculate progress percentage
-			var percent float64
-			if status.TotalBytes > 0 {
-				percent = float64(status.CompletedBytes) / float64(status.TotalBytes) * 100.0
-			}
-			// Call progress callback
-			progressFn(status.Status, percent)
-			return nil
-		}))
-	}
-
-	if err := ollama.DoWithContext(ctx, req, &response, clientOpts...); err != nil {
-		return nil, err
-	}
-
-	// Return the downloaded model
-	return ollama.GetModel(ctx, name)
+	return &Model{provider: c, data: *data}, nil
 }
 
 ///////////////////////////////////////////////////////////////////////////////
 // PRIVATE METHODS
 
-// modelToSchema converts an API model response to schema.Model
-func (c *Client) modelToSchema(m model) schema.Model {
-	result := schema.Model{
-		Name:            m.Name,
-		Description:     m.Model,
-		Created:         m.ModifiedAt,
-		OwnedBy:         c.Name(),
-		InputTokenLimit: contextLengthFromModel(m),
-		Cap:             modelCapabilities(m.Capabilities),
+// show returns the details of the model with the name, from POST /api/show
+func (c *Client) show(ctx context.Context, name string) (*apiModel, error) {
+	req, err := client.NewJSONRequest(map[string]string{"name": name})
+	if err != nil {
+		return nil, err
 	}
-
-	// Marshal Details to JSON then unmarshal into a map so we use the
-	// canonical JSON encoding rather than the String() representation.
-	meta := make(map[string]any)
-	if data, err := json.Marshal(m.Details); err == nil {
-		_ = json.Unmarshal(data, &meta)
+	var data apiModel
+	if err := c.DoWithContext(ctx, req, &data, client.OptPath("show")); err != nil {
+		return nil, err
 	}
-	for k, v := range m.Info {
-		meta[k] = v
-	}
-	meta = compactMetaMap(meta)
-	if len(meta) > 0 {
-		result.Meta = meta
-	}
-
-	return result
+	return &data, nil
 }
 
-func contextLengthFromModel(m model) *uint {
-	if limit := findPositiveUint(m.Info, m.Details.Family+".context_length"); limit != nil {
-		return limit
-	}
-	for key, value := range m.Info {
-		if key == "context_length" || strings.HasSuffix(key, ".context_length") {
-			if limit := positiveUint(value); limit != nil {
-				return limit
-			}
-		}
-	}
-	return nil
-}
-
-func findPositiveUint(values map[string]any, key string) *uint {
-	if key == "" {
+// positiveUint returns the JSON value as a number, or nil if it isn't a
+// positive whole number
+func positiveUint(raw json.RawMessage) *uint {
+	var n uint
+	if err := json.Unmarshal(raw, &n); err != nil || n == 0 {
 		return nil
 	}
-	value, exists := values[key]
-	if !exists {
-		return nil
-	}
-	return positiveUint(value)
-}
-
-func positiveUint(value any) *uint {
-	switch value := value.(type) {
-	case uint:
-		if value == 0 {
-			return nil
-		}
-		result := value
-		return &result
-	case uint32:
-		if value == 0 {
-			return nil
-		}
-		result := uint(value)
-		return &result
-	case uint64:
-		if value == 0 {
-			return nil
-		}
-		result := uint(value)
-		return &result
-	case int:
-		if value <= 0 {
-			return nil
-		}
-		result := uint(value)
-		return &result
-	case int32:
-		if value <= 0 {
-			return nil
-		}
-		result := uint(value)
-		return &result
-	case int64:
-		if value <= 0 {
-			return nil
-		}
-		result := uint(value)
-		return &result
-	case float32:
-		if value <= 0 {
-			return nil
-		}
-		result := uint(value)
-		return &result
-	case float64:
-		if value <= 0 {
-			return nil
-		}
-		result := uint(value)
-		return &result
-	default:
-		return nil
-	}
-}
-
-func modelCapabilities(values []string) schema.ModelCap {
-	var cap schema.ModelCap
-
-	for _, value := range values {
-		switch strings.ToLower(strings.TrimSpace(value)) {
-		case "completion":
-			cap |= schema.ModelCapCompletion
-		case "embedding", "embeddings":
-			cap |= schema.ModelCapEmbeddings
-		case "vision":
-			cap |= schema.ModelCapVision
-		case "tools", "tool":
-			cap |= schema.ModelCapTools
-		case "thinking":
-			cap |= schema.ModelCapThinking
-		case "transcription":
-			cap |= schema.ModelCapTranscription
-		case "translation":
-			cap |= schema.ModelCapTranslation
-		}
-	}
-
-	return cap
-}
-
-func compactMetaMap(values map[string]any) map[string]any {
-	if len(values) == 0 {
-		return nil
-	}
-	result := make(map[string]any, len(values))
-	for key, value := range values {
-		if compacted, ok := compactMetaValue(value); ok {
-			result[key] = compacted
-		}
-	}
-	if len(result) == 0 {
-		return nil
-	}
-	return result
-}
-
-func compactMetaValue(value any) (any, bool) {
-	switch value := value.(type) {
-	case nil:
-		return nil, false
-	case string:
-		if strings.TrimSpace(value) == "" {
-			return nil, false
-		}
-		return value, true
-	case []any:
-		result := make([]any, 0, len(value))
-		for _, item := range value {
-			if compacted, ok := compactMetaValue(item); ok {
-				result = append(result, compacted)
-			}
-		}
-		if len(result) == 0 {
-			return nil, false
-		}
-		return result, true
-	case map[string]any:
-		result := compactMetaMap(value)
-		if len(result) == 0 {
-			return nil, false
-		}
-		return result, true
-	default:
-		return value, true
-	}
+	return &n
 }

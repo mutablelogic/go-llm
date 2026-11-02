@@ -1,324 +1,216 @@
-package ollama
+package ollama_test
 
 import (
+	"context"
 	"encoding/json"
+	"net/http"
+	"net/http/httptest"
+	"sync"
 	"testing"
 
 	// Packages
-	schema "github.com/mutablelogic/go-llm/kernel/schema"
-	opt "github.com/mutablelogic/go-llm/pkg/opt"
-	jsonschema "github.com/mutablelogic/go-server/pkg/jsonschema"
-	types "github.com/mutablelogic/go-server/pkg/types"
+	llm "github.com/mutablelogic/go-llm"
+	eliza "github.com/mutablelogic/go-llm/provider/eliza"
+	ollama "github.com/mutablelogic/go-llm/provider/ollama"
 	assert "github.com/stretchr/testify/assert"
+	require "github.com/stretchr/testify/require"
 )
 
-///////////////////////////////////////////////////////////////////////////////
-// UNIT TESTS — chatRequestFromOpts
-
-func Test_chatRequest_001(t *testing.T) {
-	// Minimal request: model name and single user message
-	a := assert.New(t)
-	msg := &schema.Message{Role: "user", Content: []schema.ContentBlock{{Text: types.Ptr("Hello")}}}
-	session := schema.Conversation{msg}
-	o, err := opt.Apply()
-	a.NoError(err)
-
-	req, err := chatRequestFromOpts("llama3.2", &session, o)
-	a.NoError(err)
-	a.NotNil(req)
-	a.Equal("llama3.2", req.Model)
-	a.Len(req.Messages, 1)
-	a.Equal("user", req.Messages[0].Role)
-	a.Equal("Hello", req.Messages[0].Content)
-	a.Nil(req.Options)
-	a.Nil(req.Think)
-	a.Nil(req.Stream)
-	a.Empty(req.Format)
-	a.Nil(req.Tools)
+// chatServer is a stub Ollama server, which replies to chats, and records
+// the last chat request
+type chatServer struct {
+	sync.Mutex
+	request map[string]any
 }
 
-func Test_chatRequest_002(t *testing.T) {
-	// System prompt is prepended as a system role message
-	a := assert.New(t)
-	msg := &schema.Message{Role: "user", Content: []schema.ContentBlock{{Text: types.Ptr("Hi")}}}
-	session := schema.Conversation{msg}
-	o, err := opt.Apply(opt.SetString(opt.SystemPromptKey, "You are helpful."))
-	a.NoError(err)
-
-	req, err := chatRequestFromOpts("llama3.2", &session, o)
-	a.NoError(err)
-	a.Len(req.Messages, 2)
-	a.Equal("system", req.Messages[0].Role)
-	a.Equal("You are helpful.", req.Messages[0].Content)
-	a.Equal("user", req.Messages[1].Role)
-}
-
-func Test_chatRequest_003(t *testing.T) {
-	// Temperature is placed in the options map
-	a := assert.New(t)
-	msg := &schema.Message{Role: "user", Content: []schema.ContentBlock{{Text: types.Ptr("Hi")}}}
-	session := schema.Conversation{msg}
-	o, err := opt.Apply(opt.SetFloat64(opt.TemperatureKey, 0.7))
-	a.NoError(err)
-
-	req, err := chatRequestFromOpts("llama3.2", &session, o)
-	a.NoError(err)
-	a.NotNil(req.Options)
-	a.InDelta(0.7, req.Options["temperature"], 1e-9)
-}
-
-func Test_chatRequest_004(t *testing.T) {
-	// Top P is placed in the options map
-	a := assert.New(t)
-	msg := &schema.Message{Role: "user", Content: []schema.ContentBlock{{Text: types.Ptr("Hi")}}}
-	session := schema.Conversation{msg}
-	o, err := opt.Apply(opt.SetFloat64(opt.TopPKey, 0.9))
-	a.NoError(err)
-
-	req, err := chatRequestFromOpts("llama3.2", &session, o)
-	a.NoError(err)
-	a.InDelta(0.9, req.Options["top_p"], 1e-9)
-}
-
-func Test_chatRequest_005(t *testing.T) {
-	// Top K is placed in the options map
-	a := assert.New(t)
-	msg := &schema.Message{Role: "user", Content: []schema.ContentBlock{{Text: types.Ptr("Hi")}}}
-	session := schema.Conversation{msg}
-	o, err := opt.Apply(opt.SetUint(opt.TopKKey, 50))
-	a.NoError(err)
-
-	req, err := chatRequestFromOpts("llama3.2", &session, o)
-	a.NoError(err)
-	a.EqualValues(50, req.Options["top_k"])
-}
-
-func Test_chatRequest_006(t *testing.T) {
-	// Max tokens maps to num_predict in the options map
-	a := assert.New(t)
-	msg := &schema.Message{Role: "user", Content: []schema.ContentBlock{{Text: types.Ptr("Hi")}}}
-	session := schema.Conversation{msg}
-	o, err := opt.Apply(opt.SetUint(opt.MaxTokensKey, 2048))
-	a.NoError(err)
-
-	req, err := chatRequestFromOpts("llama3.2", &session, o)
-	a.NoError(err)
-	a.EqualValues(2048, req.Options["num_predict"])
-}
-
-func Test_chatRequest_007(t *testing.T) {
-	// Stop sequences are placed in the options map
-	a := assert.New(t)
-	msg := &schema.Message{Role: "user", Content: []schema.ContentBlock{{Text: types.Ptr("Hi")}}}
-	session := schema.Conversation{msg}
-	o, err := opt.Apply(opt.AddString(opt.StopSequencesKey, "STOP", "END"))
-	a.NoError(err)
-
-	req, err := chatRequestFromOpts("llama3.2", &session, o)
-	a.NoError(err)
-	a.Equal([]string{"STOP", "END"}, req.Options["stop"])
-}
-
-func Test_chatRequest_008(t *testing.T) {
-	// Seed is placed in the options map
-	a := assert.New(t)
-	msg := &schema.Message{Role: "user", Content: []schema.ContentBlock{{Text: types.Ptr("Hi")}}}
-	session := schema.Conversation{msg}
-	o, err := opt.Apply(opt.SetUint(opt.SeedKey, 42))
-	a.NoError(err)
-
-	req, err := chatRequestFromOpts("llama3.2", &session, o)
-	a.NoError(err)
-	a.EqualValues(42, req.Options["seed"])
-}
-
-func Test_chatRequest_009(t *testing.T) {
-	// Presence and frequency penalty are placed in the options map
-	a := assert.New(t)
-	msg := &schema.Message{Role: "user", Content: []schema.ContentBlock{{Text: types.Ptr("Hi")}}}
-	session := schema.Conversation{msg}
-	o, err := opt.Apply(
-		opt.SetFloat64(opt.PresencePenaltyKey, 0.5),
-		opt.SetFloat64(opt.FrequencyPenaltyKey, -0.5),
-	)
-	a.NoError(err)
-
-	req, err := chatRequestFromOpts("llama3.2", &session, o)
-	a.NoError(err)
-	a.InDelta(0.5, req.Options["presence_penalty"], 1e-9)
-	a.InDelta(-0.5, req.Options["frequency_penalty"], 1e-9)
-}
-
-func Test_chatRequest_010(t *testing.T) {
-	// Thinking bool enables think field
-	a := assert.New(t)
-	msg := &schema.Message{Role: "user", Content: []schema.ContentBlock{{Text: types.Ptr("Hi")}}}
-	session := schema.Conversation{msg}
-	o, err := opt.Apply(opt.SetString(opt.ThinkingKey, "true"))
-	a.NoError(err)
-
-	req, err := chatRequestFromOpts("llama3.2", &session, o)
-	a.NoError(err)
-	a.NotNil(req.Think)
-	a.Equal(true, req.Think.Value)
-}
-
-func Test_chatRequest_011(t *testing.T) {
-	// Thinking effort string ("high") enables think field
-	a := assert.New(t)
-	msg := &schema.Message{Role: "user", Content: []schema.ContentBlock{{Text: types.Ptr("Hi")}}}
-	session := schema.Conversation{msg}
-	o, err := opt.Apply(opt.SetString(opt.ThinkingKey, "high"))
-	a.NoError(err)
-
-	req, err := chatRequestFromOpts("llama3.2", &session, o)
-	a.NoError(err)
-	a.NotNil(req.Think)
-	a.Equal("high", req.Think.Value)
-}
-
-func Test_chatRequest_012(t *testing.T) {
-	// JSON schema format is set on the request
-	a := assert.New(t)
-	msg := &schema.Message{Role: "user", Content: []schema.ContentBlock{{Text: types.Ptr("Hi")}}}
-	session := schema.Conversation{msg}
-	var outputSchema jsonschema.Schema
-	err := json.Unmarshal([]byte(`{"type":"object","properties":{"answer":{"type":"string"}}}`), &outputSchema)
-	a.NoError(err)
-	o, err := opt.Apply(WithJSONOutput(&outputSchema))
-	a.NoError(err)
-
-	req, err := chatRequestFromOpts("llama3.2", &session, o)
-	a.NoError(err)
-	a.NotEmpty(req.Format)
-	var m map[string]any
-	a.NoError(json.Unmarshal(req.Format, &m))
-	a.Equal("object", m["type"])
-}
-
-func Test_chatRequest_012a(t *testing.T) {
-	// Nil schema is rejected by WithJSONOutput
-	a := assert.New(t)
-
-	_, err := opt.Apply(WithJSONOutput(nil))
-	a.Error(err)
-	a.ErrorIs(err, schema.ErrBadParameter)
-}
-
-func Test_chatRequest_013(t *testing.T) {
-	// Nil session produces empty messages list
-	a := assert.New(t)
-	o, err := opt.Apply()
-	a.NoError(err)
-
-	req, err := chatRequestFromOpts("llama3.2", nil, o)
-	a.NoError(err)
-	a.Empty(req.Messages)
-}
-
-func Test_chatRequest_014(t *testing.T) {
-	// All options combined serialize to valid JSON
-	a := assert.New(t)
-	msg := &schema.Message{Role: "user", Content: []schema.ContentBlock{{Text: types.Ptr("Test")}}}
-	session := schema.Conversation{msg}
-	o, err := opt.Apply(
-		opt.SetString(opt.SystemPromptKey, "Be concise."),
-		opt.SetFloat64(opt.TemperatureKey, 0.5),
-		opt.SetFloat64(opt.TopPKey, 0.8),
-		opt.SetUint(opt.TopKKey, 40),
-		opt.SetUint(opt.MaxTokensKey, 1024),
-		opt.AddString(opt.StopSequencesKey, "---"),
-		opt.SetUint(opt.SeedKey, 7),
-		opt.SetFloat64(opt.PresencePenaltyKey, 0.2),
-		opt.SetFloat64(opt.FrequencyPenaltyKey, -0.2),
-		opt.SetString(opt.ThinkingKey, "medium"),
-	)
-	a.NoError(err)
-
-	req, err := chatRequestFromOpts("llama3.2", &session, o)
-	a.NoError(err)
-
-	// System prepended
-	a.Len(req.Messages, 2)
-	a.Equal("system", req.Messages[0].Role)
-
-	// Options map
-	a.InDelta(0.5, req.Options["temperature"], 1e-9)
-	a.InDelta(0.8, req.Options["top_p"], 1e-9)
-	a.EqualValues(40, req.Options["top_k"])
-	a.EqualValues(1024, req.Options["num_predict"])
-	a.Equal([]string{"---"}, req.Options["stop"])
-	a.EqualValues(7, req.Options["seed"])
-	a.InDelta(0.2, req.Options["presence_penalty"], 1e-9)
-	a.InDelta(-0.2, req.Options["frequency_penalty"], 1e-9)
-
-	// Think
-	a.NotNil(req.Think)
-	a.Equal("medium", req.Think.Value)
-
-	// Valid JSON
-	data, err := json.Marshal(req)
-	a.NoError(err)
-	var m map[string]any
-	a.NoError(json.Unmarshal(data, &m))
-	a.Equal("llama3.2", m["model"])
-	a.Contains(m, "messages")
-	a.Contains(m, "options")
-}
-
-func Test_chatRequest_015(t *testing.T) {
-	// WithImageOutput is rejected by chatRequestFromOpts
-	a := assert.New(t)
-	msg := &schema.Message{Role: "user", Content: []schema.ContentBlock{{Text: types.Ptr("Hi")}}}
-	session := schema.Conversation{msg}
-	o, err := opt.Apply(WithImageOutput())
-	a.NoError(err)
-
-	_, err = chatRequestFromOpts("x/z-image-turbo", &session, o)
-	a.Error(err)
-}
-
-func Test_chatStreamAccumulator_PreservesToolCallsAcrossDoneStop(t *testing.T) {
-	a := assert.New(t)
-	acc := new(chatStreamAccumulator)
-
-	acc.consume(&chatResponse{
-		Model: "qwen3.5:35b",
-		Message: chatMessage{
-			Role:    schema.RoleAssistant,
-			Content: "",
-			ToolCalls: []chatToolCall{{
-				ID: "call_zxhua9ms",
-				Function: chatToolCallFunction{
-					Index:     0,
-					Name:      "memory__memory_search",
-					Arguments: json.RawMessage(`{"q":"*"}`),
-				},
-			}},
-		},
-		Done: false,
-	}, nil)
-
-	final := chatResponse{
-		Model:      "qwen3.5:35b",
-		Done:       true,
-		DoneReason: "stop",
-		Message: chatMessage{
-			Role:    schema.RoleAssistant,
-			Content: "",
-		},
-	}
-	acc.apply(&final)
-
-	msg, err := messageFromOllamaResponse(&final)
-	a.NoError(err)
-	a.Equal(schema.ResultToolCall, msg.Result)
-	if a.Len(msg.Content, 1) {
-		if a.NotNil(msg.Content[0].ToolCall) {
-			a.Equal("memory__memory_search", msg.Content[0].ToolCall.Name)
-			var args map[string]any
-			a.NoError(json.Unmarshal(msg.Content[0].ToolCall.Input, &args))
-			a.Equal("*", args["q"])
+func (s *chatServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	switch {
+	case r.Method == http.MethodPost && r.URL.Path == "/api/show":
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(`{"details":{"family":"llama"},"model_info":{"llama.context_length":131072}}`))
+	case r.Method == http.MethodPost && r.URL.Path == "/api/chat":
+		var req map[string]any
+		json.NewDecoder(r.Body).Decode(&req)
+		s.Lock()
+		s.request = req
+		s.Unlock()
+		w.Header().Set("Content-Type", "application/json")
+		if req["model"] == "truncated:latest" {
+			w.WriteHeader(http.StatusInternalServerError)
+			w.Write([]byte(`{"error":"no user query found in messages"}`))
+			return
 		}
+		if req["model"] == "missing:latest" {
+			w.WriteHeader(http.StatusNotFound)
+			w.Write([]byte(`{"error":"model \"missing:latest\" not found, try pulling it first"}`))
+			return
+		}
+		if req["stream"] == true {
+			// A streamed reply is chunks of thinking and text, and a tool
+			// call, and then a chunk which is done, or which fails or ends
+			// early, for some models
+			w.Header().Set("Content-Type", "application/x-ndjson")
+			chunks := []string{
+				`{"model":"llama3.2:latest","message":{"role":"assistant","content":"","thinking":"Hmm, "},"done":false}`,
+				`{"model":"llama3.2:latest","message":{"role":"assistant","content":"","thinking":"a greeting."},"done":false}`,
+				`{"model":"llama3.2:latest","message":{"role":"assistant","content":"Hello"},"done":false}`,
+				`{"model":"llama3.2:latest","message":{"role":"assistant","content":" there"},"done":false}`,
+				`{"model":"llama3.2:latest","message":{"role":"assistant","content":"","tool_calls":[{"function":{"name":"wave","arguments":{"hand":"left"}}}]},"done":false}`,
+			}
+			switch req["model"] {
+			case "failing:latest":
+				chunks = append(chunks[:3], `{"error":"model runner has unexpectedly stopped"}`)
+			case "ending:latest":
+				chunks = chunks[:3]
+			default:
+				chunks = append(chunks, `{"model":"llama3.2:latest","created_at":"2026-10-11T08:52:19.385406455Z","message":{"role":"assistant","content":""},"done":true,"done_reason":"stop","prompt_eval_count":26,"eval_count":5}`)
+			}
+			for _, chunk := range chunks {
+				w.Write([]byte(chunk + "\n"))
+			}
+			return
+		}
+		w.Write([]byte(`{
+			"model": "llama3.2:latest",
+			"created_at": "2026-10-11T08:52:19.385406455Z",
+			"message": {"role": "assistant", "content": "Hello there"},
+			"done": true,
+			"done_reason": "stop",
+			"prompt_eval_count": 26,
+			"eval_count": 3
+		}`))
+	default:
+		http.NotFound(w, r)
 	}
+}
+
+// message is a message to send
+type message struct {
+	role, text string
+}
+
+func (m message) Role() string                  { return m.role }
+func (m message) Text() string                  { return m.text }
+func (m message) Resources() []llm.Resource     { return nil }
+func (m message) ToolCalls() []llm.ToolCall     { return nil }
+func (m message) ToolResults() []llm.ToolResult { return nil }
+
+func newChatClient(t *testing.T) (*ollama.Client, *chatServer) {
+	t.Helper()
+	stub := new(chatServer)
+	server := httptest.NewServer(stub)
+	t.Cleanup(server.Close)
+	c, err := ollama.New(server.URL)
+	require.NoError(t, err)
+	return c, stub
+}
+
+func Test_ImplementsGenerator(t *testing.T) {
+	assert.Implements(t, (*llm.Generator)(nil), &ollama.Client{})
+}
+
+func Test_WithoutSession(t *testing.T) {
+	c, stub := newChatClient(t)
+	ctx := context.Background()
+	messages := []llm.Message{
+		message{role: "system", text: "Be brief"},
+		message{role: "user", text: "Hello"},
+	}
+
+	t.Run("Reply", func(t *testing.T) {
+		model, err := c.GetModel(ctx, "llama3.2:latest")
+		require.NoError(t, err)
+
+		reply, usage, err := c.WithoutSession(ctx, model, messages, nil, nil)
+		require.NoError(t, err)
+		assert.Equal(t, "assistant", reply.Role())
+		assert.Equal(t, "Hello there", reply.Text())
+		assert.Equal(t, llm.Usage{InputTokens: 26, OutputTokens: 3}, usage)
+
+		// Without a stream function, the request isn't streamed, and has
+		// the messages
+		stub.Lock()
+		defer stub.Unlock()
+		assert.Equal(t, "llama3.2:latest", stub.request["model"])
+		assert.Equal(t, false, stub.request["stream"])
+		assert.Equal(t, []any{
+			map[string]any{"role": "system", "content": "Be brief"},
+			map[string]any{"role": "user", "content": "Hello"},
+		}, stub.request["messages"])
+	})
+
+	t.Run("Stream", func(t *testing.T) {
+		// The stream function is called with each piece of thinking and
+		// text, and the reply has them all, with the tool call, the reason
+		// the model stopped, and the tokens used
+		model, err := c.GetModel(ctx, "llama3.2:latest")
+		require.NoError(t, err)
+		var streamed []string
+		reply, usage, err := c.WithoutSession(ctx, model, messages, nil, func(what llm.StreamType, text string) {
+			streamed = append(streamed, string(what)+":"+text)
+		})
+		require.NoError(t, err)
+		assert.Equal(t, []string{"thinking:Hmm, ", "thinking:a greeting.", "text:Hello", "text: there"}, streamed)
+		assert.Equal(t, "assistant", reply.Role())
+		assert.Equal(t, "Hello there", reply.Text())
+		require.Len(t, reply.ToolCalls(), 1)
+		assert.Equal(t, "wave", reply.ToolCalls()[0].Name)
+		assert.Equal(t, llm.Usage{InputTokens: 26, OutputTokens: 5}, usage)
+		stub.Lock()
+		assert.Equal(t, true, stub.request["stream"])
+		stub.Unlock()
+	})
+
+	t.Run("StreamError", func(t *testing.T) {
+		// An error in the stream, or a stream which ends before it's done,
+		// fails the reply
+		for _, name := range []string{"failing:latest", "ending:latest"} {
+			model, err := c.GetModel(ctx, name)
+			require.NoError(t, err)
+			_, _, err = c.WithoutSession(ctx, model, messages, nil, func(llm.StreamType, string) {})
+			assert.Error(t, err, name)
+		}
+	})
+
+	t.Run("Truncated", func(t *testing.T) {
+		// Ollama fails when the user's message is removed from a prompt
+		// which is more than its context window
+		model, err := c.GetModel(ctx, "truncated:latest")
+		require.NoError(t, err)
+		_, _, err = c.WithoutSession(ctx, model, messages, nil, nil)
+		assert.ErrorIs(t, err, llm.ErrBadParameter)
+		assert.ErrorContains(t, err, "context window")
+	})
+
+	t.Run("ModelNotFound", func(t *testing.T) {
+		model, err := c.GetModel(ctx, "missing:latest")
+		require.NoError(t, err)
+		_, _, err = c.WithoutSession(ctx, model, messages, nil, nil)
+		assert.ErrorContains(t, err, "not found")
+	})
+
+	t.Run("NotOllama", func(t *testing.T) {
+		other, err := eliza.New()
+		require.NoError(t, err)
+		model, err := other.GetModel(ctx, eliza.ModelName)
+		require.NoError(t, err)
+		_, _, err = c.WithoutSession(ctx, model, messages, nil, nil)
+		assert.ErrorIs(t, err, llm.ErrBadParameter)
+		_, _, err = c.WithoutSession(ctx, nil, messages, nil, nil)
+		assert.ErrorIs(t, err, llm.ErrBadParameter)
+	})
+
+	t.Run("NoMessages", func(t *testing.T) {
+		model, err := c.GetModel(ctx, "llama3.2:latest")
+		require.NoError(t, err)
+		_, _, err = c.WithoutSession(ctx, model, nil, nil, nil)
+		assert.ErrorIs(t, err, llm.ErrBadParameter)
+	})
+
+	t.Run("BadMessage", func(t *testing.T) {
+		model, err := c.GetModel(ctx, "llama3.2:latest")
+		require.NoError(t, err)
+		_, _, err = c.WithoutSession(ctx, model, []llm.Message{message{role: "robot"}}, nil, nil)
+		assert.ErrorIs(t, err, llm.ErrBadParameter)
+	})
 }

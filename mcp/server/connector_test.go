@@ -9,7 +9,6 @@ import (
 	sdkmcp "github.com/modelcontextprotocol/go-sdk/mcp"
 	llm "github.com/mutablelogic/go-llm"
 	server "github.com/mutablelogic/go-llm/mcp/server"
-	opt "github.com/mutablelogic/go-llm/pkg/opt"
 	tool "github.com/mutablelogic/go-llm/toolkit/tool"
 	jsonschema "github.com/mutablelogic/go-server/pkg/jsonschema"
 )
@@ -65,11 +64,11 @@ func (*mockPrompt) Title() string { return "Mock Prompt" }
 
 func (*mockPrompt) Description() string { return "Prompt from connector" }
 
-func (*mockPrompt) Prepare(ctx context.Context, input ...llm.Resource) (string, []opt.Opt, error) {
+func (*mockPrompt) Prepare(ctx context.Context, input ...llm.Resource) (string, []llm.Opt, error) {
 	if len(input) == 0 {
 		return "hello from prompt", nil, nil
 	}
-	data, err := input[0].Read(ctx)
+	data, err := llm.ReadAll(ctx, input[0])
 	if err != nil {
 		return "", nil, err
 	}
@@ -102,7 +101,9 @@ func (*mockResource) Description() string { return "Resource from connector" }
 
 func (*mockResource) Type() string { return "text/plain" }
 
-func (*mockResource) Read(context.Context) ([]byte, error) { return []byte("resource text"), nil }
+func (*mockResource) Read(context.Context) (llm.ReadFunc, error) {
+	return llm.ReadBytes([]byte("resource text")), nil
+}
 
 ///////////////////////////////////////////////////////////////////////////////
 // TESTS

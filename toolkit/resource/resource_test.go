@@ -18,12 +18,12 @@ import (
 // It is used to exercise the marshalResource error path via WithNamespace/WithDescription.
 type errResource struct{}
 
-func (e *errResource) URI() string                            { return "err:test" }
-func (e *errResource) Name() string                           { return "test" }
-func (e *errResource) Description() string                    { return "" }
-func (e *errResource) Type() string                           { return "application/octet-stream" }
-func (e *errResource) Read(_ context.Context) ([]byte, error) { return nil, nil }
-func (e *errResource) MarshalJSON() ([]byte, error)           { return nil, errors.New("marshal error") }
+func (e *errResource) URI() string                                  { return "err:test" }
+func (e *errResource) Name() string                                 { return "test" }
+func (e *errResource) Description() string                          { return "" }
+func (e *errResource) Type() string                                 { return "application/octet-stream" }
+func (e *errResource) Read(_ context.Context) (llm.ReadFunc, error) { return llm.ReadBytes(nil), nil }
+func (e *errResource) MarshalJSON() ([]byte, error)                 { return nil, errors.New("marshal error") }
 
 var _ llm.Resource = (*errResource)(nil)
 
@@ -40,7 +40,7 @@ func Test_Text_001(t *testing.T) {
 	assert.Equal("text:greeting", r.URI())
 	assert.Equal("text/plain", r.Type())
 	assert.Equal("", r.Description())
-	data, err := r.Read(context.Background())
+	data, err := llm.ReadAll(context.Background(), r)
 	assert.NoError(err)
 	assert.Equal([]byte("hello world"), data)
 }
@@ -65,7 +65,7 @@ func Test_Text_003(t *testing.T) {
 	assert.NoError(err)
 	assert.Equal(r.Name(), r2.Name())
 	assert.Equal(r.Type(), r2.Type())
-	data, err := r2.Read(context.Background())
+	data, err := llm.ReadAll(context.Background(), r2)
 	assert.NoError(err)
 	assert.Equal([]byte("some text"), data)
 }
@@ -97,7 +97,7 @@ func Test_JSON_002(t *testing.T) {
 	assert.NoError(err)
 	assert.Equal(r.Name(), r2.Name())
 	assert.Equal(r.Type(), r2.Type())
-	data, err := r2.Read(context.Background())
+	data, err := llm.ReadAll(context.Background(), r2)
 	assert.NoError(err)
 	assert.JSONEq(string(raw), string(data))
 }
@@ -123,7 +123,7 @@ func Test_Data_001(t *testing.T) {
 	// "hello binary" is sniffed as text/plain, so Data() returns a textResource.
 	assert.Equal("text:blob", r.URI())
 	assert.NotEmpty(r.Type())
-	data, err := r.Read(context.Background())
+	data, err := llm.ReadAll(context.Background(), r)
 	assert.NoError(err)
 	assert.Equal(content, data)
 }
@@ -138,7 +138,7 @@ func Test_Data_002(t *testing.T) {
 	assert.NoError(err)
 	assert.Equal("guggenheim", r.Name())
 	assert.Equal("image/jpeg", r.Type())
-	data, err := r.Read(context.Background())
+	data, err := llm.ReadAll(context.Background(), r)
 	assert.NoError(err)
 	assert.NotEmpty(data)
 }
@@ -155,7 +155,7 @@ func Test_Data_003(t *testing.T) {
 	assert.NoError(err)
 	assert.Equal(r.Name(), r2.Name())
 	assert.Equal(r.Type(), r2.Type())
-	data, err := r2.Read(context.Background())
+	data, err := llm.ReadAll(context.Background(), r2)
 	assert.NoError(err)
 	assert.Equal(content, data)
 }
@@ -210,7 +210,7 @@ func Test_WithURI_001(t *testing.T) {
 	assert.Equal("custom:my-uri", ur.URI())
 	assert.Equal("item", ur.Name())
 	assert.Equal("text/plain", ur.Type())
-	data, err := ur.Read(context.Background())
+	data, err := llm.ReadAll(context.Background(), ur)
 	assert.NoError(err)
 	assert.Equal([]byte("content"), data)
 }
@@ -268,7 +268,7 @@ func Test_WithURI_005(t *testing.T) {
 	r2, err := resource.Unmarshal(b)
 	assert.NoError(err)
 	assert.Equal("custom:my-uri", r2.URI())
-	data, err := r2.Read(context.Background())
+	data, err := llm.ReadAll(context.Background(), r2)
 	assert.NoError(err)
 	assert.Equal([]byte("content"), data)
 }
@@ -308,7 +308,7 @@ func Test_Data_007_read_from_non_file_reader(t *testing.T) {
 	r, err := resource.Read(sr)
 	assert.NoError(err)
 	assert.Equal("data", r.Name())
-	data, err := r.Read(context.Background())
+	data, err := llm.ReadAll(context.Background(), r)
 	assert.NoError(err)
 	assert.Equal([]byte("hello from reader"), data)
 }
@@ -348,7 +348,7 @@ func Test_Must_001_string(t *testing.T) {
 	assert.NotNil(r)
 	assert.Equal("greeting", r.Name())
 	assert.Equal("text/plain", r.Type())
-	data, err := r.Read(context.Background())
+	data, err := llm.ReadAll(context.Background(), r)
 	assert.NoError(err)
 	assert.Equal([]byte("hello world"), data)
 }
@@ -361,7 +361,7 @@ func Test_Must_002_json_raw_message(t *testing.T) {
 	assert.NotNil(r)
 	assert.Equal("result", r.Name())
 	assert.Equal("application/json", r.Type())
-	data, err := r.Read(context.Background())
+	data, err := llm.ReadAll(context.Background(), r)
 	assert.NoError(err)
 	assert.Equal([]byte(`{"key":"value"}`), data)
 }

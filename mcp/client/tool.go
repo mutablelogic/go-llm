@@ -67,7 +67,7 @@ func (m *mcpTool) Meta() llm.ToolMeta {
 func (m *mcpTool) Run(ctx context.Context, input json.RawMessage) (any, error) {
 	if len(input) == 0 && m.inputSchema != nil {
 		if err := m.inputSchema.Validate(json.RawMessage(`{}`)); err != nil {
-			return nil, schema.ErrBadParameter.Withf("input validation failed: %v", err)
+			return nil, llm.ErrBadParameter.Withf("input validation failed: %v", err)
 		}
 	}
 

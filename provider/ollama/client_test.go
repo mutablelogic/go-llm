@@ -6,125 +6,122 @@ import (
 	"testing"
 
 	// Packages
+	llm "github.com/mutablelogic/go-llm"
 	ollama "github.com/mutablelogic/go-llm/provider/ollama"
 	assert "github.com/stretchr/testify/assert"
+	require "github.com/stretchr/testify/require"
 )
 
 ///////////////////////////////////////////////////////////////////////////////
 // TEST SET-UP
 
-var (
-	client    *ollama.Client
-	ollamaURL string
-)
+// ollamaAddr is the address of a live Ollama server, e.g. "localhost:11434" -
+// tests which need one are skipped if it's not set.
+var ollamaAddr string
 
 func TestMain(m *testing.M) {
-	ollamaURL = os.Getenv("OLLAMA_URL")
+	ollamaAddr = os.Getenv("OLLAMA_ADDR")
 	os.Exit(m.Run())
 }
 
+// requireClient returns a Client pointed at ollamaAddr, or skips the test if
+// OLLAMA_ADDR isn't set.
+func requireClient(t *testing.T) *ollama.Client {
+	t.Helper()
+	if ollamaAddr == "" {
+		t.Skip("OLLAMA_ADDR not set, skipping")
+	}
+	c, err := ollama.New(ollamaAddr)
+	require.NoError(t, err)
+	return c
+}
+
 ///////////////////////////////////////////////////////////////////////////////
-// TESTS
+// New
 
-func Test_client_001(t *testing.T) {
-	// Test that creating a client with no endpoint defaults to localhost
-	assert := assert.New(t)
+func Test_New_DefaultEndpoint(t *testing.T) {
 	c, err := ollama.New("")
-	assert.NoError(err)
-	assert.NotNil(c)
+	assert.NoError(t, err)
+	assert.NotNil(t, c)
 }
 
-func Test_client_002(t *testing.T) {
-	// Test that creating a client with a valid endpoint URL succeeds
-	if ollamaURL == "" {
-		t.Skip("OLLAMA_URL not set, skipping")
-	}
-	assert := assert.New(t)
-	var err error
-	client, err = ollama.New(ollamaURL)
-	assert.NoError(err)
-	assert.NotNil(client)
-}
-
-func Test_client_003(t *testing.T) {
-	// Test that Name() returns the expected provider name
-	assert := assert.New(t)
-	c, err := ollama.New("")
-	assert.NoError(err)
-	assert.Equal("ollama", c.Name())
-}
-
-func Test_client_004(t *testing.T) {
-	// Test that ListModels returns a non-empty list
-	if ollamaURL == "" {
-		t.Skip("OLLAMA_URL not set, skipping")
-	}
-	assert := assert.New(t)
-	var err error
-	client, err = ollama.New(ollamaURL)
-	assert.NoError(err)
-
-	models, err := client.ListModels(context.TODO())
-	skipIfUnreachable(t, err)
-	assert.NoError(err)
-	assert.NotEmpty(models)
-
-	// Every model should have a name and an owner
-	for _, m := range models {
-		assert.NotEmpty(m.Name)
-		assert.Equal(client.Name(), m.OwnedBy)
-		t.Logf("model: %s (%s)", m.Name, m.Description)
-	}
-}
-
-func Test_client_005(t *testing.T) {
-	// Test that GetModel returns a valid model for a known name
-	if ollamaURL == "" {
-		t.Skip("OLLAMA_URL not set, skipping")
-	}
-	assert := assert.New(t)
-	var err error
-	client, err = ollama.New(ollamaURL)
-	assert.NoError(err)
-
-	// Use the first available model from the list
-	models, err := client.ListModels(context.TODO())
-	skipIfUnreachable(t, err)
-	if !assert.NoError(err) || !assert.NotEmpty(models) {
-		t.FailNow()
-	}
-
-	model, err := client.GetModel(context.TODO(), models[0].Name)
-	assert.NoError(err)
-	if assert.NotNil(model) {
-		assert.Equal(models[0].Name, model.Name)
-		assert.Equal(client.Name(), model.OwnedBy)
-		t.Logf("model: %v", model)
-	}
-}
-
-func Test_client_006(t *testing.T) {
-	// Test that a host:port endpoint (no scheme) is accepted and normalised
-	assert := assert.New(t)
+func Test_New_HostPortNoScheme(t *testing.T) {
+	// A bare host:port (no scheme) should be accepted and normalised to
+	// "http://host:port/api"
 	c, err := ollama.New("localhost:11434")
-	assert.NoError(err)
-	assert.NotNil(c)
-	assert.Equal("ollama", c.Name())
+	assert.NoError(t, err)
+	assert.NotNil(t, c)
 }
 
-func Test_client_007(t *testing.T) {
-	// Test that a URL with no path gets /api appended
-	assert := assert.New(t)
+func Test_New_URLWithNoPath(t *testing.T) {
+	// A URL with no path should get "/api" appended
 	c, err := ollama.New("http://localhost:11434")
-	assert.NoError(err)
-	assert.NotNil(c)
+	assert.NoError(t, err)
+	assert.NotNil(t, c)
 }
 
-func Test_client_008(t *testing.T) {
-	// Test that a URL fragment is ignored and the provider name remains stable
-	assert := assert.New(t)
-	c, err := ollama.New("http://localhost:11434/api#myprovider")
-	assert.NoError(err)
-	assert.NotNil(c)
-	assert.Equal("ollama", c.Name())
+func Test_URL(t *testing.T) {
+	// The endpoint is normalized
+	for endpoint, want := range map[string]string{
+		"":                           "http://localhost:11434/api",
+		"localhost:11434":            "http://localhost:11434/api",
+		"nestor":                     "http://nestor:11434/api",
+		"nestor:8080":                "http://nestor:8080/api",
+		"nestor/":                    "http://nestor:11434/api",
+		"192.168.1.2":                "http://192.168.1.2:11434/api",
+		"[::1]":                      "http://[::1]:11434/api",
+		"http://nestor":              "http://nestor/api",
+		"http://localhost:11434":     "http://localhost:11434/api",
+		"http://localhost:11434/":    "http://localhost:11434/api",
+		"http://localhost:11434/api": "http://localhost:11434/api",
+		"https://ollama.example/v2":  "https://ollama.example/v2",
+	} {
+		c, err := ollama.New(endpoint)
+		require.NoError(t, err, "endpoint %q", endpoint)
+		require.NotNil(t, c.URL())
+		assert.Equal(t, want, c.URL().String(), "endpoint %q", endpoint)
+	}
+}
+
+func Test_URL_Copy(t *testing.T) {
+	// Changing the returned URL doesn't change the client's
+	c, err := ollama.New("")
+	require.NoError(t, err)
+	c.URL().Path = "/changed"
+	assert.Equal(t, "/api", c.URL().Path)
+}
+
+///////////////////////////////////////////////////////////////////////////////
+// Name / Self / interface conformance
+
+func Test_Name(t *testing.T) {
+	c, err := ollama.New("")
+	require.NoError(t, err)
+	assert.Equal(t, "ollama", c.Name())
+}
+
+func Test_Self(t *testing.T) {
+	c, err := ollama.New("")
+	require.NoError(t, err)
+	assert.Same(t, c, c.Self())
+}
+
+func Test_ImplementsProvider(t *testing.T) {
+	assert.Implements(t, (*llm.Provider)(nil), &ollama.Client{})
+}
+
+///////////////////////////////////////////////////////////////////////////////
+// Ping
+
+func Test_Ping(t *testing.T) {
+	c := requireClient(t)
+	assert.NoError(t, c.Ping(context.Background()))
+}
+
+func Test_Ping_Unreachable(t *testing.T) {
+	// A client pointed at a port nothing is listening on should fail to ping,
+	// without needing OLLAMA_ADDR to be set
+	c, err := ollama.New("http://localhost:1")
+	require.NoError(t, err)
+	assert.Error(t, c.Ping(context.Background()))
 }
