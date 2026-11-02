@@ -5,6 +5,7 @@ package cmd
 
 import (
 	// Packages
+	client "github.com/mutablelogic/go-client"
 	registry "github.com/mutablelogic/go-llm/registry"
 	httphandler "github.com/mutablelogic/go-llm/registry/httphandler"
 	server "github.com/mutablelogic/go-server"
@@ -23,11 +24,25 @@ type Flags struct{}
 // PUBLIC METHODS
 
 // WithRegistry creates a registry for the server, with the server's tracer,
-// and then the options, such as its credentials provider, registers its
-// HTTP handlers with the server, when there is one, and then calls the
-// function with the registry, returning any error
+// and the server's client options, such as its tracer and timeout, with
+// its name and version as the user agent, for the providers' clients, and
+// then the options, such as its credentials provider, registers its HTTP
+// handlers with the server, when there is one, and then calls the function
+// with the registry, returning any error
 func (flags Flags) WithRegistry(ctx server.Cmd, srv *servercmd.RunServer, fn func(*registry.Registry) error, opts ...registry.Opt) error {
-	opts = append([]registry.Opt{registry.WithTracer(ctx.Tracer())}, opts...)
+	_, clientOpts, err := ctx.ClientEndpoint()
+	if err != nil {
+		return err
+	}
+	agent := ctx.Name()
+	if version := ctx.Version(); version != "" {
+		agent += "/" + version
+	}
+	clientOpts = append(clientOpts, client.OptUserAgent(agent))
+	opts = append([]registry.Opt{
+		registry.WithTracer(ctx.Tracer()),
+		registry.WithClientOpts(clientOpts...),
+	}, opts...)
 	r, err := registry.New(opts...)
 	if err != nil {
 		return err

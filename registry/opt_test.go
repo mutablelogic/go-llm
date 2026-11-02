@@ -11,6 +11,7 @@ import (
 	"testing"
 
 	// Packages
+	client "github.com/mutablelogic/go-client"
 	llm "github.com/mutablelogic/go-llm"
 	registry "github.com/mutablelogic/go-llm/registry"
 	schema "github.com/mutablelogic/go-llm/registry/schema"
@@ -102,6 +103,27 @@ func Test_CredentialsProvider(t *testing.T) {
 		assert.ErrorIs(t, err, llm.ErrNotFound)
 		assert.Nil(t, r.Provider("missing"))
 	})
+}
+
+func Test_ClientOpts(t *testing.T) {
+	// The providers which are created have the registry's client options
+	ctx := context.Background()
+	var agent atomic.Value
+	ollama := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		agent.Store(r.UserAgent())
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(`{"version":"0.0.1"}`))
+	}))
+	t.Cleanup(ollama.Close)
+	opts := []client.ClientOpt{client.OptUserAgent("test/1.0")}
+	r, err := registry.New(registry.WithClientOpts(opts...))
+	require.NoError(t, err)
+
+	// Including with an API key, which isn't added to the registry's options
+	_, err = r.CreateProvider(ctx, schema.CreateProviderRequest{Provider: llm.Ollama, URL: ollama.URL, APIKey: "secret"})
+	require.NoError(t, err)
+	assert.Equal(t, "test/1.0", agent.Load())
+	assert.Len(t, opts, 1)
 }
 
 func Test_Tracer(t *testing.T) {

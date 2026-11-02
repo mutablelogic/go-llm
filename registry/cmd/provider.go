@@ -40,13 +40,21 @@ type ProviderDeleteCmd struct {
 	Name string `arg:"" name:"name" help:"Provider name."`
 }
 
+// ProviderModels are the patterns of the names of a provider's models
+type ProviderModels struct {
+	Include []string `name:"include" help:"Regular expressions of the names of the models which are included, or every model when there are none, such as ^gpt-."`
+	Exclude []string `name:"exclude" help:"Regular expressions of the names of the models which are excluded, such as -mini$."`
+}
+
 type ProviderCreateOllamaCmd struct {
+	ProviderModels
 	Name             string `name:"name" default:"ollama" help:"Provider name."`
 	URL              string `arg:"" name:"url" help:"URL of the Ollama server, such as localhost:11434."`
 	APIKeyCredential string `name:"api-key-credential" help:"Name of the credential holding an API key, which is sent as a bearer token, such as for a server behind an authenticating proxy."`
 }
 
 type ProviderCreateElizaCmd struct {
+	ProviderModels
 	Name string `name:"name" default:"eliza" help:"Provider name."`
 }
 
@@ -54,6 +62,7 @@ type ProviderCreateElizaCmd struct {
 // default URL, and needs an API key, or a server with an OpenAI-compatible
 // API, which may not
 type ProviderCreateOpenAICmd struct {
+	ProviderModels
 	Name             string `name:"name" default:"openai" help:"Provider name."`
 	URL              string `name:"url" help:"URL of an OpenAI-compatible server, such as vLLM or LM Studio, rather than OpenAI's."`
 	APIKeyCredential string `name:"api-key-credential" help:"Name of the credential holding the API key. Required without a URL."`
@@ -62,6 +71,7 @@ type ProviderCreateOpenAICmd struct {
 // ProviderCreateDeepSeekCmd creates a provider for DeepSeek, which has an
 // OpenAI-compatible API, at a fixed URL
 type ProviderCreateDeepSeekCmd struct {
+	ProviderModels
 	Name             string `name:"name" default:"deepseek" help:"Provider name."`
 	APIKeyCredential string `name:"api-key-credential" help:"Name of the credential holding the API key." required:""`
 }
@@ -121,6 +131,8 @@ func (cmd *ProviderCreateOllamaCmd) Run(ctx server.Cmd) error {
 	return createProvider(ctx, "llm.ProviderCreateOllamaCmd", schema.CreateProviderRequest{
 		Name:     cmd.Name,
 		Provider: llm.Ollama,
+		Include:  cmd.Include,
+		Exclude:  cmd.Exclude,
 		URL:      cmd.URL,
 		APIKey:   placeholder(cmd.APIKeyCredential),
 	})
@@ -131,6 +143,8 @@ func (cmd *ProviderCreateElizaCmd) Run(ctx server.Cmd) error {
 	return createProvider(ctx, "llm.ProviderCreateElizaCmd", schema.CreateProviderRequest{
 		Name:     cmd.Name,
 		Provider: llm.Eliza,
+		Include:  cmd.Include,
+		Exclude:  cmd.Exclude,
 	})
 }
 
@@ -143,6 +157,8 @@ func (cmd *ProviderCreateOpenAICmd) Run(ctx server.Cmd) error {
 	return createProvider(ctx, "llm.ProviderCreateOpenAICmd", schema.CreateProviderRequest{
 		Name:     cmd.Name,
 		Provider: llm.OpenAI,
+		Include:  cmd.Include,
+		Exclude:  cmd.Exclude,
 		URL:      cmd.URL,
 		APIKey:   placeholder(cmd.APIKeyCredential),
 	})
@@ -153,6 +169,8 @@ func (cmd *ProviderCreateDeepSeekCmd) Run(ctx server.Cmd) error {
 	return createProvider(ctx, "llm.ProviderCreateDeepSeekCmd", schema.CreateProviderRequest{
 		Name:     cmd.Name,
 		Provider: llm.OpenAI,
+		Include:  cmd.Include,
+		Exclude:  cmd.Exclude,
 		URL:      openai.DeepSeekEndpoint,
 		APIKey:   placeholder(cmd.APIKeyCredential),
 	})

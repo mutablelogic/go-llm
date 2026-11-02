@@ -2,6 +2,7 @@ package registry
 
 import (
 	"context"
+	"errors"
 	"strings"
 
 	// Packages
@@ -13,100 +14,18 @@ import (
 ///////////////////////////////////////////////////////////////////////////////
 // GLOBALS
 
-// The registry generates, downloads, embeds, transcribes and recognizes
-// with the providers of the models
-var _ llm.Generator = (*Registry)(nil)
+// The registry downloads and deletes models with their providers
 var _ llm.Downloader = (*Registry)(nil)
-var _ llm.Embedder = (*Registry)(nil)
-var _ llm.Transcriber = (*Registry)(nil)
-var _ llm.Recognizer = (*Registry)(nil)
 
 ///////////////////////////////////////////////////////////////////////////////
 // PUBLIC METHODS
 
-// WithoutSession returns the model's reply to the messages, from the
-// model's provider, which must be in the registry, and generate messages
-func (r *Registry) WithoutSession(ctx context.Context, model llm.Model, messages []llm.Message, tools []llm.Tool, stream llm.GeneratorStreamFn, opts ...llm.Opt) (_ llm.Message, _ llm.Usage, err error) {
-	ctx, endSpan := otel.StartSpan(r.tracer, ctx, "llm.registry.WithoutSession",
-		attribute.String("arg.model", r.modelName(model)),
-	)
-	defer func() { endSpan(err) }()
-
-	generator, err := capability[llm.Generator](r, model, "generate messages")
-	if err != nil {
-		return nil, llm.Usage{}, err
-	}
-	return generator.WithoutSession(ctx, model, messages, tools, stream, opts...)
-}
-
-// Embed returns a vector for each of the messages, from the model's
-// provider, which must be in the registry, and embed messages
-func (r *Registry) Embed(ctx context.Context, model llm.Model, messages []llm.Message, opts ...llm.Opt) (_ []llm.Vector, _ llm.Usage, err error) {
-	ctx, endSpan := otel.StartSpan(r.tracer, ctx, "llm.registry.Embed",
-		attribute.String("arg.model", r.modelName(model)),
-	)
-	defer func() { endSpan(err) }()
-
-	embedder, err := capability[llm.Embedder](r, model, "embed messages")
-	if err != nil {
-		return nil, llm.Usage{}, err
-	}
-	return embedder.Embed(ctx, model, messages, opts...)
-}
-
-// Transcribe returns the speech in the audio, from the model's provider,
-// which must be in the registry, and transcribe audio
-func (r *Registry) Transcribe(ctx context.Context, model llm.Model, audio llm.Resource, opts ...llm.Opt) (_ *llm.Transcript, _ llm.Usage, err error) {
-	ctx, endSpan := otel.StartSpan(r.tracer, ctx, "llm.registry.Transcribe",
-		attribute.String("arg.model", r.modelName(model)),
-	)
-	defer func() { endSpan(err) }()
-
-	transcriber, err := capability[llm.Transcriber](r, model, "transcribe audio")
-	if err != nil {
-		return nil, llm.Usage{}, err
-	}
-	return transcriber.Transcribe(ctx, model, audio, opts...)
-}
-
-// Translate returns the speech in the audio as English text, from the
-// model's provider, which must be in the registry, and transcribe audio.
-// Returns ErrNotImplemented when the model can't translate.
-func (r *Registry) Translate(ctx context.Context, model llm.Model, audio llm.Resource, opts ...llm.Opt) (_ *llm.Transcript, _ llm.Usage, err error) {
-	ctx, endSpan := otel.StartSpan(r.tracer, ctx, "llm.registry.Translate",
-		attribute.String("arg.model", r.modelName(model)),
-	)
-	defer func() { endSpan(err) }()
-
-	transcriber, err := capability[llm.Transcriber](r, model, "translate audio")
-	if err != nil {
-		return nil, llm.Usage{}, err
-	}
-	return transcriber.Translate(ctx, model, audio, opts...)
-}
-
-// Recognize returns the text in the resource, such as an image or a PDF, as
-// a message, from the model's provider, which must be in the registry, and
-// recognize text
-func (r *Registry) Recognize(ctx context.Context, model llm.Model, resource llm.Resource, opts ...llm.Opt) (_ llm.Message, _ llm.Usage, err error) {
-	ctx, endSpan := otel.StartSpan(r.tracer, ctx, "llm.registry.Recognize",
-		attribute.String("arg.model", r.modelName(model)),
-	)
-	defer func() { endSpan(err) }()
-
-	recognizer, err := capability[llm.Recognizer](r, model, "recognize text")
-	if err != nil {
-		return nil, llm.Usage{}, err
-	}
-	return recognizer.Recognize(ctx, model, resource, opts...)
-}
-
-// DownloadModel downloads the model with the name, with its provider, which
+// LoadModel downloads the model with the name, with its provider, which
 // must download models, and returns it. As the model may not exist yet, the
 // name must be its canonical name, such as ollama:llama3.2:latest, unless
 // only one of the providers downloads models.
-func (r *Registry) DownloadModel(ctx context.Context, name string, progress llm.DownloadProgressFn) (_ llm.Model, err error) {
-	ctx, endSpan := otel.StartSpan(r.tracer, ctx, "llm.registry.DownloadModel",
+func (r *Registry) LoadModel(ctx context.Context, name string, progress llm.DownloadProgressFn) (_ llm.Model, err error) {
+	ctx, endSpan := otel.StartSpan(r.tracer, ctx, "llm.registry.LoadModel",
 		attribute.String("arg.name", name),
 	)
 	defer func() { endSpan(err) }()
@@ -117,21 +36,20 @@ func (r *Registry) DownloadModel(ctx context.Context, name string, progress llm.
 
 	// A canonical name is its provider's name, and its name
 	if provider, model, ok := strings.Cut(name, separator); ok {
-		if p := r.Provider(provider); p != nil {
-			downloader, ok := p.Self().(llm.Downloader)
-			if !ok {
+		if c := r.cached(provider); c != nil {
+			if _, ok := c.provider.Self().(llm.Downloader); !ok {
 				return nil, llm.ErrNotImplemented.Withf("provider %q can't download models", provider)
 			}
-			return downloader.DownloadModel(ctx, model, progress)
+			return download(ctx, c, model, progress)
 		}
 	}
 
 	// Otherwise, the one provider which downloads models
-	var downloaders []llm.Downloader
+	var downloaders []*cached
 	var names []string
 	for _, e := range r.entries() {
-		if downloader, ok := e.provider.Self().(llm.Downloader); ok {
-			downloaders = append(downloaders, downloader)
+		if _, ok := e.provider.Self().(llm.Downloader); ok {
+			downloaders = append(downloaders, e.cache)
 			names = append(names, e.name)
 		}
 	}
@@ -139,7 +57,7 @@ func (r *Registry) DownloadModel(ctx context.Context, name string, progress llm.
 	case 0:
 		return nil, llm.ErrNotImplemented.With("no provider can download models")
 	case 1:
-		return downloaders[0].DownloadModel(ctx, name, progress)
+		return download(ctx, downloaders[0], name, progress)
 	default:
 		return nil, llm.ErrBadParameter.Withf("model %q needs its provider, as %s can download models, such as %s%s%s", name, strings.Join(names, " and "), names[0], separator, name)
 	}
@@ -157,11 +75,62 @@ func (r *Registry) DeleteModel(ctx context.Context, model llm.Model) (err error)
 	if err != nil {
 		return err
 	}
-	return downloader.DeleteModel(ctx, model)
+	if err := downloader.DeleteModel(ctx, model); err != nil {
+		return unavailable(err)
+	}
+
+	// The provider's models are listed again, without the model
+	if name, ok := r.nameOf(model.Provider()); ok {
+		if c := r.cached(name); c != nil {
+			c.invalidate()
+		}
+	}
+	return nil
+}
+
+// UnloadModel unloads the model from memory, with its provider, which must
+// be in the registry, and load models, keeping it stored, so its provider's
+// models aren't listed again. Returns ErrNotImplemented when the provider
+// doesn't load models, or can't unload them.
+func (r *Registry) UnloadModel(ctx context.Context, model llm.Model) (err error) {
+	ctx, endSpan := otel.StartSpan(r.tracer, ctx, "llm.registry.UnloadModel",
+		attribute.String("arg.model", r.modelName(model)),
+	)
+	defer func() { endSpan(err) }()
+
+	downloader, err := capability[llm.Downloader](r, model, "unload models")
+	if err != nil {
+		return err
+	}
+	if err := downloader.UnloadModel(ctx, model); err != nil {
+		return unavailable(err)
+	}
+	return nil
 }
 
 ///////////////////////////////////////////////////////////////////////////////
 // PRIVATE METHODS
+
+// download downloads the model with the name, with the provider, whose
+// models are listed again, with the model
+func download(ctx context.Context, c *cached, name string, progress llm.DownloadProgressFn) (llm.Model, error) {
+	model, err := c.provider.Self().(llm.Downloader).LoadModel(ctx, name, progress)
+	if err != nil {
+		return nil, unavailable(err)
+	}
+	c.invalidate()
+	return model, nil
+}
+
+// unavailable returns the error of a provider as ErrServiceUnavailable,
+// unless it's an llm.Err, such as ErrNotImplemented, keeping the provider's
+// error, so a provider's response, such as its status, isn't the registry's
+func unavailable(err error) error {
+	if _, ok := errors.AsType[llm.Err](err); ok {
+		return err
+	}
+	return llm.ErrServiceUnavailable.Withf("%w", err)
+}
 
 // modelName returns the canonical name of the model, for its span, or an
 // empty string when there's no model

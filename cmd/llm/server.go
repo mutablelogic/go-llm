@@ -8,6 +8,7 @@ import (
 	registrycmd "github.com/mutablelogic/go-llm/registry/cmd"
 	server "github.com/mutablelogic/go-server"
 	servercmd "github.com/mutablelogic/go-server/pkg/cmd"
+	errgroup "golang.org/x/sync/errgroup"
 )
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -32,10 +33,19 @@ type RunServer struct {
 // PUBLIC METHODS
 
 // Run runs the server, with a registry of providers, which are added with
-// its API, and its API, under the server's prefix, until it's stopped
+// its API, and its API, under the server's prefix, and keeps the providers'
+// state and models current, until it's stopped
 func (runner *RunServer) Run(ctx server.Cmd) error {
 	ctx.Logger().InfoContext(ctx.Context(), "starting server", "name", ctx.Name(), "version", ctx.Version())
-	return runner.Registry.WithRegistry(ctx, &runner.RunServer, func(*registry.Registry) error {
-		return runner.RunServer.Run(ctx)
+	return runner.Registry.WithRegistry(ctx, &runner.RunServer, func(r *registry.Registry) error {
+		// Both stop when either does, such as when the server is stopped
+		group, runCtx := errgroup.WithContext(ctx.Context())
+		group.Go(func() error {
+			return r.Run(runCtx)
+		})
+		group.Go(func() error {
+			return runner.RunServer.Run(ctx.WithContext(runCtx))
+		})
+		return group.Wait()
 	})
 }
