@@ -56,11 +56,12 @@ func (m *mcpPrompt) MarshalJSON() ([]byte, error) {
 
 // ListPrompts returns the cached list of prompts advertised by the connected
 // MCP server. The cache is populated on connect and refreshed automatically
-// on each PromptListChanged notification. Returns ErrServiceUnavailable if not active.
+// on each PromptListChanged notification. Returns ErrServiceUnavailable until
+// it's connected, and the prompts are first listed.
 func (c *Client) ListPrompts(_ context.Context) ([]llm.Prompt, error) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	if c.session == nil {
+	if c.session == nil || !c.ready {
 		return nil, llm.ErrServiceUnavailable
 	}
 	return c.prompts, nil

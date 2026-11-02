@@ -20,9 +20,11 @@ type Client struct {
 	*authclient.Client
 	sdkmcp.Implementation
 
-	// MCP session state
+	// MCP session state, which is ready once the tools, prompts and
+	// resources have been listed, after it's connected
 	url     string
 	session *sdkmcp.ClientSession
+	ready   bool
 	mu      sync.Mutex
 
 	// go-client opts accumulated by WithClientOpt during New(), consumed once.

@@ -48,11 +48,12 @@ func (c *Client) ServerInfo() (name, version, protocol string) {
 
 // ListTools returns the cached list of tools advertised by the connected
 // MCP server. The cache is populated on connect and refreshed automatically
-// on each ToolListChanged notification. Returns ErrServiceUnavailable if not active.
+// on each ToolListChanged notification. Returns ErrServiceUnavailable until
+// it's connected, and the tools are first listed.
 func (c *Client) ListTools(_ context.Context) ([]llm.Tool, error) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	if c.session == nil {
+	if c.session == nil || !c.ready {
 		return nil, llm.ErrServiceUnavailable
 	}
 	return c.tools, nil
