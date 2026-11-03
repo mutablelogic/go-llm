@@ -5,6 +5,7 @@ import (
 	"strings"
 	"time"
 	"unicode"
+	"unicode/utf8"
 
 	// Packages
 	llm "github.com/mutablelogic/go-llm"
@@ -121,10 +122,15 @@ func (r transcribeResponse) segments() []llm.TranscriptSegment {
 ///////////////////////////////////////////////////////////////////////////////
 // PRIVATE FUNCTIONS
 
-// endsSentence returns true when the text ends with the end of a sentence
+// endsSentence returns true when the text ends with the end of a sentence,
+// in any language, such as "." or "。", or "؟", before any closing quotes or
+// brackets, such as in `sleep?"`
 func endsSentence(text string) bool {
-	text = strings.TrimRightFunc(text, unicode.IsSpace)
-	return strings.HasSuffix(text, ".") || strings.HasSuffix(text, "?") || strings.HasSuffix(text, "!")
+	text = strings.TrimRightFunc(text, func(r rune) bool {
+		return unicode.IsSpace(r) || unicode.In(r, unicode.Pe, unicode.Pf) || r == '"' || r == '\''
+	})
+	r, size := utf8.DecodeLastRuneInString(text)
+	return size > 0 && unicode.Is(unicode.Sentence_Terminal, r)
 }
 
 // seconds returns the seconds as a duration

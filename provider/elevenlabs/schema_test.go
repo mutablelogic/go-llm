@@ -58,6 +58,24 @@ func Test_Response(t *testing.T) {
 		}, r.segments())
 		assert.Empty(t, decode(`{"words":[]}`).segments())
 	})
+
+	t.Run("Sentences", func(t *testing.T) {
+		// Consecutive sentences, by a speaker, without a silence, are
+		// segments, in any language, and before a closing quote
+		r := decode(`{"words":[
+			{"text":"你好。","type":"word","start":0.0,"end":0.5},
+			{"text":"世界？","type":"word","start":0.5,"end":1.0},
+			{"text":"مرحبا؟","type":"word","start":1.0,"end":1.5},
+			{"text":"\"Sleep?\"","type":"word","start":1.5,"end":2.0},
+			{"text":" ","type":"spacing","start":2.0,"end":2.1},
+			{"text":"Yes","type":"word","start":2.1,"end":2.5}
+		]}`)
+		var texts []string
+		for _, segment := range r.segments() {
+			texts = append(texts, segment.Text)
+		}
+		assert.Equal(t, []string{"你好。", "世界？", "مرحبا؟", `"Sleep?"`, "Yes"}, texts)
+	})
 }
 
 func Test_Apply(t *testing.T) {
