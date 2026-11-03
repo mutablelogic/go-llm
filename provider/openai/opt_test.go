@@ -257,8 +257,13 @@ func TestNewChatResponse(t *testing.T) {
 	// Mistral's reasoning is the thinking parts of the content
 	var content any
 	require.NoError(t, json.Unmarshal([]byte(`[{"type":"thinking","thinking":[{"type":"text","text":"17 times "},{"type":"text","text":"23"}]},{"type":"text","text":"391"}]`), &content))
-	message = newChatResponse(chatChoice{Message: chatMessage{Content: content}, FinishReason: "stop"}, nil)
+	choice = chatChoice{Message: chatMessage{Content: content}, FinishReason: "stop"}
+	message = newChatResponse(choice, usage)
 	assert.Equal(t, []schema.ContentBlock{{Thinking: types.Ptr("17 times 23")}, {Text: types.Ptr("391")}}, message.Content)
+
+	// Which is returned, so its tokens are the reply's
+	assert.Equal(t, uint64(50), message.Tokens)
+	assert.Equal(t, llm.Usage{OutputTokens: 50}, replyUsage(choice, usage))
 
 	// A refusal is the text, and the reply is blocked
 	message = newChatResponse(chatChoice{Message: chatMessage{Content: nil, Refusal: "I can't help with that"}, FinishReason: "stop"}, nil)

@@ -164,10 +164,11 @@ func toolMessages(message llm.Message) []chatMessage {
 // replyUsage returns the tokens used by the reply in the choice. Its
 // reasoning tokens are those of reasoning which isn't returned, as with
 // OpenAI's reasoning models, so they're none when the reply has its
-// reasoning, as DeepSeek's do, which is sent back with tools.
+// reasoning, as DeepSeek's do, which is sent back with tools, and Mistral's,
+// as thinking parts of its content.
 func replyUsage(choice chatChoice, usage *chatUsage) llm.Usage {
 	result := usage.Usage()
-	if choice.Message.ReasoningContent != "" {
+	if choice.Message.ReasoningContent != "" || contentThinking(choice.Message.Content) != "" {
 		result.ReasoningTokens = 0
 	}
 	return result

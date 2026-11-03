@@ -101,16 +101,19 @@ func Test_LiveMistral(t *testing.T) {
 
 	t.Run("Thinking", func(t *testing.T) {
 		// With thinking, the reply has the model's thinking, and its text,
-		// whether it's streamed or not
+		// whether it's streamed or not. The thinking is returned, so its
+		// tokens are the reply's, rather than reasoning tokens.
 		messages := []llm.Message{liveUser(t, "What is 17 times 23? Reply with the number.")}
 		reply, usage, err := c.WithoutSession(ctx, model(t, mistralModel), messages, nil, nil, llm.WithThinking(true))
 		require.NoError(t, err)
 		assert.NotEmpty(t, reply.(*schema.Message).Thinking())
 		assert.Contains(t, reply.Text(), "391")
-		assert.NotZero(t, usage.ReasoningTokens)
+		assert.Zero(t, usage.ReasoningTokens)
+		assert.NotZero(t, usage.OutputTokens)
+		assert.Equal(t, uint64(usage.OutputTokens), reply.(*schema.Message).Tokens)
 
 		var thinking, text strings.Builder
-		reply, _, err = c.WithoutSession(ctx, model(t, mistralModel), messages, nil, func(kind llm.StreamType, piece string) {
+		reply, usage, err = c.WithoutSession(ctx, model(t, mistralModel), messages, nil, func(kind llm.StreamType, piece string) {
 			switch kind {
 			case llm.StreamThinking:
 				thinking.WriteString(piece)
@@ -123,6 +126,9 @@ func Test_LiveMistral(t *testing.T) {
 		assert.Equal(t, thinking.String(), reply.(*schema.Message).Thinking())
 		assert.Equal(t, text.String(), reply.Text())
 		assert.Contains(t, reply.Text(), "391")
+		assert.Zero(t, usage.ReasoningTokens)
+		assert.NotZero(t, usage.OutputTokens)
+		assert.Equal(t, uint64(usage.OutputTokens), reply.(*schema.Message).Tokens)
 
 		// And without it, there's none
 		reply, usage, err = c.WithoutSession(ctx, model(t, mistralModel), messages, nil, nil, llm.WithThinking(false))
