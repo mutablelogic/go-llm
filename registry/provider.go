@@ -90,7 +90,7 @@ func (r *Registry) UpdateProvider(ctx context.Context, name string, meta schema.
 		attribute.String("arg.meta", meta.String()),
 	)
 	defer func() { endSpan(err) }()
-	return r.updateProvider(ctx, name, meta, true, 0)
+	return r.updateProvider(ctx, name, meta)
 }
 
 // DeleteProvider removes the provider with the name from the registry, and
@@ -169,12 +169,10 @@ func (r *Registry) setSerial(name string, serial uint64) {
 }
 
 // updateProvider replaces the fields of the provider with the name with the
-// meta, as UpdateProvider does, keeping its API key when the meta has none
-// and keepKey is true, or replacing it, so a store's definition is the
-// provider's. Its serial is the serial, such as a store's, or its serial,
-// incremented, when it's zero. A provider whose fields are the same has its
-// serial set, when there is one.
-func (r *Registry) updateProvider(ctx context.Context, name string, meta schema.ProviderMeta, keepKey bool, serial uint64) (*schema.ProviderStatus, error) {
+// meta, as UpdateProvider does, keeping its API key when the meta has none,
+// with its serial incremented. A provider whose fields are the same is left
+// as it is.
+func (r *Registry) updateProvider(ctx context.Context, name string, meta schema.ProviderMeta) (*schema.ProviderStatus, error) {
 	existing := r.cached(name)
 	if existing == nil {
 		return nil, llm.ErrNotFound.Withf("provider %q", name)
@@ -185,22 +183,46 @@ func (r *Registry) updateProvider(ctx context.Context, name string, meta schema.
 	// Its definition, with the meta, which is left as it is when it's the
 	// same
 	req := *existing.definition
-	if keepKey && meta.APIKey == "" {
+	if meta.APIKey == "" {
 		meta.APIKey = req.APIKey
 	}
 	req.ProviderMeta = meta
 	if req.Equal(*existing.definition) {
-		if serial != 0 {
-			existing.serial.Store(serial)
-		}
 		return describePing(ctx, entry{name: name, provider: existing.provider, cache: existing}), nil
 	}
-	if req.Serial = serial; serial == 0 {
-		req.Serial = existing.serial.Load() + 1
-	}
+	req.Serial = existing.serial.Load() + 1
+	return r.redefine(ctx, name, existing, req)
+}
 
-	// Create it again, ping it, and replace it, with the result of its ping,
-	// which is its first, so it isn't an update
+// setProvider makes the provider with the definition's name the definition,
+// with its serial, such as a store's: it's created, when there's none,
+// whether it can be reached or not, or it's replaced, when its definition is
+// different, including its type, or it has the definition's serial, when
+// it's the same. Returns ErrConflict when the provider with the name was
+// added without a definition, such as with Add.
+func (r *Registry) setProvider(ctx context.Context, def schema.Provider) error {
+	existing := r.cached(def.Name)
+	switch {
+	case existing == nil:
+		_, err := r.createProvider(ctx, def, false)
+		return err
+	case existing.definition == nil:
+		return llm.ErrConflict.Withf("provider %q was added without a definition", def.Name)
+	case existing.definition.Equal(def):
+		existing.serial.Store(def.Serial)
+		return nil
+	default:
+		_, err := r.redefine(ctx, def.Name, existing, def)
+		return err
+	}
+}
+
+// redefine creates the provider of the request again, pings it, and
+// replaces the existing provider with the name, with the result of its
+// ping, which is its first, so it isn't an update, and watchers are sent
+// that it was updated. Returns ErrConflict when the provider with the name
+// was changed since it was got.
+func (r *Registry) redefine(ctx context.Context, name string, existing *cached, req schema.Provider) (*schema.ProviderStatus, error) {
 	_, provider, opts, err := r.newProvider(ctx, req)
 	if err != nil {
 		return nil, err

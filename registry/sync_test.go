@@ -33,6 +33,8 @@ type memStore struct {
 	gosync.Mutex
 	defs          map[string]schema.Provider
 	err           error // returned by List, when it's set
+	putErr        error // returned by Put, when it's set
+	deleteErr     error // returned by Delete, when it's set
 	puts, deletes int
 	watcher       chan<- providerschema.Event
 	stopped       chan error
@@ -66,7 +68,9 @@ func (s *memStore) Put(_ context.Context, def schema.Provider) (schema.Provider,
 	s.Lock()
 	defer s.Unlock()
 	s.puts++
-	if def.Serial != s.defs[def.Name].Serial {
+	if s.putErr != nil {
+		return schema.Provider{}, s.putErr
+	} else if def.Serial != s.defs[def.Name].Serial {
 		return schema.Provider{}, llm.ErrConflict.Withf("provider %q", def.Name)
 	}
 	def.Serial++
@@ -78,7 +82,9 @@ func (s *memStore) Delete(_ context.Context, name string, serial uint64) error {
 	s.Lock()
 	defer s.Unlock()
 	s.deletes++
-	if def, exists := s.defs[name]; !exists {
+	if s.deleteErr != nil {
+		return s.deleteErr
+	} else if def, exists := s.defs[name]; !exists {
 		return nil
 	} else if def.Serial != serial {
 		return llm.ErrConflict.Withf("provider %q", name)
@@ -122,6 +128,22 @@ func (s *memStore) Quietly(def schema.Provider) {
 	s.Lock()
 	defer s.Unlock()
 	s.change(def)
+}
+
+// QuietlyRemove removes the provider from the store, as another server
+// would, without its event, which is missed
+func (s *memStore) QuietlyRemove(name string) {
+	s.Lock()
+	defer s.Unlock()
+	delete(s.defs, name)
+}
+
+// Fail sets the errors of Put and Delete, which are transient, until
+// they're set to nil
+func (s *memStore) Fail(put, delete error) {
+	s.Lock()
+	defer s.Unlock()
+	s.putErr, s.deleteErr = put, delete
 }
 
 func (s *memStore) change(def schema.Provider) {
@@ -336,6 +358,85 @@ func Test_Sync(t *testing.T) {
 		eventually(t, func() bool { return has(r, changed) && serial(r, "chat") == 2 }, "the store's change wasn't kept")
 		def, _ := store.Def("chat")
 		assert.Equal(t, []string{"-de$"}, def.Exclude)
+	})
+
+	t.Run("DeleteRetried", func(t *testing.T) {
+		// A provider which is deleted with the registry, which can't be
+		// deleted from the store, is deleted from it later, rather than
+		// added to the registry again
+		setInterval(t, &registry.PingInterval, 10*time.Millisecond)
+		store := newStore(chat("chat"))
+		r := synced(t, store)
+		run(t, r, nil)
+		eventually(t, func() bool { return has(r, chat("chat")) }, "the store's provider wasn't added")
+
+		store.Fail(nil, errors.New("connection reset"))
+		_, err := r.DeleteProvider(ctx, "chat")
+		require.NoError(t, err)
+		time.Sleep(50 * time.Millisecond)
+		assert.Nil(t, r.Provider("chat"), "the provider was added again")
+
+		store.Fail(nil, nil)
+		eventually(t, func() bool { _, exists := store.Def("chat"); return !exists }, "the provider wasn't deleted from the store")
+		assert.Nil(t, r.Provider("chat"))
+	})
+
+	t.Run("UpdateRetried", func(t *testing.T) {
+		// A provider which is updated with the registry, which can't be put
+		// in the store, is put in it later, rather than being the store's
+		setInterval(t, &registry.PingInterval, 10*time.Millisecond)
+		store := newStore(chat("chat"))
+		r := synced(t, store)
+		run(t, r, nil)
+		eventually(t, func() bool { return has(r, chat("chat")) }, "the store's provider wasn't added")
+
+		store.Fail(errors.New("connection reset"), nil)
+		updated := schema.Provider{Name: "chat", Type: llm.Eliza, Exclude: []string{"-de$"}}
+		_, err := r.UpdateProvider(ctx, "chat", updated.ProviderMeta)
+		require.NoError(t, err)
+		time.Sleep(50 * time.Millisecond)
+		assert.True(t, has(r, updated), "the update was lost")
+
+		store.Fail(nil, nil)
+		eventually(t, func() bool {
+			def, _ := store.Def("chat")
+			return def.Equal(updated) && def.Serial == 2
+		}, "the update wasn't put in the store")
+		assert.True(t, has(r, updated))
+	})
+
+	t.Run("TypeChanged", func(t *testing.T) {
+		// A provider whose type is changed in the store, as by another
+		// server, has the store's type
+		closed := httptest.NewServer(http.NotFoundHandler())
+		closed.Close()
+		store := newStore(chat("chat"))
+		r := synced(t, store)
+		run(t, r, nil)
+		eventually(t, func() bool { return has(r, chat("chat")) }, "the store's provider wasn't added")
+
+		ollama := schema.Provider{Name: "chat", Type: llm.Ollama, URL: closed.URL}
+		store.Change(ollama)
+		eventually(t, func() bool { return has(r, ollama) }, "the provider didn't have the store's type")
+		assert.Equal(t, uint64(2), serial(r, "chat"))
+	})
+
+	t.Run("DeletedWhileUpdated", func(t *testing.T) {
+		// A provider which is updated with the registry, which another server
+		// deleted from the store since, is deleted, rather than created in
+		// the store again
+		store := newStore(chat("chat"))
+		r := synced(t, store)
+		run(t, r, nil)
+		eventually(t, func() bool { return has(r, chat("chat")) }, "the store's provider wasn't added")
+
+		store.QuietlyRemove("chat")
+		_, err := r.UpdateProvider(ctx, "chat", schema.ProviderMeta{Exclude: []string{"-de$"}})
+		require.NoError(t, err)
+		eventually(t, func() bool { return r.Provider("chat") == nil }, "the provider wasn't deleted")
+		time.Sleep(50 * time.Millisecond)
+		_, exists := store.Def("chat")
+		assert.False(t, exists, "the provider was created in the store again")
 	})
 
 	t.Run("Unreachable", func(t *testing.T) {

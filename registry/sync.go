@@ -71,15 +71,16 @@ const syncEventBuffer = 64
 
 // sync makes the registry's providers the same as the store's, once the
 // registry's changes which haven't been synced are, so they're in the
-// store: a provider which the store has is in the registry, with its
-// definition and serial; one which the store doesn't have now, but did, is
-// removed from it; one which the registry doesn't have now, but did, is
-// deleted from the store, unless the store changed it since; and one which
-// the registry has, which the store hasn't had, is put in the store. It
-// returns the errors syncing the providers, each of which is synced again
-// later, joined, apart from those of providers which the store changed
-// since they were seen, as the store's change is kept. When the store's
-// providers can't be listed, nothing is changed, and that's the error.
+// store. Each provider is synced by what the store had, when it was last
+// seen, what it has now, and what the registry has now: a change to the
+// store since it was seen is the registry's, including a deletion, and a
+// change to the registry, which the store hasn't seen, when the store
+// hasn't changed it, is the store's, including a deletion. A change which
+// can't be made is made again later. It returns the errors syncing the
+// providers, joined, apart from those of providers which the store changed
+// since they were seen, which are synced when they're next listed. When the
+// store's providers can't be listed, nothing is changed, and that's the
+// error.
 func (s *syncer) sync(ctx context.Context, registryEvents <-chan providerschema.Event) error {
 	var errs []error
 	failed := func(err error) {
@@ -108,71 +109,103 @@ func (s *syncer) sync(ctx context.Context, registryEvents <-chan providerschema.
 		stored[def.Name] = def
 	}
 
-	// The providers the registry doesn't have now, but did, as they were
-	// deleted from it, are deleted from the store, unless the store changed
-	// them since, when they're the store's
-	for name, known := range s.known {
-		if _, exists := s.registry.definition(name); exists {
-			continue
-		}
-		delete(s.known, name)
-		def, exists := stored[name]
-		if !exists || def.Serial != known.Serial {
-			continue
-		}
-		if err := s.store.Delete(ctx, name, known.Serial); errors.Is(err, llm.ErrConflict) {
-			continue
-		} else if err != nil {
-			failed(fmt.Errorf("deleting %q from the store: %w", name, err))
-			s.known[name] = known
-			continue
-		}
-		delete(stored, name)
+	// Each provider which the store has had, has, or the registry has
+	names := make(map[string]struct{}, len(stored)+len(s.known))
+	for name := range s.known {
+		names[name] = struct{}{}
 	}
-
-	// The store's providers are in the registry, with their serials
-	for name, def := range stored {
-		if current, exists := s.registry.definition(name); exists && current.Equal(def) {
-			s.registry.setSerial(name, def.Serial)
-			s.known[name] = def
-			continue
-		}
-		var err error
-		if s.registry.Provider(name) == nil {
-			_, err = s.registry.createProvider(ctx, def, false)
-		} else {
-			_, err = s.registry.updateProvider(ctx, name, def.ProviderMeta, false, def.Serial)
-		}
-		if err != nil {
-			failed(fmt.Errorf("setting %q from the store: %w", name, err))
-			continue
-		}
-		s.known[name] = def
+	for name := range stored {
+		names[name] = struct{}{}
 	}
-
-	// The providers the store doesn't have now, but did, are removed from
-	// the registry, unless the registry changed them since
-	for name, known := range s.known {
-		if _, exists := stored[name]; exists {
-			continue
-		}
-		delete(s.known, name)
-		if current, exists := s.registry.definition(name); exists && current.Equal(known) {
-			if _, err := s.registry.DeleteProvider(ctx, name); err != nil && !errors.Is(err, llm.ErrNotFound) {
-				failed(fmt.Errorf("removing %q, which the store doesn't have: %w", name, err))
-			}
-		}
-	}
-
-	// The registry's providers which the store hasn't had are put in it
 	for _, name := range s.registry.Names() {
-		if _, exists := s.known[name]; !exists {
-			failed(s.local(ctx, name))
-		}
+		names[name] = struct{}{}
+	}
+	for name := range names {
+		failed(s.provider(ctx, name, stored))
 	}
 
 	// Return the errors
 	return errors.Join(errs...)
+}
+
+// provider syncs the provider with the name, by what the store had, when it
+// was last seen, what it has now, which is stored, and what the registry
+// has now
+func (s *syncer) provider(ctx context.Context, name string, stored map[string]schema.Provider) error {
+	known, wasKnown := s.known[name]
+	def, inStore := stored[name]
+	current, defined := s.registry.definition(name)
+	added := !defined && s.registry.Provider(name) != nil
+	unchanged := wasKnown && inStore && def.Serial == known.Serial
+
+	switch {
+	case added:
+		// A provider which was added without a definition, such as with
+		// Add, isn't synced
+		return nil
+
+	case wasKnown && !inStore:
+		// The store deleted it since it was seen, so it's removed from the
+		// registry, even when the registry changed it, as the store's
+		// change is kept
+		delete(s.known, name)
+		if defined {
+			if _, err := s.registry.DeleteProvider(ctx, name); err != nil && !errors.Is(err, llm.ErrNotFound) {
+				return fmt.Errorf("removing %q, which the store deleted: %w", name, err)
+			}
+		}
+		return nil
+
+	case unchanged && !defined:
+		// The registry deleted it, and the store hasn't changed it since, so
+		// it's deleted from the store, or deleted again later, when it can't
+		// be. When the store changed it as it was deleted, it's the store's,
+		// when the providers are next listed.
+		if err := s.store.Delete(ctx, name, known.Serial); err != nil {
+			return fmt.Errorf("deleting %q from the store: %w", name, err)
+		}
+		delete(s.known, name)
+		return nil
+
+	case unchanged && !current.Equal(known):
+		// The registry changed it, and the store hasn't since, so it's put
+		// in the store, as it was seen, or put again later, when it can't be
+		return s.put(ctx, current, known.Serial)
+
+	case inStore:
+		// The store has it, and it's changed since it was seen, or it
+		// wasn't, so it's the store's, including its type, or has the
+		// store's serial, when it's the same
+		if err := s.registry.setProvider(ctx, def); err != nil {
+			return fmt.Errorf("setting %q from the store: %w", name, err)
+		}
+		s.known[name] = def
+		return nil
+
+	case defined:
+		// The registry created it, and the store hasn't had it, so it's
+		// created in the store
+		return s.put(ctx, current, 0)
+
+	default:
+		// Neither has it, so it's forgotten
+		delete(s.known, name)
+		return nil
+	}
+}
+
+// put puts the registry's provider in the store, as it was seen, by its
+// serial, or as a new provider, when it's zero, and keeps it, as the store
+// has it, with the store's serial, which the registry's provider has
+func (s *syncer) put(ctx context.Context, def schema.Provider, serial uint64) error {
+	def.Serial = serial
+	stored, err := s.store.Put(ctx, def)
+	if err != nil {
+		return fmt.Errorf("putting %q in the store: %w", def.Name, err)
+	}
+	s.known[def.Name] = stored
+	s.registry.setSerial(def.Name, stored.Serial)
+	return nil
 }
 
 // local syncs a change of the registry's provider with the name to the
@@ -189,13 +222,7 @@ func (s *syncer) local(ctx context.Context, name string) error {
 		if wasKnown && known.Equal(def) {
 			return nil
 		}
-		def.Serial = known.Serial
-		stored, err := s.store.Put(ctx, def)
-		if err != nil {
-			return fmt.Errorf("putting %q in the store: %w", name, err)
-		}
-		s.known[name] = stored
-		s.registry.setSerial(name, stored.Serial)
+		return s.put(ctx, def, known.Serial)
 	} else if wasKnown && s.registry.Provider(name) == nil {
 		if err := s.store.Delete(ctx, name, known.Serial); err != nil {
 			return fmt.Errorf("deleting %q from the store: %w", name, err)
