@@ -2,6 +2,7 @@ package registry_test
 
 import (
 	"context"
+	"encoding/json"
 	"strings"
 	"testing"
 
@@ -9,6 +10,10 @@ import (
 	llm "github.com/mutablelogic/go-llm"
 	eliza "github.com/mutablelogic/go-llm/provider/eliza"
 	schema "github.com/mutablelogic/go-llm/provider/schema"
+	registry "github.com/mutablelogic/go-llm/registry"
+	tool "github.com/mutablelogic/go-llm/toolkit/tool"
+	jsonschema "github.com/mutablelogic/go-server/pkg/jsonschema"
+	types "github.com/mutablelogic/go-server/pkg/types"
 	assert "github.com/stretchr/testify/assert"
 	require "github.com/stretchr/testify/require"
 )
@@ -21,6 +26,7 @@ import (
 type capable struct {
 	*provider
 	called []string
+	caps   map[string]llm.ModelCap // the capabilities of the models, by name
 }
 
 var _ llm.Generator = (*capable)(nil)
@@ -40,14 +46,14 @@ func (c *capable) GetModel(ctx context.Context, name string) (llm.Model, error) 
 	if _, err := c.provider.GetModel(ctx, name); err != nil {
 		return nil, err
 	}
-	return &model{name: name, provider: c}, nil
+	return &model{name: name, provider: c, caps: c.caps[name]}, nil
 }
 
 func (c *capable) ListModels(ctx context.Context) ([]llm.Model, error) {
 	c.lists.Add(1)
 	var result []llm.Model
 	for _, name := range c.models {
-		result = append(result, &model{name: name, provider: c})
+		result = append(result, &model{name: name, provider: c, caps: c.caps[name]})
 	}
 	if c.list != nil {
 		c.list()
@@ -107,6 +113,14 @@ func (c *capable) UnloadModel(_ context.Context, model llm.Model) error {
 	return nil
 }
 
+// waveTool is a tool, which isn't run
+type waveTool struct{ tool.Base }
+
+func (waveTool) Name() string                                      { return "wave" }
+func (waveTool) Description() string                               { return "Waves at the user" }
+func (waveTool) InputSchema() *jsonschema.Schema                   { return nil }
+func (waveTool) Run(context.Context, json.RawMessage) (any, error) { return nil, nil }
+
 // user returns a message from the user with the text
 func user(t *testing.T, text string) llm.Message {
 	t.Helper()
@@ -128,7 +142,7 @@ func Test_Capabilities(t *testing.T) {
 	require.NoError(t, err)
 
 	// get returns the model with the name from the registry
-	get := func(t *testing.T, name string) llm.Model {
+	get := func(t *testing.T, r *registry.Registry, name string) llm.Model {
 		t.Helper()
 		model, err := r.GetModel(ctx, name)
 		require.NoError(t, err)
@@ -138,20 +152,20 @@ func Test_Capabilities(t *testing.T) {
 	t.Run("Generate", func(t *testing.T) {
 		// The model's provider generates the reply
 		ollama.called = nil
-		reply, _, err := r.WithoutSession(ctx, get(t, "llama3.2:latest"), []llm.Message{user(t, "Hi")}, nil, nil)
+		reply, _, err := r.WithoutSession(ctx, get(t, r, "llama3.2:latest"), []llm.Message{user(t, "Hi")}, nil, nil)
 		require.NoError(t, err)
 		assert.Equal(t, "hello", reply.Text())
 		assert.Equal(t, []string{"generate llama3.2:latest"}, ollama.called)
 
 		// Including eliza, which really replies
-		reply, _, err = r.WithoutSession(ctx, get(t, eliza.ModelName), []llm.Message{user(t, "I feel sad")}, nil, nil)
+		reply, _, err = r.WithoutSession(ctx, get(t, r, eliza.ModelName), []llm.Message{user(t, "I feel sad")}, nil, nil)
 		require.NoError(t, err)
 		assert.NotEmpty(t, reply.Text())
 	})
 
 	t.Run("Embed", func(t *testing.T) {
 		ollama.called = nil
-		vectors, _, err := r.Embed(ctx, get(t, "llama3.2:latest"), []llm.Message{user(t, "a"), user(t, "b")})
+		vectors, _, err := r.Embed(ctx, get(t, r, "llama3.2:latest"), []llm.Message{user(t, "a"), user(t, "b")})
 		require.NoError(t, err)
 		assert.Len(t, vectors, 2)
 		assert.Equal(t, []string{"embed llama3.2:latest"}, ollama.called)
@@ -159,7 +173,7 @@ func Test_Capabilities(t *testing.T) {
 
 	t.Run("Transcribe", func(t *testing.T) {
 		ollama.called = nil
-		transcript, _, err := r.Transcribe(ctx, get(t, "llama3.2:latest"), nil)
+		transcript, _, err := r.Transcribe(ctx, get(t, r, "llama3.2:latest"), nil)
 		require.NoError(t, err)
 		assert.Equal(t, "hello", transcript.Text)
 		assert.Equal(t, []string{"transcribe llama3.2:latest"}, ollama.called)
@@ -168,19 +182,19 @@ func Test_Capabilities(t *testing.T) {
 	t.Run("Translate", func(t *testing.T) {
 		// The model's provider translates
 		ollama.called = nil
-		transcript, _, err := r.Translate(ctx, get(t, "llama3.2:latest"), nil)
+		transcript, _, err := r.Translate(ctx, get(t, r, "llama3.2:latest"), nil)
 		require.NoError(t, err)
 		assert.Equal(t, "en", transcript.Language)
 		assert.Equal(t, []string{"translate llama3.2:latest"}, ollama.called)
 
 		// Unless the model can only transcribe
-		_, _, err = r.Translate(ctx, get(t, "transcribe-only"), nil)
+		_, _, err = r.Translate(ctx, get(t, r, "transcribe-only"), nil)
 		assert.ErrorIs(t, err, llm.ErrNotImplemented)
-		_, _, err = r.Transcribe(ctx, get(t, "transcribe-only"), nil)
+		_, _, err = r.Transcribe(ctx, get(t, r, "transcribe-only"), nil)
 		assert.NoError(t, err)
 
 		// Or the provider can't transcribe at all
-		_, _, err = r.Translate(ctx, get(t, "gpt-4o"), nil)
+		_, _, err = r.Translate(ctx, get(t, r, "gpt-4o"), nil)
 		assert.ErrorIs(t, err, llm.ErrNotImplemented)
 		assert.ErrorContains(t, err, `provider "openai" can't translate audio`)
 	})
@@ -189,13 +203,13 @@ func Test_Capabilities(t *testing.T) {
 		// The model's provider recognizes the text
 		ollama.called = nil
 		page := &schema.Resource{ResourceMeta: schema.ResourceMeta{ContentType: "image/png", Data: []byte("png")}}
-		message, _, err := r.Recognize(ctx, get(t, "llama3.2:latest"), page)
+		message, _, err := r.Recognize(ctx, get(t, r, "llama3.2:latest"), page)
 		require.NoError(t, err)
 		assert.Equal(t, "# Page 1", message.Text())
 		assert.Equal(t, []string{"recognize llama3.2:latest"}, ollama.called)
 
 		// Unless it can't
-		_, _, err = r.Recognize(ctx, get(t, eliza.ModelName), page)
+		_, _, err = r.Recognize(ctx, get(t, r, eliza.ModelName), page)
 		assert.ErrorIs(t, err, llm.ErrNotImplemented)
 		assert.ErrorContains(t, err, `provider "eliza" can't recognize text`)
 	})
@@ -203,15 +217,92 @@ func Test_Capabilities(t *testing.T) {
 	t.Run("NotImplemented", func(t *testing.T) {
 		// A provider which can't do it, such as eliza embedding, or a
 		// provider which can do nothing but list models
-		_, _, err := r.Embed(ctx, get(t, eliza.ModelName), []llm.Message{user(t, "a")})
+		_, _, err := r.Embed(ctx, get(t, r, eliza.ModelName), []llm.Message{user(t, "a")})
 		assert.ErrorIs(t, err, llm.ErrNotImplemented)
 		assert.ErrorContains(t, err, `provider "eliza" can't embed messages`)
-		_, _, err = r.WithoutSession(ctx, get(t, "gpt-4o"), []llm.Message{user(t, "Hi")}, nil, nil)
+		_, _, err = r.WithoutSession(ctx, get(t, r, "gpt-4o"), []llm.Message{user(t, "Hi")}, nil, nil)
 		assert.ErrorIs(t, err, llm.ErrNotImplemented)
-		_, _, err = r.Transcribe(ctx, get(t, "gpt-4o"), nil)
+		_, _, err = r.Transcribe(ctx, get(t, r, "gpt-4o"), nil)
 		assert.ErrorIs(t, err, llm.ErrNotImplemented)
-		assert.ErrorIs(t, r.DeleteModel(ctx, get(t, "gpt-4o")), llm.ErrNotImplemented)
-		assert.ErrorIs(t, r.UnloadModel(ctx, get(t, "gpt-4o")), llm.ErrNotImplemented)
+		assert.ErrorIs(t, r.DeleteModel(ctx, get(t, r, "gpt-4o")), llm.ErrNotImplemented)
+		assert.ErrorIs(t, r.UnloadModel(ctx, get(t, r, "gpt-4o")), llm.ErrNotImplemented)
+	})
+
+	t.Run("KnownCapabilities", func(t *testing.T) {
+		// A model which is known not to be able to do something is
+		// rejected, without asking its provider, and one whose capabilities
+		// aren't known isn't
+		yes, no := true, false
+		home := newCapable("home", "chat", "silent", "unknown")
+		home.caps = map[string]llm.ModelCap{
+			"chat":   {Completion: &yes, Tools: &no, Thinking: &no, Vision: &no, OCR: &no, Transcription: &no, Translation: &no, Embedding: &no},
+			"silent": {Completion: &no},
+		}
+		r, err := newRegistry(home)
+		require.NoError(t, err)
+		chat, unknown := get(t, r, "chat"), get(t, r, "unknown")
+		hi := []llm.Message{user(t, "Hi")}
+		image := []llm.Message{&schema.Message{MessageMeta: schema.MessageMeta{Sender: "user", Content: []schema.ContentBlock{
+			{Text: types.Ptr("What's this?")},
+			{Resource: &schema.Resource{ResourceMeta: schema.ResourceMeta{ContentType: "image/png; charset=binary", Data: []byte("png")}}},
+		}}}}
+		page := &schema.Resource{ResourceMeta: schema.ResourceMeta{ContentType: "image/png", Data: []byte("png")}}
+		tools := []llm.Tool{waveTool{}}
+
+		for name, call := range map[string]func(llm.Model) error{
+			"generate messages": func(m llm.Model) error {
+				_, _, err := r.WithoutSession(ctx, get(t, r, "silent"), hi, nil, nil)
+				return err
+			},
+			"call tools": func(m llm.Model) error {
+				_, _, err := r.WithoutSession(ctx, m, hi, tools, nil)
+				return err
+			},
+			"think": func(m llm.Model) error {
+				_, _, err := r.WithoutSession(ctx, m, hi, nil, nil, llm.WithThinking(true))
+				return err
+			},
+			"think with an effort": func(m llm.Model) error {
+				_, _, err := r.WithoutSession(ctx, m, hi, nil, nil, llm.WithThinkingEffort("high"))
+				return err
+			},
+			"see images": func(m llm.Model) error {
+				_, _, err := r.WithoutSession(ctx, m, image, nil, nil)
+				return err
+			},
+			"embed messages": func(m llm.Model) error {
+				_, _, err := r.Embed(ctx, m, hi)
+				return err
+			},
+			"transcribe audio": func(m llm.Model) error {
+				_, _, err := r.Transcribe(ctx, m, nil)
+				return err
+			},
+			"translate audio": func(m llm.Model) error {
+				_, _, err := r.Translate(ctx, m, nil)
+				return err
+			},
+			"recognize text": func(m llm.Model) error {
+				_, _, err := r.Recognize(ctx, m, page)
+				return err
+			},
+		} {
+			home.called = nil
+			err := call(chat)
+			assert.ErrorIs(t, err, llm.ErrNotImplemented, name)
+			assert.ErrorContains(t, err, "can't "+strings.TrimSuffix(name, " with an effort"), name)
+			assert.Empty(t, home.called, name)
+			if name != "generate messages" {
+				assert.NoError(t, call(unknown), name)
+				assert.NotEmpty(t, home.called, name)
+			}
+		}
+
+		// But it replies, when it isn't asked to do what it can't
+		home.called = nil
+		_, _, err = r.WithoutSession(ctx, chat, hi, nil, nil, llm.WithThinking(false), llm.WithThinkingEffort("none"))
+		require.NoError(t, err)
+		assert.Equal(t, []string{"generate chat"}, home.called)
 	})
 
 	t.Run("NotInRegistry", func(t *testing.T) {
