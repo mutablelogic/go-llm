@@ -15,6 +15,7 @@ import (
 	providerschema "github.com/mutablelogic/go-llm/provider/schema"
 	httpclient "github.com/mutablelogic/go-llm/registry/httpclient"
 	schema "github.com/mutablelogic/go-llm/registry/schema"
+	subtitle "github.com/mutablelogic/go-llm/subtitle"
 	server "github.com/mutablelogic/go-server"
 )
 
@@ -134,7 +135,7 @@ func runTranscribe(ctx server.Cmd, name, key, file, model string, opt map[string
 		case debug:
 			fmt.Println(response)
 		case printer.streamed:
-			printer.Close()
+			return printer.Close()
 		default:
 			if printer.segments {
 				for i := range response.Segments {
@@ -143,7 +144,7 @@ func runTranscribe(ctx server.Cmd, name, key, file, model string, opt map[string
 			} else {
 				printer.Stream(response.Text, nil)
 			}
-			printer.Close()
+			return printer.Close()
 		}
 		return nil
 	})
@@ -157,10 +158,10 @@ func runTranscribe(ctx server.Cmd, name, key, file, model string, opt map[string
 // when it was spoken, and who spoke it, or its segments as subtitles
 type transcriptPrinter struct {
 	w         io.Writer
-	segments  bool            // Whether segments are printed, rather than text
-	subtitles *subtitleWriter // The subtitles, when the segments are printed as them
-	streamed  bool            // Whether anything has been printed
-	text      bool            // Whether text has been printed, without a newline
+	segments  bool             // Whether segments are printed, rather than text
+	subtitles *subtitle.Writer // The subtitles, when the segments are printed as them
+	streamed  bool             // Whether anything has been printed
+	text      bool             // Whether text has been printed, without a newline
 }
 
 // newTranscriptPrinter returns a printer of a transcript to the writer, in
@@ -168,8 +169,8 @@ type transcriptPrinter struct {
 // segments, and of its segments, rather than its text, when segments is true
 func newTranscriptPrinter(w io.Writer, format string, segments bool) *transcriptPrinter {
 	p := &transcriptPrinter{w: w, segments: segments}
-	if format == "srt" || format == "vtt" {
-		p.segments, p.subtitles = true, newSubtitleWriter(w, format == "vtt")
+	if writer, err := subtitle.NewWriter(w, subtitle.Format(format)); err == nil {
+		p.segments, p.subtitles = true, writer
 	}
 	return p
 }
@@ -178,7 +179,8 @@ func newTranscriptPrinter(w io.Writer, format string, segments bool) *transcript
 func (p *transcriptPrinter) Stream(text string, segment *llm.TranscriptSegment) {
 	switch {
 	case p.subtitles != nil && segment != nil:
-		p.subtitles.Add(*segment)
+		// An error writing the subtitles is returned when they're closed
+		_ = p.subtitles.Add(*segment)
 		p.streamed = true
 	case p.segments && segment != nil:
 		speaker := ""
@@ -194,15 +196,16 @@ func (p *transcriptPrinter) Stream(text string, segment *llm.TranscriptSegment) 
 }
 
 // Close ends the text with a newline, once it's printed, or writes the last
-// cue of the subtitles
-func (p *transcriptPrinter) Close() {
-	if p.subtitles != nil {
-		p.subtitles.Close()
-	}
+// cue of the subtitles, returning the first error writing them
+func (p *transcriptPrinter) Close() error {
 	if p.text {
 		fmt.Fprintln(p.w)
 		p.text = false
 	}
+	if p.subtitles != nil {
+		return p.subtitles.Close()
+	}
+	return nil
 }
 
 // timestamp returns when in audio, as minutes and seconds, to a tenth of a
