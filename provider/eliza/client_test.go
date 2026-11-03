@@ -77,6 +77,11 @@ func Test_Models(t *testing.T) {
 			Transcription: &no, Translation: &no, Embedding: &no,
 		}, model.Capabilities())
 		assert.Equal(t, "completion, thinking", model.Capabilities().String())
+
+		// Each of which can be changed without changing the others
+		capabilities := model.Capabilities()
+		*capabilities.Tools = true
+		assert.Equal(t, "completion, tools, thinking", capabilities.String())
 	})
 }
 

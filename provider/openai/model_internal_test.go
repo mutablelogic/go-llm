@@ -175,9 +175,12 @@ func TestCapabilities(t *testing.T) {
 			}
 		}
 
-		// A model which isn't known has none, as does a known model on
+		// A model which isn't known has none, as do the GPT-3.5 Turbo
+		// models which aren't known to be deprecated, and a known model on
 		// another server
 		assert.Equal(t, llm.ModelCap{}, model(t, OpenAIEndpoint, "gpt-7", "").Capabilities())
+		assert.Equal(t, llm.ModelCap{}, model(t, OpenAIEndpoint, "gpt-3.5-turbo", "").Capabilities())
+		assert.Equal(t, llm.ModelCap{}, model(t, OpenAIEndpoint, "gpt-3.5-turbo-0125", "").Capabilities())
 		assert.Equal(t, llm.ModelCap{}, model(t, "http://localhost:8000", "gpt-4o", "").Capabilities())
 	})
 

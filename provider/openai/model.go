@@ -73,7 +73,7 @@ var modelCapabilities = []struct {
 	{serverMistral, regexp.MustCompile(`^(mistral|codestral)-embed`), llm.ModelCap{Embedding: yes}},
 
 	// OpenAI's models which it has deprecated, but still lists
-	{serverOpenAI, regexp.MustCompile(`^gpt-3\.5-turbo|^gpt-4o(-mini)?-search-preview`), llm.ModelCap{Completion: no, Tools: no, Thinking: no, Vision: no, OCR: no, Transcription: no, Translation: no, Embedding: no}},
+	{serverOpenAI, regexp.MustCompile(`^gpt-3\.5-turbo-(16k|instruct)\b|^gpt-4o(-mini)?-search-preview`), llm.ModelCap{Completion: no, Tools: no, Thinking: no, Vision: no, OCR: no, Transcription: no, Translation: no, Embedding: no}},
 
 	// OpenAI's models which are only for the Responses API
 	{serverOpenAI, regexp.MustCompile(`^gpt-\d+(\.\d+)?-pro\b|-codex\b`), llm.ModelCap{Completion: no, Thinking: yes, Vision: yes}},
