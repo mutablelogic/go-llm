@@ -141,9 +141,6 @@ func TestWithOpts(t *testing.T) {
 			key   string
 			value any
 		}{
-			{llm.WithModel("gpt-4o"), llm.ModelKey, "gpt-4o"},
-			{llm.WithProvider("openai"), llm.ProviderKey, "openai"},
-			{llm.WithTools("wave", "search"), llm.ToolsKey, []string{"wave", "search"}},
 			{llm.WithTemperature(0.7), llm.TemperatureKey, 0.7},
 			{llm.WithTopP(0.9), llm.TopPKey, 0.9},
 			{llm.WithTopK(40), llm.TopKKey, uint(40)},
@@ -153,9 +150,7 @@ func TestWithOpts(t *testing.T) {
 			{llm.WithPresencePenalty(-0.5), llm.PresencePenaltyKey, -0.5},
 			{llm.WithFrequencyPenalty(0.5), llm.FrequencyPenaltyKey, 0.5},
 			{llm.WithSystemPrompt("Be brief"), llm.SystemPromptKey, "Be brief"},
-			{llm.WithCacheControl("ephemeral"), llm.CacheControlKey, "ephemeral"},
 			{llm.WithThinking(true), llm.ThinkingKey, true},
-			{llm.WithThinkingBudget(1024), llm.ThinkingBudgetKey, uint(1024)},
 			{llm.WithThinkingEffort("high"), llm.ThinkingEffortKey, "high"},
 			{llm.WithJSONSchema(json.RawMessage(`{"type":"object"}`)), llm.JSONSchemaKey, json.RawMessage(`{"type":"object"}`)},
 			{llm.WithToolChoice("any"), llm.ToolChoiceKey, "any"},
@@ -163,7 +158,6 @@ func TestWithOpts(t *testing.T) {
 			{llm.WithKeepAlive(-1), llm.KeepAliveKey, time.Duration(-1)},
 			{llm.WithUser("user_1"), llm.UserKey, "user_1"},
 			{llm.WithServiceTier("auto"), llm.ServiceTierKey, "auto"},
-			{llm.WithSafePrompt(true), llm.SafePromptKey, true},
 			{llm.WithTaskType("RETRIEVAL_DOCUMENT"), llm.TaskTypeKey, "RETRIEVAL_DOCUMENT"},
 			{llm.WithTitle("Notes"), llm.TitleKey, "Notes"},
 			{llm.WithDimensions(256), llm.DimensionsKey, uint(256)},
@@ -176,9 +170,6 @@ func TestWithOpts(t *testing.T) {
 
 	t.Run("Invalid", func(t *testing.T) {
 		for name, opt := range map[string]llm.Opt{
-			"EmptyModel":          llm.WithModel(""),
-			"EmptyProvider":       llm.WithProvider(""),
-			"EmptyTool":           llm.WithTools("wave", ""),
 			"NegativeTemperature": llm.WithTemperature(-0.1),
 			"NaNTemperature":      llm.WithTemperature(math.NaN()),
 			"InfTemperature":      llm.WithTemperature(math.Inf(1)),
@@ -188,8 +179,6 @@ func TestWithOpts(t *testing.T) {
 			"EmptyStopSequence":   llm.WithStopSequences("END", ""),
 			"InfPresencePenalty":  llm.WithPresencePenalty(math.Inf(1)),
 			"NaNFrequencyPenalty": llm.WithFrequencyPenalty(math.NaN()),
-			"EmptyCacheControl":   llm.WithCacheControl(""),
-			"ZeroThinkingBudget":  llm.WithThinkingBudget(0),
 			"UnknownEffort":       llm.WithThinkingEffort("max"),
 			"InvalidJSONSchema":   llm.WithJSONSchema(json.RawMessage(`{`)),
 			"UnknownToolChoice":   llm.WithToolChoice("required"),

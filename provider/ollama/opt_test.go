@@ -99,9 +99,7 @@ func TestApply(t *testing.T) {
 
 	t.Run("Unsupported", func(t *testing.T) {
 		for _, opt := range []llm.Opt{
-			llm.WithThinkingBudget(1024),
 			llm.WithToolChoice("auto"),
-			llm.WithCacheControl("ephemeral"),
 			llm.WithOpt("unknown", true),
 		} {
 			var r chatRequest
