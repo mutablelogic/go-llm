@@ -9,6 +9,7 @@ import (
 	"net"
 	"net/url"
 	"strings"
+	"sync"
 
 	// Packages
 	client "github.com/mutablelogic/go-client"
@@ -21,6 +22,12 @@ import (
 type Client struct {
 	*client.Client
 	url *url.URL
+
+	// The models which have been shown, by their names, with their digests,
+	// so a model which hasn't changed isn't shown again, when the models are
+	// listed
+	mu    sync.Mutex
+	shown map[string]apiModel
 }
 
 var _ llm.Provider = (*Client)(nil)

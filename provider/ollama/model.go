@@ -154,24 +154,31 @@ func (c *Client) ListModels(ctx context.Context) ([]llm.Model, error) {
 	}
 
 	// The list doesn't include each model's model_info, such as its context
-	// length, so show each model, a few at a time. A model which can't be
-	// shown is listed without it.
+	// length, so show each model, a few at a time, unless it's been shown,
+	// and hasn't changed since, by its digest. A model which can't be shown
+	// is listed without it.
 	var wg sync.WaitGroup
 	sem := make(chan struct{}, showConcurrency)
 	result := make([]llm.Model, len(response.Models))
 	for i, data := range response.Models {
 		wg.Go(func() {
-			sem <- struct{}{}
-			defer func() { <-sem }()
-			if shown, err := c.show(ctx, data.Name); err == nil {
-				data.Details = shown.Details
-				data.Capabilities = shown.Capabilities
-				data.Info = shown.Info
+			if shown, exists := c.lastShown(data); exists {
+				data.Details, data.Capabilities, data.Info = shown.Details, shown.Capabilities, shown.Info
+			} else {
+				sem <- struct{}{}
+				defer func() { <-sem }()
+				if shown, err := c.show(ctx, data.Name); err == nil {
+					data.Details, data.Capabilities, data.Info = shown.Details, shown.Capabilities, shown.Info
+					c.setShown(data)
+				}
 			}
 			result[i] = &Model{provider: c, data: data}
 		})
 	}
 	wg.Wait()
+
+	// Forget the models which aren't listed any more
+	c.forgetShown(response.Models)
 	return result, nil
 }
 
@@ -189,6 +196,45 @@ func (c *Client) GetModel(ctx context.Context, name string) (llm.Model, error) {
 
 ///////////////////////////////////////////////////////////////////////////////
 // PRIVATE METHODS
+
+// lastShown returns the model as it was shown, when it's been shown, with
+// the same digest, so it hasn't changed since. A model without a digest is
+// always shown.
+func (c *Client) lastShown(data apiModel) (apiModel, bool) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	shown, exists := c.shown[data.Name]
+	return shown, exists && data.Digest != "" && shown.Digest == data.Digest
+}
+
+// setShown keeps the model as it was shown, by its name, with its digest
+func (c *Client) setShown(data apiModel) {
+	if data.Digest == "" {
+		return
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.shown == nil {
+		c.shown = make(map[string]apiModel)
+	}
+	c.shown[data.Name] = data
+}
+
+// forgetShown forgets the models which have been shown, which aren't in the
+// list, such as when they're deleted
+func (c *Client) forgetShown(list []apiModel) {
+	listed := make(map[string]struct{}, len(list))
+	for _, data := range list {
+		listed[data.Name] = struct{}{}
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	for name := range c.shown {
+		if _, exists := listed[name]; !exists {
+			delete(c.shown, name)
+		}
+	}
+}
 
 // show returns the details of the model with the name, from POST /api/show
 func (c *Client) show(ctx context.Context, name string) (*apiModel, error) {

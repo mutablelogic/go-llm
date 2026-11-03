@@ -103,12 +103,15 @@ func (r *Registry) Run(ctx context.Context, logger *slog.Logger) error {
 // PRIVATE METHODS
 
 // refresh pings each provider, at once, and lists the models of those which
-// can be reached, and whose models are stale, within half of PingInterval
+// can be reached, and whose models are stale, within half of PingInterval. A
+// provider which was pinged within half of PingInterval, such as when it was
+// created, isn't pinged again, as its ping is recent, but one which was
+// pinged when the registry last refreshed, a PingInterval ago, is.
 func (r *Registry) refresh(ctx context.Context) {
 	ctx, cancel := context.WithTimeout(ctx, PingInterval/2)
 	defer cancel()
 	each(r.entries(), func(_ int, e entry) {
-		if err := e.cache.ping(ctx, 0); err == nil && e.cache.stale() {
+		if err := e.cache.ping(ctx, PingInterval/2); err == nil && e.cache.stale() {
 			e.cache.refresh(ctx)
 		}
 	})

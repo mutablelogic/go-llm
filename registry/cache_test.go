@@ -263,6 +263,25 @@ func Test_Run(t *testing.T) {
 	assert.Zero(t, unreachable.lists.Load())
 }
 
+func Test_RunRecentPing(t *testing.T) {
+	// A provider which was pinged within half of PingInterval, such as when
+	// it was created, isn't pinged again when Run starts
+	openai := &provider{name: "openai", models: []string{"gpt-4o"}}
+	r, err := newRegistry(openai)
+	require.NoError(t, err)
+	_, err = r.GetProvider(context.Background(), "openai")
+	require.NoError(t, err)
+	require.Equal(t, int32(1), openai.pings.Load())
+
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error)
+	go func() { done <- r.Run(ctx, nil) }()
+	require.Eventually(t, func() bool { return openai.lists.Load() >= 1 }, 5*time.Second, 5*time.Millisecond)
+	cancel()
+	assert.NoError(t, <-done)
+	assert.Equal(t, int32(1), openai.pings.Load())
+}
+
 func Test_CreateProviderPatterns(t *testing.T) {
 	ctx := context.Background()
 
