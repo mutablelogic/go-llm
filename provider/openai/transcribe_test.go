@@ -262,11 +262,3 @@ func TestTranscribeStream(t *testing.T) {
 		assert.ErrorIs(t, s.add(client.TextStreamEvent{Data: "[DONE]"}), io.EOF)
 	})
 }
-
-func TestAudioName(t *testing.T) {
-	// The name, with an audio extension, or "audio" with the type's
-	assert.Equal(t, "talk.mp3", audioName("talk.mp3", "audio/mpeg"))
-	assert.Equal(t, "audio.m4a", audioName("", "audio/mp4"))
-	assert.Equal(t, "audio.wav", audioName("talk", "audio/x-wav"))
-	assert.Equal(t, "audio.mp3", audioName("talk.txt", "audio/mpeg"))
-}

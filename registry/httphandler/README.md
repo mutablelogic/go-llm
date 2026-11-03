@@ -7,6 +7,7 @@ Providers are LLM backends, such as Ollama, in the registry. Each has a name in 
 The types are:
 
 - `ollama`: an Ollama server. A `url` without a scheme, such as `localhost`, uses `http` and Ollama's port, 11434.
+- `gowhisper`: a [go-whisper](https://github.com/mutablelogic/go-whisper) server, whose whisper.cpp models transcribe speech, and which downloads and deletes them, without an `api_key`. A `url` without a scheme, such as `localhost`, uses `http` and go-whisper's port, 8081, and one without a path uses `/api/whisper`. Only go-whisper's own models are listed, not those of the services it forwards to.
 - `openai`: OpenAI, which is the default `url`, or a server with an OpenAI-compatible API, such as DeepSeek, Mistral (`https://api.mistral.ai/v1`), vLLM or LM Studio.
 - `eliza`: a mock provider for testing, which has no `url` or API key.
 

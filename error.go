@@ -99,6 +99,19 @@ func (e Err) HTTP() httpresponse.Err {
 ////////////////////////////////////////////////////////////////////////////////
 // PUBLIC METHODS
 
+// HTTPStatus returns the HTTP status code of an error, which wraps one, as
+// httpresponse.Err, or is a server's response, as httpresponse.ErrResponse,
+// which a client returns for an error whose body is JSON, such as
+// go-whisper's. Returns false when it hasn't one.
+func HTTPStatus(err error) (int, bool) {
+	if code, ok := errors.AsType[httpresponse.Err](err); ok {
+		return int(code), true
+	} else if response, ok := errors.AsType[httpresponse.ErrResponse](err); ok && response.Code != 0 {
+		return response.Code, true
+	}
+	return 0, false
+}
+
 // HTTPErr translates an error into an error wrapping a HTTP status code,
 // which httpresponse.Error uses for the response. The message is prefixed
 // with the status text, and errors.Is and errors.As still match the original
@@ -107,8 +120,8 @@ func (e Err) HTTP() httpresponse.Err {
 // An llm.Err is translated with its HTTP method, even when it wraps a HTTP
 // status code, such as a provider's response, and fs errors (fs.ErrNotExist
 // and so on) to the corresponding status code. Other errors which already
-// wrap a HTTP status code are returned unchanged, and any other error is an
-// internal server error. Returns nil when err is nil.
+// wrap a HTTP status code are returned unchanged, a server's response is its
+// status, and any other error is an internal server error. Returns nil when err is nil.
 func HTTPErr(err error) error {
 	if err == nil {
 		return nil
@@ -121,10 +134,13 @@ func HTTPErr(err error) error {
 		return e.HTTP().Withf("%w", err)
 	}
 
-	// Already a HTTP error
+	// Already a HTTP error, or the response of a server, which has its
+	// status
 	var code httpresponse.Err
 	if errors.As(err, &code) {
 		return err
+	} else if status, ok := HTTPStatus(err); ok {
+		return httpresponse.Err(status).Withf("%w", err)
 	}
 
 	// A request whose body ends before it should, such as an upload which

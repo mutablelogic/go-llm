@@ -7,6 +7,7 @@ import (
 
 	// Packages
 	llm "github.com/mutablelogic/go-llm"
+	schema "github.com/mutablelogic/go-llm/provider/schema"
 	types "github.com/mutablelogic/go-server/pkg/types"
 )
 
@@ -214,11 +215,7 @@ type chatError struct {
 // an empty string when it isn't known
 func (r transcribeResponse) language() string {
 	if r.Language != nil {
-		language := strings.ToLower(strings.TrimSpace(*r.Language))
-		if code, exists := whisperLanguages[language]; exists {
-			return code
-		}
-		return language
+		return schema.LanguageCode(*r.Language)
 	}
 	for _, language := range r.Languages {
 		if code := strings.ToLower(strings.TrimSpace(language.Code)); code != "" {

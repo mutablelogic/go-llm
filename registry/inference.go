@@ -10,7 +10,6 @@ import (
 	// Packages
 	otel "github.com/mutablelogic/go-client/pkg/otel"
 	llm "github.com/mutablelogic/go-llm"
-	httpresponse "github.com/mutablelogic/go-server/pkg/httpresponse"
 	attribute "go.opentelemetry.io/otel/attribute"
 )
 
@@ -187,8 +186,8 @@ func providerErr(err error) error {
 	if _, ok := errors.AsType[llm.Err](err); ok {
 		return err
 	}
-	if status, ok := errors.AsType[httpresponse.Err](err); ok {
-		switch int(status) {
+	if status, ok := llm.HTTPStatus(err); ok {
+		switch status {
 		case http.StatusBadRequest, http.StatusRequestEntityTooLarge, http.StatusUnprocessableEntity:
 			return llm.ErrBadParameter.Withf("%w", err)
 		}

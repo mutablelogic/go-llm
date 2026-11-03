@@ -11,6 +11,7 @@ import (
 	otel "github.com/mutablelogic/go-client/pkg/otel"
 	llm "github.com/mutablelogic/go-llm"
 	eliza "github.com/mutablelogic/go-llm/provider/eliza"
+	gowhisper "github.com/mutablelogic/go-llm/provider/gowhisper"
 	ollama "github.com/mutablelogic/go-llm/provider/ollama"
 	openai "github.com/mutablelogic/go-llm/provider/openai"
 	schema "github.com/mutablelogic/go-llm/registry/schema"
@@ -247,7 +248,7 @@ func (r *Registry) redefine(ctx context.Context, name string, existing *cached, 
 // credentials provider, and its client is created, with its endpoint, which
 // is the type's default when it's empty, the registry's client options, and
 // the API key, which is sent as a bearer token. Eliza has no endpoint or API
-// key, as it makes no requests. It returns the options of the provider,
+// key, as it makes no requests, and gowhisper has no API key. It returns the options of the provider,
 // with its patterns, and the request, as its definition. A credential which
 // doesn't exist is ErrBadParameter.
 func (r *Registry) newProvider(ctx context.Context, req schema.Provider) (string, llm.Provider, []ProviderOpt, error) {
@@ -278,6 +279,11 @@ func (r *Registry) newProvider(ctx context.Context, req schema.Provider) (string
 			clientOpts = append(clientOpts, client.OptReqToken(client.Token{Scheme: client.Bearer, Value: apiKey}))
 		}
 		provider, err = ollama.New(req.URL, clientOpts...)
+	case llm.GoWhisper:
+		if apiKey != "" {
+			return "", nil, nil, llm.ErrBadParameter.With("gowhisper has no API key")
+		}
+		provider, err = gowhisper.New(req.URL, clientOpts...)
 	case llm.Eliza:
 		if req.URL != "" || apiKey != "" {
 			return "", nil, nil, llm.ErrBadParameter.With("eliza has no endpoint or API key")
