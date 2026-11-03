@@ -30,6 +30,7 @@ type Registry struct {
 	opt
 	mu        sync.RWMutex
 	providers map[string]*cached
+	watchers  watchers
 }
 
 // entry is a provider, its name in the registry, and its cache
@@ -68,7 +69,8 @@ func New(opts ...Opt) (*Registry, error) {
 // name is empty, and the options, such as the patterns of the names of the
 // models which are included, or excluded. Returns ErrConflict when a
 // provider with the name, or the provider itself, is added already, and
-// ErrBadParameter when a pattern isn't valid.
+// ErrBadParameter when a pattern isn't valid. Watchers are sent that it was
+// created.
 func (r *Registry) Add(name string, provider llm.Provider, opts ...ProviderOpt) error {
 	if provider == nil {
 		return llm.ErrBadParameter.With("provider is nil")
@@ -79,14 +81,23 @@ func (r *Registry) Add(name string, provider llm.Provider, opts ...ProviderOpt) 
 	if err != nil {
 		return err
 	}
+	c.changed = func() { r.updated(name, c) }
+
+	// It's published as it's added, under the lock, so a concurrent removal
+	// can't be published before it
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	return r.add(name, c)
+	if err := r.add(name, c); err != nil {
+		return err
+	}
+	r.created(name)
+	return nil
 }
 
 // Remove removes the provider with the name, and returns it, so it can be
 // closed, or returns ErrNotFound when there's none. Calls which have started
-// already, such as listing models, still use it.
+// already, such as listing models, still use it. Watchers are sent that it
+// was deleted.
 func (r *Registry) Remove(name string) (llm.Provider, error) {
 	c, err := r.remove(name)
 	if err != nil {
@@ -294,8 +305,11 @@ func (r *Registry) add(name string, c *cached) error {
 }
 
 // remove removes the provider with the name, and returns it, and its
-// cache, or returns ErrNotFound when there's none
+// cache, or returns ErrNotFound when there's none, and sends watchers that
+// it was deleted
 func (r *Registry) remove(name string) (*cached, error) {
+	// It's published as it's removed, under the lock, so a concurrent
+	// replacement can't be published before it
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	c, exists := r.providers[name]
@@ -303,6 +317,7 @@ func (r *Registry) remove(name string) (*cached, error) {
 		return nil, llm.ErrNotFound.Withf("provider %q", name)
 	}
 	delete(r.providers, name)
+	r.deleted(name)
 	return c, nil
 }
 

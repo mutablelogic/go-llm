@@ -19,6 +19,10 @@ import (
 type cached struct {
 	provider llm.Provider
 
+	// Called when whether the provider can be reached changes, or its
+	// models do, without a lock, or nil
+	changed func()
+
 	// The patterns of the names of the models which are included, or all of
 	// them when there are none, and excluded, as they were given, and
 	// compiled
@@ -139,11 +143,24 @@ func (c *cached) lastPing() (time.Time, error) {
 	return c.pingAt, c.pingErr
 }
 
-// setPing sets when the provider was pinged, and the error of the ping
+// setPing sets when the provider was pinged, and the error of the ping, and
+// says it changed, when whether it can be reached has, since it was last
+// pinged
 func (c *cached) setPing(at time.Time, err error) {
 	c.result.Lock()
-	defer c.result.Unlock()
+	changed := !c.pingAt.IsZero() && (c.pingErr == nil) != (err == nil)
 	c.pingAt, c.pingErr = at, err
+	c.result.Unlock()
+	if changed {
+		c.notify()
+	}
+}
+
+// notify says the provider changed, when there's anything to say it to
+func (c *cached) notify() {
+	if c.changed != nil {
+		c.changed()
+	}
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -193,7 +210,8 @@ func (c *cached) cache(ctx context.Context) error {
 // aren't other models' names. A name which is listed more than once is the
 // first model with the name. The models which were cached are kept when
 // they can't be listed. Concurrent refreshes wait for the one in progress,
-// and use its models, or its error.
+// and use its models, or its error. It says the provider changed, when the
+// names of its models have, since they were last cached.
 func (c *cached) refresh(ctx context.Context) (err error) {
 	listings, _ := c.counts()
 	c.refreshing.Lock()
@@ -243,10 +261,14 @@ func (c *cached) refresh(ctx context.Context) (err error) {
 	// Cache them, but leave them stale when they were invalidated while
 	// they were listed, as they could be from before then
 	c.models.Lock()
-	defer c.models.Unlock()
+	changed := c.byName != nil && !sameNames(c.list, list)
 	c.list, c.byName = list, byName
 	if c.generation == generation {
 		c.modelsAt = start
+	}
+	c.models.Unlock()
+	if changed {
+		c.notify()
 	}
 	return nil
 }
@@ -323,6 +345,23 @@ func compilePatterns(field string, patterns []string) ([]*regexp.Regexp, error) 
 		result = append(result, re)
 	}
 	return result, nil
+}
+
+// sameNames returns true when the models have the same names, in any order
+func sameNames(a, b []llm.Model) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	names := make(map[string]int, len(a))
+	for _, model := range a {
+		names[model.Name()]++
+	}
+	for _, model := range b {
+		if names[model.Name()]--; names[model.Name()] < 0 {
+			return false
+		}
+	}
+	return true
 }
 
 // matchesAny returns true when the name matches one of the patterns
