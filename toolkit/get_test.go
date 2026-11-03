@@ -125,8 +125,27 @@ func TestTools(t *testing.T) {
 		assert.ErrorIs(t, err, llm.ErrNotFound)
 		_, err = tk.Tools(ctx, "weather:*", "weather:current")
 		assert.ErrorIs(t, err, llm.ErrBadParameter)
-		_, err = tk.Tools(ctx, "*")
-		assert.ErrorIs(t, err, llm.ErrNotFound)
+	})
+
+	t.Run("All", func(t *testing.T) {
+		// "*" is all the tools, in order of canonical name, which can't also
+		// be named
+		tools, err := tk.Tools(ctx, "*")
+		require.NoError(t, err)
+		var names []string
+		for _, tool := range tools {
+			names = append(names, tool.Name())
+		}
+		assert.Equal(t, []string{"news_search", "weather_current", "weather_search"}, names)
+		_, err = tk.Tools(ctx, "*", "weather:current")
+		assert.ErrorIs(t, err, llm.ErrBadParameter)
+		_, err = tk.Tools(ctx, "*", "weather:*")
+		assert.ErrorIs(t, err, llm.ErrBadParameter)
+
+		// And it's kept as it is, as a canonical name
+		canonical, err := tk.ToolNames(ctx, "*")
+		require.NoError(t, err)
+		assert.Equal(t, []string{"*"}, canonical)
 	})
 
 	t.Run("None", func(t *testing.T) {

@@ -42,13 +42,14 @@ func (self *Toolkit) GetTool(ctx context.Context, name string) (_ *schema.Tool, 
 }
 
 // Tools returns the tools with the names, which are their canonical names,
-// their names without a namespace, or a namespace and "*", such as
-// "ollama:*", for all the tools in the namespace. Each tool is wrapped with a
+// their names without a namespace, a namespace and "*", such as
+// "ollama:*", for all the tools in the namespace, or "*" for all the tools.
+// No names are no tools. Each tool is wrapped with a
 // new name, which is its namespace and name separated by an underscore, such
 // as "weatherapi_current". Returns ErrNotFound if there is no tool with a
 // name, or no namespace for "*", ErrConflict if a name without a namespace is
 // ambiguous, or two tools have the same new name, or ErrBadParameter if a
-// tool is named more than once, including by "*", or its new name isn't a
+// tool is named more than once, including by a "*", or its new name isn't a
 // valid tool name, such as when it's too long.
 func (self *Toolkit) Tools(ctx context.Context, names ...string) (_ []llm.Tool, err error) {
 	_, endSpan := otel.StartSpan(self.tracer, ctx, "llm.toolkit.Tools",
@@ -107,8 +108,8 @@ func (self *Toolkit) resolve(names []string, skip bool) ([]llm.Tool, []string, e
 
 // ToolNames returns the names, as with Tools, as canonical names, such as
 // "weatherapi:current" for "current". A namespace and "*", such as
-// "ollama:*", is returned as it is, so it includes tools added to the
-// namespace later. Returns the same errors as Tools.
+// "ollama:*", or "*", is returned as it is, so it includes tools added to the
+// namespace, or the toolkit, later. Returns the same errors as Tools.
 func (self *Toolkit) ToolNames(ctx context.Context, names ...string) (_ []string, err error) {
 	ctx, endSpan := otel.StartSpan(self.tracer, ctx, "llm.toolkit.ToolNames",
 		attribute.StringSlice("arg.names", names),
@@ -124,7 +125,7 @@ func (self *Toolkit) ToolNames(ctx context.Context, names ...string) (_ []string
 	result := make([]string, 0, len(names))
 	for _, name := range names {
 		name = strings.TrimSpace(name)
-		if _, ok := strings.CutSuffix(name, schema.ToolSeparator+"*"); ok {
+		if _, ok := strings.CutSuffix(name, schema.ToolSeparator+"*"); ok || name == "*" {
 			result = append(result, name)
 		} else if entry, err := self.lookup(name); err != nil {
 			return nil, err
@@ -138,10 +139,19 @@ func (self *Toolkit) ToolNames(ctx context.Context, names ...string) (_ []string
 ////////////////////////////////////////////////////////////////////////////////
 // PRIVATE METHODS
 
-// lookupAll returns the tools with the name, which is a namespace and "*" for
-// all the tools in the namespace, in order of canonical name, or otherwise
-// the one tool with the name
+// lookupAll returns the tools with the name, which is "*" for all the tools,
+// or a namespace and "*" for all the tools in the namespace, in order of
+// canonical name, or otherwise the one tool with the name
 func (self *Toolkit) lookupAll(name string) ([]entry, error) {
+	if name == "*" {
+		self.mu.RLock()
+		defer self.mu.RUnlock()
+		result := make([]entry, 0, len(self.tools))
+		for _, canonical := range slices.Sorted(maps.Keys(self.tools)) {
+			result = append(result, self.tools[canonical])
+		}
+		return result, nil
+	}
 	namespace, ok := strings.CutSuffix(name, schema.ToolSeparator+"*")
 	if !ok {
 		tool, err := self.lookup(name)
