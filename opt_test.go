@@ -241,6 +241,20 @@ func TestGetPages(t *testing.T) {
 		}
 	})
 
+	t.Run("Unchanged", func(t *testing.T) {
+		// The option's pages aren't sorted, so it's the same each time it's
+		// applied
+		opt := llm.WithPages(2, 0, 2)
+		for range 2 {
+			opts, err := llm.ApplyOpts(opt)
+			require.NoError(t, err)
+			pages, err := llm.GetPages(opts)
+			require.NoError(t, err)
+			assert.Equal(t, []uint{0, 2}, pages)
+			assert.Equal(t, []uint{2, 0, 2}, opts.Get(llm.PagesKey))
+		}
+	})
+
 	t.Run("Invalid", func(t *testing.T) {
 		for _, value := range []any{"", "a", "1-", "3-1", "-1", "0-100000", []uint{}, json.RawMessage(`[]`), json.RawMessage(`[-1]`), json.RawMessage(`true`), 1.5} {
 			_, err := get(value)

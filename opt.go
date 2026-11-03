@@ -377,6 +377,10 @@ func GetPages(o *Opts) ([]uint, error) {
 	if len(pages) == 0 {
 		return nil, ErrBadParameter.Withf("option %q has no pages", PagesKey)
 	}
+
+	// The pages are sorted as a copy, as the option's are kept for the next
+	// time it's applied
+	pages = slices.Clone(pages)
 	slices.Sort(pages)
 	return slices.Compact(pages), nil
 }

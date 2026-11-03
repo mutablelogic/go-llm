@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"slices"
 	"strings"
 
 	// Packages
@@ -57,14 +56,23 @@ func (cmd *RecognizeCmd) Run(ctx server.Cmd) error {
 		return err
 	}
 
+	// The request, and whether its regions are asked for, when the response
+	// is printed as JSON, even when a page has none, such as a blank page
+	req := schema.RecognizeRequest{
+		Model: model,
+		Type:  providerschema.ResourceType(data, filepath.Base(cmd.File)),
+		Data:  data,
+		Opt:   quoteOpts(cmd.Opt),
+	}
+	opts, err := llm.ApplyOpts(req.Opts()...)
+	if err != nil {
+		return err
+	}
+	regions, _ := llm.GetOpt[bool](opts, llm.RegionsKey)
+
 	debug := ctx.IsDebug()
 	return withClient(ctx, "llm.RecognizeCmd", func(reqctx context.Context, client *httpclient.Client) error {
-		response, err := client.Recognize(reqctx, schema.RecognizeRequest{
-			Model: model,
-			Type:  providerschema.ResourceType(data, filepath.Base(cmd.File)),
-			Data:  data,
-			Opt:   quoteOpts(cmd.Opt),
-		})
+		response, err := client.Recognize(reqctx, req)
 		if err != nil {
 			return err
 		}
@@ -78,7 +86,7 @@ func (cmd *RecognizeCmd) Run(ctx server.Cmd) error {
 
 		// With debugging, or regions, the response, otherwise the text of
 		// each page, with a rule between them
-		if debug || slices.ContainsFunc(response.Pages, func(page llm.DocumentPage) bool { return len(page.Regions) > 0 }) {
+		if debug || regions {
 			fmt.Println(response)
 			return nil
 		}

@@ -22,9 +22,9 @@ var _ llm.Recognizer = (*Client)(nil)
 
 // Recognize returns the text in the resource, which is an image, or a
 // document such as a PDF, as a document with the text of each of its pages,
-// in Markdown, in order, and their regions, which are Mistral's blocks,
-// when they're asked for, and the pages recognized, with Mistral's OCR API,
-// which other servers haven't. The model must be one of this client's which
+// in Markdown, with its tables in the table format, in order, and their
+// regions, which are Mistral's blocks, when they're asked for, and the pages
+// recognized, with Mistral's OCR API, which other servers haven't. The model must be one of this client's which
 // recognizes text, such as mistral-ocr-latest. The images in a document
 // aren't returned, but the text has links to them. The request isn't timed
 // out, as a document can take a while, but is cancelled with the context.
@@ -74,13 +74,20 @@ func (c *Client) Recognize(ctx context.Context, model llm.Model, resource llm.Re
 	// hasn't
 	document := llm.Document{Pages: make([]llm.DocumentPage, 0, len(response.Pages))}
 	for _, page := range response.Pages {
-		result := llm.DocumentPage{Text: strings.TrimSpace(page.Markdown)}
+		// The tables, in place of the links to them
+		var tables []string
+		for _, table := range page.Tables {
+			tables = append(tables, "["+table.ID+"]("+table.ID+")", table.Content)
+		}
+		replacer := strings.NewReplacer(tables...)
+
+		result := llm.DocumentPage{Text: strings.TrimSpace(replacer.Replace(page.Markdown))}
 		width, height := page.Dimensions.Width, page.Dimensions.Height
 		if types.Value(request.IncludeBlocks) && width > 0 && height > 0 {
 			for _, block := range page.Blocks {
 				result.Regions = append(result.Regions, llm.DocumentRegion{
 					Type: block.Type,
-					Text: strings.TrimSpace(block.Content),
+					Text: strings.TrimSpace(replacer.Replace(block.Content)),
 					Box:  [4]float64{block.Left / width, block.Top / height, block.Right / width, block.Bottom / height},
 				})
 			}
