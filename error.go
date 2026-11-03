@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
+	"strings"
 
 	// Packages
 	httpresponse "github.com/mutablelogic/go-server/pkg/httpresponse"
@@ -115,7 +116,10 @@ func HTTPStatus(err error) (int, bool) {
 // HTTPErr translates an error into an error wrapping a HTTP status code,
 // which httpresponse.Error uses for the response. The message is prefixed
 // with the status text, and errors.Is and errors.As still match the original
-// error.
+// error. An llm.Err's own text, such as "not found", isn't in the message,
+// when it starts it, and the status says the same, such as "Not Found", so
+// the message is "Not Found: model ...", rather than "Not Found: not found:
+// model ...".
 //
 // An llm.Err is translated with its HTTP method, even when it wraps a HTTP
 // status code, such as a provider's response, and fs errors (fs.ErrNotExist
@@ -128,10 +132,11 @@ func HTTPErr(err error) error {
 	}
 
 	// An llm error, which is the error's status, rather than an error it
-	// wraps, such as a provider's response
+	// wraps, such as a provider's response, without its text, when it's
+	// what the status says
 	var e Err
 	if errors.As(err, &e) {
-		return e.HTTP().Withf("%w", err)
+		return newHTTPError(e, err)
 	}
 
 	// Already a HTTP error, or the response of a server, which has its
@@ -165,4 +170,48 @@ func HTTPErr(err error) error {
 
 	// Any other error
 	return httpresponse.ErrInternalError.Withf("%w", err)
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// HTTP ERROR
+
+// httpError is an error with a HTTP status, which wraps both the status and
+// the error, so errors.Is and errors.As match either, and whose message is
+// the status's text, and its detail
+type httpError struct {
+	status httpresponse.Err
+	err    error
+	detail string
+}
+
+// newHTTPError returns the error, which is the llm.Err, with its status,
+// and its message, without the llm.Err's text, when it starts the message,
+// and the status says the same, such as "not found" for "Not Found", which
+// is every llm.Err other than those whose text says more, such as
+// ErrMaxTokens
+func newHTTPError(e Err, err error) error {
+	detail := err.Error()
+	switch e {
+	case ErrNotFound, ErrBadParameter, ErrConflict, ErrNotImplemented, ErrInternalServerError, ErrServiceUnavailable, ErrForbidden:
+		if detail == e.Error() {
+			detail = ""
+		} else if rest, ok := strings.CutPrefix(detail, e.Error()+": "); ok {
+			detail = rest
+		}
+	}
+	return &httpError{status: e.HTTP(), err: err, detail: detail}
+}
+
+// Error returns the status's text, and the detail, when there is some, such
+// as "Not Found: model ..."
+func (e *httpError) Error() string {
+	if e.detail == "" {
+		return e.status.Error()
+	}
+	return e.status.Error() + ": " + e.detail
+}
+
+// Unwrap returns the status, and the error
+func (e *httpError) Unwrap() []error {
+	return []error{e.status, e.err}
 }
