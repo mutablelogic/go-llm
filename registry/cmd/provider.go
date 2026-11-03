@@ -19,16 +19,17 @@ import (
 // TYPES
 
 type ProviderCommands struct {
-	ProviderList            ProviderListCmd            `cmd:"" name:"providers" help:"List the providers." group:"LLM PROVIDERS"`
-	ProviderGet             ProviderGetCmd             `cmd:"" name:"provider" help:"Get a provider by name." group:"LLM PROVIDERS"`
-	ProviderUpdate          ProviderUpdateCmd          `cmd:"" name:"provider-update" help:"Update a provider by name, replacing its URL and patterns, and its API key, when one is given." group:"LLM PROVIDERS"`
-	ProviderDelete          ProviderDeleteCmd          `cmd:"" name:"provider-delete" help:"Delete a provider by name." group:"LLM PROVIDERS"`
-	ProviderCreateOllama    ProviderCreateOllamaCmd    `cmd:"" name:"provider-create-ollama" help:"Create an Ollama provider." group:"LLM PROVIDERS"`
-	ProviderCreateEliza     ProviderCreateElizaCmd     `cmd:"" name:"provider-create-eliza" help:"Create an Eliza provider, for testing." group:"LLM PROVIDERS"`
-	ProviderCreateGoWhisper ProviderCreateGoWhisperCmd `cmd:"" name:"provider-create-gowhisper" help:"Create a go-whisper provider, which transcribes speech with whisper.cpp models." group:"LLM PROVIDERS"`
-	ProviderCreateOpenAI    ProviderCreateOpenAICmd    `cmd:"" name:"provider-create-openai" help:"Create an OpenAI, or OpenAI-compatible, provider." group:"LLM PROVIDERS"`
-	ProviderCreateDeepSeek  ProviderCreateDeepSeekCmd  `cmd:"" name:"provider-create-deepseek" help:"Create a DeepSeek provider." group:"LLM PROVIDERS"`
-	ProviderCreateMistral   ProviderCreateMistralCmd   `cmd:"" name:"provider-create-mistral" help:"Create a Mistral provider." group:"LLM PROVIDERS"`
+	ProviderList             ProviderListCmd             `cmd:"" name:"providers" help:"List the providers." group:"LLM PROVIDERS"`
+	ProviderGet              ProviderGetCmd              `cmd:"" name:"provider" help:"Get a provider by name." group:"LLM PROVIDERS"`
+	ProviderUpdate           ProviderUpdateCmd           `cmd:"" name:"provider-update" help:"Update a provider by name, replacing its URL and patterns, and its API key, when one is given." group:"LLM PROVIDERS"`
+	ProviderDelete           ProviderDeleteCmd           `cmd:"" name:"provider-delete" help:"Delete a provider by name." group:"LLM PROVIDERS"`
+	ProviderCreateOllama     ProviderCreateOllamaCmd     `cmd:"" name:"provider-create-ollama" help:"Create an Ollama provider." group:"LLM PROVIDERS"`
+	ProviderCreateEliza      ProviderCreateElizaCmd      `cmd:"" name:"provider-create-eliza" help:"Create an Eliza provider, for testing." group:"LLM PROVIDERS"`
+	ProviderCreateGoWhisper  ProviderCreateGoWhisperCmd  `cmd:"" name:"provider-create-gowhisper" help:"Create a go-whisper provider, which transcribes speech with whisper.cpp models." group:"LLM PROVIDERS"`
+	ProviderCreateElevenLabs ProviderCreateElevenLabsCmd `cmd:"" name:"provider-create-elevenlabs" help:"Create an ElevenLabs provider, which transcribes speech." group:"LLM PROVIDERS"`
+	ProviderCreateOpenAI     ProviderCreateOpenAICmd     `cmd:"" name:"provider-create-openai" help:"Create an OpenAI, or OpenAI-compatible, provider." group:"LLM PROVIDERS"`
+	ProviderCreateDeepSeek   ProviderCreateDeepSeekCmd   `cmd:"" name:"provider-create-deepseek" help:"Create a DeepSeek provider." group:"LLM PROVIDERS"`
+	ProviderCreateMistral    ProviderCreateMistralCmd    `cmd:"" name:"provider-create-mistral" help:"Create a Mistral provider." group:"LLM PROVIDERS"`
 }
 
 type ProviderListCmd struct {
@@ -102,6 +103,14 @@ type ProviderCreateDeepSeekCmd struct {
 type ProviderCreateMistralCmd struct {
 	ProviderModels
 	Name             string `name:"name" default:"mistral" help:"Provider name."`
+	APIKeyCredential string `name:"api-key-credential" help:"Name of the credential holding the API key." required:""`
+}
+
+// ProviderCreateElevenLabsCmd creates a provider for ElevenLabs, at a
+// fixed URL, which needs an API key
+type ProviderCreateElevenLabsCmd struct {
+	ProviderModels
+	Name             string `name:"name" default:"elevenlabs" help:"Provider name."`
 	APIKeyCredential string `name:"api-key-credential" help:"Name of the credential holding the API key." required:""`
 }
 
@@ -240,6 +249,16 @@ func (cmd *ProviderCreateMistralCmd) Run(ctx server.Cmd) error {
 		Include: cmd.Include,
 		Exclude: cmd.Exclude,
 		URL:     openai.MistralEndpoint,
+		APIKey:  placeholder(cmd.APIKeyCredential),
+	})
+}
+
+func (cmd *ProviderCreateElevenLabsCmd) Run(ctx server.Cmd) error {
+	return createProvider(ctx, "llm.ProviderCreateElevenLabsCmd", schema.Provider{
+		Name:    cmd.Name,
+		Type:    llm.ElevenLabs,
+		Include: cmd.Include,
+		Exclude: cmd.Exclude,
 		APIKey:  placeholder(cmd.APIKeyCredential),
 	})
 }
