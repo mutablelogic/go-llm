@@ -16,6 +16,7 @@ import (
 	otel "github.com/mutablelogic/go-client/pkg/otel"
 	llm "github.com/mutablelogic/go-llm"
 	schema "github.com/mutablelogic/go-llm/registry/schema"
+	toolkit "github.com/mutablelogic/go-llm/toolkit"
 	types "github.com/mutablelogic/go-server/pkg/types"
 	attribute "go.opentelemetry.io/otel/attribute"
 )
@@ -104,6 +105,12 @@ func (r *Registry) Remove(name string) (llm.Provider, error) {
 		return nil, err
 	}
 	return c.provider, nil
+}
+
+// Toolkit returns the toolkit of the tools which the registry's models can
+// call, or nil when it has none
+func (r *Registry) Toolkit() *toolkit.Toolkit {
+	return r.toolkit
 }
 
 // Names returns the names of the providers, in order

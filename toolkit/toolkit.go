@@ -13,6 +13,7 @@ import (
 	schema "github.com/mutablelogic/go-llm/toolkit/schema"
 	jsonschema "github.com/mutablelogic/go-server/pkg/jsonschema"
 	types "github.com/mutablelogic/go-server/pkg/types"
+	attribute "go.opentelemetry.io/otel/attribute"
 )
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -115,7 +116,12 @@ func (self *Toolkit) Add(namespace string, tools ...llm.Tool) error {
 
 // Credential returns the value of the credential with the key, such as a
 // tool's API key, from the toolkit's credential provider
-func (self *Toolkit) Credential(ctx context.Context, key string) (string, error) {
+func (self *Toolkit) Credential(ctx context.Context, key string) (_ string, err error) {
+	ctx, endSpan := otel.StartSpan(self.tracer, ctx, "llm.toolkit.Credential",
+		attribute.String("arg.key", key),
+	)
+	defer func() { endSpan(err) }()
+
 	key = strings.TrimSpace(key)
 	if key == "" {
 		return "", llm.ErrBadParameter.With("missing credential key")

@@ -15,6 +15,7 @@ import (
 	llm "github.com/mutablelogic/go-llm"
 	registry "github.com/mutablelogic/go-llm/registry"
 	schema "github.com/mutablelogic/go-llm/registry/schema"
+	toolkit "github.com/mutablelogic/go-llm/toolkit"
 	assert "github.com/stretchr/testify/assert"
 	require "github.com/stretchr/testify/require"
 	attribute "go.opentelemetry.io/otel/attribute"
@@ -162,4 +163,22 @@ func Test_Tracer(t *testing.T) {
 	assert.Equal(t, "Unset", spans[0].Status().Code.String())
 	assert.Equal(t, "Error", spans[1].Status().Code.String())
 	assert.Equal(t, "llm.registry.Ping", spans[2].Name())
+}
+
+func Test_Toolkit(t *testing.T) {
+	// A registry has no toolkit, by default
+	r, err := registry.New()
+	require.NoError(t, err)
+	assert.Nil(t, r.Toolkit())
+
+	// Or the toolkit it's given
+	tools, err := toolkit.New(context.Background())
+	require.NoError(t, err)
+	r, err = registry.New(registry.WithToolkit(tools))
+	require.NoError(t, err)
+	assert.Same(t, tools, r.Toolkit())
+
+	// Which it must be given
+	_, err = registry.New(registry.WithToolkit(nil))
+	assert.ErrorIs(t, err, llm.ErrBadParameter)
 }

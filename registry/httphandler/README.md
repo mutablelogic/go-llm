@@ -60,6 +60,18 @@ Unload a model by name, or alias, or by provider and name, such as `my-ollama:ge
 
 Inference is asking a model to do something with messages, such as embed them. A model is referred to by its name, or an alias, or by its provider's name and its name separated by a colon, and its provider must be able to do it, or the model isn't known not to.
 
+### POST /llm/ask
+
+Ask a model for its reply to the `messages`, which include earlier turns of the conversation, and the results of the tools the model called.
+
+- `model`: the model, by name or as `provider:name`, such as `ollama:llama3.2:latest`.
+- `system`: a system prompt, sent before the messages.
+- `tools`: the tools the model can call, from the server's toolkit, such as `weatherapi:current`, or `weatherapi:*` for all the tools in a namespace, which the model calls by their namespace and name separated by an underscore, such as `weatherapi_current`. The reply has the tool calls, rather than their results: the caller runs them, such as with `POST /llm/tool/{name}`, and asks again, with the reply, and a message from the `tool` with their results.
+- `opt`: options, by key, such as `{"temperature":0.7}`, which the model's provider decodes. The system prompt and the schema are fields, rather than options.
+- `schema`: the JSON schema of the reply, which the model replies with, by calling a `respond` tool, rather than with text. A model which replies with text is asked once to call it, and a result which doesn't conform to the schema is returned to the model to correct, until it's been asked three times. The reply's `result` is the JSON, when the model replied with it.
+
+Returns the model's reply as the `message`, the `model` which replied, by its canonical name, and the tokens used, by every request to the model. With `text/event-stream` accepted, the reply is streamed as server-sent events: `text` and `thinking` events with the pieces of the reply as they're generated, and then a `result` event with the reply, or an `error` event. Returns 400 if the request is invalid, has no model or messages, an option which is a field, or an invalid schema, or the model's provider rejects it, 404 if the model, or a tool, isn't found, 409 if more than one provider has the model, or a tool's name without a namespace is ambiguous, 413 if the request body is larger than 32 MiB, 501 if the model's provider can't generate messages, or the model is known not to, or not to call tools, think, or see images, when it's asked to, or 503 if the model couldn't reply, such as when its provider fails, or can't be reached.
+
 ### POST /llm/embed
 
 Ask a model for a vector for each of the messages, in the same order, with JSON, or for one message, with a `multipart/form-data` form, such as from a web browser. The JSON request has the `model`, the `messages`, each embedded by its `content`, which is its `text`, and its images and audio as `attachment`s, inline, with their `type` and `data`, and the `opt` as an object, such as `{"dimensions":256}`. The form has the same fields as recognizing text does:
