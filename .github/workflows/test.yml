@@ -30,16 +30,10 @@ jobs:
         with:
           go-version-file: go.mod
 
-      # The server, and the client, which is built with the client tag,
-      # leaving out the server
-      - name: Vet
-        run: |
-          go vet ./...
-          go vet -tags client ./...
-
-      # The tests are run once, with the race detector, which tests as much
-      # as they do without it. The tests which call OpenAI's API, or an
+      # The server, and the client, which is built with the client tag, are
+      # vetted. The tests are run once, with the race detector, which tests as
+      # much as they do without it. The tests which call OpenAI's API, or an
       # Ollama server, are skipped, with -short, and without their keys and
       # addresses.
       - name: Race Test
-        run: go test -race -short ./...
+        run: make vet race-test TEST_FLAGS=-short
