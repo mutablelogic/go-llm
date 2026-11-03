@@ -252,3 +252,55 @@ type embedResponse struct {
 	} `json:"usage"`
 	Error *chatError `json:"error,omitempty"`
 }
+
+// ocrRequest is a request to recognize the text in an image or document,
+// which is Mistral's, with the pages, from zero, and the format of tables
+// Reference: https://docs.mistral.ai/api/endpoint/ocr
+type ocrRequest struct {
+	Model         string      `json:"model"`
+	Document      ocrDocument `json:"document"`
+	Pages         []uint      `json:"pages,omitempty"`
+	TableFormat   string      `json:"table_format,omitempty"`
+	IncludeImages *bool       `json:"include_image_base64,omitempty"`
+	IncludeBlocks *bool       `json:"include_blocks,omitempty"` // The regions of each page
+}
+
+// ocrDocument is the image or document to recognize, by its URL, which is
+// a data URL
+type ocrDocument struct {
+	Type        string `json:"type"` // image_url or document_url
+	ImageURL    string `json:"image_url,omitempty"`
+	DocumentURL string `json:"document_url,omitempty"`
+}
+
+// ocrResponse is the text of each page, in Markdown, with its size, in
+// pixels, and its blocks, which are its regions, with their boxes, in
+// pixels, and its tables, when there's a table format, which the text has
+// links to, such as [tbl-0.html](tbl-0.html), rather than the tables, and
+// the pages processed
+type ocrResponse struct {
+	Pages []struct {
+		Index      int    `json:"index"`
+		Markdown   string `json:"markdown"`
+		Dimensions struct {
+			Width  float64 `json:"width"`
+			Height float64 `json:"height"`
+		} `json:"dimensions"`
+		Blocks []struct {
+			Type    string  `json:"type"`
+			Content string  `json:"content"`
+			Left    float64 `json:"top_left_x"`
+			Top     float64 `json:"top_left_y"`
+			Right   float64 `json:"bottom_right_x"`
+			Bottom  float64 `json:"bottom_right_y"`
+		} `json:"blocks"`
+		Tables []struct {
+			ID      string `json:"id"`
+			Content string `json:"content"`
+		} `json:"tables"` // With a table format, which the text has links to
+	} `json:"pages"`
+	Model string `json:"model"`
+	Usage struct {
+		PagesProcessed uint `json:"pages_processed"`
+	} `json:"usage_info"`
+}

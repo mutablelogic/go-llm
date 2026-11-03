@@ -6,6 +6,8 @@ import (
 	"maps"
 	"math"
 	"slices"
+	"strconv"
+	"strings"
 	"time"
 )
 
@@ -63,6 +65,11 @@ const (
 	TaskTypeKey   = "task_type"  // string, task the embedding is used for
 	TitleKey      = "title"      // string, title of the document being embedded
 	DimensionsKey = "dimensions" // uint, number of dimensions of the embedding
+
+	// Recognition
+	PagesKey       = "pages"        // []uint, uint, or a string such as "0,2-4", pages of a document to recognize, from zero
+	TableFormatKey = "table_format" // string, format of the tables in the text: "markdown" or "html"
+	RegionsKey     = "regions"      // bool, whether a page has its regions, with their boxes
 )
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -246,6 +253,29 @@ func WithDimensions(value uint) Opt {
 	return WithOpt(DimensionsKey, value)
 }
 
+// WithPages sets the pages of a document to recognize, numbered from zero
+func WithPages(values ...uint) Opt {
+	if len(values) == 0 {
+		return withError(ErrBadParameter.With("pages can't be empty"))
+	}
+	return WithOpt(PagesKey, slices.Clone(values))
+}
+
+// WithTableFormat sets the format of the tables in recognized text:
+// "markdown" or "html"
+func WithTableFormat(value string) Opt {
+	if !slices.Contains([]string{"markdown", "html"}, value) {
+		return withError(ErrBadParameter.Withf("table_format %q must be markdown or html", value))
+	}
+	return WithOpt(TableFormatKey, value)
+}
+
+// WithRegions sets whether the pages of recognized text have their regions,
+// such as paragraphs, titles and tables, with their boxes
+func WithRegions(value bool) Opt {
+	return WithOpt(RegionsKey, value)
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 // PUBLIC METHODS
 
@@ -303,8 +333,64 @@ func GetOpt[T any](o *Opts, key string) (T, error) {
 	return value, ErrBadParameter.Withf("option %q is a %T, not a %T", key, raw, value)
 }
 
+// GetPages returns the pages of a document to recognize, in order, without
+// duplicates, from the option, which is the page numbers, a page number, or
+// a string of them and ranges, such as "0,2-4", from zero. Returns an error
+// if it isn't set, or isn't pages.
+func GetPages(o *Opts) ([]uint, error) {
+	var pages []uint
+	if text, err := GetOpt[string](o, PagesKey); err == nil {
+		if pages, err = parsePages(text); err != nil {
+			return nil, err
+		}
+	} else if page, err := GetOpt[uint](o, PagesKey); err == nil {
+		pages = []uint{page}
+	} else if pages, err = GetOpt[[]uint](o, PagesKey); err != nil {
+		return nil, ErrBadParameter.Withf("option %q isn't page numbers, or a string such as \"0,2-4\"", PagesKey)
+	}
+	if len(pages) == 0 {
+		return nil, ErrBadParameter.Withf("option %q has no pages", PagesKey)
+	}
+
+	// The pages are sorted as a copy, as the option's are kept for the next
+	// time it's applied
+	pages = slices.Clone(pages)
+	slices.Sort(pages)
+	return slices.Compact(pages), nil
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 // PRIVATE METHODS
+
+// maxPages is the most pages a string of pages can have, so a range such as
+// "0-4000000000" isn't billions of pages
+const maxPages = 10000
+
+// parsePages returns the pages of a string of page numbers and ranges, such
+// as "0,2-4", from zero, which are at most maxPages
+func parsePages(text string) ([]uint, error) {
+	var pages []uint
+	for field := range strings.SplitSeq(text, ",") {
+		first, last, isRange := strings.Cut(strings.TrimSpace(field), "-")
+		from, err := strconv.ParseUint(strings.TrimSpace(first), 10, 32)
+		if err != nil {
+			return nil, ErrBadParameter.Withf("option %q: invalid page %q", PagesKey, strings.TrimSpace(field))
+		}
+		to := from
+		if isRange {
+			if to, err = strconv.ParseUint(strings.TrimSpace(last), 10, 32); err != nil || to < from {
+				return nil, ErrBadParameter.Withf("option %q: invalid pages %q", PagesKey, strings.TrimSpace(field))
+			}
+		}
+		if uint64(len(pages))+to-from >= maxPages {
+			return nil, ErrBadParameter.Withf("option %q: more than %d pages", PagesKey, maxPages)
+		}
+		for page := from; page <= to; page++ {
+			pages = append(pages, uint(page))
+		}
+	}
+	return pages, nil
+}
 
 // withError returns an option which fails with the error, when an option's
 // value isn't valid

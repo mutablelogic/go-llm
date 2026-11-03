@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -11,6 +12,7 @@ import (
 	llm "github.com/mutablelogic/go-llm"
 	openai "github.com/mutablelogic/go-llm/provider/openai"
 	schema "github.com/mutablelogic/go-llm/provider/schema"
+	types "github.com/mutablelogic/go-server/pkg/types"
 	assert "github.com/stretchr/testify/assert"
 	require "github.com/stretchr/testify/require"
 )
@@ -27,6 +29,9 @@ const (
 	// An embedding model, and one which can have fewer dimensions
 	mistralEmbeddingModel  = "mistral-embed"
 	mistralDimensionsModel = "codestral-embed"
+
+	// A model which recognizes text
+	mistralOCRModel = "mistral-ocr-latest"
 )
 
 // mistralClient returns a client of Mistral's API, with the key in
@@ -193,6 +198,87 @@ func Test_LiveMistral(t *testing.T) {
 		require.NoError(t, err)
 		if assert.Len(t, vectors, 1) {
 			assert.Len(t, vectors[0], 256)
+		}
+	})
+}
+
+func Test_LiveMistral_Recognize(t *testing.T) {
+	c := mistralClient(t)
+	ctx, cancel := context.WithTimeout(context.Background(), liveTimeout)
+	defer cancel()
+	model, err := c.GetModel(ctx, mistralOCRModel)
+	require.NoError(t, err)
+	assert.True(t, types.Value(model.Capabilities().OCR))
+	read := func(name, contentType string) llm.Resource {
+		data, err := os.ReadFile(filepath.Join("..", "..", "testdata", name))
+		require.NoError(t, err)
+		return &schema.Resource{ResourceMeta: schema.ResourceMeta{ContentType: contentType, Data: data}}
+	}
+
+	t.Run("Document", func(t *testing.T) {
+		// The text of each of the document's pages, in order, and the pages
+		document, usage, err := c.Recognize(ctx, model, read("ocr.pdf", "application/pdf"))
+		require.NoError(t, err)
+		if assert.Len(t, document.Pages, 2) {
+			assert.Contains(t, document.Pages[0].Text, "Hello, World")
+			assert.Contains(t, document.Pages[1].Text, "Page two")
+			assert.Empty(t, document.Pages[0].Regions)
+		}
+		assert.Equal(t, uint(2), usage.Pages)
+	})
+
+	t.Run("Pages", func(t *testing.T) {
+		// Only the pages asked for
+		document, usage, err := c.Recognize(ctx, model, read("ocr.pdf", "application/pdf"), llm.WithPages(1))
+		require.NoError(t, err)
+		if assert.Len(t, document.Pages, 1) {
+			assert.Contains(t, document.Pages[0].Text, "Page two")
+		}
+		assert.Equal(t, uint(1), usage.Pages)
+	})
+
+	t.Run("Image", func(t *testing.T) {
+		// An image is one page
+		document, usage, err := c.Recognize(ctx, model, read("ocr.png", "image/png"))
+		require.NoError(t, err)
+		if assert.Len(t, document.Pages, 1) {
+			assert.Contains(t, document.Pages[0].Text, "Hello, World")
+		}
+		assert.Equal(t, uint(1), usage.Pages)
+	})
+
+	t.Run("Tables", func(t *testing.T) {
+		// A table, in the table format, in place of the link to it, which
+		// is Markdown without one
+		for format, want := range map[string]string{"": "Apple | 1.20", "markdown": "Apple | 1.20", "html": "<td>Apple</td>"} {
+			var opts []llm.Opt
+			if format != "" {
+				opts = append(opts, llm.WithTableFormat(format))
+			}
+			document, _, err := c.Recognize(ctx, model, read("table.png", "image/png"), opts...)
+			require.NoError(t, err, format)
+			require.Len(t, document.Pages, 1)
+			assert.Contains(t, document.Pages[0].Text, want, format)
+			assert.NotContains(t, document.Pages[0].Text, "](tbl-", format)
+		}
+	})
+
+	t.Run("Regions", func(t *testing.T) {
+		// Each page's regions, with their boxes as fractions of the page
+		document, _, err := c.Recognize(ctx, model, read("ocr.pdf", "application/pdf"), llm.WithRegions(true))
+		require.NoError(t, err)
+		require.Len(t, document.Pages, 2)
+		t.Logf("%+v", document.Pages[1])
+		if assert.NotEmpty(t, document.Pages[1].Regions) {
+			region := document.Pages[1].Regions[0]
+			assert.Contains(t, region.Text, "Page two")
+			assert.NotEmpty(t, region.Type)
+			for _, value := range region.Box {
+				assert.GreaterOrEqual(t, value, 0.0)
+				assert.LessOrEqual(t, value, 1.0)
+			}
+			assert.Less(t, region.Box[0], region.Box[2])
+			assert.Less(t, region.Box[1], region.Box[3])
 		}
 	})
 }

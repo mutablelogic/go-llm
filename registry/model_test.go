@@ -91,10 +91,9 @@ func (c *capable) Translate(_ context.Context, model llm.Model, _ llm.Resource, 
 	return &llm.Transcript{Text: "hello", Language: "en"}, llm.Usage{}, nil
 }
 
-func (c *capable) Recognize(_ context.Context, model llm.Model, _ llm.Resource, _ ...llm.Opt) (llm.Message, llm.Usage, error) {
+func (c *capable) Recognize(_ context.Context, model llm.Model, _ llm.Resource, _ ...llm.Opt) (llm.Document, llm.Usage, error) {
 	c.record("recognize", model)
-	message, err := schema.NewMessage("assistant", "# Page 1")
-	return message, llm.Usage{}, err
+	return llm.Document{Pages: []llm.DocumentPage{{Text: "# Page 1"}}}, llm.Usage{Pages: 1}, nil
 }
 
 func (c *capable) LoadModel(_ context.Context, name string, _ llm.DownloadProgressFn) (llm.Model, error) {
@@ -203,9 +202,9 @@ func Test_Capabilities(t *testing.T) {
 		// The model's provider recognizes the text
 		ollama.called = nil
 		page := &schema.Resource{ResourceMeta: schema.ResourceMeta{ContentType: "image/png", Data: []byte("png")}}
-		message, _, err := r.Recognize(ctx, get(t, r, "llama3.2:latest"), page)
+		document, _, err := r.Recognize(ctx, get(t, r, "llama3.2:latest"), page)
 		require.NoError(t, err)
-		assert.Equal(t, "# Page 1", message.Text())
+		assert.Equal(t, []llm.DocumentPage{{Text: "# Page 1"}}, document.Pages)
 		assert.Equal(t, []string{"recognize llama3.2:latest"}, ollama.called)
 
 		// Unless it can't

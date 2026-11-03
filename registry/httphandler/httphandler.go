@@ -29,6 +29,7 @@ func RegisterHandlers(r *registry.Registry, router *httprouter.Router) error {
 		modelHandlers(r, router, documentation),
 		embedHandlers(r, router, documentation),
 		askHandlers(r, router, documentation),
+		recognizeHandlers(r, router, documentation),
 		eventHandlers(r, router, documentation),
 	)
 }

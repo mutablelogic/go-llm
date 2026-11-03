@@ -251,13 +251,14 @@ func newReply(reply llm.Message) providerschema.Message {
 	return message
 }
 
-// addUsage returns the tokens of both usages
+// addUsage returns the tokens, and pages, of both usages
 func addUsage(a, b llm.Usage) llm.Usage {
 	return llm.Usage{
 		InputTokens:     a.InputTokens + b.InputTokens,
 		OutputTokens:    a.OutputTokens + b.OutputTokens,
 		CachedTokens:    a.CachedTokens + b.CachedTokens,
 		ReasoningTokens: a.ReasoningTokens + b.ReasoningTokens,
+		Pages:           a.Pages + b.Pages,
 	}
 }
 

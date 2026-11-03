@@ -124,7 +124,9 @@ func (m *Model) OutputTokenLimit() *uint {
 
 // Capabilities returns what Ollama reports the model can do, which is none
 // of them when it didn't report the model's capabilities, as when it
-// couldn't be shown. It doesn't report OCR, transcription or translation.
+// couldn't be shown. It doesn't report OCR, which a model such as
+// deepseek-ocr has, by its name, and a model which doesn't see images
+// hasn't, nor transcription or translation.
 func (m *Model) Capabilities() llm.ModelCap {
 	capabilities := m.data.Capabilities
 	if len(capabilities) == 0 {
@@ -138,7 +140,23 @@ func (m *Model) Capabilities() llm.ModelCap {
 		Tools:      has("tools"),
 		Thinking:   has("thinking"),
 		Vision:     has("vision"),
+		OCR:        m.ocr(capabilities),
 		Embedding:  has("embedding"),
+	}
+}
+
+// ocr returns whether the model recognizes text: it doesn't when it
+// doesn't see images, whatever its name, and does when it's a model which
+// recognizes text, by its name, but isn't known otherwise, as a model which
+// sees images can read text in them, but not as well
+func (m *Model) ocr(capabilities []string) *bool {
+	switch {
+	case !slices.Contains(capabilities, "vision"):
+		return types.Ptr(false)
+	case findOCRModel(m.data.Name) != nil:
+		return types.Ptr(true)
+	default:
+		return nil
 	}
 }
 
