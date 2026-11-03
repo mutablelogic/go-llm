@@ -6,6 +6,7 @@ import (
 	// Packages
 	client "github.com/mutablelogic/go-client"
 	llm "github.com/mutablelogic/go-llm"
+	toolkit "github.com/mutablelogic/go-llm/toolkit"
 	trace "go.opentelemetry.io/otel/trace"
 )
 
@@ -20,6 +21,7 @@ type opt struct {
 	credentials CredentialsProvider
 	clientopts  []client.ClientOpt
 	store       Store
+	toolkit     *toolkit.Toolkit
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -44,6 +46,7 @@ func (o *opt) defaults() {
 	o.credentials = envCredentials{}
 	o.clientopts = nil
 	o.store = nil
+	o.toolkit = nil
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -68,6 +71,18 @@ func WithStore(store Store) Opt {
 			return llm.ErrBadParameter.With("missing store")
 		}
 		o.store = store
+		return nil
+	}
+}
+
+// WithToolkit sets the toolkit of the tools which the registry's models can
+// call
+func WithToolkit(tools *toolkit.Toolkit) Opt {
+	return func(o *opt) error {
+		if tools == nil {
+			return llm.ErrBadParameter.With("missing toolkit")
+		}
+		o.toolkit = tools
 		return nil
 	}
 }

@@ -14,6 +14,7 @@ import (
 	schema "github.com/mutablelogic/go-llm/toolkit/schema"
 	jsonschema "github.com/mutablelogic/go-server/pkg/jsonschema"
 	attribute "go.opentelemetry.io/otel/attribute"
+	trace "go.opentelemetry.io/otel/trace"
 )
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -26,7 +27,7 @@ import (
 // tool with the name.
 func (self *Toolkit) GetTool(ctx context.Context, name string) (_ *schema.Tool, err error) {
 	_, endSpan := otel.StartSpan(self.tracer, ctx, "llm.toolkit.GetTool",
-		attribute.String("name", name),
+		attribute.String("arg.name", name),
 	)
 	defer func() { endSpan(err) }()
 
@@ -51,7 +52,7 @@ func (self *Toolkit) GetTool(ctx context.Context, name string) (_ *schema.Tool, 
 // valid tool name, such as when it's too long.
 func (self *Toolkit) Tools(ctx context.Context, names ...string) (_ []llm.Tool, err error) {
 	_, endSpan := otel.StartSpan(self.tracer, ctx, "llm.toolkit.Tools",
-		attribute.StringSlice("names", names),
+		attribute.StringSlice("arg.names", names),
 	)
 	defer func() { endSpan(err) }()
 
@@ -66,7 +67,7 @@ func (self *Toolkit) Tools(ctx context.Context, names ...string) (_ []llm.Tool, 
 // otherwise.
 func (self *Toolkit) AvailableTools(ctx context.Context, names ...string) (_ []llm.Tool, skipped []string, err error) {
 	_, endSpan := otel.StartSpan(self.tracer, ctx, "llm.toolkit.AvailableTools",
-		attribute.StringSlice("names", names),
+		attribute.StringSlice("arg.names", names),
 	)
 	defer func() { endSpan(err) }()
 
@@ -98,7 +99,7 @@ func (self *Toolkit) resolve(names []string, skip bool) ([]llm.Tool, []string, e
 				return nil, nil, llm.ErrBadParameter.Withf("tool %q: name %q isn't valid, or is too long", canonical, name)
 			}
 			seen[name] = canonical
-			result = append(result, namedTool{entry: entry, name: name})
+			result = append(result, namedTool{entry: entry, name: name, tracer: self.tracer})
 		}
 	}
 	return result, skipped, nil
@@ -110,7 +111,7 @@ func (self *Toolkit) resolve(names []string, skip bool) ([]llm.Tool, []string, e
 // namespace later. Returns the same errors as Tools.
 func (self *Toolkit) ToolNames(ctx context.Context, names ...string) (_ []string, err error) {
 	ctx, endSpan := otel.StartSpan(self.tracer, ctx, "llm.toolkit.ToolNames",
-		attribute.StringSlice("names", names),
+		attribute.StringSlice("arg.names", names),
 	)
 	defer func() { endSpan(err) }()
 
@@ -202,8 +203,9 @@ func (self *Toolkit) lookup(name string) (entry, error) {
 // namedTool is a tool with a new name, which is run as it's called with
 // CallTool, so its input is validated, and its result is JSON
 type namedTool struct {
-	entry entry
-	name  string
+	entry  entry
+	name   string
+	tracer trace.Tracer
 }
 
 var _ llm.Tool = namedTool{}
@@ -235,8 +237,14 @@ func (t namedTool) OutputSchema() *jsonschema.Schema {
 }
 
 // Run runs the tool with the input, after validating it against the tool's
-// input schema, and returns its result as JSON, or nil when it has none
-func (t namedTool) Run(ctx context.Context, input json.RawMessage) (any, error) {
+// input schema, and returns its result as JSON, or nil when it has none, in
+// a span, as a model's call of the tool isn't made with CallTool
+func (t namedTool) Run(ctx context.Context, input json.RawMessage) (_ any, err error) {
+	ctx, endSpan := otel.StartSpan(t.tracer, ctx, "llm.toolkit.Run",
+		attribute.String("arg.name", t.CanonicalName()),
+	)
+	defer func() { endSpan(err) }()
+
 	result, err := t.entry.call(ctx, input)
 	if err != nil || result == nil {
 		return nil, err
