@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
+	"net/http"
 	"testing"
 
 	// Packages
@@ -76,4 +77,31 @@ func Test_HTTPErr(t *testing.T) {
 		err := httpresponse.ErrNotFound.With("test")
 		assert.Equal(t, err, llm.HTTPErr(err))
 	})
+}
+
+func Test_HTTPStatus(t *testing.T) {
+	// The status of an error which wraps one, or of a server's response,
+	// which a client returns for a JSON body
+	for err, want := range map[error]int{
+		httpresponse.ErrNotFound.With("missing"):                                     http.StatusNotFound,
+		fmt.Errorf("wrapped: %w", httpresponse.ErrBadRequest):                        http.StatusBadRequest,
+		httpresponse.ErrResponse{Code: http.StatusNotFound, Reason: "Not Found"}:     http.StatusNotFound,
+		fmt.Errorf("wrapped: %w", httpresponse.ErrResponse{Code: http.StatusTeapot}): http.StatusTeapot,
+	} {
+		status, ok := llm.HTTPStatus(err)
+		assert.True(t, ok, err)
+		assert.Equal(t, want, status, err)
+	}
+
+	// But not another error
+	for _, err := range []error{errors.New("other"), httpresponse.ErrResponse{}, nil} {
+		_, ok := llm.HTTPStatus(err)
+		assert.False(t, ok, err)
+	}
+
+	// And a server's response is its status, as a HTTP error
+	var code httpresponse.Err
+	if assert.True(t, errors.As(llm.HTTPErr(httpresponse.ErrResponse{Code: http.StatusNotFound}), &code)) {
+		assert.Equal(t, httpresponse.ErrNotFound, code)
+	}
 }

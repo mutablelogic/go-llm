@@ -180,7 +180,8 @@ const (
 )
 
 const (
-	Ollama = "ollama"
-	Eliza  = "eliza"
-	OpenAI = "openai"
+	Ollama    = "ollama"
+	Eliza     = "eliza"
+	OpenAI    = "openai"
+	GoWhisper = "gowhisper"
 )

@@ -1,9 +1,12 @@
 package cmd
 
 import (
+	"cmp"
 	"context"
 	"fmt"
 	"os"
+	"slices"
+	"strings"
 
 	// Packages
 	llm "github.com/mutablelogic/go-llm"
@@ -64,7 +67,11 @@ func (cmd *ModelListCmd) Run(ctx server.Cmd) error {
 			return nil
 		}
 
-		// Otherwise a table of the models, and a summary
+		// Otherwise a table of the models, in order of their names, and then
+		// their providers', rather than by provider, and a summary
+		slices.SortStableFunc(models.Body, func(a, b *schema.Model) int {
+			return cmp.Or(cmp.Compare(strings.ToLower(a.Name), strings.ToLower(b.Name)), cmp.Compare(a.Provider, b.Provider))
+		})
 		table := tui.TableFor[*schema.Model](tui.SetWidth(width))
 		if _, err := table.Write(os.Stdout, models.Body...); err != nil {
 			return err

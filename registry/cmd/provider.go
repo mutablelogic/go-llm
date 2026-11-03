@@ -19,15 +19,16 @@ import (
 // TYPES
 
 type ProviderCommands struct {
-	ProviderList           ProviderListCmd           `cmd:"" name:"providers" help:"List the providers." group:"LLM PROVIDERS"`
-	ProviderGet            ProviderGetCmd            `cmd:"" name:"provider" help:"Get a provider by name." group:"LLM PROVIDERS"`
-	ProviderUpdate         ProviderUpdateCmd         `cmd:"" name:"provider-update" help:"Update a provider by name, replacing its URL and patterns, and its API key, when one is given." group:"LLM PROVIDERS"`
-	ProviderDelete         ProviderDeleteCmd         `cmd:"" name:"provider-delete" help:"Delete a provider by name." group:"LLM PROVIDERS"`
-	ProviderCreateOllama   ProviderCreateOllamaCmd   `cmd:"" name:"provider-create-ollama" help:"Create an Ollama provider." group:"LLM PROVIDERS"`
-	ProviderCreateEliza    ProviderCreateElizaCmd    `cmd:"" name:"provider-create-eliza" help:"Create an Eliza provider, for testing." group:"LLM PROVIDERS"`
-	ProviderCreateOpenAI   ProviderCreateOpenAICmd   `cmd:"" name:"provider-create-openai" help:"Create an OpenAI, or OpenAI-compatible, provider." group:"LLM PROVIDERS"`
-	ProviderCreateDeepSeek ProviderCreateDeepSeekCmd `cmd:"" name:"provider-create-deepseek" help:"Create a DeepSeek provider." group:"LLM PROVIDERS"`
-	ProviderCreateMistral  ProviderCreateMistralCmd  `cmd:"" name:"provider-create-mistral" help:"Create a Mistral provider." group:"LLM PROVIDERS"`
+	ProviderList            ProviderListCmd            `cmd:"" name:"providers" help:"List the providers." group:"LLM PROVIDERS"`
+	ProviderGet             ProviderGetCmd             `cmd:"" name:"provider" help:"Get a provider by name." group:"LLM PROVIDERS"`
+	ProviderUpdate          ProviderUpdateCmd          `cmd:"" name:"provider-update" help:"Update a provider by name, replacing its URL and patterns, and its API key, when one is given." group:"LLM PROVIDERS"`
+	ProviderDelete          ProviderDeleteCmd          `cmd:"" name:"provider-delete" help:"Delete a provider by name." group:"LLM PROVIDERS"`
+	ProviderCreateOllama    ProviderCreateOllamaCmd    `cmd:"" name:"provider-create-ollama" help:"Create an Ollama provider." group:"LLM PROVIDERS"`
+	ProviderCreateEliza     ProviderCreateElizaCmd     `cmd:"" name:"provider-create-eliza" help:"Create an Eliza provider, for testing." group:"LLM PROVIDERS"`
+	ProviderCreateGoWhisper ProviderCreateGoWhisperCmd `cmd:"" name:"provider-create-gowhisper" help:"Create a go-whisper provider, which transcribes speech with whisper.cpp models." group:"LLM PROVIDERS"`
+	ProviderCreateOpenAI    ProviderCreateOpenAICmd    `cmd:"" name:"provider-create-openai" help:"Create an OpenAI, or OpenAI-compatible, provider." group:"LLM PROVIDERS"`
+	ProviderCreateDeepSeek  ProviderCreateDeepSeekCmd  `cmd:"" name:"provider-create-deepseek" help:"Create a DeepSeek provider." group:"LLM PROVIDERS"`
+	ProviderCreateMistral   ProviderCreateMistralCmd   `cmd:"" name:"provider-create-mistral" help:"Create a Mistral provider." group:"LLM PROVIDERS"`
 }
 
 type ProviderListCmd struct {
@@ -63,6 +64,14 @@ type ProviderCreateOllamaCmd struct {
 	Name             string `name:"name" default:"ollama" help:"Provider name."`
 	URL              string `arg:"" name:"url" help:"URL of the Ollama server, such as localhost:11434."`
 	APIKeyCredential string `name:"api-key-credential" help:"Name of the credential holding an API key, which is sent as a bearer token, such as for a server behind an authenticating proxy."`
+}
+
+// ProviderCreateGoWhisperCmd creates a provider for a go-whisper server,
+// which has no API key
+type ProviderCreateGoWhisperCmd struct {
+	ProviderModels
+	Name string `name:"name" default:"gowhisper" help:"Provider name."`
+	URL  string `arg:"" name:"url" help:"URL of the go-whisper server, such as localhost:8081."`
 }
 
 type ProviderCreateElizaCmd struct {
@@ -171,6 +180,17 @@ func (cmd *ProviderCreateOllamaCmd) Run(ctx server.Cmd) error {
 		Exclude: cmd.Exclude,
 		URL:     cmd.URL,
 		APIKey:  placeholder(cmd.APIKeyCredential),
+	})
+}
+
+// go-whisper has no API key
+func (cmd *ProviderCreateGoWhisperCmd) Run(ctx server.Cmd) error {
+	return createProvider(ctx, "llm.ProviderCreateGoWhisperCmd", schema.Provider{
+		Name:    cmd.Name,
+		Type:    llm.GoWhisper,
+		Include: cmd.Include,
+		Exclude: cmd.Exclude,
+		URL:     cmd.URL,
 	})
 }
 

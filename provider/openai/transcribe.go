@@ -6,10 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
-	"maps"
 	"mime"
-	"path"
-	"slices"
 	"strings"
 	"time"
 	"unicode"
@@ -17,6 +14,7 @@ import (
 	// Packages
 	client "github.com/mutablelogic/go-client"
 	llm "github.com/mutablelogic/go-llm"
+	schema "github.com/mutablelogic/go-llm/provider/schema"
 	types "github.com/mutablelogic/go-server/pkg/types"
 )
 
@@ -41,47 +39,6 @@ const (
 
 ///////////////////////////////////////////////////////////////////////////////
 // GLOBALS
-
-// audioExtensions are the extensions of audio files, by their type, as the
-// API detects an audio file's format from its name
-var audioExtensions = map[string]string{
-	"audio/mpeg":   ".mp3",
-	"audio/mp3":    ".mp3",
-	"audio/mp4":    ".m4a",
-	"audio/x-m4a":  ".m4a",
-	"audio/aac":    ".aac",
-	"audio/wav":    ".wav",
-	"audio/wave":   ".wav",
-	"audio/x-wav":  ".wav",
-	"audio/webm":   ".webm",
-	"audio/ogg":    ".ogg",
-	"audio/flac":   ".flac",
-	"audio/x-flac": ".flac",
-	"video/mp4":    ".mp4",
-	"video/webm":   ".webm",
-}
-
-// whisperLanguages are the ISO 639-1 codes of the languages whisper
-// detects, by the names it returns them as
-var whisperLanguages = map[string]string{
-	"afrikaans": "af", "albanian": "sq", "amharic": "am", "arabic": "ar", "armenian": "hy", "assamese": "as",
-	"azerbaijani": "az", "bashkir": "ba", "basque": "eu", "belarusian": "be", "bengali": "bn", "bosnian": "bs",
-	"breton": "br", "bulgarian": "bg", "catalan": "ca", "chinese": "zh", "croatian": "hr", "czech": "cs",
-	"danish": "da", "dutch": "nl", "english": "en", "estonian": "et", "faroese": "fo", "finnish": "fi",
-	"french": "fr", "galician": "gl", "georgian": "ka", "german": "de", "greek": "el", "gujarati": "gu",
-	"haitian creole": "ht", "hausa": "ha", "hebrew": "he", "hindi": "hi", "hungarian": "hu", "icelandic": "is",
-	"indonesian": "id", "italian": "it", "japanese": "ja", "javanese": "jw", "kannada": "kn", "kazakh": "kk",
-	"khmer": "km", "korean": "ko", "lao": "lo", "latin": "la", "latvian": "lv", "lingala": "ln",
-	"lithuanian": "lt", "luxembourgish": "lb", "macedonian": "mk", "malagasy": "mg", "malay": "ms", "malayalam": "ml",
-	"maltese": "mt", "maori": "mi", "marathi": "mr", "mongolian": "mn", "myanmar": "my", "nepali": "ne",
-	"norwegian": "no", "nynorsk": "nn", "occitan": "oc", "pashto": "ps", "persian": "fa", "polish": "pl",
-	"portuguese": "pt", "punjabi": "pa", "romanian": "ro", "russian": "ru", "sanskrit": "sa", "serbian": "sr",
-	"shona": "sn", "sindhi": "sd", "sinhala": "si", "slovak": "sk", "slovenian": "sl", "somali": "so",
-	"spanish": "es", "sundanese": "su", "swahili": "sw", "swedish": "sv", "tagalog": "tl", "tajik": "tg",
-	"tamil": "ta", "tatar": "tt", "telugu": "te", "thai": "th", "tibetan": "bo", "turkish": "tr",
-	"turkmen": "tk", "ukrainian": "uk", "urdu": "ur", "uzbek": "uz", "vietnamese": "vi", "welsh": "cy",
-	"yiddish": "yi", "yoruba": "yo",
-}
 
 ///////////////////////////////////////////////////////////////////////////////
 // PUBLIC METHODS
@@ -143,7 +100,7 @@ func (c *Client) transcribe(ctx context.Context, endpoint string, model llm.Mode
 	// The request, with the options, for the model, which returns segments
 	// in its own format, if any
 	request := transcribeRequest{
-		File:  types.File{Path: audioName(audio.Name(), contentType), Body: io.NopCloser(bytes.NewReader(data)), ContentType: contentType},
+		File:  types.File{Path: schema.AudioName(audio.Name(), contentType), Body: io.NopCloser(bytes.NewReader(data)), ContentType: contentType},
 		Model: model.Name(),
 	}
 	family := transcribeFamilyOf(c.server(), model.Name())
@@ -313,21 +270,6 @@ func transcribeFamilyOf(server server, model string) transcribeFamily {
 	default:
 		return transcribeWhisper
 	}
-}
-
-// audioName returns the name of the audio file, which is the resource's
-// name, when it has the extension of an audio file, or otherwise "audio",
-// with the extension of its type
-func audioName(name, contentType string) string {
-	if ext := strings.ToLower(path.Ext(name)); ext != "" && slices.Contains(slices.Collect(maps.Values(audioExtensions)), ext) {
-		return name
-	}
-	if ext, exists := audioExtensions[contentType]; exists {
-		return "audio" + ext
-	} else if exts, err := mime.ExtensionsByType(contentType); err == nil && len(exts) > 0 {
-		return "audio" + exts[0]
-	}
-	return "audio"
 }
 
 // seconds returns the seconds as a duration
