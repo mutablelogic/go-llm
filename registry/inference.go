@@ -4,11 +4,13 @@ import (
 	"context"
 	"errors"
 	"mime"
+	"net/http"
 	"strings"
 
 	// Packages
 	otel "github.com/mutablelogic/go-client/pkg/otel"
 	llm "github.com/mutablelogic/go-llm"
+	httpresponse "github.com/mutablelogic/go-server/pkg/httpresponse"
 	attribute "go.opentelemetry.io/otel/attribute"
 )
 
@@ -48,7 +50,8 @@ func (r *Registry) WithoutSession(ctx context.Context, model llm.Model, messages
 
 // Embed returns a vector for each of the messages, from the model's
 // provider, which must be in the registry, and embed messages. Returns
-// ErrNotImplemented when the model is known not to embed.
+// ErrNotImplemented when the model is known not to embed, and the provider's
+// error as providerErr does.
 func (r *Registry) Embed(ctx context.Context, model llm.Model, messages []llm.Message, opts ...llm.Opt) (_ []llm.Vector, _ llm.Usage, err error) {
 	ctx, endSpan := otel.StartSpan(r.tracer, ctx, "llm.registry.Embed",
 		attribute.String("arg.model", r.modelName(model)),
@@ -61,7 +64,11 @@ func (r *Registry) Embed(ctx context.Context, model llm.Model, messages []llm.Me
 	} else if err := can(model, model.Capabilities().Embedding, "embed messages"); err != nil {
 		return nil, llm.Usage{}, err
 	}
-	return embedder.Embed(ctx, model, messages, opts...)
+	vectors, usage, err := embedder.Embed(ctx, model, messages, opts...)
+	if err != nil {
+		return nil, llm.Usage{}, providerErr(err)
+	}
+	return vectors, usage, nil
 }
 
 // Transcribe returns the speech in the audio, from the model's provider,
@@ -147,6 +154,27 @@ func canGenerate(model llm.Model, messages []llm.Message, tools []llm.Tool, opts
 		}
 	}
 	return nil
+}
+
+// providerErr returns the error of a model's provider as the registry's: an
+// llm.Err, such as ErrBadParameter for an option the provider doesn't take,
+// as it is; the provider's rejection of the request, which is its status
+// 400, 413 or 422, such as for an option the model doesn't support, as
+// ErrBadParameter, with its message; and any other, such as its status 401,
+// 429 or 500, or a connection which failed, as ErrServiceUnavailable, so
+// the provider's status, such as of its own authentication, isn't the
+// registry's
+func providerErr(err error) error {
+	if _, ok := errors.AsType[llm.Err](err); ok {
+		return err
+	}
+	if status, ok := errors.AsType[httpresponse.Err](err); ok {
+		switch int(status) {
+		case http.StatusBadRequest, http.StatusRequestEntityTooLarge, http.StatusUnprocessableEntity:
+			return llm.ErrBadParameter.Withf("%w", err)
+		}
+	}
+	return llm.ErrServiceUnavailable.Withf("%w", err)
 }
 
 // can returns ErrNotImplemented when the capability is known to be false,

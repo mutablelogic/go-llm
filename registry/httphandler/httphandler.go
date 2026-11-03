@@ -23,10 +23,11 @@ var readme []byte
 // RegisterHandlers registers the registry's API with the router
 func RegisterHandlers(r *registry.Registry, router *httprouter.Router) error {
 	var documentation = openapi.ParseMarkdown(readme)
-	router.Spec().AddTagGroup("LLM", "Providers", "Models", "Events")
+	router.Spec().AddTagGroup("LLM", "Providers", "Models", "Inference", "Events")
 	return errors.Join(
 		providerHandlers(r, router, documentation),
 		modelHandlers(r, router, documentation),
+		embedHandlers(r, router, documentation),
 		eventHandlers(r, router, documentation),
 	)
 }
