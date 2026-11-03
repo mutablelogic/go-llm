@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -11,6 +12,7 @@ import (
 	llm "github.com/mutablelogic/go-llm"
 	openai "github.com/mutablelogic/go-llm/provider/openai"
 	schema "github.com/mutablelogic/go-llm/provider/schema"
+	types "github.com/mutablelogic/go-server/pkg/types"
 	assert "github.com/stretchr/testify/assert"
 	require "github.com/stretchr/testify/require"
 )
@@ -27,6 +29,9 @@ const (
 	// An embedding model, and one which can have fewer dimensions
 	mistralEmbeddingModel  = "mistral-embed"
 	mistralDimensionsModel = "codestral-embed"
+
+	// A model which recognizes text
+	mistralOCRModel = "mistral-ocr-latest"
 )
 
 // mistralClient returns a client of Mistral's API, with the key in
@@ -195,4 +200,67 @@ func Test_LiveMistral(t *testing.T) {
 			assert.Len(t, vectors[0], 256)
 		}
 	})
+}
+
+func Test_LiveMistral_Recognize(t *testing.T) {
+	c := mistralClient(t)
+	ctx, cancel := context.WithTimeout(context.Background(), liveTimeout)
+	defer cancel()
+	model, err := c.GetModel(ctx, mistralOCRModel)
+	require.NoError(t, err)
+	assert.True(t, types.Value(model.Capabilities().OCR))
+	read := func(name, contentType string) llm.Resource {
+		data, err := os.ReadFile(filepath.Join("..", "..", "testdata", name))
+		require.NoError(t, err)
+		return &schema.Resource{ResourceMeta: schema.ResourceMeta{ContentType: contentType, Data: data}}
+	}
+
+	t.Run("Document", func(t *testing.T) {
+		// The text of each of the document's pages, in order, and the pages
+		message, usage, err := c.Recognize(ctx, model, read("ocr.pdf", "application/pdf"))
+		require.NoError(t, err)
+		texts := pageTexts(t, message)
+		if assert.Len(t, texts, 2) {
+			assert.Contains(t, texts[0], "Hello, World")
+			assert.Contains(t, texts[1], "Page two")
+		}
+		assert.Equal(t, uint(2), usage.Pages)
+	})
+
+	t.Run("Pages", func(t *testing.T) {
+		// Only the pages asked for
+		message, usage, err := c.Recognize(ctx, model, read("ocr.pdf", "application/pdf"), llm.WithPages(1))
+		require.NoError(t, err)
+		texts := pageTexts(t, message)
+		if assert.Len(t, texts, 1) {
+			assert.Contains(t, texts[0], "Page two")
+		}
+		assert.Equal(t, uint(1), usage.Pages)
+	})
+
+	t.Run("Image", func(t *testing.T) {
+		// An image is one page
+		message, usage, err := c.Recognize(ctx, model, read("ocr.png", "image/png"))
+		require.NoError(t, err)
+		texts := pageTexts(t, message)
+		if assert.Len(t, texts, 1) {
+			assert.Contains(t, texts[0], "Hello, World")
+		}
+		assert.Equal(t, uint(1), usage.Pages)
+	})
+}
+
+// pageTexts returns the text of each page of the message, which is a text
+// block for each page
+func pageTexts(t *testing.T, message llm.Message) []string {
+	t.Helper()
+	m, ok := message.(*schema.Message)
+	require.True(t, ok)
+	assert.Equal(t, "assistant", m.Role())
+	var texts []string
+	for _, block := range m.Content {
+		require.NotNil(t, block.Text)
+		texts = append(texts, *block.Text)
+	}
+	return texts
 }

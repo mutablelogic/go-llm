@@ -43,14 +43,13 @@ type EmbedAttachment struct {
 }
 
 // EmbedForm is the form for embedding one message, such as from a web
-// browser, with its text, and an image or audio uploaded as a file, which
-// is read as an EmbedRequest with one message. The options are a JSON
-// object, as a form's values are strings.
+// browser, which is a file, uploaded as text, an image or audio, which is
+// read as an EmbedRequest with one message, as RecognizeForm is. The
+// options are a JSON object, as a form's values are strings.
 type EmbedForm struct {
 	Model string     `json:"model" help:"Model for the embedding, by name, or by provider and name" example:"ollama:embeddinggemma-2:latest"`
-	Text  string     `json:"text,omitempty" help:"Text of the message to embed" example:"A cat asleep in the sun" optional:""`
 	Opt   string     `json:"opt,omitempty" help:"Options for the embedding, as a JSON object, such as {\"dimensions\":256}" example:"{\"dimensions\":256}" optional:""`
-	File  types.File `json:"file,omitzero" help:"Image or audio of the message to embed, uploaded as a file, for a model which embeds them" optional:""`
+	File  types.File `json:"file,omitzero" help:"Text, image or audio to embed, uploaded as a file, which is embedded as text when its type is text, such as text/plain, or otherwise as an attachment, for a model which embeds them"`
 }
 
 // EmbedResponse is a vector for each of the messages, in the same order,

@@ -252,3 +252,34 @@ type embedResponse struct {
 	} `json:"usage"`
 	Error *chatError `json:"error,omitempty"`
 }
+
+// ocrRequest is a request to recognize the text in an image or document,
+// which is Mistral's, with the pages, from zero, and the format of tables
+// Reference: https://docs.mistral.ai/api/endpoint/ocr
+type ocrRequest struct {
+	Model         string      `json:"model"`
+	Document      ocrDocument `json:"document"`
+	Pages         []uint      `json:"pages,omitempty"`
+	TableFormat   string      `json:"table_format,omitempty"`
+	IncludeImages *bool       `json:"include_image_base64,omitempty"`
+}
+
+// ocrDocument is the image or document to recognize, by its URL, which is
+// a data URL
+type ocrDocument struct {
+	Type        string `json:"type"` // image_url or document_url
+	ImageURL    string `json:"image_url,omitempty"`
+	DocumentURL string `json:"document_url,omitempty"`
+}
+
+// ocrResponse is the text of each page, in Markdown, and the pages processed
+type ocrResponse struct {
+	Pages []struct {
+		Index    int    `json:"index"`
+		Markdown string `json:"markdown"`
+	} `json:"pages"`
+	Model string `json:"model"`
+	Usage struct {
+		PagesProcessed uint `json:"pages_processed"`
+	} `json:"usage_info"`
+}

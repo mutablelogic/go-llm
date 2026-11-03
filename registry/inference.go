@@ -111,7 +111,7 @@ func (r *Registry) Translate(ctx context.Context, model llm.Model, audio llm.Res
 // Recognize returns the text in the resource, such as an image or a PDF, as
 // a message, from the model's provider, which must be in the registry, and
 // recognize text. Returns ErrNotImplemented when the model is known not to
-// recognize text.
+// recognize text, and the provider's error as providerErr does.
 func (r *Registry) Recognize(ctx context.Context, model llm.Model, resource llm.Resource, opts ...llm.Opt) (_ llm.Message, _ llm.Usage, err error) {
 	ctx, endSpan := otel.StartSpan(r.tracer, ctx, "llm.registry.Recognize",
 		attribute.String("arg.model", r.modelName(model)),
@@ -124,7 +124,11 @@ func (r *Registry) Recognize(ctx context.Context, model llm.Model, resource llm.
 	} else if err := can(model, model.Capabilities().OCR, "recognize text"); err != nil {
 		return nil, llm.Usage{}, err
 	}
-	return recognizer.Recognize(ctx, model, resource, opts...)
+	message, usage, err := recognizer.Recognize(ctx, model, resource, opts...)
+	if err != nil {
+		return nil, llm.Usage{}, providerErr(err)
+	}
+	return message, usage, nil
 }
 
 ///////////////////////////////////////////////////////////////////////////////

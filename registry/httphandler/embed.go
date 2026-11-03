@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"mime"
 	"net/http"
 	"net/url"
 	"strings"
@@ -50,7 +51,7 @@ func embedHandlers(reg *registry.Registry, router *httprouter.Router, documentat
 			op.RequestBody(jsonschema.MustFor[schema.EmbedRequest]())
 			op.RequestBody(jsonschema.MustFor[schema.EmbedForm](), types.ContentTypeFormData)
 			op.JSONResponse(http.StatusOK, jsonschema.MustFor[schema.EmbedResponse](), "A vector for each of the messages, the model which embedded them, and the tokens used")
-			op.ErrorResponse(http.StatusBadRequest, "Invalid request body or form, no messages or model, no text or file, more than one file, invalid options, or an option or message the provider can't embed")
+			op.ErrorResponse(http.StatusBadRequest, "Invalid request body or form, no messages or model, no text, no file, more than one file, invalid options, or an option or message the provider can't embed")
 			op.ErrorResponse(http.StatusNotFound, "Model not found")
 			op.ErrorResponse(http.StatusConflict, "More than one provider has a model with the name")
 			op.ErrorResponse(http.StatusRequestEntityTooLarge, "The request body is larger than 32 MiB")
@@ -97,10 +98,10 @@ func embed(r *http.Request, reg *registry.Registry, req schema.EmbedRequest) (*s
 }
 
 // readEmbed reads the request to embed messages, which is JSON, or a form
-// to embed one message, with its text, and an image or audio uploaded as
-// one file, named "file", which is read as a request with the message. The
-// file's type is used, unless it's the generic application/octet-stream,
-// when the type is detected from the data.
+// to embed one message, which is text, an image or audio uploaded as one
+// file, named "file", as with readRecognize, which is read as a request
+// with the message. A file whose type is text, such as text/plain, is the
+// message's text.
 func readEmbed(r *http.Request) (*schema.EmbedRequest, error) {
 	if contentType, _ := types.ParseContentType(r.Header.Get(types.ContentTypeHeader)); contentType != types.ContentTypeFormData {
 		var req schema.EmbedRequest
@@ -110,8 +111,47 @@ func readEmbed(r *http.Request) (*schema.EmbedRequest, error) {
 		return types.Ptr(req), nil
 	}
 
-	// Read the form, with at most one file, which is streamed from the
-	// request. A file without a name is a value in the form.
+	// Read the form, with the file
+	var form schema.EmbedForm
+	file, err := readForm(r, &form)
+	if err != nil {
+		return nil, err
+	} else if file == nil {
+		return nil, llm.ErrBadParameter.With("no file to embed")
+	}
+
+	// The message is the file's text, when it's text, or otherwise the file
+	// as an attachment
+	var message schema.EmbedMessage
+	if mediaType, _, _ := mime.ParseMediaType(file.Type); strings.HasPrefix(mediaType, "text/") {
+		message.Content = append(message.Content, schema.EmbedContent{Text: types.Ptr(string(file.Data))})
+	} else {
+		message.Content = append(message.Content, schema.EmbedContent{Attachment: &schema.EmbedAttachment{Type: file.Type, Data: file.Data}})
+	}
+
+	// The options are a JSON object
+	req := schema.EmbedRequest{Model: form.Model, Messages: []schema.EmbedMessage{message}}
+	if opt := strings.TrimSpace(form.Opt); opt != "" {
+		if err := json.Unmarshal([]byte(opt), &req.Opt); err != nil {
+			return nil, llm.ErrBadParameter.Withf("invalid options: %v", err)
+		}
+	}
+	return types.Ptr(req), nil
+}
+
+// formFile is the file uploaded with a form, by its type and data
+type formFile struct {
+	Type string
+	Data []byte
+}
+
+// readForm reads the form into the value, with at most one file, named
+// "file", which is streamed from the request, and returned, or nil when
+// there's no file. A file without a name is a value in the form. The file's
+// type is used, unless it's the generic application/octet-stream, when the
+// type is detected from the data. Returns ErrBadParameter when the form
+// isn't valid, or the file is empty.
+func readForm(r *http.Request, v any) (*formFile, error) {
 	var file *types.File
 	var data []byte
 	values, err := httprequest.Binary(r, func(field string, _ url.Values, f types.File) (err error) {
@@ -136,38 +176,21 @@ func readEmbed(r *http.Request) (*schema.EmbedRequest, error) {
 		file, data = &types.File{}, []byte(value[0])
 		delete(values, "file")
 	}
-	var form schema.EmbedForm
-	if err := httprequest.Query(values, &form); err != nil {
+	if err := httprequest.Query(values, v); err != nil {
 		return nil, llm.ErrBadParameter.Withf("%v", err)
 	}
 
-	// The message is its text, and the file as an attachment
-	var message schema.EmbedMessage
-	if text := strings.TrimSpace(form.Text); text != "" {
-		message.Content = append(message.Content, schema.EmbedContent{Text: types.Ptr(text)})
+	// The file, by its type, and data
+	if file == nil {
+		return nil, nil
+	} else if len(data) == 0 {
+		return nil, llm.ErrBadParameter.With("file is empty")
 	}
-	if file != nil {
-		if len(data) == 0 {
-			return nil, llm.ErrBadParameter.With("file is empty")
-		}
-		contentType := file.ContentType
-		if providerschema.UnknownType(contentType) {
-			contentType = providerschema.ResourceType(data, file.Path)
-		}
-		message.Content = append(message.Content, schema.EmbedContent{Attachment: &schema.EmbedAttachment{Type: contentType, Data: data}})
+	contentType := file.ContentType
+	if providerschema.UnknownType(contentType) {
+		contentType = providerschema.ResourceType(data, file.Path)
 	}
-	if len(message.Content) == 0 {
-		return nil, llm.ErrBadParameter.With("no text or file to embed")
-	}
-
-	// The options are a JSON object
-	req := schema.EmbedRequest{Model: form.Model, Messages: []schema.EmbedMessage{message}}
-	if opt := strings.TrimSpace(form.Opt); opt != "" {
-		if err := json.Unmarshal([]byte(opt), &req.Opt); err != nil {
-			return nil, llm.ErrBadParameter.Withf("invalid options: %v", err)
-		}
-	}
-	return types.Ptr(req), nil
+	return &formFile{Type: contentType, Data: data}, nil
 }
 
 // limitBody reads the request body, which must be no larger than the limit,

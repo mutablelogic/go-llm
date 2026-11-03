@@ -69,6 +69,32 @@ func (r *embedRequest) apply(server server, opts ...llm.Opt) error {
 	return nil
 }
 
+// apply sets the options on the request to recognize text, or returns an
+// error if any option isn't valid or isn't supported by Mistral's OCR API
+func (r *ocrRequest) apply(opts ...llm.Opt) error {
+	o, err := llm.ApplyOpts(opts...)
+	if err != nil {
+		return err
+	}
+	for _, key := range o.Keys() {
+		var err error
+		switch key {
+		case llm.PagesKey:
+			r.Pages, err = llm.GetPages(o)
+		case llm.TableFormatKey:
+			if r.TableFormat, err = llm.GetOpt[string](o, key); err == nil && r.TableFormat != "markdown" && r.TableFormat != "html" {
+				err = llm.ErrBadParameter.Withf("option %q: %q must be markdown or html", key, r.TableFormat)
+			}
+		default:
+			err = llm.ErrBadParameter.Withf("option %q isn't supported by mistral for recognition", key)
+		}
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 // apply sets the options on the request, or returns an error if any option
 // isn't valid or isn't supported. The system prompt is prepended to the
 // messages, so they should be set first, as should the tools, which are

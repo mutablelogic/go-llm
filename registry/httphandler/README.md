@@ -62,14 +62,28 @@ Inference is asking a model to do something with messages, such as embed them. A
 
 ### POST /llm/embed
 
-Ask a model for a vector for each of the messages, in the same order, with JSON, or for one message, with a `multipart/form-data` form, such as from a web browser. The JSON request has the `model`, the `messages`, each embedded by its `content`, which is its `text`, and its images and audio as `attachment`s, inline, with their `type` and `data`, and the `opt` as an object, such as `{"dimensions":256}`. The form has:
+Ask a model for a vector for each of the messages, in the same order, with JSON, or for one message, with a `multipart/form-data` form, such as from a web browser. The JSON request has the `model`, the `messages`, each embedded by its `content`, which is its `text`, and its images and audio as `attachment`s, inline, with their `type` and `data`, and the `opt` as an object, such as `{"dimensions":256}`. The form has the same fields as recognizing text does:
 
 - `model`: the model, by name or as `provider:name`, such as `ollama:embeddinggemma-2:latest`, whose provider must embed messages.
-- `text`: the text of the message.
-- `file`: an image or audio of the message, uploaded as a file, for a model which embeds them, such as `embeddinggemma-2` on Ollama. An OpenAI-compatible provider embeds only text. The file's type is used, or detected from its data, or its name, when it's `application/octet-stream`.
+- `file`: the message, uploaded as a file, which is its text when the file is text, such as `text/plain` or `text/markdown`, or otherwise an image or audio, for a model which embeds them, such as `embeddinggemma-2` on Ollama. An OpenAI-compatible provider embeds only text. The file's type is used, or detected from its data, or its name, when it's `application/octet-stream`.
 - `opt`: the options, as a JSON object.
 
-Returns a vector for each message, the `model` which embedded them, by its canonical name, and the tokens used. Vectors from different models can't be compared, so a model should be kept for the messages which are compared. Returns 400 if the request is invalid, has no messages or model, a message has no text or attachment, or the model's provider rejects it, such as for an option the model doesn't support, 404 if no provider has the model, 409 if more than one does, so its canonical name is needed, 413 if the request body is larger than 32 MiB, 501 if the model's provider can't embed messages, or the model is known not to, or 503 if the model couldn't embed the messages, such as when its provider fails, or can't be reached, or its own credentials are rejected.
+Returns a vector for each message, the `model` which embedded them, by its canonical name, and the tokens used. Vectors from different models can't be compared, so a model should be kept for the messages which are compared. Returns 400 if the request is invalid, has no messages or model, a message has no text or attachment, the form has no file, or more than one, or the model's provider rejects it, such as for an option the model doesn't support, 404 if no provider has the model, 409 if more than one does, so its canonical name is needed, 413 if the request body is larger than 32 MiB, 501 if the model's provider can't embed messages, or the model is known not to, or 503 if the model couldn't embed the messages, such as when its provider fails, or can't be reached, or its own credentials are rejected.
+
+### POST /llm/recognize
+
+Ask a model for the text in an image, or a document such as a PDF, which is optical character recognition, with JSON, or with a `multipart/form-data` form, such as from a web browser. The JSON request has the `model`, the image or document's `type` and its `data`, encoded as base64, and the `opt` as an object. The form has:
+
+- `model`: the model, by name or as `provider:name`, whose provider must recognize text, such as `mistral:mistral-ocr-latest`, or `ollama:deepseek-ocr:latest`.
+- `file`: the image or document, uploaded as a file. The file's type is used, or detected from its data, or its name, when it's `application/octet-stream`.
+- `opt`: the options, as a JSON object.
+
+The options are the same for every provider, which rejects those it can't do:
+
+- `pages`: the pages of a document to recognize, from zero, as a number, numbers, such as `[0,2]`, or a string, such as `"0,2-4"`. An image is one page, `0`.
+- `table_format`: the format of tables in the text, `markdown`, or `html`, which only Mistral can do.
+
+Mistral recognizes images and documents, such as PDFs. Ollama's models, such as `deepseek-ocr`, recognize images, each asked with its own prompt, and should be sent images large enough to read their text, such as a page at 150 dpi. Returns the text, as a `message` with a text block for each page, in order, in Markdown, the `model` which recognized it, by its canonical name, and the `usage`, which is the `pages` recognized, and the tokens used, for providers which report them. Returns 400 if the request is invalid, has no model, type or data, or file, or the model's provider rejects it, such as for a PDF sent to Ollama, or an option it can't do, 404 if no provider has the model, 409 if more than one does, 413 if the request body is larger than 64 MiB, 501 if the model's provider can't recognize text, or the model is known not to, or 503 if the model couldn't recognize the text, such as when its provider fails, or can't be reached.
 
 ## Event Operations
 

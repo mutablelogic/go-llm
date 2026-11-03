@@ -156,50 +156,63 @@ func Test_Embed(t *testing.T) {
 		assert.Equal(t, png, input.Image)
 	})
 
-	t.Run("Form", func(t *testing.T) {
-		// A form embeds one message, with its text, and a file, whose type
-		// is detected when it's generic, and the options as JSON
+	// postForm posts a form with the fields, and the files, by name, and
+	// returns the status, and the body
+	postForm := func(fields map[string]string, files ...string) (int, []byte) {
 		var body bytes.Buffer
 		form := multipart.NewWriter(&body)
-		require.NoError(t, form.WriteField("model", "embed"))
-		require.NoError(t, form.WriteField("text", "A cat"))
-		require.NoError(t, form.WriteField("opt", `{"dimensions":2}`))
-		file, err := form.CreateFormFile("file", "cat")
-		require.NoError(t, err)
-		_, err = file.Write(png)
-		require.NoError(t, err)
+		for key, value := range fields {
+			require.NoError(t, form.WriteField(key, value))
+		}
+		for _, name := range files {
+			file, err := form.CreateFormFile("file", name)
+			require.NoError(t, err)
+			if strings.HasSuffix(name, ".txt") {
+				file.Write([]byte("A cat"))
+			} else {
+				file.Write(png)
+			}
+		}
 		require.NoError(t, form.Close())
-		status, data := server.DoWithContentType(t, http.MethodPost, "llm/embed", form.FormDataContentType(), body.Bytes())
+		return server.DoWithContentType(t, http.MethodPost, "llm/embed", form.FormDataContentType(), body.Bytes())
+	}
+
+	t.Run("Form", func(t *testing.T) {
+		// A form embeds one message, which is a file, whose type is
+		// detected when it's generic, as text when it's text, with the
+		// options as JSON
+		status, data := postForm(map[string]string{"model": "embed", "opt": `{"dimensions":2}`}, "cat.txt")
 		require.Equal(t, http.StatusOK, status, string(data))
 		var response schema.EmbedResponse
 		require.NoError(t, json.Unmarshal(data, &response))
 		assert.Equal(t, "home:embed:latest", response.Model)
 		input, dimensions := stub.Input(t, 0)
 		assert.Equal(t, "A cat", input.Text)
-		assert.Equal(t, png, input.Image)
+		assert.Nil(t, input.Image)
 		assert.Equal(t, uint(2), dimensions)
+
+		// Or as an attachment otherwise
+		status, data = postForm(map[string]string{"model": "embed"}, "cat")
+		require.Equal(t, http.StatusOK, status, string(data))
+		input, _ = stub.Input(t, 0)
+		assert.Empty(t, input.Text)
+		assert.Equal(t, png, input.Image)
 	})
 
 	t.Run("FormErrors", func(t *testing.T) {
-		// A form with no text or file, or more than one file, isn't valid
-		post := func(fields map[string]string, files ...string) int {
-			var body bytes.Buffer
-			form := multipart.NewWriter(&body)
-			for key, value := range fields {
-				require.NoError(t, form.WriteField(key, value))
-			}
-			for _, name := range files {
-				file, err := form.CreateFormFile("file", name)
-				require.NoError(t, err)
-				file.Write(png)
-			}
-			require.NoError(t, form.Close())
-			status, _ := server.DoWithContentType(t, http.MethodPost, "llm/embed", form.FormDataContentType(), body.Bytes())
-			return status
+		// A form with no file, or more than one, or options which aren't
+		// JSON, isn't valid
+		for _, test := range []struct {
+			fields map[string]string
+			files  []string
+		}{
+			{map[string]string{"model": "embed"}, nil},
+			{map[string]string{"model": "embed"}, []string{"a.png", "b.png"}},
+			{map[string]string{"model": "embed", "opt": "not json"}, []string{"cat.txt"}},
+		} {
+			status, _ := postForm(test.fields, test.files...)
+			assert.Equal(t, http.StatusBadRequest, status, test)
 		}
-		assert.Equal(t, http.StatusBadRequest, post(map[string]string{"model": "embed"}))
-		assert.Equal(t, http.StatusBadRequest, post(map[string]string{"model": "embed"}, "a.png", "b.png"))
-		assert.Equal(t, http.StatusBadRequest, post(map[string]string{"model": "embed", "text": "A cat", "opt": "not json"}))
 	})
 
 	t.Run("Errors", func(t *testing.T) {

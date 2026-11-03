@@ -161,6 +161,8 @@ func TestWithOpts(t *testing.T) {
 			{llm.WithTaskType("RETRIEVAL_DOCUMENT"), llm.TaskTypeKey, "RETRIEVAL_DOCUMENT"},
 			{llm.WithTitle("Notes"), llm.TitleKey, "Notes"},
 			{llm.WithDimensions(256), llm.DimensionsKey, uint(256)},
+			{llm.WithPages(0, 2), llm.PagesKey, []uint{0, 2}},
+			{llm.WithTableFormat("html"), llm.TableFormatKey, "html"},
 		} {
 			opts, err := llm.ApplyOpts(test.opt)
 			require.NoError(t, err, test.key)
@@ -187,6 +189,8 @@ func TestWithOpts(t *testing.T) {
 			"EmptyServiceTier":    llm.WithServiceTier(""),
 			"EmptyTaskType":       llm.WithTaskType(""),
 			"ZeroDimensions":      llm.WithDimensions(0),
+			"NoPages":             llm.WithPages(),
+			"UnknownTableFormat":  llm.WithTableFormat("csv"),
 		} {
 			_, err := llm.ApplyOpts(opt)
 			assert.ErrorIs(t, err, llm.ErrBadParameter, name)
@@ -199,5 +203,46 @@ func TestWithOpts(t *testing.T) {
 		require.NoError(t, err)
 		values[0] = "CHANGED"
 		assert.Equal(t, []string{"END"}, opts.Get(llm.StopSequencesKey))
+	})
+}
+
+func TestGetPages(t *testing.T) {
+	get := func(value any) ([]uint, error) {
+		opts, err := llm.ApplyOpts(llm.WithOpt(llm.PagesKey, value))
+		require.NoError(t, err)
+		return llm.GetPages(opts)
+	}
+
+	t.Run("Valid", func(t *testing.T) {
+		// Page numbers, or a string of them and ranges, as values or JSON,
+		// are in order, without duplicates
+		for _, test := range []struct {
+			value any
+			want  []uint
+		}{
+			{"0", []uint{0}},
+			{"0,2-4", []uint{0, 2, 3, 4}},
+			{" 3 , 1-2 ,1", []uint{1, 2, 3}},
+			{[]uint{1, 0}, []uint{0, 1}},
+			{uint(3), []uint{3}},
+			{json.RawMessage(`1`), []uint{1}},
+			{json.RawMessage(`"5-6"`), []uint{5, 6}},
+			{json.RawMessage(`[2,0,2]`), []uint{0, 2}},
+		} {
+			pages, err := get(test.value)
+			require.NoError(t, err, test.value)
+			assert.Equal(t, test.want, pages, test.value)
+		}
+	})
+
+	t.Run("Invalid", func(t *testing.T) {
+		for _, value := range []any{"", "a", "1-", "3-1", "-1", "0-100000", []uint{}, json.RawMessage(`[]`), json.RawMessage(`[-1]`), json.RawMessage(`true`), 1.5} {
+			_, err := get(value)
+			assert.ErrorIs(t, err, llm.ErrBadParameter, value)
+		}
+		opts, err := llm.ApplyOpts()
+		require.NoError(t, err)
+		_, err = llm.GetPages(opts)
+		assert.Error(t, err)
 	})
 }
