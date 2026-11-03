@@ -68,16 +68,15 @@ func Test_Models(t *testing.T) {
 	})
 
 	t.Run("Capabilities", func(t *testing.T) {
-		// eliza replies, without tools, and does nothing else, and it thinks,
-		// without reasoning efforts
+		// eliza replies, and thinks, without tools, and does nothing else
 		model, err := client.GetModel(ctx, eliza.ModelName)
 		require.NoError(t, err)
 		yes, no := true, false
 		assert.Equal(t, llm.ModelCap{
-			Completion: &yes, Tools: &no, Vision: &no, OCR: &no,
+			Completion: &yes, Tools: &no, Thinking: &yes, Vision: &no, OCR: &no,
 			Transcription: &no, Translation: &no, Embedding: &no,
 		}, model.Capabilities())
-		assert.Equal(t, "completion", model.Capabilities().String())
+		assert.Equal(t, "completion, thinking", model.Capabilities().String())
 	})
 }
 

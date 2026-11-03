@@ -23,18 +23,16 @@ type Model interface {
 }
 
 // ModelCap is what a model can do, of what its provider knows. A capability
-// which isn't known is nil. Thinking is the reasoning efforts the model
-// accepts, such as "low" and "high", which is empty when it doesn't think,
-// and nil when that, or its efforts, aren't known.
+// which isn't known is nil.
 type ModelCap struct {
-	Completion    *bool    `json:"completion,omitempty" help:"Generates replies to messages"`
-	Tools         *bool    `json:"tools,omitempty" help:"Calls tools"`
-	Thinking      []string `json:"thinking,omitzero" help:"Reasoning efforts the model accepts, which are none when it doesn't think, and left out when they aren't known"`
-	Vision        *bool    `json:"vision,omitempty" help:"Understands images"`
-	OCR           *bool    `json:"ocr,omitempty" help:"Recognizes the text in images and documents"`
-	Transcription *bool    `json:"transcription,omitempty" help:"Transcribes speech"`
-	Translation   *bool    `json:"translation,omitempty" help:"Translates speech into English"`
-	Embedding     *bool    `json:"embedding,omitempty" help:"Embeds text as vectors"`
+	Completion    *bool `json:"completion,omitempty" help:"Generates replies to messages"`
+	Tools         *bool `json:"tools,omitempty" help:"Calls tools"`
+	Thinking      *bool `json:"thinking,omitempty" help:"Thinks, or reasons, before it replies"`
+	Vision        *bool `json:"vision,omitempty" help:"Understands images"`
+	OCR           *bool `json:"ocr,omitempty" help:"Recognizes the text in images and documents"`
+	Transcription *bool `json:"transcription,omitempty" help:"Transcribes speech"`
+	Translation   *bool `json:"translation,omitempty" help:"Translates speech into English"`
+	Embedding     *bool `json:"embedding,omitempty" help:"Embeds text as vectors"`
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -50,7 +48,7 @@ func (c ModelCap) String() string {
 	}{
 		{"completion", isTrue(c.Completion)},
 		{"tools", isTrue(c.Tools)},
-		{"thinking", len(c.Thinking) > 0},
+		{"thinking", isTrue(c.Thinking)},
 		{"vision", isTrue(c.Vision)},
 		{"ocr", isTrue(c.OCR)},
 		{"transcription", isTrue(c.Transcription)},

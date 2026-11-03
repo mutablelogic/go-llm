@@ -169,9 +169,8 @@ func (m *Model) InputTokenLimit() *uint {
 // Capabilities returns what the server reports the model can do, which
 // Mistral does, as its capabilities, or none of them, with those which are
 // known by the model's name, such as that Mistral's embedding models embed.
-// Mistral doesn't say which reasoning efforts a model which reasons accepts,
-// so they're nil, or empty when it doesn't reason, and it doesn't report
-// embedding or translation. OpenAI itself reports none.
+// Mistral doesn't report embedding or translation. OpenAI itself reports
+// none.
 func (m *Model) Capabilities() llm.ModelCap {
 	result := m.reportedCapabilities()
 	for _, model := range modelCapabilities {
@@ -197,17 +196,14 @@ func (m *Model) reportedCapabilities() llm.ModelCap {
 	if !exists || json.Unmarshal(raw, &capabilities) != nil {
 		return llm.ModelCap{}
 	}
-	result := llm.ModelCap{
+	return llm.ModelCap{
 		Completion:    capabilities.Completion,
 		Tools:         capabilities.Tools,
+		Thinking:      capabilities.Reasoning,
 		Vision:        capabilities.Vision,
 		OCR:           capabilities.OCR,
 		Transcription: capabilities.Transcription,
 	}
-	if capabilities.Reasoning != nil && !*capabilities.Reasoning {
-		result.Thinking = []string{}
-	}
-	return result
 }
 
 // OutputTokenLimit returns the model's maximum number of output tokens, for

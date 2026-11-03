@@ -165,13 +165,13 @@ func Test_ListModels_Show(t *testing.T) {
 }
 
 func Test_ListModels_Capabilities(t *testing.T) {
-	// A model has the capabilities Ollama reports, and doesn't think when it
-	// doesn't report thinking, and a model which can't be shown has none
+	// A model has the capabilities Ollama reports, and a model which can't
+	// be shown has none
 	models, err := newStubClient(t).ListModels(context.Background())
 	require.NoError(t, err)
 	require.Len(t, models, 3)
 	yes, no := true, false
-	assert.Equal(t, llm.ModelCap{Completion: &yes, Tools: &no, Thinking: []string{}, Vision: &yes, Embedding: &no}, models[0].Capabilities())
+	assert.Equal(t, llm.ModelCap{Completion: &yes, Tools: &no, Thinking: &no, Vision: &yes, Embedding: &no}, models[0].Capabilities())
 	assert.Equal(t, llm.ModelCap{}, models[1].Capabilities())
 }
 

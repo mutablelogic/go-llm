@@ -124,9 +124,7 @@ func (m *Model) OutputTokenLimit() *uint {
 
 // Capabilities returns what Ollama reports the model can do, which is none
 // of them when it didn't report the model's capabilities, as when it
-// couldn't be shown. Ollama doesn't say which reasoning efforts a model
-// which thinks accepts, so they're nil, or empty when it doesn't think. It
-// doesn't report OCR, transcription or translation.
+// couldn't be shown. It doesn't report OCR, transcription or translation.
 func (m *Model) Capabilities() llm.ModelCap {
 	capabilities := m.data.Capabilities
 	if len(capabilities) == 0 {
@@ -135,16 +133,13 @@ func (m *Model) Capabilities() llm.ModelCap {
 	has := func(capability string) *bool {
 		return types.Ptr(slices.Contains(capabilities, capability))
 	}
-	result := llm.ModelCap{
+	return llm.ModelCap{
 		Completion: has("completion"),
 		Tools:      has("tools"),
+		Thinking:   has("thinking"),
 		Vision:     has("vision"),
 		Embedding:  has("embedding"),
 	}
-	if !slices.Contains(capabilities, "thinking") {
-		result.Thinking = []string{}
-	}
-	return result
 }
 
 ///////////////////////////////////////////////////////////////////////////////

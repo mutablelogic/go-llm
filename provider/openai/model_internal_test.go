@@ -87,13 +87,13 @@ func TestCapabilities(t *testing.T) {
 	m := &Model{data: apiModel{ID: "mistral-ocr-latest", Fields: map[string]json.RawMessage{
 		"capabilities": json.RawMessage(`{"completion_chat":false,"function_calling":true,"reasoning":false,"vision":true,"ocr":true,"audio_transcription":false,"moderation":false}`),
 	}}}
-	assert.Equal(t, llm.ModelCap{Completion: &no, Tools: &yes, Thinking: []string{}, Vision: &yes, OCR: &yes, Transcription: &no}, m.Capabilities())
+	assert.Equal(t, llm.ModelCap{Completion: &no, Tools: &yes, Thinking: &no, Vision: &yes, OCR: &yes, Transcription: &no}, m.Capabilities())
 
-	// A model which reasons, whose efforts aren't known
+	// A model which reasons
 	m = &Model{data: apiModel{ID: "mistral-small-latest", Fields: map[string]json.RawMessage{
 		"capabilities": json.RawMessage(`{"completion_chat":true,"reasoning":true}`),
 	}}}
-	assert.Equal(t, llm.ModelCap{Completion: &yes}, m.Capabilities())
+	assert.Equal(t, llm.ModelCap{Completion: &yes, Thinking: &yes}, m.Capabilities())
 
 	// And those which are known by the model's name, as Mistral's embedding
 	// models embed
@@ -101,7 +101,7 @@ func TestCapabilities(t *testing.T) {
 		m = &Model{data: apiModel{ID: id, Fields: map[string]json.RawMessage{
 			"capabilities": json.RawMessage(`{"completion_chat":false,"reasoning":false}`),
 		}}}
-		assert.Equal(t, llm.ModelCap{Completion: &no, Thinking: []string{}, Embedding: &yes}, m.Capabilities(), id)
+		assert.Equal(t, llm.ModelCap{Completion: &no, Thinking: &no, Embedding: &yes}, m.Capabilities(), id)
 	}
 
 	// Or none, as OpenAI returns none

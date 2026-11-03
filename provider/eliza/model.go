@@ -84,14 +84,14 @@ func (m *Model) OutputTokenLimit() *uint {
 	return nil
 }
 
-// Capabilities returns that eliza replies to messages, without tools, and
-// does nothing else. It thinks, with WithThinking, but has no reasoning
-// efforts, so they're nil.
+// Capabilities returns that eliza replies to messages, and thinks, with
+// WithThinking, without tools, and does nothing else
 func (m *Model) Capabilities() llm.ModelCap {
 	yes, no := true, false
 	return llm.ModelCap{
 		Completion:    &yes,
 		Tools:         &no,
+		Thinking:      &yes,
 		Vision:        &no,
 		OCR:           &no,
 		Transcription: &no,
