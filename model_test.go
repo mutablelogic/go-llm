@@ -14,25 +14,22 @@ func Test_ModelCap(t *testing.T) {
 	yes, no := true, false
 
 	t.Run("String", func(t *testing.T) {
-		// The capabilities which are known to be true, and thinking, when
-		// there are efforts
+		// The capabilities which are known to be true
 		assert.Empty(t, llm.ModelCap{}.String())
 		assert.Equal(t, "completion, tools, thinking, embedding", llm.ModelCap{
-			Completion: &yes, Tools: &yes, Thinking: []string{"low", "high"}, Vision: &no, Embedding: &yes,
+			Completion: &yes, Tools: &yes, Thinking: &yes, Vision: &no, Embedding: &yes,
 		}.String())
-		assert.Equal(t, "completion", llm.ModelCap{Completion: &yes, Thinking: []string{}}.String())
 	})
 
 	t.Run("JSON", func(t *testing.T) {
-		// Capabilities which aren't known are left out, and thinking, which
-		// is empty when the model doesn't think, isn't
+		// Capabilities which aren't known are left out, and those which
+		// are known to be false aren't
 		for _, test := range []struct {
 			cap  llm.ModelCap
 			json string
 		}{
 			{llm.ModelCap{}, `{}`},
-			{llm.ModelCap{Completion: &yes, Vision: &no, Thinking: []string{}}, `{"completion":true,"thinking":[],"vision":false}`},
-			{llm.ModelCap{Thinking: []string{"none", "high"}}, `{"thinking":["none","high"]}`},
+			{llm.ModelCap{Completion: &yes, Vision: &no, Thinking: &no}, `{"completion":true,"thinking":false,"vision":false}`},
 		} {
 			data, err := json.Marshal(test.cap)
 			require.NoError(t, err)
