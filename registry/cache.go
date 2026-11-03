@@ -40,12 +40,16 @@ type cached struct {
 
 	// The models, in the order the provider lists them, and by their names
 	// and aliases, when they were cached, and the error of the last listing.
-	// The models are nil until they're cached.
-	models    sync.RWMutex
-	list      []llm.Model
-	byName    map[string]llm.Model
-	modelsAt  time.Time
-	modelsErr error
+	// The models are nil until they're cached. The listings are counted, as
+	// are the invalidations, so a listing which started before the models
+	// were invalidated doesn't make them fresh.
+	models     sync.RWMutex
+	list       []llm.Model
+	byName     map[string]llm.Model
+	modelsAt   time.Time
+	modelsErr  error
+	listings   uint64
+	generation uint64
 }
 
 // ProviderOpt is an option of a provider which is added to the registry
@@ -184,19 +188,33 @@ func (c *cached) cache(ctx context.Context) error {
 	return nil
 }
 
-// refresh lists the provider's models, and caches those which match its
-// patterns, by their names, and their aliases, which aren't other models'
-// names. A name which is listed more than once is the first model with the
-// name. The models which were cached are kept when they can't be listed.
+// refresh lists the provider's models, when they're stale, and caches
+// those which match its patterns, by their names, and their aliases, which
+// aren't other models' names. A name which is listed more than once is the
+// first model with the name. The models which were cached are kept when
+// they can't be listed. Concurrent refreshes wait for the one in progress,
+// and use its models, or its error.
 func (c *cached) refresh(ctx context.Context) (err error) {
+	listings, _ := c.counts()
 	c.refreshing.Lock()
 	defer c.refreshing.Unlock()
 
+	// Use the listing which ended while waiting, unless the models are stale
+	if !c.stale() {
+		return nil
+	} else if latest, _ := c.counts(); latest != listings {
+		if err := c.lastErr(); err != nil {
+			return err
+		}
+	}
+
 	// Keep the error of the listing, so the models are listed again
 	start := time.Now()
+	_, generation := c.counts()
 	defer func() {
 		c.models.Lock()
 		defer c.models.Unlock()
+		c.listings++
 		c.modelsErr = err
 	}()
 
@@ -222,11 +240,30 @@ func (c *cached) refresh(ctx context.Context) (err error) {
 		}
 	}
 
-	// Cache them
+	// Cache them, but leave them stale when they were invalidated while
+	// they were listed, as they could be from before then
 	c.models.Lock()
 	defer c.models.Unlock()
-	c.list, c.byName, c.modelsAt = list, byName, start
+	c.list, c.byName = list, byName
+	if c.generation == generation {
+		c.modelsAt = start
+	}
 	return nil
+}
+
+// counts returns how many times the models have been listed, and
+// invalidated
+func (c *cached) counts() (listings, generation uint64) {
+	c.models.RLock()
+	defer c.models.RUnlock()
+	return c.listings, c.generation
+}
+
+// lastErr returns the error of the last listing, or nil when it succeeded
+func (c *cached) lastErr() error {
+	c.models.RLock()
+	defer c.models.RUnlock()
+	return c.modelsErr
 }
 
 // stale returns true when the models should be listed again, as they
@@ -254,11 +291,12 @@ func (c *cached) isCached() bool {
 }
 
 // invalidate makes the models stale, so they're listed again, such as when
-// a model is downloaded or deleted
+// a model is downloaded or deleted, including by a listing in progress
 func (c *cached) invalidate() {
 	c.models.Lock()
 	defer c.models.Unlock()
 	c.modelsAt = time.Time{}
+	c.generation++
 }
 
 // matches returns true when the model's name matches an include pattern,

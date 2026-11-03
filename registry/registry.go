@@ -88,13 +88,10 @@ func (r *Registry) Add(name string, provider llm.Provider, opts ...ProviderOpt) 
 // closed, or returns ErrNotFound when there's none. Calls which have started
 // already, such as listing models, still use it.
 func (r *Registry) Remove(name string) (llm.Provider, error) {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	c, exists := r.providers[name]
-	if !exists {
-		return nil, llm.ErrNotFound.Withf("provider %q", name)
+	c, err := r.remove(name)
+	if err != nil {
+		return nil, err
 	}
-	delete(r.providers, name)
 	return c.provider, nil
 }
 
@@ -294,6 +291,19 @@ func (r *Registry) add(name string, c *cached) error {
 	}
 	r.providers[name] = c
 	return nil
+}
+
+// remove removes the provider with the name, and returns it, and its
+// cache, or returns ErrNotFound when there's none
+func (r *Registry) remove(name string) (*cached, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	c, exists := r.providers[name]
+	if !exists {
+		return nil, llm.ErrNotFound.Withf("provider %q", name)
+	}
+	delete(r.providers, name)
+	return c, nil
 }
 
 // cached returns the provider with the name, and its cache, or nil when

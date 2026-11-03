@@ -70,9 +70,13 @@ func (m *Model) Created() time.Time {
 	return m.data.ModifiedAt
 }
 
-// Aliases returns alternate names for the model. Ollama's API doesn't
-// expose any, so this is always empty.
+// Aliases returns alternate names for the model, which is its name without
+// its tag, when its tag is the default, "latest", such as "llama3.2" for
+// "llama3.2:latest", as Ollama uses the default tag when there's none
 func (m *Model) Aliases() []string {
+	if name, ok := strings.CutSuffix(m.data.Name, ":"+defaultTag); ok && name != "" {
+		return []string{name}
+	}
 	return nil
 }
 

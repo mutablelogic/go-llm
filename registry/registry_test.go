@@ -31,6 +31,7 @@ type provider struct {
 	models []string
 	err    error
 	ping   func(context.Context) error // called by Ping, when it's set
+	list   func()                      // called by ListModels, when it's set
 
 	// How many times it's been pinged, and its models listed
 	pings, lists atomic.Int32
@@ -52,6 +53,9 @@ func (p *provider) Ping(ctx context.Context) error {
 
 func (p *provider) ListModels(context.Context) ([]llm.Model, error) {
 	p.lists.Add(1)
+	if p.list != nil {
+		p.list()
+	}
 	if p.err != nil {
 		return nil, p.err
 	}

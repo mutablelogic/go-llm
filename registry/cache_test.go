@@ -5,6 +5,7 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -139,6 +140,72 @@ func Test_ModelCache(t *testing.T) {
 		}
 		assert.Equal(t, int32(2), ollama.lists.Load())
 		assert.Equal(t, int32(1), openai.lists.Load())
+	})
+}
+
+func Test_ModelCacheConcurrent(t *testing.T) {
+	ctx := context.Background()
+
+	t.Run("Shared", func(t *testing.T) {
+		// Requests which find the models stale, while they're listed, use
+		// that listing, rather than listing them again
+		started, release := make(chan struct{}), make(chan struct{})
+		openai := &provider{name: "openai", models: []string{"gpt-4o"}}
+		openai.list = func() {
+			if openai.lists.Load() == 1 {
+				close(started)
+				<-release
+			}
+		}
+		r, err := newRegistry(openai)
+		require.NoError(t, err)
+		var wg sync.WaitGroup
+		wg.Go(func() { r.ListModels(ctx) })
+		<-started
+		for range 5 {
+			wg.Go(func() {
+				models, err := r.ListModels(ctx)
+				assert.NoError(t, err)
+				assert.Len(t, models, 1)
+			})
+		}
+		time.Sleep(10 * time.Millisecond)
+		close(release)
+		wg.Wait()
+		assert.Equal(t, int32(1), openai.lists.Load())
+	})
+
+	t.Run("Invalidated", func(t *testing.T) {
+		// Models which are invalidated, such as when one is deleted, while
+		// they're listed, are listed again
+		ollama := newCapable("ollama", "llama3.2:latest", "phi4:latest")
+		started, release := make(chan struct{}), make(chan struct{})
+		ollama.list = func() {
+			if ollama.lists.Load() == 2 {
+				close(started)
+				<-release
+			}
+		}
+		r, err := newRegistry(ollama)
+		require.NoError(t, err)
+		model, err := r.GetModel(ctx, "phi4:latest")
+		require.NoError(t, err)
+
+		// The models are listed again, with phi4, and then it's deleted
+		setInterval(t, &registry.PingInterval, 0)
+		done := make(chan struct{})
+		go func() { r.ListModels(ctx); close(done) }()
+		<-started
+		setInterval(t, &registry.PingInterval, time.Minute)
+		require.NoError(t, r.DeleteModel(ctx, model))
+		ollama.models = []string{"llama3.2:latest"}
+		close(release)
+		<-done
+
+		// So the models are listed again, without it
+		_, err = r.GetModel(ctx, "phi4:latest")
+		assert.ErrorIs(t, err, llm.ErrNotFound)
+		assert.Equal(t, int32(3), ollama.lists.Load())
 	})
 }
 

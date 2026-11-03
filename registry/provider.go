@@ -140,8 +140,8 @@ func (r *Registry) DeleteProvider(ctx context.Context, name string) (_ *schema.P
 	)
 	defer func() { endSpan(err) }()
 
-	c := r.cached(name)
-	if _, err := r.Remove(name); err != nil {
+	c, err := r.remove(name)
+	if err != nil {
 		return nil, err
 	}
 	return describe(entry{name: name, provider: c.provider, cache: c}), nil

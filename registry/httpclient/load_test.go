@@ -106,6 +106,13 @@ func Test_LoadModel(t *testing.T) {
 		assert.Contains(t, stub.models, "phi4:latest")
 		_, err = client.GetModel(ctx, "phi4:latest")
 		require.NoError(t, err)
+
+		// And it's got without its tag, as it's "latest", as it's loaded
+		for _, name := range []string{"phi4", "home:phi4"} {
+			model, err := client.GetModel(ctx, name)
+			require.NoError(t, err)
+			assert.Equal(t, "home:phi4:latest", model.Canonical)
+		}
 	})
 
 	t.Run("Progress", func(t *testing.T) {
@@ -188,9 +195,18 @@ func Test_UnloadModel(t *testing.T) {
 		require.NoError(t, err)
 	})
 
+	t.Run("Latest", func(t *testing.T) {
+		// A model which is tagged "latest" is unloaded without its tag
+		model, err := client.UnloadModel(ctx, "home:llama3.2")
+		require.NoError(t, err)
+		assert.Equal(t, "home:llama3.2:latest", model.Canonical)
+		assert.Equal(t, "llama3.2:latest", stub.unloaded[len(stub.unloaded)-1])
+	})
+
 	t.Run("Slash", func(t *testing.T) {
-		// A model whose name has a "/", which is escaped in the path
-		model, err := client.UnloadModel(ctx, "home:x/flux2-klein:latest")
+		// A model whose name has a "/", which is escaped in the path, and
+		// whose tag is "latest"
+		model, err := client.UnloadModel(ctx, "home:x/flux2-klein")
 		require.NoError(t, err)
 		assert.Equal(t, "home:x/flux2-klein:latest", model.Canonical)
 		assert.Contains(t, stub.unloaded, "x/flux2-klein:latest")

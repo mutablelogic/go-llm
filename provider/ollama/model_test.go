@@ -116,15 +116,15 @@ func Test_GetModel_InputTokenLimit(t *testing.T) {
 // STUB SERVER
 
 // newStubClient returns a client for a stub Ollama server, with a vision
-// model which has more than one context length, and a model which can't be
-// shown
+// model which has more than one context length, a model which can't be
+// shown, and a model which isn't tagged "latest"
 func newStubClient(t *testing.T) *ollama.Client {
 	t.Helper()
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		switch r.URL.Path {
 		case "/api/tags":
-			w.Write([]byte(`{"models":[{"name":"llama3.2-vision:latest","details":{}},{"name":"broken:latest","details":{"family":"broken"}}]}`))
+			w.Write([]byte(`{"models":[{"name":"llama3.2-vision:latest","details":{}},{"name":"broken:latest","details":{"family":"broken"}},{"name":"qwen3:8b","details":{}}]}`))
 		case "/api/show":
 			var req struct {
 				Name string `json:"name"`
@@ -150,7 +150,7 @@ func Test_ListModels_Show(t *testing.T) {
 	// Listing shows each model, so the models have their context length
 	models, err := newStubClient(t).ListModels(context.Background())
 	require.NoError(t, err)
-	require.Len(t, models, 2)
+	require.Len(t, models, 3)
 
 	// The context length of the model's family is used, not the projector's
 	vision := models[0]
@@ -162,6 +162,16 @@ func Test_ListModels_Show(t *testing.T) {
 	broken := models[1]
 	assert.Equal(t, "broken:latest", broken.Name())
 	assert.Nil(t, broken.InputTokenLimit())
+}
+
+func Test_ListModels_Aliases(t *testing.T) {
+	// A model tagged "latest" has its name without the tag as an alias, as
+	// Ollama uses the tag when there's none
+	models, err := newStubClient(t).ListModels(context.Background())
+	require.NoError(t, err)
+	require.Len(t, models, 3)
+	assert.Equal(t, []string{"llama3.2-vision"}, models[0].Aliases())
+	assert.Empty(t, models[2].Aliases())
 }
 
 func Test_GetModel_FamilyContextLength(t *testing.T) {

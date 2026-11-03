@@ -49,6 +49,9 @@ func (c *capable) ListModels(ctx context.Context) ([]llm.Model, error) {
 	for _, name := range c.models {
 		result = append(result, &model{name: name, provider: c})
 	}
+	if c.list != nil {
+		c.list()
+	}
 	return result, nil
 }
 
