@@ -11,7 +11,7 @@ import (
 	// Packages
 	llm "github.com/mutablelogic/go-llm"
 	schema "github.com/mutablelogic/go-llm/provider/schema"
-	tool "github.com/mutablelogic/go-llm/toolkit/tool"
+	toolkit "github.com/mutablelogic/go-llm/toolkit"
 	jsonschema "github.com/mutablelogic/go-server/pkg/jsonschema"
 	assert "github.com/stretchr/testify/assert"
 	require "github.com/stretchr/testify/require"
@@ -19,7 +19,7 @@ import (
 
 // waveTool is a tool without input, which waves
 type waveTool struct {
-	tool.Base
+	toolkit.Base
 }
 
 func (waveTool) Name() string                                      { return "wave" }

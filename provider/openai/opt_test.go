@@ -180,7 +180,7 @@ func TestApply(t *testing.T) {
 	})
 
 	t.Run("Unsupported", func(t *testing.T) {
-		for _, opt := range []llm.Opt{llm.WithTopK(40), llm.WithThinking(true), llm.WithThinking(false), llm.WithThinkingBudget(1000), llm.WithKeepAlive(-1), llm.WithSafePrompt(true)} {
+		for _, opt := range []llm.Opt{llm.WithTopK(40), llm.WithThinking(true), llm.WithThinking(false), llm.WithKeepAlive(-1)} {
 			var r chatRequest
 			assert.ErrorIs(t, r.apply(serverOther, opt), llm.ErrBadParameter)
 		}

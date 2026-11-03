@@ -99,9 +99,7 @@ func TestApply(t *testing.T) {
 
 	t.Run("Unsupported", func(t *testing.T) {
 		for _, opt := range []llm.Opt{
-			llm.WithThinkingBudget(1024),
 			llm.WithToolChoice("auto"),
-			llm.WithCacheControl("ephemeral"),
 			llm.WithOpt("unknown", true),
 		} {
 			var r chatRequest
@@ -194,7 +192,6 @@ func (t weatherTool) InputSchema() *jsonschema.Schema {
 	return jsonschema.MustFor[weatherInput]()
 }
 func (t weatherTool) OutputSchema() *jsonschema.Schema { return nil }
-func (t weatherTool) Meta() llm.ToolMeta               { return llm.ToolMeta{} }
 func (t weatherTool) Run(context.Context, json.RawMessage) (any, error) {
 	return map[string]any{"temperature_c": 18}, nil
 }

@@ -12,7 +12,7 @@ import (
 	llm "github.com/mutablelogic/go-llm"
 	openai "github.com/mutablelogic/go-llm/provider/openai"
 	schema "github.com/mutablelogic/go-llm/provider/schema"
-	tool "github.com/mutablelogic/go-llm/toolkit/tool"
+	toolkit "github.com/mutablelogic/go-llm/toolkit"
 	jsonschema "github.com/mutablelogic/go-server/pkg/jsonschema"
 	assert "github.com/stretchr/testify/assert"
 	require "github.com/stretchr/testify/require"
@@ -66,7 +66,7 @@ func liveUser(t *testing.T, text string) llm.Message {
 }
 
 // weatherTool is a tool which the model is asked to call, which isn't run
-type weatherTool struct{ tool.Base }
+type weatherTool struct{ toolkit.Base }
 
 var _ llm.Tool = weatherTool{}
 

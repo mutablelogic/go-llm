@@ -28,10 +28,6 @@ type Opts struct {
 // Providers ignore or reject the options they don't support, and validate
 // ranges, which differ between providers.
 const (
-	// Model, which choose what generates, such as a prompt's
-	ModelKey    = "model"    // string, name of the model
-	ProviderKey = "provider" // string, name of the model's provider
-
 	// Sampling
 	TemperatureKey      = "temperature"       // float64, randomness of sampling
 	TopPKey             = "top_p"             // float64, nucleus sampling probability mass
@@ -44,18 +40,15 @@ const (
 
 	// Prompt
 	SystemPromptKey = "system_prompt" // string, system prompt for the model
-	CacheControlKey = "cache_control" // string, caching of the prompt, for example "ephemeral"
 
 	// Thinking
 	ThinkingKey       = "thinking"        // bool, enable or disable thinking
-	ThinkingBudgetKey = "thinking_budget" // uint, tokens the model can use for thinking
 	ThinkingEffortKey = "thinking_effort" // string, reasoning effort: "low", "medium" or "high"
 
 	// Output
 	JSONSchemaKey = "json_schema" // json.RawMessage, JSON schema the output conforms to
 
 	// Tools
-	ToolsKey      = "tools"       // []string, names of the tools the model can use
 	ToolChoiceKey = "tool_choice" // string, whether the model uses the tools: "auto", "any" or "none"
 
 	// Model loading
@@ -65,7 +58,6 @@ const (
 	// Requests
 	UserKey        = "user"         // string, identifier of the end user, for abuse monitoring
 	ServiceTierKey = "service_tier" // string, provider service tier, for example "auto"
-	SafePromptKey  = "safe_prompt"  // bool, inject the provider's safety prompt
 
 	// Embeddings
 	TaskTypeKey   = "task_type"  // string, task the embedding is used for
@@ -165,55 +157,14 @@ func WithFrequencyPenalty(value float64) Opt {
 	return WithOpt(FrequencyPenaltyKey, value)
 }
 
-// WithModel sets the name of the model which generates
-func WithModel(value string) Opt {
-	if value == "" {
-		return withError(ErrBadParameter.With("model can't be empty"))
-	}
-	return WithOpt(ModelKey, value)
-}
-
-// WithProvider sets the name of the provider of the model which generates
-func WithProvider(value string) Opt {
-	if value == "" {
-		return withError(ErrBadParameter.With("provider can't be empty"))
-	}
-	return WithOpt(ProviderKey, value)
-}
-
-// WithTools sets the names of the tools the model can use
-func WithTools(values ...string) Opt {
-	if slices.Contains(values, "") {
-		return withError(ErrBadParameter.With("tool names can't be empty"))
-	}
-	return WithOpt(ToolsKey, slices.Clone(values))
-}
-
 // WithSystemPrompt sets the system prompt for the model
 func WithSystemPrompt(value string) Opt {
 	return WithOpt(SystemPromptKey, value)
 }
 
-// WithCacheControl sets caching of the prompt, for example "ephemeral"
-func WithCacheControl(value string) Opt {
-	if value == "" {
-		return withError(ErrBadParameter.With("cache_control can't be empty"))
-	}
-	return WithOpt(CacheControlKey, value)
-}
-
 // WithThinking enables or disables thinking
 func WithThinking(value bool) Opt {
 	return WithOpt(ThinkingKey, value)
-}
-
-// WithThinkingBudget sets the tokens the model can use for thinking, which is
-// one or more
-func WithThinkingBudget(value uint) Opt {
-	if value == 0 {
-		return withError(ErrBadParameter.With("thinking_budget must be one or more"))
-	}
-	return WithOpt(ThinkingBudgetKey, value)
 }
 
 // WithThinkingEffort sets the reasoning effort: "low", "medium" or "high"
@@ -271,11 +222,6 @@ func WithServiceTier(value string) Opt {
 		return withError(ErrBadParameter.With("service_tier can't be empty"))
 	}
 	return WithOpt(ServiceTierKey, value)
-}
-
-// WithSafePrompt sets whether the provider's safety prompt is injected
-func WithSafePrompt(value bool) Opt {
-	return WithOpt(SafePromptKey, value)
 }
 
 // WithTaskType sets the task the embedding is used for
