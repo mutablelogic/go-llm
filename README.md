@@ -35,11 +35,17 @@ What a model can do depends on the model, which its provider reports, where it k
 
 ## Quick Start
 
-Build the server and command-line tool, which are both `llm`, with `make`, into `build/llm`, or the command-line tool alone with `make client`. Then run the server, which listens on `localhost:8084` by default:
+Install the server and command-line tool, which are both `llm`, with Go, or the command-line tool alone, without the server, with the `client` tag:
 
 ```bash
-make
-build/llm run
+go install github.com/mutablelogic/go-llm/cmd/llm@latest
+go install -tags client github.com/mutablelogic/go-llm/cmd/llm@latest
+```
+
+Or build them from a clone of the repository, with `make`, into `build/llm`, or the command-line tool alone with `make client`. Then run the server, which listens on `localhost:8084` by default:
+
+```bash
+llm run
 ```
 
 In another terminal, add providers, with API keys from environment variables, which the server reads:
