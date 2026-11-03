@@ -6,6 +6,7 @@ import (
 	"time"
 
 	// Packages
+	llm "github.com/mutablelogic/go-llm"
 	assert "github.com/stretchr/testify/assert"
 	require "github.com/stretchr/testify/require"
 )
@@ -78,6 +79,34 @@ func TestOpenAIModelLimits(t *testing.T) {
 		})
 		assert.Equal(t, [2]uint{256000, 0}, limits(m))
 	})
+}
+
+func TestCapabilities(t *testing.T) {
+	// A model has the capabilities the server returns, as Mistral does
+	yes, no := true, false
+	m := &Model{data: apiModel{ID: "mistral-ocr-latest", Fields: map[string]json.RawMessage{
+		"capabilities": json.RawMessage(`{"completion_chat":false,"function_calling":true,"reasoning":false,"vision":true,"ocr":true,"audio_transcription":false,"moderation":false}`),
+	}}}
+	assert.Equal(t, llm.ModelCap{Completion: &no, Tools: &yes, Thinking: []string{}, Vision: &yes, OCR: &yes, Transcription: &no}, m.Capabilities())
+
+	// A model which reasons, whose efforts aren't known
+	m = &Model{data: apiModel{ID: "mistral-small-latest", Fields: map[string]json.RawMessage{
+		"capabilities": json.RawMessage(`{"completion_chat":true,"reasoning":true}`),
+	}}}
+	assert.Equal(t, llm.ModelCap{Completion: &yes}, m.Capabilities())
+
+	// And those which are known by the model's name, as Mistral's embedding
+	// models embed
+	for _, id := range []string{"mistral-embed", "mistral-embed-2312", "codestral-embed-2505"} {
+		m = &Model{data: apiModel{ID: id, Fields: map[string]json.RawMessage{
+			"capabilities": json.RawMessage(`{"completion_chat":false,"reasoning":false}`),
+		}}}
+		assert.Equal(t, llm.ModelCap{Completion: &no, Thinking: []string{}, Embedding: &yes}, m.Capabilities(), id)
+	}
+
+	// Or none, as OpenAI returns none
+	assert.Equal(t, llm.ModelCap{}, (&Model{data: apiModel{ID: "gpt-4o"}}).Capabilities())
+	assert.Equal(t, llm.ModelCap{}, (&Model{data: apiModel{ID: "x", Fields: map[string]json.RawMessage{"capabilities": json.RawMessage(`["vision"]`)}}}).Capabilities())
 }
 
 func TestAliases(t *testing.T) {

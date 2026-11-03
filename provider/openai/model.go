@@ -12,6 +12,7 @@ import (
 	// Packages
 	client "github.com/mutablelogic/go-client"
 	llm "github.com/mutablelogic/go-llm"
+	types "github.com/mutablelogic/go-server/pkg/types"
 )
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -51,6 +52,17 @@ const (
 	deepSeekHost = "api.deepseek.com"
 	mistralHost  = "api.mistral.ai"
 )
+
+// modelCapabilities are the capabilities of models which servers don't
+// report, by a regular expression of their names, which are set on those
+// the server reports: Mistral's embedding models, which it reports no
+// capabilities of
+var modelCapabilities = []struct {
+	re  *regexp.Regexp
+	set func(*llm.ModelCap)
+}{
+	{regexp.MustCompile(`^(mistral|codestral)-embed`), func(c *llm.ModelCap) { c.Embedding = types.Ptr(true) }},
+}
 
 // modelLimits are the context window and maximum output tokens of a model
 type modelLimits struct {
@@ -152,6 +164,50 @@ func (m *Model) InputTokenLimit() *uint {
 		return &limits.input
 	}
 	return nil
+}
+
+// Capabilities returns what the server reports the model can do, which
+// Mistral does, as its capabilities, or none of them, with those which are
+// known by the model's name, such as that Mistral's embedding models embed.
+// Mistral doesn't say which reasoning efforts a model which reasons accepts,
+// so they're nil, or empty when it doesn't reason, and it doesn't report
+// embedding or translation. OpenAI itself reports none.
+func (m *Model) Capabilities() llm.ModelCap {
+	result := m.reportedCapabilities()
+	for _, model := range modelCapabilities {
+		if model.re.MatchString(m.data.ID) {
+			model.set(&result)
+		}
+	}
+	return result
+}
+
+// reportedCapabilities returns what the server reports the model can do, as
+// Mistral's capabilities, or none of them
+func (m *Model) reportedCapabilities() llm.ModelCap {
+	var capabilities struct {
+		Completion    *bool `json:"completion_chat"`
+		Tools         *bool `json:"function_calling"`
+		Reasoning     *bool `json:"reasoning"`
+		Vision        *bool `json:"vision"`
+		OCR           *bool `json:"ocr"`
+		Transcription *bool `json:"audio_transcription"`
+	}
+	raw, exists := m.data.Fields["capabilities"]
+	if !exists || json.Unmarshal(raw, &capabilities) != nil {
+		return llm.ModelCap{}
+	}
+	result := llm.ModelCap{
+		Completion:    capabilities.Completion,
+		Tools:         capabilities.Tools,
+		Vision:        capabilities.Vision,
+		OCR:           capabilities.OCR,
+		Transcription: capabilities.Transcription,
+	}
+	if capabilities.Reasoning != nil && !*capabilities.Reasoning {
+		result.Thinking = []string{}
+	}
+	return result
 }
 
 // OutputTokenLimit returns the model's maximum number of output tokens, for

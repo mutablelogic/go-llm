@@ -73,6 +73,17 @@ func Test_LiveMistral(t *testing.T) {
 		if assert.NotNil(t, small.InputTokenLimit()) {
 			assert.Greater(t, *small.InputTokenLimit(), uint(0))
 		}
+
+		// And the capabilities Mistral reports, though not which reasoning
+		// efforts it accepts, and that its embedding models embed, which it
+		// doesn't report
+		capabilities := small.Capabilities()
+		assert.Equal(t, "completion, tools, vision", capabilities.String())
+		assert.Nil(t, capabilities.Thinking)
+		assert.Contains(t, model(t, "mistral-ocr-latest").Capabilities().String(), "ocr")
+		assert.Equal(t, "transcription", model(t, "voxtral-mini-latest").Capabilities().String())
+		assert.Equal(t, "embedding", model(t, mistralEmbeddingModel).Capabilities().String())
+		assert.Equal(t, "embedding", model(t, mistralDimensionsModel).Capabilities().String())
 	})
 
 	t.Run("Reply", func(t *testing.T) {

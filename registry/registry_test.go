@@ -90,6 +90,7 @@ func (m *model) Created() time.Time               { return time.Time{} }
 func (m *model) Aliases() []string                { return nil }
 func (m *model) Meta() map[string]json.RawMessage { return nil }
 func (m *model) InputTokenLimit() *uint           { return nil }
+func (m *model) Capabilities() llm.ModelCap       { return llm.ModelCap{} }
 func (m *model) OutputTokenLimit() *uint          { return nil }
 
 // newRegistry returns a registry of the providers, each by its own name,

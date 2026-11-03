@@ -27,6 +27,7 @@ type Model struct {
 	Meta             map[string]json.RawMessage `json:"meta,omitempty" readonly:"" help:"Provider-specific metadata"`
 	InputTokenLimit  *uint                      `json:"input_token_limit,omitempty" readonly:"" help:"Maximum number of input tokens"`
 	OutputTokenLimit *uint                      `json:"output_token_limit,omitempty" readonly:"" help:"Maximum number of output tokens"`
+	Capabilities     llm.ModelCap               `json:"capabilities" readonly:"" help:"What the model can do, of what's known"`
 }
 
 // ModelListRequest filters a list of models
@@ -89,6 +90,7 @@ func NewModel(provider, canonical string, model llm.Model) *Model {
 		Meta:             model.Meta(),
 		InputTokenLimit:  model.InputTokenLimit(),
 		OutputTokenLimit: model.OutputTokenLimit(),
+		Capabilities:     model.Capabilities(),
 	}
 }
 
@@ -127,7 +129,7 @@ func (l ModelList) String() string {
 // TABLE
 
 func (m Model) Header() []string {
-	return []string{"Name", "Provider", "Description", "Input Tokens", "Output Tokens", "Aliases"}
+	return []string{"Name", "Provider", "Description", "Input Tokens", "Output Tokens", "Capabilities", "Aliases"}
 }
 
 func (m Model) Width(col int) int {
@@ -147,6 +149,8 @@ func (m Model) Cell(col int) tui.CellText {
 	case 4:
 		return tokens(m.OutputTokenLimit)
 	case 5:
+		return m.Capabilities.String()
+	case 6:
 		return strings.Join(m.Aliases, ", ")
 	default:
 		return ""
