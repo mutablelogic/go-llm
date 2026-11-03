@@ -28,7 +28,8 @@ var _ llm.Recognizer = (*Registry)(nil)
 // PUBLIC METHODS
 
 // WithoutSession returns the model's reply to the messages, from the
-// model's provider, which must be in the registry, and generate messages.
+// model's provider, which must be in the registry, and generate messages,
+// or the provider's error as providerErr does.
 // Returns ErrNotImplemented, without asking the provider, when the model is
 // known not to reply, or there are tools, and it's known not to call them,
 // or it's asked to think, and it's known not to, or the messages have
@@ -45,7 +46,11 @@ func (r *Registry) WithoutSession(ctx context.Context, model llm.Model, messages
 	} else if err := canGenerate(model, messages, tools, opts...); err != nil {
 		return nil, llm.Usage{}, err
 	}
-	return generator.WithoutSession(ctx, model, messages, tools, stream, opts...)
+	reply, usage, err := generator.WithoutSession(ctx, model, messages, tools, stream, opts...)
+	if err != nil {
+		return nil, llm.Usage{}, providerErr(err)
+	}
+	return reply, usage, nil
 }
 
 // Embed returns a vector for each of the messages, from the model's

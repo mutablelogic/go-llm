@@ -22,6 +22,7 @@ import (
 // InferenceCommands are the commands which ask models to do something with
 // messages
 type InferenceCommands struct {
+	Ask   AskCmd   `cmd:"" name:"ask" help:"Ask a model a question, and print its reply, and the tools it calls." group:"LLM INFERENCE"`
 	Embed EmbedCmd `cmd:"" name:"embed" help:"Ask a model for a vector of text, and an image or audio, which is printed as JSON." group:"LLM INFERENCE"`
 }
 

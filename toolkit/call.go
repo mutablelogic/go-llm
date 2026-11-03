@@ -27,7 +27,7 @@ import (
 // it runs.
 func (self *Toolkit) CallTool(ctx context.Context, name string, input json.RawMessage) (_ json.RawMessage, err error) {
 	ctx, endSpan := otel.StartSpan(self.tracer, ctx, "llm.toolkit.CallTool",
-		attribute.String("name", name),
+		attribute.String("arg.name", name),
 	)
 	defer func() { endSpan(err) }()
 

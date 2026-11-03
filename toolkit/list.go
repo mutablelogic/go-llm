@@ -23,7 +23,7 @@ import (
 // in the request, in order of canonical name, with their number
 func (self *Toolkit) ListTools(ctx context.Context, req schema.ToolListRequest) (_ *schema.ToolList, err error) {
 	_, endSpan := otel.StartSpan(self.tracer, ctx, "llm.toolkit.ListTools",
-		attribute.String("req", req.String()),
+		attribute.String("arg.req", req.String()),
 	)
 	defer func() { endSpan(err) }()
 
