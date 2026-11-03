@@ -12,6 +12,7 @@ import (
 	// Packages
 	client "github.com/mutablelogic/go-client"
 	llm "github.com/mutablelogic/go-llm"
+	types "github.com/mutablelogic/go-server/pkg/types"
 )
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -51,6 +52,49 @@ const (
 	deepSeekHost = "api.deepseek.com"
 	mistralHost  = "api.mistral.ai"
 )
+
+// yes and no are capabilities which a model has, or hasn't
+var yes, no = types.Ptr(true), types.Ptr(false)
+
+// modelCapabilities are the capabilities of the models of a server which it
+// doesn't report, by a regular expression of their names, of which the
+// first which matches is used, and which are set over those the server
+// reports. Completion is whether a model replies with Chat Completions,
+// which this provider uses, so OpenAI's models which are only for the
+// Responses API, or need audio, don't, nor do models it has deprecated.
+// OpenAI's models which can't turn reasoning off can't call tools, as Chat
+// Completions doesn't call tools with reasoning.
+var modelCapabilities = []struct {
+	server server
+	re     *regexp.Regexp
+	cap    llm.ModelCap
+}{
+	// Mistral's embedding models, which it reports no capabilities of
+	{serverMistral, regexp.MustCompile(`^(mistral|codestral)-embed`), llm.ModelCap{Embedding: yes}},
+
+	// OpenAI's models which it has deprecated, but still lists
+	{serverOpenAI, regexp.MustCompile(`^gpt-3\.5-turbo-(16k|instruct)\b|^gpt-4o(-mini)?-search-preview`), llm.ModelCap{Completion: no, Tools: no, Thinking: no, Vision: no, OCR: no, Transcription: no, Translation: no, Embedding: no}},
+
+	// OpenAI's models which are only for the Responses API
+	{serverOpenAI, regexp.MustCompile(`^gpt-\d+(\.\d+)?-pro\b|-codex\b`), llm.ModelCap{Completion: no, Thinking: yes, Vision: yes}},
+
+	// OpenAI's speech, image and moderation models, which don't reply
+	{serverOpenAI, regexp.MustCompile(`^whisper-`), llm.ModelCap{Completion: no, Transcription: yes, Translation: yes, Embedding: no}},
+	{serverOpenAI, regexp.MustCompile(`-transcribe|^gpt-realtime-whisper`), llm.ModelCap{Completion: no, Transcription: yes, Embedding: no}},
+	{serverOpenAI, regexp.MustCompile(`^gpt-realtime-translate`), llm.ModelCap{Completion: no, Translation: yes, Embedding: no}},
+	{serverOpenAI, regexp.MustCompile(`^tts-|-tts\b`), llm.ModelCap{Completion: no, Tools: no, Thinking: no, Vision: no, OCR: no, Transcription: no, Translation: no, Embedding: no}},
+	{serverOpenAI, regexp.MustCompile(`^gpt-(audio|realtime|live)\b`), llm.ModelCap{Completion: no, Embedding: no}},
+	{serverOpenAI, regexp.MustCompile(`^(gpt|chatgpt)-image\b`), llm.ModelCap{Completion: no, Vision: yes, Embedding: no}},
+	{serverOpenAI, regexp.MustCompile(`^omni-moderation\b`), llm.ModelCap{Completion: no, Vision: yes, Embedding: no}},
+	{serverOpenAI, regexp.MustCompile(`^text-embedding-`), llm.ModelCap{Completion: no, Tools: no, Thinking: no, Vision: no, Embedding: yes}},
+
+	// OpenAI's models which reply
+	{serverOpenAI, regexp.MustCompile(`^gpt-\d+(\.\d+)?-search-api\b`), llm.ModelCap{Completion: yes, Tools: no, Vision: yes, Embedding: no}},
+	{serverOpenAI, regexp.MustCompile(`^chat-latest$`), llm.ModelCap{Completion: yes, Tools: yes, Vision: yes, Embedding: no}},
+	{serverOpenAI, regexp.MustCompile(`^gpt-6(\.\d+)?-astra\b|^gpt-6\.1-sol\b`), llm.ModelCap{Completion: yes, Tools: no, Thinking: yes, Vision: yes, Embedding: no}},
+	{serverOpenAI, regexp.MustCompile(`^gpt-[56](\.\d+)?(-(mini|nano|luna|sol|terra))?(-\d{4}-\d{2}-\d{2})?$|^o3(-\d{4}-\d{2}-\d{2})?$`), llm.ModelCap{Completion: yes, Tools: yes, Thinking: yes, Vision: yes, Embedding: no}},
+	{serverOpenAI, regexp.MustCompile(`^gpt-4(\.1|o)(-(mini|nano))?(-\d{4}-\d{2}-\d{2})?$`), llm.ModelCap{Completion: yes, Tools: yes, Thinking: no, Vision: yes, Embedding: no}},
+}
 
 // modelLimits are the context window and maximum output tokens of a model
 type modelLimits struct {
@@ -152,6 +196,50 @@ func (m *Model) InputTokenLimit() *uint {
 		return &limits.input
 	}
 	return nil
+}
+
+// Capabilities returns what the server reports the model can do, which
+// Mistral does, as its capabilities, or none of them, with those which are
+// known by the model's name, such as that Mistral's embedding models embed,
+// and OpenAI's models, which it reports nothing of. Mistral doesn't report
+// embedding or translation.
+func (m *Model) Capabilities() llm.ModelCap {
+	result := m.reportedCapabilities()
+	server := serverOther
+	if m.provider != nil {
+		server = m.provider.server()
+	}
+	for _, model := range modelCapabilities {
+		if model.server == server && model.re.MatchString(m.data.ID) {
+			return merge(result, model.cap)
+		}
+	}
+	return result
+}
+
+// reportedCapabilities returns what the server reports the model can do, as
+// Mistral's capabilities, or none of them
+func (m *Model) reportedCapabilities() llm.ModelCap {
+	var capabilities struct {
+		Completion    *bool `json:"completion_chat"`
+		Tools         *bool `json:"function_calling"`
+		Reasoning     *bool `json:"reasoning"`
+		Vision        *bool `json:"vision"`
+		OCR           *bool `json:"ocr"`
+		Transcription *bool `json:"audio_transcription"`
+	}
+	raw, exists := m.data.Fields["capabilities"]
+	if !exists || json.Unmarshal(raw, &capabilities) != nil {
+		return llm.ModelCap{}
+	}
+	return llm.ModelCap{
+		Completion:    capabilities.Completion,
+		Tools:         capabilities.Tools,
+		Thinking:      capabilities.Reasoning,
+		Vision:        capabilities.Vision,
+		OCR:           capabilities.OCR,
+		Transcription: capabilities.Transcription,
+	}
 }
 
 // OutputTokenLimit returns the model's maximum number of output tokens, for
@@ -261,4 +349,24 @@ func (m apiModel) shutDown(now time.Time) bool {
 		return false
 	}
 	return !now.UTC().Before(shutdown)
+}
+
+// merge returns the capabilities, with those which are known in the other
+// capabilities set over them, as copies, so they can be changed
+func merge(c, other llm.ModelCap) llm.ModelCap {
+	for _, field := range []struct{ to, from **bool }{
+		{&c.Completion, &other.Completion},
+		{&c.Tools, &other.Tools},
+		{&c.Thinking, &other.Thinking},
+		{&c.Vision, &other.Vision},
+		{&c.OCR, &other.OCR},
+		{&c.Transcription, &other.Transcription},
+		{&c.Translation, &other.Translation},
+		{&c.Embedding, &other.Embedding},
+	} {
+		if *field.from != nil {
+			*field.to = types.Ptr(**field.from)
+		}
+	}
+	return c
 }

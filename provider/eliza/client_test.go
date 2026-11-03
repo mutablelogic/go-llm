@@ -66,6 +66,23 @@ func Test_Models(t *testing.T) {
 		_, err = client.GetModel(ctx, "missing")
 		assert.ErrorIs(t, err, llm.ErrNotFound)
 	})
+
+	t.Run("Capabilities", func(t *testing.T) {
+		// eliza replies, and thinks, without tools, and does nothing else
+		model, err := client.GetModel(ctx, eliza.ModelName)
+		require.NoError(t, err)
+		yes, no := true, false
+		assert.Equal(t, llm.ModelCap{
+			Completion: &yes, Tools: &no, Thinking: &yes, Vision: &no, OCR: &no,
+			Transcription: &no, Translation: &no, Embedding: &no,
+		}, model.Capabilities())
+		assert.Equal(t, "completion, thinking", model.Capabilities().String())
+
+		// Each of which can be changed without changing the others
+		capabilities := model.Capabilities()
+		*capabilities.Tools = true
+		assert.Equal(t, "completion, tools, thinking", capabilities.String())
+	})
 }
 
 func Test_WithoutSession(t *testing.T) {

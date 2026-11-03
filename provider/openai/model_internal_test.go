@@ -2,10 +2,12 @@ package openai
 
 import (
 	"encoding/json"
+	"strings"
 	"testing"
 	"time"
 
 	// Packages
+	llm "github.com/mutablelogic/go-llm"
 	assert "github.com/stretchr/testify/assert"
 	require "github.com/stretchr/testify/require"
 )
@@ -77,6 +79,116 @@ func TestOpenAIModelLimits(t *testing.T) {
 			"max_context_length": json.RawMessage(`256000`),
 		})
 		assert.Equal(t, [2]uint{256000, 0}, limits(m))
+	})
+}
+
+func TestCapabilities(t *testing.T) {
+	yes, no := true, false
+
+	// model returns a model with the ID and fields, from a client for the
+	// endpoint
+	model := func(t *testing.T, endpoint, id, capabilities string) *Model {
+		t.Helper()
+		c, err := New(endpoint, "")
+		require.NoError(t, err)
+		var fields map[string]json.RawMessage
+		if capabilities != "" {
+			fields = map[string]json.RawMessage{"capabilities": json.RawMessage(capabilities)}
+		}
+		return &Model{provider: c, data: apiModel{ID: id, Fields: fields}}
+	}
+
+	t.Run("Reported", func(t *testing.T) {
+		// A model has the capabilities the server returns, as Mistral does
+		m := model(t, MistralEndpoint, "mistral-ocr-latest", `{"completion_chat":false,"function_calling":true,"reasoning":false,"vision":true,"ocr":true,"audio_transcription":false,"moderation":false}`)
+		assert.Equal(t, llm.ModelCap{Completion: &no, Tools: &yes, Thinking: &no, Vision: &yes, OCR: &yes, Transcription: &no}, m.Capabilities())
+		m = model(t, MistralEndpoint, "mistral-small-latest", `{"completion_chat":true,"reasoning":true}`)
+		assert.Equal(t, llm.ModelCap{Completion: &yes, Thinking: &yes}, m.Capabilities())
+
+		// Or none, when it returns none, or they aren't capabilities
+		assert.Equal(t, llm.ModelCap{}, model(t, "http://localhost:8000", "gpt-4o", "").Capabilities())
+		assert.Equal(t, llm.ModelCap{}, model(t, "http://localhost:8000", "x", `["vision"]`).Capabilities())
+	})
+
+	t.Run("Mistral", func(t *testing.T) {
+		// Mistral's embedding models embed, which it doesn't report, but
+		// models with the same names on another server don't
+		for _, id := range []string{"mistral-embed", "mistral-embed-2312", "codestral-embed-2505"} {
+			m := model(t, MistralEndpoint, id, `{"completion_chat":false,"reasoning":false}`)
+			assert.Equal(t, llm.ModelCap{Completion: &no, Thinking: &no, Embedding: &yes}, m.Capabilities(), id)
+		}
+		assert.Equal(t, llm.ModelCap{}, model(t, "http://localhost:8000", "mistral-embed", "").Capabilities())
+	})
+
+	t.Run("OpenAI", func(t *testing.T) {
+		// OpenAI's models have the capabilities known by their names, as
+		// OpenAI reports none, of which those which reply with Chat
+		// Completions complete
+		for id, want := range map[string]string{
+			"chat-latest":                       "completion, tools, vision",
+			"gpt-4.1":                           "completion, tools, vision",
+			"gpt-4.1-mini-2025-04-14":           "completion, tools, vision",
+			"gpt-4o":                            "completion, tools, vision",
+			"gpt-4o-mini-2024-07-18":            "completion, tools, vision",
+			"gpt-5":                             "completion, tools, thinking, vision",
+			"gpt-5-nano-2025-08-07":             "completion, tools, thinking, vision",
+			"gpt-5.1-2025-11-13":                "completion, tools, thinking, vision",
+			"gpt-5.4-mini-2026-03-17":           "completion, tools, thinking, vision",
+			"gpt-5.5":                           "completion, tools, thinking, vision",
+			"gpt-5.6-luna":                      "completion, tools, thinking, vision",
+			"gpt-6-sol":                         "completion, tools, thinking, vision",
+			"gpt-6.1-terra":                     "completion, tools, thinking, vision",
+			"o3-2025-04-16":                     "completion, tools, thinking, vision",
+			"gpt-6-astra":                       "completion, thinking, vision",
+			"gpt-6.1-sol":                       "completion, thinking, vision",
+			"gpt-5-search-api-2025-10-14":       "completion, vision",
+			"gpt-5-pro":                         "thinking, vision",
+			"gpt-5.5-pro-2026-04-23":            "thinking, vision",
+			"gpt-5.3-codex":                     "thinking, vision",
+			"gpt-3.5-turbo-16k":                 "",
+			"gpt-3.5-turbo-instruct-0914":       "",
+			"gpt-4o-search-preview":             "",
+			"gpt-4o-mini-search-preview":        "",
+			"whisper-1":                         "transcription, translation",
+			"gpt-4o-transcribe":                 "transcription",
+			"gpt-4o-mini-transcribe-2025-12-15": "transcription",
+			"gpt-4o-transcribe-diarize":         "transcription",
+			"gpt-transcribe":                    "transcription",
+			"gpt-live-transcribe":               "transcription",
+			"gpt-realtime-whisper":              "transcription",
+			"gpt-realtime-translate":            "translation",
+			"tts-1-hd-1106":                     "",
+			"gpt-4o-mini-tts-2025-12-15":        "",
+			"gpt-audio-mini-2025-12-15":         "",
+			"gpt-realtime-2.1-mini":             "",
+			"gpt-live-1":                        "",
+			"gpt-image-2.5-flare-2026-09-08":    "vision",
+			"chatgpt-image-latest":              "vision",
+			"omni-moderation-latest":            "vision",
+			"text-embedding-3-small":            "embedding",
+			"text-embedding-ada-002":            "embedding",
+		} {
+			capabilities := model(t, OpenAIEndpoint, id, "").Capabilities()
+			assert.Equal(t, want, capabilities.String(), id)
+			if !strings.Contains(want, "completion") {
+				assert.Equal(t, &no, capabilities.Completion, id)
+			}
+		}
+
+		// A model which isn't known has none, as do the GPT-3.5 Turbo
+		// models which aren't known to be deprecated, and a known model on
+		// another server
+		assert.Equal(t, llm.ModelCap{}, model(t, OpenAIEndpoint, "gpt-7", "").Capabilities())
+		assert.Equal(t, llm.ModelCap{}, model(t, OpenAIEndpoint, "gpt-3.5-turbo", "").Capabilities())
+		assert.Equal(t, llm.ModelCap{}, model(t, OpenAIEndpoint, "gpt-3.5-turbo-0125", "").Capabilities())
+		assert.Equal(t, llm.ModelCap{}, model(t, "http://localhost:8000", "gpt-4o", "").Capabilities())
+	})
+
+	t.Run("Copies", func(t *testing.T) {
+		// A model's capabilities can be changed without changing another's
+		capabilities := model(t, OpenAIEndpoint, "gpt-4o", "").Capabilities()
+		*capabilities.Completion = false
+		assert.Equal(t, &yes, model(t, OpenAIEndpoint, "gpt-4o", "").Capabilities().Completion)
 	})
 }
 

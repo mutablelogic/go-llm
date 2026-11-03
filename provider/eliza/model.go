@@ -8,6 +8,7 @@ import (
 
 	// Packages
 	llm "github.com/mutablelogic/go-llm"
+	types "github.com/mutablelogic/go-server/pkg/types"
 )
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -82,6 +83,22 @@ func (m *Model) InputTokenLimit() *uint {
 // OutputTokenLimit is not meaningful for a mock model.
 func (m *Model) OutputTokenLimit() *uint {
 	return nil
+}
+
+// Capabilities returns that eliza replies to messages, and thinks, with
+// WithThinking, without tools, and does nothing else. Each capability is its
+// own value, so it can be changed without changing the others.
+func (m *Model) Capabilities() llm.ModelCap {
+	return llm.ModelCap{
+		Completion:    types.Ptr(true),
+		Tools:         types.Ptr(false),
+		Thinking:      types.Ptr(true),
+		Vision:        types.Ptr(false),
+		OCR:           types.Ptr(false),
+		Transcription: types.Ptr(false),
+		Translation:   types.Ptr(false),
+		Embedding:     types.Ptr(false),
+	}
 }
 
 ///////////////////////////////////////////////////////////////////////////////

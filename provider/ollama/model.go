@@ -13,6 +13,7 @@ import (
 	// Packages
 	client "github.com/mutablelogic/go-client"
 	llm "github.com/mutablelogic/go-llm"
+	types "github.com/mutablelogic/go-server/pkg/types"
 )
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -119,6 +120,26 @@ func (m *Model) InputTokenLimit() *uint {
 // OutputTokenLimit is not exposed by Ollama's API.
 func (m *Model) OutputTokenLimit() *uint {
 	return nil
+}
+
+// Capabilities returns what Ollama reports the model can do, which is none
+// of them when it didn't report the model's capabilities, as when it
+// couldn't be shown. It doesn't report OCR, transcription or translation.
+func (m *Model) Capabilities() llm.ModelCap {
+	capabilities := m.data.Capabilities
+	if len(capabilities) == 0 {
+		return llm.ModelCap{}
+	}
+	has := func(capability string) *bool {
+		return types.Ptr(slices.Contains(capabilities, capability))
+	}
+	return llm.ModelCap{
+		Completion: has("completion"),
+		Tools:      has("tools"),
+		Thinking:   has("thinking"),
+		Vision:     has("vision"),
+		Embedding:  has("embedding"),
+	}
 }
 
 ///////////////////////////////////////////////////////////////////////////////
