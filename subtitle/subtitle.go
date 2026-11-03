@@ -1,4 +1,8 @@
-package cmd
+// Package subtitle writes the segments of a transcript as subtitles, in SRT
+// or WebVTT format, whose cues are the segments, in turn, until one is
+// spoken by another speaker, or after a silence, or would make the cue too
+// long, or have too much text, to read
+package subtitle
 
 import (
 	"fmt"
@@ -13,11 +17,15 @@ import (
 ///////////////////////////////////////////////////////////////////////////////
 // TYPES
 
-// subtitleWriter writes the segments of a transcript as subtitles, in SRT,
-// or WebVTT, format. A cue is the segments, in turn, until one is spoken by
+// Format is the format of subtitles
+type Format string
+
+// Writer writes the segments of a transcript as subtitles, in SRT, or
+// WebVTT, format, as they're added, so they can be written as they're
+// transcribed. A cue is the segments, in turn, until one is spoken by
 // another speaker, or after a silence, or would make the cue too long, or
 // have too much text, to read. A segment isn't split.
-type subtitleWriter struct {
+type Writer struct {
 	w     io.Writer
 	vtt   bool         // WebVTT, rather than SRT
 	index int          // The number of cues written
@@ -36,6 +44,11 @@ type subtitleCue struct {
 // GLOBALS
 
 const (
+	SRT Format = "srt" // SubRip
+	VTT Format = "vtt" // WebVTT
+)
+
+const (
 	subtitleGap      = time.Second     // Silence which ends a cue
 	subtitleDuration = 7 * time.Second // The longest a cue is, unless it's one segment
 	subtitleText     = 84              // The most characters of a cue, unless it's one segment
@@ -45,10 +58,29 @@ const (
 ///////////////////////////////////////////////////////////////////////////////
 // LIFECYCLE
 
-// newSubtitleWriter returns a writer of subtitles, in WebVTT format when vtt
-// is true, or otherwise SRT format
-func newSubtitleWriter(w io.Writer, vtt bool) *subtitleWriter {
-	return &subtitleWriter{w: w, vtt: vtt}
+// NewWriter returns a writer of subtitles, in the format, which is SRT, or
+// VTT, or an error for another format
+func NewWriter(w io.Writer, format Format) (*Writer, error) {
+	switch format {
+	case SRT, VTT:
+		return &Writer{w: w, vtt: format == VTT}, nil
+	default:
+		return nil, llm.ErrBadParameter.Withf("invalid subtitle format %q", format)
+	}
+}
+
+// Write writes the segments of a transcript as subtitles, in the format,
+// which is SRT, or VTT, or returns an error for another format
+func Write(w io.Writer, format Format, segments []llm.TranscriptSegment) error {
+	writer, err := NewWriter(w, format)
+	if err != nil {
+		return err
+	}
+	for _, segment := range segments {
+		writer.Add(segment)
+	}
+	writer.Close()
+	return nil
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -56,7 +88,7 @@ func newSubtitleWriter(w io.Writer, vtt bool) *subtitleWriter {
 
 // Add adds the segment to the cue, or writes the cue, and starts another,
 // when the segment ends it
-func (s *subtitleWriter) Add(segment llm.TranscriptSegment) {
+func (s *Writer) Add(segment llm.TranscriptSegment) {
 	text := strings.TrimSpace(segment.Text)
 	if text == "" {
 		return
@@ -72,7 +104,7 @@ func (s *subtitleWriter) Add(segment llm.TranscriptSegment) {
 }
 
 // Close writes the last cue, and the WebVTT header, when no cue was written
-func (s *subtitleWriter) Close() {
+func (s *Writer) Close() {
 	s.flush()
 	if s.vtt && s.index == 0 {
 		fmt.Fprint(s.w, "WEBVTT\n\n")
@@ -84,7 +116,7 @@ func (s *subtitleWriter) Close() {
 
 // flush writes the cue, with its number in SRT, or after the header in
 // WebVTT, and its speaker, when it's known
-func (s *subtitleWriter) flush() {
+func (s *Writer) flush() {
 	if s.cue == nil {
 		return
 	}

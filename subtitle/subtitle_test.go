@@ -1,4 +1,4 @@
-package cmd
+package subtitle
 
 import (
 	"strings"
@@ -19,7 +19,14 @@ func seconds(value float64) time.Duration {
 // true, or otherwise SRT format
 func subtitles(vtt bool, segments ...llm.TranscriptSegment) string {
 	var b strings.Builder
-	s := newSubtitleWriter(&b, vtt)
+	format := SRT
+	if vtt {
+		format = VTT
+	}
+	s, err := NewWriter(&b, format)
+	if err != nil {
+		panic(err)
+	}
 	for _, segment := range segments {
 		s.Add(segment)
 	}
@@ -91,34 +98,11 @@ func Test_Subtitles(t *testing.T) {
 	})
 }
 
-func Test_TranscriptPrinter(t *testing.T) {
-	print := func(format string, segments bool, fn func(*transcriptPrinter)) string {
-		var b strings.Builder
-		p := newTranscriptPrinter(&b, format, segments)
-		fn(p)
-		p.Close()
-		return b.String()
-	}
-	first, second := segment(0, 1.3, "A", "Hello,"), segment(1.3, 2, "A", "world.")
-
-	// Text is its pieces, ended with a newline, without its segments
-	assert.Equal(t, "Hello, world.\n", print("text", false, func(p *transcriptPrinter) {
-		p.Stream("Hello,", nil)
-		p.Stream(" world.", nil)
-		p.Stream("", &first)
-	}))
-
-	// Or its segments, each on a line, without its text
-	assert.Equal(t, "[0:00.0 - 0:01.3] A: Hello,\n[0:01.3 - 0:02.0] A: world.\n", print("text", true, func(p *transcriptPrinter) {
-		p.Stream("Hello,", nil)
-		p.Stream("", &first)
-		p.Stream("", &second)
-	}))
-
-	// Or subtitles, of its segments
-	assert.Equal(t, "1\n00:00:00,000 --> 00:00:02,000\nA: Hello, world.\n\n", print("srt", false, func(p *transcriptPrinter) {
-		p.Stream("Hello,", nil)
-		p.Stream("", &first)
-		p.Stream("", &second)
-	}))
+func Test_Write(t *testing.T) {
+	// A transcript's segments, at once, in a format, which must be SRT, or
+	// VTT
+	var b strings.Builder
+	assert.NoError(t, Write(&b, SRT, []llm.TranscriptSegment{segment(0, 1, "", "Hello.")}))
+	assert.Equal(t, "1\n00:00:00,000 --> 00:00:01,000\nHello.\n\n", b.String())
+	assert.Error(t, Write(&b, "ass", nil))
 }

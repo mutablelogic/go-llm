@@ -15,6 +15,7 @@ import (
 	providerschema "github.com/mutablelogic/go-llm/provider/schema"
 	httpclient "github.com/mutablelogic/go-llm/registry/httpclient"
 	schema "github.com/mutablelogic/go-llm/registry/schema"
+	subtitle "github.com/mutablelogic/go-llm/subtitle"
 	server "github.com/mutablelogic/go-server"
 )
 
@@ -157,10 +158,10 @@ func runTranscribe(ctx server.Cmd, name, key, file, model string, opt map[string
 // when it was spoken, and who spoke it, or its segments as subtitles
 type transcriptPrinter struct {
 	w         io.Writer
-	segments  bool            // Whether segments are printed, rather than text
-	subtitles *subtitleWriter // The subtitles, when the segments are printed as them
-	streamed  bool            // Whether anything has been printed
-	text      bool            // Whether text has been printed, without a newline
+	segments  bool             // Whether segments are printed, rather than text
+	subtitles *subtitle.Writer // The subtitles, when the segments are printed as them
+	streamed  bool             // Whether anything has been printed
+	text      bool             // Whether text has been printed, without a newline
 }
 
 // newTranscriptPrinter returns a printer of a transcript to the writer, in
@@ -168,8 +169,8 @@ type transcriptPrinter struct {
 // segments, and of its segments, rather than its text, when segments is true
 func newTranscriptPrinter(w io.Writer, format string, segments bool) *transcriptPrinter {
 	p := &transcriptPrinter{w: w, segments: segments}
-	if format == "srt" || format == "vtt" {
-		p.segments, p.subtitles = true, newSubtitleWriter(w, format == "vtt")
+	if writer, err := subtitle.NewWriter(w, subtitle.Format(format)); err == nil {
+		p.segments, p.subtitles = true, writer
 	}
 	return p
 }
