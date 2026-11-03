@@ -247,6 +247,22 @@ func Test_LiveMistral_Recognize(t *testing.T) {
 		assert.Equal(t, uint(1), usage.Pages)
 	})
 
+	t.Run("Tables", func(t *testing.T) {
+		// A table, in the table format, in place of the link to it, which
+		// is Markdown without one
+		for format, want := range map[string]string{"": "Apple | 1.20", "markdown": "Apple | 1.20", "html": "<td>Apple</td>"} {
+			var opts []llm.Opt
+			if format != "" {
+				opts = append(opts, llm.WithTableFormat(format))
+			}
+			document, _, err := c.Recognize(ctx, model, read("table.png", "image/png"), opts...)
+			require.NoError(t, err, format)
+			require.Len(t, document.Pages, 1)
+			assert.Contains(t, document.Pages[0].Text, want, format)
+			assert.NotContains(t, document.Pages[0].Text, "](tbl-", format)
+		}
+	})
+
 	t.Run("Regions", func(t *testing.T) {
 		// Each page's regions, with their boxes as fractions of the page
 		document, _, err := c.Recognize(ctx, model, read("ocr.pdf", "application/pdf"), llm.WithRegions(true))

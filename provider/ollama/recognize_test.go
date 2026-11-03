@@ -94,6 +94,10 @@ func Test_Recognize(t *testing.T) {
 		assert.Equal(t, types.Ptr(true), model("deepseek-ocr:latest").Capabilities().OCR)
 		assert.Equal(t, types.Ptr(false), model("chat:latest").Capabilities().OCR)
 		assert.Nil(t, model("vision:latest").Capabilities().OCR)
+
+		// Even a model named as one which recognizes text doesn't, when it
+		// doesn't see images
+		assert.Equal(t, types.Ptr(false), model("glm-ocr:latest").Capabilities().OCR)
 	})
 
 	t.Run("Image", func(t *testing.T) {

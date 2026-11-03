@@ -275,7 +275,9 @@ type ocrDocument struct {
 
 // ocrResponse is the text of each page, in Markdown, with its size, in
 // pixels, and its blocks, which are its regions, with their boxes, in
-// pixels, and the pages processed
+// pixels, and its tables, when there's a table format, which the text has
+// links to, such as [tbl-0.html](tbl-0.html), rather than the tables, and
+// the pages processed
 type ocrResponse struct {
 	Pages []struct {
 		Index      int    `json:"index"`
@@ -292,6 +294,10 @@ type ocrResponse struct {
 			Right   float64 `json:"bottom_right_x"`
 			Bottom  float64 `json:"bottom_right_y"`
 		} `json:"blocks"`
+		Tables []struct {
+			ID      string `json:"id"`
+			Content string `json:"content"`
+		} `json:"tables"` // With a table format, which the text has links to
 	} `json:"pages"`
 	Model string `json:"model"`
 	Usage struct {

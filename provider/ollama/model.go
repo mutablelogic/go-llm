@@ -145,16 +145,16 @@ func (m *Model) Capabilities() llm.ModelCap {
 	}
 }
 
-// ocr returns whether the model recognizes text: it does when it's a model
-// which recognizes text, by its name, and doesn't when it doesn't see
-// images, but isn't known otherwise, as a model which sees images can read
-// text in them, but not as well
+// ocr returns whether the model recognizes text: it doesn't when it
+// doesn't see images, whatever its name, and does when it's a model which
+// recognizes text, by its name, but isn't known otherwise, as a model which
+// sees images can read text in them, but not as well
 func (m *Model) ocr(capabilities []string) *bool {
 	switch {
-	case findOCRModel(m.data.Name) != nil:
-		return types.Ptr(true)
 	case !slices.Contains(capabilities, "vision"):
 		return types.Ptr(false)
+	case findOCRModel(m.data.Name) != nil:
+		return types.Ptr(true)
 	default:
 		return nil
 	}
