@@ -56,6 +56,21 @@ Delete a model by name, or alias, or by provider and name, such as `my-ollama:ge
 
 Unload a model by name, or alias, or by provider and name, such as `my-ollama:gemma:latest`, from its provider's memory, keeping it stored, so it's loaded again when it's next used. Returns the unloaded model. Returns 404 if no provider has the model, 409 if more than one provider has the model, 501 if the model's provider doesn't load models, or can't unload them, or 503 if the model couldn't be unloaded, or a provider which could have it can't be reached.
 
+## Inference Operations
+
+Inference is asking a model to do something with messages, such as embed them. A model is referred to by its name, or an alias, or by its provider's name and its name separated by a colon, and its provider must be able to do it, or the model isn't known not to.
+
+### POST /llm/embed
+
+Ask a model for a vector for each of the messages, in the same order, with JSON, or for one message, with a `multipart/form-data` form, such as from a web browser. The JSON request has the `model`, the `messages`, each embedded by its `content`, which is its `text`, and its images and audio as `attachment`s, inline, with their `type` and `data`, and the `opt` as an object, such as `{"dimensions":256}`. The form has:
+
+- `model`: the model, by name or as `provider:name`, such as `ollama:embeddinggemma-2:latest`, whose provider must embed messages.
+- `text`: the text of the message.
+- `file`: an image or audio of the message, uploaded as a file, for a model which embeds them, such as `embeddinggemma-2` on Ollama. An OpenAI-compatible provider embeds only text. The file's type is used, or detected from its data, or its name, when it's `application/octet-stream`.
+- `opt`: the options, as a JSON object.
+
+Returns a vector for each message, the `model` which embedded them, by its canonical name, and the tokens used. Vectors from different models can't be compared, so a model should be kept for the messages which are compared. Returns 400 if the request is invalid, has no messages or model, or a message has no text or attachment, 404 if no provider has the model, 409 if more than one does, so its canonical name is needed, 413 if the request body is larger than 32 MiB, 501 if the model's provider can't embed messages, or the model is known not to, or 503 if the model couldn't embed the messages.
+
 ## Event Operations
 
 Events are changes to the registry's providers, which are streamed to a client as they happen. Each event has an `action`, which is `create` or `delete` when a provider is created or deleted, or `update` when whether it can be reached changes, when it's pinged, or its models change, when they're listed again, such as after a model is loaded or deleted. It also has the `table`, which is `provider`, and the `row`, which is the provider's name.

@@ -2,11 +2,15 @@ package schema
 
 import (
 	"context"
+	"mime"
+	"net/http"
 	"net/url"
 	"path"
+	"strings"
 
 	// Packages
 	llm "github.com/mutablelogic/go-llm"
+	types "github.com/mutablelogic/go-server/pkg/types"
 )
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -72,4 +76,42 @@ func (r Resource) Read(ctx context.Context) (llm.ReadFunc, error) {
 		return nil, llm.ErrNotImplemented.Withf("reading resource url %q", r.URL.Redacted())
 	}
 	return llm.ReadBytes(r.Data), nil
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// PUBLIC FUNCTIONS
+
+// ResourceType returns the MIME type of a resource's data, detected from the
+// data, such as image/png or audio/wave, or from the extension of its name,
+// when the data isn't recognised, or is only text, which the extension is
+// more specific about, such as text/markdown. Without data, it's the type of
+// the extension. Returns application/octet-stream when neither is
+// recognised, and an empty string when there's no data, and the extension
+// isn't known.
+func ResourceType(data []byte, name string) string {
+	byName := ""
+	if ext := path.Ext(name); ext != "" {
+		byName = mime.TypeByExtension(strings.ToLower(ext))
+	}
+	if len(data) == 0 {
+		return byName
+	}
+	detected := http.DetectContentType(data)
+	if mediaType, _, err := mime.ParseMediaType(detected); err == nil && byName != "" &&
+		(mediaType == types.ContentTypeBinary || mediaType == "text/plain") {
+		return byName
+	}
+	return detected
+}
+
+// UnknownType returns true when the MIME type is empty, or is
+// application/octet-stream, in any case, and with any parameters, so it's
+// detected from the data
+func UnknownType(contentType string) bool {
+	contentType = strings.TrimSpace(contentType)
+	if contentType == "" {
+		return true
+	}
+	mediaType, _, err := mime.ParseMediaType(contentType)
+	return err == nil && mediaType == types.ContentTypeBinary
 }
