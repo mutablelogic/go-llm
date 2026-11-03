@@ -71,7 +71,24 @@ func TestOpenAIModelLimits(t *testing.T) {
 			"max_output_tokens": json.RawMessage(`100`),
 		})
 		assert.Equal(t, [2]uint{1000, 100}, limits(m))
+
+		// Including Mistral's context length
+		m = model(t, MistralEndpoint, "mistral-small-2603", map[string]json.RawMessage{
+			"max_context_length": json.RawMessage(`256000`),
+		})
+		assert.Equal(t, [2]uint{256000, 0}, limits(m))
 	})
+}
+
+func TestAliases(t *testing.T) {
+	// A model has the aliases the server returns, as Mistral does, without
+	// its own name, or none
+	m := &Model{data: apiModel{ID: "mistral-small-2603", Fields: map[string]json.RawMessage{
+		"aliases": json.RawMessage(`["mistral-small-latest","","mistral-small-2603"]`),
+	}}}
+	assert.Equal(t, []string{"mistral-small-latest"}, m.Aliases())
+	assert.Empty(t, (&Model{data: apiModel{ID: "gpt-4o"}}).Aliases())
+	assert.Empty(t, (&Model{data: apiModel{ID: "gpt-4o", Fields: map[string]json.RawMessage{"aliases": json.RawMessage(`"x"`)}}}).Aliases())
 }
 
 func TestShutDown(t *testing.T) {

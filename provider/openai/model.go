@@ -30,8 +30,9 @@ var _ llm.Model = (*Model)(nil)
 
 // Fields which OpenAI-compatible servers use for a model's context length,
 // in order of preference: "context_length" (OpenRouter, LM Studio),
-// "max_model_len" (vLLM) and "context_window" (DeepSeek)
-var contextLengthFields = []string{"context_length", "max_model_len", "context_window"}
+// "max_model_len" (vLLM), "context_window" (DeepSeek) and
+// "max_context_length" (Mistral)
+var contextLengthFields = []string{"context_length", "max_model_len", "context_window", "max_context_length"}
 
 // Fields which OpenAI-compatible servers use for a model's maximum number of
 // output tokens: "max_output_tokens" (DeepSeek)
@@ -43,10 +44,12 @@ var outputTokensFields = []string{"max_output_tokens"}
 var descriptionFields = []string{"description", "name"}
 
 // openAIHost is the host of OpenAI's API, whose models use the table of
-// limits, and deepSeekHost the host of DeepSeek's
+// limits, deepSeekHost the host of DeepSeek's, and mistralHost the host of
+// Mistral's
 const (
 	openAIHost   = "api.openai.com"
 	deepSeekHost = "api.deepseek.com"
+	mistralHost  = "api.mistral.ai"
 )
 
 // modelLimits are the context window and maximum output tokens of a model
@@ -117,9 +120,14 @@ func (m *Model) Created() time.Time {
 	return time.Unix(m.data.Created, 0)
 }
 
-// Aliases returns alternate names for the model. The API doesn't expose any,
-// so this is always empty.
+// Aliases returns alternate names for the model, which some
+// OpenAI-compatible servers return, such as Mistral, whose "-latest" names
+// are aliases of a dated model. OpenAI itself doesn't.
 func (m *Model) Aliases() []string {
+	var aliases []string
+	if raw, exists := m.data.Fields["aliases"]; exists && json.Unmarshal(raw, &aliases) == nil {
+		return slices.DeleteFunc(aliases, func(alias string) bool { return alias == "" || alias == m.data.ID })
+	}
 	return nil
 }
 

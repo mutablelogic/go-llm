@@ -43,6 +43,9 @@ const (
 	// DeepSeekEndpoint is the endpoint of DeepSeek's OpenAI-compatible API
 	DeepSeekEndpoint = "https://api.deepseek.com"
 
+	// MistralEndpoint is the endpoint of Mistral's OpenAI-compatible API
+	MistralEndpoint = "https://api.mistral.ai/v1"
+
 	// PingInterval is how long the result of pinging the API is kept, before
 	// it is pinged again, so that third-party APIs aren't pinged too often
 	PingInterval = 5 * time.Minute

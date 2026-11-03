@@ -32,6 +32,7 @@ const (
 	serverOther    server = iota // Another OpenAI-compatible server
 	serverOpenAI                 // OpenAI's own API
 	serverDeepSeek               // DeepSeek's API
+	serverMistral                // Mistral's API
 )
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -121,6 +122,8 @@ func (c *Client) server() server {
 		return serverOpenAI
 	case strings.EqualFold(c.url.Hostname(), deepSeekHost):
 		return serverDeepSeek
+	case strings.EqualFold(c.url.Hostname(), mistralHost):
+		return serverMistral
 	default:
 		return serverOther
 	}
@@ -134,7 +137,8 @@ func (c *Client) isDeepSeek() bool {
 
 // chatStream collects the chunks of a streamed reply into a response, and
 // calls the stream function with the reasoning and text of each, and a
-// refusal as text. The chunks
+// refusal as text. The reasoning is the reasoning content, or Mistral's
+// thinking parts of the content. The chunks
 // have the pieces of the first choice's message, and of its tool calls, by
 // their index, and the chunk with why the model stopped is done. The usage
 // is in the last chunk, which has no choices, and the stream ends with
@@ -176,7 +180,8 @@ func (s *chatStream) add(event client.TextStreamEvent) error {
 		}
 		delta := choice.Delta
 		text := contentText(delta.Content)
-		s.reasoning.WriteString(delta.ReasoningContent)
+		reasoning := delta.ReasoningContent + contentThinking(delta.Content)
+		s.reasoning.WriteString(reasoning)
 		s.refusal.WriteString(delta.Refusal)
 		s.content.WriteString(text)
 		for _, call := range delta.ToolCalls {
@@ -187,8 +192,8 @@ func (s *chatStream) add(event client.TextStreamEvent) error {
 		}
 
 		// Stream the reasoning and text, and a refusal as text
-		if delta.ReasoningContent != "" {
-			s.stream(llm.StreamThinking, delta.ReasoningContent)
+		if reasoning != "" {
+			s.stream(llm.StreamThinking, reasoning)
 		}
 		if text != "" {
 			s.stream(llm.StreamText, text)
