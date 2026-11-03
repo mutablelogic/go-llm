@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -25,6 +26,7 @@ type TranscribeCmd struct {
 	Model  string                     `name:"model" help:"Model name, or provider and model name separated by a colon, such as openai:whisper-1. Defaults to the model last used for transcribing speech." optional:""`
 	Opt    map[string]json.RawMessage `name:"opt" help:"Options, by key, such as language=fr, segments=true, or speakers=true, which can be given more than once." optional:""`
 	Stream bool                       `name:"stream" negatable:"" default:"true" help:"Print the transcript as it's transcribed, or with --no-stream, once it's complete."`
+	Format string                     `name:"format" enum:"text,srt,vtt" default:"text" help:"Print the transcript as text, or its segments, or as subtitles, in SRT or WebVTT format, which are its segments, as cues, ending when the speaker changes, or after a silence (${enum})."`
 }
 
 type TranslateCmd struct {
@@ -32,6 +34,7 @@ type TranslateCmd struct {
 	Model  string                     `name:"model" help:"Model name, or provider and model name separated by a colon, such as openai:whisper-1. Defaults to the model last used for translating speech." optional:""`
 	Opt    map[string]json.RawMessage `name:"opt" help:"Options, by key, such as segments=true, which can be given more than once." optional:""`
 	Stream bool                       `name:"stream" negatable:"" default:"true" help:"Print the transcript as it's translated, or with --no-stream, once it's complete."`
+	Format string                     `name:"format" enum:"text,srt,vtt" default:"text" help:"Print the transcript as text, or its segments, or as subtitles, in SRT or WebVTT format, which are its segments, as cues, ending after a silence (${enum})."`
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -52,13 +55,13 @@ const (
 // they're asked for, or the response, with debugging, and keeps the model,
 // by its canonical name, as the default for transcribing speech
 func (cmd *TranscribeCmd) Run(ctx server.Cmd) error {
-	return runTranscribe(ctx, "llm.TranscribeCmd", defaultTranscribeModelKey, cmd.File, cmd.Model, cmd.Opt, cmd.Stream, (*httpclient.Client).Transcribe)
+	return runTranscribe(ctx, "llm.TranscribeCmd", defaultTranscribeModelKey, cmd.File, cmd.Model, cmd.Opt, cmd.Stream, cmd.Format, (*httpclient.Client).Transcribe)
 }
 
 // Run prints the English text of the speech in the file, as TranscribeCmd
 // does, and keeps the model as the default for translating speech
 func (cmd *TranslateCmd) Run(ctx server.Cmd) error {
-	return runTranscribe(ctx, "llm.TranslateCmd", defaultTranslateModelKey, cmd.File, cmd.Model, cmd.Opt, cmd.Stream, (*httpclient.Client).Translate)
+	return runTranscribe(ctx, "llm.TranslateCmd", defaultTranslateModelKey, cmd.File, cmd.Model, cmd.Opt, cmd.Stream, cmd.Format, (*httpclient.Client).Translate)
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -66,9 +69,10 @@ func (cmd *TranslateCmd) Run(ctx server.Cmd) error {
 
 // runTranscribe transcribes, or translates, the speech in the file, with the
 // model, or the default model, by its key, which is the model once it's
-// transcribed the speech, with the client's method, and prints it as it's
-// transcribed, when it's streamed
-func runTranscribe(ctx server.Cmd, name, key, file, model string, opt map[string]json.RawMessage, stream bool, fn func(*httpclient.Client, context.Context, schema.TranscribeRequest, llm.TranscriberStreamFn) (*schema.TranscribeResponse, error)) error {
+// transcribed the speech, with the client's method, and prints it in the
+// format as it's transcribed, when it's streamed. Subtitles are segments,
+// so they're asked for, unless segments, or speakers, are.
+func runTranscribe(ctx server.Cmd, name, key, file, model string, opt map[string]json.RawMessage, stream bool, format string, fn func(*httpclient.Client, context.Context, schema.TranscribeRequest, llm.TranscriberStreamFn) (*schema.TranscribeResponse, error)) error {
 	// The model, or the model last used
 	model = strings.TrimSpace(model)
 	if model == "" {
@@ -99,7 +103,13 @@ func runTranscribe(ctx server.Cmd, name, key, file, model string, opt map[string
 	}
 	segments, _ := llm.GetOpt[bool](opts, llm.SegmentsKey)
 	speakers, _ := llm.GetOpt[bool](opts, llm.SpeakersKey)
-	printer := &transcriptPrinter{segments: segments || speakers}
+	if format != "text" && !segments && !speakers {
+		if req.Opt == nil {
+			req.Opt = make(map[string]json.RawMessage, 1)
+		}
+		req.Opt[llm.SegmentsKey], segments = json.RawMessage(`true`), true
+	}
+	printer := newTranscriptPrinter(os.Stdout, format, segments || speakers)
 	var streamFn llm.TranscriberStreamFn
 	if stream && !debug {
 		streamFn = printer.Stream
@@ -144,33 +154,53 @@ func runTranscribe(ctx server.Cmd, name, key, file, model string, opt map[string
 
 // transcriptPrinter prints a transcript as it's transcribed: each piece of
 // its text, or, when segments are asked for, each segment, on a line, with
-// when it was spoken, and who spoke it
+// when it was spoken, and who spoke it, or its segments as subtitles
 type transcriptPrinter struct {
-	segments bool // Whether segments are printed, rather than text
-	streamed bool // Whether anything has been printed
-	text     bool // Whether text has been printed, without a newline
+	w         io.Writer
+	segments  bool            // Whether segments are printed, rather than text
+	subtitles *subtitleWriter // The subtitles, when the segments are printed as them
+	streamed  bool            // Whether anything has been printed
+	text      bool            // Whether text has been printed, without a newline
+}
+
+// newTranscriptPrinter returns a printer of a transcript to the writer, in
+// the format, which is text, or subtitles, in srt or vtt format, which are
+// segments, and of its segments, rather than its text, when segments is true
+func newTranscriptPrinter(w io.Writer, format string, segments bool) *transcriptPrinter {
+	p := &transcriptPrinter{w: w, segments: segments}
+	if format == "srt" || format == "vtt" {
+		p.segments, p.subtitles = true, newSubtitleWriter(w, format == "vtt")
+	}
+	return p
 }
 
 // Stream prints a piece of the text, or a segment
 func (p *transcriptPrinter) Stream(text string, segment *llm.TranscriptSegment) {
 	switch {
+	case p.subtitles != nil && segment != nil:
+		p.subtitles.Add(*segment)
+		p.streamed = true
 	case p.segments && segment != nil:
 		speaker := ""
 		if segment.Speaker != "" {
 			speaker = segment.Speaker + ": "
 		}
-		fmt.Printf("[%s - %s] %s%s\n", timestamp(segment.Start), timestamp(segment.End), speaker, segment.Text)
+		fmt.Fprintf(p.w, "[%s - %s] %s%s\n", timestamp(segment.Start), timestamp(segment.End), speaker, segment.Text)
 		p.streamed = true
 	case !p.segments && segment == nil && text != "":
-		fmt.Print(text)
+		fmt.Fprint(p.w, text)
 		p.streamed, p.text = true, true
 	}
 }
 
-// Close ends the text with a newline, once it's printed
+// Close ends the text with a newline, once it's printed, or writes the last
+// cue of the subtitles
 func (p *transcriptPrinter) Close() {
+	if p.subtitles != nil {
+		p.subtitles.Close()
+	}
 	if p.text {
-		fmt.Println()
+		fmt.Fprintln(p.w)
 		p.text = false
 	}
 }
