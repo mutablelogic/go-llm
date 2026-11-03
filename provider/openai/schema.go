@@ -262,6 +262,7 @@ type ocrRequest struct {
 	Pages         []uint      `json:"pages,omitempty"`
 	TableFormat   string      `json:"table_format,omitempty"`
 	IncludeImages *bool       `json:"include_image_base64,omitempty"`
+	IncludeBlocks *bool       `json:"include_blocks,omitempty"` // The regions of each page
 }
 
 // ocrDocument is the image or document to recognize, by its URL, which is
@@ -272,11 +273,25 @@ type ocrDocument struct {
 	DocumentURL string `json:"document_url,omitempty"`
 }
 
-// ocrResponse is the text of each page, in Markdown, and the pages processed
+// ocrResponse is the text of each page, in Markdown, with its size, in
+// pixels, and its blocks, which are its regions, with their boxes, in
+// pixels, and the pages processed
 type ocrResponse struct {
 	Pages []struct {
-		Index    int    `json:"index"`
-		Markdown string `json:"markdown"`
+		Index      int    `json:"index"`
+		Markdown   string `json:"markdown"`
+		Dimensions struct {
+			Width  float64 `json:"width"`
+			Height float64 `json:"height"`
+		} `json:"dimensions"`
+		Blocks []struct {
+			Type    string  `json:"type"`
+			Content string  `json:"content"`
+			Left    float64 `json:"top_left_x"`
+			Top     float64 `json:"top_left_y"`
+			Right   float64 `json:"bottom_right_x"`
+			Bottom  float64 `json:"bottom_right_y"`
+		} `json:"blocks"`
 	} `json:"pages"`
 	Model string `json:"model"`
 	Usage struct {

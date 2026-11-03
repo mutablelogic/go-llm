@@ -19,7 +19,7 @@ type RecognizeRequest struct {
 	Model string                     `json:"model" help:"Model which recognizes text, by name, or by provider and name" example:"mistral:mistral-ocr-latest"`
 	Type  string                     `json:"type" help:"MIME type of the image or document" example:"application/pdf"`
 	Data  []byte                     `json:"data" help:"Data of the image or document, encoded as base64" example:"JVBERi0xLjQ="`
-	Opt   map[string]json.RawMessage `json:"opt,omitzero" help:"Options, by key, such as pages=\"0,2-4\", and table_format=html, which the provider decodes" example:"{\"pages\":\"0-1\"}" optional:""`
+	Opt   map[string]json.RawMessage `json:"opt,omitzero" help:"Options, by key, such as pages=\"0,2-4\", table_format=html, and regions=true, which the provider decodes" example:"{\"pages\":\"0-1\"}" optional:""`
 }
 
 // RecognizeForm is the form for recognizing the text in an image or
@@ -32,13 +32,13 @@ type RecognizeForm struct {
 	File  types.File `json:"file,omitzero" help:"Image or document to recognize, uploaded as a file"`
 }
 
-// RecognizeResponse is the text, as a message with a text block for each
-// page, in order, in Markdown, with the model which recognized it, and the
-// pages, and tokens, used
+// RecognizeResponse is the text of each page, in order, in Markdown, and
+// its regions, when they're asked for, with the model which recognized it,
+// and the pages, and tokens, used
 type RecognizeResponse struct {
-	Model   string                 `json:"model" help:"Canonical name of the model which recognized the text" example:"mistral:mistral-ocr-latest"`
-	Message providerschema.Message `json:"message" help:"The text, with a text block for each page, in order, in Markdown"`
-	Usage   llm.Usage              `json:"usage" help:"Pages recognized, and tokens used, for providers which report them"`
+	Model string `json:"model" help:"Canonical name of the model which recognized the text" example:"mistral:mistral-ocr-latest"`
+	llm.Document
+	Usage llm.Usage `json:"usage" help:"Pages recognized, and tokens used, for providers which report them"`
 }
 
 ///////////////////////////////////////////////////////////////////////////////

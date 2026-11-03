@@ -69,6 +69,7 @@ const (
 	// Recognition
 	PagesKey       = "pages"        // []uint, uint, or a string such as "0,2-4", pages of a document to recognize, from zero
 	TableFormatKey = "table_format" // string, format of the tables in the text: "markdown" or "html"
+	RegionsKey     = "regions"      // bool, whether a page has its regions, with their boxes
 )
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -267,6 +268,12 @@ func WithTableFormat(value string) Opt {
 		return withError(ErrBadParameter.Withf("table_format %q must be markdown or html", value))
 	}
 	return WithOpt(TableFormatKey, value)
+}
+
+// WithRegions sets whether the pages of recognized text have their regions,
+// such as paragraphs, titles and tables, with their boxes
+func WithRegions(value bool) Opt {
+	return WithOpt(RegionsKey, value)
 }
 
 ////////////////////////////////////////////////////////////////////////////////

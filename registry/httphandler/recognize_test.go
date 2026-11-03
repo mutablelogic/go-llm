@@ -31,11 +31,10 @@ type stubRecognizer struct {
 
 func (s *stubRecognizer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	var req struct {
-		Name     string         `json:"name"`
-		Options  map[string]any `json:"options"`
-		Messages []struct {
-			Images [][]byte `json:"images"`
-		} `json:"messages"`
+		Name    string         `json:"name"`
+		Prompt  string         `json:"prompt"`
+		Images  [][]byte       `json:"images"`
+		Options map[string]any `json:"options"`
 	}
 	json.NewDecoder(r.Body).Decode(&req)
 	w.Header().Set("Content-Type", "application/json")
@@ -50,10 +49,10 @@ func (s *stubRecognizer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		} else {
 			w.Write([]byte(`{"details":{},"capabilities":["completion"]}`))
 		}
-	case "/api/chat":
+	case "/api/generate":
 		var image []byte
-		if len(req.Messages) > 0 && len(req.Messages[0].Images) > 0 {
-			image = req.Messages[0].Images[0]
+		if len(req.Images) > 0 {
+			image = req.Images[0]
 		}
 		if code, ok := strings.CutPrefix(string(image), "status "); ok {
 			status, _ := strconv.Atoi(code)
@@ -64,7 +63,11 @@ func (s *stubRecognizer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		s.Lock()
 		s.image, s.options = image, req.Options
 		s.Unlock()
-		w.Write([]byte(`{"message":{"role":"assistant","content":"# Hello"},"done":true,"prompt_eval_count":900,"eval_count":3}`))
+		if strings.Contains(req.Prompt, "<|grounding|>") {
+			w.Write([]byte(`{"response":"title[[0, 0, 999, 100]]\n# Hello","done":true,"prompt_eval_count":900,"eval_count":3}`))
+		} else {
+			w.Write([]byte(`{"response":"# Hello","done":true,"prompt_eval_count":900,"eval_count":3}`))
+		}
 	default:
 		http.NotFound(w, r)
 	}
@@ -107,10 +110,22 @@ func Test_Recognize(t *testing.T) {
 			Opt:   map[string]json.RawMessage{"pages": json.RawMessage(`"0"`)},
 		}, &response))
 		assert.Equal(t, "home:deepseek-ocr:latest", response.Model)
-		assert.Equal(t, "assistant", response.Message.Role())
-		assert.Equal(t, "# Hello", response.Message.Text())
+		assert.Equal(t, []llm.DocumentPage{{Text: "# Hello"}}, response.Pages)
 		assert.Equal(t, llm.Usage{InputTokens: 900, OutputTokens: 3, Pages: 1}, response.Usage)
 		assert.Equal(t, png, stub.Image())
+	})
+
+	t.Run("Regions", func(t *testing.T) {
+		// The regions of the page, when they're asked for
+		var response schema.RecognizeResponse
+		require.Equal(t, http.StatusOK, do(t, server, http.MethodPost, "llm/recognize", schema.RecognizeRequest{
+			Model: "deepseek-ocr",
+			Type:  "image/png",
+			Data:  png,
+			Opt:   map[string]json.RawMessage{"regions": json.RawMessage(`true`)},
+		}, &response))
+		require.Len(t, response.Pages, 1)
+		assert.Equal(t, []llm.DocumentRegion{{Type: "title", Text: "# Hello", Box: [4]float64{0, 0, 1, 100.0 / 999}}}, response.Pages[0].Regions)
 	})
 
 	t.Run("Form", func(t *testing.T) {
@@ -129,7 +144,7 @@ func Test_Recognize(t *testing.T) {
 		require.Equal(t, http.StatusOK, status, string(data))
 		var response schema.RecognizeResponse
 		require.NoError(t, json.Unmarshal(data, &response))
-		assert.Equal(t, "# Hello", response.Message.Text())
+		assert.Equal(t, []llm.DocumentPage{{Text: "# Hello"}}, response.Pages)
 		assert.Equal(t, png, stub.Image())
 	})
 

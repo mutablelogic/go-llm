@@ -85,6 +85,11 @@ func (r *ocrRequest) apply(opts ...llm.Opt) error {
 			if r.TableFormat, err = llm.GetOpt[string](o, key); err == nil && r.TableFormat != "markdown" && r.TableFormat != "html" {
 				err = llm.ErrBadParameter.Withf("option %q: %q must be markdown or html", key, r.TableFormat)
 			}
+		case llm.RegionsKey:
+			var regions bool
+			if regions, err = llm.GetOpt[bool](o, key); err == nil {
+				r.IncludeBlocks = types.Ptr(regions)
+			}
 		default:
 			err = llm.ErrBadParameter.Withf("option %q isn't supported by mistral for recognition", key)
 		}

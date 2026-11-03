@@ -7,7 +7,6 @@ import (
 
 	// Packages
 	llm "github.com/mutablelogic/go-llm"
-	providerschema "github.com/mutablelogic/go-llm/provider/schema"
 	registry "github.com/mutablelogic/go-llm/registry"
 	schema "github.com/mutablelogic/go-llm/registry/schema"
 	httprequest "github.com/mutablelogic/go-server/pkg/httprequest"
@@ -44,8 +43,8 @@ func recognizeHandlers(reg *registry.Registry, router *httprouter.Router, docume
 			op.Description(documentation.Section(3, "POST /llm/recognize").Body)
 			op.RequestBody(jsonschema.MustFor[schema.RecognizeRequest]())
 			op.RequestBody(jsonschema.MustFor[schema.RecognizeForm](), types.ContentTypeFormData)
-			op.JSONResponse(http.StatusOK, jsonschema.MustFor[schema.RecognizeResponse](), "The text, with a text block for each page, the model which recognized it, and the pages and tokens used")
-			op.ErrorResponse(http.StatusBadRequest, "Invalid request body or form, no model, type, data or file, more than one file, invalid options, or an image or document the provider can't recognize, such as a PDF for Ollama")
+			op.JSONResponse(http.StatusOK, jsonschema.MustFor[schema.RecognizeResponse](), "The text of each page, and its regions, when they're asked for, the model which recognized it, and the pages and tokens used")
+			op.ErrorResponse(http.StatusBadRequest, "Invalid request body or form, no model, type, data or file, more than one file, invalid options, or an image or document the provider can't recognize, such as a PDF for Ollama, or regions for a model which can't recognize them")
 			op.ErrorResponse(http.StatusNotFound, "Model not found")
 			op.ErrorResponse(http.StatusConflict, "More than one provider has a model with the name")
 			op.ErrorResponse(http.StatusRequestEntityTooLarge, "The request body is larger than 64 MiB")
@@ -72,14 +71,14 @@ func recognize(r *http.Request, reg *registry.Registry, req schema.RecognizeRequ
 	if err != nil {
 		return nil, err
 	}
-	message, usage, err := reg.Recognize(r.Context(), model, resource, req.Opts()...)
+	document, usage, err := reg.Recognize(r.Context(), model, resource, req.Opts()...)
 	if err != nil {
 		return nil, err
 	}
 	return &schema.RecognizeResponse{
-		Model:   reg.Name(model),
-		Message: *providerschema.MessageFrom(message),
-		Usage:   usage,
+		Model:    reg.Name(model),
+		Document: document,
+		Usage:    usage,
 	}, nil
 }
 

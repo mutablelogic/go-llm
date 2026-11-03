@@ -217,50 +217,52 @@ func Test_LiveMistral_Recognize(t *testing.T) {
 
 	t.Run("Document", func(t *testing.T) {
 		// The text of each of the document's pages, in order, and the pages
-		message, usage, err := c.Recognize(ctx, model, read("ocr.pdf", "application/pdf"))
+		document, usage, err := c.Recognize(ctx, model, read("ocr.pdf", "application/pdf"))
 		require.NoError(t, err)
-		texts := pageTexts(t, message)
-		if assert.Len(t, texts, 2) {
-			assert.Contains(t, texts[0], "Hello, World")
-			assert.Contains(t, texts[1], "Page two")
+		if assert.Len(t, document.Pages, 2) {
+			assert.Contains(t, document.Pages[0].Text, "Hello, World")
+			assert.Contains(t, document.Pages[1].Text, "Page two")
+			assert.Empty(t, document.Pages[0].Regions)
 		}
 		assert.Equal(t, uint(2), usage.Pages)
 	})
 
 	t.Run("Pages", func(t *testing.T) {
 		// Only the pages asked for
-		message, usage, err := c.Recognize(ctx, model, read("ocr.pdf", "application/pdf"), llm.WithPages(1))
+		document, usage, err := c.Recognize(ctx, model, read("ocr.pdf", "application/pdf"), llm.WithPages(1))
 		require.NoError(t, err)
-		texts := pageTexts(t, message)
-		if assert.Len(t, texts, 1) {
-			assert.Contains(t, texts[0], "Page two")
+		if assert.Len(t, document.Pages, 1) {
+			assert.Contains(t, document.Pages[0].Text, "Page two")
 		}
 		assert.Equal(t, uint(1), usage.Pages)
 	})
 
 	t.Run("Image", func(t *testing.T) {
 		// An image is one page
-		message, usage, err := c.Recognize(ctx, model, read("ocr.png", "image/png"))
+		document, usage, err := c.Recognize(ctx, model, read("ocr.png", "image/png"))
 		require.NoError(t, err)
-		texts := pageTexts(t, message)
-		if assert.Len(t, texts, 1) {
-			assert.Contains(t, texts[0], "Hello, World")
+		if assert.Len(t, document.Pages, 1) {
+			assert.Contains(t, document.Pages[0].Text, "Hello, World")
 		}
 		assert.Equal(t, uint(1), usage.Pages)
 	})
-}
 
-// pageTexts returns the text of each page of the message, which is a text
-// block for each page
-func pageTexts(t *testing.T, message llm.Message) []string {
-	t.Helper()
-	m, ok := message.(*schema.Message)
-	require.True(t, ok)
-	assert.Equal(t, "assistant", m.Role())
-	var texts []string
-	for _, block := range m.Content {
-		require.NotNil(t, block.Text)
-		texts = append(texts, *block.Text)
-	}
-	return texts
+	t.Run("Regions", func(t *testing.T) {
+		// Each page's regions, with their boxes as fractions of the page
+		document, _, err := c.Recognize(ctx, model, read("ocr.pdf", "application/pdf"), llm.WithRegions(true))
+		require.NoError(t, err)
+		require.Len(t, document.Pages, 2)
+		t.Logf("%+v", document.Pages[1])
+		if assert.NotEmpty(t, document.Pages[1].Regions) {
+			region := document.Pages[1].Regions[0]
+			assert.Contains(t, region.Text, "Page two")
+			assert.NotEmpty(t, region.Type)
+			for _, value := range region.Box {
+				assert.GreaterOrEqual(t, value, 0.0)
+				assert.LessOrEqual(t, value, 1.0)
+			}
+			assert.Less(t, region.Box[0], region.Box[2])
+			assert.Less(t, region.Box[1], region.Box[3])
+		}
+	})
 }

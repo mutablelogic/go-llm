@@ -6,14 +6,15 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 
 	// Packages
+	llm "github.com/mutablelogic/go-llm"
 	providerschema "github.com/mutablelogic/go-llm/provider/schema"
 	httpclient "github.com/mutablelogic/go-llm/registry/httpclient"
 	schema "github.com/mutablelogic/go-llm/registry/schema"
 	server "github.com/mutablelogic/go-server"
-	types "github.com/mutablelogic/go-server/pkg/types"
 )
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -22,7 +23,7 @@ import (
 type RecognizeCmd struct {
 	File  string                     `arg:"" name:"file" type:"existingfile" help:"The image or document, such as a PDF, whose text is recognized."`
 	Model string                     `name:"model" help:"Model name, or provider and model name separated by a colon, such as mistral:mistral-ocr-latest. Defaults to the model last used for recognizing text." optional:""`
-	Opt   map[string]json.RawMessage `name:"opt" help:"Options, by key, such as pages=0-2, or table_format=html, which can be given more than once." optional:""`
+	Opt   map[string]json.RawMessage `name:"opt" help:"Options, by key, such as pages=0-2, table_format=html, or regions=true, which prints JSON, which can be given more than once." optional:""`
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -37,7 +38,8 @@ const defaultRecognizeModelKey = "llm.recognize_model"
 // PUBLIC METHODS
 
 // Run prints the text of the file, in Markdown, with a rule between pages,
-// or the response, with debugging, and keeps the model, by its canonical
+// or the response, as JSON, with debugging, or when the pages have their
+// regions, and keeps the model, by its canonical
 // name, as the default for recognizing text
 func (cmd *RecognizeCmd) Run(ctx server.Cmd) error {
 	// The model, or the model last used for recognizing text
@@ -74,14 +76,15 @@ func (cmd *RecognizeCmd) Run(ctx server.Cmd) error {
 			return err
 		}
 
-		// With debugging, the response, otherwise the text of each page
-		if debug {
+		// With debugging, or regions, the response, otherwise the text of
+		// each page, with a rule between them
+		if debug || slices.ContainsFunc(response.Pages, func(page llm.DocumentPage) bool { return len(page.Regions) > 0 }) {
 			fmt.Println(response)
 			return nil
 		}
-		pages := make([]string, 0, len(response.Message.Content))
-		for _, block := range response.Message.Content {
-			pages = append(pages, strings.TrimSpace(types.Value(block.Text)))
+		pages := make([]string, 0, len(response.Pages))
+		for _, page := range response.Pages {
+			pages = append(pages, page.Text)
 		}
 		fmt.Println(strings.Join(pages, "\n\n---\n\n"))
 		return nil

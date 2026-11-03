@@ -106,11 +106,12 @@ type Transcriber interface {
 // images and documents, which is optical character recognition (OCR)
 type Recognizer interface {
 	// Recognize returns the text in the resource, such as an image or a PDF,
-	// as a message, whose text is the document's, such as in Markdown, and
-	// the tokens used. The resource's type must be one the provider
-	// supports, such as image/png or application/pdf. Options which the
-	// provider doesn't support are ignored or rejected.
-	Recognize(context.Context, Model, Resource, ...Opt) (Message, Usage, error)
+	// as a document, with the text of each page, in Markdown, and its
+	// regions, when they're asked for, and the pages and tokens used. The
+	// resource's type must be one the provider supports, such as image/png
+	// or application/pdf. Options which the provider doesn't support are
+	// rejected.
+	Recognize(context.Context, Model, Resource, ...Opt) (Document, Usage, error)
 }
 
 // Transcript is the speech in audio: its text, the language it was spoken
@@ -128,6 +129,28 @@ type TranscriptSegment struct {
 	Start, End time.Duration
 	Text       string
 	Speaker    string
+}
+
+// Document is the text recognized in an image or document, by page, in
+// order. An image is one page.
+type Document struct {
+	Pages []DocumentPage `json:"pages" help:"The pages, in order"`
+}
+
+// DocumentPage is the text of a page, in Markdown, and its regions, in
+// reading order, when they're asked for
+type DocumentPage struct {
+	Text    string           `json:"text" help:"Text of the page, in Markdown" example:"# Hello, World"`
+	Regions []DocumentRegion `json:"regions,omitempty" help:"Regions of the page, in reading order, when they're asked for"`
+}
+
+// DocumentRegion is a part of a page, such as a paragraph, a title or a
+// table, with its text, and its box. The type is the model's, such as
+// "text" or "table", which differ between models.
+type DocumentRegion struct {
+	Type string     `json:"type,omitempty" help:"What the region is, as the model labels it, such as text, title or table" example:"text"`
+	Text string     `json:"text" help:"Text of the region, in Markdown" example:"Hello, World"`
+	Box  [4]float64 `json:"box" help:"Box of the region, as its left, top, right and bottom, each a fraction of the page's width or height, from 0 to 1" example:"[0.02,0.02,0.32,0.07]"`
 }
 
 // StreamType is what a piece of a message is, as it's generated

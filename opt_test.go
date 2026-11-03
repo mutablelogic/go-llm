@@ -163,6 +163,7 @@ func TestWithOpts(t *testing.T) {
 			{llm.WithDimensions(256), llm.DimensionsKey, uint(256)},
 			{llm.WithPages(0, 2), llm.PagesKey, []uint{0, 2}},
 			{llm.WithTableFormat("html"), llm.TableFormatKey, "html"},
+			{llm.WithRegions(true), llm.RegionsKey, true},
 		} {
 			opts, err := llm.ApplyOpts(test.opt)
 			require.NoError(t, err, test.key)

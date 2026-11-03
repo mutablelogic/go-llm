@@ -27,8 +27,8 @@ func newRecognizeClient(t *testing.T) *httpclient.Client {
 			w.Write([]byte(`{"models":[{"name":"deepseek-ocr:latest","details":{}}]}`))
 		case "/api/show":
 			w.Write([]byte(`{"details":{},"capabilities":["completion","vision"]}`))
-		case "/api/chat":
-			w.Write([]byte(`{"message":{"role":"assistant","content":"# Hello"},"done":true,"prompt_eval_count":900,"eval_count":3}`))
+		case "/api/generate":
+			w.Write([]byte(`{"response":"# Hello","done":true,"prompt_eval_count":900,"eval_count":3}`))
 		default:
 			http.NotFound(w, r)
 		}
@@ -51,7 +51,7 @@ func Test_ClientRecognize(t *testing.T) {
 		response, err := client.Recognize(ctx, schema.RecognizeRequest{Model: "deepseek-ocr", Type: "image/png", Data: png})
 		require.NoError(t, err)
 		assert.Equal(t, "home:deepseek-ocr:latest", response.Model)
-		assert.Equal(t, "# Hello", response.Message.Text())
+		assert.Equal(t, []llm.DocumentPage{{Text: "# Hello"}}, response.Pages)
 		assert.Equal(t, uint(1), response.Usage.Pages)
 	})
 

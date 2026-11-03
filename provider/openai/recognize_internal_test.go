@@ -8,6 +8,7 @@ import (
 	// Packages
 	llm "github.com/mutablelogic/go-llm"
 	schema "github.com/mutablelogic/go-llm/provider/schema"
+	types "github.com/mutablelogic/go-server/pkg/types"
 	assert "github.com/stretchr/testify/assert"
 	require "github.com/stretchr/testify/require"
 )
@@ -27,9 +28,10 @@ func TestOCRRequestApply(t *testing.T) {
 		// The pages, in order, from a string or numbers, and the format of
 		// tables
 		var r ocrRequest
-		require.NoError(t, r.apply(llm.WithOpt(llm.PagesKey, json.RawMessage(`"2,0-1"`)), llm.WithTableFormat("html")))
+		require.NoError(t, r.apply(llm.WithOpt(llm.PagesKey, json.RawMessage(`"2,0-1"`)), llm.WithTableFormat("html"), llm.WithRegions(true)))
 		assert.Equal(t, []uint{0, 1, 2}, r.Pages)
 		assert.Equal(t, "html", r.TableFormat)
+		assert.Equal(t, types.Ptr(true), r.IncludeBlocks)
 	})
 
 	t.Run("Errors", func(t *testing.T) {
