@@ -1,0 +1,124 @@
+package cmd
+
+import (
+	"strings"
+	"testing"
+	"time"
+
+	// Packages
+	llm "github.com/mutablelogic/go-llm"
+	assert "github.com/stretchr/testify/assert"
+)
+
+// seconds returns the seconds as a duration
+func seconds(value float64) time.Duration {
+	return time.Duration(value * float64(time.Second))
+}
+
+// subtitles returns the segments as subtitles, in WebVTT format when vtt is
+// true, or otherwise SRT format
+func subtitles(vtt bool, segments ...llm.TranscriptSegment) string {
+	var b strings.Builder
+	s := newSubtitleWriter(&b, vtt)
+	for _, segment := range segments {
+		s.Add(segment)
+	}
+	s.Close()
+	return b.String()
+}
+
+// segment returns a segment, from when to when, in seconds, with its text,
+// spoken by the speaker
+func segment(start, end float64, speaker, text string) llm.TranscriptSegment {
+	return llm.TranscriptSegment{Start: seconds(start), End: seconds(end), Speaker: speaker, Text: text}
+}
+
+func Test_Subtitles(t *testing.T) {
+	t.Run("SRT", func(t *testing.T) {
+		// Segments close together, by a speaker, are a cue, numbered, until
+		// a silence
+		assert.Equal(t, "1\n00:00:00,000 --> 00:00:03,500\nHello, world. This is a test.\n\n"+
+			"2\n00:00:05,000 --> 00:01:05,250\nThe end.\n\n",
+			subtitles(false,
+				segment(0, 1.3, "", "Hello, world."),
+				segment(1.6, 3.5, "", " This is a test."),
+				segment(5, 65.25, "", "The end."),
+			))
+	})
+
+	t.Run("VTT", func(t *testing.T) {
+		// After a header, without numbers, with a full stop for the
+		// milliseconds, and an hour
+		assert.Equal(t, "WEBVTT\n\n00:00:00.000 --> 00:00:01.300\nHello.\n\n01:00:00.000 --> 01:00:01.000\nLater.\n\n",
+			subtitles(true, segment(0, 1.3, "", "Hello."), segment(3600, 3601, "", "Later.")))
+
+		// And a header without any cues
+		assert.Equal(t, "WEBVTT\n\n", subtitles(true))
+		assert.Empty(t, subtitles(false))
+	})
+
+	t.Run("Speakers", func(t *testing.T) {
+		// A cue ends when the speaker changes, and is labelled with them
+		assert.Equal(t, "1\n00:00:00,000 --> 00:00:01,000\nA: Hello.\n\n2\n00:00:01,000 --> 00:00:02,000\nB: Hi.\n\n",
+			subtitles(false, segment(0, 1, "A", "Hello."), segment(1, 2, "B", "Hi.")))
+		assert.Equal(t, "WEBVTT\n\n00:00:00.000 --> 00:00:01.000\n<v A>Hello.\n\n00:00:01.000 --> 00:00:02.000\n<v B>Hi.\n\n",
+			subtitles(true, segment(0, 1, "A", "Hello."), segment(1, 2, "B", "Hi.")))
+
+		// And the label is wrapped with the text, in SRT, where it's shown
+		for _, line := range strings.Split(subtitles(false, segment(0, 3, "speaker_1", "The quick brown fox jumps over the lazy dog.")), "\n") {
+			assert.LessOrEqual(t, len(line), subtitleLine, line)
+		}
+	})
+
+	t.Run("Length", func(t *testing.T) {
+		// A cue ends before it's longer than seven seconds, or has too much
+		// text, but a segment isn't split
+		long := subtitles(false, segment(0, 4, "", "One."), segment(4, 7.5, "", "Two."), segment(8, 20, "", "Three, which is long."))
+		assert.Equal(t, 3, strings.Count(long, " --> "))
+		text := strings.Repeat("word ", 9)
+		assert.Equal(t, 2, strings.Count(subtitles(false, segment(0, 1, "", text), segment(1, 2, "", text)), " --> "))
+
+		// And empty segments are skipped
+		assert.Equal(t, 1, strings.Count(subtitles(false, segment(0, 1, "", "One."), segment(1, 2, "", " ")), " --> "))
+	})
+
+	t.Run("Wrap", func(t *testing.T) {
+		// A cue's text is lines of at most 42 characters, unless a word is
+		// longer
+		assert.Equal(t, []string{"The quick brown fox jumps over the lazy", "dog, and then the quick brown fox sleeps."},
+			wrapText("The quick brown fox jumps over the lazy dog, and then the quick brown fox sleeps.", subtitleLine))
+		assert.Equal(t, []string{strings.Repeat("a", 50), "b"}, wrapText(strings.Repeat("a", 50)+" b", subtitleLine))
+	})
+}
+
+func Test_TranscriptPrinter(t *testing.T) {
+	print := func(format string, segments bool, fn func(*transcriptPrinter)) string {
+		var b strings.Builder
+		p := newTranscriptPrinter(&b, format, segments)
+		fn(p)
+		p.Close()
+		return b.String()
+	}
+	first, second := segment(0, 1.3, "A", "Hello,"), segment(1.3, 2, "A", "world.")
+
+	// Text is its pieces, ended with a newline, without its segments
+	assert.Equal(t, "Hello, world.\n", print("text", false, func(p *transcriptPrinter) {
+		p.Stream("Hello,", nil)
+		p.Stream(" world.", nil)
+		p.Stream("", &first)
+	}))
+
+	// Or its segments, each on a line, without its text
+	assert.Equal(t, "[0:00.0 - 0:01.3] A: Hello,\n[0:01.3 - 0:02.0] A: world.\n", print("text", true, func(p *transcriptPrinter) {
+		p.Stream("Hello,", nil)
+		p.Stream("", &first)
+		p.Stream("", &second)
+	}))
+
+	// Or subtitles, of its segments
+	assert.Equal(t, "1\n00:00:00,000 --> 00:00:02,000\nA: Hello, world.\n\n", print("srt", false, func(p *transcriptPrinter) {
+		p.Stream("Hello,", nil)
+		p.Stream("", &first)
+		p.Stream("", &second)
+	}))
+}

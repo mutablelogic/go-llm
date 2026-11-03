@@ -98,6 +98,25 @@ The options are the same for every provider, which rejects those it can't do:
 
 Mistral recognizes images and documents, such as PDFs. Ollama's models, such as `deepseek-ocr`, recognize images, each asked with its own prompt, and should be sent images large enough to read their text, such as a page at 150 dpi. Returns the `pages`, in order, each with its `text`, in Markdown, and its `regions`, when they're asked for, each with its `type`, as the model labels it, such as `text` or `table`, its `text`, and its `box`, which is its left, top, right and bottom, each a fraction of the page's width or height, from 0 to 1. It also returns the `model` which recognized it, by its canonical name, and the `usage`, which is the `pages` recognized, and the tokens used, for providers which report them. Returns 400 if the request is invalid, has no model, type or data, or file, or the model's provider rejects it, such as for a PDF sent to Ollama, or an option it can't do, such as regions for a model which can't recognize them, 404 if no provider has the model, 409 if more than one does, 413 if the request body is larger than 64 MiB, 501 if the model's provider can't recognize text, or the model is known not to, or 503 if the model couldn't recognize the text, such as when its provider fails, or can't be reached.
 
+### POST /llm/transcribe
+
+Ask a model for the speech in audio, as text, in the language it was spoken in, with JSON, or with a `multipart/form-data` form, such as from a web browser. The JSON request has the `model`, the audio's `type`, such as `audio/mpeg`, and its `data`, encoded as base64, and the `opt` as an object. The form has the same fields as recognizing text does: the `model`, the audio as a `file`, and the `opt`, as a JSON object.
+
+The options are the same for every provider, which rejects those it can't do:
+
+- `language`: the language the speech is in, as an ISO 639-1 code, such as `en`, rather than it being detected.
+- `segments`: `true` for the segments of the speech, each with its `start` and `end`, in nanoseconds, and its `text`, which whisper, Mistral, and OpenAI's diarizing models can do.
+- `speakers`: `true` for the segments with who spoke them, as the model labels them, such as `A` or `speaker_1`, which Mistral, and OpenAI's diarizing models, such as `gpt-4o-transcribe-diarize`, can do.
+- `temperature`: the randomness of the transcript.
+
+When the request accepts `text/event-stream`, the transcript is streamed as server-sent events as it's transcribed: a `text` event for each piece of its text, as `{"text":"..."}`, a `segment` event for each segment, once it's transcribed, when segments or speakers are asked for, and then a `result` event with the response, or an `error` event. Mistral's models, and OpenAI's other than `whisper-1`, stream the transcript, and a model which doesn't, such as `whisper-1`, has its text, and segments, as events once it's transcribed. A model which only streams segments, such as `gpt-4o-transcribe-diarize`, has the text of each segment as a `text` event too.
+
+OpenAI's models, such as `whisper-1` and `gpt-4o-transcribe`, and Mistral's, such as `voxtral-mini-latest`, transcribe speech. Returns the `text`, its `language`, as an ISO 639-1 code, when the model detects it, or it's set, the `segments`, when they're asked for, the `model` which transcribed it, by its canonical name, and the `usage`, which is the `seconds` of audio, and the tokens used, as the provider reports them. Returns 400 if the request is invalid, has no model, type or data, or file, or the model's provider rejects it, such as for audio it can't read, or segments or speakers for a model which can't return them, 404 if no provider has the model, 409 if more than one does, 406 if the response can't be any of the accepted types, 413 if the request body is larger than 48 MiB, 501 if the model's provider can't transcribe speech, or the model is known not to, or 503 if the model couldn't transcribe the speech, such as when its provider fails, or can't be reached.
+
+### POST /llm/translate
+
+Ask a model for the speech in audio, in any language, as English text, as transcribing does, whose `language` is `en`, and which has no `language` option. It's streamed as transcribing is, once it's translated, as `whisper-1` doesn't stream. Only OpenAI's `whisper-1` translates speech. Returns the same as transcribing does, and 501 if the model's provider can't translate speech, such as Mistral, or the model is known not to.
+
 ## Event Operations
 
 Events are changes to the registry's providers, which are streamed to a client as they happen. Each event has an `action`, which is `create` or `delete` when a provider is created or deleted, or `update` when whether it can be reached changes, when it's pinged, or its models change, when they're listed again, such as after a model is loaded or deleted. It also has the `table`, which is `provider`, and the `row`, which is the provider's name.

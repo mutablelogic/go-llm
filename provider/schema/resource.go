@@ -2,6 +2,7 @@ package schema
 
 import (
 	"context"
+	"encoding/binary"
 	"mime"
 	"net/http"
 	"net/url"
@@ -86,7 +87,8 @@ func (r Resource) Read(ctx context.Context) (llm.ReadFunc, error) {
 // when the data isn't recognised, or is only text, or is an Ogg container,
 // which the extension is more specific about, such as text/markdown or
 // audio/ogg. Ogg data without an extension is audio/ogg, as Ogg is almost
-// always audio. Without data, it's the type of the extension. Returns
+// always audio, and MP4 data whose brand is M4A or M4B, or which is named
+// .m4a or .m4b, is audio/mp4. Without data, it's the type of the extension. Returns
 // application/octet-stream when neither is recognised, and an empty string
 // when there's no data, and the extension isn't known.
 func ResourceType(data []byte, name string) string {
@@ -96,6 +98,9 @@ func ResourceType(data []byte, name string) string {
 	}
 	if len(data) == 0 {
 		return byName
+	}
+	if isAudioMP4(data) {
+		return "audio/mp4"
 	}
 	detected := http.DetectContentType(data)
 	mediaType, _, err := mime.ParseMediaType(detected)
@@ -112,8 +117,39 @@ func ResourceType(data []byte, name string) string {
 			return byName
 		}
 		return "audio/ogg"
+	case "video/mp4":
+		// An MP4 container named as audio is audio, as an M4A file can have
+		// the brands of video
+		if ext := strings.ToLower(path.Ext(name)); ext == ".m4a" || ext == ".m4b" {
+			return "audio/mp4"
+		}
 	}
 	return detected
+}
+
+// isAudioMP4 returns true when the data is an MP4 container, whose ftyp box
+// has the brand of audio, M4A or M4B, such as from iTunes or a voice
+// recorder, as its major brand, or one of its compatible brands, which
+// http.DetectContentType doesn't recognize, unless it also has a brand of
+// video
+func isAudioMP4(data []byte) bool {
+	if len(data) < 16 || string(data[4:8]) != "ftyp" {
+		return false
+	}
+	size := int(binary.BigEndian.Uint32(data[:4]))
+	if size < 16 || size%4 != 0 || size > len(data) {
+		return false
+	}
+	for i := 8; i < size; i += 4 {
+		if i == 12 {
+			// The minor version, rather than a brand
+			continue
+		}
+		if brand := string(data[i : i+4]); brand == "M4A " || brand == "M4B " {
+			return true
+		}
+	}
+	return false
 }
 
 // UnknownType returns true when the MIME type is empty, or is

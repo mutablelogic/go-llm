@@ -77,9 +77,11 @@ func (r *Registry) Embed(ctx context.Context, model llm.Model, messages []llm.Me
 }
 
 // Transcribe returns the speech in the audio, from the model's provider,
-// which must be in the registry, and transcribe audio. Returns
-// ErrNotImplemented when the model is known not to transcribe.
-func (r *Registry) Transcribe(ctx context.Context, model llm.Model, audio llm.Resource, opts ...llm.Opt) (_ *llm.Transcript, _ llm.Usage, err error) {
+// which must be in the registry, and transcribe audio, and streams its
+// pieces to the function, when it isn't nil. Returns
+// ErrNotImplemented when the model is known not to transcribe, and the
+// provider's error as providerErr does.
+func (r *Registry) Transcribe(ctx context.Context, model llm.Model, audio llm.Resource, stream llm.TranscriberStreamFn, opts ...llm.Opt) (_ llm.Transcript, _ llm.Usage, err error) {
 	ctx, endSpan := otel.StartSpan(r.tracer, ctx, "llm.registry.Transcribe",
 		attribute.String("arg.model", r.modelName(model)),
 	)
@@ -87,18 +89,22 @@ func (r *Registry) Transcribe(ctx context.Context, model llm.Model, audio llm.Re
 
 	transcriber, err := capability[llm.Transcriber](r, model, "transcribe audio")
 	if err != nil {
-		return nil, llm.Usage{}, err
+		return llm.Transcript{}, llm.Usage{}, err
 	} else if err := can(model, model.Capabilities().Transcription, "transcribe audio"); err != nil {
-		return nil, llm.Usage{}, err
+		return llm.Transcript{}, llm.Usage{}, err
 	}
-	return transcriber.Transcribe(ctx, model, audio, opts...)
+	transcript, usage, err := transcriber.Transcribe(ctx, model, audio, stream, opts...)
+	if err != nil {
+		return llm.Transcript{}, llm.Usage{}, providerErr(err)
+	}
+	return transcript, usage, nil
 }
 
 // Translate returns the speech in the audio as English text, from the
 // model's provider, which must be in the registry, and transcribe audio.
 // Returns ErrNotImplemented when the model can't translate, or is known not
-// to.
-func (r *Registry) Translate(ctx context.Context, model llm.Model, audio llm.Resource, opts ...llm.Opt) (_ *llm.Transcript, _ llm.Usage, err error) {
+// to, and the provider's error as providerErr does.
+func (r *Registry) Translate(ctx context.Context, model llm.Model, audio llm.Resource, stream llm.TranscriberStreamFn, opts ...llm.Opt) (_ llm.Transcript, _ llm.Usage, err error) {
 	ctx, endSpan := otel.StartSpan(r.tracer, ctx, "llm.registry.Translate",
 		attribute.String("arg.model", r.modelName(model)),
 	)
@@ -106,11 +112,15 @@ func (r *Registry) Translate(ctx context.Context, model llm.Model, audio llm.Res
 
 	transcriber, err := capability[llm.Transcriber](r, model, "translate audio")
 	if err != nil {
-		return nil, llm.Usage{}, err
+		return llm.Transcript{}, llm.Usage{}, err
 	} else if err := can(model, model.Capabilities().Translation, "translate audio"); err != nil {
-		return nil, llm.Usage{}, err
+		return llm.Transcript{}, llm.Usage{}, err
 	}
-	return transcriber.Translate(ctx, model, audio, opts...)
+	transcript, usage, err := transcriber.Translate(ctx, model, audio, stream, opts...)
+	if err != nil {
+		return llm.Transcript{}, llm.Usage{}, providerErr(err)
+	}
+	return transcript, usage, nil
 }
 
 // Recognize returns the text in the resource, such as an image or a PDF, as

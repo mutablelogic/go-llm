@@ -164,6 +164,9 @@ func TestWithOpts(t *testing.T) {
 			{llm.WithPages(0, 2), llm.PagesKey, []uint{0, 2}},
 			{llm.WithTableFormat("html"), llm.TableFormatKey, "html"},
 			{llm.WithRegions(true), llm.RegionsKey, true},
+			{llm.WithLanguage("fr"), llm.LanguageKey, "fr"},
+			{llm.WithSegments(true), llm.SegmentsKey, true},
+			{llm.WithSpeakers(true), llm.SpeakersKey, true},
 		} {
 			opts, err := llm.ApplyOpts(test.opt)
 			require.NoError(t, err, test.key)
@@ -192,6 +195,8 @@ func TestWithOpts(t *testing.T) {
 			"ZeroDimensions":      llm.WithDimensions(0),
 			"NoPages":             llm.WithPages(),
 			"UnknownTableFormat":  llm.WithTableFormat("csv"),
+			"LanguageName":        llm.WithLanguage("french"),
+			"UpperLanguage":       llm.WithLanguage("FR"),
 		} {
 			_, err := llm.ApplyOpts(opt)
 			assert.ErrorIs(t, err, llm.ErrBadParameter, name)

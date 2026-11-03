@@ -39,6 +39,19 @@ func Test_ResourceType(t *testing.T) {
 	assert.Equal(t, "audio/ogg", schema.ResourceType(ogg, ""))
 	assert.Equal(t, "audio/ogg", schema.ResourceType(ogg, "clip.json"))
 
+	// And MP4, which is video, unless it has the brand of audio, M4A or M4B,
+	// as its major brand, or a compatible one, even without the brand of
+	// video, or it's named as audio
+	mp4 := func(brands string) []byte {
+		return append([]byte{0, 0, 0, byte(8 + len(brands))}, "ftyp"+brands...)
+	}
+	assert.Equal(t, "video/mp4", schema.ResourceType(mp4("isom\x00\x00\x00\x00isomiso2mp41mp42"), ""))
+	assert.Equal(t, "audio/mp4", schema.ResourceType(mp4("M4A \x00\x00\x00\x00isomiso2mp41mp42"), ""))
+	assert.Equal(t, "audio/mp4", schema.ResourceType(mp4("M4A \x00\x00\x00\x00M4A isom"), ""))
+	assert.Equal(t, "audio/mp4", schema.ResourceType(mp4("isom\x00\x00\x00\x00isomM4B "), ""))
+	assert.Equal(t, "audio/mp4", schema.ResourceType(mp4("isom\x00\x00\x00\x00isomiso2mp41mp42"), "talk.M4A"))
+	assert.Equal(t, "audio/mp4", schema.ResourceType(mp4("M4B \x00\x00\x00\x00isomiso2mp41mp42"), "book.m4b"))
+
 	// And without data, it's the type of the extension, or none
 	assert.Equal(t, "image/png", schema.ResourceType(nil, "photo.png"))
 	assert.Empty(t, schema.ResourceType(nil, "photo"))

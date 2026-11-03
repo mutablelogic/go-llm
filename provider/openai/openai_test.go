@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -170,6 +171,82 @@ func Test_Live(t *testing.T) {
 		require.NoError(t, err)
 		if assert.Len(t, vectors, 1) {
 			assert.Len(t, vectors[0], 256)
+		}
+	})
+}
+
+func Test_LiveTranscribe(t *testing.T) {
+	c := liveClient(t)
+	ctx, cancel := context.WithTimeout(context.Background(), liveTimeout)
+	defer cancel()
+	speech := func(name string) llm.Resource {
+		data, err := os.ReadFile(filepath.Join("..", "..", "testdata", name))
+		require.NoError(t, err)
+		return &schema.Resource{ResourceMeta: schema.ResourceMeta{ContentType: schema.ResourceType(data, name), Data: data}}
+	}
+
+	t.Run("Whisper", func(t *testing.T) {
+		// The text, its language, which whisper detects, its segments, and
+		// the seconds
+		model := liveModelNamed(t, ctx, c, "OPENAI_WHISPER_MODEL", "whisper-1")
+		transcript, usage, err := c.Transcribe(ctx, model, speech("speech-en.m4a"), nil, llm.WithSegments(true))
+		require.NoError(t, err)
+		t.Logf("%+v, %+v", transcript, usage)
+		assert.Contains(t, strings.ToLower(transcript.Text), "quick brown fox")
+		assert.Equal(t, "en", transcript.Language)
+		if assert.NotEmpty(t, transcript.Segments) {
+			last := transcript.Segments[len(transcript.Segments)-1]
+			assert.Greater(t, last.End, last.Start)
+		}
+		assert.Positive(t, usage.Seconds)
+	})
+
+	t.Run("Translate", func(t *testing.T) {
+		// French speech, as English text, and the seconds, which are its
+		// duration, as a translation has no usage
+		model := liveModelNamed(t, ctx, c, "OPENAI_WHISPER_MODEL", "whisper-1")
+		transcript, usage, err := c.Translate(ctx, model, speech("speech-fr.wav"), nil)
+		require.NoError(t, err)
+		t.Logf("%+v, %+v", transcript, usage)
+		assert.Contains(t, strings.ToLower(transcript.Text), "hello")
+		assert.Equal(t, "en", transcript.Language)
+		assert.Positive(t, usage.Seconds)
+	})
+
+	t.Run("Transcribe", func(t *testing.T) {
+		// A model which returns text, and the tokens used
+		model := liveModelNamed(t, ctx, c, "OPENAI_TRANSCRIBE_MODEL", "gpt-4o-mini-transcribe")
+		transcript, usage, err := c.Transcribe(ctx, model, speech("speech-en.m4a"), nil)
+		require.NoError(t, err)
+		t.Logf("%+v, %+v", transcript, usage)
+		assert.Contains(t, strings.ToLower(transcript.Text), "quick brown fox")
+		assert.Empty(t, transcript.Segments)
+		assert.Positive(t, usage.InputTokens)
+	})
+
+	t.Run("Stream", func(t *testing.T) {
+		// The pieces of the text, as they're transcribed, which are the
+		// transcript's
+		model := liveModelNamed(t, ctx, c, "OPENAI_TRANSCRIBE_MODEL", "gpt-4o-mini-transcribe")
+		var pieces []string
+		transcript, usage, err := c.Transcribe(ctx, model, speech("speech-en.m4a"), func(text string, segment *llm.TranscriptSegment) {
+			pieces = append(pieces, text)
+		})
+		require.NoError(t, err)
+		t.Logf("%d pieces, %+v", len(pieces), usage)
+		assert.Greater(t, len(pieces), 1)
+		assert.Equal(t, transcript.Text, strings.TrimSpace(strings.Join(pieces, "")))
+		assert.Positive(t, usage.InputTokens)
+	})
+
+	t.Run("Speakers", func(t *testing.T) {
+		// A diarizing model, whose segments have their speakers
+		model := liveModelNamed(t, ctx, c, "OPENAI_DIARIZE_MODEL", "gpt-4o-transcribe-diarize")
+		transcript, _, err := c.Transcribe(ctx, model, speech("speech-en.m4a"), nil, llm.WithSpeakers(true))
+		require.NoError(t, err)
+		t.Logf("%+v", transcript)
+		if assert.NotEmpty(t, transcript.Segments) {
+			assert.NotEmpty(t, transcript.Segments[0].Speaker)
 		}
 	})
 }

@@ -76,19 +76,19 @@ func (c *capable) Embed(_ context.Context, model llm.Model, messages []llm.Messa
 	return make([]llm.Vector, len(messages)), llm.Usage{}, nil
 }
 
-func (c *capable) Transcribe(_ context.Context, model llm.Model, _ llm.Resource, _ ...llm.Opt) (*llm.Transcript, llm.Usage, error) {
+func (c *capable) Transcribe(_ context.Context, model llm.Model, _ llm.Resource, _ llm.TranscriberStreamFn, _ ...llm.Opt) (llm.Transcript, llm.Usage, error) {
 	c.record("transcribe", model)
-	return &llm.Transcript{Text: "hello"}, llm.Usage{}, nil
+	return llm.Transcript{Text: "hello"}, llm.Usage{}, nil
 }
 
 // Translate translates, except with a model named transcribe-only, which
 // can only transcribe
-func (c *capable) Translate(_ context.Context, model llm.Model, _ llm.Resource, _ ...llm.Opt) (*llm.Transcript, llm.Usage, error) {
+func (c *capable) Translate(_ context.Context, model llm.Model, _ llm.Resource, _ llm.TranscriberStreamFn, _ ...llm.Opt) (llm.Transcript, llm.Usage, error) {
 	if model.Name() == "transcribe-only" {
-		return nil, llm.Usage{}, llm.ErrNotImplemented.Withf("model %q can't translate", model.Name())
+		return llm.Transcript{}, llm.Usage{}, llm.ErrNotImplemented.Withf("model %q can't translate", model.Name())
 	}
 	c.record("translate", model)
-	return &llm.Transcript{Text: "hello", Language: "en"}, llm.Usage{}, nil
+	return llm.Transcript{Text: "hello", Language: "en"}, llm.Usage{}, nil
 }
 
 func (c *capable) Recognize(_ context.Context, model llm.Model, _ llm.Resource, _ ...llm.Opt) (llm.Document, llm.Usage, error) {
@@ -172,7 +172,7 @@ func Test_Capabilities(t *testing.T) {
 
 	t.Run("Transcribe", func(t *testing.T) {
 		ollama.called = nil
-		transcript, _, err := r.Transcribe(ctx, get(t, r, "llama3.2:latest"), nil)
+		transcript, _, err := r.Transcribe(ctx, get(t, r, "llama3.2:latest"), nil, nil)
 		require.NoError(t, err)
 		assert.Equal(t, "hello", transcript.Text)
 		assert.Equal(t, []string{"transcribe llama3.2:latest"}, ollama.called)
@@ -181,19 +181,19 @@ func Test_Capabilities(t *testing.T) {
 	t.Run("Translate", func(t *testing.T) {
 		// The model's provider translates
 		ollama.called = nil
-		transcript, _, err := r.Translate(ctx, get(t, r, "llama3.2:latest"), nil)
+		transcript, _, err := r.Translate(ctx, get(t, r, "llama3.2:latest"), nil, nil)
 		require.NoError(t, err)
 		assert.Equal(t, "en", transcript.Language)
 		assert.Equal(t, []string{"translate llama3.2:latest"}, ollama.called)
 
 		// Unless the model can only transcribe
-		_, _, err = r.Translate(ctx, get(t, r, "transcribe-only"), nil)
+		_, _, err = r.Translate(ctx, get(t, r, "transcribe-only"), nil, nil)
 		assert.ErrorIs(t, err, llm.ErrNotImplemented)
-		_, _, err = r.Transcribe(ctx, get(t, r, "transcribe-only"), nil)
+		_, _, err = r.Transcribe(ctx, get(t, r, "transcribe-only"), nil, nil)
 		assert.NoError(t, err)
 
 		// Or the provider can't transcribe at all
-		_, _, err = r.Translate(ctx, get(t, r, "gpt-4o"), nil)
+		_, _, err = r.Translate(ctx, get(t, r, "gpt-4o"), nil, nil)
 		assert.ErrorIs(t, err, llm.ErrNotImplemented)
 		assert.ErrorContains(t, err, `provider "openai" can't translate audio`)
 	})
@@ -221,7 +221,7 @@ func Test_Capabilities(t *testing.T) {
 		assert.ErrorContains(t, err, `provider "eliza" can't embed messages`)
 		_, _, err = r.WithoutSession(ctx, get(t, r, "gpt-4o"), []llm.Message{user(t, "Hi")}, nil, nil)
 		assert.ErrorIs(t, err, llm.ErrNotImplemented)
-		_, _, err = r.Transcribe(ctx, get(t, r, "gpt-4o"), nil)
+		_, _, err = r.Transcribe(ctx, get(t, r, "gpt-4o"), nil, nil)
 		assert.ErrorIs(t, err, llm.ErrNotImplemented)
 		assert.ErrorIs(t, r.DeleteModel(ctx, get(t, r, "gpt-4o")), llm.ErrNotImplemented)
 		assert.ErrorIs(t, r.UnloadModel(ctx, get(t, r, "gpt-4o")), llm.ErrNotImplemented)
@@ -273,11 +273,11 @@ func Test_Capabilities(t *testing.T) {
 				return err
 			},
 			"transcribe audio": func(m llm.Model) error {
-				_, _, err := r.Transcribe(ctx, m, nil)
+				_, _, err := r.Transcribe(ctx, m, nil, nil)
 				return err
 			},
 			"translate audio": func(m llm.Model) error {
-				_, _, err := r.Translate(ctx, m, nil)
+				_, _, err := r.Translate(ctx, m, nil, nil)
 				return err
 			},
 			"recognize text": func(m llm.Model) error {

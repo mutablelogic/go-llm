@@ -33,7 +33,8 @@ type ToolResult struct {
 }
 
 // Usage is the number of tokens used generating a message, or the pages
-// recognized, for providers which charge by the page. The cached and
+// recognized, or seconds of audio transcribed, for providers which charge
+// by them. The cached and
 // reasoning tokens are part of the input and output tokens, for providers
 // which report them.
 type Usage struct {
@@ -42,4 +43,5 @@ type Usage struct {
 	CachedTokens    uint `json:"cached_tokens,omitempty" help:"Of the input tokens, those read from the provider's cache" example:"0"`
 	ReasoningTokens uint `json:"reasoning_tokens,omitempty" help:"Of the output tokens, those of reasoning which isn't returned" example:"0"`
 	Pages           uint `json:"pages,omitempty" help:"Pages of documents and images whose text was recognized" example:"0"`
+	Seconds         uint `json:"seconds,omitempty" help:"Seconds of audio transcribed, or translated, for providers which charge by the second" example:"0"`
 }

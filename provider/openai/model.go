@@ -72,6 +72,9 @@ var modelCapabilities = []struct {
 	// Mistral's embedding models, which it reports no capabilities of
 	{serverMistral, regexp.MustCompile(`^(mistral|codestral)-embed`), llm.ModelCap{Embedding: yes}},
 
+	// Mistral's audio models, as it has no translations
+	{serverMistral, regexp.MustCompile(`^voxtral-`), llm.ModelCap{Translation: no}},
+
 	// OpenAI's models which it has deprecated, but still lists
 	{serverOpenAI, regexp.MustCompile(`^gpt-3\.5-turbo-(16k|instruct)\b|^gpt-4o(-mini)?-search-preview`), llm.ModelCap{Completion: no, Tools: no, Thinking: no, Vision: no, OCR: no, Transcription: no, Translation: no, Embedding: no}},
 
@@ -80,7 +83,7 @@ var modelCapabilities = []struct {
 
 	// OpenAI's speech, image and moderation models, which don't reply
 	{serverOpenAI, regexp.MustCompile(`^whisper-`), llm.ModelCap{Completion: no, Transcription: yes, Translation: yes, Embedding: no}},
-	{serverOpenAI, regexp.MustCompile(`-transcribe|^gpt-realtime-whisper`), llm.ModelCap{Completion: no, Transcription: yes, Embedding: no}},
+	{serverOpenAI, regexp.MustCompile(`-transcribe|^gpt-realtime-whisper`), llm.ModelCap{Completion: no, Transcription: yes, Translation: no, Embedding: no}},
 	{serverOpenAI, regexp.MustCompile(`^gpt-realtime-translate`), llm.ModelCap{Completion: no, Translation: yes, Embedding: no}},
 	{serverOpenAI, regexp.MustCompile(`^tts-|-tts\b`), llm.ModelCap{Completion: no, Tools: no, Thinking: no, Vision: no, OCR: no, Transcription: no, Translation: no, Embedding: no}},
 	{serverOpenAI, regexp.MustCompile(`^gpt-(audio|realtime|live)\b`), llm.ModelCap{Completion: no, Embedding: no}},
