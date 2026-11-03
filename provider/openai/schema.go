@@ -2,9 +2,12 @@ package openai
 
 import (
 	"encoding/json"
+	"math"
+	"strings"
 
 	// Packages
 	llm "github.com/mutablelogic/go-llm"
+	types "github.com/mutablelogic/go-server/pkg/types"
 )
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -206,6 +209,62 @@ type chatError struct {
 ///////////////////////////////////////////////////////////////////////////////
 // PUBLIC METHODS
 
+// language returns the language of the transcript, as an ISO 639-1 code,
+// from whisper's name for it, or the first of gpt-transcribe's codes, or
+// an empty string when it isn't known
+func (r transcribeResponse) language() string {
+	if r.Language != nil {
+		language := strings.ToLower(strings.TrimSpace(*r.Language))
+		if code, exists := whisperLanguages[language]; exists {
+			return code
+		}
+		return language
+	}
+	for _, language := range r.Languages {
+		if code := strings.ToLower(strings.TrimSpace(language.Code)); code != "" {
+			return code
+		}
+	}
+	return ""
+}
+
+// usage returns the seconds of audio, and the tokens, used, which are
+// OpenAI's seconds, or tokens, or Mistral's seconds and tokens, whose input
+// tokens are its total less its completion tokens, as its prompt tokens
+// don't have the audio's
+func (r transcribeResponse) usage() llm.Usage {
+	usage := llm.Usage{
+		InputTokens:  r.Usage.InputTokens,
+		OutputTokens: r.Usage.OutputTokens,
+		Seconds:      uint(math.Round(r.Usage.Seconds)),
+	}
+	if r.Usage.PromptAudioSeconds > 0 || r.Usage.CompletionTokens > 0 {
+		usage.Seconds = r.Usage.PromptAudioSeconds
+		usage.OutputTokens = r.Usage.CompletionTokens
+		usage.InputTokens = r.Usage.TotalTokens - min(r.Usage.CompletionTokens, r.Usage.TotalTokens)
+	}
+	return usage
+}
+
+// speaker returns who spoke the segment, as OpenAI, or Mistral, labels them
+func (s transcribeSegment) speaker() string {
+	if s.Speaker != nil {
+		return *s.Speaker
+	}
+	return types.Value(s.SpeakerID)
+}
+
+// transcript returns the segment of a transcript, from when to when, its
+// text, and who spoke it
+func (s transcribeSegment) transcript() llm.TranscriptSegment {
+	return llm.TranscriptSegment{
+		Start:   seconds(s.Start),
+		End:     seconds(s.End),
+		Text:    strings.TrimSpace(s.Text),
+		Speaker: s.speaker(),
+	}
+}
+
 // Usage returns the tokens used, with those read from the cache, and of
 // reasoning, from the details or DeepSeek's cache hits
 func (u *chatUsage) Usage() llm.Usage {
@@ -251,6 +310,56 @@ type embedResponse struct {
 		PromptTokens uint `json:"prompt_tokens"`
 	} `json:"usage"`
 	Error *chatError `json:"error,omitempty"`
+}
+
+// transcribeRequest is a request to transcribe, or translate, the speech in
+// audio, which is a multipart form, with the audio as a file, and the format
+// of the response, which differs between models, and the fields for
+// segments, which differ between OpenAI and Mistral
+// Reference: https://platform.openai.com/docs/api-reference/audio
+// Reference: https://docs.mistral.ai/api/endpoint/audio/transcriptions
+type transcribeRequest struct {
+	File                   types.File `json:"file"`
+	Model                  string     `json:"model"`
+	Language               string     `json:"language,omitempty"`
+	Temperature            *float64   `json:"temperature,omitempty"`
+	ResponseFormat         string     `json:"response_format,omitempty"`
+	TimestampGranularities string     `json:"timestamp_granularities[],omitempty"` // OpenAI's
+	TimestampGranularity   string     `json:"timestamp_granularities,omitempty"`   // Mistral's
+	ChunkingStrategy       string     `json:"chunking_strategy,omitempty"`         // OpenAI's diarizing models
+	Diarize                bool       `json:"diarize,omitempty"`                   // Mistral's
+	Stream                 bool       `json:"stream,omitempty"`
+}
+
+// transcribeResponse is the transcript, with its language, which whisper
+// returns as a name, and gpt-transcribe as codes, and its segments, with
+// their speakers, which OpenAI's diarizing models, and Mistral, label, and
+// the seconds, or tokens, used, as each model reports them
+type transcribeResponse struct {
+	Text      string  `json:"text"`
+	Language  *string `json:"language"`
+	Languages []struct {
+		Code string `json:"code"`
+	} `json:"languages"`
+	Segments []transcribeSegment `json:"segments"`
+	Usage    struct {
+		Seconds            float64 `json:"seconds"`
+		InputTokens        uint    `json:"input_tokens"`
+		OutputTokens       uint    `json:"output_tokens"`
+		PromptAudioSeconds uint    `json:"prompt_audio_seconds"` // Mistral's
+		CompletionTokens   uint    `json:"completion_tokens"`    // Mistral's
+		TotalTokens        uint    `json:"total_tokens"`
+	} `json:"usage"`
+}
+
+// transcribeSegment is a segment of a transcript, from when to when, in
+// seconds, and who spoke it, as OpenAI, or Mistral, labels them
+type transcribeSegment struct {
+	Start     float64 `json:"start"`
+	End       float64 `json:"end"`
+	Text      string  `json:"text"`
+	Speaker   *string `json:"speaker"`
+	SpeakerID *string `json:"speaker_id"`
 }
 
 // ocrRequest is a request to recognize the text in an image or document,

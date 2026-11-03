@@ -30,8 +30,9 @@ const (
 	mistralEmbeddingModel  = "mistral-embed"
 	mistralDimensionsModel = "codestral-embed"
 
-	// A model which recognizes text
-	mistralOCRModel = "mistral-ocr-latest"
+	// A model which recognizes text, and one which transcribes speech
+	mistralOCRModel        = "mistral-ocr-latest"
+	mistralTranscribeModel = "voxtral-mini-latest"
 )
 
 // mistralClient returns a client of Mistral's API, with the key in
@@ -263,6 +264,63 @@ func Test_LiveMistral_Recognize(t *testing.T) {
 			}
 			assert.Less(t, region.Box[0], region.Box[2])
 			assert.Less(t, region.Box[1], region.Box[3])
+		}
+	})
+}
+
+func Test_LiveMistral_Transcribe(t *testing.T) {
+	c := mistralClient(t)
+	ctx, cancel := context.WithTimeout(context.Background(), liveTimeout)
+	defer cancel()
+	model, err := c.GetModel(ctx, mistralTranscribeModel)
+	require.NoError(t, err)
+	assert.True(t, types.Value(model.Capabilities().Transcription))
+	assert.False(t, types.Value(model.Capabilities().Translation))
+	read := func(name string) llm.Resource {
+		data, err := os.ReadFile(filepath.Join("..", "..", "testdata", name))
+		require.NoError(t, err)
+		return &schema.Resource{ResourceMeta: schema.ResourceMeta{ContentType: schema.ResourceType(data, name), Data: data}}
+	}
+
+	t.Run("Transcribe", func(t *testing.T) {
+		// The text, in the language set, without segments, and the seconds
+		// and tokens
+		transcript, usage, err := c.Transcribe(ctx, model, read("speech-fr.wav"), nil, llm.WithLanguage("fr"))
+		require.NoError(t, err)
+		t.Logf("%+v, %+v", transcript, usage)
+		assert.Contains(t, strings.ToLower(transcript.Text), "bonjour")
+		assert.Equal(t, "fr", transcript.Language)
+		assert.Empty(t, transcript.Segments)
+		assert.Positive(t, usage.Seconds)
+		assert.Positive(t, usage.InputTokens)
+	})
+
+	t.Run("Stream", func(t *testing.T) {
+		// The pieces of the text, and the segments, as they're transcribed
+		var pieces []string
+		var segments []llm.TranscriptSegment
+		transcript, _, err := c.Transcribe(ctx, model, read("speech-en.m4a"), func(text string, segment *llm.TranscriptSegment) {
+			if segment != nil {
+				segments = append(segments, *segment)
+			} else {
+				pieces = append(pieces, text)
+			}
+		}, llm.WithSegments(true))
+		require.NoError(t, err)
+		t.Logf("%d pieces, %d segments", len(pieces), len(segments))
+		assert.Greater(t, len(pieces), 1)
+		assert.Equal(t, transcript.Text, strings.TrimSpace(strings.Join(pieces, "")))
+		assert.Equal(t, transcript.Segments, segments)
+	})
+
+	t.Run("Speakers", func(t *testing.T) {
+		// The segments, with their speakers
+		transcript, _, err := c.Transcribe(ctx, model, read("speech-en.m4a"), nil, llm.WithSpeakers(true))
+		require.NoError(t, err)
+		t.Logf("%+v", transcript)
+		if assert.NotEmpty(t, transcript.Segments) {
+			assert.NotEmpty(t, transcript.Segments[0].Speaker)
+			assert.Greater(t, transcript.Segments[0].End, transcript.Segments[0].Start)
 		}
 	})
 }

@@ -1,9 +1,7 @@
 package httphandler
 
 import (
-	"errors"
 	"net/http"
-	"time"
 
 	// Packages
 	llm "github.com/mutablelogic/go-llm"
@@ -14,7 +12,6 @@ import (
 	httprouter "github.com/mutablelogic/go-server/pkg/httprouter"
 	jsonschema "github.com/mutablelogic/go-server/pkg/jsonschema"
 	openapi "github.com/mutablelogic/go-server/pkg/openapi"
-	types "github.com/mutablelogic/go-server/pkg/types"
 )
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -34,7 +31,13 @@ func askHandlers(reg *registry.Registry, router *httprouter.Router, documentatio
 			} else if err := httprequest.Read(r, &req); err != nil {
 				httpresponse.Error(w, httpresponse.ErrBadRequest.Withf("%w", err))
 			} else {
-				ask(w, r, req.Model, func(stream llm.GeneratorStreamFn) (*schema.AskResponse, error) {
+				respond(w, r, req.Model, func(write streamWriteFn) (*schema.AskResponse, error) {
+					var stream llm.GeneratorStreamFn
+					if write != nil {
+						stream = func(what llm.StreamType, text string) {
+							write(string(what), schema.StreamEvent{Text: text})
+						}
+					}
 					return reg.Ask(r.Context(), req, stream)
 				})
 			}
@@ -53,49 +56,4 @@ func askHandlers(reg *registry.Registry, router *httprouter.Router, documentatio
 			op.ErrorResponse(http.StatusServiceUnavailable, "The model couldn't reply, or a provider which may have it can't be reached")
 		})
 	})
-}
-
-// ask writes the response of the function, which asks a model for its reply,
-// as JSON. When the request accepts text/event-stream, the reply is streamed
-// as server-sent events instead: an event for each piece of the reply as
-// it's generated, named for what it is, text or thinking, and then a result
-// event with the response, or an error event. The name is of the model, for
-// errors. A model can take longer to reply than the server's write timeout,
-// which is for the whole response, so it's cleared, and each write has its
-// own deadline instead, as with the stream of events.
-func ask(w http.ResponseWriter, r *http.Request, name string, fn func(llm.GeneratorStreamFn) (*schema.AskResponse, error)) {
-	accept, err := types.AcceptContentType(r)
-	if err != nil {
-		httpresponse.Error(w, httpresponse.ErrBadRequest.With(err.Error()))
-		return
-	}
-	dw := newDeadlineWriter(w)
-	if err := dw.rc.SetWriteDeadline(time.Time{}); err != nil && !errors.Is(err, http.ErrNotSupported) {
-		httpresponse.Error(w, httpresponse.ErrInternalError.With(err.Error()))
-		return
-	}
-	switch accept {
-	case types.ContentTypeTextStream:
-		stream := httpresponse.NewTextStream(dw, "X-Accel-Buffering", "no")
-		if stream == nil {
-			httpresponse.Error(w, httpresponse.ErrInternalError.With("streaming isn't supported"))
-			return
-		}
-		defer stream.Close()
-		if response, err := fn(func(what llm.StreamType, text string) {
-			stream.Write(string(what), schema.StreamEvent{Text: text})
-		}); err != nil {
-			stream.Write(schema.EventError, schema.ErrorEvent{Error: err.Error()})
-		} else {
-			stream.Write(schema.EventResult, response)
-		}
-	case "", types.ContentTypeJSON, types.ContentTypeAny:
-		if response, err := fn(nil); err != nil {
-			httpresponse.Error(dw, llm.HTTPErr(err), name)
-		} else {
-			httpresponse.JSON(dw, http.StatusOK, httprequest.Indent(r), response)
-		}
-	default:
-		httpresponse.Error(w, httpresponse.Err(http.StatusNotAcceptable).Withf("cannot respond with %q", accept))
-	}
 }

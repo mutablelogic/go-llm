@@ -70,6 +70,11 @@ const (
 	PagesKey       = "pages"        // []uint, uint, or a string such as "0,2-4", pages of a document to recognize, from zero
 	TableFormatKey = "table_format" // string, format of the tables in the text: "markdown" or "html"
 	RegionsKey     = "regions"      // bool, whether a page has its regions, with their boxes
+
+	// Transcription
+	LanguageKey = "language" // string, ISO 639-1 code of the language the speech is in, such as "en"
+	SegmentsKey = "segments" // bool, whether a transcript has its segments, with when each was spoken
+	SpeakersKey = "speakers" // bool, whether a transcript's segments have who spoke them
 )
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -274,6 +279,27 @@ func WithTableFormat(value string) Opt {
 // such as paragraphs, titles and tables, with their boxes
 func WithRegions(value bool) Opt {
 	return WithOpt(RegionsKey, value)
+}
+
+// WithLanguage sets the language the speech in audio is in, as an ISO 639-1
+// code, such as "en", rather than it being detected
+func WithLanguage(value string) Opt {
+	if len(value) != 2 || strings.ToLower(value) != value {
+		return withError(ErrBadParameter.Withf("language %q must be an ISO 639-1 code, such as \"en\"", value))
+	}
+	return WithOpt(LanguageKey, value)
+}
+
+// WithSegments sets whether a transcript has its segments, with when each
+// was spoken
+func WithSegments(value bool) Opt {
+	return WithOpt(SegmentsKey, value)
+}
+
+// WithSpeakers sets whether a transcript's segments have who spoke them,
+// which is diarization
+func WithSpeakers(value bool) Opt {
+	return WithOpt(SpeakersKey, value)
 }
 
 ////////////////////////////////////////////////////////////////////////////////

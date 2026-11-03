@@ -3,6 +3,7 @@ package openai
 import (
 	"encoding/json"
 	"regexp"
+	"strings"
 
 	// Packages
 	llm "github.com/mutablelogic/go-llm"
@@ -67,6 +68,77 @@ func (r *embedRequest) apply(server server, opts ...llm.Opt) error {
 		}
 	}
 	return nil
+}
+
+// transcribeOptions are the options of a transcript which aren't in the
+// request: the language, when it's set, which a model may not return, and
+// whether the transcript has its segments, and their speakers
+type transcribeOptions struct {
+	language           string
+	segments, speakers bool
+}
+
+// apply sets the options on the request to transcribe, or translate, and
+// the format of the response, for the model, or returns an error if any
+// option isn't valid or isn't supported. Mistral returns segments, and
+// their speakers, which it's asked for. OpenAI's diarizing models return
+// segments with their speakers, and whisper, and other servers, return
+// segments, without speakers, which OpenAI's other models don't return. A
+// translation is into English, so it has no language.
+func (r *transcribeRequest) apply(server server, model string, translate bool, opts ...llm.Opt) (transcribeOptions, error) {
+	var options transcribeOptions
+	o, err := llm.ApplyOpts(opts...)
+	if err != nil {
+		return options, err
+	}
+	for _, key := range o.Keys() {
+		var err error
+		switch key {
+		case llm.LanguageKey:
+			if translate {
+				err = llm.ErrBadParameter.Withf("option %q: a translation is into english", key)
+			} else if options.language, err = llm.GetOpt[string](o, key); err == nil {
+				r.Language = options.language
+			}
+		case llm.TemperatureKey:
+			r.Temperature, err = getOpt[float64](o, key)
+		case llm.SegmentsKey:
+			options.segments, err = llm.GetOpt[bool](o, key)
+		case llm.SpeakersKey:
+			options.speakers, err = llm.GetOpt[bool](o, key)
+		default:
+			err = llm.ErrBadParameter.Withf("option %q isn't supported for transcription", key)
+		}
+		if err != nil {
+			return options, err
+		}
+	}
+
+	// The format of the response, and its segments, for the model
+	switch {
+	case server == serverMistral:
+		if options.speakers {
+			r.Diarize = true
+		}
+		if options.segments || options.speakers {
+			r.TimestampGranularity = "segment"
+		}
+	case strings.Contains(model, "-diarize"):
+		r.ResponseFormat, r.ChunkingStrategy = "diarized_json", "auto"
+	case server != serverOpenAI || strings.HasPrefix(model, "whisper-"):
+		if options.speakers {
+			return options, llm.ErrBadParameter.Withf("option %q: model %q doesn't distinguish speakers", llm.SpeakersKey, model)
+		}
+		r.ResponseFormat = "verbose_json"
+		if options.segments {
+			r.TimestampGranularities = "segment"
+		}
+	case options.segments || options.speakers:
+		return options, llm.ErrBadParameter.Withf("model %q doesn't return segments", model)
+	default:
+		r.ResponseFormat = "json"
+	}
+	return options, nil
 }
 
 // apply sets the options on the request to recognize text, or returns an

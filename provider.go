@@ -89,18 +89,27 @@ type Vector []float32
 // such as one which only transcribes, returns ErrNotImplemented for it.
 type Transcriber interface {
 	// Transcribe returns the speech in the audio as text, in the language
-	// it was spoken in, with its segments and when each was spoken, so a
-	// part of a recording can be found, and the tokens used. The audio is a
-	// resource whose type is audio, such as audio/mpeg, which the provider
-	// must support. Options which the provider doesn't support are ignored
-	// or rejected.
-	Transcribe(context.Context, Model, Resource, ...Opt) (*Transcript, Usage, error)
+	// it was spoken in, with its segments and when each was spoken, when
+	// they're asked for, so a part of a recording can be found, and the
+	// seconds and tokens used. The audio is a resource whose type is audio,
+	// such as audio/mpeg, which the provider must support. The stream
+	// function, if not nil, is called with the pieces of the transcript as
+	// they're transcribed, or once it's transcribed, by a model which
+	// doesn't stream. Options which the provider doesn't support are
+	// rejected.
+	Transcribe(context.Context, Model, Resource, TranscriberStreamFn, ...Opt) (Transcript, Usage, error)
 
 	// Translate returns the speech in the audio, in any language, as English
 	// text, with its segments, as Transcribe does, whose language is "en",
-	// and the tokens used
-	Translate(context.Context, Model, Resource, ...Opt) (*Transcript, Usage, error)
+	// and the seconds and tokens used
+	Translate(context.Context, Model, Resource, TranscriberStreamFn, ...Opt) (Transcript, Usage, error)
 }
+
+// TranscriberStreamFn is called with each piece of a transcript as it's
+// transcribed: a piece of its text, or, when segments are asked for, a
+// segment, once it's transcribed, with empty text. The pieces of text are
+// the transcript's text, even for a model which only streams segments.
+type TranscriberStreamFn func(text string, segment *TranscriptSegment)
 
 // Recognizer is an interface for providers which recognize the text in
 // images and documents, which is optical character recognition (OCR)
@@ -115,20 +124,22 @@ type Recognizer interface {
 }
 
 // Transcript is the speech in audio: its text, the language it was spoken
-// in, such as "en", when it's known, and its segments, in order
+// in, such as "en", when it's known, and its segments, in order, when
+// they're asked for
 type Transcript struct {
-	Text     string
-	Language string
-	Segments []TranscriptSegment
+	Text     string              `json:"text" help:"Text of the speech" example:"Hello, world."`
+	Language string              `json:"language,omitempty" help:"Language the speech was spoken in, as an ISO 639-1 code, when it's known" example:"en"`
+	Segments []TranscriptSegment `json:"segments,omitempty" help:"Segments of the speech, in order, when they're asked for"`
 }
 
 // TranscriptSegment is a part of a transcript, such as a sentence, with when
 // it starts and ends in the audio, and who spoke it, when the provider
 // distinguishes speakers
 type TranscriptSegment struct {
-	Start, End time.Duration
-	Text       string
-	Speaker    string
+	Start   time.Duration `json:"start" help:"When the segment starts in the audio, in nanoseconds" example:"1600000000"`
+	End     time.Duration `json:"end" help:"When the segment ends in the audio, in nanoseconds" example:"3500000000"`
+	Text    string        `json:"text" help:"Text of the segment" example:"This is a test."`
+	Speaker string        `json:"speaker,omitempty" help:"Who spoke the segment, as the provider labels them, when speakers are asked for" example:"A"`
 }
 
 // Document is the text recognized in an image or document, by page, in
