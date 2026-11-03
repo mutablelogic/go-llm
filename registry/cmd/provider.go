@@ -21,6 +21,7 @@ import (
 type ProviderCommands struct {
 	ProviderList           ProviderListCmd           `cmd:"" name:"providers" help:"List the providers." group:"LLM PROVIDERS"`
 	ProviderGet            ProviderGetCmd            `cmd:"" name:"provider" help:"Get a provider by name." group:"LLM PROVIDERS"`
+	ProviderUpdate         ProviderUpdateCmd         `cmd:"" name:"provider-update" help:"Update a provider by name, replacing its URL and patterns, and its API key, when one is given." group:"LLM PROVIDERS"`
 	ProviderDelete         ProviderDeleteCmd         `cmd:"" name:"provider-delete" help:"Delete a provider by name." group:"LLM PROVIDERS"`
 	ProviderCreateOllama   ProviderCreateOllamaCmd   `cmd:"" name:"provider-create-ollama" help:"Create an Ollama provider." group:"LLM PROVIDERS"`
 	ProviderCreateEliza    ProviderCreateElizaCmd    `cmd:"" name:"provider-create-eliza" help:"Create an Eliza provider, for testing." group:"LLM PROVIDERS"`
@@ -35,6 +36,16 @@ type ProviderListCmd struct {
 
 type ProviderGetCmd struct {
 	Name string `arg:"" name:"name" help:"Provider name."`
+}
+
+// ProviderUpdateCmd updates a provider, whose URL and patterns are replaced
+// with those given, so one which isn't given is cleared, or is the type's
+// default, and whose API key is kept, unless one is given
+type ProviderUpdateCmd struct {
+	ProviderModels
+	Name             string `arg:"" name:"name" help:"Provider name."`
+	URL              string `name:"url" help:"URL of the provider, or the type's default when it isn't given."`
+	APIKeyCredential string `name:"api-key-credential" help:"Name of the credential holding the API key, which replaces it, or it's kept when it isn't given."`
 }
 
 type ProviderDeleteCmd struct {
@@ -104,7 +115,7 @@ func (cmd *ProviderListCmd) Run(ctx server.Cmd) error {
 		}
 
 		// Otherwise a table of the providers, and a summary
-		table := tui.TableFor[*schema.Provider](tui.SetWidth(width))
+		table := tui.TableFor[*schema.ProviderStatus](tui.SetWidth(width))
 		if _, err := table.Write(os.Stdout, providers.Body...); err != nil {
 			return err
 		}
@@ -125,6 +136,22 @@ func (cmd *ProviderGetCmd) Run(ctx server.Cmd) error {
 	})
 }
 
+func (cmd *ProviderUpdateCmd) Run(ctx server.Cmd) error {
+	return withClient(ctx, "llm.ProviderUpdateCmd", func(ctx context.Context, client *httpclient.Client) error {
+		provider, err := client.UpdateProvider(ctx, cmd.Name, schema.ProviderMeta{
+			URL:     cmd.URL,
+			Include: cmd.Include,
+			Exclude: cmd.Exclude,
+			APIKey:  placeholder(cmd.APIKeyCredential),
+		})
+		if err != nil {
+			return err
+		}
+		fmt.Println(provider)
+		return nil
+	})
+}
+
 func (cmd *ProviderDeleteCmd) Run(ctx server.Cmd) error {
 	return withClient(ctx, "llm.ProviderDeleteCmd", func(ctx context.Context, client *httpclient.Client) error {
 		provider, err := client.DeleteProvider(ctx, cmd.Name)
@@ -137,23 +164,23 @@ func (cmd *ProviderDeleteCmd) Run(ctx server.Cmd) error {
 }
 
 func (cmd *ProviderCreateOllamaCmd) Run(ctx server.Cmd) error {
-	return createProvider(ctx, "llm.ProviderCreateOllamaCmd", schema.CreateProviderRequest{
-		Name:     cmd.Name,
-		Provider: llm.Ollama,
-		Include:  cmd.Include,
-		Exclude:  cmd.Exclude,
-		URL:      cmd.URL,
-		APIKey:   placeholder(cmd.APIKeyCredential),
+	return createProvider(ctx, "llm.ProviderCreateOllamaCmd", schema.Provider{
+		Name:    cmd.Name,
+		Type:    llm.Ollama,
+		Include: cmd.Include,
+		Exclude: cmd.Exclude,
+		URL:     cmd.URL,
+		APIKey:  placeholder(cmd.APIKeyCredential),
 	})
 }
 
 // Eliza runs in the server, so has no URL or API key
 func (cmd *ProviderCreateElizaCmd) Run(ctx server.Cmd) error {
-	return createProvider(ctx, "llm.ProviderCreateElizaCmd", schema.CreateProviderRequest{
-		Name:     cmd.Name,
-		Provider: llm.Eliza,
-		Include:  cmd.Include,
-		Exclude:  cmd.Exclude,
+	return createProvider(ctx, "llm.ProviderCreateElizaCmd", schema.Provider{
+		Name:    cmd.Name,
+		Type:    llm.Eliza,
+		Include: cmd.Include,
+		Exclude: cmd.Exclude,
 	})
 }
 
@@ -163,37 +190,37 @@ func (cmd *ProviderCreateOpenAICmd) Run(ctx server.Cmd) error {
 	if cmd.URL == "" && strings.TrimSpace(cmd.APIKeyCredential) == "" {
 		return fmt.Errorf("an API key is required for OpenAI: use --api-key-credential with the name of the credential holding it")
 	}
-	return createProvider(ctx, "llm.ProviderCreateOpenAICmd", schema.CreateProviderRequest{
-		Name:     cmd.Name,
-		Provider: llm.OpenAI,
-		Include:  cmd.Include,
-		Exclude:  cmd.Exclude,
-		URL:      cmd.URL,
-		APIKey:   placeholder(cmd.APIKeyCredential),
+	return createProvider(ctx, "llm.ProviderCreateOpenAICmd", schema.Provider{
+		Name:    cmd.Name,
+		Type:    llm.OpenAI,
+		Include: cmd.Include,
+		Exclude: cmd.Exclude,
+		URL:     cmd.URL,
+		APIKey:  placeholder(cmd.APIKeyCredential),
 	})
 }
 
 // DeepSeek has an OpenAI-compatible API, at a fixed URL
 func (cmd *ProviderCreateDeepSeekCmd) Run(ctx server.Cmd) error {
-	return createProvider(ctx, "llm.ProviderCreateDeepSeekCmd", schema.CreateProviderRequest{
-		Name:     cmd.Name,
-		Provider: llm.OpenAI,
-		Include:  cmd.Include,
-		Exclude:  cmd.Exclude,
-		URL:      openai.DeepSeekEndpoint,
-		APIKey:   placeholder(cmd.APIKeyCredential),
+	return createProvider(ctx, "llm.ProviderCreateDeepSeekCmd", schema.Provider{
+		Name:    cmd.Name,
+		Type:    llm.OpenAI,
+		Include: cmd.Include,
+		Exclude: cmd.Exclude,
+		URL:     openai.DeepSeekEndpoint,
+		APIKey:  placeholder(cmd.APIKeyCredential),
 	})
 }
 
 // Mistral has an OpenAI-compatible API, at a fixed URL
 func (cmd *ProviderCreateMistralCmd) Run(ctx server.Cmd) error {
-	return createProvider(ctx, "llm.ProviderCreateMistralCmd", schema.CreateProviderRequest{
-		Name:     cmd.Name,
-		Provider: llm.OpenAI,
-		Include:  cmd.Include,
-		Exclude:  cmd.Exclude,
-		URL:      openai.MistralEndpoint,
-		APIKey:   placeholder(cmd.APIKeyCredential),
+	return createProvider(ctx, "llm.ProviderCreateMistralCmd", schema.Provider{
+		Name:    cmd.Name,
+		Type:    llm.OpenAI,
+		Include: cmd.Include,
+		Exclude: cmd.Exclude,
+		URL:     openai.MistralEndpoint,
+		APIKey:  placeholder(cmd.APIKeyCredential),
 	})
 }
 
@@ -201,7 +228,7 @@ func (cmd *ProviderCreateMistralCmd) Run(ctx server.Cmd) error {
 // PRIVATE METHODS
 
 // createProvider creates the provider, and prints it
-func createProvider(ctx server.Cmd, span string, req schema.CreateProviderRequest) error {
+func createProvider(ctx server.Cmd, span string, req schema.Provider) error {
 	return withClient(ctx, span, func(ctx context.Context, client *httpclient.Client) error {
 		provider, err := client.CreateProvider(ctx, req)
 		if err != nil {

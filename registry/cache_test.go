@@ -250,7 +250,7 @@ func Test_Run(t *testing.T) {
 
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan error)
-	go func() { done <- r.Run(ctx) }()
+	go func() { done <- r.Run(ctx, nil) }()
 	require.Eventually(t, func() bool {
 		return openai.pings.Load() >= 3 && openai.lists.Load() >= 3
 	}, 5*time.Second, 5*time.Millisecond)
@@ -278,7 +278,7 @@ func Test_CreateProviderPatterns(t *testing.T) {
 	require.NoError(t, err)
 
 	// A provider is created with its patterns, which it's described with
-	provider, err := r.CreateProvider(ctx, schema.CreateProviderRequest{Provider: llm.Ollama, URL: ollama.URL, Include: []string{"^llama"}, Exclude: []string{":8b$"}})
+	provider, err := r.CreateProvider(ctx, schema.Provider{Type: llm.Ollama, URL: ollama.URL, Include: []string{"^llama"}, Exclude: []string{":8b$"}})
 	require.NoError(t, err)
 	assert.Equal(t, []string{"^llama"}, provider.Include)
 	assert.Equal(t, []string{":8b$"}, provider.Exclude)
@@ -292,7 +292,7 @@ func Test_CreateProviderPatterns(t *testing.T) {
 	// A pattern which isn't valid is an error, before the provider is
 	// contacted
 	requests.Store(0)
-	_, err = r.CreateProvider(ctx, schema.CreateProviderRequest{Name: "bad", Provider: llm.Ollama, URL: ollama.URL, Include: []string{"("}})
+	_, err = r.CreateProvider(ctx, schema.Provider{Name: "bad", Type: llm.Ollama, URL: ollama.URL, Include: []string{"("}})
 	assert.ErrorIs(t, err, llm.ErrBadParameter)
 	assert.Zero(t, requests.Load())
 	assert.Nil(t, r.Provider("bad"))

@@ -89,7 +89,7 @@ func Test_WithRegistry(t *testing.T) {
 		}))
 		defer ollama.Close()
 		require.NoError(t, registrycmd.Flags{}.WithRegistry(ctx, nil, func(r *registry.Registry) error {
-			_, err := r.CreateProvider(t.Context(), schema.CreateProviderRequest{Provider: llm.Ollama, URL: ollama.URL})
+			_, err := r.CreateProvider(t.Context(), schema.Provider{Type: llm.Ollama, URL: ollama.URL})
 			return err
 		}))
 		assert.Equal(t, "llm/v1.2.3", agent.Load())

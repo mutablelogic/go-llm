@@ -71,7 +71,7 @@ func Test_Watch(t *testing.T) {
 			w.Write([]byte(`{"version":"0.0.1"}`))
 		}))
 		t.Cleanup(ollama.Close)
-		_, err = r.CreateProvider(ctx, registryschema.CreateProviderRequest{Name: "home", Provider: llm.Ollama, URL: ollama.URL})
+		_, err = r.CreateProvider(ctx, registryschema.Provider{Name: "home", Type: llm.Ollama, ProviderMeta: registryschema.ProviderMeta{URL: ollama.URL}})
 		require.NoError(t, err)
 		_, err = r.DeleteProvider(ctx, "home")
 		require.NoError(t, err)
@@ -220,7 +220,7 @@ func Test_Watch(t *testing.T) {
 		require.NoError(t, err)
 		runCtx, stop := context.WithCancel(ctx)
 		running := make(chan error)
-		go func() { running <- r.Run(runCtx) }()
+		go func() { running <- r.Run(runCtx, nil) }()
 		ch := make(chan schema.Event, 16)
 		done, err := r.Watch(ctx, ch)
 		require.NoError(t, err)
@@ -230,9 +230,10 @@ func Test_Watch(t *testing.T) {
 		_, err = r.Watch(ctx, ch)
 		assert.ErrorIs(t, err, llm.ErrServiceUnavailable)
 
+		// And it runs again, until it's stopped, which is waited for, so it
+		// doesn't outlast the test
 		runCtx, stop = context.WithCancel(ctx)
-		defer stop()
-		go r.Run(runCtx)
+		go func() { running <- r.Run(runCtx, nil) }()
 		require.Eventually(t, func() bool {
 			done, err := r.Watch(runCtx, make(chan schema.Event))
 			if err == nil {
@@ -240,6 +241,8 @@ func Test_Watch(t *testing.T) {
 			}
 			return err == nil
 		}, time.Second, time.Millisecond)
+		stop()
+		require.NoError(t, <-running)
 	})
 
 	t.Run("Full", func(t *testing.T) {

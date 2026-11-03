@@ -67,25 +67,25 @@ func Test_CredentialsProvider(t *testing.T) {
 		// Without a credentials provider, an API key is sent as it is
 		r, err := registry.New()
 		require.NoError(t, err)
-		_, err = r.CreateProvider(ctx, schema.CreateProviderRequest{Name: "plain", Provider: llm.Ollama, URL: ollama.URL, APIKey: "secret"})
+		_, err = r.CreateProvider(ctx, schema.Provider{Name: "plain", Type: llm.Ollama, URL: ollama.URL, APIKey: "secret"})
 		require.NoError(t, err)
 		assert.Equal(t, "secret", token.Load())
 
 		// And its placeholders are environment variables
 		t.Setenv("LLM_REGISTRY_TEST_KEY", "from-env")
-		_, err = r.CreateProvider(ctx, schema.CreateProviderRequest{Name: "env", Provider: llm.Ollama, URL: ollama.URL, APIKey: "${LLM_REGISTRY_TEST_KEY}"})
+		_, err = r.CreateProvider(ctx, schema.Provider{Name: "env", Type: llm.Ollama, URL: ollama.URL, APIKey: "${LLM_REGISTRY_TEST_KEY}"})
 		require.NoError(t, err)
 		assert.Equal(t, "from-env", token.Load())
 
-		// Which must be set
-		_, err = r.CreateProvider(ctx, schema.CreateProviderRequest{Name: "unset", Provider: llm.Ollama, URL: ollama.URL, APIKey: "$LLM_REGISTRY_TEST_UNSET"})
-		assert.ErrorIs(t, err, llm.ErrNotFound)
+		// Which must be set, or the request isn't valid
+		_, err = r.CreateProvider(ctx, schema.Provider{Name: "unset", Type: llm.Ollama, URL: ollama.URL, APIKey: "$LLM_REGISTRY_TEST_UNSET"})
+		assert.ErrorIs(t, err, llm.ErrBadParameter)
 		assert.Nil(t, r.Provider("unset"))
 
 		// And so they are with a nil provider
 		r, err = registry.New(registry.WithCredentialsProvider(nil))
 		require.NoError(t, err)
-		_, err = r.CreateProvider(ctx, schema.CreateProviderRequest{Provider: llm.Ollama, URL: ollama.URL, APIKey: "$LLM_REGISTRY_TEST_KEY"})
+		_, err = r.CreateProvider(ctx, schema.Provider{Type: llm.Ollama, URL: ollama.URL, APIKey: "$LLM_REGISTRY_TEST_KEY"})
 		require.NoError(t, err)
 		assert.Equal(t, "from-env", token.Load())
 	})
@@ -94,16 +94,30 @@ func Test_CredentialsProvider(t *testing.T) {
 		// The API key's placeholders are replaced with their credentials
 		r, err := registry.New(registry.WithCredentialsProvider(credentials{"OLLAMA_KEY": "expanded"}))
 		require.NoError(t, err)
-		_, err = r.CreateProvider(ctx, schema.CreateProviderRequest{Name: "expanded", Provider: llm.Ollama, URL: ollama.URL, APIKey: "${OLLAMA_KEY}"})
+		_, err = r.CreateProvider(ctx, schema.Provider{Name: "expanded", Type: llm.Ollama, URL: ollama.URL, APIKey: "${OLLAMA_KEY}"})
 		require.NoError(t, err)
 		assert.Equal(t, "expanded", token.Load())
 
-		// And a credential which doesn't exist is an error
-		_, err = r.CreateProvider(ctx, schema.CreateProviderRequest{Name: "missing", Provider: llm.Ollama, URL: ollama.URL, APIKey: "${MISSING}"})
-		assert.ErrorIs(t, err, llm.ErrNotFound)
+		// And a credential which doesn't exist is a request which isn't valid
+		_, err = r.CreateProvider(ctx, schema.Provider{Name: "missing", Type: llm.Ollama, URL: ollama.URL, APIKey: "${MISSING}"})
+		assert.ErrorIs(t, err, llm.ErrBadParameter)
+		assert.ErrorContains(t, err, "MISSING")
 		assert.Nil(t, r.Provider("missing"))
+
+		// But a credentials provider which fails otherwise is its error
+		errVault := errors.New("vault is sealed")
+		r, err = registry.New(registry.WithCredentialsProvider(failing{errVault}))
+		require.NoError(t, err)
+		_, err = r.CreateProvider(ctx, schema.Provider{Type: llm.Ollama, URL: ollama.URL, APIKey: "${OLLAMA_KEY}"})
+		assert.ErrorIs(t, err, errVault)
+		assert.NotErrorIs(t, err, llm.ErrBadParameter)
 	})
 }
+
+// failing is a credentials provider which fails with its error
+type failing struct{ err error }
+
+func (f failing) Expand(context.Context, string) (string, error) { return "", f.err }
 
 func Test_ClientOpts(t *testing.T) {
 	// The providers which are created have the registry's client options
@@ -120,7 +134,7 @@ func Test_ClientOpts(t *testing.T) {
 	require.NoError(t, err)
 
 	// Including with an API key, which isn't added to the registry's options
-	_, err = r.CreateProvider(ctx, schema.CreateProviderRequest{Provider: llm.Ollama, URL: ollama.URL, APIKey: "secret"})
+	_, err = r.CreateProvider(ctx, schema.Provider{Type: llm.Ollama, URL: ollama.URL, APIKey: "secret"})
 	require.NoError(t, err)
 	assert.Equal(t, "test/1.0", agent.Load())
 	assert.Len(t, opts, 1)

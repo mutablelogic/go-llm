@@ -304,6 +304,22 @@ func (r *Registry) add(name string, c *cached) error {
 	return nil
 }
 
+// replace replaces the provider with the name, which is the existing one,
+// with the new one, and publishes that it was updated. Returns ErrConflict
+// when the provider with the name has changed, such as when it was removed,
+// or replaced, since it was got.
+func (r *Registry) replace(name string, existing, c *cached) error {
+	c.changed = func() { r.updated(name, c) }
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.providers[name] != existing {
+		return llm.ErrConflict.Withf("provider %q was changed as it was updated", name)
+	}
+	r.providers[name] = c
+	r.replaced(name)
+	return nil
+}
+
 // remove removes the provider with the name, and returns it, and its
 // cache, or returns ErrNotFound when there's none, and sends watchers that
 // it was deleted

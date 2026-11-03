@@ -61,20 +61,20 @@ func Test_Providers(t *testing.T) {
 
 	t.Run("Create", func(t *testing.T) {
 		// A provider is created with its name, and what it can do
-		provider, err := client.CreateProvider(ctx, schema.CreateProviderRequest{Name: "home", Provider: llm.Ollama, URL: ollama.URL})
+		provider, err := client.CreateProvider(ctx, schema.Provider{Name: "home", Type: llm.Ollama, URL: ollama.URL})
 		require.NoError(t, err)
 		assert.Equal(t, "home", provider.Name)
-		assert.Equal(t, llm.Ollama, provider.Provider)
+		assert.Equal(t, llm.Ollama, provider.Type)
 		assert.True(t, provider.Downloader)
 		assert.Empty(t, provider.Error)
 	})
 
 	t.Run("CreateErrors", func(t *testing.T) {
-		_, err := client.CreateProvider(ctx, schema.CreateProviderRequest{Provider: llm.Eliza})
+		_, err := client.CreateProvider(ctx, schema.Provider{Type: llm.Eliza})
 		assert.Equal(t, http.StatusConflict, status(t, err))
-		_, err = client.CreateProvider(ctx, schema.CreateProviderRequest{Provider: "unknown"})
+		_, err = client.CreateProvider(ctx, schema.Provider{Type: "unknown"})
 		assert.Equal(t, http.StatusBadRequest, status(t, err))
-		_, err = client.CreateProvider(ctx, schema.CreateProviderRequest{Name: "1st", Provider: llm.Eliza})
+		_, err = client.CreateProvider(ctx, schema.Provider{Name: "1st", Type: llm.Eliza})
 		assert.Equal(t, http.StatusBadRequest, status(t, err))
 	})
 
@@ -89,12 +89,12 @@ func Test_Providers(t *testing.T) {
 		}
 
 		// Or those of a type
-		list, err = client.ListProviders(ctx, schema.ProviderListRequest{Provider: llm.Ollama})
+		list, err = client.ListProviders(ctx, schema.ProviderListRequest{Type: llm.Ollama})
 		require.NoError(t, err)
 		if assert.Len(t, list.Body, 1) {
 			assert.Equal(t, "home", list.Body[0].Name)
 		}
-		assert.Equal(t, llm.Ollama, list.Provider)
+		assert.Equal(t, llm.Ollama, list.Type)
 	})
 
 	t.Run("Get", func(t *testing.T) {
@@ -105,6 +105,20 @@ func Test_Providers(t *testing.T) {
 
 		_, err = client.GetProvider(ctx, "missing")
 		assert.Equal(t, http.StatusNotFound, status(t, err))
+	})
+
+	t.Run("Update", func(t *testing.T) {
+		// A provider's fields are replaced, and it's returned
+		provider, err := client.UpdateProvider(ctx, "home", schema.ProviderMeta{URL: ollama.URL, Include: []string{"^llama"}})
+		require.NoError(t, err)
+		assert.Equal(t, "home", provider.Name)
+		assert.Equal(t, []string{"^llama"}, provider.Include)
+
+		// Unless it doesn't exist, or was added by the server
+		_, err = client.UpdateProvider(ctx, "missing", schema.ProviderMeta{})
+		assert.Equal(t, http.StatusNotFound, status(t, err))
+		_, err = client.UpdateProvider(ctx, "eliza", schema.ProviderMeta{})
+		assert.Equal(t, http.StatusConflict, status(t, err))
 	})
 
 	t.Run("Delete", func(t *testing.T) {

@@ -17,7 +17,8 @@ import (
 // TYPES
 
 // Flags are the registry's flags for the server, which has none yet:
-// providers are added with the registry's API, or in code
+// providers are added with the registry's API, or in code, and kept in a
+// store, when there's one
 type Flags struct{}
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -26,7 +27,7 @@ type Flags struct{}
 // WithRegistry creates a registry for the server, with the server's tracer,
 // and the server's client options, such as its tracer and timeout, with
 // its name and version as the user agent, for the providers' clients, and
-// then the options, such as its credentials provider, registers its HTTP
+// then the options, such as its store of providers, such as its credentials provider, registers its HTTP
 // handlers with the server, when there is one, and then calls the function
 // with the registry, returning any error
 func (flags Flags) WithRegistry(ctx server.Cmd, srv *servercmd.RunServer, fn func(*registry.Registry) error, opts ...registry.Opt) error {
@@ -39,6 +40,8 @@ func (flags Flags) WithRegistry(ctx server.Cmd, srv *servercmd.RunServer, fn fun
 		agent += "/" + version
 	}
 	clientOpts = append(clientOpts, client.OptUserAgent(agent))
+
+	// The server's options come first, so the options are used instead
 	opts = append([]registry.Opt{
 		registry.WithTracer(ctx.Tracer()),
 		registry.WithClientOpts(clientOpts...),

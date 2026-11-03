@@ -57,7 +57,7 @@ func change(t *testing.T, client *httpclient.Client, events <-chan providerschem
 	t.Helper()
 	var event providerschema.Event
 	require.Eventually(t, func() bool {
-		_, err := client.CreateProvider(t.Context(), schema.CreateProviderRequest{Name: "chat", Provider: llm.Eliza})
+		_, err := client.CreateProvider(t.Context(), schema.Provider{Name: "chat", Type: llm.Eliza})
 		require.NoError(t, err)
 		_, err = client.DeleteProvider(t.Context(), "chat")
 		require.NoError(t, err)
@@ -107,7 +107,7 @@ func Test_WatchEventsShutdown(t *testing.T) {
 	client, r := newEventClient(t)
 	ctx, stop := context.WithCancel(context.Background())
 	running := make(chan error, 1)
-	go func() { running <- r.Run(ctx) }()
+	go func() { running <- r.Run(ctx, nil) }()
 	events := make(chan providerschema.Event, 16)
 	done := make(chan error, 1)
 	go func() {

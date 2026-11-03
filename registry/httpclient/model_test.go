@@ -41,7 +41,7 @@ func Test_Models(t *testing.T) {
 	t.Run("Providers", func(t *testing.T) {
 		// With another provider, whose French model is excluded, the models
 		// of each provider are listed
-		_, err := client.CreateProvider(ctx, schema.CreateProviderRequest{Name: "second", Provider: llm.Eliza, Exclude: []string{"-fr$"}})
+		_, err := client.CreateProvider(ctx, schema.Provider{Name: "second", Type: llm.Eliza, Exclude: []string{"-fr$"}})
 		require.NoError(t, err)
 		list, err := client.ListModels(ctx, schema.ModelListRequest{Provider: "second"})
 		require.NoError(t, err)

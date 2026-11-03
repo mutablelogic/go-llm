@@ -10,7 +10,7 @@ The types are:
 - `openai`: OpenAI, which is the default `url`, or a server with an OpenAI-compatible API, such as DeepSeek, Mistral (`https://api.mistral.ai/v1`), vLLM or LM Studio.
 - `eliza`: a mock provider for testing, which has no `url` or API key.
 
-The registry isn't stored, so providers which are created are lost when the server stops, and an API key is sent as a bearer token, and is never returned. An API key can be a credential's placeholder, such as `${OPENAI_KEY}`, which is replaced with the credential, which is the environment variable with that name, unless the server has another credentials provider. A provider is pinged when it's listed or got, unless it was pinged within the last minute, and has an `error` when it can't be reached. A provider's models are those whose names match one of its `include` patterns, or all of them when it has none, and none of its `exclude` patterns, which are regular expressions, such as `^gpt-`. They're cached, and listed again after six hours, or every minute for a provider which downloads models, such as Ollama, or when they couldn't be listed.
+The registry isn't stored, so providers which are created are lost when the server stops, unless the server syncs them with a store, such as a file of providers, when they're kept, and providers which are created, changed or deleted in the store are in the registry. An API key is sent as a bearer token, and is never returned. An API key can be a credential's placeholder, such as `${OPENAI_KEY}`, which is replaced with the credential, which is the environment variable with that name, unless the server has another credentials provider. A provider is pinged when it's listed or got, unless it was pinged within the last minute, and has an `error` when it can't be reached. A provider's models are those whose names match one of its `include` patterns, or all of them when it has none, and none of its `exclude` patterns, which are regular expressions, such as `^gpt-`. They're cached, and listed again after six hours, or every minute for a provider which downloads models, such as Ollama, or when they couldn't be listed.
 
 ### GET /llm/provider
 
@@ -18,11 +18,15 @@ List the providers, in order of their names, with what each can do, such as gene
 
 ### POST /llm/provider
 
-Create a provider of a type, with its `name` in the registry, which is an identifier, of up to 64 letters, numbers, underscores or hyphens, starting with a letter, or its type when it's omitted, and its `url` and `api_key`, which aren't needed for every type, and the `include` and `exclude` patterns of the names of its models. The provider is checked to be reachable before it's added. Returns the created provider. Returns 400 if the request body is invalid, the type is unknown, or a pattern isn't a valid regular expression, 409 if a provider with that name exists already, or 503 if the provider can't be reached.
+Create a provider of a type, with its `name` in the registry, which is an identifier, of up to 64 letters, numbers, underscores or hyphens, starting with a letter, or its type when it's omitted, and its `url` and `api_key`, which aren't needed for every type, and the `include` and `exclude` patterns of the names of its models. The provider is checked to be reachable before it's added. Returns the created provider. Returns 400 if the request body is invalid, the type is unknown, a pattern isn't a valid regular expression, or the API key's placeholder names a credential which isn't set, 409 if a provider with that name exists already, or 503 if the provider can't be reached.
 
 ### GET /llm/provider/{name}
 
 Get a provider by name. Returns 404 if there is no provider with that name.
+
+### PATCH /llm/provider/{name}
+
+Update a provider by name, replacing its `url`, `include` and `exclude` patterns with those in the request, so a field which is omitted is cleared, or is the type's default. Its `api_key` is replaced when the request has one, and is otherwise kept, as it isn't returned, so it can't be sent back. Its name and type can't be changed. The provider is created again, whether it can be reached or not, with an `error` when it can't, and a provider whose fields are the same is left as it is. Returns the updated provider. Returns 400 if the request body is invalid, a pattern isn't a valid regular expression, or the API key's placeholder names a credential which isn't set, 404 if there is no provider with that name, or 409 if the provider was added by the server, rather than with the API.
 
 ### DELETE /llm/provider/{name}
 
