@@ -88,7 +88,7 @@ func newLoadClient(t *testing.T) (*httpclient.Client, *stubOllama) {
 	ollama := httptest.NewServer(stub)
 	t.Cleanup(ollama.Close)
 	client := newClient(t)
-	_, err := client.CreateProvider(t.Context(), schema.CreateProviderRequest{Name: "home", Provider: llm.Ollama, URL: ollama.URL})
+	_, err := client.CreateProvider(t.Context(), schema.Provider{Name: "home", Type: llm.Ollama, URL: ollama.URL})
 	require.NoError(t, err)
 	return client, stub
 }

@@ -5,6 +5,7 @@ import (
 
 	// Packages
 	client "github.com/mutablelogic/go-client"
+	llm "github.com/mutablelogic/go-llm"
 	trace "go.opentelemetry.io/otel/trace"
 )
 
@@ -18,6 +19,7 @@ type opt struct {
 	tracer      trace.Tracer
 	credentials CredentialsProvider
 	clientopts  []client.ClientOpt
+	store       Store
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -41,6 +43,7 @@ func (o *opt) defaults() {
 	o.tracer = nil
 	o.credentials = envCredentials{}
 	o.clientopts = nil
+	o.store = nil
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -51,6 +54,20 @@ func (o *opt) defaults() {
 func WithTracer(tracer trace.Tracer) Opt {
 	return func(o *opt) error {
 		o.tracer = tracer
+		return nil
+	}
+}
+
+// WithStore sets the store of the providers, which the registry's providers
+// are kept the same as, both ways, as Run syncs them, such as a database,
+// which other servers share, or a file, so they're kept when the server
+// restarts
+func WithStore(store Store) Opt {
+	return func(o *opt) error {
+		if store == nil {
+			return llm.ErrBadParameter.With("missing store")
+		}
+		o.store = store
 		return nil
 	}
 }

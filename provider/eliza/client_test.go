@@ -12,6 +12,7 @@ import (
 	schema "github.com/mutablelogic/go-llm/provider/schema"
 	tool "github.com/mutablelogic/go-llm/toolkit/tool"
 	jsonschema "github.com/mutablelogic/go-server/pkg/jsonschema"
+	types "github.com/mutablelogic/go-server/pkg/types"
 	assert "github.com/stretchr/testify/assert"
 	require "github.com/stretchr/testify/require"
 )
@@ -71,10 +72,9 @@ func Test_Models(t *testing.T) {
 		// eliza replies, and thinks, without tools, and does nothing else
 		model, err := client.GetModel(ctx, eliza.ModelName)
 		require.NoError(t, err)
-		yes, no := true, false
 		assert.Equal(t, llm.ModelCap{
-			Completion: &yes, Tools: &no, Thinking: &yes, Vision: &no, OCR: &no,
-			Transcription: &no, Translation: &no, Embedding: &no,
+			Completion: types.Ptr(true), Tools: types.Ptr(false), Thinking: types.Ptr(true), Vision: types.Ptr(false), OCR: types.Ptr(false),
+			Transcription: types.Ptr(false), Translation: types.Ptr(false), Embedding: types.Ptr(false),
 		}, model.Capabilities())
 		assert.Equal(t, "completion, thinking", model.Capabilities().String())
 

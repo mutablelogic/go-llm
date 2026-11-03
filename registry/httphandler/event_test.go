@@ -123,7 +123,7 @@ func Test_WatchEventsShutdown(t *testing.T) {
 	server := test.NewServer(t, r)
 	ctx, stop := context.WithCancel(context.Background())
 	running := make(chan error)
-	go func() { running <- r.Run(ctx) }()
+	go func() { running <- r.Run(ctx, nil) }()
 	require.Eventually(t, func() bool {
 		resp, _ := watch(t, server, types.ContentTypeTextStream)
 		return resp.StatusCode == http.StatusOK

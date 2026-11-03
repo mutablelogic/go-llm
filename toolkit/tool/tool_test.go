@@ -8,6 +8,7 @@ import (
 	// Packages
 	llm "github.com/mutablelogic/go-llm"
 	jsonschema "github.com/mutablelogic/go-server/pkg/jsonschema"
+	types "github.com/mutablelogic/go-server/pkg/types"
 )
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -41,11 +42,10 @@ func (r *richToolForTest) InputSchema() *jsonschema.Schema { return jsonschema.M
 func (r *richToolForTest) OutputSchema() *jsonschema.Schema { return jsonschema.MustFor[richOutput]() }
 
 func (r *richToolForTest) Meta() llm.ToolMeta {
-	t := true
 	return llm.ToolMeta{
 		Title:         "Rich Tool",
 		ReadOnlyHint:  true,
-		OpenWorldHint: &t,
+		OpenWorldHint: types.Ptr(true),
 	}
 }
 
@@ -167,7 +167,7 @@ func Test_MarshalJSON_002_with_schemas_and_meta(t *testing.T) {
 	if !got.Annotations.ReadOnlyHint {
 		t.Error("annotations.readOnlyHint should be true")
 	}
-	if got.Annotations.OpenWorldHint == nil || !*got.Annotations.OpenWorldHint {
+	if !types.Value(got.Annotations.OpenWorldHint) {
 		t.Error("annotations.openWorldHint should be true")
 	}
 }

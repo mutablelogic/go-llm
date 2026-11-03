@@ -232,11 +232,10 @@ func Test_Capabilities(t *testing.T) {
 		// A model which is known not to be able to do something is
 		// rejected, without asking its provider, and one whose capabilities
 		// aren't known isn't
-		yes, no := true, false
 		home := newCapable("home", "chat", "silent", "unknown")
 		home.caps = map[string]llm.ModelCap{
-			"chat":   {Completion: &yes, Tools: &no, Thinking: &no, Vision: &no, OCR: &no, Transcription: &no, Translation: &no, Embedding: &no},
-			"silent": {Completion: &no},
+			"chat":   {Completion: types.Ptr(true), Tools: types.Ptr(false), Thinking: types.Ptr(false), Vision: types.Ptr(false), OCR: types.Ptr(false), Transcription: types.Ptr(false), Translation: types.Ptr(false), Embedding: types.Ptr(false)},
+			"silent": {Completion: types.Ptr(false)},
 		}
 		r, err := newRegistry(home)
 		require.NoError(t, err)

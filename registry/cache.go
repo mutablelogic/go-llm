@@ -5,10 +5,12 @@ import (
 	"regexp"
 	"slices"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	// Packages
 	llm "github.com/mutablelogic/go-llm"
+	schema "github.com/mutablelogic/go-llm/registry/schema"
 )
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -18,6 +20,13 @@ import (
 // filtered by, the result of its last ping, and its models, which are cached
 type cached struct {
 	provider llm.Provider
+
+	// The request the provider was created with, with its name, and its API
+	// key's placeholder, rather than its credentials, or nil when it was
+	// added without one, and its serial, which is kept apart from it, so a
+	// store can set it, once it has the definition
+	definition *schema.Provider
+	serial     atomic.Uint64
 
 	// Called when whether the provider can be reached changes, or its
 	// models do, without a lock, or nil
@@ -109,6 +118,18 @@ func WithExclude(patterns ...string) ProviderOpt {
 		c.excludeRe, err = compilePatterns("exclude", patterns)
 		c.exclude = slices.Clone(patterns)
 		return err
+	}
+}
+
+// withDefinition is the request the provider was created with, and its
+// serial
+func withDefinition(req schema.Provider) ProviderOpt {
+	return func(c *cached) error {
+		req.Include, req.Exclude = slices.Clone(req.Include), slices.Clone(req.Exclude)
+		c.serial.Store(req.Serial)
+		req.Serial = 0
+		c.definition = &req
+		return nil
 	}
 }
 

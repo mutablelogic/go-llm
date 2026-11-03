@@ -58,7 +58,7 @@ func providerCreateListHandlers(reg *registry.Registry, router *httprouter.Route
 
 		// POST
 		path.Post(func(w http.ResponseWriter, r *http.Request) {
-			var create schema.CreateProviderRequest
+			var create schema.Provider
 			if err := httprequest.Read(r, &create); err != nil {
 				httpresponse.Error(w, httpresponse.ErrBadRequest.Withf("%w", err))
 			} else if provider, err := reg.CreateProvider(r.Context(), create); err != nil {
@@ -69,9 +69,9 @@ func providerCreateListHandlers(reg *registry.Registry, router *httprouter.Route
 		}, func(op httprequest.PathOperation) {
 			op.Summary("Create Provider")
 			op.Description(documentation.Section(3, "POST /llm/provider").Body)
-			op.RequestBody(jsonschema.MustFor[schema.CreateProviderRequest]())
-			op.JSONResponse(http.StatusCreated, jsonschema.MustFor[schema.Provider](), "Created provider")
-			op.ErrorResponse(http.StatusBadRequest, "Invalid request, or unknown provider type")
+			op.RequestBody(jsonschema.MustFor[schema.Provider]())
+			op.JSONResponse(http.StatusCreated, jsonschema.MustFor[schema.ProviderStatus](), "Created provider")
+			op.ErrorResponse(http.StatusBadRequest, "Invalid request, unknown provider type, or a credential which isn't set")
 			op.ErrorResponse(http.StatusConflict, "A provider with that name exists already")
 			op.ErrorResponse(http.StatusServiceUnavailable, "Provider can't be reached")
 		})
@@ -93,8 +93,29 @@ func providerGetDeleteHandlers(reg *registry.Registry, router *httprouter.Router
 		}, func(op httprequest.PathOperation) {
 			op.Summary("Get Provider")
 			op.Description(documentation.Section(3, "GET /llm/provider/{name}").Body)
-			op.JSONResponse(http.StatusOK, jsonschema.MustFor[schema.Provider](), "Provider")
+			op.JSONResponse(http.StatusOK, jsonschema.MustFor[schema.ProviderStatus](), "Provider")
 			op.ErrorResponse(http.StatusNotFound, "Provider not found")
+		})
+
+		// PATCH
+		path.Patch(func(w http.ResponseWriter, r *http.Request) {
+			name := r.PathValue("name")
+			var meta schema.ProviderMeta
+			if err := httprequest.Read(r, &meta); err != nil {
+				httpresponse.Error(w, httpresponse.ErrBadRequest.Withf("%w", err))
+			} else if provider, err := reg.UpdateProvider(r.Context(), name, meta); err != nil {
+				httpresponse.Error(w, llm.HTTPErr(err), name)
+			} else {
+				httpresponse.JSON(w, http.StatusOK, httprequest.Indent(r), provider)
+			}
+		}, func(op httprequest.PathOperation) {
+			op.Summary("Update Provider")
+			op.Description(documentation.Section(3, "PATCH /llm/provider/{name}").Body)
+			op.RequestBody(jsonschema.MustFor[schema.ProviderMeta]())
+			op.JSONResponse(http.StatusOK, jsonschema.MustFor[schema.ProviderStatus](), "Updated provider")
+			op.ErrorResponse(http.StatusBadRequest, "Invalid request")
+			op.ErrorResponse(http.StatusNotFound, "Provider not found")
+			op.ErrorResponse(http.StatusConflict, "The provider was added without a definition, so can't be updated")
 		})
 
 		// DELETE
@@ -108,7 +129,7 @@ func providerGetDeleteHandlers(reg *registry.Registry, router *httprouter.Router
 		}, func(op httprequest.PathOperation) {
 			op.Summary("Delete Provider")
 			op.Description(documentation.Section(3, "DELETE /llm/provider/{name}").Body)
-			op.JSONResponse(http.StatusOK, jsonschema.MustFor[schema.Provider](), "Deleted provider")
+			op.JSONResponse(http.StatusOK, jsonschema.MustFor[schema.ProviderStatus](), "Deleted provider")
 			op.ErrorResponse(http.StatusNotFound, "Provider not found")
 		})
 	})

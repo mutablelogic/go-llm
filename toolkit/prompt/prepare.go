@@ -61,14 +61,14 @@ func (p *prompt) Prepare(ctx context.Context, resources ...llm.Resource) (string
 func (p *prompt) options() ([]llm.Opt, error) {
 	var opts []llm.Opt
 
-	if p.m.Model != nil && *p.m.Model != "" {
-		opts = append(opts, llm.WithModel(*p.m.Model))
+	if model := types.Value(p.m.Model); model != "" {
+		opts = append(opts, llm.WithModel(model))
 	}
-	if p.m.Provider != nil && *p.m.Provider != "" {
-		opts = append(opts, llm.WithProvider(*p.m.Provider))
+	if provider := types.Value(p.m.Provider); provider != "" {
+		opts = append(opts, llm.WithProvider(provider))
 	}
-	if p.m.SystemPrompt != nil && *p.m.SystemPrompt != "" {
-		opts = append(opts, llm.WithSystemPrompt(*p.m.SystemPrompt))
+	if prompt := types.Value(p.m.SystemPrompt); prompt != "" {
+		opts = append(opts, llm.WithSystemPrompt(prompt))
 	}
 	if len(p.m.Format) > 0 {
 		opts = append(opts, llm.WithJSONSchema(p.m.Format.Bytes()))
@@ -76,8 +76,8 @@ func (p *prompt) options() ([]llm.Opt, error) {
 	if p.m.Thinking != nil {
 		opts = append(opts, llm.WithThinking(types.Value(p.m.Thinking)))
 	}
-	if p.m.ThinkingBudget != nil && *p.m.ThinkingBudget > 0 {
-		opts = append(opts, llm.WithThinkingBudget(*p.m.ThinkingBudget))
+	if budget := types.Value(p.m.ThinkingBudget); budget > 0 {
+		opts = append(opts, llm.WithThinkingBudget(budget))
 	}
 	if len(p.m.Tools) > 0 {
 		opts = append(opts, llm.WithTools(p.m.Tools...))

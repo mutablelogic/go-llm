@@ -65,26 +65,26 @@ func Test_Providers(t *testing.T) {
 
 	t.Run("Create", func(t *testing.T) {
 		// A provider is created with its type's name, and what it can do
-		var provider schema.Provider
-		assert.Equal(t, http.StatusCreated, do(t, server, http.MethodPost, "llm/provider", schema.CreateProviderRequest{Provider: "eliza"}, &provider))
+		var provider schema.ProviderStatus
+		assert.Equal(t, http.StatusCreated, do(t, server, http.MethodPost, "llm/provider", schema.Provider{Type: "eliza"}, &provider))
 		assert.Equal(t, "eliza", provider.Name)
-		assert.Equal(t, "eliza", provider.Provider)
+		assert.Equal(t, "eliza", provider.Type)
 		assert.True(t, provider.Generator)
 		assert.False(t, provider.Embedder)
 		assert.NotNil(t, r.Provider("eliza"))
 
 		// And another of its type, with a name
-		assert.Equal(t, http.StatusCreated, do(t, server, http.MethodPost, "llm/provider", schema.CreateProviderRequest{Name: "second", Provider: "eliza"}, &provider))
+		assert.Equal(t, http.StatusCreated, do(t, server, http.MethodPost, "llm/provider", schema.Provider{Name: "second", Type: "eliza"}, &provider))
 		assert.Equal(t, "second", provider.Name)
-		assert.Equal(t, "eliza", provider.Provider)
+		assert.Equal(t, "eliza", provider.Type)
 	})
 
 	t.Run("CreateOllama", func(t *testing.T) {
 		// An Ollama server, whose API key is sent, and isn't returned
 		ollama, authorized := newOllama(t, "secret")
-		var provider schema.Provider
-		assert.Equal(t, http.StatusCreated, do(t, server, http.MethodPost, "llm/provider", schema.CreateProviderRequest{Name: "home", Provider: "ollama", URL: ollama.URL, APIKey: "secret"}, &provider))
-		assert.Equal(t, "ollama", provider.Provider)
+		var provider schema.ProviderStatus
+		assert.Equal(t, http.StatusCreated, do(t, server, http.MethodPost, "llm/provider", schema.Provider{Name: "home", Type: "ollama", URL: ollama.URL, APIKey: "secret"}, &provider))
+		assert.Equal(t, "ollama", provider.Type)
 		assert.True(t, provider.Downloader)
 		assert.Contains(t, provider.URL, ollama.URL)
 		assert.NotZero(t, authorized.Load())
@@ -94,15 +94,16 @@ func Test_Providers(t *testing.T) {
 	})
 
 	t.Run("CreateErrors", func(t *testing.T) {
-		assert.Equal(t, http.StatusConflict, do(t, server, http.MethodPost, "llm/provider", schema.CreateProviderRequest{Provider: "eliza"}, nil))
-		assert.Equal(t, http.StatusBadRequest, do(t, server, http.MethodPost, "llm/provider", schema.CreateProviderRequest{Provider: "unknown"}, nil))
-		assert.Equal(t, http.StatusBadRequest, do(t, server, http.MethodPost, "llm/provider", schema.CreateProviderRequest{Name: "a:b", Provider: "eliza"}, nil))
-		assert.Equal(t, http.StatusBadRequest, do(t, server, http.MethodPost, "llm/provider", schema.CreateProviderRequest{Name: "e", Provider: "eliza", URL: "http://localhost"}, nil))
+		assert.Equal(t, http.StatusConflict, do(t, server, http.MethodPost, "llm/provider", schema.Provider{Type: "eliza"}, nil))
+		assert.Equal(t, http.StatusBadRequest, do(t, server, http.MethodPost, "llm/provider", schema.Provider{Type: "unknown"}, nil))
+		assert.Equal(t, http.StatusBadRequest, do(t, server, http.MethodPost, "llm/provider", schema.Provider{Name: "keyed", Type: "ollama", APIKey: "${LLM_TEST_MISSING_KEY}"}, nil))
+		assert.Equal(t, http.StatusBadRequest, do(t, server, http.MethodPost, "llm/provider", schema.Provider{Name: "a:b", Type: "eliza"}, nil))
+		assert.Equal(t, http.StatusBadRequest, do(t, server, http.MethodPost, "llm/provider", schema.Provider{Name: "e", Type: "eliza", URL: "http://localhost"}, nil))
 
 		// A provider which can't be reached isn't added
 		unreachable := httptest.NewServer(http.NotFoundHandler())
 		unreachable.Close()
-		assert.Equal(t, http.StatusServiceUnavailable, do(t, server, http.MethodPost, "llm/provider", schema.CreateProviderRequest{Name: "away", Provider: "ollama", URL: unreachable.URL}, nil))
+		assert.Equal(t, http.StatusServiceUnavailable, do(t, server, http.MethodPost, "llm/provider", schema.Provider{Name: "away", Type: "ollama", URL: unreachable.URL}, nil))
 		assert.Nil(t, r.Provider("away"))
 	})
 
@@ -124,7 +125,7 @@ func Test_Providers(t *testing.T) {
 	})
 
 	t.Run("Get", func(t *testing.T) {
-		var provider schema.Provider
+		var provider schema.ProviderStatus
 		assert.Equal(t, http.StatusOK, do(t, server, http.MethodGet, "llm/provider/second", nil, &provider))
 		assert.Equal(t, "second", provider.Name)
 		assert.Empty(t, provider.Error)
@@ -135,8 +136,8 @@ func Test_Providers(t *testing.T) {
 		// A provider which can't be reached any more has an error, once it's
 		// pinged
 		ollama, _ := newOllama(t, "")
-		var provider schema.Provider
-		require.Equal(t, http.StatusCreated, do(t, server, http.MethodPost, "llm/provider", schema.CreateProviderRequest{Name: "gone", Provider: "ollama", URL: ollama.URL}, &provider))
+		var provider schema.ProviderStatus
+		require.Equal(t, http.StatusCreated, do(t, server, http.MethodPost, "llm/provider", schema.Provider{Name: "gone", Type: "ollama", URL: ollama.URL}, &provider))
 		ollama.Close()
 
 		// It's pinged again, rather than with the result of its last ping,
@@ -148,8 +149,22 @@ func Test_Providers(t *testing.T) {
 		assert.NotEmpty(t, provider.Error)
 	})
 
+	t.Run("Update", func(t *testing.T) {
+		// A provider's fields are replaced, and it's returned
+		var provider schema.ProviderStatus
+		assert.Equal(t, http.StatusOK, do(t, server, http.MethodPatch, "llm/provider/second", schema.ProviderMeta{Exclude: []string{"-de$"}}, &provider))
+		assert.Equal(t, "second", provider.Name)
+		assert.Equal(t, []string{"-de$"}, provider.Exclude)
+		assert.Equal(t, http.StatusNotFound, do(t, server, http.MethodGet, "llm/model/second:eliza-1966-de", nil, nil))
+
+		// Unless it doesn't exist, or the fields aren't valid
+		assert.Equal(t, http.StatusNotFound, do(t, server, http.MethodPatch, "llm/provider/missing", schema.ProviderMeta{}, nil))
+		assert.Equal(t, http.StatusBadRequest, do(t, server, http.MethodPatch, "llm/provider/second", schema.ProviderMeta{Include: []string{"("}}, nil))
+		assert.Equal(t, http.StatusBadRequest, do(t, server, http.MethodPatch, "llm/provider/second", schema.ProviderMeta{URL: "http://localhost"}, nil))
+	})
+
 	t.Run("Delete", func(t *testing.T) {
-		var provider schema.Provider
+		var provider schema.ProviderStatus
 		assert.Equal(t, http.StatusOK, do(t, server, http.MethodDelete, "llm/provider/second", nil, &provider))
 		assert.Equal(t, "second", provider.Name)
 		assert.Nil(t, r.Provider("second"))

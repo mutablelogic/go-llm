@@ -112,6 +112,12 @@ func (r *Registry) created(name string) {
 	r.publish(schema.EventCreate, name)
 }
 
+// replaced publishes that the provider with the name was updated, as it
+// was replaced
+func (r *Registry) replaced(name string) {
+	r.publish(schema.EventUpdate, name)
+}
+
 // deleted publishes that the provider with the name was deleted
 func (r *Registry) deleted(name string) {
 	r.publish(schema.EventDelete, name)
