@@ -1,11 +1,13 @@
 package schema_test
 
 import (
+	"mime"
 	"testing"
 
 	// Packages
 	schema "github.com/mutablelogic/go-llm/provider/schema"
 	assert "github.com/stretchr/testify/assert"
+	require "github.com/stretchr/testify/require"
 )
 
 func Test_ResourceType(t *testing.T) {
@@ -26,6 +28,16 @@ func Test_ResourceType(t *testing.T) {
 
 	// Or it's binary
 	assert.Equal(t, "application/octet-stream", schema.ResourceType([]byte{0, 1, 2, 3}, ""))
+
+	// And Ogg, which is detected as a container, is its extension's type,
+	// when it's audio or video, or audio
+	ogg := []byte("OggS\x00\x02\x00\x00\x00\x00\x00\x00\x00\x00")
+	require.NoError(t, mime.AddExtensionType(".oga", "audio/ogg"))
+	require.NoError(t, mime.AddExtensionType(".ogv", "video/ogg"))
+	assert.Equal(t, "audio/ogg", schema.ResourceType(ogg, "clip.oga"))
+	assert.Equal(t, "video/ogg", schema.ResourceType(ogg, "clip.ogv"))
+	assert.Equal(t, "audio/ogg", schema.ResourceType(ogg, ""))
+	assert.Equal(t, "audio/ogg", schema.ResourceType(ogg, "clip.json"))
 
 	// And without data, it's the type of the extension, or none
 	assert.Equal(t, "image/png", schema.ResourceType(nil, "photo.png"))

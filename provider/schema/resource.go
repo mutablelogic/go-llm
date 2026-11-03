@@ -83,11 +83,12 @@ func (r Resource) Read(ctx context.Context) (llm.ReadFunc, error) {
 
 // ResourceType returns the MIME type of a resource's data, detected from the
 // data, such as image/png or audio/wave, or from the extension of its name,
-// when the data isn't recognised, or is only text, which the extension is
-// more specific about, such as text/markdown. Without data, it's the type of
-// the extension. Returns application/octet-stream when neither is
-// recognised, and an empty string when there's no data, and the extension
-// isn't known.
+// when the data isn't recognised, or is only text, or is an Ogg container,
+// which the extension is more specific about, such as text/markdown or
+// audio/ogg. Ogg data without an extension is audio/ogg, as Ogg is almost
+// always audio. Without data, it's the type of the extension. Returns
+// application/octet-stream when neither is recognised, and an empty string
+// when there's no data, and the extension isn't known.
 func ResourceType(data []byte, name string) string {
 	byName := ""
 	if ext := path.Ext(name); ext != "" {
@@ -97,9 +98,20 @@ func ResourceType(data []byte, name string) string {
 		return byName
 	}
 	detected := http.DetectContentType(data)
-	if mediaType, _, err := mime.ParseMediaType(detected); err == nil && byName != "" &&
-		(mediaType == types.ContentTypeBinary || mediaType == "text/plain") {
-		return byName
+	mediaType, _, err := mime.ParseMediaType(detected)
+	if err != nil {
+		return detected
+	}
+	switch mediaType {
+	case types.ContentTypeBinary, "text/plain":
+		if byName != "" {
+			return byName
+		}
+	case "application/ogg":
+		if strings.HasPrefix(byName, "audio/") || strings.HasPrefix(byName, "video/") {
+			return byName
+		}
+		return "audio/ogg"
 	}
 	return detected
 }

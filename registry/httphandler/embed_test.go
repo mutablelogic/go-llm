@@ -6,6 +6,8 @@ import (
 	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
+	"strings"
 	"sync"
 	"testing"
 
@@ -54,6 +56,17 @@ func (s *stubEmbedder) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			w.Write([]byte(`{"details":{},"capabilities":["completion"]}`))
 		}
 	case "/api/embed":
+		// A message which is a status, such as "status 500", is an error
+		// with the status
+		var text string
+		if len(req.Input) > 0 && json.Unmarshal(req.Input[0], &text) == nil {
+			if code, ok := strings.CutPrefix(text, "status "); ok {
+				status, _ := strconv.Atoi(code)
+				w.WriteHeader(status)
+				w.Write([]byte(`{"error":"upstream error"}`))
+				return
+			}
+		}
 		s.Lock()
 		s.inputs, s.dimensions = req.Input, req.Dimensions
 		s.Unlock()
@@ -207,6 +220,20 @@ func Test_Embed(t *testing.T) {
 		assert.Equal(t, http.StatusNotFound, post(schema.EmbedRequest{Model: "missing", Messages: []schema.EmbedMessage{text("A cat")}}))
 		assert.Equal(t, http.StatusNotImplemented, post(schema.EmbedRequest{Model: "home:chat:latest", Messages: []schema.EmbedMessage{text("A cat")}}))
 		assert.Equal(t, http.StatusNotImplemented, post(schema.EmbedRequest{Model: "eliza", Messages: []schema.EmbedMessage{text("A cat")}}))
+
+		// And a provider which rejects the request is a request which isn't
+		// valid, but a provider which fails otherwise, such as its own
+		// authentication, is unavailable, rather than the endpoint's status
+		for status, want := range map[int]int{
+			http.StatusBadRequest:          http.StatusBadRequest,
+			http.StatusUnprocessableEntity: http.StatusBadRequest,
+			http.StatusUnauthorized:        http.StatusServiceUnavailable,
+			http.StatusForbidden:           http.StatusServiceUnavailable,
+			http.StatusTooManyRequests:     http.StatusServiceUnavailable,
+			http.StatusInternalServerError: http.StatusServiceUnavailable,
+		} {
+			assert.Equal(t, want, post(schema.EmbedRequest{Model: "embed", Messages: []schema.EmbedMessage{text("status " + strconv.Itoa(status))}}), status)
+		}
 
 		// And options the provider takes
 		assert.Equal(t, http.StatusBadRequest, post(schema.EmbedRequest{Model: "embed", Messages: []schema.EmbedMessage{text("A cat")}, Opt: map[string]json.RawMessage{"dimensions": json.RawMessage(`"many"`)}}))
