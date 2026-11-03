@@ -10,6 +10,7 @@ import (
 	llm "github.com/mutablelogic/go-llm"
 	mock "github.com/mutablelogic/go-llm/mcp/mock"
 	jsonschema "github.com/mutablelogic/go-server/pkg/jsonschema"
+	types "github.com/mutablelogic/go-server/pkg/types"
 )
 
 // Test_tool_001: CallTool returns a JSON object as json.RawMessage.
@@ -94,10 +95,8 @@ func Test_tool_003(t *testing.T) {
 
 // Test_tool_004: Tools returned by ListTools implement llm.Tool correctly.
 func Test_tool_004(t *testing.T) {
-	destructive := true
-	openWorld := true
 	_, c := newTestServer(t, "meta-server", "1.0.0",
-		&mock.MockTool{Name_: "my_tool", Description_: "does things", Meta_: llm.ToolMeta{Title: "My Tool", ReadOnlyHint: true, IdempotentHint: true, DestructiveHint: &destructive, OpenWorldHint: &openWorld}},
+		&mock.MockTool{Name_: "my_tool", Description_: "does things", Meta_: llm.ToolMeta{Title: "My Tool", ReadOnlyHint: true, IdempotentHint: true, DestructiveHint: types.Ptr(true), OpenWorldHint: types.Ptr(true)}},
 	)
 	cancel := runClient(t, c)
 	defer cancel()
@@ -127,10 +126,10 @@ func Test_tool_004(t *testing.T) {
 	if !meta.ReadOnlyHint || !meta.IdempotentHint {
 		t.Errorf("expected readonly and idempotent hints, got %+v", meta)
 	}
-	if meta.DestructiveHint == nil || !*meta.DestructiveHint {
+	if !types.Value(meta.DestructiveHint) {
 		t.Errorf("expected destructive hint, got %+v", meta.DestructiveHint)
 	}
-	if meta.OpenWorldHint == nil || !*meta.OpenWorldHint {
+	if !types.Value(meta.OpenWorldHint) {
 		t.Errorf("expected openworld hint, got %+v", meta.OpenWorldHint)
 	}
 }

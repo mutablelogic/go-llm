@@ -7,6 +7,7 @@ import (
 	// Packages
 	client "github.com/mutablelogic/go-llm/mcp/client"
 	server "github.com/mutablelogic/go-llm/mcp/server"
+	types "github.com/mutablelogic/go-server/pkg/types"
 )
 
 func TestServerProbe(t *testing.T) {
@@ -31,10 +32,10 @@ func TestServerProbe(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if state.Name == nil || *state.Name != "test-server" {
+	if types.Value(state.Name) != "test-server" {
 		t.Fatalf("expected server name %q, got %v", "test-server", state.Name)
 	}
-	if state.Version == nil || *state.Version != "1.0.0" {
+	if types.Value(state.Version) != "1.0.0" {
 		t.Fatalf("expected server version %q, got %v", "1.0.0", state.Version)
 	}
 }

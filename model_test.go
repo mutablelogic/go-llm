@@ -6,18 +6,18 @@ import (
 
 	// Packages
 	llm "github.com/mutablelogic/go-llm"
+	types "github.com/mutablelogic/go-server/pkg/types"
 	assert "github.com/stretchr/testify/assert"
 	require "github.com/stretchr/testify/require"
 )
 
 func Test_ModelCap(t *testing.T) {
-	yes, no := true, false
 
 	t.Run("String", func(t *testing.T) {
 		// The capabilities which are known to be true
 		assert.Empty(t, llm.ModelCap{}.String())
 		assert.Equal(t, "completion, tools, thinking, embedding", llm.ModelCap{
-			Completion: &yes, Tools: &yes, Thinking: &yes, Vision: &no, Embedding: &yes,
+			Completion: types.Ptr(true), Tools: types.Ptr(true), Thinking: types.Ptr(true), Vision: types.Ptr(false), Embedding: types.Ptr(true),
 		}.String())
 	})
 
@@ -29,7 +29,7 @@ func Test_ModelCap(t *testing.T) {
 			json string
 		}{
 			{llm.ModelCap{}, `{}`},
-			{llm.ModelCap{Completion: &yes, Vision: &no, Thinking: &no}, `{"completion":true,"thinking":false,"vision":false}`},
+			{llm.ModelCap{Completion: types.Ptr(true), Vision: types.Ptr(false), Thinking: types.Ptr(false)}, `{"completion":true,"thinking":false,"vision":false}`},
 		} {
 			data, err := json.Marshal(test.cap)
 			require.NoError(t, err)

@@ -8,6 +8,7 @@ import (
 
 	// Packages
 	llm "github.com/mutablelogic/go-llm"
+	types "github.com/mutablelogic/go-server/pkg/types"
 	assert "github.com/stretchr/testify/assert"
 	require "github.com/stretchr/testify/require"
 )
@@ -83,7 +84,6 @@ func TestOpenAIModelLimits(t *testing.T) {
 }
 
 func TestCapabilities(t *testing.T) {
-	yes, no := true, false
 
 	// model returns a model with the ID and fields, from a client for the
 	// endpoint
@@ -101,9 +101,9 @@ func TestCapabilities(t *testing.T) {
 	t.Run("Reported", func(t *testing.T) {
 		// A model has the capabilities the server returns, as Mistral does
 		m := model(t, MistralEndpoint, "mistral-ocr-latest", `{"completion_chat":false,"function_calling":true,"reasoning":false,"vision":true,"ocr":true,"audio_transcription":false,"moderation":false}`)
-		assert.Equal(t, llm.ModelCap{Completion: &no, Tools: &yes, Thinking: &no, Vision: &yes, OCR: &yes, Transcription: &no}, m.Capabilities())
+		assert.Equal(t, llm.ModelCap{Completion: types.Ptr(false), Tools: types.Ptr(true), Thinking: types.Ptr(false), Vision: types.Ptr(true), OCR: types.Ptr(true), Transcription: types.Ptr(false)}, m.Capabilities())
 		m = model(t, MistralEndpoint, "mistral-small-latest", `{"completion_chat":true,"reasoning":true}`)
-		assert.Equal(t, llm.ModelCap{Completion: &yes, Thinking: &yes}, m.Capabilities())
+		assert.Equal(t, llm.ModelCap{Completion: types.Ptr(true), Thinking: types.Ptr(true)}, m.Capabilities())
 
 		// Or none, when it returns none, or they aren't capabilities
 		assert.Equal(t, llm.ModelCap{}, model(t, "http://localhost:8000", "gpt-4o", "").Capabilities())
@@ -115,7 +115,7 @@ func TestCapabilities(t *testing.T) {
 		// models with the same names on another server don't
 		for _, id := range []string{"mistral-embed", "mistral-embed-2312", "codestral-embed-2505"} {
 			m := model(t, MistralEndpoint, id, `{"completion_chat":false,"reasoning":false}`)
-			assert.Equal(t, llm.ModelCap{Completion: &no, Thinking: &no, Embedding: &yes}, m.Capabilities(), id)
+			assert.Equal(t, llm.ModelCap{Completion: types.Ptr(false), Thinking: types.Ptr(false), Embedding: types.Ptr(true)}, m.Capabilities(), id)
 		}
 		assert.Equal(t, llm.ModelCap{}, model(t, "http://localhost:8000", "mistral-embed", "").Capabilities())
 	})
@@ -171,7 +171,7 @@ func TestCapabilities(t *testing.T) {
 			capabilities := model(t, OpenAIEndpoint, id, "").Capabilities()
 			assert.Equal(t, want, capabilities.String(), id)
 			if !strings.Contains(want, "completion") {
-				assert.Equal(t, &no, capabilities.Completion, id)
+				assert.Equal(t, types.Ptr(false), capabilities.Completion, id)
 			}
 		}
 
@@ -188,7 +188,7 @@ func TestCapabilities(t *testing.T) {
 		// A model's capabilities can be changed without changing another's
 		capabilities := model(t, OpenAIEndpoint, "gpt-4o", "").Capabilities()
 		*capabilities.Completion = false
-		assert.Equal(t, &yes, model(t, OpenAIEndpoint, "gpt-4o", "").Capabilities().Completion)
+		assert.Equal(t, types.Ptr(true), model(t, OpenAIEndpoint, "gpt-4o", "").Capabilities().Completion)
 	})
 }
 

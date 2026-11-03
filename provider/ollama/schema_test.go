@@ -6,15 +6,15 @@ import (
 	"time"
 
 	// Packages
+	types "github.com/mutablelogic/go-server/pkg/types"
 	assert "github.com/stretchr/testify/assert"
 	require "github.com/stretchr/testify/require"
 )
 
 func TestChatRequest(t *testing.T) {
-	stream := true
 	data, err := json.Marshal(chatRequest{
 		Model:  "llama3.2:latest",
-		Stream: &stream,
+		Stream: types.Ptr(true),
 		Messages: []chatMessage{
 			{Role: "system", Content: "Be brief"},
 			{Role: "user", Content: "What is this?", Images: [][]byte{[]byte("hello")}},

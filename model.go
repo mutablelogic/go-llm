@@ -4,6 +4,9 @@ import (
 	"encoding/json"
 	"strings"
 	"time"
+
+	// Packages
+	types "github.com/mutablelogic/go-server/pkg/types"
 )
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -46,26 +49,18 @@ func (c ModelCap) String() string {
 		name string
 		ok   bool
 	}{
-		{"completion", isTrue(c.Completion)},
-		{"tools", isTrue(c.Tools)},
-		{"thinking", isTrue(c.Thinking)},
-		{"vision", isTrue(c.Vision)},
-		{"ocr", isTrue(c.OCR)},
-		{"transcription", isTrue(c.Transcription)},
-		{"translation", isTrue(c.Translation)},
-		{"embedding", isTrue(c.Embedding)},
+		{"completion", types.Value(c.Completion)},
+		{"tools", types.Value(c.Tools)},
+		{"thinking", types.Value(c.Thinking)},
+		{"vision", types.Value(c.Vision)},
+		{"ocr", types.Value(c.OCR)},
+		{"transcription", types.Value(c.Transcription)},
+		{"translation", types.Value(c.Translation)},
+		{"embedding", types.Value(c.Embedding)},
 	} {
 		if capability.ok {
 			result = append(result, capability.name)
 		}
 	}
 	return strings.Join(result, ", ")
-}
-
-////////////////////////////////////////////////////////////////////////////////
-// PRIVATE FUNCTIONS
-
-// isTrue returns true when the value is known, and true
-func isTrue(value *bool) bool {
-	return value != nil && *value
 }

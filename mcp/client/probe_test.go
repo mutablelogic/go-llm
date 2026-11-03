@@ -6,6 +6,7 @@ import (
 	// Packages
 	schema "github.com/mutablelogic/go-llm/kernel/schema"
 	mock "github.com/mutablelogic/go-llm/mcp/mock"
+	types "github.com/mutablelogic/go-server/pkg/types"
 )
 
 // Test_probe_001: Probe returns the server name and version.
@@ -15,10 +16,10 @@ func Test_probe_001(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if state.Name == nil || *state.Name != "probe-server" {
+	if types.Value(state.Name) != "probe-server" {
 		t.Errorf("expected name %q, got %v", "probe-server", state.Name)
 	}
-	if state.Version == nil || *state.Version != "2.3.4" {
+	if types.Value(state.Version) != "2.3.4" {
 		t.Errorf("expected version %q, got %v", "2.3.4", state.Version)
 	}
 }

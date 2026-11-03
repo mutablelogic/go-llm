@@ -55,13 +55,11 @@ func (g GeneratorMeta) Values() url.Values {
 			values.Set("model", model)
 		}
 	}
-	if g.SystemPrompt != nil {
-		if prompt := strings.TrimSpace(*g.SystemPrompt); prompt != "" {
-			values.Set("system_prompt", prompt)
-		}
+	if prompt := strings.TrimSpace(types.Value(g.SystemPrompt)); prompt != "" {
+		values.Set("system_prompt", prompt)
 	}
-	if g.MaxTokens != nil && *g.MaxTokens > 0 {
-		values.Set("max_tokens", strconv.FormatUint(uint64(*g.MaxTokens), 10))
+	if maxTokens := types.Value(g.MaxTokens); maxTokens > 0 {
+		values.Set("max_tokens", strconv.FormatUint(uint64(maxTokens), 10))
 	}
 	if len(g.Format) > 0 {
 		values.Set("format", string(g.Format))
@@ -69,8 +67,8 @@ func (g GeneratorMeta) Values() url.Values {
 	if g.Thinking != nil {
 		values.Set("thinking", strconv.FormatBool(types.Value(g.Thinking)))
 	}
-	if g.ThinkingBudget != nil && *g.ThinkingBudget > 0 {
-		values.Set("thinking_budget", strconv.FormatUint(uint64(*g.ThinkingBudget), 10))
+	if budget := types.Value(g.ThinkingBudget); budget > 0 {
+		values.Set("thinking_budget", strconv.FormatUint(uint64(budget), 10))
 	}
 	if len(values) == 0 {
 		return nil
