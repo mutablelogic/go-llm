@@ -34,10 +34,11 @@ var reasoningModel = []struct {
 // apply sets the options on the request to embed, or returns an error if
 // any option isn't valid or isn't supported by the Embeddings API. The
 // number of dimensions is the API's dimensions, which OpenAI's
-// text-embedding-3 models support, and the user identifies the end user.
-// The API has no task type or title, so they're ignored, as a caller can
-// set them for any provider.
-func (r *embedRequest) apply(opts ...llm.Opt) error {
+// text-embedding-3 models support, or Mistral's output_dimension, and the
+// user identifies the end user, which Mistral doesn't support. The API has
+// no task type or title, so they're ignored, as a caller can set them for
+// any provider.
+func (r *embedRequest) apply(server server, opts ...llm.Opt) error {
 	o, err := llm.ApplyOpts(opts...)
 	if err != nil {
 		return err
@@ -46,9 +47,17 @@ func (r *embedRequest) apply(opts ...llm.Opt) error {
 		var err error
 		switch key {
 		case llm.DimensionsKey:
-			r.Dimensions, err = llm.GetOpt[uint](o, key)
+			if server == serverMistral {
+				r.OutputDimension, err = llm.GetOpt[uint](o, key)
+			} else {
+				r.Dimensions, err = llm.GetOpt[uint](o, key)
+			}
 		case llm.UserKey:
-			r.User, err = llm.GetOpt[string](o, key)
+			if server == serverMistral {
+				err = llm.ErrBadParameter.Withf("option %q isn't supported by mistral", key)
+			} else {
+				r.User, err = llm.GetOpt[string](o, key)
+			}
 		case llm.TaskTypeKey, llm.TitleKey:
 			// The embeddings API has no task type or title
 		default:
@@ -66,10 +75,12 @@ func (r *embedRequest) apply(opts ...llm.Opt) error {
 // messages, so they should be set first, as should the tools, which are
 // removed when the tool choice is "none". The most tokens to generate are
 // max_completion_tokens for OpenAI's own API, and max_tokens otherwise. The
-// context window is the server's, and isn't sent. Thinking turns DeepSeek's
-// thinking mode on or off, and off is the least reasoning effort of the model
-// for OpenAI's own API, as not every model can turn it off, and isn't
-// supported by other servers. OpenAI's models which can turn reasoning off
+// context window is the server's, and isn't sent. The seed is Mistral's
+// random_seed, and Mistral has no user, as it rejects fields it doesn't
+// know. Thinking turns DeepSeek's thinking mode on or off, and off is the
+// least reasoning effort of the model for OpenAI's own API, as not every
+// model can turn it off, and for Mistral's, "none", and on, "high", unless
+// there's an effort. Thinking isn't supported by other servers. OpenAI's models which can turn reasoning off
 // have it off when there are tools, as Chat Completions only lets them call
 // tools without reasoning. The request's model should be set first.
 // Reference: https://platform.openai.com/docs/api-reference/chat/create
@@ -94,7 +105,11 @@ func (r *chatRequest) apply(server server, opts ...llm.Opt) error {
 		case llm.StopSequencesKey:
 			r.Stop, err = llm.GetOpt[[]string](o, key)
 		case llm.SeedKey:
-			r.Seed, err = getOpt[uint](o, key)
+			if server == serverMistral {
+				r.RandomSeed, err = getOpt[uint](o, key)
+			} else {
+				r.Seed, err = getOpt[uint](o, key)
+			}
 		case llm.PresencePenaltyKey:
 			r.PresencePenalty, err = getOpt[float64](o, key)
 		case llm.FrequencyPenaltyKey:
@@ -134,7 +149,11 @@ func (r *chatRequest) apply(server server, opts ...llm.Opt) error {
 				}
 			}
 		case llm.UserKey:
-			r.User, err = llm.GetOpt[string](o, key)
+			if server == serverMistral {
+				err = llm.ErrBadParameter.Withf("option %q isn't supported by mistral", key)
+			} else {
+				r.User, err = llm.GetOpt[string](o, key)
+			}
 		case llm.ServiceTierKey:
 			r.ServiceTier, err = llm.GetOpt[string](o, key)
 		default:
@@ -146,7 +165,9 @@ func (r *chatRequest) apply(server server, opts ...llm.Opt) error {
 	}
 
 	// Thinking is DeepSeek's thinking mode, or when it's off, the least
-	// reasoning effort for OpenAI's reasoning models, rather than the effort
+	// reasoning effort for OpenAI's reasoning models, and Mistral's, rather
+	// than the effort, and when it's on, Mistral's most, unless there's an
+	// effort
 	if thinking, err := llm.GetOpt[bool](o, llm.ThinkingKey); err == nil {
 		switch {
 		case server == serverDeepSeek && thinking:
@@ -155,6 +176,10 @@ func (r *chatRequest) apply(server server, opts ...llm.Opt) error {
 			r.Thinking = &chatThinking{Type: "disabled"}
 		case server == serverOpenAI && !thinking:
 			r.ReasoningEffort = leastReasoningEffort(r.Model)
+		case server == serverMistral && !thinking:
+			r.ReasoningEffort = "none"
+		case server == serverMistral && r.ReasoningEffort == "":
+			r.ReasoningEffort = "high"
 		}
 	}
 

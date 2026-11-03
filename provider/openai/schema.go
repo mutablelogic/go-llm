@@ -66,6 +66,7 @@ type chatRequest struct {
 	MaxCompletionTokens *uint           `json:"max_completion_tokens,omitempty"`
 	Stop                []string        `json:"stop,omitempty"`
 	Seed                *uint           `json:"seed,omitempty"`
+	RandomSeed          *uint           `json:"random_seed,omitempty"` // Mistral's seed
 	PresencePenalty     *float64        `json:"presence_penalty,omitempty"`
 	FrequencyPenalty    *float64        `json:"frequency_penalty,omitempty"`
 	ResponseFormat      *responseFormat `json:"response_format,omitempty"`
@@ -226,15 +227,16 @@ func (u *chatUsage) Usage() llm.Usage {
 
 // embedRequest is a request to embed texts, each as a vector, with the
 // number of dimensions of the vectors, which OpenAI's text-embedding-3
-// models can make fewer than their own, and the vectors as numbers rather
-// than base64
+// models, and Mistral's codestral-embed, can make fewer than their own, and
+// the vectors as numbers rather than base64
 // Reference: https://platform.openai.com/docs/api-reference/embeddings
 type embedRequest struct {
-	Model          string   `json:"model"`
-	Input          []string `json:"input"`
-	Dimensions     uint     `json:"dimensions,omitempty"`
-	EncodingFormat string   `json:"encoding_format,omitempty"`
-	User           string   `json:"user,omitempty"`
+	Model           string   `json:"model"`
+	Input           []string `json:"input"`
+	Dimensions      uint     `json:"dimensions,omitempty"`
+	OutputDimension uint     `json:"output_dimension,omitempty"` // Mistral's dimensions
+	EncodingFormat  string   `json:"encoding_format,omitempty"`
+	User            string   `json:"user,omitempty"`
 }
 
 // embedResponse is the vector of each text, by its index, and the tokens in

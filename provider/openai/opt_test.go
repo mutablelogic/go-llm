@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	// Packages
+	client "github.com/mutablelogic/go-client"
 	llm "github.com/mutablelogic/go-llm"
 	schema "github.com/mutablelogic/go-llm/provider/schema"
 	types "github.com/mutablelogic/go-server/pkg/types"
@@ -148,6 +149,36 @@ func TestApply(t *testing.T) {
 		assert.Empty(t, r.ToolChoice)
 	})
 
+	t.Run("Mistral", func(t *testing.T) {
+		// Mistral's API has the seed as random_seed, the most tokens as
+		// max_tokens, and no user, as it rejects fields it doesn't know
+		var r chatRequest
+		require.NoError(t, r.apply(serverMistral, llm.WithSeed(42), llm.WithMaxTokens(100)))
+		assert.Equal(t, chatRequest{RandomSeed: types.Ptr(uint(42)), MaxTokens: types.Ptr(uint(100))}, r)
+		data, err := json.Marshal(r)
+		require.NoError(t, err)
+		assert.Contains(t, string(data), `"random_seed":42`)
+		assert.NotContains(t, string(data), `"seed"`)
+		assert.ErrorIs(t, r.apply(serverMistral, llm.WithUser("djt")), llm.ErrBadParameter)
+
+		// Thinking off is no reasoning effort, and on is the most, unless
+		// there's an effort, which off overrides
+		for _, test := range []struct {
+			opts   []llm.Opt
+			effort string
+		}{
+			{[]llm.Opt{llm.WithThinking(false)}, "none"},
+			{[]llm.Opt{llm.WithThinking(true)}, "high"},
+			{[]llm.Opt{llm.WithThinking(true), llm.WithThinkingEffort("medium")}, "medium"},
+			{[]llm.Opt{llm.WithThinking(false), llm.WithThinkingEffort("medium")}, "none"},
+			{[]llm.Opt{llm.WithThinkingEffort("medium")}, "medium"},
+		} {
+			r := chatRequest{}
+			require.NoError(t, r.apply(serverMistral, test.opts...))
+			assert.Equal(t, test.effort, r.ReasoningEffort)
+		}
+	})
+
 	t.Run("Unsupported", func(t *testing.T) {
 		for _, opt := range []llm.Opt{llm.WithTopK(40), llm.WithThinking(true), llm.WithThinking(false), llm.WithThinkingBudget(1000), llm.WithKeepAlive(-1), llm.WithSafePrompt(true)} {
 			var r chatRequest
@@ -223,6 +254,12 @@ func TestNewChatResponse(t *testing.T) {
 	assert.Equal(t, uint64(50), newChatResponse(choice, usage).Tokens)
 	assert.Equal(t, llm.Usage{OutputTokens: 50}, replyUsage(choice, usage))
 
+	// Mistral's reasoning is the thinking parts of the content
+	var content any
+	require.NoError(t, json.Unmarshal([]byte(`[{"type":"thinking","thinking":[{"type":"text","text":"17 times "},{"type":"text","text":"23"}]},{"type":"text","text":"391"}]`), &content))
+	message = newChatResponse(chatChoice{Message: chatMessage{Content: content}, FinishReason: "stop"}, nil)
+	assert.Equal(t, []schema.ContentBlock{{Thinking: types.Ptr("17 times 23")}, {Text: types.Ptr("391")}}, message.Content)
+
 	// A refusal is the text, and the reply is blocked
 	message = newChatResponse(chatChoice{Message: chatMessage{Content: nil, Refusal: "I can't help with that"}, FinishReason: "stop"}, nil)
 	assert.Equal(t, "I can't help with that", message.Text())
@@ -247,4 +284,39 @@ func TestChatUsage(t *testing.T) {
 	// Without usage, there are no tokens
 	usage = nil
 	assert.Equal(t, llm.Usage{}, usage.Usage())
+}
+
+func TestEmbedApply(t *testing.T) {
+	// The dimensions are OpenAI's dimensions, and Mistral's
+	// output_dimension, and Mistral has no user
+	var r embedRequest
+	require.NoError(t, r.apply(serverOpenAI, llm.WithDimensions(256), llm.WithUser("djt")))
+	assert.Equal(t, embedRequest{Dimensions: 256, User: "djt"}, r)
+	r = embedRequest{}
+	require.NoError(t, r.apply(serverMistral, llm.WithDimensions(256)))
+	assert.Equal(t, embedRequest{OutputDimension: 256}, r)
+	assert.ErrorIs(t, r.apply(serverMistral, llm.WithUser("djt")), llm.ErrBadParameter)
+}
+
+func TestChatStreamThinking(t *testing.T) {
+	// Mistral streams its reasoning as thinking parts of the content, and
+	// its text as strings, with the usage in the chunk which is done
+	var pieces []string
+	s := &chatStream{stream: func(kind llm.StreamType, piece string) {
+		pieces = append(pieces, string(kind)+":"+piece)
+	}}
+	for _, data := range []string{
+		`{"id":"1","choices":[{"index":0,"delta":{"role":"assistant","content":""}}]}`,
+		`{"choices":[{"index":0,"delta":{"content":[{"type":"thinking","thinking":[{"type":"text","text":"Hmm"}]}]}}]}`,
+		`{"choices":[{"index":0,"delta":{"content":"4"}}]}`,
+		`{"choices":[{"index":0,"delta":{"content":""},"finish_reason":"stop"}],"usage":{"prompt_tokens":10,"completion_tokens":5,"completion_tokens_details":{"reasoning_tokens":3}}}`,
+	} {
+		require.NoError(t, s.add(client.TextStreamEvent{Data: data}))
+	}
+	assert.Equal(t, []string{"thinking:Hmm", "text:4"}, pieces)
+	response := s.Response()
+	assert.Equal(t, "Hmm", response.Choices[0].Message.ReasoningContent)
+	assert.Equal(t, "4", response.Choices[0].Message.Content)
+	assert.Equal(t, llm.Usage{InputTokens: 10, OutputTokens: 5, ReasoningTokens: 3}, response.Usage.Usage())
+	assert.True(t, s.done)
 }

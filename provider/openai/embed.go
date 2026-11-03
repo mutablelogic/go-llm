@@ -43,7 +43,7 @@ func (c *Client) Embed(ctx context.Context, model llm.Model, messages []llm.Mess
 		}
 		request.Input = append(request.Input, message.Text())
 	}
-	if err := request.apply(opts...); err != nil {
+	if err := request.apply(c.server(), opts...); err != nil {
 		return nil, llm.Usage{}, err
 	}
 

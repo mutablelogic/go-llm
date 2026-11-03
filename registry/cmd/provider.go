@@ -26,6 +26,7 @@ type ProviderCommands struct {
 	ProviderCreateEliza    ProviderCreateElizaCmd    `cmd:"" name:"provider-create-eliza" help:"Create an Eliza provider, for testing." group:"LLM PROVIDERS"`
 	ProviderCreateOpenAI   ProviderCreateOpenAICmd   `cmd:"" name:"provider-create-openai" help:"Create an OpenAI, or OpenAI-compatible, provider." group:"LLM PROVIDERS"`
 	ProviderCreateDeepSeek ProviderCreateDeepSeekCmd `cmd:"" name:"provider-create-deepseek" help:"Create a DeepSeek provider." group:"LLM PROVIDERS"`
+	ProviderCreateMistral  ProviderCreateMistralCmd  `cmd:"" name:"provider-create-mistral" help:"Create a Mistral provider." group:"LLM PROVIDERS"`
 }
 
 type ProviderListCmd struct {
@@ -73,6 +74,14 @@ type ProviderCreateOpenAICmd struct {
 type ProviderCreateDeepSeekCmd struct {
 	ProviderModels
 	Name             string `name:"name" default:"deepseek" help:"Provider name."`
+	APIKeyCredential string `name:"api-key-credential" help:"Name of the credential holding the API key." required:""`
+}
+
+// ProviderCreateMistralCmd creates a provider for Mistral, which has an
+// OpenAI-compatible API, at a fixed URL
+type ProviderCreateMistralCmd struct {
+	ProviderModels
+	Name             string `name:"name" default:"mistral" help:"Provider name."`
 	APIKeyCredential string `name:"api-key-credential" help:"Name of the credential holding the API key." required:""`
 }
 
@@ -172,6 +181,18 @@ func (cmd *ProviderCreateDeepSeekCmd) Run(ctx server.Cmd) error {
 		Include:  cmd.Include,
 		Exclude:  cmd.Exclude,
 		URL:      openai.DeepSeekEndpoint,
+		APIKey:   placeholder(cmd.APIKeyCredential),
+	})
+}
+
+// Mistral has an OpenAI-compatible API, at a fixed URL
+func (cmd *ProviderCreateMistralCmd) Run(ctx server.Cmd) error {
+	return createProvider(ctx, "llm.ProviderCreateMistralCmd", schema.CreateProviderRequest{
+		Name:     cmd.Name,
+		Provider: llm.OpenAI,
+		Include:  cmd.Include,
+		Exclude:  cmd.Exclude,
+		URL:      openai.MistralEndpoint,
 		APIKey:   placeholder(cmd.APIKeyCredential),
 	})
 }

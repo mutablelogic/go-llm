@@ -18,8 +18,9 @@ import (
 
 // newChatResponse returns the message in a choice of a response from
 // POST /chat/completions, with its reasoning, text and tool calls as content
-// blocks, and why the model stopped. A refusal is its text, and the reply is
-// blocked. Its tokens are those returned, without reasoning which isn't.
+// blocks, and why the model stopped. Its reasoning is the reasoning content,
+// or Mistral's thinking parts of its content. A refusal is its text, and the
+// reply is blocked. Its tokens are those returned, without reasoning which isn't.
 func newChatResponse(choice chatChoice, usage *chatUsage) *schema.Message {
 	chat := choice.Message
 	message := &schema.Message{
@@ -30,8 +31,8 @@ func newChatResponse(choice chatChoice, usage *chatUsage) *schema.Message {
 	if usage := replyUsage(choice, usage); usage.OutputTokens > 0 {
 		message.Tokens = uint64(usage.OutputTokens - min(usage.ReasoningTokens, usage.OutputTokens))
 	}
-	if chat.ReasoningContent != "" {
-		message.Content = append(message.Content, schema.ContentBlock{Thinking: types.Ptr(chat.ReasoningContent)})
+	if thinking := chat.ReasoningContent + contentThinking(chat.Content); thinking != "" {
+		message.Content = append(message.Content, schema.ContentBlock{Thinking: types.Ptr(thinking)})
 	}
 	if text := contentText(chat.Content); text != "" {
 		message.Content = append(message.Content, schema.ContentBlock{Text: types.Ptr(text)})
@@ -188,6 +189,24 @@ func chatResult(choice chatChoice) schema.ResultType {
 	default:
 		return schema.ResultOther
 	}
+}
+
+// contentThinking returns the thinking of a message's content, which is
+// parts, of which the thinking parts' text parts are joined, as Mistral
+// returns a reasoning model's thinking, or empty when there's none
+// Reference: https://docs.mistral.ai/capabilities/reasoning
+func contentThinking(content any) string {
+	parts, ok := content.([]any)
+	if !ok {
+		return ""
+	}
+	var thinking strings.Builder
+	for _, part := range parts {
+		if part, ok := part.(map[string]any); ok && part["type"] == "thinking" {
+			thinking.WriteString(contentText(part["thinking"]))
+		}
+	}
+	return thinking.String()
 }
 
 // contentText returns the text of a message's content, which is a string,

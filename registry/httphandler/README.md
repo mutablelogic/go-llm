@@ -7,7 +7,7 @@ Providers are LLM backends, such as Ollama, in the registry. Each has a name in 
 The types are:
 
 - `ollama`: an Ollama server. A `url` without a scheme, such as `localhost`, uses `http` and Ollama's port, 11434.
-- `openai`: OpenAI, which is the default `url`, or a server with an OpenAI-compatible API, such as DeepSeek, vLLM or LM Studio.
+- `openai`: OpenAI, which is the default `url`, or a server with an OpenAI-compatible API, such as DeepSeek, Mistral (`https://api.mistral.ai/v1`), vLLM or LM Studio.
 - `eliza`: a mock provider for testing, which has no `url` or API key.
 
 The registry isn't stored, so providers which are created are lost when the server stops, and an API key is sent as a bearer token, and is never returned. An API key can be a credential's placeholder, such as `${OPENAI_KEY}`, which is replaced with the credential, which is the environment variable with that name, unless the server has another credentials provider. A provider is pinged when it's listed or got, unless it was pinged within the last minute, and has an `error` when it can't be reached. A provider's models are those whose names match one of its `include` patterns, or all of them when it has none, and none of its `exclude` patterns, which are regular expressions, such as `^gpt-`. They're cached, and listed again after six hours, or every minute for a provider which downloads models, such as Ollama, or when they couldn't be listed.
