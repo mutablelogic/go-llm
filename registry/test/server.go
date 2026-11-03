@@ -454,6 +454,12 @@ func (r *recorder) Write(data []byte) (int, error) {
 	return r.ResponseWriter.Write(data)
 }
 
+// Unwrap returns the response writer, so a response controller can flush a
+// stream, and set its deadlines
+func (r *recorder) Unwrap() http.ResponseWriter {
+	return r.ResponseWriter
+}
+
 // isRedirect returns true for a redirect status code
 func isRedirect(status int) bool {
 	return status >= 300 && status < 400

@@ -12,8 +12,11 @@ import (
 // stale, when it starts, and every PingInterval, so the providers' state,
 // and their models, are kept current, until the context is cancelled. The
 // registry is used without it, when its models are listed as they're
-// needed.
+// needed. When it stops, the registry's watches end, as there will be no
+// more events, and it isn't watched until it runs again.
 func (r *Registry) Run(ctx context.Context) error {
+	r.startWatching()
+	defer r.stopWatching()
 	ticker := time.NewTicker(PingInterval)
 	defer ticker.Stop()
 	for {

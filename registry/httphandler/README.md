@@ -51,3 +51,11 @@ Delete a model by name, or alias, or by provider and name, such as `my-ollama:ge
 ### POST /llm/model/{name}/unload
 
 Unload a model by name, or alias, or by provider and name, such as `my-ollama:gemma:latest`, from its provider's memory, keeping it stored, so it's loaded again when it's next used. Returns the unloaded model. Returns 404 if no provider has the model, 409 if more than one provider has the model, 501 if the model's provider doesn't load models, or can't unload them, or 503 if the model couldn't be unloaded, or a provider which could have it can't be reached.
+
+## Event Operations
+
+Events are changes to the registry's providers, which are streamed to a client as they happen. Each event has an `action`, which is `create` or `delete` when a provider is created or deleted, or `update` when whether it can be reached changes, when it's pinged, or its models change, when they're listed again, such as after a model is loaded or deleted. It also has the `table`, which is `provider`, and the `row`, which is the provider's name.
+
+### GET /llm/event
+
+Watch the registry's events, as a stream of server-sent events, until the client closes the connection. Each event is an `event`, whose data is the event, as JSON, such as `{"action":"create","table":"provider","row":"my-ollama"}`. The stream is watching once it has started, so a client which lists the providers then misses no changes. When the server is stopping, a `shutdown` event is sent, and the stream ends, as there will be no more events. A client which doesn't read its events has up to 16 kept for it, and misses those after them. Returns 406 if the client doesn't accept `text/event-stream`, or 503 if the server is stopping.
