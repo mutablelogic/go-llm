@@ -6,12 +6,14 @@ import (
 	"io"
 	"io/fs"
 	"net/http"
+	"net/http/httptest"
 	"testing"
 
 	// Packages
 	llm "github.com/mutablelogic/go-llm"
 	httpresponse "github.com/mutablelogic/go-server/pkg/httpresponse"
 	assert "github.com/stretchr/testify/assert"
+	require "github.com/stretchr/testify/require"
 )
 
 func Test_Withf(t *testing.T) {
@@ -104,4 +106,32 @@ func Test_HTTPStatus(t *testing.T) {
 	if assert.True(t, errors.As(llm.HTTPErr(httpresponse.ErrResponse{Code: http.StatusNotFound}), &code)) {
 		assert.Equal(t, httpresponse.ErrNotFound, code)
 	}
+}
+
+func Test_HTTPErrMessage(t *testing.T) {
+	// An llm.Err's text, which the status says, isn't repeated, but is kept
+	// when it says more, or doesn't start the message
+	for err, want := range map[error]string{
+		llm.ErrNotFound.Withf("model %q", "x"):    `Not Found: model "x"`,
+		llm.ErrBadParameter.With("missing model"): "Bad Request: missing model",
+		llm.ErrNotFound: "Not Found",
+		llm.ErrServiceUnavailable.Withf("%w", errors.New("down")): "Service Unavailable: down",
+		llm.ErrMaxTokens.With("after 100"):                        "Bad Request: response truncated: max tokens reached: after 100",
+		fmt.Errorf("provider: %w", llm.ErrNotFound):               "Not Found: provider: not found",
+	} {
+		result := llm.HTTPErr(err)
+		assert.Equal(t, want, result.Error(), err)
+
+		// And it still matches the status, and the llm.Err
+		var code httpresponse.Err
+		assert.True(t, errors.As(result, &code), err)
+		var e llm.Err
+		assert.True(t, errors.As(result, &e), err)
+	}
+
+	// And the status is the response's code, and the message is its reason
+	w := httptest.NewRecorder()
+	require.NoError(t, httpresponse.Error(w, llm.HTTPErr(llm.ErrNotFound.With("model"))))
+	assert.Equal(t, http.StatusNotFound, w.Code)
+	assert.Contains(t, w.Body.String(), `"reason": "Not Found: model"`)
 }

@@ -28,7 +28,8 @@ type streamWriteFn func(event string, data any)
 // function. When the request accepts text/event-stream, the function is
 // called with a function which writes events, as server-sent events, such
 // as for each piece of a model's reply as it's generated, and then a result
-// event, with the response, or an error event. The name is of the model,
+// event, with the response, or an error event, whose message is as it would
+// be without a stream, such as "Not Found: model ...". The name is of the model,
 // for errors. A model can take longer than the server's write timeout,
 // which is for the whole response, so it's cleared, and each write has its
 // own deadline instead, as with the stream of events.
@@ -54,7 +55,7 @@ func respond[T any](w http.ResponseWriter, r *http.Request, name string, fn func
 		if response, err := fn(func(event string, data any) {
 			stream.Write(event, data)
 		}); err != nil {
-			stream.Write(schema.EventError, schema.ErrorEvent{Error: err.Error()})
+			stream.Write(schema.EventError, schema.ErrorEvent{Error: llm.HTTPErr(err).Error()})
 		} else {
 			stream.Write(schema.EventResult, response)
 		}

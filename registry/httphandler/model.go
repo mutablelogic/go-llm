@@ -237,7 +237,7 @@ func loadModelStream(reg *registry.Registry, w http.ResponseWriter, r *http.Requ
 		stream.Write(schema.EventProgress, schema.ProgressEvent{Status: status, Percent: percent})
 	})
 	if err != nil {
-		stream.Write(schema.EventError, schema.ErrorEvent{Error: err.Error()})
+		stream.Write(schema.EventError, schema.ErrorEvent{Error: llm.HTTPErr(err).Error()})
 	} else {
 		stream.Write(schema.EventResult, model)
 	}
