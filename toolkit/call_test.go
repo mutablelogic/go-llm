@@ -162,6 +162,35 @@ func TestCallToolSchema(t *testing.T) {
 		assert.ErrorIs(t, err, llm.ErrBadParameter)
 	})
 
+	t.Run("Nullable", func(t *testing.T) {
+		// A field which is null, which the schema allows, is kept, as is
+		// one alongside it, and so is a null which the respond tool's
+		// schema allows
+		nullable, err := jsonschema.FromJSON(json.RawMessage(`{"type":"object","properties":{"note":{"type":["string","null"]}}}`))
+		require.NoError(t, err)
+		respond, err := toolkit.NewRespond(json.RawMessage(`{"type":"null"}`))
+		require.NoError(t, err)
+		tk, err := toolkit.New(ctx)
+		require.NoError(t, err)
+		require.NoError(t, tk.Add("nulls", schemaTool{echoTool{name: "note"}, nullable}, respond))
+
+		result, err := tk.CallTool(ctx, "nulls:note", json.RawMessage(`{"note":null}`))
+		require.NoError(t, err)
+		assert.JSONEq(t, `{"note":null}`, string(result))
+		_, err = tk.CallTool(ctx, "nulls:"+respond.Name(), json.RawMessage(`{"result":null}`))
+		require.NoError(t, err)
+	})
+
+	t.Run("NoSchemaNulls", func(t *testing.T) {
+		// A tool without an input schema has its input, with its nulls
+		tk, err := toolkit.New(ctx)
+		require.NoError(t, err)
+		require.NoError(t, tk.Add("plain", echoTool{name: "echo"}))
+		result, err := tk.CallTool(ctx, "plain:echo", json.RawMessage(`{"city":null}`))
+		require.NoError(t, err)
+		assert.JSONEq(t, `{"city":null}`, string(result))
+	})
+
 	t.Run("UnresolvedSchema", func(t *testing.T) {
 		// A schema which wasn't resolved, from Property, is resolved when
 		// the tool is added, so it can be validated

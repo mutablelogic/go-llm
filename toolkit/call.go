@@ -43,10 +43,13 @@ func (self *Toolkit) CallTool(ctx context.Context, name string, input json.RawMe
 // PRIVATE METHODS
 
 // call runs the tool with the input, which may be empty, and returns its
-// result as JSON, or nil when the tool has no result. A field of the input
-// which is null is left out, as models send null for the fields they don't
-// set. Returns ErrBadParameter if the input isn't valid JSON, or doesn't
-// match the tool's input schema.
+// result as JSON, or nil when the tool has no result. Input which doesn't
+// match the tool's input schema has its fields which are null left out, as
+// models send null for the fields they don't set, which a schema rejects,
+// as they're optional, rather than nullable, so input which matches the
+// schema, with its nulls, such as a field which is nullable, is as it is,
+// as is the input of a tool without a schema. Returns ErrBadParameter if the
+// input isn't valid JSON, or doesn't match the tool's input schema.
 func (e entry) call(ctx context.Context, input json.RawMessage) (json.RawMessage, error) {
 	name := schema.CanonicalToolName(e.namespace, e.tool.Name())
 
@@ -54,17 +57,16 @@ func (e entry) call(ctx context.Context, input json.RawMessage) (json.RawMessage
 	if len(input) > 0 && !json.Valid(input) {
 		return nil, llm.ErrBadParameter.Withf("tool %q: input isn't valid JSON", name)
 	}
-	input = withoutNulls(input)
 
-	// The input must match the tool's input schema, if it has one. Empty
-	// input is validated as an empty object.
+	// The input must match the tool's input schema, if it has one, as it is,
+	// or without its fields which are null
 	if e.input != nil {
-		data := input
-		if len(data) == 0 {
-			data = json.RawMessage(`{}`)
-		}
-		if err := e.input.Validate(data); err != nil {
-			return nil, llm.ErrBadParameter.Withf("tool %q: %v", name, err)
+		if err := e.validate(input); err != nil {
+			stripped := withoutNulls(input)
+			if bytes.Equal(stripped, input) || e.validate(stripped) != nil {
+				return nil, llm.ErrBadParameter.Withf("tool %q: %v", name, err)
+			}
+			input = stripped
 		}
 	}
 
@@ -74,6 +76,15 @@ func (e entry) call(ctx context.Context, input json.RawMessage) (json.RawMessage
 		return nil, err
 	}
 	return toolResult(ctx, name, result)
+}
+
+// validate returns an error when the input doesn't match the tool's input
+// schema. Empty input is validated as an empty object.
+func (e entry) validate(input json.RawMessage) error {
+	if len(input) == 0 {
+		input = json.RawMessage(`{}`)
+	}
+	return e.input.Validate(input)
 }
 
 // withoutNulls returns the input without the fields of an object which are
