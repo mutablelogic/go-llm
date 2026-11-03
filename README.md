@@ -244,7 +244,6 @@ Tests which make requests to a provider are skipped with `-short`, and unless it
 
 ### Improvements
 
-- **Error messages**: an error from the API has its status twice, such as `Not Found: not found: ...`.
 - **Attachments by URL**: a message's image or document by its URL, rather than its data, which the server doesn't yet read, as it shouldn't fetch any URL it's given.
 - **OCR**: the images in documents, PDFs with Ollama's models, and `glm-ocr`'s prompt, which isn't tested.
 - **Speech**:
