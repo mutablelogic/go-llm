@@ -24,9 +24,11 @@ type Format string
 // WebVTT, format, as they're added, so they can be written as they're
 // transcribed. A cue is the segments, in turn, until one is spoken by
 // another speaker, or after a silence, or would make the cue too long, or
-// have too much text, to read. A segment isn't split.
+// have too much text, to read. A segment isn't split. Once a write fails,
+// nothing more is written, and Add and Close return its error.
 type Writer struct {
 	w     io.Writer
+	err   error        // The first error writing, which is returned from then on
 	vtt   bool         // WebVTT, rather than SRT
 	index int          // The number of cues written
 	cue   *subtitleCue // The cue being made, until it's written
@@ -77,21 +79,25 @@ func Write(w io.Writer, format Format, segments []llm.TranscriptSegment) error {
 		return err
 	}
 	for _, segment := range segments {
-		writer.Add(segment)
+		if err := writer.Add(segment); err != nil {
+			return err
+		}
 	}
-	writer.Close()
-	return nil
+	return writer.Close()
 }
 
 ///////////////////////////////////////////////////////////////////////////////
 // PUBLIC METHODS
 
 // Add adds the segment to the cue, or writes the cue, and starts another,
-// when the segment ends it
-func (s *Writer) Add(segment llm.TranscriptSegment) {
+// when the segment ends it, returning an error when a cue can't be written
+func (s *Writer) Add(segment llm.TranscriptSegment) error {
+	if s.err != nil {
+		return s.err
+	}
 	text := strings.TrimSpace(segment.Text)
 	if text == "" {
-		return
+		return nil
 	}
 	if s.cue != nil && s.cue.ends(segment, text) {
 		s.flush()
@@ -101,14 +107,17 @@ func (s *Writer) Add(segment llm.TranscriptSegment) {
 	}
 	s.cue.text = append(s.cue.text, text)
 	s.cue.end = max(s.cue.end, segment.End)
+	return s.err
 }
 
-// Close writes the last cue, and the WebVTT header, when no cue was written
-func (s *Writer) Close() {
+// Close writes the last cue, and the WebVTT header, when no cue was written,
+// returning the first error writing the subtitles
+func (s *Writer) Close() error {
 	s.flush()
 	if s.vtt && s.index == 0 {
-		fmt.Fprint(s.w, "WEBVTT\n\n")
+		s.printf("WEBVTT\n\n")
 	}
+	return s.err
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -117,7 +126,7 @@ func (s *Writer) Close() {
 // flush writes the cue, with its number in SRT, or after the header in
 // WebVTT, and its speaker, when it's known
 func (s *Writer) flush() {
-	if s.cue == nil {
+	if s.cue == nil || s.err != nil {
 		return
 	}
 	cue := s.cue
@@ -127,18 +136,26 @@ func (s *Writer) flush() {
 		// The speaker is a voice tag, which isn't shown as text
 		lines := wrapText(text, subtitleLine)
 		if s.index == 1 {
-			fmt.Fprint(s.w, "WEBVTT\n\n")
+			s.printf("WEBVTT\n\n")
 		}
 		if cue.speaker != "" {
 			lines[0] = "<v " + cue.speaker + ">" + lines[0]
 		}
-		fmt.Fprintf(s.w, "%s --> %s\n%s\n\n", subtitleTime(cue.start, '.'), subtitleTime(cue.end, '.'), strings.Join(lines, "\n"))
+		s.printf("%s --> %s\n%s\n\n", subtitleTime(cue.start, '.'), subtitleTime(cue.end, '.'), strings.Join(lines, "\n"))
 	} else {
 		// The speaker is shown, so it's wrapped with the text
 		if cue.speaker != "" {
 			text = cue.speaker + ": " + text
 		}
-		fmt.Fprintf(s.w, "%d\n%s --> %s\n%s\n\n", s.index, subtitleTime(cue.start, ','), subtitleTime(cue.end, ','), strings.Join(wrapText(text, subtitleLine), "\n"))
+		s.printf("%d\n%s --> %s\n%s\n\n", s.index, subtitleTime(cue.start, ','), subtitleTime(cue.end, ','), strings.Join(wrapText(text, subtitleLine), "\n"))
+	}
+}
+
+// printf writes to the writer, unless a write has failed, keeping the first
+// error
+func (s *Writer) printf(format string, args ...any) {
+	if s.err == nil {
+		_, s.err = fmt.Fprintf(s.w, format, args...)
 	}
 }
 

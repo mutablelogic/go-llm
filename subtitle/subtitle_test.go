@@ -1,6 +1,7 @@
 package subtitle
 
 import (
+	"errors"
 	"strings"
 	"testing"
 	"time"
@@ -8,6 +9,7 @@ import (
 	// Packages
 	llm "github.com/mutablelogic/go-llm"
 	assert "github.com/stretchr/testify/assert"
+	require "github.com/stretchr/testify/require"
 )
 
 // seconds returns the seconds as a duration
@@ -28,9 +30,13 @@ func subtitles(vtt bool, segments ...llm.TranscriptSegment) string {
 		panic(err)
 	}
 	for _, segment := range segments {
-		s.Add(segment)
+		if err := s.Add(segment); err != nil {
+			panic(err)
+		}
 	}
-	s.Close()
+	if err := s.Close(); err != nil {
+		panic(err)
+	}
 	return b.String()
 }
 
@@ -105,4 +111,33 @@ func Test_Write(t *testing.T) {
 	assert.NoError(t, Write(&b, SRT, []llm.TranscriptSegment{segment(0, 1, "", "Hello.")}))
 	assert.Equal(t, "1\n00:00:00,000 --> 00:00:01,000\nHello.\n\n", b.String())
 	assert.Error(t, Write(&b, "ass", nil))
+
+	// A write which fails is returned, and nothing more is written
+	failed := errors.New("write failed")
+	w := &failingWriter{err: failed}
+	assert.ErrorIs(t, Write(w, SRT, []llm.TranscriptSegment{segment(0, 1, "", "Hello."), segment(5, 6, "", "Goodbye.")}), failed)
+	assert.Equal(t, 1, w.writes)
+	w = &failingWriter{err: failed}
+	assert.ErrorIs(t, Write(w, VTT, nil), failed)
+
+	// And from Add, once a cue can't be written, and from Close
+	w = &failingWriter{err: failed}
+	s, err := NewWriter(w, SRT)
+	require.NoError(t, err)
+	assert.NoError(t, s.Add(segment(0, 1, "", "Hello.")))
+	assert.ErrorIs(t, s.Add(segment(5, 6, "", "Goodbye.")), failed)
+	assert.ErrorIs(t, s.Add(segment(10, 11, "", "Again.")), failed)
+	assert.ErrorIs(t, s.Close(), failed)
+	assert.Equal(t, 1, w.writes)
+}
+
+// failingWriter is a writer whose writes fail, counting them
+type failingWriter struct {
+	err    error
+	writes int
+}
+
+func (w *failingWriter) Write([]byte) (int, error) {
+	w.writes++
+	return 0, w.err
 }

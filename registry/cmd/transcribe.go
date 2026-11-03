@@ -135,7 +135,7 @@ func runTranscribe(ctx server.Cmd, name, key, file, model string, opt map[string
 		case debug:
 			fmt.Println(response)
 		case printer.streamed:
-			printer.Close()
+			return printer.Close()
 		default:
 			if printer.segments {
 				for i := range response.Segments {
@@ -144,7 +144,7 @@ func runTranscribe(ctx server.Cmd, name, key, file, model string, opt map[string
 			} else {
 				printer.Stream(response.Text, nil)
 			}
-			printer.Close()
+			return printer.Close()
 		}
 		return nil
 	})
@@ -179,7 +179,8 @@ func newTranscriptPrinter(w io.Writer, format string, segments bool) *transcript
 func (p *transcriptPrinter) Stream(text string, segment *llm.TranscriptSegment) {
 	switch {
 	case p.subtitles != nil && segment != nil:
-		p.subtitles.Add(*segment)
+		// An error writing the subtitles is returned when they're closed
+		_ = p.subtitles.Add(*segment)
 		p.streamed = true
 	case p.segments && segment != nil:
 		speaker := ""
@@ -195,15 +196,16 @@ func (p *transcriptPrinter) Stream(text string, segment *llm.TranscriptSegment) 
 }
 
 // Close ends the text with a newline, once it's printed, or writes the last
-// cue of the subtitles
-func (p *transcriptPrinter) Close() {
-	if p.subtitles != nil {
-		p.subtitles.Close()
-	}
+// cue of the subtitles, returning the first error writing them
+func (p *transcriptPrinter) Close() error {
 	if p.text {
 		fmt.Fprintln(p.w)
 		p.text = false
 	}
+	if p.subtitles != nil {
+		return p.subtitles.Close()
+	}
+	return nil
 }
 
 // timestamp returns when in audio, as minutes and seconds, to a tenth of a

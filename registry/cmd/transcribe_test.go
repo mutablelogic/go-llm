@@ -8,6 +8,7 @@ import (
 	// Packages
 	llm "github.com/mutablelogic/go-llm"
 	assert "github.com/stretchr/testify/assert"
+	require "github.com/stretchr/testify/require"
 )
 
 func Test_Timestamp(t *testing.T) {
@@ -31,7 +32,7 @@ func Test_TranscriptPrinter(t *testing.T) {
 		var b strings.Builder
 		p := newTranscriptPrinter(&b, format, segments)
 		fn(p)
-		p.Close()
+		require.NoError(t, p.Close())
 		return b.String()
 	}
 	first, second := segment(0, 1.3, "A", "Hello,"), segment(1.3, 2, "A", "world.")
