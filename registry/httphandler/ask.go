@@ -1,7 +1,9 @@
 package httphandler
 
 import (
+	"errors"
 	"net/http"
+	"time"
 
 	// Packages
 	llm "github.com/mutablelogic/go-llm"
@@ -58,16 +60,23 @@ func askHandlers(reg *registry.Registry, router *httprouter.Router, documentatio
 // as server-sent events instead: an event for each piece of the reply as
 // it's generated, named for what it is, text or thinking, and then a result
 // event with the response, or an error event. The name is of the model, for
-// errors.
+// errors. A model can take longer to reply than the server's write timeout,
+// which is for the whole response, so it's cleared, and each write has its
+// own deadline instead, as with the stream of events.
 func ask(w http.ResponseWriter, r *http.Request, name string, fn func(llm.GeneratorStreamFn) (*schema.AskResponse, error)) {
 	accept, err := types.AcceptContentType(r)
 	if err != nil {
 		httpresponse.Error(w, httpresponse.ErrBadRequest.With(err.Error()))
 		return
 	}
+	dw := newDeadlineWriter(w)
+	if err := dw.rc.SetWriteDeadline(time.Time{}); err != nil && !errors.Is(err, http.ErrNotSupported) {
+		httpresponse.Error(w, httpresponse.ErrInternalError.With(err.Error()))
+		return
+	}
 	switch accept {
 	case types.ContentTypeTextStream:
-		stream := httpresponse.NewTextStream(w)
+		stream := httpresponse.NewTextStream(dw, "X-Accel-Buffering", "no")
 		if stream == nil {
 			httpresponse.Error(w, httpresponse.ErrInternalError.With("streaming isn't supported"))
 			return
@@ -82,9 +91,9 @@ func ask(w http.ResponseWriter, r *http.Request, name string, fn func(llm.Genera
 		}
 	case "", types.ContentTypeJSON, types.ContentTypeAny:
 		if response, err := fn(nil); err != nil {
-			httpresponse.Error(w, llm.HTTPErr(err), name)
+			httpresponse.Error(dw, llm.HTTPErr(err), name)
 		} else {
-			httpresponse.JSON(w, http.StatusOK, httprequest.Indent(r), response)
+			httpresponse.JSON(dw, http.StatusOK, httprequest.Indent(r), response)
 		}
 	default:
 		httpresponse.Error(w, httpresponse.Err(http.StatusNotAcceptable).Withf("cannot respond with %q", accept))

@@ -22,11 +22,12 @@ import (
 ///////////////////////////////////////////////////////////////////////////////
 // FAKES
 
-// scripted is a provider which generates its replies in turn, and records
-// what it was asked with
+// scripted is a provider which generates its replies in turn, by value
+// when byValue is set, and records what it was asked with
 type scripted struct {
 	*provider
 	replies []*providerschema.Message
+	byValue bool
 	err     error
 	asked   []asked
 }
@@ -82,6 +83,9 @@ func (s *scripted) WithoutSession(_ context.Context, _ llm.Model, messages []llm
 		if text := reply.Text(); text != "" {
 			stream(llm.StreamText, text)
 		}
+	}
+	if s.byValue {
+		return *reply, llm.Usage{InputTokens: 10, OutputTokens: 5}, nil
 	}
 	return reply, llm.Usage{InputTokens: 10, OutputTokens: 5}, nil
 }
@@ -238,6 +242,22 @@ func Test_Ask(t *testing.T) {
 		assert.Len(t, p.asked, 3)
 	})
 
+	t.Run("Value", func(t *testing.T) {
+		// A reply which is a message by value is kept whole, with its
+		// thinking
+		p := newScripted(&providerschema.Message{MessageMeta: providerschema.MessageMeta{Sender: "assistant", Content: []providerschema.ContentBlock{
+			{Thinking: types.Ptr("Hmm")},
+			{Text: types.Ptr("Hello")},
+		}}})
+		p.byValue = true
+		response, err := newAskRegistry(t, p).Ask(ctx, question("Hi"), nil)
+		require.NoError(t, err)
+		if assert.Len(t, response.Message.Content, 2) {
+			assert.Equal(t, "Hmm", types.Value(response.Message.Content[0].Thinking))
+		}
+		assert.Equal(t, "Hello", response.Message.Text())
+	})
+
 	t.Run("ToolChoice", func(t *testing.T) {
 		// A tool choice of none has no tools, and isn't sent
 		p := newScripted(text("Hello"))
@@ -248,6 +268,7 @@ func Test_Ask(t *testing.T) {
 		_, err := r.Ask(ctx, req, nil)
 		require.NoError(t, err)
 		assert.Empty(t, p.asked[0].tools)
+		assert.False(t, p.asked[0].opts.Has(llm.ToolChoiceKey))
 
 		// But a schema needs tools, and another choice needs tools
 		req.Schema = json.RawMessage(`{"type":"string"}`)

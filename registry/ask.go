@@ -218,14 +218,22 @@ func respondSystemPrompt(system string) string {
 	return system + "\n\n" + toolkit.RespondPrompt
 }
 
-// newReply returns the model's reply as a message, which, when it has no
-// content, such as a reasoning model's which used its tokens reasoning, has
-// empty text
+// newReply returns the model's reply as a message, which is kept whole when
+// it's a message of the provider schema, by value or pointer, or otherwise
+// is its text and tool calls. When it has no content, such as a reasoning
+// model's which used its tokens reasoning, it has empty text.
 func newReply(reply llm.Message) providerschema.Message {
 	var message providerschema.Message
-	if m, ok := reply.(*providerschema.Message); ok && m != nil {
-		message = *m
-	} else if reply != nil {
+	switch m := reply.(type) {
+	case *providerschema.Message:
+		if m != nil {
+			message = *m
+		}
+	case providerschema.Message:
+		message = m
+	case nil:
+		// No reply, which has empty text
+	default:
 		message.Sender = reply.Role()
 		if text := reply.Text(); text != "" {
 			message.Content = append(message.Content, providerschema.ContentBlock{Text: types.Ptr(text)})

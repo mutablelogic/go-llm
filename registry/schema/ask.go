@@ -79,8 +79,10 @@ func (r AskRequest) JSONSchema() (*jsonschema.Schema, error) {
 }
 
 // Opts returns the system prompt, and the options, for the provider to
-// decode. Returns ErrBadParameter when an option is one which the request
-// has a field for, which is the system prompt, and the schema.
+// decode. A tool choice of "none" isn't an option, as the model is sent no
+// tools instead, so a provider which can't choose tools needn't. Returns
+// ErrBadParameter when an option is one which the request has a field for,
+// which is the system prompt, and the schema.
 func (r AskRequest) Opts(system string) ([]llm.Opt, error) {
 	opts := make([]llm.Opt, 0, len(r.Opt)+1)
 	if system = strings.TrimSpace(system); system != "" {
@@ -92,6 +94,11 @@ func (r AskRequest) Opts(system string) ([]llm.Opt, error) {
 			return nil, llm.ErrBadParameter.Withf("invalid option %q: set the system prompt as system", key)
 		case llm.JSONSchemaKey:
 			return nil, llm.ErrBadParameter.Withf("invalid option %q: set the schema of the reply as schema", key)
+		case llm.ToolChoiceKey:
+			var choice string
+			if json.Unmarshal(value, &choice) == nil && choice == "none" {
+				continue
+			}
 		}
 		opts = append(opts, llm.WithOpt(key, value))
 	}
