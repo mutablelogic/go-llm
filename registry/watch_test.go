@@ -5,6 +5,7 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"sync"
 	"testing"
 	"time"
 
@@ -146,6 +147,38 @@ func Test_Watch(t *testing.T) {
 		_, err = r.ListModels(ctx)
 		require.NoError(t, err)
 		assert.Equal(t, []schema.Event{event(schema.EventUpdate, "ollama")}, events(ch))
+	})
+
+	t.Run("Order", func(t *testing.T) {
+		// Events are in the order of the changes, so a provider which is
+		// added and removed concurrently is created and deleted in turn
+		r, err := registry.New()
+		require.NoError(t, err)
+		ch := make(chan schema.Event, 1000)
+		watchCtx, cancel := context.WithCancel(ctx)
+		defer cancel()
+		_, err = r.Watch(watchCtx, ch)
+		require.NoError(t, err)
+		var wg sync.WaitGroup
+		for range 4 {
+			wg.Go(func() {
+				for range 100 {
+					r.Add("openai", &provider{name: "openai"})
+					r.Remove("openai")
+				}
+			})
+		}
+		wg.Wait()
+		r.Remove("openai")
+		received := events(ch)
+		require.NotEmpty(t, received)
+		for i, event := range received {
+			want := schema.EventCreate
+			if i%2 == 1 {
+				want = schema.EventDelete
+			}
+			require.Equal(t, want, event.Action, "event %d", i)
+		}
 	})
 
 	t.Run("Errors", func(t *testing.T) {

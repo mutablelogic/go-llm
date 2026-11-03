@@ -82,13 +82,16 @@ func (r *Registry) Add(name string, provider llm.Provider, opts ...ProviderOpt) 
 		return err
 	}
 	c.changed = func() { r.updated(name, c) }
+
+	// It's published as it's added, under the lock, so a concurrent removal
+	// can't be published before it
 	r.mu.Lock()
-	err = r.add(name, c)
-	r.mu.Unlock()
-	if err == nil {
-		r.created(name)
+	defer r.mu.Unlock()
+	if err := r.add(name, c); err != nil {
+		return err
 	}
-	return err
+	r.created(name)
+	return nil
 }
 
 // Remove removes the provider with the name, and returns it, so it can be
@@ -305,15 +308,15 @@ func (r *Registry) add(name string, c *cached) error {
 // cache, or returns ErrNotFound when there's none, and sends watchers that
 // it was deleted
 func (r *Registry) remove(name string) (*cached, error) {
+	// It's published as it's removed, under the lock, so a concurrent
+	// replacement can't be published before it
 	r.mu.Lock()
+	defer r.mu.Unlock()
 	c, exists := r.providers[name]
-	if exists {
-		delete(r.providers, name)
-	}
-	r.mu.Unlock()
 	if !exists {
 		return nil, llm.ErrNotFound.Withf("provider %q", name)
 	}
+	delete(r.providers, name)
 	r.deleted(name)
 	return c, nil
 }

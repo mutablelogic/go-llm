@@ -92,7 +92,9 @@ func (r *Registry) Watch(ctx context.Context, ch chan<- schema.Event) (<-chan er
 // PRIVATE METHODS
 
 // publish sends the event of the provider with the name to each channel
-// which is watching, which can receive it now
+// which is watching, which can receive it now. It's called under the
+// registry's lock, so the events are in the order of the changes, and never
+// waits, so the lock isn't held for long.
 func (r *Registry) publish(action schema.EventAction, name string) {
 	event := schema.Event{Action: action, Table: ProviderTable, Row: name}
 	r.watchers.Lock()
@@ -117,9 +119,12 @@ func (r *Registry) deleted(name string) {
 
 // updated publishes that the provider with the name was updated, when it's
 // the cached provider, so a provider which was removed, or replaced, while
-// it was pinged, or its models listed, isn't
+// it was pinged, or its models listed, isn't. It's checked and published
+// under the registry's lock, so it can't be removed, or replaced, between.
 func (r *Registry) updated(name string, c *cached) {
-	if r.cached(name) == c {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	if r.providers[name] == c {
 		r.publish(schema.EventUpdate, name)
 	}
 }
