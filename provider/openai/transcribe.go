@@ -12,6 +12,7 @@ import (
 	"slices"
 	"strings"
 	"time"
+	"unicode"
 
 	// Packages
 	client "github.com/mutablelogic/go-client"
@@ -23,6 +24,20 @@ import (
 // INTERFACE CHECK
 
 var _ llm.Transcriber = (*Client)(nil)
+
+///////////////////////////////////////////////////////////////////////////////
+// TYPES
+
+// transcribeFamily is how a model transcribes speech, by its name, and its
+// server, which is the format of its response, and whether it streams
+type transcribeFamily int
+
+const (
+	transcribeWhisper transcribeFamily = iota // whisper, and other models, which return verbose JSON, with segments, and don't stream
+	transcribeText                            // OpenAI's gpt-4o and gpt-transcribe models, on any server, which return text, and stream it
+	transcribeDiarize                         // OpenAI's diarizing models, on any server, which return segments with speakers, and stream them
+	transcribeMistral                         // Mistral's models, which return segments, and speakers, which they're asked for, and stream
+)
 
 ///////////////////////////////////////////////////////////////////////////////
 // GLOBALS
@@ -86,10 +101,13 @@ func (c *Client) Transcribe(ctx context.Context, model llm.Model, audio llm.Reso
 
 // Translate returns the speech in the audio, in any language, as English
 // text, as Transcribe does, which only OpenAI's whisper does, and which
-// isn't streamed
+// isn't streamed. Returns ErrNotImplemented for a model which is known not
+// to translate.
 func (c *Client) Translate(ctx context.Context, model llm.Model, audio llm.Resource, stream llm.TranscriberStreamFn, opts ...llm.Opt) (llm.Transcript, llm.Usage, error) {
 	if c.server() == serverMistral || c.isDeepSeek() {
 		return llm.Transcript{}, llm.Usage{}, llm.ErrNotImplemented.With("only openai's whisper translates audio")
+	} else if translation := model.Capabilities().Translation; translation != nil && !*translation {
+		return llm.Transcript{}, llm.Usage{}, llm.ErrNotImplemented.Withf("model %q can't translate audio", model.Name())
 	}
 	return c.transcribe(ctx, "translations", model, audio, stream, opts...)
 }
@@ -128,16 +146,16 @@ func (c *Client) transcribe(ctx context.Context, endpoint string, model llm.Mode
 		File:  types.File{Path: audioName(audio.Name(), contentType), Body: io.NopCloser(bytes.NewReader(data)), ContentType: contentType},
 		Model: model.Name(),
 	}
-	options, err := request.apply(c.server(), model.Name(), endpoint == "translations", opts...)
+	family := transcribeFamilyOf(c.server(), model.Name())
+	options, err := request.apply(family, model.Name(), endpoint == "translations", opts...)
 	if err != nil {
 		return llm.Transcript{}, llm.Usage{}, err
 	}
 
-	// The transcript is streamed by Mistral, and OpenAI's models which
-	// don't return verbose JSON, which whisper does
+	// The transcript is streamed by the models which stream, which whisper
+	// doesn't, nor its translations
 	segments := options.segments || options.speakers
-	request.Stream = stream != nil && endpoint == "transcriptions" &&
-		(c.server() == serverMistral || (c.server() == serverOpenAI && request.ResponseFormat != "verbose_json"))
+	request.Stream = stream != nil && endpoint == "transcriptions" && family != transcribeWhisper
 
 	// Send the request, and receive the transcript, or its pieces
 	req, err := client.NewMultipartRequest(request, types.ContentTypeJSON)
@@ -197,6 +215,7 @@ type transcribeStream struct {
 	text     bool               // Whether text has been streamed
 	deltas   bool               // Whether the model streams its text
 	done     bool               // Whether the transcript is done
+	language string             // The language, which Mistral streams
 	response transcribeResponse // The transcript
 }
 
@@ -207,10 +226,11 @@ func (s *transcribeStream) add(event client.TextStreamEvent) error {
 		return io.EOF
 	}
 	var chunk struct {
-		Type  string     `json:"type"`
-		Delta string     `json:"delta"` // OpenAI's text
-		Text  string     `json:"text"`  // Mistral's text
-		Error *chatError `json:"error"`
+		Type     string     `json:"type"`
+		Delta    string     `json:"delta"`          // OpenAI's text
+		Text     string     `json:"text"`           // Mistral's text
+		Language string     `json:"audio_language"` // Mistral's language
+		Error    *chatError `json:"error"`
 	}
 	if err := json.Unmarshal([]byte(event.Data), &chunk); err != nil {
 		return err
@@ -228,21 +248,32 @@ func (s *transcribeStream) add(event client.TextStreamEvent) error {
 		}
 		s.response.Segments = append(s.response.Segments, segment)
 		if !s.deltas {
-			s.addText(segment.Text)
+			// A segment's text is separated from the last's, which it
+			// doesn't always start with a space for
+			text := segment.Text
+			if s.text && text != "" && !unicode.IsSpace(rune(text[0])) {
+				text = " " + text
+			}
+			s.addText(text)
 		}
 		if s.segments {
 			result := segment.transcript()
 			s.stream("", &result)
 		}
+	case "transcription.language":
+		s.language = chunk.Language
 	case "transcript.text.done", "transcription.done":
 		// The transcript, which Mistral's has the segments of, which are
-		// those streamed
+		// those streamed, and its language, when it was streamed
 		segments := s.response.Segments
 		if err := json.Unmarshal([]byte(event.Data), &s.response); err != nil {
 			return err
 		}
 		if len(s.response.Segments) == 0 {
 			s.response.Segments = segments
+		}
+		if s.response.Language == nil && s.language != "" {
+			s.response.Language = types.Ptr(s.language)
 		}
 		s.done = true
 	}
@@ -263,6 +294,26 @@ func (s *transcribeStream) addText(text string) {
 
 ///////////////////////////////////////////////////////////////////////////////
 // PRIVATE FUNCTIONS
+
+// transcribeFamilyOf returns how the model, by its name, on the server,
+// transcribes speech: Mistral's models, OpenAI's diarizing models, and its
+// gpt-4o and gpt-transcribe models, whose names are the same on another
+// server, and its other models, as whisper's are, and other servers'
+// models, which are whisper's, or are taken to be like it
+func transcribeFamilyOf(server server, model string) transcribeFamily {
+	switch {
+	case server == serverMistral:
+		return transcribeMistral
+	case strings.HasPrefix(model, "whisper"):
+		return transcribeWhisper
+	case strings.Contains(model, "-diarize"):
+		return transcribeDiarize
+	case server == serverOpenAI || strings.HasPrefix(model, "gpt-") && strings.Contains(model, "transcribe"):
+		return transcribeText
+	default:
+		return transcribeWhisper
+	}
+}
 
 // audioName returns the name of the audio file, which is the resource's
 // name, when it has the extension of an audio file, or otherwise "audio",

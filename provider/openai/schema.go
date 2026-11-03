@@ -231,12 +231,17 @@ func (r transcribeResponse) language() string {
 // usage returns the seconds of audio, and the tokens, used, which are
 // OpenAI's seconds, or tokens, or Mistral's seconds and tokens, whose input
 // tokens are its total less its completion tokens, as its prompt tokens
-// don't have the audio's
+// don't have the audio's. Whisper's translations, and some of its
+// transcriptions, have no usage, so the seconds are its duration, rounded
+// up, as whisper's usage is.
 func (r transcribeResponse) usage() llm.Usage {
 	usage := llm.Usage{
 		InputTokens:  r.Usage.InputTokens,
 		OutputTokens: r.Usage.OutputTokens,
 		Seconds:      uint(math.Round(r.Usage.Seconds)),
+	}
+	if usage.Seconds == 0 && usage.InputTokens == 0 && r.Duration > 0 {
+		usage.Seconds = uint(math.Ceil(r.Duration))
 	}
 	if r.Usage.PromptAudioSeconds > 0 || r.Usage.CompletionTokens > 0 {
 		usage.Seconds = r.Usage.PromptAudioSeconds
@@ -341,6 +346,7 @@ type transcribeResponse struct {
 	Languages []struct {
 		Code string `json:"code"`
 	} `json:"languages"`
+	Duration float64             `json:"duration"` // Whisper's seconds, without usage
 	Segments []transcribeSegment `json:"segments"`
 	Usage    struct {
 		Seconds            float64 `json:"seconds"`

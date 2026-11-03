@@ -202,13 +202,15 @@ func Test_LiveTranscribe(t *testing.T) {
 	})
 
 	t.Run("Translate", func(t *testing.T) {
-		// French speech, as English text
+		// French speech, as English text, and the seconds, which are its
+		// duration, as a translation has no usage
 		model := liveModelNamed(t, ctx, c, "OPENAI_WHISPER_MODEL", "whisper-1")
-		transcript, _, err := c.Translate(ctx, model, speech("speech-fr.wav"), nil)
+		transcript, usage, err := c.Translate(ctx, model, speech("speech-fr.wav"), nil)
 		require.NoError(t, err)
-		t.Logf("%+v", transcript)
+		t.Logf("%+v, %+v", transcript, usage)
 		assert.Contains(t, strings.ToLower(transcript.Text), "hello")
 		assert.Equal(t, "en", transcript.Language)
+		assert.Positive(t, usage.Seconds)
 	})
 
 	t.Run("Transcribe", func(t *testing.T) {

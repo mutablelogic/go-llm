@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"io"
+	"strings"
 	"testing"
 	"time"
 
@@ -29,9 +30,13 @@ func TestTranscribeOther(t *testing.T) {
 	_, _, err = mistral.Translate(context.Background(), &Model{provider: mistral, data: apiModel{ID: "voxtral-mini-latest"}}, audio, nil)
 	assert.ErrorIs(t, err, llm.ErrNotImplemented)
 
-	// And the audio must be audio
+	// Nor does a model of OpenAI's which is known not to translate
 	openai, err := New("", "sk-test")
 	require.NoError(t, err)
+	_, _, err = openai.Translate(context.Background(), &Model{provider: openai, data: apiModel{ID: "gpt-4o-mini-transcribe"}}, audio, nil)
+	assert.ErrorIs(t, err, llm.ErrNotImplemented)
+
+	// And the audio must be audio
 	image := &schema.Resource{ResourceMeta: schema.ResourceMeta{ContentType: "image/png", Data: []byte("png")}}
 	_, _, err = openai.Transcribe(context.Background(), &Model{provider: openai, data: apiModel{ID: "whisper-1"}}, image, nil)
 	assert.ErrorIs(t, err, llm.ErrBadParameter)
@@ -40,7 +45,7 @@ func TestTranscribeOther(t *testing.T) {
 func TestTranscribeRequestApply(t *testing.T) {
 	apply := func(server server, model string, translate bool, opts ...llm.Opt) (transcribeRequest, transcribeOptions, error) {
 		var r transcribeRequest
-		options, err := r.apply(server, model, translate, opts...)
+		options, err := r.apply(transcribeFamilyOf(server, model), model, translate, opts...)
 		return r, options, err
 	}
 
@@ -89,11 +94,35 @@ func TestTranscribeRequestApply(t *testing.T) {
 		assert.Empty(t, r.TimestampGranularities)
 	})
 
+	t.Run("Server", func(t *testing.T) {
+		// OpenAI's models are the same on another server, and other models
+		// are like whisper
+		r, _, err := apply(serverOther, "gpt-4o-mini-transcribe", false)
+		require.NoError(t, err)
+		assert.Equal(t, "json", r.ResponseFormat)
+		r, _, err = apply(serverOther, "gpt-4o-transcribe-diarize", false)
+		require.NoError(t, err)
+		assert.Equal(t, "diarized_json", r.ResponseFormat)
+		r, _, err = apply(serverOther, "large-v3", false)
+		require.NoError(t, err)
+		assert.Equal(t, "verbose_json", r.ResponseFormat)
+		assert.Equal(t, transcribeWhisper, transcribeFamilyOf(serverOpenAI, "whisper-1"))
+		assert.Equal(t, transcribeText, transcribeFamilyOf(serverOpenAI, "gpt-transcribe"))
+		assert.Equal(t, transcribeMistral, transcribeFamilyOf(serverMistral, "voxtral-mini-latest"))
+	})
+
 	t.Run("Errors", func(t *testing.T) {
 		// A translation has no language, and options which aren't for
 		// transcription aren't valid
 		_, _, err := apply(serverOpenAI, "whisper-1", true, llm.WithLanguage("fr"))
 		assert.ErrorIs(t, err, llm.ErrBadParameter)
+
+		// And a language is an ISO 639-1 code, even when it's set with
+		// WithOpt, such as from a request
+		for _, language := range []string{"FRENCH", "FR", "french", ""} {
+			_, _, err = apply(serverOpenAI, "whisper-1", false, llm.WithOpt(llm.LanguageKey, json.RawMessage(`"`+language+`"`)))
+			assert.ErrorIs(t, err, llm.ErrBadParameter, language)
+		}
 		_, _, err = apply(serverOpenAI, "whisper-1", false, llm.WithDimensions(3))
 		assert.ErrorIs(t, err, llm.ErrBadParameter)
 		_, _, err = apply(serverOpenAI, "whisper-1", false, llm.WithOpt(llm.SegmentsKey, "yes"))
@@ -123,6 +152,10 @@ func TestTranscribeResponse(t *testing.T) {
 		assert.Equal(t, llm.Usage{Seconds: 7}, decode(`{"usage":{"type":"duration","seconds":6.6}}`).usage())
 		assert.Equal(t, llm.Usage{InputTokens: 64, OutputTokens: 23}, decode(`{"usage":{"type":"tokens","input_tokens":64,"output_tokens":23,"total_tokens":87}}`).usage())
 		assert.Equal(t, llm.Usage{InputTokens: 378, OutputTokens: 22, Seconds: 6}, decode(`{"usage":{"prompt_audio_seconds":6,"prompt_tokens":3,"total_tokens":400,"completion_tokens":22}}`).usage())
+
+		// And whisper's duration, rounded up, without usage
+		assert.Equal(t, llm.Usage{Seconds: 4}, decode(`{"task":"translate","duration":3.42}`).usage())
+		assert.Equal(t, llm.Usage{Seconds: 7}, decode(`{"duration":6.42,"usage":{"type":"duration","seconds":7}}`).usage())
 	})
 
 	t.Run("Speaker", func(t *testing.T) {
@@ -168,6 +201,27 @@ func TestTranscribeStream(t *testing.T) {
 		assert.True(t, s.done)
 		assert.Equal(t, "Hello, world.", s.response.Text)
 		assert.Equal(t, llm.Usage{InputTokens: 64, OutputTokens: 5}, s.response.usage())
+	})
+
+	t.Run("Separators", func(t *testing.T) {
+		// Segments whose text doesn't start with a space are separated by
+		// one
+		texts, _, _ := streamed(false,
+			`{"type":"transcript.text.segment","text":"Hello.","start":0,"end":0.5}`,
+			`{"type":"transcript.text.segment","text":"How are you?","start":0.5,"end":1}`,
+			`{"type":"transcript.text.segment","text":" Fine.","start":1,"end":1.5}`,
+		)
+		assert.Equal(t, "Hello. How are you? Fine.", strings.Join(texts, ""))
+	})
+
+	t.Run("Language", func(t *testing.T) {
+		// Mistral's language, when it's streamed, and the transcript has
+		// none
+		_, _, s := streamed(false,
+			`{"type":"transcription.language","audio_language":"fr"}`,
+			`{"type":"transcription.done","text":"Bonjour.","language":null}`,
+		)
+		assert.Equal(t, "fr", s.response.language())
 	})
 
 	t.Run("Diarize", func(t *testing.T) {
