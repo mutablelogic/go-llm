@@ -15,13 +15,12 @@ import (
 // reasoningModel matches the name of one of OpenAI's reasoning models, with
 // the least effort it accepts: "none" for GPT-5.1 and later, and GPT-6 Sol
 // and Luna, which turns reasoning off, "minimal" for GPT-5, and "low" for
-// the o-series. GPT-6 Astra and GPT-6.1 Sol can't turn it off, and their
-// least effort isn't known, so they're sent none.
+// the o-series and GPT-6 Astra and GPT-6.1 Sol, which can't turn it off.
 var reasoningModel = []struct {
 	re     *regexp.Regexp
 	effort string
 }{
-	{regexp.MustCompile(`^gpt-6(\.\d+)?-astra|^gpt-6\.1-sol`), ""},
+	{regexp.MustCompile(`^gpt-6(\.\d+)?-astra|^gpt-6\.1-sol`), "low"},
 	{regexp.MustCompile(`^gpt-6`), "none"},
 	{regexp.MustCompile(`^gpt-5\.\d`), "none"},
 	{regexp.MustCompile(`^gpt-5(-|$)`), "minimal"},

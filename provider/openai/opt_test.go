@@ -75,7 +75,7 @@ func TestApply(t *testing.T) {
 		// and they're sent nothing when it's on
 		for model, effort := range map[string]string{
 			"gpt-5.1": "none", "gpt-5.2-mini": "none", "gpt-6-luna": "none", "gpt-6-sol": "none",
-			"gpt-6-astra": "", "gpt-6.1-sol": "",
+			"gpt-6-astra": "low", "gpt-6.1-sol": "low",
 			"gpt-5": "minimal", "gpt-5-nano": "minimal", "gpt-5-mini-2025-08-07": "minimal",
 			"o1": "low", "o3-mini": "low", "o4-mini": "low",
 			"gpt-4o": "", "gpt-4.1-nano": "", "gpt-3.5-turbo": "", "omni-moderation-latest": "",
