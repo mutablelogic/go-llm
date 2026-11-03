@@ -5,6 +5,7 @@ package main
 import (
 	// Packages
 	registrycmd "github.com/mutablelogic/go-llm/registry/cmd"
+	toolkitcmd "github.com/mutablelogic/go-llm/toolkit/cmd"
 )
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -15,4 +16,5 @@ import (
 // leaves the server out of the command packages too.
 type CLI struct {
 	Registry registrycmd.ClientCommands `embed:""`
+	Toolkit  toolkitcmd.ClientCommands  `embed:""`
 }

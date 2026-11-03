@@ -11,7 +11,7 @@ import (
 	eliza "github.com/mutablelogic/go-llm/provider/eliza"
 	schema "github.com/mutablelogic/go-llm/provider/schema"
 	registry "github.com/mutablelogic/go-llm/registry"
-	tool "github.com/mutablelogic/go-llm/toolkit/tool"
+	toolkit "github.com/mutablelogic/go-llm/toolkit"
 	jsonschema "github.com/mutablelogic/go-server/pkg/jsonschema"
 	types "github.com/mutablelogic/go-server/pkg/types"
 	assert "github.com/stretchr/testify/assert"
@@ -114,7 +114,7 @@ func (c *capable) UnloadModel(_ context.Context, model llm.Model) error {
 }
 
 // waveTool is a tool, which isn't run
-type waveTool struct{ tool.Base }
+type waveTool struct{ toolkit.Base }
 
 func (waveTool) Name() string                                      { return "wave" }
 func (waveTool) Description() string                               { return "Waves at the user" }

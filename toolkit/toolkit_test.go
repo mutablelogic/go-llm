@@ -1,0 +1,268 @@
+package toolkit_test
+
+import (
+	"context"
+	"encoding/json"
+	"fmt"
+	"sync"
+	"testing"
+
+	// Packages
+	client "github.com/mutablelogic/go-client"
+	llm "github.com/mutablelogic/go-llm"
+	toolkit "github.com/mutablelogic/go-llm/toolkit"
+	schema "github.com/mutablelogic/go-llm/toolkit/schema"
+	jsonschema "github.com/mutablelogic/go-server/pkg/jsonschema"
+	assert "github.com/stretchr/testify/assert"
+	require "github.com/stretchr/testify/require"
+)
+
+// tool is a tool for tests
+type tool struct {
+	toolkit.Base
+	name string
+}
+
+func (t tool) Name() string                                      { return t.name }
+func (t tool) Description() string                               { return "A tool for tests" }
+func (t tool) InputSchema() *jsonschema.Schema                   { return nil }
+func (t tool) Run(context.Context, json.RawMessage) (any, error) { return nil, nil }
+
+// names returns the canonical names of all the tools in the toolkit
+func names(t *testing.T, tk *toolkit.Toolkit) []string {
+	t.Helper()
+	list, err := tk.ListTools(context.Background(), schema.ToolListRequest{})
+	require.NoError(t, err)
+	var result []string
+	for _, tool := range list.Body {
+		result = append(result, tool.Canonical)
+	}
+	return result
+}
+
+func TestAdd(t *testing.T) {
+	ctx := context.Background()
+
+	t.Run("Empty", func(t *testing.T) {
+		tk, err := toolkit.New(ctx)
+		require.NoError(t, err)
+		assert.Empty(t, names(t, tk))
+	})
+
+	t.Run("Add", func(t *testing.T) {
+		// The tools are in order of canonical name, which is the namespace
+		// and the tool's name separated by a colon
+		tk, err := toolkit.New(ctx)
+		require.NoError(t, err)
+		require.NoError(t, tk.Add("b", tool{name: "a"}))
+		require.NoError(t, tk.Add("a", tool{name: "z"}, tool{name: "y"}))
+		assert.Equal(t, []string{"a:y", "a:z", "b:a"}, names(t, tk))
+	})
+
+	t.Run("SameName", func(t *testing.T) {
+		// Tools in different namespaces can have the same name
+		tk, err := toolkit.New(ctx)
+		require.NoError(t, err)
+		require.NoError(t, tk.Add("a", tool{name: "search"}))
+		require.NoError(t, tk.Add("b", tool{name: "search"}))
+		assert.Equal(t, []string{"a:search", "b:search"}, names(t, tk))
+	})
+
+	t.Run("Namespace", func(t *testing.T) {
+		tk, err := toolkit.New(ctx)
+		require.NoError(t, err)
+		for _, namespace := range []string{"", "1abc", "not valid", "a:b"} {
+			assert.ErrorIs(t, tk.Add(namespace, tool{name: "a"}), llm.ErrBadParameter, namespace)
+		}
+		assert.Empty(t, names(t, tk))
+	})
+
+	t.Run("NamespaceConflict", func(t *testing.T) {
+		// A namespace can only be added once
+		tk, err := toolkit.New(ctx)
+		require.NoError(t, err)
+		require.NoError(t, tk.Add("weather", tool{name: "a"}))
+		assert.ErrorIs(t, tk.Add("weather", tool{name: "b"}), llm.ErrConflict)
+		assert.Equal(t, []string{"weather:a"}, names(t, tk))
+	})
+
+	t.Run("Invalid", func(t *testing.T) {
+		tk, err := toolkit.New(ctx)
+		require.NoError(t, err)
+		assert.ErrorIs(t, tk.Add("a", nil), llm.ErrBadParameter)
+		assert.ErrorIs(t, tk.Add("a", tool{name: "not valid"}), llm.ErrBadParameter)
+		assert.Empty(t, names(t, tk))
+
+		// The namespace wasn't added, so it can be added later
+		assert.NoError(t, tk.Add("a", tool{name: "a"}))
+	})
+
+	t.Run("Duplicate", func(t *testing.T) {
+		// None of the tools are added when two have the same name
+		tk, err := toolkit.New(ctx)
+		require.NoError(t, err)
+		assert.ErrorIs(t, tk.Add("a", tool{name: "b"}, tool{name: "b"}), llm.ErrConflict)
+		assert.Empty(t, names(t, tk))
+	})
+}
+
+// credentials is a credential provider for tests, with one credential
+type credentials struct{}
+
+// Get isn't used by the tests
+func (credentials) Get(context.Context, string) (json.RawMessage, error) {
+	return nil, llm.ErrNotImplemented
+}
+
+// Set isn't used by the tests
+func (credentials) Set(context.Context, string, json.RawMessage) error {
+	return llm.ErrNotImplemented
+}
+
+func (credentials) Expand(_ context.Context, value string) (string, error) {
+	if value == "${weather_key}" {
+		return "secret", nil
+	}
+	return "", llm.ErrNotFound.Withf("credential %q", value)
+}
+
+func TestCredential(t *testing.T) {
+	ctx := context.Background()
+
+	t.Run("Credential", func(t *testing.T) {
+		tk, err := toolkit.New(ctx, toolkit.WithCredentialsProvider(credentials{}))
+		require.NoError(t, err)
+		value, err := tk.Credential(ctx, " weather_key ")
+		require.NoError(t, err)
+		assert.Equal(t, "secret", value)
+	})
+
+	t.Run("NotFound", func(t *testing.T) {
+		tk, err := toolkit.New(ctx, toolkit.WithCredentialsProvider(credentials{}))
+		require.NoError(t, err)
+		_, err = tk.Credential(ctx, "other_key")
+		assert.ErrorIs(t, err, llm.ErrNotFound)
+	})
+
+	t.Run("MissingKey", func(t *testing.T) {
+		tk, err := toolkit.New(ctx, toolkit.WithCredentialsProvider(credentials{}))
+		require.NoError(t, err)
+		_, err = tk.Credential(ctx, " ")
+		assert.ErrorIs(t, err, llm.ErrBadParameter)
+	})
+
+	t.Run("NoCredentials", func(t *testing.T) {
+		// Without a credential provider, there are no credentials
+		tk, err := toolkit.New(ctx)
+		require.NoError(t, err)
+		_, err = tk.Credential(ctx, "weather_key")
+		assert.Error(t, err)
+	})
+}
+
+func TestClientOpts(t *testing.T) {
+	ctx := context.Background()
+
+	tk, err := toolkit.New(ctx)
+	require.NoError(t, err)
+	assert.Empty(t, tk.ClientOpts())
+
+	tk, err = toolkit.New(ctx, toolkit.WithClientOpts(client.OptTrace(nil, false)))
+	require.NoError(t, err)
+	assert.Len(t, tk.ClientOpts(), 1)
+}
+
+func TestListTools(t *testing.T) {
+	ctx := context.Background()
+	tk, err := toolkit.New(ctx)
+	require.NoError(t, err)
+	require.NoError(t, tk.Add("a", tool{name: "one"}, tool{name: "two"}, tool{name: "three"}))
+	require.NoError(t, tk.Add("ab", tool{name: "four"}))
+
+	t.Run("All", func(t *testing.T) {
+		list, err := tk.ListTools(ctx, schema.ToolListRequest{})
+		require.NoError(t, err)
+		assert.Equal(t, uint64(4), list.Count)
+		require.Len(t, list.Body, 4)
+
+		// The tool's names, description and schemas are in the list
+		assert.Equal(t, "one", list.Body[0].Name)
+		assert.Equal(t, "a:one", list.Body[0].Canonical)
+		assert.Equal(t, "A tool for tests", list.Body[0].Description)
+		assert.Nil(t, list.Body[0].Input)
+		assert.Nil(t, list.Body[0].Output)
+	})
+
+	t.Run("Namespace", func(t *testing.T) {
+		// Only the tools in the namespace, and not a namespace which starts
+		// with the same letters
+		list, err := tk.ListTools(ctx, schema.ToolListRequest{Namespace: "a"})
+		require.NoError(t, err)
+		assert.Equal(t, uint64(3), list.Count)
+		var names []string
+		for _, tool := range list.Body {
+			names = append(names, tool.Canonical)
+		}
+		assert.Equal(t, []string{"a:one", "a:three", "a:two"}, names)
+
+		list, err = tk.ListTools(ctx, schema.ToolListRequest{Namespace: "ab"})
+		require.NoError(t, err)
+		assert.Equal(t, uint64(1), list.Count)
+	})
+
+	t.Run("UnknownNamespace", func(t *testing.T) {
+		list, err := tk.ListTools(ctx, schema.ToolListRequest{Namespace: "other"})
+		require.NoError(t, err)
+		assert.Zero(t, list.Count)
+		assert.Empty(t, list.Body)
+	})
+
+	t.Run("InvalidNamespace", func(t *testing.T) {
+		_, err := tk.ListTools(ctx, schema.ToolListRequest{Namespace: "not valid"})
+		assert.ErrorIs(t, err, llm.ErrBadParameter)
+	})
+
+	t.Run("Query", func(t *testing.T) {
+		assert.Empty(t, schema.ToolListRequest{}.Query())
+		q := schema.ToolListRequest{Namespace: " weatherapi "}.Query()
+		assert.Equal(t, "namespace=weatherapi", q.Encode())
+	})
+}
+
+func TestCanonicalToolName(t *testing.T) {
+	assert.Equal(t, "weatherapi:current", schema.CanonicalToolName("weatherapi", "current"))
+}
+
+func TestConcurrent(t *testing.T) {
+	// Tools can be added while they're listed
+	ctx := context.Background()
+	tk, err := toolkit.New(ctx)
+	require.NoError(t, err)
+
+	var wg sync.WaitGroup
+	for i := range 10 {
+		wg.Add(2)
+		go func() {
+			defer wg.Done()
+			assert.NoError(t, tk.Add(fmt.Sprint("ns", i), tool{name: "a"}, tool{name: "b"}))
+		}()
+		go func() {
+			defer wg.Done()
+			_, err := tk.ListTools(ctx, schema.ToolListRequest{})
+			assert.NoError(t, err)
+		}()
+	}
+	wg.Wait()
+
+	list, err := tk.ListTools(ctx, schema.ToolListRequest{})
+	require.NoError(t, err)
+	assert.Equal(t, uint64(20), list.Count)
+}
+
+func TestToolTable(t *testing.T) {
+	tool := schema.Tool{Name: "current", Canonical: "weatherapi:current", Description: "Get the weather"}
+	assert.Equal(t, []string{"Name", "Description"}, tool.Header())
+	assert.Equal(t, "weatherapi:current", tool.Cell(0))
+	assert.Equal(t, "Get the weather", tool.Cell(1))
+	assert.Equal(t, "", tool.Cell(2))
+}

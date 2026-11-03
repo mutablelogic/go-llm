@@ -10,7 +10,7 @@ import (
 	llm "github.com/mutablelogic/go-llm"
 	eliza "github.com/mutablelogic/go-llm/provider/eliza"
 	schema "github.com/mutablelogic/go-llm/provider/schema"
-	tool "github.com/mutablelogic/go-llm/toolkit/tool"
+	toolkit "github.com/mutablelogic/go-llm/toolkit"
 	jsonschema "github.com/mutablelogic/go-server/pkg/jsonschema"
 	types "github.com/mutablelogic/go-server/pkg/types"
 	assert "github.com/stretchr/testify/assert"
@@ -26,7 +26,7 @@ func user(t *testing.T, text string) llm.Message {
 }
 
 // waveTool is a tool, which eliza can't call
-type waveTool struct{ tool.Base }
+type waveTool struct{ toolkit.Base }
 
 var _ llm.Tool = waveTool{}
 
