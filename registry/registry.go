@@ -15,6 +15,7 @@ import (
 	// Packages
 	otel "github.com/mutablelogic/go-client/pkg/otel"
 	llm "github.com/mutablelogic/go-llm"
+	schema "github.com/mutablelogic/go-llm/registry/schema"
 	types "github.com/mutablelogic/go-server/pkg/types"
 	attribute "go.opentelemetry.io/otel/attribute"
 )
@@ -28,13 +29,14 @@ import (
 type Registry struct {
 	opt
 	mu        sync.RWMutex
-	providers map[string]llm.Provider
+	providers map[string]*cached
 }
 
-// entry is a provider, and its name in the registry
+// entry is a provider, its name in the registry, and its cache
 type entry struct {
 	name     string
 	provider llm.Provider
+	cache    *cached
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -50,7 +52,7 @@ const separator = ":"
 // New returns a registry without providers, which are added with Add, with
 // the options, such as its tracer
 func New(opts ...Opt) (*Registry, error) {
-	r := &Registry{providers: make(map[string]llm.Provider)}
+	r := &Registry{providers: make(map[string]*cached)}
 	if err := r.opt.apply(opts); err != nil {
 		return nil, err
 	}
@@ -62,33 +64,35 @@ func New(opts ...Opt) (*Registry, error) {
 
 // Add adds the provider, with the name, which must be an identifier, such as
 // my-ollama, which starts with a letter, followed by letters, numbers,
-// underscores or hyphens, or
-// with its own name, such as its type, when the name is empty. Returns
-// ErrConflict when a provider with the name, or the provider itself, is
-// added already.
-func (r *Registry) Add(name string, provider llm.Provider) error {
+// underscores or hyphens, or with its own name, such as its type, when the
+// name is empty, and the options, such as the patterns of the names of the
+// models which are included, or excluded. Returns ErrConflict when a
+// provider with the name, or the provider itself, is added already, and
+// ErrBadParameter when a pattern isn't valid.
+func (r *Registry) Add(name string, provider llm.Provider, opts ...ProviderOpt) error {
 	if provider == nil {
 		return llm.ErrBadParameter.With("provider is nil")
 	} else if name == "" {
 		name = provider.Name()
 	}
+	c, err := newCached(provider, opts...)
+	if err != nil {
+		return err
+	}
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	return r.add(name, provider)
+	return r.add(name, c)
 }
 
 // Remove removes the provider with the name, and returns it, so it can be
 // closed, or returns ErrNotFound when there's none. Calls which have started
 // already, such as listing models, still use it.
 func (r *Registry) Remove(name string) (llm.Provider, error) {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	provider, exists := r.providers[name]
-	if !exists {
-		return nil, llm.ErrNotFound.Withf("provider %q", name)
+	c, err := r.remove(name)
+	if err != nil {
+		return nil, err
 	}
-	delete(r.providers, name)
-	return provider, nil
+	return c.provider, nil
 }
 
 // Names returns the names of the providers, in order
@@ -111,9 +115,10 @@ func (r *Registry) Providers() []llm.Provider {
 
 // Provider returns the provider with the name, or nil when there's none
 func (r *Registry) Provider(name string) llm.Provider {
-	r.mu.RLock()
-	defer r.mu.RUnlock()
-	return r.providers[name]
+	if c := r.cached(name); c != nil {
+		return c.provider
+	}
+	return nil
 }
 
 // Name returns the canonical name of the model, which is the name of its
@@ -129,9 +134,17 @@ func (r *Registry) Name(model llm.Model) string {
 	return provider.Name() + separator + model.Name()
 }
 
+// Model returns the model, with the name of its provider in the registry,
+// and its canonical name
+func (r *Registry) Model(model llm.Model) *schema.Model {
+	provider, _, _ := strings.Cut(r.Name(model), separator)
+	return schema.NewModel(provider, r.Name(model), model)
+}
+
 // Ping pings every provider at once, and returns when they've replied, with
 // the errors of those which failed joined, each saying which provider it
-// is, or nil when every ping succeeded
+// is, or nil when every ping succeeded. The providers are pinged, whenever
+// they were last.
 func (r *Registry) Ping(ctx context.Context) (err error) {
 	ctx, endSpan := otel.StartSpan(r.tracer, ctx, "llm.registry.Ping")
 	defer func() { endSpan(err) }()
@@ -139,27 +152,46 @@ func (r *Registry) Ping(ctx context.Context) (err error) {
 	entries := r.entries()
 	errs := make([]error, len(entries))
 	each(entries, func(i int, e entry) {
-		if err := e.provider.Ping(ctx); err != nil {
+		if err := e.cache.ping(ctx, 0); err != nil {
 			errs[i] = fmt.Errorf("%s: %w", e.name, err)
 		}
 	})
 	return errors.Join(errs...)
 }
 
-// ListModels returns the models of every provider, which are listed at
-// once, in order of their providers' names, and then their names. When a
-// provider's models can't be listed, such as when it can't be reached, the
-// others' models are returned, with an error saying which providers'
-// couldn't be.
-func (r *Registry) ListModels(ctx context.Context) (_ []llm.Model, err error) {
-	ctx, endSpan := otel.StartSpan(r.tracer, ctx, "llm.registry.ListModels")
+// ListModels returns the models of every provider, or of the providers with
+// the names, when there are any, which must exist, which match their
+// patterns, in order of their providers' names, and then their names. The
+// models are cached, and are listed again, at once, when they're stale.
+// When a provider's models can't be listed, such as when it can't be
+// reached, and none are cached, the others' models are returned, with an
+// error saying which providers' couldn't be.
+func (r *Registry) ListModels(ctx context.Context, providers ...string) (_ []llm.Model, err error) {
+	ctx, endSpan := otel.StartSpan(r.tracer, ctx, "llm.registry.ListModels",
+		attribute.StringSlice("arg.providers", providers),
+	)
 	defer func() { endSpan(err) }()
 
+	// The providers, or those with the names
 	entries := r.entries()
+	if len(providers) > 0 {
+		var selected []entry
+		for _, name := range providers {
+			i := slices.IndexFunc(entries, func(e entry) bool { return e.name == name })
+			if i < 0 {
+				return nil, llm.ErrNotFound.Withf("provider %q", name)
+			}
+			if !slices.ContainsFunc(selected, func(e entry) bool { return e.name == name }) {
+				selected = append(selected, entries[i])
+			}
+		}
+		slices.SortFunc(selected, func(a, b entry) int { return cmp.Compare(a.name, b.name) })
+		entries = selected
+	}
 	models := make([][]llm.Model, len(entries))
 	errs := make([]error, len(entries))
 	each(entries, func(i int, e entry) {
-		models[i], errs[i] = e.provider.ListModels(ctx)
+		models[i], errs[i] = e.cache.listModels(ctx)
 		if errs[i] != nil {
 			errs[i] = fmt.Errorf("%s: %w", e.name, errs[i])
 		}
@@ -179,8 +211,9 @@ func (r *Registry) ListModels(ctx context.Context) (_ []llm.Model, err error) {
 
 // GetModel returns the model with the name, which is its canonical name,
 // such as ollama:llama3.2:latest, which is its provider's name in the
-// registry, and its name, or otherwise its name, or an alias, which the
-// providers are asked for at once. Returns ErrNotFound when no provider has
+// registry, and its name, or otherwise its name, or an alias, which every
+// provider's models are searched for at once. A model must match its
+// provider's patterns. The models are cached, as ListModels does. Returns ErrNotFound when no provider has
 // it, and ErrConflict when more than one does, so its canonical name is
 // needed. When no provider has it, and a provider can't be asked, such as
 // when it can't be reached, that provider's error is returned.
@@ -196,8 +229,8 @@ func (r *Registry) GetModel(ctx context.Context, name string) (_ llm.Model, err 
 
 	// A canonical name is its provider's name, and its name
 	if provider, model, ok := strings.Cut(name, separator); ok {
-		if p := r.Provider(provider); p != nil {
-			return p.GetModel(ctx, model)
+		if c := r.cached(provider); c != nil {
+			return c.getModel(ctx, model)
 		}
 	}
 
@@ -206,7 +239,7 @@ func (r *Registry) GetModel(ctx context.Context, name string) (_ llm.Model, err 
 	models := make([]llm.Model, len(entries))
 	errs := make([]error, len(entries))
 	each(entries, func(i int, e entry) {
-		models[i], errs[i] = e.provider.GetModel(ctx, name)
+		models[i], errs[i] = e.cache.getModel(ctx, name)
 		if errs[i] != nil && !errors.Is(errs[i], llm.ErrNotFound) {
 			errs[i] = fmt.Errorf("%s: %w", e.name, errs[i])
 		} else {
@@ -239,12 +272,12 @@ func (r *Registry) GetModel(ctx context.Context, name string) (_ llm.Model, err 
 // PRIVATE METHODS
 
 // add adds the provider, with the name, which must be an identifier, so it
-// has no separator, and not added already, as mustn't the provider, so its models' canonical names are
-// found by which provider they're of. The caller holds the lock.
-func (r *Registry) add(name string, provider llm.Provider) error {
-	if provider == nil {
-		return llm.ErrBadParameter.With("provider is nil")
-	} else if !reflect.TypeOf(provider).Comparable() {
+// has no separator, and not added already, as mustn't the provider, so its
+// models' canonical names are found by which provider they're of. The
+// caller holds the lock.
+func (r *Registry) add(name string, c *cached) error {
+	provider := c.provider
+	if !reflect.TypeOf(provider).Comparable() {
 		return llm.ErrBadParameter.Withf("provider %q isn't comparable, such as a pointer", name)
 	} else if !types.IsIdentifier(name) {
 		return llm.ErrBadParameter.Withf("invalid provider name %q, which must be an identifier", name)
@@ -252,12 +285,33 @@ func (r *Registry) add(name string, provider llm.Provider) error {
 		return llm.ErrConflict.Withf("provider %q is added already", name)
 	}
 	for other, p := range r.providers {
-		if p == provider {
+		if p.provider == provider {
 			return llm.ErrConflict.Withf("provider %q is added already, as %q", name, other)
 		}
 	}
-	r.providers[name] = provider
+	r.providers[name] = c
 	return nil
+}
+
+// remove removes the provider with the name, and returns it, and its
+// cache, or returns ErrNotFound when there's none
+func (r *Registry) remove(name string) (*cached, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	c, exists := r.providers[name]
+	if !exists {
+		return nil, llm.ErrNotFound.Withf("provider %q", name)
+	}
+	delete(r.providers, name)
+	return c, nil
+}
+
+// cached returns the provider with the name, and its cache, or nil when
+// there's none
+func (r *Registry) cached(name string) *cached {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	return r.providers[name]
 }
 
 // nameOf returns the name of the provider in the registry, and whether it's
@@ -269,7 +323,7 @@ func (r *Registry) nameOf(provider llm.Provider) (string, bool) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 	for name, p := range r.providers {
-		if p == provider {
+		if p.provider == provider {
 			return name, true
 		}
 	}
@@ -281,8 +335,8 @@ func (r *Registry) entries() []entry {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 	result := make([]entry, 0, len(r.providers))
-	for name, provider := range r.providers {
-		result = append(result, entry{name: name, provider: provider})
+	for name, c := range r.providers {
+		result = append(result, entry{name: name, provider: c.provider, cache: c})
 	}
 	slices.SortFunc(result, func(a, b entry) int {
 		return cmp.Compare(a.name, b.name)

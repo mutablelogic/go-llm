@@ -60,6 +60,17 @@ func Test_HTTPErr(t *testing.T) {
 		}
 	})
 
+	t.Run("Wrapped", func(t *testing.T) {
+		// An llm error which wraps a HTTP status, such as a provider's
+		// response, is the llm error's status
+		err := llm.ErrServiceUnavailable.Withf("%w", httpresponse.ErrInternalError.With("provider failed"))
+		var code httpresponse.Err
+		if assert.True(t, errors.As(llm.HTTPErr(err), &code)) {
+			assert.Equal(t, httpresponse.ErrServiceUnavailable, code)
+		}
+		assert.ErrorIs(t, llm.HTTPErr(err), httpresponse.ErrInternalError)
+	})
+
 	t.Run("Unchanged", func(t *testing.T) {
 		assert.Nil(t, llm.HTTPErr(nil))
 		err := httpresponse.ErrNotFound.With("test")

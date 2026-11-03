@@ -27,14 +27,15 @@ const defaultTag = "latest"
 ///////////////////////////////////////////////////////////////////////////////
 // PUBLIC METHODS
 
-// DownloadModel downloads the model with the name, and returns it, or returns
+// LoadModel downloads the model with the name, and returns it, or returns
 // it if it's already present. A name without a tag has the default tag,
 // "latest", as Ollama stores and lists the model with it, so the model is
-// returned with its full name, such as "gemma:latest" for "gemma". The progress function, if not nil, is called
-// with the status of the download, and the percentage of its bytes
-// downloaded, as it progresses. The download isn't timed out, as models can
-// be large, but is cancelled with the context.
-func (c *Client) DownloadModel(ctx context.Context, name string, progress llm.DownloadProgressFn) (llm.Model, error) {
+// returned with its full name, such as "gemma:latest" for "gemma". The
+// progress function, if not nil, is called with the status of the download,
+// and the percentage of its bytes downloaded, as it progresses. The
+// download isn't timed out, as models can be large, but is cancelled with
+// the context.
+func (c *Client) LoadModel(ctx context.Context, name string, progress llm.DownloadProgressFn) (llm.Model, error) {
 	name = modelName(name)
 	req, err := client.NewJSONRequest(map[string]any{
 		"model":  name,
@@ -86,6 +87,24 @@ func (c *Client) DeleteModel(ctx context.Context, model llm.Model) error {
 		return err
 	}
 	return c.DoWithContext(ctx, req, nil, client.OptPath("delete"))
+}
+
+// UnloadModel unloads the model, which must be an Ollama model, from the
+// server's memory, keeping it stored, with a request to generate with it
+// which keeps it loaded for no time, as Ollama does
+func (c *Client) UnloadModel(ctx context.Context, model llm.Model) error {
+	if model == nil || model.Provider() == nil || model.Provider().Name() != llm.Ollama {
+		return llm.ErrBadParameter.With("not an ollama model")
+	}
+	req, err := client.NewJSONRequest(map[string]any{
+		"model":      model.Name(),
+		"keep_alive": 0,
+		"stream":     false,
+	})
+	if err != nil {
+		return err
+	}
+	return c.DoWithContext(ctx, req, nil, client.OptPath("generate"))
 }
 
 ///////////////////////////////////////////////////////////////////////////////

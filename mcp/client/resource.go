@@ -51,11 +51,12 @@ func (r *clientResource) Read(ctx context.Context) (llm.ReadFunc, error) {
 // ListResources returns the cached list of resources advertised by the
 // connected MCP server. The cache is populated on connect and refreshed
 // automatically on each ResourceListChanged notification.
-// Returns ErrServiceUnavailable if no session is active.
+// Returns ErrServiceUnavailable until it's connected, and the resources are
+// first listed.
 func (c *Client) ListResources(_ context.Context) ([]llm.Resource, error) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	if c.session == nil {
+	if c.session == nil || !c.ready {
 		return nil, llm.ErrServiceUnavailable
 	}
 	return c.resources, nil

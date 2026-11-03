@@ -9,6 +9,7 @@ import (
 	"slices"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -30,6 +31,10 @@ type provider struct {
 	models []string
 	err    error
 	ping   func(context.Context) error // called by Ping, when it's set
+	list   func()                      // called by ListModels, when it's set
+
+	// How many times it's been pinged, and its models listed
+	pings, lists atomic.Int32
 }
 
 var _ llm.Provider = (*provider)(nil)
@@ -39,6 +44,7 @@ func (p *provider) URL() *url.URL      { return nil }
 func (p *provider) Self() llm.Provider { return p }
 
 func (p *provider) Ping(ctx context.Context) error {
+	p.pings.Add(1)
 	if p.ping != nil {
 		return p.ping(ctx)
 	}
@@ -46,6 +52,10 @@ func (p *provider) Ping(ctx context.Context) error {
 }
 
 func (p *provider) ListModels(context.Context) ([]llm.Model, error) {
+	p.lists.Add(1)
+	if p.list != nil {
+		p.list()
+	}
 	if p.err != nil {
 		return nil, p.err
 	}
@@ -275,7 +285,8 @@ func Test_ListModels(t *testing.T) {
 		require.NoError(t, err)
 		models, err := r.ListModels(ctx)
 		assert.ErrorIs(t, err, unreachable)
-		assert.ErrorContains(t, err, "ollama: connection refused")
+		assert.ErrorIs(t, err, llm.ErrServiceUnavailable)
+		assert.ErrorContains(t, err, "ollama: service unavailable: connection refused")
 		assert.Equal(t, []string{"openai:gpt-4o"}, names(r, models))
 	})
 
@@ -455,10 +466,10 @@ func Test_Names(t *testing.T) {
 		assert.Empty(t, second.called)
 
 		// And the download needs a name, as both download
-		_, err = r.DownloadModel(ctx, "phi4:latest", nil)
+		_, err = r.LoadModel(ctx, "phi4:latest", nil)
 		assert.ErrorIs(t, err, llm.ErrBadParameter)
 		assert.ErrorContains(t, err, "home and work")
-		model, err = r.DownloadModel(ctx, "home:phi4:latest", nil)
+		model, err = r.LoadModel(ctx, "home:phi4:latest", nil)
 		require.NoError(t, err)
 		assert.Equal(t, "home:phi4:latest", r.Name(model))
 	})
@@ -486,4 +497,21 @@ func Test_Names(t *testing.T) {
 		require.NoError(t, err)
 		assert.Equal(t, "home:llama3.2:latest", r.Name(model))
 	})
+}
+
+func Test_ListModelsOf(t *testing.T) {
+	// The models of the providers with the names, in order of their names,
+	// which must exist
+	ctx := context.Background()
+	r, err := newRegistry(
+		&provider{name: "openai", models: []string{"gpt-4o"}},
+		&provider{name: "ollama", models: []string{"llama3.2:latest"}},
+		&provider{name: "deepseek", models: []string{"deepseek-chat"}},
+	)
+	require.NoError(t, err)
+	models, err := r.ListModels(ctx, "openai", "deepseek", "openai")
+	require.NoError(t, err)
+	assert.Equal(t, []string{"deepseek:deepseek-chat", "openai:gpt-4o"}, names(r, models))
+	_, err = r.ListModels(ctx, "missing")
+	assert.ErrorIs(t, err, llm.ErrNotFound)
 }

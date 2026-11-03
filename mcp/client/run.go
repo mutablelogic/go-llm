@@ -39,6 +39,14 @@ func (c *Client) Connect(ctx context.Context) error {
 	c.refreshPrompts(ctx)
 	c.refreshResources(ctx)
 
+	// The lists can be read once they're listed, so a server's tools aren't
+	// none while they're listed
+	c.mu.Lock()
+	if c.session == session {
+		c.ready = true
+	}
+	c.mu.Unlock()
+
 	if c.onStateChange != nil {
 		c.onStateChange(ctx, stateFromSession(session))
 	}
@@ -51,6 +59,7 @@ func (c *Client) Close() error {
 	c.mu.Lock()
 	session := c.session
 	c.session = nil
+	c.ready = false
 	c.tools = nil
 	c.prompts = nil
 	c.resources = nil

@@ -15,6 +15,7 @@ import (
 // ClientCommands are the commands which call the registry's API
 type ClientCommands struct {
 	ProviderCommands
+	ModelCommands
 }
 
 ///////////////////////////////////////////////////////////////////////////////

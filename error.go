@@ -104,25 +104,27 @@ func (e Err) HTTP() httpresponse.Err {
 // with the status text, and errors.Is and errors.As still match the original
 // error.
 //
-// An llm.Err is translated with its HTTP method, and fs errors
-// (fs.ErrNotExist and so on) to the corresponding status code. Errors which
-// already wrap a HTTP status code are returned unchanged, and any other
-// error is an internal server error. Returns nil when err is nil.
+// An llm.Err is translated with its HTTP method, even when it wraps a HTTP
+// status code, such as a provider's response, and fs errors (fs.ErrNotExist
+// and so on) to the corresponding status code. Other errors which already
+// wrap a HTTP status code are returned unchanged, and any other error is an
+// internal server error. Returns nil when err is nil.
 func HTTPErr(err error) error {
 	if err == nil {
 		return nil
+	}
+
+	// An llm error, which is the error's status, rather than an error it
+	// wraps, such as a provider's response
+	var e Err
+	if errors.As(err, &e) {
+		return e.HTTP().Withf("%w", err)
 	}
 
 	// Already a HTTP error
 	var code httpresponse.Err
 	if errors.As(err, &code) {
 		return err
-	}
-
-	// An llm error
-	var e Err
-	if errors.As(err, &e) {
-		return e.HTTP().Withf("%w", err)
 	}
 
 	// A request whose body ends before it should, such as an upload which

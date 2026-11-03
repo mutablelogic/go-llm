@@ -19,10 +19,12 @@ import (
 // a name in the registry, so there can be more than one provider of a type,
 // and its endpoint and API key, which aren't needed for every type
 type CreateProviderRequest struct {
-	Name     string `json:"name,omitempty" help:"Provider name in the registry, which is an identifier, starting with a letter, followed by letters, numbers, underscores or hyphens, or its type when omitted" example:"my-ollama" optional:""`
-	Provider string `json:"provider" help:"Provider type" enum:"eliza,ollama,openai" example:"ollama"`
-	URL      string `json:"url,omitempty" help:"Provider endpoint, which is the type's default when omitted" example:"http://localhost:11434" optional:""`
-	APIKey   string `json:"api_key,omitempty" writeonly:"" help:"API key, or a credential's placeholder, such as ${OPENAI_KEY}, which is sent as a bearer token, and isn't returned" optional:""`
+	Name     string   `json:"name,omitempty" help:"Provider name in the registry, which is an identifier, starting with a letter, followed by letters, numbers, underscores or hyphens, or its type when omitted" example:"my-ollama" optional:""`
+	Provider string   `json:"provider" help:"Provider type" enum:"eliza,ollama,openai" example:"ollama"`
+	URL      string   `json:"url,omitempty" help:"Provider endpoint, which is the type's default when omitted" example:"http://localhost:11434" optional:""`
+	Include  []string `json:"include,omitempty" help:"Regular expressions of the names of the models which are included, or every model when there are none" example:"[\"^gpt-\"]" optional:""`
+	Exclude  []string `json:"exclude,omitempty" help:"Regular expressions of the names of the models which are excluded" example:"[\"-mini$\"]" optional:""`
+	APIKey   string   `json:"api_key,omitempty" writeonly:"" help:"API key, or a credential's placeholder, such as ${OPENAI_KEY}, which is sent as a bearer token, and isn't returned" optional:""`
 }
 
 // ProviderListRequest filters a list of providers
@@ -43,9 +45,11 @@ type ProviderCapabilities struct {
 // what it can do, and the error of its ping, when it can't be reached. Its
 // API key isn't returned.
 type Provider struct {
-	Name     string `json:"name" readonly:"" help:"Provider name in the registry" example:"my-ollama"`
-	Provider string `json:"provider" readonly:"" help:"Provider type" example:"ollama"`
-	URL      string `json:"url,omitempty" readonly:"" help:"Provider endpoint, without its password" example:"http://localhost:11434"`
+	Name     string   `json:"name" readonly:"" help:"Provider name in the registry" example:"my-ollama"`
+	Provider string   `json:"provider" readonly:"" help:"Provider type" example:"ollama"`
+	URL      string   `json:"url,omitempty" readonly:"" help:"Provider endpoint, without its password" example:"http://localhost:11434"`
+	Include  []string `json:"include,omitempty" readonly:"" help:"Regular expressions of the names of the models which are included, or every model when there are none"`
+	Exclude  []string `json:"exclude,omitempty" readonly:"" help:"Regular expressions of the names of the models which are excluded"`
 	ProviderCapabilities
 	Error string `json:"error,omitempty" readonly:"" help:"Why the provider can't be reached, when it can't"`
 }

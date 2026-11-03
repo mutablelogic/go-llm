@@ -1,7 +1,10 @@
 package registry
 
 import (
+	"slices"
+
 	// Packages
+	client "github.com/mutablelogic/go-client"
 	trace "go.opentelemetry.io/otel/trace"
 )
 
@@ -14,6 +17,7 @@ type Opt func(*opt) error
 type opt struct {
 	tracer      trace.Tracer
 	credentials CredentialsProvider
+	clientopts  []client.ClientOpt
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -36,6 +40,7 @@ func (o *opt) apply(opts []Opt) error {
 func (o *opt) defaults() {
 	o.tracer = nil
 	o.credentials = envCredentials{}
+	o.clientopts = nil
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -46,6 +51,15 @@ func (o *opt) defaults() {
 func WithTracer(tracer trace.Tracer) Opt {
 	return func(o *opt) error {
 		o.tracer = tracer
+		return nil
+	}
+}
+
+// WithClientOpts sets the options of the HTTP clients of the providers
+// which the registry creates, such as their tracer, user agent and timeout
+func WithClientOpts(opts ...client.ClientOpt) Opt {
+	return func(o *opt) error {
+		o.clientopts = slices.Clone(opts)
 		return nil
 	}
 }

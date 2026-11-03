@@ -33,13 +33,17 @@ type Provider interface {
 // Downloader is an interface for managing model files, for providers which
 // store models locally, such as Ollama
 type Downloader interface {
-	// DownloadModel downloads the model with the given name, and otherwise
+	// LoadModel downloads the model with the given name, and otherwise
 	// loads the model if it's already present. The progress function, if not
 	// nil, is called with the status of the download as it progresses.
-	DownloadModel(context.Context, string, DownloadProgressFn) (Model, error)
+	LoadModel(context.Context, string, DownloadProgressFn) (Model, error)
 
 	// DeleteModel deletes the model from local storage
 	DeleteModel(context.Context, Model) error
+
+	// UnloadModel unloads the model from memory, keeping it in local
+	// storage, so it's loaded again when it's next used
+	UnloadModel(context.Context, Model) error
 }
 
 // DownloadProgressFn is called with the status of a model download, and how

@@ -132,11 +132,18 @@ func Test_Providers(t *testing.T) {
 	})
 
 	t.Run("Unreachable", func(t *testing.T) {
-		// A provider which can't be reached any more has an error
+		// A provider which can't be reached any more has an error, once it's
+		// pinged
 		ollama, _ := newOllama(t, "")
 		var provider schema.Provider
 		require.Equal(t, http.StatusCreated, do(t, server, http.MethodPost, "llm/provider", schema.CreateProviderRequest{Name: "gone", Provider: "ollama", URL: ollama.URL}, &provider))
 		ollama.Close()
+
+		// It's pinged again, rather than with the result of its last ping,
+		// which is used within the ping interval
+		interval := registry.PingInterval
+		registry.PingInterval = 0
+		defer func() { registry.PingInterval = interval }()
 		assert.Equal(t, http.StatusOK, do(t, server, http.MethodGet, "llm/provider/gone", nil, &provider))
 		assert.NotEmpty(t, provider.Error)
 	})

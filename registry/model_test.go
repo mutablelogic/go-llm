@@ -44,9 +44,13 @@ func (c *capable) GetModel(ctx context.Context, name string) (llm.Model, error) 
 }
 
 func (c *capable) ListModels(ctx context.Context) ([]llm.Model, error) {
+	c.lists.Add(1)
 	var result []llm.Model
 	for _, name := range c.models {
 		result = append(result, &model{name: name, provider: c})
+	}
+	if c.list != nil {
+		c.list()
 	}
 	return result, nil
 }
@@ -87,7 +91,7 @@ func (c *capable) Recognize(_ context.Context, model llm.Model, _ llm.Resource, 
 	return message, llm.Usage{}, err
 }
 
-func (c *capable) DownloadModel(_ context.Context, name string, _ llm.DownloadProgressFn) (llm.Model, error) {
+func (c *capable) LoadModel(_ context.Context, name string, _ llm.DownloadProgressFn) (llm.Model, error) {
 	m := &model{name: name, provider: c}
 	c.record("download", m)
 	return m, nil
@@ -95,6 +99,11 @@ func (c *capable) DownloadModel(_ context.Context, name string, _ llm.DownloadPr
 
 func (c *capable) DeleteModel(_ context.Context, model llm.Model) error {
 	c.record("delete", model)
+	return nil
+}
+
+func (c *capable) UnloadModel(_ context.Context, model llm.Model) error {
+	c.record("unload", model)
 	return nil
 }
 
@@ -202,6 +211,7 @@ func Test_Capabilities(t *testing.T) {
 		_, _, err = r.Transcribe(ctx, get(t, "gpt-4o"), nil)
 		assert.ErrorIs(t, err, llm.ErrNotImplemented)
 		assert.ErrorIs(t, r.DeleteModel(ctx, get(t, "gpt-4o")), llm.ErrNotImplemented)
+		assert.ErrorIs(t, r.UnloadModel(ctx, get(t, "gpt-4o")), llm.ErrNotImplemented)
 	})
 
 	t.Run("NotInRegistry", func(t *testing.T) {
@@ -220,13 +230,13 @@ func Test_Capabilities(t *testing.T) {
 	t.Run("Download", func(t *testing.T) {
 		// A canonical name is downloaded by its provider
 		ollama.called = nil
-		model, err := r.DownloadModel(ctx, "ollama:phi4:latest", nil)
+		model, err := r.LoadModel(ctx, "ollama:phi4:latest", nil)
 		require.NoError(t, err)
 		assert.Equal(t, "ollama:phi4:latest", r.Name(model))
 		assert.Equal(t, []string{"download phi4:latest"}, ollama.called)
 
 		// And so is a name, as ollama is the only provider which downloads
-		model, err = r.DownloadModel(ctx, "phi4:latest", nil)
+		model, err = r.LoadModel(ctx, "phi4:latest", nil)
 		require.NoError(t, err)
 		assert.Equal(t, "ollama:phi4:latest", r.Name(model))
 
@@ -235,10 +245,22 @@ func Test_Capabilities(t *testing.T) {
 		require.NoError(t, r.DeleteModel(ctx, model))
 		assert.Equal(t, []string{"delete phi4:latest"}, ollama.called)
 
+		// And unloaded by its provider, which keeps it, so its models aren't
+		// listed again
+		_, err = r.ListModels(ctx)
+		require.NoError(t, err)
+		ollama.called = nil
+		lists := ollama.lists.Load()
+		require.NoError(t, r.UnloadModel(ctx, model))
+		assert.Equal(t, []string{"unload phi4:latest"}, ollama.called)
+		_, err = r.ListModels(ctx)
+		require.NoError(t, err)
+		assert.Equal(t, lists, ollama.lists.Load())
+
 		// But not by a provider which can't download
-		_, err = r.DownloadModel(ctx, "openai:gpt-4o", nil)
+		_, err = r.LoadModel(ctx, "openai:gpt-4o", nil)
 		assert.ErrorIs(t, err, llm.ErrNotImplemented)
-		_, err = r.DownloadModel(ctx, "", nil)
+		_, err = r.LoadModel(ctx, "", nil)
 		assert.ErrorIs(t, err, llm.ErrBadParameter)
 	})
 
@@ -248,13 +270,13 @@ func Test_Capabilities(t *testing.T) {
 		second := newCapable("lmstudio")
 		require.NoError(t, r.Add("", second))
 		defer r.Remove("lmstudio")
-		_, err := r.DownloadModel(ctx, "phi4:latest", nil)
+		_, err := r.LoadModel(ctx, "phi4:latest", nil)
 		assert.ErrorIs(t, err, llm.ErrBadParameter)
 		assert.True(t, strings.Contains(err.Error(), "lmstudio and ollama"), err.Error())
 		assert.Empty(t, second.called)
 
 		// But not with its canonical name
-		_, err = r.DownloadModel(ctx, "lmstudio:phi4:latest", nil)
+		_, err = r.LoadModel(ctx, "lmstudio:phi4:latest", nil)
 		require.NoError(t, err)
 		assert.Equal(t, []string{"download phi4:latest"}, second.called)
 	})
@@ -262,7 +284,7 @@ func Test_Capabilities(t *testing.T) {
 	t.Run("NoDownloader", func(t *testing.T) {
 		r, err := newRegistry(openai)
 		require.NoError(t, err)
-		_, err = r.DownloadModel(ctx, "phi4:latest", nil)
+		_, err = r.LoadModel(ctx, "phi4:latest", nil)
 		assert.ErrorIs(t, err, llm.ErrNotImplemented)
 	})
 }
