@@ -3,12 +3,11 @@ package gowhisper
 import (
 	"bytes"
 	"context"
-	"encoding/json"
-	"errors"
 	"io"
 	"math"
 	"mime"
 	"strings"
+	"unicode"
 
 	// Packages
 	client "github.com/mutablelogic/go-client"
@@ -85,14 +84,20 @@ func (c *Client) transcribe(ctx context.Context, endpoint string, model llm.Mode
 
 	// Send the request, and receive the transcript, or its segments, as
 	// they're transcribed
-	req, err := client.NewMultipartRequest(request, types.ContentTypeJSON)
+	// The request accepts a stream, when it's streamed, so a strict client
+	// doesn't reject it
+	accept := types.ContentTypeJSON
+	if stream != nil {
+		accept = types.ContentTypeTextStream
+	}
+	req, err := client.NewMultipartRequest(request, accept)
 	if err != nil {
 		return llm.Transcript{}, llm.Usage{}, err
 	}
 	var response transcribeResponse
 	if stream != nil {
 		chunks := &transcribeStream{stream: stream, segments: options.segments}
-		if err := c.DoWithContext(ctx, req, nil, client.OptPath(endpoint), client.OptReqHeader("Accept", types.ContentTypeTextStream), client.OptTextStreamCallback(chunks.add), client.OptNoTimeout()); err != nil {
+		if err := c.DoWithContext(ctx, req, nil, client.OptPath(endpoint), client.OptTextStreamCallback(chunks.add), client.OptNoTimeout()); err != nil {
 			return llm.Transcript{}, llm.Usage{}, err
 		} else if !chunks.done {
 			return llm.Transcript{}, llm.Usage{}, llm.ErrServiceUnavailable.With("the transcript ended before it was done")
@@ -103,12 +108,13 @@ func (c *Client) transcribe(ctx context.Context, endpoint string, model llm.Mode
 	}
 
 	// The transcript, in its language, which a translation is in English,
-	// or the language set, and its segments, when they're asked for
+	// or the language set, when the server has none, and its segments, when
+	// they're asked for
 	transcript := llm.Transcript{Text: strings.TrimSpace(response.Text), Language: schema.LanguageCode(response.Language)}
 	switch {
 	case endpoint == "translate":
 		transcript.Language = "en"
-	case options.language != "":
+	case transcript.Language == "":
 		transcript.Language = options.language
 	}
 	if options.segments {
@@ -127,7 +133,8 @@ func (c *Client) transcribe(ctx context.Context, endpoint string, model llm.Mode
 // transcribeStream collects the events of a streamed transcript into a
 // response, which are each segment, as it's transcribed, and the summary of
 // the transcript, without its text, which is its segments', or an error. The
-// text of each segment is streamed, and the segment, when they're asked for.
+// text of each segment is streamed, as it is, and the segment, when they're
+// asked for.
 type transcribeStream struct {
 	stream   llm.TranscriberStreamFn
 	segments bool               // Whether segments are streamed
@@ -149,10 +156,12 @@ func (s *transcribeStream) add(event client.TextStreamEvent) error {
 			return nil
 		}
 
-		// The text is the segments', separated by a space
-		text := result.Text
-		if s.response.Text != "" {
-			text = " " + text
+		// The text is the segments', as they are, as a language without
+		// spaces between words has none between them, without the space at
+		// the start of the first
+		text := segment.Text
+		if s.response.Text == "" {
+			text = strings.TrimLeftFunc(text, unicode.IsSpace)
 		}
 		s.response.Text += text
 		s.stream(text, nil)
@@ -167,11 +176,7 @@ func (s *transcribeStream) add(event client.TextStreamEvent) error {
 		s.response.Task, s.response.Language, s.response.Duration = summary.Task, summary.Language, summary.Duration
 		s.done = true
 	case eventTranscribeError:
-		var message string
-		if err := json.Unmarshal([]byte(event.Data), &message); err != nil {
-			message = event.Data
-		}
-		return errors.New(strings.TrimSpace(message))
+		return eventErr(event.Data)
 	}
 	return nil
 }

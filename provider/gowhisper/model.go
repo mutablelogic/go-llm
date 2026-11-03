@@ -3,6 +3,7 @@ package gowhisper
 import (
 	"context"
 	"encoding/json"
+	"path"
 	"strings"
 	"time"
 
@@ -155,9 +156,24 @@ func (c *Client) listModels(ctx context.Context) ([]apiModel, error) {
 // PRIVATE FUNCTIONS
 
 // modelID returns the id of a model, by its name, which is its id, or its
-// file, without its extension
+// file, which can have a directory, such as "english/ggml-tiny.en.bin",
+// whose id is its base name, as go-whisper makes it: in lower case, without
+// its extension, and with each character which isn't a letter, a digit, a
+// full stop or a hyphen as an underscore
 func modelID(name string) string {
-	return strings.TrimSuffix(strings.TrimSpace(name), modelExt)
+	name = strings.TrimSpace(name)
+	if !strings.HasSuffix(strings.ToLower(name), modelExt) && !strings.Contains(name, "/") {
+		return name
+	}
+	base := strings.ToLower(path.Base(name))
+	return strings.Map(func(r rune) rune {
+		switch {
+		case r >= 'a' && r <= 'z', r >= '0' && r <= '9', r == '.', r == '-':
+			return r
+		default:
+			return '_'
+		}
+	}, strings.TrimSuffix(base, path.Ext(base)))
 }
 
 // modelFile returns the file of a model, by its name, which is its file, or

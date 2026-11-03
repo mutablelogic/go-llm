@@ -42,7 +42,13 @@ func (c *Client) LoadModel(ctx context.Context, name string, progress llm.Downlo
 
 	// Download the model, streaming its progress when there's a function to
 	// call with it, or otherwise waiting for it
-	req, err := client.NewJSONRequest(downloadRequest{Model: file})
+	// The request accepts a stream, when it's streamed, so a strict client
+	// doesn't reject it
+	accept := types.ContentTypeJSON
+	if progress != nil {
+		accept = types.ContentTypeTextStream
+	}
+	req, err := client.NewJSONRequestEx(http.MethodPost, downloadRequest{Model: file}, accept)
 	if err != nil {
 		return nil, err
 	}
@@ -50,7 +56,7 @@ func (c *Client) LoadModel(ctx context.Context, name string, progress llm.Downlo
 	opts := []client.RequestOpt{client.OptPath("model"), client.OptNoTimeout()}
 	if progress != nil {
 		var done bool
-		opts = append(opts, client.OptReqHeader("Accept", types.ContentTypeTextStream), client.OptTextStreamCallback(func(event client.TextStreamEvent) error {
+		opts = append(opts, client.OptTextStreamCallback(func(event client.TextStreamEvent) error {
 			switch event.Event {
 			case eventProgress:
 				var status downloadProgress
@@ -100,17 +106,33 @@ func (c *Client) UnloadModel(ctx context.Context, model llm.Model) error {
 ///////////////////////////////////////////////////////////////////////////////
 // PRIVATE FUNCTIONS
 
-// downloadErr returns the error of a download's error event, whose data is
-// its message, as a JSON string, which is ErrNotFound when the model's file
-// isn't found, as go-whisper's message has the status of the request for it
+// downloadErr returns the error of a download's error event, which is
+// ErrNotFound when the model's file isn't found
 func downloadErr(file, data string) error {
+	err := eventErr(data)
+	if errors.Is(err, llm.ErrNotFound) {
+		return llm.ErrNotFound.Withf("model %q isn't found to download", file)
+	}
+	return err
+}
+
+// eventErr returns the error of an error event, whose data is its message,
+// as a JSON string, which starts with the text of its status, when it has
+// one, as go-whisper's errors do, such as "Bad Request: ...", which is
+// ErrBadParameter, or ErrNotFound, as the status would be without a stream
+func eventErr(data string) error {
 	var message string
 	if err := json.Unmarshal([]byte(data), &message); err != nil {
 		message = data
 	}
 	message = strings.TrimSpace(message)
+	for _, status := range []int{http.StatusBadRequest, http.StatusRequestEntityTooLarge, http.StatusUnprocessableEntity} {
+		if strings.HasPrefix(message, http.StatusText(status)) {
+			return llm.ErrBadParameter.With(message)
+		}
+	}
 	if strings.HasPrefix(message, http.StatusText(http.StatusNotFound)) {
-		return llm.ErrNotFound.Withf("model %q isn't found to download", file)
+		return llm.ErrNotFound.With(message)
 	}
 	return errors.New(message)
 }

@@ -14,6 +14,7 @@ import (
 	"time"
 
 	// Packages
+	client "github.com/mutablelogic/go-client"
 	llm "github.com/mutablelogic/go-llm"
 	gowhisper "github.com/mutablelogic/go-llm/provider/gowhisper"
 	providerschema "github.com/mutablelogic/go-llm/provider/schema"
@@ -335,14 +336,30 @@ func Test_Transcribe(t *testing.T) {
 	})
 
 	t.Run("Segments", func(t *testing.T) {
-		// The segments, and the language set
-		transcript, _, err := c.Transcribe(ctx, model, audio, nil, llm.WithSegments(true), llm.WithLanguage("fr"))
+		// The segments, and the language set, which is the language the
+		// server has
+		transcript, _, err := c.Transcribe(ctx, model, audio, nil, llm.WithSegments(true), llm.WithLanguage("de"))
 		require.NoError(t, err)
+		assert.Equal(t, "fr", transcript.Language)
 		assert.Equal(t, []llm.TranscriptSegment{
 			{Start: 0, End: 1500 * time.Millisecond, Text: "Bonjour,"},
 			{Start: 1500 * time.Millisecond, End: 3250 * time.Millisecond, Text: "tout le monde."},
 		}, transcript.Segments)
-		assert.Equal(t, "fr", fields()["language"])
+		assert.Equal(t, "de", fields()["language"])
+	})
+
+	t.Run("Strict", func(t *testing.T) {
+		// A client which is strict accepts a stream, of a transcript, and of
+		// a download
+		strict, err := gowhisper.New(c.URL().String(), client.OptStrict())
+		require.NoError(t, err)
+		model, err := strict.GetModel(ctx, "ggml-medium-q5_0")
+		require.NoError(t, err)
+		transcript, _, err := strict.Transcribe(ctx, model, audio, func(string, *llm.TranscriptSegment) {})
+		require.NoError(t, err)
+		assert.Equal(t, "Bonjour, tout le monde.", transcript.Text)
+		_, err = strict.LoadModel(ctx, "ggml-strict", func(string, float64) {})
+		require.NoError(t, err)
 	})
 
 	t.Run("Stream", func(t *testing.T) {
