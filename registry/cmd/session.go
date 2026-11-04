@@ -17,11 +17,11 @@ import (
 // TYPES
 
 type SessionCommands struct {
-	SessionList   SessionListCmd   `cmd:"" name:"sessions" help:"List the sessions, most recently modified first." group:"SESSIONS"`
-	SessionGet    SessionGetCmd    `cmd:"" name:"session" help:"Get a session, with its messages." group:"SESSIONS"`
-	SessionCreate SessionCreateCmd `cmd:"" name:"session-create" help:"Create a session, with how its model is asked." group:"SESSIONS"`
-	SessionUpdate SessionUpdateCmd `cmd:"" name:"session-update" help:"Change a session's settings: those which are given are changed, and the rest kept. An empty value, such as --tools=, clears one, --schema=null clears the schema, and --opt key=null removes an option." group:"SESSIONS"`
-	SessionDelete SessionDeleteCmd `cmd:"" name:"session-delete" help:"Delete a session." group:"SESSIONS"`
+	SessionList   SessionListCmd   `cmd:"" name:"sessions" help:"List the sessions, most recently modified first." group:"LLM SESSIONS"`
+	SessionGet    SessionGetCmd    `cmd:"" name:"session" help:"Get a session, with its messages." group:"LLM SESSIONS"`
+	SessionCreate SessionCreateCmd `cmd:"" name:"session-create" help:"Create a session, with how its model is asked." group:"LLM SESSIONS"`
+	SessionUpdate SessionUpdateCmd `cmd:"" name:"session-update" help:"Change a session's settings: those which are given are changed, and the rest kept. An empty value, such as --tools=, clears one, --schema=null clears the schema, and --opt key=null removes an option." group:"LLM SESSIONS"`
+	SessionDelete SessionDeleteCmd `cmd:"" name:"session-delete" help:"Delete a session." group:"LLM SESSIONS"`
 }
 
 type SessionListCmd struct {
