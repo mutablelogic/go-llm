@@ -115,7 +115,7 @@ func (r *Registry) AgentLoop(ctx context.Context, model llm.Model, messages []ll
 	if err != nil {
 		return nil, llm.Usage{}, err
 	}
-	h, usage, err := r.agentLoop(ctx, model, messages, loop, stream)
+	h, usage, err := r.agentLoop(ctx, model, messages, nil, loop, stream)
 	if err != nil {
 		return nil, llm.Usage{}, err
 	}
@@ -129,9 +129,11 @@ func (r *Registry) AgentLoop(ctx context.Context, model llm.Model, messages []ll
 // it stops at tool calls, returns the model's reply when it calls tools,
 // other than the respond tool, for the caller to run, without the call of
 // the respond tool, if it called it too, as it's asked to call it on its
-// own, once it has their results. Returns the conversation, with the
-// messages the loop added, and the tokens of each, and the usage.
-func (r *Registry) agentLoop(ctx context.Context, model llm.Model, messages []llm.Message, loop *agentLoop, stream llm.GeneratorStreamFn) (*history, llm.Usage, error) {
+// own, once it has their results. The fresh messages follow the messages,
+// and are the first the loop adds, so they're returned as they're sent.
+// Returns the conversation, with the messages the loop added, and the tokens
+// of each, and the usage.
+func (r *Registry) agentLoop(ctx context.Context, model llm.Model, messages []llm.Message, fresh []providerschema.Message, loop *agentLoop, stream llm.GeneratorStreamFn) (*history, llm.Usage, error) {
 
 	// The conversation, which the replies and tool results are added to,
 	// without changing the caller's messages, measured as the model's
@@ -143,7 +145,7 @@ func (r *Registry) agentLoop(ctx context.Context, model llm.Model, messages []ll
 	if err != nil {
 		return nil, llm.Usage{}, err
 	}
-	h, err := newHistory(ctx, messages, overhead, measure)
+	h, err := newHistory(ctx, messages, fresh, overhead, measure)
 	if err != nil {
 		return nil, llm.Usage{}, err
 	}

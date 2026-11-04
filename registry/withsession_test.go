@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"strings"
 	"testing"
 
 	// Packages
@@ -161,6 +162,41 @@ func Test_WithSession(t *testing.T) {
 		_, err = r.WithSession(ctx, newSession(meta), []llm.Message{message}, nil)
 		assert.ErrorIs(t, err, llm.ErrBadParameter)
 		assert.ErrorContains(t, err, "can't read")
+	})
+
+	t.Run("TruncatedResult", func(t *testing.T) {
+		// A new tool result which is truncated, to fit the model's context, is
+		// returned as it was sent, with its tokens, and the session's messages
+		// aren't changed
+		earlier := []providerschema.Message{
+			says("user", "Weather?", 0),
+			{MessageMeta: providerschema.MessageMeta{Sender: "assistant", Content: []providerschema.ContentBlock{
+				{ToolCall: &providerschema.ToolCall{ID: "1", Name: "test_echo"}},
+			}}},
+		}
+		result := providerschema.Message{MessageMeta: providerschema.MessageMeta{Sender: "tool", Content: []providerschema.ContentBlock{
+			providerschema.NewToolResult("1", "test_echo", strings.Repeat("a", 100_000)),
+		}}}
+		p := newScripted(text("Sunny"))
+		r := newAskRegistry(t, p)
+		window := meta
+		window.Opt = map[string]json.RawMessage{llm.ContextWindowKey: json.RawMessage(`4000`)}
+		response, err := r.WithSession(ctx, newSession(window, earlier...), []llm.Message{result}, nil)
+		require.NoError(t, err)
+		require.Len(t, response.Messages, 2)
+
+		// The model was sent the truncated result, which is returned
+		require.Len(t, p.asked, 1)
+		sent := p.asked[0].messages[2].ToolResults()[0].Content
+		assert.Contains(t, string(sent), "more characters]")
+		returned := response.Messages[0]
+		assert.Equal(t, "tool", returned.Role())
+		assert.Equal(t, string(sent), string(returned.ToolResults()[0].Content))
+		assert.Less(t, returned.Tokens, uint64(25_000))
+		assert.NotZero(t, returned.Tokens)
+
+		// The message passed in isn't changed
+		assert.Greater(t, len(result.ToolResults()[0].Content), 100_000)
 	})
 
 	t.Run("Errors", func(t *testing.T) {

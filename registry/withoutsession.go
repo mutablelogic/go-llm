@@ -68,7 +68,7 @@ func (r *Registry) Ask(ctx context.Context, req schema.AskRequest, stream llm.Ge
 		return nil, err
 	}
 	loop.stopAtTools = true
-	h, usage, err := r.agentLoop(ctx, model, messages, loop, stream)
+	h, usage, err := r.agentLoop(ctx, model, messages, nil, loop, stream)
 	if err != nil {
 		return nil, err
 	}

@@ -74,13 +74,14 @@ const (
 // LIFECYCLE
 
 // newHistory returns the conversation of the caller's messages, none of
-// which can be nil, each with its tokens, when it has them, or measured, with the tokens of what's sent with them, which are estimated
+// which can be nil, followed by the new messages, which are the first the
+// loop adds, and returns, each with its tokens, when it has them, or measured, with the tokens of what's sent with them, which are estimated
 // until a model has been sent them. The system messages, and the latest
 // user message, are never dropped, and, when the messages end with the
 // results of tools, they're the latest turn, with the reply which called
 // them.
-func newHistory(ctx context.Context, messages []llm.Message, overhead uint, measure toolkit.MeasureFn) (*history, error) {
-	h := &history{entries: make([]historyEntry, 0, len(messages)), overhead: overhead, measure: measure}
+func newHistory(ctx context.Context, messages []llm.Message, fresh []providerschema.Message, overhead uint, measure toolkit.MeasureFn) (*history, error) {
+	h := &history{entries: make([]historyEntry, 0, len(messages)+len(fresh)), overhead: overhead, measure: measure}
 	for i, message := range messages {
 		if isNil(message) {
 			return nil, llm.ErrBadParameter.Withf("message %d is nil", i)
@@ -91,6 +92,19 @@ func newHistory(ctx context.Context, messages []llm.Message, overhead uint, meas
 		}
 		h.measured = append(h.measured, tokens)
 		h.entries = append(h.entries, historyEntry{message: message, tokens: tokens, pinned: message.Role() == "system", added: -1})
+	}
+
+	// The new messages, which are added, so they're returned as they're
+	// sent, such as when their tools' results are truncated, with their
+	// tokens
+	for _, message := range fresh {
+		tokens, err := h.tokens(ctx, &message)
+		if err != nil {
+			return nil, err
+		}
+		message.Tokens = uint64(tokens)
+		h.added = append(h.added, message)
+		h.entries = append(h.entries, historyEntry{message: &message, tokens: tokens, pinned: message.Role() == "system", added: len(h.added) - 1})
 	}
 
 	// The latest user message, which isn't the results of tools

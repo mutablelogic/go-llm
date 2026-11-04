@@ -57,12 +57,9 @@ func (r *Registry) WithSession(ctx context.Context, session schema.Session, mess
 		}
 		added = append(added, message)
 	}
-	conversation := make([]llm.Message, 0, len(earlier)+len(added))
+	conversation := make([]llm.Message, 0, len(earlier))
 	for i := range earlier {
 		conversation = append(conversation, &earlier[i])
-	}
-	for i := range added {
-		conversation = append(conversation, &added[i])
 	}
 
 	// Ask the model, until it replies, running the tools it calls
@@ -70,23 +67,18 @@ func (r *Registry) WithSession(ctx context.Context, session schema.Session, mess
 	if err != nil {
 		return nil, err
 	}
-	h, usage, err := r.agentLoop(ctx, model, conversation, loop, stream)
+	h, usage, err := r.agentLoop(ctx, model, conversation, added, loop, stream)
 	if err != nil {
 		return nil, err
 	}
 
-	// The messages to add, of the messages, with their tokens, and those the
-	// loop added
+	// The messages to add, which are the messages, as they were sent, and
+	// those the loop added, each with its tokens
 	response := &schema.SessionResponse{
-		Messages: make([]providerschema.Message, 0, len(messages)+len(h.added)),
+		Messages: h.added,
 		Overhead: h.overhead,
 		Usage:    usage,
 	}
-	for i, message := range added {
-		message.Tokens = uint64(h.measured[len(earlier)+i])
-		response.Messages = append(response.Messages, message)
-	}
-	response.Messages = append(response.Messages, h.added...)
 
 	// The tokens of the conversation, with the messages to add, of its
 	// replies, and the rest
