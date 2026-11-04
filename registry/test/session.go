@@ -2,6 +2,7 @@ package test
 
 import (
 	"context"
+	"encoding/json"
 	"slices"
 	"sync"
 	"time"
@@ -41,8 +42,8 @@ func (m *SessionStore) Create(_ context.Context, meta schema.SessionMeta) (schem
 	defer m.mu.Unlock()
 	now := time.Now()
 	session := schema.Session{ID: uuid.NewV7(), Serial: 1, Created: now, Modified: now, SessionMeta: meta}
-	m.sessions[session.ID] = session
-	return session, nil
+	m.sessions[session.ID] = clone(session)
+	return clone(session), nil
 }
 
 func (m *SessionStore) Get(_ context.Context, id uuid.UUID) (schema.Session, error) {
@@ -52,7 +53,7 @@ func (m *SessionStore) Get(_ context.Context, id uuid.UUID) (schema.Session, err
 	if !exists {
 		return schema.Session{}, llm.ErrNotFound.Withf("session %q", id)
 	}
-	return session, nil
+	return clone(session), nil
 }
 
 func (m *SessionStore) List(_ context.Context, req schema.SessionListRequest) (schema.SessionList, error) {
@@ -60,6 +61,7 @@ func (m *SessionStore) List(_ context.Context, req schema.SessionListRequest) (s
 	defer m.mu.Unlock()
 	body := make([]schema.Session, 0, len(m.sessions))
 	for _, session := range m.sessions {
+		session = clone(session)
 		session.Messages = nil
 		body = append(body, session)
 	}
@@ -89,8 +91,8 @@ func (m *SessionStore) Put(_ context.Context, session schema.Session) (schema.Se
 	session.Serial++
 	session.Created = existing.Created
 	session.Modified = time.Now()
-	m.sessions[session.ID] = session
-	return session, nil
+	m.sessions[session.ID] = clone(session)
+	return clone(session), nil
 }
 
 func (m *SessionStore) Delete(_ context.Context, id uuid.UUID, serial uint64) error {
@@ -111,4 +113,22 @@ func (m *SessionStore) Len() int {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	return len(m.sessions)
+}
+
+///////////////////////////////////////////////////////////////////////////////
+// PRIVATE FUNCTIONS
+
+// clone returns a copy of the session, which shares none of its pointers,
+// maps or slices, so a session which is stored, or returned, can't be
+// changed but by Put
+func clone(session schema.Session) schema.Session {
+	data, err := json.Marshal(session)
+	if err != nil {
+		panic(err)
+	}
+	var result schema.Session
+	if err := json.Unmarshal(data, &result); err != nil {
+		panic(err)
+	}
+	return result
 }

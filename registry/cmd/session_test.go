@@ -144,3 +144,12 @@ func Test_CreateMeta(t *testing.T) {
 	meta = createMeta(defaults{}, parseSession(t, "session-create").SessionCreate.SessionMeta)
 	assert.Nil(t, meta.Model)
 }
+
+func Test_SessionOpts(t *testing.T) {
+	// An option which isn't JSON is a JSON string, and null, numbers and
+	// booleans are as they are
+	meta := createMeta(defaults{}, parseSession(t, "session-create", "--opt", "effort=high", "--opt", "temperature=0.5", "--opt", "thinking=false", "--opt", "seed=null").SessionCreate.SessionMeta)
+	data, err := json.Marshal(meta.Opt)
+	require.NoError(t, err)
+	assert.JSONEq(t, `{"effort":"high","temperature":0.5,"thinking":false,"seed":null}`, string(data))
+}

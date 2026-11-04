@@ -206,6 +206,17 @@ func Test_Sessions(t *testing.T) {
 		assert.ErrorIs(t, err, llm.ErrNotFound)
 	})
 
+	t.Run("Snapshot", func(t *testing.T) {
+		// A session which is returned doesn't share what's stored
+		r, _ := newRegistry(t)
+		created, err := r.CreateSession(ctx, meta)
+		require.NoError(t, err)
+		*created.System = "Changed"
+		got, err := r.GetSession(ctx, created.ID)
+		require.NoError(t, err)
+		assert.Equal(t, "Be brief", types.Value(got.System))
+	})
+
 	t.Run("NoStore", func(t *testing.T) {
 		// Without a session store, sessions aren't available
 		r, err := registry.New()

@@ -170,6 +170,33 @@ func Test_SessionStore(t *testing.T) {
 		assert.ErrorIs(t, err, llm.ErrNotFound)
 	})
 
+	t.Run("Snapshot", func(t *testing.T) {
+		// A session which is returned, or changed, doesn't share what's
+		// stored, so it's changed only when it's put
+		store, err := newSessionStore(&memDefaults{})
+		require.NoError(t, err)
+		created, err := store.Create(ctx, schema.SessionMeta{GeneratorMeta: schema.GeneratorMeta{
+			System: types.Ptr("Be brief"),
+			Tools:  []string{"memory:*"},
+			Opt:    map[string]json.RawMessage{"temperature": json.RawMessage(`0.5`)},
+		}})
+		require.NoError(t, err)
+		*created.System = "Changed"
+		created.Opt["temperature"] = json.RawMessage(`1`)
+		created.Tools[0] = "changed:*"
+
+		got, err := store.Get(ctx, created.ID)
+		require.NoError(t, err)
+		assert.Equal(t, "Be brief", types.Value(got.System))
+		assert.JSONEq(t, `0.5`, string(got.Opt["temperature"]))
+		assert.Equal(t, []string{"memory:*"}, got.Tools)
+
+		*got.System = "Changed again"
+		again, err := store.Get(ctx, created.ID)
+		require.NoError(t, err)
+		assert.Equal(t, "Be brief", types.Value(again.System))
+	})
+
 	t.Run("NoDefaults", func(t *testing.T) {
 		_, err := newSessionStore(nil)
 		assert.ErrorIs(t, err, llm.ErrBadParameter)

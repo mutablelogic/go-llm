@@ -183,11 +183,17 @@ func (s *sessionStore) read() ([]schema.Session, error) {
 }
 
 // write sets the sessions in the defaults, in order of their identifiers,
-// or removes them, when there are none. The caller holds the lock.
+// or removes them, when there are none. They're set as JSON, so the
+// defaults keep a snapshot, which sessions the caller has, or changes,
+// don't share. The caller holds the lock.
 func (s *sessionStore) write(list []schema.Session) error {
 	if len(list) == 0 {
 		return s.defaults.Set(sessionsKey, nil)
 	}
 	slices.SortFunc(list, func(a, b schema.Session) int { return a.ID.Compare(b.ID) })
-	return s.defaults.Set(sessionsKey, list)
+	data, err := json.Marshal(list)
+	if err != nil {
+		return err
+	}
+	return s.defaults.Set(sessionsKey, json.RawMessage(data))
 }

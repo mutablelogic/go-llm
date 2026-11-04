@@ -129,7 +129,9 @@ func (cmd *SessionUpdateCmd) Run(ctx server.Cmd) error {
 		return err
 	}
 	return withClient(ctx, "llm.SessionUpdateCmd", func(reqctx context.Context, client *httpclient.Client) error {
-		session, err := client.UpdateSession(reqctx, id, cmd.SessionMeta)
+		meta := cmd.SessionMeta
+		meta.Opt = quoteOpts(meta.Opt)
+		session, err := client.UpdateSession(reqctx, id, meta)
 		if err != nil {
 			return err
 		}
@@ -174,8 +176,10 @@ func sessionID(defaults interface{ GetString(string) string }, id uuid.UUID) (uu
 }
 
 // createMeta returns the settings of a session to create, with the default
-// model, when no model is given, so --model= creates one without a model
+// model, when no model is given, so --model= creates one without a model,
+// and options which aren't JSON as JSON strings
 func createMeta(defaults interface{ GetString(string) string }, meta schema.SessionMeta) schema.SessionMeta {
+	meta.Opt = quoteOpts(meta.Opt)
 	if meta.Model == nil {
 		if model := strings.TrimSpace(defaults.GetString(defaultModelKey)); model != "" {
 			meta.Model = types.Ptr(model)
