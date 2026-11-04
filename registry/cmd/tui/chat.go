@@ -41,7 +41,8 @@ type model struct {
 	input    textarea.Model
 	width    int
 	waiting  bool
-	streamed []piece
+	streamed []*group
+	rendered bool
 	err      error
 }
 
@@ -49,6 +50,14 @@ type model struct {
 type piece struct {
 	what llm.StreamType
 	text string
+}
+
+// group is the pieces of a reply of the same kind, which follow each other,
+// such as its thinking, and then its text, as they're streamed, which is
+// added to as they are, rather than joined again each time
+type group struct {
+	what llm.StreamType
+	text strings.Builder
 }
 
 // The messages of the interface
@@ -83,7 +92,12 @@ var (
 // it's quit, with escape or control-c: its messages are shown, and what's
 // typed is sent, with enter, and the model's reply is shown as it's
 // generated
-func Chat(ctx context.Context, client Client, id uuid.UUID) error {
+func Chat(parent context.Context, client Client, id uuid.UUID) error {
+	// A reply which is being waited for is cancelled when the interface is
+	// quit, so the server doesn't go on with it
+	ctx, cancel := context.WithCancel(parent)
+	defer cancel()
+
 	session, err := client.GetSession(ctx, id)
 	if err != nil {
 		return err
@@ -133,7 +147,7 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, cmd
 		}
 	case streamMsg:
-		m.streamed = append(m.streamed, piece(msg))
+		m.streamed = addPiece(m.streamed, piece(msg))
 		m.render()
 		return m, nil
 	case replyMsg:
@@ -142,7 +156,13 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.waiting, m.streamed, m.err = false, nil, msg.err
 		m.session.Messages = m.session.Messages[:msg.asked]
 		if msg.err != nil {
-			m.input.SetValue(msg.question)
+			// The question is typed again, unless the next one has been
+			// started, when it's shown with the error, so neither is lost
+			if strings.TrimSpace(m.input.Value()) == "" {
+				m.input.SetValue(msg.question)
+			} else {
+				m.err = fmt.Errorf("%w, so this wasn't sent: %s", msg.err, msg.question)
+			}
 		} else {
 			m.session.Messages = append(m.session.Messages, msg.response.Messages...)
 			m.session.Serial = msg.response.Serial
@@ -178,6 +198,7 @@ func (m *model) ask() tea.Cmd {
 	question := providerschema.MessageMeta{Sender: "user", Content: []providerschema.ContentBlock{{Text: types.Ptr(text)}}}
 	m.session.Messages = append(m.session.Messages, providerschema.Message{MessageMeta: question})
 	m.render()
+	m.history.GotoBottom()
 
 	// The question is shown as it's sent, and replaced by the session's
 	// messages, as they were stored, once the reply is complete. The reply
@@ -201,12 +222,13 @@ func (m *model) render() {
 	}
 	if len(m.streamed) > 0 {
 		b.WriteString(modelStyle.Render("Model") + "\n")
-		for _, p := range streamGroups(m.streamed) {
-			switch p.what {
+		for _, g := range m.streamed {
+			text := strings.Trim(g.text.String(), "\n")
+			switch g.what {
 			case llm.StreamText:
-				b.WriteString(m.wrap(lipgloss.NewStyle(), p.text) + "\n")
+				b.WriteString(m.wrap(lipgloss.NewStyle(), text) + "\n")
 			default:
-				b.WriteString(m.wrap(dimStyle, p.text) + "\n")
+				b.WriteString(m.wrap(dimStyle, text) + "\n")
 			}
 		}
 		b.WriteString("\n")
@@ -216,8 +238,15 @@ func (m *model) render() {
 	if m.err != nil {
 		b.WriteString(errorStyle.Render("Error: "+m.err.Error()) + "\n")
 	}
+	// The history follows its end, as the reply is streamed, when it was
+	// there, or it's the first time it's rendered, so it can be scrolled up
+	// to read earlier messages as the reply is streamed
+	follow := !m.rendered || m.history.AtBottom()
 	m.history.SetContent(b.String())
-	m.history.GotoBottom()
+	if follow {
+		m.history.GotoBottom()
+	}
+	m.rendered = true
 }
 
 // renderMessage renders a message: from the user, as it is, from the model,
@@ -288,23 +317,17 @@ func (m *model) status() string {
 ///////////////////////////////////////////////////////////////////////////////
 // PRIVATE FUNCTIONS
 
-// streamGroups returns the pieces of a reply, as they're streamed, with the
-// pieces of the same kind which follow each other, such as thinking, and
-// then text, joined, so each is shown on lines of its own, apart from the
-// tools' log lines, which are each a line of their own
-func streamGroups(pieces []piece) []piece {
-	var groups []piece
-	for _, p := range pieces {
-		if n := len(groups); n > 0 && groups[n-1].what == p.what && p.what != llm.StreamLog {
-			groups[n-1].text += p.text
-			continue
-		}
-		groups = append(groups, piece{what: p.what, text: strings.TrimLeft(p.text, "\n")})
+// addPiece adds the piece of a reply, as it's streamed, to the groups:
+// to the last, when it's of the same kind, apart from a tool's log line,
+// which is a group of its own, or to a new group, when it isn't
+func addPiece(groups []*group, p piece) []*group {
+	if n := len(groups); n > 0 && groups[n-1].what == p.what && p.what != llm.StreamLog {
+		groups[n-1].text.WriteString(p.text)
+		return groups
 	}
-	for i := range groups {
-		groups[i].text = strings.TrimRight(groups[i].text, "\n")
-	}
-	return groups
+	g := &group{what: p.what}
+	g.text.WriteString(p.text)
+	return append(groups, g)
 }
 
 // oneLine returns the text on one line, of at most the characters

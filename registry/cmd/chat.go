@@ -1,7 +1,9 @@
 package cmd
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
 	"os"
 	"strings"
@@ -32,8 +34,9 @@ type ChatCmd struct {
 // PUBLIC METHODS
 
 // Run asks the session's model the question, which runs the tools it calls,
-// and prints its reply, as it's generated, or once it's complete, and why it
-// stopped, when it didn't finish, and keeps the session as the default
+// and prints its reply, as it's generated, or once it's complete, or as
+// JSON, when the session has a schema, and why it stopped, when it didn't
+// finish, and keeps the session as the default
 func (cmd *ChatCmd) Run(ctx server.Cmd) error {
 	debug := ctx.IsDebug()
 	width := ctx.IsTerm()
@@ -60,7 +63,14 @@ func (cmd *ChatCmd) Run(ctx server.Cmd) error {
 	}
 
 	return withClient(ctx, "llm.ChatCmd", func(reqctx context.Context, client *httpclient.Client) error {
-		printer := newStreamPrinter(debug || !cmd.Stream, width)
+		// A reply with a schema is JSON, which is made once the model has
+		// replied, so isn't streamed
+		session, err := client.GetSession(reqctx, id)
+		if err != nil {
+			return err
+		}
+		hasSchema := len(bytes.TrimSpace(session.Schema)) > 0
+		printer := newStreamPrinter(debug || !cmd.Stream || hasSchema, width)
 		response, err := client.Chat(reqctx, id, schema.ChatRequest{
 			Messages: []providerschema.MessageMeta{message.MessageMeta},
 		}, printer.Stream())
@@ -86,7 +96,9 @@ func (cmd *ChatCmd) Run(ctx server.Cmd) error {
 			return nil
 		}
 		reply := response.Messages[len(response.Messages)-1]
-		if text := reply.Text(); text != "" && !printer.Streamed() {
+		if hasSchema && reply.Result == providerschema.ResultStop {
+			return printJSON(json.RawMessage(reply.Text()))
+		} else if text := reply.Text(); text != "" && !printer.Streamed() {
 			if err := printText(width, text); err != nil {
 				return err
 			}

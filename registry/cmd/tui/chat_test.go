@@ -3,6 +3,7 @@ package tui
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strings"
 	"testing"
 	"uuid"
@@ -132,22 +133,62 @@ func Test_Chat(t *testing.T) {
 	})
 }
 
-func Test_StreamGroups(t *testing.T) {
-	// Pieces of the same kind are joined, a change of kind is a new group,
-	// and log lines are each their own
-	groups := streamGroups([]piece{
+func Test_AddPiece(t *testing.T) {
+	// Pieces of the same kind are added to their group, a change of kind is
+	// a new group, and log lines are each their own
+	var groups []*group
+	for _, p := range []piece{
 		{llm.StreamThinking, "Let me "}, {llm.StreamThinking, "think.\n"},
 		{llm.StreamText, "\nThe answer "}, {llm.StreamText, "is 42."},
 		{llm.StreamLog, "tool: fetching"}, {llm.StreamLog, "tool: done"},
 		{llm.StreamText, "Done."},
-	})
+	} {
+		groups = addPiece(groups, p)
+	}
+	var got []piece
+	for _, g := range groups {
+		got = append(got, piece{g.what, g.text.String()})
+	}
 	assert.Equal(t, []piece{
-		{llm.StreamThinking, "Let me think."},
-		{llm.StreamText, "The answer is 42."},
+		{llm.StreamThinking, "Let me think.\n"},
+		{llm.StreamText, "\nThe answer is 42."},
 		{llm.StreamLog, "tool: fetching"},
 		{llm.StreamLog, "tool: done"},
 		{llm.StreamText, "Done."},
-	}, groups)
+	}, got)
+}
+
+func Test_Draft(t *testing.T) {
+	// A question which isn't sent doesn't replace the next one, which has
+	// been started, and is shown with the error
+	m, _ := newTestModel(fakeClient{err: errors.New("unavailable")}, &schema.Session{ID: uuid.New()})
+	reply := ask(t, m, "First question")
+	m.input.SetValue("Next question")
+	m.Update(reply)
+	assert.Equal(t, "Next question", m.input.Value())
+	assert.Contains(t, m.history.View(), "First question")
+	assert.Contains(t, m.history.View(), "unavailable")
+}
+
+func Test_Scroll(t *testing.T) {
+	// The history follows the reply as it's streamed, unless it's been
+	// scrolled up, when it stays where it is
+	var messages []providerschema.Message
+	for i := range 50 {
+		messages = append(messages, providerschema.Message{MessageMeta: providerschema.MessageMeta{Sender: "user", Content: []providerschema.ContentBlock{{Text: types.Ptr(fmt.Sprint("Question ", i))}}}})
+	}
+	m, _ := newTestModel(fakeClient{}, &schema.Session{ID: uuid.New(), Messages: messages})
+	assert.True(t, m.history.AtBottom())
+
+	m.waiting = true
+	m.Update(streamMsg{llm.StreamText, "Streaming"})
+	assert.True(t, m.history.AtBottom())
+
+	m.Update(tea.KeyMsg{Type: tea.KeyPgUp})
+	offset := m.history.YOffset
+	require.False(t, m.history.AtBottom())
+	m.Update(streamMsg{llm.StreamText, " more"})
+	assert.Equal(t, offset, m.history.YOffset)
 }
 
 func Test_Wrap(t *testing.T) {
