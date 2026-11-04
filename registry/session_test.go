@@ -167,8 +167,11 @@ func Test_Sessions(t *testing.T) {
 		session, err := r.UpdateSession(ctx, created.ID, other)
 		require.NoError(t, err)
 		assert.Equal(t, schema.SessionMeta{GeneratorMeta: schema.GeneratorMeta{Model: types.Ptr("scripted:other"), System: types.Ptr("Be brief"), Tools: []string{"memory:*"}}}, session.SessionMeta)
-		assert.Len(t, session.Messages, 1)
+		assert.Empty(t, session.Messages)
 		assert.Equal(t, uint64(3), session.Serial)
+		messages, err := r.ListSessionMessages(ctx, created.ID, schema.MessageListRequest{})
+		require.NoError(t, err)
+		assert.Equal(t, uint(1), messages.Count)
 
 		// An update which sets nothing isn't valid
 		_, err = r.UpdateSession(ctx, created.ID, schema.SessionMeta{})
@@ -234,5 +237,108 @@ func Test_Sessions(t *testing.T) {
 
 		_, err = registry.New(registry.WithSessionStore(nil))
 		assert.ErrorIs(t, err, llm.ErrBadParameter)
+	})
+}
+
+func Test_Chat(t *testing.T) {
+	ctx := context.Background()
+	hi := func(text string) []llm.Message { return []llm.Message{user(t, text)} }
+	newChat := func(t *testing.T, replies ...*providerschema.Message) (*registry.Registry, *test.SessionStore, *scripted) {
+		t.Helper()
+		store := test.NewSessionStore()
+		r, err := registry.New(registry.WithSessionStore(store), registry.WithToolkit(test.NewToolkit(t)))
+		require.NoError(t, err)
+		p := newScripted(replies...)
+		require.NoError(t, r.Add("", p))
+		return r, store, p
+	}
+	meta := schema.SessionMeta{GeneratorMeta: schema.GeneratorMeta{Model: types.Ptr("model"), System: types.Ptr("Be brief")}}
+
+	t.Run("Turns", func(t *testing.T) {
+		// Each turn's messages, and the reply, are added to the session, with
+		// the usage, and the next turn sends them
+		r, store, p := newChat(t, text("Hello"), text("Still here"))
+		session, err := r.CreateSession(ctx, meta)
+		require.NoError(t, err)
+
+		response, err := r.Chat(ctx, session.ID, hi("Hi"), nil)
+		require.NoError(t, err)
+		assert.Equal(t, session.ID, response.ID)
+		assert.Equal(t, uint64(2), response.Serial)
+		require.Len(t, response.Messages, 2)
+		assert.Equal(t, "Hello", response.Messages[1].Text())
+
+		response, err = r.Chat(ctx, session.ID, hi("Are you?"), nil)
+		require.NoError(t, err)
+		assert.Equal(t, uint64(3), response.Serial)
+		require.Len(t, p.asked, 2)
+		require.Len(t, p.asked[1].messages, 3)
+		assert.Equal(t, "Hi", p.asked[1].messages[0].Text())
+		assert.Equal(t, "Hello", p.asked[1].messages[1].Text())
+		system, _ := llm.GetOpt[string](p.asked[1].opts, llm.SystemPromptKey)
+		assert.Equal(t, "Be brief", system)
+
+		// The session has every message, each with its tokens, and the usage
+		// of both turns, and the tokens of its conversation, as of the last
+		stored, err := store.Get(ctx, session.ID)
+		require.NoError(t, err)
+		require.Len(t, stored.Messages, 4)
+		for _, message := range stored.Messages {
+			assert.NotZero(t, message.Tokens)
+		}
+		assert.Equal(t, "Still here", stored.Messages[3].Text())
+		assert.Equal(t, llm.Usage{InputTokens: 20, OutputTokens: 10}, stored.Usage.Usage)
+		assert.Equal(t, response.Usage.Input, stored.Usage.Input)
+		assert.Equal(t, uint(10), stored.Usage.Output)
+	})
+
+	t.Run("Stream", func(t *testing.T) {
+		r, _, _ := newChat(t, text("Hello"))
+		session, err := r.CreateSession(ctx, meta)
+		require.NoError(t, err)
+		var streamed string
+		_, err = r.Chat(ctx, session.ID, hi("Hi"), func(_ llm.StreamType, text string) { streamed += text })
+		require.NoError(t, err)
+		assert.Equal(t, "Hello", streamed)
+	})
+
+	t.Run("Conflict", func(t *testing.T) {
+		// The session is changed as the model replies, so the reply isn't
+		// stored
+		r, store, _ := newChat(t, text("Hello"))
+		session, err := r.CreateSession(ctx, meta)
+		require.NoError(t, err)
+		_, err = r.Chat(ctx, session.ID, hi("Hi"), func(llm.StreamType, string) {
+			_, err := r.UpdateSession(ctx, session.ID, schema.SessionMeta{GeneratorMeta: schema.GeneratorMeta{System: types.Ptr("Be thorough")}})
+			require.NoError(t, err)
+		})
+		assert.ErrorIs(t, err, llm.ErrConflict)
+		stored, err := store.Get(ctx, session.ID)
+		require.NoError(t, err)
+		assert.Empty(t, stored.Messages)
+		assert.Equal(t, "Be thorough", types.Value(stored.System))
+	})
+
+	t.Run("NoModel", func(t *testing.T) {
+		// A session without a model can't be chatted with
+		r, store, p := newChat(t, text("Never"))
+		session, err := r.CreateSession(ctx, schema.SessionMeta{})
+		require.NoError(t, err)
+		_, err = r.Chat(ctx, session.ID, hi("Hi"), nil)
+		assert.ErrorIs(t, err, llm.ErrBadParameter)
+		assert.Empty(t, p.asked)
+		stored, err := store.Get(ctx, session.ID)
+		require.NoError(t, err)
+		assert.Empty(t, stored.Messages)
+	})
+
+	t.Run("Errors", func(t *testing.T) {
+		r, _, _ := newChat(t)
+		_, err := r.Chat(ctx, uuid.New(), hi("Hi"), nil)
+		assert.ErrorIs(t, err, llm.ErrNotFound)
+		noStore, err := registry.New()
+		require.NoError(t, err)
+		_, err = noStore.Chat(ctx, uuid.New(), hi("Hi"), nil)
+		assert.ErrorIs(t, err, llm.ErrServiceUnavailable)
 	})
 }

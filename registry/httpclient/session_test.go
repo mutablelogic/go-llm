@@ -4,12 +4,14 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
+	"strings"
 	"testing"
 	"uuid"
 
 	// Packages
 	llm "github.com/mutablelogic/go-llm"
 	eliza "github.com/mutablelogic/go-llm/provider/eliza"
+	providerschema "github.com/mutablelogic/go-llm/provider/schema"
 	registry "github.com/mutablelogic/go-llm/registry"
 	httpclient "github.com/mutablelogic/go-llm/registry/httpclient"
 	schema "github.com/mutablelogic/go-llm/registry/schema"
@@ -103,4 +105,48 @@ func Test_SessionsNoStore(t *testing.T) {
 	client := newSessionClient(t, false)
 	_, err := client.ListSessions(context.Background(), schema.SessionListRequest{})
 	assert.Equal(t, http.StatusServiceUnavailable, status(t, err))
+}
+
+func Test_Chat(t *testing.T) {
+	// The question, and the reply, are added to the session, with and
+	// without streaming
+	ctx := context.Background()
+	client := newSessionClient(t, true)
+	session, err := client.CreateSession(ctx, schema.SessionMeta{GeneratorMeta: schema.GeneratorMeta{Model: types.Ptr(eliza.ModelName)}})
+	require.NoError(t, err)
+	question := func(text string) schema.ChatRequest {
+		return schema.ChatRequest{Messages: []providerschema.MessageMeta{{Sender: "user", Content: []providerschema.ContentBlock{{Text: types.Ptr(text)}}}}}
+	}
+
+	response, err := client.Chat(ctx, session.ID, question("Hello"), nil)
+	require.NoError(t, err)
+	assert.Equal(t, session.ID, response.ID)
+	require.Len(t, response.Messages, 2)
+	reply := response.Messages[1].Text()
+	assert.NotEmpty(t, reply)
+
+	var streamed string
+	response, err = client.Chat(ctx, session.ID, question("I feel fine"), func(_ llm.StreamType, text string) { streamed += text })
+	require.NoError(t, err)
+	assert.Equal(t, uint64(3), response.Serial)
+	require.Len(t, response.Messages, 2)
+	assert.Equal(t, response.Messages[1].Text(), strings.TrimSpace(streamed))
+
+	got, err := client.GetSession(ctx, session.ID)
+	require.NoError(t, err)
+	assert.Empty(t, got.Messages)
+	messages, err := client.ListSessionMessages(ctx, session.ID, schema.MessageListRequest{})
+	require.NoError(t, err)
+	assert.Equal(t, uint(4), messages.Count)
+	replies, err := client.ListSessionMessages(ctx, session.ID, schema.MessageListRequest{Role: "assistant", Limit: types.Ptr(uint(1))})
+	require.NoError(t, err)
+	assert.Equal(t, uint(2), replies.Count)
+	require.Len(t, replies.Body, 1)
+	assert.Equal(t, reply, replies.Body[0].Text())
+
+	// Errors
+	_, err = client.Chat(ctx, session.ID, schema.ChatRequest{}, nil)
+	assert.ErrorIs(t, err, llm.ErrBadParameter)
+	_, err = client.Chat(ctx, uuid.New(), question("Hello"), nil)
+	assert.Equal(t, http.StatusNotFound, status(t, err))
 }

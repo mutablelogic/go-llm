@@ -8,6 +8,7 @@ import (
 	"uuid"
 
 	// Packages
+	providerschema "github.com/mutablelogic/go-llm/provider/schema"
 	httpclient "github.com/mutablelogic/go-llm/registry/httpclient"
 	schema "github.com/mutablelogic/go-llm/registry/schema"
 	server "github.com/mutablelogic/go-server"
@@ -21,6 +22,7 @@ import (
 type SessionCommands struct {
 	SessionList   SessionListCmd   `cmd:"" name:"sessions" help:"List the sessions, most recently modified first." group:"LLM SESSIONS"`
 	SessionGet    SessionGetCmd    `cmd:"" name:"session" help:"Get a session, with its messages, or the default session, and make it the default." group:"LLM SESSIONS"`
+	SessionMsgs   SessionMsgsCmd   `cmd:"" name:"session-messages" help:"List a session's messages, or the default session's, oldest first, and make it the default." group:"LLM SESSIONS"`
 	SessionCreate SessionCreateCmd `cmd:"" name:"session-create" help:"Create a session, with how its model is asked, or the default model, and make it the default." group:"LLM SESSIONS"`
 	SessionUpdate SessionUpdateCmd `cmd:"" name:"session-update" help:"Change a session's settings, or the default session's, and make it the default: those which are given are changed, and the rest kept. An empty value, such as --tools=, clears one, --schema=null clears the schema, and --opt key=null removes an option." group:"LLM SESSIONS"`
 	SessionDelete SessionDeleteCmd `cmd:"" name:"session-delete" help:"Delete a session." group:"LLM SESSIONS"`
@@ -35,6 +37,15 @@ type SessionListCmd struct {
 // identifier, and is then the default
 type SessionGetCmd struct {
 	ID uuid.UUID `arg:"" name:"id" optional:"" help:"Session identifier, which is a UUID, or the default session."`
+}
+
+// SessionMsgsCmd lists the messages of a session, which is the default
+// session when there's no identifier, and is then the default
+type SessionMsgsCmd struct {
+	ID     uuid.UUID `arg:"" name:"id" optional:"" help:"Session identifier, which is a UUID, or the default session."`
+	Role   string    `name:"role" help:"List only the messages of this role, such as user, assistant or tool." optional:""`
+	Offset uint      `name:"offset" help:"Messages to skip." optional:""`
+	Limit  *uint     `name:"limit" help:"Most messages to list." optional:""`
 }
 
 // SessionCreateCmd creates a session with the settings which are given, and
@@ -108,6 +119,37 @@ func (cmd *SessionGetCmd) Run(ctx server.Cmd) error {
 		}
 		fmt.Println(session)
 		return ctx.Set(defaultSessionKey, session.ID.String())
+	})
+}
+
+func (cmd *SessionMsgsCmd) Run(ctx server.Cmd) error {
+	debug := ctx.IsDebug()
+	id, err := sessionID(ctx, cmd.ID)
+	if err != nil {
+		return err
+	}
+	return withClient(ctx, "llm.SessionMsgsCmd", func(reqctx context.Context, client *httpclient.Client) error {
+		list, err := client.ListSessionMessages(reqctx, id, schema.MessageListRequest{Role: cmd.Role, Offset: cmd.Offset, Limit: cmd.Limit})
+		if err != nil {
+			return err
+		}
+		if err := ctx.Set(defaultSessionKey, id.String()); err != nil {
+			return err
+		}
+
+		// With debugging, the response
+		if debug {
+			fmt.Println(list)
+			return nil
+		}
+
+		// Otherwise each message, and a summary
+		for _, message := range list.Body {
+			printMessage(message)
+		}
+		summary := tui.TableSummary("messages", list.Count, uint(len(list.Body)), uint64(cmd.Offset), nil)
+		_, err = summary.Write(os.Stdout)
+		return err
 	})
 }
 
@@ -186,4 +228,32 @@ func createMeta(defaults interface{ GetString(string) string }, meta schema.Sess
 		}
 	}
 	return meta
+}
+
+// printMessage prints a message: its role, and its text, thinking, the tools
+// it called, and their results, a line each
+func printMessage(message providerschema.Message) {
+	fmt.Printf("[%s]", message.Role())
+	if message.Tokens > 0 {
+		fmt.Printf(" %d tokens", message.Tokens)
+	}
+	if message.Result != "" {
+		fmt.Printf(" %s", message.Result)
+	}
+	fmt.Println()
+	for _, block := range message.Content {
+		switch {
+		case block.Text != nil && strings.TrimSpace(*block.Text) != "":
+			fmt.Println(strings.TrimSpace(*block.Text))
+		case block.Thinking != nil && strings.TrimSpace(*block.Thinking) != "":
+			fmt.Println("(thinking)", strings.TrimSpace(*block.Thinking))
+		case block.ToolCall != nil:
+			fmt.Printf("→ %s(%s)\n", block.ToolCall.Name, string(block.ToolCall.Input))
+		case block.ToolResult != nil:
+			fmt.Printf("← %s: %s\n", block.ToolResult.Name, string(block.ToolResult.Content))
+		case block.Resource != nil:
+			fmt.Printf("(attachment %s, %d bytes)\n", block.Resource.ContentType, len(block.Resource.Data))
+		}
+	}
+	fmt.Println()
 }

@@ -29,14 +29,15 @@ type SessionMeta struct {
 // Session is a conversation with a model, as it's stored: its identifier,
 // and serial, which its store sets, and changes each time it's stored, so a
 // change is made to the session as it was last seen, its settings, its
-// messages, each with its tokens, and its usage
+// messages, each with its tokens, and its usage. The registry returns a
+// session without its messages, which are listed on their own.
 type Session struct {
 	ID       uuid.UUID `json:"id" readonly:"" help:"Identifier of the session, which its store sets" example:"3b241101-e2bb-4255-8caf-4136c566a962"`
 	Serial   uint64    `json:"serial,omitempty" readonly:"" help:"Serial of the session, which its store changes each time it's stored" example:"3"`
 	Created  time.Time `json:"created,omitzero" readonly:"" help:"When the session was created"`
 	Modified time.Time `json:"modified,omitzero" readonly:"" help:"When the session was last stored"`
 	SessionMeta
-	Messages []providerschema.Message `json:"messages,omitzero" help:"Messages of the conversation, each with its tokens"`
+	Messages []providerschema.Message `json:"messages,omitzero" help:"Messages of the conversation, each with its tokens, as it's stored, which are listed on their own"`
 	Usage    SessionUsage             `json:"usage,omitzero" help:"Tokens used by every request to the model, and of the conversation, as of the last"`
 }
 
@@ -64,6 +65,36 @@ type SessionList struct {
 	SessionListRequest
 	Count uint      `json:"count" help:"How many sessions there are" example:"42"`
 	Body  []Session `json:"body,omitempty" help:"The sessions, without their messages"`
+}
+
+// MessageListRequest is a request to list a session's messages, oldest
+// first, of a role, or every role, from the offset, and at most the limit of
+// them, or all of them, when there's no limit
+type MessageListRequest struct {
+	Role   string `json:"role,omitempty" help:"Returns only the messages of this role, such as user, assistant or tool" enum:"user,assistant,system,thinking,tool" example:"assistant" optional:""`
+	Offset uint   `json:"offset,omitempty" help:"Messages to skip" example:"0" optional:""`
+	Limit  *uint  `json:"limit,omitempty" help:"Most messages to return" example:"10" optional:""`
+}
+
+// MessageList is a list of a session's messages, oldest first, and how many
+// there are, of the role
+type MessageList struct {
+	MessageListRequest
+	Count uint                     `json:"count" help:"How many messages there are, of the role" example:"42"`
+	Body  []providerschema.Message `json:"body,omitempty" help:"The messages, each with its tokens"`
+}
+
+// ChatRequest is the messages to add to a session, which its model replies to
+type ChatRequest struct {
+	Messages []providerschema.MessageMeta `json:"messages" help:"Messages to add to the session, such as a question, which the session's model replies to"`
+}
+
+// ChatResponse is what was added to a session, which is stored, with its
+// identifier, and its serial, as it was stored
+type ChatResponse struct {
+	ID     uuid.UUID `json:"id" help:"Identifier of the session" example:"3b241101-e2bb-4255-8caf-4136c566a962"`
+	Serial uint64    `json:"serial" help:"Serial of the session, as it was stored" example:"4"`
+	SessionResponse
 }
 
 // SessionResponse is what's added to a session's conversation: the
@@ -97,6 +128,22 @@ func (s SessionListRequest) String() string {
 
 func (s SessionList) String() string {
 	return types.Stringify(s)
+}
+
+func (r MessageListRequest) String() string {
+	return types.Stringify(r)
+}
+
+func (r MessageList) String() string {
+	return types.Stringify(r)
+}
+
+func (r ChatRequest) String() string {
+	return types.Stringify(r)
+}
+
+func (r ChatResponse) String() string {
+	return types.Stringify(r)
 }
 
 func (s SessionResponse) String() string {
@@ -169,6 +216,21 @@ func (s SessionMeta) Merge(update SessionMeta) SessionMeta {
 // Query returns the request as the parameters of a URL's query
 func (r SessionListRequest) Query() url.Values {
 	values := url.Values{}
+	if r.Offset > 0 {
+		values.Set("offset", strconv.FormatUint(uint64(r.Offset), 10))
+	}
+	if r.Limit != nil {
+		values.Set("limit", strconv.FormatUint(uint64(*r.Limit), 10))
+	}
+	return values
+}
+
+// Query returns the request as the parameters of a URL's query
+func (r MessageListRequest) Query() url.Values {
+	values := url.Values{}
+	if r.Role != "" {
+		values.Set("role", r.Role)
+	}
 	if r.Offset > 0 {
 		values.Set("offset", strconv.FormatUint(uint64(r.Offset), 10))
 	}

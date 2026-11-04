@@ -7,6 +7,7 @@ import (
 
 	// Packages
 	llm "github.com/mutablelogic/go-llm"
+	providerschema "github.com/mutablelogic/go-llm/provider/schema"
 	registry "github.com/mutablelogic/go-llm/registry"
 	schema "github.com/mutablelogic/go-llm/registry/schema"
 	httprequest "github.com/mutablelogic/go-server/pkg/httprequest"
@@ -32,6 +33,7 @@ func sessionHandlers(r *registry.Registry, router *httprouter.Router, documentat
 	return errors.Join(
 		sessionCreateListHandlers(r, router, documentation),
 		sessionGetUpdateDeleteHandlers(r, router, documentation),
+		sessionMessagesHandlers(r, router, documentation),
 	)
 }
 
@@ -98,10 +100,52 @@ func sessionGetUpdateDeleteHandlers(reg *registry.Registry, router *httprouter.R
 		}, func(op httprequest.PathOperation) {
 			op.Summary("Get Session")
 			op.Description(documentation.Section(3, "GET /llm/session/{id}").Body)
-			op.JSONResponse(http.StatusOK, jsonschema.MustFor[schema.Session](), "Session, with its messages")
+			op.JSONResponse(http.StatusOK, jsonschema.MustFor[schema.Session](), "Session, without its messages")
 			op.ErrorResponse(http.StatusBadRequest, "The identifier isn't a UUID")
 			op.ErrorResponse(http.StatusNotFound, "Session not found")
 			op.ErrorResponse(http.StatusServiceUnavailable, "The server has no session store")
+		})
+
+		// POST, adding messages to the session, which its model replies to
+		path.Post(func(w http.ResponseWriter, r *http.Request) {
+			// The body is limited, as messages can have images, which are
+			// read into memory
+			var req schema.ChatRequest
+			id, err := pathSessionID(r)
+			if err != nil {
+				httpresponse.Error(w, err)
+			} else if err := limitBody(w, r, schema.AskBodyLimit); err != nil {
+				httpresponse.Error(w, err)
+			} else if err := httprequest.Read(r, &req); err != nil {
+				httpresponse.Error(w, httpresponse.ErrBadRequest.Withf("%w", err))
+			} else {
+				messages := make([]llm.Message, len(req.Messages))
+				for i := range req.Messages {
+					messages[i] = &providerschema.Message{MessageMeta: req.Messages[i]}
+				}
+				respond(w, r, id.String(), func(write streamWriteFn) (*schema.ChatResponse, error) {
+					var stream llm.GeneratorStreamFn
+					if write != nil {
+						stream = func(what llm.StreamType, text string) {
+							write(string(what), schema.StreamEvent{Text: text})
+						}
+					}
+					return reg.Chat(r.Context(), id, messages, stream)
+				})
+			}
+		}, func(op httprequest.PathOperation) {
+			op.Summary("Chat")
+			op.Description(documentation.Section(3, "POST /llm/session/{id}").Body)
+			op.RequestBody(jsonschema.MustFor[schema.ChatRequest]())
+			op.JSONResponse(http.StatusOK, jsonschema.MustFor[schema.ChatResponse](), "The messages added to the session, with the model's reply, and the tokens used, or a stream of server-sent events when text/event-stream is accepted")
+			op.TextStreamResponse(http.StatusOK)
+			op.ErrorResponse(http.StatusBadRequest, "Invalid request body, no messages, an identifier which isn't a UUID, a session without a model, or a message the provider can't send")
+			op.ErrorResponse(http.StatusNotFound, "Session, or its model or a tool, not found")
+			op.ErrorResponse(http.StatusNotAcceptable, "The response can't be any of the accepted types")
+			op.ErrorResponse(http.StatusConflict, "The session was changed as the model replied, so the reply isn't stored")
+			op.ErrorResponse(http.StatusRequestEntityTooLarge, "The request body is larger than 32 MiB")
+			op.ErrorResponse(http.StatusNotImplemented, "The model's provider can't generate messages, or the model is known not to, or not to call tools, think, or see images, when it's asked to")
+			op.ErrorResponse(http.StatusServiceUnavailable, "The server has no session store, or the model couldn't reply")
 		})
 
 		// PATCH
@@ -145,6 +189,35 @@ func sessionGetUpdateDeleteHandlers(reg *registry.Registry, router *httprouter.R
 			op.ErrorResponse(http.StatusBadRequest, "The identifier isn't a UUID")
 			op.ErrorResponse(http.StatusNotFound, "Session not found")
 			op.ErrorResponse(http.StatusConflict, "The session was changed as it was deleted")
+			op.ErrorResponse(http.StatusServiceUnavailable, "The server has no session store")
+		})
+	})
+}
+
+func sessionMessagesHandlers(reg *registry.Registry, router *httprouter.Router, documentation *openapi.MarkdownDoc) error {
+	return router.Register("llm/session/{id}/messages", jsonschema.MustFor[sessionID](), func(path httprequest.PathItem) {
+		path.Tag("Sessions")
+
+		// GET
+		path.Get(func(w http.ResponseWriter, r *http.Request) {
+			var req schema.MessageListRequest
+			id, err := pathSessionID(r)
+			if err != nil {
+				httpresponse.Error(w, err)
+			} else if err := httprequest.Query(r.URL.Query(), &req); err != nil {
+				httpresponse.Error(w, httpresponse.ErrBadRequest.With(err.Error()))
+			} else if list, err := reg.ListSessionMessages(r.Context(), id, req); err != nil {
+				httpresponse.Error(w, llm.HTTPErr(err), id.String())
+			} else {
+				httpresponse.JSON(w, http.StatusOK, httprequest.Indent(r), list)
+			}
+		}, func(op httprequest.PathOperation) {
+			op.Summary("List Session Messages")
+			op.Description(documentation.Section(3, "GET /llm/session/{id}/messages").Body)
+			op.Query(jsonschema.MustFor[schema.MessageListRequest]())
+			op.JSONResponse(http.StatusOK, jsonschema.MustFor[schema.MessageList](), "List of the session's messages, oldest first")
+			op.ErrorResponse(http.StatusBadRequest, "Invalid request, or an identifier which isn't a UUID")
+			op.ErrorResponse(http.StatusNotFound, "Session not found")
 			op.ErrorResponse(http.StatusServiceUnavailable, "The server has no session store")
 		})
 	})
