@@ -79,3 +79,68 @@ func Test_SessionID(t *testing.T) {
 	_, err = parser.Parse([]string{"session", "not-a-uuid"})
 	assert.Error(t, err)
 }
+
+// defaults are the command's defaults, in memory
+type defaults map[string]string
+
+func (d defaults) GetString(key string) string { return d[key] }
+
+func Test_DefaultSession(t *testing.T) {
+	id := uuid.New()
+
+	t.Run("Optional", func(t *testing.T) {
+		// The identifier can be left out of session and session-update, but
+		// not session-delete
+		cmds := parseSession(t, "session")
+		assert.Equal(t, uuid.Nil(), cmds.SessionGet.ID)
+		cmds = parseSession(t, "session-update", "--system", "Be brief")
+		assert.Equal(t, uuid.Nil(), cmds.SessionUpdate.ID)
+		assert.Equal(t, "Be brief", types.Value(cmds.SessionUpdate.System))
+
+		var all SessionCommands
+		parser, err := kong.New(&all)
+		require.NoError(t, err)
+		_, err = parser.Parse([]string{"session-delete"})
+		assert.Error(t, err)
+	})
+
+	t.Run("Given", func(t *testing.T) {
+		// An identifier which is given is used
+		got, err := sessionID(defaults{defaultSessionKey: uuid.New().String()}, id)
+		require.NoError(t, err)
+		assert.Equal(t, id, got)
+	})
+
+	t.Run("Default", func(t *testing.T) {
+		// Without an identifier, the default session is used
+		got, err := sessionID(defaults{defaultSessionKey: id.String()}, uuid.Nil())
+		require.NoError(t, err)
+		assert.Equal(t, id, got)
+	})
+
+	t.Run("NoDefault", func(t *testing.T) {
+		// Without an identifier, or a default session, there's no session
+		_, err := sessionID(defaults{}, uuid.Nil())
+		assert.ErrorContains(t, err, "missing session")
+		_, err = sessionID(defaults{defaultSessionKey: "not-a-uuid"}, uuid.Nil())
+		assert.Error(t, err)
+	})
+}
+
+func Test_CreateMeta(t *testing.T) {
+	// A session is created with the default model, unless one is given, and
+	// an empty one has none
+	d := defaults{defaultModelKey: "eliza:eliza-1966-en"}
+	meta := createMeta(d, parseSession(t, "session-create").SessionCreate.SessionMeta)
+	assert.Equal(t, "eliza:eliza-1966-en", types.Value(meta.Model))
+
+	meta = createMeta(d, parseSession(t, "session-create", "--model", "ollama:llama3.2").SessionCreate.SessionMeta)
+	assert.Equal(t, "ollama:llama3.2", types.Value(meta.Model))
+
+	meta = createMeta(d, parseSession(t, "session-create", "--model=").SessionCreate.SessionMeta)
+	require.NotNil(t, meta.Model)
+	assert.Empty(t, *meta.Model)
+
+	meta = createMeta(defaults{}, parseSession(t, "session-create").SessionCreate.SessionMeta)
+	assert.Nil(t, meta.Model)
+}
