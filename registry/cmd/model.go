@@ -21,8 +21,8 @@ import (
 
 type ModelCommands struct {
 	ModelList   ModelListCmd   `cmd:"" name:"models" help:"List the models of the providers." group:"LLM MODELS"`
-	ModelGet    ModelGetCmd    `cmd:"" name:"model" help:"Get a model by name." group:"LLM MODELS"`
-	ModelLoad   ModelLoadCmd   `cmd:"" name:"model-load" help:"Load a model, with a provider which loads models, such as Ollama, which downloads it when it isn't stored." group:"LLM MODELS"`
+	ModelGet    ModelGetCmd    `cmd:"" name:"model" help:"Get a model by name, and make it the default model." group:"LLM MODELS"`
+	ModelLoad   ModelLoadCmd   `cmd:"" name:"model-load" help:"Load a model, with a provider which loads models, such as Ollama, which downloads it when it isn't stored, and make it the default model." group:"LLM MODELS"`
 	ModelDelete ModelDeleteCmd `cmd:"" name:"model-delete" help:"Delete a model, with a provider which deletes models, such as Ollama." group:"LLM MODELS"`
 	ModelUnload ModelUnloadCmd `cmd:"" name:"model-unload" help:"Unload a model from memory, keeping it stored, with a provider which loads models, such as Ollama." group:"LLM MODELS"`
 }
@@ -82,17 +82,19 @@ func (cmd *ModelListCmd) Run(ctx server.Cmd) error {
 	})
 }
 
+// Run gets the model, which is then the default model, by its canonical name
 func (cmd *ModelGetCmd) Run(ctx server.Cmd) error {
-	return withClient(ctx, "llm.ModelGetCmd", func(ctx context.Context, client *httpclient.Client) error {
-		model, err := client.GetModel(ctx, cmd.Name)
+	return withClient(ctx, "llm.ModelGetCmd", func(reqctx context.Context, client *httpclient.Client) error {
+		model, err := client.GetModel(reqctx, cmd.Name)
 		if err != nil {
 			return err
 		}
 		fmt.Println(model)
-		return nil
+		return ctx.Set(defaultModelKey, model.Canonical)
 	})
 }
 
+// Run loads the model, which is then the default model, by its canonical name
 func (cmd *ModelLoadCmd) Run(ctx server.Cmd) error {
 	// The progress is shown on one line, redrawn as it changes, so only on
 	// a terminal
@@ -107,8 +109,8 @@ func (cmd *ModelLoadCmd) Run(ctx server.Cmd) error {
 		}
 	}
 
-	return withClient(ctx, "llm.ModelLoadCmd", func(ctx context.Context, client *httpclient.Client) error {
-		model, err := client.LoadModel(ctx, schema.LoadModelRequest{
+	return withClient(ctx, "llm.ModelLoadCmd", func(reqctx context.Context, client *httpclient.Client) error {
+		model, err := client.LoadModel(reqctx, schema.LoadModelRequest{
 			Provider: cmd.Provider,
 			Name:     cmd.Name,
 		}, progress)
@@ -123,14 +125,15 @@ func (cmd *ModelLoadCmd) Run(ctx server.Cmd) error {
 		} else {
 			fmt.Println("Loaded model", model.Canonical)
 		}
-		return nil
+		return ctx.Set(defaultModelKey, model.Canonical)
 	})
 }
 
+// Run deletes the model, which isn't the default model, when it was
 func (cmd *ModelDeleteCmd) Run(ctx server.Cmd) error {
 	debug := ctx.IsDebug()
-	return withClient(ctx, "llm.ModelDeleteCmd", func(ctx context.Context, client *httpclient.Client) error {
-		model, err := client.DeleteModel(ctx, cmd.Name)
+	return withClient(ctx, "llm.ModelDeleteCmd", func(reqctx context.Context, client *httpclient.Client) error {
+		model, err := client.DeleteModel(reqctx, cmd.Name)
 		if err != nil {
 			return err
 		}
@@ -138,6 +141,9 @@ func (cmd *ModelDeleteCmd) Run(ctx server.Cmd) error {
 			fmt.Println(model)
 		} else {
 			fmt.Println("Deleted model", model.Canonical)
+		}
+		if ctx.GetString(defaultModelKey) == model.Canonical {
+			return ctx.Set(defaultModelKey, nil)
 		}
 		return nil
 	})
