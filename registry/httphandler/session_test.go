@@ -54,18 +54,37 @@ func Test_Sessions(t *testing.T) {
 		var created, session schema.Session
 		require.Equal(t, http.StatusCreated, do(t, server, http.MethodPost, "llm/session", map[string]any{"model": eliza.ModelName}, &created))
 
-		// A session with messages has them, when it's got
+		// A session is got without its messages, which are listed, oldest
+		// first, of a role, from an offset, and at most a limit of them
 		stored, err := store.Get(context.Background(), created.ID)
 		require.NoError(t, err)
-		stored.Messages = []providerschema.Message{{MessageMeta: providerschema.MessageMeta{Sender: "user", Content: []providerschema.ContentBlock{{Text: types.Ptr("Hi")}}}, Tokens: 4}}
+		says := func(role, text string, tokens uint64) providerschema.Message {
+			return providerschema.Message{MessageMeta: providerschema.MessageMeta{Sender: role, Content: []providerschema.ContentBlock{{Text: types.Ptr(text)}}}, Tokens: tokens}
+		}
+		stored.Messages = []providerschema.Message{says("user", "Hi", 4), says("assistant", "Hello", 5), says("user", "Again", 6), says("assistant", "Still here", 7)}
 		_, err = store.Put(context.Background(), stored)
 		require.NoError(t, err)
 
 		require.Equal(t, http.StatusOK, do(t, server, http.MethodGet, "llm/session/"+created.ID.String(), nil, &session))
 		assert.Equal(t, created.ID, session.ID)
-		require.Len(t, session.Messages, 1)
-		assert.Equal(t, "Hi", session.Messages[0].Text())
-		assert.Equal(t, uint64(4), session.Messages[0].Tokens)
+		assert.Empty(t, session.Messages)
+
+		var messages schema.MessageList
+		require.Equal(t, http.StatusOK, do(t, server, http.MethodGet, "llm/session/"+created.ID.String()+"/messages", nil, &messages))
+		assert.Equal(t, uint(4), messages.Count)
+		require.Len(t, messages.Body, 4)
+		assert.Equal(t, "Hi", messages.Body[0].Text())
+		assert.Equal(t, uint64(4), messages.Body[0].Tokens)
+
+		var replies schema.MessageList
+		require.Equal(t, http.StatusOK, do(t, server, http.MethodGet, "llm/session/"+created.ID.String()+"/messages?role=assistant&offset=1&limit=1", nil, &replies))
+		assert.Equal(t, uint(2), replies.Count)
+		require.Len(t, replies.Body, 1)
+		assert.Equal(t, "Still here", replies.Body[0].Text())
+
+		assert.Equal(t, http.StatusNotFound, do(t, server, http.MethodGet, "llm/session/"+uuid.New().String()+"/messages", nil, nil))
+		assert.Equal(t, http.StatusBadRequest, do(t, server, http.MethodGet, "llm/session/not-a-uuid/messages", nil, nil))
+		assert.Equal(t, http.StatusBadRequest, do(t, server, http.MethodGet, "llm/session/"+created.ID.String()+"/messages?limit=many", nil, nil))
 
 		assert.Equal(t, http.StatusNotFound, do(t, server, http.MethodGet, "llm/session/"+uuid.New().String(), nil, nil))
 		assert.Equal(t, http.StatusBadRequest, do(t, server, http.MethodGet, "llm/session/missing", nil, nil))
@@ -152,4 +171,39 @@ func Test_SessionsNoStore(t *testing.T) {
 	assert.Equal(t, http.StatusServiceUnavailable, do(t, server, http.MethodGet, "llm/session/"+uuid.New().String(), nil, nil))
 	assert.Equal(t, http.StatusServiceUnavailable, do(t, server, http.MethodPatch, "llm/session/"+uuid.New().String(), map[string]any{"model": eliza.ModelName}, nil))
 	assert.Equal(t, http.StatusServiceUnavailable, do(t, server, http.MethodDelete, "llm/session/"+uuid.New().String(), nil, nil))
+}
+
+func Test_Chat(t *testing.T) {
+	provider, err := eliza.New()
+	require.NoError(t, err)
+	server := test.NewServer(t, test.NewRegistry(t, []llm.Provider{provider}, registry.WithSessionStore(test.NewSessionStore())))
+	question := func(text string) map[string]any {
+		return map[string]any{"messages": []map[string]any{{"role": "user", "content": []map[string]any{{"text": text}}}}}
+	}
+
+	var session schema.Session
+	require.Equal(t, http.StatusCreated, do(t, server, http.MethodPost, "llm/session", map[string]any{"model": eliza.ModelName}, &session))
+
+	// The question, and the reply, are added to the session
+	var response schema.ChatResponse
+	require.Equal(t, http.StatusOK, do(t, server, http.MethodPost, "llm/session/"+session.ID.String(), question("Hello"), &response))
+	assert.Equal(t, session.ID, response.ID)
+	assert.Equal(t, uint64(2), response.Serial)
+	require.Len(t, response.Messages, 2)
+	assert.Equal(t, "assistant", response.Messages[1].Role())
+	assert.NotEmpty(t, response.Messages[1].Text())
+
+	var got schema.Session
+	require.Equal(t, http.StatusOK, do(t, server, http.MethodGet, "llm/session/"+session.ID.String(), nil, &got))
+	assert.NotZero(t, got.Usage.Output)
+	var messages schema.MessageList
+	require.Equal(t, http.StatusOK, do(t, server, http.MethodGet, "llm/session/"+session.ID.String()+"/messages", nil, &messages))
+	assert.Equal(t, uint(2), messages.Count)
+
+	// Errors
+	assert.Equal(t, http.StatusNotFound, do(t, server, http.MethodPost, "llm/session/"+uuid.New().String(), question("Hello"), nil))
+	assert.Equal(t, http.StatusBadRequest, do(t, server, http.MethodPost, "llm/session/not-a-uuid", question("Hello"), nil))
+	var noModel schema.Session
+	require.Equal(t, http.StatusCreated, do(t, server, http.MethodPost, "llm/session", map[string]any{}, &noModel))
+	assert.Equal(t, http.StatusBadRequest, do(t, server, http.MethodPost, "llm/session/"+noModel.ID.String(), question("Hello"), nil))
 }

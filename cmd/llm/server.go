@@ -3,6 +3,8 @@
 package main
 
 import (
+	"os"
+	"path/filepath"
 	// Packages
 	registry "github.com/mutablelogic/go-llm/registry"
 	registrycmd "github.com/mutablelogic/go-llm/registry/cmd"
@@ -47,7 +49,7 @@ func (runner *RunServer) Run(ctx server.Cmd) error {
 	if err != nil {
 		return err
 	}
-	sessions, err := newSessionStore(ctx)
+	sessions, err := newServerSessionStore(ctx)
 	if err != nil {
 		return err
 	}
@@ -64,4 +66,21 @@ func (runner *RunServer) Run(ctx server.Cmd) error {
 			return group.Wait()
 		}, registry.WithProviderStore(store), registry.WithSessionStore(sessions), registry.WithToolkit(tools))
 	})
+}
+
+// newServerSessionStore returns the store of the sessions, in files in the
+// directory of the command's defaults, rather than in the defaults, which a
+// client writes too, with the sessions which the defaults have moved to it
+func newServerSessionStore(ctx server.Cmd) (*sessionStore, error) {
+	cache, err := os.UserCacheDir()
+	if err != nil {
+		return nil, err
+	}
+	store, err := newSessionStore(filepath.Join(cache, ctx.Name()))
+	if err != nil {
+		return nil, err
+	} else if err := store.migrate(ctx); err != nil {
+		return nil, err
+	}
+	return store, nil
 }

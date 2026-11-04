@@ -5,7 +5,12 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"errors"
+	"io/fs"
+	"os"
+	"path/filepath"
 	"slices"
+	"strings"
 	"sync"
 	"time"
 	"uuid"
@@ -19,14 +24,15 @@ import (
 ///////////////////////////////////////////////////////////////////////////////
 // TYPES
 
-// sessionStore is a store of the registry's sessions in the command's
-// defaults, as a list of them, with their messages, in order of their
-// identifiers, under one key, so they're kept when the server restarts. As
-// each change writes every session, it's for a few sessions, rather than
-// many. It's safe to use concurrently.
+// sessionStore is a store of the registry's sessions in a directory, as a
+// file of each session, with its messages, as JSON, named by its identifier,
+// such as session-3b241101-e2bb-4255-8caf-4136c566a962.json, so they're kept
+// when the server restarts, and a change to a session writes only its file.
+// A file is written to a temporary file, which is renamed to it, so it's
+// never written partly. It's safe to use concurrently.
 type sessionStore struct {
-	mu       sync.Mutex
-	defaults defaults
+	mu  sync.Mutex
+	dir string
 }
 
 var _ registry.SessionStore = (*sessionStore)(nil)
@@ -34,39 +40,47 @@ var _ registry.SessionStore = (*sessionStore)(nil)
 ///////////////////////////////////////////////////////////////////////////////
 // GLOBALS
 
-// sessionsKey is the key of the defaults which the sessions are kept in
-const sessionsKey = "llm.sessions"
+const (
+	// sessionPrefix and sessionSuffix are of the name of a session's file
+	sessionPrefix = "session-"
+	sessionSuffix = ".json"
+
+	// sessionsKey is the key of the defaults which the sessions were kept in,
+	// which they're moved from to files
+	sessionsKey = "llm.sessions"
+)
 
 ///////////////////////////////////////////////////////////////////////////////
 // LIFECYCLE
 
-// newSessionStore returns a store of the registry's sessions in the defaults
-func newSessionStore(d defaults) (registry.SessionStore, error) {
-	if d == nil {
-		return nil, llm.ErrBadParameter.With("missing defaults")
+// newSessionStore returns a store of the registry's sessions in the
+// directory, which is created, when it doesn't exist
+func newSessionStore(dir string) (*sessionStore, error) {
+	if strings.TrimSpace(dir) == "" {
+		return nil, llm.ErrBadParameter.With("missing directory")
+	} else if err := os.MkdirAll(dir, 0o700); err != nil {
+		return nil, err
 	}
-	return &sessionStore{defaults: d}, nil
+	return &sessionStore{dir: dir}, nil
 }
 
 ///////////////////////////////////////////////////////////////////////////////
 // PUBLIC METHODS
 
-// Create puts a session with the settings, and no messages, in the defaults,
-// with a new identifier, which is a random UUID, and a serial of one, and
-// returns it
+// Create writes a session with the settings, and no messages, with a new
+// identifier, which is a random UUID, and a serial of one, and returns it
 func (s *sessionStore) Create(_ context.Context, meta schema.SessionMeta) (schema.Session, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	list, err := s.read()
-	if err != nil {
-		return schema.Session{}, err
-	}
 	now := time.Now().UTC()
 	session := schema.Session{ID: uuid.New(), Serial: 1, Created: now, Modified: now, SessionMeta: meta}
-	if err := s.write(append(list, session)); err != nil {
+	if _, err := os.Stat(s.path(session.ID)); err == nil {
+		return schema.Session{}, llm.ErrConflict.Withf("session %q exists", session.ID)
+	}
+	if err := s.write(session); err != nil {
 		return schema.Session{}, err
 	}
-	return session, nil
+	return s.read(session.ID)
 }
 
 // Get returns the session with the identifier, with its messages. Returns
@@ -74,29 +88,31 @@ func (s *sessionStore) Create(_ context.Context, meta schema.SessionMeta) (schem
 func (s *sessionStore) Get(_ context.Context, id uuid.UUID) (schema.Session, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	list, err := s.read()
-	if err != nil {
-		return schema.Session{}, err
-	}
-	i := slices.IndexFunc(list, func(session schema.Session) bool { return session.ID == id })
-	if i < 0 {
-		return schema.Session{}, llm.ErrNotFound.Withf("session %q", id)
-	}
-	return list[i], nil
+	return s.read(id)
 }
 
 // List returns the sessions, without their messages, most recently modified
 // first, from the request's offset, and at most its limit of them, and how
-// many there are
+// many there are. A file which can't be read as a session is skipped.
 func (s *sessionStore) List(_ context.Context, req schema.SessionListRequest) (schema.SessionList, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	list, err := s.read()
+	entries, err := os.ReadDir(s.dir)
 	if err != nil {
 		return schema.SessionList{}, err
 	}
-	for i := range list {
-		list[i].Messages = nil
+	var list []schema.Session
+	for _, entry := range entries {
+		id, ok := sessionID(entry.Name())
+		if !ok || entry.IsDir() {
+			continue
+		}
+		session, err := s.read(id)
+		if err != nil {
+			continue
+		}
+		session.Messages = nil
+		list = append(list, session)
 	}
 	slices.SortFunc(list, func(a, b schema.Session) int {
 		if c := b.Modified.Compare(a.Modified); c != 0 {
@@ -119,81 +135,128 @@ func (s *sessionStore) List(_ context.Context, req schema.SessionListRequest) (s
 func (s *sessionStore) Put(_ context.Context, session schema.Session) (schema.Session, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	list, err := s.read()
+	existing, err := s.read(session.ID)
 	if err != nil {
 		return schema.Session{}, err
-	}
-	i := slices.IndexFunc(list, func(other schema.Session) bool { return other.ID == session.ID })
-	if i < 0 {
-		return schema.Session{}, llm.ErrNotFound.Withf("session %q", session.ID)
-	} else if list[i].Serial != session.Serial {
-		return schema.Session{}, llm.ErrConflict.Withf("session %q is at serial %d, not %d", session.ID, list[i].Serial, session.Serial)
+	} else if existing.Serial != session.Serial {
+		return schema.Session{}, llm.ErrConflict.Withf("session %q is at serial %d, not %d", session.ID, existing.Serial, session.Serial)
 	}
 	session.Serial++
-	session.Created = list[i].Created
+	session.Created = existing.Created
 	session.Modified = time.Now().UTC()
-	list[i] = session
-	if err := s.write(list); err != nil {
+	if err := s.write(session); err != nil {
 		return schema.Session{}, err
 	}
-	return session, nil
+	return s.read(session.ID)
 }
 
-// Delete deletes the session with the identifier from the defaults, when the
-// serial is its serial, or does nothing when there's none. Returns
-// ErrConflict when the serial isn't its serial.
+// Delete deletes the session with the identifier, when the serial is its
+// serial, or does nothing when there's none. Returns ErrConflict when the
+// serial isn't its serial.
 func (s *sessionStore) Delete(_ context.Context, id uuid.UUID, serial uint64) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	list, err := s.read()
-	if err != nil {
-		return err
-	}
-	i := slices.IndexFunc(list, func(session schema.Session) bool { return session.ID == id })
-	if i < 0 {
+	existing, err := s.read(id)
+	if errors.Is(err, llm.ErrNotFound) {
 		return nil
-	} else if list[i].Serial != serial {
-		return llm.ErrConflict.Withf("session %q is at serial %d, not %d", id, list[i].Serial, serial)
+	} else if err != nil {
+		return err
+	} else if existing.Serial != serial {
+		return llm.ErrConflict.Withf("session %q is at serial %d, not %d", id, existing.Serial, serial)
 	}
-	return s.write(slices.Delete(list, i, i+1))
+	return os.Remove(s.path(id))
 }
 
 ///////////////////////////////////////////////////////////////////////////////
 // PRIVATE METHODS
 
-// read returns the sessions in the defaults, or none when there are none.
-// The defaults have the sessions as they were set, or as JSON was decoded
-// into, when they were read from disk, so they're encoded as JSON, and
-// decoded as sessions, which are then the caller's to change. The caller
-// holds the lock.
-func (s *sessionStore) read() ([]schema.Session, error) {
-	value := s.defaults.Get(sessionsKey)
-	if value == nil {
-		return nil, nil
-	}
-	data, err := json.Marshal(value)
-	if err != nil {
-		return nil, err
-	}
-	var list []schema.Session
-	if err := json.Unmarshal(data, &list); err != nil {
-		return nil, llm.ErrInternalServerError.Withf("%s: %v", sessionsKey, err)
-	}
-	return list, nil
+// path returns the path of the file of the session with the identifier
+func (s *sessionStore) path(id uuid.UUID) string {
+	return filepath.Join(s.dir, sessionPrefix+id.String()+sessionSuffix)
 }
 
-// write sets the sessions in the defaults, in order of their identifiers,
-// or removes them, when there are none. They're set as JSON, so the
-// defaults keep a snapshot, which sessions the caller has, or changes,
-// don't share. The caller holds the lock.
-func (s *sessionStore) write(list []schema.Session) error {
-	if len(list) == 0 {
-		return s.defaults.Set(sessionsKey, nil)
+// read returns the session with the identifier, from its file, which is the
+// caller's to change, or ErrNotFound when there's none. The caller holds the
+// lock.
+func (s *sessionStore) read(id uuid.UUID) (schema.Session, error) {
+	data, err := os.ReadFile(s.path(id))
+	if errors.Is(err, fs.ErrNotExist) {
+		return schema.Session{}, llm.ErrNotFound.Withf("session %q", id)
+	} else if err != nil {
+		return schema.Session{}, err
 	}
-	slices.SortFunc(list, func(a, b schema.Session) int { return a.ID.Compare(b.ID) })
-	data, err := json.Marshal(list)
+	var session schema.Session
+	if err := json.Unmarshal(data, &session); err != nil {
+		return schema.Session{}, llm.ErrInternalServerError.Withf("session %q: %v", id, err)
+	}
+	return session, nil
+}
+
+// write writes the session to its file, by writing a temporary file, which
+// only the user can read, and renaming it to the session's, so the file is
+// never written partly. The caller holds the lock.
+func (s *sessionStore) write(session schema.Session) error {
+	data, err := json.MarshalIndent(session, "", "  ")
 	if err != nil {
 		return err
 	}
-	return s.defaults.Set(sessionsKey, json.RawMessage(data))
+	f, err := os.CreateTemp(s.dir, "."+sessionPrefix+"*.tmp")
+	if err != nil {
+		return err
+	}
+	defer os.Remove(f.Name())
+	if _, err := f.Write(data); err != nil {
+		f.Close()
+		return err
+	} else if err := f.Chmod(0o600); err != nil {
+		f.Close()
+		return err
+	} else if err := f.Close(); err != nil {
+		return err
+	}
+	return os.Rename(f.Name(), s.path(session.ID))
+}
+
+// migrate moves the sessions which the defaults have, as they were kept
+// before they were kept in files, to files, which aren't replaced, when
+// they exist, and removes them from the defaults
+func (s *sessionStore) migrate(d defaults) error {
+	value := d.Get(sessionsKey)
+	if value == nil {
+		return nil
+	}
+	data, err := json.Marshal(value)
+	if err != nil {
+		return err
+	}
+	var list []schema.Session
+	if err := json.Unmarshal(data, &list); err != nil {
+		return llm.ErrInternalServerError.Withf("%s: %v", sessionsKey, err)
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for _, session := range list {
+		if _, err := os.Stat(s.path(session.ID)); err == nil {
+			continue
+		} else if err := s.write(session); err != nil {
+			return err
+		}
+	}
+	return d.Set(sessionsKey, nil)
+}
+
+///////////////////////////////////////////////////////////////////////////////
+// PRIVATE FUNCTIONS
+
+// sessionID returns the identifier of the session whose file has the name,
+// and whether it is a session's file
+func sessionID(name string) (uuid.UUID, bool) {
+	value, ok := strings.CutPrefix(name, sessionPrefix)
+	if !ok {
+		return uuid.Nil(), false
+	} else if value, ok = strings.CutSuffix(value, sessionSuffix); !ok {
+		return uuid.Nil(), false
+	}
+	id, err := uuid.Parse(value)
+	return id, err == nil
 }

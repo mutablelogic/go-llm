@@ -236,10 +236,10 @@ Tests which make requests to a provider are skipped with `-short`, and unless it
 
 ### Agents and tools
 
-- **Agent loop**: ask runs the tools a model calls, on the server, and sends their results back to the model, until it replies, or a limit of turns, streaming the calls and their results, rather than returning the calls for the caller to run.
 - **MCP**: connectors to MCP servers, whose tools are added to the toolkit, each in its own namespace, so models can call them.
 - **Agents**: named definitions of a model, a system prompt, tools, a schema and options, which are run by name, with an input.
-- **Sessions, memory and heartbeats**: conversations which are kept, so they continue across requests; memory, which a model reads and writes with tools; and agents which run on a schedule. These need a store, such as PostgreSQL.
+- **Watch endpoint for sessions**: events when a session changes, such as when its model replies, and its status, which a client sets to `typing`, and the server switches to `replying`, as the model replies, or back to `idle`, after a timeout, so every client of a session sees who's doing what.
+- **Memory and heartbeats**: memory, which a model reads and writes with tools; and agents which run on a schedule. These need a store, such as PostgreSQL.
 
 ### Providers
 

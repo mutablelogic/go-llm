@@ -153,3 +153,25 @@ func Test_SessionOpts(t *testing.T) {
 	require.NoError(t, err)
 	assert.JSONEq(t, `{"effort":"high","temperature":0.5,"thinking":false,"seed":null}`, string(data))
 }
+
+func Test_ChatFlags(t *testing.T) {
+	// The session is optional, as it's the default session, and so is the
+	// question, as without one, the chat is in the terminal
+	var cmds InferenceCommands
+	parser, err := kong.New(&cmds)
+	require.NoError(t, err)
+	_, err = parser.Parse([]string{"chat", "Hello", "there"})
+	require.NoError(t, err)
+	assert.Equal(t, uuid.Nil(), cmds.Chat.Session)
+	assert.Equal(t, []string{"Hello", "there"}, cmds.Chat.Text)
+
+	id := uuid.New()
+	_, err = parser.Parse([]string{"chat", "--session", id.String(), "--no-stream", "Hello"})
+	require.NoError(t, err)
+	assert.Equal(t, id, cmds.Chat.Session)
+	assert.False(t, cmds.Chat.Stream)
+
+	_, err = parser.Parse([]string{"chat"})
+	require.NoError(t, err)
+	assert.Empty(t, cmds.Chat.Text)
+}

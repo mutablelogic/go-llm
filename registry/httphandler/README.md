@@ -60,7 +60,7 @@ Unload a model by name, or alias, or by provider and name, such as `my-ollama:ge
 
 ## Session Operations
 
-Sessions are conversations with models, which the server keeps in its session store, such as files, or a database which other servers share, so they're kept when it restarts. A server without a session store returns 503 for each session operation. A session has its `id`, which the store sets, and its `serial`, which the store changes each time the session is stored, so a change is made to the session as it was last seen. It has the settings of how its model is asked: its `model`, `system` prompt, the `tools` it can call, its `opt` options and the `schema` of its reply, as for `POST /llm/ask`, which it needn't all have, such as when it inherits its model from another session. It has its `messages`, each with its `tokens`, and its `usage`: the tokens used by every request to its model, and, as of the last, the tokens of its conversation, of the messages sent to the model (`input`), of its replies (`output`), and of what's sent with them (`overhead`), such as the system prompt and the tools' definitions.
+Sessions are conversations with models, which the server keeps in its session store, such as files, or a database which other servers share, so they're kept when it restarts. A server without a session store returns 503 for each session operation. Sessions are returned without their messages, which are listed on their own, as there can be many. A session has its `id`, which the store sets, and its `serial`, which the store changes each time the session is stored, so a change is made to the session as it was last seen. It has the settings of how its model is asked: its `model`, `system` prompt, the `tools` it can call, its `opt` options and the `schema` of its reply, as for `POST /llm/ask`, which it needn't all have, such as when it inherits its model from another session. It has its `messages`, each with its `tokens`, and its `usage`: the tokens used by every request to its model, and, as of the last, the tokens of its conversation, of the messages sent to the model (`input`), of its replies (`output`), and of what's sent with them (`overhead`), such as the system prompt and the tools' definitions.
 
 ### GET /llm/session
 
@@ -72,7 +72,15 @@ Create a session with the settings in the request body, and no messages. Its `mo
 
 ### GET /llm/session/{id}
 
-Get a session by its identifier, with its messages. Returns 404 if there is no session with that identifier.
+Get a session by its identifier, without its messages, which are listed with `GET /llm/session/{id}/messages`. Returns 404 if there is no session with that identifier.
+
+### GET /llm/session/{id}/messages
+
+List a session's messages, oldest first, each with its `tokens`. The `role` parameter returns only the messages of that role, such as `user`, `assistant` or `tool`, the `offset` parameter skips that many messages, and the `limit` parameter returns at most that many. The `count` is how many messages there are, of the role. Returns 400 if a parameter is invalid, or 404 if there is no session with that identifier.
+
+### POST /llm/session/{id}
+
+Chat: add the `messages` in the request body, such as a question, to a session, and its model's reply to its conversation. The model is asked as the session's settings say, with its messages, and the tools it calls are run, unlike with `POST /llm/ask`, whose caller runs them, until it replies, and the conversation is shortened to fit the model's context, without changing the session's messages. The messages, the model's reply, and the results of the tools it called, each with its `tokens`, are added to the session, with its `usage`. Returns what was added, with the session's `serial`, as it was stored, or, when `text/event-stream` is accepted, a stream of `text`, `thinking` and `log` events, as the reply is generated, and then a `result` event, with what was added, or an `error` event. Returns 400 if the request body is invalid, it has no messages, or the session has no model, 404 if there is no session with that identifier, or its model, or a tool, isn't found, or 409 if the session was changed as the model replied, when the reply isn't stored.
 
 ### PATCH /llm/session/{id}
 

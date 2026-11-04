@@ -2,11 +2,13 @@ package httpclient
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"uuid"
 
 	// Packages
 	client "github.com/mutablelogic/go-client"
+	llm "github.com/mutablelogic/go-llm"
 	schema "github.com/mutablelogic/go-llm/registry/schema"
 	types "github.com/mutablelogic/go-server/pkg/types"
 )
@@ -24,10 +26,21 @@ func (c *Client) ListSessions(ctx context.Context, req schema.SessionListRequest
 	return &response, nil
 }
 
-// GetSession returns the session with the identifier, with its messages
+// GetSession returns the session with the identifier, without its messages,
+// which ListSessionMessages lists
 func (c *Client) GetSession(ctx context.Context, id uuid.UUID) (*schema.Session, error) {
 	var response schema.Session
 	if err := c.DoWithContext(ctx, client.MethodGet, &response, client.OptPath("llm", "session", id.String())); err != nil {
+		return nil, err
+	}
+	return &response, nil
+}
+
+// ListSessionMessages returns the messages of the session with the
+// identifier, oldest first, as the request selects, and how many there are
+func (c *Client) ListSessionMessages(ctx context.Context, id uuid.UUID, req schema.MessageListRequest) (*schema.MessageList, error) {
+	var response schema.MessageList
+	if err := c.DoWithContext(ctx, client.MethodGet, &response, client.OptPath("llm", "session", id.String(), "messages"), client.OptQuery(req.Query())); err != nil {
 		return nil, err
 	}
 	return &response, nil
@@ -69,4 +82,44 @@ func (c *Client) DeleteSession(ctx context.Context, id uuid.UUID) (*schema.Sessi
 		return nil, err
 	}
 	return &response, nil
+}
+
+// Chat adds the messages to the session with the identifier, which its model
+// replies to, running the tools it calls, and returns what was added, with
+// the model's reply, and the tokens used. When the stream function isn't
+// nil, the reply is streamed, and the function is called with each piece of
+// its text and thinking, and the tools' log lines, as they're generated. The
+// request isn't timed out, as a model can take a while to reply, but is
+// cancelled with the context.
+func (c *Client) Chat(ctx context.Context, id uuid.UUID, req schema.ChatRequest, stream llm.GeneratorStreamFn) (*schema.ChatResponse, error) {
+	if len(req.Messages) == 0 {
+		return nil, llm.ErrBadParameter.With("missing messages")
+	}
+	body, err := client.NewJSONRequest(req)
+	if err != nil {
+		return nil, err
+	}
+
+	// Without streaming, what was added
+	if stream == nil {
+		var response schema.ChatResponse
+		if err := c.DoWithContext(ctx, body, &response, client.OptPath("llm", "session", id.String()), client.OptNoTimeout()); err != nil {
+			return nil, err
+		}
+		return &response, nil
+	}
+
+	// With streaming, the pieces of the reply, and then what was added, or
+	// the error
+	return doStream[schema.ChatResponse](ctx, c, body, func(event client.TextStreamEvent) error {
+		switch event.Event {
+		case schema.EventText, schema.EventThinking, schema.EventLog:
+			var data schema.StreamEvent
+			if err := event.Json(&data); err != nil {
+				return fmt.Errorf("malformed %s event: %w", event.Event, err)
+			}
+			stream(llm.StreamType(event.Event), data.Text)
+		}
+		return nil
+	}, "llm", "session", id.String())
 }
