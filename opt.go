@@ -53,6 +53,10 @@ const (
 	// Tools
 	ToolChoiceKey = "tool_choice" // string, whether the model uses the tools: "auto", "any" or "none"
 
+	// Agents
+	MaxIterationsKey = "max_iterations" // uint, most times an agent loop asks the model for its reply
+	ToolTimeoutKey   = "tool_timeout"   // time.Duration, or a string such as "30s", most time a tool an agent loop runs has to return
+
 	// Model loading
 	ContextWindowKey = "context_window" // uint, context window size in tokens
 	KeepAliveKey     = "keep_alive"     // time.Duration, how long a model stays loaded, or negative to stay loaded
@@ -203,6 +207,24 @@ func WithToolChoice(value string) Opt {
 		return withError(ErrBadParameter.Withf("tool_choice %q must be auto, any or none", value))
 	}
 	return WithOpt(ToolChoiceKey, value)
+}
+
+// WithMaxIterations sets the most times an agent loop asks the model for its
+// reply, which is one or more
+func WithMaxIterations(value uint) Opt {
+	if value == 0 {
+		return withError(ErrBadParameter.With("max_iterations must be one or more"))
+	}
+	return WithOpt(MaxIterationsKey, value)
+}
+
+// WithToolTimeout sets the most time a tool an agent loop runs has to return,
+// which is more than zero
+func WithToolTimeout(value time.Duration) Opt {
+	if value <= 0 {
+		return withError(ErrBadParameter.With("tool_timeout must be more than zero"))
+	}
+	return WithOpt(ToolTimeoutKey, value)
 }
 
 // WithContextWindow sets the context window size in tokens, which is one or

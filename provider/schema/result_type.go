@@ -22,6 +22,7 @@ const (
 	ResultError         ResultType = "error"          // Generation error
 	ResultOther         ResultType = "other"          // Other/unknown finish reason
 	ResultMaxIterations ResultType = "max_iterations" // Tool-calling loop exhausted max iterations
+	ResultMaxContext    ResultType = "max_context"    // The conversation doesn't fit in the model's context
 )
 
 // ResultOK is an alias for ResultStop (normal completion).
@@ -44,7 +45,7 @@ func (r *ResultType) UnmarshalJSON(data []byte) error {
 		return err
 	}
 	switch result := ResultType(s); result {
-	case ResultStop, ResultMaxTokens, ResultBlocked, ResultToolCall, ResultError, ResultOther, ResultMaxIterations:
+	case ResultStop, ResultMaxTokens, ResultBlocked, ResultToolCall, ResultError, ResultOther, ResultMaxIterations, ResultMaxContext:
 		*r = result
 	default:
 		return fmt.Errorf("unknown result type: %q", s)

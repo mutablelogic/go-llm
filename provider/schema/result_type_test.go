@@ -13,7 +13,7 @@ import (
 func Test_ResultType_JSON(t *testing.T) {
 	for _, r := range []schema.ResultType{
 		schema.ResultStop, schema.ResultMaxTokens, schema.ResultBlocked, schema.ResultToolCall,
-		schema.ResultError, schema.ResultOther, schema.ResultMaxIterations,
+		schema.ResultError, schema.ResultOther, schema.ResultMaxIterations, schema.ResultMaxContext,
 	} {
 		t.Run(r.String(), func(t *testing.T) {
 			data, err := json.Marshal(r)
