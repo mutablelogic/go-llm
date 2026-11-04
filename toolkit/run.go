@@ -61,43 +61,56 @@ func RunTools(ctx context.Context, tools []llm.Tool, calls []llm.ToolCall, timeo
 // PRIVATE FUNCTIONS
 
 // runTool runs the tool for the call, in the call's session, with the
-// timeout, unless it's zero, and returns its result, or its error, or that
-// it timed out, or the context's error, when the context is done, without
-// waiting for the tool to return
-func runTool(ctx context.Context, tool llm.Tool, call llm.ToolCall, timeout time.Duration, session func(llm.ToolCall) Session) providerschema.ContentBlock {
+// timeout, unless it's zero, and returns its result, as toolResult returns
+// it, such as with a resource's data, or its error, or that it timed out,
+// or the context's error, when the context is done, without waiting for the
+// tool to return. A tool isn't run when the context is done already, and a
+// tool which returns once its time is up timed out, whatever it returns.
+func runTool(parent context.Context, tool llm.Tool, call llm.ToolCall, timeout time.Duration, session func(llm.ToolCall) Session) providerschema.ContentBlock {
+	if err := parent.Err(); err != nil {
+		return providerschema.NewToolError(call.ID, call.Name, context.Cause(parent))
+	}
+	var ctx context.Context
 	var cancel context.CancelFunc
 	if timeout > 0 {
-		ctx, cancel = context.WithTimeout(ctx, timeout)
+		ctx, cancel = context.WithTimeout(parent, timeout)
 	} else {
-		ctx, cancel = context.WithCancel(ctx)
+		ctx, cancel = context.WithCancel(parent)
 	}
 	defer cancel()
 	if session != nil {
 		ctx = WithSession(ctx, session(call))
 	}
 
-	// The tool returns, unless its context is done first
+	// The tool returns its result, unless its context is done first
 	done := make(chan outcome, 1)
 	go func() {
 		result, err := tool.Run(ctx, call.Input)
+		if err == nil {
+			result, err = toolResult(ctx, call.Name, result)
+		}
 		done <- outcome{result, err}
 	}()
-	// A tool which returns an error once its time is up, such as its
-	// context's, timed out, as it would have when it hadn't returned
 	select {
 	case outcome := <-done:
-		if outcome.err != nil && errors.Is(context.Cause(ctx), context.DeadlineExceeded) {
+		if timedOutAt(parent, ctx) {
 			return timedOut(call, timeout)
 		} else if outcome.err != nil {
 			return providerschema.NewToolError(call.ID, call.Name, outcome.err)
 		}
 		return providerschema.NewToolResult(call.ID, call.Name, outcome.result)
 	case <-ctx.Done():
-		if errors.Is(context.Cause(ctx), context.DeadlineExceeded) {
+		if timedOutAt(parent, ctx) {
 			return timedOut(call, timeout)
 		}
 		return providerschema.NewToolError(call.ID, call.Name, context.Cause(ctx))
 	}
+}
+
+// timedOutAt returns true when the tool's context is done, as its time is
+// up, rather than as the context it's run in is done
+func timedOutAt(parent, ctx context.Context) bool {
+	return parent.Err() == nil && errors.Is(context.Cause(ctx), context.DeadlineExceeded)
 }
 
 // timedOut returns the result of the call of a tool which timed out

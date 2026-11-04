@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -161,6 +162,17 @@ func Test_RunToolsTimeout(t *testing.T) {
 		})
 	}
 
+	t.Run("ReturnsLate", func(t *testing.T) {
+		// A tool which returns a result, once its time is up, timed out, every
+		// time, whichever the runner sees first
+		for range 50 {
+			results, err := toolkit.RunTools(ctx, []llm.Tool{lateTool{echoTool{name: "late"}}}, []llm.ToolCall{{ID: "1", Name: "late"}}, 5*time.Millisecond, nil)
+			require.NoError(t, err)
+			require.Len(t, results, 1)
+			assert.Contains(t, string(results[0].ToolResult.Content), "timed out after 5ms")
+		}
+	})
+
 	t.Run("ReturnsDeadline", func(t *testing.T) {
 		// A tool which returns its context's error, once its time is up,
 		// timed out, every time, whichever the runner sees first
@@ -190,4 +202,76 @@ type deadlineTool struct{ echoTool }
 func (deadlineTool) Run(ctx context.Context, _ json.RawMessage) (any, error) {
 	<-ctx.Done()
 	return nil, ctx.Err()
+}
+
+// lateTool is a tool which returns a result, when its context is done
+type lateTool struct{ echoTool }
+
+func (lateTool) Run(ctx context.Context, _ json.RawMessage) (any, error) {
+	<-ctx.Done()
+	return "partial", nil
+}
+
+// countTool is a tool which counts how many times it's run
+type countTool struct {
+	echoTool
+	runs *atomic.Int32
+}
+
+func (t countTool) Run(context.Context, json.RawMessage) (any, error) {
+	t.runs.Add(1)
+	return nil, nil
+}
+
+// resourceTool is a tool whose result is a resource, which isn't run by the
+// toolkit, so its result isn't read by it
+type resourceTool struct{ echoTool }
+
+func (resourceTool) Run(context.Context, json.RawMessage) (any, error) {
+	return resource{}, nil
+}
+
+func Test_RunToolsNotRunAndResources(t *testing.T) {
+	ctx := context.Background()
+
+	t.Run("NotRun", func(t *testing.T) {
+		// A tool isn't run when the context is done already
+		ctx, cancel := context.WithCancel(ctx)
+		cancel()
+		var runs atomic.Int32
+		_, err := toolkit.RunTools(ctx, []llm.Tool{countTool{echoTool{name: "count"}, &runs}}, []llm.ToolCall{{ID: "1", Name: "count"}, {ID: "2", Name: "count"}}, 0, nil)
+		assert.ErrorIs(t, err, context.Canceled)
+		assert.Zero(t, runs.Load())
+	})
+
+	t.Run("Resource", func(t *testing.T) {
+		// A resource which a tool returns is read, with its type and data
+		results, err := toolkit.RunTools(ctx, []llm.Tool{resourceTool{echoTool{name: "file"}}}, []llm.ToolCall{{ID: "1", Name: "file"}}, 0, nil)
+		require.NoError(t, err)
+		require.Len(t, results, 1)
+		require.False(t, results[0].ToolResult.IsError, string(results[0].ToolResult.Content))
+		var got struct {
+			Type string `json:"type"`
+			Data []byte `json:"data"`
+		}
+		require.NoError(t, json.Unmarshal(results[0].ToolResult.Content, &got))
+		assert.Equal(t, "image/png", got.Type)
+		assert.Equal(t, []byte("png"), got.Data)
+	})
+
+	t.Run("Unreadable", func(t *testing.T) {
+		// A resource which can't be read is the tool's error
+		results, err := toolkit.RunTools(ctx, []llm.Tool{unreadableTool{echoTool{name: "file"}}}, []llm.ToolCall{{ID: "1", Name: "file"}}, 0, nil)
+		require.NoError(t, err)
+		require.Len(t, results, 1)
+		assert.True(t, results[0].ToolResult.IsError)
+		assert.Contains(t, string(results[0].ToolResult.Content), "can't read")
+	})
+}
+
+// unreadableTool is a tool whose result is a resource which can't be read
+type unreadableTool struct{ echoTool }
+
+func (unreadableTool) Run(context.Context, json.RawMessage) (any, error) {
+	return resource{err: errors.New("can't read")}, nil
 }

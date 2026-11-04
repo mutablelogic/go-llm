@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"reflect"
 	"slices"
 
 	// Packages
@@ -71,15 +72,18 @@ const (
 ///////////////////////////////////////////////////////////////////////////////
 // LIFECYCLE
 
-// newHistory returns the conversation of the caller's messages, each
-// measured, with the tokens of what's sent with them, which are estimated
+// newHistory returns the conversation of the caller's messages, none of
+// which can be nil, each measured, with the tokens of what's sent with them, which are estimated
 // until a model has been sent them. The system messages, and the latest
 // user message, are never dropped, and, when the messages end with the
 // results of tools, they're the latest turn, with the reply which called
 // them.
 func newHistory(ctx context.Context, messages []llm.Message, overhead uint, measure toolkit.MeasureFn) (*history, error) {
 	h := &history{entries: make([]historyEntry, 0, len(messages)), overhead: overhead, measure: measure}
-	for _, message := range messages {
+	for i, message := range messages {
+		if isNil(message) {
+			return nil, llm.ErrBadParameter.Withf("message %d is nil", i)
+		}
 		tokens, err := h.measureMessage(ctx, message)
 		if err != nil {
 			return nil, err
@@ -322,6 +326,15 @@ func (h *history) measureMessage(ctx context.Context, message llm.Message) (uint
 
 ///////////////////////////////////////////////////////////////////////////////
 // PRIVATE FUNCTIONS
+
+// isNil returns true when the message is nil, or a nil pointer
+func isNil(message llm.Message) bool {
+	if message == nil {
+		return true
+	}
+	value := reflect.ValueOf(message)
+	return value.Kind() == reflect.Pointer && value.IsNil()
+}
 
 // schemaMessage returns a copy of the message, when it's a message of the
 // provider schema, or its meta, by value or pointer, which can be changed

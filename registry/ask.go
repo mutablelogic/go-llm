@@ -217,6 +217,7 @@ type replyStream struct {
 	fn       llm.GeneratorStreamFn
 	streamed bool       // Something has been streamed
 	started  bool       // The current reply has streamed something
+	closed   bool       // Nothing more is streamed
 	mu       sync.Mutex // Guards the function, and what's streamed, as tools log to it in parallel, even after they time out
 }
 
@@ -253,8 +254,22 @@ func (s *replyStream) Log() func(string) {
 	return func(text string) {
 		s.mu.Lock()
 		defer s.mu.Unlock()
-		s.fn(llm.StreamLog, text)
+		if !s.closed {
+			s.fn(llm.StreamLog, text)
+		}
 	}
+}
+
+// close stops streaming, once what's being streamed has been, so a tool which
+// doesn't return when it times out, and logs, doesn't stream once the
+// replies are done
+func (s *replyStream) close() {
+	if s == nil {
+		return
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.closed = true
 }
 
 // stream streams a piece of the reply, which, when it's the first of a reply
@@ -265,6 +280,9 @@ func (s *replyStream) stream(what llm.StreamType, text string) {
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if s.closed {
+		return
+	}
 	if !s.started {
 		s.started = true
 		if s.streamed {

@@ -97,8 +97,10 @@ var (
 // stop only when it's the result. A tool which the model calls, and which
 // isn't one of the tools, or fails, has its error returned to the model as
 // its result. The replies are streamed to the function as they're
-// generated, when it isn't nil, each separated by a blank line. Returns
-// ErrBadParameter when an option isn't valid, or a tool is named as the
+// generated, when it isn't nil, each separated by a blank line, until the
+// loop returns, when nothing more is streamed, though a tool which didn't
+// return in time may still log. Returns ErrBadParameter when a message is
+// nil, an option isn't valid, or a tool is named as the
 // respond tool when the reply has a schema, the errors of WithoutSession,
 // and the context's error when it's done while a tool runs.
 func (r *Registry) AgentLoop(ctx context.Context, model llm.Model, messages []llm.Message, tools []llm.Tool, stream llm.GeneratorStreamFn, opts ...llm.Opt) (_ []providerschema.Message, _ llm.Usage, err error) {
@@ -142,6 +144,7 @@ func (r *Registry) agentLoop(ctx context.Context, model llm.Model, messages []ll
 	}
 	var usage llm.Usage
 	replies := newReplyStream(stream)
+	defer replies.close()
 	for iteration := uint(1); ; iteration++ {
 		step, stepUsage, done, err := r.iterate(ctx, model, loop, h, iteration, replies)
 		if err != nil {

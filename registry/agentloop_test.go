@@ -1023,10 +1023,34 @@ func Test_AgentLoopTimedOutLog(t *testing.T) {
 	added, _, err := r.AgentLoop(ctx, model, []llm.Message{user(t, "Go")}, []llm.Tool{tool}, func(_ llm.StreamType, text string) {
 		streamed = append(streamed, text)
 	}, llm.WithToolTimeout(20*time.Millisecond))
-	close(tool.release)
-	<-tool.stopped
 	require.NoError(t, err)
 	require.Len(t, added, 3)
 	assert.Contains(t, string(added[1].ToolResults()[0].Content), "timed out")
 	assert.Contains(t, streamed, "Done")
+
+	// Nothing is streamed once the loop returns, though the tool still logs
+	n := len(streamed)
+	time.Sleep(20 * time.Millisecond)
+	assert.Len(t, streamed, n)
+	close(tool.release)
+	<-tool.stopped
+}
+
+func Test_AgentLoopNilMessage(t *testing.T) {
+	// A message which is nil, or a nil pointer, isn't valid, so the model
+	// isn't asked
+	ctx := context.Background()
+	for name, message := range map[string]llm.Message{
+		"Nil":        nil,
+		"NilPointer": (*providerschema.Message)(nil),
+		"NilMeta":    (*providerschema.MessageMeta)(nil),
+	} {
+		t.Run(name, func(t *testing.T) {
+			p := newScripted(text("Never"))
+			r, model := newAgentLoop(t, p)
+			_, _, err := r.AgentLoop(ctx, model, []llm.Message{user(t, "Hi"), message}, tools(), nil)
+			assert.ErrorIs(t, err, llm.ErrBadParameter)
+			assert.Empty(t, p.asked)
+		})
+	}
 }
