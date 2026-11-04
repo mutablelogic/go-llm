@@ -25,7 +25,8 @@ import (
 // returned as they're sent.
 type history struct {
 	entries  []historyEntry
-	added    []providerschema.Message // The messages the loop adds, which it returns
+	added    []providerschema.Message // The messages the loop adds, which it returns, each with its tokens
+	measured []uint                   // The tokens of each of the caller's messages, before they're compacted
 	overhead uint                     // The tokens of what's sent with the messages, such as the system prompt and the tools
 	measure  toolkit.MeasureFn
 }
@@ -73,22 +74,37 @@ const (
 // LIFECYCLE
 
 // newHistory returns the conversation of the caller's messages, none of
-// which can be nil, each measured, with the tokens of what's sent with them, which are estimated
+// which can be nil, followed by the new messages, which are the first the
+// loop adds, and returns, each with its tokens, when it has them, or measured, with the tokens of what's sent with them, which are estimated
 // until a model has been sent them. The system messages, and the latest
 // user message, are never dropped, and, when the messages end with the
 // results of tools, they're the latest turn, with the reply which called
 // them.
-func newHistory(ctx context.Context, messages []llm.Message, overhead uint, measure toolkit.MeasureFn) (*history, error) {
-	h := &history{entries: make([]historyEntry, 0, len(messages)), overhead: overhead, measure: measure}
+func newHistory(ctx context.Context, messages []llm.Message, fresh []providerschema.Message, overhead uint, measure toolkit.MeasureFn) (*history, error) {
+	h := &history{entries: make([]historyEntry, 0, len(messages)+len(fresh)), overhead: overhead, measure: measure}
 	for i, message := range messages {
 		if isNil(message) {
 			return nil, llm.ErrBadParameter.Withf("message %d is nil", i)
 		}
-		tokens, err := h.measureMessage(ctx, message)
+		tokens, err := h.tokens(ctx, message)
 		if err != nil {
 			return nil, err
 		}
+		h.measured = append(h.measured, tokens)
 		h.entries = append(h.entries, historyEntry{message: message, tokens: tokens, pinned: message.Role() == "system", added: -1})
+	}
+
+	// The new messages, which are added, so they're returned as they're
+	// sent, such as when their tools' results are truncated, with their
+	// tokens
+	for _, message := range fresh {
+		tokens, err := h.tokens(ctx, &message)
+		if err != nil {
+			return nil, err
+		}
+		message.Tokens = uint64(tokens)
+		h.added = append(h.added, message)
+		h.entries = append(h.entries, historyEntry{message: &message, tokens: tokens, pinned: message.Role() == "system", added: len(h.added) - 1})
 	}
 
 	// The latest user message, which isn't the results of tools
@@ -148,10 +164,10 @@ func (h *history) sent(usage llm.Usage) {
 }
 
 // add adds the messages of an iteration, which is the latest turn, to the
-// conversation, and to the messages the loop adds: the model's reply, whose
-// tokens are those of its output, less those of reasoning which isn't
-// returned, when they're reported, and the results of the tools it called,
-// or the request to call the respond tool
+// conversation, and to the messages the loop adds, each with its tokens: the
+// model's reply, whose tokens are those of its output, less those of
+// reasoning which isn't returned, when they're reported, and the results of
+// the tools it called, or the request to call the respond tool
 func (h *history) add(ctx context.Context, step []providerschema.Message, usage llm.Usage) error {
 	for i := range h.entries {
 		h.entries[i].latest = false
@@ -166,6 +182,7 @@ func (h *history) add(ctx context.Context, step []providerschema.Message, usage 
 				return err
 			}
 		}
+		message.Tokens = uint64(tokens)
 		copied := *message
 		h.entries = append(h.entries, historyEntry{message: &copied, tokens: tokens, latest: true, added: len(h.added) - 1})
 	}
@@ -247,6 +264,7 @@ func (h *history) truncateResults(ctx context.Context, limit uint, session func(
 		}
 		entry.message, entry.tokens = message, tokens
 		if entry.added >= 0 {
+			message.Tokens = uint64(tokens)
 			h.added[entry.added] = *message
 		}
 	}
@@ -293,6 +311,15 @@ func (h *history) dropTurns(budget uint) int {
 		dropped += end - i
 	}
 	return dropped
+}
+
+// tokens returns the tokens of the message, which are its own, when it's a
+// message of the provider schema with tokens, or otherwise as it's measured
+func (h *history) tokens(ctx context.Context, message llm.Message) (uint, error) {
+	if message, ok := schemaMessage(message); ok && message.Tokens > 0 {
+		return uint(message.Tokens), nil
+	}
+	return h.measureMessage(ctx, message)
 }
 
 // measureMessage returns the tokens of the message, as its content as JSON,
