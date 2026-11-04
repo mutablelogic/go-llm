@@ -7,8 +7,11 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"mime"
 	"os"
+	"path/filepath"
 	"strings"
+	"unicode/utf8"
 
 	// Packages
 	llm "github.com/mutablelogic/go-llm"
@@ -17,6 +20,7 @@ import (
 	schema "github.com/mutablelogic/go-llm/registry/schema"
 	server "github.com/mutablelogic/go-server"
 	tui "github.com/mutablelogic/go-server/pkg/tui"
+	types "github.com/mutablelogic/go-server/pkg/types"
 )
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -24,6 +28,7 @@ import (
 
 type AskCmd struct {
 	Text   []string                   `arg:"" name:"text" help:"The question to ask, which can be more than one argument."`
+	Files  []string                   `name:"file" short:"f" sep:"none" help:"A file the question is about, which can be given more than once. Text, such as code or subtitles, is sent as text, with its name, and anything else, such as an image or a PDF, as an attachment, which the model must accept." optional:""`
 	Model  string                     `name:"model" help:"Model name, or provider and model name separated by a colon, such as ollama:llama3.2:latest. Defaults to the model last asked." optional:""`
 	System string                     `name:"system" help:"A system prompt, such as instructions on how to reply." optional:""`
 	Tools  []string                   `name:"tool" help:"Name of a tool the model can call, such as weatherapi:current, or weatherapi:* for all the tools in a namespace, which can be given more than once. The model's calls are printed, rather than run." optional:""`
@@ -67,7 +72,7 @@ func (cmd *AskCmd) Run(ctx server.Cmd) error {
 	if text == "" {
 		return fmt.Errorf("missing question")
 	}
-	message, err := providerschema.NewMessage("user", text)
+	message, err := askMessage(text, cmd.Files)
 	if err != nil {
 		return err
 	}
@@ -126,6 +131,60 @@ func (cmd *AskCmd) Run(ctx server.Cmd) error {
 
 ///////////////////////////////////////////////////////////////////////////////
 // PRIVATE FUNCTIONS
+
+// askMessage returns the message which asks the question about the files:
+// the text of each file which is text, with its name, and each other file as
+// an attachment, and then the question
+func askMessage(text string, files []string) (*providerschema.Message, error) {
+	message, err := providerschema.NewMessage("user", text)
+	if err != nil {
+		return nil, err
+	}
+	content := make([]providerschema.ContentBlock, 0, len(files)+1)
+	for _, file := range files {
+		block, err := fileBlock(file)
+		if err != nil {
+			return nil, err
+		}
+		content = append(content, block)
+	}
+	message.Content = append(content, message.Content...)
+	return message, nil
+}
+
+// fileBlock returns the content of a file, as text, with its name, when it's
+// text, or otherwise as an attachment, with its type
+func fileBlock(file string) (providerschema.ContentBlock, error) {
+	data, err := os.ReadFile(file)
+	if err != nil {
+		return providerschema.ContentBlock{}, err
+	}
+	name := filepath.Base(file)
+	contentType := providerschema.ResourceType(data, name)
+	if isText(data, contentType) {
+		return providerschema.ContentBlock{Text: types.Ptr(fmt.Sprintf("%s:\n\n```\n%s\n```", name, strings.TrimRight(string(data), "\n")))}, nil
+	} else if contentType == "" {
+		return providerschema.ContentBlock{}, fmt.Errorf("%s: its type isn't known", file)
+	}
+	return providerschema.ContentBlock{Resource: &providerschema.Resource{ResourceMeta: providerschema.ResourceMeta{
+		ContentType: contentType,
+		Data:        data,
+	}}}, nil
+}
+
+// isText returns true when data is text, which is UTF-8, without NUL bytes,
+// and isn't a type, such as a PDF or an image, which is sent as it is, even
+// when it's UTF-8
+func isText(data []byte, contentType string) bool {
+	mediaType, _, _ := mime.ParseMediaType(contentType)
+	switch {
+	case strings.HasPrefix(mediaType, "image/"), strings.HasPrefix(mediaType, "audio/"), strings.HasPrefix(mediaType, "video/"), mediaType == "application/pdf":
+		return false
+	case len(data) == 0:
+		return true
+	}
+	return utf8.Valid(data) && !bytes.ContainsRune(data, 0)
+}
 
 // printJSON prints the JSON, indented
 func printJSON(data json.RawMessage) error {

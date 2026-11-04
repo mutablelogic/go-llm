@@ -68,6 +68,11 @@ Then ask models to do something. A command's model is kept, and used until anoth
 # Ask a question, and stream the reply
 llm ask --model gpt-4o-mini "Explain a KV cache in two sentences"
 
+# Ask about files: text, such as code, is sent as text, and an image or a
+# PDF as an attachment, which the model must accept
+llm ask --file main.go "What does this do?"
+llm ask --model gpt-4o --file chart.png --file notes.md "Do these agree?"
+
 # Embed text, or an image
 llm embed --model mistral-embed "A cat asleep in the sun"
 
