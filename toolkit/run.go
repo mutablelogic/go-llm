@@ -82,16 +82,25 @@ func runTool(ctx context.Context, tool llm.Tool, call llm.ToolCall, timeout time
 		result, err := tool.Run(ctx, call.Input)
 		done <- outcome{result, err}
 	}()
+	// A tool which returns an error once its time is up, such as its
+	// context's, timed out, as it would have when it hadn't returned
 	select {
 	case outcome := <-done:
-		if outcome.err != nil {
+		if outcome.err != nil && errors.Is(context.Cause(ctx), context.DeadlineExceeded) {
+			return timedOut(call, timeout)
+		} else if outcome.err != nil {
 			return providerschema.NewToolError(call.ID, call.Name, outcome.err)
 		}
 		return providerschema.NewToolResult(call.ID, call.Name, outcome.result)
 	case <-ctx.Done():
 		if errors.Is(context.Cause(ctx), context.DeadlineExceeded) {
-			return providerschema.NewToolError(call.ID, call.Name, fmt.Errorf("timed out after %v", timeout))
+			return timedOut(call, timeout)
 		}
 		return providerschema.NewToolError(call.ID, call.Name, context.Cause(ctx))
 	}
+}
+
+// timedOut returns the result of the call of a tool which timed out
+func timedOut(call llm.ToolCall, timeout time.Duration) providerschema.ContentBlock {
+	return providerschema.NewToolError(call.ID, call.Name, fmt.Errorf("timed out after %v", timeout))
 }

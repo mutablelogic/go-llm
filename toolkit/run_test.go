@@ -161,6 +161,17 @@ func Test_RunToolsTimeout(t *testing.T) {
 		})
 	}
 
+	t.Run("ReturnsDeadline", func(t *testing.T) {
+		// A tool which returns its context's error, once its time is up,
+		// timed out, every time, whichever the runner sees first
+		for range 50 {
+			results, err := toolkit.RunTools(ctx, []llm.Tool{deadlineTool{echoTool{name: "deadline"}}}, []llm.ToolCall{{ID: "1", Name: "deadline"}}, 5*time.Millisecond, nil)
+			require.NoError(t, err)
+			require.Len(t, results, 1)
+			assert.Contains(t, string(results[0].ToolResult.Content), "timed out after 5ms")
+		}
+	})
+
 	t.Run("Cancelled", func(t *testing.T) {
 		// The context's error is returned when it's done, without waiting
 		// for a tool which ignores it
@@ -171,4 +182,12 @@ func Test_RunToolsTimeout(t *testing.T) {
 		assert.ErrorIs(t, err, context.DeadlineExceeded)
 		assert.Less(t, time.Since(start), 2*time.Second)
 	})
+}
+
+// deadlineTool is a tool which returns its context's error, when it's done
+type deadlineTool struct{ echoTool }
+
+func (deadlineTool) Run(ctx context.Context, _ json.RawMessage) (any, error) {
+	<-ctx.Done()
+	return nil, ctx.Err()
 }

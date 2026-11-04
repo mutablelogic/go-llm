@@ -113,7 +113,8 @@ func TruncateResult(ctx context.Context, result json.RawMessage, limit uint, mea
 
 // truncate returns the value as JSON of at most the bytes, with its strings,
 // arrays and objects shortened, as little as fits, or nil when it doesn't
-// fit, however short they are. The most characters of a string, and the most
+// fit, however short they are. As a note never makes a value longer, the
+// fewer characters and items they can be, the shorter the JSON is. The most characters of a string, and the most
 // items of an array or object, are found by bisection, as the longer they
 // can be, the longer the JSON is, so the longest which fit are found.
 func (n node) truncate(budget int) json.RawMessage {
@@ -172,40 +173,50 @@ func (n node) write(buf *bytes.Buffer, chars, items int) {
 	case kindString:
 		buf.Write(encodeString(truncateString(n.str, chars)))
 	case kindArray:
-		buf.WriteByte('[')
-		for i, item := range n.items[:min(len(n.items), items)] {
-			if i > 0 {
-				buf.WriteByte(',')
-			}
-			item.write(buf, chars, items)
+		parts := make([][]byte, len(n.items))
+		for i, item := range n.items {
+			parts[i] = item.encode(chars, items)
 		}
-		if more := len(n.items) - items; more > 0 {
-			buf.WriteByte(',')
-			buf.Write(encodeString(fmt.Sprintf("…[%d more items]", more)))
-		}
-		buf.WriteByte(']')
+		writeItems(buf, '[', ']', parts, items, func(more int) []byte {
+			return encodeString(fmt.Sprintf("…[%d more items]", more))
+		})
 	case kindObject:
-		buf.WriteByte('{')
-		for i, item := range n.items[:min(len(n.items), items)] {
-			if i > 0 {
-				buf.WriteByte(',')
-			}
-			buf.Write(encodeString(n.keys[i]))
-			buf.WriteByte(':')
-			item.write(buf, chars, items)
+		parts := make([][]byte, len(n.items))
+		for i, item := range n.items {
+			parts[i] = append(append(encodeString(n.keys[i]), ':'), item.encode(chars, items)...)
 		}
-		if more := len(n.items) - items; more > 0 {
-			buf.WriteByte(',')
-			buf.Write(encodeString(truncateKey))
-			buf.WriteByte(':')
-			buf.Write(encodeString(fmt.Sprintf("[%d more keys]", more)))
-		}
-		buf.WriteByte('}')
+		writeItems(buf, '{', '}', parts, items, func(more int) []byte {
+			return append(append(encodeString(truncateKey), ':'), encodeString(fmt.Sprintf("[%d more keys]", more))...)
+		})
 	}
 }
 
 ////////////////////////////////////////////////////////////////////////////////
 // PRIVATE FUNCTIONS
+
+// writeItems writes the items of an array or object, between the brackets:
+// the first of them, followed by the note of how many more there were, or
+// all of them, when the note is no shorter than those it leaves out, so a
+// note never makes the JSON longer
+func writeItems(buf *bytes.Buffer, open, close byte, parts [][]byte, items int, note func(more int) []byte) {
+	if more := len(parts) - items; more > 0 {
+		var omitted int
+		for _, part := range parts[items:] {
+			omitted += len(part) + 1
+		}
+		if marker := note(more); len(marker)+1 < omitted {
+			parts = append(parts[:items:items], marker)
+		}
+	}
+	buf.WriteByte(open)
+	for i, part := range parts {
+		if i > 0 {
+			buf.WriteByte(',')
+		}
+		buf.Write(part)
+	}
+	buf.WriteByte(close)
+}
 
 // parse returns the JSON as a value, whose objects keep the order of their
 // keys, and whose numbers are as they are
@@ -280,7 +291,8 @@ func truncateText(result json.RawMessage, budget int) json.RawMessage {
 }
 
 // truncateString returns the string, when it's at most the characters, or
-// its first characters, with a note of how many more there were
+// its first characters, with a note of how many more there were, unless
+// that's no shorter than the string, so a note never makes it longer
 func truncateString(text string, chars int) string {
 	if utf8.RuneCountInString(text) <= chars {
 		return text
@@ -290,7 +302,10 @@ func truncateString(text string, chars int) string {
 		_, size := utf8.DecodeRuneInString(text[end:])
 		end += size
 	}
-	return text[:end] + fmt.Sprintf("…[truncated, %d more characters]", utf8.RuneCountInString(text[end:]))
+	if truncated := text[:end] + fmt.Sprintf("…[truncated, %d more characters]", utf8.RuneCountInString(text[end:])); len(truncated) < len(text) {
+		return truncated
+	}
+	return text
 }
 
 // encodeString returns the string as JSON, without escaping HTML, so it's no

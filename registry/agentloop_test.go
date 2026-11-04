@@ -917,6 +917,47 @@ func Test_AgentLoopCompact(t *testing.T) {
 		assert.Equal(t, llm.Usage{}, usage)
 	})
 
+	t.Run("Attachment", func(t *testing.T) {
+		// An attachment is an estimate of tokens, rather than its data as
+		// text, so a large image fits, and the model is asked
+		image := providerschema.ContentBlock{Resource: &providerschema.Resource{ResourceMeta: providerschema.ResourceMeta{
+			ContentType: "image/png",
+			Data:        make([]byte, 1<<20),
+		}}}
+		p := newScripted(text("A cat"))
+		r, model := newAgentLoop(t, p)
+		added, _, err := r.AgentLoop(ctx, model, []llm.Message{schemaMessage("user", textBlock("What's this?"), image)}, tools(), nil, window)
+		require.NoError(t, err)
+		require.Len(t, added, 1)
+		assert.Equal(t, providerschema.ResultStop, added[0].Result)
+		require.Len(t, p.asked, 1)
+		assert.Len(t, p.asked[0].messages[0].Resources(), 1)
+	})
+
+	t.Run("MessageMeta", func(t *testing.T) {
+		// Messages which are the meta of messages, by value or pointer, are
+		// compacted too: an earlier turn's result is removed, and the latest
+		// turn's is truncated
+		messages := []llm.Message{
+			&providerschema.MessageMeta{Sender: "user", Content: []providerschema.ContentBlock{textBlock("First")}},
+			providerschema.MessageMeta{Sender: "assistant", Content: []providerschema.ContentBlock{{ToolCall: &providerschema.ToolCall{ID: "old", Name: "echo"}}}},
+			providerschema.MessageMeta{Sender: "tool", Content: []providerschema.ContentBlock{providerschema.NewToolResult("old", "echo", big)}},
+			&providerschema.MessageMeta{Sender: "user", Content: []providerschema.ContentBlock{textBlock("Second")}},
+			providerschema.MessageMeta{Sender: "assistant", Content: []providerschema.ContentBlock{{ToolCall: &providerschema.ToolCall{ID: "new", Name: "echo"}}}},
+			&providerschema.MessageMeta{Sender: "tool", Content: []providerschema.ContentBlock{providerschema.NewToolResult("new", "echo", strings.Repeat("b", 100_000))}},
+		}
+		p := newScripted(text("Done"))
+		r, model := newAgentLoop(t, p)
+		_, _, err := r.AgentLoop(ctx, model, messages, tools(), nil, window)
+		require.NoError(t, err)
+		require.Len(t, p.asked, 1)
+		sent := p.asked[0].messages
+		require.Len(t, sent, 6)
+		assert.Contains(t, string(sent[2].ToolResults()[0].Content), "was removed")
+		assert.Contains(t, string(sent[5].ToolResults()[0].Content), "more characters]")
+		assert.Less(t, len(sent[5].ToolResults()[0].Content), 4*2640)
+	})
+
 	t.Run("Loop", func(t *testing.T) {
 		// The model calls a tool whose result is large, twice, so the first
 		// result is truncated when it's sent, and removed when the second is,
@@ -946,3 +987,46 @@ func Test_AgentLoopCompact(t *testing.T) {
 
 // tools returns the tools of the tests
 func tools() []llm.Tool { return []llm.Tool{echoTool{}} }
+
+// chattyTool is a tool which ignores its context, and logs until it's
+// released
+type chattyTool struct {
+	echoTool
+	release, stopped chan struct{}
+}
+
+func (chattyTool) Name() string { return "chatty" }
+func (t chattyTool) Run(ctx context.Context, _ json.RawMessage) (any, error) {
+	defer close(t.stopped)
+	logger := toolkit.SessionFromContext(ctx).Logger()
+	for {
+		select {
+		case <-t.release:
+			return nil, nil
+		default:
+			logger.Info("still here")
+			time.Sleep(100 * time.Microsecond)
+		}
+	}
+}
+
+func Test_AgentLoopTimedOutLog(t *testing.T) {
+	// A tool which times out, and keeps logging as the next reply streams,
+	// doesn't call the stream at once with it, which the race detector
+	// finds, as the stream isn't safe to call at once
+	ctx := context.Background()
+	tool := chattyTool{release: make(chan struct{}), stopped: make(chan struct{})}
+	p := newScripted(call("chatty", `{}`), text("Done"))
+	p.delay = 20 * time.Millisecond
+	r, model := newAgentLoop(t, p)
+	var streamed []string
+	added, _, err := r.AgentLoop(ctx, model, []llm.Message{user(t, "Go")}, []llm.Tool{tool}, func(_ llm.StreamType, text string) {
+		streamed = append(streamed, text)
+	}, llm.WithToolTimeout(20*time.Millisecond))
+	close(tool.release)
+	<-tool.stopped
+	require.NoError(t, err)
+	require.Len(t, added, 3)
+	assert.Contains(t, string(added[1].ToolResults()[0].Content), "timed out")
+	assert.Contains(t, streamed, "Done")
+}

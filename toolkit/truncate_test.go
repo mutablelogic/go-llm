@@ -119,6 +119,29 @@ func Test_TruncateResult(t *testing.T) {
 		assert.Contains(t, string(truncated), "more items]")
 	})
 
+	t.Run("ShortValues", func(t *testing.T) {
+		// Notes don't make short values longer, so an array of short strings
+		// keeps its shape, rather than becoming text
+		var items []string
+		for range 100 {
+			items = append(items, `"abcdefghij"`)
+		}
+		truncated := truncate(t, "["+strings.Join(items, ",")+"]", 13)
+		var values []string
+		require.NoError(t, json.Unmarshal(truncated, &values))
+		require.Greater(t, len(values), 1)
+		assert.Equal(t, "abcdefghij", values[0])
+		assert.Regexp(t, `^…\[\d+ more items\]$`, values[len(values)-1])
+	})
+
+	t.Run("ShortItems", func(t *testing.T) {
+		// A note of the items left out isn't added when it's no shorter than
+		// they are, so the items are kept
+		truncated := truncate(t, `{"long":"`+strings.Repeat("a", 400)+`","list":[1,2,3]}`, 40)
+		assert.Contains(t, string(truncated), `"list":[1,2,3]`)
+		assert.Contains(t, string(truncated), "more characters]")
+	})
+
 	t.Run("UTF8", func(t *testing.T) {
 		// Strings are cut between characters, and HTML isn't escaped
 		truncated := truncate(t, `"<p>`+strings.Repeat("ü€😀", 2000)+`"`, 100)

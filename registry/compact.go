@@ -61,6 +61,11 @@ const (
 	// minToolResultLimit is the fewest tokens of a tool's result the agent
 	// loop sends to the model, when its context is full
 	minToolResultLimit = 256
+
+	// attachmentTokens is an estimate of the tokens of an attachment, such as
+	// an image, which providers send as media, rather than as its data as
+	// text, so its tokens aren't those of its data
+	attachmentTokens = 1500
 )
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -287,24 +292,40 @@ func (h *history) dropTurns(budget uint) int {
 }
 
 // measureMessage returns the tokens of the message, as its content as JSON,
-// when it's a message of the provider schema, or otherwise its text
+// when it's a message of the provider schema, without the data of its
+// attachments, each of which is attachmentTokens, or otherwise its text
 func (h *history) measureMessage(ctx context.Context, message llm.Message) (uint, error) {
-	if message, ok := schemaMessage(message); ok {
-		data, err := json.Marshal(message.Content)
-		if err != nil {
-			return 0, err
-		}
-		return h.measure(ctx, string(data))
+	schema, ok := schemaMessage(message)
+	if !ok {
+		return h.measure(ctx, message.Text())
 	}
-	return h.measure(ctx, message.Text())
+	content := slices.Clone(schema.Content)
+	var attachments uint
+	for i, block := range content {
+		if block.Resource != nil {
+			resource := *block.Resource
+			resource.Data = nil
+			content[i].Resource = &resource
+			attachments++
+		}
+	}
+	data, err := json.Marshal(content)
+	if err != nil {
+		return 0, err
+	}
+	tokens, err := h.measure(ctx, string(data))
+	if err != nil {
+		return 0, err
+	}
+	return tokens + attachments*attachmentTokens, nil
 }
 
 ///////////////////////////////////////////////////////////////////////////////
 // PRIVATE FUNCTIONS
 
 // schemaMessage returns a copy of the message, when it's a message of the
-// provider schema, by value or pointer, which can be changed without
-// changing the message, once its content is cloned
+// provider schema, or its meta, by value or pointer, which can be changed
+// without changing the message, once its content is cloned
 func schemaMessage(message llm.Message) (*providerschema.Message, bool) {
 	switch m := message.(type) {
 	case *providerschema.Message:
@@ -315,6 +336,13 @@ func schemaMessage(message llm.Message) (*providerschema.Message, bool) {
 		return &copied, true
 	case providerschema.Message:
 		return &m, true
+	case *providerschema.MessageMeta:
+		if m == nil {
+			return nil, false
+		}
+		return &providerschema.Message{MessageMeta: *m}, true
+	case providerschema.MessageMeta:
+		return &providerschema.Message{MessageMeta: m}, true
 	}
 	return nil, false
 }

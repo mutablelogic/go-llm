@@ -6,6 +6,7 @@ import (
 	"errors"
 	"strings"
 	"testing"
+	"time"
 
 	// Packages
 	llm "github.com/mutablelogic/go-llm"
@@ -30,8 +31,9 @@ type scripted struct {
 	byValue bool
 	err     error
 	asked   []asked
-	usage   *llm.Usage // The usage of each reply, which is 10 input and 5 output tokens when nil
-	input   *uint      // The input token limit of its models, or nil when it isn't known
+	usage   *llm.Usage    // The usage of each reply, which is 10 input and 5 output tokens when nil
+	input   *uint         // The input token limit of its models, or nil when it isn't known
+	delay   time.Duration // How long it waits before it streams a reply, as a model would
 }
 
 // asked is what a scripted provider was asked with
@@ -82,6 +84,7 @@ func (s *scripted) WithoutSession(_ context.Context, _ llm.Model, messages []llm
 	reply := s.replies[0]
 	s.replies = s.replies[1:]
 	if stream != nil {
+		time.Sleep(s.delay)
 		if text := reply.Text(); text != "" {
 			stream(llm.StreamText, text)
 		}

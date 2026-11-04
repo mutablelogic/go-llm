@@ -134,15 +134,17 @@ func toolMessages(message llm.Message) ([]chatMessage, error) {
 	return chat, nil
 }
 
-// chatResult returns why the model stopped, from the reason in the response
+// chatResult returns why the model stopped, from the reason in the response. A
+// reply which was truncated is so even when it called tools, as its calls may
+// be incomplete.
 func chatResult(response chatResponse) schema.ResultType {
 	switch {
+	case response.DoneReason == "length":
+		return schema.ResultMaxTokens
 	case len(response.Message.ToolCalls) > 0:
 		return schema.ResultToolCall
 	case response.DoneReason == "stop":
 		return schema.ResultStop
-	case response.DoneReason == "length":
-		return schema.ResultMaxTokens
 	default:
 		return schema.ResultOther
 	}

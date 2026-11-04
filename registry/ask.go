@@ -217,7 +217,7 @@ type replyStream struct {
 	fn       llm.GeneratorStreamFn
 	streamed bool       // Something has been streamed
 	started  bool       // The current reply has streamed something
-	mu       sync.Mutex // Guards the function, as tools run in parallel log to it
+	mu       sync.Mutex // Guards the function, and what's streamed, as tools log to it in parallel, even after they time out
 }
 
 // newReplyStream returns the stream of the replies, which streams to the
@@ -235,14 +235,17 @@ func (s *replyStream) Next() llm.GeneratorStreamFn {
 	if s == nil {
 		return nil
 	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	s.started = false
 	return s.stream
 }
 
 // Log returns the function which streams a line a tool logs, which isn't
 // part of a reply, so doesn't separate the replies, or nil when the replies
-// aren't streamed. Tools which run in parallel can log at once, so the
-// lines are streamed in turn.
+// aren't streamed. Tools which run in parallel can log at once, and a tool
+// which doesn't return when it times out can log as the next reply is
+// streamed, so the lines, and the replies, are streamed in turn.
 func (s *replyStream) Log() func(string) {
 	if s == nil {
 		return nil
@@ -260,6 +263,8 @@ func (s *replyStream) stream(what llm.StreamType, text string) {
 	if text == "" {
 		return
 	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	if !s.started {
 		s.started = true
 		if s.streamed {

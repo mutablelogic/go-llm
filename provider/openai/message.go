@@ -174,19 +174,19 @@ func replyUsage(choice chatChoice, usage *chatUsage) llm.Usage {
 	return result
 }
 
-// chatResult returns why the model stopped, from the reason in the choice
+// chatResult returns why the model stopped, from the reason in the choice. A
+// reply which didn't finish, as it was truncated or filtered, is so even when
+// it called tools, as its calls may be incomplete.
 func chatResult(choice chatChoice) schema.ResultType {
 	switch {
-	case choice.Message.Refusal != "":
+	case choice.Message.Refusal != "", choice.FinishReason == "content_filter":
 		return schema.ResultBlocked
+	case choice.FinishReason == "length":
+		return schema.ResultMaxTokens
 	case len(choice.Message.ToolCalls) > 0:
 		return schema.ResultToolCall
 	case choice.FinishReason == "stop":
 		return schema.ResultStop
-	case choice.FinishReason == "length":
-		return schema.ResultMaxTokens
-	case choice.FinishReason == "content_filter":
-		return schema.ResultBlocked
 	default:
 		return schema.ResultOther
 	}
