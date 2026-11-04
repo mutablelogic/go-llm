@@ -27,12 +27,29 @@ type Toolkit struct {
 	// the toolkit is in use
 	mu sync.RWMutex
 
-	// The namespaces which have been added
-	namespaces map[string]bool
+	// The namespaces which have been added, by name
+	namespaces map[string]Namespace
 
 	// The tools, by canonical name
 	tools map[string]entry
 }
+
+// Namespace is a namespace of tools: its name, which is an identifier, its
+// system prompt, which says how to use its tools, and is added to the system
+// prompt of a model which can call any of them, or is empty, and its tools
+type Namespace interface {
+	Name() string
+	SystemPrompt() string
+	Tools() []llm.Tool
+}
+
+// namespace is a namespace with a name, system prompt and tools
+type namespace struct {
+	name, prompt string
+	tools        []llm.Tool
+}
+
+var _ Namespace = namespace{}
 
 // entry is a tool in a namespace, with its input schema resolved for
 // validating its input, or nil if it has no input schema
@@ -48,7 +65,7 @@ type entry struct {
 // New returns a toolkit with the options
 func New(ctx context.Context, opts ...Opt) (_ *Toolkit, err error) {
 	self := &Toolkit{
-		namespaces: make(map[string]bool),
+		namespaces: make(map[string]Namespace),
 		tools:      make(map[string]entry),
 	}
 
@@ -68,20 +85,24 @@ func New(ctx context.Context, opts ...Opt) (_ *Toolkit, err error) {
 ////////////////////////////////////////////////////////////////////////////////
 // PUBLIC METHODS
 
-// Add adds the tools in the namespace to the toolkit, by their canonical
-// name, which is the namespace and the tool's name separated by a colon,
-// such as "weatherapi:current". The namespace must be an
+// Add adds the namespace, and its tools, to the toolkit, by their canonical
+// name, which is the namespace's name and the tool's name separated by a
+// colon, such as "weatherapi:current". The namespace's name must be an
 // identifier. Returns an error, and adds none of the tools, if the namespace
-// isn't valid or has already been added, or a tool is nil, its name isn't
-// valid, or two tools have the same name.
-func (self *Toolkit) Add(namespace string, tools ...llm.Tool) error {
+// is nil, isn't valid or has already been added, or a tool is nil, its name
+// isn't valid, or two tools have the same name.
+func (self *Toolkit) Add(ns Namespace) error {
 	self.mu.Lock()
 	defer self.mu.Unlock()
 
 	// Check the namespace
+	if ns == nil {
+		return llm.ErrBadParameter.With("missing namespace")
+	}
+	namespace, tools := ns.Name(), ns.Tools()
 	if !types.IsIdentifier(namespace) {
 		return llm.ErrBadParameter.Withf("invalid namespace %q", namespace)
-	} else if self.namespaces[namespace] {
+	} else if _, exists := self.namespaces[namespace]; exists {
 		return llm.ErrConflict.Withf("namespace %q already exists", namespace)
 	}
 
@@ -105,7 +126,7 @@ func (self *Toolkit) Add(namespace string, tools ...llm.Tool) error {
 	}
 
 	// Add the namespace and its tools
-	self.namespaces[namespace] = true
+	self.namespaces[namespace] = ns
 	for name, entry := range entries {
 		self.tools[schema.CanonicalToolName(namespace, name)] = entry
 	}
@@ -115,7 +136,9 @@ func (self *Toolkit) Add(namespace string, tools ...llm.Tool) error {
 }
 
 // Credential returns the value of the credential with the key, such as a
-// tool's API key, from the toolkit's credential provider
+// tool's API key, from the toolkit's credential provider. Returns
+// ErrNotFound when the credential doesn't exist, or is empty, as when its
+// environment variable is set to nothing, so it's as if it isn't set.
 func (self *Toolkit) Credential(ctx context.Context, key string) (_ string, err error) {
 	ctx, endSpan := otel.StartSpan(self.tracer, ctx, "llm.toolkit.Credential",
 		attribute.String("arg.key", key),
@@ -126,7 +149,13 @@ func (self *Toolkit) Credential(ctx context.Context, key string) (_ string, err 
 	if key == "" {
 		return "", llm.ErrBadParameter.With("missing credential key")
 	}
-	return self.credentials.Expand(ctx, "${"+key+"}")
+	value, err := self.credentials.Expand(ctx, "${"+key+"}")
+	if err != nil {
+		return "", err
+	} else if strings.TrimSpace(value) == "" {
+		return "", llm.ErrNotFound.Withf("credential %q is empty", key)
+	}
+	return value, nil
 }
 
 // ClientOpts returns the client options for the HTTP clients of tools which
@@ -150,4 +179,25 @@ func resolveSchema(v *jsonschema.Schema) (*jsonschema.Schema, error) {
 		return nil, err
 	}
 	return jsonschema.FromJSON(data)
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// NAMESPACE
+
+// NewNamespace returns a namespace with the name, the system prompt, which
+// can be empty, and the tools
+func NewNamespace(name, prompt string, tools ...llm.Tool) Namespace {
+	return namespace{name: name, prompt: prompt, tools: tools}
+}
+
+func (n namespace) Name() string {
+	return n.name
+}
+
+func (n namespace) SystemPrompt() string {
+	return n.prompt
+}
+
+func (n namespace) Tools() []llm.Tool {
+	return n.tools
 }

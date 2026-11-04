@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 
 	// Packages
-	client "github.com/mutablelogic/go-client"
 	llm "github.com/mutablelogic/go-llm"
 	toolkit "github.com/mutablelogic/go-llm/toolkit"
 	httpclient "github.com/mutablelogic/go-llm/toolkit/weatherapi/httpclient"
@@ -33,24 +32,6 @@ type alertsWeather struct {
 var _ llm.Tool = (*currentWeather)(nil)
 var _ llm.Tool = (*forecastWeather)(nil)
 var _ llm.Tool = (*alertsWeather)(nil)
-
-////////////////////////////////////////////////////////////////////////////////
-// LIFECYCLE
-
-// NewTools returns the WeatherAPI tools, which share a client with the API key
-func NewTools(apiKey string, opts ...client.ClientOpt) ([]llm.Tool, error) {
-	// Create a client
-	client, err := httpclient.New(apiKey, opts...)
-	if err != nil {
-		return nil, err
-	}
-
-	return []llm.Tool{
-		&currentWeather{client: client},
-		&forecastWeather{client: client},
-		&alertsWeather{client: client},
-	}, nil
-}
 
 ////////////////////////////////////////////////////////////////////////////////
 // CURRENT WEATHER

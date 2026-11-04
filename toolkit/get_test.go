@@ -17,7 +17,7 @@ func TestGetTool(t *testing.T) {
 	ctx := context.Background()
 	tk, err := toolkit.New(ctx)
 	require.NoError(t, err)
-	require.NoError(t, tk.Add("test", schemaTool{echoTool: echoTool{name: "weather"}}, echoTool{name: "echo"}))
+	require.NoError(t, tk.Add(toolkit.NewNamespace("test", "", schemaTool{echoTool: echoTool{name: "weather"}}, echoTool{name: "echo"})))
 
 	t.Run("Get", func(t *testing.T) {
 		tool, err := tk.GetTool(ctx, "test:weather")
@@ -50,8 +50,8 @@ func TestGetTool(t *testing.T) {
 		// name of each tool isn't
 		tk, err := toolkit.New(ctx)
 		require.NoError(t, err)
-		require.NoError(t, tk.Add("b", echoTool{name: "search"}))
-		require.NoError(t, tk.Add("a", echoTool{name: "search"}, echoTool{name: "other"}))
+		require.NoError(t, tk.Add(toolkit.NewNamespace("b", "", echoTool{name: "search"})))
+		require.NoError(t, tk.Add(toolkit.NewNamespace("a", "", echoTool{name: "search"}, echoTool{name: "other"})))
 
 		_, err = tk.GetTool(ctx, "search")
 		assert.ErrorIs(t, err, llm.ErrConflict)
@@ -81,8 +81,8 @@ func TestTools(t *testing.T) {
 	ctx := context.Background()
 	tk, err := toolkit.New(ctx)
 	require.NoError(t, err)
-	require.NoError(t, tk.Add("weather", echoTool{name: "current"}, echoTool{name: "search"}))
-	require.NoError(t, tk.Add("news", echoTool{name: "search"}))
+	require.NoError(t, tk.Add(toolkit.NewNamespace("weather", "", echoTool{name: "current"}, echoTool{name: "search"})))
+	require.NoError(t, tk.Add(toolkit.NewNamespace("news", "", echoTool{name: "search"})))
 
 	t.Run("Tools", func(t *testing.T) {
 		// The tools have new names, and the tool's other methods are
@@ -192,8 +192,8 @@ func TestToolsNames(t *testing.T) {
 		// can be got
 		tk, err := toolkit.New(ctx)
 		require.NoError(t, err)
-		require.NoError(t, tk.Add("my_tools", echoTool{name: "search"}))
-		require.NoError(t, tk.Add("my", echoTool{name: "tools_search"}))
+		require.NoError(t, tk.Add(toolkit.NewNamespace("my_tools", "", echoTool{name: "search"})))
+		require.NoError(t, tk.Add(toolkit.NewNamespace("my", "", echoTool{name: "tools_search"})))
 		_, err = tk.Tools(ctx, "my_tools:search", "my:tools_search")
 		assert.ErrorIs(t, err, llm.ErrConflict)
 		for _, name := range []string{"my_tools:search", "my:tools_search"} {
@@ -209,7 +209,7 @@ func TestToolsNames(t *testing.T) {
 		tk, err := toolkit.New(ctx)
 		require.NoError(t, err)
 		namespace := "n" + strings.Repeat("a", 39)
-		require.NoError(t, tk.Add(namespace, echoTool{name: strings.Repeat("b", 24)}, echoTool{name: strings.Repeat("c", 23)}))
+		require.NoError(t, tk.Add(toolkit.NewNamespace(namespace, "", echoTool{name: strings.Repeat("b", 24)}, echoTool{name: strings.Repeat("c", 23)})))
 		_, err = tk.Tools(ctx, namespace+":"+strings.Repeat("b", 24))
 		assert.ErrorIs(t, err, llm.ErrBadParameter)
 		_, err = tk.Tools(ctx, namespace+":"+strings.Repeat("c", 23))
@@ -223,11 +223,9 @@ func TestToolsRun(t *testing.T) {
 	ctx := context.Background()
 	tk, err := toolkit.New(ctx)
 	require.NoError(t, err)
-	require.NoError(t, tk.Add("test",
-		schemaTool{echoTool: echoTool{name: "weather"}},
+	require.NoError(t, tk.Add(toolkit.NewNamespace("test", "", schemaTool{echoTool: echoTool{name: "weather"}},
 		resultTool{echoTool: echoTool{name: "text"}, result: "It's sunny"},
-		resultTool{echoTool: echoTool{name: "none"}, result: nil},
-	))
+		resultTool{echoTool: echoTool{name: "none"}, result: nil})))
 	tools, err := tk.Tools(ctx, "test:*")
 	require.NoError(t, err)
 	byName := make(map[string]llm.Tool, len(tools))

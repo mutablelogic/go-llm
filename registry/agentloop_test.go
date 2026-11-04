@@ -1054,3 +1054,55 @@ func Test_AgentLoopNilMessage(t *testing.T) {
 		})
 	}
 }
+
+func Test_AgentLoopSystemPrompts(t *testing.T) {
+	// The system prompt is the system_prompt option, followed by the system
+	// prompts of the tools which are the registry's toolkit's, once each, and
+	// the instruction to call the respond tool, when there's a schema
+	ctx := context.Background()
+	tk, err := toolkit.New(ctx)
+	require.NoError(t, err)
+	require.NoError(t, tk.Add(toolkit.NewNamespace("weather", "Use metric units.", namedEcho{name: "current"}, namedEcho{name: "forecast"})))
+	require.NoError(t, tk.Add(toolkit.NewNamespace("news", "Cite the source.", namedEcho{name: "headlines"})))
+	run := func(t *testing.T, p *scripted, tools []llm.Tool, opts ...llm.Opt) string {
+		t.Helper()
+		r, err := registry.New(registry.WithToolkit(tk))
+		require.NoError(t, err)
+		require.NoError(t, r.Add("", p))
+		model, err := r.GetModel(ctx, "model")
+		require.NoError(t, err)
+		_, _, err = r.AgentLoop(ctx, model, []llm.Message{user(t, "Hi")}, tools, nil, opts...)
+		require.NoError(t, err)
+		require.NotEmpty(t, p.asked)
+		system, _ := llm.GetOpt[string](p.asked[0].opts, llm.SystemPromptKey)
+		return system
+	}
+	toolsOf := func(t *testing.T, names ...string) []llm.Tool {
+		t.Helper()
+		tools, err := tk.Tools(ctx, names...)
+		require.NoError(t, err)
+		return tools
+	}
+
+	t.Run("Tools", func(t *testing.T) {
+		system := run(t, newScripted(text("Hello")), toolsOf(t, "weather:*", "news:headlines"), llm.WithSystemPrompt("Be brief"))
+		assert.Equal(t, "Be brief\n\nUse metric units.\n\nCite the source.", system)
+	})
+
+	t.Run("NoSystem", func(t *testing.T) {
+		system := run(t, newScripted(text("Hello")), toolsOf(t, "news:headlines"))
+		assert.Equal(t, "Cite the source.", system)
+	})
+
+	t.Run("OtherTools", func(t *testing.T) {
+		// A tool which isn't the toolkit's has no system prompt
+		system := run(t, newScripted(text("Hello")), []llm.Tool{echoTool{}}, llm.WithSystemPrompt("Be brief"))
+		assert.Equal(t, "Be brief", system)
+	})
+
+	t.Run("Schema", func(t *testing.T) {
+		system := run(t, newScripted(call(toolkit.RespondName, `{"result":"ok"}`)), toolsOf(t, "news:*"),
+			llm.WithSystemPrompt("Be brief"), llm.WithJSONSchema(json.RawMessage(`{"type":"string"}`)))
+		assert.Equal(t, "Be brief\n\nCite the source.\n\n"+toolkit.RespondPrompt, system)
+	})
+}

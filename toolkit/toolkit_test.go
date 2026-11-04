@@ -54,8 +54,8 @@ func TestAdd(t *testing.T) {
 		// and the tool's name separated by a colon
 		tk, err := toolkit.New(ctx)
 		require.NoError(t, err)
-		require.NoError(t, tk.Add("b", tool{name: "a"}))
-		require.NoError(t, tk.Add("a", tool{name: "z"}, tool{name: "y"}))
+		require.NoError(t, tk.Add(toolkit.NewNamespace("b", "", tool{name: "a"})))
+		require.NoError(t, tk.Add(toolkit.NewNamespace("a", "", tool{name: "z"}, tool{name: "y"})))
 		assert.Equal(t, []string{"a:y", "a:z", "b:a"}, names(t, tk))
 	})
 
@@ -63,8 +63,8 @@ func TestAdd(t *testing.T) {
 		// Tools in different namespaces can have the same name
 		tk, err := toolkit.New(ctx)
 		require.NoError(t, err)
-		require.NoError(t, tk.Add("a", tool{name: "search"}))
-		require.NoError(t, tk.Add("b", tool{name: "search"}))
+		require.NoError(t, tk.Add(toolkit.NewNamespace("a", "", tool{name: "search"})))
+		require.NoError(t, tk.Add(toolkit.NewNamespace("b", "", tool{name: "search"})))
 		assert.Equal(t, []string{"a:search", "b:search"}, names(t, tk))
 	})
 
@@ -72,7 +72,7 @@ func TestAdd(t *testing.T) {
 		tk, err := toolkit.New(ctx)
 		require.NoError(t, err)
 		for _, namespace := range []string{"", "1abc", "not valid", "a:b"} {
-			assert.ErrorIs(t, tk.Add(namespace, tool{name: "a"}), llm.ErrBadParameter, namespace)
+			assert.ErrorIs(t, tk.Add(toolkit.NewNamespace(namespace, "", tool{name: "a"})), llm.ErrBadParameter, namespace)
 		}
 		assert.Empty(t, names(t, tk))
 	})
@@ -81,27 +81,27 @@ func TestAdd(t *testing.T) {
 		// A namespace can only be added once
 		tk, err := toolkit.New(ctx)
 		require.NoError(t, err)
-		require.NoError(t, tk.Add("weather", tool{name: "a"}))
-		assert.ErrorIs(t, tk.Add("weather", tool{name: "b"}), llm.ErrConflict)
+		require.NoError(t, tk.Add(toolkit.NewNamespace("weather", "", tool{name: "a"})))
+		assert.ErrorIs(t, tk.Add(toolkit.NewNamespace("weather", "", tool{name: "b"})), llm.ErrConflict)
 		assert.Equal(t, []string{"weather:a"}, names(t, tk))
 	})
 
 	t.Run("Invalid", func(t *testing.T) {
 		tk, err := toolkit.New(ctx)
 		require.NoError(t, err)
-		assert.ErrorIs(t, tk.Add("a", nil), llm.ErrBadParameter)
-		assert.ErrorIs(t, tk.Add("a", tool{name: "not valid"}), llm.ErrBadParameter)
+		assert.ErrorIs(t, tk.Add(toolkit.NewNamespace("a", "", nil)), llm.ErrBadParameter)
+		assert.ErrorIs(t, tk.Add(toolkit.NewNamespace("a", "", tool{name: "not valid"})), llm.ErrBadParameter)
 		assert.Empty(t, names(t, tk))
 
 		// The namespace wasn't added, so it can be added later
-		assert.NoError(t, tk.Add("a", tool{name: "a"}))
+		assert.NoError(t, tk.Add(toolkit.NewNamespace("a", "", tool{name: "a"})))
 	})
 
 	t.Run("Duplicate", func(t *testing.T) {
 		// None of the tools are added when two have the same name
 		tk, err := toolkit.New(ctx)
 		require.NoError(t, err)
-		assert.ErrorIs(t, tk.Add("a", tool{name: "b"}, tool{name: "b"}), llm.ErrConflict)
+		assert.ErrorIs(t, tk.Add(toolkit.NewNamespace("a", "", tool{name: "b"}, tool{name: "b"})), llm.ErrConflict)
 		assert.Empty(t, names(t, tk))
 	})
 }
@@ -120,8 +120,11 @@ func (credentials) Set(context.Context, string, json.RawMessage) error {
 }
 
 func (credentials) Expand(_ context.Context, value string) (string, error) {
-	if value == "${weather_key}" {
+	switch value {
+	case "${weather_key}":
 		return "secret", nil
+	case "${empty_key}":
+		return " ", nil
 	}
 	return "", llm.ErrNotFound.Withf("credential %q", value)
 }
@@ -141,6 +144,24 @@ func TestCredential(t *testing.T) {
 		tk, err := toolkit.New(ctx, toolkit.WithCredentialsProvider(credentials{}))
 		require.NoError(t, err)
 		_, err = tk.Credential(ctx, "other_key")
+		assert.ErrorIs(t, err, llm.ErrNotFound)
+	})
+
+	t.Run("Empty", func(t *testing.T) {
+		// A credential which is empty is as if it isn't set
+		tk, err := toolkit.New(ctx, toolkit.WithCredentialsProvider(credentials{}))
+		require.NoError(t, err)
+		_, err = tk.Credential(ctx, "empty_key")
+		assert.ErrorIs(t, err, llm.ErrNotFound)
+		assert.ErrorContains(t, err, "is empty")
+	})
+
+	t.Run("EmptyEnvironment", func(t *testing.T) {
+		// An environment variable which is set to nothing is as if it isn't
+		t.Setenv("TOOLKIT_TEST_EMPTY", "")
+		tk, err := toolkit.New(ctx)
+		require.NoError(t, err)
+		_, err = tk.Credential(ctx, "TOOLKIT_TEST_EMPTY")
 		assert.ErrorIs(t, err, llm.ErrNotFound)
 	})
 
@@ -176,8 +197,8 @@ func TestListTools(t *testing.T) {
 	ctx := context.Background()
 	tk, err := toolkit.New(ctx)
 	require.NoError(t, err)
-	require.NoError(t, tk.Add("a", tool{name: "one"}, tool{name: "two"}, tool{name: "three"}))
-	require.NoError(t, tk.Add("ab", tool{name: "four"}))
+	require.NoError(t, tk.Add(toolkit.NewNamespace("a", "", tool{name: "one"}, tool{name: "two"}, tool{name: "three"})))
+	require.NoError(t, tk.Add(toolkit.NewNamespace("ab", "", tool{name: "four"})))
 
 	t.Run("All", func(t *testing.T) {
 		list, err := tk.ListTools(ctx, schema.ToolListRequest{})
@@ -244,7 +265,7 @@ func TestConcurrent(t *testing.T) {
 		wg.Add(2)
 		go func() {
 			defer wg.Done()
-			assert.NoError(t, tk.Add(fmt.Sprint("ns", i), tool{name: "a"}, tool{name: "b"}))
+			assert.NoError(t, tk.Add(toolkit.NewNamespace(fmt.Sprint("ns", i), "", tool{name: "a"}, tool{name: "b"})))
 		}()
 		go func() {
 			defer wg.Done()

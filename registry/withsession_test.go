@@ -10,6 +10,7 @@ import (
 	// Packages
 	llm "github.com/mutablelogic/go-llm"
 	providerschema "github.com/mutablelogic/go-llm/provider/schema"
+	registry "github.com/mutablelogic/go-llm/registry"
 	schema "github.com/mutablelogic/go-llm/registry/schema"
 	toolkit "github.com/mutablelogic/go-llm/toolkit"
 	types "github.com/mutablelogic/go-server/pkg/types"
@@ -249,4 +250,93 @@ func (r resource) Read(context.Context) (llm.ReadFunc, error) {
 // newSession returns a session, asked as the meta says, with the messages
 func newSession(meta schema.GeneratorMeta, messages ...providerschema.Message) schema.Session {
 	return schema.Session{SessionMeta: schema.SessionMeta{GeneratorMeta: meta}, Messages: messages}
+}
+
+// namedEcho is a tool which returns its input, with the name
+type namedEcho struct {
+	echoTool
+	name string
+}
+
+func (t namedEcho) Name() string { return t.name }
+
+func Test_ToolSystemPrompts(t *testing.T) {
+	// The system prompts of the tools' namespaces follow the system prompt,
+	// once each, and the
+	// instruction to call the respond tool follows them, when there's a
+	// schema, and there are none when the tool choice is none
+	ctx := context.Background()
+	newRegistry := func(t *testing.T, p *scripted) *registry.Registry {
+		t.Helper()
+		tools, err := toolkit.New(ctx)
+		require.NoError(t, err)
+		require.NoError(t, tools.Add(toolkit.NewNamespace("weather", "Use metric units.", namedEcho{name: "current"}, namedEcho{name: "forecast"})))
+		require.NoError(t, tools.Add(toolkit.NewNamespace("news", "Cite the source.", namedEcho{name: "headlines"})))
+		require.NoError(t, tools.Add(toolkit.NewNamespace("clock", "It's noon.")))
+		r, err := registry.New(registry.WithToolkit(tools))
+		require.NoError(t, err)
+		require.NoError(t, r.Add("", p))
+		return r
+	}
+	system := func(t *testing.T, p *scripted) string {
+		t.Helper()
+		require.NotEmpty(t, p.asked)
+		system, _ := llm.GetOpt[string](p.asked[0].opts, llm.SystemPromptKey)
+		return system
+	}
+	hi := []llm.Message{says("user", "Hi", 0)}
+
+	t.Run("WithSession", func(t *testing.T) {
+		p := newScripted(text("Hello"))
+		meta := schema.GeneratorMeta{Model: "model", System: "Be brief", Tools: []string{"weather:*", "news:headlines"}}
+		_, err := newRegistry(t, p).WithSession(ctx, newSession(meta), hi, nil)
+		require.NoError(t, err)
+		assert.Equal(t, "Be brief\n\nUse metric units.\n\nCite the source.", system(t, p))
+	})
+
+	t.Run("NoSystem", func(t *testing.T) {
+		p := newScripted(text("Hello"))
+		meta := schema.GeneratorMeta{Model: "model", Tools: []string{"news:*"}}
+		_, err := newRegistry(t, p).WithSession(ctx, newSession(meta), hi, nil)
+		require.NoError(t, err)
+		assert.Equal(t, "Cite the source.", system(t, p))
+	})
+
+	t.Run("Schema", func(t *testing.T) {
+		p := newScripted(call(toolkit.RespondName, `{"result":"ok"}`))
+		meta := schema.GeneratorMeta{Model: "model", System: "Be brief", Tools: []string{"news:*"}, Schema: json.RawMessage(`{"type":"string"}`)}
+		_, err := newRegistry(t, p).WithSession(ctx, newSession(meta), hi, nil)
+		require.NoError(t, err)
+		assert.Equal(t, "Be brief\n\nCite the source.\n\n"+toolkit.RespondPrompt, system(t, p))
+	})
+
+	t.Run("Ask", func(t *testing.T) {
+		p := newScripted(text("Hello"))
+		req := question("Hi")
+		req.System = "Be brief"
+		req.Tools = []string{"weather:current"}
+		_, err := newRegistry(t, p).Ask(ctx, req, nil)
+		require.NoError(t, err)
+		assert.Equal(t, "Be brief\n\nUse metric units.", system(t, p))
+	})
+
+	t.Run("NamespaceWithoutTools", func(t *testing.T) {
+		// A namespace without tools, named by its name and "*", has its
+		// system prompt, though the model has no tools of it
+		p := newScripted(text("Hello"))
+		r := newRegistry(t, p)
+		meta := schema.GeneratorMeta{Model: "model", System: "Be brief", Tools: []string{"clock:*"}}
+		_, err := r.WithSession(ctx, newSession(meta), hi, nil)
+		require.NoError(t, err)
+		assert.Equal(t, "Be brief\n\nIt's noon.", system(t, p))
+		assert.Empty(t, p.asked[0].tools)
+	})
+
+	t.Run("ToolChoiceNone", func(t *testing.T) {
+		p := newScripted(text("Hello"))
+		meta := schema.GeneratorMeta{Model: "model", System: "Be brief", Tools: []string{"weather:*"}, Opt: map[string]json.RawMessage{llm.ToolChoiceKey: json.RawMessage(`"none"`)}}
+		_, err := newRegistry(t, p).WithSession(ctx, newSession(meta), hi, nil)
+		require.NoError(t, err)
+		assert.Equal(t, "Be brief", system(t, p))
+	})
 }

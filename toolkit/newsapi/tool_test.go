@@ -11,6 +11,7 @@ import (
 	// Packages
 	client "github.com/mutablelogic/go-client"
 	llm "github.com/mutablelogic/go-llm"
+	toolkit "github.com/mutablelogic/go-llm/toolkit"
 	newsapi "github.com/mutablelogic/go-llm/toolkit/newsapi"
 	httpclient "github.com/mutablelogic/go-llm/toolkit/newsapi/httpclient"
 	assert "github.com/stretchr/testify/assert"
@@ -51,7 +52,7 @@ func newTools(t *testing.T) (map[string]llm.Tool, *[]request) {
 	}))
 	t.Cleanup(server.Close)
 
-	tools, err := newsapi.NewTools("test-key", client.OptEndpoint(server.URL))
+	tools, err := toolsOf(newsapi.New("test-key", client.OptEndpoint(server.URL)))
 	require.NoError(t, err)
 	result := make(map[string]llm.Tool, len(tools))
 	for _, tool := range tools {
@@ -60,9 +61,9 @@ func newTools(t *testing.T) (map[string]llm.Tool, *[]request) {
 	return result, &requests
 }
 
-func TestNewTools(t *testing.T) {
+func TestNew(t *testing.T) {
 	t.Run("MissingKey", func(t *testing.T) {
-		tools, err := newsapi.NewTools("")
+		tools, err := toolsOf(newsapi.New(""))
 		assert.ErrorIs(t, err, llm.ErrBadParameter)
 		assert.Nil(t, tools)
 	})
@@ -150,7 +151,7 @@ func TestRun(t *testing.T) {
 			w.Write([]byte(`{"status":"error","code":"apiKeyInvalid","message":"Your API key is invalid."}`))
 		}))
 		defer server.Close()
-		tools, err := newsapi.NewTools("wrong-key", client.OptEndpoint(server.URL))
+		tools, err := toolsOf(newsapi.New("wrong-key", client.OptEndpoint(server.URL)))
 		require.NoError(t, err)
 		_, err = tools[0].Run(ctx, json.RawMessage(`{"q":"google"}`))
 		assert.Error(t, err)
@@ -183,4 +184,12 @@ func TestRun(t *testing.T) {
 		assert.ErrorIs(t, err, context.Canceled)
 		assert.Empty(t, *requests)
 	})
+}
+
+// toolsOf returns the tools of the namespace, or nil and the error
+func toolsOf(ns toolkit.Namespace, err error) ([]llm.Tool, error) {
+	if err != nil {
+		return nil, err
+	}
+	return ns.Tools(), nil
 }

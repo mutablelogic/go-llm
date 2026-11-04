@@ -7,7 +7,6 @@ import (
 	"strings"
 
 	// Packages
-	client "github.com/mutablelogic/go-client"
 	llm "github.com/mutablelogic/go-llm"
 	toolkit "github.com/mutablelogic/go-llm/toolkit"
 	httpclient "github.com/mutablelogic/go-llm/toolkit/homeassistant/httpclient"
@@ -75,29 +74,6 @@ type serviceSummary struct {
 	Name        string   `json:"name,omitempty"`
 	Description string   `json:"description,omitempty"`
 	Fields      []string `json:"fields,omitempty"`
-}
-
-////////////////////////////////////////////////////////////////////////////////
-// LIFECYCLE
-
-// NewTools returns the Home Assistant tools for the server at the endpoint,
-// which share a client with the long-lived access token
-func NewTools(endpoint, apiKey string, opts ...client.ClientOpt) ([]llm.Tool, error) {
-	// Create a client
-	client, err := httpclient.New(endpoint, apiKey, opts...)
-	if err != nil {
-		return nil, err
-	}
-
-	return []llm.Tool{
-		&getStates{client: client},
-		&getState{client: client},
-		&getServices{client: client},
-		&callService{client: client},
-		&setState{client: client},
-		&fireEvent{client: client},
-		&renderTemplate{client: client},
-	}, nil
 }
 
 ////////////////////////////////////////////////////////////////////////////////

@@ -163,7 +163,7 @@ func (self *Toolkit) lookupAll(name string) ([]entry, error) {
 
 	self.mu.RLock()
 	defer self.mu.RUnlock()
-	if !self.namespaces[namespace] {
+	if _, exists := self.namespaces[namespace]; !exists {
 		return nil, llm.ErrNotFound.Withf("namespace %q", namespace)
 	}
 	var result []entry

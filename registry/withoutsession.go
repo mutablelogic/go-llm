@@ -88,20 +88,23 @@ func (r *Registry) Ask(ctx context.Context, req schema.AskRequest, stream llm.Ge
 ///////////////////////////////////////////////////////////////////////////////
 // PRIVATE METHODS
 
-// askTools returns the tools of the session, from the registry's toolkit.
-// When the tool choice is "none", there are no tools, and no tool choice, so
-// the provider needn't support it, unless the reply has a schema, which
-// needs the respond tool, which the agent loop adds. Any other tool choice
-// needs tools to choose from.
-func (r *Registry) askTools(ctx context.Context, req schema.GeneratorMeta, hasSchema bool) ([]llm.Tool, error) {
+// askTools returns the tools of the session, from the registry's toolkit,
+// and their system prompts. When the tool choice is "none", there are no
+// tools, and no tool choice, so the provider needn't support it, unless the
+// reply has a schema, which needs the respond tool, which the agent loop
+// adds. Any other tool choice needs tools to choose from.
+func (r *Registry) askTools(ctx context.Context, req schema.GeneratorMeta, hasSchema bool) ([]llm.Tool, []string, error) {
 	var tools []llm.Tool
+	var prompts []string
 	if len(req.Tools) > 0 {
 		if r.toolkit == nil {
-			return nil, llm.ErrNotFound.With("no tools, as the registry has no toolkit")
+			return nil, nil, llm.ErrNotFound.With("no tools, as the registry has no toolkit")
 		}
 		var err error
 		if tools, err = r.toolkit.Tools(ctx, req.Tools...); err != nil {
-			return nil, err
+			return nil, nil, err
+		} else if prompts, err = r.toolkit.SystemPrompts(ctx, req.Tools...); err != nil {
+			return nil, nil, err
 		}
 	}
 
@@ -109,18 +112,18 @@ func (r *Registry) askTools(ctx context.Context, req schema.GeneratorMeta, hasSc
 	var choice string
 	if value, exists := req.Opt[llm.ToolChoiceKey]; exists {
 		if err := json.Unmarshal(value, &choice); err != nil {
-			return nil, llm.ErrBadParameter.Withf("invalid option %q: %v", llm.ToolChoiceKey, err)
+			return nil, nil, llm.ErrBadParameter.Withf("invalid option %q: %v", llm.ToolChoiceKey, err)
 		}
 	}
 	switch {
 	case choice == "none" && hasSchema:
-		return nil, llm.ErrBadParameter.With("a schema needs tools, so the tool choice can't be none")
+		return nil, nil, llm.ErrBadParameter.With("a schema needs tools, so the tool choice can't be none")
 	case choice == "none":
-		return nil, nil
+		return nil, nil, nil
 	case choice != "" && len(tools) == 0 && !hasSchema:
-		return nil, llm.ErrBadParameter.With("a tool choice needs tools")
+		return nil, nil, llm.ErrBadParameter.With("a tool choice needs tools")
 	}
-	return tools, nil
+	return tools, prompts, nil
 }
 
 ///////////////////////////////////////////////////////////////////////////////
