@@ -152,8 +152,9 @@ func askMessage(text string, files []string) (*providerschema.Message, error) {
 	return message, nil
 }
 
-// fileBlock returns the content of a file, as text, with its name, when it's
-// text, or otherwise as an attachment, with its type
+// fileBlock returns the content of a file, as text, with its name, in a
+// fenced code block, when it's text, or otherwise as an attachment, with its
+// type
 func fileBlock(file string) (providerschema.ContentBlock, error) {
 	data, err := os.ReadFile(file)
 	if err != nil {
@@ -162,7 +163,9 @@ func fileBlock(file string) (providerschema.ContentBlock, error) {
 	name := filepath.Base(file)
 	contentType := providerschema.ResourceType(data, name)
 	if isText(data, contentType) {
-		return providerschema.ContentBlock{Text: types.Ptr(fmt.Sprintf("%s:\n\n```\n%s\n```", name, strings.TrimRight(string(data), "\n")))}, nil
+		text := strings.TrimRight(string(data), "\n")
+		fence := codeFence(text)
+		return providerschema.ContentBlock{Text: types.Ptr(fmt.Sprintf("%s:\n\n%s\n%s\n%s", name, fence, text, fence))}, nil
 	} else if contentType == "" {
 		return providerschema.ContentBlock{}, fmt.Errorf("%s: its type isn't known", file)
 	}
@@ -170,6 +173,23 @@ func fileBlock(file string) (providerschema.ContentBlock, error) {
 		ContentType: contentType,
 		Data:        data,
 	}}}, nil
+}
+
+// codeFence returns the fence of a code block of the text, of backticks,
+// which is longer than any run of backticks in the text, and at least
+// three, so a fenced code block in the text, such as of a Markdown file,
+// doesn't close it
+func codeFence(text string) string {
+	longest, run := 0, 0
+	for _, r := range text {
+		if r == '`' {
+			run++
+			longest = max(longest, run)
+		} else {
+			run = 0
+		}
+	}
+	return strings.Repeat("`", max(3, longest+1))
 }
 
 // isText returns true when data is text, which is UTF-8, without NUL bytes,

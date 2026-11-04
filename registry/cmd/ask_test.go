@@ -49,6 +49,32 @@ func Test_AskMessage(t *testing.T) {
 	assert.Len(t, message.Resources(), 2)
 }
 
+// A Markdown file with fenced code blocks is in a fence longer than its own,
+// so they don't close it, and the question is outside it
+func Test_AskMessage_Fence(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "README.md")
+	readme := "# Example\n\n```go\nfmt.Println(\"hi\")\n```\n\n````md\n```\nnested\n```\n````\n"
+	require.NoError(t, os.WriteFile(path, []byte(readme), 0o644))
+	message, err := askMessage("What does it say?", []string{path})
+	require.NoError(t, err)
+	require.Len(t, message.Content, 2)
+	require.NotNil(t, message.Content[0].Text)
+	assert.Equal(t, "README.md:\n\n`````\n"+strings.TrimRight(readme, "\n")+"\n`````", *message.Content[0].Text)
+	assert.Equal(t, "What does it say?", *message.Content[1].Text)
+}
+
+func Test_CodeFence(t *testing.T) {
+	for text, fence := range map[string]string{
+		"":                     "```",
+		"no backticks":         "```",
+		"`inline` and ``two``": "```",
+		"```go\n```":           "````",
+		"````\n```\n````":      "`````",
+	} {
+		assert.Equal(t, fence, codeFence(text), text)
+	}
+}
+
 // Without files, the message is the question
 func Test_AskMessage_NoFiles(t *testing.T) {
 	message, err := askMessage("Hello?", nil)
