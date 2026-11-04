@@ -67,6 +67,13 @@ type Generator interface {
 // with what the piece is, such as the reply's text or the model's thinking
 type GeneratorStreamFn func(StreamType, string)
 
+// Measurer is an interface for providers which count the tokens of text, as
+// a model would, such as to fit what's sent to it into its context
+type Measurer interface {
+	// Measure returns how many tokens the text is, for the model
+	Measure(context.Context, Model, string) (uint, error)
+}
+
 // Embedder is an interface for providers which embed messages as vectors,
 // such as for semantic search
 type Embedder interface {
@@ -177,6 +184,10 @@ const (
 	// StreamThinking is a piece of the model's thinking, before or while it
 	// replies
 	StreamThinking StreamType = "thinking"
+
+	// StreamLog is a line logged by a tool as it runs, such as to say what
+	// it's doing, which isn't part of the reply
+	StreamLog StreamType = "log"
 )
 
 const (

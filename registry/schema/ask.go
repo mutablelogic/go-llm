@@ -50,11 +50,13 @@ type StreamEvent struct {
 // GLOBALS
 
 // The events of a stream of a model's reply: a text or thinking event for
-// each piece of the reply as it's generated, and then a result event, with
-// the response, or an error event
+// each piece of the reply as it's generated, a log event for each line a
+// tool logs as it runs, and then a result event, with the response, or an
+// error event
 const (
 	EventText     = string(llm.StreamText)
 	EventThinking = string(llm.StreamThinking)
+	EventLog      = string(llm.StreamLog)
 )
 
 // AskBodyLimit is the largest request body, in bytes, when a model is asked,

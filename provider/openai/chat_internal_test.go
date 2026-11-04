@@ -99,3 +99,25 @@ func TestToolLoop(t *testing.T) {
 		assert.NotContains(t, messages[1], "reasoning_content")
 	})
 }
+
+// A reply which didn't finish, as it was truncated or filtered, is so even
+// when it called tools, whose calls may be incomplete
+func Test_ChatResult(t *testing.T) {
+	calls := []chatToolCall{{ID: "1"}}
+	for name, test := range map[string]struct {
+		choice chatChoice
+		result schema.ResultType
+	}{
+		"Stop":            {chatChoice{FinishReason: "stop"}, schema.ResultStop},
+		"ToolCalls":       {chatChoice{FinishReason: "tool_calls", Message: chatMessage{ToolCalls: calls}}, schema.ResultToolCall},
+		"Length":          {chatChoice{FinishReason: "length"}, schema.ResultMaxTokens},
+		"LengthToolCalls": {chatChoice{FinishReason: "length", Message: chatMessage{ToolCalls: calls}}, schema.ResultMaxTokens},
+		"FilterToolCalls": {chatChoice{FinishReason: "content_filter", Message: chatMessage{ToolCalls: calls}}, schema.ResultBlocked},
+		"Refusal":         {chatChoice{FinishReason: "stop", Message: chatMessage{Refusal: "no"}}, schema.ResultBlocked},
+		"Other":           {chatChoice{}, schema.ResultOther},
+	} {
+		t.Run(name, func(t *testing.T) {
+			assert.Equal(t, test.result, chatResult(test.choice))
+		})
+	}
+}

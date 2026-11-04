@@ -6,6 +6,7 @@ import (
 	"errors"
 	"strings"
 	"testing"
+	"time"
 
 	// Packages
 	llm "github.com/mutablelogic/go-llm"
@@ -30,6 +31,9 @@ type scripted struct {
 	byValue bool
 	err     error
 	asked   []asked
+	usage   *llm.Usage    // The usage of each reply, which is 10 input and 5 output tokens when nil
+	input   *uint         // The input token limit of its models, or nil when it isn't known
+	delay   time.Duration // How long it waits before it streams a reply, as a model would
 }
 
 // asked is what a scripted provider was asked with
@@ -51,13 +55,13 @@ func (s *scripted) GetModel(ctx context.Context, name string) (llm.Model, error)
 	if _, err := s.provider.GetModel(ctx, name); err != nil {
 		return nil, err
 	}
-	return &model{name: name, provider: s}, nil
+	return &model{name: name, provider: s, input: s.input}, nil
 }
 
 func (s *scripted) ListModels(context.Context) ([]llm.Model, error) {
 	var result []llm.Model
 	for _, name := range s.models {
-		result = append(result, &model{name: name, provider: s})
+		result = append(result, &model{name: name, provider: s, input: s.input})
 	}
 	return result, nil
 }
@@ -80,14 +84,19 @@ func (s *scripted) WithoutSession(_ context.Context, _ llm.Model, messages []llm
 	reply := s.replies[0]
 	s.replies = s.replies[1:]
 	if stream != nil {
+		time.Sleep(s.delay)
 		if text := reply.Text(); text != "" {
 			stream(llm.StreamText, text)
 		}
 	}
-	if s.byValue {
-		return *reply, llm.Usage{InputTokens: 10, OutputTokens: 5}, nil
+	usage := llm.Usage{InputTokens: 10, OutputTokens: 5}
+	if s.usage != nil {
+		usage = *s.usage
 	}
-	return reply, llm.Usage{InputTokens: 10, OutputTokens: 5}, nil
+	if s.byValue {
+		return *reply, usage, nil
+	}
+	return reply, usage, nil
 }
 
 // text returns a reply with the text
@@ -188,6 +197,8 @@ func Test_Ask(t *testing.T) {
 		require.NoError(t, err)
 		assert.True(t, response.Schema)
 		assert.JSONEq(t, `{"city":"Berlin"}`, string(response.Result))
+		assert.JSONEq(t, `{"city":"Berlin"}`, response.Message.Text())
+		assert.Empty(t, response.Message.ToolCalls())
 		assert.Equal(t, []string{toolkit.RespondName}, p.asked[0].tools)
 		system, _ := llm.GetOpt[string](p.asked[0].opts, llm.SystemPromptKey)
 		assert.Equal(t, "Be brief\n\n"+toolkit.RespondPrompt, system)
@@ -240,6 +251,90 @@ func Test_Ask(t *testing.T) {
 		assert.True(t, response.Schema)
 		assert.Empty(t, response.Result)
 		assert.Len(t, p.asked, 3)
+
+		// The message is the model's last reply, rather than the results of
+		// the tools it called, without its call, as it wasn't run
+		assert.Equal(t, "assistant", response.Message.Role())
+		assert.Equal(t, providerschema.ResultMaxIterations, response.Message.Result)
+		assert.Empty(t, response.Message.ToolCalls())
+	})
+
+	t.Run("SchemaText", func(t *testing.T) {
+		// A model which keeps replying with text is asked to call the respond
+		// tool until it's been asked as many times as it can be, which is the
+		// max_iterations option, when it's set, and has no result
+		p := newScripted(text("Berlin"), text("Still Berlin"))
+		r := newAskRegistry(t, p)
+		req := question("Where?")
+		req.Schema = json.RawMessage(`{"type":"string"}`)
+		req.Opt = map[string]json.RawMessage{llm.MaxIterationsKey: json.RawMessage(`2`)}
+		response, err := r.Ask(ctx, req, nil)
+		require.NoError(t, err)
+		assert.Empty(t, response.Result)
+		assert.Equal(t, "Still Berlin", response.Message.Text())
+		assert.Equal(t, providerschema.ResultMaxIterations, response.Message.Result)
+		assert.Len(t, p.asked, 2)
+		assert.False(t, p.asked[0].opts.Has(llm.MaxIterationsKey))
+	})
+
+	t.Run("SchemaTools", func(t *testing.T) {
+		// With a schema, the model can call tools, whose calls are returned,
+		// rather than run, without the respond tool's, if it called it too,
+		// as it's to call it once it has their results
+		reply := call("test_echo", `{"city":"Berlin"}`)
+		reply.Content = append(reply.Content, call(toolkit.RespondName, `{"result":"Berlin"}`).Content...)
+		p := newScripted(reply)
+		r := newAskRegistry(t, p)
+		req := question("Where?")
+		req.Tools = []string{"test:echo"}
+		req.Schema = json.RawMessage(`{"type":"string"}`)
+		response, err := r.Ask(ctx, req, nil)
+		require.NoError(t, err)
+		assert.Empty(t, response.Result)
+		assert.Equal(t, providerschema.ResultToolCall, response.Message.Result)
+		if calls := response.Message.ToolCalls(); assert.Len(t, calls, 1) {
+			assert.Equal(t, "test_echo", calls[0].Name)
+		}
+		assert.Len(t, p.asked, 1)
+		assert.Equal(t, []string{"test_echo", toolkit.RespondName}, p.asked[0].tools)
+	})
+
+	t.Run("Compact", func(t *testing.T) {
+		// The messages are compacted to fit the model's context, so the result
+		// of a tool of an earlier turn is removed from what the model is sent
+		p := newScripted(text("Done"))
+		r := newAskRegistry(t, p)
+		req := question("Second")
+		req.Messages = append([]providerschema.MessageMeta{
+			{Sender: "user", Content: []providerschema.ContentBlock{{Text: types.Ptr("First")}}},
+			{Sender: "assistant", Content: []providerschema.ContentBlock{{ToolCall: &providerschema.ToolCall{ID: "old", Name: "test_echo"}}}},
+			{Sender: "tool", Content: []providerschema.ContentBlock{providerschema.NewToolResult("old", "test_echo", strings.Repeat("a", 20_000))}},
+		}, req.Messages...)
+		req.Opt = map[string]json.RawMessage{llm.ContextWindowKey: json.RawMessage(`4000`)}
+		response, err := r.Ask(ctx, req, nil)
+		require.NoError(t, err)
+		assert.Equal(t, "Done", response.Message.Text())
+		require.Len(t, p.asked, 1)
+		require.Len(t, p.asked[0].messages, 4)
+		assert.Contains(t, string(p.asked[0].messages[2].ToolResults()[0].Content), "was removed")
+		assert.Greater(t, len(req.Messages[2].Content[0].ToolResult.Content), 20_000)
+	})
+
+	t.Run("MaxContext", func(t *testing.T) {
+		// The latest message doesn't fit in the model's context, so the model
+		// isn't asked, and the reply is empty, with max_context as its result,
+		// and no result, with a schema
+		p := newScripted(text("Never"))
+		r := newAskRegistry(t, p)
+		req := question(strings.Repeat("a", 20_000))
+		req.Schema = json.RawMessage(`{"type":"string"}`)
+		req.Opt = map[string]json.RawMessage{llm.ContextWindowKey: json.RawMessage(`4000`)}
+		response, err := r.Ask(ctx, req, nil)
+		require.NoError(t, err)
+		assert.Empty(t, p.asked)
+		assert.Equal(t, providerschema.ResultMaxContext, response.Message.Result)
+		assert.Empty(t, response.Message.Text())
+		assert.Empty(t, response.Result)
 	})
 
 	t.Run("Value", func(t *testing.T) {
@@ -291,12 +386,12 @@ func Test_Ask(t *testing.T) {
 		require.NoError(t, err)
 		assert.Equal(t, "Berlin", streamed.String())
 
-		p = newScripted(text("One"), text("Two"))
+		p = newScripted(text("One"), text("Two"), text("Three"))
 		r = newAskRegistry(t, p)
 		streamed.Reset()
 		_, err = r.Ask(ctx, req, func(_ llm.StreamType, text string) { streamed.WriteString(text) })
 		require.NoError(t, err)
-		assert.Equal(t, "One\n\nTwo", streamed.String())
+		assert.Equal(t, "One\n\nTwo\n\nThree", streamed.String())
 	})
 
 	t.Run("Errors", func(t *testing.T) {

@@ -3,8 +3,8 @@ package registry
 import (
 	"context"
 	"encoding/json"
-	"slices"
 	"strings"
+	"sync"
 
 	// Packages
 	otel "github.com/mutablelogic/go-client/pkg/otel"
@@ -19,26 +19,31 @@ import (
 ///////////////////////////////////////////////////////////////////////////////
 // GLOBALS
 
-// respondAttempts is how many times a model is asked for its reply, when the
-// reply has a schema
+// respondAttempts is how many times a model is asked for its reply, unless
+// the max_iterations option says otherwise, when the reply has a schema
 const respondAttempts = 3
 
 ///////////////////////////////////////////////////////////////////////////////
 // PUBLIC METHODS
 
 // Ask returns the reply of the request's model to its messages, which
-// include earlier turns of the conversation. The model replies after the
-// system prompt, with the options, and can call the tools, which are got
-// from the registry's toolkit, and whose calls are in its reply, for the
-// caller to run, rather than run. When the request has a schema, the model
-// replies by calling the respond tool, whose result is the reply's result:
-// a model which replies with text is asked once to call it, and a result
-// which doesn't conform to the schema is returned to the model to correct,
-// until it's been asked respondAttempts times. The reply is streamed to the
-// function as it's generated, when it isn't nil, with each of the model's
-// replies separated by a blank line. Returns ErrBadParameter when the
-// request isn't valid, ErrNotFound when the model, or a tool, isn't found,
-// and the errors of WithoutSession.
+// include earlier turns of the conversation, as the agent loop does, but
+// which stops when the model calls tools, whose calls are in its reply, for
+// the caller to run, rather than run. The model replies after the system
+// prompt, with the options, and can call the tools, which are got from the
+// registry's toolkit. When the request has a schema, the model replies by
+// calling the respond tool, whose result is the reply's result: a model
+// which replies with text is asked to call it, and a result which doesn't
+// conform to the schema is returned to the model to correct, until it's
+// been asked respondAttempts times, or as many times as the max_iterations
+// option. The messages are compacted, as the agent loop does, to fit the
+// model's context, without changing them, and when they don't fit, however
+// compacted, the model isn't asked, and the reply is empty, with
+// max_context as its result. The reply is streamed to the function as it's
+// generated, when it isn't nil, with each of the model's replies separated
+// by a blank line. Returns ErrBadParameter when the request isn't valid,
+// ErrNotFound when the model, or a tool, isn't found, and the errors of
+// WithoutSession.
 func (r *Registry) Ask(ctx context.Context, req schema.AskRequest, stream llm.GeneratorStreamFn) (_ *schema.AskResponse, err error) {
 	ctx, endSpan := otel.StartSpan(r.tracer, ctx, "llm.registry.Ask",
 		attribute.String("arg.req", req.String()),
@@ -51,28 +56,29 @@ func (r *Registry) Ask(ctx context.Context, req schema.AskRequest, stream llm.Ge
 	} else if len(req.Messages) == 0 {
 		return nil, llm.ErrBadParameter.With("missing messages")
 	}
-	messages := make([]llm.Message, len(req.Messages), len(req.Messages)+2*respondAttempts)
+	messages := make([]llm.Message, len(req.Messages))
 	for i := range req.Messages {
 		messages[i] = &providerschema.Message{MessageMeta: req.Messages[i]}
 	}
 
-	// The tool the model replies with, when the reply has a schema, which is
-	// in the system prompt
-	respond, err := newRespond(req)
+	// The options, with the reply's schema, when it has one, which the
+	// agent loop replies with
+	result, err := req.JSONSchema()
 	if err != nil {
 		return nil, err
 	}
-	system := req.System
-	if respond != nil {
-		system = respondSystemPrompt(system)
-	}
-	opts, err := req.Opts(system)
+	hasSchema := result != nil
+	opts, err := req.Opts(req.System)
 	if err != nil {
 		return nil, err
+	}
+	opts = append([]llm.Opt{llm.WithMaxIterations(respondAttempts)}, opts...)
+	if hasSchema {
+		opts = append(opts, llm.WithJSONSchema(req.Schema))
 	}
 
-	// The tools, and the respond tool, which the model can call
-	tools, err := r.askTools(ctx, req, respond)
+	// The tools, which the model can call
+	tools, err := r.askTools(ctx, req, hasSchema)
 	if err != nil {
 		return nil, err
 	}
@@ -82,82 +88,40 @@ func (r *Registry) Ask(ctx context.Context, req schema.AskRequest, stream llm.Ge
 	if err != nil {
 		return nil, err
 	}
-	canonical := r.Name(model)
 
-	// Ask the model, until it replies with a result which conforms to the
-	// schema, when the request has one
-	var usage llm.Usage
-	var nudged bool
-	replies := newReplyStream(stream)
-	for attempt := 1; ; attempt++ {
-		reply, replyUsage, err := r.WithoutSession(ctx, model, messages, tools, replies.Next(), opts...)
-		if err != nil {
-			return nil, err
-		}
-		usage = addUsage(usage, replyUsage)
-		message := newReply(reply)
-		response := &schema.AskResponse{
-			Model:   canonical,
-			Message: message,
-			Schema:  respond != nil,
-			Usage:   usage,
-		}
-		if respond == nil {
-			return response, nil
-		}
-
-		// The model replied with text, so it's asked once to call the tool,
-		// unless it's been asked as many times as it can be
-		calls := message.ToolCalls()
-		if len(calls) == 0 {
-			if nudged || attempt >= respondAttempts {
-				return response, nil
-			}
-			nudged = true
-			messages = append(messages, &message, &providerschema.Message{MessageMeta: providerschema.MessageMeta{
-				Sender:  "user",
-				Content: []providerschema.ContentBlock{{Text: types.Ptr(toolkit.RespondNudge)}},
-			}})
-			continue
-		}
-
-		// The model called other tools, but not the respond tool, which the
-		// caller runs
-		index := slices.IndexFunc(calls, func(call llm.ToolCall) bool { return call.Name == toolkit.RespondName })
-		if index < 0 {
-			return response, nil
-		}
-
-		// The model replied with a result which conforms
-		call := calls[index]
-		result, err := respond.Run(ctx, call.Input)
-		if err == nil {
-			response.Result = result.(json.RawMessage)
-			return response, nil
-		}
-
-		// The result doesn't conform, so the model is told why, unless it
-		// called other tools too, which the caller runs, or it's been asked
-		// as many times as it can be
-		if len(calls) > 1 || attempt >= respondAttempts {
-			return response, nil
-		}
-		messages = append(messages, &message, &providerschema.Message{MessageMeta: providerschema.MessageMeta{
-			Sender:  "tool",
-			Content: []providerschema.ContentBlock{providerschema.NewToolError(call.ID, call.Name, err)},
-		}})
+	// Ask the model, until it replies, with a result which conforms to the
+	// schema, when the request has one, or calls tools
+	loop, err := newAgentLoop(tools, opts...)
+	if err != nil {
+		return nil, err
 	}
+	loop.stopAtTools = true
+	added, usage, err := r.agentLoop(ctx, model, messages, loop, stream)
+	if err != nil {
+		return nil, err
+	}
+	message := added[len(added)-1]
+	response := &schema.AskResponse{
+		Model:   r.Name(model),
+		Message: message,
+		Schema:  hasSchema,
+		Usage:   usage,
+	}
+	if hasSchema && message.Result == providerschema.ResultStop {
+		response.Result = json.RawMessage(message.Text())
+	}
+	return response, nil
 }
 
 ///////////////////////////////////////////////////////////////////////////////
 // PRIVATE METHODS
 
-// askTools returns the tools of the request, from the registry's toolkit,
-// and the respond tool, when there is one. When the tool choice is "none",
-// there are no tools, and no tool choice, so the provider needn't support
-// it, unless the reply has a schema, which needs the respond tool. Any other
-// tool choice needs tools to choose from.
-func (r *Registry) askTools(ctx context.Context, req schema.AskRequest, respond *toolkit.Respond) ([]llm.Tool, error) {
+// askTools returns the tools of the request, from the registry's toolkit.
+// When the tool choice is "none", there are no tools, and no tool choice, so
+// the provider needn't support it, unless the reply has a schema, which
+// needs the respond tool, which the agent loop adds. Any other tool choice
+// needs tools to choose from.
+func (r *Registry) askTools(ctx context.Context, req schema.AskRequest, hasSchema bool) ([]llm.Tool, error) {
 	var tools []llm.Tool
 	if len(req.Tools) > 0 {
 		if r.toolkit == nil {
@@ -177,37 +141,18 @@ func (r *Registry) askTools(ctx context.Context, req schema.AskRequest, respond 
 		}
 	}
 	switch {
-	case choice == "none" && respond != nil:
+	case choice == "none" && hasSchema:
 		return nil, llm.ErrBadParameter.With("a schema needs tools, so the tool choice can't be none")
 	case choice == "none":
 		return nil, nil
-	case choice != "" && len(tools) == 0 && respond == nil:
+	case choice != "" && len(tools) == 0 && !hasSchema:
 		return nil, llm.ErrBadParameter.With("a tool choice needs tools")
-	}
-
-	// The respond tool, whose name no other tool can have
-	if respond != nil {
-		for _, tool := range tools {
-			if tool.Name() == toolkit.RespondName {
-				return nil, llm.ErrBadParameter.Withf("a schema can't be used with a tool named %q", toolkit.RespondName)
-			}
-		}
-		tools = append(tools, respond)
 	}
 	return tools, nil
 }
 
 ///////////////////////////////////////////////////////////////////////////////
 // PRIVATE FUNCTIONS
-
-// newRespond returns the tool a model calls to reply with JSON which conforms
-// to the request's schema, or nil when the reply is text
-func newRespond(req schema.AskRequest) (*toolkit.Respond, error) {
-	if result, err := req.JSONSchema(); err != nil || result == nil {
-		return nil, err
-	}
-	return toolkit.NewRespond(req.Schema)
-}
 
 // respondSystemPrompt returns the system prompt, with the instruction to
 // reply by calling the respond tool
@@ -270,8 +215,10 @@ func addUsage(a, b llm.Usage) llm.Usage {
 // rather than running into the last
 type replyStream struct {
 	fn       llm.GeneratorStreamFn
-	streamed bool // Something has been streamed
-	started  bool // The current reply has streamed something
+	streamed bool       // Something has been streamed
+	started  bool       // The current reply has streamed something
+	closed   bool       // Nothing more is streamed
+	mu       sync.Mutex // Guards the function, and what's streamed, as tools log to it in parallel, even after they time out
 }
 
 // newReplyStream returns the stream of the replies, which streams to the
@@ -289,14 +236,51 @@ func (s *replyStream) Next() llm.GeneratorStreamFn {
 	if s == nil {
 		return nil
 	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	s.started = false
 	return s.stream
+}
+
+// Log returns the function which streams a line a tool logs, which isn't
+// part of a reply, so doesn't separate the replies, or nil when the replies
+// aren't streamed. Tools which run in parallel can log at once, and a tool
+// which doesn't return when it times out can log as the next reply is
+// streamed, so the lines, and the replies, are streamed in turn.
+func (s *replyStream) Log() func(string) {
+	if s == nil {
+		return nil
+	}
+	return func(text string) {
+		s.mu.Lock()
+		defer s.mu.Unlock()
+		if !s.closed {
+			s.fn(llm.StreamLog, text)
+		}
+	}
+}
+
+// close stops streaming, once what's being streamed has been, so a tool which
+// doesn't return when it times out, and logs, doesn't stream once the
+// replies are done
+func (s *replyStream) close() {
+	if s == nil {
+		return
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.closed = true
 }
 
 // stream streams a piece of the reply, which, when it's the first of a reply
 // after one which streamed something, starts with a blank line
 func (s *replyStream) stream(what llm.StreamType, text string) {
 	if text == "" {
+		return
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.closed {
 		return
 	}
 	if !s.started {

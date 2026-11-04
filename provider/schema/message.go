@@ -25,7 +25,7 @@ type MessageMeta struct {
 type Message struct {
 	MessageMeta
 	Tokens uint64     `json:"tokens,omitempty" help:"Token count attributed to this message" example:"12"`
-	Result ResultType `json:"result,omitempty" help:"Why the model stopped generating the message" enum:"stop,max_tokens,blocked,tool_call,error,other,max_iterations" example:"stop"`
+	Result ResultType `json:"result,omitempty" help:"Why the model stopped generating the message" enum:"stop,max_tokens,blocked,tool_call,error,other,max_iterations,max_context" example:"stop"`
 }
 
 // ContentBlock represents a single piece of content within a message.

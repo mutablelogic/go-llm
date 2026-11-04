@@ -44,7 +44,7 @@ func (c *Client) Ask(ctx context.Context, req schema.AskRequest, stream llm.Gene
 	// error
 	return doStream[schema.AskResponse](ctx, c, body, func(event client.TextStreamEvent) error {
 		switch event.Event {
-		case schema.EventText, schema.EventThinking:
+		case schema.EventText, schema.EventThinking, schema.EventLog:
 			var data schema.StreamEvent
 			if err := event.Json(&data); err != nil {
 				return fmt.Errorf("malformed %s event: %w", event.Event, err)

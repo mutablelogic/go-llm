@@ -80,6 +80,7 @@ type model struct {
 	name     string
 	provider llm.Provider
 	caps     llm.ModelCap
+	input    *uint // The input token limit, or nil when it isn't known
 }
 
 var _ llm.Model = (*model)(nil)
@@ -90,7 +91,7 @@ func (m *model) Description() string              { return "" }
 func (m *model) Created() time.Time               { return time.Time{} }
 func (m *model) Aliases() []string                { return nil }
 func (m *model) Meta() map[string]json.RawMessage { return nil }
-func (m *model) InputTokenLimit() *uint           { return nil }
+func (m *model) InputTokenLimit() *uint           { return m.input }
 func (m *model) Capabilities() llm.ModelCap       { return m.caps }
 func (m *model) OutputTokenLimit() *uint          { return nil }
 
