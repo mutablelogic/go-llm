@@ -61,46 +61,18 @@ func (r *Registry) Ask(ctx context.Context, req schema.AskRequest, stream llm.Ge
 		messages[i] = &providerschema.Message{MessageMeta: req.Messages[i]}
 	}
 
-	// The options, with the reply's schema, when it has one, which the
-	// agent loop replies with
-	result, err := req.JSONSchema()
-	if err != nil {
-		return nil, err
-	}
-	hasSchema := result != nil
-	opts, err := req.Opts(req.System)
-	if err != nil {
-		return nil, err
-	}
-	opts = append([]llm.Opt{llm.WithMaxIterations(respondAttempts)}, opts...)
-	if hasSchema {
-		opts = append(opts, llm.WithJSONSchema(req.Schema))
-	}
-
-	// The tools, which the model can call
-	tools, err := r.askTools(ctx, req, hasSchema)
-	if err != nil {
-		return nil, err
-	}
-
-	// The model
-	model, err := r.GetModel(ctx, strings.TrimSpace(req.Model))
-	if err != nil {
-		return nil, err
-	}
-
 	// Ask the model, until it replies, with a result which conforms to the
 	// schema, when the request has one, or calls tools
-	loop, err := newAgentLoop(tools, opts...)
+	model, loop, hasSchema, err := r.generatorLoop(ctx, req.GeneratorMeta, respondAttempts)
 	if err != nil {
 		return nil, err
 	}
 	loop.stopAtTools = true
-	added, usage, err := r.agentLoop(ctx, model, messages, loop, stream)
+	h, usage, err := r.agentLoop(ctx, model, messages, loop, stream)
 	if err != nil {
 		return nil, err
 	}
-	message := added[len(added)-1]
+	message := h.added[len(h.added)-1]
 	response := &schema.AskResponse{
 		Model:   r.Name(model),
 		Message: message,
@@ -116,12 +88,12 @@ func (r *Registry) Ask(ctx context.Context, req schema.AskRequest, stream llm.Ge
 ///////////////////////////////////////////////////////////////////////////////
 // PRIVATE METHODS
 
-// askTools returns the tools of the request, from the registry's toolkit.
+// askTools returns the tools of the session, from the registry's toolkit.
 // When the tool choice is "none", there are no tools, and no tool choice, so
 // the provider needn't support it, unless the reply has a schema, which
 // needs the respond tool, which the agent loop adds. Any other tool choice
 // needs tools to choose from.
-func (r *Registry) askTools(ctx context.Context, req schema.AskRequest, hasSchema bool) ([]llm.Tool, error) {
+func (r *Registry) askTools(ctx context.Context, req schema.GeneratorMeta, hasSchema bool) ([]llm.Tool, error) {
 	var tools []llm.Tool
 	if len(req.Tools) > 0 {
 		if r.toolkit == nil {
