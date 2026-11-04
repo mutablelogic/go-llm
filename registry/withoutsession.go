@@ -51,7 +51,7 @@ func (r *Registry) Ask(ctx context.Context, req schema.AskRequest, stream llm.Ge
 	defer func() { endSpan(err) }()
 
 	// The model, and its messages
-	if strings.TrimSpace(req.Model) == "" {
+	if strings.TrimSpace(types.Value(req.Model)) == "" {
 		return nil, llm.ErrBadParameter.With("missing model")
 	} else if len(req.Messages) == 0 {
 		return nil, llm.ErrBadParameter.With("missing messages")

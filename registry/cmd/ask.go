@@ -81,8 +81,8 @@ func (cmd *AskCmd) Run(ctx server.Cmd) error {
 		// A reply with a schema is JSON, so isn't streamed
 		printer := newStreamPrinter(debug || !cmd.Stream || len(cmd.Schema) > 0, width)
 		response, err := client.Ask(reqctx, schema.AskRequest{
-			Model:    model,
-			System:   strings.TrimSpace(cmd.System),
+			Model:    types.Ptr(model),
+			System:   types.Ptr(strings.TrimSpace(cmd.System)),
 			Tools:    cmd.Tools,
 			Opt:      quoteOpts(cmd.Opt),
 			Schema:   cmd.Schema,

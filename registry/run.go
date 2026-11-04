@@ -45,14 +45,14 @@ func (r *Registry) Run(ctx context.Context, logger *slog.Logger) error {
 	var s *syncer
 	var registryEvents, storeEvents chan providerschema.Event
 	var storeDone <-chan error
-	if r.store != nil {
-		s = &syncer{registry: r, store: r.store, known: make(map[string]schema.Provider)}
+	if r.providerStore != nil {
+		s = &syncer{registry: r, store: r.providerStore, known: make(map[string]schema.Provider)}
 		registryEvents = make(chan providerschema.Event, syncEventBuffer)
 		if _, err := r.Watch(ctx, registryEvents); err != nil {
 			return err
 		}
 		storeEvents = make(chan providerschema.Event, syncEventBuffer)
-		done, err := r.store.Watch(ctx, storeEvents)
+		done, err := r.providerStore.Watch(ctx, storeEvents)
 		if err != nil {
 			return err
 		}

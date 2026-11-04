@@ -37,13 +37,17 @@ type RunServer struct {
 // PUBLIC METHODS
 
 // Run runs the server, with a registry of providers, which are added with
-// its API, and kept in the command's defaults, so they're kept when it
-// restarts, and a toolkit of the tools whose credentials are set, which the
+// its API, and sessions, which are kept in the command's defaults, so
+// they're kept when it restarts, and a toolkit of the tools whose credentials are set, which the
 // registry's models can call, and their APIs, under the server's prefix, and
 // keeps the providers' state and models current, until it's stopped
 func (runner *RunServer) Run(ctx server.Cmd) error {
 	ctx.Logger().InfoContext(ctx.Context(), "starting server", "name", ctx.Name(), "version", ctx.Version())
-	store, err := newStore(ctx)
+	store, err := newProviderStore(ctx)
+	if err != nil {
+		return err
+	}
+	sessions, err := newSessionStore(ctx)
 	if err != nil {
 		return err
 	}
@@ -58,6 +62,6 @@ func (runner *RunServer) Run(ctx server.Cmd) error {
 				return runner.RunServer.Run(ctx.WithContext(runCtx))
 			})
 			return group.Wait()
-		}, registry.WithStore(store), registry.WithToolkit(tools))
+		}, registry.WithProviderStore(store), registry.WithSessionStore(sessions), registry.WithToolkit(tools))
 	})
 }

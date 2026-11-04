@@ -3,6 +3,7 @@ module github.com/mutablelogic/go-llm
 go 1.27.2
 
 require (
+	github.com/alecthomas/kong v1.16.1
 	github.com/mutablelogic/go-client v1.4.13
 	github.com/mutablelogic/go-server v1.7.20
 	github.com/stretchr/testify v1.12.1
@@ -14,7 +15,6 @@ require (
 
 require (
 	github.com/alecthomas/chroma/v2 v2.20.0 // indirect
-	github.com/alecthomas/kong v1.16.1 // indirect
 	github.com/aymanbagabas/go-osc52/v2 v2.0.1 // indirect
 	github.com/aymerick/douceur v0.2.0 // indirect
 	github.com/cenkalti/backoff/v5 v5.0.3 // indirect

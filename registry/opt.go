@@ -17,11 +17,12 @@ import (
 type Opt func(*opt) error
 
 type opt struct {
-	tracer      trace.Tracer
-	credentials CredentialsProvider
-	clientopts  []client.ClientOpt
-	store       Store
-	toolkit     *toolkit.Toolkit
+	tracer        trace.Tracer
+	credentials   CredentialsProvider
+	clientopts    []client.ClientOpt
+	providerStore ProviderStore
+	sessionStore  SessionStore
+	toolkit       *toolkit.Toolkit
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -45,7 +46,8 @@ func (o *opt) defaults() {
 	o.tracer = nil
 	o.credentials = envCredentials{}
 	o.clientopts = nil
-	o.store = nil
+	o.providerStore = nil
+	o.sessionStore = nil
 	o.toolkit = nil
 }
 
@@ -61,16 +63,29 @@ func WithTracer(tracer trace.Tracer) Opt {
 	}
 }
 
-// WithStore sets the store of the providers, which the registry's providers
+// WithProviderStore sets the store of the providers, which the registry's providers
 // are kept the same as, both ways, as Run syncs them, such as a database,
 // which other servers share, or a file, so they're kept when the server
 // restarts
-func WithStore(store Store) Opt {
+func WithProviderStore(store ProviderStore) Opt {
 	return func(o *opt) error {
 		if store == nil {
 			return llm.ErrBadParameter.With("missing store")
 		}
-		o.store = store
+		o.providerStore = store
+		return nil
+	}
+}
+
+// WithSessionStore sets the store of the sessions, such as a database,
+// which other servers share, or files, so they're kept when the server
+// restarts
+func WithSessionStore(store SessionStore) Opt {
+	return func(o *opt) error {
+		if store == nil {
+			return llm.ErrBadParameter.With("missing session store")
+		}
+		o.sessionStore = store
 		return nil
 	}
 }

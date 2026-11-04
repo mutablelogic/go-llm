@@ -9,6 +9,7 @@ import (
 	client "github.com/mutablelogic/go-client"
 	llm "github.com/mutablelogic/go-llm"
 	schema "github.com/mutablelogic/go-llm/registry/schema"
+	types "github.com/mutablelogic/go-server/pkg/types"
 )
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -21,7 +22,7 @@ import (
 // its text and thinking as it's generated. The request isn't timed out, as a
 // model can take a while to reply, but is cancelled with the context.
 func (c *Client) Ask(ctx context.Context, req schema.AskRequest, stream llm.GeneratorStreamFn) (*schema.AskResponse, error) {
-	if strings.TrimSpace(req.Model) == "" {
+	if strings.TrimSpace(types.Value(req.Model)) == "" {
 		return nil, llm.ErrBadParameter.With("missing model")
 	} else if len(req.Messages) == 0 {
 		return nil, llm.ErrBadParameter.With("missing messages")

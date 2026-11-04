@@ -74,7 +74,7 @@ func chat(name string, serial uint64) schema.Provider {
 func Test_Store(t *testing.T) {
 	ctx := context.Background()
 	d := new(memDefaults)
-	store, err := newStore(d)
+	store, err := newProviderStore(d)
 	require.NoError(t, err)
 
 	t.Run("Empty", func(t *testing.T) {
@@ -166,7 +166,7 @@ func Test_Store(t *testing.T) {
 	})
 
 	t.Run("Errors", func(t *testing.T) {
-		_, err := newStore(nil)
+		_, err := newProviderStore(nil)
 		assert.ErrorIs(t, err, llm.ErrBadParameter)
 	})
 }
@@ -176,13 +176,13 @@ func Test_StoreRestart(t *testing.T) {
 	// command runs again, as a server's would when it restarts
 	ctx := context.Background()
 	d := new(memDefaults)
-	store, err := newStore(d)
+	store, err := newProviderStore(d)
 	require.NoError(t, err)
 
 	// run runs a registry with the store, until the returned function is
 	// called, which returns what Run returned
 	run := func() (*registry.Registry, func() error) {
-		r, err := registry.New(registry.WithStore(store))
+		r, err := registry.New(registry.WithProviderStore(store))
 		require.NoError(t, err)
 		runCtx, cancel := context.WithCancel(ctx)
 		done := make(chan error, 1)

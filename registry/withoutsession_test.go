@@ -114,7 +114,7 @@ func call(name, input string) *providerschema.Message {
 // question returns a request to ask the model the question
 func question(value string) schema.AskRequest {
 	return schema.AskRequest{
-		Model:    "model",
+		Model:    types.Ptr("model"),
 		Messages: []providerschema.MessageMeta{{Sender: "user", Content: []providerschema.ContentBlock{{Text: types.Ptr(value)}}}},
 	}
 }
@@ -152,7 +152,7 @@ func Test_Ask(t *testing.T) {
 		p := newScripted(text("Hello"))
 		r := newAskRegistry(t, p)
 		req := question("Hi")
-		req.System = "Be brief"
+		req.System = types.Ptr("Be brief")
 		req.Opt = map[string]json.RawMessage{"temperature": json.RawMessage(`0.5`)}
 		response, err := r.Ask(ctx, req, nil)
 		require.NoError(t, err)
@@ -191,7 +191,7 @@ func Test_Ask(t *testing.T) {
 		p := newScripted(call(toolkit.RespondName, `{"result":{"city":"Berlin"}}`))
 		r := newAskRegistry(t, p)
 		req := question("Where?")
-		req.System = "Be brief"
+		req.System = types.Ptr("Be brief")
 		req.Schema = json.RawMessage(`{"type":"object","properties":{"city":{"type":"string"}},"required":["city"]}`)
 		response, err := r.Ask(ctx, req, nil)
 		require.NoError(t, err)
@@ -401,10 +401,10 @@ func Test_Ask(t *testing.T) {
 		// A request needs a model, which exists, and messages
 		_, err := r.Ask(ctx, schema.AskRequest{Messages: question("Hi").Messages}, nil)
 		assert.ErrorIs(t, err, llm.ErrBadParameter)
-		_, err = r.Ask(ctx, schema.AskRequest{Model: "model"}, nil)
+		_, err = r.Ask(ctx, schema.AskRequest{Model: types.Ptr("model")}, nil)
 		assert.ErrorIs(t, err, llm.ErrBadParameter)
 		req := question("Hi")
-		req.Model = "missing"
+		req.Model = types.Ptr("missing")
 		_, err = r.Ask(ctx, req, nil)
 		assert.ErrorIs(t, err, llm.ErrNotFound)
 

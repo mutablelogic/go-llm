@@ -58,6 +58,30 @@ Delete a model by name, or alias, or by provider and name, such as `my-ollama:ge
 
 Unload a model by name, or alias, or by provider and name, such as `my-ollama:gemma:latest`, from its provider's memory, keeping it stored, so it's loaded again when it's next used. Returns the unloaded model. Returns 404 if no provider has the model, 409 if more than one provider has the model, 501 if the model's provider doesn't load models, or can't unload them, or 503 if the model couldn't be unloaded, or a provider which could have it can't be reached.
 
+## Session Operations
+
+Sessions are conversations with models, which the server keeps in its session store, such as files, or a database which other servers share, so they're kept when it restarts. A server without a session store returns 503 for each session operation. A session has its `id`, which the store sets, and its `serial`, which the store changes each time the session is stored, so a change is made to the session as it was last seen. It has the settings of how its model is asked: its `model`, `system` prompt, the `tools` it can call, its `opt` options and the `schema` of its reply, as for `POST /llm/ask`, which it needn't all have, such as when it inherits its model from another session. It has its `messages`, each with its `tokens`, and its `usage`: the tokens used by every request to its model, and, as of the last, the tokens of its conversation, of the messages sent to the model (`input`), of its replies (`output`), and of what's sent with them (`overhead`), such as the system prompt and the tools' definitions.
+
+### GET /llm/session
+
+List the sessions, without their messages, most recently modified first. The `offset` parameter skips that many sessions, and the `limit` parameter returns at most that many. The `count` is how many sessions there are. Returns 400 if a parameter is invalid.
+
+### POST /llm/session
+
+Create a session with the settings in the request body, and no messages. Its `model`, when it has one, must be a model in the registry, and is kept by its canonical name, such as `eliza:eliza-1966-en` for `eliza`, and its `tools` must be the server's, and are kept by their canonical names, such as `weatherapi:current` for `current`, apart from a namespace and `*`, such as `memory:*`, or `*`, which are kept as they are. Returns the created session. Returns 400 if the request body is invalid, the `schema` isn't a JSON schema, or an option is the `system_prompt` or `json_schema`, which are fields, 404 if the model, or a tool, isn't found, or 409 if the name of the model, or a tool, is ambiguous.
+
+### GET /llm/session/{id}
+
+Get a session by its identifier, with its messages. Returns 404 if there is no session with that identifier.
+
+### PATCH /llm/session/{id}
+
+Change a session's settings, keeping its messages. A field which is omitted is kept: `model` and `system` are replaced when they're set, and cleared when they're empty; `tools` are replaced when they're set, and cleared with `[]`; the `schema` is replaced when it's set, and cleared with `null`; and each option in `opt` is set, or removed when it's `null`, so the others are kept. A `model` or `tools` which are set are checked, and kept by their canonical names, as they are when a session is created. Returns the updated session. Returns 400 if the request body is invalid, it changes nothing, or the settings, as changed, aren't valid, 404 if there is no session with that identifier, or the model, or a tool, isn't found, or 409 if it was changed as it was updated, or the name of the model, or a tool, is ambiguous.
+
+### DELETE /llm/session/{id}
+
+Delete a session by its identifier. Returns the deleted session. Returns 404 if there is no session with that identifier, or 409 if it was changed as it was deleted.
+
 ## Inference Operations
 
 Inference is asking a model to do something with messages, such as embed them. A model is referred to by its name, or an alias, or by its provider's name and its name separated by a colon, and its provider must be able to do it, or the model isn't known not to.

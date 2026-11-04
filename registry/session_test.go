@@ -1,0 +1,238 @@
+package registry_test
+
+import (
+	"context"
+	"encoding/json"
+	"testing"
+	"time"
+	"uuid"
+
+	// Packages
+	llm "github.com/mutablelogic/go-llm"
+	providerschema "github.com/mutablelogic/go-llm/provider/schema"
+	registry "github.com/mutablelogic/go-llm/registry"
+	schema "github.com/mutablelogic/go-llm/registry/schema"
+	test "github.com/mutablelogic/go-llm/registry/test"
+	types "github.com/mutablelogic/go-server/pkg/types"
+	assert "github.com/stretchr/testify/assert"
+	require "github.com/stretchr/testify/require"
+)
+
+///////////////////////////////////////////////////////////////////////////////
+// TESTS
+
+func Test_Sessions(t *testing.T) {
+	ctx := context.Background()
+	meta := schema.SessionMeta{GeneratorMeta: schema.GeneratorMeta{Model: types.Ptr("model"), System: types.Ptr("Be brief")}}
+	newRegistry := func(t *testing.T) (*registry.Registry, *test.SessionStore) {
+		t.Helper()
+		store := test.NewSessionStore()
+		r, err := registry.New(registry.WithSessionStore(store), registry.WithToolkit(test.NewToolkit(t)))
+		require.NoError(t, err)
+		p := newScripted()
+		p.models = []string{"model", "other"}
+		require.NoError(t, r.Add("", p))
+		return r, store
+	}
+
+	t.Run("Create", func(t *testing.T) {
+		// A session is created with the settings, and no messages
+		r, _ := newRegistry(t)
+		session, err := r.CreateSession(ctx, meta)
+		require.NoError(t, err)
+		assert.NotEqual(t, uuid.Nil(), session.ID)
+		assert.Equal(t, uint64(1), session.Serial)
+		assert.False(t, session.Created.IsZero())
+		assert.Equal(t, "scripted:model", types.Value(session.Model))
+		assert.Equal(t, meta.System, session.System)
+		assert.Empty(t, session.Messages)
+	})
+
+	t.Run("CreateInvalid", func(t *testing.T) {
+		// The settings must have a JSON schema, options which aren't fields,
+		// and a model which exists, but needn't have a model, as it can be
+		// inherited
+		r, store := newRegistry(t)
+		for name, meta := range map[string]schema.SessionMeta{
+			"Schema": {GeneratorMeta: schema.GeneratorMeta{Model: types.Ptr("model"), Schema: json.RawMessage(`{"type":1}`)}},
+			"Option": {GeneratorMeta: schema.GeneratorMeta{Model: types.Ptr("model"), Opt: map[string]json.RawMessage{llm.SystemPromptKey: json.RawMessage(`"x"`)}}},
+		} {
+			_, err := r.CreateSession(ctx, meta)
+			assert.ErrorIs(t, err, llm.ErrBadParameter, name)
+		}
+		_, err := r.CreateSession(ctx, schema.SessionMeta{GeneratorMeta: schema.GeneratorMeta{Model: types.Ptr("missing")}})
+		assert.ErrorIs(t, err, llm.ErrNotFound)
+		assert.Zero(t, store.Len())
+		session, err := r.CreateSession(ctx, schema.SessionMeta{})
+		require.NoError(t, err)
+		assert.Nil(t, session.Model)
+	})
+
+	t.Run("Tools", func(t *testing.T) {
+		// The tools are the toolkit's, by their canonical names, and a
+		// namespace and "*", or "*", are kept as they are
+		r, _ := newRegistry(t)
+		session, err := r.CreateSession(ctx, schema.SessionMeta{GeneratorMeta: schema.GeneratorMeta{Tools: []string{"current", "memory:*"}}})
+		require.NoError(t, err)
+		assert.Equal(t, []string{"weather:current", "memory:*"}, session.Tools)
+		all, err := r.CreateSession(ctx, schema.SessionMeta{GeneratorMeta: schema.GeneratorMeta{Tools: []string{"*"}}})
+		require.NoError(t, err)
+		assert.Equal(t, []string{"*"}, all.Tools)
+
+		session, err = r.UpdateSession(ctx, session.ID, schema.SessionMeta{GeneratorMeta: schema.GeneratorMeta{Tools: []string{"forecast"}}})
+		require.NoError(t, err)
+		assert.Equal(t, []string{"weather:forecast"}, session.Tools)
+
+		// A tool which isn't the toolkit's isn't valid, and isn't stored
+		_, err = r.CreateSession(ctx, schema.SessionMeta{GeneratorMeta: schema.GeneratorMeta{Tools: []string{"null"}}})
+		assert.ErrorIs(t, err, llm.ErrNotFound)
+		_, err = r.UpdateSession(ctx, session.ID, schema.SessionMeta{GeneratorMeta: schema.GeneratorMeta{Tools: []string{"missing:*"}}})
+		assert.ErrorIs(t, err, llm.ErrNotFound)
+		got, err := r.GetSession(ctx, session.ID)
+		require.NoError(t, err)
+		assert.Equal(t, []string{"weather:forecast"}, got.Tools)
+
+		// An empty list clears them, so there are none
+		session, err = r.UpdateSession(ctx, session.ID, schema.SessionMeta{GeneratorMeta: schema.GeneratorMeta{Tools: []string{}}})
+		require.NoError(t, err)
+		assert.Nil(t, session.Tools)
+
+		// Without a toolkit, there are no tools
+		noTools, err := registry.New(registry.WithSessionStore(test.NewSessionStore()))
+		require.NoError(t, err)
+		_, err = noTools.CreateSession(ctx, schema.SessionMeta{GeneratorMeta: schema.GeneratorMeta{Tools: []string{"*"}}})
+		assert.ErrorIs(t, err, llm.ErrNotFound)
+		_, err = noTools.CreateSession(ctx, schema.SessionMeta{})
+		assert.NoError(t, err)
+	})
+
+	t.Run("Get", func(t *testing.T) {
+		r, _ := newRegistry(t)
+		created, err := r.CreateSession(ctx, meta)
+		require.NoError(t, err)
+		session, err := r.GetSession(ctx, created.ID)
+		require.NoError(t, err)
+		assert.Equal(t, created, session)
+		_, err = r.GetSession(ctx, uuid.New())
+		assert.ErrorIs(t, err, llm.ErrNotFound)
+	})
+
+	t.Run("List", func(t *testing.T) {
+		// Sessions are listed without their messages, most recently modified
+		// first, from the offset, and at most the limit of them
+		r, store := newRegistry(t)
+		var created []uuid.UUID
+		for range 3 {
+			session, err := r.CreateSession(ctx, meta)
+			require.NoError(t, err)
+			created = append(created, session.ID)
+			time.Sleep(time.Millisecond)
+		}
+		first, err := store.Get(ctx, created[0])
+		require.NoError(t, err)
+		first.Messages = []providerschema.Message{{MessageMeta: providerschema.MessageMeta{Sender: "user", Content: []providerschema.ContentBlock{{Text: types.Ptr("Hi")}}}}}
+		_, err = store.Put(ctx, first)
+		require.NoError(t, err)
+
+		list, err := r.ListSessions(ctx, schema.SessionListRequest{})
+		require.NoError(t, err)
+		assert.Equal(t, uint(3), list.Count)
+		var ids []uuid.UUID
+		for _, session := range list.Body {
+			ids = append(ids, session.ID)
+			assert.Empty(t, session.Messages)
+		}
+		assert.Equal(t, []uuid.UUID{created[0], created[2], created[1]}, ids)
+
+		list, err = r.ListSessions(ctx, schema.SessionListRequest{Offset: 1, Limit: types.Ptr(uint(1))})
+		require.NoError(t, err)
+		assert.Equal(t, uint(3), list.Count)
+		require.Len(t, list.Body, 1)
+		assert.Equal(t, created[2], list.Body[0].ID)
+	})
+
+	t.Run("Update", func(t *testing.T) {
+		// What the update sets is changed, the rest is kept, as are the
+		// messages
+		r, store := newRegistry(t)
+		created, err := r.CreateSession(ctx, meta)
+		require.NoError(t, err)
+		stored, err := store.Get(ctx, created.ID)
+		require.NoError(t, err)
+		stored.Messages = []providerschema.Message{{MessageMeta: providerschema.MessageMeta{Sender: "user", Content: []providerschema.ContentBlock{{Text: types.Ptr("Hi")}}}}}
+		_, err = store.Put(ctx, stored)
+		require.NoError(t, err)
+
+		other := schema.SessionMeta{GeneratorMeta: schema.GeneratorMeta{Model: types.Ptr("other"), Tools: []string{"memory:*"}}}
+		session, err := r.UpdateSession(ctx, created.ID, other)
+		require.NoError(t, err)
+		assert.Equal(t, schema.SessionMeta{GeneratorMeta: schema.GeneratorMeta{Model: types.Ptr("scripted:other"), System: types.Ptr("Be brief"), Tools: []string{"memory:*"}}}, session.SessionMeta)
+		assert.Len(t, session.Messages, 1)
+		assert.Equal(t, uint64(3), session.Serial)
+
+		// An update which sets nothing isn't valid
+		_, err = r.UpdateSession(ctx, created.ID, schema.SessionMeta{})
+		assert.ErrorIs(t, err, llm.ErrBadParameter)
+
+		// A model which isn't the registry's isn't valid, and an empty one
+		// clears it, without being checked
+		_, err = r.UpdateSession(ctx, created.ID, schema.SessionMeta{GeneratorMeta: schema.GeneratorMeta{Model: types.Ptr("missing")}})
+		assert.ErrorIs(t, err, llm.ErrNotFound)
+		session, err = r.UpdateSession(ctx, created.ID, schema.SessionMeta{GeneratorMeta: schema.GeneratorMeta{Model: types.Ptr("")}})
+		require.NoError(t, err)
+		assert.Nil(t, session.Model)
+
+		// The settings, as changed, must be valid
+		_, err = r.UpdateSession(ctx, uuid.New(), other)
+		assert.ErrorIs(t, err, llm.ErrNotFound)
+		_, err = r.UpdateSession(ctx, created.ID, schema.SessionMeta{GeneratorMeta: schema.GeneratorMeta{Opt: map[string]json.RawMessage{llm.SystemPromptKey: json.RawMessage(`"x"`)}}})
+		assert.ErrorIs(t, err, llm.ErrBadParameter)
+		stored, err = store.Get(ctx, created.ID)
+		require.NoError(t, err)
+		assert.Empty(t, stored.Opt)
+	})
+
+	t.Run("Delete", func(t *testing.T) {
+		// The session is returned, as it was, and is gone
+		r, _ := newRegistry(t)
+		created, err := r.CreateSession(ctx, meta)
+		require.NoError(t, err)
+		deleted, err := r.DeleteSession(ctx, created.ID)
+		require.NoError(t, err)
+		assert.Equal(t, created, deleted)
+		_, err = r.GetSession(ctx, created.ID)
+		assert.ErrorIs(t, err, llm.ErrNotFound)
+		_, err = r.DeleteSession(ctx, created.ID)
+		assert.ErrorIs(t, err, llm.ErrNotFound)
+	})
+
+	t.Run("Snapshot", func(t *testing.T) {
+		// A session which is returned doesn't share what's stored
+		r, _ := newRegistry(t)
+		created, err := r.CreateSession(ctx, meta)
+		require.NoError(t, err)
+		*created.System = "Changed"
+		got, err := r.GetSession(ctx, created.ID)
+		require.NoError(t, err)
+		assert.Equal(t, "Be brief", types.Value(got.System))
+	})
+
+	t.Run("NoStore", func(t *testing.T) {
+		// Without a session store, sessions aren't available
+		r, err := registry.New()
+		require.NoError(t, err)
+		_, err = r.CreateSession(ctx, meta)
+		assert.ErrorIs(t, err, llm.ErrServiceUnavailable)
+		_, err = r.GetSession(ctx, uuid.New())
+		assert.ErrorIs(t, err, llm.ErrServiceUnavailable)
+		_, err = r.ListSessions(ctx, schema.SessionListRequest{})
+		assert.ErrorIs(t, err, llm.ErrServiceUnavailable)
+		_, err = r.UpdateSession(ctx, uuid.New(), meta)
+		assert.ErrorIs(t, err, llm.ErrServiceUnavailable)
+		_, err = r.DeleteSession(ctx, uuid.New())
+		assert.ErrorIs(t, err, llm.ErrServiceUnavailable)
+
+		_, err = registry.New(registry.WithSessionStore(nil))
+		assert.ErrorIs(t, err, llm.ErrBadParameter)
+	})
+}

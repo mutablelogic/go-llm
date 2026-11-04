@@ -40,9 +40,9 @@ type memStore struct {
 	stopped       chan error
 }
 
-var _ registry.Store = (*memStore)(nil)
+var _ registry.ProviderStore = (*memStore)(nil)
 
-func newStore(defs ...schema.Provider) *memStore {
+func newProviderStore(defs ...schema.Provider) *memStore {
 	s := &memStore{defs: make(map[string]schema.Provider), stopped: make(chan error, 1)}
 	for _, def := range defs {
 		def.Serial = 1
@@ -190,9 +190,9 @@ func chat(name string) schema.Provider {
 }
 
 // synced returns a registry, which is synced with the store, when it runs
-func synced(t *testing.T, store registry.Store) *registry.Registry {
+func synced(t *testing.T, store registry.ProviderStore) *registry.Registry {
 	t.Helper()
-	r, err := registry.New(registry.WithStore(store))
+	r, err := registry.New(registry.WithProviderStore(store))
 	require.NoError(t, err)
 	return r
 }
@@ -250,7 +250,7 @@ func Test_Sync(t *testing.T) {
 
 	t.Run("Startup", func(t *testing.T) {
 		// The store's providers are added to the registry when it runs
-		store := newStore(chat("chat"), chat("bot"))
+		store := newProviderStore(chat("chat"), chat("bot"))
 		r := synced(t, store)
 		run(t, r, nil)
 		eventually(t, func() bool { return has(r, chat("chat")) && has(r, chat("bot")) }, "the store's providers weren't added")
@@ -265,7 +265,7 @@ func Test_Sync(t *testing.T) {
 	t.Run("Local", func(t *testing.T) {
 		// A provider which is created with the registry is put in the store,
 		// and one which is deleted is deleted from it
-		store := newStore()
+		store := newProviderStore()
 		r := synced(t, store)
 		run(t, r, nil)
 		_, err := r.CreateProvider(ctx, chat("chat"))
@@ -279,7 +279,7 @@ func Test_Sync(t *testing.T) {
 	t.Run("Remote", func(t *testing.T) {
 		// A provider which is changed in the store, as by another server, is
 		// changed in the registry, and one which is removed is removed
-		store := newStore(chat("chat"))
+		store := newProviderStore(chat("chat"))
 		r := synced(t, store)
 		run(t, r, nil)
 		eventually(t, func() bool { return has(r, chat("chat")) }, "the provider wasn't added")
@@ -304,7 +304,7 @@ func Test_Sync(t *testing.T) {
 	t.Run("Serial", func(t *testing.T) {
 		// A provider has the store's serial, which a change made with the
 		// registry increments
-		store := newStore(chat("chat"))
+		store := newProviderStore(chat("chat"))
 		r := synced(t, store)
 		run(t, r, nil)
 		eventually(t, func() bool { return serial(r, "chat") == 1 }, "the store's provider didn't have its serial")
@@ -328,7 +328,7 @@ func Test_Sync(t *testing.T) {
 		// A provider which is deleted with the registry, which was changed in
 		// the store since, as by another server, whose event is missed, is
 		// the store's, rather than deleted
-		store := newStore(chat("chat"))
+		store := newProviderStore(chat("chat"))
 		r := synced(t, store)
 		run(t, r, nil)
 		eventually(t, func() bool { return has(r, chat("chat")) }, "the store's provider wasn't added")
@@ -346,7 +346,7 @@ func Test_Sync(t *testing.T) {
 	t.Run("ConflictUpdate", func(t *testing.T) {
 		// A provider which is updated with the registry, which was changed in
 		// the store since, is the store's, rather than overwritten
-		store := newStore(chat("chat"))
+		store := newProviderStore(chat("chat"))
 		r := synced(t, store)
 		run(t, r, nil)
 		eventually(t, func() bool { return has(r, chat("chat")) }, "the store's provider wasn't added")
@@ -365,7 +365,7 @@ func Test_Sync(t *testing.T) {
 		// deleted from the store, is deleted from it later, rather than
 		// added to the registry again
 		setInterval(t, &registry.PingInterval, 10*time.Millisecond)
-		store := newStore(chat("chat"))
+		store := newProviderStore(chat("chat"))
 		r := synced(t, store)
 		run(t, r, nil)
 		eventually(t, func() bool { return has(r, chat("chat")) }, "the store's provider wasn't added")
@@ -385,7 +385,7 @@ func Test_Sync(t *testing.T) {
 		// A provider which is updated with the registry, which can't be put
 		// in the store, is put in it later, rather than being the store's
 		setInterval(t, &registry.PingInterval, 10*time.Millisecond)
-		store := newStore(chat("chat"))
+		store := newProviderStore(chat("chat"))
 		r := synced(t, store)
 		run(t, r, nil)
 		eventually(t, func() bool { return has(r, chat("chat")) }, "the store's provider wasn't added")
@@ -410,7 +410,7 @@ func Test_Sync(t *testing.T) {
 		// server, has the store's type
 		closed := httptest.NewServer(http.NotFoundHandler())
 		closed.Close()
-		store := newStore(chat("chat"))
+		store := newProviderStore(chat("chat"))
 		r := synced(t, store)
 		run(t, r, nil)
 		eventually(t, func() bool { return has(r, chat("chat")) }, "the store's provider wasn't added")
@@ -425,7 +425,7 @@ func Test_Sync(t *testing.T) {
 		// A provider which is updated with the registry, which another server
 		// deleted from the store since, is deleted, rather than created in
 		// the store again
-		store := newStore(chat("chat"))
+		store := newProviderStore(chat("chat"))
 		r := synced(t, store)
 		run(t, r, nil)
 		eventually(t, func() bool { return has(r, chat("chat")) }, "the store's provider wasn't added")
@@ -445,7 +445,7 @@ func Test_Sync(t *testing.T) {
 		closed := httptest.NewServer(http.NotFoundHandler())
 		closed.Close()
 		away := schema.Provider{Name: "away", Type: llm.Ollama, URL: closed.URL}
-		r := synced(t, newStore(away))
+		r := synced(t, newProviderStore(away))
 		run(t, r, nil)
 		eventually(t, func() bool { return has(r, away) }, "the provider wasn't added")
 		provider, err := r.GetProvider(ctx, "away")
@@ -458,7 +458,7 @@ func Test_Sync(t *testing.T) {
 		// is it replaced by the store's provider with its name
 		client, err := eliza.New()
 		require.NoError(t, err)
-		store := newStore(schema.Provider{Name: "chat", Type: llm.Eliza, Exclude: []string{"-de$"}}, chat("bot"))
+		store := newProviderStore(schema.Provider{Name: "chat", Type: llm.Eliza, Exclude: []string{"-de$"}}, chat("bot"))
 		r := synced(t, store)
 		require.NoError(t, r.Add("chat", client))
 		run(t, r, nil)
@@ -472,7 +472,7 @@ func Test_Sync(t *testing.T) {
 		// When the store's providers can't be listed, the registry is left
 		// as it is, and they're synced when they can be
 		setInterval(t, &registry.PingInterval, 10*time.Millisecond)
-		store := newStore(chat("bot"))
+		store := newProviderStore(chat("bot"))
 		store.err = errors.New("connection refused")
 		r := synced(t, store)
 		_, err := r.CreateProvider(ctx, chat("chat"))
@@ -492,7 +492,7 @@ func Test_Sync(t *testing.T) {
 	t.Run("Logged", func(t *testing.T) {
 		// The errors syncing providers are logged, and they're synced again
 		setInterval(t, &registry.PingInterval, 10*time.Millisecond)
-		store := newStore(chat("chat"))
+		store := newProviderStore(chat("chat"))
 		store.err = errors.New("connection refused")
 		var log syncBuffer
 		r := synced(t, store)
@@ -510,7 +510,7 @@ func Test_Sync(t *testing.T) {
 	t.Run("Missed", func(t *testing.T) {
 		// Changes whose events are missed are synced every interval
 		setInterval(t, &registry.PingInterval, 10*time.Millisecond)
-		store := newStore()
+		store := newProviderStore()
 		r := synced(t, store)
 		run(t, r, nil)
 		store.Lock()
@@ -525,14 +525,14 @@ func Test_Sync(t *testing.T) {
 
 	t.Run("Stopped", func(t *testing.T) {
 		// Run returns nil when it's cancelled
-		store := newStore(chat("chat"))
+		store := newProviderStore(chat("chat"))
 		r := synced(t, store)
 		stop := run(t, r, nil)
 		eventually(t, func() bool { return has(r, chat("chat")) }, "the store's provider wasn't added")
 		assert.NoError(t, stop())
 
 		// And the store's error when the store stops
-		store = newStore(chat("chat"))
+		store = newProviderStore(chat("chat"))
 		r = synced(t, store)
 		ctx, cancel := context.WithCancel(ctx)
 		defer cancel()
@@ -550,7 +550,7 @@ func Test_Sync(t *testing.T) {
 	})
 
 	t.Run("Errors", func(t *testing.T) {
-		_, err := registry.New(registry.WithStore(nil))
+		_, err := registry.New(registry.WithProviderStore(nil))
 		assert.ErrorIs(t, err, llm.ErrBadParameter)
 	})
 }
