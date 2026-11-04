@@ -18,7 +18,7 @@ func Test_ClientAsk(t *testing.T) {
 	ctx := t.Context()
 	client := newClient(t)
 	req := schema.AskRequest{
-		Model:    eliza.ModelName,
+		Model:    types.Ptr(eliza.ModelName),
 		Messages: []providerschema.MessageMeta{{Sender: "user", Content: []providerschema.ContentBlock{{Text: types.Ptr("I feel sad")}}}},
 	}
 
@@ -47,10 +47,10 @@ func Test_ClientAsk(t *testing.T) {
 		// model which exists, which is an error event when it's streamed
 		_, err := client.Ask(ctx, schema.AskRequest{Messages: req.Messages}, nil)
 		assert.ErrorIs(t, err, llm.ErrBadParameter)
-		_, err = client.Ask(ctx, schema.AskRequest{Model: eliza.ModelName}, nil)
+		_, err = client.Ask(ctx, schema.AskRequest{Model: types.Ptr(eliza.ModelName)}, nil)
 		assert.ErrorIs(t, err, llm.ErrBadParameter)
 		missing := req
-		missing.Model = "missing"
+		missing.Model = types.Ptr("missing")
 		_, err = client.Ask(ctx, missing, nil)
 		assert.Error(t, err)
 		_, err = client.Ask(ctx, missing, func(llm.StreamType, string) {})

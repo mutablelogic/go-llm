@@ -12,6 +12,7 @@ import (
 	httprouter "github.com/mutablelogic/go-server/pkg/httprouter"
 	jsonschema "github.com/mutablelogic/go-server/pkg/jsonschema"
 	openapi "github.com/mutablelogic/go-server/pkg/openapi"
+	types "github.com/mutablelogic/go-server/pkg/types"
 )
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -31,7 +32,7 @@ func askHandlers(reg *registry.Registry, router *httprouter.Router, documentatio
 			} else if err := httprequest.Read(r, &req); err != nil {
 				httpresponse.Error(w, httpresponse.ErrBadRequest.Withf("%w", err))
 			} else {
-				respond(w, r, req.Model, func(write streamWriteFn) (*schema.AskResponse, error) {
+				respond(w, r, types.Value(req.Model), func(write streamWriteFn) (*schema.AskResponse, error) {
 					var stream llm.GeneratorStreamFn
 					if write != nil {
 						stream = func(what llm.StreamType, text string) {

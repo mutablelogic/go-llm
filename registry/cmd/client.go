@@ -16,6 +16,7 @@ import (
 type ClientCommands struct {
 	ProviderCommands
 	ModelCommands
+	SessionCommands
 	InferenceCommands
 	EventCommands
 }

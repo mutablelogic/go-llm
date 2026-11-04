@@ -22,7 +22,7 @@ import (
 // askEliza returns a request to ask eliza the question
 func askEliza(question string) schema.AskRequest {
 	return schema.AskRequest{
-		Model:    eliza.ModelName,
+		Model:    types.Ptr(eliza.ModelName),
 		Messages: []providerschema.MessageMeta{{Sender: "user", Content: []providerschema.ContentBlock{{Text: types.Ptr(question)}}}},
 	}
 }
@@ -89,7 +89,7 @@ func Test_Ask(t *testing.T) {
 		req.Messages = nil
 		assert.Equal(t, http.StatusBadRequest, do(t, server, http.MethodPost, "llm/ask", req, nil))
 		req = askEliza("Hi")
-		req.Model = "missing"
+		req.Model = types.Ptr("missing")
 		assert.Equal(t, http.StatusNotFound, do(t, server, http.MethodPost, "llm/ask", req, nil))
 		req = askEliza("Hi")
 		req.Tools = []string{"weatherapi:current"}

@@ -25,7 +25,7 @@ func says(role, text string, tokens uint64) providerschema.Message {
 
 func Test_WithSession(t *testing.T) {
 	ctx := context.Background()
-	meta := schema.GeneratorMeta{Model: "model", System: "Be brief"}
+	meta := schema.GeneratorMeta{Model: types.Ptr("model"), System: types.Ptr("Be brief")}
 	hi := []llm.Message{says("user", "Hi", 0)}
 
 	t.Run("Reply", func(t *testing.T) {
@@ -42,10 +42,10 @@ func Test_WithSession(t *testing.T) {
 		assert.Equal(t, "Hello", response.Messages[1].Text())
 		assert.Equal(t, uint64(5), response.Messages[1].Tokens)
 		assert.Equal(t, providerschema.ResultStop, response.Messages[1].Result)
-		assert.Equal(t, uint(4), response.Input)
-		assert.Equal(t, uint(5), response.Output)
-		assert.Equal(t, uint(6), response.Overhead)
-		assert.Equal(t, llm.Usage{InputTokens: 10, OutputTokens: 5}, response.Usage)
+		assert.Equal(t, uint(4), response.Usage.Input)
+		assert.Equal(t, uint(5), response.Usage.Output)
+		assert.Equal(t, uint(6), response.Usage.Overhead)
+		assert.Equal(t, llm.Usage{InputTokens: 10, OutputTokens: 5}, response.Usage.Usage)
 
 		// The model is asked with the system prompt
 		require.Len(t, p.asked, 1)
@@ -62,8 +62,8 @@ func Test_WithSession(t *testing.T) {
 		response, err := r.WithSession(ctx, newSession(meta, earlier...), hi, nil)
 		require.NoError(t, err)
 		require.Len(t, response.Messages, 2)
-		assert.Equal(t, uint(104), response.Input)
-		assert.Equal(t, uint(55), response.Output)
+		assert.Equal(t, uint(104), response.Usage.Input)
+		assert.Equal(t, uint(55), response.Usage.Output)
 		require.Len(t, p.asked, 1)
 		require.Len(t, p.asked[0].messages, 3)
 		assert.Equal(t, "First", p.asked[0].messages[0].Text())
@@ -87,9 +87,9 @@ func Test_WithSession(t *testing.T) {
 		}
 		assert.NotZero(t, response.Messages[2].Tokens)
 		assert.Equal(t, "Sunny", response.Messages[3].Text())
-		assert.Equal(t, uint(4)+uint(response.Messages[2].Tokens), response.Input)
-		assert.Equal(t, uint(10), response.Output)
-		assert.Equal(t, llm.Usage{InputTokens: 20, OutputTokens: 10}, response.Usage)
+		assert.Equal(t, uint(4)+uint(response.Messages[2].Tokens), response.Usage.Input)
+		assert.Equal(t, uint(10), response.Usage.Output)
+		assert.Equal(t, llm.Usage{InputTokens: 20, OutputTokens: 10}, response.Usage.Usage)
 	})
 
 	t.Run("Schema", func(t *testing.T) {
@@ -206,9 +206,9 @@ func Test_WithSession(t *testing.T) {
 		assert.ErrorIs(t, err, llm.ErrBadParameter)
 		_, err = r.WithSession(ctx, newSession(meta), nil, nil)
 		assert.ErrorIs(t, err, llm.ErrBadParameter)
-		_, err = r.WithSession(ctx, newSession(schema.GeneratorMeta{Model: "model", Schema: json.RawMessage(`{"type":1}`)}), hi, nil)
+		_, err = r.WithSession(ctx, newSession(schema.GeneratorMeta{Model: types.Ptr("model"), Schema: json.RawMessage(`{"type":1}`)}), hi, nil)
 		assert.ErrorIs(t, err, llm.ErrBadParameter)
-		_, err = r.WithSession(ctx, newSession(schema.GeneratorMeta{Model: "missing"}), hi, nil)
+		_, err = r.WithSession(ctx, newSession(schema.GeneratorMeta{Model: types.Ptr("missing")}), hi, nil)
 		assert.ErrorIs(t, err, llm.ErrNotFound)
 		_, err = r.WithSession(ctx, newSession(meta), []llm.Message{nil}, nil)
 		assert.ErrorIs(t, err, llm.ErrBadParameter)
@@ -288,7 +288,7 @@ func Test_ToolSystemPrompts(t *testing.T) {
 
 	t.Run("WithSession", func(t *testing.T) {
 		p := newScripted(text("Hello"))
-		meta := schema.GeneratorMeta{Model: "model", System: "Be brief", Tools: []string{"weather:*", "news:headlines"}}
+		meta := schema.GeneratorMeta{Model: types.Ptr("model"), System: types.Ptr("Be brief"), Tools: []string{"weather:*", "news:headlines"}}
 		_, err := newRegistry(t, p).WithSession(ctx, newSession(meta), hi, nil)
 		require.NoError(t, err)
 		assert.Equal(t, "Be brief\n\nUse metric units.\n\nCite the source.", system(t, p))
@@ -296,7 +296,7 @@ func Test_ToolSystemPrompts(t *testing.T) {
 
 	t.Run("NoSystem", func(t *testing.T) {
 		p := newScripted(text("Hello"))
-		meta := schema.GeneratorMeta{Model: "model", Tools: []string{"news:*"}}
+		meta := schema.GeneratorMeta{Model: types.Ptr("model"), Tools: []string{"news:*"}}
 		_, err := newRegistry(t, p).WithSession(ctx, newSession(meta), hi, nil)
 		require.NoError(t, err)
 		assert.Equal(t, "Cite the source.", system(t, p))
@@ -304,7 +304,7 @@ func Test_ToolSystemPrompts(t *testing.T) {
 
 	t.Run("Schema", func(t *testing.T) {
 		p := newScripted(call(toolkit.RespondName, `{"result":"ok"}`))
-		meta := schema.GeneratorMeta{Model: "model", System: "Be brief", Tools: []string{"news:*"}, Schema: json.RawMessage(`{"type":"string"}`)}
+		meta := schema.GeneratorMeta{Model: types.Ptr("model"), System: types.Ptr("Be brief"), Tools: []string{"news:*"}, Schema: json.RawMessage(`{"type":"string"}`)}
 		_, err := newRegistry(t, p).WithSession(ctx, newSession(meta), hi, nil)
 		require.NoError(t, err)
 		assert.Equal(t, "Be brief\n\nCite the source.\n\n"+toolkit.RespondPrompt, system(t, p))
@@ -313,7 +313,7 @@ func Test_ToolSystemPrompts(t *testing.T) {
 	t.Run("Ask", func(t *testing.T) {
 		p := newScripted(text("Hello"))
 		req := question("Hi")
-		req.System = "Be brief"
+		req.System = types.Ptr("Be brief")
 		req.Tools = []string{"weather:current"}
 		_, err := newRegistry(t, p).Ask(ctx, req, nil)
 		require.NoError(t, err)
@@ -325,7 +325,7 @@ func Test_ToolSystemPrompts(t *testing.T) {
 		// system prompt, though the model has no tools of it
 		p := newScripted(text("Hello"))
 		r := newRegistry(t, p)
-		meta := schema.GeneratorMeta{Model: "model", System: "Be brief", Tools: []string{"clock:*"}}
+		meta := schema.GeneratorMeta{Model: types.Ptr("model"), System: types.Ptr("Be brief"), Tools: []string{"clock:*"}}
 		_, err := r.WithSession(ctx, newSession(meta), hi, nil)
 		require.NoError(t, err)
 		assert.Equal(t, "Be brief\n\nIt's noon.", system(t, p))
@@ -334,7 +334,7 @@ func Test_ToolSystemPrompts(t *testing.T) {
 
 	t.Run("ToolChoiceNone", func(t *testing.T) {
 		p := newScripted(text("Hello"))
-		meta := schema.GeneratorMeta{Model: "model", System: "Be brief", Tools: []string{"weather:*"}, Opt: map[string]json.RawMessage{llm.ToolChoiceKey: json.RawMessage(`"none"`)}}
+		meta := schema.GeneratorMeta{Model: types.Ptr("model"), System: types.Ptr("Be brief"), Tools: []string{"weather:*"}, Opt: map[string]json.RawMessage{llm.ToolChoiceKey: json.RawMessage(`"none"`)}}
 		_, err := newRegistry(t, p).WithSession(ctx, newSession(meta), hi, nil)
 		require.NoError(t, err)
 		assert.Equal(t, "Be brief", system(t, p))

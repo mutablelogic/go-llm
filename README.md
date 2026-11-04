@@ -133,7 +133,8 @@ The packages can be used without the server:
 
 The registry is meant to be composed with other modules into a whole system, rather than to be one itself. It's created with options, which plug in what a system has:
 
-- `WithStore` keeps the providers' definitions in a store, such as a database, so they're kept when the server restarts, and are shared between servers. A `Store` lists, puts and deletes providers, each with a serial, so a change to a provider which another server has changed is a conflict, and watches the store for the changes other servers make. The providers' models aren't stored, as they're listed from the providers, and cached.
+- `WithProviderStore` keeps the providers' definitions in a store, such as a database, so they're kept when the server restarts, and are shared between servers. A `ProviderStore` lists, puts and deletes providers, each with a serial, so a change to a provider which another server has changed is a conflict, and watches the store for the changes other servers make. The providers' models aren't stored, as they're listed from the providers, and cached.
+- `WithSessionStore` keeps sessions, which are conversations with models, in a store, such as a database, so they're kept when the server restarts. A `SessionStore` creates, gets, lists, puts and deletes sessions, each with a UUID and a serial, which the store sets, so a change to a session which was changed since it was read is a conflict. Without one, the registry's session methods return `ErrServiceUnavailable`.
 - `WithCredentialsProvider` expands an API key's placeholder, such as `${OPENAI_KEY}`, with a secret, from the environment by default, or from a secrets manager, so keys are never stored.
 - `WithToolkit` gives the registry the tools which models can call.
 - `WithTracer` and `WithClientOpts` trace, and configure, the requests to providers.
@@ -164,7 +165,7 @@ func main() {
 	defer cancel()
 
 	// A registry, which a system would give its store of providers, with
-	// registry.WithStore, and its secrets, with
+	// registry.WithProviderStore, and its secrets, with
 	// registry.WithCredentialsProvider
 	r, err := registry.New()
 	if err != nil {

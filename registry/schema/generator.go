@@ -18,8 +18,8 @@ import (
 // tools it can call, the options, and the schema of its reply, which agents,
 // sessions and requests to ask a model have
 type GeneratorMeta struct {
-	Model  string                     `json:"model" help:"Model, by name, or by provider and name" example:"ollama:llama3.2:latest"`
-	System string                     `json:"system,omitempty" help:"System prompt, sent before the messages" example:"Be brief" optional:""`
+	Model  *string                    `json:"model,omitempty" help:"Model, by name, or by provider and name" example:"ollama:llama3.2:latest" optional:""`
+	System *string                    `json:"system,omitempty" help:"System prompt, sent before the messages" example:"Be brief" optional:""`
 	Tools  []string                   `json:"tools,omitzero" help:"Tools the model can call, by name, by namespace and name, all the tools in a namespace, such as weatherapi:*, or * for all the tools" example:"[\"weatherapi:current\"]" optional:""`
 	Opt    map[string]json.RawMessage `json:"opt,omitzero" help:"Options, by key, such as temperature=0.7, which the provider decodes" example:"{\"temperature\":0.7}" optional:""`
 	Schema json.RawMessage            `json:"schema,omitempty" help:"JSON schema of the reply, which the model replies with, or text when omitted" example:"{\"type\":\"object\",\"properties\":{\"city\":{\"type\":\"string\"}}}" optional:""`

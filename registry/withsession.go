@@ -44,7 +44,7 @@ func (r *Registry) WithSession(ctx context.Context, session schema.Session, mess
 
 	// The model, and the conversation, of the session's messages and the
 	// messages
-	if strings.TrimSpace(meta.Model) == "" {
+	if strings.TrimSpace(types.Value(meta.Model)) == "" {
 		return nil, llm.ErrBadParameter.With("missing model")
 	} else if len(messages) == 0 {
 		return nil, llm.ErrBadParameter.With("missing messages")
@@ -76,8 +76,7 @@ func (r *Registry) WithSession(ctx context.Context, session schema.Session, mess
 	// those the loop added, each with its tokens
 	response := &schema.SessionResponse{
 		Messages: h.added,
-		Overhead: h.overhead,
-		Usage:    usage,
+		Usage:    schema.SessionUsage{Usage: usage, Overhead: h.overhead},
 	}
 
 	// The tokens of the conversation, with the messages to add, of its
@@ -111,7 +110,7 @@ func (r *Registry) generatorLoop(ctx context.Context, meta schema.GeneratorMeta,
 	if err != nil {
 		return nil, nil, false, err
 	}
-	opts, err := meta.Opts(meta.System)
+	opts, err := meta.Opts(types.Value(meta.System))
 	if err != nil {
 		return nil, nil, false, err
 	}
@@ -119,7 +118,7 @@ func (r *Registry) generatorLoop(ctx context.Context, meta schema.GeneratorMeta,
 	if hasSchema {
 		opts = append(opts, llm.WithJSONSchema(meta.Schema))
 	}
-	model, err := r.GetModel(ctx, strings.TrimSpace(meta.Model))
+	model, err := r.GetModel(ctx, strings.TrimSpace(types.Value(meta.Model)))
 	if err != nil {
 		return nil, nil, false, err
 	}
@@ -186,8 +185,8 @@ func systemPrompt(system string, prompts []string) string {
 // model's replies, or of the messages sent to it
 func countTokens(response *schema.SessionResponse, role string, tokens uint) {
 	if role == "assistant" {
-		response.Output += tokens
+		response.Usage.Output += tokens
 	} else {
-		response.Input += tokens
+		response.Usage.Input += tokens
 	}
 }
