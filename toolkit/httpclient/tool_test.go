@@ -54,9 +54,9 @@ func newClient(t *testing.T) (*httpclient.Client, context.Context) {
 	ctx := context.Background()
 	tools, err := toolkit.New(ctx)
 	require.NoError(t, err)
-	require.NoError(t, tools.Add("a", tool{name: "one"}, tool{name: "two"}))
-	require.NoError(t, tools.Add("b", tool{name: "three"}))
-	require.NoError(t, tools.Add("c", echoTool{tool{name: "echo"}}))
+	require.NoError(t, tools.Add(toolkit.NewNamespace("a", "", tool{name: "one"}, tool{name: "two"})))
+	require.NoError(t, tools.Add(toolkit.NewNamespace("b", "", tool{name: "three"})))
+	require.NoError(t, tools.Add(toolkit.NewNamespace("c", "", echoTool{tool{name: "echo"}})))
 
 	server := test.NewServerFunc(t, func(router *httprouter.Router) error {
 		return httphandler.RegisterHandlers(tools, router)

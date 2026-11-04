@@ -125,7 +125,7 @@ func newAskRegistry(t *testing.T, p llm.Provider) *registry.Registry {
 	t.Helper()
 	tools, err := toolkit.New(context.Background())
 	require.NoError(t, err)
-	require.NoError(t, tools.Add("test", echoTool{}))
+	require.NoError(t, tools.Add(toolkit.NewNamespace("test", "", echoTool{})))
 	r, err := registry.New(registry.WithToolkit(tools))
 	require.NoError(t, err)
 	require.NoError(t, r.Add("", p))

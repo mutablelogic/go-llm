@@ -11,6 +11,7 @@ import (
 	// Packages
 	client "github.com/mutablelogic/go-client"
 	llm "github.com/mutablelogic/go-llm"
+	toolkit "github.com/mutablelogic/go-llm/toolkit"
 	weatherapi "github.com/mutablelogic/go-llm/toolkit/weatherapi"
 	httpclient "github.com/mutablelogic/go-llm/toolkit/weatherapi/httpclient"
 	assert "github.com/stretchr/testify/assert"
@@ -53,7 +54,7 @@ func newTools(t *testing.T) (map[string]llm.Tool, *[]url.Values) {
 	}))
 	t.Cleanup(server.Close)
 
-	tools, err := weatherapi.NewTools("test-key", client.OptEndpoint(server.URL))
+	tools, err := toolsOf(weatherapi.New("test-key", client.OptEndpoint(server.URL)))
 	require.NoError(t, err)
 	result := make(map[string]llm.Tool, len(tools))
 	for _, tool := range tools {
@@ -62,9 +63,9 @@ func newTools(t *testing.T) (map[string]llm.Tool, *[]url.Values) {
 	return result, &queries
 }
 
-func TestNewTools(t *testing.T) {
+func TestNew(t *testing.T) {
 	t.Run("MissingKey", func(t *testing.T) {
-		tools, err := weatherapi.NewTools("")
+		tools, err := toolsOf(weatherapi.New(""))
 		assert.ErrorIs(t, err, llm.ErrBadParameter)
 		assert.Nil(t, tools)
 	})
@@ -83,7 +84,7 @@ func TestNewTools(t *testing.T) {
 
 	t.Run("Names", func(t *testing.T) {
 		// The tools have valid names
-		tools, err := weatherapi.NewTools("test-key")
+		tools, err := toolsOf(weatherapi.New("test-key"))
 		require.NoError(t, err)
 		for _, tool := range tools {
 			assert.True(t, llm.IsToolName(tool.Name()), tool.Name())
@@ -217,4 +218,12 @@ func TestRun(t *testing.T) {
 		assert.ErrorIs(t, err, context.Canceled)
 		assert.Empty(t, *queries)
 	})
+}
+
+// toolsOf returns the tools of the namespace, or nil and the error
+func toolsOf(ns toolkit.Namespace, err error) ([]llm.Tool, error) {
+	if err != nil {
+		return nil, err
+	}
+	return ns.Tools(), nil
 }

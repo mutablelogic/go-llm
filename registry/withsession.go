@@ -96,9 +96,10 @@ func (r *Registry) WithSession(ctx context.Context, session schema.Session, mess
 // PRIVATE METHODS
 
 // generatorLoop returns the model of how it's asked, and how the agent loop
-// asks it, with the system prompt, the options, the tools, from the
-// registry's toolkit, and the schema of the reply, as the respond tool, when
-// there is one, and whether there is one. The model is asked at most the
+// asks it, with the system prompt, followed by those of its tools, the
+// options, the tools, from the registry's toolkit, and the schema of the
+// reply, as the respond tool, when there is one, whose instruction follows
+// them, and whether there is one. The model is asked at most the
 // iterations, unless the max_iterations option says otherwise.
 func (r *Registry) generatorLoop(ctx context.Context, meta schema.GeneratorMeta, iterations uint) (llm.Model, *agentLoop, bool, error) {
 	result, err := meta.JSONSchema()
@@ -106,6 +107,10 @@ func (r *Registry) generatorLoop(ctx context.Context, meta schema.GeneratorMeta,
 		return nil, nil, false, err
 	}
 	hasSchema := result != nil
+	tools, prompts, err := r.askTools(ctx, meta, hasSchema)
+	if err != nil {
+		return nil, nil, false, err
+	}
 	opts, err := meta.Opts(meta.System)
 	if err != nil {
 		return nil, nil, false, err
@@ -114,15 +119,11 @@ func (r *Registry) generatorLoop(ctx context.Context, meta schema.GeneratorMeta,
 	if hasSchema {
 		opts = append(opts, llm.WithJSONSchema(meta.Schema))
 	}
-	tools, err := r.askTools(ctx, meta, hasSchema)
-	if err != nil {
-		return nil, nil, false, err
-	}
 	model, err := r.GetModel(ctx, strings.TrimSpace(meta.Model))
 	if err != nil {
 		return nil, nil, false, err
 	}
-	loop, err := newAgentLoop(tools, opts...)
+	loop, err := newAgentLoop(tools, prompts, opts...)
 	if err != nil {
 		return nil, nil, false, err
 	}
@@ -167,6 +168,18 @@ func sessionMessage(ctx context.Context, message llm.Message) (providerschema.Me
 		content = []providerschema.ContentBlock{{Text: types.Ptr("")}}
 	}
 	return providerschema.Message{MessageMeta: providerschema.MessageMeta{Sender: message.Role(), Content: content}}, nil
+}
+
+// systemPrompt returns the system prompt, followed by the system prompts of
+// the tools, each separated by a blank line, without those which are empty
+func systemPrompt(system string, prompts []string) string {
+	parts := make([]string, 0, len(prompts)+1)
+	for _, part := range append([]string{system}, prompts...) {
+		if part = strings.TrimSpace(part); part != "" {
+			parts = append(parts, part)
+		}
+	}
+	return strings.Join(parts, "\n\n")
 }
 
 // countTokens adds the tokens of a message, by its role, to those of the

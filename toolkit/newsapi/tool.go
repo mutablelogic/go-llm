@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 
 	// Packages
-	client "github.com/mutablelogic/go-client"
 	llm "github.com/mutablelogic/go-llm"
 	toolkit "github.com/mutablelogic/go-llm/toolkit"
 	httpclient "github.com/mutablelogic/go-llm/toolkit/newsapi/httpclient"
@@ -33,24 +32,6 @@ type sources struct {
 var _ llm.Tool = (*articles)(nil)
 var _ llm.Tool = (*headlines)(nil)
 var _ llm.Tool = (*sources)(nil)
-
-////////////////////////////////////////////////////////////////////////////////
-// LIFECYCLE
-
-// NewTools returns the NewsAPI tools, which share a client with the API key
-func NewTools(apiKey string, opts ...client.ClientOpt) ([]llm.Tool, error) {
-	// Create a client
-	client, err := httpclient.New(apiKey, opts...)
-	if err != nil {
-		return nil, err
-	}
-
-	return []llm.Tool{
-		&articles{client: client},
-		&headlines{client: client},
-		&sources{client: client},
-	}, nil
-}
 
 ////////////////////////////////////////////////////////////////////////////////
 // ARTICLES

@@ -11,6 +11,7 @@ import (
 	// Packages
 	client "github.com/mutablelogic/go-client"
 	llm "github.com/mutablelogic/go-llm"
+	toolkit "github.com/mutablelogic/go-llm/toolkit"
 	ollama "github.com/mutablelogic/go-llm/toolkit/ollama"
 	httpclient "github.com/mutablelogic/go-llm/toolkit/ollama/httpclient"
 	assert "github.com/stretchr/testify/assert"
@@ -54,7 +55,7 @@ func newTools(t *testing.T) (map[string]llm.Tool, *[]request) {
 	}))
 	t.Cleanup(server.Close)
 
-	tools, err := ollama.NewTools("test-key", client.OptEndpoint(server.URL))
+	tools, err := toolsOf(ollama.New("test-key", client.OptEndpoint(server.URL)))
 	require.NoError(t, err)
 	result := make(map[string]llm.Tool, len(tools))
 	for _, tool := range tools {
@@ -63,9 +64,9 @@ func newTools(t *testing.T) (map[string]llm.Tool, *[]request) {
 	return result, &requests
 }
 
-func TestNewTools(t *testing.T) {
+func TestNew(t *testing.T) {
 	t.Run("MissingKey", func(t *testing.T) {
-		tools, err := ollama.NewTools("")
+		tools, err := toolsOf(ollama.New(""))
 		assert.ErrorIs(t, err, llm.ErrBadParameter)
 		assert.Nil(t, tools)
 	})
@@ -166,4 +167,12 @@ func TestRun(t *testing.T) {
 		assert.ErrorIs(t, err, context.Canceled)
 		assert.Empty(t, *requests)
 	})
+}
+
+// toolsOf returns the tools of the namespace, or nil and the error
+func toolsOf(ns toolkit.Namespace, err error) ([]llm.Tool, error) {
+	if err != nil {
+		return nil, err
+	}
+	return ns.Tools(), nil
 }

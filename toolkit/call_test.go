@@ -39,7 +39,7 @@ func TestCallTool(t *testing.T) {
 	toolErr := errors.New("tool failed")
 	tk, err := toolkit.New(ctx)
 	require.NoError(t, err)
-	require.NoError(t, tk.Add("test", echoTool{name: "echo"}, echoTool{name: "fail", err: toolErr}))
+	require.NoError(t, tk.Add(toolkit.NewNamespace("test", "", echoTool{name: "echo"}, echoTool{name: "fail", err: toolErr})))
 
 	t.Run("Run", func(t *testing.T) {
 		result, err := tk.CallTool(ctx, "test:echo", json.RawMessage(`{"city":"London"}`))
@@ -69,8 +69,8 @@ func TestCallTool(t *testing.T) {
 	t.Run("Ambiguous", func(t *testing.T) {
 		tk, err := toolkit.New(ctx)
 		require.NoError(t, err)
-		require.NoError(t, tk.Add("a", echoTool{name: "echo"}))
-		require.NoError(t, tk.Add("b", echoTool{name: "echo"}))
+		require.NoError(t, tk.Add(toolkit.NewNamespace("a", "", echoTool{name: "echo"})))
+		require.NoError(t, tk.Add(toolkit.NewNamespace("b", "", echoTool{name: "echo"})))
 		_, err = tk.CallTool(ctx, "echo", nil)
 		assert.ErrorIs(t, err, llm.ErrConflict)
 		_, err = tk.CallTool(ctx, "b:echo", nil)
@@ -124,10 +124,8 @@ func TestCallToolSchema(t *testing.T) {
 	ctx := context.Background()
 	tk, err := toolkit.New(ctx)
 	require.NoError(t, err)
-	require.NoError(t, tk.Add("test",
-		schemaTool{echoTool: echoTool{name: "weather"}},
-		schemaTool{echoTool: echoTool{name: "nested"}, schema: jsonschema.MustFor[nestedInput]().Property("weather")},
-	))
+	require.NoError(t, tk.Add(toolkit.NewNamespace("test", "", schemaTool{echoTool: echoTool{name: "weather"}},
+		schemaTool{echoTool: echoTool{name: "nested"}, schema: jsonschema.MustFor[nestedInput]().Property("weather")})))
 
 	t.Run("Valid", func(t *testing.T) {
 		for _, input := range []string{`{"city":"London"}`, `{"city":"London","days":3}`} {
@@ -172,7 +170,7 @@ func TestCallToolSchema(t *testing.T) {
 		require.NoError(t, err)
 		tk, err := toolkit.New(ctx)
 		require.NoError(t, err)
-		require.NoError(t, tk.Add("nulls", schemaTool{echoTool{name: "note"}, nullable}, respond))
+		require.NoError(t, tk.Add(toolkit.NewNamespace("nulls", "", schemaTool{echoTool{name: "note"}, nullable}, respond)))
 
 		result, err := tk.CallTool(ctx, "nulls:note", json.RawMessage(`{"note":null}`))
 		require.NoError(t, err)
@@ -185,7 +183,7 @@ func TestCallToolSchema(t *testing.T) {
 		// A tool without an input schema has its input, with its nulls
 		tk, err := toolkit.New(ctx)
 		require.NoError(t, err)
-		require.NoError(t, tk.Add("plain", echoTool{name: "echo"}))
+		require.NoError(t, tk.Add(toolkit.NewNamespace("plain", "", echoTool{name: "echo"})))
 		result, err := tk.CallTool(ctx, "plain:echo", json.RawMessage(`{"city":null}`))
 		require.NoError(t, err)
 		assert.JSONEq(t, `{"city":null}`, string(result))
@@ -204,7 +202,7 @@ func TestCallToolSchema(t *testing.T) {
 		// A tool without an input schema isn't validated
 		tk, err := toolkit.New(ctx)
 		require.NoError(t, err)
-		require.NoError(t, tk.Add("test", echoTool{name: "echo"}))
+		require.NoError(t, tk.Add(toolkit.NewNamespace("test", "", echoTool{name: "echo"})))
 		_, err = tk.CallTool(ctx, "test:echo", json.RawMessage(`"anything"`))
 		assert.NoError(t, err)
 	})
@@ -243,8 +241,7 @@ func TestCallToolResult(t *testing.T) {
 	readErr := errors.New("can't read")
 	tk, err := toolkit.New(ctx)
 	require.NoError(t, err)
-	require.NoError(t, tk.Add("test",
-		resultTool{echoTool: echoTool{name: "json"}, result: json.RawMessage(`{"temperature_c":18}`)},
+	require.NoError(t, tk.Add(toolkit.NewNamespace("test", "", resultTool{echoTool: echoTool{name: "json"}, result: json.RawMessage(`{"temperature_c":18}`)},
 		resultTool{echoTool: echoTool{name: "text"}, result: "It's sunny"},
 		resultTool{echoTool: echoTool{name: "resource"}, result: resource{}},
 		resultTool{echoTool: echoTool{name: "struct"}, result: struct {
@@ -255,8 +252,7 @@ func TestCallToolResult(t *testing.T) {
 		resultTool{echoTool: echoTool{name: "empty"}, result: json.RawMessage{}},
 		resultTool{echoTool: echoTool{name: "invalid"}, result: json.RawMessage(`{`)},
 		resultTool{echoTool: echoTool{name: "unencodable"}, result: make(chan int)},
-		resultTool{echoTool: echoTool{name: "unreadable"}, result: resource{err: readErr}},
-	))
+		resultTool{echoTool: echoTool{name: "unreadable"}, result: resource{err: readErr}})))
 
 	t.Run("JSON", func(t *testing.T) {
 		result, err := tk.CallTool(ctx, "test:json", nil)

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"slices"
+	"strings"
 	"time"
 
 	// Packages
@@ -12,6 +13,7 @@ import (
 	llm "github.com/mutablelogic/go-llm"
 	providerschema "github.com/mutablelogic/go-llm/provider/schema"
 	toolkit "github.com/mutablelogic/go-llm/toolkit"
+	toolschema "github.com/mutablelogic/go-llm/toolkit/schema"
 	jsonschema "github.com/mutablelogic/go-server/pkg/jsonschema"
 	types "github.com/mutablelogic/go-server/pkg/types"
 	attribute "go.opentelemetry.io/otel/attribute"
@@ -109,9 +111,15 @@ func (r *Registry) AgentLoop(ctx context.Context, model llm.Model, messages []ll
 	)
 	defer func() { endSpan(err) }()
 
+	// The system prompts of the tools, from the registry's toolkit
+	prompts, err := r.toolPrompts(ctx, tools)
+	if err != nil {
+		return nil, llm.Usage{}, err
+	}
+
 	// The most iterations, the respond tool, and the options passed to the
-	// model
-	loop, err := newAgentLoop(tools, opts...)
+	// model, with the system prompt
+	loop, err := newAgentLoop(tools, prompts, opts...)
 	if err != nil {
 		return nil, llm.Usage{}, err
 	}
@@ -124,6 +132,40 @@ func (r *Registry) AgentLoop(ctx context.Context, model llm.Model, messages []ll
 
 ///////////////////////////////////////////////////////////////////////////////
 // PRIVATE METHODS
+
+// toolPrompts returns the system prompts of the namespaces of the tools
+// which are the registry's toolkit's, by their canonical names, each read
+// once, in the order of the tools. A tool which isn't the toolkit's has none.
+func (r *Registry) toolPrompts(ctx context.Context, tools []llm.Tool) ([]string, error) {
+	if r.toolkit == nil {
+		return nil, nil
+	}
+
+	// The namespaces of the toolkit's tools, once each
+	var namespaces []string
+	for _, tool := range tools {
+		named, ok := tool.(interface{ CanonicalName() string })
+		if !ok {
+			continue
+		}
+		canonical := named.CanonicalName()
+		if _, err := r.toolkit.ToolNames(ctx, canonical); errors.Is(err, llm.ErrNotFound) {
+			continue
+		} else if err != nil {
+			return nil, err
+		}
+		namespace, _, _ := strings.Cut(canonical, toolschema.ToolSeparator)
+		if all := namespace + toolschema.ToolSeparator + "*"; !slices.Contains(namespaces, all) {
+			namespaces = append(namespaces, all)
+		}
+	}
+
+	// Their system prompts, read once
+	if len(namespaces) == 0 {
+		return nil, nil
+	}
+	return r.toolkit.SystemPrompts(ctx, namespaces...)
+}
 
 // agentLoop asks the model as AgentLoop does, as the loop says, which, when
 // it stops at tool calls, returns the model's reply when it calls tools,
@@ -446,10 +488,12 @@ func (r *Registry) compact(ctx context.Context, model llm.Model, loop *agentLoop
 // newAgentLoop returns how the agent loop asks a model with the tools, from
 // the options: the most iterations, which is the max_iterations option, or
 // DefaultMaxIterations when it isn't set; the respond tool, when the
-// json_schema option is set, which is added to the tools, and whose
-// instruction is added to the system prompt; and the other options, which
-// are passed to the model
-func newAgentLoop(tools []llm.Tool, opts ...llm.Opt) (*agentLoop, error) {
+// json_schema option is set, which is added to the tools; the system prompt,
+// which is the system_prompt option, followed by the system prompts of the
+// tools, unless the tool choice is none, and the instruction to call the
+// respond tool, when there is one;
+// and the other options, which are passed to the model
+func newAgentLoop(tools []llm.Tool, prompts []string, opts ...llm.Opt) (*agentLoop, error) {
 	o, err := llm.ApplyOpts(opts...)
 	if err != nil {
 		return nil, err
@@ -485,8 +529,18 @@ func newAgentLoop(tools []llm.Tool, opts ...llm.Opt) (*agentLoop, error) {
 
 	// The reply's schema, which needs the respond tool, whose name no other
 	// tool can have, which the model can call, unless the tool choice is none
+	// The tools' system prompts, unless the tool choice is none, so the model
+	// has no tools, and isn't told how to use them
+	if choice, _ := llm.GetOpt[string](o, llm.ToolChoiceKey); choice == "none" {
+		prompts = nil
+	}
+	system, _ := llm.GetOpt[string](o, llm.SystemPromptKey)
+	system = systemPrompt(system, prompts)
 	if !o.Has(llm.JSONSchemaKey) {
 		loop.opts = []llm.Opt{o.Opt()}
+		if system != "" {
+			loop.opts = append(loop.opts, llm.WithSystemPrompt(system))
+		}
 		return loop, nil
 	}
 	schema, err := llm.GetOpt[json.RawMessage](o, llm.JSONSchemaKey)
@@ -507,7 +561,6 @@ func newAgentLoop(tools []llm.Tool, opts ...llm.Opt) (*agentLoop, error) {
 	loop.tools = append(slices.Clip(tools), loop.respond)
 
 	// The system prompt, with the instruction to call the respond tool
-	system, _ := llm.GetOpt[string](o, llm.SystemPromptKey)
 	loop.opts = []llm.Opt{o.Opt(), llm.WithSystemPrompt(respondSystemPrompt(system))}
 	return loop, nil
 }

@@ -7,10 +7,10 @@ import (
 
 	// Packages
 	client "github.com/mutablelogic/go-client"
-	llm "github.com/mutablelogic/go-llm"
 	toolkit "github.com/mutablelogic/go-llm/toolkit"
 	homeassistant "github.com/mutablelogic/go-llm/toolkit/homeassistant"
 	httphandler "github.com/mutablelogic/go-llm/toolkit/httphandler"
+	memory "github.com/mutablelogic/go-llm/toolkit/memory"
 	newsapi "github.com/mutablelogic/go-llm/toolkit/newsapi"
 	ollama "github.com/mutablelogic/go-llm/toolkit/ollama"
 	weatherapi "github.com/mutablelogic/go-llm/toolkit/weatherapi"
@@ -99,16 +99,18 @@ func (flags Flags) WithToolkit(ctx server.Cmd, srv *servercmd.RunServer, fn func
 	return fn(tools)
 }
 
-// AddTools adds the tools whose credentials exist to the toolkit. API keys
-// are read from the toolkit's credentials, and the tools' clients are
-// created with the toolkit's client options. The tools which are added are
-// logged, and those which aren't, such as when their credential doesn't
-// exist, are logged as a warning, with why.
+// AddTools adds the memory tools, which are always added, and the tools
+// whose credentials exist, to the toolkit. API keys are read from the
+// toolkit's credentials, and the tools' clients are created with the
+// toolkit's client options. The tools which are added are logged, and those
+// which aren't, such as when their credential doesn't exist, are logged as a
+// warning, with why.
 func AddTools(ctx server.Cmd, tools *toolkit.Toolkit) error {
 	return errors.Join(
-		addTools(ctx, tools, "weatherapi", WeatherAPICredential, weatherapi.NewTools),
-		addTools(ctx, tools, "ollama", OllamaCredential, ollama.NewTools),
-		addTools(ctx, tools, "newsapi", NewsAPICredential, newsapi.NewTools),
+		add(ctx, tools, memory.New()),
+		addNamespace(ctx, tools, weatherapi.Name, WeatherAPICredential, weatherapi.New),
+		addNamespace(ctx, tools, ollama.Name, OllamaCredential, ollama.New),
+		addNamespace(ctx, tools, newsapi.Name, NewsAPICredential, newsapi.New),
 		addHomeAssistantTools(ctx, tools),
 	)
 }
@@ -123,32 +125,37 @@ func AddTools(ctx server.Cmd, tools *toolkit.Toolkit) error {
 func addHomeAssistantTools(ctx server.Cmd, tools *toolkit.Toolkit) error {
 	endpoint, err := tools.Credential(ctx.Context(), HomeAssistantURLCredential)
 	if err != nil {
-		ctx.Logger().WarnContext(ctx.Context(), "tools not added, as their credential can't be read", "namespace", "homeassistant", "credential", HomeAssistantURLCredential, "error", err.Error())
+		ctx.Logger().WarnContext(ctx.Context(), "tools not added, as their credential can't be read", "namespace", homeassistant.Name, "credential", HomeAssistantURLCredential, "error", err.Error())
 		return nil
 	}
-	return addTools(ctx, tools, "homeassistant", HomeAssistantCredential, func(apiKey string, opts ...client.ClientOpt) ([]llm.Tool, error) {
-		return homeassistant.NewTools(endpoint, apiKey, opts...)
+	return addNamespace(ctx, tools, homeassistant.Name, HomeAssistantCredential, func(apiKey string, opts ...client.ClientOpt) (toolkit.Namespace, error) {
+		return homeassistant.New(endpoint, apiKey, opts...)
 	})
 }
 
-// addTools adds the tools returned by fn to the toolkit in the namespace,
-// when the credential holding their API key exists, and logs them. fn is
-// called with the API key, and the toolkit's client options. When the
+// addNamespace adds the namespace of tools returned by fn to the toolkit,
+// when the credential holding their API key exists, and logs its tools. fn
+// is called with the API key, and the toolkit's client options. When the
 // credential can't be read, such as when it doesn't exist, a warning is
-// logged and the tools aren't added.
-func addTools(ctx server.Cmd, tools *toolkit.Toolkit, namespace, key string, fn func(string, ...client.ClientOpt) ([]llm.Tool, error)) error {
+// logged, with the namespace's name, and the tools aren't added.
+func addNamespace(ctx server.Cmd, tools *toolkit.Toolkit, name, key string, fn func(string, ...client.ClientOpt) (toolkit.Namespace, error)) error {
 	apiKey, err := tools.Credential(ctx.Context(), key)
 	if err != nil {
-		ctx.Logger().WarnContext(ctx.Context(), "tools not added, as their credential can't be read", "namespace", namespace, "credential", key, "error", err.Error())
+		ctx.Logger().WarnContext(ctx.Context(), "tools not added, as their credential can't be read", "namespace", name, "credential", key, "error", err.Error())
 		return nil
 	}
-	namespaceTools, err := fn(apiKey, tools.ClientOpts()...)
+	ns, err := fn(apiKey, tools.ClientOpts()...)
 	if err != nil {
 		return err
 	}
-	if err := tools.Add(namespace, namespaceTools...); err != nil {
+	return add(ctx, tools, ns)
+}
+
+// add adds the namespace to the toolkit, and logs its tools
+func add(ctx server.Cmd, tools *toolkit.Toolkit, ns toolkit.Namespace) error {
+	if err := tools.Add(ns); err != nil {
 		return err
 	}
-	ctx.Logger().InfoContext(ctx.Context(), "tools added", "namespace", namespace, "tools", len(namespaceTools))
+	ctx.Logger().InfoContext(ctx.Context(), "tools added", "namespace", ns.Name(), "tools", len(ns.Tools()))
 	return nil
 }

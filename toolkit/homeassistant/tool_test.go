@@ -11,6 +11,7 @@ import (
 
 	// Packages
 	llm "github.com/mutablelogic/go-llm"
+	toolkit "github.com/mutablelogic/go-llm/toolkit"
 	homeassistant "github.com/mutablelogic/go-llm/toolkit/homeassistant"
 	httpclient "github.com/mutablelogic/go-llm/toolkit/homeassistant/httpclient"
 	assert "github.com/stretchr/testify/assert"
@@ -70,7 +71,7 @@ func newTools(t *testing.T) (map[string]llm.Tool, *[]request) {
 	}))
 	t.Cleanup(server.Close)
 
-	tools, err := homeassistant.NewTools(server.URL, "test-token")
+	tools, err := toolsOf(homeassistant.New(server.URL, "test-token"))
 	require.NoError(t, err)
 	result := make(map[string]llm.Tool, len(tools))
 	for _, tool := range tools {
@@ -87,11 +88,11 @@ func encode(t *testing.T, result any) string {
 	return string(data)
 }
 
-func TestNewTools(t *testing.T) {
+func TestNew(t *testing.T) {
 	t.Run("Invalid", func(t *testing.T) {
-		_, err := homeassistant.NewTools("http://localhost:8123", "")
+		_, err := toolsOf(homeassistant.New("http://localhost:8123", ""))
 		assert.ErrorIs(t, err, llm.ErrBadParameter)
-		_, err = homeassistant.NewTools("", "test-token")
+		_, err = toolsOf(homeassistant.New("", "test-token"))
 		assert.ErrorIs(t, err, llm.ErrBadParameter)
 	})
 
@@ -231,4 +232,12 @@ func TestRun(t *testing.T) {
 		assert.ErrorIs(t, err, context.Canceled)
 		assert.Empty(t, *requests)
 	})
+}
+
+// toolsOf returns the tools of the namespace, or nil and the error
+func toolsOf(ns toolkit.Namespace, err error) ([]llm.Tool, error) {
+	if err != nil {
+		return nil, err
+	}
+	return ns.Tools(), nil
 }

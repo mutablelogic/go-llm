@@ -19,7 +19,7 @@ func TestSpans(t *testing.T) {
 	recorder := tracetest.NewSpanRecorder()
 	tk, err := toolkit.New(ctx, toolkit.WithTracer(sdktrace.NewTracerProvider(sdktrace.WithSpanProcessor(recorder)).Tracer("test")))
 	require.NoError(t, err)
-	require.NoError(t, tk.Add("test", echoTool{name: "echo"}))
+	require.NoError(t, tk.Add(toolkit.NewNamespace("test", "", echoTool{name: "echo"})))
 
 	// last returns the name and attributes of the last span which ended
 	last := func(t *testing.T) (string, map[string]string) {

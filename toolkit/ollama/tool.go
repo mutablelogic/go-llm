@@ -6,7 +6,6 @@ import (
 	"strings"
 
 	// Packages
-	client "github.com/mutablelogic/go-client"
 	llm "github.com/mutablelogic/go-llm"
 	toolkit "github.com/mutablelogic/go-llm/toolkit"
 	httpclient "github.com/mutablelogic/go-llm/toolkit/ollama/httpclient"
@@ -34,24 +33,6 @@ var _ llm.Tool = (*webFetch)(nil)
 
 // defaultMaxResults is the number of search results when the maximum isn't set
 const defaultMaxResults = 5
-
-////////////////////////////////////////////////////////////////////////////////
-// LIFECYCLE
-
-// NewTools returns the Ollama web search and web fetch tools, which share a
-// client with the API key
-func NewTools(apiKey string, opts ...client.ClientOpt) ([]llm.Tool, error) {
-	// Create a client
-	client, err := httpclient.New(apiKey, opts...)
-	if err != nil {
-		return nil, err
-	}
-
-	return []llm.Tool{
-		&webSearch{client: client},
-		&webFetch{client: client},
-	}, nil
-}
 
 ////////////////////////////////////////////////////////////////////////////////
 // WEB SEARCH
