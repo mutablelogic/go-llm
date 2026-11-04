@@ -2,6 +2,8 @@ package toolkit_test
 
 import (
 	"context"
+	"fmt"
+	"sync/atomic"
 	"testing"
 
 	// Packages
@@ -95,4 +97,42 @@ func Test_AddNamespace(t *testing.T) {
 	ns := toolkit.NewNamespace("weather", "Use metric units.")
 	assert.Equal(t, "weather", ns.Name())
 	assert.Equal(t, "Use metric units.", ns.SystemPrompt())
+}
+
+// countingNamespace is a namespace whose system prompt changes each time
+// it's read, as one which has the time can, and counts how many times
+type countingNamespace struct {
+	name  string
+	tools []llm.Tool
+	reads *atomic.Int32
+}
+
+func (n countingNamespace) Name() string      { return n.name }
+func (n countingNamespace) Tools() []llm.Tool { return n.tools }
+func (n countingNamespace) SystemPrompt() string {
+	return fmt.Sprint("Read ", n.reads.Add(1), " times.")
+}
+
+func Test_SystemPromptsReadOnce(t *testing.T) {
+	// A namespace's system prompt is read once, however many names select
+	// it, so a prompt which changes is in the system prompt once
+	ctx := context.Background()
+	for name, test := range map[string]struct {
+		tools []llm.Tool
+		names []string
+	}{
+		"Tools":        {[]llm.Tool{tool{name: "now"}, tool{name: "alarm"}}, []string{"clock:now", "clock:alarm"}},
+		"WithoutTools": {nil, []string{"clock:*", "*"}},
+	} {
+		t.Run(name, func(t *testing.T) {
+			tk, err := toolkit.New(ctx)
+			require.NoError(t, err)
+			var reads atomic.Int32
+			require.NoError(t, tk.Add(countingNamespace{"clock", test.tools, &reads}))
+			prompts, err := tk.SystemPrompts(ctx, test.names...)
+			require.NoError(t, err)
+			assert.Equal(t, []string{"Read 1 times."}, prompts)
+			assert.Equal(t, int32(1), reads.Load())
+		})
+	}
 }

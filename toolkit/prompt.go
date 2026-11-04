@@ -18,7 +18,8 @@ import (
 // SystemPrompts returns the system prompts of the namespaces of the tools
 // with the names, as Tools returns them, to add to the system prompt of a
 // model which can call them, in the order of the names, once each, without
-// those which are empty, or the same as one before. A namespace named by
+// those which are empty, or the same as one before. Each namespace's system
+// prompt is read once, as it can change, such as one which has the time. A namespace named by
 // its name and "*", such as "memory:*", or by "*", has its system prompt,
 // even when it has no tools. Returns the same errors as Tools.
 func (self *Toolkit) SystemPrompts(ctx context.Context, names ...string) (_ []string, err error) {
@@ -47,9 +48,15 @@ func (self *Toolkit) SystemPrompts(ctx context.Context, names ...string) (_ []st
 		}
 	}
 
-	// Their system prompts, once each
+	// Their system prompts, each read once, as it can change, such as one
+	// which has the time, without those which are the same as one before
 	var result []string
+	read := make(map[string]bool, len(namespaces))
 	for _, namespace := range namespaces {
+		if read[namespace] {
+			continue
+		}
+		read[namespace] = true
 		self.mu.RLock()
 		ns, exists := self.namespaces[namespace]
 		self.mu.RUnlock()
