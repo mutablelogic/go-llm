@@ -278,9 +278,15 @@ func Test_RunAgent(t *testing.T) {
 		r, sessions, p := newRegistry(t, call("agent__segment", `{}`), text("Segmented"), text("Done"))
 		session, err := r.CreateSession(ctx, schema.SessionMeta{GeneratorMeta: schema.GeneratorMeta{Model: types.Ptr("model"), Tools: []string{"agent:*"}}})
 		require.NoError(t, err)
-		response, err := r.Chat(ctx, session.ID, []llm.Message{user(t, "Segment this")}, nil)
+		var progress []string
+		response, err := r.Chat(ctx, session.ID, []llm.Message{user(t, "Segment this")}, func(what llm.StreamType, text string) {
+			if what == llm.StreamProgress {
+				progress = append(progress, llm.ParseProgress(text).Message)
+			}
+		})
 		require.NoError(t, err)
 		assert.Equal(t, "Done", response.Messages[len(response.Messages)-1].Text())
+		assert.Equal(t, []string{"Agent segment is replying"}, progress, "the agent's progress is streamed, as it replies")
 		stored, err := sessions.Get(ctx, session.ID)
 		require.NoError(t, err)
 		var results []string

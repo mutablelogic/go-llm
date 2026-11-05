@@ -2,7 +2,6 @@ package httpclient
 
 import (
 	"context"
-	"fmt"
 	"net/http"
 	"uuid"
 
@@ -127,14 +126,6 @@ func (c *Client) Chat(ctx context.Context, id uuid.UUID, req schema.ChatRequest,
 	// With streaming, the pieces of the reply, and then what was added, or
 	// the error
 	return doStream[schema.ChatResponse](ctx, c, body, func(event client.TextStreamEvent) error {
-		switch event.Event {
-		case schema.EventText, schema.EventThinking, schema.EventLog:
-			var data schema.StreamEvent
-			if err := event.Json(&data); err != nil {
-				return fmt.Errorf("malformed %s event: %w", event.Event, err)
-			}
-			stream(llm.StreamType(event.Event), data.Text)
-		}
-		return nil
+		return streamEvent(event, stream)
 	}, "llm", "session", id.String())
 }

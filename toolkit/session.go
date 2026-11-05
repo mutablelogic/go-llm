@@ -22,6 +22,14 @@ type Session interface {
 	// Logger returns the logger the tool logs to as it runs, such as to say
 	// what it's doing, which what runs it can show, such as by streaming it
 	Logger() *slog.Logger
+
+	// Progress says how the tool is getting on, as it runs, as MCP's
+	// progress notification does: how far it's got, which increases each
+	// time, out of the total, when it's known, or zero, and a message, such
+	// as that an agent it runs is replying, which what runs it can show, in
+	// place of its progress before, rather than keeping it, as a line it
+	// logs is
+	Progress(progress, total float64, message string)
 }
 
 // sessionKey is the key of the session in a context
@@ -55,6 +63,13 @@ func SessionFromContext(ctx context.Context) Session {
 	return discard{}
 }
 
+// Progressf says how the tool run in the context is getting on, as a
+// sentence in plain English, such as "Segmenting the transcript", which is
+// shown to the user, in place of what it said before
+func Progressf(ctx context.Context, format string, args ...any) {
+	SessionFromContext(ctx).Progress(0, 0, fmt.Sprintf(format, args...))
+}
+
 // Logf logs what the tool run in the context is doing, as a sentence in plain
 // English, such as "Getting the current weather for Berlin", which is shown
 // to the user, to its session's logger, at the info level
@@ -68,6 +83,8 @@ func Logf(ctx context.Context, format string, args ...any) {
 func (discard) ID() uuid.UUID {
 	return uuid.Nil()
 }
+
+func (discard) Progress(float64, float64, string) {}
 
 func (discard) Logger() *slog.Logger {
 	return discardLogger

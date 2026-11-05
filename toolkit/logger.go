@@ -9,6 +9,7 @@ import (
 	"uuid"
 
 	// Packages
+	llm "github.com/mutablelogic/go-llm"
 	attribute "go.opentelemetry.io/otel/attribute"
 	trace "go.opentelemetry.io/otel/trace"
 )
@@ -21,6 +22,7 @@ import (
 // span, as events
 type logSession struct {
 	id     uuid.UUID
+	log    *toolLog
 	logger *slog.Logger
 }
 
@@ -29,9 +31,9 @@ var _ Session = logSession{}
 // toolLog is where what a tool logs goes, which the handlers of its logger
 // share
 type toolLog struct {
-	name   string            // The name the model called the tool by
-	stream func(text string) // Streams a line, or nil when there's no stream
-	span   trace.Span        // The span events are added to, or nil when there's no span
+	name   string                // The name the model called the tool by
+	stream llm.GeneratorStreamFn // Streams a line, or progress, or nil when there's no stream
+	span   trace.Span            // The span events are added to, or nil when there's no span
 }
 
 // toolHandler is the handler of a tool's logger, with its attributes, and
@@ -48,17 +50,19 @@ var _ slog.Handler = (*toolHandler)(nil)
 // LIFECYCLE
 
 // NewSession returns the session of the tool with the name, such as the
-// name the model called it by, in the session with the identifier, or
-// the nil UUID, when it isn\'t run in one, whose logger streams what the tool logs, at
-// the info level or above, to the function, as lines of the level, when it
-// isn't info, the message, and its attributes, as key=value, which are
-// shown to the user, so needn't say which tool it is, unless the function is
-// nil, and adds what it logs, at every
-// level, to the span, as events, with the tool's name and the level, unless
-// the span is nil. The function is called from each goroutine the tool, or
-// tools run in parallel, log from, so must be safe to call at once.
-func NewSession(name string, id uuid.UUID, stream func(string), span trace.Span) Session {
-	return logSession{id: id, logger: slog.New(&toolHandler{toolLog: &toolLog{name: name, stream: stream, span: span}})}
+// name the model called it by, in the session with the identifier, or the
+// nil UUID, when it isn't run in one. Its logger streams what the tool
+// logs, at the info level or above, to the function, as log lines of the
+// level, when it isn't info, the message, and its attributes, as
+// key=value, which are shown to the user, so needn't say which tool it is,
+// and its progress is streamed to the function too, unless it's nil. What
+// it logs, at every level, and its progress, are added to the span, as
+// events, with the tool's name, unless the span is nil. The function is
+// called from each goroutine the tool, or tools run in parallel, stream
+// from, so must be safe to call at once.
+func NewSession(name string, id uuid.UUID, stream llm.GeneratorStreamFn, span trace.Span) Session {
+	log := &toolLog{name: name, stream: stream, span: span}
+	return logSession{id: id, log: log, logger: slog.New(&toolHandler{toolLog: log})}
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -72,6 +76,22 @@ func (s logSession) ID() uuid.UUID {
 
 func (s logSession) Logger() *slog.Logger {
 	return s.logger
+}
+
+// Progress streams the tool's progress, which replaces its progress before,
+// as an llm.Progress, and adds it to the span, as an event
+func (s logSession) Progress(progress, total float64, message string) {
+	if s.log.span != nil {
+		s.log.span.AddEvent("progress", trace.WithAttributes(
+			attribute.String("tool", s.log.name),
+			attribute.Float64("progress", progress),
+			attribute.Float64("total", total),
+			attribute.String("message", message),
+		))
+	}
+	if s.log.stream != nil {
+		s.log.stream(llm.StreamProgress, llm.Progress{Progress: progress, Total: total, Message: message}.Text())
+	}
 }
 
 // Enabled returns true when what's logged at the level is streamed, which is
@@ -99,7 +119,7 @@ func (h *toolHandler) Handle(_ context.Context, record slog.Record) error {
 		h.span.AddEvent(record.Message, trace.WithAttributes(event...))
 	}
 	if h.stream != nil && record.Level >= slog.LevelInfo {
-		h.stream(formatLine(record, attrs))
+		h.stream(llm.StreamLog, formatLine(record, attrs))
 	}
 	return nil
 }

@@ -7,6 +7,7 @@ import (
 
 	// Packages
 	client "github.com/mutablelogic/go-client"
+	llm "github.com/mutablelogic/go-llm"
 	schema "github.com/mutablelogic/go-llm/registry/schema"
 	types "github.com/mutablelogic/go-server/pkg/types"
 )
@@ -57,4 +58,28 @@ func doStream[T any](ctx context.Context, c *Client, body client.Payload, fn fun
 	default:
 		return result, nil
 	}
+}
+
+// streamEvent calls the function with the piece of a model's reply which
+// the event is, when it's a text, thinking, log or progress event
+func streamEvent(event client.TextStreamEvent, stream llm.GeneratorStreamFn) error {
+	switch event.Event {
+	case schema.EventText, schema.EventThinking, schema.EventLog:
+		var data schema.StreamEvent
+		if err := event.Json(&data); err != nil {
+			return fmt.Errorf("malformed %s event: %w", event.Event, err)
+		}
+		stream(llm.StreamType(event.Event), data.Text)
+	case schema.EventProgress:
+		var data schema.ProgressEvent
+		if err := event.Json(&data); err != nil {
+			return fmt.Errorf("malformed %s event: %w", event.Event, err)
+		}
+		message := data.Message
+		if message == "" {
+			message = data.Status
+		}
+		stream(llm.StreamProgress, llm.Progress{Progress: data.Progress, Total: data.Total, Message: message}.Text())
+	}
+	return nil
 }
