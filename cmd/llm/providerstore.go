@@ -39,8 +39,14 @@ var _ registry.ProviderStore = (*providerStore)(nil)
 ///////////////////////////////////////////////////////////////////////////////
 // GLOBALS
 
-// providersKey is the key of the defaults which the providers are kept in
-const providersKey = "llm.providers"
+const (
+	// providersKey is the key which the providers are kept under
+	providersKey = "llm.providers"
+
+	// providersFile is the name of the file which the server keeps the
+	// providers in, in the directory of the command's defaults
+	providersFile = "providers.json"
+)
 
 ///////////////////////////////////////////////////////////////////////////////
 // LIFECYCLE
@@ -55,6 +61,21 @@ func newProviderStore(d defaults) (registry.ProviderStore, error) {
 
 ///////////////////////////////////////////////////////////////////////////////
 // PUBLIC METHODS
+
+// migrateProviders moves the providers which the defaults have, as they were
+// kept before they were kept in a file of their own, to the file, unless it
+// exists, and removes them from the defaults
+func migrateProviders(file *jsonFile, d defaults) error {
+	value := d.Get(providersKey)
+	if value == nil {
+		return nil
+	} else if !file.Exists() {
+		if err := file.Set(providersKey, value); err != nil {
+			return err
+		}
+	}
+	return d.Set(providersKey, nil)
+}
 
 // List returns the providers in the defaults, in order of their names
 func (s *providerStore) List(context.Context) ([]schema.Provider, error) {

@@ -51,7 +51,7 @@ type RunServer struct {
 // them, and to the sessions, as events, until it's stopped
 func (runner *RunServer) Run(ctx server.Cmd) error {
 	ctx.Logger().InfoContext(ctx.Context(), "starting server", "name", ctx.Name(), "version", ctx.Version())
-	store, err := newProviderStore(ctx)
+	store, err := newServerProviderStore(ctx)
 	if err != nil {
 		return err
 	}
@@ -81,19 +81,49 @@ func (runner *RunServer) Run(ctx server.Cmd) error {
 	})
 }
 
+// newServerProviderStore returns the store of the providers, in a file of
+// its own, providers.json, in the directory of the command's defaults,
+// rather than in the defaults, which a client writes too, as a whole, so
+// would replace the providers which the server added since the client read
+// them. The providers which the defaults have are moved to it, unless it
+// exists.
+func newServerProviderStore(ctx server.Cmd) (registry.ProviderStore, error) {
+	dir, err := serverDir(ctx)
+	if err != nil {
+		return nil, err
+	}
+	file, err := newJSONFile(filepath.Join(dir, providersFile))
+	if err != nil {
+		return nil, err
+	} else if err := migrateProviders(file, ctx); err != nil {
+		return nil, err
+	}
+	return newProviderStore(file)
+}
+
 // newServerSessionStore returns the store of the sessions, in files in the
 // directory of the command's defaults, rather than in the defaults, which a
 // client writes too, with the sessions which the defaults have moved to it
 func newServerSessionStore(ctx server.Cmd) (*sessionStore, error) {
-	cache, err := os.UserCacheDir()
+	dir, err := serverDir(ctx)
 	if err != nil {
 		return nil, err
 	}
-	store, err := newSessionStore(filepath.Join(cache, ctx.Name()))
+	store, err := newSessionStore(dir)
 	if err != nil {
 		return nil, err
 	} else if err := store.migrate(ctx); err != nil {
 		return nil, err
 	}
 	return store, nil
+}
+
+// serverDir returns the directory of the command's defaults, which the
+// server keeps its providers and sessions in
+func serverDir(ctx server.Cmd) (string, error) {
+	cache, err := os.UserCacheDir()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(cache, ctx.Name()), nil
 }
