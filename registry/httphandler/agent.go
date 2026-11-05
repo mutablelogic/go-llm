@@ -72,21 +72,28 @@ func agentCreateHandlers(reg *registry.Registry, router *httprouter.Router, docu
 
 		// POST
 		path.Post(func(w http.ResponseWriter, r *http.Request) {
+			// It's created, or, when there's an agent with its name, the agent
+			// is replaced with it, when it's changed
 			if meta, err := readAgentMeta(w, r); err != nil {
 				httpresponse.Error(w, err)
-			} else if agent, err := reg.CreateAgent(r.Context(), meta); err != nil {
+			} else if _, err := reg.GetAgent(r.Context(), meta.Name); err != nil && !errors.Is(err, llm.ErrNotFound) {
 				httpresponse.Error(w, llm.HTTPErr(err), meta.Name)
+			} else if agent, err2 := reg.CreateAgent(r.Context(), meta); err2 != nil {
+				httpresponse.Error(w, llm.HTTPErr(err2), meta.Name)
+			} else if err == nil {
+				httpresponse.JSON(w, http.StatusOK, httprequest.Indent(r), agent)
 			} else {
 				httpresponse.JSON(w, http.StatusCreated, httprequest.Indent(r), agent)
 			}
 		}, func(op httprequest.PathOperation) {
-			op.Summary("Create Agent")
+			op.Summary("Create or Replace Agent")
 			op.Description(documentation.Section(3, "POST /llm/agent").Body)
 			op.RequestBody(jsonschema.MustFor[schema.AgentMeta](), append([]string{types.ContentTypeJSON}, yamlContentTypes...)...)
 			op.JSONResponse(http.StatusCreated, jsonschema.MustFor[schema.Agent](), "Created agent")
+			op.JSONResponse(http.StatusOK, jsonschema.MustFor[schema.Agent](), "The agent with the name, replaced, when it's changed, or as it is")
 			op.ErrorResponse(http.StatusBadRequest, "Invalid request, such as a name which isn't valid, an input which isn't a JSON schema of an object, a prompt which isn't a template, an invalid schema, or an option which is a field")
 			op.ErrorResponse(http.StatusNotFound, "Model or tool not found")
-			op.ErrorResponse(http.StatusConflict, "There's an agent with the name, or the name of the model, or a tool, is ambiguous")
+			op.ErrorResponse(http.StatusConflict, "The agent was changed as it was replaced, or the name of the model, or a tool, is ambiguous")
 			op.ErrorResponse(http.StatusRequestEntityTooLarge, "The request body is larger than 1 MiB")
 		})
 	})

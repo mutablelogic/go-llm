@@ -1,8 +1,10 @@
 package registry
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"slices"
 	"strings"
 	"uuid"
@@ -68,7 +70,11 @@ var errNoAgentStore = llm.ErrServiceUnavailable.With("the registry has no agent 
 // PUBLIC METHODS
 
 // CreateAgent creates an agent with the definition, in the registry's agent
-// store, and returns it. Its name must be an identifier, such as segment,
+// store, or replaces the agent with its name, with the definition, as it is,
+// rather than merging them, when it's changed, and returns it, as it's
+// stored, or the agent as it is, when it hasn't changed, so creating agents
+// each time a server starts, such as its examples, changes only those which
+// have. Its name must be an identifier, such as segment,
 // which refers to it. Its input, when it has one, must be a JSON schema of an
 // object, and its prompt a Go template, which is executed with the input. Its
 // model, when it has one, is the registry's, by its canonical name, and its
@@ -76,7 +82,7 @@ var errNoAgentStore = llm.ErrServiceUnavailable.With("the registry has no agent 
 // needn't have a model, as one can be given when it's run. Returns
 // ErrBadParameter when the definition isn't valid, ErrNotFound when the
 // model isn't the registry's, or a tool isn't the toolkit's, ErrConflict
-// when there's an agent with the name, or a name is ambiguous, and
+// when the agent was changed as it was replaced, or a name is ambiguous, and
 // ErrServiceUnavailable when the registry has no agent store.
 func (r *Registry) CreateAgent(ctx context.Context, meta schema.AgentMeta) (_ *schema.Agent, err error) {
 	ctx, endSpan := otel.StartSpan(r.tracer, ctx, "llm.registry.CreateAgent",
@@ -93,12 +99,39 @@ func (r *Registry) CreateAgent(ctx context.Context, meta schema.AgentMeta) (_ *s
 	}
 	r.agentsMu.Lock()
 	defer r.agentsMu.Unlock()
-	agent, err := r.agentStore.Create(ctx, meta)
+
+	// The agent with the name, which is replaced, when it's changed, or
+	// it's created
+	existing, err := r.agentStore.Get(ctx, meta.Name)
+	switch {
+	case errors.Is(err, llm.ErrNotFound):
+		existing, err = r.agentStore.Create(ctx, meta)
+	case err != nil:
+		return nil, err
+	case sameAgentMeta(existing.AgentMeta, meta):
+		return &existing, nil
+	default:
+		existing.AgentMeta = meta
+		existing, err = r.agentStore.Put(ctx, existing)
+	}
 	if err != nil {
 		return nil, err
 	}
-	r.agentChanged(agent)
-	return &agent, nil
+	r.agentChanged(existing)
+	return &existing, nil
+}
+
+// sameAgentMeta returns true when the definitions are the same, as JSON
+func sameAgentMeta(a, b schema.AgentMeta) bool {
+	x, err := json.Marshal(a)
+	if err != nil {
+		return false
+	}
+	y, err := json.Marshal(b)
+	if err != nil {
+		return false
+	}
+	return bytes.Equal(x, y)
 }
 
 // GetAgent returns the agent with the name. Returns ErrNotFound when there's

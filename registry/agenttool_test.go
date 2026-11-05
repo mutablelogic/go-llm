@@ -136,8 +136,11 @@ func Test_AgentTools(t *testing.T) {
 			wg.Go(func() {
 				name := fmt.Sprint("other", i%3)
 				if _, err := r.CreateAgent(ctx, schema.AgentMeta{PromptMeta: schema.PromptMeta{Name: name}}); err == nil {
-					_, err = r.DeleteAgent(ctx, name)
-					assert.NoError(t, err)
+					// It may have been deleted by another, which created it
+					// as it is, at once
+					if _, err = r.DeleteAgent(ctx, name); err != nil {
+						assert.ErrorIs(t, err, llm.ErrNotFound)
+					}
 				}
 			})
 		}
@@ -287,6 +290,10 @@ func Test_RunAgent(t *testing.T) {
 		require.NoError(t, err)
 		assert.Equal(t, "Done", response.Messages[len(response.Messages)-1].Text())
 		assert.Equal(t, []string{"Agent segment is replying"}, progress, "the agent's progress is streamed, as it replies")
+
+		// The agent's tokens are its tool result's, and the chat's, which
+		// asked the model twice, and the agent once
+		assert.Equal(t, llm.Usage{InputTokens: 30, OutputTokens: 15}, withoutDuration(response.Usage.Usage))
 		stored, err := sessions.Get(ctx, session.ID)
 		require.NoError(t, err)
 		var results []string
@@ -297,6 +304,16 @@ func Test_RunAgent(t *testing.T) {
 		}
 		require.Len(t, results, 1)
 		assert.JSONEq(t, `"Segmented"`, results[0])
+		var usage *llm.Usage
+		for _, message := range stored.Messages {
+			for _, block := range message.Content {
+				if block.ToolResult != nil {
+					usage = block.ToolResult.Usage
+				}
+			}
+		}
+		require.NotNil(t, usage, "the tool result has the agent's tokens")
+		assert.Equal(t, llm.Usage{InputTokens: 10, OutputTokens: 5}, withoutDuration(*usage))
 
 		// The agent was asked with its prompt and system prompt, rather than
 		// the session's conversation

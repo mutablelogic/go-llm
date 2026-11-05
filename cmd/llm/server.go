@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 
 	// Packages
+	agents "github.com/mutablelogic/go-llm/agents"
 	broadcaster "github.com/mutablelogic/go-llm/broadcaster"
 	broadcastercmd "github.com/mutablelogic/go-llm/broadcaster/cmd"
 	registry "github.com/mutablelogic/go-llm/registry"
@@ -66,6 +67,9 @@ func (runner *RunServer) Run(ctx server.Cmd) error {
 	return runner.Broadcaster.WithBroadcaster(ctx, &runner.RunServer, func(b *broadcaster.Broadcaster) error {
 		return runner.Toolkit.WithToolkit(ctx, &runner.RunServer, func(tools *toolkit.Toolkit) error {
 			return runner.Registry.WithRegistry(ctx, &runner.RunServer, func(r *registry.Registry) error {
+				// The example agents, as they are, before the server starts
+				createAgents(ctx, r)
+
 				// They all stop when any does, such as when the server is
 				// stopped, when the broadcaster's watches end, so the
 				// server isn't kept waiting for its streams of events
@@ -120,6 +124,23 @@ func newServerSessionStore(ctx server.Cmd) (*sessionStore, error) {
 		return nil, err
 	}
 	return store, nil
+}
+
+// createAgents creates the example agents, or replaces those which have
+// changed, so they're as they are in this version. An agent which can't be
+// created is logged, rather than stopping the server.
+func createAgents(ctx server.Cmd, r *registry.Registry) {
+	all, err := agents.All()
+	if err != nil {
+		ctx.Logger().ErrorContext(ctx.Context(), "agents not added", "error", err)
+		return
+	}
+	for _, meta := range all {
+		if _, err := r.CreateAgent(ctx.Context(), meta); err != nil {
+			ctx.Logger().WarnContext(ctx.Context(), "agent not added", "agent", meta.Name, "error", err.Error())
+		}
+	}
+	ctx.Logger().InfoContext(ctx.Context(), "agents added", "agents", len(all))
 }
 
 // newServerAgentStore returns the store of the agents, in files in the

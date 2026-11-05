@@ -59,14 +59,28 @@ func Test_Agents(t *testing.T) {
 		assert.Equal(t, []string{"weather:current"}, agent.Tools)
 		assert.Equal(t, "Segment a transcript", types.Value(agent.Title))
 
+		created := agent
+
 		// An agent needs only its name
 		agent, err = r.CreateAgent(ctx, schema.AgentMeta{PromptMeta: schema.PromptMeta{Name: "empty"}})
 		require.NoError(t, err)
 		assert.Nil(t, agent.Model)
 
-		// And there's one agent with a name
-		_, err = r.CreateAgent(ctx, segment())
-		assert.ErrorIs(t, err, llm.ErrConflict)
+		// An agent which is created again, as it is, isn't changed
+		agent, err = r.CreateAgent(ctx, segment())
+		require.NoError(t, err)
+		assert.Equal(t, created.Serial, agent.Serial)
+
+		// And one which is changed is replaced, rather than merged
+		changed := segment()
+		changed.Title = types.Ptr("Segment an episode")
+		changed.Description = nil
+		agent, err = r.CreateAgent(ctx, changed)
+		require.NoError(t, err)
+		assert.Greater(t, agent.Serial, created.Serial)
+		assert.Equal(t, "Segment an episode", types.Value(agent.Title))
+		assert.Nil(t, agent.Description)
+		assert.True(t, agent.Created.Equal(created.Created))
 	})
 
 	t.Run("CreateInvalid", func(t *testing.T) {

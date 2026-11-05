@@ -1,0 +1,75 @@
+# An agent which translates text into another language, which the llm
+# server creates when it starts, and which is run, as a tool, with:
+#
+#   llm call agent:translate '{"text":"Guten Morgen"}'
+#
+# which replies with the translation, into English, unless another language
+# is asked for, and the two-letter code of the language the text is in, as:
+#
+#   {"text":"Good morning","language":"de"}
+#
+# It has no model, so it's run with the model of the session it's run from,
+# such as a chat whose tools include agent:*. The llm server creates it when
+# it starts, as it is here, so to run it with a model of its own, copy it,
+# with another name, and a model, such as:
+#
+#   model: ollama:llama3.2
+name: translate
+title: Translate text
+description: |
+  Translates text into another language, which is English unless another is
+  asked for, keeping its meaning, tone and formatting, such as its
+  paragraphs, lists and Markdown, and says which language the text is in,
+  as its two-letter ISO 639-1 code, such as de.
+
+opt:
+  temperature: 0.2
+
+system: |
+  You are a translator. You translate text into the language you're asked
+  to, keeping its meaning, tone and formatting, such as its paragraphs,
+  lists, Markdown and line breaks. Names, code and URLs aren't translated.
+  When the text is in the language already, its translation is the text as
+  it is. You also say which language the text is in, as its two-letter ISO
+  639-1 code, in lower case, such as en, de or fr, or, when it's in more
+  than one, the language most of it is in. The translation has no note, no
+  heading, and no quotes around it.
+
+# The input: the text, the language to translate it into, which is English
+# unless it's given, and the language it's in, when it's known
+input:
+  type: object
+  properties:
+    text:
+      type: string
+      description: The text to translate
+    language:
+      type: string
+      description: The language to translate it into, such as French, or a code, such as fr, which is English when it isn't given
+    from:
+      type: string
+      description: The language the text is in, when it's known, which is detected otherwise
+  required:
+    - text
+
+# The message to the model, as a Go template of the input
+prompt: |
+  Translate this text into {{ with index . "language" }}{{ . }}{{ else }}English{{ end }}{{ with index . "from" }}, from {{ . }}{{ end }}:
+
+  {{ .text }}
+
+# The reply: the translation, and the language of the text, as its
+# two-letter code
+schema:
+  type: object
+  properties:
+    text:
+      type: string
+      description: The translation of the text
+    language:
+      type: string
+      description: The two-letter ISO 639-1 code of the language the text is in, such as de
+      pattern: "^[a-z]{2}$"
+  required:
+    - text
+    - language
