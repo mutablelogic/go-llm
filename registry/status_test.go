@@ -22,7 +22,7 @@ import (
 // isn't nil
 func sessionEvent(t *testing.T, action eventschema.EventAction, id uuid.UUID, data *schema.SessionEvent) eventschema.Event {
 	t.Helper()
-	event := eventschema.Event{Action: action, Table: registry.SessionTable, Row: id.String()}
+	event := eventschema.Event{Action: action, Schema: registry.EventSchema, Table: registry.SessionTable, Row: id.String()}
 	if data != nil {
 		raw, err := json.Marshal(data)
 		require.NoError(t, err)

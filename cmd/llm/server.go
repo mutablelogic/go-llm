@@ -10,6 +10,8 @@ import (
 	agents "github.com/mutablelogic/go-llm/agents"
 	broadcaster "github.com/mutablelogic/go-llm/broadcaster"
 	broadcastercmd "github.com/mutablelogic/go-llm/broadcaster/cmd"
+	memory "github.com/mutablelogic/go-llm/memory"
+	memorycmd "github.com/mutablelogic/go-llm/memory/cmd"
 	registry "github.com/mutablelogic/go-llm/registry"
 	registrycmd "github.com/mutablelogic/go-llm/registry/cmd"
 	toolkit "github.com/mutablelogic/go-llm/toolkit"
@@ -27,6 +29,7 @@ type CLI struct {
 	Registry    registrycmd.ClientCommands    `embed:""`
 	Toolkit     toolkitcmd.ClientCommands     `embed:""`
 	Broadcaster broadcastercmd.ClientCommands `embed:""`
+	Memory      memorycmd.ClientCommands      `embed:""`
 }
 
 type ServerCommands struct {
@@ -38,6 +41,7 @@ type RunServer struct {
 	Registry    registrycmd.Flags    `embed:"" prefix:"llm."`
 	Toolkit     toolkitcmd.Flags     `embed:"" prefix:"llm."`
 	Broadcaster broadcastercmd.Flags `embed:"" prefix:"llm."`
+	Memory      memorycmd.Flags      `embed:"" prefix:"memory."`
 	servercmd.RunServer
 }
 
@@ -64,29 +68,48 @@ func (runner *RunServer) Run(ctx server.Cmd) error {
 	if err != nil {
 		return err
 	}
+	memories, err := newServerMemoryStore(ctx)
+	if err != nil {
+		return err
+	}
 	return runner.Broadcaster.WithBroadcaster(ctx, &runner.RunServer, func(b *broadcaster.Broadcaster) error {
-		return runner.Toolkit.WithToolkit(ctx, &runner.RunServer, func(tools *toolkit.Toolkit) error {
-			return runner.Registry.WithRegistry(ctx, &runner.RunServer, func(r *registry.Registry) error {
-				// The example agents, as they are, before the server starts
-				createAgents(ctx, r)
-
-				// They all stop when any does, such as when the server is
-				// stopped, when the broadcaster's watches end, so the
-				// server isn't kept waiting for its streams of events
-				group, runCtx := errgroup.WithContext(ctx.Context())
-				group.Go(func() error {
-					return b.Run(runCtx)
-				})
-				group.Go(func() error {
-					return r.Run(runCtx, ctx.Logger())
-				})
-				group.Go(func() error {
-					return runner.RunServer.Run(ctx.WithContext(runCtx))
-				})
-				return group.Wait()
-			}, registry.WithBroadcaster(b), registry.WithProviderStore(store), registry.WithSessionStore(sessions), registry.WithAgentStore(agents), registry.WithToolkit(tools))
-		}, toolkit.WithBroadcaster(b))
+		return runner.Memory.WithMemory(ctx, &runner.RunServer, memories, func(mem *memory.Memory) error {
+			return runner.withToolkit(ctx, b, mem, store, sessions, agents)
+		}, memory.WithBroadcaster(b))
 	})
+}
+
+// withToolkit runs the server, with a toolkit, which has the memory, as well
+// as the tools whose credentials are set, and a registry, with the stores
+func (runner *RunServer) withToolkit(ctx server.Cmd, b *broadcaster.Broadcaster, mem *memory.Memory, store registry.ProviderStore, sessions *sessionStore, agents *agentStore) error {
+	return runner.Toolkit.WithToolkit(ctx, &runner.RunServer, func(tools *toolkit.Toolkit) error {
+		// The memory, whose system prompt has the time, and what's
+		// remembered, and whose tools remember it
+		if err := tools.Add(mem); err != nil {
+			return err
+		}
+		ctx.Logger().InfoContext(ctx.Context(), "tools added", "namespace", mem.Name(), "tools", len(mem.Tools()))
+
+		return runner.Registry.WithRegistry(ctx, &runner.RunServer, func(r *registry.Registry) error {
+			// The example agents, as they are, before the server starts
+			createAgents(ctx, r)
+
+			// They all stop when any does, such as when the server is
+			// stopped, when the broadcaster's watches end, so the
+			// server isn't kept waiting for its streams of events
+			group, runCtx := errgroup.WithContext(ctx.Context())
+			group.Go(func() error {
+				return b.Run(runCtx)
+			})
+			group.Go(func() error {
+				return r.Run(runCtx, ctx.Logger())
+			})
+			group.Go(func() error {
+				return runner.RunServer.Run(ctx.WithContext(runCtx))
+			})
+			return group.Wait()
+		}, registry.WithBroadcaster(b), registry.WithProviderStore(store), registry.WithSessionStore(sessions), registry.WithAgentStore(agents), registry.WithToolkit(tools))
+	}, toolkit.WithBroadcaster(b))
 }
 
 // newServerProviderStore returns the store of the providers, in a file of
@@ -151,6 +174,20 @@ func newServerAgentStore(ctx server.Cmd) (*agentStore, error) {
 		return nil, err
 	}
 	return newAgentStore(dir)
+}
+
+// newServerMemoryStore returns the store of the memory, which is a file of
+// its own, memory.json, in the directory of the command's defaults
+func newServerMemoryStore(ctx server.Cmd) (*memoryStore, error) {
+	dir, err := serverDir(ctx)
+	if err != nil {
+		return nil, err
+	}
+	file, err := newJSONFile(filepath.Join(dir, memoryFile))
+	if err != nil {
+		return nil, err
+	}
+	return newMemoryStore(file), nil
 }
 
 // serverDir returns the directory of the command's defaults, which the

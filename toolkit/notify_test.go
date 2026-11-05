@@ -52,7 +52,7 @@ func (n *changingNamespace) set(action eventschema.EventAction, name string, tol
 
 // toolEvent returns the event of the tool with the canonical name
 func toolEvent(action eventschema.EventAction, canonical string) eventschema.Event {
-	return eventschema.Event{Action: action, Table: toolkit.ToolTable, Row: canonical}
+	return eventschema.Event{Action: action, Schema: toolkit.EventSchema, Table: toolkit.ToolTable, Row: canonical}
 }
 
 // drain returns the events which have been published to the channel

@@ -59,9 +59,15 @@ type namespace struct {
 
 var _ Namespace = namespace{}
 
-// ToolTable is the table of the events of tools, whose rows are their
-// canonical names, such as agent:segment
-const ToolTable = "tool"
+const (
+	// EventSchema is the schema of the toolkit's events, which is the
+	// registry's
+	EventSchema = "llm"
+
+	// ToolTable is the table of the events of tools, whose rows are their
+	// canonical names, such as agent:segment
+	ToolTable = "tool"
+)
 
 // entry is a tool in a namespace, with its input schema resolved for
 // validating its input, or nil if it has no input schema
@@ -222,7 +228,7 @@ func (self *Toolkit) changed(ns Namespace, _ eventschema.EventAction, name strin
 // so the events are in the order of the changes.
 func (self *Toolkit) publish(action eventschema.EventAction, canonical string) {
 	if self.broadcaster != nil {
-		self.broadcaster.Publish(eventschema.Event{Action: action, Table: ToolTable, Row: canonical})
+		self.broadcaster.Publish(eventschema.Event{Action: action, Schema: EventSchema, Table: ToolTable, Row: canonical})
 	}
 }
 

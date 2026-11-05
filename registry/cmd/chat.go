@@ -12,6 +12,8 @@ import (
 	// Packages
 	eventclient "github.com/mutablelogic/go-llm/broadcaster/httpclient"
 	eventschema "github.com/mutablelogic/go-llm/broadcaster/schema"
+	memoryclient "github.com/mutablelogic/go-llm/memory/httpclient"
+	memoryschema "github.com/mutablelogic/go-llm/memory/schema"
 	providerschema "github.com/mutablelogic/go-llm/provider/schema"
 	chattui "github.com/mutablelogic/go-llm/registry/cmd/tui"
 	httpclient "github.com/mutablelogic/go-llm/registry/httpclient"
@@ -32,11 +34,12 @@ type ChatCmd struct {
 	Stream  bool      `name:"stream" negatable:"" default:"true" help:"Print the reply as it's generated, or with --no-stream, once it's complete, rendered as markdown on a terminal."`
 }
 
-// chatClient is the client of the registry's API, and of its events, which
-// the interface chats with
+// chatClient is the client of the registry's API, of its events, and of
+// the memory's API, which the interface chats with
 type chatClient struct {
 	*httpclient.Client
 	events *eventclient.Client
+	memory *memoryclient.Client
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -62,7 +65,11 @@ func (cmd *ChatCmd) Run(ctx server.Cmd) error {
 			if err != nil {
 				return err
 			}
-			return chattui.Chat(reqctx, chatClient{client, events}, id, debug)
+			memory, err := newMemoryClient(ctx)
+			if err != nil {
+				return err
+			}
+			return chattui.Chat(reqctx, chatClient{client, events, memory}, id, debug)
 		}); err != nil {
 			return err
 		}
@@ -131,8 +138,24 @@ func (c chatClient) WatchEvents(ctx context.Context, fn func(eventschema.Event) 
 	return c.events.WatchEvents(ctx, fn)
 }
 
+// GetDetails returns the memory's details, such as the names of the person
+// and the assistant
+func (c chatClient) GetDetails(ctx context.Context) (*memoryschema.Details, error) {
+	return c.memory.GetDetails(ctx)
+}
+
 ///////////////////////////////////////////////////////////////////////////////
 // PRIVATE FUNCTIONS
+
+// newMemoryClient returns a client of the memory's API, from the command's
+// endpoint and options
+func newMemoryClient(ctx server.Cmd) (*memoryclient.Client, error) {
+	endpoint, opts, err := ctx.ClientEndpoint()
+	if err != nil {
+		return nil, err
+	}
+	return memoryclient.New(endpoint, opts...)
+}
 
 // newEventClient returns a client of the server's events, from the
 // command's endpoint and options

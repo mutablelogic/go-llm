@@ -101,6 +101,9 @@ func (r *Registry) Run(ctx context.Context, logger *slog.Logger) error {
 		case err := <-sessionDone:
 			return err
 		case event := <-sessionEvents:
+			// The store's events are the registry's, whatever schema the
+			// store says they are of
+			event.Schema = EventSchema
 			// A session which was deleted elsewhere has no status here
 			// either, so it's not published as idle after it. As with
 			// DeleteSession, the lifecycle lock is held, so a status isn't
@@ -116,7 +119,7 @@ func (r *Registry) Run(ctx context.Context, logger *slog.Logger) error {
 				r.broadcaster.Publish(event)
 			}
 		case event := <-registryEvents:
-			if event.Table != ProviderTable {
+			if event.Schema != EventSchema || event.Table != ProviderTable {
 				// The broadcaster's other events, such as of sessions
 				continue
 			}

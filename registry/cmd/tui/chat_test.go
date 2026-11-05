@@ -18,6 +18,7 @@ import (
 	lipgloss "github.com/charmbracelet/lipgloss"
 	llm "github.com/mutablelogic/go-llm"
 	eventschema "github.com/mutablelogic/go-llm/broadcaster/schema"
+	memoryschema "github.com/mutablelogic/go-llm/memory/schema"
 	providerschema "github.com/mutablelogic/go-llm/provider/schema"
 	schema "github.com/mutablelogic/go-llm/registry/schema"
 	types "github.com/mutablelogic/go-server/pkg/types"
@@ -32,6 +33,14 @@ type fakeClient struct {
 	err      error
 	stored   *schema.Session
 	statuses *[]schema.SessionStatus
+	details  *memoryschema.Details
+}
+
+func (c fakeClient) GetDetails(context.Context) (*memoryschema.Details, error) {
+	if c.details == nil {
+		return nil, errors.New("no memory")
+	}
+	return c.details, nil
 }
 
 func (c fakeClient) GetSession(context.Context, uuid.UUID) (*schema.Session, error) {
@@ -251,7 +260,7 @@ func sessionChange(t *testing.T, id uuid.UUID, data schema.SessionEvent) eventMs
 	t.Helper()
 	raw, err := json.Marshal(data)
 	require.NoError(t, err)
-	return eventMsg{Action: eventschema.EventUpdate, Table: sessionTable, Row: id.String(), Data: raw}
+	return eventMsg{Action: eventschema.EventUpdate, Schema: eventSchema, Table: sessionTable, Row: id.String(), Data: raw}
 }
 
 func Test_Changes(t *testing.T) {
@@ -324,7 +333,7 @@ func Test_Changes(t *testing.T) {
 	t.Run("Deleted", func(t *testing.T) {
 		id := uuid.New()
 		m, _ := newTestModel(fakeClient{}, &schema.Session{ID: id})
-		m.Update(eventMsg{Action: eventschema.EventDelete, Table: sessionTable, Row: id.String()})
+		m.Update(eventMsg{Action: eventschema.EventDelete, Schema: eventSchema, Table: sessionTable, Row: id.String()})
 		assert.Contains(t, m.history.View(), "the session was deleted")
 	})
 }
@@ -380,7 +389,7 @@ func Test_Watch(t *testing.T) {
 	t.Cleanup(func() { watchRetry, watchRetryMax, watchSettled = retry, max, settled })
 
 	id := uuid.New()
-	event := eventschema.Event{Action: eventschema.EventUpdate, Table: sessionTable, Row: id.String()}
+	event := eventschema.Event{Action: eventschema.EventUpdate, Schema: eventSchema, Table: sessionTable, Row: id.String()}
 	client := &flakyClient{fails: 3, event: event}
 	ctx, cancel := context.WithCancel(context.Background())
 	events := make(chan tea.Msg, 16)
@@ -515,7 +524,7 @@ func Test_WatchFirst(t *testing.T) {
 	watchSettled = 10 * time.Millisecond
 	t.Cleanup(func() { watchSettled = settled })
 	id := uuid.New()
-	event := eventschema.Event{Action: eventschema.EventUpdate, Table: sessionTable, Row: id.String()}
+	event := eventschema.Event{Action: eventschema.EventUpdate, Schema: eventSchema, Table: sessionTable, Row: id.String()}
 	ctx, cancel := context.WithCancel(context.Background())
 	events := make(chan tea.Msg, 16)
 	watching := make(chan struct{})
@@ -576,4 +585,158 @@ func Test_Progress(t *testing.T) {
 	assert.NotContains(t, view, "Agent segment is thinking")
 	m.Update(replyMsg{asked: 0, response: &schema.ChatResponse{ID: id, Serial: 2}})
 	assert.NotContains(t, m.history.View(), "Segmenting")
+}
+
+func Test_Labels(t *testing.T) {
+	id := uuid.New()
+	newSession := func(model string) *schema.Session {
+		return &schema.Session{ID: id, SessionMeta: schema.SessionMeta{GeneratorMeta: schema.GeneratorMeta{Model: types.Ptr(model)}}, Messages: []providerschema.Message{
+			{MessageMeta: providerschema.MessageMeta{Sender: "user", Content: []providerschema.ContentBlock{{Text: types.Ptr("Hello")}}}},
+			{MessageMeta: providerschema.MessageMeta{Sender: "assistant", Content: []providerschema.ContentBlock{{Text: types.Ptr("Hi")}}}},
+		}}
+	}
+	detail := func(action eventschema.EventAction, row, data string) detailMsg {
+		event := eventschema.Event{Action: action, Schema: memorySchema, Table: detailTable, Row: row}
+		if data != "" {
+			event.Data = json.RawMessage(data)
+		}
+		return detailMsg(event)
+	}
+
+	t.Run("Unknown", func(t *testing.T) {
+		// The person is user, and the assistant is its model's provider, or
+		// assistant, without one
+		m, _ := newTestModel(fakeClient{}, newSession("deepseek:deepseek-chat"))
+		assert.Equal(t, "You", m.userLabel())
+		assert.Equal(t, "deepseek", m.assistantLabel())
+		m, _ = newTestModel(fakeClient{}, &schema.Session{ID: id})
+		assert.Equal(t, "assistant", m.assistantLabel())
+	})
+
+	t.Run("Names", func(t *testing.T) {
+		// The names, as they're loaded, and as they change
+		m, _ := newTestModel(fakeClient{}, newSession("deepseek:deepseek-chat"))
+		m.Update(detailsMsg{details: &memoryschema.Details{Name: &memoryschema.Detail{Value: "David"}, Assistant: &memoryschema.Detail{Value: "Nano"}}})
+		assert.Equal(t, "David", m.userLabel())
+		assert.Equal(t, "Nano", m.assistantLabel())
+		view := m.history.View()
+		assert.Contains(t, view, "David")
+		assert.Contains(t, view, "Nano")
+
+		m.Update(detail(eventschema.EventUpdate, "assistant", `{"value":"Robin"}`))
+		assert.Contains(t, m.history.View(), "Robin")
+		m.Update(detail(eventschema.EventDelete, "assistant", ""))
+		assert.Equal(t, "deepseek", m.assistantLabel())
+
+		// A declined name isn't used, and other details, or a memory which
+		// can't be loaded, change nothing
+		m.Update(detail(eventschema.EventUpdate, "name", `{"declined":true}`))
+		assert.Equal(t, "You", m.userLabel())
+		m.Update(detail(eventschema.EventCreate, "location", `{"value":"Berlin"}`))
+		m.Update(detail(eventschema.EventCreate, "unknown", `{"value":"x"}`))
+		m.Update(detailsMsg{err: errors.New("no memory")})
+		assert.Equal(t, "You", m.userLabel())
+		assert.Equal(t, "Berlin", m.details.Location.Value)
+	})
+}
+
+func Test_StatusFollowsSession(t *testing.T) {
+	// A change to the session elsewhere, such as its model, is loaded, and
+	// shown in the status line
+	id := uuid.New()
+	before := &schema.Session{ID: id, Serial: 1, SessionMeta: schema.SessionMeta{GeneratorMeta: schema.GeneratorMeta{Model: types.Ptr("eliza:eliza-1966-en")}}}
+	after := &schema.Session{ID: id, Serial: 2, SessionMeta: schema.SessionMeta{GeneratorMeta: schema.GeneratorMeta{Model: types.Ptr("deepseek:deepseek-chat")}}}
+	m, _ := newTestModel(fakeClient{stored: after}, before)
+	assert.Contains(t, m.status(), "eliza:eliza-1966-en")
+
+	cmd := m.changed(eventschema.Event{Action: eventschema.EventUpdate, Schema: eventSchema, Table: sessionTable, Row: id.String(), Data: json.RawMessage(`{"serial":2}`)})
+	require.NotNil(t, cmd)
+	m.Update(cmd())
+	assert.Contains(t, m.status(), "deepseek:deepseek-chat")
+}
+
+func Test_Indent(t *testing.T) {
+	// What's under a label is indented, and wrapped to fit the window
+	long := strings.Repeat("word ", 40)
+	m, _ := newTestModel(fakeClient{}, &schema.Session{ID: uuid.New(), Messages: []providerschema.Message{
+		{MessageMeta: providerschema.MessageMeta{Sender: "user", Content: []providerschema.ContentBlock{{Text: types.Ptr(long)}}}},
+		{MessageMeta: providerschema.MessageMeta{Sender: "assistant", Content: []providerschema.ContentBlock{{Thinking: types.Ptr("Hmm")}, {Text: types.Ptr("Hi")}}}},
+	}})
+	m.logs = map[string][]string{positionKey(1): {"Remembering your name: David"}}
+	m.render()
+	content := m.history.View()
+	assert.Contains(t, content, "\n  word word")
+	assert.Contains(t, content, "\n  "+thinking)
+	assert.Contains(t, content, "\n  Remembering your name: David")
+	for _, line := range strings.Split(content, "\n") {
+		assert.LessOrEqual(t, lipgloss.Width(line), 80, line)
+	}
+}
+
+func Test_TurnLabel(t *testing.T) {
+	// A reply which calls a tool, and then replies, is under one label,
+	// with what the tool logged under it, and the next question has its own
+	call := providerschema.ContentBlock{ToolCall: &providerschema.ToolCall{ID: "1", Name: "ollama__web_search"}}
+	result := providerschema.ContentBlock{ToolResult: &providerschema.ToolResult{ID: "1", Name: "ollama__web_search"}}
+	message := func(sender string, content ...providerschema.ContentBlock) providerschema.Message {
+		return providerschema.Message{MessageMeta: providerschema.MessageMeta{Sender: sender, Content: content}}
+	}
+	m, _ := newTestModel(fakeClient{}, &schema.Session{ID: uuid.New(), Messages: []providerschema.Message{
+		message("user", providerschema.ContentBlock{Text: types.Ptr("Pools?")}),
+		message("assistant", providerschema.ContentBlock{Text: types.Ptr("Let me search.")}, call),
+		message("tool", result),
+		message("assistant", providerschema.ContentBlock{Text: types.Ptr("Neukölln.")}),
+		message("user", providerschema.ContentBlock{Text: types.Ptr("Thanks")}),
+	}})
+	m.details = memoryschema.Details{Assistant: &memoryschema.Detail{Value: "Omodie"}}
+	m.logs = map[string][]string{resultKey("1"): {"Searching the web"}}
+	m.history.Height = 100
+	m.render()
+	content := m.history.View()
+	assert.Equal(t, 1, strings.Count(content, "Omodie"))
+	assert.Equal(t, 2, strings.Count(content, "You"))
+	assert.Less(t, strings.Index(content, "Omodie"), strings.Index(content, "Searching the web"))
+	assert.Less(t, strings.Index(content, "Searching the web"), strings.Index(content, "Neukölln."))
+}
+
+func Test_LogsUnderLabel(t *testing.T) {
+	// A reply which only calls a tool, so has nothing to show, and then
+	// replies, has its label above what the tool logged
+	message := func(sender string, content ...providerschema.ContentBlock) providerschema.Message {
+		return providerschema.Message{MessageMeta: providerschema.MessageMeta{Sender: sender, Content: content}}
+	}
+	m, _ := newTestModel(fakeClient{}, &schema.Session{ID: uuid.New(), SessionMeta: schema.SessionMeta{GeneratorMeta: schema.GeneratorMeta{Model: types.Ptr("openai:gpt-5")}}, Messages: []providerschema.Message{
+		message("user", providerschema.ContentBlock{Text: types.Ptr("I'd rather not say my name")}),
+		message("assistant", providerschema.ContentBlock{ToolCall: &providerschema.ToolCall{ID: "1", Name: "memory__set_detail"}}),
+		message("tool", providerschema.ContentBlock{ToolResult: &providerschema.ToolResult{ID: "1", Name: "memory__set_detail"}}),
+		message("assistant", providerschema.ContentBlock{Text: types.Ptr("No problem.")}),
+	}})
+	m.logs = map[string][]string{resultKey("1"): {"Not remembering your name, as you'd rather not say"}}
+	m.history.Height = 100
+	m.render()
+	content := m.history.View()
+	assert.Equal(t, 1, strings.Count(content, "openai"))
+	assert.Less(t, strings.Index(content, "openai"), strings.Index(content, "Not remembering"))
+	assert.Less(t, strings.Index(content, "Not remembering"), strings.Index(content, "No problem."))
+}
+
+func Test_DetailsReload(t *testing.T) {
+	// A change to the details as they're loaded isn't overwritten by them,
+	// as they're loaded again
+	stale := &memoryschema.Details{Assistant: &memoryschema.Detail{Value: "Nano"}}
+	fresh := &memoryschema.Details{Assistant: &memoryschema.Detail{Value: "Omodie"}}
+	m, _ := newTestModel(fakeClient{details: fresh}, &schema.Session{ID: uuid.New()})
+	load := m.loadDetails()
+	m.Update(detailMsg(eventschema.Event{Action: eventschema.EventUpdate, Schema: memorySchema, Table: detailTable, Row: "assistant", Data: json.RawMessage(`{"value":"Omodie"}`)}))
+	msg := load().(detailsMsg)
+	msg.details = stale
+	_, cmd := m.Update(msg)
+	assert.Equal(t, "Omodie", m.assistantLabel())
+	require.NotNil(t, cmd, "loaded again")
+	m.Update(cmd())
+	assert.Equal(t, "Omodie", m.assistantLabel())
+
+	// Without a change as they're loaded, they're used
+	m.Update(m.loadDetails()())
+	assert.Equal(t, "Omodie", m.assistantLabel())
 }

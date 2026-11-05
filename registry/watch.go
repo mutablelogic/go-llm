@@ -13,6 +13,10 @@ import (
 // GLOBALS
 
 const (
+	// EventSchema is the schema of the registry's events, which the
+	// toolkit's events share
+	EventSchema = "llm"
+
 	// ProviderTable is the table of the events of providers, whose rows are
 	// their names in the registry
 	ProviderTable = "provider"
@@ -49,7 +53,7 @@ func (r *Registry) Watch(ctx context.Context, ch chan<- schema.Event) (<-chan er
 // providers, so the events are in the order of the changes, and never waits,
 // so the lock isn't held for long.
 func (r *Registry) publish(action schema.EventAction, table, row string, data any) {
-	event := schema.Event{Action: action, Table: table, Row: row}
+	event := schema.Event{Action: action, Schema: EventSchema, Table: table, Row: row}
 	if data != nil {
 		if raw, err := json.Marshal(data); err == nil {
 			event.Data = raw

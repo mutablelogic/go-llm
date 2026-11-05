@@ -19,6 +19,7 @@ import (
 	lipgloss "github.com/charmbracelet/lipgloss"
 	llm "github.com/mutablelogic/go-llm"
 	eventschema "github.com/mutablelogic/go-llm/broadcaster/schema"
+	memoryschema "github.com/mutablelogic/go-llm/memory/schema"
 	providerschema "github.com/mutablelogic/go-llm/provider/schema"
 	schema "github.com/mutablelogic/go-llm/registry/schema"
 	toolschema "github.com/mutablelogic/go-llm/toolkit/schema"
@@ -30,8 +31,11 @@ import (
 // TYPES
 
 // Client is what the interface chats in a session with, and watches the
-// changes to it with, which others make, such as in another window
+// changes to it with, which others make, such as in another window, and
+// gets the memory's details with, such as the names of the person and the
+// assistant
 type Client interface {
+	GetDetails(ctx context.Context) (*memoryschema.Details, error)
 	GetSession(ctx context.Context, id uuid.UUID) (*schema.Session, error)
 	ListSessionMessages(ctx context.Context, id uuid.UUID, req schema.MessageListRequest) (*schema.MessageList, error)
 	Chat(ctx context.Context, id uuid.UUID, req schema.ChatRequest, stream llm.GeneratorStreamFn) (*schema.ChatResponse, error)
@@ -47,6 +51,9 @@ type model struct {
 	client   Client
 	debug    bool // Whether the model's thinking, and the tools it calls, are shown
 	session  *schema.Session
+	details  memoryschema.Details // The memory's details, such as the names of the person and the assistant
+	changes  uint64               // How many changes to the details have been applied, so a reload which they happened during is done again
+	speaker  string               // Who was last labelled, as the history is rendered, so a turn has one label
 	send     func(tea.Msg)
 	history  viewport.Model
 	input    textarea.Model
@@ -87,6 +94,12 @@ type (
 		question string // The question, which is typed again when it isn't sent
 	}
 	eventMsg   eventschema.Event // A change to the session
+	detailMsg  eventschema.Event // A change to the memory's details
+	detailsMsg struct {
+		details *memoryschema.Details
+		err     error
+		changes uint64 // The changes which had been applied when they were loaded
+	}
 	watchedMsg struct {
 		err   error         // Why the changes aren't watched
 		retry time.Duration // When they're watched again
@@ -111,8 +124,25 @@ var (
 	inputHeight  = 3
 	statusHeight = 1
 
-	// sessionTable is the table of the events of sessions
+	// eventSchema and sessionTable are the schema and table of the events of
+	// sessions
+	eventSchema  = "llm"
 	sessionTable = "session"
+
+	// memorySchema and detailTable are the schema and table of the events
+	// of the memory's details
+	memorySchema = "memory"
+	detailTable  = "detail"
+
+	// user is the label of the person's messages, when their name isn't
+	// known, and assistant of the model's, when neither its name, nor its
+	// provider, is
+	user      = "You"
+	assistant = "assistant"
+
+	// indent is how far what's under a label is indented, which is as far
+	// as markdown is
+	indent = 2
 
 	// watchRetry is how long after the changes can't be watched they're
 	// watched again, which is twice as long each time, up to watchRetryMax,
@@ -161,6 +191,12 @@ func Chat(parent context.Context, client Client, id uuid.UUID, debug bool) error
 	input.SetHeight(inputHeight)
 	input.Focus()
 	m := &model{ctx: ctx, client: client, debug: debug, session: session, history: viewport.New(80, 20), input: input}
+
+	// The names of the person and the assistant, which aren't known, when
+	// the server has no memory
+	if details, err := client.GetDetails(ctx); err == nil {
+		m.details = *details
+	}
 	program := tea.NewProgram(m, tea.WithAltScreen(), tea.WithContext(ctx))
 	m.send = program.Send
 	go func() {
@@ -209,6 +245,22 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, tea.Batch(cmd, m.typing())
 	case eventMsg:
 		return m, m.changed(eventschema.Event(msg))
+	case detailMsg:
+		m.changes++
+		m.detailChanged(eventschema.Event(msg))
+		m.render()
+		return m, nil
+	case detailsMsg:
+		// Details which changed as they were loaded may be older than the
+		// changes, so they're loaded again
+		if msg.err != nil {
+			return m, nil
+		} else if msg.changes != m.changes {
+			return m, m.loadDetails()
+		}
+		m.details = *msg.details
+		m.render()
+		return m, nil
 	case watchedMsg:
 		// The changes aren't watched, such as when the server is stopping,
 		// which is shown, until they're watched again, and the interface
@@ -228,7 +280,7 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.err = nil
 		}
 		m.render()
-		return m, m.load()
+		return m, tea.Batch(m.load(), m.loadDetails())
 	case loadedMsg:
 		m.loading = false
 		if msg.err != nil {
@@ -340,6 +392,55 @@ func (m *model) changed(event eventschema.Event) tea.Cmd {
 	return nil
 }
 
+// detailChanged changes the detail of the event, which is forgotten, when
+// it's deleted
+func (m *model) detailChanged(event eventschema.Event) {
+	field, err := memoryschema.ParseField(event.Row)
+	if err != nil {
+		return
+	}
+	var detail *memoryschema.Detail
+	if event.Action != eventschema.EventDelete {
+		detail = new(memoryschema.Detail)
+		if err := json.Unmarshal(event.Data, detail); err != nil {
+			return
+		}
+	}
+	_ = m.details.Set(field, detail)
+}
+
+// loadDetails returns the command which loads the memory's details again,
+// as they may have changed while the changes weren't watched
+func (m *model) loadDetails() tea.Cmd {
+	ctx, client, changes := m.ctx, m.client, m.changes
+	return func() tea.Msg {
+		details, err := client.GetDetails(ctx)
+		return detailsMsg{details: details, err: err, changes: changes}
+	}
+}
+
+// userLabel returns the label of the person's messages, which is their
+// name, when it's known, or user
+func (m *model) userLabel() string {
+	if name, ok := m.details.Value(memoryschema.FieldName); ok {
+		return name
+	}
+	return user
+}
+
+// assistantLabel returns the label of the model's messages, which is the
+// assistant's name, when it's known, or the provider of the session's
+// model, such as deepseek, for deepseek:deepseek-chat
+func (m *model) assistantLabel() string {
+	if name, ok := m.details.Value(memoryschema.FieldAssistant); ok {
+		return name
+	}
+	if provider, _, ok := strings.Cut(types.Value(m.session.Model), ":"); ok && provider != "" {
+		return provider
+	}
+	return assistant
+}
+
 // load returns the command which loads the session, with its messages,
 // again, unless it's being loaded, when it's loaded again after
 func (m *model) load() tea.Cmd {
@@ -432,6 +533,7 @@ func (m *model) keepLogs(streamed []*group, asked int, added []providerschema.Me
 // into the history, which is scrolled to the end
 func (m *model) render() {
 	var b strings.Builder
+	m.speaker = ""
 	for i, message := range m.session.Messages {
 		m.renderLogs(&b, positionKey(i))
 		if message.Role() == "tool" {
@@ -445,24 +547,24 @@ func (m *model) render() {
 	}
 	m.renderLogs(&b, positionKey(len(m.session.Messages)))
 	if len(m.streamed) > 0 {
-		b.WriteString(modelStyle.Render("Model") + "\n")
+		m.label(&b, "assistant")
 		for _, g := range m.streamed {
 			text := strings.Trim(g.text.String(), "\n")
 			switch {
 			case g.what == llm.StreamText:
-				b.WriteString(m.wrap(lipgloss.NewStyle(), text) + "\n")
+				b.WriteString(m.body(lipgloss.NewStyle(), text) + "\n")
 			case g.what == llm.StreamThinking && !m.debug:
-				b.WriteString(dimStyle.Render(thinking) + "\n")
+				b.WriteString(m.body(dimStyle, thinking) + "\n")
 			default:
-				b.WriteString(m.wrap(dimStyle, text) + "\n")
+				b.WriteString(m.body(dimStyle, text) + "\n")
 			}
 		}
 		b.WriteString("\n")
 	} else if m.waiting && m.progress == "" {
-		b.WriteString(dimStyle.Render("Waiting for the reply…") + "\n")
+		b.WriteString(m.body(dimStyle, "Waiting for the reply…") + "\n")
 	}
 	if m.waiting && m.progress != "" {
-		b.WriteString(m.wrap(dimStyle, m.progress) + "\n")
+		b.WriteString(m.body(dimStyle, m.progress) + "\n")
 	}
 	if m.err != nil {
 		b.WriteString(errorStyle.Render("Error: "+m.err.Error()) + "\n")
@@ -481,8 +583,13 @@ func (m *model) render() {
 // renderLogs renders the lines which tools logged, which are kept by the key
 // of what they're shown before
 func (m *model) renderLogs(b *strings.Builder, key string) {
+	// What tools log is the model's, so it's under its label, even when the
+	// message which called them had nothing to show, but the tool calls
+	if len(m.logs[key]) > 0 {
+		m.label(b, "assistant")
+	}
 	for _, line := range m.logs[key] {
-		b.WriteString(m.wrap(dimStyle, line) + "\n")
+		b.WriteString(m.body(dimStyle, line) + "\n")
 	}
 }
 
@@ -494,7 +601,8 @@ func (m *model) renderLogs(b *strings.Builder, key string) {
 func (m *model) renderMessage(b *strings.Builder, message providerschema.Message) {
 	switch message.Role() {
 	case "user":
-		b.WriteString(youStyle.Render("You") + "\n" + m.wrap(lipgloss.NewStyle(), message.Text()) + "\n\n")
+		m.label(b, "user")
+		b.WriteString(m.body(lipgloss.NewStyle(), message.Text()) + "\n\n")
 	case "assistant":
 		var body strings.Builder
 		thought := false
@@ -502,23 +610,24 @@ func (m *model) renderMessage(b *strings.Builder, message providerschema.Message
 			switch {
 			case block.Thinking != nil && strings.TrimSpace(*block.Thinking) != "":
 				if m.debug {
-					body.WriteString(m.wrap(dimStyle, strings.TrimSpace(*block.Thinking)) + "\n")
+					body.WriteString(m.body(dimStyle, strings.TrimSpace(*block.Thinking)) + "\n")
 				} else if !thought {
-					body.WriteString(dimStyle.Render(thinking) + "\n")
+					body.WriteString(m.body(dimStyle, thinking) + "\n")
 				}
 				thought = true
 			case block.Text != nil && strings.TrimSpace(*block.Text) != "":
 				body.WriteString(m.markdown(*block.Text))
 			case block.ToolCall != nil && m.debug:
 				name := m.toolName(block.ToolCall.Name)
-				body.WriteString(toolStyle.Render(fmt.Sprintf("→ %s(%s)", name, oneLine(string(block.ToolCall.Input), m.width/2))) + "\n")
+				body.WriteString(m.body(toolStyle, fmt.Sprintf("→ %s(%s)", name, oneLine(string(block.ToolCall.Input), m.width/2))) + "\n")
 			}
 		}
 		if message.Result != "" && message.Result != providerschema.ResultStop && message.Result != providerschema.ResultToolCall {
-			body.WriteString(errorStyle.Render("The reply stopped: "+message.Result.String()) + "\n")
+			body.WriteString(m.body(errorStyle, "The reply stopped: "+message.Result.String()) + "\n")
 		}
 		if body.Len() > 0 {
-			b.WriteString(modelStyle.Render("Model") + "\n" + body.String() + "\n")
+			m.label(b, "assistant")
+			b.WriteString(body.String() + "\n")
 		}
 	case "tool":
 		if !m.debug {
@@ -526,7 +635,7 @@ func (m *model) renderMessage(b *strings.Builder, message providerschema.Message
 		}
 		for _, result := range message.ToolResults() {
 			name := m.toolName(result.Name)
-			b.WriteString(dimStyle.Render(fmt.Sprintf("← %s: %s", name, oneLine(string(result.Content), m.width-len(name)-6))) + "\n")
+			b.WriteString(m.body(dimStyle, fmt.Sprintf("← %s: %s", name, oneLine(string(result.Content), m.width-len(name)-6-indent))) + "\n")
 		}
 		b.WriteString("\n")
 	}
@@ -546,6 +655,27 @@ func (m *model) wrap(style lipgloss.Style, text string) string {
 		style = style.Width(m.width)
 	}
 	return style.Render(text)
+}
+
+// label writes the label of the speaker, which is user, or assistant, unless
+// they were the last labelled, so the model's messages in a turn, with what
+// tools logged between them, are under one label
+func (m *model) label(b *strings.Builder, speaker string) {
+	if speaker == m.speaker {
+		return
+	}
+	m.speaker = speaker
+	if speaker == "user" {
+		b.WriteString(youStyle.Render(m.userLabel()) + "\n")
+	} else {
+		b.WriteString(modelStyle.Render(m.assistantLabel()) + "\n")
+	}
+}
+
+// body returns the text in the style, indented under its label, and
+// wrapped to fit the width, when it's known
+func (m *model) body(style lipgloss.Style, text string) string {
+	return m.wrap(style.PaddingLeft(indent), text)
 }
 
 // markdown returns the text rendered as markdown, to fit the width, or as it
@@ -602,8 +732,11 @@ func watch(ctx context.Context, client Client, id uuid.UUID, events chan<- tea.M
 		done := make(chan error, 1)
 		go func() {
 			done <- client.WatchEvents(ctx, func(event eventschema.Event) error {
-				if event.Table == sessionTable && event.Row == id.String() {
+				switch {
+				case event.Schema == eventSchema && event.Table == sessionTable && event.Row == id.String():
 					send(eventMsg(event))
+				case event.Schema == memorySchema && event.Table == detailTable:
+					send(detailMsg(event))
 				}
 				return nil
 			})

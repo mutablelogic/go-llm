@@ -52,7 +52,7 @@ func Test_AgentTools(t *testing.T) {
 		return names
 	}
 	toolEvent := func(action eventschema.EventAction, name string) eventschema.Event {
-		return eventschema.Event{Action: action, Table: toolkit.ToolTable, Row: registry.AgentNamespace + ":" + name}
+		return eventschema.Event{Action: action, Schema: registry.EventSchema, Table: toolkit.ToolTable, Row: registry.AgentNamespace + ":" + name}
 	}
 
 	t.Run("Changes", func(t *testing.T) {
