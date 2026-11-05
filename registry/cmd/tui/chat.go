@@ -21,6 +21,7 @@ import (
 	eventschema "github.com/mutablelogic/go-llm/broadcaster/schema"
 	providerschema "github.com/mutablelogic/go-llm/provider/schema"
 	schema "github.com/mutablelogic/go-llm/registry/schema"
+	toolschema "github.com/mutablelogic/go-llm/toolkit/schema"
 	servertui "github.com/mutablelogic/go-server/pkg/tui"
 	types "github.com/mutablelogic/go-server/pkg/types"
 )
@@ -36,11 +37,6 @@ type Client interface {
 	Chat(ctx context.Context, id uuid.UUID, req schema.ChatRequest, stream llm.GeneratorStreamFn) (*schema.ChatResponse, error)
 	SetSessionStatus(ctx context.Context, id uuid.UUID, status schema.SessionStatus) (*schema.Session, error)
 	WatchEvents(ctx context.Context, fn func(eventschema.Event) error) error
-
-	// ToolNames returns the canonical names of the server's tools, such as
-	// homeassistant:call_service, by the names models call them by, such as
-	// homeassistant_call_service
-	ToolNames(ctx context.Context) (map[string]string, error)
 }
 
 // model is the interface's state: the session, its messages, what's being
@@ -49,8 +45,7 @@ type Client interface {
 type model struct {
 	ctx      context.Context
 	client   Client
-	debug    bool              // Whether the model's thinking, and the tools it calls, are shown
-	tools    map[string]string // The canonical names of the tools, by the names models call them by
+	debug    bool // Whether the model's thinking, and the tools it calls, are shown
 	session  *schema.Session
 	send     func(tea.Msg)
 	history  viewport.Model
@@ -164,9 +159,7 @@ func Chat(parent context.Context, client Client, id uuid.UUID, debug bool) error
 	input.ShowLineNumbers = false
 	input.SetHeight(inputHeight)
 	input.Focus()
-	// The tools are shown by their canonical names, when they're known
-	tools, _ := client.ToolNames(ctx)
-	m := &model{ctx: ctx, client: client, debug: debug, tools: tools, session: session, history: viewport.New(80, 20), input: input}
+	m := &model{ctx: ctx, client: client, debug: debug, session: session, history: viewport.New(80, 20), input: input}
 	program := tea.NewProgram(m, tea.WithAltScreen(), tea.WithContext(ctx))
 	m.send = program.Send
 	go func() {
@@ -532,12 +525,10 @@ func (m *model) renderMessage(b *strings.Builder, message providerschema.Message
 }
 
 // toolName returns the canonical name of the tool which a model calls by the
-// name, such as homeassistant:call_service, or the name, when it isn't known
+// name, such as homeassistant:call_service for homeassistant__call_service,
+// or the name, when it isn't a tool in a namespace
 func (m *model) toolName(name string) string {
-	if canonical, ok := m.tools[name]; ok {
-		return canonical
-	}
-	return name
+	return toolschema.CanonicalFromModelToolName(name)
 }
 
 // wrap returns the text in the style, wrapped to fit the width, when it's

@@ -90,8 +90,8 @@ func TestTools(t *testing.T) {
 		tools, err := tk.Tools(ctx, "weather:current", "news:search")
 		require.NoError(t, err)
 		require.Len(t, tools, 2)
-		assert.Equal(t, "weather_current", tools[0].Name())
-		assert.Equal(t, "news_search", tools[1].Name())
+		assert.Equal(t, "weather__current", tools[0].Name())
+		assert.Equal(t, "news__search", tools[1].Name())
 		assert.Equal(t, "Returns its input", tools[0].Description())
 		canonical, ok := tools[0].(interface{ CanonicalName() string })
 		require.True(t, ok)
@@ -106,7 +106,7 @@ func TestTools(t *testing.T) {
 		tools, err := tk.Tools(ctx, "current")
 		require.NoError(t, err)
 		require.Len(t, tools, 1)
-		assert.Equal(t, "weather_current", tools[0].Name())
+		assert.Equal(t, "weather__current", tools[0].Name())
 	})
 
 	t.Run("Namespace", func(t *testing.T) {
@@ -118,7 +118,7 @@ func TestTools(t *testing.T) {
 		for _, tool := range tools {
 			names = append(names, tool.Name())
 		}
-		assert.Equal(t, []string{"weather_current", "weather_search", "news_search"}, names)
+		assert.Equal(t, []string{"weather__current", "weather__search", "news__search"}, names)
 
 		// The namespace must exist, and its tools can't also be named
 		_, err = tk.Tools(ctx, "other:*")
@@ -136,7 +136,7 @@ func TestTools(t *testing.T) {
 		for _, tool := range tools {
 			names = append(names, tool.Name())
 		}
-		assert.Equal(t, []string{"news_search", "weather_current", "weather_search"}, names)
+		assert.Equal(t, []string{"news__search", "weather__current", "weather__search"}, names)
 		_, err = tk.Tools(ctx, "*", "weather:current")
 		assert.ErrorIs(t, err, llm.ErrBadParameter)
 		_, err = tk.Tools(ctx, "*", "weather:*")
@@ -168,8 +168,8 @@ func TestTools(t *testing.T) {
 		tools, skipped, err := tk.AvailableTools(ctx, "weather:current", "ollama:*", "weather:other", "news:search")
 		require.NoError(t, err)
 		require.Len(t, tools, 2)
-		assert.Equal(t, "weather_current", tools[0].Name())
-		assert.Equal(t, "news_search", tools[1].Name())
+		assert.Equal(t, "weather__current", tools[0].Name())
+		assert.Equal(t, "news__search", tools[1].Name())
 		assert.Equal(t, []string{"ollama:*", "weather:other"}, skipped)
 
 		// Other errors aren't skipped
@@ -187,32 +187,38 @@ func TestTools(t *testing.T) {
 func TestToolsNames(t *testing.T) {
 	ctx := context.Background()
 
-	t.Run("Conflict", func(t *testing.T) {
-		// Two tools can't have the same new name in the same call, but each
-		// can be got
+	t.Run("Distinct", func(t *testing.T) {
+		// Tools whose names have underscores have new names of their own,
+		// as the namespace is separated by two underscores, which a
+		// namespace, or a tool's name, can't have, or start or end with one
 		tk, err := toolkit.New(ctx)
 		require.NoError(t, err)
 		require.NoError(t, tk.Add(toolkit.NewNamespace("my_tools", "", echoTool{name: "search"})))
 		require.NoError(t, tk.Add(toolkit.NewNamespace("my", "", echoTool{name: "tools_search"})))
-		_, err = tk.Tools(ctx, "my_tools:search", "my:tools_search")
-		assert.ErrorIs(t, err, llm.ErrConflict)
-		for _, name := range []string{"my_tools:search", "my:tools_search"} {
-			tools, err := tk.Tools(ctx, name)
-			require.NoError(t, err, name)
-			assert.Equal(t, "my_tools_search", tools[0].Name(), name)
+		tools, err := tk.Tools(ctx, "my_tools:search", "my:tools_search")
+		require.NoError(t, err)
+		assert.Equal(t, "my_tools__search", tools[0].Name())
+		assert.Equal(t, "my__tools_search", tools[1].Name())
+		for _, ns := range []toolkit.Namespace{
+			toolkit.NewNamespace("my__tools", "", echoTool{name: "search"}),
+			toolkit.NewNamespace("tools_", "", echoTool{name: "search"}),
+			toolkit.NewNamespace("other", "", echoTool{name: "tools__search"}),
+			toolkit.NewNamespace("other", "", echoTool{name: "_search"}),
+		} {
+			assert.ErrorIs(t, tk.Add(ns), llm.ErrBadParameter, ns.Name())
 		}
 	})
 
 	t.Run("TooLong", func(t *testing.T) {
-		// The new name is at most 64 characters, which is the namespace, an
-		// underscore and the name
+		// The new name is at most 64 characters, which is the namespace, two
+		// underscores and the name
 		tk, err := toolkit.New(ctx)
 		require.NoError(t, err)
 		namespace := "n" + strings.Repeat("a", 39)
-		require.NoError(t, tk.Add(toolkit.NewNamespace(namespace, "", echoTool{name: strings.Repeat("b", 24)}, echoTool{name: strings.Repeat("c", 23)})))
-		_, err = tk.Tools(ctx, namespace+":"+strings.Repeat("b", 24))
+		require.NoError(t, tk.Add(toolkit.NewNamespace(namespace, "", echoTool{name: strings.Repeat("b", 23)}, echoTool{name: strings.Repeat("c", 22)})))
+		_, err = tk.Tools(ctx, namespace+":"+strings.Repeat("b", 23))
 		assert.ErrorIs(t, err, llm.ErrBadParameter)
-		_, err = tk.Tools(ctx, namespace+":"+strings.Repeat("c", 23))
+		_, err = tk.Tools(ctx, namespace+":"+strings.Repeat("c", 22))
 		assert.NoError(t, err)
 	})
 }
@@ -233,18 +239,18 @@ func TestToolsRun(t *testing.T) {
 		byName[tool.Name()] = tool
 	}
 
-	result, err := byName["test_weather"].Run(ctx, json.RawMessage(`{"city":"London"}`))
+	result, err := byName["test__weather"].Run(ctx, json.RawMessage(`{"city":"London"}`))
 	require.NoError(t, err)
 	assert.JSONEq(t, `{"city":"London"}`, string(result.(json.RawMessage)))
 
-	_, err = byName["test_weather"].Run(ctx, json.RawMessage(`{"days":3}`))
+	_, err = byName["test__weather"].Run(ctx, json.RawMessage(`{"days":3}`))
 	assert.ErrorIs(t, err, llm.ErrBadParameter)
 
-	result, err = byName["test_text"].Run(ctx, nil)
+	result, err = byName["test__text"].Run(ctx, nil)
 	require.NoError(t, err)
 	assert.Equal(t, json.RawMessage(`"It's sunny"`), result)
 
-	result, err = byName["test_none"].Run(ctx, nil)
+	result, err = byName["test__none"].Run(ctx, nil)
 	require.NoError(t, err)
 	assert.Nil(t, result)
 }

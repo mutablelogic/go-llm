@@ -104,7 +104,7 @@ Ask a model for its reply to the `messages`, which include earlier turns of the 
 
 - `model`: the model, by name or as `provider:name`, such as `ollama:llama3.2:latest`.
 - `system`: a system prompt, sent before the messages.
-- `tools`: the tools the model can call, from the server's toolkit, such as `weatherapi:current`, or `weatherapi:*` for all the tools in a namespace, which the model calls by their namespace and name separated by an underscore, such as `weatherapi_current`. The reply has the tool calls, rather than their results: the caller runs them, such as with `POST /llm/tool/{name}`, and asks again, with the reply, and a message from the `tool` with their results.
+- `tools`: the tools the model can call, from the server's toolkit, such as `weatherapi:current`, or `weatherapi:*` for all the tools in a namespace, which the model calls by their namespace and name separated by two underscores, such as `weatherapi__current`. The reply has the tool calls, rather than their results: the caller runs them, such as with `POST /llm/tool/{name}`, and asks again, with the reply, and a message from the `tool` with their results.
 - `opt`: options, by key, such as `{"temperature":0.7}`, which the model's provider decodes. The system prompt and the schema are fields, rather than options.
 - `schema`: the JSON schema of the reply, which the model replies with, by calling a `respond` tool, rather than with text. A model which replies with text is asked once to call it, and a result which doesn't conform to the schema is returned to the model to correct, until it's been asked three times. The reply's `result` is the JSON, when the model replied with it.
 

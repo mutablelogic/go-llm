@@ -61,10 +61,6 @@ func (c fakeClient) WatchEvents(context.Context, func(eventschema.Event) error) 
 	return errors.New("not used")
 }
 
-func (c fakeClient) ToolNames(context.Context) (map[string]string, error) {
-	return nil, errors.New("not used")
-}
-
 func (c fakeClient) Chat(_ context.Context, id uuid.UUID, req schema.ChatRequest, stream llm.GeneratorStreamFn) (*schema.ChatResponse, error) {
 	if c.err != nil {
 		return nil, c.err
@@ -448,10 +444,10 @@ func Test_Debug(t *testing.T) {
 	// they're shown, by their canonical names
 	thought := providerschema.Message{MessageMeta: providerschema.MessageMeta{Sender: "assistant", Content: []providerschema.ContentBlock{
 		{Thinking: types.Ptr("Secret reasoning")},
-		{ToolCall: &providerschema.ToolCall{Name: "homeassistant_call_service", Input: json.RawMessage(`{}`)}},
+		{ToolCall: &providerschema.ToolCall{Name: "homeassistant__call_service", Input: json.RawMessage(`{}`)}},
 	}}}
 	result := providerschema.Message{MessageMeta: providerschema.MessageMeta{Sender: "tool", Content: []providerschema.ContentBlock{
-		{ToolResult: &providerschema.ToolResult{Name: "homeassistant_call_service", Content: json.RawMessage(`"ok"`)}},
+		{ToolResult: &providerschema.ToolResult{Name: "homeassistant__call_service", Content: json.RawMessage(`"ok"`)}},
 	}}}
 	reply := providerschema.Message{MessageMeta: providerschema.MessageMeta{Sender: "assistant", Content: []providerschema.ContentBlock{{Text: types.Ptr("The lamp is off")}}}}
 	session := &schema.Session{ID: uuid.New(), Messages: []providerschema.Message{thought, result, reply}}
@@ -467,7 +463,7 @@ func Test_Debug(t *testing.T) {
 	assert.NotContains(t, m.history.View(), "Streamed reasoning")
 
 	m, _ = newTestModel(fakeClient{}, session)
-	m.debug, m.tools = true, map[string]string{"homeassistant_call_service": "homeassistant:call_service"}
+	m.debug = true
 	m.render()
 	view = m.history.View()
 	assert.Contains(t, view, "Secret reasoning")

@@ -47,9 +47,10 @@ const (
 	// name
 	ToolSeparator = ":"
 
-	// modelToolSeparator separates the namespace and name in the name a
-	// model calls a tool by
-	modelToolSeparator = "_"
+	// ModelToolSeparator separates the namespace and name in the name a
+	// model calls a tool by, which a namespace, or a tool's name, can't
+	// have, so it's separated where it is
+	ModelToolSeparator = "__"
 )
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -62,10 +63,29 @@ func CanonicalToolName(namespace, name string) string {
 }
 
 // ModelToolName returns the name a model calls a tool in a namespace by,
-// which is the namespace and tool name separated by an underscore, as a
-// model's tool names can't have a colon, such as homeassistant_call_service
+// which is the namespace and tool name separated by two underscores, as a
+// model's tool names can't have a colon, such as homeassistant__call_service
 func ModelToolName(namespace, name string) string {
-	return namespace + modelToolSeparator + name
+	return namespace + ModelToolSeparator + name
+}
+
+// CanonicalFromModelToolName returns the canonical name of the tool which a
+// model calls by the name, such as homeassistant:call_service for
+// homeassistant__call_service, or the name, when it isn't a tool in a
+// namespace, such as respond
+func CanonicalFromModelToolName(name string) string {
+	if namespace, tool, ok := strings.Cut(name, ModelToolSeparator); ok && namespace != "" && tool != "" {
+		return CanonicalToolName(namespace, tool)
+	}
+	return name
+}
+
+// IsModelToolPart returns true when the name, of a namespace, or of a tool
+// in one, can be part of the name a model calls a tool by, so it's
+// separated where it is: it doesn't have two underscores, and doesn't start,
+// or end, with one, which would be next to the separator
+func IsModelToolPart(name string) bool {
+	return !strings.Contains(name, ModelToolSeparator) && !strings.HasPrefix(name, "_") && !strings.HasSuffix(name, "_")
 }
 
 ////////////////////////////////////////////////////////////////////////////////
