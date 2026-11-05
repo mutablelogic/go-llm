@@ -4,9 +4,13 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"sync"
+	"time"
+	"uuid"
 
 	// Packages
 	llm "github.com/mutablelogic/go-llm"
+	deadline "github.com/mutablelogic/go-llm/internal/deadline"
 	taggroup "github.com/mutablelogic/go-llm/internal/taggroup"
 	toolkit "github.com/mutablelogic/go-llm/toolkit"
 	schema "github.com/mutablelogic/go-llm/toolkit/schema"
@@ -15,6 +19,7 @@ import (
 	httprouter "github.com/mutablelogic/go-server/pkg/httprouter"
 	jsonschema "github.com/mutablelogic/go-server/pkg/jsonschema"
 	openapi "github.com/mutablelogic/go-server/pkg/openapi"
+	types "github.com/mutablelogic/go-server/pkg/types"
 )
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -87,6 +92,10 @@ func toolGetCallHandlers(tools *toolkit.Toolkit, router *httprouter.Router, docu
 			name := r.PathValue("name")
 			if err := httprequest.Read(r, &req); err != nil {
 				httpresponse.Error(w, httpresponse.ErrBadRequest.Withf("%w", err))
+			} else if accept, err := types.AcceptContentType(r); err != nil {
+				httpresponse.Error(w, httpresponse.ErrBadRequest.With(err.Error()))
+			} else if accept == types.ContentTypeTextStream {
+				callToolStream(w, r, tools, name, req.Input)
 			} else if result, err := tools.CallTool(r.Context(), name, req.Input); err != nil {
 				httpresponse.Error(w, llm.HTTPErr(err), name)
 			} else if result == nil {
@@ -98,7 +107,8 @@ func toolGetCallHandlers(tools *toolkit.Toolkit, router *httprouter.Router, docu
 			op.Summary("Call Tool")
 			op.Description(documentation.Section(3, "POST /llm/tool/{name}").Body)
 			op.RequestBody(jsonschema.MustFor[schema.CallToolRequest]())
-			op.JSONResponse(http.StatusOK, jsonschema.MustFor[json.RawMessage](), "Result of the tool as JSON")
+			op.JSONResponse(http.StatusOK, jsonschema.MustFor[json.RawMessage](), "Result of the tool as JSON, or a stream of server-sent events when text/event-stream is accepted")
+			op.TextStreamResponse(http.StatusOK)
 			op.EmptyResponse("The tool has no result")
 			op.ErrorResponse(http.StatusBadRequest, "Invalid request body, or the input doesn't match the tool's input schema")
 			op.ErrorResponse(http.StatusNotFound, "Tool not found")
@@ -106,3 +116,57 @@ func toolGetCallHandlers(tools *toolkit.Toolkit, router *httprouter.Router, docu
 		})
 	})
 }
+
+// callToolStream calls the tool with the name, with the input, and streams
+// what it logs, and its progress, as server-sent events, as it runs, and
+// then its result, or its error. A client which stops reading has each
+// write time out, rather than holding the tool up.
+func callToolStream(w http.ResponseWriter, r *http.Request, tools *toolkit.Toolkit, name string, input json.RawMessage) {
+	dw, err := deadline.New(w, streamWriteTimeout)
+	if err != nil {
+		httpresponse.Error(w, httpresponse.ErrInternalError.With(err.Error()))
+		return
+	}
+	stream := httpresponse.NewTextStream(dw, "X-Accel-Buffering", "no")
+	if stream == nil {
+		httpresponse.Error(w, httpresponse.ErrInternalError.With("streaming isn't supported"))
+		return
+	}
+	defer stream.Close()
+
+	// What the tool streams, from each goroutine it streams from, until it
+	// returns, when its result is written
+	var mu sync.Mutex
+	done := false
+	session := toolkit.NewSession(name, uuid.Nil(), func(what llm.StreamType, text string) {
+		mu.Lock()
+		defer mu.Unlock()
+		if done {
+			return
+		}
+		switch what {
+		case llm.StreamLog:
+			stream.Write(schema.EventLog, schema.LogEvent{Text: text})
+		case llm.StreamProgress:
+			p := llm.ParseProgress(text)
+			percent, _ := p.Percent()
+			stream.Write(schema.EventProgress, schema.ProgressEvent{Status: p.Message, Percent: percent, Progress: p.Progress, Total: p.Total, Message: p.Message})
+		}
+	}, nil)
+	result, err := tools.CallTool(toolkit.WithSession(r.Context(), session), name, input)
+
+	mu.Lock()
+	defer mu.Unlock()
+	done = true
+	if err != nil {
+		stream.Write(schema.EventError, schema.ErrorEvent{Error: llm.HTTPErr(err).Error()})
+	} else if result == nil {
+		stream.Write(schema.EventResult, json.RawMessage("null"))
+	} else {
+		stream.Write(schema.EventResult, result)
+	}
+}
+
+// streamWriteTimeout is the longest a write to a client's stream can take,
+// before the client is taken to have stopped reading
+var streamWriteTimeout = 30 * time.Second

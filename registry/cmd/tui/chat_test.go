@@ -561,3 +561,19 @@ func Test_LogsReloaded(t *testing.T) {
 	assert.Less(t, strings.Index(view, "→ call_service"), logged)
 	assert.Less(t, logged, strings.Index(view, "← call_service"))
 }
+
+func Test_Progress(t *testing.T) {
+	// A tool's progress is shown as the reply is streamed, in place of the
+	// one before, and not once the reply is complete
+	id := uuid.New()
+	m, _ := newTestModel(fakeClient{}, &schema.Session{ID: id})
+	m.waiting = true
+	m.Update(streamMsg{llm.StreamProgress, llm.Progress{Progress: 1, Message: "Agent segment is thinking"}.Text()})
+	assert.Contains(t, m.history.View(), "Agent segment is thinking")
+	m.Update(streamMsg{llm.StreamProgress, llm.Progress{Progress: 3, Total: 4, Message: "Segmenting"}.Text()})
+	view := m.history.View()
+	assert.Contains(t, view, "Segmenting (75%)")
+	assert.NotContains(t, view, "Agent segment is thinking")
+	m.Update(replyMsg{asked: 0, response: &schema.ChatResponse{ID: id, Serial: 2}})
+	assert.NotContains(t, m.history.View(), "Segmenting")
+}

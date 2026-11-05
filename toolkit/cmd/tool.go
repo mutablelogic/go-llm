@@ -5,10 +5,13 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 	"strings"
 
 	// Packages
+	ansi "github.com/charmbracelet/x/ansi"
+	llm "github.com/mutablelogic/go-llm"
 	httpclient "github.com/mutablelogic/go-llm/toolkit/httpclient"
 	schema "github.com/mutablelogic/go-llm/toolkit/schema"
 	server "github.com/mutablelogic/go-server"
@@ -96,9 +99,15 @@ func (cmd *ToolCallCmd) Run(ctx server.Cmd) error {
 		input = json.RawMessage(text)
 	}
 
-	// Perform the request
+	// Perform the request, which, on a terminal, prints what the tool logs,
+	// and its progress, as it runs, apart from its result
+	var printer *toolPrinter
+	if width := ctx.IsTerm(); width > 0 {
+		printer = &toolPrinter{w: os.Stderr, width: width}
+	}
 	return withToolkit(ctx, "llm.ToolCallCmd", func(ctx context.Context, client *httpclient.Client) error {
-		result, err := client.CallTool(ctx, cmd.Name, input)
+		result, err := client.CallToolStream(ctx, cmd.Name, input, printer.Stream())
+		printer.End()
 		if err != nil {
 			return err
 		}
@@ -115,4 +124,57 @@ func (cmd *ToolCallCmd) Run(ctx server.Cmd) error {
 		fmt.Println(buf.String())
 		return nil
 	})
+}
+
+///////////////////////////////////////////////////////////////////////////////
+// TOOL PRINTER
+
+// toolPrinter prints what a tool logs, as it runs, dimmed, and its
+// progress, on a line which its next progress replaces, which is cleared
+// before anything else, and when it's done
+type toolPrinter struct {
+	w        io.Writer
+	width    int
+	progress bool
+}
+
+// Stream returns the function which prints what the tool streams, or nil
+// when it isn't printed
+func (p *toolPrinter) Stream() llm.GeneratorStreamFn {
+	if p == nil {
+		return nil
+	}
+	return p.print
+}
+
+// End clears the tool's progress
+func (p *toolPrinter) End() {
+	if p != nil {
+		p.clear()
+	}
+}
+
+func (p *toolPrinter) print(what llm.StreamType, text string) {
+	switch what {
+	case llm.StreamLog:
+		p.clear()
+		fmt.Fprint(p.w, "\x1b[2m"+strings.TrimRight(text, "\n")+"\x1b[0m\n")
+	case llm.StreamProgress:
+		progress := llm.ParseProgress(text)
+		text := progress.Message
+		if percent, ok := progress.Percent(); ok {
+			text = fmt.Sprintf("%s (%.0f%%)", text, percent)
+		}
+		p.clear()
+		fmt.Fprint(p.w, "\x1b[2m"+ansi.Truncate(text, p.width-1, "…")+"\x1b[0m")
+		p.progress = true
+	}
+}
+
+// clear clears the line of the tool's progress, when it's printed
+func (p *toolPrinter) clear() {
+	if p.progress {
+		fmt.Fprint(p.w, "\r\x1b[K")
+		p.progress = false
+	}
 }

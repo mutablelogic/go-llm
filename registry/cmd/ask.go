@@ -250,6 +250,7 @@ type streamPrinter struct {
 	live     strings.Builder     // What's printed which is to be replaced
 	text     strings.Builder     // The text which replaces it, rendered as markdown
 	thinking bool                // Whether "Thinking…" is printed, which is replaced
+	progress bool                // Whether a tool's progress is printed, on a line which is replaced
 	last     llm.StreamType      // What was printed last
 	trailing string              // The last piece of text which was printed
 	render   func(string) string // Renders text as markdown, to fit the width
@@ -303,6 +304,7 @@ func (p *streamPrinter) End() {
 	if p == nil {
 		return
 	}
+	p.clearProgress()
 	p.replace()
 	if p.last != "" && !strings.HasSuffix(p.trailing, "\n") {
 		fmt.Fprintln(p.w)
@@ -313,6 +315,17 @@ func (p *streamPrinter) print(what llm.StreamType, text string) {
 	if text == "" {
 		return
 	}
+
+	// A tool's progress is printed on a line of its own, on a terminal,
+	// which the next progress replaces, and is cleared before anything else
+	if what == llm.StreamProgress {
+		if p.width > 0 {
+			p.printProgress(llm.ParseProgress(text))
+		}
+		return
+	}
+	p.clearProgress()
+
 	switch {
 	case p.width <= 0:
 		// Not a terminal: only the text, as it is
@@ -339,6 +352,34 @@ func (p *streamPrinter) print(what llm.StreamType, text string) {
 	default:
 		p.text.WriteString(text)
 		p.write(what, text, true)
+	}
+}
+
+// printProgress prints the tool's progress, dimmed, on a line of its own,
+// in place of its progress before, after what's printed before it is
+// replaced, so it's kept. It fits the width, so it's on one line, which can
+// be replaced.
+func (p *streamPrinter) printProgress(progress llm.Progress) {
+	p.replace()
+	if p.progress {
+		fmt.Fprint(p.w, "\r\x1b[K")
+	} else if p.last != "" && !strings.HasSuffix(p.trailing, "\n") {
+		fmt.Fprintln(p.w)
+		p.trailing = "\n"
+	}
+	text := progress.Message
+	if percent, ok := progress.Percent(); ok {
+		text = fmt.Sprintf("%s (%.0f%%)", text, percent)
+	}
+	fmt.Fprint(p.w, "\x1b[2m"+ansi.Truncate(text, p.width-1, "…")+"\x1b[0m")
+	p.progress = true
+}
+
+// clearProgress clears the line of a tool's progress, when it's printed
+func (p *streamPrinter) clearProgress() {
+	if p.progress {
+		fmt.Fprint(p.w, "\r\x1b[K")
+		p.progress = false
 	}
 }
 

@@ -110,3 +110,36 @@ func Test_RowsOf(t *testing.T) {
 	assert.Equal(t, 2, rowsOf(strings.Repeat("a", 11), 10))
 	assert.Equal(t, 3, rowsOf("\x1b[2mThinking…\x1b[0m\n\nhi", 10))
 }
+
+func Test_StreamPrinterProgress(t *testing.T) {
+	t.Run("Terminal", func(t *testing.T) {
+		// A tool's progress is on a line of its own, after the text before
+		// it, which each progress replaces, with its percent, when it's
+		// known, and which is cleared before what's next
+		p, buf := newTestPrinter(80, 24)
+		p.print(llm.StreamText, "Let me check.")
+		p.print(llm.StreamProgress, llm.Progress{Progress: 1, Message: "Agent segment is thinking"}.Text())
+		p.print(llm.StreamProgress, llm.Progress{Progress: 5, Total: 10, Message: "Segmenting"}.Text())
+		p.print(llm.StreamText, "Done.")
+		p.End()
+		out := buf.String()
+		assert.Contains(t, out, "[Let me check.]\n\x1b[2mAgent segment is thinking\x1b[0m\r\x1b[K\x1b[2mSegmenting (50%)\x1b[0m\r\x1b[K")
+		assert.True(t, strings.HasSuffix(out, "[Done.]\n"), out)
+	})
+
+	t.Run("Long", func(t *testing.T) {
+		// Progress fits the width, so it's on one line
+		p, buf := newTestPrinter(10, 24)
+		p.print(llm.StreamProgress, llm.Progress{Message: "Agent segment is replying"}.Text())
+		assert.Contains(t, buf.String(), "\x1b[2mAgent se…\x1b[0m")
+	})
+
+	t.Run("NotTerminal", func(t *testing.T) {
+		// Progress isn't printed when the output isn't a terminal
+		p, buf := newTestPrinter(0, 0)
+		p.print(llm.StreamProgress, llm.Progress{Message: "Working"}.Text())
+		p.print(llm.StreamText, "Done")
+		p.End()
+		assert.Equal(t, "Done\n", buf.String())
+	})
+}
