@@ -46,7 +46,7 @@ LABEL org.opencontainers.image.source=${SOURCE}
 
 # The server keeps its providers, sessions, agents and memory in /data,
 # which is its cache directory, and listens on every interface. The
-# entrypoint adds the providers of a new installation: Eliza, unless NOELIZA
+# entrypoint adds the providers of a new installation: Eliza, unless NO_ELIZA
 # is set, and those whose variables are set, such as OLLAMA_ADDR, or
 # OPENAI_API_KEY.
 ENV XDG_CACHE_HOME=/data
