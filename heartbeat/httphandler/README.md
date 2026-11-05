@@ -14,7 +14,7 @@ List the heartbeats, those which fire soonest first, and those which won't fire 
 
 ### POST /heartbeat
 
-Create a heartbeat, with its `title`, `prompt` and `session`, and either a `schedule`, and a `timezone`, when it has one, or a time, `at`. Returns the heartbeat, with when it fires `next`. Returns 400 if it has no title, or prompt, or session, has neither a schedule nor a time, or both, its schedule isn't valid, its time zone isn't known, or its time has passed.
+Create a heartbeat, with its `title`, `prompt` and `session`, and either a `schedule`, and a `timezone`, when it has one, or a time, `at`. Returns the heartbeat, with when it fires `next`. Returns 400 if it has no title, or prompt, or session, or its session doesn't exist, has neither a schedule nor a time, or both, its schedule isn't valid, its time zone isn't known, or its time has passed.
 
 ### GET /heartbeat/{id}
 
@@ -22,7 +22,7 @@ Get the heartbeat with the identifier. Returns 404 if there's none.
 
 ### PATCH /heartbeat/{id}
 
-Change the heartbeat with the identifier: its `title`, `prompt`, `schedule`, which replaces its time, `at`, which replaces its schedule, and fires again, or `timezone`, which is empty to follow the person's. Returns the heartbeat. Returns 400 if it isn't valid, or 404 if there's none.
+Change the heartbeat with the identifier: its `title`, `prompt`, `schedule`, which replaces its time, `at`, which replaces its schedule, and fires again, or `timezone`, which is empty to follow the person's. Returns the heartbeat. Returns 400 if it isn't valid, or a new time has passed, or 404 if there's none.
 
 ### DELETE /heartbeat/{id}
 

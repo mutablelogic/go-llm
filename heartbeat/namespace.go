@@ -33,13 +33,13 @@ var _ toolkit.Namespace = (*Heartbeats)(nil)
 // toolInput is the input of the heartbeats tool: its operation, and what the
 // operation needs
 type toolInput struct {
-	Operation string `json:"operation" enum:"schedule,list,update,cancel" help:"schedule a heartbeat, list the conversation's heartbeats, update a heartbeat, by its id, or cancel it"`
-	ID        string `json:"id,omitempty" help:"Identifier of the heartbeat, to update or cancel" optional:""`
-	Title     string `json:"title,omitempty" help:"What it's for, in a few words, such as Morning briefing, to schedule, or update" optional:""`
-	Prompt    string `json:"prompt,omitempty" help:"The instruction you'll be given, when it fires, which is all you'll have, so it says everything that's needed, such as Give David the weather in Berlin, and three news headlines, briefly, to schedule, or update" optional:""`
-	Schedule  string `json:"schedule,omitempty" help:"When it fires, again and again, as a cron expression, minute hour day month weekday, such as 0 8 * * 1-5 for eight on weekdays, to schedule, or update" optional:""`
-	At        string `json:"at,omitempty" help:"When it fires, once, such as 2026-11-06T15:00:00, in the person's time zone, or with an offset, such as 2026-11-06T15:00:00+01:00, to schedule, or update" optional:""`
-	Timezone  string `json:"timezone,omitempty" help:"Time zone of the schedule, by its IANA name, such as Europe/Berlin, only when it must stay in that zone, as it otherwise follows the person's" optional:""`
+	Operation string  `json:"operation" enum:"schedule,list,update,cancel" help:"schedule a heartbeat, list the conversation's heartbeats, update a heartbeat, by its id, or cancel it"`
+	ID        string  `json:"id,omitempty" help:"Identifier of the heartbeat, to update or cancel" optional:""`
+	Title     string  `json:"title,omitempty" help:"What it's for, in a few words, such as Morning briefing, to schedule, or update" optional:""`
+	Prompt    string  `json:"prompt,omitempty" help:"The instruction you'll be given, when it fires, which is all you'll have, so it says everything that's needed, such as Give David the weather in Berlin, and three news headlines, briefly, to schedule, or update" optional:""`
+	Schedule  string  `json:"schedule,omitempty" help:"When it fires, again and again, as a cron expression, minute hour day month weekday, such as 0 8 * * 1-5 for eight on weekdays, to schedule, or update" optional:""`
+	At        string  `json:"at,omitempty" help:"When it fires, once, such as 2026-11-06T15:00:00, in the person's time zone, or with an offset, such as 2026-11-06T15:00:00+01:00, to schedule, or update" optional:""`
+	Timezone  *string `json:"timezone,omitempty" help:"Time zone of the schedule, by its IANA name, such as Europe/Berlin, only when it must stay in that zone, as it otherwise follows the person's, or empty, to update it to follow theirs" optional:""`
 }
 
 // heartbeatOutput is a heartbeat, as a model is told it
@@ -111,17 +111,19 @@ func (t *tool) Run(ctx context.Context, input json.RawMessage) (any, error) {
 	if err := json.Unmarshal(input, &req); err != nil {
 		return nil, llm.ErrBadParameter.With(err.Error())
 	}
+	// Heartbeats are the conversation's, so another's can't be seen, or
+	// changed
 	session := toolkit.SessionFromContext(ctx).ID()
+	if session == uuid.Nil() {
+		return nil, llm.ErrBadParameter.With("heartbeats are a conversation's, and this isn't one")
+	}
 	switch req.Operation {
 	case "schedule":
-		if session == uuid.Nil() {
-			return nil, llm.ErrBadParameter.With("a heartbeat is scheduled in a conversation, which this isn't")
-		}
 		at, err := t.at(req.At)
 		if err != nil {
 			return nil, err
 		}
-		heartbeat, err := t.heartbeats.Create(ctx, schema.HeartbeatMeta{Title: req.Title, Prompt: req.Prompt, Session: session, Schedule: req.Schedule, At: at, Timezone: req.Timezone})
+		heartbeat, err := t.heartbeats.Create(ctx, schema.HeartbeatMeta{Title: req.Title, Prompt: req.Prompt, Session: session, Schedule: req.Schedule, At: at, Timezone: types.Value(req.Timezone)})
 		if err != nil {
 			return nil, err
 		}
@@ -129,7 +131,7 @@ func (t *tool) Run(ctx context.Context, input json.RawMessage) (any, error) {
 		return t.output(heartbeat), nil
 	case "list":
 		toolkit.Logf(ctx, "Looking at what's scheduled")
-		list, err := t.heartbeats.List(ctx, schema.HeartbeatListRequest{Session: sessionString(session)})
+		list, err := t.heartbeats.List(ctx, schema.HeartbeatListRequest{Session: session.String()})
 		if err != nil {
 			return nil, err
 		}
@@ -139,7 +141,7 @@ func (t *tool) Run(ctx context.Context, input json.RawMessage) (any, error) {
 		}
 		return result, nil
 	case "update":
-		id, err := parseID(req.ID)
+		id, err := t.own(ctx, session, req.ID)
 		if err != nil {
 			return nil, err
 		}
@@ -153,9 +155,7 @@ func (t *tool) Run(ctx context.Context, input json.RawMessage) (any, error) {
 		if req.Schedule != "" {
 			change.Schedule = types.Ptr(req.Schedule)
 		}
-		if req.Timezone != "" {
-			change.Timezone = types.Ptr(req.Timezone)
-		}
+		change.Timezone = req.Timezone
 		if change.At, err = t.at(req.At); err != nil {
 			return nil, err
 		}
@@ -166,7 +166,7 @@ func (t *tool) Run(ctx context.Context, input json.RawMessage) (any, error) {
 		toolkit.Logf(ctx, "Rescheduling %s", heartbeat.Title)
 		return t.output(heartbeat), nil
 	case "cancel":
-		id, err := parseID(req.ID)
+		id, err := t.own(ctx, session, req.ID)
 		if err != nil {
 			return nil, err
 		}
@@ -182,6 +182,22 @@ func (t *tool) Run(ctx context.Context, input json.RawMessage) (any, error) {
 
 ///////////////////////////////////////////////////////////////////////////////
 // PRIVATE METHODS
+
+// own returns the identifier of the heartbeat, when it's the session's, or
+// ErrNotFound when there's none, or it's another session's
+func (t *tool) own(ctx context.Context, session uuid.UUID, s string) (uuid.UUID, error) {
+	id, err := parseID(s)
+	if err != nil {
+		return uuid.Nil(), err
+	}
+	heartbeat, err := t.heartbeats.Get(ctx, id)
+	if err != nil {
+		return uuid.Nil(), err
+	} else if heartbeat.Session != session {
+		return uuid.Nil(), llm.ErrNotFound.Withf("heartbeat %q", id)
+	}
+	return id, nil
+}
 
 // at returns the time, with its offset, or in the person's time zone,
 // without one, or nil, when there's none
@@ -239,14 +255,6 @@ func parseID(s string) (uuid.UUID, error) {
 		return uuid.Nil(), llm.ErrBadParameter.Withf("invalid heartbeat id %q", s)
 	}
 	return id, nil
-}
-
-// sessionString returns the session's identifier, or none, for the nil UUID
-func sessionString(session uuid.UUID) string {
-	if session == uuid.Nil() {
-		return ""
-	}
-	return session.String()
 }
 
 // heartbeatPrompt is how the model uses heartbeats, with the time, and the

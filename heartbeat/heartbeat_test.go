@@ -302,3 +302,56 @@ func Test_DeleteSession(t *testing.T) {
 	cancel()
 	assert.NoError(t, <-done)
 }
+
+func Test_UpdatePassed(t *testing.T) {
+	// A heartbeat whose time has passed can still have its title changed,
+	// but not be given a time which has passed
+	c := &clock{}
+	c.Set("2026-01-05T08:00:00Z")
+	h, _, _ := newHeartbeats(t, heartbeat.NewStore(), c)
+	once, err := h.Create(t.Context(), schema.HeartbeatMeta{Title: "Call", Prompt: "Remind them to call", Session: uuid.New(), At: types.Ptr(at("2026-01-05T09:00:00Z"))})
+	require.NoError(t, err)
+	c.Set("2026-01-05T12:00:00Z")
+	got, err := h.Update(t.Context(), once.ID, schema.HeartbeatRequest{Title: types.Ptr("Call Mum")})
+	require.NoError(t, err)
+	assert.Equal(t, "Call Mum", got.Title)
+	_, err = h.Update(t.Context(), once.ID, schema.HeartbeatRequest{At: types.Ptr(at("2026-01-05T10:00:00Z"))})
+	assert.ErrorIs(t, err, llm.ErrBadParameter)
+}
+
+func Test_Sessions(t *testing.T) {
+	// With the sessions, a heartbeat is created for one which exists, and,
+	// when its session is deleted, and the event is missed, it's deleted
+	// when it's due, rather than fired
+	var mu sync.Mutex
+	sessions := map[uuid.UUID]bool{}
+	exists := func(_ context.Context, id uuid.UUID) error {
+		mu.Lock()
+		defer mu.Unlock()
+		if sessions[id] {
+			return nil
+		}
+		return llm.ErrNotFound
+	}
+	c := &clock{}
+	c.Set("2026-01-05T08:00:00Z")
+	h, _, ch := newHeartbeats(t, heartbeat.NewStore(), c, heartbeat.WithSessions(exists))
+	session := uuid.New()
+	_, err := h.Create(t.Context(), schema.HeartbeatMeta{Title: "Briefing", Prompt: "Brief me", Session: session, Schedule: "0 9 * * *"})
+	assert.ErrorIs(t, err, llm.ErrBadParameter)
+	mu.Lock()
+	sessions[session] = true
+	mu.Unlock()
+	_, err = h.Create(t.Context(), schema.HeartbeatMeta{Title: "Briefing", Prompt: "Brief me", Session: session, Schedule: "0 9 * * *"})
+	require.NoError(t, err)
+
+	mu.Lock()
+	delete(sessions, session)
+	mu.Unlock()
+	c.Set("2026-01-05T09:00:00Z")
+	heartbeat.Tick(t.Context(), h)
+	assert.Empty(t, fires(t, ch))
+	list, err := h.List(t.Context(), schema.HeartbeatListRequest{})
+	require.NoError(t, err)
+	assert.Equal(t, uint(0), list.Count)
+}

@@ -52,14 +52,15 @@ func ParseTimeSpec(s string) (TimeSpec, error) {
 		name     string
 		min, max int
 		values   *[]int
+		every    bool
 	}{
-		{"minute", 0, 59, &ts.Minute},
-		{"hour", 0, 23, &ts.Hour},
-		{"day", 1, 31, &ts.Day},
-		{"month", 1, 12, &ts.Month},
-		{"weekday", 0, 7, &ts.Weekday},
+		{"minute", 0, 59, &ts.Minute, false},
+		{"hour", 0, 23, &ts.Hour, false},
+		{"day", 1, 31, &ts.Day, true},
+		{"month", 1, 12, &ts.Month, false},
+		{"weekday", 0, 7, &ts.Weekday, true},
 	} {
-		values, err := parseField(fields[i], field.min, field.max)
+		values, err := parseField(fields[i], field.min, field.max, field.every)
 		if err != nil {
 			return TimeSpec{}, llm.ErrBadParameter.Withf("schedule %q has an invalid %s %q: %v", s, field.name, fields[i], err)
 		}
@@ -69,9 +70,6 @@ func ParseTimeSpec(s string) (TimeSpec, error) {
 	// Sunday is 0, or 7
 	if slices.Contains(ts.Weekday, 7) {
 		ts.Weekday = normalize(append(slices.DeleteFunc(ts.Weekday, func(v int) bool { return v == 7 }), 0))
-		if len(ts.Weekday) == 7 {
-			ts.Weekday = nil
-		}
 	}
 	if ts.Next(time.Date(2000, 1, 1, 0, 0, 0, 0, time.UTC), time.UTC).IsZero() {
 		return TimeSpec{}, llm.ErrBadParameter.Withf("schedule %q never happens", s)
@@ -208,26 +206,33 @@ func (ts TimeSpec) matchesDay(t time.Time) bool {
 
 // instant returns the time in the zone of the time on the clock, which is in
 // UTC, at or after the time from, or the zero time, when it's before it. A
-// time which the clocks skip is when it would have been, on the clock as it
-// was, and a time which is repeated is the first time, unless it's before
-// the time from, when it's the second.
+// time which the clocks skip, as they go forward, is when it would have been,
+// on the clock as it was before, which is after they change, and a time which
+// is repeated, as they go back, is the first time, so it's the zero time,
+// when the first time is before the time from, rather than the second.
 func instant(clock time.Time, loc *time.Location, from time.Time) time.Time {
 	t := time.Date(clock.Year(), clock.Month(), clock.Day(), clock.Hour(), clock.Minute(), 0, 0, loc)
-
-	// The earliest time with the same time on the clock, as it's repeated,
-	// when the clocks go back, by as much as two hours
-	candidates := []time.Time{t}
-	for _, d := range []time.Duration{30 * time.Minute, time.Hour, 2 * time.Hour} {
-		if earlier := t.Add(-d); sameClock(earlier.In(loc), t) {
-			candidates = append([]time.Time{earlier}, candidates...)
+	if !sameClock(t, clock) {
+		// The clock was skipped, which time.Date may make a time before the
+		// clocks changed, rather than after, so it's the time on the clock,
+		// at the offset from UTC before they changed, which is three hours
+		// before, as no change is longer
+		_, offset := time.Date(clock.Year(), clock.Month(), clock.Day(), clock.Hour()-3, clock.Minute(), 0, 0, loc).Zone()
+		t = clock.Add(-time.Duration(offset) * time.Second).In(loc)
+	} else {
+		// The earliest time with the same time on the clock, as it's
+		// repeated, when the clocks go back, by as much as two hours
+		for _, d := range []time.Duration{2 * time.Hour, time.Hour, 30 * time.Minute} {
+			if earlier := t.Add(-d); sameClock(earlier.In(loc), clock) {
+				t = earlier
+				break
+			}
 		}
 	}
-	for _, candidate := range candidates {
-		if !candidate.Before(from) {
-			return candidate
-		}
+	if t.Before(from) {
+		return time.Time{}
 	}
-	return time.Time{}
+	return t
 }
 
 // sameClock returns whether the times are the same on a clock, to the
@@ -253,8 +258,10 @@ func nextIn(values []int, value int) (int, bool) {
 }
 
 // parseField returns the values of the field, in order, or none, for any
-// value
-func parseField(s string, min, max int) ([]int, error) {
+// value, which every value is, too, unless they're kept, as for the day and
+// weekday, where any value, "*", isn't the same as every value, such as
+// "1-31", as when both are set, either matches
+func parseField(s string, min, max int, every bool) ([]int, error) {
 	if s == "*" {
 		return nil, nil
 	}
@@ -267,7 +274,7 @@ func parseField(s string, min, max int) ([]int, error) {
 		result = append(result, values...)
 	}
 	result = normalize(result)
-	if len(result) == max-min+1 {
+	if !every && len(result) == max-min+1 {
 		return nil, nil
 	}
 	return result, nil
@@ -275,13 +282,13 @@ func parseField(s string, min, max int) ([]int, error) {
 
 // parsePart returns the values of a value, range or step
 func parsePart(s string, min, max int) ([]int, error) {
-	step := 1
+	step, stepped := 1, false
 	if before, after, ok := strings.Cut(s, "/"); ok {
 		var err error
 		if step, err = strconv.Atoi(after); err != nil || step <= 0 {
 			return nil, llm.ErrBadParameter.Withf("invalid step %q", after)
 		}
-		s = before
+		s, stepped = before, true
 	}
 	start, end := min, max
 	if s != "*" {
@@ -294,7 +301,7 @@ func parsePart(s string, min, max int) ([]int, error) {
 			}
 		} else if v, err := strconv.Atoi(s); err != nil {
 			return nil, llm.ErrBadParameter.Withf("invalid value %q", s)
-		} else if step > 1 {
+		} else if stepped {
 			// A value with a step, such as 5/15, is from it to the end
 			start = v
 		} else {

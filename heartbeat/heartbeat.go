@@ -42,6 +42,7 @@ type Heartbeats struct {
 	broadcaster *broadcaster.Broadcaster
 	tracer      trace.Tracer
 	zone        func() *time.Location
+	session     SessionFunc
 	now         func() time.Time
 
 	// The person's time zone, as it was, and when it changed, so a schedule
@@ -88,7 +89,7 @@ func New(store Store, opts ...Opt) (*Heartbeats, error) {
 	} else if err := o.apply(opts); err != nil {
 		return nil, err
 	}
-	return &Heartbeats{store: store, broadcaster: o.broadcaster, tracer: o.tracer, zone: o.zone, now: time.Now}, nil
+	return &Heartbeats{store: store, broadcaster: o.broadcaster, tracer: o.tracer, zone: o.zone, session: o.session, now: time.Now}, nil
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -104,7 +105,9 @@ func (h *Heartbeats) Create(ctx context.Context, meta schema.HeartbeatMeta) (_ s
 	defer func() { endSpan(err) }()
 
 	now := h.now()
-	if meta, err = h.validate(meta, now); err != nil {
+	if meta, err = h.validate(meta, now, true); err != nil {
+		return schema.Heartbeat{}, err
+	} else if err := h.sessionExists(ctx, meta.Session); err != nil {
 		return schema.Heartbeat{}, err
 	}
 	heartbeat := schema.Heartbeat{ID: uuid.New(), HeartbeatMeta: meta, Created: now.UTC(), Modified: now.UTC()}
@@ -174,7 +177,7 @@ func (h *Heartbeats) Update(ctx context.Context, id uuid.UUID, req schema.Heartb
 
 	now := h.now()
 	heartbeat, err := h.store.Update(ctx, id, func(heartbeat *schema.Heartbeat) error {
-		meta, err := h.validate(req.Apply(heartbeat.HeartbeatMeta), now)
+		meta, err := h.validate(req.Apply(heartbeat.HeartbeatMeta), now, req.At != nil)
 		if err != nil {
 			return err
 		}
@@ -265,15 +268,27 @@ func Sort(heartbeats []schema.Heartbeat) {
 // PRIVATE METHODS
 
 // validate returns the heartbeat, as Validate does, or ErrBadParameter when
-// its time has passed, by more than a minute
-func (h *Heartbeats) validate(meta schema.HeartbeatMeta, now time.Time) (schema.HeartbeatMeta, error) {
+// its time is checked, as it's set, and has passed, by more than a minute
+func (h *Heartbeats) validate(meta schema.HeartbeatMeta, now time.Time, checkAt bool) (schema.HeartbeatMeta, error) {
 	meta, err := meta.Validate()
 	if err != nil {
 		return schema.HeartbeatMeta{}, err
-	} else if meta.At != nil && meta.At.Before(now.Add(-time.Minute)) {
+	} else if checkAt && meta.At != nil && meta.At.Before(now.Add(-time.Minute)) {
 		return schema.HeartbeatMeta{}, llm.ErrBadParameter.Withf("heartbeat's time, %s, has passed", meta.At.Format(time.RFC3339))
 	}
 	return meta, nil
+}
+
+// sessionExists returns nil when the session exists, or isn't checked, or
+// ErrBadParameter when it doesn't exist
+func (h *Heartbeats) sessionExists(ctx context.Context, session uuid.UUID) error {
+	if h.session == nil {
+		return nil
+	} else if err := h.session(ctx, session); errors.Is(err, llm.ErrNotFound) {
+		return llm.ErrBadParameter.Withf("there's no session %q", session)
+	} else {
+		return err
+	}
 }
 
 // withNext returns the heartbeat, with when it fires next

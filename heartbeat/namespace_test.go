@@ -60,10 +60,25 @@ func Test_Tool(t *testing.T) {
 	got, err = run(uuid.New(), `{"operation":"list"}`)
 	require.NoError(t, err)
 	assert.Equal(t, float64(0), got["count"])
-	got, err = run(session, `{"operation":"update","id":"`+id+`","schedule":"0 18 * * *"}`)
+	got, err = run(session, `{"operation":"update","id":"`+id+`","schedule":"0 18 * * *","timezone":"Asia/Tokyo"}`)
 	require.NoError(t, err)
 	assert.Equal(t, "0 18 * * *", got["schedule"])
+	assert.Equal(t, "Asia/Tokyo", got["timezone"])
 	assert.Nil(t, got["at"])
+
+	// An empty time zone follows the person's again
+	got, err = run(session, `{"operation":"update","id":"`+id+`","timezone":""}`)
+	require.NoError(t, err)
+	assert.Nil(t, got["timezone"])
+
+	// Another conversation's heartbeat can't be seen, changed or cancelled,
+	// and none without a conversation
+	_, err = run(uuid.New(), `{"operation":"update","id":"`+id+`","title":"Mine"}`)
+	assert.ErrorIs(t, err, llm.ErrNotFound)
+	_, err = run(uuid.New(), `{"operation":"cancel","id":"`+id+`"}`)
+	assert.ErrorIs(t, err, llm.ErrNotFound)
+	_, err = run(uuid.Nil(), `{"operation":"list"}`)
+	assert.ErrorIs(t, err, llm.ErrBadParameter)
 	_, err = run(session, `{"operation":"cancel","id":"`+id+`"}`)
 	require.NoError(t, err)
 	list, err := h.List(t.Context(), schema.HeartbeatListRequest{})

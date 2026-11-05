@@ -1,7 +1,9 @@
 package heartbeat
 
 import (
+	"context"
 	"time"
+	"uuid"
 
 	// Packages
 	llm "github.com/mutablelogic/go-llm"
@@ -19,7 +21,12 @@ type opt struct {
 	broadcaster *broadcaster.Broadcaster
 	tracer      trace.Tracer
 	zone        func() *time.Location
+	session     SessionFunc
 }
+
+// SessionFunc returns nil when the session with the identifier exists, or
+// ErrNotFound when it doesn't
+type SessionFunc func(context.Context, uuid.UUID) error
 
 ///////////////////////////////////////////////////////////////////////////////
 // LIFECYCLE
@@ -56,6 +63,17 @@ func WithBroadcaster(b *broadcaster.Broadcaster) Opt {
 func WithTracer(tracer trace.Tracer) Opt {
 	return func(o *opt) error {
 		o.tracer = tracer
+		return nil
+	}
+}
+
+// WithSessions sets the function which says whether a session exists, so a
+// heartbeat is only created for one which does, and one whose session was
+// deleted is deleted, rather than fired, such as when the event that it was
+// deleted was missed
+func WithSessions(fn SessionFunc) Opt {
+	return func(o *opt) error {
+		o.session = fn
 		return nil
 	}
 }

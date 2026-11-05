@@ -3,9 +3,11 @@
 package main
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"time"
+	"uuid"
 
 	// Packages
 	agents "github.com/mutablelogic/go-llm/agents"
@@ -101,7 +103,11 @@ func (runner *RunServer) Run(ctx server.Cmd) error {
 			}
 			return runner.Heartbeat.WithHeartbeats(ctx, &runner.RunServer, heartbeats, func(h *heartbeat.Heartbeats) error {
 				return runner.withToolkit(ctx, b, mem, h, store, sessions, agents)
-			}, heartbeat.WithBroadcaster(b), heartbeat.WithZone(zone))
+			}, heartbeat.WithBroadcaster(b), heartbeat.WithZone(zone), heartbeat.WithSessions(func(ctx context.Context, id uuid.UUID) error {
+				// A heartbeat is for a session which exists
+				_, err := sessions.Get(ctx, id)
+				return err
+			}))
 		}, memory.WithBroadcaster(b))
 	})
 }
