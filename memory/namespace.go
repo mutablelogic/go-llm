@@ -52,8 +52,9 @@ func (m *Memory) Tools() []llm.Tool {
 // PRIVATE FUNCTIONS
 
 // systemPrompt returns the time, the details which are known, and those
-// which aren't, other than the assistant's name, which the model is to ask
-// for, and remember
+// which aren't: the assistant's name, which the model asks for first, the
+// person's, which it may ask for, and the rest, which it learns from the
+// conversation, and how to remember them
 func systemPrompt(details schema.Details, now time.Time) string {
 	sentences := []string{currentTime(now)}
 	if name, ok := details.Value(schema.FieldAssistant); ok {
@@ -74,26 +75,37 @@ func systemPrompt(details schema.Details, now time.Time) string {
 		sentences = append(sentences, fmt.Sprintf("%s %s %s.", person, verb(person, "speaks", "speak"), language))
 	}
 
-	// What isn't known, which can be remembered
-	var unknown []string
-	for _, field := range []schema.Field{schema.FieldName, schema.FieldLocation, schema.FieldTimezone, schema.FieldLanguage} {
+	// What isn't known: the assistant asks for its name, before anything
+	// else, may ask for the person's, and learns the rest as the
+	// conversation makes them clear
+	unknown := false
+	if details.Get(schema.FieldAssistant) == nil {
+		sentences = append(sentences, "You don't have a name yet. Before anything else, ask the person what they'd like to call you.")
+		unknown = true
+	}
+	if details.Get(schema.FieldName) == nil {
+		sentences = append(sentences, "You don't know the person's name. You can ask for it once, when it fits the conversation, but don't press them.")
+		unknown = true
+	}
+	var inferred []string
+	for _, field := range []schema.Field{schema.FieldLocation, schema.FieldTimezone, schema.FieldLanguage} {
 		if details.Get(field) == nil {
-			unknown = append(unknown, unknownPhrases[field])
+			inferred = append(inferred, unknownPhrases[field])
 		}
 	}
-	if len(unknown) > 0 {
-		ask := "for them, one at a time,"
-		if len(unknown) == 1 {
-			ask = "for it"
-		}
-		sentences = append(sentences, fmt.Sprintf("You don't know %s. Ask the person %s when it fits the conversation, and remember what they tell you, or that they'd rather not say, with the set_detail tool, in the memory namespace.", join(unknown), ask))
+	if len(inferred) > 0 {
+		sentences = append(sentences, fmt.Sprintf("You don't know %s. Don't ask, but when the conversation makes one clear, such as the language they write in, remember it.", join(inferred)))
+		unknown = true
+	}
+	if unknown {
+		sentences = append(sentences, "Remember what you learn, or that the person would rather not say, with the set_detail tool, in the memory namespace.")
 	}
 	return strings.Join(sentences, " ")
 }
 
-// unknownPhrases are how what isn't known of each field is said
+// unknownPhrases are how what isn't known of each field, which is learnt
+// from the conversation, is said
 var unknownPhrases = map[schema.Field]string{
-	schema.FieldName:     "the person's name",
 	schema.FieldLocation: "where they are",
 	schema.FieldTimezone: "their time zone",
 	schema.FieldLanguage: "the language they speak",

@@ -127,7 +127,7 @@ func Test_Events(t *testing.T) {
 func Test_SystemPrompt(t *testing.T) {
 	berlin, err := time.LoadLocation("Europe/Berlin")
 	require.NoError(t, err)
-	unknown := " You don't know the person's name, where they are, their time zone or the language they speak. Ask the person for them, one at a time, when it fits the conversation, and remember what they tell you, or that they'd rather not say, with the set_detail tool, in the memory namespace."
+	unknown := " You don't have a name yet. Before anything else, ask the person what they'd like to call you. You don't know the person's name. You can ask for it once, when it fits the conversation, but don't press them. You don't know where they are, their time zone or the language they speak. Don't ask, but when the conversation makes one clear, such as the language they write in, remember it. Remember what you learn, or that the person would rather not say, with the set_detail tool, in the memory namespace."
 
 	// The time, by the clock's time zone, as the person's isn't known
 	for name, test := range map[string]struct {
@@ -181,7 +181,7 @@ func Test_SystemPrompt(t *testing.T) {
 		set(t, m, schema.FieldName, &schema.Detail{Declined: true})
 		set(t, m, schema.FieldTimezone, &schema.Detail{Declined: true})
 		set(t, m, schema.FieldLocation, &schema.Detail{Value: "Berlin"})
-		assert.Equal(t, "The current date and time is Thursday, 5 November 2026, 09:30, in the UTC time zone, UTC+00:00. The person you're talking to is in Berlin. You don't know the language they speak. Ask the person for it when it fits the conversation, and remember what they tell you, or that they'd rather not say, with the set_detail tool, in the memory namespace.", m.SystemPrompt())
+		assert.Equal(t, "The current date and time is Thursday, 5 November 2026, 09:30, in the UTC time zone, UTC+00:00. The person you're talking to is in Berlin. You don't have a name yet. Before anything else, ask the person what they'd like to call you. You don't know the language they speak. Don't ask, but when the conversation makes one clear, such as the language they write in, remember it. Remember what you learn, or that the person would rather not say, with the set_detail tool, in the memory namespace.", m.SystemPrompt())
 	})
 
 	t.Run("Language", func(t *testing.T) {
@@ -189,8 +189,19 @@ func Test_SystemPrompt(t *testing.T) {
 		set(t, m, schema.FieldName, &schema.Detail{Declined: true})
 		set(t, m, schema.FieldLocation, &schema.Detail{Declined: true})
 		set(t, m, schema.FieldTimezone, &schema.Detail{Declined: true})
+		set(t, m, schema.FieldAssistant, &schema.Detail{Declined: true})
 		set(t, m, schema.FieldLanguage, &schema.Detail{Value: "German"})
 		assert.Equal(t, "The current date and time is Thursday, 5 November 2026, 09:30, in the UTC time zone, UTC+00:00. The person you're talking to speaks German.", m.SystemPrompt())
+	})
+
+	t.Run("PersonsName", func(t *testing.T) {
+		// Only the person's name isn't known, which it may ask for
+		m := newMemory(t, now)
+		set(t, m, schema.FieldAssistant, &schema.Detail{Value: "Omodie"})
+		set(t, m, schema.FieldLocation, &schema.Detail{Value: "Berlin"})
+		set(t, m, schema.FieldTimezone, &schema.Detail{Declined: true})
+		set(t, m, schema.FieldLanguage, &schema.Detail{Value: "English"})
+		assert.Equal(t, "The current date and time is Thursday, 5 November 2026, 09:30, in the UTC time zone, UTC+00:00. Your name is Omodie. The person you're talking to is in Berlin. They speak English. You don't know the person's name. You can ask for it once, when it fits the conversation, but don't press them. Remember what you learn, or that the person would rather not say, with the set_detail tool, in the memory namespace.", m.SystemPrompt())
 	})
 
 	t.Run("Toolkit", func(t *testing.T) {
