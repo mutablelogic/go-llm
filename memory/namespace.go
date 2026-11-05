@@ -29,8 +29,8 @@ func (*Memory) Name() string {
 
 // SystemPrompt returns the time, in the person's time zone, when it's known,
 // or the system's, and the details which are known, and which aren't, so
-// the model can remember them, when it learns them. The details which are
-// declined aren't in it.
+// the model asks for them, and remembers them. The details which are
+// declined aren't in it, so they aren't asked for.
 func (m *Memory) SystemPrompt() string {
 	details := m.Details()
 	now := m.now()
@@ -52,7 +52,8 @@ func (m *Memory) Tools() []llm.Tool {
 // PRIVATE FUNCTIONS
 
 // systemPrompt returns the time, the details which are known, and those
-// which aren't, other than the assistant's name, and how to remember them
+// which aren't, other than the assistant's name, which the model is to ask
+// for, and remember
 func systemPrompt(details schema.Details, now time.Time) string {
 	sentences := []string{currentTime(now)}
 	if name, ok := details.Value(schema.FieldAssistant); ok {
@@ -81,7 +82,11 @@ func systemPrompt(details schema.Details, now time.Time) string {
 		}
 	}
 	if len(unknown) > 0 {
-		sentences = append(sentences, fmt.Sprintf("You don't know %s. When you learn one, or the person doesn't want you to know it, remember that with the set_detail tool, in the memory namespace.", join(unknown)))
+		ask := "for them, one at a time,"
+		if len(unknown) == 1 {
+			ask = "for it"
+		}
+		sentences = append(sentences, fmt.Sprintf("You don't know %s. Ask the person %s when it fits the conversation, and remember what they tell you, or that they'd rather not say, with the set_detail tool, in the memory namespace.", join(unknown), ask))
 	}
 	return strings.Join(sentences, " ")
 }

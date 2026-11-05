@@ -127,7 +127,7 @@ func Test_Events(t *testing.T) {
 func Test_SystemPrompt(t *testing.T) {
 	berlin, err := time.LoadLocation("Europe/Berlin")
 	require.NoError(t, err)
-	unknown := " You don't know the person's name, where they are, their time zone or the language they speak. When you learn one, or the person doesn't want you to know it, remember that with the set_detail tool, in the memory namespace."
+	unknown := " You don't know the person's name, where they are, their time zone or the language they speak. Ask the person for them, one at a time, when it fits the conversation, and remember what they tell you, or that they'd rather not say, with the set_detail tool, in the memory namespace."
 
 	// The time, by the clock's time zone, as the person's isn't known
 	for name, test := range map[string]struct {
@@ -181,7 +181,7 @@ func Test_SystemPrompt(t *testing.T) {
 		set(t, m, schema.FieldName, &schema.Detail{Declined: true})
 		set(t, m, schema.FieldTimezone, &schema.Detail{Declined: true})
 		set(t, m, schema.FieldLocation, &schema.Detail{Value: "Berlin"})
-		assert.Equal(t, "The current date and time is Thursday, 5 November 2026, 09:30, in the UTC time zone, UTC+00:00. The person you're talking to is in Berlin. You don't know the language they speak. When you learn one, or the person doesn't want you to know it, remember that with the set_detail tool, in the memory namespace.", m.SystemPrompt())
+		assert.Equal(t, "The current date and time is Thursday, 5 November 2026, 09:30, in the UTC time zone, UTC+00:00. The person you're talking to is in Berlin. You don't know the language they speak. Ask the person for it when it fits the conversation, and remember what they tell you, or that they'd rather not say, with the set_detail tool, in the memory namespace.", m.SystemPrompt())
 	})
 
 	t.Run("Language", func(t *testing.T) {
