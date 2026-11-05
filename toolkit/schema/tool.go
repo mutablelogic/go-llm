@@ -56,6 +56,13 @@ type ProgressEvent struct {
 	Message  string  `json:"message,omitempty" help:"What the tool is doing"`
 }
 
+// ResultEvent is the data of a result event, which ends a stream when the
+// tool returns: its result, which is left out when it has none, so a result
+// which is JSON null is told apart from none
+type ResultEvent struct {
+	Result json.RawMessage `json:"result,omitempty" help:"Result of the tool, as JSON, which is left out when it has none"`
+}
+
 // ErrorEvent is the data of an error event, which ends a stream when the
 // tool fails
 type ErrorEvent struct {

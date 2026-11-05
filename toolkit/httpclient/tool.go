@@ -101,10 +101,13 @@ func (c *Client) CallToolStream(ctx context.Context, name string, input json.Raw
 			}
 			stream(llm.StreamProgress, llm.Progress{Progress: data.Progress, Total: data.Total, Message: message}.Text())
 		case schema.EventResult:
-			if data := bytes.TrimSpace([]byte(event.Data)); string(data) != "null" {
-				result = json.RawMessage(data)
+			// The result is left out when there's none, so JSON null is a
+			// result
+			var data map[string]json.RawMessage
+			if err := event.Json(&data); err != nil {
+				return fmt.Errorf("malformed %s event: %w", event.Event, err)
 			}
-			ended = true
+			result, ended = data["result"], true
 		case schema.EventError:
 			var data schema.ErrorEvent
 			if err := event.Json(&data); err != nil {

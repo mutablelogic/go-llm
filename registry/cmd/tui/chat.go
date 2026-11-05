@@ -53,7 +53,7 @@ type model struct {
 	width    int
 	waiting  bool
 	streamed []*group
-	progress string // A tool's progress, as the reply is streamed, which the next replaces
+	progress string              // A tool's progress, as the reply is streamed, which the next replaces
 	logs     map[string][]string // What tools logged, by the tool result, or the position, it's shown before
 	rendered bool
 	err      error

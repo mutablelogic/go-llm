@@ -49,6 +49,15 @@ func (echoTool) Run(_ context.Context, input json.RawMessage) (any, error) {
 	return input, nil
 }
 
+// nullTool returns JSON null, which is a result, rather than none
+type nullTool struct {
+	tool
+}
+
+func (nullTool) Run(context.Context, json.RawMessage) (any, error) {
+	return json.RawMessage("null"), nil
+}
+
 // progressTool logs, and says how it's getting on, as it runs, and returns
 // its input, or fails, when its input says so
 type progressTool struct {
@@ -74,7 +83,7 @@ func newClient(t *testing.T) (*httpclient.Client, context.Context) {
 	require.NoError(t, err)
 	require.NoError(t, tools.Add(toolkit.NewNamespace("a", "", tool{name: "one"}, tool{name: "two"})))
 	require.NoError(t, tools.Add(toolkit.NewNamespace("b", "", tool{name: "three"})))
-	require.NoError(t, tools.Add(toolkit.NewNamespace("c", "", echoTool{tool{name: "echo"}}, progressTool{tool{name: "progress"}})))
+	require.NoError(t, tools.Add(toolkit.NewNamespace("c", "", echoTool{tool{name: "echo"}}, progressTool{tool{name: "progress"}}, nullTool{tool{name: "null"}})))
 
 	server := test.NewServerFunc(t, func(router *httprouter.Router) error {
 		return httphandler.RegisterHandlers(tools, router)
@@ -90,8 +99,8 @@ func TestListTools(t *testing.T) {
 	t.Run("All", func(t *testing.T) {
 		list, err := client.ListTools(ctx, schema.ToolListRequest{})
 		require.NoError(t, err)
-		assert.Equal(t, uint64(5), list.Count)
-		require.Len(t, list.Body, 5)
+		assert.Equal(t, uint64(6), list.Count)
+		require.Len(t, list.Body, 6)
 		assert.Equal(t, "one", list.Body[0].Name)
 		assert.Equal(t, "a:one", list.Body[0].Canonical)
 		assert.Equal(t, "A tool for tests", list.Body[0].Description)
@@ -216,6 +225,14 @@ func TestCallToolStream(t *testing.T) {
 		result, err := client.CallToolStream(ctx, "a:one", nil, func(llm.StreamType, string) {})
 		require.NoError(t, err)
 		assert.Nil(t, result)
+
+		// A result which is JSON null is a result, as without a stream
+		result, err = client.CallToolStream(ctx, "c:null", nil, func(llm.StreamType, string) {})
+		require.NoError(t, err)
+		assert.Equal(t, json.RawMessage("null"), result)
+		result, err = client.CallTool(ctx, "c:null", nil)
+		require.NoError(t, err)
+		assert.Equal(t, json.RawMessage("null"), result)
 		result, err = client.CallToolStream(ctx, "c:echo", json.RawMessage(`{"city":"Paris"}`), nil)
 		require.NoError(t, err)
 		assert.JSONEq(t, `{"city":"Paris"}`, string(result))

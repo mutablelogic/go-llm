@@ -160,10 +160,8 @@ func callToolStream(w http.ResponseWriter, r *http.Request, tools *toolkit.Toolk
 	done = true
 	if err != nil {
 		stream.Write(schema.EventError, schema.ErrorEvent{Error: llm.HTTPErr(err).Error()})
-	} else if result == nil {
-		stream.Write(schema.EventResult, json.RawMessage("null"))
 	} else {
-		stream.Write(schema.EventResult, result)
+		stream.Write(schema.EventResult, schema.ResultEvent{Result: result})
 	}
 }
 
