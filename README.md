@@ -126,6 +126,14 @@ Or build them from a clone of the repository, with `make`, into `build/llm`, or 
 llm run
 ```
 
+Or run it with Docker, whose image has the web UI, and keeps its providers, sessions, agents and memory in `/data`. A new installation has the Eliza provider, and those whose variables are set: `OLLAMA_ADDR` and `GOWHISPER_ADDR`, as their URLs, and `OPENAI_API_KEY`, `DEEPSEEK_API_KEY`, `MISTRAL_API_KEY` and `ELEVENLABS_API_KEY`, which are read when they're used, rather than stored. `UID` and `GID` set the user the server runs as, such as the owner of a directory which is mounted at `/data`:
+
+```bash
+docker run -d --name llm -p 8084:8084 -v llm:/data \
+  -e OLLAMA_ADDR=http://ollama:11434 -e OPENAI_API_KEY \
+  ghcr.io/mutablelogic/llm
+```
+
 In another terminal, add providers, with API keys from environment variables, which the server reads:
 
 ```bash
