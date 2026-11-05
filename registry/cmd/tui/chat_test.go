@@ -6,7 +6,9 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"sync"
 	"testing"
+	"time"
 	"uuid"
 
 	// Packages
@@ -57,6 +59,10 @@ func (c fakeClient) SetSessionStatus(_ context.Context, id uuid.UUID, status sch
 
 func (c fakeClient) WatchEvents(context.Context, func(eventschema.Event) error) error {
 	return errors.New("not used")
+}
+
+func (c fakeClient) ToolNames(context.Context) (map[string]string, error) {
+	return nil, errors.New("not used")
 }
 
 func (c fakeClient) Chat(_ context.Context, id uuid.UUID, req schema.ChatRequest, stream llm.GeneratorStreamFn) (*schema.ChatResponse, error) {
@@ -223,6 +229,7 @@ func Test_Wrap(t *testing.T) {
 		{MessageMeta: providerschema.MessageMeta{Sender: "user", Content: []providerschema.ContentBlock{{Text: types.Ptr(long)}}}},
 	}})
 	m.Update(tea.WindowSizeMsg{Width: 40, Height: 100})
+	m.debug = true
 	m.waiting = true
 	m.Update(streamMsg{llm.StreamThinking, "Thinking " + long})
 	m.Update(streamMsg{llm.StreamText, "Text " + long})
@@ -272,21 +279,20 @@ func Test_Changes(t *testing.T) {
 	})
 
 	t.Run("Status", func(t *testing.T) {
-		// The status shows the model replying in another window, and someone
-		// else typing
+		// The status is the session's, as the server says
 		id := uuid.New()
 		m, _ := newTestModel(fakeClient{}, &schema.Session{ID: id})
 		m.Update(sessionChange(t, id, schema.SessionEvent{Status: schema.SessionReplying}))
 		assert.Contains(t, m.status(), "replying…")
 		m.Update(sessionChange(t, id, schema.SessionEvent{Status: schema.SessionTyping}))
-		assert.Contains(t, m.status(), "someone is typing…")
+		assert.Contains(t, m.status(), "typing…")
 		m.Update(sessionChange(t, id, schema.SessionEvent{Status: schema.SessionIdle}))
 		assert.NotContains(t, m.status(), "…")
 	})
 
 	t.Run("Typing", func(t *testing.T) {
 		// The server is told someone is typing, as they type, at most every
-		// typingInterval, and this window doesn't show itself typing
+		// typingInterval, and the status is shown as the server says
 		var statuses []schema.SessionStatus
 		id := uuid.New()
 		m, _ := newTestModel(fakeClient{statuses: &statuses}, &schema.Session{ID: id})
@@ -299,7 +305,7 @@ func Test_Changes(t *testing.T) {
 		}
 		assert.Equal(t, []schema.SessionStatus{schema.SessionTyping}, statuses)
 		m.Update(sessionChange(t, id, schema.SessionEvent{Status: schema.SessionTyping}))
-		assert.NotContains(t, m.status(), "typing")
+		assert.Contains(t, m.status(), "typing…")
 	})
 
 	t.Run("OwnReply", func(t *testing.T) {
@@ -345,4 +351,126 @@ func run(cmd tea.Cmd) []tea.Msg {
 	default:
 		return []tea.Msg{msg}
 	}
+}
+
+// flakyClient fails to watch the changes the times, and then watches them,
+// sending the event, until the context is cancelled
+type flakyClient struct {
+	fakeClient
+	mu    sync.Mutex
+	fails int
+	event eventschema.Event
+}
+
+func (c *flakyClient) WatchEvents(ctx context.Context, fn func(eventschema.Event) error) error {
+	c.mu.Lock()
+	fail := c.fails > 0
+	c.fails--
+	c.mu.Unlock()
+	if fail {
+		return errors.New("server is stopping")
+	}
+	fn(c.event)
+	<-ctx.Done()
+	return nil
+}
+
+func Test_Watch(t *testing.T) {
+	// When the changes can't be watched, that's sent, and they're watched
+	// again after a wait, which is longer each time, and once they are, the
+	// interface is told, so it loads the session again
+	retry, max, settled := watchRetry, watchRetryMax, watchSettled
+	watchRetry, watchRetryMax, watchSettled = 10*time.Millisecond, 25*time.Millisecond, 50*time.Millisecond
+	t.Cleanup(func() { watchRetry, watchRetryMax, watchSettled = retry, max, settled })
+
+	id := uuid.New()
+	event := eventschema.Event{Action: eventschema.EventUpdate, Table: sessionTable, Row: id.String()}
+	client := &flakyClient{fails: 3, event: event}
+	ctx, cancel := context.WithCancel(context.Background())
+	events := make(chan tea.Msg, 16)
+	watching := make(chan struct{})
+	go func() { watch(ctx, client, id, events); close(watching) }()
+	defer func() { cancel(); <-watching }()
+
+	var got []tea.Msg
+	for len(got) < 5 {
+		select {
+		case msg := <-events:
+			got = append(got, msg)
+		case <-time.After(5 * time.Second):
+			t.Fatalf("only %d messages", len(got))
+		}
+	}
+	for i, retry := range []time.Duration{10 * time.Millisecond, 20 * time.Millisecond, 25 * time.Millisecond} {
+		require.IsType(t, watchedMsg{}, got[i])
+		assert.Equal(t, retry, got[i].(watchedMsg).retry)
+		assert.ErrorContains(t, got[i].(watchedMsg).err, "stopping")
+	}
+	assert.Equal(t, eventMsg(event), got[3])
+	assert.Equal(t, rewatchedMsg{}, got[4])
+
+	// The interface shows why, and clears it, and loads the session, once
+	// the changes are watched again
+	m, _ := newTestModel(fakeClient{}, &schema.Session{ID: id})
+	m.Update(got[0])
+	assert.Contains(t, m.history.View(), "server is stopping")
+	_, cmd := m.Update(got[4])
+	assert.NotNil(t, cmd)
+	assert.NotContains(t, m.history.View(), "server is stopping")
+}
+
+func Test_Logs(t *testing.T) {
+	// What tools log, which is streamed, and isn't stored, is kept, and
+	// shown before the tools' results, once the reply is complete
+	id := uuid.New()
+	m, _ := newTestModel(fakeClient{}, &schema.Session{ID: id})
+	m.debug = true
+	m.waiting = true
+	m.session.Messages = append(m.session.Messages, providerschema.Message{MessageMeta: providerschema.MessageMeta{Sender: "user", Content: []providerschema.ContentBlock{{Text: types.Ptr("Lights on")}}}})
+	m.Update(streamMsg{llm.StreamLog, "call_service: Calling service domain=light service=turn_on"})
+	m.Update(streamMsg{llm.StreamText, "Done"})
+	call := providerschema.Message{MessageMeta: providerschema.MessageMeta{Sender: "assistant", Content: []providerschema.ContentBlock{{ToolCall: &providerschema.ToolCall{Name: "call_service", Input: json.RawMessage(`{}`)}}}}}
+	result := providerschema.Message{MessageMeta: providerschema.MessageMeta{Sender: "tool", Content: []providerschema.ContentBlock{{ToolResult: &providerschema.ToolResult{Name: "call_service", Content: json.RawMessage(`[]`)}}}}}
+	reply := providerschema.Message{MessageMeta: providerschema.MessageMeta{Sender: "assistant", Content: []providerschema.ContentBlock{{Text: types.Ptr("Done")}}}}
+	m.Update(replyMsg{asked: 0, response: &schema.ChatResponse{ID: id, Serial: 2, SessionResponse: schema.SessionResponse{
+		Messages: []providerschema.Message{m.session.Messages[0], call, result, reply},
+	}}})
+	view := m.history.View()
+	logged := strings.Index(view, "Calling service")
+	require.GreaterOrEqual(t, logged, 0, view)
+	assert.Less(t, strings.Index(view, "→ call_service"), logged)
+	assert.Less(t, logged, strings.Index(view, "← call_service"))
+}
+
+func Test_Debug(t *testing.T) {
+	// Without debugging, the model's thinking is shown as that it thought,
+	// and the tools it calls, and their results, aren't shown, and with it,
+	// they're shown, by their canonical names
+	thought := providerschema.Message{MessageMeta: providerschema.MessageMeta{Sender: "assistant", Content: []providerschema.ContentBlock{
+		{Thinking: types.Ptr("Secret reasoning")},
+		{ToolCall: &providerschema.ToolCall{Name: "homeassistant_call_service", Input: json.RawMessage(`{}`)}},
+	}}}
+	result := providerschema.Message{MessageMeta: providerschema.MessageMeta{Sender: "tool", Content: []providerschema.ContentBlock{
+		{ToolResult: &providerschema.ToolResult{Name: "homeassistant_call_service", Content: json.RawMessage(`"ok"`)}},
+	}}}
+	reply := providerschema.Message{MessageMeta: providerschema.MessageMeta{Sender: "assistant", Content: []providerschema.ContentBlock{{Text: types.Ptr("The lamp is off")}}}}
+	session := &schema.Session{ID: uuid.New(), Messages: []providerschema.Message{thought, result, reply}}
+
+	m, _ := newTestModel(fakeClient{}, session)
+	view := m.history.View()
+	assert.Contains(t, view, "Thinking…")
+	assert.NotContains(t, view, "Secret reasoning")
+	assert.NotContains(t, view, "call_service")
+	assert.Contains(t, view, "The lamp is off")
+	m.waiting = true
+	m.Update(streamMsg{llm.StreamThinking, "Streamed reasoning"})
+	assert.NotContains(t, m.history.View(), "Streamed reasoning")
+
+	m, _ = newTestModel(fakeClient{}, session)
+	m.debug, m.tools = true, map[string]string{"homeassistant_call_service": "homeassistant:call_service"}
+	m.render()
+	view = m.history.View()
+	assert.Contains(t, view, "Secret reasoning")
+	assert.Contains(t, view, "→ homeassistant:call_service")
+	assert.Contains(t, view, "← homeassistant:call_service")
 }

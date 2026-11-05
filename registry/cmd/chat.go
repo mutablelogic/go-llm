@@ -16,6 +16,8 @@ import (
 	chattui "github.com/mutablelogic/go-llm/registry/cmd/tui"
 	httpclient "github.com/mutablelogic/go-llm/registry/httpclient"
 	schema "github.com/mutablelogic/go-llm/registry/schema"
+	toolclient "github.com/mutablelogic/go-llm/toolkit/httpclient"
+	toolschema "github.com/mutablelogic/go-llm/toolkit/schema"
 	server "github.com/mutablelogic/go-server"
 )
 
@@ -32,11 +34,12 @@ type ChatCmd struct {
 	Stream  bool      `name:"stream" negatable:"" default:"true" help:"Print the reply as it's generated, or with --no-stream, once it's complete, rendered as markdown on a terminal."`
 }
 
-// chatClient is the client of the registry's API, and of its events, which
-// the interface chats with
+// chatClient is the client of the registry's API, of its events, and of
+// the toolkit's, which the interface chats with
 type chatClient struct {
 	*httpclient.Client
 	events *eventclient.Client
+	tools  *toolclient.Client
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -62,7 +65,11 @@ func (cmd *ChatCmd) Run(ctx server.Cmd) error {
 			if err != nil {
 				return err
 			}
-			return chattui.Chat(reqctx, chatClient{client, events}, id)
+			tools, err := newToolClient(ctx)
+			if err != nil {
+				return err
+			}
+			return chattui.Chat(reqctx, chatClient{client, events, tools}, id, debug)
 		}); err != nil {
 			return err
 		}
@@ -131,8 +138,34 @@ func (c chatClient) WatchEvents(ctx context.Context, fn func(eventschema.Event) 
 	return c.events.WatchEvents(ctx, fn)
 }
 
+// ToolNames returns the canonical names of the server's tools, by the names
+// models call them by
+func (c chatClient) ToolNames(ctx context.Context) (map[string]string, error) {
+	list, err := c.tools.ListTools(ctx, toolschema.ToolListRequest{})
+	if err != nil {
+		return nil, err
+	}
+	names := make(map[string]string, len(list.Body))
+	for _, tool := range list.Body {
+		if namespace, name, ok := strings.Cut(tool.Canonical, toolschema.ToolSeparator); ok {
+			names[toolschema.ModelToolName(namespace, name)] = tool.Canonical
+		}
+	}
+	return names, nil
+}
+
 ///////////////////////////////////////////////////////////////////////////////
 // PRIVATE FUNCTIONS
+
+// newToolClient returns a client of the server's toolkit, from the
+// command's endpoint and options
+func newToolClient(ctx server.Cmd) (*toolclient.Client, error) {
+	endpoint, opts, err := ctx.ClientEndpoint()
+	if err != nil {
+		return nil, err
+	}
+	return toolclient.New(endpoint, opts...)
+}
 
 // newEventClient returns a client of the server's events, from the
 // command's endpoint and options
