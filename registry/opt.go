@@ -6,6 +6,7 @@ import (
 	// Packages
 	client "github.com/mutablelogic/go-client"
 	llm "github.com/mutablelogic/go-llm"
+	broadcaster "github.com/mutablelogic/go-llm/broadcaster"
 	toolkit "github.com/mutablelogic/go-llm/toolkit"
 	trace "go.opentelemetry.io/otel/trace"
 )
@@ -23,6 +24,7 @@ type opt struct {
 	providerStore ProviderStore
 	sessionStore  SessionStore
 	toolkit       *toolkit.Toolkit
+	broadcaster   *broadcaster.Broadcaster
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -49,6 +51,7 @@ func (o *opt) defaults() {
 	o.providerStore = nil
 	o.sessionStore = nil
 	o.toolkit = nil
+	o.broadcaster = broadcaster.New()
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -122,6 +125,20 @@ func WithCredentialsProvider(credentials CredentialsProvider) Opt {
 		} else {
 			o.credentials = credentials
 		}
+		return nil
+	}
+}
+
+// WithBroadcaster sets the broadcaster which the registry publishes its
+// events to, such as one which others share, so a server's events are
+// served together. Its owner runs it. Without it, the registry has its own,
+// which isn't run, so its watches end only when they're cancelled.
+func WithBroadcaster(b *broadcaster.Broadcaster) Opt {
+	return func(o *opt) error {
+		if b == nil {
+			return llm.ErrBadParameter.With("missing broadcaster")
+		}
+		o.broadcaster = b
 		return nil
 	}
 }

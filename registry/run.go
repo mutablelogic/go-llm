@@ -8,7 +8,7 @@ import (
 
 	// Packages
 	llm "github.com/mutablelogic/go-llm"
-	providerschema "github.com/mutablelogic/go-llm/provider/schema"
+	eventschema "github.com/mutablelogic/go-llm/broadcaster/schema"
 	schema "github.com/mutablelogic/go-llm/registry/schema"
 )
 
@@ -24,15 +24,12 @@ import (
 // errors syncing them, which are synced again later, are logged with the
 // logger, or aren't when it's nil. When the store stops, it returns its
 // error. The registry is used without it, when its models are listed as
-// they're needed. When it stops, the registry's watches end, as there will
-// be no more events, and it isn't watched until it runs again.
+// they're needed. With a store of sessions, the changes others make to
+// them, which it sends as events, are published as the registry's own.
 func (r *Registry) Run(ctx context.Context, logger *slog.Logger) error {
 	if logger == nil {
 		logger = slog.New(slog.DiscardHandler)
 	}
-	r.startWatching()
-	defer r.stopWatching()
-
 	// The store's watches end when it returns, as well as when the context
 	// is cancelled, such as when the store stops, so the registry isn't left
 	// sending its events to a channel which isn't read
@@ -43,15 +40,15 @@ func (r *Registry) Run(ctx context.Context, logger *slog.Logger) error {
 	// synced, so no change is missed, and sync them. Without one, the
 	// channels are nil, so they're never received from.
 	var s *syncer
-	var registryEvents, storeEvents chan providerschema.Event
+	var registryEvents, storeEvents chan eventschema.Event
 	var storeDone <-chan error
 	if r.providerStore != nil {
 		s = &syncer{registry: r, store: r.providerStore, known: make(map[string]schema.Provider)}
-		registryEvents = make(chan providerschema.Event, syncEventBuffer)
+		registryEvents = make(chan eventschema.Event, syncEventBuffer)
 		if _, err := r.Watch(ctx, registryEvents); err != nil {
 			return err
 		}
-		storeEvents = make(chan providerschema.Event, syncEventBuffer)
+		storeEvents = make(chan eventschema.Event, syncEventBuffer)
 		done, err := r.providerStore.Watch(ctx, storeEvents)
 		if err != nil {
 			return err
@@ -67,6 +64,18 @@ func (r *Registry) Run(ctx context.Context, logger *slog.Logger) error {
 		}
 	}
 
+	// With a store of sessions, publish the changes others make to them
+	var sessionEvents chan eventschema.Event
+	var sessionDone <-chan error
+	if r.sessionStore != nil {
+		sessionEvents = make(chan eventschema.Event, syncEventBuffer)
+		done, err := r.sessionStore.Watch(ctx, sessionEvents)
+		if err != nil {
+			return err
+		}
+		sessionDone = done
+	}
+
 	// Sync, and refresh, and then as they change, and every PingInterval
 	if s != nil {
 		logError(s.sync(ctx, registryEvents))
@@ -80,7 +89,15 @@ func (r *Registry) Run(ctx context.Context, logger *slog.Logger) error {
 			return nil
 		case err := <-storeDone:
 			return err
+		case err := <-sessionDone:
+			return err
+		case event := <-sessionEvents:
+			r.broadcaster.Publish(event)
 		case event := <-registryEvents:
+			if event.Table != ProviderTable {
+				// The broadcaster's other events, such as of sessions
+				continue
+			}
 			if err := s.local(ctx, event.Row); errors.Is(err, llm.ErrConflict) {
 				// The store's provider was changed since it was seen, so the
 				// providers are synced, and the store's change is kept

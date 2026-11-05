@@ -32,6 +32,5 @@ func RegisterHandlers(r *registry.Registry, router *httprouter.Router) error {
 		askHandlers(r, router, documentation),
 		recognizeHandlers(r, router, documentation),
 		transcribeHandlers(r, router, documentation),
-		eventHandlers(r, router, documentation),
 	)
 }

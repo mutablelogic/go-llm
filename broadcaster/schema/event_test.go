@@ -5,7 +5,7 @@ import (
 	"testing"
 
 	// Packages
-	schema "github.com/mutablelogic/go-llm/provider/schema"
+	schema "github.com/mutablelogic/go-llm/broadcaster/schema"
 	assert "github.com/stretchr/testify/assert"
 	require "github.com/stretchr/testify/require"
 )
@@ -21,6 +21,7 @@ func Test_Event_JSON(t *testing.T) {
 			{schema.Event{Action: schema.EventCreate, Schema: "llm", Table: "provider", Row: "ollama"}, `{"action":"create","schema":"llm","table":"provider","row":"ollama"}`},
 			{schema.Event{Action: schema.EventUpdate, Table: "model"}, `{"action":"update","table":"model"}`},
 			{schema.Event{Action: schema.EventDelete}, `{"action":"delete"}`},
+			{schema.Event{Action: schema.EventUpdate, Table: "session", Row: "1", Data: json.RawMessage(`{"serial":2}`)}, `{"action":"update","table":"session","row":"1","data":{"serial":2}}`},
 		} {
 			data, err := json.Marshal(test.event)
 			require.NoError(t, err)

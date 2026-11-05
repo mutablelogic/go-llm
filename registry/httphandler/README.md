@@ -60,7 +60,7 @@ Unload a model by name, or alias, or by provider and name, such as `my-ollama:ge
 
 ## Session Operations
 
-Sessions are conversations with models, which the server keeps in its session store, such as files, or a database which other servers share, so they're kept when it restarts. A server without a session store returns 503 for each session operation. Sessions are returned without their messages, which are listed on their own, as there can be many. A session has its `id`, which the store sets, and its `serial`, which the store changes each time the session is stored, so a change is made to the session as it was last seen. It has the settings of how its model is asked: its `model`, `system` prompt, the `tools` it can call, its `opt` options and the `schema` of its reply, as for `POST /llm/ask`, which it needn't all have, such as when it inherits its model from another session. It has its `messages`, each with its `tokens`, and its `usage`: the tokens used by every request to its model, and, as of the last, the tokens of its conversation, of the messages sent to the model (`input`), of its replies (`output`), and of what's sent with them (`overhead`), such as the system prompt and the tools' definitions.
+Sessions are conversations with models, which the server keeps in its session store, such as files, or a database which other servers share, so they're kept when it restarts. A server without a session store returns 503 for each session operation. Sessions are returned without their messages, which are listed on their own, as there can be many. A session has its `id`, which the store sets, and its `serial`, which the store changes each time the session is stored, so a change is made to the session as it was last seen. It has the settings of how its model is asked: its `model`, `system` prompt, the `tools` it can call, its `opt` options and the `schema` of its reply, as for `POST /llm/ask`, which it needn't all have, such as when it inherits its model from another session. It has its `messages`, each with its `tokens`, and its `usage`: the tokens used by every request to its model, and, as of the last, the tokens of its conversation, of the messages sent to the model (`input`), of its replies (`output`), and of what's sent with them (`overhead`), such as the system prompt and the tools' definitions. It has its `status`, which isn't stored: `typing` while someone types a message in it, `replying` while its model replies, or `idle`. Each change to a session, and its status, is an event, which `GET /llm/event` streams, so a client, such as a second chat window on the same session, sees it.
 
 ### GET /llm/session
 
@@ -85,6 +85,10 @@ Chat: add the `messages` in the request body, such as a question, to a session, 
 ### PATCH /llm/session/{id}
 
 Change a session's settings, keeping its messages. A field which is omitted is kept: `model` and `system` are replaced when they're set, and cleared when they're empty; `tools` are replaced when they're set, and cleared with `[]`; the `schema` is replaced when it's set, and cleared with `null`; and each option in `opt` is set, or removed when it's `null`, so the others are kept. A `model` or `tools` which are set are checked, and kept by their canonical names, as they are when a session is created. Returns the updated session. Returns 400 if the request body is invalid, it changes nothing, or the settings, as changed, aren't valid, 404 if there is no session with that identifier, or the model, or a tool, isn't found, or 409 if it was changed as it was updated, or the name of the model, or a tool, is ambiguous.
+
+### PUT /llm/session/{id}/status
+
+Set a session's `status`, in the request body, to `typing`, as someone types a message, or `idle`, when they stop. It's `typing` until 10 seconds after it was last set, so a client which is still typing sets it again before then, and one which goes away doesn't leave it typing. While its model replies, it's `replying`, whatever it's set to, and sending a message ends `typing`. Returns the session, with its status. Returns 400 if the request body is invalid, or the status isn't `typing` or `idle`, or 404 if there is no session with that identifier.
 
 ### DELETE /llm/session/{id}
 
@@ -150,11 +154,3 @@ OpenAI's models, such as `whisper-1` and `gpt-4o-transcribe`, and Mistral's, suc
 ### POST /llm/translate
 
 Ask a model for the speech in audio, in any language, as English text, as transcribing does, whose `language` is `en`, and which has no `language` option. It's streamed as transcribing is, once it's translated, as `whisper-1` doesn't stream. Only OpenAI's `whisper-1` translates speech. Returns the same as transcribing does, and 501 if the model's provider can't translate speech, such as Mistral, or the model is known not to.
-
-## Event Operations
-
-Events are changes to the registry's providers, which are streamed to a client as they happen. Each event has an `action`, which is `create` or `delete` when a provider is created or deleted, or `update` when whether it can be reached changes, when it's pinged, or its models change, when they're listed again, such as after a model is loaded or deleted. It also has the `table`, which is `provider`, and the `row`, which is the provider's name.
-
-### GET /llm/event
-
-Watch the registry's events, as a stream of server-sent events, until the client closes the connection. Each event is an `event`, whose data is the event, as JSON, such as `{"action":"create","table":"provider","row":"my-ollama"}`. The stream is watching once it has started, so a client which lists the providers then misses no changes. When the server is stopping, a `shutdown` event is sent, and the stream ends, as there will be no more events. A client which doesn't read its events has up to 16 kept for it, and misses those after them. Returns 406 if the client doesn't accept `text/event-stream`, or 503 if the server is stopping.

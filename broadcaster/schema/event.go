@@ -13,12 +13,14 @@ import (
 
 // Event is a change: how it changed, which is its action, what changed,
 // which is a table of a schema, and which row, or rows, changed, when it
-// says, such as by an identifier which the rows share
+// says, such as by an identifier which the rows share, and what the table
+// says of the change, such as a row's new serial, when it says anything
 type Event struct {
-	Action EventAction `json:"action" help:"How it changed, which is create, update or delete" example:"create"`
-	Schema string      `json:"schema,omitempty" help:"Schema of the table which changed" example:"llm"`
-	Table  string      `json:"table,omitempty" help:"Table which changed" example:"provider"`
-	Row    string      `json:"row,omitempty" help:"Row, or rows, which changed, such as by an identifier" example:"ollama"`
+	Action EventAction     `json:"action" help:"How it changed, which is create, update or delete" example:"create"`
+	Schema string          `json:"schema,omitempty" help:"Schema of the table which changed" example:"llm"`
+	Table  string          `json:"table,omitempty" help:"Table which changed" example:"provider"`
+	Row    string          `json:"row,omitempty" help:"Row, or rows, which changed, such as by an identifier" example:"ollama"`
+	Data   json.RawMessage `json:"data,omitempty" help:"What the table says of the change, such as a row's new serial"`
 }
 
 // EventAction is how something changed: it was created, updated or deleted
@@ -26,6 +28,14 @@ type EventAction string
 
 ////////////////////////////////////////////////////////////////////////////////
 // GLOBALS
+
+// The events of a stream of the broadcaster's events: each event, and that
+// the server is stopping, before the stream ends, so a client knows it
+// ended as there will be no more events
+const (
+	EventName     = "event"
+	EventShutdown = "shutdown"
+)
 
 const (
 	EventCreate EventAction = "create" // Created

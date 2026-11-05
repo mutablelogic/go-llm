@@ -8,6 +8,7 @@ import (
 	// Packages
 	otel "github.com/mutablelogic/go-client/pkg/otel"
 	llm "github.com/mutablelogic/go-llm"
+	eventschema "github.com/mutablelogic/go-llm/broadcaster/schema"
 	providerschema "github.com/mutablelogic/go-llm/provider/schema"
 	schema "github.com/mutablelogic/go-llm/registry/schema"
 	types "github.com/mutablelogic/go-server/pkg/types"
@@ -45,6 +46,16 @@ type SessionStore interface {
 	// serial, or does nothing when there's none. Returns ErrConflict when the
 	// serial isn't its serial, as it was changed since it was seen.
 	Delete(ctx context.Context, id uuid.UUID, serial uint64) error
+
+	// Watch sends the store's events to the channel, when its sessions are
+	// changed by others, such as other servers, from when it returns, until
+	// the context is cancelled, as the registry's Watch does: the table is
+	// SessionTable, the row the session's identifier, and when it was
+	// created or updated, the data is its serial, as a SessionEvent. It
+	// returns a channel which is sent nil, or an error when the store stops,
+	// once the watch has ended. A store which isn't changed by others, such
+	// as files which only its server writes, sends no events.
+	Watch(context.Context, chan<- eventschema.Event) (<-chan error, error)
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -79,7 +90,8 @@ func (r *Registry) CreateSession(ctx context.Context, meta schema.SessionMeta) (
 	if err != nil {
 		return nil, err
 	}
-	return withoutMessages(session), nil
+	r.sessionChanged(eventschema.EventCreate, session)
+	return r.withoutMessages(session), nil
 }
 
 // GetSession returns the session with the identifier, without its
@@ -99,7 +111,7 @@ func (r *Registry) GetSession(ctx context.Context, id uuid.UUID) (_ *schema.Sess
 	if err != nil {
 		return nil, err
 	}
-	return withoutMessages(session), nil
+	return r.withoutMessages(session), nil
 }
 
 // ListSessionMessages returns the messages of the session with the
@@ -151,6 +163,9 @@ func (r *Registry) ListSessions(ctx context.Context, req schema.SessionListReque
 	if err != nil {
 		return nil, err
 	}
+	for i := range list.Body {
+		list.Body[i] = *r.withoutMessages(list.Body[i])
+	}
 	return &list, nil
 }
 
@@ -197,7 +212,8 @@ func (r *Registry) UpdateSession(ctx context.Context, id uuid.UUID, meta schema.
 	if session, err = r.sessionStore.Put(ctx, session); err != nil {
 		return nil, err
 	}
-	return withoutMessages(session), nil
+	r.sessionChanged(eventschema.EventUpdate, session)
+	return r.withoutMessages(session), nil
 }
 
 // DeleteSession deletes the session with the identifier, with its messages,
@@ -219,7 +235,10 @@ func (r *Registry) DeleteSession(ctx context.Context, id uuid.UUID) (_ *schema.S
 	} else if err := r.sessionStore.Delete(ctx, id, session.Serial); err != nil {
 		return nil, err
 	}
-	return withoutMessages(session), nil
+	result := r.withoutMessages(session)
+	r.forgetStatus(id)
+	r.sessionChanged(eventschema.EventDelete, session)
+	return result, nil
 }
 
 // Chat adds the messages to the session with the identifier, and the
@@ -232,7 +251,8 @@ func (r *Registry) DeleteSession(ctx context.Context, id uuid.UUID) (_ *schema.S
 // there's no session, ErrConflict when it was changed as the model replied,
 // as the reply is to the conversation as it was, so isn't stored,
 // ErrServiceUnavailable when the registry has no session store, and the
-// errors of WithSession.
+// errors of WithSession. The session is replying until the model has
+// replied, and its reply is stored.
 func (r *Registry) Chat(ctx context.Context, id uuid.UUID, messages []llm.Message, stream llm.GeneratorStreamFn) (_ *schema.ChatResponse, err error) {
 	ctx, endSpan := otel.StartSpan(r.tracer, ctx, "llm.registry.Chat",
 		attribute.String("arg.id", id.String()),
@@ -247,6 +267,11 @@ func (r *Registry) Chat(ctx context.Context, id uuid.UUID, messages []llm.Messag
 	if err != nil {
 		return nil, err
 	}
+
+	// The session is replying, until the model has replied, and its reply
+	// is stored, or not
+	replied := r.replying(id)
+	defer replied()
 
 	// Ask the session's model, and add what it adds to the session, with the
 	// usage
@@ -264,6 +289,7 @@ func (r *Registry) Chat(ctx context.Context, id uuid.UUID, messages []llm.Messag
 	if session, err = r.sessionStore.Put(ctx, session); err != nil {
 		return nil, err
 	}
+	r.sessionChanged(eventschema.EventUpdate, session)
 	return &schema.ChatResponse{ID: session.ID, Serial: session.Serial, SessionResponse: *response}, nil
 }
 
@@ -273,13 +299,6 @@ func (r *Registry) Chat(ctx context.Context, id uuid.UUID, messages []llm.Messag
 // errNoSessionStore is the error of a session's method, when the registry
 // has no session store
 var errNoSessionStore = llm.ErrServiceUnavailable.With("the registry has no session store")
-
-// withoutMessages returns the session without its messages, which are
-// listed on their own
-func withoutMessages(session schema.Session) *schema.Session {
-	session.Messages = nil
-	return &session
-}
 
 // validSessionMeta returns ErrBadParameter when the settings aren't valid:
 // their schema isn't a JSON schema, or an option is one which there's a

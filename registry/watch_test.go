@@ -11,7 +11,7 @@ import (
 
 	// Packages
 	llm "github.com/mutablelogic/go-llm"
-	schema "github.com/mutablelogic/go-llm/provider/schema"
+	schema "github.com/mutablelogic/go-llm/broadcaster/schema"
 	registry "github.com/mutablelogic/go-llm/registry"
 	registryschema "github.com/mutablelogic/go-llm/registry/schema"
 	assert "github.com/stretchr/testify/assert"
@@ -191,58 +191,6 @@ func Test_Watch(t *testing.T) {
 		ch := watch(t, r)
 		_, err = r.Watch(ctx, ch)
 		assert.ErrorIs(t, err, llm.ErrConflict)
-	})
-
-	t.Run("Cancelled", func(t *testing.T) {
-		// Once the watch ends, no more events are sent, so the channel can
-		// be closed
-		r, err := registry.New()
-		require.NoError(t, err)
-		ch := make(chan schema.Event, 16)
-		watchCtx, cancel := context.WithCancel(ctx)
-		done, err := r.Watch(watchCtx, ch)
-		require.NoError(t, err)
-		cancel()
-		require.NoError(t, <-done)
-		close(ch)
-		require.NoError(t, r.Add("openai", &provider{name: "openai"}))
-
-		// And it can watch again
-		ch = watch(t, r)
-		require.NoError(t, r.Add("other", &provider{name: "other"}))
-		assert.Equal(t, []schema.Event{event(schema.EventCreate, "other")}, events(ch))
-	})
-
-	t.Run("Stopped", func(t *testing.T) {
-		// When the registry stops running, the watches end, with
-		// ErrServiceUnavailable, and it isn't watched until it runs again
-		r, err := registry.New()
-		require.NoError(t, err)
-		runCtx, stop := context.WithCancel(ctx)
-		running := make(chan error)
-		go func() { running <- r.Run(runCtx, nil) }()
-		ch := make(chan schema.Event, 16)
-		done, err := r.Watch(ctx, ch)
-		require.NoError(t, err)
-		stop()
-		require.NoError(t, <-running)
-		assert.ErrorIs(t, <-done, llm.ErrServiceUnavailable)
-		_, err = r.Watch(ctx, ch)
-		assert.ErrorIs(t, err, llm.ErrServiceUnavailable)
-
-		// And it runs again, until it's stopped, which is waited for, so it
-		// doesn't outlast the test
-		runCtx, stop = context.WithCancel(ctx)
-		go func() { running <- r.Run(runCtx, nil) }()
-		require.Eventually(t, func() bool {
-			done, err := r.Watch(runCtx, make(chan schema.Event))
-			if err == nil {
-				go func() { <-done }()
-			}
-			return err == nil
-		}, time.Second, time.Millisecond)
-		stop()
-		require.NoError(t, <-running)
 	})
 
 	t.Run("Full", func(t *testing.T) {

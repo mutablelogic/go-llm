@@ -7,20 +7,19 @@ import (
 	// Packages
 	client "github.com/mutablelogic/go-client"
 	llm "github.com/mutablelogic/go-llm"
-	providerschema "github.com/mutablelogic/go-llm/provider/schema"
-	schema "github.com/mutablelogic/go-llm/registry/schema"
+	schema "github.com/mutablelogic/go-llm/broadcaster/schema"
 	types "github.com/mutablelogic/go-server/pkg/types"
 )
 
 ///////////////////////////////////////////////////////////////////////////////
 // PUBLIC METHODS
 
-// WatchEvents calls the function with each of the registry's events, as the
-// server streams them, such as when a provider is created, updated or
-// deleted, until the context is cancelled, when it returns nil, or the
+// WatchEvents calls the function with each of the broadcaster's events, as
+// the server streams them, such as when a provider, or a session, is
+// created, updated or deleted, until the context is cancelled, when it returns nil, or the
 // function returns an error, which it returns, or the stream ends. When the
 // server stops, it returns ErrServiceUnavailable.
-func (c *Client) WatchEvents(ctx context.Context, fn func(providerschema.Event) error) error {
+func (c *Client) WatchEvents(ctx context.Context, fn func(schema.Event) error) error {
 	if fn == nil {
 		return llm.ErrBadParameter.With("missing function")
 	}
@@ -35,7 +34,7 @@ func (c *Client) WatchEvents(ctx context.Context, fn func(providerschema.Event) 
 		} else if event.Event != schema.EventName {
 			return nil
 		}
-		var data providerschema.Event
+		var data schema.Event
 		if err := event.Json(&data); err != nil {
 			return fmt.Errorf("malformed %s event: %w", event.Event, err)
 		}

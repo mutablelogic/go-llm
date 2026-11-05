@@ -8,8 +8,8 @@ import (
 
 	// Packages
 	llm "github.com/mutablelogic/go-llm"
+	eventschema "github.com/mutablelogic/go-llm/broadcaster/schema"
 	eliza "github.com/mutablelogic/go-llm/provider/eliza"
-	providerschema "github.com/mutablelogic/go-llm/provider/schema"
 	registry "github.com/mutablelogic/go-llm/registry"
 	schema "github.com/mutablelogic/go-llm/registry/schema"
 	assert "github.com/stretchr/testify/assert"
@@ -44,10 +44,10 @@ func Test_UpdateProvider(t *testing.T) {
 		assert.Empty(t, provider.Exclude)
 		_, err = r.GetModel(ctx, "chat:eliza-1966-de")
 		require.NoError(t, err)
-		assert.Equal(t, []providerschema.Event{
-			{Action: providerschema.EventCreate, Table: registry.ProviderTable, Row: "chat"},
-			{Action: providerschema.EventUpdate, Table: registry.ProviderTable, Row: "chat"},
-			{Action: providerschema.EventUpdate, Table: registry.ProviderTable, Row: "chat"},
+		assert.Equal(t, []eventschema.Event{
+			{Action: eventschema.EventCreate, Table: registry.ProviderTable, Row: "chat"},
+			{Action: eventschema.EventUpdate, Table: registry.ProviderTable, Row: "chat"},
+			{Action: eventschema.EventUpdate, Table: registry.ProviderTable, Row: "chat"},
 		}, events(ch))
 	})
 

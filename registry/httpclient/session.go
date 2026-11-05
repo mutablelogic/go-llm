@@ -75,6 +75,21 @@ func (c *Client) UpdateSession(ctx context.Context, id uuid.UUID, meta schema.Se
 	return &response, nil
 }
 
+// SetSessionStatus sets the status of the session with the identifier, to
+// typing, as someone types a message, which it is for a while after, or
+// idle, when they stop, and returns the session, with its status
+func (c *Client) SetSessionStatus(ctx context.Context, id uuid.UUID, status schema.SessionStatus) (*schema.Session, error) {
+	req, err := client.NewJSONRequestEx(http.MethodPut, schema.SessionStatusRequest{Status: status}, types.ContentTypeAny)
+	if err != nil {
+		return nil, err
+	}
+	var response schema.Session
+	if err := c.DoWithContext(ctx, req, &response, client.OptPath("llm", "session", id.String(), "status")); err != nil {
+		return nil, err
+	}
+	return &response, nil
+}
+
 // DeleteSession deletes the session with the identifier, and returns it
 func (c *Client) DeleteSession(ctx context.Context, id uuid.UUID) (*schema.Session, error) {
 	var response schema.Session

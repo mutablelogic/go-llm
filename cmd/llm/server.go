@@ -5,7 +5,10 @@ package main
 import (
 	"os"
 	"path/filepath"
+
 	// Packages
+	broadcaster "github.com/mutablelogic/go-llm/broadcaster"
+	broadcastercmd "github.com/mutablelogic/go-llm/broadcaster/cmd"
 	registry "github.com/mutablelogic/go-llm/registry"
 	registrycmd "github.com/mutablelogic/go-llm/registry/cmd"
 	toolkit "github.com/mutablelogic/go-llm/toolkit"
@@ -19,9 +22,10 @@ import (
 // TYPES
 
 type CLI struct {
-	Server   ServerCommands             `embed:""`
-	Registry registrycmd.ClientCommands `embed:""`
-	Toolkit  toolkitcmd.ClientCommands  `embed:""`
+	Server      ServerCommands                `embed:""`
+	Registry    registrycmd.ClientCommands    `embed:""`
+	Toolkit     toolkitcmd.ClientCommands     `embed:""`
+	Broadcaster broadcastercmd.ClientCommands `embed:""`
 }
 
 type ServerCommands struct {
@@ -30,8 +34,9 @@ type ServerCommands struct {
 }
 
 type RunServer struct {
-	Registry registrycmd.Flags `embed:"" prefix:"llm."`
-	Toolkit  toolkitcmd.Flags  `embed:"" prefix:"llm."`
+	Registry    registrycmd.Flags    `embed:"" prefix:"llm."`
+	Toolkit     toolkitcmd.Flags     `embed:"" prefix:"llm."`
+	Broadcaster broadcastercmd.Flags `embed:"" prefix:"llm."`
 	servercmd.RunServer
 }
 
@@ -42,7 +47,8 @@ type RunServer struct {
 // its API, and sessions, which are kept in the command's defaults, so
 // they're kept when it restarts, and a toolkit of the tools whose credentials are set, which the
 // registry's models can call, and their APIs, under the server's prefix, and
-// keeps the providers' state and models current, until it's stopped
+// keeps the providers' state and models current, and streams the changes to
+// them, and to the sessions, as events, until it's stopped
 func (runner *RunServer) Run(ctx server.Cmd) error {
 	ctx.Logger().InfoContext(ctx.Context(), "starting server", "name", ctx.Name(), "version", ctx.Version())
 	store, err := newProviderStore(ctx)
@@ -53,18 +59,25 @@ func (runner *RunServer) Run(ctx server.Cmd) error {
 	if err != nil {
 		return err
 	}
-	return runner.Toolkit.WithToolkit(ctx, &runner.RunServer, func(tools *toolkit.Toolkit) error {
-		return runner.Registry.WithRegistry(ctx, &runner.RunServer, func(r *registry.Registry) error {
-			// Both stop when either does, such as when the server is stopped
-			group, runCtx := errgroup.WithContext(ctx.Context())
-			group.Go(func() error {
-				return r.Run(runCtx, ctx.Logger())
-			})
-			group.Go(func() error {
-				return runner.RunServer.Run(ctx.WithContext(runCtx))
-			})
-			return group.Wait()
-		}, registry.WithProviderStore(store), registry.WithSessionStore(sessions), registry.WithToolkit(tools))
+	return runner.Broadcaster.WithBroadcaster(ctx, &runner.RunServer, func(b *broadcaster.Broadcaster) error {
+		return runner.Toolkit.WithToolkit(ctx, &runner.RunServer, func(tools *toolkit.Toolkit) error {
+			return runner.Registry.WithRegistry(ctx, &runner.RunServer, func(r *registry.Registry) error {
+				// They all stop when any does, such as when the server is
+				// stopped, when the broadcaster's watches end, so the
+				// server isn't kept waiting for its streams of events
+				group, runCtx := errgroup.WithContext(ctx.Context())
+				group.Go(func() error {
+					return b.Run(runCtx)
+				})
+				group.Go(func() error {
+					return r.Run(runCtx, ctx.Logger())
+				})
+				group.Go(func() error {
+					return runner.RunServer.Run(ctx.WithContext(runCtx))
+				})
+				return group.Wait()
+			}, registry.WithBroadcaster(b), registry.WithProviderStore(store), registry.WithSessionStore(sessions), registry.WithToolkit(tools))
+		})
 	})
 }
 

@@ -17,6 +17,7 @@ import (
 
 	// Packages
 	llm "github.com/mutablelogic/go-llm"
+	eventschema "github.com/mutablelogic/go-llm/broadcaster/schema"
 	registry "github.com/mutablelogic/go-llm/registry"
 	schema "github.com/mutablelogic/go-llm/registry/schema"
 )
@@ -165,6 +166,20 @@ func (s *sessionStore) Delete(_ context.Context, id uuid.UUID, serial uint64) er
 		return llm.ErrConflict.Withf("session %q is at serial %d, not %d", id, existing.Serial, serial)
 	}
 	return os.Remove(s.path(id))
+}
+
+// Watch sends no events, as only the server changes the sessions, until the
+// context is cancelled, when the returned channel is sent nil
+func (s *sessionStore) Watch(ctx context.Context, ch chan<- eventschema.Event) (<-chan error, error) {
+	if ch == nil {
+		return nil, llm.ErrBadParameter.With("missing channel")
+	}
+	done := make(chan error, 1)
+	go func() {
+		<-ctx.Done()
+		done <- nil
+	}()
+	return done, nil
 }
 
 ///////////////////////////////////////////////////////////////////////////////

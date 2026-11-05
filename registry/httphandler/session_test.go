@@ -163,6 +163,27 @@ func Test_Sessions(t *testing.T) {
 	})
 }
 
+func Test_SessionStatus(t *testing.T) {
+	// A session's status is set, and is returned with the session
+	server := test.NewServer(t, test.NewRegistry(t, nil, registry.WithSessionStore(test.NewSessionStore())))
+	var created, session schema.Session
+	require.Equal(t, http.StatusCreated, do(t, server, http.MethodPost, "llm/session", map[string]any{}, &created))
+	assert.Equal(t, schema.SessionIdle, created.Status)
+	path := "llm/session/" + created.ID.String() + "/status"
+	require.Equal(t, http.StatusOK, do(t, server, http.MethodPut, path, map[string]any{"status": "typing"}, &session))
+	assert.Equal(t, schema.SessionTyping, session.Status)
+	require.Equal(t, http.StatusOK, do(t, server, http.MethodGet, "llm/session/"+created.ID.String(), nil, &session))
+	assert.Equal(t, schema.SessionTyping, session.Status)
+	require.Equal(t, http.StatusOK, do(t, server, http.MethodPut, path, map[string]any{"status": "idle"}, &session))
+	assert.Equal(t, schema.SessionIdle, session.Status)
+
+	// Only typing and idle are set, of a session which exists
+	assert.Equal(t, http.StatusBadRequest, do(t, server, http.MethodPut, path, map[string]any{"status": "replying"}, nil))
+	assert.Equal(t, http.StatusBadRequest, do(t, server, http.MethodPut, path, map[string]any{"status": "asleep"}, nil))
+	assert.Equal(t, http.StatusBadRequest, do(t, server, http.MethodPut, "llm/session/1/status", map[string]any{"status": "typing"}, nil))
+	assert.Equal(t, http.StatusNotFound, do(t, server, http.MethodPut, "llm/session/"+uuid.New().String()+"/status", map[string]any{"status": "typing"}, nil))
+}
+
 func Test_SessionsNoStore(t *testing.T) {
 	// A server without a session store has no sessions
 	server, _ := newServer(t)
@@ -171,6 +192,7 @@ func Test_SessionsNoStore(t *testing.T) {
 	assert.Equal(t, http.StatusServiceUnavailable, do(t, server, http.MethodGet, "llm/session/"+uuid.New().String(), nil, nil))
 	assert.Equal(t, http.StatusServiceUnavailable, do(t, server, http.MethodPatch, "llm/session/"+uuid.New().String(), map[string]any{"model": eliza.ModelName}, nil))
 	assert.Equal(t, http.StatusServiceUnavailable, do(t, server, http.MethodDelete, "llm/session/"+uuid.New().String(), nil, nil))
+	assert.Equal(t, http.StatusServiceUnavailable, do(t, server, http.MethodPut, "llm/session/"+uuid.New().String()+"/status", map[string]any{"status": "typing"}, nil))
 }
 
 func Test_Chat(t *testing.T) {

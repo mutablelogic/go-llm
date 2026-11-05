@@ -6,17 +6,17 @@ import (
 	"os"
 
 	// Packages
-	providerschema "github.com/mutablelogic/go-llm/provider/schema"
-	httpclient "github.com/mutablelogic/go-llm/registry/httpclient"
+	httpclient "github.com/mutablelogic/go-llm/broadcaster/httpclient"
+	schema "github.com/mutablelogic/go-llm/broadcaster/schema"
 	server "github.com/mutablelogic/go-server"
 )
 
 ///////////////////////////////////////////////////////////////////////////////
 // TYPES
 
-// EventCommands are the commands which watch the registry's events
+// EventCommands are the commands which watch the broadcaster's events
 type EventCommands struct {
-	Events EventsCmd `cmd:"" name:"events" help:"Watch the registry's events, which are the changes to its providers, until interrupted." group:"LLM EVENTS"`
+	Events EventsCmd `cmd:"" name:"events" help:"Watch the events, which are the changes to the providers and sessions, until interrupted." group:"LLM EVENTS"`
 }
 
 type EventsCmd struct{}
@@ -28,7 +28,7 @@ type EventsCmd struct{}
 func (cmd *EventsCmd) Run(ctx server.Cmd) error {
 	return withClient(ctx, "llm.EventsCmd", func(ctx context.Context, client *httpclient.Client) error {
 		encoder := json.NewEncoder(os.Stdout)
-		return client.WatchEvents(ctx, func(event providerschema.Event) error {
+		return client.WatchEvents(ctx, func(event schema.Event) error {
 			return encoder.Encode(event)
 		})
 	})

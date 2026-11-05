@@ -2,6 +2,7 @@ package tui
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
@@ -14,6 +15,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	lipgloss "github.com/charmbracelet/lipgloss"
 	llm "github.com/mutablelogic/go-llm"
+	eventschema "github.com/mutablelogic/go-llm/broadcaster/schema"
 	providerschema "github.com/mutablelogic/go-llm/provider/schema"
 	schema "github.com/mutablelogic/go-llm/registry/schema"
 	types "github.com/mutablelogic/go-server/pkg/types"
@@ -21,18 +23,40 @@ import (
 	require "github.com/stretchr/testify/require"
 )
 
-// fakeClient replies to each question with the reply, streamed, or fails
+// fakeClient replies to each question with the reply, streamed, or fails,
+// has the stored session, when it's set, and records the statuses set
 type fakeClient struct {
-	reply string
-	err   error
+	reply    string
+	err      error
+	stored   *schema.Session
+	statuses *[]schema.SessionStatus
 }
 
 func (c fakeClient) GetSession(context.Context, uuid.UUID) (*schema.Session, error) {
-	return nil, errors.New("not used")
+	if c.stored == nil {
+		return nil, errors.New("not used")
+	}
+	session := *c.stored
+	session.Messages = nil
+	return &session, nil
 }
 
 func (c fakeClient) ListSessionMessages(context.Context, uuid.UUID, schema.MessageListRequest) (*schema.MessageList, error) {
-	return nil, errors.New("not used")
+	if c.stored == nil {
+		return nil, errors.New("not used")
+	}
+	return &schema.MessageList{Count: uint(len(c.stored.Messages)), Body: c.stored.Messages}, nil
+}
+
+func (c fakeClient) SetSessionStatus(_ context.Context, id uuid.UUID, status schema.SessionStatus) (*schema.Session, error) {
+	if c.statuses != nil {
+		*c.statuses = append(*c.statuses, status)
+	}
+	return &schema.Session{ID: id, Status: status}, nil
+}
+
+func (c fakeClient) WatchEvents(context.Context, func(eventschema.Event) error) error {
+	return errors.New("not used")
 }
 
 func (c fakeClient) Chat(_ context.Context, id uuid.UUID, req schema.ChatRequest, stream llm.GeneratorStreamFn) (*schema.ChatResponse, error) {
@@ -217,4 +241,108 @@ func Test_Wrap(t *testing.T) {
 		}
 	}
 	assert.Greater(t, text, thinking+1, "the text starts on a line of its own, after the thinking")
+}
+
+// sessionChange returns the event of a change to the session, with the data
+func sessionChange(t *testing.T, id uuid.UUID, data schema.SessionEvent) eventMsg {
+	t.Helper()
+	raw, err := json.Marshal(data)
+	require.NoError(t, err)
+	return eventMsg{Action: eventschema.EventUpdate, Table: sessionTable, Row: id.String(), Data: raw}
+}
+
+func Test_Changes(t *testing.T) {
+	says := func(role, text string) providerschema.Message {
+		return providerschema.Message{MessageMeta: providerschema.MessageMeta{Sender: role, Content: []providerschema.ContentBlock{{Text: types.Ptr(text)}}}}
+	}
+
+	t.Run("Elsewhere", func(t *testing.T) {
+		// A change which this window hasn't seen, such as a reply in another
+		// window, loads the session again
+		id := uuid.New()
+		stored := &schema.Session{ID: id, Serial: 2, Messages: []providerschema.Message{says("user", "Hi"), says("assistant", "Hello from elsewhere")}}
+		m, _ := newTestModel(fakeClient{stored: stored}, &schema.Session{ID: id, Serial: 1})
+		_, cmd := m.Update(sessionChange(t, id, schema.SessionEvent{Serial: 1}))
+		assert.Nil(t, cmd, "a change which has been seen isn't loaded")
+		_, cmd = m.Update(sessionChange(t, id, schema.SessionEvent{Serial: 2}))
+		require.NotNil(t, cmd)
+		m.Update(cmd())
+		assert.Equal(t, uint64(2), m.session.Serial)
+		assert.Contains(t, m.history.View(), "Hello from elsewhere")
+	})
+
+	t.Run("Status", func(t *testing.T) {
+		// The status shows the model replying in another window, and someone
+		// else typing
+		id := uuid.New()
+		m, _ := newTestModel(fakeClient{}, &schema.Session{ID: id})
+		m.Update(sessionChange(t, id, schema.SessionEvent{Status: schema.SessionReplying}))
+		assert.Contains(t, m.status(), "replying…")
+		m.Update(sessionChange(t, id, schema.SessionEvent{Status: schema.SessionTyping}))
+		assert.Contains(t, m.status(), "someone is typing…")
+		m.Update(sessionChange(t, id, schema.SessionEvent{Status: schema.SessionIdle}))
+		assert.NotContains(t, m.status(), "…")
+	})
+
+	t.Run("Typing", func(t *testing.T) {
+		// The server is told someone is typing, as they type, at most every
+		// typingInterval, and this window doesn't show itself typing
+		var statuses []schema.SessionStatus
+		id := uuid.New()
+		m, _ := newTestModel(fakeClient{statuses: &statuses}, &schema.Session{ID: id})
+		m.input.Focus()
+		for _, key := range "Hi" {
+			_, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{key}})
+			for _, msg := range run(cmd) {
+				m.Update(msg)
+			}
+		}
+		assert.Equal(t, []schema.SessionStatus{schema.SessionTyping}, statuses)
+		m.Update(sessionChange(t, id, schema.SessionEvent{Status: schema.SessionTyping}))
+		assert.NotContains(t, m.status(), "typing")
+	})
+
+	t.Run("OwnReply", func(t *testing.T) {
+		// The change which this window's reply makes isn't loaded, but one
+		// made elsewhere as it was waited for is, once it's stored
+		id := uuid.New()
+		m, _ := newTestModel(fakeClient{reply: "Hello", stored: &schema.Session{ID: id, Serial: 3}}, &schema.Session{ID: id, Serial: 1})
+		reply := ask(t, m, "Hi")
+		_, cmd := m.Update(sessionChange(t, id, schema.SessionEvent{Serial: 2}))
+		assert.Nil(t, cmd)
+		_, cmd = m.Update(reply)
+		assert.Nil(t, cmd, "the change was the reply's")
+
+		reply = ask(t, m, "Again")
+		m.Update(sessionChange(t, id, schema.SessionEvent{Serial: 4}))
+		_, cmd = m.Update(reply)
+		assert.NotNil(t, cmd, "a change was made elsewhere")
+	})
+
+	t.Run("Deleted", func(t *testing.T) {
+		id := uuid.New()
+		m, _ := newTestModel(fakeClient{}, &schema.Session{ID: id})
+		m.Update(eventMsg{Action: eventschema.EventDelete, Table: sessionTable, Row: id.String()})
+		assert.Contains(t, m.history.View(), "the session was deleted")
+	})
+}
+
+// run runs the command, and the commands it batches, and returns their
+// messages
+func run(cmd tea.Cmd) []tea.Msg {
+	if cmd == nil {
+		return nil
+	}
+	switch msg := cmd().(type) {
+	case tea.BatchMsg:
+		var result []tea.Msg
+		for _, cmd := range msg {
+			result = append(result, run(cmd)...)
+		}
+		return result
+	case nil:
+		return nil
+	default:
+		return []tea.Msg{msg}
+	}
 }

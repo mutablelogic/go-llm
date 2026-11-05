@@ -11,7 +11,7 @@ import (
 
 	// Packages
 	llm "github.com/mutablelogic/go-llm"
-	providerschema "github.com/mutablelogic/go-llm/provider/schema"
+	eventschema "github.com/mutablelogic/go-llm/broadcaster/schema"
 	registry "github.com/mutablelogic/go-llm/registry"
 	schema "github.com/mutablelogic/go-llm/registry/schema"
 	assert "github.com/stretchr/testify/assert"
@@ -157,7 +157,7 @@ func Test_Store(t *testing.T) {
 	t.Run("Watch", func(t *testing.T) {
 		// It sends no events, until the context is cancelled
 		watchCtx, cancel := context.WithCancel(ctx)
-		done, err := store.Watch(watchCtx, make(chan providerschema.Event))
+		done, err := store.Watch(watchCtx, make(chan eventschema.Event))
 		require.NoError(t, err)
 		cancel()
 		assert.NoError(t, <-done)

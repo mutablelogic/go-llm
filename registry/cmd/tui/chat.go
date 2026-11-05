@@ -4,8 +4,11 @@ package tui
 
 import (
 	"context"
+	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
+	"time"
 	"uuid"
 
 	// Packages
@@ -14,6 +17,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	lipgloss "github.com/charmbracelet/lipgloss"
 	llm "github.com/mutablelogic/go-llm"
+	eventschema "github.com/mutablelogic/go-llm/broadcaster/schema"
 	providerschema "github.com/mutablelogic/go-llm/provider/schema"
 	schema "github.com/mutablelogic/go-llm/registry/schema"
 	servertui "github.com/mutablelogic/go-server/pkg/tui"
@@ -23,15 +27,19 @@ import (
 ///////////////////////////////////////////////////////////////////////////////
 // TYPES
 
-// Client is what the interface chats in a session with
+// Client is what the interface chats in a session with, and watches the
+// changes to it with, which others make, such as in another window
 type Client interface {
 	GetSession(ctx context.Context, id uuid.UUID) (*schema.Session, error)
 	ListSessionMessages(ctx context.Context, id uuid.UUID, req schema.MessageListRequest) (*schema.MessageList, error)
 	Chat(ctx context.Context, id uuid.UUID, req schema.ChatRequest, stream llm.GeneratorStreamFn) (*schema.ChatResponse, error)
+	SetSessionStatus(ctx context.Context, id uuid.UUID, status schema.SessionStatus) (*schema.Session, error)
+	WatchEvents(ctx context.Context, fn func(eventschema.Event) error) error
 }
 
 // model is the interface's state: the session, its messages, what's being
-// streamed of the reply, and what's typed
+// streamed of the reply, what's typed, and the session's status, as others
+// change it
 type model struct {
 	ctx      context.Context
 	client   Client
@@ -44,6 +52,11 @@ type model struct {
 	streamed []*group
 	rendered bool
 	err      error
+	typed    time.Time // When the server was last told someone is typing here
+	loading  bool      // Whether the session is being loaded again
+	stale    bool      // Whether it's to be loaded again once it's loaded
+	seen     uint64    // The latest serial of the session's changes
+	watchErr error     // Why the changes to the session aren't watched
 }
 
 // piece is a piece of a reply as it's streamed
@@ -69,6 +82,12 @@ type (
 		asked    int    // The messages before the question
 		question string // The question, which is typed again when it isn't sent
 	}
+	eventMsg   eventschema.Event // A change to the session
+	watchedMsg struct{ err error }
+	loadedMsg  struct {
+		session *schema.Session
+		err     error
+	}
 )
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -83,6 +102,17 @@ var (
 	statusStyle  = lipgloss.NewStyle().Reverse(true).Padding(0, 1)
 	inputHeight  = 3
 	statusHeight = 1
+
+	// sessionTable is the table of the events of sessions
+	sessionTable = "session"
+
+	// typingTimeout is how long the server says someone is typing, after
+	// it's last told
+	typingTimeout = 10 * time.Second
+
+	// typingInterval is how often the server is told someone is typing, as
+	// they type, which is within the server's TypingTimeout, of 10 seconds
+	typingInterval = 5 * time.Second
 )
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -91,22 +121,38 @@ var (
 // Chat runs the interface to chat in the session with the identifier, until
 // it's quit, with escape or control-c: its messages are shown, and what's
 // typed is sent, with enter, and the model's reply is shown as it's
-// generated
+// generated. The changes which others make to the session, such as in
+// another window, are shown as they're made, and whether someone is typing,
+// or the model is replying, and the server is told when someone is typing.
 func Chat(parent context.Context, client Client, id uuid.UUID) error {
 	// A reply which is being waited for is cancelled when the interface is
 	// quit, so the server doesn't go on with it
 	ctx, cancel := context.WithCancel(parent)
 	defer cancel()
 
-	session, err := client.GetSession(ctx, id)
+	// The changes to the session are watched before it's loaded, so none
+	// are missed, and sent to the interface once it's running
+	events := make(chan tea.Msg, 16)
+	go func() {
+		err := client.WatchEvents(ctx, func(event eventschema.Event) error {
+			if event.Table == sessionTable && event.Row == id.String() {
+				select {
+				case events <- eventMsg(event):
+				case <-ctx.Done():
+				}
+			}
+			return nil
+		})
+		select {
+		case events <- watchedMsg{err}:
+		case <-ctx.Done():
+		}
+	}()
+
+	session, err := load(ctx, client, id)
 	if err != nil {
 		return err
 	}
-	messages, err := client.ListSessionMessages(ctx, id, schema.MessageListRequest{})
-	if err != nil {
-		return err
-	}
-	session.Messages = messages.Body
 	input := textarea.New()
 	input.Placeholder = "Ask a question, and press enter to send it, or escape to quit"
 	input.ShowLineNumbers = false
@@ -115,6 +161,16 @@ func Chat(parent context.Context, client Client, id uuid.UUID) error {
 	m := &model{ctx: ctx, client: client, session: session, history: viewport.New(80, 20), input: input}
 	program := tea.NewProgram(m, tea.WithAltScreen(), tea.WithContext(ctx))
 	m.send = program.Send
+	go func() {
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case msg := <-events:
+				program.Send(msg)
+			}
+		}
+	}()
 	_, err = program.Run()
 	return err
 }
@@ -146,6 +202,34 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.history, cmd = m.history.Update(msg)
 			return m, cmd
 		}
+		var cmd tea.Cmd
+		m.input, cmd = m.input.Update(msg)
+		return m, tea.Batch(cmd, m.typing())
+	case eventMsg:
+		return m, m.changed(eventschema.Event(msg))
+	case watchedMsg:
+		if msg.err != nil && !errors.Is(msg.err, context.Canceled) {
+			m.watchErr = msg.err
+		} else {
+			m.watchErr = errors.New("the server stopped")
+		}
+		return m, nil
+	case loadedMsg:
+		m.loading = false
+		if msg.err != nil {
+			m.err = msg.err
+		} else if !m.waiting {
+			// The session is replaced, unless a reply is being waited for,
+			// when it's loaded again once it's stored
+			m.session = msg.session
+		} else {
+			m.stale = true
+		}
+		m.render()
+		if m.stale && !m.waiting {
+			return m, m.load()
+		}
+		return m, nil
 	case streamMsg:
 		m.streamed = addPiece(m.streamed, piece(msg))
 		m.render()
@@ -155,7 +239,11 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// they were stored, or, when it wasn't sent, is typed again
 		m.waiting, m.streamed, m.err = false, nil, msg.err
 		m.session.Messages = m.session.Messages[:msg.asked]
+		var cmd tea.Cmd
 		if msg.err != nil {
+			// The session may have been changed elsewhere, such as when its
+			// model replied to another window, so it's loaded again
+			cmd = m.load()
 			// The question is typed again, unless the next one has been
 			// started, when it's shown with the error, so neither is lost
 			if strings.TrimSpace(m.input.Value()) == "" {
@@ -170,9 +258,12 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.session.Usage.Input = msg.response.Usage.Input
 			m.session.Usage.Output = msg.response.Usage.Output
 			m.session.Usage.Overhead = msg.response.Usage.Overhead
+			if m.stale || m.seen > msg.response.Serial {
+				cmd = m.load()
+			}
 		}
 		m.render()
-		return m, nil
+		return m, cmd
 	}
 	var cmd tea.Cmd
 	m.input, cmd = m.input.Update(msg)
@@ -186,6 +277,66 @@ func (m *model) View() string {
 ///////////////////////////////////////////////////////////////////////////////
 // PRIVATE METHODS
 
+// changed returns the command which loads the session again, when the
+// change is a new serial, which this window hasn't seen, such as a reply in
+// another window, and shows its status, when it's changed, or that it's
+// gone, when it's deleted
+func (m *model) changed(event eventschema.Event) tea.Cmd {
+	switch event.Action {
+	case eventschema.EventDelete:
+		m.err = errors.New("the session was deleted")
+		m.render()
+		return nil
+	case eventschema.EventUpdate:
+		var data schema.SessionEvent
+		if err := json.Unmarshal(event.Data, &data); err != nil {
+			return nil
+		}
+		if data.Status != "" {
+			m.session.Status = data.Status
+		}
+		if data.Serial > m.session.Serial {
+			// While a reply is waited for, the change may be its own, so
+			// it's loaded once it's stored, when it isn't
+			m.seen = max(m.seen, data.Serial)
+			if !m.waiting {
+				return m.load()
+			}
+		}
+	}
+	return nil
+}
+
+// load returns the command which loads the session, with its messages,
+// again, unless it's being loaded, when it's loaded again after
+func (m *model) load() tea.Cmd {
+	if m.loading {
+		m.stale = true
+		return nil
+	}
+	m.loading, m.stale = true, false
+	ctx, client, id := m.ctx, m.client, m.session.ID
+	return func() tea.Msg {
+		session, err := load(ctx, client, id)
+		return loadedMsg{session: session, err: err}
+	}
+}
+
+// typing returns the command which tells the server someone is typing, when
+// something is typed, and it wasn't told within typingInterval
+func (m *model) typing() tea.Cmd {
+	if strings.TrimSpace(m.input.Value()) == "" || time.Since(m.typed) < typingInterval {
+		return nil
+	}
+	m.typed = time.Now()
+	ctx, client, id := m.ctx, m.client, m.session.ID
+	return func() tea.Msg {
+		// It doesn't matter when it can't be told
+		client.SetSessionStatus(ctx, id, schema.SessionTyping)
+		return nil
+	}
+}
+
 // ask sends what's typed, as a question, unless a reply is being waited for,
 // and returns the command which waits for the reply, which is streamed
 func (m *model) ask() tea.Cmd {
@@ -194,7 +345,7 @@ func (m *model) ask() tea.Cmd {
 		return nil
 	}
 	m.input.Reset()
-	m.waiting, m.err = true, nil
+	m.waiting, m.err, m.typed = true, nil, time.Time{}
 	question := providerschema.MessageMeta{Sender: "user", Content: []providerschema.ContentBlock{{Text: types.Ptr(text)}}}
 	m.session.Messages = append(m.session.Messages, providerschema.Message{MessageMeta: question})
 	m.render()
@@ -302,20 +453,42 @@ func (m *model) markdown(text string) string {
 }
 
 // status returns the status line: the session's model, identifier, and the
-// tokens of its conversation, and whether a reply is being waited for
+// tokens of its conversation, and whether the model is replying, here or in
+// another window, or someone else is typing, as far as is known, as this
+// window is told the same when it's typing, and why changes aren't watched
 func (m *model) status() string {
 	parts := []string{types.Value(m.session.Model), m.session.ID.String()}
 	if tokens := m.session.Usage.Input + m.session.Usage.Output + m.session.Usage.Overhead; tokens > 0 {
 		parts = append(parts, fmt.Sprintf("%d tokens", tokens))
 	}
-	if m.waiting {
+	switch {
+	case m.waiting || m.session.Status == schema.SessionReplying:
 		parts = append(parts, "replying…")
+	case m.session.Status == schema.SessionTyping && time.Since(m.typed) > typingTimeout:
+		parts = append(parts, "someone is typing…")
+	}
+	if m.watchErr != nil {
+		parts = append(parts, "not following changes: "+m.watchErr.Error())
 	}
 	return statusStyle.Width(m.width).Render(strings.Join(parts, " · "))
 }
 
 ///////////////////////////////////////////////////////////////////////////////
 // PRIVATE FUNCTIONS
+
+// load returns the session with the identifier, with its messages
+func load(ctx context.Context, client Client, id uuid.UUID) (*schema.Session, error) {
+	session, err := client.GetSession(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	messages, err := client.ListSessionMessages(ctx, id, schema.MessageListRequest{})
+	if err != nil {
+		return nil, err
+	}
+	session.Messages = messages.Body
+	return session, nil
+}
 
 // addPiece adds the piece of a reply, as it's streamed, to the groups:
 // to the last, when it's of the same kind, apart from a tool's log line,

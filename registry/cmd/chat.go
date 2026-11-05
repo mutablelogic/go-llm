@@ -10,6 +10,8 @@ import (
 	"uuid"
 
 	// Packages
+	eventclient "github.com/mutablelogic/go-llm/broadcaster/httpclient"
+	eventschema "github.com/mutablelogic/go-llm/broadcaster/schema"
 	providerschema "github.com/mutablelogic/go-llm/provider/schema"
 	chattui "github.com/mutablelogic/go-llm/registry/cmd/tui"
 	httpclient "github.com/mutablelogic/go-llm/registry/httpclient"
@@ -28,6 +30,13 @@ type ChatCmd struct {
 	Files   []string  `name:"file" short:"f" sep:"none" help:"A file the question is about, which can be given more than once. Text, such as code or subtitles, is sent as text, with its name, and anything else, such as an image or a PDF, as an attachment, which the model must accept." optional:""`
 	Session uuid.UUID `name:"session" help:"Session identifier, which is a UUID, or the default session, which this is then." optional:""`
 	Stream  bool      `name:"stream" negatable:"" default:"true" help:"Print the reply as it's generated, or with --no-stream, once it's complete, rendered as markdown on a terminal."`
+}
+
+// chatClient is the client of the registry's API, and of its events, which
+// the interface chats with
+type chatClient struct {
+	*httpclient.Client
+	events *eventclient.Client
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -49,7 +58,11 @@ func (cmd *ChatCmd) Run(ctx server.Cmd) error {
 	text := strings.TrimSpace(strings.Join(cmd.Text, " "))
 	if text == "" && len(cmd.Files) == 0 && width > 0 {
 		if err := withClient(ctx, "llm.ChatCmd", func(reqctx context.Context, client *httpclient.Client) error {
-			return chattui.Chat(reqctx, client, id)
+			events, err := newEventClient(ctx)
+			if err != nil {
+				return err
+			}
+			return chattui.Chat(reqctx, chatClient{client, events}, id)
 		}); err != nil {
 			return err
 		}
@@ -108,4 +121,25 @@ func (cmd *ChatCmd) Run(ctx server.Cmd) error {
 		}
 		return nil
 	})
+}
+
+///////////////////////////////////////////////////////////////////////////////
+// PRIVATE METHODS
+
+// WatchEvents watches the server's events, such as the changes to sessions
+func (c chatClient) WatchEvents(ctx context.Context, fn func(eventschema.Event) error) error {
+	return c.events.WatchEvents(ctx, fn)
+}
+
+///////////////////////////////////////////////////////////////////////////////
+// PRIVATE FUNCTIONS
+
+// newEventClient returns a client of the server's events, from the
+// command's endpoint and options
+func newEventClient(ctx server.Cmd) (*eventclient.Client, error) {
+	endpoint, opts, err := ctx.ClientEndpoint()
+	if err != nil {
+		return nil, err
+	}
+	return eventclient.New(endpoint, opts...)
 }

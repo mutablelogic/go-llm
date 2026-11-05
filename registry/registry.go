@@ -31,7 +31,7 @@ type Registry struct {
 	opt
 	mu        sync.RWMutex
 	providers map[string]*cached
-	watchers  watchers
+	statuses  statuses
 }
 
 // entry is a provider, its name in the registry, and its cache
