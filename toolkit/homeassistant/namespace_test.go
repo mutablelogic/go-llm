@@ -22,7 +22,7 @@ func TestNamespace(t *testing.T) {
 	for _, tool := range ns.Tools() {
 		names = append(names, tool.Name())
 	}
-	assert.ElementsMatch(t, []string{"get_states", "get_state", "get_services", "call_service", "set_state", "fire_event", "template"}, names)
+	assert.ElementsMatch(t, []string{"query", "control"}, names)
 
 	tk, err := toolkit.New(t.Context())
 	require.NoError(t, err)
