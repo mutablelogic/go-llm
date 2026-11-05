@@ -6,6 +6,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"sync"
 	"uuid"
 
 	// Packages
@@ -24,6 +25,14 @@ type logSession struct {
 	id     uuid.UUID
 	log    *toolLog
 	logger *slog.Logger
+	used   *toolUsage
+}
+
+// toolUsage is the tokens a tool used, which it adds to as it runs, from
+// each goroutine it runs in
+type toolUsage struct {
+	sync.Mutex
+	usage llm.Usage
 }
 
 var _ Session = logSession{}
@@ -62,7 +71,7 @@ var _ slog.Handler = (*toolHandler)(nil)
 // from, so must be safe to call at once.
 func NewSession(name string, id uuid.UUID, stream llm.GeneratorStreamFn, span trace.Span) Session {
 	log := &toolLog{name: name, stream: stream, span: span}
-	return logSession{id: id, log: log, logger: slog.New(&toolHandler{toolLog: log})}
+	return logSession{id: id, log: log, logger: slog.New(&toolHandler{toolLog: log}), used: &toolUsage{}}
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -76,6 +85,20 @@ func (s logSession) ID() uuid.UUID {
 
 func (s logSession) Logger() *slog.Logger {
 	return s.logger
+}
+
+// Usage adds the tokens the tool used to those of its result
+func (s logSession) Usage(usage llm.Usage) {
+	s.used.Lock()
+	defer s.used.Unlock()
+	s.used.usage = s.used.usage.Add(usage)
+}
+
+// usage returns the tokens the tool used, which its result has
+func (s logSession) usage() llm.Usage {
+	s.used.Lock()
+	defer s.used.Unlock()
+	return s.used.usage
 }
 
 // Progress streams the tool's progress, which replaces its progress before,

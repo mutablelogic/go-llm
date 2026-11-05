@@ -287,7 +287,7 @@ func Test_Chat(t *testing.T) {
 			assert.NotZero(t, message.Tokens)
 		}
 		assert.Equal(t, "Still here", stored.Messages[3].Text())
-		assert.Equal(t, llm.Usage{InputTokens: 20, OutputTokens: 10}, stored.Usage.Usage)
+		assert.Equal(t, llm.Usage{InputTokens: 20, OutputTokens: 10}, withoutDuration(stored.Usage.Usage))
 		assert.Equal(t, response.Usage.Input, stored.Usage.Input)
 		assert.Equal(t, uint(10), stored.Usage.Output)
 	})

@@ -112,6 +112,8 @@ func Test_Transcribe(t *testing.T) {
 		assert.Equal(t, "Hello, world.", response.Text)
 		assert.Equal(t, "en", response.Language)
 		assert.Empty(t, response.Segments)
+		assert.NotZero(t, response.Usage.Duration, "how long the model took")
+		response.Usage.Duration = 0
 		assert.Equal(t, llm.Usage{Seconds: 3}, response.Usage)
 		path, fields := stub.Last()
 		assert.Equal(t, "/v1/audio/transcriptions", path)

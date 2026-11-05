@@ -78,10 +78,30 @@ func runTool(parent context.Context, tool llm.Tool, call llm.ToolCall, timeout t
 		ctx, cancel = context.WithCancel(parent)
 	}
 	defer cancel()
+	var s Session
 	if session != nil {
-		ctx = WithSession(ctx, session(call))
+		s = session(call)
+		ctx = WithSession(ctx, s)
 	}
 
+	// Its result has how long it took, and the tokens it used, when it
+	// says, even when it fails
+	start := time.Now()
+	block := runCall(parent, ctx, tool, call, timeout)
+	if block.ToolResult != nil {
+		var usage llm.Usage
+		if used, ok := s.(interface{ usage() llm.Usage }); ok {
+			usage = used.usage()
+		}
+		usage.Duration = time.Since(start)
+		block.ToolResult.Usage = &usage
+	}
+	return block
+}
+
+// runCall runs the tool for the call, in the context, and returns its
+// result, or its error, unless the context is done first, or it times out
+func runCall(parent, ctx context.Context, tool llm.Tool, call llm.ToolCall, timeout time.Duration) providerschema.ContentBlock {
 	// The tool returns its result, unless its context is done first
 	done := make(chan outcome, 1)
 	go func() {

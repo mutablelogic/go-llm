@@ -6,6 +6,7 @@ import (
 	"mime"
 	"net/http"
 	"strings"
+	"time"
 
 	// Packages
 	otel "github.com/mutablelogic/go-client/pkg/otel"
@@ -45,7 +46,9 @@ func (r *Registry) WithoutSession(ctx context.Context, model llm.Model, messages
 	} else if err := canGenerate(model, messages, tools, opts...); err != nil {
 		return nil, llm.Usage{}, err
 	}
+	start := time.Now()
 	reply, usage, err := generator.WithoutSession(ctx, model, messages, tools, stream, opts...)
+	usage = timed(usage, start)
 	if err != nil {
 		return nil, llm.Usage{}, providerErr(err)
 	}
@@ -68,7 +71,9 @@ func (r *Registry) Embed(ctx context.Context, model llm.Model, messages []llm.Me
 	} else if err := can(model, model.Capabilities().Embedding, "embed messages"); err != nil {
 		return nil, llm.Usage{}, err
 	}
+	start := time.Now()
 	vectors, usage, err := embedder.Embed(ctx, model, messages, opts...)
+	usage = timed(usage, start)
 	if err != nil {
 		return nil, llm.Usage{}, providerErr(err)
 	}
@@ -92,7 +97,9 @@ func (r *Registry) Transcribe(ctx context.Context, model llm.Model, audio llm.Re
 	} else if err := can(model, model.Capabilities().Transcription, "transcribe audio"); err != nil {
 		return llm.Transcript{}, llm.Usage{}, err
 	}
+	start := time.Now()
 	transcript, usage, err := transcriber.Transcribe(ctx, model, audio, stream, opts...)
+	usage = timed(usage, start)
 	if err != nil {
 		return llm.Transcript{}, llm.Usage{}, providerErr(err)
 	}
@@ -115,7 +122,9 @@ func (r *Registry) Translate(ctx context.Context, model llm.Model, audio llm.Res
 	} else if err := can(model, model.Capabilities().Translation, "translate audio"); err != nil {
 		return llm.Transcript{}, llm.Usage{}, err
 	}
+	start := time.Now()
 	transcript, usage, err := transcriber.Translate(ctx, model, audio, stream, opts...)
+	usage = timed(usage, start)
 	if err != nil {
 		return llm.Transcript{}, llm.Usage{}, providerErr(err)
 	}
@@ -138,7 +147,9 @@ func (r *Registry) Recognize(ctx context.Context, model llm.Model, resource llm.
 	} else if err := can(model, model.Capabilities().OCR, "recognize text"); err != nil {
 		return llm.Document{}, llm.Usage{}, err
 	}
+	start := time.Now()
 	document, usage, err := recognizer.Recognize(ctx, model, resource, opts...)
+	usage = timed(usage, start)
 	if err != nil {
 		return llm.Document{}, llm.Usage{}, providerErr(err)
 	}
@@ -238,4 +249,13 @@ func hasImage(messages []llm.Message) bool {
 		}
 	}
 	return false
+}
+
+// timed returns the usage, with how long the model took, from the start,
+// unless its provider says
+func timed(usage llm.Usage, start time.Time) llm.Usage {
+	if usage.Duration == 0 {
+		usage.Duration = time.Since(start)
+	}
+	return usage
 }

@@ -2,6 +2,9 @@ package schema
 
 import (
 	"encoding/json"
+
+	// Packages
+	llm "github.com/mutablelogic/go-llm"
 )
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -21,6 +24,7 @@ type ToolResult struct {
 	Name    string          `json:"name,omitempty" help:"Tool name that produced this result" example:"get_weather"`
 	Content json.RawMessage `json:"content,omitempty" help:"JSON-encoded tool output content" example:"{\"temperature_c\":18}"`
 	IsError bool            `json:"is_error,omitempty" help:"Whether the tool result represents an error" example:"false"`
+	Usage   *llm.Usage      `json:"usage,omitempty" help:"Tokens the tool used, such as an agent, which asks a model, or none"`
 }
 
 ////////////////////////////////////////////////////////////////////////////////

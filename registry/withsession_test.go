@@ -45,7 +45,7 @@ func Test_WithSession(t *testing.T) {
 		assert.Equal(t, uint(4), response.Usage.Input)
 		assert.Equal(t, uint(5), response.Usage.Output)
 		assert.Equal(t, uint(6), response.Usage.Overhead)
-		assert.Equal(t, llm.Usage{InputTokens: 10, OutputTokens: 5}, response.Usage.Usage)
+		assert.Equal(t, llm.Usage{InputTokens: 10, OutputTokens: 5}, withoutDuration(response.Usage.Usage))
 
 		// The model is asked with the system prompt
 		require.Len(t, p.asked, 1)
@@ -89,7 +89,7 @@ func Test_WithSession(t *testing.T) {
 		assert.Equal(t, "Sunny", response.Messages[3].Text())
 		assert.Equal(t, uint(4)+uint(response.Messages[2].Tokens), response.Usage.Input)
 		assert.Equal(t, uint(10), response.Usage.Output)
-		assert.Equal(t, llm.Usage{InputTokens: 20, OutputTokens: 10}, response.Usage.Usage)
+		assert.Equal(t, llm.Usage{InputTokens: 20, OutputTokens: 10}, withoutDuration(response.Usage.Usage))
 	})
 
 	t.Run("Schema", func(t *testing.T) {
