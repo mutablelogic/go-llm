@@ -14,3 +14,4 @@ build/
 .claude
 /llm
 _old/
+node_modules/

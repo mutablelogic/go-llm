@@ -13,6 +13,8 @@ flowchart LR
         and interactive chat`"]
         Client["`**registry/httpclient**
         Go client`"]
+        UI["`**frontend**
+        web UI`"]
     end
 
     subgraph Server["Server, or your own Go program"]
@@ -52,6 +54,7 @@ flowchart LR
 
     CLI --> Client
     Client --> API
+    UI --> API
     API --> Registry
     Registry --> Stores
     Registry --> Toolkit
@@ -64,11 +67,12 @@ flowchart LR
     Registry --> Ollama & OpenAI & Whisper & ElevenLabs & Eliza
 
     classDef highlight fill:#e8f0fe,stroke:#1a73e8,stroke-width:2px,color:#111
-    class CLI,Client,Registry,Toolkit,Agents,Memory highlight
+    class CLI,Client,UI,Registry,Toolkit,Agents,Memory highlight
     class Ollama,OpenAI,Whisper,ElevenLabs,Eliza highlight
 ```
 
 - The **client and CLI**: the `llm` command, in [cmd/llm](cmd/llm), runs the server, and is its client, with commands for each operation, and an interactive chat in the terminal, which streams replies and follows other clients of the same session. The Go client, [registry/httpclient](registry/httpclient), is what it uses to talk to the server.
+- The **web UI**, in [frontend](frontend), which the server serves, when it's built with `make`, is a page to chat in sessions, with replies streamed, and to see the models and tools.
 - The **registry**, in [registry](registry), finds a model by name, checks what it can do, and asks its provider. It keeps providers, sessions and agents in stores, runs the agent loop, which calls tools until the model replies, and publishes events about what changed.
 - The **toolkit**, in [toolkit](toolkit), holds the tools which models can call, in namespaces, such as `homeassistant` or `weatherapi`, and streams what they log, and their progress, as they run.
 - The **memory**, in [memory](memory), is what every session and agent knows: the details of the person, and of the assistant, such as their names, where the person is, and their time zone and language, each known, not known, or declined, and memories, which are what a model keeps beyond the conversation, such as the person's preferences, or the people in their life, under keys. It's the toolkit's `memory` namespace, whose system prompt has the details, the time, and how to search, keep and use memories, and whose tools remember them.
@@ -81,7 +85,7 @@ The registry can be used without the server, from your own Go program, as the [e
 
 - **Providers**: add, update and remove providers while the server runs, and keep them in a store between restarts. A model is referred to by its name, or by its provider and name, such as `ollama:llama3.2:latest`.
 - **Ask**: a model's reply to messages, with a system prompt, options, tools whose calls are returned for the caller to run, and structured output with a JSON schema. Replies can be streamed as server-sent events.
-- **Chat**: a conversation with a model, in a session, which the server keeps, with its model, system prompt, tools, options and schema. The model calls the tools until it replies, and the conversation is shortened to fit its context. Chat in the terminal, or with the API, whose replies are streamed, and every client of a session sees its new messages, and whether someone is typing, or the model is replying.
+- **Chat**: a conversation with a model, in a session, which the server keeps, with its model, system prompt, tools, options and schema. The model calls the tools until it replies, and the conversation is shortened to fit its context. Chat in the terminal, in the web UI, or with the API, whose replies are streamed, and every client of a session sees its new messages, and whether someone is typing, or the model is replying.
 - **Agents**: named definitions of a prompt, its input, and how a model is asked it, with its system prompt, tools, options and the schema of its reply, which are kept, in YAML or JSON, and which models call as tools, in the `agent` namespace, however deep, with their progress streamed, and their tokens counted as their caller's. The server adds example agents when it starts, such as one which translates text.
 - **Embed**: a vector for each message, of its text, and of images and audio for models which embed them.
 - **OCR**: the text of images and documents, such as PDFs, as Markdown, page by page, with the regions of each page and their boxes.
@@ -116,7 +120,7 @@ go install github.com/mutablelogic/go-llm/cmd/llm@latest
 go install -tags client github.com/mutablelogic/go-llm/cmd/llm@latest
 ```
 
-Or build them from a clone of the repository, with `make`, into `build/llm`, or the command-line tool alone with `make client`. Then run the server, which listens on `localhost:8084` by default:
+Or build them from a clone of the repository, with `make`, into `build/llm`, or the command-line tool alone with `make client`. `make` also builds the web UI, with npm, which the server then serves from its root, such as `http://localhost:8084/`, to chat, and see the models and tools; a server installed with `go install` serves the API without it. Then run the server, which listens on `localhost:8084` by default:
 
 ```bash
 llm run

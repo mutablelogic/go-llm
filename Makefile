@@ -3,11 +3,13 @@
 
 # Executables
 GO ?= $(shell which go 2>/dev/null)
+NPM ?= $(shell which npm 2>/dev/null)
 GOWORK ?= off
 
 # Locations
 BUILD_DIR ?= build
 CMD_DIR := $(wildcard cmd/*)
+TS_DIR := frontend
 
 # Set OS and Architecture
 ARCH ?= $(shell arch | tr A-Z a-z | sed 's/x86_64/amd64/' | sed 's/i386/amd64/' | sed 's/armv7l/arm/' | sed 's/aarch64/arm64/')
@@ -33,13 +35,22 @@ all: build
 ###############################################################################
 # BUILD
 
-# Build the commands in the cmd directory
+# Build the commands in the cmd directory, with the web UI, which the server
+# embeds with the "frontend" tag, once it's built
 .PHONY: build
 build: tidy $(CMD_DIR)
 
 $(CMD_DIR): go-dep mkdir
 	@echo Build $(notdir $@) GOOS=${OS} GOARCH=${ARCH}
-	@GOWORK=${GOWORK} GOOS=${OS} GOARCH=${ARCH} ${GO} build ${BUILD_FLAGS} -o ${BUILD_DIR}/$(notdir $@) ./$@
+	@GOWORK=${GOWORK} GOOS=${OS} GOARCH=${ARCH} ${GO} build -tags frontend ${BUILD_FLAGS} -o ${BUILD_DIR}/$(notdir $@) ./$@
+
+# Build the web UI into build/frontend, which the server embeds, with its
+# dependencies, which are installed from package-lock.json, once it's type
+# checked, as esbuild doesn't check its types
+.PHONY: frontend
+frontend: npm-dep mkdir
+	@echo Build frontend
+	@cd $(TS_DIR) && ${NPM} ci --silent && npx tsc --noEmit -p . && node build.js
 
 # Build the client, which is the llm command without the server, with the
 # "client" tag. It's built as build/llm, in place of the server.
@@ -84,8 +95,10 @@ coverage-test: go-dep mkdir
 mkdir:
 	@install -d $(BUILD_DIR)
 
+# The web UI is built first, as the server's "frontend" tag imports it, which
+# go mod tidy, which looks at every tag, needs
 .PHONY: tidy
-tidy: go-dep
+tidy: go-dep frontend
 	@echo 'go tidy'
 	@GOWORK=${GOWORK} $(GO) mod tidy
 
@@ -97,6 +110,10 @@ clean:
 
 ###############################################################################
 # DEPENDENCIES
+
+.PHONY: npm-dep
+npm-dep:
+	@test -f "${NPM}" && test -x "${NPM}"  || (echo "Missing npm binary, which builds the web UI" && exit 1)
 
 .PHONY: go-dep
 go-dep:
