@@ -23,6 +23,7 @@ import (
 	httprouter "github.com/mutablelogic/go-server/pkg/httprouter"
 	openapi "github.com/mutablelogic/go-server/pkg/openapi/schema"
 	types "github.com/mutablelogic/go-server/pkg/types"
+	yaml "go.yaml.in/yaml/v3"
 )
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -382,8 +383,19 @@ func validate(content map[string]openapi.MediaType, header http.Header, body []b
 	}
 
 	// A text/plain body, or a stream of server-sent events, is a string,
-	// which is validated as a JSON string, and a multipart form is an object
+	// which is validated as a JSON string, a multipart form is an object, and
+	// YAML is validated as the JSON it is
 	switch contentType {
+	case types.ContentTypeYAML, "application/x-yaml", "text/yaml", "text/x-yaml":
+		var value any
+		if err := yaml.Unmarshal(body, &value); err != nil {
+			return fmt.Errorf("yaml: %w", err)
+		}
+		data, err := json.Marshal(value)
+		if err != nil {
+			return err
+		}
+		body = data
 	case types.ContentTypeTextPlain, types.ContentTypeTextStream:
 		data, err := json.Marshal(string(body))
 		if err != nil {

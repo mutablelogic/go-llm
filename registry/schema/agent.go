@@ -3,6 +3,7 @@ package schema
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"net/url"
 	"slices"
 	"strconv"
@@ -13,7 +14,9 @@ import (
 	// Packages
 	llm "github.com/mutablelogic/go-llm"
 	jsonschema "github.com/mutablelogic/go-server/pkg/jsonschema"
+	tui "github.com/mutablelogic/go-server/pkg/tui"
 	types "github.com/mutablelogic/go-server/pkg/types"
+	yaml "go.yaml.in/yaml/v3"
 )
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -59,7 +62,7 @@ type AgentListRequest struct {
 type AgentList struct {
 	AgentListRequest
 	Count uint    `json:"count" help:"How many agents there are"`
-	Body  []Agent `json:"body,omitzero" help:"Agents, in order of their names"`
+	Body  []Agent `json:"body,omitzero" help:"Agents, in the store's order"`
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -162,6 +165,62 @@ func (a AgentMeta) Merge(update AgentMeta) AgentMeta {
 	return AgentMeta{PromptMeta: a.PromptMeta.Merge(update.PromptMeta), GeneratorMeta: a.GeneratorMeta.Merge(update.GeneratorMeta)}
 }
 
+// ParseAgentMeta returns the definition in the data, which is YAML, such as
+// go-nanoradio's agent/segment.yaml, or JSON, which is YAML too, by the
+// names its JSON has, so its input, options and schema are JSON. A key which
+// isn't one of its names, such as system_prompt, rather than system, is an
+// error. Returns ErrBadParameter when it can't be parsed.
+func ParseAgentMeta(data []byte) (AgentMeta, error) {
+	// The YAML is JSON, in the order of its keys, so the input and schema
+	// are as they were written
+	var node yaml.Node
+	if err := yaml.Unmarshal(data, &node); err != nil {
+		return AgentMeta{}, llm.ErrBadParameter.Withf("invalid agent: %v", err)
+	} else if len(node.Content) != 1 || node.Content[0].Kind != yaml.MappingNode {
+		return AgentMeta{}, llm.ErrBadParameter.With("invalid agent: it must be a mapping of its fields")
+	}
+	var buf bytes.Buffer
+	if err := writeJSON(&buf, node.Content[0]); err != nil {
+		return AgentMeta{}, llm.ErrBadParameter.Withf("invalid agent: %v", err)
+	}
+	data = buf.Bytes()
+	var meta AgentMeta
+	decoder := json.NewDecoder(bytes.NewReader(data))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&meta); err != nil {
+		return AgentMeta{}, llm.ErrBadParameter.Withf("invalid agent: %v", err)
+	}
+	return meta, nil
+}
+
+// YAML returns the definition as YAML, as a file of an agent's definition
+// is, which ParseAgentMeta parses: by the names its JSON has, in the same
+// order, in block style, with text of more than one line, such as its
+// prompt, as a literal block
+func (a AgentMeta) YAML() ([]byte, error) {
+	data, err := json.Marshal(a)
+	if err != nil {
+		return nil, err
+	}
+
+	// JSON is YAML, which is decoded into nodes, in the order of its keys,
+	// whose flow style, as JSON is, is changed to block style
+	var node yaml.Node
+	if err := yaml.Unmarshal(data, &node); err != nil {
+		return nil, err
+	}
+	blockStyle(&node)
+	var buf bytes.Buffer
+	encoder := yaml.NewEncoder(&buf)
+	encoder.SetIndent(2)
+	if err := encoder.Encode(&node); err != nil {
+		return nil, err
+	} else if err := encoder.Close(); err != nil {
+		return nil, err
+	}
+	return buf.Bytes(), nil
+}
+
 // Query returns the request as the parameters of a URL's query
 func (r AgentListRequest) Query() url.Values {
 	values := url.Values{}
@@ -172,4 +231,124 @@ func (r AgentListRequest) Query() url.Values {
 		values.Set("limit", strconv.FormatUint(uint64(*r.Limit), 10))
 	}
 	return values
+}
+
+///////////////////////////////////////////////////////////////////////////////
+// TABLE
+
+func (a Agent) Header() []string {
+	return []string{"Name", "Title", "Model", "Tools", "Updated"}
+}
+
+func (a Agent) Width(col int) int {
+	return 0
+}
+
+// Cell returns the agent's name, title, model, tools, and when it was last
+// updated, which is when it was created, or modified, whichever is later
+func (a Agent) Cell(col int) tui.CellText {
+	switch col {
+	case 0:
+		return a.Name
+	case 1:
+		return types.Value(a.Title)
+	case 2:
+		return types.Value(a.Model)
+	case 3:
+		return strings.Join(a.Tools, ", ")
+	case 4:
+		return updated(a.Created, a.Modified)
+	}
+	return ""
+}
+
+///////////////////////////////////////////////////////////////////////////////
+// PRIVATE FUNCTIONS
+
+// updated returns when something was last updated, which is when it was
+// created, or modified, whichever is later, in local time, or nothing when
+// neither is known
+func updated(created, modified time.Time) string {
+	when := created
+	if modified.After(when) {
+		when = modified
+	}
+	if when.IsZero() {
+		return ""
+	}
+	return when.Local().Format(time.DateTime)
+}
+
+// writeJSON writes the YAML node as JSON, with the keys of its mappings in
+// their order, which they're decoded in, unlike a map's. A mapping's keys
+// are text.
+func writeJSON(buf *bytes.Buffer, node *yaml.Node) error {
+	switch node.Kind {
+	case yaml.DocumentNode:
+		if len(node.Content) == 0 {
+			buf.WriteString("null")
+			return nil
+		}
+		return writeJSON(buf, node.Content[0])
+	case yaml.AliasNode:
+		return writeJSON(buf, node.Alias)
+	case yaml.MappingNode:
+		buf.WriteByte('{')
+		for i := 0; i+1 < len(node.Content); i += 2 {
+			if i > 0 {
+				buf.WriteByte(',')
+			}
+			var key string
+			if err := node.Content[i].Decode(&key); err != nil {
+				return fmt.Errorf("line %d: a key must be text: %w", node.Content[i].Line, err)
+			}
+			data, err := json.Marshal(key)
+			if err != nil {
+				return err
+			}
+			buf.Write(data)
+			buf.WriteByte(':')
+			if err := writeJSON(buf, node.Content[i+1]); err != nil {
+				return err
+			}
+		}
+		buf.WriteByte('}')
+	case yaml.SequenceNode:
+		buf.WriteByte('[')
+		for i, child := range node.Content {
+			if i > 0 {
+				buf.WriteByte(',')
+			}
+			if err := writeJSON(buf, child); err != nil {
+				return err
+			}
+		}
+		buf.WriteByte(']')
+	default:
+		var value any
+		if err := node.Decode(&value); err != nil {
+			return fmt.Errorf("line %d: %w", node.Line, err)
+		}
+		data, err := json.Marshal(value)
+		if err != nil {
+			return fmt.Errorf("line %d: %w", node.Line, err)
+		}
+		buf.Write(data)
+	}
+	return nil
+}
+
+// blockStyle changes the style of the node, and its nodes, to block style,
+// with text of more than one line as a literal block, and other text plain,
+// unless it must be quoted, which the encoder does
+func blockStyle(node *yaml.Node) {
+	switch {
+	case node.Kind == yaml.ScalarNode && node.Tag == "!!str" && strings.Contains(strings.TrimRight(node.Value, "\n"), "\n"):
+		node.Style = yaml.LiteralStyle
+	default:
+		node.Style = 0
+	}
+	for _, child := range node.Content {
+		blockStyle(child)
+	}
 }

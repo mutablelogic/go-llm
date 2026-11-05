@@ -31,7 +31,7 @@ type AgentStore interface {
 	// none.
 	Get(ctx context.Context, name string) (schema.Agent, error)
 
-	// List returns the agents, in order of their names, from the request's
+	// List returns the agents, in the store's order, from the request's
 	// offset, and at most its limit of them, and how many there are
 	List(context.Context, schema.AgentListRequest) (schema.AgentList, error)
 
@@ -106,7 +106,7 @@ func (r *Registry) GetAgent(ctx context.Context, name string) (_ *schema.Agent, 
 	return &agent, nil
 }
 
-// ListAgents returns the agents, in order of their names, as the request
+// ListAgents returns the agents, in the store's order, as the request
 // selects. Returns ErrServiceUnavailable when the registry has no agent
 // store.
 func (r *Registry) ListAgents(ctx context.Context, req schema.AgentListRequest) (_ *schema.AgentList, err error) {
@@ -128,10 +128,11 @@ func (r *Registry) ListAgents(ctx context.Context, req schema.AgentListRequest) 
 // UpdateAgent changes the definition of the agent with the name, as
 // AgentMeta.Merge does: what the update sets is changed, its options are set,
 // or removed, when they're null, and the rest is kept. Its name isn't
-// changed. The definition, as changed, must be valid, as CreateAgent says,
+// changed: the update has no name, or the agent's, such as when it's the
+// agent's whole definition. The definition, as changed, must be valid, as CreateAgent says,
 // and a model, or tools, which are changed are the registry's, by their
 // canonical names. Returns the agent. Returns ErrBadParameter when the
-// update changes nothing, or the definition, as changed, isn't valid,
+// update has another name, or changes nothing, or the definition, as changed, isn't valid,
 // ErrNotFound when there's no agent, or the model, or a tool, isn't the
 // registry's, ErrConflict when it was changed as it was updated, or a name is
 // ambiguous, and ErrServiceUnavailable when the registry has no agent store.
@@ -144,6 +145,8 @@ func (r *Registry) UpdateAgent(ctx context.Context, name string, meta schema.Age
 
 	if r.agentStore == nil {
 		return nil, errNoAgentStore
+	} else if meta.Name != "" && meta.Name != name {
+		return nil, llm.ErrBadParameter.Withf("agent %q can't be renamed %q", name, meta.Name)
 	} else if meta.IsZero() {
 		return nil, llm.ErrBadParameter.With("nothing to update")
 	}
