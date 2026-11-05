@@ -59,7 +59,8 @@ export class ModelsController extends ListController<Model> {
         if (this.unreachable()) {
             return { count: 0, body: [] };
         }
-        return listModels(offset, limit, this.provider);
+        const models = (await listModels(this.provider)).body ?? [];
+        return { count: models.length, body: models.slice(offset, offset + limit) };
     }
 
     // announce says which providers can no longer be reached, and which can
@@ -99,7 +100,7 @@ export class ModelsController extends ListController<Model> {
                     return { ...provider };
                 }
                 try {
-                    return { ...provider, models: (await listModels(0, 1, provider.name)).count };
+                    return { ...provider, models: (await listModels(provider.name)).count };
                 } catch {
                     return { ...provider };
                 }

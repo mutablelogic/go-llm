@@ -27,7 +27,7 @@ export class MessageView extends Panel<Message> {
     }
 
     protected renderSubtitle(message: Message) {
-        return message.role ?? 'user';
+        return message.role || 'user';
     }
 
     protected renderBody(message: Message) {

@@ -10,7 +10,7 @@
 
 import { LitElement, css, html, nothing, type PropertyValues } from 'lit';
 import { customElement, property, query } from 'lit/decorators.js';
-import { canonicalTool, type ContentBlock, type Message, type Session } from '../schema/session';
+import { canonicalTool, isUser, type ContentBlock, type Message, type Session } from '../schema/session';
 import { detailValue, type Details } from '../schema/memory';
 import { markdown, markdownStyles } from './markdown';
 import type { ChatKind } from './chat-bubble';
@@ -198,7 +198,7 @@ export class ChatView extends LitElement {
         }
         return html`
             <div class="conversation">${this.renderConversation()}</div>
-            <llm-chat-input ?busy=${this.question !== undefined}
+            <llm-chat-input ?disabled=${this.messages === undefined} ?busy=${this.question !== undefined}
                 @llm-chat-send=${(e: CustomEvent<string>) => this.dispatchEvent(new CustomEvent(ChatView.eventSend, { detail: e.detail }))}
                 @llm-chat-typing=${() => this.dispatchEvent(new CustomEvent(ChatView.eventTyping))}></llm-chat-input>
         `;
@@ -310,7 +310,7 @@ function bubblesOf(message: Message): Bubble[] {
     if (message.role === 'system') {
         return [];
     }
-    const kind: ChatKind = message.role === 'user' ? 'user' : 'assistant';
+    const kind: ChatKind = isUser(message) ? 'user' : 'assistant';
     const bubbles = message.content.flatMap((block) => blockBubbles(kind, block)).map((bubble) => ({ ...bubble, message }));
     if (message.result && !['stop', 'tool_call'].includes(message.result)) {
         bubbles.push({ kind: 'thinking', label: `The reply stopped: ${message.result}`, text: '', message });

@@ -11,7 +11,7 @@ import { listModels } from '../api/model';
 import { cannot } from '../schema/model';
 import { ApiError } from '../api/client';
 import { routeHref } from '../router';
-import { sessionTokens, type Message, type Session, type SessionMeta } from '../schema/session';
+import { isUser, sessionTokens, type Message, type Session, type SessionMeta } from '../schema/session';
 import type { Details } from '../schema/memory';
 import type { NotificationController } from './notifications';
 import { SessionList } from '../component/session-list';
@@ -57,16 +57,10 @@ export class ChatController {
     // is closed
     private readonly logs = new Map<string, string[]>();
 
-    // The question which is waiting for its reply, and the reply, as it's
-    // streamed, and how a tool is getting on
-    private question?: string;
-    private streamed: Piece[] = [];
-    private progress?: string;
-
-    // Whether the session is to be loaded again, once the reply is stored,
-    // as it changed while it was waited for, and when the server was last
-    // told someone is typing
-    private stale = false;
+    // The questions which are waiting for their replies, by the sessions
+    // they were asked in, so a reply is shown only in its own chat, and
+    // when the server was last told someone is typing
+    private readonly pending = new Map<string, Pending>();
     private typed = 0;
 
     // Whether the server can't be reached
@@ -158,15 +152,23 @@ export class ChatController {
             if (this.session?.id !== id) {
                 return;
             }
+            // While a reply in the session is waited for, its messages are
+            // loaded once it's stored, and the session's serial is only
+            // changed once its messages are loaded, so a load which fails is
+            // tried again
             const changed = !this.messages || session.serial !== this.session.serial;
-            this.session = session;
-            if (this.question !== undefined) {
-                this.stale ||= changed;
+            const pending = this.pending.get(id);
+            if (changed && pending && this.messages) {
+                pending.stale = true;
+                this.session = { ...session, serial: this.session.serial };
             } else if (changed) {
                 const messages = (await listMessages(id)).body ?? [];
                 if (this.session?.id === id) {
+                    this.session = session;
                     this.messages = messages;
                 }
+            } else {
+                this.session = session;
             }
         } catch (error) {
             if (error instanceof ApiError && error.code === 404) {
@@ -179,46 +181,49 @@ export class ChatController {
         this.render();
     }
 
-    // send sends the question, and shows the reply as it's streamed, and
-    // then adds it to the conversation, or puts the question back, when it
-    // couldn't be sent
+    // send sends the question, and shows the reply as it's streamed, in its
+    // own chat, and then adds it to the conversation, when its chat is open,
+    // or puts the question back, when it couldn't be sent, in its own chat,
+    // or says what it was, when another is open
     private async send(text: string) {
         const session = this.session;
-        if (!session || !this.messages || this.question !== undefined) {
+        if (!session || !this.messages || this.pending.has(session.id)) {
             return;
         }
-        this.question = text;
-        this.streamed = [];
-        this.progress = undefined;
+        const pending: Pending = { question: text, streamed: [], earlier: this.messages.length, stale: false };
+        this.pending.set(session.id, pending);
         this.render();
         try {
             const response = await chat(session.id, { role: 'user', content: [{ text }] }, {
-                onText: (piece) => this.add({ what: 'text', text: piece }),
-                onThinking: (piece) => this.add({ what: 'thinking', text: piece }),
-                onLog: (line) => this.add({ what: 'log', text: line }),
+                onText: (piece) => this.add(pending, { what: 'text', text: piece }),
+                onThinking: (piece) => this.add(pending, { what: 'thinking', text: piece }),
+                onLog: (line) => this.add(pending, { what: 'log', text: line }),
                 onProgress: (progress) => {
-                    this.progress = progress.message || progress.status;
+                    pending.progress = progress.message || progress.status;
                     this.render();
                 },
             });
-            if (this.session?.id === session.id) {
-                const added = response.messages ?? [];
-                this.keepLogs(session.id, this.messages.length, added);
+            const added = response.messages ?? [];
+            this.keepLogs(session.id, pending, added);
+            if (this.session?.id === session.id && this.messages && !pending.stale) {
                 this.messages = [...this.messages, ...added];
                 this.session = { ...this.session, serial: response.serial };
+            } else {
+                pending.stale = true;
             }
         } catch (error) {
-            this.notifications.error("The question couldn't be sent", error);
-            this.views.view?.restore(text);
-            this.stale = true;
+            if (this.session?.id === session.id) {
+                this.notifications.error("The question couldn't be sent", error);
+                this.views.view?.restore(text);
+            } else {
+                this.notifications.push({ kind: 'error', title: "A question in another chat couldn't be sent", subtitle: `${error instanceof Error ? error.message : String(error)}: ${text}` });
+            }
+            pending.stale = true;
         }
-        this.question = undefined;
-        this.streamed = [];
-        this.progress = undefined;
+        this.pending.delete(session.id);
         this.typed = 0;
         this.render();
-        if (this.stale && this.session?.id === session.id) {
-            this.stale = false;
+        if (pending.stale && this.session?.id === session.id) {
             this.messages = undefined;
             await this.load(session.id);
         }
@@ -228,13 +233,13 @@ export class ChatController {
     // keepLogs keeps the lines tools logged, as the reply was streamed, by
     // the result of the first tool it called, or else the position of its
     // last message, of the messages which were added after the earlier ones
-    private keepLogs(id: string, earlier: number, added: Message[]) {
-        const lines = this.streamed.filter((piece) => piece.what === 'log').map((piece) => piece.text.trim());
+    private keepLogs(id: string, pending: Pending, added: Message[]) {
+        const lines = pending.streamed.filter((piece) => piece.what === 'log').map((piece) => piece.text.trim());
         if (lines.length === 0) {
             return;
         }
         const result = added.flatMap((message) => message.content).find((block) => block.tool_result?.id)?.tool_result?.id;
-        const key = logKey(id, result, earlier + added.length - 1);
+        const key = logKey(id, result, pending.earlier + added.length - 1);
         this.logs.set(key, [...(this.logs.get(key) ?? []), ...lines]);
     }
 
@@ -251,7 +256,7 @@ export class ChatController {
         if (tokens) {
             parts.push(`${tokens.toLocaleString()} tokens`);
         }
-        if (this.question !== undefined || session.status === 'replying') {
+        if (this.pending.has(session.id) || session.status === 'replying') {
             parts.push('replying…');
         } else if (session.status === 'typing') {
             parts.push('typing…');
@@ -260,10 +265,21 @@ export class ChatController {
     }
 
     // add adds a piece of the reply, as it's streamed
-    private add(piece: Piece) {
-        this.streamed = [...this.streamed, piece];
-        this.progress = undefined;
+    private add(pending: Pending, piece: Piece) {
+        pending.streamed = [...pending.streamed, piece];
+        pending.progress = undefined;
         this.render();
+    }
+
+    // close closes the chat's panels, which are the new, or edited, chat,
+    // and a message's details, such as when the chat page isn't shown, so
+    // they don't stay open over another page
+    close() {
+        this.hideCreate();
+        if (this.selected) {
+            this.selected = undefined;
+            this.render();
+        }
     }
 
     // typing tells the server someone is typing in the session, at most
@@ -293,7 +309,7 @@ export class ChatController {
         create.models = undefined;
         create.visible = true;
         try {
-            const models = (await listModels(0, 100)).body ?? [];
+            const models = (await listModels()).body ?? [];
             create.models = models.filter((model) => !cannot(model, 'completion'));
         } catch (error) {
             create.models = [];
@@ -308,24 +324,33 @@ export class ChatController {
         if (!create || !this.session) {
             return;
         }
-        create.session = this.session;
-        create.model = this.session.model;
+        const session = this.session;
+        create.session = session;
+        create.model = session.model;
         create.models = undefined;
         create.visible = true;
         try {
-            const models = (await listModels(0, 100)).body ?? [];
-            create.models = models.filter((model) => !cannot(model, 'completion') || model.canonical === this.session?.model);
+            // The chat's model is kept, as it is, when it isn't listed, such
+            // as when its provider can't be reached, so a change to the chat
+            // doesn't change its model, unless it's chosen
+            const models = (await listModels()).body ?? [];
+            const chosen = models.filter((model) => !cannot(model, 'completion') || model.canonical === session.model);
+            if (session.model && !chosen.some((model) => model.canonical === session.model)) {
+                const colon = session.model.indexOf(':');
+                chosen.unshift({ name: session.model.slice(colon + 1), provider: session.model.slice(0, colon), canonical: session.model });
+            }
+            create.models = chosen;
         } catch (error) {
             create.models = [];
             this.notifications.error("Models couldn't be loaded", error);
         }
     }
 
-    // save changes the settings of the chat which is open, when they've
-    // changed, and shows it as it is
+    // save changes the settings of the chat which is edited, when they've
+    // changed, and shows it as it is, when it's still open
     private async save(changes: SessionMeta) {
-        const session = this.session;
         const create = this.views.create;
+        const session = create?.session;
         if (!session) {
             return;
         } else if (Object.keys(changes).length === 0) {
@@ -336,7 +361,10 @@ export class ChatController {
             create.creating = true;
         }
         try {
-            this.session = await updateSession(session.id, changes);
+            const updated = await updateSession(session.id, changes);
+            if (this.session?.id === updated.id) {
+                this.session = updated;
+            }
             this.hideCreate();
             this.render();
             void this.refresh();
@@ -398,7 +426,7 @@ export class ChatController {
         }
         if (details) {
             details.message = this.selected;
-            details.from = this.selected?.role === 'user'
+            details.from = this.selected && isUser(this.selected)
                 ? this.details.name?.declined ? 'You' : this.details.name?.value ?? 'You'
                 : this.details.assistant?.declined ? 'Assistant' : this.details.assistant?.value ?? (this.session?.model ?? 'Assistant');
         }
@@ -413,12 +441,25 @@ export class ChatController {
             view.logs = (result, position) => this.session ? this.logs.get(logKey(this.session.id, result, position)) : undefined;
             view.selected = this.selected;
             view.details = this.details;
-            view.question = this.question;
-            view.streamed = this.streamed;
-            view.progress = this.progress;
+            const pending = this.session && this.pending.get(this.session.id);
+            view.question = pending?.question;
+            view.streamed = pending?.streamed ?? [];
+            view.progress = pending?.progress;
             view.unavailable = this.unavailable;
         }
     }
+}
+
+// Pending is a question which is waiting for its reply: the question, the
+// reply, as it's streamed, how a tool is getting on, how many messages its
+// chat had when it was asked, and whether its chat changed meanwhile, so
+// it's loaded again, once the reply is stored
+interface Pending {
+    question: string;
+    streamed: Piece[];
+    progress?: string;
+    earlier: number;
+    stale: boolean;
 }
 
 // logKey returns the key of the lines tools logged, in the session, by the

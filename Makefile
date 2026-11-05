@@ -40,7 +40,7 @@ all: build
 .PHONY: build
 build: tidy $(CMD_DIR)
 
-$(CMD_DIR): go-dep mkdir
+$(CMD_DIR): go-dep mkdir tidy
 	@echo Build $(notdir $@) GOOS=${OS} GOARCH=${ARCH}
 	@GOWORK=${GOWORK} GOOS=${OS} GOARCH=${ARCH} ${GO} build -tags frontend ${BUILD_FLAGS} -o ${BUILD_DIR}/$(notdir $@) ./$@
 

@@ -144,6 +144,11 @@ const router = new Router(document.querySelector<HTMLElement>('#not-found-page')
         void tools.refresh();
     })
     .listen((route) => {
+        // A page's panels are closed, once it isn't shown, so they don't stay
+        // open over the page which is
+        if (route.page !== 'chat') {
+            chat.close();
+        }
         if (route.page !== 'models') {
             models.close();
         }

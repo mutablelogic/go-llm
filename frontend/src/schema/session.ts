@@ -121,6 +121,12 @@ export interface Progress {
     message?: string;
 }
 
+// isUser returns whether the message is the person's, which it is when it
+// has no role, as the API takes it to be
+export function isUser(message: Message): boolean {
+    return (message.role ?? 'user') === 'user';
+}
+
 // messageText returns the text of a message, without its thinking, tool
 // calls, or tools' results
 export function messageText(message: Message): string {
