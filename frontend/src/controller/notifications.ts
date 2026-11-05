@@ -3,6 +3,7 @@
 
 import { html, render } from 'lit';
 import { repeat } from 'lit/directives/repeat.js';
+import { ifDefined } from 'lit/directives/if-defined.js';
 
 // Carbon components
 import '@carbon/web-components/es/components/notification/toast-notification.js';
@@ -12,12 +13,16 @@ import '@carbon/web-components/es/components/notification/toast-notification.js'
 export type NotificationKind = 'error' | 'warning' | 'info' | 'success';
 
 // Notification is a notification which is pushed, which closes after its
-// timeout in milliseconds, or the default
+// timeout in milliseconds, or the default, or stays until it's closed, when
+// it's null, with a caption, such as when it happened, and a link, such as to
+// what it's about
 export interface Notification {
     kind: NotificationKind;
     title: string;
     subtitle?: string;
-    timeout?: number;
+    caption?: string;
+    link?: { href: string; text: string };
+    timeout?: number | null;
 }
 
 export class NotificationController {
@@ -56,8 +61,12 @@ export class NotificationController {
     private render() {
         render(html`${repeat(this.notifications, ([id]) => id, ([id, notification]) => html`
             <cds-toast-notification kind=${notification.kind} title=${notification.title}
-                subtitle=${notification.subtitle ?? ''} timeout=${notification.timeout ?? NotificationController.defaultTimeout}
-                @cds-notification-closed=${() => this.close(id)}></cds-toast-notification>
+                subtitle=${notification.subtitle ?? ''} caption=${notification.caption ?? ''}
+                timeout=${ifDefined(notification.timeout === null ? undefined : notification.timeout ?? NotificationController.defaultTimeout)}
+                @cds-notification-closed=${() => this.close(id)}>
+                ${notification.link ? html`<a class="notification-link" href=${notification.link.href}
+                    @click=${() => this.close(id)}>${notification.link.text}</a>` : ''}
+            </cds-toast-notification>
         `)}`, this.container);
     }
 }

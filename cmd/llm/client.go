@@ -5,6 +5,7 @@ package main
 import (
 	// Packages
 	broadcastercmd "github.com/mutablelogic/go-llm/broadcaster/cmd"
+	heartbeatcmd "github.com/mutablelogic/go-llm/heartbeat/cmd"
 	memorycmd "github.com/mutablelogic/go-llm/memory/cmd"
 	registrycmd "github.com/mutablelogic/go-llm/registry/cmd"
 	toolkitcmd "github.com/mutablelogic/go-llm/toolkit/cmd"
@@ -21,4 +22,5 @@ type CLI struct {
 	Toolkit     toolkitcmd.ClientCommands     `embed:""`
 	Broadcaster broadcastercmd.ClientCommands `embed:""`
 	Memory      memorycmd.ClientCommands      `embed:""`
+	Heartbeat   heartbeatcmd.ClientCommands   `embed:""`
 }

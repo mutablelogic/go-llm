@@ -5,12 +5,15 @@ package main
 import (
 	"os"
 	"path/filepath"
+	"time"
 
 	// Packages
 	agents "github.com/mutablelogic/go-llm/agents"
 	broadcaster "github.com/mutablelogic/go-llm/broadcaster"
 	broadcastercmd "github.com/mutablelogic/go-llm/broadcaster/cmd"
 	frontendcmd "github.com/mutablelogic/go-llm/frontend/cmd"
+	heartbeat "github.com/mutablelogic/go-llm/heartbeat"
+	heartbeatcmd "github.com/mutablelogic/go-llm/heartbeat/cmd"
 	memory "github.com/mutablelogic/go-llm/memory"
 	memorycmd "github.com/mutablelogic/go-llm/memory/cmd"
 	registry "github.com/mutablelogic/go-llm/registry"
@@ -32,6 +35,7 @@ type CLI struct {
 	Toolkit     toolkitcmd.ClientCommands     `embed:""`
 	Broadcaster broadcastercmd.ClientCommands `embed:""`
 	Memory      memorycmd.ClientCommands      `embed:""`
+	Heartbeat   heartbeatcmd.ClientCommands   `embed:""`
 }
 
 type ServerCommands struct {
@@ -44,6 +48,7 @@ type RunServer struct {
 	Toolkit     toolkitcmd.Flags     `embed:"" prefix:"llm."`
 	Broadcaster broadcastercmd.Flags `embed:"" prefix:"llm."`
 	Memory      memorycmd.Flags      `embed:"" prefix:"memory."`
+	Heartbeat   heartbeatcmd.Flags   `embed:"" prefix:"heartbeat."`
 	Frontend    frontendcmd.Flags    `embed:""`
 	servercmd.RunServer
 }
@@ -75,6 +80,10 @@ func (runner *RunServer) Run(ctx server.Cmd) error {
 	if err != nil {
 		return err
 	}
+	heartbeats, err := newServerHeartbeatStore(ctx)
+	if err != nil {
+		return err
+	}
 
 	// Serve the web UI, when it's built in, and its configuration, alongside
 	// the API, grouping its operations with the server's OpenAPI
@@ -85,14 +94,22 @@ func (runner *RunServer) Run(ctx server.Cmd) error {
 	})
 	return runner.Broadcaster.WithBroadcaster(ctx, &runner.RunServer, func(b *broadcaster.Broadcaster) error {
 		return runner.Memory.WithMemory(ctx, &runner.RunServer, memories, func(mem *memory.Memory) error {
-			return runner.withToolkit(ctx, b, mem, store, sessions, agents)
+			// The heartbeats' schedules follow the person's time zone, as the
+			// memory has it
+			zone := func() *time.Location {
+				return mem.Details().Zone()
+			}
+			return runner.Heartbeat.WithHeartbeats(ctx, &runner.RunServer, heartbeats, func(h *heartbeat.Heartbeats) error {
+				return runner.withToolkit(ctx, b, mem, h, store, sessions, agents)
+			}, heartbeat.WithBroadcaster(b), heartbeat.WithZone(zone))
 		}, memory.WithBroadcaster(b))
 	})
 }
 
-// withToolkit runs the server, with a toolkit, which has the memory, as well
-// as the tools whose credentials are set, and a registry, with the stores
-func (runner *RunServer) withToolkit(ctx server.Cmd, b *broadcaster.Broadcaster, mem *memory.Memory, store registry.ProviderStore, sessions *sessionStore, agents *agentStore) error {
+// withToolkit runs the server, with a toolkit, which has the memory, and
+// the heartbeats, as well as the tools whose credentials are set, and a
+// registry, with the stores, and fires the heartbeats
+func (runner *RunServer) withToolkit(ctx server.Cmd, b *broadcaster.Broadcaster, mem *memory.Memory, h *heartbeat.Heartbeats, store registry.ProviderStore, sessions *sessionStore, agents *agentStore) error {
 	return runner.Toolkit.WithToolkit(ctx, &runner.RunServer, func(tools *toolkit.Toolkit) error {
 		// The memory, whose system prompt has the time, and what's
 		// remembered, and whose tools remember it
@@ -100,6 +117,12 @@ func (runner *RunServer) withToolkit(ctx server.Cmd, b *broadcaster.Broadcaster,
 			return err
 		}
 		ctx.Logger().InfoContext(ctx.Context(), "tools added", "namespace", mem.Name(), "tools", len(mem.Tools()))
+
+		// The heartbeats, whose tool schedules them
+		if err := tools.Add(h); err != nil {
+			return err
+		}
+		ctx.Logger().InfoContext(ctx.Context(), "tools added", "namespace", h.Name(), "tools", len(h.Tools()))
 
 		return runner.Registry.WithRegistry(ctx, &runner.RunServer, func(r *registry.Registry) error {
 			// The example agents, as they are, before the server starts
@@ -114,6 +137,9 @@ func (runner *RunServer) withToolkit(ctx server.Cmd, b *broadcaster.Broadcaster,
 			})
 			group.Go(func() error {
 				return r.Run(runCtx, ctx.Logger())
+			})
+			group.Go(func() error {
+				return h.Run(runCtx, ctx.Logger())
 			})
 			group.Go(func() error {
 				return runner.RunServer.Run(ctx.WithContext(runCtx))
@@ -200,6 +226,16 @@ func newServerMemoryStore(ctx server.Cmd) (*memoryStore, error) {
 		return nil, err
 	}
 	return newMemoryStore(file, dir), nil
+}
+
+// newServerHeartbeatStore returns the store of the heartbeats, in files in
+// the directory of the command's defaults, beside the sessions
+func newServerHeartbeatStore(ctx server.Cmd) (*heartbeatStore, error) {
+	dir, err := serverDir(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return newHeartbeatStore(dir)
 }
 
 // serverDir returns the directory of the command's defaults, which the

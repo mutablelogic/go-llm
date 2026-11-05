@@ -36,6 +36,8 @@ import { ToolsController } from './controller/tools';
 import { NotificationController } from './controller/notifications';
 import { Router, routeHref } from './router';
 import { eventRefresh } from './page/refresh';
+import { formatTime } from './format';
+import type { FireEvent } from './schema/heartbeat';
 
 // Errors, and other notifications, are shown as toasts
 const notifications = new NotificationController(document.querySelector<HTMLElement>('#notifications')!);
@@ -86,6 +88,7 @@ const events = new EventsController(notifications)
     .on({ schema: 'llm', table: 'provider' }, () => void models.refresh())
     .on({ schema: 'llm', table: 'tool' }, () => void tools.refresh())
     .on({ schema: 'memory', table: 'detail' }, () => void chat.refreshDetails())
+    .each({ schema: 'heartbeat', table: 'fire', action: 'create' }, (event) => notifyFire(event.data as FireEvent))
     .onDisconnect(() => {
         chat.disconnect();
         models.disconnect();
@@ -96,6 +99,24 @@ const events = new EventsController(notifications)
         models.connect();
         tools.connect();
     });
+// notifyFire shows a heartbeat which fired, until it's closed: what it's
+// for, its prompt, when it was due, and when it fired, when that was more
+// than a minute later, and a link to the chat it's for
+function notifyFire(fire: FireEvent) {
+    let caption = `Scheduled ${formatTime(fire.scheduled)}`;
+    if (fire.scheduled && fire.fired && Date.parse(fire.fired) - Date.parse(fire.scheduled) > 60000) {
+        caption += `, fired late, ${formatTime(fire.fired)}`;
+    }
+    notifications.push({
+        kind: 'info',
+        title: fire.title || 'Heartbeat',
+        subtitle: fire.prompt,
+        caption,
+        link: fire.session ? { href: routeHref('chat', fire.session), text: 'Open the chat' } : undefined,
+        timeout: null,
+    });
+}
+
 // The panel which starts a new chat chooses its tools from them, as they are
 tools.onChange((all, namespaces) => {
     const create = document.querySelector('llm-new-session');
