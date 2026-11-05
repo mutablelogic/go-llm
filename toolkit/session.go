@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"uuid"
 )
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -12,6 +13,12 @@ import (
 // Session is what a tool can use as it runs, from what runs it, such as an
 // agent loop, which a tool gets from its context with SessionFromContext
 type Session interface {
+	// ID returns the identifier of the session the tool runs in, such as
+	// the conversation whose model called it, or the nil UUID when it
+	// isn't run in one, so a tool which asks a model, such as an agent, can
+	// continue from it
+	ID() uuid.UUID
+
 	// Logger returns the logger the tool logs to as it runs, such as to say
 	// what it's doing, which what runs it can show, such as by streaming it
 	Logger() *slog.Logger
@@ -57,6 +64,10 @@ func Logf(ctx context.Context, format string, args ...any) {
 
 ////////////////////////////////////////////////////////////////////////////////
 // PRIVATE METHODS
+
+func (discard) ID() uuid.UUID {
+	return uuid.Nil()
+}
 
 func (discard) Logger() *slog.Logger {
 	return discardLogger

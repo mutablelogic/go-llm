@@ -1,0 +1,201 @@
+package registry
+
+import (
+	"cmp"
+	"context"
+	"encoding/json"
+	"slices"
+	"sync"
+
+	// Packages
+	llm "github.com/mutablelogic/go-llm"
+	eventschema "github.com/mutablelogic/go-llm/broadcaster/schema"
+	schema "github.com/mutablelogic/go-llm/registry/schema"
+	toolkit "github.com/mutablelogic/go-llm/toolkit"
+	jsonschema "github.com/mutablelogic/go-server/pkg/jsonschema"
+	types "github.com/mutablelogic/go-server/pkg/types"
+)
+
+///////////////////////////////////////////////////////////////////////////////
+// TYPES
+
+// agentNamespace is the namespace of the toolkit's tools which are the
+// registry's agents, by their names, which models call, such as
+// agent__segment, so a model can ask an agent to do something. Its tools
+// change as the agents do, which it tells the toolkit.
+type agentNamespace struct {
+	mu     sync.RWMutex
+	tools  map[string]*agentTool
+	notify func(eventschema.EventAction, string)
+}
+
+// agentTool is an agent, as a tool: its name, and what it does, which are
+// the agent's, and its input and output, which are the agent's input, and
+// the schema of its reply
+type agentTool struct {
+	registry *Registry
+	agent    schema.Agent
+	input    *jsonschema.Schema
+	output   *jsonschema.Schema
+}
+
+var _ toolkit.Namespace = (*agentNamespace)(nil)
+var _ llm.Tool = (*agentTool)(nil)
+
+///////////////////////////////////////////////////////////////////////////////
+// GLOBALS
+
+const (
+	// AgentNamespace is the name of the namespace of the toolkit's tools
+	// which are the registry's agents
+	AgentNamespace = "agent"
+
+	// agentPrompt is the system prompt of the agent namespace, which says
+	// how to use its tools
+	agentPrompt = "The tools in the agent namespace are agents: each asks a model to do what its description says, with its own instructions, and returns its reply. Call one to delegate a task it does."
+)
+
+// emptyInput is the input schema of an agent which has none
+var emptyInput = jsonschema.MustFor[struct{}]()
+
+///////////////////////////////////////////////////////////////////////////////
+// LIFECYCLE
+
+// newAgentNamespace returns the namespace of the registry's agents, which
+// has none
+func newAgentNamespace() *agentNamespace {
+	return &agentNamespace{tools: make(map[string]*agentTool)}
+}
+
+///////////////////////////////////////////////////////////////////////////////
+// NAMESPACE
+
+func (n *agentNamespace) Name() string {
+	return AgentNamespace
+}
+
+func (n *agentNamespace) SystemPrompt() string {
+	return agentPrompt
+}
+
+// Tools returns the agents, as tools, in order of their names
+func (n *agentNamespace) Tools() []llm.Tool {
+	n.mu.RLock()
+	defer n.mu.RUnlock()
+	result := make([]llm.Tool, 0, len(n.tools))
+	for _, tool := range n.tools {
+		result = append(result, tool)
+	}
+	slices.SortFunc(result, func(a, b llm.Tool) int { return cmp.Compare(a.Name(), b.Name()) })
+	return result
+}
+
+// Notify sets the function which is called when an agent is created,
+// updated or deleted
+func (n *agentNamespace) Notify(fn func(eventschema.EventAction, string)) {
+	n.mu.Lock()
+	defer n.mu.Unlock()
+	n.notify = fn
+}
+
+///////////////////////////////////////////////////////////////////////////////
+// PRIVATE METHODS
+
+// set adds the agent, as a tool, or replaces it, and tells the toolkit. An
+// agent whose input, or schema, isn't valid, which the registry doesn't
+// store, isn't a tool.
+func (n *agentNamespace) set(r *Registry, agent schema.Agent) {
+	tool, err := newAgentTool(r, agent)
+	if err != nil {
+		n.remove(agent.Name)
+		return
+	}
+	n.mu.Lock()
+	_, exists := n.tools[agent.Name]
+	n.tools[agent.Name] = tool
+	notify := n.notify
+	n.mu.Unlock()
+
+	// The toolkit is told without the lock, as it reads the tools
+	if notify != nil {
+		if exists {
+			notify(eventschema.EventUpdate, agent.Name)
+		} else {
+			notify(eventschema.EventCreate, agent.Name)
+		}
+	}
+}
+
+// remove removes the agent with the name, as a tool, and tells the toolkit
+func (n *agentNamespace) remove(name string) {
+	n.mu.Lock()
+	_, exists := n.tools[name]
+	delete(n.tools, name)
+	notify := n.notify
+	n.mu.Unlock()
+	if exists && notify != nil {
+		notify(eventschema.EventDelete, name)
+	}
+}
+
+///////////////////////////////////////////////////////////////////////////////
+// TOOL
+
+// newAgentTool returns the agent, as a tool, or an error when its input, or
+// the schema of its reply, isn't valid
+func newAgentTool(r *Registry, agent schema.Agent) (*agentTool, error) {
+	input, err := agent.InputSchema()
+	if err != nil {
+		return nil, err
+	}
+	output, err := agent.JSONSchema()
+	if err != nil {
+		return nil, err
+	}
+	return &agentTool{registry: r, agent: agent, input: input, output: output}, nil
+}
+
+func (t *agentTool) Name() string {
+	return t.agent.Name
+}
+
+// Description returns what the agent does, or its title, or that it's an
+// agent, when it has neither
+func (t *agentTool) Description() string {
+	if description := types.Value(t.agent.Description); description != "" {
+		return description
+	} else if title := types.Value(t.agent.Title); title != "" {
+		return title
+	}
+	return "The agent " + t.agent.Name
+}
+
+// InputSchema returns the agent's input, or an empty object, when it has
+// none
+func (t *agentTool) InputSchema() *jsonschema.Schema {
+	if t.input == nil {
+		return emptyInput
+	}
+	return t.input
+}
+
+// OutputSchema returns the schema of the agent's reply, or nil, when its
+// reply is text
+func (t *agentTool) OutputSchema() *jsonschema.Schema {
+	return t.output
+}
+
+// Run runs the agent, with the input, from the session of the model which
+// called it, when there's one, and returns its reply, which is its text, or
+// what it replied, when it has a schema, or an error, which says how it
+// stopped, when its reply isn't complete
+func (t *agentTool) Run(ctx context.Context, input json.RawMessage) (any, error) {
+	req := schema.RunAgentRequest{Input: input, Session: toolkit.SessionFromContext(ctx).ID()}
+	response, err := t.registry.RunAgent(ctx, t.agent.Name, req, nil)
+	if err != nil {
+		return nil, err
+	} else if err := agentFinished(t.agent.Name, response.Messages); err != nil {
+		return nil, err
+	}
+	return response.Reply, nil
+}

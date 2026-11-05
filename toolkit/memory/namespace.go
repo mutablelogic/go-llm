@@ -6,6 +6,7 @@ import (
 
 	// Packages
 	llm "github.com/mutablelogic/go-llm"
+	eventschema "github.com/mutablelogic/go-llm/broadcaster/schema"
 	toolkit "github.com/mutablelogic/go-llm/toolkit"
 )
 
@@ -47,6 +48,9 @@ func (namespace) Name() string {
 func (n namespace) SystemPrompt() string {
 	return currentTime(n.now())
 }
+
+// Notify does nothing, as the namespace's tools don't change
+func (namespace) Notify(func(eventschema.EventAction, string)) {}
 
 // Tools returns no tools
 func (namespace) Tools() []llm.Tool {

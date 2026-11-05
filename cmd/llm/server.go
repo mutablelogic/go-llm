@@ -81,7 +81,7 @@ func (runner *RunServer) Run(ctx server.Cmd) error {
 				})
 				return group.Wait()
 			}, registry.WithBroadcaster(b), registry.WithProviderStore(store), registry.WithSessionStore(sessions), registry.WithAgentStore(agents), registry.WithToolkit(tools))
-		})
+		}, toolkit.WithBroadcaster(b))
 	})
 }
 

@@ -6,6 +6,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"uuid"
 
 	// Packages
 	attribute "go.opentelemetry.io/otel/attribute"
@@ -19,6 +20,7 @@ import (
 // logs, at the info level or above, as lines, and adds what it logs to a
 // span, as events
 type logSession struct {
+	id     uuid.UUID
 	logger *slog.Logger
 }
 
@@ -46,7 +48,8 @@ var _ slog.Handler = (*toolHandler)(nil)
 // LIFECYCLE
 
 // NewSession returns the session of the tool with the name, such as the
-// name the model called it by, whose logger streams what the tool logs, at
+// name the model called it by, in the session with the identifier, or
+// the nil UUID, when it isn\'t run in one, whose logger streams what the tool logs, at
 // the info level or above, to the function, as lines of the level, when it
 // isn't info, the message, and its attributes, as key=value, which are
 // shown to the user, so needn't say which tool it is, unless the function is
@@ -54,12 +57,18 @@ var _ slog.Handler = (*toolHandler)(nil)
 // level, to the span, as events, with the tool's name and the level, unless
 // the span is nil. The function is called from each goroutine the tool, or
 // tools run in parallel, log from, so must be safe to call at once.
-func NewSession(name string, stream func(string), span trace.Span) Session {
-	return logSession{logger: slog.New(&toolHandler{toolLog: &toolLog{name: name, stream: stream, span: span}})}
+func NewSession(name string, id uuid.UUID, stream func(string), span trace.Span) Session {
+	return logSession{id: id, logger: slog.New(&toolHandler{toolLog: &toolLog{name: name, stream: stream, span: span}})}
 }
 
 ///////////////////////////////////////////////////////////////////////////////
 // PUBLIC METHODS
+
+// ID returns the identifier of the session the tool runs in, or the nil
+// UUID
+func (s logSession) ID() uuid.UUID {
+	return s.id
+}
 
 func (s logSession) Logger() *slog.Logger {
 	return s.logger

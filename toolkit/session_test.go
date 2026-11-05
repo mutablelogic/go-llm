@@ -5,6 +5,7 @@ import (
 	"context"
 	"log/slog"
 	"testing"
+	"uuid"
 
 	// Packages
 	toolkit "github.com/mutablelogic/go-llm/toolkit"
@@ -15,6 +16,7 @@ import (
 // logSession is a session which logs to a buffer
 type logSession struct{ logger *slog.Logger }
 
+func (s logSession) ID() uuid.UUID        { return uuid.Nil() }
 func (s logSession) Logger() *slog.Logger { return s.logger }
 
 func Test_Session(t *testing.T) {
@@ -46,7 +48,7 @@ func Test_Logf(t *testing.T) {
 	// A tool logs what it's doing as a sentence, to its session, and to
 	// nothing without one
 	var lines []string
-	ctx := toolkit.WithSession(context.Background(), toolkit.NewSession("current", func(line string) { lines = append(lines, line) }, nil))
+	ctx := toolkit.WithSession(context.Background(), toolkit.NewSession("current", uuid.Nil(), func(line string) { lines = append(lines, line) }, nil))
 	toolkit.Logf(ctx, "Getting the current weather for %s", "Berlin")
 	toolkit.Logf(context.Background(), "Not shown")
 	assert.Equal(t, []string{"Getting the current weather for Berlin"}, lines)

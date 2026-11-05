@@ -2,10 +2,15 @@ package registry
 
 import (
 	"context"
+	"encoding/json"
+	"slices"
+	"strings"
+	"uuid"
 
 	// Packages
 	otel "github.com/mutablelogic/go-client/pkg/otel"
 	llm "github.com/mutablelogic/go-llm"
+	providerschema "github.com/mutablelogic/go-llm/provider/schema"
 	schema "github.com/mutablelogic/go-llm/registry/schema"
 	toolschema "github.com/mutablelogic/go-llm/toolkit/schema"
 	types "github.com/mutablelogic/go-server/pkg/types"
@@ -50,6 +55,11 @@ type AgentStore interface {
 ///////////////////////////////////////////////////////////////////////////////
 // GLOBALS
 
+// DefaultMaxDepth is the most agents which run in one another, as an agent
+// calls another, or itself, as a tool, when the max_depth option of the
+// session, or agent, which runs them, doesn't say
+const DefaultMaxDepth = 3
+
 // errNoAgentStore is the error of an agent's method, when the registry has
 // no agent store
 var errNoAgentStore = llm.ErrServiceUnavailable.With("the registry has no agent store")
@@ -81,10 +91,13 @@ func (r *Registry) CreateAgent(ctx context.Context, meta schema.AgentMeta) (_ *s
 	} else if meta, err = r.validAgentMeta(ctx, meta, meta); err != nil {
 		return nil, err
 	}
+	r.agentsMu.Lock()
+	defer r.agentsMu.Unlock()
 	agent, err := r.agentStore.Create(ctx, meta)
 	if err != nil {
 		return nil, err
 	}
+	r.agentChanged(agent)
 	return &agent, nil
 }
 
@@ -150,6 +163,8 @@ func (r *Registry) UpdateAgent(ctx context.Context, name string, meta schema.Age
 	} else if meta.IsZero() {
 		return nil, llm.ErrBadParameter.With("nothing to update")
 	}
+	r.agentsMu.Lock()
+	defer r.agentsMu.Unlock()
 	agent, err := r.agentStore.Get(ctx, name)
 	if err != nil {
 		return nil, err
@@ -160,6 +175,7 @@ func (r *Registry) UpdateAgent(ctx context.Context, name string, meta schema.Age
 	if agent, err = r.agentStore.Put(ctx, agent); err != nil {
 		return nil, err
 	}
+	r.agentChanged(agent)
 	return &agent, nil
 }
 
@@ -176,17 +192,193 @@ func (r *Registry) DeleteAgent(ctx context.Context, name string) (_ *schema.Agen
 	if r.agentStore == nil {
 		return nil, errNoAgentStore
 	}
+	r.agentsMu.Lock()
+	defer r.agentsMu.Unlock()
 	agent, err := r.agentStore.Get(ctx, name)
 	if err != nil {
 		return nil, err
 	} else if err := r.agentStore.Delete(ctx, name, agent.Serial); err != nil {
 		return nil, err
 	}
+	if r.agents != nil {
+		r.agents.remove(name)
+	}
 	return &agent, nil
+}
+
+// RunAgent runs the agent with the name: the request's input is validated
+// against its input schema, and its prompt is executed with it, as the
+// message to its model, which is its own, or, when it has none, the model of
+// the session it's run from, which is asked as its settings say, without
+// its history, and runs the tools it calls, until it replies. Its reply is
+// streamed to the function as it's generated, when it isn't nil. Returns
+// what the agent did: the messages it added, the tokens used, and its reply,
+// as JSON, which is its text, or what it replied, when it has a schema.
+//
+// The agents which are running, as an agent calls another, or itself, as a
+// tool, are in the context, with the most which can run in one another,
+// which is the max_depth option of the session, or agent, which runs them,
+// or the least of them, or DefaultMaxDepth, so an agent isn't run deeper,
+// as agents could call one another without end.
+//
+// Returns ErrNotFound when there's no agent
+// with the name, or session, ErrForbidden when it would run deeper than the
+// most agents which can run in one another, ErrBadParameter when its input
+// isn't valid, or its prompt can't be executed with it, or it has no model,
+// nor has the session it's run from, and ErrServiceUnavailable when the
+// registry has no agent store, and the errors of WithSession.
+func (r *Registry) RunAgent(ctx context.Context, name string, req schema.RunAgentRequest, stream llm.GeneratorStreamFn) (_ *schema.RunAgentResponse, err error) {
+	ctx, endSpan := otel.StartSpan(r.tracer, ctx, "llm.registry.RunAgent",
+		attribute.String("arg.name", name),
+		attribute.String("arg.req", req.String()),
+	)
+	defer func() { endSpan(err) }()
+
+	// The agent, which isn't run deeper than the most agents which can run
+	// in one another
+	chain := agentChainOf(ctx)
+	if r.agentStore == nil {
+		return nil, errNoAgentStore
+	} else if depth := uint(len(chain.running)) + 1; depth > chain.depth() {
+		return nil, llm.ErrForbidden.Withf("agent %q can't run in %s, as at most %d agents run in one another, which max_depth sets", name, strings.Join(chain.running, " → "), chain.depth())
+	}
+	agent, err := r.agentStore.Get(ctx, name)
+	if err != nil {
+		return nil, err
+	}
+
+	// The message to its model, which is its prompt, executed with the input,
+	// which is validated
+	message, err := agent.Message(req.Input)
+	if err != nil {
+		return nil, err
+	}
+
+	// Its model, or the model of the session it's run from
+	meta := agent.GeneratorMeta
+	if meta.Model == nil && req.Session != uuid.Nil() {
+		if r.sessionStore == nil {
+			return nil, errNoSessionStore
+		}
+		session, err := r.sessionStore.Get(ctx, req.Session)
+		if err != nil {
+			return nil, err
+		}
+		meta.Model = session.Model
+	}
+	if meta.Model == nil {
+		return nil, llm.ErrBadParameter.Withf("agent %q has no model, nor has the session it's run from", name)
+	}
+
+	// The tools it calls run as it runs, so it isn't run again by them
+	ctx = withRunningAgent(ctx, name)
+
+	// Ask its model, with its settings, in the session it's run from,
+	// without its history, so the agents its tools run are run from it too,
+	// and which runs the tools it calls, until it replies
+	session := schema.Session{ID: req.Session, SessionMeta: schema.SessionMeta{GeneratorMeta: meta}}
+	prompt := &providerschema.Message{MessageMeta: providerschema.MessageMeta{
+		Sender:  "user",
+		Content: []providerschema.ContentBlock{{Text: types.Ptr(message)}},
+	}}
+	response, err := r.WithSession(ctx, session, []llm.Message{prompt}, stream)
+	if err != nil {
+		return nil, err
+	}
+
+	// What it did, and its reply
+	replySchema, err := meta.JSONSchema()
+	if err != nil {
+		return nil, err
+	}
+	reply, err := agentReply(response.Messages, replySchema != nil)
+	if err != nil {
+		return nil, err
+	}
+	return &schema.RunAgentResponse{Name: agent.Name, Serial: agent.Serial, SessionResponse: *response, Reply: reply}, nil
 }
 
 ///////////////////////////////////////////////////////////////////////////////
 // PRIVATE FUNCTIONS
+
+// agentFinished returns nil when the agent's reply, which is the last of the
+// messages, is complete, or an error, which says how it stopped, when it
+// isn't, such as when it was cut short, or the agent loop stopped it
+func agentFinished(name string, messages []providerschema.Message) error {
+	if len(messages) == 0 {
+		return llm.ErrInternalServerError.Withf("agent %q didn't reply", name)
+	}
+	switch result := messages[len(messages)-1].Result; result {
+	case "", providerschema.ResultStop:
+		return nil
+	case providerschema.ResultMaxTokens:
+		return llm.ErrMaxTokens.Withf("agent %q didn't finish its reply", name)
+	case providerschema.ResultBlocked:
+		return llm.ErrRefusal.Withf("agent %q's reply was blocked", name)
+	default:
+		return llm.ErrInternalServerError.Withf("agent %q didn't finish its reply, as it stopped with %s", name, result)
+	}
+}
+
+// agentReply returns the agent's reply, which is the last of the messages,
+// as JSON: what it replied, when it has a schema, and the reply is complete
+// JSON, or otherwise its text, as a JSON string
+func agentReply(messages []providerschema.Message, hasSchema bool) (json.RawMessage, error) {
+	if len(messages) == 0 {
+		return json.RawMessage(`""`), nil
+	}
+	reply := messages[len(messages)-1]
+	text := reply.Text()
+	if hasSchema && reply.Result == providerschema.ResultStop && json.Valid([]byte(text)) {
+		return json.RawMessage(text), nil
+	}
+	return json.Marshal(text)
+}
+
+// agentChain is the agents which are running, in a context, in the order
+// they were run, as an agent calls another, or itself, as a tool, and the
+// most which can run in one another, or zero, when it isn't set
+type agentChain struct {
+	running  []string
+	maxDepth uint
+}
+
+// agentChainKey is the key of the agents which are running, in a context
+type agentChainKey struct{}
+
+// agentChainOf returns the agents which are running, in the context, and
+// the most which can run in one another
+func agentChainOf(ctx context.Context) agentChain {
+	chain, _ := ctx.Value(agentChainKey{}).(agentChain)
+	return chain
+}
+
+// depth returns the most agents which can run in one another
+func (c agentChain) depth() uint {
+	if c.maxDepth == 0 {
+		return DefaultMaxDepth
+	}
+	return c.maxDepth
+}
+
+// withRunningAgent returns the context, with the agent with the name
+// running, after those which are
+func withRunningAgent(ctx context.Context, name string) context.Context {
+	chain := agentChainOf(ctx)
+	chain.running = append(slices.Clip(chain.running), name)
+	return context.WithValue(ctx, agentChainKey{}, chain)
+}
+
+// withMaxDepth returns the context, with at most the agents running in one
+// another, or fewer, when it says so already, so an agent can't run deeper
+// than what runs it says
+func withMaxDepth(ctx context.Context, maxDepth uint) context.Context {
+	chain := agentChainOf(ctx)
+	if chain.maxDepth == 0 || maxDepth < chain.maxDepth {
+		chain.maxDepth = maxDepth
+	}
+	return context.WithValue(ctx, agentChainKey{}, chain)
+}
 
 // validAgentName returns true when the name is an identifier, which is also
 // a tool's name in the agent namespace, so the name a model calls it by,
@@ -198,6 +390,38 @@ func validAgentName(name string) bool {
 
 ///////////////////////////////////////////////////////////////////////////////
 // PRIVATE METHODS
+
+// agentChanged makes the agent, as it's stored, a tool, or replaces it, when
+// the registry has a toolkit
+func (r *Registry) agentChanged(agent schema.Agent) {
+	if r.agents != nil {
+		r.agents.set(r, agent)
+	}
+}
+
+// loadAgents makes the stored agents tools, when the registry has a
+// toolkit, as they're kept when the server restarts, and returns the error
+// listing them
+func (r *Registry) loadAgents(ctx context.Context) error {
+	if r.agents == nil {
+		return nil
+	}
+	r.agentsMu.Lock()
+	defer r.agentsMu.Unlock()
+	for offset := uint(0); ; {
+		list, err := r.agentStore.List(ctx, schema.AgentListRequest{Offset: offset})
+		if err != nil {
+			return err
+		}
+		for _, agent := range list.Body {
+			r.agentChanged(agent)
+		}
+		offset += uint(len(list.Body))
+		if len(list.Body) == 0 || offset >= list.Count {
+			return nil
+		}
+	}
+}
 
 // validAgentMeta returns the definition, with its model and tools, when the
 // change sets them, by their canonical names, or ErrBadParameter when it

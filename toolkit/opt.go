@@ -3,6 +3,8 @@ package toolkit
 import (
 	// Packages
 	client "github.com/mutablelogic/go-client"
+	llm "github.com/mutablelogic/go-llm"
+	broadcaster "github.com/mutablelogic/go-llm/broadcaster"
 	trace "go.opentelemetry.io/otel/trace"
 )
 
@@ -16,6 +18,7 @@ type opt struct {
 	tracer      trace.Tracer
 	clientopts  []client.ClientOpt
 	credentials CredentialsProvider
+	broadcaster *broadcaster.Broadcaster
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -39,10 +42,25 @@ func (o *opt) defaults() {
 	o.tracer = nil
 	o.clientopts = nil
 	o.credentials = envCredentials{}
+	o.broadcaster = nil
 }
 
 ////////////////////////////////////////////////////////////////////////////////
 // OPTIONS
+
+// WithBroadcaster sets the broadcaster which the toolkit publishes the
+// changes to its tools to, as they're added, and as a namespace's tools are
+// created, updated or deleted, whose table is ToolTable, and whose rows are
+// the tools' canonical names
+func WithBroadcaster(b *broadcaster.Broadcaster) Opt {
+	return func(o *opt) error {
+		if b == nil {
+			return llm.ErrBadParameter.With("missing broadcaster")
+		}
+		o.broadcaster = b
+		return nil
+	}
+}
 
 // WithTracer sets the tracer used for tracing operations.
 func WithTracer(tracer trace.Tracer) Opt {

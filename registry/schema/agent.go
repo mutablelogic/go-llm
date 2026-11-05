@@ -3,13 +3,16 @@ package schema
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"io"
 	"net/url"
 	"slices"
 	"strconv"
 	"strings"
 	"text/template"
 	"time"
+	"uuid"
 
 	// Packages
 	llm "github.com/mutablelogic/go-llm"
@@ -51,6 +54,26 @@ type Agent struct {
 	AgentMeta
 }
 
+// RunAgentRequest runs an agent: its input, which is validated against the
+// agent's input schema, and executed with its prompt, and the session it's
+// run from, such as the conversation whose model called it, as a tool, whose
+// model it's run with, when it has none
+type RunAgentRequest struct {
+	Input   json.RawMessage `json:"input,omitempty" help:"Input of the agent, which its input schema validates, and its prompt is executed with" example:"{\"transcript\":\"...\"}" optional:""`
+	Session uuid.UUID       `json:"session,omitzero" help:"Identifier of the session the agent is run from, whose model it's run with, when it has none" example:"3b241101-e2bb-4255-8caf-4136c566a962" optional:""`
+}
+
+// RunAgentResponse is what an agent did: the agent, by its name, and the
+// serial of the definition which was run, the messages it added, which are
+// its prompt, its reply, and the tools it called, and the tokens used, and
+// its reply, which is text, or JSON, when the agent has a schema
+type RunAgentResponse struct {
+	Name   string `json:"name" help:"Name of the agent" example:"segment"`
+	Serial uint64 `json:"serial,omitempty" help:"Serial of the agent's definition which was run" example:"3"`
+	SessionResponse
+	Reply json.RawMessage `json:"reply,omitempty" help:"The agent's reply, as a JSON string of its text, or JSON, when the agent has a schema"`
+}
+
 // AgentListRequest selects agents: from an offset, and at most a limit of
 // them
 type AgentListRequest struct {
@@ -78,6 +101,14 @@ func (a AgentMeta) String() string {
 
 func (a Agent) String() string {
 	return types.Stringify(a)
+}
+
+func (r RunAgentRequest) String() string {
+	return types.Stringify(r)
+}
+
+func (r RunAgentResponse) String() string {
+	return types.Stringify(r)
 }
 
 func (r AgentListRequest) String() string {
@@ -146,11 +177,46 @@ func (p PromptMeta) Template() (*template.Template, error) {
 	if p.Prompt == nil || strings.TrimSpace(*p.Prompt) == "" {
 		return nil, nil
 	}
-	result, err := template.New(p.Name).Option("missingkey=error").Parse(*p.Prompt)
+	result, err := template.New(p.Name).Option("missingkey=error").Funcs(promptFuncs).Parse(*p.Prompt)
 	if err != nil {
 		return nil, llm.ErrBadParameter.Withf("invalid prompt: %v", err)
 	}
 	return result, nil
+}
+
+// Validate returns ErrBadParameter when the input isn't an object, which its
+// input schema, when it has one, validates. No input is an empty object.
+func (p PromptMeta) Validate(input json.RawMessage) error {
+	_, err := p.input(input)
+	return err
+}
+
+// Message returns the message to the model, which is the prompt, executed
+// with the input, which is validated, or the input, as JSON, when there's
+// no prompt. A field of the input which the prompt uses, and the input
+// hasn't, is an error. Returns ErrBadParameter when the input isn't valid,
+// the prompt can't be executed with it, or there's neither a prompt, nor
+// an input.
+func (p PromptMeta) Message(input json.RawMessage) (string, error) {
+	value, err := p.input(input)
+	if err != nil {
+		return "", err
+	}
+	tmpl, err := p.Template()
+	if err != nil {
+		return "", err
+	} else if tmpl == nil {
+		if len(value) == 0 {
+			return "", llm.ErrBadParameter.Withf("agent %q has no prompt, nor input", p.Name)
+		}
+		data, err := json.Marshal(value)
+		return string(data), err
+	}
+	var b strings.Builder
+	if err := tmpl.Execute(&b, value); err != nil {
+		return "", llm.ErrBadParameter.Withf("invalid input: %v", err)
+	}
+	return b.String(), nil
 }
 
 // IsZero returns true when the definition sets nothing, apart from its
@@ -278,6 +344,42 @@ func updated(created, modified time.Time) string {
 		return ""
 	}
 	return when.Local().Format(time.DateTime)
+}
+
+// input returns the input, decoded as an object, with its numbers as they
+// were written, which its input schema, when it has one, validates. No
+// input is an empty object.
+func (p PromptMeta) input(input json.RawMessage) (map[string]any, error) {
+	data := bytes.TrimSpace(input)
+	if len(data) == 0 || string(data) == "null" {
+		data = []byte("{}")
+	}
+	decoder := json.NewDecoder(bytes.NewReader(data))
+	decoder.UseNumber()
+	var value map[string]any
+	if err := decoder.Decode(&value); err != nil {
+		return nil, llm.ErrBadParameter.Withf("invalid input, which must be an object: %v", err)
+	} else if _, err := decoder.Token(); !errors.Is(err, io.EOF) {
+		return nil, llm.ErrBadParameter.With("invalid input, which must be one object, with nothing after it")
+	}
+	schema, err := p.InputSchema()
+	if err != nil {
+		return nil, err
+	} else if schema != nil {
+		if err := schema.Validate(data); err != nil {
+			return nil, llm.ErrBadParameter.Withf("invalid input: %v", err)
+		}
+	}
+	return value, nil
+}
+
+// promptFuncs are the functions which a prompt can use: json, which
+// returns a value as JSON, such as {{ json .options }}
+var promptFuncs = template.FuncMap{
+	"json": func(v any) (string, error) {
+		data, err := json.Marshal(v)
+		return string(data), err
+	},
 }
 
 // writeJSON writes the YAML node as JSON, with the keys of its mappings in

@@ -67,6 +67,7 @@ func (r *Registry) WithSession(ctx context.Context, session schema.Session, mess
 	if err != nil {
 		return nil, err
 	}
+	loop.session = session.ID
 	h, usage, err := r.agentLoop(ctx, model, conversation, added, loop, stream)
 	if err != nil {
 		return nil, err

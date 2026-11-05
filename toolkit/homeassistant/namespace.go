@@ -6,6 +6,7 @@ import (
 	// Packages
 	client "github.com/mutablelogic/go-client"
 	llm "github.com/mutablelogic/go-llm"
+	eventschema "github.com/mutablelogic/go-llm/broadcaster/schema"
 	toolkit "github.com/mutablelogic/go-llm/toolkit"
 	httpclient "github.com/mutablelogic/go-llm/toolkit/homeassistant/httpclient"
 )
@@ -60,6 +61,9 @@ func (namespace) Name() string {
 func (namespace) SystemPrompt() string {
 	return ""
 }
+
+// Notify does nothing, as the namespace's tools don't change
+func (namespace) Notify(func(eventschema.EventAction, string)) {}
 
 func (n namespace) Tools() []llm.Tool {
 	return slices.Clone(n.tools)

@@ -8,6 +8,7 @@ import (
 	"sync/atomic"
 	"testing"
 	"time"
+	"uuid"
 
 	// Packages
 	llm "github.com/mutablelogic/go-llm"
@@ -99,7 +100,7 @@ func Test_RunTools(t *testing.T) {
 		var lines []string
 		tools := []llm.Tool{sessionTool{echoTool{name: "a"}}, sessionTool{echoTool{name: "b"}}}
 		_, err := toolkit.RunTools(ctx, tools, calls("a", "b"), 0, func(call llm.ToolCall) toolkit.Session {
-			return toolkit.NewSession(call.ID, func(line string) {
+			return toolkit.NewSession(call.ID, uuid.Nil(), func(line string) {
 				mu.Lock()
 				defer mu.Unlock()
 				lines = append(lines, call.ID+": "+line)

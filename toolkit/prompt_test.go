@@ -8,6 +8,7 @@ import (
 
 	// Packages
 	llm "github.com/mutablelogic/go-llm"
+	eventschema "github.com/mutablelogic/go-llm/broadcaster/schema"
 	toolkit "github.com/mutablelogic/go-llm/toolkit"
 	assert "github.com/stretchr/testify/assert"
 	require "github.com/stretchr/testify/require"
@@ -112,6 +113,9 @@ func (n countingNamespace) Tools() []llm.Tool { return n.tools }
 func (n countingNamespace) SystemPrompt() string {
 	return fmt.Sprint("Read ", n.reads.Add(1), " times.")
 }
+
+// Notify does nothing, as the namespace's tools don't change
+func (countingNamespace) Notify(func(eventschema.EventAction, string)) {}
 
 func Test_SystemPromptsReadOnce(t *testing.T) {
 	// A namespace's system prompt is read once, however many names select
