@@ -143,17 +143,48 @@ func TestRun(t *testing.T) {
 		tools, _ := newTools(t)
 		result, err := run(ctx, tools, "get_states", nil)
 		require.NoError(t, err)
-		assert.JSONEq(t, `[
+		assert.JSONEq(t, `{"count":2,"states":[
 			{"entity_id":"light.kitchen","state":"on","name":"Kitchen","class":"light"},
 			{"entity_id":"sensor.temperature","state":"21.5","name":"Temperature","class":"temperature","unit":"°C"}
-		]`, encode(t, result))
+		]}`, encode(t, result))
+	})
+
+	t.Run("GetStatesSearch", func(t *testing.T) {
+		// The entities with each word in their IDs, or names, in any case
+		tools, _ := newTools(t)
+		for q, want := range map[string]string{
+			"TEMP":          `{"count":1,"states":[{"entity_id":"sensor.temperature","state":"21.5","name":"Temperature","class":"temperature","unit":"°C"}]}`,
+			"kitchen light": `{"count":1,"states":[{"entity_id":"light.kitchen","state":"on","name":"Kitchen","class":"light"}]}`,
+			"garage":        `{"count":0,"states":[]}`,
+		} {
+			result, err := run(ctx, tools, "get_states", json.RawMessage(`{"q":"`+q+`"}`))
+			require.NoError(t, err, q)
+			assert.JSONEq(t, want, encode(t, result), q)
+		}
+	})
+
+	t.Run("GetStatesPage", func(t *testing.T) {
+		// A page, in order of the entities' IDs, with how many there are
+		tools, _ := newTools(t)
+		result, err := run(ctx, tools, "get_states", json.RawMessage(`{"limit":1}`))
+		require.NoError(t, err)
+		assert.JSONEq(t, `{"count":2,"states":[{"entity_id":"light.kitchen","state":"on","name":"Kitchen","class":"light"}],
+			"next_offset":1,"next":"These are entities 1 to 1 of 2. To get the next page, list them again with offset 1, and the same domain and q, or narrow them with a domain, or q."}`, encode(t, result))
+
+		// The last page says nothing of a next one
+		result, err = run(ctx, tools, "get_states", json.RawMessage(`{"limit":1,"offset":1}`))
+		require.NoError(t, err)
+		assert.JSONEq(t, `{"count":2,"offset":1,"states":[{"entity_id":"sensor.temperature","state":"21.5","name":"Temperature","class":"temperature","unit":"°C"}]}`, encode(t, result))
+		result, err = run(ctx, tools, "get_states", json.RawMessage(`{"offset":5}`))
+		require.NoError(t, err)
+		assert.JSONEq(t, `{"count":2,"offset":5,"states":[]}`, encode(t, result))
 	})
 
 	t.Run("GetStatesDomain", func(t *testing.T) {
 		tools, _ := newTools(t)
 		result, err := run(ctx, tools, "get_states", json.RawMessage(`{"domain":"sensor"}`))
 		require.NoError(t, err)
-		assert.JSONEq(t, `[{"entity_id":"sensor.temperature","state":"21.5","name":"Temperature","class":"temperature","unit":"°C"}]`, encode(t, result))
+		assert.JSONEq(t, `{"count":1,"states":[{"entity_id":"sensor.temperature","state":"21.5","name":"Temperature","class":"temperature","unit":"°C"}]}`, encode(t, result))
 	})
 
 	t.Run("GetState", func(t *testing.T) {

@@ -6,6 +6,9 @@ package httpclient
 // GetStatesRequest is the input for listing the entities and their states
 type GetStatesRequest struct {
 	Domain string `json:"domain,omitempty" help:"Filter entities by domain (e.g. light, switch, sensor, climate). Returns all entities when empty."`
+	Q      string `json:"q,omitempty" help:"Words which each entity's ID, or name, has, in any case, such as kitchen light, or every entity" optional:""`
+	Offset uint64 `json:"offset,omitempty" help:"How many entities to skip, to get the next page" optional:""`
+	Limit  uint64 `json:"limit,omitempty" help:"Most entities to return, which is 50 when it isn't given" min:"1" max:"200" optional:""`
 }
 
 // GetStateRequest is the input for getting the state of an entity

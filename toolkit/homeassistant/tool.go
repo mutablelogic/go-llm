@@ -69,6 +69,16 @@ type stateSummary struct {
 	Unit     string `json:"unit,omitempty"`
 }
 
+// statesPage is a page of the entities' states, from the offset, and how
+// many entities there are, so a model knows when there are more
+type statesPage struct {
+	Count      int            `json:"count"`
+	Offset     uint64         `json:"offset,omitempty"`
+	States     []stateSummary `json:"states"`
+	NextOffset uint64         `json:"next_offset,omitempty"`
+	Next       string         `json:"next,omitempty"`
+}
+
 // serviceSummary is a compact summary of a service, for a model
 type serviceSummary struct {
 	Call        string   `json:"call"`
@@ -76,6 +86,16 @@ type serviceSummary struct {
 	Description string   `json:"description,omitempty"`
 	Fields      []string `json:"fields,omitempty"`
 }
+
+////////////////////////////////////////////////////////////////////////////////
+// GLOBALS
+
+const (
+	// statesLimit is how many entities are listed, unless the model says,
+	// and statesLimitMax the most
+	statesLimit    = 50
+	statesLimitMax = 200
+)
 
 ////////////////////////////////////////////////////////////////////////////////
 // GET STATES
@@ -102,10 +122,15 @@ func (t *getStates) Run(ctx context.Context, input json.RawMessage) (any, error)
 		return nil, err
 	}
 
-	domain := strings.TrimSpace(req.Domain)
-	if domain != "" {
+	domain, q := strings.TrimSpace(req.Domain), strings.TrimSpace(req.Q)
+	switch {
+	case domain != "" && q != "":
+		toolkit.Logf(ctx, "Looking for %q among the %s devices in Home Assistant", q, domain)
+	case q != "":
+		toolkit.Logf(ctx, "Looking for %q among the devices in Home Assistant", q)
+	case domain != "":
 		toolkit.Logf(ctx, "Listing the %s devices in Home Assistant", domain)
-	} else {
+	default:
 		toolkit.Logf(ctx, "Listing the devices in Home Assistant")
 	}
 	states, err := t.client.States(ctx)
@@ -113,12 +138,16 @@ func (t *getStates) Run(ctx context.Context, input json.RawMessage) (any, error)
 		return nil, err
 	}
 
-	// Return a summary of the available entities, in the domain if set
+	// A summary of the available entities, in the domain, with the words,
+	// when they're given, in order of their IDs, so pages follow each other
+	words := strings.Fields(strings.ToLower(q))
 	result := make([]stateSummary, 0, len(states))
 	for _, s := range states {
 		if domain != "" && s.Domain() != domain {
 			continue
 		} else if s.Value() == "" {
+			continue
+		} else if !hasWords(strings.ToLower(s.Entity+" "+s.Name()), words) {
 			continue
 		}
 		result = append(result, stateSummary{
@@ -129,7 +158,27 @@ func (t *getStates) Run(ctx context.Context, input json.RawMessage) (any, error)
 			Unit:     s.UnitOfMeasurement(),
 		})
 	}
-	return result, nil
+	slices.SortFunc(result, func(a, b stateSummary) int {
+		return strings.Compare(a.EntityId, b.EntityId)
+	})
+
+	// The page of them
+	limit := req.Limit
+	if limit == 0 {
+		limit = statesLimit
+	}
+	page := statesPage{Count: len(result), Offset: req.Offset, States: []stateSummary{}}
+	if req.Offset < uint64(len(result)) {
+		result = result[req.Offset:]
+		page.States = result[:min(uint64(len(result)), min(limit, statesLimitMax))]
+	}
+
+	// When there are more, how to get them
+	if next := req.Offset + uint64(len(page.States)); len(page.States) > 0 && next < uint64(page.Count) {
+		page.NextOffset = next
+		page.Next = fmt.Sprintf("These are entities %d to %d of %d. To get the next page, list them again with offset %d, and the same domain and q, or narrow them with a domain, or q.", req.Offset+1, next, page.Count, next)
+	}
+	return page, nil
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -418,6 +467,16 @@ func targets(data map[string]any) []string {
 		add(value)
 	}
 	return entities
+}
+
+// hasWords returns whether the text has each of the words
+func hasWords(text string, words []string) bool {
+	for _, word := range words {
+		if !strings.Contains(text, word) {
+			return false
+		}
+	}
+	return true
 }
 
 // currentStates returns the states of the entities, as they are now, in

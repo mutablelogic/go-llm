@@ -36,6 +36,9 @@ var _ llm.Tool = (*control)(nil)
 type queryInput struct {
 	Operation string `json:"operation" enum:"states,state,services,template" help:"states lists the entities, and their states, of a domain, or every domain, state gets all of an entity's state, services lists what can be done with a domain's entities, and template renders a template"`
 	Domain    string `json:"domain,omitempty" help:"Domain, such as light, switch, sensor, climate or media_player, whose entities to list, or whose services, which services needs" optional:""`
+	Q         string `json:"q,omitempty" help:"Words which each entity's ID, or name, has, in any case, such as kitchen light, to list only those entities" optional:""`
+	Offset    uint64 `json:"offset,omitempty" help:"How many entities to skip, to list the next page" optional:""`
+	Limit     uint64 `json:"limit,omitempty" help:"Most entities to list, which is 50 when it isn't given" min:"1" max:"200" optional:""`
 	EntityId  string `json:"entity_id,omitempty" help:"Entity, such as light.living_room, whose state to get" optional:""`
 	Template  string `json:"template,omitempty" help:"Jinja2 template to render, such as '{{ states(\"sensor.temperature\") }}'" optional:""`
 }
@@ -85,6 +88,8 @@ func (*query) Name() string {
 
 func (*query) Description() string {
 	return "Read from Home Assistant, without changing anything: list the entities, and their states, of a domain, or every domain, " +
+		"with words in their IDs, or names, a page at a time, with how many there are, and, when there are more, " +
+		"the next_offset, which is the offset of the next page, " +
 		"get all of an entity's state, list the services of a domain, to know what can be done with its entities, " +
 		"or render a Jinja2 template, to work something out, such as " +
 		"'{{ states.light | selectattr(\"state\",\"eq\",\"on\") | list | count }} lights are on'."
