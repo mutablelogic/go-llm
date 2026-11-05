@@ -134,6 +134,12 @@ docker run -d --name llm -p 8084:8084 -v llm:/data \
   ghcr.io/mutablelogic/llm
 ```
 
+Or with Docker Compose, whose [compose file](docker/compose.yaml) has every variable the server reads, from the environment, or a `.env` file, and, with the `ollama` profile, an Ollama server, which `OLLAMA_ADDR=http://ollama:11434` adds as a provider:
+
+```bash
+docker compose -f docker/compose.yaml --profile ollama up -d
+```
+
 In another terminal, add providers, with API keys from environment variables, which the server reads:
 
 ```bash
@@ -228,7 +234,7 @@ Tools are added to the server's toolkit when their credentials are set, as envir
 | `weatherapi` | Current weather, forecasts and alerts | `WEATHERAPI_API_KEY`, from [weatherapi.com](https://www.weatherapi.com/signup.aspx) |
 | `newsapi` | News articles, headlines and sources | `NEWSAPI_API_KEY`, from [newsapi.org](https://newsapi.org/register) |
 | `homeassistant` | Query, and search, and control smart home devices | `HOMEASSISTANT_URL`, `HOMEASSISTANT_API_KEY` |
-| `ollama` | Web search and fetch | `OLLAMA_API_KEY`, from [ollama.com](https://ollama.com/settings/keys) |
+| `ollama` | Web search and fetch, with Ollama's cloud service, rather than a local Ollama | `OLLAMA_API_KEY`, from [ollama.com](https://ollama.com/settings/keys) |
 
 A model is given tools by name, by namespace and name, such as `weatherapi:current`, or all of a namespace's, such as `weatherapi:*`, or all of them, `*`.
 
