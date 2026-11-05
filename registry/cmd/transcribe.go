@@ -12,10 +12,10 @@ import (
 
 	// Packages
 	llm "github.com/mutablelogic/go-llm"
+	subtitle "github.com/mutablelogic/go-llm/internal/subtitle"
 	providerschema "github.com/mutablelogic/go-llm/provider/schema"
 	httpclient "github.com/mutablelogic/go-llm/registry/httpclient"
 	schema "github.com/mutablelogic/go-llm/registry/schema"
-	subtitle "github.com/mutablelogic/go-llm/subtitle"
 	server "github.com/mutablelogic/go-server"
 )
 
