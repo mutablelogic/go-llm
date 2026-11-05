@@ -1,0 +1,66 @@
+# The llm server, with its web UI, at http://localhost:8084/, and, with the
+# ollama profile, an Ollama server, whose models it can use:
+#
+#   docker compose -f docker/compose.yaml up -d
+#   docker compose -f docker/compose.yaml --profile ollama up -d
+#
+# The variables are read from the environment, or a .env file beside this
+# one. A new installation has the Eliza provider, unless NOELIZA is set, and
+# those whose variables are set, such as OLLAMA_ADDR, which is
+# http://ollama:11434 for the ollama profile's server, or OPENAI_API_KEY,
+# whose keys are read when they're used, rather than stored. Its providers,
+# sessions, agents and memory are kept in the llm volume.
+
+name: llm
+
+services:
+  llm:
+    image: ghcr.io/mutablelogic/llm:${LLM_VERSION:-latest}
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    restart: unless-stopped
+    ports:
+      - "${LLM_PORT:-8084}:8084"
+    volumes:
+      - llm:/data
+    environment:
+      # The user the server runs as
+      UID: ${UID:-}
+      GID: ${GID:-}
+      # LLM providers of a new installation
+      NO_ELIZA: ${NO_ELIZA:-}
+      OLLAMA_ADDR: ${OLLAMA_ADDR:-}
+      GOWHISPER_ADDR: ${GOWHISPER_ADDR:-}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-}
+      MISTRAL_API_KEY: ${MISTRAL_API_KEY:-}
+      ELEVENLABS_API_KEY: ${ELEVENLABS_API_KEY:-}
+      # The tools, which are added when their credentials are set
+      WEATHERAPI_API_KEY: ${WEATHERAPI_API_KEY:-}
+      NEWSAPI_API_KEY: ${NEWSAPI_API_KEY:-}
+      OLLAMA_API_KEY: ${OLLAMA_API_KEY:-}
+      HOMEASSISTANT_URL: ${HOMEASSISTANT_URL:-}
+      HOMEASSISTANT_API_KEY: ${HOMEASSISTANT_API_KEY:-}
+    depends_on:
+      # Ollama, when it's run, is started, and answers, first, so a new
+      # installation can add it
+      ollama:
+        condition: service_healthy
+        required: false
+
+  ollama:
+    image: ollama/ollama:latest
+    profiles: [ollama]
+    restart: unless-stopped
+    volumes:
+      - ollama:/root/.ollama
+    healthcheck:
+      test: ["CMD", "ollama", "list"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+
+volumes:
+  llm:
+  ollama:
