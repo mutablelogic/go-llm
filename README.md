@@ -113,46 +113,60 @@ What a model can do depends on the model, which its provider reports, where it k
 
 ## Quick Start
 
-Install the server and command-line tool, which are both `llm`, with Go, or the command-line tool alone, without the server, with the `client` tag:
+### 1. Run the server, with Docker
 
-```bash
-go install github.com/mutablelogic/go-llm/cmd/llm@latest
-go install -tags client github.com/mutablelogic/go-llm/cmd/llm@latest
-```
-
-Or build them from a clone of the repository, with `make`, into `build/llm`, or the command-line tool alone with `make client`. `make` also builds the web UI, with npm, which the server then serves from its root, such as `http://localhost:8084/`, to chat, and see the models and tools; a server installed with `go install` serves the API without it. Then run the server, which listens on `localhost:8084` by default:
-
-```bash
-llm run
-```
-
-Or run it with Docker, whose image has the web UI, and keeps its providers, sessions, agents and memory in `/data`. A new installation has the Eliza provider, unless `NO_ELIZA` is set, and those whose variables are set: `OLLAMA_ADDR` and `GOWHISPER_ADDR`, as their URLs, and `OPENAI_API_KEY`, `DEEPSEEK_API_KEY`, `MISTRAL_API_KEY` and `ELEVENLABS_API_KEY`, which are read when they're used, rather than stored. `UID` and `GID` set the user the server runs as, such as the owner of a directory which is mounted at `/data`:
+The image has the server, and its web UI, and keeps its providers, sessions, agents and memory in the `/data` volume:
 
 ```bash
 docker run -d --name llm -p 8084:8084 -v llm:/data \
-  -e OLLAMA_ADDR=http://ollama:11434 -e OPENAI_API_KEY \
+  -e OLLAMA_ADDR=http://host.docker.internal:11434 \
+  -e OPENAI_API_KEY \
   ghcr.io/mutablelogic/llm
 ```
 
-Or with Docker Compose, whose [compose file](docker/compose.yaml) has every variable the server reads, from the environment, or a `.env` file, and, with the `ollama` profile, an Ollama server, which `OLLAMA_ADDR=http://ollama:11434` adds as a provider:
+Then open [http://localhost:8084/](http://localhost:8084/), to chat, and see the models and tools:
+
+![The web UI: the models of the providers, and a model's details](testdata/frontend.png)
+
+`host.docker.internal` is the machine Docker runs on, such as for an Ollama server which runs there, which Docker Desktop has, and Linux has with `--add-host=host.docker.internal:host-gateway`.
+
+When it's first started, the server has the Eliza provider, unless `NO_ELIZA` is set, and those whose variables are set: `OLLAMA_ADDR` and `GOWHISPER_ADDR`, as their URLs, and `OPENAI_API_KEY`, `DEEPSEEK_API_KEY`, `MISTRAL_API_KEY` and `ELEVENLABS_API_KEY`, whose keys are read from the container's environment when they're used, rather than stored. `UID` and `GID` set the user it runs as, such as the owner of a directory which is mounted at `/data`.
+
+Or run it with Docker Compose, whose [compose file](docker/compose.yaml) has every variable the server reads, from the environment, or a `.env` file, and, with the `ollama` profile, an Ollama server, which `OLLAMA_ADDR=http://ollama:11434` adds:
 
 ```bash
 docker compose -f docker/compose.yaml --profile ollama up -d
 ```
 
-In another terminal, add providers, with API keys from environment variables, which the server reads:
+### 2. Install the command-line tool
+
+The command-line tool, without the server, is built with the `client` tag, with Go, or from a clone of the repository, into `build/llm`:
+
+```bash
+go install -tags client github.com/mutablelogic/go-llm/cmd/llm@latest
+make client
+```
+
+It connects to the server at `localhost:8084`, or the one at `--http.addr`, or `LLM_ADDR`, such as `LLM_ADDR=nas.local:8084`.
+
+### 3. Add providers
+
+Providers which weren't added when the server was first started are added with the command-line tool. An API key is given by the name of its variable, as `--api-key-credential`, which the server reads from its own environment, which is the container's, rather than the command-line tool's, so the key isn't stored, or sent:
 
 ```bash
 # Providers
-llm provider-create-ollama localhost
+llm provider-create-ollama http://host.docker.internal:11434
 llm provider-create-openai --api-key-credential OPENAI_API_KEY
 llm provider-create-mistral --api-key-credential MISTRAL_API_KEY
-llm provider-create-gowhisper localhost:8081
+llm provider-create-gowhisper http://host.docker.internal:8081
 llm provider-create-elevenlabs --api-key-credential ELEVENLABS_API_KEY
 
-# Their models, in order of name
+# The providers, and their models, in order of name
+llm providers
 llm models
 ```
+
+### 4. Ask, and chat
 
 Then ask models to do something. A command's model is kept, and used until another is given:
 
@@ -197,7 +211,16 @@ llm session-messages
 llm sessions
 ```
 
-The command-line tool connects to `localhost:8084`, or the server at `--http.addr` or `LLM_ADDR`.
+### Without Docker
+
+Install the server and command-line tool, which are both `llm`, with Go, and run the server, which listens on `localhost:8084`, and keeps its data in the user's cache directory:
+
+```bash
+go install github.com/mutablelogic/go-llm/cmd/llm@latest
+llm run
+```
+
+A server installed with `go install` serves the API, without the web UI, which `make`, from a clone of the repository, builds, with npm, into `build/llm`.
 
 ## Commands
 
