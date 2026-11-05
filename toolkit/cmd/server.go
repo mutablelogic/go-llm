@@ -10,7 +10,6 @@ import (
 	toolkit "github.com/mutablelogic/go-llm/toolkit"
 	homeassistant "github.com/mutablelogic/go-llm/toolkit/homeassistant"
 	httphandler "github.com/mutablelogic/go-llm/toolkit/httphandler"
-	memory "github.com/mutablelogic/go-llm/toolkit/memory"
 	newsapi "github.com/mutablelogic/go-llm/toolkit/newsapi"
 	ollama "github.com/mutablelogic/go-llm/toolkit/ollama"
 	weatherapi "github.com/mutablelogic/go-llm/toolkit/weatherapi"
@@ -99,15 +98,14 @@ func (flags Flags) WithToolkit(ctx server.Cmd, srv *servercmd.RunServer, fn func
 	return fn(tools)
 }
 
-// AddTools adds the memory tools, which are always added, and the tools
-// whose credentials exist, to the toolkit. API keys are read from the
+// AddTools adds the tools whose credentials exist to the toolkit, apart from
+// the memory, which a system adds, with its store. API keys are read from the
 // toolkit's credentials, and the tools' clients are created with the
 // toolkit's client options. The tools which are added are logged, and those
 // which aren't, such as when their credential doesn't exist, are logged as a
 // warning, with why.
 func AddTools(ctx server.Cmd, tools *toolkit.Toolkit) error {
 	return errors.Join(
-		add(ctx, tools, memory.New()),
 		addNamespace(ctx, tools, weatherapi.Name, WeatherAPICredential, weatherapi.New),
 		addNamespace(ctx, tools, ollama.Name, OllamaCredential, ollama.New),
 		addNamespace(ctx, tools, newsapi.Name, NewsAPICredential, newsapi.New),

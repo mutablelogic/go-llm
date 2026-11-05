@@ -45,9 +45,9 @@ func Test_UpdateProvider(t *testing.T) {
 		_, err = r.GetModel(ctx, "chat:eliza-1966-de")
 		require.NoError(t, err)
 		assert.Equal(t, []eventschema.Event{
-			{Action: eventschema.EventCreate, Table: registry.ProviderTable, Row: "chat"},
-			{Action: eventschema.EventUpdate, Table: registry.ProviderTable, Row: "chat"},
-			{Action: eventschema.EventUpdate, Table: registry.ProviderTable, Row: "chat"},
+			{Action: eventschema.EventCreate, Schema: registry.EventSchema, Table: registry.ProviderTable, Row: "chat"},
+			{Action: eventschema.EventUpdate, Schema: registry.EventSchema, Table: registry.ProviderTable, Row: "chat"},
+			{Action: eventschema.EventUpdate, Schema: registry.EventSchema, Table: registry.ProviderTable, Row: "chat"},
 		}, events(ch))
 	})
 

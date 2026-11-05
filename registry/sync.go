@@ -62,7 +62,7 @@ func (s *syncer) sync(ctx context.Context, registryEvents <-chan eventschema.Eve
 	for drained := false; !drained; {
 		select {
 		case event := <-registryEvents:
-			if event.Table == ProviderTable {
+			if event.Schema == EventSchema && event.Table == ProviderTable {
 				failed(s.local(ctx, event.Row))
 			}
 		default:

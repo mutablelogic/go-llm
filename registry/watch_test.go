@@ -48,7 +48,7 @@ func events(ch chan schema.Event) []schema.Event {
 
 // event returns an event of the provider with the name
 func event(action schema.EventAction, name string) schema.Event {
-	return schema.Event{Action: action, Table: registry.ProviderTable, Row: name}
+	return schema.Event{Action: action, Schema: registry.EventSchema, Table: registry.ProviderTable, Row: name}
 }
 
 func Test_Watch(t *testing.T) {
