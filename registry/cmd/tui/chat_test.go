@@ -719,3 +719,24 @@ func Test_LogsUnderLabel(t *testing.T) {
 	assert.Less(t, strings.Index(content, "openai"), strings.Index(content, "Not remembering"))
 	assert.Less(t, strings.Index(content, "Not remembering"), strings.Index(content, "No problem."))
 }
+
+func Test_DetailsReload(t *testing.T) {
+	// A change to the details as they're loaded isn't overwritten by them,
+	// as they're loaded again
+	stale := &memoryschema.Details{Assistant: &memoryschema.Detail{Value: "Nano"}}
+	fresh := &memoryschema.Details{Assistant: &memoryschema.Detail{Value: "Omodie"}}
+	m, _ := newTestModel(fakeClient{details: fresh}, &schema.Session{ID: uuid.New()})
+	load := m.loadDetails()
+	m.Update(detailMsg(eventschema.Event{Action: eventschema.EventUpdate, Schema: memorySchema, Table: detailTable, Row: "assistant", Data: json.RawMessage(`{"value":"Omodie"}`)}))
+	msg := load().(detailsMsg)
+	msg.details = stale
+	_, cmd := m.Update(msg)
+	assert.Equal(t, "Omodie", m.assistantLabel())
+	require.NotNil(t, cmd, "loaded again")
+	m.Update(cmd())
+	assert.Equal(t, "Omodie", m.assistantLabel())
+
+	// Without a change as they're loaded, they're used
+	m.Update(m.loadDetails()())
+	assert.Equal(t, "Omodie", m.assistantLabel())
+}

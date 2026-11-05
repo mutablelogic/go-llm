@@ -52,6 +52,7 @@ type model struct {
 	debug    bool // Whether the model's thinking, and the tools it calls, are shown
 	session  *schema.Session
 	details  memoryschema.Details // The memory's details, such as the names of the person and the assistant
+	changes  uint64               // How many changes to the details have been applied, so a reload which they happened during is done again
 	speaker  string               // Who was last labelled, as the history is rendered, so a turn has one label
 	send     func(tea.Msg)
 	history  viewport.Model
@@ -97,6 +98,7 @@ type (
 	detailsMsg struct {
 		details *memoryschema.Details
 		err     error
+		changes uint64 // The changes which had been applied when they were loaded
 	}
 	watchedMsg struct {
 		err   error         // Why the changes aren't watched
@@ -244,14 +246,20 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case eventMsg:
 		return m, m.changed(eventschema.Event(msg))
 	case detailMsg:
+		m.changes++
 		m.detailChanged(eventschema.Event(msg))
 		m.render()
 		return m, nil
 	case detailsMsg:
-		if msg.err == nil {
-			m.details = *msg.details
-			m.render()
+		// Details which changed as they were loaded may be older than the
+		// changes, so they're loaded again
+		if msg.err != nil {
+			return m, nil
+		} else if msg.changes != m.changes {
+			return m, m.loadDetails()
 		}
+		m.details = *msg.details
+		m.render()
 		return m, nil
 	case watchedMsg:
 		// The changes aren't watched, such as when the server is stopping,
@@ -404,10 +412,10 @@ func (m *model) detailChanged(event eventschema.Event) {
 // loadDetails returns the command which loads the memory's details again,
 // as they may have changed while the changes weren't watched
 func (m *model) loadDetails() tea.Cmd {
-	ctx, client := m.ctx, m.client
+	ctx, client, changes := m.ctx, m.client, m.changes
 	return func() tea.Msg {
 		details, err := client.GetDetails(ctx)
-		return detailsMsg{details: details, err: err}
+		return detailsMsg{details: details, err: err, changes: changes}
 	}
 }
 
