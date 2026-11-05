@@ -53,6 +53,7 @@ type model struct {
 	width    int
 	waiting  bool
 	streamed []*group
+	progress string              // A tool's progress, as the reply is streamed, which the next replaces
 	logs     map[string][]string // What tools logged, by the tool result, or the position, it's shown before
 	rendered bool
 	err      error
@@ -248,14 +249,18 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 	case streamMsg:
-		m.streamed = addPiece(m.streamed, piece(msg))
+		if msg.what == llm.StreamProgress {
+			m.progress = progressText(llm.ParseProgress(msg.text))
+		} else {
+			m.streamed = addPiece(m.streamed, piece(msg))
+		}
 		m.render()
 		return m, nil
 	case replyMsg:
 		// The question, as it was shown, is replaced by the messages, as
 		// they were stored, or, when it wasn't sent, is typed again
 		logged := m.streamed
-		m.waiting, m.streamed, m.err = false, nil, msg.err
+		m.waiting, m.streamed, m.progress, m.err = false, nil, "", msg.err
 		m.session.Messages = m.session.Messages[:msg.asked]
 		var cmd tea.Cmd
 		if msg.err != nil {
@@ -453,8 +458,11 @@ func (m *model) render() {
 			}
 		}
 		b.WriteString("\n")
-	} else if m.waiting {
+	} else if m.waiting && m.progress == "" {
 		b.WriteString(dimStyle.Render("Waiting for the reply…") + "\n")
+	}
+	if m.waiting && m.progress != "" {
+		b.WriteString(m.wrap(dimStyle, m.progress) + "\n")
 	}
 	if m.err != nil {
 		b.WriteString(errorStyle.Render("Error: "+m.err.Error()) + "\n")
@@ -663,6 +671,15 @@ func addPiece(groups []*group, p piece) []*group {
 	g := &group{what: p.what}
 	g.text.WriteString(p.text)
 	return append(groups, g)
+}
+
+// progressText returns a tool's progress, as it's shown: its message, and
+// its percent, when it's known
+func progressText(p llm.Progress) string {
+	if percent, ok := p.Percent(); ok {
+		return fmt.Sprintf("%s (%.0f%%)", p.Message, percent)
+	}
+	return p.Message
 }
 
 // oneLine returns the text on one line, of at most the characters

@@ -217,20 +217,21 @@ func (s *replyStream) Next() llm.GeneratorStreamFn {
 	return s.stream
 }
 
-// Log returns the function which streams a line a tool logs, which isn't
-// part of a reply, so doesn't separate the replies, or nil when the replies
-// aren't streamed. Tools which run in parallel can log at once, and a tool
-// which doesn't return when it times out can log as the next reply is
-// streamed, so the lines, and the replies, are streamed in turn.
-func (s *replyStream) Log() func(string) {
+// Tool returns the function which streams what a tool streams as it runs,
+// which is a line it logs, or its progress, which isn't part of a reply, so
+// doesn't separate the replies, or nil when the replies aren't streamed.
+// Tools which run in parallel can stream at once, and a tool which doesn't
+// return when it times out can stream as the next reply is streamed, so
+// what they stream, and the replies, are streamed in turn.
+func (s *replyStream) Tool() llm.GeneratorStreamFn {
 	if s == nil {
 		return nil
 	}
-	return func(text string) {
+	return func(what llm.StreamType, text string) {
 		s.mu.Lock()
 		defer s.mu.Unlock()
 		if !s.closed {
-			s.fn(llm.StreamLog, text)
+			s.fn(what, text)
 		}
 	}
 }

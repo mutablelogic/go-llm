@@ -234,7 +234,7 @@ func (r *Registry) iterate(ctx context.Context, model llm.Model, loop *agentLoop
 		span = trace.SpanFromContext(ctx)
 	}
 	session := func(name string) toolkit.Session {
-		return toolkit.NewSession(name, loop.session, replies.Log(), span)
+		return toolkit.NewSession(name, loop.session, replies.Tool(), span)
 	}
 
 	// Compact the conversation, to fit the model's context, unless it can't

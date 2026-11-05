@@ -4,10 +4,12 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"testing"
 
 	// Packages
+	llm "github.com/mutablelogic/go-llm"
 	test "github.com/mutablelogic/go-llm/registry/test"
 	toolkit "github.com/mutablelogic/go-llm/toolkit"
 	httpclient "github.com/mutablelogic/go-llm/toolkit/httpclient"
@@ -47,6 +49,31 @@ func (echoTool) Run(_ context.Context, input json.RawMessage) (any, error) {
 	return input, nil
 }
 
+// nullTool returns JSON null, which is a result, rather than none
+type nullTool struct {
+	tool
+}
+
+func (nullTool) Run(context.Context, json.RawMessage) (any, error) {
+	return json.RawMessage("null"), nil
+}
+
+// progressTool logs, and says how it's getting on, as it runs, and returns
+// its input, or fails, when its input says so
+type progressTool struct {
+	tool
+}
+
+func (progressTool) Run(ctx context.Context, input json.RawMessage) (any, error) {
+	toolkit.Logf(ctx, "Starting")
+	toolkit.SessionFromContext(ctx).Progress(1, 2, "Half way")
+	toolkit.Progressf(ctx, "Nearly there")
+	if string(input) == `{"fail":true}` {
+		return nil, errors.New("it failed")
+	}
+	return input, nil
+}
+
 // newClient returns a client for a test server serving a toolkit with tools
 // in three namespaces
 func newClient(t *testing.T) (*httpclient.Client, context.Context) {
@@ -56,7 +83,7 @@ func newClient(t *testing.T) (*httpclient.Client, context.Context) {
 	require.NoError(t, err)
 	require.NoError(t, tools.Add(toolkit.NewNamespace("a", "", tool{name: "one"}, tool{name: "two"})))
 	require.NoError(t, tools.Add(toolkit.NewNamespace("b", "", tool{name: "three"})))
-	require.NoError(t, tools.Add(toolkit.NewNamespace("c", "", echoTool{tool{name: "echo"}})))
+	require.NoError(t, tools.Add(toolkit.NewNamespace("c", "", echoTool{tool{name: "echo"}}, progressTool{tool{name: "progress"}}, nullTool{tool{name: "null"}})))
 
 	server := test.NewServerFunc(t, func(router *httprouter.Router) error {
 		return httphandler.RegisterHandlers(tools, router)
@@ -72,8 +99,8 @@ func TestListTools(t *testing.T) {
 	t.Run("All", func(t *testing.T) {
 		list, err := client.ListTools(ctx, schema.ToolListRequest{})
 		require.NoError(t, err)
-		assert.Equal(t, uint64(4), list.Count)
-		require.Len(t, list.Body, 4)
+		assert.Equal(t, uint64(6), list.Count)
+		require.Len(t, list.Body, 6)
 		assert.Equal(t, "one", list.Body[0].Name)
 		assert.Equal(t, "a:one", list.Body[0].Canonical)
 		assert.Equal(t, "A tool for tests", list.Body[0].Description)
@@ -161,5 +188,53 @@ func TestGetTool(t *testing.T) {
 	t.Run("NotFound", func(t *testing.T) {
 		_, err := client.GetTool(ctx, "c:other")
 		assert.Equal(t, http.StatusNotFound, status(t, err))
+	})
+}
+
+func TestCallToolStream(t *testing.T) {
+	client, ctx := newClient(t)
+
+	t.Run("Stream", func(t *testing.T) {
+		// What the tool logs, and its progress, are streamed as it runs, and
+		// then its result
+		var streamed []string
+		result, err := client.CallToolStream(ctx, "c:progress", json.RawMessage(`{"city":"Berlin"}`), func(what llm.StreamType, text string) {
+			if what == llm.StreamProgress {
+				p := llm.ParseProgress(text)
+				percent, _ := p.Percent()
+				streamed = append(streamed, fmt.Sprintf("progress %s %.0f", p.Message, percent))
+			} else {
+				streamed = append(streamed, string(what)+" "+text)
+			}
+		})
+		require.NoError(t, err)
+		assert.JSONEq(t, `{"city":"Berlin"}`, string(result))
+		assert.Equal(t, []string{"log Starting", "progress Half way 50", "progress Nearly there 0"}, streamed)
+	})
+
+	t.Run("Error", func(t *testing.T) {
+		// A tool which fails ends the stream with its error
+		_, err := client.CallToolStream(ctx, "c:progress", json.RawMessage(`{"fail":true}`), func(llm.StreamType, string) {})
+		assert.ErrorContains(t, err, "it failed")
+		_, err = client.CallToolStream(ctx, "c:missing", nil, func(llm.StreamType, string) {})
+		assert.ErrorContains(t, err, "Not Found")
+	})
+
+	t.Run("NoResult", func(t *testing.T) {
+		// A tool without a result has none, and no stream is a call
+		result, err := client.CallToolStream(ctx, "a:one", nil, func(llm.StreamType, string) {})
+		require.NoError(t, err)
+		assert.Nil(t, result)
+
+		// A result which is JSON null is a result, as without a stream
+		result, err = client.CallToolStream(ctx, "c:null", nil, func(llm.StreamType, string) {})
+		require.NoError(t, err)
+		assert.Equal(t, json.RawMessage("null"), result)
+		result, err = client.CallTool(ctx, "c:null", nil)
+		require.NoError(t, err)
+		assert.Equal(t, json.RawMessage("null"), result)
+		result, err = client.CallToolStream(ctx, "c:echo", json.RawMessage(`{"city":"Paris"}`), nil)
+		require.NoError(t, err)
+		assert.JSONEq(t, `{"city":"Paris"}`, string(result))
 	})
 }

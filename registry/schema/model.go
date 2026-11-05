@@ -45,8 +45,11 @@ type LoadModelRequest struct {
 // ProgressEvent is the data of a progress event, streamed while a model is
 // loaded
 type ProgressEvent struct {
-	Status  string  `json:"status" help:"Status of the download"`
-	Percent float64 `json:"percent" help:"Percentage of the download which is complete, from 0 to 100"`
+	Status   string  `json:"status" help:"Status of the download, or of the tool, which is its message"`
+	Percent  float64 `json:"percent" help:"Percentage which is complete, from 0 to 100, or zero when it isn't known"`
+	Progress float64 `json:"progress,omitempty" help:"How far a tool has got, which increases each time, as MCP's progress notification says"`
+	Total    float64 `json:"total,omitempty" help:"How far a tool has to go, when it's known"`
+	Message  string  `json:"message,omitempty" help:"What a tool is doing, such as that an agent it runs is replying"`
 }
 
 // ErrorEvent is the data of an error event, which ends a stream when it
@@ -67,9 +70,10 @@ type ModelList struct {
 // GLOBALS
 
 // The events of a stream of a model which is loaded: its progress, and
-// then the model, or the error
+// then the model, or the error. A tool's progress, as a model replies, is
+// a progress event too.
 const (
-	EventProgress = "progress"
+	EventProgress = string(llm.StreamProgress)
 	EventResult   = "result"
 	EventError    = "error"
 )

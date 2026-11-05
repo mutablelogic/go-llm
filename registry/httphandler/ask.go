@@ -4,7 +4,6 @@ import (
 	"net/http"
 
 	// Packages
-	llm "github.com/mutablelogic/go-llm"
 	registry "github.com/mutablelogic/go-llm/registry"
 	schema "github.com/mutablelogic/go-llm/registry/schema"
 	httprequest "github.com/mutablelogic/go-server/pkg/httprequest"
@@ -33,12 +32,7 @@ func askHandlers(reg *registry.Registry, router *httprouter.Router, documentatio
 				httpresponse.Error(w, httpresponse.ErrBadRequest.Withf("%w", err))
 			} else {
 				respond(w, r, types.Value(req.Model), func(write streamWriteFn) (*schema.AskResponse, error) {
-					var stream llm.GeneratorStreamFn
-					if write != nil {
-						stream = func(what llm.StreamType, text string) {
-							write(string(what), schema.StreamEvent{Text: text})
-						}
-					}
+					stream := streamWriter(write)
 					return reg.Ask(r.Context(), req, stream)
 				})
 			}

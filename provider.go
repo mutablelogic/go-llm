@@ -2,6 +2,7 @@ package llm
 
 import (
 	"context"
+	"encoding/json"
 	"net/url"
 	"time"
 )
@@ -188,7 +189,52 @@ const (
 	// StreamLog is a line logged by a tool as it runs, such as to say what
 	// it's doing, which isn't part of the reply
 	StreamLog StreamType = "log"
+
+	// StreamProgress is a tool's progress as it runs, such as that an agent
+	// it runs is replying, which replaces its progress before, rather than
+	// being kept, as a line it logs is, and isn't part of the reply. Its
+	// text is a Progress, as JSON, which ParseProgress reads.
+	StreamProgress StreamType = "progress"
 )
+
+// Progress is how a tool is getting on, as it runs, as MCP's progress
+// notification is: how far it's got, which increases each time, out of the
+// total, when it's known, or zero, and a message, such as "Agent segment
+// is replying"
+type Progress struct {
+	Progress float64 `json:"progress"`
+	Total    float64 `json:"total,omitempty"`
+	Message  string  `json:"message,omitempty"`
+}
+
+// Text returns the progress, as JSON, which is the text of a piece of a
+// stream which is progress
+func (p Progress) Text() string {
+	data, err := json.Marshal(p)
+	if err != nil {
+		return p.Message
+	}
+	return string(data)
+}
+
+// Percent returns how far the progress has got, as a percentage, and
+// whether it's known, which it is when there's a total
+func (p Progress) Percent() (float64, bool) {
+	if p.Total <= 0 {
+		return 0, false
+	}
+	return min(100, max(0, p.Progress/p.Total*100)), true
+}
+
+// ParseProgress returns the progress which the text of a piece of a stream
+// is, which is a Progress, as JSON, or a message, when it isn't
+func ParseProgress(text string) Progress {
+	var p Progress
+	if err := json.Unmarshal([]byte(text), &p); err != nil {
+		return Progress{Message: text}
+	}
+	return p
+}
 
 const (
 	Ollama     = "ollama"

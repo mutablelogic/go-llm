@@ -76,3 +76,22 @@ func respond[T any](w http.ResponseWriter, r *http.Request, name string, fn func
 		httpresponse.Error(w, httpresponse.Err(http.StatusNotAcceptable).Withf("cannot respond with %q", accept))
 	}
 }
+
+// streamWriter returns the function which writes each piece of a model's
+// reply, as it's generated, as an event, with the write function, or nil,
+// when it's nil: a tool's progress, as a progress event, as a model's
+// download is, and the rest as their text
+func streamWriter(write streamWriteFn) llm.GeneratorStreamFn {
+	if write == nil {
+		return nil
+	}
+	return func(what llm.StreamType, text string) {
+		if what == llm.StreamProgress {
+			p := llm.ParseProgress(text)
+			percent, _ := p.Percent()
+			write(schema.EventProgress, schema.ProgressEvent{Status: p.Message, Percent: percent, Progress: p.Progress, Total: p.Total, Message: p.Message})
+		} else {
+			write(string(what), schema.StreamEvent{Text: text})
+		}
+	}
+}

@@ -8,6 +8,7 @@ import (
 	llm "github.com/mutablelogic/go-llm"
 	providerschema "github.com/mutablelogic/go-llm/provider/schema"
 	schema "github.com/mutablelogic/go-llm/registry/schema"
+	toolkit "github.com/mutablelogic/go-llm/toolkit"
 	types "github.com/mutablelogic/go-server/pkg/types"
 	assert "github.com/stretchr/testify/assert"
 	require "github.com/stretchr/testify/require"
@@ -107,4 +108,43 @@ func Test_AgentFinished(t *testing.T) {
 		assert.ErrorContains(t, err, string(result))
 	}
 	assert.Error(t, agentFinished("a", nil))
+}
+
+// progressSession is a session which keeps the progress it's told
+type progressSession struct {
+	toolkit.Session
+	progress []llm.Progress
+}
+
+func (s *progressSession) Progress(progress, total float64, message string) {
+	s.progress = append(s.progress, llm.Progress{Progress: progress, Total: total, Message: message})
+}
+
+func Test_AgentStream(t *testing.T) {
+	// An agent's progress, and its tools', is one count, which increases,
+	// and its thinking, or reply, is said again after its tools' progress
+	session := &progressSession{Session: toolkit.SessionFromContext(context.Background())}
+	stream := agentStream("outer", session)
+	stream(llm.StreamThinking, "Hmm")
+	stream(llm.StreamThinking, " more")
+	stream(llm.StreamText, "Let me")
+	stream(llm.StreamProgress, llm.Progress{Progress: 1, Total: 4, Message: "Agent inner is thinking"}.Text())
+	stream(llm.StreamText, "Done")
+	stream(llm.StreamLog, "A line")
+	stream(llm.StreamText, "Done again")
+	var messages []string
+	var last float64
+	for _, p := range session.progress {
+		assert.Greater(t, p.Progress, last, p.Message)
+		assert.Zero(t, p.Total)
+		last = p.Progress
+		messages = append(messages, p.Message)
+	}
+	assert.Equal(t, []string{
+		"Agent outer is thinking",
+		"Agent outer is replying",
+		"Agent inner is thinking",
+		"Agent outer is replying",
+		"Agent outer is replying",
+	}, messages)
 }

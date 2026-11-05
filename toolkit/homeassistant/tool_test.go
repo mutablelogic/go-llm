@@ -292,7 +292,7 @@ func TestLogs(t *testing.T) {
 		"set_state":    {`{"entity_id":"sensor.virtual","state":"42"}`, "Setting sensor.virtual to 42"},
 	} {
 		var lines []string
-		ctx := toolkit.WithSession(context.Background(), toolkit.NewSession(name, uuid.Nil(), func(line string) { lines = append(lines, line) }, nil))
+		ctx := toolkit.WithSession(context.Background(), toolkit.NewSession(name, uuid.Nil(), func(_ llm.StreamType, line string) { lines = append(lines, line) }, nil))
 		_, err := tools[name].Run(ctx, json.RawMessage(test.input))
 		require.NoError(t, err, name)
 		require.NotEmpty(t, lines, name)

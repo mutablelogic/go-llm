@@ -39,6 +39,36 @@ type CallToolRequest struct {
 	Input json.RawMessage `json:"input,omitempty" help:"Input to the tool, which must match its input schema" example:"{\"query\":\"London\"}" optional:""`
 }
 
+// LogEvent is the data of a log event, of a line which a tool logs, as it
+// runs, when it's called with a stream
+type LogEvent struct {
+	Text string `json:"text" help:"Line which the tool logged"`
+}
+
+// ProgressEvent is the data of a progress event, of how a tool is getting
+// on, as it runs, when it's called with a stream, as MCP's progress
+// notification is, with its status and percent, as a model's download is
+type ProgressEvent struct {
+	Status   string  `json:"status" help:"What the tool is doing, which is its message"`
+	Percent  float64 `json:"percent" help:"Percentage which is complete, from 0 to 100, or zero when it isn't known"`
+	Progress float64 `json:"progress,omitempty" help:"How far the tool has got, which increases each time"`
+	Total    float64 `json:"total,omitempty" help:"How far the tool has to go, when it's known"`
+	Message  string  `json:"message,omitempty" help:"What the tool is doing"`
+}
+
+// ResultEvent is the data of a result event, which ends a stream when the
+// tool returns: its result, which is left out when it has none, so a result
+// which is JSON null is told apart from none
+type ResultEvent struct {
+	Result json.RawMessage `json:"result,omitempty" help:"Result of the tool, as JSON, which is left out when it has none"`
+}
+
+// ErrorEvent is the data of an error event, which ends a stream when the
+// tool fails
+type ErrorEvent struct {
+	Error string `json:"error" help:"Error of the tool, as it would be without a stream"`
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 // GLOBALS
 
@@ -46,6 +76,14 @@ const (
 	// ToolSeparator separates the namespace and name in a tool's canonical
 	// name
 	ToolSeparator = ":"
+
+	// The events of a stream of a tool which is called: a log event for
+	// each line it logs, a progress event for how it's getting on, and then
+	// a result event, with its result, or an error event
+	EventLog      = "log"
+	EventProgress = "progress"
+	EventResult   = "result"
+	EventError    = "error"
 
 	// ModelToolSeparator separates the namespace and name in the name a
 	// model calls a tool by, which a namespace, or a tool's name, can't

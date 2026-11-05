@@ -127,12 +127,7 @@ func sessionGetUpdateDeleteHandlers(reg *registry.Registry, router *httprouter.R
 					messages[i] = &providerschema.Message{MessageMeta: req.Messages[i]}
 				}
 				respond(w, r, id.String(), func(write streamWriteFn) (*schema.ChatResponse, error) {
-					var stream llm.GeneratorStreamFn
-					if write != nil {
-						stream = func(what llm.StreamType, text string) {
-							write(string(what), schema.StreamEvent{Text: text})
-						}
-					}
+					stream := streamWriter(write)
 					return reg.Chat(r.Context(), id, messages, stream)
 				})
 			}

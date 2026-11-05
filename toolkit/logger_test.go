@@ -7,6 +7,7 @@ import (
 	"uuid"
 
 	// Packages
+	llm "github.com/mutablelogic/go-llm"
 	toolkit "github.com/mutablelogic/go-llm/toolkit"
 	assert "github.com/stretchr/testify/assert"
 	require "github.com/stretchr/testify/require"
@@ -27,7 +28,7 @@ func Test_NewSession(t *testing.T) {
 	t.Run("Stream", func(t *testing.T) {
 		// What's logged at the info level or above is streamed, as lines
 		var lines []string
-		logAll(toolkit.NewSession("weather", uuid.Nil(), func(line string) { lines = append(lines, line) }, nil).Logger())
+		logAll(toolkit.NewSession("weather", uuid.Nil(), func(_ llm.StreamType, line string) { lines = append(lines, line) }, nil).Logger())
 		assert.Equal(t, []string{
 			"fetching city=Berlin",
 			`WARN low quota.remaining=3 quota.note="two words"`,

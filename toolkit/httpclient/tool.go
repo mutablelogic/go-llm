@@ -4,11 +4,14 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
+	"fmt"
 	"io"
 	"net/http"
 
 	// Packages
 	client "github.com/mutablelogic/go-client"
+	llm "github.com/mutablelogic/go-llm"
 	schema "github.com/mutablelogic/go-llm/toolkit/schema"
 	httpresponse "github.com/mutablelogic/go-server/pkg/httpresponse"
 	types "github.com/mutablelogic/go-server/pkg/types"
@@ -59,6 +62,74 @@ func (c *Client) CallTool(ctx context.Context, name string, input json.RawMessag
 
 	// Return the result, which is nil when the tool has no result
 	return response.result, nil
+}
+
+// CallToolStream runs the tool with the canonical name, with the input, as
+// CallTool does, and calls the function with what it logs, and its
+// progress, as llm.Progress, as JSON, as it runs, and returns its result.
+// The request isn't timed out, as a tool, such as an agent, can take a
+// while, but is cancelled with the context.
+func (c *Client) CallToolStream(ctx context.Context, name string, input json.RawMessage, stream llm.GeneratorStreamFn) (json.RawMessage, error) {
+	if stream == nil {
+		return c.CallTool(ctx, name, input)
+	}
+	req, err := client.NewJSONRequestEx(http.MethodPost, schema.CallToolRequest{Input: input}, types.ContentTypeTextStream)
+	if err != nil {
+		return nil, err
+	}
+
+	// The events, until the result, or the error
+	var result json.RawMessage
+	var resultErr error
+	ended := false
+	callback := func(event client.TextStreamEvent) error {
+		switch event.Event {
+		case schema.EventLog:
+			var data schema.LogEvent
+			if err := event.Json(&data); err != nil {
+				return fmt.Errorf("malformed %s event: %w", event.Event, err)
+			}
+			stream(llm.StreamLog, data.Text)
+		case schema.EventProgress:
+			var data schema.ProgressEvent
+			if err := event.Json(&data); err != nil {
+				return fmt.Errorf("malformed %s event: %w", event.Event, err)
+			}
+			message := data.Message
+			if message == "" {
+				message = data.Status
+			}
+			stream(llm.StreamProgress, llm.Progress{Progress: data.Progress, Total: data.Total, Message: message}.Text())
+		case schema.EventResult:
+			// The result is left out when there's none, so JSON null is a
+			// result
+			var data map[string]json.RawMessage
+			if err := event.Json(&data); err != nil {
+				return fmt.Errorf("malformed %s event: %w", event.Event, err)
+			}
+			result, ended = data["result"], true
+		case schema.EventError:
+			var data schema.ErrorEvent
+			if err := event.Json(&data); err != nil {
+				return fmt.Errorf("malformed %s event: %w", event.Event, err)
+			}
+			resultErr, ended = errors.New(data.Error), true
+		}
+		return nil
+	}
+	if err := c.DoWithContext(ctx, req, nil,
+		client.OptPath("llm", "tool", name),
+		client.OptReqHeader("Accept", types.ContentTypeTextStream),
+		client.OptTextStreamCallback(callback),
+		client.OptNoTimeout(),
+	); err != nil {
+		return nil, err
+	} else if resultErr != nil {
+		return nil, resultErr
+	} else if !ended {
+		return nil, errors.New("the stream ended without a result")
+	}
+	return result, nil
 }
 
 ///////////////////////////////////////////////////////////////////////////////
