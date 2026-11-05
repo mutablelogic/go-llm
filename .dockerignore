@@ -1,0 +1,7 @@
+# Built, or installed, files, which the image builds itself
+build/
+frontend/node_modules/
+_old/
+*.test
+.env
+.claude/

@@ -5,6 +5,120 @@
 
 go-llm is a server, command-line tool and Go SDK which puts large language models and speech models from several providers behind one interface. You add providers, such as Ollama, OpenAI, Mistral, [go-whisper](https://github.com/mutablelogic/go-whisper) and ElevenLabs, and then ask any of their models to reply to messages, call tools, run agents, embed text and images, read the text in documents, and transcribe and translate speech. The same operations are available as a REST API, from the `llm` command, which includes an interactive chat in the terminal, or directly from Go.
 
+## Quick Start
+
+### 1. Run the server, with Docker
+
+The image has the server, and its web UI, and keeps its providers, sessions, agents and memory in the `/data` volume:
+
+```bash
+docker run -d --name llm -p 8084:8084 -v llm:/data \
+  -e OLLAMA_ADDR=http://host.docker.internal:11434 \
+  -e OPENAI_API_KEY \
+  ghcr.io/mutablelogic/llm
+```
+
+Then open [http://localhost:8084/](http://localhost:8084/), to chat, and see the models and tools:
+
+![The web UI: the models of the providers, and a model's details](testdata/frontend.png)
+
+`host.docker.internal` is the machine Docker runs on, such as for an Ollama server which runs there, which Docker Desktop has, and Linux has with `--add-host=host.docker.internal:host-gateway`.
+
+When it's first started, the server has the Eliza provider, unless `NO_ELIZA` is set, and those whose variables are set: `OLLAMA_ADDR` and `GOWHISPER_ADDR`, as their URLs, and `OPENAI_API_KEY`, `DEEPSEEK_API_KEY`, `MISTRAL_API_KEY` and `ELEVENLABS_API_KEY`, whose keys are read from the container's environment when they're used, rather than stored. `UID` and `GID` set the user it runs as, such as the owner of a directory which is mounted at `/data`.
+
+Or run it with Docker Compose, whose [compose file](docker/compose.yaml) has every variable the server reads, from the environment, or a `.env` file, and, with the `ollama` profile, an Ollama server, which `OLLAMA_ADDR=http://ollama:11434` adds:
+
+```bash
+docker compose -f docker/compose.yaml --profile ollama up -d
+```
+
+### 2. Install the command-line tool
+
+The command-line tool, without the server, is built with the `client` tag. Install it with Go:
+
+```bash
+go install -tags client github.com/mutablelogic/go-llm/cmd/llm@latest
+```
+
+Or, in a clone of the repository, run `make client`, which builds it into `build/llm`.
+
+It connects to the server at `localhost:8084`, or the one at `--http.addr`, or `LLM_ADDR`, such as `LLM_ADDR=nas.local:8084`.
+
+### 3. Add providers
+
+Providers which weren't added when the server was first started are added with the command-line tool. An API key is given by the name of its variable, as `--api-key-credential`, which the server reads from its own environment, which is the container's, rather than the command-line tool's, so the key isn't stored, or sent:
+
+```bash
+# Providers
+llm provider-create-ollama http://host.docker.internal:11434
+llm provider-create-openai --api-key-credential OPENAI_API_KEY
+llm provider-create-mistral --api-key-credential MISTRAL_API_KEY
+llm provider-create-gowhisper http://host.docker.internal:8081
+llm provider-create-elevenlabs --api-key-credential ELEVENLABS_API_KEY
+
+# The providers, and their models, in order of name
+llm providers
+llm models
+```
+
+### 4. Ask, and chat
+
+Then ask models to do something. A command's model is kept, and used until another is given:
+
+```bash
+# Ask a question, and stream the reply
+llm ask --model gpt-4o-mini "Explain a KV cache in two sentences"
+
+# Ask about files: text, such as code, is sent as text, and an image or a
+# PDF as an attachment, which the model must accept
+llm ask --file main.go "What does this do?"
+llm ask --model gpt-4o --file chart.png --file notes.md "Do these agree?"
+
+# Embed text, or an image
+llm embed --model mistral-embed "A cat asleep in the sun"
+
+# The text of a document, as Markdown
+llm ocr --model mistral-ocr-latest report.pdf
+
+# The speech in audio, as text, or as subtitles, with speakers
+llm transcribe --model whisper-1 talk.m4a
+llm transcribe --model voxtral-mini-latest --opt speakers=true --format srt talk.m4a
+
+# Speech in any language, in English
+llm translate --model whisper-1 interview.wav
+
+# Download a model
+llm model-load ollama:llama3.2
+```
+
+Or chat in a session, which the server keeps. A session is kept, and used until another is given:
+
+```bash
+# A session, with a model, a system prompt, and tools it can call
+llm session-create --model ollama:llama3.2 --system "Be brief" --tools "weatherapi:*"
+
+# Chat in the terminal, or ask once, in the session
+llm chat
+llm chat "Will it rain in Berlin tomorrow?"
+
+# Its messages, and its sessions
+llm session-messages
+llm sessions
+```
+
+### Without Docker
+
+Install the server and command-line tool, which are both `llm`, with Go, and run the server, which listens on `localhost:8084`, and keeps its data in the user's cache directory:
+
+```bash
+go install github.com/mutablelogic/go-llm/cmd/llm@latest
+llm run
+```
+
+A server installed with `go install` serves the API, without the web UI, which `make`, from a clone of the repository, builds, with npm, into `build/llm`.
+
+## Architecture
+
 ```mermaid
 flowchart LR
     subgraph Clients
@@ -111,81 +225,7 @@ The registry can be used without the server, from your own Go program, as the [e
 
 What a model can do depends on the model, which its provider reports, where it knows: such as whether it calls tools, thinks, sees images, or recognizes text. A request for something a model is known not to do is rejected before it's sent.
 
-## Quick Start
-
-Install the server and command-line tool, which are both `llm`, with Go, or the command-line tool alone, without the server, with the `client` tag:
-
-```bash
-go install github.com/mutablelogic/go-llm/cmd/llm@latest
-go install -tags client github.com/mutablelogic/go-llm/cmd/llm@latest
-```
-
-Or build them from a clone of the repository, with `make`, into `build/llm`, or the command-line tool alone with `make client`. `make` also builds the web UI, with npm, which the server then serves from its root, such as `http://localhost:8084/`, to chat, and see the models and tools; a server installed with `go install` serves the API without it. Then run the server, which listens on `localhost:8084` by default:
-
-```bash
-llm run
-```
-
-In another terminal, add providers, with API keys from environment variables, which the server reads:
-
-```bash
-# Providers
-llm provider-create-ollama localhost
-llm provider-create-openai --api-key-credential OPENAI_API_KEY
-llm provider-create-mistral --api-key-credential MISTRAL_API_KEY
-llm provider-create-gowhisper localhost:8081
-llm provider-create-elevenlabs --api-key-credential ELEVENLABS_API_KEY
-
-# Their models, in order of name
-llm models
-```
-
-Then ask models to do something. A command's model is kept, and used until another is given:
-
-```bash
-# Ask a question, and stream the reply
-llm ask --model gpt-4o-mini "Explain a KV cache in two sentences"
-
-# Ask about files: text, such as code, is sent as text, and an image or a
-# PDF as an attachment, which the model must accept
-llm ask --file main.go "What does this do?"
-llm ask --model gpt-4o --file chart.png --file notes.md "Do these agree?"
-
-# Embed text, or an image
-llm embed --model mistral-embed "A cat asleep in the sun"
-
-# The text of a document, as Markdown
-llm ocr --model mistral-ocr-latest report.pdf
-
-# The speech in audio, as text, or as subtitles, with speakers
-llm transcribe --model whisper-1 talk.m4a
-llm transcribe --model voxtral-mini-latest --opt speakers=true --format srt talk.m4a
-
-# Speech in any language, in English
-llm translate --model whisper-1 interview.wav
-
-# Download a model
-llm model-load ollama:llama3.2
-```
-
-Or chat in a session, which the server keeps. A session is kept, and used until another is given:
-
-```bash
-# A session, with a model, a system prompt, and tools it can call
-llm session-create --model ollama:llama3.2 --system "Be brief" --tools "weatherapi:*"
-
-# Chat in the terminal, or ask once, in the session
-llm chat
-llm chat "Will it rain in Berlin tomorrow?"
-
-# Its messages, and its sessions
-llm session-messages
-llm sessions
-```
-
-The command-line tool connects to `localhost:8084`, or the server at `--http.addr` or `LLM_ADDR`.
-
-## Commands
+## CLI Commands
 
 | Group | Commands |
 |-------|----------|
@@ -220,7 +260,7 @@ Tools are added to the server's toolkit when their credentials are set, as envir
 | `weatherapi` | Current weather, forecasts and alerts | `WEATHERAPI_API_KEY`, from [weatherapi.com](https://www.weatherapi.com/signup.aspx) |
 | `newsapi` | News articles, headlines and sources | `NEWSAPI_API_KEY`, from [newsapi.org](https://newsapi.org/register) |
 | `homeassistant` | Query, and search, and control smart home devices | `HOMEASSISTANT_URL`, `HOMEASSISTANT_API_KEY` |
-| `ollama` | Web search and fetch | `OLLAMA_API_KEY`, from [ollama.com](https://ollama.com/settings/keys) |
+| `ollama` | Web search and fetch, with Ollama's cloud service, rather than a local Ollama | `OLLAMA_API_KEY`, from [ollama.com](https://ollama.com/settings/keys) |
 
 A model is given tools by name, by namespace and name, such as `weatherapi:current`, or all of a namespace's, such as `weatherapi:*`, or all of them, `*`.
 

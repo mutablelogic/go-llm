@@ -1,0 +1,115 @@
+name: Docker
+
+on:
+  # Images are built and published for a published release. Run the
+  # workflow by hand to rebuild an image.
+  release:
+    types: [published]
+  workflow_dispatch:
+
+# Builds for the same tag run one at a time, so they don't push the same
+# manifests at once. The group is the ref, which is the tag's for a release
+# and for a run by hand of the tag, so they're in the same group.
+concurrency:
+  group: docker-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  linux:
+    name: Build Linux ${{ matrix.arch }} image
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: amd64
+            runner: ubuntu-24.04
+          - arch: arm64
+            runner: ubuntu-24.04-arm
+    steps:
+      # The token isn't kept in the checkout's git configuration, which is
+      # copied into the builder's layers, which are cached in the registry
+      - name: Checkout
+        uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Generate image tags and labels
+        id: metadata
+        uses: docker/metadata-action@v6
+        with:
+          images: ghcr.io/${{ github.repository_owner }}/llm
+          tags: |
+            type=ref,event=branch,suffix=-linux-${{ matrix.arch }}
+            type=ref,event=tag,suffix=-linux-${{ matrix.arch }}
+          # Only the manifest is tagged latest, once both images are built
+          flavor: |
+            latest=false
+
+      - name: Build and publish Linux image
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: docker/Dockerfile
+          platforms: linux/${{ matrix.arch }}
+          push: true
+          tags: ${{ steps.metadata.outputs.tags }}
+          labels: ${{ steps.metadata.outputs.labels }}
+          build-args: |
+            OS=linux
+            ARCH=${{ matrix.arch }}
+            SOURCE=${{ github.server_url }}/${{ github.repository }}
+          # The layers are cached for each architecture, including the
+          # builder's, so the modules are only downloaded again when they
+          # change. They're cached in the registry, rather than in GitHub
+          # Actions, whose caches are only shared with the branch or tag
+          # they're made on, and each release has its own tag. The cache is a
+          # package of its own, so its tags aren't the image's.
+          cache-from: type=registry,ref=ghcr.io/${{ github.repository_owner }}/llm-buildcache:linux-${{ matrix.arch }}
+          cache-to: type=registry,ref=ghcr.io/${{ github.repository_owner }}/llm-buildcache:linux-${{ matrix.arch }},mode=max,image-manifest=true,oci-mediatypes=true
+
+  manifest:
+    name: Publish multi-platform latest tag
+    needs: [linux]
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Create release and latest manifests
+        shell: bash
+        env:
+          IMAGE_OWNER: ${{ github.repository_owner }}
+          REF_NAME: ${{ github.ref_name }}
+        # The ref's tag replaces each run of characters a tag can't have with
+        # a hyphen, as metadata-action does for the images' tags
+        run: |
+          shopt -s extglob
+          image="ghcr.io/${IMAGE_OWNER,,}/llm"
+          ref_tag="${REF_NAME//+([^A-Za-z0-9_.-])/-}"
+          docker buildx imagetools create \
+            --tag "$image:latest" \
+            --tag "$image:$ref_tag" \
+            "$image:$ref_tag-linux-amd64" \
+            "$image:$ref_tag-linux-arm64"
