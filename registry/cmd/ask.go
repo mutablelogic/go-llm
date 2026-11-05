@@ -327,12 +327,15 @@ func (p *streamPrinter) print(what llm.StreamType, text string) {
 			p.write(what, "\x1b[2m"+thinkingLine+"\x1b[0m\n", true)
 		}
 	case what == llm.StreamLog:
-		// What's printed before it is replaced first, so it's kept after it
+		// What's printed before it is replaced first, so it's kept after it,
+		// and it's on a line of its own, even when what's before it isn't
+		// replaced
 		p.replace()
-		if !strings.HasSuffix(text, "\n") {
-			text += "\n"
+		line := "\x1b[2m" + strings.TrimRight(text, "\n") + "\x1b[0m\n"
+		if p.last != "" && !strings.HasSuffix(p.trailing, "\n") {
+			line = "\n" + line
 		}
-		p.write(what, "\x1b[2m"+text+"\x1b[0m", false)
+		p.write(what, line, false)
 	default:
 		p.text.WriteString(text)
 		p.write(what, text, true)
@@ -363,6 +366,12 @@ func (p *streamPrinter) replace() {
 		p.thinking = false
 	}()
 	if p.render == nil || p.live.Len() == 0 {
+		return
+	}
+	// Text with tabs isn't replaced, as how far they move isn't known, nor
+	// is text which is as tall as the terminal, as what's scrolled off it
+	// can't be
+	if strings.Contains(p.live.String(), "\t") {
 		return
 	}
 	rows := rowsOf(p.live.String(), p.width)

@@ -11,6 +11,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -30,8 +31,10 @@ import (
 // they're kept when the server restarts. A file is written to a temporary
 // file, which is renamed to it, so it's never written partly. An agent's
 // serial is when it was stored, in nanoseconds, and more than the last one,
-// so an agent which is deleted, and created again, doesn't have a serial it
-// had, even when the server restarts. It's safe to use concurrently.
+// which is kept in a file of its own, so an agent which is deleted, and
+// created again, doesn't have a serial it had, even when the server
+// restarts, and the clock is earlier than it was. It's safe to use
+// concurrently.
 type agentStore struct {
 	mu     sync.Mutex
 	dir    string
@@ -47,6 +50,10 @@ const (
 	// agentPrefix and agentSuffix are of the name of an agent's file
 	agentPrefix = "agent-"
 	agentSuffix = ".json"
+
+	// agentSerialFile is the name of the file of the last serial, which
+	// isn't an agent's
+	agentSerialFile = ".agent-serial"
 )
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -60,7 +67,27 @@ func newAgentStore(dir string) (*agentStore, error) {
 	} else if err := os.MkdirAll(dir, 0o700); err != nil {
 		return nil, err
 	}
-	return &agentStore{dir: dir}, nil
+
+	// The last serial, which is the one in its file, or of an agent, which
+	// is later, as when the file isn't there
+	store := &agentStore{dir: dir}
+	if data, err := os.ReadFile(filepath.Join(dir, agentSerialFile)); err == nil {
+		store.serial, _ = strconv.ParseUint(strings.TrimSpace(string(data)), 10, 64)
+	} else if !errors.Is(err, fs.ErrNotExist) {
+		return nil, err
+	}
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return nil, err
+	}
+	for _, entry := range entries {
+		if name, ok := agentName(entry.Name()); ok {
+			if agent, err := store.read(name); err == nil {
+				store.serial = max(store.serial, agent.Serial)
+			}
+		}
+	}
+	return store, nil
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -77,7 +104,11 @@ func (s *agentStore) Create(_ context.Context, meta schema.AgentMeta) (schema.Ag
 		return schema.Agent{}, llm.ErrConflict.Withf("agent %q exists", meta.Name)
 	}
 	now := time.Now().UTC()
-	agent := schema.Agent{Serial: s.next(now), Created: now, Modified: now, AgentMeta: meta}
+	serial, err := s.next(now)
+	if err != nil {
+		return schema.Agent{}, err
+	}
+	agent := schema.Agent{Serial: serial, Created: now, Modified: now, AgentMeta: meta}
 	if err := s.write(agent); err != nil {
 		return schema.Agent{}, err
 	}
@@ -137,7 +168,9 @@ func (s *agentStore) Put(_ context.Context, agent schema.Agent) (schema.Agent, e
 		return schema.Agent{}, llm.ErrConflict.Withf("agent %q is at serial %d, not %d", agent.Name, existing.Serial, agent.Serial)
 	}
 	now := time.Now().UTC()
-	agent.Serial = s.next(now)
+	if agent.Serial, err = s.next(now); err != nil {
+		return schema.Agent{}, err
+	}
 	agent.Created = existing.Created
 	agent.Modified = now
 	if err := s.write(agent); err != nil {
@@ -167,11 +200,19 @@ func (s *agentStore) Delete(_ context.Context, name string, serial uint64) error
 // PRIVATE METHODS
 
 // next returns the next serial, which is the time, in nanoseconds, or one
-// more than the last, when the time isn't after it. The caller holds the
-// lock.
-func (s *agentStore) next(now time.Time) uint64 {
-	s.serial = max(uint64(now.UnixNano()), s.serial+1)
-	return s.serial
+// more than the last, when the time isn't after it, which is kept in its
+// file before it's returned, so it's never returned again. The caller holds
+// the lock.
+func (s *agentStore) next(now time.Time) (uint64, error) {
+	serial := max(uint64(now.UnixNano()), s.serial+1)
+	path := filepath.Join(s.dir, agentSerialFile)
+	if err := os.WriteFile(path+".tmp", []byte(strconv.FormatUint(serial, 10)+"\n"), 0o600); err != nil {
+		return 0, err
+	} else if err := os.Rename(path+".tmp", path); err != nil {
+		return 0, err
+	}
+	s.serial = serial
+	return serial, nil
 }
 
 // path returns the path of the file of the agent with the name

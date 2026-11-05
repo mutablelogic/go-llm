@@ -169,7 +169,8 @@ func (a AgentMeta) Merge(update AgentMeta) AgentMeta {
 // go-nanoradio's agent/segment.yaml, or JSON, which is YAML too, by the
 // names its JSON has, so its input, options and schema are JSON. A key which
 // isn't one of its names, such as system_prompt, rather than system, is an
-// error. Returns ErrBadParameter when it can't be parsed.
+// error, as is an alias, such as *name. Returns ErrBadParameter when it
+// can't be parsed.
 func ParseAgentMeta(data []byte) (AgentMeta, error) {
 	// The YAML is JSON, in the order of its keys, so the input and schema
 	// are as they were written
@@ -291,7 +292,9 @@ func writeJSON(buf *bytes.Buffer, node *yaml.Node) error {
 		}
 		return writeJSON(buf, node.Content[0])
 	case yaml.AliasNode:
-		return writeJSON(buf, node.Alias)
+		// An alias isn't followed, as one which refers to itself, or many
+		// which refer to others, are expanded without end
+		return fmt.Errorf("line %d: aliases aren't allowed", node.Line)
 	case yaml.MappingNode:
 		buf.WriteByte('{')
 		for i := 0; i+1 < len(node.Content); i += 2 {

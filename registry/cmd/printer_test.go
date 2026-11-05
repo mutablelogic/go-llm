@@ -81,6 +81,27 @@ func Test_StreamPrinter(t *testing.T) {
 	})
 }
 
+func Test_StreamPrinterEdges(t *testing.T) {
+	t.Run("TallThenLog", func(t *testing.T) {
+		// A log after text which isn't replaced, as it's too tall, is on a
+		// line of its own
+		p, buf := newTestPrinter(10, 3)
+		p.print(llm.StreamText, strings.Repeat("a", 35))
+		p.print(llm.StreamLog, "Getting the weather")
+		p.End()
+		assert.Contains(t, buf.String(), strings.Repeat("a", 35)+"\n\x1b[2mGetting the weather")
+	})
+
+	t.Run("Tabs", func(t *testing.T) {
+		// Text with tabs isn't replaced, as how far they move isn't known
+		p, buf := newTestPrinter(10, 24)
+		p.print(llm.StreamText, "\t12345")
+		p.End()
+		assert.NotContains(t, buf.String(), "\x1b[J")
+		assert.Equal(t, "\t12345\n", buf.String())
+	})
+}
+
 func Test_RowsOf(t *testing.T) {
 	// Lines which are longer than the width wrap, and escapes have no width
 	assert.Equal(t, 1, rowsOf("hello", 10))

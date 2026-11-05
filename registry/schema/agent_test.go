@@ -88,6 +88,8 @@ schema:
 			"List":         "- name: segment\n",
 			"Text":         "segment",
 			"YAML":         "name: [segment\n",
+			"Loop":         "name: loop\ninput: &loop [*loop]\n",
+			"Alias":        "name: segment\ntitle: &title Segment\ndescription: *title\n",
 		} {
 			_, err := schema.ParseAgentMeta([]byte(data))
 			assert.ErrorIs(t, err, llm.ErrBadParameter, name)

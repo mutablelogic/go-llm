@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
 	// Packages
 	llm "github.com/mutablelogic/go-llm"
@@ -108,6 +109,28 @@ func Test_AgentStore(t *testing.T) {
 		assert.ErrorIs(t, err, llm.ErrConflict)
 		_, err = again.Put(ctx, schema.Agent{AgentMeta: newMeta("missing")})
 		assert.ErrorIs(t, err, llm.ErrNotFound)
+	})
+
+	t.Run("Clock", func(t *testing.T) {
+		// The last serial is kept, so a store which is made again, when the
+		// clock is earlier, and the agent which had it is deleted, doesn't
+		// have it again
+		dir := t.TempDir()
+		store := newStore(t, dir)
+		created, err := store.Create(ctx, newMeta("segment"))
+		require.NoError(t, err)
+		require.NoError(t, store.Delete(ctx, "segment", created.Serial))
+		again := newStore(t, dir)
+		serial, err := again.next(time.Unix(1, 0))
+		require.NoError(t, err)
+		assert.Greater(t, serial, created.Serial)
+		entries, err := os.ReadDir(dir)
+		require.NoError(t, err)
+		require.Len(t, entries, 1, "only the file of the last serial, which isn't an agent")
+		assert.Equal(t, agentSerialFile, entries[0].Name())
+		list, err := again.List(ctx, schema.AgentListRequest{})
+		require.NoError(t, err)
+		assert.Zero(t, list.Count)
 	})
 
 	t.Run("Registry", func(t *testing.T) {
