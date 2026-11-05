@@ -575,6 +575,11 @@ func (m *model) render() {
 // renderLogs renders the lines which tools logged, which are kept by the key
 // of what they're shown before
 func (m *model) renderLogs(b *strings.Builder, key string) {
+	// What tools log is the model's, so it's under its label, even when the
+	// message which called them had nothing to show, but the tool calls
+	if len(m.logs[key]) > 0 {
+		m.label(b, "assistant")
+	}
 	for _, line := range m.logs[key] {
 		b.WriteString(m.body(dimStyle, line) + "\n")
 	}

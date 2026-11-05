@@ -698,3 +698,24 @@ func Test_TurnLabel(t *testing.T) {
 	assert.Less(t, strings.Index(content, "Omodie"), strings.Index(content, "Searching the web"))
 	assert.Less(t, strings.Index(content, "Searching the web"), strings.Index(content, "Neukölln."))
 }
+
+func Test_LogsUnderLabel(t *testing.T) {
+	// A reply which only calls a tool, so has nothing to show, and then
+	// replies, has its label above what the tool logged
+	message := func(sender string, content ...providerschema.ContentBlock) providerschema.Message {
+		return providerschema.Message{MessageMeta: providerschema.MessageMeta{Sender: sender, Content: content}}
+	}
+	m, _ := newTestModel(fakeClient{}, &schema.Session{ID: uuid.New(), SessionMeta: schema.SessionMeta{GeneratorMeta: schema.GeneratorMeta{Model: types.Ptr("openai:gpt-5")}}, Messages: []providerschema.Message{
+		message("user", providerschema.ContentBlock{Text: types.Ptr("I'd rather not say my name")}),
+		message("assistant", providerschema.ContentBlock{ToolCall: &providerschema.ToolCall{ID: "1", Name: "memory__set_detail"}}),
+		message("tool", providerschema.ContentBlock{ToolResult: &providerschema.ToolResult{ID: "1", Name: "memory__set_detail"}}),
+		message("assistant", providerschema.ContentBlock{Text: types.Ptr("No problem.")}),
+	}})
+	m.logs = map[string][]string{resultKey("1"): {"Not remembering your name, as you'd rather not say"}}
+	m.history.Height = 100
+	m.render()
+	content := m.history.View()
+	assert.Equal(t, 1, strings.Count(content, "openai"))
+	assert.Less(t, strings.Index(content, "openai"), strings.Index(content, "Not remembering"))
+	assert.Less(t, strings.Index(content, "Not remembering"), strings.Index(content, "No problem."))
+}
