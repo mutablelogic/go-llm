@@ -8,6 +8,8 @@ package elevenlabs
 import (
 	"context"
 	"net/url"
+	"sync"
+	"time"
 
 	// Packages
 	client "github.com/mutablelogic/go-client"
@@ -20,6 +22,11 @@ import (
 type Client struct {
 	*client.Client
 	url *url.URL
+
+	// The last ping, and its result, which are kept for PingInterval
+	mu       sync.Mutex
+	lastPing time.Time
+	pingErr  error
 }
 
 var _ llm.Provider = (*Client)(nil)
@@ -35,6 +42,10 @@ const (
 	// rather than a bearer token
 	apiKeyHeader = "xi-api-key"
 )
+
+// PingInterval is how long the result of pinging the API is kept, before it
+// is pinged again, so that a third-party API isn't pinged too often
+var PingInterval = 5 * time.Minute
 
 ///////////////////////////////////////////////////////////////////////////////
 // LIFECYCLE
@@ -81,7 +92,21 @@ func (c *Client) Self() llm.Provider {
 }
 
 // Ping checks the API can be reached, with the API key, by listing its
-// models, and returns an error if it can't
+// models, and returns an error if it can't. The API is only pinged once
+// every PingInterval: otherwise, the result of the last ping is returned.
 func (c *Client) Ping(ctx context.Context) error {
-	return c.DoWithContext(ctx, nil, nil, client.OptPath("models"))
+	// Concurrent pings wait for the one in progress
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	// Return the last result, if it's recent
+	if !c.lastPing.IsZero() && time.Since(c.lastPing) < PingInterval {
+		return c.pingErr
+	}
+
+	// Ping the API, and keep the result
+	start := time.Now()
+	c.pingErr = c.DoWithContext(ctx, nil, nil, client.OptPath("models"))
+	c.lastPing = start
+	return c.pingErr
 }
