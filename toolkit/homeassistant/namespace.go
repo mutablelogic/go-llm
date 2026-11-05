@@ -38,13 +38,8 @@ func New(endpoint, apiKey string, opts ...client.ClientOpt) (toolkit.Namespace, 
 	}
 	return namespace{
 		tools: []llm.Tool{
-			&getStates{client: client},
-			&getState{client: client},
-			&getServices{client: client},
-			&callService{client: client},
-			&setState{client: client},
-			&fireEvent{client: client},
-			&renderTemplate{client: client},
+			newQuery(client),
+			newControl(client),
 		},
 	}, nil
 }

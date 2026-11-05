@@ -102,23 +102,36 @@ func TestNew(t *testing.T) {
 	})
 
 	t.Run("Tools", func(t *testing.T) {
+		// Two tools, one which reads, and one which changes, each with its
+		// operations, and what they need
 		tools, _ := newTools(t)
-		for name, property := range map[string]string{
-			"get_states":   "domain",
-			"get_state":    "entity_id",
-			"get_services": "domain",
-			"call_service": "service",
-			"set_state":    "state",
-			"fire_event":   "event_type",
-			"template":     "template",
+		for name, properties := range map[string][]string{
+			"query":   {"operation", "domain", "entity_id", "template"},
+			"control": {"operation", "domain", "service", "data", "entity_id", "state", "attributes", "event_type", "event_data"},
 		} {
 			tool, ok := tools[name]
 			require.True(t, ok, name)
 			assert.True(t, llm.IsToolName(tool.Name()), name)
 			assert.NotEmpty(t, tool.Description(), name)
-			assert.Contains(t, tool.InputSchema().Properties, property, name)
+			for _, property := range properties {
+				assert.Contains(t, tool.InputSchema().Properties, property, name)
+			}
 		}
-		assert.Len(t, tools, 7)
+		assert.Len(t, tools, 2)
+	})
+
+	t.Run("Operation", func(t *testing.T) {
+		// An operation which isn't one of the tool's is an error
+		tools, requests := newTools(t)
+		for _, test := range []struct{ tool, input string }{
+			{"query", `{"operation":"call_service","domain":"light","service":"turn_on"}`},
+			{"control", `{"operation":"states"}`},
+			{"control", `{}`},
+		} {
+			_, err := tools[test.tool].Run(context.Background(), json.RawMessage(test.input))
+			assert.ErrorIs(t, err, llm.ErrBadParameter, test.input)
+		}
+		assert.Empty(t, *requests)
 	})
 }
 
@@ -128,44 +141,75 @@ func TestRun(t *testing.T) {
 	t.Run("GetStates", func(t *testing.T) {
 		// Unavailable entities are left out
 		tools, _ := newTools(t)
-		result, err := tools["get_states"].Run(ctx, nil)
+		result, err := run(ctx, tools, "get_states", nil)
 		require.NoError(t, err)
-		assert.JSONEq(t, `[
+		assert.JSONEq(t, `{"count":2,"states":[
 			{"entity_id":"light.kitchen","state":"on","name":"Kitchen","class":"light"},
 			{"entity_id":"sensor.temperature","state":"21.5","name":"Temperature","class":"temperature","unit":"°C"}
-		]`, encode(t, result))
+		]}`, encode(t, result))
+	})
+
+	t.Run("GetStatesSearch", func(t *testing.T) {
+		// The entities with each word in their IDs, or names, in any case
+		tools, _ := newTools(t)
+		for q, want := range map[string]string{
+			"TEMP":          `{"count":1,"states":[{"entity_id":"sensor.temperature","state":"21.5","name":"Temperature","class":"temperature","unit":"°C"}]}`,
+			"kitchen light": `{"count":1,"states":[{"entity_id":"light.kitchen","state":"on","name":"Kitchen","class":"light"}]}`,
+			"garage":        `{"count":0,"states":[]}`,
+		} {
+			result, err := run(ctx, tools, "get_states", json.RawMessage(`{"q":"`+q+`"}`))
+			require.NoError(t, err, q)
+			assert.JSONEq(t, want, encode(t, result), q)
+		}
+	})
+
+	t.Run("GetStatesPage", func(t *testing.T) {
+		// A page, in order of the entities' IDs, with how many there are
+		tools, _ := newTools(t)
+		result, err := run(ctx, tools, "get_states", json.RawMessage(`{"limit":1}`))
+		require.NoError(t, err)
+		assert.JSONEq(t, `{"count":2,"states":[{"entity_id":"light.kitchen","state":"on","name":"Kitchen","class":"light"}],
+			"next_offset":1,"next":"These are entities 1 to 1 of 2. To get the next page, list them again with offset 1, and the same domain and q, or narrow them with a domain, or q."}`, encode(t, result))
+
+		// The last page says nothing of a next one
+		result, err = run(ctx, tools, "get_states", json.RawMessage(`{"limit":1,"offset":1}`))
+		require.NoError(t, err)
+		assert.JSONEq(t, `{"count":2,"offset":1,"states":[{"entity_id":"sensor.temperature","state":"21.5","name":"Temperature","class":"temperature","unit":"°C"}]}`, encode(t, result))
+		result, err = run(ctx, tools, "get_states", json.RawMessage(`{"offset":5}`))
+		require.NoError(t, err)
+		assert.JSONEq(t, `{"count":2,"offset":5,"states":[]}`, encode(t, result))
 	})
 
 	t.Run("GetStatesDomain", func(t *testing.T) {
 		tools, _ := newTools(t)
-		result, err := tools["get_states"].Run(ctx, json.RawMessage(`{"domain":"sensor"}`))
+		result, err := run(ctx, tools, "get_states", json.RawMessage(`{"domain":"sensor"}`))
 		require.NoError(t, err)
-		assert.JSONEq(t, `[{"entity_id":"sensor.temperature","state":"21.5","name":"Temperature","class":"temperature","unit":"°C"}]`, encode(t, result))
+		assert.JSONEq(t, `{"count":1,"states":[{"entity_id":"sensor.temperature","state":"21.5","name":"Temperature","class":"temperature","unit":"°C"}]}`, encode(t, result))
 	})
 
 	t.Run("GetState", func(t *testing.T) {
 		tools, _ := newTools(t)
-		result, err := tools["get_state"].Run(ctx, json.RawMessage(`{"entity_id":"light.kitchen"}`))
+		result, err := run(ctx, tools, "get_state", json.RawMessage(`{"entity_id":"light.kitchen"}`))
 		require.NoError(t, err)
 		state, ok := result.(*httpclient.State)
 		require.True(t, ok, "result is %T", result)
 		assert.Equal(t, "on", state.State)
 
 		// An unknown entity is an error
-		_, err = tools["get_state"].Run(ctx, json.RawMessage(`{"entity_id":"light.other"}`))
+		_, err = run(ctx, tools, "get_state", json.RawMessage(`{"entity_id":"light.other"}`))
 		assert.Error(t, err)
 	})
 
 	t.Run("GetServices", func(t *testing.T) {
 		tools, _ := newTools(t)
-		result, err := tools["get_services"].Run(ctx, json.RawMessage(`{"domain":"light"}`))
+		result, err := run(ctx, tools, "get_services", json.RawMessage(`{"domain":"light"}`))
 		require.NoError(t, err)
 		assert.JSONEq(t, `[
 			{"call":"toggle","name":"Toggle"},
 			{"call":"turn_on","name":"Turn on","description":"Turn on a light","fields":["brightness","entity_id"]}
 		]`, encode(t, result))
 
-		_, err = tools["get_services"].Run(ctx, json.RawMessage(`{"domain":"unknown"}`))
+		_, err = run(ctx, tools, "get_services", json.RawMessage(`{"domain":"unknown"}`))
 		assert.ErrorIs(t, err, llm.ErrNotFound)
 	})
 
@@ -173,7 +217,7 @@ func TestRun(t *testing.T) {
 		tools, requests := newTools(t)
 		// The states of the entities it targeted, and those which changed,
 		// are got again, apart from one which doesn't exist
-		result, err := tools["call_service"].Run(ctx, json.RawMessage(`{"domain":"light","service":"turn_on","data":{"entity_id":["light.kitchen","light.missing"],"brightness":255}}`))
+		result, err := run(ctx, tools, "call_service", json.RawMessage(`{"domain":"light","service":"turn_on","data":{"entity_id":["light.kitchen","light.missing"],"brightness":255}}`))
 		require.NoError(t, err)
 		states, ok := result.([]*httpclient.State)
 		require.True(t, ok, "result is %T", result)
@@ -192,7 +236,7 @@ func TestRun(t *testing.T) {
 
 	t.Run("SetState", func(t *testing.T) {
 		tools, requests := newTools(t)
-		result, err := tools["set_state"].Run(ctx, json.RawMessage(`{"entity_id":"sensor.virtual","state":"42"}`))
+		result, err := run(ctx, tools, "set_state", json.RawMessage(`{"entity_id":"sensor.virtual","state":"42"}`))
 		require.NoError(t, err)
 		state, ok := result.(*httpclient.State)
 		require.True(t, ok, "result is %T", result)
@@ -204,7 +248,7 @@ func TestRun(t *testing.T) {
 
 	t.Run("FireEvent", func(t *testing.T) {
 		tools, requests := newTools(t)
-		result, err := tools["fire_event"].Run(ctx, json.RawMessage(`{"event_type":"my_event","event_data":{"a":1}}`))
+		result, err := run(ctx, tools, "fire_event", json.RawMessage(`{"event_type":"my_event","event_data":{"a":1}}`))
 		require.NoError(t, err)
 		assert.JSONEq(t, `{"message":"Event my_event fired."}`, encode(t, result))
 		assert.Equal(t, map[string]any{"a": float64(1)}, (*requests)[0].body)
@@ -213,7 +257,7 @@ func TestRun(t *testing.T) {
 	t.Run("Template", func(t *testing.T) {
 		// The rendered result is returned as it is, including its whitespace
 		tools, _ := newTools(t)
-		result, err := tools["template"].Run(ctx, json.RawMessage(`{"template":"{{ states(\"sensor.temperature\") }}"}`))
+		result, err := run(ctx, tools, "template", json.RawMessage(`{"template":"{{ states(\"sensor.temperature\") }}"}`))
 		require.NoError(t, err)
 		assert.JSONEq(t, `{"result":"  21.5\n"}`, encode(t, result))
 	})
@@ -233,7 +277,7 @@ func TestRun(t *testing.T) {
 			"TemplateMissing":    {"template", `{"template":" "}`},
 			"InvalidJSON":        {"get_states", `{`},
 		} {
-			result, err := tools[test.tool].Run(ctx, json.RawMessage(test.input))
+			result, err := run(ctx, tools, test.tool, json.RawMessage(test.input))
 			assert.ErrorIs(t, err, llm.ErrBadParameter, name)
 			assert.Nil(t, result, name)
 		}
@@ -246,10 +290,34 @@ func TestRun(t *testing.T) {
 		tools, requests := newTools(t)
 		ctx, cancel := context.WithCancel(ctx)
 		cancel()
-		_, err := tools["get_states"].Run(ctx, nil)
+		_, err := run(ctx, tools, "get_states", nil)
 		assert.ErrorIs(t, err, context.Canceled)
 		assert.Empty(t, *requests)
 	})
+}
+
+// operations are the tool, and operation, of what each tool was, before
+// they were operations
+var operations = map[string][2]string{
+	"get_states":   {"query", "states"},
+	"get_state":    {"query", "state"},
+	"get_services": {"query", "services"},
+	"template":     {"query", "template"},
+	"call_service": {"control", "call_service"},
+	"set_state":    {"control", "set_state"},
+	"fire_event":   {"control", "fire_event"},
+}
+
+// run runs the operation, with the input, which it's added to, unless the
+// input isn't an object, when it's sent as it is
+func run(ctx context.Context, tools map[string]llm.Tool, name string, input json.RawMessage) (any, error) {
+	operation := operations[name]
+	fields := map[string]any{}
+	if len(input) == 0 || json.Unmarshal(input, &fields) == nil {
+		fields["operation"] = operation[1]
+		input, _ = json.Marshal(fields)
+	}
+	return tools[operation[0]].Run(ctx, input)
 }
 
 // toolsOf returns the tools of the namespace, or nil and the error
@@ -272,7 +340,7 @@ func TestTargets(t *testing.T) {
 		`{"entity_id":["sensor.power","sensor.power"]}`: {"sensor.power", "light.kitchen"},
 	} {
 		*requests = nil
-		result, err := tools["call_service"].Run(context.Background(), json.RawMessage(`{"domain":"light","service":"turn_on","data":`+data+`}`))
+		result, err := run(context.Background(), tools, "call_service", json.RawMessage(`{"domain":"light","service":"turn_on","data":`+data+`}`))
 		require.NoError(t, err)
 		var got []string
 		for _, state := range result.([]*httpclient.State) {
@@ -293,7 +361,7 @@ func TestLogs(t *testing.T) {
 	} {
 		var lines []string
 		ctx := toolkit.WithSession(context.Background(), toolkit.NewSession(name, uuid.Nil(), func(_ llm.StreamType, line string) { lines = append(lines, line) }, nil))
-		_, err := tools[name].Run(ctx, json.RawMessage(test.input))
+		_, err := run(ctx, tools, name, json.RawMessage(test.input))
 		require.NoError(t, err, name)
 		require.NotEmpty(t, lines, name)
 		assert.Equal(t, test.line, lines[0], name)
