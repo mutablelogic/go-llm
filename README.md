@@ -171,86 +171,19 @@ The registry is meant to be composed with other modules into a whole system, rat
 
 Its HTTP handlers are registered with a router, alongside a system's own, and its events, such as a provider being created, or a session's model replying, are watched with `Watch`. The `llm` command, in [cmd/llm](cmd/llm), is one such system: it runs the registry, with a store which keeps its providers in the command's defaults, and its sessions in files, the toolkit, and a broadcaster, which streams the registry's events, in a server.
 
-For example, a registry with Ollama and OpenAI, which asks a model a question, streaming its reply, and transcribes the speech in a file:
+The [examples](examples) use the packages without the server, each with Ollama, when `OLLAMA_ADDR` is set, OpenAI, when `OPENAI_API_KEY` is, or Eliza, which needs neither:
 
-```go
-package main
+| Example | |
+|---------|-|
+| [ask](examples/ask) | Ask a model a question, and stream its reply |
+| [tools](examples/tools) | A tool of your own, in a toolkit, which the registry runs as the model calls it |
+| [chat](examples/chat) | Chat in the terminal, with the conversation kept in memory |
+| [agent](examples/agent) | Run the example agent which translates text, which replies with JSON |
+| [ocr](examples/ocr) | Read the text in an image, or a PDF, as Markdown, with Mistral or Ollama |
+| [transcribe](examples/transcribe) | Transcribe, or translate, the speech in audio, with OpenAI, Mistral, go-whisper or ElevenLabs |
 
-import (
-	"context"
-	"fmt"
-	"log/slog"
-	"os"
-	"os/signal"
-
-	llm "github.com/mutablelogic/go-llm"
-	providerschema "github.com/mutablelogic/go-llm/provider/schema"
-	registry "github.com/mutablelogic/go-llm/registry"
-	schema "github.com/mutablelogic/go-llm/registry/schema"
-	types "github.com/mutablelogic/go-server/pkg/types"
-)
-
-func main() {
-	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt)
-	defer cancel()
-
-	// A registry, which a system would give its store of providers, with
-	// registry.WithProviderStore, and its secrets, with
-	// registry.WithCredentialsProvider
-	r, err := registry.New()
-	if err != nil {
-		panic(err)
-	}
-
-	// Providers, with API keys which are placeholders, expanded from the
-	// environment
-	if _, err := r.CreateProvider(ctx, schema.Provider{Name: "home", Type: llm.Ollama, URL: "localhost"}); err != nil {
-		panic(err)
-	}
-	if _, err := r.CreateProvider(ctx, schema.Provider{Type: llm.OpenAI, APIKey: "${OPENAI_API_KEY}"}); err != nil {
-		panic(err)
-	}
-
-	// Keep the providers, and their models, current, and in sync with the
-	// store, until the context is cancelled
-	go r.Run(ctx, slog.Default())
-
-	// Ask a model, by its name, or its provider and name, and stream its reply
-	response, err := r.Ask(ctx, schema.AskRequest{
-		Model:  "openai:gpt-4o-mini",
-		System: "Be brief",
-		Messages: []providerschema.MessageMeta{
-			{Sender: "user", Content: []providerschema.ContentBlock{{Text: types.Ptr("Explain a KV cache")}}},
-		},
-	}, func(_ llm.StreamType, text string) {
-		fmt.Print(text)
-	})
-	if err != nil {
-		panic(err)
-	}
-	fmt.Printf("\n%d tokens in, %d out\n", response.Usage.InputTokens, response.Usage.OutputTokens)
-
-	// Or find a model, and transcribe the speech in a file with it
-	model, err := r.GetModel(ctx, "whisper-1")
-	if err != nil {
-		panic(err)
-	}
-	data, err := os.ReadFile("talk.m4a")
-	if err != nil {
-		panic(err)
-	}
-	audio := &providerschema.Resource{ResourceMeta: providerschema.ResourceMeta{
-		ContentType: providerschema.ResourceType(data, "talk.m4a"),
-		Data:        data,
-	}}
-	transcript, _, err := r.Transcribe(ctx, model, audio, nil, llm.WithSegments(true))
-	if err != nil {
-		panic(err)
-	}
-	for _, segment := range transcript.Segments {
-		fmt.Println(segment.Start, segment.Text)
-	}
-}
+```bash
+go run ./examples/ask "Explain a KV cache in two sentences"
 ```
 
 ## Development
