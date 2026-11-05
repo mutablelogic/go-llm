@@ -22,9 +22,9 @@ import (
 type ModelCommands struct {
 	ModelList   ModelListCmd   `cmd:"" name:"models" help:"List the models of the providers." group:"LLM MODELS"`
 	ModelGet    ModelGetCmd    `cmd:"" name:"model" help:"Get a model by name, and make it the default model." group:"LLM MODELS"`
-	ModelLoad   ModelLoadCmd   `cmd:"" name:"model-load" help:"Load a model, with a provider which loads models, such as Ollama, which downloads it when it isn't stored, and make it the default model." group:"LLM MODELS"`
+	ModelLoad   ModelLoadCmd   `cmd:"" name:"model-load" help:"Load a model, downloading it when needed, and make it the default." group:"LLM MODELS"`
 	ModelDelete ModelDeleteCmd `cmd:"" name:"model-delete" help:"Delete a model, with a provider which deletes models, such as Ollama." group:"LLM MODELS"`
-	ModelUnload ModelUnloadCmd `cmd:"" name:"model-unload" help:"Unload a model from memory, keeping it stored, with a provider which loads models, such as Ollama." group:"LLM MODELS"`
+	ModelUnload ModelUnloadCmd `cmd:"" name:"model-unload" help:"Unload a model from memory, keeping it stored." group:"LLM MODELS"`
 }
 
 type ModelListCmd struct {

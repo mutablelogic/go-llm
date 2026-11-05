@@ -14,6 +14,7 @@ import (
 	"unicode/utf8"
 
 	// Packages
+	ansi "github.com/charmbracelet/x/ansi"
 	llm "github.com/mutablelogic/go-llm"
 	providerschema "github.com/mutablelogic/go-llm/provider/schema"
 	httpclient "github.com/mutablelogic/go-llm/registry/httpclient"
@@ -21,6 +22,7 @@ import (
 	server "github.com/mutablelogic/go-server"
 	tui "github.com/mutablelogic/go-server/pkg/tui"
 	types "github.com/mutablelogic/go-server/pkg/types"
+	term "golang.org/x/term"
 )
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -235,14 +237,27 @@ func printText(width int, text string) error {
 ///////////////////////////////////////////////////////////////////////////////
 // STREAM PRINTER
 
-// streamPrinter prints a model's reply as it's generated: its text as it
-// is, and on a terminal, its thinking, dimmed, with a blank line between
-// them
+// streamPrinter prints a model's reply as it's generated. Its text is
+// printed as it is, and on a terminal, once it's complete, it's printed again,
+// in place of what was printed, rendered as markdown, and its thinking is
+// shown as "Thinking…", which is replaced too. What tools log is printed,
+// dimmed, and kept. Text which is taller than the terminal isn't printed
+// again, as what's scrolled off it can't be replaced.
 type streamPrinter struct {
-	width    int
-	last     llm.StreamType
-	trailing string
+	w        io.Writer
+	width    int                 // The width of the terminal, or zero when the output isn't one
+	height   int                 // The height of the terminal, or zero when it isn't known
+	live     strings.Builder     // What's printed which is to be replaced
+	text     strings.Builder     // The text which replaces it, rendered as markdown
+	thinking bool                // Whether "Thinking…" is printed, which is replaced
+	last     llm.StreamType      // What was printed last
+	trailing string              // The last piece of text which was printed
+	render   func(string) string // Renders text as markdown, to fit the width
 }
+
+// thinkingLine is printed for the model's thinking, on a terminal, which is
+// replaced by the text which follows
+const thinkingLine = "Thinking…"
 
 // newStreamPrinter returns a printer of a reply as it's generated, or nil
 // when the reply isn't streamed. The width is the width of the terminal, or
@@ -251,7 +266,20 @@ func newStreamPrinter(off bool, width int) *streamPrinter {
 	if off {
 		return nil
 	}
-	return &streamPrinter{width: width}
+	p := &streamPrinter{w: os.Stdout, width: width}
+	if width > 0 {
+		if _, height, err := term.GetSize(int(os.Stdout.Fd())); err == nil {
+			p.height = height
+		}
+		p.render = func(text string) string {
+			var b strings.Builder
+			if _, err := tui.MarkdownFormatter(tui.SetWidth(width)).Write(&b, text); err != nil {
+				return text
+			}
+			return b.String()
+		}
+	}
+	return p
 }
 
 // Stream returns the function which prints each piece of the reply, or nil
@@ -269,30 +297,104 @@ func (p *streamPrinter) Streamed() bool {
 	return p != nil
 }
 
-// End ends what's printed with a newline, when it doesn't end with one
+// End prints the text again, rendered as markdown, on a terminal, and ends
+// what's printed with a newline, when it doesn't end with one
 func (p *streamPrinter) End() {
-	if p != nil && p.last != "" && !strings.HasSuffix(p.trailing, "\n") {
-		fmt.Println()
+	if p == nil {
+		return
+	}
+	p.replace()
+	if p.last != "" && !strings.HasSuffix(p.trailing, "\n") {
+		fmt.Fprintln(p.w)
 	}
 }
 
 func (p *streamPrinter) print(what llm.StreamType, text string) {
-	if text == "" || (what == llm.StreamThinking && p.width <= 0) {
+	if text == "" {
+		return
+	}
+	switch {
+	case p.width <= 0:
+		// Not a terminal: only the text, as it is
+		if what != llm.StreamText {
+			return
+		}
+		p.write(what, text, false)
+	case what == llm.StreamThinking:
+		// That the model is thinking, once, which is replaced
+		if !p.thinking {
+			p.thinking = true
+			p.write(what, "\x1b[2m"+thinkingLine+"\x1b[0m\n", true)
+		}
+	case what == llm.StreamLog:
+		// What's printed before it is replaced first, so it's kept after it
+		p.replace()
+		if !strings.HasSuffix(text, "\n") {
+			text += "\n"
+		}
+		p.write(what, "\x1b[2m"+text+"\x1b[0m", false)
+	default:
+		p.text.WriteString(text)
+		p.write(what, text, true)
+	}
+}
+
+// write prints the text, with a blank line before it, when it's of another
+// kind than what was printed last, apart from a line which is logged, and
+// keeps it to be replaced, when it's live
+func (p *streamPrinter) write(what llm.StreamType, text string, live bool) {
+	if p.last != "" && p.last != what && p.last != llm.StreamLog && what != llm.StreamLog {
+		text = strings.Repeat("\n", 2-min(2, newlines(p.trailing))) + text
+	}
+	p.last, p.trailing = what, text
+	if live {
+		p.live.WriteString(text)
+	}
+	fmt.Fprint(p.w, text)
+}
+
+// replace replaces what's printed to be replaced, which is the text, as it
+// is, and that the model is thinking, with the text, rendered as markdown,
+// when it fits on the terminal
+func (p *streamPrinter) replace() {
+	defer func() {
+		p.live.Reset()
+		p.text.Reset()
+		p.thinking = false
+	}()
+	if p.render == nil || p.live.Len() == 0 {
+		return
+	}
+	rows := rowsOf(p.live.String(), p.width)
+	if p.height > 0 && rows >= p.height {
 		return
 	}
 
-	// A blank line between the thinking and the text
-	if p.last != "" && p.last != what {
-		fmt.Print(strings.Repeat("\n", 2-min(2, newlines(p.trailing))))
+	// Move to the start of the first row which was printed, and clear to the
+	// end of the screen, and print the text, rendered, apart from the blank
+	// lines around it
+	fmt.Fprintf(p.w, "\r")
+	if rows > 1 {
+		fmt.Fprintf(p.w, "\x1b[%dA", rows-1)
 	}
-	p.last, p.trailing = what, text
+	fmt.Fprint(p.w, "\x1b[J")
+	text := ""
+	if strings.TrimSpace(p.text.String()) != "" {
+		text = strings.Trim(p.render(p.text.String()), "\n") + "\n"
+	}
+	fmt.Fprint(p.w, text)
+	p.last, p.trailing = llm.StreamText, text
+}
 
-	// The thinking is dimmed
-	if what == llm.StreamThinking {
-		fmt.Print("\x1b[2m" + text + "\x1b[0m")
-	} else {
-		fmt.Print(text)
+// rowsOf returns how many rows of the terminal, of the width, the text is
+// printed on, from the row it starts on, to the row the cursor's on, after
+// it's printed
+func rowsOf(text string, width int) int {
+	rows := 0
+	for _, line := range strings.Split(ansi.Strip(text), "\n") {
+		rows += max(1, (ansi.StringWidth(line)+width-1)/width)
 	}
+	return rows
 }
 
 // newlines returns how many newlines the text ends with

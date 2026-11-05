@@ -16,7 +16,7 @@ import (
 
 // EventCommands are the commands which watch the broadcaster's events
 type EventCommands struct {
-	Events EventsCmd `cmd:"" name:"events" help:"Watch the events, which are the changes to the providers and sessions, until interrupted." group:"LLM EVENTS"`
+	Events EventsCmd `cmd:"" name:"events" help:"Watch the changes to providers and sessions." group:"EVENTS"`
 }
 
 type EventsCmd struct{}
