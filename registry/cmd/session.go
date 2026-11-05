@@ -21,10 +21,10 @@ import (
 
 type SessionCommands struct {
 	SessionList   SessionListCmd   `cmd:"" name:"sessions" help:"List the sessions, most recently modified first." group:"LLM SESSIONS"`
-	SessionGet    SessionGetCmd    `cmd:"" name:"session" help:"Get a session, with its messages, or the default session, and make it the default." group:"LLM SESSIONS"`
-	SessionMsgs   SessionMsgsCmd   `cmd:"" name:"session-messages" help:"List a session's messages, or the default session's, oldest first, and make it the default." group:"LLM SESSIONS"`
-	SessionCreate SessionCreateCmd `cmd:"" name:"session-create" help:"Create a session, with how its model is asked, or the default model, and make it the default." group:"LLM SESSIONS"`
-	SessionUpdate SessionUpdateCmd `cmd:"" name:"session-update" help:"Change a session's settings, or the default session's, and make it the default: those which are given are changed, and the rest kept. An empty value, such as --tools=, clears one, --schema=null clears the schema, and --opt key=null removes an option." group:"LLM SESSIONS"`
+	SessionGet    SessionGetCmd    `cmd:"" name:"session" help:"Get a session, and make it the default." group:"LLM SESSIONS"`
+	SessionMsgs   SessionMsgsCmd   `cmd:"" name:"session-messages" help:"List a session's messages, oldest first." group:"LLM SESSIONS"`
+	SessionCreate SessionCreateCmd `cmd:"" name:"session-create" help:"Create a session, and make it the default." group:"LLM SESSIONS"`
+	SessionUpdate SessionUpdateCmd `cmd:"" name:"session-update" help:"Change a session's settings. An empty value clears one, and --opt key=null removes an option." group:"LLM SESSIONS"`
 	SessionDelete SessionDeleteCmd `cmd:"" name:"session-delete" help:"Delete a session." group:"LLM SESSIONS"`
 }
 

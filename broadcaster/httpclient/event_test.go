@@ -15,8 +15,8 @@ import (
 	httphandler "github.com/mutablelogic/go-llm/broadcaster/httphandler"
 	schema "github.com/mutablelogic/go-llm/broadcaster/schema"
 	test "github.com/mutablelogic/go-llm/registry/test"
-	httprouter "github.com/mutablelogic/go-server/pkg/httprouter"
 	httpresponse "github.com/mutablelogic/go-server/pkg/httpresponse"
+	httprouter "github.com/mutablelogic/go-server/pkg/httprouter"
 	assert "github.com/stretchr/testify/assert"
 	require "github.com/stretchr/testify/require"
 )

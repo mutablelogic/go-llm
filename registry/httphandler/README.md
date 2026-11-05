@@ -90,6 +90,30 @@ Set a session's `status`, in the request body, to `typing`, as someone types a m
 
 Delete a session by its identifier. Returns the deleted session. Returns 404 if there is no session with that identifier, or 409 if it was changed as it was deleted.
 
+## Agent Operations
+
+Agents are prompts, which is what MCP calls them, and how a model is asked them, which the server keeps in its agent store, such as files, or a database which other servers share. A server without an agent store doesn't have them, so they're not in its API. An agent has its `name`, which is an identifier, without two underscores, or starting or ending with one, which refers to it, its `title` and `description`, the JSON schema of its `input`, which is an object, and its `prompt`, a Go template of the message to the model, which is executed with the input. It has the settings of how its model is asked, as a session has: its `model`, `system` prompt, the `tools` it can call, its `opt` options and the `schema` of its reply, which it needn't all have. It has its `serial`, which the store changes each time it's stored, and is never one the agent had, so a change is made to it as it was last seen.
+
+### GET /llm/agent
+
+List the agents, in the order the server's agent store keeps them. The `offset` parameter skips that many agents, and the `limit` parameter returns at most that many. The `count` is how many agents there are. Returns 400 if a parameter is invalid.
+
+### POST /llm/agent
+
+Create an agent with the definition in the request body, which is JSON, or YAML, such as a file of an agent's definition, with `Content-Type: application/yaml`, by the same names, so its `input`, `opt` and `schema` are as they'd be in JSON. In YAML, a name which isn't one of its fields, such as `system_prompt` rather than `system`, is an error. Its `model`, when it has one, must be a model in the registry, and is kept by its canonical name, and its `tools` must be the server's, and are kept by their canonical names, as a session's are. Returns the created agent. Returns 400 if the request body is invalid, the name isn't valid, the `input` isn't a JSON schema of an object, the `prompt` isn't a template, the `schema` isn't a JSON schema, or an option is a field, 404 if the model, or a tool, isn't found, 409 if there's an agent with the name, or the name of the model, or a tool, is ambiguous, or 413 if the request body is larger than 1 MiB.
+
+### GET /llm/agent/{name}
+
+Get an agent by its name, as JSON, with its `serial`, or, when YAML is accepted, such as with `Accept: application/yaml`, its definition, as YAML, as a file of it is: by the same names as JSON, in the same order, with text of more than one line, such as its `prompt`, as a literal block, and without its `serial`, or when it was created or modified, so it can be created again, as it is. Returns 404 if there is no agent with that name, or 406 if neither JSON nor YAML is accepted.
+
+### PATCH /llm/agent/{name}
+
+Change an agent's definition, with the changes in the request body, which is JSON, or YAML, as when it's created. A field which is omitted is kept: `title`, `description`, `prompt`, `model` and `system` are replaced when they're set, and cleared when they're empty; `tools` are replaced when they're set, and cleared with `[]`; the `input` and `schema` are replaced when they're set, and cleared with `null`; and each option in `opt` is set, or removed when it's `null`. Its `name` isn't changed: the body has no `name`, or the agent's, such as when it's the agent's whole definition, from `GET /llm/agent/{name}` as YAML. The definition, as changed, must be valid, as when it's created. Returns the updated agent, as JSON, or its definition, as YAML, when YAML is accepted. Returns 400 if the request body is invalid, has another `name`, changes nothing, or the definition, as changed, isn't valid, 404 if there is no agent with that name, or the model, or a tool, isn't found, 406 if neither JSON nor YAML is accepted, 409 if it was changed as it was updated, or the name of the model, or a tool, is ambiguous, or 413 if the request body is larger than 1 MiB.
+
+### DELETE /llm/agent/{name}
+
+Delete an agent by its name. Returns the deleted agent. Returns 404 if there is no agent with that name, or 409 if it was changed as it was deleted.
+
 ## Inference Operations
 
 Inference is asking a model to do something with messages, such as embed them. A model is referred to by its name, or an alias, or by its provider's name and its name separated by a colon, and its provider must be able to do it, or the model isn't known not to.

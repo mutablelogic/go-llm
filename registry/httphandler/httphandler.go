@@ -22,7 +22,8 @@ var readme []byte
 // LIFECYCLE
 
 // RegisterHandlers registers the registry's API with the router: the
-// sessions' only when it has a store of them, as they'd be unavailable
+// sessions', and the agents', only when it has a store of them, as they'd
+// be unavailable
 func RegisterHandlers(r *registry.Registry, router *httprouter.Router) error {
 	var documentation = openapi.ParseMarkdown(readme)
 
@@ -50,6 +51,9 @@ func RegisterHandlers(r *registry.Registry, router *httprouter.Router) error {
 	}
 	if r.SessionStore() != nil {
 		handlers = append(handlers, sessionHandlers(r, router, documentation))
+	}
+	if r.AgentStore() != nil {
+		handlers = append(handlers, agentHandlers(r, router, documentation))
 	}
 	return errors.Join(handlers...)
 }

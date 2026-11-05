@@ -17,9 +17,10 @@ import (
 ///////////////////////////////////////////////////////////////////////////////
 // TYPES
 
-// AgentStore is a store of agents in memory, by their names, for tests,
-// whose serials are of the store, rather than of each agent, so an agent
-// which is deleted, and created again, doesn't have a serial it had
+// AgentStore is a store of agents in memory, by their names, which it lists
+// in order of their names, for tests, whose serials are of the store, rather
+// than of each agent, so an agent which is deleted, and created again,
+// doesn't have a serial it had
 type AgentStore struct {
 	mu     sync.Mutex
 	agents map[string]schema.Agent

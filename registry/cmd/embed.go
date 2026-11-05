@@ -23,11 +23,11 @@ import (
 // messages
 type InferenceCommands struct {
 	Ask        AskCmd        `cmd:"" name:"ask" help:"Ask a model a question, and print its reply, and the tools it calls." group:"LLM INFERENCE"`
-	Chat       ChatCmd       `cmd:"" name:"chat" help:"Ask a session's model a question, in the session, which keeps it, and the reply, running the tools the model calls, and print its reply, or, without a question, chat in the terminal." group:"LLM INFERENCE"`
-	Embed      EmbedCmd      `cmd:"" name:"embed" help:"Ask a model for a vector of text, and an image or audio, which is printed as JSON." group:"LLM INFERENCE"`
+	Chat       ChatCmd       `cmd:"" name:"chat" help:"Chat with a session's model, or in the terminal without a question." group:"LLM INFERENCE"`
+	Embed      EmbedCmd      `cmd:"" name:"embed" help:"Get a vector for text, an image or audio." group:"LLM INFERENCE"`
 	OCR        RecognizeCmd  `cmd:"" name:"ocr" help:"Ask a model for the text in an image or document, which is printed as Markdown." group:"LLM INFERENCE"`
 	Transcribe TranscribeCmd `cmd:"" name:"transcribe" help:"Ask a model for the speech in audio, as text, or its segments." group:"LLM INFERENCE"`
-	Translate  TranslateCmd  `cmd:"" name:"translate" help:"Ask a model for the speech in audio, in any language, as English text, or its segments." group:"LLM INFERENCE"`
+	Translate  TranslateCmd  `cmd:"" name:"translate" help:"Translate the speech in audio into English text." group:"LLM INFERENCE"`
 }
 
 type EmbedCmd struct {

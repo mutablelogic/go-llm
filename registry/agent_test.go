@@ -147,7 +147,7 @@ func Test_Agents(t *testing.T) {
 		require.NoError(t, err)
 		agent, err := r.UpdateAgent(ctx, "segment", schema.AgentMeta{
 			PromptMeta: schema.PromptMeta{
-				Name:        "renamed",
+				Name:        "segment",
 				Description: types.Ptr(""),
 				Prompt:      types.Ptr("Segment: {{ .transcript }}"),
 			},
@@ -185,8 +185,10 @@ func Test_Agents(t *testing.T) {
 		require.NoError(t, err)
 		_, err = r.UpdateAgent(ctx, "segment", schema.AgentMeta{})
 		assert.ErrorIs(t, err, llm.ErrBadParameter)
-		_, err = r.UpdateAgent(ctx, "segment", schema.AgentMeta{PromptMeta: schema.PromptMeta{Name: "renamed"}})
-		assert.ErrorIs(t, err, llm.ErrBadParameter, "a name alone changes nothing")
+		_, err = r.UpdateAgent(ctx, "segment", schema.AgentMeta{PromptMeta: schema.PromptMeta{Name: "segment"}})
+		assert.ErrorIs(t, err, llm.ErrBadParameter, "its name alone changes nothing")
+		_, err = r.UpdateAgent(ctx, "segment", schema.AgentMeta{PromptMeta: schema.PromptMeta{Name: "renamed", Title: types.Ptr("Title")}})
+		assert.ErrorIs(t, err, llm.ErrBadParameter, "an agent can't be renamed")
 		_, err = r.UpdateAgent(ctx, "segment", schema.AgentMeta{PromptMeta: schema.PromptMeta{Prompt: types.Ptr("{{")}})
 		assert.ErrorIs(t, err, llm.ErrBadParameter)
 		_, err = r.UpdateAgent(ctx, "segment", schema.AgentMeta{GeneratorMeta: schema.GeneratorMeta{Model: types.Ptr("missing")}})

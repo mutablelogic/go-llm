@@ -21,7 +21,7 @@ import (
 type ProviderCommands struct {
 	ProviderList             ProviderListCmd             `cmd:"" name:"providers" help:"List the providers." group:"LLM PROVIDERS"`
 	ProviderGet              ProviderGetCmd              `cmd:"" name:"provider" help:"Get a provider by name." group:"LLM PROVIDERS"`
-	ProviderUpdate           ProviderUpdateCmd           `cmd:"" name:"provider-update" help:"Update a provider by name, replacing its URL and patterns, and its API key, when one is given." group:"LLM PROVIDERS"`
+	ProviderUpdate           ProviderUpdateCmd           `cmd:"" name:"provider-update" help:"Update a provider's URL, patterns or API key." group:"LLM PROVIDERS"`
 	ProviderDelete           ProviderDeleteCmd           `cmd:"" name:"provider-delete" help:"Delete a provider by name." group:"LLM PROVIDERS"`
 	ProviderCreateOllama     ProviderCreateOllamaCmd     `cmd:"" name:"provider-create-ollama" help:"Create an Ollama provider." group:"LLM PROVIDERS"`
 	ProviderCreateEliza      ProviderCreateElizaCmd      `cmd:"" name:"provider-create-eliza" help:"Create an Eliza provider, for testing." group:"LLM PROVIDERS"`

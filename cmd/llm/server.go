@@ -59,6 +59,10 @@ func (runner *RunServer) Run(ctx server.Cmd) error {
 	if err != nil {
 		return err
 	}
+	agents, err := newServerAgentStore(ctx)
+	if err != nil {
+		return err
+	}
 	return runner.Broadcaster.WithBroadcaster(ctx, &runner.RunServer, func(b *broadcaster.Broadcaster) error {
 		return runner.Toolkit.WithToolkit(ctx, &runner.RunServer, func(tools *toolkit.Toolkit) error {
 			return runner.Registry.WithRegistry(ctx, &runner.RunServer, func(r *registry.Registry) error {
@@ -76,7 +80,7 @@ func (runner *RunServer) Run(ctx server.Cmd) error {
 					return runner.RunServer.Run(ctx.WithContext(runCtx))
 				})
 				return group.Wait()
-			}, registry.WithBroadcaster(b), registry.WithProviderStore(store), registry.WithSessionStore(sessions), registry.WithToolkit(tools))
+			}, registry.WithBroadcaster(b), registry.WithProviderStore(store), registry.WithSessionStore(sessions), registry.WithAgentStore(agents), registry.WithToolkit(tools))
 		})
 	})
 }
@@ -116,6 +120,16 @@ func newServerSessionStore(ctx server.Cmd) (*sessionStore, error) {
 		return nil, err
 	}
 	return store, nil
+}
+
+// newServerAgentStore returns the store of the agents, in files in the
+// directory of the command's defaults, beside the sessions
+func newServerAgentStore(ctx server.Cmd) (*agentStore, error) {
+	dir, err := serverDir(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return newAgentStore(dir)
 }
 
 // serverDir returns the directory of the command's defaults, which the
