@@ -88,6 +88,13 @@ func Test_Sessions(t *testing.T) {
 	assert.Len(t, updated.Opt, 1)
 	assert.JSONEq(t, `0.5`, string(updated.Opt["temperature"]))
 
+	// Status
+	typing, err := client.SetSessionStatus(ctx, created.ID, schema.SessionTyping)
+	require.NoError(t, err)
+	assert.Equal(t, schema.SessionTyping, typing.Status)
+	_, err = client.SetSessionStatus(ctx, created.ID, schema.SessionReplying)
+	assert.Equal(t, http.StatusBadRequest, status(t, err))
+
 	// Delete
 	deleted, err := client.DeleteSession(ctx, created.ID)
 	require.NoError(t, err)

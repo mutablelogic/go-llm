@@ -2,6 +2,7 @@ package toolkit
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 )
 
@@ -45,6 +46,13 @@ func SessionFromContext(ctx context.Context) Session {
 		return session
 	}
 	return discard{}
+}
+
+// Logf logs what the tool run in the context is doing, as a sentence in plain
+// English, such as "Getting the current weather for Berlin", which is shown
+// to the user, to its session's logger, at the info level
+func Logf(ctx context.Context, format string, args ...any) {
+	SessionFromContext(ctx).Logger().Info(fmt.Sprintf(format, args...))
 }
 
 ////////////////////////////////////////////////////////////////////////////////

@@ -15,8 +15,8 @@ import (
 
 	// Packages
 	llm "github.com/mutablelogic/go-llm"
+	eventschema "github.com/mutablelogic/go-llm/broadcaster/schema"
 	eliza "github.com/mutablelogic/go-llm/provider/eliza"
-	providerschema "github.com/mutablelogic/go-llm/provider/schema"
 	registry "github.com/mutablelogic/go-llm/registry"
 	schema "github.com/mutablelogic/go-llm/registry/schema"
 	assert "github.com/stretchr/testify/assert"
@@ -36,7 +36,7 @@ type memStore struct {
 	putErr        error // returned by Put, when it's set
 	deleteErr     error // returned by Delete, when it's set
 	puts, deletes int
-	watcher       chan<- providerschema.Event
+	watcher       chan<- eventschema.Event
 	stopped       chan error
 }
 
@@ -93,7 +93,7 @@ func (s *memStore) Delete(_ context.Context, name string, serial uint64) error {
 	return nil
 }
 
-func (s *memStore) Watch(ctx context.Context, ch chan<- providerschema.Event) (<-chan error, error) {
+func (s *memStore) Watch(ctx context.Context, ch chan<- eventschema.Event) (<-chan error, error) {
 	s.Lock()
 	s.watcher = ch
 	s.Unlock()
@@ -114,12 +114,12 @@ func (s *memStore) Watch(ctx context.Context, ch chan<- providerschema.Event) (<
 func (s *memStore) Change(def schema.Provider) {
 	s.Lock()
 	defer s.Unlock()
-	action := providerschema.EventCreate
+	action := eventschema.EventCreate
 	if _, exists := s.defs[def.Name]; exists {
-		action = providerschema.EventUpdate
+		action = eventschema.EventUpdate
 	}
 	s.change(def)
-	s.send(providerschema.Event{Action: action, Table: "provider", Row: def.Name})
+	s.send(eventschema.Event{Action: action, Table: "provider", Row: def.Name})
 }
 
 // Quietly changes the provider in the store, as another server would, with
@@ -157,7 +157,7 @@ func (s *memStore) Remove(name string) {
 	s.Lock()
 	defer s.Unlock()
 	delete(s.defs, name)
-	s.send(providerschema.Event{Action: providerschema.EventDelete, Table: "provider", Row: name})
+	s.send(eventschema.Event{Action: eventschema.EventDelete, Table: "provider", Row: name})
 }
 
 // Def returns the provider with the name in the store, and whether it has it
@@ -175,7 +175,7 @@ func (s *memStore) Counts() (int, int) {
 	return s.puts, s.deletes
 }
 
-func (s *memStore) send(event providerschema.Event) {
+func (s *memStore) send(event eventschema.Event) {
 	if s.watcher != nil {
 		s.watcher <- event
 	}

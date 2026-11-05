@@ -28,9 +28,9 @@ func Test_NewSession(t *testing.T) {
 		var lines []string
 		logAll(toolkit.NewSession("weather", func(line string) { lines = append(lines, line) }, nil).Logger())
 		assert.Equal(t, []string{
-			"weather: fetching city=Berlin",
-			`weather: WARN low quota.remaining=3 quota.note="two words"`,
-			`weather: ERROR failed req.id=7 empty=""`,
+			"fetching city=Berlin",
+			`WARN low quota.remaining=3 quota.note="two words"`,
+			`ERROR failed req.id=7 empty=""`,
 		}, lines)
 	})
 

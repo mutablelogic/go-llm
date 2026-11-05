@@ -10,12 +10,11 @@ import (
 	"time"
 
 	// Packages
-	llm "github.com/mutablelogic/go-llm"
-	eliza "github.com/mutablelogic/go-llm/provider/eliza"
-	providerschema "github.com/mutablelogic/go-llm/provider/schema"
-	registry "github.com/mutablelogic/go-llm/registry"
-	schema "github.com/mutablelogic/go-llm/registry/schema"
+	broadcaster "github.com/mutablelogic/go-llm/broadcaster"
+	httphandler "github.com/mutablelogic/go-llm/broadcaster/httphandler"
+	schema "github.com/mutablelogic/go-llm/broadcaster/schema"
 	test "github.com/mutablelogic/go-llm/registry/test"
+	httprouter "github.com/mutablelogic/go-server/pkg/httprouter"
 	types "github.com/mutablelogic/go-server/pkg/types"
 	assert "github.com/stretchr/testify/assert"
 	require "github.com/stretchr/testify/require"
@@ -27,7 +26,15 @@ type streamed struct {
 	data string
 }
 
-// watch requests the registry's events, with the accepted type, and returns
+// newServer returns a test server of the broadcaster's API
+func newServer(t *testing.T, b *broadcaster.Broadcaster) *test.Server {
+	t.Helper()
+	return test.NewServerFunc(t, func(router *httprouter.Router) error {
+		return httphandler.RegisterHandlers(b, router)
+	})
+}
+
+// watch requests the broadcaster's events, with the accepted type, and returns
 // the response, and the events which are streamed, which is closed when the
 // stream ends
 func watch(t *testing.T, server *test.Server, accept string) (*http.Response, <-chan streamed) {
@@ -71,37 +78,30 @@ func next(t *testing.T, events <-chan streamed) streamed {
 	}
 }
 
-// providerEvent returns the event of the stream as a provider's event
-func providerEvent(t *testing.T, event streamed) providerschema.Event {
+// decode returns the event of the stream
+func decode(t *testing.T, event streamed) schema.Event {
 	t.Helper()
 	require.Equal(t, schema.EventName, event.name)
-	var result providerschema.Event
+	var result schema.Event
 	require.NoError(t, json.Unmarshal([]byte(event.data), &result))
 	return result
 }
 
 func Test_WatchEvents(t *testing.T) {
-	r := test.NewRegistry(t, nil)
-	server := test.NewServer(t, r)
+	b := broadcaster.New()
+	server := newServer(t, b)
 
 	t.Run("Stream", func(t *testing.T) {
-		// The registry's events are streamed, from when the stream starts
+		// The events are streamed, from when the stream starts
 		resp, events := watch(t, server, types.ContentTypeTextStream)
 		require.Equal(t, http.StatusOK, resp.StatusCode)
 		assert.Equal(t, types.ContentTypeTextStream, resp.Header.Get(types.ContentTypeHeader))
-		client, err := eliza.New()
-		require.NoError(t, err)
-		require.NoError(t, r.Add("chat", client))
-		_, err = r.Remove("chat")
-		require.NoError(t, err)
-		assert.Equal(t, providerschema.Event{Action: providerschema.EventCreate, Table: registry.ProviderTable, Row: "chat"}, providerEvent(t, next(t, events)))
-		assert.Equal(t, providerschema.Event{Action: providerschema.EventDelete, Table: registry.ProviderTable, Row: "chat"}, providerEvent(t, next(t, events)))
-
-		// Including when a provider is created and deleted with the API
-		do(t, server, http.MethodPost, "llm/provider", map[string]string{"provider": llm.Eliza}, nil)
-		do(t, server, http.MethodDelete, "llm/provider/eliza", nil, nil)
-		assert.Equal(t, providerschema.EventCreate, providerEvent(t, next(t, events)).Action)
-		assert.Equal(t, providerschema.EventDelete, providerEvent(t, next(t, events)).Action)
+		created := schema.Event{Action: schema.EventCreate, Table: "provider", Row: "chat"}
+		updated := schema.Event{Action: schema.EventUpdate, Table: "session", Row: "1", Data: json.RawMessage(`{"serial":2}`)}
+		b.Publish(created)
+		b.Publish(updated)
+		assert.Equal(t, created, decode(t, next(t, events)))
+		assert.Equal(t, updated, decode(t, next(t, events)))
 	})
 
 	t.Run("Any", func(t *testing.T) {
@@ -117,17 +117,13 @@ func Test_WatchEvents(t *testing.T) {
 }
 
 func Test_WatchEventsShutdown(t *testing.T) {
-	// When the registry stops running, as the server is stopping, a
+	// When the broadcaster stops running, as the server is stopping, a
 	// shutdown event is sent, and the stream ends
-	r := test.NewRegistry(t, nil)
-	server := test.NewServer(t, r)
+	b := broadcaster.New()
+	server := newServer(t, b)
 	ctx, stop := context.WithCancel(context.Background())
 	running := make(chan error)
-	go func() { running <- r.Run(ctx, nil) }()
-	require.Eventually(t, func() bool {
-		resp, _ := watch(t, server, types.ContentTypeTextStream)
-		return resp.StatusCode == http.StatusOK
-	}, 5*time.Second, 10*time.Millisecond)
+	go func() { running <- b.Run(ctx) }()
 
 	resp, events := watch(t, server, types.ContentTypeTextStream)
 	require.Equal(t, http.StatusOK, resp.StatusCode)

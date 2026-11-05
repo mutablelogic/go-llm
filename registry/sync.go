@@ -7,7 +7,7 @@ import (
 
 	// Packages
 	llm "github.com/mutablelogic/go-llm"
-	providerschema "github.com/mutablelogic/go-llm/provider/schema"
+	eventschema "github.com/mutablelogic/go-llm/broadcaster/schema"
 	schema "github.com/mutablelogic/go-llm/registry/schema"
 )
 
@@ -50,7 +50,7 @@ const syncEventBuffer = 64
 // since they were seen, which are synced when they're next listed. When the
 // store's providers can't be listed, nothing is changed, and that's the
 // error.
-func (s *syncer) sync(ctx context.Context, registryEvents <-chan providerschema.Event) error {
+func (s *syncer) sync(ctx context.Context, registryEvents <-chan eventschema.Event) error {
 	var errs []error
 	failed := func(err error) {
 		if err != nil && !errors.Is(err, llm.ErrConflict) {
@@ -62,7 +62,9 @@ func (s *syncer) sync(ctx context.Context, registryEvents <-chan providerschema.
 	for drained := false; !drained; {
 		select {
 		case event := <-registryEvents:
-			failed(s.local(ctx, event.Row))
+			if event.Table == ProviderTable {
+				failed(s.local(ctx, event.Row))
+			}
 		default:
 			drained = true
 		}

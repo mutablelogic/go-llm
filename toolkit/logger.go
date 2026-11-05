@@ -47,9 +47,10 @@ var _ slog.Handler = (*toolHandler)(nil)
 
 // NewSession returns the session of the tool with the name, such as the
 // name the model called it by, whose logger streams what the tool logs, at
-// the info level or above, to the function, as lines of the name, the
-// level, when it isn't info, the message, and its attributes, as
-// key=value, unless the function is nil, and adds what it logs, at every
+// the info level or above, to the function, as lines of the level, when it
+// isn't info, the message, and its attributes, as key=value, which are
+// shown to the user, so needn't say which tool it is, unless the function is
+// nil, and adds what it logs, at every
 // level, to the span, as events, with the tool's name and the level, unless
 // the span is nil. The function is called from each goroutine the tool, or
 // tools run in parallel, log from, so must be safe to call at once.
@@ -89,7 +90,7 @@ func (h *toolHandler) Handle(_ context.Context, record slog.Record) error {
 		h.span.AddEvent(record.Message, trace.WithAttributes(event...))
 	}
 	if h.stream != nil && record.Level >= slog.LevelInfo {
-		h.stream(formatLine(h.name, record, attrs))
+		h.stream(formatLine(record, attrs))
 	}
 	return nil
 }
@@ -142,10 +143,8 @@ func appendAttr(attrs []slog.Attr, prefix string, attr slog.Attr) []slog.Attr {
 // formatLine returns the line of what the tool logged: its name, the level,
 // when it isn't info, the message, and the attributes, as key=value, whose
 // value is quoted when it's empty, or has spaces, quotes or equals signs
-func formatLine(name string, record slog.Record, attrs []slog.Attr) string {
+func formatLine(record slog.Record, attrs []slog.Attr) string {
 	var line strings.Builder
-	line.WriteString(name)
-	line.WriteString(": ")
 	if record.Level != slog.LevelInfo {
 		line.WriteString(record.Level.String())
 		line.WriteString(" ")

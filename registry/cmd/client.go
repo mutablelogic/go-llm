@@ -18,7 +18,6 @@ type ClientCommands struct {
 	ModelCommands
 	SessionCommands
 	InferenceCommands
-	EventCommands
 }
 
 ///////////////////////////////////////////////////////////////////////////////

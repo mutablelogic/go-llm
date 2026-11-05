@@ -50,6 +50,10 @@ func newTools(t *testing.T) (map[string]llm.Tool, *[]request) {
 			]`))
 		case r.URL.Path == "/api/states/light.kitchen" && r.Method == http.MethodGet:
 			w.Write([]byte(`{"entity_id":"light.kitchen","state":"on","attributes":{"friendly_name":"Kitchen"}}`))
+		case r.URL.Path == "/api/states/sensor.power" && r.Method == http.MethodGet:
+			w.Write([]byte(`{"entity_id":"sensor.power","state":"60","attributes":{"unit_of_measurement":"W"}}`))
+		case r.URL.Path == "/api/states/sensor.virtual" && r.Method == http.MethodGet:
+			w.Write([]byte(`{"entity_id":"sensor.virtual","state":"42","attributes":{"friendly_name":"Virtual"}}`))
 		case strings.HasPrefix(r.URL.Path, "/api/states/") && r.Method == http.MethodGet:
 			w.WriteHeader(http.StatusNotFound)
 			w.Write([]byte(`{"message":"Entity not found."}`))
@@ -59,7 +63,7 @@ func newTools(t *testing.T) (map[string]llm.Tool, *[]request) {
 		case r.URL.Path == "/api/services" && r.Method == http.MethodGet:
 			w.Write([]byte(`[{"domain":"light","services":{"turn_on":{"name":"Turn on","description":"Turn on a light","fields":{"entity_id":{},"brightness":{}}},"toggle":{"name":"Toggle"}}}]`))
 		case strings.HasPrefix(r.URL.Path, "/api/services/") && r.Method == http.MethodPost:
-			w.Write([]byte(`[{"entity_id":"light.kitchen","state":"on"}]`))
+			w.Write([]byte(`[{"entity_id":"light.kitchen","state":"on"},{"entity_id":"sensor.power","state":"55"}]`))
 		case strings.HasPrefix(r.URL.Path, "/api/events/") && r.Method == http.MethodPost:
 			w.Write([]byte(`{"message":"Event ` + strings.TrimPrefix(r.URL.Path, "/api/events/") + ` fired."}`))
 		case r.URL.Path == "/api/template" && r.Method == http.MethodPost:
@@ -166,12 +170,23 @@ func TestRun(t *testing.T) {
 
 	t.Run("CallService", func(t *testing.T) {
 		tools, requests := newTools(t)
-		result, err := tools["call_service"].Run(ctx, json.RawMessage(`{"domain":"light","service":"turn_on","data":{"entity_id":"light.kitchen","brightness":255}}`))
+		// The states of the entities it targeted, and those which changed,
+		// are got again, apart from one which doesn't exist
+		result, err := tools["call_service"].Run(ctx, json.RawMessage(`{"domain":"light","service":"turn_on","data":{"entity_id":["light.kitchen","light.missing"],"brightness":255}}`))
 		require.NoError(t, err)
-		assert.JSONEq(t, `[{"entity_id":"light.kitchen","state":"on","last_changed":"0001-01-01T00:00:00Z","last_reported":"0001-01-01T00:00:00Z","last_updated":"0001-01-01T00:00:00Z","attributes":null,"context":{}}]`, encode(t, result))
-		require.Len(t, *requests, 1)
-		assert.Equal(t, "/api/services/light/turn_on", (*requests)[0].path)
-		assert.Equal(t, map[string]any{"entity_id": "light.kitchen", "brightness": float64(255)}, (*requests)[0].body)
+		states, ok := result.([]*httpclient.State)
+		require.True(t, ok, "result is %T", result)
+		require.Len(t, states, 2)
+		assert.Equal(t, "light.kitchen", states[0].Entity)
+		assert.Equal(t, "Kitchen", states[0].Attributes["friendly_name"])
+		assert.Equal(t, "sensor.power", states[1].Entity)
+		assert.Equal(t, "60", states[1].State, "as it is now, not as it changed")
+		var paths []string
+		for _, req := range *requests {
+			paths = append(paths, req.method+" "+req.path)
+		}
+		assert.Equal(t, []string{"POST /api/services/light/turn_on", "GET /api/states/light.kitchen", "GET /api/states/light.missing", "GET /api/states/sensor.power"}, paths)
+		assert.Equal(t, map[string]any{"entity_id": []any{"light.kitchen", "light.missing"}, "brightness": float64(255)}, (*requests)[0].body)
 	})
 
 	t.Run("SetState", func(t *testing.T) {
@@ -181,7 +196,9 @@ func TestRun(t *testing.T) {
 		state, ok := result.(*httpclient.State)
 		require.True(t, ok, "result is %T", result)
 		assert.Equal(t, "42", state.State)
+		assert.Equal(t, "Virtual", state.Attributes["friendly_name"], "as it is got again")
 		assert.Equal(t, "/api/states/sensor.virtual", (*requests)[0].path)
+		assert.Equal(t, http.MethodGet, (*requests)[1].method)
 	})
 
 	t.Run("FireEvent", func(t *testing.T) {
@@ -240,4 +257,44 @@ func toolsOf(ns toolkit.Namespace, err error) ([]llm.Tool, error) {
 		return nil, err
 	}
 	return ns.Tools(), nil
+}
+
+func TestTargets(t *testing.T) {
+	// A service targets the entities of its entity_id, which is an entity,
+	// entities separated by commas, or a list, apart from "all"
+	tools, requests := newTools(t)
+	for data, want := range map[string][]string{
+		`{"entity_id":"light.kitchen"}`:                 {"light.kitchen", "sensor.power"},
+		`{"entity_id":"light.kitchen, sensor.power"}`:   {"light.kitchen", "sensor.power"},
+		`{"entity_id":"all"}`:                           {"light.kitchen", "sensor.power"},
+		`{"area_id":"kitchen"}`:                         {"light.kitchen", "sensor.power"},
+		`{"entity_id":["sensor.power","sensor.power"]}`: {"sensor.power", "light.kitchen"},
+	} {
+		*requests = nil
+		result, err := tools["call_service"].Run(context.Background(), json.RawMessage(`{"domain":"light","service":"turn_on","data":`+data+`}`))
+		require.NoError(t, err)
+		var got []string
+		for _, state := range result.([]*httpclient.State) {
+			got = append(got, state.Entity)
+		}
+		assert.Equal(t, want, got, data)
+	}
+}
+
+func TestLogs(t *testing.T) {
+	// Each tool says what it's doing, in plain English
+	tools, _ := newTools(t)
+	for name, test := range map[string]struct{ input, line string }{
+		"get_states":   {`{"domain":"light"}`, "Listing the light devices in Home Assistant"},
+		"get_state":    {`{"entity_id":"light.kitchen"}`, "Checking light.kitchen"},
+		"call_service": {`{"domain":"light","service":"turn_off","data":{"entity_id":["light.kitchen","sensor.power"]}}`, "Asking Home Assistant to turn off light.kitchen and sensor.power"},
+		"set_state":    {`{"entity_id":"sensor.virtual","state":"42"}`, "Setting sensor.virtual to 42"},
+	} {
+		var lines []string
+		ctx := toolkit.WithSession(context.Background(), toolkit.NewSession(name, func(line string) { lines = append(lines, line) }, nil))
+		_, err := tools[name].Run(ctx, json.RawMessage(test.input))
+		require.NoError(t, err, name)
+		require.NotEmpty(t, lines, name)
+		assert.Equal(t, test.line, lines[0], name)
+	}
 }

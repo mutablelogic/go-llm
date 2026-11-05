@@ -172,15 +172,15 @@ func Test_Ask(t *testing.T) {
 	t.Run("Tools", func(t *testing.T) {
 		// The model can call the tools, whose calls are returned, rather than
 		// run
-		p := newScripted(call("test_echo", `{"city":"Berlin"}`))
+		p := newScripted(call("test__echo", `{"city":"Berlin"}`))
 		r := newAskRegistry(t, p)
 		req := question("Weather?")
 		req.Tools = []string{"test:echo"}
 		response, err := r.Ask(ctx, req, nil)
 		require.NoError(t, err)
-		assert.Equal(t, []string{"test_echo"}, p.asked[0].tools)
+		assert.Equal(t, []string{"test__echo"}, p.asked[0].tools)
 		if calls := response.Message.ToolCalls(); assert.Len(t, calls, 1) {
-			assert.Equal(t, "test_echo", calls[0].Name)
+			assert.Equal(t, "test__echo", calls[0].Name)
 			assert.JSONEq(t, `{"city":"Berlin"}`, string(calls[0].Input))
 		}
 	})
@@ -281,7 +281,7 @@ func Test_Ask(t *testing.T) {
 		// With a schema, the model can call tools, whose calls are returned,
 		// rather than run, without the respond tool's, if it called it too,
 		// as it's to call it once it has their results
-		reply := call("test_echo", `{"city":"Berlin"}`)
+		reply := call("test__echo", `{"city":"Berlin"}`)
 		reply.Content = append(reply.Content, call(toolkit.RespondName, `{"result":"Berlin"}`).Content...)
 		p := newScripted(reply)
 		r := newAskRegistry(t, p)
@@ -293,10 +293,10 @@ func Test_Ask(t *testing.T) {
 		assert.Empty(t, response.Result)
 		assert.Equal(t, providerschema.ResultToolCall, response.Message.Result)
 		if calls := response.Message.ToolCalls(); assert.Len(t, calls, 1) {
-			assert.Equal(t, "test_echo", calls[0].Name)
+			assert.Equal(t, "test__echo", calls[0].Name)
 		}
 		assert.Len(t, p.asked, 1)
-		assert.Equal(t, []string{"test_echo", toolkit.RespondName}, p.asked[0].tools)
+		assert.Equal(t, []string{"test__echo", toolkit.RespondName}, p.asked[0].tools)
 	})
 
 	t.Run("Compact", func(t *testing.T) {
@@ -307,8 +307,8 @@ func Test_Ask(t *testing.T) {
 		req := question("Second")
 		req.Messages = append([]providerschema.MessageMeta{
 			{Sender: "user", Content: []providerschema.ContentBlock{{Text: types.Ptr("First")}}},
-			{Sender: "assistant", Content: []providerschema.ContentBlock{{ToolCall: &providerschema.ToolCall{ID: "old", Name: "test_echo"}}}},
-			{Sender: "tool", Content: []providerschema.ContentBlock{providerschema.NewToolResult("old", "test_echo", strings.Repeat("a", 20_000))}},
+			{Sender: "assistant", Content: []providerschema.ContentBlock{{ToolCall: &providerschema.ToolCall{ID: "old", Name: "test__echo"}}}},
+			{Sender: "tool", Content: []providerschema.ContentBlock{providerschema.NewToolResult("old", "test__echo", strings.Repeat("a", 20_000))}},
 		}, req.Messages...)
 		req.Opt = map[string]json.RawMessage{llm.ContextWindowKey: json.RawMessage(`4000`)}
 		response, err := r.Ask(ctx, req, nil)

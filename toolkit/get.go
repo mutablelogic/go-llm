@@ -45,8 +45,8 @@ func (self *Toolkit) GetTool(ctx context.Context, name string) (_ *schema.Tool, 
 // their names without a namespace, a namespace and "*", such as
 // "ollama:*", for all the tools in the namespace, or "*" for all the tools.
 // No names are no tools. Each tool is wrapped with a
-// new name, which is its namespace and name separated by an underscore, such
-// as "weatherapi_current". Returns ErrNotFound if there is no tool with a
+// new name, which is its namespace and name separated by two underscores,
+// such as "weatherapi__current". Returns ErrNotFound if there is no tool with a
 // name, or no namespace for "*", ErrConflict if a name without a namespace is
 // ambiguous, or two tools have the same new name, or ErrBadParameter if a
 // tool is named more than once, including by a "*", or its new name isn't a
@@ -91,7 +91,7 @@ func (self *Toolkit) resolve(names []string, skip bool) ([]llm.Tool, []string, e
 		}
 		for _, entry := range entries {
 			canonical := schema.CanonicalToolName(entry.namespace, entry.tool.Name())
-			name := entry.namespace + "_" + entry.tool.Name()
+			name := schema.ModelToolName(entry.namespace, entry.tool.Name())
 			if other, exists := seen[name]; exists && other == canonical {
 				return nil, nil, llm.ErrBadParameter.Withf("tool %q is named more than once", canonical)
 			} else if exists {

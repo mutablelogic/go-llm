@@ -11,7 +11,7 @@ import (
 
 	// Packages
 	llm "github.com/mutablelogic/go-llm"
-	providerschema "github.com/mutablelogic/go-llm/provider/schema"
+	eventschema "github.com/mutablelogic/go-llm/broadcaster/schema"
 	registry "github.com/mutablelogic/go-llm/registry"
 	schema "github.com/mutablelogic/go-llm/registry/schema"
 )
@@ -23,6 +23,12 @@ import (
 type defaults interface {
 	Get(string) any
 	Set(string, any) error
+}
+
+// lookup is defaults which say why a value can't be read, such as a file
+// which can't be, rather than taking it to have none
+type lookup interface {
+	Lookup(string) (any, error)
 }
 
 // providerStore is a store of the registry's providers in the command's defaults,
@@ -39,8 +45,14 @@ var _ registry.ProviderStore = (*providerStore)(nil)
 ///////////////////////////////////////////////////////////////////////////////
 // GLOBALS
 
-// providersKey is the key of the defaults which the providers are kept in
-const providersKey = "llm.providers"
+const (
+	// providersKey is the key which the providers are kept under
+	providersKey = "llm.providers"
+
+	// providersFile is the name of the file which the server keeps the
+	// providers in, in the directory of the command's defaults
+	providersFile = "providers.json"
+)
 
 ///////////////////////////////////////////////////////////////////////////////
 // LIFECYCLE
@@ -55,6 +67,21 @@ func newProviderStore(d defaults) (registry.ProviderStore, error) {
 
 ///////////////////////////////////////////////////////////////////////////////
 // PUBLIC METHODS
+
+// migrateProviders moves the providers which the defaults have, as they were
+// kept before they were kept in a file of their own, to the file, unless it
+// exists, and removes them from the defaults
+func migrateProviders(file *jsonFile, d defaults) error {
+	value := d.Get(providersKey)
+	if value == nil {
+		return nil
+	} else if !file.Exists() {
+		if err := file.Set(providersKey, value); err != nil {
+			return err
+		}
+	}
+	return d.Set(providersKey, nil)
+}
 
 // List returns the providers in the defaults, in order of their names
 func (s *providerStore) List(context.Context) ([]schema.Provider, error) {
@@ -114,7 +141,7 @@ func (s *providerStore) Delete(_ context.Context, name string, serial uint64) er
 
 // Watch sends no events, as only the server changes the providers, until the
 // context is cancelled, when the returned channel is sent nil
-func (s *providerStore) Watch(ctx context.Context, ch chan<- providerschema.Event) (<-chan error, error) {
+func (s *providerStore) Watch(ctx context.Context, ch chan<- eventschema.Event) (<-chan error, error) {
 	if ch == nil {
 		return nil, llm.ErrBadParameter.With("missing channel")
 	}
@@ -134,7 +161,17 @@ func (s *providerStore) Watch(ctx context.Context, ch chan<- providerschema.Even
 // into, when they were read from disk, so they're encoded as JSON, and
 // decoded as providers. The caller holds the lock.
 func (s *providerStore) read() ([]schema.Provider, error) {
-	value := s.defaults.Get(providersKey)
+	// When they can't be read, that's the error, rather than none, so the
+	// registry's providers aren't removed
+	var value any
+	if l, ok := s.defaults.(lookup); ok {
+		var err error
+		if value, err = l.Lookup(providersKey); err != nil {
+			return nil, err
+		}
+	} else {
+		value = s.defaults.Get(providersKey)
+	}
 	if value == nil {
 		return nil, nil
 	}

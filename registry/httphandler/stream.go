@@ -1,12 +1,12 @@
 package httphandler
 
 import (
-	"errors"
 	"net/http"
 	"time"
 
 	// Packages
 	llm "github.com/mutablelogic/go-llm"
+	deadline "github.com/mutablelogic/go-llm/internal/deadline"
 	schema "github.com/mutablelogic/go-llm/registry/schema"
 	httprequest "github.com/mutablelogic/go-server/pkg/httprequest"
 	httpresponse "github.com/mutablelogic/go-server/pkg/httpresponse"
@@ -19,6 +19,13 @@ import (
 // streamWriteFn writes an event, with its name, and its data, as JSON, to a
 // stream of server-sent events
 type streamWriteFn func(event string, data any)
+
+///////////////////////////////////////////////////////////////////////////////
+// GLOBALS
+
+// streamWriteTimeout is the longest a write to a client's stream can take,
+// before the client is taken to have stopped reading
+var streamWriteTimeout = 30 * time.Second
 
 ///////////////////////////////////////////////////////////////////////////////
 // PRIVATE FUNCTIONS
@@ -39,8 +46,8 @@ func respond[T any](w http.ResponseWriter, r *http.Request, name string, fn func
 		httpresponse.Error(w, httpresponse.ErrBadRequest.With(err.Error()))
 		return
 	}
-	dw := newDeadlineWriter(w)
-	if err := dw.rc.SetWriteDeadline(time.Time{}); err != nil && !errors.Is(err, http.ErrNotSupported) {
+	dw, err := deadline.New(w, streamWriteTimeout)
+	if err != nil {
 		httpresponse.Error(w, httpresponse.ErrInternalError.With(err.Error()))
 		return
 	}

@@ -100,8 +100,8 @@ func (self *Toolkit) Add(ns Namespace) error {
 		return llm.ErrBadParameter.With("missing namespace")
 	}
 	namespace, tools := ns.Name(), ns.Tools()
-	if !types.IsIdentifier(namespace) {
-		return llm.ErrBadParameter.Withf("invalid namespace %q", namespace)
+	if !types.IsIdentifier(namespace) || !schema.IsModelToolPart(namespace) {
+		return llm.ErrBadParameter.Withf("invalid namespace %q, which can't have two underscores, or start or end with one", namespace)
 	} else if _, exists := self.namespaces[namespace]; exists {
 		return llm.ErrConflict.Withf("namespace %q already exists", namespace)
 	}
@@ -113,8 +113,8 @@ func (self *Toolkit) Add(ns Namespace) error {
 			return llm.ErrBadParameter.With("missing tool")
 		}
 		name := tool.Name()
-		if !llm.IsToolName(name) {
-			return llm.ErrBadParameter.Withf("invalid tool name %q", name)
+		if !llm.IsToolName(name) || !schema.IsModelToolPart(name) {
+			return llm.ErrBadParameter.Withf("invalid tool name %q, which can't have two underscores, or start or end with one", name)
 		} else if _, exists := entries[name]; exists {
 			return llm.ErrConflict.Withf("duplicate tool %q", name)
 		}

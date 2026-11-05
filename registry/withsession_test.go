@@ -73,7 +73,7 @@ func Test_WithSession(t *testing.T) {
 	t.Run("Tools", func(t *testing.T) {
 		// The tools the model calls are run, and their results added, and
 		// measured
-		p := newScripted(call("test_echo", `{"city":"Berlin"}`), text("Sunny"))
+		p := newScripted(call("test__echo", `{"city":"Berlin"}`), text("Sunny"))
 		r := newAskRegistry(t, p)
 		withTools := meta
 		withTools.Tools = []string{"test:echo"}
@@ -111,7 +111,7 @@ func Test_WithSession(t *testing.T) {
 		// than as Ask is, unless the option says otherwise
 		var replies []*providerschema.Message
 		for range 20 {
-			replies = append(replies, call("test_echo", `{}`))
+			replies = append(replies, call("test__echo", `{}`))
 		}
 		p := newScripted(replies...)
 		r := newAskRegistry(t, p)
@@ -172,11 +172,11 @@ func Test_WithSession(t *testing.T) {
 		earlier := []providerschema.Message{
 			says("user", "Weather?", 0),
 			{MessageMeta: providerschema.MessageMeta{Sender: "assistant", Content: []providerschema.ContentBlock{
-				{ToolCall: &providerschema.ToolCall{ID: "1", Name: "test_echo"}},
+				{ToolCall: &providerschema.ToolCall{ID: "1", Name: "test__echo"}},
 			}}},
 		}
 		result := providerschema.Message{MessageMeta: providerschema.MessageMeta{Sender: "tool", Content: []providerschema.ContentBlock{
-			providerschema.NewToolResult("1", "test_echo", strings.Repeat("a", 100_000)),
+			providerschema.NewToolResult("1", "test__echo", strings.Repeat("a", 100_000)),
 		}}}
 		p := newScripted(text("Sunny"))
 		r := newAskRegistry(t, p)

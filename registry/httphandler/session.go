@@ -34,6 +34,7 @@ func sessionHandlers(r *registry.Registry, router *httprouter.Router, documentat
 		sessionCreateListHandlers(r, router, documentation),
 		sessionGetUpdateDeleteHandlers(r, router, documentation),
 		sessionMessagesHandlers(r, router, documentation),
+		sessionStatusHandlers(r, router, documentation),
 	)
 }
 
@@ -234,4 +235,33 @@ func pathSessionID(r *http.Request) (uuid.UUID, error) {
 		return uuid.UUID{}, httpresponse.ErrBadRequest.Withf("invalid session identifier %q", r.PathValue("id"))
 	}
 	return id, nil
+}
+
+func sessionStatusHandlers(reg *registry.Registry, router *httprouter.Router, documentation *openapi.MarkdownDoc) error {
+	return router.Register("llm/session/{id}/status", jsonschema.MustFor[sessionID](), func(path httprequest.PathItem) {
+		path.Tag("Sessions")
+
+		// PUT
+		path.Put(func(w http.ResponseWriter, r *http.Request) {
+			var req schema.SessionStatusRequest
+			id, err := pathSessionID(r)
+			if err != nil {
+				httpresponse.Error(w, err)
+			} else if err := httprequest.Read(r, &req); err != nil {
+				httpresponse.Error(w, httpresponse.ErrBadRequest.Withf("%w", err))
+			} else if session, err := reg.SetSessionStatus(r.Context(), id, req.Status); err != nil {
+				httpresponse.Error(w, llm.HTTPErr(err), id.String())
+			} else {
+				httpresponse.JSON(w, http.StatusOK, httprequest.Indent(r), session)
+			}
+		}, func(op httprequest.PathOperation) {
+			op.Summary("Set Session Status")
+			op.Description(documentation.Section(3, "PUT /llm/session/{id}/status").Body)
+			op.RequestBody(jsonschema.MustFor[schema.SessionStatusRequest]())
+			op.JSONResponse(http.StatusOK, jsonschema.MustFor[schema.Session](), "Session, without its messages, with its status")
+			op.ErrorResponse(http.StatusBadRequest, "Invalid request, an identifier which isn't a UUID, or a status which isn't typing or idle")
+			op.ErrorResponse(http.StatusNotFound, "Session not found")
+			op.ErrorResponse(http.StatusServiceUnavailable, "The server has no session store")
+		})
+	})
 }

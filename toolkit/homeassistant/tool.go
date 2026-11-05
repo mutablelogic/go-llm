@@ -3,6 +3,7 @@ package homeassistant
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"slices"
 	"strings"
 
@@ -101,13 +102,18 @@ func (t *getStates) Run(ctx context.Context, input json.RawMessage) (any, error)
 		return nil, err
 	}
 
+	domain := strings.TrimSpace(req.Domain)
+	if domain != "" {
+		toolkit.Logf(ctx, "Listing the %s devices in Home Assistant", domain)
+	} else {
+		toolkit.Logf(ctx, "Listing the devices in Home Assistant")
+	}
 	states, err := t.client.States(ctx)
 	if err != nil {
 		return nil, err
 	}
 
 	// Return a summary of the available entities, in the domain if set
-	domain := strings.TrimSpace(req.Domain)
 	result := make([]stateSummary, 0, len(states))
 	for _, s := range states {
 		if domain != "" && s.Domain() != domain {
@@ -153,6 +159,7 @@ func (t *getState) Run(ctx context.Context, input json.RawMessage) (any, error) 
 		return nil, llm.ErrBadParameter.With("entity_id is required")
 	}
 
+	toolkit.Logf(ctx, "Checking %s", req.EntityId)
 	return t.client.State(ctx, req.EntityId)
 }
 
@@ -184,6 +191,7 @@ func (t *getServices) Run(ctx context.Context, input json.RawMessage) (any, erro
 		return nil, llm.ErrBadParameter.With("domain is required")
 	}
 
+	toolkit.Logf(ctx, "Looking up what Home Assistant can do with %s", req.Domain)
 	services, err := t.client.Services(ctx, req.Domain)
 	if err != nil {
 		return nil, err
@@ -218,7 +226,8 @@ func (*callService) Description() string {
 		"Common examples: domain='light' service='turn_on' data={'entity_id':'light.living_room','brightness':255}, " +
 		"domain='switch' service='toggle' data={'entity_id':'switch.fan'}, " +
 		"domain='climate' service='set_temperature' data={'entity_id':'climate.thermostat','temperature':22}. " +
-		"Returns the list of states that changed."
+		"Returns the current state of each entity the call targeted, by entity_id, and of each entity which changed, " +
+		"so they needn't be got again."
 }
 
 // InputSchema returns the JSON schema for the tool input
@@ -239,7 +248,25 @@ func (t *callService) Run(ctx context.Context, input json.RawMessage) (any, erro
 		return nil, llm.ErrBadParameter.With("service is required")
 	}
 
-	return t.client.Call(ctx, req.Domain, req.Service, req.Data)
+	// Call the service, and return the states of the entities it targeted,
+	// and those which changed, as they are now
+	entities := targets(req.Data)
+	action := strings.ReplaceAll(req.Service, "_", " ")
+	if len(entities) > 0 {
+		toolkit.Logf(ctx, "Asking Home Assistant to %s %s", action, list(entities))
+	} else {
+		toolkit.Logf(ctx, "Asking Home Assistant to %s %s", action, req.Domain)
+	}
+	changed, err := t.client.Call(ctx, req.Domain, req.Service, req.Data)
+	if err != nil {
+		return nil, err
+	}
+	for _, state := range changed {
+		if state != nil && !slices.Contains(entities, state.Entity) {
+			entities = append(entities, state.Entity)
+		}
+	}
+	return currentStates(ctx, t.client, entities), nil
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -253,7 +280,8 @@ func (*setState) Description() string {
 	return "Set or create the state of a Home Assistant entity. " +
 		"This updates the representation in Home Assistant but does NOT communicate with the actual device. " +
 		"Use call_service to actuate devices. " +
-		"Useful for creating virtual sensors or updating helper entities."
+		"Useful for creating virtual sensors or updating helper entities. " +
+		"Returns the entity's state, as it is now."
 }
 
 // InputSchema returns the JSON schema for the tool input
@@ -274,7 +302,16 @@ func (t *setState) Run(ctx context.Context, input json.RawMessage) (any, error) 
 		return nil, llm.ErrBadParameter.With("state is required")
 	}
 
-	return t.client.SetState(ctx, req.EntityId, req.State, req.Attributes)
+	// Set the state, and return it as it is now, or as it was set, when it
+	// can't be got
+	toolkit.Logf(ctx, "Setting %s to %s", req.EntityId, req.State)
+	state, err := t.client.SetState(ctx, req.EntityId, req.State, req.Attributes)
+	if err != nil {
+		return nil, err
+	} else if current, err := t.client.State(ctx, req.EntityId); err == nil {
+		return current, nil
+	}
+	return state, nil
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -304,6 +341,7 @@ func (t *fireEvent) Run(ctx context.Context, input json.RawMessage) (any, error)
 		return nil, llm.ErrBadParameter.With("event_type is required")
 	}
 
+	toolkit.Logf(ctx, "Sending the %s event to Home Assistant", req.EventType)
 	message, err := t.client.FireEvent(ctx, req.EventType, req.EventData)
 	if err != nil {
 		return nil, err
@@ -341,6 +379,7 @@ func (t *renderTemplate) Run(ctx context.Context, input json.RawMessage) (any, e
 		return nil, llm.ErrBadParameter.With("template is required")
 	}
 
+	toolkit.Logf(ctx, "Working something out in Home Assistant")
 	result, err := t.client.Template(ctx, req.Template)
 	if err != nil {
 		return nil, err
@@ -352,6 +391,63 @@ func (t *renderTemplate) Run(ctx context.Context, input json.RawMessage) (any, e
 // PRIVATE METHODS
 
 // unmarshal decodes the tool input, which may be empty, into v
+// targets returns the entities which a service's data targets, by its
+// entity_id, which is an entity, entities separated by commas, or a list of
+// them, apart from "all"
+func targets(data map[string]any) []string {
+	var entities []string
+	add := func(value any) {
+		if text, ok := value.(string); ok {
+			for entity := range strings.SplitSeq(text, ",") {
+				if entity = strings.TrimSpace(entity); entity != "" && entity != "all" && !slices.Contains(entities, entity) {
+					entities = append(entities, entity)
+				}
+			}
+		}
+	}
+	switch value := data["entity_id"].(type) {
+	case []any:
+		for _, entity := range value {
+			add(entity)
+		}
+	case []string:
+		for _, entity := range value {
+			add(entity)
+		}
+	default:
+		add(value)
+	}
+	return entities
+}
+
+// currentStates returns the states of the entities, as they are now, in
+// order, apart from those which can't be got, such as an entity which
+// doesn't exist, which are logged
+func currentStates(ctx context.Context, client *httpclient.Client, entities []string) []*httpclient.State {
+	states := make([]*httpclient.State, 0, len(entities))
+	for _, entity := range entities {
+		state, err := client.State(ctx, entity)
+		if err != nil {
+			toolkit.SessionFromContext(ctx).Logger().Warn(fmt.Sprintf("Couldn't check %s: %v", entity, err))
+			continue
+		}
+		states = append(states, state)
+	}
+	return states
+}
+
+// list returns the names in plain English, such as "a, b and c"
+func list(names []string) string {
+	switch len(names) {
+	case 0:
+		return ""
+	case 1:
+		return names[0]
+	default:
+		return strings.Join(names[:len(names)-1], ", ") + " and " + names[len(names)-1]
+	}
+}
+
 func unmarshal(input json.RawMessage, v any) error {
 	if len(input) == 0 {
 		return nil

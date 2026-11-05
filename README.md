@@ -16,7 +16,7 @@ go-llm keeps a registry of providers, such as Ollama, OpenAI, Mistral, [go-whisp
 - **Transcribe and translate**: the speech in audio, as text, in its language or in English, with timed segments and speakers, streamed as it's transcribed, and printed as SRT or WebVTT subtitles.
 - **Models**: download, delete and unload models, for providers which store them, such as Ollama and go-whisper.
 - **Tools**: a toolkit of tools, in namespaces, for Home Assistant, NewsAPI, WeatherAPI and Ollama's web search, which models can call.
-- **Events**: a stream of changes to the providers and their models.
+- **Events**: a stream of changes to the providers and their models, and to sessions, with whether someone is typing in a session, or its model is replying, so two chat windows on one session follow each other.
 - **OpenTelemetry**: traces of requests, through the registry, providers and tools.
 
 ## Providers
@@ -120,7 +120,7 @@ A model is given tools by name, by namespace and name, such as `weatherapi:curre
 
 ## API
 
-The server's REST API is under `/api`, and documented in [registry/httphandler/README.md](registry/httphandler/README.md), and as OpenAPI, with `llm openapi`. Inference which streams, such as ask and transcribe, sends server-sent events when `text/event-stream` is accepted.
+The server's REST API is under `/api`, and documented in [registry/httphandler/README.md](registry/httphandler/README.md), with its events in [broadcaster/httphandler/README.md](broadcaster/httphandler/README.md), and as OpenAPI, with `llm openapi`. Inference which streams, such as ask and transcribe, sends server-sent events when `text/event-stream` is accepted.
 
 ## Go
 
@@ -130,16 +130,18 @@ The packages can be used without the server:
 - [`provider/...`](provider): a client for each provider, which implements the interfaces it can.
 - [`registry`](registry): the registry of providers, which finds a model by name, checks what it can do, and asks its provider, with a store, events, and HTTP handlers and a client.
 - [`toolkit`](toolkit): the toolkit of tools, which a model calls.
+- [`broadcaster`](broadcaster): publishes events, which are changes, to the channels which watch them, with an HTTP handler which streams them as server-sent events, and a client.
 
 The registry is meant to be composed with other modules into a whole system, rather than to be one itself. It's created with options, which plug in what a system has:
 
 - `WithProviderStore` keeps the providers' definitions in a store, such as a database, so they're kept when the server restarts, and are shared between servers. A `ProviderStore` lists, puts and deletes providers, each with a serial, so a change to a provider which another server has changed is a conflict, and watches the store for the changes other servers make. The providers' models aren't stored, as they're listed from the providers, and cached.
-- `WithSessionStore` keeps sessions, which are conversations with models, in a store, such as a database, so they're kept when the server restarts. A `SessionStore` creates, gets, lists, puts and deletes sessions, each with a UUID and a serial, which the store sets, so a change to a session which was changed since it was read is a conflict. Without one, the registry's session methods return `ErrServiceUnavailable`.
+- `WithSessionStore` keeps sessions, which are conversations with models, in a store, such as a database, so they're kept when the server restarts. A `SessionStore` creates, gets, lists, puts and deletes sessions, each with a UUID and a serial, which the store sets, so a change to a session which was changed since it was read is a conflict, and watches the store for the changes other servers make. Without one, the registry's session methods return `ErrServiceUnavailable`.
 - `WithCredentialsProvider` expands an API key's placeholder, such as `${OPENAI_KEY}`, with a secret, from the environment by default, or from a secrets manager, so keys are never stored.
 - `WithToolkit` gives the registry the tools which models can call.
+- `WithBroadcaster` gives the registry the broadcaster which it publishes its events to, such as one which a system's other modules share, so their events are streamed together. Without one, the registry has its own.
 - `WithTracer` and `WithClientOpts` trace, and configure, the requests to providers.
 
-Its HTTP handlers are registered with a router, alongside a system's own, and its events, such as a provider being created, are watched with `Watch`. The `llm` command, in [cmd/llm](cmd/llm), is one such system: it runs the registry, with a store which keeps its providers in the command's defaults, and the toolkit, in a server.
+Its HTTP handlers are registered with a router, alongside a system's own, and its events, such as a provider being created, or a session's model replying, are watched with `Watch`. The `llm` command, in [cmd/llm](cmd/llm), is one such system: it runs the registry, with a store which keeps its providers in the command's defaults, and its sessions in files, the toolkit, and a broadcaster, which streams the registry's events, in a server.
 
 For example, a registry with Ollama and OpenAI, which asks a model a question, streaming its reply, and transcribes the speech in a file:
 
@@ -238,7 +240,6 @@ Tests which make requests to a provider are skipped with `-short`, and unless it
 
 - **MCP**: connectors to MCP servers, whose tools are added to the toolkit, each in its own namespace, so models can call them.
 - **Agents**: named definitions of a model, a system prompt, tools, a schema and options, which are run by name, with an input.
-- **Watch endpoint for sessions**: events when a session changes, such as when its model replies, and its status, which a client sets to `typing`, and the server switches to `replying`, as the model replies, or back to `idle`, after a timeout, so every client of a session sees who's doing what.
 - **Memory and heartbeats**: memory, which a model reads and writes with tools; and agents which run on a schedule. These need a store, such as PostgreSQL.
 
 ### Providers

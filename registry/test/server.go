@@ -17,6 +17,7 @@ import (
 	"testing"
 
 	// Packages
+	broadcasterhandler "github.com/mutablelogic/go-llm/broadcaster/httphandler"
 	registry "github.com/mutablelogic/go-llm/registry"
 	httphandler "github.com/mutablelogic/go-llm/registry/httphandler"
 	httprouter "github.com/mutablelogic/go-server/pkg/httprouter"
@@ -74,12 +75,15 @@ var errNotDocumented = errors.New("path is not documented")
 // LIFECYCLE
 
 // NewServer starts a HTTP test server serving the llm registry API for the
-// registry. When the test ends the server is closed, and every recorded
+// registry, and its broadcaster's API, which streams its events. When the test ends the server is closed, and every recorded
 // exchange is checked against the OpenAPI specification.
 func NewServer(t *testing.T, r *registry.Registry) *Server {
 	t.Helper()
 	return NewServerFunc(t, func(router *httprouter.Router) error {
-		return httphandler.RegisterHandlers(r, router)
+		return errors.Join(
+			httphandler.RegisterHandlers(r, router),
+			broadcasterhandler.RegisterHandlers(r.Broadcaster(), router),
+		)
 	})
 }
 

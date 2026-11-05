@@ -67,6 +67,7 @@ func (s *webSearch) Run(ctx context.Context, input json.RawMessage) (any, error)
 		return nil, llm.ErrBadParameter.With("max_results must be between 1 and 10")
 	}
 
+	toolkit.Logf(ctx, "Searching the web for %q", req.Query)
 	return s.client.Search(ctx, &req)
 }
 
@@ -98,6 +99,7 @@ func (f *webFetch) Run(ctx context.Context, input json.RawMessage) (any, error) 
 		return nil, llm.ErrBadParameter.With("url is required")
 	}
 
+	toolkit.Logf(ctx, "Reading %s", req.URL)
 	return f.client.Fetch(ctx, &req)
 }
 

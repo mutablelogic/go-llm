@@ -102,7 +102,7 @@ func Test_RunTools(t *testing.T) {
 			return toolkit.NewSession(call.ID, func(line string) {
 				mu.Lock()
 				defer mu.Unlock()
-				lines = append(lines, line)
+				lines = append(lines, call.ID+": "+line)
 			}, nil)
 		})
 		require.NoError(t, err)
