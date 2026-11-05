@@ -6,6 +6,7 @@ import (
 
 	// Packages
 	llm "github.com/mutablelogic/go-llm"
+	providerschema "github.com/mutablelogic/go-llm/provider/schema"
 	schema "github.com/mutablelogic/go-llm/registry/schema"
 	types "github.com/mutablelogic/go-server/pkg/types"
 	assert "github.com/stretchr/testify/assert"
@@ -69,4 +70,41 @@ func Test_MaxDepthOption(t *testing.T) {
 	assert.ErrorIs(t, err, llm.ErrBadParameter)
 	_, err = llm.ApplyOpts(llm.WithMaxDepth(0))
 	assert.ErrorIs(t, err, llm.ErrBadParameter)
+}
+
+func Test_DepthContext(t *testing.T) {
+	// A loop without max_depth records the default, so an agent it runs,
+	// whose max_depth is more, can't raise it, and one which has it lowers
+	// it, but a loop without it, which an agent runs, keeps what its caller
+	// says
+	ctx := context.Background()
+	session, err := newAgentLoop(nil, nil)
+	require.NoError(t, err)
+	child, err := newAgentLoop(nil, nil, llm.WithMaxDepth(10))
+	require.NoError(t, err)
+	lower, err := newAgentLoop(nil, nil, llm.WithMaxDepth(2))
+	require.NoError(t, err)
+
+	fromSession := session.depthContext(ctx)
+	assert.Equal(t, uint(DefaultMaxDepth), agentChainOf(child.depthContext(fromSession)).depth())
+	assert.Equal(t, uint(2), agentChainOf(lower.depthContext(fromSession)).depth())
+	assert.Equal(t, uint(2), agentChainOf(session.depthContext(lower.depthContext(ctx))).depth())
+	assert.Equal(t, uint(10), agentChainOf(child.depthContext(ctx)).depth(), "an agent run on its own")
+}
+
+func Test_AgentFinished(t *testing.T) {
+	// A reply which didn't finish is an error, which says how it stopped
+	reply := func(result providerschema.ResultType) []providerschema.Message {
+		return []providerschema.Message{{Result: result}}
+	}
+	assert.NoError(t, agentFinished("a", reply(providerschema.ResultStop)))
+	assert.NoError(t, agentFinished("a", reply("")))
+	assert.ErrorIs(t, agentFinished("a", reply(providerschema.ResultMaxTokens)), llm.ErrMaxTokens)
+	assert.ErrorIs(t, agentFinished("a", reply(providerschema.ResultBlocked)), llm.ErrRefusal)
+	for _, result := range []providerschema.ResultType{providerschema.ResultError, providerschema.ResultMaxIterations, providerschema.ResultMaxContext} {
+		err := agentFinished("a", reply(result))
+		assert.ErrorIs(t, err, llm.ErrInternalServerError, result)
+		assert.ErrorContains(t, err, string(result))
+	}
+	assert.Error(t, agentFinished("a", nil))
 }

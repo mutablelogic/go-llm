@@ -185,19 +185,19 @@ func (self *Toolkit) ClientOpts() []client.ClientOpt {
 func (self *Toolkit) changed(ns Namespace, _ eventschema.EventAction, name string) {
 	canonical := schema.CanonicalToolName(ns.Name(), name)
 
-	// Find the tool, as it is now
+	// The tool, as it is now, is read, and applied, under the lock, so
+	// changes which are told at once are applied in the order they're read
+	self.mu.Lock()
+	defer self.mu.Unlock()
+	if self.namespaces[ns.Name()] != ns {
+		return
+	}
 	var tool llm.Tool
 	for _, t := range ns.Tools() {
 		if t != nil && t.Name() == name {
 			tool = t
 			break
 		}
-	}
-
-	self.mu.Lock()
-	defer self.mu.Unlock()
-	if self.namespaces[ns.Name()] != ns {
-		return
 	}
 	_, existed := self.tools[canonical]
 	if tool != nil {

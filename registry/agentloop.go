@@ -179,11 +179,7 @@ func (r *Registry) toolPrompts(ctx context.Context, tools []llm.Tool) ([]string,
 // Returns the conversation, with the messages the loop added, and the tokens
 // of each, and the usage.
 func (r *Registry) agentLoop(ctx context.Context, model llm.Model, messages []llm.Message, fresh []providerschema.Message, loop *agentLoop, stream llm.GeneratorStreamFn) (*history, llm.Usage, error) {
-	// The agents its tools run are at most as deep as it says, and as those
-	// which run it say
-	if loop.maxDepth > 0 {
-		ctx = withMaxDepth(ctx, loop.maxDepth)
-	}
+	ctx = loop.depthContext(ctx)
 
 	// The conversation, which the replies and tool results are added to,
 	// without changing the caller's messages, measured as the model's
@@ -396,6 +392,19 @@ func (l *agentLoop) runTools(ctx context.Context, calls []llm.ToolCall, session 
 	results := newToolResults(0)
 	results.Content = content
 	return results, nil
+}
+
+// depthContext returns the context, in which the agents its tools run are
+// at most as deep as the loop says, or those which run it say, or otherwise
+// DefaultMaxDepth, which is recorded, so the agents its tools run can't
+// raise it
+func (l *agentLoop) depthContext(ctx context.Context) context.Context {
+	if l.maxDepth > 0 {
+		return withMaxDepth(ctx, l.maxDepth)
+	} else if agentChainOf(ctx).maxDepth == 0 {
+		return withMaxDepth(ctx, DefaultMaxDepth)
+	}
+	return ctx
 }
 
 // window returns the model's context, in tokens, which is the smaller of

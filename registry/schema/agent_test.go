@@ -179,6 +179,8 @@ func Test_AgentMessage(t *testing.T) {
 			"Type":     `{"transcript":1,"minutes":1,"tags":[]}`,
 			"Array":    `["transcript"]`,
 			"JSON":     `{"transcript":`,
+			"Trailing": `{"transcript":"Hello","minutes":1,"tags":[]} trailing`,
+			"Two":      `{"transcript":"Hello","minutes":1,"tags":[]} {}`,
 			"Missing":  `{"transcript":"Hello"}`,
 		} {
 			_, err := prompt.Message(json.RawMessage(input))

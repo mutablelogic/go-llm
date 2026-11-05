@@ -1,7 +1,6 @@
 package registry
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"slices"
@@ -92,6 +91,8 @@ func (r *Registry) CreateAgent(ctx context.Context, meta schema.AgentMeta) (_ *s
 	} else if meta, err = r.validAgentMeta(ctx, meta, meta); err != nil {
 		return nil, err
 	}
+	r.agentsMu.Lock()
+	defer r.agentsMu.Unlock()
 	agent, err := r.agentStore.Create(ctx, meta)
 	if err != nil {
 		return nil, err
@@ -162,6 +163,8 @@ func (r *Registry) UpdateAgent(ctx context.Context, name string, meta schema.Age
 	} else if meta.IsZero() {
 		return nil, llm.ErrBadParameter.With("nothing to update")
 	}
+	r.agentsMu.Lock()
+	defer r.agentsMu.Unlock()
 	agent, err := r.agentStore.Get(ctx, name)
 	if err != nil {
 		return nil, err
@@ -189,6 +192,8 @@ func (r *Registry) DeleteAgent(ctx context.Context, name string) (_ *schema.Agen
 	if r.agentStore == nil {
 		return nil, errNoAgentStore
 	}
+	r.agentsMu.Lock()
+	defer r.agentsMu.Unlock()
 	agent, err := r.agentStore.Get(ctx, name)
 	if err != nil {
 		return nil, err
@@ -282,7 +287,11 @@ func (r *Registry) RunAgent(ctx context.Context, name string, req schema.RunAgen
 	}
 
 	// What it did, and its reply
-	reply, err := agentReply(response.Messages, len(bytes.TrimSpace(meta.Schema)) > 0)
+	replySchema, err := meta.JSONSchema()
+	if err != nil {
+		return nil, err
+	}
+	reply, err := agentReply(response.Messages, replySchema != nil)
 	if err != nil {
 		return nil, err
 	}
@@ -291,6 +300,25 @@ func (r *Registry) RunAgent(ctx context.Context, name string, req schema.RunAgen
 
 ///////////////////////////////////////////////////////////////////////////////
 // PRIVATE FUNCTIONS
+
+// agentFinished returns nil when the agent's reply, which is the last of the
+// messages, is complete, or an error, which says how it stopped, when it
+// isn't, such as when it was cut short, or the agent loop stopped it
+func agentFinished(name string, messages []providerschema.Message) error {
+	if len(messages) == 0 {
+		return llm.ErrInternalServerError.Withf("agent %q didn't reply", name)
+	}
+	switch result := messages[len(messages)-1].Result; result {
+	case "", providerschema.ResultStop:
+		return nil
+	case providerschema.ResultMaxTokens:
+		return llm.ErrMaxTokens.Withf("agent %q didn't finish its reply", name)
+	case providerschema.ResultBlocked:
+		return llm.ErrRefusal.Withf("agent %q's reply was blocked", name)
+	default:
+		return llm.ErrInternalServerError.Withf("agent %q didn't finish its reply, as it stopped with %s", name, result)
+	}
+}
 
 // agentReply returns the agent's reply, which is the last of the messages,
 // as JSON: what it replied, when it has a schema, and the reply is complete
@@ -378,6 +406,8 @@ func (r *Registry) loadAgents(ctx context.Context) error {
 	if r.agents == nil {
 		return nil
 	}
+	r.agentsMu.Lock()
+	defer r.agentsMu.Unlock()
 	for offset := uint(0); ; {
 		list, err := r.agentStore.List(ctx, schema.AgentListRequest{Offset: offset})
 		if err != nil {

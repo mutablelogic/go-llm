@@ -34,6 +34,11 @@ type Registry struct {
 	statuses  statuses
 	agents    *agentNamespace
 
+	// agentsMu is held to change an agent, in its store, and its tool, so
+	// the tools are changed in the order the agents are, as are the agents
+	// which are loaded, when the registry runs
+	agentsMu sync.Mutex
+
 	// lifecycle is held to delete a session, and, shared, to change its
 	// status, so a status isn't set as, or after, it's deleted
 	lifecycle sync.RWMutex

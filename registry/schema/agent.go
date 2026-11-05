@@ -3,7 +3,9 @@ package schema
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"io"
 	"net/url"
 	"slices"
 	"strconv"
@@ -357,6 +359,8 @@ func (p PromptMeta) input(input json.RawMessage) (map[string]any, error) {
 	var value map[string]any
 	if err := decoder.Decode(&value); err != nil {
 		return nil, llm.ErrBadParameter.Withf("invalid input, which must be an object: %v", err)
+	} else if _, err := decoder.Token(); !errors.Is(err, io.EOF) {
+		return nil, llm.ErrBadParameter.With("invalid input, which must be one object, with nothing after it")
 	}
 	schema, err := p.InputSchema()
 	if err != nil {

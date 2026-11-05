@@ -187,11 +187,14 @@ func (t *agentTool) OutputSchema() *jsonschema.Schema {
 
 // Run runs the agent, with the input, from the session of the model which
 // called it, when there's one, and returns its reply, which is its text, or
-// what it replied, when it has a schema
+// what it replied, when it has a schema, or an error, which says how it
+// stopped, when its reply isn't complete
 func (t *agentTool) Run(ctx context.Context, input json.RawMessage) (any, error) {
 	req := schema.RunAgentRequest{Input: input, Session: toolkit.SessionFromContext(ctx).ID()}
 	response, err := t.registry.RunAgent(ctx, t.agent.Name, req, nil)
 	if err != nil {
+		return nil, err
+	} else if err := agentFinished(t.agent.Name, response.Messages); err != nil {
 		return nil, err
 	}
 	return response.Reply, nil

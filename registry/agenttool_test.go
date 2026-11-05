@@ -3,6 +3,8 @@ package registry_test
 import (
 	"context"
 	"encoding/json"
+	"fmt"
+	"sync"
 	"testing"
 	"time"
 	"uuid"
@@ -119,6 +121,35 @@ func Test_AgentTools(t *testing.T) {
 		require.NoError(t, <-running)
 	})
 
+	t.Run("Concurrent", func(t *testing.T) {
+		// Agents which are changed at once end as their tools, as they're
+		// stored, and one which is deleted at the end isn't a tool
+		r, tk, _ := newRegistry(t, test.NewAgentStore())
+		_, err := r.CreateAgent(ctx, segment)
+		require.NoError(t, err)
+		var wg sync.WaitGroup
+		for i := range 20 {
+			wg.Go(func() {
+				_, err := r.UpdateAgent(ctx, "segment", schema.AgentMeta{PromptMeta: schema.PromptMeta{Description: types.Ptr(fmt.Sprint("Description ", i))}})
+				assert.NoError(t, err)
+			})
+			wg.Go(func() {
+				name := fmt.Sprint("other", i%3)
+				if _, err := r.CreateAgent(ctx, schema.AgentMeta{PromptMeta: schema.PromptMeta{Name: name}}); err == nil {
+					_, err = r.DeleteAgent(ctx, name)
+					assert.NoError(t, err)
+				}
+			})
+		}
+		wg.Wait()
+		agent, err := r.GetAgent(ctx, "segment")
+		require.NoError(t, err)
+		tool, err := tk.GetTool(ctx, "agent:segment")
+		require.NoError(t, err)
+		assert.Equal(t, types.Value(agent.Description), tool.Description)
+		assert.Equal(t, []string{"agent:segment"}, tools(t, tk))
+	})
+
 	t.Run("NoToolkit", func(t *testing.T) {
 		// Without a toolkit, agents aren't tools
 		r, err := registry.New(registry.WithAgentStore(test.NewAgentStore()))
@@ -198,6 +229,33 @@ func Test_RunAgent(t *testing.T) {
 		response, err := r.RunAgent(ctx, "sections", schema.RunAgentRequest{}, nil)
 		require.NoError(t, err)
 		assert.JSONEq(t, `{"sections":[]}`, string(response.Reply))
+	})
+
+	t.Run("NullSchema", func(t *testing.T) {
+		// An agent whose schema is null replies with text, as a JSON string
+		r, _, _ := newRegistry(t, text("42"))
+		_, err := r.CreateAgent(ctx, schema.AgentMeta{
+			PromptMeta:    schema.PromptMeta{Name: "answer", Prompt: types.Ptr("Answer")},
+			GeneratorMeta: schema.GeneratorMeta{Model: types.Ptr("model"), Schema: json.RawMessage(`null`)},
+		})
+		require.NoError(t, err)
+		response, err := r.RunAgent(ctx, "answer", schema.RunAgentRequest{}, nil)
+		require.NoError(t, err)
+		assert.Equal(t, `"42"`, string(response.Reply))
+	})
+
+	t.Run("Unfinished", func(t *testing.T) {
+		// An agent, as a tool, whose reply is cut short, is the tool's error
+		truncated := text("Partly")
+		truncated.Result = providerschema.ResultMaxTokens
+		r, _, _ := newRegistry(t, truncated)
+		_, err := r.CreateAgent(ctx, schema.AgentMeta{
+			PromptMeta:    schema.PromptMeta{Name: "long", Prompt: types.Ptr("Write a lot")},
+			GeneratorMeta: schema.GeneratorMeta{Model: types.Ptr("model")},
+		})
+		require.NoError(t, err)
+		_, err = r.Toolkit().CallTool(ctx, "agent:long", nil)
+		assert.ErrorIs(t, err, llm.ErrMaxTokens)
 	})
 
 	t.Run("Errors", func(t *testing.T) {
