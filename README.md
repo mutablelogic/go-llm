@@ -140,12 +140,13 @@ docker compose -f docker/compose.yaml --profile ollama up -d
 
 ### 2. Install the command-line tool
 
-The command-line tool, without the server, is built with the `client` tag, with Go, or from a clone of the repository, into `build/llm`:
+The command-line tool, without the server, is built with the `client` tag. Install it with Go:
 
 ```bash
 go install -tags client github.com/mutablelogic/go-llm/cmd/llm@latest
-make client
 ```
+
+Or, in a clone of the repository, run `make client`, which builds it into `build/llm`.
 
 It connects to the server at `localhost:8084`, or the one at `--http.addr`, or `LLM_ADDR`, such as `LLM_ADDR=nas.local:8084`.
 
