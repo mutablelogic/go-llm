@@ -46,6 +46,25 @@ func (self *Toolkit) ListTools(ctx context.Context, req schema.ToolListRequest) 
 	return &schema.ToolList{ToolListRequest: req, Count: uint64(len(all)), Body: all}, nil
 }
 
+// ListNamespaces returns the namespaces in the toolkit, in order of name,
+// with their descriptions, and how many tools each has, and their number
+func (self *Toolkit) ListNamespaces(ctx context.Context) (_ *schema.NamespaceList, err error) {
+	_, endSpan := otel.StartSpan(self.tracer, ctx, "llm.toolkit.ListNamespaces")
+	defer func() { endSpan(err) }()
+
+	self.mu.RLock()
+	defer self.mu.RUnlock()
+	tools := make(map[string]uint64, len(self.namespaces))
+	for _, entry := range self.tools {
+		tools[entry.namespace]++
+	}
+	all := make([]*schema.Namespace, 0, len(self.namespaces))
+	for _, name := range slices.Sorted(maps.Keys(self.namespaces)) {
+		all = append(all, &schema.Namespace{Name: name, Description: self.namespaces[name].Description(), Tools: tools[name]})
+	}
+	return &schema.NamespaceList{Count: uint64(len(all)), Body: all}, nil
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 // PRIVATE METHODS
 

@@ -53,6 +53,11 @@ func (namespace) Name() string {
 
 // SystemPrompt returns no system prompt, as the tools' descriptions say how
 // to use them
+// Description returns what the namespace's tools are for
+func (namespace) Description() string {
+	return "Look at, and control, the devices of a Home Assistant smart home"
+}
+
 func (namespace) SystemPrompt() string {
 	return ""
 }

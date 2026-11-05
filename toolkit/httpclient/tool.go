@@ -32,6 +32,16 @@ func (c *Client) ListTools(ctx context.Context, req schema.ToolListRequest) (*sc
 	return types.Ptr(response), nil
 }
 
+// ListNamespaces returns the namespaces, in order of name, with their
+// descriptions, and how many tools each has
+func (c *Client) ListNamespaces(ctx context.Context) (*schema.NamespaceList, error) {
+	var response schema.NamespaceList
+	if err := c.DoWithContext(ctx, client.MethodGet, &response, client.OptPath("llm", "namespace")); err != nil {
+		return nil, err
+	}
+	return types.Ptr(response), nil
+}
+
 // GetTool returns the tool with the name, which is its canonical name, such
 // as "weatherapi:current", or its name without a namespace, when only one
 // namespace has a tool with the name

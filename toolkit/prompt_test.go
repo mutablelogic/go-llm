@@ -115,6 +115,8 @@ func (n countingNamespace) SystemPrompt() string {
 }
 
 // Notify does nothing, as the namespace's tools don't change
+func (countingNamespace) Description() string { return "" }
+
 func (countingNamespace) Notify(func(eventschema.EventAction, string)) {}
 
 func Test_SystemPromptsReadOnce(t *testing.T) {

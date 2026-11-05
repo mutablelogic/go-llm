@@ -4,6 +4,10 @@
 
 Tools are functions which models can call, such as getting the weather. Each tool is in a namespace, such as `weatherapi`, and its canonical name is the namespace and the tool's name separated by a colon, such as `weatherapi:current`. The server's tools are set when it starts, so they can't be added or removed through the API.
 
+### GET /llm/namespace
+
+List the namespaces, in order of name, with each namespace's `description`, which says what its tools are for, such as for a person choosing them, when it has one, and how many `tools` it has. `count` is the number of namespaces.
+
 ### GET /llm/tool
 
 List the tools, in order of canonical name, with each tool's description, and the JSON schemas of its input and output. The `namespace` parameter returns only the tools in that namespace, such as `weatherapi`. `count` is the number of tools. Returns 400 if a parameter is invalid, such as a `namespace` which isn't an identifier.
