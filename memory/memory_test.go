@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"strings"
 	"testing"
 	"time"
 	"uuid"
@@ -313,4 +314,39 @@ func Test_Tracing(t *testing.T) {
 	assert.Equal(t, "memory.SetDetail", spans[1].Name())
 	assert.Contains(t, spans[1].Attributes(), attribute.String("arg.field", "location"))
 	assert.Equal(t, "Error", spans[2].Status().Code.String())
+}
+
+func Test_SystemPromptForTools(t *testing.T) {
+	// The prompt says only what the tools which are selected can do
+	m := newMemory(t, time.Date(2026, 11, 5, 9, 30, 0, 0, time.UTC))
+	tk, err := toolkit.New(t.Context())
+	require.NoError(t, err)
+	require.NoError(t, tk.Add(m))
+	prompt := func(names ...string) string {
+		prompts, err := tk.SystemPrompts(t.Context(), names...)
+		require.NoError(t, err)
+		require.Len(t, prompts, 1)
+		return prompts[0]
+	}
+	asks := "Before anything else, ask the person what they'd like to call you."
+	details := "rather than memories."
+
+	// Every tool
+	for _, names := range [][]string{{"memory:*"}, {"*"}, {"memory:set_detail", "memory:memories"}} {
+		all := prompt(names...)
+		assert.Contains(t, all, asks, names)
+		assert.Contains(t, all, memory.MemoriesPrompt, names)
+	}
+
+	// Only the details, without memories
+	only := prompt("memory:set_detail")
+	assert.Contains(t, only, asks)
+	assert.NotContains(t, only, "# Memory")
+
+	// Only memories, without asking for details, or saying they're set
+	only = prompt("memory:memories")
+	assert.NotContains(t, only, asks)
+	assert.Contains(t, only, "# Memory")
+	assert.NotContains(t, only, details)
+	assert.True(t, strings.HasPrefix(only, "The current date and time is "))
 }

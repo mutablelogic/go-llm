@@ -64,11 +64,11 @@ func Test_MemoryStoreMemories(t *testing.T) {
 	require.NoError(t, err)
 
 	// A memory is a file of Markdown, with its front matter
-	_, _, err = m.Remember(ctx, schema.MemoryMeta{Key: "kitchen_lights", Description: "The kitchen's lights", Body: "- light.kitchen_main\n- light.kitchen_counter"}, 0)
+	_, _, err = m.Remember(ctx, schema.MemoryMeta{Key: "kitchen_lights", Description: "The kitchen's lights", Body: "- light.kitchen_main\n- light.kitchen_counter"}, "")
 	require.NoError(t, err)
 	data, err := os.ReadFile(filepath.Join(dir, "memory-kitchen_lights.md"))
 	require.NoError(t, err)
-	assert.Regexp(t, `^---\ndescription: The kitchen's lights\nversion: 1\ncreated: .+\n---\n\n- light.kitchen_main\n- light.kitchen_counter\n$`, string(data))
+	assert.Regexp(t, `^---\ndescription: The kitchen's lights\ncreated: .+\n---\n\n- light.kitchen_main\n- light.kitchen_counter\n$`, string(data))
 	info, err := os.Stat(filepath.Join(dir, "memory-kitchen_lights.md"))
 	require.NoError(t, err)
 	assert.Equal(t, os.FileMode(0o600), info.Mode().Perm())
@@ -78,7 +78,7 @@ func Test_MemoryStoreMemories(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "- light.kitchen_main\n- light.kitchen_counter", got.Body)
 	assert.False(t, got.Created.IsZero())
-	assert.Equal(t, uint64(1), got.Version)
+	assert.Empty(t, got.Version, "the store has no version, which the memory sets")
 
 	// One edited by hand is read, and one which isn't valid, or isn't a
 	// memory's, is left out of the list
@@ -88,7 +88,16 @@ func Test_MemoryStoreMemories(t *testing.T) {
 	units, err := store.GetMemory(ctx, "units")
 	require.NoError(t, err)
 	assert.Equal(t, "Metric", units.Body)
-	assert.Equal(t, uint64(1), units.Version, "a memory without a version is at version one")
+
+	// Edited by hand, so its version, as the memory says, is of what it is
+	before, err := m.GetMemory(ctx, "units")
+	require.NoError(t, err)
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "memory-units.md"), []byte("---\ndescription: Units\nversion: 7\n---\nImperial\n"), 0o600))
+	after, err := m.GetMemory(ctx, "units")
+	require.NoError(t, err)
+	assert.NotEqual(t, before.Version, after.Version)
+	_, _, err = m.Remember(ctx, schema.MemoryMeta{Key: "units", Description: "Units", Body: "Metric, again"}, before.Version)
+	assert.ErrorIs(t, err, llm.ErrConflict, "a change made before the edit")
 	_, err = store.GetMemory(ctx, "broken")
 	assert.ErrorIs(t, err, llm.ErrInternalServerError)
 	list, err := m.ListMemories(ctx, schema.MemoryListRequest{})

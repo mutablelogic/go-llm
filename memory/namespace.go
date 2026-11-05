@@ -32,12 +32,20 @@ func (*Memory) Name() string {
 // the model asks for them, and remembers them. The details which are
 // declined aren't in it, so they aren't asked for.
 func (m *Memory) SystemPrompt() string {
+	return m.SystemPromptFor(nil)
+}
+
+// SystemPromptFor returns the system prompt, when the model can call the
+// tools, or all of them, when they're nil: the time, and the details, and,
+// with the set_detail tool, those which aren't known, and how to remember
+// them, and, with the memories tool, how to search, keep and use memories
+func (m *Memory) SystemPromptFor(tools []string) string {
 	details := m.Details()
 	now := m.now()
 	if zone := details.Zone(); zone != nil {
 		now = now.In(zone)
 	}
-	return systemPrompt(details, now)
+	return systemPrompt(details, now, tools == nil || hasTool(tools, "set_detail"), tools == nil || hasTool(tools, "memories"))
 }
 
 // Notify does nothing, as the memory's tools don't change
@@ -55,7 +63,7 @@ func (m *Memory) Tools() []llm.Tool {
 // which aren't: the assistant's name, which the model asks for first, the
 // person's, which it may ask for, and the rest, which it learns from the
 // conversation, and how to remember them
-func systemPrompt(details schema.Details, now time.Time) string {
+func systemPrompt(details schema.Details, now time.Time, setDetail, memories bool) string {
 	sentences := []string{currentTime(now)}
 	if name, ok := details.Value(schema.FieldAssistant); ok {
 		sentences = append(sentences, fmt.Sprintf("Your name is %s.", name))
@@ -73,6 +81,12 @@ func systemPrompt(details schema.Details, now time.Time) string {
 	}
 	if language, ok := details.Value(schema.FieldLanguage); ok {
 		sentences = append(sentences, fmt.Sprintf("%s %s %s.", person, verb(person, "speaks", "speak"), language))
+	}
+
+	// Without the set_detail tool, what isn't known can't be remembered, so
+	// it isn't asked for
+	if !setDetail {
+		return withMemories(strings.Join(sentences, " "), setDetail, memories)
 	}
 
 	// What isn't known: the assistant asks for its name, before anything
@@ -100,8 +114,37 @@ func systemPrompt(details schema.Details, now time.Time) string {
 	if unknown {
 		sentences = append(sentences, "Remember what you learn, or that the person would rather not say, with the set_detail tool, in the memory namespace.")
 	}
-	return strings.Join(sentences, " ") + "\n\n" + memoriesPrompt
+	return withMemories(strings.Join(sentences, " "), setDetail, memories)
 }
+
+// withMemories returns the prompt, followed by how to search, keep and use
+// memories, with the memories tool, without saying details are set with the
+// set_detail tool, without it
+func withMemories(prompt string, setDetail, memories bool) string {
+	if !memories {
+		return prompt
+	}
+	guide := memoriesPrompt
+	if !setDetail {
+		guide = strings.Replace(guide, detailsLine+"\n", "", 1)
+	}
+	return prompt + "\n\n" + guide
+}
+
+// hasTool returns whether the tools have the tool, by its name, or its name
+// for a model, such as memory__memories
+func hasTool(tools []string, name string) bool {
+	for _, tool := range tools {
+		if tool == name || strings.HasSuffix(tool, "__"+name) {
+			return true
+		}
+	}
+	return false
+}
+
+// detailsLine is the line of memoriesPrompt which says the details aren't
+// memories, which is left out without the set_detail tool
+const detailsLine = "- Their name, where they are, their time zone and their language are details, which you set with the set_detail tool, rather than memories."
 
 // memoriesPrompt is how the model uses its memories, which it searches, as
 // they aren't in the system prompt
@@ -135,7 +178,7 @@ One mention of a taste is "mentioned liking X once", not "loves X".
 ## How to keep it
 
 - One memory per subject, under a key which names the subject, not the conversation, such as ` + "`sister_cath`, `kitchen_lights`, `spain_trip` or `preferences`" + `. Before you make a new key, search to see whether one already covers it.
-- Their name, where they are, their time zone and their language are details, which you set with the set_detail tool, rather than memories.
+` + detailsLine + `
 - Remembering replaces everything under the key. To change a memory, recall it first, then remember the whole updated text, with the old lines you're keeping and your change, and the version which recall gave you. Remember a new memory without a version. When the version is out of date, as the memory was changed elsewhere, recall it again, and make your change again.
 - The description is one line saying what's in the memory, naming the people, places and projects it mentions, so a search can find it.
 - Write the body as short Markdown bullets, one fact per line. When something changes, update the line, and keep the history if it's useful ("works on infra, previously search").

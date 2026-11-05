@@ -24,10 +24,11 @@ func Test_Memories(t *testing.T) {
 	// Remembered, which is created, and then replaced, at its version
 	var got schema.Memory
 	assert.Equal(t, http.StatusCreated, server.JSON(t, http.MethodPut, "memory/memory/family", map[string]any{"description": "The person's family", "body": "- Sister Cathy\n- Brother Tom"}, &got))
-	assert.Equal(t, uint64(1), got.Version)
-	assert.Equal(t, http.StatusOK, server.JSON(t, http.MethodPut, "memory/memory/family", map[string]any{"description": "The person's family", "body": "- Sister Cathy, in Tokyo\n- Brother Tom", "version": 1}, &got))
-	assert.Equal(t, uint64(2), got.Version)
-	assert.Equal(t, http.StatusConflict, server.JSON(t, http.MethodPut, "memory/memory/family", map[string]any{"description": "x", "body": "x", "version": 1}, nil))
+	v1 := got.Version
+	assert.Len(t, v1, 12)
+	assert.Equal(t, http.StatusOK, server.JSON(t, http.MethodPut, "memory/memory/family", map[string]any{"description": "The person's family", "body": "- Sister Cathy, in Tokyo\n- Brother Tom", "version": v1}, &got))
+	assert.NotEqual(t, v1, got.Version)
+	assert.Equal(t, http.StatusConflict, server.JSON(t, http.MethodPut, "memory/memory/family", map[string]any{"description": "x", "body": "x", "version": v1}, nil))
 	assert.Equal(t, http.StatusConflict, server.JSON(t, http.MethodPut, "memory/memory/family", map[string]any{"description": "x", "body": "x"}, nil))
 	assert.Equal(t, http.StatusCreated, server.JSON(t, http.MethodPut, "memory/memory/units", map[string]any{"description": "Units", "body": "Metric"}, nil))
 

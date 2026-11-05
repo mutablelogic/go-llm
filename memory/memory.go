@@ -165,6 +165,9 @@ func (m *Memory) ListMemories(ctx context.Context, req schema.MemoryListRequest)
 	if err != nil {
 		return schema.MemoryList{}, err
 	}
+	for i := range memories {
+		memories[i].Version = memories[i].Hash()
+	}
 	return req.Page(memories), nil
 }
 
@@ -175,20 +178,20 @@ func (m *Memory) GetMemory(ctx context.Context, key string) (_ schema.Memory, er
 		attribute.String("arg.key", key),
 	)
 	defer func() { endSpan(err) }()
-	return m.store.GetMemory(ctx, key)
+	return m.getMemory(ctx, key)
 }
 
-// Remember creates the memory, when the version is zero, or replaces the
+// Remember creates the memory, when the version is empty, or replaces the
 // memory with its key, when the version is its version, and it's changed,
 // publishes the change, and returns the memory, and whether it was created.
 // Returns ErrBadParameter when it isn't valid, ErrConflict when there's a
 // memory with its key, and the version isn't its version, as it was changed
-// since it was seen, or there's none, and the version isn't zero, and the
+// since it was seen, or there's none, and the version isn't empty, and the
 // store's errors.
-func (m *Memory) Remember(ctx context.Context, meta schema.MemoryMeta, version uint64) (_ schema.Memory, created bool, err error) {
+func (m *Memory) Remember(ctx context.Context, meta schema.MemoryMeta, version string) (_ schema.Memory, created bool, err error) {
 	ctx, endSpan := otel.StartSpan(m.tracer, ctx, "memory.Remember",
 		attribute.String("arg.key", meta.Key),
-		attribute.Int64("arg.version", int64(version)),
+		attribute.String("arg.version", version),
 	)
 	defer func() { endSpan(err) }()
 
@@ -200,21 +203,22 @@ func (m *Memory) Remember(ctx context.Context, meta schema.MemoryMeta, version u
 	defer m.mu.Unlock()
 
 	// It's created, or replaced, at its version, when it's changed
-	memory, err := m.store.GetMemory(ctx, meta.Key)
+	memory, err := m.getMemory(ctx, meta.Key)
 	switch {
-	case errors.Is(err, llm.ErrNotFound) && version != 0:
-		return schema.Memory{}, false, llm.ErrConflict.Withf("there's no memory %q at version %d, so remember it without a version, to create it", meta.Key, version)
+	case errors.Is(err, llm.ErrNotFound) && version != "":
+		return schema.Memory{}, false, llm.ErrConflict.Withf("there's no memory %q at version %q, so remember it without a version, to create it", meta.Key, version)
 	case errors.Is(err, llm.ErrNotFound):
-		memory, created = schema.Memory{MemoryMeta: meta, Version: 1, Created: m.now()}, true
+		memory, created = schema.Memory{MemoryMeta: meta, Created: m.now()}, true
 	case err != nil:
 		return schema.Memory{}, false, err
 	case version != memory.Version:
-		return schema.Memory{}, false, llm.ErrConflict.Withf("memory %q is at version %d, not %d, so recall it, and remember all of it again, with its version", meta.Key, memory.Version, version)
+		return schema.Memory{}, false, llm.ErrConflict.Withf("memory %q is at version %q, not %q, so recall it, and remember all of it again, with its version", meta.Key, memory.Version, version)
 	case memory.MemoryMeta == meta:
 		return memory, false, nil
 	default:
-		memory.MemoryMeta, memory.Version, memory.Modified = meta, memory.Version+1, m.now()
+		memory.MemoryMeta, memory.Modified = meta, m.now()
 	}
+	memory.Version = memory.Hash()
 	if err := m.store.PutMemory(ctx, memory); err != nil {
 		return schema.Memory{}, false, err
 	}
@@ -236,7 +240,7 @@ func (m *Memory) Forget(ctx context.Context, key string) (_ schema.Memory, err e
 
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	memory, err := m.store.GetMemory(ctx, key)
+	memory, err := m.getMemory(ctx, key)
 	if err != nil {
 		return schema.Memory{}, err
 	} else if err := m.store.DeleteMemory(ctx, key); err != nil {
@@ -259,7 +263,7 @@ func (m *Memory) ForgetLine(ctx context.Context, key, line string) (_ schema.Mem
 
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	memory, err := m.store.GetMemory(ctx, key)
+	memory, err := m.getMemory(ctx, key)
 	if err != nil {
 		return schema.Memory{}, err
 	}
@@ -274,7 +278,8 @@ func (m *Memory) ForgetLine(ctx context.Context, key, line string) (_ schema.Mem
 		m.publishMemory(eventschema.EventDelete, memory)
 		return memory, nil
 	}
-	memory.Body, memory.Version, memory.Modified = body, memory.Version+1, m.now()
+	memory.Body, memory.Modified = body, m.now()
+	memory.Version = memory.Hash()
 	if err := m.store.PutMemory(ctx, memory); err != nil {
 		return schema.Memory{}, err
 	}
@@ -284,6 +289,18 @@ func (m *Memory) ForgetLine(ctx context.Context, key, line string) (_ schema.Mem
 
 ///////////////////////////////////////////////////////////////////////////////
 // PRIVATE METHODS
+
+// getMemory returns the memory with the key, from the store, with its
+// version, which is a hash of what it is, so it's never out of date, or
+// ErrNotFound when there's none
+func (m *Memory) getMemory(ctx context.Context, key string) (schema.Memory, error) {
+	memory, err := m.store.GetMemory(ctx, key)
+	if err != nil {
+		return schema.Memory{}, err
+	}
+	memory.Version = memory.Hash()
+	return memory, nil
+}
 
 // publishMemory publishes the change to the memory, when the memory has a
 // broadcaster, whose row is its key, and whose data is its version, unless

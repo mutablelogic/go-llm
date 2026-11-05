@@ -1,6 +1,8 @@
 package schema
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"net/url"
 	"strconv"
 	"strings"
@@ -28,7 +30,7 @@ type MemoryMeta struct {
 // remembered, and last changed
 type Memory struct {
 	MemoryMeta
-	Version  uint64    `json:"version" readonly:"" help:"Version of the memory, which is one more each time it's changed, and which it's replaced at"`
+	Version  string    `json:"version" readonly:"" help:"Version of the memory, which is a hash of its description and body, so it changes when either does, and which it's replaced at" example:"3f9a1c0b7d2e"`
 	Created  time.Time `json:"created,omitzero" readonly:"" help:"When it was remembered"`
 	Modified time.Time `json:"modified,omitzero" readonly:"" help:"When it was last changed"`
 }
@@ -36,7 +38,7 @@ type Memory struct {
 // MemoryEvent is the data of an event of a memory, which was created, or
 // updated: its version
 type MemoryEvent struct {
-	Version uint64 `json:"version" help:"Version of the memory, as it is now"`
+	Version string `json:"version" help:"Version of the memory, as it is now"`
 }
 
 // MemoryRequest is a memory to remember, under the key its path has: its
@@ -45,7 +47,7 @@ type MemoryEvent struct {
 type MemoryRequest struct {
 	Description string `json:"description" help:"A line which describes what's remembered" example:"Which lights are in the kitchen"`
 	Body        string `json:"body" help:"What's remembered, as Markdown, which replaces all of what was remembered under the key"`
-	Version     uint64 `json:"version,omitempty" help:"Version of the memory which it replaces, or none, to remember a new memory" optional:""`
+	Version     string `json:"version,omitempty" help:"Version of the memory which it replaces, or none, to remember a new memory" optional:""`
 }
 
 // MemoryForgetRequest is what's forgotten of a memory: a line of it, or all
@@ -97,6 +99,15 @@ func (m MemoryMeta) Validate() (MemoryMeta, error) {
 		return MemoryMeta{}, llm.ErrBadParameter.Withf("memory %q has no body", m.Key)
 	}
 	return m, nil
+}
+
+// Hash returns the version of what's remembered, which is a hash of its
+// description and body, so it changes when either does, however they're
+// changed, such as by hand, and is never the version of a memory with other
+// content
+func (m MemoryMeta) Hash() string {
+	sum := sha256.Sum256([]byte(m.Description + "\n" + m.Body))
+	return hex.EncodeToString(sum[:6])
 }
 
 // Matches returns whether the memory has each word of the query, in its

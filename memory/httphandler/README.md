@@ -22,9 +22,9 @@ Forget the detail of the field, so it isn't known. Returns the details. Returns 
 
 ## Memory Operations
 
-Memories are what the assistant remembers, beyond the details, which every session and agent shares, and searches with the `memories` tool of the `memory` namespace. Each memory has a `key`, which is an identifier, such as `kitchen_lights`, a one-line `description`, which says what's in it, a `body`, as Markdown, and a `version`, which is one when it's remembered, and one more each time it's changed, so a change is made to the memory as it was last seen.
+Memories are what the assistant remembers, beyond the details, which every session and agent shares, and searches with the `memories` tool of the `memory` namespace. Each memory has a `key`, which is an identifier, such as `kitchen_lights`, a one-line `description`, which says what's in it, a `body`, as Markdown, and a `version`, which is a hash of its description and body, so it changes whenever either does, including when its file is edited by hand, and is never that of a memory with other content, such as one which was forgotten, and remembered again, so a change is made to the memory as it was last seen.
 
-When a memory changes, an event is published, whose `schema` is `memory`, whose `table` is `memory`, and whose `row` is its key: it's created when it's remembered, updated when it's changed, including when a line of it is forgotten, and deleted when it's forgotten, or nothing is left of it. Unless it was deleted, its `data` is its new `version`, such as `{"version":2}`, so a client which has that version has seen the change.
+When a memory changes, an event is published, whose `schema` is `memory`, whose `table` is `memory`, and whose `row` is its key: it's created when it's remembered, updated when it's changed, including when a line of it is forgotten, and deleted when it's forgotten, or nothing is left of it. Unless it was deleted, its `data` is its new `version`, such as `{"version":"3f9a1c0b7d2e"}`, so a client which has that version has seen the change.
 
 ### GET /memory/memory
 

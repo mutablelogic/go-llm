@@ -36,37 +36,40 @@ func Test_Memories(t *testing.T) {
 
 	// Remembered, as it's created
 	lights := schema.MemoryMeta{Key: "kitchen_lights", Description: "The kitchen's lights", Body: "light.kitchen_main and light.kitchen_counter"}
-	got, created, err := m.Remember(ctx, lights, 0)
+	got, created, err := m.Remember(ctx, lights, "")
 	require.NoError(t, err)
 	assert.True(t, created)
-	assert.Equal(t, uint64(1), got.Version)
+	assert.Equal(t, lights.Hash(), got.Version)
+	assert.Len(t, got.Version, 12)
+	v1 := got.Version
 	assert.Equal(t, clock, got.Created)
 
 	// The same again, at its version, changes nothing, and a change, at its
 	// version, replaces it
 	clock = clock.Add(time.Hour)
-	got, created, err = m.Remember(ctx, schema.MemoryMeta{Key: " kitchen_lights ", Description: "The kitchen's lights ", Body: lights.Body + "\n"}, 1)
+	got, created, err = m.Remember(ctx, schema.MemoryMeta{Key: " kitchen_lights ", Description: "The kitchen's lights ", Body: lights.Body + "\n"}, v1)
 	require.NoError(t, err)
 	assert.False(t, created)
-	assert.Equal(t, uint64(1), got.Version)
+	assert.Equal(t, v1, got.Version)
 	lights.Body = "light.kitchen_main"
-	got, created, err = m.Remember(ctx, lights, 1)
+	got, created, err = m.Remember(ctx, lights, v1)
 	require.NoError(t, err)
 	assert.False(t, created)
-	assert.Equal(t, uint64(2), got.Version)
+	assert.NotEqual(t, v1, got.Version)
+	v2 := got.Version
 	assert.Equal(t, clock, got.Modified)
 
 	// Not at its version, which is a conflict, nor created, when it exists,
 	// nor replaced, when it doesn't
-	for _, version := range []uint64{0, 1, 3} {
+	for _, version := range []string{"", v1, "nonsense"} {
 		_, _, err = m.Remember(ctx, lights, version)
 		assert.ErrorIs(t, err, llm.ErrConflict, version)
 	}
-	_, _, err = m.Remember(ctx, schema.MemoryMeta{Key: "units", Description: "Units", Body: "Metric"}, 1)
+	_, _, err = m.Remember(ctx, schema.MemoryMeta{Key: "units", Description: "Units", Body: "Metric"}, v1)
 	assert.ErrorIs(t, err, llm.ErrConflict)
 
 	clock = clock.Add(time.Hour)
-	_, _, err = m.Remember(ctx, schema.MemoryMeta{Key: "units", Description: "Units the person prefers", Body: "Metric, and Celsius"}, 0)
+	_, _, err = m.Remember(ctx, schema.MemoryMeta{Key: "units", Description: "Units the person prefers", Body: "Metric, and Celsius"}, "")
 	require.NoError(t, err)
 
 	// Invalid memories
@@ -76,7 +79,7 @@ func Test_Memories(t *testing.T) {
 		{Key: "x", Description: "two\nlines", Body: "x"},
 		{Key: "x", Description: "x"},
 	} {
-		_, _, err := m.Remember(ctx, meta, 0)
+		_, _, err := m.Remember(ctx, meta, "")
 		assert.ErrorIs(t, err, llm.ErrBadParameter, meta.Key)
 	}
 
@@ -122,17 +125,33 @@ func Test_Memories(t *testing.T) {
 		return event
 	}
 	assert.Equal(t, []eventschema.Event{
-		event(eventschema.EventCreate, "kitchen_lights", `{"version":1}`),
-		event(eventschema.EventUpdate, "kitchen_lights", `{"version":2}`),
-		event(eventschema.EventCreate, "units", `{"version":1}`),
+		event(eventschema.EventCreate, "kitchen_lights", `{"version":"`+v1+`"}`),
+		event(eventschema.EventUpdate, "kitchen_lights", `{"version":"`+v2+`"}`),
+		event(eventschema.EventCreate, "units", `{"version":"`+schema.MemoryMeta{Description: "Units the person prefers", Body: "Metric, and Celsius"}.Hash()+`"}`),
 		event(eventschema.EventDelete, "units", ""),
 	}, events)
+}
+
+func Test_VersionNotReused(t *testing.T) {
+	// A memory which is forgotten, and remembered again, with other content,
+	// isn't at the version it was, so a change at that version is refused
+	ctx := t.Context()
+	m := newMemory(t, time.Date(2026, 11, 5, 9, 30, 0, 0, time.UTC))
+	first, _, err := m.Remember(ctx, schema.MemoryMeta{Key: "trip", Description: "The trip", Body: "- Spain, in May"}, "")
+	require.NoError(t, err)
+	_, err = m.Forget(ctx, "trip")
+	require.NoError(t, err)
+	second, _, err := m.Remember(ctx, schema.MemoryMeta{Key: "trip", Description: "The trip", Body: "- Portugal, in June"}, "")
+	require.NoError(t, err)
+	assert.NotEqual(t, first.Version, second.Version)
+	_, _, err = m.Remember(ctx, schema.MemoryMeta{Key: "trip", Description: "The trip", Body: "- Spain, in May, by train"}, first.Version)
+	assert.ErrorIs(t, err, llm.ErrConflict)
 }
 
 func Test_ForgetLine(t *testing.T) {
 	ctx := t.Context()
 	m := newMemory(t, time.Date(2026, 11, 5, 9, 30, 0, 0, time.UTC))
-	_, _, err := m.Remember(ctx, schema.MemoryMeta{Key: "family", Description: "The person's family", Body: "- Sister Cath, in Leeds\n- Brother Tom\n- Brother Tom"}, 0)
+	_, _, err := m.Remember(ctx, schema.MemoryMeta{Key: "family", Description: "The person's family", Body: "- Sister Cath, in Leeds\n- Brother Tom\n- Brother Tom"}, "")
 	require.NoError(t, err)
 
 	// A line, with or without its bullet, or the space around it, which is
@@ -140,7 +159,7 @@ func Test_ForgetLine(t *testing.T) {
 	got, err := m.ForgetLine(ctx, "family", "  Brother Tom ")
 	require.NoError(t, err)
 	assert.Equal(t, "- Sister Cath, in Leeds", got.Body)
-	assert.Equal(t, uint64(2), got.Version)
+	assert.Equal(t, got.MemoryMeta.Hash(), got.Version)
 	_, err = m.ForgetLine(ctx, "family", "Brother Tom")
 	assert.ErrorIs(t, err, llm.ErrNotFound)
 	_, err = m.ForgetLine(ctx, "nobody", "x")
@@ -170,18 +189,20 @@ func Test_MemoryTools(t *testing.T) {
 
 	output, err := call(`{"operation":"remember","key":"units","description":"Units the person prefers","body":"- Metric\n- Celsius"}`)
 	require.NoError(t, err)
-	assert.Equal(t, map[string]any{"key": "units", "version": float64(1), "created": true}, output)
+	assert.Equal(t, true, output["created"])
+	v1, _ := output["version"].(string)
+	assert.Len(t, v1, 12)
 
 	// Recalled, with its version, which a change needs
 	output, err = call(`{"operation":"recall","key":"units"}`)
 	require.NoError(t, err)
 	assert.Equal(t, "- Metric\n- Celsius", output["body"])
-	assert.Equal(t, float64(1), output["version"])
+	assert.Equal(t, v1, output["version"])
 	_, err = call(`{"operation":"remember","key":"units","description":"Units the person prefers","body":"- Imperial"}`)
-	assert.ErrorContains(t, err, "is at version 1")
-	output, err = call(`{"operation":"remember","key":"units","description":"Units the person prefers","body":"- Metric\n- Celsius\n- 24-hour clock","version":1}`)
+	assert.ErrorContains(t, err, "is at version")
+	output, err = call(`{"operation":"remember","key":"units","description":"Units the person prefers","body":"- Metric\n- Celsius\n- 24-hour clock","version":"` + v1 + `"}`)
 	require.NoError(t, err)
-	assert.Equal(t, float64(2), output["version"])
+	assert.NotEqual(t, v1, output["version"])
 
 	output, err = call(`{"operation":"search","q":"metric"}`)
 	require.NoError(t, err)
@@ -200,7 +221,7 @@ func Test_MemoryTools(t *testing.T) {
 	assert.Equal(t, "- Metric\n- 24-hour clock", output["body"])
 	output, err = call(`{"operation":"forget","key":"units"}`)
 	require.NoError(t, err)
-	assert.Equal(t, float64(3), output["version"])
+	assert.NotEmpty(t, output["version"])
 
 	// Errors: a memory which isn't there, one without what it needs, and an
 	// operation which isn't one

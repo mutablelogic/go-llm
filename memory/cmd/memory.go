@@ -41,7 +41,7 @@ type MemoryRememberCmd struct {
 	Key         string   `arg:"" name:"key" help:"Key of the memory, such as kitchen_lights."`
 	Body        []string `arg:"" name:"body" optional:"" help:"What's remembered, as Markdown, which can be more than one argument, after --, when it starts with a bullet, such as -- '- Otto', or is read from standard input."`
 	Description string   `name:"description" short:"d" required:"" help:"A line which describes what's remembered."`
-	Version     uint64   `name:"at" help:"Version of the memory it replaces, which memory prints, or none, to remember a new one."`
+	Version     string   `name:"at" help:"Version of the memory it replaces, which memory prints, or none, to remember a new one."`
 }
 
 type MemoryForgetCmd struct {
@@ -135,7 +135,7 @@ func printMemory(memory *schema.Memory, debug bool) error {
 		updated = memory.Modified
 	}
 	fmt.Printf("%s: %s\n", memory.Key, memory.Description)
-	fmt.Printf("Version %d, updated %s\n\n", memory.Version, updated.Local().Format(time.DateTime))
+	fmt.Printf("Version %s, updated %s\n\n", memory.Version, updated.Local().Format(time.DateTime))
 	fmt.Println(memory.Body)
 	return nil
 }

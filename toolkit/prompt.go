@@ -33,18 +33,26 @@ func (self *Toolkit) SystemPrompts(ctx context.Context, names ...string) (_ []st
 		return nil, err
 	}
 
-	// The namespaces of the names, in their order
+	// The namespaces of the names, in their order, and the tools of each
+	// which are named, or all of them, which is nil
 	var namespaces []string
+	tools := make(map[string][]string)
+	all := make(map[string]bool)
 	for _, name := range names {
 		name = strings.TrimSpace(name)
 		if name == "*" {
-			namespaces = append(namespaces, self.namespaceNames()...)
+			for _, namespace := range self.namespaceNames() {
+				namespaces = append(namespaces, namespace)
+				all[namespace] = true
+			}
 		} else if namespace, ok := strings.CutSuffix(name, schema.ToolSeparator+"*"); ok {
 			namespaces = append(namespaces, namespace)
+			all[namespace] = true
 		} else if entry, err := self.lookup(name); err != nil {
 			return nil, err
 		} else {
 			namespaces = append(namespaces, entry.namespace)
+			tools[entry.namespace] = append(tools[entry.namespace], entry.tool.Name())
 		}
 	}
 
@@ -63,7 +71,15 @@ func (self *Toolkit) SystemPrompts(ctx context.Context, names ...string) (_ []st
 		if !exists {
 			continue
 		}
-		if prompt := strings.TrimSpace(ns.SystemPrompt()); prompt != "" && !slices.Contains(result, prompt) {
+		prompt := ns.SystemPrompt()
+		if prompter, ok := ns.(ToolPrompter); ok {
+			if all[namespace] {
+				prompt = prompter.SystemPromptFor(nil)
+			} else {
+				prompt = prompter.SystemPromptFor(tools[namespace])
+			}
+		}
+		if prompt = strings.TrimSpace(prompt); prompt != "" && !slices.Contains(result, prompt) {
 			result = append(result, prompt)
 		}
 	}

@@ -40,7 +40,6 @@ type memoryStore struct {
 // memoryFrontMatter is the front matter of a memory's file
 type memoryFrontMatter struct {
 	Description string    `yaml:"description"`
-	Version     uint64    `yaml:"version,omitempty"`
 	Created     time.Time `yaml:"created"`
 	Modified    time.Time `yaml:"modified,omitempty"`
 }
@@ -237,7 +236,7 @@ func memoryKey(file string) (string, bool) {
 
 // formatMemory returns the memory as Markdown, with its front matter
 func formatMemory(m schema.Memory) ([]byte, error) {
-	front, err := yaml.Marshal(memoryFrontMatter{Description: m.Description, Version: m.Version, Created: m.Created, Modified: m.Modified})
+	front, err := yaml.Marshal(memoryFrontMatter{Description: m.Description, Created: m.Created, Modified: m.Modified})
 	if err != nil {
 		return nil, err
 	}
@@ -265,9 +264,7 @@ func parseMemory(key string, data []byte) (schema.Memory, error) {
 	if err := yaml.Unmarshal(front, &meta); err != nil {
 		return schema.Memory{}, err
 	}
-	// A memory without a version, such as one written by hand, is at version
-	// one
-	m := schema.Memory{MemoryMeta: schema.MemoryMeta{Key: key, Description: meta.Description, Body: string(body)}, Version: max(meta.Version, 1), Created: meta.Created, Modified: meta.Modified}
+	m := schema.Memory{MemoryMeta: schema.MemoryMeta{Key: key, Description: meta.Description, Body: string(body)}, Created: meta.Created, Modified: meta.Modified}
 	valid, err := m.MemoryMeta.Validate()
 	if err != nil {
 		return schema.Memory{}, err

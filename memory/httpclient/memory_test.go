@@ -27,7 +27,7 @@ func Test_ClientMemories(t *testing.T) {
 
 	got, err := c.RememberMemory(ctx, "cats", schema.MemoryRequest{Description: "Cathy and Petra's cats", Body: "- Otto\n- Karl"})
 	require.NoError(t, err)
-	assert.Equal(t, uint64(1), got.Version)
+	assert.Len(t, got.Version, 12)
 	_, err = c.RememberMemory(ctx, "cats", schema.MemoryRequest{Description: "Cats", Body: "- Otto"})
 	assert.Error(t, err, "without its version")
 

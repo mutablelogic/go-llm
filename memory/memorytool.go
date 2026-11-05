@@ -32,7 +32,7 @@ type memoriesInput struct {
 	Key         string `json:"key,omitempty" help:"Key of the memory, which is an identifier, such as kitchen_lights, to remember, recall or forget" optional:""`
 	Description string `json:"description,omitempty" help:"A line which describes what's remembered, to remember" optional:""`
 	Body        string `json:"body,omitempty" help:"What's remembered, as Markdown, to remember, which replaces all of what was remembered under the key" optional:""`
-	Version     uint64 `json:"version,omitempty" help:"Version of the memory, which recall, or search, returns, to remember a change to it, or none, to remember a new memory" optional:""`
+	Version     string `json:"version,omitempty" help:"Version of the memory, which recall, or search, returns, to remember a change to it, or none, to remember a new memory" optional:""`
 	Line        string `json:"line,omitempty" help:"A line of the memory's body, to forget only the line, rather than the whole memory" optional:""`
 	Q           string `json:"q,omitempty" help:"Words which each memory has, to search, or none, for the most recent memories" optional:""`
 	Limit       uint64 `json:"limit,omitempty" help:"Most memories to search for, which is ten when it isn't given" min:"1" max:"100" optional:""`
@@ -43,7 +43,7 @@ type memoryOutput struct {
 	Key         string    `json:"key"`
 	Description string    `json:"description"`
 	Body        string    `json:"body"`
-	Version     uint64    `json:"version"`
+	Version     string    `json:"version"`
 	Updated     time.Time `json:"updated"`
 }
 
@@ -56,7 +56,7 @@ type searchOutput struct {
 // rememberOutput is the memory which is remembered, and whether it's new
 type rememberOutput struct {
 	Key     string `json:"key"`
-	Version uint64 `json:"version"`
+	Version string `json:"version"`
 	Created bool   `json:"created"`
 }
 
