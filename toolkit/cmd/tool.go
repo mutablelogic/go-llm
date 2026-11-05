@@ -22,9 +22,10 @@ import (
 // TYPES
 
 type ToolCommands struct {
-	ToolList ToolListCmd `cmd:"" name:"tools" help:"List the tools and agents which models can call." group:"LLM TOOLS & AGENTS"`
-	ToolGet  ToolGetCmd  `cmd:"" name:"tool" help:"Get a tool or agent by name, with the JSON schema of its input." group:"LLM TOOLS & AGENTS"`
-	ToolCall ToolCallCmd `cmd:"" name:"call" help:"Call a tool or agent, and print its result." group:"LLM TOOLS & AGENTS"`
+	Namespaces NamespaceListCmd `cmd:"" name:"namespaces" help:"List the namespaces of the tools, and what they're for." group:"LLM TOOLS & AGENTS"`
+	ToolList   ToolListCmd      `cmd:"" name:"tools" help:"List the tools and agents which models can call." group:"LLM TOOLS & AGENTS"`
+	ToolGet    ToolGetCmd       `cmd:"" name:"tool" help:"Get a tool or agent by name, with the JSON schema of its input." group:"LLM TOOLS & AGENTS"`
+	ToolCall   ToolCallCmd      `cmd:"" name:"call" help:"Call a tool or agent, and print its result." group:"LLM TOOLS & AGENTS"`
 }
 
 type ToolListCmd struct {
@@ -42,6 +43,27 @@ type ToolCallCmd struct {
 
 ///////////////////////////////////////////////////////////////////////////////
 // PUBLIC METHODS
+
+// NamespaceListCmd lists the namespaces of the tools
+type NamespaceListCmd struct{}
+
+// Run prints the namespaces, with how many tools each has, and their
+// descriptions
+func (cmd *NamespaceListCmd) Run(ctx server.Cmd) error {
+	width := ctx.IsTerm()
+	debug := ctx.IsDebug()
+	return withToolkit(ctx, "llm.NamespaceListCmd", func(ctx context.Context, client *httpclient.Client) error {
+		namespaces, err := client.ListNamespaces(ctx)
+		if err != nil {
+			return err
+		} else if debug {
+			fmt.Println(namespaces)
+			return nil
+		}
+		_, err = tui.TableFor[*schema.Namespace](tui.SetWidth(width)).Write(os.Stdout, namespaces.Body...)
+		return err
+	})
+}
 
 func (cmd *ToolListCmd) Run(ctx server.Cmd) error {
 	// Width of the terminal

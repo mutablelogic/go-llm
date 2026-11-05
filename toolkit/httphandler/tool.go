@@ -37,9 +37,29 @@ func toolHandlers(tools *toolkit.Toolkit, router *httprouter.Router, documentati
 	router.Spec().AddTag(taggroup.ToolsAndAgents, documentation.Section(2, "Tool Operations").Body)
 	taggroup.Add(router.Spec(), taggroup.LLM, taggroup.ToolsAndAgents)
 	return errors.Join(
+		namespaceListHandlers(tools, router, documentation),
 		toolListHandlers(tools, router, documentation),
 		toolGetCallHandlers(tools, router, documentation),
 	)
+}
+
+func namespaceListHandlers(tools *toolkit.Toolkit, router *httprouter.Router, documentation *openapi.MarkdownDoc) error {
+	return router.Register("llm/namespace", nil, func(path httprequest.PathItem) {
+		path.Tag(taggroup.ToolsAndAgents)
+
+		// GET
+		path.Get(func(w http.ResponseWriter, r *http.Request) {
+			if list, err := tools.ListNamespaces(r.Context()); err != nil {
+				httpresponse.Error(w, llm.HTTPErr(err))
+			} else {
+				httpresponse.JSON(w, http.StatusOK, httprequest.Indent(r), list)
+			}
+		}, func(op httprequest.PathOperation) {
+			op.Summary("List Namespaces")
+			op.Description(documentation.Section(3, "GET /llm/namespace").Body)
+			op.JSONResponse(http.StatusOK, jsonschema.MustFor[schema.NamespaceList](), "List of namespaces")
+		})
+	})
 }
 
 func toolListHandlers(tools *toolkit.Toolkit, router *httprouter.Router, documentation *openapi.MarkdownDoc) error {

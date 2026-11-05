@@ -117,7 +117,8 @@ func (c *Client) Self() llm.Provider {
 // Ping checks the connectivity of the client, and that the API key is
 // accepted, by listing the models. OpenAI-compatible APIs have no separate
 // health or version endpoint. The API is only pinged once every ping
-// interval: otherwise, the result of the last ping is returned.
+// interval: otherwise, the result of the last ping is returned, unless it
+// ended as its caller's context did.
 func (c *Client) Ping(ctx context.Context) error {
 	// Concurrent pings wait for the one in progress
 	c.mu.Lock()
@@ -128,9 +129,14 @@ func (c *Client) Ping(ctx context.Context) error {
 		return c.pingErr
 	}
 
-	// Ping the API, and keep the result
+	// Ping the API, and keep the result, unless the ping ended as its
+	// caller gave up, which says nothing of the API, so the next ping asks
+	// it again
 	start := time.Now()
-	_, c.pingErr = c.listModels(ctx)
-	c.lastPing = start
-	return c.pingErr
+	_, err := c.listModels(ctx)
+	if ctx.Err() != nil {
+		return err
+	}
+	c.pingErr, c.lastPing = err, start
+	return err
 }

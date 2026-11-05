@@ -74,6 +74,11 @@ func (n *agentNamespace) Name() string {
 	return AgentNamespace
 }
 
+// Description returns what the agent namespace is
+func (n *agentNamespace) Description() string {
+	return "Agents, which each ask a model to do a task, with their own instructions, and tools, and reply"
+}
+
 func (n *agentNamespace) SystemPrompt() string {
 	return agentPrompt
 }

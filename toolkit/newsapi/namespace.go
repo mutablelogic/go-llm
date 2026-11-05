@@ -54,6 +54,11 @@ func (namespace) Name() string {
 
 // SystemPrompt returns no system prompt, as the tools' descriptions say how
 // to use them
+// Description returns what the namespace's tools are for
+func (namespace) Description() string {
+	return "News articles, headlines and sources, from NewsAPI"
+}
+
 func (namespace) SystemPrompt() string {
 	return ""
 }

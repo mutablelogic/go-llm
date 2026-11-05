@@ -27,6 +27,11 @@ func (*Memory) Name() string {
 	return Name
 }
 
+// Description returns what the memory is
+func (*Memory) Description() string {
+	return "What the assistant remembers, which every conversation shares: the details of the person, and itself, and memories"
+}
+
 // SystemPrompt returns the time, in the person's time zone, when it's known,
 // or the system's, and the details which are known, and which aren't, so
 // the model asks for them, and remembers them. The details which are

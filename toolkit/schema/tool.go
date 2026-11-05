@@ -27,6 +27,24 @@ type ToolListRequest struct {
 	Namespace string `json:"namespace,omitempty" help:"Returns only the tools in this namespace" example:"weatherapi" optional:""`
 }
 
+// Namespace is a namespace of tools: its name, a line which describes it,
+// which can be empty, and how many tools it has
+type Namespace struct {
+	Name        string `json:"name" readonly:"" help:"Name of the namespace" example:"weatherapi"`
+	Description string `json:"description,omitempty" readonly:"" help:"What the namespace's tools are for" example:"Current weather, forecasts and alerts, from WeatherAPI"`
+	Tools       uint64 `json:"tools" readonly:"" help:"How many tools the namespace has" example:"3"`
+}
+
+// NamespaceList is the namespaces, with their number
+type NamespaceList struct {
+	Count uint64       `json:"count"`
+	Body  []*Namespace `json:"body,omitempty"`
+}
+
+func (n NamespaceList) String() string {
+	return types.Stringify(n)
+}
+
 // ToolList is the tools, with their number
 type ToolList struct {
 	ToolListRequest
@@ -147,6 +165,28 @@ func (t CallToolRequest) String() string {
 
 ////////////////////////////////////////////////////////////////////////////////
 // TABLE OUTPUT
+
+func (Namespace) Header() []string {
+	return []string{"Namespace", "Tools", "Description"}
+}
+
+func (Namespace) Width(int) int {
+	return 0
+}
+
+// Cell returns the namespace's name, how many tools it has, and its
+// description
+func (n Namespace) Cell(col int) tui.CellText {
+	switch col {
+	case 0:
+		return n.Name
+	case 1:
+		return n.Tools
+	case 2:
+		return n.Description
+	}
+	return ""
+}
 
 func (t Tool) Header() []string {
 	return []string{"Name", "Description"}

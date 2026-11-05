@@ -35,11 +35,14 @@ type Toolkit struct {
 	tools map[string]entry
 }
 
-// Namespace is a namespace of tools: its name, which is an identifier, its
-// system prompt, which says how to use its tools, and is added to the system
-// prompt of a model which can call any of them, or is empty, and its tools
+// Namespace is a namespace of tools: its name, which is an identifier, a line
+// which describes it, such as for a person choosing its tools, which can be
+// empty, its system prompt, which says how to use its tools, and is added to
+// the system prompt of a model which can call any of them, or is empty, and
+// its tools
 type Namespace interface {
 	Name() string
+	Description() string
 	SystemPrompt() string
 	Tools() []llm.Tool
 
@@ -284,6 +287,11 @@ func NewNamespace(name, prompt string, tools ...llm.Tool) Namespace {
 
 func (n namespace) Name() string {
 	return n.name
+}
+
+// Description returns nothing, as the namespace has no description
+func (namespace) Description() string {
+	return ""
 }
 
 func (n namespace) SystemPrompt() string {

@@ -73,10 +73,13 @@ type ProviderOpt func(*cached) error
 
 var (
 	// PingInterval is how long the result of a provider's ping is used, and
-	// how often Run pings the providers. A provider which downloads models,
-	// such as Ollama, has its models listed again as often, as they can be
+	// how often Run pings the providers, so whether one can be reached is
+	// known within it. A provider decides how often it asks its server, so
+	// one of an API, such as OpenAI's, which is rarely unreachable, can keep
+	// its ping's result for longer. A provider which downloads models, such
+	// as Ollama, has its models listed again as often, as they can be
 	// downloaded or deleted without the registry, and listing them is quick.
-	PingInterval = time.Minute
+	PingInterval = 30 * time.Second
 
 	// ModelCacheInterval is how long a provider's models are cached, unless
 	// it downloads models

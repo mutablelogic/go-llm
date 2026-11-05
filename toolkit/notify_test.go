@@ -32,6 +32,8 @@ func (n *changingNamespace) Tools() []llm.Tool {
 	return append([]llm.Tool(nil), n.tools...)
 }
 
+func (*changingNamespace) Description() string { return "" }
+
 func (n *changingNamespace) Notify(fn func(eventschema.EventAction, string)) {
 	n.mu.Lock()
 	defer n.mu.Unlock()
