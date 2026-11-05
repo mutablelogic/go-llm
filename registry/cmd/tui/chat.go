@@ -3,6 +3,7 @@
 package tui
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -290,12 +291,9 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			// was stored as it was loaded, so it's kept
 		} else if !m.waiting {
 			// The session is replaced, unless a reply is being waited for,
-			// when it's loaded again once it's stored. What tools logged is
-			// forgotten, when the conversation is shorter, as its messages
-			// were forgotten.
-			if len(msg.session.Messages) < len(m.session.Messages) {
-				m.logs = nil
-			}
+			// when it's loaded again once it's stored, keeping what tools
+			// logged which is still where it was shown
+			m.logs = keptLogs(m.logs, m.session.Messages, msg.session.Messages)
 			m.session = msg.session
 		} else {
 			m.stale = true
@@ -771,6 +769,54 @@ func watch(ctx context.Context, client Client, id uuid.UUID, events chan<- tea.M
 		}
 		retry = min(retry*2, watchRetryMax)
 	}
+}
+
+// keptLogs returns what tools logged, of the logs, which is kept when the
+// earlier messages are replaced by the messages: what's kept by a tool's
+// result, when the messages still have the result, wherever it is, such as
+// after another window's turn, and what's kept by a position, when the
+// messages carry on from the earlier ones, so not when they were forgotten,
+// however many there are now. Returns nil when nothing is kept.
+func keptLogs(logs map[string][]string, earlier, messages []providerschema.Message) map[string][]string {
+	if len(logs) == 0 {
+		return nil
+	}
+	results := make(map[string]bool)
+	for _, message := range messages {
+		for _, result := range message.ToolResults() {
+			if result.ID != "" {
+				results[resultKey(result.ID)] = true
+			}
+		}
+	}
+	carries := continues(earlier, messages)
+	kept := make(map[string][]string, len(logs))
+	for key, lines := range logs {
+		if results[key] || (carries && strings.HasPrefix(key, "at:")) {
+			kept[key] = lines
+		}
+	}
+	if len(kept) == 0 {
+		return nil
+	}
+	return kept
+}
+
+// continues returns whether the messages carry on from the earlier ones,
+// which they start with, as they're the same conversation, with messages
+// added to it
+func continues(earlier, messages []providerschema.Message) bool {
+	if len(messages) < len(earlier) {
+		return false
+	}
+	for i := range earlier {
+		a, errA := json.Marshal(earlier[i])
+		b, errB := json.Marshal(messages[i])
+		if errA != nil || errB != nil || !bytes.Equal(a, b) {
+			return false
+		}
+	}
+	return true
 }
 
 // resultKey and positionKey return the keys of the lines which tools

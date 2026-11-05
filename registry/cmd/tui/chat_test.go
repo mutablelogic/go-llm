@@ -756,3 +756,63 @@ func Test_ForgottenLogs(t *testing.T) {
 	assert.Nil(t, m.logs)
 	assert.NotContains(t, m.history.View(), "Remembering")
 }
+
+func Test_ReplacedLogs(t *testing.T) {
+	// What tools logged is forgotten when the session is loaded with other
+	// messages than those shown, as its messages were forgotten, and new
+	// turns added, before it was loaded again, even when there are as many,
+	// or more, of them, but not when they carry on from those shown
+	message := func(sender, text string) providerschema.Message {
+		return providerschema.Message{MessageMeta: providerschema.MessageMeta{Sender: sender, Content: []providerschema.ContentBlock{{Text: types.Ptr(text)}}}}
+	}
+	id := uuid.New()
+	shown := []providerschema.Message{message("user", "Hello"), message("assistant", "Hi")}
+	logs := map[string][]string{positionKey(1): {"Remembering where you are: Berlin"}}
+
+	for name, test := range map[string]struct {
+		messages []providerschema.Message
+		kept     bool
+	}{
+		"Fewer":     {[]providerschema.Message{message("user", "Hello")}, false},
+		"Same":      {[]providerschema.Message{message("user", "Again"), message("assistant", "Hello again")}, false},
+		"More":      {[]providerschema.Message{message("user", "Again"), message("assistant", "Hello again"), message("user", "More")}, false},
+		"Unchanged": {shown, true},
+		"Added":     {append(append([]providerschema.Message{}, shown...), message("user", "More"), message("assistant", "Yes")), true},
+	} {
+		t.Run(name, func(t *testing.T) {
+			m, _ := newTestModel(fakeClient{}, &schema.Session{ID: id, Serial: 1, Messages: shown})
+			m.logs = logs
+			m.Update(loadedMsg{session: &schema.Session{ID: id, Serial: 2, Messages: test.messages}})
+			if test.kept {
+				assert.Equal(t, logs, m.logs)
+			} else {
+				assert.Nil(t, m.logs)
+			}
+		})
+	}
+}
+
+func Test_ReplacedResultLogs(t *testing.T) {
+	// What's kept by a tool's result is forgotten when the result is gone,
+	// as the messages were forgotten, and new turns added, as many as there
+	// were, and kept when it's still there, after another window's turn
+	id := uuid.New()
+	result := func(call string) providerschema.Message {
+		return providerschema.Message{MessageMeta: providerschema.MessageMeta{Sender: "tool", Content: []providerschema.ContentBlock{{ToolResult: &providerschema.ToolResult{ID: call, Name: "query", Content: json.RawMessage(`[]`)}}}}}
+	}
+	text := func(sender, text string) providerschema.Message {
+		return providerschema.Message{MessageMeta: providerschema.MessageMeta{Sender: sender, Content: []providerschema.ContentBlock{{Text: types.Ptr(text)}}}}
+	}
+	shown := []providerschema.Message{text("user", "Lights?"), result("call-1"), text("assistant", "On")}
+	logs := map[string][]string{resultKey("call-1"): {"Checking the lights"}}
+
+	m, _ := newTestModel(fakeClient{}, &schema.Session{ID: id, Serial: 1, Messages: shown})
+	m.logs = logs
+	m.Update(loadedMsg{session: &schema.Session{ID: id, Serial: 2, Messages: []providerschema.Message{text("user", "Heating?"), result("call-2"), text("assistant", "Off")}}})
+	assert.Nil(t, m.logs, "the result is gone")
+
+	m, _ = newTestModel(fakeClient{}, &schema.Session{ID: id, Serial: 1, Messages: shown})
+	m.logs = logs
+	m.Update(loadedMsg{session: &schema.Session{ID: id, Serial: 2, Messages: append([]providerschema.Message{text("user", "Elsewhere"), text("assistant", "Hello")}, shown...)}})
+	assert.Equal(t, logs, m.logs, "the result is still there")
+}
