@@ -49,15 +49,23 @@ func newJSONFile(path string) (*jsonFile, error) {
 // PUBLIC METHODS
 
 // Get returns the value with the key, as JSON was decoded into, or nil when
-// there's none, or the file can't be read
+// there's none, or the file can't be read, which Lookup says
 func (f *jsonFile) Get(key string) any {
+	value, _ := f.Lookup(key)
+	return value
+}
+
+// Lookup returns the value with the key, as JSON was decoded into, or nil
+// when there's none, including when there's no file, or an error when the
+// file can't be read, or isn't JSON
+func (f *jsonFile) Lookup(key string) (any, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	values, err := f.read()
 	if err != nil {
-		return nil
+		return nil, err
 	}
-	return values[key]
+	return values[key], nil
 }
 
 // Set sets the value with the key, or removes it, when it's nil, keeping the

@@ -533,3 +533,35 @@ func Test_WatchFirst(t *testing.T) {
 		t.Fatal("not loaded once watched")
 	}
 }
+
+func Test_LogsReloaded(t *testing.T) {
+	// What tools logged stays before their results when the session is
+	// loaded again with messages from elsewhere before them
+	id := uuid.New()
+	says := func(role, text string) providerschema.Message {
+		return providerschema.Message{MessageMeta: providerschema.MessageMeta{Sender: role, Content: []providerschema.ContentBlock{{Text: types.Ptr(text)}}}}
+	}
+	question := says("user", "Lights on")
+	call := providerschema.Message{MessageMeta: providerschema.MessageMeta{Sender: "assistant", Content: []providerschema.ContentBlock{{ToolCall: &providerschema.ToolCall{ID: "call-1", Name: "call_service", Input: json.RawMessage(`{}`)}}}}}
+	result := providerschema.Message{MessageMeta: providerschema.MessageMeta{Sender: "tool", Content: []providerschema.ContentBlock{{ToolResult: &providerschema.ToolResult{ID: "call-1", Name: "call_service", Content: json.RawMessage(`[]`)}}}}}
+	reply := says("assistant", "Done")
+	m, _ := newTestModel(fakeClient{}, &schema.Session{ID: id, Serial: 1})
+	m.debug = true
+	m.waiting = true
+	m.session.Messages = []providerschema.Message{question}
+	m.Update(streamMsg{llm.StreamLog, "Asking Home Assistant to turn on the lights"})
+	m.Update(replyMsg{asked: 0, response: &schema.ChatResponse{ID: id, Serial: 3, SessionResponse: schema.SessionResponse{
+		Messages: []providerschema.Message{question, call, result, reply},
+	}}})
+
+	// Another window's turn is before this one, when it's loaded again
+	m.Update(loadedMsg{session: &schema.Session{ID: id, Serial: 3, Messages: []providerschema.Message{
+		says("user", "Elsewhere"), says("assistant", "Hello from elsewhere"), question, call, result, reply,
+	}}})
+	view := m.history.View()
+	logged := strings.Index(view, "turn on the lights")
+	require.GreaterOrEqual(t, logged, 0, view)
+	assert.Less(t, strings.Index(view, "Hello from elsewhere"), logged)
+	assert.Less(t, strings.Index(view, "→ call_service"), logged)
+	assert.Less(t, logged, strings.Index(view, "← call_service"))
+}

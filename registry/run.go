@@ -94,13 +94,19 @@ func (r *Registry) Run(ctx context.Context, logger *slog.Logger) error {
 			return err
 		case event := <-sessionEvents:
 			// A session which was deleted elsewhere has no status here
-			// either, so it's not published as idle after it
+			// either, so it's not published as idle after it. As with
+			// DeleteSession, the lifecycle lock is held, so a status isn't
+			// set as, or after, it's deleted.
 			if event.Action == eventschema.EventDelete {
+				r.lifecycle.Lock()
 				if id, err := uuid.Parse(event.Row); err == nil {
 					r.forgetStatus(id)
 				}
+				r.broadcaster.Publish(event)
+				r.lifecycle.Unlock()
+			} else {
+				r.broadcaster.Publish(event)
 			}
-			r.broadcaster.Publish(event)
 		case event := <-registryEvents:
 			if event.Table != ProviderTable {
 				// The broadcaster's other events, such as of sessions

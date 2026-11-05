@@ -54,6 +54,22 @@ func Test_JSONFile(t *testing.T) {
 		assert.Equal(t, "2", a.Get("b"))
 	})
 
+	t.Run("Corrupt", func(t *testing.T) {
+		// A file which isn't JSON is an error, not taken to have no values,
+		// so a store of providers says so, rather than having none
+		path := filepath.Join(t.TempDir(), providersFile)
+		require.NoError(t, os.WriteFile(path, []byte("{not json"), 0o600))
+		file, err := newJSONFile(path)
+		require.NoError(t, err)
+		_, err = file.Lookup(providersKey)
+		assert.Error(t, err)
+		assert.Nil(t, file.Get(providersKey))
+		store, err := newProviderStore(file)
+		require.NoError(t, err)
+		_, err = store.List(context.Background())
+		assert.Error(t, err)
+	})
+
 	t.Run("NoPath", func(t *testing.T) {
 		_, err := newJSONFile(" ")
 		assert.Error(t, err)

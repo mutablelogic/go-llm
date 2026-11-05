@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strconv"
 	"strings"
 	"time"
 	"uuid"
@@ -57,7 +58,7 @@ type model struct {
 	width    int
 	waiting  bool
 	streamed []*group
-	logs     map[int][]string // What tools logged, by the message it's shown before
+	logs     map[string][]string // What tools logged, by the tool result, or the position, it's shown before
 	rendered bool
 	err      error
 	typed    time.Time // When the server was last told someone is typing here
@@ -399,9 +400,10 @@ func (m *model) ask() tea.Cmd {
 }
 
 // keepLogs keeps the lines which tools logged, as the reply was streamed,
-// which aren't stored with the messages which were added after those
-// before the question, so they're shown before the first of the tools'
-// results, or after the reply, when there are none
+// which aren't stored with the messages, so they're shown before the first
+// of the tools' results, by its call's identifier, wherever it is when the
+// session is loaded again, or, when it has none, or there are no results,
+// by its position, or after the reply
 func (m *model) keepLogs(streamed []*group, asked int, added []providerschema.Message) {
 	var lines []string
 	for _, g := range streamed {
@@ -412,17 +414,20 @@ func (m *model) keepLogs(streamed []*group, asked int, added []providerschema.Me
 	if len(lines) == 0 {
 		return
 	}
-	at := asked + len(added)
+	key := positionKey(asked + len(added))
 	for i, message := range added {
 		if message.Role() == "tool" {
-			at = asked + i
+			key = positionKey(asked + i)
+			if results := message.ToolResults(); len(results) > 0 && results[0].ID != "" {
+				key = resultKey(results[0].ID)
+			}
 			break
 		}
 	}
 	if m.logs == nil {
-		m.logs = make(map[int][]string)
+		m.logs = make(map[string][]string)
 	}
-	m.logs[at] = append(m.logs[at], lines...)
+	m.logs[key] = append(m.logs[key], lines...)
 }
 
 // render renders the session's messages, and what's streamed of the reply,
@@ -430,10 +435,17 @@ func (m *model) keepLogs(streamed []*group, asked int, added []providerschema.Me
 func (m *model) render() {
 	var b strings.Builder
 	for i, message := range m.session.Messages {
-		m.renderLogs(&b, i)
+		m.renderLogs(&b, positionKey(i))
+		if message.Role() == "tool" {
+			for _, result := range message.ToolResults() {
+				if result.ID != "" {
+					m.renderLogs(&b, resultKey(result.ID))
+				}
+			}
+		}
 		m.renderMessage(&b, message)
 	}
-	m.renderLogs(&b, len(m.session.Messages))
+	m.renderLogs(&b, positionKey(len(m.session.Messages)))
 	if len(m.streamed) > 0 {
 		b.WriteString(modelStyle.Render("Model") + "\n")
 		for _, g := range m.streamed {
@@ -465,10 +477,10 @@ func (m *model) render() {
 	m.rendered = true
 }
 
-// renderLogs renders the lines which tools logged, which are shown before
-// the message with the index
-func (m *model) renderLogs(b *strings.Builder, i int) {
-	for _, line := range m.logs[i] {
+// renderLogs renders the lines which tools logged, which are kept by the key
+// of what they're shown before
+func (m *model) renderLogs(b *strings.Builder, key string) {
+	for _, line := range m.logs[key] {
 		b.WriteString(m.wrap(dimStyle, line) + "\n")
 	}
 }
@@ -622,6 +634,17 @@ func watch(ctx context.Context, client Client, id uuid.UUID, events chan<- tea.M
 		}
 		retry = min(retry*2, watchRetryMax)
 	}
+}
+
+// resultKey and positionKey return the keys of the lines which tools
+// logged, which are shown before the result of the call with the
+// identifier, or the message at the position
+func resultKey(id string) string {
+	return "result:" + id
+}
+
+func positionKey(i int) string {
+	return "at:" + strconv.Itoa(i)
 }
 
 // load returns the session with the identifier, with its messages

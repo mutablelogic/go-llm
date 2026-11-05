@@ -145,13 +145,28 @@ func (c chatClient) ToolNames(ctx context.Context) (map[string]string, error) {
 	if err != nil {
 		return nil, err
 	}
-	names := make(map[string]string, len(list.Body))
-	for _, tool := range list.Body {
+	return modelToolNames(list.Body), nil
+}
+
+// modelToolNames returns the canonical names of the tools, by the names
+// models call them by. A model's name which more than one tool has, such as
+// my_tools_search for my_tools:search and my:tools_search, isn't translated.
+func modelToolNames(tools []*toolschema.Tool) map[string]string {
+	names := make(map[string]string, len(tools))
+	ambiguous := make(map[string]bool)
+	for _, tool := range tools {
 		if namespace, name, ok := strings.Cut(tool.Canonical, toolschema.ToolSeparator); ok {
-			names[toolschema.ModelToolName(namespace, name)] = tool.Canonical
+			model := toolschema.ModelToolName(namespace, name)
+			if _, exists := names[model]; exists {
+				ambiguous[model] = true
+			}
+			names[model] = tool.Canonical
 		}
 	}
-	return names, nil
+	for model := range ambiguous {
+		delete(names, model)
+	}
+	return names
 }
 
 ///////////////////////////////////////////////////////////////////////////////

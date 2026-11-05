@@ -25,6 +25,12 @@ type defaults interface {
 	Set(string, any) error
 }
 
+// lookup is defaults which say why a value can't be read, such as a file
+// which can't be, rather than taking it to have none
+type lookup interface {
+	Lookup(string) (any, error)
+}
+
 // providerStore is a store of the registry's providers in the command's defaults,
 // as a list of their definitions, with their serials, in order of their
 // names, under one key, so they're kept when the server restarts. Only the
@@ -155,7 +161,17 @@ func (s *providerStore) Watch(ctx context.Context, ch chan<- eventschema.Event) 
 // into, when they were read from disk, so they're encoded as JSON, and
 // decoded as providers. The caller holds the lock.
 func (s *providerStore) read() ([]schema.Provider, error) {
-	value := s.defaults.Get(providersKey)
+	// When they can't be read, that's the error, rather than none, so the
+	// registry's providers aren't removed
+	var value any
+	if l, ok := s.defaults.(lookup); ok {
+		var err error
+		if value, err = l.Lookup(providersKey); err != nil {
+			return nil, err
+		}
+	} else {
+		value = s.defaults.Get(providersKey)
+	}
 	if value == nil {
 		return nil, nil
 	}
