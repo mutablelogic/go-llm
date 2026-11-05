@@ -12,6 +12,7 @@ go-llm keeps a registry of providers, such as Ollama, OpenAI, Mistral, [go-whisp
 - **Providers**: add, update and remove providers while the server runs, and keep them in a store between restarts. A model is referred to by its name, or by its provider and name, such as `ollama:llama3.2:latest`.
 - **Ask**: a model's reply to messages, with a system prompt, options, tools whose calls are returned for the caller to run, and structured output with a JSON schema. Replies can be streamed as server-sent events.
 - **Chat**: a conversation with a model, in a session, which the server keeps, with its model, system prompt, tools, options and schema. The model calls the tools until it replies, and the conversation is shortened to fit its context. Chat in the terminal, or with the API, whose replies are streamed, and every client of a session sees its new messages, and whether someone is typing, or the model is replying.
+- **Agents**: named definitions of a prompt, its input, and how a model is asked it, with its system prompt, tools, options and the schema of its reply, which are kept, in YAML or JSON, and which models call as tools, in the `agent` namespace, however deep, with their progress streamed, and their tokens counted as their caller's. The server adds example agents when it starts, such as one which translates text.
 - **Embed**: a vector for each message, of its text, and of images and audio for models which embed them.
 - **OCR**: the text of images and documents, such as PDFs, as Markdown, page by page, with the regions of each page and their boxes.
 - **Transcribe and translate**: the speech in audio, as text, in its language or in English, with timed segments and speakers, streamed as it's transcribed, and printed as SRT or WebVTT subtitles.
@@ -118,7 +119,7 @@ The command-line tool connects to `localhost:8084`, or the server at `--http.add
 | Sessions | `sessions`, `session`, `session-messages`, `session-create`, `session-update`, `session-delete` |
 | Inference | `ask`, `chat`, `embed`, `ocr`, `transcribe`, `translate` |
 | Events | `events` |
-| Tools | `tools`, `tool`, `call` |
+| Tools and agents | `tools`, `tool`, `call`, `agents`, `agent`, `agent-create`, `agent-update`, `agent-delete` |
 
 Run `llm <command> --help` for a command's arguments and flags. Options for a model are given with `--opt`, such as `--opt temperature=0.2`, or `--opt pages=0-2` for OCR.
 
@@ -266,7 +267,6 @@ Tests which make requests to a provider are skipped with `-short`, and unless it
 ### Agents and tools
 
 - **MCP**: connectors to MCP servers, whose tools are added to the toolkit, each in its own namespace, so models can call them.
-- **Agents**: named definitions of a model, a system prompt, tools, a schema and options, which are run by name, with an input.
 - **Memory and heartbeats**: memory, which a model reads and writes with tools; and agents which run on a schedule. These need a store, such as PostgreSQL.
 
 ### Providers
