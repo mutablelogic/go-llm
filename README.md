@@ -143,8 +143,10 @@ flowchart LR
         prompts which models call as tools`"]
         Memory["`**memory**
         what every session knows`"]
+        Heartbeat["`**heartbeat**
+        prompts which fire on a schedule`"]
         Stores[("`**stores**
-        providers, sessions, agents, memory`")]
+        providers, sessions, agents, memory, heartbeats`")]
     end
 
     subgraph Providers
@@ -177,11 +179,14 @@ flowchart LR
     Agents --> Registry
     API --> Memory
     Memory --> Stores
+    Toolkit --> Heartbeat
+    API --> Heartbeat
+    Heartbeat --> Stores
     Toolkit --> Tools
     Registry --> Ollama & OpenAI & Whisper & ElevenLabs & Eliza
 
     classDef highlight fill:#e8f0fe,stroke:#1a73e8,stroke-width:2px,color:#111
-    class CLI,Client,UI,Registry,Toolkit,Agents,Memory highlight
+    class CLI,Client,UI,Registry,Toolkit,Agents,Memory,Heartbeat highlight
     class Ollama,OpenAI,Whisper,ElevenLabs,Eliza highlight
 ```
 
@@ -190,6 +195,7 @@ flowchart LR
 - The **registry**, in [registry](registry), finds a model by name, checks what it can do, and asks its provider. It keeps providers, sessions and agents in stores, runs the agent loop, which calls tools until the model replies, and publishes events about what changed.
 - The **toolkit**, in [toolkit](toolkit), holds the tools which models can call, in namespaces, such as `homeassistant` or `weatherapi`, and streams what they log, and their progress, as they run.
 - The **memory**, in [memory](memory), is what every session and agent knows: the details of the person, and of the assistant, such as their names, where the person is, and their time zone and language, each known, not known, or declined, and memories, which are what a model keeps beyond the conversation, such as the person's preferences, or the people in their life, under keys. It's the toolkit's `memory` namespace, whose system prompt has the details, the time, and how to search, keep and use memories, and whose tools remember them.
+- **Heartbeats**, in [heartbeat](heartbeat), are prompts for a session, which fire once, at a time, or again and again, on a schedule, such as a reminder, or a briefing each morning. A schedule is in its time zone, or the person's, which the memory has, so it follows them. It's the toolkit's `heartbeat` namespace, whose tool schedules them, and a heartbeat which fires publishes an event, with its prompt, and its session.
 - **Agents** are named prompts, with their model, tools and the schemas of their input and reply, which models call as tools in the `agent` namespace. The [agents](agents) folder has examples, which the server adds when it starts.
 - The **providers**, in [provider](provider), each wrap a provider's API, and do what it can: generate, embed, read documents, or transcribe and translate speech.
 
@@ -207,7 +213,8 @@ The registry can be used without the server, from your own Go program, as the [e
 - **Models**: download, delete and unload models, for providers which store them, such as Ollama and go-whisper.
 - **Tools**: a toolkit of tools, in namespaces, for Home Assistant, NewsAPI, WeatherAPI and Ollama's web search, which models can call.
 - **Memory**: the details of the person, and of the assistant, such as their names, location, time zone and language, which every session knows, as a model learns them, or they're set, and which can be declined, so they're never asked for; and memories, which a model searches, keeps and forgets, as Markdown, under keys, with versions, so a change is made to a memory as it was last seen. The server keeps each memory in a file, which can be read, and edited, by hand.
-- **Events**: a stream of changes to the providers and their models, to sessions, with whether someone is typing in a session, or its model is replying, so two chat windows on one session follow each other, and to the memory's details and memories.
+- **Heartbeats**: prompts for a session, which a model schedules, or the API, once, at a time, or on a schedule, as a cron expression, such as a reminder at six, or a briefing every weekday at eight, in a time zone, or the person's, which they follow, as it changes. When the clocks change, a time fires once, and a heartbeat which was due when the server wasn't running fires once, when it starts. Servers which share a store fire a heartbeat once. A heartbeat which fires is an event, for now, which is to be asked of the session's model.
+- **Events**: a stream of changes to the providers and their models, to sessions, with whether someone is typing in a session, or its model is replying, so two chat windows on one session follow each other, to the memory's details and memories, and to heartbeats, and when they fire.
 - **OpenAPI**: the REST API is described by an OpenAPI specification, which `llm openapi` shows as documentation in a browser, or outputs as JSON or YAML.
 - **OpenTelemetry**: traces of requests, through the registry, providers and tools.
 
@@ -236,6 +243,7 @@ What a model can do depends on the model, which its provider reports, where it k
 | Inference | `ask`, `chat`, `embed`, `ocr`, `transcribe`, `translate` |
 | Events | `events` |
 | Memory | `details`, `detail-set`, `detail-forget`, `memories`, `memory`, `memory-remember`, `memory-forget` |
+| Heartbeats | `heartbeats`, `heartbeat`, `heartbeat-create`, `heartbeat-update`, `heartbeat-delete` |
 | Tools and agents | `tools`, `tool`, `call`, `agents`, `agent`, `agent-create`, `agent-update`, `agent-delete` |
 
 Run `llm <command> --help` for a command's arguments and flags. Options for a model are given with `--opt`, such as `--opt temperature=0.2`, or `--opt pages=0-2` for OCR.
@@ -257,6 +265,7 @@ Tools are added to the server's toolkit when their credentials are set, as envir
 | Namespace | Tools | Credentials |
 |-----------|-------|-------------|
 | `memory` | Remember the details of the person, and the assistant, with the time in the system prompt, and search, keep and forget memories | None, as it's always added |
+| `heartbeat` | Schedule, list, update and cancel heartbeats, which are prompts which come back to the conversation, at a time, or on a schedule | None, as it's always added |
 | `weatherapi` | Current weather, forecasts and alerts | `WEATHERAPI_API_KEY`, from [weatherapi.com](https://www.weatherapi.com/signup.aspx) |
 | `newsapi` | News articles, headlines and sources | `NEWSAPI_API_KEY`, from [newsapi.org](https://newsapi.org/register) |
 | `homeassistant` | Query, and search, and control smart home devices | `HOMEASSISTANT_URL`, `HOMEASSISTANT_API_KEY` |
@@ -266,7 +275,7 @@ A model is given tools by name, by namespace and name, such as `weatherapi:curre
 
 ## API
 
-The server's REST API is under `/api`, and documented in [registry/httphandler/README.md](registry/httphandler/README.md), with its events in [broadcaster/httphandler/README.md](broadcaster/httphandler/README.md), and as OpenAPI, with `llm openapi`. Inference which streams, such as ask and transcribe, sends server-sent events when `text/event-stream` is accepted.
+The server's REST API is under `/api`, and documented in [registry/httphandler/README.md](registry/httphandler/README.md), with its events in [broadcaster/httphandler/README.md](broadcaster/httphandler/README.md), the memory's in [memory/httphandler/README.md](memory/httphandler/README.md), and the heartbeats' in [heartbeat/httphandler/README.md](heartbeat/httphandler/README.md), and as OpenAPI, with `llm openapi`. Inference which streams, such as ask and transcribe, sends server-sent events when `text/event-stream` is accepted.
 
 ## Go
 
@@ -277,6 +286,7 @@ The packages can be used without the server:
 - [`registry`](registry): the registry of providers, which finds a model by name, checks what it can do, and asks its provider, with a store, events, and HTTP handlers and a client.
 - [`toolkit`](toolkit): the toolkit of tools, which a model calls.
 - [`memory`](memory): the memory, which is a namespace of the toolkit, with a store, events, and HTTP handlers and a client.
+- [`heartbeat`](heartbeat): the heartbeats, which are a namespace of the toolkit, with a store, events, `Run`, which fires them, and HTTP handlers and a client.
 - [`broadcaster`](broadcaster): publishes events, which are changes, to the channels which watch them, with an HTTP handler which streams them as server-sent events, and a client.
 
 The registry is meant to be composed with other modules into a whole system, rather than to be one itself. It's created with options, which plug in what a system has:
@@ -320,7 +330,8 @@ Tests which make requests to a provider are skipped with `-short`, and unless it
 ### Agents and tools
 
 - **MCP**: connectors to MCP servers, whose tools are added to the toolkit, each in its own namespace, so models can call them.
-- **Heartbeats**: agents which run on a schedule.
+- **Heartbeats which are asked**: the prompt of a heartbeat which fires is asked of its session's model, as a message which says it's scheduled, with a history of what ran, and agents which run on a schedule.
+- **Events between servers**: servers which share stores, such as a database, share their events, so a client of one sees the changes, and fires, of another.
 
 ### Providers
 
