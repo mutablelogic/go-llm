@@ -78,6 +78,10 @@ Get a session by its identifier, without its messages, which are listed with `GE
 
 List a session's messages, oldest first, each with its `tokens`. The `role` parameter returns only the messages of that role, such as `user`, `assistant` or `tool`, the `offset` parameter skips that many messages, and the `limit` parameter returns at most that many. The `count` is how many messages there are, of the role. Returns 400 if a parameter is invalid, or 404 if there is no session with that identifier.
 
+### DELETE /llm/session/{id}/messages
+
+Forget a session's messages, keeping its settings, such as its model, system prompt and tools, so its conversation starts again. The tokens of its conversation, which are its `input`, `output` and `overhead`, are none, and the tokens used by every request to its model are kept. The session is updated, so clients which watch it load it again. A reply which is being waited for, as they're forgotten, isn't stored. Returns the session, without its messages. Returns 400 if the identifier isn't a UUID, 404 if there is no session with that identifier, or 409 if it was changed as its messages were forgotten.
+
 ### PATCH /llm/session/{id}
 
 Change a session's settings, keeping its messages. A field which is omitted is kept: `model` and `system` are replaced when they're set, and cleared when they're empty; `tools` are replaced when they're set, and cleared with `[]`; the `schema` is replaced when it's set, and cleared with `null`; and each option in `opt` is set, or removed when it's `null`, so the others are kept. A `model` or `tools` which are set are checked, and kept by their canonical names, as they are when a session is created. Returns the updated session. Returns 400 if the request body is invalid, it changes nothing, or the settings, as changed, aren't valid, 404 if there is no session with that identifier, or the model, or a tool, isn't found, or 409 if it was changed as it was updated, or the name of the model, or a tool, is ambiguous.

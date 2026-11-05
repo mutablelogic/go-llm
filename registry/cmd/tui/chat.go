@@ -290,7 +290,12 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			// was stored as it was loaded, so it's kept
 		} else if !m.waiting {
 			// The session is replaced, unless a reply is being waited for,
-			// when it's loaded again once it's stored
+			// when it's loaded again once it's stored. What tools logged is
+			// forgotten, when the conversation is shorter, as its messages
+			// were forgotten.
+			if len(msg.session.Messages) < len(m.session.Messages) {
+				m.logs = nil
+			}
 			m.session = msg.session
 		} else {
 			m.stale = true

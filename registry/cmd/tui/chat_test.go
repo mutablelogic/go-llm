@@ -740,3 +740,19 @@ func Test_DetailsReload(t *testing.T) {
 	m.Update(m.loadDetails()())
 	assert.Equal(t, "Omodie", m.assistantLabel())
 }
+
+func Test_ForgottenLogs(t *testing.T) {
+	// What tools logged is forgotten when the session is loaded with fewer
+	// messages, as they were forgotten elsewhere
+	id := uuid.New()
+	before := &schema.Session{ID: id, Serial: 1, Messages: []providerschema.Message{
+		{MessageMeta: providerschema.MessageMeta{Sender: "user", Content: []providerschema.ContentBlock{{Text: types.Ptr("Hello")}}}},
+		{MessageMeta: providerschema.MessageMeta{Sender: "assistant", Content: []providerschema.ContentBlock{{Text: types.Ptr("Hi")}}}},
+	}}
+	m, _ := newTestModel(fakeClient{}, before)
+	m.logs = map[string][]string{positionKey(1): {"Remembering where you are: Berlin"}}
+	m.Update(loadedMsg{session: &schema.Session{ID: id, Serial: 2}})
+	assert.Empty(t, m.session.Messages)
+	assert.Nil(t, m.logs)
+	assert.NotContains(t, m.history.View(), "Remembering")
+}
