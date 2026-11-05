@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"strings"
 	"testing"
 	"time"
 	"uuid"
@@ -127,7 +128,7 @@ func Test_Events(t *testing.T) {
 func Test_SystemPrompt(t *testing.T) {
 	berlin, err := time.LoadLocation("Europe/Berlin")
 	require.NoError(t, err)
-	unknown := " You don't have a name yet. Before anything else, ask the person what they'd like to call you. You don't know the person's name. You can ask for it once, when it fits the conversation, but don't press them. You don't know where they are, their time zone or the language they speak. Don't ask, but when the conversation makes one clear, such as the language they write in, remember it. Remember what you learn, or that the person would rather not say, with the set_detail tool, in the memory namespace."
+	unknown := " You don't have a name yet. Before anything else, ask the person what they'd like to call you. You don't know the person's name. You can ask for it once, when it fits the conversation, but don't press them. You don't know where they are, their time zone or the language they speak. Don't ask for them, but as soon as the conversation makes one clear, such as when they say where they are, or by the language they write in, remember it, before you answer, and when you learn where they are, remember its time zone too, by its IANA name, such as Europe/Berlin for Berlin. Remember what you learn, or that the person would rather not say, with the set_detail tool, in the memory namespace."
 
 	// The time, by the clock's time zone, as the person's isn't known
 	for name, test := range map[string]struct {
@@ -152,7 +153,7 @@ func Test_SystemPrompt(t *testing.T) {
 		},
 	} {
 		t.Run(name, func(t *testing.T) {
-			assert.Equal(t, test.prompt+unknown, newMemory(t, test.now).SystemPrompt())
+			assert.Equal(t, test.prompt+unknown+"\n\n"+memory.MemoriesPrompt, newMemory(t, test.now).SystemPrompt())
 		})
 	}
 
@@ -171,7 +172,7 @@ func Test_SystemPrompt(t *testing.T) {
 		set(t, m, schema.FieldLocation, &schema.Detail{Value: "Berlin"})
 		set(t, m, schema.FieldTimezone, &schema.Detail{Value: "Europe/Berlin"})
 		set(t, m, schema.FieldLanguage, &schema.Detail{Value: "English"})
-		assert.Equal(t, "The current date and time is Thursday, 5 November 2026, 10:30, in the Europe/Berlin (CET) time zone, UTC+01:00. Your name is Nano. You're talking to David. They are in Berlin. They speak English.", m.SystemPrompt())
+		assert.Equal(t, "The current date and time is Thursday, 5 November 2026, 10:30, in the Europe/Berlin (CET) time zone, UTC+01:00. Your name is Nano. You're talking to David. They are in Berlin. They speak English."+"\n\n"+memory.MemoriesPrompt, m.SystemPrompt())
 	})
 
 	t.Run("Declined", func(t *testing.T) {
@@ -181,7 +182,7 @@ func Test_SystemPrompt(t *testing.T) {
 		set(t, m, schema.FieldName, &schema.Detail{Declined: true})
 		set(t, m, schema.FieldTimezone, &schema.Detail{Declined: true})
 		set(t, m, schema.FieldLocation, &schema.Detail{Value: "Berlin"})
-		assert.Equal(t, "The current date and time is Thursday, 5 November 2026, 09:30, in the UTC time zone, UTC+00:00. The person you're talking to is in Berlin. You don't have a name yet. Before anything else, ask the person what they'd like to call you. You don't know the language they speak. Don't ask, but when the conversation makes one clear, such as the language they write in, remember it. Remember what you learn, or that the person would rather not say, with the set_detail tool, in the memory namespace.", m.SystemPrompt())
+		assert.Equal(t, "The current date and time is Thursday, 5 November 2026, 09:30, in the UTC time zone, UTC+00:00. The person you're talking to is in Berlin. You don't have a name yet. Before anything else, ask the person what they'd like to call you. You don't know the language they speak. Don't ask for them, but as soon as the conversation makes one clear, such as when they say where they are, or by the language they write in, remember it, before you answer, and when you learn where they are, remember its time zone too, by its IANA name, such as Europe/Berlin for Berlin. Remember what you learn, or that the person would rather not say, with the set_detail tool, in the memory namespace."+"\n\n"+memory.MemoriesPrompt, m.SystemPrompt())
 	})
 
 	t.Run("Language", func(t *testing.T) {
@@ -191,7 +192,7 @@ func Test_SystemPrompt(t *testing.T) {
 		set(t, m, schema.FieldTimezone, &schema.Detail{Declined: true})
 		set(t, m, schema.FieldAssistant, &schema.Detail{Declined: true})
 		set(t, m, schema.FieldLanguage, &schema.Detail{Value: "German"})
-		assert.Equal(t, "The current date and time is Thursday, 5 November 2026, 09:30, in the UTC time zone, UTC+00:00. The person you're talking to speaks German.", m.SystemPrompt())
+		assert.Equal(t, "The current date and time is Thursday, 5 November 2026, 09:30, in the UTC time zone, UTC+00:00. The person you're talking to speaks German."+"\n\n"+memory.MemoriesPrompt, m.SystemPrompt())
 	})
 
 	t.Run("PersonsName", func(t *testing.T) {
@@ -201,7 +202,7 @@ func Test_SystemPrompt(t *testing.T) {
 		set(t, m, schema.FieldLocation, &schema.Detail{Value: "Berlin"})
 		set(t, m, schema.FieldTimezone, &schema.Detail{Declined: true})
 		set(t, m, schema.FieldLanguage, &schema.Detail{Value: "English"})
-		assert.Equal(t, "The current date and time is Thursday, 5 November 2026, 09:30, in the UTC time zone, UTC+00:00. Your name is Omodie. The person you're talking to is in Berlin. They speak English. You don't know the person's name. You can ask for it once, when it fits the conversation, but don't press them. Remember what you learn, or that the person would rather not say, with the set_detail tool, in the memory namespace.", m.SystemPrompt())
+		assert.Equal(t, "The current date and time is Thursday, 5 November 2026, 09:30, in the UTC time zone, UTC+00:00. Your name is Omodie. The person you're talking to is in Berlin. They speak English. You don't know the person's name. You can ask for it once, when it fits the conversation, but don't press them. Remember what you learn, or that the person would rather not say, with the set_detail tool, in the memory namespace."+"\n\n"+memory.MemoriesPrompt, m.SystemPrompt())
 	})
 
 	t.Run("Toolkit", func(t *testing.T) {
@@ -236,8 +237,11 @@ func Test_SetDetailTool(t *testing.T) {
 	require.NoError(t, tk.Add(m))
 	tools, err := tk.Tools(t.Context(), "memory:*")
 	require.NoError(t, err)
-	require.Len(t, tools, 1)
-	assert.Equal(t, "memory__set_detail", tools[0].Name())
+	var names []string
+	for _, tool := range tools {
+		names = append(names, tool.Name())
+	}
+	assert.ElementsMatch(t, []string{"memory__set_detail", "memory__memories"}, names)
 
 	// Each call returns the detail, as it's remembered, and logs what's done
 	var lines []string
@@ -281,7 +285,9 @@ func Test_SetDetailTool(t *testing.T) {
 }
 
 // failingStore is a store which fails
-type failingStore struct{}
+type failingStore struct {
+	memory.Store
+}
 
 func (failingStore) Details(context.Context) (schema.Details, error) {
 	return schema.Details{}, errors.New("store failed")
@@ -308,4 +314,39 @@ func Test_Tracing(t *testing.T) {
 	assert.Equal(t, "memory.SetDetail", spans[1].Name())
 	assert.Contains(t, spans[1].Attributes(), attribute.String("arg.field", "location"))
 	assert.Equal(t, "Error", spans[2].Status().Code.String())
+}
+
+func Test_SystemPromptForTools(t *testing.T) {
+	// The prompt says only what the tools which are selected can do
+	m := newMemory(t, time.Date(2026, 11, 5, 9, 30, 0, 0, time.UTC))
+	tk, err := toolkit.New(t.Context())
+	require.NoError(t, err)
+	require.NoError(t, tk.Add(m))
+	prompt := func(names ...string) string {
+		prompts, err := tk.SystemPrompts(t.Context(), names...)
+		require.NoError(t, err)
+		require.Len(t, prompts, 1)
+		return prompts[0]
+	}
+	asks := "Before anything else, ask the person what they'd like to call you."
+	details := "rather than memories."
+
+	// Every tool
+	for _, names := range [][]string{{"memory:*"}, {"*"}, {"memory:set_detail", "memory:memories"}} {
+		all := prompt(names...)
+		assert.Contains(t, all, asks, names)
+		assert.Contains(t, all, memory.MemoriesPrompt, names)
+	}
+
+	// Only the details, without memories
+	only := prompt("memory:set_detail")
+	assert.Contains(t, only, asks)
+	assert.NotContains(t, only, "# Memory")
+
+	// Only memories, without asking for details, or saying they're set
+	only = prompt("memory:memories")
+	assert.NotContains(t, only, asks)
+	assert.Contains(t, only, "# Memory")
+	assert.NotContains(t, only, details)
+	assert.True(t, strings.HasPrefix(only, "The current date and time is "))
 }

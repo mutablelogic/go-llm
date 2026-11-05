@@ -1,5 +1,6 @@
 // Package httphandler has the memory's HTTP API, which gets, sets and
-// forgets the details it keeps
+// forgets the details it keeps, and lists, gets, remembers and forgets its
+// memories
 package httphandler
 
 import (
@@ -40,14 +41,16 @@ const Tag = "Memory"
 // LIFECYCLE
 
 // RegisterHandlers registers the memory's API with the router, at
-// memory/detail, with the "Memory" tag, in the "LLM" group
+// memory/detail, and memory/memory, with the "Memory" tag, in the "LLM"
+// group
 func RegisterHandlers(m *memory.Memory, router *httprouter.Router) error {
 	documentation := openapi.ParseMarkdown(readme)
-	router.Spec().AddTag(Tag, documentation.Section(2, "Detail Operations").Body)
+	router.Spec().AddTag(Tag, documentation.Section(2, "Detail Operations").Body+"\n\n"+documentation.Section(2, "Memory Operations").Body)
 	taggroup.Add(router.Spec(), taggroup.LLM, Tag)
 	return errors.Join(
 		detailsHandlers(m, router, documentation),
 		detailHandlers(m, router, documentation),
+		memoryHandlers(m, router, documentation),
 	)
 }
 

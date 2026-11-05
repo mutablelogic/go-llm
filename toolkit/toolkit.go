@@ -51,6 +51,15 @@ type Namespace interface {
 	Notify(func(action eventschema.EventAction, name string))
 }
 
+// ToolPrompter is a namespace whose system prompt depends on which of its
+// tools a model can call, so it says nothing of those it can't
+type ToolPrompter interface {
+	// SystemPromptFor returns the system prompt, when the model can call
+	// the tools, by their names in the namespace, or all of them, when
+	// they're nil
+	SystemPromptFor(tools []string) string
+}
+
 // namespace is a namespace with a name, system prompt and tools
 type namespace struct {
 	name, prompt string
