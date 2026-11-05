@@ -79,7 +79,7 @@ func (r *Registry) CreateSession(ctx context.Context, meta schema.SessionMeta) (
 
 	if r.sessionStore == nil {
 		return nil, errNoSessionStore
-	} else if err := validSessionMeta(meta); err != nil {
+	} else if err := validGeneratorMeta(meta.GeneratorMeta); err != nil {
 		return nil, err
 	} else if meta.Model, err = r.canonicalModel(ctx, meta.Model); err != nil {
 		return nil, err
@@ -196,7 +196,7 @@ func (r *Registry) UpdateSession(ctx context.Context, id uuid.UUID, meta schema.
 		return nil, err
 	}
 	session.SessionMeta = session.SessionMeta.Merge(meta)
-	if err := validSessionMeta(session.SessionMeta); err != nil {
+	if err := validGeneratorMeta(session.GeneratorMeta); err != nil {
 		return nil, err
 	}
 	if meta.Model != nil {
@@ -306,11 +306,11 @@ func (r *Registry) Chat(ctx context.Context, id uuid.UUID, messages []llm.Messag
 // has no session store
 var errNoSessionStore = llm.ErrServiceUnavailable.With("the registry has no session store")
 
-// validSessionMeta returns ErrBadParameter when the settings aren't valid:
+// validGeneratorMeta returns ErrBadParameter when the settings aren't valid:
 // their schema isn't a JSON schema, or an option is one which there's a
 // field for. They needn't have a model, as it can be inherited, such as from
-// another session.
-func validSessionMeta(meta schema.SessionMeta) error {
+// another session, or given when an agent's run.
+func validGeneratorMeta(meta schema.GeneratorMeta) error {
 	if _, err := meta.JSONSchema(); err != nil {
 		return err
 	} else if _, err := meta.Opts(types.Value(meta.System)); err != nil {

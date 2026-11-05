@@ -1,11 +1,7 @@
 package schema
 
 import (
-	"bytes"
-	"encoding/json"
-	"maps"
 	"net/url"
-	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -157,61 +153,13 @@ func (s SessionResponse) String() string {
 // IsZero returns true when the settings set nothing, so as an update, they
 // change nothing
 func (s SessionMeta) IsZero() bool {
-	return s.Model == nil && s.System == nil && s.Tools == nil && len(s.Opt) == 0 && len(bytes.TrimSpace(s.Schema)) == 0
+	return s.GeneratorMeta.IsZero()
 }
 
-// Merge returns the settings, changed by those of the update: its model, and
-// its system prompt, when they're set, which empty clears; its tools, when they're set, which an
-// empty list clears; its schema, when it's set, which null clears; and its
-// options, each of which is set, or removed, when it's null. What the update
-// doesn't set is kept.
+// Merge returns the settings, changed by those of the update, as
+// GeneratorMeta.Merge does
 func (s SessionMeta) Merge(update SessionMeta) SessionMeta {
-	result := s
-	if update.Model != nil {
-		if model := strings.TrimSpace(*update.Model); model == "" {
-			result.Model = nil
-		} else {
-			result.Model = types.Ptr(model)
-		}
-	}
-	if update.System != nil {
-		if system := strings.TrimSpace(*update.System); system == "" {
-			result.System = nil
-		} else {
-			result.System = types.Ptr(*update.System)
-		}
-	}
-	if update.Tools != nil {
-		result.Tools = nil
-		if len(update.Tools) > 0 {
-			result.Tools = slices.Clone(update.Tools)
-		}
-	}
-	if schema := bytes.TrimSpace(update.Schema); len(schema) > 0 {
-		if string(schema) == "null" {
-			result.Schema = nil
-		} else {
-			result.Schema = slices.Clone(update.Schema)
-		}
-	}
-	if len(update.Opt) > 0 {
-		opt := maps.Clone(s.Opt)
-		if opt == nil {
-			opt = make(map[string]json.RawMessage, len(update.Opt))
-		}
-		for key, value := range update.Opt {
-			if value := bytes.TrimSpace(value); len(value) == 0 || string(value) == "null" {
-				delete(opt, key)
-			} else {
-				opt[key] = slices.Clone(value)
-			}
-		}
-		if len(opt) == 0 {
-			opt = nil
-		}
-		result.Opt = opt
-	}
-	return result
+	return SessionMeta{GeneratorMeta: s.GeneratorMeta.Merge(update.GeneratorMeta)}
 }
 
 // Query returns the request as the parameters of a URL's query

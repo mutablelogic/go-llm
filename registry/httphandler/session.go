@@ -86,7 +86,8 @@ func sessionCreateListHandlers(reg *registry.Registry, router *httprouter.Router
 
 func sessionGetUpdateDeleteHandlers(reg *registry.Registry, router *httprouter.Router, documentation *openapi.MarkdownDoc) error {
 	return router.Register("llm/session/{id}", jsonschema.MustFor[sessionID](), func(path httprequest.PathItem) {
-		path.Tag("Sessions")
+		// Chat is inference, and the rest of the session's operations aren't,
+		// so each has its own tag
 
 		// GET
 		path.Get(func(w http.ResponseWriter, r *http.Request) {
@@ -99,6 +100,7 @@ func sessionGetUpdateDeleteHandlers(reg *registry.Registry, router *httprouter.R
 				httpresponse.JSON(w, http.StatusOK, httprequest.Indent(r), session)
 			}
 		}, func(op httprequest.PathOperation) {
+			op.Tags("Sessions")
 			op.Summary("Get Session")
 			op.Description(documentation.Section(3, "GET /llm/session/{id}").Body)
 			op.JSONResponse(http.StatusOK, jsonschema.MustFor[schema.Session](), "Session, without its messages")
@@ -135,6 +137,7 @@ func sessionGetUpdateDeleteHandlers(reg *registry.Registry, router *httprouter.R
 				})
 			}
 		}, func(op httprequest.PathOperation) {
+			op.Tags("Inference")
 			op.Summary("Chat")
 			op.Description(documentation.Section(3, "POST /llm/session/{id}").Body)
 			op.RequestBody(jsonschema.MustFor[schema.ChatRequest]())
@@ -163,6 +166,7 @@ func sessionGetUpdateDeleteHandlers(reg *registry.Registry, router *httprouter.R
 				httpresponse.JSON(w, http.StatusOK, httprequest.Indent(r), session)
 			}
 		}, func(op httprequest.PathOperation) {
+			op.Tags("Sessions")
 			op.Summary("Update Session")
 			op.Description(documentation.Section(3, "PATCH /llm/session/{id}").Body)
 			op.RequestBody(jsonschema.MustFor[schema.SessionMeta]())
@@ -184,6 +188,7 @@ func sessionGetUpdateDeleteHandlers(reg *registry.Registry, router *httprouter.R
 				httpresponse.JSON(w, http.StatusOK, httprequest.Indent(r), session)
 			}
 		}, func(op httprequest.PathOperation) {
+			op.Tags("Sessions")
 			op.Summary("Delete Session")
 			op.Description(documentation.Section(3, "DELETE /llm/session/{id}").Body)
 			op.JSONResponse(http.StatusOK, jsonschema.MustFor[schema.Session](), "Deleted session")

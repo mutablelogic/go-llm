@@ -23,6 +23,7 @@ type opt struct {
 	clientopts    []client.ClientOpt
 	providerStore ProviderStore
 	sessionStore  SessionStore
+	agentStore    AgentStore
 	toolkit       *toolkit.Toolkit
 	broadcaster   *broadcaster.Broadcaster
 }
@@ -50,6 +51,7 @@ func (o *opt) defaults() {
 	o.clientopts = nil
 	o.providerStore = nil
 	o.sessionStore = nil
+	o.agentStore = nil
 	o.toolkit = nil
 	o.broadcaster = broadcaster.New()
 }
@@ -89,6 +91,18 @@ func WithSessionStore(store SessionStore) Opt {
 			return llm.ErrBadParameter.With("missing session store")
 		}
 		o.sessionStore = store
+		return nil
+	}
+}
+
+// WithAgentStore sets the store of the agents, such as a database, which
+// other servers share, or files, so they're kept when the server restarts
+func WithAgentStore(store AgentStore) Opt {
+	return func(o *opt) error {
+		if store == nil {
+			return llm.ErrBadParameter.With("missing agent store")
+		}
+		o.agentStore = store
 		return nil
 	}
 }

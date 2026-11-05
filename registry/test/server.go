@@ -278,10 +278,13 @@ func (s *Server) record(w http.ResponseWriter, r *http.Request) {
 // verify checks an exchange against the specification
 func verify(spec *openapi.Spec, exchange Exchange) error {
 	// Find the operation. A redirect from a path which is not documented is
-	// allowed, as the request it redirects to is checked.
+	// allowed, as the request it redirects to is checked, as is a request
+	// which no handler is registered for, which isn't found.
 	op, err := operation(spec, exchange.Method, exchange.Pattern)
 	if err != nil {
 		if isRedirect(exchange.Status) && errors.Is(err, errNotDocumented) {
+			return nil
+		} else if exchange.Pattern == "" && exchange.Status == http.StatusNotFound {
 			return nil
 		}
 		return err
