@@ -17,10 +17,13 @@ import (
 ///////////////////////////////////////////////////////////////////////////////
 // TYPES
 
-// AgentStore is a store of agents in memory, by their names, for tests
+// AgentStore is a store of agents in memory, by their names, for tests,
+// whose serials are of the store, rather than of each agent, so an agent
+// which is deleted, and created again, doesn't have a serial it had
 type AgentStore struct {
 	mu     sync.Mutex
 	agents map[string]schema.Agent
+	serial uint64
 }
 
 var _ registry.AgentStore = (*AgentStore)(nil)
@@ -43,7 +46,8 @@ func (m *AgentStore) Create(_ context.Context, meta schema.AgentMeta) (schema.Ag
 		return schema.Agent{}, llm.ErrConflict.Withf("agent %q exists", meta.Name)
 	}
 	now := time.Now()
-	agent := schema.Agent{Serial: 1, Created: now, Modified: now, AgentMeta: meta}
+	m.serial++
+	agent := schema.Agent{Serial: m.serial, Created: now, Modified: now, AgentMeta: meta}
 	m.agents[meta.Name] = cloneAgent(agent)
 	return cloneAgent(agent), nil
 }
@@ -83,7 +87,8 @@ func (m *AgentStore) Put(_ context.Context, agent schema.Agent) (schema.Agent, e
 	} else if existing.Serial != agent.Serial {
 		return schema.Agent{}, llm.ErrConflict.Withf("agent %q was changed", agent.Name)
 	}
-	agent.Serial++
+	m.serial++
+	agent.Serial = m.serial
 	agent.Created = existing.Created
 	agent.Modified = time.Now()
 	m.agents[agent.Name] = cloneAgent(agent)

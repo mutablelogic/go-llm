@@ -53,7 +53,7 @@ func Test_Agents(t *testing.T) {
 		agent, err := r.CreateAgent(ctx, segment())
 		require.NoError(t, err)
 		assert.Equal(t, "segment", agent.Name)
-		assert.Equal(t, uint64(1), agent.Serial)
+		assert.NotZero(t, agent.Serial)
 		assert.False(t, agent.Created.IsZero())
 		assert.Equal(t, "scripted:model", types.Value(agent.Model))
 		assert.Equal(t, []string{"weather:current"}, agent.Tools)
@@ -143,7 +143,7 @@ func Test_Agents(t *testing.T) {
 		// What the update sets is changed, and the rest kept, and its name
 		// isn't changed
 		r, _ := newRegistry(t)
-		_, err := r.CreateAgent(ctx, segment())
+		created, err := r.CreateAgent(ctx, segment())
 		require.NoError(t, err)
 		agent, err := r.UpdateAgent(ctx, "segment", schema.AgentMeta{
 			PromptMeta: schema.PromptMeta{
@@ -158,7 +158,7 @@ func Test_Agents(t *testing.T) {
 		})
 		require.NoError(t, err)
 		assert.Equal(t, "segment", agent.Name)
-		assert.Equal(t, uint64(2), agent.Serial)
+		assert.Greater(t, agent.Serial, created.Serial)
 		assert.Equal(t, "Segment a transcript", types.Value(agent.Title))
 		assert.Nil(t, agent.Description)
 		assert.Equal(t, "Segment: {{ .transcript }}", types.Value(agent.Prompt))
@@ -206,6 +206,29 @@ func Test_Agents(t *testing.T) {
 		assert.ErrorIs(t, err, llm.ErrNotFound)
 		_, err = r.DeleteAgent(ctx, "segment")
 		assert.ErrorIs(t, err, llm.ErrNotFound)
+	})
+
+	t.Run("Recreated", func(t *testing.T) {
+		// An agent which is deleted, and created again, has a serial it
+		// didn't have, so a change to it as it was isn't made to the new one
+		r, store := newRegistry(t)
+		old, err := r.CreateAgent(ctx, segment())
+		require.NoError(t, err)
+		_, err = r.DeleteAgent(ctx, "segment")
+		require.NoError(t, err)
+		created, err := r.CreateAgent(ctx, segment())
+		require.NoError(t, err)
+		assert.NotEqual(t, old.Serial, created.Serial)
+
+		stale := *old
+		stale.Title = types.Ptr("Stale")
+		_, err = store.Put(ctx, stale)
+		assert.ErrorIs(t, err, llm.ErrConflict)
+		assert.ErrorIs(t, store.Delete(ctx, "segment", old.Serial), llm.ErrConflict)
+		got, err := r.GetAgent(ctx, "segment")
+		require.NoError(t, err)
+		assert.Equal(t, created.Serial, got.Serial)
+		assert.Equal(t, "Segment a transcript", types.Value(got.Title))
 	})
 
 	t.Run("NoStore", func(t *testing.T) {

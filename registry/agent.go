@@ -18,7 +18,9 @@ import (
 // AgentStore has agents, each by its name, with its serial, which the store
 // sets, and changes each time the agent is stored, so a change is made to
 // the agent as it was last seen, rather than a newer one, such as one which
-// another server made
+// another server made. An agent's serial is never one which an agent with
+// its name had before, including one which was deleted, and created again,
+// so a change to the agent as it was isn't made to the new one.
 type AgentStore interface {
 	// Create creates an agent with the definition, and returns it, with its
 	// serial, and when it was created. Returns ErrConflict when there's an
