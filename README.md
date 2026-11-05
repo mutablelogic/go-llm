@@ -3,9 +3,73 @@
 [![Go Reference](https://pkg.go.dev/badge/github.com/mutablelogic/go-llm.svg)](https://pkg.go.dev/github.com/mutablelogic/go-llm)
 [![License](https://img.shields.io/badge/license-Apache-blue.svg)](LICENSE)
 
-A server, command-line tool and Go SDK for large language models and speech, from several providers at once.
+go-llm is a server, command-line tool and Go SDK which puts large language models and speech models from several providers behind one interface. You add providers, such as Ollama, OpenAI, Mistral, [go-whisper](https://github.com/mutablelogic/go-whisper) and ElevenLabs, and then ask any of their models to reply to messages, call tools, run agents, embed text and images, read the text in documents, and transcribe and translate speech. The same operations are available as a REST API, from the `llm` command, which includes an interactive chat in the terminal, or directly from Go.
 
-go-llm keeps a registry of providers, such as Ollama, OpenAI, Mistral, [go-whisper](https://github.com/mutablelogic/go-whisper) and ElevenLabs, and their models, and asks those models to reply to messages, call tools, embed text and images, recognize the text in documents, and transcribe and translate speech. The same operations are available as a REST API, from the `llm` command, or from Go.
+```mermaid
+flowchart LR
+    subgraph Clients
+        direction TB
+        CLI["`**llm** command
+        and interactive chat`"]
+        Client["`**registry/httpclient**
+        Go client`"]
+    end
+
+    subgraph Server["Server, or your own Go program"]
+        direction TB
+        API["`**httphandler**
+        REST API and events`"]
+        Registry["`**registry**
+        providers, models, sessions`"]
+        Toolkit["`**toolkit**
+        tools, in namespaces`"]
+        Agents["`**agents**
+        prompts which models call as tools`"]
+        Stores[("`**stores**
+        providers, sessions, agents`")]
+    end
+
+    subgraph Providers
+        direction TB
+        Ollama["`**ollama**`"]
+        OpenAI["`**openai**
+        OpenAI, Mistral, DeepSeek`"]
+        Whisper["`**gowhisper**`"]
+        ElevenLabs["`**elevenlabs**`"]
+        Eliza["`**eliza**
+        for testing`"]
+    end
+
+    subgraph Tools
+        direction TB
+        HA["Home Assistant"]
+        News["NewsAPI"]
+        Weather["WeatherAPI"]
+        Search["Ollama web search"]
+    end
+
+    CLI --> Client
+    Client --> API
+    API --> Registry
+    Registry --> Stores
+    Registry --> Toolkit
+    Toolkit --> Agents
+    Agents --> Registry
+    Toolkit --> Tools
+    Registry --> Ollama & OpenAI & Whisper & ElevenLabs & Eliza
+
+    classDef highlight fill:#e8f0fe,stroke:#1a73e8,stroke-width:2px,color:#111
+    class CLI,Client,Registry,Toolkit,Agents highlight
+    class Ollama,OpenAI,Whisper,ElevenLabs,Eliza highlight
+```
+
+- The **client and CLI**: the `llm` command, in [cmd/llm](cmd/llm), runs the server, and is its client, with commands for each operation, and an interactive chat in the terminal, which streams replies and follows other clients of the same session. The Go client, [registry/httpclient](registry/httpclient), is what it uses to talk to the server.
+- The **registry**, in [registry](registry), finds a model by name, checks what it can do, and asks its provider. It keeps providers, sessions and agents in stores, runs the agent loop, which calls tools until the model replies, and publishes events about what changed.
+- The **toolkit**, in [toolkit](toolkit), holds the tools which models can call, in namespaces, such as `homeassistant` or `weatherapi`, and streams what they log, and their progress, as they run.
+- **Agents** are named prompts, with their model, tools and the schemas of their input and reply, which models call as tools in the `agent` namespace. The [agents](agents) folder has examples, which the server adds when it starts.
+- The **providers**, in [provider](provider), each wrap a provider's API, and do what it can: generate, embed, read documents, or transcribe and translate speech.
+
+The registry can be used without the server, from your own Go program, as the [examples](examples) show.
 
 ## Features
 
@@ -19,6 +83,7 @@ go-llm keeps a registry of providers, such as Ollama, OpenAI, Mistral, [go-whisp
 - **Models**: download, delete and unload models, for providers which store them, such as Ollama and go-whisper.
 - **Tools**: a toolkit of tools, in namespaces, for Home Assistant, NewsAPI, WeatherAPI and Ollama's web search, which models can call.
 - **Events**: a stream of changes to the providers and their models, and to sessions, with whether someone is typing in a session, or its model is replying, so two chat windows on one session follow each other.
+- **OpenAPI**: the REST API is described by an OpenAPI specification, which `llm openapi` shows as documentation in a browser, or outputs as JSON or YAML.
 - **OpenTelemetry**: traces of requests, through the registry, providers and tools.
 
 ## Providers
@@ -139,10 +204,10 @@ Tools are added to the server's toolkit when their credentials are set, as envir
 
 | Namespace | Tools | Credentials |
 |-----------|-------|-------------|
-| `weatherapi` | Current weather, forecasts and alerts | `WEATHERAPI_API_KEY` |
-| `newsapi` | News articles, headlines and sources | `NEWSAPI_API_KEY` |
+| `weatherapi` | Current weather, forecasts and alerts | `WEATHERAPI_API_KEY`, from [weatherapi.com](https://www.weatherapi.com/signup.aspx) |
+| `newsapi` | News articles, headlines and sources | `NEWSAPI_API_KEY`, from [newsapi.org](https://newsapi.org/register) |
 | `homeassistant` | Query and control smart home devices | `HOMEASSISTANT_URL`, `HOMEASSISTANT_API_KEY` |
-| `ollama` | Web search and fetch | `OLLAMA_API_KEY` |
+| `ollama` | Web search and fetch | `OLLAMA_API_KEY`, from [ollama.com](https://ollama.com/settings/keys) |
 
 A model is given tools by name, by namespace and name, such as `weatherapi:current`, or all of a namespace's, such as `weatherapi:*`, or all of them, `*`.
 
@@ -164,12 +229,13 @@ The registry is meant to be composed with other modules into a whole system, rat
 
 - `WithProviderStore` keeps the providers' definitions in a store, such as a database, so they're kept when the server restarts, and are shared between servers. A `ProviderStore` lists, puts and deletes providers, each with a serial, so a change to a provider which another server has changed is a conflict, and watches the store for the changes other servers make. The providers' models aren't stored, as they're listed from the providers, and cached.
 - `WithSessionStore` keeps sessions, which are conversations with models, in a store, such as a database, so they're kept when the server restarts. A `SessionStore` creates, gets, lists, puts and deletes sessions, each with a UUID and a serial, which the store sets, so a change to a session which was changed since it was read is a conflict, and watches the store for the changes other servers make. Without one, the registry's session methods return `ErrServiceUnavailable`.
+- `WithAgentStore` keeps agents, which are prompts with a model, tools and a schema of their input and reply, in a store, such as a database or files, so they're kept when the server restarts. An `AgentStore` creates, gets, lists, puts and deletes agents, each with its name and a serial, so a change to an agent which was changed since it was read is a conflict. The registry's agents are tools in the toolkit's `agent` namespace, which models can call. Without one, the registry's agent methods return `ErrServiceUnavailable`.
 - `WithCredentialsProvider` expands an API key's placeholder, such as `${OPENAI_KEY}`, with a secret, from the environment by default, or from a secrets manager, so keys are never stored.
 - `WithToolkit` gives the registry the tools which models can call.
 - `WithBroadcaster` gives the registry the broadcaster which it publishes its events to, such as one which a system's other modules share, so their events are streamed together. Without one, the registry has its own.
 - `WithTracer` and `WithClientOpts` trace, and configure, the requests to providers.
 
-Its HTTP handlers are registered with a router, alongside a system's own, and its events, such as a provider being created, or a session's model replying, are watched with `Watch`. The `llm` command, in [cmd/llm](cmd/llm), is one such system: it runs the registry, with a store which keeps its providers in the command's defaults, and its sessions in files, the toolkit, and a broadcaster, which streams the registry's events, in a server.
+Its HTTP handlers are registered with a router, alongside a system's own, and its events, such as a provider being created, or a session's model replying, are watched with `Watch`. The `llm` command, in [cmd/llm](cmd/llm), is one such system: it runs the registry, with a store which keeps its providers in the command's defaults, and its sessions and agents in files, the toolkit, and a broadcaster, which streams the registry's events, in a server.
 
 The [examples](examples) use the packages without the server, each with Ollama, when `OLLAMA_ADDR` is set, OpenAI, when `OPENAI_API_KEY` is, or Eliza, which needs neither:
 
