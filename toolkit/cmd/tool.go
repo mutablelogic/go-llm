@@ -19,9 +19,9 @@ import (
 // TYPES
 
 type ToolCommands struct {
-	ToolList ToolListCmd `cmd:"" name:"tools" help:"List the tools which models can call." group:"LLM TOOLS"`
-	ToolGet  ToolGetCmd  `cmd:"" name:"tool" help:"Get a tool by name, with the JSON schema of its input." group:"LLM TOOLS"`
-	ToolCall ToolCallCmd `cmd:"" name:"call" help:"Call a tool, and print its result." group:"LLM TOOLS"`
+	ToolList ToolListCmd `cmd:"" name:"tools" help:"List the tools and agents which models can call." group:"LLM TOOLS & AGENTS"`
+	ToolGet  ToolGetCmd  `cmd:"" name:"tool" help:"Get a tool or agent by name, with the JSON schema of its input." group:"LLM TOOLS & AGENTS"`
+	ToolCall ToolCallCmd `cmd:"" name:"call" help:"Call a tool or agent, and print its result." group:"LLM TOOLS & AGENTS"`
 }
 
 type ToolListCmd struct {

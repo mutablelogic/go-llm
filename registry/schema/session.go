@@ -193,7 +193,7 @@ func (r MessageListRequest) Query() url.Values {
 // TABLE
 
 func (s Session) Header() []string {
-	return []string{"ID", "Model", "Tools", "Context", "Modified"}
+	return []string{"ID", "Model", "Tools", "Context", "Updated"}
 }
 
 func (s Session) Width(col int) int {
@@ -201,7 +201,8 @@ func (s Session) Width(col int) int {
 }
 
 // Cell returns the session's identifier, model, tools, the tokens of its
-// conversation, as of its last request, and when it was last modified
+// conversation, as of its last request, and when it was last updated, which
+// is when it was created, or modified, whichever is later
 func (s Session) Cell(col int) tui.CellText {
 	switch col {
 	case 0:
@@ -216,10 +217,7 @@ func (s Session) Cell(col int) tui.CellText {
 		}
 		return ""
 	case 4:
-		if s.Modified.IsZero() {
-			return ""
-		}
-		return s.Modified.Local().Format(time.DateTime)
+		return updated(s.Created, s.Modified)
 	default:
 		return ""
 	}

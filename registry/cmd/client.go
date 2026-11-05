@@ -17,6 +17,7 @@ type ClientCommands struct {
 	ProviderCommands
 	ModelCommands
 	SessionCommands
+	AgentCommands
 	InferenceCommands
 }
 
