@@ -74,7 +74,8 @@ var errNoAgentStore = llm.ErrServiceUnavailable.With("the registry has no agent 
 // rather than merging them, when it's changed, and returns it, as it's
 // stored, or the agent as it is, when it hasn't changed, so creating agents
 // each time a server starts, such as its examples, changes only those which
-// have. Its name must be an identifier, such as segment,
+// have, and whether it was created, rather than replaced, or kept. Its
+// name must be an identifier, such as segment,
 // which refers to it. Its input, when it has one, must be a JSON schema of an
 // object, and its prompt a Go template, which is executed with the input. Its
 // model, when it has one, is the registry's, by its canonical name, and its
@@ -84,18 +85,18 @@ var errNoAgentStore = llm.ErrServiceUnavailable.With("the registry has no agent 
 // model isn't the registry's, or a tool isn't the toolkit's, ErrConflict
 // when the agent was changed as it was replaced, or a name is ambiguous, and
 // ErrServiceUnavailable when the registry has no agent store.
-func (r *Registry) CreateAgent(ctx context.Context, meta schema.AgentMeta) (_ *schema.Agent, err error) {
+func (r *Registry) CreateAgent(ctx context.Context, meta schema.AgentMeta) (_ *schema.Agent, created bool, err error) {
 	ctx, endSpan := otel.StartSpan(r.tracer, ctx, "llm.registry.CreateAgent",
 		attribute.String("arg.meta", meta.String()),
 	)
 	defer func() { endSpan(err) }()
 
 	if r.agentStore == nil {
-		return nil, errNoAgentStore
+		return nil, false, errNoAgentStore
 	} else if !validAgentName(meta.Name) {
-		return nil, llm.ErrBadParameter.Withf("invalid agent name %q, which must be an identifier, without two underscores, or starting or ending with one", meta.Name)
+		return nil, false, llm.ErrBadParameter.Withf("invalid agent name %q, which must be an identifier, without two underscores, or starting or ending with one", meta.Name)
 	} else if meta, err = r.validAgentMeta(ctx, meta, meta); err != nil {
-		return nil, err
+		return nil, false, err
 	}
 	r.agentsMu.Lock()
 	defer r.agentsMu.Unlock()
@@ -106,19 +107,20 @@ func (r *Registry) CreateAgent(ctx context.Context, meta schema.AgentMeta) (_ *s
 	switch {
 	case errors.Is(err, llm.ErrNotFound):
 		existing, err = r.agentStore.Create(ctx, meta)
+		created = true
 	case err != nil:
-		return nil, err
+		return nil, false, err
 	case sameAgentMeta(existing.AgentMeta, meta):
-		return &existing, nil
+		return &existing, false, nil
 	default:
 		existing.AgentMeta = meta
 		existing, err = r.agentStore.Put(ctx, existing)
 	}
 	if err != nil {
-		return nil, err
+		return nil, false, err
 	}
 	r.agentChanged(existing)
-	return &existing, nil
+	return &existing, created, nil
 }
 
 // sameAgentMeta returns true when the definitions are the same, as JSON

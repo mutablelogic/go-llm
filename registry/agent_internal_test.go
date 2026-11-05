@@ -2,6 +2,7 @@ package registry
 
 import (
 	"context"
+	"encoding/json"
 	"testing"
 
 	// Packages
@@ -147,4 +148,22 @@ func Test_AgentStream(t *testing.T) {
 		"Agent outer is replying",
 		"Agent outer is replying",
 	}, messages)
+}
+
+func Test_MeasureWithoutUsage(t *testing.T) {
+	// The usage of a tool's result isn't sent to the model, so it isn't
+	// measured as the conversation's
+	h := &history{measure: func(_ context.Context, text string) (uint, error) { return uint(len(text)), nil }}
+	result := func(usage *llm.Usage) *providerschema.Message {
+		return &providerschema.Message{MessageMeta: providerschema.MessageMeta{Sender: "tool", Content: []providerschema.ContentBlock{
+			{ToolResult: &providerschema.ToolResult{ID: "1", Name: "agent__segment", Content: json.RawMessage(`"Done"`), Usage: usage}},
+		}}}
+	}
+	with := result(&llm.Usage{InputTokens: 1000, OutputTokens: 500, Duration: 1e9})
+	without, err := h.measureMessage(context.Background(), result(nil))
+	require.NoError(t, err)
+	measured, err := h.measureMessage(context.Background(), with)
+	require.NoError(t, err)
+	assert.Equal(t, without, measured)
+	assert.NotNil(t, with.Content[0].ToolResult.Usage, "the message keeps its usage")
 }

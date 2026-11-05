@@ -78,21 +78,23 @@ func runTool(parent context.Context, tool llm.Tool, call llm.ToolCall, timeout t
 		ctx, cancel = context.WithCancel(parent)
 	}
 	defer cancel()
-	var s Session
+	// The call's session, whichever it is, which counts the tokens the tool
+	// says it used
+	var s Session = discard{}
 	if session != nil {
-		s = session(call)
-		ctx = WithSession(ctx, s)
+		if s = session(call); s == nil {
+			s = discard{}
+		}
 	}
+	counted := &usageSession{Session: s}
+	ctx = WithSession(ctx, counted)
 
 	// Its result has how long it took, and the tokens it used, when it
 	// says, even when it fails
 	start := time.Now()
 	block := runCall(parent, ctx, tool, call, timeout)
 	if block.ToolResult != nil {
-		var usage llm.Usage
-		if used, ok := s.(interface{ usage() llm.Usage }); ok {
-			usage = used.usage()
-		}
+		usage := counted.usage()
 		usage.Duration = time.Since(start)
 		block.ToolResult.Usage = &usage
 	}
@@ -136,4 +138,28 @@ func timedOutAt(parent, ctx context.Context) bool {
 // timedOut returns the result of the call of a tool which timed out
 func timedOut(call llm.ToolCall, timeout time.Duration) providerschema.ContentBlock {
 	return providerschema.NewToolError(call.ID, call.Name, fmt.Errorf("timed out after %v", timeout))
+}
+
+// usageSession is the session of a tool call, which counts the tokens the
+// tool says it used, for its result, as well as telling its session, so
+// they're counted whichever session it is
+type usageSession struct {
+	Session
+	mu   sync.Mutex
+	used llm.Usage
+}
+
+// Usage counts the tokens the tool used, and tells its session
+func (s *usageSession) Usage(usage llm.Usage) {
+	s.mu.Lock()
+	s.used = s.used.Add(usage)
+	s.mu.Unlock()
+	s.Session.Usage(usage)
+}
+
+// usage returns the tokens the tool said it used
+func (s *usageSession) usage() llm.Usage {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.used
 }

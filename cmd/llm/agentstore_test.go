@@ -138,7 +138,7 @@ func Test_AgentStore(t *testing.T) {
 		store := newStore(t, t.TempDir())
 		r, err := registry.New(registry.WithAgentStore(store))
 		require.NoError(t, err)
-		_, err = r.CreateAgent(ctx, newMeta("segment"))
+		_, _, err = r.CreateAgent(ctx, newMeta("segment"))
 		require.NoError(t, err)
 		updated, err := r.UpdateAgent(ctx, "segment", schema.AgentMeta{PromptMeta: schema.PromptMeta{Title: types.Ptr("Segment")}})
 		require.NoError(t, err)

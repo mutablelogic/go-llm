@@ -76,14 +76,12 @@ func agentCreateHandlers(reg *registry.Registry, router *httprouter.Router, docu
 			// is replaced with it, when it's changed
 			if meta, err := readAgentMeta(w, r); err != nil {
 				httpresponse.Error(w, err)
-			} else if _, err := reg.GetAgent(r.Context(), meta.Name); err != nil && !errors.Is(err, llm.ErrNotFound) {
+			} else if agent, created, err := reg.CreateAgent(r.Context(), meta); err != nil {
 				httpresponse.Error(w, llm.HTTPErr(err), meta.Name)
-			} else if agent, err2 := reg.CreateAgent(r.Context(), meta); err2 != nil {
-				httpresponse.Error(w, llm.HTTPErr(err2), meta.Name)
-			} else if err == nil {
-				httpresponse.JSON(w, http.StatusOK, httprequest.Indent(r), agent)
-			} else {
+			} else if created {
 				httpresponse.JSON(w, http.StatusCreated, httprequest.Indent(r), agent)
+			} else {
+				httpresponse.JSON(w, http.StatusOK, httprequest.Indent(r), agent)
 			}
 		}, func(op httprequest.PathOperation) {
 			op.Summary("Create or Replace Agent")

@@ -136,7 +136,7 @@ func createAgents(ctx server.Cmd, r *registry.Registry) {
 		return
 	}
 	for _, meta := range all {
-		if _, err := r.CreateAgent(ctx.Context(), meta); err != nil {
+		if _, _, err := r.CreateAgent(ctx.Context(), meta); err != nil {
 			ctx.Logger().WarnContext(ctx.Context(), "agent not added", "agent", meta.Name, "error", err.Error())
 		}
 	}

@@ -311,3 +311,22 @@ func TestRunToolsUsage(t *testing.T) {
 	assert.Zero(t, results[2].ToolResult.Usage.InputTokens)
 	assert.NotZero(t, results[2].ToolResult.Usage.Duration)
 }
+
+// forwardingSession is a session of a caller's own, which embeds another,
+// and tells it what it's told
+type forwardingSession struct {
+	toolkit.Session
+}
+
+func TestRunToolsOwnSession(t *testing.T) {
+	// The tokens a tool says it used are its result's, whichever session it
+	// runs in
+	ctx := context.Background()
+	results, err := toolkit.RunTools(ctx, []llm.Tool{usageTool{echoTool{name: "a"}}}, []llm.ToolCall{{ID: "call-a", Name: "a"}}, 0, func(call llm.ToolCall) toolkit.Session {
+		return forwardingSession{toolkit.NewSession(call.Name, uuid.Nil(), nil, nil)}
+	})
+	require.NoError(t, err)
+	require.Len(t, results, 1)
+	require.NotNil(t, results[0].ToolResult.Usage)
+	assert.Equal(t, uint(11), results[0].ToolResult.Usage.InputTokens)
+}

@@ -324,7 +324,8 @@ func (h *history) tokens(ctx context.Context, message llm.Message) (uint, error)
 
 // measureMessage returns the tokens of the message, as its content as JSON,
 // when it's a message of the provider schema, without the data of its
-// attachments, each of which is attachmentTokens, or otherwise its text
+// attachments, each of which is attachmentTokens, or the usage of its tools'
+// results, which aren't sent to the model, or otherwise its text
 func (h *history) measureMessage(ctx context.Context, message llm.Message) (uint, error) {
 	schema, ok := schemaMessage(message)
 	if !ok {
@@ -338,6 +339,11 @@ func (h *history) measureMessage(ctx context.Context, message llm.Message) (uint
 			resource.Data = nil
 			content[i].Resource = &resource
 			attachments++
+		}
+		if block.ToolResult != nil && block.ToolResult.Usage != nil {
+			result := *block.ToolResult
+			result.Usage = nil
+			content[i].ToolResult = &result
 		}
 	}
 	data, err := json.Marshal(content)
