@@ -10,6 +10,7 @@ import (
 	client "github.com/mutablelogic/go-client"
 	otel "github.com/mutablelogic/go-client/pkg/otel"
 	llm "github.com/mutablelogic/go-llm"
+	eventschema "github.com/mutablelogic/go-llm/broadcaster/schema"
 	schema "github.com/mutablelogic/go-llm/toolkit/schema"
 	jsonschema "github.com/mutablelogic/go-server/pkg/jsonschema"
 	types "github.com/mutablelogic/go-server/pkg/types"
@@ -41,6 +42,13 @@ type Namespace interface {
 	Name() string
 	SystemPrompt() string
 	Tools() []llm.Tool
+
+	// Notify sets the function which the namespace calls, once it's added to
+	// a toolkit, when one of its tools is created, updated, or deleted, with
+	// the action, and the tool's name, after Tools returns it as it is. A
+	// namespace whose tools don't change, once it's added, doesn't call it.
+	// It's called without the namespace's lock held, as Tools is called.
+	Notify(func(action eventschema.EventAction, name string))
 }
 
 // namespace is a namespace with a name, system prompt and tools
@@ -50,6 +58,10 @@ type namespace struct {
 }
 
 var _ Namespace = namespace{}
+
+// ToolTable is the table of the events of tools, whose rows are their
+// canonical names, such as agent:segment
+const ToolTable = "tool"
 
 // entry is a tool in a namespace, with its input schema resolved for
 // validating its input, or nil if it has no input schema
@@ -109,27 +121,25 @@ func (self *Toolkit) Add(ns Namespace) error {
 	// Check the tools, and resolve their input schemas, before any are added
 	entries := make(map[string]entry, len(tools))
 	for _, tool := range tools {
-		if tool == nil {
-			return llm.ErrBadParameter.With("missing tool")
-		}
-		name := tool.Name()
-		if !llm.IsToolName(name) || !schema.IsModelToolPart(name) {
-			return llm.ErrBadParameter.Withf("invalid tool name %q, which can't have two underscores, or start or end with one", name)
-		} else if _, exists := entries[name]; exists {
-			return llm.ErrConflict.Withf("duplicate tool %q", name)
-		}
-		input, err := resolveSchema(tool.InputSchema())
+		entry, err := newEntry(namespace, tool)
 		if err != nil {
-			return llm.ErrBadParameter.Withf("tool %q: invalid input schema: %v", name, err)
+			return err
+		} else if _, exists := entries[tool.Name()]; exists {
+			return llm.ErrConflict.Withf("duplicate tool %q", tool.Name())
 		}
-		entries[name] = entry{namespace: namespace, tool: tool, input: input}
+		entries[tool.Name()] = entry
 	}
 
-	// Add the namespace and its tools
+	// Add the namespace and its tools, which are created, and be told when
+	// its tools change
 	self.namespaces[namespace] = ns
 	for name, entry := range entries {
 		self.tools[schema.CanonicalToolName(namespace, name)] = entry
+		self.publish(eventschema.EventCreate, schema.CanonicalToolName(namespace, name))
 	}
+	ns.Notify(func(action eventschema.EventAction, name string) {
+		self.changed(ns, action, name)
+	})
 
 	// Return success
 	return nil
@@ -167,6 +177,73 @@ func (self *Toolkit) ClientOpts() []client.ClientOpt {
 ////////////////////////////////////////////////////////////////////////////////
 // PRIVATE METHODS
 
+// changed changes the tool with the name, in the namespace, to the tool as
+// the namespace's Tools returns it now, whatever the action, so changes
+// which are told out of order end as the namespace is, and publishes the
+// change: the tool is created, or updated, or, when Tools doesn't return it,
+// or it isn't valid, so it can't be called, deleted.
+func (self *Toolkit) changed(ns Namespace, _ eventschema.EventAction, name string) {
+	canonical := schema.CanonicalToolName(ns.Name(), name)
+
+	// Find the tool, as it is now
+	var tool llm.Tool
+	for _, t := range ns.Tools() {
+		if t != nil && t.Name() == name {
+			tool = t
+			break
+		}
+	}
+
+	self.mu.Lock()
+	defer self.mu.Unlock()
+	if self.namespaces[ns.Name()] != ns {
+		return
+	}
+	_, existed := self.tools[canonical]
+	if tool != nil {
+		if entry, err := newEntry(ns.Name(), tool); err == nil {
+			self.tools[canonical] = entry
+			if existed {
+				self.publish(eventschema.EventUpdate, canonical)
+			} else {
+				self.publish(eventschema.EventCreate, canonical)
+			}
+			return
+		}
+	}
+	if existed {
+		delete(self.tools, canonical)
+		self.publish(eventschema.EventDelete, canonical)
+	}
+}
+
+// publish publishes that the tool with the canonical name changed, when the
+// toolkit has a broadcaster. It never waits, so it's called under the lock,
+// so the events are in the order of the changes.
+func (self *Toolkit) publish(action eventschema.EventAction, canonical string) {
+	if self.broadcaster != nil {
+		self.broadcaster.Publish(eventschema.Event{Action: action, Table: ToolTable, Row: canonical})
+	}
+}
+
+// newEntry returns the tool in the namespace, with its input schema resolved
+// for validating its input, or an error when its name, or input schema,
+// isn't valid
+func newEntry(namespace string, tool llm.Tool) (entry, error) {
+	if tool == nil {
+		return entry{}, llm.ErrBadParameter.With("missing tool")
+	}
+	name := tool.Name()
+	if !llm.IsToolName(name) || !schema.IsModelToolPart(name) {
+		return entry{}, llm.ErrBadParameter.Withf("invalid tool name %q, which can't have two underscores, or start or end with one", name)
+	}
+	input, err := resolveSchema(tool.InputSchema())
+	if err != nil {
+		return entry{}, llm.ErrBadParameter.Withf("tool %q: invalid input schema: %v", name, err)
+	}
+	return entry{namespace: namespace, tool: tool, input: input}, nil
+}
+
 // resolveSchema returns the schema resolved for validation, or nil if it's
 // nil. A schema is resolved from its JSON, so a schema which wasn't created
 // with jsonschema.For or jsonschema.FromJSON can be used for validation.
@@ -201,3 +278,6 @@ func (n namespace) SystemPrompt() string {
 func (n namespace) Tools() []llm.Tool {
 	return n.tools
 }
+
+// Notify does nothing, as the namespace's tools don't change
+func (namespace) Notify(func(eventschema.EventAction, string)) {}
