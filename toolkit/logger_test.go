@@ -4,6 +4,7 @@ import (
 	"context"
 	"log/slog"
 	"testing"
+	"uuid"
 
 	// Packages
 	toolkit "github.com/mutablelogic/go-llm/toolkit"
@@ -26,7 +27,7 @@ func Test_NewSession(t *testing.T) {
 	t.Run("Stream", func(t *testing.T) {
 		// What's logged at the info level or above is streamed, as lines
 		var lines []string
-		logAll(toolkit.NewSession("weather", func(line string) { lines = append(lines, line) }, nil).Logger())
+		logAll(toolkit.NewSession("weather", uuid.Nil(), func(line string) { lines = append(lines, line) }, nil).Logger())
 		assert.Equal(t, []string{
 			"fetching city=Berlin",
 			`WARN low quota.remaining=3 quota.note="two words"`,
@@ -39,7 +40,7 @@ func Test_NewSession(t *testing.T) {
 		recorder := tracetest.NewSpanRecorder()
 		tracer := sdktrace.NewTracerProvider(sdktrace.WithSpanProcessor(recorder)).Tracer("test")
 		_, span := tracer.Start(context.Background(), "test")
-		logAll(toolkit.NewSession("weather", nil, span).Logger())
+		logAll(toolkit.NewSession("weather", uuid.Nil(), nil, span).Logger())
 		span.End()
 
 		require.Len(t, recorder.Ended(), 1)
@@ -55,7 +56,7 @@ func Test_NewSession(t *testing.T) {
 
 	t.Run("Neither", func(t *testing.T) {
 		// With neither a stream nor a span, nothing is enabled
-		logger := toolkit.NewSession("weather", nil, nil).Logger()
+		logger := toolkit.NewSession("weather", uuid.Nil(), nil, nil).Logger()
 		assert.False(t, logger.Enabled(context.Background(), slog.LevelError))
 		logAll(logger)
 	})

@@ -32,6 +32,7 @@ type Registry struct {
 	mu        sync.RWMutex
 	providers map[string]*cached
 	statuses  statuses
+	agents    *agentNamespace
 
 	// lifecycle is held to delete a session, and, shared, to change its
 	// status, so a status isn't set as, or after, it's deleted
@@ -61,6 +62,15 @@ func New(opts ...Opt) (*Registry, error) {
 	r := &Registry{providers: make(map[string]*cached)}
 	if err := r.opt.apply(opts); err != nil {
 		return nil, err
+	}
+
+	// With a toolkit, and agents, the agents are tools, in a namespace of
+	// their own, which Run adds the stored agents to
+	if r.toolkit != nil && r.agentStore != nil {
+		r.agents = newAgentNamespace()
+		if err := r.toolkit.Add(r.agents); err != nil {
+			return nil, err
+		}
 	}
 	return r, nil
 }

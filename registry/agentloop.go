@@ -7,6 +7,7 @@ import (
 	"slices"
 	"strings"
 	"time"
+	"uuid"
 
 	// Packages
 	otel "github.com/mutablelogic/go-client/pkg/otel"
@@ -32,6 +33,8 @@ type agentLoop struct {
 	tools         []llm.Tool       // The tools, and the respond tool
 	opts          []llm.Opt        // The options passed to the model
 	stopAtTools   bool             // Whether the loop stops when the model calls tools, other than the respond tool, for the caller to run
+	session       uuid.UUID        // The session the loop runs in, which its tools run in, or the nil UUID
+	maxDepth      uint             // The most agents which run in one another, from the loop, or zero when it isn't set
 }
 
 // respondAlone is the respond tool when the model called other tools too,
@@ -176,6 +179,11 @@ func (r *Registry) toolPrompts(ctx context.Context, tools []llm.Tool) ([]string,
 // Returns the conversation, with the messages the loop added, and the tokens
 // of each, and the usage.
 func (r *Registry) agentLoop(ctx context.Context, model llm.Model, messages []llm.Message, fresh []providerschema.Message, loop *agentLoop, stream llm.GeneratorStreamFn) (*history, llm.Usage, error) {
+	// The agents its tools run are at most as deep as it says, and as those
+	// which run it say
+	if loop.maxDepth > 0 {
+		ctx = withMaxDepth(ctx, loop.maxDepth)
+	}
 
 	// The conversation, which the replies and tool results are added to,
 	// without changing the caller's messages, measured as the model's
@@ -230,7 +238,7 @@ func (r *Registry) iterate(ctx context.Context, model llm.Model, loop *agentLoop
 		span = trace.SpanFromContext(ctx)
 	}
 	session := func(name string) toolkit.Session {
-		return toolkit.NewSession(name, replies.Log(), span)
+		return toolkit.NewSession(name, loop.session, replies.Log(), span)
 	}
 
 	// Compact the conversation, to fit the model's context, unless it can't
@@ -516,6 +524,17 @@ func newAgentLoop(tools []llm.Tool, prompts []string, opts ...llm.Opt) (*agentLo
 			return nil, llm.ErrBadParameter.Withf("%s must be one or more", llm.MaxIterationsKey)
 		}
 		o.Delete(llm.MaxIterationsKey)
+	}
+
+	// The most agents which run in one another, which the agents the loop's
+	// tools run have, rather than the model
+	if o.Has(llm.MaxDepthKey) {
+		if loop.maxDepth, err = llm.GetOpt[uint](o, llm.MaxDepthKey); err != nil {
+			return nil, llm.ErrBadParameter.Withf("invalid option %q: %v", llm.MaxDepthKey, err)
+		} else if loop.maxDepth == 0 {
+			return nil, llm.ErrBadParameter.Withf("%s must be one or more", llm.MaxDepthKey)
+		}
+		o.Delete(llm.MaxDepthKey)
 	}
 
 	// The most time a tool has to return, which is a duration, or a string

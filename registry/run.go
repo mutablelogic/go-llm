@@ -26,10 +26,18 @@ import (
 // logger, or aren't when it's nil. When the store stops, it returns its
 // error. The registry is used without it, when its models are listed as
 // they're needed. With a store of sessions, the changes others make to
-// them, which it sends as events, are published as the registry's own.
+// them, which it sends as events, are published as the registry's own. With
+// a store of agents, and a toolkit, the stored agents are made tools, when
+// it starts.
 func (r *Registry) Run(ctx context.Context, logger *slog.Logger) error {
 	if logger == nil {
 		logger = slog.New(slog.DiscardHandler)
+	}
+
+	// The stored agents are tools, which a store which can't be read leaves
+	// without them, until they're changed
+	if err := r.loadAgents(ctx); err != nil {
+		logger.ErrorContext(ctx, "loading agents", "error", err)
 	}
 	// The store's watches end when it returns, as well as when the context
 	// is cancelled, such as when the store stops, so the registry isn't left

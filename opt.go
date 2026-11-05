@@ -55,6 +55,7 @@ const (
 
 	// Agents
 	MaxIterationsKey = "max_iterations" // uint, most times an agent loop asks the model for its reply
+	MaxDepthKey      = "max_depth"      // uint, most agents which run in one another, as an agent calls an agent, as a tool
 	ToolTimeoutKey   = "tool_timeout"   // time.Duration, or a string such as "30s", most time a tool an agent loop runs has to return
 
 	// Model loading
@@ -216,6 +217,15 @@ func WithMaxIterations(value uint) Opt {
 		return withError(ErrBadParameter.With("max_iterations must be one or more"))
 	}
 	return WithOpt(MaxIterationsKey, value)
+}
+
+// WithMaxDepth sets the most agents which run in one another, as an agent
+// calls an agent, or itself, as a tool, which is one or more
+func WithMaxDepth(value uint) Opt {
+	if value == 0 {
+		return withError(ErrBadParameter.With("max_depth must be one or more"))
+	}
+	return WithOpt(MaxDepthKey, value)
 }
 
 // WithToolTimeout sets the most time a tool an agent loop runs has to return,

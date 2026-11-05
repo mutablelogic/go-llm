@@ -122,6 +122,16 @@ The command-line tool connects to `localhost:8084`, or the server at `--http.add
 
 Run `llm <command> --help` for a command's arguments and flags. Options for a model are given with `--opt`, such as `--opt temperature=0.2`, or `--opt pages=0-2` for OCR.
 
+A few options are for the agent loop, which asks a model, runs the tools it calls, and asks it again, rather than for the model's provider:
+
+| Option | Default | |
+|--------|---------|-|
+| `max_iterations` | 10, or 3 for `ask` | The most times the model is asked for its reply. |
+| `max_depth` | 3 | The most agents which run in one another, as a model calls an agent, which calls another, or itself. An agent can lower it, but not raise it. |
+| `tool_timeout` | `30s` | The most time a tool has to return. |
+
+They're given to a session, or an agent, such as `llm session-update --opt max_iterations=20 --opt max_depth=2`.
+
 ## Tools
 
 Tools are added to the server's toolkit when their credentials are set, as environment variables:

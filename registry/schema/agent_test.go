@@ -155,3 +155,57 @@ func Test_AgentUpdated(t *testing.T) {
 	assert.Equal(t, created.Local().Format(time.DateTime), schema.Agent{Created: created, Modified: created.Add(-time.Hour)}.Cell(4))
 	assert.Equal(t, "", schema.Agent{}.Cell(4))
 }
+
+func Test_AgentMessage(t *testing.T) {
+	prompt := schema.PromptMeta{
+		Name:   "segment",
+		Input:  json.RawMessage(`{"type":"object","properties":{"transcript":{"type":"string"},"minutes":{"type":"number"},"tags":{"type":"array"}},"required":["transcript"]}`),
+		Prompt: types.Ptr("Segment this transcript, of {{ .minutes }} minutes, tagged {{ json .tags }}:\n\n{{ .transcript }}"),
+	}
+
+	t.Run("Message", func(t *testing.T) {
+		// The prompt is executed with the input, whose numbers are as they
+		// were written, and json writes a value as JSON
+		message, err := prompt.Message(json.RawMessage(`{"transcript":"Hello","minutes":37.5,"tags":["news","de"]}`))
+		require.NoError(t, err)
+		assert.Equal(t, "Segment this transcript, of 37.5 minutes, tagged [\"news\",\"de\"]:\n\nHello", message)
+	})
+
+	t.Run("Invalid", func(t *testing.T) {
+		// The input is validated by the input schema, must be an object, and
+		// have the fields the prompt uses
+		for name, input := range map[string]string{
+			"Required": `{"minutes":1,"tags":[]}`,
+			"Type":     `{"transcript":1,"minutes":1,"tags":[]}`,
+			"Array":    `["transcript"]`,
+			"JSON":     `{"transcript":`,
+			"Missing":  `{"transcript":"Hello"}`,
+		} {
+			_, err := prompt.Message(json.RawMessage(input))
+			assert.ErrorIs(t, err, llm.ErrBadParameter, name)
+		}
+		assert.NoError(t, prompt.Validate(json.RawMessage(`{"transcript":"Hello"}`)), "valid, though the prompt uses more")
+	})
+
+	t.Run("NoSchema", func(t *testing.T) {
+		// Without an input schema, the input is any object, and no input is
+		// an empty one
+		p := schema.PromptMeta{Name: "hello", Prompt: types.Ptr("Say hello")}
+		message, err := p.Message(nil)
+		require.NoError(t, err)
+		assert.Equal(t, "Say hello", message)
+		assert.NoError(t, p.Validate(json.RawMessage(`{"any":"thing"}`)))
+		assert.ErrorIs(t, p.Validate(json.RawMessage(`"text"`)), llm.ErrBadParameter)
+	})
+
+	t.Run("NoPrompt", func(t *testing.T) {
+		// Without a prompt, the message is the input, as JSON, and there must
+		// be one
+		p := schema.PromptMeta{Name: "echo"}
+		message, err := p.Message(json.RawMessage(`{"text":"Hello"}`))
+		require.NoError(t, err)
+		assert.JSONEq(t, `{"text":"Hello"}`, message)
+		_, err = p.Message(nil)
+		assert.ErrorIs(t, err, llm.ErrBadParameter)
+	})
+}
