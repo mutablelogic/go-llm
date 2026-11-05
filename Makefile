@@ -4,6 +4,7 @@
 # Executables
 GO ?= $(shell which go 2>/dev/null)
 NPM ?= $(shell which npm 2>/dev/null)
+DOCKER ?= $(shell which docker 2>/dev/null)
 GOWORK ?= off
 
 # Locations
@@ -60,6 +61,17 @@ client: go-dep mkdir
 	@GOWORK=${GOWORK} GOOS=${OS} GOARCH=${ARCH} ${GO} build -tags client ${BUILD_FLAGS} -o ${BUILD_DIR}/llm ./cmd/llm
 
 ###############################################################################
+# DOCKER
+
+# Build the server's image, for Linux, with the web UI, tagged with the
+# version, for the architecture, such as llm:1.2.3-linux-arm64
+.PHONY: docker
+docker: docker-dep
+	@echo Build docker image llm:${VERSION}-linux-${ARCH}
+	@${DOCKER} build --build-arg OS=linux --build-arg ARCH=${ARCH} --build-arg SOURCE=https://github.com/mutablelogic/go-llm \
+		-f docker/Dockerfile -t llm:${VERSION}-linux-${ARCH} .
+
+###############################################################################
 # TEST
 
 .PHONY: test
@@ -114,6 +126,10 @@ clean:
 .PHONY: npm-dep
 npm-dep:
 	@test -f "${NPM}" && test -x "${NPM}"  || (echo "Missing npm binary, which builds the web UI" && exit 1)
+
+.PHONY: docker-dep
+docker-dep:
+	@test -f "${DOCKER}" && test -x "${DOCKER}"  || (echo "Missing docker binary" && exit 1)
 
 .PHONY: go-dep
 go-dep:
