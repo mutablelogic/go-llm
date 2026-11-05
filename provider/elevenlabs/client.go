@@ -93,7 +93,8 @@ func (c *Client) Self() llm.Provider {
 
 // Ping checks the API can be reached, with the API key, by listing its
 // models, and returns an error if it can't. The API is only pinged once
-// every PingInterval: otherwise, the result of the last ping is returned.
+// every PingInterval: otherwise, the result of the last ping is returned,
+// unless it ended as its caller's context did.
 func (c *Client) Ping(ctx context.Context) error {
 	// Concurrent pings wait for the one in progress
 	c.mu.Lock()
@@ -104,9 +105,14 @@ func (c *Client) Ping(ctx context.Context) error {
 		return c.pingErr
 	}
 
-	// Ping the API, and keep the result
+	// Ping the API, and keep the result, unless the ping ended as its
+	// caller gave up, which says nothing of the API, so the next ping asks
+	// it again
 	start := time.Now()
-	c.pingErr = c.DoWithContext(ctx, nil, nil, client.OptPath("models"))
-	c.lastPing = start
-	return c.pingErr
+	err := c.DoWithContext(ctx, nil, nil, client.OptPath("models"))
+	if ctx.Err() != nil {
+		return err
+	}
+	c.pingErr, c.lastPing = err, start
+	return err
 }

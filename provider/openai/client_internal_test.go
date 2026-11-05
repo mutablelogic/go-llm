@@ -34,3 +34,25 @@ func TestPingAfterInterval(t *testing.T) {
 	require.NoError(t, c.Ping(ctx))
 	assert.EqualValues(t, 2, requests.Load())
 }
+
+func TestPingCancelled(t *testing.T) {
+	// A ping which ends as its caller gives up isn't kept, so the next ping
+	// asks the API again
+	var requests atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests.Add(1)
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(`{"object":"list","data":[]}`))
+	}))
+	t.Cleanup(server.Close)
+	c, err := New(server.URL+"/v1", "")
+	require.NoError(t, err)
+
+	cancelled, cancel := context.WithCancel(context.Background())
+	cancel()
+	assert.Error(t, c.Ping(cancelled))
+	assert.True(t, c.lastPing.IsZero(), "the cancelled ping isn't kept")
+	require.NoError(t, c.Ping(context.Background()))
+	require.NoError(t, c.Ping(context.Background()))
+	assert.EqualValues(t, 1, requests.Load(), "the next ping asks the API, and is kept")
+}
