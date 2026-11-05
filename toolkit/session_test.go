@@ -41,3 +41,13 @@ func Test_Session(t *testing.T) {
 		require.NotNil(t, toolkit.SessionFromContext(ctx).Logger())
 	})
 }
+
+func Test_Logf(t *testing.T) {
+	// A tool logs what it's doing as a sentence, to its session, and to
+	// nothing without one
+	var lines []string
+	ctx := toolkit.WithSession(context.Background(), toolkit.NewSession("current", func(line string) { lines = append(lines, line) }, nil))
+	toolkit.Logf(ctx, "Getting the current weather for %s", "Berlin")
+	toolkit.Logf(context.Background(), "Not shown")
+	assert.Equal(t, []string{"Getting the current weather for Berlin"}, lines)
+}

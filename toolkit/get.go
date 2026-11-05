@@ -91,7 +91,7 @@ func (self *Toolkit) resolve(names []string, skip bool) ([]llm.Tool, []string, e
 		}
 		for _, entry := range entries {
 			canonical := schema.CanonicalToolName(entry.namespace, entry.tool.Name())
-			name := entry.namespace + "_" + entry.tool.Name()
+			name := schema.ModelToolName(entry.namespace, entry.tool.Name())
 			if other, exists := seen[name]; exists && other == canonical {
 				return nil, nil, llm.ErrBadParameter.Withf("tool %q is named more than once", canonical)
 			} else if exists {

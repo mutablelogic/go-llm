@@ -3,6 +3,8 @@ package newsapi
 import (
 	"context"
 	"encoding/json"
+	"fmt"
+	"strings"
 
 	// Packages
 	llm "github.com/mutablelogic/go-llm"
@@ -56,6 +58,11 @@ func (a *articles) Run(ctx context.Context, input json.RawMessage) (any, error) 
 		return nil, err
 	}
 
+	if req.Query != "" {
+		toolkit.Logf(ctx, "Searching the news for %q", req.Query)
+	} else {
+		toolkit.Logf(ctx, "Searching the news")
+	}
 	return a.client.Articles(ctx, &req)
 }
 
@@ -87,6 +94,7 @@ func (h *headlines) Run(ctx context.Context, input json.RawMessage) (any, error)
 		return nil, llm.ErrBadParameter.With("sources can't be mixed with country or category")
 	}
 
+	toolkit.Logf(ctx, "%s", describeHeadlines(req))
 	return h.client.Headlines(ctx, &req)
 }
 
@@ -113,11 +121,35 @@ func (s *sources) Run(ctx context.Context, input json.RawMessage) (any, error) {
 		return nil, err
 	}
 
+	if req.Category != "" {
+		toolkit.Logf(ctx, "Looking up sources of %s news", req.Category)
+	} else {
+		toolkit.Logf(ctx, "Looking up news sources")
+	}
 	return s.client.Sources(ctx, &req)
 }
 
 ////////////////////////////////////////////////////////////////////////////////
 // PRIVATE METHODS
+
+// describeHeadlines returns what the headlines are, in plain English, such
+// as "Getting the latest technology headlines in GB about \"AI\""
+func describeHeadlines(req httpclient.HeadlinesRequest) string {
+	text := "Getting the latest"
+	if req.Category != "" {
+		text += " " + req.Category
+	}
+	text += " headlines"
+	if req.Sources != "" {
+		text += " from " + req.Sources
+	} else if req.Country != "" {
+		text += " in " + strings.ToUpper(req.Country)
+	}
+	if req.Query != "" {
+		text += fmt.Sprintf(" about %q", req.Query)
+	}
+	return text
+}
 
 // unmarshal decodes the tool input, which may be empty, into v
 func unmarshal(input json.RawMessage, v any) error {

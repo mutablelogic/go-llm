@@ -61,6 +61,7 @@ func (c *currentWeather) Run(ctx context.Context, input json.RawMessage) (any, e
 		return nil, llm.ErrBadParameter.With("query is required")
 	}
 
+	toolkit.Logf(ctx, "Getting the current weather for %s", req.Query)
 	return jsonResult(c.client.Current(ctx, &req))
 }
 
@@ -95,6 +96,13 @@ func (f *forecastWeather) Run(ctx context.Context, input json.RawMessage) (any, 
 		return nil, llm.ErrBadParameter.With("days must be between 1 and 14")
 	}
 
+	if req.Date != "" {
+		toolkit.Logf(ctx, "Getting the weather forecast for %s on %s", req.Query, req.Date)
+	} else if req.Days == 1 {
+		toolkit.Logf(ctx, "Getting today's weather forecast for %s", req.Query)
+	} else {
+		toolkit.Logf(ctx, "Getting the %d-day weather forecast for %s", req.Days, req.Query)
+	}
 	return jsonResult(f.client.Forecast(ctx, &req))
 }
 
@@ -126,6 +134,7 @@ func (a *alertsWeather) Run(ctx context.Context, input json.RawMessage) (any, er
 		return nil, llm.ErrBadParameter.With("query is required")
 	}
 
+	toolkit.Logf(ctx, "Checking for weather alerts in %s", req.Query)
 	return jsonResult(a.client.Alerts(ctx, &req))
 }
 

@@ -601,9 +601,9 @@ func Test_AgentLoopToolLog(t *testing.T) {
 		require.NoError(t, err)
 		assert.Equal(t, []piece{
 			{llm.StreamText, "Calling"},
-			{llm.StreamLog, "log: fetching city=Berlin"},
-			{llm.StreamLog, `log: WARN low quota.remaining=3 quota.note="two words"`},
-			{llm.StreamLog, "log: done req.id=7"},
+			{llm.StreamLog, "fetching city=Berlin"},
+			{llm.StreamLog, `WARN low quota.remaining=3 quota.note="two words"`},
+			{llm.StreamLog, "done req.id=7"},
 			{llm.StreamText, "\n\nDone"},
 		}, streamed)
 	})
@@ -775,7 +775,7 @@ func Test_AgentLoopContext(t *testing.T) {
 		assert.LessOrEqual(t, tokens(results[0]), 2625)
 		assert.Greater(t, tokens(results[0]), 2000)
 		if assert.Len(t, lines, 1) {
-			assert.Regexp(t, `^big: result truncated bytes=100002 to_bytes=\d+ limit_tokens=2625$`, lines[0])
+			assert.Regexp(t, `^result truncated bytes=100002 to_bytes=\d+ limit_tokens=2625$`, lines[0])
 		}
 	})
 

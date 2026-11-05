@@ -46,6 +46,10 @@ const (
 	// ToolSeparator separates the namespace and name in a tool's canonical
 	// name
 	ToolSeparator = ":"
+
+	// modelToolSeparator separates the namespace and name in the name a
+	// model calls a tool by
+	modelToolSeparator = "_"
 )
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -55,6 +59,13 @@ const (
 // which is the namespace and tool name separated by a colon
 func CanonicalToolName(namespace, name string) string {
 	return namespace + ToolSeparator + name
+}
+
+// ModelToolName returns the name a model calls a tool in a namespace by,
+// which is the namespace and tool name separated by an underscore, as a
+// model's tool names can't have a colon, such as homeassistant_call_service
+func ModelToolName(namespace, name string) string {
+	return namespace + modelToolSeparator + name
 }
 
 ////////////////////////////////////////////////////////////////////////////////
