@@ -3,9 +3,73 @@
 [![Go Reference](https://pkg.go.dev/badge/github.com/mutablelogic/go-llm.svg)](https://pkg.go.dev/github.com/mutablelogic/go-llm)
 [![License](https://img.shields.io/badge/license-Apache-blue.svg)](LICENSE)
 
-A server, command-line tool and Go SDK for large language models and speech, from several providers at once.
+go-llm is a server, command-line tool and Go SDK which puts large language models and speech models from several providers behind one interface. You add providers, such as Ollama, OpenAI, Mistral, [go-whisper](https://github.com/mutablelogic/go-whisper) and ElevenLabs, and then ask any of their models to reply to messages, call tools, run agents, embed text and images, read the text in documents, and transcribe and translate speech. The same operations are available as a REST API, from the `llm` command, which includes an interactive chat in the terminal, or directly from Go.
 
-go-llm keeps a registry of providers, such as Ollama, OpenAI, Mistral, [go-whisper](https://github.com/mutablelogic/go-whisper) and ElevenLabs, and their models, and asks those models to reply to messages, call tools, embed text and images, recognize the text in documents, and transcribe and translate speech. The same operations are available as a REST API, from the `llm` command, or from Go.
+```mermaid
+flowchart LR
+    subgraph Clients
+        direction TB
+        CLI["`**llm** command
+        and interactive chat`"]
+        Client["`**registry/httpclient**
+        Go client`"]
+    end
+
+    subgraph Server["Server, or your own Go program"]
+        direction TB
+        API["`**httphandler**
+        REST API and events`"]
+        Registry["`**registry**
+        providers, models, sessions`"]
+        Toolkit["`**toolkit**
+        tools, in namespaces`"]
+        Agents["`**agents**
+        prompts which models call as tools`"]
+        Stores[("`**stores**
+        providers, sessions, agents`")]
+    end
+
+    subgraph Providers
+        direction TB
+        Ollama["`**ollama**`"]
+        OpenAI["`**openai**
+        OpenAI, Mistral, DeepSeek`"]
+        Whisper["`**gowhisper**`"]
+        ElevenLabs["`**elevenlabs**`"]
+        Eliza["`**eliza**
+        for testing`"]
+    end
+
+    subgraph Tools
+        direction TB
+        HA["Home Assistant"]
+        News["NewsAPI"]
+        Weather["WeatherAPI"]
+        Search["Ollama web search"]
+    end
+
+    CLI --> Client
+    Client --> API
+    API --> Registry
+    Registry --> Stores
+    Registry --> Toolkit
+    Toolkit --> Agents
+    Agents --> Registry
+    Toolkit --> Tools
+    Registry --> Ollama & OpenAI & Whisper & ElevenLabs & Eliza
+
+    classDef highlight fill:#e8f0fe,stroke:#1a73e8,stroke-width:2px,color:#111
+    class CLI,Client,Registry,Toolkit,Agents highlight
+    class Ollama,OpenAI,Whisper,ElevenLabs,Eliza highlight
+```
+
+- The **client and CLI**: the `llm` command, in [cmd/llm](cmd/llm), runs the server, and is its client, with commands for each operation, and an interactive chat in the terminal, which streams replies and follows other clients of the same session. The Go client, [registry/httpclient](registry/httpclient), is what it uses to talk to the server.
+- The **registry**, in [registry](registry), finds a model by name, checks what it can do, and asks its provider. It keeps providers, sessions and agents in stores, runs the agent loop, which calls tools until the model replies, and publishes events about what changed.
+- The **toolkit**, in [toolkit](toolkit), holds the tools which models can call, in namespaces, such as `homeassistant` or `weatherapi`, and streams what they log, and their progress, as they run.
+- **Agents** are named prompts, with their model, tools and the schemas of their input and reply, which models call as tools in the `agent` namespace. The [agents](agents) folder has examples, which the server adds when it starts.
+- The **providers**, in [provider](provider), each wrap a provider's API, and do what it can: generate, embed, read documents, or transcribe and translate speech.
+
+The registry can be used without the server, from your own Go program, as the [examples](examples) show.
 
 ## Features
 
@@ -19,6 +83,7 @@ go-llm keeps a registry of providers, such as Ollama, OpenAI, Mistral, [go-whisp
 - **Models**: download, delete and unload models, for providers which store them, such as Ollama and go-whisper.
 - **Tools**: a toolkit of tools, in namespaces, for Home Assistant, NewsAPI, WeatherAPI and Ollama's web search, which models can call.
 - **Events**: a stream of changes to the providers and their models, and to sessions, with whether someone is typing in a session, or its model is replying, so two chat windows on one session follow each other.
+- **OpenAPI**: the REST API is described by an OpenAPI specification, which `llm openapi` shows as documentation in a browser, or outputs as JSON or YAML.
 - **OpenTelemetry**: traces of requests, through the registry, providers and tools.
 
 ## Providers
