@@ -5,112 +5,6 @@
 
 go-llm is a server, command-line tool and Go SDK which puts large language models and speech models from several providers behind one interface. You add providers, such as Ollama, OpenAI, Mistral, [go-whisper](https://github.com/mutablelogic/go-whisper) and ElevenLabs, and then ask any of their models to reply to messages, call tools, run agents, embed text and images, read the text in documents, and transcribe and translate speech. The same operations are available as a REST API, from the `llm` command, which includes an interactive chat in the terminal, or directly from Go.
 
-```mermaid
-flowchart LR
-    subgraph Clients
-        direction TB
-        CLI["`**llm** command
-        and interactive chat`"]
-        Client["`**registry/httpclient**
-        Go client`"]
-        UI["`**frontend**
-        web UI`"]
-    end
-
-    subgraph Server["Server, or your own Go program"]
-        direction TB
-        API["`**httphandler**
-        REST API and events`"]
-        Registry["`**registry**
-        providers, models, sessions`"]
-        Toolkit["`**toolkit**
-        tools, in namespaces`"]
-        Agents["`**agents**
-        prompts which models call as tools`"]
-        Memory["`**memory**
-        what every session knows`"]
-        Stores[("`**stores**
-        providers, sessions, agents, memory`")]
-    end
-
-    subgraph Providers
-        direction TB
-        Ollama["`**ollama**`"]
-        OpenAI["`**openai**
-        OpenAI, Mistral, DeepSeek`"]
-        Whisper["`**gowhisper**`"]
-        ElevenLabs["`**elevenlabs**`"]
-        Eliza["`**eliza**
-        for testing`"]
-    end
-
-    subgraph Tools
-        direction TB
-        HA["Home Assistant"]
-        News["NewsAPI"]
-        Weather["WeatherAPI"]
-        Search["Ollama web search"]
-    end
-
-    CLI --> Client
-    Client --> API
-    UI --> API
-    API --> Registry
-    Registry --> Stores
-    Registry --> Toolkit
-    Toolkit --> Agents
-    Toolkit --> Memory
-    Agents --> Registry
-    API --> Memory
-    Memory --> Stores
-    Toolkit --> Tools
-    Registry --> Ollama & OpenAI & Whisper & ElevenLabs & Eliza
-
-    classDef highlight fill:#e8f0fe,stroke:#1a73e8,stroke-width:2px,color:#111
-    class CLI,Client,UI,Registry,Toolkit,Agents,Memory highlight
-    class Ollama,OpenAI,Whisper,ElevenLabs,Eliza highlight
-```
-
-- The **client and CLI**: the `llm` command, in [cmd/llm](cmd/llm), runs the server, and is its client, with commands for each operation, and an interactive chat in the terminal, which streams replies and follows other clients of the same session. The Go client, [registry/httpclient](registry/httpclient), is what it uses to talk to the server.
-- The **web UI**, in [frontend](frontend), which the server serves, when it's built with `make`, is a page to chat in sessions, with replies streamed, and to see the models and tools.
-- The **registry**, in [registry](registry), finds a model by name, checks what it can do, and asks its provider. It keeps providers, sessions and agents in stores, runs the agent loop, which calls tools until the model replies, and publishes events about what changed.
-- The **toolkit**, in [toolkit](toolkit), holds the tools which models can call, in namespaces, such as `homeassistant` or `weatherapi`, and streams what they log, and their progress, as they run.
-- The **memory**, in [memory](memory), is what every session and agent knows: the details of the person, and of the assistant, such as their names, where the person is, and their time zone and language, each known, not known, or declined, and memories, which are what a model keeps beyond the conversation, such as the person's preferences, or the people in their life, under keys. It's the toolkit's `memory` namespace, whose system prompt has the details, the time, and how to search, keep and use memories, and whose tools remember them.
-- **Agents** are named prompts, with their model, tools and the schemas of their input and reply, which models call as tools in the `agent` namespace. The [agents](agents) folder has examples, which the server adds when it starts.
-- The **providers**, in [provider](provider), each wrap a provider's API, and do what it can: generate, embed, read documents, or transcribe and translate speech.
-
-The registry can be used without the server, from your own Go program, as the [examples](examples) show.
-
-## Features
-
-- **Providers**: add, update and remove providers while the server runs, and keep them in a store between restarts. A model is referred to by its name, or by its provider and name, such as `ollama:llama3.2:latest`.
-- **Ask**: a model's reply to messages, with a system prompt, options, tools whose calls are returned for the caller to run, and structured output with a JSON schema. Replies can be streamed as server-sent events.
-- **Chat**: a conversation with a model, in a session, which the server keeps, with its model, system prompt, tools, options and schema. The model calls the tools until it replies, and the conversation is shortened to fit its context. Chat in the terminal, in the web UI, or with the API, whose replies are streamed, and every client of a session sees its new messages, and whether someone is typing, or the model is replying.
-- **Agents**: named definitions of a prompt, its input, and how a model is asked it, with its system prompt, tools, options and the schema of its reply, which are kept, in YAML or JSON, and which models call as tools, in the `agent` namespace, however deep, with their progress streamed, and their tokens counted as their caller's. The server adds example agents when it starts, such as one which translates text.
-- **Embed**: a vector for each message, of its text, and of images and audio for models which embed them.
-- **OCR**: the text of images and documents, such as PDFs, as Markdown, page by page, with the regions of each page and their boxes.
-- **Transcribe and translate**: the speech in audio, as text, in its language or in English, with timed segments and speakers, streamed as it's transcribed, and printed as SRT or WebVTT subtitles.
-- **Models**: download, delete and unload models, for providers which store them, such as Ollama and go-whisper.
-- **Tools**: a toolkit of tools, in namespaces, for Home Assistant, NewsAPI, WeatherAPI and Ollama's web search, which models can call.
-- **Memory**: the details of the person, and of the assistant, such as their names, location, time zone and language, which every session knows, as a model learns them, or they're set, and which can be declined, so they're never asked for; and memories, which a model searches, keeps and forgets, as Markdown, under keys, with versions, so a change is made to a memory as it was last seen. The server keeps each memory in a file, which can be read, and edited, by hand.
-- **Events**: a stream of changes to the providers and their models, to sessions, with whether someone is typing in a session, or its model is replying, so two chat windows on one session follow each other, and to the memory's details and memories.
-- **OpenAPI**: the REST API is described by an OpenAPI specification, which `llm openapi` shows as documentation in a browser, or outputs as JSON or YAML.
-- **OpenTelemetry**: traces of requests, through the registry, providers and tools.
-
-## Providers
-
-| Type | Provider | Generate | Embed | OCR | Transcribe | Translate | Models |
-|------|----------|:--------:|:-----:|:---:|:----------:|:---------:|--------|
-| `ollama` | [Ollama](https://ollama.com) | ✅ | ✅ | ✅ (images) | | | Download, delete, unload |
-| `openai` | [OpenAI](https://platform.openai.com) | ✅ | ✅ | | ✅ | ✅ (whisper) | |
-| `openai` | [Mistral](https://mistral.ai), at `https://api.mistral.ai/v1` | ✅ | ✅ | ✅ | ✅ | | |
-| `openai` | [DeepSeek](https://www.deepseek.com), and other OpenAI-compatible servers | ✅ | | | | | |
-| `gowhisper` | [go-whisper](https://github.com/mutablelogic/go-whisper) | | | | ✅ | ✅ | Download, delete |
-| `elevenlabs` | [ElevenLabs](https://elevenlabs.io) | | | | ✅ | | |
-| `eliza` | A mock of Weizenbaum's 1966 chatbot, for testing | ✅ | | | | | |
-
-What a model can do depends on the model, which its provider reports, where it knows: such as whether it calls tools, thinks, sees images, or recognizes text. A request for something a model is known not to do is rejected before it's sent.
-
 ## Quick Start
 
 ### 1. Run the server, with Docker
@@ -222,6 +116,114 @@ llm run
 ```
 
 A server installed with `go install` serves the API, without the web UI, which `make`, from a clone of the repository, builds, with npm, into `build/llm`.
+
+## Architecture
+
+```mermaid
+flowchart LR
+    subgraph Clients
+        direction TB
+        CLI["`**llm** command
+        and interactive chat`"]
+        Client["`**registry/httpclient**
+        Go client`"]
+        UI["`**frontend**
+        web UI`"]
+    end
+
+    subgraph Server["Server, or your own Go program"]
+        direction TB
+        API["`**httphandler**
+        REST API and events`"]
+        Registry["`**registry**
+        providers, models, sessions`"]
+        Toolkit["`**toolkit**
+        tools, in namespaces`"]
+        Agents["`**agents**
+        prompts which models call as tools`"]
+        Memory["`**memory**
+        what every session knows`"]
+        Stores[("`**stores**
+        providers, sessions, agents, memory`")]
+    end
+
+    subgraph Providers
+        direction TB
+        Ollama["`**ollama**`"]
+        OpenAI["`**openai**
+        OpenAI, Mistral, DeepSeek`"]
+        Whisper["`**gowhisper**`"]
+        ElevenLabs["`**elevenlabs**`"]
+        Eliza["`**eliza**
+        for testing`"]
+    end
+
+    subgraph Tools
+        direction TB
+        HA["Home Assistant"]
+        News["NewsAPI"]
+        Weather["WeatherAPI"]
+        Search["Ollama web search"]
+    end
+
+    CLI --> Client
+    Client --> API
+    UI --> API
+    API --> Registry
+    Registry --> Stores
+    Registry --> Toolkit
+    Toolkit --> Agents
+    Toolkit --> Memory
+    Agents --> Registry
+    API --> Memory
+    Memory --> Stores
+    Toolkit --> Tools
+    Registry --> Ollama & OpenAI & Whisper & ElevenLabs & Eliza
+
+    classDef highlight fill:#e8f0fe,stroke:#1a73e8,stroke-width:2px,color:#111
+    class CLI,Client,UI,Registry,Toolkit,Agents,Memory highlight
+    class Ollama,OpenAI,Whisper,ElevenLabs,Eliza highlight
+```
+
+- The **client and CLI**: the `llm` command, in [cmd/llm](cmd/llm), runs the server, and is its client, with commands for each operation, and an interactive chat in the terminal, which streams replies and follows other clients of the same session. The Go client, [registry/httpclient](registry/httpclient), is what it uses to talk to the server.
+- The **web UI**, in [frontend](frontend), which the server serves, when it's built with `make`, is a page to chat in sessions, with replies streamed, and to see the models and tools.
+- The **registry**, in [registry](registry), finds a model by name, checks what it can do, and asks its provider. It keeps providers, sessions and agents in stores, runs the agent loop, which calls tools until the model replies, and publishes events about what changed.
+- The **toolkit**, in [toolkit](toolkit), holds the tools which models can call, in namespaces, such as `homeassistant` or `weatherapi`, and streams what they log, and their progress, as they run.
+- The **memory**, in [memory](memory), is what every session and agent knows: the details of the person, and of the assistant, such as their names, where the person is, and their time zone and language, each known, not known, or declined, and memories, which are what a model keeps beyond the conversation, such as the person's preferences, or the people in their life, under keys. It's the toolkit's `memory` namespace, whose system prompt has the details, the time, and how to search, keep and use memories, and whose tools remember them.
+- **Agents** are named prompts, with their model, tools and the schemas of their input and reply, which models call as tools in the `agent` namespace. The [agents](agents) folder has examples, which the server adds when it starts.
+- The **providers**, in [provider](provider), each wrap a provider's API, and do what it can: generate, embed, read documents, or transcribe and translate speech.
+
+The registry can be used without the server, from your own Go program, as the [examples](examples) show.
+
+## Features
+
+- **Providers**: add, update and remove providers while the server runs, and keep them in a store between restarts. A model is referred to by its name, or by its provider and name, such as `ollama:llama3.2:latest`.
+- **Ask**: a model's reply to messages, with a system prompt, options, tools whose calls are returned for the caller to run, and structured output with a JSON schema. Replies can be streamed as server-sent events.
+- **Chat**: a conversation with a model, in a session, which the server keeps, with its model, system prompt, tools, options and schema. The model calls the tools until it replies, and the conversation is shortened to fit its context. Chat in the terminal, in the web UI, or with the API, whose replies are streamed, and every client of a session sees its new messages, and whether someone is typing, or the model is replying.
+- **Agents**: named definitions of a prompt, its input, and how a model is asked it, with its system prompt, tools, options and the schema of its reply, which are kept, in YAML or JSON, and which models call as tools, in the `agent` namespace, however deep, with their progress streamed, and their tokens counted as their caller's. The server adds example agents when it starts, such as one which translates text.
+- **Embed**: a vector for each message, of its text, and of images and audio for models which embed them.
+- **OCR**: the text of images and documents, such as PDFs, as Markdown, page by page, with the regions of each page and their boxes.
+- **Transcribe and translate**: the speech in audio, as text, in its language or in English, with timed segments and speakers, streamed as it's transcribed, and printed as SRT or WebVTT subtitles.
+- **Models**: download, delete and unload models, for providers which store them, such as Ollama and go-whisper.
+- **Tools**: a toolkit of tools, in namespaces, for Home Assistant, NewsAPI, WeatherAPI and Ollama's web search, which models can call.
+- **Memory**: the details of the person, and of the assistant, such as their names, location, time zone and language, which every session knows, as a model learns them, or they're set, and which can be declined, so they're never asked for; and memories, which a model searches, keeps and forgets, as Markdown, under keys, with versions, so a change is made to a memory as it was last seen. The server keeps each memory in a file, which can be read, and edited, by hand.
+- **Events**: a stream of changes to the providers and their models, to sessions, with whether someone is typing in a session, or its model is replying, so two chat windows on one session follow each other, and to the memory's details and memories.
+- **OpenAPI**: the REST API is described by an OpenAPI specification, which `llm openapi` shows as documentation in a browser, or outputs as JSON or YAML.
+- **OpenTelemetry**: traces of requests, through the registry, providers and tools.
+
+## Providers
+
+| Type | Provider | Generate | Embed | OCR | Transcribe | Translate | Models |
+|------|----------|:--------:|:-----:|:---:|:----------:|:---------:|--------|
+| `ollama` | [Ollama](https://ollama.com) | ✅ | ✅ | ✅ (images) | | | Download, delete, unload |
+| `openai` | [OpenAI](https://platform.openai.com) | ✅ | ✅ | | ✅ | ✅ (whisper) | |
+| `openai` | [Mistral](https://mistral.ai), at `https://api.mistral.ai/v1` | ✅ | ✅ | ✅ | ✅ | | |
+| `openai` | [DeepSeek](https://www.deepseek.com), and other OpenAI-compatible servers | ✅ | | | | | |
+| `gowhisper` | [go-whisper](https://github.com/mutablelogic/go-whisper) | | | | ✅ | ✅ | Download, delete |
+| `elevenlabs` | [ElevenLabs](https://elevenlabs.io) | | | | ✅ | | |
+| `eliza` | A mock of Weizenbaum's 1966 chatbot, for testing | ✅ | | | | | |
+
+What a model can do depends on the model, which its provider reports, where it knows: such as whether it calls tools, thinks, sees images, or recognizes text. A request for something a model is known not to do is rejected before it's sent.
 
 ## CLI Commands
 
