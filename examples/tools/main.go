@@ -39,7 +39,7 @@ type roll struct {
 // rollInput is the input of the tool, whose JSON schema the model is told
 type rollInput struct {
 	Dice  int `json:"dice" help:"How many dice to roll" min:"1" max:"10"`
-	Sides int `json:"sides,omitempty" help:"How many sides each die has, which is six when it isn't given" optional:""`
+	Sides int `json:"sides,omitempty" help:"How many sides each die has, which is six when it isn't given" min:"2" max:"100" optional:""`
 }
 
 func (roll) Name() string {

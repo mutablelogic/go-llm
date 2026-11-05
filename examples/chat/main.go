@@ -11,8 +11,10 @@ package main
 import (
 	"bufio"
 	"context"
+	"errors"
 	"flag"
 	"fmt"
+	"io"
 	"os"
 	"os/signal"
 	"strings"
@@ -56,10 +58,15 @@ func run(ctx context.Context, model, system string) error {
 	}}}
 
 	fmt.Printf("Chatting with %s. Type a message, or press Ctrl+D to end.\n\n> ", model)
-	lines := bufio.NewScanner(os.Stdin)
-	for lines.Scan() {
-		text := strings.TrimSpace(lines.Text())
-		if text == "" {
+	for {
+		text, err := readLine(ctx)
+		if errors.Is(err, io.EOF) || errors.Is(err, context.Canceled) {
+			fmt.Println()
+			return nil
+		} else if err != nil {
+			return err
+		}
+		if text = strings.TrimSpace(text); text == "" {
 			fmt.Print("> ")
 			continue
 		}
@@ -72,7 +79,10 @@ func run(ctx context.Context, model, system string) error {
 				fmt.Print(text)
 			}
 		})
-		if err != nil {
+		if errors.Is(err, context.Canceled) {
+			fmt.Println()
+			return nil
+		} else if err != nil {
 			return err
 		}
 
@@ -80,8 +90,32 @@ func run(ctx context.Context, model, system string) error {
 		session.Messages = append(session.Messages, response.Messages...)
 		fmt.Printf("\n\n> ")
 	}
-	fmt.Println()
-	return lines.Err()
+}
+
+// stdin is the input, which is read a line at a time
+var stdin = bufio.NewReader(os.Stdin)
+
+// readLine returns a line of input, without waiting for it once the context
+// is done, such as when Ctrl+C is pressed, or io.EOF at the end of the input
+func readLine(ctx context.Context) (string, error) {
+	type line struct {
+		text string
+		err  error
+	}
+	ch := make(chan line, 1)
+	go func() {
+		text, err := stdin.ReadString('\n')
+		if err == io.EOF && text != "" {
+			err = nil
+		}
+		ch <- line{text, err}
+	}()
+	select {
+	case <-ctx.Done():
+		return "", ctx.Err()
+	case l := <-ch:
+		return l.text, l.err
+	}
 }
 
 // addProvider adds a provider to the registry, which is Ollama, when
