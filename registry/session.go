@@ -229,6 +229,10 @@ func (r *Registry) DeleteSession(ctx context.Context, id uuid.UUID) (_ *schema.S
 	if r.sessionStore == nil {
 		return nil, errNoSessionStore
 	}
+
+	// A status isn't set as, or after, the session is deleted
+	r.lifecycle.Lock()
+	defer r.lifecycle.Unlock()
 	session, err := r.sessionStore.Get(ctx, id)
 	if err != nil {
 		return nil, err
@@ -263,14 +267,16 @@ func (r *Registry) Chat(ctx context.Context, id uuid.UUID, messages []llm.Messag
 	if r.sessionStore == nil {
 		return nil, errNoSessionStore
 	}
+	// The session is replying, until the model has replied, and its reply
+	// is stored, or not, unless it's deleted before it's replying
+	r.lifecycle.RLock()
 	session, err := r.sessionStore.Get(ctx, id)
 	if err != nil {
+		r.lifecycle.RUnlock()
 		return nil, err
 	}
-
-	// The session is replying, until the model has replied, and its reply
-	// is stored, or not
 	replied := r.replying(id)
+	r.lifecycle.RUnlock()
 	defer replied()
 
 	// Ask the session's model, and add what it adds to the session, with the

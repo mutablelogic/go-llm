@@ -474,3 +474,62 @@ func Test_Debug(t *testing.T) {
 	assert.Contains(t, view, "→ homeassistant:call_service")
 	assert.Contains(t, view, "← homeassistant:call_service")
 }
+
+func Test_Reloads(t *testing.T) {
+	says := func(text string) providerschema.Message {
+		return providerschema.Message{MessageMeta: providerschema.MessageMeta{Sender: "user", Content: []providerschema.ContentBlock{{Text: types.Ptr(text)}}}}
+	}
+
+	t.Run("Older", func(t *testing.T) {
+		// A session which is older than the one shown isn't shown
+		id := uuid.New()
+		m, _ := newTestModel(fakeClient{}, &schema.Session{ID: id, Serial: 3, Messages: []providerschema.Message{says("Newer")}})
+		m.loading = true
+		m.Update(loadedMsg{session: &schema.Session{ID: id, Serial: 2, Messages: []providerschema.Message{says("Older")}}})
+		assert.Equal(t, uint64(3), m.session.Serial)
+		assert.Contains(t, m.history.View(), "Newer")
+	})
+
+	t.Run("Skipped", func(t *testing.T) {
+		// A reply stored after a change made elsewhere, which wasn't shown,
+		// loads the session again
+		id := uuid.New()
+		m, _ := newTestModel(fakeClient{reply: "Hello"}, &schema.Session{ID: id, Serial: 1})
+		reply := ask(t, m, "Hi").(replyMsg)
+		reply.response.Serial = 3
+		_, cmd := m.Update(reply)
+		assert.NotNil(t, cmd)
+	})
+
+	t.Run("Status", func(t *testing.T) {
+		// A status which changes as the session is loaded loads it again
+		id := uuid.New()
+		m, _ := newTestModel(fakeClient{}, &schema.Session{ID: id, Serial: 1})
+		m.loading = true
+		m.Update(sessionChange(t, id, schema.SessionEvent{Status: schema.SessionIdle}))
+		_, cmd := m.Update(loadedMsg{session: &schema.Session{ID: id, Serial: 1, Status: schema.SessionReplying}})
+		assert.NotNil(t, cmd, "loaded again")
+	})
+}
+
+func Test_WatchFirst(t *testing.T) {
+	// The session is loaded once the changes are watched, the first time
+	// too, as a change may have been made as they started to be
+	settled := watchSettled
+	watchSettled = 10 * time.Millisecond
+	t.Cleanup(func() { watchSettled = settled })
+	id := uuid.New()
+	event := eventschema.Event{Action: eventschema.EventUpdate, Table: sessionTable, Row: id.String()}
+	ctx, cancel := context.WithCancel(context.Background())
+	events := make(chan tea.Msg, 16)
+	watching := make(chan struct{})
+	go func() { watch(ctx, &flakyClient{event: event}, id, events); close(watching) }()
+	defer func() { cancel(); <-watching }()
+	assert.Equal(t, eventMsg(event), <-events)
+	select {
+	case msg := <-events:
+		assert.Equal(t, rewatchedMsg{}, msg)
+	case <-time.After(5 * time.Second):
+		t.Fatal("not loaded once watched")
+	}
+}

@@ -238,6 +238,9 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.loading = false
 		if msg.err != nil {
 			m.err = msg.err
+		} else if msg.session.Serial < m.session.Serial {
+			// The session is older than the one shown, such as when a reply
+			// was stored as it was loaded, so it's kept
 		} else if !m.waiting {
 			// The session is replaced, unless a reply is being waited for,
 			// when it's loaded again once it's stored
@@ -273,6 +276,10 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.err = fmt.Errorf("%w, so this wasn't sent: %s", msg.err, msg.question)
 			}
 		} else {
+			// The reply was stored after changes made elsewhere, which
+			// weren't shown, when its serial is more than one on, so the
+			// session is loaded again
+			skipped := msg.response.Serial > m.session.Serial+1
 			m.keepLogs(logged, msg.asked, msg.response.Messages)
 			m.session.Messages = append(m.session.Messages, msg.response.Messages...)
 			m.session.Serial = msg.response.Serial
@@ -280,7 +287,7 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.session.Usage.Input = msg.response.Usage.Input
 			m.session.Usage.Output = msg.response.Usage.Output
 			m.session.Usage.Overhead = msg.response.Usage.Overhead
-			if m.stale || m.seen > msg.response.Serial {
+			if m.stale || skipped || m.seen > msg.response.Serial {
 				cmd = m.load()
 			}
 		}
@@ -315,7 +322,12 @@ func (m *model) changed(event eventschema.Event) tea.Cmd {
 			return nil
 		}
 		if data.Status != "" {
+			// A session which is being loaded is loaded again, as it may
+			// have been got before the status changed
 			m.session.Status = data.Status
+			if m.loading {
+				m.stale = true
+			}
 		}
 		if data.Serial > m.session.Serial {
 			// While a reply is waited for, the change may be its own, so
@@ -561,9 +573,9 @@ func (m *model) status() string {
 // channel, until the context is cancelled. When the changes can't be
 // watched, such as when the server is stopping, or can't be reached, that's
 // sent, and they're watched again after watchRetry, and then twice as long
-// each time, up to watchRetryMax, until they're watched for watchSettled,
-// when the session is loaded again, as it may have changed meanwhile, and
-// the wait starts again from watchRetry.
+// each time, up to watchRetryMax. Once they've been watched for
+// watchSettled, the first time too, the session is loaded again, as it may
+// have changed before they were, and the wait starts again from watchRetry.
 func watch(ctx context.Context, client Client, id uuid.UUID, events chan<- tea.Msg) {
 	send := func(msg tea.Msg) bool {
 		select {
@@ -575,8 +587,7 @@ func watch(ctx context.Context, client Client, id uuid.UUID, events chan<- tea.M
 	}
 	retry := watchRetry
 	for attempt := 0; ; attempt++ {
-		// After the first, an attempt which lasts watchSettled is taken to
-		// be watching again
+		// An attempt which lasts watchSettled is taken to be watching
 		done := make(chan error, 1)
 		go func() {
 			done <- client.WatchEvents(ctx, func(event eventschema.Event) error {
@@ -590,7 +601,10 @@ func watch(ctx context.Context, client Client, id uuid.UUID, events chan<- tea.M
 		select {
 		case err = <-done:
 		case <-time.After(watchSettled):
-			if attempt > 0 && !send(rewatchedMsg{}) {
+			// The session is loaded once the changes are watched, the first
+			// time too, as it was loaded as they started to be, so a change
+			// made between isn't missed
+			if !send(rewatchedMsg{}) {
 				return
 			}
 			retry = watchRetry

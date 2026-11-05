@@ -5,6 +5,7 @@ import (
 	"errors"
 	"log/slog"
 	"time"
+	"uuid"
 
 	// Packages
 	llm "github.com/mutablelogic/go-llm"
@@ -92,6 +93,13 @@ func (r *Registry) Run(ctx context.Context, logger *slog.Logger) error {
 		case err := <-sessionDone:
 			return err
 		case event := <-sessionEvents:
+			// A session which was deleted elsewhere has no status here
+			// either, so it's not published as idle after it
+			if event.Action == eventschema.EventDelete {
+				if id, err := uuid.Parse(event.Row); err == nil {
+					r.forgetStatus(id)
+				}
+			}
 			r.broadcaster.Publish(event)
 		case event := <-registryEvents:
 			if event.Table != ProviderTable {

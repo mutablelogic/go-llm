@@ -226,4 +226,28 @@ func Test_SessionEvents(t *testing.T) {
 		stop()
 		require.NoError(t, <-running)
 	})
+
+	t.Run("DeletedElsewhere", func(t *testing.T) {
+		// A session which is deleted elsewhere is forgotten, so it's not
+		// published as idle after it
+		timeout := registry.TypingTimeout
+		registry.TypingTimeout = 20 * time.Millisecond
+		t.Cleanup(func() { registry.TypingTimeout = timeout })
+		r, store := newRegistry(t)
+		session, err := r.CreateSession(ctx, meta)
+		require.NoError(t, err)
+		_, err = r.SetSessionStatus(ctx, session.ID, schema.SessionTyping)
+		require.NoError(t, err)
+		ch := watch(t, r)
+		runCtx, stop := context.WithCancel(ctx)
+		running := make(chan error, 1)
+		go func() { running <- r.Run(runCtx, nil) }()
+		deleted := sessionEvent(t, eventschema.EventDelete, session.ID, nil)
+		require.Eventually(t, func() bool { return store.Changed(deleted) > 0 }, 5*time.Second, time.Millisecond)
+		assert.Equal(t, deleted, nextEvent(t, ch))
+		time.Sleep(60 * time.Millisecond)
+		assert.Empty(t, events(ch))
+		stop()
+		require.NoError(t, <-running)
+	})
 }

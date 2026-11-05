@@ -64,6 +64,10 @@ func (r *Registry) SetSessionStatus(ctx context.Context, id uuid.UUID, value sch
 	} else if value != schema.SessionTyping && value != schema.SessionIdle {
 		return nil, llm.ErrBadParameter.Withf("status %q, which must be typing or idle", value)
 	}
+
+	// The session isn't deleted until its status is set
+	r.lifecycle.RLock()
+	defer r.lifecycle.RUnlock()
 	session, err := r.sessionStore.Get(ctx, id)
 	if err != nil {
 		return nil, err

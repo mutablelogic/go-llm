@@ -32,6 +32,10 @@ type Registry struct {
 	mu        sync.RWMutex
 	providers map[string]*cached
 	statuses  statuses
+
+	// lifecycle is held to delete a session, and, shared, to change its
+	// status, so a status isn't set as, or after, it's deleted
+	lifecycle sync.RWMutex
 }
 
 // entry is a provider, its name in the registry, and its cache
