@@ -1,0 +1,19 @@
+/* The IBM Plex fonts, which Carbon's type is set in, served with the UI
+   rather than from IBM's CDN, so it works without the internet. Only the
+   styles Carbon and the UI use are bundled, each split into subsets by
+   script, of which a browser only fetches those a page shows. Other scripts,
+   such as Arabic or Thai, are shown in the system's fonts. */
+
+/* IBM Plex Sans: light headings, regular text, semibold labels, and their
+   italics, for emphasis */
+@import '@ibm/plex-sans/fonts/split/woff2/IBMPlexSans-Light.css';
+@import '@ibm/plex-sans/fonts/split/woff2/IBMPlexSans-LightItalic.css';
+@import '@ibm/plex-sans/fonts/split/woff2/IBMPlexSans-Regular.css';
+@import '@ibm/plex-sans/fonts/split/woff2/IBMPlexSans-Italic.css';
+@import '@ibm/plex-sans/fonts/split/woff2/IBMPlexSans-SemiBold.css';
+@import '@ibm/plex-sans/fonts/split/woff2/IBMPlexSans-SemiBoldItalic.css';
+
+/* IBM Plex Mono: code, JSON and identifiers */
+@import '@ibm/plex-mono/fonts/split/woff2/IBMPlexMono-Regular.css';
+@import '@ibm/plex-mono/fonts/split/woff2/IBMPlexMono-Italic.css';
+@import '@ibm/plex-mono/fonts/split/woff2/IBMPlexMono-SemiBold.css';

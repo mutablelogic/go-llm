@@ -10,6 +10,7 @@ import (
 	agents "github.com/mutablelogic/go-llm/agents"
 	broadcaster "github.com/mutablelogic/go-llm/broadcaster"
 	broadcastercmd "github.com/mutablelogic/go-llm/broadcaster/cmd"
+	frontendcmd "github.com/mutablelogic/go-llm/frontend/cmd"
 	memory "github.com/mutablelogic/go-llm/memory"
 	memorycmd "github.com/mutablelogic/go-llm/memory/cmd"
 	registry "github.com/mutablelogic/go-llm/registry"
@@ -18,6 +19,7 @@ import (
 	toolkitcmd "github.com/mutablelogic/go-llm/toolkit/cmd"
 	server "github.com/mutablelogic/go-server"
 	servercmd "github.com/mutablelogic/go-server/pkg/cmd"
+	httprouter "github.com/mutablelogic/go-server/pkg/httprouter"
 	errgroup "golang.org/x/sync/errgroup"
 )
 
@@ -42,6 +44,7 @@ type RunServer struct {
 	Toolkit     toolkitcmd.Flags     `embed:"" prefix:"llm."`
 	Broadcaster broadcastercmd.Flags `embed:"" prefix:"llm."`
 	Memory      memorycmd.Flags      `embed:"" prefix:"memory."`
+	Frontend    frontendcmd.Flags    `embed:""`
 	servercmd.RunServer
 }
 
@@ -72,6 +75,14 @@ func (runner *RunServer) Run(ctx server.Cmd) error {
 	if err != nil {
 		return err
 	}
+
+	// Serve the web UI, when it's built in, and its configuration, alongside
+	// the API, grouping its operations with the server's OpenAPI
+	// documentation
+	runner.RunServer.Register(func(router *httprouter.Router) error {
+		router.Spec().AddTagGroup("UI", "OpenAPI", "UI")
+		return runner.Frontend.RegisterUI(ctx.Context(), ctx.Logger(), router, runner.RunServer.OpenAPI)
+	})
 	return runner.Broadcaster.WithBroadcaster(ctx, &runner.RunServer, func(b *broadcaster.Broadcaster) error {
 		return runner.Memory.WithMemory(ctx, &runner.RunServer, memories, func(mem *memory.Memory) error {
 			return runner.withToolkit(ctx, b, mem, store, sessions, agents)

@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>llm</title>
+    <link rel="icon" href="icon/llm.svg" type="image/svg+xml">
+    <link rel="stylesheet" href="index.css">
+    <script type="module" src="index.js"></script>
+    <style>
+        body {
+            margin: 0;
+            background: var(--cds-background);
+            color: var(--cds-text-primary);
+        }
+
+        /* The header is 3rem high, and the side nav 16rem wide when it's
+           fixed open on large screens */
+        main {
+            padding: calc(3rem + 2rem) 2rem 2rem;
+        }
+
+        /* The notifications are stacked at the top right, below the header */
+        #notifications {
+            position: fixed;
+            top: calc(3rem + 1rem);
+            right: 1rem;
+            z-index: 9000;
+        }
+
+        /* The side navigation's items scroll above its footer, which is at
+           its bottom, rather than beneath it (see llm-side-nav-footer) */
+        cds-side-nav-items {
+            margin-bottom: calc(3rem + 1px);
+        }
+
+        /* The pages which fill the screen below the header, which are all
+           but the page which isn't found, have no padding from main, with
+           their headings in a dark bar, like the header's, and their
+           content beneath, which scrolls, so its bottom is the bottom of the
+           screen */
+        main:has(> .full:not([hidden])) {
+            padding: 3rem 0 0;
+        }
+
+        .full:not([hidden]) {
+            display: flex;
+            flex-direction: column;
+            height: calc(100dvh - 3rem);
+        }
+
+        .full::part(heading) {
+            --llm-heading-secondary: #c6c6c6;
+            margin: 0;
+            padding: 1rem 2rem;
+            background: #262626;
+            color: #f4f4f4;
+        }
+
+        /* The models and tools pages have their tables beneath their
+           headings, with a margin around them, which scroll */
+        .full > .content {
+            flex: 1;
+            min-height: 0;
+            overflow-y: auto;
+            padding: 2rem;
+        }
+
+        /* The chat page has the list of chats beside the conversation */
+        .full > .chat {
+            flex: 1;
+            min-height: 0;
+            display: grid;
+            grid-template-columns: 18rem minmax(0, 1fr);
+        }
+
+        @media (max-width: 42rem) {
+            .full > .chat {
+                grid-template-columns: minmax(0, 1fr);
+                grid-template-rows: 12rem minmax(0, 1fr);
+            }
+        }
+
+        @media (min-width: 66rem) {
+            main {
+                margin-left: 16rem;
+            }
+        }
+    </style>
+</head>
+
+<body class="cds--white">
+    <div class="cds--g100">
+        <cds-header aria-label="llm">
+            <cds-header-menu-button button-label-active="Close menu"
+                button-label-inactive="Open menu"></cds-header-menu-button>
+            <cds-header-name href="#" prefix="go">llm</cds-header-name>
+        </cds-header>
+
+        <cds-side-nav aria-label="Side navigation" collapse-mode="responsive">
+            <cds-side-nav-items>
+                <cds-side-nav-link href="#chat">Chat</cds-side-nav-link>
+                <cds-side-nav-link href="#models">Models</cds-side-nav-link>
+                <cds-side-nav-link href="#tools">Tools</cds-side-nav-link>
+            </cds-side-nav-items>
+            <llm-side-nav-footer></llm-side-nav-footer>
+        </cds-side-nav>
+    </div>
+
+    <!-- The pages, of which the router shows the one the location selects -->
+    <main id="main-content">
+        <llm-chat-page id="chat-page" class="full">
+            <div class="chat">
+                <llm-session-list></llm-session-list>
+                <llm-chat-view></llm-chat-view>
+            </div>
+            <llm-new-session></llm-new-session>
+            <llm-message-view></llm-message-view>
+        </llm-chat-page>
+        <llm-models-page id="models-page" class="full" hidden>
+            <div class="content">
+                <llm-provider-alerts></llm-provider-alerts>
+                <llm-count-filter id="provider-filter" label="Filter by provider"></llm-count-filter>
+                <llm-model-table></llm-model-table>
+            </div>
+            <llm-model-view></llm-model-view>
+        </llm-models-page>
+        <llm-tools-page id="tools-page" class="full" hidden>
+            <div class="content">
+                <llm-count-filter id="namespace-filter" label="Filter by namespace"></llm-count-filter>
+                <llm-tool-table></llm-tool-table>
+            </div>
+            <llm-tool-view></llm-tool-view>
+        </llm-tools-page>
+        <llm-not-found-page id="not-found-page" hidden></llm-not-found-page>
+    </main>
+
+    <!-- The notifications, which the notification controller shows -->
+    <div id="notifications" aria-live="polite"></div>
+</body>
+
+</html>

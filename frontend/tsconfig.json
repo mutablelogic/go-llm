@@ -1,0 +1,21 @@
+{
+    "compilerOptions": {
+        "target": "ES2021",
+        "module": "ESNext",
+        "moduleResolution": "bundler",
+        "lib": [
+            "ES2021",
+            "DOM"
+        ],
+        "strict": true,
+        "verbatimModuleSyntax": true,
+        "skipLibCheck": true,
+        "experimentalDecorators": true,
+        "useDefineForClassFields": false,
+        "outDir": "../build/frontend",
+        "rootDir": "src"
+    },
+    "include": [
+        "src"
+    ]
+}
