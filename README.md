@@ -204,10 +204,10 @@ Tools are added to the server's toolkit when their credentials are set, as envir
 
 | Namespace | Tools | Credentials |
 |-----------|-------|-------------|
-| `weatherapi` | Current weather, forecasts and alerts | `WEATHERAPI_API_KEY` |
-| `newsapi` | News articles, headlines and sources | `NEWSAPI_API_KEY` |
+| `weatherapi` | Current weather, forecasts and alerts | `WEATHERAPI_API_KEY`, from [weatherapi.com](https://www.weatherapi.com/signup.aspx) |
+| `newsapi` | News articles, headlines and sources | `NEWSAPI_API_KEY`, from [newsapi.org](https://newsapi.org/register) |
 | `homeassistant` | Query and control smart home devices | `HOMEASSISTANT_URL`, `HOMEASSISTANT_API_KEY` |
-| `ollama` | Web search and fetch | `OLLAMA_API_KEY` |
+| `ollama` | Web search and fetch | `OLLAMA_API_KEY`, from [ollama.com](https://ollama.com/settings/keys) |
 
 A model is given tools by name, by namespace and name, such as `weatherapi:current`, or all of a namespace's, such as `weatherapi:*`, or all of them, `*`.
 
