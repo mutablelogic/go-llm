@@ -45,9 +45,10 @@ RUN /usr/local/bin/llm --version
 LABEL org.opencontainers.image.source=${SOURCE}
 
 # The server keeps its providers, sessions, agents and memory in /data,
-# which is its cache directory, and listens on every interface. A new
-# installation has the Eliza provider, and those whose variables are set,
-# such as OLLAMA_ADDR, or OPENAI_API_KEY.
+# which is its cache directory, and listens on every interface. The
+# entrypoint adds the providers of a new installation: Eliza, unless NOELIZA
+# is set, and those whose variables are set, such as OLLAMA_ADDR, or
+# OPENAI_API_KEY.
 ENV XDG_CACHE_HOME=/data
 ENV ADDR=0.0.0.0:8084
 VOLUME /data

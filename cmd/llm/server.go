@@ -59,7 +59,7 @@ type RunServer struct {
 // them, and to the sessions, as events, until it's stopped
 func (runner *RunServer) Run(ctx server.Cmd) error {
 	ctx.Logger().InfoContext(ctx.Context(), "starting server", "name", ctx.Name(), "version", ctx.Version())
-	store, fresh, err := newServerProviderStore(ctx)
+	store, err := newServerProviderStore(ctx)
 	if err != nil {
 		return err
 	}
@@ -85,14 +85,14 @@ func (runner *RunServer) Run(ctx server.Cmd) error {
 	})
 	return runner.Broadcaster.WithBroadcaster(ctx, &runner.RunServer, func(b *broadcaster.Broadcaster) error {
 		return runner.Memory.WithMemory(ctx, &runner.RunServer, memories, func(mem *memory.Memory) error {
-			return runner.withToolkit(ctx, b, mem, store, fresh, sessions, agents)
+			return runner.withToolkit(ctx, b, mem, store, sessions, agents)
 		}, memory.WithBroadcaster(b))
 	})
 }
 
 // withToolkit runs the server, with a toolkit, which has the memory, as well
 // as the tools whose credentials are set, and a registry, with the stores
-func (runner *RunServer) withToolkit(ctx server.Cmd, b *broadcaster.Broadcaster, mem *memory.Memory, store registry.ProviderStore, fresh bool, sessions *sessionStore, agents *agentStore) error {
+func (runner *RunServer) withToolkit(ctx server.Cmd, b *broadcaster.Broadcaster, mem *memory.Memory, store registry.ProviderStore, sessions *sessionStore, agents *agentStore) error {
 	return runner.Toolkit.WithToolkit(ctx, &runner.RunServer, func(tools *toolkit.Toolkit) error {
 		// The memory, whose system prompt has the time, and what's
 		// remembered, and whose tools remember it
@@ -104,12 +104,6 @@ func (runner *RunServer) withToolkit(ctx server.Cmd, b *broadcaster.Broadcaster,
 		return runner.Registry.WithRegistry(ctx, &runner.RunServer, func(r *registry.Registry) error {
 			// The example agents, as they are, before the server starts
 			createAgents(ctx, r)
-
-			// The providers of a new installation, which has none yet: Eliza,
-			// and those whose credentials, or addresses, are set
-			if fresh {
-				createProviders(ctx, r, os.Getenv)
-			}
 
 			// They all stop when any does, such as when the server is
 			// stopped, when the broadcaster's watches end, so the
@@ -134,21 +128,19 @@ func (runner *RunServer) withToolkit(ctx server.Cmd, b *broadcaster.Broadcaster,
 // rather than in the defaults, which a client writes too, as a whole, so
 // would replace the providers which the server added since the client read
 // them. The providers which the defaults have are moved to it, unless it
-// exists. Returns whether the installation is new, as there's no file of
-// providers, even once they're moved.
-func newServerProviderStore(ctx server.Cmd) (registry.ProviderStore, bool, error) {
+// exists.
+func newServerProviderStore(ctx server.Cmd) (registry.ProviderStore, error) {
 	dir, err := serverDir(ctx)
 	if err != nil {
-		return nil, false, err
+		return nil, err
 	}
 	file, err := newJSONFile(filepath.Join(dir, providersFile))
 	if err != nil {
-		return nil, false, err
+		return nil, err
 	} else if err := migrateProviders(file, ctx); err != nil {
-		return nil, false, err
+		return nil, err
 	}
-	store, err := newProviderStore(file)
-	return store, !file.Exists(), err
+	return newProviderStore(file)
 }
 
 // newServerSessionStore returns the store of the sessions, in files in the
