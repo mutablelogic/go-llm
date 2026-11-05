@@ -7,6 +7,7 @@ import (
 
 	// Packages
 	llm "github.com/mutablelogic/go-llm"
+	taggroup "github.com/mutablelogic/go-llm/internal/taggroup"
 	toolkit "github.com/mutablelogic/go-llm/toolkit"
 	schema "github.com/mutablelogic/go-llm/toolkit/schema"
 	httprequest "github.com/mutablelogic/go-server/pkg/httprequest"
@@ -28,7 +29,8 @@ type toolName struct {
 // PRIVATE METHODS
 
 func toolHandlers(tools *toolkit.Toolkit, router *httprouter.Router, documentation *openapi.MarkdownDoc) error {
-	router.Spec().AddTag("Tools", documentation.Section(2, "Tool Operations").Body)
+	router.Spec().AddTag(taggroup.ToolsAndAgents, documentation.Section(2, "Tool Operations").Body)
+	taggroup.Add(router.Spec(), taggroup.LLM, taggroup.ToolsAndAgents)
 	return errors.Join(
 		toolListHandlers(tools, router, documentation),
 		toolGetCallHandlers(tools, router, documentation),
@@ -37,7 +39,7 @@ func toolHandlers(tools *toolkit.Toolkit, router *httprouter.Router, documentati
 
 func toolListHandlers(tools *toolkit.Toolkit, router *httprouter.Router, documentation *openapi.MarkdownDoc) error {
 	return router.Register("llm/tool", nil, func(path httprequest.PathItem) {
-		path.Tag("Tools")
+		path.Tag(taggroup.ToolsAndAgents)
 
 		// GET
 		path.Get(func(w http.ResponseWriter, r *http.Request) {
@@ -61,7 +63,7 @@ func toolListHandlers(tools *toolkit.Toolkit, router *httprouter.Router, documen
 
 func toolGetCallHandlers(tools *toolkit.Toolkit, router *httprouter.Router, documentation *openapi.MarkdownDoc) error {
 	return router.Register("llm/tool/{name}", jsonschema.MustFor[toolName](), func(path httprequest.PathItem) {
-		path.Tag("Tools")
+		path.Tag(taggroup.ToolsAndAgents)
 
 		// GET
 		path.Get(func(w http.ResponseWriter, r *http.Request) {

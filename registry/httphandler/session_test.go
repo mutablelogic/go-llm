@@ -185,14 +185,15 @@ func Test_SessionStatus(t *testing.T) {
 }
 
 func Test_SessionsNoStore(t *testing.T) {
-	// A server without a session store has no sessions
+	// A server without a session store has no sessions' API, which isn't
+	// documented
 	server, _ := newServer(t)
-	assert.Equal(t, http.StatusServiceUnavailable, do(t, server, http.MethodGet, "llm/session", nil, nil))
-	assert.Equal(t, http.StatusServiceUnavailable, do(t, server, http.MethodPost, "llm/session", map[string]any{"model": eliza.ModelName}, nil))
-	assert.Equal(t, http.StatusServiceUnavailable, do(t, server, http.MethodGet, "llm/session/"+uuid.New().String(), nil, nil))
-	assert.Equal(t, http.StatusServiceUnavailable, do(t, server, http.MethodPatch, "llm/session/"+uuid.New().String(), map[string]any{"model": eliza.ModelName}, nil))
-	assert.Equal(t, http.StatusServiceUnavailable, do(t, server, http.MethodDelete, "llm/session/"+uuid.New().String(), nil, nil))
-	assert.Equal(t, http.StatusServiceUnavailable, do(t, server, http.MethodPut, "llm/session/"+uuid.New().String()+"/status", map[string]any{"status": "typing"}, nil))
+	assert.Equal(t, http.StatusNotFound, do(t, server, http.MethodGet, "llm/session", nil, nil))
+	assert.Equal(t, http.StatusNotFound, do(t, server, http.MethodPost, "llm/session", map[string]any{"model": eliza.ModelName}, nil))
+	assert.Equal(t, http.StatusNotFound, do(t, server, http.MethodGet, "llm/session/"+uuid.New().String(), nil, nil))
+	assert.Equal(t, http.StatusNotFound, do(t, server, http.MethodPut, "llm/session/"+uuid.New().String()+"/status", map[string]any{"status": "typing"}, nil))
+	_, documented := server.Spec().Paths.MapOfPathItemValues["/llm/session"]
+	assert.False(t, documented)
 }
 
 func Test_Chat(t *testing.T) {

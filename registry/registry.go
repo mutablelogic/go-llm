@@ -111,6 +111,18 @@ func (r *Registry) Remove(name string) (llm.Provider, error) {
 	return c.provider, nil
 }
 
+// SessionStore returns the store of the registry's sessions, or nil when it
+// has none, when it has no sessions
+func (r *Registry) SessionStore() SessionStore {
+	return r.sessionStore
+}
+
+// AgentStore returns the store of the registry's agents, or nil when it has
+// none, when it has no agents
+func (r *Registry) AgentStore() AgentStore {
+	return r.agentStore
+}
+
 // Toolkit returns the toolkit of the tools which the registry's models can
 // call, or nil when it has none
 func (r *Registry) Toolkit() *toolkit.Toolkit {

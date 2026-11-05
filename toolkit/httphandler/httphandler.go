@@ -20,7 +20,7 @@ var readme []byte
 // LIFECYCLE
 
 // RegisterHandlers registers the handlers for the toolkit's tools, with the
-// "Tools" tag
+// "Tools & Agents" tag, in the "LLM" group
 func RegisterHandlers(tools *toolkit.Toolkit, router *httprouter.Router) error {
 	var documentation = openapi.ParseMarkdown(readme)
 	return errors.Join(

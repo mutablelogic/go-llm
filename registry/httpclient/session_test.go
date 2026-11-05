@@ -108,10 +108,10 @@ func Test_Sessions(t *testing.T) {
 }
 
 func Test_SessionsNoStore(t *testing.T) {
-	// A server without a session store has no sessions
+	// A server without a session store has no sessions' API
 	client := newSessionClient(t, false)
 	_, err := client.ListSessions(context.Background(), schema.SessionListRequest{})
-	assert.Equal(t, http.StatusServiceUnavailable, status(t, err))
+	assert.ErrorContains(t, err, "404")
 }
 
 func Test_Chat(t *testing.T) {

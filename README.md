@@ -11,6 +11,7 @@ go-llm keeps a registry of providers, such as Ollama, OpenAI, Mistral, [go-whisp
 
 - **Providers**: add, update and remove providers while the server runs, and keep them in a store between restarts. A model is referred to by its name, or by its provider and name, such as `ollama:llama3.2:latest`.
 - **Ask**: a model's reply to messages, with a system prompt, options, tools whose calls are returned for the caller to run, and structured output with a JSON schema. Replies can be streamed as server-sent events.
+- **Chat**: a conversation with a model, in a session, which the server keeps, with its model, system prompt, tools, options and schema. The model calls the tools until it replies, and the conversation is shortened to fit its context. Chat in the terminal, or with the API, whose replies are streamed, and every client of a session sees its new messages, and whether someone is typing, or the model is replying.
 - **Embed**: a vector for each message, of its text, and of images and audio for models which embed them.
 - **OCR**: the text of images and documents, such as PDFs, as Markdown, page by page, with the regions of each page and their boxes.
 - **Transcribe and translate**: the speech in audio, as text, in its language or in English, with timed segments and speakers, streamed as it's transcribed, and printed as SRT or WebVTT subtitles.
@@ -90,6 +91,21 @@ llm translate --model whisper-1 interview.wav
 llm model-load ollama:llama3.2
 ```
 
+Or chat in a session, which the server keeps. A session is kept, and used until another is given:
+
+```bash
+# A session, with a model, a system prompt, and tools it can call
+llm session-create --model ollama:llama3.2 --system "Be brief" --tools "weatherapi:*"
+
+# Chat in the terminal, or ask once, in the session
+llm chat
+llm chat "Will it rain in Berlin tomorrow?"
+
+# Its messages, and its sessions
+llm session-messages
+llm sessions
+```
+
 The command-line tool connects to `localhost:8084`, or the server at `--http.addr` or `LLM_ADDR`.
 
 ## Commands
@@ -99,7 +115,8 @@ The command-line tool connects to `localhost:8084`, or the server at `--http.add
 | Server | `run`, `openapi` |
 | Providers | `providers`, `provider`, `provider-create-ollama`, `provider-create-openai`, `provider-create-mistral`, `provider-create-deepseek`, `provider-create-gowhisper`, `provider-create-elevenlabs`, `provider-create-eliza`, `provider-update`, `provider-delete` |
 | Models | `models`, `model`, `model-load`, `model-delete`, `model-unload` |
-| Inference | `ask`, `embed`, `ocr`, `transcribe`, `translate` |
+| Sessions | `sessions`, `session`, `session-messages`, `session-create`, `session-update`, `session-delete` |
+| Inference | `ask`, `chat`, `embed`, `ocr`, `transcribe`, `translate` |
 | Events | `events` |
 | Tools | `tools`, `tool`, `call` |
 
