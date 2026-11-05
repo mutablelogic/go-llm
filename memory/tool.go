@@ -59,7 +59,7 @@ func (*setDetail) Name() string {
 }
 
 func (*setDetail) Description() string {
-	return "Remembers a detail of the person you're talking to, or your own name, which every conversation then knows: its value, or that the person declined to say it, so it isn't asked for. With neither, the detail is forgotten."
+	return "Remembers a detail of the person you're talking to, or your own name, which every conversation then knows: its value, or that the person declined to say it, so it isn't asked for. With neither, the detail is forgotten. Call it as soon as you learn a detail, such as where they are, before you answer, and one call for each detail, such as their location, and its time zone."
 }
 
 func (*setDetail) InputSchema() *jsonschema.Schema {

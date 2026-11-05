@@ -108,7 +108,7 @@ func systemPrompt(details schema.Details, now time.Time, setDetail, memories boo
 		}
 	}
 	if len(inferred) > 0 {
-		sentences = append(sentences, fmt.Sprintf("You don't know %s. Don't ask, but when the conversation makes one clear, such as the language they write in, remember it.", join(inferred)))
+		sentences = append(sentences, fmt.Sprintf("You don't know %s. Don't ask for them, but as soon as the conversation makes one clear, such as when they say where they are, or by the language they write in, remember it, before you answer, and when you learn where they are, remember its time zone too, by its IANA name, such as Europe/Berlin for Berlin.", join(inferred)))
 		unknown = true
 	}
 	if unknown {
