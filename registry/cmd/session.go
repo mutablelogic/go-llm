@@ -25,6 +25,7 @@ type SessionCommands struct {
 	SessionMsgs   SessionMsgsCmd   `cmd:"" name:"session-messages" help:"List a session's messages, oldest first." group:"LLM SESSIONS"`
 	SessionCreate SessionCreateCmd `cmd:"" name:"session-create" help:"Create a session, and make it the default." group:"LLM SESSIONS"`
 	SessionUpdate SessionUpdateCmd `cmd:"" name:"session-update" help:"Change a session's settings. An empty value clears one, and --opt key=null removes an option." group:"LLM SESSIONS"`
+	SessionForget SessionForgetCmd `cmd:"" name:"session-forget" help:"Forget a session's messages, keeping its settings, so its conversation starts again." group:"LLM SESSIONS"`
 	SessionDelete SessionDeleteCmd `cmd:"" name:"session-delete" help:"Delete a session." group:"LLM SESSIONS"`
 }
 
@@ -67,6 +68,10 @@ type SessionUpdateCmd struct {
 
 // SessionDeleteCmd deletes a session, which isn't the default, when it's
 // deleted
+type SessionForgetCmd struct {
+	ID uuid.UUID `arg:"" name:"id" optional:"" help:"Session identifier, which is a UUID, or the default session."`
+}
+
 type SessionDeleteCmd struct {
 	ID uuid.UUID `arg:"" name:"id" help:"Session identifier, which is a UUID."`
 }
@@ -179,6 +184,22 @@ func (cmd *SessionUpdateCmd) Run(ctx server.Cmd) error {
 		}
 		fmt.Println(session)
 		return ctx.Set(defaultSessionKey, session.ID.String())
+	})
+}
+
+// Run forgets the session's messages, and prints it
+func (cmd *SessionForgetCmd) Run(ctx server.Cmd) error {
+	id, err := sessionID(ctx, cmd.ID)
+	if err != nil {
+		return err
+	}
+	return withClient(ctx, "llm.SessionForgetCmd", func(reqctx context.Context, client *httpclient.Client) error {
+		session, err := client.ForgetSessionMessages(reqctx, id)
+		if err != nil {
+			return err
+		}
+		fmt.Println(session)
+		return nil
 	})
 }
 

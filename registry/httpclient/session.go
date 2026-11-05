@@ -45,6 +45,16 @@ func (c *Client) ListSessionMessages(ctx context.Context, id uuid.UUID, req sche
 	return &response, nil
 }
 
+// ForgetSessionMessages forgets the messages of the session with the
+// identifier, keeping its settings, and returns it
+func (c *Client) ForgetSessionMessages(ctx context.Context, id uuid.UUID) (*schema.Session, error) {
+	var response schema.Session
+	if err := c.DoWithContext(ctx, client.MethodDelete, &response, client.OptPath("llm", "session", id.String(), "messages")); err != nil {
+		return nil, err
+	}
+	return &response, nil
+}
+
 // CreateSession creates a session with the settings, and no messages, and
 // returns it
 func (c *Client) CreateSession(ctx context.Context, meta schema.SessionMeta) (*schema.Session, error) {

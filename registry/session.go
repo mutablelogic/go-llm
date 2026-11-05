@@ -245,6 +245,35 @@ func (r *Registry) DeleteSession(ctx context.Context, id uuid.UUID) (_ *schema.S
 	return result, nil
 }
 
+// ForgetSessionMessages forgets the messages of the session with the
+// identifier, keeping its settings, so its conversation starts again, and
+// returns it, without them. The tokens of its conversation are none, and the
+// tokens used by every request to its model are kept. Returns ErrNotFound
+// when there's none, ErrConflict when it was changed as they were forgotten,
+// and ErrServiceUnavailable when the registry has no session store. A reply
+// which is being waited for, as they're forgotten, isn't stored.
+func (r *Registry) ForgetSessionMessages(ctx context.Context, id uuid.UUID) (_ *schema.Session, err error) {
+	ctx, endSpan := otel.StartSpan(r.tracer, ctx, "llm.registry.ForgetSessionMessages",
+		attribute.String("arg.id", id.String()),
+	)
+	defer func() { endSpan(err) }()
+
+	if r.sessionStore == nil {
+		return nil, errNoSessionStore
+	}
+	session, err := r.sessionStore.Get(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	session.Messages = nil
+	session.Usage.Input, session.Usage.Output, session.Usage.Overhead = 0, 0, 0
+	if session, err = r.sessionStore.Put(ctx, session); err != nil {
+		return nil, err
+	}
+	r.sessionChanged(eventschema.EventUpdate, session)
+	return r.withoutMessages(session), nil
+}
+
 // Chat adds the messages to the session with the identifier, and the
 // messages which its model, asked as WithSession asks it, adds, which are its
 // reply, the results of the tools it called, and the rest, and stores it,

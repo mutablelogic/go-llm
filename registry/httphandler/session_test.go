@@ -223,6 +223,26 @@ func Test_Chat(t *testing.T) {
 	require.Equal(t, http.StatusOK, do(t, server, http.MethodGet, "llm/session/"+session.ID.String()+"/messages", nil, &messages))
 	assert.Equal(t, uint(2), messages.Count)
 
+	// Its messages are forgotten, keeping its settings, and the tokens used
+	// by its requests, but not of its conversation, and it's chatted in
+	// again
+	var forgot schema.Session
+	require.Equal(t, http.StatusOK, do(t, server, http.MethodDelete, "llm/session/"+session.ID.String()+"/messages", nil, &forgot))
+	assert.Equal(t, got.Model, forgot.Model)
+	assert.Equal(t, got.Usage.Usage, forgot.Usage.Usage)
+	assert.Zero(t, forgot.Usage.Input+forgot.Usage.Output+forgot.Usage.Overhead)
+	assert.Greater(t, forgot.Serial, got.Serial)
+	messages = schema.MessageList{}
+	require.Equal(t, http.StatusOK, do(t, server, http.MethodGet, "llm/session/"+session.ID.String()+"/messages", nil, &messages))
+	assert.Zero(t, messages.Count)
+	response = schema.ChatResponse{}
+	require.Equal(t, http.StatusOK, do(t, server, http.MethodPost, "llm/session/"+session.ID.String(), question("Hello again"), &response))
+	require.Len(t, response.Messages, 2)
+	messages = schema.MessageList{}
+	require.Equal(t, http.StatusOK, do(t, server, http.MethodGet, "llm/session/"+session.ID.String()+"/messages", nil, &messages))
+	assert.Equal(t, uint(2), messages.Count)
+	assert.Equal(t, http.StatusNotFound, do(t, server, http.MethodDelete, "llm/session/"+uuid.New().String()+"/messages", nil, nil))
+
 	// Errors
 	assert.Equal(t, http.StatusNotFound, do(t, server, http.MethodPost, "llm/session/"+uuid.New().String(), question("Hello"), nil))
 	assert.Equal(t, http.StatusBadRequest, do(t, server, http.MethodPost, "llm/session/not-a-uuid", question("Hello"), nil))

@@ -221,6 +221,26 @@ func sessionMessagesHandlers(reg *registry.Registry, router *httprouter.Router, 
 			op.ErrorResponse(http.StatusNotFound, "Session not found")
 			op.ErrorResponse(http.StatusServiceUnavailable, "The server has no session store")
 		})
+
+		// DELETE
+		path.Delete(func(w http.ResponseWriter, r *http.Request) {
+			id, err := pathSessionID(r)
+			if err != nil {
+				httpresponse.Error(w, err)
+			} else if session, err := reg.ForgetSessionMessages(r.Context(), id); err != nil {
+				httpresponse.Error(w, llm.HTTPErr(err), id.String())
+			} else {
+				httpresponse.JSON(w, http.StatusOK, httprequest.Indent(r), session)
+			}
+		}, func(op httprequest.PathOperation) {
+			op.Summary("Forget Session Messages")
+			op.Description(documentation.Section(3, "DELETE /llm/session/{id}/messages").Body)
+			op.JSONResponse(http.StatusOK, jsonschema.MustFor[schema.Session](), "The session, without its messages")
+			op.ErrorResponse(http.StatusBadRequest, "An identifier which isn't a UUID")
+			op.ErrorResponse(http.StatusNotFound, "Session not found")
+			op.ErrorResponse(http.StatusConflict, "The session was changed as its messages were forgotten")
+			op.ErrorResponse(http.StatusServiceUnavailable, "The server has no session store")
+		})
 	})
 }
 
