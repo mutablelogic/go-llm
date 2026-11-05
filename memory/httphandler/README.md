@@ -19,3 +19,25 @@ Set the detail of the field, which is its `value`, or that it's `declined`, in t
 ### DELETE /memory/detail/{field}
 
 Forget the detail of the field, so it isn't known. Returns the details. Returns 400 if the field isn't one of the fields.
+
+## Memory Operations
+
+Memories are what the assistant remembers, beyond the details, which every session and agent shares, and searches with the `memories` tool of the `memory` namespace. Each memory has a `key`, which is an identifier, such as `kitchen_lights`, a one-line `description`, which says what's in it, a `body`, as Markdown, and a `version`, which is one when it's remembered, and one more each time it's changed, so a change is made to the memory as it was last seen.
+
+When a memory changes, an event is published, whose `schema` is `memory`, whose `table` is `memory`, and whose `row` is its key: it's created when it's remembered, updated when it's changed, including when a line of it is forgotten, and deleted when it's forgotten, or nothing is left of it. Unless it was deleted, its `data` is its new `version`, such as `{"version":2}`, so a client which has that version has seen the change.
+
+### GET /memory/memory
+
+List the memories, the most recently changed first, with how many there are. With `q`, only the memories with each of its words, in their key, description or body, in any case, are listed. Up to 100 are listed at a time, from the `offset`, and at most the `limit`.
+
+### GET /memory/memory/{key}
+
+Get the memory with the key. Returns 404 if there's none.
+
+### PUT /memory/memory/{key}
+
+Remember the memory with the key, which is its `description` and `body`, in the request body, which replace all of what was remembered under it. A new memory has no `version`, and a change to a memory has its `version`, so it isn't made to a memory which was changed since it was seen. Returns the memory, which is 201 when it's created. Returns 400 if the key isn't an identifier, or the memory has no description, a description of more than one line, or no body, or 409 if the version isn't the memory's version, or there's a memory with the key, and no version.
+
+### DELETE /memory/memory/{key}
+
+Forget the memory with the key, or, with a `line`, only the lines of its body which are the line, apart from the space around them, and a bullet, such as `- `, and the memory, when there's nothing left of it. Returns the memory, as it is, or was, when it's forgotten. Returns 404 if there's no memory with the key, or it hasn't the line.

@@ -71,7 +71,7 @@ flowchart LR
 - The **client and CLI**: the `llm` command, in [cmd/llm](cmd/llm), runs the server, and is its client, with commands for each operation, and an interactive chat in the terminal, which streams replies and follows other clients of the same session. The Go client, [registry/httpclient](registry/httpclient), is what it uses to talk to the server.
 - The **registry**, in [registry](registry), finds a model by name, checks what it can do, and asks its provider. It keeps providers, sessions and agents in stores, runs the agent loop, which calls tools until the model replies, and publishes events about what changed.
 - The **toolkit**, in [toolkit](toolkit), holds the tools which models can call, in namespaces, such as `homeassistant` or `weatherapi`, and streams what they log, and their progress, as they run.
-- The **memory**, in [memory](memory), is what every session and agent knows: the details of the person, and of the assistant, such as their names, where the person is, and their time zone and language, each known, not known, or declined. It's the toolkit's `memory` namespace, whose system prompt has the details, and the time, and whose tool remembers them.
+- The **memory**, in [memory](memory), is what every session and agent knows: the details of the person, and of the assistant, such as their names, where the person is, and their time zone and language, each known, not known, or declined, and memories, which are what a model keeps beyond the conversation, such as the person's preferences, or the people in their life, under keys. It's the toolkit's `memory` namespace, whose system prompt has the details, the time, and how to search, keep and use memories, and whose tools remember them.
 - **Agents** are named prompts, with their model, tools and the schemas of their input and reply, which models call as tools in the `agent` namespace. The [agents](agents) folder has examples, which the server adds when it starts.
 - The **providers**, in [provider](provider), each wrap a provider's API, and do what it can: generate, embed, read documents, or transcribe and translate speech.
 
@@ -88,8 +88,8 @@ The registry can be used without the server, from your own Go program, as the [e
 - **Transcribe and translate**: the speech in audio, as text, in its language or in English, with timed segments and speakers, streamed as it's transcribed, and printed as SRT or WebVTT subtitles.
 - **Models**: download, delete and unload models, for providers which store them, such as Ollama and go-whisper.
 - **Tools**: a toolkit of tools, in namespaces, for Home Assistant, NewsAPI, WeatherAPI and Ollama's web search, which models can call.
-- **Memory**: the details of the person, and of the assistant, such as their names, location, time zone and language, which every session knows, as a model learns them, or they're set, and which can be declined, so they're never asked for.
-- **Events**: a stream of changes to the providers and their models, to sessions, with whether someone is typing in a session, or its model is replying, so two chat windows on one session follow each other, and to the memory's details.
+- **Memory**: the details of the person, and of the assistant, such as their names, location, time zone and language, which every session knows, as a model learns them, or they're set, and which can be declined, so they're never asked for; and memories, which a model searches, keeps and forgets, as Markdown, under keys, with versions, so a change is made to a memory as it was last seen. The server keeps each memory in a file, which can be read, and edited, by hand.
+- **Events**: a stream of changes to the providers and their models, to sessions, with whether someone is typing in a session, or its model is replying, so two chat windows on one session follow each other, and to the memory's details and memories.
 - **OpenAPI**: the REST API is described by an OpenAPI specification, which `llm openapi` shows as documentation in a browser, or outputs as JSON or YAML.
 - **OpenTelemetry**: traces of requests, through the registry, providers and tools.
 
@@ -191,7 +191,7 @@ The command-line tool connects to `localhost:8084`, or the server at `--http.add
 | Sessions | `sessions`, `session`, `session-messages`, `session-create`, `session-update`, `session-delete` |
 | Inference | `ask`, `chat`, `embed`, `ocr`, `transcribe`, `translate` |
 | Events | `events` |
-| Memory | `details`, `detail-set`, `detail-forget` |
+| Memory | `details`, `detail-set`, `detail-forget`, `memories`, `memory`, `memory-remember`, `memory-forget` |
 | Tools and agents | `tools`, `tool`, `call`, `agents`, `agent`, `agent-create`, `agent-update`, `agent-delete` |
 
 Run `llm <command> --help` for a command's arguments and flags. Options for a model are given with `--opt`, such as `--opt temperature=0.2`, or `--opt pages=0-2` for OCR.
@@ -212,10 +212,10 @@ Tools are added to the server's toolkit when their credentials are set, as envir
 
 | Namespace | Tools | Credentials |
 |-----------|-------|-------------|
-| `memory` | Remember the details of the person, and the assistant, with the time in the system prompt | None, as it's always added |
+| `memory` | Remember the details of the person, and the assistant, with the time in the system prompt, and search, keep and forget memories | None, as it's always added |
 | `weatherapi` | Current weather, forecasts and alerts | `WEATHERAPI_API_KEY`, from [weatherapi.com](https://www.weatherapi.com/signup.aspx) |
 | `newsapi` | News articles, headlines and sources | `NEWSAPI_API_KEY`, from [newsapi.org](https://newsapi.org/register) |
-| `homeassistant` | Query and control smart home devices | `HOMEASSISTANT_URL`, `HOMEASSISTANT_API_KEY` |
+| `homeassistant` | Query, and search, and control smart home devices | `HOMEASSISTANT_URL`, `HOMEASSISTANT_API_KEY` |
 | `ollama` | Web search and fetch | `OLLAMA_API_KEY`, from [ollama.com](https://ollama.com/settings/keys) |
 
 A model is given tools by name, by namespace and name, such as `weatherapi:current`, or all of a namespace's, such as `weatherapi:*`, or all of them, `*`.
@@ -276,7 +276,6 @@ Tests which make requests to a provider are skipped with `-short`, and unless it
 ### Agents and tools
 
 - **MCP**: connectors to MCP servers, whose tools are added to the toolkit, each in its own namespace, so models can call them.
-- **Memories**: what a model remembers beyond the details, as it learns it, which it searches, and forgets.
 - **Heartbeats**: agents which run on a schedule.
 
 ### Providers

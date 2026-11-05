@@ -9,6 +9,8 @@ package memory
 import (
 	"context"
 	"encoding/json"
+	"errors"
+	"strings"
 	"sync"
 	"time"
 
@@ -26,8 +28,8 @@ import (
 ///////////////////////////////////////////////////////////////////////////////
 // TYPES
 
-// Store keeps the details, such as in a file, or a database, so they're
-// kept when the server restarts
+// Store keeps the details, and the memories, such as in files, or a
+// database, so they're kept when the server restarts
 type Store interface {
 	// Details returns the details, which are all not known, when none are
 	// stored
@@ -35,6 +37,21 @@ type Store interface {
 
 	// PutDetails replaces the details
 	PutDetails(context.Context, schema.Details) error
+
+	// ListMemories returns the memories which match the query, as Matches
+	// says, the most recently changed first
+	ListMemories(ctx context.Context, q string) ([]schema.Memory, error)
+
+	// GetMemory returns the memory with the key, or ErrNotFound when there's
+	// none
+	GetMemory(ctx context.Context, key string) (schema.Memory, error)
+
+	// PutMemory creates the memory, or replaces the memory with its key
+	PutMemory(context.Context, schema.Memory) error
+
+	// DeleteMemory deletes the memory with the key, or returns ErrNotFound
+	// when there's none
+	DeleteMemory(ctx context.Context, key string) error
 }
 
 // Memory is what the assistant remembers, which is kept in a store. It's a
@@ -54,7 +71,13 @@ type Memory struct {
 
 // DetailTable is the table of the events of the details, whose schema is
 // Name, and whose rows are their fields, such as location
-const DetailTable = "detail"
+const (
+	DetailTable = "detail"
+
+	// MemoryTable is the table of the events of the memories, whose schema
+	// is Name, and whose rows are their keys
+	MemoryTable = "memory"
+)
 
 ///////////////////////////////////////////////////////////////////////////////
 // LIFECYCLE
@@ -130,8 +153,153 @@ func (m *Memory) SetDetail(ctx context.Context, field schema.Field, detail *sche
 	return clone(details), nil
 }
 
+// ListMemories returns the memories which match the request's query, the
+// most recently changed first, of its page, and how many there are
+func (m *Memory) ListMemories(ctx context.Context, req schema.MemoryListRequest) (_ schema.MemoryList, err error) {
+	ctx, endSpan := otel.StartSpan(m.tracer, ctx, "memory.ListMemories",
+		attribute.String("arg.req", types.Stringify(req)),
+	)
+	defer func() { endSpan(err) }()
+
+	memories, err := m.store.ListMemories(ctx, req.Q)
+	if err != nil {
+		return schema.MemoryList{}, err
+	}
+	return req.Page(memories), nil
+}
+
+// GetMemory returns the memory with the key, or ErrNotFound when there's
+// none
+func (m *Memory) GetMemory(ctx context.Context, key string) (_ schema.Memory, err error) {
+	ctx, endSpan := otel.StartSpan(m.tracer, ctx, "memory.GetMemory",
+		attribute.String("arg.key", key),
+	)
+	defer func() { endSpan(err) }()
+	return m.store.GetMemory(ctx, key)
+}
+
+// Remember creates the memory, when the version is zero, or replaces the
+// memory with its key, when the version is its version, and it's changed,
+// publishes the change, and returns the memory, and whether it was created.
+// Returns ErrBadParameter when it isn't valid, ErrConflict when there's a
+// memory with its key, and the version isn't its version, as it was changed
+// since it was seen, or there's none, and the version isn't zero, and the
+// store's errors.
+func (m *Memory) Remember(ctx context.Context, meta schema.MemoryMeta, version uint64) (_ schema.Memory, created bool, err error) {
+	ctx, endSpan := otel.StartSpan(m.tracer, ctx, "memory.Remember",
+		attribute.String("arg.key", meta.Key),
+		attribute.Int64("arg.version", int64(version)),
+	)
+	defer func() { endSpan(err) }()
+
+	meta, err = meta.Validate()
+	if err != nil {
+		return schema.Memory{}, false, err
+	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	// It's created, or replaced, at its version, when it's changed
+	memory, err := m.store.GetMemory(ctx, meta.Key)
+	switch {
+	case errors.Is(err, llm.ErrNotFound) && version != 0:
+		return schema.Memory{}, false, llm.ErrConflict.Withf("there's no memory %q at version %d, so remember it without a version, to create it", meta.Key, version)
+	case errors.Is(err, llm.ErrNotFound):
+		memory, created = schema.Memory{MemoryMeta: meta, Version: 1, Created: m.now()}, true
+	case err != nil:
+		return schema.Memory{}, false, err
+	case version != memory.Version:
+		return schema.Memory{}, false, llm.ErrConflict.Withf("memory %q is at version %d, not %d, so recall it, and remember all of it again, with its version", meta.Key, memory.Version, version)
+	case memory.MemoryMeta == meta:
+		return memory, false, nil
+	default:
+		memory.MemoryMeta, memory.Version, memory.Modified = meta, memory.Version+1, m.now()
+	}
+	if err := m.store.PutMemory(ctx, memory); err != nil {
+		return schema.Memory{}, false, err
+	}
+	if created {
+		m.publishMemory(eventschema.EventCreate, memory)
+	} else {
+		m.publishMemory(eventschema.EventUpdate, memory)
+	}
+	return memory, created, nil
+}
+
+// Forget deletes the memory with the key, publishes that it was, and
+// returns it, as it was. Returns ErrNotFound when there's none.
+func (m *Memory) Forget(ctx context.Context, key string) (_ schema.Memory, err error) {
+	ctx, endSpan := otel.StartSpan(m.tracer, ctx, "memory.Forget",
+		attribute.String("arg.key", key),
+	)
+	defer func() { endSpan(err) }()
+
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	memory, err := m.store.GetMemory(ctx, key)
+	if err != nil {
+		return schema.Memory{}, err
+	} else if err := m.store.DeleteMemory(ctx, key); err != nil {
+		return schema.Memory{}, err
+	}
+	m.publishMemory(eventschema.EventDelete, memory)
+	return memory, nil
+}
+
+// ForgetLine takes the line out of the body of the memory with the key,
+// apart from the space around it, and a bullet, such as "- ", or forgets the
+// memory, when there's nothing left of it, publishes the change, and returns
+// the memory, as it is, or was, when it's forgotten. Returns ErrNotFound when
+// there's no memory with the key, or it hasn't the line.
+func (m *Memory) ForgetLine(ctx context.Context, key, line string) (_ schema.Memory, err error) {
+	ctx, endSpan := otel.StartSpan(m.tracer, ctx, "memory.ForgetLine",
+		attribute.String("arg.key", key),
+	)
+	defer func() { endSpan(err) }()
+
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	memory, err := m.store.GetMemory(ctx, key)
+	if err != nil {
+		return schema.Memory{}, err
+	}
+	body, removed := memory.WithoutLine(line)
+	switch {
+	case !removed:
+		return schema.Memory{}, llm.ErrNotFound.Withf("memory %q has no line %q", key, strings.TrimSpace(line))
+	case body == "":
+		if err := m.store.DeleteMemory(ctx, key); err != nil {
+			return schema.Memory{}, err
+		}
+		m.publishMemory(eventschema.EventDelete, memory)
+		return memory, nil
+	}
+	memory.Body, memory.Version, memory.Modified = body, memory.Version+1, m.now()
+	if err := m.store.PutMemory(ctx, memory); err != nil {
+		return schema.Memory{}, err
+	}
+	m.publishMemory(eventschema.EventUpdate, memory)
+	return memory, nil
+}
+
 ///////////////////////////////////////////////////////////////////////////////
 // PRIVATE METHODS
+
+// publishMemory publishes the change to the memory, when the memory has a
+// broadcaster, whose row is its key, and whose data is its version, unless
+// it was deleted
+func (m *Memory) publishMemory(action eventschema.EventAction, memory schema.Memory) {
+	if m.broadcaster == nil {
+		return
+	}
+	event := eventschema.Event{Action: action, Schema: Name, Table: MemoryTable, Row: memory.Key}
+	if action != eventschema.EventDelete {
+		if data, err := json.Marshal(schema.MemoryEvent{Version: memory.Version}); err == nil {
+			event.Data = data
+		}
+	}
+	m.broadcaster.Publish(event)
+}
 
 // publish publishes the change to the detail of the field, when the memory
 // has a broadcaster, with the detail, when there is one

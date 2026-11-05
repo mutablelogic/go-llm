@@ -176,8 +176,9 @@ func newServerAgentStore(ctx server.Cmd) (*agentStore, error) {
 	return newAgentStore(dir)
 }
 
-// newServerMemoryStore returns the store of the memory, which is a file of
-// its own, memory.json, in the directory of the command's defaults
+// newServerMemoryStore returns the store of the memory, whose details are a
+// file of their own, memory.json, and whose memories are files of Markdown,
+// in the directory of the command's defaults
 func newServerMemoryStore(ctx server.Cmd) (*memoryStore, error) {
 	dir, err := serverDir(ctx)
 	if err != nil {
@@ -187,7 +188,7 @@ func newServerMemoryStore(ctx server.Cmd) (*memoryStore, error) {
 	if err != nil {
 		return nil, err
 	}
-	return newMemoryStore(file), nil
+	return newMemoryStore(file, dir), nil
 }
 
 // serverDir returns the directory of the command's defaults, which the

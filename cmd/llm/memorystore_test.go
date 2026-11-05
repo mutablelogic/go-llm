@@ -20,7 +20,7 @@ func Test_MemoryStore(t *testing.T) {
 	path := filepath.Join(t.TempDir(), memoryFile)
 	file, err := newJSONFile(path)
 	require.NoError(t, err)
-	store := newMemoryStore(file)
+	store := newMemoryStore(file, filepath.Dir(path))
 
 	// With no file, nothing is known
 	details, err := store.Details(ctx)
@@ -39,7 +39,7 @@ func Test_MemoryStore(t *testing.T) {
 
 	file, err = newJSONFile(path)
 	require.NoError(t, err)
-	m, err = memory.New(ctx, newMemoryStore(file))
+	m, err = memory.New(ctx, newMemoryStore(file, filepath.Dir(path)))
 	require.NoError(t, err)
 	assert.Equal(t, "David", m.Details().Get(schema.FieldName).Value)
 	assert.True(t, m.Details().Get(schema.FieldLocation).Declined)
@@ -52,4 +52,59 @@ func Test_MemoryStore(t *testing.T) {
 	var details2 schema.Details
 	details2.Timezone = &schema.Detail{Value: "Nowhere"}
 	assert.ErrorIs(t, store.PutDetails(ctx, details2), llm.ErrBadParameter)
+}
+
+func Test_MemoryStoreMemories(t *testing.T) {
+	ctx := t.Context()
+	dir := t.TempDir()
+	file, err := newJSONFile(filepath.Join(dir, memoryFile))
+	require.NoError(t, err)
+	store := newMemoryStore(file, dir)
+	m, err := memory.New(ctx, store)
+	require.NoError(t, err)
+
+	// A memory is a file of Markdown, with its front matter
+	_, _, err = m.Remember(ctx, schema.MemoryMeta{Key: "kitchen_lights", Description: "The kitchen's lights", Body: "- light.kitchen_main\n- light.kitchen_counter"}, 0)
+	require.NoError(t, err)
+	data, err := os.ReadFile(filepath.Join(dir, "memory-kitchen_lights.md"))
+	require.NoError(t, err)
+	assert.Regexp(t, `^---\ndescription: The kitchen's lights\nversion: 1\ncreated: .+\n---\n\n- light.kitchen_main\n- light.kitchen_counter\n$`, string(data))
+	info, err := os.Stat(filepath.Join(dir, "memory-kitchen_lights.md"))
+	require.NoError(t, err)
+	assert.Equal(t, os.FileMode(0o600), info.Mode().Perm())
+
+	// Read again, as it was written
+	got, err := store.GetMemory(ctx, "kitchen_lights")
+	require.NoError(t, err)
+	assert.Equal(t, "- light.kitchen_main\n- light.kitchen_counter", got.Body)
+	assert.False(t, got.Created.IsZero())
+	assert.Equal(t, uint64(1), got.Version)
+
+	// One edited by hand is read, and one which isn't valid, or isn't a
+	// memory's, is left out of the list
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "memory-units.md"), []byte("---\r\ndescription: Units\r\n---\r\nMetric\r\n"), 0o600))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "memory-broken.md"), []byte("no front matter"), 0o600))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "memory-not a key.md"), []byte("---\ndescription: x\n---\nx\n"), 0o600))
+	units, err := store.GetMemory(ctx, "units")
+	require.NoError(t, err)
+	assert.Equal(t, "Metric", units.Body)
+	assert.Equal(t, uint64(1), units.Version, "a memory without a version is at version one")
+	_, err = store.GetMemory(ctx, "broken")
+	assert.ErrorIs(t, err, llm.ErrInternalServerError)
+	list, err := m.ListMemories(ctx, schema.MemoryListRequest{})
+	require.NoError(t, err)
+	assert.Equal(t, uint(2), list.Count)
+	list, err = m.ListMemories(ctx, schema.MemoryListRequest{Q: "counter"})
+	require.NoError(t, err)
+	require.Len(t, list.Body, 1)
+	assert.Equal(t, "kitchen_lights", list.Body[0].Key)
+
+	// Forgotten, so its file is deleted
+	_, err = m.Forget(ctx, "kitchen_lights")
+	require.NoError(t, err)
+	_, err = os.Stat(filepath.Join(dir, "memory-kitchen_lights.md"))
+	assert.ErrorIs(t, err, os.ErrNotExist)
+	assert.ErrorIs(t, store.DeleteMemory(ctx, "kitchen_lights"), llm.ErrNotFound)
+	_, err = store.GetMemory(ctx, "../etc")
+	assert.ErrorIs(t, err, llm.ErrNotFound)
 }

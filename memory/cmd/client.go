@@ -16,6 +16,7 @@ import (
 // ClientCommands are the commands which call the memory's API
 type ClientCommands struct {
 	DetailCommands
+	MemoryCommands
 }
 
 ///////////////////////////////////////////////////////////////////////////////
