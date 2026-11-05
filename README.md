@@ -223,7 +223,7 @@ llm run
 
 A server installed with `go install` serves the API, without the web UI, which `make`, from a clone of the repository, builds, with npm, into `build/llm`.
 
-## Commands
+## CLI Commands
 
 | Group | Commands |
 |-------|----------|
