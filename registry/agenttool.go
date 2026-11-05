@@ -197,7 +197,12 @@ func (t *agentTool) Run(ctx context.Context, input json.RawMessage) (any, error)
 	response, err := t.registry.RunAgent(ctx, t.agent.Name, req, agentStream(t.agent.Name, session))
 	if err != nil {
 		return nil, err
-	} else if err := agentFinished(t.agent.Name, response.Messages); err != nil {
+	}
+
+	// The tokens it used are the tool's, which its result has, even when it
+	// didn't finish
+	session.Usage(response.Usage.Usage)
+	if err := agentFinished(t.agent.Name, response.Messages); err != nil {
 		return nil, err
 	}
 	return response.Reply, nil

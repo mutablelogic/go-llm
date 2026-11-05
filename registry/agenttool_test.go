@@ -60,7 +60,7 @@ func Test_AgentTools(t *testing.T) {
 		// its input and the schema of its reply, which is updated, and
 		// deleted, as it is, and each is published
 		r, tk, ch := newRegistry(t, test.NewAgentStore())
-		_, err := r.CreateAgent(ctx, segment)
+		_, _, err := r.CreateAgent(ctx, segment)
 		require.NoError(t, err)
 		assert.Equal(t, []string{"agent:segment"}, tools(t, tk))
 		tool, err := tk.GetTool(ctx, "agent:segment")
@@ -90,7 +90,7 @@ func Test_AgentTools(t *testing.T) {
 		// session to run it from, and one without an input has an empty
 		// object as its input
 		r, tk, _ := newRegistry(t, test.NewAgentStore())
-		_, err := r.CreateAgent(ctx, schema.AgentMeta{PromptMeta: schema.PromptMeta{Name: "empty"}})
+		_, _, err := r.CreateAgent(ctx, schema.AgentMeta{PromptMeta: schema.PromptMeta{Name: "empty"}})
 		require.NoError(t, err)
 		tool, err := tk.GetTool(ctx, "agent:empty")
 		require.NoError(t, err)
@@ -125,7 +125,7 @@ func Test_AgentTools(t *testing.T) {
 		// Agents which are changed at once end as their tools, as they're
 		// stored, and one which is deleted at the end isn't a tool
 		r, tk, _ := newRegistry(t, test.NewAgentStore())
-		_, err := r.CreateAgent(ctx, segment)
+		_, _, err := r.CreateAgent(ctx, segment)
 		require.NoError(t, err)
 		var wg sync.WaitGroup
 		for i := range 20 {
@@ -135,9 +135,12 @@ func Test_AgentTools(t *testing.T) {
 			})
 			wg.Go(func() {
 				name := fmt.Sprint("other", i%3)
-				if _, err := r.CreateAgent(ctx, schema.AgentMeta{PromptMeta: schema.PromptMeta{Name: name}}); err == nil {
-					_, err = r.DeleteAgent(ctx, name)
-					assert.NoError(t, err)
+				if _, _, err := r.CreateAgent(ctx, schema.AgentMeta{PromptMeta: schema.PromptMeta{Name: name}}); err == nil {
+					// It may have been deleted by another, which created it
+					// as it is, at once
+					if _, err = r.DeleteAgent(ctx, name); err != nil {
+						assert.ErrorIs(t, err, llm.ErrNotFound)
+					}
 				}
 			})
 		}
@@ -154,7 +157,7 @@ func Test_AgentTools(t *testing.T) {
 		// Without a toolkit, agents aren't tools
 		r, err := registry.New(registry.WithAgentStore(test.NewAgentStore()))
 		require.NoError(t, err)
-		_, err = r.CreateAgent(ctx, segment)
+		_, _, err = r.CreateAgent(ctx, segment)
 		assert.NoError(t, err)
 	})
 
@@ -180,7 +183,7 @@ func Test_RunAgent(t *testing.T) {
 		require.NoError(t, err)
 		p := newScripted(replies...)
 		require.NoError(t, r.Add("", p))
-		_, err = r.CreateAgent(ctx, schema.AgentMeta{
+		_, _, err = r.CreateAgent(ctx, schema.AgentMeta{
 			PromptMeta:    schema.PromptMeta{Name: "segment", Prompt: types.Ptr("Segment")},
 			GeneratorMeta: schema.GeneratorMeta{System: types.Ptr("You segment transcripts")},
 		})
@@ -197,7 +200,7 @@ func Test_RunAgent(t *testing.T) {
 		require.NoError(t, err)
 		_, err = r.Chat(ctx, session.ID, []llm.Message{user(t, "Earlier")}, nil)
 		require.NoError(t, err)
-		_, err = r.CreateAgent(ctx, schema.AgentMeta{PromptMeta: schema.PromptMeta{
+		_, _, err = r.CreateAgent(ctx, schema.AgentMeta{PromptMeta: schema.PromptMeta{
 			Name:   "summarize",
 			Input:  json.RawMessage(`{"type":"object","properties":{"text":{"type":"string"}},"required":["text"]}`),
 			Prompt: types.Ptr("Summarize {{ .text }}"),
@@ -221,7 +224,7 @@ func Test_RunAgent(t *testing.T) {
 	t.Run("Schema", func(t *testing.T) {
 		// The reply of an agent with a schema is what it replied, as JSON
 		r, _, _ := newRegistry(t, call(toolkit.RespondName, `{"result":{"sections":[]}}`))
-		_, err := r.CreateAgent(ctx, schema.AgentMeta{
+		_, _, err := r.CreateAgent(ctx, schema.AgentMeta{
 			PromptMeta:    schema.PromptMeta{Name: "sections", Prompt: types.Ptr("Sections")},
 			GeneratorMeta: schema.GeneratorMeta{Model: types.Ptr("model"), Schema: json.RawMessage(`{"type":"object","properties":{"sections":{"type":"array"}}}`)},
 		})
@@ -234,7 +237,7 @@ func Test_RunAgent(t *testing.T) {
 	t.Run("NullSchema", func(t *testing.T) {
 		// An agent whose schema is null replies with text, as a JSON string
 		r, _, _ := newRegistry(t, text("42"))
-		_, err := r.CreateAgent(ctx, schema.AgentMeta{
+		_, _, err := r.CreateAgent(ctx, schema.AgentMeta{
 			PromptMeta:    schema.PromptMeta{Name: "answer", Prompt: types.Ptr("Answer")},
 			GeneratorMeta: schema.GeneratorMeta{Model: types.Ptr("model"), Schema: json.RawMessage(`null`)},
 		})
@@ -249,7 +252,7 @@ func Test_RunAgent(t *testing.T) {
 		truncated := text("Partly")
 		truncated.Result = providerschema.ResultMaxTokens
 		r, _, _ := newRegistry(t, truncated)
-		_, err := r.CreateAgent(ctx, schema.AgentMeta{
+		_, _, err := r.CreateAgent(ctx, schema.AgentMeta{
 			PromptMeta:    schema.PromptMeta{Name: "long", Prompt: types.Ptr("Write a lot")},
 			GeneratorMeta: schema.GeneratorMeta{Model: types.Ptr("model")},
 		})
@@ -287,6 +290,10 @@ func Test_RunAgent(t *testing.T) {
 		require.NoError(t, err)
 		assert.Equal(t, "Done", response.Messages[len(response.Messages)-1].Text())
 		assert.Equal(t, []string{"Agent segment is replying"}, progress, "the agent's progress is streamed, as it replies")
+
+		// The agent's tokens are its tool result's, and the chat's, which
+		// asked the model twice, and the agent once
+		assert.Equal(t, llm.Usage{InputTokens: 30, OutputTokens: 15}, withoutDuration(response.Usage.Usage))
 		stored, err := sessions.Get(ctx, session.ID)
 		require.NoError(t, err)
 		var results []string
@@ -297,6 +304,16 @@ func Test_RunAgent(t *testing.T) {
 		}
 		require.Len(t, results, 1)
 		assert.JSONEq(t, `"Segmented"`, results[0])
+		var usage *llm.Usage
+		for _, message := range stored.Messages {
+			for _, block := range message.Content {
+				if block.ToolResult != nil {
+					usage = block.ToolResult.Usage
+				}
+			}
+		}
+		require.NotNil(t, usage, "the tool result has the agent's tokens")
+		assert.Equal(t, llm.Usage{InputTokens: 10, OutputTokens: 5}, withoutDuration(*usage))
 
 		// The agent was asked with its prompt and system prompt, rather than
 		// the session's conversation

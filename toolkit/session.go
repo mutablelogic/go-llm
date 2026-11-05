@@ -5,6 +5,9 @@ import (
 	"fmt"
 	"log/slog"
 	"uuid"
+
+	// Packages
+	llm "github.com/mutablelogic/go-llm"
 )
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -30,6 +33,10 @@ type Session interface {
 	// place of its progress before, rather than keeping it, as a line it
 	// logs is
 	Progress(progress, total float64, message string)
+
+	// Usage adds the tokens the tool used, such as when it asks a model, as
+	// an agent does, to those of its result, so what runs it counts them
+	Usage(llm.Usage)
 }
 
 // sessionKey is the key of the session in a context
@@ -85,6 +92,8 @@ func (discard) ID() uuid.UUID {
 }
 
 func (discard) Progress(float64, float64, string) {}
+
+func (discard) Usage(llm.Usage) {}
 
 func (discard) Logger() *slog.Logger {
 	return discardLogger

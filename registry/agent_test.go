@@ -50,8 +50,9 @@ func Test_Agents(t *testing.T) {
 		// An agent is created with its definition, and its model and tools
 		// by their canonical names
 		r, _ := newRegistry(t)
-		agent, err := r.CreateAgent(ctx, segment())
+		agent, isNew, err := r.CreateAgent(ctx, segment())
 		require.NoError(t, err)
+		assert.True(t, isNew)
 		assert.Equal(t, "segment", agent.Name)
 		assert.NotZero(t, agent.Serial)
 		assert.False(t, agent.Created.IsZero())
@@ -59,14 +60,31 @@ func Test_Agents(t *testing.T) {
 		assert.Equal(t, []string{"weather:current"}, agent.Tools)
 		assert.Equal(t, "Segment a transcript", types.Value(agent.Title))
 
+		created := agent
+
 		// An agent needs only its name
-		agent, err = r.CreateAgent(ctx, schema.AgentMeta{PromptMeta: schema.PromptMeta{Name: "empty"}})
+		agent, _, err = r.CreateAgent(ctx, schema.AgentMeta{PromptMeta: schema.PromptMeta{Name: "empty"}})
 		require.NoError(t, err)
 		assert.Nil(t, agent.Model)
 
-		// And there's one agent with a name
-		_, err = r.CreateAgent(ctx, segment())
-		assert.ErrorIs(t, err, llm.ErrConflict)
+		// An agent which is created again, as it is, isn't changed, nor
+		// created
+		agent, isNew, err = r.CreateAgent(ctx, segment())
+		require.NoError(t, err)
+		assert.False(t, isNew)
+		assert.Equal(t, created.Serial, agent.Serial)
+
+		// And one which is changed is replaced, rather than merged
+		changed := segment()
+		changed.Title = types.Ptr("Segment an episode")
+		changed.Description = nil
+		agent, isNew, err = r.CreateAgent(ctx, changed)
+		require.NoError(t, err)
+		assert.False(t, isNew, "it's replaced, rather than created")
+		assert.Greater(t, agent.Serial, created.Serial)
+		assert.Equal(t, "Segment an episode", types.Value(agent.Title))
+		assert.Nil(t, agent.Description)
+		assert.True(t, agent.Created.Equal(created.Created))
 	})
 
 	t.Run("CreateInvalid", func(t *testing.T) {
@@ -89,16 +107,16 @@ func Test_Agents(t *testing.T) {
 		} {
 			meta := segment()
 			change(&meta)
-			_, err := r.CreateAgent(ctx, meta)
+			_, _, err := r.CreateAgent(ctx, meta)
 			assert.ErrorIs(t, err, llm.ErrBadParameter, name)
 		}
 		meta := segment()
 		meta.Model = types.Ptr("missing")
-		_, err := r.CreateAgent(ctx, meta)
+		_, _, err := r.CreateAgent(ctx, meta)
 		assert.ErrorIs(t, err, llm.ErrNotFound)
 		meta = segment()
 		meta.Tools = []string{"missing"}
-		_, err = r.CreateAgent(ctx, meta)
+		_, _, err = r.CreateAgent(ctx, meta)
 		assert.ErrorIs(t, err, llm.ErrNotFound)
 		list, err := store.List(ctx, schema.AgentListRequest{})
 		require.NoError(t, err)
@@ -107,7 +125,7 @@ func Test_Agents(t *testing.T) {
 
 	t.Run("Get", func(t *testing.T) {
 		r, _ := newRegistry(t)
-		_, err := r.CreateAgent(ctx, segment())
+		_, _, err := r.CreateAgent(ctx, segment())
 		require.NoError(t, err)
 		agent, err := r.GetAgent(ctx, "segment")
 		require.NoError(t, err)
@@ -122,7 +140,7 @@ func Test_Agents(t *testing.T) {
 		// most a limit of them
 		r, _ := newRegistry(t)
 		for _, name := range []string{"summarize", "segment", "translate"} {
-			_, err := r.CreateAgent(ctx, schema.AgentMeta{PromptMeta: schema.PromptMeta{Name: name}})
+			_, _, err := r.CreateAgent(ctx, schema.AgentMeta{PromptMeta: schema.PromptMeta{Name: name}})
 			require.NoError(t, err)
 		}
 		list, err := r.ListAgents(ctx, schema.AgentListRequest{})
@@ -143,7 +161,7 @@ func Test_Agents(t *testing.T) {
 		// What the update sets is changed, and the rest kept, and its name
 		// isn't changed
 		r, _ := newRegistry(t)
-		created, err := r.CreateAgent(ctx, segment())
+		created, _, err := r.CreateAgent(ctx, segment())
 		require.NoError(t, err)
 		agent, err := r.UpdateAgent(ctx, "segment", schema.AgentMeta{
 			PromptMeta: schema.PromptMeta{
@@ -181,7 +199,7 @@ func Test_Agents(t *testing.T) {
 		// An update must change something, of an agent which exists, and
 		// the definition, as changed, must be valid
 		r, _ := newRegistry(t)
-		_, err := r.CreateAgent(ctx, segment())
+		_, _, err := r.CreateAgent(ctx, segment())
 		require.NoError(t, err)
 		_, err = r.UpdateAgent(ctx, "segment", schema.AgentMeta{})
 		assert.ErrorIs(t, err, llm.ErrBadParameter)
@@ -199,7 +217,7 @@ func Test_Agents(t *testing.T) {
 
 	t.Run("Delete", func(t *testing.T) {
 		r, _ := newRegistry(t)
-		_, err := r.CreateAgent(ctx, segment())
+		_, _, err := r.CreateAgent(ctx, segment())
 		require.NoError(t, err)
 		agent, err := r.DeleteAgent(ctx, "segment")
 		require.NoError(t, err)
@@ -214,11 +232,11 @@ func Test_Agents(t *testing.T) {
 		// An agent which is deleted, and created again, has a serial it
 		// didn't have, so a change to it as it was isn't made to the new one
 		r, store := newRegistry(t)
-		old, err := r.CreateAgent(ctx, segment())
+		old, _, err := r.CreateAgent(ctx, segment())
 		require.NoError(t, err)
 		_, err = r.DeleteAgent(ctx, "segment")
 		require.NoError(t, err)
-		created, err := r.CreateAgent(ctx, segment())
+		created, _, err := r.CreateAgent(ctx, segment())
 		require.NoError(t, err)
 		assert.NotEqual(t, old.Serial, created.Serial)
 
@@ -237,7 +255,7 @@ func Test_Agents(t *testing.T) {
 		// A registry without an agent store has no agents
 		r, err := registry.New()
 		require.NoError(t, err)
-		_, err = r.CreateAgent(ctx, segment())
+		_, _, err = r.CreateAgent(ctx, segment())
 		assert.ErrorIs(t, err, llm.ErrServiceUnavailable)
 		_, err = r.GetAgent(ctx, "segment")
 		assert.ErrorIs(t, err, llm.ErrServiceUnavailable)

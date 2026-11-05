@@ -276,3 +276,57 @@ type unreadableTool struct{ echoTool }
 func (unreadableTool) Run(context.Context, json.RawMessage) (any, error) {
 	return resource{err: errors.New("can't read")}, nil
 }
+
+// usageTool says it used tokens, and fails, when it's told to
+type usageTool struct {
+	echoTool
+}
+
+func (t usageTool) Run(ctx context.Context, input json.RawMessage) (any, error) {
+	toolkit.SessionFromContext(ctx).Usage(llm.Usage{InputTokens: 10, OutputTokens: 5})
+	toolkit.SessionFromContext(ctx).Usage(llm.Usage{InputTokens: 1})
+	return t.echoTool.Run(ctx, input)
+}
+
+func TestRunToolsUsage(t *testing.T) {
+	// The tokens a tool says it used are its result's, even when it fails,
+	// and every result has how long it took
+	ctx := context.Background()
+	tools := []llm.Tool{usageTool{echoTool{name: "a"}}, usageTool{echoTool{name: "b", err: errors.New("failed")}}, echoTool{name: "c"}}
+	calls := []llm.ToolCall{{ID: "call-a", Name: "a"}, {ID: "call-b", Name: "b"}, {ID: "call-c", Name: "c"}}
+	results, err := toolkit.RunTools(ctx, tools, calls, 0, func(call llm.ToolCall) toolkit.Session {
+		return toolkit.NewSession(call.Name, uuid.Nil(), nil, nil)
+	})
+	require.NoError(t, err)
+	require.Len(t, results, 3)
+	require.NotNil(t, results[0].ToolResult.Usage)
+	usage := *results[0].ToolResult.Usage
+	assert.NotZero(t, usage.Duration, "how long it took")
+	usage.Duration = 0
+	assert.Equal(t, llm.Usage{InputTokens: 11, OutputTokens: 5}, usage)
+	assert.True(t, results[1].ToolResult.IsError)
+	require.NotNil(t, results[1].ToolResult.Usage)
+	assert.Equal(t, uint(11), results[1].ToolResult.Usage.InputTokens)
+	require.NotNil(t, results[2].ToolResult.Usage, "every result has how long it took")
+	assert.Zero(t, results[2].ToolResult.Usage.InputTokens)
+	assert.NotZero(t, results[2].ToolResult.Usage.Duration)
+}
+
+// forwardingSession is a session of a caller's own, which embeds another,
+// and tells it what it's told
+type forwardingSession struct {
+	toolkit.Session
+}
+
+func TestRunToolsOwnSession(t *testing.T) {
+	// The tokens a tool says it used are its result's, whichever session it
+	// runs in
+	ctx := context.Background()
+	results, err := toolkit.RunTools(ctx, []llm.Tool{usageTool{echoTool{name: "a"}}}, []llm.ToolCall{{ID: "call-a", Name: "a"}}, 0, func(call llm.ToolCall) toolkit.Session {
+		return forwardingSession{toolkit.NewSession(call.Name, uuid.Nil(), nil, nil)}
+	})
+	require.NoError(t, err)
+	require.Len(t, results, 1)
+	require.NotNil(t, results[0].ToolResult.Usage)
+	assert.Equal(t, uint(11), results[0].ToolResult.Usage.InputTokens)
+}

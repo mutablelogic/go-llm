@@ -202,6 +202,7 @@ func (p PromptMeta) Message(input json.RawMessage) (string, error) {
 	if err != nil {
 		return "", err
 	}
+
 	tmpl, err := p.Template()
 	if err != nil {
 		return "", err

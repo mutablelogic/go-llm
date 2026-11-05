@@ -78,6 +78,18 @@ func (s logSession) Logger() *slog.Logger {
 	return s.logger
 }
 
+// Usage adds the tokens the tool used to the span, as an event, which
+// RunTools counts, for its result
+func (s logSession) Usage(usage llm.Usage) {
+	if s.log.span != nil {
+		s.log.span.AddEvent("usage", trace.WithAttributes(
+			attribute.String("tool", s.log.name),
+			attribute.Int("input_tokens", int(usage.InputTokens)),
+			attribute.Int("output_tokens", int(usage.OutputTokens)),
+		))
+	}
+}
+
 // Progress streams the tool's progress, which replaces its progress before,
 // as an llm.Progress, and adds it to the span, as an event
 func (s logSession) Progress(progress, total float64, message string) {

@@ -77,10 +77,11 @@ func Test_Agents(t *testing.T) {
 	})
 
 	t.Run("CreateInvalid", func(t *testing.T) {
-		// The agent exists, the YAML has a key which isn't a field, the name
-		// isn't valid, or the model isn't found
+		// An agent which exists is replaced, or kept, when it's as it is,
+		// which isn't a creation, and the YAML has a key which isn't a field,
+		// the name isn't valid, or the model isn't found
 		status, _ := server.DoWithContentType(t, http.MethodPost, "llm/agent", types.ContentTypeYAML, segmentYAML)
-		assert.Equal(t, http.StatusConflict, status)
+		assert.Equal(t, http.StatusOK, status)
 		status, _ = server.DoWithContentType(t, http.MethodPost, "llm/agent", types.ContentTypeYAML, "name: other\nsystem_prompt: Be brief\n")
 		assert.Equal(t, http.StatusBadRequest, status)
 		status, _ = server.DoWithContentType(t, http.MethodPost, "llm/agent", types.ContentTypeYAML, "name: [other\n")

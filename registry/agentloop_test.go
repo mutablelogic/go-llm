@@ -88,7 +88,8 @@ func Test_AgentLoop(t *testing.T) {
 		require.Len(t, added, 1)
 		assert.Equal(t, "Hello", added[0].Text())
 		assert.Equal(t, providerschema.ResultStop, added[0].Result)
-		assert.Equal(t, llm.Usage{InputTokens: 10, OutputTokens: 5}, usage)
+		assert.Equal(t, llm.Usage{InputTokens: 10, OutputTokens: 5}, withoutDuration(usage))
+		assert.NotZero(t, usage.Duration, "how long the loop took")
 		assert.Len(t, p.asked, 1)
 		assert.Equal(t, []string{"echo", "fail"}, p.asked[0].tools)
 	})
@@ -111,7 +112,7 @@ func Test_AgentLoop(t *testing.T) {
 		}
 		assert.Equal(t, "Sunny", added[2].Text())
 		assert.Equal(t, providerschema.ResultStop, added[2].Result)
-		assert.Equal(t, llm.Usage{InputTokens: 20, OutputTokens: 10}, usage)
+		assert.Equal(t, llm.Usage{InputTokens: 20, OutputTokens: 10}, withoutDuration(usage))
 		require.Len(t, p.asked, 2)
 		assert.Len(t, p.asked[0].messages, 1)
 		if assert.Len(t, p.asked[1].messages, 3) {
@@ -916,7 +917,7 @@ func Test_AgentLoopCompact(t *testing.T) {
 		assert.Equal(t, providerschema.ResultMaxContext, added[0].Result)
 		assert.Empty(t, added[0].Text())
 		assert.Empty(t, p.asked)
-		assert.Equal(t, llm.Usage{}, usage)
+		assert.Equal(t, llm.Usage{}, withoutDuration(usage))
 	})
 
 	t.Run("Attachment", func(t *testing.T) {

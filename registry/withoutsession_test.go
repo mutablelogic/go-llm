@@ -160,7 +160,7 @@ func Test_Ask(t *testing.T) {
 		assert.Equal(t, "Hello", response.Message.Text())
 		assert.False(t, response.Schema)
 		assert.Empty(t, response.Result)
-		assert.Equal(t, llm.Usage{InputTokens: 10, OutputTokens: 5}, response.Usage)
+		assert.Equal(t, llm.Usage{InputTokens: 10, OutputTokens: 5}, withoutDuration(response.Usage))
 		require.Len(t, p.asked, 1)
 		assert.Equal(t, "Hi", p.asked[0].messages[0].Text())
 		system, _ := llm.GetOpt[string](p.asked[0].opts, llm.SystemPromptKey)
@@ -214,7 +214,7 @@ func Test_Ask(t *testing.T) {
 		response, err := r.Ask(ctx, req, nil)
 		require.NoError(t, err)
 		assert.JSONEq(t, `"Berlin"`, string(response.Result))
-		assert.Equal(t, llm.Usage{InputTokens: 20, OutputTokens: 10}, response.Usage)
+		assert.Equal(t, llm.Usage{InputTokens: 20, OutputTokens: 10}, withoutDuration(response.Usage))
 		require.Len(t, p.asked, 2)
 		second := p.asked[1].messages
 		require.Len(t, second, 3)
@@ -440,4 +440,10 @@ func Test_Ask(t *testing.T) {
 		_, err = r.Ask(ctx, question("Hi"), nil)
 		assert.ErrorIs(t, err, llm.ErrServiceUnavailable)
 	})
+}
+
+// withoutDuration returns the usage, without how long it took, which varies
+func withoutDuration(usage llm.Usage) llm.Usage {
+	usage.Duration = 0
+	return usage
 }

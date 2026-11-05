@@ -20,6 +20,7 @@ type logSession struct{ logger *slog.Logger }
 func (s logSession) ID() uuid.UUID                     { return uuid.Nil() }
 func (s logSession) Logger() *slog.Logger              { return s.logger }
 func (s logSession) Progress(float64, float64, string) {}
+func (s logSession) Usage(llm.Usage)                   {}
 
 func Test_Session(t *testing.T) {
 	t.Run("None", func(t *testing.T) {

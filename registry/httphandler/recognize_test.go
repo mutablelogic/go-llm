@@ -111,6 +111,8 @@ func Test_Recognize(t *testing.T) {
 		}, &response))
 		assert.Equal(t, "home:deepseek-ocr:latest", response.Model)
 		assert.Equal(t, []llm.DocumentPage{{Text: "# Hello"}}, response.Pages)
+		assert.NotZero(t, response.Usage.Duration, "how long the model took")
+		response.Usage.Duration = 0
 		assert.Equal(t, llm.Usage{InputTokens: 900, OutputTokens: 3, Pages: 1}, response.Usage)
 		assert.Equal(t, png, stub.Image())
 	})

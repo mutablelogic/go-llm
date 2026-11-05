@@ -180,6 +180,7 @@ func (r *Registry) toolPrompts(ctx context.Context, tools []llm.Tool) ([]string,
 // of each, and the usage.
 func (r *Registry) agentLoop(ctx context.Context, model llm.Model, messages []llm.Message, fresh []providerschema.Message, loop *agentLoop, stream llm.GeneratorStreamFn) (*history, llm.Usage, error) {
 	ctx = loop.depthContext(ctx)
+	start := time.Now()
 
 	// The conversation, which the replies and tool results are added to,
 	// without changing the caller's messages, measured as the model's
@@ -203,10 +204,16 @@ func (r *Registry) agentLoop(ctx context.Context, model llm.Model, messages []ll
 		if err != nil {
 			return nil, llm.Usage{}, err
 		}
-		usage = addUsage(usage, stepUsage)
+		// The tokens of the model's reply, and of the tools it called, such
+		// as agents, which ask models, though only the model's reply is of
+		// the conversation, which the history measures
+		usage = addUsage(addUsage(usage, stepUsage), toolUsage(step))
 		if err := h.add(ctx, step, stepUsage); err != nil {
 			return nil, llm.Usage{}, err
 		} else if done {
+			// How long it took, rather than the sum of what ran at once, as
+			// tools do
+			usage.Duration = time.Since(start)
 			return h, usage, nil
 		}
 	}
@@ -332,6 +339,12 @@ func (r *Registry) iterate(ctx context.Context, model llm.Model, loop *agentLoop
 	if err != nil {
 		return nil, llm.Usage{}, false, err
 	}
+	if used := toolUsage([]providerschema.Message{results}); !used.IsZero() && r.tracer != nil {
+		trace.SpanFromContext(ctx).SetAttributes(
+			attribute.Int("tools.input_tokens", int(used.InputTokens)),
+			attribute.Int("tools.output_tokens", int(used.OutputTokens)),
+		)
+	}
 	return []providerschema.Message{message, results}, usage, false, nil
 }
 
@@ -363,6 +376,20 @@ func (r *Registry) traceIteration(ctx context.Context, result providerschema.Res
 		attrs = append(attrs, attribute.String("result", result.String()))
 	}
 	trace.SpanFromContext(ctx).SetAttributes(attrs...)
+}
+
+// toolUsage returns the tokens which the tools whose results are in the
+// messages used, such as agents, which ask models
+func toolUsage(messages []providerschema.Message) llm.Usage {
+	var usage llm.Usage
+	for _, message := range messages {
+		for _, block := range message.Content {
+			if block.ToolResult != nil && block.ToolResult.Usage != nil {
+				usage = usage.Add(*block.ToolResult.Usage)
+			}
+		}
+	}
+	return usage
 }
 
 // respondCall returns the call of the respond tool, when the reply has a

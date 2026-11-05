@@ -46,8 +46,11 @@ func Test_Agents(t *testing.T) {
 		assert.Equal(t, "summarize", agent.Name)
 		assert.Equal(t, "eliza:eliza-1966-en", types.Value(agent.Model))
 
-		_, err = client.CreateAgent(ctx, schema.AgentMeta{PromptMeta: schema.PromptMeta{Name: "summarize"}})
-		assert.Equal(t, http.StatusConflict, status(t, err))
+		// An agent with the name is replaced, when it's changed
+		replaced, err := client.CreateAgent(ctx, schema.AgentMeta{PromptMeta: schema.PromptMeta{Name: "summarize"}})
+		require.NoError(t, err)
+		assert.Nil(t, replaced.Model)
+		assert.Greater(t, replaced.Serial, agent.Serial)
 	})
 
 	t.Run("CreateYAML", func(t *testing.T) {
