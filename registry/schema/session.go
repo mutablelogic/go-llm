@@ -17,8 +17,13 @@ import (
 ///////////////////////////////////////////////////////////////////////////////
 // TYPES
 
-// SessionMeta is a session's settings: how its model is asked
+// SessionMeta is a session's settings: its title, for people, and how its
+// model is asked
 type SessionMeta struct {
+	// Title is what the session is about, for people, such as an event's
+	// title, which its session takes
+	Title *string `json:"title,omitempty" help:"Title of the session, for people, such as an event's, which its session takes" example:"Morning briefing" optional:""`
+
 	GeneratorMeta
 
 	// Event is whether the session is an event's, such as a heartbeat's,
@@ -158,14 +163,29 @@ func (s SessionResponse) String() string {
 // IsZero returns true when the settings set nothing, so as an update, they
 // change nothing
 func (s SessionMeta) IsZero() bool {
-	return s.GeneratorMeta.IsZero()
+	return s.Title == nil && s.GeneratorMeta.IsZero()
 }
 
-// Merge returns the settings, changed by those of the update, as
-// GeneratorMeta.Merge does. Whether it's an event's isn't changed, as the
-// registry sets it.
+// Merge returns the settings, changed by those of the update: its title,
+// when it's set, which empty clears, and the rest, as GeneratorMeta.Merge
+// does. Whether it's an event's isn't changed, as the registry sets it.
 func (s SessionMeta) Merge(update SessionMeta) SessionMeta {
-	return SessionMeta{GeneratorMeta: s.GeneratorMeta.Merge(update.GeneratorMeta), Event: s.Event}
+	title := s.Title
+	if update.Title != nil {
+		title = trimmed(update.Title)
+	}
+	return SessionMeta{Title: title, GeneratorMeta: s.GeneratorMeta.Merge(update.GeneratorMeta), Event: s.Event}
+}
+
+// trimmed returns the text, without the space around it, or nil, when it's
+// nil, or empty
+func trimmed(s *string) *string {
+	if s == nil {
+		return nil
+	} else if t := strings.TrimSpace(*s); t != "" {
+		return &t
+	}
+	return nil
 }
 
 // Query returns the request as the parameters of a URL's query
@@ -199,14 +219,14 @@ func (r MessageListRequest) Query() url.Values {
 // TABLE
 
 func (s Session) Header() []string {
-	return []string{"ID", "Model", "Tools", "Context", "Updated"}
+	return []string{"ID", "Title", "Model", "Tools", "Context", "Updated"}
 }
 
 func (s Session) Width(col int) int {
 	return 0
 }
 
-// Cell returns the session's identifier, model, tools, the tokens of its
+// Cell returns the session's identifier, title, model, tools, the tokens of its
 // conversation, as of its last request, and when it was last updated, which
 // is when it was created, or modified, whichever is later
 func (s Session) Cell(col int) tui.CellText {
@@ -214,15 +234,17 @@ func (s Session) Cell(col int) tui.CellText {
 	case 0:
 		return s.ID.String()
 	case 1:
-		return types.Value(s.Model)
+		return types.Value(s.Title)
 	case 2:
-		return strings.Join(s.Tools, ", ")
+		return types.Value(s.Model)
 	case 3:
+		return strings.Join(s.Tools, ", ")
+	case 4:
 		if tokens := s.Usage.Input + s.Usage.Output + s.Usage.Overhead; tokens > 0 {
 			return strconv.FormatUint(uint64(tokens), 10)
 		}
 		return ""
-	case 4:
+	case 5:
 		return updated(s.Created, s.Modified)
 	default:
 		return ""

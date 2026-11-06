@@ -1,5 +1,6 @@
-// The list of sessions, most recently changed first, each with its model,
-// when it was last changed, the tokens of its conversation, and whether
+// The list of sessions, most recently changed first, each with its title,
+// or its model, when it has none, its model, beneath its title, when it has
+// one, when it was last changed, the tokens of its conversation, and whether
 // someone is typing in it, or its model is replying. Clicking a session
 // fires an event, so it's opened, and the session which is open is
 // selected, with its actions on its right: its events, editing it, and
@@ -131,8 +132,11 @@ export class SessionList extends LitElement {
         .secondary {
             display: block;
             margin-top: 0.125rem;
+            overflow: hidden;
             color: var(--cds-text-secondary);
             font-size: 0.75rem;
+            text-overflow: ellipsis;
+            white-space: nowrap;
         }
 
         .status {
@@ -176,9 +180,9 @@ export class SessionList extends LitElement {
             <li class=${selected ? 'selected' : ''}>
                 <button class="session" type="button" aria-current=${selected ? 'true' : 'false'}
                     @click=${() => this.dispatchEvent(new CustomEvent(SessionList.eventSelect, { detail: session }))}>
-                    <span class="model">${session.model ?? 'No model'}${session.event ? html` <cds-tag size="sm" type="purple">event</cds-tag>` : nothing}</span>
+                    <span class="model">${session.title || session.model || 'No model'}${session.event ? html` <cds-tag size="sm" type="purple">event</cds-tag>` : nothing}</span>
                     <span class="secondary" title=${formatTime(when)}>
-                        ${status ? html`<span class="status">${status}</span>` : formatAgo(when)}
+                        ${session.title && session.model ? html`${session.model} · ` : nothing}${status ? html`<span class="status">${status}</span>` : formatAgo(when)}
                         ${tokens ? html` · ${tokens.toLocaleString()} tokens` : nothing}
                     </span>
                 </button>

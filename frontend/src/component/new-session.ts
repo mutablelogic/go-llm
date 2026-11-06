@@ -1,4 +1,4 @@
-// A panel which starts a new chat: its model, of those which aren't known
+// A panel which starts a new chat: its title, when it's given, its model, of those which aren't known
 // not to generate text, its system prompt, its options, which are the
 // model's own unless they're set, such as whether it thinks, and the tools
 // it can call, unless it's known not to call them. The button which starts
@@ -93,6 +93,9 @@ export class NewSession extends Panel<NewSessionForm> {
     @query('cds-textarea')
     private system?: HTMLElement & { value: string };
 
+    @query('cds-text-input#title')
+    private titleInput?: HTMLElement & { value: string };
+
     @query('llm-tool-picker')
     private picker?: ToolPicker;
 
@@ -143,7 +146,7 @@ export class NewSession extends Panel<NewSessionForm> {
     }
 
     protected renderSubtitle() {
-        return this.session ? 'Its model, instructions, options and tools' : 'A conversation with a model';
+        return this.session ? 'Its title, model, instructions, options and tools' : 'A conversation with a model';
     }
 
     protected renderBody() {
@@ -158,6 +161,8 @@ export class NewSession extends Panel<NewSessionForm> {
         const opt = this.session?.opt ?? {};
         return keyed(this.opened, html`
             <form @submit=${this.handleSubmit}>
+                <cds-text-input id="title" label="Title (optional)" placeholder="Such as Trip to Lisbon" helper-text="What the chat is about, which the list of chats shows, rather than its model"
+                    value=${this.session?.title ?? ''}></cds-text-input>
                 <cds-select id="model" label-text="Model" value=${chosen}
                     @cds-select-selected=${(e: CustomEvent<{ value: string }>) => { this.chosen = e.detail.value; }}>
                     ${this.models.map((model) => html`<cds-select-item value=${model.canonical}>${model.canonical}</cds-select-item>`)}
@@ -200,6 +205,7 @@ export class NewSession extends Panel<NewSessionForm> {
             return;
         }
         const model = this.models?.find((model) => model.canonical === this.select?.value);
+        const title = this.titleInput?.value.trim() ?? '';
         const system = this.system?.value.trim() ?? '';
         const tools = cannot(model, 'tools') ? [] : this.picker?.value ?? [];
 
@@ -217,11 +223,14 @@ export class NewSession extends Panel<NewSessionForm> {
         }
 
         // A new chat has what's set, and the session which is edited what's
-        // changed: an empty system prompt, and no tools, clear them, and an
+        // changed: an empty title, or system prompt, and no tools, clear them, and an
         // option which is the model's own again is removed, with null
         const session = this.session;
         if (!session) {
             const meta: SessionMeta = { model: model?.canonical };
+            if (title) {
+                meta.title = title;
+            }
             if (system) {
                 meta.system = system;
             }
@@ -235,6 +244,9 @@ export class NewSession extends Panel<NewSessionForm> {
             return;
         }
         const changes: SessionMeta = {};
+        if (title !== (session.title ?? '')) {
+            changes.title = title;
+        }
         if (model && model.canonical !== session.model) {
             changes.model = model.canonical;
         }

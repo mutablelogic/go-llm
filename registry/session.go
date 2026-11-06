@@ -79,8 +79,11 @@ func (r *Registry) CreateSession(ctx context.Context, meta schema.SessionMeta) (
 	)
 	defer func() { endSpan(err) }()
 
-	// A session is an event's only when the registry creates it, for an event
+	// A session is an event's only when the registry creates it, for an
+	// event, and its title is without the space around it, or none, when
+	// it's empty
 	meta.Event = false
+	meta.Title = schema.SessionMeta{}.Merge(schema.SessionMeta{Title: meta.Title}).Title
 	if r.sessionStore == nil {
 		return nil, errNoSessionStore
 	} else if err := validGeneratorMeta(meta.GeneratorMeta); err != nil {
