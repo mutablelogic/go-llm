@@ -10,7 +10,6 @@ import Edit16 from '@carbon/icons/es/edit/16.js';
 import TrashCan16 from '@carbon/icons/es/trash-can/16.js';
 import Download16 from '@carbon/icons/es/download/16.js';
 import { Page } from './page';
-import { refreshAction } from './refresh';
 import { presets } from '../schema/preset';
 
 // Carbon components
@@ -44,8 +43,6 @@ export class ModelsPage extends Page {
         return iconLoader(MachineLearningModel32);
     }
 
-    // renderActions has Refresh on the right, so it stays where it is, as
-    // the provider changes
     protected renderActions(): unknown {
         return html`
             ${this.provider ? html`
@@ -62,7 +59,6 @@ export class ModelsPage extends Page {
                         Load model ${iconLoader(Download16, { slot: 'icon' })}
                     </cds-button>
                 ` : nothing}
-                ${refreshAction(this, this.loadable ? 'secondary' : 'primary')}
             ` : html`
                 <cds-menu-button label="Add provider" kind="primary" size="md">
                     <cds-menu size="md">
@@ -72,7 +68,6 @@ export class ModelsPage extends Page {
                         `)}
                     </cds-menu>
                 </cds-menu-button>
-                ${refreshAction(this, 'secondary')}
             `}
         `;
     }

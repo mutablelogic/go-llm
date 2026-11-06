@@ -41,7 +41,6 @@ import { NotificationController } from './controller/notifications';
 import { OutcomesController } from './controller/outcomes';
 import { ChatPage } from './page/chat-page';
 import { Router, routeHref } from './router';
-import { eventRefresh } from './page/refresh';
 
 // Errors, and other notifications, are shown as toasts
 const notifications = new NotificationController(document.querySelector<HTMLElement>('#notifications')!);
@@ -156,8 +155,6 @@ document.querySelector('llm-model-view')?.addEventListener(ModelView.eventChat, 
     void chat.newChat((e as CustomEvent<string>).detail);
 });
 // The models and tools pages' refresh actions load them again
-document.querySelector('llm-models-page')?.addEventListener(eventRefresh, () => void models.refresh());
-document.querySelector('llm-tools-page')?.addEventListener(eventRefresh, () => void tools.refresh());
 events.start();
 void models.load();
 void tools.load();

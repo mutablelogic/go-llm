@@ -8,7 +8,6 @@ import iconLoader from '@carbon/web-components/es/globals/internal/icon-loader.j
 import ToolKit32 from '@carbon/icons/es/tool-kit/32.js';
 import Add16 from '@carbon/icons/es/add/16.js';
 import { Page } from './page';
-import { refreshAction } from './refresh';
 
 // Carbon components
 import '@carbon/web-components/es/components/button/index.js';
@@ -31,15 +30,12 @@ export class ToolsPage extends Page {
 
     protected renderActions(): unknown {
         const agents = this.namespace === 'agent';
-        // Refresh is on the right, so it stays where it is, as the agents are
-        // shown, or not
         return html`
             ${agents ? html`
                 <cds-button kind="primary" size="md" @click=${() => this.dispatchEvent(new CustomEvent(ToolsPage.eventNewAgent))}>
                     New agent ${iconLoader(Add16, { slot: 'icon' })}
                 </cds-button>
             ` : nothing}
-            ${refreshAction(this, agents ? 'secondary' : 'primary')}
         `;
     }
 }
