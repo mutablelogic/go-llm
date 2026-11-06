@@ -47,6 +47,7 @@ func RegisterHandlers(r *registry.Registry, router *httprouter.Router) error {
 		embedHandlers(r, router, documentation),
 		askHandlers(r, router, documentation),
 		recognizeHandlers(r, router, documentation),
+		speakHandlers(r, router, documentation),
 		transcribeHandlers(r, router, documentation),
 	}
 	if r.SessionStore() != nil {

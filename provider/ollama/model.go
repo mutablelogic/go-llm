@@ -142,6 +142,7 @@ func (m *Model) Capabilities() llm.ModelCap {
 		Vision:     has("vision"),
 		OCR:        m.ocr(capabilities),
 		Embedding:  has("embedding"),
+		Speech:     has("speech"),
 
 		// A model which replies takes a temperature
 		Temperature: has("completion"),

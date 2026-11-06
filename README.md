@@ -87,6 +87,9 @@ llm embed --model mistral-embed "A cat asleep in the sun"
 # The text of a document, as Markdown
 llm ocr --model mistral-ocr-latest report.pdf
 
+# Speak text, as audio, in a voice
+llm speak --model ollama:phonon:latest --voice Freya -o hello.wav "Hello, world"
+
 # The speech in audio, as text, or as subtitles, with speakers
 llm transcribe --model whisper-1 talk.m4a
 llm transcribe --model voxtral-mini-latest --opt speakers=true --format srt talk.m4a
@@ -234,16 +237,16 @@ The registry can be used without the server, from your own Go program, as the [e
 
 ## Providers
 
-| Type | Provider | Generate | Embed | OCR | Transcribe | Translate | Models |
-|------|----------|:--------:|:-----:|:---:|:----------:|:---------:|--------|
-| `ollama` | [Ollama](https://ollama.com) | ✅ | ✅ | ✅ (images) | | | Download, delete, unload |
-| `openai` | [OpenAI](https://platform.openai.com) | ✅ | ✅ | | ✅ | ✅ (whisper) | |
-| `anthropic` | [Anthropic](https://www.anthropic.com)'s Claude models, which count tokens exactly, to fit a conversation to the model's context | ✅ | | | | | |
-| `openai` | [Mistral](https://mistral.ai), at `https://api.mistral.ai/v1` | ✅ | ✅ | ✅ | ✅ | | |
-| `openai` | [DeepSeek](https://www.deepseek.com), and other OpenAI-compatible servers | ✅ | | | | | |
-| `gowhisper` | [go-whisper](https://github.com/mutablelogic/go-whisper) | | | | ✅ | ✅ | Download, delete |
-| `elevenlabs` | [ElevenLabs](https://elevenlabs.io) | | | | ✅ | | |
-| `eliza` | A mock of Weizenbaum's 1966 chatbot, for testing | ✅ | | | | | |
+| Type | Provider | Generate | Embed | OCR | Transcribe | Translate | Speak | Models |
+|------|----------|:--------:|:-----:|:---:|:----------:|:---------:|:-----:|--------|
+| `ollama` | [Ollama](https://ollama.com) | ✅ | ✅ | ✅ (images) | | | ✅ (phonon) | Download, delete, unload |
+| `openai` | [OpenAI](https://platform.openai.com) | ✅ | ✅ | | ✅ | ✅ (whisper) | ✅ (tts) | |
+| `anthropic` | [Anthropic](https://www.anthropic.com)'s Claude models, which count tokens exactly, to fit a conversation to the model's context | ✅ | | | | | | |
+| `openai` | [Mistral](https://mistral.ai), at `https://api.mistral.ai/v1` | ✅ | ✅ | ✅ | ✅ | | | |
+| `openai` | [DeepSeek](https://www.deepseek.com), and other OpenAI-compatible servers | ✅ | | | | | | |
+| `gowhisper` | [go-whisper](https://github.com/mutablelogic/go-whisper) | | | | ✅ | ✅ | | Download, delete |
+| `elevenlabs` | [ElevenLabs](https://elevenlabs.io) | | | | ✅ | | | |
+| `eliza` | A mock of Weizenbaum's 1966 chatbot, for testing | ✅ | | | | | | |
 
 What a model can do depends on the model, which its provider reports, where it knows: such as whether it calls tools, thinks, sees images, or recognizes text. A request for something a model is known not to do is rejected before it's sent.
 
@@ -255,7 +258,7 @@ What a model can do depends on the model, which its provider reports, where it k
 | Providers | `providers`, `provider`, `provider-create-ollama`, `provider-create-openai`, `provider-create-anthropic`, `provider-create-mistral`, `provider-create-deepseek`, `provider-create-gowhisper`, `provider-create-elevenlabs`, `provider-create-eliza`, `provider-update`, `provider-delete` |
 | Models | `models`, `model`, `model-load`, `model-delete`, `model-unload` |
 | Sessions | `sessions`, `session`, `session-messages`, `session-create`, `session-update`, `session-delete` |
-| Inference | `ask`, `chat`, `embed`, `ocr`, `transcribe`, `translate` |
+| Inference | `ask`, `chat`, `embed`, `ocr`, `transcribe`, `translate`, `speak` |
 | Events | `events` |
 | Memory | `details`, `detail-set`, `detail-forget`, `memories`, `memory`, `memory-remember`, `memory-forget` |
 | Heartbeats | `heartbeats`, `heartbeat`, `heartbeat-create`, `heartbeat-update`, `heartbeat-delete` |
@@ -362,7 +365,7 @@ Tests which make requests to a provider are skipped with `-short`, and unless it
 
 - **Google Gemini**, which the earlier version of go-llm had, for generation, and its embeddings.
 - **LM Studio**, which runs models locally, as Ollama does, with its own API to list, download, delete, load and unload them, as well as an OpenAI-compatible API.
-- **Text to speech and images**, such as ElevenLabs' and OpenAI's voices, and image generation.
+- **ElevenLabs' voices, and images**: text to speech with ElevenLabs, and image generation, such as with OpenAI's `gpt-image` models.
 - **OpenAI's Responses API**, so OpenAI's newest models can think while they call tools, and the models which only it has can be used.
 - **OpenAI's token limits**, which are from memory, and should be checked.
 
