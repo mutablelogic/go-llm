@@ -248,7 +248,7 @@ func newServerSessionStore(ctx server.Cmd) (*sessionStore, error) {
 func createAgents(ctx server.Cmd, r *registry.Registry) {
 	all, err := agents.All()
 	if err != nil {
-		ctx.Logger().ErrorContext(ctx.Context(), "agents not added", "error", err)
+		ctx.Logger().ErrorContext(ctx.Context(), "agents not added", "error", err.Error())
 		return
 	}
 	for _, meta := range all {

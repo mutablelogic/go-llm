@@ -44,7 +44,7 @@ func (r *Registry) Run(ctx context.Context, logger *slog.Logger) error {
 	// The stored agents are tools, which a store which can't be read leaves
 	// without them, until they're changed
 	if err := r.loadAgents(ctx); err != nil {
-		logger.ErrorContext(ctx, "loading agents", "error", err)
+		logger.ErrorContext(ctx, "loading agents", "error", err.Error())
 	}
 	// The store's watches end when it returns, as well as when the context
 	// is cancelled, such as when the store stops, so the registry isn't left
@@ -76,7 +76,7 @@ func (r *Registry) Run(ctx context.Context, logger *slog.Logger) error {
 	// later
 	logError := func(err error) {
 		if err != nil {
-			logger.ErrorContext(ctx, "syncing providers", "error", err)
+			logger.ErrorContext(ctx, "syncing providers", "error", err.Error())
 		}
 	}
 
