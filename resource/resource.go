@@ -188,8 +188,8 @@ func (r *Manager) Get(ctx context.Context, key schema.ResourceKey) (_ schema.Res
 	return r.store.Get(ctx, key)
 }
 
-// List returns the resources of the request's session, or those on their
-// own, the most recently used first, from its offset, and at most its
+// List returns the resources of the request's session, or every resource,
+// in a session, or on its own, without one, the most recently used first, from its offset, and at most its
 // limit of them, which is schema.DefaultListLimit, unless it says otherwise, up to
 // schema.MaxListLimit, and how many there are. Returns ErrBadParameter when the
 // session isn't a UUID.
@@ -207,14 +207,21 @@ func (r *Manager) List(ctx context.Context, req schema.ResourceListRequest) (_ s
 	if err != nil {
 		return schema.ResourceList{}, err
 	}
-	all = slices.DeleteFunc(all, func(resource schema.Resource) bool {
-		return !sameSession(resource.Session, session)
-	})
+	if session != nil {
+		all = slices.DeleteFunc(all, func(resource schema.Resource) bool {
+			return !sameSession(resource.Session, session)
+		})
+	}
+	// The most recently used first, and then by hash, and session, as the
+	// same content can be in more than one session, used at the same time,
+	// so the order, and the pages, are always the same
 	slices.SortFunc(all, func(a, b schema.Resource) int {
 		if c := b.Used.Compare(a.Used); c != 0 {
 			return c
+		} else if c := strings.Compare(a.Hash, b.Hash); c != 0 {
+			return c
 		}
-		return strings.Compare(a.Hash, b.Hash)
+		return strings.Compare(sessionKey(a.Session), sessionKey(b.Session))
 	})
 
 	// The page of them
@@ -498,4 +505,13 @@ func (l *limitReader) Read(p []byte) (int, error) {
 		return n, &http.MaxBytesError{Limit: l.limit}
 	}
 	return n, err
+}
+
+// sessionKey returns the session, as text, which orders a resource on its
+// own, which has none, first
+func sessionKey(session *uuid.UUID) string {
+	if session == nil {
+		return ""
+	}
+	return session.String()
 }

@@ -20,7 +20,7 @@ import (
 // ResourceCommands are the commands which list, upload, get, download and
 // delete the resources
 type ResourceCommands struct {
-	Resources      ResourcesCmd      `cmd:"" name:"resources" help:"List the resources on their own, or a session's, the most recently used first." group:"RESOURCE"`
+	Resources      ResourcesCmd      `cmd:"" name:"resources" help:"List every resource, with its session, or a session's, with --session, the most recently used first." group:"RESOURCE"`
 	Resource       ResourceCmd       `cmd:"" name:"resource" help:"Print a resource." group:"RESOURCE"`
 	ResourceCreate ResourceCreateCmd `cmd:"" name:"resource-create" help:"Upload a file, or standard input, as a resource, on its own, or in a session." group:"RESOURCE"`
 	ResourceGet    ResourceGetCmd    `cmd:"" name:"resource-get" help:"Download a resource's content, to a file, or standard output." group:"RESOURCE"`

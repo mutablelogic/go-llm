@@ -10,7 +10,7 @@ When a resource is created, used again, or deleted, an event is published, whose
 
 ### GET /resource
 
-List the resources on their own, or those in the `session`, the most recently used first, with how many there are. Up to 100 are listed at a time, from the `offset`, and at most the `limit`, which is at most 1000. Returns 400 if the session isn't a UUID.
+List every resource, in a session, or on its own, with its `session`, or only those in the `session`, when it's given, the most recently used first, with how many there are. Up to 100 are listed at a time, from the `offset`, and at most the `limit`, which is at most 1000. Returns 400 if the session isn't a UUID.
 
 ### POST /resource
 
