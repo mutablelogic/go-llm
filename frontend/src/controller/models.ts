@@ -174,27 +174,37 @@ export class ModelsController extends ListController<Model> {
     }
 
     // create adds the provider, which is checked to be reachable, and shows
-    // its models, or says why it couldn't be added, in the form
+    // its models, or says why it couldn't be added, in the form, when it's
+    // still showing what it was added from, rather than when it was closed,
+    // or opened again, as it was added
     private async create(meta: ProviderMeta) {
         const form = this.views.form;
-        if (!form) {
+        const item = form?.item;
+        if (!form || !item) {
             return;
         }
         form.saving = true;
         try {
             const provider = await createProvider(meta);
-            this.hideForm();
             this.notifications.push({ kind: 'success', title: `${provider.name} was added` });
-            location.hash = routeHref('models', provider.name);
+            if (form.item === item) {
+                this.hideForm();
+                location.hash = routeHref('models', provider.name);
+            }
         } catch (error) {
-            form.error = error instanceof Error ? error.message : String(error);
+            if (form.item === item) {
+                form.error = error instanceof Error ? error.message : String(error);
+            }
         } finally {
-            form.saving = false;
+            if (form.item === item) {
+                form.saving = false;
+            }
         }
     }
 
     // save updates the provider which is edited, or says why it couldn't be,
-    // in the form
+    // in the form, when it's still editing it, rather than when it was
+    // closed, or opened again, as it was saved
     private async save(meta: ProviderMeta) {
         const form = this.views.form;
         const item = form?.item;
@@ -204,13 +214,19 @@ export class ModelsController extends ListController<Model> {
         form.saving = true;
         try {
             const provider = await updateProvider(item.provider.name, meta);
-            this.hideForm();
             this.notifications.push({ kind: 'success', title: `${provider.name} was saved` });
             void this.refresh();
+            if (form.item === item) {
+                this.hideForm();
+            }
         } catch (error) {
-            form.error = error instanceof Error ? error.message : String(error);
+            if (form.item === item) {
+                form.error = error instanceof Error ? error.message : String(error);
+            }
         } finally {
-            form.saving = false;
+            if (form.item === item) {
+                form.saving = false;
+            }
         }
     }
 

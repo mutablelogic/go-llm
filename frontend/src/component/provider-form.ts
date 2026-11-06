@@ -81,10 +81,12 @@ export class ProviderForm extends Panel<ProviderFormItem> {
         }
     `];
 
-    // willUpdate starts the form again, from the first preset, or the
-    // provider which is edited, each time the panel opens
+    // willUpdate starts the form again, from the preset, or the provider
+    // which is edited, each time what it shows changes, such as when it
+    // opens, so nothing which was typed, such as a credential, is kept for
+    // another provider
     willUpdate(changed: PropertyValues<this>) {
-        if (changed.has('item') && this.item && changed.get('item') === undefined) {
+        if (changed.has('item') && this.item && changed.get('item') !== this.item) {
             this.opened++;
             this.error = undefined;
         }
