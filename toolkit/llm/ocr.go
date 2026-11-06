@@ -46,7 +46,7 @@ func (*ocr) Name() string {
 }
 
 func (t *ocr) Description() string {
-	return withDefault("Reads the text in an image, or a document, such as a scanned page, or a PDF, which is an attachment, or a tool's result, by its URI, resource://<hash>, and returns it as Markdown. Use it to read a document's text exactly, rather than describing it.", t.model)
+	return withDefault("Reads the text in an image, or a document, such as a scanned page, or a PDF, which is an attachment, or a tool's result, by its URI, resource://<hash>, and returns it as Markdown. Use it to read a document's text exactly, rather than describing it.", t.model, "ocr")
 }
 
 func (*ocr) InputSchema() *jsonschema.Schema {
@@ -114,12 +114,14 @@ func modelFor(ctx context.Context, fn ModelsFunc, given, defaultModel string) (M
 }
 
 // withDefault returns the description, with the model the tool uses, unless
-// it's given another, when it has one, or that a model must be given
-func withDefault(description, model string) string {
+// it's given another, when it has one, or that a model must be given, and
+// how to find one, with the models tool, by the capability it needs
+func withDefault(description, model, capability string) string {
+	find := " The models tool lists the models with the " + capability + " capability."
 	if model == "" {
-		return description + " Give the model to use, by its name, as there's no default."
+		return description + " Give the model to use, by its name, as there's no default." + find
 	}
-	return description + " It uses " + model + ", unless another model is given."
+	return description + " It uses " + model + ", unless another model is given." + find
 }
 
 // nameOf returns the resource's name, or its URI, when it has none

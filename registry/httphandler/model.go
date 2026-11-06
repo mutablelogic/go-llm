@@ -156,6 +156,9 @@ func listModels(r *http.Request, reg *registry.Registry, req schema.ModelListReq
 	if err != nil && len(models) == 0 {
 		return nil, err
 	}
+	if models, err = llm.WithCapabilities(models, req.Capability...); err != nil {
+		return nil, err
+	}
 	list := &schema.ModelList{ModelListRequest: req, Body: make([]*schema.Model, 0, len(models))}
 	for _, model := range models {
 		list.Body = append(list.Body, reg.Model(model))

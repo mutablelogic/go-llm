@@ -47,7 +47,7 @@ func (*transcribe) Name() string {
 }
 
 func (t *transcribe) Description() string {
-	return withDefault("Transcribes the speech in audio, such as a recording, or a voice message, which is an attachment, or a tool's result, by its URI, resource://<hash>, as text, in the language it was spoken in, or translates it into English.", t.model)
+	return withDefault("Transcribes the speech in audio, such as a recording, or a voice message, which is an attachment, or a tool's result, by its URI, resource://<hash>, as text, in the language it was spoken in, or translates it into English.", t.model, "transcription")
 }
 
 func (*transcribe) InputSchema() *jsonschema.Schema {

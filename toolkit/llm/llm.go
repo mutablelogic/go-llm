@@ -16,10 +16,19 @@ import (
 ///////////////////////////////////////////////////////////////////////////////
 // TYPES
 
-// Models is what the tools ask: a model, by its name, to speak text, to
-// recognize the text in an image or document, and to transcribe, or
-// translate, speech, such as the registry
+// Models is what the tools ask: the models, a model, by its name, to speak
+// text, to recognize the text in an image or document, and to transcribe,
+// or translate, speech, such as the registry
 type Models interface {
+	// ListModels returns the models of every provider, or of the providers
+	// with the names, of those which can be listed, and an error for those
+	// which can't
+	ListModels(ctx context.Context, providers ...string) ([]gollm.Model, error)
+
+	// Name returns the name of the model, by which it's given, which is its
+	// provider's name, and its own, such as ollama:phonon:latest
+	Name(model gollm.Model) string
+
 	// GetModel returns the model with the name, or ErrNotFound
 	GetModel(ctx context.Context, name string) (gollm.Model, error)
 
@@ -40,7 +49,8 @@ type Models interface {
 // when the registry, which has the toolkit, isn't made yet
 type ModelsFunc func() Models
 
-// Namespace is the llm namespace, of its tools: speak, ocr, and transcribe,
+// Namespace is the llm namespace, of its tools: models, speak, ocr, and
+// transcribe,
 // each with the model the model which calls it gives, or its default
 type Namespace struct {
 	tools []gollm.Tool
@@ -71,6 +81,7 @@ func New(models ModelsFunc, opts ...Opt) (*Namespace, error) {
 		&speak{models: models, model: o.speakModel, voice: o.speakVoice},
 		&ocr{models: models, model: o.ocrModel},
 		&transcribe{models: models, model: o.transcribeModel},
+		&listModels{models: models},
 	}}, nil
 }
 
@@ -84,7 +95,7 @@ func (*Namespace) Name() string {
 
 // Description returns what the namespace's tools are for
 func (*Namespace) Description() string {
-	return "Models which do what the model which calls them can't: speak text, read the text in images and documents, and transcribe speech"
+	return "Models which do what the model which calls them can't: speak text, read the text in images and documents, and transcribe speech, and the models which can, by what they can do"
 }
 
 // SystemPrompt returns nothing, as each tool says what it does

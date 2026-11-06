@@ -49,27 +49,88 @@ type ModelCap struct {
 ////////////////////////////////////////////////////////////////////////////////
 // STRINGIFY
 
+// Capabilities are the names of what a model can do, in order, which a list
+// of models is filtered by. Temperature is a setting, rather than what a
+// model does, so isn't one.
+var Capabilities = []string{"completion", "tools", "thinking", "vision", "ocr", "transcription", "translation", "embedding", "speech"}
+
 // String returns the names of the capabilities which the model is known to
 // have, such as "completion, tools, thinking"
 func (c ModelCap) String() string {
+	return strings.Join(c.Names(), ", ")
+}
+
+// Names returns the names of the capabilities which the model is known to
+// have, in the order of Capabilities
+func (c ModelCap) Names() []string {
 	var result []string
-	for _, capability := range []struct {
-		name string
-		ok   bool
-	}{
-		{"completion", types.Value(c.Completion)},
-		{"tools", types.Value(c.Tools)},
-		{"thinking", types.Value(c.Thinking)},
-		{"vision", types.Value(c.Vision)},
-		{"ocr", types.Value(c.OCR)},
-		{"transcription", types.Value(c.Transcription)},
-		{"translation", types.Value(c.Translation)},
-		{"embedding", types.Value(c.Embedding)},
-		{"speech", types.Value(c.Speech)},
-	} {
-		if capability.ok {
-			result = append(result, capability.name)
+	for _, name := range Capabilities {
+		if ok, _ := c.Has(name); ok {
+			result = append(result, name)
 		}
 	}
-	return strings.Join(result, ", ")
+	return result
+}
+
+// Has returns whether the model is known to have the capability, by its
+// name, such as vision, which isn't so when it isn't known. Returns
+// ErrBadParameter when the name isn't one of Capabilities.
+func (c ModelCap) Has(name string) (bool, error) {
+	var value *bool
+	switch strings.ToLower(strings.TrimSpace(name)) {
+	case "completion":
+		value = c.Completion
+	case "tools":
+		value = c.Tools
+	case "thinking":
+		value = c.Thinking
+	case "vision":
+		value = c.Vision
+	case "ocr":
+		value = c.OCR
+	case "transcription":
+		value = c.Transcription
+	case "translation":
+		value = c.Translation
+	case "embedding":
+		value = c.Embedding
+	case "speech":
+		value = c.Speech
+	default:
+		return false, ErrBadParameter.Withf("unknown capability %q, which isn't one of %s", name, strings.Join(Capabilities, ", "))
+	}
+	return types.Value(value), nil
+}
+
+// WithCapabilities returns the models which are known to have every one of
+// the capabilities, by their names, in their order, or all of them, when
+// there are none. Returns ErrBadParameter when a name isn't one of
+// Capabilities.
+func WithCapabilities(models []Model, capabilities ...string) ([]Model, error) {
+	for _, name := range capabilities {
+		if _, err := (ModelCap{}).Has(name); err != nil {
+			return nil, err
+		}
+	}
+	if len(capabilities) == 0 {
+		return models, nil
+	}
+	result := make([]Model, 0, len(models))
+	for _, model := range models {
+		if hasAll(model.Capabilities(), capabilities) {
+			result = append(result, model)
+		}
+	}
+	return result, nil
+}
+
+// hasAll returns whether the capabilities include every one of the names,
+// which are known to be capabilities
+func hasAll(c ModelCap, names []string) bool {
+	for _, name := range names {
+		if ok, _ := c.Has(name); !ok {
+			return false
+		}
+	}
+	return true
 }

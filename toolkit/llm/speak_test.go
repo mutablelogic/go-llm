@@ -22,7 +22,10 @@ type models struct {
 	opts *gollm.Opts
 }
 
-type model struct{ name string }
+type model struct {
+	name string
+	caps gollm.ModelCap
+}
 
 func (m model) Name() string                   { return m.name }
 func (model) Provider() gollm.Provider         { return nil }
@@ -32,7 +35,24 @@ func (model) Aliases() []string                { return nil }
 func (model) Meta() map[string]json.RawMessage { return nil }
 func (model) InputTokenLimit() *uint           { return nil }
 func (model) OutputTokenLimit() *uint          { return nil }
-func (model) Capabilities() gollm.ModelCap     { return gollm.ModelCap{} }
+func (m model) Capabilities() gollm.ModelCap   { return m.caps }
+
+func (m *models) ListModels(_ context.Context, providers ...string) ([]gollm.Model, error) {
+	if len(providers) > 0 && providers[0] != "fake" {
+		return nil, gollm.ErrNotFound.Withf("provider %q", providers[0])
+	}
+	yes := true
+	return []gollm.Model{
+		model{name: "chat", caps: gollm.ModelCap{Completion: &yes, Tools: &yes}},
+		model{name: "phonon", caps: gollm.ModelCap{Speech: &yes}},
+		model{name: "reader", caps: gollm.ModelCap{OCR: &yes, Vision: &yes}},
+		model{name: "whisper", caps: gollm.ModelCap{Transcription: &yes, Translation: &yes}},
+	}, nil
+}
+
+func (m *models) Name(model gollm.Model) string {
+	return "fake:" + model.Name()
+}
 
 func (m *models) GetModel(_ context.Context, name string) (gollm.Model, error) {
 	if name != "phonon" {
@@ -85,7 +105,7 @@ func Test_Speak(t *testing.T) {
 	ns, err := llm.New(func() llm.Models { return m })
 	require.NoError(t, err)
 	assert.Equal(t, "llm", ns.Name())
-	require.Len(t, ns.Tools(), 3)
+	require.Len(t, ns.Tools(), 4)
 	assert.Contains(t, ns.Tools()[0].Description(), "there's no default")
 	_, err = ns.Tools()[0].Run(ctx, json.RawMessage(`{"text":"Hello"}`))
 	assert.ErrorIs(t, err, gollm.ErrBadParameter)
@@ -204,4 +224,59 @@ func Test_ReadTools(t *testing.T) {
 	assert.ErrorIs(t, err, gollm.ErrNotFound)
 	_, err = tk.CallTool(ctx, "llm:ocr", json.RawMessage(`{"uri":"resource://abc"}`))
 	assert.ErrorIs(t, err, gollm.ErrNotImplemented)
+}
+
+func Test_Models(t *testing.T) {
+	ctx := context.Background()
+	ns, err := llm.New(func() llm.Models { return &models{} })
+	require.NoError(t, err)
+	tool := ns.Tools()[3]
+	assert.Equal(t, "models", tool.Name())
+	assert.Contains(t, ns.Tools()[1].Description(), "models with the ocr capability", "ocr says how to find a model")
+	run := func(input string) (map[string]any, error) {
+		result, err := tool.Run(ctx, json.RawMessage(input))
+		if err != nil {
+			return nil, err
+		}
+		data, err := json.Marshal(result)
+		require.NoError(t, err)
+		var output map[string]any
+		require.NoError(t, json.Unmarshal(data, &output))
+		return output, nil
+	}
+	names := func(output map[string]any) []string {
+		var result []string
+		for _, m := range output["models"].([]any) {
+			result = append(result, m.(map[string]any)["name"].(string))
+		}
+		return result
+	}
+
+	// Every model, or those with every one of the capabilities, by the names
+	// they're given to tools by
+	output, err := run(`{}`)
+	require.NoError(t, err)
+	assert.Equal(t, float64(4), output["count"])
+	output, err = run(`{"capabilities":["transcription","translation"]}`)
+	require.NoError(t, err)
+	assert.Equal(t, []string{"fake:whisper"}, names(output))
+	assert.Equal(t, []any{"transcription", "translation"}, output["models"].([]any)[0].(map[string]any)["capabilities"])
+	output, err = run(`{"capabilities":["ocr"],"provider":"fake"}`)
+	require.NoError(t, err)
+	assert.Equal(t, []string{"fake:reader"}, names(output))
+	output, err = run(`{"capabilities":["speech","vision"]}`)
+	require.NoError(t, err)
+	assert.Equal(t, float64(0), output["count"])
+	assert.Equal(t, []any{}, output["models"])
+
+	// A capability which isn't one, a provider which isn't there, and no
+	// models yet
+	_, err = run(`{"capabilities":["telepathy"]}`)
+	assert.ErrorIs(t, err, gollm.ErrBadParameter)
+	_, err = run(`{"provider":"missing"}`)
+	assert.ErrorIs(t, err, gollm.ErrNotFound)
+	none, err := llm.New(func() llm.Models { return nil })
+	require.NoError(t, err)
+	_, err = none.Tools()[3].Run(ctx, json.RawMessage(`{}`))
+	assert.ErrorIs(t, err, gollm.ErrServiceUnavailable)
 }

@@ -50,7 +50,7 @@ func (*speak) Name() string {
 }
 
 func (t *speak) Description() string {
-	return withDefault("Speaks text aloud, as audio, which is kept, and returned as a link to it, which the person can play. Use it when the person asks to hear something, rather than to read it.", t.model)
+	return withDefault("Speaks text aloud, as audio, which is kept, and returned as a link to it, which the person can play. Use it when the person asks to hear something, rather than to read it.", t.model, "speech")
 }
 
 func (*speak) InputSchema() *jsonschema.Schema {
