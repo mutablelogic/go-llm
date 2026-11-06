@@ -146,8 +146,10 @@ flowchart LR
         what every session knows`"]
         Heartbeat["`**heartbeat**
         prompts which fire on a schedule`"]
+        Resource["`**resource**
+        uploaded content, by its hash`"]
         Stores[("`**stores**
-        providers, sessions, agents, memory, heartbeats`")]
+        providers, sessions, agents, memory, heartbeats, resources`")]
     end
 
     subgraph Providers
@@ -184,11 +186,13 @@ flowchart LR
     Toolkit --> Heartbeat
     API --> Heartbeat
     Heartbeat --> Stores
+    API --> Resource
+    Resource --> Stores
     Toolkit --> Tools
     Registry --> Ollama & OpenAI & Anthropic & Whisper & ElevenLabs & Eliza
 
     classDef highlight fill:#e8f0fe,stroke:#1a73e8,stroke-width:2px,color:#111
-    class CLI,Client,UI,Registry,Toolkit,Agents,Memory,Heartbeat highlight
+    class CLI,Client,UI,Registry,Toolkit,Agents,Memory,Heartbeat,Resource highlight
     class Ollama,OpenAI,Anthropic,Whisper,ElevenLabs,Eliza highlight
 ```
 
@@ -198,6 +202,7 @@ flowchart LR
 - The **toolkit**, in [toolkit](toolkit), holds the tools which models can call, in namespaces, such as `homeassistant` or `weatherapi`, and streams what they log, and their progress, as they run.
 - The **memory**, in [memory](memory), is what every session and agent knows: the details of the person, and of the assistant, such as their names, where the person is, and their time zone and language, each known, not known, or declined, and memories, which are what a model keeps beyond the conversation, such as the person's preferences, or the people in their life, under keys. It's the toolkit's `memory` namespace, whose system prompt has the details, the time, and how to search, keep and use memories, and whose tools remember them.
 - **Heartbeats**, in [heartbeat](heartbeat), are prompts for a session, which fire once, at a time, or again and again, on a schedule, such as a reminder, or a briefing each morning. A schedule is in its time zone, or the person's, which the memory has, so it follows them. It's the toolkit's `heartbeat` namespace, whose tool schedules them, and a heartbeat which fires is run, in a session of its own, whose identifier is the heartbeat's, with the model of the session it's for.
+- **Resources**, in [resource](resource), are content, such as images, documents and audio, which is uploaded, kept once, by its SHA-256, and referred to as `resource://<hash>`. A resource is in a session, which it's deleted with, or on its own, when it's deleted once it hasn't been used for a day. Its manager keeps them in a store, such as files, or, later, a database.
 - **Agents** are named prompts, with their model, tools and the schemas of their input and reply, which models call as tools in the `agent` namespace. The [agents](agents) folder has examples, which the server adds when it starts.
 - The **providers**, in [provider](provider), each wrap a provider's API, and do what it can: generate, embed, read documents, or transcribe and translate speech.
 
@@ -215,6 +220,7 @@ The registry can be used without the server, from your own Go program, as the [e
 - **Models**: download, delete and unload models, for providers which store them, such as Ollama and go-whisper.
 - **Tools**: a toolkit of tools, in namespaces, for Home Assistant, NewsAPI, WeatherAPI and Ollama's web search, which models can call.
 - **Memory**: the details of the person, and of the assistant, such as their names, location, time zone and language, which every session knows, as a model learns them, or they're set, and which can be declined, so they're never asked for; and memories, which a model searches, keeps and forgets, as Markdown, under keys, with versions, so a change is made to a memory as it was last seen. The server keeps each memory in a file, which can be read, and edited, by hand.
+- **Resources**: content, such as images, documents and audio, which is uploaded, as a file, or the request's body, and streamed into the store, so a large file isn't held in memory, kept once, by its hash, however often it's uploaded, and downloaded, in ranges. A resource is in a session, and deleted with it, or on its own, and deleted once it hasn't been used for a day. Content which no resource refers to, and uploads which were interrupted, are cleaned up.
 - **Heartbeats**: prompts for a session, which a model schedules, or the API, once, at a time, or on a schedule, as a cron expression, such as a reminder at six, or a briefing every weekday at eight, in a time zone, or the person's, which they follow, as it changes. When the clocks change, a time fires once, and a heartbeat which was due when the server wasn't running fires once, when it starts. One which won't fire again is deleted a week after it last fired. Servers which share a store fire a heartbeat once. A heartbeat which fires is run by the `event` agent, in a session of its own, with the model and tools of the session it's for, which replies with what the person is told, and how important it is. Its outcome is stored, as ignored, or pending, until it's delivered, which is next, and listed at `/llm/event`.
 - **Events**: a stream of changes to the providers and their models, to sessions, with whether someone is typing in a session, or its model is replying, so two chat windows on one session follow each other, to the memory's details and memories, and to heartbeats, including when they fire.
 - **OpenAPI**: the REST API is described by an OpenAPI specification, which `llm openapi` shows as documentation in a browser, or outputs as JSON or YAML.
@@ -247,6 +253,7 @@ What a model can do depends on the model, which its provider reports, where it k
 | Events | `events` |
 | Memory | `details`, `detail-set`, `detail-forget`, `memories`, `memory`, `memory-remember`, `memory-forget` |
 | Heartbeats | `heartbeats`, `heartbeat`, `heartbeat-create`, `heartbeat-update`, `heartbeat-delete` |
+| Resources | `resources`, `resource`, `resource-create`, `resource-get`, `resource-delete` |
 | Tools and agents | `tools`, `tool`, `call`, `agents`, `agent`, `agent-create`, `agent-update`, `agent-delete` |
 
 Run `llm <command> --help` for a command's arguments and flags. Options for a model are given with `--opt`, such as `--opt temperature=0.2`, or `--opt pages=0-2` for OCR.
@@ -278,7 +285,7 @@ A model is given tools by name, by namespace and name, such as `weatherapi:curre
 
 ## API
 
-The server's REST API is under `/api`, and documented in [registry/httphandler/README.md](registry/httphandler/README.md), with its events in [broadcaster/httphandler/README.md](broadcaster/httphandler/README.md), the memory's in [memory/httphandler/README.md](memory/httphandler/README.md), and the heartbeats' in [heartbeat/httphandler/README.md](heartbeat/httphandler/README.md), and as OpenAPI, with `llm openapi`. Inference which streams, such as ask and transcribe, sends server-sent events when `text/event-stream` is accepted.
+The server's REST API is under `/api`, and documented in [registry/httphandler/README.md](registry/httphandler/README.md), with its events in [broadcaster/httphandler/README.md](broadcaster/httphandler/README.md), the memory's in [memory/httphandler/README.md](memory/httphandler/README.md), the heartbeats' in [heartbeat/httphandler/README.md](heartbeat/httphandler/README.md), and the resources' in [resource/httphandler/README.md](resource/httphandler/README.md), and as OpenAPI, with `llm openapi`. Inference which streams, such as ask and transcribe, sends server-sent events when `text/event-stream` is accepted.
 
 ## Go
 

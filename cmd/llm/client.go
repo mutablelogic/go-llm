@@ -8,6 +8,7 @@ import (
 	heartbeatcmd "github.com/mutablelogic/go-llm/heartbeat/cmd"
 	memorycmd "github.com/mutablelogic/go-llm/memory/cmd"
 	registrycmd "github.com/mutablelogic/go-llm/registry/cmd"
+	resourcecmd "github.com/mutablelogic/go-llm/resource/cmd"
 	toolkitcmd "github.com/mutablelogic/go-llm/toolkit/cmd"
 )
 
@@ -23,4 +24,5 @@ type CLI struct {
 	Broadcaster broadcastercmd.ClientCommands `embed:""`
 	Memory      memorycmd.ClientCommands      `embed:""`
 	Heartbeat   heartbeatcmd.ClientCommands   `embed:""`
+	Resource    resourcecmd.ClientCommands    `embed:""`
 }
