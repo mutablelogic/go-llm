@@ -149,6 +149,13 @@ export class ResourcesController {
         return resource ? resourceName(resource) : undefined;
     }
 
+    // type returns the type of the resource an attachment refers to, by its
+    // URL, such as resource://<hash>, when it's known
+    type(url: string): string | undefined {
+        const hash = url.startsWith('resource://') ? url.slice('resource://'.length) : undefined;
+        return hash ? this.known.get(hash)?.type : undefined;
+    }
+
     // remember keeps the resources of the chat whose resources are known
     private remember(resources: Resource[]) {
         for (const resource of resources) {

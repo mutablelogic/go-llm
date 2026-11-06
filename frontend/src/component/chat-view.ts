@@ -18,6 +18,8 @@ import DocumentPdf16 from '@carbon/icons/es/document--pdf/16.js';
 import Image16 from '@carbon/icons/es/image/16.js';
 import Music16 from '@carbon/icons/es/music/16.js';
 import Video16 from '@carbon/icons/es/video/16.js';
+import PlayFilledAlt16 from '@carbon/icons/es/play--filled--alt/16.js';
+import { MediaPlayer, playable, type Media } from './media-player';
 import { resourceName, type Resource } from '../schema/resource';
 import { canonicalTool, isUser, type ContentBlock, type Message, type Session } from '../schema/session';
 import { detailValue, type Details } from '../schema/memory';
@@ -62,6 +64,10 @@ interface Attachment {
 // AttachmentName returns the name of the resource an attachment refers to,
 // by its URL, such as resource://<hash>, when it's known
 export type AttachmentName = (url: string) => string | undefined;
+
+// ResourceType returns the type of the resource with the URI,
+// resource://<hash>, when it's known
+export type ResourceType = (uri: string) => string | undefined;
 
 // ContentURL returns the URL of the content of the resource with the URI,
 // resource://<hash>, which the browser plays, shows, or downloads, or
@@ -122,6 +128,11 @@ export class ChatView extends LitElement {
     // the browser
     @property({ attribute: false })
     contentURL: ContentURL = () => undefined;
+
+    // The types of resources, so a link to one in a reply, which is audio,
+    // or video, is played in the player, rather than in a new tab
+    @property({ attribute: false })
+    resourceType: ResourceType = () => undefined;
 
     @property({ attribute: false })
     streamed: Piece[] = [];
@@ -203,11 +214,32 @@ export class ChatView extends LitElement {
             gap: 0.5rem;
         }
 
-        .media audio {
-            width: min(20rem, 60vw);
+        /* A resource which is played, in the player, by its button */
+        button.play {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+            padding: 0.25rem 0.75rem 0.25rem 0.5rem;
+            border: 1px solid var(--cds-border-strong-01);
+            border-radius: 1rem;
+            background: var(--cds-layer-01);
+            color: var(--cds-text-primary);
+            font: inherit;
+            cursor: pointer;
         }
 
-        .media video,
+        button.play:hover {
+            background: var(--cds-layer-hover-01);
+        }
+
+        button.play:focus-visible {
+            outline: 2px solid var(--cds-focus, #0f62fe);
+        }
+
+        button.play svg {
+            fill: currentColor;
+        }
+
         .media img {
             display: block;
             max-width: min(24rem, 100%);
@@ -360,7 +392,7 @@ export class ChatView extends LitElement {
                     : bubble.attachment
                     ? this.renderAttachment(bubble.attachment)
                     : bubble.markdown
-                    ? html`<div class="markdown">${markdown(this.withContentURLs(bubble.text))}</div>`
+                    ? html`<div class="markdown" @click=${this.handleLink}>${markdown(this.withContentURLs(bubble.text))}</div>`
                     : html`<span class="text">${bubble.text}</span>`}</llm-chat-bubble>
         `;
     }
@@ -370,7 +402,8 @@ export class ChatView extends LitElement {
     private renderAttachment(attachment: Attachment) {
         const url = attachment.url ? this.contentURL(attachment.url) : undefined;
         const name = url
-            ? html`<a href=${url} target="_blank" rel="noopener noreferrer">${attachment.name}</a>`
+            ? html`<a href=${url} target="_blank" rel="noopener noreferrer"
+                @click=${(e: Event) => this.playLink(e, { url, name: attachment.name, type: attachment.type })}>${attachment.name}</a>`
             : html`<span>${attachment.name}</span>`;
         return html`<span class="attachment">${iconLoader(attachmentIcon(attachment.type))}${name}</span>`;
     }
@@ -383,15 +416,42 @@ export class ChatView extends LitElement {
         const mediaType = (media.type ?? '').split(';')[0].trim().toLowerCase();
         if (!url) {
             return this.renderAttachment(media);
-        } else if (mediaType.startsWith('audio/')) {
-            return html`<div class="media">${this.renderAttachment(media)}<audio controls preload="metadata" src=${url}></audio></div>`;
-        } else if (mediaType.startsWith('video/')) {
-            return html`<div class="media">${this.renderAttachment(media)}<video controls preload="metadata" src=${url}></video></div>`;
+        } else if (playable(mediaType)) {
+            return html`
+                <button class="play" @click=${() => this.play({ url, name: media.name, type: media.type })}>
+                    ${iconLoader(PlayFilledAlt16)}<span>${media.name}</span>
+                </button>`;
         } else if (mediaType.startsWith('image/') && mediaType !== 'image/svg+xml') {
             return html`<div class="media">${this.renderAttachment(media)}<a href=${url} target="_blank" rel="noopener noreferrer"><img src=${url} alt=${media.name}></a></div>`;
         }
         return this.renderAttachment(media);
     }
+
+    // play plays the media in the player
+    private play(media: Media) {
+        this.dispatchEvent(new CustomEvent(MediaPlayer.eventPlay, { detail: media, bubbles: true, composed: true }));
+    }
+
+    // playLink plays the media a link is to in the player, rather than in a
+    // new tab, when it's audio, or video
+    private playLink(event: Event, media: Media) {
+        if (playable(media.type)) {
+            event.preventDefault();
+            this.play(media);
+        }
+    }
+
+    // handleLink plays a link in a reply to a resource which is audio, or
+    // video, in the player, rather than in a new tab
+    private readonly handleLink = (event: Event) => {
+        const link = (event.target as Element | null)?.closest?.('a');
+        const match = link?.getAttribute('href')?.match(/\/resource\/([0-9a-f]{64})\/content/);
+        if (!link || !match) {
+            return;
+        }
+        const uri = 'resource://' + match[1];
+        this.playLink(event, { url: link.getAttribute('href')!, name: link.textContent?.trim() || this.attachmentName(uri) || 'Media', type: this.resourceType(uri) });
+    };
 
     // withContentURLs returns the Markdown, with the URIs of resources, such
     // as a link to speech, as the URLs of their content, when they're known

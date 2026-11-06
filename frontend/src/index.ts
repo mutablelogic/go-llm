@@ -15,6 +15,8 @@ import './component/chat-view';
 import './component/new-session';
 import './component/message-view';
 import './component/resource-panel';
+import './component/media-player';
+import { MediaPlayer, type Media } from './component/media-player';
 import './component/event-view';
 import './component/count-filter';
 import './component/provider-alerts';
@@ -178,6 +180,11 @@ document.querySelector('llm-model-view')?.addEventListener(ModelView.eventChat, 
     models.close();
     location.hash = routeHref('chat');
     void chat.newChat((e as CustomEvent<string>).detail);
+});
+// Audio, and video, such as speech a tool returned, are played in the
+// player, in the side navigation, rather than in a new tab
+document.addEventListener(MediaPlayer.eventPlay, (e) => {
+    document.querySelector('llm-media-player')?.play((e as CustomEvent<Media>).detail);
 });
 events.start();
 void models.load();

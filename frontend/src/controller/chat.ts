@@ -548,6 +548,7 @@ export class ChatController {
             view.questionAttachments = pending?.attachments ?? [];
             view.attachmentName = (url) => this.resources.name(url);
             view.contentURL = (uri) => this.contentURL(uri);
+            view.resourceType = (uri) => this.resources.type(uri);
             view.streamed = pending?.streamed ?? [];
             view.progress = pending?.progress;
             view.attachments = this.session ? this.resources.attachments(this.session.id) : [];
