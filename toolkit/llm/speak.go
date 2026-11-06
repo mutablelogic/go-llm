@@ -30,6 +30,7 @@ type speakInput struct {
 	Text         string `json:"text" help:"The text to speak, as it's said, without Markdown"`
 	Voice        string `json:"voice,omitempty" help:"Voice to speak in, by its name, or the default voice, when it's omitted" optional:""`
 	Instructions string `json:"instructions,omitempty" help:"How the text is spoken, such as calmly, or cheerfully, for a model which takes them" optional:""`
+	Model        string `json:"model,omitempty" help:"Model which speaks the text, by its name, such as ollama:phonon:latest, or the default, when it's omitted" optional:""`
 }
 
 // audio is the audio which was spoken, with its name, which is speech, with
@@ -48,8 +49,8 @@ func (*speak) Name() string {
 	return "speak"
 }
 
-func (*speak) Description() string {
-	return "Speaks text aloud, as audio, which is kept, and returned as a link to it, which the person can play. Use it when the person asks to hear something, rather than to read it."
+func (t *speak) Description() string {
+	return withDefault("Speaks text aloud, as audio, which is kept, and returned as a link to it, which the person can play. Use it when the person asks to hear something, rather than to read it.", t.model)
 }
 
 func (*speak) InputSchema() *jsonschema.Schema {
@@ -65,11 +66,7 @@ func (t *speak) Run(ctx context.Context, input json.RawMessage) (any, error) {
 	} else if req.Text = strings.TrimSpace(req.Text); req.Text == "" {
 		return nil, gollm.ErrBadParameter.With("missing text")
 	}
-	models := t.models()
-	if models == nil {
-		return nil, gollm.ErrServiceUnavailable.With("no models to speak with yet")
-	}
-	model, err := models.GetModel(ctx, t.model)
+	models, model, err := modelFor(ctx, t.models, req.Model, t.model)
 	if err != nil {
 		return nil, err
 	}

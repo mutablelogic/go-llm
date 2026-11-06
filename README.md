@@ -285,7 +285,7 @@ Tools are added to the server's toolkit when their credentials, or settings, are
 |-----------|-------|-------------|
 | `memory` | Remember the details of the person, and the assistant, with the time in the system prompt, and search, keep and forget memories | None, as it's always added |
 | `heartbeat` | Schedule, list, update and cancel heartbeats, which are prompts which come back to the conversation, at a time, or on a schedule | None, as it's always added |
-| `llm` | `speak`: speak text aloud, with the server's speech model, which is kept as a resource of the session, which the tool's result links to | `--llm.speak-model`, such as `ollama:phonon:latest`, and `--llm.speak-voice`, or `LLM_SPEAK_MODEL` and `LLM_SPEAK_VOICE` |
+| `llm` | `speak`, `ocr` and `transcribe` (which translates too): speak text, read the text in an image or document, and transcribe speech, with the model the calling model gives, or the default. Audio which is spoken is kept as a resource of the session, and images, documents and audio are read by their URIs, `resource://<hash>`, which the model is told for each attachment | None, as it's always added. Default models: `--llm.speak-model`, `--llm.speak-voice`, `--llm.ocr-model` and `--llm.transcribe-model`, or `LLM_SPEAK_MODEL`, `LLM_SPEAK_VOICE`, `LLM_OCR_MODEL` and `LLM_TRANSCRIBE_MODEL` |
 | `weatherapi` | Current weather, forecasts and alerts | `WEATHERAPI_API_KEY`, from [weatherapi.com](https://www.weatherapi.com/signup.aspx) |
 | `newsapi` | News articles, headlines and sources | `NEWSAPI_API_KEY`, from [newsapi.org](https://newsapi.org/register) |
 | `homeassistant` | Query, and search, and control smart home devices | `HOMEASSISTANT_URL`, `HOMEASSISTANT_API_KEY` |

@@ -95,6 +95,7 @@ func Test_Attachments(t *testing.T) {
 		require.NoError(t, err)
 		require.Len(t, p.asked, 1)
 		assert.Equal(t, []string{"image/png:" + pngData}, attachments(t, p.asked[0].messages[0]))
+		assert.Contains(t, p.asked[0].messages[0].Text(), alone.URI(), "the model is told its URI, for tools")
 		_, err = manager.Get(ctx, resourceschema.ResourceKey{Hash: alone.Hash, Session: &session.ID})
 		require.NoError(t, err, "it's linked to the session")
 		messages, err := r.ListSessionMessages(ctx, session.ID, schema.MessageListRequest{})

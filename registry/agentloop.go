@@ -351,7 +351,7 @@ func (r *Registry) iterate(ctx context.Context, model llm.Model, loop *agentLoop
 	// again with their results, which are compacted, if they don't fit
 	toolCtx := ctx
 	if store := r.toolStore(loop.session); store != nil {
-		toolCtx = toolkit.WithStore(ctx, store)
+		toolCtx = toolkit.WithStore(toolkit.WithResolver(ctx, r.toolResolver(loop.session)), store)
 	}
 	results, err := loop.runTools(toolCtx, calls, func(call llm.ToolCall) toolkit.Session {
 		return session(call.Name)

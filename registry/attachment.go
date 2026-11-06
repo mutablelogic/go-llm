@@ -195,6 +195,19 @@ func (r *Registry) toolStore(session uuid.UUID) toolkit.StoreFunc {
 	}
 }
 
+// toolResolver returns the function which returns the resources which the
+// tools run in the session are given, by their URIs: the session's, or,
+// otherwise, or without one, those on their own
+func (r *Registry) toolResolver(session uuid.UUID) toolkit.ResolveFunc {
+	return func(ctx context.Context, uri string) (llm.Resource, error) {
+		resource, err := r.resource(ctx, uri, session)
+		if errors.Is(err, llm.ErrNotFound) && session != uuid.Nil() {
+			return r.resource(ctx, uri, uuid.Nil())
+		}
+		return resource, err
+	}
+}
+
 ///////////////////////////////////////////////////////////////////////////////
 // CONTENT READER
 
@@ -223,18 +236,21 @@ func (r *Registry) newContentReader(session uuid.UUID) *contentReader {
 }
 
 // attachments returns the message, with the content of its attachments
-// which refer to resources. In a session's history, one whose resource
-// isn't found is text which says so, and otherwise it's an error.
+// which refer to resources. In a session's history, each is followed by
+// text which says its URI, so the model can give it to a tool, such as one
+// which recognizes its text, and one whose resource isn't found is text
+// which says so, and otherwise it's an error.
 func (c *contentReader) attachments(ctx context.Context, message providerschema.Message, history bool) (providerschema.Message, error) {
-	message.Content = slices.Clone(message.Content)
-	for i, block := range message.Content {
+	content := make([]providerschema.ContentBlock, 0, len(message.Content))
+	for _, block := range message.Content {
 		if !isResourceURL(block.Resource) || len(block.Resource.Data) > 0 {
+			content = append(content, block)
 			continue
 		}
 		uri := block.Resource.URL.String()
 		data, contentType, err := c.read(ctx, uri)
 		if history && (errors.Is(err, llm.ErrNotFound) || errors.Is(err, llm.ErrNotImplemented)) {
-			message.Content[i] = providerschema.ContentBlock{Text: types.Ptr("(The attachment " + uri + " isn't available.)")}
+			content = append(content, providerschema.ContentBlock{Text: types.Ptr("(The attachment " + uri + " isn't available.)")})
 			continue
 		} else if err != nil {
 			return providerschema.Message{}, err
@@ -244,8 +260,13 @@ func (c *contentReader) attachments(ctx context.Context, message providerschema.
 		if attachment.ContentType == "" {
 			attachment.ContentType = contentType
 		}
-		message.Content[i].Resource = &attachment
+		block.Resource = &attachment
+		content = append(content, block)
+		if history {
+			content = append(content, providerschema.ContentBlock{Text: types.Ptr("(The attachment above is " + uri + ", which is its URI for tools.)")})
+		}
 	}
+	message.Content = content
 	return message, nil
 }
 
