@@ -109,7 +109,7 @@ export class ProviderForm extends Panel<ProviderFormItem> {
         const credential = preset ? preset.credential : editing?.provider === 'eliza' || editing?.provider === 'gowhisper' ? 'none' : 'optional';
         const askURL = preset ? preset.askURL : asksURL(editing?.provider ?? '', editing?.url);
         return keyed(this.opened, html`
-            <form @submit=${this.handleSubmit}>
+            <form @submit=${this.handleSubmit} @focusin=${this.clearError}>
                 ${preset ? html`<cds-text-input id="name" label="Name" helper-text="Its name in the server, which its models' names start with, such as ollama:llama3.2" value=${preset.name}></cds-text-input>` : nothing}
                 ${askURL ? html`<cds-text-input id="url" label=${preset?.urlLabel ?? 'URL'} helper-text="Its API's URL" value=${preset ? preset.url : editing?.url ?? ''}></cds-text-input>` : nothing}
                 ${credential === 'none' ? nothing : html`
@@ -127,6 +127,15 @@ export class ProviderForm extends Panel<ProviderFormItem> {
                 </div>
             </form>
         `);
+    }
+
+    // clearError clears why it couldn't be added, or saved, once a field is
+    // focused, so it's changed, apart from the button, which is focused as
+    // it's clicked, so it's tried again
+    private clearError(event: FocusEvent) {
+        if (this.error && !(event.target instanceof Element && event.target.closest('cds-button'))) {
+            this.error = undefined;
+        }
     }
 
     private handleSubmit(event: Event) {
