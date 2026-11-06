@@ -8,6 +8,7 @@ import (
 	// Packages
 	llm "github.com/mutablelogic/go-llm"
 	broadcaster "github.com/mutablelogic/go-llm/broadcaster"
+	schema "github.com/mutablelogic/go-llm/heartbeat/schema"
 	trace "go.opentelemetry.io/otel/trace"
 )
 
@@ -23,7 +24,13 @@ type opt struct {
 	zone        func() *time.Location
 	session     SessionFunc
 	retention   time.Duration
+	run         RunFunc
 }
+
+// RunFunc runs a heartbeat which fired, such as by asking a model its prompt,
+// in its session, which is called in a goroutine of its own, so a run which
+// takes a while doesn't hold up the others. What it returns is logged.
+type RunFunc func(context.Context, schema.FireEvent) error
 
 // SessionFunc returns nil when the session with the identifier exists, or
 // ErrNotFound when it doesn't
@@ -45,10 +52,10 @@ func (o *opt) apply(opts []Opt) error {
 // OPTIONS
 
 // WithBroadcaster sets the broadcaster which the heartbeats publish their
-// changes to, whose schema is Name, whose table is HeartbeatTable, and whose
-// rows are their identifiers, and that they fire, whose table is FireTable,
-// and whose data is what fired. Run watches it for the sessions which are
-// deleted, whose heartbeats are deleted with them.
+// changes to, including when one fires, as when it fired is changed, whose
+// schema is Name, whose table is HeartbeatTable, and whose rows are their
+// identifiers. Run watches it for the sessions which are deleted, whose
+// heartbeats are deleted with them.
 func WithBroadcaster(b *broadcaster.Broadcaster) Opt {
 	return func(o *opt) error {
 		if b == nil {
@@ -64,6 +71,15 @@ func WithBroadcaster(b *broadcaster.Broadcaster) Opt {
 func WithTracer(tracer trace.Tracer) Opt {
 	return func(o *opt) error {
 		o.tracer = tracer
+		return nil
+	}
+}
+
+// WithRun sets the function which runs each heartbeat which fires, once, on
+// the server which fires it, or none, so heartbeats fire, and nothing runs
+func WithRun(fn RunFunc) Opt {
+	return func(o *opt) error {
+		o.run = fn
 		return nil
 	}
 }

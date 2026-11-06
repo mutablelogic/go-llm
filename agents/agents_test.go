@@ -18,6 +18,7 @@ import (
 // examples are an input of each agent, which its prompt is executed with
 var examples = map[string]string{
 	"translate": `{"text":"Guten Morgen"}`,
+	"event":     `{"title":"Morning briefing","prompt":"Give David the weather in Berlin today","context":"Now: Friday, 6 November 2026, 08:00, Europe/Berlin"}`,
 }
 
 func Test_Agents(t *testing.T) {
@@ -84,5 +85,34 @@ func Test_All(t *testing.T) {
 	for _, meta := range all {
 		names = append(names, meta.Name)
 	}
-	assert.Equal(t, []string{"translate"}, names)
+	assert.Equal(t, []string{"event", "translate"}, names)
+}
+
+func Test_Event(t *testing.T) {
+	// The event's title, and its instruction, how late it is, and what the
+	// system says, in a block of its own, first, when they're given, and the
+	// reply has the message, and its importance
+	data, err := os.ReadFile("event.yaml")
+	require.NoError(t, err)
+	meta, err := schema.ParseAgentMeta(data)
+	require.NoError(t, err)
+	for input, want := range map[string]string{
+		`{"title":"Call","prompt":"Remind David to call his mother","context":"Now: 18:00"}`:                                  "<system-reminder>\nNow: 18:00\n</system-reminder>\nThe event \"Call\" has fired. Its instruction is:\n\nRemind David to call his mother\n",
+		`{"title":"Call","prompt":"Remind David to call his mother","late":"3h12m late","context":"Now: 18:00\nName: David"}`: "<system-reminder>\nNow: 18:00\nName: David\n</system-reminder>\nThe event \"Call\" has fired, 3h12m late. Its instruction is:\n\nRemind David to call his mother\n",
+	} {
+		message, err := meta.Message(json.RawMessage(input))
+		require.NoError(t, err, input)
+		assert.Equal(t, want, message, input)
+	}
+	_, err = meta.Message(json.RawMessage(`{"title":"Call","context":"Now: 18:00"}`))
+	assert.Error(t, err, "the prompt is required")
+	_, err = meta.Message(json.RawMessage(`{"title":"Call","prompt":"Remind David"}`))
+	assert.Error(t, err, "the context is required, so the time is known")
+	assert.True(t, types.Value(meta.Internal), "only the server runs it")
+	assert.Empty(t, meta.Tools)
+	assert.Nil(t, meta.Model)
+
+	reply, err := meta.JSONSchema()
+	require.NoError(t, err)
+	require.NotNil(t, reply)
 }

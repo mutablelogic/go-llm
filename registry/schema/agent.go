@@ -34,6 +34,7 @@ type PromptMeta struct {
 	Description *string         `json:"description,omitempty" help:"What the agent does, for people, and models which call it as a tool" example:"Segments a transcript into its sections" optional:""`
 	Input       json.RawMessage `json:"input,omitempty" help:"JSON schema of the input, which is an object, whose properties the prompt uses" example:"{\"type\":\"object\",\"properties\":{\"transcript\":{\"type\":\"string\"}}}" optional:""`
 	Prompt      *string         `json:"prompt,omitempty" help:"Go template of the message to the model, executed with the input" example:"Segment this transcript: {{ .transcript }}" optional:""`
+	Internal    *bool           `json:"internal,omitempty" help:"Whether only the server runs the agent, such as for an event, as its input is trusted, so it isn't a tool which models can call" optional:""`
 }
 
 // AgentMeta is an agent's definition: its prompt, and how a model is asked
@@ -61,6 +62,7 @@ type Agent struct {
 type RunAgentRequest struct {
 	Input   json.RawMessage `json:"input,omitempty" help:"Input of the agent, which its input schema validates, and its prompt is executed with" example:"{\"transcript\":\"...\"}" optional:""`
 	Session uuid.UUID       `json:"session,omitzero" help:"Identifier of the session the agent is run from, whose model it's run with, when it has none" example:"3b241101-e2bb-4255-8caf-4136c566a962" optional:""`
+	Tools   []string        `json:"tools,omitempty" help:"Tools the agent can call, instead of its own, such as weatherapi:current, or weatherapi:*" optional:""`
 }
 
 // RunAgentResponse is what an agent did: the agent, by its name, and the
@@ -129,9 +131,9 @@ func (p PromptMeta) IsZero() bool {
 }
 
 // Merge returns the prompt, changed by the update: its title, description
-// and prompt, when they're set, which empty clears, and its input, when it's
-// set, which null clears. The name isn't changed. What the update doesn't
-// set is kept.
+// and prompt, when they're set, which empty clears, its input, when it's
+// set, which null clears, and whether it's internal, when it's set. The name
+// isn't changed. What the update doesn't set is kept.
 func (p PromptMeta) Merge(update PromptMeta) PromptMeta {
 	result := p
 	merge := func(value, update *string) *string {
@@ -145,6 +147,9 @@ func (p PromptMeta) Merge(update PromptMeta) PromptMeta {
 	result.Title = merge(p.Title, update.Title)
 	result.Description = merge(p.Description, update.Description)
 	result.Prompt = merge(p.Prompt, update.Prompt)
+	if update.Internal != nil {
+		result.Internal = types.Ptr(*update.Internal)
+	}
 	if input := bytes.TrimSpace(update.Input); len(input) > 0 {
 		if string(input) == "null" {
 			result.Input = nil
@@ -457,4 +462,22 @@ func blockStyle(node *yaml.Node) {
 	for _, child := range node.Content {
 		blockStyle(child)
 	}
+}
+
+// RunEventRequest is an event to run, such as a heartbeat which fired, in
+// its own session: the session it's for, whose model, and tools, it's run
+// with, apart from those of the namespaces it's without, and the agent which
+// runs it, which is the event agent, unless it's given, with its input
+type RunEventRequest struct {
+	Session uuid.UUID       `json:"session" help:"Identifier of the session the event is for, whose model it's run with" example:"3b241101-e2bb-4255-8caf-4136c566a962"`
+	Agent   string          `json:"agent,omitempty" help:"Name of the agent which runs the event, which is event, unless it's given" example:"event" optional:""`
+	Without []string        `json:"without,omitempty" help:"Namespaces of the session's tools which the agent isn't given, such as heartbeat, so an event doesn't schedule events" example:"[\"heartbeat\"]" optional:""`
+	Input   json.RawMessage `json:"input,omitempty" help:"Input of the agent" example:"{\"title\":\"Morning briefing\",\"prompt\":\"Give David the weather in Berlin today\"}" optional:""`
+}
+
+// RunEventResponse is the session the event ran in, and what the agent which
+// ran it did, and replied
+type RunEventResponse struct {
+	Session Session          `json:"session" help:"The session the event ran in, without its messages"`
+	Run     RunAgentResponse `json:"run" help:"What the agent which ran the event did, and replied"`
 }

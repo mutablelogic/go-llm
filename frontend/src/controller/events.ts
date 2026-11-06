@@ -32,7 +32,6 @@ export class EventsController {
 
     private readonly notifications: NotificationController;
     private readonly listeners: Listener[] = [];
-    private readonly each_: { filters: EventFilter[]; fn: (event: Event) => void }[] = [];
     private readonly disconnects: (() => void)[] = [];
     private readonly connects: (() => void)[] = [];
 
@@ -50,14 +49,6 @@ export class EventsController {
     // each would be called for.
     on(filter: EventFilter | EventFilter[], fn: EventListener): this {
         this.listeners.push(new Listener([filter].flat(), fn));
-        return this;
-    }
-
-    // each calls the function with every event which matches the filter, as
-    // it's received, rather than once for a burst of them, such as for
-    // events which are each shown, and not when events may have been missed
-    each(filter: EventFilter | EventFilter[], fn: (event: Event) => void): this {
-        this.each_.push({ filters: [filter].flat(), fn });
         return this;
     }
 
@@ -147,11 +138,6 @@ export class EventsController {
         for (const listener of this.listeners) {
             if (listener.filters.some((filter) => eventMatches(filter, event))) {
                 listener.call(event);
-            }
-        }
-        for (const { filters, fn } of this.each_) {
-            if (filters.some((filter) => eventMatches(filter, event))) {
-                fn(event);
             }
         }
     }

@@ -108,8 +108,12 @@ func (n *agentNamespace) Notify(fn func(eventschema.EventAction, string)) {
 
 // set adds the agent, as a tool, or replaces it, and tells the toolkit. An
 // agent whose input, or schema, isn't valid, which the registry doesn't
-// store, isn't a tool.
+// store, or which is internal, as only the server runs it, isn't a tool.
 func (n *agentNamespace) set(r *Registry, agent schema.Agent) {
+	if types.Value(agent.Internal) {
+		n.remove(agent.Name)
+		return
+	}
 	tool, err := newAgentTool(r, agent)
 	if err != nil {
 		n.remove(agent.Name)

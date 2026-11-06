@@ -305,6 +305,13 @@ func (r *Registry) RunAgent(ctx context.Context, name string, req schema.RunAgen
 		return nil, llm.ErrBadParameter.Withf("agent %q has no model, nor has the session it's run from", name)
 	}
 
+	// The tools it's run with, instead of its own, when they're given
+	if req.Tools != nil {
+		if meta.Tools, err = r.toolNames(ctx, req.Tools); err != nil {
+			return nil, err
+		}
+	}
+
 	// The tools it calls run as it runs, so it isn't run again by them
 	ctx = withRunningAgent(ctx, name)
 

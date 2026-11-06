@@ -68,13 +68,18 @@ func newSessionStore(dir string) (*sessionStore, error) {
 ///////////////////////////////////////////////////////////////////////////////
 // PUBLIC METHODS
 
-// Create writes a session with the settings, and no messages, with a new
-// identifier, which is a random UUID, and a serial of one, and returns it
-func (s *sessionStore) Create(_ context.Context, meta schema.SessionMeta) (schema.Session, error) {
+// Create writes a session with the settings, and no messages, with the
+// identifier, or a new one, which is a random UUID, when it's the nil UUID,
+// and a serial of one, and returns it. Returns ErrConflict when there's a
+// session with the identifier.
+func (s *sessionStore) Create(_ context.Context, id uuid.UUID, meta schema.SessionMeta) (schema.Session, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if id == uuid.Nil() {
+		id = uuid.New()
+	}
 	now := time.Now().UTC()
-	session := schema.Session{ID: uuid.New(), Serial: 1, Created: now, Modified: now, SessionMeta: meta}
+	session := schema.Session{ID: id, Serial: 1, Created: now, Modified: now, SessionMeta: meta}
 	if _, err := os.Stat(s.path(session.ID)); err == nil {
 		return schema.Session{}, llm.ErrConflict.Withf("session %q exists", session.ID)
 	}

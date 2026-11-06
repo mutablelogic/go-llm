@@ -2,7 +2,7 @@
 
 ## Event Operations
 
-Events are changes, which are streamed to a client as they happen. Each event has an `action`, which is `create`, `update` or `delete`, the `schema` of the module which changed, the `table` which changed, the `row` which changed, and, when the table says more of the change, its `data`. The registry's and the toolkit's events are of the `llm` schema, the memory's of the `memory` schema, whose `detail` table is its details, and whose `memory` table is its memories, and the heartbeats' of the `heartbeat` schema, whose `heartbeat` table is the heartbeats, and whose `fire` table is those which fire.
+Events are changes, which are streamed to a client as they happen. Each event has an `action`, which is `create`, `update` or `delete`, the `schema` of the module which changed, the `table` which changed, the `row` which changed, and, when the table says more of the change, its `data`. The registry's and the toolkit's events are of the `llm` schema, the memory's of the `memory` schema, whose `detail` table is its details, and whose `memory` table is its memories, and the heartbeats' of the `heartbeat` schema, whose `heartbeat` table is the heartbeats.
 
 The registry's providers are the `provider` table, whose rows are the providers' names: a provider is created or deleted, or updated when whether it can be reached changes, when it's pinged, or its models change, when they're listed again, such as after a model is loaded or deleted.
 

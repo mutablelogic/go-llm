@@ -6,25 +6,30 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"sync/atomic"
 	"time"
 	"uuid"
 
 	// Packages
+	llm "github.com/mutablelogic/go-llm"
 	agents "github.com/mutablelogic/go-llm/agents"
 	broadcaster "github.com/mutablelogic/go-llm/broadcaster"
 	broadcastercmd "github.com/mutablelogic/go-llm/broadcaster/cmd"
 	frontendcmd "github.com/mutablelogic/go-llm/frontend/cmd"
 	heartbeat "github.com/mutablelogic/go-llm/heartbeat"
 	heartbeatcmd "github.com/mutablelogic/go-llm/heartbeat/cmd"
+	heartbeatschema "github.com/mutablelogic/go-llm/heartbeat/schema"
 	memory "github.com/mutablelogic/go-llm/memory"
 	memorycmd "github.com/mutablelogic/go-llm/memory/cmd"
 	registry "github.com/mutablelogic/go-llm/registry"
 	registrycmd "github.com/mutablelogic/go-llm/registry/cmd"
+	registryschema "github.com/mutablelogic/go-llm/registry/schema"
 	toolkit "github.com/mutablelogic/go-llm/toolkit"
 	toolkitcmd "github.com/mutablelogic/go-llm/toolkit/cmd"
 	server "github.com/mutablelogic/go-server"
 	servercmd "github.com/mutablelogic/go-server/pkg/cmd"
 	httprouter "github.com/mutablelogic/go-server/pkg/httprouter"
+	types "github.com/mutablelogic/go-server/pkg/types"
 	errgroup "golang.org/x/sync/errgroup"
 )
 
@@ -101,9 +106,31 @@ func (runner *RunServer) Run(ctx server.Cmd) error {
 			zone := func() *time.Location {
 				return mem.Details().Zone()
 			}
+			// A heartbeat which fires is run by the registry, which is made
+			// once the heartbeats are, as it has their tools, in a session of
+			// its own
+			var events atomic.Pointer[registry.Registry]
+			run := func(runCtx context.Context, fire heartbeatschema.FireEvent) error {
+				r := events.Load()
+				if r == nil {
+					return llm.ErrServiceUnavailable.With("registry isn't running")
+				}
+				// The event agent's input, with what the system says of the
+				// person, and the time
+				input, err := eventInput(fire, mem.Details())
+				if err != nil {
+					return err
+				}
+				response, err := r.RunEvent(runCtx, fire.Heartbeat, registryschema.RunEventRequest{Session: fire.Session, Input: input, Without: []string{heartbeat.Name}}, nil)
+				if err != nil {
+					return err
+				}
+				ctx.Logger().InfoContext(runCtx, "heartbeat run", "heartbeat", fire.Heartbeat, "title", fire.Title, "session", response.Session.ID, "model", types.Value(response.Session.Model), "reply", string(response.Run.Reply))
+				return nil
+			}
 			return runner.Heartbeat.WithHeartbeats(ctx, &runner.RunServer, heartbeats, func(h *heartbeat.Heartbeats) error {
-				return runner.withToolkit(ctx, b, mem, h, store, sessions, agents)
-			}, heartbeat.WithBroadcaster(b), heartbeat.WithZone(zone), heartbeat.WithSessions(func(ctx context.Context, id uuid.UUID) error {
+				return runner.withToolkit(ctx, b, mem, h, &events, store, sessions, agents)
+			}, heartbeat.WithBroadcaster(b), heartbeat.WithZone(zone), heartbeat.WithRun(run), heartbeat.WithSessions(func(ctx context.Context, id uuid.UUID) error {
 				// A heartbeat is for a session which exists
 				_, err := sessions.Get(ctx, id)
 				return err
@@ -114,8 +141,9 @@ func (runner *RunServer) Run(ctx server.Cmd) error {
 
 // withToolkit runs the server, with a toolkit, which has the memory, and
 // the heartbeats, as well as the tools whose credentials are set, and a
-// registry, with the stores, and fires the heartbeats
-func (runner *RunServer) withToolkit(ctx server.Cmd, b *broadcaster.Broadcaster, mem *memory.Memory, h *heartbeat.Heartbeats, store registry.ProviderStore, sessions *sessionStore, agents *agentStore) error {
+// registry, with the stores, which runs the heartbeats which fire, once
+// it's set to, and fires them
+func (runner *RunServer) withToolkit(ctx server.Cmd, b *broadcaster.Broadcaster, mem *memory.Memory, h *heartbeat.Heartbeats, events *atomic.Pointer[registry.Registry], store registry.ProviderStore, sessions *sessionStore, agents *agentStore) error {
 	return runner.Toolkit.WithToolkit(ctx, &runner.RunServer, func(tools *toolkit.Toolkit) error {
 		// The memory, whose system prompt has the time, and what's
 		// remembered, and whose tools remember it
@@ -133,6 +161,9 @@ func (runner *RunServer) withToolkit(ctx server.Cmd, b *broadcaster.Broadcaster,
 		return runner.Registry.WithRegistry(ctx, &runner.RunServer, func(r *registry.Registry) error {
 			// The example agents, as they are, before the server starts
 			createAgents(ctx, r)
+
+			// The registry runs the heartbeats which fire
+			events.Store(r)
 
 			// They all stop when any does, such as when the server is
 			// stopped, when the broadcaster's watches end, so the

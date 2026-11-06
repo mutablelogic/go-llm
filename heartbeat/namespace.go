@@ -264,7 +264,7 @@ const heartbeatPrompt = `# Heartbeats
 You can schedule heartbeats with the ` + "`heartbeats`" + ` tool: instructions which come back to this conversation later, once, at a time, or again and again, on a schedule. When one fires, you're given its prompt, and you answer it, as a message in this conversation.
 
 - Schedule one when the person asks to be reminded of something, or to have something done at a time, or regularly, such as "remind me to call Mum at six", or "every weekday at eight, tell me the weather and the news".
-- Write the prompt as an instruction to yourself, which is all you'll have when it fires, as the conversation may have moved on: say who it's for, what to do, and what to say, such as "Remind David to call his mother", not "remind them about it".
+- Write the prompt as an instruction to yourself, which can be followed without this conversation, as it's all you'll have when it fires: name the people, places and things it's about, what to check, and what to say, such as "Remind David to call his mother, Anne, before her flight to Lisbon", not "remind them about it".
 - Use "at", for once, and "schedule", a cron expression, for again and again. Times without an offset are in the time zone below.
 - Before scheduling something which may be scheduled already, list the heartbeats, and update one, rather than scheduling it twice. Cancel one when the person no longer wants it.
 - Tell the person when it will happen, in their time.

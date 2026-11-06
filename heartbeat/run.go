@@ -114,7 +114,7 @@ func (h *Heartbeats) tick(ctx context.Context, logger *slog.Logger) {
 					continue
 				}
 			}
-			if err := h.fire(ctx, heartbeat.ID, *next, now); err != nil {
+			if err := h.fire(ctx, logger, heartbeat.ID, *next, now); err != nil {
 				logger.ErrorContext(ctx, "heartbeat not fired", "heartbeat", heartbeat.ID, "title", heartbeat.Title, "error", err)
 			}
 		}
@@ -123,8 +123,9 @@ func (h *Heartbeats) tick(ctx context.Context, logger *slog.Logger) {
 
 // fire fires the heartbeat with the identifier, which was due at the time,
 // when it's still due then, as it is in the store, so only one server fires
-// it, and publishes that it fired
-func (h *Heartbeats) fire(ctx context.Context, id uuid.UUID, scheduled, now time.Time) (err error) {
+// it, publishes that it changed, and runs it, in a goroutine, with the
+// function which runs heartbeats, when there is one, logging its error
+func (h *Heartbeats) fire(ctx context.Context, logger *slog.Logger, id uuid.UUID, scheduled, now time.Time) (err error) {
 	ctx, endSpan := otel.StartSpan(h.tracer, ctx, "heartbeat.Fire",
 		attribute.String("arg.id", id.String()),
 		attribute.String("arg.scheduled", scheduled.Format(time.RFC3339)),
@@ -144,15 +145,22 @@ func (h *Heartbeats) fire(ctx context.Context, id uuid.UUID, scheduled, now time
 	case err != nil:
 		return err
 	}
-	h.publishFire(schema.FireEvent{
-		Heartbeat: heartbeat.ID,
-		Title:     heartbeat.Title,
-		Prompt:    heartbeat.Prompt,
-		Session:   heartbeat.Session,
-		Scheduled: scheduled.UTC(),
-		Fired:     now.UTC(),
-	})
 	h.publish(eventschema.EventUpdate, heartbeat)
+	if h.run != nil {
+		event := schema.FireEvent{
+			Heartbeat: heartbeat.ID,
+			Title:     heartbeat.Title,
+			Prompt:    heartbeat.Prompt,
+			Session:   heartbeat.Session,
+			Scheduled: scheduled.UTC(),
+			Fired:     now.UTC(),
+		}
+		go func() {
+			if err := h.run(ctx, event); err != nil {
+				logger.ErrorContext(ctx, "heartbeat not run", "heartbeat", event.Heartbeat, "title", event.Title, "error", err)
+			}
+		}()
+	}
 	return nil
 }
 

@@ -2,7 +2,6 @@ package heartbeat_test
 
 import (
 	"context"
-	"encoding/json"
 	"sync"
 	"testing"
 	"time"
@@ -46,35 +45,35 @@ func (c *clock) Set(s string) {
 }
 
 // newHeartbeats returns heartbeats in the store, with the clock, and a
-// broadcaster, which is running, and a channel of its events
-func newHeartbeats(t *testing.T, store heartbeat.Store, c *clock, opts ...heartbeat.Opt) (*heartbeat.Heartbeats, *broadcaster.Broadcaster, chan eventschema.Event) {
+// broadcaster, which is running, and a channel of the heartbeats which are
+// run, as they fire
+func newHeartbeats(t *testing.T, store heartbeat.Store, c *clock, opts ...heartbeat.Opt) (*heartbeat.Heartbeats, *broadcaster.Broadcaster, chan schema.FireEvent) {
 	t.Helper()
 	b := broadcaster.New()
 	ctx, cancel := context.WithCancel(t.Context())
 	t.Cleanup(cancel)
 	go b.Run(ctx)
-	ch := make(chan eventschema.Event, 64)
-	_, err := b.Watch(ctx, ch)
-	require.NoError(t, err)
-	h, err := heartbeat.New(store, append([]heartbeat.Opt{heartbeat.WithBroadcaster(b)}, opts...)...)
+	runs := make(chan schema.FireEvent, 64)
+	run := heartbeat.WithRun(func(_ context.Context, fire schema.FireEvent) error {
+		runs <- fire
+		return nil
+	})
+	h, err := heartbeat.New(store, append([]heartbeat.Opt{heartbeat.WithBroadcaster(b), run}, opts...)...)
 	require.NoError(t, err)
 	heartbeat.SetClock(h, c.Now)
-	return h, b, ch
+	return h, b, runs
 }
 
-// fires returns the fires of the events which were published
-func fires(t *testing.T, ch chan eventschema.Event) []schema.FireEvent {
+// fires returns the heartbeats which were run, which are run in goroutines,
+// so it waits a little for them
+func fires(t *testing.T, runs chan schema.FireEvent) []schema.FireEvent {
 	t.Helper()
 	var result []schema.FireEvent
 	for {
 		select {
-		case event := <-ch:
-			if event.Schema == heartbeat.Name && event.Table == heartbeat.FireTable {
-				var fire schema.FireEvent
-				require.NoError(t, json.Unmarshal(event.Data, &fire))
-				result = append(result, fire)
-			}
-		default:
+		case fire := <-runs:
+			result = append(result, fire)
+		case <-time.After(50 * time.Millisecond):
 			return result
 		}
 	}

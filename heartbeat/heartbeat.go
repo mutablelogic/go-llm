@@ -1,14 +1,13 @@
 // Package heartbeat has prompts for sessions, which fire once, at a time, or
 // again and again, on a schedule, such as a briefing every morning, or a
-// reminder. A heartbeat which fires publishes an event, with its prompt, and
-// the session it's for, which what acts on it watches for, so the model is
-// asked it, in the session. A schedule is in a time zone, or the person's,
-// which it follows, as it changes.
+// reminder. A heartbeat which fires is run, with the function WithRun sets,
+// once, on the server which fires it, with its prompt, and the session it's
+// for. A schedule is in a time zone, or the person's, which it follows, as
+// it changes.
 package heartbeat
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"slices"
 	"strings"
@@ -44,6 +43,7 @@ type Heartbeats struct {
 	zone        func() *time.Location
 	session     SessionFunc
 	retention   time.Duration
+	run         RunFunc
 	now         func() time.Time
 
 	// When the heartbeats which won't fire again were last looked for, which
@@ -70,11 +70,6 @@ const (
 	// HeartbeatTable is the table of the events of the heartbeats, whose
 	// rows are their identifiers
 	HeartbeatTable = "heartbeat"
-
-	// FireTable is the table of the events of the heartbeats which fire,
-	// which are created, whose rows are their identifiers, and whose data is
-	// a FireEvent
-	FireTable = "fire"
 
 	// DefaultRetention is how long a heartbeat which won't fire again is
 	// kept, after it last fired, or was changed, before it's deleted
@@ -105,7 +100,7 @@ func New(store Store, opts ...Opt) (*Heartbeats, error) {
 	if o.retention == 0 {
 		o.retention = DefaultRetention
 	}
-	return &Heartbeats{store: store, broadcaster: o.broadcaster, tracer: o.tracer, zone: o.zone, session: o.session, retention: o.retention, now: time.Now}, nil
+	return &Heartbeats{store: store, broadcaster: o.broadcaster, tracer: o.tracer, zone: o.zone, session: o.session, retention: o.retention, run: o.run, now: time.Now}, nil
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -390,17 +385,4 @@ func (h *Heartbeats) publish(action eventschema.EventAction, heartbeat schema.He
 		return
 	}
 	h.broadcaster.Publish(eventschema.Event{Action: action, Schema: Name, Table: HeartbeatTable, Row: heartbeat.ID.String()})
-}
-
-// publishFire publishes that the heartbeat fired, when there's a
-// broadcaster
-func (h *Heartbeats) publishFire(event schema.FireEvent) {
-	if h.broadcaster == nil {
-		return
-	}
-	data, err := json.Marshal(event)
-	if err != nil {
-		return
-	}
-	h.broadcaster.Publish(eventschema.Event{Action: eventschema.EventCreate, Schema: Name, Table: FireTable, Row: event.Heartbeat.String(), Data: data})
 }
