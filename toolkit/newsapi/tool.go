@@ -74,7 +74,7 @@ func (*headlines) Name() string {
 }
 
 func (*headlines) Description() string {
-	return "Get breaking news headlines for a country, category, or search query."
+	return "Get breaking news headlines for a country, category, language, or search query, which are in English, unless one of them is given."
 }
 
 // InputSchema returns the JSON schema for the tool input
@@ -92,6 +92,12 @@ func (h *headlines) Run(ctx context.Context, input json.RawMessage) (any, error)
 	// Sources can't be mixed with a country or category
 	if req.Sources != "" && (req.Country != "" || req.Category != "") {
 		return nil, llm.ErrBadParameter.With("sources can't be mixed with country or category")
+	}
+
+	// NewsAPI needs one of the sources, a query, a language, a country or a
+	// category, so the headlines are in English, when there's none
+	if req.Sources == "" && req.Query == "" && req.Language == "" && req.Country == "" && req.Category == "" {
+		req.Language = "en"
 	}
 
 	toolkit.Logf(ctx, "%s", describeHeadlines(req))
