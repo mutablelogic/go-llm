@@ -279,12 +279,13 @@ They're given to a session, or an agent, such as `llm session-update --opt max_i
 
 ## Tools
 
-Tools are added to the server's toolkit when their credentials are set, as environment variables:
+Tools are added to the server's toolkit when their credentials, or settings, are set, as environment variables, or flags:
 
 | Namespace | Tools | Credentials |
 |-----------|-------|-------------|
 | `memory` | Remember the details of the person, and the assistant, with the time in the system prompt, and search, keep and forget memories | None, as it's always added |
 | `heartbeat` | Schedule, list, update and cancel heartbeats, which are prompts which come back to the conversation, at a time, or on a schedule | None, as it's always added |
+| `llm` | `speak`: speak text aloud, with the server's speech model, which is kept as a resource of the session, which the tool's result links to | `--llm.speak-model`, such as `ollama:phonon:latest`, and `--llm.speak-voice`, or `LLM_SPEAK_MODEL` and `LLM_SPEAK_VOICE` |
 | `weatherapi` | Current weather, forecasts and alerts | `WEATHERAPI_API_KEY`, from [weatherapi.com](https://www.weatherapi.com/signup.aspx) |
 | `newsapi` | News articles, headlines and sources | `NEWSAPI_API_KEY`, from [newsapi.org](https://newsapi.org/register) |
 | `homeassistant` | Query, and search, and control smart home devices | `HOMEASSISTANT_URL`, `HOMEASSISTANT_API_KEY` |
