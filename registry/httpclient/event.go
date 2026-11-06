@@ -40,3 +40,19 @@ func (c *Client) DeleteEvent(ctx context.Context, id uuid.UUID) (*schema.Event, 
 	}
 	return &response, nil
 }
+
+// TriggerEvent schedules the event, from a source other than a heartbeat,
+// such as a file which changed, to run, and returns whether it's scheduled,
+// rather than an event of its source, which is already, and its outcome,
+// which is scheduled, until it's run
+func (c *Client) TriggerEvent(ctx context.Context, req schema.EventRequest) (*schema.TriggerEventResponse, error) {
+	request, err := client.NewJSONRequest(req)
+	if err != nil {
+		return nil, err
+	}
+	var response schema.TriggerEventResponse
+	if err := c.DoWithContext(ctx, request, &response, client.OptPath("llm", "event")); err != nil {
+		return nil, err
+	}
+	return &response, nil
+}

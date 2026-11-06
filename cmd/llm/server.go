@@ -114,25 +114,25 @@ func (runner *RunServer) Run(ctx server.Cmd) error {
 			// once the heartbeats are, as it has their tools, in a session of
 			// its own
 			var events atomic.Pointer[registry.Registry]
+			build := eventBuilder(mem.Details)
 			run := func(runCtx context.Context, fire heartbeatschema.FireEvent) error {
 				r := events.Load()
 				if r == nil {
 					return llm.ErrServiceUnavailable.With("registry isn't running")
 				}
-				// The event agent's input, with what the system says of the
-				// person, and the time
-				input, err := eventInput(fire, mem.Details())
+				// How it's run, as an event which the API is given is, in
+				// the heartbeat's session
+				req, err := build(runCtx, registryschema.EventRequest{
+					Session:   fire.Session,
+					Title:     fire.Title,
+					Prompt:    fire.Prompt,
+					Scheduled: fire.Scheduled,
+					Fired:     fire.Fired,
+				})
 				if err != nil {
 					return err
 				}
-				response, err := r.RunEvent(runCtx, fire.Heartbeat, registryschema.RunEventRequest{
-					Session:   fire.Session,
-					Input:     input,
-					Without:   []string{heartbeat.Name},
-					Title:     fire.Title,
-					Scheduled: fire.Scheduled,
-					Fired:     fire.Fired,
-				}, nil)
+				response, err := r.RunEvent(runCtx, fire.Heartbeat, req, nil)
 				if err != nil {
 					return err
 				}
@@ -140,7 +140,7 @@ func (runner *RunServer) Run(ctx server.Cmd) error {
 				return nil
 			}
 			return runner.Heartbeat.WithHeartbeats(ctx, &runner.RunServer, heartbeats, func(h *heartbeat.Heartbeats) error {
-				return runner.withToolkit(ctx, b, mem, h, &events, store, sessions, agents, outcomes)
+				return runner.withToolkit(ctx, b, mem, h, &events, build, store, sessions, agents, outcomes)
 			}, heartbeat.WithBroadcaster(b), heartbeat.WithZone(zone), heartbeat.WithRun(run), heartbeat.WithSessions(func(ctx context.Context, id uuid.UUID) error {
 				// A heartbeat is for a session which exists
 				_, err := sessions.Get(ctx, id)
@@ -154,7 +154,7 @@ func (runner *RunServer) Run(ctx server.Cmd) error {
 // the heartbeats, as well as the tools whose credentials are set, and a
 // registry, with the stores, which runs the heartbeats which fire, once
 // it's set to, and fires them
-func (runner *RunServer) withToolkit(ctx server.Cmd, b *broadcaster.Broadcaster, mem *memory.Memory, h *heartbeat.Heartbeats, events *atomic.Pointer[registry.Registry], store registry.ProviderStore, sessions *sessionStore, agents *agentStore, outcomes *eventStore) error {
+func (runner *RunServer) withToolkit(ctx server.Cmd, b *broadcaster.Broadcaster, mem *memory.Memory, h *heartbeat.Heartbeats, events *atomic.Pointer[registry.Registry], build registry.EventBuilder, store registry.ProviderStore, sessions *sessionStore, agents *agentStore, outcomes *eventStore) error {
 	return runner.Toolkit.WithToolkit(ctx, &runner.RunServer, func(tools *toolkit.Toolkit) error {
 		// The memory, whose system prompt has the time, and what's
 		// remembered, and whose tools remember it
@@ -201,7 +201,7 @@ func (runner *RunServer) withToolkit(ctx server.Cmd, b *broadcaster.Broadcaster,
 				return runner.RunServer.Run(ctx.WithContext(runCtx))
 			})
 			return group.Wait()
-		}, registry.WithBroadcaster(b), registry.WithProviderStore(store), registry.WithSessionStore(sessions), registry.WithAgentStore(agents), registry.WithEventStore(outcomes), registry.WithToolkit(tools))
+		}, registry.WithBroadcaster(b), registry.WithProviderStore(store), registry.WithSessionStore(sessions), registry.WithAgentStore(agents), registry.WithEventStore(outcomes), registry.WithEventBuilder(build), registry.WithToolkit(tools))
 	}, toolkit.WithBroadcaster(b))
 }
 

@@ -25,6 +25,8 @@ type opt struct {
 	sessionStore  SessionStore
 	agentStore    AgentStore
 	eventStore    EventStore
+	eventBuilder  EventBuilder
+	maxEvents     uint
 	toolkit       *toolkit.Toolkit
 	broadcaster   *broadcaster.Broadcaster
 }
@@ -54,6 +56,8 @@ func (o *opt) defaults() {
 	o.sessionStore = nil
 	o.agentStore = nil
 	o.eventStore = nil
+	o.eventBuilder = nil
+	o.maxEvents = DefaultMaxEvents
 	o.toolkit = nil
 	o.broadcaster = broadcaster.New()
 }
@@ -119,6 +123,35 @@ func WithEventStore(store EventStore) Opt {
 			return llm.ErrBadParameter.With("missing event store")
 		}
 		o.eventStore = store
+		return nil
+	}
+}
+
+// WithEventBuilder sets the function which returns how an event, which
+// TriggerEvent is given, is run, such as with what the system says of the
+// person, and the tools it's run without. Without one, its input says only
+// the time, in UTC, and it's run with every tool of the session it's for.
+func WithEventBuilder(fn EventBuilder) Opt {
+	return func(o *opt) error {
+		if fn == nil {
+			return llm.ErrBadParameter.With("missing event builder")
+		}
+		o.eventBuilder = fn
+		return nil
+	}
+}
+
+// WithMaxEvents sets the most events, such as heartbeats which fire, and
+// events which are triggered, which run at once, which is DefaultMaxEvents,
+// unless it's set. Those which are run once these are, wait until one of
+// them has, and an event which was triggered is scheduled until it runs.
+// Returns ErrBadParameter when it's zero.
+func WithMaxEvents(n uint) Opt {
+	return func(o *opt) error {
+		if n == 0 {
+			return llm.ErrBadParameter.With("the most events which run at once must be at least one")
+		}
+		o.maxEvents = n
 		return nil
 	}
 }

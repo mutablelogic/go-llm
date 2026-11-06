@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -24,9 +25,12 @@ import (
 // FAKES
 
 // scripted is a provider which generates its replies in turn, by value
-// when byValue is set, and records what it was asked with
+// when byValue is set, and records what it was asked with, which is safe to
+// ask at once, as events are, as its replies, and what it was asked with,
+// are taken, and recorded, with its lock held
 type scripted struct {
 	*provider
+	mu      sync.Mutex
 	replies []*providerschema.Message
 	byValue bool
 	err     error
@@ -75,14 +79,18 @@ func (s *scripted) WithoutSession(_ context.Context, _ llm.Model, messages []llm
 	for _, tool := range tools {
 		names = append(names, tool.Name())
 	}
+	s.mu.Lock()
 	s.asked = append(s.asked, asked{messages: messages, tools: names, opts: o})
 	if s.err != nil {
+		s.mu.Unlock()
 		return nil, llm.Usage{}, s.err
 	} else if len(s.replies) == 0 {
+		s.mu.Unlock()
 		return nil, llm.Usage{}, errors.New("no more replies")
 	}
 	reply := s.replies[0]
 	s.replies = s.replies[1:]
+	s.mu.Unlock()
 	if stream != nil {
 		time.Sleep(s.delay)
 		if text := reply.Text(); text != "" {

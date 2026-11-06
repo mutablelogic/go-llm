@@ -57,6 +57,28 @@ func eventListHandlers(reg *registry.Registry, router *httprouter.Router, docume
 			op.JSONResponse(http.StatusOK, jsonschema.MustFor[schema.EventList](), "The outcomes of events, the most recent first")
 			op.ErrorResponse(http.StatusBadRequest, "Invalid request, such as a session which isn't a UUID, or a status which isn't one")
 		})
+
+		// POST
+		path.Post(func(w http.ResponseWriter, r *http.Request) {
+			var req schema.EventRequest
+			if err := httprequest.Read(r, &req); err != nil {
+				httpresponse.Error(w, httpresponse.ErrBadRequest.With(err.Error()))
+			} else if response, err := reg.TriggerEvent(r.Context(), req); err != nil {
+				httpresponse.Error(w, llm.HTTPErr(err), req.Session.String())
+			} else if response.Scheduled {
+				httpresponse.JSON(w, http.StatusAccepted, httprequest.Indent(r), response)
+			} else {
+				httpresponse.JSON(w, http.StatusOK, httprequest.Indent(r), response)
+			}
+		}, func(op httprequest.PathOperation) {
+			op.Summary("Trigger Event")
+			op.Description(documentation.Section(3, "POST /llm/event").Body)
+			op.RequestBody(jsonschema.MustFor[schema.EventRequest]())
+			op.JSONResponse(http.StatusAccepted, jsonschema.MustFor[schema.TriggerEventResponse](), "The event is scheduled to run, with its outcome, which is scheduled, until it's run")
+			op.JSONResponse(http.StatusOK, jsonschema.MustFor[schema.TriggerEventResponse](), "The event isn't scheduled, as an event of its source is, whose outcome it has")
+			op.ErrorResponse(http.StatusBadRequest, "Invalid request, such as an event without a session, or prompt")
+			op.ErrorResponse(http.StatusNotFound, "The session isn't found")
+		})
 	})
 }
 
