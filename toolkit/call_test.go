@@ -255,7 +255,9 @@ func TestCallToolResult(t *testing.T) {
 		resultTool{echoTool: echoTool{name: "unencodable"}, result: make(chan int)},
 		resultTool{echoTool: echoTool{name: "unreadable"}, result: resource{err: readErr}},
 		resultTool{echoTool: echoTool{name: "resources"}, result: []llm.Resource{resource{}, resource{}}},
-		resultTool{echoTool: echoTool{name: "result"}, result: toolkit.Result{Value: map[string]int{"pages": 2}, Resources: []llm.Resource{resource{}}}})))
+		resultTool{echoTool: echoTool{name: "result"}, result: toolkit.Result{Value: map[string]int{"pages": 2}, Resources: []llm.Resource{resource{}}}},
+		resultTool{echoTool: echoTool{name: "one"}, result: []llm.Resource{resource{}}},
+		resultTool{echoTool: echoTool{name: "alone"}, result: &toolkit.Result{Resources: []llm.Resource{resource{}}}})))
 
 	t.Run("JSON", func(t *testing.T) {
 		result, err := tk.CallTool(ctx, "test:json", nil)
@@ -302,6 +304,14 @@ func TestCallToolResult(t *testing.T) {
 		result, err = tk.CallTool(ctx, "test:result", nil)
 		require.NoError(t, err)
 		assert.JSONEq(t, `{"result":{"pages":2},"resources":[{"type":"image/png","data":"cG5n"}]}`, string(result))
+
+		// A list of one, or a Result with one, without a value, has the same
+		// shape, however many resources it has
+		for _, name := range []string{"test:one", "test:alone"} {
+			result, err = tk.CallTool(ctx, name, nil)
+			require.NoError(t, err, name)
+			assert.JSONEq(t, `{"resources":[{"type":"image/png","data":"cG5n"}]}`, string(result), name)
+		}
 
 		// With a store, they're kept, and the result has links to them
 		var stored []string

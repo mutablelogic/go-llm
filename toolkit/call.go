@@ -131,16 +131,16 @@ func toolResult(ctx context.Context, name string, result any) (json.RawMessage, 
 		}
 		return v, nil
 	case llm.Resource:
-		return resourcesResult(ctx, name, nil, []llm.Resource{v})
+		return resourcesResult(ctx, name, nil, []llm.Resource{v}, true)
 	case []llm.Resource:
-		return resourcesResult(ctx, name, nil, v)
+		return resourcesResult(ctx, name, nil, v, false)
 	case Result:
-		return resourcesResult(ctx, name, v.Value, v.Resources)
+		return resourcesResult(ctx, name, v.Value, v.Resources, false)
 	case *Result:
 		if v == nil {
 			return nil, nil
 		}
-		return resourcesResult(ctx, name, v.Value, v.Resources)
+		return resourcesResult(ctx, name, v.Value, v.Resources, false)
 	default:
 		return marshalResult(name, v)
 	}
@@ -148,10 +148,13 @@ func toolResult(ctx context.Context, name string, result any) (json.RawMessage, 
 
 // resourcesResult returns the result of a tool which returned resources,
 // with the value, when there is one. With the context's store function,
-// they're kept, and the result has links to them. Without one, a resource on
-// its own is its type and data, as it was before resources were kept, and
-// otherwise each resource is its type and data, in the result's resources.
-func resourcesResult(ctx context.Context, name string, value any, resources []llm.Resource) (json.RawMessage, error) {
+// they're kept, and the result has links to them. Without one, each
+// resource is its type and data, in the result's resources, unless the tool
+// returned a resource, on its own, as it is, rather than in a list, or a
+// Result, which is its type and data, as it was before resources were
+// kept, so a tool's result has the same shape, however many resources it
+// returns.
+func resourcesResult(ctx context.Context, name string, value any, resources []llm.Resource, bare bool) (json.RawMessage, error) {
 	if store := storeFrom(ctx); store != nil {
 		links := make([]schema.ResourceLink, 0, len(resources))
 		for _, resource := range resources {
@@ -179,7 +182,7 @@ func resourcesResult(ctx context.Context, name string, value any, resources []ll
 		}
 		inline = append(inline, providerschema.Resource{ResourceMeta: providerschema.ResourceMeta{ContentType: resource.Type(), Data: data}})
 	}
-	if value == nil && len(inline) == 1 {
+	if bare && len(inline) == 1 {
 		return marshalResult(name, inline[0])
 	}
 	return marshalResult(name, struct {
