@@ -40,6 +40,11 @@ export class ToolsController extends ListController<Tool> {
     private namespaces?: Namespace[];
     private namespace?: string;
 
+    // How many times the agent's panel has been opened, or closed, so an
+    // agent which is loaded once it's been closed, or something else was
+    // opened, isn't shown
+    private agentGeneration = 0;
+
     constructor(views: ToolsViews, notifications: NotificationController) {
         super('Tools', notifications);
         this.views = views;
@@ -50,7 +55,10 @@ export class ToolsController extends ListController<Tool> {
 
         // An agent is edited, from a new definition, or as it is, and saved,
         // or deleted
-        views.page?.addEventListener(ToolsPage.eventNewAgent, () => this.showAgent({ mode: 'new', yaml: agentTemplate }));
+        views.page?.addEventListener(ToolsPage.eventNewAgent, () => {
+            this.agentGeneration++;
+            this.showAgent({ mode: 'new', yaml: agentTemplate });
+        });
         views.agent?.addEventListener(AgentEditor.eventSave, (e) => void this.saveAgent((e as CustomEvent<string>).detail));
         views.agent?.addEventListener(AgentEditor.eventDelete, (e) => void this.deleteAgent((e as CustomEvent<string>).detail));
         views.agent?.addEventListener(Panel.eventClose, () => this.hideAgent());
@@ -64,6 +72,7 @@ export class ToolsController extends ListController<Tool> {
 
     // select opens the tool, or, for an agent, its definition, to be edited
     private select(tool: Tool) {
+        this.agentGeneration++;
         if (toolNamespace(tool) === agentNamespace) {
             void this.openAgent(tool.name);
         } else {
@@ -72,13 +81,19 @@ export class ToolsController extends ListController<Tool> {
     }
 
     // openAgent opens the definition of the agent with the name, as YAML, and
-    // whether it's built in
+    // whether it's built in, unless the panel was closed, or something else
+    // was opened, while it was loaded
     private async openAgent(name: string) {
+        const generation = this.agentGeneration;
         try {
             const [agent, yaml] = await Promise.all([getAgent(name), getAgentYAML(name)]);
-            this.showAgent({ mode: 'edit', name: agent.name, yaml, builtin: agent.builtin === true });
+            if (generation === this.agentGeneration) {
+                this.showAgent({ mode: 'edit', name: agent.name, yaml, builtin: agent.builtin === true });
+            }
         } catch (error) {
-            this.notifications.error(`The agent ${name} couldn't be loaded`, error);
+            if (generation === this.agentGeneration) {
+                this.notifications.error(`The agent ${name} couldn't be loaded`, error);
+            }
         }
     }
 
@@ -94,6 +109,7 @@ export class ToolsController extends ListController<Tool> {
 
     // hideAgent closes the agent's panel
     private hideAgent() {
+        this.agentGeneration++;
         if (this.views.agent) {
             this.views.agent.item = undefined;
         }
@@ -128,24 +144,25 @@ export class ToolsController extends ListController<Tool> {
     }
 
     // deleteAgent deletes the agent, once it's confirmed, and loads the tools
-    // again
+    // again, and closes the panel, when it's still showing the agent
     private async deleteAgent(name: string) {
-        if (!confirm(`Delete the agent ${name}?`)) {
+        const panel = this.views.agent;
+        const item = panel?.item;
+        if (!panel || !item || !confirm(`Delete the agent ${name}?`)) {
             return;
         }
-        const panel = this.views.agent;
-        if (panel) {
-            panel.busy = true;
-        }
+        panel.busy = true;
         try {
             await deleteAgent(name);
             this.notifications.push({ kind: 'success', title: `${name} was deleted` });
-            this.hideAgent();
+            if (panel.item === item) {
+                this.hideAgent();
+            }
             void this.refresh();
         } catch (error) {
             this.notifications.error(`${name} couldn't be deleted`, error);
         } finally {
-            if (panel) {
+            if (panel.item === item) {
                 panel.busy = false;
             }
         }

@@ -62,7 +62,8 @@ export class AgentEditor extends Panel<AgentEditorItem> {
     @property({ attribute: false })
     item?: AgentEditorItem;
 
-    // Whether it's saving, or deleting, and why it couldn't, when it couldn't
+    // Whether it's saving, or deleting, when the definition can't be changed,
+    // so nothing typed then is lost, and why it couldn't, when it couldn't
     @property({ type: Boolean })
     busy = false;
 
@@ -158,7 +159,7 @@ export class AgentEditor extends Panel<AgentEditorItem> {
                 <cds-inline-notification kind="info" title="Built in" hide-close-button low-contrast
                     subtitle="The server creates this agent as it ships each time it starts, so it can't be changed, or deleted. Copy it, under another name, to change it."></cds-inline-notification>
             ` : nothing}
-            <textarea spellcheck="false" wrap="off" aria-label="Definition, as YAML" ?readonly=${builtin} .value=${item.yaml} @focus=${this.clearError} @input=${this.clearError}></textarea>
+            <textarea spellcheck="false" wrap="off" aria-label="Definition, as YAML" ?readonly=${builtin || this.busy} .value=${item.yaml} @focus=${this.clearError} @input=${this.clearError}></textarea>
             ${this.error ? html`<cds-inline-notification kind="error" title="It couldn't be saved" subtitle=${this.error} hide-close-button low-contrast></cds-inline-notification>` : nothing}
             <div class="actions">
                 ${builtin ? html`
