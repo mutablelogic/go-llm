@@ -35,6 +35,30 @@ func Test_Sessions(t *testing.T) {
 		return r, store
 	}
 
+	t.Run("Title", func(t *testing.T) {
+		// A session is created with its title, without the space around it,
+		// or none, when it's empty, and it's changed, or cleared, when it's
+		// updated, and kept, when it isn't
+		r, _ := newRegistry(t)
+		session, err := r.CreateSession(ctx, schema.SessionMeta{Title: types.Ptr("  Trip to Lisbon "), GeneratorMeta: meta.GeneratorMeta})
+		require.NoError(t, err)
+		assert.Equal(t, "Trip to Lisbon", types.Value(session.Title))
+		untitled, err := r.CreateSession(ctx, schema.SessionMeta{Title: types.Ptr(" "), GeneratorMeta: meta.GeneratorMeta})
+		require.NoError(t, err)
+		assert.Nil(t, untitled.Title)
+
+		updated, err := r.UpdateSession(ctx, session.ID, schema.SessionMeta{GeneratorMeta: schema.GeneratorMeta{System: types.Ptr("Be kind")}})
+		require.NoError(t, err)
+		assert.Equal(t, "Trip to Lisbon", types.Value(updated.Title))
+		updated, err = r.UpdateSession(ctx, session.ID, schema.SessionMeta{Title: types.Ptr("Lisbon")})
+		require.NoError(t, err)
+		assert.Equal(t, "Lisbon", types.Value(updated.Title))
+		assert.Equal(t, "Be kind", types.Value(updated.System))
+		updated, err = r.UpdateSession(ctx, session.ID, schema.SessionMeta{Title: types.Ptr("")})
+		require.NoError(t, err)
+		assert.Nil(t, updated.Title)
+	})
+
 	t.Run("Create", func(t *testing.T) {
 		// A session is created with the settings, and no messages
 		r, _ := newRegistry(t)

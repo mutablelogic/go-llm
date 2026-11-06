@@ -1,6 +1,8 @@
-// The page of the chats, whose heading is the model of the chat which is
-// open, with the tokens of its conversation, and whether someone is typing,
-// or its model is replying, and whose action starts a new chat. Beneath it
+// The page of the chats, whose heading is the title of the chat which is
+// open, or its model, when it has none, beneath which is its model, when
+// it has a title, the tokens of its conversation, and whether someone is
+// typing, or its model is replying, and whose action starts a new chat.
+// Beneath it
 // is the list of chats, with the actions of the one which is open, beside
 // its conversation.
 

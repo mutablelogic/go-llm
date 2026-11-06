@@ -262,14 +262,19 @@ export class ChatController {
     }
 
     // describe returns what's said of the chat which is open, beneath its
-    // heading: the tokens of its conversation, and whether someone is
-    // typing, or its model is replying, or how to start one, when none is
+    // heading: its model, when the heading is its title, the tokens of its
+    // conversation, and whether someone is typing, or its model is
+    // replying, or how to start one, when none is
     private describe(): string {
         const session = this.session;
         if (!session) {
             return 'Choose a chat, or start a new one';
         }
+        // The model, when the heading is the title, rather than the model
         const parts: string[] = [];
+        if (session.title && session.model) {
+            parts.push(session.model);
+        }
         const tokens = sessionTokens(session);
         if (tokens) {
             parts.push(`${tokens.toLocaleString()} tokens`);
@@ -456,7 +461,7 @@ export class ChatController {
     private render() {
         const { page, list, view, details } = this.views;
         if (page) {
-            page.heading = this.session?.model ?? 'Chat';
+            page.heading = this.session?.title || this.session?.model || 'Chat';
             page.description = this.describe();
         }
         if (details) {

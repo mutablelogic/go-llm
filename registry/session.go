@@ -79,8 +79,11 @@ func (r *Registry) CreateSession(ctx context.Context, meta schema.SessionMeta) (
 	)
 	defer func() { endSpan(err) }()
 
-	// A session is an event's only when the registry creates it, for an event
+	// A session is an event's only when the registry creates it, for an
+	// event, and its title is without the space around it, or none, when
+	// it's empty
 	meta.Event = false
+	meta.Title = schema.SessionMeta{}.Merge(schema.SessionMeta{Title: meta.Title}).Title
 	if r.sessionStore == nil {
 		return nil, errNoSessionStore
 	} else if err := validGeneratorMeta(meta.GeneratorMeta); err != nil {
@@ -221,9 +224,12 @@ func (r *Registry) UpdateSession(ctx context.Context, id uuid.UUID, meta schema.
 }
 
 // DeleteSession deletes the session with the identifier, with its messages,
-// and returns it, as it was, without them. Returns ErrNotFound when there's none, ErrConflict when it was
-// changed as it was deleted, and ErrServiceUnavailable when the registry has
-// no session store.
+// and returns it, as it was, without them, such as an event's, which is
+// created again, when the event runs again. Returns ErrNotFound when
+// there's none, ErrConflict when its model is replying, such as as an event
+// runs in it, so it's deleted once it's replied, or when it was changed as
+// it was deleted, and ErrServiceUnavailable when the registry has no
+// session store.
 func (r *Registry) DeleteSession(ctx context.Context, id uuid.UUID) (_ *schema.Session, err error) {
 	ctx, endSpan := otel.StartSpan(r.tracer, ctx, "llm.registry.DeleteSession",
 		attribute.String("arg.id", id.String()),
@@ -234,12 +240,15 @@ func (r *Registry) DeleteSession(ctx context.Context, id uuid.UUID) (_ *schema.S
 		return nil, errNoSessionStore
 	}
 
-	// A status isn't set as, or after, the session is deleted
+	// A status isn't set as, or after, the session is deleted, and a session
+	// which is replying isn't deleted, as what it replies would be lost
 	r.lifecycle.Lock()
 	defer r.lifecycle.Unlock()
 	session, err := r.sessionStore.Get(ctx, id)
 	if err != nil {
 		return nil, err
+	} else if r.sessionStatus(id) == schema.SessionReplying {
+		return nil, llm.ErrConflict.Withf("session %q is replying, so it can't be deleted until it has", id)
 	} else if err := r.sessionStore.Delete(ctx, id, session.Serial); err != nil {
 		return nil, err
 	}

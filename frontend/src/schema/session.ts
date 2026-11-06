@@ -66,6 +66,9 @@ export interface Session {
     serial: number;
     created?: string;
     modified?: string;
+    // What it's about, for people, such as an event's title, which its
+    // session takes
+    title?: string;
     model?: string;
     system?: string;
     tools?: string[];
@@ -80,6 +83,7 @@ export interface Session {
 
 // SessionMeta is the settings of a session, which it's created with
 export interface SessionMeta {
+    title?: string;
     model?: string;
     system?: string;
     tools?: string[];

@@ -105,6 +105,8 @@ func Test_SessionEvents(t *testing.T) {
 			got, err = r.SetSessionStatus(ctx, session.ID, schema.SessionTyping)
 			require.NoError(t, err)
 			assert.Equal(t, schema.SessionReplying, got.Status)
+			_, err = r.DeleteSession(ctx, session.ID)
+			assert.ErrorIs(t, err, llm.ErrConflict, "it isn't deleted as it's replying")
 			_, err = r.UpdateSession(ctx, session.ID, schema.SessionMeta{GeneratorMeta: schema.GeneratorMeta{System: types.Ptr("Be brief")}})
 			require.NoError(t, err)
 		})

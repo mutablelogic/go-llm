@@ -48,14 +48,15 @@ func Test_RunEvent(t *testing.T) {
 	parent, err := r.CreateSession(ctx, schema.SessionMeta{GeneratorMeta: schema.GeneratorMeta{Model: types.Ptr("model"), Tools: []string{"*"}}})
 	require.NoError(t, err)
 
-	// The event's session is created, with its identifier, and the model of
-	// the session it's for, and the event agent is run with it, and replies
-	// with the message, and its importance
+	// The event's session is created, with its identifier, the model of the
+	// session it's for, and the event's title, and the event agent is run
+	// with it, and replies with the message, and its importance
 	event := uuid.New()
-	response, err := r.RunEvent(ctx, event, schema.RunEventRequest{Session: parent.ID, Input: input, Without: []string{"heartbeat"}}, nil)
+	response, err := r.RunEvent(ctx, event, schema.RunEventRequest{Session: parent.ID, Input: input, Without: []string{"heartbeat"}, Title: " Call "}, nil)
 	require.NoError(t, err)
 	assert.Equal(t, event, response.Session.ID)
 	assert.Equal(t, "scripted:model", types.Value(response.Session.Model))
+	assert.Equal(t, "Call", types.Value(response.Session.Title))
 	assert.True(t, response.Session.Event, "it's an event's session")
 	assert.False(t, parent.Event)
 
@@ -99,20 +100,37 @@ func Test_RunEvent(t *testing.T) {
 	_, err = tk.ToolNames(ctx, "agent:translate")
 	assert.NoError(t, err)
 
-	// And then it's the same session, which has each run
+	// And then it's the same session, which has each run, and keeps its
+	// title, when the event has none
 	response, err = r.RunEvent(ctx, event, schema.RunEventRequest{Session: parent.ID, Input: input}, nil)
 	require.NoError(t, err)
 	assert.Equal(t, event, response.Session.ID)
+	assert.Equal(t, "Call", types.Value(response.Session.Title))
 	messages, err = r.ListSessionMessages(ctx, event, schema.MessageListRequest{})
 	require.NoError(t, err)
 	assert.Equal(t, uint(runMessages+len(response.Run.Messages)), messages.Count)
 
-	// Which takes the model, when it's changed
+	// Which takes the model, and the title, when they're changed, such as
+	// when a heartbeat is renamed
 	_, err = r.UpdateSession(ctx, parent.ID, schema.SessionMeta{GeneratorMeta: schema.GeneratorMeta{Model: types.Ptr("other")}})
 	require.NoError(t, err)
-	response, err = r.RunEvent(ctx, event, schema.RunEventRequest{Session: parent.ID, Input: input}, nil)
+	response, err = r.RunEvent(ctx, event, schema.RunEventRequest{Session: parent.ID, Input: input, Title: "Call Mum"}, nil)
 	require.NoError(t, err)
 	assert.Equal(t, "scripted:other", types.Value(response.Session.Model))
+	assert.Equal(t, "Call Mum", types.Value(response.Session.Title))
+
+	// Which can be deleted, and is created again, empty, with the event's
+	// title, when the event runs again
+	p.replies = append(p.replies, reply())
+	_, err = r.DeleteSession(ctx, event)
+	require.NoError(t, err)
+	response, err = r.RunEvent(ctx, event, schema.RunEventRequest{Session: parent.ID, Input: input, Title: "Call Mum"}, nil)
+	require.NoError(t, err)
+	assert.Equal(t, event, response.Session.ID)
+	assert.Equal(t, "Call Mum", types.Value(response.Session.Title))
+	messages, err = r.ListSessionMessages(ctx, event, schema.MessageListRequest{})
+	require.NoError(t, err)
+	assert.Equal(t, uint(len(response.Run.Messages)), messages.Count, "it has only the last run")
 
 	// An agent which the event's agent calls, whose own tools are the
 	// heartbeats', isn't given them either

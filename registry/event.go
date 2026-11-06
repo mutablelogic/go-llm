@@ -40,7 +40,8 @@ const DefaultMaxEvents = 2
 // the session, with its usage, so it has each run, which is shown as it's
 // replying, as the agent runs. The session is
 // created, when there's none, with the model of the session the event is
-// for, and takes that model again, when it's changed, each time it's run,
+// for, and the event's title, and takes them again, when they've changed,
+// each time it's run,
 // and an agent which has no model, such as the event agent, is run with it,
 // and with the tools of the session the event is for, apart from those of
 // the namespaces it's without, such as heartbeat, so an event doesn't
@@ -258,12 +259,14 @@ func (r *Registry) eventSession(ctx context.Context, id uuid.UUID, req schema.Ru
 	}
 	parent := r.withoutMessages(stored)
 
-	// The event's session, which is created, when there's none, or takes the
-	// model, when it's changed. One created at the same time, such as by
-	// another server, is the one returned.
+	// The event's session, which is created, when there's none, with the
+	// event's title, or takes the model, and the title, when they've changed,
+	// such as when a heartbeat is renamed. One created at the same time, such
+	// as by another server, is the one returned.
+	title := schema.SessionMeta{}.Merge(schema.SessionMeta{Title: types.Ptr(req.Title)}).Title
 	session, err := r.sessionStore.Get(ctx, id)
 	if errors.Is(err, llm.ErrNotFound) {
-		created, err := r.sessionStore.Create(ctx, id, schema.SessionMeta{GeneratorMeta: schema.GeneratorMeta{Model: parent.Model}, Event: true})
+		created, err := r.sessionStore.Create(ctx, id, schema.SessionMeta{Title: title, GeneratorMeta: schema.GeneratorMeta{Model: parent.Model}, Event: true})
 		if errors.Is(err, llm.ErrConflict) {
 			session, err = r.sessionStore.Get(ctx, id)
 		} else if err == nil {
@@ -276,8 +279,15 @@ func (r *Registry) eventSession(ctx context.Context, id uuid.UUID, req schema.Ru
 	} else if err != nil {
 		return nil, nil, err
 	}
+	var change schema.SessionMeta
 	if types.Value(session.Model) != types.Value(parent.Model) {
-		updated, err := r.UpdateSession(ctx, id, schema.SessionMeta{GeneratorMeta: schema.GeneratorMeta{Model: parent.Model}})
+		change.Model = parent.Model
+	}
+	if title != nil && types.Value(session.Title) != *title {
+		change.Title = title
+	}
+	if !change.IsZero() {
+		updated, err := r.UpdateSession(ctx, id, change)
 		return updated, parent, err
 	}
 	return r.withoutMessages(session), parent, nil
