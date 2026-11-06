@@ -435,6 +435,49 @@ func Test_AgentLoopSchema(t *testing.T) {
 		assert.Len(t, p.asked, 2)
 	})
 
+	t.Run("TextResult", func(t *testing.T) {
+		// The model replies with text which is what the respond tool would
+		// have been called with, or its result, which conforms, apart from a
+		// fence around it, so it's the reply, without asking again
+		for name, reply := range map[string]string{
+			"Input":         `{"result":{"city":"Berlin"}}`,
+			"Result":        `{"city":"Berlin"}`,
+			"Fenced":        "```json\n{\"result\":{\"city\":\"Berlin\"}}\n```",
+			"FencedNoLang":  "```\n{\"city\":\"Berlin\"}\n```",
+			"FencedOneLine": "```{\"city\":\"Berlin\"}```",
+		} {
+			t.Run(name, func(t *testing.T) {
+				p := newScripted(text(reply))
+				r, model := newAgentLoop(t, p)
+				added, _, err := r.AgentLoop(ctx, model, []llm.Message{user(t, "Where?")}, tools, nil, schema)
+				require.NoError(t, err)
+				require.Len(t, added, 1)
+				assert.Equal(t, providerschema.ResultStop, added[0].Result)
+				assert.JSONEq(t, `{"city":"Berlin"}`, added[0].Text())
+				assert.Len(t, p.asked, 1, "it isn't asked again")
+			})
+		}
+
+		// Even on the last iteration it's allowed, it's the reply, rather than
+		// the loop stopping, as it's been asked as many times as it can be
+		last := newScripted(text(`{"result":{"city":"Berlin"}}`))
+		lastLoop, lastModel := newAgentLoop(t, last)
+		added, _, err := lastLoop.AgentLoop(ctx, lastModel, []llm.Message{user(t, "Where?")}, tools, nil, schema, llm.WithMaxIterations(1))
+		require.NoError(t, err)
+		require.Len(t, added, 1)
+		assert.Equal(t, providerschema.ResultStop, added[0].Result)
+		assert.JSONEq(t, `{"city":"Berlin"}`, added[0].Text())
+
+		// Text which is JSON, but doesn't conform, is asked for again
+		p := newScripted(text(`{"town":"Berlin"}`), call(toolkit.RespondName, `{"result":{"city":"Berlin"}}`))
+		r, model := newAgentLoop(t, p)
+		added, _, err = r.AgentLoop(ctx, model, []llm.Message{user(t, "Where?")}, tools, nil, schema)
+		require.NoError(t, err)
+		require.Len(t, added, 3)
+		assert.Equal(t, toolkit.RespondNudge, added[1].Text())
+		assert.JSONEq(t, `{"city":"Berlin"}`, added[2].Text())
+	})
+
 	t.Run("DoesntConform", func(t *testing.T) {
 		// The result doesn't conform, so the model is told why
 		p := newScripted(call(toolkit.RespondName, `{"result":{"town":"Berlin"}}`), call(toolkit.RespondName, `{"result":{"city":"Berlin"}}`))
