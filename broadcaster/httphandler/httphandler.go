@@ -21,7 +21,7 @@ var readme []byte
 // LIFECYCLE
 
 // RegisterHandlers registers the broadcaster's API with the router, which
-// streams its events at llm/event, with the "Events" tag
+// streams its events at events, with the "Events" tag
 func RegisterHandlers(b *broadcaster.Broadcaster, router *httprouter.Router) error {
 	return eventHandlers(b, router, openapi.ParseMarkdown(readme))
 }

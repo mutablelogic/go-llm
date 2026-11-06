@@ -473,6 +473,12 @@ type RunEventRequest struct {
 	Agent   string          `json:"agent,omitempty" help:"Name of the agent which runs the event, which is event, unless it's given" example:"event" optional:""`
 	Without []string        `json:"without,omitempty" help:"Namespaces of the session's tools which the agent isn't given, such as heartbeat, so an event doesn't schedule events" example:"[\"heartbeat\"]" optional:""`
 	Input   json.RawMessage `json:"input,omitempty" help:"Input of the agent" example:"{\"title\":\"Morning briefing\",\"prompt\":\"Give David the weather in Berlin today\"}" optional:""`
+
+	// What the event is for, and when it was due, and fired, which its
+	// outcome has, when it's stored
+	Title     string    `json:"title,omitempty" help:"What the event is for" example:"Morning briefing" optional:""`
+	Scheduled time.Time `json:"scheduled,omitzero" help:"When the event was due" optional:""`
+	Fired     time.Time `json:"fired,omitzero" help:"When the event fired" optional:""`
 }
 
 // RunEventResponse is the session the event ran in, and what the agent which
@@ -480,4 +486,5 @@ type RunEventRequest struct {
 type RunEventResponse struct {
 	Session Session          `json:"session" help:"The session the event ran in, without its messages"`
 	Run     RunAgentResponse `json:"run" help:"What the agent which ran the event did, and replied"`
+	Event   *Event           `json:"event,omitempty" help:"The event's outcome, as it's stored, when there's an event store"`
 }

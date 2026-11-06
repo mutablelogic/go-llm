@@ -60,7 +60,7 @@ Unload a model by name, or alias, or by provider and name, such as `my-ollama:ge
 
 ## Session Operations
 
-Sessions are conversations with models, which the server keeps in its session store, such as files, or a database which other servers share, so they're kept when it restarts. A server without a session store doesn't have them, so they're not in its API. Sessions are returned without their messages, which are listed on their own, as there can be many. A session has its `id`, which the store sets, and its `serial`, which the store changes each time the session is stored, so a change is made to the session as it was last seen. It has the settings of how its model is asked: its `model`, `system` prompt, the `tools` it can call, its `opt` options and the `schema` of its reply, as for `POST /llm/ask`, which it needn't all have, such as when it inherits its model from another session. It has its `messages`, each with its `tokens`, and its `usage`: the tokens used by every request to its model, and, as of the last, the tokens of its conversation, of the messages sent to the model (`input`), of its replies (`output`), and of what's sent with them (`overhead`), such as the system prompt and the tools' definitions. It has its `status`, which isn't stored: `typing` while someone types a message in it, `replying` while its model replies, or `idle`. Each change to a session, and its status, is an event, which `GET /llm/event` streams, so a client, such as a second chat window on the same session, sees it.
+Sessions are conversations with models, which the server keeps in its session store, such as files, or a database which other servers share, so they're kept when it restarts. A server without a session store doesn't have them, so they're not in its API. Sessions are returned without their messages, which are listed on their own, as there can be many. A session has its `id`, which the store sets, and its `serial`, which the store changes each time the session is stored, so a change is made to the session as it was last seen. It has the settings of how its model is asked: its `model`, `system` prompt, the `tools` it can call, its `opt` options and the `schema` of its reply, as for `POST /llm/ask`, which it needn't all have, such as when it inherits its model from another session. It has its `messages`, each with its `tokens`, and its `usage`: the tokens used by every request to its model, and, as of the last, the tokens of its conversation, of the messages sent to the model (`input`), of its replies (`output`), and of what's sent with them (`overhead`), such as the system prompt and the tools' definitions. It has `event`, which is true when it's an event's, such as a heartbeat's, which runs in it, which only the registry sets, so the API ignores it, and which isn't chatted in, so chatting in it returns 403. It has its `status`, which isn't stored: `typing` while someone types a message in it, `replying` while its model replies, or `idle`. Each change to a session, and its status, is an event, which `GET /events` streams, so a client, such as a second chat window on the same session, sees it.
 
 ### GET /llm/session
 
@@ -93,6 +93,18 @@ Set a session's `status`, in the request body, to `typing`, as someone types a m
 ### DELETE /llm/session/{id}
 
 Delete a session by its identifier. Returns the deleted session. Returns 404 if there is no session with that identifier, or 409 if it was changed as it was deleted.
+
+### GET /llm/event
+
+List the outcomes of events, such as heartbeats which fired, which were run, the most recent first, with how many there are. Each has the session it `run` in, which has what it did, the `session` it's for, its `title`, its `message`, its `importance`, which is `ignore`, `notify` or `alert`, its `status`, and when it was `scheduled`, and `fired`. Its `status` is `ignored`, when there's nothing worth telling the person, and otherwise `pending`, until it's `notified`, as the person was told, or `delivered`, into the session it's for. With `session`, only the events for the session are listed, and with `status`, only those of the status. From the `offset`, and at most the `limit`. When an event's outcome is created, changed, or deleted, an event is published, whose `table` is `event`, whose `row` is its identifier, and whose data is the `session` it's for, and, unless it was deleted, its `serial` and `status`. Returns 400 if the session isn't a UUID, or the status isn't one.
+
+### GET /llm/event/{id}
+
+Get the outcome of the event with the identifier. Returns 404 if there's none.
+
+### DELETE /llm/event/{id}
+
+Delete the outcome of the event with the identifier, which leaves the session it ran in as it is. Returns the event, as it was. Returns 404 if there's none, or 409 if it was changed as it was deleted.
 
 ## Agent Operations
 

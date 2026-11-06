@@ -83,6 +83,10 @@ func (runner *RunServer) Run(ctx server.Cmd) error {
 	if err != nil {
 		return err
 	}
+	outcomes, err := newServerEventStore(ctx)
+	if err != nil {
+		return err
+	}
 	memories, err := newServerMemoryStore(ctx)
 	if err != nil {
 		return err
@@ -121,7 +125,14 @@ func (runner *RunServer) Run(ctx server.Cmd) error {
 				if err != nil {
 					return err
 				}
-				response, err := r.RunEvent(runCtx, fire.Heartbeat, registryschema.RunEventRequest{Session: fire.Session, Input: input, Without: []string{heartbeat.Name}}, nil)
+				response, err := r.RunEvent(runCtx, fire.Heartbeat, registryschema.RunEventRequest{
+					Session:   fire.Session,
+					Input:     input,
+					Without:   []string{heartbeat.Name},
+					Title:     fire.Title,
+					Scheduled: fire.Scheduled,
+					Fired:     fire.Fired,
+				}, nil)
 				if err != nil {
 					return err
 				}
@@ -129,7 +140,7 @@ func (runner *RunServer) Run(ctx server.Cmd) error {
 				return nil
 			}
 			return runner.Heartbeat.WithHeartbeats(ctx, &runner.RunServer, heartbeats, func(h *heartbeat.Heartbeats) error {
-				return runner.withToolkit(ctx, b, mem, h, &events, store, sessions, agents)
+				return runner.withToolkit(ctx, b, mem, h, &events, store, sessions, agents, outcomes)
 			}, heartbeat.WithBroadcaster(b), heartbeat.WithZone(zone), heartbeat.WithRun(run), heartbeat.WithSessions(func(ctx context.Context, id uuid.UUID) error {
 				// A heartbeat is for a session which exists
 				_, err := sessions.Get(ctx, id)
@@ -143,7 +154,7 @@ func (runner *RunServer) Run(ctx server.Cmd) error {
 // the heartbeats, as well as the tools whose credentials are set, and a
 // registry, with the stores, which runs the heartbeats which fire, once
 // it's set to, and fires them
-func (runner *RunServer) withToolkit(ctx server.Cmd, b *broadcaster.Broadcaster, mem *memory.Memory, h *heartbeat.Heartbeats, events *atomic.Pointer[registry.Registry], store registry.ProviderStore, sessions *sessionStore, agents *agentStore) error {
+func (runner *RunServer) withToolkit(ctx server.Cmd, b *broadcaster.Broadcaster, mem *memory.Memory, h *heartbeat.Heartbeats, events *atomic.Pointer[registry.Registry], store registry.ProviderStore, sessions *sessionStore, agents *agentStore, outcomes *eventStore) error {
 	return runner.Toolkit.WithToolkit(ctx, &runner.RunServer, func(tools *toolkit.Toolkit) error {
 		// The memory, whose system prompt has the time, and what's
 		// remembered, and whose tools remember it
@@ -190,7 +201,7 @@ func (runner *RunServer) withToolkit(ctx server.Cmd, b *broadcaster.Broadcaster,
 				return runner.RunServer.Run(ctx.WithContext(runCtx))
 			})
 			return group.Wait()
-		}, registry.WithBroadcaster(b), registry.WithProviderStore(store), registry.WithSessionStore(sessions), registry.WithAgentStore(agents), registry.WithToolkit(tools))
+		}, registry.WithBroadcaster(b), registry.WithProviderStore(store), registry.WithSessionStore(sessions), registry.WithAgentStore(agents), registry.WithEventStore(outcomes), registry.WithToolkit(tools))
 	}, toolkit.WithBroadcaster(b))
 }
 
@@ -271,6 +282,16 @@ func newServerMemoryStore(ctx server.Cmd) (*memoryStore, error) {
 		return nil, err
 	}
 	return newMemoryStore(file, dir), nil
+}
+
+// newServerEventStore returns the store of the outcomes of events, in files
+// in the directory of the command's defaults, beside the sessions
+func newServerEventStore(ctx server.Cmd) (*eventStore, error) {
+	dir, err := serverDir(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return newEventStore(dir)
 }
 
 // newServerHeartbeatStore returns the store of the heartbeats, in files in

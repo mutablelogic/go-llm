@@ -143,6 +143,12 @@ func (r *Registry) AgentStore() AgentStore {
 	return r.agentStore
 }
 
+// EventStore returns the store of the outcomes of the events which the
+// registry runs, or nil when it has none
+func (r *Registry) EventStore() EventStore {
+	return r.eventStore
+}
+
 // Toolkit returns the toolkit of the tools which the registry's models can
 // call, or nil when it has none
 func (r *Registry) Toolkit() *toolkit.Toolkit {

@@ -73,6 +73,9 @@ export interface Session {
     schema?: unknown;
     usage?: SessionUsage;
     status?: SessionStatus;
+    // Whether it's an event's session, such as a heartbeat's, which only the
+    // server sets, which isn't chatted in
+    event?: boolean;
 }
 
 // SessionMeta is the settings of a session, which it's created with

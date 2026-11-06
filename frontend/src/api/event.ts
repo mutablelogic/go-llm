@@ -14,7 +14,7 @@ const eventShutdown = 'shutdown';
 // called once the stream has started. The stream's pings are ignored.
 export async function watchEvents(fn: (event: Event) => void, filter: EventFilter = {}, signal?: AbortSignal, onOpen?: () => void): Promise<boolean> {
     let shutdown = false;
-    await requestStream('GET', '/llm/event', (name, data) => {
+    await requestStream('GET', '/events', (name, data) => {
         if (name === eventName) {
             fn(data as Event);
         } else if (name === eventShutdown) {

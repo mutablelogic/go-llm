@@ -42,7 +42,7 @@ func (c *Client) WatchEvents(ctx context.Context, fn func(schema.Event) error) e
 		return fnErr
 	}
 	err := c.DoWithContext(ctx, client.MethodGet, nil,
-		client.OptPath("llm", "event"),
+		client.OptPath("events"),
 		client.OptReqHeader("Accept", types.ContentTypeTextStream),
 		client.OptTextStreamCallback(callback),
 		client.OptNoTimeout(),

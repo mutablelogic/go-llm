@@ -20,6 +20,11 @@ import (
 // SessionMeta is a session's settings: how its model is asked
 type SessionMeta struct {
 	GeneratorMeta
+
+	// Event is whether the session is an event's, such as a heartbeat's,
+	// which the registry runs it in, so it isn't chatted in. It's set by the
+	// registry, rather than by its API, which ignores it.
+	Event bool `json:"event,omitempty" readonly:"" help:"Whether the session is an event's, such as a heartbeat's, which runs in it, so it isn't chatted in, which only the registry sets"`
 }
 
 // Session is a conversation with a model, as it's stored: its identifier,
@@ -157,9 +162,10 @@ func (s SessionMeta) IsZero() bool {
 }
 
 // Merge returns the settings, changed by those of the update, as
-// GeneratorMeta.Merge does
+// GeneratorMeta.Merge does. Whether it's an event's isn't changed, as the
+// registry sets it.
 func (s SessionMeta) Merge(update SessionMeta) SessionMeta {
-	return SessionMeta{GeneratorMeta: s.GeneratorMeta.Merge(update.GeneratorMeta)}
+	return SessionMeta{GeneratorMeta: s.GeneratorMeta.Merge(update.GeneratorMeta), Event: s.Event}
 }
 
 // Query returns the request as the parameters of a URL's query

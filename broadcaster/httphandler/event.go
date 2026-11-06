@@ -34,13 +34,13 @@ var eventWriteTimeout = 30 * time.Second
 
 func eventHandlers(b *broadcaster.Broadcaster, router *httprouter.Router, documentation *openapi.MarkdownDoc) error {
 	router.Spec().AddTag("Events", documentation.Section(2, "Event Operations").Body)
-	return router.Register("llm/event", nil, func(path httprequest.PathItem) {
+	return router.Register("events", nil, func(path httprequest.PathItem) {
 		path.Tag("Events")
 
 		// GET
 		path.Get(eventWatchHandler(b), func(op httprequest.PathOperation) {
 			op.Summary("Watch Events")
-			op.Description(documentation.Section(3, "GET /llm/event").Body)
+			op.Description(documentation.Section(3, "GET /events").Body)
 			op.TextStreamResponse(http.StatusOK)
 			op.ErrorResponse(http.StatusBadRequest, "Invalid request")
 			op.ErrorResponse(http.StatusNotAcceptable, "The response can't be any of the accepted types")

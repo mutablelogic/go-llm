@@ -20,7 +20,7 @@ type Client struct {
 
 // New returns a client of the broadcaster's API, at the URL, which is the
 // server's API endpoint, such as http://localhost:8084/api, with the
-// options. Each method adds its own path, such as llm/event, as the
+// options. Each method adds its own path, such as events, as the
 // broadcaster's handlers register them.
 func New(url string, opts ...client.ClientOpt) (*Client, error) {
 	c, err := client.New(append(opts, client.OptEndpoint(url))...)

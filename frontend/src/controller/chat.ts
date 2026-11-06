@@ -271,6 +271,12 @@ export class ChatController {
         this.render();
     }
 
+    // sessionID returns the identifier of the chat which is open, or
+    // undefined when none is
+    sessionID(): string | undefined {
+        return this.session?.id;
+    }
+
     // close closes the chat's panels, which are the new, or edited, chat,
     // and a message's details, such as when the chat page isn't shown, so
     // they don't stay open over another page
@@ -423,6 +429,7 @@ export class ChatController {
             page.heading = this.session?.model ?? 'Chat';
             page.description = this.describe();
             page.deletable = this.session !== undefined;
+            page.event = this.session?.event === true;
         }
         if (details) {
             details.message = this.selected;

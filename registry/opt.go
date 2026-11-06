@@ -24,6 +24,7 @@ type opt struct {
 	providerStore ProviderStore
 	sessionStore  SessionStore
 	agentStore    AgentStore
+	eventStore    EventStore
 	toolkit       *toolkit.Toolkit
 	broadcaster   *broadcaster.Broadcaster
 }
@@ -52,6 +53,7 @@ func (o *opt) defaults() {
 	o.providerStore = nil
 	o.sessionStore = nil
 	o.agentStore = nil
+	o.eventStore = nil
 	o.toolkit = nil
 	o.broadcaster = broadcaster.New()
 }
@@ -103,6 +105,20 @@ func WithAgentStore(store AgentStore) Opt {
 			return llm.ErrBadParameter.With("missing agent store")
 		}
 		o.agentStore = store
+		return nil
+	}
+}
+
+// WithEventStore sets the store of the outcomes of the events which the
+// registry runs, such as heartbeats which fire, so they can be seen, and
+// delivered. Without one, an event's outcome is only in the session it ran
+// in.
+func WithEventStore(store EventStore) Opt {
+	return func(o *opt) error {
+		if store == nil {
+			return llm.ErrBadParameter.With("missing event store")
+		}
+		o.eventStore = store
 		return nil
 	}
 }

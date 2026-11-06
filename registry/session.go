@@ -79,6 +79,8 @@ func (r *Registry) CreateSession(ctx context.Context, meta schema.SessionMeta) (
 	)
 	defer func() { endSpan(err) }()
 
+	// A session is an event's only when the registry creates it, for an event
+	meta.Event = false
 	if r.sessionStore == nil {
 		return nil, errNoSessionStore
 	} else if err := validGeneratorMeta(meta.GeneratorMeta); err != nil {
@@ -283,7 +285,8 @@ func (r *Registry) ForgetSessionMessages(ctx context.Context, id uuid.UUID) (_ *
 // tokens of its conversation, as of the reply. The reply is streamed to the
 // function as it's generated, when it isn't nil. Returns what was added,
 // with the session's serial, as it was stored. Returns ErrNotFound when
-// there's no session, ErrConflict when it was changed as the model replied,
+// there's no session, ErrForbidden when it's an event's, which isn't chatted
+// in, ErrConflict when it was changed as the model replied,
 // as the reply is to the conversation as it was, so isn't stored,
 // ErrServiceUnavailable when the registry has no session store, and the
 // errors of WithSession. The session is replying until the model has
@@ -305,6 +308,9 @@ func (r *Registry) Chat(ctx context.Context, id uuid.UUID, messages []llm.Messag
 	if err != nil {
 		r.lifecycle.RUnlock()
 		return nil, err
+	} else if session.Event {
+		r.lifecycle.RUnlock()
+		return nil, llm.ErrForbidden.Withf("session %q is an event's, which isn't chatted in", id)
 	}
 	replied := r.replying(id)
 	r.lifecycle.RUnlock()

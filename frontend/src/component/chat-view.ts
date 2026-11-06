@@ -152,6 +152,15 @@ export class ChatView extends LitElement {
             text-align: center;
         }
 
+        /* An event's session has a note where the box which sends a
+           question would be */
+        .event-note {
+            padding: 1rem 2rem;
+            border-top: 1px solid var(--cds-border-subtle-01);
+            color: var(--cds-text-secondary);
+            font-size: 0.875rem;
+        }
+
         cds-skeleton-text {
             padding: 1.5rem 2rem;
         }
@@ -195,6 +204,14 @@ export class ChatView extends LitElement {
     render() {
         if (!this.session) {
             return html`<div class="none">Choose a chat, or start a new one</div>`;
+        }
+        // An event's session, such as a heartbeat's, has what it did each
+        // time it ran, and isn't chatted in
+        if (this.session.event) {
+            return html`
+                <div class="conversation">${this.renderConversation()}</div>
+                <div class="event-note">This is an event's session: what a heartbeat did each time it fired. It isn't chatted in.</div>
+            `;
         }
         return html`
             <div class="conversation">${this.renderConversation()}</div>

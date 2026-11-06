@@ -3,6 +3,7 @@ package registry_test
 import (
 	"context"
 	"encoding/json"
+	"strings"
 	"testing"
 	"time"
 	"uuid"
@@ -54,6 +55,19 @@ func Test_RunEvent(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, event, response.Session.ID)
 	assert.Equal(t, "scripted:model", types.Value(response.Session.Model))
+	assert.True(t, response.Session.Event, "it's an event's session")
+	assert.False(t, parent.Event)
+
+	// Which isn't chatted in, and stays an event's when it's changed, and a
+	// session created by the API isn't an event's, whatever it says
+	_, err = r.Chat(ctx, event, []llm.Message{user(t, "Hello")}, nil)
+	assert.ErrorIs(t, err, llm.ErrForbidden)
+	updated, err := r.UpdateSession(ctx, event, schema.SessionMeta{GeneratorMeta: schema.GeneratorMeta{System: types.Ptr("Be brief")}, Event: false})
+	require.NoError(t, err)
+	assert.True(t, updated.Event)
+	created, err := r.CreateSession(ctx, schema.SessionMeta{GeneratorMeta: schema.GeneratorMeta{Model: types.Ptr("model")}, Event: true})
+	require.NoError(t, err)
+	assert.False(t, created.Event)
 
 	// With the tools of the session it's for, apart from the heartbeats'
 	require.NotEmpty(t, p.asked)
@@ -220,4 +234,90 @@ func Test_Ready(t *testing.T) {
 	}
 	cancel()
 	assert.NoError(t, <-done)
+}
+
+func Test_EventOutcomes(t *testing.T) {
+	ctx := context.Background()
+	input := json.RawMessage(`{"title":"Call","prompt":"Remind David to call his mother","context":"Now: 18:00"}`)
+	respond := func(message, importance string) *providerschema.Message {
+		return call(toolkit.RespondName, `{"result":{"message":"`+message+`","importance":"`+importance+`"}}`)
+	}
+
+	// A registry with an event store, and the agents the server has
+	events := test.NewEventStore()
+	r, err := registry.New(registry.WithToolkit(test.NewToolkit(t)), registry.WithAgentStore(test.NewAgentStore()), registry.WithSessionStore(test.NewSessionStore()), registry.WithEventStore(events))
+	require.NoError(t, err)
+	p := newScripted(respond("Call your mother", "alert"), respond("Nothing new", "ignore"))
+	require.NoError(t, r.Add("", p))
+	all, err := agents.All()
+	require.NoError(t, err)
+	for _, meta := range all {
+		_, _, err := r.CreateAgent(ctx, meta)
+		require.NoError(t, err)
+	}
+	parent, err := r.CreateSession(ctx, schema.SessionMeta{GeneratorMeta: schema.GeneratorMeta{Model: types.Ptr("model")}})
+	require.NoError(t, err)
+
+	// An event which is worth telling the person is pending, with its
+	// message, what it's for, and when it was due, and fired
+	event := uuid.New()
+	fired := time.Date(2026, 11, 6, 18, 0, 5, 0, time.UTC)
+	response, err := r.RunEvent(ctx, event, schema.RunEventRequest{Session: parent.ID, Input: input, Title: "Call", Scheduled: fired.Add(-5 * time.Second), Fired: fired}, nil)
+	require.NoError(t, err)
+	require.NotNil(t, response.Event)
+	pending := *response.Event
+	assert.Equal(t, event, pending.Run)
+	assert.Equal(t, parent.ID, pending.Session)
+	assert.Equal(t, "Call", pending.Title)
+	assert.Equal(t, "Call your mother", pending.Message)
+	assert.Equal(t, schema.ImportanceAlert, pending.Importance)
+	assert.Equal(t, schema.EventPending, pending.Status)
+	assert.Equal(t, fired, pending.Fired)
+
+	// One which isn't is ignored
+	response, err = r.RunEvent(ctx, event, schema.RunEventRequest{Session: parent.ID, Input: input, Title: "Call"}, nil)
+	require.NoError(t, err)
+	require.NotNil(t, response.Event)
+	assert.Equal(t, schema.EventIgnored, response.Event.Status)
+	assert.Equal(t, "Nothing new", response.Event.Message)
+
+	// Listed, the most recent first, and by session, and status
+	list, err := r.ListEvents(ctx, schema.EventListRequest{})
+	require.NoError(t, err)
+	require.Equal(t, uint(2), list.Count)
+	assert.Equal(t, response.Event.ID, list.Body[0].ID)
+	list, err = r.ListEvents(ctx, schema.EventListRequest{Status: schema.EventPending})
+	require.NoError(t, err)
+	require.Equal(t, uint(1), list.Count)
+	assert.Equal(t, pending.ID, list.Body[0].ID)
+	list, err = r.ListEvents(ctx, schema.EventListRequest{Status: " pending "})
+	require.NoError(t, err)
+	assert.Equal(t, uint(1), list.Count, "a status, with space around it")
+	list, err = r.ListEvents(ctx, schema.EventListRequest{Session: strings.ToUpper(parent.ID.String())})
+	require.NoError(t, err)
+	assert.Equal(t, uint(2), list.Count, "a session, in upper case")
+	list, err = r.ListEvents(ctx, schema.EventListRequest{Session: uuid.New().String()})
+	require.NoError(t, err)
+	assert.Zero(t, list.Count)
+	_, err = r.ListEvents(ctx, schema.EventListRequest{Session: "x"})
+	assert.ErrorIs(t, err, llm.ErrBadParameter)
+	_, err = r.ListEvents(ctx, schema.EventListRequest{Status: "lost"})
+	assert.ErrorIs(t, err, llm.ErrBadParameter)
+
+	// Got, and deleted
+	got, err := r.GetEvent(ctx, pending.ID)
+	require.NoError(t, err)
+	assert.Equal(t, pending, *got)
+	_, err = r.DeleteEvent(ctx, pending.ID)
+	require.NoError(t, err)
+	_, err = r.GetEvent(ctx, pending.ID)
+	assert.ErrorIs(t, err, llm.ErrNotFound)
+	_, err = r.DeleteEvent(ctx, pending.ID)
+	assert.ErrorIs(t, err, llm.ErrNotFound)
+
+	// Without an event store, the outcome isn't stored
+	noStore, err := registry.New()
+	require.NoError(t, err)
+	_, err = noStore.ListEvents(ctx, schema.EventListRequest{})
+	assert.ErrorIs(t, err, llm.ErrServiceUnavailable)
 }
