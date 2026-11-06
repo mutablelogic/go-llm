@@ -26,9 +26,9 @@ export const presets: Preset[] = [
     { id: 'eliza', label: 'Eliza, for testing', type: 'eliza', name: 'eliza', url: '', askURL: false, credential: 'none' },
 ];
 
-// fixedURLs are the URLs of the presets whose URL isn't asked for, which a
-// provider of theirs has, or none, for the type's default
-const fixedURLs = ['https://api.openai.com/v1', 'https://api.mistral.ai/v1', 'https://api.deepseek.com', 'https://api.elevenlabs.io/v1'];
+// fixedHosts are the hosts of the services whose URL isn't asked for, such
+// as Mistral's, which the server may store with a path, such as /v1
+const fixedHosts = ['api.openai.com', 'api.mistral.ai', 'api.deepseek.com', 'api.elevenlabs.io'];
 
 // presetOf returns the preset with the identifier, or the first
 export function presetOf(id?: string): Preset {
@@ -44,7 +44,16 @@ export function asksURL(type: string, url?: string): boolean {
     case 'gowhisper':
         return true;
     case 'openai':
-        return !!url && !fixedURLs.includes(url.replace(/\/+$/, ''));
+        return !!url && !fixedHosts.includes(hostOf(url));
     }
     return false;
+}
+
+// hostOf returns the URL's host, in lower case, or empty, when it isn't a URL
+function hostOf(url: string): string {
+    try {
+        return new URL(url).hostname.toLowerCase();
+    } catch {
+        return '';
+    }
 }
