@@ -1,7 +1,6 @@
 package httphandler
 
 import (
-	"bytes"
 	"io"
 	"mime"
 	"net/http"
@@ -9,6 +8,7 @@ import (
 
 	// Packages
 	llm "github.com/mutablelogic/go-llm"
+	providerschema "github.com/mutablelogic/go-llm/provider/schema"
 	registry "github.com/mutablelogic/go-llm/registry"
 	schema "github.com/mutablelogic/go-llm/registry/schema"
 	httprequest "github.com/mutablelogic/go-server/pkg/httprequest"
@@ -69,20 +69,27 @@ func speak(w http.ResponseWriter, r *http.Request, reg *registry.Registry, req s
 	if err != nil {
 		return err
 	}
-	data, err := llm.ReadAll(r.Context(), audio)
+	read, err := audio.Read(r.Context())
 	if err != nil {
 		return err
 	}
+
+	// The audio is written as it's read, rather than copied, with its size,
+	// when it's known, as it is when its data is in memory
 	name := "speech"
 	if exts, _ := mime.ExtensionsByType(audio.Type()); len(exts) > 0 {
 		name += exts[0]
 	}
 	binary := httpresponse.Binary{
 		ContentType: audio.Type(),
-		Size:        types.Ptr(int64(len(data))),
 		Path:        name,
 		Disposition: httpresponse.DispositionInline,
 		Meta:        schema.SpeakMeta{Model: reg.Name(model), Usage: usage},
 	}
-	return binary.Write(w, r, io.Reader(bytes.NewReader(data)))
+	if inline, ok := audio.(*providerschema.Resource); ok && len(inline.Data) > 0 {
+		binary.Size = types.Ptr(int64(len(inline.Data)))
+	}
+	return read(r.Context(), func(content io.Reader) error {
+		return binary.Write(w, r, content)
+	})
 }

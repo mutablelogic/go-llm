@@ -40,7 +40,8 @@ const defaultSpeakModelKey = "llm.speak_model"
 
 // Run writes the text, spoken by the model, as audio, to the file, or
 // standard output, and says what was written, when it's a file. A file
-// which isn't written whole is removed.
+// which isn't written whole is removed, but one which is, is kept, even
+// when the model can't be kept as the default.
 func (cmd *SpeakCmd) Run(ctx server.Cmd) (err error) {
 	model := strings.TrimSpace(cmd.Model)
 	if model == "" {
@@ -74,16 +75,18 @@ func (cmd *SpeakCmd) Run(ctx server.Cmd) (err error) {
 	// terminal, as it's binary
 	var w io.Writer = os.Stdout
 	toFile := cmd.Output != "" && cmd.Output != "-"
+	written := false
 	if toFile {
 		var f *os.File
 		if f, err = os.Create(cmd.Output); err != nil {
 			return err
 		}
 		defer func() {
-			if closeErr := f.Close(); err == nil {
+			closeErr := f.Close()
+			if err == nil {
 				err = closeErr
 			}
-			if err != nil {
+			if !written || closeErr != nil {
 				_ = os.Remove(cmd.Output)
 			}
 		}()
@@ -97,6 +100,7 @@ func (cmd *SpeakCmd) Run(ctx server.Cmd) (err error) {
 		if err != nil {
 			return err
 		}
+		written = true
 		if meta.Model != "" {
 			if err := ctx.Set(defaultSpeakModelKey, meta.Model); err != nil {
 				return err

@@ -51,8 +51,14 @@ var audioTypes = map[string]string{
 	"aac":  "audio/aac",
 	"flac": "audio/flac",
 	"wav":  "audio/wav",
-	"pcm":  "audio/L16",
 }
+
+// pcmRate and pcmChannels are the rate, and channels, of the PCM which
+// OpenAI's speech models return, which is 16-bit little-endian
+const (
+	pcmRate     = 24000
+	pcmChannels = 1
+)
 
 ///////////////////////////////////////////////////////////////////////////////
 // PUBLIC METHODS
@@ -125,6 +131,11 @@ func speak(ctx context.Context, c *client.Client, req speechRequest, path client
 		return nil, err
 	} else if len(audio.data) == 0 {
 		return nil, llm.ErrServiceUnavailable.With("no audio")
+	}
+	// Raw PCM, which is little-endian, is audio/L16, which is big-endian,
+	// with its rate, and channels
+	if req.ResponseFormat == "pcm" {
+		return schema.PCM16(audio.data, pcmRate, pcmChannels), nil
 	}
 	contentType := audio.contentType
 	if mediaType, _, err := mime.ParseMediaType(contentType); err != nil || mediaType == types.ContentTypeBinary || !strings.HasPrefix(mediaType, "audio/") {

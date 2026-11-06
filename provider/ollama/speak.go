@@ -36,6 +36,15 @@ type audioResponse struct {
 }
 
 var _ llm.Speaker = (*Client)(nil)
+
+// pcmRate and pcmChannels are the rate, and channels, of the PCM which
+// Ollama's speech models return, which is 16-bit little-endian, as
+// OpenAI's is
+const (
+	pcmRate     = 24000
+	pcmChannels = 1
+)
+
 var _ client.Unmarshaler = (*audioResponse)(nil)
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -68,13 +77,15 @@ func (c *Client) Speak(ctx context.Context, model llm.Model, text string, opts .
 		return nil, llm.Usage{}, llm.ErrServiceUnavailable.With("no audio")
 	}
 
-	// The audio's type, or the format's, when the response's isn't audio
+	// Raw PCM, which is little-endian, is audio/L16, which is big-endian,
+	// with its rate, and channels, and otherwise the audio's type, or wav,
+	// when the response's isn't audio
+	if req.ResponseFormat == "pcm" {
+		return schema.PCM16(audio.data, pcmRate, pcmChannels), llm.Usage{}, nil
+	}
 	contentType := audio.contentType
 	if mediaType, _, err := mime.ParseMediaType(contentType); err != nil || !strings.HasPrefix(mediaType, "audio/") {
 		contentType = "audio/wav"
-		if req.ResponseFormat == "pcm" {
-			contentType = "audio/L16"
-		}
 	}
 	return &schema.Resource{ResourceMeta: schema.ResourceMeta{ContentType: contentType, Data: audio.data}}, llm.Usage{}, nil
 }

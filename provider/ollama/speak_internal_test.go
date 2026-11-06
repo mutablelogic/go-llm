@@ -44,6 +44,11 @@ func Test_Speak(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "RIFF....WAVE", string(data))
 
+	// PCM is audio/L16, with its rate, and channels
+	audio, _, err = c.Speak(context.Background(), model, "Hello", llm.WithOpt(llm.AudioFormatKey, "pcm"))
+	require.NoError(t, err)
+	assert.Equal(t, "audio/l16; channels=1; rate=24000", audio.Type())
+
 	// A voice the model hasn't is an error, as are options which aren't for
 	// speech, and no text
 	_, _, err = c.Speak(context.Background(), model, "Hello", llm.WithOpt(llm.VoiceKey, "nobody"))

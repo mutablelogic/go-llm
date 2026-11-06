@@ -5,6 +5,7 @@ import (
 	"mime"
 	"path"
 	"slices"
+	"strconv"
 	"strings"
 )
 
@@ -48,4 +49,17 @@ func AudioName(name, contentType string) string {
 		return "audio" + exts[0]
 	}
 	return "audio"
+}
+
+// PCM16 returns raw audio, of signed 16-bit little-endian samples, at the
+// rate, with the channels, as speech models return PCM, as audio/L16,
+// whose samples are big-endian, and which has its rate and channels, so
+// it's the audio it says it is. A trailing odd byte is left out.
+func PCM16(data []byte, rate, channels int) *Resource {
+	samples := make([]byte, len(data)&^1)
+	for i := 0; i+1 < len(data); i += 2 {
+		samples[i], samples[i+1] = data[i+1], data[i]
+	}
+	contentType := mime.FormatMediaType("audio/L16", map[string]string{"rate": strconv.Itoa(rate), "channels": strconv.Itoa(channels)})
+	return &Resource{ResourceMeta: ResourceMeta{ContentType: contentType, Data: samples}}
 }

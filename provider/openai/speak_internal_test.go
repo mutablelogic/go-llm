@@ -46,6 +46,16 @@ func Test_Speak(t *testing.T) {
 	assert.Equal(t, "wav", body.ResponseFormat)
 	assert.Equal(t, "audio/wav", audio.Type())
 
+	// PCM, which is little-endian, is audio/L16, which is big-endian, with
+	// its rate, and channels
+	contentType = "audio/pcm"
+	audio, _, err = c.Speak(ctx, model, "Hello", llm.WithOpt(llm.AudioFormatKey, "pcm"))
+	require.NoError(t, err)
+	assert.Equal(t, "audio/l16; channels=1; rate=24000", audio.Type())
+	data, err := llm.ReadAll(ctx, audio)
+	require.NoError(t, err)
+	assert.Equal(t, "uaid", string(data), "audio is swapped in pairs, without its trailing odd byte")
+
 	// Options which aren't for speech aren't sent
 	_, _, err = c.Speak(ctx, model, "Hello", llm.WithOpt(llm.TemperatureKey, 0.5))
 	assert.ErrorIs(t, err, llm.ErrBadParameter)
