@@ -66,7 +66,7 @@ func (h *Heartbeats) Run(ctx context.Context, logger *slog.Logger) error {
 	if h.broadcaster != nil {
 		events := make(chan eventschema.Event, eventBuffer)
 		if done, err := h.broadcaster.Watch(ctx, events); err != nil {
-			logger.WarnContext(ctx, "heartbeats of deleted sessions won't be deleted, until they're due", "error", err)
+			logger.WarnContext(ctx, "heartbeats of deleted sessions won't be deleted, until they're due", "error", err.Error())
 		} else {
 			go deleted.read(events, done)
 		}
@@ -102,7 +102,7 @@ func (h *Heartbeats) tick(ctx context.Context, logger *slog.Logger) {
 	now := h.now()
 	heartbeats, err := h.store.List(ctx)
 	if err != nil {
-		logger.ErrorContext(ctx, "heartbeats not read", "error", err)
+		logger.ErrorContext(ctx, "heartbeats not read", "error", err.Error())
 		return
 	}
 
@@ -121,7 +121,7 @@ func (h *Heartbeats) tick(ctx context.Context, logger *slog.Logger) {
 				}
 			}
 			if err := h.fire(ctx, logger, heartbeat.ID, *next, now); err != nil {
-				logger.ErrorContext(ctx, "heartbeat not fired", "heartbeat", heartbeat.ID, "title", heartbeat.Title, "error", err)
+				logger.ErrorContext(ctx, "heartbeat not fired", "heartbeat", heartbeat.ID, "title", heartbeat.Title, "error", err.Error())
 			}
 		}
 	}
@@ -163,7 +163,7 @@ func (h *Heartbeats) fire(ctx context.Context, logger *slog.Logger, id uuid.UUID
 		}
 		go func() {
 			if err := h.run(ctx, event); err != nil {
-				logger.ErrorContext(ctx, "heartbeat not run", "heartbeat", event.Heartbeat, "title", event.Title, "error", err)
+				logger.ErrorContext(ctx, "heartbeat not run", "heartbeat", event.Heartbeat, "title", event.Title, "error", err.Error())
 			}
 		}()
 	}
@@ -195,7 +195,7 @@ func (h *Heartbeats) cleanup(ctx context.Context, logger *slog.Logger, heartbeat
 			kept = append(kept, heartbeat)
 		case errors.Is(err, llm.ErrNotFound):
 		case err != nil:
-			logger.ErrorContext(ctx, "heartbeat not deleted", "heartbeat", heartbeat.ID, "title", heartbeat.Title, "error", err)
+			logger.ErrorContext(ctx, "heartbeat not deleted", "heartbeat", heartbeat.ID, "title", heartbeat.Title, "error", err.Error())
 			kept = append(kept, heartbeat)
 		default:
 			h.publish(eventschema.EventDelete, deletedHeartbeat)
@@ -221,7 +221,7 @@ func (h *Heartbeats) expired(heartbeat schema.Heartbeat, now time.Time) bool {
 // deleteSession deletes the heartbeats for the session, which was deleted
 func (h *Heartbeats) deleteSession(ctx context.Context, logger *slog.Logger, session uuid.UUID) {
 	if n, err := h.DeleteSession(ctx, session); err != nil {
-		logger.ErrorContext(ctx, "heartbeats of deleted session not deleted", "session", session, "error", err)
+		logger.ErrorContext(ctx, "heartbeats of deleted session not deleted", "session", session, "error", err.Error())
 	} else if n > 0 {
 		logger.InfoContext(ctx, "heartbeats of deleted session deleted", "session", session, "heartbeats", n)
 	}
