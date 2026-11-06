@@ -327,6 +327,15 @@ Tests which make requests to a provider are skipped with `-short`, and unless it
 
 ## Roadmap
 
+### Sessions
+
+- **Compaction**: a session's conversation is compacted, so it doesn't grow without end, and each request doesn't trim the same messages again.
+  - **Markers**: a message in a session which says its context starts there. The messages before the last marker aren't sent to the model, but are kept, so the UI still shows them, with a divider at each marker.
+  - **Summaries in the background**: a marker is added at once, and a built-in `compact` agent then writes a summary of what came before it, in the background, which is added to the marker. The summary is sent first in the context, in a `<system-reminder>` block, so the model knows what was said. Until it's written, the model has only what's after the marker.
+  - **When markers are added**: automatically, once a reply is stored, when the conversation fills more than about 80% of the model's context, and when it's asked for, with `POST /llm/session/{id}/compact`, and a Compact action in the chat. An event's session has a marker before each run, so a run sees only itself, and a summary of the runs before it.
+  - **Forgetting**: forgetting a session's messages could add a marker, without a summary, rather than delete them, so they're kept.
+  - The trimming each request does now, which drops tools' results, and the oldest turns, stays, for what's after the marker, so a conversation still fits the model's context while its summary is written.
+
 ### Agents and tools
 
 - **MCP**: connectors to MCP servers, whose tools are added to the toolkit, each in its own namespace, so models can call them.
