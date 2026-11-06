@@ -122,6 +122,24 @@ export class ModelsController extends ListController<Model> {
         }
     }
 
+    // disconnect shows the models are unavailable, as the server can't be
+    // reached, such as when it's stopping, and cancels the download which
+    // is in progress, so the server cancels it too, rather than waiting for
+    // it as it stops, and says why, in its panel
+    disconnect() {
+        super.disconnect();
+        const request = this.loading;
+        if (request) {
+            this.loading = undefined;
+            request.abort();
+            if (this.views.load) {
+                this.views.load.loading = false;
+                this.views.load.progress = undefined;
+                this.views.load.error = "The download was cancelled, as the server can't be reached, such as when it's stopping";
+            }
+        }
+    }
+
     // close closes the model which is shown, the form, and the panel which
     // loads a model, cancelling its download
     close() {
