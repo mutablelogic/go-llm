@@ -6,19 +6,21 @@ import { html, nothing } from 'lit';
 import { customElement, property } from 'lit/decorators.js';
 import iconLoader from '@carbon/web-components/es/globals/internal/icon-loader.js';
 import MachineLearningModel32 from '@carbon/icons/es/machine-learning-model/32.js';
-import Add16 from '@carbon/icons/es/add/16.js';
 import Edit16 from '@carbon/icons/es/edit/16.js';
 import TrashCan16 from '@carbon/icons/es/trash-can/16.js';
 import { Page } from './page';
 import { refreshAction } from './refresh';
+import { presets } from '../schema/preset';
 
 // Carbon components
 import '@carbon/web-components/es/components/button/index.js';
+import '@carbon/web-components/es/components/menu-button/index.js';
+import '@carbon/web-components/es/components/menu/index.js';
 
 @customElement('llm-models-page')
 export class ModelsPage extends Page {
-    // The names of the events fired to add a provider, and to edit, and
-    // delete, the one which is chosen
+    // The names of the events fired to add a provider, of the preset which is
+    // the detail, and to edit, and delete, the one which is chosen
     static readonly eventAdd = 'llm-models-page-add';
     static readonly eventEdit = 'llm-models-page-edit';
     static readonly eventDelete = 'llm-models-page-delete';
@@ -47,9 +49,14 @@ export class ModelsPage extends Page {
             ` : nothing}
             ${this.provider ? refreshAction(this) : html`
                 ${refreshAction(this, 'secondary')}
-                <cds-button kind="primary" size="md" @click=${() => this.dispatchEvent(new CustomEvent(ModelsPage.eventAdd))}>
-                    Add provider ${iconLoader(Add16, { slot: 'icon' })}
-                </cds-button>
+                <cds-menu-button label="Add provider" kind="primary" size="md">
+                    <cds-menu size="md">
+                        ${presets.map((preset) => html`
+                            <cds-menu-item label=${preset.label}
+                                @click=${() => this.dispatchEvent(new CustomEvent(ModelsPage.eventAdd, { detail: preset.id }))}></cds-menu-item>
+                        `)}
+                    </cds-menu>
+                </cds-menu-button>
             `}
         `;
     }

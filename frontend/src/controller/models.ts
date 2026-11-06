@@ -47,7 +47,7 @@ export class ModelsController extends ListController<Model> {
 
         // A provider is added, and the chosen one edited, and deleted, with
         // the form
-        views.page?.addEventListener(ModelsPage.eventAdd, () => this.showForm({ mode: 'add' }));
+        views.page?.addEventListener(ModelsPage.eventAdd, (e) => this.showForm({ mode: 'add', preset: (e as CustomEvent<string>).detail }));
         views.page?.addEventListener(ModelsPage.eventEdit, (e) => this.edit((e as CustomEvent<string>).detail));
         views.page?.addEventListener(ModelsPage.eventDelete, (e) => void this.delete((e as CustomEvent<string>).detail));
         views.form?.addEventListener(ProviderForm.eventCreate, (e) => void this.create((e as CustomEvent<ProviderMeta>).detail));

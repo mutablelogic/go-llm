@@ -1,15 +1,17 @@
-// A panel which adds a provider, from a preset, such as Ollama, or Mistral,
-// which sets its type, name and URL, or edits one: its URL, the patterns of
-// the names of its models, and the credential of its API key, by the name of
-// an environment variable on the server, so the key itself isn't stored. It
-// fires an event with what's set, and shows why it couldn't be, such as that
-// the provider can't be reached.
+// A panel which adds a provider, of a preset, such as Ollama, or Mistral,
+// which sets its type, name and URL, of which only a server of its own, such
+// as Ollama's, is asked for, or edits one: its URL, when it has its own, the
+// patterns of the names of its models, and the credential of its API key, by
+// the name of an environment variable on the server, so the key itself isn't
+// stored. It fires an event with what's set, and shows why it couldn't be,
+// such as that the provider can't be reached.
 
 import { css, html, nothing, type PropertyValues } from 'lit';
 import { keyed } from 'lit/directives/keyed.js';
 import { customElement, property, query, state } from 'lit/decorators.js';
 import { Panel } from './panel';
 import type { Provider, ProviderMeta } from '../schema/provider';
+import { asksURL, presetOf } from '../schema/preset';
 
 // Carbon components
 import '@carbon/web-components/es/components/select/index.js';
@@ -18,35 +20,9 @@ import '@carbon/web-components/es/components/text-input/index.js';
 import '@carbon/web-components/es/components/button/index.js';
 import '@carbon/web-components/es/components/notification/inline-notification.js';
 
-// ProviderFormItem is what the panel shows: a provider to add, or the
-// provider which is edited
-export type ProviderFormItem = { mode: 'add' } | { mode: 'edit'; provider: Provider };
-
-// Preset is a kind of provider which can be added: its type, its name, unless
-// another is given, its URL, which is the type's default, when it's empty,
-// whether its URL is asked for, and whether its credential is needed, or can
-// be given, or isn't asked for
-interface Preset {
-    id: string;
-    label: string;
-    type: string;
-    name: string;
-    url: string;
-    urlLabel?: string;
-    credential: 'required' | 'optional' | 'none';
-}
-
-// The presets, as the command-line tool's provider-create commands are
-const presets: Preset[] = [
-    { id: 'ollama', label: 'Ollama', type: 'ollama', name: 'ollama', url: 'http://localhost:11434', urlLabel: 'URL of the Ollama server', credential: 'optional' },
-    { id: 'openai', label: 'OpenAI', type: 'openai', name: 'openai', url: '', urlLabel: "URL, or empty for OpenAI's", credential: 'required' },
-    { id: 'mistral', label: 'Mistral', type: 'openai', name: 'mistral', url: 'https://api.mistral.ai/v1', credential: 'required' },
-    { id: 'deepseek', label: 'DeepSeek', type: 'openai', name: 'deepseek', url: 'https://api.deepseek.com', credential: 'required' },
-    { id: 'compatible', label: 'OpenAI-compatible server, such as LM Studio or vLLM', type: 'openai', name: '', url: 'http://localhost:1234/v1', urlLabel: 'URL of the server', credential: 'optional' },
-    { id: 'gowhisper', label: 'go-whisper', type: 'gowhisper', name: 'gowhisper', url: 'http://localhost:8081', urlLabel: 'URL of the go-whisper server', credential: 'none' },
-    { id: 'elevenlabs', label: 'ElevenLabs', type: 'elevenlabs', name: 'elevenlabs', url: '', credential: 'required' },
-    { id: 'eliza', label: 'Eliza, for testing', type: 'eliza', name: 'eliza', url: '', credential: 'none' },
-];
+// ProviderFormItem is what the panel shows: a provider to add, of a preset,
+// or the provider which is edited
+export type ProviderFormItem = { mode: 'add'; preset: string } | { mode: 'edit'; provider: Provider };
 
 // credentialPattern is what the name of an environment variable is
 const credentialPattern = /^[A-Za-z_][A-Za-z0-9_]*$/;
@@ -69,11 +45,8 @@ export class ProviderForm extends Panel<ProviderFormItem> {
     @property({ attribute: false })
     error?: string;
 
-    // The preset which is chosen, and how many times the panel has been
-    // opened, so its form is made again each time
-    @state()
-    private preset = presets[0];
-
+    // How many times the panel has been opened, so its form is made again
+    // each time
     @state()
     private opened = 0;
 
@@ -113,7 +86,6 @@ export class ProviderForm extends Panel<ProviderFormItem> {
     willUpdate(changed: PropertyValues<this>) {
         if (changed.has('item') && this.item && changed.get('item') === undefined) {
             this.opened++;
-            this.preset = presets[0];
             this.error = undefined;
         }
         super.willUpdate(changed);
@@ -124,7 +96,7 @@ export class ProviderForm extends Panel<ProviderFormItem> {
     }
 
     protected renderTitle(item: ProviderFormItem) {
-        return item.mode === 'add' ? 'Add provider' : `Edit ${item.provider.name}`;
+        return item.mode === 'add' ? `Add ${presetOf(item.preset).label} provider` : `Edit ${item.provider.name}`;
     }
 
     protected renderSubtitle(item: ProviderFormItem) {
@@ -133,22 +105,13 @@ export class ProviderForm extends Panel<ProviderFormItem> {
 
     protected renderBody(item: ProviderFormItem) {
         const editing = item.mode === 'edit' ? item.provider : undefined;
-        const preset = this.preset;
-        const credential = editing ? (editing.provider === 'eliza' ? 'none' : 'optional') : preset.credential;
-        const hasURL = editing ? editing.provider !== 'eliza' : preset.type !== 'eliza';
+        const preset = item.mode === 'add' ? presetOf(item.preset) : undefined;
+        const credential = preset ? preset.credential : editing?.provider === 'eliza' || editing?.provider === 'gowhisper' ? 'none' : 'optional';
+        const askURL = preset ? preset.askURL : asksURL(editing?.provider ?? '', editing?.url);
         return keyed(this.opened, html`
             <form @submit=${this.handleSubmit}>
-                ${editing ? nothing : html`
-                    <cds-select id="preset" label-text="Provider" value=${preset.id}
-                        @cds-select-selected=${(e: CustomEvent<{ value: string }>) => { this.preset = presets.find((p) => p.id === e.detail.value) ?? presets[0]; }}>
-                        ${presets.map((p) => html`<cds-select-item value=${p.id}>${p.label}</cds-select-item>`)}
-                    </cds-select>
-                    ${keyed(preset.id, html`
-                        <cds-text-input id="name" label="Name" helper-text="Its name in the server, which its models' names start with, such as ollama:llama3.2" value=${preset.name}></cds-text-input>
-                        ${hasURL ? html`<cds-text-input id="url" label=${preset.urlLabel ?? 'URL'} helper-text="Its API's URL, which is the default, when it's empty" value=${preset.url}></cds-text-input>` : nothing}
-                    `)}
-                `}
-                ${editing && hasURL ? html`<cds-text-input id="url" label="URL" helper-text="Its API's URL, or empty, for the default" value=${editing.url ?? ''}></cds-text-input>` : nothing}
+                ${preset ? html`<cds-text-input id="name" label="Name" helper-text="Its name in the server, which its models' names start with, such as ollama:llama3.2" value=${preset.name}></cds-text-input>` : nothing}
+                ${askURL ? html`<cds-text-input id="url" label=${preset?.urlLabel ?? 'URL'} helper-text="Its API's URL" value=${preset ? preset.url : editing?.url ?? ''}></cds-text-input>` : nothing}
                 ${credential === 'none' ? nothing : html`
                     <cds-text-input id="credential" label=${credential === 'required' ? 'API key credential' : 'API key credential (optional)'}
                         placeholder=${editing ? 'Unchanged' : 'Such as MISTRAL_API_KEY'}
@@ -179,8 +142,14 @@ export class ProviderForm extends Panel<ProviderFormItem> {
             this.error = `${credential} isn't the name of an environment variable, such as MISTRAL_API_KEY`;
             return;
         }
+        // The URL which is asked for, or, when it isn't, the preset's, or the
+        // provider's, as it is, as an update without one clears it
+        const item = this.item;
+        const url = this.urlInput
+            ? this.urlInput.value.trim()
+            : item.mode === 'add' ? presetOf(item.preset).url : item.provider.url ?? '';
         const meta: ProviderMeta = {
-            url: this.urlInput?.value.trim() || undefined,
+            url: url || undefined,
             include: lines(this.includeInput?.value),
             exclude: lines(this.excludeInput?.value),
         };
@@ -189,13 +158,14 @@ export class ProviderForm extends Panel<ProviderFormItem> {
         }
 
         // A provider to add has its name, and type, which aren't changed
-        if (this.item.mode === 'add') {
-            if (this.preset.credential === 'required' && !credential && !(this.preset.id === 'openai' && meta.url)) {
-                this.error = `${this.preset.label} needs the name of the environment variable which has its API key`;
+        if (item.mode === 'add') {
+            const preset = presetOf(item.preset);
+            if (preset.credential === 'required' && !credential) {
+                this.error = `${preset.label} needs the name of the environment variable which has its API key`;
                 return;
             }
             meta.name = this.nameInput?.value.trim() || undefined;
-            meta.provider = this.preset.type;
+            meta.provider = preset.type;
             this.dispatchEvent(new CustomEvent(ProviderForm.eventCreate, { detail: meta }));
             return;
         }
