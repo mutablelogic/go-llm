@@ -31,13 +31,15 @@ export class ToolsPage extends Page {
 
     protected renderActions(): unknown {
         const agents = this.namespace === 'agent';
+        // Refresh is on the right, so it stays where it is, as the agents are
+        // shown, or not
         return html`
-            ${refreshAction(this, agents ? 'secondary' : 'primary')}
             ${agents ? html`
                 <cds-button kind="primary" size="md" @click=${() => this.dispatchEvent(new CustomEvent(ToolsPage.eventNewAgent))}>
                     New agent ${iconLoader(Add16, { slot: 'icon' })}
                 </cds-button>
             ` : nothing}
+            ${refreshAction(this, agents ? 'secondary' : 'primary')}
         `;
     }
 }
