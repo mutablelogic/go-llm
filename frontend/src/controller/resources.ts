@@ -5,14 +5,16 @@
 // such as when a tool returns one.
 
 import { contentURL, createResource, deleteResource, listResources } from '../api/resource';
-import type { Resource } from '../schema/resource';
+import { resourceName, type Resource } from '../schema/resource';
 import type { NotificationController } from './notifications';
 import { ResourcePanel } from '../component/resource-panel';
 import { Panel } from '../component/panel';
 
 export class ResourcesController {
-    // The most resources which are listed
+    // The most resources which are listed, and which are known by their
+    // names, for the attachments of a chat's messages
     static readonly limit = 100;
+    static readonly indexLimit = 1000;
 
     private readonly panel: ResourcePanel | null;
     private readonly notifications: NotificationController;
@@ -25,6 +27,13 @@ export class ResourcesController {
     // How many files are being uploaded, by the chat they're uploaded to,
     // whose message isn't sent until they are
     private readonly uploads = new Map<string, number>();
+
+    // The chat whose resources are known, by their hashes, so the
+    // attachments of its messages are shown with their names, and the load
+    // of them which is in progress
+    private indexed?: string;
+    private readonly known = new Map<string, Resource>();
+    private indexing?: AbortController;
 
     // The load of the resources which is in progress, which is aborted when
     // another starts, so an older one doesn't replace a newer one
@@ -106,11 +115,46 @@ export class ResourcesController {
         return this.uploads.get(session) ?? 0;
     }
 
-    // refresh loads the resources again, when the panel is open
+    // refresh loads the resources again, when the panel is open, and those
+    // of the chat whose resources are known
     async refresh() {
-        if (this.session) {
-            await this.load();
+        await Promise.all([this.session ? this.load() : undefined, this.indexed ? this.index(this.indexed) : undefined]);
+    }
+
+    // index loads the chat's resources, so the attachments of its messages
+    // are shown with their names, which are forgotten for any other chat
+    async index(session: string) {
+        if (this.indexed !== session) {
+            this.indexed = session;
+            this.known.clear();
         }
+        this.indexing?.abort();
+        const indexing = new AbortController();
+        this.indexing = indexing;
+        try {
+            const list = await listResources(session, 0, ResourcesController.indexLimit, indexing.signal);
+            if (!indexing.signal.aborted && this.indexed === session) {
+                this.remember(list.body ?? []);
+            }
+        } catch {
+            // Attachments are shown by their types, without their names
+        }
+    }
+
+    // name returns the name of the resource an attachment refers to, by its
+    // URL, such as resource://<hash>, when it's known
+    name(url: string): string | undefined {
+        const hash = url.startsWith('resource://') ? url.slice('resource://'.length) : undefined;
+        const resource = hash ? this.known.get(hash) : undefined;
+        return resource ? resourceName(resource) : undefined;
+    }
+
+    // remember keeps the resources of the chat whose resources are known
+    private remember(resources: Resource[]) {
+        for (const resource of resources) {
+            this.known.set(resource.hash, resource);
+        }
+        this.changed();
     }
 
     // upload uploads the files to the chat, and attaches them to its next
@@ -120,7 +164,11 @@ export class ResourcesController {
         this.count(session, files.length);
         await Promise.all(files.map(async (file) => {
             try {
-                this.attach(session, [await createResource(session, file)]);
+                const resource = await createResource(session, file);
+                if (this.indexed === session) {
+                    this.known.set(resource.hash, resource);
+                }
+                this.attach(session, [resource]);
             } catch (error) {
                 this.notifications.error(`${file.name || 'The file'} couldn't be uploaded`, error);
             } finally {

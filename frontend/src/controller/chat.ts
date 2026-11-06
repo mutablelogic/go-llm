@@ -131,6 +131,9 @@ export class ChatController {
             return;
         }
         this.resources.close();
+        if (id) {
+            void this.resources.index(id);
+        }
         this.session = this.sessions?.find((session) => session.id === id) ?? (id ? { id, serial: 0 } : undefined);
         this.messages = undefined;
         this.selected = undefined;
@@ -241,8 +244,8 @@ export class ChatController {
         if (text) {
             content.push({ text });
         }
-        const question = [...attachments.map((resource) => `Attachment: ${resourceName(resource)}`), text].filter(Boolean).join('\n');
-        const pending: Pending = { question, streamed: [], earlier: this.messages.length, stale: false };
+        const question = [...attachments.map((resource) => resourceName(resource)), text].filter(Boolean).join(', ');
+        const pending: Pending = { question: text, attachments, streamed: [], earlier: this.messages.length, stale: false };
         this.pending.set(session.id, pending);
         this.render();
         try {
@@ -520,6 +523,8 @@ export class ChatController {
             view.details = this.details;
             const pending = this.session && this.pending.get(this.session.id);
             view.question = pending?.question;
+            view.questionAttachments = pending?.attachments ?? [];
+            view.attachmentName = (url) => this.resources.name(url);
             view.streamed = pending?.streamed ?? [];
             view.progress = pending?.progress;
             view.attachments = this.session ? this.resources.attachments(this.session.id) : [];
@@ -535,6 +540,7 @@ export class ChatController {
 // it's loaded again, once the reply is stored
 interface Pending {
     question: string;
+    attachments: Resource[];
     streamed: Piece[];
     progress?: string;
     earlier: number;
