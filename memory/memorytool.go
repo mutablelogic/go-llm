@@ -3,6 +3,7 @@ package memory
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"strings"
 	"time"
 
@@ -91,10 +92,15 @@ func (t *memories) Run(ctx context.Context, input json.RawMessage) (any, error) 
 	switch req.Operation {
 	case "remember":
 		// A change to a memory, without its description, keeps it, as a
-		// model which changes what's remembered may only give that
+		// model which changes what's remembered may only give that. A new
+		// memory, which isn't found, still needs one, which Remember says.
 		if strings.TrimSpace(req.Description) == "" && strings.TrimSpace(req.Key) != "" {
-			if memory, err := t.memory.GetMemory(ctx, strings.TrimSpace(req.Key)); err == nil {
+			memory, err := t.memory.GetMemory(ctx, strings.TrimSpace(req.Key))
+			switch {
+			case err == nil:
 				req.Description = memory.Description
+			case !errors.Is(err, llm.ErrNotFound):
+				return nil, err
 			}
 		}
 		memory, created, err := t.memory.Remember(ctx, schema.MemoryMeta{Key: req.Key, Description: req.Description, Body: req.Body}, req.Version)
