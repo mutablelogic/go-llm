@@ -158,10 +158,12 @@ flowchart LR
         what every session knows`"]
         Heartbeat["`**heartbeat**
         prompts which fire on a schedule`"]
+        Events["`**events**
+        heartbeats which fire, and triggers, run by the event agent, with their outcomes`"]
         Resource["`**resource**
         uploaded content, by its hash`"]
         Stores[("`**stores**
-        providers, sessions, agents, memory, heartbeats, resources`")]
+        providers, sessions, agents, memory, heartbeats, event outcomes, resources`")]
     end
 
     subgraph Providers
@@ -198,13 +200,17 @@ flowchart LR
     Toolkit --> Heartbeat
     API --> Heartbeat
     Heartbeat --> Stores
+    Heartbeat --> Events
+    API --> Events
+    Events --> Agents
+    Events --> Stores
     API --> Resource
     Resource --> Stores
     Toolkit --> Tools
     Registry --> Ollama & OpenAI & Anthropic & Whisper & ElevenLabs & Eliza
 
     classDef highlight fill:#e8f0fe,stroke:#1a73e8,stroke-width:2px,color:#111
-    class CLI,Client,UI,Registry,Toolkit,Agents,Memory,Heartbeat,Resource highlight
+    class CLI,Client,UI,Registry,Toolkit,Agents,Memory,Heartbeat,Events,Resource highlight
     class Ollama,OpenAI,Anthropic,Whisper,ElevenLabs,Eliza highlight
 ```
 
@@ -214,6 +220,7 @@ flowchart LR
 - The **toolkit**, in [toolkit](toolkit), holds the tools which models can call, in namespaces, such as `homeassistant` or `weatherapi`, and streams what they log, and their progress, as they run.
 - The **memory**, in [memory](memory), is what every session and agent knows: the details of the person, and of the assistant, such as their names, where the person is, and their time zone and language, each known, not known, or declined, and memories, which are what a model keeps beyond the conversation, such as the person's preferences, or the people in their life, under keys. It's the toolkit's `memory` namespace, whose system prompt has the details, the time, and how to search, keep and use memories, and whose tools remember them.
 - **Heartbeats**, in [heartbeat](heartbeat), are prompts for a session, which fire once, at a time, or again and again, on a schedule, such as a reminder, or a briefing each morning. A schedule is in its time zone, or the person's, which the memory has, so it follows them. It's the toolkit's `heartbeat` namespace, whose tool schedules them, and a heartbeat which fires is run, in a session of its own, whose identifier is the heartbeat's, with the model of the session it's for.
+- **Events**, in [registry](registry), are what happens when a heartbeat fires, or something else, such as a webhook, triggers one, with `POST /llm/event`. Each is run in the background by the `event` agent, in a session of its own, with the model and tools of the session it's for, and at most `--llm.max-events` at once. The agent decides what the person is told, and whether they're alerted, notified, or it's ignored. Its outcome is kept in a store, until it's delivered into the session it's for, and is listed at `/llm/event`, and in the web UI's Events panel.
 - **Resources**, in [resource](resource), are content, such as images, documents and audio, which is uploaded, kept once, by its SHA-256, and referred to as `resource://<hash>`. A resource is in a session, which it's deleted with, or on its own, when it's deleted once it hasn't been used for a day. Its manager keeps them in a store, such as files, or, later, a database.
 - **Agents** are named prompts, with their model, tools and the schemas of their input and reply, which models call as tools in the `agent` namespace. The [agents](agents) folder has examples, which the server adds when it starts.
 - The **providers**, in [provider](provider), each wrap a provider's API, and do what it can: generate, embed, read documents, or transcribe and translate speech.
