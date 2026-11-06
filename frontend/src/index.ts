@@ -32,7 +32,7 @@ import './page/tools-page';
 import './page/not-found-page';
 
 // Controllers
-import { config } from './api/client';
+import { config, latestConfig } from './api/client';
 import { EventsController } from './controller/events';
 import { ChatController } from './controller/chat';
 import { ModelsController } from './controller/models';
@@ -132,6 +132,17 @@ const events = new EventsController(notifications)
         chat.connect();
         models.connect();
         tools.connect();
+
+        // The server's version is read again, as it may have been updated
+        // while it was down, which the footer warns of
+        latestConfig().then((latest) => {
+            const footer = document.querySelector<SideNavFooter>('llm-side-nav-footer');
+            if (footer) {
+                footer.latest = latest;
+            }
+        }).catch(() => {
+            // It's read again when the server is next reached
+        });
     });
 // The panel which starts a new chat chooses its tools from them, as they are
 tools.onChange((all, namespaces) => {

@@ -31,18 +31,25 @@ export class ApiError extends Error {
 }
 
 // config returns the server's configuration, from config.json, which is
-// beside the page. It's read again when reading it failed.
+// beside the page, as it was when the page was loaded, which is the page's.
+// It's read again when reading it failed.
 export function config(): Promise<Config> {
-    configuration ??= fetch('config.json', { headers: { Accept: 'application/json' } }).then(async (response) => {
-        if (!response.ok) {
-            throw new ApiError(response.status, `configuration: ${response.statusText}`);
-        }
-        return response.json() as Promise<Config>;
-    }).catch((error) => {
+    configuration ??= latestConfig().catch((error) => {
         configuration = undefined;
         throw error;
     });
     return configuration;
+}
+
+// latestConfig returns the server's configuration, as it is now, rather
+// than as it was when the page was loaded, such as when the server was
+// updated while it was down, from config.json, which isn't cached
+export async function latestConfig(): Promise<Config> {
+    const response = await fetch('config.json', { headers: { Accept: 'application/json' }, cache: 'no-store' });
+    if (!response.ok) {
+        throw new ApiError(response.status, `configuration: ${response.statusText}`);
+    }
+    return response.json() as Promise<Config>;
 }
 
 // request makes a request to the path, beneath the API's prefix, and returns
