@@ -53,7 +53,7 @@ func Test_SessionStore(t *testing.T) {
 		// again, as when the server restarts
 		dir := t.TempDir()
 		store := newStore(t, dir)
-		created, err := store.Create(ctx, newMeta())
+		created, err := store.Create(ctx, uuid.Nil(), newMeta())
 		require.NoError(t, err)
 		assert.NotEqual(t, uuid.Nil(), created.ID)
 		assert.Equal(t, uint64(1), created.Serial)
@@ -94,7 +94,7 @@ func Test_SessionStore(t *testing.T) {
 		store := newStore(t, dir)
 		var ids []uuid.UUID
 		for range 3 {
-			session, err := store.Create(ctx, newMeta())
+			session, err := store.Create(ctx, uuid.Nil(), newMeta())
 			require.NoError(t, err)
 			ids = append(ids, session.ID)
 			time.Sleep(time.Millisecond)
@@ -126,7 +126,7 @@ func Test_SessionStore(t *testing.T) {
 	t.Run("Conflict", func(t *testing.T) {
 		// A session is changed, or deleted, only as it was last seen
 		store := newStore(t, t.TempDir())
-		created, err := store.Create(ctx, newMeta())
+		created, err := store.Create(ctx, uuid.Nil(), newMeta())
 		require.NoError(t, err)
 		_, err = store.Put(ctx, created)
 		require.NoError(t, err)
@@ -142,7 +142,7 @@ func Test_SessionStore(t *testing.T) {
 		// deleted already
 		dir := t.TempDir()
 		store := newStore(t, dir)
-		created, err := store.Create(ctx, newMeta())
+		created, err := store.Create(ctx, uuid.Nil(), newMeta())
 		require.NoError(t, err)
 		require.NoError(t, store.Delete(ctx, created.ID, created.Serial))
 		_, err = store.Get(ctx, created.ID)
@@ -156,7 +156,7 @@ func Test_SessionStore(t *testing.T) {
 	t.Run("Snapshot", func(t *testing.T) {
 		// A session which is returned doesn't share what's stored
 		store := newStore(t, t.TempDir())
-		created, err := store.Create(ctx, newMeta())
+		created, err := store.Create(ctx, uuid.Nil(), newMeta())
 		require.NoError(t, err)
 		*created.System = "Changed"
 		created.Opt["temperature"] = json.RawMessage(`1`)
@@ -171,7 +171,7 @@ func Test_SessionStore(t *testing.T) {
 		// which has a file, and removed from the defaults
 		dir := t.TempDir()
 		store := newStore(t, dir)
-		kept, err := store.Create(ctx, newMeta())
+		kept, err := store.Create(ctx, uuid.Nil(), newMeta())
 		require.NoError(t, err)
 		moved := schema.Session{ID: uuid.New(), Serial: 3, SessionMeta: newMeta(), Messages: []providerschema.Message{
 			{MessageMeta: providerschema.MessageMeta{Sender: "user", Content: []providerschema.ContentBlock{{Text: types.Ptr("Hi")}}}},

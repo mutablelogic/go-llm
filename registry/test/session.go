@@ -41,11 +41,16 @@ func NewSessionStore() *SessionStore {
 ///////////////////////////////////////////////////////////////////////////////
 // PUBLIC METHODS
 
-func (m *SessionStore) Create(_ context.Context, meta schema.SessionMeta) (schema.Session, error) {
+func (m *SessionStore) Create(_ context.Context, id uuid.UUID, meta schema.SessionMeta) (schema.Session, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	if id == uuid.Nil() {
+		id = uuid.NewV7()
+	} else if _, exists := m.sessions[id]; exists {
+		return schema.Session{}, llm.ErrConflict.Withf("session %q exists", id)
+	}
 	now := time.Now()
-	session := schema.Session{ID: uuid.NewV7(), Serial: 1, Created: now, Modified: now, SessionMeta: meta}
+	session := schema.Session{ID: id, Serial: 1, Created: now, Modified: now, SessionMeta: meta}
 	m.sessions[session.ID] = clone(session)
 	return clone(session), nil
 }

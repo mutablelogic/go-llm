@@ -16,6 +16,13 @@ import (
 ///////////////////////////////////////////////////////////////////////////////
 // PUBLIC METHODS
 
+// Ready returns a channel which is closed once Run has loaded the stored
+// agents, and synced the providers, and their models, when it starts, so
+// what needs them, such as heartbeats which are overdue, waits for it
+func (r *Registry) Ready() <-chan struct{} {
+	return r.ready
+}
+
 // Run keeps the registry current, until the context is cancelled, when it
 // returns nil: it pings the providers, and lists the models of those whose
 // models are stale, when it starts, and every PingInterval, so the
@@ -90,6 +97,7 @@ func (r *Registry) Run(ctx context.Context, logger *slog.Logger) error {
 		logError(s.sync(ctx, registryEvents))
 	}
 	r.refresh(ctx)
+	r.readyOnce.Do(func() { close(r.ready) })
 	ticker := time.NewTicker(PingInterval)
 	defer ticker.Stop()
 	for {

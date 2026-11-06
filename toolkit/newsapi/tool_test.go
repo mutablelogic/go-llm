@@ -124,6 +124,16 @@ func TestRun(t *testing.T) {
 		assert.Equal(t, url.Values{"country": {"gb"}, "category": {"technology"}}, (*requests)[0].query)
 	})
 
+	t.Run("HeadlinesInEnglish", func(t *testing.T) {
+		// Headlines without a source, query, language, country or category,
+		// which NewsAPI needs one of, are in English
+		tools, requests := newTools(t)
+		_, err := tools["headlines"].Run(ctx, json.RawMessage(`{"pageSize":10}`))
+		require.NoError(t, err)
+		require.Len(t, *requests, 1)
+		assert.Equal(t, url.Values{"language": {"en"}, "pageSize": {"10"}}, (*requests)[0].query)
+	})
+
 	t.Run("Sources", func(t *testing.T) {
 		tools, requests := newTools(t)
 		result, err := tools["sources"].Run(ctx, json.RawMessage(`{"language":"en"}`))

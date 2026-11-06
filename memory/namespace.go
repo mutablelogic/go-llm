@@ -8,6 +8,7 @@ import (
 	// Packages
 	llm "github.com/mutablelogic/go-llm"
 	eventschema "github.com/mutablelogic/go-llm/broadcaster/schema"
+	reminder "github.com/mutablelogic/go-llm/internal/reminder"
 	schema "github.com/mutablelogic/go-llm/memory/schema"
 	toolkit "github.com/mutablelogic/go-llm/toolkit"
 )
@@ -70,21 +71,29 @@ func (m *Memory) Tools() []llm.Tool {
 // conversation, and how to remember them
 func systemPrompt(details schema.Details, now time.Time, setDetail, memories bool) string {
 	sentences := []string{currentTime(now)}
-	if name, ok := details.Value(schema.FieldAssistant); ok {
+
+	// The details, without the tags of what the system says, which are
+	// taken out of what the person, or a model, said of them, so they can't
+	// fake one, such as in a run of an event, which reads them as trusted
+	detail := func(field schema.Field) (string, bool) {
+		value, ok := details.Value(field)
+		return reminder.Strip(value), ok
+	}
+	if name, ok := detail(schema.FieldAssistant); ok {
 		sentences = append(sentences, fmt.Sprintf("Your name is %s.", name))
 	}
 
 	// The person, by their name, when it's known, and then as they
 	person := "The person you're talking to"
-	if name, ok := details.Value(schema.FieldName); ok {
+	if name, ok := detail(schema.FieldName); ok {
 		sentences = append(sentences, fmt.Sprintf("You're talking to %s.", name))
 		person = "They"
 	}
-	if location, ok := details.Value(schema.FieldLocation); ok {
+	if location, ok := detail(schema.FieldLocation); ok {
 		sentences = append(sentences, fmt.Sprintf("%s %s in %s.", person, verb(person, "is", "are"), location))
 		person = "They"
 	}
-	if language, ok := details.Value(schema.FieldLanguage); ok {
+	if language, ok := detail(schema.FieldLanguage); ok {
 		sentences = append(sentences, fmt.Sprintf("%s %s %s.", person, verb(person, "speaks", "speak"), language))
 	}
 

@@ -6,7 +6,7 @@ A heartbeat is a prompt for a session, which fires once, `at` a time, with its o
 
 Each heartbeat has a `title`, which says what it's for, a `prompt`, which is the instruction a model is given when it fires, and the `session` it's for. It has when it last `fired`, and when it fires `next`, unless it won't, as it fired once. When the clocks go forward, a time which they skip happens once, after they change, and when they go back, a time which is repeated happens once, the first time. A heartbeat which was due when the server wasn't running fires once, when the server starts. A heartbeat which won't fire again, such as a one-off which fired, is deleted a week after it last fired, or was changed.
 
-When a heartbeat changes, an event is published, whose `schema` is `heartbeat`, whose `table` is `heartbeat`, and whose `row` is its identifier: it's created, updated, including when it fires, or deleted, including when its session is deleted. When it fires, an event is created, whose `schema` is `heartbeat`, whose `table` is `fire`, whose `row` is its identifier, and whose `data` is its `heartbeat`, `title`, `prompt` and `session`, when it was `scheduled`, and when it `fired`, which is later, when it's late.
+When a heartbeat changes, an event is published, whose `schema` is `heartbeat`, whose `table` is `heartbeat`, and whose `row` is its identifier: it's created, updated, including when it fires, or deleted, including when its session is deleted. When it fires, it's run, once, on the server which fires it, in a session of its own, whose identifier is the heartbeat's, which has the model of the session it's for.
 
 ### GET /heartbeat
 

@@ -68,9 +68,9 @@ type HeartbeatList struct {
 	Body  []Heartbeat `json:"body,omitzero" help:"The heartbeats"`
 }
 
-// FireEvent is the data of the event of a heartbeat which fires: what it is,
-// when it was due, and when it fired, which is later, such as when the
-// server wasn't running, so what acts on it can say it's late, or not act
+// FireEvent is a heartbeat which fired, which is run: what it is, when it
+// was due, and when it fired, which is later, such as when the server wasn't
+// running, so what runs it can say it's late, or not run it
 type FireEvent struct {
 	Heartbeat uuid.UUID `json:"heartbeat" help:"Identifier of the heartbeat"`
 	Title     string    `json:"title" help:"What it's for"`

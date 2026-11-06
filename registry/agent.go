@@ -263,6 +263,16 @@ func (r *Registry) DeleteAgent(ctx context.Context, name string) (_ *schema.Agen
 // nor has the session it's run from, and ErrServiceUnavailable when the
 // registry has no agent store, and the errors of WithSession.
 func (r *Registry) RunAgent(ctx context.Context, name string, req schema.RunAgentRequest, stream llm.GeneratorStreamFn) (_ *schema.RunAgentResponse, err error) {
+	return r.runAgent(ctx, name, req, stream, false)
+}
+
+///////////////////////////////////////////////////////////////////////////////
+// PRIVATE METHODS
+
+// runAgent runs the agent, as RunAgent does, or, when a model calls it as a
+// tool, returns ErrNotFound when it's internal, as only the server runs it,
+// such as when it was made internal while the model had it as a tool
+func (r *Registry) runAgent(ctx context.Context, name string, req schema.RunAgentRequest, stream llm.GeneratorStreamFn, asTool bool) (_ *schema.RunAgentResponse, err error) {
 	ctx, endSpan := otel.StartSpan(r.tracer, ctx, "llm.registry.RunAgent",
 		attribute.String("arg.name", name),
 		attribute.String("arg.req", req.String()),
@@ -280,6 +290,8 @@ func (r *Registry) RunAgent(ctx context.Context, name string, req schema.RunAgen
 	agent, err := r.agentStore.Get(ctx, name)
 	if err != nil {
 		return nil, err
+	} else if asTool && types.Value(agent.Internal) {
+		return nil, llm.ErrNotFound.Withf("agent %q isn't a tool", name)
 	}
 
 	// The message to its model, which is its prompt, executed with the input,
@@ -303,6 +315,20 @@ func (r *Registry) RunAgent(ctx context.Context, name string, req schema.RunAgen
 	}
 	if meta.Model == nil {
 		return nil, llm.ErrBadParameter.Withf("agent %q has no model, nor has the session it's run from", name)
+	}
+
+	// The tools it's run with, instead of its own, when they're given, apart
+	// from those of the namespaces it's run without, such as an event's,
+	// which an agent it calls is run without too
+	if req.Tools != nil {
+		if meta.Tools, err = r.toolNames(ctx, req.Tools); err != nil {
+			return nil, err
+		}
+	}
+	if without := namespacesWithout(ctx); len(without) > 0 && len(meta.Tools) > 0 {
+		if meta.Tools, err = r.eventTools(ctx, meta.Tools, without); err != nil {
+			return nil, err
+		}
 	}
 
 	// The tools it calls run as it runs, so it isn't run again by them

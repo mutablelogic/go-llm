@@ -23,9 +23,11 @@ import (
 // made to the session as it was last seen, rather than a newer one, such as
 // when two replies are added to it at once
 type SessionStore interface {
-	// Create creates a session with the settings, and no messages, and
-	// returns it, with its identifier, serial, and when it was created
-	Create(context.Context, schema.SessionMeta) (schema.Session, error)
+	// Create creates a session with the identifier, or a new one, when it's
+	// the nil UUID, with the settings, and no messages, and returns it, with
+	// its identifier, serial, and when it was created. Returns ErrConflict
+	// when there's a session with the identifier.
+	Create(ctx context.Context, id uuid.UUID, meta schema.SessionMeta) (schema.Session, error)
 
 	// Get returns the session with the identifier, with its messages.
 	// Returns ErrNotFound when there's none.
@@ -86,7 +88,7 @@ func (r *Registry) CreateSession(ctx context.Context, meta schema.SessionMeta) (
 	} else if meta.Tools, err = r.toolNames(ctx, meta.Tools); err != nil {
 		return nil, err
 	}
-	session, err := r.sessionStore.Create(ctx, meta)
+	session, err := r.sessionStore.Create(ctx, uuid.Nil(), meta)
 	if err != nil {
 		return nil, err
 	}
