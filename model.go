@@ -36,6 +36,7 @@ type ModelCap struct {
 	Transcription *bool `json:"transcription,omitempty" help:"Transcribes speech"`
 	Translation   *bool `json:"translation,omitempty" help:"Translates speech into English"`
 	Embedding     *bool `json:"embedding,omitempty" help:"Embeds text as vectors"`
+	Speech        *bool `json:"speech,omitempty" help:"Speaks text, as audio"`
 
 	// Temperature is whether the model takes the sampling options, which are
 	// the temperature, top_p and top_k, which the registry leaves out, for a
@@ -64,6 +65,7 @@ func (c ModelCap) String() string {
 		{"transcription", types.Value(c.Transcription)},
 		{"translation", types.Value(c.Translation)},
 		{"embedding", types.Value(c.Embedding)},
+		{"speech", types.Value(c.Speech)},
 	} {
 		if capability.ok {
 			result = append(result, capability.name)

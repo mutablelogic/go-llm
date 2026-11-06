@@ -85,7 +85,7 @@ var modelCapabilities = []struct {
 	{serverOpenAI, regexp.MustCompile(`^whisper-`), llm.ModelCap{Completion: no, Transcription: yes, Translation: yes, Embedding: no}},
 	{serverOpenAI, regexp.MustCompile(`-transcribe|^gpt-realtime-whisper`), llm.ModelCap{Completion: no, Transcription: yes, Translation: no, Embedding: no}},
 	{serverOpenAI, regexp.MustCompile(`^gpt-realtime-translate`), llm.ModelCap{Completion: no, Translation: yes, Embedding: no}},
-	{serverOpenAI, regexp.MustCompile(`^tts-|-tts\b`), llm.ModelCap{Completion: no, Tools: no, Thinking: no, Vision: no, OCR: no, Transcription: no, Translation: no, Embedding: no}},
+	{serverOpenAI, regexp.MustCompile(`^tts-|-tts\b`), llm.ModelCap{Completion: no, Tools: no, Thinking: no, Vision: no, OCR: no, Transcription: no, Translation: no, Embedding: no, Speech: yes}},
 	{serverOpenAI, regexp.MustCompile(`^gpt-(audio|realtime|live)\b`), llm.ModelCap{Completion: no, Embedding: no}},
 	{serverOpenAI, regexp.MustCompile(`^(gpt|chatgpt)-image\b`), llm.ModelCap{Completion: no, Vision: yes, Embedding: no}},
 	{serverOpenAI, regexp.MustCompile(`^omni-moderation\b`), llm.ModelCap{Completion: no, Vision: yes, Embedding: no}},
@@ -375,6 +375,7 @@ func merge(c, other llm.ModelCap) llm.ModelCap {
 		{&c.Transcription, &other.Transcription},
 		{&c.Translation, &other.Translation},
 		{&c.Embedding, &other.Embedding},
+		{&c.Speech, &other.Speech},
 		{&c.Temperature, &other.Temperature},
 	} {
 		if *field.from != nil {

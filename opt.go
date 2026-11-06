@@ -80,6 +80,12 @@ const (
 	LanguageKey = "language" // string, ISO 639-1 code of the language the speech is in, such as "en"
 	SegmentsKey = "segments" // bool, whether a transcript has its segments, with when each was spoken
 	SpeakersKey = "speakers" // bool, whether a transcript's segments have who spoke them
+
+	// Speech
+	VoiceKey        = "voice"        // string, voice the text is spoken in, by its name
+	AudioFormatKey  = "audio_format" // string, format of the speech, such as "wav", "mp3" or "pcm"
+	SpeedKey        = "speed"        // float64, how fast the text is spoken, where 1 is normal
+	InstructionsKey = "instructions" // string, how the text is spoken, such as "calmly
 )
 
 ////////////////////////////////////////////////////////////////////////////////

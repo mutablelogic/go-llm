@@ -95,3 +95,14 @@ func Test_ResourceJSON(t *testing.T) {
 	assert.Nil(t, read.URL)
 	assert.Error(t, json.Unmarshal([]byte(`{"type":"image/png","url":"%zz"}`), &read))
 }
+
+func Test_PCM16(t *testing.T) {
+	// Little-endian samples are big-endian, as audio/L16 is, with the rate
+	// and channels, and a trailing odd byte is left out
+	r := schema.PCM16([]byte{0x01, 0x02, 0x03, 0x04, 0x05}, 24000, 1)
+	assert.Equal(t, []byte{0x02, 0x01, 0x04, 0x03}, r.Data)
+	mediaType, params, err := mime.ParseMediaType(r.Type())
+	require.NoError(t, err)
+	assert.Equal(t, "audio/l16", mediaType, "MIME types are in lower case, which is the same type")
+	assert.Equal(t, map[string]string{"rate": "24000", "channels": "1"}, params)
+}

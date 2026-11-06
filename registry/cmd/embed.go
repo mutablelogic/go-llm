@@ -28,6 +28,7 @@ type InferenceCommands struct {
 	OCR        RecognizeCmd  `cmd:"" name:"ocr" help:"Ask a model for the text in an image or document, which is printed as Markdown." group:"LLM INFERENCE"`
 	Transcribe TranscribeCmd `cmd:"" name:"transcribe" help:"Ask a model for the speech in audio, as text, or its segments." group:"LLM INFERENCE"`
 	Translate  TranslateCmd  `cmd:"" name:"translate" help:"Translate the speech in audio into English text." group:"LLM INFERENCE"`
+	Speak      SpeakCmd      `cmd:"" name:"speak" help:"Ask a model to speak text, which is written as audio." group:"LLM INFERENCE"`
 }
 
 type EmbedCmd struct {

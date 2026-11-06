@@ -119,6 +119,18 @@ type Transcriber interface {
 // the transcript's text, even for a model which only streams segments.
 type TranscriberStreamFn func(text string, segment *TranscriptSegment)
 
+// Speaker is an interface for providers which speak text, which is text to
+// speech
+type Speaker interface {
+	// Speak returns the text, spoken, as audio, whose type is the format it's
+	// in, such as audio/wav, and the characters, or tokens, used. The
+	// options can set the voice it's spoken in (VoiceKey), the format of the
+	// audio (AudioFormatKey), how fast it's spoken (SpeedKey), and how it's
+	// spoken (InstructionsKey), for a model which takes them. Options which
+	// the provider doesn't support are rejected.
+	Speak(context.Context, Model, string, ...Opt) (Resource, Usage, error)
+}
+
 // Recognizer is an interface for providers which recognize the text in
 // images and documents, which is optical character recognition (OCR)
 type Recognizer interface {
