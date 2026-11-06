@@ -63,6 +63,12 @@ type ToolPrompter interface {
 	SystemPromptFor(tools []string) string
 }
 
+// ToolTitler is a tool which has a title, for people, such as an agent,
+// which is listed with it
+type ToolTitler interface {
+	Title() string
+}
+
 // namespace is a namespace with a name, system prompt and tools
 type namespace struct {
 	name, prompt string

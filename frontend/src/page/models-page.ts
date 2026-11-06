@@ -10,7 +10,6 @@ import Edit16 from '@carbon/icons/es/edit/16.js';
 import TrashCan16 from '@carbon/icons/es/trash-can/16.js';
 import Download16 from '@carbon/icons/es/download/16.js';
 import { Page } from './page';
-import { refreshAction } from './refresh';
 import { presets } from '../schema/preset';
 
 // Carbon components
@@ -55,14 +54,12 @@ export class ModelsPage extends Page {
                 </cds-button>
             ` : nothing}
             ${this.provider ? html`
-                ${refreshAction(this, this.loadable ? 'secondary' : 'primary')}
                 ${this.loadable ? html`
                     <cds-button kind="primary" size="md" @click=${() => this.dispatchEvent(new CustomEvent(ModelsPage.eventLoad, { detail: this.provider }))}>
                         Load model ${iconLoader(Download16, { slot: 'icon' })}
                     </cds-button>
                 ` : nothing}
             ` : html`
-                ${refreshAction(this, 'secondary')}
                 <cds-menu-button label="Add provider" kind="primary" size="md">
                     <cds-menu size="md">
                         ${presets.map((preset) => html`

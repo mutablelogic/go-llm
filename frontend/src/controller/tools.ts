@@ -14,12 +14,20 @@ import { ToolTable } from '../component/tool-table';
 import { Panel } from '../component/panel';
 import type { ToolView } from '../component/tool-view';
 import type { CountFilter } from '../component/count-filter';
+import { AgentEditor, agentTemplate, type AgentEditorItem } from '../component/agent-editor';
+import { ToolsPage } from '../page/tools-page';
+import { deleteAgent, getAgent, getAgentYAML, saveAgentYAML } from '../api/agent';
 
 export interface ToolsViews {
+    page: ToolsPage | null;
     namespaces: CountFilter | null;
     table: ToolTable | null;
     view: ToolView | null;
+    agent: AgentEditor | null;
 }
+
+// agentNamespace is the namespace of the agents, as tools
+const agentNamespace = 'agent';
 
 export class ToolsController extends ListController<Tool> {
     private readonly views: ToolsViews;
@@ -32,13 +40,132 @@ export class ToolsController extends ListController<Tool> {
     private namespaces?: Namespace[];
     private namespace?: string;
 
+    // How many times the agent's panel has been opened, or closed, so an
+    // agent which is loaded once it's been closed, or something else was
+    // opened, isn't shown
+    private agentGeneration = 0;
+
     constructor(views: ToolsViews, notifications: NotificationController) {
         super('Tools', notifications);
         this.views = views;
         views.table?.addEventListener(ToolTable.eventPage, (e) => this.setPage((e as CustomEvent<number>).detail));
         views.table?.addEventListener(ToolTable.eventPageSize, (e) => this.setPageSize((e as CustomEvent<number>).detail));
-        views.table?.addEventListener(ToolTable.eventSelect, (e) => this.open((e as CustomEvent<Tool>).detail));
+        views.table?.addEventListener(ToolTable.eventSelect, (e) => this.select((e as CustomEvent<Tool>).detail));
         views.view?.addEventListener(Panel.eventClose, () => this.close());
+
+        // An agent is edited, from a new definition, or as it is, and saved,
+        // or deleted
+        views.page?.addEventListener(ToolsPage.eventNewAgent, () => {
+            this.agentGeneration++;
+            this.showAgent({ mode: 'new', yaml: agentTemplate });
+        });
+        views.agent?.addEventListener(AgentEditor.eventSave, (e) => void this.saveAgent((e as CustomEvent<string>).detail));
+        views.agent?.addEventListener(AgentEditor.eventDelete, (e) => void this.deleteAgent((e as CustomEvent<string>).detail));
+        views.agent?.addEventListener(Panel.eventClose, () => this.hideAgent());
+    }
+
+    // close closes the tool which is shown, and the agent
+    close() {
+        super.close();
+        this.hideAgent();
+    }
+
+    // select opens the tool, or, for an agent, its definition, to be edited
+    private select(tool: Tool) {
+        this.agentGeneration++;
+        if (toolNamespace(tool) === agentNamespace) {
+            void this.openAgent(tool.name);
+        } else {
+            this.open(tool);
+        }
+    }
+
+    // openAgent opens the definition of the agent with the name, as YAML, and
+    // whether it's built in, unless the panel was closed, or something else
+    // was opened, while it was loaded
+    private async openAgent(name: string) {
+        const generation = this.agentGeneration;
+        try {
+            const [agent, yaml] = await Promise.all([getAgent(name), getAgentYAML(name)]);
+            if (generation === this.agentGeneration) {
+                this.showAgent({ mode: 'edit', name: agent.name, yaml, builtin: agent.builtin === true });
+            }
+        } catch (error) {
+            if (generation === this.agentGeneration) {
+                this.notifications.error(`The agent ${name} couldn't be loaded`, error);
+            }
+        }
+    }
+
+    // showAgent opens the agent's panel
+    private showAgent(item: AgentEditorItem) {
+        const { agent } = this.views;
+        if (agent) {
+            agent.busy = false;
+            agent.error = undefined;
+            agent.item = item;
+        }
+    }
+
+    // hideAgent closes the agent's panel
+    private hideAgent() {
+        this.agentGeneration++;
+        if (this.views.agent) {
+            this.views.agent.item = undefined;
+        }
+    }
+
+    // saveAgent creates, or replaces, the agent with the definition, and
+    // loads the tools again, or says why it couldn't, in the panel, when it's
+    // still showing what was saved
+    private async saveAgent(yaml: string) {
+        const panel = this.views.agent;
+        const item = panel?.item;
+        if (!panel || !item) {
+            return;
+        }
+        panel.busy = true;
+        try {
+            const agent = await saveAgentYAML(yaml);
+            this.notifications.push({ kind: 'success', title: `${agent.name} was saved` });
+            void this.refresh();
+            if (panel.item === item) {
+                this.hideAgent();
+            }
+        } catch (error) {
+            if (panel.item === item) {
+                panel.error = error instanceof Error ? error.message : String(error);
+            }
+        } finally {
+            if (panel.item === item) {
+                panel.busy = false;
+            }
+        }
+    }
+
+    // deleteAgent deletes the agent, once it's confirmed, and loads the tools
+    // again, and closes the panel, when it's still showing the agent
+    private async deleteAgent(name: string) {
+        const panel = this.views.agent;
+        const item = panel?.item;
+        if (!panel || !item || !confirm(`Delete the agent ${name}?`)) {
+            return;
+        }
+        panel.busy = true;
+        try {
+            await deleteAgent(name);
+            this.notifications.push({ kind: 'success', title: `${name} was deleted` });
+            if (panel.item === item) {
+                this.hideAgent();
+            }
+            void this.refresh();
+        } catch (error) {
+            this.notifications.error(`${name} couldn't be deleted`, error);
+        } finally {
+            if (panel.item === item) {
+                panel.busy = false;
+            }
+        }
     }
 
     protected async list(offset: number, limit: number): Promise<Page<Tool>> {
@@ -77,7 +204,10 @@ export class ToolsController extends ListController<Tool> {
     }
 
     protected render() {
-        const { namespaces, table, view } = this.views;
+        const { page, namespaces, table, view } = this.views;
+        if (page) {
+            page.namespace = this.namespace;
+        }
         if (namespaces) {
             namespaces.tiles = this.namespaces && [
                 { label: 'All', count: this.namespaces.reduce((sum, namespace) => sum + namespace.tools, 0) },

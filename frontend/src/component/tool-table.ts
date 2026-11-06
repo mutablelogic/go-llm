@@ -1,7 +1,8 @@
 // A table of tools, and agents, which are tools in the agent namespace,
-// which shows the page of tools it's given, with their namespaces, and their
-// descriptions, and the pagination beneath it, which
-// fires an event when the page, or the page's size, is changed. Clicking a
+// which shows the page of tools it's given, with their namespaces, names,
+// and descriptions, beneath their titles, when they have them, such as
+// agents, and the pagination beneath it, which fires an event when the
+// page, or the page's size, is changed. Clicking a
 // tool fires an event, so it's shown, and the tool which is shown is
 // selected. It shows a skeleton until it has tools.
 
@@ -56,7 +57,11 @@ export class ToolTable extends LitElement {
             background: var(--cds-layer-selected);
         }
 
-        /* A tool's description, beneath its name, is at most two lines */
+        .title {
+            display: block;
+        }
+
+        /* A tool's description, beneath its title, is at most two lines */
         .secondary {
             display: -webkit-box;
             -webkit-box-orient: vertical;
@@ -73,7 +78,7 @@ export class ToolTable extends LitElement {
 
     render() {
         if (!this.tools) {
-            return html`<cds-table-skeleton column-count="2" row-count="5"></cds-table-skeleton>`;
+            return html`<cds-table-skeleton column-count="3" row-count="5"></cds-table-skeleton>`;
         }
         return html`
             <cds-table>
@@ -81,6 +86,7 @@ export class ToolTable extends LitElement {
                     <cds-table-header-row>
                         <cds-table-header-cell>Namespace</cds-table-header-cell>
                         <cds-table-header-cell>Tool</cds-table-header-cell>
+                        <cds-table-header-cell>Description</cds-table-header-cell>
                     </cds-table-header-row>
                 </cds-table-head>
                 <cds-table-body>
@@ -101,7 +107,11 @@ export class ToolTable extends LitElement {
     }
 
     private renderRow(tool: Tool) {
+        // The description, apart from when it's the title, as it is of an
+        // agent without a description
+        const title = (tool.title ?? '').trim();
         const summary = (tool.description ?? '').replace(/\s+/g, ' ').trim();
+        const description = summary === title ? '' : summary;
         const namespace = toolNamespace(tool);
         return html`
             <cds-table-row ?data-selected=${tool.canonical === this.selected} @click=${() => this.fire(ToolTable.eventSelect, tool)}>
@@ -110,7 +120,10 @@ export class ToolTable extends LitElement {
                 </cds-table-cell>
                 <cds-table-cell>
                     <button class="open" type="button">${tool.name}</button>
-                    ${summary ? html`<span class="secondary">${summary}</span>` : nothing}
+                </cds-table-cell>
+                <cds-table-cell>
+                    ${title ? html`<span class="title">${title}</span>` : nothing}
+                    ${description ? html`<span class="secondary">${description}</span>` : nothing}
                 </cds-table-cell>
             </cds-table-row>
         `;

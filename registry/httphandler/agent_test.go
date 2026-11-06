@@ -239,3 +239,27 @@ func mustJSON(t *testing.T, v any) string {
 	require.NoError(t, err)
 	return string(data)
 }
+
+func Test_BuiltinAgent(t *testing.T) {
+	// A client can't make an agent built in, and a built-in agent, which the
+	// server created, can't be replaced, changed or deleted, which is 403
+	provider, err := eliza.New()
+	require.NoError(t, err)
+	agents := test.NewAgentStore()
+	r := test.NewRegistry(t, []llm.Provider{provider}, registry.WithAgentStore(agents))
+	server := test.NewServer(t, r)
+
+	var agent schema.Agent
+	status := do(t, server, http.MethodPost, "llm/agent", map[string]any{"name": "mine", "prompt": "Hello", "builtin": true}, &agent)
+	require.Equal(t, http.StatusCreated, status)
+	assert.False(t, types.Value(agent.Builtin), "a client can't make an agent built in")
+
+	_, _, err = r.CreateAgent(t.Context(), schema.AgentMeta{PromptMeta: schema.PromptMeta{Name: "shipped", Prompt: types.Ptr("Hello"), Builtin: types.Ptr(true)}})
+	require.NoError(t, err)
+	assert.Equal(t, http.StatusForbidden, do(t, server, http.MethodPost, "llm/agent", map[string]any{"name": "shipped", "prompt": "Changed"}, nil))
+	assert.Equal(t, http.StatusForbidden, do(t, server, http.MethodPatch, "llm/agent/shipped", map[string]any{"prompt": "Changed"}, nil))
+	assert.Equal(t, http.StatusForbidden, do(t, server, http.MethodDelete, "llm/agent/shipped", nil, nil))
+	var got schema.Agent
+	require.Equal(t, http.StatusOK, do(t, server, http.MethodGet, "llm/agent/shipped", nil, &got))
+	assert.True(t, types.Value(got.Builtin))
+}

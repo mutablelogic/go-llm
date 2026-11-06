@@ -1,11 +1,13 @@
 // The tools' schema, which mirrors the toolkit's
 
 // Tool is a tool which models can call, in a namespace, such as
-// weatherapi:current, or an agent, in the agent namespace, with the JSON
+// weatherapi:current, or an agent, in the agent namespace, with its title,
+// for people, which only some tools, such as agents, have, and the JSON
 // schemas of its input and output
 export interface Tool {
     name: string;
     canonical: string;
+    title?: string;
     description?: string;
     input?: unknown;
     output?: unknown;

@@ -25,6 +25,7 @@ import './component/model-load';
 import { ModelView } from './component/model-view';
 import './component/tool-table';
 import './component/tool-view';
+import './component/agent-editor';
 import './page/chat-page';
 import './page/models-page';
 import './page/tools-page';
@@ -38,12 +39,16 @@ import { ModelsController } from './controller/models';
 import { ToolsController } from './controller/tools';
 import { NotificationController } from './controller/notifications';
 import { OutcomesController } from './controller/outcomes';
-import { ChatPage } from './page/chat-page';
+import { StorageController } from './controller/storage';
+import { SessionList } from './component/session-list';
 import { Router, routeHref } from './router';
-import { eventRefresh } from './page/refresh';
 
 // Errors, and other notifications, are shown as toasts
 const notifications = new NotificationController(document.querySelector<HTMLElement>('#notifications')!);
+
+// The defaults of the UI, which are kept in the browser, such as the chat
+// which was last open
+const storage = new StorageController();
 
 // Show the server's version, and a link to the API's documentation, in the
 // side navigation's footer, once the configuration is read
@@ -64,12 +69,12 @@ const chat = new ChatController({
     view: document.querySelector('llm-chat-view'),
     create: document.querySelector('llm-new-session'),
     details: document.querySelector('llm-message-view'),
-}, notifications);
+}, notifications, storage);
 
 // The outcomes of the events of the chat which is open, such as heartbeats
 // which fired, in a panel, which its Events action opens
 const outcomes = new OutcomesController(document.querySelector('llm-event-view'), notifications);
-document.querySelector('llm-chat-page')?.addEventListener(ChatPage.eventEvents, () => {
+document.querySelector('llm-session-list')?.addEventListener(SessionList.eventEvents, () => {
     const session = chat.sessionID();
     if (session) {
         outcomes.open(session);
@@ -88,9 +93,11 @@ const models = new ModelsController({
     view: document.querySelector('llm-model-view'),
 }, notifications);
 const tools = new ToolsController({
+    page: document.querySelector('llm-tools-page'),
     namespaces: document.querySelector('#namespace-filter'),
     table: document.querySelector('llm-tool-table'),
     view: document.querySelector('llm-tool-view'),
+    agent: document.querySelector('llm-agent-editor'),
 }, notifications);
 
 // Watch the server's changes, so the pages load what changed: sessions, as
@@ -111,7 +118,7 @@ const events = new EventsController(notifications)
         // seconds, when an event for it is created
         const session = (event?.data as { session?: string } | undefined)?.session;
         if (event?.action === 'create' && session && session === chat.sessionID()) {
-            document.querySelector('llm-chat-page')?.alert();
+            document.querySelector('llm-session-list')?.alert();
         }
     })
     .onDisconnect(() => {
@@ -152,9 +159,6 @@ document.querySelector('llm-model-view')?.addEventListener(ModelView.eventChat, 
     location.hash = routeHref('chat');
     void chat.newChat((e as CustomEvent<string>).detail);
 });
-// The models and tools pages' refresh actions load them again
-document.querySelector('llm-models-page')?.addEventListener(eventRefresh, () => void models.refresh());
-document.querySelector('llm-tools-page')?.addEventListener(eventRefresh, () => void tools.refresh());
 events.start();
 void models.load();
 void tools.load();

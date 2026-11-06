@@ -3,7 +3,9 @@
 // and shows the replies as they're streamed, says someone is typing, starts
 // new chats, and deletes them. It loads them again when they change, such as
 // when another window replies in a session, and the names of the person and
-// the assistant, from the memory, when they change.
+// the assistant, from the memory, when they change. The chat which is open
+// is kept, so it's opened again when the chat page is shown without one,
+// such as when the browser is opened.
 
 import { chat, createSession, deleteSession, getSession, listMessages, listSessions, setStatus, updateSession } from '../api/session';
 import { getDetails } from '../api/memory';
@@ -14,6 +16,7 @@ import { routeHref } from '../router';
 import { isUser, sessionTokens, type Message, type Session, type SessionMeta } from '../schema/session';
 import type { Details } from '../schema/memory';
 import type { NotificationController } from './notifications';
+import type { StorageController } from './storage';
 import { SessionList } from '../component/session-list';
 import { ChatView, type Piece } from '../component/chat-view';
 import { NewSession } from '../component/new-session';
@@ -39,6 +42,7 @@ export class ChatController {
 
     private readonly views: ChatViews;
     private readonly notifications: NotificationController;
+    private readonly storage: StorageController;
 
     // The sessions, which are undefined while they're first loading, the
     // session which is open, its messages, and the memory's details
@@ -66,15 +70,16 @@ export class ChatController {
     // Whether the server can't be reached
     private unavailable = false;
 
-    constructor(views: ChatViews, notifications: NotificationController) {
+    constructor(views: ChatViews, notifications: NotificationController, storage: StorageController) {
         this.views = views;
         this.notifications = notifications;
+        this.storage = storage;
         views.list?.addEventListener(SessionList.eventSelect, (e) => {
             location.hash = routeHref('chat', (e as CustomEvent<Session>).detail.id);
         });
         views.page?.addEventListener(ChatPage.eventNew, () => void this.newChat());
-        views.page?.addEventListener(ChatPage.eventDelete, () => void this.delete());
-        views.page?.addEventListener(ChatPage.eventEdit, () => void this.edit());
+        views.list?.addEventListener(SessionList.eventDelete, () => void this.delete());
+        views.list?.addEventListener(SessionList.eventEdit, () => void this.edit());
         views.create?.addEventListener(NewSession.eventSave, (e) => void this.save((e as CustomEvent<SessionMeta>).detail));
         views.view?.addEventListener(ChatView.eventSend, (e) => void this.send((e as CustomEvent<string>).detail));
         views.view?.addEventListener(ChatView.eventTyping, () => this.typing());
@@ -92,6 +97,15 @@ export class ChatController {
 
     // open opens the session, or none, and loads its messages
     async open(id?: string) {
+        // Without a chat, the one which was last open is opened, in place of
+        // the location without one, and a chat which is opened is kept
+        const last = this.storage.get('chat');
+        if (!id && last) {
+            location.replace(routeHref('chat', last));
+            return;
+        } else if (id) {
+            this.storage.set('chat', id);
+        }
         if (id === this.session?.id && this.messages) {
             return;
         }
@@ -171,6 +185,10 @@ export class ChatController {
                 this.session = session;
             }
         } catch (error) {
+            // A chat which isn't there, or can't be, isn't opened again
+            if (error instanceof ApiError && (error.code === 400 || error.code === 404)) {
+                this.storage.delete('chat', id);
+            }
             if (error instanceof ApiError && error.code === 404) {
                 this.notifications.push({ kind: 'info', title: 'The chat was deleted' });
                 location.hash = routeHref('chat');
@@ -416,6 +434,7 @@ export class ChatController {
         }
         try {
             await deleteSession(session.id);
+            this.storage.delete('chat', session.id);
             this.sessions = this.sessions?.filter((other) => other.id !== session.id);
             location.hash = routeHref('chat');
         } catch (error) {
@@ -423,13 +442,22 @@ export class ChatController {
         }
     }
 
+    // listed returns the sessions which are listed, with the session which is
+    // open, last, when it isn't one of them, such as an older chat, beyond
+    // those which are listed, once it's loaded, so it has its actions
+    private listed(): Session[] | undefined {
+        const { sessions, session } = this;
+        if (!sessions || !session || session.serial === 0 || sessions.some((other) => other.id === session.id)) {
+            return sessions;
+        }
+        return [...sessions, session];
+    }
+
     private render() {
         const { page, list, view, details } = this.views;
         if (page) {
             page.heading = this.session?.model ?? 'Chat';
             page.description = this.describe();
-            page.deletable = this.session !== undefined;
-            page.event = this.session?.event === true;
         }
         if (details) {
             details.message = this.selected;
@@ -438,7 +466,7 @@ export class ChatController {
                 : this.details.assistant?.declined ? 'Assistant' : this.details.assistant?.value ?? (this.session?.model ?? 'Assistant');
         }
         if (list) {
-            list.sessions = this.sessions;
+            list.sessions = this.listed();
             list.selected = this.session?.id;
             list.unavailable = this.unavailable;
         }

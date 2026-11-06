@@ -68,16 +68,20 @@ func (self *Toolkit) ListNamespaces(ctx context.Context) (_ *schema.NamespaceLis
 ////////////////////////////////////////////////////////////////////////////////
 // PRIVATE METHODS
 
-// wire returns the tool in the wire format, with its schemas as JSON. A
-// schema which can't be encoded is left out.
+// wire returns the tool in the wire format, with its title, when it has
+// one, and its schemas as JSON. A schema which can't be encoded is left out.
 func (e entry) wire() *schema.Tool {
-	return &schema.Tool{
+	tool := &schema.Tool{
 		Name:        e.tool.Name(),
 		Canonical:   schema.CanonicalToolName(e.namespace, e.tool.Name()),
 		Description: e.tool.Description(),
 		Input:       marshalSchema(e.tool.InputSchema()),
 		Output:      marshalSchema(e.tool.OutputSchema()),
 	}
+	if titler, ok := e.tool.(ToolTitler); ok {
+		tool.Title = titler.Title()
+	}
+	return tool
 }
 
 // marshalSchema returns the JSON schema as JSON, or nil if it's nil or can't
