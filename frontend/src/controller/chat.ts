@@ -245,7 +245,7 @@ export class ChatController {
             content.push({ text });
         }
         const question = [...attachments.map((resource) => resourceName(resource)), text].filter(Boolean).join(', ');
-        const pending: Pending = { question: text, attachments, streamed: [], earlier: this.messages.length, stale: false };
+        const pending: Pending = { question: text, attachments, streamed: [], earlier: this.messages.length, stale: false, abort: new AbortController(), stopped: false };
         this.pending.set(session.id, pending);
         this.render();
         try {
@@ -257,7 +257,7 @@ export class ChatController {
                     pending.progress = progress.message || progress.status;
                     this.render();
                 },
-            });
+            }, pending.abort.signal);
             const added = response.messages ?? [];
             this.keepLogs(session.id, pending, added);
             if (this.session?.id === session.id && this.messages && !pending.stale) {
@@ -267,7 +267,15 @@ export class ChatController {
                 pending.stale = true;
             }
         } catch (error) {
-            if (this.session?.id === session.id) {
+            if (pending.stopped) {
+                // The server is stopping, so the reply was stopped, and the
+                // question is put back, to send once it's back
+                this.notifications.push({ kind: 'info', title: 'The reply was stopped', subtitle: 'The server is stopping, so your question is back in its chat, to send again once it is back' });
+                if (this.session?.id === session.id) {
+                    this.views.view?.restore(text);
+                }
+                this.resources.attach(session.id, attachments);
+            } else if (this.session?.id === session.id) {
                 this.notifications.error("The question couldn't be sent", error);
                 this.views.view?.restore(text);
                 this.resources.attach(session.id, attachments);
@@ -298,6 +306,16 @@ export class ChatController {
         const result = added.flatMap((message) => message.content).find((block) => block.tool_result?.id)?.tool_result?.id;
         const key = logKey(id, result, pending.earlier + added.length - 1);
         this.logs.set(key, [...(this.logs.get(key) ?? []), ...lines]);
+    }
+
+    // stopReplies stops the replies which are streamed, such as when the
+    // server is stopping, which would otherwise wait for them, and puts
+    // their questions back
+    stopReplies() {
+        for (const pending of this.pending.values()) {
+            pending.stopped = true;
+            pending.abort.abort();
+        }
     }
 
     // describe returns what's said of the chat which is open, beneath its
@@ -541,6 +559,8 @@ export class ChatController {
 interface Pending {
     question: string;
     attachments: Resource[];
+    abort: AbortController;
+    stopped: boolean;
     streamed: Piece[];
     progress?: string;
     earlier: number;
