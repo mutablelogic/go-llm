@@ -2,6 +2,7 @@ package registry
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"slices"
 	"strings"
@@ -100,11 +101,55 @@ func (r *Registry) RunEvent(ctx context.Context, id uuid.UUID, req schema.RunEve
 	}
 	r.sessionChanged(eventschema.EventUpdate, stored)
 	session = r.withoutMessages(stored)
-	return &schema.RunEventResponse{Session: *session, Run: *run}, nil
+
+	// Its outcome, which is the agent's message, and how important it is, is
+	// stored, as ignored, or pending, until it's delivered
+	message, importance, err := eventReply(run.Reply)
+	if err != nil {
+		return nil, err
+	}
+	event, err := r.createEvent(ctx, schema.EventMeta{
+		Run:        session.ID,
+		Session:    req.Session,
+		Title:      req.Title,
+		Message:    message,
+		Importance: importance,
+		Status:     importance.Status(),
+		Scheduled:  req.Scheduled,
+		Fired:      req.Fired,
+	})
+	if err != nil {
+		return nil, err
+	}
+	return &schema.RunEventResponse{Session: *session, Run: *run, Event: event}, nil
 }
 
 ///////////////////////////////////////////////////////////////////////////////
 // PRIVATE METHODS
+
+// eventReply returns the message, and how important it is, of the reply of
+// the agent which ran an event, which is its message, and importance, as the
+// event agent replies, or, of an agent which replies with text, its text,
+// which is worth telling the person. Returns ErrBadParameter when its
+// importance isn't one.
+func eventReply(reply json.RawMessage) (string, schema.EventImportance, error) {
+	var text string
+	if err := json.Unmarshal(reply, &text); err == nil {
+		return text, schema.ImportanceNotify, nil
+	}
+	var result struct {
+		Message    string `json:"message"`
+		Importance string `json:"importance"`
+	}
+	if err := json.Unmarshal(reply, &result); err != nil {
+		return string(reply), schema.ImportanceNotify, nil
+	}
+	importance, err := schema.ParseEventImportance(result.Importance)
+	if err != nil {
+		return "", "", err
+	}
+	return result.Message, importance, nil
+}
 
 // withoutNamespacesKey is the key of the namespaces whose tools the agents
 // run in a context aren't given, in it

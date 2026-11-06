@@ -41,7 +41,7 @@ func watch(t *testing.T, server *test.Server, accept string) (*http.Response, <-
 	t.Helper()
 	ctx, cancel := context.WithCancel(context.Background())
 	t.Cleanup(cancel)
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, server.URL+test.Prefix+"/llm/event", nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, server.URL+test.Prefix+"/events", nil)
 	require.NoError(t, err)
 	req.Header.Set("Accept", accept)
 	resp, err := http.DefaultClient.Do(req)

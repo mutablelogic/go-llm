@@ -30,7 +30,7 @@ func RegisterHandlers(r *registry.Registry, router *httprouter.Router) error {
 	// The tags, in order, of the registry's API, and of the toolkit's and
 	// the broadcaster's, which are in the same group
 	tags := []string{"Providers", "Models"}
-	if r.SessionStore() != nil {
+	if r.SessionStore() != nil || r.EventStore() != nil {
 		tags = append(tags, "Sessions")
 	}
 	tags = append(tags, "Inference")
@@ -54,6 +54,9 @@ func RegisterHandlers(r *registry.Registry, router *httprouter.Router) error {
 	}
 	if r.AgentStore() != nil {
 		handlers = append(handlers, agentHandlers(r, router, documentation))
+	}
+	if r.EventStore() != nil {
+		handlers = append(handlers, eventHandlers(r, router, documentation))
 	}
 	return errors.Join(handlers...)
 }
