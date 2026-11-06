@@ -2,11 +2,9 @@ package schema
 
 import (
 	"encoding/json"
-	"strings"
 
 	// Packages
 	llm "github.com/mutablelogic/go-llm"
-	providerschema "github.com/mutablelogic/go-llm/provider/schema"
 	types "github.com/mutablelogic/go-server/pkg/types"
 )
 
@@ -18,8 +16,9 @@ import (
 // English, with the options
 type TranscribeRequest struct {
 	Model string                     `json:"model" help:"Model which transcribes speech, by name, or by provider and name" example:"openai:whisper-1"`
-	Type  string                     `json:"type" help:"MIME type of the audio" example:"audio/mpeg"`
-	Data  []byte                     `json:"data" help:"Data of the audio, encoded as base64" example:"SUQzBAAAAAAA"`
+	Type  string                     `json:"type,omitempty" help:"MIME type of the audio, which is needed with its data" example:"audio/mpeg" optional:""`
+	Data  []byte                     `json:"data,omitempty" help:"Data of the audio, encoded as base64, or its URL" example:"SUQzBAAAAAAA" optional:""`
+	URL   string                     `json:"url,omitempty" help:"URI of a resource, which is resource://<hash>, on its own, whose content is read, rather than the data, whose type is the resource's, unless it's given" example:"resource://9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08" optional:""`
 	Opt   map[string]json.RawMessage `json:"opt,omitzero" help:"Options, by key, such as language=en, segments=true, and speakers=true, which the provider decodes" example:"{\"segments\":true}" optional:""`
 }
 
@@ -60,12 +59,7 @@ const TranscribeBodyLimit = 48 << 20
 // Resource returns the audio to transcribe, or an error when it has no
 // type, or no data
 func (r TranscribeRequest) Resource() (llm.Resource, error) {
-	if strings.TrimSpace(r.Type) == "" {
-		return nil, llm.ErrBadParameter.With("missing type")
-	} else if len(r.Data) == 0 {
-		return nil, llm.ErrBadParameter.With("missing data")
-	}
-	return &providerschema.Resource{ResourceMeta: providerschema.ResourceMeta{ContentType: strings.TrimSpace(r.Type), Data: r.Data}}, nil
+	return attachment(r.Type, r.Data, r.URL)
 }
 
 // Opts returns the options, for the provider to decode

@@ -72,8 +72,14 @@ llm ask --model gpt-4o-mini "Explain a KV cache in two sentences"
 
 # Ask about files: text, such as code, is sent as text, and an image or a
 # PDF as an attachment, which the model must accept
-llm ask --file main.go "What does this do?"
-llm ask --model gpt-4o --file chart.png --file notes.md "Do these agree?"
+llm ask --attach main.go "What does this do?"
+llm ask --model gpt-4o -a chart.png -a notes.md "Do these agree?"
+
+# Upload a file once, as a resource, and attach it by its URI, which a chat
+# links to its session; a chat uploads the files it's given to its session
+llm resource-create report.pdf
+llm chat -a resource://<hash> "What does this say?"
+llm ocr --model mistral-ocr-latest resource://<hash>
 
 # Embed text, or an image
 llm embed --model mistral-embed "A cat asleep in the sun"

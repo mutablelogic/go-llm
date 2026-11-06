@@ -29,6 +29,7 @@ type opt struct {
 	maxEvents     uint
 	toolkit       *toolkit.Toolkit
 	broadcaster   *broadcaster.Broadcaster
+	resources     Resources
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -60,6 +61,7 @@ func (o *opt) defaults() {
 	o.maxEvents = DefaultMaxEvents
 	o.toolkit = nil
 	o.broadcaster = broadcaster.New()
+	o.resources = nil
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -137,6 +139,21 @@ func WithEventBuilder(fn EventBuilder) Opt {
 			return llm.ErrBadParameter.With("missing event builder")
 		}
 		o.eventBuilder = fn
+		return nil
+	}
+}
+
+// WithResources sets the resources, which messages' attachments, and the
+// audio, documents and images which are transcribed, recognized, or
+// embedded, refer to by their URIs, which are resource://<hash>, whose
+// content is read, as they're sent to a model, or none, when attachments
+// can't refer to resources
+func WithResources(resources Resources) Opt {
+	return func(o *opt) error {
+		if resources == nil {
+			return llm.ErrBadParameter.With("missing resources")
+		}
+		o.resources = resources
 		return nil
 	}
 }

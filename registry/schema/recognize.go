@@ -2,11 +2,13 @@ package schema
 
 import (
 	"encoding/json"
+	"net/url"
 	"strings"
 
 	// Packages
 	llm "github.com/mutablelogic/go-llm"
 	providerschema "github.com/mutablelogic/go-llm/provider/schema"
+	resourceschema "github.com/mutablelogic/go-llm/resource/schema"
 	types "github.com/mutablelogic/go-server/pkg/types"
 )
 
@@ -17,8 +19,9 @@ import (
 // such as a PDF, by its type and data, with the options
 type RecognizeRequest struct {
 	Model string                     `json:"model" help:"Model which recognizes text, by name, or by provider and name" example:"mistral:mistral-ocr-latest"`
-	Type  string                     `json:"type" help:"MIME type of the image or document" example:"application/pdf"`
-	Data  []byte                     `json:"data" help:"Data of the image or document, encoded as base64" example:"JVBERi0xLjQ="`
+	Type  string                     `json:"type,omitempty" help:"MIME type of the image or document, which is needed with its data" example:"application/pdf" optional:""`
+	Data  []byte                     `json:"data,omitempty" help:"Data of the image or document, encoded as base64, or its URL" example:"JVBERi0xLjQ=" optional:""`
+	URL   string                     `json:"url,omitempty" help:"URI of a resource, which is resource://<hash>, on its own, whose content is read, rather than the data, whose type is the resource's, unless it's given" example:"resource://9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08" optional:""`
 	Opt   map[string]json.RawMessage `json:"opt,omitzero" help:"Options, by key, such as pages=\"0,2-4\", table_format=html, and regions=true, which the provider decodes" example:"{\"pages\":\"0-1\"}" optional:""`
 }
 
@@ -54,12 +57,7 @@ const RecognizeBodyLimit = 64 << 20
 // Resource returns the image or document to recognize, or an error when it
 // has no type, or no data
 func (r RecognizeRequest) Resource() (llm.Resource, error) {
-	if strings.TrimSpace(r.Type) == "" {
-		return nil, llm.ErrBadParameter.With("missing type")
-	} else if len(r.Data) == 0 {
-		return nil, llm.ErrBadParameter.With("missing data")
-	}
-	return &providerschema.Resource{ResourceMeta: providerschema.ResourceMeta{ContentType: strings.TrimSpace(r.Type), Data: r.Data}}, nil
+	return attachment(r.Type, r.Data, r.URL)
 }
 
 // Opts returns the options, for the provider to decode
@@ -82,4 +80,35 @@ func (r RecognizeRequest) String() string {
 
 func (r RecognizeResponse) String() string {
 	return types.Stringify(r)
+}
+
+///////////////////////////////////////////////////////////////////////////////
+// PRIVATE FUNCTIONS
+
+// attachment returns an attachment, of its type and data, or the URI of a
+// resource, which is resource://<hash>, whose type, when it isn't given, is
+// the resource's, and whose content is read as it's used. Returns
+// ErrBadParameter when it has neither, or both, or data without a type, or
+// the URI isn't a resource's.
+func attachment(contentType string, data []byte, uri string) (*providerschema.Resource, error) {
+	contentType, uri = strings.TrimSpace(contentType), strings.TrimSpace(uri)
+	switch {
+	case uri != "" && len(data) > 0:
+		return nil, llm.ErrBadParameter.With("data, or a url, but not both")
+	case uri != "":
+		hash, err := resourceschema.ParseURI(uri)
+		if err != nil {
+			return nil, err
+		}
+		u, err := url.Parse(resourceschema.URI(hash))
+		if err != nil {
+			return nil, llm.ErrBadParameter.With(err.Error())
+		}
+		return &providerschema.Resource{ResourceMeta: providerschema.ResourceMeta{ContentType: contentType, URL: u}}, nil
+	case len(data) == 0:
+		return nil, llm.ErrBadParameter.With("missing data, or a url")
+	case contentType == "":
+		return nil, llm.ErrBadParameter.With("missing type")
+	}
+	return &providerschema.Resource{ResourceMeta: providerschema.ResourceMeta{ContentType: contentType, Data: data}}, nil
 }

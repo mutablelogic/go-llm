@@ -23,7 +23,7 @@ import (
 // TYPES
 
 type TranscribeCmd struct {
-	File   string                     `arg:"" name:"file" type:"existingfile" help:"The audio, whose speech is transcribed."`
+	File   string                     `arg:"" name:"file" help:"The audio, whose speech is transcribed, or a resource, by its URI, resource://<hash>."`
 	Model  string                     `name:"model" help:"Model name, or provider and model name separated by a colon, such as openai:whisper-1. Defaults to the model last used for transcribing speech." optional:""`
 	Opt    map[string]json.RawMessage `name:"opt" help:"Options, by key, such as language=fr, segments=true, or speakers=true, which can be given more than once." optional:""`
 	Stream bool                       `name:"stream" negatable:"" default:"true" help:"Print the transcript as it's transcribed, or with --no-stream, once it's complete."`
@@ -31,7 +31,7 @@ type TranscribeCmd struct {
 }
 
 type TranslateCmd struct {
-	File   string                     `arg:"" name:"file" type:"existingfile" help:"The audio, whose speech, in any language, is translated into English."`
+	File   string                     `arg:"" name:"file" help:"The audio, whose speech, in any language, is translated into English, or a resource, by its URI, resource://<hash>."`
 	Model  string                     `name:"model" help:"Model name, or provider and model name separated by a colon, such as openai:whisper-1. Defaults to the model last used for translating speech." optional:""`
 	Opt    map[string]json.RawMessage `name:"opt" help:"Options, by key, such as segments=true, which can be given more than once." optional:""`
 	Stream bool                       `name:"stream" negatable:"" default:"true" help:"Print the transcript as it's translated, or with --no-stream, once it's complete."`
@@ -83,21 +83,21 @@ func runTranscribe(ctx server.Cmd, name, key, file, model string, opt map[string
 		return fmt.Errorf("missing model: set one with --model, and it's used until another is set")
 	}
 
-	// The audio
-	data, err := os.ReadFile(file)
-	if err != nil {
-		return err
+	// The audio, or the resource
+	req := schema.TranscribeRequest{Model: model, Opt: quoteOpts(opt)}
+	if isResourceURI(file) {
+		req.URL = strings.TrimSpace(file)
+	} else {
+		data, err := os.ReadFile(file)
+		if err != nil {
+			return err
+		}
+		req.Type, req.Data = providerschema.ResourceType(data, filepath.Base(file)), data
 	}
 
 	// The transcript is printed as it's transcribed: its text, or its
 	// segments, when they're asked for, unless it's debugged
 	debug := ctx.IsDebug()
-	req := schema.TranscribeRequest{
-		Model: model,
-		Type:  providerschema.ResourceType(data, filepath.Base(file)),
-		Data:  data,
-		Opt:   quoteOpts(opt),
-	}
 	opts, err := llm.ApplyOpts(req.Opts()...)
 	if err != nil {
 		return err

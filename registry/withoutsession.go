@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"strings"
 	"sync"
+	"uuid"
 
 	// Packages
 	otel "github.com/mutablelogic/go-client/pkg/otel"
@@ -56,9 +57,15 @@ func (r *Registry) Ask(ctx context.Context, req schema.AskRequest, stream llm.Ge
 	} else if len(req.Messages) == 0 {
 		return nil, llm.ErrBadParameter.With("missing messages")
 	}
+	// Attachments which refer to resources are resources on their own, as
+	// there's no session
 	messages := make([]llm.Message, len(req.Messages))
 	for i := range req.Messages {
-		messages[i] = &providerschema.Message{MessageMeta: req.Messages[i]}
+		message, err := r.attach(ctx, uuid.Nil(), providerschema.Message{MessageMeta: req.Messages[i]})
+		if err != nil {
+			return nil, err
+		}
+		messages[i] = &message
 	}
 
 	// Ask the model, until it replies, with a result which conforms to the

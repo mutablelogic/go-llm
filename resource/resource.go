@@ -45,10 +45,10 @@ type Manager struct {
 	maxSize     int64
 	now         func() time.Time
 
-	// A resource of a session is created with the session's existence
-	// checked, with this held, as the session's resources are deleted, so
-	// one which is created as its session is deleted, such as by a slow
-	// upload, is deleted with the others
+	// A resource of a session is created, or linked, with the session's
+	// existence checked, with this held, as the session's resources are
+	// deleted, so one which is created as its session is deleted, such as by
+	// a slow upload, is deleted with the others
 	sessions sync.Mutex
 
 	// Content which is written, and the resource which refers to it, are
@@ -264,6 +264,58 @@ func (r *Manager) Resource(ctx context.Context, uri string, session *uuid.UUID) 
 		return nil, err
 	}
 	return &resource{manager: r, Resource: stored}, nil
+}
+
+// Link links the resource with the URI, which is resource://<hash>, which is
+// on its own, to the session, as a resource of the session, with the one
+// content, and what it is, so it's kept with the session, and returns it,
+// or the session's, when it's linked to it already. Returns ErrBadParameter
+// when the URI isn't a resource's, ErrNotFound when there's no resource on
+// its own with it, or the session doesn't exist, and the store's errors.
+func (r *Manager) Link(ctx context.Context, uri string, session uuid.UUID) (_ schema.Resource, err error) {
+	ctx, endSpan := otel.StartSpan(r.tracer, ctx, "resource.Link",
+		attribute.String("arg.uri", uri),
+		attribute.String("arg.session", session.String()),
+	)
+	defer func() { endSpan(err) }()
+
+	hash, err := schema.ParseURI(uri)
+	if err != nil {
+		return schema.Resource{}, err
+	}
+
+	// With the session's resources held, so it isn't linked to a session as
+	// it's deleted, unless it's deleted with the others
+	r.sessions.Lock()
+	defer r.sessions.Unlock()
+	if err := r.sessionExists(ctx, &session); err != nil {
+		return schema.Resource{}, err
+	}
+	key := schema.ResourceKey{Hash: hash, Session: &session}
+	if linked, err := r.use(ctx, key); err == nil {
+		return linked, nil
+	} else if !errors.Is(err, llm.ErrNotFound) {
+		return schema.Resource{}, err
+	}
+
+	// A resource of the session, which is the one on its own, with the lock
+	// read, so its content isn't removed, as it's linked
+	r.contents.RLock()
+	defer r.contents.RUnlock()
+	alone, err := r.use(ctx, schema.ResourceKey{Hash: hash})
+	if err != nil {
+		return schema.Resource{}, err
+	}
+	now := r.now().UTC()
+	linked := alone
+	linked.Session, linked.Created, linked.Used = &session, now, now
+	if err := r.store.Create(ctx, linked); errors.Is(err, llm.ErrConflict) {
+		return r.store.Get(ctx, key)
+	} else if err != nil {
+		return schema.Resource{}, err
+	}
+	r.publish(eventschema.EventCreate, linked)
+	return linked, nil
 }
 
 // Delete deletes the resource with the key, publishes that it was, and

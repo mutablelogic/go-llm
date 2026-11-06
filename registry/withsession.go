@@ -55,6 +55,12 @@ func (r *Registry) WithSession(ctx context.Context, session schema.Session, mess
 		if err != nil {
 			return nil, llm.ErrBadParameter.Withf("message %d: %v", i, err)
 		}
+
+		// Attachments which refer to resources are the session's, or those
+		// on their own, which are linked to it
+		if message, err = r.attach(ctx, session.ID, message); err != nil {
+			return nil, err
+		}
 		added = append(added, message)
 	}
 	conversation := make([]llm.Message, 0, len(earlier))

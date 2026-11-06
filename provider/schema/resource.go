@@ -1,8 +1,10 @@
 package schema
 
 import (
+	"bytes"
 	"context"
 	"encoding/binary"
+	"encoding/json"
 	"mime"
 	"net/http"
 	"net/url"
@@ -77,6 +79,56 @@ func (r Resource) Read(ctx context.Context) (llm.ReadFunc, error) {
 		return nil, llm.ErrNotImplemented.Withf("reading resource url %q", r.URL.Redacted())
 	}
 	return llm.ReadBytes(r.Data), nil
+}
+
+// MarshalJSON returns the resource as JSON, whose URL is a string, such as
+// resource://<hash>, rather than its parts
+func (r ResourceMeta) MarshalJSON() ([]byte, error) {
+	type meta ResourceMeta
+	var u string
+	if r.URL != nil {
+		u = r.URL.String()
+	}
+	return json.Marshal(struct {
+		meta
+		URL string `json:"url,omitempty"`
+	}{meta: meta(r), URL: u})
+}
+
+// UnmarshalJSON reads the resource from JSON, whose URL is a string, or, as
+// it was once written, its parts. Returns an error when the URL isn't one.
+func (r *ResourceMeta) UnmarshalJSON(data []byte) error {
+	type meta ResourceMeta
+	var value struct {
+		meta
+		URL json.RawMessage `json:"url,omitempty"`
+	}
+	if err := json.Unmarshal(data, &value); err != nil {
+		return err
+	}
+	*r = ResourceMeta(value.meta)
+	r.URL = nil
+	switch raw := bytes.TrimSpace(value.URL); {
+	case len(raw) == 0 || string(raw) == "null":
+	case raw[0] == '"':
+		var s string
+		if err := json.Unmarshal(raw, &s); err != nil {
+			return err
+		} else if s = strings.TrimSpace(s); s != "" {
+			u, err := url.Parse(s)
+			if err != nil {
+				return llm.ErrBadParameter.Withf("invalid attachment url %q", s)
+			}
+			r.URL = u
+		}
+	default:
+		var u url.URL
+		if err := json.Unmarshal(raw, &u); err != nil {
+			return err
+		}
+		r.URL = &u
+	}
+	return nil
 }
 
 ////////////////////////////////////////////////////////////////////////////////

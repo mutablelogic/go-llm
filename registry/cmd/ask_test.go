@@ -25,7 +25,7 @@ func Test_AskMessage(t *testing.T) {
 	png := write("image.png", []byte("\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR"))
 	pdf := write("doc.pdf", []byte("%PDF-1.7\n1 0 obj\n"))
 
-	message, err := askMessage("What do these say?", []string{code, srt, png, pdf})
+	message, err := askMessage("What do these say?", []string{code, srt, png, pdf}, nil)
 	require.NoError(t, err)
 	require.Len(t, message.Content, 5)
 
@@ -55,7 +55,7 @@ func Test_AskMessage_Fence(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "README.md")
 	readme := "# Example\n\n```go\nfmt.Println(\"hi\")\n```\n\n````md\n```\nnested\n```\n````\n"
 	require.NoError(t, os.WriteFile(path, []byte(readme), 0o644))
-	message, err := askMessage("What does it say?", []string{path})
+	message, err := askMessage("What does it say?", []string{path}, nil)
 	require.NoError(t, err)
 	require.Len(t, message.Content, 2)
 	require.NotNil(t, message.Content[0].Text)
@@ -77,7 +77,7 @@ func Test_CodeFence(t *testing.T) {
 
 // Without files, the message is the question
 func Test_AskMessage_NoFiles(t *testing.T) {
-	message, err := askMessage("Hello?", nil)
+	message, err := askMessage("Hello?", nil, nil)
 	require.NoError(t, err)
 	require.Len(t, message.Content, 1)
 	assert.Equal(t, "Hello?", *message.Content[0].Text)
@@ -85,6 +85,42 @@ func Test_AskMessage_NoFiles(t *testing.T) {
 
 // A file which can't be read is an error
 func Test_AskMessage_Missing(t *testing.T) {
-	_, err := askMessage("Hello?", []string{filepath.Join(t.TempDir(), "missing.txt")})
+	_, err := askMessage("Hello?", []string{filepath.Join(t.TempDir(), "missing.txt")}, nil)
 	assert.ErrorIs(t, err, os.ErrNotExist)
+}
+
+// A resource is attached by its URI, and a file which isn't text, with an
+// upload function, is uploaded, and attached by the URI of the resource
+// it's uploaded as, with its type, while text is sent as text
+func Test_AskMessage_Resources(t *testing.T) {
+	dir := t.TempDir()
+	png := filepath.Join(dir, "cat.png")
+	require.NoError(t, os.WriteFile(png, []byte("\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR"), 0o600))
+	notes := filepath.Join(dir, "notes.txt")
+	require.NoError(t, os.WriteFile(notes, []byte("Hello"), 0o600))
+	resource := "resource://" + strings.Repeat("a", 64)
+	uploaded := "resource://" + strings.Repeat("b", 64)
+
+	var uploads []string
+	message, err := askMessage("What are these?", []string{resource, png, notes}, func(file string) (string, error) {
+		uploads = append(uploads, file)
+		return uploaded, nil
+	})
+	require.NoError(t, err)
+	assert.Equal(t, []string{png}, uploads, "only the file which isn't text is uploaded")
+	require.Len(t, message.Content, 4)
+	assert.Equal(t, resource, message.Content[0].Resource.URL.String())
+	assert.Empty(t, message.Content[0].Resource.Data)
+	assert.Equal(t, uploaded, message.Content[1].Resource.URL.String())
+	assert.Equal(t, "image/png", message.Content[1].Resource.ContentType)
+	assert.Empty(t, message.Content[1].Resource.Data)
+	assert.Contains(t, *message.Content[2].Text, "Hello")
+
+	// Without one, the file is attached with its data, and a URI which isn't
+	// a resource's is an error
+	message, err = askMessage("What's this?", []string{png}, nil)
+	require.NoError(t, err)
+	assert.NotEmpty(t, message.Content[0].Resource.Data)
+	_, err = askMessage("What's this?", []string{"resource://xyz"}, nil)
+	assert.Error(t, err)
 }

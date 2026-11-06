@@ -20,7 +20,7 @@ import (
 // TYPES
 
 type RecognizeCmd struct {
-	File  string                     `arg:"" name:"file" type:"existingfile" help:"The image or document, such as a PDF, whose text is recognized."`
+	File  string                     `arg:"" name:"file" help:"The image or document, such as a PDF, whose text is recognized, or a resource, by its URI, resource://<hash>."`
 	Model string                     `name:"model" help:"Model name, or provider and model name separated by a colon, such as mistral:mistral-ocr-latest. Defaults to the model last used for recognizing text." optional:""`
 	Opt   map[string]json.RawMessage `name:"opt" help:"Options, by key, such as pages=0-2, table_format=html, or regions=true, which prints JSON, which can be given more than once." optional:""`
 }
@@ -50,19 +50,18 @@ func (cmd *RecognizeCmd) Run(ctx server.Cmd) error {
 		return fmt.Errorf("missing model: set one with --model, and it's used until another is set")
 	}
 
-	// The image or document
-	data, err := os.ReadFile(cmd.File)
-	if err != nil {
-		return err
-	}
-
-	// The request, and whether its regions are asked for, when the response
-	// is printed as JSON, even when a page has none, such as a blank page
-	req := schema.RecognizeRequest{
-		Model: model,
-		Type:  providerschema.ResourceType(data, filepath.Base(cmd.File)),
-		Data:  data,
-		Opt:   quoteOpts(cmd.Opt),
+	// The request, for the image or document, or the resource, and whether
+	// its regions are asked for, when the response is printed as JSON, even
+	// when a page has none, such as a blank page
+	req := schema.RecognizeRequest{Model: model, Opt: quoteOpts(cmd.Opt)}
+	if isResourceURI(cmd.File) {
+		req.URL = strings.TrimSpace(cmd.File)
+	} else {
+		data, err := os.ReadFile(cmd.File)
+		if err != nil {
+			return err
+		}
+		req.Type, req.Data = providerschema.ResourceType(data, filepath.Base(cmd.File)), data
 	}
 	opts, err := llm.ApplyOpts(req.Opts()...)
 	if err != nil {
