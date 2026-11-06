@@ -66,7 +66,7 @@ func (t *speak) Run(ctx context.Context, input json.RawMessage) (any, error) {
 	} else if req.Text = strings.TrimSpace(req.Text); req.Text == "" {
 		return nil, gollm.ErrBadParameter.With("missing text")
 	}
-	models, model, err := modelFor(ctx, t.models, req.Model, t.model)
+	models, model, err := modelFor(ctx, t.models, req.Model, t.model, "speech")
 	if err != nil {
 		return nil, err
 	}

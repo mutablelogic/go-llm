@@ -45,6 +45,7 @@ interface Bubble {
     label?: string;
     text: string;
     attachment?: Attachment;
+    media?: Attachment;
     markdown?: boolean;
     live?: boolean;
     message?: Message;
@@ -55,11 +56,20 @@ interface Bubble {
 interface Attachment {
     name: string;
     type?: string;
+    url?: string;
 }
 
 // AttachmentName returns the name of the resource an attachment refers to,
 // by its URL, such as resource://<hash>, when it's known
 export type AttachmentName = (url: string) => string | undefined;
+
+// ContentURL returns the URL of the content of the resource with the URI,
+// resource://<hash>, which the browser plays, shows, or downloads, or
+// undefined, when it isn't known
+export type ContentURL = (uri: string) => string | undefined;
+
+// resourceURIs matches the URIs of resources, in a reply's Markdown
+const resourceURIs = /resource:\/\/[0-9a-f]{64}/g;
 
 @customElement('llm-chat-view')
 export class ChatView extends LitElement {
@@ -107,6 +117,11 @@ export class ChatView extends LitElement {
     // The names of the resources which messages' attachments refer to
     @property({ attribute: false })
     attachmentName: AttachmentName = () => undefined;
+
+    // The URLs of the content of resources, which are played, or shown, by
+    // the browser
+    @property({ attribute: false })
+    contentURL: ContentURL = () => undefined;
 
     @property({ attribute: false })
     streamed: Piece[] = [];
@@ -174,6 +189,29 @@ export class ChatView extends LitElement {
             align-items: center;
             gap: 0.375rem;
             overflow-wrap: anywhere;
+        }
+
+        .attachment a {
+            color: inherit;
+        }
+
+        /* A resource a tool returned, such as speech, with its player, or
+           an image */
+        .media {
+            display: flex;
+            flex-direction: column;
+            gap: 0.5rem;
+        }
+
+        .media audio {
+            width: min(20rem, 60vw);
+        }
+
+        .media video,
+        .media img {
+            display: block;
+            max-width: min(24rem, 100%);
+            max-height: 20rem;
         }
 
         .attachment svg {
@@ -317,12 +355,48 @@ export class ChatView extends LitElement {
             <llm-chat-bubble kind=${bubble.kind} label=${bubble.label ?? 'Thinking'} ?live=${bubble.live === true}
                 ?selected=${message !== undefined && message === this.selected}
                 @llm-chat-bubble-info=${() => message && this.dispatchEvent(new CustomEvent(ChatView.eventInfo, { detail: message }))}
-                .copyText=${bubble.text}>${bubble.attachment
-                    ? html`<span class="attachment">${iconLoader(attachmentIcon(bubble.attachment.type))}<span>${bubble.attachment.name}</span></span>`
+                .copyText=${bubble.text}>${bubble.media
+                    ? this.renderMedia(bubble.media)
+                    : bubble.attachment
+                    ? this.renderAttachment(bubble.attachment)
                     : bubble.markdown
-                    ? html`<div class="markdown">${markdown(bubble.text)}</div>`
+                    ? html`<div class="markdown">${markdown(this.withContentURLs(bubble.text))}</div>`
                     : html`<span class="text">${bubble.text}</span>`}</llm-chat-bubble>
         `;
+    }
+
+    // renderAttachment returns an attachment: its icon, and its name, which
+    // links to its content, when it's known
+    private renderAttachment(attachment: Attachment) {
+        const url = attachment.url ? this.contentURL(attachment.url) : undefined;
+        const name = url
+            ? html`<a href=${url} target="_blank" rel="noopener noreferrer">${attachment.name}</a>`
+            : html`<span>${attachment.name}</span>`;
+        return html`<span class="attachment">${iconLoader(attachmentIcon(attachment.type))}${name}</span>`;
+    }
+
+    // renderMedia returns a resource a tool returned, such as speech: a
+    // player of audio, or video, an image, or otherwise its name, which links
+    // to its content
+    private renderMedia(media: Attachment) {
+        const url = media.url ? this.contentURL(media.url) : undefined;
+        const mediaType = (media.type ?? '').split(';')[0].trim().toLowerCase();
+        if (!url) {
+            return this.renderAttachment(media);
+        } else if (mediaType.startsWith('audio/')) {
+            return html`<div class="media">${this.renderAttachment(media)}<audio controls preload="metadata" src=${url}></audio></div>`;
+        } else if (mediaType.startsWith('video/')) {
+            return html`<div class="media">${this.renderAttachment(media)}<video controls preload="metadata" src=${url}></video></div>`;
+        } else if (mediaType.startsWith('image/') && mediaType !== 'image/svg+xml') {
+            return html`<div class="media">${this.renderAttachment(media)}<a href=${url} target="_blank" rel="noopener noreferrer"><img src=${url} alt=${media.name}></a></div>`;
+        }
+        return this.renderAttachment(media);
+    }
+
+    // withContentURLs returns the Markdown, with the URIs of resources, such
+    // as a link to speech, as the URLs of their content, when they're known
+    private withContentURLs(text: string): string {
+        return text.replace(resourceURIs, (uri) => this.contentURL(uri) ?? uri);
     }
 
     // messageBubbles returns the bubbles of a message, with the lines tools
@@ -412,7 +486,7 @@ function blockBubbles(kind: ChatKind, block: ContentBlock, attachmentName: Attac
     if (block.attachment) {
         const { url, type } = block.attachment;
         const name = (url && attachmentName(url)) || type || url || 'Attachment';
-        bubbles.push({ kind, text: name, attachment: { name, type } });
+        bubbles.push({ kind, text: name, attachment: { name, type, url } });
     }
     if (block.tool_call) {
         bubbles.push({ kind: 'thinking', label: `Called ${canonicalTool(block.tool_call.name)}`, text: json(block.tool_call.input) });
@@ -420,8 +494,26 @@ function blockBubbles(kind: ChatKind, block: ContentBlock, attachmentName: Attac
     if (block.tool_result) {
         const name = canonicalTool(block.tool_result.name ?? 'the tool');
         bubbles.push({ kind: 'thinking', label: block.tool_result.is_error ? `${name} failed` : `Result of ${name}`, text: json(block.tool_result.content) });
+
+        // The resources it returned, such as speech, after it, so they're
+        // played, or shown, rather than in its result, which is collapsed
+        for (const resource of resultResources(block.tool_result.content)) {
+            const name = resource.name || resource.type || 'Resource';
+            bubbles.push({ kind: 'assistant', text: name, media: { name, type: resource.type, url: resource.uri } });
+        }
     }
     return bubbles;
+}
+
+// resultResources returns the links to the resources a tool's result has,
+// which is {"resources": [{"uri", "name", "type"}]}, or none
+function resultResources(content: unknown): { uri: string; name?: string; type?: string }[] {
+    const resources = (content as { resources?: unknown } | null)?.resources;
+    if (!Array.isArray(resources)) {
+        return [];
+    }
+    return resources.filter((resource): resource is { uri: string; name?: string; type?: string } =>
+        typeof resource?.uri === 'string' && resource.uri.startsWith('resource://'));
 }
 
 // attachmentIcon returns the icon of an attachment of the type: an image,
