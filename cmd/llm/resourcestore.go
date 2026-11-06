@@ -210,13 +210,18 @@ func (s *resourceStore) Update(_ context.Context, key schema.ResourceKey, fn fun
 	return r, nil
 }
 
-func (s *resourceStore) Delete(_ context.Context, key schema.ResourceKey) (schema.Resource, error) {
+func (s *resourceStore) Delete(_ context.Context, key schema.ResourceKey, check func(schema.Resource) error) (schema.Resource, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	r, err := s.read(key)
 	if err != nil {
 		return schema.Resource{}, err
-	} else if err := os.Remove(s.path(key)); err != nil && !errors.Is(err, fs.ErrNotExist) {
+	} else if check != nil {
+		if err := check(r); err != nil {
+			return schema.Resource{}, err
+		}
+	}
+	if err := os.Remove(s.path(key)); err != nil && !errors.Is(err, fs.ErrNotExist) {
 		return schema.Resource{}, err
 	}
 	return r, nil

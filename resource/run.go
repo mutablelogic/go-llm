@@ -22,6 +22,10 @@ const (
 	// buffered, before they're read
 	eventBuffer = 100
 
+	// errNotExpired is returned by a delete which cleans up a resource,
+	// which was used since it was listed, so it isn't deleted
+	errNotExpired = errString("resource isn't expired")
+
 	// sessionSchema and sessionTable are the schema and table of the
 	// registry's events of sessions, which are registry.EventSchema and
 	// registry.SessionTable, which aren't imported, as the registry reads
@@ -99,9 +103,19 @@ func (r *Manager) Clean(ctx context.Context, logger *slog.Logger) {
 		if !r.expired(ctx, resource, now) {
 			continue
 		}
-		if _, err := r.store.Delete(ctx, resource.Key()); err != nil && !errors.Is(err, llm.ErrNotFound) {
+		// It's deleted only when it still isn't needed, as it may have been
+		// used since it was listed
+		_, err := r.store.Delete(ctx, resource.Key(), func(current schema.Resource) error {
+			if !r.expired(ctx, current, now) {
+				return errNotExpired
+			}
+			return nil
+		})
+		if errors.Is(err, errNotExpired) || errors.Is(err, llm.ErrNotFound) {
+			continue
+		} else if err != nil {
 			logger.ErrorContext(ctx, "resource not deleted", "resource", resource.Key().String(), "error", err.Error())
-		} else if err == nil {
+		} else {
 			r.publish(eventschema.EventDelete, resource)
 			deleted++
 		}
@@ -164,6 +178,13 @@ func (r *Manager) removeUnreferenced(ctx context.Context) (int, error) {
 		}
 	}
 	return removed, errors.Join(errs...)
+}
+
+// errString is an error, as a constant
+type errString string
+
+func (e errString) Error() string {
+	return string(e)
 }
 
 ///////////////////////////////////////////////////////////////////////////////

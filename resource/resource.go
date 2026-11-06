@@ -45,6 +45,12 @@ type Manager struct {
 	maxSize     int64
 	now         func() time.Time
 
+	// A resource of a session is created, or linked, with the session's
+	// existence checked, with this held, as the session's resources are
+	// deleted, so one which is created as its session is deleted, such as by
+	// a slow upload, is deleted with the others
+	sessions sync.Mutex
+
 	// Content which is written, and the resource which refers to it, are
 	// written with the lock read, so the cleanup, which removes content no
 	// resource refers to, with the lock held, doesn't remove it before the
@@ -118,8 +124,10 @@ func (r *Manager) Create(ctx context.Context, meta schema.ResourceMeta, content 
 		meta.Name = ""
 	}
 
-	// Its type is detected from its name, or the start of its content
+	// Its type is detected from its name, or the start of its content,
+	// unless it's given, which it isn't when it's application/octet-stream
 	buffered := bufio.NewReaderSize(content, sniffSize)
+	given := givenType(meta.Type)
 	if meta.Type, err = contentType(meta.Type, meta.Name, buffered); err != nil {
 		return schema.Resource{}, false, err
 	}
@@ -130,6 +138,15 @@ func (r *Manager) Create(ctx context.Context, meta schema.ResourceMeta, content 
 	defer r.contents.RUnlock()
 	hash, size, err := r.store.Write(ctx, &limitReader{r: buffered, limit: r.maxSize})
 	if err != nil {
+		return schema.Resource{}, false, err
+	}
+
+	// Its session is checked again, as it may have been deleted as the
+	// content was written, with the session's resources held, so it's
+	// created before they're deleted, or not at all
+	r.sessions.Lock()
+	defer r.sessions.Unlock()
+	if err := r.sessionExists(ctx, meta.Session); err != nil {
 		return schema.Resource{}, false, err
 	}
 	now := r.now().UTC()
@@ -149,7 +166,10 @@ func (r *Manager) Create(ctx context.Context, meta schema.ResourceMeta, content 
 		if meta.Description != "" {
 			existing.Description = meta.Description
 		}
-		existing.Type, existing.Used = meta.Type, now
+		if given {
+			existing.Type = meta.Type
+		}
+		existing.Used = now
 		return nil
 	})
 	if err != nil {
@@ -262,7 +282,13 @@ func (r *Manager) Link(ctx context.Context, uri string, session uuid.UUID) (_ sc
 	hash, err := schema.ParseURI(uri)
 	if err != nil {
 		return schema.Resource{}, err
-	} else if err := r.sessionExists(ctx, &session); err != nil {
+	}
+
+	// With the session's resources held, so it isn't linked to a session as
+	// it's deleted, unless it's deleted with the others
+	r.sessions.Lock()
+	defer r.sessions.Unlock()
+	if err := r.sessionExists(ctx, &session); err != nil {
 		return schema.Resource{}, err
 	}
 	key := schema.ResourceKey{Hash: hash, Session: &session}
@@ -302,7 +328,7 @@ func (r *Manager) Delete(ctx context.Context, key schema.ResourceKey) (_ schema.
 	)
 	defer func() { endSpan(err) }()
 
-	deleted, err := r.store.Delete(ctx, key)
+	deleted, err := r.store.Delete(ctx, key, nil)
 	if err != nil {
 		return schema.Resource{}, err
 	}
@@ -320,6 +346,10 @@ func (r *Manager) DeleteSession(ctx context.Context, session uuid.UUID) (_ int, 
 	)
 	defer func() { endSpan(err) }()
 
+	// With the session's resources held, so one which is being created is
+	// created first, and deleted with them
+	r.sessions.Lock()
+	defer r.sessions.Unlock()
 	all, err := r.store.List(ctx)
 	if err != nil {
 		return 0, err
@@ -362,11 +392,12 @@ func (r *resource) Type() string {
 	return r.Resource.Type
 }
 
-// Read returns a function which reads the resource's content from the
-// store
+// Read returns a function which reads the resource's content, through the
+// manager, each time it's called, so the resource is used, and it's read
+// only while it exists
 func (r *resource) Read(context.Context) (llm.ReadFunc, error) {
 	return func(ctx context.Context, fn func(io.Reader) error) error {
-		content, err := r.manager.store.Open(ctx, r.Hash)
+		_, content, err := r.manager.Open(ctx, r.Key())
 		if err != nil {
 			return err
 		}
@@ -420,6 +451,13 @@ func sameSession(a, b *uuid.UUID) bool {
 	return *a == *b
 }
 
+// givenType returns whether the type is given, rather than empty, or
+// application/octet-stream, which says only that it isn't known
+func givenType(contentType string) bool {
+	mediaType, _, err := mime.ParseMediaType(strings.TrimSpace(contentType))
+	return err == nil && mediaType != types.ContentTypeBinary
+}
+
 // contentType returns the type, when it's given, and isn't
 // application/octet-stream, or the name's, by its extension, or the type
 // detected from the start of the content. Returns ErrBadParameter when the
@@ -427,7 +465,7 @@ func sameSession(a, b *uuid.UUID) bool {
 func contentType(given, name string, content *bufio.Reader) (string, error) {
 	if given != "" {
 		mediaType, params, err := mime.ParseMediaType(given)
-		if err != nil {
+		if err != nil || !strings.Contains(mediaType, "/") {
 			return "", llm.ErrBadParameter.Withf("invalid type %q", given)
 		} else if mediaType != types.ContentTypeBinary {
 			return mime.FormatMediaType(mediaType, params), nil

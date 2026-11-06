@@ -132,6 +132,15 @@ func Test_Upload(t *testing.T) {
 	response, _ = post(t, "?type=not+a+type", "", strings.NewReader("hello"))
 	assert.Equal(t, http.StatusBadRequest, response.StatusCode)
 
+	// Content which can run scripts in a browser, such as HTML, is served
+	// sandboxed, and isn't sniffed
+	_, html := post(t, "?name=page.html", "text/html", strings.NewReader("<script>alert(1)</script>"))
+	page, err := http.Get(server.URL + test.Prefix + "/resource/" + html.Hash + "/content")
+	require.NoError(t, err)
+	page.Body.Close()
+	assert.Equal(t, "sandbox", page.Header.Get("Content-Security-Policy"))
+	assert.Equal(t, "nosniff", page.Header.Get("X-Content-Type-Options"))
+
 	// A hash which isn't one isn't found
 	get, err := http.Get(server.URL + test.Prefix + "/resource/xyz")
 	require.NoError(t, err)
