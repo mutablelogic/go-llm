@@ -88,7 +88,7 @@ export class ModelView extends Panel<Model> {
                 ${model.output_token_limit ? html`<dt>Output tokens</dt><dd>${model.output_token_limit.toLocaleString()}</dd>` : nothing}
             </dl>
             <h3>Capabilities</h3>
-            <dl>${capabilityNames.map((name) => {
+            <dl>${[...capabilityNames, 'temperature' as const].map((name) => {
                 const can = model.capabilities?.[name];
                 return html`<dt>${name}</dt><dd>${can === true ? 'Yes' : can === false ? 'No' : 'Unknown'}</dd>`;
             })}</dl>

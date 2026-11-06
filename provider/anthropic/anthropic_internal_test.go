@@ -191,7 +191,7 @@ func Test_WithoutSession(t *testing.T) {
 	}
 	reply, usage, err := c.WithoutSession(ctx, model, messages, []llm.Tool{weatherTool{}}, func(kind llm.StreamType, text string) {
 		streamed = append(streamed, string(kind)+":"+text)
-	}, llm.WithOpt(llm.TemperatureKey, 0.5))
+	})
 	require.NoError(t, err)
 	assert.Equal(t, []string{"thinking:Let me ", "thinking:check.", "text:It's ", "text:sunny."}, streamed)
 	message := reply.(*schema.Message)
@@ -210,8 +210,7 @@ func Test_WithoutSession(t *testing.T) {
 
 	// The request is streamed, and cached, with the system prompt, the
 	// tools, and adaptive thinking, which is summarized, and dropped when
-	// the conversation changed, with its beta, and without the temperature,
-	// which the API's version doesn't accept
+	// the conversation changed, with its beta
 	request := api.request
 	assert.True(t, request.Stream)
 	assert.Equal(t, "ephemeral", request.CacheControl.Type)
@@ -334,10 +333,12 @@ func Test_Options(t *testing.T) {
 	assert.Equal(t, "david", r.Metadata.UserID)
 	assert.Equal(t, uint(100), r.MaxTokens)
 
-	// Sampling options are ignored, and others which aren't supported fail
-	r = request(t, newer, llm.WithOpt(llm.TemperatureKey, 0.5), llm.WithOpt(llm.TopKKey, uint(5)))
-	assert.NotNil(t, r)
-	err := (&messagesRequest{}).apply(newer, llm.WithOpt(llm.SeedKey, uint(1)))
+	// Sampling options, which the models don't take, and others which
+	// aren't supported, fail
+	assert.False(t, types.Value(newer.Capabilities().Temperature))
+	err := (&messagesRequest{}).apply(newer, llm.WithOpt(llm.TemperatureKey, 0.5))
+	assert.ErrorIs(t, err, llm.ErrBadParameter)
+	err = (&messagesRequest{}).apply(newer, llm.WithOpt(llm.SeedKey, uint(1)))
 	assert.ErrorIs(t, err, llm.ErrBadParameter)
 	err = (&messagesRequest{}).apply(newer, llm.WithOpt(llm.ToolChoiceKey, "required"))
 	assert.ErrorIs(t, err, llm.ErrBadParameter)

@@ -104,10 +104,11 @@ func (m *Model) OutputTokenLimit() *uint {
 }
 
 // Capabilities returns what the model can do: every model replies, calls
-// tools, and doesn't embed, transcribe or translate, and whether it thinks,
+// tools, and doesn't embed, transcribe or translate, or take a temperature,
+// as the API's version takes no sampling options, and whether it thinks,
 // and understands images, is as the API says
 func (m *Model) Capabilities() llm.ModelCap {
-	result := llm.ModelCap{Completion: yes, Tools: yes, Embedding: no, Transcription: no, Translation: no}
+	result := llm.ModelCap{Completion: yes, Tools: yes, Embedding: no, Transcription: no, Translation: no, Temperature: no}
 	if len(m.data.Capabilities) > 0 {
 		result.Thinking = types.Ptr(m.caps.Thinking.Supported)
 		result.Vision = types.Ptr(m.caps.ImageInput.Supported)

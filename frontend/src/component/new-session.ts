@@ -186,8 +186,10 @@ export class NewSession extends Panel<NewSessionForm> {
                             </cds-select>
                         ` : ''}
                     ` : ''}
-                    <cds-text-input id="temperature" label="Temperature" type="number" min="0" max="2" step="0.1" placeholder="Default"
-                        value=${typeof opt.temperature === 'number' ? String(opt.temperature) : ''}></cds-text-input>
+                    ${cannot(model, 'temperature') ? '' : html`
+                        <cds-text-input id="temperature" label="Temperature" type="number" min="0" max="2" step="0.1" placeholder="Default"
+                            value=${typeof opt.temperature === 'number' ? String(opt.temperature) : ''}></cds-text-input>
+                    `}
                 </div>
                 ${cannot(model, 'tools')
                     ? html`<p>${model?.name} can't call tools, so it's asked without them.</p>`

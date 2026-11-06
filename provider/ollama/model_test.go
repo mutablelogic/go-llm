@@ -171,7 +171,7 @@ func Test_ListModels_Capabilities(t *testing.T) {
 	models, err := newStubClient(t).ListModels(context.Background())
 	require.NoError(t, err)
 	require.Len(t, models, 3)
-	assert.Equal(t, llm.ModelCap{Completion: types.Ptr(true), Tools: types.Ptr(false), Thinking: types.Ptr(false), Vision: types.Ptr(true), Embedding: types.Ptr(false)}, models[0].Capabilities())
+	assert.Equal(t, llm.ModelCap{Completion: types.Ptr(true), Tools: types.Ptr(false), Thinking: types.Ptr(false), Vision: types.Ptr(true), Embedding: types.Ptr(false), Temperature: types.Ptr(true)}, models[0].Capabilities())
 	assert.Equal(t, llm.ModelCap{}, models[1].Capabilities())
 }
 

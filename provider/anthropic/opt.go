@@ -33,10 +33,11 @@ const (
 // PRIVATE METHODS
 
 // apply sets the options on the request, for the model, or returns an error
-// if an option isn't valid, or the API doesn't support it. Sampling options,
-// such as the temperature, are ignored, as the API's version doesn't accept
-// them, and a caller can set them for any provider. A tool choice of "any"
-// is "auto", as the newest models don't accept a forced tool choice.
+// if an option isn't valid, or the API doesn't support it, such as the
+// sampling options, which the API's version doesn't accept, and which the
+// registry leaves out, as the models don't take a temperature. A tool
+// choice of "any" is "auto", as the newest models don't accept a forced
+// tool choice.
 func (r *messagesRequest) apply(model *Model, opts ...llm.Opt) error {
 	o, err := llm.ApplyOpts(opts...)
 	if err != nil {
@@ -45,7 +46,7 @@ func (r *messagesRequest) apply(model *Model, opts ...llm.Opt) error {
 	for _, key := range o.Keys() {
 		var err error
 		switch key {
-		case llm.TemperatureKey, llm.TopPKey, llm.TopKKey, llm.ContextWindowKey:
+		case llm.ContextWindowKey:
 			// Ignored
 		case llm.MaxTokensKey:
 			r.MaxTokens, err = llm.GetOpt[uint](o, key)

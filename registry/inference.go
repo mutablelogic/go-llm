@@ -5,6 +5,7 @@ import (
 	"errors"
 	"mime"
 	"net/http"
+	"slices"
 	"strings"
 	"time"
 
@@ -46,6 +47,7 @@ func (r *Registry) WithoutSession(ctx context.Context, model llm.Model, messages
 	} else if err := canGenerate(model, messages, tools, opts...); err != nil {
 		return nil, llm.Usage{}, err
 	}
+	opts = withoutSampling(model, opts...)
 	start := time.Now()
 	reply, usage, err := generator.WithoutSession(ctx, model, messages, tools, stream, opts...)
 	usage = timed(usage, start)
@@ -214,6 +216,29 @@ func can(model llm.Model, capability *bool, action string) error {
 		return llm.ErrNotImplemented.Withf("model %q can't %s", model.Name(), action)
 	}
 	return nil
+}
+
+// withoutSampling returns the options, without the sampling options, which
+// are the temperature, top_p and top_k, when the model is known not to take
+// a temperature, such as Claude's models, rather than fail, as a session
+// keeps its options as its model changes, or the options, as they are, when
+// they can't be applied, so the provider says why
+func withoutSampling(model llm.Model, opts ...llm.Opt) []llm.Opt {
+	if temperature := model.Capabilities().Temperature; temperature == nil || *temperature {
+		return opts
+	}
+	o, err := llm.ApplyOpts(opts...)
+	if err != nil {
+		return opts
+	}
+	sampling := []string{llm.TemperatureKey, llm.TopPKey, llm.TopKKey}
+	if !slices.ContainsFunc(sampling, o.Has) {
+		return opts
+	}
+	for _, key := range sampling {
+		o.Delete(key)
+	}
+	return []llm.Opt{o.Opt()}
 }
 
 // thinks returns true when the options ask the model to think, with
