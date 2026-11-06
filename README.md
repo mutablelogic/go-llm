@@ -336,6 +336,7 @@ Tests which make requests to a provider are skipped with `-short`, and unless it
 ### Providers
 
 - **Anthropic and Google Gemini**, which the earlier version of go-llm had, for generation, and Gemini's embeddings.
+- **LM Studio**, which runs models locally, as Ollama does, with its own API to list, download, load and unload them, as well as an OpenAI-compatible API.
 - **Text to speech and images**, such as ElevenLabs' and OpenAI's voices, and image generation.
 - **OpenAI's Responses API**, so OpenAI's newest models can think while they call tools, and the models which only it has can be used.
 - **OpenAI's token limits**, which are from memory, and should be checked.
