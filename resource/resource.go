@@ -212,11 +212,16 @@ func (r *Manager) List(ctx context.Context, req schema.ResourceListRequest) (_ s
 			return !sameSession(resource.Session, session)
 		})
 	}
+	// The most recently used first, and then by hash, and session, as the
+	// same content can be in more than one session, used at the same time,
+	// so the order, and the pages, are always the same
 	slices.SortFunc(all, func(a, b schema.Resource) int {
 		if c := b.Used.Compare(a.Used); c != 0 {
 			return c
+		} else if c := strings.Compare(a.Hash, b.Hash); c != 0 {
+			return c
 		}
-		return strings.Compare(a.Hash, b.Hash)
+		return strings.Compare(sessionKey(a.Session), sessionKey(b.Session))
 	})
 
 	// The page of them
@@ -500,4 +505,13 @@ func (l *limitReader) Read(p []byte) (int, error) {
 		return n, &http.MaxBytesError{Limit: l.limit}
 	}
 	return n, err
+}
+
+// sessionKey returns the session, as text, which orders a resource on its
+// own, which has none, first
+func sessionKey(session *uuid.UUID) string {
+	if session == nil {
+		return ""
+	}
+	return session.String()
 }

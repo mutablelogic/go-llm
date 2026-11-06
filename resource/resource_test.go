@@ -467,3 +467,27 @@ func Test_ReadUses(t *testing.T) {
 	_, err = llm.ReadAll(ctx, resource)
 	assert.ErrorIs(t, err, llm.ErrNotFound)
 }
+
+func Test_ListOrder(t *testing.T) {
+	// The same content, on its own, and in two sessions, used at the same
+	// time, is listed in the same order, a page at a time, with each once:
+	// on its own, and then by session
+	ctx := context.Background()
+	a, b := uuid.New(), uuid.New()
+	if a.String() > b.String() {
+		a, b = b, a
+	}
+	r, _, _ := newManager(t, a, b)
+	for _, session := range []*uuid.UUID{&b, nil, &a} {
+		_, _, err := r.Create(ctx, schema.ResourceMeta{Session: session}, strings.NewReader("same"))
+		require.NoError(t, err)
+	}
+	var got []string
+	for offset := range uint(3) {
+		list, err := r.List(ctx, schema.ResourceListRequest{Offset: offset, Limit: types.Ptr(uint(1))})
+		require.NoError(t, err)
+		require.Len(t, list.Body, 1)
+		got = append(got, sessionKey(list.Body[0].Session))
+	}
+	assert.Equal(t, []string{"", a.String(), b.String()}, got)
+}
