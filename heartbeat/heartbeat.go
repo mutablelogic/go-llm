@@ -285,13 +285,21 @@ func Sort(heartbeats []schema.Heartbeat) {
 // PRIVATE METHODS
 
 // validate returns the heartbeat, as Validate does, or ErrBadParameter when
-// its time is checked, as it's set, and has passed, by more than a minute
+// its time is checked, as it's set, and has passed, by more than a minute,
+// which says what time it is, in the person's time zone, when it's known,
+// so a model which gave it can give a later one
 func (h *Heartbeats) validate(meta schema.HeartbeatMeta, now time.Time, checkAt bool) (schema.HeartbeatMeta, error) {
 	meta, err := meta.Validate()
 	if err != nil {
 		return schema.HeartbeatMeta{}, err
 	} else if checkAt && meta.At != nil && meta.At.Before(now.Add(-time.Minute)) {
-		return schema.HeartbeatMeta{}, llm.ErrBadParameter.Withf("heartbeat's time, %s, has passed", meta.At.Format(time.RFC3339))
+		loc, where := time.UTC, "UTC"
+		if h.zone != nil {
+			if zone := h.zone(); zone != nil {
+				loc, where = zone, zone.String()
+			}
+		}
+		return schema.HeartbeatMeta{}, llm.ErrBadParameter.Withf("heartbeat's time, %s, has passed, as it's now %s, in %s, so give a later time, with its offset", meta.At.In(loc).Format(time.RFC3339), now.In(loc).Truncate(time.Second).Format(time.RFC3339), where)
 	}
 	return meta, nil
 }

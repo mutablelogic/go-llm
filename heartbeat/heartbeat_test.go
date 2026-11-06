@@ -316,6 +316,14 @@ func Test_UpdatePassed(t *testing.T) {
 	assert.Equal(t, "Call Mum", got.Title)
 	_, err = h.Update(t.Context(), once.ID, schema.HeartbeatRequest{At: types.Ptr(at("2026-01-05T10:00:00Z"))})
 	assert.ErrorIs(t, err, llm.ErrBadParameter)
+	assert.ErrorContains(t, err, "heartbeat's time, 2026-01-05T10:00:00Z, has passed, as it's now 2026-01-05T12:00:00Z, in UTC", "it says what time it is")
+
+	// In the person's time zone, when it's known, with its offset
+	berlin, err := time.LoadLocation("Europe/Berlin")
+	require.NoError(t, err)
+	zoned, _, _ := newHeartbeats(t, heartbeat.NewStore(), c, heartbeat.WithZone(func() *time.Location { return berlin }))
+	_, err = zoned.Create(t.Context(), schema.HeartbeatMeta{Title: "Lunch", Prompt: "Remind them to eat", Session: uuid.New(), At: types.Ptr(at("2026-01-05T11:30:00Z"))})
+	assert.ErrorContains(t, err, "heartbeat's time, 2026-01-05T12:30:00+01:00, has passed, as it's now 2026-01-05T13:00:00+01:00, in Europe/Berlin, so give a later time, with its offset")
 }
 
 func Test_Sessions(t *testing.T) {
