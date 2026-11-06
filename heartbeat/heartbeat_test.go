@@ -435,3 +435,16 @@ func Test_CleanupChanged(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, at("2026-01-20T09:00:00Z"), *got.Next)
 }
+
+func Test_UntilTick(t *testing.T) {
+	// The heartbeats are looked at every ten seconds, just after each, from
+	// the start of each minute
+	for now, want := range map[string]time.Duration{
+		"2026-01-05T10:13:00Z":   10*time.Second + 100*time.Millisecond,
+		"2026-01-05T10:13:37Z":   3*time.Second + 100*time.Millisecond,
+		"2026-01-05T10:13:59Z":   1*time.Second + 100*time.Millisecond,
+		"2026-01-05T10:13:50.2Z": 9*time.Second + 900*time.Millisecond,
+	} {
+		assert.Equal(t, want, heartbeat.UntilTick(at(now)), now)
+	}
+}
