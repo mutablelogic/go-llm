@@ -47,6 +47,10 @@ type Registry struct {
 	// providers, and their models, when it starts
 	ready     chan struct{}
 	readyOnce sync.Once
+
+	// triggerMu is held to schedule an event which was triggered, so two of
+	// a source, at once, aren't both scheduled
+	triggerMu sync.Mutex
 }
 
 // entry is a provider, its name in the registry, and its cache

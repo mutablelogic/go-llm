@@ -48,6 +48,16 @@ const DefaultEventAgent = "event"
 // what it did isn't stored, ErrServiceUnavailable when the registry has no
 // session store, or agent store, and the errors of RunAgent.
 func (r *Registry) RunEvent(ctx context.Context, id uuid.UUID, req schema.RunEventRequest, stream llm.GeneratorStreamFn) (_ *schema.RunEventResponse, err error) {
+	return r.runEvent(ctx, id, req, stream, uuid.Nil())
+}
+
+///////////////////////////////////////////////////////////////////////////////
+// PRIVATE METHODS
+
+// runEvent runs the event, as RunEvent does, and stores its outcome, as a
+// new outcome, or, when it's given, as the outcome which was scheduled,
+// which is updated
+func (r *Registry) runEvent(ctx context.Context, id uuid.UUID, req schema.RunEventRequest, stream llm.GeneratorStreamFn, scheduled uuid.UUID) (_ *schema.RunEventResponse, err error) {
 	ctx, endSpan := otel.StartSpan(r.tracer, ctx, "llm.registry.RunEvent",
 		attribute.String("arg.id", id.String()),
 		attribute.String("arg.req", types.Stringify(req)),
@@ -108,24 +118,28 @@ func (r *Registry) RunEvent(ctx context.Context, id uuid.UUID, req schema.RunEve
 	if err != nil {
 		return nil, err
 	}
-	event, err := r.createEvent(ctx, schema.EventMeta{
-		Run:        session.ID,
-		Session:    req.Session,
-		Title:      req.Title,
-		Message:    message,
-		Importance: importance,
-		Status:     importance.Status(),
-		Scheduled:  req.Scheduled,
-		Fired:      req.Fired,
-	})
+	var event *schema.Event
+	if scheduled != uuid.Nil() {
+		event, err = r.updateEvent(ctx, scheduled, func(event *schema.Event) {
+			event.Run, event.Message, event.Importance, event.Status = session.ID, message, importance, importance.Status()
+		})
+	} else {
+		event, err = r.createEvent(ctx, schema.EventMeta{
+			Run:        session.ID,
+			Session:    req.Session,
+			Title:      req.Title,
+			Message:    message,
+			Importance: importance,
+			Status:     importance.Status(),
+			Scheduled:  req.Scheduled,
+			Fired:      req.Fired,
+		})
+	}
 	if err != nil {
 		return nil, err
 	}
 	return &schema.RunEventResponse{Session: *session, Run: *run, Event: event}, nil
 }
-
-///////////////////////////////////////////////////////////////////////////////
-// PRIVATE METHODS
 
 // eventReply returns the message, and how important it is, of the reply of
 // the agent which ran an event, which is its message, and importance, as the

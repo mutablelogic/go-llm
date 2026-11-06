@@ -12,7 +12,8 @@ export interface EventOutcome {
     title?: string;
     message?: string;
     importance?: 'ignore' | 'notify' | 'alert';
-    status?: 'ignored' | 'pending' | 'notified' | 'delivered';
+    status?: 'scheduled' | 'failed' | 'ignored' | 'pending' | 'notified' | 'delivered';
+    source?: string;
     scheduled?: string;
     fired?: string;
     created?: string;

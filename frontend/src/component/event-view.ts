@@ -16,6 +16,8 @@ import '@carbon/web-components/es/components/skeleton-text/index.js';
 
 // The colour of the tag of each status, and importance
 const statusTypes: Record<string, string> = {
+    scheduled: 'cyan',
+    failed: 'red',
     pending: 'blue',
     notified: 'purple',
     delivered: 'green',
@@ -112,7 +114,7 @@ export class EventView extends Panel<string> {
     }
 
     protected renderSubtitle() {
-        return 'What heartbeats for this chat replied, the most recent first';
+        return 'What heartbeats, and other events, for this chat replied, the most recent first';
     }
 
     protected renderBody() {

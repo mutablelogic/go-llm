@@ -3,6 +3,7 @@ package registry
 import (
 	"context"
 	"strings"
+	"time"
 	"uuid"
 
 	// Packages
@@ -53,6 +54,11 @@ type EventStore interface {
 // events, whose rows are their identifiers, and whose data, unless they
 // were deleted, is an EventChange
 const EventTable = "event"
+
+// staleEvent is how long an event's outcome is scheduled before it's stale,
+// as its server stopped before it ran, so an event of its source is
+// scheduled again
+const staleEvent = 30 * time.Minute
 
 // errNoEventStore is returned when the registry has no event store
 var errNoEventStore = llm.ErrServiceUnavailable.With("the registry has no event store")
@@ -164,4 +170,147 @@ func (r *Registry) eventChanged(action eventschema.EventAction, event schema.Eve
 		data.Serial, data.Status = event.Serial, event.Status
 	}
 	r.publish(action, EventTable, event.ID.String(), data)
+}
+
+///////////////////////////////////////////////////////////////////////////////
+// TRIGGER
+
+// EventBuilder returns how an event is run: its agent's input, the
+// namespaces of the tools it's run without, and what it's for, and when it
+// was due, and fired, for RunEvent
+type EventBuilder func(context.Context, schema.EventRequest) (schema.RunEventRequest, error)
+
+// TriggerEvent schedules the event, from a source other than a heartbeat,
+// such as a file which changed, or a webhook, to run, in the background, in
+// the session of its source, for the session it's for, or a session of its
+// own, when it has no source, as RunEvent runs it, and returns its outcome,
+// which is scheduled, until it's run, when it's updated, as it's pending,
+// or ignored, or failed, when it couldn't be run, with the error as its
+// message. An event of a source which is scheduled already, for the
+// session, isn't scheduled, so a burst of them runs once, and the outcome
+// of that event is returned. Returns ErrBadParameter when it has no session,
+// or prompt, ErrNotFound when there's no session, and ErrServiceUnavailable
+// when the registry has no event store, in which its outcome is kept, or
+// session store.
+func (r *Registry) TriggerEvent(ctx context.Context, req schema.EventRequest) (_ *schema.TriggerEventResponse, err error) {
+	ctx, endSpan := otel.StartSpan(r.tracer, ctx, "llm.registry.TriggerEvent",
+		attribute.String("arg.req", req.String()),
+	)
+	defer func() { endSpan(err) }()
+
+	req.Title = strings.TrimSpace(req.Title)
+	req.Prompt = strings.TrimSpace(req.Prompt)
+	req.Source = strings.TrimSpace(req.Source)
+	switch {
+	case r.eventStore == nil:
+		return nil, errNoEventStore
+	case req.Session == uuid.Nil():
+		return nil, llm.ErrBadParameter.With("missing session")
+	case req.Prompt == "":
+		return nil, llm.ErrBadParameter.With("missing prompt")
+	case req.Title == "":
+		req.Title = "Event"
+	}
+	if r.sessionStore == nil {
+		return nil, errNoSessionStore
+	} else if _, err := r.sessionStore.Get(ctx, req.Session); err != nil {
+		return nil, err
+	}
+	req.Fired = time.Now().UTC()
+	if req.Scheduled.IsZero() || req.Scheduled.After(req.Fired) {
+		req.Scheduled = req.Fired
+	}
+
+	// How it's run, which is the builder's, or, without one, with the time
+	run, err := r.buildEvent(ctx, req)
+	if err != nil {
+		return nil, err
+	}
+	run.Session = req.Session
+	id := req.RunID()
+
+	// It isn't scheduled, when an event of its source is, for the session,
+	// and is otherwise scheduled, as its outcome, under the lock, so two
+	// events at once aren't both scheduled
+	r.triggerMu.Lock()
+	if req.Source != "" {
+		if existing, err := r.scheduledEvent(ctx, req.Session, id); err != nil {
+			r.triggerMu.Unlock()
+			return nil, err
+		} else if existing != nil {
+			r.triggerMu.Unlock()
+			return &schema.TriggerEventResponse{Scheduled: false, Event: *existing}, nil
+		}
+	}
+	outcome, err := r.createEvent(ctx, schema.EventMeta{
+		Run:       id,
+		Session:   req.Session,
+		Source:    req.Source,
+		Title:     req.Title,
+		Status:    schema.EventScheduled,
+		Scheduled: req.Scheduled,
+		Fired:     req.Fired,
+	})
+	r.triggerMu.Unlock()
+	if err != nil {
+		return nil, err
+	}
+
+	// It runs in the background, without the request, which ends once it's
+	// returned, and its outcome is updated once it's run, or failed, when it
+	// couldn't be
+	go func(ctx context.Context) {
+		if _, err := r.runEvent(ctx, id, run, nil, outcome.ID); err != nil {
+			_, _ = r.updateEvent(ctx, outcome.ID, func(event *schema.Event) {
+				event.Status, event.Message = schema.EventFailed, err.Error()
+			})
+		}
+	}(context.WithoutCancel(ctx))
+	return &schema.TriggerEventResponse{Scheduled: true, Event: *outcome}, nil
+}
+
+// scheduledEvent returns the outcome of the event which runs in the session
+// with the identifier, for the session, which is scheduled, and not so long
+// ago that it's stale, as its server stopped before it ran, or nil, when
+// there's none
+func (r *Registry) scheduledEvent(ctx context.Context, session, run uuid.UUID) (*schema.Event, error) {
+	list, err := r.eventStore.List(ctx, schema.EventListRequest{Session: session.String(), Status: schema.EventScheduled})
+	if err != nil {
+		return nil, err
+	}
+	for _, event := range list.Body {
+		if event.Run == run && time.Since(event.Created) < staleEvent {
+			return &event, nil
+		}
+	}
+	return nil, nil
+}
+
+// updateEvent changes the outcome of the event with the identifier, as it
+// is in the store, with the function, and stores it, at its serial, and
+// publishes that it was, and returns it
+func (r *Registry) updateEvent(ctx context.Context, id uuid.UUID, fn func(*schema.Event)) (*schema.Event, error) {
+	event, err := r.eventStore.Get(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	fn(&event)
+	if event, err = r.eventStore.Put(ctx, event); err != nil {
+		return nil, err
+	}
+	r.eventChanged(eventschema.EventUpdate, event)
+	return &event, nil
+}
+
+// buildEvent returns how the event is run, with the registry's builder, or,
+// without one, with an input which says only the time, in UTC
+func (r *Registry) buildEvent(ctx context.Context, req schema.EventRequest) (schema.RunEventRequest, error) {
+	if r.eventBuilder != nil {
+		return r.eventBuilder(ctx, req)
+	}
+	input, err := req.Input([]string{"Now: " + req.Fired.Format("Monday, 2 January 2006, 15:04") + ", UTC"})
+	if err != nil {
+		return schema.RunEventRequest{}, err
+	}
+	return schema.RunEventRequest{Input: input, Title: req.Title, Scheduled: req.Scheduled, Fired: req.Fired}, nil
 }
