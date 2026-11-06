@@ -43,7 +43,12 @@ type Heartbeats struct {
 	tracer      trace.Tracer
 	zone        func() *time.Location
 	session     SessionFunc
+	retention   time.Duration
 	now         func() time.Time
+
+	// When the heartbeats which won't fire again were last looked for, which
+	// only Run changes
+	cleaned time.Time
 
 	// The person's time zone, as it was, and when it changed, so a schedule
 	// which follows it doesn't fire for a time before it changed, which, in
@@ -70,6 +75,10 @@ const (
 	// which are created, whose rows are their identifiers, and whose data is
 	// a FireEvent
 	FireTable = "fire"
+
+	// DefaultRetention is how long a heartbeat which won't fire again is
+	// kept, after it last fired, or was changed, before it's deleted
+	DefaultRetention = 7 * 24 * time.Hour
 )
 
 // errNotDue is returned by an update which fires a heartbeat, which isn't
@@ -89,7 +98,10 @@ func New(store Store, opts ...Opt) (*Heartbeats, error) {
 	} else if err := o.apply(opts); err != nil {
 		return nil, err
 	}
-	return &Heartbeats{store: store, broadcaster: o.broadcaster, tracer: o.tracer, zone: o.zone, session: o.session, now: time.Now}, nil
+	if o.retention == 0 {
+		o.retention = DefaultRetention
+	}
+	return &Heartbeats{store: store, broadcaster: o.broadcaster, tracer: o.tracer, zone: o.zone, session: o.session, retention: o.retention, now: time.Now}, nil
 }
 
 ///////////////////////////////////////////////////////////////////////////////

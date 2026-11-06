@@ -355,3 +355,43 @@ func Test_Sessions(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, uint(0), list.Count)
 }
+
+func Test_Cleanup(t *testing.T) {
+	// A heartbeat which won't fire again is kept for a week after it fired,
+	// and then deleted, when it's next looked for, which is daily, and one
+	// which fires again is kept
+	c := &clock{}
+	c.Set("2026-01-05T08:00:00Z")
+	h, _, _ := newHeartbeats(t, heartbeat.NewStore(), c)
+	once, err := h.Create(t.Context(), schema.HeartbeatMeta{Title: "Call", Prompt: "Remind them to call", Session: uuid.New(), At: types.Ptr(at("2026-01-05T09:00:00Z"))})
+	require.NoError(t, err)
+	daily, err := h.Create(t.Context(), schema.HeartbeatMeta{Title: "Briefing", Prompt: "Brief me", Session: uuid.New(), Schedule: "0 9 * * *"})
+	require.NoError(t, err)
+	count := func() uint {
+		list, err := h.List(t.Context(), schema.HeartbeatListRequest{})
+		require.NoError(t, err)
+		return list.Count
+	}
+
+	// Fired, and kept, for a week
+	c.Set("2026-01-05T09:00:00Z")
+	heartbeat.Tick(t.Context(), h)
+	assert.Equal(t, uint(2), count())
+	c.Set("2026-01-12T08:59:00Z")
+	heartbeat.Tick(t.Context(), h)
+	assert.Equal(t, uint(2), count())
+
+	// Not looked for again until a day after it was last looked for
+	c.Set("2026-01-12T09:30:00Z")
+	heartbeat.Tick(t.Context(), h)
+	assert.Equal(t, uint(2), count())
+
+	// And then deleted
+	c.Set("2026-01-13T09:00:00Z")
+	heartbeat.Tick(t.Context(), h)
+	assert.Equal(t, uint(1), count())
+	_, err = h.Get(t.Context(), once.ID)
+	assert.ErrorIs(t, err, llm.ErrNotFound)
+	_, err = h.Get(t.Context(), daily.ID)
+	assert.NoError(t, err)
+}

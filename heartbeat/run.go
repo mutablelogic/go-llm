@@ -28,6 +28,10 @@ const (
 	// tickDelay is how long after the start of each minute the heartbeats
 	// which are due fire, so a time is never just before it
 	tickDelay = 100 * time.Millisecond
+
+	// cleanupInterval is how often the heartbeats which won't fire again are
+	// looked for, to delete those kept for longer than they're kept
+	cleanupInterval = 24 * time.Hour
 )
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -39,8 +43,11 @@ const (
 // running, fires once, when it was first due. With a broadcaster, it deletes
 // the heartbeats for each session which is deleted, and, with WithSessions,
 // a heartbeat whose session doesn't exist when it's due, as the event may
-// have been missed, is deleted, rather than fired. What fails, such as a
-// store which can't be read, is logged to the logger, when there is one.
+// have been missed, is deleted, rather than fired. A heartbeat which won't
+// fire again, such as a one-off which fired, is deleted once it's been kept
+// for a week, or the time WithRetention sets, after it last fired, or was
+// changed, which is looked for when it starts, and daily. What fails, such
+// as a store which can't be read, is logged to the logger, when there is one.
 func (h *Heartbeats) Run(ctx context.Context, logger *slog.Logger) error {
 	if logger == nil {
 		logger = slog.New(slog.DiscardHandler)
@@ -92,6 +99,13 @@ func (h *Heartbeats) tick(ctx context.Context, logger *slog.Logger) {
 		logger.ErrorContext(ctx, "heartbeats not read", "error", err)
 		return
 	}
+
+	// Those which won't fire again, once they've been kept long enough, which
+	// are looked for daily
+	if h.cleaned.IsZero() || now.Sub(h.cleaned) >= cleanupInterval {
+		h.cleaned = now
+		heartbeats = h.cleanup(ctx, logger, heartbeats, now)
+	}
 	for _, heartbeat := range heartbeats {
 		if next := h.next(heartbeat); next != nil && !next.After(now) {
 			if h.session != nil {
@@ -140,6 +154,33 @@ func (h *Heartbeats) fire(ctx context.Context, id uuid.UUID, scheduled, now time
 	})
 	h.publish(eventschema.EventUpdate, heartbeat)
 	return nil
+}
+
+// cleanup deletes the heartbeats which won't fire again, which were last
+// fired, or changed, longer ago than they're kept, and returns the others
+func (h *Heartbeats) cleanup(ctx context.Context, logger *slog.Logger, heartbeats []schema.Heartbeat, now time.Time) []schema.Heartbeat {
+	kept := heartbeats[:0]
+	deleted := 0
+	for _, heartbeat := range heartbeats {
+		since := heartbeat.Modified
+		if heartbeat.Fired != nil && heartbeat.Fired.After(since) {
+			since = *heartbeat.Fired
+		}
+		if h.next(heartbeat) != nil || now.Sub(since) < h.retention {
+			kept = append(kept, heartbeat)
+			continue
+		}
+		if _, err := h.Delete(ctx, heartbeat.ID); err != nil && !errors.Is(err, llm.ErrNotFound) {
+			logger.ErrorContext(ctx, "heartbeat not deleted", "heartbeat", heartbeat.ID, "title", heartbeat.Title, "error", err)
+			kept = append(kept, heartbeat)
+			continue
+		}
+		deleted++
+	}
+	if deleted > 0 {
+		logger.InfoContext(ctx, "heartbeats which won't fire again deleted", "heartbeats", deleted)
+	}
+	return kept
 }
 
 // deleteSession deletes the heartbeats for the session, which was deleted
