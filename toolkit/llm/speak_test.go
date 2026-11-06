@@ -130,6 +130,16 @@ func Test_Speak(t *testing.T) {
 	require.NoError(t, err)
 	assert.JSONEq(t, `{"resources":[{"uri":"resource://abc","name":"speech.wav","type":"audio/wav"}]}`, string(link))
 
+	// A voice, without a model, is the default for the model which is given
+	voiced, err := llm.New(func() llm.Models { return m }, llm.WithSpeak("", "Freya"))
+	require.NoError(t, err)
+	_, err = voiced.Tools()[0].Run(ctx, json.RawMessage(`{"text":"Hello","model":"phonon"}`))
+	require.NoError(t, err)
+	voice, _ = gollm.GetOpt[string](m.opts, gollm.VoiceKey)
+	assert.Equal(t, "Freya", voice)
+	_, err = llm.New(func() llm.Models { return m }, llm.WithSpeak(" ", ""))
+	assert.ErrorIs(t, err, gollm.ErrBadParameter)
+
 	// No text, and no models yet, aren't spoken
 	_, err = tool.Run(ctx, json.RawMessage(`{"text":" "}`))
 	assert.ErrorIs(t, err, gollm.ErrBadParameter)
