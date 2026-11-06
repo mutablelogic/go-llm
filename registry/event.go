@@ -31,7 +31,9 @@ const DefaultEventAgent = "event"
 // fired, with the request's agent, or the event agent, and its input, from
 // the event's session, whose identifier is the event's, so an event which
 // happens again, such as a heartbeat on a schedule, has the one session, and
-// returns the session, and what the agent did, and replied. The session is
+// returns the session, and what the agent did, and replied, which is added to
+// the session, with its usage, so it has each run, which is shown as it's
+// replying, as the agent runs. The session is
 // created, when there's none, with the model of the session the event is
 // for, and takes that model again, when it's changed, each time it's run,
 // and an agent which has no model, such as the event agent, is run with it,
@@ -61,8 +63,21 @@ func (r *Registry) RunEvent(ctx context.Context, id uuid.UUID, req schema.RunEve
 	if agent == "" {
 		agent = DefaultEventAgent
 	}
+
+	// The session is replying, until the agent has replied, and what it did
+	// is stored, or not
+	r.lifecycle.RLock()
+	replied := r.replying(session.ID)
+	r.lifecycle.RUnlock()
+	defer replied()
 	run, err := r.RunAgent(ctx, agent, schema.RunAgentRequest{Input: req.Input, Session: session.ID, Tools: tools}, stream)
 	if err != nil {
+		return nil, err
+	}
+
+	// What it did, which is its prompt, the tools it called, and its reply,
+	// is added to the session, with its usage
+	if session, err = r.addToSession(ctx, session.ID, run.SessionResponse); err != nil {
 		return nil, err
 	}
 	return &schema.RunEventResponse{Session: *session, Run: *run}, nil
@@ -70,6 +85,35 @@ func (r *Registry) RunEvent(ctx context.Context, id uuid.UUID, req schema.RunEve
 
 ///////////////////////////////////////////////////////////////////////////////
 // PRIVATE METHODS
+
+// addToSession adds the messages of the response to the session with the
+// identifier, with its usage, and returns the session, without its
+// messages. A session which is changed as they're added, such as by another
+// reply, is read again, and they're added to it, at most a few times.
+func (r *Registry) addToSession(ctx context.Context, id uuid.UUID, response schema.SessionResponse) (*schema.Session, error) {
+	const tries = 3
+	for try := 1; ; try++ {
+		session, err := r.sessionStore.Get(ctx, id)
+		if err != nil {
+			return nil, err
+		}
+		session.Messages = append(session.Messages, response.Messages...)
+		session.Usage = schema.SessionUsage{
+			Usage:    addUsage(session.Usage.Usage, response.Usage.Usage),
+			Input:    response.Usage.Input,
+			Output:   response.Usage.Output,
+			Overhead: response.Usage.Overhead,
+		}
+		stored, err := r.sessionStore.Put(ctx, session)
+		if errors.Is(err, llm.ErrConflict) && try < tries {
+			continue
+		} else if err != nil {
+			return nil, err
+		}
+		r.sessionChanged(eventschema.EventUpdate, stored)
+		return r.withoutMessages(stored), nil
+	}
+}
 
 // eventTools returns the tools, apart from those of the namespaces, by their
 // names, or patterns, where all the tools, "*", are the patterns of every

@@ -66,6 +66,16 @@ func Test_RunEvent(t *testing.T) {
 	require.NotEmpty(t, p.asked)
 	assert.Equal(t, "<system-reminder>\nNow: 18:00\n</system-reminder>\nThe event \"Call\" has fired. Its instruction is:\n\nRemind David to call his mother\n", p.asked[0].messages[0].Text())
 
+	// What it did, which is its prompt, and its reply, is in the session, with
+	// its usage
+	messages, err := r.ListSessionMessages(ctx, event, schema.MessageListRequest{})
+	require.NoError(t, err)
+	runMessages := len(response.Run.Messages)
+	require.NotZero(t, runMessages)
+	assert.Equal(t, uint(runMessages), messages.Count)
+	assert.Equal(t, p.asked[0].messages[0].Text(), messages.Body[0].Text())
+	assert.NotZero(t, response.Session.Usage.InputTokens)
+
 	// The event agent is internal, so it isn't a tool which models can call,
 	// as other agents are
 	_, err = tk.ToolNames(ctx, "agent:event")
@@ -73,11 +83,13 @@ func Test_RunEvent(t *testing.T) {
 	_, err = tk.ToolNames(ctx, "agent:translate")
 	assert.NoError(t, err)
 
-	// And then it's the same session
+	// And then it's the same session, which has each run
 	response, err = r.RunEvent(ctx, event, schema.RunEventRequest{Session: parent.ID, Input: input}, nil)
 	require.NoError(t, err)
 	assert.Equal(t, event, response.Session.ID)
-	assert.Equal(t, uint64(1), response.Session.Serial)
+	messages, err = r.ListSessionMessages(ctx, event, schema.MessageListRequest{})
+	require.NoError(t, err)
+	assert.Equal(t, uint(runMessages+len(response.Run.Messages)), messages.Count)
 
 	// Which takes the model, when it's changed
 	_, err = r.UpdateSession(ctx, parent.ID, schema.SessionMeta{GeneratorMeta: schema.GeneratorMeta{Model: types.Ptr("other")}})
