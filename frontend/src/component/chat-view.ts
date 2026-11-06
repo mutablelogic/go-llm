@@ -6,10 +6,13 @@
 // thinking, as it's generated, with what tools log, and how they're getting
 // on, dimmed between them. A bubble's details action fires an event with its
 // message. Beneath it is the box which sends a question, and says someone is
-// typing. It fires events to send a question, and say someone is typing.
+// typing, with the resources which are attached to it. It fires events to
+// send a question, say someone is typing, choose resources to attach,
+// remove an attachment, and upload files to attach.
 
 import { LitElement, css, html, nothing, type PropertyValues } from 'lit';
 import { customElement, property, query } from 'lit/decorators.js';
+import type { Resource } from '../schema/resource';
 import { canonicalTool, isUser, type ContentBlock, type Message, type Session } from '../schema/session';
 import { detailValue, type Details } from '../schema/memory';
 import { markdown, markdownStyles } from './markdown';
@@ -48,6 +51,9 @@ export class ChatView extends LitElement {
     static readonly eventSend = ChatInput.eventSend;
     static readonly eventTyping = ChatInput.eventTyping;
     static readonly eventInfo = 'llm-chat-info';
+    static readonly eventAttach = ChatInput.eventAttach;
+    static readonly eventDetach = ChatInput.eventDetach;
+    static readonly eventUpload = ChatInput.eventUpload;
 
     // The session, which is undefined when none is open
     @property({ attribute: false })
@@ -81,6 +87,10 @@ export class ChatView extends LitElement {
 
     @property({ attribute: false })
     progress?: string;
+
+    // The resources which are attached to the next question
+    @property({ attribute: false })
+    attachments: Resource[] = [];
 
     // Whether the server can't be reached
     @property({ type: Boolean, reflect: true })
@@ -215,9 +225,12 @@ export class ChatView extends LitElement {
         }
         return html`
             <div class="conversation">${this.renderConversation()}</div>
-            <llm-chat-input ?disabled=${this.messages === undefined} ?busy=${this.question !== undefined}
+            <llm-chat-input ?disabled=${this.messages === undefined} ?busy=${this.question !== undefined} .attachments=${this.attachments}
                 @llm-chat-send=${(e: CustomEvent<string>) => this.dispatchEvent(new CustomEvent(ChatView.eventSend, { detail: e.detail }))}
-                @llm-chat-typing=${() => this.dispatchEvent(new CustomEvent(ChatView.eventTyping))}></llm-chat-input>
+                @llm-chat-typing=${() => this.dispatchEvent(new CustomEvent(ChatView.eventTyping))}
+                @llm-chat-attach=${() => this.dispatchEvent(new CustomEvent(ChatView.eventAttach))}
+                @llm-chat-detach=${(e: CustomEvent<Resource>) => this.dispatchEvent(new CustomEvent(ChatView.eventDetach, { detail: e.detail }))}
+                @llm-chat-upload=${(e: CustomEvent<File[]>) => this.dispatchEvent(new CustomEvent(ChatView.eventUpload, { detail: e.detail }))}></llm-chat-input>
         `;
     }
 

@@ -7,12 +7,10 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"mime"
 	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
-	"unicode/utf8"
 	"uuid"
 
 	// Packages
@@ -224,10 +222,8 @@ func fileBlock(file string) (providerschema.ContentBlock, error) {
 	}
 	name := filepath.Base(file)
 	contentType := providerschema.ResourceType(data, name)
-	if isText(data, contentType) {
-		text := strings.TrimRight(string(data), "\n")
-		fence := codeFence(text)
-		return providerschema.ContentBlock{Text: types.Ptr(fmt.Sprintf("%s:\n\n%s\n%s\n%s", name, fence, text, fence))}, nil
+	if providerschema.IsText(data, contentType) {
+		return providerschema.TextBlock(name, data), nil
 	} else if contentType == "" {
 		return providerschema.ContentBlock{}, fmt.Errorf("%s: its type isn't known", file)
 	}
@@ -235,37 +231,6 @@ func fileBlock(file string) (providerschema.ContentBlock, error) {
 		ContentType: contentType,
 		Data:        data,
 	}}}, nil
-}
-
-// codeFence returns the fence of a code block of the text, of backticks,
-// which is longer than any run of backticks in the text, and at least
-// three, so a fenced code block in the text, such as of a Markdown file,
-// doesn't close it
-func codeFence(text string) string {
-	longest, run := 0, 0
-	for _, r := range text {
-		if r == '`' {
-			run++
-			longest = max(longest, run)
-		} else {
-			run = 0
-		}
-	}
-	return strings.Repeat("`", max(3, longest+1))
-}
-
-// isText returns true when data is text, which is UTF-8, without NUL bytes,
-// and isn't a type, such as a PDF or an image, which is sent as it is, even
-// when it's UTF-8
-func isText(data []byte, contentType string) bool {
-	mediaType, _, _ := mime.ParseMediaType(contentType)
-	switch {
-	case strings.HasPrefix(mediaType, "image/"), strings.HasPrefix(mediaType, "audio/"), strings.HasPrefix(mediaType, "video/"), mediaType == "application/pdf":
-		return false
-	case len(data) == 0:
-		return true
-	}
-	return utf8.Valid(data) && !bytes.ContainsRune(data, 0)
 }
 
 // printJSON prints the JSON, indented

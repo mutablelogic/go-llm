@@ -5,7 +5,8 @@
 // when another window replies in a session, and the names of the person and
 // the assistant, from the memory, when they change. The chat which is open
 // is kept, so it's opened again when the chat page is shown without one,
-// such as when the browser is opened.
+// such as when the browser is opened. A question is sent with the resources
+// which are attached to it, which the resources controller keeps.
 
 import { chat, createSession, deleteSession, getSession, listMessages, listSessions, setStatus, updateSession } from '../api/session';
 import { getDetails } from '../api/memory';
@@ -13,10 +14,12 @@ import { listModels } from '../api/model';
 import { cannot } from '../schema/model';
 import { ApiError } from '../api/client';
 import { routeHref } from '../router';
-import { isUser, sessionTokens, type Message, type Session, type SessionMeta } from '../schema/session';
+import { isUser, sessionTokens, type ContentBlock, type Message, type Session, type SessionMeta } from '../schema/session';
 import type { Details } from '../schema/memory';
 import type { NotificationController } from './notifications';
 import type { StorageController } from './storage';
+import type { ResourcesController } from './resources';
+import { resourceName, resourceURI, type Resource } from '../schema/resource';
 import { SessionList } from '../component/session-list';
 import { ChatView, type Piece } from '../component/chat-view';
 import { NewSession } from '../component/new-session';
@@ -43,6 +46,7 @@ export class ChatController {
     private readonly views: ChatViews;
     private readonly notifications: NotificationController;
     private readonly storage: StorageController;
+    private readonly resources: ResourcesController;
 
     // The sessions, which are undefined while they're first loading, the
     // session which is open, its messages, and the memory's details
@@ -70,10 +74,27 @@ export class ChatController {
     // Whether the server can't be reached
     private unavailable = false;
 
-    constructor(views: ChatViews, notifications: NotificationController, storage: StorageController) {
+    constructor(views: ChatViews, notifications: NotificationController, storage: StorageController, resources: ResourcesController) {
         this.views = views;
         this.notifications = notifications;
         this.storage = storage;
+        this.resources = resources;
+        resources.onChange(() => this.render());
+        views.view?.addEventListener(ChatView.eventAttach, () => {
+            if (this.session) {
+                void resources.open(this.session.id);
+            }
+        });
+        views.view?.addEventListener(ChatView.eventDetach, (e) => {
+            if (this.session) {
+                resources.detach(this.session.id, (e as CustomEvent<Resource>).detail);
+            }
+        });
+        views.view?.addEventListener(ChatView.eventUpload, (e) => {
+            if (this.session) {
+                void resources.upload(this.session.id, (e as CustomEvent<File[]>).detail);
+            }
+        });
         views.list?.addEventListener(SessionList.eventSelect, (e) => {
             location.hash = routeHref('chat', (e as CustomEvent<Session>).detail.id);
         });
@@ -109,6 +130,7 @@ export class ChatController {
         if (id === this.session?.id && this.messages) {
             return;
         }
+        this.resources.close();
         this.session = this.sessions?.find((session) => session.id === id) ?? (id ? { id, serial: 0 } : undefined);
         this.messages = undefined;
         this.selected = undefined;
@@ -208,11 +230,18 @@ export class ChatController {
         if (!session || !this.messages || this.pending.has(session.id)) {
             return;
         }
-        const pending: Pending = { question: text, streamed: [], earlier: this.messages.length, stale: false };
+        // The attachments come before the text, as the command line's do
+        const attachments = this.resources.take(session.id);
+        const content: ContentBlock[] = attachments.map((resource) => ({ attachment: { type: resource.type, url: resourceURI(resource) } }));
+        if (text) {
+            content.push({ text });
+        }
+        const question = [...attachments.map((resource) => `Attachment: ${resourceName(resource)}`), text].filter(Boolean).join('\n');
+        const pending: Pending = { question, streamed: [], earlier: this.messages.length, stale: false };
         this.pending.set(session.id, pending);
         this.render();
         try {
-            const response = await chat(session.id, { role: 'user', content: [{ text }] }, {
+            const response = await chat(session.id, { role: 'user', content }, {
                 onText: (piece) => this.add(pending, { what: 'text', text: piece }),
                 onThinking: (piece) => this.add(pending, { what: 'thinking', text: piece }),
                 onLog: (line) => this.add(pending, { what: 'log', text: line }),
@@ -233,8 +262,10 @@ export class ChatController {
             if (this.session?.id === session.id) {
                 this.notifications.error("The question couldn't be sent", error);
                 this.views.view?.restore(text);
+                this.resources.attach(session.id, attachments);
             } else {
-                this.notifications.push({ kind: 'error', title: "A question in another chat couldn't be sent", subtitle: `${error instanceof Error ? error.message : String(error)}: ${text}` });
+                this.notifications.push({ kind: 'error', title: "A question in another chat couldn't be sent", subtitle: `${error instanceof Error ? error.message : String(error)}: ${question}` });
+                this.resources.attach(session.id, attachments);
             }
             pending.stale = true;
         }
@@ -305,6 +336,7 @@ export class ChatController {
     // they don't stay open over another page
     close() {
         this.hideCreate();
+        this.resources.close();
         if (this.selected) {
             this.selected = undefined;
             this.render();
@@ -485,6 +517,7 @@ export class ChatController {
             view.question = pending?.question;
             view.streamed = pending?.streamed ?? [];
             view.progress = pending?.progress;
+            view.attachments = this.session ? this.resources.attachments(this.session.id) : [];
             view.unavailable = this.unavailable;
         }
     }

@@ -63,18 +63,6 @@ func Test_AskMessage_Fence(t *testing.T) {
 	assert.Equal(t, "What does it say?", *message.Content[1].Text)
 }
 
-func Test_CodeFence(t *testing.T) {
-	for text, fence := range map[string]string{
-		"":                     "```",
-		"no backticks":         "```",
-		"`inline` and ``two``": "```",
-		"```go\n```":           "````",
-		"````\n```\n````":      "`````",
-	} {
-		assert.Equal(t, fence, codeFence(text), text)
-	}
-}
-
 // Without files, the message is the question
 func Test_AskMessage_NoFiles(t *testing.T) {
 	message, err := askMessage("Hello?", nil, nil)

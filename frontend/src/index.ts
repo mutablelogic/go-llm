@@ -14,6 +14,7 @@ import './component/session-list';
 import './component/chat-view';
 import './component/new-session';
 import './component/message-view';
+import './component/resource-panel';
 import './component/event-view';
 import './component/count-filter';
 import './component/provider-alerts';
@@ -40,6 +41,7 @@ import { ToolsController } from './controller/tools';
 import { NotificationController } from './controller/notifications';
 import { OutcomesController } from './controller/outcomes';
 import { StorageController } from './controller/storage';
+import { ResourcesController } from './controller/resources';
 import { SessionList } from './component/session-list';
 import { Router, routeHref } from './router';
 
@@ -61,6 +63,10 @@ config().then((config) => {
     notifications.error("The configuration couldn't be read", error);
 });
 
+// The resources of the chat which is open, in a panel, which its add action
+// opens, and those which are attached to its next message
+const resources = new ResourcesController(document.querySelector('llm-resource-panel'), notifications);
+
 // The chats: the sessions, the conversation of the one which is open, and the
 // panel which starts a new one
 const chat = new ChatController({
@@ -69,7 +75,7 @@ const chat = new ChatController({
     view: document.querySelector('llm-chat-view'),
     create: document.querySelector('llm-new-session'),
     details: document.querySelector('llm-message-view'),
-}, notifications, storage);
+}, notifications, storage, resources);
 
 // The outcomes of the events of the chat which is open, such as heartbeats
 // which fired, in a panel, which its Events action opens
@@ -111,6 +117,7 @@ const events = new EventsController(notifications)
     .on({ schema: 'llm', table: 'session' }, () => void chat.refresh())
     .on({ schema: 'llm', table: 'provider' }, () => void models.refresh())
     .on({ schema: 'llm', table: 'tool' }, () => void tools.refresh())
+    .on({ schema: 'resource', table: 'resource' }, () => void resources.refresh())
     .on({ schema: 'memory', table: 'detail' }, () => void chat.refreshDetails())
     .on({ schema: 'heartbeat', table: 'heartbeat' }, () => void outcomes.refresh())
     .on({ schema: 'llm', table: 'event' }, (event) => {

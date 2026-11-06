@@ -133,6 +133,20 @@ func Test_Attachments(t *testing.T) {
 		assert.ErrorIs(t, err, llm.ErrNotFound)
 	})
 
+	t.Run("Text", func(t *testing.T) {
+		// A resource which is text is sent as text, with its name, as most
+		// models don't accept text as an attachment
+		notes, _, err := manager.Create(ctx, resourceschema.ResourceMeta{Name: "notes.txt", Type: "text/plain"}, strings.NewReader("The secret word is pineapple.\n"))
+		require.NoError(t, err)
+		p.replies = append([]*providerschema.Message{text("Pineapple")}, p.replies...)
+		p.asked = nil
+		_, err = r.Ask(ctx, schema.AskRequest{GeneratorMeta: schema.GeneratorMeta{Model: types.Ptr("model")}, Messages: []providerschema.MessageMeta{attached(t, "What's the word?", notes.URI()).MessageMeta}}, nil)
+		require.NoError(t, err)
+		require.Len(t, p.asked, 1)
+		assert.Empty(t, p.asked[0].messages[0].Resources())
+		assert.Contains(t, p.asked[0].messages[0].Text(), "notes.txt:\n\n```\nThe secret word is pineapple.\n```")
+	})
+
 	t.Run("Requests", func(t *testing.T) {
 		// A request's resource, by its URI, is a resource on its own, whose
 		// type is the resource's, and it has data, or a URL, but not both
