@@ -20,6 +20,7 @@ import './component/provider-alerts';
 import { CountFilter } from './component/count-filter';
 import './component/model-table';
 import './component/model-view';
+import './component/provider-form';
 import { ModelView } from './component/model-view';
 import './component/tool-table';
 import './component/tool-view';
@@ -77,6 +78,8 @@ document.querySelector('llm-chat-page')?.addEventListener(ChatPage.eventEvents, 
 // The models, and the tools, each in a table, with the one which is clicked
 // in a panel
 const models = new ModelsController({
+    page: document.querySelector('llm-models-page'),
+    form: document.querySelector('llm-provider-form'),
     alerts: document.querySelector('llm-provider-alerts'),
     providers: document.querySelector('#provider-filter'),
     table: document.querySelector('llm-model-table'),

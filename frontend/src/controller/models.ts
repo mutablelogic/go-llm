@@ -5,8 +5,11 @@
 // again when the providers change
 
 import { getModel, listModels } from '../api/model';
-import { listProviders } from '../api/provider';
-import type { ProviderCount } from '../schema/provider';
+import { createProvider, deleteProvider, listProviders, updateProvider } from '../api/provider';
+import type { ProviderCount, ProviderMeta } from '../schema/provider';
+import { ProviderForm } from '../component/provider-form';
+import { ModelsPage } from '../page/models-page';
+import { routeHref } from '../router';
 import type { CountFilter } from '../component/count-filter';
 import type { ProviderAlerts } from '../component/provider-alerts';
 import { ListController, type Page } from './list';
@@ -17,6 +20,8 @@ import { Panel } from '../component/panel';
 import type { ModelView } from '../component/model-view';
 
 export interface ModelsViews {
+    page: ModelsPage | null;
+    form: ProviderForm | null;
     alerts: ProviderAlerts | null;
     providers: CountFilter | null;
     table: ModelTable | null;
@@ -39,6 +44,102 @@ export class ModelsController extends ListController<Model> {
         views.table?.addEventListener(ModelTable.eventPageSize, (e) => this.setPageSize((e as CustomEvent<number>).detail));
         views.table?.addEventListener(ModelTable.eventSelect, (e) => this.open((e as CustomEvent<Model>).detail));
         views.view?.addEventListener(Panel.eventClose, () => this.close());
+
+        // A provider is added, and the chosen one edited, and deleted, with
+        // the form
+        views.page?.addEventListener(ModelsPage.eventAdd, () => this.showForm({ mode: 'add' }));
+        views.page?.addEventListener(ModelsPage.eventEdit, (e) => this.edit((e as CustomEvent<string>).detail));
+        views.page?.addEventListener(ModelsPage.eventDelete, (e) => void this.delete((e as CustomEvent<string>).detail));
+        views.form?.addEventListener(ProviderForm.eventCreate, (e) => void this.create((e as CustomEvent<ProviderMeta>).detail));
+        views.form?.addEventListener(ProviderForm.eventSave, (e) => void this.save((e as CustomEvent<ProviderMeta>).detail));
+        views.form?.addEventListener(Panel.eventClose, () => this.hideForm());
+    }
+
+    // close closes the model which is shown, and the form
+    close() {
+        super.close();
+        this.hideForm();
+    }
+
+    // showForm opens the form, to add a provider, or edit one
+    private showForm(item: NonNullable<ProviderForm['item']>) {
+        const { form } = this.views;
+        if (form) {
+            form.saving = false;
+            form.error = undefined;
+            form.item = item;
+        }
+    }
+
+    // hideForm closes the form
+    private hideForm() {
+        if (this.views.form) {
+            this.views.form.item = undefined;
+        }
+    }
+
+    // edit opens the form, to edit the provider, as it is
+    private edit(name: string) {
+        const provider = this.providers?.find((provider) => provider.name === name);
+        if (provider) {
+            this.showForm({ mode: 'edit', provider });
+        }
+    }
+
+    // create adds the provider, which is checked to be reachable, and shows
+    // its models, or says why it couldn't be added, in the form
+    private async create(meta: ProviderMeta) {
+        const form = this.views.form;
+        if (!form) {
+            return;
+        }
+        form.saving = true;
+        try {
+            const provider = await createProvider(meta);
+            this.hideForm();
+            this.notifications.push({ kind: 'success', title: `${provider.name} was added` });
+            location.hash = routeHref('models', provider.name);
+        } catch (error) {
+            form.error = error instanceof Error ? error.message : String(error);
+        } finally {
+            form.saving = false;
+        }
+    }
+
+    // save updates the provider which is edited, or says why it couldn't be,
+    // in the form
+    private async save(meta: ProviderMeta) {
+        const form = this.views.form;
+        const item = form?.item;
+        if (!form || item?.mode !== 'edit') {
+            return;
+        }
+        form.saving = true;
+        try {
+            const provider = await updateProvider(item.provider.name, meta);
+            this.hideForm();
+            this.notifications.push({ kind: 'success', title: `${provider.name} was saved` });
+            void this.refresh();
+        } catch (error) {
+            form.error = error instanceof Error ? error.message : String(error);
+        } finally {
+            form.saving = false;
+        }
+    }
+
+    // delete deletes the provider, once it's confirmed, and shows every
+    // provider's models
+    private async delete(name: string) {
+        if (!confirm(`Delete the provider ${name}? Its models can't be used afterwards.`)) {
+            return;
+        }
+        try {
+            await deleteProvider(name);
+            this.notifications.push({ kind: 'success', title: `${name} was deleted` });
+            location.hash = routeHref('models');
+        } catch (error) {
+            this.notifications.error(`${name} couldn't be deleted`, error);
+        }
     }
 
     // setProvider shows the models of the provider, or every provider, from
@@ -121,7 +222,10 @@ export class ModelsController extends ListController<Model> {
     }
 
     protected render() {
-        const { alerts, providers, table, view } = this.views;
+        const { page, alerts, providers, table, view } = this.views;
+        if (page) {
+            page.provider = this.provider;
+        }
         if (alerts) {
             alerts.providers = this.providers ?? [];
         }

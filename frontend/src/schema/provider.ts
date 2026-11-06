@@ -6,10 +6,27 @@ export interface Provider {
     name: string;
     provider: string;
     url?: string;
+    include?: string[];
+    exclude?: string[];
     serial?: number;
 
     // Why the provider can't be reached, when it can't
     error?: string;
+}
+
+// ProviderMeta is what's set, to create or update a provider: its name and
+// type, which aren't updated, its URL, the patterns of the names of its models
+// which are included, and excluded, and its API key, which is a credential's
+// placeholder, such as ${MISTRAL_API_KEY}, which is read from the server's
+// environment, so the key isn't stored, and is kept, when it isn't set, as
+// it isn't returned
+export interface ProviderMeta {
+    name?: string;
+    provider?: string;
+    url?: string;
+    include?: string[];
+    exclude?: string[];
+    api_key?: string;
 }
 
 // ProviderList is the providers, and how many there are
