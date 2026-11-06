@@ -4,7 +4,8 @@
 // which is clicked in the model view, with ListController, and loads them
 // again when the providers change
 
-import { getModel, listModels } from '../api/model';
+import { deleteModel, getModel, listModels, unloadModel } from '../api/model';
+import { ModelView } from '../component/model-view';
 import { createProvider, deleteProvider, listProviders, updateProvider } from '../api/provider';
 import type { ProviderCount, ProviderMeta } from '../schema/provider';
 import { ProviderForm } from '../component/provider-form';
@@ -17,7 +18,6 @@ import type { Model } from '../schema/model';
 import type { NotificationController } from './notifications';
 import { ModelTable } from '../component/model-table';
 import { Panel } from '../component/panel';
-import type { ModelView } from '../component/model-view';
 
 export interface ModelsViews {
     page: ModelsPage | null;
@@ -44,6 +44,8 @@ export class ModelsController extends ListController<Model> {
         views.table?.addEventListener(ModelTable.eventPageSize, (e) => this.setPageSize((e as CustomEvent<number>).detail));
         views.table?.addEventListener(ModelTable.eventSelect, (e) => this.open((e as CustomEvent<Model>).detail));
         views.view?.addEventListener(Panel.eventClose, () => this.close());
+        views.view?.addEventListener(ModelView.eventUnload, (e) => void this.unload((e as CustomEvent<string>).detail));
+        views.view?.addEventListener(ModelView.eventDelete, (e) => void this.deleteModel((e as CustomEvent<string>).detail));
 
         // A provider is added, and the chosen one edited, and deleted, with
         // the form
@@ -124,6 +126,48 @@ export class ModelsController extends ListController<Model> {
             form.error = error instanceof Error ? error.message : String(error);
         } finally {
             form.saving = false;
+        }
+    }
+
+    // unload unloads the model from its provider's memory, keeping it stored
+    private async unload(name: string) {
+        const view = this.views.view;
+        if (view) {
+            view.busy = true;
+        }
+        try {
+            await unloadModel(name);
+            this.notifications.push({ kind: 'success', title: `${name} was unloaded` });
+        } catch (error) {
+            this.notifications.error(`${name} couldn't be unloaded`, error);
+        } finally {
+            if (view) {
+                view.busy = false;
+            }
+        }
+    }
+
+    // deleteModel deletes the model from its provider's storage, once it's
+    // confirmed, and closes it, and loads the models again
+    private async deleteModel(name: string) {
+        if (!confirm(`Delete the model ${name} from its provider's storage? It can be downloaded again.`)) {
+            return;
+        }
+        const view = this.views.view;
+        if (view) {
+            view.busy = true;
+        }
+        try {
+            await deleteModel(name);
+            this.notifications.push({ kind: 'success', title: `${name} was deleted` });
+            this.close();
+            void this.refresh();
+        } catch (error) {
+            this.notifications.error(`${name} couldn't be deleted`, error);
+        } finally {
+            if (view) {
+                view.busy = false;
+            }
         }
     }
 
@@ -248,6 +292,7 @@ export class ModelsController extends ListController<Model> {
         }
         if (view) {
             view.model = this.selected;
+            view.stored = this.providers?.find((provider) => provider.name === this.selected?.provider)?.downloader === true;
         }
     }
 }

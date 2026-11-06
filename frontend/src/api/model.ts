@@ -13,3 +13,15 @@ export function listModels(provider?: string, signal?: AbortSignal): Promise<Mod
 export function getModel(name: string, signal?: AbortSignal): Promise<Model> {
     return request<Model>('GET', '/llm/model/' + encodeURIComponent(name), { signal });
 }
+
+// deleteModel deletes the model, by its canonical name, from its provider's
+// storage, with a provider which stores models, such as Ollama
+export function deleteModel(name: string): Promise<Model> {
+    return request<Model>('DELETE', '/llm/model/' + encodeURIComponent(name));
+}
+
+// unloadModel unloads the model, by its canonical name, from its provider's
+// memory, keeping it stored, so it's loaded again when it's next used
+export function unloadModel(name: string): Promise<Model> {
+    return request<Model>('POST', '/llm/model/' + encodeURIComponent(name) + '/unload');
+}

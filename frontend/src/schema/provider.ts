@@ -10,6 +10,10 @@ export interface Provider {
     exclude?: string[];
     serial?: number;
 
+    // Whether it stores models, which can be downloaded, deleted, and
+    // unloaded, such as Ollama
+    downloader?: boolean;
+
     // Why the provider can't be reached, when it can't
     error?: string;
 }
