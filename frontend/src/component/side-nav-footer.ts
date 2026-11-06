@@ -1,10 +1,14 @@
 // The footer of the side navigation, which shows the version of the server,
-// and links to the API's documentation when the server serves it
+// as it was when the page was loaded, which is the page's, with a warning,
+// when the server has another version now, such as when it was updated as
+// it was down, which reloads the page, and links to the API's documentation
+// when the server serves it
 
 import { LitElement, css, html, nothing } from 'lit';
 import { customElement, property } from 'lit/decorators.js';
 import iconLoader from '@carbon/web-components/es/globals/internal/icon-loader.js';
 import Api16 from '@carbon/icons/es/api/16.js';
+import WarningAltFilled16 from '@carbon/icons/es/warning--alt--filled/16.js';
 import type { Config } from '../schema/config';
 
 // Carbon components
@@ -15,6 +19,11 @@ export class SideNavFooter extends LitElement {
     // The server's configuration, which is undefined until it's read
     @property({ attribute: false })
     config?: Config;
+
+    // The server's configuration as it is now, which is read again when the
+    // server can be reached again, and is undefined until it's read
+    @property({ attribute: false })
+    latest?: Config;
 
     static styles = css`
         :host {
@@ -35,6 +44,20 @@ export class SideNavFooter extends LitElement {
 
         cds-icon-button {
             margin-right: -0.5rem;
+        }
+
+        .version {
+            display: flex;
+            align-items: center;
+            gap: 0.25rem;
+        }
+
+        .version cds-icon-button {
+            margin: 0;
+        }
+
+        .warning {
+            color: var(--cds-support-warning, #f1c21b);
         }
 
         .icon {
@@ -58,7 +81,15 @@ export class SideNavFooter extends LitElement {
             return nothing;
         }
         return html`
-            <span>${this.config.version ?? ''}</span>
+            <span class="version">
+                <span>${this.config.version ?? ''}</span>
+                ${this.outdated() ? html`
+                    <cds-icon-button kind="ghost" size="sm" align="top-start" @click=${() => location.reload()}>
+                        <span slot="icon" class="icon warning">${iconLoader(WarningAltFilled16)}<span class="visually-hidden">The server was updated</span></span>
+                        <span slot="tooltip-content">The server is now ${this.latest?.version || 'another version'}. Reload the page to use it.</span>
+                    </cds-icon-button>
+                ` : nothing}
+            </span>
             ${this.config.openapi
                 ? html`
                     <cds-icon-button kind="ghost" size="sm" align="top-end" href=${this.config.openapi} target="_blank" rel="noopener">
@@ -68,6 +99,12 @@ export class SideNavFooter extends LitElement {
                 `
                 : nothing}
         `;
+    }
+
+    // outdated returns whether the server has another version now than the
+    // page, which was loaded from it
+    private outdated(): boolean {
+        return !!this.config && !!this.latest && (this.latest.version ?? '') !== (this.config.version ?? '');
     }
 }
 
