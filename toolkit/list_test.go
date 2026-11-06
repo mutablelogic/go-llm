@@ -36,3 +36,28 @@ func TestListNamespaces(t *testing.T) {
 		{Name: "weather", Description: "The weather", Tools: 2},
 	}}, list)
 }
+
+// titledTool is a tool with a title
+type titledTool struct {
+	echoTool
+}
+
+func (titledTool) Title() string {
+	return "Echo its input"
+}
+
+func TestListToolsTitle(t *testing.T) {
+	// A tool which has a title is listed with it, and one which hasn't,
+	// without one
+	tk, err := toolkit.New(t.Context())
+	require.NoError(t, err)
+	require.NoError(t, tk.Add(toolkit.NewNamespace("test", "", titledTool{echoTool{name: "titled"}}, echoTool{name: "plain"})))
+
+	list, err := tk.ListTools(t.Context(), schema.ToolListRequest{})
+	require.NoError(t, err)
+	titles := map[string]string{}
+	for _, tool := range list.Body {
+		titles[tool.Name] = tool.Title
+	}
+	assert.Equal(t, map[string]string{"titled": "Echo its input", "plain": ""}, titles)
+}

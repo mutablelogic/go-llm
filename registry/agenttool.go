@@ -41,6 +41,7 @@ type agentTool struct {
 
 var _ toolkit.Namespace = (*agentNamespace)(nil)
 var _ llm.Tool = (*agentTool)(nil)
+var _ toolkit.ToolTitler = (*agentTool)(nil)
 
 ///////////////////////////////////////////////////////////////////////////////
 // GLOBALS
@@ -166,6 +167,11 @@ func newAgentTool(r *Registry, agent schema.Agent) (*agentTool, error) {
 
 func (t *agentTool) Name() string {
 	return t.agent.Name
+}
+
+// Title returns the agent's title, for people, or empty, when it has none
+func (t *agentTool) Title() string {
+	return types.Value(t.agent.Title)
 }
 
 // Description returns what the agent does, or its title, or that it's an

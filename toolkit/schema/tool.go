@@ -17,6 +17,7 @@ import (
 type Tool struct {
 	Name        string          `json:"name" readonly:"" help:"Tool name" example:"current"`
 	Canonical   string          `json:"canonical" readonly:"" help:"Namespace and tool name, separated by a colon, which refers to the tool unambiguously" example:"weatherapi:current"`
+	Title       string          `json:"title,omitempty" readonly:"" help:"Title of the tool, for people, which only some tools, such as agents, have" example:"Segment the transcript of an episode"`
 	Description string          `json:"description,omitempty" readonly:"" help:"Description of the tool" example:"Get current weather conditions for a location"`
 	Input       json.RawMessage `json:"input,omitempty" readonly:"" help:"JSON schema of the tool's input"`
 	Output      json.RawMessage `json:"output,omitempty" readonly:"" help:"JSON schema of the tool's output, if it has one"`
