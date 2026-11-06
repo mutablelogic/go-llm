@@ -3,15 +3,17 @@
 // which were uploaded to it, and those its tools returned, such as speech,
 // the most recently used first. A resource which is clicked is attached to
 // the next message, and files which are dropped on the panel, or chosen,
-// are uploaded to the chat, and attached. It fires events to attach a
-// resource, to upload files, to open a resource's content, and to delete
-// one.
+// are uploaded to the chat, and attached. Audio, and video, are played in
+// the player. It fires events to attach a resource, to upload files, to
+// play a resource, to download its content, and to delete one.
 
 import { css, html, nothing } from 'lit';
 import { customElement, property, query } from 'lit/decorators.js';
 import iconLoader from '@carbon/web-components/es/globals/internal/icon-loader.js';
 import Upload16 from '@carbon/icons/es/upload/16.js';
-import Launch16 from '@carbon/icons/es/launch/16.js';
+import Download16 from '@carbon/icons/es/download/16.js';
+import PlayFilledAlt16 from '@carbon/icons/es/play--filled--alt/16.js';
+import { playable } from './media-player';
 import TrashCan16 from '@carbon/icons/es/trash-can/16.js';
 import { Panel } from './panel';
 import { resourceName, type Resource } from '../schema/resource';
@@ -25,11 +27,12 @@ import '@carbon/web-components/es/components/skeleton-text/index.js';
 
 @customElement('llm-resource-panel')
 export class ResourcePanel extends Panel<string> {
-    // The names of the events fired to attach a resource, and to open its
-    // content, and delete it, whose detail is the resource, and to upload
-    // files, whose detail is them
+    // The names of the events fired to attach a resource, to play it, to
+    // download its content, and to delete it, whose detail is the resource,
+    // and to upload files, whose detail is them
     static readonly eventAttach = 'llm-resource-attach';
-    static readonly eventOpen = 'llm-resource-open';
+    static readonly eventPlay = 'llm-resource-play';
+    static readonly eventDownload = 'llm-resource-download';
     static readonly eventDelete = 'llm-resource-delete';
     static readonly eventUpload = 'llm-resource-upload';
 
@@ -194,9 +197,14 @@ export class ResourcePanel extends Panel<string> {
                     <span class="name">${resourceName(resource)}${attached ? ' (attached)' : ''}</span>
                     <span class="meta">${meta}</span>
                 </button>
-                <cds-icon-button kind="ghost" size="sm" align="left" @click=${() => this.fire(ResourcePanel.eventOpen, resource)}>
-                    ${iconLoader(Launch16, { slot: 'icon' })}
-                    <span slot="tooltip-content">Open</span>
+                ${playable(resource.type) ? html`
+                <cds-icon-button kind="ghost" size="sm" align="left" @click=${() => this.fire(ResourcePanel.eventPlay, resource)}>
+                    ${iconLoader(PlayFilledAlt16, { slot: 'icon' })}
+                    <span slot="tooltip-content">Play</span>
+                </cds-icon-button>` : nothing}
+                <cds-icon-button kind="ghost" size="sm" align="left" @click=${() => this.fire(ResourcePanel.eventDownload, resource)}>
+                    ${iconLoader(Download16, { slot: 'icon' })}
+                    <span slot="tooltip-content">Download</span>
                 </cds-icon-button>
                 <cds-icon-button kind="ghost" size="sm" align="left" @click=${() => this.fire(ResourcePanel.eventDelete, resource)}>
                     ${iconLoader(TrashCan16, { slot: 'icon' })}

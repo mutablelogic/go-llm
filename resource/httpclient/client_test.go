@@ -98,6 +98,16 @@ func Test_Client(t *testing.T) {
 		}
 	}
 
+	// Shown in the browser, or, with download, saved by it, with its name
+	for query, disposition := range map[string]string{"": "inline", "?download=true": "attachment"} {
+		response, err := http.Get(server.URL + test.Prefix + "/resource/" + notes.Hash + "/content" + query)
+		require.NoError(t, err)
+		response.Body.Close()
+		assert.Equal(t, http.StatusOK, response.StatusCode)
+		assert.True(t, strings.HasPrefix(response.Header.Get("Content-Disposition"), disposition), response.Header.Get("Content-Disposition"))
+		assert.Contains(t, response.Header.Get("Content-Disposition"), "notes.json")
+	}
+
 	// Deleted
 	deleted, err := c.DeleteResource(ctx, notes.Hash, schema.ResourceRequest{})
 	require.NoError(t, err)

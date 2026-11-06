@@ -110,6 +110,7 @@ func Test_Speak(t *testing.T) {
 	assert.Contains(t, ns.Tools()[0].Description(), "with the speech capability with the models tool")
 	_, err = ns.Tools()[0].Run(ctx, json.RawMessage(`{"text":"Hello"}`))
 	assert.ErrorIs(t, err, gollm.ErrBadParameter)
+	assert.ErrorContains(t, err, "the memory preferred_models, or list the models with the speech capability", "it says how to choose one")
 	given, err := ns.Tools()[0].Run(ctx, json.RawMessage(`{"text":"Hello","model":"phonon"}`))
 	require.NoError(t, err)
 	assert.Equal(t, "speech.wav", given.(gollm.Resource).Name())

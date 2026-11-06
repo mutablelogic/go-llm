@@ -12,7 +12,7 @@ import { chat, createSession, deleteSession, getSession, listMessages, listSessi
 import { getDetails } from '../api/memory';
 import { listModels } from '../api/model';
 import { cannot } from '../schema/model';
-import { ApiError } from '../api/client';
+import { ApiError, config } from '../api/client';
 import { routeHref } from '../router';
 import { isUser, sessionTokens, type ContentBlock, type Message, type Session, type SessionMeta } from '../schema/session';
 import type { Details } from '../schema/memory';
@@ -74,12 +74,17 @@ export class ChatController {
     // Whether the server can't be reached
     private unavailable = false;
 
+    // The prefix of the API, beneath which the content of resources is,
+    // once the configuration is read
+    private prefix?: string;
+
     constructor(views: ChatViews, notifications: NotificationController, storage: StorageController, resources: ResourcesController) {
         this.views = views;
         this.notifications = notifications;
         this.storage = storage;
         this.resources = resources;
         resources.onChange(() => this.render());
+        void this.loadPrefix();
         views.view?.addEventListener(ChatView.eventAttach, () => {
             if (this.session) {
                 void resources.open(this.session.id);
@@ -181,6 +186,21 @@ export class ChatController {
     connect() {
         this.unavailable = false;
         this.render();
+        if (this.prefix === undefined) {
+            void this.loadPrefix();
+        }
+    }
+
+    // loadPrefix reads the prefix of the API, beneath which the content of
+    // resources is, from the configuration, which is read again, when the
+    // server can be reached again, when it couldn't be read
+    private async loadPrefix() {
+        try {
+            this.prefix = (await config()).prefix;
+            this.render();
+        } catch {
+            // Resources aren't played, or shown, until it's read
+        }
     }
 
     // load loads the session, and its messages, when it's changed since they
@@ -331,6 +351,18 @@ export class ChatController {
         pending.streamed = [...pending.streamed, piece];
         pending.progress = undefined;
         this.render();
+    }
+
+    // contentURL returns the URL of the content of the resource with the
+    // URI, resource://<hash>, in the chat which is open, which the browser
+    // plays, shows, or downloads, or undefined, until the configuration is
+    // read
+    private contentURL(uri: string): string | undefined {
+        const hash = uri.startsWith('resource://') ? uri.slice('resource://'.length) : '';
+        if (this.prefix === undefined || !this.session || !/^[0-9a-f]{64}$/.test(hash)) {
+            return undefined;
+        }
+        return `${this.prefix}/resource/${hash}/content?session=${encodeURIComponent(this.session.id)}`;
     }
 
     // sessionID returns the identifier of the chat which is open, or
@@ -525,6 +557,8 @@ export class ChatController {
             view.question = pending?.question;
             view.questionAttachments = pending?.attachments ?? [];
             view.attachmentName = (url) => this.resources.name(url);
+            view.contentURL = (uri) => this.contentURL(uri);
+            view.resourceType = (uri) => this.resources.type(uri);
             view.streamed = pending?.streamed ?? [];
             view.progress = pending?.progress;
             view.attachments = this.session ? this.resources.attachments(this.session.id) : [];

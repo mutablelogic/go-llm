@@ -61,7 +61,7 @@ func (t *ocr) Run(ctx context.Context, input json.RawMessage) (any, error) {
 	if err := json.Unmarshal(input, &req); err != nil {
 		return nil, gollm.ErrBadParameter.With(err.Error())
 	}
-	models, model, err := modelFor(ctx, t.models, req.Model, t.model)
+	models, model, err := modelFor(ctx, t.models, req.Model, t.model, "ocr")
 	if err != nil {
 		return nil, err
 	}
@@ -94,7 +94,7 @@ func (t *ocr) Run(ctx context.Context, input json.RawMessage) (any, error) {
 // which calls the tool gives, or otherwise the default, or an error when
 // there are no models yet, there's neither, or there's no model with the
 // name
-func modelFor(ctx context.Context, fn ModelsFunc, given, defaultModel string) (Models, gollm.Model, error) {
+func modelFor(ctx context.Context, fn ModelsFunc, given, defaultModel, capability string) (Models, gollm.Model, error) {
 	models := fn()
 	if models == nil {
 		return nil, nil, gollm.ErrServiceUnavailable.With("no models yet")
@@ -104,7 +104,7 @@ func modelFor(ctx context.Context, fn ModelsFunc, given, defaultModel string) (M
 		name = defaultModel
 	}
 	if name == "" {
-		return nil, nil, gollm.ErrBadParameter.With("missing model, which this tool has no default for, so give one")
+		return nil, nil, gollm.ErrBadParameter.Withf("missing model: give the one the person chose for %s, which is in the memory %s, or list the models with the %s capability with the models tool, and ask them which to use, unless only one has it, and remember it there", capability, PreferredModels, capability)
 	}
 	model, err := models.GetModel(ctx, name)
 	if err != nil {

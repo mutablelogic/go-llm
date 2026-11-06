@@ -62,7 +62,7 @@ func (t *transcribe) Run(ctx context.Context, input json.RawMessage) (any, error
 	if err := json.Unmarshal(input, &req); err != nil {
 		return nil, gollm.ErrBadParameter.With(err.Error())
 	}
-	models, model, err := modelFor(ctx, t.models, req.Model, t.model)
+	models, model, err := modelFor(ctx, t.models, req.Model, t.model, "transcription")
 	if err != nil {
 		return nil, err
 	}

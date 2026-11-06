@@ -9,6 +9,7 @@ import { resourceName, type Resource } from '../schema/resource';
 import type { NotificationController } from './notifications';
 import { ResourcePanel } from '../component/resource-panel';
 import { Panel } from '../component/panel';
+import { MediaPlayer, type Media } from '../component/media-player';
 
 export class ResourcesController {
     // The most resources which are listed, and which are known by their
@@ -56,7 +57,8 @@ export class ResourcesController {
                 void this.upload(this.session, (e as CustomEvent<File[]>).detail);
             }
         });
-        panel?.addEventListener(ResourcePanel.eventOpen, (e) => void this.openContent((e as CustomEvent<Resource>).detail));
+        panel?.addEventListener(ResourcePanel.eventPlay, (e) => void this.play((e as CustomEvent<Resource>).detail));
+        panel?.addEventListener(ResourcePanel.eventDownload, (e) => void this.download((e as CustomEvent<Resource>).detail));
         panel?.addEventListener(ResourcePanel.eventDelete, (e) => void this.delete((e as CustomEvent<Resource>).detail));
     }
 
@@ -149,6 +151,13 @@ export class ResourcesController {
         return resource ? resourceName(resource) : undefined;
     }
 
+    // type returns the type of the resource an attachment refers to, by its
+    // URL, such as resource://<hash>, when it's known
+    type(url: string): string | undefined {
+        const hash = url.startsWith('resource://') ? url.slice('resource://'.length) : undefined;
+        return hash ? this.known.get(hash)?.type : undefined;
+    }
+
     // remember keeps the resources of the chat whose resources are known
     private remember(resources: Resource[]) {
         for (const resource of resources) {
@@ -231,10 +240,23 @@ export class ResourcesController {
         }
     }
 
-    // openContent opens the resource's content in a new tab
-    private async openContent(resource: Resource) {
+    // play plays the resource, which is audio, or video, in the player
+    private async play(resource: Resource) {
         const url = await contentURL(resource.hash, resource.session ?? this.session);
-        window.open(url, '_blank', 'noopener');
+        const media: Media = { url, name: resourceName(resource), type: resource.type };
+        document.dispatchEvent(new CustomEvent(MediaPlayer.eventPlay, { detail: media }));
+    }
+
+    // download saves the resource's content, with its name, rather than
+    // opening it in a tab
+    private async download(resource: Resource) {
+        const link = document.createElement('a');
+        link.href = await contentURL(resource.hash, resource.session ?? this.session, true);
+        link.download = resource.name ?? '';
+        link.rel = 'noopener';
+        document.body.append(link);
+        link.click();
+        link.remove();
     }
 
     // delete deletes the resource from the chat, once it's confirmed, and

@@ -43,6 +43,11 @@
             margin-bottom: calc(3rem + 1px);
         }
 
+        /* And above the player, while something is played */
+        cds-side-nav:has(llm-media-player[playing]) cds-side-nav-items {
+            margin-bottom: calc(8rem + 2px);
+        }
+
         /* The pages which fill the screen below the header, which are all
            but the page which isn't found, have no padding from main, with
            their headings in a dark bar, like the header's, and their
@@ -112,6 +117,7 @@
                 <cds-side-nav-link href="#models">Models</cds-side-nav-link>
                 <cds-side-nav-link href="#tools">Tools</cds-side-nav-link>
             </cds-side-nav-items>
+            <llm-media-player></llm-media-player>
             <llm-side-nav-footer></llm-side-nav-footer>
         </cds-side-nav>
     </div>

@@ -23,9 +23,17 @@ export function deleteResource(session: string, hash: string): Promise<Resource>
 }
 
 // contentURL returns the URL of the content of the resource, in the session,
-// or on its own, which is downloaded, or shown, by the browser
-export async function contentURL(hash: string, session?: string): Promise<string> {
+// or on its own, which is shown, or played, by the browser, or, with
+// download, saved by it
+export async function contentURL(hash: string, session?: string, download = false): Promise<string> {
     const { prefix } = await config();
-    const query = session ? '?session=' + encodeURIComponent(session) : '';
-    return `${prefix}/resource/${hash}/content${query}`;
+    const query = new URLSearchParams();
+    if (session) {
+        query.set('session', session);
+    }
+    if (download) {
+        query.set('download', 'true');
+    }
+    const str = query.toString();
+    return `${prefix}/resource/${hash}/content${str ? '?' + str : ''}`;
 }

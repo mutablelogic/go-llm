@@ -55,6 +55,14 @@ type ResourceRequest struct {
 	Session string `json:"session,omitempty" format:"uuid" help:"Session the resource is in, or none, for a resource on its own" optional:""`
 }
 
+// ResourceContentRequest is the resource whose content is read, and whether
+// it's downloaded, as an attachment, which the browser saves, rather than
+// shown in it
+type ResourceContentRequest struct {
+	ResourceRequest
+	Download bool `json:"download,omitempty" help:"Whether the content is downloaded, as an attachment, which the browser saves, rather than shown in it" optional:""`
+}
+
 // ResourceCreateRequest is what a resource which is created is, as the
 // query parameters of its upload, or its form's values
 type ResourceCreateRequest struct {
