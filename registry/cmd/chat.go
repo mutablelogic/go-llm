@@ -3,14 +3,19 @@ package cmd
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"io"
+	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
 	"uuid"
 
 	// Packages
+	llm "github.com/mutablelogic/go-llm"
 	eventclient "github.com/mutablelogic/go-llm/broadcaster/httpclient"
 	eventschema "github.com/mutablelogic/go-llm/broadcaster/schema"
 	memoryclient "github.com/mutablelogic/go-llm/memory/httpclient"
@@ -32,7 +37,7 @@ import (
 // terminal to chat in the session
 type ChatCmd struct {
 	Text    []string  `arg:"" name:"text" help:"The question to ask, which can be more than one argument, or, without one, chat in the terminal." optional:""`
-	Attach  []string  `name:"attach" short:"a" aliases:"file" sep:"none" help:"A file the question is about, or a resource, by its URI, resource://<hash>, which can be given more than once. A file of text, such as code or subtitles, is sent as text, with its name, and anything else, such as an image or a PDF, is uploaded as a resource of the session, which is attached by its URI, and which the model must accept." optional:""`
+	Attach  []string  `name:"attach" short:"a" aliases:"file" sep:"none" help:"A file the question is about, or a resource, by its URI, resource://<hash>, which can be given more than once. A file of text, such as code or subtitles, is sent as text, with its name, and anything else, such as an image or a PDF, is attached as a resource of the session, which is uploaded, unless it was before, and which the model must accept." optional:""`
 	Session uuid.UUID `name:"session" help:"Session identifier, which is a UUID, or the default session, which this is then." optional:""`
 	Stream  bool      `name:"stream" negatable:"" default:"true" help:"Print the reply as it's generated, or with --no-stream, once it's complete, rendered as markdown on a terminal."`
 }
@@ -181,15 +186,47 @@ func newResourceClient(ctx server.Cmd) (*resourceclient.Client, error) {
 	return resourceclient.New(endpoint, opts...)
 }
 
-// uploadResource uploads the file as a resource of the session, and returns
-// its URI
+// uploadResource returns the URI of the resource whose content is the
+// file's, in the session, or on its own, which a chat links to its session,
+// or, without a session, on its own, or otherwise uploads the file as one,
+// in the session, or on its own, so a file which was uploaded before isn't
+// uploaded again. The file is hashed, to find the resource, without sending
+// it.
 func uploadResource(ctx context.Context, client *resourceclient.Client, session uuid.UUID, file string) (string, error) {
 	f, err := os.Open(file)
 	if err != nil {
 		return "", err
 	}
 	defer f.Close()
-	resource, err := client.CreateResource(ctx, resourceschema.ResourceCreateRequest{Session: session.String()}, filepath.Base(file), f)
+
+	// The resource with the file's content, in the session, or on its own
+	hash := sha256.New()
+	if _, err := io.Copy(hash, f); err != nil {
+		return "", err
+	}
+	sum := hex.EncodeToString(hash.Sum(nil))
+	scopes := []resourceschema.ResourceRequest{{}}
+	if session != uuid.Nil() {
+		scopes = []resourceschema.ResourceRequest{{Session: session.String()}, {}}
+	}
+	for _, scope := range scopes {
+		resource, err := client.GetResource(ctx, sum, scope)
+		if err == nil {
+			return resource.URI(), nil
+		} else if status, ok := llm.HTTPStatus(err); !ok || status != http.StatusNotFound {
+			return "", fmt.Errorf("%s: %w", file, err)
+		}
+	}
+
+	// Otherwise it's uploaded, from the start
+	if _, err := f.Seek(0, io.SeekStart); err != nil {
+		return "", err
+	}
+	req := resourceschema.ResourceCreateRequest{}
+	if session != uuid.Nil() {
+		req.Session = session.String()
+	}
+	resource, err := client.CreateResource(ctx, req, filepath.Base(file), f)
 	if err != nil {
 		return "", fmt.Errorf("%s: %w", file, err)
 	}

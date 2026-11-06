@@ -13,6 +13,7 @@ import (
 	"path/filepath"
 	"strings"
 	"unicode/utf8"
+	"uuid"
 
 	// Packages
 	ansi "github.com/charmbracelet/x/ansi"
@@ -32,7 +33,7 @@ import (
 
 type AskCmd struct {
 	Text   []string                   `arg:"" name:"text" help:"The question to ask, which can be more than one argument."`
-	Attach []string                   `name:"attach" short:"a" aliases:"file" sep:"none" help:"A file the question is about, or a resource, by its URI, resource://<hash>, which can be given more than once. A file of text, such as code or subtitles, is sent as text, with its name, and anything else, such as an image or a PDF, as an attachment, which the model must accept." optional:""`
+	Attach []string                   `name:"attach" short:"a" aliases:"file" sep:"none" help:"A file the question is about, or a resource, by its URI, resource://<hash>, which can be given more than once. A file of text, such as code or subtitles, is sent as text, with its name, and anything else, such as an image or a PDF, is attached as a resource on its own, which is uploaded, unless it was before, and which the model must accept." optional:""`
 	Model  string                     `name:"model" help:"Model name, or provider and model name separated by a colon, such as ollama:llama3.2:latest. Defaults to the model last asked." optional:""`
 	System string                     `name:"system" help:"A system prompt, such as instructions on how to reply." optional:""`
 	Tools  []string                   `name:"tool" help:"Name of a tool the model can call, such as weatherapi:current, or weatherapi:* for all the tools in a namespace, which can be given more than once. The model's calls are printed, rather than run." optional:""`
@@ -76,12 +77,21 @@ func (cmd *AskCmd) Run(ctx server.Cmd) error {
 	if text == "" {
 		return fmt.Errorf("missing question")
 	}
-	message, err := askMessage(text, cmd.Attach, nil)
+	resources, err := newResourceClient(ctx)
 	if err != nil {
 		return err
 	}
-
 	return withClient(ctx, "llm.AskCmd", func(reqctx context.Context, client *httpclient.Client) error {
+		// The question, whose files which aren't text are resources on their
+		// own, which are uploaded, unless they were before, and attached by
+		// their URIs, so a file which is asked about again isn't sent again
+		message, err := askMessage(text, cmd.Attach, func(file string) (string, error) {
+			return uploadResource(reqctx, resources, uuid.Nil(), file)
+		})
+		if err != nil {
+			return err
+		}
+
 		// A reply with a schema is JSON, so isn't streamed
 		printer := newStreamPrinter(debug || !cmd.Stream || len(cmd.Schema) > 0, width)
 		response, err := client.Ask(reqctx, schema.AskRequest{
