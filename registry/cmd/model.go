@@ -21,7 +21,7 @@ import (
 
 type ModelCommands struct {
 	ModelList   ModelListCmd   `cmd:"" name:"models" help:"List the models of the providers." group:"LLM MODELS"`
-	ModelGet    ModelGetCmd    `cmd:"" name:"model" help:"Get a model by name, and make it the default model." group:"LLM MODELS"`
+	ModelGet    ModelGetCmd    `cmd:"" name:"model" help:"Get a model by name, and make it the default model, or, without a name, the default model." group:"LLM MODELS"`
 	ModelLoad   ModelLoadCmd   `cmd:"" name:"model-load" help:"Load a model, downloading it when needed, and make it the default." group:"LLM MODELS"`
 	ModelDelete ModelDeleteCmd `cmd:"" name:"model-delete" help:"Delete a model, with a provider which deletes models, such as Ollama." group:"LLM MODELS"`
 	ModelUnload ModelUnloadCmd `cmd:"" name:"model-unload" help:"Unload a model from memory, keeping it stored." group:"LLM MODELS"`
@@ -32,7 +32,7 @@ type ModelListCmd struct {
 }
 
 type ModelGetCmd struct {
-	Name string `arg:"" name:"name" help:"Model name, or alias, or provider and model name separated by a colon, such as openai:gpt-4o."`
+	Name string `arg:"" name:"name" optional:"" help:"Model name, or alias, or provider and model name separated by a colon, such as openai:gpt-4o, or the default model."`
 }
 
 type ModelLoadCmd struct {
@@ -83,9 +83,17 @@ func (cmd *ModelListCmd) Run(ctx server.Cmd) error {
 }
 
 // Run gets the model, which is then the default model, by its canonical name
+// Run prints the model, which is then the default model, or, without a
+// name, the default model, which is the model last asked, or got
 func (cmd *ModelGetCmd) Run(ctx server.Cmd) error {
+	name := strings.TrimSpace(cmd.Name)
+	if name == "" {
+		if name = strings.TrimSpace(ctx.GetString(defaultModelKey)); name == "" {
+			return fmt.Errorf("no default model: set one with llm model <name>, or llm ask --model <name>")
+		}
+	}
 	return withClient(ctx, "llm.ModelGetCmd", func(reqctx context.Context, client *httpclient.Client) error {
-		model, err := client.GetModel(reqctx, cmd.Name)
+		model, err := client.GetModel(reqctx, name)
 		if err != nil {
 			return err
 		}
