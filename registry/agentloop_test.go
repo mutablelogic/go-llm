@@ -458,10 +458,20 @@ func Test_AgentLoopSchema(t *testing.T) {
 			})
 		}
 
+		// Even on the last iteration it's allowed, it's the reply, rather than
+		// the loop stopping, as it's been asked as many times as it can be
+		last := newScripted(text(`{"result":{"city":"Berlin"}}`))
+		lastLoop, lastModel := newAgentLoop(t, last)
+		added, _, err := lastLoop.AgentLoop(ctx, lastModel, []llm.Message{user(t, "Where?")}, tools, nil, schema, llm.WithMaxIterations(1))
+		require.NoError(t, err)
+		require.Len(t, added, 1)
+		assert.Equal(t, providerschema.ResultStop, added[0].Result)
+		assert.JSONEq(t, `{"city":"Berlin"}`, added[0].Text())
+
 		// Text which is JSON, but doesn't conform, is asked for again
 		p := newScripted(text(`{"town":"Berlin"}`), call(toolkit.RespondName, `{"result":{"city":"Berlin"}}`))
 		r, model := newAgentLoop(t, p)
-		added, _, err := r.AgentLoop(ctx, model, []llm.Message{user(t, "Where?")}, tools, nil, schema)
+		added, _, err = r.AgentLoop(ctx, model, []llm.Message{user(t, "Where?")}, tools, nil, schema)
 		require.NoError(t, err)
 		require.Len(t, added, 3)
 		assert.Equal(t, toolkit.RespondNudge, added[1].Text())

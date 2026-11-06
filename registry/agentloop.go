@@ -304,6 +304,17 @@ func (r *Registry) iterate(ctx context.Context, model llm.Model, loop *agentLoop
 		return []providerschema.Message{message}, usage, true, nil
 	}
 
+	// The model replied with text, when the reply has a schema, which is the
+	// reply, when it's what the respond tool would have been called with, or
+	// its result, which conforms to the schema, as some models reply with
+	// it, rather than calling the tool, so it isn't lost by asking again,
+	// even when it's been asked as many times as it can be
+	if len(calls) == 0 {
+		if result, ok := loop.textResult(ctx, message.Text()); ok {
+			return []providerschema.Message{withResult(message, result)}, usage, true, nil
+		}
+	}
+
 	// The model called tools, which the caller runs
 	if loop.stopAtTools && slices.ContainsFunc(calls, func(call llm.ToolCall) bool { return call.Name != toolkit.RespondName || loop.respond == nil }) {
 		if loop.respond != nil {
@@ -319,16 +330,6 @@ func (r *Registry) iterate(ctx context.Context, model llm.Model, loop *agentLoop
 	// called aren't run
 	if iteration >= loop.maxIterations {
 		return []providerschema.Message{maxIterations(message)}, usage, true, nil
-	}
-
-	// The model replied with text, when the reply has a schema, which is the
-	// reply, when it's what the respond tool would have been called with, or
-	// its result, which conforms to the schema, as some models reply with
-	// it, rather than calling the tool, so it isn't lost by asking again
-	if len(calls) == 0 {
-		if result, ok := loop.textResult(ctx, message.Text()); ok {
-			return []providerschema.Message{withResult(message, result)}, usage, true, nil
-		}
 	}
 
 	// Or, otherwise, it's asked to call the respond tool
