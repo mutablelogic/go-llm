@@ -36,8 +36,11 @@ type Store interface {
 	Update(context.Context, uuid.UUID, func(*schema.Heartbeat) error) (schema.Heartbeat, error)
 
 	// Delete deletes the heartbeat with the identifier, and returns it, as it
-	// was, or ErrNotFound when there's none
-	Delete(context.Context, uuid.UUID) (schema.Heartbeat, error)
+	// was, or ErrNotFound when there's none. With a check, it's called with
+	// the heartbeat, as it is, and it's deleted only when the check returns
+	// nil, so no other change, such as by another server, is made between
+	// them, or the check's error is returned, without deleting it.
+	Delete(ctx context.Context, id uuid.UUID, check func(schema.Heartbeat) error) (schema.Heartbeat, error)
 }
 
 // store keeps the heartbeats in memory, so they aren't kept when the
@@ -106,12 +109,16 @@ func (s *store) Update(_ context.Context, id uuid.UUID, fn func(*schema.Heartbea
 	return heartbeat, nil
 }
 
-func (s *store) Delete(_ context.Context, id uuid.UUID) (schema.Heartbeat, error) {
+func (s *store) Delete(_ context.Context, id uuid.UUID, check func(schema.Heartbeat) error) (schema.Heartbeat, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	heartbeat, ok := s.heartbeats[id]
 	if !ok {
 		return schema.Heartbeat{}, llm.ErrNotFound.Withf("heartbeat %q", id)
+	} else if check != nil {
+		if err := check(Clone(heartbeat)); err != nil {
+			return schema.Heartbeat{}, err
+		}
 	}
 	delete(s.heartbeats, id)
 	return heartbeat, nil

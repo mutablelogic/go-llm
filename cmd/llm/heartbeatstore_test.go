@@ -69,11 +69,15 @@ func Test_HeartbeatStore(t *testing.T) {
 	wg.Wait()
 	assert.Equal(t, 1, fired)
 
-	// Deleted
-	_, err = store.Delete(ctx, h.ID)
+	// Not deleted when the check fails, and then deleted
+	_, err = store.Delete(ctx, h.ID, func(schema.Heartbeat) error { return llm.ErrConflict })
+	assert.ErrorIs(t, err, llm.ErrConflict)
+	_, err = store.Get(ctx, h.ID)
+	require.NoError(t, err)
+	_, err = store.Delete(ctx, h.ID, nil)
 	require.NoError(t, err)
 	_, err = store.Get(ctx, h.ID)
 	assert.ErrorIs(t, err, llm.ErrNotFound)
-	_, err = store.Delete(ctx, h.ID)
+	_, err = store.Delete(ctx, h.ID, nil)
 	assert.ErrorIs(t, err, llm.ErrNotFound)
 }

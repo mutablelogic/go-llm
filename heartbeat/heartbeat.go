@@ -43,7 +43,12 @@ type Heartbeats struct {
 	tracer      trace.Tracer
 	zone        func() *time.Location
 	session     SessionFunc
+	retention   time.Duration
 	now         func() time.Time
+
+	// When the heartbeats which won't fire again were last looked for, which
+	// only Run changes
+	cleaned time.Time
 
 	// The person's time zone, as it was, and when it changed, so a schedule
 	// which follows it doesn't fire for a time before it changed, which, in
@@ -70,11 +75,19 @@ const (
 	// which are created, whose rows are their identifiers, and whose data is
 	// a FireEvent
 	FireTable = "fire"
+
+	// DefaultRetention is how long a heartbeat which won't fire again is
+	// kept, after it last fired, or was changed, before it's deleted
+	DefaultRetention = 7 * 24 * time.Hour
 )
 
 // errNotDue is returned by an update which fires a heartbeat, which isn't
 // due, as it fired, such as on another server, or it changed
 var errNotDue = errors.New("heartbeat isn't due")
+
+// errNotExpired is returned by a delete which cleans up a heartbeat, which
+// was changed since it was listed, so it isn't to be deleted yet
+var errNotExpired = errors.New("heartbeat isn't expired")
 
 ///////////////////////////////////////////////////////////////////////////////
 // LIFECYCLE
@@ -89,7 +102,10 @@ func New(store Store, opts ...Opt) (*Heartbeats, error) {
 	} else if err := o.apply(opts); err != nil {
 		return nil, err
 	}
-	return &Heartbeats{store: store, broadcaster: o.broadcaster, tracer: o.tracer, zone: o.zone, session: o.session, now: time.Now}, nil
+	if o.retention == 0 {
+		o.retention = DefaultRetention
+	}
+	return &Heartbeats{store: store, broadcaster: o.broadcaster, tracer: o.tracer, zone: o.zone, session: o.session, retention: o.retention, now: time.Now}, nil
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -202,7 +218,7 @@ func (h *Heartbeats) Delete(ctx context.Context, id uuid.UUID) (_ schema.Heartbe
 	)
 	defer func() { endSpan(err) }()
 
-	heartbeat, err := h.store.Delete(ctx, id)
+	heartbeat, err := h.store.Delete(ctx, id, nil)
 	if err != nil {
 		return schema.Heartbeat{}, err
 	}
@@ -228,7 +244,13 @@ func (h *Heartbeats) DeleteSession(ctx context.Context, session uuid.UUID) (_ in
 		if heartbeat.Session != session {
 			continue
 		}
-		if _, err := h.store.Delete(ctx, heartbeat.ID); errors.Is(err, llm.ErrNotFound) {
+		if _, err := h.store.Delete(ctx, heartbeat.ID, func(heartbeat schema.Heartbeat) error {
+			// It's still the session's, as it is in the store
+			if heartbeat.Session != session {
+				return llm.ErrNotFound
+			}
+			return nil
+		}); errors.Is(err, llm.ErrNotFound) {
 			continue
 		} else if err != nil {
 			errs = append(errs, err)

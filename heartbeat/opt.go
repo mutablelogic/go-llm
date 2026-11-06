@@ -22,6 +22,7 @@ type opt struct {
 	tracer      trace.Tracer
 	zone        func() *time.Location
 	session     SessionFunc
+	retention   time.Duration
 }
 
 // SessionFunc returns nil when the session with the identifier exists, or
@@ -74,6 +75,20 @@ func WithTracer(tracer trace.Tracer) Opt {
 func WithSessions(fn SessionFunc) Opt {
 	return func(o *opt) error {
 		o.session = fn
+		return nil
+	}
+}
+
+// WithRetention sets how long a heartbeat which won't fire again, such as a
+// one-off which fired, is kept, after it last fired, or was changed, before
+// it's deleted, which is a week, unless it's set. Returns ErrBadParameter
+// when it isn't positive.
+func WithRetention(d time.Duration) Opt {
+	return func(o *opt) error {
+		if d <= 0 {
+			return llm.ErrBadParameter.With("retention must be positive")
+		}
+		o.retention = d
 		return nil
 	}
 }
