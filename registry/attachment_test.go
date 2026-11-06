@@ -3,6 +3,7 @@ package registry_test
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/url"
 	"strings"
 	"testing"
@@ -262,4 +263,123 @@ func Test_ToolResources(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, pngData, string(data))
 
+}
+
+// readTool is a tool which reads the resource, by its URI, and returns how
+// many bytes it is, as a tool which recognizes its text would read it
+type readTool struct{ toolkit.Base }
+
+func (readTool) Name() string                    { return "read" }
+func (readTool) Description() string             { return "Reads a file" }
+func (readTool) InputSchema() *jsonschema.Schema { return nil }
+func (readTool) Run(ctx context.Context, input json.RawMessage) (any, error) {
+	var req struct {
+		URI string `json:"uri"`
+	}
+	if err := json.Unmarshal(input, &req); err != nil {
+		return nil, err
+	}
+	resource, err := toolkit.Resource(ctx, req.URI)
+	if err != nil {
+		return nil, err
+	}
+	data, err := llm.ReadAll(ctx, resource)
+	if err != nil {
+		return nil, err
+	}
+	return map[string]int{"bytes": len(data)}, nil
+}
+
+func Test_UnreadableAttachments(t *testing.T) {
+	ctx := context.Background()
+	sessions := test.NewSessionStore()
+	manager, err := resourcemanager.New(resourcemanager.NewStore(), resourcemanager.WithSessions(func(ctx context.Context, id uuid.UUID) error {
+		_, err := sessions.Get(ctx, id)
+		return err
+	}))
+	require.NoError(t, err)
+	audio, _, err := manager.Create(ctx, resourceschema.ResourceMeta{Name: "hello.mp3", Type: "audio/mpeg"}, strings.NewReader("ID3"+strings.Repeat("x", len(pngData))))
+	require.NoError(t, err)
+	image, _, err := manager.Create(ctx, resourceschema.ResourceMeta{Name: "cat.png"}, strings.NewReader(pngData))
+	require.NoError(t, err)
+	tk := test.NewToolkit(t)
+	require.NoError(t, tk.Add(toolkit.NewNamespace("files", "", readTool{})))
+	p := newScripted(
+		call("files__read", `{"uri":"`+audio.URI()+`"}`), text("It's read"),
+		text("A cat"),
+		call("files__read", `{"uri":"`+audio.URI()+`"}`), text("Too large"),
+	)
+	p.accepts = func(contentType string) bool { return strings.HasPrefix(contentType, "image/") }
+	r, err := registry.New(registry.WithSessionStore(sessions), registry.WithToolkit(tk), registry.WithResources(manager))
+	require.NoError(t, err)
+	require.NoError(t, r.Add("", p))
+	session, err := r.CreateSession(ctx, schema.SessionMeta{GeneratorMeta: schema.GeneratorMeta{Model: types.Ptr("model"), Tools: []string{"files:*"}}})
+	require.NoError(t, err)
+
+	// Audio, which the model doesn't accept, isn't sent, but its URI is, so
+	// the model can give it to a tool, which reads it
+	response, err := r.Chat(ctx, session.ID, []llm.Message{attached(t, "What's said?", audio.URI())}, nil)
+	require.NoError(t, err)
+	require.Len(t, p.asked, 2)
+	first := p.asked[0].messages[0]
+	assert.Empty(t, first.Resources(), "the audio isn't sent")
+	assert.Contains(t, first.Text(), audio.URI()+" is audio/mpeg, which this model can't read")
+	assert.Contains(t, toolResult(t, response.Messages), fmt.Sprintf(`{"bytes":%d}`, len(pngData)+3))
+
+	// An image, which it does, is
+	_, err = r.Chat(ctx, session.ID, []llm.Message{attached(t, "And this?", image.URI())}, nil)
+	require.NoError(t, err)
+	assert.Equal(t, []string{"image/png:" + pngData}, attachments(t, p.asked[2].messages[len(p.asked[2].messages)-1]))
+
+	// A tool reads a resource up to MaxAttachmentsSize, which the image,
+	// in the history, is, but the audio isn't
+	limit := registry.MaxAttachmentsSize
+	registry.MaxAttachmentsSize = int64(len(pngData))
+	t.Cleanup(func() { registry.MaxAttachmentsSize = limit })
+	response, err = r.Chat(ctx, session.ID, []llm.Message{user(t, "Read it again")}, nil)
+	require.NoError(t, err)
+	assert.Contains(t, toolResult(t, response.Messages), fmt.Sprintf("larger than %d bytes", len(pngData)))
+}
+
+// toolResult returns the content of the first tool result of the messages
+func toolResult(t *testing.T, messages []providerschema.Message) string {
+	t.Helper()
+	for _, message := range messages {
+		for _, block := range message.Content {
+			if block.ToolResult != nil {
+				return string(block.ToolResult.Content)
+			}
+		}
+	}
+	t.Fatal("no tool result")
+	return ""
+}
+
+func Test_TextAttachmentsAccepted(t *testing.T) {
+	ctx := context.Background()
+	sessions := test.NewSessionStore()
+	manager, err := resourcemanager.New(resourcemanager.NewStore(), resourcemanager.WithSessions(func(ctx context.Context, id uuid.UUID) error {
+		_, err := sessions.Get(ctx, id)
+		return err
+	}))
+	require.NoError(t, err)
+	notes, _, err := manager.Create(ctx, resourceschema.ResourceMeta{Name: "notes.txt", Type: "text/plain"}, strings.NewReader("Pineapple"))
+	require.NoError(t, err)
+	p := newScripted(text("Pineapple"))
+	p.accepts = func(contentType string) bool { return strings.HasPrefix(contentType, "image/") }
+	r, err := registry.New(registry.WithSessionStore(sessions), registry.WithResources(manager))
+	require.NoError(t, err)
+	require.NoError(t, r.Add("", p))
+	session, err := r.CreateSession(ctx, schema.SessionMeta{GeneratorMeta: schema.GeneratorMeta{Model: types.Ptr("model")}})
+	require.NoError(t, err)
+
+	// Text, which the model doesn't accept as an attachment, is sent as
+	// text, rather than left out
+	_, err = r.Chat(ctx, session.ID, []llm.Message{attached(t, "What's the word?", notes.URI())}, nil)
+	require.NoError(t, err)
+	require.Len(t, p.asked, 1)
+	first := p.asked[0].messages[0]
+	assert.Empty(t, first.Resources())
+	assert.Contains(t, first.Text(), "notes.txt:\n\n```\nPineapple\n```")
+	assert.NotContains(t, first.Text(), "can't read")
 }

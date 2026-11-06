@@ -36,14 +36,17 @@ func (o *opt) apply(opts []Opt) error {
 // OPTIONS
 
 // WithSpeak sets the model the speak tool speaks text with, by its name,
-// such as ollama:phonon:latest, and the voice, unless the model which
-// calls it gives another, or the model's own, when it's empty
+// such as ollama:phonon:latest, and the voice, each unless the model which
+// calls it gives another. Without a model, the model which calls it gives
+// one, and without a voice, it's the model's own. Returns ErrBadParameter
+// when neither is set.
 func WithSpeak(model, voice string) Opt {
 	return func(o *opt) error {
-		if model = strings.TrimSpace(model); model == "" {
-			return gollm.ErrBadParameter.With("missing model to speak with")
+		model, voice = strings.TrimSpace(model), strings.TrimSpace(voice)
+		if model == "" && voice == "" {
+			return gollm.ErrBadParameter.With("missing model, or voice, to speak with")
 		}
-		o.speakModel, o.speakVoice = model, strings.TrimSpace(voice)
+		o.speakModel, o.speakVoice = model, voice
 		return nil
 	}
 }

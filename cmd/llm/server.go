@@ -190,8 +190,8 @@ func (runner *RunServer) withToolkit(ctx server.Cmd, b *broadcaster.Broadcaster,
 		// transcribe speech, with the model the model which calls them gives,
 		// or the default which is set for it
 		var llmOpts []llmtools.Opt
-		if model := strings.TrimSpace(runner.Registry.SpeakModel); model != "" {
-			llmOpts = append(llmOpts, llmtools.WithSpeak(model, runner.Registry.SpeakVoice))
+		if model, voice := strings.TrimSpace(runner.Registry.SpeakModel), strings.TrimSpace(runner.Registry.SpeakVoice); model != "" || voice != "" {
+			llmOpts = append(llmOpts, llmtools.WithSpeak(model, voice))
 		}
 		if model := strings.TrimSpace(runner.Registry.OCRModel); model != "" {
 			llmOpts = append(llmOpts, llmtools.WithOCR(model))

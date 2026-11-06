@@ -257,7 +257,7 @@ func (r *Registry) iterate(ctx context.Context, model llm.Model, loop *agentLoop
 
 	// The conversation, with the content of the attachments which refer to
 	// resources, which is read as it's sent, rather than kept with it
-	conversation, err := r.withContent(ctx, loop.session, h.messages(), true)
+	conversation, err := r.withContent(ctx, loop.session, h.messages(), true, model)
 	if err != nil {
 		return nil, llm.Usage{}, false, err
 	}
