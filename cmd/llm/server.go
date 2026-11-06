@@ -185,23 +185,33 @@ func (runner *RunServer) withToolkit(ctx server.Cmd, b *broadcaster.Broadcaster,
 		}
 		ctx.Logger().InfoContext(ctx.Context(), "tools added", "namespace", h.Name(), "tools", len(h.Tools()))
 
-		// The llm namespace, whose tools ask the registry's models, such as to
-		// speak text, once the registry is made, when a model is set for them
-		if model := strings.TrimSpace(runner.Registry.SpeakModel); model != "" {
-			ns, err := llmtools.New(func() llmtools.Models {
-				if r := events.Load(); r != nil {
-					return r
-				}
-				return nil
-			}, llmtools.WithSpeak(model, runner.Registry.SpeakVoice))
-			if err != nil {
-				return err
-			}
-			if err := tools.Add(ns); err != nil {
-				return err
-			}
-			ctx.Logger().InfoContext(ctx.Context(), "tools added", "namespace", ns.Name(), "tools", len(ns.Tools()), "speak_model", model)
+		// The llm namespace, whose tools ask the registry's models, once it's
+		// made, to speak text, read the text in images and documents, and
+		// transcribe speech, with the model the model which calls them gives,
+		// or the default which is set for it
+		var llmOpts []llmtools.Opt
+		if model, voice := strings.TrimSpace(runner.Registry.SpeakModel), strings.TrimSpace(runner.Registry.SpeakVoice); model != "" || voice != "" {
+			llmOpts = append(llmOpts, llmtools.WithSpeak(model, voice))
 		}
+		if model := strings.TrimSpace(runner.Registry.OCRModel); model != "" {
+			llmOpts = append(llmOpts, llmtools.WithOCR(model))
+		}
+		if model := strings.TrimSpace(runner.Registry.TranscribeModel); model != "" {
+			llmOpts = append(llmOpts, llmtools.WithTranscribe(model))
+		}
+		ns, err := llmtools.New(func() llmtools.Models {
+			if r := events.Load(); r != nil {
+				return r
+			}
+			return nil
+		}, llmOpts...)
+		if err != nil {
+			return err
+		}
+		if err := tools.Add(ns); err != nil {
+			return err
+		}
+		ctx.Logger().InfoContext(ctx.Context(), "tools added", "namespace", ns.Name(), "tools", len(ns.Tools()))
 
 		return runner.Registry.WithRegistry(ctx, &runner.RunServer, func(r *registry.Registry) error {
 			// The example agents, as they are, before the server starts

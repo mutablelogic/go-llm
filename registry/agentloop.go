@@ -257,7 +257,7 @@ func (r *Registry) iterate(ctx context.Context, model llm.Model, loop *agentLoop
 
 	// The conversation, with the content of the attachments which refer to
 	// resources, which is read as it's sent, rather than kept with it
-	conversation, err := r.withContent(ctx, loop.session, h.messages(), true)
+	conversation, err := r.withContent(ctx, loop.session, h.messages(), true, model)
 	if err != nil {
 		return nil, llm.Usage{}, false, err
 	}
@@ -351,7 +351,7 @@ func (r *Registry) iterate(ctx context.Context, model llm.Model, loop *agentLoop
 	// again with their results, which are compacted, if they don't fit
 	toolCtx := ctx
 	if store := r.toolStore(loop.session); store != nil {
-		toolCtx = toolkit.WithStore(ctx, store)
+		toolCtx = toolkit.WithStore(toolkit.WithResolver(ctx, r.toolResolver(loop.session)), store)
 	}
 	results, err := loop.runTools(toolCtx, calls, func(call llm.ToolCall) toolkit.Session {
 		return session(call.Name)

@@ -263,3 +263,18 @@ func resourceBlock(ctx context.Context, resource llm.Resource) (contentBlock, er
 		return contentBlock{}, llm.ErrBadParameter.Withf("unsupported resource type %q", mediaType)
 	}
 }
+
+////////////////////////////////////////////////////////////////////////////////
+// ACCEPTER
+
+var _ llm.Accepter = (*Client)(nil)
+
+// Accepts returns whether the model accepts an attachment of the type, which
+// is images, PDFs and text
+func (*Client) Accepts(_ llm.Model, contentType string) bool {
+	mediaType, _, err := mime.ParseMediaType(contentType)
+	if err != nil {
+		return false
+	}
+	return imageTypes[mediaType] || mediaType == "application/pdf" || strings.HasPrefix(mediaType, "text/")
+}

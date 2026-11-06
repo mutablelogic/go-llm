@@ -167,3 +167,14 @@ func isImage(contentType string) bool {
 	}
 	return strings.HasPrefix(mediaType, "image/")
 }
+
+////////////////////////////////////////////////////////////////////////////////
+// ACCEPTER
+
+var _ llm.Accepter = (*Client)(nil)
+
+// Accepts returns whether the model accepts an attachment of the type, which
+// is images
+func (*Client) Accepts(_ llm.Model, contentType string) bool {
+	return isImage(contentType)
+}

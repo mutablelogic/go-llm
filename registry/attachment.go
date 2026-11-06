@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"io"
+	"net/url"
 	"slices"
 	"uuid"
 
@@ -98,10 +99,16 @@ func (r *Registry) attach(ctx context.Context, session uuid.UUID, message provid
 // history, an attachment whose resource isn't found, such as one which was
 // deleted, is text which says so, and otherwise it's an error, so it isn't
 // embedded, or asked about, as if it were there. The messages aren't
-// changed.
-func (r *Registry) withContent(ctx context.Context, session uuid.UUID, messages []llm.Message, history bool) ([]llm.Message, error) {
+// changed. In a session's history, an attachment of a type which the model,
+// when there is one, doesn't accept, such as audio, isn't read, or sent, but
+// is text which says its URI, so the model can give it to a tool, such as
+// one which transcribes it, rather than its provider rejecting it.
+func (r *Registry) withContent(ctx context.Context, session uuid.UUID, messages []llm.Message, history bool, model llm.Model) ([]llm.Message, error) {
 	var result []llm.Message
 	reader := r.newContentReader(session)
+	if history {
+		reader.accepts = accepts(model)
+	}
 	for i, m := range messages {
 		message, ok := schemaMessage(m)
 		if !ok || !refersToResources(*message) {
@@ -195,6 +202,28 @@ func (r *Registry) toolStore(session uuid.UUID) toolkit.StoreFunc {
 	}
 }
 
+// toolResolver returns the function which returns the resources which the
+// tools run in the session are given, by their URIs: the session's, or,
+// otherwise, or without one, those on their own, whose content is read, up
+// to MaxAttachmentsSize, as an attachment's is, so a tool, such as one which
+// recognizes text, doesn't read a large resource without bound
+func (r *Registry) toolResolver(session uuid.UUID) toolkit.ResolveFunc {
+	return func(ctx context.Context, uri string) (llm.Resource, error) {
+		u, err := url.Parse(uri)
+		if err != nil || u.Scheme != resourceschema.Scheme {
+			return nil, llm.ErrBadParameter.Withf("not a resource's URI: %q", uri)
+		}
+		data, contentType, err := r.newContentReader(session).read(ctx, uri)
+		if errors.Is(err, llm.ErrNotFound) && session != uuid.Nil() {
+			data, contentType, err = r.newContentReader(uuid.Nil()).read(ctx, uri)
+		}
+		if err != nil {
+			return nil, err
+		}
+		return &providerschema.Resource{ResourceMeta: providerschema.ResourceMeta{ContentType: contentType, Data: data, URL: u}}, nil
+	}
+}
+
 ///////////////////////////////////////////////////////////////////////////////
 // CONTENT READER
 
@@ -208,6 +237,10 @@ type contentReader struct {
 	session  uuid.UUID
 	cache    map[string]readContent
 	left     int64
+
+	// accepts returns whether the model accepts an attachment of the type,
+	// or is nil, when every attachment is sent
+	accepts func(string) bool
 }
 
 // readContent is the content of a resource, and its type
@@ -223,18 +256,25 @@ func (r *Registry) newContentReader(session uuid.UUID) *contentReader {
 }
 
 // attachments returns the message, with the content of its attachments
-// which refer to resources. In a session's history, one whose resource
-// isn't found is text which says so, and otherwise it's an error.
+// which refer to resources. In a session's history, each is followed by
+// text which says its URI, so the model can give it to a tool, such as one
+// which recognizes its text, and one whose resource isn't found is text
+// which says so, and otherwise it's an error.
 func (c *contentReader) attachments(ctx context.Context, message providerschema.Message, history bool) (providerschema.Message, error) {
-	message.Content = slices.Clone(message.Content)
-	for i, block := range message.Content {
+	content := make([]providerschema.ContentBlock, 0, len(message.Content))
+	for _, block := range message.Content {
 		if !isResourceURL(block.Resource) || len(block.Resource.Data) > 0 {
+			content = append(content, block)
 			continue
 		}
 		uri := block.Resource.URL.String()
+		if !c.accept(block.Resource.ContentType) {
+			content = append(content, unreadable(uri, block.Resource.ContentType))
+			continue
+		}
 		data, contentType, err := c.read(ctx, uri)
 		if history && (errors.Is(err, llm.ErrNotFound) || errors.Is(err, llm.ErrNotImplemented)) {
-			message.Content[i] = providerschema.ContentBlock{Text: types.Ptr("(The attachment " + uri + " isn't available.)")}
+			content = append(content, providerschema.ContentBlock{Text: types.Ptr("(The attachment " + uri + " isn't available.)")})
 			continue
 		} else if err != nil {
 			return providerschema.Message{}, err
@@ -244,8 +284,17 @@ func (c *contentReader) attachments(ctx context.Context, message providerschema.
 		if attachment.ContentType == "" {
 			attachment.ContentType = contentType
 		}
-		message.Content[i].Resource = &attachment
+		if !c.accept(attachment.ContentType) {
+			content = append(content, unreadable(uri, attachment.ContentType))
+			continue
+		}
+		block.Resource = &attachment
+		content = append(content, block)
+		if history {
+			content = append(content, providerschema.ContentBlock{Text: types.Ptr("(The attachment above is " + uri + ", which is its URI for tools.)")})
+		}
 	}
+	message.Content = content
 	return message, nil
 }
 
@@ -279,8 +328,35 @@ func (c *contentReader) read(ctx context.Context, uri string) ([]byte, string, e
 	return data, resource.Type(), nil
 }
 
+// accept returns whether an attachment of the type is sent to the model,
+// which it is, unless its type is known, and the model doesn't accept it
+func (c *contentReader) accept(contentType string) bool {
+	return c.accepts == nil || contentType == "" || c.accepts(contentType)
+}
+
 ///////////////////////////////////////////////////////////////////////////////
 // PRIVATE FUNCTIONS
+
+// accepts returns the function which says whether the model accepts an
+// attachment of a type, when its provider says which it does, or nil
+func accepts(model llm.Model) func(string) bool {
+	if model == nil || model.Provider() == nil {
+		return nil
+	}
+	accepter, ok := model.Provider().Self().(llm.Accepter)
+	if !ok {
+		return nil
+	}
+	return func(contentType string) bool {
+		return accepter.Accepts(model, contentType)
+	}
+}
+
+// unreadable returns the text which is sent in place of an attachment which
+// the model doesn't accept, which says its URI, so it can give it to a tool
+func unreadable(uri, contentType string) providerschema.ContentBlock {
+	return providerschema.ContentBlock{Text: types.Ptr("(The attachment " + uri + " is " + contentType + ", which this model can't read, so it isn't sent. Its URI is for tools, which can read it.)")}
+}
 
 // refersToResources returns whether any of the message's attachments refer
 // to resources, by their URIs

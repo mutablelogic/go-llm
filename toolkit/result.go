@@ -49,3 +49,30 @@ func storeFrom(ctx context.Context) StoreFunc {
 	fn, _ := ctx.Value(storeKey{}).(StoreFunc)
 	return fn
 }
+
+// ResolveFunc returns the resource with the URI, such as resource://<hash>,
+// which a tool is given, in the session the tool runs in, or on its own,
+// whose content is read from where it's kept
+type ResolveFunc func(ctx context.Context, uri string) (llm.Resource, error)
+
+// resolveKey is the key of the resolve function in a context
+type resolveKey struct{}
+
+// WithResolver returns the context, with the function which returns the
+// resources which the tools run in it are given, by their URIs
+func WithResolver(ctx context.Context, fn ResolveFunc) context.Context {
+	return context.WithValue(ctx, resolveKey{}, fn)
+}
+
+// Resource returns the resource with the URI, such as resource://<hash>,
+// which the tool running in the context is given, with the context's
+// resolve function. Returns ErrNotImplemented when there's none, such as
+// when a tool is called without a session, or the registry's resources,
+// and the resolve function's errors, such as ErrNotFound.
+func Resource(ctx context.Context, uri string) (llm.Resource, error) {
+	fn, _ := ctx.Value(resolveKey{}).(ResolveFunc)
+	if fn == nil {
+		return nil, llm.ErrNotImplemented.With("resources can't be read here")
+	}
+	return fn(ctx, uri)
+}
