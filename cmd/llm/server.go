@@ -6,6 +6,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync/atomic"
 	"time"
 	"uuid"
@@ -28,6 +29,7 @@ import (
 	resourcecmd "github.com/mutablelogic/go-llm/resource/cmd"
 	toolkit "github.com/mutablelogic/go-llm/toolkit"
 	toolkitcmd "github.com/mutablelogic/go-llm/toolkit/cmd"
+	llmtools "github.com/mutablelogic/go-llm/toolkit/llm"
 	server "github.com/mutablelogic/go-server"
 	servercmd "github.com/mutablelogic/go-server/pkg/cmd"
 	httprouter "github.com/mutablelogic/go-server/pkg/httprouter"
@@ -182,6 +184,24 @@ func (runner *RunServer) withToolkit(ctx server.Cmd, b *broadcaster.Broadcaster,
 			return err
 		}
 		ctx.Logger().InfoContext(ctx.Context(), "tools added", "namespace", h.Name(), "tools", len(h.Tools()))
+
+		// The llm namespace, whose tools ask the registry's models, such as to
+		// speak text, once the registry is made, when a model is set for them
+		if model := strings.TrimSpace(runner.Registry.SpeakModel); model != "" {
+			ns, err := llmtools.New(func() llmtools.Models {
+				if r := events.Load(); r != nil {
+					return r
+				}
+				return nil
+			}, llmtools.WithSpeak(model, runner.Registry.SpeakVoice))
+			if err != nil {
+				return err
+			}
+			if err := tools.Add(ns); err != nil {
+				return err
+			}
+			ctx.Logger().InfoContext(ctx.Context(), "tools added", "namespace", ns.Name(), "tools", len(ns.Tools()), "speak_model", model)
+		}
 
 		return runner.Registry.WithRegistry(ctx, &runner.RunServer, func(r *registry.Registry) error {
 			// The example agents, as they are, before the server starts
