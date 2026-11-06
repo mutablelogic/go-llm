@@ -25,6 +25,7 @@ import './component/model-load';
 import { ModelView } from './component/model-view';
 import './component/tool-table';
 import './component/tool-view';
+import './component/agent-editor';
 import './page/chat-page';
 import './page/models-page';
 import './page/tools-page';
@@ -88,9 +89,11 @@ const models = new ModelsController({
     view: document.querySelector('llm-model-view'),
 }, notifications);
 const tools = new ToolsController({
+    page: document.querySelector('llm-tools-page'),
     namespaces: document.querySelector('#namespace-filter'),
     table: document.querySelector('llm-tool-table'),
     view: document.querySelector('llm-tool-view'),
+    agent: document.querySelector('llm-agent-editor'),
 }, notifications);
 
 // Watch the server's changes, so the pages load what changed: sessions, as

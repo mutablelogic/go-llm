@@ -501,3 +501,43 @@ func Test_MaxEvents(t *testing.T) {
 	_, err := registry.New(registry.WithMaxEvents(0))
 	assert.ErrorIs(t, err, llm.ErrBadParameter)
 }
+
+func Test_BuiltinAgents(t *testing.T) {
+	// A built-in agent can't be replaced, changed or deleted, but is created
+	// again, as it ships, and can be copied under another name
+	ctx := context.Background()
+	r, err := registry.New(registry.WithToolkit(test.NewToolkit(t)), registry.WithAgentStore(test.NewAgentStore()))
+	require.NoError(t, err)
+	all, err := agents.All()
+	require.NoError(t, err)
+	var translate schema.AgentMeta
+	for _, meta := range all {
+		assert.True(t, types.Value(meta.Builtin), meta.Name)
+		_, _, err := r.CreateAgent(ctx, meta)
+		require.NoError(t, err)
+		if meta.Name == "translate" {
+			translate = meta
+		}
+	}
+	_, _, err = r.CreateAgent(ctx, translate)
+	assert.NoError(t, err, "as it ships, again")
+
+	mine := translate
+	mine.Builtin = nil
+	_, _, err = r.CreateAgent(ctx, mine)
+	assert.ErrorIs(t, err, llm.ErrForbidden)
+	_, err = r.UpdateAgent(ctx, "translate", schema.AgentMeta{PromptMeta: schema.PromptMeta{Title: types.Ptr("Mine")}})
+	assert.ErrorIs(t, err, llm.ErrForbidden)
+	_, err = r.DeleteAgent(ctx, "translate")
+	assert.ErrorIs(t, err, llm.ErrForbidden)
+
+	mine.Name = "my_translate"
+	copied, created, err := r.CreateAgent(ctx, mine)
+	require.NoError(t, err)
+	assert.True(t, created)
+	assert.False(t, types.Value(copied.Builtin))
+	_, err = r.UpdateAgent(ctx, "my_translate", schema.AgentMeta{PromptMeta: schema.PromptMeta{Title: types.Ptr("Mine")}})
+	assert.NoError(t, err)
+	_, err = r.DeleteAgent(ctx, "my_translate")
+	assert.NoError(t, err)
+}

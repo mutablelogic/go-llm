@@ -66,6 +66,12 @@ const DefaultMaxDepth = 3
 // no agent store
 var errNoAgentStore = llm.ErrServiceUnavailable.With("the registry has no agent store")
 
+// errBuiltinAgent returns the error of changing, or deleting, a built-in
+// agent, which the server creates as it is each time it starts
+func errBuiltinAgent(name string) error {
+	return llm.ErrForbidden.Withf("agent %q is built in, so it can't be changed, or deleted, but it can be copied under another name", name)
+}
+
 ///////////////////////////////////////////////////////////////////////////////
 // PUBLIC METHODS
 
@@ -110,6 +116,8 @@ func (r *Registry) CreateAgent(ctx context.Context, meta schema.AgentMeta) (_ *s
 		created = true
 	case err != nil:
 		return nil, false, err
+	case types.Value(existing.Builtin) && !types.Value(meta.Builtin):
+		return nil, false, errBuiltinAgent(meta.Name)
 	case sameAgentMeta(existing.AgentMeta, meta):
 		return &existing, false, nil
 	default:
@@ -203,6 +211,8 @@ func (r *Registry) UpdateAgent(ctx context.Context, name string, meta schema.Age
 	agent, err := r.agentStore.Get(ctx, name)
 	if err != nil {
 		return nil, err
+	} else if types.Value(agent.Builtin) {
+		return nil, errBuiltinAgent(name)
 	}
 	if agent.AgentMeta, err = r.validAgentMeta(ctx, agent.AgentMeta.Merge(meta), meta); err != nil {
 		return nil, err
@@ -232,6 +242,8 @@ func (r *Registry) DeleteAgent(ctx context.Context, name string) (_ *schema.Agen
 	agent, err := r.agentStore.Get(ctx, name)
 	if err != nil {
 		return nil, err
+	} else if types.Value(agent.Builtin) {
+		return nil, errBuiltinAgent(name)
 	} else if err := r.agentStore.Delete(ctx, name, agent.Serial); err != nil {
 		return nil, err
 	}

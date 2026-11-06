@@ -85,6 +85,7 @@ func agentCreateHandlers(reg *registry.Registry, router *httprouter.Router, docu
 			}
 		}, func(op httprequest.PathOperation) {
 			op.Summary("Create or Replace Agent")
+			op.ErrorResponse(http.StatusForbidden, "The agent is built in, so it can't be replaced, changed or deleted, but it can be copied under another name")
 			op.Description(documentation.Section(3, "POST /llm/agent").Body)
 			op.RequestBody(jsonschema.MustFor[schema.AgentMeta](), append([]string{types.ContentTypeJSON}, yamlContentTypes...)...)
 			op.JSONResponse(http.StatusCreated, jsonschema.MustFor[schema.Agent](), "Created agent")
@@ -138,6 +139,7 @@ func agentGetHandlers(reg *registry.Registry, router *httprouter.Router, documen
 			}
 		}, func(op httprequest.PathOperation) {
 			op.Summary("Update Agent")
+			op.ErrorResponse(http.StatusForbidden, "The agent is built in, so it can't be replaced, changed or deleted, but it can be copied under another name")
 			op.Description(documentation.Section(3, "PATCH /llm/agent/{name}").Body)
 			op.RequestBody(agentUpdateSchema(), append([]string{types.ContentTypeJSON}, yamlContentTypes...)...)
 			op.JSONResponse(http.StatusOK, jsonschema.MustFor[schema.Agent](), "Updated agent, as JSON, or its definition, as YAML, when YAML is accepted")
@@ -159,6 +161,7 @@ func agentGetHandlers(reg *registry.Registry, router *httprouter.Router, documen
 			}
 		}, func(op httprequest.PathOperation) {
 			op.Summary("Delete Agent")
+			op.ErrorResponse(http.StatusForbidden, "The agent is built in, so it can't be replaced, changed or deleted, but it can be copied under another name")
 			op.Description(documentation.Section(3, "DELETE /llm/agent/{name}").Body)
 			op.JSONResponse(http.StatusOK, jsonschema.MustFor[schema.Agent](), "Deleted agent")
 			op.ErrorResponse(http.StatusNotFound, "Agent not found")
@@ -237,6 +240,7 @@ func readAgentMeta(w http.ResponseWriter, r *http.Request) (schema.AgentMeta, er
 			if err != nil {
 				return schema.AgentMeta{}, llm.HTTPErr(err)
 			}
+			meta.Builtin = nil
 			return meta, nil
 		}
 	}
@@ -244,5 +248,9 @@ func readAgentMeta(w http.ResponseWriter, r *http.Request) (schema.AgentMeta, er
 	if err := httprequest.Read(r, &meta); err != nil {
 		return schema.AgentMeta{}, httpresponse.ErrBadRequest.Withf("%w", err)
 	}
+
+	// Whether it's built in is the server's to say, so a definition which is
+	// copied, such as a built-in agent's, under another name, isn't
+	meta.Builtin = nil
 	return meta, nil
 }

@@ -35,6 +35,7 @@ type PromptMeta struct {
 	Input       json.RawMessage `json:"input,omitempty" help:"JSON schema of the input, which is an object, whose properties the prompt uses" example:"{\"type\":\"object\",\"properties\":{\"transcript\":{\"type\":\"string\"}}}" optional:""`
 	Prompt      *string         `json:"prompt,omitempty" help:"Go template of the message to the model, executed with the input" example:"Segment this transcript: {{ .transcript }}" optional:""`
 	Internal    *bool           `json:"internal,omitempty" help:"Whether only the server runs the agent, such as for an event, as its input is trusted, so it isn't a tool which models can call" optional:""`
+	Builtin     *bool           `json:"builtin,omitempty" readonly:"" help:"Whether the agent is one the server has, which it creates as it is each time it starts, so it can't be changed, or deleted, but can be copied under another name"`
 }
 
 // AgentMeta is an agent's definition: its prompt, and how a model is asked

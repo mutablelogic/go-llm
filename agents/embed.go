@@ -12,6 +12,7 @@ import (
 
 	// Packages
 	schema "github.com/mutablelogic/go-llm/registry/schema"
+	types "github.com/mutablelogic/go-server/pkg/types"
 )
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -23,8 +24,9 @@ var files embed.FS
 ///////////////////////////////////////////////////////////////////////////////
 // PUBLIC FUNCTIONS
 
-// All returns the example agents, in order of their files' names, or an
-// error when one isn't valid
+// All returns the example agents, in order of their files' names, which are
+// built in, so they can't be changed, or deleted, or an error when one isn't
+// valid
 func All() ([]schema.AgentMeta, error) {
 	names, err := fs.Glob(files, "*.yaml")
 	if err != nil {
@@ -41,6 +43,7 @@ func All() ([]schema.AgentMeta, error) {
 		if err != nil {
 			return nil, fmt.Errorf("%s: %w", name, err)
 		}
+		meta.Builtin = types.Ptr(true)
 		result = append(result, meta)
 	}
 	return result, nil
