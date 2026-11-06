@@ -11,6 +11,8 @@ import (
 	llm "github.com/mutablelogic/go-llm"
 	providerschema "github.com/mutablelogic/go-llm/provider/schema"
 	resourceschema "github.com/mutablelogic/go-llm/resource/schema"
+	toolkit "github.com/mutablelogic/go-llm/toolkit"
+	toolschema "github.com/mutablelogic/go-llm/toolkit/schema"
 	types "github.com/mutablelogic/go-server/pkg/types"
 )
 
@@ -31,6 +33,12 @@ type Resources interface {
 	// Returns ErrNotFound when there's no resource on its own with it, or
 	// the session doesn't exist.
 	Link(ctx context.Context, uri string, session uuid.UUID) (resourceschema.Resource, error)
+
+	// Create keeps the content, as it's read, as a resource, which is what
+	// the meta says, in its session, or on its own, and returns it, and
+	// whether it was created, rather than there being one with its content
+	// already
+	Create(ctx context.Context, meta resourceschema.ResourceMeta, content io.Reader) (resourceschema.Resource, bool, error)
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -156,6 +164,35 @@ func (r *Registry) resource(ctx context.Context, uri string, session uuid.UUID) 
 		return nil, llm.ErrNotFound.Withf("resource %s", uri)
 	}
 	return resource, err
+}
+
+// toolStore returns the function which keeps the resources which the tools
+// run in the session return, such as an image, or audio, as resources of
+// the session, or, without one, on their own, so the tools' results have
+// links to them, rather than their content, or nil, when the registry has
+// no resources, when their results have their content
+func (r *Registry) toolStore(session uuid.UUID) toolkit.StoreFunc {
+	if r.resources == nil {
+		return nil
+	}
+	return func(ctx context.Context, resource llm.Resource) (toolschema.ResourceLink, error) {
+		meta := resourceschema.ResourceMeta{Name: resource.Name(), Description: resource.Description(), Type: resource.Type()}
+		if session != uuid.Nil() {
+			meta.Session = &session
+		}
+		read, err := resource.Read(ctx)
+		if err != nil {
+			return toolschema.ResourceLink{}, err
+		}
+		var created resourceschema.Resource
+		if err := read(ctx, func(content io.Reader) error {
+			created, _, err = r.resources.Create(ctx, meta, content)
+			return err
+		}); err != nil {
+			return toolschema.ResourceLink{}, err
+		}
+		return toolschema.ResourceLink{URI: created.URI(), Name: created.Name, Type: created.Type, Size: created.Size}, nil
+	}
 }
 
 ///////////////////////////////////////////////////////////////////////////////

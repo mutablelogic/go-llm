@@ -9,6 +9,7 @@ import (
 	// Packages
 	llm "github.com/mutablelogic/go-llm"
 	toolkit "github.com/mutablelogic/go-llm/toolkit"
+	schema "github.com/mutablelogic/go-llm/toolkit/schema"
 	jsonschema "github.com/mutablelogic/go-server/pkg/jsonschema"
 	assert "github.com/stretchr/testify/assert"
 	require "github.com/stretchr/testify/require"
@@ -252,7 +253,9 @@ func TestCallToolResult(t *testing.T) {
 		resultTool{echoTool: echoTool{name: "empty"}, result: json.RawMessage{}},
 		resultTool{echoTool: echoTool{name: "invalid"}, result: json.RawMessage(`{`)},
 		resultTool{echoTool: echoTool{name: "unencodable"}, result: make(chan int)},
-		resultTool{echoTool: echoTool{name: "unreadable"}, result: resource{err: readErr}})))
+		resultTool{echoTool: echoTool{name: "unreadable"}, result: resource{err: readErr}},
+		resultTool{echoTool: echoTool{name: "resources"}, result: []llm.Resource{resource{}, resource{}}},
+		resultTool{echoTool: echoTool{name: "result"}, result: toolkit.Result{Value: map[string]int{"pages": 2}, Resources: []llm.Resource{resource{}}}})))
 
 	t.Run("JSON", func(t *testing.T) {
 		result, err := tk.CallTool(ctx, "test:json", nil)
@@ -288,6 +291,45 @@ func TestCallToolResult(t *testing.T) {
 			_, err := tk.CallTool(ctx, name, nil)
 			assert.ErrorIs(t, err, llm.ErrInternalServerError, name)
 		}
+	})
+
+	t.Run("Resources", func(t *testing.T) {
+		// Without a store, resources are their types and data, with the
+		// value the tool returned with them
+		result, err := tk.CallTool(ctx, "test:resources", nil)
+		require.NoError(t, err)
+		assert.JSONEq(t, `{"resources":[{"type":"image/png","data":"cG5n"},{"type":"image/png","data":"cG5n"}]}`, string(result))
+		result, err = tk.CallTool(ctx, "test:result", nil)
+		require.NoError(t, err)
+		assert.JSONEq(t, `{"result":{"pages":2},"resources":[{"type":"image/png","data":"cG5n"}]}`, string(result))
+
+		// With a store, they're kept, and the result has links to them
+		var stored []string
+		stores := toolkit.WithStore(ctx, func(ctx context.Context, r llm.Resource) (schema.ResourceLink, error) {
+			data, err := llm.ReadAll(ctx, r)
+			if err != nil {
+				return schema.ResourceLink{}, err
+			}
+			stored = append(stored, string(data))
+			return schema.ResourceLink{URI: "resource://abc", Type: r.Type(), Size: int64(len(data))}, nil
+		})
+		for name, want := range map[string]string{
+			"test:resource":  `{"resources":[{"uri":"resource://abc","type":"image/png","size":3}]}`,
+			"test:resources": `{"resources":[{"uri":"resource://abc","type":"image/png","size":3},{"uri":"resource://abc","type":"image/png","size":3}]}`,
+			"test:result":    `{"result":{"pages":2},"resources":[{"uri":"resource://abc","type":"image/png","size":3}]}`,
+		} {
+			result, err := tk.CallTool(stores, name, nil)
+			require.NoError(t, err, name)
+			assert.JSONEq(t, want, string(result), name)
+		}
+		assert.Len(t, stored, 4)
+
+		// A resource which can't be kept is the tool's error
+		failing := toolkit.WithStore(ctx, func(context.Context, llm.Resource) (schema.ResourceLink, error) {
+			return schema.ResourceLink{}, readErr
+		})
+		_, err = tk.CallTool(failing, "test:resource", nil)
+		assert.ErrorIs(t, err, readErr)
 	})
 
 	t.Run("Unreadable", func(t *testing.T) {

@@ -346,9 +346,14 @@ func (r *Registry) iterate(ctx context.Context, model llm.Model, loop *agentLoop
 		return []providerschema.Message{message, nudge}, usage, false, nil
 	}
 
-	// Run the tools, each in its session, and ask the model again with their
-	// results, which are compacted, if they don't fit
-	results, err := loop.runTools(ctx, calls, func(call llm.ToolCall) toolkit.Session {
+	// Run the tools, each in its session, whose resources, which they
+	// return, are kept, as resources of the loop's session, and ask the model
+	// again with their results, which are compacted, if they don't fit
+	toolCtx := ctx
+	if store := r.toolStore(loop.session); store != nil {
+		toolCtx = toolkit.WithStore(ctx, store)
+	}
+	results, err := loop.runTools(toolCtx, calls, func(call llm.ToolCall) toolkit.Session {
 		return session(call.Name)
 	})
 	if err != nil {

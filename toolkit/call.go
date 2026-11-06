@@ -113,10 +113,12 @@ func withoutNulls(input json.RawMessage) json.RawMessage {
 }
 
 // toolResult returns the result of the tool as JSON. JSON must be valid, but
-// isn't checked against the tool's output schema. A resource is read, and
-// returned with its type and data, and any other result is encoded as JSON,
-// so text is a JSON string. A nil or empty result is no result, and is
-// returned as nil.
+// isn't checked against the tool's output schema. Resources, which a tool
+// returns on their own, or with a value, as a Result, are kept, with the
+// context's store function, and the result has links to them, and the
+// value, or, without one, their types and data, and any other result is
+// encoded as JSON, so text is a JSON string. A nil or empty result is no
+// result, and is returned as nil.
 func toolResult(ctx context.Context, name string, result any) (json.RawMessage, error) {
 	switch v := result.(type) {
 	case nil:
@@ -129,14 +131,61 @@ func toolResult(ctx context.Context, name string, result any) (json.RawMessage, 
 		}
 		return v, nil
 	case llm.Resource:
-		data, err := llm.ReadAll(ctx, v)
-		if err != nil {
-			return nil, err
+		return resourcesResult(ctx, name, nil, []llm.Resource{v})
+	case []llm.Resource:
+		return resourcesResult(ctx, name, nil, v)
+	case Result:
+		return resourcesResult(ctx, name, v.Value, v.Resources)
+	case *Result:
+		if v == nil {
+			return nil, nil
 		}
-		return marshalResult(name, providerschema.Resource{ResourceMeta: providerschema.ResourceMeta{ContentType: v.Type(), Data: data}})
+		return resourcesResult(ctx, name, v.Value, v.Resources)
 	default:
 		return marshalResult(name, v)
 	}
+}
+
+// resourcesResult returns the result of a tool which returned resources,
+// with the value, when there is one. With the context's store function,
+// they're kept, and the result has links to them. Without one, a resource on
+// its own is its type and data, as it was before resources were kept, and
+// otherwise each resource is its type and data, in the result's resources.
+func resourcesResult(ctx context.Context, name string, value any, resources []llm.Resource) (json.RawMessage, error) {
+	if store := storeFrom(ctx); store != nil {
+		links := make([]schema.ResourceLink, 0, len(resources))
+		for _, resource := range resources {
+			if resource == nil {
+				continue
+			}
+			link, err := store(ctx, resource)
+			if err != nil {
+				return nil, err
+			}
+			links = append(links, link)
+		}
+		return marshalResult(name, schema.ResourcesResult{Result: value, Resources: links})
+	}
+
+	// Without one, their types and data
+	inline := make([]providerschema.Resource, 0, len(resources))
+	for _, resource := range resources {
+		if resource == nil {
+			continue
+		}
+		data, err := llm.ReadAll(ctx, resource)
+		if err != nil {
+			return nil, err
+		}
+		inline = append(inline, providerschema.Resource{ResourceMeta: providerschema.ResourceMeta{ContentType: resource.Type(), Data: data}})
+	}
+	if value == nil && len(inline) == 1 {
+		return marshalResult(name, inline[0])
+	}
+	return marshalResult(name, struct {
+		Result    any                       `json:"result,omitempty"`
+		Resources []providerschema.Resource `json:"resources"`
+	}{value, inline})
 }
 
 // marshalResult returns the result of the tool encoded as JSON

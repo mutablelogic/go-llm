@@ -23,6 +23,23 @@ type Tool struct {
 	Output      json.RawMessage `json:"output,omitempty" readonly:"" help:"JSON schema of the tool's output, if it has one"`
 }
 
+// ResourceLink is a resource which a tool returned, as its result has it,
+// which is kept, and referred to by its URI, such as resource://<hash>,
+// rather than its content, as MCP's resource links are
+type ResourceLink struct {
+	URI  string `json:"uri" help:"URI of the resource, by which it's read, or given to another tool" example:"resource://9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08"`
+	Name string `json:"name,omitempty" help:"Name of the resource, such as its file's name" example:"speech.wav"`
+	Type string `json:"type,omitempty" help:"MIME type of the resource" example:"audio/wav"`
+	Size int64  `json:"size,omitempty" help:"Size of the resource's content, in bytes" example:"103724"`
+}
+
+// ResourcesResult is the result of a tool which returned resources: the
+// value it returned with them, when it did, and the links to them
+type ResourcesResult struct {
+	Result    any            `json:"result,omitempty" help:"What the tool returned with the resources, when it did"`
+	Resources []ResourceLink `json:"resources" help:"The resources the tool returned, as links to them"`
+}
+
 // ToolListRequest filters a list of tools
 type ToolListRequest struct {
 	Namespace string `json:"namespace,omitempty" help:"Returns only the tools in this namespace" example:"weatherapi" optional:""`
