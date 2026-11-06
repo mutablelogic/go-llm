@@ -24,7 +24,7 @@ Get the resource with the hash, on its own, or in the `session`. Returns 400 if 
 
 ### GET /resource/{hash}/content
 
-Download the content of the resource with the hash, on its own, or in the `session`, with its type, its size, and its name, as the file's name, which is shown in the browser, and its hash as its `ETag`. Its content is read in ranges, when they're asked for, with `Range`. The resource is used. Returns 400 if the hash isn't a SHA-256, or the session isn't a UUID, or 404 if there's no resource with the hash, on its own, or in the session.
+Download the content of the resource with the hash, on its own, or in the `session`, with its type, its size, and its name, as the file's name, which is shown in the browser, or, with `download=true`, saved by it, and its hash as its `ETag`. Its content is read in ranges, when they're asked for, with `Range`. The resource is used. Returns 400 if the hash isn't a SHA-256, or the session isn't a UUID, or 404 if there's no resource with the hash, on its own, or in the session.
 
 ### DELETE /resource/{hash}
 

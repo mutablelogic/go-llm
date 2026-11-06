@@ -170,7 +170,12 @@ func contentHandler(manager *resource.Manager, router *httprouter.Router, docume
 
 		// GET
 		path.Get(func(w http.ResponseWriter, r *http.Request) {
-			key, err := parseKey(r)
+			var req schema.ResourceContentRequest
+			if err := httprequest.Query(r.URL.Query(), &req); err != nil {
+				httpresponse.Error(w, llm.HTTPErr(llm.ErrBadParameter.With(err.Error())))
+				return
+			}
+			key, err := req.Key(r.PathValue("hash"))
 			if err != nil {
 				httpresponse.Error(w, llm.HTTPErr(err))
 				return
@@ -189,11 +194,14 @@ func contentHandler(manager *resource.Manager, router *httprouter.Router, docume
 				Path:        got.Name,
 				Disposition: httpresponse.DispositionInline,
 			}
+			if req.Download {
+				binary.Disposition = httpresponse.DispositionAttachment
+			}
 			_ = binary.Write(w, r, content)
 		}, func(op httprequest.PathOperation) {
 			op.Summary("Download Resource")
 			op.Description(documentation.Section(3, "GET /resource/{hash}/content").Body)
-			op.Query(jsonschema.MustFor[schema.ResourceRequest]())
+			op.Query(jsonschema.MustFor[schema.ResourceContentRequest]())
 			op.Response(http.StatusOK, "*/*", "The resource's content, with its type")
 			op.ErrorResponse(http.StatusBadRequest, "Invalid hash, or session")
 			op.ErrorResponse(http.StatusNotFound, "Resource not found")
