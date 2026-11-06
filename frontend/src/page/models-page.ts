@@ -1,6 +1,6 @@
 // The page of the models, of every provider, or of one, with actions which
-// add a provider, edit, and delete, the one which is chosen, and load them
-// again
+// add a provider, when every provider's are shown, or edit, and delete, the
+// one which is chosen, and load them again
 
 import { html, nothing } from 'lit';
 import { customElement, property } from 'lit/decorators.js';
@@ -45,10 +45,12 @@ export class ModelsPage extends Page {
                     Delete ${iconLoader(TrashCan16, { slot: 'icon' })}
                 </cds-button>
             ` : nothing}
-            ${refreshAction(this, 'secondary')}
-            <cds-button kind="primary" size="md" @click=${() => this.dispatchEvent(new CustomEvent(ModelsPage.eventAdd))}>
-                Add provider ${iconLoader(Add16, { slot: 'icon' })}
-            </cds-button>
+            ${this.provider ? refreshAction(this) : html`
+                ${refreshAction(this, 'secondary')}
+                <cds-button kind="primary" size="md" @click=${() => this.dispatchEvent(new CustomEvent(ModelsPage.eventAdd))}>
+                    Add provider ${iconLoader(Add16, { slot: 'icon' })}
+                </cds-button>
+            `}
         `;
     }
 }
