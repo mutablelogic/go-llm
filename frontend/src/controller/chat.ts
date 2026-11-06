@@ -73,8 +73,8 @@ export class ChatController {
             location.hash = routeHref('chat', (e as CustomEvent<Session>).detail.id);
         });
         views.page?.addEventListener(ChatPage.eventNew, () => void this.newChat());
-        views.page?.addEventListener(ChatPage.eventDelete, () => void this.delete());
-        views.page?.addEventListener(ChatPage.eventEdit, () => void this.edit());
+        views.list?.addEventListener(SessionList.eventDelete, () => void this.delete());
+        views.list?.addEventListener(SessionList.eventEdit, () => void this.edit());
         views.create?.addEventListener(NewSession.eventSave, (e) => void this.save((e as CustomEvent<SessionMeta>).detail));
         views.view?.addEventListener(ChatView.eventSend, (e) => void this.send((e as CustomEvent<string>).detail));
         views.view?.addEventListener(ChatView.eventTyping, () => this.typing());
@@ -428,8 +428,6 @@ export class ChatController {
         if (page) {
             page.heading = this.session?.model ?? 'Chat';
             page.description = this.describe();
-            page.deletable = this.session !== undefined;
-            page.event = this.session?.event === true;
         }
         if (details) {
             details.message = this.selected;

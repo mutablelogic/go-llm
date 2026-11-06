@@ -39,7 +39,7 @@ import { ModelsController } from './controller/models';
 import { ToolsController } from './controller/tools';
 import { NotificationController } from './controller/notifications';
 import { OutcomesController } from './controller/outcomes';
-import { ChatPage } from './page/chat-page';
+import { SessionList } from './component/session-list';
 import { Router, routeHref } from './router';
 
 // Errors, and other notifications, are shown as toasts
@@ -69,7 +69,7 @@ const chat = new ChatController({
 // The outcomes of the events of the chat which is open, such as heartbeats
 // which fired, in a panel, which its Events action opens
 const outcomes = new OutcomesController(document.querySelector('llm-event-view'), notifications);
-document.querySelector('llm-chat-page')?.addEventListener(ChatPage.eventEvents, () => {
+document.querySelector('llm-session-list')?.addEventListener(SessionList.eventEvents, () => {
     const session = chat.sessionID();
     if (session) {
         outcomes.open(session);
@@ -113,7 +113,7 @@ const events = new EventsController(notifications)
         // seconds, when an event for it is created
         const session = (event?.data as { session?: string } | undefined)?.session;
         if (event?.action === 'create' && session && session === chat.sessionID()) {
-            document.querySelector('llm-chat-page')?.alert();
+            document.querySelector('llm-session-list')?.alert();
         }
     })
     .onDisconnect(() => {
