@@ -4,7 +4,7 @@
 // which is clicked in the model view, with ListController, and loads them
 // again when the providers change
 
-import { deleteModel, getModel, listModels, loadModel, unloadModel } from '../api/model';
+import { deleteModel, getModel, listModels, loadModel } from '../api/model';
 import { ModelLoad } from '../component/model-load';
 import { ModelView } from '../component/model-view';
 import { createProvider, deleteProvider, listProviders, updateProvider } from '../api/provider';
@@ -46,7 +46,6 @@ export class ModelsController extends ListController<Model> {
         views.table?.addEventListener(ModelTable.eventPageSize, (e) => this.setPageSize((e as CustomEvent<number>).detail));
         views.table?.addEventListener(ModelTable.eventSelect, (e) => this.open((e as CustomEvent<Model>).detail));
         views.view?.addEventListener(Panel.eventClose, () => this.close());
-        views.view?.addEventListener(ModelView.eventUnload, (e) => void this.unload((e as CustomEvent<string>).detail));
         views.view?.addEventListener(ModelView.eventDelete, (e) => void this.deleteModel((e as CustomEvent<string>).detail));
 
         // A provider is added, and the chosen one edited, and deleted, with
@@ -194,24 +193,6 @@ export class ModelsController extends ListController<Model> {
             form.error = error instanceof Error ? error.message : String(error);
         } finally {
             form.saving = false;
-        }
-    }
-
-    // unload unloads the model from its provider's memory, keeping it stored
-    private async unload(name: string) {
-        const view = this.views.view;
-        if (view) {
-            view.busy = true;
-        }
-        try {
-            await unloadModel(name);
-            this.notifications.push({ kind: 'success', title: `${name} was unloaded` });
-        } catch (error) {
-            this.notifications.error(`${name} couldn't be unloaded`, error);
-        } finally {
-            if (view) {
-                view.busy = false;
-            }
         }
     }
 

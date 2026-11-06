@@ -20,12 +20,6 @@ export function deleteModel(name: string): Promise<Model> {
     return request<Model>('DELETE', '/llm/model/' + encodeURIComponent(name));
 }
 
-// unloadModel unloads the model, by its canonical name, from its provider's
-// memory, keeping it stored, so it's loaded again when it's next used
-export function unloadModel(name: string): Promise<Model> {
-    return request<Model>('POST', '/llm/model/' + encodeURIComponent(name) + '/unload');
-}
-
 // LoadProgress is how a model's download is getting on: its status, and how
 // complete it is, as a percentage, when it's known
 export interface LoadProgress {
