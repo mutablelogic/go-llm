@@ -204,6 +204,23 @@ func Test_MemoryTools(t *testing.T) {
 	require.NoError(t, err)
 	assert.NotEqual(t, v1, output["version"])
 
+	// A change without a description keeps the memory's, so it needs only
+	// its version, which the error says
+	v2, _ := output["version"].(string)
+	_, err = call(`{"operation":"remember","key":"units","body":"- Metric"}`)
+	assert.ErrorContains(t, err, "is at version \""+v2+"\"", "not that it has no description")
+	output, err = call(`{"operation":"remember","key":"units","body":"- Metric\n- Celsius\n- 24-hour clock\n- Kilometres","version":"` + v2 + `"}`)
+	require.NoError(t, err)
+	v3, _ := output["version"].(string)
+	assert.NotEqual(t, v2, v3, "the body changed")
+	output, err = call(`{"operation":"recall","key":"units"}`)
+	require.NoError(t, err)
+	assert.Equal(t, "Units the person prefers", output["description"])
+	assert.Equal(t, "- Metric\n- Celsius\n- 24-hour clock\n- Kilometres", output["body"])
+	assert.Equal(t, v3, output["version"])
+	_, err = call(`{"operation":"remember","key":"new_memory","body":"- Something"}`)
+	assert.ErrorContains(t, err, "has no description", "a new memory needs one")
+
 	output, err = call(`{"operation":"search","q":"metric"}`)
 	require.NoError(t, err)
 	assert.Equal(t, float64(1), output["count"])
@@ -218,7 +235,7 @@ func Test_MemoryTools(t *testing.T) {
 	// A line is forgotten, and then the whole memory
 	output, err = call(`{"operation":"forget","key":"units","line":"Celsius"}`)
 	require.NoError(t, err)
-	assert.Equal(t, "- Metric\n- 24-hour clock", output["body"])
+	assert.Equal(t, "- Metric\n- 24-hour clock\n- Kilometres", output["body"])
 	output, err = call(`{"operation":"forget","key":"units"}`)
 	require.NoError(t, err)
 	assert.NotEmpty(t, output["version"])

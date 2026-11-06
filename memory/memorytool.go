@@ -3,6 +3,8 @@ package memory
 import (
 	"context"
 	"encoding/json"
+	"errors"
+	"strings"
 	"time"
 
 	// Packages
@@ -30,7 +32,7 @@ var _ llm.Tool = (*memories)(nil)
 type memoriesInput struct {
 	Operation   string `json:"operation" enum:"remember,recall,search,forget" help:"remember a memory, under its key, with its description and body, recall the memory with the key, search the memories for the words, or forget the memory with the key"`
 	Key         string `json:"key,omitempty" help:"Key of the memory, which is an identifier, such as kitchen_lights, to remember, recall or forget" optional:""`
-	Description string `json:"description,omitempty" help:"A line which describes what's remembered, to remember" optional:""`
+	Description string `json:"description,omitempty" help:"A line which describes what's remembered, to remember a new memory, or to change a memory's, which it keeps, when it's omitted" optional:""`
 	Body        string `json:"body,omitempty" help:"What's remembered, as Markdown, to remember, which replaces all of what was remembered under the key" optional:""`
 	Version     string `json:"version,omitempty" help:"Version of the memory, which recall, or search, returns, to remember a change to it, or none, to remember a new memory" optional:""`
 	Line        string `json:"line,omitempty" help:"A line of the memory's body, to forget only the line, rather than the whole memory" optional:""`
@@ -89,6 +91,18 @@ func (t *memories) Run(ctx context.Context, input json.RawMessage) (any, error) 
 	}
 	switch req.Operation {
 	case "remember":
+		// A change to a memory, without its description, keeps it, as a
+		// model which changes what's remembered may only give that. A new
+		// memory, which isn't found, still needs one, which Remember says.
+		if strings.TrimSpace(req.Description) == "" && strings.TrimSpace(req.Key) != "" {
+			memory, err := t.memory.GetMemory(ctx, strings.TrimSpace(req.Key))
+			switch {
+			case err == nil:
+				req.Description = memory.Description
+			case !errors.Is(err, llm.ErrNotFound):
+				return nil, err
+			}
+		}
 		memory, created, err := t.memory.Remember(ctx, schema.MemoryMeta{Key: req.Key, Description: req.Description, Body: req.Body}, req.Version)
 		if err != nil {
 			return nil, err
