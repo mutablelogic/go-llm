@@ -105,6 +105,10 @@ const (
 	// was last used, before it's deleted
 	DefaultRetention = 24 * time.Hour
 
+	// CleanInterval is how often the resources which aren't needed, and the
+	// content no resource refers to, are deleted
+	CleanInterval = time.Hour
+
 	// DefaultMaxSize is the largest content of a resource, in bytes
 	DefaultMaxSize = 256 << 20
 

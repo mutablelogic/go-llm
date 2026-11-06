@@ -18,9 +18,6 @@ import (
 // GLOBALS
 
 const (
-	// CleanInterval is how often Run deletes what isn't needed
-	CleanInterval = time.Hour
-
 	// eventBuffer is how many events of sessions which are deleted are
 	// buffered, before they're read
 	eventBuffer = 100
@@ -38,7 +35,7 @@ const (
 
 // Run deletes the resources of each session which is deleted, with a
 // broadcaster, and deletes what isn't needed, when it starts, and every
-// CleanInterval: resources on their own which weren't used for the
+// schema.CleanInterval: resources on their own which weren't used for the
 // retention, those whose session doesn't exist, with WithSessions, as its
 // event may have been missed, and content which no resource refers to,
 // until the context is cancelled, when it returns nil. What fails is logged
@@ -62,7 +59,7 @@ func (r *Manager) Run(ctx context.Context, logger *slog.Logger) error {
 
 	// Clean when it starts, and then every interval
 	r.Clean(ctx, logger)
-	ticker := time.NewTicker(CleanInterval)
+	ticker := time.NewTicker(schema.CleanInterval)
 	defer ticker.Stop()
 	for {
 		select {
