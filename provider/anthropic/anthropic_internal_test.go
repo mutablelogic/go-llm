@@ -299,11 +299,14 @@ func Test_Options(t *testing.T) {
 
 	// Thinking off makes the least effort, for a model which thinks
 	// adaptively, rather than turning it off, which it may not accept,
-	// unless there's an effort
+	// unless there's an effort, and its thinking isn't shown, but it's still
+	// dropped, when the conversation changed, as the model still thinks
 	r := request(t, newer, llm.WithOpt(llm.ThinkingKey, false))
-	assert.Nil(t, r.Thinking)
+	assert.Equal(t, "adaptive", r.Thinking.Type)
+	assert.Equal(t, "omitted", r.Thinking.Display)
+	assert.Equal(t, "drop_block", r.Thinking.BlockBinding.PrefixMismatchBehavior)
 	assert.Equal(t, "low", r.OutputConfig.Effort)
-	assert.Empty(t, r.betas())
+	assert.Equal(t, bindingBeta, r.betas())
 	r = request(t, newer, llm.WithOpt(llm.ThinkingKey, false), llm.WithOpt(llm.ThinkingEffortKey, "high"))
 	assert.Equal(t, "high", r.OutputConfig.Effort)
 
@@ -315,6 +318,13 @@ func Test_Options(t *testing.T) {
 	assert.Equal(t, uint(thinkingBudget), r.Thinking.BudgetTokens)
 	assert.Nil(t, r.OutputConfig)
 	assert.Equal(t, uint(maxTokens), r.MaxTokens)
+
+	// Its budget is at least the least the API accepts, and less than the
+	// most tokens of its reply, which must be more than that
+	r = request(t, older, llm.WithOpt(llm.ThinkingKey, true), llm.WithOpt(llm.MaxTokensKey, uint(2000)))
+	assert.Equal(t, uint(minThinkingBudget), r.Thinking.BudgetTokens)
+	err := (&messagesRequest{}).apply(older, llm.WithOpt(llm.ThinkingKey, true), llm.WithOpt(llm.MaxTokensKey, uint(1000)))
+	assert.ErrorIs(t, err, llm.ErrBadParameter)
 
 	// The reply's JSON schema is strict, a tool choice of any is auto, and
 	// the system prompt, stop sequences, user and most tokens are set
@@ -336,7 +346,7 @@ func Test_Options(t *testing.T) {
 	// Sampling options, which the models don't take, and others which
 	// aren't supported, fail
 	assert.False(t, types.Value(newer.Capabilities().Temperature))
-	err := (&messagesRequest{}).apply(newer, llm.WithOpt(llm.TemperatureKey, 0.5))
+	err = (&messagesRequest{}).apply(newer, llm.WithOpt(llm.TemperatureKey, 0.5))
 	assert.ErrorIs(t, err, llm.ErrBadParameter)
 	err = (&messagesRequest{}).apply(newer, llm.WithOpt(llm.SeedKey, uint(1)))
 	assert.ErrorIs(t, err, llm.ErrBadParameter)
@@ -400,4 +410,61 @@ func blockTypes(m message) []string {
 // clientEvent returns an event of a stream, with the data
 func clientEvent(data string) client.TextStreamEvent {
 	return client.TextStreamEvent{Data: strings.TrimSpace(data)}
+}
+
+func Test_StrictSchema(t *testing.T) {
+	// Every object schema, within the keywords whose values are schemas, has
+	// additionalProperties false, unless it says otherwise, and values which
+	// aren't schemas, such as an enum's, are left as they are
+	schema, err := strictSchema(json.RawMessage(`{
+		"type":"object",
+		"properties":{
+			"place":{"anyOf":[{"type":"object","properties":{}},{"type":"string"}]},
+			"tags":{"type":"array","items":{"type":"object"}},
+			"shape":{"enum":[{"type":"object"}],"const":{"type":"object"},"default":{"type":"object"}},
+			"open":{"type":"object","additionalProperties":true}
+		},
+		"$defs":{"point":{"type":"object"}}
+	}`))
+	require.NoError(t, err)
+	assert.JSONEq(t, `{
+		"type":"object","additionalProperties":false,
+		"properties":{
+			"place":{"anyOf":[{"type":"object","properties":{},"additionalProperties":false},{"type":"string"}]},
+			"tags":{"type":"array","items":{"type":"object","additionalProperties":false}},
+			"shape":{"enum":[{"type":"object"}],"const":{"type":"object"},"default":{"type":"object"}},
+			"open":{"type":"object","additionalProperties":true}
+		},
+		"$defs":{"point":{"type":"object","additionalProperties":false}}
+	}`, string(schema))
+
+	_, err = strictSchema(json.RawMessage(`[]`))
+	assert.ErrorIs(t, err, llm.ErrBadParameter)
+}
+
+func Test_ReplyBlocks(t *testing.T) {
+	// A reply's blocks are sent back in the order they were generated, with
+	// its thinking, and its thinking which is encrypted, from the reply
+	// as it was returned
+	reply := newReply(messagesResponse{StopReason: "tool_use", Content: []contentBlock{
+		{Type: "thinking", Thinking: types.Ptr("First"), Signature: "sig1"},
+		{Type: "text", Text: "Let me look."},
+		{Type: "redacted_thinking", Data: "secret"},
+		{Type: "tool_use", ID: "toolu_1", Name: "weather", Input: json.RawMessage(`{"city":"Berlin"}`)},
+		{Type: "thinking", Thinking: types.Ptr("Second"), Signature: "sig2"},
+		{Type: "text", Text: "And again."},
+	}})
+	assert.Equal(t, "secret", types.Value(reply.Content[2].Redacted))
+	order := []string{"thinking", "text", "redacted_thinking", "tool_use", "thinking", "text"}
+
+	// Whichever form of the schema's message it is
+	for _, m := range []llm.Message{reply, *reply, &reply.MessageMeta, reply.MessageMeta} {
+		blocks := assistantBlocks(m, true)
+		assert.Equal(t, order, blockTypes(message{Content: blocks}))
+		assert.Equal(t, "sig2", blocks[4].Signature)
+		assert.Equal(t, "secret", blocks[2].Data)
+	}
+
+	// And without its thinking, when it isn't sent back
+	assert.Equal(t, []string{"text", "tool_use", "text"}, blockTypes(message{Content: assistantBlocks(reply, false)}))
 }

@@ -27,8 +27,8 @@ var imageTypes = map[string]bool{"image/jpeg": true, "image/png": true, "image/g
 // LIFECYCLE
 
 // newReply returns the reply as a message, with its thinking, with its
-// signature, text, and tool calls as content blocks, in order, why the model
-// stopped, and its output tokens
+// signature, its thinking which is encrypted, its text, and its tool calls
+// as content blocks, in order, why the model stopped, and its output tokens
 func newReply(response messagesResponse) *schema.Message {
 	reply := &schema.Message{
 		MessageMeta: schema.MessageMeta{Sender: "assistant", Content: []schema.ContentBlock{}},
@@ -43,6 +43,10 @@ func newReply(response messagesResponse) *schema.Message {
 				content.Signature = types.Ptr(block.Signature)
 			}
 			reply.Content = append(reply.Content, content)
+		case "redacted_thinking":
+			if block.Data != "" {
+				reply.Content = append(reply.Content, schema.ContentBlock{Redacted: types.Ptr(block.Data)})
+			}
 		case "text":
 			if block.Text != "" {
 				reply.Content = append(reply.Content, schema.ContentBlock{Text: types.Ptr(block.Text)})
@@ -170,34 +174,71 @@ func userBlocks(ctx context.Context, m llm.Message) ([]contentBlock, error) {
 	return blocks, nil
 }
 
-// assistantBlocks returns the content of a reply: its thinking, when it's
-// signed, and sent back, then its text and the tools it called, or text
-// which says there's no reply, when there's neither, as the API doesn't
-// accept an empty reply
+// assistantBlocks returns the content of a reply, block by block, in the
+// order it was generated, so thinking which is sent back follows what it
+// followed, as its signature needs: its thinking, when it's signed, and its
+// thinking which is encrypted, when they're sent back, its text, and the
+// tools it called, or text which says there's no reply, when there's
+// neither, as the API doesn't accept an empty reply. A message which isn't
+// one of the schema's has its text, and the tools it called.
 func assistantBlocks(m llm.Message, withThinking bool) []contentBlock {
 	var blocks []contentBlock
-	if reply, ok := m.(*schema.Message); ok && withThinking {
-		for _, block := range reply.Content {
-			if block.Thinking != nil && block.Signature != nil && *block.Signature != "" {
+	replied := false
+	content, ok := schemaContent(m)
+	if !ok {
+		content = []schema.ContentBlock{{Text: types.Ptr(m.Text())}}
+		for _, call := range m.ToolCalls() {
+			content = append(content, schema.ContentBlock{ToolCall: &schema.ToolCall{ID: call.ID, Name: call.Name, Input: call.Input}})
+		}
+	}
+	for _, block := range content {
+		switch {
+		case block.Thinking != nil:
+			if withThinking && block.Signature != nil && *block.Signature != "" {
 				blocks = append(blocks, contentBlock{Type: "thinking", Thinking: types.Ptr(*block.Thinking), Signature: *block.Signature})
 			}
+		case block.Redacted != nil:
+			if withThinking && *block.Redacted != "" {
+				blocks = append(blocks, contentBlock{Type: "redacted_thinking", Data: *block.Redacted})
+			}
+		case block.Text != nil:
+			if strings.TrimSpace(*block.Text) != "" {
+				blocks = append(blocks, contentBlock{Type: "text", Text: *block.Text})
+				replied = true
+			}
+		case block.ToolCall != nil:
+			input := block.ToolCall.Input
+			if len(input) == 0 {
+				input = json.RawMessage(`{}`)
+			}
+			blocks = append(blocks, contentBlock{Type: "tool_use", ID: block.ToolCall.ID, Name: block.ToolCall.Name, Input: input})
+			replied = true
 		}
 	}
-	thinking := len(blocks)
-	if text := m.Text(); strings.TrimSpace(text) != "" {
-		blocks = append(blocks, contentBlock{Type: "text", Text: text})
-	}
-	for _, call := range m.ToolCalls() {
-		input := call.Input
-		if len(input) == 0 {
-			input = json.RawMessage(`{}`)
-		}
-		blocks = append(blocks, contentBlock{Type: "tool_use", ID: call.ID, Name: call.Name, Input: input})
-	}
-	if len(blocks) == thinking {
+	if !replied {
 		blocks = append(blocks, contentBlock{Type: "text", Text: emptyReply})
 	}
 	return blocks
+}
+
+// schemaContent returns the content blocks of a message which is one of the
+// schema's, whether it's a message, or its meta, or a pointer to either
+func schemaContent(m llm.Message) ([]schema.ContentBlock, bool) {
+	switch v := m.(type) {
+	case *schema.Message:
+		if v != nil {
+			return v.Content, true
+		}
+	case schema.Message:
+		return v.Content, true
+	case *schema.MessageMeta:
+		if v != nil {
+			return v.Content, true
+		}
+	case schema.MessageMeta:
+		return v.Content, true
+	}
+	return nil, false
 }
 
 // resourceBlock returns the resource as an image, or a document, which is a

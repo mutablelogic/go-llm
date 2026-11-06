@@ -20,8 +20,10 @@ const (
 	maxTokens        = 64000
 
 	// thinkingBudget is the most tokens an older model, which thinks within
-	// a budget, thinks with, which is less than the most tokens of its reply
-	thinkingBudget = 8000
+	// a budget, thinks with, which is less than the most tokens of its reply,
+	// and minThinkingBudget the least, which is the least the API accepts
+	thinkingBudget    = 8000
+	minThinkingBudget = 1024
 
 	// bindingBeta is the beta which lets thinking which was sent back be
 	// dropped, rather than fail the request, when the conversation before it
@@ -108,14 +110,17 @@ func (r *messagesRequest) apply(model *Model, opts ...llm.Opt) error {
 	}
 
 	// A model thinks, as it decides, and its thinking is summarized, so it's
-	// shown, unless thinking is off, when a model which can't stop thinking
-	// makes the least effort, unless there's an effort. An older model only
-	// thinks when it's asked to, within a budget.
+	// shown, unless thinking is off, when it isn't shown, and the model makes
+	// the least effort, unless there's an effort, as the newest models can't
+	// stop thinking. An older model only thinks when it's asked to, within a
+	// budget, which is at least the least the API accepts, and less than
+	// the most tokens of the reply.
 	think, err := llm.GetOpt[bool](o, llm.ThinkingKey)
 	asked := err == nil
 	switch model.thinks() {
 	case "adaptive":
 		if asked && !think {
+			r.Thinking = &thinking{Type: "adaptive", Display: "omitted"}
 			if model.caps.Effort.Supported && (r.OutputConfig == nil || r.OutputConfig.Effort == "") {
 				r.outputConfig().Effort = "low"
 			}
@@ -124,7 +129,10 @@ func (r *messagesRequest) apply(model *Model, opts ...llm.Opt) error {
 		}
 	case "enabled":
 		if asked && think {
-			r.Thinking = &thinking{Type: "enabled", BudgetTokens: min(thinkingBudget, r.MaxTokens/2)}
+			if r.MaxTokens <= minThinkingBudget {
+				return llm.ErrBadParameter.Withf("%s needs more than %d tokens to think", llm.MaxTokensKey, minThinkingBudget)
+			}
+			r.Thinking = &thinking{Type: "enabled", BudgetTokens: max(min(thinkingBudget, r.MaxTokens/2), minThinkingBudget)}
 		}
 	default:
 		if asked && think {
@@ -187,8 +195,20 @@ func strictSchema(data json.RawMessage) (json.RawMessage, error) {
 	return json.Marshal(schema)
 }
 
+// schemaMaps are the keywords of a JSON schema whose values are maps of
+// schemas, by name, schemaLists those whose values are lists of schemas,
+// and schemaValues those whose value is a schema, or, for items, a list of
+// them. Other keywords, such as enum, const and default, have values which
+// aren't schemas, which are left as they are.
+var (
+	schemaMaps   = []string{"properties", "patternProperties", "$defs", "definitions", "dependentSchemas"}
+	schemaLists  = []string{"allOf", "anyOf", "oneOf", "prefixItems"}
+	schemaValues = []string{"items", "additionalProperties", "not", "if", "then", "else", "contains", "propertyNames", "unevaluatedItems", "unevaluatedProperties"}
+)
+
 // strict sets additionalProperties false on the schema, when it's an object
-// without it, and on the schemas within it
+// without it, and on the schemas within it, which are only those of the
+// keywords whose values are schemas
 func strict(value any) {
 	switch v := value.(type) {
 	case map[string]any:
@@ -197,10 +217,25 @@ func strict(value any) {
 				v["additionalProperties"] = false
 			}
 		}
-		for _, child := range v {
-			strict(child)
+		for _, key := range schemaMaps {
+			if children, ok := v[key].(map[string]any); ok {
+				for _, child := range children {
+					strict(child)
+				}
+			}
+		}
+		for _, key := range schemaLists {
+			if children, ok := v[key].([]any); ok {
+				for _, child := range children {
+					strict(child)
+				}
+			}
+		}
+		for _, key := range schemaValues {
+			strict(v[key])
 		}
 	case []any:
+		// A list of schemas, such as the items of an older schema
 		for _, child := range v {
 			strict(child)
 		}

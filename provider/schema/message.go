@@ -35,6 +35,7 @@ type ContentBlock struct {
 	Text       *string     `json:"text,omitempty" help:"Plain text content emitted by the model" example:"Unit tests catch regressions early and make refactoring safer."`
 	Thinking   *string     `json:"thinking,omitempty" help:"Reasoning or thinking text emitted by the model" example:"I should keep this answer brief and concrete."`
 	Signature  *string     `json:"signature,omitempty" help:"Signature of the thinking, which a provider, such as Anthropic, returns with it, so it's sent back as it was" example:"EqQBCgIYAhIM..."`
+	Redacted   *string     `json:"redacted_thinking,omitempty" help:"Thinking which the provider, such as Anthropic, returned encrypted, which is sent back as it was" example:"EmwKAhgBEgy3va3pzix..."`
 	Resource   *Resource   `json:"attachment,omitempty" help:"Attachment content such as an image, document, or audio asset" example:"{\"type\":\"image/png\",\"url\":\"https://example.com/image.png\"}"`
 	ToolCall   *ToolCall   `json:"tool_call,omitempty" help:"Tool invocation requested by the model" example:"{\"id\":\"call_123\",\"name\":\"get_weather\",\"input\":{\"city\":\"London\"}}"`
 	ToolResult *ToolResult `json:"tool_result,omitempty" help:"Tool execution result returned to the model" example:"{\"id\":\"call_123\",\"name\":\"get_weather\",\"content\":{\"temperature_c\":18},\"is_error\":false}"`

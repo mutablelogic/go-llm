@@ -79,17 +79,18 @@ type message struct {
 }
 
 // contentBlock is a part of a message: its text, its thinking, with its
-// signature, an image or a document, a tool the model called, or a tool's
-// result
+// signature, or thinking which is encrypted, an image or a document, a tool
+// the model called, or a tool's result
 type contentBlock struct {
 	Type string `json:"type"`
 
 	// Text
 	Text string `json:"text,omitempty"`
 
-	// Thinking
+	// Thinking, and thinking which is encrypted
 	Thinking  *string `json:"thinking,omitempty"`
 	Signature string  `json:"signature,omitempty"`
+	Data      string  `json:"data,omitempty"`
 
 	// Image, or document
 	Source *source `json:"source,omitempty"`

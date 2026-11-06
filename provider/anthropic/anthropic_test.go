@@ -21,9 +21,13 @@ import (
 const liveModel = "claude-haiku-5-5"
 
 // liveClient returns a client of Anthropic's API, with the key in
-// ANTHROPIC_API_KEY, and its model, or skips the test, when there's no key
+// ANTHROPIC_API_KEY, and its model, or skips the test, when there's no key,
+// or the tests are short, as its requests are paid for
 func liveClient(t *testing.T) (*anthropic.Client, llm.Model) {
 	t.Helper()
+	if testing.Short() {
+		t.Skip("skipping a test of Anthropic's API in short mode")
+	}
 	key := os.Getenv("ANTHROPIC_API_KEY")
 	if key == "" {
 		t.Skip("ANTHROPIC_API_KEY not set")
