@@ -229,6 +229,11 @@ export class ChatController {
         const session = this.session;
         if (!session || !this.messages || this.pending.has(session.id)) {
             return;
+        } else if (this.resources.uploading(session.id) > 0) {
+            // The input doesn't send while files are uploading, so this is
+            // only a guard
+            this.views.view?.restore(text);
+            return;
         }
         // The attachments come before the text, as the command line's do
         const attachments = this.resources.take(session.id);
@@ -518,6 +523,7 @@ export class ChatController {
             view.streamed = pending?.streamed ?? [];
             view.progress = pending?.progress;
             view.attachments = this.session ? this.resources.attachments(this.session.id) : [];
+            view.uploading = this.session ? this.resources.uploading(this.session.id) : 0;
             view.unavailable = this.unavailable;
         }
     }

@@ -92,6 +92,10 @@ export class ChatView extends LitElement {
     @property({ attribute: false })
     attachments: Resource[] = [];
 
+    // How many files are being uploaded, to attach to it
+    @property({ attribute: false })
+    uploading = 0;
+
     // Whether the server can't be reached
     @property({ type: Boolean, reflect: true })
     unavailable = false;
@@ -225,7 +229,7 @@ export class ChatView extends LitElement {
         }
         return html`
             <div class="conversation">${this.renderConversation()}</div>
-            <llm-chat-input ?disabled=${this.messages === undefined} ?busy=${this.question !== undefined} .attachments=${this.attachments}
+            <llm-chat-input ?disabled=${this.messages === undefined} ?busy=${this.question !== undefined} .attachments=${this.attachments} .uploading=${this.uploading}
                 @llm-chat-send=${(e: CustomEvent<string>) => this.dispatchEvent(new CustomEvent(ChatView.eventSend, { detail: e.detail }))}
                 @llm-chat-typing=${() => this.dispatchEvent(new CustomEvent(ChatView.eventTyping))}
                 @llm-chat-attach=${() => this.dispatchEvent(new CustomEvent(ChatView.eventAttach))}

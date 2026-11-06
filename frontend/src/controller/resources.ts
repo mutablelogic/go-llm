@@ -22,8 +22,13 @@ export class ResourcesController {
     private session?: string;
     private readonly attached = new Map<string, Resource[]>();
 
-    // How many files are being uploaded
-    private uploading = 0;
+    // How many files are being uploaded, by the chat they're uploaded to,
+    // whose message isn't sent until they are
+    private readonly uploads = new Map<string, number>();
+
+    // The load of the resources which is in progress, which is aborted when
+    // another starts, so an older one doesn't replace a newer one
+    private loading?: AbortController;
 
     // The functions which are called when the attachments change
     private readonly listeners: (() => void)[] = [];
@@ -46,7 +51,8 @@ export class ResourcesController {
         panel?.addEventListener(ResourcePanel.eventDelete, (e) => void this.delete((e as CustomEvent<Resource>).detail));
     }
 
-    // onChange calls the function when the attachments change
+    // onChange calls the function when the attachments, or the uploads,
+    // change
     onChange(fn: () => void): this {
         this.listeners.push(fn);
         return this;
@@ -91,7 +97,13 @@ export class ResourcesController {
     // close closes the panel
     close() {
         this.session = undefined;
+        this.loading?.abort();
         this.render();
+    }
+
+    // uploading returns how many files are being uploaded to the chat
+    uploading(session: string): number {
+        return this.uploads.get(session) ?? 0;
     }
 
     // refresh loads the resources again, when the panel is open
@@ -105,39 +117,59 @@ export class ResourcesController {
     // message, as each is uploaded. A file whose content the chat has
     // already is that resource, rather than another.
     async upload(session: string, files: File[]) {
-        this.uploading += files.length;
-        this.render();
+        this.count(session, files.length);
         await Promise.all(files.map(async (file) => {
             try {
                 this.attach(session, [await createResource(session, file)]);
             } catch (error) {
                 this.notifications.error(`${file.name || 'The file'} couldn't be uploaded`, error);
             } finally {
-                this.uploading--;
-                this.render();
+                this.count(session, -1);
             }
         }));
         await this.refresh();
     }
 
-    // load loads the resources of the chat which is shown
+    // count changes how many files are being uploaded to the chat
+    private count(session: string, n: number) {
+        const uploading = this.uploading(session) + n;
+        if (uploading > 0) {
+            this.uploads.set(session, uploading);
+        } else {
+            this.uploads.delete(session);
+        }
+        this.changed();
+    }
+
+    // load loads the resources of the chat which is shown, aborting the load
+    // which is in progress, so an older one doesn't replace it
     private async load() {
         const session = this.session;
         if (!session || !this.panel) {
             return;
         }
+        this.loading?.abort();
+        const loading = new AbortController();
+        this.loading = loading;
         try {
-            const list = await listResources(session, 0, ResourcesController.limit);
-            if (this.session === session) {
+            const list = await listResources(session, 0, ResourcesController.limit, loading.signal);
+            if (!loading.signal.aborted && this.session === session) {
                 this.panel.resources = list.body ?? [];
                 this.panel.count = list.count;
             }
         } catch (error) {
+            if (loading.signal.aborted) {
+                return;
+            }
             if (this.session === session) {
                 this.panel.resources = [];
                 this.panel.count = 0;
             }
             this.notifications.error("The chat's files couldn't be loaded", error);
+        } finally {
+            if (this.loading === loading) {
+                this.loading = undefined;
+            }
         }
     }
 
@@ -179,6 +211,12 @@ export class ResourcesController {
         } else {
             this.attached.delete(session);
         }
+        this.changed();
+    }
+
+    // changed shows the attachments, and the uploads, as they are, and calls
+    // the functions which are called when they change
+    private changed() {
         this.render();
         for (const fn of this.listeners) {
             fn();
@@ -192,6 +230,6 @@ export class ResourcesController {
         }
         panel.session = this.session;
         panel.attached = this.session ? this.attachments(this.session).map((resource) => resource.hash) : [];
-        panel.uploading = this.uploading;
+        panel.uploading = this.session ? this.uploading(this.session) : 0;
     }
 }

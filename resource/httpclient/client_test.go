@@ -81,6 +81,23 @@ func Test_Client(t *testing.T) {
 	assert.Equal(t, `{"a":1}`, content.String())
 	assert.Equal(t, "application/json", contentType)
 
+	// Content which can run scripts, such as HTML, or SVG, isn't sniffed,
+	// and is sandboxed, so it can't use the UI's origin, when it's opened
+	// in the browser
+	for contentType, sandboxed := range map[string]bool{"text/html": true, "image/svg+xml": true, "image/png": false} {
+		active, err := c.CreateResource(ctx, schema.ResourceCreateRequest{Type: contentType}, "", strings.NewReader("<script>"+contentType+"</script>"))
+		require.NoError(t, err)
+		response, err := http.Get(server.URL + test.Prefix + "/resource/" + active.Hash + "/content")
+		require.NoError(t, err)
+		response.Body.Close()
+		assert.Equal(t, "nosniff", response.Header.Get("X-Content-Type-Options"), contentType)
+		if sandboxed {
+			assert.Equal(t, "sandbox", response.Header.Get("Content-Security-Policy"), contentType)
+		} else {
+			assert.Empty(t, response.Header.Get("Content-Security-Policy"), contentType)
+		}
+	}
+
 	// Deleted
 	deleted, err := c.DeleteResource(ctx, notes.Hash, schema.ResourceRequest{})
 	require.NoError(t, err)

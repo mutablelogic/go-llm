@@ -6,8 +6,9 @@
 // someone is typing. Its add button, to the left, fires an event to choose
 // resources to attach, which are shown above the box, each of which can be
 // removed, and files which are dropped on it, or pasted, fire an event to
-// upload them, and attach them. A message with attachments can be sent
-// without text.
+// upload them, and attach them, which is shown while they upload, when the
+// message can't be sent. A message with attachments can be sent without
+// text.
 
 import { LitElement, css, html, nothing } from 'lit';
 import { customElement, property, query } from 'lit/decorators.js';
@@ -21,6 +22,7 @@ import { resourceName, type Resource } from '../schema/resource';
 // Carbon components
 import '@carbon/web-components/es/components/button/index.js';
 import '@carbon/web-components/es/components/icon-button/index.js';
+import '@carbon/web-components/es/components/inline-loading/index.js';
 
 @customElement('llm-chat-input')
 export class ChatInput extends LitElement {
@@ -53,6 +55,11 @@ export class ChatInput extends LitElement {
     // The resources which are attached to the message
     @property({ attribute: false })
     attachments: Resource[] = [];
+
+    // How many files are being uploaded, to attach to the message, which
+    // isn't sent until they are
+    @property({ attribute: false })
+    uploading = 0;
 
     // Whether files are dragged over the box
     @property({ type: Boolean, reflect: true })
@@ -127,6 +134,12 @@ export class ChatInput extends LitElement {
             background: var(--cds-layer-accent-hover-01, #d1d1d1);
         }
 
+        .uploading {
+            width: auto;
+            min-height: 1.5rem;
+            font-size: 0.75rem;
+        }
+
         .chip button:focus-visible {
             outline: 2px solid var(--cds-focus, #0f62fe);
         }
@@ -180,13 +193,14 @@ export class ChatInput extends LitElement {
 
     render() {
         return html`
-            ${this.attachments.length > 0 ? html`<div class="attachments">${this.attachments.map((resource) => html`
+            ${this.attachments.length > 0 || this.uploading > 0 ? html`<div class="attachments">${this.attachments.map((resource) => html`
                 <span class="chip" title=${resource.type ?? ''}>
                     <span>${resourceName(resource)}</span>
                     <button aria-label="Remove ${resourceName(resource)}" @click=${() => this.fire(ChatInput.eventDetach, resource)}>
                         ${iconLoader(Close16)}
                     </button>
-                </span>`)}</div>` : nothing}
+                </span>`)}${this.uploading > 0 ? html`
+                <cds-inline-loading status="active" class="uploading">Uploading ${this.uploading === 1 ? 'a file' : `${this.uploading} files`}…</cds-inline-loading>` : nothing}</div>` : nothing}
             <div class="row">
                 <cds-icon-button kind="ghost" size="md" align="top-left" ?disabled=${this.disabled}
                     @click=${() => this.fire(ChatInput.eventAttach)}>
@@ -195,7 +209,7 @@ export class ChatInput extends LitElement {
                 </cds-icon-button>
                 <textarea rows="1" aria-label="Message" placeholder=${this.placeholder} ?disabled=${this.disabled}
                     @input=${this.handleInput} @keydown=${this.handleKeydown} @paste=${this.handlePaste}></textarea>
-                <cds-button kind="primary" size="md" ?disabled=${this.disabled || this.busy} @click=${this.send}>
+                <cds-button kind="primary" size="md" ?disabled=${this.disabled || this.busy || this.uploading > 0} @click=${this.send}>
                     Send ${iconLoader(Send16, { slot: 'icon' })}
                 </cds-button>
             </div>
@@ -278,7 +292,7 @@ export class ChatInput extends LitElement {
     // attachments, and empties the box
     private send() {
         const text = this.textarea.value.trim();
-        if (this.disabled || this.busy || (!text && this.attachments.length === 0)) {
+        if (this.disabled || this.busy || this.uploading > 0 || (!text && this.attachments.length === 0)) {
             return;
         }
         this.dispatchEvent(new CustomEvent(ChatInput.eventSend, { detail: text }));

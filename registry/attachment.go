@@ -226,6 +226,32 @@ func (r *Registry) toolResolver(session uuid.UUID) toolkit.ResolveFunc {
 	}
 }
 
+// attachmentText returns the function which returns the text an attachment,
+// which refers to a resource in the session, or on its own, is sent to a
+// model as, when its resource is text, so the conversation is measured as
+// it's sent, rather than with an estimate of an attachment, such as an
+// image. A resource which isn't text, or can't be read, isn't.
+func (r *Registry) attachmentText(session uuid.UUID) textFunc {
+	reader := r.newContentReader(session)
+	return func(ctx context.Context, resource providerschema.Resource) (string, bool) {
+		if !isResourceURL(&resource) || len(resource.Data) > 0 || !providerschema.IsText(nil, resource.ContentType) {
+			return "", false
+		}
+		uri := resource.URL.String()
+		data, contentType, name, err := reader.read(ctx, uri)
+		if resource.ContentType == "" {
+			resource.ContentType = contentType
+		}
+		if err != nil || !providerschema.IsText(data, resource.ContentType) {
+			return "", false
+		}
+		if name == "" {
+			name = uri
+		}
+		return types.Value(providerschema.TextBlock(name, data).Text), true
+	}
+}
+
 ///////////////////////////////////////////////////////////////////////////////
 // CONTENT READER
 
