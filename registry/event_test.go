@@ -54,6 +54,19 @@ func Test_RunEvent(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, event, response.Session.ID)
 	assert.Equal(t, "scripted:model", types.Value(response.Session.Model))
+	assert.True(t, response.Session.Event, "it's an event's session")
+	assert.False(t, parent.Event)
+
+	// Which isn't chatted in, and stays an event's when it's changed, and a
+	// session created by the API isn't an event's, whatever it says
+	_, err = r.Chat(ctx, event, []llm.Message{user(t, "Hello")}, nil)
+	assert.ErrorIs(t, err, llm.ErrForbidden)
+	updated, err := r.UpdateSession(ctx, event, schema.SessionMeta{GeneratorMeta: schema.GeneratorMeta{System: types.Ptr("Be brief")}, Event: false})
+	require.NoError(t, err)
+	assert.True(t, updated.Event)
+	created, err := r.CreateSession(ctx, schema.SessionMeta{GeneratorMeta: schema.GeneratorMeta{Model: types.Ptr("model")}, Event: true})
+	require.NoError(t, err)
+	assert.False(t, created.Event)
 
 	// With the tools of the session it's for, apart from the heartbeats'
 	require.NotEmpty(t, p.asked)

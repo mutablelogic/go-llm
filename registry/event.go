@@ -235,7 +235,7 @@ func (r *Registry) eventSession(ctx context.Context, id uuid.UUID, req schema.Ru
 	// another server, is the one returned.
 	session, err := r.sessionStore.Get(ctx, id)
 	if errors.Is(err, llm.ErrNotFound) {
-		created, err := r.sessionStore.Create(ctx, id, schema.SessionMeta{GeneratorMeta: schema.GeneratorMeta{Model: parent.Model}})
+		created, err := r.sessionStore.Create(ctx, id, schema.SessionMeta{GeneratorMeta: schema.GeneratorMeta{Model: parent.Model}, Event: true})
 		if errors.Is(err, llm.ErrConflict) {
 			session, err = r.sessionStore.Get(ctx, id)
 		} else if err == nil {

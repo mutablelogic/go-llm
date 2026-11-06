@@ -99,7 +99,16 @@ const events = new EventsController(notifications)
     .on({ schema: 'llm', table: 'provider' }, () => void models.refresh())
     .on({ schema: 'llm', table: 'tool' }, () => void tools.refresh())
     .on({ schema: 'memory', table: 'detail' }, () => void chat.refreshDetails())
-    .on({ schema: 'llm', table: 'event' }, () => void outcomes.refresh())
+    .on({ schema: 'llm', table: 'event' }, (event) => {
+        void outcomes.refresh();
+
+        // The Events action of the chat which is open is red for a few
+        // seconds, when an event for it is created
+        const session = (event?.data as { session?: string } | undefined)?.session;
+        if (event?.action === 'create' && session && session === chat.sessionID()) {
+            document.querySelector('llm-chat-page')?.alert();
+        }
+    })
     .onDisconnect(() => {
         chat.disconnect();
         models.disconnect();

@@ -71,10 +71,12 @@ type EventList struct {
 }
 
 // EventChange is the data of the registry's event of an event's outcome,
-// which was created, or changed: its serial, and status
+// which was created, or changed: the session it's for, its serial, and its
+// status
 type EventChange struct {
-	Serial uint64      `json:"serial,omitempty" help:"Serial of the event, as it is now"`
-	Status EventStatus `json:"status,omitempty" help:"Status of the event, as it is now"`
+	Session uuid.UUID   `json:"session,omitzero" help:"Identifier of the session the event is for"`
+	Serial  uint64      `json:"serial,omitempty" help:"Serial of the event, as it is now"`
+	Status  EventStatus `json:"status,omitempty" help:"Status of the event, as it is now"`
 }
 
 ///////////////////////////////////////////////////////////////////////////////

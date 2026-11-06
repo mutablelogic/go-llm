@@ -12,6 +12,7 @@ import { MinuteController } from './minute';
 
 // Carbon components
 import '@carbon/web-components/es/components/skeleton-text/index.js';
+import '@carbon/web-components/es/components/tag/tag.js';
 
 @customElement('llm-session-list')
 export class SessionList extends LitElement {
@@ -127,7 +128,7 @@ export class SessionList extends LitElement {
             <li>
                 <button class="session" type="button" aria-current=${session.id === this.selected ? 'true' : 'false'}
                     @click=${() => this.dispatchEvent(new CustomEvent(SessionList.eventSelect, { detail: session }))}>
-                    <span class="model">${session.model ?? 'No model'}</span>
+                    <span class="model">${session.model ?? 'No model'}${session.event ? html` <cds-tag size="sm" type="purple">event</cds-tag>` : nothing}</span>
                     <span class="secondary" title=${formatTime(when)}>
                         ${status ? html`<span class="status">${status}</span>` : formatAgo(when)}
                         ${tokens ? html` · ${tokens.toLocaleString()} tokens` : nothing}

@@ -429,6 +429,7 @@ export class ChatController {
             page.heading = this.session?.model ?? 'Chat';
             page.description = this.describe();
             page.deletable = this.session !== undefined;
+            page.event = this.session?.event === true;
         }
         if (details) {
             details.message = this.selected;

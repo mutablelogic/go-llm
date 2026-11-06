@@ -149,11 +149,12 @@ func (r *Registry) createEvent(ctx context.Context, meta schema.EventMeta) (*sch
 }
 
 // eventChanged publishes that the event's outcome was created, updated or
-// deleted, with its serial, and status, unless it was deleted
+// deleted, with the session it's for, and its serial, and status, unless it
+// was deleted
 func (r *Registry) eventChanged(action eventschema.EventAction, event schema.Event) {
-	var data any
+	data := schema.EventChange{Session: event.Session}
 	if action != eventschema.EventDelete {
-		data = schema.EventChange{Serial: event.Serial, Status: event.Status}
+		data.Serial, data.Status = event.Serial, event.Status
 	}
 	r.publish(action, EventTable, event.ID.String(), data)
 }

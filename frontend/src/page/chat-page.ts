@@ -28,9 +28,32 @@ export class ChatPage extends Page {
 
     heading = 'Chat';
 
-    // Whether there's a chat open, which can be deleted
+    // Whether there's a chat open, which can be deleted, and whether it's an
+    // event's, which isn't edited, and has no events of its own
     @property({ type: Boolean })
     deletable = false;
+
+    @property({ type: Boolean })
+    event = false;
+
+    // Whether the Events action is red, as an event for the chat was just
+    // created, which it is for a few seconds
+    @property({ type: Boolean })
+    alerted = false;
+
+    // How long the Events action is red, and the timer which ends it
+    static readonly alertDuration = 5000;
+    private alertTimer?: ReturnType<typeof setTimeout>;
+
+    // alert makes the Events action red, for a few seconds, as an event for
+    // the chat was just created
+    alert() {
+        this.alerted = true;
+        clearTimeout(this.alertTimer);
+        this.alertTimer = setTimeout(() => {
+            this.alerted = false;
+        }, ChatPage.alertDuration);
+    }
 
     protected renderIcon(): unknown {
         return iconLoader(Chat32);
@@ -38,13 +61,15 @@ export class ChatPage extends Page {
 
     protected renderActions(): unknown {
         return html`
-            ${this.deletable ? html`
-                <cds-button kind="secondary" size="md" @click=${() => this.dispatchEvent(new CustomEvent(ChatPage.eventEvents))}>
+            ${this.deletable && !this.event ? html`
+                <cds-button kind=${this.alerted ? 'danger' : 'secondary'} size="md" @click=${() => this.dispatchEvent(new CustomEvent(ChatPage.eventEvents))}>
                     Events ${iconLoader(Notification16, { slot: 'icon' })}
                 </cds-button>
                 <cds-button kind="secondary" size="md" @click=${() => this.dispatchEvent(new CustomEvent(ChatPage.eventEdit))}>
                     Edit ${iconLoader(Edit16, { slot: 'icon' })}
                 </cds-button>
+            ` : nothing}
+            ${this.deletable ? html`
                 <cds-button kind="secondary" size="md" @click=${() => this.dispatchEvent(new CustomEvent(ChatPage.eventDelete))}>
                     Delete ${iconLoader(TrashCan16, { slot: 'icon' })}
                 </cds-button>
