@@ -113,15 +113,21 @@ func modelFor(ctx context.Context, fn ModelsFunc, given, defaultModel string) (M
 	return models, model, nil
 }
 
+// PreferredModels is the key of the memory which has the models the person
+// chose for each capability, such as ocr, which the tools' descriptions tell
+// the model which calls them to recall, and remember
+const PreferredModels = "preferred_models"
+
 // withDefault returns the description, with the model the tool uses, unless
-// it's given another, when it has one, or that a model must be given, and
-// how to find one, with the models tool, by the capability it needs
+// it's given another, when it has one, or how the model to give is chosen:
+// the person's choice, which is remembered, or else one with the capability
+// the tool needs, which the models tool lists, which the person is asked to
+// choose from
 func withDefault(description, model, capability string) string {
-	find := " The models tool lists the models with the " + capability + " capability."
-	if model == "" {
-		return description + " Give the model to use, by its name, as there's no default." + find
+	if model != "" {
+		return description + " It uses " + model + ", unless another model is given, which the models tool lists, by the " + capability + " capability."
 	}
-	return description + " It uses " + model + ", unless another model is given." + find
+	return description + " Give the model to use, by its name. Use the one the person chose for " + capability + ": when you can remember things, recall the memory " + PreferredModels + ", which has the models they chose. When they haven't chosen one, list the models with the " + capability + " capability with the models tool, and ask them which to use, unless only one has it, and remember their choice, or that one, in " + PreferredModels + ", as a line such as \"- " + capability + ": <model>\", keeping the other lines."
 }
 
 // nameOf returns the resource's name, or its URI, when it has none

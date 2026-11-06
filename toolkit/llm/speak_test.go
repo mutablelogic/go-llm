@@ -106,7 +106,8 @@ func Test_Speak(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "llm", ns.Name())
 	require.Len(t, ns.Tools(), 4)
-	assert.Contains(t, ns.Tools()[0].Description(), "there's no default")
+	assert.Contains(t, ns.Tools()[0].Description(), "recall the memory preferred_models")
+	assert.Contains(t, ns.Tools()[0].Description(), "with the speech capability with the models tool")
 	_, err = ns.Tools()[0].Run(ctx, json.RawMessage(`{"text":"Hello"}`))
 	assert.ErrorIs(t, err, gollm.ErrBadParameter)
 	given, err := ns.Tools()[0].Run(ctx, json.RawMessage(`{"text":"Hello","model":"phonon"}`))
@@ -232,7 +233,7 @@ func Test_Models(t *testing.T) {
 	require.NoError(t, err)
 	tool := ns.Tools()[3]
 	assert.Equal(t, "models", tool.Name())
-	assert.Contains(t, ns.Tools()[1].Description(), "models with the ocr capability", "ocr says how to find a model")
+	assert.Contains(t, ns.Tools()[1].Description(), "list the models with the ocr capability with the models tool", "ocr says how to find a model")
 	run := func(input string) (map[string]any, error) {
 		result, err := tool.Run(ctx, json.RawMessage(input))
 		if err != nil {
