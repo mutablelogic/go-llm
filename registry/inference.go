@@ -76,7 +76,7 @@ func (r *Registry) Embed(ctx context.Context, model llm.Model, messages []llm.Me
 	} else if err := can(model, model.Capabilities().Embedding, "embed messages"); err != nil {
 		return nil, llm.Usage{}, err
 	}
-	if messages, err = r.withContent(ctx, uuid.Nil(), messages); err != nil {
+	if messages, err = r.withContent(ctx, uuid.Nil(), messages, false); err != nil {
 		return nil, llm.Usage{}, err
 	}
 	start := time.Now()

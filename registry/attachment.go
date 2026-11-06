@@ -3,6 +3,7 @@ package registry
 import (
 	"context"
 	"errors"
+	"io"
 	"slices"
 	"uuid"
 
@@ -31,6 +32,14 @@ type Resources interface {
 	// the session doesn't exist.
 	Link(ctx context.Context, uri string, session uuid.UUID) (resourceschema.Resource, error)
 }
+
+///////////////////////////////////////////////////////////////////////////////
+// GLOBALS
+
+// MaxAttachmentsSize is the most content of the resources which a request's
+// attachments refer to, together, which is read into memory, as it's sent
+// to a model, which is more than any provider accepts
+var MaxAttachmentsSize int64 = 64 << 20
 
 ///////////////////////////////////////////////////////////////////////////////
 // PRIVATE METHODS
@@ -76,11 +85,15 @@ func (r *Registry) attach(ctx context.Context, session uuid.UUID, message provid
 
 // withContent returns the messages, as they're sent to a model, with the
 // content of the attachments which refer to resources, in the session, or,
-// without one, on their own, read from where they're kept. An attachment
-// whose resource isn't found, such as one which was deleted, is text which
-// says so. The messages aren't changed.
-func (r *Registry) withContent(ctx context.Context, session uuid.UUID, messages []llm.Message) ([]llm.Message, error) {
+// without one, on their own, read from where they're kept, once for each
+// URI, and at most MaxAttachmentsSize of them, together. In a session's
+// history, an attachment whose resource isn't found, such as one which was
+// deleted, is text which says so, and otherwise it's an error, so it isn't
+// embedded, or asked about, as if it were there. The messages aren't
+// changed.
+func (r *Registry) withContent(ctx context.Context, session uuid.UUID, messages []llm.Message, history bool) ([]llm.Message, error) {
 	var result []llm.Message
+	reader := r.newContentReader(session)
 	for i, m := range messages {
 		message, ok := schemaMessage(m)
 		if !ok || !refersToResources(*message) {
@@ -92,7 +105,7 @@ func (r *Registry) withContent(ctx context.Context, session uuid.UUID, messages 
 		if result == nil {
 			result = slices.Clone(messages[:i])
 		}
-		read, err := r.readAttachments(ctx, session, *message)
+		read, err := reader.attachments(ctx, *message, history)
 		if err != nil {
 			return nil, err
 		}
@@ -104,43 +117,19 @@ func (r *Registry) withContent(ctx context.Context, session uuid.UUID, messages 
 	return result, nil
 }
 
-// readAttachments returns the message, with the content of its attachments
-// which refer to resources, read from where they're kept
-func (r *Registry) readAttachments(ctx context.Context, session uuid.UUID, message providerschema.Message) (providerschema.Message, error) {
-	message.Content = slices.Clone(message.Content)
-	for i, block := range message.Content {
-		if !isResourceURL(block.Resource) || len(block.Resource.Data) > 0 {
-			continue
-		}
-		data, contentType, err := r.readResource(ctx, block.Resource.URL.String(), session)
-		if errors.Is(err, llm.ErrNotFound) || errors.Is(err, llm.ErrNotImplemented) {
-			message.Content[i] = providerschema.ContentBlock{Text: types.Ptr("(The attachment " + block.Resource.URL.String() + " isn't available.)")}
-			continue
-		} else if err != nil {
-			return providerschema.Message{}, err
-		}
-		attachment := *block.Resource
-		attachment.Data = data
-		if attachment.ContentType == "" {
-			attachment.ContentType = contentType
-		}
-		message.Content[i].Resource = &attachment
-	}
-	return message, nil
-}
-
 // withResource returns the resource, as it is, unless it refers to a
 // resource, by its URI, without its data, when it's that resource, on its
-// own, whose content is read from where it's kept, as the audio, documents
-// and images which are transcribed, recognized, or embedded, are. Returns
-// ErrNotImplemented when the registry has no resources, and ErrNotFound when
-// there's none with the URI.
+// own, whose content is read from where it's kept, up to
+// MaxAttachmentsSize, as the audio, documents and images which are
+// transcribed, recognized, or embedded, are. Returns ErrNotImplemented when
+// the registry has no resources, ErrNotFound when there's none with the
+// URI, and ErrBadParameter when it's larger than MaxAttachmentsSize.
 func (r *Registry) withResource(ctx context.Context, resource llm.Resource) (llm.Resource, error) {
 	attachment, ok := resource.(*providerschema.Resource)
 	if !ok || !isResourceURL(attachment) || len(attachment.Data) > 0 {
 		return resource, nil
 	}
-	data, contentType, err := r.readResource(ctx, attachment.URL.String(), uuid.Nil())
+	data, contentType, err := r.newContentReader(uuid.Nil()).read(ctx, attachment.URL.String())
 	if err != nil {
 		return nil, err
 	}
@@ -169,17 +158,87 @@ func (r *Registry) resource(ctx context.Context, uri string, session uuid.UUID) 
 	return resource, err
 }
 
-// readResource returns the content, and the type, of the resource with the
-// URI, in the session, or on its own, without one
-func (r *Registry) readResource(ctx context.Context, uri string, session uuid.UUID) ([]byte, string, error) {
-	resource, err := r.resource(ctx, uri, session)
+///////////////////////////////////////////////////////////////////////////////
+// CONTENT READER
+
+// contentReader reads the content of the resources which a request's
+// attachments refer to, in a session, or on their own, once for each URI,
+// and at most MaxAttachmentsSize of them, together, so a request which
+// refers to large resources, or to one many times, doesn't hold more than
+// that
+type contentReader struct {
+	registry *Registry
+	session  uuid.UUID
+	cache    map[string]readContent
+	left     int64
+}
+
+// readContent is the content of a resource, and its type
+type readContent struct {
+	data        []byte
+	contentType string
+}
+
+// newContentReader returns a reader of the content of resources, in the
+// session, or on their own, without one
+func (r *Registry) newContentReader(session uuid.UUID) *contentReader {
+	return &contentReader{registry: r, session: session, cache: make(map[string]readContent), left: MaxAttachmentsSize}
+}
+
+// attachments returns the message, with the content of its attachments
+// which refer to resources. In a session's history, one whose resource
+// isn't found is text which says so, and otherwise it's an error.
+func (c *contentReader) attachments(ctx context.Context, message providerschema.Message, history bool) (providerschema.Message, error) {
+	message.Content = slices.Clone(message.Content)
+	for i, block := range message.Content {
+		if !isResourceURL(block.Resource) || len(block.Resource.Data) > 0 {
+			continue
+		}
+		uri := block.Resource.URL.String()
+		data, contentType, err := c.read(ctx, uri)
+		if history && (errors.Is(err, llm.ErrNotFound) || errors.Is(err, llm.ErrNotImplemented)) {
+			message.Content[i] = providerschema.ContentBlock{Text: types.Ptr("(The attachment " + uri + " isn't available.)")}
+			continue
+		} else if err != nil {
+			return providerschema.Message{}, err
+		}
+		attachment := *block.Resource
+		attachment.Data = data
+		if attachment.ContentType == "" {
+			attachment.ContentType = contentType
+		}
+		message.Content[i].Resource = &attachment
+	}
+	return message, nil
+}
+
+// read returns the content, and the type, of the resource with the URI,
+// which is read once, and shared by each attachment which refers to it.
+// Returns ErrBadParameter when it, with the content which was read before,
+// is larger than MaxAttachmentsSize.
+func (c *contentReader) read(ctx context.Context, uri string) ([]byte, string, error) {
+	if content, ok := c.cache[uri]; ok {
+		return content.data, content.contentType, nil
+	}
+	resource, err := c.registry.resource(ctx, uri, c.session)
 	if err != nil {
 		return nil, "", err
 	}
-	data, err := llm.ReadAll(ctx, resource)
+	read, err := resource.Read(ctx)
 	if err != nil {
 		return nil, "", err
 	}
+	var data []byte
+	if err := read(ctx, func(r io.Reader) error {
+		data, err = io.ReadAll(io.LimitReader(r, c.left+1))
+		return err
+	}); err != nil {
+		return nil, "", err
+	} else if int64(len(data)) > c.left {
+		return nil, "", llm.ErrBadParameter.Withf("the attachments are larger than %d bytes, together", MaxAttachmentsSize)
+	}
+	c.left -= int64(len(data))
+	c.cache[uri] = readContent{data: data, contentType: resource.Type()}
 	return data, resource.Type(), nil
 }
 

@@ -145,6 +145,41 @@ func Test_Attachments(t *testing.T) {
 		assert.ErrorIs(t, err, llm.ErrBadParameter, "only a resource's URI")
 	})
 
+	t.Run("Embed", func(t *testing.T) {
+		// A resource which isn't found isn't embedded, as if it were text
+		// which says so, but is an error
+		embedder := newCapable("embedder", "embed")
+		r, err := registry.New(registry.WithResources(manager))
+		require.NoError(t, err)
+		require.NoError(t, r.Add("", embedder))
+		model, err := r.GetModel(ctx, "embed")
+		require.NoError(t, err)
+		_, _, err = r.Embed(ctx, model, []llm.Message{attached(t, "", resourceschema.URI(strings.Repeat("0", 64)))})
+		assert.ErrorIs(t, err, llm.ErrNotFound)
+	})
+
+	t.Run("Size", func(t *testing.T) {
+		// The resources a request's attachments refer to are read once, and
+		// at most MaxAttachmentsSize of them, together
+		limit := registry.MaxAttachmentsSize
+		registry.MaxAttachmentsSize = 20
+		t.Cleanup(func() { registry.MaxAttachmentsSize = limit })
+		ten, _, err := manager.Create(ctx, resourceschema.ResourceMeta{Type: "image/png"}, strings.NewReader("0123456789"))
+		require.NoError(t, err)
+		other, _, err := manager.Create(ctx, resourceschema.ResourceMeta{Type: "image/png"}, strings.NewReader("abcdefghijk"))
+		require.NoError(t, err)
+		p.replies = append([]*providerschema.Message{text("Two")}, p.replies...)
+		p.asked = nil
+		message := attached(t, "What are these?", ten.URI())
+		message.Content = append(message.Content, message.Content[1], message.Content[1])
+		_, err = r.Ask(ctx, schema.AskRequest{GeneratorMeta: schema.GeneratorMeta{Model: types.Ptr("model")}, Messages: []providerschema.MessageMeta{message.MessageMeta}}, nil)
+		require.NoError(t, err, "the same resource three times is read once")
+		assert.Len(t, attachments(t, p.asked[0].messages[0]), 3)
+		message.Content = append(message.Content, attached(t, "", other.URI()).Content[1])
+		_, err = r.Ask(ctx, schema.AskRequest{GeneratorMeta: schema.GeneratorMeta{Model: types.Ptr("model")}, Messages: []providerschema.MessageMeta{message.MessageMeta}}, nil)
+		assert.ErrorIs(t, err, llm.ErrBadParameter, "two resources are larger than the most, together")
+	})
+
 	t.Run("Without", func(t *testing.T) {
 		// A registry without resources can't read them
 		bare, err := registry.New()
