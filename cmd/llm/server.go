@@ -24,6 +24,8 @@ import (
 	registry "github.com/mutablelogic/go-llm/registry"
 	registrycmd "github.com/mutablelogic/go-llm/registry/cmd"
 	registryschema "github.com/mutablelogic/go-llm/registry/schema"
+	resource "github.com/mutablelogic/go-llm/resource"
+	resourcecmd "github.com/mutablelogic/go-llm/resource/cmd"
 	toolkit "github.com/mutablelogic/go-llm/toolkit"
 	toolkitcmd "github.com/mutablelogic/go-llm/toolkit/cmd"
 	server "github.com/mutablelogic/go-server"
@@ -43,6 +45,7 @@ type CLI struct {
 	Broadcaster broadcastercmd.ClientCommands `embed:""`
 	Memory      memorycmd.ClientCommands      `embed:""`
 	Heartbeat   heartbeatcmd.ClientCommands   `embed:""`
+	Resource    resourcecmd.ClientCommands    `embed:""`
 }
 
 type ServerCommands struct {
@@ -56,6 +59,7 @@ type RunServer struct {
 	Broadcaster broadcastercmd.Flags `embed:"" prefix:"llm."`
 	Memory      memorycmd.Flags      `embed:"" prefix:"memory."`
 	Heartbeat   heartbeatcmd.Flags   `embed:"" prefix:"heartbeat."`
+	Resource    resourcecmd.Flags    `embed:"" prefix:"resource."`
 	Frontend    frontendcmd.Flags    `embed:""`
 	servercmd.RunServer
 }
@@ -93,6 +97,16 @@ func (runner *RunServer) Run(ctx server.Cmd) error {
 	}
 	heartbeats, err := newServerHeartbeatStore(ctx)
 	if err != nil {
+		return err
+	}
+	resources, err := newServerResourceStore(ctx)
+	if err != nil {
+		return err
+	}
+
+	// A session exists, when the session store has it
+	sessionExists := func(ctx context.Context, id uuid.UUID) error {
+		_, err := sessions.Get(ctx, id)
 		return err
 	}
 
@@ -139,13 +153,13 @@ func (runner *RunServer) Run(ctx server.Cmd) error {
 				ctx.Logger().InfoContext(runCtx, "heartbeat run", "heartbeat", fire.Heartbeat, "title", fire.Title, "session", response.Session.ID, "model", types.Value(response.Session.Model), "reply", string(response.Run.Reply))
 				return nil
 			}
-			return runner.Heartbeat.WithHeartbeats(ctx, &runner.RunServer, heartbeats, func(h *heartbeat.Heartbeats) error {
-				return runner.withToolkit(ctx, b, mem, h, &events, build, store, sessions, agents, outcomes)
-			}, heartbeat.WithBroadcaster(b), heartbeat.WithZone(zone), heartbeat.WithRun(run), heartbeat.WithSessions(func(ctx context.Context, id uuid.UUID) error {
-				// A heartbeat is for a session which exists
-				_, err := sessions.Get(ctx, id)
-				return err
-			}))
+			// The resources, which are in sessions which exist, or on their
+			// own, and the heartbeats, which are for sessions which exist
+			return runner.Resource.WithResources(ctx, &runner.RunServer, resources, func(res *resource.Manager) error {
+				return runner.Heartbeat.WithHeartbeats(ctx, &runner.RunServer, heartbeats, func(h *heartbeat.Heartbeats) error {
+					return runner.withToolkit(ctx, b, mem, h, res, &events, build, store, sessions, agents, outcomes)
+				}, heartbeat.WithBroadcaster(b), heartbeat.WithZone(zone), heartbeat.WithRun(run), heartbeat.WithSessions(sessionExists))
+			}, resource.WithBroadcaster(b), resource.WithSessions(sessionExists))
 		}, memory.WithBroadcaster(b))
 	})
 }
@@ -154,7 +168,7 @@ func (runner *RunServer) Run(ctx server.Cmd) error {
 // the heartbeats, as well as the tools whose credentials are set, and a
 // registry, with the stores, which runs the heartbeats which fire, once
 // it's set to, and fires them
-func (runner *RunServer) withToolkit(ctx server.Cmd, b *broadcaster.Broadcaster, mem *memory.Memory, h *heartbeat.Heartbeats, events *atomic.Pointer[registry.Registry], build registry.EventBuilder, store registry.ProviderStore, sessions *sessionStore, agents *agentStore, outcomes *eventStore) error {
+func (runner *RunServer) withToolkit(ctx server.Cmd, b *broadcaster.Broadcaster, mem *memory.Memory, h *heartbeat.Heartbeats, res *resource.Manager, events *atomic.Pointer[registry.Registry], build registry.EventBuilder, store registry.ProviderStore, sessions *sessionStore, agents *agentStore, outcomes *eventStore) error {
 	return runner.Toolkit.WithToolkit(ctx, &runner.RunServer, func(tools *toolkit.Toolkit) error {
 		// The memory, whose system prompt has the time, and what's
 		// remembered, and whose tools remember it
@@ -196,6 +210,11 @@ func (runner *RunServer) withToolkit(ctx server.Cmd, b *broadcaster.Broadcaster,
 					return nil
 				}
 				return h.Run(runCtx, ctx.Logger())
+			})
+			group.Go(func() error {
+				// The resources of sessions which are deleted are deleted,
+				// and those which aren't needed are cleaned
+				return res.Run(runCtx, ctx.Logger())
 			})
 			group.Go(func() error {
 				return runner.RunServer.Run(ctx.WithContext(runCtx))
@@ -292,6 +311,16 @@ func newServerEventStore(ctx server.Cmd) (*eventStore, error) {
 		return nil, err
 	}
 	return newEventStore(dir)
+}
+
+// newServerResourceStore returns the store of the resources, in a directory
+// of their own, resource, in the directory of the command's defaults
+func newServerResourceStore(ctx server.Cmd) (*resourceStore, error) {
+	dir, err := serverDir(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return newResourceStore(filepath.Join(dir, "resource"))
 }
 
 // newServerHeartbeatStore returns the store of the heartbeats, in files in
