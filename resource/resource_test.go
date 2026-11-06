@@ -124,16 +124,19 @@ func Test_List(t *testing.T) {
 	_, _, err := r.Create(ctx, schema.ResourceMeta{Session: &session}, strings.NewReader("four"))
 	require.NoError(t, err)
 
-	// The resources on their own, the most recently used first, a page at a
-	// time, or those of a session
+	// Every resource, in a session, or on its own, the most recently used
+	// first, a page at a time, or those of a session
 	list, err := r.List(ctx, schema.ResourceListRequest{})
 	require.NoError(t, err)
-	assert.Equal(t, uint(3), list.Count)
-	require.Len(t, list.Body, 3)
-	assert.Equal(t, int64(5), list.Body[0].Size, "three is the most recent")
-	list, err = r.List(ctx, schema.ResourceListRequest{Offset: 1, Limit: types.Ptr(uint(1))})
+	assert.Equal(t, uint(4), list.Count)
+	require.Len(t, list.Body, 4)
+	assert.Equal(t, int64(4), list.Body[0].Size, "four, in the session, is the most recent")
+	assert.Equal(t, session, *list.Body[0].Session)
+	assert.Equal(t, int64(5), list.Body[1].Size)
+	assert.Nil(t, list.Body[1].Session, "three is on its own")
+	list, err = r.List(ctx, schema.ResourceListRequest{Offset: 2, Limit: types.Ptr(uint(1))})
 	require.NoError(t, err)
-	assert.Equal(t, uint(3), list.Count)
+	assert.Equal(t, uint(4), list.Count)
 	require.Len(t, list.Body, 1)
 	assert.Equal(t, int64(3), list.Body[0].Size)
 	list, err = r.List(ctx, schema.ResourceListRequest{Session: session.String()})

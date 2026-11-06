@@ -67,7 +67,7 @@ type ResourceCreateRequest struct {
 // ResourceListRequest is a request to list the resources of a session, or
 // those on their own, from the offset, and at most the limit of them
 type ResourceListRequest struct {
-	Session string `json:"session,omitempty" format:"uuid" help:"Returns only the resources in this session, or those on their own, when it's omitted" optional:""`
+	Session string `json:"session,omitempty" format:"uuid" help:"Returns only the resources in this session, or every resource, in a session, or on its own, when it's omitted" optional:""`
 	Offset  uint   `json:"offset,omitempty" help:"Resources to skip" example:"0" optional:""`
 	Limit   *uint  `json:"limit,omitempty" help:"Most resources to return" example:"10" optional:""`
 }

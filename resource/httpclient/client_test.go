@@ -59,11 +59,11 @@ func Test_Client(t *testing.T) {
 	_, err = c.CreateResource(ctx, schema.ResourceCreateRequest{}, "", nil)
 	assert.ErrorIs(t, err, llm.ErrBadParameter)
 
-	// Listed, on their own, or in the session
+	// Listed, all of them, or those in the session
 	list, err := c.ListResources(ctx, schema.ResourceListRequest{})
 	require.NoError(t, err)
-	require.Equal(t, uint(1), list.Count)
-	assert.Equal(t, notes.Hash, list.Body[0].Hash)
+	require.Equal(t, uint(2), list.Count)
+	assert.ElementsMatch(t, []string{notes.Hash, inSession.Hash}, []string{list.Body[0].Hash, list.Body[1].Hash})
 	list, err = c.ListResources(ctx, schema.ResourceListRequest{Session: session.String()})
 	require.NoError(t, err)
 	require.Equal(t, uint(1), list.Count)
