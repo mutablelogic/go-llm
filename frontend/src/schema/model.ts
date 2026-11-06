@@ -10,6 +10,9 @@ export interface ModelCapabilities {
     transcription?: boolean;
     translation?: boolean;
     embedding?: boolean;
+    // Whether it takes a temperature, which is a setting, rather than what
+    // it does, so it isn't one of the capabilityNames
+    temperature?: boolean;
 }
 
 // Model is a model of a provider: its name, its provider's name, and its

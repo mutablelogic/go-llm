@@ -242,4 +242,5 @@ const (
 	OpenAI     = "openai"
 	GoWhisper  = "gowhisper"
 	ElevenLabs = "elevenlabs"
+	Anthropic  = "anthropic"
 )

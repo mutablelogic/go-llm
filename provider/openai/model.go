@@ -95,7 +95,10 @@ var modelCapabilities = []struct {
 	{serverOpenAI, regexp.MustCompile(`^gpt-\d+(\.\d+)?-search-api\b`), llm.ModelCap{Completion: yes, Tools: no, Vision: yes, Embedding: no}},
 	{serverOpenAI, regexp.MustCompile(`^chat-latest$`), llm.ModelCap{Completion: yes, Tools: yes, Vision: yes, Embedding: no}},
 	{serverOpenAI, regexp.MustCompile(`^gpt-6(\.\d+)?-astra\b|^gpt-6\.1-sol\b`), llm.ModelCap{Completion: yes, Tools: no, Thinking: yes, Vision: yes, Embedding: no}},
-	{serverOpenAI, regexp.MustCompile(`^gpt-[56](\.\d+)?(-(mini|nano|luna|sol|terra))?(-\d{4}-\d{2}-\d{2})?$|^o3(-\d{4}-\d{2}-\d{2})?$`), llm.ModelCap{Completion: yes, Tools: yes, Thinking: yes, Vision: yes, Embedding: no}},
+	{serverOpenAI, regexp.MustCompile(`^gpt-[56](\.\d+)?(-(mini|nano|luna|sol|terra))?(-\d{4}-\d{2}-\d{2})?$`), llm.ModelCap{Completion: yes, Tools: yes, Thinking: yes, Vision: yes, Embedding: no}},
+
+	// OpenAI's o-series, which reasons, and doesn't take a temperature
+	{serverOpenAI, regexp.MustCompile(`^o3(-\d{4}-\d{2}-\d{2})?$`), llm.ModelCap{Completion: yes, Tools: yes, Thinking: yes, Vision: yes, Embedding: no, Temperature: no}},
 	{serverOpenAI, regexp.MustCompile(`^gpt-4(\.1|o)(-(mini|nano))?(-\d{4}-\d{2}-\d{2})?$`), llm.ModelCap{Completion: yes, Tools: yes, Thinking: no, Vision: yes, Embedding: no}},
 }
 
@@ -235,7 +238,13 @@ func (m *Model) reportedCapabilities() llm.ModelCap {
 	if !exists || json.Unmarshal(raw, &capabilities) != nil {
 		return llm.ModelCap{}
 	}
+	// A model which replies takes a temperature
+	var temperature *bool
+	if capabilities.Completion != nil {
+		temperature = types.Ptr(*capabilities.Completion)
+	}
 	return llm.ModelCap{
+		Temperature:   temperature,
 		Completion:    capabilities.Completion,
 		Tools:         capabilities.Tools,
 		Thinking:      capabilities.Reasoning,
@@ -366,6 +375,7 @@ func merge(c, other llm.ModelCap) llm.ModelCap {
 		{&c.Transcription, &other.Transcription},
 		{&c.Translation, &other.Translation},
 		{&c.Embedding, &other.Embedding},
+		{&c.Temperature, &other.Temperature},
 	} {
 		if *field.from != nil {
 			*field.to = types.Ptr(**field.from)

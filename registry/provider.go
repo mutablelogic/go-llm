@@ -10,6 +10,7 @@ import (
 	client "github.com/mutablelogic/go-client"
 	otel "github.com/mutablelogic/go-client/pkg/otel"
 	llm "github.com/mutablelogic/go-llm"
+	anthropic "github.com/mutablelogic/go-llm/provider/anthropic"
 	elevenlabs "github.com/mutablelogic/go-llm/provider/elevenlabs"
 	eliza "github.com/mutablelogic/go-llm/provider/eliza"
 	gowhisper "github.com/mutablelogic/go-llm/provider/gowhisper"
@@ -289,6 +290,11 @@ func (r *Registry) newProvider(ctx context.Context, req schema.Provider) (string
 			clientOpts = append(clientOpts, client.OptReqToken(client.Token{Scheme: client.Bearer, Value: apiKey}))
 		}
 		provider, err = ollama.New(req.URL, clientOpts...)
+	case llm.Anthropic:
+		if apiKey == "" {
+			return "", nil, nil, llm.ErrBadParameter.With("anthropic needs an API key")
+		}
+		provider, err = anthropic.New(req.URL, apiKey, clientOpts...)
 	case llm.ElevenLabs:
 		if apiKey == "" {
 			return "", nil, nil, llm.ErrBadParameter.With("elevenlabs needs an API key")

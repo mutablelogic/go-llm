@@ -101,9 +101,9 @@ func TestCapabilities(t *testing.T) {
 	t.Run("Reported", func(t *testing.T) {
 		// A model has the capabilities the server returns, as Mistral does
 		m := model(t, MistralEndpoint, "mistral-ocr-latest", `{"completion_chat":false,"function_calling":true,"reasoning":false,"vision":true,"ocr":true,"audio_transcription":false,"moderation":false}`)
-		assert.Equal(t, llm.ModelCap{Completion: types.Ptr(false), Tools: types.Ptr(true), Thinking: types.Ptr(false), Vision: types.Ptr(true), OCR: types.Ptr(true), Transcription: types.Ptr(false)}, m.Capabilities())
+		assert.Equal(t, llm.ModelCap{Completion: types.Ptr(false), Tools: types.Ptr(true), Thinking: types.Ptr(false), Vision: types.Ptr(true), OCR: types.Ptr(true), Transcription: types.Ptr(false), Temperature: types.Ptr(false)}, m.Capabilities())
 		m = model(t, MistralEndpoint, "mistral-small-latest", `{"completion_chat":true,"reasoning":true}`)
-		assert.Equal(t, llm.ModelCap{Completion: types.Ptr(true), Thinking: types.Ptr(true)}, m.Capabilities())
+		assert.Equal(t, llm.ModelCap{Completion: types.Ptr(true), Thinking: types.Ptr(true), Temperature: types.Ptr(true)}, m.Capabilities(), "a model which replies takes a temperature")
 
 		// Or none, when it returns none, or they aren't capabilities
 		assert.Equal(t, llm.ModelCap{}, model(t, "http://localhost:8000", "gpt-4o", "").Capabilities())
@@ -115,7 +115,7 @@ func TestCapabilities(t *testing.T) {
 		// models with the same names on another server don't
 		for _, id := range []string{"mistral-embed", "mistral-embed-2312", "codestral-embed-2505"} {
 			m := model(t, MistralEndpoint, id, `{"completion_chat":false,"reasoning":false}`)
-			assert.Equal(t, llm.ModelCap{Completion: types.Ptr(false), Thinking: types.Ptr(false), Embedding: types.Ptr(true)}, m.Capabilities(), id)
+			assert.Equal(t, llm.ModelCap{Completion: types.Ptr(false), Thinking: types.Ptr(false), Embedding: types.Ptr(true), Temperature: types.Ptr(false)}, m.Capabilities(), id)
 		}
 		assert.Equal(t, llm.ModelCap{}, model(t, "http://localhost:8000", "mistral-embed", "").Capabilities())
 	})

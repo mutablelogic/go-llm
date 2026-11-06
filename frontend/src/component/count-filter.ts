@@ -138,10 +138,13 @@ export class CountFilter extends LitElement {
 
     private renderTile(tile: CountTile) {
         const pressed = tile.value === this.selected;
+
+        // The badge of the tile which is chosen is blue, as its border is,
+        // as gray is the tile's colour then
         return html`
             <button type="button" aria-pressed=${pressed ? 'true' : 'false'} title=${tile.error ?? tile.title ?? nothing}
                 @click=${() => !pressed && this.dispatchEvent(new CustomEvent(CountFilter.eventSelect, { detail: tile.value }))}>
-                <span class="label"><span class="name">${tile.label}</span>${tile.badge ? html`<cds-tag size="sm" type="cool-gray">${tile.badge}</cds-tag>` : nothing}</span>
+                <span class="label"><span class="name">${tile.label}</span>${tile.badge ? html`<cds-tag size="sm" type=${pressed ? 'blue' : 'cool-gray'}>${tile.badge}</cds-tag>` : nothing}</span>
                 ${tile.error
                     ? html`<span class="count error">Unreachable</span>`
                     : html`<span class="count ${tile.count ? '' : 'zero'}">${tile.count?.toLocaleString() ?? '–'}</span>`}

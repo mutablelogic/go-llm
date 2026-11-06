@@ -36,6 +36,13 @@ type ModelCap struct {
 	Transcription *bool `json:"transcription,omitempty" help:"Transcribes speech"`
 	Translation   *bool `json:"translation,omitempty" help:"Translates speech into English"`
 	Embedding     *bool `json:"embedding,omitempty" help:"Embeds text as vectors"`
+
+	// Temperature is whether the model takes the sampling options, which are
+	// the temperature, top_p and top_k, which the registry leaves out, for a
+	// model which doesn't, rather than fail, as a session keeps its options
+	// as its model changes. It's a setting, rather than what the model does,
+	// so it isn't in String.
+	Temperature *bool `json:"temperature,omitempty" help:"Takes a sampling temperature, and the other sampling options"`
 }
 
 ////////////////////////////////////////////////////////////////////////////////

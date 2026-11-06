@@ -38,6 +38,7 @@ type scripted struct {
 	usage   *llm.Usage    // The usage of each reply, which is 10 input and 5 output tokens when nil
 	input   *uint         // The input token limit of its models, or nil when it isn't known
 	delay   time.Duration // How long it waits before it streams a reply, as a model would
+	caps    llm.ModelCap  // The capabilities of its models
 }
 
 // asked is what a scripted provider was asked with
@@ -59,13 +60,13 @@ func (s *scripted) GetModel(ctx context.Context, name string) (llm.Model, error)
 	if _, err := s.provider.GetModel(ctx, name); err != nil {
 		return nil, err
 	}
-	return &model{name: name, provider: s, input: s.input}, nil
+	return &model{name: name, provider: s, input: s.input, caps: s.caps}, nil
 }
 
 func (s *scripted) ListModels(context.Context) ([]llm.Model, error) {
 	var result []llm.Model
 	for _, name := range s.models {
-		result = append(result, &model{name: name, provider: s, input: s.input})
+		result = append(result, &model{name: name, provider: s, input: s.input, caps: s.caps})
 	}
 	return result, nil
 }
@@ -454,4 +455,35 @@ func Test_Ask(t *testing.T) {
 func withoutDuration(usage llm.Usage) llm.Usage {
 	usage.Duration = 0
 	return usage
+}
+
+func Test_WithoutSampling(t *testing.T) {
+	ctx := context.Background()
+
+	// The sampling options aren't sent to a model which doesn't take a
+	// temperature, such as Claude's, rather than failing, and the others are
+	p := newScripted(text("Hello"))
+	p.caps = llm.ModelCap{Temperature: types.Ptr(false)}
+	r, err := registry.New()
+	require.NoError(t, err)
+	require.NoError(t, r.Add("", p))
+	model, err := r.GetModel(ctx, "model")
+	require.NoError(t, err)
+	_, _, err = r.WithoutSession(ctx, model, []llm.Message{user(t, "Hi")}, nil, nil,
+		llm.WithOpt(llm.TemperatureKey, 0.5), llm.WithOpt(llm.TopPKey, 0.9), llm.WithOpt(llm.TopKKey, uint(5)), llm.WithOpt(llm.MaxTokensKey, uint(100)))
+	require.NoError(t, err)
+	require.Len(t, p.asked, 1)
+	assert.Equal(t, []string{llm.MaxTokensKey}, p.asked[0].opts.Keys())
+
+	// But are, to a model which takes one, or isn't known not to
+	p = newScripted(text("Hello"))
+	r, err = registry.New()
+	require.NoError(t, err)
+	require.NoError(t, r.Add("", p))
+	model, err = r.GetModel(ctx, "model")
+	require.NoError(t, err)
+	_, _, err = r.WithoutSession(ctx, model, []llm.Message{user(t, "Hi")}, nil, nil, llm.WithOpt(llm.TemperatureKey, 0.5))
+	require.NoError(t, err)
+	require.Len(t, p.asked, 1)
+	assert.True(t, p.asked[0].opts.Has(llm.TemperatureKey))
 }
