@@ -16,10 +16,12 @@ import (
 ///////////////////////////////////////////////////////////////////////////////
 // TYPES
 
-// Flags are the registry's flags for the server, which has none yet:
-// providers are added with the registry's API, or in code, and kept in a
-// store, when there's one
-type Flags struct{}
+// Flags are the registry's flags for the server: the most events which run
+// at once. Providers are added with the registry's API, or in code, and
+// kept in a store, when there's one.
+type Flags struct {
+	MaxEvents uint `name:"max-events" help:"The most events, such as heartbeats which fire, and events which are triggered, which run at once." default:"2" env:"LLM_MAX_EVENTS"`
+}
 
 ///////////////////////////////////////////////////////////////////////////////
 // PUBLIC METHODS
@@ -46,6 +48,9 @@ func (flags Flags) WithRegistry(ctx server.Cmd, srv *servercmd.RunServer, fn fun
 		registry.WithTracer(ctx.Tracer()),
 		registry.WithClientOpts(clientOpts...),
 	}, opts...)
+	if flags.MaxEvents > 0 {
+		opts = append(opts, registry.WithMaxEvents(flags.MaxEvents))
+	}
 	r, err := registry.New(opts...)
 	if err != nil {
 		return err

@@ -2,6 +2,7 @@ package registry
 
 import (
 	"context"
+	"errors"
 	"strings"
 	"time"
 	"uuid"
@@ -54,11 +55,6 @@ type EventStore interface {
 // events, whose rows are their identifiers, and whose data, unless they
 // were deleted, is an EventChange
 const EventTable = "event"
-
-// staleEvent is how long an event's outcome is scheduled before it's stale,
-// as its server stopped before it ran, so an event of its source is
-// scheduled again
-const staleEvent = 30 * time.Minute
 
 // errNoEventStore is returned when the registry has no event store
 var errNoEventStore = llm.ErrServiceUnavailable.With("the registry has no event store")
@@ -230,11 +226,11 @@ func (r *Registry) TriggerEvent(ctx context.Context, req schema.EventRequest) (_
 	id := req.RunID()
 
 	// It isn't scheduled, when an event of its source is, for the session,
-	// and is otherwise scheduled, as its outcome, under the lock, so two
-	// events at once aren't both scheduled
+	// which this registry runs, and is otherwise scheduled, as its outcome,
+	// under the lock, so two events at once aren't both scheduled
 	r.triggerMu.Lock()
 	if req.Source != "" {
-		if existing, err := r.scheduledEvent(ctx, req.Session, id); err != nil {
+		if existing, err := r.scheduledEvent(ctx, id); err != nil {
 			r.triggerMu.Unlock()
 			return nil, err
 		} else if existing != nil {
@@ -251,6 +247,9 @@ func (r *Registry) TriggerEvent(ctx context.Context, req schema.EventRequest) (_
 		Scheduled: req.Scheduled,
 		Fired:     req.Fired,
 	})
+	if err == nil && req.Source != "" {
+		r.triggered[id] = outcome.ID
+	}
 	r.triggerMu.Unlock()
 	if err != nil {
 		return nil, err
@@ -258,8 +257,15 @@ func (r *Registry) TriggerEvent(ctx context.Context, req schema.EventRequest) (_
 
 	// It runs in the background, without the request, which ends once it's
 	// returned, and its outcome is updated once it's run, or failed, when it
-	// couldn't be
+	// couldn't be, when it's no longer scheduled
 	go func(ctx context.Context) {
+		defer func() {
+			r.triggerMu.Lock()
+			if r.triggered[id] == outcome.ID {
+				delete(r.triggered, id)
+			}
+			r.triggerMu.Unlock()
+		}()
 		if _, err := r.runEvent(ctx, id, run, nil, outcome.ID); err != nil {
 			_, _ = r.updateEvent(ctx, outcome.ID, func(event *schema.Event) {
 				event.Status, event.Message = schema.EventFailed, err.Error()
@@ -270,20 +276,24 @@ func (r *Registry) TriggerEvent(ctx context.Context, req schema.EventRequest) (_
 }
 
 // scheduledEvent returns the outcome of the event which runs in the session
-// with the identifier, for the session, which is scheduled, and not so long
-// ago that it's stale, as its server stopped before it ran, or nil, when
-// there's none
-func (r *Registry) scheduledEvent(ctx context.Context, session, run uuid.UUID) (*schema.Event, error) {
-	list, err := r.eventStore.List(ctx, schema.EventListRequest{Session: session.String(), Status: schema.EventScheduled})
-	if err != nil {
+// with the identifier, which this registry has scheduled, and hasn't run,
+// or nil, when there's none, such as when the outcome is scheduled, but its
+// server stopped before it ran. The caller holds the lock.
+func (r *Registry) scheduledEvent(ctx context.Context, run uuid.UUID) (*schema.Event, error) {
+	id, ok := r.triggered[run]
+	if !ok {
+		return nil, nil
+	}
+	event, err := r.eventStore.Get(ctx, id)
+	if errors.Is(err, llm.ErrNotFound) {
+		delete(r.triggered, run)
+		return nil, nil
+	} else if err != nil {
 		return nil, err
+	} else if event.Status != schema.EventScheduled {
+		return nil, nil
 	}
-	for _, event := range list.Body {
-		if event.Run == run && time.Since(event.Created) < staleEvent {
-			return &event, nil
-		}
-	}
-	return nil, nil
+	return &event, nil
 }
 
 // updateEvent changes the outcome of the event with the identifier, as it

@@ -25,6 +25,10 @@ import (
 // given
 const DefaultEventAgent = "event"
 
+// DefaultMaxEvents is the most events which run at once, unless
+// WithMaxEvents sets it
+const DefaultMaxEvents = 2
+
 ///////////////////////////////////////////////////////////////////////////////
 // PUBLIC METHODS
 
@@ -63,6 +67,15 @@ func (r *Registry) runEvent(ctx context.Context, id uuid.UUID, req schema.RunEve
 		attribute.String("arg.req", types.Stringify(req)),
 	)
 	defer func() { endSpan(err) }()
+
+	// It runs once there's a slot for it, as at most so many events run at
+	// once, or not, when the context is cancelled as it waits
+	select {
+	case r.eventSlots <- struct{}{}:
+		defer func() { <-r.eventSlots }()
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	}
 
 	session, parent, err := r.eventSession(ctx, id, req)
 	if err != nil {
