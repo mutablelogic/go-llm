@@ -1,6 +1,6 @@
 // The models' API
 
-import { request } from './client';
+import { request, requestStream } from './client';
 import type { Model, ModelList } from '../schema/model';
 
 // listModels returns the models, of the provider, or every one, which the
@@ -24,4 +24,39 @@ export function deleteModel(name: string): Promise<Model> {
 // memory, keeping it stored, so it's loaded again when it's next used
 export function unloadModel(name: string): Promise<Model> {
     return request<Model>('POST', '/llm/model/' + encodeURIComponent(name) + '/unload');
+}
+
+// LoadProgress is how a model's download is getting on: its status, and how
+// complete it is, as a percentage, when it's known
+export interface LoadProgress {
+    status?: string;
+    percent?: number;
+}
+
+// loadModel loads the model with the provider, which downloads it when it
+// isn't stored, calling the function with its progress, as it's streamed,
+// and returns the model, once it's loaded. It throws the error of an error
+// event.
+export async function loadModel(provider: string, name: string, onProgress: (progress: LoadProgress) => void, signal?: AbortSignal): Promise<Model> {
+    let model: Model | undefined;
+    let error: string | undefined;
+    await requestStream('POST', '/llm/model', (event, data) => {
+        switch (event) {
+            case 'progress':
+                onProgress(data as LoadProgress);
+                break;
+            case 'result':
+                model = data as Model;
+                break;
+            case 'error':
+                error = (data as { error?: string }).error;
+                break;
+        }
+    }, { body: { provider, name }, signal });
+    if (error !== undefined) {
+        throw new Error(error);
+    } else if (!model) {
+        throw new Error('the download ended before it was complete');
+    }
+    return model;
 }

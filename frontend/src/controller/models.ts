@@ -4,7 +4,8 @@
 // which is clicked in the model view, with ListController, and loads them
 // again when the providers change
 
-import { deleteModel, getModel, listModels, unloadModel } from '../api/model';
+import { deleteModel, getModel, listModels, loadModel, unloadModel } from '../api/model';
+import { ModelLoad } from '../component/model-load';
 import { ModelView } from '../component/model-view';
 import { createProvider, deleteProvider, listProviders, updateProvider } from '../api/provider';
 import type { ProviderCount, ProviderMeta } from '../schema/provider';
@@ -22,6 +23,7 @@ import { Panel } from '../component/panel';
 export interface ModelsViews {
     page: ModelsPage | null;
     form: ProviderForm | null;
+    load: ModelLoad | null;
     alerts: ProviderAlerts | null;
     providers: CountFilter | null;
     table: ModelTable | null;
@@ -55,12 +57,78 @@ export class ModelsController extends ListController<Model> {
         views.form?.addEventListener(ProviderForm.eventCreate, (e) => void this.create((e as CustomEvent<ProviderMeta>).detail));
         views.form?.addEventListener(ProviderForm.eventSave, (e) => void this.save((e as CustomEvent<ProviderMeta>).detail));
         views.form?.addEventListener(Panel.eventClose, () => this.hideForm());
+
+        // A model is loaded with the chosen provider, whose download is
+        // cancelled when the panel is closed
+        views.page?.addEventListener(ModelsPage.eventLoad, (e) => this.showLoad((e as CustomEvent<string>).detail));
+        views.load?.addEventListener(ModelLoad.eventLoad, (e) => void this.download((e as CustomEvent<string>).detail));
+        views.load?.addEventListener(Panel.eventClose, () => this.hideLoad());
     }
 
-    // close closes the model which is shown, and the form
+    // The download which is in progress, which is aborted when its panel is
+    // closed
+    private loading?: AbortController;
+
+    // showLoad opens the panel which loads a model with the provider
+    private showLoad(name: string) {
+        const { load } = this.views;
+        const provider = this.providers?.find((provider) => provider.name === name);
+        if (load && provider) {
+            load.type = provider.provider;
+            load.loading = false;
+            load.provider = provider.name;
+        }
+    }
+
+    // hideLoad closes the panel, cancelling the download, when there is one
+    private hideLoad() {
+        this.loading?.abort();
+        this.loading = undefined;
+        if (this.views.load) {
+            this.views.load.provider = undefined;
+            this.views.load.loading = false;
+        }
+    }
+
+    // download loads the model with the provider of the panel, which
+    // downloads it, showing how it's getting on, and then loads the models
+    // again, or says why it couldn't be loaded, in the panel
+    private async download(name: string) {
+        const panel = this.views.load;
+        const provider = panel?.provider;
+        if (!panel || !provider) {
+            return;
+        }
+        const request = new AbortController();
+        this.loading = request;
+        panel.loading = true;
+        panel.error = undefined;
+        panel.progress = undefined;
+        try {
+            const model = await loadModel(provider, name, (progress) => {
+                panel.progress = progress;
+            }, request.signal);
+            this.notifications.push({ kind: 'success', title: `${model.canonical ?? name} was loaded` });
+            this.hideLoad();
+            void this.refresh();
+        } catch (error) {
+            if (!request.signal.aborted) {
+                panel.error = error instanceof Error ? error.message : String(error);
+            }
+        } finally {
+            if (this.loading === request) {
+                this.loading = undefined;
+                panel.loading = false;
+            }
+        }
+    }
+
+    // close closes the model which is shown, the form, and the panel which
+    // loads a model, cancelling its download
     close() {
         super.close();
         this.hideForm();
+        this.hideLoad();
     }
 
     // showForm opens the form, to add a provider, or edit one
@@ -269,6 +337,7 @@ export class ModelsController extends ListController<Model> {
         const { page, alerts, providers, table, view } = this.views;
         if (page) {
             page.provider = this.provider;
+            page.loadable = this.providers?.find((provider) => provider.name === this.provider)?.downloader === true;
         }
         if (alerts) {
             alerts.providers = this.providers ?? [];

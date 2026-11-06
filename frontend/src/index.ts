@@ -21,6 +21,7 @@ import { CountFilter } from './component/count-filter';
 import './component/model-table';
 import './component/model-view';
 import './component/provider-form';
+import './component/model-load';
 import { ModelView } from './component/model-view';
 import './component/tool-table';
 import './component/tool-view';
@@ -80,6 +81,7 @@ document.querySelector('llm-chat-page')?.addEventListener(ChatPage.eventEvents, 
 const models = new ModelsController({
     page: document.querySelector('llm-models-page'),
     form: document.querySelector('llm-provider-form'),
+    load: document.querySelector('llm-model-load'),
     alerts: document.querySelector('llm-provider-alerts'),
     providers: document.querySelector('#provider-filter'),
     table: document.querySelector('llm-model-table'),

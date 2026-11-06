@@ -8,6 +8,7 @@ import iconLoader from '@carbon/web-components/es/globals/internal/icon-loader.j
 import MachineLearningModel32 from '@carbon/icons/es/machine-learning-model/32.js';
 import Edit16 from '@carbon/icons/es/edit/16.js';
 import TrashCan16 from '@carbon/icons/es/trash-can/16.js';
+import Download16 from '@carbon/icons/es/download/16.js';
 import { Page } from './page';
 import { refreshAction } from './refresh';
 import { presets } from '../schema/preset';
@@ -24,6 +25,7 @@ export class ModelsPage extends Page {
     static readonly eventAdd = 'llm-models-page-add';
     static readonly eventEdit = 'llm-models-page-edit';
     static readonly eventDelete = 'llm-models-page-delete';
+    static readonly eventLoad = 'llm-models-page-load';
 
     heading = 'Models';
     description = 'The models of the providers, and what they can do';
@@ -32,6 +34,11 @@ export class ModelsPage extends Page {
     // edited, and deleted, or none, for every provider's
     @property({ attribute: false })
     provider?: string;
+
+    // Whether the provider which is chosen stores models, so a model can be
+    // loaded with it, which is downloaded, when it isn't stored
+    @property({ type: Boolean })
+    loadable = false;
 
     protected renderIcon(): unknown {
         return iconLoader(MachineLearningModel32);
@@ -47,7 +54,14 @@ export class ModelsPage extends Page {
                     Delete ${iconLoader(TrashCan16, { slot: 'icon' })}
                 </cds-button>
             ` : nothing}
-            ${this.provider ? refreshAction(this) : html`
+            ${this.provider ? html`
+                ${refreshAction(this, this.loadable ? 'secondary' : 'primary')}
+                ${this.loadable ? html`
+                    <cds-button kind="primary" size="md" @click=${() => this.dispatchEvent(new CustomEvent(ModelsPage.eventLoad, { detail: this.provider }))}>
+                        Load model ${iconLoader(Download16, { slot: 'icon' })}
+                    </cds-button>
+                ` : nothing}
+            ` : html`
                 ${refreshAction(this, 'secondary')}
                 <cds-menu-button label="Add provider" kind="primary" size="md">
                     <cds-menu size="md">
