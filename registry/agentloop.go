@@ -321,8 +321,17 @@ func (r *Registry) iterate(ctx context.Context, model llm.Model, loop *agentLoop
 		return []providerschema.Message{maxIterations(message)}, usage, true, nil
 	}
 
-	// The model replied with text, when the reply has a schema, so it's
-	// asked to call the respond tool
+	// The model replied with text, when the reply has a schema, which is the
+	// reply, when it's what the respond tool would have been called with, or
+	// its result, which conforms to the schema, as some models reply with
+	// it, rather than calling the tool, so it isn't lost by asking again
+	if len(calls) == 0 {
+		if result, ok := loop.textResult(ctx, message.Text()); ok {
+			return []providerschema.Message{withResult(message, result)}, usage, true, nil
+		}
+	}
+
+	// Or, otherwise, it's asked to call the respond tool
 	if len(calls) == 0 {
 		nudge := providerschema.Message{MessageMeta: providerschema.MessageMeta{
 			Sender:  "user",
@@ -390,6 +399,26 @@ func toolUsage(messages []providerschema.Message) llm.Usage {
 		}
 	}
 	return usage
+}
+
+// textResult returns the result of a reply with text, when the reply has a
+// schema, and the text, apart from a fence around it, such as ```json, is
+// what the respond tool would have been called with, or its result, which
+// conforms to the schema
+func (l *agentLoop) textResult(ctx context.Context, text string) (json.RawMessage, bool) {
+	text = withoutFence(strings.TrimSpace(text))
+	if l.respond == nil || text == "" || !json.Valid([]byte(text)) {
+		return nil, false
+	}
+
+	// As the respond tool's input, with the result, and then as the result
+	// itself
+	for _, input := range []string{text, `{"result":` + text + `}`} {
+		if result, err := l.respond.Run(ctx, json.RawMessage(input)); err == nil {
+			return result.(json.RawMessage), true
+		}
+	}
+	return nil, false
 }
 
 // respondCall returns the call of the respond tool, when the reply has a
@@ -651,6 +680,26 @@ func withResult(message providerschema.Message, result json.RawMessage) provider
 	message.Content = append(content, providerschema.ContentBlock{Text: types.Ptr(string(result))})
 	message.Result = providerschema.ResultStop
 	return message
+}
+
+// withoutFence returns the text without a fence of Markdown around it, such
+// as ```json and ```, as some models put around JSON, or the text, when it
+// has none
+func withoutFence(text string) string {
+	rest, ok := strings.CutPrefix(text, "```")
+	if !ok {
+		return text
+	}
+	rest, ok = strings.CutSuffix(strings.TrimRight(rest, " \t\r\n"), "```")
+	if !ok {
+		return text
+	}
+
+	// The fence's language, such as json, is on its first line
+	if tag, body, ok := strings.Cut(rest, "\n"); ok && !strings.ContainsAny(tag, "{[\"") {
+		rest = body
+	}
+	return strings.TrimSpace(rest)
 }
 
 // withoutRespond returns the message without its calls of the respond tool
