@@ -442,6 +442,17 @@ export class ChatController {
         }
     }
 
+    // listed returns the sessions which are listed, with the session which is
+    // open, last, when it isn't one of them, such as an older chat, beyond
+    // those which are listed, once it's loaded, so it has its actions
+    private listed(): Session[] | undefined {
+        const { sessions, session } = this;
+        if (!sessions || !session || session.serial === 0 || sessions.some((other) => other.id === session.id)) {
+            return sessions;
+        }
+        return [...sessions, session];
+    }
+
     private render() {
         const { page, list, view, details } = this.views;
         if (page) {
@@ -455,7 +466,7 @@ export class ChatController {
                 : this.details.assistant?.declined ? 'Assistant' : this.details.assistant?.value ?? (this.session?.model ?? 'Assistant');
         }
         if (list) {
-            list.sessions = this.sessions;
+            list.sessions = this.listed();
             list.selected = this.session?.id;
             list.unavailable = this.unavailable;
         }
