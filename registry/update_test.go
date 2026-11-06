@@ -4,6 +4,7 @@ import (
 	"context"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	// Packages
@@ -79,6 +80,32 @@ func Test_UpdateProvider(t *testing.T) {
 		require.NoError(t, err)
 		assert.Equal(t, []string{"Bearer secret", "Bearer secret", "Bearer other"}, keys)
 		events(ch)
+	})
+
+	t.Run("Password", func(t *testing.T) {
+		// A URL with a password, which the API returns redacted, is kept,
+		// when an update sends it back, as it is, such as to change only the
+		// patterns, and replaced, when another is sent
+		var passwords []string
+		ollama := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			_, password, _ := r.BasicAuth()
+			passwords = append(passwords, password)
+			w.Header().Set("Content-Type", "application/json")
+			w.Write([]byte(`{"version":"0.0.1"}`))
+		}))
+		t.Cleanup(ollama.Close)
+		withPassword := strings.Replace(ollama.URL, "http://", "http://david:secret@", 1)
+		created, err := r.CreateProvider(ctx, schema.Provider{Name: "proxied", Type: llm.Ollama, URL: withPassword})
+		require.NoError(t, err)
+		assert.NotContains(t, created.URL, "secret", "it's returned redacted")
+		_, err = r.UpdateProvider(ctx, "proxied", schema.ProviderMeta{URL: created.URL, Include: []string{"^llama"}})
+		require.NoError(t, err)
+		_, err = r.UpdateProvider(ctx, "proxied", schema.ProviderMeta{URL: strings.Replace(withPassword, "secret", "other", 1), Include: []string{"^llama"}})
+		require.NoError(t, err)
+		require.NotEmpty(t, passwords)
+		assert.NotContains(t, passwords, "xxxxx", "the redacted password is never sent")
+		assert.Equal(t, "other", passwords[len(passwords)-1])
+		assert.Contains(t, passwords, "secret")
 	})
 
 	t.Run("Unreachable", func(t *testing.T) {

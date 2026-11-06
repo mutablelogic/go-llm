@@ -13,10 +13,10 @@ import '@carbon/web-components/es/components/button/index.js';
 export const eventRefresh = 'llm-page-refresh';
 
 // refreshAction returns the refresh button, which fires the event from the
-// page
-export function refreshAction(page: HTMLElement): unknown {
+// page, which is the page's primary action, unless it's another kind
+export function refreshAction(page: HTMLElement, kind = 'primary'): unknown {
     return html`
-        <cds-button kind="primary" size="md" @click=${() => page.dispatchEvent(new CustomEvent(eventRefresh))}>
+        <cds-button kind=${kind} size="md" @click=${() => page.dispatchEvent(new CustomEvent(eventRefresh))}>
             Refresh ${iconLoader(Renew16, { slot: 'icon' })}
         </cds-button>
     `;

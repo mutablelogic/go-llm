@@ -188,6 +188,14 @@ func (r *Registry) updateProvider(ctx context.Context, name string, meta schema.
 	if meta.APIKey == "" {
 		meta.APIKey = req.APIKey
 	}
+
+	// A URL which is the provider's, as the API returns it, without its
+	// password, and as the provider normalizes it, is the URL it has, so an
+	// update which sends it back, such as to change only its patterns,
+	// keeps its password, rather than replacing it with the redacted one
+	if meta.URL != "" && meta.URL == schema.RedactURL(existing.provider.URL()) {
+		meta.URL = req.URL
+	}
 	req.ProviderMeta = meta
 	if req.Equal(*existing.definition) {
 		return describePing(ctx, entry{name: name, provider: existing.provider, cache: existing}), nil
