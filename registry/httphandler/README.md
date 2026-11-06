@@ -92,7 +92,7 @@ Set a session's `status`, in the request body, to `typing`, as someone types a m
 
 ### DELETE /llm/session/{id}
 
-Delete a session by its identifier. Returns the deleted session. Returns 404 if there is no session with that identifier, or 409 if it was changed as it was deleted.
+Delete a session by its identifier, such as an event's, which is created again, without its messages, when the event runs again. Returns the deleted session. Returns 404 if there is no session with that identifier, or 409 if its model is replying, such as as an event runs in it, or it was changed as it was deleted.
 
 ### GET /llm/event
 

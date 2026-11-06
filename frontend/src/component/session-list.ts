@@ -4,7 +4,9 @@
 // someone is typing in it, or its model is replying. Clicking a session
 // fires an event, so it's opened, and the session which is open is
 // selected, with its actions on its right: its events, editing it, and
-// deleting it, apart from an event's session, which has none.
+// deleting it, of which an event's session, which is created again when
+// its event runs again, has only deleting it, and which isn't deleted while
+// it's replying.
 
 import { LitElement, css, html, nothing } from 'lit';
 import { customElement, property } from 'lit/decorators.js';
@@ -186,17 +188,18 @@ export class SessionList extends LitElement {
                         ${tokens ? html` · ${tokens.toLocaleString()} tokens` : nothing}
                     </span>
                 </button>
-                ${selected && !session.event ? this.renderActions(session) : nothing}
+                ${selected ? this.renderActions(session) : nothing}
             </li>
         `;
     }
 
     // renderActions returns the actions of the session which is open: its
     // events, which are red as one was just created, editing it, and
+    // deleting it, unless it's replying, of which an event's session has only
     // deleting it
     private renderActions(session: Session) {
-        const action = (name: string, label: string, icon: unknown, alerted = false) => html`
-            <cds-icon-button kind="ghost" size="sm" align="bottom-end"
+        const action = (name: string, label: string, icon: unknown, alerted = false, disabled = false) => html`
+            <cds-icon-button kind="ghost" size="sm" align="bottom-end" ?disabled=${disabled}
                 @click=${() => this.dispatchEvent(new CustomEvent(name, { detail: session }))}>
                 <span slot="icon" class=${alerted ? 'alerted' : ''}>${iconLoader(icon as never)}</span>
                 <span slot="tooltip-content">${label}</span>
@@ -204,9 +207,13 @@ export class SessionList extends LitElement {
         `;
         return html`
             <div class="actions">
-                ${action(SessionList.eventEvents, 'Events', Notification16, this.alerted)}
-                ${action(SessionList.eventEdit, 'Edit chat', Edit16)}
-                ${action(SessionList.eventDelete, 'Delete chat', TrashCan16)}
+                ${session.event ? nothing : html`
+                    ${action(SessionList.eventEvents, 'Events', Notification16, this.alerted)}
+                    ${action(SessionList.eventEdit, 'Edit chat', Edit16)}
+                `}
+                ${session.status === 'replying'
+                    ? action(SessionList.eventDelete, "It can't be deleted while it's replying", TrashCan16, false, true)
+                    : action(SessionList.eventDelete, 'Delete chat', TrashCan16)}
             </div>
         `;
     }

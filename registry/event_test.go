@@ -119,6 +119,19 @@ func Test_RunEvent(t *testing.T) {
 	assert.Equal(t, "scripted:other", types.Value(response.Session.Model))
 	assert.Equal(t, "Call Mum", types.Value(response.Session.Title))
 
+	// Which can be deleted, and is created again, empty, with the event's
+	// title, when the event runs again
+	p.replies = append(p.replies, reply())
+	_, err = r.DeleteSession(ctx, event)
+	require.NoError(t, err)
+	response, err = r.RunEvent(ctx, event, schema.RunEventRequest{Session: parent.ID, Input: input, Title: "Call Mum"}, nil)
+	require.NoError(t, err)
+	assert.Equal(t, event, response.Session.ID)
+	assert.Equal(t, "Call Mum", types.Value(response.Session.Title))
+	messages, err = r.ListSessionMessages(ctx, event, schema.MessageListRequest{})
+	require.NoError(t, err)
+	assert.Equal(t, uint(len(response.Run.Messages)), messages.Count, "it has only the last run")
+
 	// An agent which the event's agent calls, whose own tools are the
 	// heartbeats', isn't given them either
 	_, _, err = r.CreateAgent(ctx, schema.AgentMeta{
