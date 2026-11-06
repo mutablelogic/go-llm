@@ -15,9 +15,21 @@ DOMPurify.addHook('afterSanitizeAttributes', (node) => {
     }
 });
 
-// markdown returns the Markdown as HTML, which is sanitized
-export function markdown(text: string): unknown {
-    const html = marked.parse(text, { async: false, gfm: true });
+// markdown returns the Markdown as HTML, which is sanitized. The resolve
+// function, when there is one, returns the URL a link, or an image, is to,
+// such as the URL of a resource's content, for its resource:// URI, or
+// undefined, to keep it, so only links, and images, are resolved, rather
+// than the same text in code, or prose.
+export function markdown(text: string, resolve?: (href: string) => string | undefined): unknown {
+    const html = marked.parse(text, {
+        async: false,
+        gfm: true,
+        walkTokens: resolve ? (token) => {
+            if ((token.type === 'link' || token.type === 'image') && token.href) {
+                token.href = resolve(token.href) ?? token.href;
+            }
+        } : undefined,
+    });
     return unsafeHTML(DOMPurify.sanitize(html));
 }
 

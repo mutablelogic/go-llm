@@ -84,12 +84,7 @@ export class ChatController {
         this.storage = storage;
         this.resources = resources;
         resources.onChange(() => this.render());
-        config().then((config) => {
-            this.prefix = config.prefix;
-            this.render();
-        }).catch(() => {
-            // Resources aren't played, or shown, but are named
-        });
+        void this.loadPrefix();
         views.view?.addEventListener(ChatView.eventAttach, () => {
             if (this.session) {
                 void resources.open(this.session.id);
@@ -191,6 +186,21 @@ export class ChatController {
     connect() {
         this.unavailable = false;
         this.render();
+        if (this.prefix === undefined) {
+            void this.loadPrefix();
+        }
+    }
+
+    // loadPrefix reads the prefix of the API, beneath which the content of
+    // resources is, from the configuration, which is read again, when the
+    // server can be reached again, when it couldn't be read
+    private async loadPrefix() {
+        try {
+            this.prefix = (await config()).prefix;
+            this.render();
+        } catch {
+            // Resources aren't played, or shown, until it's read
+        }
     }
 
     // load loads the session, and its messages, when it's changed since they

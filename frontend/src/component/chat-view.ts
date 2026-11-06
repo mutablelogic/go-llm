@@ -74,8 +74,6 @@ export type ResourceType = (uri: string) => string | undefined;
 // undefined, when it isn't known
 export type ContentURL = (uri: string) => string | undefined;
 
-// resourceURIs matches the URIs of resources, in a reply's Markdown
-const resourceURIs = /resource:\/\/[0-9a-f]{64}/g;
 
 @customElement('llm-chat-view')
 export class ChatView extends LitElement {
@@ -392,7 +390,7 @@ export class ChatView extends LitElement {
                     : bubble.attachment
                     ? this.renderAttachment(bubble.attachment)
                     : bubble.markdown
-                    ? html`<div class="markdown" @click=${this.handleLink}>${markdown(this.withContentURLs(bubble.text))}</div>`
+                    ? html`<div class="markdown" @click=${this.handleLink}>${markdown(bubble.text, this.contentURL)}</div>`
                     : html`<span class="text">${bubble.text}</span>`}</llm-chat-bubble>
         `;
     }
@@ -453,11 +451,6 @@ export class ChatView extends LitElement {
         this.playLink(event, { url: link.getAttribute('href')!, name: link.textContent?.trim() || this.attachmentName(uri) || 'Media', type: this.resourceType(uri) });
     };
 
-    // withContentURLs returns the Markdown, with the URIs of resources, such
-    // as a link to speech, as the URLs of their content, when they're known
-    private withContentURLs(text: string): string {
-        return text.replace(resourceURIs, (uri) => this.contentURL(uri) ?? uri);
-    }
 
     // messageBubbles returns the bubbles of a message, with the lines tools
     // logged, before the results of the tools they're kept by, and after the
