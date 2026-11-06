@@ -14,6 +14,7 @@ import './component/session-list';
 import './component/chat-view';
 import './component/new-session';
 import './component/message-view';
+import './component/event-view';
 import './component/count-filter';
 import './component/provider-alerts';
 import { CountFilter } from './component/count-filter';
@@ -34,6 +35,8 @@ import { ChatController } from './controller/chat';
 import { ModelsController } from './controller/models';
 import { ToolsController } from './controller/tools';
 import { NotificationController } from './controller/notifications';
+import { OutcomesController } from './controller/outcomes';
+import { ChatPage } from './page/chat-page';
 import { Router, routeHref } from './router';
 import { eventRefresh } from './page/refresh';
 
@@ -61,6 +64,16 @@ const chat = new ChatController({
     details: document.querySelector('llm-message-view'),
 }, notifications);
 
+// The outcomes of the events of the chat which is open, such as heartbeats
+// which fired, in a panel, which its Events action opens
+const outcomes = new OutcomesController(document.querySelector('llm-event-view'), notifications);
+document.querySelector('llm-chat-page')?.addEventListener(ChatPage.eventEvents, () => {
+    const session = chat.sessionID();
+    if (session) {
+        outcomes.open(session);
+    }
+});
+
 // The models, and the tools, each in a table, with the one which is clicked
 // in a panel
 const models = new ModelsController({
@@ -86,6 +99,7 @@ const events = new EventsController(notifications)
     .on({ schema: 'llm', table: 'provider' }, () => void models.refresh())
     .on({ schema: 'llm', table: 'tool' }, () => void tools.refresh())
     .on({ schema: 'memory', table: 'detail' }, () => void chat.refreshDetails())
+    .on({ schema: 'llm', table: 'event' }, () => void outcomes.refresh())
     .onDisconnect(() => {
         chat.disconnect();
         models.disconnect();
@@ -148,6 +162,7 @@ const router = new Router(document.querySelector<HTMLElement>('#not-found-page')
         // open over the page which is
         if (route.page !== 'chat') {
             chat.close();
+            outcomes.close();
         }
         if (route.page !== 'models') {
             models.close();

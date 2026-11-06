@@ -1,7 +1,7 @@
 // The page of the chats, whose heading is the model of the chat which is
 // open, with the tokens of its conversation, and whether someone is typing,
-// or its model is replying, and whose actions start a new chat, and delete
-// edit, and delete, the one which is open. Beneath it is the list of chats, beside the
+// or its model is replying, and whose actions start a new chat, and show the
+// events of, edit, and delete, the one which is open. Beneath it is the list of chats, beside the
 // conversation of the one which is open.
 
 import { html, nothing } from 'lit';
@@ -11,6 +11,7 @@ import Chat32 from '@carbon/icons/es/chat/32.js';
 import Add16 from '@carbon/icons/es/add/16.js';
 import TrashCan16 from '@carbon/icons/es/trash-can/16.js';
 import Edit16 from '@carbon/icons/es/edit/16.js';
+import Notification16 from '@carbon/icons/es/notification/16.js';
 import { Page } from './page';
 
 // Carbon components
@@ -23,6 +24,7 @@ export class ChatPage extends Page {
     static readonly eventNew = 'llm-chat-page-new';
     static readonly eventDelete = 'llm-chat-page-delete';
     static readonly eventEdit = 'llm-chat-page-edit';
+    static readonly eventEvents = 'llm-chat-page-events';
 
     heading = 'Chat';
 
@@ -37,6 +39,9 @@ export class ChatPage extends Page {
     protected renderActions(): unknown {
         return html`
             ${this.deletable ? html`
+                <cds-button kind="secondary" size="md" @click=${() => this.dispatchEvent(new CustomEvent(ChatPage.eventEvents))}>
+                    Events ${iconLoader(Notification16, { slot: 'icon' })}
+                </cds-button>
                 <cds-button kind="secondary" size="md" @click=${() => this.dispatchEvent(new CustomEvent(ChatPage.eventEdit))}>
                     Edit ${iconLoader(Edit16, { slot: 'icon' })}
                 </cds-button>
