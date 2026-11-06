@@ -127,6 +127,14 @@ export class EventView extends Panel<string> {
             margin-top: 2rem;
         }
 
+        /* What's said when there's nothing to show, or it couldn't be loaded,
+           which is the same in each section */
+        .empty {
+            margin: 0;
+            color: var(--cds-text-secondary);
+            font-size: 0.875rem;
+        }
+
         .secondary {
             color: var(--cds-text-secondary);
             font-size: 0.75rem;
@@ -154,14 +162,14 @@ export class EventView extends Panel<string> {
     }
 
     protected renderSubtitle() {
-        return "This chat's reminders, and what they, and other events, replied";
+        return "This chat's reminders, and what your assistant replied to them, and to other events";
     }
 
     protected renderBody() {
         return html`
             ${this.renderHeartbeats()}
             <section>
-                ${this.heartbeats ? html`<h3>What they replied</h3>` : nothing}
+                ${this.heartbeats ? html`<h3>What your assistant replied</h3>` : nothing}
                 ${this.renderOutcomes()}
             </section>
         `;
@@ -176,7 +184,7 @@ export class EventView extends Panel<string> {
         return html`
             <section>
                 <h3>Reminders</h3>
-                ${this.heartbeats.length === 0 ? html`<p class="secondary">None are scheduled. Ask in the chat for a reminder, or a briefing, to schedule one.</p>` : html`
+                ${this.heartbeats.length === 0 ? html`<p class="empty">None are scheduled. Ask in the chat for a reminder, or a briefing, to schedule one.</p>` : html`
                     <table>
                         <thead><tr><th>Reminder</th><th>When</th><th></th></tr></thead>
                         <tbody>${this.heartbeats.map((heartbeat) => html`
@@ -210,11 +218,11 @@ export class EventView extends Panel<string> {
     // recent first
     private renderOutcomes() {
         if (this.error) {
-            return html`<p>${this.error}</p>`;
+            return html`<p class="empty">${this.error}</p>`;
         } else if (!this.outcomes) {
             return html`<cds-skeleton-text paragraph line-count="4"></cds-skeleton-text>`;
         } else if (this.outcomes.length === 0) {
-            return html`<p>No events yet. When a reminder scheduled in this chat fires, what it replied is shown here.</p>`;
+            return html`<p class="empty">No events yet. When a reminder scheduled in this chat fires, your assistant's reply is shown here.</p>`;
         }
         return html`
             <table>
