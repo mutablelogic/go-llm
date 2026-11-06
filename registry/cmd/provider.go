@@ -30,6 +30,7 @@ type ProviderCommands struct {
 	ProviderCreateOpenAI     ProviderCreateOpenAICmd     `cmd:"" name:"provider-create-openai" help:"Create an OpenAI, or OpenAI-compatible, provider." group:"LLM PROVIDERS"`
 	ProviderCreateDeepSeek   ProviderCreateDeepSeekCmd   `cmd:"" name:"provider-create-deepseek" help:"Create a DeepSeek provider." group:"LLM PROVIDERS"`
 	ProviderCreateMistral    ProviderCreateMistralCmd    `cmd:"" name:"provider-create-mistral" help:"Create a Mistral provider." group:"LLM PROVIDERS"`
+	ProviderCreateAnthropic  ProviderCreateAnthropicCmd  `cmd:"" name:"provider-create-anthropic" help:"Create an Anthropic provider, for Claude's models." group:"LLM PROVIDERS"`
 }
 
 type ProviderListCmd struct {
@@ -104,6 +105,14 @@ type ProviderCreateMistralCmd struct {
 	ProviderModels
 	Name             string `name:"name" default:"mistral" help:"Provider name."`
 	APIKeyCredential string `name:"api-key-credential" help:"Name of the credential holding the API key." required:""`
+}
+
+// ProviderCreateAnthropicCmd creates a provider for Anthropic's API, at a
+// fixed URL, which needs an API key
+type ProviderCreateAnthropicCmd struct {
+	ProviderModels
+	Name             string `name:"name" default:"anthropic" help:"Provider name."`
+	APIKeyCredential string `name:"api-key-credential" help:"Name of the credential holding the API key, such as ANTHROPIC_API_KEY." required:""`
 }
 
 // ProviderCreateElevenLabsCmd creates a provider for ElevenLabs, at a
@@ -249,6 +258,16 @@ func (cmd *ProviderCreateMistralCmd) Run(ctx server.Cmd) error {
 		Include: cmd.Include,
 		Exclude: cmd.Exclude,
 		URL:     openai.MistralEndpoint,
+		APIKey:  placeholder(cmd.APIKeyCredential),
+	})
+}
+
+func (cmd *ProviderCreateAnthropicCmd) Run(ctx server.Cmd) error {
+	return createProvider(ctx, "llm.ProviderCreateAnthropicCmd", schema.Provider{
+		Name:    cmd.Name,
+		Type:    llm.Anthropic,
+		Include: cmd.Include,
+		Exclude: cmd.Exclude,
 		APIKey:  placeholder(cmd.APIKeyCredential),
 	})
 }

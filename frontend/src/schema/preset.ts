@@ -20,6 +20,7 @@ export const presets: Preset[] = [
     { id: 'compatible', label: 'OpenAI-compatible', type: 'openai', name: '', url: 'http://localhost:1234/v1', askURL: true, urlLabel: 'URL of the server, such as LM Studio or vLLM', credential: 'optional' },
     { id: 'openai', label: 'OpenAI', type: 'openai', name: 'openai', url: '', askURL: false, credential: 'required' },
     { id: 'mistral', label: 'Mistral', type: 'openai', name: 'mistral', url: 'https://api.mistral.ai/v1', askURL: false, credential: 'required' },
+    { id: 'anthropic', label: 'Anthropic', type: 'anthropic', name: 'anthropic', url: '', askURL: false, credential: 'required' },
     { id: 'deepseek', label: 'DeepSeek', type: 'openai', name: 'deepseek', url: 'https://api.deepseek.com', askURL: false, credential: 'required' },
     { id: 'gowhisper', label: 'go-whisper', type: 'gowhisper', name: 'gowhisper', url: 'http://localhost:8081', askURL: true, urlLabel: 'URL of the go-whisper server', credential: 'none' },
     { id: 'elevenlabs', label: 'ElevenLabs', type: 'elevenlabs', name: 'elevenlabs', url: '', askURL: false, credential: 'required' },

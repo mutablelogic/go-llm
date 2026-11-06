@@ -3,7 +3,7 @@
 [![Go Reference](https://pkg.go.dev/badge/github.com/mutablelogic/go-llm.svg)](https://pkg.go.dev/github.com/mutablelogic/go-llm)
 [![License](https://img.shields.io/badge/license-Apache-blue.svg)](LICENSE)
 
-go-llm is a server, command-line tool and Go SDK which puts large language models and speech models from several providers behind one interface. You add providers, such as Ollama, OpenAI, Mistral, [go-whisper](https://github.com/mutablelogic/go-whisper) and ElevenLabs, and then ask any of their models to reply to messages, call tools, run agents, embed text and images, read the text in documents, and transcribe and translate speech. The same operations are available as a REST API, from the `llm` command, which includes an interactive chat in the terminal, or directly from Go.
+go-llm is a server, command-line tool and Go SDK which puts large language models and speech models from several providers behind one interface. You add providers, such as Ollama, OpenAI, Anthropic, Mistral, [go-whisper](https://github.com/mutablelogic/go-whisper) and ElevenLabs, and then ask any of their models to reply to messages, call tools, run agents, embed text and images, read the text in documents, and transcribe and translate speech. The same operations are available as a REST API, from the `llm` command, which includes an interactive chat in the terminal, or directly from Go.
 
 ## Quick Start
 
@@ -24,7 +24,7 @@ Then open [http://localhost:8084/](http://localhost:8084/), to chat, and see the
 
 `host.docker.internal` is the machine Docker runs on, such as for an Ollama server which runs there, which Docker Desktop has, and Linux has with `--add-host=host.docker.internal:host-gateway`.
 
-When it's first started, the server has the Eliza provider, unless `NO_ELIZA` is set, and those whose variables are set: `OLLAMA_ADDR` and `GOWHISPER_ADDR`, as their URLs, and `OPENAI_API_KEY`, `DEEPSEEK_API_KEY`, `MISTRAL_API_KEY` and `ELEVENLABS_API_KEY`, whose keys are read from the container's environment when they're used, rather than stored. `UID` and `GID` set the user it runs as, such as the owner of a directory which is mounted at `/data`.
+When it's first started, the server has the Eliza provider, unless `NO_ELIZA` is set, and those whose variables are set: `OLLAMA_ADDR` and `GOWHISPER_ADDR`, as their URLs, and `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `DEEPSEEK_API_KEY`, `MISTRAL_API_KEY` and `ELEVENLABS_API_KEY`, whose keys are read from the container's environment when they're used, rather than stored. `UID` and `GID` set the user it runs as, such as the owner of a directory which is mounted at `/data`.
 
 Or run it with Docker Compose, whose [compose file](docker/compose.yaml) has every variable the server reads, from the environment, or a `.env` file, and, with the `ollama` profile, an Ollama server, which `OLLAMA_ADDR=http://ollama:11434` adds:
 
@@ -52,6 +52,7 @@ Providers which weren't added when the server was first started are added with t
 # Providers
 llm provider-create-ollama http://host.docker.internal:11434
 llm provider-create-openai --api-key-credential OPENAI_API_KEY
+llm provider-create-anthropic --api-key-credential ANTHROPIC_API_KEY
 llm provider-create-mistral --api-key-credential MISTRAL_API_KEY
 llm provider-create-gowhisper http://host.docker.internal:8081
 llm provider-create-elevenlabs --api-key-credential ELEVENLABS_API_KEY
@@ -154,6 +155,7 @@ flowchart LR
         Ollama["`**ollama**`"]
         OpenAI["`**openai**
         OpenAI, Mistral, DeepSeek`"]
+        Anthropic["`**anthropic**`"]
         Whisper["`**gowhisper**`"]
         ElevenLabs["`**elevenlabs**`"]
         Eliza["`**eliza**
@@ -183,11 +185,11 @@ flowchart LR
     API --> Heartbeat
     Heartbeat --> Stores
     Toolkit --> Tools
-    Registry --> Ollama & OpenAI & Whisper & ElevenLabs & Eliza
+    Registry --> Ollama & OpenAI & Anthropic & Whisper & ElevenLabs & Eliza
 
     classDef highlight fill:#e8f0fe,stroke:#1a73e8,stroke-width:2px,color:#111
     class CLI,Client,UI,Registry,Toolkit,Agents,Memory,Heartbeat highlight
-    class Ollama,OpenAI,Whisper,ElevenLabs,Eliza highlight
+    class Ollama,OpenAI,Anthropic,Whisper,ElevenLabs,Eliza highlight
 ```
 
 - The **client and CLI**: the `llm` command, in [cmd/llm](cmd/llm), runs the server, and is its client, with commands for each operation, and an interactive chat in the terminal, which streams replies and follows other clients of the same session. The Go client, [registry/httpclient](registry/httpclient), is what it uses to talk to the server.
@@ -224,6 +226,7 @@ The registry can be used without the server, from your own Go program, as the [e
 |------|----------|:--------:|:-----:|:---:|:----------:|:---------:|--------|
 | `ollama` | [Ollama](https://ollama.com) | ✅ | ✅ | ✅ (images) | | | Download, delete, unload |
 | `openai` | [OpenAI](https://platform.openai.com) | ✅ | ✅ | | ✅ | ✅ (whisper) | |
+| `anthropic` | [Anthropic](https://www.anthropic.com)'s Claude models, which count tokens exactly, to fit a conversation to the model's context | ✅ | | | | | |
 | `openai` | [Mistral](https://mistral.ai), at `https://api.mistral.ai/v1` | ✅ | ✅ | ✅ | ✅ | | |
 | `openai` | [DeepSeek](https://www.deepseek.com), and other OpenAI-compatible servers | ✅ | | | | | |
 | `gowhisper` | [go-whisper](https://github.com/mutablelogic/go-whisper) | | | | ✅ | ✅ | Download, delete |
@@ -237,7 +240,7 @@ What a model can do depends on the model, which its provider reports, where it k
 | Group | Commands |
 |-------|----------|
 | Server | `run`, `openapi` |
-| Providers | `providers`, `provider`, `provider-create-ollama`, `provider-create-openai`, `provider-create-mistral`, `provider-create-deepseek`, `provider-create-gowhisper`, `provider-create-elevenlabs`, `provider-create-eliza`, `provider-update`, `provider-delete` |
+| Providers | `providers`, `provider`, `provider-create-ollama`, `provider-create-openai`, `provider-create-anthropic`, `provider-create-mistral`, `provider-create-deepseek`, `provider-create-gowhisper`, `provider-create-elevenlabs`, `provider-create-eliza`, `provider-update`, `provider-delete` |
 | Models | `models`, `model`, `model-load`, `model-delete`, `model-unload` |
 | Sessions | `sessions`, `session`, `session-messages`, `session-create`, `session-update`, `session-delete` |
 | Inference | `ask`, `chat`, `embed`, `ocr`, `transcribe`, `translate` |
@@ -323,7 +326,7 @@ make vet race-test TEST_FLAGS=-short   # As CI runs the tests
 make test                              # All the tests, with coverage
 ```
 
-Tests which make requests to a provider are skipped with `-short`, and unless its credentials are set, such as `OPENAI_API_KEY`, `MISTRAL_API_KEY` or `ELEVENLABS_API_KEY`, or its address, such as `OLLAMA_ADDR` or `GOWHISPER_ADDR`.
+Tests which make requests to a provider are skipped with `-short`, and unless its credentials are set, such as `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `MISTRAL_API_KEY` or `ELEVENLABS_API_KEY`, or its address, such as `OLLAMA_ADDR` or `GOWHISPER_ADDR`.
 
 ## Roadmap
 
@@ -344,7 +347,7 @@ Tests which make requests to a provider are skipped with `-short`, and unless it
 
 ### Providers
 
-- **Anthropic and Google Gemini**, which the earlier version of go-llm had, for generation, and Gemini's embeddings.
+- **Google Gemini**, which the earlier version of go-llm had, for generation, and its embeddings.
 - **LM Studio**, which runs models locally, as Ollama does, with its own API to list, download, delete, load and unload them, as well as an OpenAI-compatible API.
 - **Text to speech and images**, such as ElevenLabs' and OpenAI's voices, and image generation.
 - **OpenAI's Responses API**, so OpenAI's newest models can think while they call tools, and the models which only it has can be used.

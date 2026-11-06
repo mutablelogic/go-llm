@@ -70,7 +70,7 @@ type ProviderList struct {
 // GLOBALS
 
 // providerTypes are the types of providers which the registry creates
-var providerTypes = []string{llm.ElevenLabs, llm.Eliza, llm.GoWhisper, llm.Ollama, llm.OpenAI}
+var providerTypes = []string{llm.Anthropic, llm.ElevenLabs, llm.Eliza, llm.GoWhisper, llm.Ollama, llm.OpenAI}
 
 ///////////////////////////////////////////////////////////////////////////////
 // PUBLIC METHODS
