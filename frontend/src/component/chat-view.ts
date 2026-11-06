@@ -210,7 +210,7 @@ export class ChatView extends LitElement {
         if (this.session.event) {
             return html`
                 <div class="conversation">${this.renderConversation()}</div>
-                <div class="event-note">This is an event's session: what a heartbeat did each time it fired. It isn't chatted in.</div>
+                <div class="event-note">This is an event's session: what a reminder did each time it fired. It isn't chatted in.</div>
             `;
         }
         return html`

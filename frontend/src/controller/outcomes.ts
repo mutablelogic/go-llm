@@ -1,9 +1,13 @@
-// The controller of the panel of the outcomes of a chat's events, such as
-// heartbeats which fired: it opens it for a session, loads its outcomes, the
-// most recent first, loads them again when they change, and closes it
+// The controller of the panel of a chat's heartbeats, and the outcomes of
+// its events, such as heartbeats which fired: it opens it for a session,
+// loads its heartbeats, and its outcomes, the most recent first, loads them
+// again when they change, deletes a heartbeat, once it's confirmed, and
+// closes it
 
 import { listEventOutcomes } from '../api/outcome';
-import type { EventView } from '../component/event-view';
+import { deleteHeartbeat, listHeartbeats } from '../api/heartbeat';
+import { EventView } from '../component/event-view';
+import type { Heartbeat } from '../schema/heartbeat';
 import { Panel } from '../component/panel';
 import type { NotificationController } from './notifications';
 
@@ -22,6 +26,7 @@ export class OutcomesController {
         this.view = view;
         this.notifications = notifications;
         view?.addEventListener(Panel.eventClose, () => this.close());
+        view?.addEventListener(EventView.eventDeleteHeartbeat, (e) => void this.deleteHeartbeat((e as CustomEvent<Heartbeat>).detail));
     }
 
     // open opens the panel, for the session, and loads its outcomes
@@ -31,6 +36,7 @@ export class OutcomesController {
         }
         this.view.session = session;
         this.view.outcomes = undefined;
+        this.view.heartbeats = undefined;
         this.view.error = undefined;
         void this.refresh();
     }
@@ -44,8 +50,9 @@ export class OutcomesController {
         }
     }
 
-    // refresh loads the outcomes of the session whose panel is open, as
-    // they may have changed
+    // refresh loads the heartbeats, and the outcomes, of the session whose
+    // panel is open, as they may have changed. Its heartbeats aren't shown,
+    // when they can't be loaded, such as when the server has none.
     async refresh() {
         const session = this.view?.session;
         if (!this.view || !session) {
@@ -55,10 +62,14 @@ export class OutcomesController {
         const request = new AbortController();
         this.request = request;
         try {
-            const list = await listEventOutcomes(session, OutcomesController.limit, request.signal);
+            const [list, heartbeats] = await Promise.all([
+                listEventOutcomes(session, OutcomesController.limit, request.signal),
+                listHeartbeats(session, request.signal).catch(() => undefined),
+            ]);
             if (request.signal.aborted || this.view.session !== session) {
                 return;
             }
+            this.view.heartbeats = heartbeats && (heartbeats.body ?? []);
             this.view.outcomes = list.body ?? [];
             this.view.count = list.count;
             this.view.error = undefined;
@@ -68,6 +79,27 @@ export class OutcomesController {
             }
             this.view.error = error instanceof Error ? error.message : String(error);
             this.notifications.error("The chat's events couldn't be loaded", error);
+        }
+    }
+
+    // deleteHeartbeat deletes the heartbeat, once it's confirmed, which
+    // is then gone from the panel, as it's loaded again, once the server
+    // says it's deleted
+    private async deleteHeartbeat(heartbeat: Heartbeat) {
+        if (!this.view || !confirm(`Delete the reminder ${heartbeat.title}?`)) {
+            return;
+        }
+        this.view.deleting = heartbeat.id;
+        try {
+            await deleteHeartbeat(heartbeat.id);
+            this.notifications.push({ kind: 'success', title: `${heartbeat.title} was deleted` });
+            void this.refresh();
+        } catch (error) {
+            this.notifications.error(`${heartbeat.title} couldn't be deleted`, error);
+        } finally {
+            if (this.view.deleting === heartbeat.id) {
+                this.view.deleting = undefined;
+            }
         }
     }
 }

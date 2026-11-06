@@ -56,3 +56,76 @@ export function formatAgo(value?: string, now: Date = new Date()): string {
     return hours === 1 ? '1 hour ago' : `${hours} hours ago`;
 }
 
+
+// The names of the days of the week, from Sunday, which is 0, or 7
+const weekdays = ['Sundays', 'Mondays', 'Tuesdays', 'Wednesdays', 'Thursdays', 'Fridays', 'Saturdays'];
+
+// describeSchedule returns a schedule, which is a cron expression, of
+// minute, hour, day, month and weekday, in words, such as Weekdays at 08:00
+// for 0 8 * * 1-5, or the expression, when it isn't one of those which are
+// described
+export function describeSchedule(schedule: string): string {
+    const fields = schedule.trim().split(/\s+/);
+    if (fields.length !== 5) {
+        return schedule;
+    }
+    const [minute, hour, day, month, weekday] = fields;
+    const number = (field: string, max: number) => /^\d+$/.test(field) && Number(field) <= max ? Number(field) : undefined;
+
+    // Every so many minutes, or every hour
+    const every = /^\*\/(\d+)$/.exec(minute);
+    if (every && hour === '*' && day === '*' && month === '*' && weekday === '*') {
+        return Number(every[1]) === 1 ? 'Every minute' : `Every ${every[1]} minutes`;
+    } else if (number(minute, 59) === 0 && hour === '*' && day === '*' && month === '*' && weekday === '*') {
+        return 'Every hour';
+    }
+
+    // At a time, on the days which are described
+    const h = number(hour, 23);
+    const m = number(minute, 59);
+    if (h === undefined || m === undefined || month !== '*') {
+        return schedule;
+    }
+    const at = `at ${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+    if (day !== '*') {
+        const d = number(day, 31);
+        return d !== undefined && weekday === '*' ? `On day ${d} of each month ${at}` : schedule;
+    }
+    const days = weekdayList(weekday);
+    if (days === undefined) {
+        return schedule;
+    } else if (days.length === 7) {
+        return `Every day ${at}`;
+    } else if (days.join() === '1,2,3,4,5') {
+        return `Weekdays ${at}`;
+    } else if (days.join() === '0,6') {
+        return `Weekends ${at}`;
+    }
+    const names = days.map((d) => weekdays[d]);
+    const list = names.length === 1 ? names[0] : `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}`;
+    return `${list} ${at}`;
+}
+
+// weekdayList returns the days of the week of the field, from Sunday, which
+// is 0, or 7, such as 1-5, or 1,3,5, or *, or undefined, when it isn't one
+function weekdayList(field: string): number[] | undefined {
+    if (field === '*') {
+        return [0, 1, 2, 3, 4, 5, 6];
+    }
+    const days = new Set<number>();
+    for (const part of field.split(',')) {
+        const range = /^(\d)(?:-(\d))?$/.exec(part);
+        if (!range) {
+            return undefined;
+        }
+        const from = Number(range[1]);
+        const to = range[2] === undefined ? from : Number(range[2]);
+        if (from > 7 || to > 7 || to < from) {
+            return undefined;
+        }
+        for (let d = from; d <= to; d++) {
+            days.add(d % 7);
+        }
+    }
+    return [...days].sort((a, b) => a - b);
+}

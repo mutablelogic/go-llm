@@ -1,18 +1,24 @@
-// A panel on the right of the page, which shows the outcomes of the events
-// for a chat, such as heartbeats which fired, the most recent first: when
-// each fired, what it's for, what's become of it, how important it is, and
-// its message, as Markdown
+// A panel on the right of the page, which shows a chat's heartbeats, those
+// which fire soonest first: what each is for, its instruction, when it
+// fires, in words, and when it fires next, each with an action which deletes it, and
+// beneath them the outcomes of the events for the chat, such as heartbeats
+// which fired, the most recent first: when each fired, what it's for,
+// what's become of it, how important it is, and its message, as Markdown
 
 import { css, html, nothing } from 'lit';
 import { customElement, property } from 'lit/decorators.js';
 import { Panel } from './panel';
 import { markdown, markdownStyles } from './markdown';
-import { formatTime } from '../format';
+import { describeSchedule, formatTime } from '../format';
 import type { EventOutcome } from '../schema/outcome';
+import type { Heartbeat } from '../schema/heartbeat';
+import iconLoader from '@carbon/web-components/es/globals/internal/icon-loader.js';
+import TrashCan16 from '@carbon/icons/es/trash-can/16.js';
 
 // Carbon components
 import '@carbon/web-components/es/components/tag/tag.js';
 import '@carbon/web-components/es/components/skeleton-text/index.js';
+import '@carbon/web-components/es/components/icon-button/index.js';
 
 // The colour of the tag of each status, and importance
 const statusTypes: Record<string, string> = {
@@ -31,6 +37,10 @@ const importanceTypes: Record<string, string> = {
 
 @customElement('llm-event-view')
 export class EventView extends Panel<string> {
+    // The name of the event fired to delete a heartbeat, whose detail is the
+    // heartbeat
+    static readonly eventDeleteHeartbeat = 'llm-event-view-delete-heartbeat';
+
     // The session whose events are shown, which is undefined when the panel
     // is closed
     @property({ attribute: false })
@@ -43,6 +53,15 @@ export class EventView extends Panel<string> {
 
     @property({ attribute: false })
     count = 0;
+
+    // The chat's heartbeats, those which fire soonest first, which are
+    // undefined while they're loading, or when the server has none, and the
+    // identifier of the one which is being deleted
+    @property({ attribute: false })
+    heartbeats?: Heartbeat[];
+
+    @property({ attribute: false })
+    deleting?: string;
 
     // Why they couldn't be loaded, when they couldn't
     @property({ attribute: false })
@@ -98,6 +117,27 @@ export class EventView extends Panel<string> {
             margin-bottom: 0;
         }
 
+        h3 {
+            margin: 0 0 0.5rem;
+            font-size: 0.875rem;
+            font-weight: 600;
+        }
+
+        section + section {
+            margin-top: 2rem;
+        }
+
+        .secondary {
+            color: var(--cds-text-secondary);
+            font-size: 0.75rem;
+        }
+
+        td.action {
+            width: 1%;
+            padding: 0.25rem 0;
+            vertical-align: middle;
+        }
+
         .count {
             margin-top: 1rem;
             color: var(--cds-text-secondary);
@@ -114,16 +154,67 @@ export class EventView extends Panel<string> {
     }
 
     protected renderSubtitle() {
-        return 'What heartbeats, and other events, for this chat replied, the most recent first';
+        return "This chat's reminders, and what they, and other events, replied";
     }
 
     protected renderBody() {
+        return html`
+            ${this.renderHeartbeats()}
+            <section>
+                ${this.heartbeats ? html`<h3>What they replied</h3>` : nothing}
+                ${this.renderOutcomes()}
+            </section>
+        `;
+    }
+
+    // renderHeartbeats returns the chat's heartbeats, each with when it
+    // fires, and when it fires next, or nothing, when the server has none
+    private renderHeartbeats() {
+        if (!this.heartbeats) {
+            return nothing;
+        }
+        return html`
+            <section>
+                <h3>Reminders</h3>
+                ${this.heartbeats.length === 0 ? html`<p class="secondary">None are scheduled. Ask in the chat for a reminder, or a briefing, to schedule one.</p>` : html`
+                    <table>
+                        <thead><tr><th>Reminder</th><th>When</th><th></th></tr></thead>
+                        <tbody>${this.heartbeats.map((heartbeat) => html`
+                            <tr>
+                                <td>
+                                    <div class="title">${heartbeat.title}</div>
+                                    <div class="secondary">${heartbeat.prompt}</div>
+                                </td>
+                                <td class="when">
+                                    ${heartbeat.schedule
+                                        ? html`<span title=${heartbeat.schedule}>${describeSchedule(heartbeat.schedule)}</span>${heartbeat.timezone ? html` (${heartbeat.timezone})` : nothing}`
+                                        : html`Once`}
+                                    <div>${heartbeat.next ? `Next ${formatTime(heartbeat.next)}` : heartbeat.fired ? `Fired ${formatTime(heartbeat.fired)}` : ''}</div>
+                                </td>
+                                <td class="action">
+                                    <cds-icon-button kind="ghost" size="sm" align="left" ?disabled=${this.deleting === heartbeat.id}
+                                        @click=${() => this.dispatchEvent(new CustomEvent(EventView.eventDeleteHeartbeat, { detail: heartbeat }))}>
+                                        ${iconLoader(TrashCan16, { slot: 'icon' })}
+                                        <span slot="tooltip-content">Delete reminder</span>
+                                    </cds-icon-button>
+                                </td>
+                            </tr>
+                        `)}</tbody>
+                    </table>
+                `}
+            </section>
+        `;
+    }
+
+    // renderOutcomes returns the outcomes of the chat's events, the most
+    // recent first
+    private renderOutcomes() {
         if (this.error) {
             return html`<p>${this.error}</p>`;
         } else if (!this.outcomes) {
             return html`<cds-skeleton-text paragraph line-count="4"></cds-skeleton-text>`;
         } else if (this.outcomes.length === 0) {
-            return html`<p>No events yet. When a heartbeat scheduled in this chat fires, what it replied is shown here.</p>`;
+            return html`<p>No events yet. When a reminder scheduled in this chat fires, what it replied is shown here.</p>`;
         }
         return html`
             <table>

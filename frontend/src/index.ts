@@ -102,8 +102,9 @@ const tools = new ToolsController({
 
 // Watch the server's changes, so the pages load what changed: sessions, as
 // they're created, changed, replied to, or their status changes, the
-// providers, whose models change, the tools, and agents, and the memory's
-// details, which are the names of the person and the assistant. Every
+// providers, whose models change, the tools, and agents, the memory's
+// details, which are the names of the person and the assistant, and the
+// heartbeats, which the UI calls reminders, and events' outcomes. Every
 // listener is called once the changes are watched, as they may have changed
 // before then.
 const events = new EventsController(notifications)
@@ -111,6 +112,7 @@ const events = new EventsController(notifications)
     .on({ schema: 'llm', table: 'provider' }, () => void models.refresh())
     .on({ schema: 'llm', table: 'tool' }, () => void tools.refresh())
     .on({ schema: 'memory', table: 'detail' }, () => void chat.refreshDetails())
+    .on({ schema: 'heartbeat', table: 'heartbeat' }, () => void outcomes.refresh())
     .on({ schema: 'llm', table: 'event' }, (event) => {
         void outcomes.refresh();
 
