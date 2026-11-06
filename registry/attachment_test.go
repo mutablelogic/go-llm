@@ -2,6 +2,7 @@ package registry_test
 
 import (
 	"context"
+	"encoding/json"
 	"net/url"
 	"strings"
 	"testing"
@@ -15,6 +16,9 @@ import (
 	test "github.com/mutablelogic/go-llm/registry/test"
 	resourcemanager "github.com/mutablelogic/go-llm/resource"
 	resourceschema "github.com/mutablelogic/go-llm/resource/schema"
+	toolkit "github.com/mutablelogic/go-llm/toolkit"
+	toolschema "github.com/mutablelogic/go-llm/toolkit/schema"
+	jsonschema "github.com/mutablelogic/go-server/pkg/jsonschema"
 	types "github.com/mutablelogic/go-server/pkg/types"
 	assert "github.com/stretchr/testify/assert"
 	require "github.com/stretchr/testify/require"
@@ -188,4 +192,59 @@ func Test_Attachments(t *testing.T) {
 		_, err = bare.Ask(ctx, schema.AskRequest{GeneratorMeta: schema.GeneratorMeta{Model: types.Ptr("model")}, Messages: []providerschema.MessageMeta{attached(t, "What's this?", alone.URI()).MessageMeta}}, nil)
 		assert.ErrorIs(t, err, llm.ErrNotImplemented)
 	})
+}
+
+// snapshotTool is a tool which returns an image, as a camera would
+type snapshotTool struct{ toolkit.Base }
+
+func (snapshotTool) Name() string                    { return "snapshot" }
+func (snapshotTool) Description() string             { return "Takes a picture" }
+func (snapshotTool) InputSchema() *jsonschema.Schema { return nil }
+func (snapshotTool) Run(context.Context, json.RawMessage) (any, error) {
+	return &providerschema.Resource{ResourceMeta: providerschema.ResourceMeta{ContentType: "image/png", Data: []byte(pngData)}}, nil
+}
+
+func Test_ToolResources(t *testing.T) {
+	ctx := context.Background()
+	sessions := test.NewSessionStore()
+	manager, err := resourcemanager.New(resourcemanager.NewStore(), resourcemanager.WithSessions(func(ctx context.Context, id uuid.UUID) error {
+		_, err := sessions.Get(ctx, id)
+		return err
+	}))
+	require.NoError(t, err)
+	tk := test.NewToolkit(t)
+	require.NoError(t, tk.Add(toolkit.NewNamespace("camera", "", snapshotTool{})))
+	p := newScripted(call("camera__snapshot", `{}`), text("A cat"))
+	r, err := registry.New(registry.WithSessionStore(sessions), registry.WithToolkit(tk), registry.WithResources(manager))
+	require.NoError(t, err)
+	require.NoError(t, r.Add("", p))
+
+	// An image which a tool returns, in a chat, is kept as a resource of the
+	// session, and its result is a link to it, rather than its data
+	session, err := r.CreateSession(ctx, schema.SessionMeta{GeneratorMeta: schema.GeneratorMeta{Model: types.Ptr("model"), Tools: []string{"camera:*"}}})
+	require.NoError(t, err)
+	response, err := r.Chat(ctx, session.ID, []llm.Message{user(t, "What's at the door?")}, nil)
+	require.NoError(t, err)
+	var result *providerschema.ToolResult
+	for _, message := range response.Messages {
+		for _, block := range message.Content {
+			if block.ToolResult != nil {
+				result = block.ToolResult
+			}
+		}
+	}
+	require.NotNil(t, result)
+	var links toolschema.ResourcesResult
+	require.NoError(t, json.Unmarshal(result.Content, &links))
+	require.Len(t, links.Resources, 1)
+	link := links.Resources[0]
+	assert.Equal(t, "image/png", link.Type)
+	assert.Equal(t, int64(len(pngData)), link.Size)
+	assert.NotContains(t, string(result.Content), "data", "the result has a link, rather than the data")
+	got, err := manager.Resource(ctx, link.URI, &session.ID)
+	require.NoError(t, err, "it's the session's")
+	data, err := llm.ReadAll(ctx, got)
+	require.NoError(t, err)
+	assert.Equal(t, pngData, string(data))
+
 }
