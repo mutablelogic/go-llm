@@ -10,16 +10,25 @@ const eventShutdown = 'shutdown';
 
 // watchEvents calls the function with each event which matches the filter,
 // as it happens, until the stream ends or the signal aborts it, and returns
-// true when the stream ended as the server is stopping. The open function is
-// called once the stream has started. The stream's pings are ignored.
-export async function watchEvents(fn: (event: Event) => void, filter: EventFilter = {}, signal?: AbortSignal, onOpen?: () => void): Promise<boolean> {
+// true when the server said it's stopping, even when the stream then fails,
+// as it can, as the server closes it. The open function is called once the
+// stream has started, and the shutdown function as soon as the server says
+// it's stopping. The stream's pings are ignored.
+export async function watchEvents(fn: (event: Event) => void, filter: EventFilter = {}, signal?: AbortSignal, onOpen?: () => void, onShutdown?: () => void): Promise<boolean> {
     let shutdown = false;
-    await requestStream('GET', '/events', (name, data) => {
-        if (name === eventName) {
-            fn(data as Event);
-        } else if (name === eventShutdown) {
-            shutdown = true;
+    try {
+        await requestStream('GET', '/events', (name, data) => {
+            if (name === eventName) {
+                fn(data as Event);
+            } else if (name === eventShutdown && !shutdown) {
+                shutdown = true;
+                onShutdown?.();
+            }
+        }, { query: { ...filter }, signal, onOpen });
+    } catch (error) {
+        if (!shutdown) {
+            throw error;
         }
-    }, { query: { ...filter }, signal, onOpen });
+    }
     return shutdown;
 }

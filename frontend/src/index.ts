@@ -132,6 +132,7 @@ const events = new EventsController(notifications)
             document.querySelector('llm-session-list')?.alert();
         }
     })
+    .onShutdown(() => chat.stopReplies())
     .onDisconnect(() => {
         chat.disconnect();
         models.disconnect();

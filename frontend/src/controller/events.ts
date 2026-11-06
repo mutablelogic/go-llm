@@ -33,6 +33,7 @@ export class EventsController {
     private readonly notifications: NotificationController;
     private readonly listeners: Listener[] = [];
     private readonly disconnects: (() => void)[] = [];
+    private readonly shutdowns: (() => void)[] = [];
     private readonly connects: (() => void)[] = [];
 
     // The stream which is watched, which is aborted when it's stopped
@@ -56,6 +57,15 @@ export class EventsController {
     // fails, as the server can't be reached until it's watched again
     onDisconnect(fn: () => void): this {
         this.disconnects.push(fn);
+        return this;
+    }
+
+    // onShutdown calls the function when the server says it's stopping, as
+    // it's told before the stream ends, rather than when the stream fails,
+    // so requests which would hold it up, such as a reply which is streamed,
+    // can be stopped
+    onShutdown(fn: () => void): this {
+        this.shutdowns.push(fn);
         return this;
     }
 
@@ -109,7 +119,7 @@ export class EventsController {
                 this.listeners.forEach((listener) => listener.call());
             };
             try {
-                const shutdown = await watchEvents((event) => this.dispatch(event), {}, signal, open);
+                const shutdown = await watchEvents((event) => this.dispatch(event), {}, signal, open, () => this.shutdowns.forEach((fn) => fn()));
                 if (signal.aborted) {
                     return;
                 }
