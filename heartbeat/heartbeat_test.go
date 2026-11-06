@@ -395,3 +395,44 @@ func Test_Cleanup(t *testing.T) {
 	_, err = h.Get(t.Context(), daily.ID)
 	assert.NoError(t, err)
 }
+
+// changingStore is a store which reschedules a heartbeat once it's listed, as
+// another server would, between cleanup's listing and its delete
+type changingStore struct {
+	heartbeat.Store
+	id    uuid.UUID
+	at    time.Time
+	armed bool
+}
+
+func (s *changingStore) List(ctx context.Context) ([]schema.Heartbeat, error) {
+	list, err := s.Store.List(ctx)
+	if err == nil && s.armed {
+		s.armed = false
+		_, err = s.Store.Update(ctx, s.id, func(h *schema.Heartbeat) error {
+			h.At, h.Fired, h.Modified = types.Ptr(s.at), nil, s.at
+			return nil
+		})
+	}
+	return list, err
+}
+
+func Test_CleanupChanged(t *testing.T) {
+	// A heartbeat which was changed after cleanup listed it isn't deleted
+	c := &clock{}
+	c.Set("2026-01-05T08:00:00Z")
+	store := &changingStore{Store: heartbeat.NewStore()}
+	h, _, _ := newHeartbeats(t, store, c)
+	once, err := h.Create(t.Context(), schema.HeartbeatMeta{Title: "Call", Prompt: "Remind them to call", Session: uuid.New(), At: types.Ptr(at("2026-01-05T09:00:00Z"))})
+	require.NoError(t, err)
+	c.Set("2026-01-05T09:00:00Z")
+	heartbeat.Tick(t.Context(), h)
+
+	// A week later, it's rescheduled as cleanup lists it
+	store.id, store.at, store.armed = once.ID, at("2026-01-20T09:00:00Z"), true
+	c.Set("2026-01-13T09:00:00Z")
+	heartbeat.Tick(t.Context(), h)
+	got, err := h.Get(t.Context(), once.ID)
+	require.NoError(t, err)
+	assert.Equal(t, at("2026-01-20T09:00:00Z"), *got.Next)
+}

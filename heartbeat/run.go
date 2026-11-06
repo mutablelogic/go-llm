@@ -162,25 +162,46 @@ func (h *Heartbeats) cleanup(ctx context.Context, logger *slog.Logger, heartbeat
 	kept := heartbeats[:0]
 	deleted := 0
 	for _, heartbeat := range heartbeats {
-		since := heartbeat.Modified
-		if heartbeat.Fired != nil && heartbeat.Fired.After(since) {
-			since = *heartbeat.Fired
-		}
-		if h.next(heartbeat) != nil || now.Sub(since) < h.retention {
+		if !h.expired(heartbeat, now) {
 			kept = append(kept, heartbeat)
 			continue
 		}
-		if _, err := h.Delete(ctx, heartbeat.ID); err != nil && !errors.Is(err, llm.ErrNotFound) {
+
+		// It's deleted when it's still expired, as it is in the store, so one
+		// which was changed since it was listed, such as by another server,
+		// is kept
+		deletedHeartbeat, err := h.store.Delete(ctx, heartbeat.ID, func(heartbeat schema.Heartbeat) error {
+			if !h.expired(heartbeat, now) {
+				return errNotExpired
+			}
+			return nil
+		})
+		switch {
+		case errors.Is(err, errNotExpired):
+			kept = append(kept, heartbeat)
+		case errors.Is(err, llm.ErrNotFound):
+		case err != nil:
 			logger.ErrorContext(ctx, "heartbeat not deleted", "heartbeat", heartbeat.ID, "title", heartbeat.Title, "error", err)
 			kept = append(kept, heartbeat)
-			continue
+		default:
+			h.publish(eventschema.EventDelete, deletedHeartbeat)
+			deleted++
 		}
-		deleted++
 	}
 	if deleted > 0 {
 		logger.InfoContext(ctx, "heartbeats which won't fire again deleted", "heartbeats", deleted)
 	}
 	return kept
+}
+
+// expired returns whether the heartbeat won't fire again, and was last
+// fired, or changed, longer ago than heartbeats are kept
+func (h *Heartbeats) expired(heartbeat schema.Heartbeat, now time.Time) bool {
+	since := heartbeat.Modified
+	if heartbeat.Fired != nil && heartbeat.Fired.After(since) {
+		since = *heartbeat.Fired
+	}
+	return h.next(heartbeat) == nil && now.Sub(since) >= h.retention
 }
 
 // deleteSession deletes the heartbeats for the session, which was deleted

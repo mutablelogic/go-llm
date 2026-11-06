@@ -85,6 +85,10 @@ const (
 // due, as it fired, such as on another server, or it changed
 var errNotDue = errors.New("heartbeat isn't due")
 
+// errNotExpired is returned by a delete which cleans up a heartbeat, which
+// was changed since it was listed, so it isn't to be deleted yet
+var errNotExpired = errors.New("heartbeat isn't expired")
+
 ///////////////////////////////////////////////////////////////////////////////
 // LIFECYCLE
 
@@ -214,7 +218,7 @@ func (h *Heartbeats) Delete(ctx context.Context, id uuid.UUID) (_ schema.Heartbe
 	)
 	defer func() { endSpan(err) }()
 
-	heartbeat, err := h.store.Delete(ctx, id)
+	heartbeat, err := h.store.Delete(ctx, id, nil)
 	if err != nil {
 		return schema.Heartbeat{}, err
 	}
@@ -240,7 +244,13 @@ func (h *Heartbeats) DeleteSession(ctx context.Context, session uuid.UUID) (_ in
 		if heartbeat.Session != session {
 			continue
 		}
-		if _, err := h.store.Delete(ctx, heartbeat.ID); errors.Is(err, llm.ErrNotFound) {
+		if _, err := h.store.Delete(ctx, heartbeat.ID, func(heartbeat schema.Heartbeat) error {
+			// It's still the session's, as it is in the store
+			if heartbeat.Session != session {
+				return llm.ErrNotFound
+			}
+			return nil
+		}); errors.Is(err, llm.ErrNotFound) {
 			continue
 		} else if err != nil {
 			errs = append(errs, err)

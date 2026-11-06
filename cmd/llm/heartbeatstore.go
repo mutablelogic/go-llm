@@ -124,12 +124,17 @@ func (s *heartbeatStore) Update(_ context.Context, id uuid.UUID, fn func(*schema
 	return result, err
 }
 
-func (s *heartbeatStore) Delete(_ context.Context, id uuid.UUID) (result schema.Heartbeat, err error) {
+func (s *heartbeatStore) Delete(_ context.Context, id uuid.UUID, check func(schema.Heartbeat) error) (result schema.Heartbeat, err error) {
 	err = s.locked(func() error {
 		h, err := s.read(id)
 		if err != nil {
 			return err
-		} else if err := os.Remove(s.path(id)); err != nil {
+		} else if check != nil {
+			if err := check(h); err != nil {
+				return err
+			}
+		}
+		if err := os.Remove(s.path(id)); err != nil {
 			return err
 		}
 		result = h
