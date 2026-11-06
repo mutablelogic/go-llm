@@ -102,7 +102,7 @@ export class ProviderForm extends Panel<ProviderFormItem> {
     }
 
     protected renderSubtitle(item: ProviderFormItem) {
-        return item.mode === 'add' ? 'A provider of models, which is checked to be reachable' : `A provider of type ${item.provider.provider}`;
+        return item.mode === 'add' ? 'A service, or a server of your own, which runs assistant models, and models which read, transcribe or embed' : `A provider of type ${item.provider.provider}`;
     }
 
     protected renderBody(item: ProviderFormItem) {
