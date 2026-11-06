@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"testing"
+	"time"
 	"uuid"
 
 	// Packages
@@ -98,6 +99,37 @@ func Test_RunEvent(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "scripted:other", types.Value(response.Session.Model))
 
+	// An agent which the event's agent calls, whose own tools are the
+	// heartbeats', isn't given them either
+	_, _, err = r.CreateAgent(ctx, schema.AgentMeta{
+		PromptMeta:    schema.PromptMeta{Name: "helper", Prompt: types.Ptr("Help")},
+		GeneratorMeta: schema.GeneratorMeta{Tools: []string{"heartbeat:*", "weather:current"}},
+	})
+	require.NoError(t, err)
+	p.replies = append(p.replies, call("agent__helper", `{}`), text("Helped"), reply())
+	asked := len(p.asked)
+	_, err = r.RunEvent(ctx, event, schema.RunEventRequest{Session: parent.ID, Input: input, Without: []string{"heartbeat"}}, nil)
+	require.NoError(t, err)
+	var helped bool
+	for _, a := range p.asked[asked:] {
+		if len(a.messages) > 0 && a.messages[0].Text() == "Help" {
+			helped = true
+			assert.Equal(t, []string{"weather__current"}, a.tools, "the helper isn't given the heartbeats' tools")
+		}
+	}
+	assert.True(t, helped, "the helper was run")
+
+	// An agent made internal, with nothing else changed, isn't a tool, and,
+	// made not internal, is one again
+	_, err = r.UpdateAgent(ctx, "helper", schema.AgentMeta{PromptMeta: schema.PromptMeta{Internal: types.Ptr(true)}})
+	require.NoError(t, err)
+	_, err = tk.ToolNames(ctx, "agent:helper")
+	assert.ErrorIs(t, err, llm.ErrNotFound)
+	_, err = r.UpdateAgent(ctx, "helper", schema.AgentMeta{PromptMeta: schema.PromptMeta{Internal: types.Ptr(false)}})
+	require.NoError(t, err)
+	_, err = tk.ToolNames(ctx, "agent:helper")
+	assert.NoError(t, err)
+
 	// Errors: no event, or session, the same, a session which doesn't exist,
 	// or has no model, an agent which doesn't exist, and an input which isn't
 	// the agent's
@@ -138,4 +170,25 @@ func (eventTool) Description() string             { return "Schedules heartbeats
 func (eventTool) InputSchema() *jsonschema.Schema { return nil }
 func (eventTool) Run(context.Context, json.RawMessage) (any, error) {
 	return nil, nil
+}
+
+func Test_Ready(t *testing.T) {
+	// The registry is ready once it's run, and has synced its providers
+	r, err := registry.New()
+	require.NoError(t, err)
+	select {
+	case <-r.Ready():
+		t.Fatal("ready before it's run")
+	default:
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error)
+	go func() { done <- r.Run(ctx, nil) }()
+	select {
+	case <-r.Ready():
+	case <-time.After(5 * time.Second):
+		t.Fatal("not ready once it's run")
+	}
+	cancel()
+	assert.NoError(t, <-done)
 }

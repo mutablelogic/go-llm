@@ -70,7 +70,7 @@ func (r *Registry) RunEvent(ctx context.Context, id uuid.UUID, req schema.RunEve
 	replied := r.replying(session.ID)
 	r.lifecycle.RUnlock()
 	defer replied()
-	run, err := r.RunAgent(ctx, agent, schema.RunAgentRequest{Input: req.Input, Session: session.ID, Tools: tools}, stream)
+	run, err := r.RunAgent(withoutNamespaces(ctx, req.Without), agent, schema.RunAgentRequest{Input: req.Input, Session: session.ID, Tools: tools}, stream)
 	if err != nil {
 		return nil, err
 	}
@@ -113,6 +113,28 @@ func (r *Registry) addToSession(ctx context.Context, id uuid.UUID, response sche
 		r.sessionChanged(eventschema.EventUpdate, stored)
 		return r.withoutMessages(stored), nil
 	}
+}
+
+// withoutNamespacesKey is the key of the namespaces whose tools the agents
+// run in a context aren't given, in it
+type withoutNamespacesKey struct{}
+
+// withoutNamespaces returns the context, in which the agents which run, such
+// as those an event's agent calls as tools, aren't given the tools of the
+// namespaces, as well as those which were already excluded
+func withoutNamespaces(ctx context.Context, namespaces []string) context.Context {
+	if len(namespaces) == 0 {
+		return ctx
+	}
+	without := append(slices.Clone(namespacesWithout(ctx)), namespaces...)
+	return context.WithValue(ctx, withoutNamespacesKey{}, without)
+}
+
+// namespacesWithout returns the namespaces whose tools the agents run in the
+// context aren't given
+func namespacesWithout(ctx context.Context) []string {
+	without, _ := ctx.Value(withoutNamespacesKey{}).([]string)
+	return without
 }
 
 // eventTools returns the tools, apart from those of the namespaces, by their

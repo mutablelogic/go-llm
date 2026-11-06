@@ -305,9 +305,16 @@ func (r *Registry) RunAgent(ctx context.Context, name string, req schema.RunAgen
 		return nil, llm.ErrBadParameter.Withf("agent %q has no model, nor has the session it's run from", name)
 	}
 
-	// The tools it's run with, instead of its own, when they're given
+	// The tools it's run with, instead of its own, when they're given, apart
+	// from those of the namespaces it's run without, such as an event's,
+	// which an agent it calls is run without too
 	if req.Tools != nil {
 		if meta.Tools, err = r.toolNames(ctx, req.Tools); err != nil {
+			return nil, err
+		}
+	}
+	if without := namespacesWithout(ctx); len(without) > 0 && len(meta.Tools) > 0 {
+		if meta.Tools, err = r.eventTools(ctx, meta.Tools, without); err != nil {
 			return nil, err
 		}
 	}

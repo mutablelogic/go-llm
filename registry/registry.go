@@ -42,6 +42,11 @@ type Registry struct {
 	// lifecycle is held to delete a session, and, shared, to change its
 	// status, so a status isn't set as, or after, it's deleted
 	lifecycle sync.RWMutex
+
+	// ready is closed once Run has loaded the agents, and synced the
+	// providers, and their models, when it starts
+	ready     chan struct{}
+	readyOnce sync.Once
 }
 
 // entry is a provider, its name in the registry, and its cache
@@ -64,7 +69,7 @@ const separator = ":"
 // New returns a registry without providers, which are added with Add, with
 // the options, such as its tracer
 func New(opts ...Opt) (*Registry, error) {
-	r := &Registry{providers: make(map[string]*cached)}
+	r := &Registry{providers: make(map[string]*cached), ready: make(chan struct{})}
 	if err := r.opt.apply(opts); err != nil {
 		return nil, err
 	}

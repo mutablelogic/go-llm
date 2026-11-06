@@ -67,10 +67,18 @@ func lateness(scheduled, fired time.Time) string {
 }
 
 // withoutReminder returns the text without the tags of the block of what the
-// system says, as what the person, or a model, wrote, so it can't fake one
+// system says, as what the person, or a model, wrote, so it can't fake one.
+// They're taken out until there are none, so a tag which taking one out
+// makes, such as <sys<system-reminder>tem-reminder>, is taken out too.
 func withoutReminder(text string) string {
-	for _, tag := range []string{"<" + reminderTag + ">", "</" + reminderTag + ">"} {
-		text = strings.ReplaceAll(text, tag, "")
+	for {
+		stripped := text
+		for _, tag := range []string{"<" + reminderTag + ">", "</" + reminderTag + ">"} {
+			stripped = strings.ReplaceAll(stripped, tag, "")
+		}
+		if stripped == text {
+			return text
+		}
+		text = stripped
 	}
-	return text
 }

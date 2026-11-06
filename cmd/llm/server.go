@@ -176,6 +176,14 @@ func (runner *RunServer) withToolkit(ctx server.Cmd, b *broadcaster.Broadcaster,
 				return r.Run(runCtx, ctx.Logger())
 			})
 			group.Go(func() error {
+				// Heartbeats fire once the registry has its providers, and
+				// their models, and agents, so one which is overdue, which
+				// fires as they start, can be run
+				select {
+				case <-r.Ready():
+				case <-runCtx.Done():
+					return nil
+				}
 				return h.Run(runCtx, ctx.Logger())
 			})
 			group.Go(func() error {

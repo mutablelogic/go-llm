@@ -127,7 +127,7 @@ func (r AgentList) String() string {
 // IsZero returns true when the prompt sets nothing, apart from its name, so
 // as an update, it changes nothing
 func (p PromptMeta) IsZero() bool {
-	return p.Title == nil && p.Description == nil && p.Prompt == nil && len(bytes.TrimSpace(p.Input)) == 0
+	return p.Title == nil && p.Description == nil && p.Prompt == nil && p.Internal == nil && len(bytes.TrimSpace(p.Input)) == 0
 }
 
 // Merge returns the prompt, changed by the update: its title, description
