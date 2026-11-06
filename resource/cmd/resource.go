@@ -125,8 +125,10 @@ func (cmd *ResourceCreateCmd) Run(ctx server.Cmd) error {
 func (cmd *ResourceGetCmd) Run(ctx server.Cmd) (err error) {
 	var w io.Writer = os.Stdout
 	if cmd.Output != "" && cmd.Output != "-" {
-		f, err := os.Create(cmd.Output)
-		if err != nil {
+		// The named error, rather than one of this block, so the deferred
+		// function sees the download's error, and its close's is returned
+		var f *os.File
+		if f, err = os.Create(cmd.Output); err != nil {
 			return err
 		}
 		defer func() {

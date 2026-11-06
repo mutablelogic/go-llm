@@ -54,9 +54,12 @@ type Store interface {
 	Update(context.Context, schema.ResourceKey, func(*schema.Resource) error) (schema.Resource, error)
 
 	// Delete deletes the resource with the key, and returns it, as it was,
-	// or ErrNotFound when there's none. Its content is kept, until it's
-	// removed.
-	Delete(context.Context, schema.ResourceKey) (schema.Resource, error)
+	// or ErrNotFound when there's none. With a check, it's called with the
+	// resource, as it is, and it's deleted only when the check returns nil,
+	// so no other change, such as its being used, is made between them, or
+	// the check's error is returned, without deleting it. Its content is
+	// kept, until it's removed.
+	Delete(ctx context.Context, key schema.ResourceKey, check func(schema.Resource) error) (schema.Resource, error)
 }
 
 // store keeps the resources, and their content, in memory, so they aren't
@@ -176,12 +179,16 @@ func (s *store) Update(_ context.Context, key schema.ResourceKey, fn func(*schem
 	return resource, nil
 }
 
-func (s *store) Delete(_ context.Context, key schema.ResourceKey) (schema.Resource, error) {
+func (s *store) Delete(_ context.Context, key schema.ResourceKey, check func(schema.Resource) error) (schema.Resource, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	resource, exists := s.resources[keyOf(key)]
 	if !exists {
 		return schema.Resource{}, llm.ErrNotFound.Withf("resource %s", key)
+	} else if check != nil {
+		if err := check(Clone(resource)); err != nil {
+			return schema.Resource{}, err
+		}
 	}
 	delete(s.resources, keyOf(key))
 	return resource, nil

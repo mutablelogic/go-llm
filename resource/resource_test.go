@@ -312,3 +312,111 @@ func Test_Schema(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, strings.Repeat("b", 64), hash)
 }
+
+// racingStore is a store which calls a function as a resource is deleted,
+// before it's checked, as if it were changed at the same time
+type racingStore struct {
+	Store
+	onDelete func()
+}
+
+func (s racingStore) Delete(ctx context.Context, key schema.ResourceKey, check func(schema.Resource) error) (schema.Resource, error) {
+	if s.onDelete != nil {
+		s.onDelete()
+	}
+	return s.Store.Delete(ctx, key, check)
+}
+
+// sessionReader reads the content, and deletes the session once it's read,
+// as if it were deleted as a slow upload was read
+type sessionReader struct {
+	io.Reader
+	deleted *bool
+}
+
+func (r sessionReader) Read(p []byte) (int, error) {
+	n, err := r.Reader.Read(p)
+	if err == io.EOF {
+		*r.deleted = true
+	}
+	return n, err
+}
+
+func Test_Races(t *testing.T) {
+	ctx := context.Background()
+
+	t.Run("Clean", func(t *testing.T) {
+		// A resource which is used as it's cleaned isn't deleted
+		r, now, _ := newManager(t)
+		alone, _, err := r.Create(ctx, schema.ResourceMeta{}, strings.NewReader("alone"))
+		require.NoError(t, err)
+		*now = now.Add(schema.DefaultRetention + time.Minute)
+		r.store = racingStore{Store: r.store, onDelete: func() {
+			_, err := r.Resource(ctx, alone.URI(), nil)
+			require.NoError(t, err)
+		}}
+		r.Clean(ctx, nil)
+		_, err = r.Get(ctx, alone.Key())
+		assert.NoError(t, err, "it was used, so it's kept")
+	})
+
+	t.Run("Session", func(t *testing.T) {
+		// A resource whose session is deleted as it's uploaded isn't created
+		session := uuid.New()
+		deleted := false
+		r, _, store := newManager(t)
+		r.session = func(_ context.Context, id uuid.UUID) error {
+			if id == session && !deleted {
+				return nil
+			}
+			return llm.ErrNotFound
+		}
+		_, _, err := r.Create(ctx, schema.ResourceMeta{Session: &session}, sessionReader{strings.NewReader("slow"), &deleted})
+		assert.ErrorIs(t, err, llm.ErrNotFound)
+		list, err := store.List(ctx)
+		require.NoError(t, err)
+		assert.Empty(t, list)
+	})
+}
+
+func Test_Types(t *testing.T) {
+	ctx := context.Background()
+	r, _, _ := newManager(t)
+
+	// A resource's type is kept when it's created again without one, or with
+	// application/octet-stream, and changed when one is given
+	created, _, err := r.Create(ctx, schema.ResourceMeta{Name: "notes.json"}, strings.NewReader(`{"a":1}`))
+	require.NoError(t, err)
+	assert.Equal(t, "application/json", created.Type)
+	again, _, err := r.Create(ctx, schema.ResourceMeta{Type: "application/octet-stream"}, strings.NewReader(`{"a":1}`))
+	require.NoError(t, err)
+	assert.Equal(t, "application/json", again.Type)
+	given, _, err := r.Create(ctx, schema.ResourceMeta{Type: "text/plain"}, strings.NewReader(`{"a":1}`))
+	require.NoError(t, err)
+	assert.Equal(t, "text/plain", given.Type)
+
+	// A type must be a type, with a subtype
+	_, _, err = r.Create(ctx, schema.ResourceMeta{Type: "attachment"}, strings.NewReader("x"))
+	assert.ErrorIs(t, err, llm.ErrBadParameter)
+}
+
+func Test_ReadUses(t *testing.T) {
+	ctx := context.Background()
+	r, now, _ := newManager(t)
+	created, _, err := r.Create(ctx, schema.ResourceMeta{}, strings.NewReader("hello"))
+	require.NoError(t, err)
+	resource, err := r.Resource(ctx, created.URI(), nil)
+	require.NoError(t, err)
+
+	// Each read of it uses it, and it can't be read once it's deleted
+	*now = now.Add(time.Hour)
+	_, err = llm.ReadAll(ctx, resource)
+	require.NoError(t, err)
+	got, err := r.Get(ctx, created.Key())
+	require.NoError(t, err)
+	assert.Equal(t, *now, got.Used)
+	_, err = r.Delete(ctx, created.Key())
+	require.NoError(t, err)
+	_, err = llm.ReadAll(ctx, resource)
+	assert.ErrorIs(t, err, llm.ErrNotFound)
+}
