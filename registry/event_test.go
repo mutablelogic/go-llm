@@ -130,6 +130,35 @@ func Test_RunEvent(t *testing.T) {
 	_, err = tk.ToolNames(ctx, "agent:helper")
 	assert.NoError(t, err)
 
+	// A tool which a model had before the agent was made internal isn't run
+	held, err := tk.Tools(ctx, "agent:helper")
+	require.NoError(t, err)
+	require.Len(t, held, 1)
+	_, err = r.UpdateAgent(ctx, "helper", schema.AgentMeta{PromptMeta: schema.PromptMeta{Internal: types.Ptr(true)}})
+	require.NoError(t, err)
+	_, err = held[0].Run(ctx, json.RawMessage(`{}`))
+	assert.ErrorIs(t, err, llm.ErrNotFound)
+	_, err = r.UpdateAgent(ctx, "helper", schema.AgentMeta{PromptMeta: schema.PromptMeta{Internal: types.Ptr(false)}})
+	require.NoError(t, err)
+
+	// A run isn't stored, when the session's messages are forgotten as it
+	// runs, as a chat's reply isn't
+	p.delay = 300 * time.Millisecond
+	p.replies = append(p.replies, reply())
+	done := make(chan error)
+	go func() {
+		_, err := r.RunEvent(ctx, event, schema.RunEventRequest{Session: parent.ID, Input: input}, func(llm.StreamType, string) {})
+		done <- err
+	}()
+	time.Sleep(100 * time.Millisecond)
+	_, err = r.ForgetSessionMessages(ctx, event)
+	require.NoError(t, err)
+	assert.ErrorIs(t, <-done, llm.ErrConflict)
+	p.delay = 0
+	messages, err = r.ListSessionMessages(ctx, event, schema.MessageListRequest{})
+	require.NoError(t, err)
+	assert.Zero(t, messages.Count, "the forgotten messages stay forgotten")
+
 	// Errors: no event, or session, the same, a session which doesn't exist,
 	// or has no model, an agent which doesn't exist, and an input which isn't
 	// the agent's

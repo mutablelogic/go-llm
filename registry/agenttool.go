@@ -203,7 +203,7 @@ func (t *agentTool) OutputSchema() *jsonschema.Schema {
 func (t *agentTool) Run(ctx context.Context, input json.RawMessage) (any, error) {
 	session := toolkit.SessionFromContext(ctx)
 	req := schema.RunAgentRequest{Input: input, Session: session.ID()}
-	response, err := t.registry.RunAgent(ctx, t.agent.Name, req, agentStream(t.agent.Name, session))
+	response, err := t.registry.runAgent(ctx, t.agent.Name, req, agentStream(t.agent.Name, session), true)
 	if err != nil {
 		return nil, err
 	}

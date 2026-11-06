@@ -42,8 +42,10 @@ const DefaultEventAgent = "event"
 // schedule events.
 // Returns ErrBadParameter when the identifier, or the session, is the nil
 // UUID, or they're the same, or the session has no model, ErrNotFound when
-// there's no session, or agent, ErrServiceUnavailable when the registry has
-// no session store, or agent store, and the errors of RunAgent.
+// there's no session, or agent, ErrConflict when the event's session was
+// changed as the agent ran, such as when its messages were forgotten, so
+// what it did isn't stored, ErrServiceUnavailable when the registry has no
+// session store, or agent store, and the errors of RunAgent.
 func (r *Registry) RunEvent(ctx context.Context, id uuid.UUID, req schema.RunEventRequest, stream llm.GeneratorStreamFn) (_ *schema.RunEventResponse, err error) {
 	ctx, endSpan := otel.StartSpan(r.tracer, ctx, "llm.registry.RunEvent",
 		attribute.String("arg.id", id.String()),
@@ -65,8 +67,16 @@ func (r *Registry) RunEvent(ctx context.Context, id uuid.UUID, req schema.RunEve
 	}
 
 	// The session is replying, until the agent has replied, and what it did
-	// is stored, or not
+	// is stored, or not, unless it's deleted before it's replying, so its
+	// status isn't set after it's deleted. It's as it is now, so what the
+	// agent did is added to it as it is, and isn't, when it changes as it
+	// runs, such as when its messages are forgotten, as a chat's reply isn't.
 	r.lifecycle.RLock()
+	stored, err := r.sessionStore.Get(ctx, session.ID)
+	if err != nil {
+		r.lifecycle.RUnlock()
+		return nil, err
+	}
 	replied := r.replying(session.ID)
 	r.lifecycle.RUnlock()
 	defer replied()
@@ -76,44 +86,25 @@ func (r *Registry) RunEvent(ctx context.Context, id uuid.UUID, req schema.RunEve
 	}
 
 	// What it did, which is its prompt, the tools it called, and its reply,
-	// is added to the session, with its usage
-	if session, err = r.addToSession(ctx, session.ID, run.SessionResponse); err != nil {
+	// is added to the session, with its usage. Returns ErrConflict when the
+	// session was changed as it ran.
+	stored.Messages = append(stored.Messages, run.Messages...)
+	stored.Usage = schema.SessionUsage{
+		Usage:    addUsage(stored.Usage.Usage, run.Usage.Usage),
+		Input:    run.Usage.Input,
+		Output:   run.Usage.Output,
+		Overhead: run.Usage.Overhead,
+	}
+	if stored, err = r.sessionStore.Put(ctx, stored); err != nil {
 		return nil, err
 	}
+	r.sessionChanged(eventschema.EventUpdate, stored)
+	session = r.withoutMessages(stored)
 	return &schema.RunEventResponse{Session: *session, Run: *run}, nil
 }
 
 ///////////////////////////////////////////////////////////////////////////////
 // PRIVATE METHODS
-
-// addToSession adds the messages of the response to the session with the
-// identifier, with its usage, and returns the session, without its
-// messages. A session which is changed as they're added, such as by another
-// reply, is read again, and they're added to it, at most a few times.
-func (r *Registry) addToSession(ctx context.Context, id uuid.UUID, response schema.SessionResponse) (*schema.Session, error) {
-	const tries = 3
-	for try := 1; ; try++ {
-		session, err := r.sessionStore.Get(ctx, id)
-		if err != nil {
-			return nil, err
-		}
-		session.Messages = append(session.Messages, response.Messages...)
-		session.Usage = schema.SessionUsage{
-			Usage:    addUsage(session.Usage.Usage, response.Usage.Usage),
-			Input:    response.Usage.Input,
-			Output:   response.Usage.Output,
-			Overhead: response.Usage.Overhead,
-		}
-		stored, err := r.sessionStore.Put(ctx, session)
-		if errors.Is(err, llm.ErrConflict) && try < tries {
-			continue
-		} else if err != nil {
-			return nil, err
-		}
-		r.sessionChanged(eventschema.EventUpdate, stored)
-		return r.withoutMessages(stored), nil
-	}
-}
 
 // withoutNamespacesKey is the key of the namespaces whose tools the agents
 // run in a context aren't given, in it

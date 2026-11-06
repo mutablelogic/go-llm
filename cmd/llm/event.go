@@ -10,15 +10,9 @@ import (
 
 	// Packages
 	heartbeatschema "github.com/mutablelogic/go-llm/heartbeat/schema"
+	reminder "github.com/mutablelogic/go-llm/internal/reminder"
 	memoryschema "github.com/mutablelogic/go-llm/memory/schema"
 )
-
-///////////////////////////////////////////////////////////////////////////////
-// GLOBALS
-
-// reminderTag is the tag of the block of what the system says, which is
-// taken out of what the system doesn't say, so it can't be faked
-const reminderTag = "system-reminder"
 
 ///////////////////////////////////////////////////////////////////////////////
 // PRIVATE FUNCTIONS
@@ -45,12 +39,12 @@ func eventInput(fire heartbeatschema.FireEvent, details memoryschema.Details) (j
 		{memoryschema.FieldAssistant, "Your name"},
 	} {
 		if value, ok := details.Value(detail.field); ok {
-			lines = append(lines, detail.label+": "+withoutReminder(value))
+			lines = append(lines, detail.label+": "+reminder.Strip(value))
 		}
 	}
 	return json.Marshal(map[string]string{
-		"title":   withoutReminder(fire.Title),
-		"prompt":  withoutReminder(fire.Prompt),
+		"title":   reminder.Strip(fire.Title),
+		"prompt":  reminder.Strip(fire.Prompt),
 		"late":    lateness(fire.Scheduled, fire.Fired),
 		"context": strings.Join(lines, "\n"),
 	})
@@ -64,21 +58,4 @@ func lateness(scheduled, fired time.Time) string {
 		return "on time"
 	}
 	return fmt.Sprintf("%s late", strings.TrimSuffix(late.String(), "0s"))
-}
-
-// withoutReminder returns the text without the tags of the block of what the
-// system says, as what the person, or a model, wrote, so it can't fake one.
-// They're taken out until there are none, so a tag which taking one out
-// makes, such as <sys<system-reminder>tem-reminder>, is taken out too.
-func withoutReminder(text string) string {
-	for {
-		stripped := text
-		for _, tag := range []string{"<" + reminderTag + ">", "</" + reminderTag + ">"} {
-			stripped = strings.ReplaceAll(stripped, tag, "")
-		}
-		if stripped == text {
-			return text
-		}
-		text = stripped
-	}
 }
