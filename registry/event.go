@@ -129,26 +129,27 @@ func (r *Registry) RunEvent(ctx context.Context, id uuid.UUID, req schema.RunEve
 
 // eventReply returns the message, and how important it is, of the reply of
 // the agent which ran an event, which is its message, and importance, as the
-// event agent replies, or, of an agent which replies with text, its text,
-// which is worth telling the person. Returns ErrBadParameter when its
-// importance isn't one.
+// event agent replies, or, of an agent which replies with text, or with
+// JSON without a message, such as another agent, its text, or its JSON, which
+// is worth telling the person. Returns ErrBadParameter when its importance
+// isn't one.
 func eventReply(reply json.RawMessage) (string, schema.EventImportance, error) {
 	var text string
 	if err := json.Unmarshal(reply, &text); err == nil {
 		return text, schema.ImportanceNotify, nil
 	}
 	var result struct {
-		Message    string `json:"message"`
-		Importance string `json:"importance"`
+		Message    *string `json:"message"`
+		Importance string  `json:"importance"`
 	}
-	if err := json.Unmarshal(reply, &result); err != nil {
+	if err := json.Unmarshal(reply, &result); err != nil || result.Message == nil {
 		return string(reply), schema.ImportanceNotify, nil
 	}
 	importance, err := schema.ParseEventImportance(result.Importance)
 	if err != nil {
 		return "", "", err
 	}
-	return result.Message, importance, nil
+	return *result.Message, importance, nil
 }
 
 // withoutNamespacesKey is the key of the namespaces whose tools the agents

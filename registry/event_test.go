@@ -3,6 +3,7 @@ package registry_test
 import (
 	"context"
 	"encoding/json"
+	"strings"
 	"testing"
 	"time"
 	"uuid"
@@ -289,6 +290,12 @@ func Test_EventOutcomes(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, uint(1), list.Count)
 	assert.Equal(t, pending.ID, list.Body[0].ID)
+	list, err = r.ListEvents(ctx, schema.EventListRequest{Status: " pending "})
+	require.NoError(t, err)
+	assert.Equal(t, uint(1), list.Count, "a status, with space around it")
+	list, err = r.ListEvents(ctx, schema.EventListRequest{Session: strings.ToUpper(parent.ID.String())})
+	require.NoError(t, err)
+	assert.Equal(t, uint(2), list.Count, "a session, in upper case")
 	list, err = r.ListEvents(ctx, schema.EventListRequest{Session: uuid.New().String()})
 	require.NoError(t, err)
 	assert.Zero(t, list.Count)

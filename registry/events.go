@@ -2,6 +2,7 @@ package registry
 
 import (
 	"context"
+	"strings"
 	"uuid"
 
 	// Packages
@@ -70,17 +71,23 @@ func (r *Registry) ListEvents(ctx context.Context, req schema.EventListRequest) 
 	)
 	defer func() { endSpan(err) }()
 
+	// The session, and status, as stores compare them, which is the
+	// session's canonical form, and the status without the space around it
 	if r.eventStore == nil {
 		return nil, errNoEventStore
-	} else if req.Session != "" {
-		if _, err := uuid.Parse(req.Session); err != nil {
+	} else if session := strings.TrimSpace(req.Session); session != "" {
+		id, err := uuid.Parse(session)
+		if err != nil {
 			return nil, llm.ErrBadParameter.Withf("invalid session %q", req.Session)
 		}
+		req.Session = id.String()
 	}
-	if req.Status != "" {
-		if _, err := schema.ParseEventStatus(string(req.Status)); err != nil {
+	if strings.TrimSpace(string(req.Status)) != "" {
+		status, err := schema.ParseEventStatus(string(req.Status))
+		if err != nil {
 			return nil, err
 		}
+		req.Status = status
 	}
 	list, err := r.eventStore.List(ctx, req)
 	if err != nil {

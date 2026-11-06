@@ -141,12 +141,17 @@ func SortEvents(events []Event) {
 }
 
 // Matches returns whether the event is of the request's session, and
-// status, when it has them
+// status, when it has them, which are compared as a session, whatever its
+// case, and a status, without the space around it. A session which isn't one
+// matches no event.
 func (r EventListRequest) Matches(event Event) bool {
-	if session := strings.TrimSpace(r.Session); session != "" && event.Session.String() != session {
-		return false
+	if session := strings.TrimSpace(r.Session); session != "" {
+		if id, err := uuid.Parse(session); err != nil || id != event.Session {
+			return false
+		}
 	}
-	return r.Status == "" || event.Status == r.Status
+	status := EventStatus(strings.TrimSpace(string(r.Status)))
+	return status == "" || event.Status == status
 }
 
 // Query returns the request as the parameters of a URL's query
