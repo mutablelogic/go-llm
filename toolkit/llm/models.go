@@ -71,6 +71,11 @@ func (t *listModels) Run(ctx context.Context, input json.RawMessage) (any, error
 			return nil, gollm.ErrBadParameter.With(err.Error())
 		}
 	}
+	// The capabilities are checked first, so the model is told one isn't,
+	// rather than that a provider can't be reached
+	if err := gollm.ValidCapabilities(req.Capabilities...); err != nil {
+		return nil, err
+	}
 	m := t.models()
 	if m == nil {
 		return nil, gollm.ErrServiceUnavailable.With("no models yet")

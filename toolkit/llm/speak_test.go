@@ -280,4 +280,11 @@ func Test_Models(t *testing.T) {
 	require.NoError(t, err)
 	_, err = none.Tools()[3].Run(ctx, json.RawMessage(`{}`))
 	assert.ErrorIs(t, err, gollm.ErrServiceUnavailable)
+
+	// A capability which isn't one is said to be, before the models are
+	// asked, even when they can't be listed
+	_, err = none.Tools()[3].Run(ctx, json.RawMessage(`{"capabilities":["telepathy"]}`))
+	assert.ErrorIs(t, err, gollm.ErrBadParameter)
+	_, err = run(`{"capabilities":["telepathy"],"provider":"missing"}`)
+	assert.ErrorIs(t, err, gollm.ErrBadParameter)
 }

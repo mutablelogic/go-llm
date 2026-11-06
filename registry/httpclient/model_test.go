@@ -33,6 +33,8 @@ func Test_Models(t *testing.T) {
 		assert.Equal(t, uint(0), list.Count)
 		_, err = client.ListModels(ctx, schema.ModelListRequest{Capability: []string{"telepathy"}})
 		assert.Equal(t, http.StatusBadRequest, status(t, err))
+		_, err = client.ListModels(ctx, schema.ModelListRequest{Provider: "missing", Capability: []string{"telepathy"}})
+		assert.Equal(t, http.StatusBadRequest, status(t, err), "before the providers are asked")
 	})
 
 	t.Run("Get", func(t *testing.T) {

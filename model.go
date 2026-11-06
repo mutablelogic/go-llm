@@ -107,10 +107,8 @@ func (c ModelCap) Has(name string) (bool, error) {
 // there are none. Returns ErrBadParameter when a name isn't one of
 // Capabilities.
 func WithCapabilities(models []Model, capabilities ...string) ([]Model, error) {
-	for _, name := range capabilities {
-		if _, err := (ModelCap{}).Has(name); err != nil {
-			return nil, err
-		}
+	if err := ValidCapabilities(capabilities...); err != nil {
+		return nil, err
 	}
 	if len(capabilities) == 0 {
 		return models, nil
@@ -122,6 +120,18 @@ func WithCapabilities(models []Model, capabilities ...string) ([]Model, error) {
 		}
 	}
 	return result, nil
+}
+
+// ValidCapabilities returns ErrBadParameter when any of the names isn't one
+// of Capabilities, so a request for them is refused before models are
+// listed
+func ValidCapabilities(capabilities ...string) error {
+	for _, name := range capabilities {
+		if _, err := (ModelCap{}).Has(name); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // hasAll returns whether the capabilities include every one of the names,
