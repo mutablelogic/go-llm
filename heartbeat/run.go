@@ -25,8 +25,14 @@ const (
 	// goroutine which does nothing else, so they're read as they're sent
 	eventBuffer = 256
 
-	// tickDelay is how long after the start of each minute the heartbeats
-	// which are due fire, so a time is never just before it
+	// tickInterval is how often the heartbeats which are due fire, from the
+	// start of each minute, so a schedule, which is to the minute, fires at
+	// the start of its minute, and a time, which can have seconds, within
+	// it
+	tickInterval = 10 * time.Second
+
+	// tickDelay is how long after each interval the heartbeats which are due
+	// fire, so a time is never just before it
 	tickDelay = 100 * time.Millisecond
 
 	// cleanupInterval is how often the heartbeats which won't fire again are
@@ -37,8 +43,8 @@ const (
 ///////////////////////////////////////////////////////////////////////////////
 // PUBLIC METHODS
 
-// Run fires the heartbeats which are due, when it starts, and at the start
-// of each minute, until the context is cancelled, when it returns nil. A
+// Run fires the heartbeats which are due, when it starts, and every ten
+// seconds, from the start of each minute, until the context is cancelled, when it returns nil. A
 // heartbeat which was due more than once, such as when the server wasn't
 // running, fires once, when it was first due. With a broadcaster, it deletes
 // the heartbeats for each session which is deleted, and, with WithSessions,
@@ -66,9 +72,9 @@ func (h *Heartbeats) Run(ctx context.Context, logger *slog.Logger) error {
 		}
 	}
 
-	// Fire what's due, and then again at the start of each minute
+	// Fire what's due, and then again every ten seconds
 	h.tick(ctx, logger)
-	timer := time.NewTimer(untilMinute(h.now()))
+	timer := time.NewTimer(untilTick(h.now()))
 	defer timer.Stop()
 	for {
 		select {
@@ -80,7 +86,7 @@ func (h *Heartbeats) Run(ctx context.Context, logger *slog.Logger) error {
 			}
 		case <-timer.C:
 			h.tick(ctx, logger)
-			timer.Reset(untilMinute(h.now()))
+			timer.Reset(untilTick(h.now()))
 		}
 	}
 }
@@ -283,8 +289,8 @@ func (q *sessionQueue) channel() chan struct{} {
 ///////////////////////////////////////////////////////////////////////////////
 // PRIVATE FUNCTIONS
 
-// untilMinute returns how long it is until just after the start of the next
-// minute
-func untilMinute(now time.Time) time.Duration {
-	return now.Truncate(time.Minute).Add(time.Minute + tickDelay).Sub(now)
+// untilTick returns how long it is until just after the start of the next
+// interval, such as 10:13:10, which a minute is a whole number of
+func untilTick(now time.Time) time.Duration {
+	return now.Truncate(tickInterval).Add(tickInterval + tickDelay).Sub(now)
 }

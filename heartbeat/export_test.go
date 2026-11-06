@@ -14,3 +14,6 @@ func SetClock(h *Heartbeats, now func() time.Time) {
 func Tick(ctx context.Context, h *Heartbeats) {
 	h.tick(ctx, nil)
 }
+
+// UntilTick returns how long it is until the heartbeats are next looked at
+var UntilTick = untilTick
