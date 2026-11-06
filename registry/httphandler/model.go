@@ -148,12 +148,20 @@ func modelGetHandlers(reg *registry.Registry, router *httprouter.Router, documen
 // can't be listed are left out, unless no models can be listed, when it's
 // the error.
 func listModels(r *http.Request, reg *registry.Registry, req schema.ModelListRequest) (*schema.ModelList, error) {
+	// The capabilities are checked first, so a request for one which isn't
+	// is refused, rather than the providers being asked
+	if err := llm.ValidCapabilities(req.Capability...); err != nil {
+		return nil, err
+	}
 	var providers []string
 	if req.Provider != "" {
 		providers = append(providers, req.Provider)
 	}
 	models, err := reg.ListModels(r.Context(), providers...)
 	if err != nil && len(models) == 0 {
+		return nil, err
+	}
+	if models, err = llm.WithCapabilities(models, req.Capability...); err != nil {
 		return nil, err
 	}
 	list := &schema.ModelList{ModelListRequest: req, Body: make([]*schema.Model, 0, len(models))}

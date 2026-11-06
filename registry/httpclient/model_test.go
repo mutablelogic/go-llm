@@ -23,6 +23,18 @@ func Test_Models(t *testing.T) {
 			assert.Equal(t, "eliza:eliza-1966-de", list.Body[0].Canonical)
 			assert.Equal(t, "eliza", list.Body[0].Provider)
 		}
+
+		// With capabilities, those known to have every one
+		list, err = client.ListModels(ctx, schema.ModelListRequest{Capability: []string{"completion", "thinking"}})
+		require.NoError(t, err)
+		assert.Equal(t, uint(3), list.Count)
+		list, err = client.ListModels(ctx, schema.ModelListRequest{Capability: []string{"completion", "vision"}})
+		require.NoError(t, err)
+		assert.Equal(t, uint(0), list.Count)
+		_, err = client.ListModels(ctx, schema.ModelListRequest{Capability: []string{"telepathy"}})
+		assert.Equal(t, http.StatusBadRequest, status(t, err))
+		_, err = client.ListModels(ctx, schema.ModelListRequest{Provider: "missing", Capability: []string{"telepathy"}})
+		assert.Equal(t, http.StatusBadRequest, status(t, err), "before the providers are asked")
 	})
 
 	t.Run("Get", func(t *testing.T) {

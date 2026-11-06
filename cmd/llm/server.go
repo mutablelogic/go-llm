@@ -6,7 +6,6 @@ import (
 	"context"
 	"os"
 	"path/filepath"
-	"strings"
 	"sync/atomic"
 	"time"
 	"uuid"
@@ -188,23 +187,13 @@ func (runner *RunServer) withToolkit(ctx server.Cmd, b *broadcaster.Broadcaster,
 		// The llm namespace, whose tools ask the registry's models, once it's
 		// made, to speak text, read the text in images and documents, and
 		// transcribe speech, with the model the model which calls them gives,
-		// or the default which is set for it
-		var llmOpts []llmtools.Opt
-		if model, voice := strings.TrimSpace(runner.Registry.SpeakModel), strings.TrimSpace(runner.Registry.SpeakVoice); model != "" || voice != "" {
-			llmOpts = append(llmOpts, llmtools.WithSpeak(model, voice))
-		}
-		if model := strings.TrimSpace(runner.Registry.OCRModel); model != "" {
-			llmOpts = append(llmOpts, llmtools.WithOCR(model))
-		}
-		if model := strings.TrimSpace(runner.Registry.TranscribeModel); model != "" {
-			llmOpts = append(llmOpts, llmtools.WithTranscribe(model))
-		}
+		// which the person chooses, and the model remembers
 		ns, err := llmtools.New(func() llmtools.Models {
 			if r := events.Load(); r != nil {
 				return r
 			}
 			return nil
-		}, llmOpts...)
+		})
 		if err != nil {
 			return err
 		}

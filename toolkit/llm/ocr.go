@@ -46,7 +46,7 @@ func (*ocr) Name() string {
 }
 
 func (t *ocr) Description() string {
-	return withDefault("Reads the text in an image, or a document, such as a scanned page, or a PDF, which is an attachment, or a tool's result, by its URI, resource://<hash>, and returns it as Markdown. Use it to read a document's text exactly, rather than describing it.", t.model)
+	return withDefault("Reads the text in an image, or a document, such as a scanned page, or a PDF, which is an attachment, or a tool's result, by its URI, resource://<hash>, and returns it as Markdown. Use it to read a document's text exactly, rather than describing it.", t.model, "ocr")
 }
 
 func (*ocr) InputSchema() *jsonschema.Schema {
@@ -113,13 +113,21 @@ func modelFor(ctx context.Context, fn ModelsFunc, given, defaultModel string) (M
 	return models, model, nil
 }
 
+// PreferredModels is the key of the memory which has the models the person
+// chose for each capability, such as ocr, which the tools' descriptions tell
+// the model which calls them to recall, and remember
+const PreferredModels = "preferred_models"
+
 // withDefault returns the description, with the model the tool uses, unless
-// it's given another, when it has one, or that a model must be given
-func withDefault(description, model string) string {
-	if model == "" {
-		return description + " Give the model to use, by its name, as there's no default."
+// it's given another, when it has one, or how the model to give is chosen:
+// the person's choice, which is remembered, or else one with the capability
+// the tool needs, which the models tool lists, which the person is asked to
+// choose from
+func withDefault(description, model, capability string) string {
+	if model != "" {
+		return description + " It uses " + model + ", unless another model is given, which the models tool lists, by the " + capability + " capability."
 	}
-	return description + " It uses " + model + ", unless another model is given."
+	return description + " Give the model to use, by its name. Use the one the person chose for " + capability + ": when you can remember things, recall the memory " + PreferredModels + ", which has the models they chose. When they haven't chosen one, list the models with the " + capability + " capability with the models tool, and ask them which to use, unless only one has it, and remember their choice, or that one, in " + PreferredModels + ", as a line such as \"- " + capability + ": <model>\", keeping the other lines."
 }
 
 // nameOf returns the resource's name, or its URI, when it has none

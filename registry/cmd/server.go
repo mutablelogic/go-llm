@@ -20,11 +20,7 @@ import (
 // at once. Providers are added with the registry's API, or in code, and
 // kept in a store, when there's one.
 type Flags struct {
-	MaxEvents       uint   `name:"max-events" help:"The most events, such as heartbeats which fire, and events which are triggered, which run at once." default:"2" env:"LLM_MAX_EVENTS"`
-	SpeakModel      string `name:"speak-model" help:"Model which the llm:speak tool speaks text with, such as ollama:phonon:latest, by default, unless the model which calls it gives another." env:"LLM_SPEAK_MODEL"`
-	SpeakVoice      string `name:"speak-voice" help:"Voice which the llm:speak tool speaks in, unless the model which calls it gives another, or the model's own, when it's empty." env:"LLM_SPEAK_VOICE"`
-	OCRModel        string `name:"ocr-model" help:"Model which the llm:ocr tool reads the text in images and documents with, such as mistral:mistral-ocr-latest, by default, unless the model which calls it gives another." env:"LLM_OCR_MODEL"`
-	TranscribeModel string `name:"transcribe-model" help:"Model which the llm:transcribe tool transcribes, and translates, speech with, such as openai:whisper-1, by default, unless the model which calls it gives another." env:"LLM_TRANSCRIBE_MODEL"`
+	MaxEvents uint `name:"max-events" help:"The most events, such as heartbeats which fire, and events which are triggered, which run at once." default:"2" env:"LLM_MAX_EVENTS"`
 }
 
 ///////////////////////////////////////////////////////////////////////////////

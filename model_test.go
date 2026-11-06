@@ -40,3 +40,52 @@ func Test_ModelCap(t *testing.T) {
 		}
 	})
 }
+
+// capModel is a model with only its name and capabilities
+type capModel struct {
+	llm.Model
+	name string
+	caps llm.ModelCap
+}
+
+func (m capModel) Name() string               { return m.name }
+func (m capModel) Capabilities() llm.ModelCap { return m.caps }
+
+func Test_WithCapabilities(t *testing.T) {
+	yes, no := types.Ptr(true), types.Ptr(false)
+	models := []llm.Model{
+		capModel{name: "chat", caps: llm.ModelCap{Completion: yes, Tools: yes, Vision: no}},
+		capModel{name: "eyes", caps: llm.ModelCap{Completion: yes, Vision: yes}},
+		capModel{name: "ocr", caps: llm.ModelCap{OCR: yes}},
+		capModel{name: "unknown"},
+	}
+	names := func(models []llm.Model) []string {
+		var result []string
+		for _, model := range models {
+			result = append(result, model.Name())
+		}
+		return result
+	}
+
+	// Without capabilities, every model, and with them, those known to have
+	// every one, by their names, in any case
+	all, err := llm.WithCapabilities(models)
+	require.NoError(t, err)
+	assert.Len(t, all, 4)
+	got, err := llm.WithCapabilities(models, "completion")
+	require.NoError(t, err)
+	assert.Equal(t, []string{"chat", "eyes"}, names(got))
+	got, err = llm.WithCapabilities(models, "Completion", " vision ")
+	require.NoError(t, err)
+	assert.Equal(t, []string{"eyes"}, names(got))
+	got, err = llm.WithCapabilities(models, "speech")
+	require.NoError(t, err)
+	assert.Empty(t, got)
+
+	// A capability which isn't one, or the temperature, which is a setting
+	for _, name := range []string{"telepathy", "temperature"} {
+		_, err = llm.WithCapabilities(models, name)
+		assert.ErrorIs(t, err, llm.ErrBadParameter, name)
+	}
+	assert.Equal(t, []string{"completion", "vision"}, llm.ModelCap{Completion: yes, Vision: yes, Tools: no}.Names())
+}
