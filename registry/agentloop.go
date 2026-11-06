@@ -255,7 +255,12 @@ func (r *Registry) iterate(ctx context.Context, model llm.Model, loop *agentLoop
 		return []providerschema.Message{message}, llm.Usage{}, true, nil
 	}
 
-	conversation := h.messages()
+	// The conversation, with the content of the attachments which refer to
+	// resources, which is read as it's sent, rather than kept with it
+	conversation, err := r.withContent(ctx, loop.session, h.messages())
+	if err != nil {
+		return nil, llm.Usage{}, false, err
+	}
 	if span != nil {
 		span.SetAttributes(attribute.Int("arg.messages", len(conversation)))
 	}

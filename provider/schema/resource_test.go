@@ -1,7 +1,9 @@
 package schema_test
 
 import (
+	"encoding/json"
 	"mime"
+	"net/url"
 	"testing"
 
 	// Packages
@@ -64,4 +66,32 @@ func Test_UnknownType(t *testing.T) {
 	for _, contentType := range []string{"image/png", "audio/wave", "text/plain"} {
 		assert.False(t, schema.UnknownType(contentType), contentType)
 	}
+}
+
+func Test_ResourceJSON(t *testing.T) {
+	// A resource's URL is a string, and is read as one, or as its parts, as
+	// it was once written, and its data is base64
+	u, err := url.Parse("resource://abc")
+	require.NoError(t, err)
+	r := schema.Resource{ResourceMeta: schema.ResourceMeta{ContentType: "image/png", URL: u, Data: []byte("x")}}
+	data, err := json.Marshal(r)
+	require.NoError(t, err)
+	assert.JSONEq(t, `{"type":"image/png","data":"eA==","url":"resource://abc"}`, string(data))
+	var read schema.Resource
+	require.NoError(t, json.Unmarshal(data, &read))
+	assert.Equal(t, r, read)
+	parts, err := json.Marshal(struct {
+		Type string   `json:"type"`
+		URL  *url.URL `json:"url"`
+	}{"image/png", u})
+	require.NoError(t, err)
+	read = schema.Resource{}
+	require.NoError(t, json.Unmarshal(parts, &read))
+	assert.Equal(t, "resource://abc", read.URL.String())
+
+	// Without a URL, it has none, and one which isn't is an error
+	read = schema.Resource{}
+	require.NoError(t, json.Unmarshal([]byte(`{"type":"image/png","data":"eA=="}`), &read))
+	assert.Nil(t, read.URL)
+	assert.Error(t, json.Unmarshal([]byte(`{"type":"image/png","url":"%zz"}`), &read))
 }

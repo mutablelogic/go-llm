@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"mime"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -19,6 +20,7 @@ import (
 	providerschema "github.com/mutablelogic/go-llm/provider/schema"
 	httpclient "github.com/mutablelogic/go-llm/registry/httpclient"
 	schema "github.com/mutablelogic/go-llm/registry/schema"
+	resourceschema "github.com/mutablelogic/go-llm/resource/schema"
 	server "github.com/mutablelogic/go-server"
 	tui "github.com/mutablelogic/go-server/pkg/tui"
 	types "github.com/mutablelogic/go-server/pkg/types"
@@ -30,7 +32,7 @@ import (
 
 type AskCmd struct {
 	Text   []string                   `arg:"" name:"text" help:"The question to ask, which can be more than one argument."`
-	Files  []string                   `name:"file" short:"f" sep:"none" help:"A file the question is about, which can be given more than once. Text, such as code or subtitles, is sent as text, with its name, and anything else, such as an image or a PDF, as an attachment, which the model must accept." optional:""`
+	Attach []string                   `name:"attach" short:"a" aliases:"file" sep:"none" help:"A file the question is about, or a resource, by its URI, resource://<hash>, which can be given more than once. A file of text, such as code or subtitles, is sent as text, with its name, and anything else, such as an image or a PDF, as an attachment, which the model must accept." optional:""`
 	Model  string                     `name:"model" help:"Model name, or provider and model name separated by a colon, such as ollama:llama3.2:latest. Defaults to the model last asked." optional:""`
 	System string                     `name:"system" help:"A system prompt, such as instructions on how to reply." optional:""`
 	Tools  []string                   `name:"tool" help:"Name of a tool the model can call, such as weatherapi:current, or weatherapi:* for all the tools in a namespace, which can be given more than once. The model's calls are printed, rather than run." optional:""`
@@ -74,7 +76,7 @@ func (cmd *AskCmd) Run(ctx server.Cmd) error {
 	if text == "" {
 		return fmt.Errorf("missing question")
 	}
-	message, err := askMessage(text, cmd.Files)
+	message, err := askMessage(text, cmd.Attach, nil)
 	if err != nil {
 		return err
 	}
@@ -134,17 +136,23 @@ func (cmd *AskCmd) Run(ctx server.Cmd) error {
 ///////////////////////////////////////////////////////////////////////////////
 // PRIVATE FUNCTIONS
 
-// askMessage returns the message which asks the question about the files:
-// the text of each file which is text, with its name, and each other file as
-// an attachment, and then the question
-func askMessage(text string, files []string) (*providerschema.Message, error) {
+// uploadFunc uploads a file, which isn't text, as a resource, and returns
+// its URI, so it's attached by it, rather than with its data
+type uploadFunc func(file string) (string, error)
+
+// askMessage returns the message which asks the question about the
+// attachments: the text of each file which is text, with its name, each
+// other file as an attachment, with its data, or, with the upload function,
+// by the URI of the resource it's uploaded as, and each resource, by its
+// URI, and then the question
+func askMessage(text string, attach []string, upload uploadFunc) (*providerschema.Message, error) {
 	message, err := providerschema.NewMessage("user", text)
 	if err != nil {
 		return nil, err
 	}
-	content := make([]providerschema.ContentBlock, 0, len(files)+1)
-	for _, file := range files {
-		block, err := fileBlock(file)
+	content := make([]providerschema.ContentBlock, 0, len(attach)+1)
+	for _, value := range attach {
+		block, err := attachmentBlock(value, upload)
 		if err != nil {
 			return nil, err
 		}
@@ -152,6 +160,48 @@ func askMessage(text string, files []string) (*providerschema.Message, error) {
 	}
 	message.Content = append(content, message.Content...)
 	return message, nil
+}
+
+// attachmentBlock returns the attachment, which is a resource, by its URI,
+// or a file, as fileBlock returns it, or, when it isn't text, and there's
+// an upload function, by the URI of the resource it's uploaded as
+func attachmentBlock(value string, upload uploadFunc) (providerschema.ContentBlock, error) {
+	if isResourceURI(value) {
+		u, err := resourceURL(value)
+		if err != nil {
+			return providerschema.ContentBlock{}, err
+		}
+		return providerschema.ContentBlock{Resource: &providerschema.Resource{ResourceMeta: providerschema.ResourceMeta{URL: u}}}, nil
+	}
+	block, err := fileBlock(value)
+	if err != nil || block.Resource == nil || upload == nil {
+		return block, err
+	}
+	uri, err := upload(value)
+	if err != nil {
+		return providerschema.ContentBlock{}, err
+	}
+	u, err := resourceURL(uri)
+	if err != nil {
+		return providerschema.ContentBlock{}, err
+	}
+	return providerschema.ContentBlock{Resource: &providerschema.Resource{ResourceMeta: providerschema.ResourceMeta{ContentType: block.Resource.ContentType, URL: u}}}, nil
+}
+
+// isResourceURI returns whether the value is a resource's URI, which is
+// resource://<hash>, rather than a file
+func isResourceURI(value string) bool {
+	return strings.HasPrefix(strings.TrimSpace(value), resourceschema.Scheme+"://")
+}
+
+// resourceURL returns the URL of the resource with the URI, or an error when
+// it isn't a resource's
+func resourceURL(uri string) (*url.URL, error) {
+	hash, err := resourceschema.ParseURI(uri)
+	if err != nil {
+		return nil, err
+	}
+	return url.Parse(resourceschema.URI(hash))
 }
 
 // fileBlock returns the content of a file, as text, with its name, in a

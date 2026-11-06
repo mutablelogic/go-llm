@@ -31,10 +31,10 @@ type InferenceCommands struct {
 }
 
 type EmbedCmd struct {
-	Text  []string                   `arg:"" name:"text" help:"The text to embed, which can be more than one argument." optional:""`
-	Model string                     `name:"model" help:"Model name, or provider and model name separated by a colon, such as ollama:embeddinggemma-2:latest. Defaults to the model last used for embeddings." optional:""`
-	File  string                     `name:"file" type:"existingfile" help:"An image or audio file to embed with the text, for a model which embeds them." optional:""`
-	Opt   map[string]json.RawMessage `name:"opt" help:"Options, by key, such as dimensions=256, which can be given more than once." optional:""`
+	Text   []string                   `arg:"" name:"text" help:"The text to embed, which can be more than one argument." optional:""`
+	Model  string                     `name:"model" help:"Model name, or provider and model name separated by a colon, such as ollama:embeddinggemma-2:latest. Defaults to the model last used for embeddings." optional:""`
+	Attach string                     `name:"attach" short:"a" aliases:"file" help:"An image or audio file to embed with the text, or a resource, by its URI, resource://<hash>, for a model which embeds them." optional:""`
+	Opt    map[string]json.RawMessage `name:"opt" help:"Options, by key, such as dimensions=256, which can be given more than once." optional:""`
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -66,13 +66,15 @@ func (cmd *EmbedCmd) Run(ctx server.Cmd) error {
 	if text := strings.TrimSpace(strings.Join(cmd.Text, " ")); text != "" {
 		message.Content = append(message.Content, schema.EmbedContent{Text: types.Ptr(text)})
 	}
-	if cmd.File != "" {
-		data, err := os.ReadFile(cmd.File)
+	if isResourceURI(cmd.Attach) {
+		message.Content = append(message.Content, schema.EmbedContent{Attachment: &schema.EmbedAttachment{URL: strings.TrimSpace(cmd.Attach)}})
+	} else if cmd.Attach != "" {
+		data, err := os.ReadFile(cmd.Attach)
 		if err != nil {
 			return err
 		}
 		message.Content = append(message.Content, schema.EmbedContent{Attachment: &schema.EmbedAttachment{
-			Type: providerschema.ResourceType(data, filepath.Base(cmd.File)),
+			Type: providerschema.ResourceType(data, filepath.Base(cmd.Attach)),
 			Data: data,
 		}})
 	}

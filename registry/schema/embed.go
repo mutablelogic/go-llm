@@ -35,11 +35,12 @@ type EmbedContent struct {
 	Attachment *EmbedAttachment `json:"attachment,omitempty" help:"Image or audio to embed, for a model which embeds them" optional:""`
 }
 
-// EmbedAttachment is an image or audio to embed, by its type and data, as a
-// URL can't be read
+// EmbedAttachment is an image or audio to embed, by its type and data, or
+// the URI of a resource, on its own, whose content is read
 type EmbedAttachment struct {
-	Type string `json:"type" help:"MIME type of the attachment" example:"image/png"`
-	Data []byte `json:"data" help:"Data of the attachment, encoded as base64" example:"iVBORw0KGgo="`
+	Type string `json:"type,omitempty" help:"MIME type of the attachment, which is needed with its data" example:"image/png" optional:""`
+	Data []byte `json:"data,omitempty" help:"Data of the attachment, encoded as base64, or its URL" example:"iVBORw0KGgo=" optional:""`
+	URL  string `json:"url,omitempty" help:"URI of a resource, which is resource://<hash>, on its own, whose content is read, rather than the data, whose type is the resource's, unless it's given" example:"resource://9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08" optional:""`
 }
 
 // EmbedForm is the form for embedding one message, such as from a web
@@ -79,15 +80,12 @@ func (m EmbedMessage) Message() (llm.Message, error) {
 		if text := strings.TrimSpace(types.Value(content.Text)); text != "" {
 			message.Content = append(message.Content, providerschema.ContentBlock{Text: types.Ptr(text)})
 		}
-		if attachment := content.Attachment; attachment != nil {
-			if strings.TrimSpace(attachment.Type) == "" {
-				return nil, llm.ErrBadParameter.With("attachment has no type")
-			} else if len(attachment.Data) == 0 {
-				return nil, llm.ErrBadParameter.With("attachment has no data")
+		if a := content.Attachment; a != nil {
+			resource, err := attachment(a.Type, a.Data, a.URL)
+			if err != nil {
+				return nil, llm.ErrBadParameter.Withf("attachment: %v", err)
 			}
-			message.Content = append(message.Content, providerschema.ContentBlock{Resource: &providerschema.Resource{
-				ResourceMeta: providerschema.ResourceMeta{ContentType: attachment.Type, Data: attachment.Data},
-			}})
+			message.Content = append(message.Content, providerschema.ContentBlock{Resource: resource})
 		}
 	}
 	if len(message.Content) == 0 {

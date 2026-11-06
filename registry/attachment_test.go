@@ -1,0 +1,156 @@
+package registry_test
+
+import (
+	"context"
+	"net/url"
+	"strings"
+	"testing"
+	"uuid"
+
+	// Packages
+	llm "github.com/mutablelogic/go-llm"
+	providerschema "github.com/mutablelogic/go-llm/provider/schema"
+	registry "github.com/mutablelogic/go-llm/registry"
+	schema "github.com/mutablelogic/go-llm/registry/schema"
+	test "github.com/mutablelogic/go-llm/registry/test"
+	resourcemanager "github.com/mutablelogic/go-llm/resource"
+	resourceschema "github.com/mutablelogic/go-llm/resource/schema"
+	types "github.com/mutablelogic/go-server/pkg/types"
+	assert "github.com/stretchr/testify/assert"
+	require "github.com/stretchr/testify/require"
+)
+
+// pngData is the start of a PNG image
+const pngData = "\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR"
+
+// attached returns a message from the user, with the text, and an
+// attachment which refers to the resource with the URI
+func attached(t *testing.T, text, uri string) *providerschema.Message {
+	t.Helper()
+	u, err := url.Parse(uri)
+	require.NoError(t, err)
+	return &providerschema.Message{MessageMeta: providerschema.MessageMeta{Sender: "user", Content: []providerschema.ContentBlock{
+		{Text: types.Ptr(text)},
+		{Resource: &providerschema.Resource{ResourceMeta: providerschema.ResourceMeta{URL: u}}},
+	}}}
+}
+
+// attachments returns the attachments of the message, as their types and
+// content
+func attachments(t *testing.T, message llm.Message) []string {
+	t.Helper()
+	var result []string
+	for _, r := range message.Resources() {
+		data, err := llm.ReadAll(context.Background(), r)
+		require.NoError(t, err)
+		result = append(result, r.Type()+":"+string(data))
+	}
+	return result
+}
+
+func Test_Attachments(t *testing.T) {
+	ctx := context.Background()
+	sessions := test.NewSessionStore()
+	manager, err := resourcemanager.New(resourcemanager.NewStore(), resourcemanager.WithSessions(func(ctx context.Context, id uuid.UUID) error {
+		_, err := sessions.Get(ctx, id)
+		return err
+	}))
+	require.NoError(t, err)
+	p := newScripted(text("A cat"), text("Still a cat"), text("A dog"), text("Gone"), text("Spare"))
+	r, err := registry.New(registry.WithSessionStore(sessions), registry.WithResources(manager))
+	require.NoError(t, err)
+	require.NoError(t, r.Add("", p))
+
+	alone, _, err := manager.Create(ctx, resourceschema.ResourceMeta{Name: "cat.png"}, strings.NewReader(pngData))
+	require.NoError(t, err)
+
+	t.Run("Ask", func(t *testing.T) {
+		// An attachment which refers to a resource on its own is sent with
+		// its content, and type
+		p.asked = nil
+		_, err := r.Ask(ctx, schema.AskRequest{GeneratorMeta: schema.GeneratorMeta{Model: types.Ptr("model")}, Messages: []providerschema.MessageMeta{attached(t, "What's this?", alone.URI()).MessageMeta}}, nil)
+		require.NoError(t, err)
+		require.Len(t, p.asked, 1)
+		assert.Equal(t, []string{"image/png:" + pngData}, attachments(t, p.asked[0].messages[0]))
+
+		// One which isn't a resource isn't
+		p.replies = append([]*providerschema.Message{text("A cat")}, p.replies...)
+		_, err = r.Ask(ctx, schema.AskRequest{GeneratorMeta: schema.GeneratorMeta{Model: types.Ptr("model")}, Messages: []providerschema.MessageMeta{attached(t, "What's this?", resourceschema.URI(strings.Repeat("0", 64))).MessageMeta}}, nil)
+		assert.ErrorIs(t, err, llm.ErrNotFound)
+		p.replies = p.replies[1:]
+	})
+
+	t.Run("Chat", func(t *testing.T) {
+		// A resource on its own, which is attached in a chat, is linked to
+		// its session, and the session keeps its URI, rather than its
+		// content, which is read again with each request
+		session, err := r.CreateSession(ctx, schema.SessionMeta{GeneratorMeta: schema.GeneratorMeta{Model: types.Ptr("model")}})
+		require.NoError(t, err)
+		p.asked = nil
+		_, err = r.Chat(ctx, session.ID, []llm.Message{attached(t, "What's this?", alone.URI())}, nil)
+		require.NoError(t, err)
+		require.Len(t, p.asked, 1)
+		assert.Equal(t, []string{"image/png:" + pngData}, attachments(t, p.asked[0].messages[0]))
+		_, err = manager.Get(ctx, resourceschema.ResourceKey{Hash: alone.Hash, Session: &session.ID})
+		require.NoError(t, err, "it's linked to the session")
+		messages, err := r.ListSessionMessages(ctx, session.ID, schema.MessageListRequest{})
+		require.NoError(t, err)
+		stored := messages.Body[0].Content[1].Resource
+		require.NotNil(t, stored)
+		assert.Equal(t, alone.URI(), stored.URL.String())
+		assert.Empty(t, stored.Data, "the session keeps its URI")
+		assert.Equal(t, "image/png", stored.ContentType)
+
+		// It's read with the next request, from the session's resource, even
+		// once the one on its own is deleted
+		_, err = manager.Delete(ctx, alone.Key())
+		require.NoError(t, err)
+		_, err = r.Chat(ctx, session.ID, []llm.Message{user(t, "Are you sure?")}, nil)
+		require.NoError(t, err)
+		require.Len(t, p.asked, 2)
+		assert.Equal(t, []string{"image/png:" + pngData}, attachments(t, p.asked[1].messages[0]))
+
+		// Once the session's is deleted too, it's text which says so
+		_, err = manager.DeleteSession(ctx, session.ID)
+		require.NoError(t, err)
+		_, err = r.Chat(ctx, session.ID, []llm.Message{user(t, "And now?")}, nil)
+		require.NoError(t, err)
+		require.Len(t, p.asked, 3)
+		assert.Empty(t, p.asked[2].messages[0].Resources())
+		assert.Contains(t, p.asked[2].messages[0].Text(), "isn't available")
+
+		// A resource of another session isn't found
+		other, err := r.CreateSession(ctx, schema.SessionMeta{GeneratorMeta: schema.GeneratorMeta{Model: types.Ptr("model")}})
+		require.NoError(t, err)
+		theirs, _, err := manager.Create(ctx, resourceschema.ResourceMeta{Session: &other.ID}, strings.NewReader("theirs"))
+		require.NoError(t, err)
+		_, err = r.Chat(ctx, session.ID, []llm.Message{attached(t, "And this?", theirs.URI())}, nil)
+		assert.ErrorIs(t, err, llm.ErrNotFound)
+	})
+
+	t.Run("Requests", func(t *testing.T) {
+		// A request's resource, by its URI, is a resource on its own, whose
+		// type is the resource's, and it has data, or a URL, but not both
+		audio, _, err := manager.Create(ctx, resourceschema.ResourceMeta{Type: "audio/mpeg"}, strings.NewReader("ID3"))
+		require.NoError(t, err)
+		req := schema.TranscribeRequest{URL: audio.URI()}
+		got, err := req.Resource()
+		require.NoError(t, err)
+		assert.Equal(t, audio.URI(), got.URI())
+		_, err = schema.TranscribeRequest{URL: audio.URI(), Data: []byte("x")}.Resource()
+		assert.ErrorIs(t, err, llm.ErrBadParameter)
+		_, err = schema.RecognizeRequest{Data: []byte("x")}.Resource()
+		assert.ErrorIs(t, err, llm.ErrBadParameter, "data needs a type")
+		_, err = schema.RecognizeRequest{URL: "https://example.com/a.pdf"}.Resource()
+		assert.ErrorIs(t, err, llm.ErrBadParameter, "only a resource's URI")
+	})
+
+	t.Run("Without", func(t *testing.T) {
+		// A registry without resources can't read them
+		bare, err := registry.New()
+		require.NoError(t, err)
+		require.NoError(t, bare.Add("", newScripted(text("Hi"))))
+		_, err = bare.Ask(ctx, schema.AskRequest{GeneratorMeta: schema.GeneratorMeta{Model: types.Ptr("model")}, Messages: []providerschema.MessageMeta{attached(t, "What's this?", alone.URI()).MessageMeta}}, nil)
+		assert.ErrorIs(t, err, llm.ErrNotImplemented)
+	})
+}

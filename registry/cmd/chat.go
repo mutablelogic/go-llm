@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 	"uuid"
 
@@ -18,6 +19,8 @@ import (
 	chattui "github.com/mutablelogic/go-llm/registry/cmd/tui"
 	httpclient "github.com/mutablelogic/go-llm/registry/httpclient"
 	schema "github.com/mutablelogic/go-llm/registry/schema"
+	resourceclient "github.com/mutablelogic/go-llm/resource/httpclient"
+	resourceschema "github.com/mutablelogic/go-llm/resource/schema"
 	server "github.com/mutablelogic/go-server"
 )
 
@@ -29,7 +32,7 @@ import (
 // terminal to chat in the session
 type ChatCmd struct {
 	Text    []string  `arg:"" name:"text" help:"The question to ask, which can be more than one argument, or, without one, chat in the terminal." optional:""`
-	Files   []string  `name:"file" short:"f" sep:"none" help:"A file the question is about, which can be given more than once. Text, such as code or subtitles, is sent as text, with its name, and anything else, such as an image or a PDF, as an attachment, which the model must accept." optional:""`
+	Attach  []string  `name:"attach" short:"a" aliases:"file" sep:"none" help:"A file the question is about, or a resource, by its URI, resource://<hash>, which can be given more than once. A file of text, such as code or subtitles, is sent as text, with its name, and anything else, such as an image or a PDF, is uploaded as a resource of the session, which is attached by its URI, and which the model must accept." optional:""`
 	Session uuid.UUID `name:"session" help:"Session identifier, which is a UUID, or the default session, which this is then." optional:""`
 	Stream  bool      `name:"stream" negatable:"" default:"true" help:"Print the reply as it's generated, or with --no-stream, once it's complete, rendered as markdown on a terminal."`
 }
@@ -59,7 +62,7 @@ func (cmd *ChatCmd) Run(ctx server.Cmd) error {
 		return err
 	}
 	text := strings.TrimSpace(strings.Join(cmd.Text, " "))
-	if text == "" && len(cmd.Files) == 0 && width > 0 {
+	if text == "" && len(cmd.Attach) == 0 && width > 0 {
 		if err := withClient(ctx, "llm.ChatCmd", func(reqctx context.Context, client *httpclient.Client) error {
 			events, err := newEventClient(ctx)
 			if err != nil {
@@ -77,12 +80,21 @@ func (cmd *ChatCmd) Run(ctx server.Cmd) error {
 	} else if text == "" {
 		return fmt.Errorf("missing question")
 	}
-	message, err := askMessage(text, cmd.Files)
+	resources, err := newResourceClient(ctx)
 	if err != nil {
 		return err
 	}
-
 	return withClient(ctx, "llm.ChatCmd", func(reqctx context.Context, client *httpclient.Client) error {
+		// The question, whose files which aren't text are uploaded as
+		// resources of the session, and attached by their URIs, so the
+		// session keeps them once, rather than with their data
+		message, err := askMessage(text, cmd.Attach, func(file string) (string, error) {
+			return uploadResource(reqctx, resources, id, file)
+		})
+		if err != nil {
+			return err
+		}
+
 		// A reply with a schema is JSON, which is made once the model has
 		// replied, so isn't streamed
 		session, err := client.GetSession(reqctx, id)
@@ -159,6 +171,32 @@ func newMemoryClient(ctx server.Cmd) (*memoryclient.Client, error) {
 
 // newEventClient returns a client of the server's events, from the
 // command's endpoint and options
+// newResourceClient returns a client of the resources' API, from the
+// command's endpoint and options
+func newResourceClient(ctx server.Cmd) (*resourceclient.Client, error) {
+	endpoint, opts, err := ctx.ClientEndpoint()
+	if err != nil {
+		return nil, err
+	}
+	return resourceclient.New(endpoint, opts...)
+}
+
+// uploadResource uploads the file as a resource of the session, and returns
+// its URI
+func uploadResource(ctx context.Context, client *resourceclient.Client, session uuid.UUID, file string) (string, error) {
+	f, err := os.Open(file)
+	if err != nil {
+		return "", err
+	}
+	defer f.Close()
+	resource, err := client.CreateResource(ctx, resourceschema.ResourceCreateRequest{Session: session.String()}, filepath.Base(file), f)
+	if err != nil {
+		return "", fmt.Errorf("%s: %w", file, err)
+	}
+	return resource.URI(), nil
+}
+
+// newEventClient returns a client of the events' API
 func newEventClient(ctx server.Cmd) (*eventclient.Client, error) {
 	endpoint, opts, err := ctx.ClientEndpoint()
 	if err != nil {

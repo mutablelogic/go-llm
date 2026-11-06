@@ -312,3 +312,47 @@ func Test_Schema(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, strings.Repeat("b", 64), hash)
 }
+
+func Test_Link(t *testing.T) {
+	ctx := context.Background()
+	session := uuid.New()
+	r, _, store := newManager(t, session)
+	alone, _, err := r.Create(ctx, schema.ResourceMeta{Name: "a.png", Description: "A picture"}, strings.NewReader(pngHeader))
+	require.NoError(t, err)
+
+	// A resource on its own is linked to a session, as the session's, with
+	// the one content, and what it is, and linking it again is the same
+	linked, err := r.Link(ctx, alone.URI(), session)
+	require.NoError(t, err)
+	assert.Equal(t, alone.Hash, linked.Hash)
+	assert.Equal(t, session, *linked.Session)
+	assert.Equal(t, "a.png", linked.Name)
+	assert.Equal(t, "A picture", linked.Description)
+	again, err := r.Link(ctx, alone.URI(), session)
+	require.NoError(t, err)
+	assert.Equal(t, linked.Key(), again.Key())
+	list, err := store.List(ctx)
+	require.NoError(t, err)
+	assert.Len(t, list, 2)
+	contents, err := store.Contents(ctx)
+	require.NoError(t, err)
+	assert.Len(t, contents, 1)
+
+	// It's found in the session, and stays when the one on its own goes
+	_, err = r.Delete(ctx, alone.Key())
+	require.NoError(t, err)
+	r.Clean(ctx, nil)
+	_, err = r.Resource(ctx, alone.URI(), &session)
+	require.NoError(t, err)
+
+	// A resource which isn't on its own, or a session which doesn't exist,
+	// isn't linked
+	_, err = r.Link(ctx, "resource://"+strings.Repeat("0", 64), session)
+	assert.ErrorIs(t, err, llm.ErrNotFound)
+	other, _, err := r.Create(ctx, schema.ResourceMeta{}, strings.NewReader("other"))
+	require.NoError(t, err)
+	_, err = r.Link(ctx, other.URI(), uuid.New())
+	assert.ErrorIs(t, err, llm.ErrNotFound)
+	_, err = r.Link(ctx, "https://example.com", session)
+	assert.ErrorIs(t, err, llm.ErrBadParameter)
+}

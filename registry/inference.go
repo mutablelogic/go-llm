@@ -8,6 +8,7 @@ import (
 	"slices"
 	"strings"
 	"time"
+	"uuid"
 
 	// Packages
 	otel "github.com/mutablelogic/go-client/pkg/otel"
@@ -58,7 +59,9 @@ func (r *Registry) WithoutSession(ctx context.Context, model llm.Model, messages
 }
 
 // Embed returns a vector for each of the messages, from the model's
-// provider, which must be in the registry, and embed messages. Returns
+// provider, which must be in the registry, and embed messages, whose
+// attachments which refer to resources on their own, by their URIs, are
+// read. Returns
 // ErrNotImplemented when the model is known not to embed, and the provider's
 // error as providerErr does.
 func (r *Registry) Embed(ctx context.Context, model llm.Model, messages []llm.Message, opts ...llm.Opt) (_ []llm.Vector, _ llm.Usage, err error) {
@@ -71,6 +74,9 @@ func (r *Registry) Embed(ctx context.Context, model llm.Model, messages []llm.Me
 	if err != nil {
 		return nil, llm.Usage{}, err
 	} else if err := can(model, model.Capabilities().Embedding, "embed messages"); err != nil {
+		return nil, llm.Usage{}, err
+	}
+	if messages, err = r.withContent(ctx, uuid.Nil(), messages); err != nil {
 		return nil, llm.Usage{}, err
 	}
 	start := time.Now()
@@ -99,6 +105,9 @@ func (r *Registry) Transcribe(ctx context.Context, model llm.Model, audio llm.Re
 	} else if err := can(model, model.Capabilities().Transcription, "transcribe audio"); err != nil {
 		return llm.Transcript{}, llm.Usage{}, err
 	}
+	if audio, err = r.withResource(ctx, audio); err != nil {
+		return llm.Transcript{}, llm.Usage{}, err
+	}
 	start := time.Now()
 	transcript, usage, err := transcriber.Transcribe(ctx, model, audio, stream, opts...)
 	usage = timed(usage, start)
@@ -124,6 +133,9 @@ func (r *Registry) Translate(ctx context.Context, model llm.Model, audio llm.Res
 	} else if err := can(model, model.Capabilities().Translation, "translate audio"); err != nil {
 		return llm.Transcript{}, llm.Usage{}, err
 	}
+	if audio, err = r.withResource(ctx, audio); err != nil {
+		return llm.Transcript{}, llm.Usage{}, err
+	}
 	start := time.Now()
 	transcript, usage, err := transcriber.Translate(ctx, model, audio, stream, opts...)
 	usage = timed(usage, start)
@@ -147,6 +159,9 @@ func (r *Registry) Recognize(ctx context.Context, model llm.Model, resource llm.
 	if err != nil {
 		return llm.Document{}, llm.Usage{}, err
 	} else if err := can(model, model.Capabilities().OCR, "recognize text"); err != nil {
+		return llm.Document{}, llm.Usage{}, err
+	}
+	if resource, err = r.withResource(ctx, resource); err != nil {
 		return llm.Document{}, llm.Usage{}, err
 	}
 	start := time.Now()
