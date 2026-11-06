@@ -230,6 +230,21 @@ func TestChatMessages(t *testing.T) {
 	})
 }
 
+func TestChatMessagesEmptyReply(t *testing.T) {
+	// A reply with only thinking, as it ran out of tokens, has text, as an
+	// assistant message needs text or tool calls, and is kept, as a user's
+	// message can't follow a tool's result
+	messages := []llm.Message{
+		&schema.Message{Sender: "tool", Content: []schema.ContentBlock{{ToolResult: &schema.ToolResult{ID: "call_1", Name: "wave"}}}},
+		&schema.Message{Sender: "assistant", Content: []schema.ContentBlock{{Thinking: types.Ptr("Hmm")}}},
+		&schema.Message{Sender: "user", Content: []schema.ContentBlock{{Text: types.Ptr("Hello?")}}},
+	}
+	chat, err := chatMessages(context.Background(), messages, false)
+	require.NoError(t, err)
+	require.Len(t, chat, 3)
+	assert.Equal(t, chatMessage{Role: "assistant", Content: emptyReply}, chat[1])
+}
+
 func TestNewChatResponse(t *testing.T) {
 	// The reasoning, text and tool calls are content blocks, with why the
 	// model stopped

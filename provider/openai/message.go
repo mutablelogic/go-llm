@@ -53,6 +53,10 @@ func newChatResponse(choice chatChoice, usage *chatUsage) *schema.Message {
 ///////////////////////////////////////////////////////////////////////////////
 // PRIVATE METHODS
 
+// emptyReply is the text of a reply which had neither text nor tool calls,
+// as it's sent back
+const emptyReply = "(No reply.)"
+
 // thinker is a message with thinking, which is sent back to servers which
 // need it
 type thinker interface {
@@ -131,10 +135,16 @@ func newChatMessages(ctx context.Context, message llm.Message, reasoning bool) (
 		})
 	}
 
-	// A reply with only tool calls has no content, and a reply has its
-	// thinking for servers which need it
+	// A reply with only tool calls has no content, and a reply with neither,
+	// such as one which ran out of tokens as it was thinking, has text which
+	// says so, as servers, such as Mistral, reject an assistant message
+	// without either, and it can't be left out, as Mistral rejects a user's
+	// message after a tool's result, too. A reply has its thinking for
+	// servers which need it.
 	if len(chat.ToolCalls) > 0 && chat.Content == "" {
 		chat.Content = nil
+	} else if chat.Role == "assistant" && chat.Content == "" {
+		chat.Content = emptyReply
 	}
 	if thinking, ok := message.(thinker); ok && reasoning && chat.Role == "assistant" {
 		chat.ReasoningContent = thinking.Thinking()
