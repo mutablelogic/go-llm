@@ -39,11 +39,16 @@ import { ModelsController } from './controller/models';
 import { ToolsController } from './controller/tools';
 import { NotificationController } from './controller/notifications';
 import { OutcomesController } from './controller/outcomes';
+import { StorageController } from './controller/storage';
 import { SessionList } from './component/session-list';
 import { Router, routeHref } from './router';
 
 // Errors, and other notifications, are shown as toasts
 const notifications = new NotificationController(document.querySelector<HTMLElement>('#notifications')!);
+
+// The defaults of the UI, which are kept in the browser, such as the chat
+// which was last open
+const storage = new StorageController();
 
 // Show the server's version, and a link to the API's documentation, in the
 // side navigation's footer, once the configuration is read
@@ -64,7 +69,7 @@ const chat = new ChatController({
     view: document.querySelector('llm-chat-view'),
     create: document.querySelector('llm-new-session'),
     details: document.querySelector('llm-message-view'),
-}, notifications);
+}, notifications, storage);
 
 // The outcomes of the events of the chat which is open, such as heartbeats
 // which fired, in a panel, which its Events action opens
@@ -154,7 +159,6 @@ document.querySelector('llm-model-view')?.addEventListener(ModelView.eventChat, 
     location.hash = routeHref('chat');
     void chat.newChat((e as CustomEvent<string>).detail);
 });
-// The models and tools pages' refresh actions load them again
 events.start();
 void models.load();
 void tools.load();
