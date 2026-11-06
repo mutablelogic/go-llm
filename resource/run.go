@@ -34,7 +34,7 @@ const (
 // PUBLIC METHODS
 
 // Run deletes the resources of each session which is deleted, with a
-// broadcaster, and deletes what isn't needed, when it starts, and every
+// broadcaster, which unlinks their content, and deletes what isn't needed, when it starts, and every
 // schema.CleanInterval: resources on their own which weren't used for the
 // retention, those whose session doesn't exist, with WithSessions, as its
 // event may have been missed, and content which no resource refers to,

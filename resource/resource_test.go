@@ -192,28 +192,30 @@ func Test_Delete(t *testing.T) {
 	_, _, err = r.Create(ctx, schema.ResourceMeta{Session: &one}, strings.NewReader("only"))
 	require.NoError(t, err)
 
-	// Deleting a resource keeps its content, while another refers to it, and
+	// Deleting a resource, or a session's, only unlinks its content, and
 	// publishes that it was deleted
 	deleted, err := r.Delete(ctx, first.Key())
 	require.NoError(t, err)
 	assert.Equal(t, first.Hash, deleted.Hash)
-	contents, err := store.Contents(ctx)
-	require.NoError(t, err)
-	assert.Len(t, contents, 2)
 	_, err = r.Delete(ctx, first.Key())
 	assert.ErrorIs(t, err, llm.ErrNotFound)
-
-	// Deleting a session deletes its resources, and their content, which no
-	// other resource refers to
 	n, err := r.DeleteSession(ctx, one)
 	require.NoError(t, err)
 	assert.Equal(t, 1, n)
+	contents, err := store.Contents(ctx)
+	require.NoError(t, err)
+	assert.Len(t, contents, 2, "content is kept, until it's cleaned")
+
+	// Cleaning removes the content which no resource refers to, and keeps
+	// what the other session's resource does
+	r.Clean(ctx, nil)
 	contents, err = store.Contents(ctx)
 	require.NoError(t, err)
 	assert.Equal(t, []string{first.Hash}, contents)
 	n, err = r.DeleteSession(ctx, two)
 	require.NoError(t, err)
 	assert.Equal(t, 1, n)
+	r.Clean(ctx, nil)
 	contents, err = store.Contents(ctx)
 	require.NoError(t, err)
 	assert.Empty(t, contents)

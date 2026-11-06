@@ -4,7 +4,7 @@
 
 A resource is content, such as an image, a document, or audio, which is uploaded, and which models, and tools, can read. Its content is kept once, by its `hash`, which is its SHA-256, in hexadecimal, so the same content, uploaded again, isn't kept twice, and it's referred to as `resource://<hash>`. A resource has its `size`, in bytes, its `name`, such as its file's name, its `description`, its `type`, which is its MIME type, when it was `created`, and when it was last `used`, which is when it was last created again, or its content read.
 
-A resource is in a `session`, or on its own. A resource in a session is only found in that session, with the `session` parameter, and is deleted with it. A resource on its own is found without one, and is deleted once it hasn't been used for a day, unless the server says otherwise, with `--resource.retention`. The same content can be a resource in more than one session, and on its own, with the one content, which is deleted once no resource refers to it.
+A resource is in a `session`, or on its own. A resource in a session is only found in that session, with the `session` parameter, and is deleted with it. A resource on its own is found without one, and is deleted once it hasn't been used for a day, unless the server says otherwise, with `--resource.retention`. The same content can be a resource in more than one session, and on its own, with the one content. Deleting a resource, or its session, only unlinks its content, which is removed when the resources are cleaned, when the server starts, and every hour, once no resource refers to it.
 
 When a resource is created, used again, or deleted, an event is published, whose `schema` is `resource`, whose `table` is `resource`, whose `row` is its hash, and whose data is its `session`, when it has one.
 
@@ -28,4 +28,4 @@ Download the content of the resource with the hash, on its own, or in the `sessi
 
 ### DELETE /resource/{hash}
 
-Delete the resource with the hash, on its own, or in the `session`, and its content, when no other resource refers to it. Returns the resource, as it was. Returns 400 if the hash isn't a SHA-256, or the session isn't a UUID, or 404 if there's no resource with the hash, on its own, or in the session.
+Delete the resource with the hash, on its own, or in the `session`. Its content is removed later, when the resources are cleaned, once no resource refers to it. Returns the resource, as it was. Returns 400 if the hash isn't a SHA-256, or the session isn't a UUID, or 404 if there's no resource with the hash, on its own, or in the session.

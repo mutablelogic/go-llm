@@ -45,9 +45,10 @@ type Manager struct {
 	maxSize     int64
 	now         func() time.Time
 
-	// Content which is written, and the resources which refer to it, are
-	// written with the lock read, so content isn't removed, as no resource
-	// refers to it, until the resource which does is created
+	// Content which is written, and the resource which refers to it, are
+	// written with the lock read, so the cleanup, which removes content no
+	// resource refers to, with the lock held, doesn't remove it before the
+	// resource which refers to it is created
 	contents sync.RWMutex
 }
 
@@ -245,9 +246,10 @@ func (r *Manager) Resource(ctx context.Context, uri string, session *uuid.UUID) 
 	return &resource{manager: r, Resource: stored}, nil
 }
 
-// Delete deletes the resource with the key, and its content, when no other
-// resource refers to it, publishes that it was, and returns it, as it was.
-// Returns ErrNotFound when there's none.
+// Delete deletes the resource with the key, publishes that it was, and
+// returns it, as it was. Its content is kept, as other resources may refer
+// to it, until the resources are cleaned, when it's removed, once none
+// does. Returns ErrNotFound when there's none.
 func (r *Manager) Delete(ctx context.Context, key schema.ResourceKey) (_ schema.Resource, err error) {
 	ctx, endSpan := otel.StartSpan(r.tracer, ctx, "resource.Delete",
 		attribute.String("arg.key", key.String()),
@@ -260,18 +262,12 @@ func (r *Manager) Delete(ctx context.Context, key schema.ResourceKey) (_ schema.
 	}
 	r.publish(eventschema.EventDelete, deleted)
 
-	// Its content is removed, when no other resource refers to it, unless
-	// content is being written, which may be its content, or it can't be,
-	// when it's removed as the resources are cleaned
-	if r.contents.TryLock() {
-		defer r.contents.Unlock()
-		_ = r.removeUnused(ctx, deleted.Hash)
-	}
 	return deleted, nil
 }
 
 // DeleteSession deletes the resources in the session, which was deleted,
-// and returns how many were deleted
+// and returns how many were deleted. Their content is kept, until the
+// resources are cleaned, as Delete keeps it.
 func (r *Manager) DeleteSession(ctx context.Context, session uuid.UUID) (_ int, err error) {
 	ctx, endSpan := otel.StartSpan(r.tracer, ctx, "resource.DeleteSession",
 		attribute.String("arg.session", session.String()),
@@ -343,21 +339,6 @@ func (r *Manager) use(ctx context.Context, key schema.ResourceKey) (schema.Resou
 		resource.Used = now
 		return nil
 	})
-}
-
-// removeUnused removes the content with the hash, when no resource refers
-// to it, which is called with the lock held
-func (r *Manager) removeUnused(ctx context.Context, hash string) error {
-	all, err := r.store.List(ctx)
-	if err != nil {
-		return err
-	}
-	for _, resource := range all {
-		if resource.Hash == hash {
-			return nil
-		}
-	}
-	return r.store.Remove(ctx, hash)
 }
 
 // sessionExists returns nil when there's no session, or it exists, or
