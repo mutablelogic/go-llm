@@ -6,10 +6,19 @@
 // thinking, as it's generated, with what tools log, and how they're getting
 // on, dimmed between them. A bubble's details action fires an event with its
 // message. Beneath it is the box which sends a question, and says someone is
-// typing. It fires events to send a question, and say someone is typing.
+// typing, with the resources which are attached to it. It fires events to
+// send a question, say someone is typing, choose resources to attach,
+// remove an attachment, and upload files to attach.
 
 import { LitElement, css, html, nothing, type PropertyValues } from 'lit';
 import { customElement, property, query } from 'lit/decorators.js';
+import iconLoader from '@carbon/web-components/es/globals/internal/icon-loader.js';
+import Document16 from '@carbon/icons/es/document/16.js';
+import DocumentPdf16 from '@carbon/icons/es/document--pdf/16.js';
+import Image16 from '@carbon/icons/es/image/16.js';
+import Music16 from '@carbon/icons/es/music/16.js';
+import Video16 from '@carbon/icons/es/video/16.js';
+import { resourceName, type Resource } from '../schema/resource';
 import { canonicalTool, isUser, type ContentBlock, type Message, type Session } from '../schema/session';
 import { detailValue, type Details } from '../schema/memory';
 import { markdown, markdownStyles } from './markdown';
@@ -35,10 +44,22 @@ interface Bubble {
     kind: ChatKind | 'log';
     label?: string;
     text: string;
+    attachment?: Attachment;
     markdown?: boolean;
     live?: boolean;
     message?: Message;
 }
+
+// Attachment is a message's attachment, as it's shown: its name, when it's
+// known, or else its type, or URL, and its type, which chooses its icon
+interface Attachment {
+    name: string;
+    type?: string;
+}
+
+// AttachmentName returns the name of the resource an attachment refers to,
+// by its URL, such as resource://<hash>, when it's known
+export type AttachmentName = (url: string) => string | undefined;
 
 @customElement('llm-chat-view')
 export class ChatView extends LitElement {
@@ -48,6 +69,9 @@ export class ChatView extends LitElement {
     static readonly eventSend = ChatInput.eventSend;
     static readonly eventTyping = ChatInput.eventTyping;
     static readonly eventInfo = 'llm-chat-info';
+    static readonly eventAttach = ChatInput.eventAttach;
+    static readonly eventDetach = ChatInput.eventDetach;
+    static readonly eventUpload = ChatInput.eventUpload;
 
     // The session, which is undefined when none is open
     @property({ attribute: false })
@@ -76,11 +100,27 @@ export class ChatView extends LitElement {
     @property({ attribute: false })
     question?: string;
 
+    // The resources attached to the question which is waiting for its reply
+    @property({ attribute: false })
+    questionAttachments: Resource[] = [];
+
+    // The names of the resources which messages' attachments refer to
+    @property({ attribute: false })
+    attachmentName: AttachmentName = () => undefined;
+
     @property({ attribute: false })
     streamed: Piece[] = [];
 
     @property({ attribute: false })
     progress?: string;
+
+    // The resources which are attached to the next question
+    @property({ attribute: false })
+    attachments: Resource[] = [];
+
+    // How many files are being uploaded, to attach to it
+    @property({ attribute: false })
+    uploading = 0;
 
     // Whether the server can't be reached
     @property({ type: Boolean, reflect: true })
@@ -126,6 +166,19 @@ export class ChatView extends LitElement {
 
         .name.user {
             align-self: flex-end;
+        }
+
+        /* An attachment is its icon, by its type, and its name */
+        .attachment {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.375rem;
+            overflow-wrap: anywhere;
+        }
+
+        .attachment svg {
+            flex: none;
+            fill: currentColor;
         }
 
         /* A question keeps its line breaks, and a reply is Markdown */
@@ -215,9 +268,12 @@ export class ChatView extends LitElement {
         }
         return html`
             <div class="conversation">${this.renderConversation()}</div>
-            <llm-chat-input ?disabled=${this.messages === undefined} ?busy=${this.question !== undefined}
+            <llm-chat-input ?disabled=${this.messages === undefined} ?busy=${this.question !== undefined} .attachments=${this.attachments} .uploading=${this.uploading}
                 @llm-chat-send=${(e: CustomEvent<string>) => this.dispatchEvent(new CustomEvent(ChatView.eventSend, { detail: e.detail }))}
-                @llm-chat-typing=${() => this.dispatchEvent(new CustomEvent(ChatView.eventTyping))}></llm-chat-input>
+                @llm-chat-typing=${() => this.dispatchEvent(new CustomEvent(ChatView.eventTyping))}
+                @llm-chat-attach=${() => this.dispatchEvent(new CustomEvent(ChatView.eventAttach))}
+                @llm-chat-detach=${(e: CustomEvent<Resource>) => this.dispatchEvent(new CustomEvent(ChatView.eventDetach, { detail: e.detail }))}
+                @llm-chat-upload=${(e: CustomEvent<File[]>) => this.dispatchEvent(new CustomEvent(ChatView.eventUpload, { detail: e.detail }))}></llm-chat-input>
         `;
     }
 
@@ -230,7 +286,15 @@ export class ChatView extends LitElement {
         }
         const bubbles = this.messages.flatMap((message, position) => this.messageBubbles(message, position));
         if (this.question !== undefined) {
-            bubbles.push({ kind: 'user', text: this.question }, ...this.streamedBubbles());
+            bubbles.push(...this.questionAttachments.map((resource): Bubble => ({
+                kind: 'user',
+                text: resourceName(resource),
+                attachment: { name: resourceName(resource), type: resource.type },
+            })));
+            if (this.question) {
+                bubbles.push({ kind: 'user', text: this.question });
+            }
+            bubbles.push(...this.streamedBubbles());
         }
         if (bubbles.length === 0) {
             return html`<p class="empty">No messages yet. Ask a question to start the conversation.</p>`;
@@ -253,7 +317,9 @@ export class ChatView extends LitElement {
             <llm-chat-bubble kind=${bubble.kind} label=${bubble.label ?? 'Thinking'} ?live=${bubble.live === true}
                 ?selected=${message !== undefined && message === this.selected}
                 @llm-chat-bubble-info=${() => message && this.dispatchEvent(new CustomEvent(ChatView.eventInfo, { detail: message }))}
-                .copyText=${bubble.text}>${bubble.markdown
+                .copyText=${bubble.text}>${bubble.attachment
+                    ? html`<span class="attachment">${iconLoader(attachmentIcon(bubble.attachment.type))}<span>${bubble.attachment.name}</span></span>`
+                    : bubble.markdown
                     ? html`<div class="markdown">${markdown(bubble.text)}</div>`
                     : html`<span class="text">${bubble.text}</span>`}</llm-chat-bubble>
         `;
@@ -270,7 +336,7 @@ export class ChatView extends LitElement {
                 bubbles.push({ kind: 'log', text: line });
             }
         }
-        bubbles.push(...bubblesOf(message));
+        bubbles.push(...bubblesOf(message, this.attachmentName));
         for (const line of this.logs(undefined, position) ?? []) {
             bubbles.push({ kind: 'log', text: line });
         }
@@ -323,19 +389,19 @@ export class ChatView extends LitElement {
 // their results, as thinking, by the tools' canonical names, such as
 // weatherapi:current, and why a reply stopped, when it didn't finish. A
 // system message isn't shown.
-function bubblesOf(message: Message): Bubble[] {
+function bubblesOf(message: Message, attachmentName: AttachmentName): Bubble[] {
     if (message.role === 'system') {
         return [];
     }
     const kind: ChatKind = isUser(message) ? 'user' : 'assistant';
-    const bubbles = message.content.flatMap((block) => blockBubbles(kind, block)).map((bubble) => ({ ...bubble, message }));
+    const bubbles = message.content.flatMap((block) => blockBubbles(kind, block, attachmentName)).map((bubble) => ({ ...bubble, message }));
     if (message.result && !['stop', 'tool_call'].includes(message.result)) {
         bubbles.push({ kind: 'thinking', label: `The reply stopped: ${message.result}`, text: '', message });
     }
     return bubbles;
 }
 
-function blockBubbles(kind: ChatKind, block: ContentBlock): Bubble[] {
+function blockBubbles(kind: ChatKind, block: ContentBlock, attachmentName: AttachmentName): Bubble[] {
     const bubbles: Bubble[] = [];
     if (block.thinking?.trim()) {
         bubbles.push({ kind: 'thinking', text: block.thinking.trim() });
@@ -344,7 +410,9 @@ function blockBubbles(kind: ChatKind, block: ContentBlock): Bubble[] {
         bubbles.push({ kind, text: block.text, markdown: kind === 'assistant' });
     }
     if (block.attachment) {
-        bubbles.push({ kind, text: `Attachment: ${block.attachment.type ?? block.attachment.url ?? ''}` });
+        const { url, type } = block.attachment;
+        const name = (url && attachmentName(url)) || type || url || 'Attachment';
+        bubbles.push({ kind, text: name, attachment: { name, type } });
     }
     if (block.tool_call) {
         bubbles.push({ kind: 'thinking', label: `Called ${canonicalTool(block.tool_call.name)}`, text: json(block.tool_call.input) });
@@ -354,6 +422,22 @@ function blockBubbles(kind: ChatKind, block: ContentBlock): Bubble[] {
         bubbles.push({ kind: 'thinking', label: block.tool_result.is_error ? `${name} failed` : `Result of ${name}`, text: json(block.tool_result.content) });
     }
     return bubbles;
+}
+
+// attachmentIcon returns the icon of an attachment of the type: an image,
+// audio, video, a PDF, or else a document
+function attachmentIcon(type?: string) {
+    const mediaType = (type ?? '').split(';')[0].trim().toLowerCase();
+    if (mediaType.startsWith('image/')) {
+        return Image16;
+    } else if (mediaType.startsWith('audio/')) {
+        return Music16;
+    } else if (mediaType.startsWith('video/')) {
+        return Video16;
+    } else if (mediaType === 'application/pdf') {
+        return DocumentPdf16;
+    }
+    return Document16;
 }
 
 // json returns a value as indented JSON, or text when it's a string

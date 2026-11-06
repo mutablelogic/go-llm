@@ -32,7 +32,23 @@ export function formatTime(value?: string): string {
     return value ? new Date(value).toLocaleString() : '';
 }
 
+// The units of sizes, in bytes, from smallest to largest
+const sizeUnits = ['B', 'KB', 'MB', 'GB', 'TB'];
 
+// formatSize returns a size in bytes, in its largest units, of 1024, with
+// one decimal place, when it isn't bytes, such as 1.5 MB
+export function formatSize(bytes?: number): string {
+    if (bytes === undefined || bytes < 0) {
+        return '';
+    }
+    let size = bytes;
+    let unit = 0;
+    while (size >= 1024 && unit < sizeUnits.length - 1) {
+        size /= 1024;
+        unit++;
+    }
+    return unit === 0 ? `${size} B` : `${size.toFixed(1)} ${sizeUnits[unit]}`;
+}
 
 // formatAgo returns an RFC 3339 time, relative to now, as minutes ago, such
 // as 5 minutes ago, when it's less than an hour ago, or hours ago, such as

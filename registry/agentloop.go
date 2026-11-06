@@ -192,7 +192,7 @@ func (r *Registry) agentLoop(ctx context.Context, model llm.Model, messages []ll
 	if err != nil {
 		return nil, llm.Usage{}, err
 	}
-	h, err := newHistory(ctx, messages, fresh, overhead, measure)
+	h, err := newHistory(ctx, messages, fresh, overhead, measure, r.attachmentText(loop.session))
 	if err != nil {
 		return nil, llm.Usage{}, err
 	}

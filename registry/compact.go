@@ -29,7 +29,12 @@ type history struct {
 	measured []uint                   // The tokens of each of the caller's messages, before they're compacted
 	overhead uint                     // The tokens of what's sent with the messages, such as the system prompt and the tools
 	measure  toolkit.MeasureFn
+	text     textFunc // The text an attachment is sent as, when it's text, or nil
 }
+
+// textFunc returns the text which an attachment is sent to the model as,
+// when its resource is text, such as a file of code, and whether it is
+type textFunc func(context.Context, providerschema.Resource) (string, bool)
 
 // historyEntry is a message of the conversation, with its tokens
 type historyEntry struct {
@@ -80,8 +85,8 @@ const (
 // user message, are never dropped, and, when the messages end with the
 // results of tools, they're the latest turn, with the reply which called
 // them.
-func newHistory(ctx context.Context, messages []llm.Message, fresh []providerschema.Message, overhead uint, measure toolkit.MeasureFn) (*history, error) {
-	h := &history{entries: make([]historyEntry, 0, len(messages)+len(fresh)), overhead: overhead, measure: measure}
+func newHistory(ctx context.Context, messages []llm.Message, fresh []providerschema.Message, overhead uint, measure toolkit.MeasureFn, text textFunc) (*history, error) {
+	h := &history{entries: make([]historyEntry, 0, len(messages)+len(fresh)), overhead: overhead, measure: measure, text: text}
 	for i, message := range messages {
 		if isNil(message) {
 			return nil, llm.ErrBadParameter.Withf("message %d is nil", i)
@@ -324,21 +329,30 @@ func (h *history) tokens(ctx context.Context, message llm.Message) (uint, error)
 
 // measureMessage returns the tokens of the message, as its content as JSON,
 // when it's a message of the provider schema, without the data of its
-// attachments, each of which is attachmentTokens, or the usage of its tools'
-// results, which aren't sent to the model, or otherwise its text
+// attachments, each of which is attachmentTokens, unless it's text, which is
+// sent as text, and measured as it is, or the usage of its tools' results,
+// which aren't sent to the model, or otherwise its text
 func (h *history) measureMessage(ctx context.Context, message llm.Message) (uint, error) {
 	schema, ok := schemaMessage(message)
 	if !ok {
 		return h.measure(ctx, message.Text())
 	}
 	content := slices.Clone(schema.Content)
-	var attachments uint
+	var attachments, texts uint
 	for i, block := range content {
 		if block.Resource != nil {
 			resource := *block.Resource
+			if text, ok := h.attachmentText(ctx, resource); ok {
+				tokens, err := h.measure(ctx, text)
+				if err != nil {
+					return 0, err
+				}
+				texts += tokens
+			} else {
+				attachments++
+			}
 			resource.Data = nil
 			content[i].Resource = &resource
-			attachments++
 		}
 		if block.ToolResult != nil && block.ToolResult.Usage != nil {
 			result := *block.ToolResult
@@ -354,7 +368,16 @@ func (h *history) measureMessage(ctx context.Context, message llm.Message) (uint
 	if err != nil {
 		return 0, err
 	}
-	return tokens + attachments*attachmentTokens, nil
+	return tokens + attachments*attachmentTokens + texts, nil
+}
+
+// attachmentText returns the text the attachment is sent as, when it's
+// text, and whether it is
+func (h *history) attachmentText(ctx context.Context, resource providerschema.Resource) (string, bool) {
+	if h.text == nil {
+		return "", false
+	}
+	return h.text(ctx, resource)
 }
 
 ///////////////////////////////////////////////////////////////////////////////

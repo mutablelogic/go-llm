@@ -134,6 +134,20 @@ func Test_Attachments(t *testing.T) {
 		assert.ErrorIs(t, err, llm.ErrNotFound)
 	})
 
+	t.Run("Text", func(t *testing.T) {
+		// A resource which is text is sent as text, with its name, as most
+		// models don't accept text as an attachment
+		notes, _, err := manager.Create(ctx, resourceschema.ResourceMeta{Name: "notes.txt", Type: "text/plain"}, strings.NewReader("The secret word is pineapple.\n"))
+		require.NoError(t, err)
+		p.replies = append([]*providerschema.Message{text("Pineapple")}, p.replies...)
+		p.asked = nil
+		_, err = r.Ask(ctx, schema.AskRequest{GeneratorMeta: schema.GeneratorMeta{Model: types.Ptr("model")}, Messages: []providerschema.MessageMeta{attached(t, "What's the word?", notes.URI()).MessageMeta}}, nil)
+		require.NoError(t, err)
+		require.Len(t, p.asked, 1)
+		assert.Empty(t, p.asked[0].messages[0].Resources())
+		assert.Contains(t, p.asked[0].messages[0].Text(), "notes.txt:\n\n```\nThe secret word is pineapple.\n```")
+	})
+
 	t.Run("Requests", func(t *testing.T) {
 		// A request's resource, by its URI, is a resource on its own, whose
 		// type is the resource's, and it has data, or a URL, but not both
@@ -339,4 +353,68 @@ func toolResult(t *testing.T, messages []providerschema.Message) string {
 	}
 	t.Fatal("no tool result")
 	return ""
+}
+
+func Test_TextAttachmentsAccepted(t *testing.T) {
+	ctx := context.Background()
+	sessions := test.NewSessionStore()
+	manager, err := resourcemanager.New(resourcemanager.NewStore(), resourcemanager.WithSessions(func(ctx context.Context, id uuid.UUID) error {
+		_, err := sessions.Get(ctx, id)
+		return err
+	}))
+	require.NoError(t, err)
+	notes, _, err := manager.Create(ctx, resourceschema.ResourceMeta{Name: "notes.txt", Type: "text/plain"}, strings.NewReader("Pineapple"))
+	require.NoError(t, err)
+	p := newScripted(text("Pineapple"))
+	p.accepts = func(contentType string) bool { return strings.HasPrefix(contentType, "image/") }
+	r, err := registry.New(registry.WithSessionStore(sessions), registry.WithResources(manager))
+	require.NoError(t, err)
+	require.NoError(t, r.Add("", p))
+	session, err := r.CreateSession(ctx, schema.SessionMeta{GeneratorMeta: schema.GeneratorMeta{Model: types.Ptr("model")}})
+	require.NoError(t, err)
+
+	// Text, which the model doesn't accept as an attachment, is sent as
+	// text, rather than left out
+	_, err = r.Chat(ctx, session.ID, []llm.Message{attached(t, "What's the word?", notes.URI())}, nil)
+	require.NoError(t, err)
+	require.Len(t, p.asked, 1)
+	first := p.asked[0].messages[0]
+	assert.Empty(t, first.Resources())
+	assert.Contains(t, first.Text(), "notes.txt:\n\n```\nPineapple\n```")
+	assert.NotContains(t, first.Text(), "can't read")
+}
+
+func Test_TextAttachmentsMeasured(t *testing.T) {
+	ctx := context.Background()
+	sessions := test.NewSessionStore()
+	manager, err := resourcemanager.New(resourcemanager.NewStore(), resourcemanager.WithSessions(func(ctx context.Context, id uuid.UUID) error {
+		_, err := sessions.Get(ctx, id)
+		return err
+	}))
+	require.NoError(t, err)
+	small, _, err := manager.Create(ctx, resourceschema.ResourceMeta{Name: "small.txt", Type: "text/plain"}, strings.NewReader("Pineapple"))
+	require.NoError(t, err)
+	large, _, err := manager.Create(ctx, resourceschema.ResourceMeta{Name: "large.txt", Type: "text/plain"}, strings.NewReader(strings.Repeat("pineapple ", 4000)))
+	require.NoError(t, err)
+	p := newScripted(text("Pineapple"), text("Never"))
+	p.input = types.Ptr(uint(4000))
+	r, err := registry.New(registry.WithSessionStore(sessions), registry.WithResources(manager))
+	require.NoError(t, err)
+	require.NoError(t, r.Add("", p))
+
+	// A small file of text, which is measured as it's sent, fits
+	session, err := r.CreateSession(ctx, schema.SessionMeta{GeneratorMeta: schema.GeneratorMeta{Model: types.Ptr("model")}})
+	require.NoError(t, err)
+	_, err = r.Chat(ctx, session.ID, []llm.Message{attached(t, "What's the word?", small.URI())}, nil)
+	require.NoError(t, err)
+	require.Len(t, p.asked, 1)
+
+	// A large one, which is more than the model's context, isn't sent, as
+	// it would be, were it measured as an attachment
+	other, err := r.CreateSession(ctx, schema.SessionMeta{GeneratorMeta: schema.GeneratorMeta{Model: types.Ptr("model")}})
+	require.NoError(t, err)
+	response, err := r.Chat(ctx, other.ID, []llm.Message{attached(t, "What's the word?", large.URI())}, nil)
+	require.NoError(t, err)
+	require.Len(t, p.asked, 1, "the model isn't asked")
+	assert.Equal(t, providerschema.ResultMaxContext, response.Messages[len(response.Messages)-1].Result)
 }

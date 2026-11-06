@@ -53,18 +53,22 @@ export async function latestConfig(): Promise<Config> {
 }
 
 // request makes a request to the path, beneath the API's prefix, and returns
-// the response, parsed as JSON
+// the response, parsed as JSON. A body which is a blob, such as a file, is
+// sent as it is, with its type, and anything else as JSON.
 export async function request<T>(method: string, path: string, options: RequestOptions = {}): Promise<T> {
     const { prefix } = await config();
     const headers: Record<string, string> = { Accept: 'application/json' };
-    if (options.body !== undefined) {
+    const blob = options.body instanceof Blob ? options.body : undefined;
+    if (blob) {
+        headers['Content-Type'] = blob.type || 'application/octet-stream';
+    } else if (options.body !== undefined) {
         headers['Content-Type'] = 'application/json';
     }
 
     const response = await fetch(prefix + path + queryString(options.query), {
         method,
         headers,
-        body: options.body === undefined ? undefined : JSON.stringify(options.body),
+        body: blob ?? (options.body === undefined ? undefined : JSON.stringify(options.body)),
         signal: options.signal,
     });
 
