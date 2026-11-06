@@ -202,7 +202,7 @@ export class ChatInput extends LitElement {
                 </span>`)}${this.uploading > 0 ? html`
                 <cds-inline-loading status="active" class="uploading">Uploading ${this.uploading === 1 ? 'a file' : `${this.uploading} files`}…</cds-inline-loading>` : nothing}</div>` : nothing}
             <div class="row">
-                <cds-icon-button kind="ghost" size="md" align="top-left" ?disabled=${this.disabled}
+                <cds-icon-button kind="secondary" size="md" align="top-left" ?disabled=${this.disabled}
                     @click=${() => this.fire(ChatInput.eventAttach)}>
                     ${iconLoader(Add16, { slot: 'icon' })}
                     <span slot="tooltip-content">Attach files</span>
