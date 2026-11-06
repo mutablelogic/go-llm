@@ -56,12 +56,12 @@ export class EventView extends Panel<string> {
 
     // The chat's heartbeats, those which fire soonest first, which are
     // undefined while they're loading, or when the server has none, and the
-    // identifier of the one which is being deleted
+    // identifiers of those which are being deleted
     @property({ attribute: false })
     heartbeats?: Heartbeat[];
 
     @property({ attribute: false })
-    deleting?: string;
+    deleting: ReadonlySet<string> = new Set();
 
     // Why they couldn't be loaded, when they couldn't
     @property({ attribute: false })
@@ -192,7 +192,7 @@ export class EventView extends Panel<string> {
                                     <div>${heartbeat.next ? `Next ${formatTime(heartbeat.next)}` : heartbeat.fired ? `Fired ${formatTime(heartbeat.fired)}` : ''}</div>
                                 </td>
                                 <td class="action">
-                                    <cds-icon-button kind="ghost" size="sm" align="left" ?disabled=${this.deleting === heartbeat.id}
+                                    <cds-icon-button kind="ghost" size="sm" align="left" ?disabled=${this.deleting.has(heartbeat.id)}
                                         @click=${() => this.dispatchEvent(new CustomEvent(EventView.eventDeleteHeartbeat, { detail: heartbeat }))}>
                                         ${iconLoader(TrashCan16, { slot: 'icon' })}
                                         <span slot="tooltip-content">Delete reminder</span>

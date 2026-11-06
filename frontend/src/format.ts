@@ -62,8 +62,9 @@ const weekdays = ['Sundays', 'Mondays', 'Tuesdays', 'Wednesdays', 'Thursdays', '
 
 // describeSchedule returns a schedule, which is a cron expression, of
 // minute, hour, day, month and weekday, in words, such as Weekdays at 08:00
-// for 0 8 * * 1-5, or the expression, when it isn't one of those which are
-// described
+// for 0 8 * * 1-5, or Every 15 minutes for */15 * * * *, or 0,15,30,45 * * *
+// *, as the server stores it, or the expression, when it isn't one of those
+// which are described
 export function describeSchedule(schedule: string): string {
     const fields = schedule.trim().split(/\s+/);
     if (fields.length !== 5) {
@@ -72,12 +73,18 @@ export function describeSchedule(schedule: string): string {
     const [minute, hour, day, month, weekday] = fields;
     const number = (field: string, max: number) => /^\d+$/.test(field) && Number(field) <= max ? Number(field) : undefined;
 
-    // Every so many minutes, or every hour
-    const every = /^\*\/(\d+)$/.exec(minute);
-    if (every && hour === '*' && day === '*' && month === '*' && weekday === '*') {
-        return Number(every[1]) === 1 ? 'Every minute' : `Every ${every[1]} minutes`;
-    } else if (number(minute, 59) === 0 && hour === '*' && day === '*' && month === '*' && weekday === '*') {
-        return 'Every hour';
+    // Every so many minutes, or hours, every day
+    if (day === '*' && month === '*' && weekday === '*') {
+        const minutes = interval(minute, 60);
+        if (minutes !== undefined && hour === '*') {
+            return minutes === 1 ? 'Every minute' : `Every ${minutes} minutes`;
+        }
+        const hours = interval(hour, 24);
+        const m = number(minute, 59);
+        if (hours !== undefined && m !== undefined) {
+            const every = hours === 1 ? 'Every hour' : `Every ${hours} hours`;
+            return m === 0 ? every : `${every}, at ${m} minutes past`;
+        }
     }
 
     // At a time, on the days which are described
@@ -104,6 +111,29 @@ export function describeSchedule(schedule: string): string {
     const names = days.map((d) => weekdays[d]);
     const list = names.length === 1 ? names[0] : `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}`;
     return `${list} ${at}`;
+}
+
+// interval returns how many apart the values of the field are, of those
+// from 0 to the size, such as 15, for */15, or 0,15,30,45, or 1, for *, or
+// undefined, when they aren't evenly apart, from 0, through the size
+function interval(field: string, size: number): number | undefined {
+    if (field === '*') {
+        return 1;
+    }
+    const step = /^\*\/(\d+)$/.exec(field);
+    if (step) {
+        const n = Number(step[1]);
+        return n > 0 && size % n === 0 ? n : undefined;
+    }
+    const values = field.split(',').map((value) => (/^\d+$/.test(value) ? Number(value) : NaN));
+    if (values.length < 2 || values.some(Number.isNaN) || values[0] !== 0) {
+        return undefined;
+    }
+    const n = values[1];
+    if (n <= 0 || size % n !== 0 || values.length !== size / n || values.some((value, i) => value !== i * n)) {
+        return undefined;
+    }
+    return n;
 }
 
 // weekdayList returns the days of the week of the field, from Sunday, which

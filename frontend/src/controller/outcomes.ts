@@ -86,10 +86,10 @@ export class OutcomesController {
     // is then gone from the panel, as it's loaded again, once the server
     // says it's deleted
     private async deleteHeartbeat(heartbeat: Heartbeat) {
-        if (!this.view || !confirm(`Delete the reminder ${heartbeat.title}?`)) {
+        if (!this.view || this.view.deleting.has(heartbeat.id) || !confirm(`Delete the reminder ${heartbeat.title}?`)) {
             return;
         }
-        this.view.deleting = heartbeat.id;
+        this.view.deleting = new Set([...this.view.deleting, heartbeat.id]);
         try {
             await deleteHeartbeat(heartbeat.id);
             this.notifications.push({ kind: 'success', title: `${heartbeat.title} was deleted` });
@@ -97,9 +97,9 @@ export class OutcomesController {
         } catch (error) {
             this.notifications.error(`${heartbeat.title} couldn't be deleted`, error);
         } finally {
-            if (this.view.deleting === heartbeat.id) {
-                this.view.deleting = undefined;
-            }
+            const deleting = new Set(this.view.deleting);
+            deleting.delete(heartbeat.id);
+            this.view.deleting = deleting;
         }
     }
 }
