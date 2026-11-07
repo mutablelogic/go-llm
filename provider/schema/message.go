@@ -2,6 +2,7 @@ package schema
 
 import (
 	"strings"
+	"time"
 
 	// Packages
 	llm "github.com/mutablelogic/go-llm"
@@ -26,6 +27,7 @@ type Message struct {
 	MessageMeta
 	Tokens uint64     `json:"tokens,omitempty" help:"Token count attributed to this message" example:"12"`
 	Result ResultType `json:"result,omitempty" help:"Why the model stopped generating the message" enum:"stop,max_tokens,blocked,tool_call,error,other,max_iterations,max_context" example:"stop"`
+	Time   time.Time  `json:"time,omitzero" readonly:"" help:"When the message was added to the conversation, which the registry sets"`
 }
 
 // ContentBlock represents a single piece of content within a message.

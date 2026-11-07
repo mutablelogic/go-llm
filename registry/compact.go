@@ -7,11 +7,13 @@ import (
 	"fmt"
 	"reflect"
 	"slices"
+	"time"
 
 	// Packages
 	llm "github.com/mutablelogic/go-llm"
 	providerschema "github.com/mutablelogic/go-llm/provider/schema"
 	toolkit "github.com/mutablelogic/go-llm/toolkit"
+	types "github.com/mutablelogic/go-server/pkg/types"
 )
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -103,6 +105,7 @@ func newHistory(ctx context.Context, messages []llm.Message, fresh []providersch
 	// sent, such as when their tools' results are truncated, with their
 	// tokens
 	for _, message := range fresh {
+		stamp(&message)
 		tokens, err := h.tokens(ctx, &message)
 		if err != nil {
 			return nil, err
@@ -180,6 +183,7 @@ func (h *history) add(ctx context.Context, step []providerschema.Message, usage 
 	for i := range step {
 		h.added = append(h.added, step[i])
 		message := &h.added[len(h.added)-1]
+		stamp(message)
 		tokens := usage.OutputTokens - min(usage.OutputTokens, usage.ReasoningTokens)
 		if i > 0 || tokens == 0 {
 			var err error
@@ -390,6 +394,33 @@ func isNil(message llm.Message) bool {
 	}
 	value := reflect.ValueOf(message)
 	return value.Kind() == reflect.Pointer && value.IsNil()
+}
+
+// withTimes returns the messages, with when each of the person's messages
+// was sent, when it's known, in the time zone, at its start, such as
+// (Saturday 2026-11-07T12:38+01:00), which doesn't change as the
+// conversation goes on, so it's cached. The messages aren't changed.
+func withTimes(messages []llm.Message, zone *time.Location) []llm.Message {
+	result := make([]llm.Message, len(messages))
+	for i, m := range messages {
+		result[i] = m
+		message, ok := schemaMessage(m)
+		if !ok || message.Role() != "user" || len(message.ToolResults()) > 0 || message.Time.IsZero() {
+			continue
+		}
+		note := "(" + message.Time.In(zone).Format(timeFormat) + ")"
+		message.Content = append([]providerschema.ContentBlock{{Text: types.Ptr(note)}}, message.Content...)
+		result[i] = message
+	}
+	return result
+}
+
+// stamp sets when the message was added to the conversation, now, unless
+// it's set
+func stamp(message *providerschema.Message) {
+	if message.Time.IsZero() {
+		message.Time = time.Now().UTC()
+	}
 }
 
 // schemaMessage returns a copy of the message, when it's a message of the
