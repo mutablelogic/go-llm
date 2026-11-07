@@ -1,18 +1,19 @@
-package tool_test
+package llm_test
 
 import (
 	"context"
 	"encoding/json"
 	"strings"
 	"testing"
+	"time"
 	"uuid"
 
 	// Packages
 	llm "github.com/mutablelogic/go-llm"
 	resource "github.com/mutablelogic/go-llm/resource"
 	schema "github.com/mutablelogic/go-llm/resource/schema"
-	tool "github.com/mutablelogic/go-llm/resource/tool"
 	toolkit "github.com/mutablelogic/go-llm/toolkit"
+	llmtools "github.com/mutablelogic/go-llm/toolkit/llm"
 	types "github.com/mutablelogic/go-server/pkg/types"
 	assert "github.com/stretchr/testify/assert"
 	require "github.com/stretchr/testify/require"
@@ -20,17 +21,27 @@ import (
 
 const srt = "1\n00:00:00,200 --> 00:00:03,500\nThe quick brown fox jumps over the lazy dog.\n\n2\n00:00:04,800 --> 00:00:05,600\nGood morning.\n"
 
-func Test_Read(t *testing.T) {
+func Test_Resource(t *testing.T) {
 	ctx := context.Background()
 	manager, err := resource.New(resource.NewStore())
 	require.NoError(t, err)
-	ns, err := tool.New(manager)
+	ns, err := llmtools.New(func() llmtools.Models { return &models{} }, llmtools.WithResources(manager))
 	require.NoError(t, err)
-	require.Equal(t, "resource", ns.Name())
-	tools := ns.Tools()
-	require.Len(t, tools, 1)
-	read := tools[0]
-	assert.Equal(t, "read", read.Name())
+	var read llm.Tool
+	for _, tool := range ns.Tools() {
+		if tool.Name() == "resource" {
+			read = tool
+		}
+	}
+	require.NotNil(t, read, "with resources, there's a resource tool")
+	assert.Equal(t, time.Minute, read.Timeout())
+
+	// Without, there's none
+	without, err := llmtools.New(func() llmtools.Models { return &models{} })
+	require.NoError(t, err)
+	for _, tool := range without.Tools() {
+		assert.NotEqual(t, "resource", tool.Name())
+	}
 
 	// A chat's files, and one on its own
 	chat := uuid.New()
@@ -47,7 +58,7 @@ func Test_Read(t *testing.T) {
 
 	// run calls the tool, in the chat, or without one
 	run := func(session uuid.UUID, input string) (any, error) {
-		ctx := toolkit.WithSession(ctx, toolkit.NewSession("resource", session, func(llm.StreamType, string) {}, nil))
+		ctx := toolkit.WithSession(ctx, toolkit.NewSession("llm", session, func(llm.StreamType, string) {}, nil))
 		return read.Run(ctx, json.RawMessage(input))
 	}
 	output := func(result any) map[string]any {

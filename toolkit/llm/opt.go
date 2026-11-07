@@ -18,6 +18,7 @@ type opt struct {
 	speakVoice      string
 	ocrModel        string
 	transcribeModel string
+	resources       Resources
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -73,6 +74,19 @@ func WithTranscribe(model string) Opt {
 			return gollm.ErrBadParameter.With("missing model to transcribe with")
 		}
 		o.transcribeModel = model
+		return nil
+	}
+}
+
+// WithResources adds the resource tool, which lists the chat's files, and
+// reads a file, by its URI, as Markdown, a part at a time, from the
+// resources, such as a resource.Manager
+func WithResources(resources Resources) Opt {
+	return func(o *opt) error {
+		if resources == nil {
+			return gollm.ErrBadParameter.With("missing resources")
+		}
+		o.resources = resources
 		return nil
 	}
 }

@@ -26,7 +26,6 @@ import (
 	registryschema "github.com/mutablelogic/go-llm/registry/schema"
 	resource "github.com/mutablelogic/go-llm/resource"
 	resourcecmd "github.com/mutablelogic/go-llm/resource/cmd"
-	resourcetool "github.com/mutablelogic/go-llm/resource/tool"
 	toolkit "github.com/mutablelogic/go-llm/toolkit"
 	toolkitcmd "github.com/mutablelogic/go-llm/toolkit/cmd"
 	llmtools "github.com/mutablelogic/go-llm/toolkit/llm"
@@ -190,13 +189,14 @@ func (runner *RunServer) withToolkit(ctx server.Cmd, b *broadcaster.Broadcaster,
 		// The llm namespace, whose tools ask the registry's models, once it's
 		// made, to speak text, read the text in images and documents, and
 		// transcribe speech, with the model the model which calls them gives,
-		// which the person chooses, and the model remembers
+		// which the person chooses, and the model remembers, and whose
+		// resource tool lists a chat's files, and reads them, as Markdown
 		ns, err := llmtools.New(func() llmtools.Models {
 			if r := events.Load(); r != nil {
 				return r
 			}
 			return nil
-		})
+		}, llmtools.WithResources(res))
 		if err != nil {
 			return err
 		}
@@ -204,17 +204,6 @@ func (runner *RunServer) withToolkit(ctx server.Cmd, b *broadcaster.Broadcaster,
 			return err
 		}
 		ctx.Logger().InfoContext(ctx.Context(), "tools added", "namespace", ns.Name(), "tools", len(ns.Tools()))
-
-		// The resource namespace, whose tool lists a chat's files, and reads
-		// a file as Markdown, a part at a time, such as a transcript
-		files, err := resourcetool.New(res)
-		if err != nil {
-			return err
-		}
-		if err := tools.Add(files); err != nil {
-			return err
-		}
-		ctx.Logger().InfoContext(ctx.Context(), "tools added", "namespace", files.Name(), "tools", len(files.Tools()))
 
 		return runner.Registry.WithRegistry(ctx, &runner.RunServer, func(r *registry.Registry) error {
 			// The example agents, as they are, before the server starts
