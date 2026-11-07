@@ -3,6 +3,8 @@ package gemini
 import (
 	"context"
 	"encoding/json"
+	"fmt"
+	"net/http"
 	"net/url"
 	"slices"
 	"strconv"
@@ -206,6 +208,10 @@ func (c *Client) GetModel(ctx context.Context, name string) (llm.Model, error) {
 	}
 	var data apiModel
 	if err := c.DoWithContext(ctx, nil, &data, client.OptPath("models", name)); err != nil {
+		// A model which isn't found is ErrNotFound, with the API's error
+		if status, ok := llm.HTTPStatus(err); ok && status == http.StatusNotFound {
+			return nil, fmt.Errorf("%w: %w", llm.ErrNotFound.Withf("model %q", name), err)
+		}
 		return nil, err
 	}
 	return &Model{provider: c, data: data}, nil

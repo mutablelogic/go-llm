@@ -159,7 +159,7 @@ func Test_Models(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "gemini-new", model.Name())
 	_, err = c.GetModel(ctx, "gemini-missing")
-	assert.Error(t, err)
+	assert.ErrorIs(t, err, llm.ErrNotFound)
 	_, err = c.GetModel(ctx, " ")
 	assert.ErrorIs(t, err, llm.ErrBadParameter)
 	assert.NoError(t, c.Ping(ctx))

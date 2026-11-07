@@ -31,7 +31,7 @@ type ProviderMeta struct {
 // what's needed to create it, and what a store of providers holds.
 type Provider struct {
 	Name string `json:"name,omitempty" help:"Provider name in the registry, which is an identifier, starting with a letter, followed by letters, numbers, underscores or hyphens, or its type when omitted" example:"my-ollama" optional:""`
-	Type string `json:"provider" help:"Provider type" enum:"elevenlabs,eliza,gowhisper,ollama,openai" example:"ollama"`
+	Type string `json:"provider" help:"Provider type" enum:"anthropic,elevenlabs,eliza,gemini,gowhisper,ollama,openai" example:"ollama"`
 	ProviderMeta
 	Serial uint64 `json:"serial,omitempty" readonly:"" help:"Revision of the provider's definition, which changes each time it's changed" example:"1"`
 }
