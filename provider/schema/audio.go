@@ -1,6 +1,8 @@
 package schema
 
 import (
+	"bytes"
+	"encoding/binary"
 	"maps"
 	"mime"
 	"path"
@@ -62,4 +64,66 @@ func PCM16(data []byte, rate, channels int) *Resource {
 	}
 	contentType := mime.FormatMediaType("audio/L16", map[string]string{"rate": strconv.Itoa(rate), "channels": strconv.Itoa(channels)})
 	return &Resource{ResourceMeta: ResourceMeta{ContentType: contentType, Data: samples}}
+}
+
+// WAV16 returns raw audio, of signed 16-bit little-endian samples, at the
+// rate, with the channels, as a WAV file, audio/wav, which can be played,
+// as audio/L16 often can't be. A trailing odd byte is left out.
+func WAV16(data []byte, rate, channels int) *Resource {
+	samples := data[:len(data)&^1]
+	var wav bytes.Buffer
+	wav.Grow(44 + len(samples))
+	header := []any{
+		[4]byte{'R', 'I', 'F', 'F'}, uint32(36 + len(samples)), [4]byte{'W', 'A', 'V', 'E'},
+		[4]byte{'f', 'm', 't', ' '}, uint32(16), uint16(1), uint16(channels), uint32(rate),
+		uint32(rate * channels * 2), uint16(channels * 2), uint16(16),
+		[4]byte{'d', 'a', 't', 'a'}, uint32(len(samples)),
+	}
+	for _, field := range header {
+		_ = binary.Write(&wav, binary.LittleEndian, field)
+	}
+	wav.Write(samples)
+	return &Resource{ResourceMeta: ResourceMeta{ContentType: "audio/wav", Data: wav.Bytes()}}
+}
+
+// WAVSamples returns the samples of a WAV file, from its data chunk, its
+// rate, and channels, of 16-bit PCM, or false when it isn't one, or is cut
+// short, such as when a chunk is larger than what's left of it, or its
+// samples aren't whole frames. A data chunk whose size is unknown, as a
+// stream's is, which is 0xFFFFFFFF, is the rest of the file.
+func WAVSamples(data []byte) ([]byte, int, int, bool) {
+	if len(data) < 12 || string(data[0:4]) != "RIFF" || string(data[8:12]) != "WAVE" {
+		return nil, 0, 0, false
+	}
+	var rate, channels int
+	for chunk := data[12:]; len(chunk) >= 8; {
+		id, size := string(chunk[0:4]), int64(binary.LittleEndian.Uint32(chunk[4:8]))
+		body := chunk[8:]
+		if id == "data" && size == 0xFFFFFFFF {
+			size = int64(len(body))
+		}
+		if size > int64(len(body)) {
+			return nil, 0, 0, false
+		}
+		switch id {
+		case "fmt ":
+			if size < 16 || binary.LittleEndian.Uint16(body[0:2]) != 1 || binary.LittleEndian.Uint16(body[14:16]) != 16 {
+				return nil, 0, 0, false
+			}
+			channels, rate = int(binary.LittleEndian.Uint16(body[2:4])), int(binary.LittleEndian.Uint32(body[4:8]))
+		case "data":
+			if rate == 0 || channels == 0 || size%int64(channels*2) != 0 {
+				return nil, 0, 0, false
+			}
+			return body[:size], rate, channels, true
+		}
+
+		// Chunks are padded to an even size
+		next := size + size&1
+		if next > int64(len(body)) {
+			break
+		}
+		chunk = body[next:]
+	}
+	return nil, 0, 0, false
 }
