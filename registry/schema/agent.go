@@ -401,7 +401,30 @@ func (p PromptMeta) input(input json.RawMessage) (map[string]any, error) {
 			return nil, err
 		}
 	}
-	return value, nil
+	return withZeros(value).(map[string]any), nil
+}
+
+// withZeros returns the value, with each number which is zero, however
+// it's written, such as 0, or 0.0, as a number, rather than as it was
+// written, which a template takes for text, so {{ if .count }} is false
+// for zero. Other numbers are as they were written, so they're written as
+// they were, without losing their precision.
+func withZeros(value any) any {
+	switch v := value.(type) {
+	case json.Number:
+		if f, err := v.Float64(); err == nil && f == 0 {
+			return int64(0)
+		}
+	case map[string]any:
+		for key, item := range v {
+			v[key] = withZeros(item)
+		}
+	case []any:
+		for i, item := range v {
+			v[i] = withZeros(item)
+		}
+	}
+	return value
 }
 
 // withDefaults sets each property of the schema which the input hasn't, so
@@ -424,13 +447,19 @@ func withDefaults(value map[string]any, schema *jsonschema.Schema) error {
 			value[name] = v
 			continue
 		}
+		// Its type, or the first of its types which isn't null, so a type
+		// which is nullable is its type, whichever order they're in
 		kind := property.Type
-		if kind == "" && len(property.Types) > 0 {
-			kind = property.Types[0]
+		for _, t := range property.Types {
+			if kind != "" {
+				break
+			} else if t != "null" {
+				kind = t
+			}
 		}
 		switch kind {
 		case "number", "integer":
-			value[name] = json.Number("0")
+			value[name] = int64(0)
 		case "boolean":
 			value[name] = false
 		case "array":

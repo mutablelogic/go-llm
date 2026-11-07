@@ -202,8 +202,33 @@ func Test_AgentMessage(t *testing.T) {
 		require.NoError(t, err)
 		assert.Equal(t, "Hello with pauses, gap 1, speaker [], tags [], 0", message)
 
+		// A nullable type is its type, whichever order its types are in
+		p.Input = json.RawMessage(`{"type":"object","properties":{"a":{"type":["null","integer"]},"b":{"type":["integer","null"]},"c":{"type":["null","boolean"]}}}`)
+		p.Prompt = types.Ptr(`{{ .a }} {{ .b }} {{ .c }}`)
+		message, err = p.Message(json.RawMessage(`{}`))
+		require.NoError(t, err)
+		assert.Equal(t, "0 0 false", message)
+
+		// Zero is false, whether it's omitted, the default, or given, however
+		// it's written, in lists too, and other numbers are true, and written
+		// as they were, without losing their precision
+		p.Input = json.RawMessage(`{"type":"object","properties":{"count":{"type":"integer"},"limit":{"type":"number","default":0},"list":{"type":"array"}}}`)
+		p.Prompt = types.Ptr(`{{ if .count }}count {{ .count }}{{ else }}none{{ end }}, {{ if .limit }}limit{{ else }}no limit{{ end }}, {{ range .list }}{{ if . }}{{ . }}{{ else }}zero{{ end }} {{ end }}`)
+		for input, want := range map[string]string{
+			`{}`:                             "none, no limit, ",
+			`{"count":0,"limit":0.0}`:        "none, no limit, ",
+			`{"count":3,"limit":1.5}`:        "count 3, limit, ",
+			`{"count":12345678901234567890}`: "count 12345678901234567890, no limit, ",
+			`{"list":[0,2.50,0.0,1e3]}`:      "none, no limit, zero 2.50 zero 1e3 ",
+		} {
+			message, err := p.Message(json.RawMessage(input))
+			require.NoError(t, err, input)
+			assert.Equal(t, want, message, input)
+		}
+
 		// A field which the schema hasn't, such as a misspelt one, is still
 		// an error, which is returned
+		p.Input = json.RawMessage(`{"type":"object","properties":{"transcript":{"type":"string"}}}`)
 		p.Prompt = types.Ptr(`{{ .transcript }} {{ .paused }}`)
 		_, err = p.Message(json.RawMessage(`{"transcript":"Hello"}`))
 		assert.ErrorIs(t, err, llm.ErrBadParameter)
