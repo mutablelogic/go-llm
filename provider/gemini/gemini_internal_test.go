@@ -36,6 +36,10 @@ var models = [][]apiModel{
 	},
 	{
 		{Name: "models/embedding-new", DisplayName: "Embedding", SupportedGenerationMethods: []string{"embedContent"}},
+		{Name: "models/gemini-new-preview-tts", DisplayName: "Gemini New TTS", SupportedGenerationMethods: []string{"generateContent", "countTokens"}},
+		{Name: "models/gemini-new-transcribe", DisplayName: "Gemini New Transcribe", SupportedGenerationMethods: []string{"generateContent", "countTokens"}},
+		{Name: "models/gemini-new-image", DisplayName: "Nano Banana New", SupportedGenerationMethods: []string{"generateContent", "countTokens"}, Thinking: types.Ptr(true)},
+		{Name: "models/imagen-new-generate", DisplayName: "Imagen New", SupportedGenerationMethods: []string{"predict"}},
 	},
 }
 
@@ -118,7 +122,7 @@ func Test_Models(t *testing.T) {
 	// prefix, with their limits, and what they can do
 	list, err := c.ListModels(ctx)
 	require.NoError(t, err)
-	require.Len(t, list, 3)
+	require.Len(t, list, 7)
 	newer, older, embedding := list[0], list[1], list[2]
 	assert.Equal(t, "gemini-new", newer.Name())
 	assert.Equal(t, "Gemini New", newer.Description())
@@ -135,6 +139,16 @@ func Test_Models(t *testing.T) {
 	assert.Equal(t, "completion", older.Capabilities().String())
 	assert.Equal(t, "embedding", embedding.Capabilities().String())
 	assert.False(t, types.Value(embedding.Capabilities().Thinking))
+
+	// Models which speak, transcribe, or make images, by their names, which
+	// the API doesn't say, and which don't reply, apart from those which
+	// make images, as they reply with them
+	assert.Equal(t, "speech", list[3].Capabilities().String())
+	assert.Equal(t, "transcription", list[4].Capabilities().String())
+	assert.Equal(t, "completion, thinking, image", list[5].Capabilities().String())
+	assert.Equal(t, "image", list[6].Capabilities().String())
+	assert.False(t, types.Value(newer.Capabilities().Image), "a model which replies doesn't make images")
+	assert.False(t, types.Value(newer.Capabilities().Speech))
 
 	// A model is got by its name, with or without the prefix, and the API is
 	// pinged

@@ -135,9 +135,12 @@ func (m *Model) OutputTokenLimit() *uint {
 
 // Capabilities returns what the model can do, of what the API says: whether
 // it generates content, which is replying, or embeds it, by the methods it
-// supports, whether it thinks, and takes a temperature, and that it doesn't
-// transcribe, or translate, speech. Whether it calls tools, or understands
-// images, isn't known, as the API doesn't say.
+// supports, whether it thinks, and takes a temperature. Models which speak,
+// transcribe, or make images, which the API doesn't say, are known by their
+// names: speech models, such as gemini-2.5-flash-preview-tts, and
+// transcription models, which generate content, don't reply, and image
+// models, such as Nano Banana, or Imagen, make images. Whether a model calls
+// tools, or understands images, isn't known, as the API doesn't say.
 func (m *Model) Capabilities() llm.ModelCap {
 	result := llm.ModelCap{
 		Completion:    types.Ptr(m.supports("generateContent")),
@@ -152,6 +155,22 @@ func (m *Model) Capabilities() llm.ModelCap {
 	}
 	if m.data.Temperature != nil || m.data.MaxTemperature != nil {
 		result.Temperature = yes
+	}
+
+	// What it does, by its name, which the API doesn't say
+	name, display := m.Name(), strings.ToLower(m.data.DisplayName)
+	switch {
+	case strings.Contains(name, "-tts"):
+		result.Completion, result.Speech, result.Image = no, yes, no
+	case strings.Contains(name, "transcribe"):
+		if types.Value(result.Completion) {
+			result.Completion, result.Transcription = no, yes
+		}
+		result.Speech, result.Image = no, no
+	case strings.Contains(name, "-image") || strings.HasPrefix(name, "imagen") || strings.Contains(display, "nano banana"):
+		result.Image, result.Speech = yes, no
+	case types.Value(result.Completion) || types.Value(result.Embedding):
+		result.Speech, result.Image = no, no
 	}
 	return result
 }
