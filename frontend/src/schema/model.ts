@@ -45,6 +45,12 @@ export interface ModelList {
 // they're shown
 export const capabilityNames: (keyof ModelCapabilities)[] = ['chat', 'tools', 'thinking', 'image_input', 'audio_input', 'video_input', 'document_input', 'image_output', 'speech_output', 'embedding', 'ocr', 'transcription', 'translation'];
 
+// capabilityLabel returns a capability's name as it's shown, as words, such
+// as image input, for image_input
+export function capabilityLabel(name: string): string {
+    return name.replace(/_/g, ' ');
+}
+
 // modelCapabilities returns the names of what the model is known to be able
 // to do, such as tools and vision, in the order they're shown
 export function modelCapabilities(model: Model): string[] {

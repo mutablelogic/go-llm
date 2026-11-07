@@ -6,7 +6,7 @@
 
 import { LitElement, css, html, nothing } from 'lit';
 import { customElement, property } from 'lit/decorators.js';
-import { modelCapabilities, type Model } from '../schema/model';
+import { capabilityLabel, modelCapabilities, type Model } from '../schema/model';
 import { tableStyles } from './styles';
 
 // Carbon components
@@ -112,7 +112,7 @@ export class ModelTable extends LitElement {
                 </cds-table-cell>
                 <cds-table-cell>${model.provider}</cds-table-cell>
                 <cds-table-cell>
-                    ${modelCapabilities(model).map((name) => html`<cds-tag size="sm" type="cool-gray">${name}</cds-tag>`)}
+                    ${modelCapabilities(model).map((name) => html`<cds-tag size="sm" type="cool-gray">${capabilityLabel(name)}</cds-tag>`)}
                 </cds-table-cell>
             </cds-table-row>
         `;
