@@ -42,8 +42,9 @@ const segmentPause = 1500 * time.Millisecond
 // each word was spoken, and who spoke them, when they're asked for, which
 // are each a sentence, or what was said before a pause, of a speaker. The
 // pieces of the transcript are streamed, as they're transcribed. Audio of
-// more than 14MB is uploaded, with the Files API, and deleted, once it's
-// transcribed. Returns ErrNotImplemented for a model which doesn't
+// more than 14MB is uploaded, with the Files API, as it's read, when its
+// length is known, such as a resource's, so it isn't held in memory, and
+// deleted, once it's transcribed. Returns ErrNotImplemented for a model which doesn't
 // transcribe, and ErrBadParameter for an option which isn't supported.
 func (c *Client) Transcribe(ctx context.Context, model llm.Model, audio llm.Resource, stream llm.TranscriberStreamFn, opts ...llm.Opt) (llm.Transcript, llm.Usage, error) {
 	m, ok := model.(*Model)
@@ -58,19 +59,35 @@ func (c *Client) Transcribe(ctx context.Context, model llm.Model, audio llm.Reso
 	if err != nil {
 		return llm.Transcript{}, llm.Usage{}, err
 	}
-	data, err := llm.ReadAll(ctx, audio)
-	if err != nil {
-		return llm.Transcript{}, llm.Usage{}, err
-	} else if len(data) == 0 {
-		return llm.Transcript{}, llm.Usage{}, llm.ErrBadParameter.With("missing audio")
-	}
 	contentType := audio.Type()
 
-	// The audio, with the request, or uploaded, when it's large, and deleted
-	// once it's transcribed
-	audioPart := part{InlineData: &blob{MimeType: contentType, Data: data}}
-	if len(data) > inlineLimit {
-		f, err := c.uploadFile(ctx, data, contentType)
+	// The audio, with the request, when it's small, or otherwise uploaded, as
+	// it's read, so it isn't held in memory, and deleted once it's
+	// transcribed. Audio whose length isn't known is read, to know it.
+	var audioPart part
+	length, known := llm.ContentLength(audio)
+	if !known || length <= int64(inlineLimit) {
+		data, err := llm.ReadAll(ctx, audio)
+		if err != nil {
+			return llm.Transcript{}, llm.Usage{}, err
+		} else if len(data) == 0 {
+			return llm.Transcript{}, llm.Usage{}, llm.ErrBadParameter.With("missing audio")
+		}
+		audioPart = part{InlineData: &blob{MimeType: contentType, Data: data}}
+		if len(data) > inlineLimit {
+			f, err := c.uploadFile(ctx, llm.ReadBytes(data), int64(len(data)), contentType)
+			if err != nil {
+				return llm.Transcript{}, llm.Usage{}, err
+			}
+			defer c.deleteFile(f)
+			audioPart = part{FileData: &fileData{MimeType: contentType, FileURI: f.URI}}
+		}
+	} else {
+		read, err := audio.Read(ctx)
+		if err != nil {
+			return llm.Transcript{}, llm.Usage{}, err
+		}
+		f, err := c.uploadFile(ctx, read, length, contentType)
 		if err != nil {
 			return llm.Transcript{}, llm.Usage{}, err
 		}

@@ -1,7 +1,6 @@
 package elevenlabs
 
 import (
-	"bytes"
 	"context"
 	"io"
 	"mime"
@@ -40,30 +39,32 @@ func (c *Client) Transcribe(ctx context.Context, model llm.Model, audio llm.Reso
 	if err != nil || (!strings.HasPrefix(contentType, "audio/") && !strings.HasPrefix(contentType, "video/")) {
 		return llm.Transcript{}, llm.Usage{}, llm.ErrBadParameter.Withf("not audio: %q", audio.Type())
 	}
-	data, err := llm.ReadAll(ctx, audio)
-	if err != nil {
-		return llm.Transcript{}, llm.Usage{}, err
-	} else if len(data) == 0 {
+	if n, ok := llm.ContentLength(audio); ok && n == 0 {
 		return llm.Transcript{}, llm.Usage{}, llm.ErrBadParameter.With("audio is empty")
 	}
 
 	// The request, with the options
-	request := transcribeRequest{
-		Model: model.Name(),
-		File:  types.File{Path: schema.AudioName(audio.Name(), contentType), Body: io.NopCloser(bytes.NewReader(data)), ContentType: contentType},
-	}
+	request := transcribeRequest{Model: model.Name()}
 	options, err := request.apply(opts...)
 	if err != nil {
 		return llm.Transcript{}, llm.Usage{}, err
 	}
 
-	// Send the request, and receive the transcript
-	req, err := client.NewMultipartRequest(request, types.ContentTypeJSON)
+	// Send the request, with the audio, as it's read, so it isn't held in
+	// memory, and receive the transcript
+	read, err := audio.Read(ctx)
 	if err != nil {
 		return llm.Transcript{}, llm.Usage{}, err
 	}
 	var response transcribeResponse
-	if err := c.DoWithContext(ctx, req, &response, client.OptPath("speech-to-text"), client.OptNoTimeout()); err != nil {
+	if err := read(ctx, func(r io.Reader) error {
+		request.File = types.File{Path: schema.AudioName(audio.Name(), contentType), Body: io.NopCloser(r), ContentType: contentType}
+		req, err := client.NewStreamingMultipartRequest(request, types.ContentTypeJSON)
+		if err != nil {
+			return err
+		}
+		return c.DoWithContext(ctx, req, &response, client.OptPath("speech-to-text"), client.OptNoTimeout())
+	}); err != nil {
 		return llm.Transcript{}, llm.Usage{}, err
 	}
 
