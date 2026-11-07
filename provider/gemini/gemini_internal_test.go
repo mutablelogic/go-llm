@@ -42,6 +42,7 @@ var models = [][]apiModel{
 		{Name: "models/gemini-new-transcribe", DisplayName: "Gemini New Transcribe", SupportedGenerationMethods: []string{"generateContent", "countTokens"}},
 		{Name: "models/gemini-new-image", DisplayName: "Nano Banana New", SupportedGenerationMethods: []string{"generateContent", "countTokens"}, Thinking: types.Ptr(true)},
 		{Name: "models/imagen-new-generate", DisplayName: "Imagen New", SupportedGenerationMethods: []string{"predict"}},
+		{Name: "models/gemini-embedding-2", DisplayName: "Gemini Embedding 2", SupportedGenerationMethods: []string{"embedContent"}},
 	},
 }
 
@@ -78,7 +79,7 @@ func newFakeAPI(t *testing.T) *fakeAPI {
 			}
 			w.WriteHeader(http.StatusNotFound)
 			_, _ = w.Write([]byte(`{"error":{"code":404,"message":"not found","status":"NOT_FOUND"}}`))
-		case r.Method == http.MethodPost && r.URL.Path == "/v1beta/models/embedding-new:batchEmbedContents":
+		case r.Method == http.MethodPost && strings.HasSuffix(r.URL.Path, ":batchEmbedContents"):
 			// A vector of each message's text's length, and its parts
 			var req batchEmbedRequest
 			require.NoError(t, json.NewDecoder(r.Body).Decode(&req))
@@ -136,7 +137,7 @@ func Test_Models(t *testing.T) {
 	// prefix, with their limits, and what they can do
 	list, err := c.ListModels(ctx)
 	require.NoError(t, err)
-	require.Len(t, list, 7)
+	require.Len(t, list, 8)
 	newer, older, embedding := list[0], list[1], list[2]
 	assert.Equal(t, "gemini-new", newer.Name())
 	assert.Equal(t, "Gemini New", newer.Description())
@@ -269,5 +270,54 @@ func Test_Embed(t *testing.T) {
 	_, _, err = c.Embed(ctx, model, nil)
 	assert.ErrorIs(t, err, llm.ErrBadParameter)
 	_, _, err = c.Embed(ctx, model, []llm.Message{&schema.Message{MessageMeta: schema.MessageMeta{Sender: "user"}}})
+	assert.ErrorIs(t, err, llm.ErrBadParameter)
+}
+
+func Test_EmbedInText(t *testing.T) {
+	// gemini-embedding-2 takes the task type, and the title, in the text,
+	// with Google's prefixes, rather than as fields
+	ctx := context.Background()
+	api := newFakeAPI(t)
+	c, err := New(api.URL, "key")
+	require.NoError(t, err)
+	model, err := c.GetModel(ctx, "gemini-embedding-2")
+	require.NoError(t, err)
+	hello, err := schema.NewMessage("user", "hello")
+	require.NoError(t, err)
+	text := func(opts ...llm.Opt) string {
+		t.Helper()
+		_, _, err := c.Embed(ctx, model, []llm.Message{hello}, opts...)
+		require.NoError(t, err)
+		request := api.embedded.Requests[0]
+		assert.Empty(t, request.TaskType, "no task type field")
+		assert.Empty(t, request.Title, "no title field")
+		return request.Content.Parts[0].Text
+	}
+	assert.Equal(t, "hello", text())
+	assert.Equal(t, "task: search result | query: hello", text(llm.WithTaskType("retrieval_query")))
+	assert.Equal(t, "title: none | text: hello", text(llm.WithTaskType("retrieval_document")))
+	assert.Equal(t, "title: Pets | text: hello", text(llm.WithTaskType("retrieval_document"), llm.WithTitle("Pets")))
+	assert.Equal(t, "title: Pets | text: hello", text(llm.WithTitle("Pets")))
+	assert.Equal(t, "task: question answering | query: hello", text(llm.WithTaskType("question_answering")))
+	assert.Equal(t, "task: fact checking | query: hello", text(llm.WithTaskType("fact_verification")))
+	assert.Equal(t, "task: code retrieval | query: hello", text(llm.WithTaskType("code_retrieval_query")))
+	assert.Equal(t, "task: sentence similarity | query: hello", text(llm.WithTaskType("semantic_similarity")))
+	assert.Equal(t, "task: classification | query: hello", text(llm.WithTaskType("classification")))
+	assert.Equal(t, "task: clustering | query: hello", text(llm.WithTaskType("clustering")))
+
+	// The text of a message with attachments isn't prefixed, as Google
+	// advises
+	image := &schema.Resource{ResourceMeta: schema.ResourceMeta{ContentType: "image/png", Data: []byte("PNG")}}
+	withImage := schema.Message{MessageMeta: schema.MessageMeta{Sender: "user", Content: []schema.ContentBlock{{Text: types.Ptr("a cat")}, {Resource: image}}}}
+	_, _, err = c.Embed(ctx, model, []llm.Message{&withImage}, llm.WithTaskType("retrieval_query"))
+	require.NoError(t, err)
+	assert.Equal(t, "a cat", api.embedded.Requests[0].Content.Parts[0].Text)
+
+	// A title is only for a document, with any model
+	_, _, err = c.Embed(ctx, model, []llm.Message{hello}, llm.WithTaskType("retrieval_query"), llm.WithTitle("Pets"))
+	assert.ErrorIs(t, err, llm.ErrBadParameter)
+	older, err := c.GetModel(ctx, "embedding-new")
+	require.NoError(t, err)
+	_, _, err = c.Embed(ctx, older, []llm.Message{hello}, llm.WithTaskType("classification"), llm.WithTitle("Pets"))
 	assert.ErrorIs(t, err, llm.ErrBadParameter)
 }
