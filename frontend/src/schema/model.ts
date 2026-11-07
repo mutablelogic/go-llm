@@ -6,6 +6,9 @@ export interface ModelCapabilities {
     tools?: boolean;
     thinking?: boolean;
     vision?: boolean;
+    audio?: boolean;
+    video?: boolean;
+    documents?: boolean;
     ocr?: boolean;
     transcription?: boolean;
     translation?: boolean;
@@ -40,7 +43,7 @@ export interface ModelList {
 
 // capabilityNames are the names of what a model can do, in the order
 // they're shown
-export const capabilityNames: (keyof ModelCapabilities)[] = ['completion', 'tools', 'thinking', 'vision', 'ocr', 'transcription', 'translation', 'embedding', 'speech', 'image'];
+export const capabilityNames: (keyof ModelCapabilities)[] = ['completion', 'tools', 'thinking', 'vision', 'audio', 'video', 'documents', 'ocr', 'transcription', 'translation', 'embedding', 'speech', 'image'];
 
 // modelCapabilities returns the names of what the model is known to be able
 // to do, such as tools and vision, in the order they're shown

@@ -164,14 +164,21 @@ func (m *Model) Capabilities() llm.ModelCap {
 	switch {
 	case strings.Contains(name, "-tts"):
 		result.Completion, result.Speech, result.Image = no, yes, no
+		result.Vision, result.Audio, result.Video, result.Documents = no, no, no, no
 	case strings.Contains(name, "transcribe"):
 		if types.Value(result.Completion) {
 			result.Completion, result.Transcription = no, yes
 		}
 		result.Speech, result.Image = no, no
+		result.Vision, result.Audio, result.Video, result.Documents = no, yes, no, no
 	case strings.Contains(name, "-image") || strings.HasPrefix(name, "imagen") || strings.Contains(display, "nano banana"):
-		result.Image, result.Speech = yes, no
-	case types.Value(result.Completion) || types.Value(result.Embedding):
+		result.Image, result.Speech, result.Vision = yes, no, yes
+	case types.Value(result.Completion):
+		// Gemini's models which reply see images, hear audio, watch video,
+		// and read documents
+		result.Speech, result.Image = no, no
+		result.Vision, result.Audio, result.Video, result.Documents = yes, yes, yes, yes
+	case types.Value(result.Embedding):
 		result.Speech, result.Image = no, no
 	}
 	return result

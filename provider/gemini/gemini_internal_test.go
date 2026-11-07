@@ -155,7 +155,7 @@ func Test_Models(t *testing.T) {
 	assert.Equal(t, "Gemini New", newer.Description())
 	assert.Equal(t, uint(1048576), types.Value(newer.InputTokenLimit()))
 	assert.Equal(t, uint(65536), types.Value(newer.OutputTokenLimit()))
-	assert.Equal(t, "completion, thinking", newer.Capabilities().String())
+	assert.Equal(t, "completion, thinking, vision, audio, video, documents", newer.Capabilities().String())
 	assert.True(t, types.Value(newer.Capabilities().Temperature))
 	assert.Nil(t, newer.Capabilities().Tools, "whether it calls tools isn't known")
 	assert.Empty(t, newer.Aliases())
@@ -163,7 +163,7 @@ func Test_Models(t *testing.T) {
 	assert.JSONEq(t, `["generateContent","countTokens"]`, string(newer.Meta()["supported_generation_methods"]))
 	assert.Equal(t, "gemini-old-001", older.Name())
 	assert.Equal(t, []string{"gemini-old"}, older.Aliases())
-	assert.Equal(t, "completion", older.Capabilities().String())
+	assert.Equal(t, "completion, vision, audio, video, documents", older.Capabilities().String())
 	assert.Equal(t, "embedding", embedding.Capabilities().String())
 	assert.False(t, types.Value(embedding.Capabilities().Thinking))
 
@@ -171,9 +171,9 @@ func Test_Models(t *testing.T) {
 	// the API doesn't say, and which don't reply, apart from those which
 	// make images, as they reply with them
 	assert.Equal(t, "speech", list[3].Capabilities().String())
-	assert.Equal(t, "transcription", list[4].Capabilities().String())
-	assert.Equal(t, "completion, thinking, image", list[5].Capabilities().String())
-	assert.Equal(t, "image", list[6].Capabilities().String())
+	assert.Equal(t, "audio, transcription", list[4].Capabilities().String())
+	assert.Equal(t, "completion, thinking, vision, image", list[5].Capabilities().String())
+	assert.Equal(t, "vision, image", list[6].Capabilities().String())
 	assert.False(t, types.Value(newer.Capabilities().Image), "a model which replies doesn't make images")
 	assert.False(t, types.Value(newer.Capabilities().Speech))
 

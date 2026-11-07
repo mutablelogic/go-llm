@@ -73,7 +73,7 @@ func Test_Models(t *testing.T) {
 		model, err := client.GetModel(ctx, eliza.ModelName)
 		require.NoError(t, err)
 		assert.Equal(t, llm.ModelCap{
-			Completion: types.Ptr(true), Tools: types.Ptr(false), Thinking: types.Ptr(true), Vision: types.Ptr(false), OCR: types.Ptr(false),
+			Completion: types.Ptr(true), Tools: types.Ptr(false), Thinking: types.Ptr(true), Vision: types.Ptr(false), Audio: types.Ptr(false), Video: types.Ptr(false), Documents: types.Ptr(false), OCR: types.Ptr(false),
 			Transcription: types.Ptr(false), Translation: types.Ptr(false), Embedding: types.Ptr(false),
 		}, model.Capabilities())
 		assert.Equal(t, "completion, thinking", model.Capabilities().String())

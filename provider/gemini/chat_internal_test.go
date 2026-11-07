@@ -232,10 +232,21 @@ func Test_Options(t *testing.T) {
 	}
 }
 
-func Test_Accepts(t *testing.T) {
-	c := &Client{}
-	for _, contentType := range []string{"image/png", "audio/mpeg", "video/mp4", "application/pdf", "text/plain; charset=utf-8"} {
-		assert.True(t, c.Accepts(nil, contentType), contentType)
+func Test_Inputs(t *testing.T) {
+	// Gemini's models which reply see images, hear audio, watch video, and
+	// read documents, and its speech models take none of them
+	ctx := context.Background()
+	api := newFakeAPI(t)
+	c, err := New(api.URL, "key")
+	require.NoError(t, err)
+	model, err := c.GetModel(ctx, "gemini-new")
+	require.NoError(t, err)
+	caps := model.Capabilities()
+	for name, value := range map[string]*bool{"vision": caps.Vision, "audio": caps.Audio, "video": caps.Video, "documents": caps.Documents} {
+		assert.True(t, types.Value(value), name)
 	}
-	assert.False(t, c.Accepts(nil, "application/zip"))
+	tts, err := c.GetModel(ctx, "gemini-new-preview-tts")
+	require.NoError(t, err)
+	assert.False(t, types.Value(tts.Capabilities().Audio))
+	assert.NotNil(t, tts.Capabilities().Audio, "it's known")
 }

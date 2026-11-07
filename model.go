@@ -32,6 +32,9 @@ type ModelCap struct {
 	Tools         *bool `json:"tools,omitempty" help:"Calls tools"`
 	Thinking      *bool `json:"thinking,omitempty" help:"Thinks, or reasons, before it replies"`
 	Vision        *bool `json:"vision,omitempty" help:"Understands images"`
+	Audio         *bool `json:"audio,omitempty" help:"Hears audio, in a conversation"`
+	Video         *bool `json:"video,omitempty" help:"Watches video, in a conversation"`
+	Documents     *bool `json:"documents,omitempty" help:"Reads documents, such as PDFs, in a conversation, rather than recognizing their text first"`
 	OCR           *bool `json:"ocr,omitempty" help:"Recognizes the text in images and documents"`
 	Transcription *bool `json:"transcription,omitempty" help:"Transcribes speech"`
 	Translation   *bool `json:"translation,omitempty" help:"Translates speech into English"`
@@ -53,7 +56,7 @@ type ModelCap struct {
 // Capabilities are the names of what a model can do, in order, which a list
 // of models is filtered by. Temperature is a setting, rather than what a
 // model does, so isn't one.
-var Capabilities = []string{"completion", "tools", "thinking", "vision", "ocr", "transcription", "translation", "embedding", "speech", "image"}
+var Capabilities = []string{"completion", "tools", "thinking", "vision", "audio", "video", "documents", "ocr", "transcription", "translation", "embedding", "speech", "image"}
 
 // String returns the names of the capabilities which the model is known to
 // have, such as "completion, tools, thinking"
@@ -87,6 +90,12 @@ func (c ModelCap) Has(name string) (bool, error) {
 		value = c.Thinking
 	case "vision":
 		value = c.Vision
+	case "audio":
+		value = c.Audio
+	case "video":
+		value = c.Video
+	case "documents":
+		value = c.Documents
 	case "ocr":
 		value = c.OCR
 	case "transcription":

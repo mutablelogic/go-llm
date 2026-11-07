@@ -341,7 +341,7 @@ func Test_Logs(t *testing.T) {
 		"Reading the text on pages 0-1 of the PDF",
 		"Transcribing what's said in the recording",
 		"Translating what's said in the recording into English",
-		"Looking for models which can read documents and speak",
+		"Looking for models which can recognize text and speak",
 		"Looking for models which can see images, call tools and speak",
 		"Looking for models which can make images",
 	}, lines)

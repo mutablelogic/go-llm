@@ -218,8 +218,15 @@ func (m *Model) Capabilities() llm.ModelCap {
 	}
 	for _, model := range modelCapabilities {
 		if model.server == server && model.re.MatchString(m.data.ID) {
-			return merge(result, model.cap)
+			result = merge(result, model.cap)
+			break
 		}
+	}
+
+	// A model which replies is only sent images, as the chat completions API
+	// this client uses has no audio, video, or documents
+	if types.Value(result.Completion) {
+		result.Audio, result.Video, result.Documents = no, no, no
 	}
 	return result
 }

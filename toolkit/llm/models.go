@@ -24,7 +24,7 @@ type listModels struct {
 
 // modelsInput is the input of the models tool
 type modelsInput struct {
-	Capabilities []string `json:"capabilities,omitempty" help:"Capabilities which the models must have, every one of them: completion, tools, thinking, vision, ocr, transcription, translation, embedding, speech or image, or none, for every model" optional:""`
+	Capabilities []string `json:"capabilities,omitempty" help:"Capabilities which the models must have, every one of them: completion, tools, thinking, vision, audio, video, documents, ocr, transcription, translation, embedding, speech or image, or none, for every model" optional:""`
 	Provider     string   `json:"provider,omitempty" help:"Provider whose models are listed, by its name, such as ollama, or every provider's, when it's omitted" optional:""`
 }
 
@@ -53,7 +53,10 @@ var ability = map[string]string{
 	"tools":         "call tools",
 	"thinking":      "think",
 	"vision":        "see images",
-	"ocr":           "read documents",
+	"audio":         "hear audio",
+	"video":         "watch video",
+	"documents":     "read documents",
+	"ocr":           "recognize text",
 	"transcription": "transcribe speech",
 	"translation":   "translate speech",
 	"embedding":     "embed text",

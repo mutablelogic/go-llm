@@ -103,7 +103,7 @@ func TestCapabilities(t *testing.T) {
 		m := model(t, MistralEndpoint, "mistral-ocr-latest", `{"completion_chat":false,"function_calling":true,"reasoning":false,"vision":true,"ocr":true,"audio_transcription":false,"moderation":false}`)
 		assert.Equal(t, llm.ModelCap{Completion: types.Ptr(false), Tools: types.Ptr(true), Thinking: types.Ptr(false), Vision: types.Ptr(true), OCR: types.Ptr(true), Transcription: types.Ptr(false), Temperature: types.Ptr(false)}, m.Capabilities())
 		m = model(t, MistralEndpoint, "mistral-small-latest", `{"completion_chat":true,"reasoning":true}`)
-		assert.Equal(t, llm.ModelCap{Completion: types.Ptr(true), Thinking: types.Ptr(true), Temperature: types.Ptr(true)}, m.Capabilities(), "a model which replies takes a temperature")
+		assert.Equal(t, llm.ModelCap{Completion: types.Ptr(true), Thinking: types.Ptr(true), Audio: types.Ptr(false), Video: types.Ptr(false), Documents: types.Ptr(false), Temperature: types.Ptr(true)}, m.Capabilities(), "a model which replies takes a temperature, and is only sent images")
 
 		// Or none, when it returns none, or they aren't capabilities
 		assert.Equal(t, llm.ModelCap{}, model(t, "http://localhost:8000", "gpt-4o", "").Capabilities())

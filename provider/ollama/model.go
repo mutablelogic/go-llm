@@ -144,8 +144,12 @@ func (m *Model) Capabilities() llm.ModelCap {
 		Embedding:  has("embedding"),
 		Speech:     has("speech"),
 
-		// A model which replies takes a temperature
+		// A model which replies takes a temperature, and is only sent
+		// images, as Ollama's chat has no audio, video, or documents
 		Temperature: has("completion"),
+		Audio:       not(has("completion")),
+		Video:       not(has("completion")),
+		Documents:   not(has("completion")),
 	}
 }
 
@@ -279,4 +283,13 @@ func positiveUint(raw json.RawMessage) *uint {
 		return nil
 	}
 	return &n
+}
+
+// not returns false when the value is true, or nil, when it isn't, as a
+// capability which a model doesn't have, when it's true
+func not(value *bool) *bool {
+	if types.Value(value) {
+		return types.Ptr(false)
+	}
+	return nil
 }

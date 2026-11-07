@@ -5,7 +5,6 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
-	"mime"
 	"strings"
 
 	// Packages
@@ -397,23 +396,4 @@ func resultText(r llm.ToolResult, call toolCall) string {
 		return "(The tool " + name + " was called with " + input + ", and failed: " + content + ")"
 	}
 	return "(The tool " + name + " was called with " + input + ", and returned: " + content + ")"
-}
-
-///////////////////////////////////////////////////////////////////////////////
-// ACCEPTER
-
-var _ llm.Accepter = (*Client)(nil)
-
-// Accepts returns whether the model accepts an attachment of the type, which
-// is images, audio, video, PDFs, and text
-func (*Client) Accepts(_ llm.Model, contentType string) bool {
-	mediaType, _, err := mime.ParseMediaType(contentType)
-	if err != nil {
-		return false
-	}
-	switch {
-	case strings.HasPrefix(mediaType, "image/"), strings.HasPrefix(mediaType, "audio/"), strings.HasPrefix(mediaType, "video/"), strings.HasPrefix(mediaType, "text/"):
-		return true
-	}
-	return mediaType == "application/pdf"
 }

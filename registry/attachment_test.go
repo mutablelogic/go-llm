@@ -315,7 +315,7 @@ func Test_UnreadableAttachments(t *testing.T) {
 		text("A cat"),
 		call("files__read", `{"uri":"`+audio.URI()+`"}`), text("Too large"),
 	)
-	p.accepts = func(contentType string) bool { return strings.HasPrefix(contentType, "image/") }
+	p.caps = llm.ModelCap{Vision: types.Ptr(true), Audio: types.Ptr(false), Video: types.Ptr(false), Documents: types.Ptr(false)}
 	r, err := registry.New(registry.WithSessionStore(sessions), registry.WithToolkit(tk), registry.WithResources(manager))
 	require.NoError(t, err)
 	require.NoError(t, r.Add("", p))
@@ -373,7 +373,7 @@ func Test_TextAttachmentsAccepted(t *testing.T) {
 	notes, _, err := manager.Create(ctx, resourceschema.ResourceMeta{Name: "notes.txt", Type: "text/plain"}, strings.NewReader("Pineapple"))
 	require.NoError(t, err)
 	p := newScripted(text("Pineapple"))
-	p.accepts = func(contentType string) bool { return strings.HasPrefix(contentType, "image/") }
+	p.caps = llm.ModelCap{Vision: types.Ptr(true), Audio: types.Ptr(false), Video: types.Ptr(false), Documents: types.Ptr(false)}
 	r, err := registry.New(registry.WithSessionStore(sessions), registry.WithResources(manager))
 	require.NoError(t, err)
 	require.NoError(t, r.Add("", p))

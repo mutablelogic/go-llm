@@ -4,8 +4,10 @@ import (
 	"context"
 	"errors"
 	"io"
+	"mime"
 	"net/url"
 	"slices"
+	"strings"
 	"uuid"
 
 	// Packages
@@ -389,17 +391,32 @@ func (c *contentReader) accept(contentType string) bool {
 // PRIVATE FUNCTIONS
 
 // accepts returns the function which says whether the model accepts an
-// attachment of a type, when its provider says which it does, or nil
+// attachment of a type, by its capabilities: images when it has vision,
+// audio, video, and documents, such as PDFs, when it hears, watches, and
+// reads them, which is known to be so, or not known, when it's sent, as it
+// was before capabilities said. Text is always sent, as text. Returns nil,
+// when there's no model, when every attachment is sent.
 func accepts(model llm.Model) func(string) bool {
-	if model == nil || model.Provider() == nil {
+	if model == nil {
 		return nil
 	}
-	accepter, ok := model.Provider().Self().(llm.Accepter)
-	if !ok {
-		return nil
-	}
+	caps := model.Capabilities()
 	return func(contentType string) bool {
-		return accepter.Accepts(model, contentType)
+		mediaType, _, _ := mime.ParseMediaType(contentType)
+		var capability *bool
+		switch {
+		case strings.HasPrefix(mediaType, "text/"):
+			return true
+		case strings.HasPrefix(mediaType, "image/"):
+			capability = caps.Vision
+		case strings.HasPrefix(mediaType, "audio/"):
+			capability = caps.Audio
+		case strings.HasPrefix(mediaType, "video/"):
+			capability = caps.Video
+		case mediaType == "application/pdf":
+			capability = caps.Documents
+		}
+		return capability == nil || *capability
 	}
 }
 
