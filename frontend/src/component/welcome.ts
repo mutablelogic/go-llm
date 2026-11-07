@@ -149,7 +149,7 @@ export class Welcome extends LitElement {
         const can = (capability: Parameters<typeof cannot>[1]) => models.some((model) => model.capabilities?.[capability] === true);
         const tries = [
             'Attach a file, by dropping it onto the chat, or pasting it, and ask about it',
-            'Choose the tools a chat can use, such as the weather, the news, or the assistant's long-term memory, when you start it',
+            "Choose the tools a chat can use, such as the weather, the news, or the assistant's long-term memory, when you start it",
             can('image_output') ? 'Ask for a picture, or to change one' : '',
             can('speech_output') ? 'Ask for something to be read aloud' : '',
             can('transcription') ? 'Attach a recording, and ask what\'s said in it' : '',
