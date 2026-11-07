@@ -52,6 +52,13 @@ type part struct {
 	FunctionResponse *functionResponse   `json:"functionResponse,omitempty"`
 	FileData         *fileData           `json:"fileData,omitempty"`
 	Transcription    *audioTranscription `json:"audioTranscription,omitempty"`
+	SpeechMetadata   *speechMetadata     `json:"speechMetadata,omitempty"`
+}
+
+// speechMetadata is how later speech models speak a part's text, such as
+// calmly
+type speechMetadata struct {
+	Style string `json:"style,omitempty"`
 }
 
 // functionCall is a model's call of a function, with its arguments, and
@@ -121,6 +128,7 @@ type generationConfig struct {
 	ResponseModalities  []string                  `json:"responseModalities,omitempty"`
 	ImageConfig         *imageConfig              `json:"imageConfig,omitempty"`
 	TranscriptionConfig *audioTranscriptionConfig `json:"audioTranscriptionConfig,omitempty"`
+	SpeechConfig        *speechConfig             `json:"speechConfig,omitempty"`
 }
 
 // audioTranscriptionConfig is how a transcription model transcribes: in
@@ -130,6 +138,20 @@ type audioTranscriptionConfig struct {
 	LanguageCodes []string `json:"languageCodes,omitempty"`
 	WordTimestamp bool     `json:"wordTimestamp,omitempty"`
 	Diarization   bool     `json:"diarization,omitempty"`
+}
+
+// speechConfig is the voice a speech model speaks in, by its name, such as
+// Kore
+type speechConfig struct {
+	VoiceConfig voiceConfig `json:"voiceConfig"`
+}
+
+type voiceConfig struct {
+	PrebuiltVoiceConfig prebuiltVoiceConfig `json:"prebuiltVoiceConfig"`
+}
+
+type prebuiltVoiceConfig struct {
+	VoiceName string `json:"voiceName"`
 }
 
 // imageConfig is the aspect ratio, such as 16:9, and size, such as 2K, of

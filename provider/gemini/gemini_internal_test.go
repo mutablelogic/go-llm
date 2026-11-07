@@ -32,6 +32,7 @@ type fakeAPI struct {
 	reply    []string          // The pieces of the reply the next request to generate streams
 	asked    generateRequest   // The last request to generate
 	made     string            // The response the next request to generate, without streaming, is
+	noStyle  bool              // Whether a request to generate with a style is rejected, as a model which doesn't take one does
 
 	// The Files API: the content uploaded, and its length, how many times a
 	// file is processing, when it's checked, and the files deleted
@@ -106,6 +107,11 @@ func newFakeAPI(t *testing.T) *fakeAPI {
 			var req generateRequest
 			require.NoError(t, json.NewDecoder(r.Body).Decode(&req))
 			api.asked = req
+			if api.noStyle && len(req.Contents) > 0 && len(req.Contents[0].Parts) > 0 && req.Contents[0].Parts[0].SpeechMetadata != nil {
+				w.WriteHeader(http.StatusBadRequest)
+				_, _ = w.Write([]byte(`{"error":{"code":400,"message":"Speech metadata is not supported for this model.","status":"INVALID_ARGUMENT"}}`))
+				return
+			}
 			_, _ = w.Write([]byte(api.made))
 		case r.Method == http.MethodPost && strings.HasSuffix(r.URL.Path, ":streamGenerateContent"):
 			// The reply, streamed, as server-sent events
