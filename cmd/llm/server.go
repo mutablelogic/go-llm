@@ -26,6 +26,7 @@ import (
 	registryschema "github.com/mutablelogic/go-llm/registry/schema"
 	resource "github.com/mutablelogic/go-llm/resource"
 	resourcecmd "github.com/mutablelogic/go-llm/resource/cmd"
+	resourcetool "github.com/mutablelogic/go-llm/resource/tool"
 	toolkit "github.com/mutablelogic/go-llm/toolkit"
 	toolkitcmd "github.com/mutablelogic/go-llm/toolkit/cmd"
 	llmtools "github.com/mutablelogic/go-llm/toolkit/llm"
@@ -203,6 +204,17 @@ func (runner *RunServer) withToolkit(ctx server.Cmd, b *broadcaster.Broadcaster,
 			return err
 		}
 		ctx.Logger().InfoContext(ctx.Context(), "tools added", "namespace", ns.Name(), "tools", len(ns.Tools()))
+
+		// The resource namespace, whose tool lists a chat's files, and reads
+		// a file as Markdown, a part at a time, such as a transcript
+		files, err := resourcetool.New(res)
+		if err != nil {
+			return err
+		}
+		if err := tools.Add(files); err != nil {
+			return err
+		}
+		ctx.Logger().InfoContext(ctx.Context(), "tools added", "namespace", files.Name(), "tools", len(files.Tools()))
 
 		return runner.Registry.WithRegistry(ctx, &runner.RunServer, func(r *registry.Registry) error {
 			// The example agents, as they are, before the server starts
