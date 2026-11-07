@@ -68,6 +68,12 @@ func (r *Registry) Ask(ctx context.Context, req schema.AskRequest, stream llm.Ge
 		messages[i] = &message
 	}
 
+	// The last message, when it's the person's, is sent now, which a model
+	// may be told, but the earlier ones' times aren't known
+	if last := messages[len(messages)-1].(*providerschema.Message); last.Role() == "user" && len(last.ToolResults()) == 0 {
+		stamp(last)
+	}
+
 	// Ask the model, until it replies, with a result which conforms to the
 	// schema, when the request has one, or calls tools
 	model, loop, hasSchema, err := r.generatorLoop(ctx, req.GeneratorMeta, respondAttempts)

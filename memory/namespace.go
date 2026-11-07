@@ -42,16 +42,12 @@ func (m *Memory) SystemPrompt() string {
 }
 
 // SystemPromptFor returns the system prompt, when the model can call the
-// tools, or all of them, when they're nil: the time, and the details, and,
-// with the set_detail tool, those which aren't known, and how to remember
-// them, and, with the memories tool, how to search, keep and use memories
+// tools, or all of them, when they're nil: when the person's messages were
+// sent, the details, and, with the set_detail tool, those which aren't
+// known, and how to remember them, and, with the memories tool, how to
+// search, keep and use memories
 func (m *Memory) SystemPromptFor(tools []string) string {
-	details := m.Details()
-	now := m.now()
-	if zone := details.Zone(); zone != nil {
-		now = now.In(zone)
-	}
-	return systemPrompt(details, now, tools == nil || hasTool(tools, "set_detail"), tools == nil || hasTool(tools, "memories"))
+	return systemPrompt(m.Details(), tools == nil || hasTool(tools, "set_detail"), tools == nil || hasTool(tools, "memories"))
 }
 
 // Notify does nothing, as the memory's tools don't change
@@ -65,12 +61,12 @@ func (m *Memory) Tools() []llm.Tool {
 ///////////////////////////////////////////////////////////////////////////////
 // PRIVATE FUNCTIONS
 
-// systemPrompt returns the time, the details which are known, and those
-// which aren't: the assistant's name, which the model asks for first, the
-// person's, which it may ask for, and the rest, which it learns from the
-// conversation, and how to remember them
-func systemPrompt(details schema.Details, now time.Time, setDetail, memories bool) string {
-	sentences := []string{currentTime(now)}
+// systemPrompt returns when the person's messages were sent, the details
+// which are known, and those which aren't: the assistant's name, which the
+// model asks for first, the person's, which it may ask for, and the rest,
+// which it learns from the conversation, and how to remember them
+func systemPrompt(details schema.Details, setDetail, memories bool) string {
+	sentences := []string{times(details.Zone())}
 
 	// The details, without the tags of what the system says, which are
 	// taken out of what the person, or a model, said of them, so they can't
@@ -230,15 +226,13 @@ func join(phrases []string) string {
 	return strings.Join(phrases[:len(phrases)-1], ", ") + " or " + phrases[len(phrases)-1]
 }
 
-// currentTime returns the sentence of the time, with the day of the week, the
-// date, the time of day, and the time zone, by its name, such as
-// Europe/Berlin, with its abbreviation, when its name is known, or by its
-// abbreviation, such as CET, otherwise, and its offset from UTC
-func currentTime(now time.Time) string {
-	zone, _ := now.Zone()
-	if name := now.Location().String(); name != "Local" && name != zone {
-		zone = fmt.Sprintf("%s (%s)", name, zone)
+// times returns the sentence of when the person's messages were sent,
+// which each starts with, in their time zone, by its name, such as
+// Europe/Berlin, or in UTC, when it isn't known, rather than the time, which
+// would change the system prompt each time, so it isn't cached
+func times(zone *time.Location) string {
+	if zone == nil || zone.String() == "Local" {
+		return "Each of the person's messages starts with when they sent it, in UTC, as their time zone isn't known."
 	}
-	return fmt.Sprintf("The current date and time is %s, in the %s time zone, UTC%s.",
-		now.Format("Monday, 2 January 2006, 15:04"), zone, now.Format("-07:00"))
+	return fmt.Sprintf("Each of the person's messages starts with when they sent it, in their time zone, %s.", zone)
 }

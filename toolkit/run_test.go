@@ -140,6 +140,53 @@ func (t hangTool) Run(ctx context.Context, _ json.RawMessage) (any, error) {
 	}
 }
 
+// ownTimeout is a tool with a timeout of its own
+type ownTimeout struct {
+	llm.Tool
+	timeout time.Duration
+}
+
+func (t ownTimeout) Timeout() time.Duration { return t.timeout }
+
+// sleepTool is a tool which returns after a while
+type sleepTool struct {
+	echoTool
+	sleep time.Duration
+}
+
+func (t sleepTool) Run(ctx context.Context, input json.RawMessage) (any, error) {
+	select {
+	case <-time.After(t.sleep):
+		return t.echoTool.Run(ctx, input)
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	}
+}
+
+func Test_RunToolsOwnTimeout(t *testing.T) {
+	ctx := context.Background()
+	release := make(chan struct{})
+	t.Cleanup(func() { close(release) })
+
+	// A tool with a longer timeout of its own returns, after the timeout
+	// others have, and the others time out
+	tools := []llm.Tool{ownTimeout{sleepTool{echoTool{name: "slow"}, 50 * time.Millisecond}, time.Second}, sleepTool{echoTool{name: "other"}, 50 * time.Millisecond}}
+	calls := []llm.ToolCall{{ID: "1", Name: "slow"}, {ID: "2", Name: "other"}}
+	results, err := toolkit.RunTools(ctx, tools, calls, 5*time.Millisecond, nil)
+	require.NoError(t, err)
+	require.Len(t, results, 2)
+	assert.False(t, results[0].ToolResult.IsError, string(results[0].ToolResult.Content))
+	assert.Contains(t, string(results[1].ToolResult.Content), "timed out after 5ms")
+
+	// A tool with a shorter timeout of its own times out, even when others
+	// have none
+	tools = []llm.Tool{ownTimeout{hangTool{echoTool{name: "hang"}, release, false}, 20 * time.Millisecond}}
+	results, err = toolkit.RunTools(ctx, tools, []llm.ToolCall{{ID: "1", Name: "hang"}}, 0, nil)
+	require.NoError(t, err)
+	require.Len(t, results, 1)
+	assert.Contains(t, string(results[0].ToolResult.Content), "timed out after 20ms")
+}
+
 func Test_RunToolsTimeout(t *testing.T) {
 	ctx := context.Background()
 	release := make(chan struct{})

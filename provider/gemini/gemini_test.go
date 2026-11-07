@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"os"
 	"testing"
+	"time"
 
 	// Packages
 	llm "github.com/mutablelogic/go-llm"
@@ -96,6 +97,7 @@ func (cityTool) InputSchema() *jsonschema.Schema {
 	}]()
 }
 func (cityTool) OutputSchema() *jsonschema.Schema { return nil }
+func (cityTool) Timeout() time.Duration           { return 0 }
 func (cityTool) Run(context.Context, json.RawMessage) (any, error) {
 	return map[string]any{"weather": "sunny", "celsius": 21}, nil
 }

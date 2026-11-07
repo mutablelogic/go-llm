@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"regexp"
+	"time"
 
 	// Packages
 	jsonschema "github.com/mutablelogic/go-server/pkg/jsonschema"
@@ -26,6 +27,11 @@ type Tool interface {
 
 	// Return the JSON schema for the tool output, or nil if unspecified.
 	OutputSchema() *jsonschema.Schema
+
+	// Return the most time the tool has to return, such as for one which
+	// transcribes an hour of audio, or zero for the time a tool has by
+	// default, such as the agent loop's tool timeout
+	Timeout() time.Duration
 
 	// Run the tool with the given input as JSON (may be nil). The result is
 	// JSON as a json.RawMessage, a Resource such as an image or audio, any

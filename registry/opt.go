@@ -39,6 +39,11 @@ type opt struct {
 	// session which is older is kept, such as one with a heartbeat to fire
 	sessionRetention time.Duration
 	sessionKeep      func(context.Context, uuid.UUID) (bool, error)
+
+	// The namespaces whose tools, in a session, have the times of its
+	// messages told to its model, and the time zone they're told in
+	timesFor  []string
+	timesZone func() *time.Location
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -73,6 +78,8 @@ func (o *opt) defaults() {
 	o.resources = nil
 	o.sessionRetention = 0
 	o.sessionKeep = nil
+	o.timesFor = nil
+	o.timesZone = nil
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -206,6 +213,19 @@ func WithSessionRetention(d time.Duration, keep func(context.Context, uuid.UUID)
 			return llm.ErrBadParameter.With("session retention can't be negative")
 		}
 		o.sessionRetention, o.sessionKeep = d, keep
+		return nil
+	}
+}
+
+// WithTimes tells a model when each of the person's messages was sent, at
+// its start, such as (Saturday 2026-11-07T12:38+01:00), in the time zone
+// the function returns, or UTC, when it's nil, or returns nil, when
+// the model can call a tool of one of the namespaces, such as memory, which
+// makes a chat an assistant's, so the model knows the time, and how long
+// it's been since an earlier message, without its system prompt changing
+func WithTimes(zone func() *time.Location, namespaces ...string) Opt {
+	return func(o *opt) error {
+		o.timesFor, o.timesZone = slices.Clone(namespaces), zone
 		return nil
 	}
 }

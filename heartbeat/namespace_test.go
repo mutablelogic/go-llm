@@ -25,8 +25,13 @@ func Test_Tool(t *testing.T) {
 	tools := h.Tools()
 	require.Len(t, tools, 1)
 	tool := tools[0]
-	assert.Contains(t, h.SystemPrompt(), "Monday, 5 January 2026, 09:00 CET")
 	assert.Contains(t, h.SystemPrompt(), "the person's, Europe/Berlin")
+
+	// The prompt doesn't have the time, so it doesn't change, and is cached
+	prompt := h.SystemPrompt()
+	c.Set("2026-01-05T09:30:00Z")
+	assert.Equal(t, prompt, h.SystemPrompt())
+	c.Set("2026-01-05T08:00:00Z")
 
 	// run calls the tool, in the session, and returns its result, as JSON
 	session := uuid.New()
@@ -44,9 +49,11 @@ func Test_Tool(t *testing.T) {
 	}
 
 	// Scheduled, at a time without an offset, which is the person's
+	// with the time now, in their time zone
 	got, err := run(session, `{"operation":"schedule","title":"Call","prompt":"Remind David to call his mother","at":"2026-01-05T18:00"}`)
 	require.NoError(t, err)
 	assert.Equal(t, "2026-01-05T18:00:00+01:00", got["next"])
+	assert.Equal(t, "2026-01-05T09:00:00+01:00", got["now"])
 	id := got["id"].(string)
 
 	// Not without a session
@@ -57,6 +64,7 @@ func Test_Tool(t *testing.T) {
 	got, err = run(session, `{"operation":"list"}`)
 	require.NoError(t, err)
 	assert.Equal(t, float64(1), got["count"])
+	assert.Equal(t, "2026-01-05T09:00:00+01:00", got["now"])
 	got, err = run(uuid.New(), `{"operation":"list"}`)
 	require.NoError(t, err)
 	assert.Equal(t, float64(0), got["count"])
@@ -64,6 +72,7 @@ func Test_Tool(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "0 18 * * *", got["schedule"])
 	assert.Equal(t, "Asia/Tokyo", got["timezone"])
+	assert.Equal(t, "2026-01-05T09:00:00+01:00", got["now"])
 	assert.Nil(t, got["at"])
 
 	// An empty time zone follows the person's again
@@ -85,9 +94,14 @@ func Test_Tool(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, uint(0), list.Count)
 
-	// Unknown operations, and identifiers
+	// Unknown operations, and identifiers, whose errors have the time now,
+	// as does a time which has passed, once
 	_, err = run(session, `{"operation":"snooze"}`)
 	assert.ErrorIs(t, err, llm.ErrBadParameter)
+	assert.ErrorContains(t, err, "it's now 2026-01-05T09:00:00+01:00")
+	_, err = run(session, `{"operation":"schedule","title":"Late","prompt":"x","at":"2026-01-05T08:00"}`)
+	assert.ErrorIs(t, err, llm.ErrBadParameter)
+	assert.Equal(t, 1, strings.Count(err.Error(), "2026-01-05T09:00:00+01:00"), err.Error())
 	_, err = run(session, `{"operation":"cancel","id":"x"}`)
 	assert.ErrorIs(t, err, llm.ErrBadParameter)
 	_, err = run(session, `{"operation":"cancel","id":"`+uuid.New().String()+`"}`)

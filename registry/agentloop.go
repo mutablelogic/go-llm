@@ -35,7 +35,12 @@ type agentLoop struct {
 	stopAtTools   bool             // Whether the loop stops when the model calls tools, other than the respond tool, for the caller to run
 	session       uuid.UUID        // The session the loop runs in, which its tools run in, or the nil UUID
 	maxDepth      uint             // The most agents which run in one another, from the loop, or zero when it isn't set
+	zone          *time.Location   // The time zone the times of the person's messages are told in, or nil, when they aren't
 }
+
+// timeFormat is how the time a message was sent is told, with the day of
+// the week, as models can't always work it out, and its offset
+const timeFormat = "Monday 2006-01-02T15:04-07:00"
 
 // respondAlone is the respond tool when the model called other tools too,
 // whose results it hasn't seen, so it isn't run, and its result is an error
@@ -126,6 +131,7 @@ func (r *Registry) AgentLoop(ctx context.Context, model llm.Model, messages []ll
 	if err != nil {
 		return nil, llm.Usage{}, err
 	}
+	loop.zone = r.zoneFor(tools)
 	h, usage, err := r.agentLoop(ctx, model, messages, nil, loop, stream)
 	if err != nil {
 		return nil, llm.Usage{}, err
@@ -135,6 +141,29 @@ func (r *Registry) AgentLoop(ctx context.Context, model llm.Model, messages []ll
 
 ///////////////////////////////////////////////////////////////////////////////
 // PRIVATE METHODS
+
+// zoneFor returns the time zone in which the model is told when each of
+// the person's messages was sent, when it can call a tool of one of the
+// namespaces which WithTimes sets, such as memory, or nil, when it can't
+func (r *Registry) zoneFor(tools []llm.Tool) *time.Location {
+	for _, tool := range tools {
+		named, ok := tool.(interface{ CanonicalName() string })
+		if !ok {
+			continue
+		}
+		namespace, _, _ := strings.Cut(named.CanonicalName(), toolschema.ToolSeparator)
+		if !slices.Contains(r.timesFor, namespace) {
+			continue
+		}
+		if r.timesZone != nil {
+			if zone := r.timesZone(); zone != nil {
+				return zone
+			}
+		}
+		return time.UTC
+	}
+	return nil
+}
 
 // toolPrompts returns the system prompts of the namespaces of the tools
 // which are the registry's toolkit's, by their canonical names, each read
@@ -192,7 +221,7 @@ func (r *Registry) agentLoop(ctx context.Context, model llm.Model, messages []ll
 	if err != nil {
 		return nil, llm.Usage{}, err
 	}
-	h, err := newHistory(ctx, messages, fresh, overhead, measure, r.attachmentText(loop.session))
+	h, err := newHistory(ctx, messages, fresh, overhead, measure, r.attachmentText(loop.session), loop.zone)
 	if err != nil {
 		return nil, llm.Usage{}, err
 	}
@@ -260,6 +289,9 @@ func (r *Registry) iterate(ctx context.Context, model llm.Model, loop *agentLoop
 	conversation, err := r.withContent(ctx, loop.session, h.messages(), true, model)
 	if err != nil {
 		return nil, llm.Usage{}, false, err
+	}
+	if loop.zone != nil {
+		conversation = withTimes(conversation, loop.zone)
 	}
 	if span != nil {
 		span.SetAttributes(attribute.Int("arg.messages", len(conversation)))

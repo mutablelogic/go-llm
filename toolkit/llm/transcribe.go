@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"strings"
+	"time"
 
 	// Packages
 	gollm "github.com/mutablelogic/go-llm"
@@ -74,6 +75,12 @@ func (t *transcribe) Description() string {
 
 func (*transcribe) InputSchema() *jsonschema.Schema {
 	return jsonschema.MustFor[transcribeInput]()
+}
+
+// Timeout returns the most time the tool has, which is longer than a tool
+// has by default, for transcribing an hour of audio, which takes a few minutes
+func (*transcribe) Timeout() time.Duration {
+	return transcribeTimeout
 }
 
 // Run transcribes, or translates, the resource with the URI, in the

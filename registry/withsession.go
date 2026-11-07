@@ -133,6 +133,7 @@ func (r *Registry) generatorLoop(ctx context.Context, meta schema.GeneratorMeta,
 	if err != nil {
 		return nil, nil, false, err
 	}
+	loop.zone = r.zoneFor(tools)
 	return model, loop, hasSchema, nil
 }
 

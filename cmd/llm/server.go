@@ -172,8 +172,9 @@ func (runner *RunServer) Run(ctx server.Cmd) error {
 // it's set to, and fires them
 func (runner *RunServer) withToolkit(ctx server.Cmd, b *broadcaster.Broadcaster, mem *memory.Memory, h *heartbeat.Heartbeats, res *resource.Manager, events *atomic.Pointer[registry.Registry], build registry.EventBuilder, store registry.ProviderStore, sessions *sessionStore, agents *agentStore, outcomes *eventStore) error {
 	return runner.Toolkit.WithToolkit(ctx, &runner.RunServer, func(tools *toolkit.Toolkit) error {
-		// The memory, whose system prompt has the time, and what's
-		// remembered, and whose tools remember it
+		// The memory, whose system prompt has what's remembered, and whose
+		// tools remember it, and which, when a model can call them, has it
+		// told when each of the person's messages was sent
 		if err := tools.Add(mem); err != nil {
 			return err
 		}
@@ -240,7 +241,7 @@ func (runner *RunServer) withToolkit(ctx server.Cmd, b *broadcaster.Broadcaster,
 				return runner.RunServer.Run(ctx.WithContext(runCtx))
 			})
 			return group.Wait()
-		}, registry.WithBroadcaster(b), registry.WithProviderStore(store), registry.WithSessionStore(sessions), registry.WithAgentStore(agents), registry.WithEventStore(outcomes), registry.WithEventBuilder(build), registry.WithToolkit(tools), registry.WithResources(res), runner.Session.Opt(firesAgain(h)))
+		}, registry.WithBroadcaster(b), registry.WithProviderStore(store), registry.WithSessionStore(sessions), registry.WithAgentStore(agents), registry.WithEventStore(outcomes), registry.WithEventBuilder(build), registry.WithToolkit(tools), registry.WithResources(res), registry.WithTimes(func() *time.Location { return mem.Details().Zone() }, memory.Name), runner.Session.Opt(firesAgain(h)))
 	}, toolkit.WithBroadcaster(b))
 }
 

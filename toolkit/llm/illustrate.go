@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+	"time"
 
 	// Packages
 	gollm "github.com/mutablelogic/go-llm"
@@ -53,6 +54,12 @@ func (*illustrate) Description() string {
 
 func (*illustrate) InputSchema() *jsonschema.Schema {
 	return jsonschema.MustFor[illustrateInput]()
+}
+
+// Timeout returns the most time the tool has, which is longer than a tool
+// has by default, for making, or changing, an image
+func (*illustrate) Timeout() time.Duration {
+	return illustrateTimeout
 }
 
 // Run makes the images, with the model, from the prompt, and the images, by

@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"slices"
 	"sync"
+	"time"
 
 	// Packages
 	llm "github.com/mutablelogic/go-llm"
@@ -198,6 +199,11 @@ func (t *agentTool) InputSchema() *jsonschema.Schema {
 // reply is text
 func (t *agentTool) OutputSchema() *jsonschema.Schema {
 	return t.output
+}
+
+// Timeout returns zero, as an agent has the time a tool has by default
+func (t *agentTool) Timeout() time.Duration {
+	return 0
 }
 
 // Run runs the agent, with the input, from the session of the model which
