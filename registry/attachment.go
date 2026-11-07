@@ -138,15 +138,55 @@ func (r *Registry) withContent(ctx context.Context, session uuid.UUID, messages 
 	return result, nil
 }
 
-// withResource returns the resource, as it is, unless it refers to a
-// resource, by its URI, without its data, when it's that resource, on its
-// own, whose content is read from where it's kept, up to
-// MaxAttachmentsSize, as the audio, documents and images which are
-// transcribed, recognized, or embedded, are. Returns ErrNotImplemented when
-// the registry has no resources, ErrNotFound when there's none with the
-// URI, and ErrBadParameter when it's larger than MaxAttachmentsSize.
+// withResource returns the resource, with its content, which is read, up to
+// MaxAttachmentsSize, when it refers to a resource, by its URI, on its own,
+// or it's a resource whose content is kept elsewhere, such as a tool's, as
+// the documents which are recognized are, and otherwise as it is. Returns
+// ErrNotImplemented when the registry has no resources, ErrNotFound when
+// there's none with the URI, and ErrBadParameter when it's larger than
+// MaxAttachmentsSize.
 func (r *Registry) withResource(ctx context.Context, resource llm.Resource) (llm.Resource, error) {
 	return r.newContentReader(uuid.Nil()).withResource(ctx, resource)
+}
+
+// streamed returns the resource, as it's kept, when it refers to a
+// resource, by its URI, on its own, with its type, when it's given, so its
+// provider reads it as it sends it, such as audio which is uploaded, which
+// isn't read into memory, or limited to MaxAttachmentsSize, and otherwise
+// as it is. Returns ErrNotImplemented when the registry has no resources,
+// and ErrNotFound when there's none with the URI.
+func (r *Registry) streamed(ctx context.Context, resource llm.Resource) (llm.Resource, error) {
+	attachment, ok := resource.(*providerschema.Resource)
+	if !ok || !isResourceURL(attachment) || len(attachment.Data) > 0 {
+		return resource, nil
+	}
+	kept, err := r.resource(ctx, attachment.URL.String(), uuid.Nil())
+	if err != nil {
+		return nil, err
+	} else if attachment.ContentType != "" {
+		return typed{Resource: kept, contentType: attachment.ContentType}, nil
+	}
+	return kept, nil
+}
+
+// typed is a resource, of another type, which was given
+type typed struct {
+	llm.Resource
+	contentType string
+}
+
+// Type returns the type which was given
+func (t typed) Type() string {
+	return t.contentType
+}
+
+// ContentLength returns the length of the resource's content, when it's
+// known
+func (t typed) ContentLength() int64 {
+	if n, ok := llm.ContentLength(t.Resource); ok {
+		return n
+	}
+	return -1
 }
 
 // withImages returns the images, with the content of those which refer to
@@ -318,27 +358,27 @@ func madeName(contentType string) string {
 
 // toolResolver returns the function which returns the resources which the
 // tools run in the session are given, by their URIs: the session's, or,
-// otherwise, or without one, those on their own, whose content is read, up
-// to MaxAttachmentsSize, as an attachment's is, so a tool, such as one which
-// recognizes text, doesn't read a large resource without bound
+// otherwise, or without one, those on their own, as they're kept, whose
+// content isn't read until it's needed, so audio which is transcribed is
+// streamed to its provider, and what the registry reads, such as a document
+// which is recognized, or images which are changed, is read up to
+// MaxAttachmentsSize
 func (r *Registry) toolResolver(session uuid.UUID) toolkit.ResolveFunc {
 	return func(ctx context.Context, uris ...string) ([]llm.Resource, error) {
-		// Each call reads with its own reader, so the resources it resolves
-		// are read once, and together within the limit, and tools which run
-		// at the same time don't share it
-		reader := r.newContentReader(session)
-		reader.fallback = true
 		result := make([]llm.Resource, 0, len(uris))
 		for _, uri := range uris {
 			u, err := url.Parse(uri)
 			if err != nil || u.Scheme != resourceschema.Scheme {
 				return nil, llm.ErrBadParameter.Withf("not a resource's URI: %q", uri)
 			}
-			data, contentType, name, err := reader.read(ctx, uri)
+			resource, err := r.resource(ctx, uri, session)
+			if errors.Is(err, llm.ErrNotFound) && session != uuid.Nil() {
+				resource, err = r.resource(ctx, uri, uuid.Nil())
+			}
 			if err != nil {
 				return nil, err
 			}
-			result = append(result, namedResource{Resource: &providerschema.Resource{ResourceMeta: providerschema.ResourceMeta{ContentType: contentType, Data: data, URL: u}}, name: name})
+			result = append(result, resource)
 		}
 		return result, nil
 	}
@@ -498,21 +538,40 @@ func (c *contentReader) read(ctx context.Context, uri string) ([]byte, string, s
 	if err != nil {
 		return nil, "", "", err
 	}
-	read, err := resource.Read(ctx)
+	data, err := c.readResource(ctx, resource)
 	if err != nil {
 		return nil, "", "", err
+	}
+	return data, resource.Type(), resource.Name(), nil
+}
+
+// readResource reads the resource's content, once for each URI, within
+// what's left to read, or returns ErrBadParameter when it's more
+func (c *contentReader) readResource(ctx context.Context, resource llm.Resource) ([]byte, error) {
+	uri := resource.URI()
+	if content, ok := c.cache[uri]; ok && uri != "" {
+		return content.data, nil
+	}
+	if n, ok := llm.ContentLength(resource); ok && n > c.left {
+		return nil, llm.ErrBadParameter.Withf("the attachments are larger than %d bytes, together", MaxAttachmentsSize)
+	}
+	read, err := resource.Read(ctx)
+	if err != nil {
+		return nil, err
 	}
 	var data []byte
 	if err := read(ctx, func(r io.Reader) error {
 		data, err = io.ReadAll(io.LimitReader(r, c.left+1))
 		return err
 	}); err != nil {
-		return nil, "", "", err
+		return nil, err
 	} else if err := c.use(int64(len(data))); err != nil {
-		return nil, "", "", err
+		return nil, err
 	}
-	c.cache[uri] = readContent{data: data, contentType: resource.Type(), name: resource.Name()}
-	return data, resource.Type(), resource.Name(), nil
+	if uri != "" {
+		c.cache[uri] = readContent{data: data, contentType: resource.Type(), name: resource.Name()}
+	}
+	return data, nil
 }
 
 // withResource returns the resource, with its content, when it refers to a
@@ -520,19 +579,34 @@ func (c *contentReader) read(ctx context.Context, uri string) ([]byte, string, s
 // otherwise the resource
 func (c *contentReader) withResource(ctx context.Context, resource llm.Resource) (llm.Resource, error) {
 	attachment, ok := resource.(*providerschema.Resource)
-	if !ok || !isResourceURL(attachment) || len(attachment.Data) > 0 {
+	switch {
+	case ok && isResourceURL(attachment) && len(attachment.Data) == 0:
+		// It refers to a resource, by its URI
+		data, contentType, _, err := c.read(ctx, attachment.URL.String())
+		if err != nil {
+			return nil, err
+		}
+		read := *attachment
+		read.Data = data
+		if read.ContentType == "" {
+			read.ContentType = contentType
+		}
+		return &read, nil
+	case ok:
 		return resource, nil
 	}
-	data, contentType, _, err := c.read(ctx, attachment.URL.String())
+
+	// A resource whose content is read from where it's kept, such as a
+	// tool's, is read, with its name
+	data, err := c.readResource(ctx, resource)
 	if err != nil {
 		return nil, err
 	}
-	read := *attachment
-	read.Data = data
-	if read.ContentType == "" {
-		read.ContentType = contentType
+	read := &providerschema.Resource{ResourceMeta: providerschema.ResourceMeta{ContentType: resource.Type(), Data: data}}
+	if u, err := url.Parse(resource.URI()); err == nil && u.Scheme != "" {
+		read.URL = u
 	}
-	return &read, nil
+	return namedResource{Resource: read, name: resource.Name()}, nil
 }
 
 // use takes the size from what's left to read, or returns an error when

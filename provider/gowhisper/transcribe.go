@@ -1,7 +1,6 @@
 package gowhisper
 
 import (
-	"bytes"
 	"context"
 	"io"
 	"math"
@@ -64,17 +63,14 @@ func (c *Client) transcribe(ctx context.Context, endpoint string, model llm.Mode
 	if err != nil || (!strings.HasPrefix(contentType, "audio/") && !strings.HasPrefix(contentType, "video/")) {
 		return llm.Transcript{}, llm.Usage{}, llm.ErrBadParameter.Withf("not audio: %q", audio.Type())
 	}
-	data, err := llm.ReadAll(ctx, audio)
-	if err != nil {
-		return llm.Transcript{}, llm.Usage{}, err
-	} else if len(data) == 0 {
+	if n, ok := llm.ContentLength(audio); ok && n == 0 {
 		return llm.Transcript{}, llm.Usage{}, llm.ErrBadParameter.With("audio is empty")
 	}
 
-	// The request, with the options
+	// The request, with the options, whose audio is read as it's sent
 	request := transcribeRequest{
 		Model: modelID(model.Name()),
-		Audio: types.File{Path: schema.AudioName(audio.Name(), contentType), Body: io.NopCloser(bytes.NewReader(data)), ContentType: contentType},
+		Audio: types.File{Path: schema.AudioName(audio.Name(), contentType), ContentType: contentType},
 	}
 	options, err := request.apply(model.Name(), endpoint == "translate", opts...)
 	if err != nil {
@@ -90,20 +86,30 @@ func (c *Client) transcribe(ctx context.Context, endpoint string, model llm.Mode
 	if stream != nil {
 		accept = types.ContentTypeTextStream
 	}
-	req, err := client.NewMultipartRequest(request, accept)
+	// The audio is read as it's sent, so it isn't held in memory
+	read, err := audio.Read(ctx)
 	if err != nil {
 		return llm.Transcript{}, llm.Usage{}, err
 	}
 	var response transcribeResponse
-	if stream != nil {
+	if err := read(ctx, func(r io.Reader) error {
+		request.Audio.Body = io.NopCloser(r)
+		req, err := client.NewStreamingMultipartRequest(request, accept)
+		if err != nil {
+			return err
+		}
+		if stream == nil {
+			return c.DoWithContext(ctx, req, &response, client.OptPath(endpoint), client.OptNoTimeout())
+		}
 		chunks := &transcribeStream{stream: stream, segments: options.segments}
 		if err := c.DoWithContext(ctx, req, nil, client.OptPath(endpoint), client.OptTextStreamCallback(chunks.add), client.OptNoTimeout()); err != nil {
-			return llm.Transcript{}, llm.Usage{}, err
+			return err
 		} else if !chunks.done {
-			return llm.Transcript{}, llm.Usage{}, llm.ErrServiceUnavailable.With("the transcript ended before it was done")
+			return llm.ErrServiceUnavailable.With("the transcript ended before it was done")
 		}
 		response = chunks.response
-	} else if err := c.DoWithContext(ctx, req, &response, client.OptPath(endpoint), client.OptNoTimeout()); err != nil {
+		return nil
+	}); err != nil {
 		return llm.Transcript{}, llm.Usage{}, err
 	}
 

@@ -1,7 +1,6 @@
 package openai
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -90,19 +89,13 @@ func (c *Client) transcribe(ctx context.Context, endpoint string, model llm.Mode
 	if err != nil || (!strings.HasPrefix(contentType, "audio/") && !strings.HasPrefix(contentType, "video/")) {
 		return llm.Transcript{}, llm.Usage{}, llm.ErrBadParameter.Withf("not audio: %q", audio.Type())
 	}
-	data, err := llm.ReadAll(ctx, audio)
-	if err != nil {
-		return llm.Transcript{}, llm.Usage{}, err
-	} else if len(data) == 0 {
+	if n, ok := llm.ContentLength(audio); ok && n == 0 {
 		return llm.Transcript{}, llm.Usage{}, llm.ErrBadParameter.With("audio is empty")
 	}
 
 	// The request, with the options, for the model, which returns segments
 	// in its own format, if any
-	request := transcribeRequest{
-		File:  types.File{Path: schema.AudioName(audio.Name(), contentType), Body: io.NopCloser(bytes.NewReader(data)), ContentType: contentType},
-		Model: model.Name(),
-	}
+	request := transcribeRequest{Model: model.Name()}
 	family := transcribeFamilyOf(c.server(), model.Name())
 	options, err := request.apply(family, model.Name(), endpoint == "translations", opts...)
 	if err != nil {
@@ -114,21 +107,31 @@ func (c *Client) transcribe(ctx context.Context, endpoint string, model llm.Mode
 	segments := options.segments || options.speakers
 	request.Stream = stream != nil && endpoint == "transcriptions" && family != transcribeWhisper
 
-	// Send the request, and receive the transcript, or its pieces
-	req, err := client.NewMultipartRequest(request, types.ContentTypeJSON)
+	// Send the request, with the audio, as it's read, so it isn't held in
+	// memory, and receive the transcript, or its pieces
+	read, err := audio.Read(ctx)
 	if err != nil {
 		return llm.Transcript{}, llm.Usage{}, err
 	}
 	var response transcribeResponse
-	if request.Stream {
+	if err := read(ctx, func(r io.Reader) error {
+		request.File = types.File{Path: schema.AudioName(audio.Name(), contentType), Body: io.NopCloser(r), ContentType: contentType}
+		req, err := client.NewStreamingMultipartRequest(request, types.ContentTypeJSON)
+		if err != nil {
+			return err
+		}
+		if !request.Stream {
+			return c.DoWithContext(ctx, req, &response, client.OptPath("audio", endpoint), client.OptNoTimeout())
+		}
 		chunks := &transcribeStream{stream: stream, segments: segments}
 		if err := c.DoWithContext(ctx, req, nil, client.OptPath("audio", endpoint), client.OptTextStreamCallback(chunks.add), client.OptNoTimeout()); err != nil {
-			return llm.Transcript{}, llm.Usage{}, err
+			return err
 		} else if !chunks.done {
-			return llm.Transcript{}, llm.Usage{}, llm.ErrServiceUnavailable.With("the transcript ended before it was done")
+			return llm.ErrServiceUnavailable.With("the transcript ended before it was done")
 		}
 		response = chunks.response
-	} else if err := c.DoWithContext(ctx, req, &response, client.OptPath("audio", endpoint), client.OptNoTimeout()); err != nil {
+		return nil
+	}); err != nil {
 		return llm.Transcript{}, llm.Usage{}, err
 	}
 

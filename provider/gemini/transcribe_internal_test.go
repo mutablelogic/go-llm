@@ -2,6 +2,7 @@ package gemini
 
 import (
 	"context"
+	"io"
 	"strings"
 	"testing"
 	"time"
@@ -190,5 +191,53 @@ func Test_SentenceEnds(t *testing.T) {
 		"Mr.": false, "Dr.": false, "J.": false, "U.S.": false, "e.g.": false, "Miami,": false, "word": false,
 	} {
 		assert.Equal(t, ends, sentenceEnds(word), word)
+	}
+}
+
+// kept is audio which is read from where it's kept, as it's read, whose
+// length is known, unless it's -1, and which counts how often it's read
+type kept struct {
+	data   string
+	length int64
+	reads  int
+}
+
+func (k *kept) URI() string         { return "resource://abc" }
+func (k *kept) Name() string        { return "talk.mp3" }
+func (k *kept) Description() string { return "" }
+func (k *kept) Type() string        { return "audio/mpeg" }
+func (k *kept) ContentLength() int64 {
+	return k.length
+}
+func (k *kept) Read(context.Context) (llm.ReadFunc, error) {
+	return func(_ context.Context, fn func(io.Reader) error) error {
+		k.reads++
+		return fn(strings.NewReader(k.data))
+	}, nil
+}
+
+func Test_TranscribeKept(t *testing.T) {
+	// Audio which is kept elsewhere, of a length which is known, is uploaded
+	// as it's read, with its length, rather than read first, and audio of a
+	// length which isn't is read, to know it, and then uploaded
+	ctx := context.Background()
+	api, c, _ := chatClient(t)
+	model, err := c.GetModel(ctx, "gemini-new-transcribe")
+	require.NoError(t, err)
+	limit := inlineLimit
+	inlineLimit = 10
+	t.Cleanup(func() { inlineLimit = limit })
+	for _, length := range []int64{20, -1} {
+		api.uploaded, api.length, api.deleted = nil, 0, nil
+		api.reply = []string{`{"candidates":[{"content":{"parts":[{"audioTranscription":{"text":"Hello"}}]},"finishReason":"STOP"}]}`}
+		audio := &kept{data: strings.Repeat("y", 20), length: length}
+		transcript, _, err := c.Transcribe(ctx, model, audio, nil)
+		require.NoError(t, err, length)
+		assert.Equal(t, "Hello", transcript.Text)
+		assert.Equal(t, strings.Repeat("y", 20), string(api.uploaded), length)
+		assert.Equal(t, int64(20), api.length, "with its length")
+		assert.Equal(t, 1, audio.reads, "it's read once")
+		assert.Equal(t, []string{"files/abc"}, api.deleted)
+		assert.Nil(t, api.asked.Contents[0].Parts[0].InlineData)
 	}
 }
