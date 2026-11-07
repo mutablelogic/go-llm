@@ -106,3 +106,22 @@ func Test_PCM16(t *testing.T) {
 	assert.Equal(t, "audio/l16", mediaType, "MIME types are in lower case, which is the same type")
 	assert.Equal(t, map[string]string{"rate": "24000", "channels": "1"}, params)
 }
+
+func Test_WAV16(t *testing.T) {
+	// Little-endian samples are a WAV file, with the rate and channels,
+	// whose samples are read back, and a trailing odd byte is left out
+	r := schema.WAV16([]byte{0x01, 0x02, 0x03, 0x04, 0x05}, 24000, 2)
+	assert.Equal(t, "audio/wav", r.Type())
+	assert.Len(t, r.Data, 44+4)
+	samples, rate, channels, ok := schema.WAVSamples(r.Data)
+	require.True(t, ok)
+	assert.Equal(t, []byte{0x01, 0x02, 0x03, 0x04}, samples)
+	assert.Equal(t, 24000, rate)
+	assert.Equal(t, 2, channels)
+
+	// What isn't a WAV file, or is cut short, isn't
+	_, _, _, ok = schema.WAVSamples([]byte("RIFF"))
+	assert.False(t, ok)
+	_, _, _, ok = schema.WAVSamples(r.Data[:30])
+	assert.False(t, ok)
+}

@@ -50,6 +50,13 @@ type part struct {
 	InlineData       *blob             `json:"inlineData,omitempty"`
 	FunctionCall     *functionCall     `json:"functionCall,omitempty"`
 	FunctionResponse *functionResponse `json:"functionResponse,omitempty"`
+	SpeechMetadata   *speechMetadata   `json:"speechMetadata,omitempty"`
+}
+
+// speechMetadata is how later speech models speak a part's text, such as
+// calmly
+type speechMetadata struct {
+	Style string `json:"style,omitempty"`
 }
 
 // functionCall is a model's call of a function, with its arguments, and
@@ -118,6 +125,21 @@ type generationConfig struct {
 	ThinkingConfig     *thinkingConfig `json:"thinkingConfig,omitempty"`
 	ResponseModalities []string        `json:"responseModalities,omitempty"`
 	ImageConfig        *imageConfig    `json:"imageConfig,omitempty"`
+	SpeechConfig       *speechConfig   `json:"speechConfig,omitempty"`
+}
+
+// speechConfig is the voice a speech model speaks in, by its name, such as
+// Kore
+type speechConfig struct {
+	VoiceConfig voiceConfig `json:"voiceConfig"`
+}
+
+type voiceConfig struct {
+	PrebuiltVoiceConfig prebuiltVoiceConfig `json:"prebuiltVoiceConfig"`
+}
+
+type prebuiltVoiceConfig struct {
+	VoiceName string `json:"voiceName"`
 }
 
 // imageConfig is the aspect ratio, such as 16:9, and size, such as 2K, of
