@@ -24,7 +24,7 @@ type listModels struct {
 
 // modelsInput is the input of the models tool
 type modelsInput struct {
-	Capabilities []string `json:"capabilities,omitempty" help:"Capabilities which the models must have, every one of them: completion, tools, thinking, vision, ocr, transcription, translation, embedding or speech, or none, for every model" optional:""`
+	Capabilities []string `json:"capabilities,omitempty" help:"Capabilities which the models must have, every one of them: completion, tools, thinking, vision, ocr, transcription, translation, embedding, speech or image, or none, for every model" optional:""`
 	Provider     string   `json:"provider,omitempty" help:"Provider whose models are listed, by its name, such as ollama, or every provider's, when it's omitted" optional:""`
 }
 
@@ -58,6 +58,7 @@ var ability = map[string]string{
 	"translation":   "translate speech",
 	"embedding":     "embed text",
 	"speech":        "speak",
+	"image":         "make images",
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -68,7 +69,7 @@ func (*listModels) Name() string {
 }
 
 func (*listModels) Description() string {
-	return "Lists the models which have every one of the capabilities, such as ocr, transcription, speech or vision, with their names, which are given to the tools which ask them, such as ocr, transcribe and speak, or to an agent, so the right model for the task is chosen. A capability which isn't known for a model isn't listed."
+	return "Lists the models which have every one of the capabilities, such as ocr, transcription, speech, vision, or image, which is making images, with their names, which are given to the tools which ask them, such as ocr, transcribe and speak, or to an agent, so the right model for the task is chosen. A capability which isn't known for a model isn't listed."
 }
 
 func (*listModels) InputSchema() *jsonschema.Schema {

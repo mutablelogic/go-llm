@@ -87,7 +87,8 @@ var modelCapabilities = []struct {
 	{serverOpenAI, regexp.MustCompile(`^gpt-realtime-translate`), llm.ModelCap{Completion: no, Translation: yes, Embedding: no}},
 	{serverOpenAI, regexp.MustCompile(`^tts-|-tts\b`), llm.ModelCap{Completion: no, Tools: no, Thinking: no, Vision: no, OCR: no, Transcription: no, Translation: no, Embedding: no, Speech: yes}},
 	{serverOpenAI, regexp.MustCompile(`^gpt-(audio|realtime|live)\b`), llm.ModelCap{Completion: no, Embedding: no}},
-	{serverOpenAI, regexp.MustCompile(`^(gpt|chatgpt)-image\b`), llm.ModelCap{Completion: no, Vision: yes, Embedding: no}},
+	{serverOpenAI, regexp.MustCompile(`^(gpt|chatgpt)-image\b`), llm.ModelCap{Completion: no, Vision: yes, Embedding: no, Image: yes}},
+	{serverOpenAI, regexp.MustCompile(`^dall-e-`), llm.ModelCap{Completion: no, Embedding: no, Image: yes}},
 	{serverOpenAI, regexp.MustCompile(`^omni-moderation\b`), llm.ModelCap{Completion: no, Vision: yes, Embedding: no}},
 	{serverOpenAI, regexp.MustCompile(`^text-embedding-`), llm.ModelCap{Completion: no, Tools: no, Thinking: no, Vision: no, Embedding: yes}},
 

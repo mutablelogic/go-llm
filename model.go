@@ -37,6 +37,7 @@ type ModelCap struct {
 	Translation   *bool `json:"translation,omitempty" help:"Translates speech into English"`
 	Embedding     *bool `json:"embedding,omitempty" help:"Embeds text as vectors"`
 	Speech        *bool `json:"speech,omitempty" help:"Speaks text, as audio"`
+	Image         *bool `json:"image,omitempty" help:"Generates images"`
 
 	// Temperature is whether the model takes the sampling options, which are
 	// the temperature, top_p and top_k, which the registry leaves out, for a
@@ -52,7 +53,7 @@ type ModelCap struct {
 // Capabilities are the names of what a model can do, in order, which a list
 // of models is filtered by. Temperature is a setting, rather than what a
 // model does, so isn't one.
-var Capabilities = []string{"completion", "tools", "thinking", "vision", "ocr", "transcription", "translation", "embedding", "speech"}
+var Capabilities = []string{"completion", "tools", "thinking", "vision", "ocr", "transcription", "translation", "embedding", "speech", "image"}
 
 // String returns the names of the capabilities which the model is known to
 // have, such as "completion, tools, thinking"
@@ -96,6 +97,8 @@ func (c ModelCap) Has(name string) (bool, error) {
 		value = c.Embedding
 	case "speech":
 		value = c.Speech
+	case "image":
+		value = c.Image
 	default:
 		return false, ErrBadParameter.Withf("unknown capability %q, which isn't one of %s", name, strings.Join(Capabilities, ", "))
 	}

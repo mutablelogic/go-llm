@@ -21,6 +21,7 @@ export const presets: Preset[] = [
     { id: 'openai', label: 'OpenAI', type: 'openai', name: 'openai', url: '', askURL: false, credential: 'required' },
     { id: 'mistral', label: 'Mistral', type: 'openai', name: 'mistral', url: 'https://api.mistral.ai/v1', askURL: false, credential: 'required' },
     { id: 'anthropic', label: 'Anthropic', type: 'anthropic', name: 'anthropic', url: '', askURL: false, credential: 'required' },
+    { id: 'gemini', label: 'Google Gemini', type: 'gemini', name: 'gemini', url: '', askURL: false, credential: 'required' },
     { id: 'deepseek', label: 'DeepSeek', type: 'openai', name: 'deepseek', url: 'https://api.deepseek.com', askURL: false, credential: 'required' },
     { id: 'gowhisper', label: 'go-whisper', type: 'gowhisper', name: 'gowhisper', url: 'http://localhost:8081', askURL: true, urlLabel: 'URL of the go-whisper server', credential: 'none' },
     { id: 'elevenlabs', label: 'ElevenLabs', type: 'elevenlabs', name: 'elevenlabs', url: '', askURL: false, credential: 'required' },
@@ -29,7 +30,7 @@ export const presets: Preset[] = [
 
 // fixedHosts are the hosts of the services whose URL isn't asked for, such
 // as Mistral's, which the server may store with a path, such as /v1
-const fixedHosts = ['api.openai.com', 'api.mistral.ai', 'api.deepseek.com', 'api.elevenlabs.io'];
+const fixedHosts = ['api.openai.com', 'api.mistral.ai', 'api.deepseek.com', 'api.elevenlabs.io', 'generativelanguage.googleapis.com'];
 
 // presetOf returns the preset with the identifier, or the first
 export function presetOf(id?: string): Preset {

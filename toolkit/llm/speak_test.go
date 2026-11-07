@@ -329,6 +329,7 @@ func Test_Logs(t *testing.T) {
 		{"llm:transcribe", `{"uri":"resource://wav","translate":true}`},
 		{"llm:models", `{"capabilities":["ocr","speech"]}`},
 		{"llm:models", `{"capabilities":["vision","tools","speech"]}`},
+		{"llm:models", `{"capabilities":["image"]}`},
 	} {
 		_, err := tk.CallTool(ctx, call.tool, json.RawMessage(call.input))
 		require.NoError(t, err, call.tool)
@@ -342,6 +343,7 @@ func Test_Logs(t *testing.T) {
 		"Translating what's said in the recording into English",
 		"Looking for models which can read documents and speak",
 		"Looking for models which can see images, call tools and speak",
+		"Looking for models which can make images",
 	}, lines)
 }
 
