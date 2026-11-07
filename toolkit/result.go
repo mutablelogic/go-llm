@@ -52,8 +52,13 @@ func storeFrom(ctx context.Context) StoreFunc {
 
 // ResolveFunc returns the resources with the URIs, such as
 // resource://<hash>, which a tool is given, in the session the tool runs
-// in, or on their own, whose content is read from where it's kept, once for
-// each URI, and together within a limit, in the same order
+// in, or on their own, in the same order, as they're kept, without reading
+// them: a resource's content is read from where it's kept as it's read, so
+// it can be streamed, such as to a provider which uploads it, and isn't
+// limited, so a tool which reads all of it, with llm.ReadAll, limits it
+// itself, such as by its length, with llm.ContentLength. What the registry
+// reads in memory, such as a document which is recognized, or images which
+// are changed, it reads within a limit.
 type ResolveFunc func(ctx context.Context, uris ...string) ([]llm.Resource, error)
 
 // resolveKey is the key of the resolve function in a context
@@ -79,9 +84,9 @@ func Resource(ctx context.Context, uri string) (llm.Resource, error) {
 }
 
 // Resources returns the resources with the URIs, which the tool running in
-// the context is given, together, with the context's resolve function, so
-// each is read once, and they're read within a limit, together, rather than
-// each within it. Returns errors as Resource does.
+// the context is given, with the context's resolve function, as they're
+// kept, without reading them, so a tool which reads all of them limits what
+// it reads itself, as ResolveFunc says. Returns errors as Resource does.
 func Resources(ctx context.Context, uris ...string) ([]llm.Resource, error) {
 	fn, _ := ctx.Value(resolveKey{}).(ResolveFunc)
 	if fn == nil {

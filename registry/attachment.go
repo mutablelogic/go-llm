@@ -7,6 +7,7 @@ import (
 	"mime"
 	"net/http"
 	"net/url"
+	"reflect"
 	"slices"
 	"strings"
 	"uuid"
@@ -578,6 +579,10 @@ func (c *contentReader) readResource(ctx context.Context, resource llm.Resource)
 // resource, read once for each URI, within what's left to read, and
 // otherwise the resource
 func (c *contentReader) withResource(ctx context.Context, resource llm.Resource) (llm.Resource, error) {
+	// No resource is as it is, for its provider to say it's missing
+	if value := reflect.ValueOf(resource); resource == nil || (value.Kind() == reflect.Pointer && value.IsNil()) {
+		return resource, nil
+	}
 	attachment, ok := resource.(*providerschema.Resource)
 	switch {
 	case ok && isResourceURL(attachment) && len(attachment.Data) == 0:
