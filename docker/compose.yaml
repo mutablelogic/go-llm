@@ -49,6 +49,9 @@ services:
       OLLAMA_API_KEY: ${OLLAMA_API_KEY:-}
       HOMEASSISTANT_URL: ${HOMEASSISTANT_URL:-}
       HOMEASSISTANT_API_KEY: ${HOMEASSISTANT_API_KEY:-}
+      # Messaging, whose chats are connected to conversations, such as a
+      # Telegram bot's, from BotFather
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
     depends_on:
       # Ollama, when it's run, is started, and answers, first, so a new
       # installation can add it

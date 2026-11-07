@@ -44,7 +44,15 @@ type opt struct {
 	// messages told to its model, and the time zone they're told in
 	timesFor  []string
 	timesZone func() *time.Location
+
+	// The function which is called with each reply which Chat adds to a
+	// session, such as to send it to the session's channels
+	replies ReplyFunc
 }
+
+// ReplyFunc is called with the session, and the text of its model's reply,
+// once Chat has stored it
+type ReplyFunc func(ctx context.Context, session uuid.UUID, text string)
 
 ///////////////////////////////////////////////////////////////////////////////
 // LIFECYCLE
@@ -80,6 +88,7 @@ func (o *opt) defaults() {
 	o.sessionKeep = nil
 	o.timesFor = nil
 	o.timesZone = nil
+	o.replies = nil
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -225,6 +234,17 @@ func WithSessionRetention(d time.Duration, keep func(context.Context, uuid.UUID)
 func WithTimes(zone func() *time.Location, namespaces ...string) Opt {
 	return func(o *opt) error {
 		o.timesFor, o.timesZone = slices.Clone(namespaces), zone
+		return nil
+	}
+}
+
+// WithReplies sets the function which is called with the text of each
+// reply which Chat adds to a session, once it's stored, such as to send it
+// to the session's channels, with a context which isn't cancelled when the
+// chat's is, so it can take longer than its request
+func WithReplies(fn ReplyFunc) Opt {
+	return func(o *opt) error {
+		o.replies = fn
 		return nil
 	}
 }

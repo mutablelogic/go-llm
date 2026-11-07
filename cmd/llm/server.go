@@ -21,6 +21,7 @@ import (
 	heartbeatschema "github.com/mutablelogic/go-llm/heartbeat/schema"
 	memory "github.com/mutablelogic/go-llm/memory"
 	memorycmd "github.com/mutablelogic/go-llm/memory/cmd"
+	messaging "github.com/mutablelogic/go-llm/messaging"
 	registry "github.com/mutablelogic/go-llm/registry"
 	registrycmd "github.com/mutablelogic/go-llm/registry/cmd"
 	registryschema "github.com/mutablelogic/go-llm/registry/schema"
@@ -130,6 +131,7 @@ func (runner *RunServer) Run(ctx server.Cmd) error {
 			// once the heartbeats are, as it has their tools, in a session of
 			// its own
 			var events atomic.Pointer[registry.Registry]
+			var channels atomic.Pointer[messaging.Messaging]
 			build := eventBuilder(mem.Details)
 			run := func(runCtx context.Context, fire heartbeatschema.FireEvent) error {
 				r := events.Load()
@@ -153,13 +155,21 @@ func (runner *RunServer) Run(ctx server.Cmd) error {
 					return err
 				}
 				ctx.Logger().InfoContext(runCtx, "heartbeat run", "heartbeat", fire.Heartbeat, "title", fire.Title, "session", response.Session.ID, "model", types.Value(response.Session.Model), "reply", string(response.Run.Reply))
+
+				// What it says, when it's to be told, is sent to the
+				// channels of the session it's for
+				if sent, err := deliverEvent(runCtx, channels.Load(), fire.Session, response.Event); err != nil {
+					ctx.Logger().ErrorContext(runCtx, "heartbeat not sent to channels", "heartbeat", fire.Heartbeat, "session", fire.Session, "error", err.Error())
+				} else if sent {
+					ctx.Logger().InfoContext(runCtx, "heartbeat sent to channels", "heartbeat", fire.Heartbeat, "session", fire.Session)
+				}
 				return nil
 			}
 			// The resources, which are in sessions which exist, or on their
 			// own, and the heartbeats, which are for sessions which exist
 			return runner.Resource.WithResources(ctx, &runner.RunServer, resources, func(res *resource.Manager) error {
 				return runner.Heartbeat.WithHeartbeats(ctx, &runner.RunServer, heartbeats, func(h *heartbeat.Heartbeats) error {
-					return runner.withToolkit(ctx, b, mem, h, res, &events, build, store, sessions, agents, outcomes)
+					return runner.withToolkit(ctx, b, mem, h, res, &events, &channels, build, store, sessions, agents, outcomes)
 				}, heartbeat.WithBroadcaster(b), heartbeat.WithZone(zone), heartbeat.WithRun(run), heartbeat.WithSessions(sessionExists))
 			}, resource.WithBroadcaster(b), resource.WithSessions(sessionExists))
 		}, memory.WithBroadcaster(b))
@@ -170,7 +180,7 @@ func (runner *RunServer) Run(ctx server.Cmd) error {
 // the heartbeats, as well as the tools whose credentials are set, and a
 // registry, with the stores, which runs the heartbeats which fire, once
 // it's set to, and fires them
-func (runner *RunServer) withToolkit(ctx server.Cmd, b *broadcaster.Broadcaster, mem *memory.Memory, h *heartbeat.Heartbeats, res *resource.Manager, events *atomic.Pointer[registry.Registry], build registry.EventBuilder, store registry.ProviderStore, sessions *sessionStore, agents *agentStore, outcomes *eventStore) error {
+func (runner *RunServer) withToolkit(ctx server.Cmd, b *broadcaster.Broadcaster, mem *memory.Memory, h *heartbeat.Heartbeats, res *resource.Manager, events *atomic.Pointer[registry.Registry], channels *atomic.Pointer[messaging.Messaging], build registry.EventBuilder, store registry.ProviderStore, sessions *sessionStore, agents *agentStore, outcomes *eventStore) error {
 	return runner.Toolkit.WithToolkit(ctx, &runner.RunServer, func(tools *toolkit.Toolkit) error {
 		// The memory, whose system prompt has what's remembered, and whose
 		// tools remember it, and which, when a model can call them, has it
@@ -205,6 +215,37 @@ func (runner *RunServer) withToolkit(ctx server.Cmd, b *broadcaster.Broadcaster,
 		}
 		ctx.Logger().InfoContext(ctx.Context(), "tools added", "namespace", ns.Name(), "tools", len(ns.Tools()))
 
+		// Messaging, when a provider's credentials are set, such as
+		// Telegram's, whose chats are connected to sessions, as channels,
+		// and whose tools connect them
+		m, err := newServerMessaging(ctx, tools, events, messaging.WithBroadcaster(b), messaging.WithSessions(func(ctx context.Context, id uuid.UUID) error {
+			_, err := sessions.Get(ctx, id)
+			return err
+		}))
+		if err != nil {
+			return err
+		} else if m != nil {
+			if err := tools.Add(m); err != nil {
+				return err
+			}
+			channels.Store(m)
+			ctx.Logger().InfoContext(ctx.Context(), "tools added", "namespace", m.Name(), "tools", len(m.Tools()))
+		}
+
+		// Each reply in a session is sent to its channels, in the order
+		// they're replied, as the chat waits for it to be sent, for up to
+		// half a minute
+		replies := func(replyCtx context.Context, session uuid.UUID, text string) {
+			if m == nil {
+				return
+			}
+			replyCtx, cancel := context.WithTimeout(replyCtx, 30*time.Second)
+			defer cancel()
+			if err := m.Reply(replyCtx, session, text); err != nil {
+				ctx.Logger().ErrorContext(replyCtx, "reply not sent to channels", "session", session, "error", err.Error())
+			}
+		}
+
 		return runner.Registry.WithRegistry(ctx, &runner.RunServer, func(r *registry.Registry) error {
 			// The example agents, as they are, before the server starts
 			createAgents(ctx, r)
@@ -233,6 +274,18 @@ func (runner *RunServer) withToolkit(ctx server.Cmd, b *broadcaster.Broadcaster,
 				}
 				return h.Run(runCtx, ctx.Logger())
 			})
+			if m != nil {
+				group.Go(func() error {
+					// Messages are received once the registry has its
+					// providers, and models, which reply to them
+					select {
+					case <-r.Ready():
+					case <-runCtx.Done():
+						return nil
+					}
+					return m.Run(runCtx, ctx.Logger())
+				})
+			}
 			group.Go(func() error {
 				// The resources of sessions which are deleted are deleted,
 				// and those which aren't needed are cleaned
@@ -242,7 +295,7 @@ func (runner *RunServer) withToolkit(ctx server.Cmd, b *broadcaster.Broadcaster,
 				return runner.RunServer.Run(ctx.WithContext(runCtx))
 			})
 			return group.Wait()
-		}, registry.WithBroadcaster(b), registry.WithProviderStore(store), registry.WithSessionStore(sessions), registry.WithAgentStore(agents), registry.WithEventStore(outcomes), registry.WithEventBuilder(build), registry.WithToolkit(tools), registry.WithResources(res), registry.WithTimes(func() *time.Location { return mem.Details().Zone() }, memory.Name), runner.Session.Opt(hasHeartbeats(h)))
+		}, registry.WithBroadcaster(b), registry.WithProviderStore(store), registry.WithSessionStore(sessions), registry.WithAgentStore(agents), registry.WithEventStore(outcomes), registry.WithEventBuilder(build), registry.WithToolkit(tools), registry.WithResources(res), registry.WithTimes(func() *time.Location { return mem.Details().Zone() }, memory.Name), registry.WithReplies(replies), runner.Session.Opt(hasHeartbeats(h)))
 	}, toolkit.WithBroadcaster(b))
 }
 
