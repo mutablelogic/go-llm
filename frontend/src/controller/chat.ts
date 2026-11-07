@@ -148,6 +148,11 @@ export class ChatController {
         } else if (id) {
             this.storage.set('chat', id);
         }
+        // Without chats, the welcome is loaded again, for a provider which
+        // was added since
+        if (!id && this.sessions?.length === 0) {
+            void this.loadWelcome();
+        }
         if (id === this.session?.id && this.messages) {
             return;
         }
@@ -195,13 +200,16 @@ export class ChatController {
     private async loadWelcome() {
         this.welcome ??= {};
         this.render();
-        try {
-            const [providers, models] = await Promise.all([listProviders(), listModels()]);
-            this.welcome = { providers: providers.body ?? [], models: models.body ?? [] };
-        } catch (error) {
-            this.welcome = { providers: [], models: [] };
-            this.notifications.error("The providers couldn't be loaded", error);
+        // Each is loaded on its own, so a provider which can't be reached,
+        // and makes the models fail, is still shown, with its error
+        const [providers, models] = await Promise.allSettled([listProviders(), listModels()]);
+        if (providers.status === 'rejected') {
+            this.notifications.error("The providers couldn't be loaded", providers.reason);
         }
+        this.welcome = {
+            providers: providers.status === 'fulfilled' ? providers.value.body ?? [] : [],
+            models: models.status === 'fulfilled' ? models.value.body ?? [] : [],
+        };
         this.render();
     }
 
