@@ -3,6 +3,7 @@ package llm
 import (
 	"context"
 	"encoding/json"
+	"mime"
 	"strings"
 
 	// Packages
@@ -74,7 +75,11 @@ func (t *ocr) Run(ctx context.Context, input json.RawMessage) (any, error) {
 		opts = append(opts, gollm.WithOpt(gollm.PagesKey, pages))
 	}
 
-	toolkit.Logf(ctx, "Reading %s with %s", nameOf(resource), model.Name())
+	if pages := strings.TrimSpace(req.Pages); pages != "" {
+		toolkit.Logf(ctx, "Reading the text on pages %s of %s", pages, describe(resource))
+	} else {
+		toolkit.Logf(ctx, "Reading the text in %s", describe(resource))
+	}
 	document, usage, err := models.Recognize(ctx, model, resource, opts...)
 	if err != nil {
 		return nil, err
@@ -130,10 +135,33 @@ func withDefault(description, model, capability string) string {
 	return description + " Give the model to use, by its name. Use the one the person chose for " + capability + ": when you can remember things, recall the memory " + PreferredModels + ", which has the models they chose. When they haven't chosen one, list the models with the " + capability + " capability with the models tool, and ask them which to use, unless only one has it, and remember their choice, or that one, in " + PreferredModels + ", as a line such as \"- " + capability + ": <model>\", keeping the other lines."
 }
 
-// nameOf returns the resource's name, or its URI, when it has none
-func nameOf(resource gollm.Resource) string {
-	if name := resource.Name(); name != "" {
+// describe returns what the resource is, for what a tool says it's doing:
+// its name, such as scan.pdf, or, without one, what it is, by its type, such
+// as the image, or the recording, rather than its URI
+func describe(resource gollm.Resource) string {
+	if name := resource.Name(); name != "" && !strings.Contains(name, "://") && name != resource.URI() {
 		return name
 	}
-	return resource.URI()
+	mediaType, _, _ := mime.ParseMediaType(resource.Type())
+	switch {
+	case strings.HasPrefix(mediaType, "image/"):
+		return "the image"
+	case strings.HasPrefix(mediaType, "audio/"):
+		return "the recording"
+	case strings.HasPrefix(mediaType, "video/"):
+		return "the video"
+	case mediaType == "application/pdf":
+		return "the PDF"
+	}
+	return "the document"
+}
+
+// voiceOf returns the voice the options set, or an empty string
+func voiceOf(opts []gollm.Opt) string {
+	o, err := gollm.ApplyOpts(opts...)
+	if err != nil {
+		return ""
+	}
+	voice, _ := gollm.GetOpt[string](o, gollm.VoiceKey)
+	return voice
 }

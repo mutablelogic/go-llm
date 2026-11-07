@@ -76,14 +76,14 @@ func (t *transcribe) Run(ctx context.Context, input json.RawMessage) (any, error
 	var transcript gollm.Transcript
 	var usage gollm.Usage
 	if req.Translate {
-		toolkit.Logf(ctx, "Translating %s with %s", nameOf(audio), model.Name())
+		toolkit.Logf(ctx, "Translating what's said in %s into English", describe(audio))
 		transcript, usage, err = models.Translate(ctx, model, audio, nil)
 	} else {
 		var opts []gollm.Opt
 		if language := strings.TrimSpace(req.Language); language != "" {
 			opts = append(opts, gollm.WithOpt(gollm.LanguageKey, language))
 		}
-		toolkit.Logf(ctx, "Transcribing %s with %s", nameOf(audio), model.Name())
+		toolkit.Logf(ctx, "Transcribing what's said in %s", describe(audio))
 		transcript, usage, err = models.Transcribe(ctx, model, audio, nil, opts...)
 	}
 	if err != nil {

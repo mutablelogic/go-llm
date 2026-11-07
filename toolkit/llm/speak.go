@@ -82,7 +82,11 @@ func (t *speak) Run(ctx context.Context, input json.RawMessage) (any, error) {
 		opts = append(opts, gollm.WithOpt(gollm.InstructionsKey, instructions))
 	}
 
-	toolkit.Logf(ctx, "Speaking with %s", model.Name())
+	if voice := voiceOf(opts); voice != "" {
+		toolkit.Logf(ctx, "Speaking the text aloud, in the %s voice", voice)
+	} else {
+		toolkit.Logf(ctx, "Speaking the text aloud")
+	}
 	spoken, usage, err := models.Speak(ctx, model, req.Text, opts...)
 	if err != nil {
 		return nil, err

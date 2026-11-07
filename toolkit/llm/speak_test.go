@@ -3,8 +3,10 @@ package llm_test
 import (
 	"context"
 	"encoding/json"
+	"strings"
 	"testing"
 	"time"
+	"uuid"
 
 	// Packages
 	gollm "github.com/mutablelogic/go-llm"
@@ -288,4 +290,49 @@ func Test_Models(t *testing.T) {
 	assert.ErrorIs(t, err, gollm.ErrBadParameter)
 	_, err = run(`{"capabilities":["telepathy"],"provider":"missing"}`)
 	assert.ErrorIs(t, err, gollm.ErrBadParameter)
+}
+
+func Test_Logs(t *testing.T) {
+	// What the tools say they're doing is English, with what they're doing
+	// it to, rather than the model's name, or a resource's URI
+	ctx := context.Background()
+	m := &models{}
+	ns, err := llm.New(func() llm.Models { return m }, llm.WithSpeak("phonon", ""), llm.WithOCR("phonon"), llm.WithTranscribe("phonon"))
+	require.NoError(t, err)
+	tk, err := toolkit.New(ctx)
+	require.NoError(t, err)
+	require.NoError(t, tk.Add(ns))
+	var lines []string
+	session := toolkit.NewSession("llm", uuid.Nil(), func(what gollm.StreamType, text string) {
+		if what == gollm.StreamLog {
+			lines = append(lines, strings.TrimSpace(text))
+		}
+	}, nil)
+	ctx = toolkit.WithResolver(toolkit.WithSession(ctx, session), func(_ context.Context, uri string) (gollm.Resource, error) {
+		types := map[string]string{"resource://pdf": "application/pdf", "resource://wav": "audio/wav"}
+		return &providerschema.Resource{ResourceMeta: providerschema.ResourceMeta{ContentType: types[uri], Data: []byte("x")}}, nil
+	})
+	for _, call := range []struct{ tool, input string }{
+		{"llm:speak", `{"text":"Hello","voice":"Zoey"}`},
+		{"llm:speak", `{"text":"Hello"}`},
+		{"llm:ocr", `{"uri":"resource://pdf"}`},
+		{"llm:ocr", `{"uri":"resource://pdf","pages":"0-1"}`},
+		{"llm:transcribe", `{"uri":"resource://wav"}`},
+		{"llm:transcribe", `{"uri":"resource://wav","translate":true}`},
+		{"llm:models", `{"capabilities":["ocr","speech"]}`},
+		{"llm:models", `{"capabilities":["vision","tools","speech"]}`},
+	} {
+		_, err := tk.CallTool(ctx, call.tool, json.RawMessage(call.input))
+		require.NoError(t, err, call.tool)
+	}
+	assert.Equal(t, []string{
+		"Speaking the text aloud, in the Zoey voice",
+		"Speaking the text aloud",
+		"Reading the text in the PDF",
+		"Reading the text on pages 0-1 of the PDF",
+		"Transcribing what's said in the recording",
+		"Translating what's said in the recording into English",
+		"Looking for models which can read documents and speak",
+		"Looking for models which can see images, call tools and speak",
+	}, lines)
 }
