@@ -116,11 +116,12 @@ export class MediaPlayer extends LitElement {
     }
 
     // deleted stops playing the resource with the hash, in the session, or
-    // any session, when there's none, and hides the player, when it plays
-    // it, as it was deleted
+    // on its own, when there's none, and hides the player, when it plays
+    // it, as it was deleted. The same content in another session, or on its
+    // own, is another resource, which is still played.
     deleted(hash: string, session?: string) {
-        const url = this.media?.url;
-        if (url && url.includes(`/resource/${hash}/content`) && (!session || url.includes(`session=${encodeURIComponent(session)}`))) {
+        const played = this.played();
+        if (played && played.hash === hash && played.session === (session || undefined)) {
             this.close();
         }
     }
@@ -129,9 +130,24 @@ export class MediaPlayer extends LitElement {
     // player, when it plays one, as the session, and its resources, were
     // deleted
     sessionDeleted(session: string) {
-        if (this.media?.url.includes(`session=${encodeURIComponent(session)}`)) {
+        if (this.played()?.session === session) {
             this.close();
         }
+    }
+
+    // played returns the resource which is played, by its hash, and its
+    // session, when it's in one, from its URL, or undefined, when what's
+    // played isn't a resource
+    private played(): { hash: string; session?: string } | undefined {
+        if (!this.media) {
+            return undefined;
+        }
+        const url = new URL(this.media.url, location.href);
+        const match = url.pathname.match(/\/resource\/([0-9a-f]{64})\/content$/);
+        if (!match) {
+            return undefined;
+        }
+        return { hash: match[1], session: url.searchParams.get('session') || undefined };
     }
 
     willUpdate(changed: PropertyValues<this>) {
