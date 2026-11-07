@@ -3,8 +3,10 @@ package llm_test
 import (
 	"context"
 	"encoding/json"
+	"strings"
 	"testing"
 	"time"
+	"uuid"
 
 	// Packages
 	gollm "github.com/mutablelogic/go-llm"
@@ -19,7 +21,8 @@ import (
 // models is a fake of the registry, whose model speaks, as audio, the text
 // it's given, and keeps the options it was given
 type models struct {
-	opts *gollm.Opts
+	opts       *gollm.Opts
+	noSegments bool // Whether it never returns segments, as some models don't
 }
 
 type model struct {
@@ -89,6 +92,13 @@ func (m *models) Transcribe(_ context.Context, _ gollm.Model, _ gollm.Resource, 
 		return gollm.Transcript{}, gollm.Usage{}, err
 	}
 	m.opts = o
+	if segments, _ := gollm.GetOpt[bool](o, gollm.SegmentsKey); segments && !m.noSegments {
+		return gollm.Transcript{Text: "Bonjour. Salut. Ça va?", Language: "fr", Segments: []gollm.TranscriptSegment{
+			{Start: 0, End: 1500 * time.Millisecond, Text: "Bonjour.", Speaker: "A"},
+			{Start: 1500 * time.Millisecond, End: 3 * time.Second, Text: "Salut.", Speaker: "A"},
+			{Start: 3 * time.Second, End: 4 * time.Second, Text: "Ça va?", Speaker: "B"},
+		}}, gollm.Usage{}, nil
+	}
 	return gollm.Transcript{Text: "Bonjour", Language: "fr"}, gollm.Usage{}, nil
 }
 
@@ -288,4 +298,179 @@ func Test_Models(t *testing.T) {
 	assert.ErrorIs(t, err, gollm.ErrBadParameter)
 	_, err = run(`{"capabilities":["telepathy"],"provider":"missing"}`)
 	assert.ErrorIs(t, err, gollm.ErrBadParameter)
+}
+
+func Test_Logs(t *testing.T) {
+	// What the tools say they're doing is English, with what they're doing
+	// it to, rather than the model's name, or a resource's URI
+	ctx := context.Background()
+	m := &models{}
+	ns, err := llm.New(func() llm.Models { return m }, llm.WithSpeak("phonon", ""), llm.WithOCR("phonon"), llm.WithTranscribe("phonon"))
+	require.NoError(t, err)
+	tk, err := toolkit.New(ctx)
+	require.NoError(t, err)
+	require.NoError(t, tk.Add(ns))
+	var lines []string
+	session := toolkit.NewSession("llm", uuid.Nil(), func(what gollm.StreamType, text string) {
+		if what == gollm.StreamLog {
+			lines = append(lines, strings.TrimSpace(text))
+		}
+	}, nil)
+	ctx = toolkit.WithResolver(toolkit.WithSession(ctx, session), func(_ context.Context, uri string) (gollm.Resource, error) {
+		types := map[string]string{"resource://pdf": "application/pdf", "resource://wav": "audio/wav"}
+		return &providerschema.Resource{ResourceMeta: providerschema.ResourceMeta{ContentType: types[uri], Data: []byte("x")}}, nil
+	})
+	for _, call := range []struct{ tool, input string }{
+		{"llm:speak", `{"text":"Hello","voice":"Zoey"}`},
+		{"llm:speak", `{"text":"Hello"}`},
+		{"llm:ocr", `{"uri":"resource://pdf"}`},
+		{"llm:ocr", `{"uri":"resource://pdf","pages":"0-1"}`},
+		{"llm:transcribe", `{"uri":"resource://wav"}`},
+		{"llm:transcribe", `{"uri":"resource://wav","translate":true}`},
+		{"llm:models", `{"capabilities":["ocr","speech"]}`},
+		{"llm:models", `{"capabilities":["vision","tools","speech"]}`},
+	} {
+		_, err := tk.CallTool(ctx, call.tool, json.RawMessage(call.input))
+		require.NoError(t, err, call.tool)
+	}
+	assert.Equal(t, []string{
+		"Speaking the text aloud, in the Zoey voice",
+		"Speaking the text aloud",
+		"Reading the text in the PDF",
+		"Reading the text on pages 0-1 of the PDF",
+		"Transcribing what's said in the recording",
+		"Translating what's said in the recording into English",
+		"Looking for models which can read documents and speak",
+		"Looking for models which can see images, call tools and speak",
+	}, lines)
+}
+
+func Test_SpeakName(t *testing.T) {
+	// The audio is named as the model says, as a file's name, with its
+	// format's extension, or speech
+	ctx := context.Background()
+	ns, err := llm.New(func() llm.Models { return &models{} }, llm.WithSpeak("phonon", ""))
+	require.NoError(t, err)
+	tool := ns.Tools()[0]
+	for name, want := range map[string]string{
+		"":                       "speech.wav",
+		"Morning briefing":       "Morning briefing.wav",
+		"morning-briefing.mp3":   "morning-briefing.wav",
+		"../../etc/passwd":       "passwd.wav",
+		`C:\\temp\\ode.wav`:      "ode.wav",
+		"  what? <now>  ":        "what now.wav",
+		"...":                    "speech.wav",
+		"\x00\x01":               "speech.wav",
+		strings.Repeat("a", 150): strings.Repeat("a", 100) + ".wav",
+	} {
+		input, err := json.Marshal(map[string]string{"text": "Hello", "name": name})
+		require.NoError(t, err)
+		result, err := tool.Run(ctx, input)
+		require.NoError(t, err, name)
+		assert.Equal(t, want, result.(gollm.Resource).Name(), name)
+	}
+}
+
+func Test_SpeakTitle(t *testing.T) {
+	// The audio has the title the model gave, on one line, as its
+	// description, which it's kept, and shown, with
+	ctx := context.Background()
+	ns, err := llm.New(func() llm.Models { return &models{} }, llm.WithSpeak("phonon", ""))
+	require.NoError(t, err)
+	result, err := ns.Tools()[0].Run(ctx, json.RawMessage(`{"text":"Hello","name":"ode","title":"  Ode to\n David  "}`))
+	require.NoError(t, err)
+	audio := result.(gollm.Resource)
+	assert.Equal(t, "ode.wav", audio.Name())
+	assert.Equal(t, "Ode to David", audio.Description())
+	result, err = ns.Tools()[0].Run(ctx, json.RawMessage(`{"text":"Hello"}`))
+	require.NoError(t, err)
+	assert.Empty(t, result.(gollm.Resource).Description())
+}
+
+func Test_TextFiles(t *testing.T) {
+	// With a format, a name, or a title, the text which is read, or the
+	// transcript, is kept as a file, as well as returned
+	ctx := toolkit.WithResolver(context.Background(), func(_ context.Context, uri string) (gollm.Resource, error) {
+		types := map[string]string{"resource://pdf": "application/pdf", "resource://wav": "audio/wav"}
+		return &providerschema.Resource{ResourceMeta: providerschema.ResourceMeta{ContentType: types[uri], Data: []byte("Report")}}, nil
+	})
+	m := &models{}
+	ns, err := llm.New(func() llm.Models { return m }, llm.WithOCR("phonon"), llm.WithTranscribe("phonon"))
+	require.NoError(t, err)
+	ocr, transcribe := ns.Tools()[1], ns.Tools()[2]
+	file := func(result any) (gollm.Resource, string) {
+		t.Helper()
+		r, ok := result.(toolkit.Result)
+		require.True(t, ok, "a result with a file")
+		require.Len(t, r.Resources, 1)
+		data, err := gollm.ReadAll(ctx, r.Resources[0])
+		require.NoError(t, err)
+		return r.Resources[0], string(data)
+	}
+
+	// Without them, only the text
+	result, err := transcribe.Run(ctx, json.RawMessage(`{"uri":"resource://wav"}`))
+	require.NoError(t, err)
+	_, isResult := result.(toolkit.Result)
+	assert.False(t, isResult)
+
+	// Subtitles, with when each part was said
+	result, err = transcribe.Run(ctx, json.RawMessage(`{"uri":"resource://wav","format":"srt"}`))
+	require.NoError(t, err)
+	f, content := file(result)
+	assert.Equal(t, "transcript.srt", f.Name())
+	assert.Equal(t, "application/x-subrip; charset=utf-8", f.Type())
+	assert.Empty(t, f.Description())
+	assert.Contains(t, content, "00:00:00,000 --> ")
+	result, err = transcribe.Run(ctx, json.RawMessage(`{"uri":"resource://wav","format":"vtt","name":"chat"}`))
+	require.NoError(t, err)
+	f, content = file(result)
+	assert.Equal(t, "chat.vtt", f.Name())
+	assert.Equal(t, "text/vtt; charset=utf-8", f.Type())
+	assert.True(t, strings.HasPrefix(content, "WEBVTT"))
+
+	// Markdown, with its title, as its heading, which doesn't ask for
+	// segments, as some models reject them, so it's the text
+	result, err = transcribe.Run(ctx, json.RawMessage(`{"uri":"resource://wav","format":"markdown","title":"A chat"}`))
+	require.NoError(t, err)
+	f, content = file(result)
+	assert.Equal(t, "transcript.md", f.Name())
+	assert.Equal(t, "text/markdown; charset=utf-8", f.Type())
+	assert.Equal(t, "A chat", f.Description())
+	assert.Equal(t, "# A chat\n\nBonjour\n", content)
+	asked, _ := gollm.GetOpt[bool](m.opts, gollm.SegmentsKey)
+	assert.False(t, asked, "markdown doesn't ask for segments")
+
+	// Subtitles, from a model which returns no timings, aren't kept, as
+	// they'd never be shown
+	m.noSegments = true
+	_, err = transcribe.Run(ctx, json.RawMessage(`{"uri":"resource://wav","format":"srt"}`))
+	assert.ErrorIs(t, err, gollm.ErrBadParameter)
+	assert.ErrorContains(t, err, "no timings")
+	m.noSegments = false
+
+	// Text, with a name
+	result, err = transcribe.Run(ctx, json.RawMessage(`{"uri":"resource://wav","name":"interview"}`))
+	require.NoError(t, err)
+	f, content = file(result)
+	assert.Equal(t, "interview.txt", f.Name())
+	assert.Equal(t, "text/plain; charset=utf-8", f.Type())
+	assert.Equal(t, "Bonjour\n", content)
+
+	// A format which isn't one
+	_, err = transcribe.Run(ctx, json.RawMessage(`{"uri":"resource://wav","format":"docx"}`))
+	assert.ErrorIs(t, err, gollm.ErrBadParameter)
+
+	// The text of a document, as Markdown, with its title
+	result, err = ocr.Run(ctx, json.RawMessage(`{"uri":"resource://pdf","title":"The report"}`))
+	require.NoError(t, err)
+	f, content = file(result)
+	assert.Equal(t, "text.md", f.Name())
+	assert.Equal(t, "text/markdown; charset=utf-8", f.Type())
+	assert.Equal(t, "The report", f.Description())
+	assert.Contains(t, content, "# Report")
+	result, err = ocr.Run(ctx, json.RawMessage(`{"uri":"resource://pdf"}`))
+	require.NoError(t, err)
+	_, isResult = result.(toolkit.Result)
+	assert.False(t, isResult)
 }

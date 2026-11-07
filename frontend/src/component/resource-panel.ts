@@ -16,7 +16,7 @@ import PlayFilledAlt16 from '@carbon/icons/es/play--filled--alt/16.js';
 import { playable } from './media-player';
 import TrashCan16 from '@carbon/icons/es/trash-can/16.js';
 import { Panel } from './panel';
-import { resourceName, type Resource } from '../schema/resource';
+import { resourceName, resourceTitle, type Resource } from '../schema/resource';
 import { formatAgo, formatSize } from '../format';
 
 // Carbon components
@@ -189,12 +189,13 @@ export class ResourcePanel extends Panel<string> {
 
     private renderResource(resource: Resource) {
         const attached = this.attached.includes(resource.hash);
-        const meta = [resource.type, formatSize(resource.size), formatAgo(resource.used ?? resource.created)].filter(Boolean).join(' · ');
+        const title = resourceTitle(resource);
+        const meta = [title !== resourceName(resource) ? resourceName(resource) : undefined, resource.type, formatSize(resource.size), formatAgo(resource.used ?? resource.created)].filter(Boolean).join(' · ');
         return html`
             <li class=${attached ? 'attached' : ''}>
                 <button class="item" aria-pressed=${attached ? 'true' : 'false'} title=${attached ? 'Detach it' : 'Attach it'}
                     @click=${() => this.fire(ResourcePanel.eventAttach, resource)}>
-                    <span class="name">${resourceName(resource)}${attached ? ' (attached)' : ''}</span>
+                    <span class="name">${resourceTitle(resource)}${attached ? ' (attached)' : ''}</span>
                     <span class="meta">${meta}</span>
                 </button>
                 ${playable(resource.type) ? html`

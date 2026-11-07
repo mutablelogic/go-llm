@@ -47,6 +47,19 @@ type modelOutput struct {
 
 var _ gollm.Tool = (*listModels)(nil)
 
+// ability is what a model with each capability can do, as it's said
+var ability = map[string]string{
+	"completion":    "reply",
+	"tools":         "call tools",
+	"thinking":      "think",
+	"vision":        "see images",
+	"ocr":           "read documents",
+	"transcription": "transcribe speech",
+	"translation":   "translate speech",
+	"embedding":     "embed text",
+	"speech":        "speak",
+}
+
 ///////////////////////////////////////////////////////////////////////////////
 // PUBLIC METHODS
 
@@ -87,7 +100,7 @@ func (t *listModels) Run(ctx context.Context, input json.RawMessage) (any, error
 
 	// The models of the providers which can be listed
 	if len(req.Capabilities) > 0 {
-		toolkit.Logf(ctx, "Looking for models with %s", strings.Join(req.Capabilities, ", "))
+		toolkit.Logf(ctx, "Looking for models which can %s", abilities(req.Capabilities))
 	} else {
 		toolkit.Logf(ctx, "Looking at the models")
 	}
@@ -110,4 +123,25 @@ func (t *listModels) Run(ctx context.Context, input json.RawMessage) (any, error
 		})
 	}
 	return result, nil
+}
+
+// abilities returns what models with the capabilities can do, as it's said,
+// such as "read documents and speak"
+func abilities(capabilities []string) string {
+	var result []string
+	for _, capability := range capabilities {
+		name := strings.ToLower(strings.TrimSpace(capability))
+		if phrase, ok := ability[name]; ok {
+			result = append(result, phrase)
+		} else {
+			result = append(result, name)
+		}
+	}
+	switch len(result) {
+	case 0:
+		return "do anything"
+	case 1:
+		return result[0]
+	}
+	return strings.Join(result[:len(result)-1], ", ") + " and " + result[len(result)-1]
 }

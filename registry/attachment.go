@@ -200,7 +200,7 @@ func (r *Registry) toolStore(session uuid.UUID) toolkit.StoreFunc {
 		}); err != nil {
 			return toolschema.ResourceLink{}, err
 		}
-		return toolschema.ResourceLink{URI: created.URI(), Name: created.Name, Type: created.Type, Size: created.Size}, nil
+		return toolschema.ResourceLink{URI: created.URI(), Name: created.Name, Title: created.Description, Type: created.Type, Size: created.Size}, nil
 	}
 }
 
@@ -215,15 +215,28 @@ func (r *Registry) toolResolver(session uuid.UUID) toolkit.ResolveFunc {
 		if err != nil || u.Scheme != resourceschema.Scheme {
 			return nil, llm.ErrBadParameter.Withf("not a resource's URI: %q", uri)
 		}
-		data, contentType, _, err := r.newContentReader(session).read(ctx, uri)
+		data, contentType, name, err := r.newContentReader(session).read(ctx, uri)
 		if errors.Is(err, llm.ErrNotFound) && session != uuid.Nil() {
-			data, contentType, _, err = r.newContentReader(uuid.Nil()).read(ctx, uri)
+			data, contentType, name, err = r.newContentReader(uuid.Nil()).read(ctx, uri)
 		}
 		if err != nil {
 			return nil, err
 		}
-		return &providerschema.Resource{ResourceMeta: providerschema.ResourceMeta{ContentType: contentType, Data: data, URL: u}}, nil
+		return namedResource{Resource: &providerschema.Resource{ResourceMeta: providerschema.ResourceMeta{ContentType: contentType, Data: data, URL: u}}, name: name}, nil
 	}
+}
+
+// namedResource is a resource, whose content was read, with the name it's
+// kept with, such as scan.pdf, which a tool says it's reading, and names
+// what it keeps after
+type namedResource struct {
+	*providerschema.Resource
+	name string
+}
+
+// Name returns the resource's name, which is its file's name, or none
+func (r namedResource) Name() string {
+	return r.name
 }
 
 // attachmentText returns the function which returns the text an attachment,

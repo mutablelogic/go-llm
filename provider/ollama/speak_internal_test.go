@@ -19,9 +19,13 @@ func Test_Speak(t *testing.T) {
 	// under the same prefix, with the options
 	var path string
 	var body speechRequest
+	var raw map[string]any
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		path = r.URL.Path
-		require.NoError(t, json.NewDecoder(r.Body).Decode(&body))
+		data, err := io.ReadAll(r.Body)
+		require.NoError(t, err)
+		require.NoError(t, json.Unmarshal(data, &body))
+		require.NoError(t, json.Unmarshal(data, &raw))
 		if body.Voice == "nobody" {
 			w.WriteHeader(http.StatusBadRequest)
 			_, _ = io.WriteString(w, `{"error":{"message":"voice \"nobody\" not found"}}`)
@@ -43,6 +47,12 @@ func Test_Speak(t *testing.T) {
 	data, err := llm.ReadAll(context.Background(), audio)
 	require.NoError(t, err)
 	assert.Equal(t, "RIFF....WAVE", string(data))
+
+	// Instructions, of how it's spoken, are ignored, as Ollama rejects them,
+	// so it's still spoken
+	_, _, err = c.Speak(context.Background(), model, "Hello", llm.WithOpt(llm.InstructionsKey, "Calmly"))
+	require.NoError(t, err)
+	assert.NotContains(t, raw, "instructions")
 
 	// PCM is audio/L16, with its rate, and channels
 	audio, _, err = c.Speak(context.Background(), model, "Hello", llm.WithOpt(llm.AudioFormatKey, "pcm"))
