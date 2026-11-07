@@ -2,17 +2,21 @@
 // as it was when the page was loaded, which is the page's, with a warning,
 // when the server has another version now, such as when it was updated as
 // it was down, which reloads the page, and links to the API's documentation
-// when the server serves it
+// when the server serves it, and to the project's repository on GitHub
 
 import { LitElement, css, html, nothing } from 'lit';
 import { customElement, property } from 'lit/decorators.js';
 import iconLoader from '@carbon/web-components/es/globals/internal/icon-loader.js';
 import Api16 from '@carbon/icons/es/api/16.js';
+import LogoGithub16 from '@carbon/icons/es/logo--github/16.js';
 import WarningAltFilled16 from '@carbon/icons/es/warning--alt--filled/16.js';
 import type { Config } from '../schema/config';
 
 // Carbon components
 import '@carbon/web-components/es/components/icon-button/index.js';
+
+// repository is the project's repository, which the footer links to
+const repository = 'https://github.com/mutablelogic/go-llm';
 
 @customElement('llm-side-nav-footer')
 export class SideNavFooter extends LitElement {
@@ -42,7 +46,8 @@ export class SideNavFooter extends LitElement {
             letter-spacing: 0.32px;
         }
 
-        cds-icon-button {
+        .links {
+            display: flex;
             margin-right: -0.5rem;
         }
 
@@ -90,14 +95,20 @@ export class SideNavFooter extends LitElement {
                     </cds-icon-button>
                 ` : nothing}
             </span>
-            ${this.config.openapi
-                ? html`
-                    <cds-icon-button kind="ghost" size="sm" align="top-end" href=${this.config.openapi} target="_blank" rel="noopener">
-                        <span slot="icon" class="icon">${iconLoader(Api16)}<span class="visually-hidden">OpenAPI documentation</span></span>
-                        <span slot="tooltip-content">OpenAPI documentation</span>
-                    </cds-icon-button>
-                `
-                : nothing}
+            <span class="links">
+                ${this.config.openapi
+                    ? html`
+                        <cds-icon-button kind="ghost" size="sm" align="top-end" href=${this.config.openapi} target="_blank" rel="noopener">
+                            <span slot="icon" class="icon">${iconLoader(Api16)}<span class="visually-hidden">OpenAPI documentation</span></span>
+                            <span slot="tooltip-content">OpenAPI documentation</span>
+                        </cds-icon-button>
+                    `
+                    : nothing}
+                <cds-icon-button kind="ghost" size="sm" align="top-end" href=${repository} target="_blank" rel="noopener">
+                    <span slot="icon" class="icon">${iconLoader(LogoGithub16)}<span class="visually-hidden">go-llm on GitHub</span></span>
+                    <span slot="tooltip-content">go-llm on GitHub</span>
+                </cds-icon-button>
+            </span>
         `;
     }
 

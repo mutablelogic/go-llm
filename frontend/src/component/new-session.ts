@@ -146,7 +146,7 @@ export class NewSession extends Panel<NewSessionForm> {
     }
 
     protected renderSubtitle() {
-        return this.session ? 'Its title, model, instructions, options and tools' : 'A conversation with a model';
+        return this.session ? 'Its title, model, instructions, options and tools' : 'A conversation with an assistant';
     }
 
     protected renderBody() {
