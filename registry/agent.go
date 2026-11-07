@@ -499,12 +499,14 @@ func (r *Registry) loadAgents(ctx context.Context) error {
 // validAgentMeta returns the definition, with its model and tools, when the
 // change sets them, by their canonical names, or ErrBadParameter when it
 // isn't valid: its input isn't a JSON schema of an object, its prompt isn't
-// a Go template, or its settings aren't valid, as a session's mustn't be
+// a Go template, its timeout isn't a duration, or its settings aren't valid, as a session's mustn't be
 func (r *Registry) validAgentMeta(ctx context.Context, meta, change schema.AgentMeta) (schema.AgentMeta, error) {
 	var err error
 	if _, err = meta.InputSchema(); err != nil {
 		return meta, err
 	} else if _, err = meta.Template(); err != nil {
+		return meta, err
+	} else if _, err = meta.ToolTimeout(); err != nil {
 		return meta, err
 	} else if err = validGeneratorMeta(meta.GeneratorMeta); err != nil {
 		return meta, err
