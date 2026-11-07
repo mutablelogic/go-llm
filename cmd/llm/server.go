@@ -55,13 +55,14 @@ type ServerCommands struct {
 }
 
 type RunServer struct {
-	Registry    registrycmd.Flags    `embed:"" prefix:"llm."`
-	Toolkit     toolkitcmd.Flags     `embed:"" prefix:"llm."`
-	Broadcaster broadcastercmd.Flags `embed:"" prefix:"llm."`
-	Memory      memorycmd.Flags      `embed:"" prefix:"memory."`
-	Heartbeat   heartbeatcmd.Flags   `embed:"" prefix:"heartbeat."`
-	Resource    resourcecmd.Flags    `embed:"" prefix:"resource."`
-	Frontend    frontendcmd.Flags    `embed:""`
+	Registry    registrycmd.Flags        `embed:"" prefix:"llm."`
+	Session     registrycmd.SessionFlags `embed:"" prefix:"session."`
+	Toolkit     toolkitcmd.Flags         `embed:"" prefix:"llm."`
+	Broadcaster broadcastercmd.Flags     `embed:"" prefix:"llm."`
+	Memory      memorycmd.Flags          `embed:"" prefix:"memory."`
+	Heartbeat   heartbeatcmd.Flags       `embed:"" prefix:"heartbeat."`
+	Resource    resourcecmd.Flags        `embed:"" prefix:"resource."`
+	Frontend    frontendcmd.Flags        `embed:""`
 	servercmd.RunServer
 }
 
@@ -240,8 +241,23 @@ func (runner *RunServer) withToolkit(ctx server.Cmd, b *broadcaster.Broadcaster,
 				return runner.RunServer.Run(ctx.WithContext(runCtx))
 			})
 			return group.Wait()
-		}, registry.WithBroadcaster(b), registry.WithProviderStore(store), registry.WithSessionStore(sessions), registry.WithAgentStore(agents), registry.WithEventStore(outcomes), registry.WithEventBuilder(build), registry.WithToolkit(tools), registry.WithResources(res), registry.WithTimes(func() *time.Location { return mem.Details().Zone() }, memory.Name))
+		}, registry.WithBroadcaster(b), registry.WithProviderStore(store), registry.WithSessionStore(sessions), registry.WithAgentStore(agents), registry.WithEventStore(outcomes), registry.WithEventBuilder(build), registry.WithToolkit(tools), registry.WithResources(res), registry.WithTimes(func() *time.Location { return mem.Details().Zone() }, memory.Name), runner.Session.Opt(hasHeartbeats(h)))
 	}, toolkit.WithBroadcaster(b))
+}
+
+// hasHeartbeats returns the function which says whether a session is kept,
+// however long since it changed, as it has a heartbeat: one which fires
+// again, such as a reminder weeks away, or which fired, and may be waiting
+// to run, or running, in it, as a heartbeat is kept for a while after it
+// last fired, so its session is there for it
+func hasHeartbeats(h *heartbeat.Heartbeats) func(context.Context, uuid.UUID) (bool, error) {
+	return func(ctx context.Context, id uuid.UUID) (bool, error) {
+		list, err := h.List(ctx, heartbeatschema.HeartbeatListRequest{Session: id.String(), Limit: types.Ptr(uint64(1))})
+		if err != nil {
+			return false, err
+		}
+		return list.Count > 0, nil
+	}
 }
 
 // newServerProviderStore returns the store of the providers, in a file of
