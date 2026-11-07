@@ -71,8 +71,11 @@ func Test_Speak(t *testing.T) {
 	_, _, err = c.Speak(ctx, chat, "Hello")
 	assert.ErrorIs(t, err, llm.ErrNotImplemented)
 
-	// No audio is an error
+	// No audio is an error, as is audio which is empty
 	api.made = `{"candidates":[{"content":{"parts":[{"text":"I can't."}]}}]}`
+	_, _, err = c.Speak(ctx, model, "Hello")
+	assert.ErrorIs(t, err, llm.ErrServiceUnavailable)
+	api.made = `{"candidates":[{"content":{"parts":[{"inlineData":{"mimeType":"audio/L16;codec=pcm;rate=24000","data":""}}]}}]}`
 	_, _, err = c.Speak(ctx, model, "Hello")
 	assert.ErrorIs(t, err, llm.ErrServiceUnavailable)
 }

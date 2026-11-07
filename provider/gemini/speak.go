@@ -110,7 +110,8 @@ func (c *Client) Speak(ctx context.Context, model llm.Model, text string, opts .
 			continue
 		}
 		for _, p := range candidate.Content.Parts {
-			if p.InlineData != nil && strings.HasPrefix(strings.ToLower(p.InlineData.MimeType), "audio/") {
+			// Audio, unless it's empty, which isn't speech
+			if p.InlineData != nil && len(p.InlineData.Data) > 0 && strings.HasPrefix(strings.ToLower(p.InlineData.MimeType), "audio/") {
 				audio, err := speech(p.InlineData, format)
 				return audio, usage, err
 			}

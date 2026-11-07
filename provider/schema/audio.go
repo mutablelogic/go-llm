@@ -87,17 +87,23 @@ func WAV16(data []byte, rate, channels int) *Resource {
 }
 
 // WAVSamples returns the samples of a WAV file, from its data chunk, its
-// rate, and channels, of 16-bit PCM, or false when it isn't one
+// rate, and channels, of 16-bit PCM, or false when it isn't one, or is cut
+// short, such as when a chunk is larger than what's left of it, or its
+// samples aren't whole frames. A data chunk whose size is unknown, as a
+// stream's is, which is 0xFFFFFFFF, is the rest of the file.
 func WAVSamples(data []byte) ([]byte, int, int, bool) {
 	if len(data) < 12 || string(data[0:4]) != "RIFF" || string(data[8:12]) != "WAVE" {
 		return nil, 0, 0, false
 	}
 	var rate, channels int
 	for chunk := data[12:]; len(chunk) >= 8; {
-		id, size := string(chunk[0:4]), int(binary.LittleEndian.Uint32(chunk[4:8]))
+		id, size := string(chunk[0:4]), int64(binary.LittleEndian.Uint32(chunk[4:8]))
 		body := chunk[8:]
-		if size > len(body) {
-			size = len(body)
+		if id == "data" && size == 0xFFFFFFFF {
+			size = int64(len(body))
+		}
+		if size > int64(len(body)) {
+			return nil, 0, 0, false
 		}
 		switch id {
 		case "fmt ":
@@ -106,14 +112,15 @@ func WAVSamples(data []byte) ([]byte, int, int, bool) {
 			}
 			channels, rate = int(binary.LittleEndian.Uint16(body[2:4])), int(binary.LittleEndian.Uint32(body[4:8]))
 		case "data":
-			if rate == 0 {
+			if rate == 0 || channels == 0 || size%int64(channels*2) != 0 {
 				return nil, 0, 0, false
 			}
 			return body[:size], rate, channels, true
 		}
+
 		// Chunks are padded to an even size
 		next := size + size&1
-		if next > len(body) {
+		if next > int64(len(body)) {
 			break
 		}
 		chunk = body[next:]

@@ -1,9 +1,11 @@
 package schema_test
 
 import (
+	"encoding/binary"
 	"encoding/json"
 	"mime"
 	"net/url"
+	"slices"
 	"testing"
 
 	// Packages
@@ -124,4 +126,27 @@ func Test_WAV16(t *testing.T) {
 	assert.False(t, ok)
 	_, _, _, ok = schema.WAVSamples(r.Data[:30])
 	assert.False(t, ok)
+
+	// A WAV file which is cut short, within its data, isn't one, as its
+	// data chunk is larger than what's left
+	_, _, _, ok = schema.WAVSamples(r.Data[:len(r.Data)-1])
+	assert.False(t, ok)
+
+	// Samples which aren't whole frames aren't
+	odd := slices.Clone(r.Data)
+	binary.LittleEndian.PutUint32(odd[40:44], 3)
+	_, _, _, ok = schema.WAVSamples(odd)
+	assert.False(t, ok)
+
+	// A data chunk of a size which isn't known, as a stream's is, is the
+	// rest of the file, and chunks after it, such as C2PA's, are left out
+	streamed := slices.Clone(r.Data)
+	binary.LittleEndian.PutUint32(streamed[40:44], 0xFFFFFFFF)
+	samples, _, _, ok = schema.WAVSamples(streamed)
+	require.True(t, ok)
+	assert.Equal(t, []byte{0x01, 0x02, 0x03, 0x04}, samples)
+	signed := append(slices.Clone(r.Data), []byte("C2PA\x02\x00\x00\x00ab")...)
+	samples, _, _, ok = schema.WAVSamples(signed)
+	require.True(t, ok)
+	assert.Equal(t, []byte{0x01, 0x02, 0x03, 0x04}, samples)
 }
