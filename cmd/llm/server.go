@@ -218,7 +218,10 @@ func (runner *RunServer) withToolkit(ctx server.Cmd, b *broadcaster.Broadcaster,
 		// Messaging, when a provider's credentials are set, such as
 		// Telegram's, whose chats are connected to sessions, as channels,
 		// and whose tools connect them
-		m, err := newServerMessaging(ctx, tools, events, messaging.WithBroadcaster(b))
+		m, err := newServerMessaging(ctx, tools, events, messaging.WithBroadcaster(b), messaging.WithSessions(func(ctx context.Context, id uuid.UUID) error {
+			_, err := sessions.Get(ctx, id)
+			return err
+		}))
 		if err != nil {
 			return err
 		} else if m != nil {

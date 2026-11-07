@@ -149,9 +149,8 @@ func Test_Messaging_Reply(t *testing.T) {
 		require.NoError(t, err)
 		provider.incoming <- messaging.Message{Address: address, Code: code(t, link)}
 	}
-	assert.Eventually(t, func() bool {
-		channels, _ := m.List(ctx, id)
-		return len(channels) == 2
+	require.Eventually(t, func() bool {
+		return len(provider.messages("1")) == 1 && len(provider.messages("2")) == 1
 	}, time.Second, 10*time.Millisecond)
 
 	// A reply goes to both, and a session without channels is fine
@@ -284,4 +283,79 @@ func toMap(t *testing.T, v any) map[string]any {
 	var result map[string]any
 	require.NoError(t, json.Unmarshal(data, &result))
 	return result
+}
+
+func Test_Messaging_DeletedSession(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	provider := newFake("fake")
+	var mu sync.Mutex
+	deleted := map[uuid.UUID]bool{}
+	exists := func(_ context.Context, id uuid.UUID) error {
+		mu.Lock()
+		defer mu.Unlock()
+		if deleted[id] {
+			return llm.ErrNotFound.Withf("session %q", id)
+		}
+		return nil
+	}
+	m, err := messaging.New(messaging.NewStore(), messaging.WithProvider(provider), messaging.WithSessions(exists), messaging.WithChat(func(context.Context, schema.Channel, messaging.Message) error {
+		return llm.ErrNotFound.With("model not found")
+	}))
+	require.NoError(t, err)
+	go m.Run(ctx, nil)
+
+	// A chat connected to a session
+	id := uuid.New()
+	link, _, err := m.Connect(ctx, id, "")
+	require.NoError(t, err)
+	provider.incoming <- messaging.Message{Address: "1", Code: code(t, link)}
+	require.Eventually(t, func() bool { return len(provider.messages("1")) == 1 }, time.Second, 10*time.Millisecond)
+
+	// A message which can't be answered, as the model isn't found, keeps the
+	// channel, as its session exists
+	provider.incoming <- messaging.Message{Address: "1", Text: "hello"}
+	require.Eventually(t, func() bool { return len(provider.messages("1")) == 2 }, time.Second, 10*time.Millisecond)
+	assert.Contains(t, provider.messages("1")[1], "model not found")
+	channels, err := m.List(ctx, id)
+	require.NoError(t, err)
+	assert.Len(t, channels, 1)
+
+	// Once the session is deleted, a link made before can't connect a chat
+	link, _, err = m.Connect(ctx, id, "")
+	require.NoError(t, err)
+	mu.Lock()
+	deleted[id] = true
+	mu.Unlock()
+	provider.incoming <- messaging.Message{Address: "2", Code: code(t, link)}
+	require.Eventually(t, func() bool { return len(provider.messages("2")) == 1 }, time.Second, 10*time.Millisecond)
+	assert.Contains(t, provider.messages("2")[0], "expired")
+
+	// and a message from its channel disconnects it
+	provider.incoming <- messaging.Message{Address: "1", Text: "hello?"}
+	require.Eventually(t, func() bool { return len(provider.messages("1")) == 3 }, time.Second, 10*time.Millisecond)
+	assert.Contains(t, provider.messages("1")[2], "deleted")
+	channels, err = m.List(ctx, uuid.Nil())
+	require.NoError(t, err)
+	assert.Empty(t, channels)
+}
+
+func Test_Messaging_DeleteSessionForgetsLinks(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	provider := newFake("fake")
+	m, err := messaging.New(messaging.NewStore(), messaging.WithProvider(provider))
+	require.NoError(t, err)
+	go m.Run(ctx, nil)
+
+	// A link for a session which is deleted, with no channels, is forgotten
+	id := uuid.New()
+	link, _, err := m.Connect(ctx, id, "")
+	require.NoError(t, err)
+	n, err := m.DeleteSession(ctx, id)
+	require.NoError(t, err)
+	assert.Zero(t, n)
+	provider.incoming <- messaging.Message{Address: "1", Code: code(t, link)}
+	require.Eventually(t, func() bool { return len(provider.messages("1")) == 1 }, time.Second, 10*time.Millisecond)
+	assert.Contains(t, provider.messages("1")[0], "expired")
 }

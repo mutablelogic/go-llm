@@ -193,3 +193,16 @@ func Test_Telegram_Split(t *testing.T) {
 	assert.Equal(t, []string{"ééééé", "ééé"}, split("éééééééé", 5))
 	assert.Empty(t, split("  ", 10))
 }
+
+func Test_Telegram_RedirectError(t *testing.T) {
+	// A redirect with a Location which isn't valid is an error, which hasn't
+	// the token
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Location", "http://[::1]:namedport")
+		w.WriteHeader(http.StatusFound)
+	}))
+	defer server.Close()
+	_, err := New(context.Background(), token, client.OptEndpoint(server.URL))
+	require.Error(t, err)
+	assert.NotContains(t, err.Error(), "SECRET")
+}

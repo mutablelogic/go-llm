@@ -113,7 +113,10 @@ func newClient(token string, opts ...client.ClientOpt) (*client.Client, error) {
 }
 
 // withToken is the option which adds the token's transport, beneath the
-// transport the client has, when it's applied
+// transport the client has, when it's applied, which is the first option,
+// so the tracing, and logging, which other options add, are above it.
+// Options which need the client's transport to be an *http.Transport, such
+// as client.OptSkipVerify, can't be used, as it isn't one.
 func withToken(token string) client.ClientOpt {
 	return func(c *client.Client) error {
 		base := c.Client.Transport
@@ -128,12 +131,19 @@ func withToken(token string) client.ClientOpt {
 ///////////////////////////////////////////////////////////////////////////////
 // PUBLIC METHODS
 
-// RoundTrip sends a copy of the request, whose path has the token
+// RoundTrip sends a copy of the request, whose path has the token, and
+// returns the response, with the request, rather than its copy, so what
+// reads the response's request, such as an error of a redirect, doesn't
+// have the token
 func (t *tokenTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 	clone := req.Clone(req.Context())
 	clone.URL.Path = "/bot" + t.token + "/" + strings.TrimPrefix(req.URL.Path, "/")
 	clone.URL.RawPath = ""
-	return t.base.RoundTrip(clone)
+	resp, err := t.base.RoundTrip(clone)
+	if resp != nil {
+		resp.Request = req
+	}
+	return resp, err
 }
 
 ///////////////////////////////////////////////////////////////////////////////

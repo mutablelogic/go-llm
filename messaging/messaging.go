@@ -42,7 +42,13 @@ type Messaging struct {
 	broadcaster *broadcaster.Broadcaster
 	tracer      trace.Tracer
 	chat        ChatFunc
+	session     SessionFunc
 	now         func() time.Time
+
+	// sending is held, shared, as messages are sent to channels, and to
+	// change the channels, so a message isn't sent to a channel once it's
+	// disconnected, or moved to another session
+	sending sync.RWMutex
 
 	// The channels, which are loaded from the store once, and the codes of
 	// the links which connect a chat, which aren't kept when the server
@@ -113,6 +119,7 @@ const (
 	textConnected = "Connected. Your messages here now go to your assistant, and its replies come here."
 	textExpired   = "That link has expired, or was used already. Ask your assistant for a new one."
 	textBusy      = "Too many messages are waiting for a reply. Try again in a moment."
+	textDeleted   = "This chat's conversation was deleted, so it's disconnected. Ask your assistant for a new link to connect it again."
 )
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -139,6 +146,7 @@ func New(store Store, opts ...Opt) (*Messaging, error) {
 		broadcaster: o.broadcaster,
 		tracer:      o.tracer,
 		chat:        o.chat,
+		session:     o.session,
 		now:         time.Now,
 		codes:       make(map[string]pairing),
 		queues:      make(map[uuid.UUID]chan received),
@@ -224,6 +232,8 @@ func (m *Messaging) Disconnect(ctx context.Context, id uuid.UUID) (_ schema.Chan
 	)
 	defer func() { endSpan(err) }()
 
+	m.sending.Lock()
+	defer m.sending.Unlock()
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	if err := m.load(ctx); err != nil {
@@ -241,10 +251,18 @@ func (m *Messaging) Disconnect(ctx context.Context, id uuid.UUID) (_ schema.Chan
 }
 
 // DeleteSession disconnects the channels of the session, which was
-// deleted, and returns how many there were
+// deleted, and forgets the links which would connect a chat to it, and
+// returns how many channels there were
 func (m *Messaging) DeleteSession(ctx context.Context, session uuid.UUID) (int, error) {
+	m.sending.Lock()
+	defer m.sending.Unlock()
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	for code, pairing := range m.codes {
+		if pairing.session == session {
+			delete(m.codes, code)
+		}
+	}
 	if err := m.load(ctx); err != nil {
 		return 0, err
 	}
@@ -272,6 +290,10 @@ func (m *Messaging) Send(ctx context.Context, session uuid.UUID, text string, id
 	if strings.TrimSpace(text) == "" {
 		return nil, llm.ErrBadParameter.With("missing text")
 	}
+
+	// The channels aren't changed until it's sent
+	m.sending.RLock()
+	defer m.sending.RUnlock()
 	channels, err := m.List(ctx, session)
 	if err != nil {
 		return nil, err
@@ -459,12 +481,26 @@ var errExpired = errors.New("code expired")
 // the code isn't one.
 func (m *Messaging) pair(ctx context.Context, provider Provider, message Message) (schema.Channel, error) {
 	m.mu.Lock()
-	defer m.mu.Unlock()
 	pairing, ok := m.codes[message.Code]
+	delete(m.codes, message.Code)
+	m.mu.Unlock()
 	if !ok || pairing.provider != provider.Name() || !m.now().Before(pairing.expires) {
 		return schema.Channel{}, errExpired
 	}
-	delete(m.codes, message.Code)
+
+	// The session must exist, as it may have been deleted since the link
+	// was made, so a chat isn't moved to it from one which does
+	if m.session != nil {
+		if err := m.session(ctx, pairing.session); errors.Is(err, llm.ErrNotFound) {
+			return schema.Channel{}, errExpired
+		} else if err != nil {
+			return schema.Channel{}, err
+		}
+	}
+	m.sending.Lock()
+	defer m.sending.Unlock()
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	if err := m.load(ctx); err != nil {
 		return schema.Channel{}, err
 	}
@@ -563,8 +599,20 @@ func (m *Messaging) handle(ctx context.Context, logger *slog.Logger, r received)
 	if err == nil || ctx.Err() != nil {
 		return
 	}
-	logger.ErrorContext(ctx, "message not answered", "provider", provider.Name(), "session", r.channel.Session, "error", err.Error())
-	if err := provider.Send(ctx, r.channel.Address, "Sorry, that couldn't be answered: "+err.Error()); err != nil {
+
+	// The channel is disconnected, when its session was deleted, as the
+	// event that it was may have been missed
+	text := "Sorry, that couldn't be answered: " + err.Error()
+	if m.session != nil && errors.Is(m.session(ctx, r.channel.Session), llm.ErrNotFound) {
+		if _, err := m.DeleteSession(ctx, r.channel.Session); err != nil {
+			logger.ErrorContext(ctx, "channels of deleted session not disconnected", "session", r.channel.Session, "error", err.Error())
+		}
+		logger.InfoContext(ctx, "channels of deleted session disconnected", "session", r.channel.Session)
+		text = textDeleted
+	} else {
+		logger.ErrorContext(ctx, "message not answered", "provider", provider.Name(), "session", r.channel.Session, "error", err.Error())
+	}
+	if err := provider.Send(ctx, r.channel.Address, text); err != nil {
 		logger.ErrorContext(ctx, "message not sent", "provider", provider.Name(), "session", r.channel.Session, "error", err.Error())
 	}
 }

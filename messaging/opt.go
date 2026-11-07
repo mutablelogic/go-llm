@@ -2,6 +2,7 @@ package messaging
 
 import (
 	"context"
+	"uuid"
 
 	// Packages
 	llm "github.com/mutablelogic/go-llm"
@@ -21,14 +22,18 @@ type opt struct {
 	broadcaster *broadcaster.Broadcaster
 	tracer      trace.Tracer
 	chat        ChatFunc
+	session     SessionFunc
 }
 
 // ChatFunc sends the message, which was sent in the channel's chat, to the
 // channel's session, and returns once its model has replied, such as by
 // chatting in it. The reply is sent to the session's channels by Reply,
-// which the session calls with it. It returns ErrNotFound when the session
-// doesn't exist, so the channel is disconnected.
+// which the session calls with it.
 type ChatFunc func(ctx context.Context, channel schema.Channel, message Message) error
+
+// SessionFunc returns nil when the session with the identifier exists, or
+// ErrNotFound when it doesn't
+type SessionFunc func(context.Context, uuid.UUID) error
 
 ///////////////////////////////////////////////////////////////////////////////
 // LIFECYCLE
@@ -89,6 +94,17 @@ func WithTracer(tracer trace.Tracer) Opt {
 func WithChat(fn ChatFunc) Opt {
 	return func(o *opt) error {
 		o.chat = fn
+		return nil
+	}
+}
+
+// WithSessions sets the function which says whether a session exists, so a
+// chat isn't connected to a session which was deleted, and a channel whose
+// session was deleted, such as when the event that it was deleted was
+// missed, is disconnected, when a message from it can't be answered
+func WithSessions(fn SessionFunc) Opt {
+	return func(o *opt) error {
+		o.session = fn
 		return nil
 	}
 }
