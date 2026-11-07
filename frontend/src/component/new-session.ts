@@ -21,6 +21,7 @@ import '@carbon/web-components/es/components/textarea/index.js';
 import '@carbon/web-components/es/components/text-input/index.js';
 import '@carbon/web-components/es/components/button/index.js';
 import '@carbon/web-components/es/components/skeleton-text/index.js';
+import '@carbon/web-components/es/components/accordion/index.js';
 
 // NewSessionForm is what the panel shows, which is always so, while it's open
 type NewSessionForm = true;
@@ -105,6 +106,18 @@ export class NewSession extends Panel<NewSessionForm> {
             margin-bottom: 1.5rem;
         }
 
+        /* The advanced options, and the tools, are spaced as the form is */
+        cds-accordion-item > * {
+            display: block;
+            margin-bottom: 1.5rem;
+        }
+
+        .note {
+            color: var(--cds-text-secondary);
+            font-size: 0.875rem;
+            line-height: 1.43;
+        }
+
         /* The options are side by side, when there's room */
         .options {
             display: grid;
@@ -161,7 +174,7 @@ export class NewSession extends Panel<NewSessionForm> {
         const opt = this.session?.opt ?? {};
         return keyed(this.opened, html`
             <form @submit=${this.handleSubmit}>
-                <cds-text-input id="title" label="Title (optional)" placeholder="Such as Trip to Lisbon" helper-text="What the chat is about, which the list of chats shows, rather than its model"
+                <cds-text-input id="title" label="Title (optional)" placeholder="Such as Trip to Lisbon" helper-text="What you want the chat to be about"
                     value=${this.session?.title ?? ''}></cds-text-input>
                 <cds-select id="model" label-text="Model" value=${chosen}
                     @cds-select-selected=${(e: CustomEvent<{ value: string }>) => { this.chosen = e.detail.value; }}>
@@ -169,6 +182,8 @@ export class NewSession extends Panel<NewSessionForm> {
                 </cds-select>
                 <cds-textarea label="System prompt" helper-text="Instructions for the assistant on how to act, such as 'be brief', 'set humour level to 90%', or 'respond in rhyme'" rows="3"
                     value=${this.session?.system ?? ''}></cds-textarea>
+                <cds-accordion>
+                <cds-accordion-item title="Advanced options" ?open=${!!this.session}>
                 <div class="options">
                     ${thinks ? html`
                         <cds-select id="thinking" label-text="Thinking" value=${this.thinking}
@@ -192,8 +207,13 @@ export class NewSession extends Panel<NewSessionForm> {
                     `}
                 </div>
                 ${cannot(model, 'tools')
-                    ? html`<p>${model?.name} can't call tools, so it's asked without them.</p>`
-                    : html`<llm-tool-picker .tools=${this.tools} .described=${this.namespaces} .value=${this.startTools}></llm-tool-picker>`}
+                    ? ''
+                    : html`
+                        <p class="note">Every tool is on, unless you turn it off. Without the <strong>llm</strong> tools, the assistant can't speak, make pictures, read scans or transcribe recordings, or read the chat's files; without <strong>memory</strong>, it doesn't remember you from one chat to the next; and without <strong>heartbeat</strong>, it can't set reminders, or do things on a schedule.</p>
+                        <llm-tool-picker .tools=${this.tools} .described=${this.namespaces} .value=${this.startTools}></llm-tool-picker>
+                    `}
+                </cds-accordion-item>
+                </cds-accordion>
                 <div class="footer">
                     <cds-button kind="primary" type="submit" ?disabled=${this.creating} @click=${this.handleSubmit}>${this.session ? 'Save' : 'Start chat'}</cds-button>
                 </div>
