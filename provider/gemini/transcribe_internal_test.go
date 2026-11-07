@@ -134,3 +134,12 @@ func Test_TranscribeUpload(t *testing.T) {
 	assert.Equal(t, []string{"files/abc"}, api.deleted)
 	assert.Zero(t, api.processing, "until it's processed")
 }
+
+func Test_SentenceEnds(t *testing.T) {
+	for word, ends := range map[string]bool{
+		"dog.": true, "you?": true, "now!": true, `said."`: true, "it.)": true, "终。": true,
+		"Mr.": false, "Dr.": false, "J.": false, "U.S.": false, "e.g.": false, "Miami,": false, "word": false,
+	} {
+		assert.Equal(t, ends, sentenceEnds(word), word)
+	}
+}

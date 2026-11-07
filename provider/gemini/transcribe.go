@@ -290,11 +290,28 @@ func offset(value string) time.Duration {
 
 // sentenceEnds returns whether the word ends a sentence, as it ends with a
 // full stop, a question mark, or an exclamation mark, before any closing
-// quotes or brackets
+// quotes or brackets, unless it's an abbreviation, such as Mr., or an
+// initial, such as J.
 func sentenceEnds(word string) bool {
 	word = strings.TrimRightFunc(word, func(r rune) bool {
 		return unicode.Is(unicode.Pf, r) || unicode.Is(unicode.Pe, r) || r == '"' || r == '\''
 	})
-	return strings.HasSuffix(word, ".") || strings.HasSuffix(word, "?") || strings.HasSuffix(word, "!") ||
-		strings.HasSuffix(word, "。") || strings.HasSuffix(word, "？") || strings.HasSuffix(word, "！")
+	switch {
+	case strings.HasSuffix(word, "?"), strings.HasSuffix(word, "!"), strings.HasSuffix(word, "。"), strings.HasSuffix(word, "？"), strings.HasSuffix(word, "！"):
+		return true
+	case !strings.HasSuffix(word, "."):
+		return false
+	}
+	stem := strings.TrimSuffix(word, ".")
+	if runes := []rune(stem); len(runes) == 1 && unicode.IsUpper(runes[0]) {
+		return false
+	}
+	return !abbreviations[strings.ToLower(stem)]
+}
+
+// abbreviations are those which end with a full stop, within a sentence
+var abbreviations = map[string]bool{
+	"mr": true, "mrs": true, "ms": true, "dr": true, "prof": true, "st": true, "sr": true, "jr": true,
+	"rev": true, "gen": true, "col": true, "lt": true, "sgt": true, "capt": true, "gov": true, "sen": true, "rep": true,
+	"vs": true, "etc": true, "e.g": true, "i.e": true, "no": true, "approx": true, "u.s": true, "u.k": true,
 }
