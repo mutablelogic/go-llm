@@ -11,6 +11,7 @@ import (
 
 	// Packages
 	llm "github.com/mutablelogic/go-llm"
+	schema "github.com/mutablelogic/go-llm/provider/schema"
 	types "github.com/mutablelogic/go-server/pkg/types"
 	assert "github.com/stretchr/testify/assert"
 	require "github.com/stretchr/testify/require"
@@ -26,6 +27,7 @@ type fakeAPI struct {
 	*httptest.Server
 	counts   atomic.Int32
 	failures atomic.Int32
+	embedded batchEmbedRequest // The last request to embed messages
 }
 
 // models are the fake's models, by page
@@ -76,6 +78,18 @@ func newFakeAPI(t *testing.T) *fakeAPI {
 			}
 			w.WriteHeader(http.StatusNotFound)
 			_, _ = w.Write([]byte(`{"error":{"code":404,"message":"not found","status":"NOT_FOUND"}}`))
+		case r.Method == http.MethodPost && r.URL.Path == "/v1beta/models/embedding-new:batchEmbedContents":
+			// A vector of each message's text's length, and its parts
+			var req batchEmbedRequest
+			require.NoError(t, json.NewDecoder(r.Body).Decode(&req))
+			api.embedded = req
+			var response batchEmbedResponse
+			for _, embed := range req.Requests {
+				response.Embeddings = append(response.Embeddings, struct {
+					Values []float32 `json:"values"`
+				}{Values: []float32{float32(len(embed.Content.Parts[0].Text)), float32(len(embed.Content.Parts))}})
+			}
+			_ = json.NewEncoder(w).Encode(response)
 		case r.Method == http.MethodPost && strings.HasSuffix(r.URL.Path, ":countTokens"):
 			if api.failures.Load() > 0 {
 				api.failures.Add(-1)
@@ -210,5 +224,50 @@ func Test_Measure(t *testing.T) {
 	other, err := New(api.URL, "key")
 	require.NoError(t, err)
 	_, err = other.Measure(ctx, model, "hello")
+	assert.ErrorIs(t, err, llm.ErrBadParameter)
+}
+
+func Test_Embed(t *testing.T) {
+	ctx := context.Background()
+	api := newFakeAPI(t)
+	c, err := New(api.URL, "key")
+	require.NoError(t, err)
+	model, err := c.GetModel(ctx, "embedding-new")
+	require.NoError(t, err)
+
+	hello, err := schema.NewMessage("user", "hello")
+	require.NoError(t, err)
+
+	// A vector for each message, in order, in one request, with the model,
+	// and the options, which are the same for each
+	image := &schema.Resource{ResourceMeta: schema.ResourceMeta{ContentType: "image/png", Data: []byte("PNG")}}
+	withImage := schema.Message{MessageMeta: schema.MessageMeta{Sender: "user", Content: []schema.ContentBlock{{Text: types.Ptr("a cat")}, {Resource: image}}}}
+	vectors, _, err := c.Embed(ctx, model, []llm.Message{hello, &withImage},
+		llm.WithTaskType("retrieval_document"), llm.WithTitle("Pets"), llm.WithDimensions(256))
+	require.NoError(t, err)
+	assert.Equal(t, []llm.Vector{{5, 1}, {5, 2}}, vectors)
+	require.Len(t, api.embedded.Requests, 2)
+	first, second := api.embedded.Requests[0], api.embedded.Requests[1]
+	assert.Equal(t, "models/embedding-new", first.Model)
+	assert.Equal(t, "RETRIEVAL_DOCUMENT", first.TaskType)
+	assert.Equal(t, "Pets", first.Title)
+	assert.Equal(t, uint(256), first.OutputDimensionality)
+	assert.Equal(t, "RETRIEVAL_DOCUMENT", second.TaskType, "each message has the options")
+
+	// An attachment is inline, with its type, and its data
+	require.Len(t, second.Content.Parts, 2)
+	assert.Equal(t, "image/png", second.Content.Parts[1].InlineData.MimeType)
+	assert.Equal(t, []byte("PNG"), second.Content.Parts[1].InlineData.Data)
+
+	// A task type which isn't one, an option which isn't for embeddings, no
+	// messages, and a message without text, or attachments, aren't embedded
+	_, _, err = c.Embed(ctx, model, []llm.Message{hello}, llm.WithTaskType("summarizing"))
+	assert.ErrorIs(t, err, llm.ErrBadParameter)
+	assert.ErrorContains(t, err, "retrieval_query")
+	_, _, err = c.Embed(ctx, model, []llm.Message{hello}, llm.WithOpt(llm.TemperatureKey, 0.5))
+	assert.ErrorIs(t, err, llm.ErrBadParameter)
+	_, _, err = c.Embed(ctx, model, nil)
+	assert.ErrorIs(t, err, llm.ErrBadParameter)
+	_, _, err = c.Embed(ctx, model, []llm.Message{&schema.Message{MessageMeta: schema.MessageMeta{Sender: "user"}}})
 	assert.ErrorIs(t, err, llm.ErrBadParameter)
 }

@@ -37,9 +37,43 @@ type content struct {
 	Parts []part `json:"parts"`
 }
 
-// part is a part of a message, which is its text
+// part is a part of a message, which is its text, or data, such as an
+// image, inline
 type part struct {
-	Text string `json:"text,omitempty"`
+	Text       string `json:"text,omitempty"`
+	InlineData *blob  `json:"inlineData,omitempty"`
+}
+
+// blob is data, inline, with its type, encoded as base64, as JSON encodes
+// bytes
+type blob struct {
+	MimeType string `json:"mimeType"`
+	Data     []byte `json:"data"`
+}
+
+// embedRequest is a request to embed a message, in a request to POST
+// /v1beta/models/<model>:batchEmbedContents, with the model, which is
+// models/<model>, what the embedding is for, the title of the document it's
+// from, and the number of dimensions of its vector
+type embedRequest struct {
+	Model                string  `json:"model"`
+	Content              content `json:"content"`
+	TaskType             string  `json:"taskType,omitempty"`
+	Title                string  `json:"title,omitempty"`
+	OutputDimensionality uint    `json:"outputDimensionality,omitempty"`
+}
+
+// batchEmbedRequest is a request to embed messages, each with its own
+// request
+type batchEmbedRequest struct {
+	Requests []embedRequest `json:"requests"`
+}
+
+// batchEmbedResponse is the vectors of the messages, in their order
+type batchEmbedResponse struct {
+	Embeddings []struct {
+		Values []float32 `json:"values"`
+	} `json:"embeddings"`
 }
 
 // countRequest is a request to POST /v1beta/models/<model>:countTokens,
