@@ -11,8 +11,11 @@ go-llm is a server, command-line tool and Go SDK which puts large language model
 
 The image has the server, and its web UI, and keeps its providers, sessions, agents and memory in the `/data` volume:
 
+> [!WARNING]
+> **Don't run the server on the internet.** It has no authentication yet, so anyone who can reach it can use your providers' API keys, read your chats, memory and files, run its tools, and change its providers and agents. Publish its port on `localhost` only, as below, or, to reach it from elsewhere, put it behind a proxy which signs people in, or a VPN.
+
 ```bash
-docker run -d --name llm -p 8084:8084 -v llm:/data \
+docker run -d --name llm -p 127.0.0.1:8084:8084 -v llm:/data \
   -e OLLAMA_ADDR=http://host.docker.internal:11434 \
   -e OPENAI_API_KEY \
   ghcr.io/mutablelogic/llm
@@ -26,7 +29,7 @@ Then open [http://localhost:8084/](http://localhost:8084/), to chat, and see the
 
 When it's first started, the server has the Eliza provider, unless `NO_ELIZA` is set, and those whose variables are set: `OLLAMA_ADDR` and `GOWHISPER_ADDR`, as their URLs, and `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `GEMINI_API_KEY`, `DEEPSEEK_API_KEY`, `MISTRAL_API_KEY` and `ELEVENLABS_API_KEY`, whose keys are read from the container's environment when they're used, rather than stored. `UID` and `GID` set the user it runs as, such as the owner of a directory which is mounted at `/data`.
 
-Or run it with Docker Compose, whose [compose file](docker/compose.yaml) has every variable the server reads, from the environment, or a `.env` file, and, with the `ollama` profile, an Ollama server, which `OLLAMA_ADDR=http://ollama:11434` adds:
+Or run it with Docker Compose, whose [compose file](docker/compose.yaml) has every variable the server reads, from the environment, or a `.env` file, and, with the `ollama` profile, an Ollama server, which `OLLAMA_ADDR=http://ollama:11434` adds. It publishes the server's port on `localhost` only, unless `LLM_BIND` says otherwise, such as `0.0.0.0`, for a network you trust:
 
 ```bash
 docker compose -f docker/compose.yaml --profile ollama up -d

@@ -21,7 +21,9 @@ services:
       dockerfile: docker/Dockerfile
     restart: unless-stopped
     ports:
-      - "${LLM_PORT:-8084}:8084"
+      # On localhost only, as the server has no authentication yet, unless
+      # LLM_BIND is set, such as to 0.0.0.0, for a network you trust
+      - "${LLM_BIND:-127.0.0.1}:${LLM_PORT:-8084}:8084"
     volumes:
       - llm:/data
     environment:
