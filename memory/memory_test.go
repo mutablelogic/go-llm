@@ -193,11 +193,11 @@ func Test_SystemPrompt(t *testing.T) {
 	t.Run("PersonsName", func(t *testing.T) {
 		// Only the person's name isn't known, which it may ask for
 		m := newMemory(t, now)
-		set(t, m, schema.FieldAssistant, &schema.Detail{Value: "Omodie"})
+		set(t, m, schema.FieldAssistant, &schema.Detail{Value: "Ada"})
 		set(t, m, schema.FieldLocation, &schema.Detail{Value: "Berlin"})
 		set(t, m, schema.FieldTimezone, &schema.Detail{Declined: true})
 		set(t, m, schema.FieldLanguage, &schema.Detail{Value: "English"})
-		assert.Equal(t, "Each of the person's messages starts with when they sent it, in UTC, as their time zone isn't known. Your name is Omodie. The person you're talking to is in Berlin. They speak English. You don't know the person's name. You can ask for it once, when it fits the conversation, but don't press them. Remember what you learn, or that the person would rather not say, with the set_detail tool, in the memory namespace."+"\n\n"+memory.MemoriesPrompt, m.SystemPrompt())
+		assert.Equal(t, "Each of the person's messages starts with when they sent it, in UTC, as their time zone isn't known. Your name is Ada. The person you're talking to is in Berlin. They speak English. You don't know the person's name. You can ask for it once, when it fits the conversation, but don't press them. Remember what you learn, or that the person would rather not say, with the set_detail tool, in the memory namespace."+"\n\n"+memory.MemoriesPrompt, m.SystemPrompt())
 	})
 
 	t.Run("Toolkit", func(t *testing.T) {

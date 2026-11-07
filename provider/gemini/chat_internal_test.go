@@ -173,9 +173,9 @@ func Test_OtherModels(t *testing.T) {
 	api.reply = []string{`{"candidates":[{"content":{"parts":[{"text":"Rain, then."}]},"finishReason":"STOP"}]}`}
 	_, _, err := c.WithoutSession(ctx, model, []llm.Message{
 		text(t, "system", "Be brief."), text(t, "user", "Weather in Paris?"), claude, failed, onlyCall, failedToo,
-	}, []llm.Tool{weather{}}, nil, llm.WithSystemPrompt("You are Omodie."))
+	}, []llm.Tool{weather{}}, nil, llm.WithSystemPrompt("You are Ada."))
 	require.NoError(t, err)
-	assert.Equal(t, "You are Omodie.\n\nBe brief.", api.asked.SystemInstruction.Parts[0].Text)
+	assert.Equal(t, "You are Ada.\n\nBe brief.", api.asked.SystemInstruction.Parts[0].Text)
 	assert.Equal(t, []content{
 		{Role: "user", Parts: []part{{Text: "Weather in Paris?"}}},
 		{Role: "model", Parts: []part{{Text: "Let me look."}}},
