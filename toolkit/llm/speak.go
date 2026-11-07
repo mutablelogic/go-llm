@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"mime"
+	"path"
 	"strings"
 
 	// Packages
@@ -31,10 +32,11 @@ type speakInput struct {
 	Voice        string `json:"voice,omitempty" help:"Voice to speak in, by its name, which the person chose, and is remembered with the model, or the model's own voice, when it's omitted" optional:""`
 	Instructions string `json:"instructions,omitempty" help:"How the text is spoken, such as calmly, or cheerfully, for a model which takes them" optional:""`
 	Model        string `json:"model,omitempty" help:"Model which speaks the text, by its name, such as ollama:phonon:latest, or the default, when it's omitted" optional:""`
+	Name         string `json:"name,omitempty" help:"Name of the audio's file, such as morning-briefing, which its format's extension is added to, or speech, when it's omitted" optional:""`
 }
 
-// audio is the audio which was spoken, with its name, which is speech, with
-// its format's extension
+// audio is the audio which was spoken, with its name, which is the one the
+// model gave, or speech, with its format's extension
 type audio struct {
 	gollm.Resource
 	name string
@@ -92,22 +94,25 @@ func (t *speak) Run(ctx context.Context, input json.RawMessage) (any, error) {
 		return nil, err
 	}
 	toolkit.SessionFromContext(ctx).Usage(usage)
-	return &audio{Resource: spoken, name: audioName(spoken.Type())}, nil
+	return &audio{Resource: spoken, name: audioName(req.Name, spoken.Type())}, nil
 }
 
 ///////////////////////////////////////////////////////////////////////////////
 // PRIVATE METHODS
 
-// Name returns the audio's name, which is speech, with its format's
-// extension
+// Name returns the audio's name, with its format's extension
 func (a *audio) Name() string {
 	return a.name
 }
 
-// audioName returns the name of audio of the type, which is speech, with
-// its extension, such as speech.wav
-func audioName(contentType string) string {
-	name := "speech"
+// audioName returns the name of audio of the type, which is the name the
+// model gave, as a file's name, or speech, with the type's extension, such
+// as morning-briefing.wav, rather than any extension it was given
+func audioName(given, contentType string) string {
+	name := fileName(given)
+	if name == "" {
+		name = "speech"
+	}
 	if mediaType, _, err := mime.ParseMediaType(contentType); err == nil {
 		switch mediaType {
 		case "audio/wav", "audio/x-wav", "audio/wave":
@@ -120,6 +125,31 @@ func audioName(contentType string) string {
 		if exts, _ := mime.ExtensionsByType(mediaType); len(exts) > 0 {
 			return name + exts[0]
 		}
+	}
+	return name
+}
+
+// fileName returns the name, as a file's name: its last element, without
+// its extension, or characters which can't be in a file's name, such as
+// slashes, or control characters, and at most 100 characters, or an empty
+// string, when there's nothing left
+func fileName(name string) string {
+	name = strings.TrimSpace(name)
+	if i := strings.LastIndexAny(name, `/\`); i >= 0 {
+		name = name[i+1:]
+	}
+	if ext := path.Ext(name); ext != "" && ext != name {
+		name = strings.TrimSuffix(name, ext)
+	}
+	name = strings.Map(func(r rune) rune {
+		if r < 0x20 || r == 0x7f || strings.ContainsRune(`<>:"|?*`, r) {
+			return -1
+		}
+		return r
+	}, name)
+	name = strings.Trim(strings.TrimSpace(name), ".")
+	if runes := []rune(name); len(runes) > 100 {
+		name = strings.TrimSpace(string(runes[:100]))
 	}
 	return name
 }

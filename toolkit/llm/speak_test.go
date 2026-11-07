@@ -336,3 +336,29 @@ func Test_Logs(t *testing.T) {
 		"Looking for models which can see images, call tools and speak",
 	}, lines)
 }
+
+func Test_SpeakName(t *testing.T) {
+	// The audio is named as the model says, as a file's name, with its
+	// format's extension, or speech
+	ctx := context.Background()
+	ns, err := llm.New(func() llm.Models { return &models{} }, llm.WithSpeak("phonon", ""))
+	require.NoError(t, err)
+	tool := ns.Tools()[0]
+	for name, want := range map[string]string{
+		"":                       "speech.wav",
+		"Morning briefing":       "Morning briefing.wav",
+		"morning-briefing.mp3":   "morning-briefing.wav",
+		"../../etc/passwd":       "passwd.wav",
+		`C:\\temp\\ode.wav`:      "ode.wav",
+		"  what? <now>  ":        "what now.wav",
+		"...":                    "speech.wav",
+		"\x00\x01":               "speech.wav",
+		strings.Repeat("a", 150): strings.Repeat("a", 100) + ".wav",
+	} {
+		input, err := json.Marshal(map[string]string{"text": "Hello", "name": name})
+		require.NoError(t, err)
+		result, err := tool.Run(ctx, input)
+		require.NoError(t, err, name)
+		assert.Equal(t, want, result.(gollm.Resource).Name(), name)
+	}
+}
