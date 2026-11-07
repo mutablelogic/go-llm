@@ -127,6 +127,24 @@ func Test_ToolCalls(t *testing.T) {
 	require.NotNil(t, response)
 	assert.Equal(t, "weather", response.Name)
 	assert.JSONEq(t, `{"result":"sunny"}`, string(response.Response))
+
+	// A signature in a piece of its own is the call's before it, and a
+	// result without its tool's name has its call's
+	api.reply = []string{
+		`{"candidates":[{"content":{"role":"model","parts":[{"functionCall":{"name":"weather","args":{"city":"Paris"}}}]}}]}`,
+		`{"candidates":[{"content":{"role":"model","parts":[{"thoughtSignature":"SIG2"}]},"finishReason":"STOP"}]}`,
+	}
+	reply, _, err = c.WithoutSession(ctx, model, []llm.Message{text(t, "user", "Paris?")}, []llm.Tool{weather{}}, nil)
+	require.NoError(t, err)
+	late := reply.(*schema.Message)
+	require.Len(t, late.Content, 1)
+	assert.Equal(t, map[string]any{"signature": "SIG2"}, late.Content[0].ToolCall.Meta[metaKey])
+	nameless := &schema.Message{MessageMeta: schema.MessageMeta{Sender: "tool", Content: []schema.ContentBlock{{ToolResult: &schema.ToolResult{ID: late.Content[0].ToolCall.ID, Content: json.RawMessage(`"warm"`)}}}}}
+	api.reply = []string{`{"candidates":[{"content":{"parts":[{"text":"Warm."}]},"finishReason":"STOP"}]}`}
+	_, _, err = c.WithoutSession(ctx, model, []llm.Message{text(t, "user", "Paris?"), late, nameless}, []llm.Tool{weather{}}, nil)
+	require.NoError(t, err)
+	assert.Equal(t, "SIG2", api.asked.Contents[1].Parts[0].ThoughtSignature)
+	assert.Equal(t, "weather", api.asked.Contents[2].Parts[0].FunctionResponse.Name)
 }
 
 func Test_OtherModels(t *testing.T) {
@@ -197,6 +215,11 @@ func Test_Thinking(t *testing.T) {
 	assert.Nil(t, config)
 	_, err = think("gemini-old", false, true, true, "")
 	assert.ErrorIs(t, err, llm.ErrBadParameter)
+	_, err = think("gemini-old", false, false, false, "high")
+	assert.ErrorIs(t, err, llm.ErrBadParameter, "an effort asks it to think")
+	config, err = think("gemini-old", false, true, false, "high")
+	require.NoError(t, err)
+	assert.Nil(t, config, "unless thinking is off")
 }
 
 func Test_Options(t *testing.T) {
@@ -226,7 +249,7 @@ func Test_Options(t *testing.T) {
 
 	// An option which isn't for replies, a tool choice which isn't one, and
 	// an effort which isn't one
-	for _, opt := range []llm.Opt{llm.WithOpt(llm.TaskTypeKey, "x"), llm.WithToolChoice("sometimes"), llm.WithOpt(llm.ThinkingEffortKey, "huge")} {
+	for _, opt := range []llm.Opt{llm.WithOpt(llm.TaskTypeKey, "x"), llm.WithToolChoice("sometimes"), llm.WithOpt(llm.ThinkingEffortKey, "huge"), llm.WithOpt(llm.JSONSchemaKey, json.RawMessage("{"))} {
 		_, _, err = c.WithoutSession(ctx, model, []llm.Message{text(t, "user", "Hi")}, nil, nil, opt)
 		assert.ErrorIs(t, err, llm.ErrBadParameter)
 	}
@@ -249,4 +272,48 @@ func Test_Inputs(t *testing.T) {
 	require.NoError(t, err)
 	assert.False(t, types.Value(tts.Capabilities().AudioInput))
 	assert.NotNil(t, tts.Capabilities().AudioInput, "it's known")
+}
+
+func Test_Replay(t *testing.T) {
+	// A reply's calls Gemini made are sent back as calls, unless the model
+	// needs their signatures, and none has one, when they're text, and calls
+	// made together, of which only the first is signed, are sent back
+	ctx := context.Background()
+	call := func(id, city, signature string) schema.ContentBlock {
+		meta := callMeta{Signature: signature}
+		return schema.ContentBlock{ToolCall: &schema.ToolCall{ID: id, Name: "weather", Input: json.RawMessage(`{"city":"` + city + `"}`), Meta: map[string]any{metaKey: meta.value()}}}
+	}
+	result := func(id, value string) schema.ContentBlock {
+		return schema.ContentBlock{ToolResult: &schema.ToolResult{ID: id, Name: "weather", Content: json.RawMessage(`"` + value + `"`)}}
+	}
+	conversation := []llm.Message{
+		text(t, "user", "Weather?"),
+		&schema.Message{MessageMeta: schema.MessageMeta{Sender: "assistant", Content: []schema.ContentBlock{call("a", "Oslo", "")}}},
+		&schema.Message{MessageMeta: schema.MessageMeta{Sender: "tool", Content: []schema.ContentBlock{result("a", "snow")}}},
+		&schema.Message{MessageMeta: schema.MessageMeta{Sender: "assistant", Content: []schema.ContentBlock{call("b", "Rome", "SIG"), call("c", "Bonn", "")}}},
+		&schema.Message{MessageMeta: schema.MessageMeta{Sender: "tool", Content: []schema.ContentBlock{result("b", "sun"), result("c", "rain")}}},
+	}
+	model := func(name string) *Model { return &Model{data: apiModel{Name: "models/" + name}} }
+
+	// Gemini 3 needs signatures: the unsigned reply is text, and the signed
+	// one is calls, with its unsigned sibling
+	contents, _, err := newContents(ctx, model("gemini-3.5-flash"), conversation)
+	require.NoError(t, err)
+	require.Len(t, contents, 3)
+	assert.Equal(t, "user", contents[0].Role)
+	assert.Equal(t, `(The tool weather was called with {"city":"Oslo"}, and returned: snow)`, contents[0].Parts[1].Text)
+	assert.Equal(t, "model", contents[1].Role)
+	require.Len(t, contents[1].Parts, 2)
+	assert.Equal(t, "SIG", contents[1].Parts[0].ThoughtSignature)
+	assert.JSONEq(t, `{"city":"Bonn"}`, string(contents[1].Parts[1].FunctionCall.Args), "the unsigned sibling")
+	require.Len(t, contents[2].Parts, 2)
+	assert.NotNil(t, contents[2].Parts[0].FunctionResponse)
+	assert.NotNil(t, contents[2].Parts[1].FunctionResponse)
+
+	// Gemini 2.5 doesn't: every call is sent back
+	contents, _, err = newContents(ctx, model("gemini-2.5-flash"), conversation)
+	require.NoError(t, err)
+	require.Len(t, contents, 5)
+	assert.NotNil(t, contents[1].Parts[0].FunctionCall)
+	assert.NotNil(t, contents[2].Parts[0].FunctionResponse)
 }
