@@ -368,3 +368,16 @@ func Test_Images(t *testing.T) {
 	assert.Equal(t, []byte("PNG"), sent.Parts[1].InlineData.Data)
 	assert.Equal(t, "IMGSIG", sent.Parts[1].ThoughtSignature)
 }
+
+func Test_MadeImageFormats(t *testing.T) {
+	// What Gemini made, in a format the API doesn't take, such as an SVG,
+	// is a note, rather than the request failing
+	svg := &schema.Resource{ResourceMeta: schema.ResourceMeta{ContentType: "image/svg+xml", Data: []byte("<svg/>")}}
+	reply := &schema.Message{MessageMeta: schema.MessageMeta{Sender: "assistant", Content: []schema.ContentBlock{{Resource: svg}}}}
+	contents, _, err := newContents(context.Background(), &Model{data: apiModel{Name: "models/gemini-3.1-flash-lite-image"}}, []llm.Message{text(t, "user", "Draw"), reply})
+	require.NoError(t, err)
+	require.Len(t, contents, 2)
+	require.Len(t, contents[1].Parts, 1)
+	assert.Nil(t, contents[1].Parts[0].InlineData)
+	assert.Contains(t, contents[1].Parts[0].Text, "image/svg+xml, which this model can't read")
+}

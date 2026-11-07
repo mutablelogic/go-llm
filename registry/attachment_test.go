@@ -463,3 +463,50 @@ func Test_ReplyResources(t *testing.T) {
 	require.NoError(t, err, "it's the session's")
 	assert.Equal(t, "image.png", kept.Name())
 }
+
+func Test_ReplyResourcesInHistory(t *testing.T) {
+	// What a model made, in the history, is only read for a model which
+	// makes images, which can change it, and is a note, with its URI, for
+	// one which doesn't, which doesn't count against the most which is read
+	ctx := context.Background()
+	sessions := test.NewSessionStore()
+	manager, err := resourcemanager.New(resourcemanager.NewStore(), resourcemanager.WithSessions(func(ctx context.Context, id uuid.UUID) error {
+		_, err := sessions.Get(ctx, id)
+		return err
+	}))
+	require.NoError(t, err)
+	made := &providerschema.Message{MessageMeta: providerschema.MessageMeta{Sender: "assistant", Content: []providerschema.ContentBlock{
+		{Resource: &providerschema.Resource{ResourceMeta: providerschema.ResourceMeta{ContentType: "image/png", Data: []byte(pngData)}}},
+	}}, Result: providerschema.ResultStop}
+	p := newScripted(made, text("A banana."))
+	r, err := registry.New(registry.WithSessionStore(sessions), registry.WithResources(manager))
+	require.NoError(t, err)
+	require.NoError(t, r.Add("", p))
+	session, err := r.CreateSession(ctx, schema.SessionMeta{GeneratorMeta: schema.GeneratorMeta{Model: types.Ptr("model")}})
+	require.NoError(t, err)
+	_, err = r.Chat(ctx, session.ID, []llm.Message{user(t, "Draw a banana")}, nil)
+	require.NoError(t, err)
+
+	// A model which doesn't make images, with less to read than the image,
+	// is sent a note
+	limit := registry.MaxAttachmentsSize
+	registry.MaxAttachmentsSize = 4
+	t.Cleanup(func() { registry.MaxAttachmentsSize = limit })
+	_, err = r.Chat(ctx, session.ID, []llm.Message{user(t, "What is it?")}, nil)
+	require.NoError(t, err, "the image isn't read")
+	reply := p.asked[1].messages[1]
+	assert.Empty(t, reply.Resources())
+	assert.Contains(t, reply.Text(), "The reply made resource://")
+
+	// A model which makes images is sent it, to change it. Models are
+	// cached, so it's another registry, with the same chats
+	registry.MaxAttachmentsSize = limit
+	maker := newScripted(text("A bigger banana."))
+	maker.caps = llm.ModelCap{ImageOutput: types.Ptr(true)}
+	r, err = registry.New(registry.WithSessionStore(sessions), registry.WithResources(manager))
+	require.NoError(t, err)
+	require.NoError(t, r.Add("", maker))
+	_, err = r.Chat(ctx, session.ID, []llm.Message{user(t, "Make it bigger")}, nil)
+	require.NoError(t, err)
+	assert.Equal(t, []string{"image/png:" + pngData}, attachments(t, maker.asked[0].messages[1]))
+}
