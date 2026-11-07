@@ -14,6 +14,7 @@ import (
 
 	// Packages
 	gollm "github.com/mutablelogic/go-llm"
+	providerschema "github.com/mutablelogic/go-llm/provider/schema"
 	schema "github.com/mutablelogic/go-llm/resource/schema"
 	toolkit "github.com/mutablelogic/go-llm/toolkit"
 	metadata "github.com/mutablelogic/go-metadata"
@@ -56,8 +57,22 @@ type resourceTool struct {
 // readInput is the input of the read tool
 type readInput struct {
 	URI    string `json:"uri,omitempty" help:"URI of the file, resource://<hash>, which an attachment, a tool's result, or the list of the chat's files says, or omitted, to list the chat's files" optional:""`
-	Offset uint64 `json:"offset,omitempty" help:"Byte of the file's Markdown to start reading at, to read the next part of a long file, which is next in the previous read" optional:""`
+	Format string `json:"format,omitempty" enum:"markdown,raw" help:"How the file is read: as Markdown, which is the default, or raw, as the text it is, such as subtitles, or code, as they are, for a file which is text" optional:""`
+	Offset uint64 `json:"offset,omitempty" help:"Byte of the file's Markdown, or of the file, when it's raw, to start reading at, to read the next part of a long file, which is next in the previous read" optional:""`
 	Limit  uint64 `json:"limit,omitempty" help:"Most bytes to read, from 4 to 65536, which is 16384 when it's omitted" optional:""`
+}
+
+// namedReader is a reader of a file's content, with the file's name, rather
+// than the name it's kept with, which is its hash, which go-metadata would
+// otherwise take for its title
+type namedReader struct {
+	io.Reader
+	name string
+}
+
+// Name returns the file's name
+func (r namedReader) Name() string {
+	return r.name
 }
 
 // readOutput is a part of a file, as Markdown, with its metadata, such as
@@ -118,10 +133,17 @@ var readNamespaces = []string{
 const maxMetadataValue = 512
 
 const (
-	// notText is the note when a file can't be read as Markdown, and
-	// beyondEnd when the offset is beyond the end of it
-	notText   = "the file can't be read as text, such as an image, or audio, so only what it is is returned, and it can be given to a tool which reads it, by its URI"
-	beyondEnd = "the offset is beyond the end of the file"
+	// notText is the note when a file can't be read as text, and beyondEnd
+	// when the offset is beyond the end of it
+	notText   = "The file can't be read as text, so only what it is is returned, and it can be given to a tool which reads it, by its URI."
+	beyondEnd = "The offset is beyond the end of the file."
+
+	// The notes, of what reads a file which can't be read as text, by its
+	// type: an image, or a scan, whose text llm:ocr recognizes, and audio,
+	// or video, whose speech llm:transcribe transcribes, and whose metadata,
+	// such as its duration, isn't read here
+	notTextImage = "The file is an image, or a document, which can't be read as text, so only what it is is returned. Recognize its text with the llm:ocr tool, by its URI."
+	notTextAudio = "The file is audio, or video, which can't be read as text, and whose length, and other metadata, aren't read here, so only what it is is returned. Transcribe its speech with the llm:transcribe tool, by its URI."
 )
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -132,7 +154,7 @@ func (*resourceTool) Name() string {
 }
 
 func (*resourceTool) Description() string {
-	return "Lists the files of this chat, as a table, without a URI, or reads a file, by its URI, resource://<hash>, such as a document, a transcript, subtitles, a web page, an email, or data, as Markdown, rather than in the file's own format: a text file's text, a PDF's, or a Word, or OpenDocument, document's, a spreadsheet's tables, an email's messages, subtitles, or code and data in code blocks. A long file is read a part at a time: read the next part from next, when it's returned. The first part has the file's metadata, such as a document's title, author, date and pages, a book's publisher, or an image's width and height. A file which can't be read as text, such as an image, or audio, has no content, only what it is, its metadata, when it has any, and a note."
+	return "Lists the files of this chat, as a table, without a URI, or reads a file, by its URI, resource://<hash>, such as a document, a transcript, subtitles, a web page, an email, or data, as Markdown, rather than in the file's own format: a text file's text, a PDF's, or a Word, or OpenDocument, document's, a spreadsheet's tables, an email's messages, subtitles, or code and data in code blocks. A long file is read a part at a time: read the next part from next, when it's returned. With format raw, a file which is text, such as subtitles, or code, is read as it is, rather than as Markdown. The first part has the file's metadata, such as a document's title, author, date and pages, a book's publisher, or an image's width and height. A file which can't be read as text, such as an image, or audio, has no content, only what it is, its metadata, when it has any, and a note of the tool which reads it."
 }
 
 func (*resourceTool) InputSchema() *jsonschema.Schema {
@@ -171,14 +193,36 @@ func (t *resourceTool) Run(ctx context.Context, input json.RawMessage) (any, err
 	output := readOutput{URI: file.URI(), Name: file.Name, Title: file.Description, Type: file.Type, Size: file.Size}
 	toolkit.Logf(ctx, "Reading %s", describeFile(file))
 
-	// Its part, as Markdown, and, with the first, its metadata
-	p, err := markdown(ctx, content, file.Type, req.Offset, limit)
+	// Its part, as it is, when it's raw, which is text
+	if strings.EqualFold(strings.TrimSpace(req.Format), "raw") {
+		text, offset, next, err := raw(content, file.Type, req.Offset, limit)
+		switch {
+		case errors.Is(err, gollm.ErrNotImplemented):
+			output.Note = notTextFor(file.Type)
+		case errors.Is(err, gollm.ErrBadParameter):
+			output.Note = beyondEnd
+		case err != nil:
+			return nil, err
+		default:
+			output.Offset, output.Content, output.Next = offset, &text, next
+		}
+		return output, nil
+	} else if format := strings.TrimSpace(req.Format); format != "" && !strings.EqualFold(format, "markdown") {
+		return nil, gollm.ErrBadParameter.Withf("unknown format %q, which isn't markdown or raw", format)
+	}
+
+	// Its part, as Markdown, and, with the first, its metadata, whose title
+	// is the file's own, when it has one
+	p, err := markdown(ctx, namedReader{Reader: content, name: file.Name}, file.Type, req.Offset, limit)
 	if p != nil && req.Offset == 0 {
 		output.Metadata = p.meta
+		if title := firstLine(file.Description); title != "" && output.Metadata != nil {
+			output.Metadata["dc:title"] = title
+		}
 	}
 	switch {
 	case errors.Is(err, gollm.ErrNotImplemented):
-		output.Note = notText
+		output.Note = notTextFor(file.Type)
 	case errors.Is(err, gollm.ErrBadParameter) && req.Offset > 0:
 		output.Note = beyondEnd
 	case err != nil:
@@ -299,6 +343,62 @@ func markdown(ctx context.Context, r io.Reader, contentType string, offset, limi
 		return &part{meta: p.meta}, gollm.ErrNotImplemented.Withf("no Markdown, as the file of type %q isn't text", mediatype)
 	}
 	return p, nil
+}
+
+// notTextFor returns the note of a file, of the type, which can't be read
+// as text, which says which tool reads it
+func notTextFor(contentType string) string {
+	mediatype, _, _ := mime.ParseMediaType(contentType)
+	switch {
+	case strings.HasPrefix(mediatype, "image/"), mediatype == "application/pdf":
+		return notTextImage
+	case strings.HasPrefix(mediatype, "audio/"), strings.HasPrefix(mediatype, "video/"):
+		return notTextAudio
+	}
+	return notText
+}
+
+// raw reads the content, which is text, as it is, from the byte at the
+// offset, up to the limit, ending at a whole character, and returns it,
+// where it starts, and where the next part starts, or nil, at its end.
+// Returns ErrNotImplemented when it isn't text, such as an image, or has a
+// NUL, or isn't UTF-8, and ErrBadParameter when the offset is beyond its
+// end.
+func raw(r io.Reader, contentType string, offset, limit uint64) (string, uint64, *uint64, error) {
+	if !providerschema.IsText(nil, contentType) {
+		return "", 0, nil, gollm.ErrNotImplemented.Withf("%q isn't text", contentType)
+	}
+	if skipped, err := io.CopyN(io.Discard, r, int64(offset)); err != nil && !errors.Is(err, io.EOF) {
+		return "", 0, nil, err
+	} else if uint64(skipped) < offset {
+		return "", 0, nil, gollm.ErrBadParameter.Withf("offset %d is beyond the end of the file", offset)
+	}
+
+	// The part, and a byte more, to know whether there's more of it, which
+	// starts at a whole character, and ends at one
+	data, err := io.ReadAll(io.LimitReader(r, int64(limit)+utf8.UTFMax))
+	if err != nil {
+		return "", 0, nil, err
+	} else if len(data) == 0 && offset > 0 {
+		return "", 0, nil, gollm.ErrBadParameter.Withf("offset %d is beyond the end of the file", offset)
+	}
+	start := 0
+	for start < len(data) && start < utf8.UTFMax && !utf8.RuneStart(data[start]) {
+		start++
+	}
+	end := min(len(data), start+int(limit))
+	for end > start && end < len(data) && !utf8.RuneStart(data[end]) {
+		end--
+	}
+	part := data[start:end]
+	if !providerschema.IsText(part, contentType) {
+		return "", 0, nil, gollm.ErrNotImplemented.Withf("%q isn't text", contentType)
+	}
+	var next *uint64
+	if end < len(data) {
+		next = types.Ptr(offset + uint64(end))
+	}
+	return string(part), offset + uint64(start), next, nil
 }
 
 // describeFile returns what a file is, for people: its name, or its type

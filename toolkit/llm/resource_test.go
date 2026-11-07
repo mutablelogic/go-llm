@@ -9,6 +9,7 @@ import (
 	"strings"
 	"testing"
 	"time"
+	"unicode/utf8"
 	"uuid"
 
 	// Packages
@@ -163,6 +164,72 @@ func Test_Resource(t *testing.T) {
 		assert.Nil(t, output(result)["metadata"])
 	})
 
+	t.Run("Raw", func(t *testing.T) {
+		// Subtitles as they are, rather than as Markdown, whole, or a part
+		// at a time, which together are the file
+		result, err := run(chat, `{"uri":"`+subtitles+`","format":"raw"}`)
+		require.NoError(t, err)
+		got := output(result)
+		assert.Equal(t, srt, got["content"])
+		assert.Nil(t, got["next"])
+		var parts string
+		for offset := uint64(0); ; {
+			result, err := run(chat, `{"uri":"`+subtitles+`","format":"raw","limit":20,"offset":`+types.Stringify(offset)+`}`)
+			require.NoError(t, err)
+			got := output(result)
+			parts += got["content"].(string)
+			if got["next"] == nil {
+				break
+			}
+			offset = uint64(got["next"].(float64))
+		}
+		assert.Equal(t, srt, parts)
+
+		// Whole characters, in parts which split them
+		text := create(schema.ResourceMeta{Session: &chat, Name: "accents.txt", Type: "text/plain"}, strings.Repeat("héllo wörld ", 10))
+		parts = ""
+		for offset := uint64(0); ; {
+			result, err := run(chat, `{"uri":"`+text+`","format":"raw","limit":7,"offset":`+types.Stringify(offset)+`}`)
+			require.NoError(t, err)
+			got := output(result)
+			content := got["content"].(string)
+			assert.True(t, utf8.ValidString(content), content)
+			parts += content
+			if got["next"] == nil {
+				break
+			}
+			offset = uint64(got["next"].(float64))
+		}
+		assert.Equal(t, strings.Repeat("héllo wörld ", 10), parts)
+
+		// Not text, beyond its end, and a format which isn't one
+		result, err = run(chat, `{"uri":"`+audio+`","format":"raw"}`)
+		require.NoError(t, err)
+		assert.Contains(t, output(result)["note"], "llm:transcribe")
+		result, err = run(chat, `{"uri":"`+subtitles+`","format":"raw","offset":100000}`)
+		require.NoError(t, err)
+		assert.Contains(t, output(result)["note"], "beyond the end")
+		_, err = run(chat, `{"uri":"`+subtitles+`","format":"html"}`)
+		assert.ErrorIs(t, err, llm.ErrBadParameter)
+	})
+
+	t.Run("Titles", func(t *testing.T) {
+		// A file's title is its name, rather than the hash it's kept by, or
+		// the title it was given
+		result, err := run(chat, `{"uri":"`+picture+`"}`)
+		require.NoError(t, err)
+		meta := output(result)["metadata"].(map[string]any)
+		assert.Equal(t, "dot", meta["dc:title"])
+		titled := create(schema.ResourceMeta{Session: &chat, Name: "logo.png", Type: "image/png", Description: "The logo\nin blue"}, png.String()+" ")
+		result, err = run(chat, `{"uri":"`+titled+`"}`)
+		require.NoError(t, err)
+		meta = output(result)["metadata"].(map[string]any)
+		assert.Equal(t, "The logo", meta["dc:title"])
+
+		// The note says which tool reads it
+		assert.Contains(t, output(result)["note"], "llm:ocr")
+	})
+
 	t.Run("NotText", func(t *testing.T) {
 		// Audio isn't text, so it's what it is, with a note, and no content
 		result, err := run(chat, `{"uri":"`+audio+`"}`)
@@ -171,6 +238,8 @@ func Test_Resource(t *testing.T) {
 		assert.Equal(t, "audio/mpeg", got["type"])
 		assert.Nil(t, got["content"])
 		assert.Contains(t, got["note"], "can't be read as text")
+		assert.Contains(t, got["note"], "llm:transcribe")
+		assert.Contains(t, got["note"], "length")
 	})
 
 	t.Run("OnItsOwn", func(t *testing.T) {
