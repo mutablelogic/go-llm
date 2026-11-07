@@ -283,6 +283,15 @@ func Test_AgentMessage(t *testing.T) {
 		_, err = p.MessageWith(json.RawMessage(`{"transcript":"Some text, which isn't subtitles"}`), srt)
 		assert.ErrorIs(t, err, llm.ErrBadParameter, "text which isn't subtitles")
 
+		// Which says, in English, what the text should be, from the
+		// property's description, and how to give it
+		p.Input = json.RawMessage(`{"type":"object","properties":{"transcript":{"type":"string","format":"resource","pattern":"-->","description":"The transcript of the episode, as SRT subtitles, with their cues' times.\nIt's long."}}}`)
+		for _, input := range []string{`{"transcript":"resource://notes"}`, `{"transcript":"Some notes"}`} {
+			_, err = p.MessageWith(json.RawMessage(input), srt)
+			assert.ErrorIs(t, err, llm.ErrBadParameter, input)
+			assert.EqualError(t, err, `bad parameter: input "transcript" doesn't match its pattern "-->", so it isn't the transcript of the episode, as SRT subtitles, with their cues' times. Give the text, or the URI of a file which has it.`, input)
+		}
+
 		// A default which is a file's URI is the file's text too
 		p.Input = json.RawMessage(`{"type":"object","properties":{"transcript":{"type":"string","format":"resource","default":"resource://srt"}}}`)
 		message, err = p.MessageWith(json.RawMessage(`{}`), srt)

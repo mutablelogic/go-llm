@@ -7,11 +7,14 @@ import (
 	"fmt"
 	"io"
 	"net/url"
+	"regexp"
 	"slices"
 	"strconv"
 	"strings"
 	"text/template"
 	"time"
+	"unicode"
+	"unicode/utf8"
 	"uuid"
 
 	// Packages
@@ -416,7 +419,9 @@ func (p PromptMeta) input(input json.RawMessage, read ReadFunc) (map[string]any,
 				return nil, err
 			}
 		}
-		if err := schema.Validate(data); err != nil {
+		if err := patterns(value, schema); err != nil {
+			return nil, err
+		} else if err := schema.Validate(data); err != nil {
 			return nil, llm.ErrBadParameter.Withf("invalid input: %v", err)
 		}
 		defaults, err := withDefaults(value, schema)
@@ -433,6 +438,51 @@ func (p PromptMeta) input(input json.RawMessage, read ReadFunc) (map[string]any,
 		}
 	}
 	return withZeros(value).(map[string]any), nil
+}
+
+// patterns returns an error, in English, for the first property, by its
+// name, whose value is text which doesn't match its pattern, which says
+// what it should be, from its description, such as "the transcript, as SRT
+// subtitles", as a pattern is of what text means, such as subtitles' cues,
+// rather than its form, or nil
+func patterns(value map[string]any, schema *jsonschema.Schema) error {
+	names := make([]string, 0, len(schema.Properties))
+	for name := range schema.Properties {
+		names = append(names, name)
+	}
+	slices.Sort(names)
+	for _, name := range names {
+		property := schema.Properties[name]
+		text, ok := value[name].(string)
+		if property == nil || property.Pattern == "" || !ok {
+			continue
+		}
+		pattern, err := regexp.Compile(property.Pattern)
+		if err != nil || pattern.MatchString(text) {
+			continue
+		}
+		message := fmt.Sprintf("input %q doesn't match its pattern %q", name, property.Pattern)
+		if description := strings.TrimSpace(property.Description); description != "" {
+			first, _, _ := strings.Cut(description, "\n")
+			message += ", so it isn't " + lowerFirst(strings.TrimRight(first, ". "))
+		}
+		message += "."
+		if property.Format == ResourceFormat {
+			message += " Give the text, or the URI of a file which has it."
+		}
+		return llm.ErrBadParameter.With(message)
+	}
+	return nil
+}
+
+// lowerFirst returns the text, with its first letter in lower case, unless
+// it's the start of a word in capitals, such as SRT
+func lowerFirst(text string) string {
+	r, size := utf8.DecodeRuneInString(text)
+	if next, _ := utf8.DecodeRuneInString(text[size:]); size == 0 || unicode.IsUpper(next) {
+		return text
+	}
+	return string(unicode.ToLower(r)) + text[size:]
 }
 
 // keys returns the keys of the value
