@@ -35,7 +35,9 @@ func (r *Registry) Ready() <-chan struct{} {
 // they're needed. With a store of sessions, the changes others make to
 // them, which it sends as events, are published as the registry's own. With
 // a store of agents, and a toolkit, the stored agents are made tools, when
-// it starts.
+// it starts. With a store of sessions, and WithSessionRetention, the
+// sessions which haven't changed for longer than they're kept are deleted,
+// when it starts, and every RetentionInterval.
 func (r *Registry) Run(ctx context.Context, logger *slog.Logger) error {
 	if logger == nil {
 		logger = slog.New(slog.DiscardHandler)
@@ -100,10 +102,22 @@ func (r *Registry) Run(ctx context.Context, logger *slog.Logger) error {
 	r.readyOnce.Do(func() { close(r.ready) })
 	ticker := time.NewTicker(PingInterval)
 	defer ticker.Stop()
+
+	// The sessions which haven't changed for longer than they're kept are
+	// deleted, when it starts, and every RetentionInterval
+	var retention <-chan time.Time
+	if r.sessionRetention > 0 && r.sessionStore != nil {
+		r.deleteOldSessions(ctx, logger)
+		t := time.NewTicker(RetentionInterval)
+		defer t.Stop()
+		retention = t.C
+	}
 	for {
 		select {
 		case <-ctx.Done():
 			return nil
+		case <-retention:
+			r.deleteOldSessions(ctx, logger)
 		case err := <-storeDone:
 			return err
 		case err := <-sessionDone:

@@ -1,7 +1,10 @@
 package registry
 
 import (
+	"context"
 	"slices"
+	"time"
+	"uuid"
 
 	// Packages
 	client "github.com/mutablelogic/go-client"
@@ -30,6 +33,12 @@ type opt struct {
 	toolkit       *toolkit.Toolkit
 	broadcaster   *broadcaster.Broadcaster
 	resources     Resources
+
+	// How long a session is kept after it was last changed, or zero, when
+	// it's kept until it's deleted, and the function which says whether a
+	// session which is older is kept, such as one with a heartbeat to fire
+	sessionRetention time.Duration
+	sessionKeep      func(context.Context, uuid.UUID) (bool, error)
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -62,6 +71,8 @@ func (o *opt) defaults() {
 	o.toolkit = nil
 	o.broadcaster = broadcaster.New()
 	o.resources = nil
+	o.sessionRetention = 0
+	o.sessionKeep = nil
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -181,6 +192,20 @@ func WithToolkit(tools *toolkit.Toolkit) Opt {
 			return llm.ErrBadParameter.With("missing toolkit")
 		}
 		o.toolkit = tools
+		return nil
+	}
+}
+
+// WithSessionRetention deletes the sessions which haven't changed for the
+// duration, as the registry runs, unless one is replying, or the function,
+// when it isn't nil, says it's kept, such as one with a heartbeat which
+// fires again. Zero keeps sessions until they're deleted.
+func WithSessionRetention(d time.Duration, keep func(context.Context, uuid.UUID) (bool, error)) Opt {
+	return func(o *opt) error {
+		if d < 0 {
+			return llm.ErrBadParameter.With("session retention can't be negative")
+		}
+		o.sessionRetention, o.sessionKeep = d, keep
 		return nil
 	}
 }

@@ -55,13 +55,14 @@ type ServerCommands struct {
 }
 
 type RunServer struct {
-	Registry    registrycmd.Flags    `embed:"" prefix:"llm."`
-	Toolkit     toolkitcmd.Flags     `embed:"" prefix:"llm."`
-	Broadcaster broadcastercmd.Flags `embed:"" prefix:"llm."`
-	Memory      memorycmd.Flags      `embed:"" prefix:"memory."`
-	Heartbeat   heartbeatcmd.Flags   `embed:"" prefix:"heartbeat."`
-	Resource    resourcecmd.Flags    `embed:"" prefix:"resource."`
-	Frontend    frontendcmd.Flags    `embed:""`
+	Registry    registrycmd.Flags        `embed:"" prefix:"llm."`
+	Session     registrycmd.SessionFlags `embed:"" prefix:"session."`
+	Toolkit     toolkitcmd.Flags         `embed:"" prefix:"llm."`
+	Broadcaster broadcastercmd.Flags     `embed:"" prefix:"llm."`
+	Memory      memorycmd.Flags          `embed:"" prefix:"memory."`
+	Heartbeat   heartbeatcmd.Flags       `embed:"" prefix:"heartbeat."`
+	Resource    resourcecmd.Flags        `embed:"" prefix:"resource."`
+	Frontend    frontendcmd.Flags        `embed:""`
 	servercmd.RunServer
 }
 
@@ -239,8 +240,27 @@ func (runner *RunServer) withToolkit(ctx server.Cmd, b *broadcaster.Broadcaster,
 				return runner.RunServer.Run(ctx.WithContext(runCtx))
 			})
 			return group.Wait()
-		}, registry.WithBroadcaster(b), registry.WithProviderStore(store), registry.WithSessionStore(sessions), registry.WithAgentStore(agents), registry.WithEventStore(outcomes), registry.WithEventBuilder(build), registry.WithToolkit(tools), registry.WithResources(res))
+		}, registry.WithBroadcaster(b), registry.WithProviderStore(store), registry.WithSessionStore(sessions), registry.WithAgentStore(agents), registry.WithEventStore(outcomes), registry.WithEventBuilder(build), registry.WithToolkit(tools), registry.WithResources(res), runner.Session.Opt(firesAgain(h)))
 	}, toolkit.WithBroadcaster(b))
+}
+
+// firesAgain returns the function which says whether a session is kept,
+// however long since it changed, as it has a heartbeat which fires again,
+// such as a reminder weeks away, which would otherwise have no session to
+// fire in
+func firesAgain(h *heartbeat.Heartbeats) func(context.Context, uuid.UUID) (bool, error) {
+	return func(ctx context.Context, id uuid.UUID) (bool, error) {
+		list, err := h.List(ctx, heartbeatschema.HeartbeatListRequest{Session: id.String()})
+		if err != nil {
+			return false, err
+		}
+		for _, heartbeat := range list.Body {
+			if heartbeat.Next != nil {
+				return true, nil
+			}
+		}
+		return false, nil
+	}
 }
 
 // newServerProviderStore returns the store of the providers, in a file of
