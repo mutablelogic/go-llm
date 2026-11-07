@@ -26,7 +26,7 @@ type ocr struct {
 
 // ocrInput is the input of the ocr tool
 type ocrInput struct {
-	URI   string `json:"uri" help:"URI of the image, or document, such as a PDF, which is resource://<hash>, as an attachment, or a tool's result, says"`
+	URI   string `json:"uri" help:"URI of the image, or document, such as a PDF, which is resource:///<hash>, as an attachment, or a tool's result, says"`
 	Model string `json:"model,omitempty" help:"Model which reads the text, by its name, such as mistral:mistral-ocr-latest, or the default, when it's omitted" optional:""`
 	Pages string `json:"pages,omitempty" help:"Pages of a document to read, from zero, such as 0,2-4, or all of them, when it's omitted" optional:""`
 	Name  string `json:"name,omitempty" help:"Name of a Markdown file the text is also kept in, such as report, which .md is added to, or the document's name, when only a title is given" optional:""`
@@ -50,7 +50,7 @@ func (*ocr) Name() string {
 }
 
 func (t *ocr) Description() string {
-	return withDefault("Reads the text in an image, or a document, such as a scanned page, or a PDF, which is an attachment, or a tool's result, by its URI, resource://<hash>, and returns it as Markdown. Use it to read a document's text exactly, rather than describing it.", t.model, "ocr")
+	return withDefault("Reads the text in an image, or a document, such as a scanned page, or a PDF, which is an attachment, or a tool's result, by its URI, resource:///<hash>, and returns it as Markdown. Use it to read a document's text exactly, rather than describing it.", t.model, "ocr")
 }
 
 func (*ocr) InputSchema() *jsonschema.Schema {

@@ -19,7 +19,7 @@ import type { Details } from '../schema/memory';
 import type { NotificationController } from './notifications';
 import type { StorageController } from './storage';
 import type { ResourcesController } from './resources';
-import { resourceName, resourceURI, type Resource } from '../schema/resource';
+import { resourceHash, resourceName, resourceURI, type Resource } from '../schema/resource';
 import { SessionList } from '../component/session-list';
 import { ChatView, type Piece } from '../component/chat-view';
 import { NewSession } from '../component/new-session';
@@ -385,11 +385,11 @@ export class ChatController {
     }
 
     // contentURL returns the URL of the content of the resource with the
-    // URI, resource://<hash>, in the chat which is open, which the browser
+    // URI, resource:///<hash>, in the chat which is open, which the browser
     // plays, shows, or downloads, or undefined, until the configuration is
     // read
     private contentURL(uri: string): string | undefined {
-        const hash = uri.startsWith('resource://') ? uri.slice('resource://'.length) : '';
+        const hash = resourceHash(uri) ?? '';
         if (this.prefix === undefined || !this.session || !/^[0-9a-f]{64}$/.test(hash)) {
             return undefined;
         }

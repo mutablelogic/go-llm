@@ -1,7 +1,7 @@
 // The resources' schema, which mirrors the resource package's
 
 // Resource is content, such as an image, a document or audio, which is kept
-// once, by its hash, its SHA-256, and referred to as resource://<hash>, in a
+// once, by its hash, its SHA-256, and referred to as resource:///<hash>, in a
 // session, or on its own
 export interface Resource {
     hash: string;
@@ -24,7 +24,14 @@ export interface ResourceList {
 // resourceURI returns the URI of the resource, by which a message's
 // attachment, or a tool, refers to it
 export function resourceURI(resource: Resource): string {
-    return 'resource://' + resource.hash;
+    return 'resource:///' + resource.hash;
+}
+
+// resourceHash returns the hash of a resource's URI, resource:///<hash>, or
+// resource://<hash>, as it was before, or undefined, when it isn't one
+export function resourceHash(uri: string): string | undefined {
+    const match = uri.trim().match(/^resource:\/\/\/?([0-9a-fA-F]{64})$/);
+    return match ? match[1].toLowerCase() : undefined;
 }
 
 // resourceTitle returns what the resource is called, for people: its

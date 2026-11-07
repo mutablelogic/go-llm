@@ -27,7 +27,7 @@ type illustrate struct {
 // illustrateInput is the input of the illustrate tool
 type illustrateInput struct {
 	Prompt      string   `json:"prompt" help:"What to make, or how to change the images, described in detail: the subject, its setting, the style, and the mood"`
-	Images      []string `json:"images,omitempty" help:"URIs of images to change, or combine, which are resource://<hash>, as attachments, or tools' results, say, or none, to make a new image" optional:""`
+	Images      []string `json:"images,omitempty" help:"URIs of images to change, or combine, which are resource:///<hash>, as attachments, or tools' results, say, or none, to make a new image" optional:""`
 	AspectRatio string   `json:"aspect_ratio,omitempty" help:"Aspect ratio of the image, such as 1:1, 16:9 or 9:16, or the model's, when it's omitted" optional:""`
 	Model       string   `json:"model,omitempty" help:"Model which makes the image, by its name, such as gemini:gemini-3.1-flash-lite-image" optional:""`
 	Name        string   `json:"name,omitempty" help:"Name of the image's file, such as banana, which its format's extension is added to, or image, when it's omitted" optional:""`
@@ -49,7 +49,7 @@ func (*illustrate) Name() string {
 }
 
 func (*illustrate) Description() string {
-	return withDefault("Makes an image from a description, or changes, or combines, images, which are attachments, or tools' results, by their URIs, resource://<hash>, as the description says, such as \"put it at sunset\". The image is kept, and returned as a link, which the person sees. Use it when the person asks for a picture, a drawing, or an illustration, or to change one.", "", "image_output")
+	return withDefault("Makes an image from a description, or changes, or combines, images, which are attachments, or tools' results, by their URIs, resource:///<hash>, as the description says, such as \"put it at sunset\". The image is kept, and returned as a link, which the person sees. Use it when the person asks for a picture, a drawing, or an illustration, or to change one.", "", "image_output")
 }
 
 func (*illustrate) InputSchema() *jsonschema.Schema {

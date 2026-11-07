@@ -163,7 +163,7 @@ func WithEventBuilder(fn EventBuilder) Opt {
 
 // WithResources sets the resources, which messages' attachments, and the
 // audio, documents and images which are transcribed, recognized, or
-// embedded, refer to by their URIs, which are resource://<hash>, whose
+// embedded, refer to by their URIs, which are resource:///<hash>, whose
 // content is read, as they're sent to a model, or none, when attachments
 // can't refer to resources
 func WithResources(resources Resources) Opt {

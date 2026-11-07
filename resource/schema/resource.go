@@ -222,19 +222,21 @@ func (r ResourceListRequest) Query() url.Values {
 ///////////////////////////////////////////////////////////////////////////////
 // PUBLIC FUNCTIONS
 
-// URI returns the URI of the resource with the hash
+// URI returns the URI of the resource with the hash, which is
+// resource:///<hash>, whose hash is its path, as it has no host
 func URI(hash string) string {
-	return Scheme + "://" + hash
+	return Scheme + ":///" + hash
 }
 
 // ParseURI returns the hash of the resource with the URI, which is
-// resource://, followed by its hash. Returns ErrBadParameter when it isn't.
+// resource:///<hash>, or resource:///<hash>, as it was before, whose hash was
+// its host. Returns ErrBadParameter when it isn't.
 func ParseURI(uri string) (string, error) {
 	hash, ok := strings.CutPrefix(strings.TrimSpace(uri), Scheme+"://")
 	if !ok {
-		return "", llm.ErrBadParameter.Withf("%q isn't a resource's URI, which is %s://<hash>", uri, Scheme)
+		return "", llm.ErrBadParameter.Withf("%q isn't a resource's URI, which is %s:///<hash>", uri, Scheme)
 	}
-	return ParseHash(hash)
+	return ParseHash(strings.TrimPrefix(hash, "/"))
 }
 
 // ParseHash returns the hash, in lower case, or ErrBadParameter when it

@@ -31,7 +31,7 @@ import (
 
 type AskCmd struct {
 	Text   []string                   `arg:"" name:"text" help:"The question to ask, which can be more than one argument."`
-	Attach []string                   `name:"attach" short:"a" aliases:"file" sep:"none" help:"A file the question is about, or a resource, by its URI, resource://<hash>, which can be given more than once. A file of text, such as code or subtitles, is sent as text, with its name, and anything else, such as an image or a PDF, is attached as a resource on its own, which is uploaded, unless it was before, and which the model must accept." optional:""`
+	Attach []string                   `name:"attach" short:"a" aliases:"file" sep:"none" help:"A file the question is about, or a resource, by its URI, resource:///<hash>, which can be given more than once. A file of text, such as code or subtitles, is sent as text, with its name, and anything else, such as an image or a PDF, is attached as a resource on its own, which is uploaded, unless it was before, and which the model must accept." optional:""`
 	Model  string                     `name:"model" help:"Model name, or provider and model name separated by a colon, such as ollama:llama3.2:latest. Defaults to the model last asked." optional:""`
 	System string                     `name:"system" help:"A system prompt, such as instructions on how to reply." optional:""`
 	Tools  []string                   `name:"tool" help:"Name of a tool the model can call, such as weatherapi:current, or weatherapi:* for all the tools in a namespace, which can be given more than once. The model's calls are printed, rather than run." optional:""`
@@ -197,7 +197,7 @@ func attachmentBlock(value string, upload uploadFunc) (providerschema.ContentBlo
 }
 
 // isResourceURI returns whether the value is a resource's URI, which is
-// resource://<hash>, rather than a file
+// resource:///<hash>, rather than a file
 func isResourceURI(value string) bool {
 	return strings.HasPrefix(strings.TrimSpace(value), resourceschema.Scheme+"://")
 }

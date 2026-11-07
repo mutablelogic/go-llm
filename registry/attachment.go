@@ -24,7 +24,7 @@ import (
 // TYPES
 
 // Resources are content, such as images, documents and audio, which is kept
-// once, and referred to by its URI, which is resource://<hash>, which is in
+// once, and referred to by its URI, which is resource:///<hash>, which is in
 // a session, or on its own, such as the resource package's manager
 type Resources interface {
 	// Resource returns the resource with the URI, in the session, or on its
@@ -599,7 +599,7 @@ func refersToResources(message providerschema.Message) bool {
 }
 
 // isResourceURL returns whether the attachment refers to a resource, by its
-// URI, which is resource://<hash>
+// URI, which is resource:///<hash>
 func isResourceURL(attachment *providerschema.Resource) bool {
 	return attachment != nil && attachment.URL != nil && attachment.URL.Scheme == resourceschema.Scheme
 }

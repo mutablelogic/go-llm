@@ -51,7 +51,7 @@ func storeFrom(ctx context.Context) StoreFunc {
 }
 
 // ResolveFunc returns the resources with the URIs, such as
-// resource://<hash>, which a tool is given, in the session the tool runs
+// resource:///<hash>, which a tool is given, in the session the tool runs
 // in, or on their own, whose content is read from where it's kept, once for
 // each URI, and together within a limit, in the same order
 type ResolveFunc func(ctx context.Context, uris ...string) ([]llm.Resource, error)
@@ -65,7 +65,7 @@ func WithResolver(ctx context.Context, fn ResolveFunc) context.Context {
 	return context.WithValue(ctx, resolveKey{}, fn)
 }
 
-// Resource returns the resource with the URI, such as resource://<hash>,
+// Resource returns the resource with the URI, such as resource:///<hash>,
 // which the tool running in the context is given, with the context's
 // resolve function. Returns ErrNotImplemented when there's none, such as
 // when a tool is called without a session, or the registry's resources,

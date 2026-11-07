@@ -37,7 +37,7 @@ import (
 // terminal to chat in the session
 type ChatCmd struct {
 	Text    []string  `arg:"" name:"text" help:"The question to ask, which can be more than one argument, or, without one, chat in the terminal." optional:""`
-	Attach  []string  `name:"attach" short:"a" aliases:"file" sep:"none" help:"A file the question is about, or a resource, by its URI, resource://<hash>, which can be given more than once. A file of text, such as code or subtitles, is sent as text, with its name, and anything else, such as an image or a PDF, is attached as a resource of the session, which is uploaded, unless it was before, and which the model must accept." optional:""`
+	Attach  []string  `name:"attach" short:"a" aliases:"file" sep:"none" help:"A file the question is about, or a resource, by its URI, resource:///<hash>, which can be given more than once. A file of text, such as code or subtitles, is sent as text, with its name, and anything else, such as an image or a PDF, is attached as a resource of the session, which is uploaded, unless it was before, and which the model must accept." optional:""`
 	Session uuid.UUID `name:"session" help:"Session identifier, which is a UUID, or the default session, which this is then." optional:""`
 	Stream  bool      `name:"stream" negatable:"" default:"true" help:"Print the reply as it's generated, or with --no-stream, once it's complete, rendered as markdown on a terminal."`
 }

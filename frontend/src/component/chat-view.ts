@@ -20,7 +20,7 @@ import Music16 from '@carbon/icons/es/music/16.js';
 import Video16 from '@carbon/icons/es/video/16.js';
 import PlayFilledAlt16 from '@carbon/icons/es/play--filled--alt/16.js';
 import { MediaPlayer, playable, type Media } from './media-player';
-import { resourceName, type Resource } from '../schema/resource';
+import { resourceName, type Resource, resourceHash } from '../schema/resource';
 import { canonicalTool, isUser, type ContentBlock, type Message, type Session } from '../schema/session';
 import { detailValue, type Details } from '../schema/memory';
 import { markdown, markdownStyles } from './markdown';
@@ -62,15 +62,15 @@ interface Attachment {
 }
 
 // AttachmentName returns the name of the resource an attachment refers to,
-// by its URL, such as resource://<hash>, when it's known
+// by its URL, such as resource:///<hash>, when it's known
 export type AttachmentName = (url: string) => string | undefined;
 
 // ResourceType returns the type of the resource with the URI,
-// resource://<hash>, when it's known
+// resource:///<hash>, when it's known
 export type ResourceType = (uri: string) => string | undefined;
 
 // ContentURL returns the URL of the content of the resource with the URI,
-// resource://<hash>, which the browser plays, shows, or downloads, or
+// resource:///<hash>, which the browser plays, shows, or downloads, or
 // undefined, when it isn't known
 export type ContentURL = (uri: string) => string | undefined;
 
@@ -447,7 +447,7 @@ export class ChatView extends LitElement {
         if (!link || !match) {
             return;
         }
-        const uri = 'resource://' + match[1];
+        const uri = 'resource:///' + match[1];
         this.playLink(event, { url: link.getAttribute('href')!, name: link.textContent?.trim() || this.attachmentName(uri) || 'Media', type: this.resourceType(uri) });
     };
 
@@ -572,7 +572,7 @@ function resultResources(content: unknown): { uri: string; name?: string; title?
         return [];
     }
     return resources.filter((resource): resource is { uri: string; name?: string; title?: string; type?: string } =>
-        typeof resource?.uri === 'string' && resource.uri.startsWith('resource://'));
+        typeof resource?.uri === 'string' && resourceHash(resource.uri) !== undefined);
 }
 
 // attachmentIcon returns the icon of an attachment of the type: an image,

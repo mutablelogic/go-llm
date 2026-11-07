@@ -5,7 +5,7 @@
 // such as when a tool returns one.
 
 import { contentURL, createResource, deleteResource, listResources } from '../api/resource';
-import { resourceName, resourceTitle, type Resource } from '../schema/resource';
+import { resourceHash, resourceName, resourceTitle, type Resource } from '../schema/resource';
 import type { NotificationController } from './notifications';
 import { ResourcePanel } from '../component/resource-panel';
 import { Panel } from '../component/panel';
@@ -144,17 +144,17 @@ export class ResourcesController {
     }
 
     // name returns the name of the resource an attachment refers to, by its
-    // URL, such as resource://<hash>, when it's known
+    // URL, such as resource:///<hash>, when it's known
     name(url: string): string | undefined {
-        const hash = url.startsWith('resource://') ? url.slice('resource://'.length) : undefined;
+        const hash = resourceHash(url);
         const resource = hash ? this.known.get(hash) : undefined;
         return resource ? resourceTitle(resource) : undefined;
     }
 
     // type returns the type of the resource an attachment refers to, by its
-    // URL, such as resource://<hash>, when it's known
+    // URL, such as resource:///<hash>, when it's known
     type(url: string): string | undefined {
-        const hash = url.startsWith('resource://') ? url.slice('resource://'.length) : undefined;
+        const hash = resourceHash(url);
         return hash ? this.known.get(hash)?.type : undefined;
     }
 

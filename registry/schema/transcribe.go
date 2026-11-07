@@ -18,7 +18,7 @@ type TranscribeRequest struct {
 	Model string                     `json:"model" help:"Model which transcribes speech, by name, or by provider and name" example:"openai:whisper-1"`
 	Type  string                     `json:"type,omitempty" help:"MIME type of the audio, which is needed with its data" example:"audio/mpeg" optional:""`
 	Data  []byte                     `json:"data,omitempty" help:"Data of the audio, encoded as base64, or its URL" example:"SUQzBAAAAAAA" optional:""`
-	URL   string                     `json:"url,omitempty" help:"URI of a resource, which is resource://<hash>, on its own, whose content is read, rather than the data, whose type is the resource's, unless it's given" example:"resource://9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08" optional:""`
+	URL   string                     `json:"url,omitempty" help:"URI of a resource, which is resource:///<hash>, on its own, whose content is read, rather than the data, whose type is the resource's, unless it's given" example:"resource:///9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08" optional:""`
 	Opt   map[string]json.RawMessage `json:"opt,omitzero" help:"Options, by key, such as language=en, segments=true, and speakers=true, which the provider decodes" example:"{\"segments\":true}" optional:""`
 }
 
