@@ -28,6 +28,8 @@ type ocrInput struct {
 	URI   string `json:"uri" help:"URI of the image, or document, such as a PDF, which is resource://<hash>, as an attachment, or a tool's result, says"`
 	Model string `json:"model,omitempty" help:"Model which reads the text, by its name, such as mistral:mistral-ocr-latest, or the default, when it's omitted" optional:""`
 	Pages string `json:"pages,omitempty" help:"Pages of a document to read, from zero, such as 0,2-4, or all of them, when it's omitted" optional:""`
+	Name  string `json:"name,omitempty" help:"Name of a Markdown file the text is also kept in, such as report, which .md is added to, or the document's name, when only a title is given" optional:""`
+	Title string `json:"title,omitempty" help:"Title of a Markdown file the text is also kept in, for people, such as The quarterly report. With a name, or a title, the text is kept as a file of the chat, as well as returned" optional:""`
 }
 
 // ocrOutput is the text of the image, or document, as Markdown, with the
@@ -89,7 +91,12 @@ func (t *ocr) Run(ctx context.Context, input json.RawMessage) (any, error) {
 	for _, page := range document.Pages {
 		texts = append(texts, strings.TrimSpace(page.Text))
 	}
-	return ocrOutput{Text: strings.Join(texts, "\n\n---\n\n"), Pages: len(document.Pages)}, nil
+	output := ocrOutput{Text: strings.Join(texts, "\n\n---\n\n"), Pages: len(document.Pages)}
+	if strings.TrimSpace(req.Name) == "" && strings.TrimSpace(req.Title) == "" {
+		return output, nil
+	}
+	file := textFile(output.Text, "text/markdown; charset=utf-8", ".md", req.Name, req.Title, resource, "text")
+	return toolkit.Result{Value: output, Resources: []gollm.Resource{file}}, nil
 }
 
 ///////////////////////////////////////////////////////////////////////////////

@@ -200,7 +200,7 @@ func (r *Registry) toolStore(session uuid.UUID) toolkit.StoreFunc {
 		}); err != nil {
 			return toolschema.ResourceLink{}, err
 		}
-		return toolschema.ResourceLink{URI: created.URI(), Name: created.Name, Type: created.Type, Size: created.Size}, nil
+		return toolschema.ResourceLink{URI: created.URI(), Name: created.Name, Title: created.Description, Type: created.Type, Size: created.Size}, nil
 	}
 }
 

@@ -217,8 +217,13 @@ func (snapshotTool) Name() string                    { return "snapshot" }
 func (snapshotTool) Description() string             { return "Takes a picture" }
 func (snapshotTool) InputSchema() *jsonschema.Schema { return nil }
 func (snapshotTool) Run(context.Context, json.RawMessage) (any, error) {
-	return &providerschema.Resource{ResourceMeta: providerschema.ResourceMeta{ContentType: "image/png", Data: []byte(pngData)}}, nil
+	return titled{&providerschema.Resource{ResourceMeta: providerschema.ResourceMeta{ContentType: "image/png", Data: []byte(pngData)}}}, nil
 }
+
+// titled is a resource with a description, which its link's title is
+type titled struct{ *providerschema.Resource }
+
+func (titled) Description() string { return "At the door" }
 
 func Test_ToolResources(t *testing.T) {
 	ctx := context.Background()
@@ -255,6 +260,7 @@ func Test_ToolResources(t *testing.T) {
 	require.Len(t, links.Resources, 1)
 	link := links.Resources[0]
 	assert.Equal(t, "image/png", link.Type)
+	assert.Equal(t, "At the door", link.Title, "its title is its description")
 	assert.Equal(t, int64(len(pngData)), link.Size)
 	assert.NotContains(t, string(result.Content), "data", "the result has a link, rather than the data")
 	got, err := manager.Resource(ctx, link.URI, &session.ID)

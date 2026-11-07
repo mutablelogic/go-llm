@@ -9,6 +9,7 @@ import (
 
 	// Packages
 	gollm "github.com/mutablelogic/go-llm"
+	providerschema "github.com/mutablelogic/go-llm/provider/schema"
 	toolkit "github.com/mutablelogic/go-llm/toolkit"
 	jsonschema "github.com/mutablelogic/go-server/pkg/jsonschema"
 )
@@ -33,13 +34,17 @@ type speakInput struct {
 	Instructions string `json:"instructions,omitempty" help:"How the text is spoken, such as calmly, or cheerfully, for a model which takes them" optional:""`
 	Model        string `json:"model,omitempty" help:"Model which speaks the text, by its name, such as ollama:phonon:latest, or the default, when it's omitted" optional:""`
 	Name         string `json:"name,omitempty" help:"Name of the audio's file, such as morning-briefing, which its format's extension is added to, or speech, when it's omitted" optional:""`
+	Title        string `json:"title,omitempty" help:"Title of the audio, for people, such as Ode to David, which it's shown, and played, with" optional:""`
 }
 
-// audio is the audio which was spoken, with its name, which is the one the
-// model gave, or speech, with its format's extension
-type audio struct {
+// named is a resource a tool returns, such as audio which was spoken, or
+// text which was read, with its name, which is the one the model gave, or
+// one of its own, with its format's extension, and its title, which is its
+// description
+type named struct {
 	gollm.Resource
-	name string
+	name  string
+	title string
 }
 
 var _ gollm.Tool = (*speak)(nil)
@@ -94,15 +99,21 @@ func (t *speak) Run(ctx context.Context, input json.RawMessage) (any, error) {
 		return nil, err
 	}
 	toolkit.SessionFromContext(ctx).Usage(usage)
-	return &audio{Resource: spoken, name: audioName(req.Name, spoken.Type())}, nil
+	return &named{Resource: spoken, name: audioName(req.Name, spoken.Type()), title: oneLine(req.Title)}, nil
 }
 
 ///////////////////////////////////////////////////////////////////////////////
 // PRIVATE METHODS
 
-// Name returns the audio's name, with its format's extension
-func (a *audio) Name() string {
-	return a.name
+// Name returns the resource's name, with its format's extension
+func (n *named) Name() string {
+	return n.name
+}
+
+// Description returns the resource's title, which the model gave, which
+// it's kept with, as its description, and shown with
+func (n *named) Description() string {
+	return n.title
 }
 
 // audioName returns the name of audio of the type, which is the name the
@@ -152,4 +163,29 @@ func fileName(name string) string {
 		name = strings.TrimSpace(string(runes[:100]))
 	}
 	return name
+}
+
+// oneLine returns the text on one line, with its runs of white space as one
+// space, and at most 200 characters, as a title is
+func oneLine(text string) string {
+	text = strings.Join(strings.Fields(text), " ")
+	if runes := []rune(text); len(runes) > 200 {
+		text = strings.TrimSpace(string(runes[:200]))
+	}
+	return text
+}
+
+// textFile returns the text, as a file of the type, named as the model
+// gave, or else after the resource it was read from, such as scan, or else
+// the fallback, with the extension, and with the title, as its description
+func textFile(text, contentType, ext, given, title string, from gollm.Resource, fallback string) gollm.Resource {
+	name := fileName(given)
+	if name == "" && from != nil && !strings.Contains(from.Name(), "://") {
+		name = fileName(from.Name())
+	}
+	if name == "" {
+		name = fallback
+	}
+	file := &providerschema.Resource{ResourceMeta: providerschema.ResourceMeta{ContentType: contentType, Data: []byte(text)}}
+	return &named{Resource: file, name: name + ext, title: oneLine(title)}
 }

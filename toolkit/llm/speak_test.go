@@ -91,6 +91,13 @@ func (m *models) Transcribe(_ context.Context, _ gollm.Model, _ gollm.Resource, 
 		return gollm.Transcript{}, gollm.Usage{}, err
 	}
 	m.opts = o
+	if segments, _ := gollm.GetOpt[bool](o, gollm.SegmentsKey); segments {
+		return gollm.Transcript{Text: "Bonjour. Salut. Ça va?", Language: "fr", Segments: []gollm.TranscriptSegment{
+			{Start: 0, End: 1500 * time.Millisecond, Text: "Bonjour.", Speaker: "A"},
+			{Start: 1500 * time.Millisecond, End: 3 * time.Second, Text: "Salut.", Speaker: "A"},
+			{Start: 3 * time.Second, End: 4 * time.Second, Text: "Ça va?", Speaker: "B"},
+		}}, gollm.Usage{}, nil
+	}
 	return gollm.Transcript{Text: "Bonjour", Language: "fr"}, gollm.Usage{}, nil
 }
 
@@ -361,4 +368,96 @@ func Test_SpeakName(t *testing.T) {
 		require.NoError(t, err, name)
 		assert.Equal(t, want, result.(gollm.Resource).Name(), name)
 	}
+}
+
+func Test_SpeakTitle(t *testing.T) {
+	// The audio has the title the model gave, on one line, as its
+	// description, which it's kept, and shown, with
+	ctx := context.Background()
+	ns, err := llm.New(func() llm.Models { return &models{} }, llm.WithSpeak("phonon", ""))
+	require.NoError(t, err)
+	result, err := ns.Tools()[0].Run(ctx, json.RawMessage(`{"text":"Hello","name":"ode","title":"  Ode to\n David  "}`))
+	require.NoError(t, err)
+	audio := result.(gollm.Resource)
+	assert.Equal(t, "ode.wav", audio.Name())
+	assert.Equal(t, "Ode to David", audio.Description())
+	result, err = ns.Tools()[0].Run(ctx, json.RawMessage(`{"text":"Hello"}`))
+	require.NoError(t, err)
+	assert.Empty(t, result.(gollm.Resource).Description())
+}
+
+func Test_TextFiles(t *testing.T) {
+	// With a format, a name, or a title, the text which is read, or the
+	// transcript, is kept as a file, as well as returned
+	ctx := toolkit.WithResolver(context.Background(), func(_ context.Context, uri string) (gollm.Resource, error) {
+		types := map[string]string{"resource://pdf": "application/pdf", "resource://wav": "audio/wav"}
+		return &providerschema.Resource{ResourceMeta: providerschema.ResourceMeta{ContentType: types[uri], Data: []byte("Report")}}, nil
+	})
+	ns, err := llm.New(func() llm.Models { return &models{} }, llm.WithOCR("phonon"), llm.WithTranscribe("phonon"))
+	require.NoError(t, err)
+	ocr, transcribe := ns.Tools()[1], ns.Tools()[2]
+	file := func(result any) (gollm.Resource, string) {
+		t.Helper()
+		r, ok := result.(toolkit.Result)
+		require.True(t, ok, "a result with a file")
+		require.Len(t, r.Resources, 1)
+		data, err := gollm.ReadAll(ctx, r.Resources[0])
+		require.NoError(t, err)
+		return r.Resources[0], string(data)
+	}
+
+	// Without them, only the text
+	result, err := transcribe.Run(ctx, json.RawMessage(`{"uri":"resource://wav"}`))
+	require.NoError(t, err)
+	_, isResult := result.(toolkit.Result)
+	assert.False(t, isResult)
+
+	// Subtitles, with when each part was said
+	result, err = transcribe.Run(ctx, json.RawMessage(`{"uri":"resource://wav","format":"srt"}`))
+	require.NoError(t, err)
+	f, content := file(result)
+	assert.Equal(t, "transcript.srt", f.Name())
+	assert.Equal(t, "application/x-subrip; charset=utf-8", f.Type())
+	assert.Empty(t, f.Description())
+	assert.Contains(t, content, "00:00:00,000 --> ")
+	result, err = transcribe.Run(ctx, json.RawMessage(`{"uri":"resource://wav","format":"vtt","name":"chat"}`))
+	require.NoError(t, err)
+	f, content = file(result)
+	assert.Equal(t, "chat.vtt", f.Name())
+	assert.Equal(t, "text/vtt; charset=utf-8", f.Type())
+	assert.True(t, strings.HasPrefix(content, "WEBVTT"))
+
+	// Markdown, with its title, as its heading, and who said what
+	result, err = transcribe.Run(ctx, json.RawMessage(`{"uri":"resource://wav","format":"markdown","title":"A chat"}`))
+	require.NoError(t, err)
+	f, content = file(result)
+	assert.Equal(t, "transcript.md", f.Name())
+	assert.Equal(t, "text/markdown; charset=utf-8", f.Type())
+	assert.Equal(t, "A chat", f.Description())
+	assert.Equal(t, "# A chat\n\n**A:** Bonjour. Salut.\n\n**B:** Ça va?\n", content)
+
+	// Text, with a name
+	result, err = transcribe.Run(ctx, json.RawMessage(`{"uri":"resource://wav","name":"interview"}`))
+	require.NoError(t, err)
+	f, content = file(result)
+	assert.Equal(t, "interview.txt", f.Name())
+	assert.Equal(t, "text/plain; charset=utf-8", f.Type())
+	assert.Equal(t, "Bonjour\n", content)
+
+	// A format which isn't one
+	_, err = transcribe.Run(ctx, json.RawMessage(`{"uri":"resource://wav","format":"docx"}`))
+	assert.ErrorIs(t, err, gollm.ErrBadParameter)
+
+	// The text of a document, as Markdown, with its title
+	result, err = ocr.Run(ctx, json.RawMessage(`{"uri":"resource://pdf","title":"The report"}`))
+	require.NoError(t, err)
+	f, content = file(result)
+	assert.Equal(t, "text.md", f.Name())
+	assert.Equal(t, "text/markdown; charset=utf-8", f.Type())
+	assert.Equal(t, "The report", f.Description())
+	assert.Contains(t, content, "# Report")
+	result, err = ocr.Run(ctx, json.RawMessage(`{"uri":"resource://pdf"}`))
+	require.NoError(t, err)
+	_, isResult = result.(toolkit.Result)
+	assert.False(t, isResult)
 }

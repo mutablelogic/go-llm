@@ -5,7 +5,7 @@
 // such as when a tool returns one.
 
 import { contentURL, createResource, deleteResource, listResources } from '../api/resource';
-import { resourceName, type Resource } from '../schema/resource';
+import { resourceName, resourceTitle, type Resource } from '../schema/resource';
 import type { NotificationController } from './notifications';
 import { ResourcePanel } from '../component/resource-panel';
 import { Panel } from '../component/panel';
@@ -148,7 +148,7 @@ export class ResourcesController {
     name(url: string): string | undefined {
         const hash = url.startsWith('resource://') ? url.slice('resource://'.length) : undefined;
         const resource = hash ? this.known.get(hash) : undefined;
-        return resource ? resourceName(resource) : undefined;
+        return resource ? resourceTitle(resource) : undefined;
     }
 
     // type returns the type of the resource an attachment refers to, by its
@@ -243,7 +243,7 @@ export class ResourcesController {
     // play plays the resource, which is audio, or video, in the player
     private async play(resource: Resource) {
         const url = await contentURL(resource.hash, resource.session ?? this.session);
-        const media: Media = { url, name: resourceName(resource), type: resource.type };
+        const media: Media = { url, name: resourceTitle(resource), type: resource.type };
         document.dispatchEvent(new CustomEvent(MediaPlayer.eventPlay, { detail: media }));
     }
 
