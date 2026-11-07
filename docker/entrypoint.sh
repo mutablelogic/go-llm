@@ -120,6 +120,7 @@ if [ "${TRIES}" -gt 0 ] && [ -z "${STOPPING}" ]; then
     [ -n "${GOWHISPER_ADDR}" ] && add provider-create-gowhisper "${GOWHISPER_ADDR}"
     [ -n "${OPENAI_API_KEY}" ] && add provider-create-openai --api-key-credential OPENAI_API_KEY
     [ -n "${ANTHROPIC_API_KEY}" ] && add provider-create-anthropic --api-key-credential ANTHROPIC_API_KEY
+    [ -n "${GEMINI_API_KEY}" ] && add provider-create-gemini --api-key-credential GEMINI_API_KEY
     [ -n "${DEEPSEEK_API_KEY}" ] && add provider-create-deepseek --api-key-credential DEEPSEEK_API_KEY
     [ -n "${MISTRAL_API_KEY}" ] && add provider-create-mistral --api-key-credential MISTRAL_API_KEY
     [ -n "${ELEVENLABS_API_KEY}" ] && add provider-create-elevenlabs --api-key-credential ELEVENLABS_API_KEY

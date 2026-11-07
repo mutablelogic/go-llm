@@ -28,6 +28,8 @@ type fakeAPI struct {
 	counts   atomic.Int32
 	failures atomic.Int32
 	embedded batchEmbedRequest // The last request to embed messages
+	reply    []string          // The pieces of the reply the next request to generate streams
+	asked    generateRequest   // The last request to generate
 }
 
 // models are the fake's models, by page
@@ -91,6 +93,16 @@ func newFakeAPI(t *testing.T) *fakeAPI {
 				}{Values: []float32{float32(len(embed.Content.Parts[0].Text)), float32(len(embed.Content.Parts))}})
 			}
 			_ = json.NewEncoder(w).Encode(response)
+		case r.Method == http.MethodPost && strings.HasSuffix(r.URL.Path, ":streamGenerateContent"):
+			// The reply, streamed, as server-sent events
+			require.Equal(t, "sse", r.URL.Query().Get("alt"))
+			var req generateRequest
+			require.NoError(t, json.NewDecoder(r.Body).Decode(&req))
+			api.asked = req
+			w.Header().Set("Content-Type", "text/event-stream")
+			for _, piece := range api.reply {
+				_, _ = w.Write([]byte("data: " + piece + "\r\n\r\n"))
+			}
 		case r.Method == http.MethodPost && strings.HasSuffix(r.URL.Path, ":countTokens"):
 			if api.failures.Load() > 0 {
 				api.failures.Add(-1)

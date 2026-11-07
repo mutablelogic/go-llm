@@ -3,7 +3,7 @@
 [![Go Reference](https://pkg.go.dev/badge/github.com/mutablelogic/go-llm.svg)](https://pkg.go.dev/github.com/mutablelogic/go-llm)
 [![License](https://img.shields.io/badge/license-Apache-blue.svg)](LICENSE)
 
-go-llm is a server, command-line tool and Go SDK which puts large language models and speech models from several providers behind one interface. You add providers, such as Ollama, OpenAI, Anthropic, Mistral, [go-whisper](https://github.com/mutablelogic/go-whisper) and ElevenLabs, and then ask any of their models to reply to messages, call tools, run agents, embed text and images, read the text in documents, and transcribe and translate speech. The same operations are available as a REST API, from the `llm` command, which includes an interactive chat in the terminal, or directly from Go.
+go-llm is a server, command-line tool and Go SDK which puts large language models and speech models from several providers behind one interface. You add providers, such as Ollama, OpenAI, Anthropic, Google Gemini, Mistral, [go-whisper](https://github.com/mutablelogic/go-whisper) and ElevenLabs, and then ask any of their models to reply to messages, call tools, run agents, embed text and images, read the text in documents, and transcribe and translate speech. The same operations are available as a REST API, from the `llm` command, which includes an interactive chat in the terminal, or directly from Go.
 
 ## Quick Start
 
@@ -24,7 +24,7 @@ Then open [http://localhost:8084/](http://localhost:8084/), to chat, and see the
 
 `host.docker.internal` is the machine Docker runs on, such as for an Ollama server which runs there, which Docker Desktop has, and Linux has with `--add-host=host.docker.internal:host-gateway`.
 
-When it's first started, the server has the Eliza provider, unless `NO_ELIZA` is set, and those whose variables are set: `OLLAMA_ADDR` and `GOWHISPER_ADDR`, as their URLs, and `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `DEEPSEEK_API_KEY`, `MISTRAL_API_KEY` and `ELEVENLABS_API_KEY`, whose keys are read from the container's environment when they're used, rather than stored. `UID` and `GID` set the user it runs as, such as the owner of a directory which is mounted at `/data`.
+When it's first started, the server has the Eliza provider, unless `NO_ELIZA` is set, and those whose variables are set: `OLLAMA_ADDR` and `GOWHISPER_ADDR`, as their URLs, and `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `GEMINI_API_KEY`, `DEEPSEEK_API_KEY`, `MISTRAL_API_KEY` and `ELEVENLABS_API_KEY`, whose keys are read from the container's environment when they're used, rather than stored. `UID` and `GID` set the user it runs as, such as the owner of a directory which is mounted at `/data`.
 
 Or run it with Docker Compose, whose [compose file](docker/compose.yaml) has every variable the server reads, from the environment, or a `.env` file, and, with the `ollama` profile, an Ollama server, which `OLLAMA_ADDR=http://ollama:11434` adds:
 
@@ -64,6 +64,10 @@ llm models
 
 # The models which can do something, such as read images and call tools
 llm models --capability vision,tools
+
+# The models which make images, or speak
+llm models --capability image
+llm models --capability speech
 ```
 
 ### 4. Ask, and chat
@@ -173,6 +177,7 @@ flowchart LR
         OpenAI["`**openai**
         OpenAI, Mistral, DeepSeek`"]
         Anthropic["`**anthropic**`"]
+        Gemini["`**gemini**`"]
         Whisper["`**gowhisper**`"]
         ElevenLabs["`**elevenlabs**`"]
         Eliza["`**eliza**
@@ -208,11 +213,11 @@ flowchart LR
     API --> Resource
     Resource --> Stores
     Toolkit --> Tools
-    Registry --> Ollama & OpenAI & Anthropic & Whisper & ElevenLabs & Eliza
+    Registry --> Ollama & OpenAI & Anthropic & Gemini & Whisper & ElevenLabs & Eliza
 
     classDef highlight fill:#e8f0fe,stroke:#1a73e8,stroke-width:2px,color:#111
     class CLI,Client,UI,Registry,Toolkit,Agents,Memory,Heartbeat,Events,Resource highlight
-    class Ollama,OpenAI,Anthropic,Whisper,ElevenLabs,Eliza highlight
+    class Ollama,OpenAI,Anthropic,Gemini,Whisper,ElevenLabs,Eliza highlight
 ```
 
 - The **client and CLI**: the `llm` command, in [cmd/llm](cmd/llm), runs the server, and is its client, with commands for each operation, and an interactive chat in the terminal, which streams replies and follows other clients of the same session. The Go client, [registry/httpclient](registry/httpclient), is what it uses to talk to the server.
@@ -232,12 +237,13 @@ The registry can be used without the server, from your own Go program, as the [e
 
 - **Providers**: add, update and remove providers while the server runs, and keep them in a store between restarts. A model is referred to by its name, or by its provider and name, such as `ollama:llama3.2:latest`.
 - **Ask**: a model's reply to messages, with a system prompt, options, tools whose calls are returned for the caller to run, and structured output with a JSON schema. Replies can be streamed as server-sent events.
-- **Chat**: a conversation with a model, in a session, which the server keeps, with its model, system prompt, tools, options and schema. The model calls the tools until it replies, and the conversation is shortened to fit its context. Chat in the terminal, in the web UI, or with the API, whose replies are streamed, and every client of a session sees its new messages, and whether someone is typing, or the model is replying.
+- **Chat**: a conversation with a model, in a session, which the server keeps, with its model, system prompt, tools, options and schema. The model calls the tools until it replies, and the conversation is shortened to fit its context. Chat in the terminal, in the web UI, or with the API, whose replies are streamed, and every client of a session sees its new messages, and whether someone is typing, or the model is replying. A conversation can change its model, such as from Claude to Gemini, and back, as each provider is sent the others' calls of tools, and their results, in a form it accepts.
 - **Agents**: named definitions of a prompt, its input, and how a model is asked it, with its system prompt, tools, options and the schema of its reply, which are kept, in YAML or JSON, and which models call as tools, in the `agent` namespace, however deep, with their progress streamed, and their tokens counted as their caller's. The server adds example agents when it starts, such as one which translates text, and the `event` agent, which runs a heartbeat which fires, in its own session, with what the system says of the person and the time in a `<system-reminder>` block, and replies with what the person is told, and whether they're alerted, notified, or it's ignored.
 - **Embed**: a vector for each message, of its text, and of images and audio for models which embed them.
 - **OCR**: the text of images and documents, such as PDFs, as Markdown, page by page, with the regions of each page and their boxes.
+- **Speak**: text as audio, with Ollama's `phonon` and OpenAI's speech models, in a voice, which `llm speak`, and `POST /llm/speak`, return, and the `llm:speak` tool keeps as a file of the chat.
 - **Transcribe and translate**: the speech in audio, as text, in its language or in English, with timed segments and speakers, streamed as it's transcribed, and printed as SRT or WebVTT subtitles.
-- **Models**: download, delete and unload models, for providers which store them, such as Ollama and go-whisper.
+- **Models**: download, delete and unload models, for providers which store them, such as Ollama and go-whisper, and list them by what they can do, such as `vision`, `ocr`, `speech`, or `image`, which is making images, with `llm models --capability`, or the `llm:models` tool, so a model, or an agent, can choose one.
 - **Tools**: a toolkit of tools, in namespaces, for Home Assistant, NewsAPI, WeatherAPI and Ollama's web search, which models can call.
 - **Memory**: the details of the person, and of the assistant, such as their names, location, time zone and language, which every session knows, as a model learns them, or they're set, and which can be declined, so they're never asked for; and memories, which a model searches, keeps and forgets, as Markdown, under keys, with versions, so a change is made to a memory as it was last seen. The server keeps each memory in a file, which can be read, and edited, by hand.
 - **Resources**: content, such as images, documents and audio, which is uploaded, or which a tool returns, as an MCP tool can, which is kept as a resource of the session the tool runs in, with a link to it in the tool's result, rather than its data, as a file, or the request's body, and streamed into the store, so a large file isn't held in memory, kept once, by its hash, however often it's uploaded, and downloaded, in ranges. A resource is in a session, and deleted with it, or on its own, and deleted once it hasn't been used for a day. Content which no resource refers to, and uploads which were interrupted, are cleaned up.
@@ -253,7 +259,7 @@ The registry can be used without the server, from your own Go program, as the [e
 | `ollama` | [Ollama](https://ollama.com) | ✅ | ✅ | ✅ (images) | | | ✅ (phonon) | Download, delete, unload |
 | `openai` | [OpenAI](https://platform.openai.com) | ✅ | ✅ | | ✅ | ✅ (whisper) | ✅ (tts) | |
 | `anthropic` | [Anthropic](https://www.anthropic.com)'s Claude models, which count tokens exactly, to fit a conversation to the model's context | ✅ | | | | | | |
-| `gemini` | [Google](https://ai.google.dev)'s Gemini models, which count tokens exactly. Replies are still to come | | ✅ (text, images, audio, PDFs) | | | | | |
+| `gemini` | [Google](https://ai.google.dev)'s Gemini models, which count tokens exactly, and keep a conversation another model started | ✅ | ✅ (text, images, audio, PDFs) | | | | | |
 | `openai` | [Mistral](https://mistral.ai), at `https://api.mistral.ai/v1` | ✅ | ✅ | ✅ | ✅ | | | |
 | `openai` | [DeepSeek](https://www.deepseek.com), and other OpenAI-compatible servers | ✅ | | | | | | |
 | `gowhisper` | [go-whisper](https://github.com/mutablelogic/go-whisper) | | | | ✅ | ✅ | | Download, delete |
@@ -297,7 +303,7 @@ Tools are added to the server's toolkit when their credentials, or settings, are
 |-----------|-------|-------------|
 | `memory` | Remember the details of the person, and the assistant, with the time in the system prompt, and search, keep and forget memories | None, as it's always added |
 | `heartbeat` | Schedule, list, update and cancel heartbeats, which are prompts which come back to the conversation, at a time, or on a schedule | None, as it's always added |
-| `llm` | `models`, `speak`, `ocr` and `transcribe` (which translates too): list the models with capabilities, such as `ocr` or `speech`, speak text, read the text in an image or document, and transcribe speech, with the model the calling model gives. The model uses the one the person chose for each capability, which it keeps in the memory `preferred_models`, with the `memory` tools, or otherwise asks them to choose one of those `models` lists, and remembers it. Audio which is spoken is kept as a resource of the session, and images, documents and audio are read by their URIs, `resource://<hash>`, which the model is told for each attachment | None, as it's always added. Choices are remembered with the `memory` tools |
+| `llm` | `models`, `speak`, `ocr` and `transcribe` (which translates too): list the models with capabilities, such as `ocr` or `speech`, speak text, read the text in an image or document, and transcribe speech, with the model the calling model gives. The model uses the one the person chose for each capability, which it keeps in the memory `preferred_models`, with the `memory` tools, or otherwise asks them to choose one of those `models` lists, and remembers it. Audio which is spoken is kept as a resource of the session, with the `name` and `title` the model gives, and images, documents and audio are read by their URIs, `resource://<hash>`, which the model is told for each attachment. With a `name` or `title`, the text which `ocr` reads is kept as a Markdown file, and with a `format`, `name` or `title`, the transcript is kept, as text, Markdown, or SRT or WebVTT subtitles | None, as it's always added. Choices are remembered with the `memory` tools |
 | `weatherapi` | Current weather, forecasts and alerts | `WEATHERAPI_API_KEY`, from [weatherapi.com](https://www.weatherapi.com/signup.aspx) |
 | `newsapi` | News articles, headlines and sources | `NEWSAPI_API_KEY`, from [newsapi.org](https://newsapi.org/register) |
 | `homeassistant` | Query, and search, and control smart home devices | `HOMEASSISTANT_URL`, `HOMEASSISTANT_API_KEY` |
@@ -355,7 +361,37 @@ make vet race-test TEST_FLAGS=-short   # As CI runs the tests
 make test                              # All the tests, with coverage
 ```
 
-Tests which make requests to a provider are skipped with `-short`, and unless its credentials are set, such as `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `MISTRAL_API_KEY` or `ELEVENLABS_API_KEY`, or its address, such as `OLLAMA_ADDR` or `GOWHISPER_ADDR`.
+Tests which make requests to a provider are skipped with `-short`, and unless its credentials are set, such as `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `GEMINI_API_KEY`, `MISTRAL_API_KEY` or `ELEVENLABS_API_KEY`, or its address, such as `OLLAMA_ADDR` or `GOWHISPER_ADDR`.
+
+### Tests with live models
+
+The live tests check what fakes can't: that a provider's API accepts what go-llm sends, and returns what it expects. They're `Test_Live…` tests, mostly, in each provider's package. Each runs when its variable is set, and isn't with `-short`:
+
+| Variable | Package | What's tested | Billed |
+|----------|---------|---------------|:------:|
+| `OPENAI_API_KEY` | `provider/openai` | Replies, with tools, embeddings, transcription, translation, and speakers, with `gpt-4o-mini`, `text-embedding-3-small`, `whisper-1`, `gpt-4o-mini-transcribe` and `gpt-4o-transcribe-diarize`, which `OPENAI_MODEL`, `OPENAI_EMBEDDING_MODEL`, `OPENAI_WHISPER_MODEL`, `OPENAI_TRANSCRIBE_MODEL` and `OPENAI_DIARIZE_MODEL` change | Yes |
+| `MISTRAL_API_KEY` | `provider/openai` | Mistral's replies, embeddings, OCR and transcription | Yes |
+| `ANTHROPIC_API_KEY` | `provider/anthropic` | Replies, with tools, thinking and structured output, and counting tokens, with `claude-haiku-5-5` | Yes |
+| `GEMINI_API_KEY` | `provider/gemini` | Listing models and counting tokens, which are free, embeddings, with `gemini-embedding-2`, and a reply which calls a tool, with `gemini-3.5-flash-lite` | Yes, apart from listing and counting |
+| `ANTHROPIC_API_KEY` and `GEMINI_API_KEY` | `provider/gemini` | `Test_LiveSwitch`: a conversation which changes its model, from Claude to Gemini, and back, each calling a tool, so each is sent the other's calls, and their results | Yes |
+| `ELEVENLABS_API_KEY` | `provider/elevenlabs` | Transcription, with speakers, with `scribe_v2` | Yes |
+| `OLLAMA_ADDR` | `provider/ollama` | Its version, and models, embeddings, of text and images, and OCR, with the models of a running Ollama, which must be pulled: `embeddinggemma-2` and `deepseek-ocr`, which `OLLAMA_EMBED_MODEL` and `OLLAMA_OCR_MODEL` change | No |
+| `GOWHISPER_ADDR` | `provider/gowhisper` | Its models, and transcription, with a running go-whisper server, which has `ggml-medium-q5_0` | No |
+
+Run a provider's live tests on their own, with `-count=1`, so their results aren't cached, and `-v`, to see which ran, and which were skipped:
+
+```bash
+GEMINI_API_KEY=... go test -count=1 -v -run Live ./provider/gemini/
+ANTHROPIC_API_KEY=... GEMINI_API_KEY=... go test -count=1 -v -run Test_LiveSwitch ./provider/gemini/
+OLLAMA_ADDR=http://localhost:11434 go test -count=1 -v ./provider/ollama/
+```
+
+The billed tests use the cheapest models, and short requests, which cost a fraction of a cent each run, but they run whenever their keys are set, and `make test` runs every one. When your shell has keys, which the server, or the command, needs, keep them from the tests with `-short`, or by unsetting them for the tests:
+
+```bash
+make test TEST_FLAGS=-short
+env -u OPENAI_API_KEY -u MISTRAL_API_KEY -u ANTHROPIC_API_KEY -u GEMINI_API_KEY -u ELEVENLABS_API_KEY go test ./...
+```
 
 ## Roadmap
 
@@ -376,7 +412,6 @@ Tests which make requests to a provider are skipped with `-short`, and unless it
 
 ### Providers
 
-- **Google Gemini**, which the earlier version of go-llm had, for generation, and its embeddings.
 - **LM Studio**, which runs models locally, as Ollama does, with its own API to list, download, delete, load and unload them, as well as an OpenAI-compatible API.
 - **ElevenLabs' voices, and images**: text to speech with ElevenLabs, and image generation, such as with OpenAI's `gpt-image` models.
 - **OpenAI's Responses API**, so OpenAI's newest models can think while they call tools, and the models which only it has can be used.
