@@ -7,11 +7,13 @@ import (
 	"fmt"
 	"reflect"
 	"slices"
+	"time"
 
 	// Packages
 	llm "github.com/mutablelogic/go-llm"
 	providerschema "github.com/mutablelogic/go-llm/provider/schema"
 	toolkit "github.com/mutablelogic/go-llm/toolkit"
+	types "github.com/mutablelogic/go-server/pkg/types"
 )
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -29,7 +31,8 @@ type history struct {
 	measured []uint                   // The tokens of each of the caller's messages, before they're compacted
 	overhead uint                     // The tokens of what's sent with the messages, such as the system prompt and the tools
 	measure  toolkit.MeasureFn
-	text     textFunc // The text an attachment is sent as, when it's text, or nil
+	text     textFunc       // The text an attachment is sent as, when it's text, or nil
+	zone     *time.Location // The time zone the person's messages start with when they were sent in, or nil, when they don't
 }
 
 // textFunc returns the text which an attachment is sent to the model as,
@@ -73,6 +76,11 @@ const (
 	// an image, which providers send as media, rather than as its data as
 	// text, so its tokens aren't those of its data
 	attachmentTokens = 1500
+
+	// timeTokens is an estimate of the tokens of when a person's message was
+	// sent, which it starts with, when the model is told, such as (Saturday
+	// 2026-11-07T12:38+01:00), which is at most this
+	timeTokens = 24
 )
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -85,8 +93,8 @@ const (
 // user message, are never dropped, and, when the messages end with the
 // results of tools, they're the latest turn, with the reply which called
 // them.
-func newHistory(ctx context.Context, messages []llm.Message, fresh []providerschema.Message, overhead uint, measure toolkit.MeasureFn, text textFunc) (*history, error) {
-	h := &history{entries: make([]historyEntry, 0, len(messages)+len(fresh)), overhead: overhead, measure: measure, text: text}
+func newHistory(ctx context.Context, messages []llm.Message, fresh []providerschema.Message, overhead uint, measure toolkit.MeasureFn, text textFunc, zone *time.Location) (*history, error) {
+	h := &history{entries: make([]historyEntry, 0, len(messages)+len(fresh)), overhead: overhead, measure: measure, text: text, zone: zone}
 	for i, message := range messages {
 		if isNil(message) {
 			return nil, llm.ErrBadParameter.Withf("message %d is nil", i)
@@ -96,20 +104,21 @@ func newHistory(ctx context.Context, messages []llm.Message, fresh []providersch
 			return nil, err
 		}
 		h.measured = append(h.measured, tokens)
-		h.entries = append(h.entries, historyEntry{message: message, tokens: tokens, pinned: message.Role() == "system", added: -1})
+		h.entries = append(h.entries, historyEntry{message: message, tokens: tokens + h.timeTokens(message), pinned: message.Role() == "system", added: -1})
 	}
 
 	// The new messages, which are added, so they're returned as they're
 	// sent, such as when their tools' results are truncated, with their
 	// tokens
 	for _, message := range fresh {
+		stamp(&message)
 		tokens, err := h.tokens(ctx, &message)
 		if err != nil {
 			return nil, err
 		}
 		message.Tokens = uint64(tokens)
 		h.added = append(h.added, message)
-		h.entries = append(h.entries, historyEntry{message: &message, tokens: tokens, pinned: message.Role() == "system", added: len(h.added) - 1})
+		h.entries = append(h.entries, historyEntry{message: &message, tokens: tokens + h.timeTokens(&message), pinned: message.Role() == "system", added: len(h.added) - 1})
 	}
 
 	// The latest user message, which isn't the results of tools
@@ -180,6 +189,7 @@ func (h *history) add(ctx context.Context, step []providerschema.Message, usage 
 	for i := range step {
 		h.added = append(h.added, step[i])
 		message := &h.added[len(h.added)-1]
+		stamp(message)
 		tokens := usage.OutputTokens - min(usage.OutputTokens, usage.ReasoningTokens)
 		if i > 0 || tokens == 0 {
 			var err error
@@ -390,6 +400,51 @@ func isNil(message llm.Message) bool {
 	}
 	value := reflect.ValueOf(message)
 	return value.Kind() == reflect.Pointer && value.IsNil()
+}
+
+// timeTokens returns the tokens of when the message was sent, which it
+// starts with, as it's sent, when it's the person's, and the model is told
+// when they were, which the compaction of the conversation counts, though
+// they aren't the message's own
+func (h *history) timeTokens(message llm.Message) uint {
+	if h.zone != nil && sentAt(message) {
+		return timeTokens
+	}
+	return 0
+}
+
+// sentAt returns whether the message is one of the person's, rather than
+// the results of tools, which has when it was sent
+func sentAt(m llm.Message) bool {
+	message, ok := schemaMessage(m)
+	return ok && message.Role() == "user" && len(message.ToolResults()) == 0 && !message.Time.IsZero()
+}
+
+// withTimes returns the messages, with when each of the person's messages
+// was sent, when it's known, in the time zone, at its start, such as
+// (Saturday 2026-11-07T12:38+01:00), which doesn't change as the
+// conversation goes on, so it's cached. The messages aren't changed.
+func withTimes(messages []llm.Message, zone *time.Location) []llm.Message {
+	result := make([]llm.Message, len(messages))
+	for i, m := range messages {
+		result[i] = m
+		if !sentAt(m) {
+			continue
+		}
+		message, _ := schemaMessage(m)
+		note := "(" + message.Time.In(zone).Format(timeFormat) + ")"
+		message.Content = append([]providerschema.ContentBlock{{Text: types.Ptr(note)}}, message.Content...)
+		result[i] = message
+	}
+	return result
+}
+
+// stamp sets when the message was added to the conversation, now, unless
+// it's set
+func stamp(message *providerschema.Message) {
+	if message.Time.IsZero() {
+		message.Time = time.Now().UTC()
+	}
 }
 
 // schemaMessage returns a copy of the message, when it's a message of the

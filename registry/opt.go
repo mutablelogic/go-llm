@@ -2,6 +2,7 @@ package registry
 
 import (
 	"slices"
+	"time"
 
 	// Packages
 	client "github.com/mutablelogic/go-client"
@@ -30,6 +31,11 @@ type opt struct {
 	toolkit       *toolkit.Toolkit
 	broadcaster   *broadcaster.Broadcaster
 	resources     Resources
+
+	// The namespaces whose tools, in a session, have the times of its
+	// messages told to its model, and the time zone they're told in
+	timesFor  []string
+	timesZone func() *time.Location
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -62,6 +68,8 @@ func (o *opt) defaults() {
 	o.toolkit = nil
 	o.broadcaster = broadcaster.New()
 	o.resources = nil
+	o.timesFor = nil
+	o.timesZone = nil
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -181,6 +189,19 @@ func WithToolkit(tools *toolkit.Toolkit) Opt {
 			return llm.ErrBadParameter.With("missing toolkit")
 		}
 		o.toolkit = tools
+		return nil
+	}
+}
+
+// WithTimes tells a model when each of the person's messages was sent, at
+// its start, such as (Saturday 2026-11-07T12:38+01:00), in the time zone
+// the function returns, or UTC, when it's nil, or returns nil, when
+// the model can call a tool of one of the namespaces, such as memory, which
+// makes a chat an assistant's, so the model knows the time, and how long
+// it's been since an earlier message, without its system prompt changing
+func WithTimes(zone func() *time.Location, namespaces ...string) Opt {
+	return func(o *opt) error {
+		o.timesFor, o.timesZone = slices.Clone(namespaces), zone
 		return nil
 	}
 }

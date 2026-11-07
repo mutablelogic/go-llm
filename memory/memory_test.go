@@ -130,31 +130,15 @@ func Test_SystemPrompt(t *testing.T) {
 	require.NoError(t, err)
 	unknown := " You don't have a name yet. Before anything else, ask the person what they'd like to call you. You don't know the person's name. You can ask for it once, when it fits the conversation, but don't press them. You don't know where they are, their time zone or the language they speak. Don't ask for them, but as soon as the conversation makes one clear, such as when they say where they are, or by the language they write in, remember it, before you answer, and when you learn where they are, remember its time zone too, by its IANA name, such as Europe/Berlin for Berlin. Remember what you learn, or that the person would rather not say, with the set_detail tool, in the memory namespace."
 
-	// The time, by the clock's time zone, as the person's isn't known
-	for name, test := range map[string]struct {
-		now    time.Time
-		prompt string
-	}{
-		"Named": {
-			time.Date(2026, 11, 4, 18, 42, 7, 0, berlin),
-			"The current date and time is Wednesday, 4 November 2026, 18:42, in the Europe/Berlin (CET) time zone, UTC+01:00.",
-		},
-		"Summer": {
-			time.Date(2026, 7, 1, 9, 5, 0, 0, berlin),
-			"The current date and time is Wednesday, 1 July 2026, 09:05, in the Europe/Berlin (CEST) time zone, UTC+02:00.",
-		},
-		"Abbreviation": {
-			time.Date(2026, 11, 4, 12, 0, 0, 0, time.FixedZone("EST", -5*60*60)),
-			"The current date and time is Wednesday, 4 November 2026, 12:00, in the EST time zone, UTC-05:00.",
-		},
-		"UTC": {
-			time.Date(2026, 1, 31, 23, 59, 0, 0, time.UTC),
-			"The current date and time is Saturday, 31 January 2026, 23:59, in the UTC time zone, UTC+00:00.",
-		},
+	// When the person's messages were sent, rather than the time, so the
+	// prompt doesn't change as time passes, and it's cached
+	sent := "Each of the person's messages starts with when they sent it, in UTC, as their time zone isn't known."
+	for _, now := range []time.Time{
+		time.Date(2026, 11, 4, 18, 42, 7, 0, berlin),
+		time.Date(2026, 7, 1, 9, 5, 0, 0, berlin),
+		time.Date(2026, 1, 31, 23, 59, 0, 0, time.UTC),
 	} {
-		t.Run(name, func(t *testing.T) {
-			assert.Equal(t, test.prompt+unknown+"\n\n"+memory.MemoriesPrompt, newMemory(t, test.now).SystemPrompt())
-		})
+		assert.Equal(t, sent+unknown+"\n\n"+memory.MemoriesPrompt, newMemory(t, now).SystemPrompt(), now)
 	}
 
 	now := time.Date(2026, 11, 5, 9, 30, 0, 0, time.UTC)
@@ -172,7 +156,7 @@ func Test_SystemPrompt(t *testing.T) {
 		set(t, m, schema.FieldLocation, &schema.Detail{Value: "Berlin"})
 		set(t, m, schema.FieldTimezone, &schema.Detail{Value: "Europe/Berlin"})
 		set(t, m, schema.FieldLanguage, &schema.Detail{Value: "English"})
-		assert.Equal(t, "The current date and time is Thursday, 5 November 2026, 10:30, in the Europe/Berlin (CET) time zone, UTC+01:00. Your name is Nano. You're talking to David. They are in Berlin. They speak English."+"\n\n"+memory.MemoriesPrompt, m.SystemPrompt())
+		assert.Equal(t, "Each of the person's messages starts with when they sent it, in their time zone, Europe/Berlin. Your name is Nano. You're talking to David. They are in Berlin. They speak English."+"\n\n"+memory.MemoriesPrompt, m.SystemPrompt())
 	})
 
 	t.Run("Reminder", func(t *testing.T) {
@@ -193,7 +177,7 @@ func Test_SystemPrompt(t *testing.T) {
 		set(t, m, schema.FieldName, &schema.Detail{Declined: true})
 		set(t, m, schema.FieldTimezone, &schema.Detail{Declined: true})
 		set(t, m, schema.FieldLocation, &schema.Detail{Value: "Berlin"})
-		assert.Equal(t, "The current date and time is Thursday, 5 November 2026, 09:30, in the UTC time zone, UTC+00:00. The person you're talking to is in Berlin. You don't have a name yet. Before anything else, ask the person what they'd like to call you. You don't know the language they speak. Don't ask for them, but as soon as the conversation makes one clear, such as when they say where they are, or by the language they write in, remember it, before you answer, and when you learn where they are, remember its time zone too, by its IANA name, such as Europe/Berlin for Berlin. Remember what you learn, or that the person would rather not say, with the set_detail tool, in the memory namespace."+"\n\n"+memory.MemoriesPrompt, m.SystemPrompt())
+		assert.Equal(t, "Each of the person's messages starts with when they sent it, in UTC, as their time zone isn't known. The person you're talking to is in Berlin. You don't have a name yet. Before anything else, ask the person what they'd like to call you. You don't know the language they speak. Don't ask for them, but as soon as the conversation makes one clear, such as when they say where they are, or by the language they write in, remember it, before you answer, and when you learn where they are, remember its time zone too, by its IANA name, such as Europe/Berlin for Berlin. Remember what you learn, or that the person would rather not say, with the set_detail tool, in the memory namespace."+"\n\n"+memory.MemoriesPrompt, m.SystemPrompt())
 	})
 
 	t.Run("Language", func(t *testing.T) {
@@ -203,7 +187,7 @@ func Test_SystemPrompt(t *testing.T) {
 		set(t, m, schema.FieldTimezone, &schema.Detail{Declined: true})
 		set(t, m, schema.FieldAssistant, &schema.Detail{Declined: true})
 		set(t, m, schema.FieldLanguage, &schema.Detail{Value: "German"})
-		assert.Equal(t, "The current date and time is Thursday, 5 November 2026, 09:30, in the UTC time zone, UTC+00:00. The person you're talking to speaks German."+"\n\n"+memory.MemoriesPrompt, m.SystemPrompt())
+		assert.Equal(t, "Each of the person's messages starts with when they sent it, in UTC, as their time zone isn't known. The person you're talking to speaks German."+"\n\n"+memory.MemoriesPrompt, m.SystemPrompt())
 	})
 
 	t.Run("PersonsName", func(t *testing.T) {
@@ -213,7 +197,7 @@ func Test_SystemPrompt(t *testing.T) {
 		set(t, m, schema.FieldLocation, &schema.Detail{Value: "Berlin"})
 		set(t, m, schema.FieldTimezone, &schema.Detail{Declined: true})
 		set(t, m, schema.FieldLanguage, &schema.Detail{Value: "English"})
-		assert.Equal(t, "The current date and time is Thursday, 5 November 2026, 09:30, in the UTC time zone, UTC+00:00. Your name is Omodie. The person you're talking to is in Berlin. They speak English. You don't know the person's name. You can ask for it once, when it fits the conversation, but don't press them. Remember what you learn, or that the person would rather not say, with the set_detail tool, in the memory namespace."+"\n\n"+memory.MemoriesPrompt, m.SystemPrompt())
+		assert.Equal(t, "Each of the person's messages starts with when they sent it, in UTC, as their time zone isn't known. Your name is Omodie. The person you're talking to is in Berlin. They speak English. You don't know the person's name. You can ask for it once, when it fits the conversation, but don't press them. Remember what you learn, or that the person would rather not say, with the set_detail tool, in the memory namespace."+"\n\n"+memory.MemoriesPrompt, m.SystemPrompt())
 	})
 
 	t.Run("Toolkit", func(t *testing.T) {
@@ -229,14 +213,18 @@ func Test_SystemPrompt(t *testing.T) {
 		prompts, err := tk.SystemPrompts(t.Context(), "memory:*")
 		require.NoError(t, err)
 		require.Len(t, prompts, 1)
-		assert.Contains(t, prompts[0], "Thursday, 5 November 2026, 09:30")
+		first := prompts[0]
 
+		// An hour later, it's the same, apart from the details
 		clock = clock.Add(time.Hour)
+		prompts, err = tk.SystemPrompts(t.Context(), "*")
+		require.NoError(t, err)
+		require.Len(t, prompts, 1)
+		assert.Equal(t, first, prompts[0], "the time isn't in it")
 		set(t, m, schema.FieldAssistant, &schema.Detail{Value: "Nano"})
 		prompts, err = tk.SystemPrompts(t.Context(), "*")
 		require.NoError(t, err)
 		require.Len(t, prompts, 1)
-		assert.Contains(t, prompts[0], "10:30")
 		assert.Contains(t, prompts[0], "Your name is Nano.")
 	})
 }
@@ -359,5 +347,5 @@ func Test_SystemPromptForTools(t *testing.T) {
 	assert.NotContains(t, only, asks)
 	assert.Contains(t, only, "# Memory")
 	assert.NotContains(t, only, details)
-	assert.True(t, strings.HasPrefix(only, "The current date and time is "))
+	assert.True(t, strings.HasPrefix(only, "Each of the person's messages starts with when they sent it, in UTC"))
 }

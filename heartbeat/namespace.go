@@ -53,8 +53,16 @@ type heartbeatOutput struct {
 	Next     string `json:"next,omitempty"`
 }
 
-// listOutput is the conversation's heartbeats
+// heartbeatResult is a heartbeat which is scheduled, updated, or
+// cancelled, and the time now, which the model reckons from
+type heartbeatResult struct {
+	Now string `json:"now"`
+	heartbeatOutput
+}
+
+// listOutput is the conversation's heartbeats, and the time now
 type listOutput struct {
+	Now        string            `json:"now"`
 	Count      uint              `json:"count"`
 	Heartbeats []heartbeatOutput `json:"heartbeats"`
 }
@@ -72,14 +80,14 @@ func (*Heartbeats) Description() string {
 }
 
 // SystemPrompt returns when to schedule heartbeats, and how, and the time
-// zone their schedules are in, unless they have their own
+// zone their schedules are in, unless they have their own, without the
+// time, which the tool's results have, so it doesn't change, and is cached
 func (h *Heartbeats) SystemPrompt() string {
 	zone := "UTC, as the person's time zone isn't known"
 	if loc, _ := h.personZone(); loc != nil {
 		zone = "the person's, " + loc.String()
 	}
-	now := h.now().In(h.location(""))
-	return fmt.Sprintf(heartbeatPrompt, now.Format("Monday, 2 January 2006, 15:04 MST"), zone)
+	return fmt.Sprintf(heartbeatPrompt, zone)
 }
 
 // Notify does nothing, as the tools don't change
@@ -105,8 +113,30 @@ func (*tool) InputSchema() *jsonschema.Schema {
 	return jsonschema.MustFor[toolInput]()
 }
 
-// Run does the operation, saying what it's doing
+// Run does the operation, saying what it's doing, and returns its result,
+// or its error, with the time now, in the person's time zone, as the model
+// isn't told it otherwise, such as for "in ten minutes"
 func (t *tool) Run(ctx context.Context, input json.RawMessage) (any, error) {
+	result, err := t.run(ctx, input)
+	now := t.heartbeats.now().In(t.heartbeats.location("")).Truncate(time.Second).Format(time.RFC3339)
+	if err != nil {
+		if strings.Contains(err.Error(), now) {
+			return nil, err
+		}
+		return nil, fmt.Errorf("%w, and it's now %s", err, now)
+	}
+	switch result := result.(type) {
+	case heartbeatOutput:
+		return heartbeatResult{Now: now, heartbeatOutput: result}, nil
+	case listOutput:
+		result.Now = now
+		return result, nil
+	}
+	return result, nil
+}
+
+// run does the operation, saying what it's doing
+func (t *tool) run(ctx context.Context, input json.RawMessage) (any, error) {
 	var req toolInput
 	if err := json.Unmarshal(input, &req); err != nil {
 		return nil, llm.ErrBadParameter.With(err.Error())
@@ -257,8 +287,8 @@ func parseID(s string) (uuid.UUID, error) {
 	return id, nil
 }
 
-// heartbeatPrompt is how the model uses heartbeats, with the time, and the
-// time zone of their schedules
+// heartbeatPrompt is how the model uses heartbeats, with the time zone of
+// their schedules
 const heartbeatPrompt = `# Heartbeats
 
 You can schedule heartbeats with the ` + "`heartbeats`" + ` tool: instructions which come back to this conversation later, once, at a time, or again and again, on a schedule. When one fires, you're given its prompt, and you answer it, as a message in this conversation.
@@ -269,4 +299,4 @@ You can schedule heartbeats with the ` + "`heartbeats`" + ` tool: instructions w
 - Before scheduling something which may be scheduled already, list the heartbeats, and update one, rather than scheduling it twice. Cancel one when the person no longer wants it.
 - Tell the person when it will happen, in their time.
 
-The time is %s. Schedules are in %s, unless they have a time zone of their own.`
+Schedules are in %s, unless they have a time zone of their own. Each of the tool's results, and errors, says the time now, which times such as "in ten minutes" are from.`
