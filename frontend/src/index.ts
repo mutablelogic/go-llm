@@ -119,7 +119,15 @@ const events = new EventsController(notifications)
     .on({ schema: 'llm', table: 'session' }, () => void chat.refresh())
     .on({ schema: 'llm', table: 'provider' }, () => void models.refresh())
     .on({ schema: 'llm', table: 'tool' }, () => void tools.refresh())
-    .on({ schema: 'resource', table: 'resource' }, () => void resources.refresh())
+    .on({ schema: 'resource', table: 'resource' }, (event) => {
+        void resources.refresh();
+
+        // A resource which is deleted isn't played
+        if (event?.action === 'delete' && event.row) {
+            const session = (event.data as { session?: string } | undefined)?.session;
+            document.querySelector('llm-media-player')?.deleted(event.row, session);
+        }
+    })
     .on({ schema: 'memory', table: 'detail' }, () => void chat.refreshDetails())
     .on({ schema: 'heartbeat', table: 'heartbeat' }, () => void outcomes.refresh())
     .on({ schema: 'llm', table: 'event' }, (event) => {
@@ -186,6 +194,10 @@ document.querySelector('llm-model-view')?.addEventListener(ModelView.eventChat, 
 // player, in the side navigation, rather than in a new tab
 document.addEventListener(MediaPlayer.eventPlay, (e) => {
     document.querySelector('llm-media-player')?.play((e as CustomEvent<Media>).detail);
+});
+document.addEventListener(MediaPlayer.eventDeleted, (e) => {
+    const { hash, session } = (e as CustomEvent<{ hash: string; session?: string }>).detail;
+    document.querySelector('llm-media-player')?.deleted(hash, session);
 });
 events.start();
 void models.load();

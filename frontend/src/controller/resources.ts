@@ -269,6 +269,7 @@ export class ResourcesController {
         try {
             await deleteResource(session, resource.hash);
             this.detach(session, resource);
+            document.dispatchEvent(new CustomEvent(MediaPlayer.eventDeleted, { detail: { hash: resource.hash, session } }));
             await this.load();
         } catch (error) {
             this.notifications.error("The file couldn't be deleted", error);
