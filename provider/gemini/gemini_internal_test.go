@@ -3,6 +3,7 @@ package gemini
 import (
 	"context"
 	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -32,6 +33,13 @@ type fakeAPI struct {
 	asked    generateRequest   // The last request to generate
 	made     string            // The response the next request to generate, without streaming, is
 	noStyle  bool              // Whether a request to generate with a style is rejected, as a model which doesn't take one does
+
+	// The Files API: the content uploaded, and its length, how many times a
+	// file is processing, when it's checked, and the files deleted
+	uploaded   []byte
+	length     int64
+	processing int
+	deleted    []string
 }
 
 // models are the fake's models, by page
@@ -115,6 +123,25 @@ func newFakeAPI(t *testing.T) *fakeAPI {
 			for _, piece := range api.reply {
 				_, _ = w.Write([]byte("data: " + piece + "\r\n\r\n"))
 			}
+		case r.Method == http.MethodPost && r.URL.Path == "/upload/v1beta/files":
+			// An upload starts, and says where its content goes
+			require.Equal(t, "start", r.Header.Get("X-Goog-Upload-Command"))
+			require.Equal(t, "resumable", r.Header.Get("X-Goog-Upload-Protocol"))
+			w.Header().Set("X-Goog-Upload-URL", api.URL+"/upload/session?upload_id=1")
+			_, _ = w.Write([]byte("{}"))
+		case r.Method == http.MethodPost && r.URL.Path == "/upload/session":
+			require.Equal(t, "upload, finalize", r.Header.Get("X-Goog-Upload-Command"))
+			api.length = r.ContentLength
+			api.uploaded, _ = io.ReadAll(r.Body)
+			_ = json.NewEncoder(w).Encode(uploaded{File: api.file()})
+		case strings.HasPrefix(r.URL.Path, "/v1beta/files/") && r.URL.EscapedPath() != r.URL.Path:
+			// A file's name is in its path, rather than escaped
+			w.WriteHeader(http.StatusNotFound)
+		case r.Method == http.MethodGet && r.URL.Path == "/v1beta/files/abc":
+			_ = json.NewEncoder(w).Encode(api.file())
+		case r.Method == http.MethodDelete && strings.HasPrefix(r.URL.Path, "/v1beta/files/"):
+			api.deleted = append(api.deleted, strings.TrimPrefix(r.URL.Path, "/v1beta/"))
+			_, _ = w.Write([]byte("{}"))
 		case r.Method == http.MethodPost && strings.HasSuffix(r.URL.Path, ":countTokens"):
 			if api.failures.Load() > 0 {
 				api.failures.Add(-1)
@@ -132,6 +159,17 @@ func newFakeAPI(t *testing.T) *fakeAPI {
 	}))
 	t.Cleanup(api.Close)
 	return api
+}
+
+// file returns the uploaded file, which is processing, as many times as
+// it's told to be
+func (api *fakeAPI) file() file {
+	f := file{Name: "files/abc", URI: api.URL + "/v1beta/files/abc", MimeType: "audio/mpeg", State: "ACTIVE"}
+	if api.processing > 0 {
+		api.processing--
+		f.State = "PROCESSING"
+	}
+	return f
 }
 
 ///////////////////////////////////////////////////////////////////////////////
