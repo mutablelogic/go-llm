@@ -101,7 +101,9 @@ func newChatMessages(ctx context.Context, message llm.Message, reasoning bool) (
 	default:
 		return nil, llm.ErrBadParameter.Withf("unsupported message role %q", role)
 	}
-	if resources := message.Resources(); len(resources) > 0 {
+	// Only the user's attachments are sent, as the API doesn't take what
+	// another model made, such as an image, in a reply, whose text is sent
+	if resources := message.Resources(); len(resources) > 0 && chat.Role == "user" {
 		parts := []chatPart{}
 		if text := message.Text(); text != "" {
 			parts = append(parts, chatPart{Type: "text", Text: text})

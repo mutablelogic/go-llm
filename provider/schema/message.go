@@ -30,7 +30,8 @@ type Message struct {
 
 // ContentBlock represents a single piece of content within a message.
 // Exactly one of the fields should be non-nil/non-empty, apart from the
-// signature, which is with the thinking it signs.
+// signature, which is with the thinking it signs, or what a model made,
+// such as an image, which Gemini signs.
 type ContentBlock struct {
 	Text       *string     `json:"text,omitempty" help:"Plain text content emitted by the model" example:"Unit tests catch regressions early and make refactoring safer."`
 	Thinking   *string     `json:"thinking,omitempty" help:"Reasoning or thinking text emitted by the model" example:"I should keep this answer brief and concrete."`

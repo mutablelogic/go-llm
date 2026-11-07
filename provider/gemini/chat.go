@@ -192,12 +192,18 @@ func (s *replyStream) add(event client.TextStreamEvent) error {
 // sent back with it.
 func (s *replyStream) addPart(p part) {
 	switch {
-	case p.FunctionCall == nil && !p.Thought && p.Text == "" && p.ThoughtSignature != "":
+	case p.FunctionCall == nil && p.InlineData == nil && !p.Thought && p.Text == "" && p.ThoughtSignature != "":
 		if n := len(s.parts); n > 0 && s.parts[n-1].ThoughtSignature == "" {
 			s.parts[n-1].ThoughtSignature = p.ThoughtSignature
 		}
 	case p.FunctionCall != nil:
 		s.parts = append(s.parts, p)
+	case p.InlineData != nil:
+		// What the model made, such as an image, apart from the images it
+		// makes as it thinks, which are drafts
+		if !p.Thought {
+			s.parts = append(s.parts, p)
+		}
 	case p.Thought:
 		if s.stream != nil && p.Text != "" {
 			s.stream(llm.StreamThinking, p.Text)
