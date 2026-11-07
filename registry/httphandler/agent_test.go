@@ -18,8 +18,8 @@ import (
 	require "github.com/stretchr/testify/require"
 )
 
-// segmentYAML is an agent's definition, in YAML, as go-nanoradio's segment
-// agent is
+// segmentYAML is an agent's definition, in YAML, of an agent which
+// segments a transcript
 const segmentYAML = `
 name: segment
 title: Segment a transcript

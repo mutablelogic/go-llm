@@ -11,8 +11,11 @@ go-llm is a server, command-line tool and Go SDK which puts large language model
 
 The image has the server, and its web UI, and keeps its providers, sessions, agents and memory in the `/data` volume:
 
+> [!WARNING]
+> **Don't run the server on the internet.** It has no authentication yet, so anyone who can reach it can use your providers' API keys, read your chats, memory and files, run its tools, and change its providers and agents. Publish its port on `localhost` only, as below, or, to reach it from elsewhere, put it behind a proxy which signs people in, or a VPN.
+
 ```bash
-docker run -d --name llm -p 8084:8084 -v llm:/data \
+docker run -d --name llm -p 127.0.0.1:8084:8084 -v llm:/data \
   -e OLLAMA_ADDR=http://host.docker.internal:11434 \
   -e OPENAI_API_KEY \
   ghcr.io/mutablelogic/llm
@@ -26,7 +29,7 @@ Then open [http://localhost:8084/](http://localhost:8084/), to chat, and see the
 
 When it's first started, the server has the Eliza provider, unless `NO_ELIZA` is set, and those whose variables are set: `OLLAMA_ADDR` and `GOWHISPER_ADDR`, as their URLs, and `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `GEMINI_API_KEY`, `DEEPSEEK_API_KEY`, `MISTRAL_API_KEY` and `ELEVENLABS_API_KEY`, whose keys are read from the container's environment when they're used, rather than stored. `UID` and `GID` set the user it runs as, such as the owner of a directory which is mounted at `/data`.
 
-Or run it with Docker Compose, whose [compose file](docker/compose.yaml) has every variable the server reads, from the environment, or a `.env` file, and, with the `ollama` profile, an Ollama server, which `OLLAMA_ADDR=http://ollama:11434` adds:
+Or run it with Docker Compose, whose [compose file](docker/compose.yaml) has every variable the server reads, from the environment, or a `.env` file, and, with the `ollama` profile, an Ollama server, which `OLLAMA_ADDR=http://ollama:11434` adds. It publishes the server's port on `localhost` only, unless `LLM_BIND` says otherwise, such as `0.0.0.0`, for a network you trust:
 
 ```bash
 docker compose -f docker/compose.yaml --profile ollama up -d
@@ -229,7 +232,7 @@ flowchart LR
 - **Events**, in [registry](registry), are what happens when a heartbeat fires, or something else, such as a webhook, triggers one, with `POST /llm/event`. Each is run in the background by the `event` agent, in a session of its own, with the model and tools of the session it's for, and at most `--llm.max-events` at once. The agent decides what the person is told, and whether they're alerted, notified, or it's ignored. Its outcome is kept in a store, until it's delivered into the session it's for, and is listed at `/llm/event`, and in the web UI's Events panel.
 - **Resources**, in [resource](resource), are content, such as images, documents and audio, which is uploaded, kept once, by its SHA-256, and referred to as `resource:///<hash>`. A resource is in a session, which it's deleted with, or on its own, when it's deleted once it hasn't been used for a day. Its manager keeps them in a store, such as files, or, later, a database.
 - **Agents** are named prompts, with their model, tools and the schemas of their input and reply, which models call as tools in the `agent` namespace. The [agents](agents) folder has examples, which the server adds when it starts.
-- The **providers**, in [provider](provider), each wrap a provider's API, and do what it can: generate, embed, read documents, or transcribe and translate speech.
+- The **providers**, in [provider](provider), each wrap a provider's API, and do what it can: generate, embed, read documents, transcribe and translate speech, speak text, or make images.
 
 The registry can be used without the server, from your own Go program, as the [examples](examples) show.
 
@@ -342,7 +345,7 @@ The server's REST API is under `/api`, and documented in [registry/httphandler/R
 
 The packages can be used without the server:
 
-- [`llm`](https://pkg.go.dev/github.com/mutablelogic/go-llm): the interfaces of providers and models, and what they do: `Generator`, `Embedder`, `Recognizer`, `Transcriber` and `Downloader`, and the options for them.
+- [`llm`](https://pkg.go.dev/github.com/mutablelogic/go-llm): the interfaces of providers and models, and what they do: `Generator`, `Embedder`, `Measurer`, `Recognizer`, `Transcriber`, `Speaker`, `Illustrator` and `Downloader`, and the options for them.
 - [`provider/...`](provider): a client for each provider, which implements the interfaces it can.
 - [`registry`](registry): the registry of providers, which finds a model by name, checks what it can do, and asks its provider, with a store, events, and HTTP handlers and a client.
 - [`toolkit`](toolkit): the toolkit of tools, which a model calls.
@@ -430,25 +433,42 @@ env -u OPENAI_API_KEY -u MISTRAL_API_KEY -u ANTHROPIC_API_KEY -u GEMINI_API_KEY 
 ### Agents and tools
 
 - **MCP**: connectors to MCP servers, whose tools are added to the toolkit, each in its own namespace, so models can call them.
-- **Heartbeats which are asked**: the prompt of a heartbeat which fires is asked of its session's model, as a message which says it's scheduled, with a history of what ran, and agents which run on a schedule.
-- **Events between servers**: servers which share stores, such as a database, share their events, so a client of one sees the changes, and fires, of another.
+- **Delivering events**: an event's outcome, such as a reminder, is put into the chat it's for, as a message, with the files its run made, such as speech, at the right time, rather than only listed in the Events panel.
+- **Channels**: chat with a session from Slack, or Telegram, as well as the web UI, and the CLI: its replies, and the events delivered to it, are sent to the channel, and what's said there is sent to the session.
+- **Scheduled runs in the chat**: when a heartbeat fires, its prompt goes to the chat's own model, marked as a scheduled run, with a short history of earlier runs, rather than only to the `event` agent.
+- **Scheduled agents**: agents which run on a schedule, as heartbeats do.
+- **Running Python** (experimental): a tool which runs Python a model writes, in WebAssembly, so it's sandboxed, without network access, with a file system of the session's files, by their names, which it reads, and to which what it writes, such as a chart, or a CSV, is kept, as the session's files.
+
+### Server
+
+- **Authentication and authorization**, throughout: the API, the web UI, the CLI, the MCP connectors and channels:
+  - **Authentication**: people, and clients, sign in, such as with OIDC, or with API tokens, so a server which is reached from the internet isn't open to anyone.
+  - **Authorization**: what each can do, by their role, or a token's scopes, such as who adds providers and agents, and who only chats, which models and tools they can use, and their own sessions, memory, files and heartbeats, which others can't see.
+- **A database, and more than one server**: keep providers, sessions, agents, memory, heartbeats and resources in a database, rather than files, so more than one server can share them, and each server's clients see the changes, and heartbeats which fire, of the others.
 
 ### Providers
 
 - **LM Studio**, which runs models locally, as Ollama does, with its own API to list, download, delete, load and unload them, as well as an OpenAI-compatible API.
-- **ElevenLabs' voices, and images**: text to speech with ElevenLabs, and image generation, such as with OpenAI's `gpt-image` models.
+- **ElevenLabs' voices**: text to speech with ElevenLabs.
+- **OpenAI's images**: making and changing images with OpenAI's `gpt-image` models, as Gemini's Nano Banana models do.
 - **OpenAI's Responses API**, so OpenAI's newest models can think while they call tools, and the models which only it has can be used.
 - **OpenAI's token limits**, which are from memory, and should be checked.
 
 ### Improvements
 
-- **Attachments by URL**: a message's image or document by its URL, rather than its data, which the server doesn't yet read, as it shouldn't fetch any URL it's given.
-- **OCR**: the images in documents, PDFs with Ollama's models, and `glm-ocr`'s prompt, which isn't tested.
+- **OCR**:
+  - **`glm-ocr`**, with Ollama: it has a prompt, `Text Recognition:`, but hasn't been tested with the model, and can't return regions yet.
+  - **PDFs with Ollama's models**, which read images, not documents: each page of a PDF is turned into an image, and recognized.
+  - **Images in documents**, such as a photo, or a scanned page, in a PDF, whose text a document's text leaves out.
 - **Speech**:
   - Speakers with go-whisper's diarizing model, which only knows when the speaker changes.
-  - ElevenLabs' realtime transcription, over a WebSocket.
+  - Live transcription, over a WebSocket, as it's spoken: ElevenLabs' realtime transcription, Gemini's live models, such as `gemini-3.5-transcribe-live`, and go-whisper's streaming.
   - Translation with models which hear audio in a conversation, such as Voxtral Small.
   - Subtitles whose lengths can be set.
+- **Files**, which `llm:resource` reads:
+  - UTF-16 text files, which are taken for binary, as they have NULs ([#192](https://github.com/mutablelogic/go-llm/issues/192)).
+  - Audio's, and video's, metadata, such as their length, which needs go-media, and so cgo.
+  - Parts of a document's Markdown which end at a heading, a paragraph, or a line, rather than in the middle of one ([go-metadata#20](https://github.com/mutablelogic/go-metadata/issues/20)).
 
 ## License
 
