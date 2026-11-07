@@ -27,10 +27,11 @@ type Tool struct {
 // which is kept, and referred to by its URI, such as resource://<hash>,
 // rather than its content, as MCP's resource links are
 type ResourceLink struct {
-	URI  string `json:"uri" help:"URI of the resource, by which it's read, or given to another tool" example:"resource://9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08"`
-	Name string `json:"name,omitempty" help:"Name of the resource, such as its file's name" example:"speech.wav"`
-	Type string `json:"type,omitempty" help:"MIME type of the resource" example:"audio/wav"`
-	Size int64  `json:"size,omitempty" help:"Size of the resource's content, in bytes" example:"103724"`
+	URI   string `json:"uri" help:"URI of the resource, by which it's read, or given to another tool" example:"resource://9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08"`
+	Name  string `json:"name,omitempty" help:"Name of the resource, such as its file's name" example:"speech.wav"`
+	Title string `json:"title,omitempty" help:"Title of the resource, for people, which is its description" example:"Ode to David"`
+	Type  string `json:"type,omitempty" help:"MIME type of the resource" example:"audio/wav"`
+	Size  int64  `json:"size,omitempty" help:"Size of the resource's content, in bytes" example:"103724"`
 }
 
 // ResourcesResult is the result of a tool which returned resources: the

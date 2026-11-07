@@ -551,7 +551,7 @@ function blockBubbles(kind: ChatKind, block: ContentBlock, attachmentName: Attac
         // The resources it returned, such as speech, after it, so they're
         // played, or shown, rather than in its result, which is collapsed
         for (const resource of resultResources(block.tool_result.content)) {
-            const name = resource.name || resource.type || 'Resource';
+            const name = resource.title || resource.name || resource.type || 'Resource';
             bubbles.push({ kind: 'assistant', text: name, media: { name, type: resource.type, url: resource.uri } });
         }
     }
@@ -560,12 +560,12 @@ function blockBubbles(kind: ChatKind, block: ContentBlock, attachmentName: Attac
 
 // resultResources returns the links to the resources a tool's result has,
 // which is {"resources": [{"uri", "name", "type"}]}, or none
-function resultResources(content: unknown): { uri: string; name?: string; type?: string }[] {
+function resultResources(content: unknown): { uri: string; name?: string; title?: string; type?: string }[] {
     const resources = (content as { resources?: unknown } | null)?.resources;
     if (!Array.isArray(resources)) {
         return [];
     }
-    return resources.filter((resource): resource is { uri: string; name?: string; type?: string } =>
+    return resources.filter((resource): resource is { uri: string; name?: string; title?: string; type?: string } =>
         typeof resource?.uri === 'string' && resource.uri.startsWith('resource://'));
 }
 

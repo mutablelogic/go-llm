@@ -27,6 +27,14 @@ export function resourceURI(resource: Resource): string {
     return 'resource://' + resource.hash;
 }
 
+// resourceTitle returns what the resource is called, for people: its
+// description, which is its title, such as Ode to David, when it has one,
+// on one line, or else its name
+export function resourceTitle(resource: Resource): string {
+    const title = resource.description?.split('\n')[0].trim();
+    return title || resourceName(resource);
+}
+
 // resourceName returns the resource's name, or else its type, or else the
 // start of its hash
 export function resourceName(resource: Resource): string {

@@ -19,14 +19,14 @@ import (
 
 // speechRequest is a request to POST /v1/audio/speech, Ollama's
 // OpenAI-compatible API, for the text, spoken, in the voice, and in the
-// format, which is wav, or pcm
+// format, which is wav, or pcm. It has no instructions, which Ollama
+// rejects.
 type speechRequest struct {
 	Model          string   `json:"model"`
 	Input          string   `json:"input"`
 	Voice          string   `json:"voice,omitempty"`
 	ResponseFormat string   `json:"response_format,omitempty"`
 	Speed          *float64 `json:"speed,omitempty"`
-	Instructions   string   `json:"instructions,omitempty"`
 }
 
 // audioResponse is the audio of a response, and its type
@@ -93,8 +93,10 @@ func (c *Client) Speak(ctx context.Context, model llm.Model, text string, opts .
 ///////////////////////////////////////////////////////////////////////////////
 // PRIVATE METHODS
 
-// apply sets the options on the request: the voice, the format, the speed,
-// and the instructions. Returns ErrBadParameter for any other option.
+// apply sets the options on the request: the voice, the format, and the
+// speed. The instructions, of how the text is spoken, are ignored, as
+// Ollama rejects them, and they're only a hint, so the text is still
+// spoken. Returns ErrBadParameter for any other option.
 func (r *speechRequest) apply(opts ...llm.Opt) error {
 	o, err := llm.ApplyOpts(opts...)
 	if err != nil {
@@ -113,7 +115,7 @@ func (r *speechRequest) apply(opts ...llm.Opt) error {
 				r.Speed = &speed
 			}
 		case llm.InstructionsKey:
-			r.Instructions, err = llm.GetOpt[string](o, key)
+			// Ignored, as Ollama rejects them
 		default:
 			err = llm.ErrBadParameter.Withf("option %q isn't supported for speech", key)
 		}

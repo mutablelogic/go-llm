@@ -3,6 +3,7 @@ package llm
 import (
 	"context"
 	"encoding/json"
+	"mime"
 	"strings"
 
 	// Packages
@@ -27,6 +28,8 @@ type ocrInput struct {
 	URI   string `json:"uri" help:"URI of the image, or document, such as a PDF, which is resource://<hash>, as an attachment, or a tool's result, says"`
 	Model string `json:"model,omitempty" help:"Model which reads the text, by its name, such as mistral:mistral-ocr-latest, or the default, when it's omitted" optional:""`
 	Pages string `json:"pages,omitempty" help:"Pages of a document to read, from zero, such as 0,2-4, or all of them, when it's omitted" optional:""`
+	Name  string `json:"name,omitempty" help:"Name of a Markdown file the text is also kept in, such as report, which .md is added to, or the document's name, when only a title is given" optional:""`
+	Title string `json:"title,omitempty" help:"Title of a Markdown file the text is also kept in, for people, such as The quarterly report. With a name, or a title, the text is kept as a file of the chat, as well as returned" optional:""`
 }
 
 // ocrOutput is the text of the image, or document, as Markdown, with the
@@ -74,7 +77,11 @@ func (t *ocr) Run(ctx context.Context, input json.RawMessage) (any, error) {
 		opts = append(opts, gollm.WithOpt(gollm.PagesKey, pages))
 	}
 
-	toolkit.Logf(ctx, "Reading %s with %s", nameOf(resource), model.Name())
+	if pages := strings.TrimSpace(req.Pages); pages != "" {
+		toolkit.Logf(ctx, "Reading the text on pages %s of %s", pages, describe(resource))
+	} else {
+		toolkit.Logf(ctx, "Reading the text in %s", describe(resource))
+	}
 	document, usage, err := models.Recognize(ctx, model, resource, opts...)
 	if err != nil {
 		return nil, err
@@ -84,7 +91,12 @@ func (t *ocr) Run(ctx context.Context, input json.RawMessage) (any, error) {
 	for _, page := range document.Pages {
 		texts = append(texts, strings.TrimSpace(page.Text))
 	}
-	return ocrOutput{Text: strings.Join(texts, "\n\n---\n\n"), Pages: len(document.Pages)}, nil
+	output := ocrOutput{Text: strings.Join(texts, "\n\n---\n\n"), Pages: len(document.Pages)}
+	if strings.TrimSpace(req.Name) == "" && strings.TrimSpace(req.Title) == "" {
+		return output, nil
+	}
+	file := textFile(output.Text, "text/markdown; charset=utf-8", ".md", req.Name, req.Title, resource, "text")
+	return toolkit.Result{Value: output, Resources: []gollm.Resource{file}}, nil
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -130,10 +142,33 @@ func withDefault(description, model, capability string) string {
 	return description + " Give the model to use, by its name. Use the one the person chose for " + capability + ": when you can remember things, recall the memory " + PreferredModels + ", which has the models they chose. When they haven't chosen one, list the models with the " + capability + " capability with the models tool, and ask them which to use, unless only one has it, and remember their choice, or that one, in " + PreferredModels + ", as a line such as \"- " + capability + ": <model>\", keeping the other lines."
 }
 
-// nameOf returns the resource's name, or its URI, when it has none
-func nameOf(resource gollm.Resource) string {
-	if name := resource.Name(); name != "" {
+// describe returns what the resource is, for what a tool says it's doing:
+// its name, such as scan.pdf, or, without one, what it is, by its type, such
+// as the image, or the recording, rather than its URI
+func describe(resource gollm.Resource) string {
+	if name := resource.Name(); name != "" && !strings.Contains(name, "://") && name != resource.URI() {
 		return name
 	}
-	return resource.URI()
+	mediaType, _, _ := mime.ParseMediaType(resource.Type())
+	switch {
+	case strings.HasPrefix(mediaType, "image/"):
+		return "the image"
+	case strings.HasPrefix(mediaType, "audio/"):
+		return "the recording"
+	case strings.HasPrefix(mediaType, "video/"):
+		return "the video"
+	case mediaType == "application/pdf":
+		return "the PDF"
+	}
+	return "the document"
+}
+
+// voiceOf returns the voice the options set, or an empty string
+func voiceOf(opts []gollm.Opt) string {
+	o, err := gollm.ApplyOpts(opts...)
+	if err != nil {
+		return ""
+	}
+	voice, _ := gollm.GetOpt[string](o, gollm.VoiceKey)
+	return voice
 }
