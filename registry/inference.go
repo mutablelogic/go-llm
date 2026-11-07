@@ -176,8 +176,9 @@ func (r *Registry) Speak(ctx context.Context, model llm.Model, text string, opts
 // changing, or combining, the images, which can refer to resources, by
 // their URIs, as the prompt says, from the model's provider, which must be
 // in the registry, and make images. Returns ErrNotImplemented when the
-// model is known not to make images, and the provider's error as
-// providerErr does.
+// model is known not to make images, ErrBadParameter when one of the
+// images isn't an image, or they're larger than MaxAttachmentsSize,
+// together, and the provider's error as providerErr does.
 func (r *Registry) Illustrate(ctx context.Context, model llm.Model, prompt string, images []llm.Resource, opts ...llm.Opt) (_ []llm.Resource, _ llm.Usage, err error) {
 	ctx, endSpan := otel.StartSpan(r.tracer, ctx, "llm.registry.Illustrate",
 		attribute.String("arg.model", r.modelName(model)),
@@ -192,12 +193,9 @@ func (r *Registry) Illustrate(ctx context.Context, model llm.Model, prompt strin
 	} else if err := can(model, model.Capabilities().ImageOutput, "make images"); err != nil {
 		return nil, llm.Usage{}, err
 	}
-	read := make([]llm.Resource, 0, len(images))
-	for _, image := range images {
-		if image, err = r.withResource(ctx, image); err != nil {
-			return nil, llm.Usage{}, err
-		}
-		read = append(read, image)
+	read, err := r.withImages(ctx, images)
+	if err != nil {
+		return nil, llm.Usage{}, err
 	}
 	start := time.Now()
 	result, usage, err := illustrator.Illustrate(ctx, model, prompt, read, opts...)

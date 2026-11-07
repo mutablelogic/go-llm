@@ -55,4 +55,10 @@ func Test_Illustrate(t *testing.T) {
 	assert.ErrorIs(t, err, llm.ErrBadParameter)
 	_, _, err = c.Illustrate(ctx, model, "Something", nil, llm.WithTemperature(0.5))
 	assert.ErrorIs(t, err, llm.ErrBadParameter)
+
+	// Imagen, which predicts images, rather than generating content, isn't
+	// asked
+	imagen := &Model{provider: c, data: apiModel{Name: "models/imagen-4.0-generate-001", SupportedGenerationMethods: []string{"predict"}}}
+	_, _, err = c.Illustrate(ctx, imagen, "Something", nil)
+	assert.ErrorIs(t, err, llm.ErrNotImplemented)
 }

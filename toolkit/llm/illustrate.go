@@ -70,14 +70,17 @@ func (t *illustrate) Run(ctx context.Context, input json.RawMessage) (any, error
 		return nil, err
 	}
 
-	// The images to change, by their URIs
-	images := make([]gollm.Resource, 0, len(req.Images))
+	// The images to change, by their URIs, which are read together, once
+	// each, within a limit
+	uris := make([]string, 0, len(req.Images))
 	for _, uri := range req.Images {
-		image, err := toolkit.Resource(ctx, strings.TrimSpace(uri))
-		if err != nil {
+		uris = append(uris, strings.TrimSpace(uri))
+	}
+	var images []gollm.Resource
+	if len(uris) > 0 {
+		if images, err = toolkit.Resources(ctx, uris...); err != nil {
 			return nil, err
 		}
-		images = append(images, image)
 	}
 	var opts []gollm.Opt
 	if ratio := strings.TrimSpace(req.AspectRatio); ratio != "" {

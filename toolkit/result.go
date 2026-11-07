@@ -50,10 +50,11 @@ func storeFrom(ctx context.Context) StoreFunc {
 	return fn
 }
 
-// ResolveFunc returns the resource with the URI, such as resource://<hash>,
-// which a tool is given, in the session the tool runs in, or on its own,
-// whose content is read from where it's kept
-type ResolveFunc func(ctx context.Context, uri string) (llm.Resource, error)
+// ResolveFunc returns the resources with the URIs, such as
+// resource://<hash>, which a tool is given, in the session the tool runs
+// in, or on their own, whose content is read from where it's kept, once for
+// each URI, and together within a limit, in the same order
+type ResolveFunc func(ctx context.Context, uris ...string) ([]llm.Resource, error)
 
 // resolveKey is the key of the resolve function in a context
 type resolveKey struct{}
@@ -70,9 +71,27 @@ func WithResolver(ctx context.Context, fn ResolveFunc) context.Context {
 // when a tool is called without a session, or the registry's resources,
 // and the resolve function's errors, such as ErrNotFound.
 func Resource(ctx context.Context, uri string) (llm.Resource, error) {
+	resources, err := Resources(ctx, uri)
+	if err != nil {
+		return nil, err
+	}
+	return resources[0], nil
+}
+
+// Resources returns the resources with the URIs, which the tool running in
+// the context is given, together, with the context's resolve function, so
+// each is read once, and they're read within a limit, together, rather than
+// each within it. Returns errors as Resource does.
+func Resources(ctx context.Context, uris ...string) ([]llm.Resource, error) {
 	fn, _ := ctx.Value(resolveKey{}).(ResolveFunc)
 	if fn == nil {
 		return nil, llm.ErrNotImplemented.With("resources can't be read here")
 	}
-	return fn(ctx, uri)
+	resources, err := fn(ctx, uris...)
+	if err != nil {
+		return nil, err
+	} else if len(resources) != len(uris) {
+		return nil, llm.ErrInternalServerError.Withf("%d resources resolved, for %d URIs", len(resources), len(uris))
+	}
+	return resources, nil
 }

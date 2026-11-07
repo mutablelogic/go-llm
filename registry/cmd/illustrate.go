@@ -94,12 +94,6 @@ func (cmd *IllustrateCmd) Run(ctx server.Cmd) error {
 		if err != nil {
 			return err
 		}
-		if response.Model != "" {
-			if err := ctx.Set(defaultIllustrateModelKey, response.Model); err != nil {
-				return err
-			}
-		}
-
 		// Each image is written to its file, from its resource, or its data
 		for i, image := range response.Images {
 			path := outputPath(cmd.Output, image.Name, image.Type, i, len(response.Images))
@@ -110,6 +104,11 @@ func (cmd *IllustrateCmd) Run(ctx server.Cmd) error {
 				return err
 			}
 			fmt.Printf("%s: %s, by %s\n", path, image.Type, response.Model)
+		}
+
+		// The model is used next time, once the images are written
+		if response.Model != "" {
+			return ctx.Set(defaultIllustrateModelKey, response.Model)
 		}
 		return nil
 	})

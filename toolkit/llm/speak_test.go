@@ -200,9 +200,9 @@ func Test_Speak(t *testing.T) {
 	tk2, err := toolkit.New(ctx)
 	require.NoError(t, err)
 	require.NoError(t, tk2.Add(ns))
-	resolved := toolkit.WithResolver(ctx, func(context.Context, string) (gollm.Resource, error) {
+	resolved := toolkit.WithResolver(ctx, each(func(string) (gollm.Resource, error) {
 		return &providerschema.Resource{ResourceMeta: providerschema.ResourceMeta{ContentType: "audio/wav", Data: []byte("x")}}, nil
-	})
+	}))
 	_, err = tk2.CallTool(resolved, "llm:transcribe", json.RawMessage(`{"uri":"resource://abc"}`))
 	assert.ErrorIs(t, err, gollm.ErrBadParameter, "no model, and no default")
 	_, err = tk2.CallTool(resolved, "llm:transcribe", json.RawMessage(`{"uri":"resource://abc","model":"phonon"}`))
@@ -220,12 +220,12 @@ func Test_ReadTools(t *testing.T) {
 
 	// The tools read resources by their URIs, with the context's resolver,
 	// which resolves only the one it has
-	resolved := toolkit.WithResolver(ctx, func(_ context.Context, uri string) (gollm.Resource, error) {
+	resolved := toolkit.WithResolver(ctx, each(func(uri string) (gollm.Resource, error) {
 		if uri != "resource://abc" {
 			return nil, gollm.ErrNotFound.Withf("resource %s", uri)
 		}
 		return &providerschema.Resource{ResourceMeta: providerschema.ResourceMeta{ContentType: "application/pdf", Data: []byte("Report")}}, nil
-	})
+	}))
 
 	// The text of a document, as Markdown, with its pages, which are asked
 	// for
@@ -330,10 +330,10 @@ func Test_Logs(t *testing.T) {
 			lines = append(lines, strings.TrimSpace(text))
 		}
 	}, nil)
-	ctx = toolkit.WithResolver(toolkit.WithSession(ctx, session), func(_ context.Context, uri string) (gollm.Resource, error) {
+	ctx = toolkit.WithResolver(toolkit.WithSession(ctx, session), each(func(uri string) (gollm.Resource, error) {
 		types := map[string]string{"resource://pdf": "application/pdf", "resource://wav": "audio/wav"}
 		return &providerschema.Resource{ResourceMeta: providerschema.ResourceMeta{ContentType: types[uri], Data: []byte("x")}}, nil
-	})
+	}))
 	for _, call := range []struct{ tool, input string }{
 		{"llm:speak", `{"text":"Hello","voice":"Zoey"}`},
 		{"llm:speak", `{"text":"Hello"}`},
@@ -406,10 +406,10 @@ func Test_SpeakTitle(t *testing.T) {
 func Test_TextFiles(t *testing.T) {
 	// With a format, a name, or a title, the text which is read, or the
 	// transcript, is kept as a file, as well as returned
-	ctx := toolkit.WithResolver(context.Background(), func(_ context.Context, uri string) (gollm.Resource, error) {
+	ctx := toolkit.WithResolver(context.Background(), each(func(uri string) (gollm.Resource, error) {
 		types := map[string]string{"resource://pdf": "application/pdf", "resource://wav": "audio/wav"}
 		return &providerschema.Resource{ResourceMeta: providerschema.ResourceMeta{ContentType: types[uri], Data: []byte("Report")}}, nil
-	})
+	}))
 	m := &models{}
 	ns, err := llm.New(func() llm.Models { return m }, llm.WithOCR("phonon"), llm.WithTranscribe("phonon"))
 	require.NoError(t, err)
@@ -504,9 +504,9 @@ func Test_Illustrate(t *testing.T) {
 			lines = append(lines, strings.TrimSpace(text))
 		}
 	}, nil)
-	ctx := toolkit.WithResolver(toolkit.WithSession(context.Background(), session), func(_ context.Context, uri string) (gollm.Resource, error) {
+	ctx := toolkit.WithResolver(toolkit.WithSession(context.Background(), session), each(func(uri string) (gollm.Resource, error) {
 		return &providerschema.Resource{ResourceMeta: providerschema.ResourceMeta{ContentType: "image/png", Data: []byte(uri)}}, nil
-	})
+	}))
 	run := func(input string) (toolkit.Result, error) {
 		result, err := tool.Run(ctx, json.RawMessage(input))
 		if err != nil {
@@ -540,4 +540,19 @@ func Test_Illustrate(t *testing.T) {
 	assert.ErrorIs(t, err, gollm.ErrBadParameter)
 	_, err = run(`{"prompt":"A banana"}`)
 	assert.ErrorContains(t, err, "image_output capability")
+}
+
+// each returns the function which resolves each URI with the function
+func each(fn func(uri string) (gollm.Resource, error)) toolkit.ResolveFunc {
+	return func(_ context.Context, uris ...string) ([]gollm.Resource, error) {
+		result := make([]gollm.Resource, 0, len(uris))
+		for _, uri := range uris {
+			resource, err := fn(uri)
+			if err != nil {
+				return nil, err
+			}
+			result = append(result, resource)
+		}
+		return result, nil
+	}
 }

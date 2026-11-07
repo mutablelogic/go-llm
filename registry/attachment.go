@@ -5,6 +5,7 @@ import (
 	"errors"
 	"io"
 	"mime"
+	"net/http"
 	"net/url"
 	"slices"
 	"strings"
@@ -145,20 +146,51 @@ func (r *Registry) withContent(ctx context.Context, session uuid.UUID, messages 
 // the registry has no resources, ErrNotFound when there's none with the
 // URI, and ErrBadParameter when it's larger than MaxAttachmentsSize.
 func (r *Registry) withResource(ctx context.Context, resource llm.Resource) (llm.Resource, error) {
-	attachment, ok := resource.(*providerschema.Resource)
-	if !ok || !isResourceURL(attachment) || len(attachment.Data) > 0 {
-		return resource, nil
+	return r.newContentReader(uuid.Nil()).withResource(ctx, resource)
+}
+
+// withImages returns the images, with the content of those which refer to
+// resources on their own, read once for each URI, and at most
+// MaxAttachmentsSize of them, together with those which have their
+// content. Returns ErrBadParameter for one which isn't an image.
+func (r *Registry) withImages(ctx context.Context, images []llm.Resource) ([]llm.Resource, error) {
+	reader := r.newContentReader(uuid.Nil())
+	result := make([]llm.Resource, 0, len(images))
+	for i, image := range images {
+		if image == nil {
+			return nil, llm.ErrBadParameter.Withf("image %d is missing", i)
+		}
+		// Content which was given, rather than read, counts too
+		if attachment, ok := image.(*providerschema.Resource); ok && len(attachment.Data) > 0 {
+			if err := reader.use(int64(len(attachment.Data))); err != nil {
+				return nil, err
+			}
+		}
+		read, err := reader.withResource(ctx, image)
+		if err != nil {
+			return nil, err
+		}
+		if contentType := imageType(read); contentType == "" {
+			return nil, llm.ErrBadParameter.Withf("image %d has no type", i)
+		} else if !strings.HasPrefix(contentType, "image/") {
+			return nil, llm.ErrBadParameter.Withf("image %d is %s, which isn't an image", i, contentType)
+		}
+		result = append(result, read)
 	}
-	data, contentType, _, err := r.newContentReader(uuid.Nil()).read(ctx, attachment.URL.String())
-	if err != nil {
-		return nil, err
+	return result, nil
+}
+
+// imageType returns the resource's type, or, when it has none, the type of
+// its content, when it has it
+func imageType(resource llm.Resource) string {
+	if contentType := resource.Type(); contentType != "" {
+		return contentType
 	}
-	read := *attachment
-	read.Data = data
-	if read.ContentType == "" {
-		read.ContentType = contentType
+	if attachment, ok := resource.(*providerschema.Resource); ok && len(attachment.Data) > 0 {
+		contentType, _, _ := strings.Cut(http.DetectContentType(attachment.Data), ";")
+		return contentType
 	}
-	return &read, nil
+	return ""
 }
 
 // resource returns the resource with the URI, in the session, or on its
@@ -290,19 +322,25 @@ func madeName(contentType string) string {
 // to MaxAttachmentsSize, as an attachment's is, so a tool, such as one which
 // recognizes text, doesn't read a large resource without bound
 func (r *Registry) toolResolver(session uuid.UUID) toolkit.ResolveFunc {
-	return func(ctx context.Context, uri string) (llm.Resource, error) {
-		u, err := url.Parse(uri)
-		if err != nil || u.Scheme != resourceschema.Scheme {
-			return nil, llm.ErrBadParameter.Withf("not a resource's URI: %q", uri)
+	return func(ctx context.Context, uris ...string) ([]llm.Resource, error) {
+		// Each call reads with its own reader, so the resources it resolves
+		// are read once, and together within the limit, and tools which run
+		// at the same time don't share it
+		reader := r.newContentReader(session)
+		reader.fallback = true
+		result := make([]llm.Resource, 0, len(uris))
+		for _, uri := range uris {
+			u, err := url.Parse(uri)
+			if err != nil || u.Scheme != resourceschema.Scheme {
+				return nil, llm.ErrBadParameter.Withf("not a resource's URI: %q", uri)
+			}
+			data, contentType, name, err := reader.read(ctx, uri)
+			if err != nil {
+				return nil, err
+			}
+			result = append(result, namedResource{Resource: &providerschema.Resource{ResourceMeta: providerschema.ResourceMeta{ContentType: contentType, Data: data, URL: u}}, name: name})
 		}
-		data, contentType, name, err := r.newContentReader(session).read(ctx, uri)
-		if errors.Is(err, llm.ErrNotFound) && session != uuid.Nil() {
-			data, contentType, name, err = r.newContentReader(uuid.Nil()).read(ctx, uri)
-		}
-		if err != nil {
-			return nil, err
-		}
-		return namedResource{Resource: &providerschema.Resource{ResourceMeta: providerschema.ResourceMeta{ContentType: contentType, Data: data, URL: u}}, name: name}, nil
+		return result, nil
 	}
 }
 
@@ -368,6 +406,10 @@ type contentReader struct {
 	// them, and otherwise is a note, with its URI, so it doesn't count
 	// against the most which is read, for a model which wouldn't be sent it
 	made bool
+
+	// fallback is whether a resource which isn't in the session is read on
+	// its own, as a tool's can be
+	fallback bool
 }
 
 // readContent is the content of a resource, its type, and its name
@@ -450,6 +492,9 @@ func (c *contentReader) read(ctx context.Context, uri string) ([]byte, string, s
 		return content.data, content.contentType, content.name, nil
 	}
 	resource, err := c.registry.resource(ctx, uri, c.session)
+	if errors.Is(err, llm.ErrNotFound) && c.fallback && c.session != uuid.Nil() {
+		resource, err = c.registry.resource(ctx, uri, uuid.Nil())
+	}
 	if err != nil {
 		return nil, "", "", err
 	}
@@ -463,12 +508,41 @@ func (c *contentReader) read(ctx context.Context, uri string) ([]byte, string, s
 		return err
 	}); err != nil {
 		return nil, "", "", err
-	} else if int64(len(data)) > c.left {
-		return nil, "", "", llm.ErrBadParameter.Withf("the attachments are larger than %d bytes, together", MaxAttachmentsSize)
+	} else if err := c.use(int64(len(data))); err != nil {
+		return nil, "", "", err
 	}
-	c.left -= int64(len(data))
 	c.cache[uri] = readContent{data: data, contentType: resource.Type(), name: resource.Name()}
 	return data, resource.Type(), resource.Name(), nil
+}
+
+// withResource returns the resource, with its content, when it refers to a
+// resource, read once for each URI, within what's left to read, and
+// otherwise the resource
+func (c *contentReader) withResource(ctx context.Context, resource llm.Resource) (llm.Resource, error) {
+	attachment, ok := resource.(*providerschema.Resource)
+	if !ok || !isResourceURL(attachment) || len(attachment.Data) > 0 {
+		return resource, nil
+	}
+	data, contentType, _, err := c.read(ctx, attachment.URL.String())
+	if err != nil {
+		return nil, err
+	}
+	read := *attachment
+	read.Data = data
+	if read.ContentType == "" {
+		read.ContentType = contentType
+	}
+	return &read, nil
+}
+
+// use takes the size from what's left to read, or returns an error when
+// it's more
+func (c *contentReader) use(size int64) error {
+	if size > c.left {
+		return llm.ErrBadParameter.Withf("the attachments are larger than %d bytes, together", MaxAttachmentsSize)
+	}
+	c.left -= size
+	return nil
 }
 
 // accept returns whether an attachment of the type is sent to the model,

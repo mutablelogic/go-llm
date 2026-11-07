@@ -22,14 +22,18 @@ var _ llm.Illustrator = (*Client)(nil)
 // the prompt, or by changing, or combining, the images, as the prompt says,
 // with generateContent, which is asked for images, with the aspect ratio,
 // and size, the options set, and the tokens used. The images it makes as it
-// thinks, which are drafts, are left out. Returns an error, with what the
-// model said, when it made no image, such as when it refused. The request
+// thinks, which are drafts, are left out. Returns ErrNotImplemented for a
+// model without generateContent, such as Imagen, which predicts images.
+// Returns an error, with what the model said, when it made no image, such
+// as when it refused. The request
 // isn't timed out, as an image can take a while, but is cancelled with the
 // context.
 func (c *Client) Illustrate(ctx context.Context, model llm.Model, prompt string, images []llm.Resource, opts ...llm.Opt) ([]llm.Resource, llm.Usage, error) {
 	m, ok := model.(*Model)
 	if !ok || m.provider != c {
 		return nil, llm.Usage{}, llm.ErrBadParameter.With("not a model of this provider")
+	} else if !m.supports("generateContent") {
+		return nil, llm.Usage{}, llm.ErrNotImplemented.Withf("%s doesn't make images with generateContent", m.Name())
 	} else if prompt = strings.TrimSpace(prompt); prompt == "" {
 		return nil, llm.Usage{}, llm.ErrBadParameter.With("missing prompt")
 	}
