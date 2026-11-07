@@ -253,7 +253,7 @@ The registry can be used without the server, from your own Go program, as the [e
 | `ollama` | [Ollama](https://ollama.com) | ✅ | ✅ | ✅ (images) | | | ✅ (phonon) | Download, delete, unload |
 | `openai` | [OpenAI](https://platform.openai.com) | ✅ | ✅ | | ✅ | ✅ (whisper) | ✅ (tts) | |
 | `anthropic` | [Anthropic](https://www.anthropic.com)'s Claude models, which count tokens exactly, to fit a conversation to the model's context | ✅ | | | | | | |
-| `gemini` | [Google](https://ai.google.dev)'s Gemini models, which count tokens exactly. Replies are still to come | | | | | | | |
+| `gemini` | [Google](https://ai.google.dev)'s Gemini models, which count tokens exactly. Replies are still to come | | ✅ (text, images, audio, PDFs) | | | | | |
 | `openai` | [Mistral](https://mistral.ai), at `https://api.mistral.ai/v1` | ✅ | ✅ | ✅ | ✅ | | | |
 | `openai` | [DeepSeek](https://www.deepseek.com), and other OpenAI-compatible servers | ✅ | | | | | | |
 | `gowhisper` | [go-whisper](https://github.com/mutablelogic/go-whisper) | | | | ✅ | ✅ | | Download, delete |
