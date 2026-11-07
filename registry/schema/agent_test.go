@@ -16,8 +16,9 @@ import (
 
 func Test_ParseAgentMeta(t *testing.T) {
 	t.Run("YAML", func(t *testing.T) {
-		// A definition in YAML, such as go-nanoradio's segment agent, has the
-		// names its JSON has, and its input, options and schema are JSON
+		// A definition in YAML, such as of an agent which segments a
+		// transcript, has the names its JSON has, and its input, options and
+		// schema are JSON
 		meta, err := schema.ParseAgentMeta([]byte(`
 # The agent which segments a transcript
 name: segment

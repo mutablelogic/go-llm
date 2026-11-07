@@ -50,6 +50,13 @@ LABEL org.opencontainers.image.source=${SOURCE}
 # is set, and those whose variables are set, such as OLLAMA_ADDR, or
 # OPENAI_API_KEY.
 ENV XDG_CACHE_HOME=/data
+
+# The server listens on every interface in the container, as it must for
+# Docker to forward a published port to it. Which interfaces of the host
+# reach it is how the port is published: the server has no authentication
+# yet, so publish it on localhost only, with -p 127.0.0.1:8084:8084, rather
+# than -p 8084:8084, which is every interface, unless it's behind a proxy
+# which signs people in, and never on the internet.
 ENV ADDR=0.0.0.0:8084
 VOLUME /data
 EXPOSE 8084

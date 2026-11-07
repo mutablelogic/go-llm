@@ -274,7 +274,7 @@ func (a AgentMeta) Merge(update AgentMeta) AgentMeta {
 }
 
 // ParseAgentMeta returns the definition in the data, which is YAML, such as
-// go-nanoradio's agent/segment.yaml, or JSON, which is YAML too, by the
+// a file of an agent's definition, or JSON, which is YAML too, by the
 // names its JSON has, so its input, options and schema are JSON. A key which
 // isn't one of its names, such as system_prompt, rather than system, is an
 // error, as is an alias, such as *name. Returns ErrBadParameter when it
