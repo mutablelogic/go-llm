@@ -33,7 +33,7 @@ type Model struct {
 // ModelListRequest filters a list of models
 type ModelListRequest struct {
 	Provider   string   `json:"provider,omitempty" help:"Returns only the models of the provider with this name in the registry" example:"my-ollama" optional:""`
-	Capability []string `json:"capability,omitempty" name:"capability" help:"Returns only the models which are known to have every one of these capabilities: completion, tools, thinking, vision, audio, video, documents, ocr, transcription, translation, embedding, speech or image" example:"vision" optional:""`
+	Capability []string `json:"capability,omitempty" name:"capability" help:"Returns only the models which are known to have every one of these capabilities: chat, tools, thinking, image_input, audio_input, video_input, document_input, image_output, speech_output, embedding, ocr, transcription or translation" example:"image_input" optional:""`
 }
 
 // LoadModelRequest is a request to load a model, with a provider which

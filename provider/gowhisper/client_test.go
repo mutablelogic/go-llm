@@ -210,7 +210,7 @@ func Test_Models(t *testing.T) {
 		require.NoError(t, err)
 		assert.Equal(t, types.Ptr(true), model.Capabilities().Transcription)
 		assert.Equal(t, types.Ptr(true), model.Capabilities().Translation)
-		assert.Equal(t, types.Ptr(false), model.Capabilities().Completion)
+		assert.Equal(t, types.Ptr(false), model.Capabilities().Chat)
 		english, err := c.LoadModel(ctx, "ggml-tiny.en", nil)
 		require.NoError(t, err)
 		assert.Equal(t, types.Ptr(false), english.Capabilities().Translation)

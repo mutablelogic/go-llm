@@ -90,13 +90,13 @@ func (m *Model) OutputTokenLimit() *uint {
 // own value, so it can be changed without changing the others.
 func (m *Model) Capabilities() llm.ModelCap {
 	return llm.ModelCap{
-		Completion:    types.Ptr(true),
+		Chat:          types.Ptr(true),
 		Tools:         types.Ptr(false),
 		Thinking:      types.Ptr(true),
-		Vision:        types.Ptr(false),
-		Audio:         types.Ptr(false),
-		Video:         types.Ptr(false),
-		Documents:     types.Ptr(false),
+		ImageInput:    types.Ptr(false),
+		AudioInput:    types.Ptr(false),
+		VideoInput:    types.Ptr(false),
+		DocumentInput: types.Ptr(false),
 		OCR:           types.Ptr(false),
 		Transcription: types.Ptr(false),
 		Translation:   types.Ptr(false),

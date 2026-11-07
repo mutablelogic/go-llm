@@ -242,11 +242,11 @@ func Test_Inputs(t *testing.T) {
 	model, err := c.GetModel(ctx, "gemini-new")
 	require.NoError(t, err)
 	caps := model.Capabilities()
-	for name, value := range map[string]*bool{"vision": caps.Vision, "audio": caps.Audio, "video": caps.Video, "documents": caps.Documents} {
+	for name, value := range map[string]*bool{"vision": caps.ImageInput, "audio": caps.AudioInput, "video": caps.VideoInput, "documents": caps.DocumentInput} {
 		assert.True(t, types.Value(value), name)
 	}
 	tts, err := c.GetModel(ctx, "gemini-new-preview-tts")
 	require.NoError(t, err)
-	assert.False(t, types.Value(tts.Capabilities().Audio))
-	assert.NotNil(t, tts.Capabilities().Audio, "it's known")
+	assert.False(t, types.Value(tts.Capabilities().AudioInput))
+	assert.NotNil(t, tts.Capabilities().AudioInput, "it's known")
 }

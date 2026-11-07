@@ -408,13 +408,13 @@ func accepts(model llm.Model) func(string) bool {
 		case strings.HasPrefix(mediaType, "text/"):
 			return true
 		case strings.HasPrefix(mediaType, "image/"):
-			capability = caps.Vision
+			capability = caps.ImageInput
 		case strings.HasPrefix(mediaType, "audio/"):
-			capability = caps.Audio
+			capability = caps.AudioInput
 		case strings.HasPrefix(mediaType, "video/"):
-			capability = caps.Video
+			capability = caps.VideoInput
 		case mediaType == "application/pdf":
-			capability = caps.Documents
+			capability = caps.DocumentInput
 		}
 		return capability == nil || *capability
 	}

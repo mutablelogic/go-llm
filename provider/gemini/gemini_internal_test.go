@@ -155,7 +155,7 @@ func Test_Models(t *testing.T) {
 	assert.Equal(t, "Gemini New", newer.Description())
 	assert.Equal(t, uint(1048576), types.Value(newer.InputTokenLimit()))
 	assert.Equal(t, uint(65536), types.Value(newer.OutputTokenLimit()))
-	assert.Equal(t, "completion, thinking, vision, audio, video, documents", newer.Capabilities().String())
+	assert.Equal(t, "chat, thinking, image_input, audio_input, video_input, document_input", newer.Capabilities().String())
 	assert.True(t, types.Value(newer.Capabilities().Temperature))
 	assert.Nil(t, newer.Capabilities().Tools, "whether it calls tools isn't known")
 	assert.Empty(t, newer.Aliases())
@@ -163,19 +163,19 @@ func Test_Models(t *testing.T) {
 	assert.JSONEq(t, `["generateContent","countTokens"]`, string(newer.Meta()["supported_generation_methods"]))
 	assert.Equal(t, "gemini-old-001", older.Name())
 	assert.Equal(t, []string{"gemini-old"}, older.Aliases())
-	assert.Equal(t, "completion, vision, audio, video, documents", older.Capabilities().String())
+	assert.Equal(t, "chat, image_input, audio_input, video_input, document_input", older.Capabilities().String())
 	assert.Equal(t, "embedding", embedding.Capabilities().String())
 	assert.False(t, types.Value(embedding.Capabilities().Thinking))
 
 	// Models which speak, transcribe, or make images, by their names, which
 	// the API doesn't say, and which don't reply, apart from those which
 	// make images, as they reply with them
-	assert.Equal(t, "speech", list[3].Capabilities().String())
-	assert.Equal(t, "audio, transcription", list[4].Capabilities().String())
-	assert.Equal(t, "completion, thinking, vision, image", list[5].Capabilities().String())
-	assert.Equal(t, "vision, image", list[6].Capabilities().String())
-	assert.False(t, types.Value(newer.Capabilities().Image), "a model which replies doesn't make images")
-	assert.False(t, types.Value(newer.Capabilities().Speech))
+	assert.Equal(t, "speech_output", list[3].Capabilities().String())
+	assert.Equal(t, "audio_input, transcription", list[4].Capabilities().String())
+	assert.Equal(t, "chat, thinking, image_input, image_output", list[5].Capabilities().String())
+	assert.Equal(t, "image_input, image_output", list[6].Capabilities().String())
+	assert.False(t, types.Value(newer.Capabilities().ImageOutput), "a model which replies doesn't make images")
+	assert.False(t, types.Value(newer.Capabilities().SpeechOutput))
 
 	// A model is got by its name, with or without the prefix, and the API is
 	// pinged

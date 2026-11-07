@@ -233,8 +233,8 @@ func Test_Capabilities(t *testing.T) {
 		// aren't known isn't
 		home := newCapable("home", "chat", "silent", "unknown")
 		home.caps = map[string]llm.ModelCap{
-			"chat":   {Completion: types.Ptr(true), Tools: types.Ptr(false), Thinking: types.Ptr(false), Vision: types.Ptr(false), OCR: types.Ptr(false), Transcription: types.Ptr(false), Translation: types.Ptr(false), Embedding: types.Ptr(false)},
-			"silent": {Completion: types.Ptr(false)},
+			"chat":   {Chat: types.Ptr(true), Tools: types.Ptr(false), Thinking: types.Ptr(false), ImageInput: types.Ptr(false), OCR: types.Ptr(false), Transcription: types.Ptr(false), Translation: types.Ptr(false), Embedding: types.Ptr(false)},
+			"silent": {Chat: types.Ptr(false)},
 		}
 		r, err := newRegistry(home)
 		require.NoError(t, err)

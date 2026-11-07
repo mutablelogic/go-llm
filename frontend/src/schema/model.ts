@@ -2,19 +2,19 @@
 
 // ModelCapabilities are what a model can do, as its provider says
 export interface ModelCapabilities {
-    completion?: boolean;
+    chat?: boolean;
     tools?: boolean;
     thinking?: boolean;
-    vision?: boolean;
-    audio?: boolean;
-    video?: boolean;
-    documents?: boolean;
+    image_input?: boolean;
+    audio_input?: boolean;
+    video_input?: boolean;
+    document_input?: boolean;
+    image_output?: boolean;
+    speech_output?: boolean;
+    embedding?: boolean;
     ocr?: boolean;
     transcription?: boolean;
     translation?: boolean;
-    embedding?: boolean;
-    speech?: boolean;
-    image?: boolean;
     // Whether it takes a temperature, which is a setting, rather than what
     // it does, so it isn't one of the capabilityNames
     temperature?: boolean;
@@ -43,7 +43,7 @@ export interface ModelList {
 
 // capabilityNames are the names of what a model can do, in the order
 // they're shown
-export const capabilityNames: (keyof ModelCapabilities)[] = ['completion', 'tools', 'thinking', 'vision', 'audio', 'video', 'documents', 'ocr', 'transcription', 'translation', 'embedding', 'speech', 'image'];
+export const capabilityNames: (keyof ModelCapabilities)[] = ['chat', 'tools', 'thinking', 'image_input', 'audio_input', 'video_input', 'document_input', 'image_output', 'speech_output', 'embedding', 'ocr', 'transcription', 'translation'];
 
 // modelCapabilities returns the names of what the model is known to be able
 // to do, such as tools and vision, in the order they're shown

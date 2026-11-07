@@ -160,7 +160,7 @@ func (r *Registry) Speak(ctx context.Context, model llm.Model, text string, opts
 	speaker, err := capability[llm.Speaker](r, model, "speak text")
 	if err != nil {
 		return nil, llm.Usage{}, err
-	} else if err := can(model, model.Capabilities().Speech, "speak text"); err != nil {
+	} else if err := can(model, model.Capabilities().SpeechOutput, "speak text"); err != nil {
 		return nil, llm.Usage{}, err
 	}
 	start := time.Now()
@@ -209,7 +209,7 @@ func (r *Registry) Recognize(ctx context.Context, model llm.Model, resource llm.
 // messages have images, and it's known not to see them
 func canGenerate(model llm.Model, messages []llm.Message, tools []llm.Tool, opts ...llm.Opt) error {
 	capabilities := model.Capabilities()
-	if err := can(model, capabilities.Completion, "generate messages"); err != nil {
+	if err := can(model, capabilities.Chat, "generate messages"); err != nil {
 		return err
 	} else if len(tools) > 0 {
 		if err := can(model, capabilities.Tools, "call tools"); err != nil {
@@ -222,7 +222,7 @@ func canGenerate(model llm.Model, messages []llm.Message, tools []llm.Tool, opts
 		}
 	}
 	if hasImage(messages) {
-		if err := can(model, capabilities.Vision, "see images"); err != nil {
+		if err := can(model, capabilities.ImageInput, "see images"); err != nil {
 			return err
 		}
 	}

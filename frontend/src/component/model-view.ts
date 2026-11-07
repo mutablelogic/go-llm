@@ -62,9 +62,9 @@ export class ModelView extends Panel<Model> {
         const meta = Object.entries(model.meta ?? {});
         return html`
             ${model.description ? html`<p>${model.description}</p>` : nothing}
-            ${cannot(model, 'completion') && !this.stored ? nothing : html`
+            ${cannot(model, 'chat') && !this.stored ? nothing : html`
                 <p class="actions">
-                    ${cannot(model, 'completion') ? nothing : html`
+                    ${cannot(model, 'chat') ? nothing : html`
                         <cds-button kind="primary" size="md"
                             @click=${() => this.dispatchEvent(new CustomEvent(ModelView.eventChat, { detail: model.canonical }))}>
                             New chat ${iconLoader(Chat16, { slot: 'icon' })}

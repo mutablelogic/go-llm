@@ -85,10 +85,10 @@ func (m *Model) OutputTokenLimit() *uint {
 func (m *Model) Capabilities() llm.ModelCap {
 	no := types.Ptr(false)
 	return llm.ModelCap{
-		Completion:    no,
+		Chat:          no,
 		Tools:         no,
 		Thinking:      no,
-		Vision:        no,
+		ImageInput:    no,
 		OCR:           no,
 		Transcription: types.Ptr(true),
 		Translation:   no,

@@ -136,20 +136,20 @@ func (m *Model) Capabilities() llm.ModelCap {
 		return types.Ptr(slices.Contains(capabilities, capability))
 	}
 	return llm.ModelCap{
-		Completion: has("completion"),
-		Tools:      has("tools"),
-		Thinking:   has("thinking"),
-		Vision:     has("vision"),
-		OCR:        m.ocr(capabilities),
-		Embedding:  has("embedding"),
-		Speech:     has("speech"),
+		Chat:         has("completion"),
+		Tools:        has("tools"),
+		Thinking:     has("thinking"),
+		ImageInput:   has("vision"),
+		OCR:          m.ocr(capabilities),
+		Embedding:    has("embedding"),
+		SpeechOutput: has("speech"),
 
 		// A model which replies takes a temperature, and is only sent
 		// images, as Ollama's chat has no audio, video, or documents
-		Temperature: has("completion"),
-		Audio:       not(has("completion")),
-		Video:       not(has("completion")),
-		Documents:   not(has("completion")),
+		Temperature:   has("completion"),
+		AudioInput:    not(has("completion")),
+		VideoInput:    not(has("completion")),
+		DocumentInput: not(has("completion")),
 	}
 }
 

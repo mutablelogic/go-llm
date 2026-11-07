@@ -442,7 +442,7 @@ export class ChatController {
         create.visible = true;
         try {
             const models = (await listModels()).body ?? [];
-            create.models = models.filter((model) => !cannot(model, 'completion'));
+            create.models = models.filter((model) => !cannot(model, 'chat'));
         } catch (error) {
             create.models = [];
             this.notifications.error("Models couldn't be loaded", error);
@@ -466,7 +466,7 @@ export class ChatController {
             // as when its provider can't be reached, so a change to the chat
             // doesn't change its model, unless it's chosen
             const models = (await listModels()).body ?? [];
-            const chosen = models.filter((model) => !cannot(model, 'completion') || model.canonical === session.model);
+            const chosen = models.filter((model) => !cannot(model, 'chat') || model.canonical === session.model);
             if (session.model && !chosen.some((model) => model.canonical === session.model)) {
                 const colon = session.model.indexOf(':');
                 chosen.unshift({ name: session.model.slice(colon + 1), provider: session.model.slice(0, colon), canonical: session.model });

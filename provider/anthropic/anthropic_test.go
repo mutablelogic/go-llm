@@ -63,7 +63,7 @@ func Test_Live(t *testing.T) {
 		require.NoError(t, err)
 		assert.NotEmpty(t, models)
 		assert.NotNil(t, model.InputTokenLimit())
-		assert.True(t, types.Value(model.Capabilities().Completion))
+		assert.True(t, types.Value(model.Capabilities().Chat))
 	})
 
 	t.Run("Reply", func(t *testing.T) {

@@ -108,11 +108,11 @@ func (m *Model) OutputTokenLimit() *uint {
 // as the API's version takes no sampling options, and whether it thinks,
 // and understands images, is as the API says
 func (m *Model) Capabilities() llm.ModelCap {
-	result := llm.ModelCap{Completion: yes, Tools: yes, Audio: no, Video: no, Embedding: no, Transcription: no, Translation: no, Temperature: no}
+	result := llm.ModelCap{Chat: yes, Tools: yes, AudioInput: no, VideoInput: no, Embedding: no, Transcription: no, Translation: no, Temperature: no}
 	if len(m.data.Capabilities) > 0 {
 		result.Thinking = types.Ptr(m.caps.Thinking.Supported)
-		result.Vision = types.Ptr(m.caps.ImageInput.Supported)
-		result.Documents = types.Ptr(m.caps.PDFInput.Supported)
+		result.ImageInput = types.Ptr(m.caps.ImageInput.Supported)
+		result.DocumentInput = types.Ptr(m.caps.PDFInput.Supported)
 	}
 	return result
 }

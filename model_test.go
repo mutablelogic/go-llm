@@ -16,8 +16,8 @@ func Test_ModelCap(t *testing.T) {
 	t.Run("String", func(t *testing.T) {
 		// The capabilities which are known to be true
 		assert.Empty(t, llm.ModelCap{}.String())
-		assert.Equal(t, "completion, tools, thinking, embedding", llm.ModelCap{
-			Completion: types.Ptr(true), Tools: types.Ptr(true), Thinking: types.Ptr(true), Vision: types.Ptr(false), Embedding: types.Ptr(true),
+		assert.Equal(t, "chat, tools, thinking, embedding", llm.ModelCap{
+			Chat: types.Ptr(true), Tools: types.Ptr(true), Thinking: types.Ptr(true), ImageInput: types.Ptr(false), Embedding: types.Ptr(true),
 		}.String())
 	})
 
@@ -29,7 +29,7 @@ func Test_ModelCap(t *testing.T) {
 			json string
 		}{
 			{llm.ModelCap{}, `{}`},
-			{llm.ModelCap{Completion: types.Ptr(true), Vision: types.Ptr(false), Thinking: types.Ptr(false)}, `{"completion":true,"thinking":false,"vision":false}`},
+			{llm.ModelCap{Chat: types.Ptr(true), ImageInput: types.Ptr(false), Thinking: types.Ptr(false)}, `{"chat":true,"thinking":false,"image_input":false}`},
 		} {
 			data, err := json.Marshal(test.cap)
 			require.NoError(t, err)
@@ -54,8 +54,8 @@ func (m capModel) Capabilities() llm.ModelCap { return m.caps }
 func Test_WithCapabilities(t *testing.T) {
 	yes, no := types.Ptr(true), types.Ptr(false)
 	models := []llm.Model{
-		capModel{name: "chat", caps: llm.ModelCap{Completion: yes, Tools: yes, Vision: no}},
-		capModel{name: "eyes", caps: llm.ModelCap{Completion: yes, Vision: yes}},
+		capModel{name: "chat", caps: llm.ModelCap{Chat: yes, Tools: yes, ImageInput: no}},
+		capModel{name: "eyes", caps: llm.ModelCap{Chat: yes, ImageInput: yes}},
 		capModel{name: "ocr", caps: llm.ModelCap{OCR: yes}},
 		capModel{name: "unknown"},
 	}
@@ -72,13 +72,13 @@ func Test_WithCapabilities(t *testing.T) {
 	all, err := llm.WithCapabilities(models)
 	require.NoError(t, err)
 	assert.Len(t, all, 4)
-	got, err := llm.WithCapabilities(models, "completion")
+	got, err := llm.WithCapabilities(models, "chat")
 	require.NoError(t, err)
 	assert.Equal(t, []string{"chat", "eyes"}, names(got))
-	got, err = llm.WithCapabilities(models, "Completion", " vision ")
+	got, err = llm.WithCapabilities(models, "Chat", " image_input ")
 	require.NoError(t, err)
 	assert.Equal(t, []string{"eyes"}, names(got))
-	got, err = llm.WithCapabilities(models, "speech")
+	got, err = llm.WithCapabilities(models, "speech_output")
 	require.NoError(t, err)
 	assert.Empty(t, got)
 
@@ -87,5 +87,5 @@ func Test_WithCapabilities(t *testing.T) {
 		_, err = llm.WithCapabilities(models, name)
 		assert.ErrorIs(t, err, llm.ErrBadParameter, name)
 	}
-	assert.Equal(t, []string{"completion", "vision"}, llm.ModelCap{Completion: yes, Vision: yes, Tools: no}.Names())
+	assert.Equal(t, []string{"chat", "image_input"}, llm.ModelCap{Chat: yes, ImageInput: yes, Tools: no}.Names())
 }

@@ -46,9 +46,9 @@ func (m *models) ListModels(_ context.Context, providers ...string) ([]gollm.Mod
 	}
 	yes := true
 	return []gollm.Model{
-		model{name: "chat", caps: gollm.ModelCap{Completion: &yes, Tools: &yes}},
-		model{name: "phonon", caps: gollm.ModelCap{Speech: &yes}},
-		model{name: "reader", caps: gollm.ModelCap{OCR: &yes, Vision: &yes}},
+		model{name: "chat", caps: gollm.ModelCap{Chat: &yes, Tools: &yes}},
+		model{name: "phonon", caps: gollm.ModelCap{SpeechOutput: &yes}},
+		model{name: "reader", caps: gollm.ModelCap{OCR: &yes, ImageInput: &yes}},
 		model{name: "whisper", caps: gollm.ModelCap{Transcription: &yes, Translation: &yes}},
 	}, nil
 }
@@ -117,10 +117,10 @@ func Test_Speak(t *testing.T) {
 	assert.Equal(t, "llm", ns.Name())
 	require.Len(t, ns.Tools(), 4)
 	assert.Contains(t, ns.Tools()[0].Description(), "recall the memory preferred_models")
-	assert.Contains(t, ns.Tools()[0].Description(), "with the speech capability with the models tool")
+	assert.Contains(t, ns.Tools()[0].Description(), "with the speech_output capability with the models tool")
 	_, err = ns.Tools()[0].Run(ctx, json.RawMessage(`{"text":"Hello"}`))
 	assert.ErrorIs(t, err, gollm.ErrBadParameter)
-	assert.ErrorContains(t, err, "the memory preferred_models, or list the models with the speech capability", "it says how to choose one")
+	assert.ErrorContains(t, err, "the memory preferred_models, or list the models with the speech_output capability", "it says how to choose one")
 	given, err := ns.Tools()[0].Run(ctx, json.RawMessage(`{"text":"Hello","model":"phonon"}`))
 	require.NoError(t, err)
 	assert.Equal(t, "speech.wav", given.(gollm.Resource).Name())
@@ -276,7 +276,7 @@ func Test_Models(t *testing.T) {
 	output, err = run(`{"capabilities":["ocr"],"provider":"fake"}`)
 	require.NoError(t, err)
 	assert.Equal(t, []string{"fake:reader"}, names(output))
-	output, err = run(`{"capabilities":["speech","vision"]}`)
+	output, err = run(`{"capabilities":["speech_output","image_input"]}`)
 	require.NoError(t, err)
 	assert.Equal(t, float64(0), output["count"])
 	assert.Equal(t, []any{}, output["models"])
@@ -327,9 +327,9 @@ func Test_Logs(t *testing.T) {
 		{"llm:ocr", `{"uri":"resource://pdf","pages":"0-1"}`},
 		{"llm:transcribe", `{"uri":"resource://wav"}`},
 		{"llm:transcribe", `{"uri":"resource://wav","translate":true}`},
-		{"llm:models", `{"capabilities":["ocr","speech"]}`},
-		{"llm:models", `{"capabilities":["vision","tools","speech"]}`},
-		{"llm:models", `{"capabilities":["image"]}`},
+		{"llm:models", `{"capabilities":["ocr","speech_output"]}`},
+		{"llm:models", `{"capabilities":["image_input","tools","speech_output"]}`},
+		{"llm:models", `{"capabilities":["image_output"]}`},
 	} {
 		_, err := tk.CallTool(ctx, call.tool, json.RawMessage(call.input))
 		require.NoError(t, err, call.tool)
