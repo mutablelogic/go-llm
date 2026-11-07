@@ -6,6 +6,7 @@ import (
 	"os"
 	"strings"
 	"testing"
+	"time"
 
 	// Packages
 	llm "github.com/mutablelogic/go-llm"
@@ -29,6 +30,7 @@ func (cityWeather) InputSchema() *jsonschema.Schema {
 	}]()
 }
 func (cityWeather) OutputSchema() *jsonschema.Schema { return nil }
+func (cityWeather) Timeout() time.Duration           { return 0 }
 func (cityWeather) Run(_ context.Context, input json.RawMessage) (any, error) {
 	var req struct {
 		City string `json:"city"`

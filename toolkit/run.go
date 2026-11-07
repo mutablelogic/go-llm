@@ -31,10 +31,10 @@ type outcome struct {
 // their results, in the order of the calls, as content blocks of a message
 // of the results. A call of a tool which isn't one of the tools, or which
 // fails, has its error as its result, which the model can correct. Each
-// tool has the timeout to return, unless it's zero, after which its context
-// is done, and its result is that it timed out, without waiting for it to
-// return, so a tool which doesn't return when its context is done can't
-// keep the others waiting. Returns the context's error, when it's done,
+// tool has its own timeout to return, or else the timeout, unless it's
+// zero, after which its context is done, and its result is that it timed
+// out, without waiting for it to return, so a tool which doesn't return
+// when its context is done can't keep the others waiting. Returns the context's error, when it's done,
 // without waiting for the tools to return.
 func RunTools(ctx context.Context, tools []llm.Tool, calls []llm.ToolCall, timeout time.Duration, session func(llm.ToolCall) Session) ([]providerschema.ContentBlock, error) {
 	results := make([]providerschema.ContentBlock, len(calls))
@@ -47,7 +47,7 @@ func RunTools(ctx context.Context, tools []llm.Tool, calls []llm.ToolCall, timeo
 		}
 		tool := tools[index]
 		wg.Go(func() {
-			results[i] = runTool(ctx, tool, call, timeout, session)
+			results[i] = runTool(ctx, tool, call, toolTimeout(tool, timeout), session)
 		})
 	}
 	wg.Wait()
@@ -59,6 +59,15 @@ func RunTools(ctx context.Context, tools []llm.Tool, calls []llm.ToolCall, timeo
 
 ////////////////////////////////////////////////////////////////////////////////
 // PRIVATE FUNCTIONS
+
+// toolTimeout returns the most time the tool has to return: its own, unless
+// it's zero, when it's the timeout
+func toolTimeout(tool llm.Tool, timeout time.Duration) time.Duration {
+	if own := tool.Timeout(); own > 0 {
+		return own
+	}
+	return timeout
+}
 
 // runTool runs the tool for the call, in the call's session, with the
 // timeout, unless it's zero, and returns its result, as toolResult returns

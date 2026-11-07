@@ -10,6 +10,7 @@ import (
 	"strings"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	// Packages
 	client "github.com/mutablelogic/go-client"
@@ -130,6 +131,7 @@ func (weatherTool) Name() string                                      { return "
 func (weatherTool) Description() string                               { return "The weather in a city" }
 func (weatherTool) InputSchema() *jsonschema.Schema                   { return nil }
 func (weatherTool) OutputSchema() *jsonschema.Schema                  { return nil }
+func (weatherTool) Timeout() time.Duration                            { return 0 }
 func (weatherTool) Run(context.Context, json.RawMessage) (any, error) { return nil, nil }
 
 ///////////////////////////////////////////////////////////////////////////////

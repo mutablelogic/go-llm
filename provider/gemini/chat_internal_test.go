@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"testing"
+	"time"
 
 	// Packages
 	llm "github.com/mutablelogic/go-llm"
@@ -25,6 +26,7 @@ func (weather) InputSchema() *jsonschema.Schema {
 	}]()
 }
 func (weather) OutputSchema() *jsonschema.Schema                  { return nil }
+func (weather) Timeout() time.Duration                            { return 0 }
 func (weather) Run(context.Context, json.RawMessage) (any, error) { return "sunny", nil }
 
 // chatClient returns a client of the fake API, and its model which thinks
