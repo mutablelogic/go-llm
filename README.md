@@ -334,8 +334,21 @@ Tools are added to the server's toolkit when their credentials, or settings, are
 | `newsapi` | News articles, headlines and sources | `NEWSAPI_API_KEY`, from [newsapi.org](https://newsapi.org/register) |
 | `homeassistant` | Query, and search, and control smart home devices | `HOMEASSISTANT_URL`, `HOMEASSISTANT_API_KEY` |
 | `ollama` | Web search and fetch, with Ollama's cloud service, rather than a local Ollama | `OLLAMA_API_KEY`, from [ollama.com](https://ollama.com/settings/keys) |
+| `messaging` | `connect`, `list`, `send` and `disconnect`: connect a chat, such as on Telegram, to the conversation, list its chats, send them a message, and disconnect one. See [Messaging](#messaging) | `TELEGRAM_BOT_TOKEN`, from [BotFather](https://t.me/BotFather) |
 
 A model is given tools by name, by namespace and name, such as `weatherapi:current`, or all of a namespace's, such as `weatherapi:*`, or all of them, `*`.
+
+## Messaging
+
+Chats on messaging services can be connected to a conversation, as channels, so you can talk to your assistant there, such as from your phone. Telegram is the first service:
+
+1. Make a bot with [BotFather](https://t.me/BotFather), and set its token as `TELEGRAM_BOT_TOKEN` when the server starts.
+2. In a chat whose model can call the `messaging` tools, ask to talk on Telegram. The assistant gives you a link, which works once, within 15 minutes.
+3. Open it, and press Start. The Telegram chat is now a channel of the conversation.
+
+What you say in the Telegram chat is sent to the conversation, and every reply in the conversation is sent to each of its channels, wherever the message it replies to came from, as is the outcome of a heartbeat which is worth telling you. A conversation can have more than one channel, such as your own chat and a group, and a chat is a channel of one conversation, so connecting it again moves it. Everyone in a group which is connected can talk to your assistant, and hear its replies, which can have what it remembers of you, so connect only groups whose people you'd tell. Messages from chats which aren't connected are ignored.
+
+The server reads the bot's messages by long polling, so it needs no address on the internet. Only one server can read a bot's messages, so a bot's token isn't shared between servers. Text is sent and received for now; voice messages, pictures and files are to come.
 
 ## API
 
@@ -351,6 +364,7 @@ The packages can be used without the server:
 - [`toolkit`](toolkit): the toolkit of tools, which a model calls.
 - [`memory`](memory): the memory, which is a namespace of the toolkit, with a store, events, and HTTP handlers and a client.
 - [`heartbeat`](heartbeat): the heartbeats, which are a namespace of the toolkit, with a store, events, `Run`, which fires them, and HTTP handlers and a client.
+- [`messaging`](messaging): the channels, which are chats on messaging services, such as [Telegram](messaging/telegram), connected to sessions, which are a namespace of the toolkit, with a store, and `Run`, which receives their messages.
 - [`broadcaster`](broadcaster): publishes events, which are changes, to the channels which watch them, with an HTTP handler which streams them as server-sent events, and a client.
 
 The registry is meant to be composed with other modules into a whole system, rather than to be one itself. It's created with options, which plug in what a system has:
@@ -434,7 +448,12 @@ env -u OPENAI_API_KEY -u MISTRAL_API_KEY -u ANTHROPIC_API_KEY -u GEMINI_API_KEY 
 
 - **MCP**: connectors to MCP servers, whose tools are added to the toolkit, each in its own namespace, so models can call them.
 - **Delivering events**: an event's outcome, such as a reminder, is put into the chat it's for, as a message, with the files its run made, such as speech, at the right time, rather than only listed in the Events panel.
-- **Channels**: chat with a session from Slack, or Telegram, as well as the web UI, and the CLI: its replies, and the events delivered to it, are sent to the channel, and what's said there is sent to the session.
+- **Channels**: Telegram chats can be connected to a conversation (see [Messaging](#messaging)). Still to come:
+  - voice messages, which are transcribed, and replies spoken with `llm:speak`, sent as voice;
+  - pictures and files, both ways, as the session's files;
+  - replies formatted for Telegram, rather than as plain text;
+  - the channels in the web UI, beside the chat;
+  - Slack.
 - **Scheduled runs in the chat**: when a heartbeat fires, its prompt goes to the chat's own model, marked as a scheduled run, with a short history of earlier runs, rather than only to the `event` agent.
 - **Scheduled agents**: agents which run on a schedule, as heartbeats do.
 - **Running Python** (experimental): a tool which runs Python a model writes, in WebAssembly, so it's sandboxed, without network access, with a file system of the session's files, by their names, which it reads, and to which what it writes, such as a chart, or a CSV, is kept, as the session's files.

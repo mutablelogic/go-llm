@@ -316,6 +316,39 @@ func Test_Chat(t *testing.T) {
 		assert.Equal(t, uint(10), stored.Usage.Output)
 	})
 
+	t.Run("Replies", func(t *testing.T) {
+		// Each reply which is stored is given to the function, with its
+		// session, and a reply which isn't stored isn't
+		type reply struct {
+			session uuid.UUID
+			text    string
+		}
+		var got []reply
+		store := test.NewSessionStore()
+		r, err := registry.New(registry.WithSessionStore(store), registry.WithToolkit(test.NewToolkit(t)), registry.WithReplies(func(ctx context.Context, session uuid.UUID, text string) {
+			assert.NoError(t, ctx.Err())
+			got = append(got, reply{session, text})
+		}))
+		require.NoError(t, err)
+		require.NoError(t, r.Add("", newScripted(text("Hello"), text("Again"))))
+		session, err := r.CreateSession(ctx, meta)
+		require.NoError(t, err)
+
+		// The context the reply is given with isn't cancelled with the
+		// chat's
+		chatCtx, cancel := context.WithCancel(ctx)
+		_, err = r.Chat(chatCtx, session.ID, hi("Hi"), nil)
+		cancel()
+		require.NoError(t, err)
+		_, err = r.Chat(ctx, session.ID, hi("Hi again"), nil)
+		require.NoError(t, err)
+		assert.Equal(t, []reply{{session.ID, "Hello"}, {session.ID, "Again"}}, got)
+
+		_, err = r.Chat(ctx, uuid.New(), hi("Nobody"), nil)
+		assert.ErrorIs(t, err, llm.ErrNotFound)
+		assert.Len(t, got, 2)
+	})
+
 	t.Run("Stream", func(t *testing.T) {
 		r, _, _ := newChat(t, text("Hello"))
 		session, err := r.CreateSession(ctx, meta)
