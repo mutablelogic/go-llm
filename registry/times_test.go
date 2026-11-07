@@ -69,6 +69,23 @@ func Test_Times(t *testing.T) {
 		assert.Equal(t, "Hi", stored.Body[0].Text())
 	})
 
+	t.Run("UTC", func(t *testing.T) {
+		// Without the person's time zone, they're told in UTC
+		sessions := test.NewSessionStore()
+		tk := test.NewToolkit(t)
+		require.NoError(t, tk.Add(toolkit.NewNamespace("assistant", "", readTool{})))
+		p := newScripted(text("Hello."))
+		r, err := registry.New(registry.WithSessionStore(sessions), registry.WithToolkit(tk), registry.WithTimes(func() *time.Location { return nil }, "assistant"))
+		require.NoError(t, err)
+		require.NoError(t, r.Add("", p))
+		session, err := r.CreateSession(ctx, schema.SessionMeta{GeneratorMeta: schema.GeneratorMeta{Model: types.Ptr("model"), Tools: []string{"assistant:*"}}})
+		require.NoError(t, err)
+		_, err = r.Chat(ctx, session.ID, []llm.Message{user(t, "Hi")}, nil)
+		require.NoError(t, err)
+		message := p.asked[0].messages[0].(*providerschema.Message)
+		assert.Regexp(t, `^\(\w+day \d{4}-\d{2}-\d{2}T\d{2}:\d{2}\+00:00\)$`, types.Value(message.Content[0].Text))
+	})
+
 	t.Run("Without", func(t *testing.T) {
 		// Without the namespace's tools, they aren't told when, though it's
 		// kept

@@ -160,7 +160,7 @@ func (r *Registry) zoneFor(tools []llm.Tool) *time.Location {
 				return zone
 			}
 		}
-		return time.Local
+		return time.UTC
 	}
 	return nil
 }

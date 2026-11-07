@@ -132,7 +132,7 @@ func Test_SystemPrompt(t *testing.T) {
 
 	// When the person's messages were sent, rather than the time, so the
 	// prompt doesn't change as time passes, and it's cached
-	sent := "Each of the person's messages starts with when they sent it."
+	sent := "Each of the person's messages starts with when they sent it, in UTC, as their time zone isn't known."
 	for _, now := range []time.Time{
 		time.Date(2026, 11, 4, 18, 42, 7, 0, berlin),
 		time.Date(2026, 7, 1, 9, 5, 0, 0, berlin),
@@ -177,7 +177,7 @@ func Test_SystemPrompt(t *testing.T) {
 		set(t, m, schema.FieldName, &schema.Detail{Declined: true})
 		set(t, m, schema.FieldTimezone, &schema.Detail{Declined: true})
 		set(t, m, schema.FieldLocation, &schema.Detail{Value: "Berlin"})
-		assert.Equal(t, "Each of the person's messages starts with when they sent it. The person you're talking to is in Berlin. You don't have a name yet. Before anything else, ask the person what they'd like to call you. You don't know the language they speak. Don't ask for them, but as soon as the conversation makes one clear, such as when they say where they are, or by the language they write in, remember it, before you answer, and when you learn where they are, remember its time zone too, by its IANA name, such as Europe/Berlin for Berlin. Remember what you learn, or that the person would rather not say, with the set_detail tool, in the memory namespace."+"\n\n"+memory.MemoriesPrompt, m.SystemPrompt())
+		assert.Equal(t, "Each of the person's messages starts with when they sent it, in UTC, as their time zone isn't known. The person you're talking to is in Berlin. You don't have a name yet. Before anything else, ask the person what they'd like to call you. You don't know the language they speak. Don't ask for them, but as soon as the conversation makes one clear, such as when they say where they are, or by the language they write in, remember it, before you answer, and when you learn where they are, remember its time zone too, by its IANA name, such as Europe/Berlin for Berlin. Remember what you learn, or that the person would rather not say, with the set_detail tool, in the memory namespace."+"\n\n"+memory.MemoriesPrompt, m.SystemPrompt())
 	})
 
 	t.Run("Language", func(t *testing.T) {
@@ -187,7 +187,7 @@ func Test_SystemPrompt(t *testing.T) {
 		set(t, m, schema.FieldTimezone, &schema.Detail{Declined: true})
 		set(t, m, schema.FieldAssistant, &schema.Detail{Declined: true})
 		set(t, m, schema.FieldLanguage, &schema.Detail{Value: "German"})
-		assert.Equal(t, "Each of the person's messages starts with when they sent it. The person you're talking to speaks German."+"\n\n"+memory.MemoriesPrompt, m.SystemPrompt())
+		assert.Equal(t, "Each of the person's messages starts with when they sent it, in UTC, as their time zone isn't known. The person you're talking to speaks German."+"\n\n"+memory.MemoriesPrompt, m.SystemPrompt())
 	})
 
 	t.Run("PersonsName", func(t *testing.T) {
@@ -197,7 +197,7 @@ func Test_SystemPrompt(t *testing.T) {
 		set(t, m, schema.FieldLocation, &schema.Detail{Value: "Berlin"})
 		set(t, m, schema.FieldTimezone, &schema.Detail{Declined: true})
 		set(t, m, schema.FieldLanguage, &schema.Detail{Value: "English"})
-		assert.Equal(t, "Each of the person's messages starts with when they sent it. Your name is Omodie. The person you're talking to is in Berlin. They speak English. You don't know the person's name. You can ask for it once, when it fits the conversation, but don't press them. Remember what you learn, or that the person would rather not say, with the set_detail tool, in the memory namespace."+"\n\n"+memory.MemoriesPrompt, m.SystemPrompt())
+		assert.Equal(t, "Each of the person's messages starts with when they sent it, in UTC, as their time zone isn't known. Your name is Omodie. The person you're talking to is in Berlin. They speak English. You don't know the person's name. You can ask for it once, when it fits the conversation, but don't press them. Remember what you learn, or that the person would rather not say, with the set_detail tool, in the memory namespace."+"\n\n"+memory.MemoriesPrompt, m.SystemPrompt())
 	})
 
 	t.Run("Toolkit", func(t *testing.T) {
@@ -347,5 +347,5 @@ func Test_SystemPromptForTools(t *testing.T) {
 	assert.NotContains(t, only, asks)
 	assert.Contains(t, only, "# Memory")
 	assert.NotContains(t, only, details)
-	assert.True(t, strings.HasPrefix(only, "Each of the person's messages starts with when they sent it."))
+	assert.True(t, strings.HasPrefix(only, "Each of the person's messages starts with when they sent it, in UTC"))
 }

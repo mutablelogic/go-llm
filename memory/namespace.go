@@ -228,11 +228,11 @@ func join(phrases []string) string {
 
 // times returns the sentence of when the person's messages were sent,
 // which each starts with, in their time zone, by its name, such as
-// Europe/Berlin, when it's known, rather than the time, which would change
-// the system prompt each time, so it isn't cached
+// Europe/Berlin, or in UTC, when it isn't known, rather than the time, which
+// would change the system prompt each time, so it isn't cached
 func times(zone *time.Location) string {
 	if zone == nil || zone.String() == "Local" {
-		return "Each of the person's messages starts with when they sent it."
+		return "Each of the person's messages starts with when they sent it, in UTC, as their time zone isn't known."
 	}
 	return fmt.Sprintf("Each of the person's messages starts with when they sent it, in their time zone, %s.", zone)
 }
