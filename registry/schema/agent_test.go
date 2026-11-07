@@ -235,6 +235,35 @@ func Test_AgentMessage(t *testing.T) {
 		assert.ErrorContains(t, err, `"paused"`)
 	})
 
+	t.Run("Resources", func(t *testing.T) {
+		// A property of format resource, which is a resource's URI, is its
+		// text, which the function reads, and otherwise as it is, as it is
+		// without the function
+		p := schema.PromptMeta{
+			Name:   "segment",
+			Input:  json.RawMessage(`{"type":"object","properties":{"transcript":{"type":"string","format":"resource"},"note":{"type":"string"}}}`),
+			Prompt: types.Ptr(`{{ .transcript }} / {{ .note }}`),
+		}
+		read := func(uri string) (string, error) {
+			if uri == "resource://abc" {
+				return "Hello, as it is", nil
+			}
+			return "", llm.ErrNotFound.Withf("no %s", uri)
+		}
+		message, err := p.MessageWith(json.RawMessage(`{"transcript":" resource://abc ","note":"resource://abc"}`), read)
+		require.NoError(t, err)
+		assert.Equal(t, "Hello, as it is / resource://abc", message)
+		message, err = p.MessageWith(json.RawMessage(`{"transcript":"Some text"}`), read)
+		require.NoError(t, err)
+		assert.Equal(t, "Some text / ", message)
+		message, err = p.Message(json.RawMessage(`{"transcript":"resource://abc"}`))
+		require.NoError(t, err)
+		assert.Equal(t, "resource://abc / ", message)
+		_, err = p.MessageWith(json.RawMessage(`{"transcript":"resource://xyz"}`), read)
+		assert.ErrorIs(t, err, llm.ErrNotFound)
+		assert.ErrorContains(t, err, `input "transcript"`)
+	})
+
 	t.Run("NoSchema", func(t *testing.T) {
 		// Without an input schema, the input is any object, and no input is
 		// an empty one

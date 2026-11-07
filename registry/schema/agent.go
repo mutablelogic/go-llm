@@ -225,9 +225,28 @@ func (p PromptMeta) Validate(input json.RawMessage) error {
 // the input isn't valid, the prompt can't be executed with it, or there's
 // neither a prompt, nor an input.
 func (p PromptMeta) Message(input json.RawMessage) (string, error) {
+	return p.MessageWith(input, nil)
+}
+
+// MessageWith returns the message to the model, as Message does, with the
+// text of the files the input refers to: a property of the input schema of
+// format resource, whose value is a file's URI, resource://<hash>, is the
+// file's text, which the function reads, as it is, and otherwise the text
+// it's given. Only resource URIs are read, and without the function, they
+// aren't. Returns the function's error, with the property's name, such as
+// for a file which isn't text.
+func (p PromptMeta) MessageWith(input json.RawMessage, read ReadFunc) (string, error) {
 	value, err := p.input(input)
 	if err != nil {
 		return "", err
+	}
+	if read != nil {
+		schema, err := p.InputSchema()
+		if err != nil {
+			return "", err
+		} else if err := withResources(value, schema, read); err != nil {
+			return "", err
+		}
 	}
 
 	tmpl, err := p.Template()
@@ -425,6 +444,38 @@ func withZeros(value any) any {
 		}
 	}
 	return value
+}
+
+// ReadFunc returns the text of the file with the URI, resource://<hash>,
+// which a property of an agent's input, of format resource, refers to
+type ReadFunc func(uri string) (string, error)
+
+// ResourceFormat is the format of a property of an agent's input which is
+// the text of a file, or its URI, resource://<hash>, whose text is read
+const ResourceFormat = "resource"
+
+// withResources sets each property of the schema, of format resource, whose
+// value is a file's URI, resource://<hash>, to the file's text, which the
+// function reads, and leaves any other value as it is
+func withResources(value map[string]any, schema *jsonschema.Schema, read ReadFunc) error {
+	if schema == nil {
+		return nil
+	}
+	for name, property := range schema.Properties {
+		if property == nil || property.Format != ResourceFormat {
+			continue
+		}
+		uri, ok := value[name].(string)
+		if !ok || !strings.HasPrefix(strings.TrimSpace(uri), "resource://") {
+			continue
+		}
+		text, err := read(strings.TrimSpace(uri))
+		if err != nil {
+			return fmt.Errorf("input %q: %w", name, err)
+		}
+		value[name] = text
+	}
+	return nil
 }
 
 // withDefaults sets each property of the schema which the input hasn't, so
