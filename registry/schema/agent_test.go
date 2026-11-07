@@ -262,6 +262,26 @@ func Test_AgentMessage(t *testing.T) {
 		_, err = p.MessageWith(json.RawMessage(`{"transcript":"resource://xyz"}`), read)
 		assert.ErrorIs(t, err, llm.ErrNotFound)
 		assert.ErrorContains(t, err, `input "transcript"`)
+		// The input is validated as the model is sent it, once the files are
+		// read, so a pattern, such as of subtitles' cues, is of the file's
+		// text, rather than its URI, which doesn't have one
+		p.Input = json.RawMessage(`{"type":"object","properties":{"transcript":{"type":"string","format":"resource","pattern":"-->"}}}`)
+		p.Prompt = types.Ptr(`{{ .transcript }}`)
+		srt := func(uri string) (string, error) {
+			switch uri {
+			case "resource://srt":
+				return "1\n00:00:00,200 --> 00:00:03,500\nHello.\n", nil
+			default:
+				return "Some notes, which aren't subtitles", nil
+			}
+		}
+		message, err = p.MessageWith(json.RawMessage(`{"transcript":"resource://srt"}`), srt)
+		require.NoError(t, err)
+		assert.Contains(t, message, "-->")
+		_, err = p.MessageWith(json.RawMessage(`{"transcript":"resource://notes"}`), srt)
+		assert.ErrorIs(t, err, llm.ErrBadParameter, "a file which isn't subtitles")
+		_, err = p.MessageWith(json.RawMessage(`{"transcript":"Some text, which isn't subtitles"}`), srt)
+		assert.ErrorIs(t, err, llm.ErrBadParameter, "text which isn't subtitles")
 	})
 
 	t.Run("NoSchema", func(t *testing.T) {

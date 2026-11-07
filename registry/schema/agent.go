@@ -213,7 +213,7 @@ func (p PromptMeta) Template() (*template.Template, error) {
 // Validate returns ErrBadParameter when the input isn't an object, which its
 // input schema, when it has one, validates. No input is an empty object.
 func (p PromptMeta) Validate(input json.RawMessage) error {
-	_, err := p.input(input)
+	_, err := p.input(input, nil)
 	return err
 }
 
@@ -236,17 +236,9 @@ func (p PromptMeta) Message(input json.RawMessage) (string, error) {
 // aren't. Returns the function's error, with the property's name, such as
 // for a file which isn't text.
 func (p PromptMeta) MessageWith(input json.RawMessage, read ReadFunc) (string, error) {
-	value, err := p.input(input)
+	value, err := p.input(input, read)
 	if err != nil {
 		return "", err
-	}
-	if read != nil {
-		schema, err := p.InputSchema()
-		if err != nil {
-			return "", err
-		} else if err := withResources(value, schema, read); err != nil {
-			return "", err
-		}
 	}
 
 	tmpl, err := p.Template()
@@ -394,9 +386,10 @@ func updated(created, modified time.Time) string {
 }
 
 // input returns the input, decoded as an object, with its numbers as they
-// were written, which its input schema, when it has one, validates. No
-// input is an empty object.
-func (p PromptMeta) input(input json.RawMessage) (map[string]any, error) {
+// were written, and the text of the files it refers to, which the function
+// reads, when there is one, which its input schema, when it has one,
+// validates, once they're read. No input is an empty object.
+func (p PromptMeta) input(input json.RawMessage, read ReadFunc) (map[string]any, error) {
 	data := bytes.TrimSpace(input)
 	if len(data) == 0 || string(data) == "null" {
 		data = []byte("{}")
@@ -413,6 +406,16 @@ func (p PromptMeta) input(input json.RawMessage) (map[string]any, error) {
 	if err != nil {
 		return nil, err
 	} else if schema != nil {
+		// The files it refers to are read, with the function, when there is
+		// one, so it's validated as the model is sent it, such as a pattern
+		// which the text of a file, rather than its URI, has
+		if read != nil {
+			if err := withResources(value, schema, read); err != nil {
+				return nil, err
+			} else if data, err = json.Marshal(value); err != nil {
+				return nil, err
+			}
+		}
 		if err := schema.Validate(data); err != nil {
 			return nil, llm.ErrBadParameter.Withf("invalid input: %v", err)
 		}
