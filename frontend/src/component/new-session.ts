@@ -176,7 +176,7 @@ export class NewSession extends Panel<NewSessionForm> {
             <form @submit=${this.handleSubmit}>
                 <cds-text-input id="title" label="Title (optional)" placeholder="Such as Trip to Lisbon" helper-text="What you want the chat to be about"
                     value=${this.session?.title ?? ''}></cds-text-input>
-                <cds-select id="model" label-text="Model" value=${chosen}
+                <cds-select id="model" label-text="Assistant model" value=${chosen}
                     @cds-select-selected=${(e: CustomEvent<{ value: string }>) => { this.chosen = e.detail.value; }}>
                     ${this.models.map((model) => html`<cds-select-item value=${model.canonical}>${model.canonical}</cds-select-item>`)}
                 </cds-select>
