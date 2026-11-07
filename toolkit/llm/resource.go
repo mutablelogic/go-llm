@@ -1,6 +1,8 @@
 package llm
 
 import (
+	"bufio"
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -128,6 +130,22 @@ var readNamespaces = []string{
 	"ical", "vcard", "email", "mbox", "archive", "google", "android",
 }
 
+// errBeyondEnd is the error of a part which starts beyond the end of a
+// file, which is a note, rather than an error, as a model which reads on
+// can read too far
+var errBeyondEnd = errors.New("the offset is beyond the end of the file")
+
+const (
+	// sniffBytes is how much of the start of a file is looked at, to know
+	// whether it's text, before it's read, as Git does
+	sniffBytes = 8000
+)
+
+// maxTextBytes is the most of a document of text, such as HTML, or XML,
+// which go-metadata converts to Markdown, so the Markdown of a larger one
+// may be of its start only
+var maxTextBytes int64 = 16 << 20
+
 // maxMetadataValue is the longest value of a file's metadata which is
 // returned, in bytes, as some, such as XMP, can be long
 const maxMetadataValue = 512
@@ -137,6 +155,14 @@ const (
 	// when the offset is beyond the end of it
 	notText   = "The file can't be read as text, so only what it is is returned, and it can be given to a tool which reads it, by its URI."
 	beyondEnd = "The offset is beyond the end of the file."
+
+	// truncatedText is the note of the last part of the Markdown of a file
+	// of text which is larger than go-metadata converts
+	truncatedText = "The file is larger than 16 MiB, and its Markdown may be of its start only. Read it raw, a part at a time, for all of it."
+
+	// unreadable is the note of a file which couldn't be read as Markdown,
+	// such as a document which isn't what its type says, with why
+	unreadable = "The file couldn't be read as Markdown: "
 
 	// The notes, of what reads a file which can't be read as text, by its
 	// type: an image, or a scan, whose text llm:ocr recognizes, and audio,
@@ -193,27 +219,54 @@ func (t *resourceTool) Run(ctx context.Context, input json.RawMessage) (any, err
 	output := readOutput{URI: file.URI(), Name: file.Name, Title: file.Description, Type: file.Type, Size: file.Size}
 	toolkit.Logf(ctx, "Reading %s", describeFile(file))
 
+	// Whether it's text is known from its start, once, so each part of it
+	// is, or isn't, rather than only those which have a NUL
+	scan := &nulScanner{Reader: content}
+	head := bufio.NewReaderSize(scan, sniffBytes)
+	start, _ := head.Peek(sniffBytes)
+	binary := textType(file.Type) && !providerschema.IsText(start, file.Type)
+
+	// hasNUL reads the rest of a file of text, which wasn't read, and
+	// returns whether it has a NUL, anywhere, so it isn't text, as a part
+	// which hasn't one would otherwise be, though another has
+	hasNUL := func() bool {
+		if !textType(file.Type) {
+			return false
+		}
+		_, _ = io.Copy(io.Discard, head)
+		return scan.found
+	}
+
 	// Its part, as it is, when it's raw, which is text
 	if strings.EqualFold(strings.TrimSpace(req.Format), "raw") {
-		text, offset, next, err := raw(content, file.Type, req.Offset, limit)
+		if binary || !providerschema.IsText(start, file.Type) {
+			output.Note = notTextFor(file.Type)
+			return output, nil
+		}
+		text, offset, next, err := raw(head, file.Type, req.Offset, limit)
 		switch {
+		case errors.Is(err, errBeyondEnd):
+			output.Note = beyondEnd
 		case errors.Is(err, gollm.ErrNotImplemented):
 			output.Note = notTextFor(file.Type)
-		case errors.Is(err, gollm.ErrBadParameter):
-			output.Note = beyondEnd
 		case err != nil:
 			return nil, err
+		case hasNUL():
+			output.Note = notTextFor(file.Type)
 		default:
 			output.Offset, output.Content, output.Next = offset, &text, next
 		}
 		return output, nil
 	} else if format := strings.TrimSpace(req.Format); format != "" && !strings.EqualFold(format, "markdown") {
 		return nil, gollm.ErrBadParameter.Withf("unknown format %q, which isn't markdown or raw", format)
+	} else if binary {
+		output.Note = notTextFor(file.Type)
+		return output, nil
 	}
 
 	// Its part, as Markdown, and, with the first, its metadata, whose title
 	// is the file's own, when it has one
-	p, err := markdown(ctx, namedReader{Reader: content, name: file.Name}, file.Type, req.Offset, limit)
+	p, err := markdown(ctx, namedReader{Reader: head, name: file.Name}, file.Type, req.Offset, limit)
 	if p != nil && req.Offset == 0 {
 		output.Metadata = p.meta
 		if title := firstLine(file.Description); title != "" && output.Metadata != nil {
@@ -221,14 +274,26 @@ func (t *resourceTool) Run(ctx context.Context, input json.RawMessage) (any, err
 		}
 	}
 	switch {
+	case errors.Is(err, errBeyondEnd):
+		output.Note = beyondEnd
 	case errors.Is(err, gollm.ErrNotImplemented):
 		output.Note = notTextFor(file.Type)
-	case errors.Is(err, gollm.ErrBadParameter) && req.Offset > 0:
-		output.Note = beyondEnd
+	case errors.Is(err, gollm.ErrBadParameter):
+		// It isn't what its type says, such as a document which is cut short
+		reason := err.Error()
+		for strings.HasPrefix(reason, "bad parameter: ") {
+			reason = strings.TrimPrefix(reason, "bad parameter: ")
+		}
+		output.Note = unreadable + reason
 	case err != nil:
 		return nil, err
+	case hasNUL():
+		output.Note = notTextFor(file.Type)
 	default:
 		output.Offset, output.Content, output.Next = p.offset, &p.body, p.next
+		if p.next == nil && file.Size > maxTextBytes && textType(file.Type) {
+			output.Note = truncatedText
+		}
 	}
 	return output, nil
 }
@@ -301,8 +366,10 @@ func markdown(ctx context.Context, r io.Reader, contentType string, offset, limi
 	switch {
 	case errors.Is(err, metadata.ErrNotImplemented):
 		return nil, gollm.ErrNotImplemented.Withf("no Markdown of type %q", mediatype)
-	case errors.Is(err, metadata.ErrBadParameter) && offset > 0:
-		return nil, gollm.ErrBadParameter.Withf("offset %d is beyond the end of the Markdown", offset)
+	case errors.Is(err, metadata.ErrBadParameter) && offset > 0 && strings.Contains(err.Error(), "beyond the end"):
+		return nil, errBeyondEnd
+	case errors.Is(err, metadata.ErrBadParameter):
+		return nil, gollm.ErrBadParameter.With(err.Error())
 	case err != nil:
 		return nil, err
 	}
@@ -345,6 +412,37 @@ func markdown(ctx context.Context, r io.Reader, contentType string, offset, limi
 	return p, nil
 }
 
+// nulScanner is a reader which notes whether what's read has a NUL
+type nulScanner struct {
+	io.Reader
+	found bool
+}
+
+func (s *nulScanner) Read(p []byte) (int, error) {
+	n, err := s.Reader.Read(p)
+	if !s.found && bytes.IndexByte(p[:n], 0) >= 0 {
+		s.found = true
+	}
+	return n, err
+}
+
+// textType returns whether the type is of text, such as text/plain, HTML,
+// JSON, XML or subtitles, rather than of a document which is binary, such
+// as a Word document, which can have NULs, and isn't text, though it can be
+// read as Markdown
+func textType(contentType string) bool {
+	mediatype, _, _ := mime.ParseMediaType(contentType)
+	switch {
+	case strings.HasPrefix(mediatype, "text/"), strings.HasSuffix(mediatype, "+json"), strings.HasSuffix(mediatype, "+xml"):
+		return true
+	}
+	switch mediatype {
+	case "application/json", "application/xml", "application/x-subrip", "application/javascript", "application/x-yaml", "application/yaml", "application/toml", "application/x-sh", "application/sql", "application/x-ndjson":
+		return true
+	}
+	return false
+}
+
 // notTextFor returns the note of a file, of the type, which can't be read
 // as text, which says which tool reads it
 func notTextFor(contentType string) string {
@@ -371,7 +469,7 @@ func raw(r io.Reader, contentType string, offset, limit uint64) (string, uint64,
 	if skipped, err := io.CopyN(io.Discard, r, int64(offset)); err != nil && !errors.Is(err, io.EOF) {
 		return "", 0, nil, err
 	} else if uint64(skipped) < offset {
-		return "", 0, nil, gollm.ErrBadParameter.Withf("offset %d is beyond the end of the file", offset)
+		return "", 0, nil, errBeyondEnd
 	}
 
 	// The part, and a byte more, to know whether there's more of it, which
@@ -380,7 +478,7 @@ func raw(r io.Reader, contentType string, offset, limit uint64) (string, uint64,
 	if err != nil {
 		return "", 0, nil, err
 	} else if len(data) == 0 && offset > 0 {
-		return "", 0, nil, gollm.ErrBadParameter.Withf("offset %d is beyond the end of the file", offset)
+		return "", 0, nil, errBeyondEnd
 	}
 	start := 0
 	for start < len(data) && start < utf8.UTFMax && !utf8.RuneStart(data[start]) {

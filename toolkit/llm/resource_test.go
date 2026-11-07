@@ -242,6 +242,46 @@ func Test_Resource(t *testing.T) {
 		assert.Contains(t, got["note"], "length")
 	})
 
+	t.Run("NUL", func(t *testing.T) {
+		// A file of text which has a NUL, anywhere, isn't text, whichever part
+		// is read, as Markdown, or raw, even when the part hasn't one
+		binary := create(schema.ResourceMeta{Session: &chat, Name: "log.txt", Type: "text/plain"}, strings.Repeat("a", 20000)+"\x00b")
+		for _, format := range []string{"markdown", "raw"} {
+			result, err := run(chat, `{"uri":"`+binary+`","format":"`+format+`","limit":100}`)
+			require.NoError(t, err, format)
+			got := output(result)
+			assert.Nil(t, got["content"], format)
+			assert.Contains(t, got["note"], "can't be read as text", format)
+		}
+	})
+
+	t.Run("Unreadable", func(t *testing.T) {
+		// A document which isn't what its type says isn't beyond its end, at
+		// any offset, but couldn't be read, and says why
+		broken := create(schema.ResourceMeta{Session: &chat, Name: "report.docx", Type: "application/vnd.openxmlformats-officedocument.wordprocessingml.document"}, "this isn't a zip file at all")
+		for _, offset := range []string{"0", "100"} {
+			result, err := run(chat, `{"uri":"`+broken+`","offset":`+offset+`}`)
+			require.NoError(t, err, offset)
+			got := output(result)
+			assert.Nil(t, got["content"], offset)
+			assert.NotContains(t, got["note"], "beyond the end", offset)
+			assert.Equal(t, "The file couldn't be read as Markdown: not an office document: zip: not a valid zip file", got["note"], offset)
+		}
+	})
+
+	t.Run("Large", func(t *testing.T) {
+		// The last part of the Markdown of a file of text which is larger
+		// than go-metadata converts says it may be of its start only
+		was := llmtools.SetMaxTextBytes(10)
+		t.Cleanup(func() { llmtools.SetMaxTextBytes(was) })
+		page := create(schema.ResourceMeta{Session: &chat, Name: "page.html", Type: "text/html"}, "<html><body><p>Hello, world, at length.</p></body></html>")
+		result, err := run(chat, `{"uri":"`+page+`"}`)
+		require.NoError(t, err)
+		got := output(result)
+		assert.Contains(t, got["content"], "Hello")
+		assert.Contains(t, got["note"], "larger than 16 MiB")
+	})
+
 	t.Run("OnItsOwn", func(t *testing.T) {
 		// A file on its own is read in a chat, and without one, and one which
 		// doesn't exist, or isn't a file's URI, isn't
