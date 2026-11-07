@@ -30,6 +30,7 @@ type fakeAPI struct {
 	embedded batchEmbedRequest // The last request to embed messages
 	reply    []string          // The pieces of the reply the next request to generate streams
 	asked    generateRequest   // The last request to generate
+	made     string            // The response the next request to generate, without streaming, is
 }
 
 // models are the fake's models, by page
@@ -93,6 +94,11 @@ func newFakeAPI(t *testing.T) *fakeAPI {
 				}{Values: []float32{float32(len(embed.Content.Parts[0].Text)), float32(len(embed.Content.Parts))}})
 			}
 			_ = json.NewEncoder(w).Encode(response)
+		case r.Method == http.MethodPost && strings.HasSuffix(r.URL.Path, ":generateContent"):
+			var req generateRequest
+			require.NoError(t, json.NewDecoder(r.Body).Decode(&req))
+			api.asked = req
+			_, _ = w.Write([]byte(api.made))
 		case r.Method == http.MethodPost && strings.HasSuffix(r.URL.Path, ":streamGenerateContent"):
 			// The reply, streamed, as server-sent events
 			require.Equal(t, "sse", r.URL.Query().Get("alt"))

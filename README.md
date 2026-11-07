@@ -242,6 +242,7 @@ The registry can be used without the server, from your own Go program, as the [e
 - **Embed**: a vector for each message, of its text, and of images and audio for models which embed them.
 - **OCR**: the text of images and documents, such as PDFs, as Markdown, page by page, with the regions of each page and their boxes.
 - **Speak**: text as audio, with Ollama's `phonon` and OpenAI's speech models, in a voice, which `llm speak`, and `POST /llm/speak`, return, and the `llm:speak` tool keeps as a file of the chat.
+- **Illustrate**: images, from a prompt, or by changing, or combining, images, with Gemini's Nano Banana models, which `llm illustrate`, and `POST /llm/illustrate`, keep as files, and the `llm:illustrate` tool keeps as files of the chat, so any model can make images. A model which makes images in a conversation, such as Nano Banana, has them kept as files of the chat, and shown, and can change them, as it's asked.
 - **Transcribe and translate**: the speech in audio, as text, in its language or in English, with timed segments and speakers, streamed as it's transcribed, and printed as SRT or WebVTT subtitles.
 - **Models**: download, delete and unload models, for providers which store them, such as Ollama and go-whisper, and list them by what they can do, such as `image_input`, which is seeing images, `image_output`, which is making them, `speech_output` or `ocr`, which the table below describes, with `llm models --capability`, or the `llm:models` tool, so a model, or an agent, can choose one.
 - **Tools**: a toolkit of tools, in namespaces, for Home Assistant, NewsAPI, WeatherAPI and Ollama's web search, which models can call.
@@ -254,17 +255,17 @@ The registry can be used without the server, from your own Go program, as the [e
 
 ## Providers
 
-| Type | Provider | Generate | Embed | OCR | Transcribe | Translate | Speak | Models |
-|------|----------|:--------:|:-----:|:---:|:----------:|:---------:|:-----:|--------|
-| `ollama` | [Ollama](https://ollama.com) | ✅ | ✅ | ✅ (images) | | | ✅ (phonon) | Download, delete, unload |
-| `openai` | [OpenAI](https://platform.openai.com) | ✅ | ✅ | | ✅ | ✅ (whisper) | ✅ (tts) | |
-| `anthropic` | [Anthropic](https://www.anthropic.com)'s Claude models, which count tokens exactly, to fit a conversation to the model's context | ✅ | | | | | | |
-| `gemini` | [Google](https://ai.google.dev)'s Gemini models, which count tokens exactly, and keep a conversation another model started | ✅ | ✅ (text, images, audio, PDFs) | | | | | |
-| `openai` | [Mistral](https://mistral.ai), at `https://api.mistral.ai/v1` | ✅ | ✅ | ✅ | ✅ | | | |
-| `openai` | [DeepSeek](https://www.deepseek.com), and other OpenAI-compatible servers | ✅ | | | | | | |
-| `gowhisper` | [go-whisper](https://github.com/mutablelogic/go-whisper) | | | | ✅ | ✅ | | Download, delete |
-| `elevenlabs` | [ElevenLabs](https://elevenlabs.io) | | | | ✅ | | | |
-| `eliza` | A mock of Weizenbaum's 1966 chatbot, for testing | ✅ | | | | | | |
+| Type | Provider | Generate | Embed | OCR | Transcribe | Translate | Speak | Images | Models |
+|------|----------|:--------:|:-----:|:---:|:----------:|:---------:|:-----:|:------:|--------|
+| `ollama` | [Ollama](https://ollama.com) | ✅ | ✅ | ✅ (images) | | | ✅ (phonon) | | Download, delete, unload |
+| `openai` | [OpenAI](https://platform.openai.com) | ✅ | ✅ | | ✅ | ✅ (whisper) | ✅ (tts) | | |
+| `anthropic` | [Anthropic](https://www.anthropic.com)'s Claude models, which count tokens exactly, to fit a conversation to the model's context | ✅ | | | | | | | |
+| `gemini` | [Google](https://ai.google.dev)'s Gemini models, which count tokens exactly, and keep a conversation another model started | ✅ | ✅ (text, images, audio, PDFs) | | | | | ✅ (Nano Banana) | |
+| `openai` | [Mistral](https://mistral.ai), at `https://api.mistral.ai/v1` | ✅ | ✅ | ✅ | ✅ | | | | |
+| `openai` | [DeepSeek](https://www.deepseek.com), and other OpenAI-compatible servers | ✅ | | | | | | | |
+| `gowhisper` | [go-whisper](https://github.com/mutablelogic/go-whisper) | | | | ✅ | ✅ | | | Download, delete |
+| `elevenlabs` | [ElevenLabs](https://elevenlabs.io) | | | | ✅ | | | | |
+| `eliza` | A mock of Weizenbaum's 1966 chatbot, for testing | ✅ | | | | | | | |
 
 What a model can do depends on the model, which its provider reports, where it knows: such as whether it calls tools, thinks, sees images, or recognizes text. A request for something a model is known not to do is rejected before it's sent.
 
@@ -281,7 +282,7 @@ What a model can do, as its provider says, which `llm models --capability`, `GET
 | `audio_input` | Hears audio in a conversation |
 | `video_input` | Watches video in a conversation |
 | `document_input` | Reads documents, such as PDFs, in a conversation, rather than recognizing their text first |
-| `image_output` | Makes images |
+| `image_output` | Makes images, in a conversation, and with `illustrate` and the `llm:illustrate` tool |
 | `speech_output` | Speaks text, as audio, with `speak` and the `llm:speak` tool |
 | `embedding` | Embeds text, and media, as vectors, with `embed` |
 | `ocr` | Recognizes the text in images and documents, with `ocr` and the `llm:ocr` tool |
@@ -298,7 +299,7 @@ In a conversation, an attachment a model is known not to take, such as audio for
 | Providers | `providers`, `provider`, `provider-create-ollama`, `provider-create-openai`, `provider-create-anthropic`, `provider-create-gemini`, `provider-create-mistral`, `provider-create-deepseek`, `provider-create-gowhisper`, `provider-create-elevenlabs`, `provider-create-eliza`, `provider-update`, `provider-delete` |
 | Models | `models`, `model`, `model-load`, `model-delete`, `model-unload` |
 | Sessions | `sessions`, `session`, `session-messages`, `session-create`, `session-update`, `session-delete` |
-| Inference | `ask`, `chat`, `embed`, `ocr`, `transcribe`, `translate`, `speak` |
+| Inference | `ask`, `chat`, `embed`, `ocr`, `transcribe`, `translate`, `speak`, `illustrate` |
 | Events | `events` |
 | Memory | `details`, `detail-set`, `detail-forget`, `memories`, `memory`, `memory-remember`, `memory-forget` |
 | Heartbeats | `heartbeats`, `heartbeat`, `heartbeat-create`, `heartbeat-update`, `heartbeat-delete` |
@@ -325,7 +326,7 @@ Tools are added to the server's toolkit when their credentials, or settings, are
 |-----------|-------|-------------|
 | `memory` | Remember the details of the person, and the assistant, with the time in the system prompt, and search, keep and forget memories | None, as it's always added |
 | `heartbeat` | Schedule, list, update and cancel heartbeats, which are prompts which come back to the conversation, at a time, or on a schedule | None, as it's always added |
-| `llm` | `models`, `speak`, `ocr` and `transcribe` (which translates too): list the models with capabilities, such as `ocr` or `speech_output`, speak text, read the text in an image or document, and transcribe speech, with the model the calling model gives. The model uses the one the person chose for each capability, which it keeps in the memory `preferred_models`, with the `memory` tools, or otherwise asks them to choose one of those `models` lists, and remembers it. Audio which is spoken is kept as a resource of the session, with the `name` and `title` the model gives, and images, documents and audio are read by their URIs, `resource://<hash>`, which the model is told for each attachment. With a `name` or `title`, the text which `ocr` reads is kept as a Markdown file, and with a `format`, `name` or `title`, the transcript is kept, as text, Markdown, or SRT or WebVTT subtitles | None, as it's always added. Choices are remembered with the `memory` tools |
+| `llm` | `models`, `speak`, `illustrate`, `ocr` and `transcribe` (which translates too): list the models with capabilities, such as `ocr` or `speech_output`, speak text, make and change images, read the text in an image or document, and transcribe speech, with the model the calling model gives. The model uses the one the person chose for each capability, which it keeps in the memory `preferred_models`, with the `memory` tools, or otherwise asks them to choose one of those `models` lists, and remembers it. Audio which is spoken is kept as a resource of the session, with the `name` and `title` the model gives, and images, documents and audio are read by their URIs, `resource://<hash>`, which the model is told for each attachment. With a `name` or `title`, the text which `ocr` reads is kept as a Markdown file, and with a `format`, `name` or `title`, the transcript is kept, as text, Markdown, or SRT or WebVTT subtitles | None, as it's always added. Choices are remembered with the `memory` tools |
 | `weatherapi` | Current weather, forecasts and alerts | `WEATHERAPI_API_KEY`, from [weatherapi.com](https://www.weatherapi.com/signup.aspx) |
 | `newsapi` | News articles, headlines and sources | `NEWSAPI_API_KEY`, from [newsapi.org](https://newsapi.org/register) |
 | `homeassistant` | Query, and search, and control smart home devices | `HOMEASSISTANT_URL`, `HOMEASSISTANT_API_KEY` |

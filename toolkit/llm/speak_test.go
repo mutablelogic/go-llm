@@ -22,7 +22,8 @@ import (
 // it's given, and keeps the options it was given
 type models struct {
 	opts       *gollm.Opts
-	noSegments bool // Whether it never returns segments, as some models don't
+	images     []gollm.Resource // The images it was last asked to change
+	noSegments bool             // Whether it never returns segments, as some models don't
 }
 
 type model struct {
@@ -73,6 +74,19 @@ func (m *models) Speak(_ context.Context, _ gollm.Model, text string, opts ...go
 	return &providerschema.Resource{ResourceMeta: providerschema.ResourceMeta{ContentType: "audio/wav", Data: []byte(text)}}, gollm.Usage{}, nil
 }
 
+func (m *models) Illustrate(_ context.Context, _ gollm.Model, prompt string, images []gollm.Resource, opts ...gollm.Opt) ([]gollm.Resource, gollm.Usage, error) {
+	o, err := gollm.ApplyOpts(opts...)
+	if err != nil {
+		return nil, gollm.Usage{}, err
+	}
+	m.opts, m.images = o, images
+	made := []gollm.Resource{&providerschema.Resource{ResourceMeta: providerschema.ResourceMeta{ContentType: "image/png", Data: []byte(prompt)}}}
+	if strings.Contains(prompt, "two") {
+		made = append(made, &providerschema.Resource{ResourceMeta: providerschema.ResourceMeta{ContentType: "image/jpeg", Data: []byte(prompt)}})
+	}
+	return made, gollm.Usage{OutputTokens: 1290}, nil
+}
+
 func (m *models) Recognize(_ context.Context, _ gollm.Model, resource gollm.Resource, opts ...gollm.Opt) (gollm.Document, gollm.Usage, error) {
 	o, err := gollm.ApplyOpts(opts...)
 	if err != nil {
@@ -115,7 +129,7 @@ func Test_Speak(t *testing.T) {
 	ns, err := llm.New(func() llm.Models { return m })
 	require.NoError(t, err)
 	assert.Equal(t, "llm", ns.Name())
-	require.Len(t, ns.Tools(), 4)
+	require.Len(t, ns.Tools(), 5)
 	assert.Contains(t, ns.Tools()[0].Description(), "recall the memory preferred_models")
 	assert.Contains(t, ns.Tools()[0].Description(), "with the speech_output capability with the models tool")
 	_, err = ns.Tools()[0].Run(ctx, json.RawMessage(`{"text":"Hello"}`))
@@ -186,9 +200,9 @@ func Test_Speak(t *testing.T) {
 	tk2, err := toolkit.New(ctx)
 	require.NoError(t, err)
 	require.NoError(t, tk2.Add(ns))
-	resolved := toolkit.WithResolver(ctx, func(context.Context, string) (gollm.Resource, error) {
+	resolved := toolkit.WithResolver(ctx, each(func(string) (gollm.Resource, error) {
 		return &providerschema.Resource{ResourceMeta: providerschema.ResourceMeta{ContentType: "audio/wav", Data: []byte("x")}}, nil
-	})
+	}))
 	_, err = tk2.CallTool(resolved, "llm:transcribe", json.RawMessage(`{"uri":"resource://abc"}`))
 	assert.ErrorIs(t, err, gollm.ErrBadParameter, "no model, and no default")
 	_, err = tk2.CallTool(resolved, "llm:transcribe", json.RawMessage(`{"uri":"resource://abc","model":"phonon"}`))
@@ -206,12 +220,12 @@ func Test_ReadTools(t *testing.T) {
 
 	// The tools read resources by their URIs, with the context's resolver,
 	// which resolves only the one it has
-	resolved := toolkit.WithResolver(ctx, func(_ context.Context, uri string) (gollm.Resource, error) {
+	resolved := toolkit.WithResolver(ctx, each(func(uri string) (gollm.Resource, error) {
 		if uri != "resource://abc" {
 			return nil, gollm.ErrNotFound.Withf("resource %s", uri)
 		}
 		return &providerschema.Resource{ResourceMeta: providerschema.ResourceMeta{ContentType: "application/pdf", Data: []byte("Report")}}, nil
-	})
+	}))
 
 	// The text of a document, as Markdown, with its pages, which are asked
 	// for
@@ -316,10 +330,10 @@ func Test_Logs(t *testing.T) {
 			lines = append(lines, strings.TrimSpace(text))
 		}
 	}, nil)
-	ctx = toolkit.WithResolver(toolkit.WithSession(ctx, session), func(_ context.Context, uri string) (gollm.Resource, error) {
+	ctx = toolkit.WithResolver(toolkit.WithSession(ctx, session), each(func(uri string) (gollm.Resource, error) {
 		types := map[string]string{"resource://pdf": "application/pdf", "resource://wav": "audio/wav"}
 		return &providerschema.Resource{ResourceMeta: providerschema.ResourceMeta{ContentType: types[uri], Data: []byte("x")}}, nil
-	})
+	}))
 	for _, call := range []struct{ tool, input string }{
 		{"llm:speak", `{"text":"Hello","voice":"Zoey"}`},
 		{"llm:speak", `{"text":"Hello"}`},
@@ -392,10 +406,10 @@ func Test_SpeakTitle(t *testing.T) {
 func Test_TextFiles(t *testing.T) {
 	// With a format, a name, or a title, the text which is read, or the
 	// transcript, is kept as a file, as well as returned
-	ctx := toolkit.WithResolver(context.Background(), func(_ context.Context, uri string) (gollm.Resource, error) {
+	ctx := toolkit.WithResolver(context.Background(), each(func(uri string) (gollm.Resource, error) {
 		types := map[string]string{"resource://pdf": "application/pdf", "resource://wav": "audio/wav"}
 		return &providerschema.Resource{ResourceMeta: providerschema.ResourceMeta{ContentType: types[uri], Data: []byte("Report")}}, nil
-	})
+	}))
 	m := &models{}
 	ns, err := llm.New(func() llm.Models { return m }, llm.WithOCR("phonon"), llm.WithTranscribe("phonon"))
 	require.NoError(t, err)
@@ -475,4 +489,70 @@ func Test_TextFiles(t *testing.T) {
 	require.NoError(t, err)
 	_, isResult = result.(toolkit.Result)
 	assert.False(t, isResult)
+}
+
+func Test_Illustrate(t *testing.T) {
+	m := &models{}
+	ns, err := llm.New(func() llm.Models { return m })
+	require.NoError(t, err)
+	tool := ns.Tools()[4]
+	assert.Equal(t, "illustrate", tool.Name())
+	assert.Contains(t, tool.Description(), "with the image_output capability with the models tool")
+	var lines []string
+	session := toolkit.NewSession("llm", uuid.Nil(), func(what gollm.StreamType, text string) {
+		if what == gollm.StreamLog {
+			lines = append(lines, strings.TrimSpace(text))
+		}
+	}, nil)
+	ctx := toolkit.WithResolver(toolkit.WithSession(context.Background(), session), each(func(uri string) (gollm.Resource, error) {
+		return &providerschema.Resource{ResourceMeta: providerschema.ResourceMeta{ContentType: "image/png", Data: []byte(uri)}}, nil
+	}))
+	run := func(input string) (toolkit.Result, error) {
+		result, err := tool.Run(ctx, json.RawMessage(input))
+		if err != nil {
+			return toolkit.Result{}, err
+		}
+		return result.(toolkit.Result), nil
+	}
+
+	// An image, named, and titled, as the model says, with its aspect ratio
+	result, err := run(`{"prompt":"A banana","model":"phonon","name":"banana","title":"A banana on a beach","aspect_ratio":"16:9"}`)
+	require.NoError(t, err)
+	require.Len(t, result.Resources, 1)
+	assert.Equal(t, "banana.png", result.Resources[0].Name())
+	assert.Equal(t, "A banana on a beach", result.Resources[0].Description())
+	ratio, _ := gollm.GetOpt[string](m.opts, gollm.AspectRatioKey)
+	assert.Equal(t, "16:9", ratio)
+
+	// Images it changes, by their URIs, and more than one, which are numbered
+	result, err = run(`{"prompt":"two bananas","model":"phonon","images":["resource://a","resource://b"]}`)
+	require.NoError(t, err)
+	require.Len(t, m.images, 2)
+	require.Len(t, result.Resources, 2)
+	assert.Equal(t, "image-1.png", result.Resources[0].Name())
+	assert.Equal(t, "image-2.jpg", result.Resources[1].Name())
+	_, err = run(`{"prompt":"Sunset","model":"phonon","images":["resource://a"]}`)
+	require.NoError(t, err)
+	assert.Equal(t, []string{"Making an image", "Combining 2 images", "Changing the image"}, lines)
+
+	// No prompt, and no model, which the person chooses
+	_, err = run(`{"prompt":" ","model":"phonon"}`)
+	assert.ErrorIs(t, err, gollm.ErrBadParameter)
+	_, err = run(`{"prompt":"A banana"}`)
+	assert.ErrorContains(t, err, "image_output capability")
+}
+
+// each returns the function which resolves each URI with the function
+func each(fn func(uri string) (gollm.Resource, error)) toolkit.ResolveFunc {
+	return func(_ context.Context, uris ...string) ([]gollm.Resource, error) {
+		result := make([]gollm.Resource, 0, len(uris))
+		for _, uri := range uris {
+			resource, err := fn(uri)
+			if err != nil {
+				return nil, err
+			}
+			result = append(result, resource)
+		}
+		return result, nil
+	}
 }

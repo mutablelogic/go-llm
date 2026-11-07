@@ -280,10 +280,27 @@ func (readTool) Description() string             { return "Reads a file" }
 func (readTool) InputSchema() *jsonschema.Schema { return nil }
 func (readTool) Run(ctx context.Context, input json.RawMessage) (any, error) {
 	var req struct {
-		URI string `json:"uri"`
+		URI  string   `json:"uri"`
+		URIs []string `json:"uris"`
 	}
 	if err := json.Unmarshal(input, &req); err != nil {
 		return nil, err
+	}
+	if len(req.URIs) > 0 {
+		// Resources, read together
+		resources, err := toolkit.Resources(ctx, req.URIs...)
+		if err != nil {
+			return nil, err
+		}
+		size := 0
+		for _, resource := range resources {
+			data, err := llm.ReadAll(ctx, resource)
+			if err != nil {
+				return nil, err
+			}
+			size += len(data)
+		}
+		return map[string]any{"bytes": size}, nil
 	}
 	resource, err := toolkit.Resource(ctx, req.URI)
 	if err != nil {
@@ -509,4 +526,118 @@ func Test_ReplyResourcesInHistory(t *testing.T) {
 	_, err = r.Chat(ctx, session.ID, []llm.Message{user(t, "Make it bigger")}, nil)
 	require.NoError(t, err)
 	assert.Equal(t, []string{"image/png:" + pngData}, attachments(t, maker.asked[0].messages[1]))
+}
+
+func Test_ToolReadsTogether(t *testing.T) {
+	// The resources a tool reads together are read once each, and within
+	// MaxAttachmentsSize, together, rather than each within it
+	ctx := context.Background()
+	sessions := test.NewSessionStore()
+	manager, err := resourcemanager.New(resourcemanager.NewStore(), resourcemanager.WithSessions(func(ctx context.Context, id uuid.UUID) error {
+		_, err := sessions.Get(ctx, id)
+		return err
+	}))
+	require.NoError(t, err)
+	image, _, err := manager.Create(ctx, resourceschema.ResourceMeta{Name: "cat.png"}, strings.NewReader(pngData))
+	require.NoError(t, err)
+	audio, _, err := manager.Create(ctx, resourceschema.ResourceMeta{Name: "hello.mp3", Type: "audio/mpeg"}, strings.NewReader("ID3"+strings.Repeat("x", len(pngData))))
+	require.NoError(t, err)
+	tk := test.NewToolkit(t)
+	require.NoError(t, tk.Add(toolkit.NewNamespace("files", "", readTool{})))
+	p := newScripted(
+		call("files__read", `{"uris":["`+image.URI()+`","`+image.URI()+`"]}`), text("Read twice"),
+		call("files__read", `{"uris":["`+image.URI()+`","`+audio.URI()+`"]}`), text("Too large"),
+	)
+	r, err := registry.New(registry.WithSessionStore(sessions), registry.WithToolkit(tk), registry.WithResources(manager))
+	require.NoError(t, err)
+	require.NoError(t, r.Add("", p))
+	session, err := r.CreateSession(ctx, schema.SessionMeta{GeneratorMeta: schema.GeneratorMeta{Model: types.Ptr("model"), Tools: []string{"files:*"}}})
+	require.NoError(t, err)
+
+	// Each of which can be read, but not both
+	limit := registry.MaxAttachmentsSize
+	registry.MaxAttachmentsSize = int64(len(pngData)) + 10
+	t.Cleanup(func() { registry.MaxAttachmentsSize = limit })
+
+	// The same image, twice, is read once
+	response, err := r.Chat(ctx, session.ID, []llm.Message{user(t, "Read it twice")}, nil)
+	require.NoError(t, err)
+	assert.Contains(t, toolResult(t, response.Messages), fmt.Sprintf(`"bytes":%d`, 2*len(pngData)))
+
+	// The image and the audio are too large, together
+	response, err = r.Chat(ctx, session.ID, []llm.Message{user(t, "Read both")}, nil)
+	require.NoError(t, err)
+	assert.Contains(t, toolResult(t, response.Messages), "larger than")
+}
+
+// illustrating is a provider which makes images, and keeps those it's given
+type illustrating struct {
+	*scripted
+	images []llm.Resource
+}
+
+func (p *illustrating) Self() llm.Provider { return p }
+
+func (p *illustrating) Illustrate(_ context.Context, _ llm.Model, _ string, images []llm.Resource, _ ...llm.Opt) ([]llm.Resource, llm.Usage, error) {
+	p.images = images
+	return []llm.Resource{&providerschema.Resource{ResourceMeta: providerschema.ResourceMeta{ContentType: "image/png", Data: []byte(pngData)}}}, llm.Usage{}, nil
+}
+
+func Test_IllustrateImages(t *testing.T) {
+	// The images to change are read once each, and within
+	// MaxAttachmentsSize, together with those which are given, and must be
+	// images
+	ctx := context.Background()
+	manager, err := resourcemanager.New(resourcemanager.NewStore())
+	require.NoError(t, err)
+	image, _, err := manager.Create(ctx, resourceschema.ResourceMeta{Name: "cat.png"}, strings.NewReader(pngData))
+	require.NoError(t, err)
+	audio, _, err := manager.Create(ctx, resourceschema.ResourceMeta{Name: "hello.mp3", Type: "audio/mpeg"}, strings.NewReader("ID3"))
+	require.NoError(t, err)
+	p := &illustrating{scripted: newScripted()}
+	r, err := registry.New(registry.WithResources(manager))
+	require.NoError(t, err)
+	require.NoError(t, r.Add("", p))
+	m := &model{name: "model", provider: p, caps: llm.ModelCap{ImageOutput: types.Ptr(true)}}
+	images := func(t *testing.T, images ...schema.IllustrateImage) []llm.Resource {
+		t.Helper()
+		resources, err := schema.IllustrateRequest{Images: images}.Resources()
+		require.NoError(t, err)
+		return resources
+	}
+	limit := registry.MaxAttachmentsSize
+	registry.MaxAttachmentsSize = int64(len(pngData))
+	t.Cleanup(func() { registry.MaxAttachmentsSize = limit })
+
+	// The same image, twice, is read once, and an image without a type is
+	// one, by its content
+	_, _, err = r.Illustrate(ctx, m, "Two cats", images(t, schema.IllustrateImage{URL: image.URI()}, schema.IllustrateImage{URL: image.URI()}))
+	require.NoError(t, err)
+	assert.Equal(t, []string{"image/png:" + pngData, "image/png:" + pngData}, resources(t, p.images))
+	_, _, err = r.Illustrate(ctx, m, "A cat", []llm.Resource{&providerschema.Resource{ResourceMeta: providerschema.ResourceMeta{Data: []byte(pngData)}}})
+	require.NoError(t, err)
+
+	// An image which is given counts, with those which are read
+	_, _, err = r.Illustrate(ctx, m, "Two cats", images(t, schema.IllustrateImage{Type: "image/png", Data: []byte(pngData)}, schema.IllustrateImage{URL: image.URI()}))
+	assert.ErrorIs(t, err, llm.ErrBadParameter)
+	assert.ErrorContains(t, err, "larger than")
+
+	// Audio, by its URI, or its data, isn't an image
+	_, _, err = r.Illustrate(ctx, m, "A cat", images(t, schema.IllustrateImage{URL: audio.URI()}))
+	assert.ErrorIs(t, err, llm.ErrBadParameter)
+	assert.ErrorContains(t, err, "audio/mpeg, which isn't an image")
+	_, _, err = r.Illustrate(ctx, m, "A cat", images(t, schema.IllustrateImage{Type: "audio/mpeg", Data: []byte("ID3")}))
+	assert.ErrorIs(t, err, llm.ErrBadParameter)
+}
+
+// resources returns the type and content of each resource
+func resources(t *testing.T, resources []llm.Resource) []string {
+	t.Helper()
+	var result []string
+	for _, r := range resources {
+		data, err := llm.ReadAll(context.Background(), r)
+		require.NoError(t, err)
+		result = append(result, r.Type()+":"+string(data))
+	}
+	return result
 }
