@@ -21,7 +21,8 @@ import (
 // models is a fake of the registry, whose model speaks, as audio, the text
 // it's given, and keeps the options it was given
 type models struct {
-	opts *gollm.Opts
+	opts       *gollm.Opts
+	noSegments bool // Whether it never returns segments, as some models don't
 }
 
 type model struct {
@@ -91,7 +92,7 @@ func (m *models) Transcribe(_ context.Context, _ gollm.Model, _ gollm.Resource, 
 		return gollm.Transcript{}, gollm.Usage{}, err
 	}
 	m.opts = o
-	if segments, _ := gollm.GetOpt[bool](o, gollm.SegmentsKey); segments {
+	if segments, _ := gollm.GetOpt[bool](o, gollm.SegmentsKey); segments && !m.noSegments {
 		return gollm.Transcript{Text: "Bonjour. Salut. Ça va?", Language: "fr", Segments: []gollm.TranscriptSegment{
 			{Start: 0, End: 1500 * time.Millisecond, Text: "Bonjour.", Speaker: "A"},
 			{Start: 1500 * time.Millisecond, End: 3 * time.Second, Text: "Salut.", Speaker: "A"},
@@ -393,7 +394,8 @@ func Test_TextFiles(t *testing.T) {
 		types := map[string]string{"resource://pdf": "application/pdf", "resource://wav": "audio/wav"}
 		return &providerschema.Resource{ResourceMeta: providerschema.ResourceMeta{ContentType: types[uri], Data: []byte("Report")}}, nil
 	})
-	ns, err := llm.New(func() llm.Models { return &models{} }, llm.WithOCR("phonon"), llm.WithTranscribe("phonon"))
+	m := &models{}
+	ns, err := llm.New(func() llm.Models { return m }, llm.WithOCR("phonon"), llm.WithTranscribe("phonon"))
 	require.NoError(t, err)
 	ocr, transcribe := ns.Tools()[1], ns.Tools()[2]
 	file := func(result any) (gollm.Resource, string) {
@@ -427,14 +429,25 @@ func Test_TextFiles(t *testing.T) {
 	assert.Equal(t, "text/vtt; charset=utf-8", f.Type())
 	assert.True(t, strings.HasPrefix(content, "WEBVTT"))
 
-	// Markdown, with its title, as its heading, and who said what
+	// Markdown, with its title, as its heading, which doesn't ask for
+	// segments, as some models reject them, so it's the text
 	result, err = transcribe.Run(ctx, json.RawMessage(`{"uri":"resource://wav","format":"markdown","title":"A chat"}`))
 	require.NoError(t, err)
 	f, content = file(result)
 	assert.Equal(t, "transcript.md", f.Name())
 	assert.Equal(t, "text/markdown; charset=utf-8", f.Type())
 	assert.Equal(t, "A chat", f.Description())
-	assert.Equal(t, "# A chat\n\n**A:** Bonjour. Salut.\n\n**B:** Ça va?\n", content)
+	assert.Equal(t, "# A chat\n\nBonjour\n", content)
+	asked, _ := gollm.GetOpt[bool](m.opts, gollm.SegmentsKey)
+	assert.False(t, asked, "markdown doesn't ask for segments")
+
+	// Subtitles, from a model which returns no timings, aren't kept, as
+	// they'd never be shown
+	m.noSegments = true
+	_, err = transcribe.Run(ctx, json.RawMessage(`{"uri":"resource://wav","format":"srt"}`))
+	assert.ErrorIs(t, err, gollm.ErrBadParameter)
+	assert.ErrorContains(t, err, "no timings")
+	m.noSegments = false
 
 	// Text, with a name
 	result, err = transcribe.Run(ctx, json.RawMessage(`{"uri":"resource://wav","name":"interview"}`))

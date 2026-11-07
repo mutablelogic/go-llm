@@ -293,7 +293,7 @@ func (readTool) Run(ctx context.Context, input json.RawMessage) (any, error) {
 	if err != nil {
 		return nil, err
 	}
-	return map[string]int{"bytes": len(data)}, nil
+	return map[string]any{"bytes": len(data), "name": resource.Name()}, nil
 }
 
 func Test_UnreadableAttachments(t *testing.T) {
@@ -330,7 +330,8 @@ func Test_UnreadableAttachments(t *testing.T) {
 	first := p.asked[0].messages[0]
 	assert.Empty(t, first.Resources(), "the audio isn't sent")
 	assert.Contains(t, first.Text(), audio.URI()+" is audio/mpeg, which this model can't read")
-	assert.Contains(t, toolResult(t, response.Messages), fmt.Sprintf(`{"bytes":%d}`, len(pngData)+3))
+	assert.Contains(t, toolResult(t, response.Messages), fmt.Sprintf(`"bytes":%d`, len(pngData)+3))
+	assert.Contains(t, toolResult(t, response.Messages), `"name":"hello.mp3"`, "a tool reads it with its name")
 
 	// An image, which it does, is
 	_, err = r.Chat(ctx, session.ID, []llm.Message{attached(t, "And this?", image.URI())}, nil)

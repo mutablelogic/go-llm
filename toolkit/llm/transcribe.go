@@ -48,7 +48,7 @@ type transcriptFormat struct {
 // transcriptFormats are the formats of a file a transcript is kept in
 var transcriptFormats = map[string]transcriptFormat{
 	"text":     {contentType: "text/plain; charset=utf-8", ext: ".txt"},
-	"markdown": {contentType: "text/markdown; charset=utf-8", ext: ".md", segments: true},
+	"markdown": {contentType: "text/markdown; charset=utf-8", ext: ".md"},
 	"srt":      {contentType: "application/x-subrip; charset=utf-8", ext: ".srt", segments: true},
 	"vtt":      {contentType: "text/vtt; charset=utf-8", ext: ".vtt", segments: true},
 }
@@ -142,11 +142,12 @@ func transcriptContent(format, title string, transcript gollm.Transcript) (strin
 	var b strings.Builder
 	switch strings.ToLower(strings.TrimSpace(format)) {
 	case "srt", "vtt":
-		segments := transcript.Segments
-		if len(segments) == 0 {
-			segments = []gollm.TranscriptSegment{{Text: strings.TrimSpace(transcript.Text)}}
+		// Subtitles need when each part was said, which a model which
+		// returns only text hasn't, rather than a cue which is never shown
+		if len(transcript.Segments) == 0 {
+			return "", gollm.ErrBadParameter.Withf("the model returned no timings, so the transcript can't be %s subtitles, but can be text, or markdown", strings.ToUpper(strings.TrimSpace(format)))
 		}
-		if err := subtitle.Write(&b, subtitle.Format(strings.ToLower(strings.TrimSpace(format))), segments); err != nil {
+		if err := subtitle.Write(&b, subtitle.Format(strings.ToLower(strings.TrimSpace(format))), transcript.Segments); err != nil {
 			return "", err
 		}
 	case "markdown":
