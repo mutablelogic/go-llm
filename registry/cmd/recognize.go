@@ -20,7 +20,7 @@ import (
 // TYPES
 
 type RecognizeCmd struct {
-	File  string                     `arg:"" name:"file" help:"The image or document, such as a PDF, whose text is recognized, or a resource, by its URI, resource://<hash>."`
+	File  string                     `arg:"" name:"file" help:"The image or document, such as a PDF, whose text is recognized, or a resource, by its URI, resource:///<hash>."`
 	Model string                     `name:"model" help:"Model name, or provider and model name separated by a colon, such as mistral:mistral-ocr-latest. Defaults to the model last used for recognizing text." optional:""`
 	Opt   map[string]json.RawMessage `name:"opt" help:"Options, by key, such as pages=0-2, table_format=html, or regions=true, which prints JSON, which can be given more than once." optional:""`
 }

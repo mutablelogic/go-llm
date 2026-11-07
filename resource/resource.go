@@ -1,6 +1,6 @@
 // Package resource has resources: content, such as images, documents and
 // audio, which is uploaded, or which tools return, which is kept once, by
-// its hash, and referred to as resource://<hash>. A resource is in a
+// its hash, and referred to as resource:///<hash>. A resource is in a
 // session, which it's deleted with, or on its own, when it's deleted once
 // it hasn't been used for a while.
 package resource
@@ -257,7 +257,7 @@ func (r *Manager) Open(ctx context.Context, key schema.ResourceKey) (_ schema.Re
 	return resource, content, nil
 }
 
-// Resource returns the resource with the URI, which is resource://<hash>,
+// Resource returns the resource with the URI, which is resource:///<hash>,
 // in the session, or on its own, when it's nil, as an llm.Resource, whose
 // content is read from the store, so a tool, or a model, can read it, and
 // it's used. Returns ErrBadParameter when the URI isn't a resource's, and
@@ -274,7 +274,7 @@ func (r *Manager) Resource(ctx context.Context, uri string, session *uuid.UUID) 
 	return &resource{manager: r, Resource: stored}, nil
 }
 
-// Link links the resource with the URI, which is resource://<hash>, which is
+// Link links the resource with the URI, which is resource:///<hash>, which is
 // on its own, to the session, as a resource of the session, with the one
 // content, and what it is, so it's kept with the session, and returns it,
 // or the session's, when it's linked to it already. Returns ErrBadParameter
@@ -380,7 +380,7 @@ func (r *Manager) DeleteSession(ctx context.Context, session uuid.UUID) (_ int, 
 ///////////////////////////////////////////////////////////////////////////////
 // PUBLIC METHODS - RESOURCE
 
-// URI returns the resource's URI, which is resource://<hash>
+// URI returns the resource's URI, which is resource:///<hash>
 func (r *resource) URI() string {
 	return r.Resource.URI()
 }

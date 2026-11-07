@@ -27,7 +27,7 @@ type IllustrateRequest struct {
 type IllustrateImage struct {
 	Type string `json:"type,omitempty" help:"MIME type of the image, which is needed with its data" example:"image/png" optional:""`
 	Data []byte `json:"data,omitempty" help:"Data of the image, encoded as base64, or its URL" example:"iVBORw0KGgo=" optional:""`
-	URL  string `json:"url,omitempty" help:"URI of a resource, which is resource://<hash>, on its own, whose content is read, rather than the data" example:"resource://9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08" optional:""`
+	URL  string `json:"url,omitempty" help:"URI of a resource, which is resource:///<hash>, on its own, whose content is read, rather than the data" example:"resource:///9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08" optional:""`
 }
 
 // IllustrateResponse is the images the model made, the model, by its
@@ -41,7 +41,7 @@ type IllustrateResponse struct {
 // Illustration is an image a model made: a resource, by its URI, which is
 // kept, or, when the server doesn't keep resources, its data
 type Illustration struct {
-	URI  string `json:"uri,omitempty" help:"URI of the resource the image is kept as, which is resource://<hash>" example:"resource://9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08"`
+	URI  string `json:"uri,omitempty" help:"URI of the resource the image is kept as, which is resource:///<hash>" example:"resource:///9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08"`
 	Name string `json:"name,omitempty" help:"Name of the image's file" example:"image.png"`
 	Type string `json:"type" help:"MIME type of the image" example:"image/png"`
 	Size int64  `json:"size,omitempty" help:"Size of the image, in bytes" example:"915187"`

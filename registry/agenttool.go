@@ -61,7 +61,7 @@ const (
 
 // resourceInput is what's said of a property of an agent's input which is
 // of format resource
-const resourceInput = "It can be the text, or the URI of a file, resource://<hash>, whose text is read, as it is, such as subtitles, or a transcript, which is better than copying it."
+const resourceInput = "It can be the text, or the URI of a file, resource:///<hash>, whose text is read, as it is, such as subtitles, or a transcript, which is better than copying it."
 
 // emptyInput is the input schema of an agent which has none
 var emptyInput = jsonschema.MustFor[struct{}]()

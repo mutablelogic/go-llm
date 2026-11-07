@@ -35,7 +35,7 @@ type InferenceCommands struct {
 type EmbedCmd struct {
 	Text   []string                   `arg:"" name:"text" help:"The text to embed, which can be more than one argument." optional:""`
 	Model  string                     `name:"model" help:"Model name, or provider and model name separated by a colon, such as ollama:embeddinggemma-2:latest. Defaults to the model last used for embeddings." optional:""`
-	Attach string                     `name:"attach" short:"a" aliases:"file" help:"An image or audio file to embed with the text, or a resource, by its URI, resource://<hash>, for a model which embeds them." optional:""`
+	Attach string                     `name:"attach" short:"a" aliases:"file" help:"An image or audio file to embed with the text, or a resource, by its URI, resource:///<hash>, for a model which embeds them." optional:""`
 	Opt    map[string]json.RawMessage `name:"opt" help:"Options, by key, such as dimensions=256, which can be given more than once." optional:""`
 }
 

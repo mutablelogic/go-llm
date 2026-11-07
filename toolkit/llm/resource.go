@@ -58,7 +58,7 @@ type resourceTool struct {
 
 // readInput is the input of the read tool
 type readInput struct {
-	URI    string `json:"uri,omitempty" help:"URI of the file, resource://<hash>, which an attachment, a tool's result, or the list of the chat's files says, or omitted, to list the chat's files" optional:""`
+	URI    string `json:"uri,omitempty" help:"URI of the file, resource:///<hash>, which an attachment, a tool's result, or the list of the chat's files says, or omitted, to list the chat's files" optional:""`
 	Format string `json:"format,omitempty" enum:"markdown,raw" help:"How the file is read: as Markdown, which is the default, or raw, as the text it is, such as subtitles, or code, as they are, for a file which is text" optional:""`
 	Offset uint64 `json:"offset,omitempty" help:"Byte of the file's Markdown, or of the file, when it's raw, to start reading at, to read the next part of a long file, which is next in the previous read" optional:""`
 	Limit  uint64 `json:"limit,omitempty" help:"Most bytes to read, from 4 to 65536, which is 16384 when it's omitted" optional:""`
@@ -180,7 +180,7 @@ func (*resourceTool) Name() string {
 }
 
 func (*resourceTool) Description() string {
-	return "Lists the files of this chat, as a table, without a URI, or reads a file, by its URI, resource://<hash>, such as a document, a transcript, subtitles, a web page, an email, or data, as Markdown, rather than in the file's own format: a text file's text, a PDF's, or a Word, or OpenDocument, document's, a spreadsheet's tables, an email's messages, subtitles, or code and data in code blocks. A long file is read a part at a time: read the next part from next, when it's returned. With format raw, a file which is text, such as subtitles, or code, is read as it is, rather than as Markdown. The first part has the file's metadata, such as a document's title, author, date and pages, a book's publisher, or an image's width and height. A file which can't be read as text, such as an image, or audio, has no content, only what it is, its metadata, when it has any, and a note of the tool which reads it."
+	return "Lists the files of this chat, as a table, without a URI, or reads a file, by its URI, resource:///<hash>, such as a document, a transcript, subtitles, a web page, an email, or data, as Markdown, rather than in the file's own format: a text file's text, a PDF's, or a Word, or OpenDocument, document's, a spreadsheet's tables, an email's messages, subtitles, or code and data in code blocks. A long file is read a part at a time: read the next part from next, when it's returned. With format raw, a file which is text, such as subtitles, or code, is read as it is, rather than as Markdown. The first part has the file's metadata, such as a document's title, author, date and pages, a book's publisher, or an image's width and height. A file which can't be read as text, such as an image, or audio, has no content, only what it is, its metadata, when it has any, and a note of the tool which reads it."
 }
 
 func (*resourceTool) InputSchema() *jsonschema.Schema {

@@ -86,8 +86,10 @@ func Test_AskMessage_Resources(t *testing.T) {
 	require.NoError(t, os.WriteFile(png, []byte("\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR"), 0o600))
 	notes := filepath.Join(dir, "notes.txt")
 	require.NoError(t, os.WriteFile(notes, []byte("Hello"), 0o600))
+	// A resource's URI as it was, resource://<hash>, which is as it is now,
+	// resource:///<hash>
 	resource := "resource://" + strings.Repeat("a", 64)
-	uploaded := "resource://" + strings.Repeat("b", 64)
+	uploaded := "resource:///" + strings.Repeat("b", 64)
 
 	var uploads []string
 	message, err := askMessage("What are these?", []string{resource, png, notes}, func(file string) (string, error) {
@@ -97,7 +99,7 @@ func Test_AskMessage_Resources(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, []string{png}, uploads, "only the file which isn't text is uploaded")
 	require.Len(t, message.Content, 4)
-	assert.Equal(t, resource, message.Content[0].Resource.URL.String())
+	assert.Equal(t, "resource:///"+strings.Repeat("a", 64), message.Content[0].Resource.URL.String())
 	assert.Empty(t, message.Content[0].Resource.Data)
 	assert.Equal(t, uploaded, message.Content[1].Resource.URL.String())
 	assert.Equal(t, "image/png", message.Content[1].Resource.ContentType)

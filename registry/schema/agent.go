@@ -230,7 +230,7 @@ func (p PromptMeta) Message(input json.RawMessage) (string, error) {
 
 // MessageWith returns the message to the model, as Message does, with the
 // text of the files the input refers to: a property of the input schema of
-// format resource, whose value is a file's URI, resource://<hash>, is the
+// format resource, whose value is a file's URI, resource:///<hash>, is the
 // file's text, which the function reads, as it is, and otherwise the text
 // it's given. Only resource URIs are read, and without the function, they
 // aren't. Returns the function's error, with the property's name, such as
@@ -446,16 +446,16 @@ func withZeros(value any) any {
 	return value
 }
 
-// ReadFunc returns the text of the file with the URI, resource://<hash>,
+// ReadFunc returns the text of the file with the URI, resource:///<hash>,
 // which a property of an agent's input, of format resource, refers to
 type ReadFunc func(uri string) (string, error)
 
 // ResourceFormat is the format of a property of an agent's input which is
-// the text of a file, or its URI, resource://<hash>, whose text is read
+// the text of a file, or its URI, resource:///<hash>, whose text is read
 const ResourceFormat = "resource"
 
 // withResources sets each property of the schema, of format resource, whose
-// value is a file's URI, resource://<hash>, to the file's text, which the
+// value is a file's URI, resource:///<hash>, to the file's text, which the
 // function reads, and leaves any other value as it is
 func withResources(value map[string]any, schema *jsonschema.Schema, read ReadFunc) error {
 	if schema == nil {

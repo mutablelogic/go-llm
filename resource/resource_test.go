@@ -65,7 +65,7 @@ func Test_Create(t *testing.T) {
 	require.NoError(t, err)
 	assert.True(t, created)
 	assert.Equal(t, "2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824", text.Hash)
-	assert.Equal(t, "resource://"+text.Hash, text.URI())
+	assert.Equal(t, "resource:///"+text.Hash, text.URI(), "its hash is its path")
 	assert.Equal(t, int64(5), text.Size)
 	assert.Equal(t, "notes.txt", text.Name, "the name is the file's, without its directories")
 	assert.Equal(t, "text/plain; charset=utf-8", text.Type)

@@ -40,7 +40,7 @@ type EmbedContent struct {
 type EmbedAttachment struct {
 	Type string `json:"type,omitempty" help:"MIME type of the attachment, which is needed with its data" example:"image/png" optional:""`
 	Data []byte `json:"data,omitempty" help:"Data of the attachment, encoded as base64, or its URL" example:"iVBORw0KGgo=" optional:""`
-	URL  string `json:"url,omitempty" help:"URI of a resource, which is resource://<hash>, on its own, whose content is read, rather than the data, whose type is the resource's, unless it's given" example:"resource://9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08" optional:""`
+	URL  string `json:"url,omitempty" help:"URI of a resource, which is resource:///<hash>, on its own, whose content is read, rather than the data, whose type is the resource's, unless it's given" example:"resource:///9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08" optional:""`
 }
 
 // EmbedForm is the form for embedding one message, such as from a web

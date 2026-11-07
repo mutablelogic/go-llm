@@ -25,7 +25,7 @@ import (
 type IllustrateCmd struct {
 	Prompt      []string                   `arg:"" name:"prompt" optional:"" help:"What to make, or how to change the images, which can be more than one argument, or is read from standard input."`
 	Model       string                     `name:"model" help:"Model name, or provider and model name separated by a colon, such as gemini:gemini-3.1-flash-lite-image. Defaults to the model last used for making images." optional:""`
-	Attach      []string                   `name:"attach" short:"a" sep:"none" help:"An image to change, or combine, as a file, or a resource, by its URI, resource://<hash>, which can be given more than once." optional:""`
+	Attach      []string                   `name:"attach" short:"a" sep:"none" help:"An image to change, or combine, as a file, or a resource, by its URI, resource:///<hash>, which can be given more than once." optional:""`
 	AspectRatio string                     `name:"aspect-ratio" help:"Aspect ratio of the images, such as 16:9." optional:""`
 	Size        string                     `name:"size" help:"Size of the images, such as 1K, 2K or 4K." optional:""`
 	Opt         map[string]json.RawMessage `name:"opt" help:"Options, by key, which can be given more than once." optional:""`
@@ -98,7 +98,11 @@ func (cmd *IllustrateCmd) Run(ctx server.Cmd) error {
 		for i, image := range response.Images {
 			path := outputPath(cmd.Output, image.Name, image.Type, i, len(response.Images))
 			if err := writeImage(reqctx, path, image, func(w io.Writer) error {
-				_, err := resources.ReadResource(reqctx, strings.TrimPrefix(image.URI, resourceschema.Scheme+"://"), resourceschema.ResourceRequest{}, w)
+				hash, err := resourceschema.ParseURI(image.URI)
+				if err != nil {
+					return err
+				}
+				_, err = resources.ReadResource(reqctx, hash, resourceschema.ResourceRequest{}, w)
 				return err
 			}); err != nil {
 				return err

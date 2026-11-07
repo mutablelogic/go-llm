@@ -377,7 +377,7 @@ func (r *Registry) runAgent(ctx context.Context, name string, req schema.RunAgen
 // PRIVATE FUNCTIONS
 
 // agentReader returns the function which reads the text of a file, by its
-// URI, resource://<hash>, which an agent's input refers to, in the session
+// URI, resource:///<hash>, which an agent's input refers to, in the session
 // it's run from, or on its own, as it is, up to MaxAttachmentsSize, or
 // returns ErrBadParameter when it isn't text, such as an image, or audio,
 // which a tool reads first

@@ -91,7 +91,7 @@ func (r Resource) Read(ctx context.Context) (llm.ReadFunc, error) {
 }
 
 // MarshalJSON returns the resource as JSON, whose URL is a string, such as
-// resource://<hash>, rather than its parts
+// resource:///<hash>, rather than its parts
 func (r ResourceMeta) MarshalJSON() ([]byte, error) {
 	type meta ResourceMeta
 	var u string

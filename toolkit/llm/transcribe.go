@@ -30,7 +30,7 @@ type transcribe struct {
 
 // transcribeInput is the input of the transcribe tool
 type transcribeInput struct {
-	URI       string `json:"uri" help:"URI of the audio, which is resource://<hash>, as an attachment, or a tool's result, says"`
+	URI       string `json:"uri" help:"URI of the audio, which is resource:///<hash>, as an attachment, or a tool's result, says"`
 	Model     string `json:"model,omitempty" help:"Model which transcribes the speech, by its name, such as openai:whisper-1, or the default, when it's omitted" optional:""`
 	Translate bool   `json:"translate,omitempty" help:"Whether the speech, in any language, is translated into English, rather than transcribed in its own language" optional:""`
 	Language  string `json:"language,omitempty" help:"Language the speech is in, as an ISO 639-1 code, such as de, when it's known, to transcribe it better" optional:""`
@@ -83,7 +83,7 @@ func (*transcribe) Name() string {
 }
 
 func (t *transcribe) Description() string {
-	return withDefault("Transcribes the speech in audio, such as a recording, or a voice message, which is an attachment, or a tool's result, by its URI, resource://<hash>, as text, in the language it was spoken in, or translates it into English. A long transcript, such as a podcast's, is kept as a file of the chat, and only its start is returned, so read the rest of it with the llm:resource tool.", t.model, "transcription")
+	return withDefault("Transcribes the speech in audio, such as a recording, or a voice message, which is an attachment, or a tool's result, by its URI, resource:///<hash>, as text, in the language it was spoken in, or translates it into English. A long transcript, such as a podcast's, is kept as a file of the chat, and only its start is returned, so read the rest of it with the llm:resource tool.", t.model, "transcription")
 }
 
 func (*transcribe) InputSchema() *jsonschema.Schema {

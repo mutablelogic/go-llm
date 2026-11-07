@@ -21,7 +21,7 @@ type RecognizeRequest struct {
 	Model string                     `json:"model" help:"Model which recognizes text, by name, or by provider and name" example:"mistral:mistral-ocr-latest"`
 	Type  string                     `json:"type,omitempty" help:"MIME type of the image or document, which is needed with its data" example:"application/pdf" optional:""`
 	Data  []byte                     `json:"data,omitempty" help:"Data of the image or document, encoded as base64, or its URL" example:"JVBERi0xLjQ=" optional:""`
-	URL   string                     `json:"url,omitempty" help:"URI of a resource, which is resource://<hash>, on its own, whose content is read, rather than the data, whose type is the resource's, unless it's given" example:"resource://9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08" optional:""`
+	URL   string                     `json:"url,omitempty" help:"URI of a resource, which is resource:///<hash>, on its own, whose content is read, rather than the data, whose type is the resource's, unless it's given" example:"resource:///9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08" optional:""`
 	Opt   map[string]json.RawMessage `json:"opt,omitzero" help:"Options, by key, such as pages=\"0,2-4\", table_format=html, and regions=true, which the provider decodes" example:"{\"pages\":\"0-1\"}" optional:""`
 }
 
@@ -86,7 +86,7 @@ func (r RecognizeResponse) String() string {
 // PRIVATE FUNCTIONS
 
 // attachment returns an attachment, of its type and data, or the URI of a
-// resource, which is resource://<hash>, whose type, when it isn't given, is
+// resource, which is resource:///<hash>, whose type, when it isn't given, is
 // the resource's, and whose content is read as it's used. Returns
 // ErrBadParameter when it has neither, or both, or data without a type, or
 // the URI isn't a resource's.
