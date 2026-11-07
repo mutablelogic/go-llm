@@ -201,16 +201,16 @@ func (t *agentTool) OutputSchema() *jsonschema.Schema {
 	return t.output
 }
 
-// Run runs the agent, with the input, from the session of the model which
-// called it, when there's one, and returns its reply, which is its text, or
-// what it replied, when it has a schema, or an error, which says how it
-// stopped, when its reply isn't complete. What the agent's tools log, and
-// their progress, are its own, and that it's thinking, or replying, is its
 // Timeout returns zero, as an agent has the time a tool has by default
 func (t *agentTool) Timeout() time.Duration {
 	return 0
 }
 
+// Run runs the agent, with the input, from the session of the model which
+// called it, when there's one, and returns its reply, which is its text, or
+// what it replied, when it has a schema, or an error, which says how it
+// stopped, when its reply isn't complete. What the agent's tools log, and
+// their progress, are its own, and that it's thinking, or replying, is its
 // progress, so they're streamed, as it runs, however deep it is.
 func (t *agentTool) Run(ctx context.Context, input json.RawMessage) (any, error) {
 	session := toolkit.SessionFromContext(ctx)
