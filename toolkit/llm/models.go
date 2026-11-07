@@ -58,6 +58,7 @@ var ability = map[string]string{
 	"translation":   "translate speech",
 	"embedding":     "embed text",
 	"speech":        "speak",
+	"image":         "make images",
 }
 
 ///////////////////////////////////////////////////////////////////////////////
