@@ -135,6 +135,55 @@ func Test_TranscribeUpload(t *testing.T) {
 	assert.Zero(t, api.processing, "until it's processed")
 }
 
+func Test_TranscribeSegments(t *testing.T) {
+	ctx := context.Background()
+	api, c, _ := chatClient(t)
+	model, err := c.GetModel(ctx, "gemini-new-transcribe")
+	require.NoError(t, err)
+	part := func(text, words string) string {
+		return `{"candidates":[{"content":{"parts":[{"audioTranscription":{"text":"` + text + `","speakerLabel":"spk:0","words":[` + words + `]}}]}}]}`
+	}
+	word := func(text, start, end string) string {
+		return `{"word":"` + text + `","startOffset":"` + start + `","endOffset":"` + end + `"}`
+	}
+	finished := `{"candidates":[{"content":{"parts":[]},"finishReason":"STOP"}]}`
+	for _, test := range []struct {
+		name     string
+		reply    []string
+		text     string
+		segments []string
+	}{
+		{"unspaced", []string{part("你好世界。", word("你好", "0s", "0.5s")+","+word("世界。", "0.5s", "1s")), finished},
+			"你好世界。", []string{"你好世界。"}},
+		{"across parts", []string{part("Hello", word("Hello", "0s", "0.3s")), part("there.", word("there.", "0.4s", "0.7s")), finished},
+			"Hello there.", []string{"Hello there."}},
+		{"unspaced, across parts", []string{part("你好", word("你好", "0s", "0.5s")), part("世界。", word("世界。", "0.5s", "1s")), finished},
+			"你好世界。", []string{"你好世界。"}},
+		{"the same, across parts", []string{part("Hello", word("Hello", "0s", "0.3s")), part("Hello", word("Hello", "0.4s", "0.7s")), finished},
+			"Hello Hello", []string{"Hello Hello"}},
+		{"a word which isn't in the text", []string{part("Hello, world.", word("Hello,", "0s", "0.3s")+","+word("wurld.", "0.4s", "0.7s")), finished},
+			"Hello, world.", []string{"Hello, wurld."}},
+		{"spacing, as the model spaces it", []string{part("It costs £5 , really.", word("It", "0s", "0.1s")+","+word("costs", "0.1s", "0.3s")+","+word("£5", "0.3s", "0.5s")+","+word("really.", "0.6s", "0.9s")), finished},
+			"It costs £5 , really.", []string{"It costs £5 , really."}},
+	} {
+		api.reply = test.reply
+		var streamed []string
+		transcript, _, err := c.Transcribe(ctx, model, audio(10), func(_ string, segment *llm.TranscriptSegment) {
+			if segment != nil {
+				streamed = append(streamed, segment.Text)
+			}
+		}, llm.WithOpt(llm.SegmentsKey, true))
+		require.NoError(t, err, test.name)
+		assert.Equal(t, test.text, transcript.Text, test.name)
+		var segments []string
+		for _, segment := range transcript.Segments {
+			segments = append(segments, segment.Text)
+		}
+		assert.Equal(t, test.segments, segments, test.name)
+		assert.Equal(t, test.segments, streamed, test.name)
+	}
+}
+
 func Test_SentenceEnds(t *testing.T) {
 	for word, ends := range map[string]bool{
 		"dog.": true, "you?": true, "now!": true, `said."`: true, "it.)": true, "终。": true,

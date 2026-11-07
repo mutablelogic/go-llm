@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 	"unicode"
+	"unicode/utf8"
 
 	// Packages
 	client "github.com/mutablelogic/go-client"
@@ -171,11 +172,13 @@ func transcribeOptions(opts ...llm.Opt) (*audioTranscriptionConfig, string, bool
 // speaker's turn, when who spoke is asked for, with when each word was
 // spoken, when that's asked for, and calls the stream function, when there
 // is one, with each piece of its text, and each of its segments, when
-// they're asked for. The last piece has the tokens used.
+// they're asked for, once each ends. The last piece has the tokens used.
 type transcriptStream struct {
 	stream   llm.TranscriberStreamFn
 	segments bool
 	result   llm.Transcript
+	pending  *pendingSegment
+	parts    int
 	usage    usageMetadata
 	blocked  string
 	finish   string
@@ -183,8 +186,20 @@ type transcriptStream struct {
 	err      error
 }
 
+// pendingSegment is a segment which hasn't ended, which can go on in the
+// next part, with its text, from the parts before, and the span of the
+// part's text, which it's in, so far
+type pendingSegment struct {
+	segment    llm.TranscriptSegment
+	text       string
+	id         int
+	part       string
+	start, end int
+}
+
 // add adds a piece of the transcript. An error fails it, and it's done
-// once the model finishes, or the audio is blocked.
+// once the model finishes, or the audio is blocked, when the segment
+// which hasn't ended, ends.
 func (s *transcriptStream) add(event client.TextStreamEvent) error {
 	if strings.TrimSpace(event.Data) == "" {
 		return nil
@@ -213,70 +228,120 @@ func (s *transcriptStream) add(event client.TextStreamEvent) error {
 		}
 		if candidate.FinishReason != "" {
 			s.finish, s.done = candidate.FinishReason, true
+			s.flush()
 		}
 	}
 	return nil
 }
 
-// addTranscription adds a part's text, after a space, unless it's the
-// first, and its segments, when they're asked for
+// addTranscription adds a part's text, after the text before it, as join
+// does, and its words to the segments, when they're asked for
 func (s *transcriptStream) addTranscription(t audioTranscription) {
 	text := strings.TrimSpace(t.Text)
 	if text == "" {
 		return
 	}
-	if s.result.Text != "" {
-		text = " " + text
-	}
-	s.result.Text += text
+	piece := join(s.result.Text, text)[len(s.result.Text):]
+	s.result.Text += piece
 	if s.stream != nil {
-		s.stream(text, nil)
+		s.stream(piece, nil)
 	}
-	if !s.segments {
-		return
-	}
-	for _, segment := range segmentsOf(t) {
-		s.result.Segments = append(s.result.Segments, segment)
-		if s.stream != nil {
-			s.stream("", &s.result.Segments[len(s.result.Segments)-1])
-		}
+	s.parts++
+	if s.segments {
+		s.addWords(s.parts, text, t.SpeakerLabel, t.Words)
 	}
 }
 
-// segmentsOf returns the segments of a part's words, each a sentence, or
-// what was said before a pause, with when they start and end, and who
-// spoke them, when that's known
-func segmentsOf(t audioTranscription) []llm.TranscriptSegment {
-	var result []llm.TranscriptSegment
-	var current *llm.TranscriptSegment
-	var words []string
-	end := func() {
-		if current != nil {
-			current.Text = strings.Join(words, " ")
-			result = append(result, *current)
-		}
-		current, words = nil, nil
-	}
-	for _, w := range t.Words {
+// addWords adds the part's words to the segment which hasn't ended, or
+// starts one, which ends at the end of a sentence, and before a pause, or
+// another speaker. A segment's text is the part's text, from its first
+// word to its last, as the model spaced it, rather than its words, which
+// aren't spaced in some languages, such as Chinese, or, when a word isn't
+// found in it, the words, as join joins them.
+func (s *transcriptStream) addWords(id int, text, speaker string, words []transcribedWord) {
+	cursor := 0
+	for _, w := range words {
 		word := strings.TrimSpace(w.Word)
 		if word == "" {
 			continue
 		}
 		start, finish := offset(w.StartOffset), offset(w.EndOffset)
-		if current != nil && start-current.End > segmentPause {
-			end()
+		if p := s.pending; p != nil && (p.segment.Speaker != speaker || start-p.segment.End > segmentPause) {
+			s.flush()
 		}
-		if current == nil {
-			current = &llm.TranscriptSegment{Start: start, Speaker: t.SpeakerLabel}
+		if s.pending == nil {
+			s.pending = &pendingSegment{segment: llm.TranscriptSegment{Start: start, Speaker: speaker}, start: -1}
 		}
-		words = append(words, word)
-		current.End = max(current.End, finish, start)
+		p := s.pending
+
+		// The word, in the part's text, after the words before it, which
+		// the segment's span of the part's text goes on to, or else the
+		// word, after what the segment has
+		if i := strings.Index(text[cursor:], word); i >= 0 {
+			from, to := cursor+i, cursor+i+len(word)
+			if p.id != id || p.start < 0 {
+				p.text, p.id, p.part, p.start = join(p.text, p.span()), id, text, from
+			}
+			p.end, cursor = to, to
+		} else {
+			p.text, p.start = join(join(p.text, p.span()), word), -1
+		}
+		p.segment.End = max(p.segment.End, finish, start)
 		if sentenceEnds(word) {
-			end()
+			s.flush()
 		}
 	}
-	end()
-	return result
+}
+
+// flush ends the segment which hasn't ended, when there is one, and
+// streams it
+func (s *transcriptStream) flush() {
+	p := s.pending
+	if p == nil {
+		return
+	}
+	s.pending = nil
+	p.segment.Text = join(p.text, p.span())
+	if p.segment.Text == "" {
+		return
+	}
+	s.result.Segments = append(s.result.Segments, p.segment)
+	if s.stream != nil {
+		s.stream("", &s.result.Segments[len(s.result.Segments)-1])
+	}
+}
+
+// span returns the segment's text, of the part it's in, so far
+func (p *pendingSegment) span() string {
+	if p.start < 0 || p.end < p.start {
+		return ""
+	}
+	return p.part[p.start:p.end]
+}
+
+// join returns the text, then the next, after a space, unless either is
+// empty, there's a space between them, or either side is in a script which
+// isn't spaced, such as Chinese, or Japanese
+func join(text, next string) string {
+	switch {
+	case text == "":
+		return next
+	case next == "":
+		return text
+	}
+	last, _ := utf8.DecodeLastRuneInString(text)
+	first, _ := utf8.DecodeRuneInString(next)
+	if unicode.IsSpace(last) || unicode.IsSpace(first) || unspaced(last) || unspaced(first) {
+		return text + next
+	}
+	return text + " " + next
+}
+
+// unspaced returns whether the rune is in a script whose words aren't
+// spaced, or is such a script's punctuation, such as 。
+func unspaced(r rune) bool {
+	return unicode.In(r, unicode.Han, unicode.Hiragana, unicode.Katakana, unicode.Thai, unicode.Lao, unicode.Khmer, unicode.Myanmar) ||
+		(r >= 0x3000 && r <= 0x303F) || (r >= 0xFF00 && r <= 0xFFEF)
 }
 
 // offset returns an offset, such as 0.200s, as a duration, or zero
