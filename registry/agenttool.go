@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"slices"
 	"sync"
+	"time"
 
 	// Packages
 	llm "github.com/mutablelogic/go-llm"
@@ -205,6 +206,11 @@ func (t *agentTool) OutputSchema() *jsonschema.Schema {
 // what it replied, when it has a schema, or an error, which says how it
 // stopped, when its reply isn't complete. What the agent's tools log, and
 // their progress, are its own, and that it's thinking, or replying, is its
+// Timeout returns zero, as an agent has the time a tool has by default
+func (t *agentTool) Timeout() time.Duration {
+	return 0
+}
+
 // progress, so they're streamed, as it runs, however deep it is.
 func (t *agentTool) Run(ctx context.Context, input json.RawMessage) (any, error) {
 	session := toolkit.SessionFromContext(ctx)

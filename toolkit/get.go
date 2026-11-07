@@ -7,6 +7,7 @@ import (
 	"maps"
 	"slices"
 	"strings"
+	"time"
 
 	// Packages
 	otel "github.com/mutablelogic/go-client/pkg/otel"
@@ -244,6 +245,12 @@ func (t namedTool) InputSchema() *jsonschema.Schema {
 // OutputSchema returns the JSON schema of the tool's output, or nil
 func (t namedTool) OutputSchema() *jsonschema.Schema {
 	return t.entry.tool.OutputSchema()
+}
+
+// Timeout returns the most time the tool has to return, or zero, for the
+// time a tool has by default
+func (t namedTool) Timeout() time.Duration {
+	return t.entry.tool.Timeout()
 }
 
 // Run runs the tool with the input, after validating it against the tool's

@@ -192,6 +192,7 @@ func (t weatherTool) InputSchema() *jsonschema.Schema {
 	return jsonschema.MustFor[weatherInput]()
 }
 func (t weatherTool) OutputSchema() *jsonschema.Schema { return nil }
+func (weatherTool) Timeout() time.Duration             { return 0 }
 func (t weatherTool) Run(context.Context, json.RawMessage) (any, error) {
 	return map[string]any{"temperature_c": 18}, nil
 }
