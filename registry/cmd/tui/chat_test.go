@@ -688,14 +688,14 @@ func Test_TurnLabel(t *testing.T) {
 		message("assistant", providerschema.ContentBlock{Text: types.Ptr("Neukölln.")}),
 		message("user", providerschema.ContentBlock{Text: types.Ptr("Thanks")}),
 	}})
-	m.details = memoryschema.Details{Assistant: &memoryschema.Detail{Value: "Omodie"}}
+	m.details = memoryschema.Details{Assistant: &memoryschema.Detail{Value: "Ada"}}
 	m.logs = map[string][]string{resultKey("1"): {"Searching the web"}}
 	m.history.Height = 100
 	m.render()
 	content := m.history.View()
-	assert.Equal(t, 1, strings.Count(content, "Omodie"))
+	assert.Equal(t, 1, strings.Count(content, "Ada"))
 	assert.Equal(t, 2, strings.Count(content, "You"))
-	assert.Less(t, strings.Index(content, "Omodie"), strings.Index(content, "Searching the web"))
+	assert.Less(t, strings.Index(content, "Ada"), strings.Index(content, "Searching the web"))
 	assert.Less(t, strings.Index(content, "Searching the web"), strings.Index(content, "Neukölln."))
 }
 
@@ -724,21 +724,21 @@ func Test_DetailsReload(t *testing.T) {
 	// A change to the details as they're loaded isn't overwritten by them,
 	// as they're loaded again
 	stale := &memoryschema.Details{Assistant: &memoryschema.Detail{Value: "Nano"}}
-	fresh := &memoryschema.Details{Assistant: &memoryschema.Detail{Value: "Omodie"}}
+	fresh := &memoryschema.Details{Assistant: &memoryschema.Detail{Value: "Ada"}}
 	m, _ := newTestModel(fakeClient{details: fresh}, &schema.Session{ID: uuid.New()})
 	load := m.loadDetails()
-	m.Update(detailMsg(eventschema.Event{Action: eventschema.EventUpdate, Schema: memorySchema, Table: detailTable, Row: "assistant", Data: json.RawMessage(`{"value":"Omodie"}`)}))
+	m.Update(detailMsg(eventschema.Event{Action: eventschema.EventUpdate, Schema: memorySchema, Table: detailTable, Row: "assistant", Data: json.RawMessage(`{"value":"Ada"}`)}))
 	msg := load().(detailsMsg)
 	msg.details = stale
 	_, cmd := m.Update(msg)
-	assert.Equal(t, "Omodie", m.assistantLabel())
+	assert.Equal(t, "Ada", m.assistantLabel())
 	require.NotNil(t, cmd, "loaded again")
 	m.Update(cmd())
-	assert.Equal(t, "Omodie", m.assistantLabel())
+	assert.Equal(t, "Ada", m.assistantLabel())
 
 	// Without a change as they're loaded, they're used
 	m.Update(m.loadDetails()())
-	assert.Equal(t, "Omodie", m.assistantLabel())
+	assert.Equal(t, "Ada", m.assistantLabel())
 }
 
 func Test_ForgottenLogs(t *testing.T) {
