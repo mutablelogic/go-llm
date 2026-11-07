@@ -165,7 +165,9 @@ func newAgentTool(r *Registry, agent schema.Agent) (*agentTool, error) {
 	if err != nil {
 		return nil, err
 	}
-	resourceInputs(input)
+	if input, err = resourceInputs(input); err != nil {
+		return nil, err
+	}
 	output, err := agent.JSONSchema()
 	if err != nil {
 		return nil, err
@@ -177,18 +179,33 @@ func newAgentTool(r *Registry, agent schema.Agent) (*agentTool, error) {
 	return &agentTool{registry: r, agent: agent, input: input, output: output, timeout: timeout}, nil
 }
 
-// resourceInputs says, of each property of the input which is of format
-// resource, that it can be the URI of a file, whose text is read, so the
-// model which calls the agent can give it a file, rather than its text
-func resourceInputs(input *jsonschema.Schema) {
+// resourceInputs returns the input, as the model which calls the agent is
+// told it, of which each property of format resource says it can be the
+// URI of a file, whose text is read, without the rules of its text, such as
+// its pattern, or length, which a URI hasn't, so they're of the file's text,
+// which they're validated with when the agent runs
+func resourceInputs(input *jsonschema.Schema) (*jsonschema.Schema, error) {
 	if input == nil {
-		return
+		return nil, nil
 	}
+	changed := false
 	for _, property := range input.Properties {
 		if property != nil && property.Format == schema.ResourceFormat {
 			property.Description = strings.TrimSpace(property.Description + " " + resourceInput)
+			property.Pattern, property.MinLength, property.MaxLength = "", nil, nil
+			changed = true
 		}
 	}
+	if !changed {
+		return input, nil
+	}
+
+	// The schema is compiled as it's made, so it's made again, as it is now
+	data, err := json.Marshal(input)
+	if err != nil {
+		return nil, err
+	}
+	return jsonschema.FromJSON(data)
 }
 
 func (t *agentTool) Name() string {

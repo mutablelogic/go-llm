@@ -410,7 +410,7 @@ func (p PromptMeta) input(input json.RawMessage, read ReadFunc) (map[string]any,
 		// one, so it's validated as the model is sent it, such as a pattern
 		// which the text of a file, rather than its URI, has
 		if read != nil {
-			if err := withResources(value, schema, read); err != nil {
+			if err := withResources(value, schema, read, keys(value)...); err != nil {
 				return nil, err
 			} else if data, err = json.Marshal(value); err != nil {
 				return nil, err
@@ -419,11 +419,29 @@ func (p PromptMeta) input(input json.RawMessage, read ReadFunc) (map[string]any,
 		if err := schema.Validate(data); err != nil {
 			return nil, llm.ErrBadParameter.Withf("invalid input: %v", err)
 		}
-		if err := withDefaults(value, schema); err != nil {
+		defaults, err := withDefaults(value, schema)
+		if err != nil {
 			return nil, err
+		}
+
+		// The files a default refers to are read too, once it's set, rather
+		// than the input's again, which are read already
+		if read != nil && len(defaults) > 0 {
+			if err := withResources(value, schema, read, defaults...); err != nil {
+				return nil, err
+			}
 		}
 	}
 	return withZeros(value).(map[string]any), nil
+}
+
+// keys returns the keys of the value
+func keys(value map[string]any) []string {
+	result := make([]string, 0, len(value))
+	for key := range value {
+		result = append(result, key)
+	}
+	return result
 }
 
 // withZeros returns the value, with each number which is zero, however
@@ -460,11 +478,12 @@ const ResourceFormat = "resource"
 // withResources sets each property of the schema, of format resource, whose
 // value is a file's URI, resource:///<hash>, to the file's text, which the
 // function reads, and leaves any other value as it is
-func withResources(value map[string]any, schema *jsonschema.Schema, read ReadFunc) error {
+func withResources(value map[string]any, schema *jsonschema.Schema, read ReadFunc, names ...string) error {
 	if schema == nil {
 		return nil
 	}
-	for name, property := range schema.Properties {
+	for _, name := range names {
+		property := schema.Properties[name]
 		if property == nil || property.Format != ResourceFormat {
 			continue
 		}
@@ -484,9 +503,11 @@ func withResources(value map[string]any, schema *jsonschema.Schema, read ReadFun
 // withDefaults sets each property of the schema which the input hasn't, so
 // the prompt can use it, such as {{ if .pauses }}, to its default, or, when
 // it has none, the empty value of its type, such as "", or false, rather
-// than the prompt failing for a property which is optional. A key which
-// the schema hasn't, such as a misspelt one, is still an error.
-func withDefaults(value map[string]any, schema *jsonschema.Schema) error {
+// than the prompt failing for a property which is optional, and returns the
+// names of those set to their defaults. A key which the schema hasn't, such
+// as a misspelt one, is still an error.
+func withDefaults(value map[string]any, schema *jsonschema.Schema) ([]string, error) {
+	var defaults []string
 	for name, property := range schema.Properties {
 		if _, ok := value[name]; ok || property == nil {
 			continue
@@ -496,9 +517,10 @@ func withDefaults(value map[string]any, schema *jsonschema.Schema) error {
 			decoder.UseNumber()
 			var v any
 			if err := decoder.Decode(&v); err != nil {
-				return llm.ErrBadParameter.Withf("invalid default of %q: %v", name, err)
+				return nil, llm.ErrBadParameter.Withf("invalid default of %q: %v", name, err)
 			}
 			value[name] = v
+			defaults = append(defaults, name)
 			continue
 		}
 		// Its type, or the first of its types which isn't null, so a type
@@ -524,7 +546,7 @@ func withDefaults(value map[string]any, schema *jsonschema.Schema) error {
 			value[name] = ""
 		}
 	}
-	return nil
+	return defaults, nil
 }
 
 // promptFuncs are the functions which a prompt can use: json, which

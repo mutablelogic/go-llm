@@ -418,4 +418,28 @@ func Test_AgentResources(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, list.Body, 1)
 	assert.Contains(t, string(list.Body[0].Input), "The transcript. It can be the text, or the URI of a file")
+
+	// Called by a model, through the toolkit, which validates its input
+	// with the tool's schema, a file's URI isn't held to the pattern of its
+	// text, which the file's text is, as the agent runs, so subtitles are
+	// read, and notes, which aren't subtitles, aren't
+	_, _, err = r.CreateAgent(ctx, schema.AgentMeta{PromptMeta: schema.PromptMeta{
+		Name:   "cues",
+		Input:  json.RawMessage(`{"type":"object","properties":{"transcript":{"type":"string","format":"resource","pattern":"-->"}},"required":["transcript"]}`),
+		Prompt: types.Ptr("{{ .transcript }}"),
+	}, GeneratorMeta: schema.GeneratorMeta{Model: types.Ptr("model")}})
+	require.NoError(t, err)
+	tool, err := tk.GetTool(ctx, "agent:cues")
+	require.NoError(t, err)
+	assert.NotContains(t, string(tool.Input), "pattern", "the tool's schema hasn't the pattern of its text")
+	p.replies = append(p.replies, text("Sections"))
+	inChat := toolkit.WithSession(ctx, toolkit.NewSession("agent", session.ID, func(llm.StreamType, string) {}, nil))
+	_, err = tk.CallTool(inChat, "agent:cues", json.RawMessage(`{"transcript":"`+subtitles.URI()+`"}`))
+	require.NoError(t, err)
+	assert.Equal(t, srt, p.asked[len(p.asked)-1].messages[0].Text())
+	_, err = tk.CallTool(inChat, "agent:cues", json.RawMessage(`{"transcript":"`+alone.URI()+`"}`))
+	assert.ErrorIs(t, err, llm.ErrBadParameter)
+	assert.ErrorContains(t, err, "-->")
+	_, err = tk.CallTool(inChat, "agent:cues", json.RawMessage(`{"transcript":"Text, which isn't subtitles"}`))
+	assert.ErrorIs(t, err, llm.ErrBadParameter)
 }

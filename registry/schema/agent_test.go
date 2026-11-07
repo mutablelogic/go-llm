@@ -282,6 +282,12 @@ func Test_AgentMessage(t *testing.T) {
 		assert.ErrorIs(t, err, llm.ErrBadParameter, "a file which isn't subtitles")
 		_, err = p.MessageWith(json.RawMessage(`{"transcript":"Some text, which isn't subtitles"}`), srt)
 		assert.ErrorIs(t, err, llm.ErrBadParameter, "text which isn't subtitles")
+
+		// A default which is a file's URI is the file's text too
+		p.Input = json.RawMessage(`{"type":"object","properties":{"transcript":{"type":"string","format":"resource","default":"resource://srt"}}}`)
+		message, err = p.MessageWith(json.RawMessage(`{}`), srt)
+		require.NoError(t, err)
+		assert.Contains(t, message, "-->", "the default's file, rather than its URI")
 	})
 
 	t.Run("NoSchema", func(t *testing.T) {
