@@ -86,6 +86,32 @@ func Test_Times(t *testing.T) {
 		assert.Regexp(t, `^\(\w+day \d{4}-\d{2}-\d{2}T\d{2}:\d{2}\+00:00\)$`, types.Value(message.Content[0].Text))
 	})
 
+	t.Run("Ask", func(t *testing.T) {
+		// Asked, without a session, the last message, which is the person's,
+		// is sent now, and the earlier ones' times aren't known
+		tk := test.NewToolkit(t)
+		require.NoError(t, tk.Add(toolkit.NewNamespace("assistant", "", readTool{})))
+		p := newScripted(text("Now."))
+		r, err := registry.New(registry.WithToolkit(tk), registry.WithTimes(func() *time.Location { return berlin }, "assistant"))
+		require.NoError(t, err)
+		require.NoError(t, r.Add("", p))
+		say := func(role, value string) providerschema.MessageMeta {
+			return providerschema.MessageMeta{Sender: role, Content: []providerschema.ContentBlock{{Text: types.Ptr(value)}}}
+		}
+		_, err = r.Ask(ctx, schema.AskRequest{
+			GeneratorMeta: schema.GeneratorMeta{Model: types.Ptr("model"), Tools: []string{"assistant:*"}},
+			Messages:      []providerschema.MessageMeta{say("user", "Earlier"), say("assistant", "OK"), say("user", "And now?")},
+		}, nil)
+		require.NoError(t, err)
+		messages := p.asked[0].messages
+		require.Len(t, messages, 3)
+		assert.Equal(t, "Earlier", messages[0].Text())
+		last := messages[2].(*providerschema.Message)
+		require.Len(t, last.Content, 2)
+		assert.Regexp(t, sent, types.Value(last.Content[0].Text))
+		assert.Equal(t, "And now?", types.Value(last.Content[1].Text))
+	})
+
 	t.Run("Without", func(t *testing.T) {
 		// Without the namespace's tools, they aren't told when, though it's
 		// kept
