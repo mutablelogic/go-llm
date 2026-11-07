@@ -4,6 +4,9 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	resourcemanager "github.com/mutablelogic/go-llm/resource"
+	resourceschema "github.com/mutablelogic/go-llm/resource/schema"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -83,6 +86,35 @@ func Test_AgentTools(t *testing.T) {
 			toolEvent(eventschema.EventUpdate, "segment"),
 			toolEvent(eventschema.EventDelete, "segment"),
 		}, events(ch))
+	})
+
+	t.Run("Timeout", func(t *testing.T) {
+		// An agent, as a tool, has its timeout, or the time a tool has by
+		// default, without one, and one which isn't a duration isn't saved
+		r, tk, _ := newRegistry(t, test.NewAgentStore())
+		_, _, err := r.CreateAgent(ctx, segment)
+		require.NoError(t, err)
+		timeout := func() time.Duration {
+			t.Helper()
+			list, err := tk.Tools(ctx, "agent:segment")
+			require.NoError(t, err)
+			require.Len(t, list, 1)
+			return list[0].Timeout()
+		}
+		assert.Zero(t, timeout())
+		_, err = r.UpdateAgent(ctx, "segment", schema.AgentMeta{PromptMeta: schema.PromptMeta{Timeout: types.Ptr("2m")}})
+		require.NoError(t, err)
+		assert.Equal(t, 2*time.Minute, timeout())
+		_, err = r.UpdateAgent(ctx, "segment", schema.AgentMeta{PromptMeta: schema.PromptMeta{Timeout: types.Ptr("1d")}})
+		require.NoError(t, err)
+		assert.Equal(t, 24*time.Hour, timeout(), "in days, too")
+		for _, bad := range []string{"soon", "-1m", "0s"} {
+			_, err = r.UpdateAgent(ctx, "segment", schema.AgentMeta{PromptMeta: schema.PromptMeta{Timeout: types.Ptr(bad)}})
+			assert.ErrorIs(t, err, llm.ErrBadParameter, bad)
+		}
+		_, err = r.UpdateAgent(ctx, "segment", schema.AgentMeta{PromptMeta: schema.PromptMeta{Timeout: types.Ptr("")}})
+		require.NoError(t, err)
+		assert.Zero(t, timeout(), "empty clears it")
 	})
 
 	t.Run("Run", func(t *testing.T) {
@@ -323,4 +355,67 @@ func Test_RunAgent(t *testing.T) {
 		system, _ := llm.GetOpt[string](p.asked[1].opts, llm.SystemPromptKey)
 		assert.Equal(t, "You segment transcripts", system)
 	})
+}
+
+func Test_AgentResources(t *testing.T) {
+	// An agent's input, of format resource, which is a file's URI, is the
+	// file's text, as it is, in the session it's run from, or on its own,
+	// which the model is sent, rather than the URI, and a file which isn't
+	// text, or doesn't exist, is an error
+	ctx := context.Background()
+	sessions := test.NewSessionStore()
+	manager, err := resourcemanager.New(resourcemanager.NewStore(), resourcemanager.WithSessions(func(ctx context.Context, id uuid.UUID) error {
+		_, err := sessions.Get(ctx, id)
+		return err
+	}))
+	require.NoError(t, err)
+	tk, err := toolkit.New(ctx)
+	require.NoError(t, err)
+	r, err := registry.New(registry.WithToolkit(tk), registry.WithAgentStore(test.NewAgentStore()), registry.WithSessionStore(sessions), registry.WithResources(manager))
+	require.NoError(t, err)
+	p := newScripted(text("Two sections"), text("One section"), text("Plain"))
+	require.NoError(t, r.Add("", p))
+	_, _, err = r.CreateAgent(ctx, schema.AgentMeta{PromptMeta: schema.PromptMeta{
+		Name:   "segment",
+		Input:  json.RawMessage(`{"type":"object","properties":{"transcript":{"type":"string","format":"resource","description":"The transcript."},"title":{"type":"string"}},"required":["transcript"]}`),
+		Prompt: types.Ptr("Segment {{ .title }}:\n{{ .transcript }}"),
+	}, GeneratorMeta: schema.GeneratorMeta{Model: types.Ptr("model")}})
+	require.NoError(t, err)
+	session, err := r.CreateSession(ctx, schema.SessionMeta{GeneratorMeta: schema.GeneratorMeta{Model: types.Ptr("model")}})
+	require.NoError(t, err)
+	srt := "1\n00:00:00,200 --> 00:00:03,500\nHello.\n"
+	subtitles, _, err := manager.Create(ctx, resourceschema.ResourceMeta{Session: &session.ID, Name: "talk.srt", Type: "application/x-subrip"}, strings.NewReader(srt))
+	require.NoError(t, err)
+	alone, _, err := manager.Create(ctx, resourceschema.ResourceMeta{Name: "notes.txt", Type: "text/plain"}, strings.NewReader("Notes"))
+	require.NoError(t, err)
+	image, _, err := manager.Create(ctx, resourceschema.ResourceMeta{Session: &session.ID, Name: "cat.png"}, strings.NewReader(pngData))
+	require.NoError(t, err)
+	run := func(input string) error {
+		_, err := r.RunAgent(ctx, "segment", schema.RunAgentRequest{Session: session.ID, Input: json.RawMessage(input)}, nil)
+		return err
+	}
+
+	// The session's file, as it is, and one on its own, and text, which is
+	// as it is, as is a URI of a property which isn't of format resource
+	require.NoError(t, run(`{"transcript":"`+subtitles.URI()+`","title":"`+image.URI()+`"}`))
+	assert.Equal(t, "Segment "+image.URI()+":\n"+srt, p.asked[0].messages[0].Text())
+	require.NoError(t, run(`{"transcript":"`+alone.URI()+`"}`))
+	assert.Equal(t, "Segment :\nNotes", p.asked[1].messages[0].Text())
+	require.NoError(t, run(`{"transcript":"file:///etc/passwd"}`))
+	assert.Equal(t, "Segment :\nfile:///etc/passwd", p.asked[2].messages[0].Text(), "only resource URIs are read")
+
+	// An image isn't text, and says which tool reads it, and a file which
+	// doesn't exist isn't one
+	err = run(`{"transcript":"` + image.URI() + `"}`)
+	assert.ErrorIs(t, err, llm.ErrBadParameter)
+	assert.ErrorContains(t, err, "llm:ocr")
+	assert.ErrorContains(t, err, `input "transcript"`)
+	err = run(`{"transcript":"resource://` + strings.Repeat("0", 64) + `"}`)
+	assert.ErrorIs(t, err, llm.ErrNotFound)
+
+	// The model which calls the agent is told it can give a file
+	list, err := tk.ListTools(ctx, toolschema.ToolListRequest{Namespace: registry.AgentNamespace})
+	require.NoError(t, err)
+	require.Len(t, list.Body, 1)
+	assert.Contains(t, string(list.Body[0].Input), "The transcript. It can be the text, or the URI of a file")
 }

@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"slices"
+	"strings"
 	"sync"
 	"time"
 
@@ -38,6 +39,7 @@ type agentTool struct {
 	agent    schema.Agent
 	input    *jsonschema.Schema
 	output   *jsonschema.Schema
+	timeout  time.Duration
 }
 
 var _ toolkit.Namespace = (*agentNamespace)(nil)
@@ -56,6 +58,10 @@ const (
 	// how to use its tools
 	agentPrompt = "The tools in the agent namespace are agents: each asks a model to do what its description says, with its own instructions, and returns its reply. Call one to delegate a task it does."
 )
+
+// resourceInput is what's said of a property of an agent's input which is
+// of format resource
+const resourceInput = "It can be the text, or the URI of a file, resource:///<hash>, whose text is read, as it is, such as subtitles, or a transcript, which is better than copying it."
 
 // emptyInput is the input schema of an agent which has none
 var emptyInput = jsonschema.MustFor[struct{}]()
@@ -159,11 +165,30 @@ func newAgentTool(r *Registry, agent schema.Agent) (*agentTool, error) {
 	if err != nil {
 		return nil, err
 	}
+	resourceInputs(input)
 	output, err := agent.JSONSchema()
 	if err != nil {
 		return nil, err
 	}
-	return &agentTool{registry: r, agent: agent, input: input, output: output}, nil
+	timeout, err := agent.ToolTimeout()
+	if err != nil {
+		return nil, err
+	}
+	return &agentTool{registry: r, agent: agent, input: input, output: output, timeout: timeout}, nil
+}
+
+// resourceInputs says, of each property of the input which is of format
+// resource, that it can be the URI of a file, whose text is read, so the
+// model which calls the agent can give it a file, rather than its text
+func resourceInputs(input *jsonschema.Schema) {
+	if input == nil {
+		return
+	}
+	for _, property := range input.Properties {
+		if property != nil && property.Format == schema.ResourceFormat {
+			property.Description = strings.TrimSpace(property.Description + " " + resourceInput)
+		}
+	}
 }
 
 func (t *agentTool) Name() string {
@@ -201,9 +226,10 @@ func (t *agentTool) OutputSchema() *jsonschema.Schema {
 	return t.output
 }
 
-// Timeout returns zero, as an agent has the time a tool has by default
+// Timeout returns the agent's timeout, or zero, for the time a tool has by
+// default, when it has none
 func (t *agentTool) Timeout() time.Duration {
-	return 0
+	return t.timeout
 }
 
 // Run runs the agent, with the input, from the session of the model which

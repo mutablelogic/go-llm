@@ -106,7 +106,7 @@ func (r *Registry) Transcribe(ctx context.Context, model llm.Model, audio llm.Re
 	} else if err := can(model, model.Capabilities().Transcription, "transcribe audio"); err != nil {
 		return llm.Transcript{}, llm.Usage{}, err
 	}
-	if audio, err = r.withResource(ctx, audio); err != nil {
+	if audio, err = r.streamed(ctx, audio); err != nil {
 		return llm.Transcript{}, llm.Usage{}, err
 	}
 	start := time.Now()
@@ -134,7 +134,7 @@ func (r *Registry) Translate(ctx context.Context, model llm.Model, audio llm.Res
 	} else if err := can(model, model.Capabilities().Translation, "translate audio"); err != nil {
 		return llm.Transcript{}, llm.Usage{}, err
 	}
-	if audio, err = r.withResource(ctx, audio); err != nil {
+	if audio, err = r.streamed(ctx, audio); err != nil {
 		return llm.Transcript{}, llm.Usage{}, err
 	}
 	start := time.Now()

@@ -24,6 +24,7 @@ type models struct {
 	opts       *gollm.Opts
 	images     []gollm.Resource // The images it was last asked to change
 	noSegments bool             // Whether it never returns segments, as some models don't
+	text       string           // The transcript's text, when it's set
 }
 
 type model struct {
@@ -112,6 +113,9 @@ func (m *models) Transcribe(_ context.Context, _ gollm.Model, _ gollm.Resource, 
 			{Start: 1500 * time.Millisecond, End: 3 * time.Second, Text: "Salut.", Speaker: "A"},
 			{Start: 3 * time.Second, End: 4 * time.Second, Text: "Ça va?", Speaker: "B"},
 		}}, gollm.Usage{}, nil
+	}
+	if m.text != "" {
+		return gollm.Transcript{Text: m.text, Language: "en"}, gollm.Usage{}, nil
 	}
 	return gollm.Transcript{Text: "Bonjour", Language: "fr"}, gollm.Usage{}, nil
 }
@@ -568,4 +572,48 @@ func Test_Timeouts(t *testing.T) {
 		got[tool.Name()] = tool.Timeout()
 	}
 	assert.Equal(t, want, got)
+}
+
+func Test_LongTranscript(t *testing.T) {
+	// A long transcript is kept as a file, whatever's asked, and its start
+	// is returned, ending at a word, with a note to read the rest with the
+	// resource tool
+	ctx := toolkit.WithResolver(context.Background(), each(func(string) (gollm.Resource, error) {
+		return &providerschema.Resource{ResourceMeta: providerschema.ResourceMeta{ContentType: "audio/mpeg", Data: []byte("ID3")}}, nil
+	}))
+	text := strings.Repeat("The quick brown fox jumps over the lazy dog. ", 400)
+	m := &models{text: strings.TrimSpace(text)}
+	ns, err := llm.New(func() llm.Models { return m }, llm.WithTranscribe("phonon"))
+	require.NoError(t, err)
+	transcribe := ns.Tools()[2]
+	result, err := transcribe.Run(ctx, json.RawMessage(`{"uri":"resource://mp3"}`))
+	require.NoError(t, err)
+	r, ok := result.(toolkit.Result)
+	require.True(t, ok, "a result with a file")
+	require.Len(t, r.Resources, 1)
+	data, err := gollm.ReadAll(ctx, r.Resources[0])
+	require.NoError(t, err)
+	assert.Equal(t, m.text, strings.TrimSpace(string(data)), "the file has the whole of it")
+	output, err := json.Marshal(r.Value)
+	require.NoError(t, err)
+	var got struct {
+		Text      string `json:"text"`
+		Truncated bool   `json:"truncated"`
+		Note      string `json:"note"`
+	}
+	require.NoError(t, json.Unmarshal(output, &got))
+	assert.True(t, got.Truncated)
+	assert.LessOrEqual(t, len(got.Text), 8000+len("…"))
+	assert.True(t, strings.HasSuffix(got.Text, "…"))
+	assert.True(t, strings.HasPrefix(m.text, strings.TrimSuffix(got.Text, "…")))
+	assert.NotContains(t, got.Text, "jum…", "it ends at a word")
+	assert.Contains(t, got.Note, "llm:resource")
+
+	// A short one is returned whole, without a file
+	m.text = "Hello."
+	result, err = transcribe.Run(ctx, json.RawMessage(`{"uri":"resource://mp3"}`))
+	require.NoError(t, err)
+	_, isResult := result.(toolkit.Result)
+	assert.False(t, isResult)
+	assert.Contains(t, transcribe.Description(), "llm:resource")
 }

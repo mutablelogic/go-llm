@@ -70,6 +70,15 @@ func (r Resource) Type() string {
 // Read returns a function which reads the inline data of the resource.
 // Resources referred to by a URL can't be read yet, as reading files or
 // fetching URLs on the server would give clients access to its files and
+// ContentLength returns the length of the resource's data, or -1, when it
+// refers to its content, by its URL, rather than having it
+func (r Resource) ContentLength() int64 {
+	if r.URL != nil && len(r.Data) == 0 {
+		return -1
+	}
+	return int64(len(r.Data))
+}
+
 // network.
 func (r Resource) Read(ctx context.Context) (llm.ReadFunc, error) {
 	if err := ctx.Err(); err != nil {

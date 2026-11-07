@@ -229,7 +229,7 @@ func URI(hash string) string {
 }
 
 // ParseURI returns the hash of the resource with the URI, which is
-// resource:///<hash>, or resource:///<hash>, as it was before, whose hash was
+// resource:///<hash>, or resource://<hash>, as it was before, whose hash was
 // its host. Returns ErrBadParameter when it isn't.
 func ParseURI(uri string) (string, error) {
 	hash, ok := strings.CutPrefix(strings.TrimSpace(uri), Scheme+"://")

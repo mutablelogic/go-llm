@@ -172,8 +172,7 @@ func Test_AgentMessage(t *testing.T) {
 	})
 
 	t.Run("Invalid", func(t *testing.T) {
-		// The input is validated by the input schema, must be an object, and
-		// have the fields the prompt uses
+		// The input is validated by the input schema, and must be an object
 		for name, input := range map[string]string{
 			"Required": `{"minutes":1,"tags":[]}`,
 			"Type":     `{"transcript":1,"minutes":1,"tags":[]}`,
@@ -181,12 +180,88 @@ func Test_AgentMessage(t *testing.T) {
 			"JSON":     `{"transcript":`,
 			"Trailing": `{"transcript":"Hello","minutes":1,"tags":[]} trailing`,
 			"Two":      `{"transcript":"Hello","minutes":1,"tags":[]} {}`,
-			"Missing":  `{"transcript":"Hello"}`,
 		} {
 			_, err := prompt.Message(json.RawMessage(input))
 			assert.ErrorIs(t, err, llm.ErrBadParameter, name)
 		}
 		assert.NoError(t, prompt.Validate(json.RawMessage(`{"transcript":"Hello"}`)), "valid, though the prompt uses more")
+	})
+
+	t.Run("Optional", func(t *testing.T) {
+		// A property which the input hasn't is its default, or else the empty
+		// value of its type, so a prompt can test it, or write it
+		p := schema.PromptMeta{
+			Name:   "segment",
+			Input:  json.RawMessage(`{"type":"object","properties":{"transcript":{"type":"string"},"pauses":{"type":"boolean"},"min_gap":{"type":"number","default":2.5},"speaker":{"type":"string"},"tags":{"type":"array"},"times":{"type":["integer","null"]}}}`),
+			Prompt: types.Ptr(`{{ .transcript }}{{ if .pauses }} with pauses{{ end }}, gap {{ .min_gap }}, speaker [{{ .speaker }}], tags {{ json .tags }}, {{ .times }}`),
+		}
+		message, err := p.Message(json.RawMessage(`{"transcript":"Hello"}`))
+		require.NoError(t, err)
+		assert.Equal(t, "Hello, gap 2.5, speaker [], tags [], 0", message)
+		message, err = p.Message(json.RawMessage(`{"transcript":"Hello","pauses":true,"min_gap":1}`))
+		require.NoError(t, err)
+		assert.Equal(t, "Hello with pauses, gap 1, speaker [], tags [], 0", message)
+
+		// A nullable type is its type, whichever order its types are in
+		p.Input = json.RawMessage(`{"type":"object","properties":{"a":{"type":["null","integer"]},"b":{"type":["integer","null"]},"c":{"type":["null","boolean"]}}}`)
+		p.Prompt = types.Ptr(`{{ .a }} {{ .b }} {{ .c }}`)
+		message, err = p.Message(json.RawMessage(`{}`))
+		require.NoError(t, err)
+		assert.Equal(t, "0 0 false", message)
+
+		// Zero is false, whether it's omitted, the default, or given, however
+		// it's written, in lists too, and other numbers are true, and written
+		// as they were, without losing their precision
+		p.Input = json.RawMessage(`{"type":"object","properties":{"count":{"type":"integer"},"limit":{"type":"number","default":0},"list":{"type":"array"}}}`)
+		p.Prompt = types.Ptr(`{{ if .count }}count {{ .count }}{{ else }}none{{ end }}, {{ if .limit }}limit{{ else }}no limit{{ end }}, {{ range .list }}{{ if . }}{{ . }}{{ else }}zero{{ end }} {{ end }}`)
+		for input, want := range map[string]string{
+			`{}`:                             "none, no limit, ",
+			`{"count":0,"limit":0.0}`:        "none, no limit, ",
+			`{"count":3,"limit":1.5}`:        "count 3, limit, ",
+			`{"count":12345678901234567890}`: "count 12345678901234567890, no limit, ",
+			`{"list":[0,2.50,0.0,1e3]}`:      "none, no limit, zero 2.50 zero 1e3 ",
+		} {
+			message, err := p.Message(json.RawMessage(input))
+			require.NoError(t, err, input)
+			assert.Equal(t, want, message, input)
+		}
+
+		// A field which the schema hasn't, such as a misspelt one, is still
+		// an error, which is returned
+		p.Input = json.RawMessage(`{"type":"object","properties":{"transcript":{"type":"string"}}}`)
+		p.Prompt = types.Ptr(`{{ .transcript }} {{ .paused }}`)
+		_, err = p.Message(json.RawMessage(`{"transcript":"Hello"}`))
+		assert.ErrorIs(t, err, llm.ErrBadParameter)
+		assert.ErrorContains(t, err, `"paused"`)
+	})
+
+	t.Run("Resources", func(t *testing.T) {
+		// A property of format resource, which is a resource's URI, is its
+		// text, which the function reads, and otherwise as it is, as it is
+		// without the function
+		p := schema.PromptMeta{
+			Name:   "segment",
+			Input:  json.RawMessage(`{"type":"object","properties":{"transcript":{"type":"string","format":"resource"},"note":{"type":"string"}}}`),
+			Prompt: types.Ptr(`{{ .transcript }} / {{ .note }}`),
+		}
+		read := func(uri string) (string, error) {
+			if uri == "resource://abc" {
+				return "Hello, as it is", nil
+			}
+			return "", llm.ErrNotFound.Withf("no %s", uri)
+		}
+		message, err := p.MessageWith(json.RawMessage(`{"transcript":" resource://abc ","note":"resource://abc"}`), read)
+		require.NoError(t, err)
+		assert.Equal(t, "Hello, as it is / resource://abc", message)
+		message, err = p.MessageWith(json.RawMessage(`{"transcript":"Some text"}`), read)
+		require.NoError(t, err)
+		assert.Equal(t, "Some text / ", message)
+		message, err = p.Message(json.RawMessage(`{"transcript":"resource://abc"}`))
+		require.NoError(t, err)
+		assert.Equal(t, "resource://abc / ", message)
+		_, err = p.MessageWith(json.RawMessage(`{"transcript":"resource://xyz"}`), read)
+		assert.ErrorIs(t, err, llm.ErrNotFound)
+		assert.ErrorContains(t, err, `input "transcript"`)
 	})
 
 	t.Run("NoSchema", func(t *testing.T) {

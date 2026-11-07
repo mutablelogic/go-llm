@@ -66,6 +66,7 @@ type resource struct {
 }
 
 var _ llm.Resource = (*resource)(nil)
+var _ llm.Sized = (*resource)(nil)
 
 ///////////////////////////////////////////////////////////////////////////////
 // GLOBALS
@@ -401,6 +402,12 @@ func (r *resource) Type() string {
 
 // Read returns a function which reads the resource's content, through the
 // manager, each time it's called, so the resource is used, and it's read
+// ContentLength returns the length of the resource's content, in bytes,
+// which the store knows, without reading it
+func (r *resource) ContentLength() int64 {
+	return r.Resource.Size
+}
+
 // only while it exists
 func (r *resource) Read(context.Context) (llm.ReadFunc, error) {
 	return func(ctx context.Context, fn func(io.Reader) error) error {

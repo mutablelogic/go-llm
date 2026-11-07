@@ -207,6 +207,17 @@ func Test_Capabilities(t *testing.T) {
 		assert.Equal(t, []llm.DocumentPage{{Text: "# Page 1"}}, document.Pages)
 		assert.Equal(t, []string{"recognize llama3.2:latest"}, ollama.called)
 
+		// No resource is given to the provider, to say it's missing, rather
+		// than the registry reading it
+		ollama.called = nil
+		assert.NotPanics(t, func() {
+			_, _, err := r.Recognize(ctx, get(t, r, "llama3.2:latest"), nil)
+			assert.NoError(t, err, "the fake provider recognizes anything")
+			_, _, err = r.Recognize(ctx, get(t, r, "llama3.2:latest"), (*schema.Resource)(nil))
+			assert.NoError(t, err)
+		})
+		assert.Equal(t, []string{"recognize llama3.2:latest", "recognize llama3.2:latest"}, ollama.called)
+
 		// Unless it can't
 		_, _, err = r.Recognize(ctx, get(t, r, eliza.ModelName), page)
 		assert.ErrorIs(t, err, llm.ErrNotImplemented)
