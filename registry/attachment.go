@@ -206,6 +206,56 @@ func (r *Registry) toolStore(session uuid.UUID) toolkit.StoreFunc {
 	}
 }
 
+// keepReplyResources returns the reply, with what the model made with it,
+// such as an image, which is in the reply as its data, kept as a resource
+// of the session, or, without one, on its own, as the resources tools
+// return are, so the reply has its URI, rather than its data, and the
+// session isn't large. The reply is as it is when the registry has no
+// resources.
+func (r *Registry) keepReplyResources(ctx context.Context, session uuid.UUID, message providerschema.Message) (providerschema.Message, error) {
+	store := r.toolStore(session)
+	if store == nil {
+		return message, nil
+	}
+	for i, block := range message.Content {
+		if block.Resource == nil || len(block.Resource.Data) == 0 {
+			continue
+		}
+		link, err := store(ctx, namedResource{Resource: block.Resource, name: madeName(block.Resource.ContentType)})
+		if err != nil {
+			return message, err
+		}
+		u, err := url.Parse(link.URI)
+		if err != nil {
+			return message, err
+		}
+		message.Content[i].Resource = &providerschema.Resource{ResourceMeta: providerschema.ResourceMeta{ContentType: block.Resource.ContentType, URL: u}}
+	}
+	return message, nil
+}
+
+// madeName returns the name of what a model made, of the type, such as
+// image.png, or audio.wav
+func madeName(contentType string) string {
+	mediaType, _, _ := mime.ParseMediaType(contentType)
+	kind, _, _ := strings.Cut(mediaType, "/")
+	if kind == "" || kind == "application" {
+		kind = "file"
+	}
+	switch mediaType {
+	case "image/jpeg":
+		return kind + ".jpg"
+	case "audio/wav", "audio/x-wav", "audio/wave":
+		return kind + ".wav"
+	case "audio/mpeg":
+		return kind + ".mp3"
+	}
+	if exts, _ := mime.ExtensionsByType(mediaType); len(exts) > 0 {
+		return kind + exts[0]
+	}
+	return kind
+}
+
 // toolResolver returns the function which returns the resources which the
 // tools run in the session are given, by their URIs: the session's, or,
 // otherwise, or without one, those on their own, whose content is read, up

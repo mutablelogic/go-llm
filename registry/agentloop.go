@@ -270,6 +270,9 @@ func (r *Registry) iterate(ctx context.Context, model llm.Model, loop *agentLoop
 	}
 	h.sent(usage)
 	message := newReply(reply)
+	if message, err = r.keepReplyResources(ctx, loop.session, message); err != nil {
+		return nil, llm.Usage{}, false, err
+	}
 	calls := message.ToolCalls()
 	defer func() { r.traceIteration(ctx, message.Result, calls, usage) }()
 

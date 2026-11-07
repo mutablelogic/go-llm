@@ -79,6 +79,14 @@ func newReply(parts []part, finish, blocked string, usage usageMetadata) *schema
 				ID: id, Name: p.FunctionCall.Name, Input: args, Meta: map[string]any{metaKey: meta.value()},
 			}})
 			calls = true
+		case p.InlineData != nil:
+			// What the model made, such as an image, with its signature,
+			// which is sent back with it, so the model can change it
+			block := schema.ContentBlock{Resource: &schema.Resource{ResourceMeta: schema.ResourceMeta{ContentType: p.InlineData.MimeType, Data: p.InlineData.Data}}}
+			if p.ThoughtSignature != "" {
+				block.Signature = types.Ptr(p.ThoughtSignature)
+			}
+			reply.Content = append(reply.Content, block)
 		case p.Thought:
 			if p.Text != "" {
 				appendThinking(reply, p.Text)
@@ -335,6 +343,15 @@ func modelParts(m llm.Message, calls map[string]toolCall) []part {
 				parts = append(parts, part{Text: *block.Text})
 				replied = true
 			}
+		case block.Resource != nil && len(block.Resource.Data) > 0:
+			// What a model made, such as an image, which is sent back, with
+			// Gemini's signature, so it can change it
+			p := part{InlineData: &blob{MimeType: block.Resource.ContentType, Data: block.Resource.Data}}
+			if block.Signature != nil {
+				p.ThoughtSignature = *block.Signature
+			}
+			parts = append(parts, p)
+			replied = true
 		case block.ToolCall != nil:
 			call, ok := calls[block.ToolCall.ID]
 			if !ok || !call.replay {

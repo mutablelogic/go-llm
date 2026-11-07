@@ -539,7 +539,13 @@ function blockBubbles(kind: ChatKind, block: ContentBlock, attachmentName: Attac
     if (block.attachment) {
         const { url, type } = block.attachment;
         const name = (url && attachmentName(url)) || type || url || 'Attachment';
-        bubbles.push({ kind, text: name, attachment: { name, type, url } });
+        // What the assistant made, such as an image, is shown, or played,
+        // and the person's attachments are their names
+        if (kind === 'assistant') {
+            bubbles.push({ kind, text: name, media: { name, type, url } });
+        } else {
+            bubbles.push({ kind, text: name, attachment: { name, type, url } });
+        }
     }
     if (block.tool_call) {
         bubbles.push({ kind: 'thinking', label: `Called ${canonicalTool(block.tool_call.name)}`, text: json(block.tool_call.input) });

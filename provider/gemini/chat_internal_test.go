@@ -338,3 +338,33 @@ func Test_ImageFormats(t *testing.T) {
 		assert.False(t, types.Value(value), name)
 	}
 }
+
+func Test_Images(t *testing.T) {
+	// An image the model makes is in its reply, with its signature, apart
+	// from those it makes as it thinks, which are drafts, and it's sent back
+	// with its signature, so the model can change it
+	ctx := context.Background()
+	api, c, model := chatClient(t)
+	api.reply = []string{
+		`{"candidates":[{"content":{"role":"model","parts":[{"inlineData":{"mimeType":"image/png","data":"RFJBRlQ="},"thought":true}]}}]}`,
+		`{"candidates":[{"content":{"role":"model","parts":[{"text":"Here it is."},{"inlineData":{"mimeType":"image/png","data":"UE5H"},"thoughtSignature":"IMGSIG"}]},"finishReason":"STOP"}]}`,
+	}
+	reply, _, err := c.WithoutSession(ctx, model, []llm.Message{text(t, "user", "A banana")}, nil, nil)
+	require.NoError(t, err)
+	message := reply.(*schema.Message)
+	require.Len(t, message.Content, 2)
+	assert.Equal(t, "Here it is.", types.Value(message.Content[0].Text))
+	image := message.Content[1]
+	require.NotNil(t, image.Resource)
+	assert.Equal(t, "image/png", image.Resource.ContentType)
+	assert.Equal(t, []byte("PNG"), image.Resource.Data)
+	assert.Equal(t, "IMGSIG", types.Value(image.Signature))
+
+	api.reply = []string{`{"candidates":[{"content":{"parts":[{"text":"Sunset."}]},"finishReason":"STOP"}]}`}
+	_, _, err = c.WithoutSession(ctx, model, []llm.Message{text(t, "user", "A banana"), message, text(t, "user", "At sunset")}, nil, nil)
+	require.NoError(t, err)
+	sent := api.asked.Contents[1]
+	require.Len(t, sent.Parts, 2)
+	assert.Equal(t, []byte("PNG"), sent.Parts[1].InlineData.Data)
+	assert.Equal(t, "IMGSIG", sent.Parts[1].ThoughtSignature)
+}
