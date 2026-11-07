@@ -68,16 +68,6 @@ type Generator interface {
 // with what the piece is, such as the reply's text or the model's thinking
 type GeneratorStreamFn func(StreamType, string)
 
-// Accepter is an interface for providers whose models accept attachments of
-// only some types, such as images, so an attachment of another type, such as
-// audio, can be left out of a message, rather than the provider rejecting
-// it. A provider which isn't an Accepter is sent every attachment.
-type Accepter interface {
-	// Accepts returns whether the model accepts an attachment of the type,
-	// such as image/png
-	Accepts(Model, string) bool
-}
-
 // Measurer is an interface for providers which count the tokens of text, as
 // a model would, such as to fit what's sent to it into its context
 type Measurer interface {

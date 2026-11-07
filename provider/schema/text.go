@@ -54,3 +54,14 @@ func CodeFence(text string) string {
 	}
 	return strings.Repeat("`", max(3, longest+1))
 }
+
+// Unreadable returns the text which is sent to a model in place of an
+// attachment it can't read, such as audio, for a model which doesn't hear
+// it, or an image in a format its provider doesn't take, which says its
+// URI, so the model can give it to a tool which reads it
+func Unreadable(uri, contentType string) string {
+	if uri == "" {
+		uri = "an attachment"
+	}
+	return "(The attachment " + uri + " is " + contentType + ", which this model can't read, so it isn't sent. Its URI is for tools, which can read it.)"
+}

@@ -107,8 +107,11 @@ func newChatMessages(ctx context.Context, message llm.Message, reasoning bool) (
 			parts = append(parts, chatPart{Type: "text", Text: text})
 		}
 		for _, resource := range resources {
-			if !isImage(resource.Type()) {
-				return nil, llm.ErrBadParameter.Withf("unsupported resource type %q", resource.Type())
+			// An attachment which isn't an image in a format the API takes,
+			// such as an SVG, is a note, rather than the request failing
+			if !imageFormat(resource.Type()) {
+				parts = append(parts, chatPart{Type: "text", Text: schema.Unreadable(resource.URI(), resource.Type())})
+				continue
 			}
 			data, err := llm.ReadAll(ctx, resource)
 			if err != nil {
@@ -263,13 +266,12 @@ func isImage(contentType string) bool {
 	return strings.HasPrefix(mediaType, "image/")
 }
 
-////////////////////////////////////////////////////////////////////////////////
-// ACCEPTER
+// imageFormats are the formats of images the API takes
+var imageFormats = map[string]bool{"image/png": true, "image/jpeg": true, "image/gif": true, "image/webp": true}
 
-var _ llm.Accepter = (*Client)(nil)
-
-// Accepts returns whether the model accepts an attachment of the type, which
-// is images
-func (*Client) Accepts(_ llm.Model, contentType string) bool {
-	return isImage(contentType)
+// imageFormat returns whether the type is an image in a format the API
+// takes
+func imageFormat(contentType string) bool {
+	mediaType, _, err := mime.ParseMediaType(contentType)
+	return err == nil && imageFormats[mediaType]
 }

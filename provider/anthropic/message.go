@@ -162,6 +162,10 @@ func userBlocks(ctx context.Context, m llm.Message) ([]contentBlock, error) {
 		blocks = append(blocks, contentBlock{Type: "tool_result", ToolUseID: r.ID, Content: content, IsError: r.IsError})
 	}
 	for _, resource := range m.Resources() {
+		if !accepts(resource.Type()) {
+			blocks = append(blocks, contentBlock{Type: "text", Text: schema.Unreadable(resource.URI(), resource.Type())})
+			continue
+		}
 		block, err := resourceBlock(ctx, resource)
 		if err != nil {
 			return nil, err
@@ -264,14 +268,10 @@ func resourceBlock(ctx context.Context, resource llm.Resource) (contentBlock, er
 	}
 }
 
-////////////////////////////////////////////////////////////////////////////////
-// ACCEPTER
-
-var _ llm.Accepter = (*Client)(nil)
-
-// Accepts returns whether the model accepts an attachment of the type, which
-// is images, PDFs and text
-func (*Client) Accepts(_ llm.Model, contentType string) bool {
+// accepts returns whether the API takes an attachment of the type: images
+// in its formats, PDFs, and text, so another, such as an SVG, is a note,
+// rather than the request failing
+func accepts(contentType string) bool {
 	mediaType, _, err := mime.ParseMediaType(contentType)
 	if err != nil {
 		return false

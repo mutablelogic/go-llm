@@ -24,7 +24,7 @@ type listModels struct {
 
 // modelsInput is the input of the models tool
 type modelsInput struct {
-	Capabilities []string `json:"capabilities,omitempty" help:"Capabilities which the models must have, every one of them: completion, tools, thinking, vision, ocr, transcription, translation, embedding, speech or image, or none, for every model" optional:""`
+	Capabilities []string `json:"capabilities,omitempty" help:"Capabilities which the models must have, every one of them: chat, tools, thinking, image_input, audio_input, video_input, document_input, image_output, speech_output, embedding, ocr, transcription or translation, or none, for every model" optional:""`
 	Provider     string   `json:"provider,omitempty" help:"Provider whose models are listed, by its name, such as ollama, or every provider's, when it's omitted" optional:""`
 }
 
@@ -49,16 +49,19 @@ var _ gollm.Tool = (*listModels)(nil)
 
 // ability is what a model with each capability can do, as it's said
 var ability = map[string]string{
-	"completion":    "reply",
-	"tools":         "call tools",
-	"thinking":      "think",
-	"vision":        "see images",
-	"ocr":           "read documents",
-	"transcription": "transcribe speech",
-	"translation":   "translate speech",
-	"embedding":     "embed text",
-	"speech":        "speak",
-	"image":         "make images",
+	"chat":           "reply",
+	"tools":          "call tools",
+	"thinking":       "think",
+	"image_input":    "see images",
+	"audio_input":    "hear audio",
+	"video_input":    "watch video",
+	"document_input": "read documents",
+	"image_output":   "make images",
+	"speech_output":  "speak",
+	"embedding":      "embed text",
+	"ocr":            "recognize text",
+	"transcription":  "transcribe speech",
+	"translation":    "translate speech",
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -69,7 +72,7 @@ func (*listModels) Name() string {
 }
 
 func (*listModels) Description() string {
-	return "Lists the models which have every one of the capabilities, such as ocr, transcription, speech, vision, or image, which is making images, with their names, which are given to the tools which ask them, such as ocr, transcribe and speak, or to an agent, so the right model for the task is chosen. A capability which isn't known for a model isn't listed."
+	return "Lists the models which have every one of the capabilities, such as ocr, transcription, speech_output, image_input, which is seeing images, or image_output, which is making them, with their names, which are given to the tools which ask them, such as ocr, transcribe and speak, or to an agent, so the right model for the task is chosen. A capability which isn't known for a model isn't listed."
 }
 
 func (*listModels) InputSchema() *jsonschema.Schema {

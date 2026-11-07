@@ -76,31 +76,31 @@ var modelCapabilities = []struct {
 	{serverMistral, regexp.MustCompile(`^voxtral-`), llm.ModelCap{Translation: no}},
 
 	// OpenAI's models which it has deprecated, but still lists
-	{serverOpenAI, regexp.MustCompile(`^gpt-3\.5-turbo-(16k|instruct)\b|^gpt-4o(-mini)?-search-preview`), llm.ModelCap{Completion: no, Tools: no, Thinking: no, Vision: no, OCR: no, Transcription: no, Translation: no, Embedding: no}},
+	{serverOpenAI, regexp.MustCompile(`^gpt-3\.5-turbo-(16k|instruct)\b|^gpt-4o(-mini)?-search-preview`), llm.ModelCap{Chat: no, Tools: no, Thinking: no, ImageInput: no, OCR: no, Transcription: no, Translation: no, Embedding: no}},
 
 	// OpenAI's models which are only for the Responses API
-	{serverOpenAI, regexp.MustCompile(`^gpt-\d+(\.\d+)?-pro\b|-codex\b`), llm.ModelCap{Completion: no, Thinking: yes, Vision: yes}},
+	{serverOpenAI, regexp.MustCompile(`^gpt-\d+(\.\d+)?-pro\b|-codex\b`), llm.ModelCap{Chat: no, Thinking: yes, ImageInput: yes}},
 
 	// OpenAI's speech, image and moderation models, which don't reply
-	{serverOpenAI, regexp.MustCompile(`^whisper-`), llm.ModelCap{Completion: no, Transcription: yes, Translation: yes, Embedding: no}},
-	{serverOpenAI, regexp.MustCompile(`-transcribe|^gpt-realtime-whisper`), llm.ModelCap{Completion: no, Transcription: yes, Translation: no, Embedding: no}},
-	{serverOpenAI, regexp.MustCompile(`^gpt-realtime-translate`), llm.ModelCap{Completion: no, Translation: yes, Embedding: no}},
-	{serverOpenAI, regexp.MustCompile(`^tts-|-tts\b`), llm.ModelCap{Completion: no, Tools: no, Thinking: no, Vision: no, OCR: no, Transcription: no, Translation: no, Embedding: no, Speech: yes}},
-	{serverOpenAI, regexp.MustCompile(`^gpt-(audio|realtime|live)\b`), llm.ModelCap{Completion: no, Embedding: no}},
-	{serverOpenAI, regexp.MustCompile(`^(gpt|chatgpt)-image\b`), llm.ModelCap{Completion: no, Vision: yes, Embedding: no, Image: yes}},
-	{serverOpenAI, regexp.MustCompile(`^dall-e-`), llm.ModelCap{Completion: no, Embedding: no, Image: yes}},
-	{serverOpenAI, regexp.MustCompile(`^omni-moderation\b`), llm.ModelCap{Completion: no, Vision: yes, Embedding: no}},
-	{serverOpenAI, regexp.MustCompile(`^text-embedding-`), llm.ModelCap{Completion: no, Tools: no, Thinking: no, Vision: no, Embedding: yes}},
+	{serverOpenAI, regexp.MustCompile(`^whisper-`), llm.ModelCap{Chat: no, Transcription: yes, Translation: yes, Embedding: no}},
+	{serverOpenAI, regexp.MustCompile(`-transcribe|^gpt-realtime-whisper`), llm.ModelCap{Chat: no, Transcription: yes, Translation: no, Embedding: no}},
+	{serverOpenAI, regexp.MustCompile(`^gpt-realtime-translate`), llm.ModelCap{Chat: no, Translation: yes, Embedding: no}},
+	{serverOpenAI, regexp.MustCompile(`^tts-|-tts\b`), llm.ModelCap{Chat: no, Tools: no, Thinking: no, ImageInput: no, OCR: no, Transcription: no, Translation: no, Embedding: no, SpeechOutput: yes}},
+	{serverOpenAI, regexp.MustCompile(`^gpt-(audio|realtime|live)\b`), llm.ModelCap{Chat: no, Embedding: no}},
+	{serverOpenAI, regexp.MustCompile(`^(gpt|chatgpt)-image\b`), llm.ModelCap{Chat: no, ImageInput: yes, Embedding: no, ImageOutput: yes}},
+	{serverOpenAI, regexp.MustCompile(`^dall-e-`), llm.ModelCap{Chat: no, Embedding: no, ImageOutput: yes}},
+	{serverOpenAI, regexp.MustCompile(`^omni-moderation\b`), llm.ModelCap{Chat: no, ImageInput: yes, Embedding: no}},
+	{serverOpenAI, regexp.MustCompile(`^text-embedding-`), llm.ModelCap{Chat: no, Tools: no, Thinking: no, ImageInput: no, Embedding: yes}},
 
 	// OpenAI's models which reply
-	{serverOpenAI, regexp.MustCompile(`^gpt-\d+(\.\d+)?-search-api\b`), llm.ModelCap{Completion: yes, Tools: no, Vision: yes, Embedding: no}},
-	{serverOpenAI, regexp.MustCompile(`^chat-latest$`), llm.ModelCap{Completion: yes, Tools: yes, Vision: yes, Embedding: no}},
-	{serverOpenAI, regexp.MustCompile(`^gpt-6(\.\d+)?-astra\b|^gpt-6\.1-sol\b`), llm.ModelCap{Completion: yes, Tools: no, Thinking: yes, Vision: yes, Embedding: no}},
-	{serverOpenAI, regexp.MustCompile(`^gpt-[56](\.\d+)?(-(mini|nano|luna|sol|terra))?(-\d{4}-\d{2}-\d{2})?$`), llm.ModelCap{Completion: yes, Tools: yes, Thinking: yes, Vision: yes, Embedding: no}},
+	{serverOpenAI, regexp.MustCompile(`^gpt-\d+(\.\d+)?-search-api\b`), llm.ModelCap{Chat: yes, Tools: no, ImageInput: yes, Embedding: no}},
+	{serverOpenAI, regexp.MustCompile(`^chat-latest$`), llm.ModelCap{Chat: yes, Tools: yes, ImageInput: yes, Embedding: no}},
+	{serverOpenAI, regexp.MustCompile(`^gpt-6(\.\d+)?-astra\b|^gpt-6\.1-sol\b`), llm.ModelCap{Chat: yes, Tools: no, Thinking: yes, ImageInput: yes, Embedding: no}},
+	{serverOpenAI, regexp.MustCompile(`^gpt-[56](\.\d+)?(-(mini|nano|luna|sol|terra))?(-\d{4}-\d{2}-\d{2})?$`), llm.ModelCap{Chat: yes, Tools: yes, Thinking: yes, ImageInput: yes, Embedding: no}},
 
 	// OpenAI's o-series, which reasons, and doesn't take a temperature
-	{serverOpenAI, regexp.MustCompile(`^o3(-\d{4}-\d{2}-\d{2})?$`), llm.ModelCap{Completion: yes, Tools: yes, Thinking: yes, Vision: yes, Embedding: no, Temperature: no}},
-	{serverOpenAI, regexp.MustCompile(`^gpt-4(\.1|o)(-(mini|nano))?(-\d{4}-\d{2}-\d{2})?$`), llm.ModelCap{Completion: yes, Tools: yes, Thinking: no, Vision: yes, Embedding: no}},
+	{serverOpenAI, regexp.MustCompile(`^o3(-\d{4}-\d{2}-\d{2})?$`), llm.ModelCap{Chat: yes, Tools: yes, Thinking: yes, ImageInput: yes, Embedding: no, Temperature: no}},
+	{serverOpenAI, regexp.MustCompile(`^gpt-4(\.1|o)(-(mini|nano))?(-\d{4}-\d{2}-\d{2})?$`), llm.ModelCap{Chat: yes, Tools: yes, Thinking: no, ImageInput: yes, Embedding: no}},
 }
 
 // modelLimits are the context window and maximum output tokens of a model
@@ -218,8 +218,15 @@ func (m *Model) Capabilities() llm.ModelCap {
 	}
 	for _, model := range modelCapabilities {
 		if model.server == server && model.re.MatchString(m.data.ID) {
-			return merge(result, model.cap)
+			result = merge(result, model.cap)
+			break
 		}
+	}
+
+	// A model which replies is only sent images, as the chat completions API
+	// this client uses has no audio, video, or documents
+	if types.Value(result.Chat) {
+		result.AudioInput, result.VideoInput, result.DocumentInput = no, no, no
 	}
 	return result
 }
@@ -246,10 +253,10 @@ func (m *Model) reportedCapabilities() llm.ModelCap {
 	}
 	return llm.ModelCap{
 		Temperature:   temperature,
-		Completion:    capabilities.Completion,
+		Chat:          capabilities.Completion,
 		Tools:         capabilities.Tools,
 		Thinking:      capabilities.Reasoning,
-		Vision:        capabilities.Vision,
+		ImageInput:    capabilities.Vision,
 		OCR:           capabilities.OCR,
 		Transcription: capabilities.Transcription,
 	}
@@ -368,15 +375,15 @@ func (m apiModel) shutDown(now time.Time) bool {
 // capabilities set over them, as copies, so they can be changed
 func merge(c, other llm.ModelCap) llm.ModelCap {
 	for _, field := range []struct{ to, from **bool }{
-		{&c.Completion, &other.Completion},
+		{&c.Chat, &other.Chat},
 		{&c.Tools, &other.Tools},
 		{&c.Thinking, &other.Thinking},
-		{&c.Vision, &other.Vision},
+		{&c.ImageInput, &other.ImageInput},
 		{&c.OCR, &other.OCR},
 		{&c.Transcription, &other.Transcription},
 		{&c.Translation, &other.Translation},
 		{&c.Embedding, &other.Embedding},
-		{&c.Speech, &other.Speech},
+		{&c.SpeechOutput, &other.SpeechOutput},
 		{&c.Temperature, &other.Temperature},
 	} {
 		if *field.from != nil {

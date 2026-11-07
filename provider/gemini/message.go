@@ -302,6 +302,12 @@ func userParts(ctx context.Context, m llm.Message, calls map[string]toolCall) ([
 		}
 	}
 	for _, resource := range m.Resources() {
+		// An image in a format the API doesn't take, such as an SVG, is a
+		// note, rather than the request failing
+		if !imageFormat(resource.Type()) {
+			parts = append(parts, part{Text: schema.Unreadable(resource.URI(), resource.Type())})
+			continue
+		}
 		data, err := llm.ReadAll(ctx, resource)
 		if err != nil {
 			return nil, err
@@ -431,21 +437,15 @@ func resultText(r llm.ToolResult, call toolCall) string {
 	return "(The tool " + name + " was called with " + input + ", and returned: " + content + ")"
 }
 
-///////////////////////////////////////////////////////////////////////////////
-// ACCEPTER
+// imageFormats are the formats of images the API takes
+var imageFormats = map[string]bool{"image/png": true, "image/jpeg": true, "image/webp": true, "image/heic": true, "image/heif": true}
 
-var _ llm.Accepter = (*Client)(nil)
-
-// Accepts returns whether the model accepts an attachment of the type, which
-// is images, audio, video, PDFs, and text
-func (*Client) Accepts(_ llm.Model, contentType string) bool {
+// imageFormat returns whether the type isn't an image, or is one in a
+// format the API takes
+func imageFormat(contentType string) bool {
 	mediaType, _, err := mime.ParseMediaType(contentType)
-	if err != nil {
-		return false
+	if err != nil || !strings.HasPrefix(mediaType, "image/") {
+		return err == nil
 	}
-	switch {
-	case strings.HasPrefix(mediaType, "image/"), strings.HasPrefix(mediaType, "audio/"), strings.HasPrefix(mediaType, "video/"), strings.HasPrefix(mediaType, "text/"):
-		return true
-	}
-	return mediaType == "application/pdf"
+	return imageFormats[mediaType]
 }

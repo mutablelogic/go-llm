@@ -63,11 +63,11 @@ llm providers
 llm models
 
 # The models which can do something, such as read images and call tools
-llm models --capability vision,tools
+llm models --capability image_input,tools
 
 # The models which make images, or speak
-llm models --capability image
-llm models --capability speech
+llm models --capability image_output
+llm models --capability speech_output
 ```
 
 ### 4. Ask, and chat
@@ -237,13 +237,13 @@ The registry can be used without the server, from your own Go program, as the [e
 
 - **Providers**: add, update and remove providers while the server runs, and keep them in a store between restarts. A model is referred to by its name, or by its provider and name, such as `ollama:llama3.2:latest`.
 - **Ask**: a model's reply to messages, with a system prompt, options, tools whose calls are returned for the caller to run, and structured output with a JSON schema. Replies can be streamed as server-sent events.
-- **Chat**: a conversation with a model, in a session, which the server keeps, with its model, system prompt, tools, options and schema. The model calls the tools until it replies, and the conversation is shortened to fit its context. Chat in the terminal, in the web UI, or with the API, whose replies are streamed, and every client of a session sees its new messages, and whether someone is typing, or the model is replying. A conversation can change its model, such as from Claude to Gemini, and back, as each provider is sent the others' calls of tools, and their results, in a form it accepts.
+- **Chat**: a conversation with a model, in a session, which the server keeps, with its model, system prompt, tools, options and schema. The model calls the tools until it replies, and the conversation is shortened to fit its context. Chat in the terminal, in the web UI, or with the API, whose replies are streamed, and every client of a session sees its new messages, and whether someone is typing, or the model is replying. A conversation can change its model, such as from Claude to Gemini, and back, as each provider is sent the others' calls of tools, and their results, in a form it accepts. An attachment is sent to a model which can take it, by its capabilities, such as `image_input` for an image, and otherwise is a note, with its URI, which the model can give to a tool, such as `llm:transcribe`.
 - **Agents**: named definitions of a prompt, its input, and how a model is asked it, with its system prompt, tools, options and the schema of its reply, which are kept, in YAML or JSON, and which models call as tools, in the `agent` namespace, however deep, with their progress streamed, and their tokens counted as their caller's. The server adds example agents when it starts, such as one which translates text, and the `event` agent, which runs a heartbeat which fires, in its own session, with what the system says of the person and the time in a `<system-reminder>` block, and replies with what the person is told, and whether they're alerted, notified, or it's ignored.
 - **Embed**: a vector for each message, of its text, and of images and audio for models which embed them.
 - **OCR**: the text of images and documents, such as PDFs, as Markdown, page by page, with the regions of each page and their boxes.
 - **Speak**: text as audio, with Ollama's `phonon` and OpenAI's speech models, in a voice, which `llm speak`, and `POST /llm/speak`, return, and the `llm:speak` tool keeps as a file of the chat.
 - **Transcribe and translate**: the speech in audio, as text, in its language or in English, with timed segments and speakers, streamed as it's transcribed, and printed as SRT or WebVTT subtitles.
-- **Models**: download, delete and unload models, for providers which store them, such as Ollama and go-whisper, and list them by what they can do, such as `vision`, `ocr`, `speech`, or `image`, which is making images, with `llm models --capability`, or the `llm:models` tool, so a model, or an agent, can choose one.
+- **Models**: download, delete and unload models, for providers which store them, such as Ollama and go-whisper, and list them by what they can do, such as `image_input`, which is seeing images, `image_output`, which is making them, `speech_output` or `ocr`, which the table below describes, with `llm models --capability`, or the `llm:models` tool, so a model, or an agent, can choose one.
 - **Tools**: a toolkit of tools, in namespaces, for Home Assistant, NewsAPI, WeatherAPI and Ollama's web search, which models can call.
 - **Memory**: the details of the person, and of the assistant, such as their names, location, time zone and language, which every session knows, as a model learns them, or they're set, and which can be declined, so they're never asked for; and memories, which a model searches, keeps and forgets, as Markdown, under keys, with versions, so a change is made to a memory as it was last seen. The server keeps each memory in a file, which can be read, and edited, by hand.
 - **Resources**: content, such as images, documents and audio, which is uploaded, or which a tool returns, as an MCP tool can, which is kept as a resource of the session the tool runs in, with a link to it in the tool's result, rather than its data, as a file, or the request's body, and streamed into the store, so a large file isn't held in memory, kept once, by its hash, however often it's uploaded, and downloaded, in ranges. A resource is in a session, and deleted with it, or on its own, and deleted once it hasn't been used for a day. Content which no resource refers to, and uploads which were interrupted, are cleaned up.
@@ -267,6 +267,28 @@ The registry can be used without the server, from your own Go program, as the [e
 | `eliza` | A mock of Weizenbaum's 1966 chatbot, for testing | ✅ | | | | | | |
 
 What a model can do depends on the model, which its provider reports, where it knows: such as whether it calls tools, thinks, sees images, or recognizes text. A request for something a model is known not to do is rejected before it's sent.
+
+### Capabilities
+
+What a model can do, as its provider says, which `llm models --capability`, `GET /llm/model?capability=` and the `llm:models` tool list models by. A capability a provider doesn't say a model has, or hasn't, isn't known, so the model isn't listed for it.
+
+| Capability | Meaning |
+|------------|---------|
+| `chat` | Replies to messages, in a conversation, with `ask`, `chat`, agents and events |
+| `tools` | Calls tools, as it replies |
+| `thinking` | Thinks, or reasons, before it replies |
+| `image_input` | Understands images in a conversation, so they're sent to it |
+| `audio_input` | Hears audio in a conversation |
+| `video_input` | Watches video in a conversation |
+| `document_input` | Reads documents, such as PDFs, in a conversation, rather than recognizing their text first |
+| `image_output` | Makes images |
+| `speech_output` | Speaks text, as audio, with `speak` and the `llm:speak` tool |
+| `embedding` | Embeds text, and media, as vectors, with `embed` |
+| `ocr` | Recognizes the text in images and documents, with `ocr` and the `llm:ocr` tool |
+| `transcription` | Transcribes speech, with `transcribe` and the `llm:transcribe` tool |
+| `translation` | Translates speech into English, with `translate` |
+
+In a conversation, an attachment a model is known not to take, such as audio for a model without `audio_input`, isn't sent, but is a note, with its URI, which the model can give to a tool, such as `llm:transcribe`. Text is always sent, as text.
 
 ## CLI Commands
 
@@ -303,7 +325,7 @@ Tools are added to the server's toolkit when their credentials, or settings, are
 |-----------|-------|-------------|
 | `memory` | Remember the details of the person, and the assistant, with the time in the system prompt, and search, keep and forget memories | None, as it's always added |
 | `heartbeat` | Schedule, list, update and cancel heartbeats, which are prompts which come back to the conversation, at a time, or on a schedule | None, as it's always added |
-| `llm` | `models`, `speak`, `ocr` and `transcribe` (which translates too): list the models with capabilities, such as `ocr` or `speech`, speak text, read the text in an image or document, and transcribe speech, with the model the calling model gives. The model uses the one the person chose for each capability, which it keeps in the memory `preferred_models`, with the `memory` tools, or otherwise asks them to choose one of those `models` lists, and remembers it. Audio which is spoken is kept as a resource of the session, with the `name` and `title` the model gives, and images, documents and audio are read by their URIs, `resource://<hash>`, which the model is told for each attachment. With a `name` or `title`, the text which `ocr` reads is kept as a Markdown file, and with a `format`, `name` or `title`, the transcript is kept, as text, Markdown, or SRT or WebVTT subtitles | None, as it's always added. Choices are remembered with the `memory` tools |
+| `llm` | `models`, `speak`, `ocr` and `transcribe` (which translates too): list the models with capabilities, such as `ocr` or `speech_output`, speak text, read the text in an image or document, and transcribe speech, with the model the calling model gives. The model uses the one the person chose for each capability, which it keeps in the memory `preferred_models`, with the `memory` tools, or otherwise asks them to choose one of those `models` lists, and remembers it. Audio which is spoken is kept as a resource of the session, with the `name` and `title` the model gives, and images, documents and audio are read by their URIs, `resource://<hash>`, which the model is told for each attachment. With a `name` or `title`, the text which `ocr` reads is kept as a Markdown file, and with a `format`, `name` or `title`, the transcript is kept, as text, Markdown, or SRT or WebVTT subtitles | None, as it's always added. Choices are remembered with the `memory` tools |
 | `weatherapi` | Current weather, forecasts and alerts | `WEATHERAPI_API_KEY`, from [weatherapi.com](https://www.weatherapi.com/signup.aspx) |
 | `newsapi` | News articles, headlines and sources | `NEWSAPI_API_KEY`, from [newsapi.org](https://newsapi.org/register) |
 | `homeassistant` | Query, and search, and control smart home devices | `HOMEASSISTANT_URL`, `HOMEASSISTANT_API_KEY` |

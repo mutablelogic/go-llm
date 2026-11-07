@@ -159,7 +159,7 @@ func Test_Models(t *testing.T) {
 	assert.Equal(t, "Claude New", newer.Description())
 	assert.Equal(t, uint(1000000), types.Value(newer.InputTokenLimit()))
 	assert.Equal(t, uint(128000), types.Value(newer.OutputTokenLimit()))
-	assert.Equal(t, "completion, tools, thinking, vision", newer.Capabilities().String())
+	assert.Equal(t, "chat, tools, thinking, image_input", newer.Capabilities().String())
 	assert.Equal(t, "adaptive", newer.thinks())
 	assert.Equal(t, "claude-old", older.Name())
 	assert.Equal(t, "enabled", older.thinks())

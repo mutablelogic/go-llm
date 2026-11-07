@@ -38,7 +38,7 @@ func Test_Live(t *testing.T) {
 	require.NotEmpty(t, models)
 	var name string
 	for _, model := range models {
-		if types.Value(model.Capabilities().Completion) && model.InputTokenLimit() != nil {
+		if types.Value(model.Capabilities().Chat) && model.InputTokenLimit() != nil {
 			name = model.Name()
 			break
 		}

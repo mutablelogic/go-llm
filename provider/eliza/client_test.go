@@ -73,15 +73,15 @@ func Test_Models(t *testing.T) {
 		model, err := client.GetModel(ctx, eliza.ModelName)
 		require.NoError(t, err)
 		assert.Equal(t, llm.ModelCap{
-			Completion: types.Ptr(true), Tools: types.Ptr(false), Thinking: types.Ptr(true), Vision: types.Ptr(false), OCR: types.Ptr(false),
+			Chat: types.Ptr(true), Tools: types.Ptr(false), Thinking: types.Ptr(true), ImageInput: types.Ptr(false), AudioInput: types.Ptr(false), VideoInput: types.Ptr(false), DocumentInput: types.Ptr(false), OCR: types.Ptr(false),
 			Transcription: types.Ptr(false), Translation: types.Ptr(false), Embedding: types.Ptr(false),
 		}, model.Capabilities())
-		assert.Equal(t, "completion, thinking", model.Capabilities().String())
+		assert.Equal(t, "chat, thinking", model.Capabilities().String())
 
 		// Each of which can be changed without changing the others
 		capabilities := model.Capabilities()
 		*capabilities.Tools = true
-		assert.Equal(t, "completion, tools, thinking", capabilities.String())
+		assert.Equal(t, "chat, tools, thinking", capabilities.String())
 	})
 }
 

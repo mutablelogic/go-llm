@@ -35,11 +35,10 @@ type scripted struct {
 	byValue bool
 	err     error
 	asked   []asked
-	usage   *llm.Usage        // The usage of each reply, which is 10 input and 5 output tokens when nil
-	input   *uint             // The input token limit of its models, or nil when it isn't known
-	delay   time.Duration     // How long it waits before it streams a reply, as a model would
-	caps    llm.ModelCap      // The capabilities of its models
-	accepts func(string) bool // The types of attachment its models accept, or every type, when it's nil
+	usage   *llm.Usage    // The usage of each reply, which is 10 input and 5 output tokens when nil
+	input   *uint         // The input token limit of its models, or nil when it isn't known
+	delay   time.Duration // How long it waits before it streams a reply, as a model would
+	caps    llm.ModelCap  // The capabilities of its models
 }
 
 // asked is what a scripted provider was asked with
@@ -56,10 +55,6 @@ func newScripted(replies ...*providerschema.Message) *scripted {
 }
 
 func (s *scripted) Self() llm.Provider { return s }
-
-func (s *scripted) Accepts(_ llm.Model, contentType string) bool {
-	return s.accepts == nil || s.accepts(contentType)
-}
 
 func (s *scripted) GetModel(ctx context.Context, name string) (llm.Model, error) {
 	if _, err := s.provider.GetModel(ctx, name); err != nil {

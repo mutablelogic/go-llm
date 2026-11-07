@@ -64,6 +64,6 @@ func Test_Speak(t *testing.T) {
 	openai, err := New(OpenAIEndpoint, "key")
 	require.NoError(t, err)
 	assert.Equal(t, serverOpenAI, openai.server())
-	assert.True(t, *(&Model{provider: openai, data: apiModel{ID: "tts-1"}}).Capabilities().Speech)
-	assert.True(t, *(&Model{provider: openai, data: apiModel{ID: "gpt-4o-mini-tts"}}).Capabilities().Speech)
+	assert.True(t, *(&Model{provider: openai, data: apiModel{ID: "tts-1"}}).Capabilities().SpeechOutput)
+	assert.True(t, *(&Model{provider: openai, data: apiModel{ID: "gpt-4o-mini-tts"}}).Capabilities().SpeechOutput)
 }

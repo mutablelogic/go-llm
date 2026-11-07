@@ -56,8 +56,8 @@ func Test_ListModels(t *testing.T) {
 			assert.Equal(t, "eliza-1966-de", model.Name)
 			assert.Equal(t, "eliza", model.Provider)
 			assert.Equal(t, `"de"`, string(model.Meta["language"]))
-			if assert.NotNil(t, model.Capabilities.Completion) {
-				assert.True(t, *model.Capabilities.Completion)
+			if assert.NotNil(t, model.Capabilities.Chat) {
+				assert.True(t, *model.Capabilities.Chat)
 			}
 		}
 	})

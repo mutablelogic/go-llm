@@ -101,9 +101,9 @@ func TestCapabilities(t *testing.T) {
 	t.Run("Reported", func(t *testing.T) {
 		// A model has the capabilities the server returns, as Mistral does
 		m := model(t, MistralEndpoint, "mistral-ocr-latest", `{"completion_chat":false,"function_calling":true,"reasoning":false,"vision":true,"ocr":true,"audio_transcription":false,"moderation":false}`)
-		assert.Equal(t, llm.ModelCap{Completion: types.Ptr(false), Tools: types.Ptr(true), Thinking: types.Ptr(false), Vision: types.Ptr(true), OCR: types.Ptr(true), Transcription: types.Ptr(false), Temperature: types.Ptr(false)}, m.Capabilities())
+		assert.Equal(t, llm.ModelCap{Chat: types.Ptr(false), Tools: types.Ptr(true), Thinking: types.Ptr(false), ImageInput: types.Ptr(true), OCR: types.Ptr(true), Transcription: types.Ptr(false), Temperature: types.Ptr(false)}, m.Capabilities())
 		m = model(t, MistralEndpoint, "mistral-small-latest", `{"completion_chat":true,"reasoning":true}`)
-		assert.Equal(t, llm.ModelCap{Completion: types.Ptr(true), Thinking: types.Ptr(true), Temperature: types.Ptr(true)}, m.Capabilities(), "a model which replies takes a temperature")
+		assert.Equal(t, llm.ModelCap{Chat: types.Ptr(true), Thinking: types.Ptr(true), AudioInput: types.Ptr(false), VideoInput: types.Ptr(false), DocumentInput: types.Ptr(false), Temperature: types.Ptr(true)}, m.Capabilities(), "a model which replies takes a temperature, and is only sent images")
 
 		// Or none, when it returns none, or they aren't capabilities
 		assert.Equal(t, llm.ModelCap{}, model(t, "http://localhost:8000", "gpt-4o", "").Capabilities())
@@ -115,7 +115,7 @@ func TestCapabilities(t *testing.T) {
 		// models with the same names on another server don't
 		for _, id := range []string{"mistral-embed", "mistral-embed-2312", "codestral-embed-2505"} {
 			m := model(t, MistralEndpoint, id, `{"completion_chat":false,"reasoning":false}`)
-			assert.Equal(t, llm.ModelCap{Completion: types.Ptr(false), Thinking: types.Ptr(false), Embedding: types.Ptr(true), Temperature: types.Ptr(false)}, m.Capabilities(), id)
+			assert.Equal(t, llm.ModelCap{Chat: types.Ptr(false), Thinking: types.Ptr(false), Embedding: types.Ptr(true), Temperature: types.Ptr(false)}, m.Capabilities(), id)
 		}
 		assert.Equal(t, llm.ModelCap{}, model(t, "http://localhost:8000", "mistral-embed", "").Capabilities())
 	})
@@ -125,26 +125,26 @@ func TestCapabilities(t *testing.T) {
 		// OpenAI reports none, of which those which reply with Chat
 		// Completions complete
 		for id, want := range map[string]string{
-			"chat-latest":                       "completion, tools, vision",
-			"gpt-4.1":                           "completion, tools, vision",
-			"gpt-4.1-mini-2025-04-14":           "completion, tools, vision",
-			"gpt-4o":                            "completion, tools, vision",
-			"gpt-4o-mini-2024-07-18":            "completion, tools, vision",
-			"gpt-5":                             "completion, tools, thinking, vision",
-			"gpt-5-nano-2025-08-07":             "completion, tools, thinking, vision",
-			"gpt-5.1-2025-11-13":                "completion, tools, thinking, vision",
-			"gpt-5.4-mini-2026-03-17":           "completion, tools, thinking, vision",
-			"gpt-5.5":                           "completion, tools, thinking, vision",
-			"gpt-5.6-luna":                      "completion, tools, thinking, vision",
-			"gpt-6-sol":                         "completion, tools, thinking, vision",
-			"gpt-6.1-terra":                     "completion, tools, thinking, vision",
-			"o3-2025-04-16":                     "completion, tools, thinking, vision",
-			"gpt-6-astra":                       "completion, thinking, vision",
-			"gpt-6.1-sol":                       "completion, thinking, vision",
-			"gpt-5-search-api-2025-10-14":       "completion, vision",
-			"gpt-5-pro":                         "thinking, vision",
-			"gpt-5.5-pro-2026-04-23":            "thinking, vision",
-			"gpt-5.3-codex":                     "thinking, vision",
+			"chat-latest":                       "chat, tools, image_input",
+			"gpt-4.1":                           "chat, tools, image_input",
+			"gpt-4.1-mini-2025-04-14":           "chat, tools, image_input",
+			"gpt-4o":                            "chat, tools, image_input",
+			"gpt-4o-mini-2024-07-18":            "chat, tools, image_input",
+			"gpt-5":                             "chat, tools, thinking, image_input",
+			"gpt-5-nano-2025-08-07":             "chat, tools, thinking, image_input",
+			"gpt-5.1-2025-11-13":                "chat, tools, thinking, image_input",
+			"gpt-5.4-mini-2026-03-17":           "chat, tools, thinking, image_input",
+			"gpt-5.5":                           "chat, tools, thinking, image_input",
+			"gpt-5.6-luna":                      "chat, tools, thinking, image_input",
+			"gpt-6-sol":                         "chat, tools, thinking, image_input",
+			"gpt-6.1-terra":                     "chat, tools, thinking, image_input",
+			"o3-2025-04-16":                     "chat, tools, thinking, image_input",
+			"gpt-6-astra":                       "chat, thinking, image_input",
+			"gpt-6.1-sol":                       "chat, thinking, image_input",
+			"gpt-5-search-api-2025-10-14":       "chat, image_input",
+			"gpt-5-pro":                         "thinking, image_input",
+			"gpt-5.5-pro-2026-04-23":            "thinking, image_input",
+			"gpt-5.3-codex":                     "thinking, image_input",
 			"gpt-3.5-turbo-16k":                 "",
 			"gpt-3.5-turbo-instruct-0914":       "",
 			"gpt-4o-search-preview":             "",
@@ -157,21 +157,21 @@ func TestCapabilities(t *testing.T) {
 			"gpt-live-transcribe":               "transcription",
 			"gpt-realtime-whisper":              "transcription",
 			"gpt-realtime-translate":            "translation",
-			"tts-1-hd-1106":                     "speech",
-			"gpt-4o-mini-tts-2025-12-15":        "speech",
+			"tts-1-hd-1106":                     "speech_output",
+			"gpt-4o-mini-tts-2025-12-15":        "speech_output",
 			"gpt-audio-mini-2025-12-15":         "",
 			"gpt-realtime-2.1-mini":             "",
 			"gpt-live-1":                        "",
-			"gpt-image-2.5-flare-2026-09-08":    "vision",
-			"chatgpt-image-latest":              "vision",
-			"omni-moderation-latest":            "vision",
+			"gpt-image-2.5-flare-2026-09-08":    "image_input",
+			"chatgpt-image-latest":              "image_input",
+			"omni-moderation-latest":            "image_input",
 			"text-embedding-3-small":            "embedding",
 			"text-embedding-ada-002":            "embedding",
 		} {
 			capabilities := model(t, OpenAIEndpoint, id, "").Capabilities()
 			assert.Equal(t, want, capabilities.String(), id)
-			if !strings.Contains(want, "completion") {
-				assert.Equal(t, types.Ptr(false), capabilities.Completion, id)
+			if !strings.Contains(want, "chat") {
+				assert.Equal(t, types.Ptr(false), capabilities.Chat, id)
 			}
 		}
 
@@ -187,8 +187,8 @@ func TestCapabilities(t *testing.T) {
 	t.Run("Copies", func(t *testing.T) {
 		// A model's capabilities can be changed without changing another's
 		capabilities := model(t, OpenAIEndpoint, "gpt-4o", "").Capabilities()
-		*capabilities.Completion = false
-		assert.Equal(t, types.Ptr(true), model(t, OpenAIEndpoint, "gpt-4o", "").Capabilities().Completion)
+		*capabilities.Chat = false
+		assert.Equal(t, types.Ptr(true), model(t, OpenAIEndpoint, "gpt-4o", "").Capabilities().Chat)
 	})
 }
 

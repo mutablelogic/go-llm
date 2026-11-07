@@ -82,7 +82,7 @@ func Test_LiveMistral(t *testing.T) {
 
 		// And the capabilities Mistral reports, and that its embedding
 		// models embed, which it doesn't report
-		assert.Equal(t, "completion, tools, thinking, vision", small.Capabilities().String())
+		assert.Equal(t, "chat, tools, thinking, image_input", small.Capabilities().String())
 		assert.Contains(t, model(t, "mistral-ocr-latest").Capabilities().String(), "ocr")
 		assert.Equal(t, "transcription", model(t, "voxtral-mini-latest").Capabilities().String())
 		assert.Equal(t, "embedding", model(t, mistralEmbeddingModel).Capabilities().String())

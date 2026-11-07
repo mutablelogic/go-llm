@@ -6,7 +6,7 @@
 import { css, html, nothing } from 'lit';
 import { customElement, property } from 'lit/decorators.js';
 import { Panel, formatValue } from './panel';
-import { capabilityNames, cannot, type Model } from '../schema/model';
+import { capabilityLabel, capabilityNames, cannot, type Model } from '../schema/model';
 import iconLoader from '@carbon/web-components/es/globals/internal/icon-loader.js';
 import Chat16 from '@carbon/icons/es/chat/16.js';
 import TrashCan16 from '@carbon/icons/es/trash-can/16.js';
@@ -62,9 +62,9 @@ export class ModelView extends Panel<Model> {
         const meta = Object.entries(model.meta ?? {});
         return html`
             ${model.description ? html`<p>${model.description}</p>` : nothing}
-            ${cannot(model, 'completion') && !this.stored ? nothing : html`
+            ${cannot(model, 'chat') && !this.stored ? nothing : html`
                 <p class="actions">
-                    ${cannot(model, 'completion') ? nothing : html`
+                    ${cannot(model, 'chat') ? nothing : html`
                         <cds-button kind="primary" size="md"
                             @click=${() => this.dispatchEvent(new CustomEvent(ModelView.eventChat, { detail: model.canonical }))}>
                             New chat ${iconLoader(Chat16, { slot: 'icon' })}
@@ -90,7 +90,7 @@ export class ModelView extends Panel<Model> {
             <h3>Capabilities</h3>
             <dl>${[...capabilityNames, 'temperature' as const].map((name) => {
                 const can = model.capabilities?.[name];
-                return html`<dt>${name}</dt><dd>${can === true ? 'Yes' : can === false ? 'No' : 'Unknown'}</dd>`;
+                return html`<dt>${capabilityLabel(name)}</dt><dd>${can === true ? 'Yes' : can === false ? 'No' : 'Unknown'}</dd>`;
             })}</dl>
             ${meta.length ? html`
                 <h3>Metadata</h3>

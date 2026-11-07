@@ -145,14 +145,14 @@ func (m *Model) OutputTokenLimit() *uint {
 // tools, or understands images, isn't known, as the API doesn't say.
 func (m *Model) Capabilities() llm.ModelCap {
 	result := llm.ModelCap{
-		Completion:    types.Ptr(m.supports("generateContent")),
+		Chat:          types.Ptr(m.supports("generateContent")),
 		Embedding:     types.Ptr(m.supports("embedContent") || m.supports("batchEmbedContents")),
 		Transcription: no,
 		Translation:   no,
 	}
 	if m.data.Thinking != nil {
 		result.Thinking = types.Ptr(*m.data.Thinking)
-	} else if !types.Value(result.Completion) {
+	} else if !types.Value(result.Chat) {
 		result.Thinking = no
 	}
 	if m.data.Temperature != nil || m.data.MaxTemperature != nil {
@@ -163,16 +163,24 @@ func (m *Model) Capabilities() llm.ModelCap {
 	name, display := m.Name(), strings.ToLower(m.data.DisplayName)
 	switch {
 	case strings.Contains(name, "-tts"):
-		result.Completion, result.Speech, result.Image = no, yes, no
+		result.Chat, result.SpeechOutput, result.ImageOutput = no, yes, no
+		result.ImageInput, result.AudioInput, result.VideoInput, result.DocumentInput = no, no, no, no
 	case strings.Contains(name, "transcribe"):
-		if types.Value(result.Completion) {
-			result.Completion, result.Transcription = no, yes
+		if types.Value(result.Chat) {
+			result.Chat, result.Transcription = no, yes
 		}
-		result.Speech, result.Image = no, no
+		result.SpeechOutput, result.ImageOutput = no, no
+		result.ImageInput, result.AudioInput, result.VideoInput, result.DocumentInput = no, yes, no, no
 	case strings.Contains(name, "-image") || strings.HasPrefix(name, "imagen") || strings.Contains(display, "nano banana"):
-		result.Image, result.Speech = yes, no
-	case types.Value(result.Completion) || types.Value(result.Embedding):
-		result.Speech, result.Image = no, no
+		result.ImageOutput, result.SpeechOutput, result.ImageInput = yes, no, yes
+		result.AudioInput, result.VideoInput, result.DocumentInput = no, no, no
+	case types.Value(result.Chat):
+		// Gemini's models which reply see images, hear audio, watch video,
+		// and read documents
+		result.SpeechOutput, result.ImageOutput = no, no
+		result.ImageInput, result.AudioInput, result.VideoInput, result.DocumentInput = yes, yes, yes, yes
+	case types.Value(result.Embedding):
+		result.SpeechOutput, result.ImageOutput = no, no
 	}
 	return result
 }

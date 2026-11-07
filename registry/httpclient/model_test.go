@@ -25,10 +25,10 @@ func Test_Models(t *testing.T) {
 		}
 
 		// With capabilities, those known to have every one
-		list, err = client.ListModels(ctx, schema.ModelListRequest{Capability: []string{"completion", "thinking"}})
+		list, err = client.ListModels(ctx, schema.ModelListRequest{Capability: []string{"chat", "thinking"}})
 		require.NoError(t, err)
 		assert.Equal(t, uint(3), list.Count)
-		list, err = client.ListModels(ctx, schema.ModelListRequest{Capability: []string{"completion", "vision"}})
+		list, err = client.ListModels(ctx, schema.ModelListRequest{Capability: []string{"chat", "image_input"}})
 		require.NoError(t, err)
 		assert.Equal(t, uint(0), list.Count)
 		_, err = client.ListModels(ctx, schema.ModelListRequest{Capability: []string{"telepathy"}})

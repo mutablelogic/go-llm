@@ -57,7 +57,7 @@ func (*speak) Name() string {
 }
 
 func (t *speak) Description() string {
-	return withDefault("Speaks text aloud, as audio, which is kept, and returned as a link to it, which the person can play. Use it when the person asks to hear something, rather than to read it.", t.model, "speech")
+	return withDefault("Speaks text aloud, as audio, which is kept, and returned as a link to it, which the person can play. Use it when the person asks to hear something, rather than to read it.", t.model, "speech_output")
 }
 
 func (*speak) InputSchema() *jsonschema.Schema {
@@ -73,7 +73,7 @@ func (t *speak) Run(ctx context.Context, input json.RawMessage) (any, error) {
 	} else if req.Text = strings.TrimSpace(req.Text); req.Text == "" {
 		return nil, gollm.ErrBadParameter.With("missing text")
 	}
-	models, model, err := modelFor(ctx, t.models, req.Model, t.model, "speech")
+	models, model, err := modelFor(ctx, t.models, req.Model, t.model, "speech_output")
 	if err != nil {
 		return nil, err
 	}

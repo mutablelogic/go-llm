@@ -202,10 +202,12 @@ func TestChatMessages(t *testing.T) {
 			{Type: "image_url", ImageURL: &chatImageURL{URL: "data:image/png;base64,cG5n"}},
 		}, chat[0].Content)
 
-		// Other resources aren't supported
+		// Other resources, which the API doesn't take, are notes, rather
+		// than the request failing
 		message.Content[1].Resource.ContentType = "application/pdf"
-		_, err = chatMessages(context.Background(), []llm.Message{message}, false)
-		assert.ErrorIs(t, err, llm.ErrBadParameter)
+		chat, err = chatMessages(context.Background(), []llm.Message{message}, false)
+		require.NoError(t, err)
+		assert.Contains(t, chat[0].Content.([]chatPart)[1].Text, "application/pdf, which this model can't read")
 	})
 
 	t.Run("Thinking", func(t *testing.T) {
