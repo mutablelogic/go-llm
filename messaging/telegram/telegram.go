@@ -112,11 +112,19 @@ func (t *Telegram) Receive(ctx context.Context, fn func(context.Context, messagi
 	}
 }
 
-// Send sends the text to the chat, as more than one message, when it's
-// longer than one can be, broken between paragraphs, lines, or words
+// Send sends the text, which is Markdown, to the chat, formatted as
+// Telegram's HTML, as more than one message, when it's longer than one can
+// be, broken between paragraphs, or other blocks, and as plain text, when
+// Telegram can't parse its HTML. Links don't have previews.
 func (t *Telegram) Send(ctx context.Context, address, text string) error {
-	for _, part := range split(text, maxText) {
-		if _, err := call[message](ctx, t.client, "sendMessage", sendMessageRequest{ChatID: address, Text: part}); err != nil {
+	for _, p := range parts(text, maxText) {
+		req := sendMessageRequest{ChatID: address, Text: p.html, ParseMode: "HTML", LinkPreviewOptions: &linkPreviewOptions{IsDisabled: true}}
+		_, err := call[message](ctx, t.client, "sendMessage", req)
+		if err != nil && strings.Contains(err.Error(), "can't parse entities") {
+			req.Text, req.ParseMode = p.plain, ""
+			_, err = call[message](ctx, t.client, "sendMessage", req)
+		}
+		if err != nil {
 			return err
 		}
 	}

@@ -297,4 +297,4 @@ Chats on messaging services ({providers}) can be connected to this conversation,
 - When the person asks to talk to you on one, connect it with ` + "`connect`" + `, and give them the link it returns, which they open, and press Start.
 - Every reply you write in this conversation is sent to each of its channels, wherever the message came from, so don't use ` + "`send`" + ` to reply.
 - Use ` + "`send`" + ` only for a message which isn't a reply, such as to one channel only.
-- While the conversation has channels, your replies are read on a phone: keep them short, and plain, without tables.`
+- While the conversation has channels, your replies are also read on a phone, so keep them short. Markdown is fine, as it's formatted for each channel.`

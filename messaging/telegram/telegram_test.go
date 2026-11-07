@@ -63,6 +63,11 @@ func (b *bot) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	case "sendMessage":
 		var req sendMessageRequest
 		_ = json.NewDecoder(r.Body).Decode(&req)
+		if strings.Contains(req.Text, "unparseable") && req.ParseMode == "HTML" {
+			w.WriteHeader(http.StatusBadRequest)
+			_, _ = w.Write([]byte(`{"ok":false,"error_code":400,"description":"Bad Request: can't parse entities: Unsupported start tag"}`))
+			return
+		}
 		if req.ChatID == "404" {
 			w.WriteHeader(http.StatusBadRequest)
 			_, _ = w.Write([]byte(`{"ok":false,"error_code":400,"description":"Bad Request: chat not found"}`))
@@ -141,14 +146,25 @@ func Test_Telegram_Send(t *testing.T) {
 	tg := newBot(t, b)
 	ctx := context.Background()
 
-	require.NoError(t, tg.Send(ctx, "7", "Hello"))
+	require.NoError(t, tg.Send(ctx, "7", "Hello **David**"))
 	require.NoError(t, tg.Typing(ctx, "7"))
-	long := strings.Repeat("word ", 1000) + "\n\n" + strings.Repeat("more ", 10)
+	assert.Equal(t, sendMessageRequest{ChatID: "7", Text: "Hello <b>David</b>", ParseMode: "HTML", LinkPreviewOptions: &linkPreviewOptions{IsDisabled: true}}, b.sent[0])
+
+	// A long reply is in parts, between paragraphs
+	long := strings.Repeat("word ", 700) + "\n\n" + strings.Repeat("more ", 700)
 	require.NoError(t, tg.Send(ctx, "7", long))
 	require.Len(t, b.sent, 3)
-	assert.Equal(t, sendMessageRequest{ChatID: "7", Text: "Hello"}, b.sent[0])
-	assert.LessOrEqual(t, len(b.sent[1].Text), maxText)
-	assert.Equal(t, strings.TrimSpace(long), b.sent[1].Text+" "+b.sent[2].Text)
+	assert.Equal(t, strings.TrimSpace(strings.Repeat("word ", 700)), b.sent[1].Text)
+	assert.Equal(t, strings.TrimSpace(strings.Repeat("more ", 700)), b.sent[2].Text)
+
+	// HTML which Telegram can't parse is sent as plain text
+	b.mu.Lock()
+	b.sent = nil
+	b.mu.Unlock()
+	require.NoError(t, tg.Send(ctx, "7", "**Bold** <unparseable>"))
+	require.Len(t, b.sent, 1)
+	assert.Equal(t, "Bold <unparseable>", b.sent[0].Text)
+	assert.Empty(t, b.sent[0].ParseMode)
 
 	err := tg.Send(ctx, "404", "Hello")
 	require.Error(t, err)

@@ -348,7 +348,7 @@ Chats on messaging services can be connected to a conversation, as channels, so 
 
 What you say in the Telegram chat is sent to the conversation, and every reply in the conversation is sent to each of its channels, wherever the message it replies to came from, as is the outcome of a heartbeat which is worth telling you. A conversation can have more than one channel, such as your own chat and a group, and a chat is a channel of one conversation, so connecting it again moves it. Everyone in a group which is connected can talk to your assistant, and hear its replies, which can have what it remembers of you, so connect only groups whose people you'd tell. Messages from chats which aren't connected are ignored.
 
-The server reads the bot's messages by long polling, so it needs no address on the internet. Only one server can read a bot's messages, so a bot's token isn't shared between servers. Text is sent and received for now; voice messages, pictures and files are to come.
+The server reads the bot's messages by long polling, so it needs no address on the internet. Only one server can read a bot's messages, so a bot's token isn't shared between servers. Replies are formatted for Telegram: bold, italic, code, links and quotes as they are, headings in bold, lists with bullets, and tables lined up in monospace. Long replies are sent as more than one message, broken between paragraphs. Text is sent and received for now; voice messages, pictures and files are to come.
 
 ## API
 
@@ -451,7 +451,6 @@ env -u OPENAI_API_KEY -u MISTRAL_API_KEY -u ANTHROPIC_API_KEY -u GEMINI_API_KEY 
 - **Channels**: Telegram chats can be connected to a conversation (see [Messaging](#messaging)). Still to come:
   - voice messages, which are transcribed, and replies spoken with `llm:speak`, sent as voice;
   - pictures and files, both ways, as the session's files;
-  - replies formatted for Telegram, rather than as plain text;
   - the channels in the web UI, beside the chat;
   - Slack.
 - **Scheduled runs in the chat**: when a heartbeat fires, its prompt goes to the chat's own model, marked as a scheduled run, with a short history of earlier runs, rather than only to the `event` agent.

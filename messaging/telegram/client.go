@@ -63,10 +63,18 @@ type getUpdatesRequest struct {
 	AllowedUpdates []string `json:"allowed_updates"`
 }
 
-// sendMessageRequest sends the text to the chat
+// sendMessageRequest sends the text to the chat, as HTML, when it has a
+// parse mode
 type sendMessageRequest struct {
-	ChatID string `json:"chat_id"`
-	Text   string `json:"text"`
+	ChatID             string              `json:"chat_id"`
+	Text               string              `json:"text"`
+	ParseMode          string              `json:"parse_mode,omitempty"`
+	LinkPreviewOptions *linkPreviewOptions `json:"link_preview_options,omitempty"`
+}
+
+// linkPreviewOptions say whether a message's links have previews
+type linkPreviewOptions struct {
+	IsDisabled bool `json:"is_disabled"`
 }
 
 // sendChatActionRequest shows the action, such as typing, in the chat
