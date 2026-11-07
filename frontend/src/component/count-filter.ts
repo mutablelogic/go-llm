@@ -2,8 +2,8 @@
 // each with a label, a badge, such as a provider's type, and a count, which
 // is less prominent when it's none, or isn't known. Clicking a tile fires an
 // event with its value, so only what it counts is shown, or everything,
-// when it has none, and the tile which is chosen is pressed. It's as the
-// summary of a task queue is in go-omodie.
+// when it has none, and the tile which is chosen is pressed, as a summary of
+// a task queue's tasks, by their statuses, can be.
 
 import { LitElement, css, html, nothing } from 'lit';
 import { customElement, property } from 'lit/decorators.js';

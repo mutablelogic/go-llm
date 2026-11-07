@@ -11,7 +11,7 @@
 import { chat, createSession, deleteSession, getSession, listMessages, listSessions, setStatus, updateSession } from '../api/session';
 import { getDetails } from '../api/memory';
 import { listModels } from '../api/model';
-import { cannot } from '../schema/model';
+import { cannot, type Model } from '../schema/model';
 import { ApiError, config } from '../api/client';
 import { routeHref } from '../router';
 import { isUser, sessionTokens, type ContentBlock, type Message, type Session, type SessionMeta } from '../schema/session';
@@ -23,6 +23,9 @@ import { resourceHash, resourceName, resourceURI, type Resource } from '../schem
 import { SessionList } from '../component/session-list';
 import { ChatView, type Piece } from '../component/chat-view';
 import { NewSession } from '../component/new-session';
+import { Welcome } from '../component/welcome';
+import { listProviders } from '../api/provider';
+import type { Provider } from '../schema/provider';
 import type { MessageView } from '../component/message-view';
 import { Panel } from '../component/panel';
 import { ChatPage } from '../page/chat-page';
@@ -51,6 +54,10 @@ export class ChatController {
     // The sessions, which are undefined while they're first loading, the
     // session which is open, its messages, and the memory's details
     private sessions?: Session[];
+
+    // The providers, and models, which the welcome shows, when there are no
+    // chats, which are loaded once there are none
+    private welcome?: { providers?: Provider[]; models?: Model[] };
     private session?: Session;
     private messages?: Message[];
     private details: Details = {};
@@ -109,6 +116,10 @@ export class ChatController {
             location.hash = routeHref('chat', (e as CustomEvent<Session>).detail.id);
         });
         views.page?.addEventListener(ChatPage.eventNew, () => void this.newChat());
+        views.view?.addEventListener(Welcome.eventNew, () => void this.newChat());
+        views.view?.addEventListener(Welcome.eventProvider, () => {
+            location.hash = routeHref('models');
+        });
         views.list?.addEventListener(SessionList.eventDelete, () => void this.delete());
         views.list?.addEventListener(SessionList.eventEdit, () => void this.edit());
         views.create?.addEventListener(NewSession.eventSave, (e) => void this.save((e as CustomEvent<SessionMeta>).detail));
@@ -136,6 +147,11 @@ export class ChatController {
             return;
         } else if (id) {
             this.storage.set('chat', id);
+        }
+        // Without chats, the welcome is loaded again, for a provider which
+        // was added since
+        if (!id && this.sessions?.length === 0) {
+            void this.loadWelcome();
         }
         if (id === this.session?.id && this.messages) {
             return;
@@ -169,9 +185,31 @@ export class ChatController {
             this.sessions ??= [];
             this.notifications.error("Chats couldn't be loaded", error);
         }
+        if (this.sessions.length === 0) {
+            void this.loadWelcome();
+        }
         if (this.session) {
             await this.load(this.session.id);
         }
+        this.render();
+    }
+
+    // loadWelcome loads the providers, and models, which the welcome shows,
+    // when there are no chats, so a new installation says what it has, and
+    // how to start
+    private async loadWelcome() {
+        this.welcome ??= {};
+        this.render();
+        // Each is loaded on its own, so a provider which can't be reached,
+        // and makes the models fail, is still shown, with its error
+        const [providers, models] = await Promise.allSettled([listProviders(), listModels()]);
+        if (providers.status === 'rejected') {
+            this.notifications.error("The providers couldn't be loaded", providers.reason);
+        }
+        this.welcome = {
+            providers: providers.status === 'fulfilled' ? providers.value.body ?? [] : [],
+            models: models.status === 'fulfilled' ? models.value.body ?? [] : [],
+        };
         this.render();
     }
 
@@ -596,6 +634,7 @@ export class ChatController {
             view.attachments = this.session ? this.resources.attachments(this.session.id) : [];
             view.uploading = this.session ? this.resources.uploading(this.session.id) : 0;
             view.unavailable = this.unavailable;
+            view.welcome = this.sessions?.length === 0 ? this.welcome : undefined;
         }
     }
 }

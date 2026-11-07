@@ -10,6 +10,9 @@
 // send a question, say someone is typing, choose resources to attach,
 // remove an attachment, and upload files to attach.
 
+import './welcome';
+import type { Provider } from '../schema/provider';
+import type { Model } from '../schema/model';
 import { LitElement, css, html, nothing, type PropertyValues } from 'lit';
 import { customElement, property, query } from 'lit/decorators.js';
 import iconLoader from '@carbon/web-components/es/globals/internal/icon-loader.js';
@@ -149,6 +152,11 @@ export class ChatView extends LitElement {
     // Whether the server can't be reached
     @property({ type: Boolean, reflect: true })
     unavailable = false;
+
+    // The providers, and models, which the welcome shows, in place of a
+    // chat, when there are none yet, or undefined, when there are chats
+    @property({ attribute: false })
+    welcome?: { providers?: Provider[]; models?: Model[] };
 
     @query('.conversation')
     private conversation?: HTMLElement;
@@ -324,7 +332,9 @@ export class ChatView extends LitElement {
 
     render() {
         if (!this.session) {
-            return html`<div class="none">Choose a chat, or start a new one</div>`;
+            return this.welcome
+                ? html`<llm-welcome .providers=${this.welcome.providers} .models=${this.welcome.models}></llm-welcome>`
+                : html`<div class="none">Choose a chat, or start a new one</div>`;
         }
         // An event's session, such as a heartbeat's, has what it did each
         // time it ran, and isn't chatted in
