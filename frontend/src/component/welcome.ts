@@ -111,7 +111,7 @@ export class Welcome extends LitElement {
         return html`
             <h2>Welcome</h2>
             <p>${real.length > 0
-                ? 'Start a chat with one of your models, and try what they can do.'
+                ? 'Start a chat with your assistant, and see what they can do.'
                 : providers.length > 0
                     ? 'Add a provider, such as Ollama, OpenAI, Anthropic or Gemini, to chat with its models. Until then, there\'s only Eliza, a mock of the 1966 chatbot, for testing.'
                     : 'Add a provider, such as Ollama, OpenAI, Anthropic or Gemini, to chat with its models.'}</p>
@@ -150,6 +150,7 @@ export class Welcome extends LitElement {
         const tries = [
             'Attach a file, by dropping it onto the chat, or pasting it, and ask about it',
             "Choose the tools a chat can use, such as the weather, the news, or the assistant's long-term memory, when you start it",
+            can('tools') ? "Set a reminder, such as 'remind me to call Sam at five'" : '',
             can('image_output') ? 'Ask for a picture, or to change one' : '',
             can('speech_output') ? 'Ask for something to be read aloud' : '',
             can('transcription') ? 'Attach a recording, and ask what\'s said in it' : '',
