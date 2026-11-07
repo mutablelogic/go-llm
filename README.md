@@ -435,6 +435,12 @@ env -u OPENAI_API_KEY -u MISTRAL_API_KEY -u ANTHROPIC_API_KEY -u GEMINI_API_KEY 
 - **Scheduled runs in the chat**: when a heartbeat fires, its prompt goes to the chat's own model, marked as a scheduled run, with a short history of earlier runs, rather than only to the `event` agent.
 - **Scheduled agents**: agents which run on a schedule, as heartbeats do.
 - **Running Python** (experimental): a tool which runs Python a model writes, in WebAssembly, so it's sandboxed, without network access, with a file system of the session's files, by their names, which it reads, and to which what it writes, such as a chart, or a CSV, is kept, as the session's files.
+
+### Server
+
+- **Authentication and authorization**, throughout: the API, the web UI, the CLI, the MCP connectors and channels:
+  - **Authentication**: people, and clients, sign in, such as with OIDC, or with API tokens, so a server which is reached from the internet isn't open to anyone.
+  - **Authorization**: what each can do, by their role, or a token's scopes, such as who adds providers and agents, and who only chats, which models and tools they can use, and their own sessions, memory, files and heartbeats, which others can't see.
 - **A database, and more than one server**: keep providers, sessions, agents, memory, heartbeats and resources in a database, rather than files, so more than one server can share them, and each server's clients see the changes, and heartbeats which fire, of the others.
 
 ### Providers
