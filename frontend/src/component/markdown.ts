@@ -1,11 +1,40 @@
 // Markdown, such as a model's reply, rendered as HTML, which is sanitized,
 // as a model's reply can have anything in it, with links which open in a new
-// tab, and the styles of what it renders
+// tab, and a QR code under a link which connects a Telegram chat, so it can
+// be scanned with a phone, and the styles of what it renders
 
 import { css } from 'lit';
 import { unsafeHTML } from 'lit/directives/unsafe-html.js';
 import { marked } from 'marked';
 import DOMPurify from 'dompurify';
+import { renderSVG } from 'uqr';
+
+// connectLink is a link which connects a Telegram chat to a session, as the
+// messaging:connect tool returns it, such as https://t.me/bot?start=code
+const connectLink = /^https:\/\/t\.me\/[A-Za-z0-9_]{5,32}\?start=[A-Za-z0-9_-]{1,64}$/;
+
+// A link which connects a chat has its QR code under it, which is made in
+// the browser, as an image, so it's sanitized as one. Other links are
+// rendered as they are.
+marked.use({
+    renderer: {
+        link(token) {
+            if (!connectLink.test(token.href)) {
+                return false;
+            }
+            const href = escapeAttribute(token.href);
+            const svg = renderSVG(token.href, { border: 2 }).replace('<svg ', '<svg shape-rendering="crispEdges" ');
+            const src = 'data:image/svg+xml;base64,' + btoa(svg);
+            return `<a href="${href}">${this.parser.parseInline(token.tokens)}</a>`
+                + `<img class="qr" src="${src}" alt="A QR code of the link, to scan with a phone" width="160" height="160">`;
+        },
+    },
+});
+
+// escapeAttribute returns the text, escaped as an attribute's value
+function escapeAttribute(text: string): string {
+    return text.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
 
 // Links open in a new tab, without the page they're opened from
 DOMPurify.addHook('afterSanitizeAttributes', (node) => {
@@ -70,6 +99,15 @@ export const markdownStyles = css`
         margin: 1rem 0 0.5rem;
         font-size: 1rem;
         font-weight: 600;
+    }
+
+    .markdown img.qr {
+        display: block;
+        width: 10rem;
+        height: 10rem;
+        margin: 0.5rem 0;
+        background: #fff;
+        image-rendering: pixelated;
     }
 
     .markdown code {

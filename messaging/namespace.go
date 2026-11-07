@@ -146,7 +146,7 @@ func (t *connectTool) Run(ctx context.Context, input json.RawMessage) (any, erro
 	return connectOutput{
 		Link:    link,
 		Expires: expires.UTC().Format(time.RFC3339),
-		Note:    "Give the person the link, which they open, and then press Start. It works once, within 15 minutes.",
+		Note:    "Give the person the link, as it is, on a line of its own, which they open, or scan, and then press Start. It works once, within 15 minutes.",
 	}, nil
 }
 
@@ -294,7 +294,7 @@ const messagingPrompt = `# Messaging
 
 Chats on messaging services ({providers}) can be connected to this conversation, as channels, so the person can talk to you there, such as from their phone.
 
-- When the person asks to talk to you on one, connect it with ` + "`connect`" + `, and give them the link it returns, which they open, and press Start.
+- When the person asks to talk to you on one, connect it with ` + "`connect`" + `, and give them the link it returns, as it is, on a line of its own, which they open, or scan with their phone, as the web UI shows it as a QR code, and press Start.
 - Every reply you write in this conversation is sent to each of its channels, wherever the message came from, so don't use ` + "`send`" + ` to reply.
 - Use ` + "`send`" + ` only for a message which isn't a reply, such as to one channel only.
 - While the conversation has channels, your replies are also read on a phone, so keep them short. Markdown is fine, as it's formatted for each channel.`

@@ -343,8 +343,8 @@ A model is given tools by name, by namespace and name, such as `weatherapi:curre
 Chats on messaging services can be connected to a conversation, as channels, so you can talk to your assistant there, such as from your phone. Telegram is the first service:
 
 1. Make a bot with [BotFather](https://t.me/BotFather), and set its token as `TELEGRAM_BOT_TOKEN` when the server starts.
-2. In a chat whose model can call the `messaging` tools, ask to talk on Telegram. The assistant gives you a link, which works once, within 15 minutes.
-3. Open it, and press Start. The Telegram chat is now a channel of the conversation.
+2. In a chat whose model can call the `messaging` tools, ask to talk on Telegram. The assistant gives you a link, which works once, within 15 minutes. The web UI shows it as a QR code too, made in the browser.
+3. Open it, or scan the QR code with your phone, and press Start. The Telegram chat is now a channel of the conversation.
 
 What you say in the Telegram chat is sent to the conversation, and every reply in the conversation is sent to each of its channels, wherever the message it replies to came from, as is the outcome of a heartbeat which is worth telling you. A conversation can have more than one channel, such as your own chat and a group, and a chat is a channel of one conversation, so connecting it again moves it. Everyone in a group which is connected can talk to your assistant, and hear its replies, which can have what it remembers of you, so connect only groups whose people you'd tell. Messages from chats which aren't connected are ignored.
 
