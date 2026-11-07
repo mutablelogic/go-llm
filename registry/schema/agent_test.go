@@ -262,6 +262,41 @@ func Test_AgentMessage(t *testing.T) {
 		_, err = p.MessageWith(json.RawMessage(`{"transcript":"resource://xyz"}`), read)
 		assert.ErrorIs(t, err, llm.ErrNotFound)
 		assert.ErrorContains(t, err, `input "transcript"`)
+		// The input is validated as the model is sent it, once the files are
+		// read, so a pattern, such as of subtitles' cues, is of the file's
+		// text, rather than its URI, which doesn't have one
+		p.Input = json.RawMessage(`{"type":"object","properties":{"transcript":{"type":"string","format":"resource","pattern":"-->"}}}`)
+		p.Prompt = types.Ptr(`{{ .transcript }}`)
+		srt := func(uri string) (string, error) {
+			switch uri {
+			case "resource://srt":
+				return "1\n00:00:00,200 --> 00:00:03,500\nHello.\n", nil
+			default:
+				return "Some notes, which aren't subtitles", nil
+			}
+		}
+		message, err = p.MessageWith(json.RawMessage(`{"transcript":"resource://srt"}`), srt)
+		require.NoError(t, err)
+		assert.Contains(t, message, "-->")
+		_, err = p.MessageWith(json.RawMessage(`{"transcript":"resource://notes"}`), srt)
+		assert.ErrorIs(t, err, llm.ErrBadParameter, "a file which isn't subtitles")
+		_, err = p.MessageWith(json.RawMessage(`{"transcript":"Some text, which isn't subtitles"}`), srt)
+		assert.ErrorIs(t, err, llm.ErrBadParameter, "text which isn't subtitles")
+
+		// Which says, in English, what the text should be, from the
+		// property's description, and how to give it
+		p.Input = json.RawMessage(`{"type":"object","properties":{"transcript":{"type":"string","format":"resource","pattern":"-->","description":"The transcript of the episode, as SRT subtitles, with their cues' times.\nIt's long."}}}`)
+		for _, input := range []string{`{"transcript":"resource://notes"}`, `{"transcript":"Some notes"}`} {
+			_, err = p.MessageWith(json.RawMessage(input), srt)
+			assert.ErrorIs(t, err, llm.ErrBadParameter, input)
+			assert.EqualError(t, err, `bad parameter: input "transcript" doesn't match its pattern "-->", so it isn't the transcript of the episode, as SRT subtitles, with their cues' times. Give the text, or the URI of a file which has it.`, input)
+		}
+
+		// A default which is a file's URI is the file's text too
+		p.Input = json.RawMessage(`{"type":"object","properties":{"transcript":{"type":"string","format":"resource","default":"resource://srt"}}}`)
+		message, err = p.MessageWith(json.RawMessage(`{}`), srt)
+		require.NoError(t, err)
+		assert.Contains(t, message, "-->", "the default's file, rather than its URI")
 	})
 
 	t.Run("NoSchema", func(t *testing.T) {

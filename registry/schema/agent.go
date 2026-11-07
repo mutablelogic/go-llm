@@ -7,11 +7,14 @@ import (
 	"fmt"
 	"io"
 	"net/url"
+	"regexp"
 	"slices"
 	"strconv"
 	"strings"
 	"text/template"
 	"time"
+	"unicode"
+	"unicode/utf8"
 	"uuid"
 
 	// Packages
@@ -213,7 +216,7 @@ func (p PromptMeta) Template() (*template.Template, error) {
 // Validate returns ErrBadParameter when the input isn't an object, which its
 // input schema, when it has one, validates. No input is an empty object.
 func (p PromptMeta) Validate(input json.RawMessage) error {
-	_, err := p.input(input)
+	_, err := p.input(input, nil)
 	return err
 }
 
@@ -236,17 +239,9 @@ func (p PromptMeta) Message(input json.RawMessage) (string, error) {
 // aren't. Returns the function's error, with the property's name, such as
 // for a file which isn't text.
 func (p PromptMeta) MessageWith(input json.RawMessage, read ReadFunc) (string, error) {
-	value, err := p.input(input)
+	value, err := p.input(input, read)
 	if err != nil {
 		return "", err
-	}
-	if read != nil {
-		schema, err := p.InputSchema()
-		if err != nil {
-			return "", err
-		} else if err := withResources(value, schema, read); err != nil {
-			return "", err
-		}
 	}
 
 	tmpl, err := p.Template()
@@ -394,9 +389,10 @@ func updated(created, modified time.Time) string {
 }
 
 // input returns the input, decoded as an object, with its numbers as they
-// were written, which its input schema, when it has one, validates. No
-// input is an empty object.
-func (p PromptMeta) input(input json.RawMessage) (map[string]any, error) {
+// were written, and the text of the files it refers to, which the function
+// reads, when there is one, which its input schema, when it has one,
+// validates, once they're read. No input is an empty object.
+func (p PromptMeta) input(input json.RawMessage, read ReadFunc) (map[string]any, error) {
 	data := bytes.TrimSpace(input)
 	if len(data) == 0 || string(data) == "null" {
 		data = []byte("{}")
@@ -413,14 +409,89 @@ func (p PromptMeta) input(input json.RawMessage) (map[string]any, error) {
 	if err != nil {
 		return nil, err
 	} else if schema != nil {
-		if err := schema.Validate(data); err != nil {
+		// The files it refers to are read, with the function, when there is
+		// one, so it's validated as the model is sent it, such as a pattern
+		// which the text of a file, rather than its URI, has
+		if read != nil {
+			if err := withResources(value, schema, read, keys(value)...); err != nil {
+				return nil, err
+			} else if data, err = json.Marshal(value); err != nil {
+				return nil, err
+			}
+		}
+		if err := patterns(value, schema); err != nil {
+			return nil, err
+		} else if err := schema.Validate(data); err != nil {
 			return nil, llm.ErrBadParameter.Withf("invalid input: %v", err)
 		}
-		if err := withDefaults(value, schema); err != nil {
+		defaults, err := withDefaults(value, schema)
+		if err != nil {
 			return nil, err
+		}
+
+		// The files a default refers to are read too, once it's set, rather
+		// than the input's again, which are read already
+		if read != nil && len(defaults) > 0 {
+			if err := withResources(value, schema, read, defaults...); err != nil {
+				return nil, err
+			}
 		}
 	}
 	return withZeros(value).(map[string]any), nil
+}
+
+// patterns returns an error, in English, for the first property, by its
+// name, whose value is text which doesn't match its pattern, which says
+// what it should be, from its description, such as "the transcript, as SRT
+// subtitles", as a pattern is of what text means, such as subtitles' cues,
+// rather than its form, or nil
+func patterns(value map[string]any, schema *jsonschema.Schema) error {
+	names := make([]string, 0, len(schema.Properties))
+	for name := range schema.Properties {
+		names = append(names, name)
+	}
+	slices.Sort(names)
+	for _, name := range names {
+		property := schema.Properties[name]
+		text, ok := value[name].(string)
+		if property == nil || property.Pattern == "" || !ok {
+			continue
+		}
+		pattern, err := regexp.Compile(property.Pattern)
+		if err != nil || pattern.MatchString(text) {
+			continue
+		}
+		message := fmt.Sprintf("input %q doesn't match its pattern %q", name, property.Pattern)
+		if description := strings.TrimSpace(property.Description); description != "" {
+			first, _, _ := strings.Cut(description, "\n")
+			message += ", so it isn't " + lowerFirst(strings.TrimRight(first, ". "))
+		}
+		message += "."
+		if property.Format == ResourceFormat {
+			message += " Give the text, or the URI of a file which has it."
+		}
+		return llm.ErrBadParameter.With(message)
+	}
+	return nil
+}
+
+// lowerFirst returns the text, with its first letter in lower case, unless
+// it's the start of a word in capitals, such as SRT
+func lowerFirst(text string) string {
+	r, size := utf8.DecodeRuneInString(text)
+	if next, _ := utf8.DecodeRuneInString(text[size:]); size == 0 || unicode.IsUpper(next) {
+		return text
+	}
+	return string(unicode.ToLower(r)) + text[size:]
+}
+
+// keys returns the keys of the value
+func keys(value map[string]any) []string {
+	result := make([]string, 0, len(value))
+	for key := range value {
+		result = append(result, key)
+	}
+	return result
 }
 
 // withZeros returns the value, with each number which is zero, however
@@ -457,11 +528,12 @@ const ResourceFormat = "resource"
 // withResources sets each property of the schema, of format resource, whose
 // value is a file's URI, resource:///<hash>, to the file's text, which the
 // function reads, and leaves any other value as it is
-func withResources(value map[string]any, schema *jsonschema.Schema, read ReadFunc) error {
+func withResources(value map[string]any, schema *jsonschema.Schema, read ReadFunc, names ...string) error {
 	if schema == nil {
 		return nil
 	}
-	for name, property := range schema.Properties {
+	for _, name := range names {
+		property := schema.Properties[name]
 		if property == nil || property.Format != ResourceFormat {
 			continue
 		}
@@ -481,9 +553,11 @@ func withResources(value map[string]any, schema *jsonschema.Schema, read ReadFun
 // withDefaults sets each property of the schema which the input hasn't, so
 // the prompt can use it, such as {{ if .pauses }}, to its default, or, when
 // it has none, the empty value of its type, such as "", or false, rather
-// than the prompt failing for a property which is optional. A key which
-// the schema hasn't, such as a misspelt one, is still an error.
-func withDefaults(value map[string]any, schema *jsonschema.Schema) error {
+// than the prompt failing for a property which is optional, and returns the
+// names of those set to their defaults. A key which the schema hasn't, such
+// as a misspelt one, is still an error.
+func withDefaults(value map[string]any, schema *jsonschema.Schema) ([]string, error) {
+	var defaults []string
 	for name, property := range schema.Properties {
 		if _, ok := value[name]; ok || property == nil {
 			continue
@@ -493,9 +567,10 @@ func withDefaults(value map[string]any, schema *jsonschema.Schema) error {
 			decoder.UseNumber()
 			var v any
 			if err := decoder.Decode(&v); err != nil {
-				return llm.ErrBadParameter.Withf("invalid default of %q: %v", name, err)
+				return nil, llm.ErrBadParameter.Withf("invalid default of %q: %v", name, err)
 			}
 			value[name] = v
+			defaults = append(defaults, name)
 			continue
 		}
 		// Its type, or the first of its types which isn't null, so a type
@@ -521,7 +596,7 @@ func withDefaults(value map[string]any, schema *jsonschema.Schema) error {
 			value[name] = ""
 		}
 	}
-	return nil
+	return defaults, nil
 }
 
 // promptFuncs are the functions which a prompt can use: json, which
