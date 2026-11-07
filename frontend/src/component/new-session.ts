@@ -167,7 +167,7 @@ export class NewSession extends Panel<NewSessionForm> {
                     @cds-select-selected=${(e: CustomEvent<{ value: string }>) => { this.chosen = e.detail.value; }}>
                     ${this.models.map((model) => html`<cds-select-item value=${model.canonical}>${model.canonical}</cds-select-item>`)}
                 </cds-select>
-                <cds-textarea label="System prompt" helper-text="Instructions which come before the conversation, such as 'be brief', 'set humour level to 90%', or 'respond in rhyme'" rows="3"
+                <cds-textarea label="System prompt" helper-text="Instructions for the assistant on how to act, such as 'be brief', 'set humour level to 90%', or 'respond in rhyme'" rows="3"
                     value=${this.session?.system ?? ''}></cds-textarea>
                 <div class="options">
                     ${thinks ? html`
