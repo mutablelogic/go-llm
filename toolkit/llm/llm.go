@@ -77,6 +77,7 @@ const (
 	ocrTimeout        = 5 * time.Minute
 	illustrateTimeout = 2 * time.Minute
 	speakTimeout      = 2 * time.Minute
+	resourceTimeout   = time.Minute
 )
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -92,13 +93,17 @@ func New(models ModelsFunc, opts ...Opt) (*Namespace, error) {
 	} else if err := o.apply(opts); err != nil {
 		return nil, err
 	}
-	return &Namespace{tools: []gollm.Tool{
+	tools := []gollm.Tool{
 		&speak{models: models, model: o.speakModel, voice: o.speakVoice},
 		&ocr{models: models, model: o.ocrModel},
 		&transcribe{models: models, model: o.transcribeModel},
 		&listModels{models: models},
 		&illustrate{models: models},
-	}}, nil
+	}
+	if o.resources != nil {
+		tools = append(tools, &resourceTool{resources: o.resources})
+	}
+	return &Namespace{tools: tools}, nil
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -111,7 +116,7 @@ func (*Namespace) Name() string {
 
 // Description returns what the namespace's tools are for
 func (*Namespace) Description() string {
-	return "Models which do what the model which calls them can't: speak text, make and change images, read the text in images and documents, and transcribe speech, and the models which can, by what they can do"
+	return "Models which do what the model which calls them can't: speak text, make and change images, read the text in images and documents, and transcribe speech, and the models which can, by what they can do, and the chat's files, which are read as Markdown"
 }
 
 // SystemPrompt returns nothing, as each tool says what it does
