@@ -241,26 +241,22 @@ func (runner *RunServer) withToolkit(ctx server.Cmd, b *broadcaster.Broadcaster,
 				return runner.RunServer.Run(ctx.WithContext(runCtx))
 			})
 			return group.Wait()
-		}, registry.WithBroadcaster(b), registry.WithProviderStore(store), registry.WithSessionStore(sessions), registry.WithAgentStore(agents), registry.WithEventStore(outcomes), registry.WithEventBuilder(build), registry.WithToolkit(tools), registry.WithResources(res), registry.WithTimes(func() *time.Location { return mem.Details().Zone() }, memory.Name), runner.Session.Opt(firesAgain(h)))
+		}, registry.WithBroadcaster(b), registry.WithProviderStore(store), registry.WithSessionStore(sessions), registry.WithAgentStore(agents), registry.WithEventStore(outcomes), registry.WithEventBuilder(build), registry.WithToolkit(tools), registry.WithResources(res), registry.WithTimes(func() *time.Location { return mem.Details().Zone() }, memory.Name), runner.Session.Opt(hasHeartbeats(h)))
 	}, toolkit.WithBroadcaster(b))
 }
 
-// firesAgain returns the function which says whether a session is kept,
-// however long since it changed, as it has a heartbeat which fires again,
-// such as a reminder weeks away, which would otherwise have no session to
-// fire in
-func firesAgain(h *heartbeat.Heartbeats) func(context.Context, uuid.UUID) (bool, error) {
+// hasHeartbeats returns the function which says whether a session is kept,
+// however long since it changed, as it has a heartbeat: one which fires
+// again, such as a reminder weeks away, or which fired, and may be waiting
+// to run, or running, in it, as a heartbeat is kept for a while after it
+// last fired, so its session is there for it
+func hasHeartbeats(h *heartbeat.Heartbeats) func(context.Context, uuid.UUID) (bool, error) {
 	return func(ctx context.Context, id uuid.UUID) (bool, error) {
-		list, err := h.List(ctx, heartbeatschema.HeartbeatListRequest{Session: id.String()})
+		list, err := h.List(ctx, heartbeatschema.HeartbeatListRequest{Session: id.String(), Limit: types.Ptr(uint64(1))})
 		if err != nil {
 			return false, err
 		}
-		for _, heartbeat := range list.Body {
-			if heartbeat.Next != nil {
-				return true, nil
-			}
-		}
-		return false, nil
+		return list.Count > 0, nil
 	}
 }
 

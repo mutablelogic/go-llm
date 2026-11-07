@@ -31,7 +31,7 @@ type Flags struct {
 // it, which is in days, such as 14d, or hours, or zero, to keep sessions
 // until they're deleted
 type SessionFlags struct {
-	Retention time.Duration `name:"retention" help:"How long a session is kept after it last changed, such as when it was last chatted in, unless it has a heartbeat which fires again, such as 14d, or 0 to keep sessions until they're deleted." default:"14d" env:"LLM_SESSION_RETENTION"`
+	Retention time.Duration `name:"retention" help:"How long a session is kept after it last changed, such as when it was last chatted in, unless it has a heartbeat, which fires again, or fired lately, such as 14d, or 0 to keep sessions until they're deleted." default:"14d" env:"LLM_SESSION_RETENTION"`
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -39,7 +39,7 @@ type SessionFlags struct {
 
 // Opt returns the option which deletes the sessions which haven't changed
 // for longer than they're kept, unless the function keeps one, such as one
-// with a heartbeat which fires again
+// with a heartbeat
 func (flags SessionFlags) Opt(keep func(context.Context, uuid.UUID) (bool, error)) registry.Opt {
 	return registry.WithSessionRetention(flags.Retention, keep)
 }

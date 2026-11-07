@@ -236,6 +236,14 @@ func (r *Registry) DeleteSession(ctx context.Context, id uuid.UUID) (_ *schema.S
 	)
 	defer func() { endSpan(err) }()
 
+	return r.deleteSession(ctx, id, nil)
+}
+
+// deleteSession deletes the session with the identifier, as DeleteSession
+// does, and, when the serial isn't nil, only when it's the session's, as it
+// was when it was decided it's deleted, and otherwise returns ErrConflict,
+// so a session which was saved since isn't deleted
+func (r *Registry) deleteSession(ctx context.Context, id uuid.UUID, serial *uint64) (*schema.Session, error) {
 	if r.sessionStore == nil {
 		return nil, errNoSessionStore
 	}
@@ -247,6 +255,8 @@ func (r *Registry) DeleteSession(ctx context.Context, id uuid.UUID) (_ *schema.S
 	session, err := r.sessionStore.Get(ctx, id)
 	if err != nil {
 		return nil, err
+	} else if serial != nil && session.Serial != *serial {
+		return nil, llm.ErrConflict.Withf("session %q was changed", id)
 	} else if r.sessionStatus(id) == schema.SessionReplying {
 		return nil, llm.ErrConflict.Withf("session %q is replying, so it can't be deleted until it has", id)
 	} else if err := r.sessionStore.Delete(ctx, id, session.Serial); err != nil {

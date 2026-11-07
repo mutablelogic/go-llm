@@ -205,8 +205,7 @@ func WithToolkit(tools *toolkit.Toolkit) Opt {
 
 // WithSessionRetention deletes the sessions which haven't changed for the
 // duration, as the registry runs, unless one is replying, or the function,
-// when it isn't nil, says it's kept, such as one with a heartbeat which
-// fires again. Zero keeps sessions until they're deleted.
+// when it isn't nil, says it's kept, such as one with a heartbeat. Zero keeps sessions until they're deleted.
 func WithSessionRetention(d time.Duration, keep func(context.Context, uuid.UUID) (bool, error)) Opt {
 	return func(o *opt) error {
 		if d < 0 {

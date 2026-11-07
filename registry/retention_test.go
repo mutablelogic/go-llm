@@ -45,6 +45,16 @@ func Test_SessionRetention(t *testing.T) {
 		assert.NoError(t, err)
 	}
 
+	// A session which was saved since it was listed, as old, isn't deleted,
+	// as its serial isn't the one which was listed
+	listed, err := r.GetSession(ctx, changed)
+	require.NoError(t, err)
+	_, err = r.UpdateSession(ctx, changed, schema.SessionMeta{Title: types.Ptr("Saved since")})
+	require.NoError(t, err)
+	assert.ErrorIs(t, r.DeleteSessionAt(ctx, changed, listed.Serial), llm.ErrConflict)
+	_, err = r.GetSession(ctx, changed)
+	assert.NoError(t, err)
+
 	// Without retention, none is deleted
 	r, err = registry.New(registry.WithSessionStore(sessions))
 	require.NoError(t, err)
