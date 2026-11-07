@@ -172,8 +172,7 @@ func Test_AgentMessage(t *testing.T) {
 	})
 
 	t.Run("Invalid", func(t *testing.T) {
-		// The input is validated by the input schema, must be an object, and
-		// have the fields the prompt uses
+		// The input is validated by the input schema, and must be an object
 		for name, input := range map[string]string{
 			"Required": `{"minutes":1,"tags":[]}`,
 			"Type":     `{"transcript":1,"minutes":1,"tags":[]}`,
@@ -181,12 +180,34 @@ func Test_AgentMessage(t *testing.T) {
 			"JSON":     `{"transcript":`,
 			"Trailing": `{"transcript":"Hello","minutes":1,"tags":[]} trailing`,
 			"Two":      `{"transcript":"Hello","minutes":1,"tags":[]} {}`,
-			"Missing":  `{"transcript":"Hello"}`,
 		} {
 			_, err := prompt.Message(json.RawMessage(input))
 			assert.ErrorIs(t, err, llm.ErrBadParameter, name)
 		}
 		assert.NoError(t, prompt.Validate(json.RawMessage(`{"transcript":"Hello"}`)), "valid, though the prompt uses more")
+	})
+
+	t.Run("Optional", func(t *testing.T) {
+		// A property which the input hasn't is its default, or else the empty
+		// value of its type, so a prompt can test it, or write it
+		p := schema.PromptMeta{
+			Name:   "segment",
+			Input:  json.RawMessage(`{"type":"object","properties":{"transcript":{"type":"string"},"pauses":{"type":"boolean"},"min_gap":{"type":"number","default":2.5},"speaker":{"type":"string"},"tags":{"type":"array"},"times":{"type":["integer","null"]}}}`),
+			Prompt: types.Ptr(`{{ .transcript }}{{ if .pauses }} with pauses{{ end }}, gap {{ .min_gap }}, speaker [{{ .speaker }}], tags {{ json .tags }}, {{ .times }}`),
+		}
+		message, err := p.Message(json.RawMessage(`{"transcript":"Hello"}`))
+		require.NoError(t, err)
+		assert.Equal(t, "Hello, gap 2.5, speaker [], tags [], 0", message)
+		message, err = p.Message(json.RawMessage(`{"transcript":"Hello","pauses":true,"min_gap":1}`))
+		require.NoError(t, err)
+		assert.Equal(t, "Hello with pauses, gap 1, speaker [], tags [], 0", message)
+
+		// A field which the schema hasn't, such as a misspelt one, is still
+		// an error, which is returned
+		p.Prompt = types.Ptr(`{{ .transcript }} {{ .paused }}`)
+		_, err = p.Message(json.RawMessage(`{"transcript":"Hello"}`))
+		assert.ErrorIs(t, err, llm.ErrBadParameter)
+		assert.ErrorContains(t, err, `"paused"`)
 	})
 
 	t.Run("NoSchema", func(t *testing.T) {

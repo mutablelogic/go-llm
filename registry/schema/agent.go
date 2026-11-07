@@ -35,6 +35,7 @@ type PromptMeta struct {
 	Input       json.RawMessage `json:"input,omitempty" help:"JSON schema of the input, which is an object, whose properties the prompt uses" example:"{\"type\":\"object\",\"properties\":{\"transcript\":{\"type\":\"string\"}}}" optional:""`
 	Prompt      *string         `json:"prompt,omitempty" help:"Go template of the message to the model, executed with the input" example:"Segment this transcript: {{ .transcript }}" optional:""`
 	Internal    *bool           `json:"internal,omitempty" help:"Whether only the server runs the agent, such as for an event, as its input is trusted, so it isn't a tool which models can call" optional:""`
+	Timeout     *string         `json:"timeout,omitempty" help:"Most time the agent has, when a model calls it as a tool, such as 2m, or 90s, rather than the time a tool has by default" example:"2m" optional:""`
 	Builtin     *bool           `json:"builtin,omitempty" readonly:"" help:"Whether the agent is one the server has, which it creates as it is each time it starts, so it can't be changed, or deleted, but can be copied under another name"`
 }
 
@@ -128,12 +129,13 @@ func (r AgentList) String() string {
 // IsZero returns true when the prompt sets nothing, apart from its name, so
 // as an update, it changes nothing
 func (p PromptMeta) IsZero() bool {
-	return p.Title == nil && p.Description == nil && p.Prompt == nil && p.Internal == nil && len(bytes.TrimSpace(p.Input)) == 0
+	return p.Title == nil && p.Description == nil && p.Prompt == nil && p.Internal == nil && p.Timeout == nil && len(bytes.TrimSpace(p.Input)) == 0
 }
 
 // Merge returns the prompt, changed by the update: its title, description
-// and prompt, when they're set, which empty clears, its input, when it's
-// set, which null clears, and whether it's internal, when it's set. The name
+// and prompt, and timeout, when they're set, which empty clears, its input,
+// when it's set, which null clears, and whether it's internal, when it's
+// set. The name
 // isn't changed. What the update doesn't set is kept.
 func (p PromptMeta) Merge(update PromptMeta) PromptMeta {
 	result := p
@@ -148,6 +150,7 @@ func (p PromptMeta) Merge(update PromptMeta) PromptMeta {
 	result.Title = merge(p.Title, update.Title)
 	result.Description = merge(p.Description, update.Description)
 	result.Prompt = merge(p.Prompt, update.Prompt)
+	result.Timeout = merge(p.Timeout, update.Timeout)
 	if update.Internal != nil {
 		result.Internal = types.Ptr(*update.Internal)
 	}
@@ -177,6 +180,23 @@ func (p PromptMeta) InputSchema() (*jsonschema.Schema, error) {
 	return result, nil
 }
 
+// ToolTimeout returns the most time the agent has, when a model calls it as
+// a tool, or zero, for the time a tool has by default. Returns
+// ErrBadParameter when it isn't a duration, such as 2m, or 90s, or it isn't
+// positive.
+func (p PromptMeta) ToolTimeout() (time.Duration, error) {
+	if p.Timeout == nil || strings.TrimSpace(*p.Timeout) == "" {
+		return 0, nil
+	}
+	d, err := types.ParseDuration(strings.TrimSpace(*p.Timeout))
+	if err != nil {
+		return 0, llm.ErrBadParameter.Withf("invalid timeout %q, which must be a duration, such as 2m, or 90s", *p.Timeout)
+	} else if d <= 0 {
+		return 0, llm.ErrBadParameter.Withf("invalid timeout %q, which must be more than zero", *p.Timeout)
+	}
+	return d, nil
+}
+
 // Template returns the prompt's template, or nil when there's none. Returns
 // ErrBadParameter when it isn't a Go template.
 func (p PromptMeta) Template() (*template.Template, error) {
@@ -199,10 +219,11 @@ func (p PromptMeta) Validate(input json.RawMessage) error {
 
 // Message returns the message to the model, which is the prompt, executed
 // with the input, which is validated, or the input, as JSON, when there's
-// no prompt. A field of the input which the prompt uses, and the input
-// hasn't, is an error. Returns ErrBadParameter when the input isn't valid,
-// the prompt can't be executed with it, or there's neither a prompt, nor
-// an input.
+// no prompt. A property of the input schema which the input hasn't is its
+// default, or the empty value of its type, and a field which the prompt
+// uses, and the schema hasn't, is an error. Returns ErrBadParameter when
+// the input isn't valid, the prompt can't be executed with it, or there's
+// neither a prompt, nor an input.
 func (p PromptMeta) Message(input json.RawMessage) (string, error) {
 	value, err := p.input(input)
 	if err != nil {
@@ -376,8 +397,51 @@ func (p PromptMeta) input(input json.RawMessage) (map[string]any, error) {
 		if err := schema.Validate(data); err != nil {
 			return nil, llm.ErrBadParameter.Withf("invalid input: %v", err)
 		}
+		if err := withDefaults(value, schema); err != nil {
+			return nil, err
+		}
 	}
 	return value, nil
+}
+
+// withDefaults sets each property of the schema which the input hasn't, so
+// the prompt can use it, such as {{ if .pauses }}, to its default, or, when
+// it has none, the empty value of its type, such as "", or false, rather
+// than the prompt failing for a property which is optional. A key which
+// the schema hasn't, such as a misspelt one, is still an error.
+func withDefaults(value map[string]any, schema *jsonschema.Schema) error {
+	for name, property := range schema.Properties {
+		if _, ok := value[name]; ok || property == nil {
+			continue
+		}
+		if len(property.Default) > 0 {
+			decoder := json.NewDecoder(bytes.NewReader(property.Default))
+			decoder.UseNumber()
+			var v any
+			if err := decoder.Decode(&v); err != nil {
+				return llm.ErrBadParameter.Withf("invalid default of %q: %v", name, err)
+			}
+			value[name] = v
+			continue
+		}
+		kind := property.Type
+		if kind == "" && len(property.Types) > 0 {
+			kind = property.Types[0]
+		}
+		switch kind {
+		case "number", "integer":
+			value[name] = json.Number("0")
+		case "boolean":
+			value[name] = false
+		case "array":
+			value[name] = []any{}
+		case "object":
+			value[name] = map[string]any{}
+		default:
+			value[name] = ""
+		}
+	}
+	return nil
 }
 
 // promptFuncs are the functions which a prompt can use: json, which

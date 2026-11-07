@@ -85,6 +85,35 @@ func Test_AgentTools(t *testing.T) {
 		}, events(ch))
 	})
 
+	t.Run("Timeout", func(t *testing.T) {
+		// An agent, as a tool, has its timeout, or the time a tool has by
+		// default, without one, and one which isn't a duration isn't saved
+		r, tk, _ := newRegistry(t, test.NewAgentStore())
+		_, _, err := r.CreateAgent(ctx, segment)
+		require.NoError(t, err)
+		timeout := func() time.Duration {
+			t.Helper()
+			list, err := tk.Tools(ctx, "agent:segment")
+			require.NoError(t, err)
+			require.Len(t, list, 1)
+			return list[0].Timeout()
+		}
+		assert.Zero(t, timeout())
+		_, err = r.UpdateAgent(ctx, "segment", schema.AgentMeta{PromptMeta: schema.PromptMeta{Timeout: types.Ptr("2m")}})
+		require.NoError(t, err)
+		assert.Equal(t, 2*time.Minute, timeout())
+		_, err = r.UpdateAgent(ctx, "segment", schema.AgentMeta{PromptMeta: schema.PromptMeta{Timeout: types.Ptr("1d")}})
+		require.NoError(t, err)
+		assert.Equal(t, 24*time.Hour, timeout(), "in days, too")
+		for _, bad := range []string{"soon", "-1m", "0s"} {
+			_, err = r.UpdateAgent(ctx, "segment", schema.AgentMeta{PromptMeta: schema.PromptMeta{Timeout: types.Ptr(bad)}})
+			assert.ErrorIs(t, err, llm.ErrBadParameter, bad)
+		}
+		_, err = r.UpdateAgent(ctx, "segment", schema.AgentMeta{PromptMeta: schema.PromptMeta{Timeout: types.Ptr("")}})
+		require.NoError(t, err)
+		assert.Zero(t, timeout(), "empty clears it")
+	})
+
 	t.Run("Run", func(t *testing.T) {
 		// An agent, as a tool, which has no model, can't be run without a
 		// session to run it from, and one without an input has an empty

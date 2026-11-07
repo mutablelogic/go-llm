@@ -38,6 +38,7 @@ type agentTool struct {
 	agent    schema.Agent
 	input    *jsonschema.Schema
 	output   *jsonschema.Schema
+	timeout  time.Duration
 }
 
 var _ toolkit.Namespace = (*agentNamespace)(nil)
@@ -163,7 +164,11 @@ func newAgentTool(r *Registry, agent schema.Agent) (*agentTool, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &agentTool{registry: r, agent: agent, input: input, output: output}, nil
+	timeout, err := agent.ToolTimeout()
+	if err != nil {
+		return nil, err
+	}
+	return &agentTool{registry: r, agent: agent, input: input, output: output, timeout: timeout}, nil
 }
 
 func (t *agentTool) Name() string {
@@ -201,9 +206,10 @@ func (t *agentTool) OutputSchema() *jsonschema.Schema {
 	return t.output
 }
 
-// Timeout returns zero, as an agent has the time a tool has by default
+// Timeout returns the agent's timeout, or zero, for the time a tool has by
+// default, when it has none
 func (t *agentTool) Timeout() time.Duration {
-	return 0
+	return t.timeout
 }
 
 // Run runs the agent, with the input, from the session of the model which
