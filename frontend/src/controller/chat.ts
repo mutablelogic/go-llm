@@ -542,6 +542,7 @@ export class ChatController {
         }
         try {
             await deleteSession(session.id);
+            document.querySelector('llm-media-player')?.sessionDeleted(session.id);
             this.storage.delete('chat', session.id);
             this.sessions = this.sessions?.filter((other) => other.id !== session.id);
             location.hash = routeHref('chat');
