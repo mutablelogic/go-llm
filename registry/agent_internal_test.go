@@ -103,7 +103,10 @@ func Test_AgentFinished(t *testing.T) {
 	assert.NoError(t, agentFinished("a", reply("")))
 	assert.ErrorIs(t, agentFinished("a", reply(providerschema.ResultMaxTokens)), llm.ErrMaxTokens)
 	assert.ErrorIs(t, agentFinished("a", reply(providerschema.ResultBlocked)), llm.ErrRefusal)
-	for _, result := range []providerschema.ResultType{providerschema.ResultError, providerschema.ResultMaxIterations, providerschema.ResultMaxContext} {
+	err := agentFinished("a", reply(providerschema.ResultMaxContext))
+	assert.ErrorIs(t, err, llm.ErrBadParameter, "its input is too long")
+	assert.ErrorContains(t, err, "too long for its model's context")
+	for _, result := range []providerschema.ResultType{providerschema.ResultError, providerschema.ResultMaxIterations} {
 		err := agentFinished("a", reply(result))
 		assert.ErrorIs(t, err, llm.ErrInternalServerError, result)
 		assert.ErrorContains(t, err, string(result))

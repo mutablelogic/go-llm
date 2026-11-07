@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"mime"
 	"slices"
 	"strings"
 	"uuid"
@@ -307,8 +308,9 @@ func (r *Registry) runAgent(ctx context.Context, name string, req schema.RunAgen
 	}
 
 	// The message to its model, which is its prompt, executed with the input,
-	// which is validated
-	message, err := agent.Message(req.Input)
+	// which is validated, with the text of the files its input refers to, in
+	// the session it's run from, or on their own
+	message, err := agent.MessageWith(req.Input, r.agentReader(ctx, req.Session))
 	if err != nil {
 		return nil, err
 	}
@@ -374,6 +376,33 @@ func (r *Registry) runAgent(ctx context.Context, name string, req schema.RunAgen
 ///////////////////////////////////////////////////////////////////////////////
 // PRIVATE FUNCTIONS
 
+// agentReader returns the function which reads the text of a file, by its
+// URI, resource://<hash>, which an agent's input refers to, in the session
+// it's run from, or on its own, as it is, up to MaxAttachmentsSize, or
+// returns ErrBadParameter when it isn't text, such as an image, or audio,
+// which a tool reads first
+func (r *Registry) agentReader(ctx context.Context, session uuid.UUID) schema.ReadFunc {
+	reader := r.newContentReader(session)
+	reader.fallback = true
+	return func(uri string) (string, error) {
+		data, contentType, _, err := reader.read(ctx, uri)
+		if err != nil {
+			return "", err
+		}
+		if !providerschema.IsText(data, contentType) {
+			tool := "a tool which reads it"
+			switch media, _, _ := mime.ParseMediaType(contentType); {
+			case strings.HasPrefix(media, "image/"), media == "application/pdf":
+				tool = "llm:ocr"
+			case strings.HasPrefix(media, "audio/"), strings.HasPrefix(media, "video/"):
+				tool = "llm:transcribe"
+			}
+			return "", llm.ErrBadParameter.Withf("%s is %s, which isn't text, so give it to %s, and its text, or the URI of its text, to the agent", uri, contentType, tool)
+		}
+		return string(data), nil
+	}
+}
+
 // agentFinished returns nil when the agent's reply, which is the last of the
 // messages, is complete, or an error, which says how it stopped, when it
 // isn't, such as when it was cut short, or the agent loop stopped it
@@ -388,6 +417,8 @@ func agentFinished(name string, messages []providerschema.Message) error {
 		return llm.ErrMaxTokens.Withf("agent %q didn't finish its reply", name)
 	case providerschema.ResultBlocked:
 		return llm.ErrRefusal.Withf("agent %q's reply was blocked", name)
+	case providerschema.ResultMaxContext:
+		return llm.ErrBadParameter.Withf("agent %q wasn't asked, as its input is too long for its model's context", name)
 	default:
 		return llm.ErrInternalServerError.Withf("agent %q didn't finish its reply, as it stopped with %s", name, result)
 	}
