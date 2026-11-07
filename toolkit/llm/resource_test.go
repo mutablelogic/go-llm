@@ -1,8 +1,11 @@
 package llm_test
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
+	"image"
+	imagepng "image/png"
 	"strings"
 	"testing"
 	"time"
@@ -55,6 +58,9 @@ func Test_Resource(t *testing.T) {
 	subtitles := create(schema.ResourceMeta{Session: &chat, Name: "talk.srt", Type: "application/x-subrip"}, srt)
 	audio := create(schema.ResourceMeta{Session: &chat, Name: "talk.mp3", Type: "audio/mpeg"}, "ID3xxxxxxxx")
 	alone := create(schema.ResourceMeta{Name: "data.csv", Type: "text/csv"}, "name,age\nAnna,42\n")
+	var png bytes.Buffer
+	require.NoError(t, imagepng.Encode(&png, image.NewRGBA(image.Rect(0, 0, 64, 48))))
+	picture := create(schema.ResourceMeta{Session: &chat, Name: "dot.png", Type: "image/png"}, png.String())
 
 	// run calls the tool, in the chat, or without one
 	run := func(session uuid.UUID, input string) (any, error) {
@@ -76,7 +82,7 @@ func Test_Resource(t *testing.T) {
 		result, err := run(chat, `{}`)
 		require.NoError(t, err)
 		table := result.(string)
-		assert.Contains(t, table, "This chat has 3 files:")
+		assert.Contains(t, table, "This chat has 4 files:")
 		assert.Contains(t, table, "| Name | Title | Type | Size | URI |")
 		assert.Contains(t, table, "| notes.txt | Shopping \\| list | text/plain | 34 bytes | "+notes+" |")
 		assert.Contains(t, table, subtitles)
@@ -130,6 +136,31 @@ func Test_Resource(t *testing.T) {
 		got := output(result)
 		assert.Contains(t, got["content"], "The quick brown fox jumps over the lazy dog.")
 		assert.Contains(t, got["content"], "Good morning.")
+	})
+
+	t.Run("Metadata", func(t *testing.T) {
+		// An image isn't text, but has its metadata, such as its size, and
+		// what it is, without what's read next, which is a handler's
+		result, err := run(chat, `{"uri":"`+picture+`"}`)
+		require.NoError(t, err)
+		got := output(result)
+		assert.Nil(t, got["content"])
+		assert.Contains(t, got["note"], "can't be read as text")
+		meta, ok := got["metadata"].(map[string]any)
+		require.True(t, ok, "it has metadata")
+		assert.Equal(t, "64", meta["image:width"])
+		assert.Equal(t, "48", meta["image:height"])
+		assert.Nil(t, meta["metadata:hint"])
+
+		// A text file's is with its first part, and not the next
+		result, err = run(chat, `{"uri":"`+notes+`","limit":10}`)
+		require.NoError(t, err)
+		got = output(result)
+		assert.NotNil(t, got["metadata"])
+		next := uint64(got["next"].(float64))
+		result, err = run(chat, `{"uri":"`+notes+`","offset":`+types.Stringify(next)+`}`)
+		require.NoError(t, err)
+		assert.Nil(t, output(result)["metadata"])
 	})
 
 	t.Run("NotText", func(t *testing.T) {

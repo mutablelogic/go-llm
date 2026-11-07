@@ -20,8 +20,11 @@ import (
 	jsonschema "github.com/mutablelogic/go-server/pkg/jsonschema"
 	types "github.com/mutablelogic/go-server/pkg/types"
 
-	// The handlers which convert files to Markdown, which don't need cgo
+	// The handlers which read files, and convert them to Markdown, which
+	// don't need cgo, with images' dimensions, but not their EXIF, or
+	// audio's, or video's, metadata, which need libexif, or FFmpeg
 	_ "github.com/mutablelogic/go-metadata/application"
+	_ "github.com/mutablelogic/go-metadata/image/raster"
 	_ "github.com/mutablelogic/go-metadata/image/svg"
 	_ "github.com/mutablelogic/go-metadata/message"
 	_ "github.com/mutablelogic/go-metadata/text"
@@ -57,18 +60,20 @@ type readInput struct {
 	Limit  uint64 `json:"limit,omitempty" help:"Most bytes to read, from 4 to 65536, which is 16384 when it's omitted" optional:""`
 }
 
-// readOutput is a part of a file, as Markdown, or what the file is, when it
-// can't be read as Markdown, such as an image, or audio
+// readOutput is a part of a file, as Markdown, with its metadata, such as
+// its title, with the first part, or what the file is, and its metadata,
+// when it can't be read as Markdown, such as an image, or audio
 type readOutput struct {
-	URI     string  `json:"uri"`
-	Name    string  `json:"name,omitempty"`
-	Title   string  `json:"title,omitempty"`
-	Type    string  `json:"type,omitempty"`
-	Size    int64   `json:"size"`
-	Offset  uint64  `json:"offset,omitempty"`
-	Content *string `json:"content,omitempty"`
-	Next    *uint64 `json:"next,omitempty"`
-	Note    string  `json:"note,omitempty"`
+	URI      string            `json:"uri"`
+	Name     string            `json:"name,omitempty"`
+	Title    string            `json:"title,omitempty"`
+	Type     string            `json:"type,omitempty"`
+	Size     int64             `json:"size"`
+	Metadata map[string]string `json:"metadata,omitempty"`
+	Offset   uint64            `json:"offset,omitempty"`
+	Content  *string           `json:"content,omitempty"`
+	Next     *uint64           `json:"next,omitempty"`
+	Note     string            `json:"note,omitempty"`
 }
 
 // part is a part of a file's Markdown: its text, the byte of the Markdown it
@@ -77,6 +82,7 @@ type part struct {
 	body   string
 	offset uint64
 	next   *uint64
+	meta   map[string]string
 }
 
 var _ gollm.Tool = (*resourceTool)(nil)
@@ -94,6 +100,23 @@ const (
 	maxListed = 100
 )
 
+// readNamespaces are the namespaces of a file's metadata which are read,
+// with its Markdown: what it is, its Dublin Core, such as its title, author
+// and date, and its format's, such as an image's width and height, apart
+// from its artwork, which is expensive, and those which are looked up
+// online, such as AcoustID's
+var readNamespaces = []string{
+	metadata.MarkdownNamespace, metadata.MetadataNamespace, "dc",
+	"image", "exif", "iptc", "xmp", "tiff", "heif", "psd",
+	"audio", "video", "quicktime", "subtitle",
+	"pdf", "postscript", "msoffice", "iwork", "mobi", "rtf", "html", "xml", "csv",
+	"ical", "vcard", "email", "mbox", "archive", "google", "android",
+}
+
+// maxMetadataValue is the longest value of a file's metadata which is
+// returned, in bytes, as some, such as XMP, can be long
+const maxMetadataValue = 512
+
 const (
 	// notText is the note when a file can't be read as Markdown, and
 	// beyondEnd when the offset is beyond the end of it
@@ -109,7 +132,7 @@ func (*resourceTool) Name() string {
 }
 
 func (*resourceTool) Description() string {
-	return "Lists the files of this chat, as a table, without a URI, or reads a file, by its URI, resource://<hash>, such as a document, a transcript, subtitles, a web page, an email, or data, as Markdown, rather than in the file's own format: a text file's text, a PDF's, or a Word, or OpenDocument, document's, a spreadsheet's tables, an email's messages, subtitles, or code and data in code blocks. A long file is read a part at a time: read the next part from next, when it's returned. A file which can't be read as text, such as an image, or audio, has no content, only what it is, and a note."
+	return "Lists the files of this chat, as a table, without a URI, or reads a file, by its URI, resource://<hash>, such as a document, a transcript, subtitles, a web page, an email, or data, as Markdown, rather than in the file's own format: a text file's text, a PDF's, or a Word, or OpenDocument, document's, a spreadsheet's tables, an email's messages, subtitles, or code and data in code blocks. A long file is read a part at a time: read the next part from next, when it's returned. The first part has the file's metadata, such as a document's title, author, date and pages, a book's publisher, or an image's width and height. A file which can't be read as text, such as an image, or audio, has no content, only what it is, its metadata, when it has any, and a note."
 }
 
 func (*resourceTool) InputSchema() *jsonschema.Schema {
@@ -148,8 +171,11 @@ func (t *resourceTool) Run(ctx context.Context, input json.RawMessage) (any, err
 	output := readOutput{URI: file.URI(), Name: file.Name, Title: file.Description, Type: file.Type, Size: file.Size}
 	toolkit.Logf(ctx, "Reading %s", describeFile(file))
 
-	// Its part, as Markdown
+	// Its part, as Markdown, and, with the first, its metadata
 	p, err := markdown(ctx, content, file.Type, req.Offset, limit)
+	if p != nil && req.Offset == 0 {
+		output.Metadata = p.meta
+	}
 	switch {
 	case errors.Is(err, gollm.ErrNotImplemented):
 		output.Note = notText
@@ -212,10 +238,12 @@ func (t *resourceTool) open(ctx context.Context, uri string, session uuid.UUID) 
 // PRIVATE FUNCTIONS
 
 // markdown reads the content, of the type, as Markdown, from the byte of
-// its Markdown at the offset, up to the limit. Returns ErrNotImplemented
-// when it has no Markdown, such as audio, or its type isn't known, or it
-// isn't text, as it has a NUL, though its type says it is, and
-// ErrBadParameter when the offset is beyond its end.
+// its Markdown at the offset, up to the limit, with its metadata, other
+// than its Markdown, by namespace and key, such as dc:title. Returns the
+// part, with its metadata, and ErrNotImplemented when it has no Markdown,
+// such as audio, or it isn't text, as it has a NUL, though its type says it
+// is, or the part, without its metadata, and ErrNotImplemented, when its
+// type isn't known, and ErrBadParameter when the offset is beyond its end.
 func markdown(ctx context.Context, r io.Reader, contentType string, offset, limit uint64) (*part, error) {
 	mediatype, _, err := mime.ParseMediaType(contentType)
 	if err != nil {
@@ -223,7 +251,7 @@ func markdown(ctx context.Context, r io.Reader, contentType string, offset, limi
 	}
 	_, meta, err := metadata.Extract(ctx, r,
 		metadata.WithContentType(mediatype),
-		metadata.WithNamespace(metadata.MarkdownNamespace),
+		metadata.WithNamespace(readNamespaces...),
 		metadata.WithRange(fmt.Sprintf("%d:%d", offset, offset+limit)),
 	)
 	switch {
@@ -235,33 +263,42 @@ func markdown(ctx context.Context, r io.Reader, contentType string, offset, limi
 		return nil, err
 	}
 
-	// The part's text, and where it starts, and the next starts
-	var result *part
-	p := part{offset: offset}
+	// The part's text, and where it starts, and the next starts, and its
+	// metadata, apart from the hints of what's read next, which are a
+	// handler's, rather than the file's
+	p := &part{offset: offset}
+	var hasBody bool
 	for _, entry := range meta {
-		if entry.NS() != metadata.MarkdownNamespace {
-			continue
-		}
-		switch entry.Key() {
-		case "body":
-			p.body, result = entry.Value(), &p
-		case "offset":
+		switch {
+		case entry.NS() != metadata.MarkdownNamespace:
+			if entry.NS() == metadata.MetadataNamespace && entry.Key() == metadata.HintKey {
+				continue
+			}
+			if value := strings.TrimSpace(entry.Value()); value != "" {
+				if p.meta == nil {
+					p.meta = make(map[string]string)
+				}
+				p.meta[entry.NS()+":"+entry.Key()] = truncateText(value, maxMetadataValue)
+			}
+		case entry.Key() == "body":
+			p.body, hasBody = entry.Value(), true
+		case entry.Key() == "offset":
 			if value, ok := entry.Any().(uint64); ok {
 				p.offset = value
 			}
-		case "next":
+		case entry.Key() == "next":
 			if value, ok := entry.Any().(uint64); ok {
 				p.next = &value
 			}
 		}
 	}
-	if result == nil {
-		return nil, gollm.ErrNotImplemented.Withf("no Markdown of type %q", mediatype)
-	} else if strings.ContainsRune(result.body, 0) {
+	if !hasBody {
+		return p, gollm.ErrNotImplemented.Withf("no Markdown of type %q", mediatype)
+	} else if strings.ContainsRune(p.body, 0) {
 		// A file which has a NUL isn't text, though its type says it is
-		return nil, gollm.ErrNotImplemented.Withf("no Markdown, as the file of type %q isn't text", mediatype)
+		return &part{meta: p.meta}, gollm.ErrNotImplemented.Withf("no Markdown, as the file of type %q isn't text", mediatype)
 	}
-	return result, nil
+	return p, nil
 }
 
 // describeFile returns what a file is, for people: its name, or its type
