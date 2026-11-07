@@ -189,13 +189,14 @@ func (runner *RunServer) withToolkit(ctx server.Cmd, b *broadcaster.Broadcaster,
 		// The llm namespace, whose tools ask the registry's models, once it's
 		// made, to speak text, read the text in images and documents, and
 		// transcribe speech, with the model the model which calls them gives,
-		// which the person chooses, and the model remembers
+		// which the person chooses, and the model remembers, and whose
+		// resource tool lists a chat's files, and reads them, as Markdown
 		ns, err := llmtools.New(func() llmtools.Models {
 			if r := events.Load(); r != nil {
 				return r
 			}
 			return nil
-		})
+		}, llmtools.WithResources(res))
 		if err != nil {
 			return err
 		}

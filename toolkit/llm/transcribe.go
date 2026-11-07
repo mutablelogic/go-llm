@@ -6,6 +6,8 @@ import (
 	"encoding/json"
 	"strings"
 	"time"
+	"unicode"
+	"unicode/utf8"
 
 	// Packages
 	gollm "github.com/mutablelogic/go-llm"
@@ -54,11 +56,22 @@ var transcriptFormats = map[string]transcriptFormat{
 	"vtt":      {contentType: "text/vtt; charset=utf-8", ext: ".vtt", segments: true},
 }
 
-// transcribeOutput is the text of the speech, and its language
+// transcribeOutput is the text of the speech, or its start, when it's
+// long, and its language, and a note of where the rest is
 type transcribeOutput struct {
-	Text     string `json:"text"`
-	Language string `json:"language,omitempty"`
+	Text      string `json:"text"`
+	Language  string `json:"language,omitempty"`
+	Truncated bool   `json:"truncated,omitempty"`
+	Note      string `json:"note,omitempty"`
 }
+
+// maxTranscriptText is the most of a transcript's text which is returned,
+// as a long transcript, such as a podcast's, would fill the context, so the
+// rest of it is read from its file, with the resource tool
+const maxTranscriptText = 8000
+
+// truncatedNote is the note of a transcript whose start is returned
+const truncatedNote = "This is the start of the transcript, which is longer, so the whole of it is kept as a file of the chat, whose URI is in the result. Read the rest of it with the llm:resource tool, by its URI, a part at a time."
 
 var _ gollm.Tool = (*transcribe)(nil)
 
@@ -70,7 +83,7 @@ func (*transcribe) Name() string {
 }
 
 func (t *transcribe) Description() string {
-	return withDefault("Transcribes the speech in audio, such as a recording, or a voice message, which is an attachment, or a tool's result, by its URI, resource://<hash>, as text, in the language it was spoken in, or translates it into English.", t.model, "transcription")
+	return withDefault("Transcribes the speech in audio, such as a recording, or a voice message, which is an attachment, or a tool's result, by its URI, resource://<hash>, as text, in the language it was spoken in, or translates it into English. A long transcript, such as a podcast's, is kept as a file of the chat, and only its start is returned, so read the rest of it with the llm:resource tool.", t.model, "transcription")
 }
 
 func (*transcribe) InputSchema() *jsonschema.Schema {
@@ -130,7 +143,13 @@ func (t *transcribe) Run(ctx context.Context, input json.RawMessage) (any, error
 		return nil, err
 	}
 	toolkit.SessionFromContext(ctx).Usage(usage)
+	// A long transcript is kept, and its start is returned, with a note of
+	// where the rest is
 	output := transcribeOutput{Text: strings.TrimSpace(transcript.Text), Language: transcript.Language}
+	if len(output.Text) > maxTranscriptText {
+		keep = true
+		output.Text, output.Truncated, output.Note = truncateText(output.Text, maxTranscriptText), true, truncatedNote
+	}
 	if !keep {
 		return output, nil
 	}
@@ -203,4 +222,20 @@ func markdownTranscript(transcript gollm.Transcript) string {
 	}
 	flush()
 	return strings.Join(paragraphs, "\n\n")
+}
+
+// truncateText returns the start of the text, at most the length, in bytes,
+// ending at a word, when there's one near the end, with an ellipsis
+func truncateText(text string, length int) string {
+	if len(text) <= length {
+		return text
+	}
+	cut := length
+	for cut > 0 && !utf8.RuneStart(text[cut]) {
+		cut--
+	}
+	if space := strings.LastIndexFunc(text[:cut], unicode.IsSpace); space > cut-200 && space > 0 {
+		cut = space
+	}
+	return strings.TrimSpace(text[:cut]) + "…"
 }

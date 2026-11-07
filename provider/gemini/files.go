@@ -1,7 +1,6 @@
 package gemini
 
 import (
-	"bytes"
 	"context"
 	"io"
 	"net/http"
@@ -18,9 +17,10 @@ import (
 ///////////////////////////////////////////////////////////////////////////////
 // TYPES
 
-// upload is the content of a file, which is uploaded, of its type
+// upload is the content of a file, which is uploaded, of its type, as
+// it's read
 type upload struct {
-	*bytes.Reader
+	io.Reader
 	contentType string
 }
 
@@ -46,10 +46,11 @@ var fileInterval = time.Second
 ///////////////////////////////////////////////////////////////////////////////
 // PRIVATE METHODS
 
-// uploadFile uploads the content, of its type, with the Files API, and
-// returns the file, once it can be used, which is deleted after 48 hours,
-// unless it's deleted before
-func (c *Client) uploadFile(ctx context.Context, data []byte, contentType string) (*file, error) {
+// uploadFile uploads the content, of its length, and type, with the Files
+// API, as it's read, so it isn't held in memory, and returns the file, once
+// it can be used, which is deleted after 48 hours, unless it's deleted
+// before
+func (c *Client) uploadFile(ctx context.Context, read llm.ReadFunc, length int64, contentType string) (*file, error) {
 	// Start the upload, which says where its content is uploaded to
 	start, err := client.NewJSONRequest(map[string]any{"file": map[string]any{"displayName": "audio"}})
 	if err != nil {
@@ -60,7 +61,7 @@ func (c *Client) uploadFile(ctx context.Context, data []byte, contentType string
 		client.OptReqEndpoint(c.uploadEndpoint()),
 		client.OptReqHeader("X-Goog-Upload-Protocol", "resumable"),
 		client.OptReqHeader("X-Goog-Upload-Command", "start"),
-		client.OptReqHeader("X-Goog-Upload-Header-Content-Length", strconv.Itoa(len(data))),
+		client.OptReqHeader("X-Goog-Upload-Header-Content-Length", strconv.FormatInt(length, 10)),
 		client.OptReqHeader("X-Goog-Upload-Header-Content-Type", contentType),
 	); err != nil {
 		return nil, err
@@ -68,15 +69,17 @@ func (c *Client) uploadFile(ctx context.Context, data []byte, contentType string
 		return nil, llm.ErrServiceUnavailable.With("the upload has nowhere to go")
 	}
 
-	// Upload its content, and finish
+	// Upload its content, as it's read, and finish
 	var result uploaded
-	if err := c.DoWithContext(ctx, &upload{Reader: bytes.NewReader(data), contentType: contentType}, &result,
-		client.OptReqEndpoint(string(to)),
-		client.OptReqHeader("X-Goog-Upload-Offset", "0"),
-		client.OptReqHeader("X-Goog-Upload-Command", "upload, finalize"),
-		client.OptReqTransport(withLength(int64(len(data)))),
-		client.OptNoTimeout(),
-	); err != nil {
+	if err := read(ctx, func(r io.Reader) error {
+		return c.DoWithContext(ctx, &upload{Reader: r, contentType: contentType}, &result,
+			client.OptReqEndpoint(string(to)),
+			client.OptReqHeader("X-Goog-Upload-Offset", "0"),
+			client.OptReqHeader("X-Goog-Upload-Command", "upload, finalize"),
+			client.OptReqTransport(withLength(length)),
+			client.OptNoTimeout(),
+		)
+	}); err != nil {
 		return nil, err
 	}
 

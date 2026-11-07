@@ -355,14 +355,14 @@ func Test_UnreadableAttachments(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, []string{"image/png:" + pngData}, attachments(t, p.asked[2].messages[len(p.asked[2].messages)-1]))
 
-	// A tool reads a resource up to MaxAttachmentsSize, which the image,
-	// in the history, is, but the audio isn't
+	// A tool is given a resource as it's kept, which it reads itself,
+	// whatever MaxAttachmentsSize is, as it isn't read for it
 	limit := registry.MaxAttachmentsSize
 	registry.MaxAttachmentsSize = int64(len(pngData))
 	t.Cleanup(func() { registry.MaxAttachmentsSize = limit })
 	response, err = r.Chat(ctx, session.ID, []llm.Message{user(t, "Read it again")}, nil)
 	require.NoError(t, err)
-	assert.Contains(t, toolResult(t, response.Messages), fmt.Sprintf("larger than %d bytes", len(pngData)))
+	assert.Contains(t, toolResult(t, response.Messages), fmt.Sprintf(`"bytes":%d`, len(pngData)+3))
 }
 
 // toolResult returns the content of the first tool result of the messages
@@ -528,9 +528,11 @@ func Test_ReplyResourcesInHistory(t *testing.T) {
 	assert.Equal(t, []string{"image/png:" + pngData}, attachments(t, maker.asked[0].messages[1]))
 }
 
-func Test_ToolReadsTogether(t *testing.T) {
-	// The resources a tool reads together are read once each, and within
-	// MaxAttachmentsSize, together, rather than each within it
+func Test_ToolResourcesAsKept(t *testing.T) {
+	// The resources a tool is given, together, are given as they're kept,
+	// with their lengths, and aren't read for it, so they're read as the
+	// tool reads them, such as audio which is streamed to its provider,
+	// whatever MaxAttachmentsSize is
 	ctx := context.Background()
 	sessions := test.NewSessionStore()
 	manager, err := resourcemanager.New(resourcemanager.NewStore(), resourcemanager.WithSessions(func(ctx context.Context, id uuid.UUID) error {
@@ -546,7 +548,7 @@ func Test_ToolReadsTogether(t *testing.T) {
 	require.NoError(t, tk.Add(toolkit.NewNamespace("files", "", readTool{})))
 	p := newScripted(
 		call("files__read", `{"uris":["`+image.URI()+`","`+image.URI()+`"]}`), text("Read twice"),
-		call("files__read", `{"uris":["`+image.URI()+`","`+audio.URI()+`"]}`), text("Too large"),
+		call("files__read", `{"uris":["`+image.URI()+`","`+audio.URI()+`"]}`), text("Read both"),
 	)
 	r, err := registry.New(registry.WithSessionStore(sessions), registry.WithToolkit(tk), registry.WithResources(manager))
 	require.NoError(t, err)
@@ -554,20 +556,17 @@ func Test_ToolReadsTogether(t *testing.T) {
 	session, err := r.CreateSession(ctx, schema.SessionMeta{GeneratorMeta: schema.GeneratorMeta{Model: types.Ptr("model"), Tools: []string{"files:*"}}})
 	require.NoError(t, err)
 
-	// Each of which can be read, but not both
+	// Less than either, which would limit what's read for them
 	limit := registry.MaxAttachmentsSize
-	registry.MaxAttachmentsSize = int64(len(pngData)) + 10
+	registry.MaxAttachmentsSize = 4
 	t.Cleanup(func() { registry.MaxAttachmentsSize = limit })
 
-	// The same image, twice, is read once
 	response, err := r.Chat(ctx, session.ID, []llm.Message{user(t, "Read it twice")}, nil)
 	require.NoError(t, err)
 	assert.Contains(t, toolResult(t, response.Messages), fmt.Sprintf(`"bytes":%d`, 2*len(pngData)))
-
-	// The image and the audio are too large, together
 	response, err = r.Chat(ctx, session.ID, []llm.Message{user(t, "Read both")}, nil)
 	require.NoError(t, err)
-	assert.Contains(t, toolResult(t, response.Messages), "larger than")
+	assert.Contains(t, toolResult(t, response.Messages), fmt.Sprintf(`"bytes":%d`, 2*len(pngData)+3))
 }
 
 // illustrating is a provider which makes images, and keeps those it's given
@@ -640,4 +639,71 @@ func resources(t *testing.T, resources []llm.Resource) []string {
 		result = append(result, r.Type()+":"+string(data))
 	}
 	return result
+}
+
+// listening is a provider which transcribes, and keeps the audio it's given
+type listening struct {
+	*scripted
+	audio llm.Resource
+}
+
+func (p *listening) Self() llm.Provider { return p }
+
+func (p *listening) Transcribe(_ context.Context, _ llm.Model, audio llm.Resource, _ llm.TranscriberStreamFn, _ ...llm.Opt) (llm.Transcript, llm.Usage, error) {
+	p.audio = audio
+	return llm.Transcript{Text: "Hello"}, llm.Usage{}, nil
+}
+
+func (p *listening) Translate(_ context.Context, _ llm.Model, audio llm.Resource, _ llm.TranscriberStreamFn, _ ...llm.Opt) (llm.Transcript, llm.Usage, error) {
+	p.audio = audio
+	return llm.Transcript{Text: "Hello", Language: "en"}, llm.Usage{}, nil
+}
+
+func Test_StreamedAudio(t *testing.T) {
+	// Audio which refers to a resource, by its URI, is given to its provider
+	// as it's kept, with its length, and type, whatever MaxAttachmentsSize
+	// is, so the provider reads it as it sends it, rather than it being read
+	// into memory
+	ctx := context.Background()
+	manager, err := resourcemanager.New(resourcemanager.NewStore())
+	require.NoError(t, err)
+	content := "ID3" + strings.Repeat("x", 1000)
+	kept, _, err := manager.Create(ctx, resourceschema.ResourceMeta{Name: "talk.mp3", Type: "audio/mpeg"}, strings.NewReader(content))
+	require.NoError(t, err)
+	p := &listening{scripted: newScripted()}
+	r, err := registry.New(registry.WithResources(manager))
+	require.NoError(t, err)
+	require.NoError(t, r.Add("", p))
+	m := &model{name: "model", provider: p, caps: llm.ModelCap{Transcription: types.Ptr(true), Translation: types.Ptr(true)}}
+	limit := registry.MaxAttachmentsSize
+	registry.MaxAttachmentsSize = 4
+	t.Cleanup(func() { registry.MaxAttachmentsSize = limit })
+	u, err := url.Parse(kept.URI())
+	require.NoError(t, err)
+
+	for name, run := range map[string]func(llm.Resource) error{
+		"Transcribe": func(audio llm.Resource) error { _, _, err := r.Transcribe(ctx, m, audio, nil); return err },
+		"Translate":  func(audio llm.Resource) error { _, _, err := r.Translate(ctx, m, audio, nil); return err },
+	} {
+		t.Run(name, func(t *testing.T) {
+			require.NoError(t, run(&providerschema.Resource{ResourceMeta: providerschema.ResourceMeta{URL: u}}))
+			_, read := p.audio.(*providerschema.Resource)
+			assert.False(t, read, "it isn't read for the provider")
+			length, ok := llm.ContentLength(p.audio)
+			assert.True(t, ok)
+			assert.Equal(t, int64(len(content)), length)
+			assert.Equal(t, "audio/mpeg", p.audio.Type())
+			assert.Equal(t, "talk.mp3", p.audio.Name())
+			data, err := llm.ReadAll(ctx, p.audio)
+			require.NoError(t, err)
+			assert.Equal(t, content, string(data))
+
+			// With the type it's given, rather than its own
+			require.NoError(t, run(&providerschema.Resource{ResourceMeta: providerschema.ResourceMeta{URL: u, ContentType: "audio/mp4"}}))
+			assert.Equal(t, "audio/mp4", p.audio.Type())
+			length, ok = llm.ContentLength(p.audio)
+			assert.True(t, ok)
+			assert.Equal(t, int64(len(content)), length)
+		})
+	}
 }
