@@ -112,6 +112,7 @@ func (r *Registry) withContent(ctx context.Context, session uuid.UUID, messages 
 	reader := r.newContentReader(session)
 	if history {
 		reader.accepts = accepts(model)
+		reader.made = model != nil && types.Value(model.Capabilities().ImageOutput)
 	}
 	for i, m := range messages {
 		message, ok := schemaMessage(m)
@@ -361,6 +362,12 @@ type contentReader struct {
 	// accepts returns whether the model accepts an attachment of the type,
 	// or is nil, when every attachment is sent
 	accepts func(string) bool
+
+	// made is whether what a model made, in its replies, such as an image,
+	// is read, which it is for a model which makes images, so it can change
+	// them, and otherwise is a note, with its URI, so it doesn't count
+	// against the most which is read, for a model which wouldn't be sent it
+	made bool
 }
 
 // readContent is the content of a resource, its type, and its name
@@ -390,6 +397,12 @@ func (c *contentReader) attachments(ctx context.Context, message providerschema.
 			continue
 		}
 		uri := block.Resource.URL.String()
+		// What a model made, in a reply, such as an image, is only read for a
+		// model which makes images, which can change it
+		if history && message.Role() == "assistant" && !c.made {
+			content = append(content, providerschema.ContentBlock{Text: types.Ptr("(The reply made " + uri + ", which is " + block.Resource.ContentType + ". Its URI is for tools, which can read it.)")})
+			continue
+		}
 		// An attachment the model doesn't accept isn't read, unless it may be
 		// text, which is sent as text
 		if contentType := block.Resource.ContentType; !c.accept(contentType) && !providerschema.IsText(nil, contentType) {

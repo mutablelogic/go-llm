@@ -345,7 +345,13 @@ func modelParts(m llm.Message, calls map[string]toolCall) []part {
 			}
 		case block.Resource != nil && len(block.Resource.Data) > 0:
 			// What a model made, such as an image, which is sent back, with
-			// Gemini's signature, so it can change it
+			// Gemini's signature, so it can change it, unless it's an image
+			// in a format the API doesn't take, which is a note
+			if !imageFormat(block.Resource.ContentType) {
+				parts = append(parts, part{Text: schema.Unreadable(block.Resource.URI(), block.Resource.ContentType)})
+				replied = true
+				continue
+			}
 			p := part{InlineData: &blob{MimeType: block.Resource.ContentType, Data: block.Resource.Data}}
 			if block.Signature != nil {
 				p.ThoughtSignature = *block.Signature
