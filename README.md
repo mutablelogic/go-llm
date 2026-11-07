@@ -53,6 +53,7 @@ Providers which weren't added when the server was first started are added with t
 llm provider-create-ollama http://host.docker.internal:11434
 llm provider-create-openai --api-key-credential OPENAI_API_KEY
 llm provider-create-anthropic --api-key-credential ANTHROPIC_API_KEY
+llm provider-create-gemini --api-key-credential GEMINI_API_KEY
 llm provider-create-mistral --api-key-credential MISTRAL_API_KEY
 llm provider-create-gowhisper http://host.docker.internal:8081
 llm provider-create-elevenlabs --api-key-credential ELEVENLABS_API_KEY
@@ -252,6 +253,7 @@ The registry can be used without the server, from your own Go program, as the [e
 | `ollama` | [Ollama](https://ollama.com) | ✅ | ✅ | ✅ (images) | | | ✅ (phonon) | Download, delete, unload |
 | `openai` | [OpenAI](https://platform.openai.com) | ✅ | ✅ | | ✅ | ✅ (whisper) | ✅ (tts) | |
 | `anthropic` | [Anthropic](https://www.anthropic.com)'s Claude models, which count tokens exactly, to fit a conversation to the model's context | ✅ | | | | | | |
+| `gemini` | [Google](https://ai.google.dev)'s Gemini models, which count tokens exactly. Replies are still to come | | | | | | | |
 | `openai` | [Mistral](https://mistral.ai), at `https://api.mistral.ai/v1` | ✅ | ✅ | ✅ | ✅ | | | |
 | `openai` | [DeepSeek](https://www.deepseek.com), and other OpenAI-compatible servers | ✅ | | | | | | |
 | `gowhisper` | [go-whisper](https://github.com/mutablelogic/go-whisper) | | | | ✅ | ✅ | | Download, delete |
@@ -265,7 +267,7 @@ What a model can do depends on the model, which its provider reports, where it k
 | Group | Commands |
 |-------|----------|
 | Server | `run`, `openapi` |
-| Providers | `providers`, `provider`, `provider-create-ollama`, `provider-create-openai`, `provider-create-anthropic`, `provider-create-mistral`, `provider-create-deepseek`, `provider-create-gowhisper`, `provider-create-elevenlabs`, `provider-create-eliza`, `provider-update`, `provider-delete` |
+| Providers | `providers`, `provider`, `provider-create-ollama`, `provider-create-openai`, `provider-create-anthropic`, `provider-create-gemini`, `provider-create-mistral`, `provider-create-deepseek`, `provider-create-gowhisper`, `provider-create-elevenlabs`, `provider-create-eliza`, `provider-update`, `provider-delete` |
 | Models | `models`, `model`, `model-load`, `model-delete`, `model-unload` |
 | Sessions | `sessions`, `session`, `session-messages`, `session-create`, `session-update`, `session-delete` |
 | Inference | `ask`, `chat`, `embed`, `ocr`, `transcribe`, `translate`, `speak` |

@@ -31,6 +31,7 @@ type ProviderCommands struct {
 	ProviderCreateDeepSeek   ProviderCreateDeepSeekCmd   `cmd:"" name:"provider-create-deepseek" help:"Create a DeepSeek provider." group:"LLM PROVIDERS"`
 	ProviderCreateMistral    ProviderCreateMistralCmd    `cmd:"" name:"provider-create-mistral" help:"Create a Mistral provider." group:"LLM PROVIDERS"`
 	ProviderCreateAnthropic  ProviderCreateAnthropicCmd  `cmd:"" name:"provider-create-anthropic" help:"Create an Anthropic provider, for Claude's models." group:"LLM PROVIDERS"`
+	ProviderCreateGemini     ProviderCreateGeminiCmd     `cmd:"" name:"provider-create-gemini" help:"Create a Gemini provider, for Google's Gemini models." group:"LLM PROVIDERS"`
 }
 
 type ProviderListCmd struct {
@@ -113,6 +114,14 @@ type ProviderCreateAnthropicCmd struct {
 	ProviderModels
 	Name             string `name:"name" default:"anthropic" help:"Provider name."`
 	APIKeyCredential string `name:"api-key-credential" help:"Name of the credential holding the API key, such as ANTHROPIC_API_KEY." required:""`
+}
+
+// ProviderCreateGeminiCmd creates a provider for Google's Gemini API, at a
+// fixed URL, which needs an API key
+type ProviderCreateGeminiCmd struct {
+	ProviderModels
+	Name             string `name:"name" default:"gemini" help:"Provider name."`
+	APIKeyCredential string `name:"api-key-credential" help:"Name of the credential holding the API key, such as GEMINI_API_KEY." required:""`
 }
 
 // ProviderCreateElevenLabsCmd creates a provider for ElevenLabs, at a
@@ -266,6 +275,16 @@ func (cmd *ProviderCreateAnthropicCmd) Run(ctx server.Cmd) error {
 	return createProvider(ctx, "llm.ProviderCreateAnthropicCmd", schema.Provider{
 		Name:    cmd.Name,
 		Type:    llm.Anthropic,
+		Include: cmd.Include,
+		Exclude: cmd.Exclude,
+		APIKey:  placeholder(cmd.APIKeyCredential),
+	})
+}
+
+func (cmd *ProviderCreateGeminiCmd) Run(ctx server.Cmd) error {
+	return createProvider(ctx, "llm.ProviderCreateGeminiCmd", schema.Provider{
+		Name:    cmd.Name,
+		Type:    llm.Gemini,
 		Include: cmd.Include,
 		Exclude: cmd.Exclude,
 		APIKey:  placeholder(cmd.APIKeyCredential),

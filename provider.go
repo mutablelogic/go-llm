@@ -265,4 +265,5 @@ const (
 	GoWhisper  = "gowhisper"
 	ElevenLabs = "elevenlabs"
 	Anthropic  = "anthropic"
+	Gemini     = "gemini"
 )

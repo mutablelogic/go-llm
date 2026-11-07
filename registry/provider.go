@@ -13,6 +13,7 @@ import (
 	anthropic "github.com/mutablelogic/go-llm/provider/anthropic"
 	elevenlabs "github.com/mutablelogic/go-llm/provider/elevenlabs"
 	eliza "github.com/mutablelogic/go-llm/provider/eliza"
+	gemini "github.com/mutablelogic/go-llm/provider/gemini"
 	gowhisper "github.com/mutablelogic/go-llm/provider/gowhisper"
 	ollama "github.com/mutablelogic/go-llm/provider/ollama"
 	openai "github.com/mutablelogic/go-llm/provider/openai"
@@ -295,6 +296,11 @@ func (r *Registry) newProvider(ctx context.Context, req schema.Provider) (string
 			return "", nil, nil, llm.ErrBadParameter.With("anthropic needs an API key")
 		}
 		provider, err = anthropic.New(req.URL, apiKey, clientOpts...)
+	case llm.Gemini:
+		if apiKey == "" {
+			return "", nil, nil, llm.ErrBadParameter.With("gemini needs an API key")
+		}
+		provider, err = gemini.New(req.URL, apiKey, clientOpts...)
 	case llm.ElevenLabs:
 		if apiKey == "" {
 			return "", nil, nil, llm.ErrBadParameter.With("elevenlabs needs an API key")
