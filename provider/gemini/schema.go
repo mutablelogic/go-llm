@@ -44,12 +44,14 @@ type content struct {
 // reply, its thinking, which is its thought, and the signature of the
 // thought before it, which is sent back with it
 type part struct {
-	Text             string            `json:"text,omitempty"`
-	Thought          bool              `json:"thought,omitempty"`
-	ThoughtSignature string            `json:"thoughtSignature,omitempty"`
-	InlineData       *blob             `json:"inlineData,omitempty"`
-	FunctionCall     *functionCall     `json:"functionCall,omitempty"`
-	FunctionResponse *functionResponse `json:"functionResponse,omitempty"`
+	Text             string              `json:"text,omitempty"`
+	Thought          bool                `json:"thought,omitempty"`
+	ThoughtSignature string              `json:"thoughtSignature,omitempty"`
+	InlineData       *blob               `json:"inlineData,omitempty"`
+	FunctionCall     *functionCall       `json:"functionCall,omitempty"`
+	FunctionResponse *functionResponse   `json:"functionResponse,omitempty"`
+	FileData         *fileData           `json:"fileData,omitempty"`
+	Transcription    *audioTranscription `json:"audioTranscription,omitempty"`
 }
 
 // functionCall is a model's call of a function, with its arguments, and
@@ -105,19 +107,29 @@ type functionCallingConfig struct {
 
 // generationConfig is how a model generates its reply
 type generationConfig struct {
-	Temperature        *float64        `json:"temperature,omitempty"`
-	TopP               *float64        `json:"topP,omitempty"`
-	TopK               *uint           `json:"topK,omitempty"`
-	MaxOutputTokens    uint            `json:"maxOutputTokens,omitempty"`
-	StopSequences      []string        `json:"stopSequences,omitempty"`
-	Seed               *uint           `json:"seed,omitempty"`
-	PresencePenalty    *float64        `json:"presencePenalty,omitempty"`
-	FrequencyPenalty   *float64        `json:"frequencyPenalty,omitempty"`
-	ResponseMimeType   string          `json:"responseMimeType,omitempty"`
-	ResponseJSONSchema json.RawMessage `json:"responseJsonSchema,omitempty"`
-	ThinkingConfig     *thinkingConfig `json:"thinkingConfig,omitempty"`
-	ResponseModalities []string        `json:"responseModalities,omitempty"`
-	ImageConfig        *imageConfig    `json:"imageConfig,omitempty"`
+	Temperature         *float64                  `json:"temperature,omitempty"`
+	TopP                *float64                  `json:"topP,omitempty"`
+	TopK                *uint                     `json:"topK,omitempty"`
+	MaxOutputTokens     uint                      `json:"maxOutputTokens,omitempty"`
+	StopSequences       []string                  `json:"stopSequences,omitempty"`
+	Seed                *uint                     `json:"seed,omitempty"`
+	PresencePenalty     *float64                  `json:"presencePenalty,omitempty"`
+	FrequencyPenalty    *float64                  `json:"frequencyPenalty,omitempty"`
+	ResponseMimeType    string                    `json:"responseMimeType,omitempty"`
+	ResponseJSONSchema  json.RawMessage           `json:"responseJsonSchema,omitempty"`
+	ThinkingConfig      *thinkingConfig           `json:"thinkingConfig,omitempty"`
+	ResponseModalities  []string                  `json:"responseModalities,omitempty"`
+	ImageConfig         *imageConfig              `json:"imageConfig,omitempty"`
+	TranscriptionConfig *audioTranscriptionConfig `json:"audioTranscriptionConfig,omitempty"`
+}
+
+// audioTranscriptionConfig is how a transcription model transcribes: in
+// the languages, by their codes, with when each word is spoken, and who
+// spoke it
+type audioTranscriptionConfig struct {
+	LanguageCodes []string `json:"languageCodes,omitempty"`
+	WordTimestamp bool     `json:"wordTimestamp,omitempty"`
+	Diarization   bool     `json:"diarization,omitempty"`
 }
 
 // imageConfig is the aspect ratio, such as 16:9, and size, such as 2K, of
@@ -179,6 +191,37 @@ type apiError struct {
 
 // blob is data, inline, with its type, encoded as base64, as JSON encodes
 // bytes
+// fileData is a file, uploaded with the Files API, by its URI
+type fileData struct {
+	MimeType string `json:"mimeType,omitempty"`
+	FileURI  string `json:"fileUri"`
+}
+
+// audioTranscription is a transcription model's text, of a speaker's turn,
+// when who spoke is asked for, with when each word was spoken, when that's
+// asked for, as offsets, such as 0.200s
+type audioTranscription struct {
+	Text         string            `json:"text,omitempty"`
+	SpeakerLabel string            `json:"speakerLabel,omitempty"`
+	Words        []transcribedWord `json:"words,omitempty"`
+}
+
+type transcribedWord struct {
+	Word        string `json:"word"`
+	StartOffset string `json:"startOffset,omitempty"`
+	EndOffset   string `json:"endOffset,omitempty"`
+}
+
+// file is a file uploaded with the Files API, by its name, such as
+// files/abc, and URI, which it's referred to by, and its state, which is
+// ACTIVE once it can be used
+type file struct {
+	Name     string `json:"name"`
+	URI      string `json:"uri"`
+	MimeType string `json:"mimeType,omitempty"`
+	State    string `json:"state,omitempty"`
+}
+
 type blob struct {
 	MimeType string `json:"mimeType"`
 	Data     []byte `json:"data"`
