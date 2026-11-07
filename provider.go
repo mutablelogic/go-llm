@@ -131,6 +131,19 @@ type Speaker interface {
 	Speak(context.Context, Model, string, ...Opt) (Resource, Usage, error)
 }
 
+// Illustrator is an interface for providers whose models make images
+type Illustrator interface {
+	// Illustrate returns the images the model makes from the prompt, or,
+	// with images, the images it makes by changing, or combining, them, as
+	// the prompt says, with their types, such as image/png, and the tokens
+	// used. The options can set the aspect ratio of the images
+	// (AspectRatioKey), and their size (ImageSizeKey), for a model which
+	// takes them. Options which the provider doesn't support are rejected.
+	// Returns an error when the model made no image, such as when it
+	// refused, with what it said.
+	Illustrate(context.Context, Model, string, []Resource, ...Opt) ([]Resource, Usage, error)
+}
+
 // Recognizer is an interface for providers which recognize the text in
 // images and documents, which is optical character recognition (OCR)
 type Recognizer interface {

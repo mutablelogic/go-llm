@@ -35,6 +35,10 @@ type Models interface {
 	// Speak returns the text, spoken by the model, as audio
 	Speak(ctx context.Context, model gollm.Model, text string, opts ...gollm.Opt) (gollm.Resource, gollm.Usage, error)
 
+	// Illustrate returns the images the model makes from the prompt, or by
+	// changing, or combining, the images
+	Illustrate(ctx context.Context, model gollm.Model, prompt string, images []gollm.Resource, opts ...gollm.Opt) ([]gollm.Resource, gollm.Usage, error)
+
 	// Recognize returns the text in the image, or document
 	Recognize(ctx context.Context, model gollm.Model, resource gollm.Resource, opts ...gollm.Opt) (gollm.Document, gollm.Usage, error)
 
@@ -49,8 +53,8 @@ type Models interface {
 // when the registry, which has the toolkit, isn't made yet
 type ModelsFunc func() Models
 
-// Namespace is the llm namespace, of its tools: models, speak, ocr, and
-// transcribe,
+// Namespace is the llm namespace, of its tools: models, speak, illustrate,
+// ocr, and transcribe,
 // each with the model the model which calls it gives, or its default
 type Namespace struct {
 	tools []gollm.Tool
@@ -82,6 +86,7 @@ func New(models ModelsFunc, opts ...Opt) (*Namespace, error) {
 		&ocr{models: models, model: o.ocrModel},
 		&transcribe{models: models, model: o.transcribeModel},
 		&listModels{models: models},
+		&illustrate{models: models},
 	}}, nil
 }
 
@@ -95,7 +100,7 @@ func (*Namespace) Name() string {
 
 // Description returns what the namespace's tools are for
 func (*Namespace) Description() string {
-	return "Models which do what the model which calls them can't: speak text, read the text in images and documents, and transcribe speech, and the models which can, by what they can do"
+	return "Models which do what the model which calls them can't: speak text, make and change images, read the text in images and documents, and transcribe speech, and the models which can, by what they can do"
 }
 
 // SystemPrompt returns nothing, as each tool says what it does

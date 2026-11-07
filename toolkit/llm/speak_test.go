@@ -22,7 +22,8 @@ import (
 // it's given, and keeps the options it was given
 type models struct {
 	opts       *gollm.Opts
-	noSegments bool // Whether it never returns segments, as some models don't
+	images     []gollm.Resource // The images it was last asked to change
+	noSegments bool             // Whether it never returns segments, as some models don't
 }
 
 type model struct {
@@ -73,6 +74,19 @@ func (m *models) Speak(_ context.Context, _ gollm.Model, text string, opts ...go
 	return &providerschema.Resource{ResourceMeta: providerschema.ResourceMeta{ContentType: "audio/wav", Data: []byte(text)}}, gollm.Usage{}, nil
 }
 
+func (m *models) Illustrate(_ context.Context, _ gollm.Model, prompt string, images []gollm.Resource, opts ...gollm.Opt) ([]gollm.Resource, gollm.Usage, error) {
+	o, err := gollm.ApplyOpts(opts...)
+	if err != nil {
+		return nil, gollm.Usage{}, err
+	}
+	m.opts, m.images = o, images
+	made := []gollm.Resource{&providerschema.Resource{ResourceMeta: providerschema.ResourceMeta{ContentType: "image/png", Data: []byte(prompt)}}}
+	if strings.Contains(prompt, "two") {
+		made = append(made, &providerschema.Resource{ResourceMeta: providerschema.ResourceMeta{ContentType: "image/jpeg", Data: []byte(prompt)}})
+	}
+	return made, gollm.Usage{OutputTokens: 1290}, nil
+}
+
 func (m *models) Recognize(_ context.Context, _ gollm.Model, resource gollm.Resource, opts ...gollm.Opt) (gollm.Document, gollm.Usage, error) {
 	o, err := gollm.ApplyOpts(opts...)
 	if err != nil {
@@ -115,7 +129,7 @@ func Test_Speak(t *testing.T) {
 	ns, err := llm.New(func() llm.Models { return m })
 	require.NoError(t, err)
 	assert.Equal(t, "llm", ns.Name())
-	require.Len(t, ns.Tools(), 4)
+	require.Len(t, ns.Tools(), 5)
 	assert.Contains(t, ns.Tools()[0].Description(), "recall the memory preferred_models")
 	assert.Contains(t, ns.Tools()[0].Description(), "with the speech_output capability with the models tool")
 	_, err = ns.Tools()[0].Run(ctx, json.RawMessage(`{"text":"Hello"}`))
@@ -475,4 +489,55 @@ func Test_TextFiles(t *testing.T) {
 	require.NoError(t, err)
 	_, isResult = result.(toolkit.Result)
 	assert.False(t, isResult)
+}
+
+func Test_Illustrate(t *testing.T) {
+	m := &models{}
+	ns, err := llm.New(func() llm.Models { return m })
+	require.NoError(t, err)
+	tool := ns.Tools()[4]
+	assert.Equal(t, "illustrate", tool.Name())
+	assert.Contains(t, tool.Description(), "with the image_output capability with the models tool")
+	var lines []string
+	session := toolkit.NewSession("llm", uuid.Nil(), func(what gollm.StreamType, text string) {
+		if what == gollm.StreamLog {
+			lines = append(lines, strings.TrimSpace(text))
+		}
+	}, nil)
+	ctx := toolkit.WithResolver(toolkit.WithSession(context.Background(), session), func(_ context.Context, uri string) (gollm.Resource, error) {
+		return &providerschema.Resource{ResourceMeta: providerschema.ResourceMeta{ContentType: "image/png", Data: []byte(uri)}}, nil
+	})
+	run := func(input string) (toolkit.Result, error) {
+		result, err := tool.Run(ctx, json.RawMessage(input))
+		if err != nil {
+			return toolkit.Result{}, err
+		}
+		return result.(toolkit.Result), nil
+	}
+
+	// An image, named, and titled, as the model says, with its aspect ratio
+	result, err := run(`{"prompt":"A banana","model":"phonon","name":"banana","title":"A banana on a beach","aspect_ratio":"16:9"}`)
+	require.NoError(t, err)
+	require.Len(t, result.Resources, 1)
+	assert.Equal(t, "banana.png", result.Resources[0].Name())
+	assert.Equal(t, "A banana on a beach", result.Resources[0].Description())
+	ratio, _ := gollm.GetOpt[string](m.opts, gollm.AspectRatioKey)
+	assert.Equal(t, "16:9", ratio)
+
+	// Images it changes, by their URIs, and more than one, which are numbered
+	result, err = run(`{"prompt":"two bananas","model":"phonon","images":["resource://a","resource://b"]}`)
+	require.NoError(t, err)
+	require.Len(t, m.images, 2)
+	require.Len(t, result.Resources, 2)
+	assert.Equal(t, "image-1.png", result.Resources[0].Name())
+	assert.Equal(t, "image-2.jpg", result.Resources[1].Name())
+	_, err = run(`{"prompt":"Sunset","model":"phonon","images":["resource://a"]}`)
+	require.NoError(t, err)
+	assert.Equal(t, []string{"Making an image", "Combining 2 images", "Changing the image"}, lines)
+
+	// No prompt, and no model, which the person chooses
+	_, err = run(`{"prompt":" ","model":"phonon"}`)
+	assert.ErrorIs(t, err, gollm.ErrBadParameter)
+	_, err = run(`{"prompt":"A banana"}`)
+	assert.ErrorContains(t, err, "image_output capability")
 }

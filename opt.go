@@ -81,6 +81,10 @@ const (
 	SegmentsKey = "segments" // bool, whether a transcript has its segments, with when each was spoken
 	SpeakersKey = "speakers" // bool, whether a transcript's segments have who spoke them
 
+	// Images
+	AspectRatioKey = "aspect_ratio" // string, aspect ratio of the images made, such as "16:9"
+	ImageSizeKey   = "image_size"   // string, size of the images made, such as "1K", "2K" or "4K"
+
 	// Speech
 	VoiceKey        = "voice"        // string, voice the text is spoken in, by its name
 	AudioFormatKey  = "audio_format" // string, format of the speech, such as "wav", "mp3" or "pcm"

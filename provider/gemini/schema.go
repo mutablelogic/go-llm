@@ -116,6 +116,15 @@ type generationConfig struct {
 	ResponseMimeType   string          `json:"responseMimeType,omitempty"`
 	ResponseJSONSchema json.RawMessage `json:"responseJsonSchema,omitempty"`
 	ThinkingConfig     *thinkingConfig `json:"thinkingConfig,omitempty"`
+	ResponseModalities []string        `json:"responseModalities,omitempty"`
+	ImageConfig        *imageConfig    `json:"imageConfig,omitempty"`
+}
+
+// imageConfig is the aspect ratio, such as 16:9, and size, such as 2K, of
+// the images a model makes
+type imageConfig struct {
+	AspectRatio string `json:"aspectRatio,omitempty"`
+	ImageSize   string `json:"imageSize,omitempty"`
 }
 
 // thinkingConfig is how a model thinks: whether its thoughts are returned,

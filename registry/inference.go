@@ -172,6 +172,42 @@ func (r *Registry) Speak(ctx context.Context, model llm.Model, text string, opts
 	return audio, usage, nil
 }
 
+// Illustrate returns the images the model makes from the prompt, or by
+// changing, or combining, the images, which can refer to resources, by
+// their URIs, as the prompt says, from the model's provider, which must be
+// in the registry, and make images. Returns ErrNotImplemented when the
+// model is known not to make images, and the provider's error as
+// providerErr does.
+func (r *Registry) Illustrate(ctx context.Context, model llm.Model, prompt string, images []llm.Resource, opts ...llm.Opt) (_ []llm.Resource, _ llm.Usage, err error) {
+	ctx, endSpan := otel.StartSpan(r.tracer, ctx, "llm.registry.Illustrate",
+		attribute.String("arg.model", r.modelName(model)),
+		attribute.Int("arg.prompt", len(prompt)),
+		attribute.Int("arg.images", len(images)),
+	)
+	defer func() { endSpan(err) }()
+
+	illustrator, err := capability[llm.Illustrator](r, model, "make images")
+	if err != nil {
+		return nil, llm.Usage{}, err
+	} else if err := can(model, model.Capabilities().ImageOutput, "make images"); err != nil {
+		return nil, llm.Usage{}, err
+	}
+	read := make([]llm.Resource, 0, len(images))
+	for _, image := range images {
+		if image, err = r.withResource(ctx, image); err != nil {
+			return nil, llm.Usage{}, err
+		}
+		read = append(read, image)
+	}
+	start := time.Now()
+	result, usage, err := illustrator.Illustrate(ctx, model, prompt, read, opts...)
+	usage = timed(usage, start)
+	if err != nil {
+		return nil, llm.Usage{}, providerErr(err)
+	}
+	return result, usage, nil
+}
+
 // Recognize returns the text in the resource, such as an image or a PDF, as
 // a document, from the model's provider, which must be in the registry, and
 // recognize text. Returns ErrNotImplemented when the model is known not to

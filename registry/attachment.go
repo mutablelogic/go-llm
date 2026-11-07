@@ -234,6 +234,33 @@ func (r *Registry) keepReplyResources(ctx context.Context, session uuid.UUID, me
 	return message, nil
 }
 
+// Keep keeps the resource, such as an image a model made, as a resource of
+// the session, or, without one, on its own, with its name, or one of its
+// type, such as image.png, when it's empty, and returns the link to it, and
+// whether it was kept, which it isn't when the registry has no resources.
+func (r *Registry) Keep(ctx context.Context, session uuid.UUID, resource llm.Resource, name string) (toolschema.ResourceLink, bool, error) {
+	store := r.toolStore(session)
+	if store == nil {
+		return toolschema.ResourceLink{}, false, nil
+	}
+	if name == "" {
+		name = madeName(resource.Type())
+	}
+	link, err := store(ctx, renamed{Resource: resource, name: name})
+	return link, err == nil, err
+}
+
+// renamed is a resource, with another name
+type renamed struct {
+	llm.Resource
+	name string
+}
+
+// Name returns the resource's name
+func (r renamed) Name() string {
+	return r.name
+}
+
 // madeName returns the name of what a model made, of the type, such as
 // image.png, or audio.wav
 func madeName(contentType string) string {
