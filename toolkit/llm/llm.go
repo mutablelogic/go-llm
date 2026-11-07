@@ -6,6 +6,7 @@ package llm
 
 import (
 	"context"
+	"time"
 
 	// Packages
 	gollm "github.com/mutablelogic/go-llm"
@@ -67,6 +68,16 @@ var _ toolkit.Namespace = (*Namespace)(nil)
 
 // Name is the name of the namespace
 const Name = "llm"
+
+// The most time each tool has, which is longer than a tool has by default,
+// as asking a model to transcribe an hour of audio, read a long document,
+// make an image, or speak a long passage, takes longer
+const (
+	transcribeTimeout = 5 * time.Minute
+	ocrTimeout        = 5 * time.Minute
+	illustrateTimeout = 2 * time.Minute
+	speakTimeout      = 2 * time.Minute
+)
 
 ///////////////////////////////////////////////////////////////////////////////
 // LIFECYCLE

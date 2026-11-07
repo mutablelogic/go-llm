@@ -556,3 +556,16 @@ func each(fn func(uri string) (gollm.Resource, error)) toolkit.ResolveFunc {
 		return result, nil
 	}
 }
+
+func Test_Timeouts(t *testing.T) {
+	// The tools which ask a model to do something which takes a while have
+	// longer than a tool has by default, and listing models doesn't
+	ns, err := llm.New(func() llm.Models { return &models{} })
+	require.NoError(t, err)
+	want := map[string]time.Duration{"models": 0, "speak": 2 * time.Minute, "ocr": 5 * time.Minute, "transcribe": 5 * time.Minute, "illustrate": 2 * time.Minute}
+	got := map[string]time.Duration{}
+	for _, tool := range ns.Tools() {
+		got[tool.Name()] = tool.Timeout()
+	}
+	assert.Equal(t, want, got)
+}

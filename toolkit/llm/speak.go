@@ -6,6 +6,7 @@ import (
 	"mime"
 	"path"
 	"strings"
+	"time"
 
 	// Packages
 	gollm "github.com/mutablelogic/go-llm"
@@ -62,6 +63,12 @@ func (t *speak) Description() string {
 
 func (*speak) InputSchema() *jsonschema.Schema {
 	return jsonschema.MustFor[speakInput]()
+}
+
+// Timeout returns the most time the tool has, which is longer than a tool
+// has by default, for speaking a long passage of text
+func (*speak) Timeout() time.Duration {
+	return speakTimeout
 }
 
 // Run speaks the text, with the tool's model, in the voice, or the tool's,

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"mime"
 	"strings"
+	"time"
 
 	// Packages
 	gollm "github.com/mutablelogic/go-llm"
@@ -54,6 +55,12 @@ func (t *ocr) Description() string {
 
 func (*ocr) InputSchema() *jsonschema.Schema {
 	return jsonschema.MustFor[ocrInput]()
+}
+
+// Timeout returns the most time the tool has, which is longer than a tool
+// has by default, for reading a long document, page by page
+func (*ocr) Timeout() time.Duration {
+	return ocrTimeout
 }
 
 // Run reads the resource with the URI, in the session, and returns its
