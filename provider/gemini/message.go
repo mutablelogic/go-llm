@@ -39,11 +39,14 @@ type callMeta struct {
 	ID        string `json:"id,omitempty"`
 }
 
-// toolCall is a tool which a model called, as it was sent, for its result
+// toolCall is a tool which a model called, as it was sent, for its result,
+// and whether it's sent back as a call, with its result as a response, or,
+// when it isn't, its result is text
 type toolCall struct {
 	name   string
 	input  json.RawMessage
 	gemini *callMeta
+	replay bool
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -191,12 +194,13 @@ func geminiCall(meta map[string]any) *callMeta {
 // user's.
 //
 // As a conversation's model can change, calls of tools Gemini made are sent
-// back as calls, with their signatures, and their results as responses,
-// and calls which another model made, which Gemini 3 doesn't accept without
-// its signatures, are left out of the replies, and their results are text,
-// which says which tool was called, with what, and what it returned.
-func newContents(ctx context.Context, messages []llm.Message) ([]content, string, error) {
-	calls := toolCalls(messages)
+// back as calls, with their signatures, and their results as responses, when
+// the model accepts them, and calls which another model made, or which it
+// doesn't accept, which Gemini 3 doesn't without their signatures, are left
+// out of the replies, and their results are text, which says which tool was
+// called, with what, and what it returned.
+func newContents(ctx context.Context, model *Model, messages []llm.Message) ([]content, string, error) {
+	calls := toolCalls(messages, needsSignatures(model))
 	var system []string
 	result := make([]content, 0, len(messages))
 	for _, m := range messages {
@@ -221,7 +225,7 @@ func newContents(ctx context.Context, messages []llm.Message) ([]content, string
 			}
 		case "assistant":
 			role = "model"
-			parts = modelParts(m)
+			parts = modelParts(m, calls)
 		default:
 			return nil, "", llm.ErrBadParameter.Withf("unsupported message role %q", m.Role())
 		}
@@ -241,20 +245,42 @@ func newContents(ctx context.Context, messages []llm.Message) ([]content, string
 }
 
 // toolCalls returns the calls of tools in the messages, by their
-// identifiers, with whether Gemini made them
-func toolCalls(messages []llm.Message) map[string]toolCall {
+// identifiers, with whether Gemini made them, and whether they're sent back
+// as calls, which is decided for each reply, as its calls were made
+// together: a reply's calls Gemini made are, unless the model needs their
+// signatures, and none of them has one, as a reply of an older model which
+// didn't think has none. Of calls made together, only the first is signed,
+// so the others are sent back with it.
+func toolCalls(messages []llm.Message, signed bool) map[string]toolCall {
 	result := make(map[string]toolCall)
 	for _, m := range messages {
 		if m == nil || m.Role() != "assistant" {
 			continue
 		}
+		var calls []*schema.ToolCall
+		hasSignature := false
 		for _, block := range contentOf(m) {
 			if call := block.ToolCall; call != nil && call.ID != "" {
-				result[call.ID] = toolCall{name: call.Name, input: call.Input, gemini: geminiCall(call.Meta)}
+				calls = append(calls, call)
+				if meta := geminiCall(call.Meta); meta != nil && meta.Signature != "" {
+					hasSignature = true
+				}
 			}
+		}
+		replay := !signed || hasSignature
+		for _, call := range calls {
+			meta := geminiCall(call.Meta)
+			result[call.ID] = toolCall{name: call.Name, input: call.Input, gemini: meta, replay: replay && meta != nil}
 		}
 	}
 	return result
+}
+
+// needsSignatures returns whether the model needs the signatures of calls
+// which are sent back, which Gemini 3, and later models, do, and Gemini 2.5
+// doesn't
+func needsSignatures(model *Model) bool {
+	return model == nil || !strings.HasPrefix(model.Name(), "gemini-2")
 }
 
 // userParts returns the parts of a message from the user, or of the results
@@ -265,8 +291,12 @@ func userParts(ctx context.Context, m llm.Message, calls map[string]toolCall) ([
 	var parts []part
 	for _, r := range m.ToolResults() {
 		call, ok := calls[r.ID]
-		if ok && call.gemini != nil {
-			parts = append(parts, part{FunctionResponse: &functionResponse{ID: call.gemini.ID, Name: r.Name, Response: responseObject(r.Content, r.IsError)}})
+		if ok && call.replay {
+			name := r.Name
+			if name == "" {
+				name = call.name
+			}
+			parts = append(parts, part{FunctionResponse: &functionResponse{ID: call.gemini.ID, Name: name, Response: responseObject(r.Content, r.IsError)}})
 		} else {
 			parts = append(parts, part{Text: resultText(r, call)})
 		}
@@ -284,11 +314,12 @@ func userParts(ctx context.Context, m llm.Message, calls map[string]toolCall) ([
 	return parts, nil
 }
 
-// modelParts returns the parts of a reply: its text, and the calls Gemini
-// made, with their signatures, or text which says there's no reply, when
-// there's neither, as a reply can't be empty. Its thinking, and calls
-// another model made, are left out.
-func modelParts(m llm.Message) []part {
+// modelParts returns the parts of a reply: its text, and the calls which
+// are sent back, with their signatures, or text which says there's no
+// reply, when there's neither, as a reply can't be empty. Its thinking, and
+// calls which aren't sent back, such as those another model made, are left
+// out.
+func modelParts(m llm.Message, calls map[string]toolCall) []part {
 	var parts []part
 	replied := false
 	for _, block := range contentOf(m) {
@@ -299,10 +330,11 @@ func modelParts(m llm.Message) []part {
 				replied = true
 			}
 		case block.ToolCall != nil:
-			meta := geminiCall(block.ToolCall.Meta)
-			if meta == nil {
+			call, ok := calls[block.ToolCall.ID]
+			if !ok || !call.replay {
 				continue
 			}
+			meta := call.gemini
 			args := block.ToolCall.Input
 			if len(args) == 0 {
 				args = json.RawMessage(`{}`)

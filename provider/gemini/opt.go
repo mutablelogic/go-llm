@@ -87,7 +87,11 @@ func (r *generateRequest) apply(model *Model, opts ...llm.Opt) error {
 		case llm.JSONSchemaKey:
 			var schema json.RawMessage
 			if schema, err = llm.GetOpt[json.RawMessage](o, key); err == nil {
-				config.ResponseMimeType, config.ResponseJSONSchema = "application/json", schema
+				if !json.Valid(schema) {
+					err = llm.ErrBadParameter.With("invalid json_schema")
+				} else {
+					config.ResponseMimeType, config.ResponseJSONSchema = "application/json", schema
+				}
 			}
 		case llm.ToolChoiceKey:
 			var choice string
@@ -120,7 +124,9 @@ func (r *generateRequest) apply(model *Model, opts ...llm.Opt) error {
 
 	// The configuration, unless it's empty, and a tool choice, which needs
 	// tools
-	if data, err := json.Marshal(config); err == nil && string(data) != "{}" {
+	if data, err := json.Marshal(config); err != nil {
+		return llm.ErrBadParameter.Withf("invalid options: %v", err)
+	} else if string(data) != "{}" {
 		r.GenerationConfig = config
 	}
 	if len(r.Tools) == 0 {
@@ -147,7 +153,9 @@ func (r *generateRequest) system(prompt string) {
 // known to, isn't told how to, and can't be asked to.
 func (m *Model) thinking(asked, think bool, effort string) (*thinkingConfig, error) {
 	if !types.Value(m.data.Thinking) {
-		if asked && think {
+		// Thinking, or an effort, which asks it to think, unless thinking is
+		// off, can't be asked of a model which doesn't think
+		if (asked && think) || (effort != "" && !(asked && !think)) {
 			return nil, llm.ErrBadParameter.Withf("%s doesn't think", m.Name())
 		}
 		return nil, nil

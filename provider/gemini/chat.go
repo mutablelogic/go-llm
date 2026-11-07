@@ -73,7 +73,7 @@ func (c *Client) WithoutSession(ctx context.Context, model llm.Model, messages [
 // newRequest returns a request to the model, with the messages, the system
 // prompt, which is the system messages, the tools, and the options
 func newRequest(ctx context.Context, model *Model, messages []llm.Message, tools []llm.Tool, opts ...llm.Opt) (*generateRequest, error) {
-	contents, system, err := newContents(ctx, messages)
+	contents, system, err := newContents(ctx, model, messages)
 	if err != nil {
 		return nil, err
 	}
@@ -187,10 +187,15 @@ func (s *replyStream) add(event client.TextStreamEvent) error {
 }
 
 // addPart adds a part of the reply, and streams its thinking, or text. A
-// signature which comes with an empty part is the signature of the part
-// before it.
+// signature which comes in a part of its own, without a call, thinking or
+// text, is the signature of the part before it, such as a call, which is
+// sent back with it.
 func (s *replyStream) addPart(p part) {
 	switch {
+	case p.FunctionCall == nil && !p.Thought && p.Text == "" && p.ThoughtSignature != "":
+		if n := len(s.parts); n > 0 && s.parts[n-1].ThoughtSignature == "" {
+			s.parts[n-1].ThoughtSignature = p.ThoughtSignature
+		}
 	case p.FunctionCall != nil:
 		s.parts = append(s.parts, p)
 	case p.Thought:
