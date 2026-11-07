@@ -173,6 +173,7 @@ func (m *Model) Capabilities() llm.ModelCap {
 		result.ImageInput, result.AudioInput, result.VideoInput, result.DocumentInput = no, yes, no, no
 	case strings.Contains(name, "-image") || strings.HasPrefix(name, "imagen") || strings.Contains(display, "nano banana"):
 		result.ImageOutput, result.SpeechOutput, result.ImageInput = yes, no, yes
+		result.AudioInput, result.VideoInput, result.DocumentInput = no, no, no
 	case types.Value(result.Chat):
 		// Gemini's models which reply see images, hear audio, watch video,
 		// and read documents

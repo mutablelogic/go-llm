@@ -5,6 +5,7 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
+	"mime"
 	"strings"
 
 	// Packages
@@ -301,6 +302,12 @@ func userParts(ctx context.Context, m llm.Message, calls map[string]toolCall) ([
 		}
 	}
 	for _, resource := range m.Resources() {
+		// An image in a format the API doesn't take, such as an SVG, is a
+		// note, rather than the request failing
+		if !imageFormat(resource.Type()) {
+			parts = append(parts, part{Text: schema.Unreadable(resource.URI(), resource.Type())})
+			continue
+		}
 		data, err := llm.ReadAll(ctx, resource)
 		if err != nil {
 			return nil, err
@@ -428,4 +435,17 @@ func resultText(r llm.ToolResult, call toolCall) string {
 		return "(The tool " + name + " was called with " + input + ", and failed: " + content + ")"
 	}
 	return "(The tool " + name + " was called with " + input + ", and returned: " + content + ")"
+}
+
+// imageFormats are the formats of images the API takes
+var imageFormats = map[string]bool{"image/png": true, "image/jpeg": true, "image/webp": true, "image/heic": true, "image/heif": true}
+
+// imageFormat returns whether the type isn't an image, or is one in a
+// format the API takes
+func imageFormat(contentType string) bool {
+	mediaType, _, err := mime.ParseMediaType(contentType)
+	if err != nil || !strings.HasPrefix(mediaType, "image/") {
+		return err == nil
+	}
+	return imageFormats[mediaType]
 }

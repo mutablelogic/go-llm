@@ -317,3 +317,24 @@ func Test_Replay(t *testing.T) {
 	assert.NotNil(t, contents[1].Parts[0].FunctionCall)
 	assert.NotNil(t, contents[2].Parts[0].FunctionResponse)
 }
+
+func Test_ImageFormats(t *testing.T) {
+	// An image in a format the API doesn't take, such as an SVG, is a note,
+	// and other attachments, such as audio, are sent
+	svg := &schema.Resource{ResourceMeta: schema.ResourceMeta{ContentType: "image/svg+xml", Data: []byte("<svg/>")}}
+	wav := &schema.Resource{ResourceMeta: schema.ResourceMeta{ContentType: "audio/wav", Data: []byte("RIFF")}}
+	message := &schema.Message{MessageMeta: schema.MessageMeta{Sender: "user", Content: []schema.ContentBlock{{Resource: svg}, {Resource: wav}}}}
+	contents, _, err := newContents(context.Background(), &Model{data: apiModel{Name: "models/gemini-3.5-flash"}}, []llm.Message{message})
+	require.NoError(t, err)
+	require.Len(t, contents[0].Parts, 2)
+	assert.Contains(t, contents[0].Parts[0].Text, "image/svg+xml, which this model can't read")
+	assert.Equal(t, "audio/wav", contents[0].Parts[1].InlineData.MimeType)
+
+	// And Gemini's models which make images take only images
+	caps := (&Model{data: apiModel{Name: "models/gemini-3-pro-image", DisplayName: "Nano Banana Pro", SupportedGenerationMethods: []string{"generateContent"}}}).Capabilities()
+	assert.True(t, types.Value(caps.ImageInput))
+	for name, value := range map[string]*bool{"audio": caps.AudioInput, "video": caps.VideoInput, "documents": caps.DocumentInput} {
+		assert.NotNil(t, value, name)
+		assert.False(t, types.Value(value), name)
+	}
+}

@@ -423,7 +423,7 @@ func accepts(model llm.Model) func(string) bool {
 // unreadable returns the text which is sent in place of an attachment which
 // the model doesn't accept, which says its URI, so it can give it to a tool
 func unreadable(uri, contentType string) providerschema.ContentBlock {
-	return providerschema.ContentBlock{Text: types.Ptr("(The attachment " + uri + " is " + contentType + ", which this model can't read, so it isn't sent. Its URI is for tools, which can read it.)")}
+	return providerschema.ContentBlock{Text: types.Ptr(providerschema.Unreadable(uri, contentType))}
 }
 
 // refersToResources returns whether any of the message's attachments refer
