@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"slices"
 	"strings"
 	"time"
 	"uuid"
@@ -224,6 +225,7 @@ func (r *Registry) UpdateSession(ctx context.Context, id uuid.UUID, meta schema.
 	if err != nil {
 		return nil, err
 	}
+	previous := session.Tools
 	session.SessionMeta = session.SessionMeta.Merge(meta)
 	if err := validGeneratorMeta(session.GeneratorMeta); err != nil {
 		return nil, err
@@ -234,7 +236,7 @@ func (r *Registry) UpdateSession(ctx context.Context, id uuid.UUID, meta schema.
 		}
 	}
 	if meta.Tools != nil {
-		if session.Tools, err = r.toolNames(ctx, session.Tools); err != nil {
+		if session.Tools, err = r.toolNames(ctx, session.Tools, previous...); err != nil {
 			return nil, err
 		}
 	}
@@ -511,14 +513,45 @@ func (r *Registry) canonicalModel(ctx context.Context, name *string) (*string, e
 
 // toolNames returns the names of the tools, as the toolkit's canonical names,
 // such as weatherapi:current for current, or a namespace and "*", or "*", as
-// they are, or none when there are none. Returns ErrNotFound when a tool
-// isn't the toolkit's, or the registry has no toolkit, and ErrConflict when
-// a name is ambiguous.
-func (r *Registry) toolNames(ctx context.Context, names []string) ([]string, error) {
+// they are, or none when there are none. A name which the session had
+// already, which is kept, is kept as it is, whether it's the toolkit's or
+// not, such as a namespace of a connector which was deleted, as its tools
+// are skipped as it's chatted in, and may be added again. Returns
+// ErrNotFound when another tool isn't the toolkit's, or the registry has no
+// toolkit, and ErrConflict when a name is ambiguous, or two of the tools
+// have the same name.
+func (r *Registry) toolNames(ctx context.Context, names []string, kept ...string) ([]string, error) {
 	if len(names) == 0 {
 		return nil, nil
 	} else if r.toolkit == nil {
 		return nil, llm.ErrNotFound.With("no tools, as the registry has no toolkit")
 	}
-	return r.toolkit.ToolNames(ctx, names...)
+
+	// The names which are new are the toolkit's, as its canonical names
+	var added []string
+	for _, name := range names {
+		if !slices.Contains(kept, name) {
+			added = append(added, name)
+		}
+	}
+	canonical, err := r.toolkit.ToolNames(ctx, added...)
+	if err != nil {
+		return nil, err
+	}
+	result := make([]string, 0, len(names))
+	for _, name := range names {
+		if slices.Contains(kept, name) {
+			result = append(result, name)
+		} else {
+			result, canonical = append(result, canonical[0]), canonical[1:]
+		}
+	}
+
+	// And none of them, which are available, have the same name
+	if len(added) < len(names) {
+		if _, _, err := r.toolkit.AvailableTools(ctx, result...); err != nil {
+			return nil, err
+		}
+	}
+	return result, nil
 }
