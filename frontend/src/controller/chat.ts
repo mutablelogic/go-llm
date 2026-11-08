@@ -574,11 +574,17 @@ export class ChatController {
         }
     }
 
-    // create creates the session, and opens it
+    // create creates the session, and opens it, titled as a conversation
+    // with the assistant, by its name, when it has one, which compacting it
+    // changes to what it's about
     private async create(meta: SessionMeta) {
         const create = this.views.create;
         if (create) {
             create.creating = true;
+        }
+        if (!meta.title) {
+            const name = this.details.assistant?.declined ? undefined : this.details.assistant?.value?.trim();
+            meta = { ...meta, title: name ? `Conversation with ${name}` : 'Conversation' };
         }
         try {
             const session = await createSession(meta);
