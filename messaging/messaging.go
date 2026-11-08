@@ -75,7 +75,8 @@ type pairing struct {
 }
 
 // Delivery is what was sent to one of a session's channels: the messages,
-// in order, and the error of what wasn't sent, when something wasn't
+// in the order they were sent, and the error of anything which wasn't sent,
+// or nil, when everything was.
 type Delivery struct {
 	Channel  schema.Channel
 	Messages []Sent

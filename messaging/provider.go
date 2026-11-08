@@ -60,9 +60,9 @@ type FileSender interface {
 }
 
 // Sent is a message which was sent to a chat: its identifier, which the
-// provider gave it, and what it was, which is text, or a file, with the
-// text as its caption, or not, or a note in place of a file, which couldn't
-// be sent, such as as it's too large
+// provider gave it, and what it was. That's text, a file, with the text as
+// its caption, or without it, or a note in place of a file which couldn't
+// be sent, such as one which is too large.
 type Sent struct {
 	ID      string `json:"id"`
 	Text    bool   `json:"text,omitempty"`

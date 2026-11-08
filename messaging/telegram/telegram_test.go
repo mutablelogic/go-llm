@@ -84,8 +84,6 @@ func (b *bot) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 		b.mu.Lock()
 		b.sent = append(b.sent, req)
-		b.mu.Unlock()
-		b.mu.Lock()
 		b.ids++
 		id := b.ids
 		b.mu.Unlock()

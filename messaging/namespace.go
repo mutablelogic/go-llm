@@ -223,7 +223,7 @@ func (t *sendTool) Run(ctx context.Context, input json.RawMessage) (any, error) 
 	var errs error
 	sent := 0
 	for _, delivery := range deliveries {
-		output := channelSent{channelOutput: outputs([]schema.Channel{delivery.Channel})[0], Count: len(delivery.Messages), Messages: delivery.Messages}
+		output := channelSent{channelOutput: output(delivery.Channel), Count: len(delivery.Messages), Messages: delivery.Messages}
 		if output.Messages == nil {
 			output.Messages = []Sent{}
 		}
@@ -311,14 +311,19 @@ func decode(input json.RawMessage, v any) error {
 func outputs(channels []schema.Channel) []channelOutput {
 	result := make([]channelOutput, 0, len(channels))
 	for _, channel := range channels {
-		result = append(result, channelOutput{
-			ID:        channel.ID.String(),
-			Provider:  channel.Provider,
-			Chat:      channel.Title,
-			Connected: channel.Created.UTC().Format(time.RFC3339),
-		})
+		result = append(result, output(channel))
 	}
 	return result
+}
+
+// output returns the channel, as a model is told it
+func output(channel schema.Channel) channelOutput {
+	return channelOutput{
+		ID:        channel.ID.String(),
+		Provider:  channel.Provider,
+		Chat:      channel.Title,
+		Connected: channel.Created.UTC().Format(time.RFC3339),
+	}
 }
 
 // messagingPrompt is how the model uses channels, with the providers
