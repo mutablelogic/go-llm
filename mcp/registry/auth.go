@@ -88,6 +88,10 @@ func (r *Registry) Authorize(ctx context.Context, name, callback string) (string
 	}
 	if err != nil {
 		return "", llm.ErrServiceUnavailable.Withf("connector %q: %v", name, err)
+	} else if metadata == nil || len(metadata.AuthorizationServers) == 0 {
+		// Discovery says there's one, when there's no error, but what a
+		// server says isn't relied on, here
+		return "", llm.ErrServiceUnavailable.Withf("connector %q: no authorization server was discovered", name)
 	}
 	server := metadata.AuthorizationServers[0]
 	if !server.SupportsS256() {
