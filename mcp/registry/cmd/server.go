@@ -26,7 +26,8 @@ type Flags struct{}
 
 // WithConnectorRegistry creates the registry of the connectors, with the
 // command's client options, such as its tracer, and user agent, which the
-// clients of the connectors' servers use, the broadcaster it publishes its
+// clients of the connectors' servers use, and its name, and version, which
+// the servers are told, the broadcaster it publishes its
 // changes to, when there is one, and the options, such as its store,
 // registers its HTTP handlers with the server, when there is one, and then
 // calls the function with the registry, returning any error, once its
@@ -43,8 +44,13 @@ func (flags Flags) WithConnectorRegistry(ctx server.Cmd, srv *servercmd.RunServe
 	}
 	clientOpts = append(clientOpts, client.OptUserAgent(agent))
 
-	// The server's options come first, so the options are used instead
+	// The server's options come first, so the options are used instead:
+	// its client options, and its name, and version, which servers are
+	// told, as they're connected
 	serverOpts := []registry.Opt{registry.WithClientOpts(clientOpts...)}
+	if name := ctx.Name(); name != "" {
+		serverOpts = append(serverOpts, registry.WithName(name, ctx.Version()))
+	}
 	if b != nil {
 		serverOpts = append(serverOpts, registry.WithBroadcaster(b))
 	}
