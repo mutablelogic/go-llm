@@ -225,6 +225,7 @@ The registry also works on its own, from your own Go program; see [examples](exa
 
 ## Features
 
+- **Web-based application**: chat, with replies streamed and files attached; browse models and tools; and add providers, connectors and agents, all in the browser. Every page follows changes as they happen.
 - **Providers**: add, change and remove them while go-llm runs. Refer to a model by name, or by provider and name, such as `ollama:llama3.2:latest`.
 - **Ask**: a reply to messages, with a system prompt, options, tools, and structured output, optionally streamed.
 - **Chat**: conversations go-llm keeps, with their model, system prompt, tools and options.
