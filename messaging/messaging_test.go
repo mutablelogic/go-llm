@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"io"
 	"log/slog"
 	"net/url"
 	"strings"
@@ -154,20 +155,20 @@ func Test_Messaging_Reply(t *testing.T) {
 	}, time.Second, 10*time.Millisecond)
 
 	// A reply goes to both, and a session without channels is fine
-	require.NoError(t, m.Reply(ctx, id, "It's sunny"))
-	require.NoError(t, m.Reply(ctx, uuid.New(), "Nobody hears this"))
+	require.NoError(t, m.Reply(ctx, id, messaging.Outgoing{Text: "It's sunny"}))
+	require.NoError(t, m.Reply(ctx, uuid.New(), messaging.Outgoing{Text: "Nobody hears this"}))
 	assert.Equal(t, "It's sunny", provider.messages("1")[1])
 	assert.Equal(t, "It's sunny", provider.messages("2")[1])
 
 	// Send to one channel
 	channels, err := m.List(ctx, id)
 	require.NoError(t, err)
-	sent, err := m.Send(ctx, id, "Just you", channels[0].ID)
+	sent, err := m.Send(ctx, id, messaging.Outgoing{Text: "Just you"}, channels[0].ID)
 	require.NoError(t, err)
 	assert.Len(t, sent, 1)
 
 	// Another session's channel can't be sent to
-	_, err = m.Send(ctx, uuid.New(), "No", channels[0].ID)
+	_, err = m.Send(ctx, uuid.New(), messaging.Outgoing{Text: "No"}, channels[0].ID)
 	assert.ErrorIs(t, err, llm.ErrNotFound)
 
 	// Disconnect it, and delete the session's others
@@ -219,9 +220,9 @@ func Test_Messaging_Errors(t *testing.T) {
 	assert.ErrorIs(t, err, llm.ErrNotFound)
 	_, _, err = m.Connect(ctx, uuid.Nil(), "a")
 	assert.ErrorIs(t, err, llm.ErrBadParameter)
-	_, err = m.Send(ctx, uuid.New(), "")
+	_, err = m.Send(ctx, uuid.New(), messaging.Outgoing{Text: ""})
 	assert.ErrorIs(t, err, llm.ErrBadParameter)
-	_, err = m.Send(ctx, uuid.New(), "hello")
+	_, err = m.Send(ctx, uuid.New(), messaging.Outgoing{Text: "hello"})
 	assert.ErrorIs(t, err, llm.ErrNotFound)
 }
 
@@ -358,4 +359,99 @@ func Test_Messaging_DeleteSessionForgetsLinks(t *testing.T) {
 	provider.incoming <- messaging.Message{Address: "1", Code: code(t, link)}
 	require.Eventually(t, func() bool { return len(provider.messages("1")) == 1 }, time.Second, 10*time.Millisecond)
 	assert.Contains(t, provider.messages("1")[0], "expired")
+}
+
+// fileFake is a provider which can send files, which keeps them, with
+// their captions
+type fileFake struct {
+	*fake
+	files []string
+}
+
+func (f *fileFake) SendFile(_ context.Context, address string, file messaging.File, open func() (io.ReadCloser, error), caption string) error {
+	content, err := open()
+	if err != nil {
+		return err
+	}
+	defer content.Close()
+	data, err := io.ReadAll(content)
+	if err != nil {
+		return err
+	}
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.files = append(f.files, address+":"+file.Name+":"+string(data)+":"+caption)
+	return nil
+}
+
+func Test_Messaging_Files(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	// The session's files
+	id := uuid.New()
+	files := map[string]messaging.File{
+		"resource:///image": {URI: "resource:///image", Name: "chart.png", Type: "image/png"},
+		"resource:///audio": {URI: "resource:///audio", Name: "speech.ogg", Type: "audio/ogg"},
+	}
+	open := func(_ context.Context, session uuid.UUID, uri string) (messaging.File, io.ReadCloser, error) {
+		file, ok := files[uri]
+		if !ok || session != id {
+			return messaging.File{}, nil, llm.ErrNotFound.Withf("file %q", uri)
+		}
+		return file, io.NopCloser(strings.NewReader(file.Name)), nil
+	}
+	connect := func(t *testing.T, m *messaging.Messaging, provider *fake) {
+		t.Helper()
+		go m.Run(ctx, nil)
+		link, _, err := m.Connect(ctx, id, "")
+		require.NoError(t, err)
+		provider.incoming <- messaging.Message{Address: "1", Code: code(t, link)}
+		require.Eventually(t, func() bool { return len(provider.messages("1")) == 1 }, time.Second, 10*time.Millisecond)
+	}
+
+	t.Run("Caption", func(t *testing.T) {
+		// The text is an image's caption, when it's first
+		provider := &fileFake{fake: newFake("fake")}
+		m, err := messaging.New(messaging.NewStore(), messaging.WithProvider(provider), messaging.WithFiles(open))
+		require.NoError(t, err)
+		connect(t, m, provider.fake)
+		require.NoError(t, m.Reply(ctx, id, messaging.Outgoing{Text: "Here it is", Files: []string{"resource:///image", "resource:///audio"}}))
+		assert.Len(t, provider.messages("1"), 1, "no message, other than the one it was connected with")
+		assert.Equal(t, []string{"1:chart.png:chart.png:Here it is", "1:speech.ogg:speech.ogg:"}, provider.files)
+	})
+
+	t.Run("Text first", func(t *testing.T) {
+		// The text is sent before a file which isn't an image, and a file
+		// which can't be opened is an error, after the others are sent
+		provider := &fileFake{fake: newFake("fake")}
+		m, err := messaging.New(messaging.NewStore(), messaging.WithProvider(provider), messaging.WithFiles(open))
+		require.NoError(t, err)
+		connect(t, m, provider.fake)
+		err = m.Reply(ctx, id, messaging.Outgoing{Text: "Listen", Files: []string{"resource:///audio", "resource:///gone"}})
+		assert.ErrorIs(t, err, llm.ErrNotFound)
+		assert.Equal(t, "Listen", provider.messages("1")[1])
+		assert.Equal(t, []string{"1:speech.ogg:speech.ogg:"}, provider.files)
+
+		// and the text is sent, when no file can be opened
+		require.Error(t, m.Reply(ctx, id, messaging.Outgoing{Text: "Still here", Files: []string{"resource:///gone"}}))
+		assert.Equal(t, "Still here", provider.messages("1")[2])
+
+		// Files alone are sent, without text
+		require.NoError(t, m.Reply(ctx, id, messaging.Outgoing{Files: []string{"resource:///image"}}))
+		assert.Len(t, provider.files, 2)
+		assert.Len(t, provider.messages("1"), 3)
+	})
+
+	t.Run("Text only", func(t *testing.T) {
+		// A provider which can't send files is sent the text
+		provider := newFake("fake")
+		m, err := messaging.New(messaging.NewStore(), messaging.WithProvider(provider), messaging.WithFiles(open))
+		require.NoError(t, err)
+		connect(t, m, provider)
+		require.NoError(t, m.Reply(ctx, id, messaging.Outgoing{Text: "Here it is", Files: []string{"resource:///image"}}))
+		assert.Equal(t, "Here it is", provider.messages("1")[1])
+		require.NoError(t, m.Reply(ctx, id, messaging.Outgoing{Files: []string{"resource:///image"}}))
+		assert.Len(t, provider.messages("1"), 2)
+	})
 }

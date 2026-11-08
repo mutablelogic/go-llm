@@ -3,6 +3,7 @@ package telegram
 import (
 	"context"
 	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -24,7 +25,14 @@ type bot struct {
 	mu      sync.Mutex
 	updates []update
 	sent    []sendMessageRequest
+	uploads []uploaded
 	paths   []string
+}
+
+// uploaded is a file which was sent, with the method, and field, it was sent
+// with
+type uploaded struct {
+	method, field, name, content, chatID, caption, parseMode string
 }
 
 func (b *bot) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -77,6 +85,28 @@ func (b *bot) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		b.sent = append(b.sent, req)
 		b.mu.Unlock()
 		_ = json.NewEncoder(w).Encode(response[message]{OK: true, Result: message{ID: 1}})
+	case "sendPhoto", "sendVoice", "sendAudio", "sendDocument":
+		if err := r.ParseMultipartForm(1 << 20); err != nil {
+			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
+		u := uploaded{method: method, chatID: r.FormValue("chat_id"), caption: r.FormValue("caption"), parseMode: r.FormValue("parse_mode")}
+		if strings.Contains(u.caption, "unparseable") && u.parseMode == "HTML" {
+			w.WriteHeader(http.StatusBadRequest)
+			_, _ = w.Write([]byte(`{"ok":false,"error_code":400,"description":"Bad Request: can't parse entities: Unsupported start tag"}`))
+			return
+		}
+		for field, files := range r.MultipartForm.File {
+			u.field, u.name = field, files[0].Filename
+			f, _ := files[0].Open()
+			data, _ := io.ReadAll(f)
+			f.Close()
+			u.content = string(data)
+		}
+		b.mu.Lock()
+		b.uploads = append(b.uploads, u)
+		b.mu.Unlock()
+		_ = json.NewEncoder(w).Encode(response[message]{OK: true, Result: message{ID: 2}})
 	case "sendChatAction":
 		_ = json.NewEncoder(w).Encode(response[bool]{OK: true, Result: true})
 	default:
@@ -205,4 +235,87 @@ func Test_Telegram_RedirectError(t *testing.T) {
 	_, err := New(context.Background(), token, client.OptEndpoint(server.URL))
 	require.Error(t, err)
 	assert.NotContains(t, err.Error(), "SECRET")
+}
+
+func Test_Telegram_SendFile(t *testing.T) {
+	b := &bot{}
+	tg := newBot(t, b)
+	ctx := context.Background()
+	opened := 0
+	file := func(name, mimeType, content string) (messaging.File, func() (io.ReadCloser, error)) {
+		return messaging.File{URI: "resource:///x", Name: name, Type: mimeType, Size: int64(len(content))}, func() (io.ReadCloser, error) {
+			opened++
+			return io.NopCloser(strings.NewReader(content)), nil
+		}
+	}
+
+	// An image is a photo, with its caption, formatted
+	f, r := file("chart.png", "image/png", "PNG")
+	require.NoError(t, tg.SendFile(ctx, "7", f, r, "The **weather**"))
+	// Ogg is a voice message, MP3 a track, and WAV a document
+	f, r = file("speech.ogg", "audio/ogg", "OGG")
+	require.NoError(t, tg.SendFile(ctx, "7", f, r, ""))
+	f, r = file("speech.mp3", "audio/mpeg", "MP3")
+	require.NoError(t, tg.SendFile(ctx, "7", f, r, ""))
+	f, r = file("", "audio/wav", "RIFF")
+	require.NoError(t, tg.SendFile(ctx, "7", f, r, ""))
+	require.Len(t, b.uploads, 4)
+	assert.Equal(t, uploaded{method: "sendPhoto", field: "photo", name: "chart.png", content: "PNG", chatID: "7", caption: "The <b>weather</b>", parseMode: "HTML"}, b.uploads[0])
+	assert.Equal(t, uploaded{method: "sendVoice", field: "voice", name: "speech.ogg", content: "OGG", chatID: "7"}, b.uploads[1])
+	assert.Equal(t, uploaded{method: "sendAudio", field: "audio", name: "speech.mp3", content: "MP3", chatID: "7"}, b.uploads[2])
+	assert.Equal(t, "sendDocument", b.uploads[3].method)
+	assert.Equal(t, "document", b.uploads[3].field)
+	assert.Equal(t, "file.wav", b.uploads[3].name)
+	assert.Empty(t, b.sent)
+
+	// A caption which is too long is a message before it
+	long := strings.Repeat("word ", 300)
+	f, r = file("chart.png", "image/png", "PNG")
+	require.NoError(t, tg.SendFile(ctx, "7", f, r, long))
+	require.Len(t, b.sent, 1)
+	assert.Equal(t, strings.TrimSpace(long), b.sent[0].Text)
+	assert.Empty(t, b.uploads[4].caption)
+
+	// A file which is too large is a note, after its caption, which isn't
+	// lost, and it isn't opened
+	opened = 0
+	f = messaging.File{Name: "photo.png", Type: "image/png", Size: 60 << 20}
+	require.NoError(t, tg.SendFile(ctx, "7", f, func() (io.ReadCloser, error) {
+		opened++
+		return io.NopCloser(strings.NewReader("")), nil
+	}, "A big photo"))
+	assert.Len(t, b.uploads, 5)
+	assert.Zero(t, opened)
+	assert.Equal(t, "A big photo", b.sent[1].Text)
+	assert.Equal(t, "📎 photo.png is too large to send here (60.0 MB)", b.sent[2].Text)
+
+	// A caption whose formatting Telegram can't parse is sent as plain
+	// text, with the file, opened again
+	opened = 0
+	f, r = file("chart.png", "image/png", "PNG")
+	require.NoError(t, tg.SendFile(ctx, "7", f, r, "**unparseable** chart"))
+	assert.Equal(t, 2, opened)
+	require.Len(t, b.uploads, 6)
+	assert.Equal(t, uploaded{method: "sendPhoto", field: "photo", name: "chart.png", content: "PNG", chatID: "7", caption: "unparseable chart"}, b.uploads[5])
+}
+
+func Test_Telegram_Kind(t *testing.T) {
+	for _, c := range []struct {
+		mimeType string
+		size     int64
+		want     string
+	}{
+		{"image/jpeg", 100, "photo"},
+		{"image/png; charset=binary", 100, "photo"},
+		{"image/png", 11 << 20, "document"},
+		{"image/gif", 100, "document"},
+		{"audio/ogg", 100, "voice"},
+		{"audio/mpeg", 100, "audio"},
+		{"audio/x-m4a", 100, "audio"},
+		{"audio/wav", 100, "document"},
+		{"text/markdown", 100, "document"},
+		{"", 100, "document"},
+	} {
+		assert.Equal(t, c.want, kind(messaging.File{Type: c.mimeType, Size: c.size}), c.mimeType)
+	}
 }

@@ -74,7 +74,8 @@ type listOutput struct {
 }
 
 type sendInput struct {
-	Text     string   `json:"text" help:"What to send"`
+	Text     string   `json:"text,omitempty" help:"What to send, as Markdown, which is the caption of the first file, when it's an image" optional:""`
+	Files    []string `json:"files,omitempty" help:"The URIs of the conversation's files to send, such as resource:///<hash>, such as an image, or speech" optional:""`
 	Channels []string `json:"channels,omitempty" help:"The identifiers of the channels to send it to, or none, to send it to all of the conversation's channels" optional:""`
 }
 
@@ -176,7 +177,7 @@ func (t *listTool) Run(ctx context.Context, _ json.RawMessage) (any, error) {
 func (*sendTool) Name() string { return "send" }
 
 func (*sendTool) Description() string {
-	return "Sends a message to the chats connected to this conversation, such as on Telegram, which isn't your reply, as your replies are sent there anyway."
+	return "Sends a message, and the conversation's files, such as an image, or speech, to the chats connected to this conversation, such as on Telegram, which isn't your reply, as your replies, and the files you make with them, are sent there anyway."
 }
 
 func (*sendTool) InputSchema() *jsonschema.Schema {
@@ -201,7 +202,7 @@ func (t *sendTool) Run(ctx context.Context, input json.RawMessage) (any, error) 
 		ids = append(ids, id)
 	}
 	toolkit.Logf(ctx, "Sending a message")
-	sent, err := t.messaging.Send(ctx, session, req.Text, ids...)
+	sent, err := t.messaging.Send(ctx, session, Outgoing{Text: req.Text, Files: req.Files}, ids...)
 	if err != nil {
 		return nil, err
 	}
@@ -295,6 +296,6 @@ const messagingPrompt = `# Messaging
 Chats on messaging services ({providers}) can be connected to this conversation, as channels, so the person can talk to you there, such as from their phone.
 
 - When the person asks to talk to you on one, connect it with ` + "`connect`" + `, and give them the link it returns, as it is, on a line of its own, which they open, or scan with their phone, as the web UI shows it as a QR code, and press Start.
-- Every reply you write in this conversation is sent to each of its channels, wherever the message came from, so don't use ` + "`send`" + ` to reply.
-- Use ` + "`send`" + ` only for a message which isn't a reply, such as to one channel only.
+- Every reply you write in this conversation, with the files you make with it, such as a picture, or speech, is sent to each of its channels, wherever the message came from, so don't use ` + "`send`" + ` to reply.
+- Use ` + "`send`" + ` only for a message which isn't a reply, such as to one channel only, or to send one of the conversation's files, by its URI.
 - While the conversation has channels, your replies are also read on a phone, so keep them short. Markdown is fine, as it's formatted for each channel.`

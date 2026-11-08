@@ -8,6 +8,7 @@ import (
 	// Packages
 	client "github.com/mutablelogic/go-client"
 	llm "github.com/mutablelogic/go-llm"
+	types "github.com/mutablelogic/go-server/pkg/types"
 )
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -83,6 +84,36 @@ type sendChatActionRequest struct {
 	Action string `json:"action"`
 }
 
+// sendFileRequest sends a file to the chat, with its caption, in the field
+// of its method, such as photo, which are sent as multipart form data
+type sendPhotoRequest struct {
+	ChatID    string     `json:"chat_id"`
+	Photo     types.File `json:"photo"`
+	Caption   string     `json:"caption,omitempty"`
+	ParseMode string     `json:"parse_mode,omitempty"`
+}
+
+type sendVoiceRequest struct {
+	ChatID    string     `json:"chat_id"`
+	Voice     types.File `json:"voice"`
+	Caption   string     `json:"caption,omitempty"`
+	ParseMode string     `json:"parse_mode,omitempty"`
+}
+
+type sendAudioRequest struct {
+	ChatID    string     `json:"chat_id"`
+	Audio     types.File `json:"audio"`
+	Caption   string     `json:"caption,omitempty"`
+	ParseMode string     `json:"parse_mode,omitempty"`
+}
+
+type sendDocumentRequest struct {
+	ChatID    string     `json:"chat_id"`
+	Document  types.File `json:"document"`
+	Caption   string     `json:"caption,omitempty"`
+	ParseMode string     `json:"parse_mode,omitempty"`
+}
+
 // tokenTransport adds the bot's token to the path of each request, as the
 // Bot API has it, as /bot<token>/<method>, beneath the client's tracing and
 // logging, so they, and the errors of requests, have the path without it
@@ -148,6 +179,23 @@ func (t *tokenTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 
 ///////////////////////////////////////////////////////////////////////////////
 // PRIVATE FUNCTIONS
+
+// upload calls the Bot API's method, with the request, which has a file,
+// as multipart form data, which is read as it's sent, and returns its
+// result, or its error
+func upload[T any](ctx context.Context, c *client.Client, method string, req any) (T, error) {
+	var result response[T]
+	payload, err := client.NewStreamingMultipartRequest(req, types.ContentTypeJSON)
+	if err != nil {
+		return result.Result, err
+	}
+	if err := c.DoWithContext(ctx, payload, &result, client.OptPath(method), client.OptNoTimeout()); err != nil {
+		return result.Result, err
+	} else if !result.OK {
+		return result.Result, llm.ErrInternalServerError.Withf("telegram %s: %s", method, result.Description)
+	}
+	return result.Result, nil
+}
 
 // call calls the Bot API's method, with the request, and returns its result,
 // or its error

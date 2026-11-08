@@ -16,6 +16,7 @@ import (
 	providerschema "github.com/mutablelogic/go-llm/provider/schema"
 	schema "github.com/mutablelogic/go-llm/registry/schema"
 	resourceschema "github.com/mutablelogic/go-llm/resource/schema"
+	toolschema "github.com/mutablelogic/go-llm/toolkit/schema"
 	types "github.com/mutablelogic/go-server/pkg/types"
 	attribute "go.opentelemetry.io/otel/attribute"
 )
@@ -139,10 +140,11 @@ func (r *Registry) deliver(ctx context.Context, event schema.Event, since time.T
 		return err
 	}
 
-	// The session's channels, and the like, are given it, once it's added,
-	// as they're given a reply, and it's delivered
+	// The session's channels, and the like, are given it, with the files
+	// its run made, once it's added, as they're given a reply, and it's
+	// delivered
 	if added && r.replies != nil {
-		r.replies(ctx, event.Session, text)
+		r.replies(ctx, event.Session, Reply{Text: text, Resources: resourceLinks(made)})
 	}
 	_, err = r.updateEvent(ctx, event.ID, func(e *schema.Event) {
 		e.Status = schema.EventDelivered
@@ -246,24 +248,35 @@ func (r *Registry) appendMessage(ctx context.Context, id uuid.UUID, message prov
 	return true, nil
 }
 
-// copyRunResources copies the resources of the event's run, which it made
-// since it started, to the session the event is for, and returns them, as
-// the session's, the first made first. They're the run's session's, rather
-// than those its messages refer to, so those agents it called made, and
-// those of results which were truncated, are included.
-func (r *Registry) copyRunResources(ctx context.Context, event schema.Event, since time.Time) ([]resourceschema.Resource, error) {
-	if r.resources == nil || event.Run == uuid.Nil() {
+// resourcesSince returns the resources of the session which were made since
+// the time, apart from those attached to the person's messages, the first
+// made first
+func (r *Registry) resourcesSince(ctx context.Context, session uuid.UUID, since time.Time, exclude []providerschema.Message) ([]resourceschema.Resource, error) {
+	if r.resources == nil || session == uuid.Nil() {
 		return nil, nil
+	}
+	attached := make(map[string]bool)
+	for _, message := range exclude {
+		if message.Role() != "user" {
+			continue
+		}
+		for _, block := range message.Content {
+			if block.Resource != nil && block.Resource.URL != nil {
+				if hash, err := resourceschema.ParseURI(block.Resource.URL.String()); err == nil {
+					attached[hash] = true
+				}
+			}
+		}
 	}
 	var made []resourceschema.Resource
 	limit := uint(resourceschema.MaxListLimit)
 	for offset := uint(0); ; offset += limit {
-		page, err := r.resources.List(ctx, resourceschema.ResourceListRequest{Session: event.Run.String(), Offset: offset, Limit: &limit})
+		page, err := r.resources.List(ctx, resourceschema.ResourceListRequest{Session: session.String(), Offset: offset, Limit: &limit})
 		if err != nil {
 			return nil, err
 		}
 		for _, resource := range page.Body {
-			if !resource.Created.Before(since) {
+			if !resource.Created.Before(since) && !attached[resource.Hash] {
 				made = append(made, resource)
 			}
 		}
@@ -277,6 +290,22 @@ func (r *Registry) copyRunResources(ctx context.Context, event schema.Event, sin
 		}
 		return strings.Compare(a.Hash, b.Hash)
 	})
+	return made, nil
+}
+
+// copyRunResources copies the resources of the event's run, which it made
+// since it started, to the session the event is for, and returns them, as
+// the session's, the first made first. They're the run's session's, rather
+// than those its messages refer to, so those agents it called made, and
+// those of results which were truncated, are included.
+func (r *Registry) copyRunResources(ctx context.Context, event schema.Event, since time.Time) ([]resourceschema.Resource, error) {
+	if r.resources == nil || event.Run == uuid.Nil() {
+		return nil, nil
+	}
+	made, err := r.resourcesSince(ctx, event.Run, since, nil)
+	if err != nil {
+		return nil, err
+	}
 	copied := make([]resourceschema.Resource, 0, len(made))
 	for _, resource := range made {
 		resource, err := r.resources.Copy(ctx, resource.URI(), event.Run, event.Session)
@@ -301,4 +330,13 @@ func runStarted(event schema.Event) time.Time {
 		return event.Scheduled
 	}
 	return event.Created
+}
+
+// resourceLinks returns the resources, as links to them
+func resourceLinks(resources []resourceschema.Resource) []toolschema.ResourceLink {
+	links := make([]toolschema.ResourceLink, 0, len(resources))
+	for _, resource := range resources {
+		links = append(links, toolschema.ResourceLink{URI: resource.URI(), Name: resource.Name, Title: resource.Description, Type: resource.Type, Size: resource.Size})
+	}
+	return links
 }
