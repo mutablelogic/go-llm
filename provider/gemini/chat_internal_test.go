@@ -19,6 +19,7 @@ import (
 type weather struct{}
 
 func (weather) Name() string        { return "weather" }
+func (weather) Title() string       { return "" }
 func (weather) Description() string { return "The weather in a city" }
 func (weather) InputSchema() *jsonschema.Schema {
 	return jsonschema.MustFor[struct {

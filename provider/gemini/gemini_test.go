@@ -90,6 +90,7 @@ func Test_LiveEmbed(t *testing.T) {
 type cityTool struct{}
 
 func (cityTool) Name() string        { return "weather" }
+func (cityTool) Title() string       { return "" }
 func (cityTool) Description() string { return "Returns the weather in a city" }
 func (cityTool) InputSchema() *jsonschema.Schema {
 	return jsonschema.MustFor[struct {

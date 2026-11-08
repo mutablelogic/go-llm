@@ -11,6 +11,7 @@ import (
 	llm "github.com/mutablelogic/go-llm"
 	eventschema "github.com/mutablelogic/go-llm/broadcaster/schema"
 	toolkit "github.com/mutablelogic/go-llm/toolkit"
+	toolschema "github.com/mutablelogic/go-llm/toolkit/schema"
 	assert "github.com/stretchr/testify/assert"
 	require "github.com/stretchr/testify/require"
 )
@@ -117,6 +118,9 @@ func (n countingNamespace) SystemPrompt() string {
 
 // Notify does nothing, as the namespace's tools don't change
 func (countingNamespace) Description() string { return "" }
+
+// Type returns that the namespace's tools are built in
+func (countingNamespace) Type() string { return toolschema.NamespaceBuiltin }
 
 func (countingNamespace) Notify(func(eventschema.EventAction, string)) {}
 

@@ -39,7 +39,7 @@ func (self *Toolkit) GetTool(ctx context.Context, name string) (_ *schema.Tool, 
 	}
 
 	// Return the tool
-	return entry.wire(), nil
+	return entry.wire(self.namespaceType(entry.namespace)), nil
 }
 
 // Tools returns the tools with the names, which are their canonical names,
@@ -230,6 +230,11 @@ func (t namedTool) Name() string {
 // "weatherapi:current", rather than the name the model calls it by
 func (t namedTool) CanonicalName() string {
 	return schema.CanonicalToolName(t.entry.namespace, t.entry.tool.Name())
+}
+
+// Title returns the tool's title, or nothing, when it has none
+func (t namedTool) Title() string {
+	return t.entry.tool.Title()
 }
 
 // Description returns the tool's description

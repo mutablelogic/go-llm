@@ -8,6 +8,7 @@ import (
 	llm "github.com/mutablelogic/go-llm"
 	eventschema "github.com/mutablelogic/go-llm/broadcaster/schema"
 	toolkit "github.com/mutablelogic/go-llm/toolkit"
+	toolschema "github.com/mutablelogic/go-llm/toolkit/schema"
 	httpclient "github.com/mutablelogic/go-llm/toolkit/weatherapi/httpclient"
 )
 
@@ -19,7 +20,7 @@ type namespace struct {
 	tools []llm.Tool
 }
 
-var _ toolkit.Namespace = namespace{}
+var _ toolkit.Namespace = (*namespace)(nil)
 
 ////////////////////////////////////////////////////////////////////////////////
 // GLOBALS
@@ -36,7 +37,7 @@ func New(apiKey string, opts ...client.ClientOpt) (toolkit.Namespace, error) {
 	if err != nil {
 		return nil, err
 	}
-	return namespace{
+	return &namespace{
 		tools: []llm.Tool{
 			&currentWeather{client: client},
 			&forecastWeather{client: client},
@@ -64,6 +65,9 @@ func (namespace) SystemPrompt() string {
 }
 
 // Notify does nothing, as the namespace's tools don't change
+// Type returns that the namespace's tools are built in
+func (namespace) Type() string { return toolschema.NamespaceBuiltin }
+
 func (namespace) Notify(func(eventschema.EventAction, string)) {}
 
 func (n namespace) Tools() []llm.Tool {

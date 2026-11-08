@@ -6,6 +6,7 @@ import (
 	// Packages
 	broadcastercmd "github.com/mutablelogic/go-llm/broadcaster/cmd"
 	heartbeatcmd "github.com/mutablelogic/go-llm/heartbeat/cmd"
+	mcpcmd "github.com/mutablelogic/go-llm/mcp/registry/cmd"
 	memorycmd "github.com/mutablelogic/go-llm/memory/cmd"
 	registrycmd "github.com/mutablelogic/go-llm/registry/cmd"
 	resourcecmd "github.com/mutablelogic/go-llm/resource/cmd"
@@ -25,4 +26,5 @@ type CLI struct {
 	Memory      memorycmd.ClientCommands      `embed:""`
 	Heartbeat   heartbeatcmd.ClientCommands   `embed:""`
 	Resource    resourcecmd.ClientCommands    `embed:""`
+	Connector   mcpcmd.ClientCommands         `embed:""`
 }

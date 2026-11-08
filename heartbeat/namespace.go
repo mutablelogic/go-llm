@@ -13,6 +13,7 @@ import (
 	eventschema "github.com/mutablelogic/go-llm/broadcaster/schema"
 	schema "github.com/mutablelogic/go-llm/heartbeat/schema"
 	toolkit "github.com/mutablelogic/go-llm/toolkit"
+	toolschema "github.com/mutablelogic/go-llm/toolkit/schema"
 	jsonschema "github.com/mutablelogic/go-server/pkg/jsonschema"
 	types "github.com/mutablelogic/go-server/pkg/types"
 )
@@ -91,6 +92,9 @@ func (h *Heartbeats) SystemPrompt() string {
 }
 
 // Notify does nothing, as the tools don't change
+// Type returns that the namespace's tools are built in
+func (*Heartbeats) Type() string { return toolschema.NamespaceBuiltin }
+
 func (*Heartbeats) Notify(func(eventschema.EventAction, string)) {}
 
 // Tools returns the heartbeats' tool

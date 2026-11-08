@@ -17,6 +17,7 @@ import (
 type Tool struct {
 	Name        string          `json:"name" readonly:"" help:"Tool name" example:"current"`
 	Canonical   string          `json:"canonical" readonly:"" help:"Namespace and tool name, separated by a colon, which refers to the tool unambiguously" example:"weatherapi:current"`
+	Type        string          `json:"type" readonly:"" help:"Where the tool is from, as its namespace is: built in, an MCP server, or the agents" enum:"builtin,mcp,agent" example:"builtin"`
 	Title       string          `json:"title,omitempty" readonly:"" help:"Title of the tool, for people, which only some tools, such as agents, have" example:"Segment the transcript of an episode"`
 	Description string          `json:"description,omitempty" readonly:"" help:"Description of the tool" example:"Get current weather conditions for a location"`
 	Input       json.RawMessage `json:"input,omitempty" readonly:"" help:"JSON schema of the tool's input"`
@@ -44,12 +45,22 @@ type ResourcesResult struct {
 // ToolListRequest filters a list of tools
 type ToolListRequest struct {
 	Namespace string `json:"namespace,omitempty" help:"Returns only the tools in this namespace" example:"weatherapi" optional:""`
+	Type      string `json:"type,omitempty" help:"Returns only the tools of namespaces of this type, which is builtin, mcp or agent" example:"mcp" optional:""`
 }
+
+// The types of namespaces: those which are built in, those of MCP servers,
+// and the agents'
+const (
+	NamespaceBuiltin = "builtin"
+	NamespaceMCP     = "mcp"
+	NamespaceAgent   = "agent"
+)
 
 // Namespace is a namespace of tools: its name, a line which describes it,
 // which can be empty, and how many tools it has
 type Namespace struct {
 	Name        string `json:"name" readonly:"" help:"Name of the namespace" example:"weatherapi"`
+	Type        string `json:"type" readonly:"" help:"Where the namespace's tools are from: built in, an MCP server, or the agents" enum:"builtin,mcp,agent" example:"builtin"`
 	Description string `json:"description,omitempty" readonly:"" help:"What the namespace's tools are for" example:"Current weather, forecasts and alerts, from WeatherAPI"`
 	Tools       uint64 `json:"tools" readonly:"" help:"How many tools the namespace has" example:"3"`
 }
@@ -186,29 +197,31 @@ func (t CallToolRequest) String() string {
 // TABLE OUTPUT
 
 func (Namespace) Header() []string {
-	return []string{"Namespace", "Tools", "Description"}
+	return []string{"Namespace", "Type", "Tools", "Description"}
 }
 
 func (Namespace) Width(int) int {
 	return 0
 }
 
-// Cell returns the namespace's name, how many tools it has, and its
-// description
+// Cell returns the namespace's name, its type, how many tools it has, and
+// its description
 func (n Namespace) Cell(col int) tui.CellText {
 	switch col {
 	case 0:
 		return n.Name
 	case 1:
-		return n.Tools
+		return n.Type
 	case 2:
+		return n.Tools
+	case 3:
 		return n.Description
 	}
 	return ""
 }
 
 func (t Tool) Header() []string {
-	return []string{"Name", "Description"}
+	return []string{"Name", "Type", "Description"}
 }
 
 func (t Tool) Width(col int) int {
@@ -220,6 +233,8 @@ func (t Tool) Cell(col int) tui.CellText {
 	case 0:
 		return t.Canonical
 	case 1:
+		return t.Type
+	case 2:
 		return t.Description
 	default:
 		return ""
@@ -234,6 +249,9 @@ func (t ToolListRequest) Query() url.Values {
 	q := url.Values{}
 	if namespace := strings.TrimSpace(t.Namespace); namespace != "" {
 		q.Set("namespace", namespace)
+	}
+	if typ := strings.TrimSpace(t.Type); typ != "" {
+		q.Set("type", typ)
 	}
 	return q
 }

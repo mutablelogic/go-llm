@@ -34,6 +34,9 @@ func (n *changingNamespace) Tools() []llm.Tool {
 
 func (*changingNamespace) Description() string { return "" }
 
+// Type returns that the namespace's tools are built in
+func (*changingNamespace) Type() string { return schema.NamespaceBuiltin }
+
 func (n *changingNamespace) Notify(fn func(eventschema.EventAction, string)) {
 	n.mu.Lock()
 	defer n.mu.Unlock()

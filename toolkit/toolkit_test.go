@@ -10,6 +10,8 @@ import (
 	// Packages
 	client "github.com/mutablelogic/go-client"
 	llm "github.com/mutablelogic/go-llm"
+	broadcaster "github.com/mutablelogic/go-llm/broadcaster"
+	eventschema "github.com/mutablelogic/go-llm/broadcaster/schema"
 	toolkit "github.com/mutablelogic/go-llm/toolkit"
 	schema "github.com/mutablelogic/go-llm/toolkit/schema"
 	jsonschema "github.com/mutablelogic/go-server/pkg/jsonschema"
@@ -281,9 +283,123 @@ func TestConcurrent(t *testing.T) {
 }
 
 func TestToolTable(t *testing.T) {
-	tool := schema.Tool{Name: "current", Canonical: "weatherapi:current", Description: "Get the weather"}
-	assert.Equal(t, []string{"Name", "Description"}, tool.Header())
+	tool := schema.Tool{Name: "current", Canonical: "weatherapi:current", Type: schema.NamespaceBuiltin, Description: "Get the weather"}
+	assert.Equal(t, []string{"Name", "Type", "Description"}, tool.Header())
 	assert.Equal(t, "weatherapi:current", tool.Cell(0))
-	assert.Equal(t, "Get the weather", tool.Cell(1))
-	assert.Equal(t, "", tool.Cell(2))
+	assert.Equal(t, schema.NamespaceBuiltin, tool.Cell(1))
+	assert.Equal(t, "Get the weather", tool.Cell(2))
+	assert.Equal(t, "", tool.Cell(3))
+}
+
+func TestRemove(t *testing.T) {
+	ctx := context.Background()
+
+	// A namespace is removed, with its tools, which are said to be deleted
+	b := broadcaster.New()
+	ch := make(chan eventschema.Event, 16)
+	watchCtx, cancel := context.WithCancel(ctx)
+	done, err := b.Watch(watchCtx, ch)
+	require.NoError(t, err)
+	defer func() {
+		cancel()
+		assert.NoError(t, <-done)
+	}()
+	tk, err := toolkit.New(ctx, toolkit.WithBroadcaster(b))
+	require.NoError(t, err)
+	ns := toolkit.NewNamespace("a", "", tool{name: "z"}, tool{name: "y"})
+	require.NoError(t, tk.Add(ns))
+	require.NoError(t, tk.Add(toolkit.NewNamespace("b", "", tool{name: "x"})))
+	assert.True(t, tk.HasNamespace("a"))
+	for len(ch) > 0 {
+		<-ch
+	}
+	require.NoError(t, tk.Remove(ns))
+	assert.False(t, tk.HasNamespace("a"))
+	assert.Equal(t, []string{"b:x"}, names(t, tk))
+	var deleted []string
+	for len(ch) > 0 {
+		event := <-ch
+		assert.Equal(t, eventschema.EventDelete, event.Action)
+		deleted = append(deleted, event.Row)
+	}
+	assert.Equal(t, []string{"a:y", "a:z"}, deleted)
+
+	// But not twice, nor one which replaced it, nor none
+	assert.ErrorIs(t, tk.Remove(ns), llm.ErrNotFound)
+	require.NoError(t, tk.Add(toolkit.NewNamespace("a", "", tool{name: "w"})))
+	assert.ErrorIs(t, tk.Remove(ns), llm.ErrNotFound)
+	assert.True(t, tk.HasNamespace("a"))
+	assert.ErrorIs(t, tk.Remove(nil), llm.ErrBadParameter)
+}
+
+// typedNamespace is a namespace of the type
+type typedNamespace struct {
+	toolkit.Namespace
+	typ string
+}
+
+func (n typedNamespace) Type() string { return n.typ }
+
+func TestNamespaceType(t *testing.T) {
+	// A namespace, and its tools, have its type, by which tools are listed
+	ctx := context.Background()
+	tk, err := toolkit.New(ctx)
+	require.NoError(t, err)
+	require.NoError(t, tk.Add(toolkit.NewNamespace("builtin", "", tool{name: "one"})))
+	require.NoError(t, tk.Add(&typedNamespace{toolkit.NewNamespace("server", "", tool{name: "two"}), schema.NamespaceMCP}))
+	require.NoError(t, tk.Add(&typedNamespace{toolkit.NewNamespace("agent", "", tool{name: "three"}), schema.NamespaceAgent}))
+
+	namespaces, err := tk.ListNamespaces(ctx)
+	require.NoError(t, err)
+	types := map[string]string{}
+	for _, ns := range namespaces.Body {
+		types[ns.Name] = ns.Type
+	}
+	assert.Equal(t, map[string]string{"builtin": schema.NamespaceBuiltin, "server": schema.NamespaceMCP, "agent": schema.NamespaceAgent}, types)
+
+	list, err := tk.ListTools(ctx, schema.ToolListRequest{})
+	require.NoError(t, err)
+	types = map[string]string{}
+	for _, tool := range list.Body {
+		types[tool.Canonical] = tool.Type
+	}
+	assert.Equal(t, map[string]string{"builtin:one": schema.NamespaceBuiltin, "server:two": schema.NamespaceMCP, "agent:three": schema.NamespaceAgent}, types)
+
+	list, err = tk.ListTools(ctx, schema.ToolListRequest{Type: schema.NamespaceMCP})
+	require.NoError(t, err)
+	require.Len(t, list.Body, 1)
+	assert.Equal(t, "server:two", list.Body[0].Canonical)
+	_, err = tk.ListTools(ctx, schema.ToolListRequest{Type: "other"})
+	assert.ErrorIs(t, err, llm.ErrBadParameter)
+	got, err := tk.GetTool(ctx, "agent:three")
+	require.NoError(t, err)
+	assert.Equal(t, schema.NamespaceAgent, got.Type)
+}
+
+// valueNamespace is a namespace which is a value, which can't be compared,
+// as it has a slice
+type valueNamespace struct {
+	name  string
+	tools []llm.Tool
+}
+
+func (n valueNamespace) Name() string                                 { return n.name }
+func (n valueNamespace) Type() string                                 { return schema.NamespaceBuiltin }
+func (n valueNamespace) Description() string                          { return "" }
+func (n valueNamespace) SystemPrompt() string                         { return "" }
+func (n valueNamespace) Tools() []llm.Tool                            { return n.tools }
+func (n valueNamespace) Notify(func(eventschema.EventAction, string)) {}
+
+func TestRemoveValue(t *testing.T) {
+	// A namespace which is a value, which can't be compared, isn't removed,
+	// rather than panicking
+	ctx := context.Background()
+	tk, err := toolkit.New(ctx)
+	require.NoError(t, err)
+	ns := valueNamespace{name: "value", tools: []llm.Tool{tool{name: "one"}}}
+	require.NoError(t, tk.Add(ns))
+	assert.NotPanics(t, func() {
+		assert.ErrorIs(t, tk.Remove(ns), llm.ErrNotFound)
+	})
+	assert.True(t, tk.HasNamespace("value"))
 }

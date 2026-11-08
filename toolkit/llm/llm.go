@@ -12,6 +12,7 @@ import (
 	gollm "github.com/mutablelogic/go-llm"
 	eventschema "github.com/mutablelogic/go-llm/broadcaster/schema"
 	toolkit "github.com/mutablelogic/go-llm/toolkit"
+	toolschema "github.com/mutablelogic/go-llm/toolkit/schema"
 )
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -130,4 +131,7 @@ func (n *Namespace) Tools() []gollm.Tool {
 }
 
 // Notify does nothing, as the tools don't change
+// Type returns that the namespace's tools are built in
+func (*Namespace) Type() string { return toolschema.NamespaceBuiltin }
+
 func (*Namespace) Notify(func(eventschema.EventAction, string)) {}

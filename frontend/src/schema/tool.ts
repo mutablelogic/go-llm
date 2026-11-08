@@ -1,5 +1,9 @@
 // The tools' schema, which mirrors the toolkit's
 
+// NamespaceType is where a namespace's tools are from: built in, an MCP
+// server, which is a connector, or the agents
+export type NamespaceType = 'builtin' | 'mcp' | 'agent';
+
 // Tool is a tool which models can call, in a namespace, such as
 // weatherapi:current, or an agent, in the agent namespace, with its title,
 // for people, which only some tools, such as agents, have, and the JSON
@@ -7,16 +11,18 @@
 export interface Tool {
     name: string;
     canonical: string;
+    type: NamespaceType;
     title?: string;
     description?: string;
     input?: unknown;
     output?: unknown;
 }
 
-// Namespace is a namespace of tools, with a line which says what its tools
-// are for, when it has one, and how many tools it has
+// Namespace is a namespace of tools, where they're from, with a line which
+// says what its tools are for, when it has one, and how many tools it has
 export interface Namespace {
     name: string;
+    type: NamespaceType;
     description?: string;
     tools: number;
 }

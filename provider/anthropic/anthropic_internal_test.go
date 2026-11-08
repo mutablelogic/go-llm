@@ -128,6 +128,7 @@ func newTestClient(t *testing.T, api *fakeAPI) (*Client, *Model, *Model) {
 type weatherTool struct{}
 
 func (weatherTool) Name() string                                      { return "weather" }
+func (weatherTool) Title() string                                     { return "" }
 func (weatherTool) Description() string                               { return "The weather in a city" }
 func (weatherTool) InputSchema() *jsonschema.Schema                   { return nil }
 func (weatherTool) OutputSchema() *jsonschema.Schema                  { return nil }

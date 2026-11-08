@@ -33,12 +33,29 @@ func (self *Toolkit) ListTools(ctx context.Context, req schema.ToolListRequest) 
 		return nil, llm.ErrBadParameter.Withf("invalid namespace %q", namespace)
 	}
 
-	// The tools in the namespace, or all the tools, in order of canonical name
+	// The type, if any, must be one
+	typ := strings.TrimSpace(req.Type)
+	switch typ {
+	case "", schema.NamespaceBuiltin, schema.NamespaceMCP, schema.NamespaceAgent:
+	default:
+		return nil, llm.ErrBadParameter.Withf("invalid type %q, which isn't %s, %s or %s", typ, schema.NamespaceBuiltin, schema.NamespaceMCP, schema.NamespaceAgent)
+	}
+
+	// The tools in the namespace, or all the tools, of the type, or any, in
+	// order of canonical name
 	self.mu.RLock()
 	all := make([]*schema.Tool, 0, len(self.tools))
 	for _, name := range slices.Sorted(maps.Keys(self.tools)) {
-		if entry := self.tools[name]; namespace == "" || entry.namespace == namespace {
-			all = append(all, entry.wire())
+		entry := self.tools[name]
+		if namespace != "" && entry.namespace != namespace {
+			continue
+		}
+		entryType := schema.NamespaceBuiltin
+		if ns, exists := self.namespaces[entry.namespace]; exists {
+			entryType = typeOf(ns)
+		}
+		if typ == "" || entryType == typ {
+			all = append(all, entry.wire(entryType))
 		}
 	}
 	self.mu.RUnlock()
@@ -60,7 +77,7 @@ func (self *Toolkit) ListNamespaces(ctx context.Context) (_ *schema.NamespaceLis
 	}
 	all := make([]*schema.Namespace, 0, len(self.namespaces))
 	for _, name := range slices.Sorted(maps.Keys(self.namespaces)) {
-		all = append(all, &schema.Namespace{Name: name, Description: self.namespaces[name].Description(), Tools: tools[name]})
+		all = append(all, &schema.Namespace{Name: name, Type: typeOf(self.namespaces[name]), Description: self.namespaces[name].Description(), Tools: tools[name]})
 	}
 	return &schema.NamespaceList{Count: uint64(len(all)), Body: all}, nil
 }
@@ -68,19 +85,19 @@ func (self *Toolkit) ListNamespaces(ctx context.Context) (_ *schema.NamespaceLis
 ////////////////////////////////////////////////////////////////////////////////
 // PRIVATE METHODS
 
-// wire returns the tool in the wire format, with its title, when it has
-// one, and its schemas as JSON. A schema which can't be encoded is left out.
-func (e entry) wire() *schema.Tool {
+// wire returns the tool in the wire format, with its namespace's type, its
+// title, when it has one, and its schemas as JSON. A schema which can't be
+// encoded is left out.
+func (e entry) wire(typ string) *schema.Tool {
 	tool := &schema.Tool{
 		Name:        e.tool.Name(),
 		Canonical:   schema.CanonicalToolName(e.namespace, e.tool.Name()),
+		Type:        typ,
 		Description: e.tool.Description(),
 		Input:       marshalSchema(e.tool.InputSchema()),
 		Output:      marshalSchema(e.tool.OutputSchema()),
 	}
-	if titler, ok := e.tool.(ToolTitler); ok {
-		tool.Title = titler.Title()
-	}
+	tool.Title = e.tool.Title()
 	return tool
 }
 

@@ -3,6 +3,9 @@ package toolkit
 import (
 	"context"
 	"encoding/json"
+	"maps"
+	"reflect"
+	"slices"
 	"strings"
 	"sync"
 	"uuid"
@@ -43,6 +46,12 @@ type Toolkit struct {
 // its tools
 type Namespace interface {
 	Name() string
+
+	// Type returns where the namespace's tools are from: schema.NamespaceBuiltin,
+	// for the server's own, schema.NamespaceMCP, for an MCP server's, or
+	// schema.NamespaceAgent, for the agents'
+	Type() string
+
 	Description() string
 	SystemPrompt() string
 	Tools() []llm.Tool
@@ -71,12 +80,6 @@ type SessionPrompter interface {
 	// SessionPrompt returns what's added to the namespace's system prompt,
 	// for the session with the identifier, or nothing
 	SessionPrompt(ctx context.Context, session uuid.UUID) string
-}
-
-// ToolTitler is a tool which has a title, for people, such as an agent,
-// which is listed with it
-type ToolTitler interface {
-	Title() string
 }
 
 // namespace is a namespace with a name, system prompt and tools
@@ -179,6 +182,38 @@ func (self *Toolkit) Add(ns Namespace) error {
 	return nil
 }
 
+// Remove removes the namespace, and its tools, from the toolkit, which
+// publishes that each of its tools was deleted, when it's the namespace
+// with its name, rather than one which replaced it. Returns ErrNotFound
+// when it isn't.
+func (self *Toolkit) Remove(ns Namespace) error {
+	self.mu.Lock()
+	defer self.mu.Unlock()
+	if ns == nil {
+		return llm.ErrBadParameter.With("missing namespace")
+	}
+	name := ns.Name()
+	if !same(self.namespaces[name], ns) {
+		return llm.ErrNotFound.Withf("namespace %q", name)
+	}
+	delete(self.namespaces, name)
+	for _, canonical := range slices.Sorted(maps.Keys(self.tools)) {
+		if self.tools[canonical].namespace == name {
+			delete(self.tools, canonical)
+			self.publish(eventschema.EventDelete, canonical)
+		}
+	}
+	return nil
+}
+
+// HasNamespace returns true when the toolkit has a namespace with the name
+func (self *Toolkit) HasNamespace(name string) bool {
+	self.mu.RLock()
+	defer self.mu.RUnlock()
+	_, exists := self.namespaces[name]
+	return exists
+}
+
 // Credential returns the value of the credential with the key, such as a
 // tool's API key, from the toolkit's credential provider. Returns
 // ErrNotFound when the credential doesn't exist, or is empty, as when its
@@ -223,7 +258,7 @@ func (self *Toolkit) changed(ns Namespace, _ eventschema.EventAction, name strin
 	// changes which are told at once are applied in the order they're read
 	self.mu.Lock()
 	defer self.mu.Unlock()
-	if self.namespaces[ns.Name()] != ns {
+	if !same(self.namespaces[ns.Name()], ns) {
 		return
 	}
 	var tool llm.Tool
@@ -258,6 +293,40 @@ func (self *Toolkit) publish(action eventschema.EventAction, canonical string) {
 	if self.broadcaster != nil {
 		self.broadcaster.Publish(eventschema.Event{Action: action, Schema: EventSchema, Table: ToolTable, Row: canonical})
 	}
+}
+
+// same returns true when the namespaces are the same one, which they are
+// only when they're comparable, such as pointers, rather than panicking,
+// as comparing values which can't be does, such as a struct with a slice
+func same(a, b Namespace) bool {
+	if a == nil || b == nil {
+		return a == nil && b == nil
+	}
+	ta, tb := reflect.TypeOf(a), reflect.TypeOf(b)
+	if ta != tb || !ta.Comparable() {
+		return false
+	}
+	return a == b
+}
+
+// typeOf returns the namespace's type, which is schema.NamespaceBuiltin,
+// when it says none
+func typeOf(ns Namespace) string {
+	if typ := ns.Type(); typ != "" {
+		return typ
+	}
+	return schema.NamespaceBuiltin
+}
+
+// namespaceType returns the type of the namespace with the name, or
+// schema.NamespaceBuiltin, when there's none
+func (self *Toolkit) namespaceType(name string) string {
+	self.mu.RLock()
+	defer self.mu.RUnlock()
+	if ns, exists := self.namespaces[name]; exists {
+		return typeOf(ns)
+	}
+	return schema.NamespaceBuiltin
 }
 
 // newEntry returns the tool in the namespace, with its input schema resolved
@@ -298,7 +367,7 @@ func resolveSchema(v *jsonschema.Schema) (*jsonschema.Schema, error) {
 // NewNamespace returns a namespace with the name, the system prompt, which
 // can be empty, and the tools
 func NewNamespace(name, prompt string, tools ...llm.Tool) Namespace {
-	return namespace{name: name, prompt: prompt, tools: tools}
+	return &namespace{name: name, prompt: prompt, tools: tools}
 }
 
 func (n namespace) Name() string {
@@ -319,4 +388,7 @@ func (n namespace) Tools() []llm.Tool {
 }
 
 // Notify does nothing, as the namespace's tools don't change
+// Type returns that the namespace's tools are built in
+func (namespace) Type() string { return schema.NamespaceBuiltin }
+
 func (namespace) Notify(func(eventschema.EventAction, string)) {}

@@ -44,6 +44,7 @@ func liveClient(t *testing.T) (*anthropic.Client, llm.Model) {
 type cityTool struct{}
 
 func (cityTool) Name() string        { return "weather" }
+func (cityTool) Title() string       { return "" }
 func (cityTool) Description() string { return "Returns the weather in a city" }
 func (cityTool) InputSchema() *jsonschema.Schema {
 	return jsonschema.MustFor[struct {

@@ -14,6 +14,7 @@ import (
 	eventschema "github.com/mutablelogic/go-llm/broadcaster/schema"
 	schema "github.com/mutablelogic/go-llm/messaging/schema"
 	toolkit "github.com/mutablelogic/go-llm/toolkit"
+	toolschema "github.com/mutablelogic/go-llm/toolkit/schema"
 	jsonschema "github.com/mutablelogic/go-server/pkg/jsonschema"
 )
 
@@ -129,6 +130,9 @@ func (m *Messaging) SessionPrompt(ctx context.Context, session uuid.UUID) string
 }
 
 // Notify does nothing, as the tools don't change
+// Type returns that the namespace's tools are built in
+func (*Messaging) Type() string { return toolschema.NamespaceBuiltin }
+
 func (*Messaging) Notify(func(eventschema.EventAction, string)) {}
 
 // Tools returns the messaging tools

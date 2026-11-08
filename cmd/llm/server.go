@@ -20,6 +20,8 @@ import (
 	heartbeatcmd "github.com/mutablelogic/go-llm/heartbeat/cmd"
 	heartbeatschema "github.com/mutablelogic/go-llm/heartbeat/schema"
 	opusenc "github.com/mutablelogic/go-llm/internal/opusenc"
+	mcpregistry "github.com/mutablelogic/go-llm/mcp/registry"
+	mcpcmd "github.com/mutablelogic/go-llm/mcp/registry/cmd"
 	memory "github.com/mutablelogic/go-llm/memory"
 	memorycmd "github.com/mutablelogic/go-llm/memory/cmd"
 	messaging "github.com/mutablelogic/go-llm/messaging"
@@ -49,6 +51,7 @@ type CLI struct {
 	Memory      memorycmd.ClientCommands      `embed:""`
 	Heartbeat   heartbeatcmd.ClientCommands   `embed:""`
 	Resource    resourcecmd.ClientCommands    `embed:""`
+	Connector   mcpcmd.ClientCommands         `embed:""`
 }
 
 type ServerCommands struct {
@@ -64,6 +67,7 @@ type RunServer struct {
 	Memory      memorycmd.Flags          `embed:"" prefix:"memory."`
 	Heartbeat   heartbeatcmd.Flags       `embed:"" prefix:"heartbeat."`
 	Resource    resourcecmd.Flags        `embed:"" prefix:"resource."`
+	Connector   mcpcmd.Flags             `embed:"" prefix:"mcp."`
 	Frontend    frontendcmd.Flags        `embed:""`
 	servercmd.RunServer
 }
@@ -104,6 +108,10 @@ func (runner *RunServer) Run(ctx server.Cmd) error {
 		return err
 	}
 	resources, err := newServerResourceStore(ctx)
+	if err != nil {
+		return err
+	}
+	connectorStore, err := newServerConnectorStore(ctx)
 	if err != nil {
 		return err
 	}
@@ -161,7 +169,7 @@ func (runner *RunServer) Run(ctx server.Cmd) error {
 			// own, and the heartbeats, which are for sessions which exist
 			return runner.Resource.WithResources(ctx, &runner.RunServer, resources, func(res *resource.Manager) error {
 				return runner.Heartbeat.WithHeartbeats(ctx, &runner.RunServer, heartbeats, func(h *heartbeat.Heartbeats) error {
-					return runner.withToolkit(ctx, b, mem, h, res, &events, build, store, sessions, agents, outcomes)
+					return runner.withToolkit(ctx, b, mem, h, res, &events, build, store, connectorStore, sessions, agents, outcomes)
 				}, heartbeat.WithBroadcaster(b), heartbeat.WithZone(zone), heartbeat.WithRun(run), heartbeat.WithSessions(sessionExists))
 			}, resource.WithBroadcaster(b), resource.WithSessions(sessionExists))
 		}, memory.WithBroadcaster(b))
@@ -172,7 +180,7 @@ func (runner *RunServer) Run(ctx server.Cmd) error {
 // the heartbeats, as well as the tools whose credentials are set, and a
 // registry, with the stores, which runs the heartbeats which fire, once
 // it's set to, and fires them
-func (runner *RunServer) withToolkit(ctx server.Cmd, b *broadcaster.Broadcaster, mem *memory.Memory, h *heartbeat.Heartbeats, res *resource.Manager, events *atomic.Pointer[registry.Registry], build registry.EventBuilder, store registry.ProviderStore, sessions *sessionStore, agents *agentStore, outcomes *eventStore) error {
+func (runner *RunServer) withToolkit(ctx server.Cmd, b *broadcaster.Broadcaster, mem *memory.Memory, h *heartbeat.Heartbeats, res *resource.Manager, events *atomic.Pointer[registry.Registry], build registry.EventBuilder, store registry.ProviderStore, connectorStore mcpregistry.Store, sessions *sessionStore, agents *agentStore, outcomes *eventStore) error {
 	return runner.Toolkit.WithToolkit(ctx, &runner.RunServer, func(tools *toolkit.Toolkit) error {
 		// The memory, whose system prompt has what's remembered, and whose
 		// tools remember it, and which, when a model can call them, has it
@@ -247,57 +255,76 @@ func (runner *RunServer) withToolkit(ctx server.Cmd, b *broadcaster.Broadcaster,
 			}
 		}
 
-		return runner.Registry.WithRegistry(ctx, &runner.RunServer, func(r *registry.Registry) error {
-			// The example agents, as they are, before the server starts
-			createAgents(ctx, r)
+		// The connectors, which are remote MCP servers, once the toolkit,
+		// and the resources, are made, as their servers' tools are added to
+		// the toolkit, each in a namespace of its own, as it's connected,
+		// and their resources will be added to the resources
+		return runner.Connector.WithConnectorRegistry(ctx, &runner.RunServer, b, func(connectors *mcpregistry.Registry) error {
+			return runner.withRegistry(ctx, b, mem, h, res, m, connectors, tools, events, build, store, sessions, agents, outcomes, replies)
+		}, mcpregistry.WithStore(connectorStore), mcpregistry.WithToolkit(tools))
+	}, toolkit.WithBroadcaster(b))
+}
 
-			// The registry runs the heartbeats which fire
-			events.Store(r)
+// withRegistry runs the server, with the registry, which has the stores,
+// and the toolkit, and runs the heartbeats which fire, and the messaging's
+// chats, the resources' cleaning, the connectors, and the broadcaster,
+// until any stops
+func (runner *RunServer) withRegistry(ctx server.Cmd, b *broadcaster.Broadcaster, mem *memory.Memory, h *heartbeat.Heartbeats, res *resource.Manager, m *messaging.Messaging, connectors *mcpregistry.Registry, tools *toolkit.Toolkit, events *atomic.Pointer[registry.Registry], build registry.EventBuilder, store registry.ProviderStore, sessions *sessionStore, agents *agentStore, outcomes *eventStore, replies registry.ReplyFunc) error {
+	return runner.Registry.WithRegistry(ctx, &runner.RunServer, func(r *registry.Registry) error {
+		// The example agents, as they are, before the server starts
+		createAgents(ctx, r)
 
-			// They all stop when any does, such as when the server is
-			// stopped, when the broadcaster's watches end, so the
-			// server isn't kept waiting for its streams of events
-			group, runCtx := errgroup.WithContext(ctx.Context())
+		// The registry runs the heartbeats which fire
+		events.Store(r)
+
+		// They all stop when any does, such as when the server is
+		// stopped, when the broadcaster's watches end, so the
+		// server isn't kept waiting for its streams of events
+		group, runCtx := errgroup.WithContext(ctx.Context())
+		group.Go(func() error {
+			return b.Run(runCtx)
+		})
+		group.Go(func() error {
+			return r.Run(runCtx, ctx.Logger())
+		})
+		group.Go(func() error {
+			// Heartbeats fire once the registry has its providers, and
+			// their models, and agents, so one which is overdue, which
+			// fires as they start, can be run
+			select {
+			case <-r.Ready():
+			case <-runCtx.Done():
+				return nil
+			}
+			return h.Run(runCtx, ctx.Logger())
+		})
+		if m != nil {
 			group.Go(func() error {
-				return b.Run(runCtx)
-			})
-			group.Go(func() error {
-				return r.Run(runCtx, ctx.Logger())
-			})
-			group.Go(func() error {
-				// Heartbeats fire once the registry has its providers, and
-				// their models, and agents, so one which is overdue, which
-				// fires as they start, can be run
+				// Messages are received once the registry has its
+				// providers, and models, which reply to them
 				select {
 				case <-r.Ready():
 				case <-runCtx.Done():
 					return nil
 				}
-				return h.Run(runCtx, ctx.Logger())
+				return m.Run(runCtx, ctx.Logger())
 			})
-			if m != nil {
-				group.Go(func() error {
-					// Messages are received once the registry has its
-					// providers, and models, which reply to them
-					select {
-					case <-r.Ready():
-					case <-runCtx.Done():
-						return nil
-					}
-					return m.Run(runCtx, ctx.Logger())
-				})
-			}
-			group.Go(func() error {
-				// The resources of sessions which are deleted are deleted,
-				// and those which aren't needed are cleaned
-				return res.Run(runCtx, ctx.Logger())
-			})
-			group.Go(func() error {
-				return runner.RunServer.Run(ctx.WithContext(runCtx))
-			})
-			return group.Wait()
-		}, registry.WithBroadcaster(b), registry.WithProviderStore(store), registry.WithSessionStore(sessions), registry.WithAgentStore(agents), registry.WithEventStore(outcomes), registry.WithEventBuilder(build), registry.WithToolkit(tools), registry.WithResources(res), registry.WithTimes(func() *time.Location { return mem.Details().Zone() }, memory.Name), registry.WithReplies(replies), registry.WithCompactTools(memory.Name), runner.Session.Opt(hasHeartbeats(h)))
-	}, toolkit.WithBroadcaster(b))
+		}
+		group.Go(func() error {
+			// The resources of sessions which are deleted are deleted,
+			// and those which aren't needed are cleaned
+			return res.Run(runCtx, ctx.Logger())
+		})
+		group.Go(func() error {
+			// The connectors' servers are connected, as they're created,
+			// and disconnected, as they're deleted
+			return connectors.Run(runCtx, ctx.Logger())
+		})
+		group.Go(func() error {
+			return runner.RunServer.Run(ctx.WithContext(runCtx))
+		})
+		return group.Wait()
+	}, registry.WithBroadcaster(b), registry.WithProviderStore(store), registry.WithSessionStore(sessions), registry.WithAgentStore(agents), registry.WithEventStore(outcomes), registry.WithEventBuilder(build), registry.WithToolkit(tools), registry.WithResources(res), registry.WithTimes(func() *time.Location { return mem.Details().Zone() }, memory.Name), registry.WithReplies(replies), registry.WithCompactTools(memory.Name), runner.Session.Opt(hasHeartbeats(h)))
 }
 
 // hasHeartbeats returns the function which says whether a session is kept,
