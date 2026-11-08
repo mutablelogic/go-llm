@@ -117,7 +117,7 @@ func (ns *Namespace) Refresh(ctx context.Context) error {
 	tools := make([]*tool, 0, len(listed))
 	for _, t := range listed {
 		if t != nil && t.Name != "" && ns.match(t.Name) {
-			tools = append(tools, newTool(t, ns.client))
+			tools = append(tools, newTool(t, ns.client, ns.timeout))
 		}
 	}
 	slices.SortFunc(tools, func(a, b *tool) int { return compare(a.Name(), b.Name()) })

@@ -119,6 +119,20 @@ func Test_Match(t *testing.T) {
 	assert.Error(t, err)
 }
 
+func Test_Timeout(t *testing.T) {
+	// A tool has the namespace's timeout, or none, for the toolkit's default
+	ctx := t.Context()
+	server := newServer(t)
+	ns, err := namespace.New(ctx, "test", "", connect(t, server))
+	require.NoError(t, err)
+	assert.Zero(t, ns.Tools()[0].Timeout())
+	ns, err = namespace.New(ctx, "test", "", connect(t, server), namespace.WithTimeout(time.Minute))
+	require.NoError(t, err)
+	assert.Equal(t, time.Minute, ns.Tools()[0].Timeout())
+	_, err = namespace.New(ctx, "test", "", connect(t, server), namespace.WithTimeout(-time.Minute))
+	assert.Error(t, err)
+}
+
 func Test_Refresh(t *testing.T) {
 	// The tools are listed again, as the server says they changed, and each
 	// which was created, updated, or deleted is said

@@ -4,6 +4,7 @@ package cmd
 
 import (
 	"errors"
+	"time"
 
 	// Packages
 	client "github.com/mutablelogic/go-client"
@@ -18,8 +19,13 @@ import (
 ///////////////////////////////////////////////////////////////////////////////
 // TYPES
 
-// Flags are the connectors' flags for the server, which has none yet
-type Flags struct{}
+// Flags are the connectors' flags for the server: how long a connector's
+// server is waited for, as it's connected, and its tools are listed, and
+// how long one of its tools has, as it's called
+type Flags struct {
+	ConnectTimeout time.Duration `name:"connect-timeout" help:"How long a connector's MCP server is waited for, as it's connected, and its tools are listed." default:"30s" env:"LLM_MCP_CONNECT_TIMEOUT"`
+	ToolTimeout    time.Duration `name:"tool-timeout" help:"How long a connector's tool has, as it's called, or 0 for the default of every tool." default:"0" env:"LLM_MCP_TOOL_TIMEOUT"`
+}
 
 ///////////////////////////////////////////////////////////////////////////////
 // PUBLIC METHODS
@@ -47,7 +53,10 @@ func (flags Flags) WithConnectorRegistry(ctx server.Cmd, srv *servercmd.RunServe
 	// The server's options come first, so the options are used instead:
 	// its client options, and its name, and version, which servers are
 	// told, as they're connected
-	serverOpts := []registry.Opt{registry.WithClientOpts(clientOpts...)}
+	serverOpts := []registry.Opt{registry.WithClientOpts(clientOpts...), registry.WithToolTimeout(flags.ToolTimeout)}
+	if flags.ConnectTimeout > 0 {
+		serverOpts = append(serverOpts, registry.WithConnectTimeout(flags.ConnectTimeout))
+	}
 	if name := ctx.Name(); name != "" {
 		serverOpts = append(serverOpts, registry.WithName(name, ctx.Version()))
 	}

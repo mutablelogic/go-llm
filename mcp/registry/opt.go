@@ -2,6 +2,7 @@ package registry
 
 import (
 	"strings"
+	"time"
 
 	// Packages
 	client "github.com/mutablelogic/go-client"
@@ -22,6 +23,12 @@ type opt struct {
 	broadcaster *broadcaster.Broadcaster
 	toolkit     *toolkit.Toolkit
 	clientopts  []mcpclient.Opt
+
+	// How long a connector's server is waited for, as it's connected, and
+	// its tools are listed, and how long one of its tools has, or zero for
+	// the toolkit's default
+	connectTimeout time.Duration
+	toolTimeout    time.Duration
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -45,6 +52,8 @@ func (o *opt) defaults() {
 	o.store = NewMemoryStore()
 	o.broadcaster = nil
 	o.toolkit = nil
+	o.connectTimeout = ConnectTimeout
+	o.toolTimeout = 0
 	o.clientopts = nil
 }
 
@@ -88,6 +97,31 @@ func WithToolkit(tk *toolkit.Toolkit) Opt {
 			return llm.ErrBadParameter.With("missing toolkit")
 		}
 		o.toolkit = tk
+		return nil
+	}
+}
+
+// WithConnectTimeout is how long a connector's server is waited for, as
+// it's connected, and its tools are listed, rather than ConnectTimeout
+func WithConnectTimeout(timeout time.Duration) Opt {
+	return func(o *opt) error {
+		if timeout <= 0 {
+			return llm.ErrBadParameter.Withf("connect timeout %v isn't positive", timeout)
+		}
+		o.connectTimeout = timeout
+		return nil
+	}
+}
+
+// WithToolTimeout is how long one of a connector's server's tools has, as
+// it's called, rather than the toolkit's default, which it has when it's
+// zero
+func WithToolTimeout(timeout time.Duration) Opt {
+	return func(o *opt) error {
+		if timeout < 0 {
+			return llm.ErrBadParameter.Withf("tool timeout %v is negative", timeout)
+		}
+		o.toolTimeout = timeout
 		return nil
 	}
 }

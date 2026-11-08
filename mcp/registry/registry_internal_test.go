@@ -10,10 +10,12 @@ import (
 	"time"
 
 	// Packages
+	sdkmcp "github.com/modelcontextprotocol/go-sdk/mcp"
 	llm "github.com/mutablelogic/go-llm"
 	client "github.com/mutablelogic/go-llm/mcp/client"
 	schema "github.com/mutablelogic/go-llm/mcp/schema"
 	test "github.com/mutablelogic/go-llm/mcp/test"
+	toolkit "github.com/mutablelogic/go-llm/toolkit"
 	assert "github.com/stretchr/testify/assert"
 	require "github.com/stretchr/testify/require"
 )
@@ -197,8 +199,8 @@ func Test_UpdateKeepsSession(t *testing.T) {
 }
 
 func Test_UpdateTimeout(t *testing.T) {
-	// A server which doesn't reply, as it's connected, is unavailable
-	setInterval(t, &ConnectTimeout, 100*time.Millisecond)
+	// A server which doesn't reply, as it's connected, within the connect
+	// timeout, is unavailable
 	ctx := t.Context()
 	release := make(chan struct{})
 	hung := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -211,7 +213,7 @@ func Test_UpdateTimeout(t *testing.T) {
 		close(release)
 		hung.Close()
 	})
-	r, err := New()
+	r, err := New(WithConnectTimeout(100 * time.Millisecond))
 	require.NoError(t, err)
 	_, err = r.CreateConnector(ctx, schema.Connector{Name: "test", ConnectorMeta: schema.ConnectorMeta{URL: "https://mcp.example.com"}})
 	require.NoError(t, err)
@@ -219,4 +221,36 @@ func Test_UpdateTimeout(t *testing.T) {
 	_, err = r.UpdateConnector(ctx, "test", schema.ConnectorMeta{URL: hung.URL})
 	assert.Less(t, time.Since(start), 2*time.Second, "and is said as soon as it times out")
 	assert.ErrorIs(t, err, llm.ErrServiceUnavailable)
+}
+
+func Test_Timeouts(t *testing.T) {
+	// The connect timeout is positive, and the tool timeout isn't negative,
+	// and a connector's tools have it
+	_, err := New(WithConnectTimeout(0))
+	assert.ErrorIs(t, err, llm.ErrBadParameter)
+	_, err = New(WithToolTimeout(-time.Second))
+	assert.ErrorIs(t, err, llm.ErrBadParameter)
+	r, err := New()
+	require.NoError(t, err)
+	assert.Equal(t, ConnectTimeout, r.connectTimeout)
+	assert.Zero(t, r.toolTimeout)
+
+	setInterval(t, &ConnectJitter, 10*time.Millisecond)
+	ctx := t.Context()
+	server := test.NewServer(t)
+	sdkmcp.AddTool(server.MCP, &sdkmcp.Tool{Name: "echo", Description: "Echo"}, func(context.Context, *sdkmcp.CallToolRequest, struct{}) (*sdkmcp.CallToolResult, any, error) {
+		return &sdkmcp.CallToolResult{}, nil, nil
+	})
+	tk, err := toolkit.New(ctx)
+	require.NoError(t, err)
+	r, err = New(WithToolkit(tk), WithToolTimeout(5*time.Minute))
+	require.NoError(t, err)
+	t.Cleanup(func() { assert.NoError(t, r.Close()) })
+	_, err = r.CreateConnector(ctx, schema.Connector{Name: "test", ConnectorMeta: schema.ConnectorMeta{URL: server.URL}})
+	require.NoError(t, err)
+	r.reconcile(ctx, slog.New(slog.DiscardHandler))
+	tools, err := tk.Tools(ctx, "test:echo")
+	require.NoError(t, err)
+	require.Len(t, tools, 1)
+	assert.Equal(t, 5*time.Minute, tools[0].Timeout())
 }

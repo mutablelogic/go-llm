@@ -27,13 +27,13 @@ const namespaceAttempts = 5
 // which the client is connected to, to the toolkit, when the registry has
 // one, in place of the one it had, with the connector's name, as
 // schema.Namespace makes it, which isn't one of the toolkit's, described by
-// the server's title, or name, within ConnectTimeout
+// the server's title, or name, within its connect timeout
 func (r *Registry) addNamespace(name string, c *client.Client, server *sdkmcp.Implementation) {
 	if r.toolkit == nil {
 		return
 	}
 	r.removeNamespace(name)
-	ctx, cancel := context.WithTimeout(context.Background(), ConnectTimeout)
+	ctx, cancel := context.WithTimeout(context.Background(), r.connectTimeout)
 	defer cancel()
 	description := server.Title
 	if description == "" {
@@ -50,7 +50,7 @@ func (r *Registry) addNamespace(name string, c *client.Client, server *sdkmcp.Im
 		return
 	}
 	for range namespaceAttempts {
-		ns, err := namespace.New(ctx, schema.Namespace(name, r.toolkit.HasNamespace), description, c, namespace.WithMatch(match))
+		ns, err := namespace.New(ctx, schema.Namespace(name, r.toolkit.HasNamespace), description, c, namespace.WithMatch(match), namespace.WithTimeout(r.toolTimeout))
 		if err != nil {
 			r.log().WarnContext(ctx, "connector's tools not listed", "connector", name, "error", err.Error())
 			return
@@ -102,7 +102,7 @@ func (r *Registry) refreshNamespace(name string) {
 		return
 	}
 	go func() {
-		ctx, cancel := context.WithTimeout(context.Background(), ConnectTimeout)
+		ctx, cancel := context.WithTimeout(context.Background(), r.connectTimeout)
 		defer cancel()
 		if err := ns.Refresh(ctx); err != nil {
 			r.log().WarnContext(ctx, "connector's tools not listed again", "connector", name, "error", err.Error())

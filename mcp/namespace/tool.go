@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"strings"
+	"time"
 
 	// Packages
 	sdkmcp "github.com/modelcontextprotocol/go-sdk/mcp"
@@ -25,6 +26,7 @@ type tool struct {
 	client       *client.Client
 	inputSchema  *jsonschema.Schema
 	outputSchema *jsonschema.Schema
+	timeout      time.Duration
 }
 
 var _ llm.Tool = (*tool)(nil)
@@ -33,9 +35,10 @@ var _ llm.Tool = (*tool)(nil)
 // LIFECYCLE
 
 // newTool returns the server's tool, with its input, and output, schemas,
-// which are left out, when they aren't valid
-func newTool(t *sdkmcp.Tool, c *client.Client) *tool {
-	return &tool{t: t, client: c, inputSchema: schemaOf(t.InputSchema), outputSchema: schemaOf(t.OutputSchema)}
+// which are left out, when they aren't valid, and how long it has, or zero
+// for the toolkit's default
+func newTool(t *sdkmcp.Tool, c *client.Client, timeout time.Duration) *tool {
+	return &tool{t: t, client: c, inputSchema: schemaOf(t.InputSchema), outputSchema: schemaOf(t.OutputSchema), timeout: timeout}
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -62,6 +65,9 @@ func (t *tool) InputSchema() *jsonschema.Schema { return t.inputSchema }
 
 // OutputSchema returns the schema of the tool's structured output, or nil
 func (t *tool) OutputSchema() *jsonschema.Schema { return t.outputSchema }
+
+// Timeout returns how long the tool has, or zero for the toolkit's default
+func (t *tool) Timeout() time.Duration { return t.timeout }
 
 // Run calls the tool on its server, with the input, and returns its
 // structured output, or its content, or the error it returned

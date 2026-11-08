@@ -25,7 +25,8 @@ var (
 	RetryInterval = 30 * time.Second
 
 	// ConnectTimeout is how long a connector's server is waited for, as it's
-	// connected
+	// connected, and its tools are listed, unless the registry is given
+	// another, with WithConnectTimeout
 	ConnectTimeout = 30 * time.Second
 
 	// ConnectJitter is the most each connector waits, at random, before
@@ -163,11 +164,11 @@ func (r *Registry) reconcile(ctx context.Context, logger *slog.Logger) {
 	wg.Wait()
 }
 
-// connect connects the client of the connector, within ConnectTimeout, and
+// connect connects the client of the connector, within its connect timeout, and
 // logs that it was, or why it wasn't, when that's changed
 func (r *Registry) connect(ctx context.Context, logger *slog.Logger, connector schema.Connector, c *client.Client) {
 	_, before := c.Status()
-	connectCtx, cancel := context.WithTimeout(ctx, ConnectTimeout)
+	connectCtx, cancel := context.WithTimeout(ctx, r.connectTimeout)
 	defer cancel()
 	if err := c.Connect(connectCtx); err != nil {
 		if ctx.Err() == nil && (before == nil || before.Error() != err.Error()) {

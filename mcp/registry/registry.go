@@ -133,7 +133,7 @@ func (r *Registry) CreateConnector(ctx context.Context, connector schema.Connect
 }
 
 // UpdateConnector replaces the fields of the connector with the name, once
-// its server, as it is now, is connected, within ConnectTimeout, so a URL
+// its server, as it is now, is connected, within its connect timeout, so a URL
 // which isn't a server's isn't stored, and returns it, with its new serial,
 // and connected. Its server, as it was, is disconnected, once it's
 // replaced. One whose server is connected, at the same URL, such as when
@@ -168,10 +168,10 @@ func (r *Registry) UpdateConnector(ctx context.Context, name string, meta schema
 	if err != nil {
 		return nil, err
 	}
-	connectCtx, cancel := context.WithTimeout(ctx, ConnectTimeout)
+	connectCtx, cancel := context.WithTimeout(ctx, r.connectTimeout)
 	defer cancel()
 	if err := c.Connect(connectCtx); errors.Is(err, context.DeadlineExceeded) && ctx.Err() == nil {
-		return nil, llm.ErrServiceUnavailable.Withf("%s didn't reply within %v", connector.URL, ConnectTimeout)
+		return nil, llm.ErrServiceUnavailable.Withf("%s didn't reply within %v", connector.URL, r.connectTimeout)
 	} else if err != nil {
 		return nil, err
 	}
