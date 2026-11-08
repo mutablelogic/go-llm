@@ -4,6 +4,8 @@
 package cmd
 
 import (
+	"errors"
+
 	// Packages
 	client "github.com/mutablelogic/go-client"
 	broadcaster "github.com/mutablelogic/go-llm/broadcaster"
@@ -28,7 +30,8 @@ type Flags struct{}
 // clients of the connectors' servers use, the broadcaster it publishes its
 // changes to, when there is one, and the options, such as its store,
 // registers its HTTP handlers with the server, when there is one, and then
-// calls the function with the registry, returning any error
+// calls the function with the registry, returning any error, once its
+// connectors' servers are disconnected
 func (flags Flags) WithConnectorRegistry(ctx server.Cmd, srv *servercmd.RunServer, b *broadcaster.Broadcaster, fn func(*registry.Registry) error, opts ...registry.Opt) error {
 	// The clients' options are the command's, with its user agent
 	_, clientOpts, err := ctx.ClientEndpoint()
@@ -59,6 +62,7 @@ func (flags Flags) WithConnectorRegistry(ctx server.Cmd, srv *servercmd.RunServe
 		})
 	}
 
-	// Call the function with the registry
-	return fn(r)
+	// Call the function with the registry, and disconnect the connectors'
+	// servers, once it returns, such as when the server stops
+	return errors.Join(fn(r), r.Close())
 }

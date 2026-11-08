@@ -19,12 +19,27 @@ type ConnectorMeta struct {
 
 // Connector is a remote MCP server, as it's connected to: its name, its
 // fields which can be set, and its serial, which changes each time its
-// definition does. It's what's needed to create a client of its server, and
-// what a store of connectors holds.
+// definition does, which are what's needed to create a client of its
+// server, and what a store of connectors holds, and its status: whether
+// its server is connected, and which server it is, when it is, or why it
+// couldn't be connected, or its session ended, which isn't stored, as it's
+// the process's
 type Connector struct {
 	Name string `json:"name" help:"Connector name, which is an identifier, starting with a letter, followed by letters, numbers, underscores or hyphens" example:"github"`
 	ConnectorMeta
 	Serial uint64 `json:"serial,omitempty" readonly:"" help:"Revision of the connector's definition, which changes each time it's changed" example:"1"`
+
+	// The status, which isn't stored
+	Connected bool             `json:"connected,omitempty" readonly:"" help:"Whether the connector's server is connected"`
+	Server    *ConnectorServer `json:"server,omitempty" readonly:"" help:"The connector's server, as it said, once it's connected"`
+	Error     string           `json:"error,omitempty" readonly:"" help:"Why the connector's server couldn't be connected, or its session ended"`
+}
+
+// ConnectorServer is the name, and version, of a connector's server, as it
+// said, once it's connected
+type ConnectorServer struct {
+	Name    string `json:"name" help:"The server's name" example:"github-mcp-server"`
+	Version string `json:"version,omitempty" help:"The server's version" example:"1.0.0"`
 }
 
 // ConnectorEvent is the data of an event of a connector which was created,
@@ -35,12 +50,19 @@ type ConnectorEvent struct {
 
 // ConnectorList is a list of connectors, in order of their names
 type ConnectorList struct {
-	Count uint        `json:"count" help:"The number of connectors"`
-	Body  []Connector `json:"body,omitempty" help:"The connectors"`
+	Count uint         `json:"count" help:"The number of connectors"`
+	Body  []*Connector `json:"body,omitempty" help:"The connectors"`
 }
 
 ///////////////////////////////////////////////////////////////////////////////
 // PUBLIC METHODS
+
+// Definition returns the connector without its status, which is what's
+// stored
+func (c Connector) Definition() Connector {
+	c.Connected, c.Server, c.Error = false, nil, ""
+	return c
+}
 
 // Validate returns ErrBadParameter when the connector's name isn't an
 // identifier, or its fields aren't valid

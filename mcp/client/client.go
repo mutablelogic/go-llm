@@ -3,6 +3,7 @@ package client
 import (
 	"net/url"
 	"strings"
+	"sync"
 
 	// Packages
 	sdkmcp "github.com/modelcontextprotocol/go-sdk/mcp"
@@ -24,6 +25,13 @@ type Client struct {
 	// The name, and version, of the client, which the server is told, as it
 	// connects, with WithName
 	implementation sdkmcp.Implementation
+
+	// The session with the server, once it's connected, and the error of
+	// the last connection, or of the session, when it ended, which are held
+	// while it's connected, and disconnected
+	mu      sync.Mutex
+	session *sdkmcp.ClientSession
+	err     error
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -33,8 +41,8 @@ type Client struct {
 // https://mcp.example.com/mcp, or one which ends /sse, of a server with the
 // SSE transport, with the options, such as its name, and version, which the
 // server is told, with WithName, and go-client's, with WithClientOpts. It
-// isn't connected. Returns ErrBadParameter when the URL isn't an http, or
-// https, URL with a host.
+// isn't connected, until Connect is called. Returns ErrBadParameter when
+// the URL isn't an http, or https, URL with a host.
 func New(endpoint string, opts ...Opt) (*Client, error) {
 	u, err := url.Parse(strings.TrimSpace(endpoint))
 	if err != nil {

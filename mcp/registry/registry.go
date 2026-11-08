@@ -1,10 +1,12 @@
 // Package registry has the connectors, which are remote MCP servers, whose
-// definitions are kept in a store, with a client of each
+// definitions are kept in a store, with a client of each, which connects
+// to its server
 package registry
 
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"slices"
 	"strings"
 	"sync"
@@ -22,7 +24,8 @@ import (
 // Registry has the connectors, whose definitions are kept in its store,
 // which is read each time they're asked for, so they're as the store has
 // them, and a client of each, which is created once, and again once the
-// connector's definition changes
+// connector's definition changes, when the session of the one it replaces
+// is closed
 type Registry struct {
 	opt
 
@@ -50,22 +53,161 @@ func New(opts ...Opt) (*Registry, error) {
 	return r, nil
 }
 
-///////////////////////////////////////////////////////////////////////////////
-// PUBLIC METHODS - SERVERS
+// Close disconnects every connector's server, such as when the process
+// stops, and returns their errors
+func (r *Registry) Close() error {
+	r.mu.Lock()
+	clients := make([]*client.Client, 0, len(r.clients))
+	for _, e := range r.clients {
+		clients = append(clients, e.client)
+	}
+	r.clients = make(map[string]entry)
+	r.mu.Unlock()
 
-// ListConnectors returns the connectors, in order of their names
+	var errs []error
+	for _, c := range clients {
+		errs = append(errs, c.Disconnect())
+	}
+	return errors.Join(errs...)
+}
+
+///////////////////////////////////////////////////////////////////////////////
+// PUBLIC METHODS - CONNECTORS
+
+// ListConnectors returns the connectors, with their status, in order of
+// their names
 func (r *Registry) ListConnectors(ctx context.Context) (*schema.ConnectorList, error) {
 	connectors, err := r.store.List(ctx)
 	if err != nil {
 		return nil, err
 	}
 	slices.SortFunc(connectors, func(a, b schema.Connector) int { return strings.Compare(a.Name, b.Name) })
-	return &schema.ConnectorList{Count: uint(len(connectors)), Body: connectors}, nil
+	list := &schema.ConnectorList{Count: uint(len(connectors)), Body: make([]*schema.Connector, 0, len(connectors))}
+	for _, connector := range connectors {
+		list.Body = append(list.Body, r.status(connector))
+	}
+	return list, nil
 }
 
-// GetConnector returns the connector with the name, or ErrNotFound when there's
-// none
-func (r *Registry) GetConnector(ctx context.Context, name string) (schema.Connector, error) {
+// GetConnector returns the connector with the name, with its status, or
+// ErrNotFound when there's none
+func (r *Registry) GetConnector(ctx context.Context, name string) (*schema.Connector, error) {
+	connector, err := r.get(ctx, name)
+	if err != nil {
+		return nil, err
+	}
+	return r.status(connector), nil
+}
+
+// CreateConnector creates the connector, and returns it, with its serial.
+// It isn't connected. Returns ErrBadParameter when its name, or its fields,
+// aren't valid, and ErrConflict when there's a connector with its name.
+func (r *Registry) CreateConnector(ctx context.Context, connector schema.Connector) (*schema.Connector, error) {
+	connector = connector.Definition()
+	connector.Serial = 0
+	if err := connector.Validate(); err != nil {
+		return nil, err
+	} else if _, err := r.newClient(connector); err != nil {
+		return nil, err
+	}
+	created, err := r.store.Put(ctx, connector)
+	if err != nil {
+		return nil, err
+	}
+	r.publish(eventschema.EventCreate, created)
+	return r.status(created), nil
+}
+
+// UpdateConnector replaces the fields of the connector with the name, and
+// returns it, with its new serial. Its server is disconnected, when it's
+// connected, as the client of the connector, as it is, is created again.
+// Returns ErrNotFound when there's no connector with the name,
+// ErrBadParameter when the fields aren't valid, and ErrConflict when it was
+// changed as it was updated.
+func (r *Registry) UpdateConnector(ctx context.Context, name string, meta schema.ConnectorMeta) (*schema.Connector, error) {
+	connector, err := r.get(ctx, name)
+	if err != nil {
+		return nil, err
+	}
+	connector.ConnectorMeta = meta
+	connector = connector.Definition()
+	if err := connector.Validate(); err != nil {
+		return nil, err
+	} else if _, err := r.newClient(connector); err != nil {
+		return nil, err
+	}
+	updated, err := r.store.Put(ctx, connector)
+	if err != nil {
+		return nil, err
+	}
+	r.forget(name)
+	r.publish(eventschema.EventUpdate, updated)
+	return r.status(updated), nil
+}
+
+// DeleteConnector deletes the connector with the name, and disconnects its
+// server, when it's connected, and returns it, as it was. Returns
+// ErrNotFound when there's no connector with the name, and ErrConflict when
+// it was changed as it was deleted.
+func (r *Registry) DeleteConnector(ctx context.Context, name string) (*schema.Connector, error) {
+	connector, err := r.get(ctx, name)
+	if err != nil {
+		return nil, err
+	} else if err := r.store.Delete(ctx, name, connector.Serial); err != nil {
+		return nil, err
+	}
+	r.forget(name)
+	r.publish(eventschema.EventDelete, connector)
+	result := connector.Definition()
+	return &result, nil
+}
+
+///////////////////////////////////////////////////////////////////////////////
+// PUBLIC METHODS - CONNECTIONS
+
+// Connect connects to the server of the connector with the name, unless
+// it's connected, and returns it, with its status. Returns ErrNotFound when
+// there's no connector with the name, and ErrServiceUnavailable when its
+// server can't be connected to, which its status has, too.
+func (r *Registry) Connect(ctx context.Context, name string) (*schema.Connector, error) {
+	connector, err := r.get(ctx, name)
+	if err != nil {
+		return nil, err
+	}
+	c, err := r.client(connector)
+	if err != nil {
+		return nil, err
+	} else if err := c.Connect(ctx); err != nil {
+		return r.status(connector), err
+	}
+	return r.status(connector), nil
+}
+
+// Disconnect disconnects the server of the connector with the name, when
+// it's connected, and returns it, with its status. Returns ErrNotFound when
+// there's no connector with the name.
+func (r *Registry) Disconnect(ctx context.Context, name string) (*schema.Connector, error) {
+	connector, err := r.get(ctx, name)
+	if err != nil {
+		return nil, err
+	}
+	r.mu.Lock()
+	e, exists := r.clients[name]
+	r.mu.Unlock()
+	if exists {
+		if err := e.client.Disconnect(); err != nil {
+			return r.status(connector), err
+		}
+	}
+	return r.status(connector), nil
+}
+
+///////////////////////////////////////////////////////////////////////////////
+// PRIVATE METHODS
+
+// get returns the connector with the name, as the store has it, or
+// ErrNotFound when there's none
+func (r *Registry) get(ctx context.Context, name string) (schema.Connector, error) {
 	connectors, err := r.store.List(ctx)
 	if err != nil {
 		return schema.Connector{}, err
@@ -78,92 +220,62 @@ func (r *Registry) GetConnector(ctx context.Context, name string) (schema.Connec
 	return schema.Connector{}, llm.ErrNotFound.Withf("connector %q", name)
 }
 
-// CreateConnector creates the connector, and returns it, with its serial.
-// Returns ErrBadParameter when its name, or its fields, aren't valid, and
-// ErrConflict when there's a connector with its name.
-func (r *Registry) CreateConnector(ctx context.Context, connector schema.Connector) (schema.Connector, error) {
-	connector.Serial = 0
-	if err := connector.Validate(); err != nil {
-		return schema.Connector{}, err
-	} else if _, err := r.newClient(connector); err != nil {
-		return schema.Connector{}, err
-	}
-	created, err := r.store.Put(ctx, connector)
-	if err != nil {
-		return schema.Connector{}, err
-	}
-	r.publish(eventschema.EventCreate, created)
-	return created, nil
-}
-
-// UpdateConnector replaces the fields of the connector with the name, and returns
-// it, with its new serial, once its client is created again, when it's
-// next asked for. Returns ErrNotFound when there's no connector with the name,
-// ErrBadParameter when the fields aren't valid, and ErrConflict when it was
-// changed as it was updated.
-func (r *Registry) UpdateConnector(ctx context.Context, name string, meta schema.ConnectorMeta) (schema.Connector, error) {
-	connector, err := r.GetConnector(ctx, name)
-	if err != nil {
-		return schema.Connector{}, err
-	}
-	connector.ConnectorMeta = meta
-	if err := connector.Validate(); err != nil {
-		return schema.Connector{}, err
-	} else if _, err := r.newClient(connector); err != nil {
-		return schema.Connector{}, err
-	}
-	updated, err := r.store.Put(ctx, connector)
-	if err != nil {
-		return schema.Connector{}, err
-	}
-	r.publish(eventschema.EventUpdate, updated)
-	return updated, nil
-}
-
-// DeleteConnector deletes the connector with the name, and its client, and
-// returns it, as it was. Returns ErrNotFound when there's no connector with the
-// name, and ErrConflict when it was changed as it was deleted.
-func (r *Registry) DeleteConnector(ctx context.Context, name string) (schema.Connector, error) {
-	connector, err := r.GetConnector(ctx, name)
-	if err != nil {
-		return schema.Connector{}, err
-	} else if err := r.store.Delete(ctx, name, connector.Serial); err != nil {
-		return schema.Connector{}, err
-	}
+// client returns the client of the connector, as it is, which is created
+// once, and again once its definition changes, when the one it replaces is
+// disconnected
+func (r *Registry) client(connector schema.Connector) (*client.Client, error) {
 	r.mu.Lock()
-	delete(r.clients, name)
-	r.mu.Unlock()
-	r.publish(eventschema.EventDelete, connector)
-	return connector, nil
-}
-
-///////////////////////////////////////////////////////////////////////////////
-// PUBLIC METHODS - CLIENTS
-
-// Client returns the client of the MCP server of the connector with the
-// name, which is created once, and again once the connector's definition
-// changes, or ErrNotFound when there's no connector with the name. It isn't
-// connected.
-func (r *Registry) Client(ctx context.Context, name string) (*client.Client, error) {
-	connector, err := r.GetConnector(ctx, name)
-	if err != nil {
-		return nil, err
-	}
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	if e, exists := r.clients[name]; exists && e.serial == connector.Serial {
+	e, exists := r.clients[connector.Name]
+	if exists && e.serial == connector.Serial {
+		r.mu.Unlock()
 		return e.client, nil
 	}
 	c, err := r.newClient(connector)
 	if err != nil {
+		r.mu.Unlock()
 		return nil, err
 	}
-	r.clients[name] = entry{serial: connector.Serial, client: c}
+	r.clients[connector.Name] = entry{serial: connector.Serial, client: c}
+	r.mu.Unlock()
+	if exists {
+		_ = e.client.Disconnect()
+	}
 	return c, nil
 }
 
-///////////////////////////////////////////////////////////////////////////////
-// PRIVATE METHODS
+// forget disconnects the client of the connector with the name, and
+// forgets it, as the connector was changed, or deleted
+func (r *Registry) forget(name string) {
+	r.mu.Lock()
+	e, exists := r.clients[name]
+	delete(r.clients, name)
+	r.mu.Unlock()
+	if exists {
+		_ = e.client.Disconnect()
+	}
+}
+
+// status returns the connector, with whether its server is connected, and
+// which it is, or why it couldn't be connected, by its client, when it has
+// one, for the connector as it is
+func (r *Registry) status(connector schema.Connector) *schema.Connector {
+	result := connector.Definition()
+	r.mu.Lock()
+	e, exists := r.clients[connector.Name]
+	r.mu.Unlock()
+	if !exists || e.serial != connector.Serial {
+		return &result
+	}
+	server, err := e.client.Status()
+	if server != nil {
+		result.Connected = true
+		result.Server = &schema.ConnectorServer{Name: server.Name, Version: server.Version}
+	}
+	if err != nil {
+		result.Error = err.Error()
+	}
+	return &result
+}
 
 // publish publishes the change to the connector, when the registry has a
 // broadcaster, whose row is its name, and whose data is its serial, unless
