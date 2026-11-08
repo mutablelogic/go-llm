@@ -49,6 +49,7 @@ func Test_Loopback(t *testing.T) {
 	l, err := newLoopback(client)
 	require.NoError(t, err)
 	t.Cleanup(l.Close)
+	l.expect("abc")
 	assert.True(t, strings.HasPrefix(l.URL(), "http://127.0.0.1:"))
 	assert.True(t, strings.HasSuffix(l.URL(), loopbackPath))
 
@@ -67,6 +68,21 @@ func Test_Loopback(t *testing.T) {
 	assert.Equal(t, http.StatusOK, code)
 	assert.Contains(t, body, "Signed in to secure")
 	assert.Equal(t, "code=xyz&state=abc", query)
+
+	// A callback of another sign-in, or which isn't one, is refused, and
+	// isn't passed on, nor ends the sign-in
+	query = ""
+	for _, rawQuery := range []string{"state=stale&code=xyz", "code=xyz", "state=&error=access_denied"} {
+		code, body = get(rawQuery)
+		assert.Equal(t, http.StatusBadRequest, code, rawQuery)
+		assert.Contains(t, body, "the sign-in the command line is waiting for", rawQuery)
+	}
+	assert.Empty(t, query, "it isn't passed on")
+	select {
+	case err := <-l.failed:
+		t.Errorf("the sign-in was ended by another's callback: %v", err)
+	default:
+	}
 
 	// And says why they aren't, to the person, and the command
 	code, body = get("state=abc&error=access_denied")
