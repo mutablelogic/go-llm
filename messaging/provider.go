@@ -99,6 +99,21 @@ type Outgoing struct {
 	Files []string
 }
 
+// Attachment is a file sent with a message, such as a photo, a document,
+// or a voice message: its name, its type, when it's known, or empty, so
+// it's detected from its content, its size, when it's known, what it is,
+// such as a photo which was compressed, and the function which opens it,
+// which is downloaded as it's read, which the caller closes, or why it
+// can't be, such as that it's too large, when it's unavailable
+type Attachment struct {
+	Name        string
+	Type        string
+	Size        int64
+	Description string
+	Open        func(context.Context) (io.ReadCloser, error)
+	Unavailable string
+}
+
 // Message is a message sent to a provider, from a chat
 type Message struct {
 	// Address is the chat it was sent in
@@ -114,8 +129,16 @@ type Message struct {
 	// link which Link returned, and none otherwise
 	Code string
 
-	// Text is what it says
+	// Text is what it says, or the caption of its attachments
 	Text string
+
+	// Caption is whether the text is the caption of its attachments, which
+	// was sent with them, rather than a message of its own
+	Caption bool
+
+	// Attachments are the files sent with it, such as photos, documents,
+	// and voice messages, which are opened when they're kept
+	Attachments []Attachment
 
 	// Time is when it was sent
 	Time time.Time

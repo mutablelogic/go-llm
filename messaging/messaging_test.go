@@ -425,26 +425,27 @@ func Test_Messaging_Files(t *testing.T) {
 		assert.Equal(t, []string{"1:chart.png:chart.png:Here it is", "1:speech.ogg:speech.ogg:"}, provider.files)
 	})
 
-	t.Run("Text first", func(t *testing.T) {
-		// The text is sent before a file which isn't an image, and a file
-		// which can't be opened is an error, after the others are sent
+	t.Run("Voice caption", func(t *testing.T) {
+		// The text is the caption of the first file, whatever it is, such
+		// as a voice message, and a file which can't be opened is an error,
+		// after the others are sent
 		provider := &fileFake{fake: newFake("fake")}
 		m, err := messaging.New(messaging.NewStore(), messaging.WithProvider(provider), messaging.WithFiles(open))
 		require.NoError(t, err)
 		connect(t, m, provider.fake)
 		err = m.Reply(ctx, id, messaging.Outgoing{Text: "Listen", Files: []string{"resource:///audio", "resource:///gone"}})
 		assert.ErrorIs(t, err, llm.ErrNotFound)
-		assert.Equal(t, "Listen", provider.messages("1")[1])
-		assert.Equal(t, []string{"1:speech.ogg:speech.ogg:"}, provider.files)
+		assert.Len(t, provider.messages("1"), 1, "no message, other than the one it was connected with")
+		assert.Equal(t, []string{"1:speech.ogg:speech.ogg:Listen"}, provider.files)
 
 		// and the text is sent, when no file can be opened
 		require.Error(t, m.Reply(ctx, id, messaging.Outgoing{Text: "Still here", Files: []string{"resource:///gone"}}))
-		assert.Equal(t, "Still here", provider.messages("1")[2])
+		assert.Equal(t, "Still here", provider.messages("1")[1])
 
 		// Files alone are sent, without text
 		require.NoError(t, m.Reply(ctx, id, messaging.Outgoing{Files: []string{"resource:///image"}}))
 		assert.Len(t, provider.files, 2)
-		assert.Len(t, provider.messages("1"), 3)
+		assert.Len(t, provider.messages("1"), 2)
 	})
 
 	t.Run("Receipts", func(t *testing.T) {
@@ -458,7 +459,7 @@ func Test_Messaging_Files(t *testing.T) {
 		deliveries, err := m.Send(ctx, id, messaging.Outgoing{Text: "Listen", Files: []string{"resource:///audio", "resource:///gone", "resource:///image"}})
 		require.NoError(t, err)
 		require.Len(t, deliveries, 1)
-		assert.Equal(t, []messaging.Sent{{ID: "2", Text: true}, {ID: "3", File: "speech.ogg"}, {ID: "4", File: "chart.png"}}, deliveries[0].Messages)
+		assert.Equal(t, []messaging.Sent{{ID: "2", File: "speech.ogg", Caption: true}, {ID: "3", File: "chart.png"}}, deliveries[0].Messages)
 		assert.ErrorIs(t, deliveries[0].Err, llm.ErrNotFound)
 
 		// The tool says so too, with a count of each chat's messages
@@ -471,7 +472,7 @@ func Test_Messaging_Files(t *testing.T) {
 		output := toMap(t, result)
 		sent := output["sent"].([]any)[0].(map[string]any)
 		assert.EqualValues(t, 1, sent["count"])
-		assert.Equal(t, []any{map[string]any{"id": "5", "file": "chart.png", "caption": true}}, sent["messages"])
+		assert.Equal(t, []any{map[string]any{"id": "4", "file": "chart.png", "caption": true}}, sent["messages"])
 		assert.Contains(t, sent["error"], "resource:///gone")
 
 		// and it's an error, when nothing was sent
@@ -490,4 +491,32 @@ func Test_Messaging_Files(t *testing.T) {
 		require.NoError(t, m.Reply(ctx, id, messaging.Outgoing{Files: []string{"resource:///image"}}))
 		assert.Len(t, provider.messages("1"), 2)
 	})
+}
+
+func Test_Messaging_Attachments(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	provider := newFake("fake")
+	got := make(chan messaging.Message, 1)
+	m, err := messaging.New(messaging.NewStore(), messaging.WithProvider(provider), messaging.WithChat(func(_ context.Context, _ schema.Channel, message messaging.Message) error {
+		got <- message
+		return nil
+	}))
+	require.NoError(t, err)
+	go m.Run(ctx, nil)
+	link, _, err := m.Connect(ctx, uuid.New(), "")
+	require.NoError(t, err)
+	provider.incoming <- messaging.Message{Address: "1", Code: code(t, link)}
+
+	// A message with a file, and no text, such as a voice message, is sent
+	// to the session
+	voice := messaging.Attachment{Name: "voice.ogg", Type: "audio/ogg"}
+	provider.incoming <- messaging.Message{Address: "1", Attachments: []messaging.Attachment{voice}}
+	select {
+	case message := <-got:
+		require.Len(t, message.Attachments, 1)
+		assert.Equal(t, "voice.ogg", message.Attachments[0].Name)
+	case <-time.After(time.Second):
+		t.Fatal("a message with only a file wasn't sent to the session")
+	}
 }

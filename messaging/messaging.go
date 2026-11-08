@@ -480,7 +480,7 @@ func (m *Messaging) received(ctx context.Context, logger *slog.Logger, provider 
 	} else if !ok {
 		logger.InfoContext(ctx, "message from a chat which isn't connected ignored", "provider", provider.Name(), "address", message.Address, "chat", message.Title)
 		return nil
-	} else if strings.TrimSpace(message.Text) == "" || m.chat == nil {
+	} else if (strings.TrimSpace(message.Text) == "" && len(message.Attachments) == 0) || m.chat == nil {
 		return nil
 	}
 	if !m.enqueue(ctx, logger, received{channel: channel, message: message}) {
@@ -666,9 +666,9 @@ func (m *Messaging) typing(ctx context.Context, provider Provider, address strin
 
 // send sends the text, and the files, to the channel's chat, and returns
 // the messages they were sent as, in order, and the errors of what wasn't
-// sent. The text is the caption of the first file, when it's an image, and
-// is otherwise sent before the files. A provider which can't send files is
-// sent the text.
+// sent. The text is the caption of the first file, such as a picture, or a
+// voice message, so they're one message. A provider which can't send files
+// is sent the text.
 func (m *Messaging) send(ctx context.Context, channel schema.Channel, out Outgoing) ([]Sent, error) {
 	provider := m.providers[channel.Provider]
 	if provider == nil {
@@ -691,19 +691,11 @@ func (m *Messaging) send(ctx context.Context, channel schema.Channel, out Outgoi
 			continue
 		}
 		content.Close()
-		caption := ""
-		if text != "" {
-			if strings.HasPrefix(file.Type, "image/") {
-				caption = text
-			} else {
-				sent, err := provider.Send(ctx, channel.Address, text)
-				result = append(result, sent...)
-				if err != nil {
-					return result, errors.Join(errs, err)
-				}
-			}
-			text = ""
-		}
+		// The text is the first file's caption, under it, such as a
+		// picture's, or a voice message's, which the provider sends before
+		// it, when it's too long to be one
+		caption := text
+		text = ""
 
 		// The provider opens it, and can open it again
 		open := func() (io.ReadCloser, error) {

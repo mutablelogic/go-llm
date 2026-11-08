@@ -16,8 +16,11 @@ import (
 	llm "github.com/mutablelogic/go-llm"
 	messaging "github.com/mutablelogic/go-llm/messaging"
 	schema "github.com/mutablelogic/go-llm/messaging/schema"
+	registry "github.com/mutablelogic/go-llm/registry"
 	resource "github.com/mutablelogic/go-llm/resource"
 	resourceschema "github.com/mutablelogic/go-llm/resource/schema"
+	toolschema "github.com/mutablelogic/go-llm/toolkit/schema"
+	types "github.com/mutablelogic/go-server/pkg/types"
 	assert "github.com/stretchr/testify/assert"
 	require "github.com/stretchr/testify/require"
 )
@@ -84,4 +87,110 @@ func Test_OpenFile(t *testing.T) {
 	assert.ErrorIs(t, err, llm.ErrNotFound)
 	_, _, err = open(ctx, session, "https://example.com")
 	assert.ErrorIs(t, err, llm.ErrBadParameter)
+}
+
+func Test_ChatMessage(t *testing.T) {
+	ctx := t.Context()
+	session := uuid.New()
+	exists := func(_ context.Context, id uuid.UUID) error {
+		if id != session {
+			return llm.ErrNotFound.Withf("session %q", id)
+		}
+		return nil
+	}
+	res, err := resource.New(resource.NewStore(), resource.WithSessions(exists))
+	require.NoError(t, err)
+	attachment := func(name, mimeType, content string) messaging.Attachment {
+		return messaging.Attachment{Name: name, Type: mimeType, Open: func(context.Context) (io.ReadCloser, error) {
+			return io.NopCloser(strings.NewReader(content)), nil
+		}}
+	}
+
+	// The files are kept as the session's, as they're downloaded, and
+	// attached to the message, before its text
+	message, err := chatMessage(ctx, res, session, messaging.Message{Text: " Our trip ", Caption: true, Attachments: []messaging.Attachment{
+		attachment("photo.jpg", "image/jpeg", "JPEG"),
+		attachment("voice.ogg", "audio/ogg", "OggS"),
+	}})
+	require.NoError(t, err)
+	assert.Equal(t, "user", message.Role())
+	require.Len(t, message.Content, 4)
+	assert.Equal(t, "Our trip", types.Value(message.Content[2].Text))
+
+	// The text, which is the files' caption, is said to be, by their names,
+	// and URIs
+	reminder := types.Value(message.Content[3].Text)
+	assert.Contains(t, reminder, "The person's text is the caption of photo.jpg (resource:///")
+	assert.Contains(t, reminder, " and voice.ogg (resource:///")
+	for i, want := range []struct{ name, mimeType, content string }{{"photo.jpg", "image/jpeg", "JPEG"}, {"voice.ogg", "audio/ogg", "OggS"}} {
+		block := message.Content[i].Resource
+		require.NotNil(t, block)
+		assert.Equal(t, want.mimeType, block.ContentType)
+		hash, err := resourceschema.ParseURI(block.URL.String())
+		require.NoError(t, err)
+		kept, content, err := res.Open(ctx, resourceschema.ResourceKey{Hash: hash, Session: &session})
+		require.NoError(t, err)
+		data, err := io.ReadAll(content)
+		content.Close()
+		require.NoError(t, err)
+		assert.Equal(t, want.name, kept.Name)
+		assert.Equal(t, want.content, string(data))
+	}
+
+	// A file which can't be downloaded is an error
+	_, err = chatMessage(ctx, res, session, messaging.Message{Attachments: []messaging.Attachment{{Name: "gone.jpg", Open: func(context.Context) (io.ReadCloser, error) {
+		return nil, llm.ErrNotFound.With("telegram file")
+	}}}})
+	assert.ErrorIs(t, err, llm.ErrNotFound)
+
+	// A file which wasn't received, such as one which is too large, is a note
+	// to the model, so it can say so, and a photo's description is kept
+	message, err = chatMessage(ctx, res, session, messaging.Message{Attachments: []messaging.Attachment{
+		{Name: "film.mp4", Unavailable: "it's too large (25.0 MB)"},
+		{Name: "photo.jpg", Type: "image/jpeg", Description: "A photo, which Telegram compressed", Open: func(context.Context) (io.ReadCloser, error) {
+			return io.NopCloser(strings.NewReader("JPEG2")), nil
+		}},
+	}})
+	require.NoError(t, err)
+	require.Len(t, message.Content, 2)
+	assert.Contains(t, message.Text(), "film.mp4 wasn't received, as it's too large (25.0 MB)")
+	hash, err := resourceschema.ParseURI(message.Content[0].Resource.URL.String())
+	require.NoError(t, err)
+	kept, err := res.Get(ctx, resourceschema.ResourceKey{Hash: hash, Session: &session})
+	require.NoError(t, err)
+	assert.Equal(t, "A photo, which Telegram compressed", kept.Description)
+
+	// One which can't be opened, without a reason, says it couldn't be
+	message, err = chatMessage(ctx, res, session, messaging.Message{Text: "Here", Attachments: []messaging.Attachment{{Name: "lost.jpg"}}})
+	require.NoError(t, err)
+	assert.Contains(t, message.Text(), "lost.jpg wasn't received, as it couldn't be downloaded")
+
+	// Text which isn't a caption isn't said to be one
+	message, err = chatMessage(ctx, res, session, messaging.Message{Text: "Look", Attachments: []messaging.Attachment{
+		{Name: "a.jpg", Type: "image/jpeg", Open: func(context.Context) (io.ReadCloser, error) {
+			return io.NopCloser(strings.NewReader("JPEG3")), nil
+		}},
+	}})
+	require.NoError(t, err)
+	assert.NotContains(t, message.Text(), "caption")
+
+	// Text alone is the message
+	message, err = chatMessage(ctx, nil, session, messaging.Message{Text: "Hello"})
+	require.NoError(t, err)
+	assert.Equal(t, "Hello", message.Text())
+}
+
+func Test_ReplyFiles(t *testing.T) {
+	// A reply's media are sent with it, and files a model reads with, such
+	// as a transcript, aren't
+	reply := registry.Reply{Text: "Here you are", Resources: []toolschema.ResourceLink{
+		{URI: "resource:///speech", Type: "audio/ogg"},
+		{URI: "resource:///transcript", Type: "text/plain; charset=utf-8"},
+		{URI: "resource:///picture", Type: "image/png"},
+		{URI: "resource:///scan", Type: "text/markdown"},
+		{URI: "resource:///film", Type: "video/mp4"},
+		{URI: "resource:///report", Type: "application/pdf"},
+		{URI: "resource:///unknown"},
+	}}
+	assert.Equal(t, []string{"resource:///speech", "resource:///picture", "resource:///film"}, replyFiles(reply))
 }

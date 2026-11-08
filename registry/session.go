@@ -230,7 +230,7 @@ func (r *Registry) UpdateSession(ctx context.Context, id uuid.UUID, meta schema.
 // DeleteSession deletes the session with the identifier, with its messages,
 // and returns it, as it was, without them, such as an event's, which is
 // created again, when the event runs again. Returns ErrNotFound when
-// there's none, ErrConflict when its model is replying, such as as an event
+// there's none, ErrConflict when its model is replying, such as when an event
 // runs in it, so it's deleted once it's replied, or when it was changed as
 // it was deleted, and ErrServiceUnavailable when the registry has no
 // session store.

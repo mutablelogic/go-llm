@@ -5,9 +5,14 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
+	"mime"
+	"net/url"
 	"path/filepath"
+	"strings"
 	"sync/atomic"
+	"time"
 	"uuid"
 
 	// Packages
@@ -21,6 +26,7 @@ import (
 	resourceschema "github.com/mutablelogic/go-llm/resource/schema"
 	toolkit "github.com/mutablelogic/go-llm/toolkit"
 	server "github.com/mutablelogic/go-server"
+	types "github.com/mutablelogic/go-server/pkg/types"
 )
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -83,7 +89,7 @@ func (s *channelStore) Save(_ context.Context, channels []schema.Channel) error 
 // their channel's session, by the registry, once it's made, or nil, when no
 // provider's credentials are set, or the providers can't be reached, which
 // is logged
-func newServerMessaging(ctx server.Cmd, tools *toolkit.Toolkit, sessions *atomic.Pointer[registry.Registry], opts ...messaging.Opt) (*messaging.Messaging, error) {
+func newServerMessaging(ctx server.Cmd, tools *toolkit.Toolkit, sessions *atomic.Pointer[registry.Registry], res *resource.Manager, zone func() *time.Location, opts ...messaging.Opt) (*messaging.Messaging, error) {
 	token, err := tools.Credential(ctx.Context(), TelegramCredential)
 	if err != nil {
 		ctx.Logger().WarnContext(ctx.Context(), "messaging not added, as its credential can't be read", "provider", telegram.Name, "credential", TelegramCredential, "error", err.Error())
@@ -95,6 +101,10 @@ func newServerMessaging(ctx server.Cmd, tools *toolkit.Toolkit, sessions *atomic
 		return nil, nil
 	}
 	ctx.Logger().InfoContext(ctx.Context(), "messaging provider added", "provider", telegram.Name, "bot", bot.Username())
+
+	// The files sent without names are named after when they were sent, in
+	// the person's time zone
+	bot.SetLocation(zone)
 
 	dir, err := serverDir(ctx)
 	if err != nil {
@@ -112,7 +122,7 @@ func newServerMessaging(ctx server.Cmd, tools *toolkit.Toolkit, sessions *atomic
 		if r == nil {
 			return llm.ErrServiceUnavailable.With("registry isn't running")
 		}
-		msg, err := providerschema.NewMessage("user", message.Text)
+		msg, err := chatMessage(ctx, res, channel.Session, message)
 		if err != nil {
 			return err
 		}
@@ -137,4 +147,109 @@ func openFile(res *resource.Manager) messaging.OpenFunc {
 		}
 		return messaging.File{URI: r.URI(), Name: r.Name, Type: r.Type, Size: r.Size}, content, nil
 	}
+}
+
+// chatMessage returns the message from a channel's chat, as the person's
+// message in its session: the files sent with it, such as photos, or voice
+// messages, which are kept as the session's files, as they're downloaded,
+// and attached to it, as the web UI attaches them, and its text
+func chatMessage(ctx context.Context, res *resource.Manager, session uuid.UUID, message messaging.Message) (*providerschema.Message, error) {
+	content := make([]providerschema.ContentBlock, 0, len(message.Attachments)+1)
+	var unavailable, names []string
+	for _, attachment := range message.Attachments {
+		if attachment.Unavailable != "" || attachment.Open == nil {
+			reason := strings.TrimSpace(attachment.Unavailable)
+			if reason == "" {
+				reason = "it couldn't be downloaded"
+			}
+			unavailable = append(unavailable, fmt.Sprintf("%s wasn't received, as %s", attachment.Name, reason))
+			continue
+		} else if res == nil {
+			break
+		}
+		kept, err := keepAttachment(ctx, res, session, attachment)
+		if err != nil {
+			return nil, err
+		}
+		u, err := url.Parse(kept.URI())
+		if err != nil {
+			return nil, err
+		}
+		content = append(content, providerschema.ContentBlock{Resource: &providerschema.Resource{ResourceMeta: providerschema.ResourceMeta{ContentType: kept.Type, URL: u}}})
+		names = append(names, fmt.Sprintf("%s (%s)", kept.Name, kept.URI()))
+	}
+	text := strings.TrimSpace(message.Text)
+	if text != "" {
+		content = append(content, providerschema.ContentBlock{Text: types.Ptr(text)})
+	}
+
+	// The text which is the caption of the files, which was sent with them,
+	// rather than as a message of its own, which the model is told
+	var notes []string
+	if text != "" && message.Caption && len(names) > 0 {
+		notes = append(notes, "The person's text is the caption of "+list(names)+", which they sent it with.")
+	}
+
+	// The files which weren't received, such as those which are too large,
+	// which
+	// the model is told, so it can tell the person
+	if notes = append(notes, unavailable...); len(notes) > 0 {
+		content = append(content, providerschema.ContentBlock{Text: types.Ptr("<system-reminder>\n" + strings.Join(notes, "\n") + "\n</system-reminder>")})
+	}
+	if len(content) == 0 {
+		return nil, llm.ErrBadParameter.With("the message has no text, and its files couldn't be kept")
+	}
+	return &providerschema.Message{MessageMeta: providerschema.MessageMeta{Sender: "user", Content: content}}, nil
+}
+
+// keepAttachment downloads the file, and keeps it, as it's read, as a file
+// of the session, with its name, its type, or the one detected from its
+// content, and name, when it has none, and its description
+func keepAttachment(ctx context.Context, res *resource.Manager, session uuid.UUID, attachment messaging.Attachment) (resourceschema.Resource, error) {
+	content, err := attachment.Open(ctx)
+	if err != nil {
+		return resourceschema.Resource{}, err
+	}
+	defer content.Close()
+	kept, _, err := res.Create(ctx, resourceschema.ResourceMeta{Name: attachment.Name, Type: attachment.Type, Description: attachment.Description, Session: &session}, content)
+	return kept, err
+}
+
+// list returns the things, as a phrase, such as "a", "a and b", or "a, b
+// and c"
+func list(things []string) string {
+	if len(things) == 1 {
+		return things[0]
+	}
+	return strings.Join(things[:len(things)-1], ", ") + " and " + things[len(things)-1]
+}
+
+// replyFiles returns the URIs of the files a reply made which are sent with
+// it to its session's channels, which are its media: pictures, audio, such
+// as speech, and video. Files which a model reads with, such as transcripts,
+// and text an image was read as, aren't, as they're how it worked out its
+// reply, rather than part of it, and the model sends one, when it means to,
+// with messaging's send tool.
+func replyFiles(reply registry.Reply) []string {
+	var files []string
+	for _, resource := range reply.Resources {
+		if isMedia(resource.Type) {
+			files = append(files, resource.URI)
+		}
+	}
+	return files
+}
+
+// isMedia returns whether the type is of media: an image, audio, or video
+func isMedia(contentType string) bool {
+	mediaType, _, err := mime.ParseMediaType(contentType)
+	if err != nil {
+		return false
+	}
+	kind, _, _ := strings.Cut(strings.ToLower(mediaType), "/")
+	switch kind {
+	case "image", "audio", "video":
+		return true
+	}
+	return false
 }
