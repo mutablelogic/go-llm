@@ -7,6 +7,7 @@ import (
 	"io"
 	"log/slog"
 	"net/url"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -32,6 +33,7 @@ type fake struct {
 	incoming chan messaging.Message
 	mu       sync.Mutex
 	sent     map[string][]string
+	ids      int
 }
 
 func newFake(name string) *fake {
@@ -53,11 +55,12 @@ func (f *fake) Receive(ctx context.Context, fn func(context.Context, messaging.M
 	}
 }
 
-func (f *fake) Send(_ context.Context, address, text string) error {
+func (f *fake) Send(_ context.Context, address, text string) ([]messaging.Sent, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.sent[address] = append(f.sent[address], text)
-	return nil
+	f.ids++
+	return []messaging.Sent{{ID: strconv.Itoa(f.ids), Text: true}}, nil
 }
 
 func (f *fake) messages(address string) []string {
@@ -368,20 +371,21 @@ type fileFake struct {
 	files []string
 }
 
-func (f *fileFake) SendFile(_ context.Context, address string, file messaging.File, open func() (io.ReadCloser, error), caption string) error {
+func (f *fileFake) SendFile(_ context.Context, address string, file messaging.File, open func() (io.ReadCloser, error), caption string) ([]messaging.Sent, error) {
 	content, err := open()
 	if err != nil {
-		return err
+		return nil, err
 	}
 	defer content.Close()
 	data, err := io.ReadAll(content)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.files = append(f.files, address+":"+file.Name+":"+string(data)+":"+caption)
-	return nil
+	f.ids++
+	return []messaging.Sent{{ID: strconv.Itoa(f.ids), File: file.Name, Caption: caption != ""}}, nil
 }
 
 func Test_Messaging_Files(t *testing.T) {
@@ -441,6 +445,38 @@ func Test_Messaging_Files(t *testing.T) {
 		require.NoError(t, m.Reply(ctx, id, messaging.Outgoing{Files: []string{"resource:///image"}}))
 		assert.Len(t, provider.files, 2)
 		assert.Len(t, provider.messages("1"), 3)
+	})
+
+	t.Run("Receipts", func(t *testing.T) {
+		// What's sent is each message, in order, by its identifier, with
+		// what it was, and a file which couldn't be sent is an error of the
+		// channel, beside what was
+		provider := &fileFake{fake: newFake("fake")}
+		m, err := messaging.New(messaging.NewStore(), messaging.WithProvider(provider), messaging.WithFiles(open))
+		require.NoError(t, err)
+		connect(t, m, provider.fake)
+		deliveries, err := m.Send(ctx, id, messaging.Outgoing{Text: "Listen", Files: []string{"resource:///audio", "resource:///gone", "resource:///image"}})
+		require.NoError(t, err)
+		require.Len(t, deliveries, 1)
+		assert.Equal(t, []messaging.Sent{{ID: "2", Text: true}, {ID: "3", File: "speech.ogg"}, {ID: "4", File: "chart.png"}}, deliveries[0].Messages)
+		assert.ErrorIs(t, deliveries[0].Err, llm.ErrNotFound)
+
+		// The tool says so too, with a count of each chat's messages
+		tools := make(map[string]llm.Tool)
+		for _, tool := range m.Tools() {
+			tools[tool.Name()] = tool
+		}
+		result, err := tools["send"].Run(toolkit.WithSession(ctx, session(id)), json.RawMessage(`{"text":"Look","files":["resource:///image","resource:///gone"]}`))
+		require.NoError(t, err, "something was sent")
+		output := toMap(t, result)
+		sent := output["sent"].([]any)[0].(map[string]any)
+		assert.EqualValues(t, 1, sent["count"])
+		assert.Equal(t, []any{map[string]any{"id": "5", "file": "chart.png", "caption": true}}, sent["messages"])
+		assert.Contains(t, sent["error"], "resource:///gone")
+
+		// and it's an error, when nothing was sent
+		_, err = tools["send"].Run(toolkit.WithSession(ctx, session(id)), json.RawMessage(`{"files":["resource:///gone"]}`))
+		assert.ErrorIs(t, err, llm.ErrNotFound)
 	})
 
 	t.Run("Text only", func(t *testing.T) {

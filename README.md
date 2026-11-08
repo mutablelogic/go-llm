@@ -334,7 +334,7 @@ Tools are added to the server's toolkit when their credentials, or settings, are
 | `newsapi` | News articles, headlines and sources | `NEWSAPI_API_KEY`, from [newsapi.org](https://newsapi.org/register) |
 | `homeassistant` | Query, and search, and control smart home devices | `HOMEASSISTANT_URL`, `HOMEASSISTANT_API_KEY` |
 | `ollama` | Web search and fetch, with Ollama's cloud service, rather than a local Ollama | `OLLAMA_API_KEY`, from [ollama.com](https://ollama.com/settings/keys) |
-| `messaging` | `connect`, `list`, `send` and `disconnect`: connect a chat, such as on Telegram, to the conversation, list its chats, send them a message, and disconnect one. See [Messaging](#messaging) | `TELEGRAM_BOT_TOKEN`, from [BotFather](https://t.me/BotFather) |
+| `messaging` | `connect`, `list`, `send` and `disconnect`: connect a chat, such as on Telegram, to the conversation, list its chats, send them a message, and the conversation's files, which returns each message it was sent as, in order, by its identifier, with what it was, and why anything wasn't sent, and disconnect one. See [Messaging](#messaging) | `TELEGRAM_BOT_TOKEN`, from [BotFather](https://t.me/BotFather) |
 
 A model is given tools by name, by namespace and name, such as `weatherapi:current`, or all of a namespace's, such as `weatherapi:*`, or all of them, `*`.
 

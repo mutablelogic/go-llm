@@ -74,6 +74,14 @@ type pairing struct {
 	expires  time.Time
 }
 
+// Delivery is what was sent to one of a session's channels: the messages,
+// in order, and the error of what wasn't sent, when something wasn't
+type Delivery struct {
+	Channel  schema.Channel
+	Messages []Sent
+	Err      error
+}
+
 // received is a message from a channel's chat
 type received struct {
 	channel schema.Channel
@@ -279,13 +287,13 @@ func (m *Messaging) DeleteSession(ctx context.Context, session uuid.UUID) (int, 
 
 // Send sends the text, and the session's files, by their URIs, to the
 // channels of the session with the identifiers, or all of them, when there
-// are none, and returns those it was sent to. A provider which can't send
-// files, or without WithFiles, is sent the text only. Returns
-// ErrBadParameter when there's no text, nor files, ErrNotFound when the
-// session has no channels, or one of the identifiers isn't its, and the
-// errors of the channels it couldn't be sent to, after it's sent to the
-// others.
-func (m *Messaging) Send(ctx context.Context, session uuid.UUID, out Outgoing, ids ...uuid.UUID) (_ []schema.Channel, err error) {
+// are none, and returns what was sent to each, in order, or why it wasn't,
+// so a channel which couldn't be sent to, or a file which couldn't be,
+// doesn't stop the others. A provider which can't send files, or without
+// WithFiles, is sent the text only. Returns ErrBadParameter when there's no
+// text, nor files, and ErrNotFound when the session has no channels, or
+// one of the identifiers isn't its.
+func (m *Messaging) Send(ctx context.Context, session uuid.UUID, out Outgoing, ids ...uuid.UUID) (_ []Delivery, err error) {
 	ctx, endSpan := otel.StartSpan(m.tracer, ctx, "messaging.Send",
 		attribute.String("arg.session", session.String()),
 		attribute.Int("arg.text", len(out.Text)),
@@ -317,16 +325,12 @@ func (m *Messaging) Send(ctx context.Context, session uuid.UUID, out Outgoing, i
 		}
 		channels = chosen
 	}
-	var errs error
-	sent := make([]schema.Channel, 0, len(channels))
+	deliveries := make([]Delivery, 0, len(channels))
 	for _, channel := range channels {
-		if err := m.send(ctx, channel, out); err != nil {
-			errs = errors.Join(errs, err)
-		} else {
-			sent = append(sent, channel)
-		}
+		sent, err := m.send(ctx, channel, out)
+		deliveries = append(deliveries, Delivery{Channel: channel, Messages: sent, Err: err})
 	}
-	return sent, errs
+	return deliveries, nil
 }
 
 // Reply sends the session's reply, its text, and the files it made, such
@@ -342,7 +346,10 @@ func (m *Messaging) Reply(ctx context.Context, session uuid.UUID, out Outgoing) 
 	} else if len(channels) == 0 {
 		return nil
 	}
-	_, err := m.Send(ctx, session, out)
+	deliveries, err := m.Send(ctx, session, out)
+	for _, delivery := range deliveries {
+		err = errors.Join(err, delivery.Err)
+	}
 	return err
 }
 
@@ -457,12 +464,14 @@ func (m *Messaging) received(ctx context.Context, logger *slog.Logger, provider 
 		channel, err := m.pair(ctx, provider, message)
 		switch {
 		case errors.Is(err, errExpired):
-			return provider.Send(ctx, message.Address, textExpired)
+			_, err := provider.Send(ctx, message.Address, textExpired)
+			return err
 		case err != nil:
 			return err
 		}
 		logger.InfoContext(ctx, "chat connected", "provider", provider.Name(), "chat", channel.Title, "session", channel.Session)
-		return provider.Send(ctx, message.Address, textConnected)
+		_, err = provider.Send(ctx, message.Address, textConnected)
+		return err
 	}
 	channel, ok, err := m.find(ctx, provider.Name(), message.Address)
 	if err != nil {
@@ -474,7 +483,8 @@ func (m *Messaging) received(ctx context.Context, logger *slog.Logger, provider 
 		return nil
 	}
 	if !m.enqueue(ctx, logger, received{channel: channel, message: message}) {
-		return provider.Send(ctx, message.Address, textBusy)
+		_, err := provider.Send(ctx, message.Address, textBusy)
+		return err
 	}
 	return nil
 }
@@ -620,7 +630,7 @@ func (m *Messaging) handle(ctx context.Context, logger *slog.Logger, r received)
 	} else {
 		logger.ErrorContext(ctx, "message not answered", "provider", provider.Name(), "session", r.channel.Session, "error", err.Error())
 	}
-	if err := provider.Send(ctx, r.channel.Address, text); err != nil {
+	if _, err := provider.Send(ctx, r.channel.Address, text); err != nil {
 		logger.ErrorContext(ctx, "message not sent", "provider", provider.Name(), "session", r.channel.Session, "error", err.Error())
 	}
 }
@@ -653,22 +663,25 @@ func (m *Messaging) typing(ctx context.Context, provider Provider, address strin
 	}
 }
 
-// send sends the text, and the files, to the channel's chat. The text is
-// the caption of the first file, when it's an image, and is otherwise sent
-// before the files. A provider which can't send files is sent the text.
-func (m *Messaging) send(ctx context.Context, channel schema.Channel, out Outgoing) error {
+// send sends the text, and the files, to the channel's chat, and returns
+// the messages they were sent as, in order, and the errors of what wasn't
+// sent. The text is the caption of the first file, when it's an image, and
+// is otherwise sent before the files. A provider which can't send files is
+// sent the text.
+func (m *Messaging) send(ctx context.Context, channel schema.Channel, out Outgoing) ([]Sent, error) {
 	provider := m.providers[channel.Provider]
 	if provider == nil {
-		return llm.ErrNotFound.Withf("messaging provider %q, of channel %q, isn't set up", channel.Provider, channel.ID)
+		return nil, llm.ErrNotFound.Withf("messaging provider %q, of channel %q, isn't set up", channel.Provider, channel.ID)
 	}
 	text := strings.TrimSpace(out.Text)
 	sender, ok := provider.(FileSender)
 	if !ok || m.open == nil || len(out.Files) == 0 {
 		if text == "" {
-			return nil
+			return nil, nil
 		}
 		return provider.Send(ctx, channel.Address, text)
 	}
+	var result []Sent
 	var errs error
 	for _, uri := range out.Files {
 		file, content, err := m.open(ctx, channel.Session, uri)
@@ -681,8 +694,12 @@ func (m *Messaging) send(ctx context.Context, channel schema.Channel, out Outgoi
 		if text != "" {
 			if strings.HasPrefix(file.Type, "image/") {
 				caption = text
-			} else if err := provider.Send(ctx, channel.Address, text); err != nil {
-				return err
+			} else {
+				sent, err := provider.Send(ctx, channel.Address, text)
+				result = append(result, sent...)
+				if err != nil {
+					return result, errors.Join(errs, err)
+				}
 			}
 			text = ""
 		}
@@ -692,14 +709,18 @@ func (m *Messaging) send(ctx context.Context, channel schema.Channel, out Outgoi
 			_, content, err := m.open(ctx, channel.Session, uri)
 			return content, err
 		}
-		errs = errors.Join(errs, sender.SendFile(ctx, channel.Address, file, open, caption))
+		sent, err := sender.SendFile(ctx, channel.Address, file, open, caption)
+		result = append(result, sent...)
+		errs = errors.Join(errs, err)
 	}
 
 	// The text, when none of the files could be opened
 	if text != "" {
-		errs = errors.Join(errs, provider.Send(ctx, channel.Address, text))
+		sent, err := provider.Send(ctx, channel.Address, text)
+		result = append(result, sent...)
+		errs = errors.Join(errs, err)
 	}
-	return errs
+	return result, errs
 }
 
 // load loads the channels from the store, once. The caller holds the lock.

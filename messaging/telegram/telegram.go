@@ -130,39 +130,49 @@ func (t *Telegram) Receive(ctx context.Context, fn func(context.Context, messagi
 // Send sends the text, which is Markdown, to the chat, formatted as
 // Telegram's HTML, as more than one message, when it's longer than one can
 // be, broken between paragraphs, or other blocks, and as plain text, when
-// Telegram can't parse its HTML. Links don't have previews.
-func (t *Telegram) Send(ctx context.Context, address, text string) error {
+// Telegram can't parse its HTML, and returns the messages it was sent as.
+// Links don't have previews.
+func (t *Telegram) Send(ctx context.Context, address, text string) ([]messaging.Sent, error) {
+	var result []messaging.Sent
 	for _, p := range parts(text, maxText) {
 		req := sendMessageRequest{ChatID: address, Text: p.html, ParseMode: "HTML", LinkPreviewOptions: &linkPreviewOptions{IsDisabled: true}}
-		_, err := call[message](ctx, t.client, "sendMessage", req)
+		sent, err := call[message](ctx, t.client, "sendMessage", req)
 		if err != nil && strings.Contains(err.Error(), "can't parse entities") {
 			req.Text, req.ParseMode = p.plain, ""
-			_, err = call[message](ctx, t.client, "sendMessage", req)
+			sent, err = call[message](ctx, t.client, "sendMessage", req)
 		}
 		if err != nil {
-			return err
+			return result, err
 		}
+		result = append(result, messaging.Sent{ID: messageID(sent), Text: true})
 	}
-	return nil
+	return result, nil
 }
 
 // SendFile sends the file to the chat, as a photo, when it's an image
 // Telegram shows as one, a voice message, when it's Ogg, or Opus, audio,
 // a track, when it's MP3, or M4A, audio, and otherwise as a document, with
 // the caption, which is Markdown, under it, formatted, when it fits, or as
-// a message before it, when it doesn't. A caption whose formatting Telegram
-// can't parse is sent as plain text, with the file again. A file which is
-// larger than a bot can send is a note, with its name, after its caption.
-func (t *Telegram) SendFile(ctx context.Context, address string, file messaging.File, open func() (io.ReadCloser, error), caption string) error {
+// a message before it, when it doesn't, and returns the messages it was
+// sent as. A caption whose formatting Telegram can't parse is sent as plain
+// text, with the file again. A file which is larger than a bot can send is
+// a note, with its name, after its caption.
+func (t *Telegram) SendFile(ctx context.Context, address string, file messaging.File, open func() (io.ReadCloser, error), caption string) ([]messaging.Sent, error) {
 	name := fileName(file)
 	caption = strings.TrimSpace(caption)
+	var result []messaging.Sent
 	if file.Size > maxUpload {
 		if caption != "" {
-			if err := t.Send(ctx, address, caption); err != nil {
-				return err
+			sent, err := t.Send(ctx, address, caption)
+			if result = append(result, sent...); err != nil {
+				return result, err
 			}
 		}
-		return t.Send(ctx, address, fmt.Sprintf("📎 %s is too large to send here (%s)", name, megabytes(file.Size)))
+		note, err := call[message](ctx, t.client, "sendMessage", sendMessageRequest{ChatID: address, Text: fmt.Sprintf("📎 %s is too large to send here (%s)", name, megabytes(file.Size))})
+		if err != nil {
+			return result, err
+		}
+		return append(result, messaging.Sent{ID: messageID(note), File: name, Note: "too large to send, so this is a note in its place"}), nil
 	}
 
 	// The caption, as Telegram's HTML, when it's one message, which fits, or
@@ -171,23 +181,30 @@ func (t *Telegram) SendFile(ctx context.Context, address string, file messaging.
 	if caption != "" {
 		if p := parts(caption, maxCaption); len(p) == 1 {
 			html, plain = p[0].html, p[0].plain
-		} else if err := t.Send(ctx, address, caption); err != nil {
-			return err
+		} else {
+			sent, err := t.Send(ctx, address, caption)
+			if result = append(result, sent...); err != nil {
+				return result, err
+			}
 		}
 	}
-	err := t.upload(ctx, address, file, name, open, html, "HTML")
+	sent, err := t.upload(ctx, address, file, name, open, html, "HTML")
 	if err != nil && html != "" && strings.Contains(err.Error(), "can't parse entities") {
-		err = t.upload(ctx, address, file, name, open, plain, "")
+		sent, err = t.upload(ctx, address, file, name, open, plain, "")
 	}
-	return err
+	if err != nil {
+		return result, err
+	}
+	return append(result, messaging.Sent{ID: messageID(sent), File: name, Caption: html != ""}), nil
 }
 
 // upload opens the file, and sends it, with its caption, which is in the
-// parse mode, when it has one, by the method for its kind
-func (t *Telegram) upload(ctx context.Context, address string, file messaging.File, name string, open func() (io.ReadCloser, error), caption, parseMode string) error {
+// parse mode, when it has one, by the method for its kind, and returns the
+// message it was sent as
+func (t *Telegram) upload(ctx context.Context, address string, file messaging.File, name string, open func() (io.ReadCloser, error), caption, parseMode string) (message, error) {
 	content, err := open()
 	if err != nil {
-		return err
+		return message{}, err
 	}
 	defer content.Close()
 	if caption == "" {
@@ -196,15 +213,18 @@ func (t *Telegram) upload(ctx context.Context, address string, file messaging.Fi
 	f := types.File{Path: name, Body: io.NopCloser(content), ContentType: file.Type}
 	switch kind(file) {
 	case "photo":
-		_, err = upload[message](ctx, t.client, "sendPhoto", sendPhotoRequest{ChatID: address, Photo: f, Caption: caption, ParseMode: parseMode})
+		return upload[message](ctx, t.client, "sendPhoto", sendPhotoRequest{ChatID: address, Photo: f, Caption: caption, ParseMode: parseMode})
 	case "voice":
-		_, err = upload[message](ctx, t.client, "sendVoice", sendVoiceRequest{ChatID: address, Voice: f, Caption: caption, ParseMode: parseMode})
+		return upload[message](ctx, t.client, "sendVoice", sendVoiceRequest{ChatID: address, Voice: f, Caption: caption, ParseMode: parseMode})
 	case "audio":
-		_, err = upload[message](ctx, t.client, "sendAudio", sendAudioRequest{ChatID: address, Audio: f, Caption: caption, ParseMode: parseMode})
-	default:
-		_, err = upload[message](ctx, t.client, "sendDocument", sendDocumentRequest{ChatID: address, Document: f, Caption: caption, ParseMode: parseMode})
+		return upload[message](ctx, t.client, "sendAudio", sendAudioRequest{ChatID: address, Audio: f, Caption: caption, ParseMode: parseMode})
 	}
-	return err
+	return upload[message](ctx, t.client, "sendDocument", sendDocumentRequest{ChatID: address, Document: f, Caption: caption, ParseMode: parseMode})
+}
+
+// messageID returns the message's identifier, as text
+func messageID(m message) string {
+	return strconv.FormatInt(m.ID, 10)
 }
 
 // Typing shows "typing…" in the chat, for five seconds, or until a message

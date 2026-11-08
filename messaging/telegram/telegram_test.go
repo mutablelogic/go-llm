@@ -27,6 +27,7 @@ type bot struct {
 	sent    []sendMessageRequest
 	uploads []uploaded
 	paths   []string
+	ids     int64
 }
 
 // uploaded is a file which was sent, with the method, and field, it was sent
@@ -84,7 +85,11 @@ func (b *bot) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		b.mu.Lock()
 		b.sent = append(b.sent, req)
 		b.mu.Unlock()
-		_ = json.NewEncoder(w).Encode(response[message]{OK: true, Result: message{ID: 1}})
+		b.mu.Lock()
+		b.ids++
+		id := b.ids
+		b.mu.Unlock()
+		_ = json.NewEncoder(w).Encode(response[message]{OK: true, Result: message{ID: id}})
 	case "sendPhoto", "sendVoice", "sendAudio", "sendDocument":
 		if err := r.ParseMultipartForm(1 << 20); err != nil {
 			w.WriteHeader(http.StatusBadRequest)
@@ -105,8 +110,10 @@ func (b *bot) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 		b.mu.Lock()
 		b.uploads = append(b.uploads, u)
+		b.ids++
+		id := b.ids
 		b.mu.Unlock()
-		_ = json.NewEncoder(w).Encode(response[message]{OK: true, Result: message{ID: 2}})
+		_ = json.NewEncoder(w).Encode(response[message]{OK: true, Result: message{ID: id}})
 	case "sendChatAction":
 		_ = json.NewEncoder(w).Encode(response[bool]{OK: true, Result: true})
 	default:
@@ -176,13 +183,18 @@ func Test_Telegram_Send(t *testing.T) {
 	tg := newBot(t, b)
 	ctx := context.Background()
 
-	require.NoError(t, tg.Send(ctx, "7", "Hello **David**"))
+	_, err := tg.Send(ctx, "7", "Hello **David**")
+	require.NoError(t, err)
 	require.NoError(t, tg.Typing(ctx, "7"))
 	assert.Equal(t, sendMessageRequest{ChatID: "7", Text: "Hello <b>David</b>", ParseMode: "HTML", LinkPreviewOptions: &linkPreviewOptions{IsDisabled: true}}, b.sent[0])
 
 	// A long reply is in parts, between paragraphs
 	long := strings.Repeat("word ", 700) + "\n\n" + strings.Repeat("more ", 700)
-	require.NoError(t, tg.Send(ctx, "7", long))
+	sent, err := tg.Send(ctx, "7", long)
+	require.NoError(t, err)
+	require.Len(t, sent, 2, "a message for each part")
+	assert.True(t, sent[0].Text)
+	assert.NotEqual(t, sent[0].ID, sent[1].ID)
 	require.Len(t, b.sent, 3)
 	assert.Equal(t, strings.TrimSpace(strings.Repeat("word ", 700)), b.sent[1].Text)
 	assert.Equal(t, strings.TrimSpace(strings.Repeat("more ", 700)), b.sent[2].Text)
@@ -191,12 +203,13 @@ func Test_Telegram_Send(t *testing.T) {
 	b.mu.Lock()
 	b.sent = nil
 	b.mu.Unlock()
-	require.NoError(t, tg.Send(ctx, "7", "**Bold** <unparseable>"))
+	_, err = tg.Send(ctx, "7", "**Bold** <unparseable>")
+	require.NoError(t, err)
 	require.Len(t, b.sent, 1)
 	assert.Equal(t, "Bold <unparseable>", b.sent[0].Text)
 	assert.Empty(t, b.sent[0].ParseMode)
 
-	err := tg.Send(ctx, "404", "Hello")
+	_, err = tg.Send(ctx, "404", "Hello")
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "chat not found")
 	assert.NotContains(t, err.Error(), "SECRET")
@@ -251,14 +264,19 @@ func Test_Telegram_SendFile(t *testing.T) {
 
 	// An image is a photo, with its caption, formatted
 	f, r := file("chart.png", "image/png", "PNG")
-	require.NoError(t, tg.SendFile(ctx, "7", f, r, "The **weather**"))
+	sent, err := tg.SendFile(ctx, "7", f, r, "The **weather**")
+	require.NoError(t, err)
+	assert.Equal(t, []messaging.Sent{{ID: "1", File: "chart.png", Caption: true}}, sent)
 	// Ogg is a voice message, MP3 a track, and WAV a document
 	f, r = file("speech.ogg", "audio/ogg", "OGG")
-	require.NoError(t, tg.SendFile(ctx, "7", f, r, ""))
+	_, err = tg.SendFile(ctx, "7", f, r, "")
+	require.NoError(t, err)
 	f, r = file("speech.mp3", "audio/mpeg", "MP3")
-	require.NoError(t, tg.SendFile(ctx, "7", f, r, ""))
+	_, err = tg.SendFile(ctx, "7", f, r, "")
+	require.NoError(t, err)
 	f, r = file("", "audio/wav", "RIFF")
-	require.NoError(t, tg.SendFile(ctx, "7", f, r, ""))
+	_, err = tg.SendFile(ctx, "7", f, r, "")
+	require.NoError(t, err)
 	require.Len(t, b.uploads, 4)
 	assert.Equal(t, uploaded{method: "sendPhoto", field: "photo", name: "chart.png", content: "PNG", chatID: "7", caption: "The <b>weather</b>", parseMode: "HTML"}, b.uploads[0])
 	assert.Equal(t, uploaded{method: "sendVoice", field: "voice", name: "speech.ogg", content: "OGG", chatID: "7"}, b.uploads[1])
@@ -271,7 +289,9 @@ func Test_Telegram_SendFile(t *testing.T) {
 	// A caption which is too long is a message before it
 	long := strings.Repeat("word ", 300)
 	f, r = file("chart.png", "image/png", "PNG")
-	require.NoError(t, tg.SendFile(ctx, "7", f, r, long))
+	sent, err = tg.SendFile(ctx, "7", f, r, long)
+	require.NoError(t, err)
+	assert.Equal(t, []messaging.Sent{{ID: "5", Text: true}, {ID: "6", File: "chart.png"}}, sent, "the caption, and then the file, without it")
 	require.Len(t, b.sent, 1)
 	assert.Equal(t, strings.TrimSpace(long), b.sent[0].Text)
 	assert.Empty(t, b.uploads[4].caption)
@@ -280,10 +300,12 @@ func Test_Telegram_SendFile(t *testing.T) {
 	// lost, and it isn't opened
 	opened = 0
 	f = messaging.File{Name: "photo.png", Type: "image/png", Size: 60 << 20}
-	require.NoError(t, tg.SendFile(ctx, "7", f, func() (io.ReadCloser, error) {
+	sent, err = tg.SendFile(ctx, "7", f, func() (io.ReadCloser, error) {
 		opened++
 		return io.NopCloser(strings.NewReader("")), nil
-	}, "A big photo"))
+	}, "A big photo")
+	require.NoError(t, err)
+	assert.Equal(t, []messaging.Sent{{ID: "7", Text: true}, {ID: "8", File: "photo.png", Note: "too large to send, so this is a note in its place"}}, sent)
 	assert.Len(t, b.uploads, 5)
 	assert.Zero(t, opened)
 	assert.Equal(t, "A big photo", b.sent[1].Text)
@@ -293,7 +315,9 @@ func Test_Telegram_SendFile(t *testing.T) {
 	// text, with the file, opened again
 	opened = 0
 	f, r = file("chart.png", "image/png", "PNG")
-	require.NoError(t, tg.SendFile(ctx, "7", f, r, "**unparseable** chart"))
+	sent, err = tg.SendFile(ctx, "7", f, r, "**unparseable** chart")
+	require.NoError(t, err)
+	assert.Equal(t, []messaging.Sent{{ID: "9", File: "chart.png", Caption: true}}, sent)
 	assert.Equal(t, 2, opened)
 	require.Len(t, b.uploads, 6)
 	assert.Equal(t, uploaded{method: "sendPhoto", field: "photo", name: "chart.png", content: "PNG", chatID: "7", caption: "unparseable chart"}, b.uploads[5])

@@ -30,8 +30,10 @@ type Provider interface {
 	Receive(ctx context.Context, fn func(context.Context, Message) error) error
 
 	// Send sends the text to the chat with the address, as more than one
-	// message, when it's longer than one can be
-	Send(ctx context.Context, address, text string) error
+	// message, when it's longer than one can be, and returns the messages it
+	// was sent as, in order, including those which were sent before an
+	// error
+	Send(ctx context.Context, address, text string) ([]Sent, error)
 }
 
 // Typer is a provider which can show that a reply is being written, such
@@ -50,7 +52,23 @@ type FileSender interface {
 	// send it again, to the chat with the address, with the caption, which is
 	// Markdown, when it has one, under it, or before it, when it's too long
 	// to be its caption
-	SendFile(ctx context.Context, address string, file File, open func() (io.ReadCloser, error), caption string) error
+	//
+	// It returns the messages it was sent as, in order, such as the caption,
+	// when it's a message of its own, and the file, including those which
+	// were sent before an error
+	SendFile(ctx context.Context, address string, file File, open func() (io.ReadCloser, error), caption string) ([]Sent, error)
+}
+
+// Sent is a message which was sent to a chat: its identifier, which the
+// provider gave it, and what it was, which is text, or a file, with the
+// text as its caption, or not, or a note in place of a file, which couldn't
+// be sent, such as as it's too large
+type Sent struct {
+	ID      string `json:"id"`
+	Text    bool   `json:"text,omitempty"`
+	File    string `json:"file,omitempty"`
+	Caption bool   `json:"caption,omitempty"`
+	Note    string `json:"note,omitempty"`
 }
 
 // File is a session's file, which is sent to its channels
