@@ -21,7 +21,7 @@ import (
 type ConnectorCommands struct {
 	Connectors      ConnectorListCmd   `cmd:"" name:"connectors" help:"List the connectors, which are remote MCP servers, and whether each is connected." group:"MCP CONNECTORS"`
 	Connector       ConnectorGetCmd    `cmd:"" name:"connector" help:"Get a connector by name." group:"MCP CONNECTORS"`
-	ConnectorCreate ConnectorCreateCmd `cmd:"" name:"connector-create" help:"Create a connector to a remote MCP server, which the server connects to." group:"MCP CONNECTORS"`
+	ConnectorCreate ConnectorCreateCmd `cmd:"" name:"connector-create" help:"Create a connector to a remote MCP server, and wait for the server to connect to it, signing in, in a browser, when it needs to be." group:"MCP CONNECTORS"`
 	ConnectorUpdate ConnectorUpdateCmd `cmd:"" name:"connector-update" help:"Update a connector's URL, or patterns, so it's connected again." group:"MCP CONNECTORS"`
 	ConnectorDelete ConnectorDeleteCmd `cmd:"" name:"connector-delete" help:"Delete a connector by name, so it's disconnected." group:"MCP CONNECTORS"`
 }
@@ -104,10 +104,16 @@ func (cmd *ConnectorGetCmd) Run(ctx server.Cmd) error {
 	})
 }
 
-// Run creates the connector, and prints it
+// Run creates the connector, and waits for its server to be connected, and
+// signed in to, when it needs to be, in the person's browser, and prints
+// it, once it's connected
 func (cmd *ConnectorCreateCmd) Run(ctx server.Cmd) error {
-	return withClient(ctx, "mcp.ConnectorCreateCmd", func(ctx context.Context, client *httpclient.Client) error {
-		connector, err := client.CreateConnector(ctx, schema.Connector{Name: cmd.Name, ConnectorMeta: schema.ConnectorMeta{URL: cmd.URL, Include: cmd.Include, Exclude: cmd.Exclude, ClientIDCredential: cmd.ClientIDCredential, ClientSecretCredential: cmd.ClientSecretCredential}})
+	return withClient(ctx, "mcp.ConnectorCreateCmd", func(parent context.Context, client *httpclient.Client) error {
+		created, err := client.CreateConnector(parent, schema.Connector{Name: cmd.Name, ConnectorMeta: schema.ConnectorMeta{URL: cmd.URL, Include: cmd.Include, Exclude: cmd.Exclude, ClientIDCredential: cmd.ClientIDCredential, ClientSecretCredential: cmd.ClientSecretCredential}})
+		if err != nil {
+			return err
+		}
+		connector, err := waitConnected(ctx, parent, client, created.Name)
 		if err != nil {
 			return err
 		}
