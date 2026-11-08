@@ -6,6 +6,7 @@ import (
 	// Packages
 	client "github.com/mutablelogic/go-client"
 	llm "github.com/mutablelogic/go-llm"
+	broadcaster "github.com/mutablelogic/go-llm/broadcaster"
 	mcpclient "github.com/mutablelogic/go-llm/mcp/client"
 )
 
@@ -16,8 +17,9 @@ import (
 type Opt func(*opt) error
 
 type opt struct {
-	store      Store
-	clientopts []mcpclient.Opt
+	store       Store
+	broadcaster *broadcaster.Broadcaster
+	clientopts  []mcpclient.Opt
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -39,6 +41,7 @@ func (o *opt) apply(opts []Opt) error {
 
 func (o *opt) defaults() {
 	o.store = NewMemoryStore()
+	o.broadcaster = nil
 	o.clientopts = nil
 }
 
@@ -53,6 +56,18 @@ func WithStore(store Store) Opt {
 			return llm.ErrBadParameter.With("missing store")
 		}
 		o.store = store
+		return nil
+	}
+}
+
+// WithBroadcaster is the broadcaster the registry publishes its changes to,
+// as a connector is created, updated, or deleted
+func WithBroadcaster(b *broadcaster.Broadcaster) Opt {
+	return func(o *opt) error {
+		if b == nil {
+			return llm.ErrBadParameter.With("missing broadcaster")
+		}
+		o.broadcaster = b
 		return nil
 	}
 }

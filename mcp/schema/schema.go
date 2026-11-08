@@ -14,6 +14,14 @@ const (
 	// DefaultName is the name of a client, which a server is told, as it
 	// connects, unless it's given another
 	DefaultName = "go-llm"
+
+	// Name is the schema of the connectors' events, which the broadcaster
+	// publishes
+	Name = "mcp"
+
+	// ConnectorTable is the table of the connectors' events, whose rows are
+	// their names
+	ConnectorTable = "connector"
 )
 
 var (

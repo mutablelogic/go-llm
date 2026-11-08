@@ -2,10 +2,13 @@ package registry_test
 
 import (
 	"context"
+	"encoding/json"
 	"testing"
 
 	// Packages
 	llm "github.com/mutablelogic/go-llm"
+	broadcaster "github.com/mutablelogic/go-llm/broadcaster"
+	eventschema "github.com/mutablelogic/go-llm/broadcaster/schema"
 	registry "github.com/mutablelogic/go-llm/mcp/registry"
 	schema "github.com/mutablelogic/go-llm/mcp/schema"
 	assert "github.com/stretchr/testify/assert"
@@ -159,4 +162,49 @@ func Test_Client(t *testing.T) {
 	// And a name is needed
 	_, err = registry.New(registry.WithName(" ", ""))
 	assert.ErrorIs(t, err, llm.ErrBadParameter)
+}
+
+func Test_Events(t *testing.T) {
+	// A connector which is created, updated, or deleted is published, with
+	// its name, and its serial, unless it was deleted
+	ctx := t.Context()
+	_, err := registry.New(registry.WithBroadcaster(nil))
+	assert.ErrorIs(t, err, llm.ErrBadParameter)
+
+	b := broadcaster.New()
+	ch := make(chan eventschema.Event, 16)
+	watchCtx, cancel := context.WithCancel(ctx)
+	done, err := b.Watch(watchCtx, ch)
+	require.NoError(t, err)
+	defer func() {
+		cancel()
+		assert.NoError(t, <-done)
+	}()
+	r, err := registry.New(registry.WithBroadcaster(b))
+	require.NoError(t, err)
+	_, err = r.CreateConnector(ctx, connector("github", "https://mcp.example.com/github"))
+	require.NoError(t, err)
+	_, err = r.CreateConnector(ctx, connector("github", "https://mcp.example.com/github"))
+	require.Error(t, err)
+	_, err = r.UpdateConnector(ctx, "github", schema.ConnectorMeta{URL: "https://mcp.example.com/v2"})
+	require.NoError(t, err)
+	_, err = r.DeleteConnector(ctx, "github")
+	require.NoError(t, err)
+
+	var events []eventschema.Event
+	for len(ch) > 0 {
+		events = append(events, <-ch)
+	}
+	event := func(action eventschema.EventAction, data string) eventschema.Event {
+		event := eventschema.Event{Action: action, Schema: schema.Name, Table: schema.ConnectorTable, Row: "github"}
+		if data != "" {
+			event.Data = json.RawMessage(data)
+		}
+		return event
+	}
+	assert.Equal(t, []eventschema.Event{
+		event(eventschema.EventCreate, `{"serial":1}`),
+		event(eventschema.EventUpdate, `{"serial":2}`),
+		event(eventschema.EventDelete, ""),
+	}, events, "and nothing for a change which failed")
 }

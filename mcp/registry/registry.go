@@ -4,12 +4,14 @@ package registry
 
 import (
 	"context"
+	"encoding/json"
 	"slices"
 	"strings"
 	"sync"
 
 	// Packages
 	llm "github.com/mutablelogic/go-llm"
+	eventschema "github.com/mutablelogic/go-llm/broadcaster/schema"
 	client "github.com/mutablelogic/go-llm/mcp/client"
 	schema "github.com/mutablelogic/go-llm/mcp/schema"
 )
@@ -90,6 +92,7 @@ func (r *Registry) CreateConnector(ctx context.Context, connector schema.Connect
 	if err != nil {
 		return schema.Connector{}, err
 	}
+	r.publish(eventschema.EventCreate, created)
 	return created, nil
 }
 
@@ -109,7 +112,12 @@ func (r *Registry) UpdateConnector(ctx context.Context, name string, meta schema
 	} else if _, err := r.newClient(connector); err != nil {
 		return schema.Connector{}, err
 	}
-	return r.store.Put(ctx, connector)
+	updated, err := r.store.Put(ctx, connector)
+	if err != nil {
+		return schema.Connector{}, err
+	}
+	r.publish(eventschema.EventUpdate, updated)
+	return updated, nil
 }
 
 // DeleteConnector deletes the connector with the name, and its client, and
@@ -125,6 +133,7 @@ func (r *Registry) DeleteConnector(ctx context.Context, name string) (schema.Con
 	r.mu.Lock()
 	delete(r.clients, name)
 	r.mu.Unlock()
+	r.publish(eventschema.EventDelete, connector)
 	return connector, nil
 }
 
@@ -155,6 +164,22 @@ func (r *Registry) Client(ctx context.Context, name string) (*client.Client, err
 
 ///////////////////////////////////////////////////////////////////////////////
 // PRIVATE METHODS
+
+// publish publishes the change to the connector, when the registry has a
+// broadcaster, whose row is its name, and whose data is its serial, unless
+// it was deleted
+func (r *Registry) publish(action eventschema.EventAction, connector schema.Connector) {
+	if r.broadcaster == nil {
+		return
+	}
+	event := eventschema.Event{Action: action, Schema: schema.Name, Table: schema.ConnectorTable, Row: connector.Name}
+	if action != eventschema.EventDelete {
+		if data, err := json.Marshal(schema.ConnectorEvent{Serial: connector.Serial}); err == nil {
+			event.Data = data
+		}
+	}
+	r.broadcaster.Publish(event)
+}
 
 // newClient returns a client of the connector, with the registry's options
 func (r *Registry) newClient(connector schema.Connector) (*client.Client, error) {

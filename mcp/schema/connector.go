@@ -27,6 +27,12 @@ type Connector struct {
 	Serial uint64 `json:"serial,omitempty" readonly:"" help:"Revision of the connector's definition, which changes each time it's changed" example:"1"`
 }
 
+// ConnectorEvent is the data of an event of a connector which was created,
+// or updated: its new serial
+type ConnectorEvent struct {
+	Serial uint64 `json:"serial" help:"The connector's serial, once it changed"`
+}
+
 // ConnectorList is a list of connectors, in order of their names
 type ConnectorList struct {
 	Count uint        `json:"count" help:"The number of connectors"`
