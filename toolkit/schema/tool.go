@@ -45,7 +45,7 @@ type ResourcesResult struct {
 // ToolListRequest filters a list of tools
 type ToolListRequest struct {
 	Namespace string `json:"namespace,omitempty" help:"Returns only the tools in this namespace" example:"weatherapi" optional:""`
-	Type      string `json:"type,omitempty" help:"Returns only the tools of namespaces of this type" enum:"builtin,mcp,agent" example:"mcp" optional:""`
+	Type      string `json:"type,omitempty" help:"Returns only the tools of namespaces of this type, which is builtin, mcp or agent" example:"mcp" optional:""`
 }
 
 // The types of namespaces: those which are built in, those of MCP servers,

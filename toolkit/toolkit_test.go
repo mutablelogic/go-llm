@@ -369,6 +369,8 @@ func TestNamespaceType(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, list.Body, 1)
 	assert.Equal(t, "server:two", list.Body[0].Canonical)
+	_, err = tk.ListTools(ctx, schema.ToolListRequest{Type: "other"})
+	assert.ErrorIs(t, err, llm.ErrBadParameter)
 	got, err := tk.GetTool(ctx, "agent:three")
 	require.NoError(t, err)
 	assert.Equal(t, schema.NamespaceAgent, got.Type)

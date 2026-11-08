@@ -33,9 +33,16 @@ func (self *Toolkit) ListTools(ctx context.Context, req schema.ToolListRequest) 
 		return nil, llm.ErrBadParameter.Withf("invalid namespace %q", namespace)
 	}
 
+	// The type, if any, must be one
+	typ := strings.TrimSpace(req.Type)
+	switch typ {
+	case "", schema.NamespaceBuiltin, schema.NamespaceMCP, schema.NamespaceAgent:
+	default:
+		return nil, llm.ErrBadParameter.Withf("invalid type %q, which isn't %s, %s or %s", typ, schema.NamespaceBuiltin, schema.NamespaceMCP, schema.NamespaceAgent)
+	}
+
 	// The tools in the namespace, or all the tools, of the type, or any, in
 	// order of canonical name
-	typ := strings.TrimSpace(req.Type)
 	self.mu.RLock()
 	all := make([]*schema.Tool, 0, len(self.tools))
 	for _, name := range slices.Sorted(maps.Keys(self.tools)) {
