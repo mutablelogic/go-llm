@@ -56,6 +56,11 @@ const (
 // yes and no are capabilities which a model has, or hasn't
 var yes, no = types.Ptr(true), types.Ptr(false)
 
+// efforts are the reasoning efforts which OpenAI-compatible servers have,
+// from the least to the most, so an effort a model doesn't have is the
+// nearest it has
+var efforts = []string{"none", "minimal", "low", "medium", "high", "xhigh", "max"}
+
 // modelCapabilities are the capabilities of the models of a server which it
 // doesn't report, by a regular expression of their names, of which the
 // first which matches is used, and which are set over those the server
@@ -74,6 +79,10 @@ var modelCapabilities = []struct {
 
 	// Mistral's audio models, as it has no translations
 	{serverMistral, regexp.MustCompile(`^voxtral-`), llm.ModelCap{Translation: no}},
+
+	// DeepSeek's models, which call tools, which it doesn't report, and
+	// don't embed
+	{serverDeepSeek, regexp.MustCompile(`^deepseek-`), llm.ModelCap{Chat: yes, Tools: yes, Embedding: no}},
 
 	// OpenAI's models which it has deprecated, but still lists
 	{serverOpenAI, regexp.MustCompile(`^gpt-3\.5-turbo-(16k|instruct)\b|^gpt-4o(-mini)?-search-preview`), llm.ModelCap{Chat: no, Tools: no, Thinking: no, ImageInput: no, OCR: no, Transcription: no, Translation: no, Embedding: no}},
@@ -206,12 +215,13 @@ func (m *Model) InputTokenLimit() *uint {
 }
 
 // Capabilities returns what the server reports the model can do, which
-// Mistral does, as its capabilities, or none of them, with those which are
-// known by the model's name, such as that Mistral's embedding models embed,
-// and OpenAI's models, which it reports nothing of. Mistral doesn't report
+// Mistral does, as its capabilities, and DeepSeek, as what it takes and
+// makes, and its efforts, or none of them, with those which are known by
+// the model's name, such as that Mistral's embedding models embed, and
+// OpenAI's models, which it reports nothing of. Mistral doesn't report
 // embedding or translation.
 func (m *Model) Capabilities() llm.ModelCap {
-	result := m.reportedCapabilities()
+	result := merge(m.reportedCapabilities(), m.modalities())
 	server := serverOther
 	if m.provider != nil {
 		server = m.provider.server()
@@ -260,6 +270,68 @@ func (m *Model) reportedCapabilities() llm.ModelCap {
 		OCR:           capabilities.OCR,
 		Transcription: capabilities.Transcription,
 	}
+}
+
+// modalities returns what the model takes, and makes, which some servers
+// report, such as DeepSeek, as its "input_modalities", and
+// "output_modalities", and that it thinks, when it has reasoning efforts, as
+// DeepSeek's "effort" says, or none of them
+func (m *Model) modalities() llm.ModelCap {
+	var result llm.ModelCap
+	has := func(field string) func(string) *bool {
+		var modalities []string
+		raw, exists := m.data.Fields[field]
+		if !exists || json.Unmarshal(raw, &modalities) != nil {
+			return func(string) *bool { return nil }
+		}
+		return func(modality string) *bool { return types.Ptr(slices.Contains(modalities, modality)) }
+	}
+	input, output := has("input_modalities"), has("output_modalities")
+	result.ImageInput, result.AudioInput, result.VideoInput = input("image"), input("audio"), input("video")
+	result.Chat, result.ImageOutput, result.SpeechOutput = output("text"), output("image"), output("audio")
+	if len(m.efforts()) > 0 {
+		result.Thinking = yes
+	}
+	return result
+}
+
+// efforts returns the reasoning efforts the model has, which some servers
+// report, such as DeepSeek, as its "effort", or nil
+func (m *Model) efforts() []string {
+	var effort struct {
+		Levels []string `json:"supported_levels"`
+	}
+	if raw, exists := m.data.Fields["effort"]; exists && json.Unmarshal(raw, &effort) == nil {
+		return effort.Levels
+	}
+	return nil
+}
+
+// effort returns the reasoning effort, or the nearest which the model has,
+// and the greater, when two are as near, such as "high" for "medium", when
+// it has "low" and "high", when the server reports its efforts. Otherwise,
+// or when the effort isn't known, it's the effort.
+func (m *Model) effort(effort string) string {
+	levels := m.efforts()
+	want := slices.Index(efforts, effort)
+	if len(levels) == 0 || want < 0 || slices.Contains(levels, effort) {
+		return effort
+	}
+	result, distance := effort, len(efforts)
+	for _, level := range levels {
+		i := slices.Index(efforts, level)
+		if i < 0 {
+			continue
+		}
+		d := i - want
+		if d < 0 {
+			d = -d
+		}
+		if d < distance || (d == distance && i > want) {
+			result, distance = level, d
+		}
+	}
+	return result
 }
 
 // OutputTokenLimit returns the model's maximum number of output tokens, for
@@ -379,6 +451,10 @@ func merge(c, other llm.ModelCap) llm.ModelCap {
 		{&c.Tools, &other.Tools},
 		{&c.Thinking, &other.Thinking},
 		{&c.ImageInput, &other.ImageInput},
+		{&c.AudioInput, &other.AudioInput},
+		{&c.VideoInput, &other.VideoInput},
+		{&c.DocumentInput, &other.DocumentInput},
+		{&c.ImageOutput, &other.ImageOutput},
 		{&c.OCR, &other.OCR},
 		{&c.Transcription, &other.Transcription},
 		{&c.Translation, &other.Translation},

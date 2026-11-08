@@ -78,6 +78,12 @@ func (c *Client) WithoutSession(ctx context.Context, model llm.Model, messages [
 		return nil, llm.Usage{}, err
 	}
 
+	// The effort is the nearest the model has, when the server says which
+	// it has, such as DeepSeek, which has no "medium"
+	if request.ReasoningEffort != "" {
+		request.ReasoningEffort = model.(*Model).effort(request.ReasoningEffort)
+	}
+
 	// Send the request, and receive the reply
 	var response chatResponse
 	var req client.Payload
