@@ -57,6 +57,32 @@
   description: Dashboards, metrics, logs and alerts in Grafana Cloud, with Grafana's hosted MCP server
   url: https://mcp.grafana.com/mcp
 
+- name: HubSpot
+  description: Contacts, companies, deals and tickets in your HubSpot CRM, with HubSpot's own MCP server
+  url: https://mcp.hubspot.com
+  client_id_credential: HUBSPOT_CLIENT_ID
+  client_secret_credential: HUBSPOT_CLIENT_SECRET
+
+# Indeed's, Intercom's and Linear's sign-in registers clients themselves, so
+# they need no credentials, and are always offered
+- name: Indeed
+  description: Searching jobs, and companies, and your job seeker profile, with Indeed's own MCP server
+  url: https://mcp.indeed.com/claude/mcp
+
+- name: Intercom
+  description: Conversations, contacts and help center articles, with Intercom's own MCP server
+  url: https://mcp.intercom.com/mcp
+
+- name: Linear
+  description: Issues, projects, cycles and comments, with Linear's own MCP server
+  url: https://mcp.linear.app/mcp
+
+# Miro's sign-in registers clients itself, so it needs no credentials, and
+# is always offered
+- name: Miro
+  description: Boards, sticky notes, diagrams and frames, with Miro's own MCP server
+  url: https://mcp.miro.com/
+
 # Lingviko's der die das needs no sign-in, so it needs no credentials, and
 # is always offered
 - name: der die das (Lingviko)

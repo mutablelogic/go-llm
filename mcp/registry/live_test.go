@@ -30,6 +30,11 @@ var liveServers = []struct {
 	{"https://mcp.datadoghq.com/v1/mcp", "", "mcp-datadoghq"},
 	{"https://mcp.grafana.com/mcp", "", "mcp-grafana"},
 	{"https://api.harvey.ai/hosted_mcp/mcp", "go-llm-test", "api-harvey"},
+	{"https://mcp.hubspot.com", "go-llm-test", "mcp-hubspot"},
+	{"https://mcp.indeed.com/claude/mcp", "", "mcp-indeed"},
+	{"https://mcp.intercom.com/mcp", "", "mcp-intercom"},
+	{"https://mcp.linear.app/mcp", "", "mcp-linear"},
+	{"https://mcp.miro.com/", "", "mcp-miro"},
 }
 
 func Test_AuthorizeLive(t *testing.T) {

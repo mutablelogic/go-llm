@@ -41,7 +41,10 @@ type registrationRequest struct {
 // Register registers a client, with the name, and the URIs it's redirected
 // to, and the scopes, with the authorization server, which has a
 // registration endpoint, and returns it, without the resource's
-// credentials, as it's another's. Returns ErrNotImplemented when the server
+// credentials, as it's another's. A server which says the request isn't
+// valid, as some don't register a client with scopes, even those they say
+// they support, is asked again, without them, as they're optional, and
+// asked for as it's authorized. Returns ErrNotImplemented when the server
 // doesn't register clients, so one's identifier is needed.
 func (c *Client) Register(ctx context.Context, server ServerMetadata, name string, redirectURIs []string, scopes ...string) (*Registration, error) {
 	if server.RegistrationEndpoint == "" {
@@ -49,25 +52,40 @@ func (c *Client) Register(ctx context.Context, server ServerMetadata, name strin
 	} else if len(redirectURIs) == 0 {
 		return nil, llm.ErrBadParameter.With("missing redirect URIs")
 	}
-	req, err := client.NewJSONRequestEx(http.MethodPost, registrationRequest{
+	request := registrationRequest{
 		ClientName:              name,
 		RedirectURIs:            redirectURIs,
 		GrantTypes:              []string{"authorization_code", "refresh_token"},
 		ResponseTypes:           []string{"code"},
 		TokenEndpointAuthMethod: "none",
 		Scope:                   strings.Join(scopes, " "),
-	}, "application/json")
-	if err != nil {
-		return nil, err
 	}
-	var result Registration
-	if err := c.metadata.DoWithContext(ctx, req, &result, client.OptReqEndpoint(server.RegistrationEndpoint)); err != nil {
+	result, err := c.register(ctx, server, request)
+	if status, ok := llm.HTTPStatus(err); ok && status == http.StatusBadRequest && request.Scope != "" {
+		request.Scope = ""
+		result, err = c.register(ctx, server, request)
+	}
+	if err != nil {
 		return nil, llm.ErrServiceUnavailable.Withf("register with %q: %v", server.Issuer, err)
 	} else if result.ClientID == "" {
 		return nil, llm.ErrServiceUnavailable.Withf("register with %q: no client_id", server.Issuer)
 	}
 	if len(result.RedirectURIs) == 0 {
 		result.RedirectURIs = slices.Clone(redirectURIs)
+	}
+	return result, nil
+}
+
+// register sends the request to register a client to the authorization
+// server's registration endpoint, and returns the client it registered
+func (c *Client) register(ctx context.Context, server ServerMetadata, request registrationRequest) (*Registration, error) {
+	req, err := client.NewJSONRequestEx(http.MethodPost, request, "application/json")
+	if err != nil {
+		return nil, err
+	}
+	var result Registration
+	if err := c.metadata.DoWithContext(ctx, req, &result, client.OptReqEndpoint(server.RegistrationEndpoint)); err != nil {
+		return nil, err
 	}
 	return &result, nil
 }
