@@ -223,17 +223,26 @@ export class ToolsController extends ListController<Tool> {
         let why: string;
         try {
             connector = await createConnector(meta);
-            let status = await this.waitConnected(connector.name, open, connectWait);
+            let status = await this.waitConnected(connector.name, open, connectWait, false);
 
             // One whose server needs to be signed in to is kept, and the
             // panel says so, with Sign in, and waits for it to be connected,
             // once the person has signed in, as its alert does, when the
-            // panel's closed
+            // panel's closed, and isn't deleted, whatever happens as it's
+            // waited for
             if (open() && needsSignIn(status)) {
                 form.connecting = false;
                 form.signIn = status.name;
                 void this.refresh();
-                status = await this.waitConnected(status.name, open, signInWait);
+                try {
+                    status = await this.waitConnected(status.name, open, signInWait, true);
+                } catch (error) {
+                    if (open()) {
+                        form.signIn = undefined;
+                        form.error = `It couldn't be told whether you signed in, so it's kept, and can be signed in to from its alert: ${error instanceof Error ? error.message : String(error)}`;
+                    }
+                    return;
+                }
                 if (!open()) {
                     return;
                 } else if (!status.connected) {
@@ -284,18 +293,17 @@ export class ToolsController extends ListController<Tool> {
     }
 
     // waitConnected returns the connector, once the server has connected to
-    // it, or couldn't, or needs to be signed in to, or it's waited for the
-    // time, which each request for it is within, too, so one which doesn't
-    // return doesn't keep it waiting, or as it was, once it's no longer
-    // waited for. Once it needs to be signed in to, it's waited for until it
-    // doesn't, as the person signs in
-    private async waitConnected(name: string, waiting: () => boolean, wait: number): Promise<Connector> {
+    // it, or couldn't, which includes when it needs to be signed in to, or
+    // it's waited for the time, which each request for it is within, too, so
+    // one which doesn't return doesn't keep it waiting, or as it was, once
+    // it's no longer waited for. While it's being signed in to, needing to be
+    // isn't why it couldn't connect, as the person signs in
+    private async waitConnected(name: string, waiting: () => boolean, wait: number, signingIn: boolean): Promise<Connector> {
         const deadline = Date.now() + wait;
         const get = () => getConnector(name, AbortSignal.timeout(Math.max(deadline - Date.now(), 1)));
         let status = await get();
-        const signingIn = needsSignIn(status);
         const done = (connector: Connector) => connector.connected
-            || (signingIn ? !needsSignIn(connector) && !!connector.error : !!connector.error);
+            || (signingIn ? !needsSignIn(connector) && !!connector.error : !!connector.error || needsSignIn(connector));
         while (!done(status) && Date.now() < deadline && waiting()) {
             await new Promise((resolve) => setTimeout(resolve, connectPoll));
             if (!waiting() || Date.now() >= deadline) {
