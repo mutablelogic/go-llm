@@ -45,10 +45,12 @@ type Typer interface {
 // FileSender is a provider which can send files, such as images, and
 // speech
 type FileSender interface {
-	// SendFile sends the file, whose content is read as it's sent, to the
-	// chat with the address, with the caption, which is Markdown, when it
-	// has one, under it, or before it, when it's too long to be its caption
-	SendFile(ctx context.Context, address string, file File, content io.Reader, caption string) error
+	// SendFile sends the file, whose content the function opens, and is read
+	// as it's sent, which the provider closes, and can open again, such as to
+	// send it again, to the chat with the address, with the caption, which is
+	// Markdown, when it has one, under it, or before it, when it's too long
+	// to be its caption
+	SendFile(ctx context.Context, address string, file File, open func() (io.ReadCloser, error), caption string) error
 }
 
 // File is a session's file, which is sent to its channels

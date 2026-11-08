@@ -11,6 +11,7 @@ import (
 	"context"
 	"crypto/rand"
 	"errors"
+	"io"
 	"log/slog"
 	"slices"
 	"strings"
@@ -675,19 +676,23 @@ func (m *Messaging) send(ctx context.Context, channel schema.Channel, out Outgoi
 			errs = errors.Join(errs, err)
 			continue
 		}
+		content.Close()
 		caption := ""
 		if text != "" {
 			if strings.HasPrefix(file.Type, "image/") {
 				caption = text
 			} else if err := provider.Send(ctx, channel.Address, text); err != nil {
-				content.Close()
 				return err
 			}
 			text = ""
 		}
-		err = sender.SendFile(ctx, channel.Address, file, content, caption)
-		content.Close()
-		errs = errors.Join(errs, err)
+
+		// The provider opens it, and can open it again
+		open := func() (io.ReadCloser, error) {
+			_, content, err := m.open(ctx, channel.Session, uri)
+			return content, err
+		}
+		errs = errors.Join(errs, sender.SendFile(ctx, channel.Address, file, open, caption))
 	}
 
 	// The text, when none of the files could be opened

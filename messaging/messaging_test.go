@@ -368,7 +368,12 @@ type fileFake struct {
 	files []string
 }
 
-func (f *fileFake) SendFile(_ context.Context, address string, file messaging.File, content io.Reader, caption string) error {
+func (f *fileFake) SendFile(_ context.Context, address string, file messaging.File, open func() (io.ReadCloser, error), caption string) error {
+	content, err := open()
+	if err != nil {
+		return err
+	}
+	defer content.Close()
 	data, err := io.ReadAll(content)
 	if err != nil {
 		return err

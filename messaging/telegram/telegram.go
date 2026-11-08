@@ -150,28 +150,50 @@ func (t *Telegram) Send(ctx context.Context, address, text string) error {
 // Telegram shows as one, a voice message, when it's Ogg, or Opus, audio,
 // a track, when it's MP3, or M4A, audio, and otherwise as a document, with
 // the caption, which is Markdown, under it, formatted, when it fits, or as
-// a message before it, when it doesn't. A file which is larger than a bot
-// can send is a note, with its name, instead.
-func (t *Telegram) SendFile(ctx context.Context, address string, file messaging.File, content io.Reader, caption string) error {
+// a message before it, when it doesn't. A caption whose formatting Telegram
+// can't parse is sent as plain text, with the file again. A file which is
+// larger than a bot can send is a note, with its name, after its caption.
+func (t *Telegram) SendFile(ctx context.Context, address string, file messaging.File, open func() (io.ReadCloser, error), caption string) error {
 	name := fileName(file)
+	caption = strings.TrimSpace(caption)
 	if file.Size > maxUpload {
+		if caption != "" {
+			if err := t.Send(ctx, address, caption); err != nil {
+				return err
+			}
+		}
 		return t.Send(ctx, address, fmt.Sprintf("📎 %s is too large to send here (%s)", name, megabytes(file.Size)))
 	}
 
-	// The caption, as Telegram's HTML, when it's one message, which fits
-	parseMode := ""
-	if text := strings.TrimSpace(caption); text != "" {
-		if p := parts(text, maxCaption); len(p) == 1 {
-			caption, parseMode = p[0].html, "HTML"
-		} else {
-			if err := t.Send(ctx, address, text); err != nil {
-				return err
-			}
-			caption = ""
+	// The caption, as Telegram's HTML, when it's one message, which fits, or
+	// a message before it
+	var html, plain string
+	if caption != "" {
+		if p := parts(caption, maxCaption); len(p) == 1 {
+			html, plain = p[0].html, p[0].plain
+		} else if err := t.Send(ctx, address, caption); err != nil {
+			return err
 		}
 	}
+	err := t.upload(ctx, address, file, name, open, html, "HTML")
+	if err != nil && html != "" && strings.Contains(err.Error(), "can't parse entities") {
+		err = t.upload(ctx, address, file, name, open, plain, "")
+	}
+	return err
+}
+
+// upload opens the file, and sends it, with its caption, which is in the
+// parse mode, when it has one, by the method for its kind
+func (t *Telegram) upload(ctx context.Context, address string, file messaging.File, name string, open func() (io.ReadCloser, error), caption, parseMode string) error {
+	content, err := open()
+	if err != nil {
+		return err
+	}
+	defer content.Close()
+	if caption == "" {
+		parseMode = ""
+	}
 	f := types.File{Path: name, Body: io.NopCloser(content), ContentType: file.Type}
-	var err error
 	switch kind(file) {
 	case "photo":
 		_, err = upload[message](ctx, t.client, "sendPhoto", sendPhotoRequest{ChatID: address, Photo: f, Caption: caption, ParseMode: parseMode})

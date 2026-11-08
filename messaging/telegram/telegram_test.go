@@ -91,6 +91,11 @@ func (b *bot) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		u := uploaded{method: method, chatID: r.FormValue("chat_id"), caption: r.FormValue("caption"), parseMode: r.FormValue("parse_mode")}
+		if strings.Contains(u.caption, "unparseable") && u.parseMode == "HTML" {
+			w.WriteHeader(http.StatusBadRequest)
+			_, _ = w.Write([]byte(`{"ok":false,"error_code":400,"description":"Bad Request: can't parse entities: Unsupported start tag"}`))
+			return
+		}
 		for field, files := range r.MultipartForm.File {
 			u.field, u.name = field, files[0].Filename
 			f, _ := files[0].Open()
@@ -236,8 +241,12 @@ func Test_Telegram_SendFile(t *testing.T) {
 	b := &bot{}
 	tg := newBot(t, b)
 	ctx := context.Background()
-	file := func(name, mimeType, content string) (messaging.File, io.Reader) {
-		return messaging.File{URI: "resource:///x", Name: name, Type: mimeType, Size: int64(len(content))}, strings.NewReader(content)
+	opened := 0
+	file := func(name, mimeType, content string) (messaging.File, func() (io.ReadCloser, error)) {
+		return messaging.File{URI: "resource:///x", Name: name, Type: mimeType, Size: int64(len(content))}, func() (io.ReadCloser, error) {
+			opened++
+			return io.NopCloser(strings.NewReader(content)), nil
+		}
 	}
 
 	// An image is a photo, with its caption, formatted
@@ -267,11 +276,27 @@ func Test_Telegram_SendFile(t *testing.T) {
 	assert.Equal(t, strings.TrimSpace(long), b.sent[0].Text)
 	assert.Empty(t, b.uploads[4].caption)
 
-	// A file which is too large is a note
-	f = messaging.File{Name: "film.mp4", Type: "video/mp4", Size: 60 << 20}
-	require.NoError(t, tg.SendFile(ctx, "7", f, strings.NewReader(""), "A film"))
+	// A file which is too large is a note, after its caption, which isn't
+	// lost, and it isn't opened
+	opened = 0
+	f = messaging.File{Name: "photo.png", Type: "image/png", Size: 60 << 20}
+	require.NoError(t, tg.SendFile(ctx, "7", f, func() (io.ReadCloser, error) {
+		opened++
+		return io.NopCloser(strings.NewReader("")), nil
+	}, "A big photo"))
 	assert.Len(t, b.uploads, 5)
-	assert.Equal(t, "📎 film.mp4 is too large to send here (60.0 MB)", b.sent[1].Text)
+	assert.Zero(t, opened)
+	assert.Equal(t, "A big photo", b.sent[1].Text)
+	assert.Equal(t, "📎 photo.png is too large to send here (60.0 MB)", b.sent[2].Text)
+
+	// A caption whose formatting Telegram can't parse is sent as plain
+	// text, with the file, opened again
+	opened = 0
+	f, r = file("chart.png", "image/png", "PNG")
+	require.NoError(t, tg.SendFile(ctx, "7", f, r, "**unparseable** chart"))
+	assert.Equal(t, 2, opened)
+	require.Len(t, b.uploads, 6)
+	assert.Equal(t, uploaded{method: "sendPhoto", field: "photo", name: "chart.png", content: "PNG", chatID: "7", caption: "unparseable chart"}, b.uploads[5])
 }
 
 func Test_Telegram_Kind(t *testing.T) {
