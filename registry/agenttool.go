@@ -14,6 +14,7 @@ import (
 	eventschema "github.com/mutablelogic/go-llm/broadcaster/schema"
 	schema "github.com/mutablelogic/go-llm/registry/schema"
 	toolkit "github.com/mutablelogic/go-llm/toolkit"
+	toolschema "github.com/mutablelogic/go-llm/toolkit/schema"
 	jsonschema "github.com/mutablelogic/go-server/pkg/jsonschema"
 	types "github.com/mutablelogic/go-server/pkg/types"
 )
@@ -80,6 +81,11 @@ func newAgentNamespace() *agentNamespace {
 
 func (n *agentNamespace) Name() string {
 	return AgentNamespace
+}
+
+// Type returns that the namespace's tools are the agents
+func (n *agentNamespace) Type() string {
+	return toolschema.NamespaceAgent
 }
 
 // Description returns what the agent namespace is

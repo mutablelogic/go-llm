@@ -14,6 +14,7 @@ import (
 	eventschema "github.com/mutablelogic/go-llm/broadcaster/schema"
 	client "github.com/mutablelogic/go-llm/mcp/client"
 	toolkit "github.com/mutablelogic/go-llm/toolkit"
+	toolschema "github.com/mutablelogic/go-llm/toolkit/schema"
 )
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -67,6 +68,11 @@ func New(ctx context.Context, name, description string, c *client.Client, opts .
 // Name returns the namespace's name
 func (ns *Namespace) Name() string {
 	return ns.name
+}
+
+// Type returns that the namespace's tools are an MCP server's
+func (ns *Namespace) Type() string {
+	return toolschema.NamespaceMCP
 }
 
 // Description returns what the namespace is, such as its server's title

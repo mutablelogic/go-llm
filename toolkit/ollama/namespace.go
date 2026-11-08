@@ -9,6 +9,7 @@ import (
 	eventschema "github.com/mutablelogic/go-llm/broadcaster/schema"
 	toolkit "github.com/mutablelogic/go-llm/toolkit"
 	httpclient "github.com/mutablelogic/go-llm/toolkit/ollama/httpclient"
+	toolschema "github.com/mutablelogic/go-llm/toolkit/schema"
 )
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -64,6 +65,9 @@ func (namespace) SystemPrompt() string {
 }
 
 // Notify does nothing, as the namespace's tools don't change
+// Type returns that the namespace's tools are built in
+func (namespace) Type() string { return toolschema.NamespaceBuiltin }
+
 func (namespace) Notify(func(eventschema.EventAction, string)) {}
 
 func (n namespace) Tools() []llm.Tool {

@@ -45,6 +45,12 @@ type Toolkit struct {
 // its tools
 type Namespace interface {
 	Name() string
+
+	// Type returns where the namespace's tools are from: schema.NamespaceBuiltin,
+	// for the server's own, schema.NamespaceMCP, for an MCP server's, or
+	// schema.NamespaceAgent, for the agents'
+	Type() string
+
 	Description() string
 	SystemPrompt() string
 	Tools() []llm.Tool
@@ -294,6 +300,26 @@ func (self *Toolkit) publish(action eventschema.EventAction, canonical string) {
 	}
 }
 
+// typeOf returns the namespace's type, which is schema.NamespaceBuiltin,
+// when it says none
+func typeOf(ns Namespace) string {
+	if typ := ns.Type(); typ != "" {
+		return typ
+	}
+	return schema.NamespaceBuiltin
+}
+
+// namespaceType returns the type of the namespace with the name, or
+// schema.NamespaceBuiltin, when there's none
+func (self *Toolkit) namespaceType(name string) string {
+	self.mu.RLock()
+	defer self.mu.RUnlock()
+	if ns, exists := self.namespaces[name]; exists {
+		return typeOf(ns)
+	}
+	return schema.NamespaceBuiltin
+}
+
 // newEntry returns the tool in the namespace, with its input schema resolved
 // for validating its input, or an error when its name, or input schema,
 // isn't valid
@@ -353,4 +379,7 @@ func (n namespace) Tools() []llm.Tool {
 }
 
 // Notify does nothing, as the namespace's tools don't change
+// Type returns that the namespace's tools are built in
+func (namespace) Type() string { return schema.NamespaceBuiltin }
+
 func (namespace) Notify(func(eventschema.EventAction, string)) {}

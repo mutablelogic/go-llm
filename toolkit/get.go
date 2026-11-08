@@ -39,7 +39,7 @@ func (self *Toolkit) GetTool(ctx context.Context, name string) (_ *schema.Tool, 
 	}
 
 	// Return the tool
-	return entry.wire(), nil
+	return entry.wire(self.namespaceType(entry.namespace)), nil
 }
 
 // Tools returns the tools with the names, which are their canonical names,

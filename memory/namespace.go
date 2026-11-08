@@ -11,6 +11,7 @@ import (
 	reminder "github.com/mutablelogic/go-llm/internal/reminder"
 	schema "github.com/mutablelogic/go-llm/memory/schema"
 	toolkit "github.com/mutablelogic/go-llm/toolkit"
+	toolschema "github.com/mutablelogic/go-llm/toolkit/schema"
 )
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -51,6 +52,9 @@ func (m *Memory) SystemPromptFor(tools []string) string {
 }
 
 // Notify does nothing, as the memory's tools don't change
+// Type returns that the namespace's tools are built in
+func (*Memory) Type() string { return toolschema.NamespaceBuiltin }
+
 func (*Memory) Notify(func(eventschema.EventAction, string)) {}
 
 // Tools returns the memory's tools

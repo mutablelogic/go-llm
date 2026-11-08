@@ -31,9 +31,9 @@ func TestListNamespaces(t *testing.T) {
 	list, err := tk.ListNamespaces(t.Context())
 	require.NoError(t, err)
 	assert.Equal(t, &schema.NamespaceList{Count: 3, Body: []*schema.Namespace{
-		{Name: "empty", Tools: 0},
-		{Name: "news", Tools: 1},
-		{Name: "weather", Description: "The weather", Tools: 2},
+		{Name: "empty", Type: schema.NamespaceBuiltin, Tools: 0},
+		{Name: "news", Type: schema.NamespaceBuiltin, Tools: 1},
+		{Name: "weather", Type: schema.NamespaceBuiltin, Description: "The weather", Tools: 2},
 	}}, list)
 }
 

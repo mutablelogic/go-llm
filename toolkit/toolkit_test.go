@@ -283,11 +283,12 @@ func TestConcurrent(t *testing.T) {
 }
 
 func TestToolTable(t *testing.T) {
-	tool := schema.Tool{Name: "current", Canonical: "weatherapi:current", Description: "Get the weather"}
-	assert.Equal(t, []string{"Name", "Description"}, tool.Header())
+	tool := schema.Tool{Name: "current", Canonical: "weatherapi:current", Type: schema.NamespaceBuiltin, Description: "Get the weather"}
+	assert.Equal(t, []string{"Name", "Type", "Description"}, tool.Header())
 	assert.Equal(t, "weatherapi:current", tool.Cell(0))
-	assert.Equal(t, "Get the weather", tool.Cell(1))
-	assert.Equal(t, "", tool.Cell(2))
+	assert.Equal(t, schema.NamespaceBuiltin, tool.Cell(1))
+	assert.Equal(t, "Get the weather", tool.Cell(2))
+	assert.Equal(t, "", tool.Cell(3))
 }
 
 func TestRemove(t *testing.T) {
@@ -329,4 +330,46 @@ func TestRemove(t *testing.T) {
 	assert.ErrorIs(t, tk.Remove(ns), llm.ErrNotFound)
 	assert.True(t, tk.HasNamespace("a"))
 	assert.ErrorIs(t, tk.Remove(nil), llm.ErrBadParameter)
+}
+
+// typedNamespace is a namespace of the type
+type typedNamespace struct {
+	toolkit.Namespace
+	typ string
+}
+
+func (n typedNamespace) Type() string { return n.typ }
+
+func TestNamespaceType(t *testing.T) {
+	// A namespace, and its tools, have its type, by which tools are listed
+	ctx := context.Background()
+	tk, err := toolkit.New(ctx)
+	require.NoError(t, err)
+	require.NoError(t, tk.Add(toolkit.NewNamespace("builtin", "", tool{name: "one"})))
+	require.NoError(t, tk.Add(&typedNamespace{toolkit.NewNamespace("server", "", tool{name: "two"}), schema.NamespaceMCP}))
+	require.NoError(t, tk.Add(&typedNamespace{toolkit.NewNamespace("agent", "", tool{name: "three"}), schema.NamespaceAgent}))
+
+	namespaces, err := tk.ListNamespaces(ctx)
+	require.NoError(t, err)
+	types := map[string]string{}
+	for _, ns := range namespaces.Body {
+		types[ns.Name] = ns.Type
+	}
+	assert.Equal(t, map[string]string{"builtin": schema.NamespaceBuiltin, "server": schema.NamespaceMCP, "agent": schema.NamespaceAgent}, types)
+
+	list, err := tk.ListTools(ctx, schema.ToolListRequest{})
+	require.NoError(t, err)
+	types = map[string]string{}
+	for _, tool := range list.Body {
+		types[tool.Canonical] = tool.Type
+	}
+	assert.Equal(t, map[string]string{"builtin:one": schema.NamespaceBuiltin, "server:two": schema.NamespaceMCP, "agent:three": schema.NamespaceAgent}, types)
+
+	list, err = tk.ListTools(ctx, schema.ToolListRequest{Type: schema.NamespaceMCP})
+	require.NoError(t, err)
+	require.Len(t, list.Body, 1)
+	assert.Equal(t, "server:two", list.Body[0].Canonical)
+	got, err := tk.GetTool(ctx, "agent:three")
+	require.NoError(t, err)
+	assert.Equal(t, schema.NamespaceAgent, got.Type)
 }
