@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"strings"
 	"sync"
+	"uuid"
 
 	// Packages
 	client "github.com/mutablelogic/go-client"
@@ -61,6 +62,15 @@ type ToolPrompter interface {
 	// the tools, by their names in the namespace, or all of them, when
 	// they're nil
 	SystemPromptFor(tools []string) string
+}
+
+// SessionPrompter is a namespace whose system prompt says more, for a
+// session, such as how to use what's connected to it, which is added to its
+// system prompt, when a model is asked in the session
+type SessionPrompter interface {
+	// SessionPrompt returns what's added to the namespace's system prompt,
+	// for the session with the identifier, or nothing
+	SessionPrompt(ctx context.Context, session uuid.UUID) string
 }
 
 // ToolTitler is a tool which has a title, for people, such as an agent,

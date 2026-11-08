@@ -42,6 +42,10 @@ type Session interface {
 // sessionKey is the key of the session in a context
 type sessionKey struct{}
 
+// promptSessionKey is the key of the session the system prompts of
+// namespaces are for, in a context
+type promptSessionKey struct{}
+
 // discard is the session of a tool which isn't run in one, whose logger
 // discards what's logged
 type discard struct{}
@@ -68,6 +72,23 @@ func SessionFromContext(ctx context.Context) Session {
 		return session
 	}
 	return discard{}
+}
+
+// WithPromptSession returns the context, in which the system prompts of
+// namespaces are for the session with the identifier, such as the
+// conversation a model is asked in, which SessionPrompter namespaces add to
+func WithPromptSession(ctx context.Context, session uuid.UUID) context.Context {
+	return context.WithValue(ctx, promptSessionKey{}, session)
+}
+
+// promptSession returns the session the system prompts of namespaces are
+// for, in the context, or the session of the tool run in it, or the nil
+// UUID, when there's neither
+func promptSession(ctx context.Context) uuid.UUID {
+	if session, ok := ctx.Value(promptSessionKey{}).(uuid.UUID); ok {
+		return session
+	}
+	return SessionFromContext(ctx).ID()
 }
 
 // Progressf says how the tool run in the context is getting on, as a

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"strings"
 	"time"
 	"uuid"
@@ -48,6 +49,7 @@ var _ llm.Tool = (*listTool)(nil)
 var _ llm.Tool = (*sendTool)(nil)
 var _ llm.Tool = (*disconnectTool)(nil)
 var _ toolkit.Namespace = (*Messaging)(nil)
+var _ toolkit.SessionPrompter = (*Messaging)(nil)
 
 type connectInput struct {
 	Provider string `json:"provider,omitempty" help:"The messaging service, such as telegram, or none, when there's only one" optional:""`
@@ -112,6 +114,18 @@ func (*Messaging) Description() string {
 // SystemPrompt returns how channels work, and when to use the tools
 func (m *Messaging) SystemPrompt() string {
 	return strings.ReplaceAll(messagingPrompt, "{providers}", strings.Join(m.Providers(), ", "))
+}
+
+// SessionPrompt returns what's added to the system prompt, for the session,
+// when chats are connected to it: that the person talks to it there, such
+// as from their phone, so speech is a voice note, and their voice messages
+// are transcribed, or nothing, when none are
+func (m *Messaging) SessionPrompt(ctx context.Context, session uuid.UUID) string {
+	channels, err := m.List(ctx, session)
+	if err != nil || len(channels) == 0 {
+		return ""
+	}
+	return strings.ReplaceAll(sessionPrompt, "{channels}", channelNames(channels))
 }
 
 // Notify does nothing, as the tools don't change
@@ -334,7 +348,33 @@ Chats on messaging services ({providers}) can be connected to this conversation,
 - When the person asks to talk to you on one, connect it with ` + "`connect`" + `, and give them the link it returns, as it is, on a line of its own, which they open, or scan with their phone, as the web UI shows it as a QR code, and press Start.
 - Every reply you write in this conversation, with the pictures and speech you make with it, is sent to each of its channels, wherever the message came from, with your text as the caption of the first, so don't use ` + "`send`" + ` to reply, or you'll send it twice. Other files you make, such as transcripts, aren't sent, unless you send one with ` + "`send`" + `.
 - Use ` + "`send`" + ` only for a message which isn't a reply, such as to one channel only, or to send one of the conversation's files, by its URI.
-- Photos, documents and voice messages sent in a channel are the conversation's files, attached to the person's message. Text sent with them is their caption, which you're told, and is their description too, so treat it as being about them. When you can't hear a voice message, transcribe it with ` + "`llm:transcribe`" + `, and reply to what it says.
+- Photos, documents and voice messages sent in a channel are the conversation's files, attached to the person's message. Text sent with them is their caption, which you're told, and is their description too, so treat it as being about them.
 - Photos sent in a channel are often compressed, which their files' descriptions say, so when small text in one, such as an address, matters, and is hard to read, ask the person to send it as a file, rather than guess. When a file wasn't received, such as when it's too large, say so.
-- When you speak something with ` + "`llm:speak`" + `, while the conversation has channels, use its ` + "`voice-note`" + ` format, so it's a voice message there.
 - While the conversation has channels, your replies are also read on a phone, so keep them short. Markdown is fine, as it's formatted for each channel.`
+
+// sessionPrompt is what's added to the system prompt, for a conversation
+// which chats are connected to, by their names
+const sessionPrompt = `This conversation is connected to {channels}, where the person can talk to you, such as from their phone, so:
+
+- When you speak something, with ` + "`llm:speak`" + `, use its ` + "`voice-note`" + ` format, so it's a voice message there.
+- When the person sends a voice message, which is attached to their message, and you can't hear it, transcribe it with ` + "`llm:transcribe`" + `, and reply to what it says.`
+
+// channelNames returns the channels, as they're named in the system prompt,
+// such as Telegram ("David"), or Telegram ("David") and Telegram ("Family")
+func channelNames(channels []schema.Channel) string {
+	names := make([]string, 0, len(channels))
+	for _, channel := range channels {
+		name := channel.Provider
+		if name != "" {
+			name = strings.ToUpper(name[:1]) + name[1:]
+		}
+		if channel.Title != "" {
+			name += fmt.Sprintf(" (%q)", channel.Title)
+		}
+		names = append(names, name)
+	}
+	if len(names) == 1 {
+		return names[0]
+	}
+	return strings.Join(names[:len(names)-1], ", ") + " and " + names[len(names)-1]
+}

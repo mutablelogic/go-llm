@@ -520,3 +520,34 @@ func Test_Messaging_Attachments(t *testing.T) {
 		t.Fatal("a message with only a file wasn't sent to the session")
 	}
 }
+
+func Test_Messaging_SessionPrompt(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	provider := newFake("telegram")
+	m, err := messaging.New(messaging.NewStore(), messaging.WithProvider(provider))
+	require.NoError(t, err)
+	go m.Run(ctx, nil)
+
+	// Nothing is added for a conversation with no chats, and the general
+	// prompt doesn't say how to speak, or transcribe
+	id := uuid.New()
+	assert.Empty(t, m.SessionPrompt(ctx, id))
+	assert.NotContains(t, m.SystemPrompt(), "voice-note")
+	assert.NotContains(t, m.SystemPrompt(), "llm:transcribe")
+
+	// One with chats is told they're connected, by their names, and to speak
+	// voice notes, and transcribe voice messages
+	for _, address := range []string{"1", "2"} {
+		link, _, err := m.Connect(ctx, id, "")
+		require.NoError(t, err)
+		title := map[string]string{"1": "David", "2": "Family"}[address]
+		provider.incoming <- messaging.Message{Address: address, Title: title, Code: code(t, link)}
+		require.Eventually(t, func() bool { return len(provider.messages(address)) == 1 }, time.Second, 10*time.Millisecond)
+	}
+	prompt := m.SessionPrompt(ctx, id)
+	assert.Contains(t, prompt, `This conversation is connected to Telegram ("David") and Telegram ("Family")`)
+	assert.Contains(t, prompt, "`voice-note`")
+	assert.Contains(t, prompt, "`llm:transcribe`")
+	assert.Empty(t, m.SessionPrompt(ctx, uuid.New()), "another conversation's chats aren't its")
+}
