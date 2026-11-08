@@ -9,6 +9,7 @@ import (
 	// Packages
 	sdkmcp "github.com/modelcontextprotocol/go-sdk/mcp"
 	llm "github.com/mutablelogic/go-llm"
+	broadcaster "github.com/mutablelogic/go-llm/broadcaster"
 	registry "github.com/mutablelogic/go-llm/mcp/registry"
 	schema "github.com/mutablelogic/go-llm/mcp/schema"
 	test "github.com/mutablelogic/go-llm/mcp/test"
@@ -104,4 +105,52 @@ func Test_Toolkit(t *testing.T) {
 		require.NoError(t, err)
 		assert.False(t, tk.HasNamespace("search"))
 	})
+}
+
+func Test_ToolEvents(t *testing.T) {
+	// The toolkit's broadcaster is told of a connector's tools, as they're
+	// added, as its server is connected, created, updated, or deleted, as
+	// its server says they changed, and deleted, as it's disconnected
+	setInterval(t, &registry.ConnectJitter, 10*time.Millisecond)
+	ctx := t.Context()
+	b := broadcaster.New()
+	ch := watch(t, b)
+	tk, err := toolkit.New(ctx, toolkit.WithBroadcaster(b))
+	require.NoError(t, err)
+	r, err := registry.New(registry.WithToolkit(tk))
+	require.NoError(t, err)
+	server := toolServer(t)
+	run(t, r)
+
+	// tools returns the toolkit's events, as action and tool
+	tools := func() []string {
+		var result []string
+		for _, event := range published(ch) {
+			if event.Schema == toolkit.EventSchema && event.Table == toolkit.ToolTable {
+				result = append(result, string(event.Action)+" "+event.Row)
+			}
+		}
+		return result
+	}
+	_, err = r.CreateConnector(ctx, connector("search", server.URL))
+	require.NoError(t, err)
+	require.Eventually(t, func() bool { return status(t, r, "search").Namespace != "" }, 5*time.Second, 5*time.Millisecond)
+	assert.Equal(t, []string{"create search:echo"}, tools())
+
+	// The server adds one tool, changes another, and removes it
+	server.MCP.AddTool(&sdkmcp.Tool{Name: "ping", Description: "Ping", InputSchema: map[string]any{"type": "object"}}, func(context.Context, *sdkmcp.CallToolRequest) (*sdkmcp.CallToolResult, error) {
+		return &sdkmcp.CallToolResult{}, nil
+	})
+	assert.Equal(t, []string{"create search:ping"}, tools())
+	server.MCP.AddTool(&sdkmcp.Tool{Name: "ping", Description: "Ping it", InputSchema: map[string]any{"type": "object"}}, func(context.Context, *sdkmcp.CallToolRequest) (*sdkmcp.CallToolResult, error) {
+		return &sdkmcp.CallToolResult{}, nil
+	})
+	assert.Equal(t, []string{"update search:ping"}, tools())
+	server.MCP.RemoveTools("ping")
+	assert.Equal(t, []string{"delete search:ping"}, tools())
+
+	// And it's deleted, so its tools are
+	_, err = r.DeleteConnector(ctx, "search")
+	require.NoError(t, err)
+	assert.Equal(t, []string{"delete search:echo"}, tools())
 }
