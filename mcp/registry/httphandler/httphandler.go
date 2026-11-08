@@ -35,5 +35,6 @@ func RegisterHandlers(r *registry.Registry, router *httprouter.Router) error {
 		connectorCreateListHandlers(r, router, documentation),
 		connectorHandlers(r, router, documentation),
 		authorizeHandlers(r, router, documentation),
+		templateHandlers(r, router, documentation),
 	)
 }

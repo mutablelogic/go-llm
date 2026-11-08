@@ -17,8 +17,8 @@ import type { CountFilter } from '../component/count-filter';
 import { AgentEditor, agentTemplate, type AgentEditorItem } from '../component/agent-editor';
 import { ToolsPage } from '../page/tools-page';
 import { deleteAgent, getAgent, getAgentYAML, saveAgentYAML } from '../api/agent';
-import { authorizeConnector, createConnector, deleteConnector, getConnector, listConnectors, updateConnector } from '../api/connector';
-import { needsSignIn, type Connector, type ConnectorMeta } from '../schema/connector';
+import { authorizeConnector, createConnector, deleteConnector, getConnector, listConnectors, listTemplates, updateConnector } from '../api/connector';
+import { needsSignIn, type Connector, type ConnectorMeta, type ConnectorTemplate } from '../schema/connector';
 import { ConnectorForm } from '../component/connector-form';
 import { ConnectorAlerts } from '../component/connector-alerts';
 import { routeHref } from '../router';
@@ -59,6 +59,10 @@ export class ToolsController extends ListController<Tool> {
     // one of the namespace which is chosen is edited, and deleted
     private connectors: Connector[] = [];
 
+    // The templates of the servers which a connector can be added for,
+    // apart from those which are connectors already
+    private templates: ConnectorTemplate[] = [];
+
     // How many times the agent's panel has been opened, or closed, so an
     // agent which is loaded once it's been closed, or something else was
     // opened, isn't shown
@@ -83,7 +87,7 @@ export class ToolsController extends ListController<Tool> {
         views.agent?.addEventListener(Panel.eventClose, () => this.hideAgent());
 
         // An MCP connector is added, and connected, whose tools are added
-        views.page?.addEventListener(ToolsPage.eventAddConnector, () => this.showConnector());
+        views.page?.addEventListener(ToolsPage.eventAddConnector, (e) => this.showConnector((e as CustomEvent<ConnectorTemplate | undefined>).detail));
         views.connector?.addEventListener(ConnectorForm.eventConnect, (e) => void this.addConnector((e as CustomEvent<ConnectorMeta>).detail));
         views.connector?.addEventListener(ConnectorForm.eventSave, (e) => void this.saveConnector((e as CustomEvent<ConnectorMeta>).detail));
         views.connector?.addEventListener(Panel.eventClose, () => this.hideConnector());
@@ -188,14 +192,15 @@ export class ToolsController extends ListController<Tool> {
         }
     }
 
-    // showConnector opens the panel which adds an MCP connector
-    private showConnector() {
+    // showConnector opens the panel which adds an MCP connector, from the
+    // template, or a custom one
+    private showConnector(template?: ConnectorTemplate) {
         const form = this.views.connector;
         if (form) {
             form.connecting = false;
             form.error = undefined;
             form.signIn = undefined;
-            form.item = { mode: 'add' };
+            form.item = { mode: 'add', template };
         }
     }
 
@@ -422,11 +427,13 @@ export class ToolsController extends ListController<Tool> {
     }
 
     protected async list(offset: number, limit: number): Promise<Page<Tool>> {
-        const [list, namespaces, connectors] = await Promise.all([
+        const [list, namespaces, connectors, templates] = await Promise.all([
             listTools(),
             listNamespaces().catch(() => ({ count: 0, body: [] })),
             listConnectors().catch(() => ({ count: 0, body: [] })),
+            listTemplates().catch(() => ({ count: 0, body: [] })),
         ]);
+        this.templates = templates.body ?? [];
         const tools = list.body ?? [];
         this.namespaces = namespaces.body ?? [];
         this.connectors = connectors.body ?? [];
@@ -490,6 +497,7 @@ export class ToolsController extends ListController<Tool> {
         if (page) {
             page.namespace = this.namespace;
             page.connector = this.namespace ? this.connectorOf(this.namespace)?.name : undefined;
+            page.templates = this.templates;
         }
         if (namespaces) {
             namespaces.tiles = this.namespaces && [

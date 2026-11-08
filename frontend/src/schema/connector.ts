@@ -41,3 +41,21 @@ export interface ConnectorList {
     count: number;
     body?: Connector[];
 }
+
+// ConnectorTemplate is a remote MCP server which a connector can be added
+// for, without typing its URL, such as GitHub's, which the server offers,
+// as it has the credentials, whose names it has, of the client it's signed
+// in to with
+export interface ConnectorTemplate {
+    name: string;
+    description?: string;
+    url: string;
+    client_id_credential?: string;
+    client_secret_credential?: string;
+}
+
+// ConnectorTemplateList is the templates, and how many there are
+export interface ConnectorTemplateList {
+    count: number;
+    body?: ConnectorTemplate[];
+}

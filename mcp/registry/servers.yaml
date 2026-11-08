@@ -1,0 +1,10 @@
+# The remote MCP servers which are offered, as templates, under "Add
+# connector", in addition to a custom one, by their name, and URL, and the
+# names of the credentials of the client each is signed in to with, when its
+# sign-in doesn't register clients itself. One whose credentials the server
+# doesn't have, such as its environment variables, isn't offered.
+- name: GitHub
+  description: Repositories, issues, pull requests and code search, with GitHub's own MCP server
+  url: https://api.githubcopilot.com/mcp/
+  client_id_credential: GITHUB_CLIENT_ID
+  client_secret_credential: GITHUB_CLIENT_SECRET

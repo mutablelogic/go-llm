@@ -11,6 +11,7 @@ import Add16 from '@carbon/icons/es/add/16.js';
 import Edit16 from '@carbon/icons/es/edit/16.js';
 import TrashCan16 from '@carbon/icons/es/trash-can/16.js';
 import { Page } from './page';
+import type { ConnectorTemplate } from '../schema/connector';
 
 // Carbon components
 import '@carbon/web-components/es/components/button/index.js';
@@ -20,7 +21,8 @@ import '@carbon/web-components/es/components/menu/index.js';
 @customElement('llm-tools-page')
 export class ToolsPage extends Page {
     // The names of the events fired to start a new agent, to add a
-    // connector, of the kind which is the detail, such as custom, and to edit,
+    // connector, of the template which is the detail, or a custom one,
+    // without one, and to edit,
     // and delete, the connector of the namespace which is chosen
     static readonly eventNewAgent = 'llm-tools-page-new-agent';
     static readonly eventAddConnector = 'llm-tools-page-add-connector';
@@ -37,6 +39,11 @@ export class ToolsPage extends Page {
 
     @property({ attribute: false })
     connector?: string;
+
+    // The templates of the servers which a connector can be added for,
+    // which are in the menu which adds one, as well as a custom one
+    @property({ attribute: false })
+    templates: ConnectorTemplate[] = [];
 
     protected renderIcon(): unknown {
         return iconLoader(ToolKit32);
@@ -61,8 +68,13 @@ export class ToolsPage extends Page {
             ${this.namespace ? nothing : html`
                 <cds-menu-button label="Add connector" kind="primary" size="md">
                     <cds-menu size="md">
+                        ${this.templates.map((template) => html`
+                            <cds-menu-item label=${template.name}
+                                @click=${() => this.dispatchEvent(new CustomEvent<ConnectorTemplate | undefined>(ToolsPage.eventAddConnector, { detail: template }))}></cds-menu-item>
+                        `)}
+                        ${this.templates.length ? html`<cds-menu-item-divider></cds-menu-item-divider>` : nothing}
                         <cds-menu-item label="Custom connector"
-                            @click=${() => this.dispatchEvent(new CustomEvent(ToolsPage.eventAddConnector, { detail: 'custom' }))}></cds-menu-item>
+                            @click=${() => this.dispatchEvent(new CustomEvent<ConnectorTemplate | undefined>(ToolsPage.eventAddConnector, { detail: undefined }))}></cds-menu-item>
                     </cds-menu>
                 </cds-menu-button>
             `}

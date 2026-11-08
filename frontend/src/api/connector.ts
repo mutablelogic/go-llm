@@ -1,7 +1,7 @@
 // The MCP connectors' API
 
 import { request } from './client';
-import type { Connector, ConnectorList, ConnectorMeta } from '../schema/connector';
+import type { Connector, ConnectorList, ConnectorMeta, ConnectorTemplateList } from '../schema/connector';
 
 // listConnectors returns the connectors, with their status
 export function listConnectors(signal?: AbortSignal): Promise<ConnectorList> {
@@ -38,4 +38,11 @@ export function deleteConnector(name: string): Promise<Connector> {
 export async function authorizeConnector(name: string): Promise<string> {
     const response = await request<{ url: string }>('POST', '/mcp/connector/' + encodeURIComponent(name) + '/authorize', { body: {} });
     return response.url;
+}
+
+// listTemplates returns the templates of the remote MCP servers which a
+// connector can be added for, which the server offers, apart from those
+// which are connectors already
+export function listTemplates(signal?: AbortSignal): Promise<ConnectorTemplateList> {
+    return request<ConnectorTemplateList>('GET', '/mcp/template', { signal });
 }

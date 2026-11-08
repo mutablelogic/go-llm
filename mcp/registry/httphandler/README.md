@@ -37,3 +37,7 @@ Start signing in to a connector's MCP server, which returns the `url` a person s
 ### GET /mcp/callback
 
 The callback which an authorization server redirects a person's browser to, once they've signed in, with the `state` of the authorization, and its `code`, or the `error` of why they didn't, which exchanges the code for a token, and connects the connector. Returns a page, for the person, which says whether they're signed in, or the connector, as JSON, when the request accepts `application/json`, rather than HTML, such as from a command line client's loopback. Returns 400 if they didn't sign in, or the code couldn't be exchanged, 404 if no authorization is waited for, with the state, such as when it's been 10 minutes, or the connector was deleted, or 409 if the connector's `url`, or `client_id_credential`, was changed as they signed in.
+
+### GET /mcp/template
+
+List the templates of the remote MCP servers which a connector can be added for, without typing their URL, such as GitHub's, in order of their names, with their `count`. Each has the server's `name`, and `url`, and the names of the credentials of the client it's signed in to with, `client_id_credential` and `client_secret_credential`, when its sign-in doesn't register clients itself. The server offers those of its own list, whose credentials it has, such as its environment variables `GITHUB_CLIENT_ID` and `GITHUB_CLIENT_SECRET`, as it starts, apart from those whose `url` is a connector's already. A connector is added for one with `POST /mcp/connector`, with its `url`, and credentials' names.
