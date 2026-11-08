@@ -26,6 +26,9 @@ type opt struct {
 
 	// Called when the client is connected, or disconnected, or nil
 	change ChangeFunc
+
+	// Called when the server says its tools changed, or nil
+	toolsChanged func()
 }
 
 // ChangeFunc is called, without a lock, when the client is connected, with
@@ -55,6 +58,7 @@ func (o *opt) defaults() {
 	o.version = schema.DefaultVersion
 	o.clientopts = nil
 	o.change = nil
+	o.toolsChanged = nil
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -79,6 +83,15 @@ func WithName(name, version string) Opt {
 func WithChange(fn ChangeFunc) Opt {
 	return func(o *opt) error {
 		o.change = fn
+		return nil
+	}
+}
+
+// WithToolsChanged is called when the server says its tools changed, so
+// they're listed again, without a lock
+func WithToolsChanged(fn func()) Opt {
+	return func(o *opt) error {
+		o.toolsChanged = fn
 		return nil
 	}
 }

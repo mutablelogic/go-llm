@@ -27,8 +27,10 @@ type Client struct {
 	// connects, with WithName
 	implementation sdkmcp.Implementation
 
-	// Called when it's connected, or disconnected, or nil
-	change ChangeFunc
+	// Called when it's connected, or disconnected, or its server's tools
+	// change, or nil
+	change       ChangeFunc
+	toolsChanged func()
 
 	// The session with the server, once it's connected, and the error of
 	// the last connection, or of the session, when it ended, which are held
@@ -77,6 +79,7 @@ func New(endpoint string, opts ...Opt) (*Client, error) {
 		endpoint:       u.String(),
 		implementation: sdkmcp.Implementation{Name: o.name, Version: o.version},
 		change:         o.change,
+		toolsChanged:   o.toolsChanged,
 	}, nil
 }
 

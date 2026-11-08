@@ -128,7 +128,11 @@ func (c *Client) Status() (*sdkmcp.Implementation, error) {
 func (c *Client) dial(ctx context.Context, transport sdkmcp.Transport) (*sdkmcp.ClientSession, context.CancelFunc, error) {
 	sessionCtx, cancel := context.WithCancel(context.WithoutCancel(ctx))
 	stop := context.AfterFunc(ctx, cancel)
-	session, err := sdkmcp.NewClient(&c.implementation, nil).Connect(sessionCtx, transport, nil)
+	var opts *sdkmcp.ClientOptions
+	if fn := c.toolsChanged; fn != nil {
+		opts = &sdkmcp.ClientOptions{ToolListChangedHandler: func(context.Context, *sdkmcp.ToolListChangedRequest) { fn() }}
+	}
+	session, err := sdkmcp.NewClient(&c.implementation, opts).Connect(sessionCtx, transport, nil)
 	if !stop() {
 		// The caller gave up as it was connected
 		if err == nil {
