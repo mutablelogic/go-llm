@@ -162,8 +162,8 @@ func TestCapabilities(t *testing.T) {
 			"gpt-audio-mini-2025-12-15":         "",
 			"gpt-realtime-2.1-mini":             "",
 			"gpt-live-1":                        "",
-			"gpt-image-2.5-flare-2026-09-08":    "image_input",
-			"chatgpt-image-latest":              "image_input",
+			"gpt-image-2.5-flare-2026-09-08":    "image_input, image_output",
+			"chatgpt-image-latest":              "image_input, image_output",
 			"omni-moderation-latest":            "image_input",
 			"text-embedding-3-small":            "embedding",
 			"text-embedding-ada-002":            "embedding",
@@ -220,4 +220,46 @@ func TestShutDown(t *testing.T) {
 
 	// A model without a date hasn't been shut down
 	assert.False(t, apiModel{ID: "model"}.shutDown(now))
+}
+
+func TestDeepSeekModels(t *testing.T) {
+	// model returns one of DeepSeek's models, as it lists them
+	model := func(t *testing.T, data string) *Model {
+		t.Helper()
+		c, err := New(DeepSeekEndpoint, "")
+		require.NoError(t, err)
+		var m apiModel
+		require.NoError(t, json.Unmarshal([]byte(data), &m))
+		return &Model{provider: c, data: m}
+	}
+	flash := model(t, `{"id":"deepseek-flash","object":"model","owned_by":"deepseek","name":"DeepSeek-V4.1-Flash","context_window":1048576,"max_output_tokens":393216,"input_modalities":["text","image"],"output_modalities":["text"],"effort":{"supported_levels":["low","high","max"],"default_level":"high"}}`)
+	pro := model(t, `{"id":"deepseek-v4-pro","object":"model","owned_by":"deepseek","name":"DeepSeek-V4-Pro","context_window":1048576,"max_output_tokens":393216,"input_modalities":["text"],"output_modalities":["text"],"effort":{"supported_levels":["low","high","max"],"default_level":"high"}}`)
+
+	t.Run("Capabilities", func(t *testing.T) {
+		// What a model takes, and makes, is what DeepSeek reports, and it
+		// thinks, as it has efforts, and calls tools
+		assert.Equal(t, "chat, tools, thinking, image_input", flash.Capabilities().String())
+		assert.Equal(t, "chat, tools, thinking", pro.Capabilities().String())
+		assert.Equal(t, types.Ptr(false), pro.Capabilities().ImageInput)
+		assert.Equal(t, types.Ptr(false), flash.Capabilities().ImageOutput)
+		assert.Equal(t, "DeepSeek-V4.1-Flash", flash.Description())
+		assert.Equal(t, uint(1048576), types.Value(flash.InputTokenLimit()))
+		assert.Equal(t, uint(393216), types.Value(flash.OutputTokenLimit()))
+	})
+
+	t.Run("Effort", func(t *testing.T) {
+		// An effort the model has is kept, and one it hasn't is the nearest
+		// it has, or the greater, when two are as near
+		for effort, want := range map[string]string{
+			"low": "low", "high": "high", "max": "max",
+			"medium": "high", "minimal": "low", "none": "low", "xhigh": "max",
+			"unknown": "unknown",
+		} {
+			assert.Equal(t, want, flash.effort(effort), effort)
+		}
+
+		// A model without efforts keeps the effort
+		other := model(t, `{"id":"deepseek-chat"}`)
+		assert.Equal(t, "medium", other.effort("medium"))
+	})
 }
