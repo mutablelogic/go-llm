@@ -6,7 +6,7 @@ import (
 
 	// Packages
 	sdkmcp "github.com/modelcontextprotocol/go-sdk/mcp"
-	goclient "github.com/mutablelogic/go-client"
+	client "github.com/mutablelogic/go-client"
 	llm "github.com/mutablelogic/go-llm"
 )
 
@@ -16,7 +16,7 @@ import (
 // Client is a client of a remote MCP server, at its URL, whose requests are
 // made with go-client
 type Client struct {
-	*goclient.Client
+	*client.Client
 
 	// The URL of the server
 	endpoint string
@@ -52,12 +52,12 @@ func New(endpoint string, opts ...Opt) (*Client, error) {
 	}
 
 	// Create go-client's client, for the server, with its options
-	client, err := goclient.New(append([]goclient.ClientOpt{goclient.OptEndpoint(u.String())}, o.clientopts...)...)
+	httpClient, err := client.New(append([]client.ClientOpt{client.OptEndpoint(u.String())}, o.clientopts...)...)
 	if err != nil {
 		return nil, err
 	}
 	return &Client{
-		Client:         client,
+		Client:         httpClient,
 		endpoint:       u.String(),
 		implementation: sdkmcp.Implementation{Name: o.name, Version: o.version},
 	}, nil

@@ -15,9 +15,9 @@ import (
 // token, and tracing, but without its timeout, as the streams of an MCP
 // session last as long as it does, and are cancelled with its context
 func (c *Client) httpClient() *http.Client {
-	client := *c.Client.Client
-	client.Timeout = 0
-	return &client
+	httpClient := *c.Client.Client
+	httpClient.Timeout = 0
+	return &httpClient
 }
 
 // transports returns the MCP SDK's transports of the server, in the order
@@ -25,9 +25,9 @@ func (c *Client) httpClient() *http.Client {
 // protocol, and then SSE, of the 2024-11-05 protocol, for a server which
 // hasn't it, which share an HTTP client
 func (c *Client) transports() []sdkmcp.Transport {
-	client := c.httpClient()
+	httpClient := c.httpClient()
 	return []sdkmcp.Transport{
-		&sdkmcp.StreamableClientTransport{Endpoint: c.endpoint, HTTPClient: client},
-		&sdkmcp.SSEClientTransport{Endpoint: c.endpoint, HTTPClient: client},
+		&sdkmcp.StreamableClientTransport{Endpoint: c.endpoint, HTTPClient: httpClient},
+		&sdkmcp.SSEClientTransport{Endpoint: c.endpoint, HTTPClient: httpClient},
 	}
 }

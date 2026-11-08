@@ -8,7 +8,7 @@ import (
 
 	// Packages
 	sdkmcp "github.com/modelcontextprotocol/go-sdk/mcp"
-	goclient "github.com/mutablelogic/go-client"
+	client "github.com/mutablelogic/go-client"
 	llm "github.com/mutablelogic/go-llm"
 	schema "github.com/mutablelogic/go-llm/mcp/schema"
 	assert "github.com/stretchr/testify/assert"
@@ -53,9 +53,9 @@ func Test_Transports(t *testing.T) {
 	}))
 	t.Cleanup(server.Close)
 	c, err := New(server.URL+"/mcp", WithName("test", "1.0"), WithClientOpts(
-		goclient.OptHeader("X-Test", "yes"),
-		goclient.OptUserAgent("test-agent"),
-		goclient.OptTimeout(time.Second),
+		client.OptHeader("X-Test", "yes"),
+		client.OptUserAgent("test-agent"),
+		client.OptTimeout(time.Second),
 	))
 	require.NoError(t, err)
 	assert.Equal(t, time.Second, c.Client.Timeout, "go-client's own requests are timed out")

@@ -4,7 +4,7 @@ import (
 	"strings"
 
 	// Packages
-	goclient "github.com/mutablelogic/go-client"
+	client "github.com/mutablelogic/go-client"
 	llm "github.com/mutablelogic/go-llm"
 	schema "github.com/mutablelogic/go-llm/mcp/schema"
 )
@@ -21,7 +21,7 @@ type opt struct {
 	name, version string
 
 	// The options of go-client, which apply to the client's requests
-	clientopts []goclient.ClientOpt
+	clientopts []client.ClientOpt
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -63,13 +63,13 @@ func WithName(name, version string) Opt {
 	}
 }
 
-// WithClientOpts are options of go-client, such as goclient.OptHeader,
-// goclient.OptUserAgent, goclient.OptReqToken, or goclient.OptTrace, which
+// WithClientOpts are options of go-client, such as client.OptHeader,
+// client.OptUserAgent, client.OptReqToken, or client.OptTrace, which
 // apply to the client's requests, and so to those of the MCP SDK. Its
-// timeout, with goclient.OptTimeout, applies to its own requests, but not
+// timeout, with client.OptTimeout, applies to its own requests, but not
 // to an MCP session's, whose streams last as long as the session, and are
 // cancelled with its context.
-func WithClientOpts(opts ...goclient.ClientOpt) Opt {
+func WithClientOpts(opts ...client.ClientOpt) Opt {
 	return func(o *opt) error {
 		o.clientopts = append(o.clientopts, opts...)
 		return nil
