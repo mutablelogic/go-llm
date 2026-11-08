@@ -64,7 +64,9 @@ func (r *messagesRequest) apply(model *Model, opts ...llm.Opt) error {
 		case llm.ThinkingEffortKey:
 			var effort string
 			if effort, err = llm.GetOpt[string](o, key); err == nil && model.caps.Effort.Supported {
-				r.outputConfig().Effort = effort
+				// The nearest the model has, such as "high" for "max", for a
+				// model which hasn't it
+				r.outputConfig().Effort = llm.NearestEffort(effort, model.caps.Effort.levels()...)
 			}
 		case llm.JSONSchemaKey:
 			var schema json.RawMessage

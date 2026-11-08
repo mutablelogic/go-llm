@@ -206,6 +206,23 @@ func Test_Thinking(t *testing.T) {
 	config, err = think("gemini-3.5-flash", true, false, false, "high")
 	require.NoError(t, err)
 	assert.Equal(t, &thinkingConfig{IncludeThoughts: true, ThinkingLevel: "HIGH"}, config)
+
+	// More than high is as much as Gemini 2.5 decides, and a later model's
+	// highest level, and thinking off is still off
+	for _, effort := range []string{"xhigh", "max"} {
+		config, err = think("gemini-2.5-flash", true, false, false, effort)
+		require.NoError(t, err)
+		assert.Equal(t, &thinkingConfig{IncludeThoughts: true, ThinkingBudget: types.Ptr(-1)}, config, effort)
+		config, err = think("gemini-3.5-flash", true, false, false, effort)
+		require.NoError(t, err)
+		assert.Equal(t, &thinkingConfig{IncludeThoughts: true, ThinkingLevel: "HIGH"}, config, effort)
+		config, err = think("gemini-2.5-flash", true, true, false, effort)
+		require.NoError(t, err)
+		assert.Equal(t, &thinkingConfig{ThinkingBudget: types.Ptr(0)}, config, effort)
+		config, err = think("gemini-3.5-flash", true, true, false, effort)
+		require.NoError(t, err)
+		assert.Equal(t, &thinkingConfig{ThinkingLevel: "LOW"}, config, effort)
+	}
 	config, err = think("gemini-3.5-flash", true, true, false, "")
 	require.NoError(t, err)
 	assert.Equal(t, &thinkingConfig{ThinkingLevel: "LOW"}, config)
@@ -248,6 +265,15 @@ func Test_Options(t *testing.T) {
 	assert.Equal(t, "application/json", config.ResponseMimeType)
 	assert.JSONEq(t, `{"type":"object"}`, string(config.ResponseJSONSchema))
 	assert.Nil(t, api.asked.ToolConfig, "a tool choice needs tools")
+
+	// The efforts which are more than high are accepted, and sent as the
+	// model's highest level
+	for _, effort := range []string{"xhigh", "max"} {
+		_, _, err := c.WithoutSession(ctx, model, []llm.Message{text(t, "user", "Hi")}, nil, nil, llm.WithThinkingEffort(effort))
+		require.NoError(t, err, effort)
+		require.NotNil(t, api.asked.GenerationConfig.ThinkingConfig, effort)
+		assert.Equal(t, "HIGH", api.asked.GenerationConfig.ThinkingConfig.ThinkingLevel, effort)
+	}
 
 	// An option which isn't for replies, a tool choice which isn't one, and
 	// an effort which isn't one

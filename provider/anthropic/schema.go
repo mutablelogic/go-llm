@@ -46,7 +46,33 @@ type modelCapabilities struct {
 			Enabled  supported `json:"enabled"`
 		} `json:"types"`
 	} `json:"thinking"`
-	Effort supported `json:"effort"`
+	Effort effort `json:"effort"`
+}
+
+// effort is whether a model has effort, and which levels of it it has
+type effort struct {
+	supported
+	Low    supported `json:"low"`
+	Medium supported `json:"medium"`
+	High   supported `json:"high"`
+	XHigh  supported `json:"xhigh"`
+	Max    supported `json:"max"`
+}
+
+// levels returns the levels of effort the model has, from the least to the
+// most, or nil when the Models API doesn't list them, such as when it only
+// says whether the model has effort, when the effort is sent as it is
+func (e effort) levels() []string {
+	var result []string
+	for _, level := range []struct {
+		name string
+		supported
+	}{{"low", e.Low}, {"medium", e.Medium}, {"high", e.High}, {"xhigh", e.XHigh}, {"max", e.Max}} {
+		if level.Supported {
+			result = append(result, level.name)
+		}
+	}
+	return result
 }
 
 ///////////////////////////////////////////////////////////////////////////////

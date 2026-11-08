@@ -150,11 +150,10 @@ func (m *Model) Capabilities() llm.ModelCap {
 		Transcription: no,
 		Translation:   no,
 	}
-	if m.data.Thinking != nil {
-		result.Thinking = types.Ptr(*m.data.Thinking)
-	} else if !types.Value(result.Chat) {
-		result.Thinking = no
-	}
+	// A model thinks when it says it does, as Gemini's API only says so of
+	// those which do, and the request treats one which doesn't say as one
+	// which doesn't
+	result.Thinking = types.Ptr(types.Value(m.data.Thinking))
 	if m.data.Temperature != nil || m.data.MaxTemperature != nil {
 		result.Temperature = yes
 	}

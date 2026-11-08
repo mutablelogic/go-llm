@@ -261,5 +261,14 @@ func TestDeepSeekModels(t *testing.T) {
 		// A model without efforts keeps the effort
 		other := model(t, `{"id":"deepseek-chat"}`)
 		assert.Equal(t, "medium", other.effort("medium"))
+
+		// But OpenAI's models, and Mistral's, make no more than "high", as
+		// not every one of them has more, and other servers' models, the
+		// effort
+		for endpoint, want := range map[string]string{OpenAIEndpoint: "high", MistralEndpoint: "high", "http://localhost:8000": "max"} {
+			c, err := New(endpoint, "")
+			require.NoError(t, err)
+			assert.Equal(t, want, (&Model{provider: c, data: apiModel{ID: "m"}}).effort("max"), endpoint)
+		}
 	})
 }
