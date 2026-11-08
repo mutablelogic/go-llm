@@ -100,6 +100,7 @@ export interface Session {
     // Whether it's an event's session, such as a heartbeat's, which only the
     // server sets, which isn't chatted in
     event?: boolean;
+    forgotten?: number;
 }
 
 // SessionMeta is the settings of a session, which it's created with
@@ -121,6 +122,7 @@ export interface SessionList {
 // there are
 export interface MessageList {
     count: number;
+    offset?: number;
     body?: Message[];
 }
 

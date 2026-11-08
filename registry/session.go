@@ -127,8 +127,11 @@ func (r *Registry) GetSession(ctx context.Context, id uuid.UUID) (_ *schema.Sess
 
 // ListSessionMessages returns the messages of the session with the
 // identifier, oldest first, as the request selects: of its role, or every
-// role, from its offset, and at most its limit of them, and how many there
-// are. Returns ErrNotFound when there's no session, and
+// role, of its context only, which is its last marker, which a summary
+// didn't fail for, and the messages after it, when it's asked for, from its
+// offset, or, when that's negative, that many from the end, and at most its
+// limit of them, and how many there are, with the offset they start at,
+// from the start. Returns ErrNotFound when there's no session, and
 // ErrServiceUnavailable when the registry has no session store.
 func (r *Registry) ListSessionMessages(ctx context.Context, id uuid.UUID, req schema.MessageListRequest) (_ *schema.MessageList, err error) {
 	ctx, endSpan := otel.StartSpan(r.tracer, ctx, "llm.registry.ListSessionMessages",
@@ -144,18 +147,31 @@ func (r *Registry) ListSessionMessages(ctx context.Context, id uuid.UUID, req sc
 	if err != nil {
 		return nil, err
 	}
-	body := make([]providerschema.Message, 0, len(session.Messages))
-	for _, message := range session.Messages {
+	messages := session.Messages
+	if req.Context {
+		messages = messages[contextStart(messages):]
+	}
+	body := make([]providerschema.Message, 0, len(messages))
+	for _, message := range messages {
 		if req.Role == "" || message.Role() == req.Role {
 			body = append(body, message)
 		}
 	}
-	count := uint(len(body))
-	body = body[min(req.Offset, count):]
-	if req.Limit != nil {
-		body = body[:min(*req.Limit, uint(len(body)))]
+
+	// From the offset, or, when it's negative, that many from the end
+	count := len(body)
+	offset := req.Offset
+	if offset < 0 {
+		offset = max(count+offset, 0)
 	}
-	return &schema.MessageList{MessageListRequest: req, Count: count, Body: body}, nil
+	offset = min(offset, count)
+	body = body[offset:]
+	if req.Limit != nil {
+		body = body[:min(int(*req.Limit), len(body))]
+	}
+	list := &schema.MessageList{MessageListRequest: req, Count: uint(count), Body: body}
+	list.Offset = offset
+	return list, nil
 }
 
 // ListSessions returns the sessions, without their messages, most recently
