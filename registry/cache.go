@@ -61,6 +61,7 @@ type cached struct {
 	byName     map[string]llm.Model
 	modelsAt   time.Time
 	modelsErr  error
+	failedAt   time.Time
 	listings   uint64
 	generation uint64
 }
@@ -84,6 +85,11 @@ var (
 	// ModelCacheInterval is how long a provider's models are cached, unless
 	// it downloads models
 	ModelCacheInterval = 6 * time.Hour
+
+	// PingTimeout is how long a provider's ping waits for its server, so one
+	// which can't be reached is known to be down soon, rather than once its
+	// client gives up
+	PingTimeout = 5 * time.Second
 )
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -154,8 +160,32 @@ func (c *cached) ping(ctx context.Context, maxAge time.Duration) error {
 
 	// Ping the provider, and keep the result, from when the ping started
 	start := time.Now()
-	err := c.provider.Ping(ctx)
+	err := pingProvider(ctx, c.provider, PingTimeout)
 	c.setPing(start, err)
+	return err
+}
+
+// status returns the error of the provider's last ping, or nil when it
+// could be reached, without waiting for its server, unless it's never been
+// pinged. When the result is older than the age, the provider is pinged in
+// the background, unless it's being pinged already, so the next status is
+// newer.
+func (c *cached) status(ctx context.Context, maxAge time.Duration) error {
+	at, err := c.lastPing()
+	if at.IsZero() {
+		return c.ping(ctx, maxAge)
+	}
+	if time.Since(at) >= maxAge && c.pinging.TryLock() {
+		timeout := PingTimeout
+		go func() {
+			defer c.pinging.Unlock()
+			if at, _ := c.lastPing(); time.Since(at) < maxAge {
+				return
+			}
+			start := time.Now()
+			c.setPing(start, pingProvider(context.WithoutCancel(ctx), c.provider, timeout))
+		}()
+	}
 	return err
 }
 
@@ -219,12 +249,35 @@ func (c *cached) getModel(ctx context.Context, name string) (llm.Model, error) {
 
 // cache lists the models again when they're stale, and returns an error
 // when they can't be listed, and none were cached, which is
-// ErrServiceUnavailable, unless the provider's error is an llm.Err
+// ErrServiceUnavailable, unless the provider's error is an llm.Err. A
+// provider which is down, as its last ping, or listing, failed within
+// PingInterval, isn't asked again, so a request doesn't wait for a server
+// which can't be reached: Run pings it, and lists its models, once it can
+// be.
 func (c *cached) cache(ctx context.Context) error {
-	if c.stale() {
-		if err := c.refresh(ctx); err != nil && !c.isCached() {
-			return unavailable(err)
-		}
+	if !c.stale() {
+		return nil
+	}
+	err := c.down()
+	if err == nil {
+		err = c.refresh(ctx)
+	}
+	if err != nil && !c.isCached() {
+		return unavailable(err)
+	}
+	return nil
+}
+
+// down returns the error of the provider's last ping, or of the last
+// listing of its models, when it failed within PingInterval, or nil
+func (c *cached) down() error {
+	if at, err := c.lastPing(); err != nil && time.Since(at) < PingInterval {
+		return err
+	}
+	c.models.RLock()
+	defer c.models.RUnlock()
+	if c.modelsErr != nil && time.Since(c.failedAt) < PingInterval {
+		return c.modelsErr
 	}
 	return nil
 }
@@ -258,6 +311,9 @@ func (c *cached) refresh(ctx context.Context) (err error) {
 		defer c.models.Unlock()
 		c.listings++
 		c.modelsErr = err
+		if err != nil {
+			c.failedAt = time.Now()
+		}
 	}()
 
 	// List the models, and keep those which match the patterns
@@ -356,6 +412,14 @@ func (c *cached) matches(name string) bool {
 
 ///////////////////////////////////////////////////////////////////////////////
 // PRIVATE FUNCTIONS
+
+// pingProvider pings the provider, waiting for its server for at most the
+// timeout, which is usually PingTimeout
+func pingProvider(ctx context.Context, provider llm.Provider, timeout time.Duration) error {
+	ctx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+	return provider.Ping(ctx)
+}
 
 // compilePatterns returns the patterns, which are regular expressions,
 // compiled, or ErrBadParameter when one isn't valid
