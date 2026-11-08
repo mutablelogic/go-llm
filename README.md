@@ -439,7 +439,6 @@ env -u OPENAI_API_KEY -u MISTRAL_API_KEY -u ANTHROPIC_API_KEY -u GEMINI_API_KEY 
 ### Sessions
 
 - **Compaction**, still to come:
-  - **Forgetting**: forgetting a session's messages could add a marker, without a summary, rather than delete them, so they're kept.
   - **A model for summaries**: a cheaper model, which writes summaries, rather than the session's own.
 
 ### Agents and tools

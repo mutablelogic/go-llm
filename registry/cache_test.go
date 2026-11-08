@@ -238,6 +238,148 @@ func Test_PingCache(t *testing.T) {
 	assert.Equal(t, "connection refused", provider.Error)
 }
 
+func Test_DownProvider(t *testing.T) {
+	ctx := context.Background()
+
+	t.Run("Listing failed", func(t *testing.T) {
+		// A provider whose models couldn't be listed isn't asked again, by a
+		// request, within the ping interval, and the others' models are
+		// returned, with its error
+		openai := &provider{name: "openai", models: []string{"gpt-4o"}}
+		unreachable := &provider{name: "ollama", err: errors.New("connection refused")}
+		r, err := newRegistry(openai, unreachable)
+		require.NoError(t, err)
+		for range 3 {
+			models, err := r.ListModels(ctx)
+			assert.ErrorIs(t, err, unreachable.err)
+			assert.Equal(t, []string{"openai:gpt-4o"}, names(r, models))
+			_, err = r.GetModel(ctx, "llama3.2")
+			assert.Error(t, err)
+		}
+		assert.Equal(t, int32(1), unreachable.lists.Load())
+
+		// But once the interval's passed, it's asked again
+		setInterval(t, &registry.PingInterval, 0)
+		_, err = r.ListModels(ctx)
+		assert.ErrorIs(t, err, unreachable.err)
+		assert.Equal(t, int32(2), unreachable.lists.Load())
+	})
+
+	t.Run("Ping failed", func(t *testing.T) {
+		// A provider whose last ping failed isn't asked for its models, and
+		// those which were cached are returned
+		setInterval(t, &registry.ModelCacheInterval, 0)
+		openai := &provider{name: "openai", models: []string{"gpt-4o"}}
+		r, err := newRegistry(openai)
+		require.NoError(t, err)
+		_, err = r.ListModels(ctx)
+		require.NoError(t, err)
+		openai.err = errors.New("connection refused")
+		require.Error(t, r.Ping(ctx))
+		for range 3 {
+			models, err := r.ListModels(ctx)
+			require.NoError(t, err)
+			assert.Equal(t, []string{"openai:gpt-4o"}, names(r, models))
+		}
+		assert.Equal(t, int32(1), openai.lists.Load())
+
+		// And with none cached, it's the ping's error
+		unreachable := &provider{name: "ollama", err: errors.New("no route to host")}
+		require.NoError(t, r.Add("", unreachable))
+		require.Error(t, r.Ping(ctx))
+		_, err = r.ListModels(ctx, "ollama")
+		assert.ErrorIs(t, err, llm.ErrServiceUnavailable)
+		assert.ErrorIs(t, err, unreachable.err)
+		assert.Zero(t, unreachable.lists.Load())
+	})
+
+	t.Run("Status", func(t *testing.T) {
+		// A provider's status is its last ping's, without waiting for it to
+		// be pinged again, which it is, in the background, once it's old
+		release := make(chan struct{})
+		var once sync.Once
+		slow := &provider{name: "ollama"}
+		slow.ping = func(ctx context.Context) error {
+			if slow.pings.Load() > 1 {
+				<-release
+				return errors.New("connection refused")
+			}
+			return nil
+		}
+		t.Cleanup(func() { once.Do(func() { close(release) }) })
+		r, err := newRegistry(slow)
+		require.NoError(t, err)
+		status, err := r.GetProvider(ctx, "ollama")
+		require.NoError(t, err)
+		assert.Empty(t, status.Error)
+
+		setInterval(t, &registry.PingInterval, 0)
+		for range 3 {
+			start := time.Now()
+			status, err := r.GetProvider(ctx, "ollama")
+			require.NoError(t, err)
+			assert.Empty(t, status.Error)
+			assert.Less(t, time.Since(start), 100*time.Millisecond)
+		}
+		require.Eventually(t, func() bool { return slow.pings.Load() == 2 }, time.Second, 5*time.Millisecond)
+
+		// Once it's replied, its status is the ping's
+		once.Do(func() { close(release) })
+		require.Eventually(t, func() bool {
+			status, err := r.GetProvider(ctx, "ollama")
+			return err == nil && status.Error == "connection refused"
+		}, time.Second, 5*time.Millisecond)
+	})
+
+	t.Run("Cancelled", func(t *testing.T) {
+		// A ping, or listing, which its caller gave up on says nothing of
+		// the provider, so it isn't thought down
+		cancelled, cancel := context.WithCancel(ctx)
+		cancel()
+		slow := &provider{name: "ollama", models: []string{"llama3.2"}}
+		slow.ping = func(ctx context.Context) error {
+			if slow.pings.Load() == 1 {
+				<-ctx.Done()
+				return ctx.Err()
+			}
+			return nil
+		}
+		r, err := newRegistry(slow)
+		require.NoError(t, err)
+		status, err := r.GetProvider(cancelled, "ollama")
+		require.NoError(t, err)
+		assert.NotEmpty(t, status.Error, "the caller's own request fails")
+		status, err = r.GetProvider(ctx, "ollama")
+		require.NoError(t, err)
+		assert.Empty(t, status.Error, "but the next is pinged again")
+		assert.Equal(t, int32(2), slow.pings.Load())
+
+		slow.err = context.Canceled
+		_, err = r.ListModels(cancelled)
+		assert.Error(t, err)
+		slow.err = nil
+		models, err := r.ListModels(ctx)
+		require.NoError(t, err)
+		assert.Len(t, models, 1, "and its models are listed again")
+		assert.Equal(t, int32(2), slow.lists.Load())
+	})
+
+	t.Run("Ping timeout", func(t *testing.T) {
+		// A ping waits for the provider's server for at most PingTimeout
+		setInterval(t, &registry.PingTimeout, 20*time.Millisecond)
+		hung := &provider{name: "ollama"}
+		hung.ping = func(ctx context.Context) error {
+			<-ctx.Done()
+			return ctx.Err()
+		}
+		r, err := newRegistry(hung)
+		require.NoError(t, err)
+		start := time.Now()
+		assert.ErrorIs(t, r.Ping(ctx), context.DeadlineExceeded)
+		assert.Less(t, time.Since(start), time.Second)
+	})
+}
+
 func Test_Run(t *testing.T) {
 	// Run pings the providers, and lists their models, when it starts, and
 	// every ping interval, until it's cancelled

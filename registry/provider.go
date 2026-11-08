@@ -46,8 +46,8 @@ func (r *Registry) ListProviders(ctx context.Context, req schema.ProviderListReq
 	return &schema.ProviderList{ProviderListRequest: req, Count: uint(len(body)), Body: body}, nil
 }
 
-// GetProvider returns the provider with the name, with whether it can be
-// reached, when it was last pinged, within PingInterval, or ErrNotFound
+// GetProvider returns the provider with the name, with whether it could be
+// reached, when it was last pinged, as describePing does, or ErrNotFound
 // when there's none
 func (r *Registry) GetProvider(ctx context.Context, name string) (_ *schema.ProviderStatus, err error) {
 	ctx, endSpan := otel.StartSpan(r.tracer, ctx, "llm.registry.GetProvider",
@@ -130,7 +130,7 @@ func (r *Registry) createProvider(ctx context.Context, req schema.Provider, reac
 		return nil, err
 	}
 	pingAt := time.Now()
-	pingErr := provider.Ping(ctx)
+	pingErr := pingProvider(ctx, provider, PingTimeout)
 	if pingErr != nil && reachable {
 		return nil, llm.ErrServiceUnavailable.Withf("provider %q can't be reached: %w", name, pingErr)
 	}
@@ -144,7 +144,10 @@ func (r *Registry) createProvider(ctx context.Context, req schema.Provider, reac
 	if c == nil || c.provider != provider {
 		return nil, llm.ErrConflict.Withf("provider %q was replaced as it was added", name)
 	}
-	c.setPing(pingAt, pingErr)
+	if ctx.Err() == nil {
+		// Unless the caller gave up on the ping
+		c.setPing(pingAt, pingErr)
+	}
 	return describePing(ctx, entry{name: name, provider: provider, cache: c}), nil
 }
 
@@ -244,11 +247,14 @@ func (r *Registry) redefine(ctx context.Context, name string, existing *cached, 
 		return nil, err
 	}
 	pingAt := time.Now()
-	pingErr := provider.Ping(ctx)
+	pingErr := pingProvider(ctx, provider, PingTimeout)
 	if err := r.replace(name, existing, c); err != nil {
 		return nil, err
 	}
-	c.setPing(pingAt, pingErr)
+	if ctx.Err() == nil {
+		// Unless the caller gave up on the ping
+		c.setPing(pingAt, pingErr)
+	}
 	return describePing(ctx, entry{name: name, provider: provider, cache: c}), nil
 }
 
@@ -330,12 +336,13 @@ func (r *Registry) newProvider(ctx context.Context, req schema.Provider) (string
 	return req.Name, provider, append(opts, withDefinition(req)), nil
 }
 
-// describePing returns the provider, as describe does, with whether it can
-// be reached, when it was last pinged, within PingInterval, or otherwise
-// once it's pinged
+// describePing returns the provider, as describe does, with whether it
+// could be reached, when it was last pinged, without waiting for it, or once
+// it's pinged, when it never was. A result older than PingInterval is
+// returned while it's pinged again, in the background.
 func describePing(ctx context.Context, e entry) *schema.ProviderStatus {
 	result := describe(e)
-	if err := e.cache.ping(ctx, PingInterval); err != nil {
+	if err := e.cache.status(ctx, PingInterval); err != nil {
 		result.Error = err.Error()
 	}
 	return result
