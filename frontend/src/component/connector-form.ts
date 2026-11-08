@@ -8,7 +8,7 @@ import { css, html, nothing, type PropertyValues } from 'lit';
 import { keyed } from 'lit/directives/keyed.js';
 import { customElement, property, query, state } from 'lit/decorators.js';
 import { Panel } from './panel';
-import { config } from '../api/client';
+import { callbackURL } from '../api/connector';
 import { needsSignIn, type Connector, type ConnectorMeta, type ConnectorTemplate } from '../schema/connector';
 
 // Carbon components
@@ -121,8 +121,8 @@ export class ConnectorForm extends Panel<ConnectorFormItem> {
     connectedCallback() {
         super.connectedCallback();
         if (!this.redirect) {
-            void config().then(({ prefix }) => {
-                this.redirect = new URL(prefix.replace(/\/$/, '') + '/mcp/callback', location.origin).href;
+            void callbackURL().then((redirect) => {
+                this.redirect = redirect;
             }).catch(() => undefined);
         }
     }

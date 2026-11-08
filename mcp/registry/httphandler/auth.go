@@ -46,7 +46,7 @@ var callbackPage = template.Must(template.New("callback").Parse(`<!DOCTYPE html>
 ///////////////////////////////////////////////////////////////////////////////
 // PRIVATE METHODS
 
-func authorizeHandlers(reg *registry.Registry, router *httprouter.Router, documentation *openapi.MarkdownDoc) error {
+func authorizeHandlers(reg *registry.Registry, router *httprouter.Router, documentation *openapi.MarkdownDoc, serverURL func() *url.URL) error {
 	return errors.Join(
 		router.Register("mcp/connector/{name}/authorize", jsonschema.MustFor[connectorName](), func(path httprequest.PathItem) {
 			path.Tag(Tag)
@@ -61,7 +61,14 @@ func authorizeHandlers(reg *registry.Registry, router *httprouter.Router, docume
 						return
 					}
 				}
+				// The callback is the request's, or the server's own, when it
+				// says it's https, as it's then behind a proxy, whose name it
+				// was given, which may say the request's origin is its own, or
+				// otherwise the API's, of the request's origin
 				redirect := req.Redirect
+				if redirect == "" {
+					redirect = publicCallback(serverURL)
+				}
 				if redirect == "" {
 					origin, err := requestOrigin(r)
 					if err != nil {
@@ -119,6 +126,20 @@ func authorizeHandlers(reg *registry.Registry, router *httprouter.Router, docume
 			})
 		}),
 	)
+}
+
+// publicCallback returns the callback, of the server's own URL, when it's
+// https, which it is when it was given a name, such as that of the proxy
+// it's behind, or empty
+func publicCallback(serverURL func() *url.URL) string {
+	if serverURL == nil {
+		return ""
+	}
+	u := serverURL()
+	if u == nil || u.Scheme != "https" || u.Host == "" {
+		return ""
+	}
+	return strings.TrimSuffix(u.Scheme+"://"+u.Host+u.Path, "/") + registry.CallbackPath
 }
 
 // requestOrigin returns the origin of the request, from its Origin header,

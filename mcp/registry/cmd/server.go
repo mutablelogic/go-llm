@@ -72,7 +72,10 @@ func (flags Flags) WithConnectorRegistry(ctx server.Cmd, srv *servercmd.RunServe
 	if srv != nil {
 		srv.Register(func(router *httprouter.Router) error {
 			ctx.Logger().DebugContext(ctx.Context(), "registering mcp connector http handlers")
-			return httphandler.RegisterHandlers(r, router)
+			// Its own URL, which it says is https, when it was given the
+			// name of the proxy it's behind, with --tls.name, is where a
+			// browser is sent back to, once it's signed in to a server
+			return httphandler.RegisterHandlers(r, router, httphandler.WithURL(ctx.URL))
 		})
 	}
 

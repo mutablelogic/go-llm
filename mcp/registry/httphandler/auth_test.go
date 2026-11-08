@@ -119,3 +119,50 @@ func query(t *testing.T, raw, key string) string {
 	require.NoError(t, err)
 	return u.Query().Get(key)
 }
+
+func Test_AuthorizePublicURL(t *testing.T) {
+	// A server which says its URL is https, as it's behind a proxy, whose
+	// name it was given, sends a browser back to its own URL, rather than
+	// the request's origin, which the proxy may say is its own, but one
+	// which says it's http, at its listen address, doesn't
+	r, err := registry.New()
+	require.NoError(t, err)
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error)
+	go func() { done <- r.Run(ctx, nil) }()
+	t.Cleanup(func() {
+		cancel()
+		assert.NoError(t, <-done)
+		assert.NoError(t, r.Close())
+	})
+	var serverURL *url.URL
+	server := test.NewServerFunc(t, func(router *httprouter.Router) error {
+		return httphandler.RegisterHandlers(r, router, httphandler.WithURL(func() *url.URL { return serverURL }))
+	})
+	mcp := mcptest.NewServer(t, mcptest.WithAuth())
+	require.Equal(t, http.StatusCreated, server.JSON(t, http.MethodPost, "mcp/connector", schema.Connector{Name: "secure", ConnectorMeta: schema.ConnectorMeta{URL: mcp.URL}}, nil))
+	require.Eventually(t, func() bool {
+		var got schema.Connector
+		return server.JSON(t, http.MethodGet, "mcp/connector/secure", nil, &got) == http.StatusOK && got.Auth == schema.AuthRequired
+	}, 5*time.Second, 10*time.Millisecond)
+
+	authorize := func(t *testing.T) string {
+		t.Helper()
+		req, err := http.NewRequest(http.MethodPost, server.URL+test.Prefix+"/mcp/connector/secure/authorize", strings.NewReader("{}"))
+		require.NoError(t, err)
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("Origin", "https://llm-http-lan")
+		resp, err := server.Client().Do(req)
+		require.NoError(t, err)
+		defer resp.Body.Close()
+		require.Equal(t, http.StatusOK, resp.StatusCode)
+		var response schema.AuthorizeResponse
+		require.NoError(t, json.NewDecoder(resp.Body).Decode(&response))
+		return query(t, response.URL, "redirect_uri")
+	}
+
+	serverURL = &url.URL{Scheme: "https", Host: "llm.example.com", Path: "/api"}
+	assert.Equal(t, "https://llm.example.com/api"+registry.CallbackPath, authorize(t))
+	serverURL = &url.URL{Scheme: "http", Host: "0.0.0.0:8086", Path: "/api"}
+	assert.Equal(t, "https://llm-http-lan"+test.Prefix+registry.CallbackPath, authorize(t))
+}
