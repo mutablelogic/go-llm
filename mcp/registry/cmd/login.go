@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"context"
+	"crypto/subtle"
 	"errors"
 	"fmt"
 	"html/template"
@@ -13,6 +14,7 @@ import (
 	"runtime"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	// Packages
@@ -46,6 +48,10 @@ var (
 const (
 	// loopbackPath is the path of the loopback's callback
 	loopbackPath = "/callback"
+
+	// loopbackShutdown is how long the loopback waits for its responses to
+	// be written, as it stops
+	loopbackShutdown = 3 * time.Second
 )
 
 // loopbackPage is the page a person is shown, once they're redirected to
@@ -126,6 +132,15 @@ func waitConnected(ctx server.Cmd, parent context.Context, client *httpclient.Cl
 			if err != nil {
 				return nil, fmt.Errorf("connector %q needs to be signed in to, but can't be: %w", name, err)
 			}
+			if loopback != nil {
+				// Only the callback of this sign-in, with its state, is
+				// passed on, so another request can't end it
+				u, err := url.Parse(authorize.URL)
+				if err != nil {
+					return nil, err
+				}
+				loopback.expect(u.Query().Get("state"))
+			}
 			signingIn = true
 			fmt.Fprintf(os.Stderr, "Sign in to %s, at:\n\n  %s\n\n", name, authorize.URL)
 			if err := openBrowser(authorize.URL); err != nil {
@@ -204,6 +219,12 @@ type loopback struct {
 	listener net.Listener
 	server   *http.Server
 	failed   chan error
+
+	// The state of the sign-in which is waited for, so a callback of
+	// another, such as a stale tab's, or a request which isn't one, is
+	// refused, without being passed on, or ending it
+	mu    sync.Mutex
+	state string
 }
 
 // newLoopback listens at LoopbackPort, or any port, when it's taken, of
@@ -219,21 +240,25 @@ func newLoopback(client *httpclient.Client) (*loopback, error) {
 	l := &loopback{listener: listener, failed: make(chan error, 1)}
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET "+loopbackPath, func(w http.ResponseWriter, r *http.Request) {
-		data := struct{ Title, Message string }{"Signed in", "You can close this window, and go back to the command line."}
-		status := http.StatusOK
-		if connector, err := client.Callback(r.Context(), r.URL.Query()); err != nil {
-			data.Title, data.Message, status = "Not signed in", err.Error(), http.StatusBadRequest
+		// A callback which isn't of the sign-in which is waited for is
+		// refused, here, and doesn't end it
+		if !l.expected(r.URL.Query().Get("state")) {
+			writeLoopbackPage(w, http.StatusBadRequest, "Not signed in", "This isn't the sign-in the command line is waiting for. Sign in from the URL it printed.")
+			return
+		}
+
+		// Its page is written before the command is told it wasn't signed
+		// in, so it's shown, before the loopback stops
+		connector, err := client.Callback(r.Context(), r.URL.Query())
+		if err != nil {
+			writeLoopbackPage(w, http.StatusBadRequest, "Not signed in", err.Error())
 			select {
 			case l.failed <- err:
 			default:
 			}
-		} else {
-			data.Title = "Signed in to " + connector.Name
+			return
 		}
-		w.Header().Set("Content-Type", "text/html; charset=utf-8")
-		w.Header().Set("Cache-Control", "no-store")
-		w.WriteHeader(status)
-		_ = loopbackPage.Execute(w, data)
+		writeLoopbackPage(w, http.StatusOK, "Signed in to "+connector.Name, "You can close this window, and go back to the command line.")
 	})
 	l.server = &http.Server{Handler: mux, ReadHeaderTimeout: 10 * time.Second}
 	go func() { _ = l.server.Serve(listener) }()
@@ -245,7 +270,36 @@ func (l *loopback) URL() string {
 	return "http://" + l.listener.Addr().String() + loopbackPath
 }
 
-// Close stops listening
+// expect sets the state of the sign-in which is waited for
+func (l *loopback) expect(state string) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	l.state = state
+}
+
+// expected returns true when the state is that of the sign-in which is
+// waited for
+func (l *loopback) expected(state string) bool {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return l.state != "" && subtle.ConstantTimeCompare([]byte(state), []byte(l.state)) == 1
+}
+
+// Close stops listening, once the responses which are being written are,
+// within a few seconds, so the browser is shown its page
 func (l *loopback) Close() {
-	_ = l.server.Close()
+	ctx, cancel := context.WithTimeout(context.Background(), loopbackShutdown)
+	defer cancel()
+	if err := l.server.Shutdown(ctx); err != nil {
+		_ = l.server.Close()
+	}
+}
+
+// writeLoopbackPage writes the page a person is shown, once they're
+// redirected to the loopback
+func writeLoopbackPage(w http.ResponseWriter, status int, title, message string) {
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.Header().Set("Cache-Control", "no-store")
+	w.WriteHeader(status)
+	_ = loopbackPage.Execute(w, struct{ Title, Message string }{title, message})
 }
