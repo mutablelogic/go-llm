@@ -7,9 +7,11 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"log/slog"
 	"slices"
 	"strings"
 	"sync"
+	"sync/atomic"
 
 	// Packages
 	sdkmcp "github.com/modelcontextprotocol/go-sdk/mcp"
@@ -17,6 +19,7 @@ import (
 	broadcaster "github.com/mutablelogic/go-llm/broadcaster"
 	eventschema "github.com/mutablelogic/go-llm/broadcaster/schema"
 	client "github.com/mutablelogic/go-llm/mcp/client"
+	namespace "github.com/mutablelogic/go-llm/mcp/namespace"
 	schema "github.com/mutablelogic/go-llm/mcp/schema"
 )
 
@@ -33,6 +36,12 @@ type Registry struct {
 
 	mu      sync.Mutex
 	clients map[string]entry
+
+	// The namespaces of the connectors' servers' tools, in the toolkit, by
+	// the connectors' names, once they're connected, and the logger of what
+	// happens to them, which is Run's
+	namespaces map[string]*namespace.Namespace
+	logger     atomic.Pointer[slog.Logger]
 
 	// The registry's own broadcaster, of the connectors' changes, as they're
 	// created, updated, or deleted, which Run watches, so it connects, or
@@ -53,7 +62,7 @@ type entry struct {
 // New returns a registry, with the options, such as its store, with
 // WithStore, which keeps its connectors in memory otherwise
 func New(opts ...Opt) (*Registry, error) {
-	r := &Registry{clients: make(map[string]entry), events: broadcaster.New()}
+	r := &Registry{clients: make(map[string]entry), namespaces: make(map[string]*namespace.Namespace), events: broadcaster.New()}
 	if err := r.opt.apply(opts); err != nil {
 		return nil, err
 	}
@@ -163,7 +172,7 @@ func (r *Registry) UpdateConnector(ctx context.Context, name string, meta schema
 	r.publish(eventschema.EventUpdate, updated)
 	if server, _ := c.Status(); server != nil {
 		// It was connected before it was the connector's, so it's said now
-		r.connection(updated, server, nil)
+		r.connection(updated, c, server, nil)
 	}
 	return r.status(updated), nil
 }
@@ -245,7 +254,7 @@ func (r *Registry) disconnect(name string, e entry) error {
 	connected := e.client.Connected()
 	err := e.client.Disconnect()
 	if connected {
-		r.connection(schema.Connector{Name: name, Serial: e.serial}, nil, nil)
+		r.connection(schema.Connector{Name: name, Serial: e.serial}, e.client, nil, nil)
 	}
 	return err
 }
@@ -297,6 +306,7 @@ func (r *Registry) status(connector schema.Connector) *schema.Connector {
 	if server != nil {
 		result.Connected = true
 		result.Server = &schema.ConnectorServer{Name: server.Name, Version: server.Version}
+		result.Namespace = r.namespaceOf(connector.Name)
 	}
 	if err != nil {
 		result.Error = err.Error()
@@ -317,11 +327,18 @@ func (r *Registry) publish(action eventschema.EventAction, connector schema.Conn
 	r.events.Publish(event)
 }
 
-// connection publishes that the connector's server was connected, with
-// which server it is, as it said, or disconnected, with why, when it
-// wasn't disconnected, with the broadcaster the registry was given, when
-// it was, as a connector which is created, or deleted
-func (r *Registry) connection(connector schema.Connector, server *sdkmcp.Implementation, err error) {
+// connection adds the namespace of the tools of the connector's server, as
+// the client is connected to it, to the toolkit, or removes it, as it's
+// disconnected, and publishes that it was connected, with which server it
+// is, as it said, or disconnected, with why, when it wasn't disconnected,
+// with the broadcaster the registry was given, when it was, as a connector
+// which is created, or deleted
+func (r *Registry) connection(connector schema.Connector, c *client.Client, server *sdkmcp.Implementation, err error) {
+	if server != nil {
+		r.addNamespace(connector.Name, c, server)
+	} else {
+		r.removeNamespace(connector.Name)
+	}
 	if r.broadcaster == nil {
 		return
 	}
@@ -347,7 +364,11 @@ func (r *Registry) newClient(connector schema.Connector) (*client.Client, error)
 	var c *client.Client
 	opts := append(slices.Clone(r.clientopts), client.WithChange(func(server *sdkmcp.Implementation, err error) {
 		if serial, ok := r.serial(connector.Name, c); ok {
-			r.connection(schema.Connector{Name: connector.Name, Serial: serial}, server, err)
+			r.connection(schema.Connector{Name: connector.Name, Serial: serial}, c, server, err)
+		}
+	}), client.WithToolsChanged(func() {
+		if r.current(connector.Name, c) {
+			r.refreshNamespace(connector.Name)
 		}
 	}))
 	var err error

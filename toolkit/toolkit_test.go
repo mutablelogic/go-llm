@@ -10,6 +10,8 @@ import (
 	// Packages
 	client "github.com/mutablelogic/go-client"
 	llm "github.com/mutablelogic/go-llm"
+	broadcaster "github.com/mutablelogic/go-llm/broadcaster"
+	eventschema "github.com/mutablelogic/go-llm/broadcaster/schema"
 	toolkit "github.com/mutablelogic/go-llm/toolkit"
 	schema "github.com/mutablelogic/go-llm/toolkit/schema"
 	jsonschema "github.com/mutablelogic/go-server/pkg/jsonschema"
@@ -286,4 +288,45 @@ func TestToolTable(t *testing.T) {
 	assert.Equal(t, "weatherapi:current", tool.Cell(0))
 	assert.Equal(t, "Get the weather", tool.Cell(1))
 	assert.Equal(t, "", tool.Cell(2))
+}
+
+func TestRemove(t *testing.T) {
+	ctx := context.Background()
+
+	// A namespace is removed, with its tools, which are said to be deleted
+	b := broadcaster.New()
+	ch := make(chan eventschema.Event, 16)
+	watchCtx, cancel := context.WithCancel(ctx)
+	done, err := b.Watch(watchCtx, ch)
+	require.NoError(t, err)
+	defer func() {
+		cancel()
+		assert.NoError(t, <-done)
+	}()
+	tk, err := toolkit.New(ctx, toolkit.WithBroadcaster(b))
+	require.NoError(t, err)
+	ns := toolkit.NewNamespace("a", "", tool{name: "z"}, tool{name: "y"})
+	require.NoError(t, tk.Add(ns))
+	require.NoError(t, tk.Add(toolkit.NewNamespace("b", "", tool{name: "x"})))
+	assert.True(t, tk.HasNamespace("a"))
+	for len(ch) > 0 {
+		<-ch
+	}
+	require.NoError(t, tk.Remove(ns))
+	assert.False(t, tk.HasNamespace("a"))
+	assert.Equal(t, []string{"b:x"}, names(t, tk))
+	var deleted []string
+	for len(ch) > 0 {
+		event := <-ch
+		assert.Equal(t, eventschema.EventDelete, event.Action)
+		deleted = append(deleted, event.Row)
+	}
+	assert.Equal(t, []string{"a:y", "a:z"}, deleted)
+
+	// But not twice, nor one which replaced it, nor none
+	assert.ErrorIs(t, tk.Remove(ns), llm.ErrNotFound)
+	require.NoError(t, tk.Add(toolkit.NewNamespace("a", "", tool{name: "w"})))
+	assert.ErrorIs(t, tk.Remove(ns), llm.ErrNotFound)
+	assert.True(t, tk.HasNamespace("a"))
+	assert.ErrorIs(t, tk.Remove(nil), llm.ErrBadParameter)
 }

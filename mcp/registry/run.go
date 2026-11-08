@@ -54,6 +54,7 @@ func (r *Registry) Run(ctx context.Context, logger *slog.Logger) error {
 	if logger == nil {
 		logger = slog.New(slog.DiscardHandler)
 	}
+	r.logger.Store(logger)
 	defer func() {
 		if err := r.Close(); err != nil {
 			logger.WarnContext(ctx, "connectors not disconnected", "error", err.Error())

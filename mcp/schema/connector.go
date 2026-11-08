@@ -34,6 +34,7 @@ type Connector struct {
 	Connected bool             `json:"connected,omitempty" readonly:"" help:"Whether the connector's server is connected"`
 	Server    *ConnectorServer `json:"server,omitempty" readonly:"" help:"The connector's server, as it said, once it's connected"`
 	Error     string           `json:"error,omitempty" readonly:"" help:"Why the connector's server couldn't be connected, or its session ended"`
+	Namespace string           `json:"namespace,omitempty" readonly:"" help:"The namespace of its server's tools, in the toolkit, once it's connected" example:"github"`
 }
 
 // ConnectorServer is the name, and version, of a connector's server, as it
@@ -65,7 +66,7 @@ type ConnectorList struct {
 // Definition returns the connector without its status, which is what's
 // stored
 func (c Connector) Definition() Connector {
-	c.Connected, c.Server, c.Error = false, nil, ""
+	c.Connected, c.Server, c.Error, c.Namespace = false, nil, "", ""
 	return c
 }
 
@@ -112,7 +113,7 @@ func (l ConnectorList) String() string {
 // TABLE
 
 func (c *Connector) Header() []string {
-	return []string{"Name", "Status", "Server", "URL"}
+	return []string{"Name", "Status", "Server", "Namespace", "URL"}
 }
 
 func (c *Connector) Width(col int) int {
@@ -143,6 +144,8 @@ func (c *Connector) Cell(col int) tui.CellText {
 		}
 		return c.Server.Name
 	case 3:
+		return c.Namespace
+	case 4:
 		return c.URL
 	default:
 		return ""

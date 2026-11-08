@@ -3,6 +3,8 @@ package toolkit
 import (
 	"context"
 	"encoding/json"
+	"maps"
+	"slices"
 	"strings"
 	"sync"
 	"uuid"
@@ -179,6 +181,38 @@ func (self *Toolkit) Add(ns Namespace) error {
 	return nil
 }
 
+// Remove removes the namespace, and its tools, from the toolkit, which
+// publishes that each of its tools was deleted, when it's the namespace
+// with its name, rather than one which replaced it. Returns ErrNotFound
+// when it isn't.
+func (self *Toolkit) Remove(ns Namespace) error {
+	self.mu.Lock()
+	defer self.mu.Unlock()
+	if ns == nil {
+		return llm.ErrBadParameter.With("missing namespace")
+	}
+	name := ns.Name()
+	if self.namespaces[name] != ns {
+		return llm.ErrNotFound.Withf("namespace %q", name)
+	}
+	delete(self.namespaces, name)
+	for _, canonical := range slices.Sorted(maps.Keys(self.tools)) {
+		if self.tools[canonical].namespace == name {
+			delete(self.tools, canonical)
+			self.publish(eventschema.EventDelete, canonical)
+		}
+	}
+	return nil
+}
+
+// HasNamespace returns true when the toolkit has a namespace with the name
+func (self *Toolkit) HasNamespace(name string) bool {
+	self.mu.RLock()
+	defer self.mu.RUnlock()
+	_, exists := self.namespaces[name]
+	return exists
+}
+
 // Credential returns the value of the credential with the key, such as a
 // tool's API key, from the toolkit's credential provider. Returns
 // ErrNotFound when the credential doesn't exist, or is empty, as when its
@@ -298,7 +332,7 @@ func resolveSchema(v *jsonschema.Schema) (*jsonschema.Schema, error) {
 // NewNamespace returns a namespace with the name, the system prompt, which
 // can be empty, and the tools
 func NewNamespace(name, prompt string, tools ...llm.Tool) Namespace {
-	return namespace{name: name, prompt: prompt, tools: tools}
+	return &namespace{name: name, prompt: prompt, tools: tools}
 }
 
 func (n namespace) Name() string {

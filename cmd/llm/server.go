@@ -256,11 +256,12 @@ func (runner *RunServer) withToolkit(ctx server.Cmd, b *broadcaster.Broadcaster,
 		}
 
 		// The connectors, which are remote MCP servers, once the toolkit,
-		// and the resources, are made, as their servers' tools, and
-		// resources, will be added to them
+		// and the resources, are made, as their servers' tools are added to
+		// the toolkit, each in a namespace of its own, as it's connected,
+		// and their resources will be added to the resources
 		return runner.Connector.WithConnectorRegistry(ctx, &runner.RunServer, b, func(connectors *mcpregistry.Registry) error {
 			return runner.withRegistry(ctx, b, mem, h, res, m, connectors, tools, events, build, store, sessions, agents, outcomes, replies)
-		}, mcpregistry.WithStore(connectorStore))
+		}, mcpregistry.WithStore(connectorStore), mcpregistry.WithToolkit(tools))
 	}, toolkit.WithBroadcaster(b))
 }
 

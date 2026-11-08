@@ -8,6 +8,7 @@ import (
 	llm "github.com/mutablelogic/go-llm"
 	broadcaster "github.com/mutablelogic/go-llm/broadcaster"
 	mcpclient "github.com/mutablelogic/go-llm/mcp/client"
+	toolkit "github.com/mutablelogic/go-llm/toolkit"
 )
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -19,6 +20,7 @@ type Opt func(*opt) error
 type opt struct {
 	store       Store
 	broadcaster *broadcaster.Broadcaster
+	toolkit     *toolkit.Toolkit
 	clientopts  []mcpclient.Opt
 }
 
@@ -42,6 +44,7 @@ func (o *opt) apply(opts []Opt) error {
 func (o *opt) defaults() {
 	o.store = NewMemoryStore()
 	o.broadcaster = nil
+	o.toolkit = nil
 	o.clientopts = nil
 }
 
@@ -71,6 +74,20 @@ func WithBroadcaster(b *broadcaster.Broadcaster) Opt {
 			return llm.ErrBadParameter.With("missing broadcaster")
 		}
 		o.broadcaster = b
+		return nil
+	}
+}
+
+// WithToolkit is the toolkit which a connector's server's tools are added
+// to, as a namespace, once it's connected, and removed from, once it's
+// disconnected, whose name is the connector's, as schema.Namespace makes
+// it, so it doesn't clash with the toolkit's other namespaces
+func WithToolkit(tk *toolkit.Toolkit) Opt {
+	return func(o *opt) error {
+		if tk == nil {
+			return llm.ErrBadParameter.With("missing toolkit")
+		}
+		o.toolkit = tk
 		return nil
 	}
 }

@@ -1,0 +1,107 @@
+package registry_test
+
+import (
+	"context"
+	"encoding/json"
+	"testing"
+	"time"
+
+	// Packages
+	sdkmcp "github.com/modelcontextprotocol/go-sdk/mcp"
+	llm "github.com/mutablelogic/go-llm"
+	registry "github.com/mutablelogic/go-llm/mcp/registry"
+	schema "github.com/mutablelogic/go-llm/mcp/schema"
+	test "github.com/mutablelogic/go-llm/mcp/test"
+	toolkit "github.com/mutablelogic/go-llm/toolkit"
+	toolschema "github.com/mutablelogic/go-llm/toolkit/schema"
+	assert "github.com/stretchr/testify/assert"
+	require "github.com/stretchr/testify/require"
+)
+
+// toolServer returns a mock MCP server, with a tool which echoes text
+func toolServer(t *testing.T) *test.Server {
+	t.Helper()
+	server := test.NewServer(t)
+	sdkmcp.AddTool(server.MCP, &sdkmcp.Tool{Name: "echo", Description: "Echo the text"}, func(_ context.Context, _ *sdkmcp.CallToolRequest, in struct {
+		Text string `json:"text"`
+	}) (*sdkmcp.CallToolResult, any, error) {
+		return &sdkmcp.CallToolResult{Content: []sdkmcp.Content{&sdkmcp.TextContent{Text: in.Text}}}, nil, nil
+	})
+	return server
+}
+
+// toolNames returns the canonical names of the toolkit's tools, in the
+// namespace
+func toolNames(t *testing.T, tk *toolkit.Toolkit, namespace string) []string {
+	t.Helper()
+	list, err := tk.ListTools(context.Background(), toolschema.ToolListRequest{Namespace: namespace})
+	require.NoError(t, err)
+	var names []string
+	for _, tool := range list.Body {
+		names = append(names, tool.Canonical)
+	}
+	return names
+}
+
+func Test_Toolkit(t *testing.T) {
+	setInterval(t, &registry.RetryInterval, 20*time.Millisecond)
+	setInterval(t, &registry.ConnectJitter, 10*time.Millisecond)
+	ctx := t.Context()
+	_, err := registry.New(registry.WithToolkit(nil))
+	assert.ErrorIs(t, err, llm.ErrBadParameter)
+
+	tk, err := toolkit.New(ctx)
+	require.NoError(t, err)
+	require.NoError(t, tk.Add(toolkit.NewNamespace("memory", "")))
+	r, err := registry.New(registry.WithToolkit(tk))
+	require.NoError(t, err)
+	server := toolServer(t)
+	run(t, r)
+
+	t.Run("Added", func(t *testing.T) {
+		// A connector which is connected has its server's tools in the
+		// toolkit, in its namespace, which is its name, and they're called
+		_, err := r.CreateConnector(ctx, connector("search", server.URL))
+		require.NoError(t, err)
+		require.Eventually(t, func() bool { return status(t, r, "search").Namespace == "search" }, 5*time.Second, 5*time.Millisecond)
+		assert.Equal(t, []string{"search:echo"}, toolNames(t, tk, "search"))
+		result, err := tk.CallTool(ctx, "search:echo", json.RawMessage(`{"text":"hi"}`))
+		require.NoError(t, err)
+		assert.JSONEq(t, `"hi"`, string(result))
+	})
+
+	t.Run("Clash", func(t *testing.T) {
+		// One whose name is a namespace of the toolkit, or the agents', has
+		// another
+		for _, name := range []string{"memory", "agent"} {
+			_, err := r.CreateConnector(ctx, connector(name, server.URL))
+			require.NoError(t, err)
+			require.Eventually(t, func() bool { return status(t, r, name).Namespace != "" }, 5*time.Second, 5*time.Millisecond)
+			namespace := status(t, r, name).Namespace
+			assert.Regexp(t, `^`+name+`\d{4}$`, namespace)
+			assert.Equal(t, []string{namespace + ":echo"}, toolNames(t, tk, namespace))
+		}
+	})
+
+	t.Run("Changed", func(t *testing.T) {
+		// A tool which the server adds is added, as it says its tools
+		// changed
+		server.MCP.AddTool(&sdkmcp.Tool{Name: "ping", Description: "Ping", InputSchema: map[string]any{"type": "object"}}, func(context.Context, *sdkmcp.CallToolRequest) (*sdkmcp.CallToolResult, error) {
+			return &sdkmcp.CallToolResult{}, nil
+		})
+		require.Eventually(t, func() bool { return len(toolNames(t, tk, "search")) == 2 }, 5*time.Second, 5*time.Millisecond)
+		assert.Equal(t, []string{"search:echo", "search:ping"}, toolNames(t, tk, "search"))
+	})
+
+	t.Run("Removed", func(t *testing.T) {
+		// One which is updated has its namespace again, and one which is
+		// deleted has none
+		updated, err := r.UpdateConnector(ctx, "search", schema.ConnectorMeta{URL: server.URL + "/"})
+		require.NoError(t, err)
+		assert.Equal(t, "search", updated.Namespace)
+		assert.Len(t, toolNames(t, tk, "search"), 2)
+		_, err = r.DeleteConnector(ctx, "search")
+		require.NoError(t, err)
+		assert.False(t, tk.HasNamespace("search"))
+	})
+}
