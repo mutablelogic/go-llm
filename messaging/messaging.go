@@ -605,15 +605,20 @@ func (m *Messaging) work(ctx context.Context, logger *slog.Logger, session uuid.
 }
 
 // handle sends the message to its channel's session, showing that a reply
-// is being written, as it's written, and says why, in the chat, when it
-// can't be
+// is being written, and what's happening, as it's written, and says why, in
+// the chat, when it can't be
 func (m *Messaging) handle(ctx context.Context, logger *slog.Logger, r received) {
 	provider := m.providers[r.channel.Provider]
 	if provider == nil {
 		return
 	}
+	// What's happening, such as what the tools it calls are doing, is shown
+	// in a message, once the reply has taken a while, which is deleted once
+	// it's replied
 	stop := m.typing(ctx, provider, r.channel.Address)
-	err := m.chat(ctx, r.channel, r.message)
+	progress := newStatus(ctx, provider, r.channel.Address)
+	err := m.chat(ctx, r.channel, r.message, progress.show)
+	progress.close()
 	stop()
 	if err == nil || ctx.Err() != nil {
 		return

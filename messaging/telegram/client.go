@@ -122,6 +122,19 @@ type linkPreviewOptions struct {
 	IsDisabled bool `json:"is_disabled"`
 }
 
+// editMessageTextRequest changes the text of the message in the chat
+type editMessageTextRequest struct {
+	ChatID    string `json:"chat_id"`
+	MessageID int64  `json:"message_id"`
+	Text      string `json:"text"`
+}
+
+// deleteMessageRequest deletes the message in the chat
+type deleteMessageRequest struct {
+	ChatID    string `json:"chat_id"`
+	MessageID int64  `json:"message_id"`
+}
+
 // sendChatActionRequest shows the action, such as typing, in the chat
 type sendChatActionRequest struct {
 	ChatID string `json:"chat_id"`

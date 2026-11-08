@@ -3,6 +3,7 @@ package telegram
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -11,8 +12,12 @@ import (
 	"testing"
 	"time"
 
+	// The time zones, so they're known where the system has none
+	_ "time/tzdata"
+
 	// Packages
 	client "github.com/mutablelogic/go-client"
+	llm "github.com/mutablelogic/go-llm"
 	messaging "github.com/mutablelogic/go-llm/messaging"
 	assert "github.com/stretchr/testify/assert"
 	require "github.com/stretchr/testify/require"
@@ -28,7 +33,8 @@ type bot struct {
 	uploads []uploaded
 	paths   []string
 	ids     int64
-	batch   int // The most updates it returns at once, or all of them
+	batch   int      // The most updates it returns at once, or all of them
+	edits   []string // The messages which were changed, or deleted
 }
 
 // uploaded is a file which was sent, with the method, and field, it was sent
@@ -120,6 +126,25 @@ func (b *bot) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		id := b.ids
 		b.mu.Unlock()
 		_ = json.NewEncoder(w).Encode(response[message]{OK: true, Result: message{ID: id}})
+	case "editMessageText":
+		var req editMessageTextRequest
+		_ = json.NewDecoder(r.Body).Decode(&req)
+		b.mu.Lock()
+		b.edits = append(b.edits, fmt.Sprintf("edit %s %d %s", req.ChatID, req.MessageID, req.Text))
+		b.mu.Unlock()
+		if req.Text == "same" {
+			w.WriteHeader(http.StatusBadRequest)
+			_, _ = w.Write([]byte(`{"ok":false,"error_code":400,"description":"Bad Request: message is not modified"}`))
+			return
+		}
+		_ = json.NewEncoder(w).Encode(response[message]{OK: true, Result: message{ID: req.MessageID}})
+	case "deleteMessage":
+		var req deleteMessageRequest
+		_ = json.NewDecoder(r.Body).Decode(&req)
+		b.mu.Lock()
+		b.edits = append(b.edits, fmt.Sprintf("delete %s %d", req.ChatID, req.MessageID))
+		b.mu.Unlock()
+		_ = json.NewEncoder(w).Encode(response[bool]{OK: true, Result: true})
 	case "getFile":
 		var req getFileRequest
 		_ = json.NewDecoder(r.Body).Decode(&req)
@@ -379,7 +404,7 @@ func Test_Telegram_Attachments(t *testing.T) {
 	}}
 	tg := newBot(t, b)
 	berlin, err := time.LoadLocation("Europe/Berlin")
-	require.NoError(t, err)
+	require.NoError(t, err, "as time/tzdata is embedded")
 	tg.SetLocation(func() *time.Location { return berlin })
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -476,5 +501,60 @@ func Test_Telegram_AlbumBetweenPolls(t *testing.T) {
 func Test_Telegram_Duration(t *testing.T) {
 	for seconds, want := range map[int]string{1: "1 second", 9: "9 seconds", 60: "1 minute", 61: "1 minute 1 second", 125: "2 minutes 5 seconds", 3600: "60 minutes"} {
 		assert.Equal(t, want, duration(seconds))
+	}
+}
+
+func Test_Telegram_EditDelete(t *testing.T) {
+	b := &bot{}
+	tg := newBot(t, b)
+	ctx := context.Background()
+
+	// A message is changed, as it is, and changing it to the same text
+	// isn't an error, and it's deleted
+	require.NoError(t, tg.Edit(ctx, "7", "42", "⏳ Speaking the text aloud"))
+	require.NoError(t, tg.Edit(ctx, "7", "42", "same"))
+	require.NoError(t, tg.Delete(ctx, "7", "42"))
+	assert.Equal(t, []string{"edit 7 42 ⏳ Speaking the text aloud", "edit 7 42 same", "delete 7 42"}, b.edits)
+	assert.ErrorIs(t, tg.Edit(ctx, "7", "x", "text"), llm.ErrBadParameter)
+	assert.ErrorIs(t, tg.Delete(ctx, "7", "x"), llm.ErrBadParameter)
+}
+
+func Test_Telegram_DownloadClosed(t *testing.T) {
+	// A file which is closed before it's all read stops being downloaded,
+	// as its request is cancelled
+	cancelled := make(chan struct{})
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch {
+		case strings.HasSuffix(r.URL.Path, "/getMe"):
+			_ = json.NewEncoder(w).Encode(response[user]{OK: true, Result: user{Username: "ada_bot"}})
+		case strings.HasSuffix(r.URL.Path, "/getFile"):
+			_ = json.NewEncoder(w).Encode(response[file]{OK: true, Result: file{FilePath: "files/big"}})
+		default:
+			w.Header().Set("Content-Type", "application/octet-stream")
+			_, _ = w.Write([]byte("start"))
+			w.(http.Flusher).Flush()
+			select {
+			case <-r.Context().Done():
+				close(cancelled)
+			case <-time.After(3 * time.Second):
+				// It wasn't cancelled, which the test says
+			}
+		}
+	}))
+	defer server.Close()
+	tg, err := New(context.Background(), token, client.OptEndpoint(server.URL))
+	require.NoError(t, err)
+	content, err := tg.opener("big")(context.Background())
+	require.NoError(t, err)
+	start := make([]byte, 5)
+	_, err = io.ReadFull(content, start)
+	require.NoError(t, err)
+	assert.Equal(t, "start", string(start))
+	require.NoError(t, content.Close())
+	select {
+	case <-cancelled:
+	case <-time.After(2 * time.Second):
+		t.Fatal("the download wasn't cancelled when it was closed")
 	}
 }

@@ -5,6 +5,7 @@ package telegram
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"mime"
@@ -37,6 +38,7 @@ type Telegram struct {
 var _ messaging.Provider = (*Telegram)(nil)
 var _ messaging.Typer = (*Telegram)(nil)
 var _ messaging.FileSender = (*Telegram)(nil)
+var _ messaging.Editor = (*Telegram)(nil)
 
 ///////////////////////////////////////////////////////////////////////////////
 // GLOBALS
@@ -273,6 +275,30 @@ func (t *Telegram) upload(ctx context.Context, address string, file messaging.Fi
 // messageID returns the message's identifier, as text
 func messageID(m message) string {
 	return strconv.FormatInt(m.ID, 10)
+}
+
+// Edit changes the text of the message, which the bot sent, to the text,
+// as it is, without formatting, and does nothing when it's the same
+func (t *Telegram) Edit(ctx context.Context, address, id, text string) error {
+	messageID, err := strconv.ParseInt(id, 10, 64)
+	if err != nil {
+		return llm.ErrBadParameter.Withf("invalid message id %q", id)
+	}
+	_, err = call[json.RawMessage](ctx, t.client, "editMessageText", editMessageTextRequest{ChatID: address, MessageID: messageID, Text: text})
+	if err != nil && strings.Contains(err.Error(), "message is not modified") {
+		return nil
+	}
+	return err
+}
+
+// Delete deletes the message, which the bot sent
+func (t *Telegram) Delete(ctx context.Context, address, id string) error {
+	messageID, err := strconv.ParseInt(id, 10, 64)
+	if err != nil {
+		return llm.ErrBadParameter.Withf("invalid message id %q", id)
+	}
+	_, err = call[bool](ctx, t.client, "deleteMessage", deleteMessageRequest{ChatID: address, MessageID: messageID})
+	return err
 }
 
 // Typing shows "typing…" in the chat, for five seconds, or until a message
@@ -541,15 +567,32 @@ func (t *Telegram) opener(fileID string) func(context.Context) (io.ReadCloser, e
 		} else if f.FilePath == "" {
 			return nil, llm.ErrNotFound.Withf("telegram file %q", fileID)
 		}
+		// The download is read as it's received, and stops, as its request
+		// is cancelled, once it's closed, whether or not it was all read,
+		// so it doesn't wait for a reader which went away
+		ctx, cancel := context.WithCancel(ctx)
 		r, w := io.Pipe()
 		go func() {
+			defer cancel()
 			w.CloseWithError(download(ctx, t.client, f.FilePath, func(body io.Reader) error {
 				_, err := io.Copy(w, body)
 				return err
 			}))
 		}()
-		return r, nil
+		return &downloading{PipeReader: r, cancel: cancel}, nil
 	}
+}
+
+// downloading is a file which is being downloaded, as it's read, whose
+// download is cancelled once it's closed
+type downloading struct {
+	*io.PipeReader
+	cancel context.CancelFunc
+}
+
+func (d *downloading) Close() error {
+	d.cancel()
+	return d.PipeReader.Close()
 }
 
 // chatTitle returns the chat's name: a group's title, or the person's
