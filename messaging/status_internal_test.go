@@ -9,6 +9,7 @@ import (
 
 	// Packages
 	assert "github.com/stretchr/testify/assert"
+	require "github.com/stretchr/testify/require"
 )
 
 // editor is a provider which can change, and delete, the messages it sent,
@@ -85,19 +86,33 @@ func Test_Status(t *testing.T) {
 		s := newTestStatus(e)
 		s.show("Reading the scan")
 		s.show("  Transcribing   the recording ")
-		time.Sleep(150 * time.Millisecond)
+		assert.Empty(t, e.got(), "nothing, until it's taken a while")
+		require.Eventually(t, func() bool { return len(e.got()) == 1 }, time.Second, 5*time.Millisecond)
 		assert.Equal(t, []string{"send 1 ⏳ Transcribing the recording"}, e.got())
 		s.show("Speaking the text aloud")
 		s.show("Speaking the text aloud")
 		assert.Len(t, e.got(), 1, "not changed again, until it's allowed to be")
-		time.Sleep(150 * time.Millisecond)
+		require.Eventually(t, func() bool { return len(e.got()) == 2 }, time.Second, 5*time.Millisecond)
 		s.show("Speaking the text aloud")
 		s.show("")
-		time.Sleep(150 * time.Millisecond)
 		s.close()
 		s.show("After it's replied")
+		require.Eventually(t, func() bool { return len(e.got()) == 3 }, time.Second, 5*time.Millisecond)
 		time.Sleep(150 * time.Millisecond)
-		assert.Equal(t, []string{"send 1 ⏳ Transcribing the recording", "edit 1 ⏳ Speaking the text aloud", "delete 1"}, e.got())
+		assert.Equal(t, []string{"send 1 ⏳ Transcribing the recording", "edit 1 ⏳ Speaking the text aloud", "delete 1"}, e.got(), "nothing more, once it's replied")
+	})
+
+	t.Run("Done as it's sent", func(t *testing.T) {
+		// A message which is being sent, as the reply is done, is deleted
+		// once it's sent, rather than left in the chat
+		e := &slowEditor{editor: editor{}, sending: make(chan struct{}), release: make(chan struct{})}
+		s := newTestStatus(e)
+		s.show("Transcribing the recording")
+		<-e.sending
+		s.close()
+		close(e.release)
+		require.Eventually(t, func() bool { return len(e.got()) == 2 }, time.Second, 5*time.Millisecond)
+		assert.Equal(t, []string{"send 1 ⏳ Transcribing the recording", "delete 1"}, e.got())
 	})
 
 	t.Run("Can't edit", func(t *testing.T) {
@@ -113,4 +128,18 @@ func Test_Status(t *testing.T) {
 		s.close()
 		assert.Empty(t, p.got())
 	})
+}
+
+// slowEditor is an editor whose first message is sent once it's released,
+// saying when it's being sent
+type slowEditor struct {
+	editor
+	sending chan struct{}
+	release chan struct{}
+}
+
+func (e *slowEditor) Send(ctx context.Context, address, text string) ([]Sent, error) {
+	close(e.sending)
+	<-e.release
+	return e.editor.Send(ctx, address, text)
 }

@@ -36,13 +36,14 @@ type status struct {
 	interval time.Duration
 	started  time.Time
 
-	mu     sync.Mutex
-	line   string    // The latest line, which is shown
-	shown  string    // The line which the message shows
-	id     string    // The message's identifier, once it's sent
-	edited time.Time // When it was last sent, or changed
-	timer  *time.Timer
-	closed bool
+	mu      sync.Mutex
+	line    string    // The latest line, which is shown
+	shown   string    // The line which the message shows
+	id      string    // The message's identifier, once it's sent
+	edited  time.Time // When it was last sent, or changed
+	timer   *time.Timer
+	sending bool // Whether it's being sent, or changed
+	closed  bool
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -98,9 +99,10 @@ func (s *status) show(line string) {
 }
 
 // schedule sends, or changes, the message, now, or once it's allowed to,
-// when it isn't scheduled already. The caller holds the lock.
+// when it isn't scheduled, or being sent, already. The caller holds the
+// lock.
 func (s *status) schedule() {
-	if s.timer != nil {
+	if s.timer != nil || s.sending {
 		return
 	}
 	now := time.Now()
@@ -108,48 +110,69 @@ func (s *status) schedule() {
 	if s.id != "" {
 		at = s.edited.Add(s.interval)
 	}
-	if !at.After(now) {
-		s.flush()
-		return
-	}
-	s.timer = time.AfterFunc(at.Sub(now), func() {
-		s.mu.Lock()
-		defer s.mu.Unlock()
-		s.timer = nil
-		if !s.closed {
-			s.flush()
-		}
-	})
+	s.timer = time.AfterFunc(max(at.Sub(now), 0), s.flush)
 }
 
 // flush sends the message with the latest line, or changes it, when it
-// shows another. The caller holds the lock.
+// shows another, without the lock held, as it's sent, so showing a line
+// doesn't wait for it, and then sends, or changes, it again, when there's a
+// later line, or deletes it, when the reply was done as it was sent
 func (s *status) flush() {
-	if s.line == "" || s.line == s.shown {
+	s.mu.Lock()
+	s.timer = nil
+	if s.closed || s.line == "" || s.line == s.shown {
+		s.mu.Unlock()
 		return
 	}
-	text := statusPrefix + s.line
-	if s.id == "" {
-		sent, err := s.provider.Send(s.ctx, s.address, text)
-		if err != nil || len(sent) == 0 {
-			return
+	line, id := s.line, s.id
+	s.sending = true
+	s.mu.Unlock()
+
+	// Sent, or changed, without the lock held
+	text := statusPrefix + line
+	sent := id
+	var err error
+	if id == "" {
+		var messages []Sent
+		if messages, err = s.provider.Send(s.ctx, s.address, text); err == nil && len(messages) > 0 {
+			sent = messages[0].ID
 		}
-		s.id = sent[0].ID
-	} else if err := s.editor.Edit(s.ctx, s.address, s.id, text); err != nil {
-		return
+	} else {
+		err = s.editor.Edit(s.ctx, s.address, id, text)
 	}
-	s.shown, s.edited = s.line, time.Now()
+
+	s.mu.Lock()
+	s.sending = false
+	if err == nil && sent != "" {
+		s.id, s.shown, s.edited = sent, line, time.Now()
+	}
+	orphan := ""
+	switch {
+	case s.closed:
+		// The reply was done as it was sent, so it's deleted, rather than
+		// left in the chat
+		if id == "" {
+			orphan = s.id
+		}
+	case s.line != s.shown:
+		s.schedule()
+	}
+	s.mu.Unlock()
+	if orphan != "" {
+		_ = s.editor.Delete(s.ctx, s.address, orphan)
+	}
 }
 
 // close stops the line being shown, and deletes the message, when it was
-// sent, as the reply is done, whether it was written, or failed
+// sent, without the lock held, as the reply is done, whether it was
+// written, or failed. One which is being sent is deleted once it's sent.
 func (s *status) close() {
 	if s == nil {
 		return
 	}
 	s.mu.Lock()
-	defer s.mu.Unlock()
 	if s.closed {
+		s.mu.Unlock()
 		return
 	}
 	s.closed = true
@@ -157,7 +180,16 @@ func (s *status) close() {
 		s.timer.Stop()
 		s.timer = nil
 	}
-	if s.id != "" {
-		_ = s.editor.Delete(s.ctx, s.address, s.id)
+	id := s.id
+	if s.sending {
+		// It's being changed, or sent, which deletes it, once it's sent
+		if id == "" {
+			s.mu.Unlock()
+			return
+		}
+	}
+	s.mu.Unlock()
+	if id != "" {
+		_ = s.editor.Delete(s.ctx, s.address, id)
 	}
 }

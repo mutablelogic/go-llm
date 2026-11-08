@@ -12,6 +12,9 @@ import (
 	"testing"
 	"time"
 
+	// The time zones, so they're known where the system has none
+	_ "time/tzdata"
+
 	// Packages
 	client "github.com/mutablelogic/go-client"
 	llm "github.com/mutablelogic/go-llm"
@@ -400,7 +403,8 @@ func Test_Telegram_Attachments(t *testing.T) {
 		{ID: 7, Message: &message{Date: sent, ID: 7, From: david, Chat: here, Document: &media{FileID: "notes", FileUniqueID: "n1", FileName: "notes.md", MimeType: "application/octet-stream", FileSize: 30}}},
 	}}
 	tg := newBot(t, b)
-	berlin := time.FixedZone("CET", 60*60)
+	berlin, err := time.LoadLocation("Europe/Berlin")
+	require.NoError(t, err, "as time/tzdata is embedded")
 	tg.SetLocation(func() *time.Location { return berlin })
 
 	ctx, cancel := context.WithCancel(context.Background())

@@ -573,6 +573,7 @@ func (t *Telegram) opener(fileID string) func(context.Context) (io.ReadCloser, e
 		ctx, cancel := context.WithCancel(ctx)
 		r, w := io.Pipe()
 		go func() {
+			defer cancel()
 			w.CloseWithError(download(ctx, t.client, f.FilePath, func(body io.Reader) error {
 				_, err := io.Copy(w, body)
 				return err
