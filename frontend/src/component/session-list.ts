@@ -17,6 +17,7 @@ import iconLoader from '@carbon/web-components/es/globals/internal/icon-loader.j
 import TrashCan16 from '@carbon/icons/es/trash-can/16.js';
 import Edit16 from '@carbon/icons/es/edit/16.js';
 import Notification16 from '@carbon/icons/es/notification/16.js';
+import ShrinkScreen16 from '@carbon/icons/es/shrink-screen/16.js';
 
 // Carbon components
 import '@carbon/web-components/es/components/skeleton-text/index.js';
@@ -33,6 +34,7 @@ export class SessionList extends LitElement {
     // open, whose detail is the session
     static readonly eventEvents = 'llm-session-events';
     static readonly eventEdit = 'llm-session-edit';
+    static readonly eventCompact = 'llm-session-compact';
     static readonly eventDelete = 'llm-session-delete';
 
     // The sessions, which are undefined while they're loading
@@ -210,6 +212,7 @@ export class SessionList extends LitElement {
                 ${session.event ? nothing : html`
                     ${action(SessionList.eventEvents, 'Events', Notification16, this.alerted)}
                     ${action(SessionList.eventEdit, 'Edit chat', Edit16)}
+                    ${action(SessionList.eventCompact, 'Compact chat: summarise its earlier messages, which are kept, but no longer sent', ShrinkScreen16)}
                 `}
                 ${session.status === 'replying'
                     ? action(SessionList.eventDelete, "It can't be deleted while it's replying", TrashCan16, false, true)

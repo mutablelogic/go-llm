@@ -24,7 +24,7 @@ import Video16 from '@carbon/icons/es/video/16.js';
 import PlayFilledAlt16 from '@carbon/icons/es/play--filled--alt/16.js';
 import { MediaPlayer, playable, type Media } from './media-player';
 import { resourceName, type Resource, resourceHash } from '../schema/resource';
-import { canonicalTool, isUser, type ContentBlock, type Message, type Session } from '../schema/session';
+import { canonicalTool, isUser, type ContentBlock, type Marker, type Message, type Session } from '../schema/session';
 import { detailValue, type Details } from '../schema/memory';
 import { markdown, markdownStyles } from './markdown';
 import type { ChatKind } from './chat-bubble';
@@ -46,7 +46,8 @@ export interface Piece {
 // thinking, its text, whether its text is Markdown, and whether it's live,
 // as it's streamed, or a line which a tool logged, which isn't a bubble
 interface Bubble {
-    kind: ChatKind | 'log';
+    kind: ChatKind | 'log' | 'marker';
+    marker?: Marker;
     label?: string;
     text: string;
     attachment?: Attachment;
@@ -263,6 +264,56 @@ export class ChatView extends LitElement {
         }
 
         /* What tools log, and how they're getting on, between the bubbles */
+        .marker {
+            margin: 1rem 0;
+            color: var(--cds-text-secondary);
+            font-size: 0.75rem;
+        }
+
+        .marker .rule {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+        }
+
+        .marker .rule::before,
+        .marker .rule::after {
+            content: '';
+            flex: 1;
+            border-top: 1px solid var(--cds-border-subtle);
+        }
+
+        .marker .rule span {
+            flex: 0 1 auto;
+            text-align: center;
+        }
+
+        .marker .rule::before,
+        .marker .rule::after {
+            min-width: 2rem;
+        }
+
+        .marker .note {
+            margin-top: 0.25rem;
+            text-align: center;
+            font-size: 0.6875rem;
+        }
+
+        .marker details {
+            margin: 0.5rem 1rem 0;
+        }
+
+        .marker summary {
+            cursor: pointer;
+            text-align: center;
+        }
+
+        .marker .markdown {
+            margin-top: 0.5rem;
+            color: var(--cds-text-primary);
+            font-size: 0.875rem;
+        }
+
         .log {
             color: var(--cds-text-secondary);
             font-size: 0.75rem;
@@ -379,11 +430,41 @@ export class ChatView extends LitElement {
         }
         let speaker: 'user' | 'assistant' | undefined;
         return html`<div class="messages">${bubbles.map((bubble) => {
+            if (bubble.kind === 'marker') {
+                // Whoever speaks next is named again, after the divider
+                speaker = undefined;
+                return this.renderMarker(bubble.marker!);
+            }
             const from = bubble.kind === 'user' ? 'user' : 'assistant';
             const name = from !== speaker ? html`<div class="name ${from}">${from === 'user' ? this.userName() : this.assistantName()}</div>` : nothing;
             speaker = from;
             return html`${name}${this.renderBubble(bubble)}`;
         })}</div>`;
+    }
+
+    // renderMarker returns the divider where the conversation was compacted,
+    // which says what became of the messages before it, with their summary,
+    // which can be shown, once it's written
+    private renderMarker(marker: Marker) {
+        const label = marker.status === 'pending'
+            ? 'Summarising the messages above'
+            : marker.status === 'failed'
+            ? "The messages above couldn't be summarised"
+            : marker.reason === 'full'
+            ? 'The chat was full, so the messages above were summarised'
+            : 'The messages above were summarised';
+        return html`
+            <div class="marker">
+                <div class="rule"><span>${label}</span></div>
+                <div class="note">${marker.status === 'failed' && marker.error ? `They're no longer sent: ${marker.error}` : "They're kept, but no longer sent"}</div>
+                ${marker.summary ? html`
+                    <details>
+                        <summary>What the assistant remembers of them</summary>
+                        <div class="markdown">${markdown(marker.summary)}</div>
+                    </details>
+                ` : nothing}
+            </div>
+        `;
     }
 
     private renderBubble(bubble: Bubble) {
@@ -535,6 +616,8 @@ export class ChatView extends LitElement {
 function bubblesOf(message: Message, attachmentName: AttachmentName): Bubble[] {
     if (message.role === 'system') {
         return [];
+    } else if (message.marker) {
+        return [{ kind: 'marker', text: '', marker: message.marker, message }];
     }
     const kind: ChatKind = isUser(message) ? 'user' : 'assistant';
     const bubbles = message.content.flatMap((block) => blockBubbles(kind, block, attachmentName)).map((bubble) => ({ ...bubble, message }));

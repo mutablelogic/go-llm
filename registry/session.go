@@ -355,12 +355,15 @@ func (r *Registry) Chat(ctx context.Context, id uuid.UUID, messages []llm.Messag
 		// Messages which were added to it as it replied, such as an event's
 		// outcome, which was delivered, follow the reply, which is stored
 		// again, unless it was changed otherwise, such as when its messages
-		// were forgotten, or its settings were changed
+		// were forgotten, or how it's asked was changed, such as its model, or
+		// system prompt, though its title can be
 		latest, getErr := r.sessionStore.Get(ctx, id)
 		if getErr != nil {
 			return nil, getErr
-		} else if added, ok := addedAfter(earlier, latest.Messages); ok && len(added) > 0 && latest.Forgotten == session.Forgotten && latest.SessionMeta.String() == session.SessionMeta.String() {
-			stored, err = r.sessionStore.Put(ctx, withReply(latest, earlier, added, response))
+		} else if added, ok := addedAfter(earlier, latest.Messages); ok && latest.Forgotten == session.Forgotten && types.Stringify(latest.GeneratorMeta) == types.Stringify(session.GeneratorMeta) {
+			// The earlier messages, as they are now, such as with the summary
+			// of a marker, which was written as it replied
+			stored, err = r.sessionStore.Put(ctx, withReply(latest, latest.Messages[:len(earlier)], added, response))
 		}
 	}
 	if err != nil {
@@ -379,6 +382,10 @@ func (r *Registry) Chat(ctx context.Context, id uuid.UUID, messages []llm.Messag
 			r.replies(context.WithoutCancel(ctx), session.ID, Reply{Text: reply.Text(), Resources: resourceLinks(made)})
 		}
 	}
+
+	// The conversation is compacted, in the background, when it fills most
+	// of its model's context, as of the reply
+	go r.compactIfFull(context.WithoutCancel(ctx), session, response.Usage)
 	return &schema.ChatResponse{ID: session.ID, Serial: session.Serial, SessionResponse: *response}, nil
 }
 
@@ -387,12 +394,25 @@ func (r *Registry) Chat(ctx context.Context, id uuid.UUID, messages []llm.Messag
 
 // withReply returns the session, whose messages are the earlier messages,
 // those of the response, which are the question, and its reply, and the
-// messages which were added as it replied, with the response's usage
+// messages which were added as it replied, with the response's usage. A
+// marker which was added as it replied comes before the question, so the
+// question, and its reply, are in the context it starts, and other
+// messages, such as an event's outcome, follow the reply.
 func withReply(session schema.Session, earlier, added []providerschema.Message, response *schema.SessionResponse) schema.Session {
 	messages := make([]providerschema.Message, 0, len(earlier)+len(response.Messages)+len(added))
 	messages = append(messages, earlier...)
+	for _, message := range added {
+		if message.Marker != nil {
+			messages = append(messages, message)
+		}
+	}
 	messages = append(messages, response.Messages...)
-	session.Messages = append(messages, added...)
+	for _, message := range added {
+		if message.Marker == nil {
+			messages = append(messages, message)
+		}
+	}
+	session.Messages = messages
 	session.Usage = schema.SessionUsage{
 		Usage:    addUsage(session.Usage.Usage, response.Usage.Usage),
 		Input:    response.Usage.Input,
@@ -404,12 +424,21 @@ func withReply(session schema.Session, earlier, added []providerschema.Message, 
 
 // addedAfter returns the messages which follow the earlier messages, and
 // whether the messages are the earlier messages, exactly as they were,
+// apart from the summaries of markers, which are written in the background,
 // followed by them, rather than changed otherwise
 func addedAfter(earlier, messages []providerschema.Message) ([]providerschema.Message, bool) {
 	if len(messages) < len(earlier) {
 		return nil, false
 	}
 	for i := range earlier {
+		// A marker, whose summary can be written as a reply is, is the same
+		// marker, whatever its summary
+		if earlier[i].Marker != nil && messages[i].Marker != nil {
+			if earlier[i].Marker.ID != messages[i].Marker.ID {
+				return nil, false
+			}
+			continue
+		}
 		a, errA := json.Marshal(earlier[i])
 		b, errB := json.Marshal(messages[i])
 		if errA != nil || errB != nil || !bytes.Equal(a, b) {
