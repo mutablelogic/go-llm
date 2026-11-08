@@ -149,7 +149,7 @@ func openFile(res *resource.Manager) messaging.OpenFunc {
 // and attached to it, as the web UI attaches them, and its text
 func chatMessage(ctx context.Context, res *resource.Manager, session uuid.UUID, message messaging.Message) (*providerschema.Message, error) {
 	content := make([]providerschema.ContentBlock, 0, len(message.Attachments)+1)
-	var unavailable []string
+	var unavailable, names []string
 	for _, attachment := range message.Attachments {
 		if attachment.Unavailable != "" || attachment.Open == nil {
 			unavailable = append(unavailable, fmt.Sprintf("%s wasn't received, as %s", attachment.Name, attachment.Unavailable))
@@ -166,15 +166,24 @@ func chatMessage(ctx context.Context, res *resource.Manager, session uuid.UUID, 
 			return nil, err
 		}
 		content = append(content, providerschema.ContentBlock{Resource: &providerschema.Resource{ResourceMeta: providerschema.ResourceMeta{ContentType: kept.Type, URL: u}}})
+		names = append(names, fmt.Sprintf("%s (%s)", kept.Name, kept.URI()))
 	}
-	if text := strings.TrimSpace(message.Text); text != "" {
+	text := strings.TrimSpace(message.Text)
+	if text != "" {
 		content = append(content, providerschema.ContentBlock{Text: types.Ptr(text)})
+	}
+
+	// The text which is the caption of the files, which was sent with them,
+	// rather than as a message of its own, which the model is told
+	var notes []string
+	if text != "" && message.Caption && len(names) > 0 {
+		notes = append(notes, "The person's text is the caption of "+list(names)+", which they sent it with.")
 	}
 
 	// The files which weren't received, such as as they're too large, which
 	// the model is told, so it can tell the person
-	if len(unavailable) > 0 {
-		content = append(content, providerschema.ContentBlock{Text: types.Ptr("<system-reminder>\n" + strings.Join(unavailable, "\n") + "\n</system-reminder>")})
+	if notes = append(notes, unavailable...); len(notes) > 0 {
+		content = append(content, providerschema.ContentBlock{Text: types.Ptr("<system-reminder>\n" + strings.Join(notes, "\n") + "\n</system-reminder>")})
 	}
 	if len(content) == 0 {
 		return nil, llm.ErrBadParameter.With("the message has no text, and its files couldn't be kept")
@@ -193,4 +202,13 @@ func keepAttachment(ctx context.Context, res *resource.Manager, session uuid.UUI
 	defer content.Close()
 	kept, _, err := res.Create(ctx, resourceschema.ResourceMeta{Name: attachment.Name, Type: attachment.Type, Description: attachment.Description, Session: &session}, content)
 	return kept, err
+}
+
+// list returns the things, as a phrase, such as "a", "a and b", or "a, b
+// and c"
+func list(things []string) string {
+	if len(things) == 1 {
+		return things[0]
+	}
+	return strings.Join(things[:len(things)-1], ", ") + " and " + things[len(things)-1]
 }

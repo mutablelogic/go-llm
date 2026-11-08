@@ -337,8 +337,8 @@ func (t *Telegram) toMessage(ctx context.Context, group []*message) (messaging.M
 		Time:    time.Unix(m.Date, 0).UTC(),
 	}
 	for _, other := range group {
-		if result.Text == "" {
-			result.Text = other.Caption
+		if result.Text == "" && strings.TrimSpace(other.Caption) != "" {
+			result.Text, result.Caption = other.Caption, true
 		}
 	}
 	result.Code = startCode(m.Text)
@@ -350,6 +350,10 @@ func (t *Telegram) toMessage(ctx context.Context, group []*message) (messaging.M
 	for _, other := range group {
 		for _, a := range attachments(other) {
 			attachment := messaging.Attachment{Name: a.Name, Type: a.Type, Size: a.Size, Description: a.Description}
+			if result.Caption {
+				// The caption of an album is of all its files
+				attachment.Description = describe(result.Text, a.Description)
+			}
 			if a.Size > maxDownload {
 				attachment.Unavailable = fmt.Sprintf("it's too large (%s), as a bot can only download files of up to 20 MB", megabytes(a.Size))
 			} else {
@@ -371,6 +375,22 @@ type attachment struct {
 	Type        string
 	Size        int64
 	Description string
+}
+
+// describe returns the description of a file: its caption, which it was
+// sent with, when it has one, and what it is, such as a photo which was
+// compressed
+func describe(caption, description string) string {
+	caption = strings.Join(strings.Fields(caption), " ")
+	switch {
+	case caption == "":
+		return description
+	case description == "":
+		return caption
+	case strings.ContainsAny(caption[len(caption)-1:], ".!?"):
+		return caption + " " + description
+	}
+	return caption + ". " + description
 }
 
 // compressedPhoto is the description of a photo, which Telegram compressed

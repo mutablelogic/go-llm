@@ -18,6 +18,7 @@ import (
 	schema "github.com/mutablelogic/go-llm/messaging/schema"
 	resource "github.com/mutablelogic/go-llm/resource"
 	resourceschema "github.com/mutablelogic/go-llm/resource/schema"
+	types "github.com/mutablelogic/go-server/pkg/types"
 	assert "github.com/stretchr/testify/assert"
 	require "github.com/stretchr/testify/require"
 )
@@ -105,14 +106,20 @@ func Test_ChatMessage(t *testing.T) {
 
 	// The files are kept as the session's, as they're downloaded, and
 	// attached to the message, before its text
-	message, err := chatMessage(ctx, res, session, messaging.Message{Text: " Our trip ", Attachments: []messaging.Attachment{
+	message, err := chatMessage(ctx, res, session, messaging.Message{Text: " Our trip ", Caption: true, Attachments: []messaging.Attachment{
 		attachment("photo.jpg", "image/jpeg", "JPEG"),
 		attachment("voice.ogg", "audio/ogg", "OggS"),
 	}})
 	require.NoError(t, err)
 	assert.Equal(t, "user", message.Role())
-	assert.Equal(t, "Our trip", message.Text())
-	require.Len(t, message.Content, 3)
+	require.Len(t, message.Content, 4)
+	assert.Equal(t, "Our trip", types.Value(message.Content[2].Text))
+
+	// The text, which is the files' caption, is said to be, by their names,
+	// and URIs
+	reminder := types.Value(message.Content[3].Text)
+	assert.Contains(t, reminder, "The person's text is the caption of photo.jpg (resource:///")
+	assert.Contains(t, reminder, " and voice.ogg (resource:///")
 	for i, want := range []struct{ name, mimeType, content string }{{"photo.jpg", "image/jpeg", "JPEG"}, {"voice.ogg", "audio/ogg", "OggS"}} {
 		block := message.Content[i].Resource
 		require.NotNil(t, block)
@@ -150,6 +157,15 @@ func Test_ChatMessage(t *testing.T) {
 	kept, err := res.Get(ctx, resourceschema.ResourceKey{Hash: hash, Session: &session})
 	require.NoError(t, err)
 	assert.Equal(t, "A photo, which Telegram compressed", kept.Description)
+
+	// Text which isn't a caption isn't said to be one
+	message, err = chatMessage(ctx, res, session, messaging.Message{Text: "Look", Attachments: []messaging.Attachment{
+		{Name: "a.jpg", Type: "image/jpeg", Open: func(context.Context) (io.ReadCloser, error) {
+			return io.NopCloser(strings.NewReader("JPEG3")), nil
+		}},
+	}})
+	require.NoError(t, err)
+	assert.NotContains(t, message.Text(), "caption")
 
 	// Text alone is the message
 	message, err = chatMessage(ctx, nil, session, messaging.Message{Text: "Hello"})

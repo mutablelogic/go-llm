@@ -132,6 +132,10 @@ type Message struct {
 	// Text is what it says, or the caption of its attachments
 	Text string
 
+	// Caption is whether the text is the caption of its attachments, which
+	// was sent with them, rather than a message of its own
+	Caption bool
+
 	// Attachments are the files sent with it, such as photos, documents,
 	// and voice messages, which are opened when they're kept
 	Attachments []Attachment

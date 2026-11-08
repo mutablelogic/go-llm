@@ -400,14 +400,21 @@ func Test_Telegram_Attachments(t *testing.T) {
 	assert.Equal(t, "What's this?", got[0].Text)
 	assert.Equal(t, []string{"photo-u2.jpg image/jpeg"}, names(got[0]))
 	assert.Equal(t, int64(90000), got[0].Attachments[0].Size)
-	assert.Contains(t, got[0].Attachments[0].Description, "compressed")
+	assert.True(t, got[0].Caption, "the text is the caption")
+	assert.Equal(t, "What's this? A photo, which Telegram compressed, so small text in it can be hard to read; sent as a file, rather than a photo, it's full size", got[0].Attachments[0].Description)
 
-	// The voice message is Ogg, without text
+	// The voice message is Ogg, without text, or a caption
 	assert.Empty(t, got[1].Text)
+	assert.False(t, got[1].Caption)
 	assert.Equal(t, []string{"voice-v1.ogg audio/ogg"}, names(got[1]))
 
-	// The album's photos are one message, with its caption
+	// The album's photos are one message, with its caption, which is each
+	// photo's
 	assert.Equal(t, "Our trip", got[2].Text)
+	assert.True(t, got[2].Caption)
+	for _, a := range got[2].Attachments {
+		assert.True(t, strings.HasPrefix(a.Description, "Our trip. A photo"), a.Description)
+	}
 	assert.Equal(t, []string{"photo-a1.jpg image/jpeg", "photo-a2.jpg image/jpeg"}, names(got[2]))
 
 	// The video, which is too large to download, is unavailable, saying
