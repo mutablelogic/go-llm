@@ -83,7 +83,7 @@ func (r *Registry) WithSession(ctx context.Context, session schema.Session, mess
 	// Ask the model, until it replies, running the tools it calls
 	// The namespaces' system prompts are for the session, such as of what's
 	// connected to it
-	model, loop, _, err := r.generatorLoop(toolkit.WithPromptSession(ctx, session.ID), meta, DefaultMaxIterations)
+	model, loop, _, err := r.generatorLoop(toolkit.WithPromptSession(ctx, session.ID), meta, DefaultMaxIterations, true)
 	if err != nil {
 		return nil, err
 	}
@@ -120,14 +120,15 @@ func (r *Registry) WithSession(ctx context.Context, session schema.Session, mess
 // options, the tools, from the registry's toolkit, and the schema of the
 // reply, as the respond tool, when there is one, whose instruction follows
 // them, and whether there is one. The model is asked at most the
-// iterations, unless the max_iterations option says otherwise.
-func (r *Registry) generatorLoop(ctx context.Context, meta schema.GeneratorMeta, iterations uint) (llm.Model, *agentLoop, bool, error) {
+// iterations, unless the max_iterations option says otherwise. When skip is
+// true, as for a session, its tools which aren't available are skipped.
+func (r *Registry) generatorLoop(ctx context.Context, meta schema.GeneratorMeta, iterations uint, skip bool) (llm.Model, *agentLoop, bool, error) {
 	result, err := meta.JSONSchema()
 	if err != nil {
 		return nil, nil, false, err
 	}
 	hasSchema := result != nil
-	tools, prompts, err := r.askTools(ctx, meta, hasSchema)
+	tools, prompts, err := r.askTools(ctx, meta, hasSchema, skip)
 	if err != nil {
 		return nil, nil, false, err
 	}

@@ -320,6 +320,24 @@ func Test_ToolSystemPrompts(t *testing.T) {
 		assert.Equal(t, "Be brief\n\nUse metric units.", system(t, p))
 	})
 
+	t.Run("Unavailable", func(t *testing.T) {
+		// A session's tool, or namespace, which isn't available, such as
+		// one of a connector which was deleted, is skipped, as it's chatted
+		// in, with its system prompt, rather than the session failing
+		p := newScripted(text("Hello"))
+		meta := schema.GeneratorMeta{Model: types.Ptr("model"), System: types.Ptr("Be brief"), Tools: []string{"gone:*", "weather:*", "news:missing"}}
+		_, err := newRegistry(t, p).WithSession(ctx, newSession(meta), hi, nil)
+		require.NoError(t, err)
+		assert.Equal(t, "Be brief\n\nUse metric units.", system(t, p))
+		require.NotEmpty(t, p.asked)
+
+		// But a request, which names its tools, fails, when one isn't
+		req := question("Hi")
+		req.Tools = []string{"gone:*"}
+		_, err = newRegistry(t, newScripted(text("Hello"))).Ask(ctx, req, nil)
+		assert.ErrorIs(t, err, llm.ErrNotFound)
+	})
+
 	t.Run("NamespaceWithoutTools", func(t *testing.T) {
 		// A namespace without tools, named by its name and "*", has its
 		// system prompt, though the model has no tools of it

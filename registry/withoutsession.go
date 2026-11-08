@@ -3,6 +3,7 @@ package registry
 import (
 	"context"
 	"encoding/json"
+	"slices"
 	"strings"
 	"sync"
 	"uuid"
@@ -76,7 +77,7 @@ func (r *Registry) Ask(ctx context.Context, req schema.AskRequest, stream llm.Ge
 
 	// Ask the model, until it replies, with a result which conforms to the
 	// schema, when the request has one, or calls tools
-	model, loop, hasSchema, err := r.generatorLoop(ctx, req.GeneratorMeta, respondAttempts)
+	model, loop, hasSchema, err := r.generatorLoop(ctx, req.GeneratorMeta, respondAttempts, false)
 	if err != nil {
 		return nil, err
 	}
@@ -102,21 +103,35 @@ func (r *Registry) Ask(ctx context.Context, req schema.AskRequest, stream llm.Ge
 // PRIVATE METHODS
 
 // askTools returns the tools of the session, from the registry's toolkit,
-// and their system prompts. When the tool choice is "none", there are no
-// tools, and no tool choice, so the provider needn't support it, unless the
-// reply has a schema, which needs the respond tool, which the agent loop
-// adds. Any other tool choice needs tools to choose from.
-func (r *Registry) askTools(ctx context.Context, req schema.GeneratorMeta, hasSchema bool) ([]llm.Tool, []string, error) {
+// and their system prompts. When skip is true, as for a session, a tool, or
+// namespace, which isn't available is skipped, and logged, such as one of a
+// connector which isn't connected, or was deleted, so the session can still
+// be chatted in, and otherwise, as for a request, which names its tools, it's
+// ErrNotFound. When the tool choice is "none", there are no tools, and no
+// tool choice, so the provider needn't support it, unless the reply has a
+// schema, which needs the respond tool, which the agent loop adds. Any other
+// tool choice needs tools to choose from.
+func (r *Registry) askTools(ctx context.Context, req schema.GeneratorMeta, hasSchema, skip bool) ([]llm.Tool, []string, error) {
 	var tools []llm.Tool
 	var prompts []string
 	if len(req.Tools) > 0 {
 		if r.toolkit == nil {
 			return nil, nil, llm.ErrNotFound.With("no tools, as the registry has no toolkit")
 		}
+		names := req.Tools
 		var err error
-		if tools, err = r.toolkit.Tools(ctx, req.Tools...); err != nil {
+		if !skip {
+			tools, err = r.toolkit.Tools(ctx, names...)
+		} else {
+			var skipped []string
+			if tools, skipped, err = r.toolkit.AvailableTools(ctx, names...); err == nil && len(skipped) > 0 {
+				r.log().WarnContext(ctx, "tools which aren't available are skipped", "tools", skipped)
+				names = slices.DeleteFunc(slices.Clone(names), func(name string) bool { return slices.Contains(skipped, name) })
+			}
+		}
+		if err != nil {
 			return nil, nil, err
-		} else if prompts, err = r.toolkit.SystemPrompts(ctx, req.Tools...); err != nil {
+		} else if prompts, err = r.toolkit.SystemPrompts(ctx, names...); err != nil {
 			return nil, nil, err
 		}
 	}
