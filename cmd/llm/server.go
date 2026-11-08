@@ -253,16 +253,17 @@ func (runner *RunServer) withToolkit(ctx server.Cmd, b *broadcaster.Broadcaster,
 		// The connectors, which are remote MCP servers, once the toolkit,
 		// and the resources, are made, as their servers' tools, and
 		// resources, will be added to them
-		return runner.Connector.WithConnectorRegistry(ctx, &runner.RunServer, b, func(_ *mcpregistry.Registry) error {
-			return runner.withRegistry(ctx, b, mem, h, res, m, tools, events, build, store, sessions, agents, outcomes, replies)
+		return runner.Connector.WithConnectorRegistry(ctx, &runner.RunServer, b, func(connectors *mcpregistry.Registry) error {
+			return runner.withRegistry(ctx, b, mem, h, res, m, connectors, tools, events, build, store, sessions, agents, outcomes, replies)
 		})
 	}, toolkit.WithBroadcaster(b))
 }
 
 // withRegistry runs the server, with the registry, which has the stores,
 // and the toolkit, and runs the heartbeats which fire, and the messaging's
-// chats, the resources' cleaning, and the broadcaster, until any stops
-func (runner *RunServer) withRegistry(ctx server.Cmd, b *broadcaster.Broadcaster, mem *memory.Memory, h *heartbeat.Heartbeats, res *resource.Manager, m *messaging.Messaging, tools *toolkit.Toolkit, events *atomic.Pointer[registry.Registry], build registry.EventBuilder, store registry.ProviderStore, sessions *sessionStore, agents *agentStore, outcomes *eventStore, replies registry.ReplyFunc) error {
+// chats, the resources' cleaning, the connectors, and the broadcaster,
+// until any stops
+func (runner *RunServer) withRegistry(ctx server.Cmd, b *broadcaster.Broadcaster, mem *memory.Memory, h *heartbeat.Heartbeats, res *resource.Manager, m *messaging.Messaging, connectors *mcpregistry.Registry, tools *toolkit.Toolkit, events *atomic.Pointer[registry.Registry], build registry.EventBuilder, store registry.ProviderStore, sessions *sessionStore, agents *agentStore, outcomes *eventStore, replies registry.ReplyFunc) error {
 	return runner.Registry.WithRegistry(ctx, &runner.RunServer, func(r *registry.Registry) error {
 		// The example agents, as they are, before the server starts
 		createAgents(ctx, r)
@@ -307,6 +308,11 @@ func (runner *RunServer) withRegistry(ctx server.Cmd, b *broadcaster.Broadcaster
 			// The resources of sessions which are deleted are deleted,
 			// and those which aren't needed are cleaned
 			return res.Run(runCtx, ctx.Logger())
+		})
+		group.Go(func() error {
+			// The connectors' servers are connected, as they're created,
+			// and disconnected, as they're deleted
+			return connectors.Run(runCtx, ctx.Logger())
 		})
 		group.Go(func() error {
 			return runner.RunServer.Run(ctx.WithContext(runCtx))

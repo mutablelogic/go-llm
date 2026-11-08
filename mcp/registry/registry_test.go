@@ -3,8 +3,6 @@ package registry_test
 import (
 	"context"
 	"encoding/json"
-	"net/http"
-	"net/http/httptest"
 	"testing"
 
 	// Packages
@@ -13,7 +11,6 @@ import (
 	eventschema "github.com/mutablelogic/go-llm/broadcaster/schema"
 	registry "github.com/mutablelogic/go-llm/mcp/registry"
 	schema "github.com/mutablelogic/go-llm/mcp/schema"
-	test "github.com/mutablelogic/go-llm/mcp/test"
 	assert "github.com/stretchr/testify/assert"
 	require "github.com/stretchr/testify/require"
 )
@@ -106,7 +103,6 @@ func Test_Servers(t *testing.T) {
 		func() error { _, err := r.GetConnector(ctx, "search"); return err }(),
 		func() error { _, err := r.UpdateConnector(ctx, "search", updated.ConnectorMeta); return err }(),
 		func() error { _, err := r.DeleteConnector(ctx, "search"); return err }(),
-		func() error { _, err := r.Connect(ctx, "search"); return err }(),
 	} {
 		assert.ErrorIs(t, err, llm.ErrNotFound)
 	}
@@ -197,99 +193,4 @@ func Test_Events(t *testing.T) {
 		event(eventschema.EventUpdate, `{"serial":2}`),
 		event(eventschema.EventDelete, ""),
 	}, events, "and nothing for a change which failed")
-}
-
-func Test_Connect(t *testing.T) {
-	ctx := t.Context()
-	r, err := registry.New()
-	require.NoError(t, err)
-	t.Cleanup(func() { assert.NoError(t, r.Close()) })
-	server := test.NewServer(t)
-	_, err = r.CreateConnector(ctx, connector("test", server.URL))
-	require.NoError(t, err)
-
-	t.Run("Connect", func(t *testing.T) {
-		// A connector isn't connected, until it's connected, when its status
-		// has its server
-		got, err := r.GetConnector(ctx, "test")
-		require.NoError(t, err)
-		assert.False(t, got.Connected)
-		assert.Nil(t, got.Server)
-		status, err := r.Connect(ctx, "test")
-		require.NoError(t, err)
-		assert.True(t, status.Connected)
-		assert.Equal(t, &schema.ConnectorServer{Name: test.Name, Version: test.Version}, status.Server)
-		assert.Empty(t, status.Error)
-		got, err = r.GetConnector(ctx, "test")
-		require.NoError(t, err)
-		assert.Equal(t, status, got)
-		list, err := r.ListConnectors(ctx)
-		require.NoError(t, err)
-		assert.True(t, list.Body[0].Connected)
-
-		// And it's disconnected
-		status, err = r.Disconnect(ctx, "test")
-		require.NoError(t, err)
-		assert.False(t, status.Connected)
-		assert.Nil(t, status.Server)
-	})
-
-	t.Run("Unavailable", func(t *testing.T) {
-		// A server which can't be connected to has why, in its status, until
-		// it's disconnected
-		notFound := httptest.NewServer(http.NotFoundHandler())
-		t.Cleanup(notFound.Close)
-		_, err := r.CreateConnector(ctx, connector("missing", notFound.URL))
-		require.NoError(t, err)
-		status, err := r.Connect(ctx, "missing")
-		assert.ErrorIs(t, err, llm.ErrServiceUnavailable)
-		assert.False(t, status.Connected)
-		assert.NotEmpty(t, status.Error)
-		got, err := r.GetConnector(ctx, "missing")
-		require.NoError(t, err)
-		assert.Equal(t, status.Error, got.Error)
-		status, err = r.Disconnect(ctx, "missing")
-		require.NoError(t, err)
-		assert.Empty(t, status.Error)
-	})
-
-	t.Run("Changed", func(t *testing.T) {
-		// A connector which is updated, or deleted, is disconnected
-		status, err := r.Connect(ctx, "test")
-		require.NoError(t, err)
-		require.True(t, status.Connected)
-		updated, err := r.UpdateConnector(ctx, "test", schema.ConnectorMeta{URL: server.URL + "/"})
-		require.NoError(t, err)
-		assert.False(t, updated.Connected)
-
-		status, err = r.Connect(ctx, "test")
-		require.NoError(t, err)
-		require.True(t, status.Connected)
-		deleted, err := r.DeleteConnector(ctx, "test")
-		require.NoError(t, err)
-		assert.False(t, deleted.Connected)
-	})
-
-	t.Run("NotFound", func(t *testing.T) {
-		_, err := r.Connect(ctx, "nothing")
-		assert.ErrorIs(t, err, llm.ErrNotFound)
-		_, err = r.Disconnect(ctx, "nothing")
-		assert.ErrorIs(t, err, llm.ErrNotFound)
-	})
-}
-
-func Test_Close(t *testing.T) {
-	// Closing the registry disconnects every server
-	ctx := t.Context()
-	r, err := registry.New()
-	require.NoError(t, err)
-	server := test.NewServer(t)
-	_, err = r.CreateConnector(ctx, connector("test", server.URL))
-	require.NoError(t, err)
-	_, err = r.Connect(ctx, "test")
-	require.NoError(t, err)
-	require.NoError(t, r.Close())
-	got, err := r.GetConnector(ctx, "test")
-	require.NoError(t, err)
-	assert.False(t, got.Connected)
 }

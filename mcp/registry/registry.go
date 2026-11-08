@@ -1,6 +1,6 @@
 // Package registry has the connectors, which are remote MCP servers, whose
-// definitions are kept in a store, with a client of each, which connects
-// to its server
+// definitions are kept in a store, with a client of each, which Run
+// connects to its server
 package registry
 
 import (
@@ -23,9 +23,9 @@ import (
 
 // Registry has the connectors, whose definitions are kept in its store,
 // which is read each time they're asked for, so they're as the store has
-// them, and a client of each, which is created once, and again once the
-// connector's definition changes, when the session of the one it replaces
-// is closed
+// them, and a client of each, which Run connects, which is created once,
+// and again once the connector's definition changes, when the session of
+// the one it replaces is closed
 type Registry struct {
 	opt
 
@@ -100,7 +100,7 @@ func (r *Registry) GetConnector(ctx context.Context, name string) (*schema.Conne
 }
 
 // CreateConnector creates the connector, and returns it, with its serial.
-// It isn't connected. Returns ErrBadParameter when its name, or its fields,
+// It's connected by Run. Returns ErrBadParameter when its name, or its fields,
 // aren't valid, and ErrConflict when there's a connector with its name.
 func (r *Registry) CreateConnector(ctx context.Context, connector schema.Connector) (*schema.Connector, error) {
 	connector = connector.Definition()
@@ -120,7 +120,7 @@ func (r *Registry) CreateConnector(ctx context.Context, connector schema.Connect
 
 // UpdateConnector replaces the fields of the connector with the name, and
 // returns it, with its new serial. Its server is disconnected, when it's
-// connected, as the client of the connector, as it is, is created again.
+// connected, and connected again by Run, as it is now.
 // Returns ErrNotFound when there's no connector with the name,
 // ErrBadParameter when the fields aren't valid, and ErrConflict when it was
 // changed as it was updated.
@@ -160,46 +160,6 @@ func (r *Registry) DeleteConnector(ctx context.Context, name string) (*schema.Co
 	r.publish(eventschema.EventDelete, connector)
 	result := connector.Definition()
 	return &result, nil
-}
-
-///////////////////////////////////////////////////////////////////////////////
-// PUBLIC METHODS - CONNECTIONS
-
-// Connect connects to the server of the connector with the name, unless
-// it's connected, and returns it, with its status. Returns ErrNotFound when
-// there's no connector with the name, and ErrServiceUnavailable when its
-// server can't be connected to, which its status has, too.
-func (r *Registry) Connect(ctx context.Context, name string) (*schema.Connector, error) {
-	connector, err := r.get(ctx, name)
-	if err != nil {
-		return nil, err
-	}
-	c, err := r.client(connector)
-	if err != nil {
-		return nil, err
-	} else if err := c.Connect(ctx); err != nil {
-		return r.status(connector), err
-	}
-	return r.status(connector), nil
-}
-
-// Disconnect disconnects the server of the connector with the name, when
-// it's connected, and returns it, with its status. Returns ErrNotFound when
-// there's no connector with the name.
-func (r *Registry) Disconnect(ctx context.Context, name string) (*schema.Connector, error) {
-	connector, err := r.get(ctx, name)
-	if err != nil {
-		return nil, err
-	}
-	r.mu.Lock()
-	e, exists := r.clients[name]
-	r.mu.Unlock()
-	if exists {
-		if err := e.client.Disconnect(); err != nil {
-			return r.status(connector), err
-		}
-	}
-	return r.status(connector), nil
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -277,13 +237,10 @@ func (r *Registry) status(connector schema.Connector) *schema.Connector {
 	return &result
 }
 
-// publish publishes the change to the connector, when the registry has a
-// broadcaster, whose row is its name, and whose data is its serial, unless
-// it was deleted
+// publish publishes the change to the connector, with the registry's
+// broadcaster, which Run watches, whose row is its name, and whose data is
+// its serial, unless it was deleted
 func (r *Registry) publish(action eventschema.EventAction, connector schema.Connector) {
-	if r.broadcaster == nil {
-		return
-	}
 	event := eventschema.Event{Action: action, Schema: schema.Name, Table: schema.ConnectorTable, Row: connector.Name}
 	if action != eventschema.EventDelete {
 		if data, err := json.Marshal(schema.ConnectorEvent{Serial: connector.Serial}); err == nil {

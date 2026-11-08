@@ -41,7 +41,7 @@ func (o *opt) apply(opts []Opt) error {
 
 func (o *opt) defaults() {
 	o.store = NewMemoryStore()
-	o.broadcaster = nil
+	o.broadcaster = broadcaster.New()
 	o.clientopts = nil
 }
 
@@ -61,7 +61,9 @@ func WithStore(store Store) Opt {
 }
 
 // WithBroadcaster is the broadcaster the registry publishes its changes to,
-// as a connector is created, updated, or deleted
+// as a connector is created, updated, or deleted, which Run watches, so it
+// connects, or disconnects, it at once, such as the server's, so its
+// clients see them too, rather than the registry's own
 func WithBroadcaster(b *broadcaster.Broadcaster) Opt {
 	return func(o *opt) error {
 		if b == nil {
