@@ -19,4 +19,10 @@ func Test_PublicEndpoint(t *testing.T) {
 	assert.Empty(t, publicEndpoint(&url.URL{Scheme: "http", Host: "0.0.0.0:8086", Path: "/api"}))
 	assert.Empty(t, publicEndpoint(&url.URL{Scheme: "https"}))
 	assert.Empty(t, publicEndpoint(nil))
+
+	// And an escaped character in its path stays escaped
+	escaped, err := url.Parse("https://llm.example.com/api%23v1")
+	if assert.NoError(t, err) {
+		assert.Equal(t, "https://llm.example.com/api%23v1", publicEndpoint(escaped))
+	}
 }

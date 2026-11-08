@@ -139,7 +139,8 @@ func publicCallback(serverURL func() *url.URL) string {
 	if u == nil || u.Scheme != "https" || u.Host == "" {
 		return ""
 	}
-	return strings.TrimSuffix(u.Scheme+"://"+u.Host+u.Path, "/") + registry.CallbackPath
+	// Its path is escaped, so an escaped character, such as %23, stays one
+	return strings.TrimSuffix(u.Scheme+"://"+u.Host+u.EscapedPath(), "/") + registry.CallbackPath
 }
 
 // requestOrigin returns the origin of the request, from its Origin header,

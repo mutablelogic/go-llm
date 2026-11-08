@@ -163,6 +163,9 @@ func Test_AuthorizePublicURL(t *testing.T) {
 
 	serverURL = &url.URL{Scheme: "https", Host: "llm.example.com", Path: "/api"}
 	assert.Equal(t, "https://llm.example.com/api"+registry.CallbackPath, authorize(t))
+	serverURL, err = url.Parse("https://llm.example.com/api%23v1")
+	require.NoError(t, err)
+	assert.Equal(t, "https://llm.example.com/api%23v1"+registry.CallbackPath, authorize(t), "an escaped character in its path stays escaped")
 	serverURL = &url.URL{Scheme: "http", Host: "0.0.0.0:8086", Path: "/api"}
 	assert.Equal(t, "https://llm-http-lan"+test.Prefix+registry.CallbackPath, authorize(t))
 }

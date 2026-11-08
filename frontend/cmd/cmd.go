@@ -99,5 +99,6 @@ func publicEndpoint(endpoint *url.URL) string {
 	if endpoint == nil || endpoint.Scheme != "https" || endpoint.Host == "" {
 		return ""
 	}
-	return strings.TrimSuffix(endpoint.Scheme+"://"+endpoint.Host+endpoint.Path, "/")
+	// Its path is escaped, so an escaped character, such as %23, stays one
+	return strings.TrimSuffix(endpoint.Scheme+"://"+endpoint.Host+endpoint.EscapedPath(), "/")
 }
