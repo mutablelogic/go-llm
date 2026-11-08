@@ -116,6 +116,29 @@ func Test_Sessions(t *testing.T) {
 		require.NoError(t, err)
 		assert.Equal(t, []string{"weather:forecast"}, got.Tools)
 
+		// A tool which the session had already, which isn't the toolkit's
+		// any more, such as a namespace of a connector which was deleted, is
+		// kept, as it's saved, but not one which is new
+		r2, store := newRegistry(t)
+		stale, err := store.Create(ctx, uuid.Nil(), schema.SessionMeta{GeneratorMeta: schema.GeneratorMeta{Tools: []string{"gone:*", "weather:current"}}})
+		require.NoError(t, err)
+		kept, err := r2.UpdateSession(ctx, stale.ID, schema.SessionMeta{GeneratorMeta: schema.GeneratorMeta{Tools: []string{"gone:*", "forecast"}}})
+		require.NoError(t, err)
+		assert.Equal(t, []string{"gone:*", "weather:forecast"}, kept.Tools)
+		_, err = r2.UpdateSession(ctx, stale.ID, schema.SessionMeta{GeneratorMeta: schema.GeneratorMeta{Tools: []string{"gone:*", "other:*"}}})
+		assert.ErrorIs(t, err, llm.ErrNotFound, "a namespace which is new must be the toolkit's")
+		// Nor one which is the same tool as one which is kept
+		_, err = r2.UpdateSession(ctx, stale.ID, schema.SessionMeta{GeneratorMeta: schema.GeneratorMeta{Tools: []string{"gone:*", "weather:forecast"}}})
+		require.NoError(t, err)
+		_, err = r2.UpdateSession(ctx, stale.ID, schema.SessionMeta{GeneratorMeta: schema.GeneratorMeta{Tools: []string{"weather:forecast", "forecast"}}})
+		assert.ErrorIs(t, err, llm.ErrBadParameter, "a tool which is kept, and named again, is named twice")
+		stored, err := store.Get(ctx, stale.ID)
+		require.NoError(t, err)
+		assert.Equal(t, []string{"gone:*", "weather:forecast"}, stored.Tools, "and it isn't stored")
+		kept, err = r2.UpdateSession(ctx, stale.ID, schema.SessionMeta{GeneratorMeta: schema.GeneratorMeta{Tools: []string{"forecast"}}})
+		require.NoError(t, err)
+		assert.Equal(t, []string{"weather:forecast"}, kept.Tools, "and it's removed, once it's left out")
+
 		// An empty list clears them, so there are none
 		session, err = r.UpdateSession(ctx, session.ID, schema.SessionMeta{GeneratorMeta: schema.GeneratorMeta{Tools: []string{}}})
 		require.NoError(t, err)
