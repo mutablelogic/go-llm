@@ -6,7 +6,7 @@ import (
 	// Packages
 	goclient "github.com/mutablelogic/go-client"
 	llm "github.com/mutablelogic/go-llm"
-	version "github.com/mutablelogic/go-server/pkg/version"
+	schema "github.com/mutablelogic/go-llm/mcp/schema"
 )
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -42,8 +42,8 @@ func (o *opt) apply(opts []Opt) error {
 }
 
 func (o *opt) defaults() {
-	o.name = "go-llm"
-	o.version = version.Version()
+	o.name = schema.DefaultName
+	o.version = schema.DefaultVersion
 	o.clientopts = nil
 }
 
@@ -51,8 +51,8 @@ func (o *opt) defaults() {
 // OPTIONS
 
 // WithName is the name, and version, of the client, which the server is
-// told, as it connects, rather than go-llm, and the version of the build.
-// The version can be empty.
+// told, as it connects, rather than schema.DefaultName, and
+// schema.DefaultVersion. The version can be empty.
 func WithName(name, version string) Opt {
 	return func(o *opt) error {
 		if name = strings.TrimSpace(name); name == "" {
