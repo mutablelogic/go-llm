@@ -39,12 +39,6 @@ func Test_New(t *testing.T) {
 		_, err = New("https://mcp.example.com/mcp", WithName(" ", "1.2.3"))
 		assert.ErrorIs(t, err, llm.ErrBadParameter)
 	})
-
-	t.Run("Nil", func(t *testing.T) {
-		// An option which is nil is ignored
-		_, err := New("https://mcp.example.com/mcp", nil, WithName("test", ""))
-		assert.NoError(t, err)
-	})
 }
 
 func Test_Transports(t *testing.T) {

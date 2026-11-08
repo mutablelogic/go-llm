@@ -24,10 +24,6 @@ type Client struct {
 	// The name, and version, of the client, which the server is told, as it
 	// connects, with WithName
 	implementation sdkmcp.Implementation
-
-	// The options of go-client, which are gathered as the options are
-	// applied, and used once, as the client is created
-	opts []goclient.ClientOpt
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -49,27 +45,24 @@ func New(endpoint string, opts ...Opt) (*Client, error) {
 		return nil, llm.ErrBadParameter.Withf("url %q has no host", endpoint)
 	}
 
-	// Apply the options, which gather go-client's
-	c := &Client{endpoint: u.String()}
-	for _, opt := range opts {
-		if opt == nil {
-			continue
-		}
-		if err := opt(c); err != nil {
-			return nil, err
-		}
-	}
-	if c.implementation.Name == "" {
+	// Apply the options
+	var o opt
+	if err := o.apply(opts); err != nil {
+		return nil, err
+	} else if o.name == "" {
 		return nil, llm.ErrBadParameter.With("name is required, with WithName")
 	}
 
 	// Create go-client's client, for the server, with its options
-	client, err := goclient.New(append([]goclient.ClientOpt{goclient.OptEndpoint(c.endpoint)}, c.opts...)...)
+	client, err := goclient.New(append([]goclient.ClientOpt{goclient.OptEndpoint(u.String())}, o.clientopts...)...)
 	if err != nil {
 		return nil, err
 	}
-	c.Client, c.opts = client, nil
-	return c, nil
+	return &Client{
+		Client:         client,
+		endpoint:       u.String(),
+		implementation: sdkmcp.Implementation{Name: o.name, Version: o.version},
+	}, nil
 }
 
 ///////////////////////////////////////////////////////////////////////////////
