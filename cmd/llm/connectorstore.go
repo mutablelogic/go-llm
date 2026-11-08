@@ -22,7 +22,8 @@ import (
 
 // connectorStore is a store of the MCP connectors in a file, as a list of
 // their definitions, with their serials, in order of their names, under one
-// key, so they're kept when the server restarts. It's safe to use
+// key, so they're kept when the server restarts, and of how their servers
+// are authorized, such as their tokens, under another. It's safe to use
 // concurrently.
 type connectorStore struct {
 	mu       sync.Mutex
@@ -30,6 +31,7 @@ type connectorStore struct {
 }
 
 var _ mcpregistry.Store = (*connectorStore)(nil)
+var _ mcpregistry.Credentials = (*connectorStore)(nil)
 
 ///////////////////////////////////////////////////////////////////////////////
 // GLOBALS
@@ -41,6 +43,10 @@ const (
 	connectorsKey = "mcp.connectors"
 	serialsKey    = "mcp.serials"
 
+	// credentialsKey is the key which how each connector's server is
+	// authorized, such as its token, is kept under, by its name
+	credentialsKey = "mcp.credentials"
+
 	// connectorsFile is the name of the file which the server keeps the
 	// connectors in, in the directory of the command's defaults
 	connectorsFile = "connectors.json"
@@ -50,7 +56,7 @@ const (
 // LIFECYCLE
 
 // newConnectorStore returns a store of the connectors in the defaults
-func newConnectorStore(d defaults) (mcpregistry.Store, error) {
+func newConnectorStore(d defaults) (*connectorStore, error) {
 	if d == nil {
 		return nil, llm.ErrBadParameter.With("missing defaults")
 	}
@@ -59,7 +65,7 @@ func newConnectorStore(d defaults) (mcpregistry.Store, error) {
 
 // newServerConnectorStore returns the store of the connectors, in a file of
 // its own, connectors.json, in the directory of the command's defaults
-func newServerConnectorStore(ctx server.Cmd) (mcpregistry.Store, error) {
+func newServerConnectorStore(ctx server.Cmd) (*connectorStore, error) {
 	dir, err := serverDir(ctx)
 	if err != nil {
 		return nil, err
@@ -174,8 +180,80 @@ func (s *connectorStore) serials() (map[string]uint64, error) {
 	return result, nil
 }
 
+// GetCredential returns how the connector's server is authorized, or
+// ErrNotFound when it has no credential
+func (s *connectorStore) GetCredential(_ context.Context, name string) (*mcpschema.Credential, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	credentials, err := s.credentials()
+	if err != nil {
+		return nil, err
+	}
+	credential, exists := credentials[name]
+	if !exists {
+		return nil, llm.ErrNotFound.Withf("connector %q has no credential", name)
+	}
+	return &credential, nil
+}
+
+// PutCredential sets how the connector's server is authorized
+func (s *connectorStore) PutCredential(_ context.Context, name string, credential mcpschema.Credential) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	credentials, err := s.credentials()
+	if err != nil {
+		return err
+	}
+	credentials[name] = credential
+	return s.defaults.Set(credentialsKey, credentials)
+}
+
+// DeleteCredential deletes how the connector's server is authorized, or
+// does nothing when it has no credential
+func (s *connectorStore) DeleteCredential(_ context.Context, name string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	credentials, err := s.credentials()
+	if err != nil {
+		return err
+	} else if _, exists := credentials[name]; !exists {
+		return nil
+	}
+	delete(credentials, name)
+	if len(credentials) == 0 {
+		return s.defaults.Set(credentialsKey, nil)
+	}
+	return s.defaults.Set(credentialsKey, credentials)
+}
+
 ///////////////////////////////////////////////////////////////////////////////
 // PRIVATE METHODS
+
+// credentials returns the credentials of the connectors, by their names,
+// or none. The caller holds the lock.
+func (s *connectorStore) credentials() (map[string]mcpschema.Credential, error) {
+	var value any
+	if l, ok := s.defaults.(lookup); ok {
+		var err error
+		if value, err = l.Lookup(credentialsKey); err != nil {
+			return nil, err
+		}
+	} else {
+		value = s.defaults.Get(credentialsKey)
+	}
+	result := make(map[string]mcpschema.Credential)
+	if value == nil {
+		return result, nil
+	}
+	data, err := json.Marshal(value)
+	if err != nil {
+		return nil, err
+	}
+	if err := json.Unmarshal(data, &result); err != nil {
+		return nil, llm.ErrInternalServerError.Withf("%s: %v", credentialsKey, err)
+	}
+	return result, nil
+}
 
 // read returns the connectors in the defaults, or none when there are none,
 // or the error, when they can't be read, rather than none, so the

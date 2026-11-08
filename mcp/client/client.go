@@ -5,11 +5,13 @@ import (
 	"net/url"
 	"strings"
 	"sync"
+	"sync/atomic"
 
 	// Packages
 	sdkmcp "github.com/modelcontextprotocol/go-sdk/mcp"
 	llm "github.com/mutablelogic/go-llm"
 	authclient "github.com/mutablelogic/go-llm/auth/httpclient"
+	oauth2 "golang.org/x/oauth2"
 )
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -33,6 +35,11 @@ type Client struct {
 	// change, or nil
 	change       ChangeFunc
 	toolsChanged func()
+
+	// The source of the token its requests are authorized with, or nil, and
+	// the challenge of the last request which wasn't authorized, or nil
+	tokens    oauth2.TokenSource
+	challenge atomic.Pointer[authclient.AuthError]
 
 	// The session with the server, once it's connected, and the error of
 	// the last connection, or of the session, when it ended, which are held
@@ -85,6 +92,7 @@ func New(endpoint string, opts ...Opt) (*Client, error) {
 		implementation: sdkmcp.Implementation{Name: o.name, Version: o.version},
 		change:         o.change,
 		toolsChanged:   o.toolsChanged,
+		tokens:         o.tokens,
 	}, nil
 }
 
