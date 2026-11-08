@@ -24,7 +24,7 @@ func Test_Templates(t *testing.T) {
 		for _, template := range templates {
 			names = append(names, template.Name)
 		}
-		assert.Contains(t, names, "GitHub")
+		assert.Subset(t, names, []string{"GitHub", "Asana", "Notion"})
 	})
 
 	t.Run("Offered", func(t *testing.T) {

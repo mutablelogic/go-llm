@@ -8,3 +8,15 @@
   url: https://api.githubcopilot.com/mcp/
   client_id_credential: GITHUB_CLIENT_ID
   client_secret_credential: GITHUB_CLIENT_SECRET
+
+- name: Asana
+  description: Tasks, projects, portfolios and goals, with Asana's own MCP server
+  url: https://mcp.asana.com/v2/mcp
+  client_id_credential: ASANA_CLIENT_ID
+  client_secret_credential: ASANA_CLIENT_SECRET
+
+# Notion's sign-in registers clients itself, so it needs no credentials, and
+# is always offered
+- name: Notion
+  description: Pages, databases and comments in your Notion workspace, with Notion's own MCP server
+  url: https://mcp.notion.com/mcp
