@@ -59,3 +59,21 @@ func Test_AuthorizeLive(t *testing.T) {
 		})
 	}
 }
+
+func Test_CreateNamedLive(t *testing.T) {
+	// Each server's connector is named after it, as the metadata of how
+	// it's authorized says, as it needs to be, unless -short
+	if testing.Short() {
+		t.Skip("calls public MCP servers")
+	}
+	ctx := t.Context()
+	r, err := registry.New(registry.WithName("go-llm-test", ""))
+	require.NoError(t, err)
+	for _, server := range liveServers {
+		t.Run(server.url, func(t *testing.T) {
+			created, err := r.CreateConnector(ctx, connector("", server.url))
+			require.NoError(t, err)
+			t.Logf("%s => %s", server.url, created.Name)
+		})
+	}
+}

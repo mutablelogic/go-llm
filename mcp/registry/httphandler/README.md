@@ -16,7 +16,7 @@ List the connectors, in order of their names, with their `count`.
 
 ### POST /mcp/connector
 
-Create a connector, with its `name` and `url`, its `include` and `exclude` patterns, and its `client_id` and `client_secret`, when it has them. Returns the created connector, with its `serial`. Returns 400 if the request body is invalid, the name isn't an identifier, the URL isn't an `http` or `https` URL with a host, or a pattern isn't a regular expression, or 409 if a connector with that name exists already.
+Create a connector, with its `url`, its `name`, which is the server's own, as it says once it's connected, or as the metadata of how it's authorized says, when it needs to be, or else the host of its URL, when it's omitted, as an identifier, such as `github-mcp-server`, with a number, such as `github-mcp-server-2`, when that's another connector's, its `include` and `exclude` patterns, and its `client_id` and `client_secret`, when it has them. Returns the created connector, with its `serial`. Returns 400 if the request body is invalid, the name isn't an identifier, the URL isn't an `http` or `https` URL with a host, or a pattern isn't a regular expression, or 409 if a connector with that name exists already.
 
 ### GET /mcp/connector/{name}
 

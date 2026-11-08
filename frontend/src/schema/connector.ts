@@ -29,22 +29,3 @@ export interface ConnectorList {
     count: number;
     body?: Connector[];
 }
-
-// connectorName returns a connector's name, from the host of its URL, such
-// as seolinkmap for https://seolinkmap.com/mcp, or mcp.example for
-// https://mcp.example.com, as an identifier, which starts with a letter, or
-// mcp, when there's nothing of it which can be one
-export function connectorName(url: string): string {
-    let host = '';
-    try {
-        host = new URL(url.trim()).hostname.toLowerCase();
-    } catch {
-        // Not a URL, which the server says
-    }
-    const labels = host.split('.').filter((label) => label !== '' && label !== 'www');
-    if (labels.length > 1) {
-        labels.pop();
-    }
-    const name = labels.join('-').replace(/[^a-z0-9_-]/g, '').replace(/^[^a-z]+/, '').slice(0, 60);
-    return name || 'mcp';
-}
