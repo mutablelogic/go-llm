@@ -482,6 +482,8 @@ env -u OPENAI_API_KEY -u MISTRAL_API_KEY -u ANTHROPIC_API_KEY -u GEMINI_API_KEY 
 
 - **Authentication and authorization** across the API, web UI, CLI, connectors and channels: sign-in with OIDC or API tokens, and roles or scopes for what each person or client can do.
 - **A database, and more than one server:** shared providers, sessions, agents, memory, heartbeats and resources.
+- **External volumes for resources:** mount folders, such as from your own filesystem, so their files are resources the assistant can read.
+- **Usage:** account for each session's use, in tokens, time or cost.
 
 ### Providers
 
