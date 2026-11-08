@@ -92,7 +92,7 @@ func (m ConnectorMeta) Validate() error {
 		return llm.ErrBadParameter.Withf("url %q: %v", m.URL, err)
 	} else if u.Scheme != "http" && u.Scheme != "https" {
 		return llm.ErrBadParameter.Withf("url %q isn't http, or https", m.URL)
-	} else if u.Host == "" {
+	} else if u.Hostname() == "" {
 		return llm.ErrBadParameter.Withf("url %q has no host", m.URL)
 	}
 	_, err = m.Matcher()

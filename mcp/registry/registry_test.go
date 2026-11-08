@@ -83,7 +83,7 @@ func Test_Servers(t *testing.T) {
 	// which isn't a remote connector's
 	_, err = r.CreateConnector(ctx, connector("search", "https://mcp.example.com/other"))
 	assert.ErrorIs(t, err, llm.ErrConflict)
-	for _, s := range []schema.Connector{connector("9lives", "https://mcp.example.com"), connector("", "https://mcp.example.com"), connector("local", "stdio://connector"), connector("local", "/usr/bin/connector"), connector("local", "https:///mcp")} {
+	for _, s := range []schema.Connector{connector("9lives", "https://mcp.example.com"), connector("", "https://mcp.example.com"), connector("local", "stdio://connector"), connector("local", "/usr/bin/connector"), connector("local", "https:///mcp"), connector("local", "https://:443/mcp")} {
 		_, err = r.CreateConnector(ctx, s)
 		assert.ErrorIs(t, err, llm.ErrBadParameter, s.String())
 	}

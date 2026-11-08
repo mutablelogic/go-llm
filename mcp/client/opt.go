@@ -69,10 +69,13 @@ func (o *opt) defaults() {
 // schema.DefaultVersion. The version can be empty.
 func WithName(name, version string) Opt {
 	return func(o *opt) error {
-		if name = strings.TrimSpace(name); name == "" {
+		// Trimmed into its own, so the option can be used more than once,
+		// at once
+		name, version := strings.TrimSpace(name), strings.TrimSpace(version)
+		if name == "" {
 			return llm.ErrBadParameter.With("name is required")
 		}
-		o.name, o.version = name, strings.TrimSpace(version)
+		o.name, o.version = name, version
 		return nil
 	}
 }

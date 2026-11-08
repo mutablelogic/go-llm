@@ -59,7 +59,7 @@ func New(endpoint string, opts ...Opt) (*Client, error) {
 		return nil, llm.ErrBadParameter.Withf("url %q: %v", endpoint, err)
 	} else if u.Scheme != "http" && u.Scheme != "https" {
 		return nil, llm.ErrBadParameter.Withf("url %q isn't http, or https", endpoint)
-	} else if u.Host == "" {
+	} else if u.Hostname() == "" {
 		return nil, llm.ErrBadParameter.Withf("url %q has no host", endpoint)
 	}
 
@@ -69,8 +69,10 @@ func New(endpoint string, opts ...Opt) (*Client, error) {
 		return nil, err
 	}
 
-	// Create go-client's client, for the server, with its options
-	httpClient, err := client.New(append([]client.ClientOpt{client.OptEndpoint(u.String())}, o.clientopts...)...)
+	// Create go-client's client, for the server, with its options, and its
+	// endpoint last, so an option can't change it, as the SDK's requests are
+	// to the URL
+	httpClient, err := client.New(append(o.clientopts, client.OptEndpoint(u.String()))...)
 	if err != nil {
 		return nil, err
 	}

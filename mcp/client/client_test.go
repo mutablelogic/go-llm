@@ -24,7 +24,7 @@ func Test_New(t *testing.T) {
 		assert.NotNil(t, c.Client)
 
 		// And not a command, or a path
-		for _, endpoint := range []string{"", "mcp.example.com", "/mcp", "stdio://server", "file:///usr/bin/server", "https:///mcp", "http://%zz"} {
+		for _, endpoint := range []string{"", "mcp.example.com", "/mcp", "stdio://server", "file:///usr/bin/server", "https:///mcp", "https://:443/mcp", "http://%zz"} {
 			_, err := New(endpoint, WithName("test", ""))
 			assert.ErrorIs(t, err, llm.ErrBadParameter, endpoint)
 		}
