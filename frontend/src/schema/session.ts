@@ -55,6 +55,18 @@ export interface Message {
     result?: string;
     time?: string;
     event?: MessageEvent;
+    marker?: Marker;
+}
+
+// Marker marks where a conversation's context starts, as it was compacted,
+// with a summary of what came before it, which is written in the background
+export interface Marker {
+    id: string;
+    reason: 'asked' | 'full';
+    status: 'pending' | 'summarized' | 'failed';
+    summary?: string;
+    title?: string;
+    error?: string;
 }
 
 // MessageEvent is the event, such as a heartbeat which fired, whose outcome

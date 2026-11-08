@@ -49,6 +49,10 @@ type opt struct {
 	// The function which is called with each reply which Chat adds to a
 	// session, such as to send it to the session's channels
 	replies ReplyFunc
+
+	// The namespaces whose tools, which a session has, the compact agent is
+	// given, as it summarises it, such as memory
+	compactTools []string
 }
 
 // ReplyFunc is called with the session, and its model's reply, once Chat
@@ -97,6 +101,7 @@ func (o *opt) defaults() {
 	o.timesFor = nil
 	o.timesZone = nil
 	o.replies = nil
+	o.compactTools = nil
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -254,6 +259,17 @@ func WithTimes(zone func() *time.Location, namespaces ...string) Opt {
 func WithReplies(fn ReplyFunc) Opt {
 	return func(o *opt) error {
 		o.replies = fn
+		return nil
+	}
+}
+
+// WithCompactTools sets the namespaces, such as memory, whose tools the
+// compact agent is given, as it summarises a session, when the session has
+// them, so it can remember what's worth remembering, update what's out of
+// date, and forget what was asked to be forgotten, as it reads it
+func WithCompactTools(namespaces ...string) Opt {
+	return func(o *opt) error {
+		o.compactTools = slices.Clone(namespaces)
 		return nil
 	}
 }

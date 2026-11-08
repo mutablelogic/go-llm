@@ -34,6 +34,7 @@ func sessionHandlers(r *registry.Registry, router *httprouter.Router, documentat
 		sessionCreateListHandlers(r, router, documentation),
 		sessionGetUpdateDeleteHandlers(r, router, documentation),
 		sessionMessagesHandlers(r, router, documentation),
+		sessionCompactHandlers(r, router, documentation),
 		sessionStatusHandlers(r, router, documentation),
 	)
 }
@@ -190,6 +191,33 @@ func sessionGetUpdateDeleteHandlers(reg *registry.Registry, router *httprouter.R
 			op.ErrorResponse(http.StatusBadRequest, "The identifier isn't a UUID")
 			op.ErrorResponse(http.StatusNotFound, "Session not found")
 			op.ErrorResponse(http.StatusConflict, "The session was changed as it was deleted")
+			op.ErrorResponse(http.StatusServiceUnavailable, "The server has no session store")
+		})
+	})
+}
+
+func sessionCompactHandlers(reg *registry.Registry, router *httprouter.Router, documentation *openapi.MarkdownDoc) error {
+	return router.Register("llm/session/{id}/compact", jsonschema.MustFor[sessionID](), func(path httprequest.PathItem) {
+		path.Tag("Sessions")
+
+		// POST, adding a marker, after which its context starts
+		path.Post(func(w http.ResponseWriter, r *http.Request) {
+			id, err := pathSessionID(r)
+			if err != nil {
+				httpresponse.Error(w, err)
+			} else if session, err := reg.CompactSession(r.Context(), id); err != nil {
+				httpresponse.Error(w, llm.HTTPErr(err), id.String())
+			} else {
+				httpresponse.JSON(w, http.StatusOK, httprequest.Indent(r), session)
+			}
+		}, func(op httprequest.PathOperation) {
+			op.Summary("Compact Session")
+			op.Description(documentation.Section(3, "POST /llm/session/{id}/compact").Body)
+			op.JSONResponse(http.StatusOK, jsonschema.MustFor[schema.Session](), "The session, without its messages")
+			op.ErrorResponse(http.StatusBadRequest, "An identifier which isn't a UUID, or no messages since it was last compacted")
+			op.ErrorResponse(http.StatusForbidden, "The session is an event's")
+			op.ErrorResponse(http.StatusNotFound, "Session not found")
+			op.ErrorResponse(http.StatusConflict, "Its last summary is still being written")
 			op.ErrorResponse(http.StatusServiceUnavailable, "The server has no session store")
 		})
 	})

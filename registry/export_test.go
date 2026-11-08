@@ -48,3 +48,10 @@ func (r *Registry) SetDelivery(idle, maxWait, alertWait, poll time.Duration) {
 	r.delivery = defaultDelivery
 	r.delivery.idle, r.delivery.maxWait, r.delivery.alertWait, r.delivery.poll = idle, maxWait, alertWait, poll
 }
+
+// Summarizing marks the marker's summary as being written, as it is while
+// it's written in the background, until the function it returns is called
+func (r *Registry) Summarizing(marker uuid.UUID) func() {
+	r.summarizing.Store(marker, struct{}{})
+	return func() { r.summarizing.Delete(marker) }
+}

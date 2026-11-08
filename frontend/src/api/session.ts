@@ -18,6 +18,12 @@ export function listMessages(id: string, signal?: AbortSignal): Promise<MessageL
     return request<MessageList>('GET', `/llm/session/${id}/messages`, { signal });
 }
 
+// compactSession compacts the session: its context starts at a marker,
+// whose summary of what came before is written in the background
+export function compactSession(id: string): Promise<Session> {
+    return request<Session>('POST', `/llm/session/${id}/compact`);
+}
+
 // createSession creates a session with the settings
 export function createSession(meta: SessionMeta): Promise<Session> {
     return request<Session>('POST', '/llm/session', { body: meta });

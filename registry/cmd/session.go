@@ -20,13 +20,14 @@ import (
 // TYPES
 
 type SessionCommands struct {
-	SessionList   SessionListCmd   `cmd:"" name:"sessions" help:"List the sessions, most recently modified first." group:"LLM SESSIONS"`
-	SessionGet    SessionGetCmd    `cmd:"" name:"session" help:"Get a session, and make it the default." group:"LLM SESSIONS"`
-	SessionMsgs   SessionMsgsCmd   `cmd:"" name:"session-messages" help:"List a session's messages, oldest first." group:"LLM SESSIONS"`
-	SessionCreate SessionCreateCmd `cmd:"" name:"session-create" help:"Create a session, and make it the default." group:"LLM SESSIONS"`
-	SessionUpdate SessionUpdateCmd `cmd:"" name:"session-update" help:"Change a session's settings. An empty value clears one, and --opt key=null removes an option." group:"LLM SESSIONS"`
-	SessionForget SessionForgetCmd `cmd:"" name:"session-forget" help:"Forget a session's messages, keeping its settings, so its conversation starts again." group:"LLM SESSIONS"`
-	SessionDelete SessionDeleteCmd `cmd:"" name:"session-delete" help:"Delete a session." group:"LLM SESSIONS"`
+	SessionList    SessionListCmd    `cmd:"" name:"sessions" help:"List the sessions, most recently modified first." group:"LLM SESSIONS"`
+	SessionGet     SessionGetCmd     `cmd:"" name:"session" help:"Get a session, and make it the default." group:"LLM SESSIONS"`
+	SessionMsgs    SessionMsgsCmd    `cmd:"" name:"session-messages" help:"List a session's messages, oldest first." group:"LLM SESSIONS"`
+	SessionCreate  SessionCreateCmd  `cmd:"" name:"session-create" help:"Create a session, and make it the default." group:"LLM SESSIONS"`
+	SessionUpdate  SessionUpdateCmd  `cmd:"" name:"session-update" help:"Change a session's settings. An empty value clears one, and --opt key=null removes an option." group:"LLM SESSIONS"`
+	SessionForget  SessionForgetCmd  `cmd:"" name:"session-forget" help:"Forget a session's messages, keeping its settings, so its conversation starts again." group:"LLM SESSIONS"`
+	SessionCompact SessionCompactCmd `cmd:"" name:"session-compact" help:"Compact a session: its context starts at a marker, and a summary of what came before is written in the background." group:"LLM SESSIONS"`
+	SessionDelete  SessionDeleteCmd  `cmd:"" name:"session-delete" help:"Delete a session." group:"LLM SESSIONS"`
 }
 
 type SessionListCmd struct {
@@ -74,6 +75,11 @@ type SessionForgetCmd struct {
 
 type SessionDeleteCmd struct {
 	ID uuid.UUID `arg:"" name:"id" help:"Session identifier, which is a UUID."`
+}
+
+// SessionCompactCmd compacts a session, or the default session
+type SessionCompactCmd struct {
+	ID uuid.UUID `arg:"" name:"id" optional:"" help:"Session identifier, which is a UUID, or the default session."`
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -184,6 +190,22 @@ func (cmd *SessionUpdateCmd) Run(ctx server.Cmd) error {
 		}
 		fmt.Println(session)
 		return ctx.Set(defaultSessionKey, session.ID.String())
+	})
+}
+
+// Run compacts the session, and prints it
+func (cmd *SessionCompactCmd) Run(ctx server.Cmd) error {
+	id, err := sessionID(ctx, cmd.ID)
+	if err != nil {
+		return err
+	}
+	return withClient(ctx, "llm.SessionCompactCmd", func(reqctx context.Context, client *httpclient.Client) error {
+		session, err := client.CompactSession(reqctx, id)
+		if err != nil {
+			return err
+		}
+		fmt.Println(session)
+		return nil
 	})
 }
 

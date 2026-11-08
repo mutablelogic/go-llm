@@ -56,6 +56,9 @@ type Registry struct {
 	delivery   delivery
 	delivering sync.Map
 
+	// The markers whose summaries are being written, by their identifiers
+	summarizing sync.Map
+
 	// The logger Run is given, which what runs in the background, such as
 	// delivering events, logs to
 	logger atomic.Pointer[slog.Logger]

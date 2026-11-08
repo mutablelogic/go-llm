@@ -19,6 +19,7 @@ import (
 var examples = map[string]string{
 	"translate": `{"text":"Guten Morgen"}`,
 	"event":     `{"title":"Morning briefing","prompt":"Give David the weather in Berlin today","context":"Now: Friday, 6 November 2026, 08:00, Europe/Berlin"}`,
+	"compact":   `{"transcript":"[user] What's the weather in Berlin?\n[assistant] It's 4°C, and cloudy.","summary":"David is planning a trip.","title":"Trip"}`,
 }
 
 func Test_Agents(t *testing.T) {
@@ -85,7 +86,7 @@ func Test_All(t *testing.T) {
 	for _, meta := range all {
 		names = append(names, meta.Name)
 	}
-	assert.Equal(t, []string{"event", "translate"}, names)
+	assert.Equal(t, []string{"compact", "event", "translate"}, names)
 }
 
 func Test_Event(t *testing.T) {

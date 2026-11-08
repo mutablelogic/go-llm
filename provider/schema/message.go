@@ -17,7 +17,7 @@ import (
 // user's when omitted, and its content. It uses a universal content block
 // representation that can be marshaled to any provider's format.
 type MessageMeta struct {
-	Sender  string         `json:"role,omitempty" help:"Message role, which is user when omitted" enum:"user,assistant,system,thinking,tool" example:"user" optional:""`
+	Sender  string         `json:"role,omitempty" help:"Message role, which is user when omitted" enum:"user,assistant,system,thinking,tool,context" example:"user" optional:""`
 	Content []ContentBlock `json:"content" help:"Structured content blocks that make up the message" example:"[{\"text\":\"Unit tests catch regressions early and make refactoring safer.\"}]"`
 }
 
@@ -30,7 +30,36 @@ type Message struct {
 	Result ResultType `json:"result,omitempty" help:"Why the model stopped generating the message" enum:"stop,max_tokens,blocked,tool_call,error,other,max_iterations,max_context" example:"stop"`
 	Time   time.Time  `json:"time,omitzero" readonly:"" help:"When the message was added to the conversation, which the registry sets"`
 	Event  *Event     `json:"event,omitempty" readonly:"" help:"The event, such as a heartbeat, whose outcome the message is, which the registry delivers to the conversation it's for"`
+	Marker *Marker    `json:"marker,omitempty" readonly:"" help:"Where the conversation's context starts, which a message of the context role is, with a summary of what came before it, which the registry adds as the conversation is compacted"`
 }
+
+// Marker marks where a conversation's context starts, as it was compacted:
+// the messages before it are kept, and shown, but aren't sent to a model,
+// which is sent a summary of them, once it's written, which is written in
+// the background, and a title for the conversation, as it is
+type Marker struct {
+	ID      uuid.UUID    `json:"id" help:"The marker's identifier"`
+	Reason  string       `json:"reason" help:"Why the conversation was compacted: asked, when it was asked to be, or full, when its context was nearly full" enum:"asked,full" example:"asked"`
+	Status  MarkerStatus `json:"status" help:"Whether its summary is being written, was written, or couldn't be" enum:"pending,summarized,failed" example:"summarized"`
+	Summary string       `json:"summary,omitempty" help:"A summary of the conversation before it, which is sent to the model in its place"`
+	Title   string       `json:"title,omitempty" help:"A title for the conversation, as it is, which is its title"`
+	Error   string       `json:"error,omitempty" help:"Why its summary couldn't be written"`
+}
+
+// MarkerStatus is whether a marker's summary is being written, was written,
+// or couldn't be
+type MarkerStatus string
+
+// The statuses of a marker's summary, and the role of a marker's message
+const (
+	MarkerPending    MarkerStatus = "pending"    // Its summary is being written
+	MarkerSummarized MarkerStatus = "summarized" // Its summary was written
+	MarkerFailed     MarkerStatus = "failed"     // Its summary couldn't be written
+
+	// RoleContext is the role of a marker's message, which isn't sent to a
+	// model
+	RoleContext = "context"
+)
 
 // Event is the event, such as a heartbeat which fired, whose outcome a
 // message is

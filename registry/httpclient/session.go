@@ -55,6 +55,17 @@ func (c *Client) ForgetSessionMessages(ctx context.Context, id uuid.UUID) (*sche
 	return &response, nil
 }
 
+// CompactSession compacts the session with the identifier: its context
+// starts at a marker, whose summary of what came before is written in the
+// background, and returns it
+func (c *Client) CompactSession(ctx context.Context, id uuid.UUID) (*schema.Session, error) {
+	var response schema.Session
+	if err := c.DoWithContext(ctx, client.MethodPost, &response, client.OptPath("llm", "session", id.String(), "compact")); err != nil {
+		return nil, err
+	}
+	return &response, nil
+}
+
 // CreateSession creates a session with the settings, and no messages, and
 // returns it
 func (c *Client) CreateSession(ctx context.Context, meta schema.SessionMeta) (*schema.Session, error) {

@@ -40,7 +40,18 @@ func (r *Registry) WithSession(ctx context.Context, session schema.Session, mess
 		attribute.Int("arg.messages", len(messages)),
 	)
 	defer func() { endSpan(err) }()
-	meta, earlier := session.GeneratorMeta, session.Messages
+	meta := session.GeneratorMeta
+
+	// The conversation, since it was last compacted, and the summary of what
+	// came before, which is in the system prompt, in its place
+	earlier, summary := contextOf(session.Messages)
+	if summary != "" {
+		system := strings.TrimSpace(types.Value(meta.System))
+		if system != "" {
+			system += "\n\n"
+		}
+		meta.System = types.Ptr(system + summaryPrompt + summary)
+	}
 
 	// The model, and the conversation, of the session's messages and the
 	// messages

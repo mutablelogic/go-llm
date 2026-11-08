@@ -8,7 +8,7 @@
 // such as when the browser is opened. A question is sent with the resources
 // which are attached to it, which the resources controller keeps.
 
-import { chat, createSession, deleteSession, getSession, listMessages, listSessions, setStatus, updateSession } from '../api/session';
+import { chat, createSession, deleteSession, getSession, listMessages, listSessions, setStatus, updateSession, compactSession } from '../api/session';
 import { getDetails } from '../api/memory';
 import { listModels } from '../api/model';
 import { cannot, type Model } from '../schema/model';
@@ -122,6 +122,7 @@ export class ChatController {
         });
         views.list?.addEventListener(SessionList.eventDelete, () => void this.delete());
         views.list?.addEventListener(SessionList.eventEdit, () => void this.edit());
+        views.list?.addEventListener(SessionList.eventCompact, () => void this.compact());
         views.create?.addEventListener(NewSession.eventSave, (e) => void this.save((e as CustomEvent<SessionMeta>).detail));
         views.view?.addEventListener(ChatView.eventSend, (e) => void this.send((e as CustomEvent<string>).detail));
         views.view?.addEventListener(ChatView.eventTyping, () => this.typing());
@@ -488,6 +489,22 @@ export class ChatController {
         } catch (error) {
             create.models = [];
             this.notifications.error("Models couldn't be loaded", error);
+        }
+    }
+
+    // compact compacts the chat which is open: its earlier messages are
+    // summarised, in the background, and are kept, but no longer sent to its
+    // model, which its messages show, once its session changes
+    private async compact() {
+        const session = this.session;
+        if (!session) {
+            return;
+        }
+        try {
+            await compactSession(session.id);
+            this.notifications.push({ kind: 'info', title: 'Compacting the chat', subtitle: 'Its earlier messages are being summarised' });
+        } catch (error) {
+            this.notifications.error("The chat couldn't be compacted", error);
         }
     }
 
