@@ -37,10 +37,10 @@ Then open [http://localhost:8084/](http://localhost:8084/):
 - **Connectors:** GitHub, Asana, Harvey, HubSpot, PagerDuty and Zoom are offered under **Add connector** when go-llm starts with your OAuth app's credentials for them, such as `GITHUB_CLIENT_ID` and `GITHUB_CLIENT_SECRET`. The other well-known connectors need none. See [Connectors](#connectors).
 - **`UID` and `GID`** set the user it runs as, such as the owner of a mounted `/data` directory.
 
-Or use Docker Compose. The [compose file](docker/compose.yaml) lists every variable the server reads, and its `ollama` profile adds an Ollama server. It publishes the port on `localhost` only, unless `LLM_BIND` says otherwise:
+Or use Docker Compose. The [compose file](docker/compose.yaml) lists every variable the server reads, and its `ollama` profile adds an Ollama server. Set `OLLAMA_ADDR` too, so go-llm adds that server as a provider. The port is published on `localhost` only, unless `LLM_BIND` says otherwise:
 
 ```bash
-docker compose -f docker/compose.yaml --profile ollama up -d
+OLLAMA_ADDR=http://ollama:11434 docker compose -f docker/compose.yaml --profile ollama up -d
 ```
 
 ### 2. Install the command-line tool
@@ -309,7 +309,9 @@ Connectors are remote MCP servers whose tools your assistant can call. Each conn
 
 - **Adding one:** in the web UI, use **Add connector** on the Tools page. It lists well-known servers such as GitHub, Linear, Notion and Stripe, plus **Custom connector** for any URL. From the CLI, run `llm connector-create <url>`.
 - **Signing in:** if the server needs sign-in, you'll get a **Sign in** button, or the CLI opens your browser. The server keeps the token and refreshes it.
-- **Your own client:** some servers, such as GitHub's, don't register clients themselves. For those, set your OAuth app's ID and secret in the server's environment, such as `GITHUB_CLIENT_ID` and `GITHUB_CLIENT_SECRET`. Register the redirect URL that the connector panel's Advanced section shows.
+- **Your own client:** some servers, such as GitHub's, don't register clients themselves. For those, set your OAuth app's ID and secret in the server's environment, such as `GITHUB_CLIENT_ID` and `GITHUB_CLIENT_SECRET`, and register the redirect URL that the connector panel's Advanced section shows with your app.
+  - A well-known server's connector, from **Add connector**, already has the names of those credentials.
+  - A custom connector needs them: in the panel's **Advanced** section, or with `llm connector-create --client-id-credential GITHUB_CLIENT_ID --client-secret-credential GITHUB_CLIENT_SECRET <url>`.
 - **Behind a reverse proxy:** run the server with `--tls.name=<public host>`, so sign-in sends browsers back to the public address.
 - **Storage:** connectors and their tokens are kept in `connectors.json`. Only remote servers, over streamable HTTP or SSE, are supported.
 
@@ -323,7 +325,7 @@ Tools are added when their credentials or settings are present:
 |-----------|-------|-------|
 | `memory` | Remember details about the person and the assistant; search, keep and forget memories | Always added |
 | `heartbeat` | Schedule, list, update and cancel heartbeats | Always added |
-| `llm` | `models`, `speak`, `illustrate`, `ocr`, `transcribe` and `resource`: list models by capability, speak, make images, read documents, transcribe, and list or read the chat's files as Markdown. Results are kept as the chat's files. | Always added |
+| `llm` | `models`, `speak`, `illustrate`, `ocr`, `transcribe` and `resource`: list models by capability, speak, make images, read documents, transcribe, and list or read the chat's files as Markdown | Always added |
 | `weatherapi` | Current weather, forecasts and alerts | `WEATHERAPI_API_KEY`, from [weatherapi.com](https://www.weatherapi.com/signup.aspx) |
 | `newsapi` | News articles, headlines and sources | `NEWSAPI_API_KEY`, from [newsapi.org](https://newsapi.org/register) |
 | `homeassistant` | Query, search and control smart home devices | `HOMEASSISTANT_URL`, `HOMEASSISTANT_API_KEY` |
@@ -337,6 +339,7 @@ Notes on the `llm` tools:
 
 - **Preferred models:** each tool uses the model the person chose for that capability, which it remembers in the memory as `preferred_models`, or asks them to choose.
 - **Voice notes:** `speak` with `format: voice-note` makes Ogg Opus voice notes, for Telegram. Models that can't make them need `opusenc`, from [opus-tools](https://opus-codec.org/downloads/), which the Docker image includes.
+- **Files they make:** speech and images are kept as the chat's files. OCR text is only kept when a `name` or `title` is given. A transcript is only kept when a `format`, `name` or `title` is given, or it's longer than 8 KB, when only its start is returned and the rest is read with `resource`.
 - **Reading files:** `resource` reads text, HTML, CSV, PDFs, Word, OpenDocument, EPUB, spreadsheets, emails, calendars, subtitles and more, with [go-metadata](https://github.com/mutablelogic/go-metadata). It reads a part at a time, carrying on where the last part ended.
 
 ## Messaging
