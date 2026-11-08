@@ -101,24 +101,23 @@ export class ToolsController extends ListController<Tool> {
     // server at, which redirects back to the server, which connects it, so
     // its event shows it's connected
     private signIn(name: string) {
-        const tab = window.open('about:blank', '_blank');
-        if (tab) {
-            // The sign-in page can't reach back to this one
-            tab.opener = null;
-        }
-        void (async () => {
-            try {
-                const url = await authorizeConnector(name);
-                if (tab && !tab.closed) {
-                    tab.location.href = url;
-                } else {
-                    window.open(url, '_blank', 'noopener');
-                }
-            } catch (error) {
-                tab?.close();
-                this.notifications.error(`${name} can't be signed in to`, error);
+        void this.authorize(openTab(), name);
+    }
+
+    // authorize sends the tab to the URL the person signs in to the
+    // connector's server at, or closes it, and says why, when it can't be
+    private async authorize(tab: Window | null, name: string) {
+        try {
+            const url = await authorizeConnector(name);
+            if (tab && !tab.closed) {
+                tab.location.href = url;
+            } else {
+                window.open(url, '_blank', 'noopener');
             }
-        })();
+        } catch (error) {
+            tab?.close();
+            this.notifications.error(`${name} can't be signed in to`, error);
+        }
     }
 
     // editConnector opens the panel, to edit the connector, as it is
@@ -134,16 +133,25 @@ export class ToolsController extends ListController<Tool> {
 
     // saveConnector updates the connector which is edited, and shows the
     // tools of its namespace, as it is now, or says why it couldn't be, in
-    // the panel, when it's still editing it
+    // the panel, when it's still editing it. One which needs to be signed in
+    // to is signed in to, once it's saved, in a tab, which is opened at
+    // once, as it's a click, and the panel waits for it to be connected
     private async saveConnector(meta: ConnectorMeta) {
         const form = this.views.connector;
         const item = form?.item;
         if (!form || item?.mode !== 'edit') {
             return;
         }
+        const tab = needsSignIn(item.connector) ? openTab() : undefined;
         form.connecting = true;
         try {
             const connector = await updateConnector(item.connector.name, meta);
+            if (tab !== undefined && !connector.connected) {
+                void this.refresh();
+                await this.authorize(tab, connector.name);
+                return;
+            }
+            tab?.close();
             this.notifications.push({ kind: 'success', title: `${connector.name} was saved` });
             void this.refresh();
             if (form.item === item) {
@@ -153,6 +161,7 @@ export class ToolsController extends ListController<Tool> {
                 }
             }
         } catch (error) {
+            tab?.close();
             if (form.item === item) {
                 form.error = error instanceof Error ? error.message : String(error);
             }
@@ -507,4 +516,15 @@ export class ToolsController extends ListController<Tool> {
             view.tool = this.selected;
         }
     }
+}
+
+// openTab opens a blank tab, at once, as a click opens it, which a browser
+// blocks once it's waited for a request, which the sign-in page is sent to,
+// once its URL is got, and which can't reach back to this page
+function openTab(): Window | null {
+    const tab = window.open('about:blank', '_blank');
+    if (tab) {
+        tab.opener = null;
+    }
+    return tab;
 }
