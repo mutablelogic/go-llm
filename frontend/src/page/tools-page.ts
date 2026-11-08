@@ -1,7 +1,7 @@
-// The page of the tools, and the agents, which models can call, with an
-// action which adds an MCP connector, whose tools are added, when every
-// tool is shown, and, when the agents are shown, one which starts a new
-// agent
+// The page of the tools, and the agents, which models can call, with a menu
+// which adds a connector, whose tools are added, such as a custom one, by
+// its URL, when every tool is shown, and, when the agents are shown, an
+// action which starts a new agent
 
 import { html, nothing } from 'lit';
 import { customElement, property } from 'lit/decorators.js';
@@ -12,11 +12,13 @@ import { Page } from './page';
 
 // Carbon components
 import '@carbon/web-components/es/components/button/index.js';
+import '@carbon/web-components/es/components/menu-button/index.js';
+import '@carbon/web-components/es/components/menu/index.js';
 
 @customElement('llm-tools-page')
 export class ToolsPage extends Page {
-    // The names of the events fired to start a new agent, and to add an MCP
-    // connector
+    // The names of the events fired to start a new agent, and to add a
+    // connector, of the kind which is the detail, such as custom
     static readonly eventNewAgent = 'llm-tools-page-new-agent';
     static readonly eventAddConnector = 'llm-tools-page-add-connector';
 
@@ -40,9 +42,12 @@ export class ToolsPage extends Page {
                 </cds-button>
             ` : nothing}
             ${this.namespace ? nothing : html`
-                <cds-button kind="primary" size="md" @click=${() => this.dispatchEvent(new CustomEvent(ToolsPage.eventAddConnector))}>
-                    Add MCP connector ${iconLoader(Add16, { slot: 'icon' })}
-                </cds-button>
+                <cds-menu-button label="Add connector" kind="primary" size="md">
+                    <cds-menu size="md">
+                        <cds-menu-item label="Custom connector"
+                            @click=${() => this.dispatchEvent(new CustomEvent(ToolsPage.eventAddConnector, { detail: 'custom' }))}></cds-menu-item>
+                    </cds-menu>
+                </cds-menu-button>
             `}
         `;
     }

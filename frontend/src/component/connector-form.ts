@@ -1,4 +1,4 @@
-// A panel which adds an MCP connector: the URL of a remote MCP server, and
+// A panel which adds a custom connector: the URL of a remote MCP server, and
 // the patterns of the names of its tools which are included, and excluded.
 // It fires an event with them, as Connect is clicked, and shows that it's
 // connecting, and why it couldn't connect, such as that the server can't be
@@ -79,11 +79,11 @@ export class ConnectorForm extends Panel<ConnectorFormItem> {
     }
 
     protected renderTitle() {
-        return 'Add MCP connector';
+        return 'Add custom connector';
     }
 
     protected renderSubtitle() {
-        return "A remote MCP server, whose tools the assistant can call, once it's connected";
+        return "A server, by its URL, whose tools the assistant can call, once it's connected";
     }
 
     protected renderBody() {
@@ -120,7 +120,7 @@ export class ConnectorForm extends Panel<ConnectorFormItem> {
         }
         const url = this.urlInput?.value.trim() ?? '';
         if (!url) {
-            this.error = "The MCP server's URL is needed";
+            this.error = "The server's URL is needed";
             return;
         }
         const meta: ConnectorMeta = {
