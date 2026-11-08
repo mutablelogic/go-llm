@@ -320,7 +320,9 @@ export class ToolsController extends ListController<Tool> {
         if (namespaces) {
             namespaces.tiles = this.namespaces && [
                 { label: 'All', count: this.namespaces.reduce((sum, namespace) => sum + namespace.tools, 0) },
-                ...this.namespaces.map((namespace) => ({ value: namespace.name, label: namespace.name, count: namespace.tools, title: namespace.description })),
+                // A connector's namespace has its type as a badge, as a
+                // provider has, but built in ones, and the agents', don't
+                ...this.namespaces.map((namespace) => ({ value: namespace.name, label: namespace.name, badge: namespace.type === 'mcp' ? namespace.type : undefined, count: namespace.tools, title: namespace.description })),
             ];
             namespaces.selected = this.namespace;
         }
