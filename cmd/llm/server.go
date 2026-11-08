@@ -219,7 +219,7 @@ func (runner *RunServer) withToolkit(ctx server.Cmd, b *broadcaster.Broadcaster,
 		// Messaging, when a provider's credentials are set, such as
 		// Telegram's, whose chats are connected to sessions, as channels,
 		// and whose tools connect them
-		m, err := newServerMessaging(ctx, tools, events, res, messaging.WithBroadcaster(b), messaging.WithFiles(openFile(res)), messaging.WithSessions(func(ctx context.Context, id uuid.UUID) error {
+		m, err := newServerMessaging(ctx, tools, events, res, func() *time.Location { return mem.Details().Zone() }, messaging.WithBroadcaster(b), messaging.WithFiles(openFile(res)), messaging.WithSessions(func(ctx context.Context, id uuid.UUID) error {
 			_, err := sessions.Get(ctx, id)
 			return err
 		}))

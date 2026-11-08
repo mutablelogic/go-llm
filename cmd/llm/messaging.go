@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync/atomic"
+	"time"
 	"uuid"
 
 	// Packages
@@ -88,7 +89,7 @@ func (s *channelStore) Save(_ context.Context, channels []schema.Channel) error 
 // their channel's session, by the registry, once it's made, or nil, when no
 // provider's credentials are set, or the providers can't be reached, which
 // is logged
-func newServerMessaging(ctx server.Cmd, tools *toolkit.Toolkit, sessions *atomic.Pointer[registry.Registry], res *resource.Manager, opts ...messaging.Opt) (*messaging.Messaging, error) {
+func newServerMessaging(ctx server.Cmd, tools *toolkit.Toolkit, sessions *atomic.Pointer[registry.Registry], res *resource.Manager, zone func() *time.Location, opts ...messaging.Opt) (*messaging.Messaging, error) {
 	token, err := tools.Credential(ctx.Context(), TelegramCredential)
 	if err != nil {
 		ctx.Logger().WarnContext(ctx.Context(), "messaging not added, as its credential can't be read", "provider", telegram.Name, "credential", TelegramCredential, "error", err.Error())
@@ -100,6 +101,10 @@ func newServerMessaging(ctx server.Cmd, tools *toolkit.Toolkit, sessions *atomic
 		return nil, nil
 	}
 	ctx.Logger().InfoContext(ctx.Context(), "messaging provider added", "provider", telegram.Name, "bot", bot.Username())
+
+	// The files sent without names are named after when they were sent, in
+	// the person's time zone
+	bot.SetLocation(zone)
 
 	dir, err := serverDir(ctx)
 	if err != nil {

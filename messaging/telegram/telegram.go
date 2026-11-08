@@ -28,6 +28,7 @@ import (
 type Telegram struct {
 	client   *client.Client
 	username string
+	zone     func() *time.Location
 
 	// The identifier of the next update, which only Receive changes
 	offset int64
@@ -343,24 +344,39 @@ func (t *Telegram) toMessage(ctx context.Context, group []*message) (messaging.M
 	}
 	result.Code = startCode(m.Text)
 
-	// The files sent with it, and the others of its album, which are
-	// downloaded once they're opened, so a chat which isn't connected has
-	// nothing downloaded, apart from those which are too large for a bot to
-	// download, which say so
+	// The files sent with it, and the others of its album, named after
+	// when they were sent, in the person's time zone, unless they were sent
+	// with names, which are downloaded once they're opened, so a chat which
+	// isn't connected has nothing downloaded, apart from those which are
+	// too large for a bot to download, which say so
+	var all []attachment
 	for _, other := range group {
-		for _, a := range attachments(other) {
-			attachment := messaging.Attachment{Name: a.Name, Type: a.Type, Size: a.Size, Description: a.Description}
-			if result.Caption {
-				// The caption of an album is of all its files
-				attachment.Description = describe(result.Text, a.Description)
-			}
-			if a.Size > maxDownload {
-				attachment.Unavailable = fmt.Sprintf("it's too large (%s), as a bot can only download files of up to 20 MB", megabytes(a.Size))
-			} else {
-				attachment.Open = t.opener(a.fileID)
-			}
-			result.Attachments = append(result.Attachments, attachment)
+		all = append(all, attachments(other)...)
+	}
+	count := make(map[string]int)
+	for _, a := range all {
+		count[a.label]++
+	}
+	numbers := make(map[string]int)
+	sent := result.Time.In(t.location())
+	for _, a := range all {
+		number := 0
+		if count[a.label] > 1 {
+			numbers[a.label]++
+			number = numbers[a.label]
 		}
+		caption := ""
+		if result.Caption {
+			// The caption of an album is of all its files
+			caption = result.Text
+		}
+		attachment := messaging.Attachment{Name: a.name(sent, number), Type: a.Type, Size: a.Size, Description: a.description(caption)}
+		if a.Size > maxDownload {
+			attachment.Unavailable = fmt.Sprintf("it's too large (%s), as a bot can only download files of up to 20 MB", megabytes(a.Size))
+		} else {
+			attachment.Open = t.opener(a.fileID)
+		}
+		result.Attachments = append(result.Attachments, attachment)
 	}
 	if strings.TrimSpace(result.Text) == "" && len(result.Attachments) == 0 {
 		return messaging.Message{}, false
@@ -368,13 +384,19 @@ func (t *Telegram) toMessage(ctx context.Context, group []*message) (messaging.M
 	return result, true
 }
 
-// attachment is a file sent with a message, by its file's identifier
+// attachment is a file sent with a message, by its file's identifier, and
+// its unique identifier, with the name it was sent with, or none, the kind
+// of file it is, which a name is made from, what it is, its type, and size,
+// and how long it is, in seconds, when it's audio, or video
 type attachment struct {
-	fileID      string
-	Name        string
-	Type        string
-	Size        int64
-	Description string
+	fileID   string
+	uniqueID string
+	given    string
+	label    string
+	what     string
+	duration int
+	Type     string
+	Size     int64
 }
 
 // describe returns the description of a file: its caption, which it was
@@ -398,8 +420,8 @@ const compressedPhoto = "A photo, which Telegram compressed, so small text in it
 
 // attachments returns the files sent with the message: its photo, as its
 // largest size, a document, a voice message, audio, a video, or a video
-// message, with their names, and types, or ones for their kind, when they
-// have none
+// message, with their names, when they were sent with them, what they are,
+// and their types, or ones for their kind, when they have none
 func attachments(m *message) []attachment {
 	var result []attachment
 	if len(m.Photo) > 0 {
@@ -409,18 +431,19 @@ func attachments(m *message) []attachment {
 				largest = size
 			}
 		}
-		result = append(result, attachment{fileID: largest.FileID, Name: "photo-" + largest.FileUniqueID + ".jpg", Type: "image/jpeg", Size: largest.FileSize, Description: compressedPhoto})
+		result = append(result, attachment{fileID: largest.FileID, uniqueID: largest.FileUniqueID, label: "photo", Type: "image/jpeg", Size: largest.FileSize, what: compressedPhoto})
 	}
 	for _, item := range []struct {
 		media *media
-		name  string
+		label string
 		kind  string
+		what  string
 	}{
-		{m.Document, "document", "application/octet-stream"},
-		{m.Voice, "voice", "audio/ogg"},
-		{m.Audio, "audio", "audio/mpeg"},
-		{m.Video, "video", "video/mp4"},
-		{m.VideoNote, "video-note", "video/mp4"},
+		{m.Document, "document", "", "A document"},
+		{m.Voice, "voice-note", "audio/ogg", "A voice message"},
+		{m.Audio, "audio", "audio/mpeg", "Audio"},
+		{m.Video, "video", "video/mp4", "A video"},
+		{m.VideoNote, "video-note", "video/mp4", "A video message"},
 	} {
 		if item.media == nil || item.media.FileID == "" {
 			continue
@@ -431,19 +454,71 @@ func attachments(m *message) []attachment {
 		if mimeType == "application/octet-stream" {
 			mimeType = ""
 		}
-		if mimeType == "" && item.media != m.Document {
+		if mimeType == "" {
 			mimeType = item.kind
 		}
-		name := strings.TrimSpace(item.media.FileName)
-		if name == "" {
-			name = item.name + "-" + item.media.FileUniqueID
-			if extensions, _ := mime.ExtensionsByType(mimeType); len(extensions) > 0 {
-				name += preferredExtension(mimeType, extensions)
-			}
-		}
-		result = append(result, attachment{fileID: item.media.FileID, Name: name, Type: mimeType, Size: item.media.FileSize})
+		result = append(result, attachment{
+			fileID:   item.media.FileID,
+			uniqueID: item.media.FileUniqueID,
+			given:    strings.TrimSpace(item.media.FileName),
+			label:    item.label,
+			Type:     mimeType,
+			Size:     item.media.FileSize,
+			what:     item.what,
+			duration: item.media.Duration,
+		})
 	}
 	return result
+}
+
+// name returns the file's name, which is the one it was sent with, or one
+// of its kind, and when it was sent, in the time zone, such as
+// voice-note-2026-11-08-1035.ogg, with its number, when the message has
+// more than one of its kind, such as photo-2026-11-08-1035-2.jpg
+func (a attachment) name(sent time.Time, number int) string {
+	if a.given != "" {
+		return a.given
+	}
+	name := a.label + "-" + sent.Format("2006-01-02-1504")
+	if number > 0 {
+		name += "-" + strconv.Itoa(number)
+	}
+	if extensions, _ := mime.ExtensionsByType(a.Type); len(extensions) > 0 {
+		name += preferredExtension(a.Type, extensions)
+	}
+	return name
+}
+
+// description returns what the file is: its caption, when it was sent with
+// one, what it is, such as a voice message, how long it is, when it's
+// audio, or video, and its identifier on Telegram
+func (a attachment) description(caption string) string {
+	what := a.what
+	if a.duration > 0 {
+		what += ", " + duration(a.duration) + " long"
+	}
+	if a.uniqueID != "" {
+		what += ", Telegram file " + a.uniqueID
+	}
+	return describe(caption, what)
+}
+
+// duration returns the seconds, as a duration people read, such as 9
+// seconds, or 1 minute 5 seconds
+func duration(seconds int) string {
+	plural := func(n int, unit string) string {
+		if n == 1 {
+			return "1 " + unit
+		}
+		return strconv.Itoa(n) + " " + unit + "s"
+	}
+	switch {
+	case seconds < 60:
+		return plural(seconds, "second")
+	case seconds%60 == 0:
+		return plural(seconds/60, "minute")
+	}
+	return plural(seconds/60, "minute") + " " + plural(seconds%60, "second")
 }
 
 // preferredExtension returns the extension of the type, such as .ogg for
@@ -530,4 +605,21 @@ func split(text string, n int) []string {
 		parts = append(parts, part)
 	}
 	return parts
+}
+
+// SetLocation sets the function which returns the time zone the names of
+// files which were sent without names are in, such as the person's, or nil,
+// when it isn't known, when they're in UTC
+func (t *Telegram) SetLocation(fn func() *time.Location) {
+	t.zone = fn
+}
+
+// location returns the time zone files' names are in
+func (t *Telegram) location() *time.Location {
+	if t.zone != nil {
+		if loc := t.zone(); loc != nil {
+			return loc
+		}
+	}
+	return time.UTC
 }

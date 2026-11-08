@@ -79,6 +79,7 @@ type media struct {
 	FileName     string `json:"file_name,omitempty"`
 	MimeType     string `json:"mime_type,omitempty"`
 	FileSize     int64  `json:"file_size,omitempty"`
+	Duration     int    `json:"duration,omitempty"`
 }
 
 // file is a file which can be downloaded, by its path
