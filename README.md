@@ -300,6 +300,18 @@ Run `llm <command> --help` for its flags. Model options are given with `--opt`, 
 | `max_depth` | 3 | How deeply agents can call agents |
 | `tool_timeout` | `30s` | How long a tool has to return |
 
+## Connectors
+
+Connectors are remote MCP servers whose tools your assistant can call. Each connector's tools are a namespace of their own, such as `linear:list_issues`.
+
+- **Adding one:** in the web UI, use **Add connector** on the Tools page. It lists well-known servers such as GitHub, Linear, Notion and Stripe, plus **Custom connector** for any URL. From the CLI, run `llm connector-create <url>`.
+- **Signing in:** if the server needs sign-in, you'll get a **Sign in** button, or the CLI opens your browser. The server keeps the token and refreshes it.
+- **Your own client:** some servers, such as GitHub's, don't register clients themselves. For those, set your OAuth app's ID and secret in the server's environment, such as `GITHUB_CLIENT_ID` and `GITHUB_CLIENT_SECRET`. Register the redirect URL that the connector panel's Advanced section shows.
+- **Behind a reverse proxy:** run the server with `--tls.name=<public host>`, so sign-in sends browsers back to the public address.
+- **Storage:** connectors and their tokens are kept in `connectors.json`. Only remote servers, over streamable HTTP or SSE, are supported.
+
+The API is documented in [mcp/registry/httphandler/README.md](mcp/registry/httphandler/README.md).
+
 ## Tools
 
 Tools are added when their credentials or settings are present:
@@ -323,18 +335,6 @@ Notes on the `llm` tools:
 - **Preferred models:** each tool uses the model the person chose for that capability, which it remembers in the memory as `preferred_models`, or asks them to choose.
 - **Voice notes:** `speak` with `format: voice-note` makes Ogg Opus voice notes, for Telegram. Models that can't make them need `opusenc`, from [opus-tools](https://opus-codec.org/downloads/), which the Docker image includes.
 - **Reading files:** `resource` reads text, HTML, CSV, PDFs, Word, OpenDocument, EPUB, spreadsheets, emails, calendars, subtitles and more, with [go-metadata](https://github.com/mutablelogic/go-metadata). It reads a part at a time, carrying on where the last part ended.
-
-## Connectors
-
-Connectors are remote MCP servers whose tools your assistant can call. Each connector's tools are a namespace of their own, such as `linear:list_issues`.
-
-- **Adding one:** in the web UI, use **Add connector** on the Tools page. It lists well-known servers such as GitHub, Linear, Notion and Stripe, plus **Custom connector** for any URL. From the CLI, run `llm connector-create <url>`.
-- **Signing in:** if the server needs sign-in, you'll get a **Sign in** button, or the CLI opens your browser. The server keeps the token and refreshes it.
-- **Your own client:** some servers, such as GitHub's, don't register clients themselves. For those, set your OAuth app's ID and secret in the server's environment, such as `GITHUB_CLIENT_ID` and `GITHUB_CLIENT_SECRET`. Register the redirect URL that the connector panel's Advanced section shows.
-- **Behind a reverse proxy:** run the server with `--tls.name=<public host>`, so sign-in sends browsers back to the public address.
-- **Storage:** connectors and their tokens are kept in `connectors.json`. Only remote servers, over streamable HTTP or SSE, are supported.
-
-The API is documented in [mcp/registry/httphandler/README.md](mcp/registry/httphandler/README.md).
 
 ## Messaging
 
