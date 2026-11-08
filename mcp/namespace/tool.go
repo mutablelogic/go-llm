@@ -47,8 +47,19 @@ func newTool(t *sdkmcp.Tool, c *client.Client, timeout time.Duration) *tool {
 // Name returns the tool's name, on its server
 func (t *tool) Name() string { return t.t.Name }
 
+// Title returns the tool's title, for people, or its annotations' title,
+// or nothing, when it has neither
+func (t *tool) Title() string {
+	if t.t.Title != "" {
+		return t.t.Title
+	} else if t.t.Annotations != nil {
+		return t.t.Annotations.Title
+	}
+	return ""
+}
+
 // Description returns what the tool does, or its title, when it says
-// nothing of that
+// nothing of that, so a model has something
 func (t *tool) Description() string {
 	if t.t.Description != "" {
 		return t.t.Description

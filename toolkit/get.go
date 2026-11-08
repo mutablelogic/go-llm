@@ -232,6 +232,11 @@ func (t namedTool) CanonicalName() string {
 	return schema.CanonicalToolName(t.entry.namespace, t.entry.tool.Name())
 }
 
+// Title returns the tool's title, or nothing, when it has none
+func (t namedTool) Title() string {
+	return t.entry.tool.Title()
+}
+
 // Description returns the tool's description
 func (t namedTool) Description() string {
 	return t.entry.tool.Description()

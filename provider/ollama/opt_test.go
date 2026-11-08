@@ -188,6 +188,7 @@ type weatherInput struct {
 }
 
 func (t weatherTool) Name() string        { return t.name }
+func (t weatherTool) Title() string       { return "" }
 func (t weatherTool) Description() string { return "Get the weather" }
 func (t weatherTool) InputSchema() *jsonschema.Schema {
 	if !t.withSchema {

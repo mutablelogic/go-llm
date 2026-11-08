@@ -70,7 +70,9 @@ func Test_Namespace(t *testing.T) {
 		names := []string{tools[0].Name(), tools[1].Name(), tools[2].Name()}
 		assert.Equal(t, []string{"echo", "fail", "sum"}, names)
 		assert.Equal(t, "Echo the text", tools[0].Description())
-		assert.Equal(t, "Add two numbers", tools[2].Description())
+		assert.Equal(t, "Add two numbers", tools[2].Description(), "its title, as it has no description")
+		assert.Equal(t, "Add two numbers", tools[2].Title())
+		assert.Empty(t, tools[0].Title())
 		require.NotNil(t, tools[0].InputSchema())
 		data, err := json.Marshal(tools[0].InputSchema())
 		require.NoError(t, err)

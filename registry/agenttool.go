@@ -45,7 +45,6 @@ type agentTool struct {
 
 var _ toolkit.Namespace = (*agentNamespace)(nil)
 var _ llm.Tool = (*agentTool)(nil)
-var _ toolkit.ToolTitler = (*agentTool)(nil)
 
 ///////////////////////////////////////////////////////////////////////////////
 // GLOBALS

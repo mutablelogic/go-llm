@@ -18,6 +18,11 @@ type Base struct{}
 ////////////////////////////////////////////////////////////////////////////////
 // PUBLIC METHODS
 
+// Title returns nothing, as the tool has no title
+func (Base) Title() string {
+	return ""
+}
+
 // OutputSchema returns nil, as the tool has no structured output schema
 func (Base) OutputSchema() *jsonschema.Schema {
 	return nil

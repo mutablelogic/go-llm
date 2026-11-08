@@ -19,6 +19,10 @@ type Tool interface {
 	// Return the name of the tool
 	Name() string
 
+	// Return the title of the tool, for people, such as an agent's, or
+	// empty, when it has none, as most tools don't
+	Title() string
+
 	// Return the description of the tool
 	Description() string
 

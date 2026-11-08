@@ -90,9 +90,7 @@ func (e entry) wire(typ string) *schema.Tool {
 		Input:       marshalSchema(e.tool.InputSchema()),
 		Output:      marshalSchema(e.tool.OutputSchema()),
 	}
-	if titler, ok := e.tool.(ToolTitler); ok {
-		tool.Title = titler.Title()
-	}
+	tool.Title = e.tool.Title()
 	return tool
 }
 
