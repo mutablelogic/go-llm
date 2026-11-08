@@ -107,15 +107,22 @@ func (r *Registry) reconcile(ctx context.Context, logger *slog.Logger) {
 		return
 	}
 
-	// Disconnect the clients of the connectors which were deleted
+	// Each has a namespace, connected, or not, and the clients of those
+	// which were deleted are disconnected, and their namespaces removed
 	names := make(map[string]bool, len(connectors))
 	for _, connector := range connectors {
 		names[connector.Name] = true
+		r.ensureNamespace(connector)
 	}
 	r.mu.Lock()
 	var deleted []string
 	for name := range r.clients {
 		if !names[name] {
+			deleted = append(deleted, name)
+		}
+	}
+	for name := range r.namespaces {
+		if _, exists := r.clients[name]; !exists && !names[name] {
 			deleted = append(deleted, name)
 		}
 	}

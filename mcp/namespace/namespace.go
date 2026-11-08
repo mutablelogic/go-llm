@@ -20,18 +20,24 @@ import (
 ///////////////////////////////////////////////////////////////////////////////
 // TYPES
 
-// Namespace is the namespace of a connector's tools, which are its MCP
-// server's, as they were last listed, which are listed again with Refresh,
-// such as when the server says they changed
+// Namespace is the namespace of a connector's tools, in a toolkit, which it
+// has for as long as the connector exists: its MCP server's tools, as they
+// were last listed, once it's connected, and none, while it isn't, which
+// are listed again with Refresh, such as when the server says they changed
 type Namespace struct {
 	opt
-	name        string
-	description string
-	client      *client.Client
+	name string
 
-	mu     sync.RWMutex
-	tools  []*tool
-	notify func(eventschema.EventAction, string)
+	// Held as the tools are listed, or cleared, so they're in the order
+	// they're asked for
+	changing sync.Mutex
+
+	mu          sync.RWMutex
+	description string
+	client      *client.Client    // The client, once it's connected, or nil
+	match       func(string) bool // Whether a tool is included, by its name
+	tools       []*tool
+	notify      func(eventschema.EventAction, string)
 }
 
 var _ toolkit.Namespace = (*Namespace)(nil)
@@ -40,23 +46,16 @@ var _ toolkit.Namespace = (*Namespace)(nil)
 // LIFECYCLE
 
 // New returns the namespace, with the name, such as one schema.Namespace
-// returns, and the description, such as the server's title, of the tools
-// of the server the client is connected to, which are listed, with the
-// options, such as which tools are included, with WithMatch. Returns
-// ErrBadParameter when the name is empty, or there's no client, and the
-// client's error, when its tools can't be listed, such as
-// ErrServiceUnavailable, when it isn't connected.
-func New(ctx context.Context, name, description string, c *client.Client, opts ...Opt) (*Namespace, error) {
+// returns, and the description, such as the connector's URL, until its
+// server says its title, which has no tools, until it's connected, with the
+// options, such as how long its tools have, with WithTimeout. Returns
+// ErrBadParameter when the name is empty.
+func New(name, description string, opts ...Opt) (*Namespace, error) {
 	if name == "" {
 		return nil, llm.ErrBadParameter.With("missing namespace")
-	} else if c == nil {
-		return nil, llm.ErrBadParameter.With("missing client")
 	}
-	ns := &Namespace{name: name, description: description, client: c}
+	ns := &Namespace{name: name, description: description}
 	if err := ns.opt.apply(opts); err != nil {
-		return nil, err
-	}
-	if err := ns.Refresh(ctx); err != nil {
 		return nil, err
 	}
 	return ns, nil
@@ -77,17 +76,25 @@ func (ns *Namespace) Type() string {
 
 // Description returns what the namespace is, such as its server's title
 func (ns *Namespace) Description() string {
+	ns.mu.RLock()
+	defer ns.mu.RUnlock()
 	return ns.description
 }
 
 // SystemPrompt returns how to use the server, and its tools, as it said,
-// when it was connected, or nothing
+// when it was connected, or nothing, while it isn't
 func (ns *Namespace) SystemPrompt() string {
-	return ns.client.Instructions()
+	ns.mu.RLock()
+	c := ns.client
+	ns.mu.RUnlock()
+	if c == nil {
+		return ""
+	}
+	return c.Instructions()
 }
 
 // Tools returns the server's tools, as they were last listed, in order of
-// their names
+// their names, or none, while it isn't connected
 func (ns *Namespace) Tools() []llm.Tool {
 	ns.mu.RLock()
 	defer ns.mu.RUnlock()
@@ -100,7 +107,7 @@ func (ns *Namespace) Tools() []llm.Tool {
 
 // Notify sets the function which is called, once the namespace is added to
 // a toolkit, when one of its tools is created, updated, or deleted, as
-// they're listed again
+// they're listed again, or cleared
 func (ns *Namespace) Notify(fn func(eventschema.EventAction, string)) {
 	ns.mu.Lock()
 	defer ns.mu.Unlock()
@@ -110,25 +117,88 @@ func (ns *Namespace) Notify(fn func(eventschema.EventAction, string)) {
 ///////////////////////////////////////////////////////////////////////////////
 // PUBLIC METHODS
 
-// Refresh lists the server's tools again, which are included, and calls the
-// function Notify
-// set, without the lock, with each which was created, updated, or deleted,
-// since they were last listed. When they can't be listed, they're as they
-// were, and that's the error.
+// Connect lists the tools of the server the client is connected to, which
+// are included, by the match, which includes every one when it's nil, and
+// says each which was created, updated, or deleted, since they were last
+// listed, with the description, such as the server's title, when it isn't
+// empty. When they can't be listed, it has none, and that's the error.
+func (ns *Namespace) Connect(ctx context.Context, c *client.Client, description string, match func(string) bool) error {
+	if c == nil {
+		return llm.ErrBadParameter.With("missing client")
+	}
+	if match == nil {
+		match = func(string) bool { return true }
+	}
+	ns.changing.Lock()
+	defer ns.changing.Unlock()
+	ns.mu.Lock()
+	ns.client, ns.match = c, match
+	if description != "" {
+		ns.description = description
+	}
+	ns.mu.Unlock()
+	if err := ns.list(ctx); err != nil {
+		ns.clear()
+		return err
+	}
+	return nil
+}
+
+// Refresh lists the tools again, of the server it's connected to, such as
+// when it says they changed, or does nothing, while it isn't connected.
+// When they can't be listed, they're as they were, and that's the error.
 func (ns *Namespace) Refresh(ctx context.Context) error {
-	listed, err := ns.client.ListTools(ctx)
+	ns.changing.Lock()
+	defer ns.changing.Unlock()
+	return ns.list(ctx)
+}
+
+// Disconnect clears the tools, as the server is disconnected, and says
+// each was deleted, so the namespace has none, until it's connected again
+func (ns *Namespace) Disconnect() {
+	ns.changing.Lock()
+	defer ns.changing.Unlock()
+	ns.clear()
+}
+
+///////////////////////////////////////////////////////////////////////////////
+// PRIVATE METHODS
+
+// list lists the tools of the server it's connected to, and replaces them,
+// or does nothing, while it isn't connected. The caller holds changing.
+func (ns *Namespace) list(ctx context.Context) error {
+	ns.mu.RLock()
+	c, match := ns.client, ns.match
+	ns.mu.RUnlock()
+	if c == nil {
+		return nil
+	}
+	listed, err := c.ListTools(ctx)
 	if err != nil {
 		return err
 	}
 	tools := make([]*tool, 0, len(listed))
 	for _, t := range listed {
-		if t != nil && t.Name != "" && ns.match(t.Name) {
-			tools = append(tools, newTool(t, ns.client, ns.timeout))
+		if t != nil && t.Name != "" && match(t.Name) {
+			tools = append(tools, newTool(t, c, ns.timeout))
 		}
 	}
 	slices.SortFunc(tools, func(a, b *tool) int { return compare(a.Name(), b.Name()) })
+	ns.replace(tools)
+	return nil
+}
 
-	// Replace them, and say what changed
+// clear forgets the client, and the tools. The caller holds changing.
+func (ns *Namespace) clear() {
+	ns.mu.Lock()
+	ns.client = nil
+	ns.mu.Unlock()
+	ns.replace(nil)
+}
+
+// replace replaces the tools, and calls the function Notify set, without
+// the lock, with each which was created, updated, or deleted
+func (ns *Namespace) replace(tools []*tool) {
 	ns.mu.Lock()
 	changes := diff(ns.tools, tools)
 	ns.tools = tools
@@ -139,7 +209,6 @@ func (ns *Namespace) Refresh(ctx context.Context) error {
 			notify(change.action, change.name)
 		}
 	}
-	return nil
 }
 
 ///////////////////////////////////////////////////////////////////////////////

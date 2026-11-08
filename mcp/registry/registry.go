@@ -129,6 +129,7 @@ func (r *Registry) CreateConnector(ctx context.Context, connector schema.Connect
 		return nil, err
 	}
 	r.publish(eventschema.EventCreate, created)
+	r.ensureNamespace(created)
 	return r.status(created), nil
 }
 
@@ -324,13 +325,16 @@ func (r *Registry) forget(name string) {
 	if exists {
 		_ = r.disconnect(name, e)
 	}
+	r.removeNamespace(name)
 }
 
-// status returns the connector, with whether its server is connected, and
-// which it is, or why it couldn't be connected, by its client, when it has
-// one, for the connector as it is
+// status returns the connector, with the namespace of its tools, which it
+// has whether it's connected, or not, and whether its server is connected,
+// and which it is, or why it couldn't be connected, by its client, when it
+// has one, for the connector as it is
 func (r *Registry) status(connector schema.Connector) *schema.Connector {
 	result := connector.Definition()
+	result.Namespace = r.namespaceOf(connector.Name)
 	r.mu.Lock()
 	e, exists := r.clients[connector.Name]
 	r.mu.Unlock()
@@ -341,7 +345,6 @@ func (r *Registry) status(connector schema.Connector) *schema.Connector {
 	if server != nil {
 		result.Connected = true
 		result.Server = &schema.ConnectorServer{Name: server.Name, Version: server.Version}
-		result.Namespace = r.namespaceOf(connector.Name)
 	}
 	if err != nil {
 		result.Error = err.Error()
@@ -370,9 +373,9 @@ func (r *Registry) publish(action eventschema.EventAction, connector schema.Conn
 // which is created, or deleted
 func (r *Registry) connection(connector schema.Connector, c *client.Client, server *sdkmcp.Implementation, err error) {
 	if server != nil {
-		r.addNamespace(connector.Name, c, server)
+		r.connectNamespace(connector.Name, c, server)
 	} else {
-		r.removeNamespace(connector.Name)
+		r.disconnectNamespace(connector.Name)
 	}
 	if r.broadcaster == nil {
 		return
