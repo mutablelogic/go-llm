@@ -274,19 +274,38 @@ func (r *Manager) Resource(ctx context.Context, uri string, session *uuid.UUID) 
 	return &resource{manager: r, Resource: stored}, nil
 }
 
-// Link links the resource with the URI, which is resource:///<hash>, which is
-// on its own, to the session, as a resource of the session, with the one
-// content, and what it is, so it's kept with the session, and returns it,
-// or the session's, when it's linked to it already. Returns ErrBadParameter
-// when the URI isn't a resource's, ErrNotFound when there's no resource on
-// its own with it, or the session doesn't exist, and the store's errors.
+// Link links the resource with the URI, which is on its own, to the
+// session, so it's kept with it, and returns it, as the session's, or the
+// session's, when it has it already. Returns ErrNotFound when there's no
+// resource on its own with it, or the session doesn't exist.
 func (r *Manager) Link(ctx context.Context, uri string, session uuid.UUID) (_ schema.Resource, err error) {
 	ctx, endSpan := otel.StartSpan(r.tracer, ctx, "resource.Link",
 		attribute.String("arg.uri", uri),
 		attribute.String("arg.session", session.String()),
 	)
 	defer func() { endSpan(err) }()
+	return r.link(ctx, uri, nil, session)
+}
 
+// Copy copies the resource with the URI, of the session it's from, to the
+// other session, so it's kept with it too, and returns it, as the other
+// session's, or the other session's, when it has it already. Its content
+// isn't copied, as they have the one content. Returns ErrNotFound when the
+// session it's from has no resource with it, or the other session doesn't
+// exist.
+func (r *Manager) Copy(ctx context.Context, uri string, from, to uuid.UUID) (_ schema.Resource, err error) {
+	ctx, endSpan := otel.StartSpan(r.tracer, ctx, "resource.Copy",
+		attribute.String("arg.uri", uri),
+		attribute.String("arg.from", from.String()),
+		attribute.String("arg.to", to.String()),
+	)
+	defer func() { endSpan(err) }()
+	return r.link(ctx, uri, &from, to)
+}
+
+// link links the resource with the URI, of the session it's from, or on its
+// own, when it's nil, to the session
+func (r *Manager) link(ctx context.Context, uri string, from *uuid.UUID, session uuid.UUID) (schema.Resource, error) {
 	hash, err := schema.ParseURI(uri)
 	if err != nil {
 		return schema.Resource{}, err
@@ -306,16 +325,16 @@ func (r *Manager) Link(ctx context.Context, uri string, session uuid.UUID) (_ sc
 		return schema.Resource{}, err
 	}
 
-	// A resource of the session, which is the one on its own, with the lock
-	// read, so its content isn't removed, as it's linked
+	// The resource it's linked from, with the lock read, so its content
+	// isn't removed, as it's linked
 	r.contents.RLock()
 	defer r.contents.RUnlock()
-	alone, err := r.use(ctx, schema.ResourceKey{Hash: hash})
+	source, err := r.use(ctx, schema.ResourceKey{Hash: hash, Session: from})
 	if err != nil {
 		return schema.Resource{}, err
 	}
 	now := r.now().UTC()
-	linked := alone
+	linked := source
 	linked.Session, linked.Created, linked.Used = &session, now, now
 	if err := r.store.Create(ctx, linked); errors.Is(err, llm.ErrConflict) {
 		return r.store.Get(ctx, key)

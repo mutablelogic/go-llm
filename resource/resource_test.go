@@ -360,6 +360,52 @@ func Test_Link(t *testing.T) {
 	assert.ErrorIs(t, err, llm.ErrBadParameter)
 }
 
+func Test_Copy(t *testing.T) {
+	ctx := context.Background()
+	run, chat := uuid.New(), uuid.New()
+	r, _, store := newManager(t, run, chat)
+	made, _, err := r.Create(ctx, schema.ResourceMeta{Name: "speech.wav", Description: "Good morning", Session: &run}, strings.NewReader("RIFF"))
+	require.NoError(t, err)
+
+	// A session's resource is copied to another, as its, with the one
+	// content, and what it is, and copying it again is the same
+	copied, err := r.Copy(ctx, made.URI(), run, chat)
+	require.NoError(t, err)
+	assert.Equal(t, made.Hash, copied.Hash)
+	assert.Equal(t, chat, *copied.Session)
+	assert.Equal(t, "speech.wav", copied.Name)
+	assert.Equal(t, "Good morning", copied.Description)
+	again, err := r.Copy(ctx, made.URI(), run, chat)
+	require.NoError(t, err)
+	assert.Equal(t, copied.Key(), again.Key())
+	contents, err := store.Contents(ctx)
+	require.NoError(t, err)
+	assert.Len(t, contents, 1)
+
+	// It stays when the session it's from deletes its own
+	_, err = r.DeleteSession(ctx, run)
+	require.NoError(t, err)
+	r.Clean(ctx, nil)
+	assert.Equal(t, "RIFF", read(t, r, copied.Key()))
+
+	// A resource the session it's from hasn't, or a session which doesn't
+	// exist, isn't copied
+	_, err = r.Copy(ctx, made.URI(), run, chat)
+	require.NoError(t, err, "the other session has it already")
+	_, err = r.Copy(ctx, "resource:///"+strings.Repeat("0", 64), run, chat)
+	assert.ErrorIs(t, err, llm.ErrNotFound)
+	other, _, err := r.Create(ctx, schema.ResourceMeta{Session: &chat}, strings.NewReader("other"))
+	require.NoError(t, err)
+	_, err = r.Copy(ctx, other.URI(), run, uuid.New())
+	assert.ErrorIs(t, err, llm.ErrNotFound)
+	_, err = r.Copy(ctx, other.URI(), run, chat)
+	require.NoError(t, err, "the other session has it already")
+	alone, _, err := r.Create(ctx, schema.ResourceMeta{}, strings.NewReader("alone"))
+	require.NoError(t, err)
+	_, err = r.Copy(ctx, alone.URI(), run, chat)
+	assert.ErrorIs(t, err, llm.ErrNotFound, "one on its own isn't the session's")
+}
+
 // racingStore is a store which calls a function as a resource is deleted,
 // before it's checked, as if it were changed at the same time
 type racingStore struct {

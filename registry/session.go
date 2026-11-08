@@ -2,6 +2,7 @@ package registry
 
 import (
 	"context"
+	"errors"
 	"strings"
 	"uuid"
 
@@ -306,7 +307,9 @@ func (r *Registry) ForgetSessionMessages(ctx context.Context, id uuid.UUID) (_ *
 // with the session's serial, as it was stored. Returns ErrNotFound when
 // there's no session, ErrForbidden when it's an event's, which isn't chatted
 // in, ErrConflict when it was changed as the model replied,
-// as the reply is to the conversation as it was, so isn't stored,
+// as the reply is to the conversation as it was, so isn't stored, apart from
+// when messages were only added to it, such as an event's outcome, which was
+// delivered, which then follow the reply,
 // ErrServiceUnavailable when the registry has no session store, and the
 // errors of WithSession. The session is replying until the model has
 // replied, and its reply is stored.
@@ -341,16 +344,24 @@ func (r *Registry) Chat(ctx context.Context, id uuid.UUID, messages []llm.Messag
 	if err != nil {
 		return nil, err
 	}
-	session.Messages = append(session.Messages, response.Messages...)
-	session.Usage = schema.SessionUsage{
-		Usage:    addUsage(session.Usage.Usage, response.Usage.Usage),
-		Input:    response.Usage.Input,
-		Output:   response.Usage.Output,
-		Overhead: response.Usage.Overhead,
+	earlier := session.Messages
+	stored, err := r.sessionStore.Put(ctx, withReply(session, earlier, nil, response))
+	if errors.Is(err, llm.ErrConflict) {
+		// Messages which were added to it as it replied, such as an event's
+		// outcome, which was delivered, follow the reply, which is stored
+		// again, unless it was changed otherwise, such as when its messages
+		// were forgotten, or its settings were changed
+		latest, getErr := r.sessionStore.Get(ctx, id)
+		if getErr != nil {
+			return nil, getErr
+		} else if added, ok := addedAfter(earlier, latest.Messages); ok && len(added) > 0 && latest.SessionMeta.String() == session.SessionMeta.String() {
+			stored, err = r.sessionStore.Put(ctx, withReply(latest, earlier, added, response))
+		}
 	}
-	if session, err = r.sessionStore.Put(ctx, session); err != nil {
+	if err != nil {
 		return nil, err
 	}
+	session = stored
 	r.sessionChanged(eventschema.EventUpdate, session)
 
 	// The reply, which is the last message, when it's the model's
@@ -364,6 +375,38 @@ func (r *Registry) Chat(ctx context.Context, id uuid.UUID, messages []llm.Messag
 
 ///////////////////////////////////////////////////////////////////////////////
 // PRIVATE FUNCTIONS
+
+// withReply returns the session, whose messages are the earlier messages,
+// those of the response, which are the question, and its reply, and the
+// messages which were added as it replied, with the response's usage
+func withReply(session schema.Session, earlier, added []providerschema.Message, response *schema.SessionResponse) schema.Session {
+	messages := make([]providerschema.Message, 0, len(earlier)+len(response.Messages)+len(added))
+	messages = append(messages, earlier...)
+	messages = append(messages, response.Messages...)
+	session.Messages = append(messages, added...)
+	session.Usage = schema.SessionUsage{
+		Usage:    addUsage(session.Usage.Usage, response.Usage.Usage),
+		Input:    response.Usage.Input,
+		Output:   response.Usage.Output,
+		Overhead: response.Usage.Overhead,
+	}
+	return session
+}
+
+// addedAfter returns the messages which follow the earlier messages, and
+// whether the messages are the earlier messages, as they were, followed by
+// them, rather than changed otherwise, such as when they were forgotten
+func addedAfter(earlier, messages []providerschema.Message) ([]providerschema.Message, bool) {
+	if len(messages) < len(earlier) {
+		return nil, false
+	}
+	for i := range earlier {
+		if earlier[i].Role() != messages[i].Role() || !earlier[i].Time.Equal(messages[i].Time) || earlier[i].Text() != messages[i].Text() {
+			return nil, false
+		}
+	}
+	return messages[len(earlier):], true
+}
 
 // errNoSessionStore is the error of a session's method, when the registry
 // has no session store

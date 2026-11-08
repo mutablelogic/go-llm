@@ -293,6 +293,21 @@ func Test_EventOutcomes(t *testing.T) {
 	assert.Equal(t, schema.EventPending, pending.Status)
 	assert.Equal(t, fired, pending.Fired)
 
+	// and it's delivered to the session it's for, as the assistant's
+	// message, marked as the event's
+	require.Eventually(t, func() bool {
+		got, err := r.GetEvent(ctx, pending.ID)
+		return err == nil && got.Status == schema.EventDelivered
+	}, 5*time.Second, 10*time.Millisecond)
+	messages, err := r.ListSessionMessages(ctx, parent.ID, schema.MessageListRequest{})
+	require.NoError(t, err)
+	require.Len(t, messages.Body, 1)
+	delivered := messages.Body[0]
+	assert.Equal(t, "assistant", delivered.Role())
+	assert.Equal(t, "Call your mother", delivered.Text())
+	assert.Equal(t, &providerschema.Event{ID: pending.ID, Title: "Call"}, delivered.Event)
+	assert.False(t, delivered.Time.IsZero())
+
 	// One which isn't is ignored
 	response, err = r.RunEvent(ctx, event, schema.RunEventRequest{Session: parent.ID, Input: input, Title: "Call"}, nil)
 	require.NoError(t, err)
@@ -305,11 +320,11 @@ func Test_EventOutcomes(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, uint(2), list.Count)
 	assert.Equal(t, response.Event.ID, list.Body[0].ID)
-	list, err = r.ListEvents(ctx, schema.EventListRequest{Status: schema.EventPending})
+	list, err = r.ListEvents(ctx, schema.EventListRequest{Status: schema.EventDelivered})
 	require.NoError(t, err)
 	require.Equal(t, uint(1), list.Count)
 	assert.Equal(t, pending.ID, list.Body[0].ID)
-	list, err = r.ListEvents(ctx, schema.EventListRequest{Status: " pending "})
+	list, err = r.ListEvents(ctx, schema.EventListRequest{Status: " delivered "})
 	require.NoError(t, err)
 	assert.Equal(t, uint(1), list.Count, "a status, with space around it")
 	list, err = r.ListEvents(ctx, schema.EventListRequest{Session: strings.ToUpper(parent.ID.String())})
@@ -326,7 +341,9 @@ func Test_EventOutcomes(t *testing.T) {
 	// Got, and deleted
 	got, err := r.GetEvent(ctx, pending.ID)
 	require.NoError(t, err)
-	assert.Equal(t, pending, *got)
+	assert.Equal(t, pending.ID, got.ID)
+	assert.Equal(t, pending.Message, got.Message)
+	assert.Equal(t, schema.EventDelivered, got.Status)
 	_, err = r.DeleteEvent(ctx, pending.ID)
 	require.NoError(t, err)
 	_, err = r.GetEvent(ctx, pending.ID)
@@ -387,7 +404,7 @@ func Test_TriggerEvent(t *testing.T) {
 	assert.Equal(t, schema.EventScheduled, first.Event.Status)
 	assert.Equal(t, "inbox", first.Event.Source)
 	outcome := finished(t, first.Event.ID)
-	assert.Equal(t, schema.EventPending, outcome.Status)
+	assert.Contains(t, []schema.EventStatus{schema.EventPending, schema.EventDelivered}, outcome.Status)
 	assert.Equal(t, "A new invoice", outcome.Message)
 	assert.Equal(t, req.RunID(), outcome.Run)
 	run, err := r.GetSession(ctx, outcome.Run)
@@ -425,7 +442,7 @@ func Test_TriggerEvent(t *testing.T) {
 	assert.False(t, again.Scheduled)
 	assert.Equal(t, waiting.Event.ID, again.Event.ID)
 	require.NoError(t, <-blocking)
-	assert.Equal(t, schema.EventPending, finished(t, waiting.Event.ID).Status)
+	assert.Contains(t, []schema.EventStatus{schema.EventPending, schema.EventDelivered}, finished(t, waiting.Event.ID).Status)
 	p.mu.Lock()
 	p.delay = 0
 	p.mu.Unlock()

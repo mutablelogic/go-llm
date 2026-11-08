@@ -39,6 +39,12 @@ type Resources interface {
 	// the session doesn't exist.
 	Link(ctx context.Context, uri string, session uuid.UUID) (resourceschema.Resource, error)
 
+	// Copy copies the resource with the URI, of the session it's from, to
+	// the other session, so it's kept with it too, and returns it, as the
+	// other session's. Returns ErrNotFound when the session it's from has no
+	// resource with it, or the other session doesn't exist.
+	Copy(ctx context.Context, uri string, from, to uuid.UUID) (resourceschema.Resource, error)
+
 	// Create keeps the content, as it's read, as a resource, which is what
 	// the meta says, in its session, or on its own, and returns it, and
 	// whether it was created, rather than there being one with its content

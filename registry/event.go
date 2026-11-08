@@ -12,6 +12,7 @@ import (
 	otel "github.com/mutablelogic/go-client/pkg/otel"
 	llm "github.com/mutablelogic/go-llm"
 	eventschema "github.com/mutablelogic/go-llm/broadcaster/schema"
+	providerschema "github.com/mutablelogic/go-llm/provider/schema"
 	schema "github.com/mutablelogic/go-llm/registry/schema"
 	toolschema "github.com/mutablelogic/go-llm/toolkit/schema"
 	types "github.com/mutablelogic/go-server/pkg/types"
@@ -151,6 +152,15 @@ func (r *Registry) runEvent(ctx context.Context, id uuid.UUID, req schema.RunEve
 	}
 	if err != nil {
 		return nil, err
+	}
+
+	// An outcome which is to be told to the person is delivered to the
+	// session it's for, once it isn't replying, in the background, so the
+	// run doesn't wait for it
+	if event != nil && event.Status == schema.EventPending {
+		go func(event schema.Event, run []providerschema.Message) {
+			_ = r.deliver(context.WithoutCancel(ctx), event, run)
+		}(*event, run.Messages)
 	}
 	return &schema.RunEventResponse{Session: *session, Run: *run, Event: event}, nil
 }

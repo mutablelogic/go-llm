@@ -53,6 +53,15 @@ export interface Message {
     content: ContentBlock[];
     tokens?: number;
     result?: string;
+    time?: string;
+    event?: MessageEvent;
+}
+
+// MessageEvent is the event, such as a heartbeat which fired, whose outcome
+// a message is, which was delivered to the chat it's for
+export interface MessageEvent {
+    id: string;
+    title?: string;
 }
 
 // SessionStatus is whether someone is typing in a session, or its model is
