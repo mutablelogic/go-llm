@@ -9,6 +9,12 @@
   client_id_credential: GITHUB_CLIENT_ID
   client_secret_credential: GITHUB_CLIENT_SECRET
 
+# Atlassian's sign-in registers clients itself, so it needs no credentials,
+# and is always offered
+- name: Atlassian
+  description: Jira issues and Confluence pages, with Atlassian's own MCP server
+  url: https://mcp.atlassian.com/v1/mcp/authv2
+
 - name: Asana
   description: Tasks, projects, portfolios and goals, with Asana's own MCP server
   url: https://mcp.asana.com/v2/mcp
