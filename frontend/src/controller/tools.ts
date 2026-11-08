@@ -18,8 +18,7 @@ import { AgentEditor, agentTemplate, type AgentEditorItem } from '../component/a
 import { ToolsPage } from '../page/tools-page';
 import { deleteAgent, getAgent, getAgentYAML, saveAgentYAML } from '../api/agent';
 import { createConnector, deleteConnector, getConnector, listConnectors, updateConnector } from '../api/connector';
-import { ApiError } from '../api/client';
-import { connectorName, type Connector, type ConnectorMeta } from '../schema/connector';
+import type { Connector, ConnectorMeta } from '../schema/connector';
 import { ConnectorForm } from '../component/connector-form';
 import type { ConnectorAlerts } from '../component/connector-alerts';
 import { routeHref } from '../router';
@@ -36,11 +35,9 @@ export interface ToolsViews {
 
 // connectWait is how long a connector which is added is waited for, as the
 // server connects to it, and connectPoll how often it's asked whether it
-// has, and connectNames how many names, from its URL, are tried, when the
-// first is another connector's
+// has
 const connectWait = 45_000;
 const connectPoll = 500;
-const connectNames = 10;
 
 // agentNamespace is the namespace of the agents, as tools
 const agentNamespace = 'agent';
@@ -183,7 +180,7 @@ export class ToolsController extends ListController<Tool> {
         let connector: Connector | undefined;
         let why: string;
         try {
-            connector = await this.createConnector(meta);
+            connector = await createConnector(meta);
             const status = await this.waitConnected(connector.name, open);
             if (!open()) {
                 // The panel was closed, so the server keeps trying
@@ -222,21 +219,6 @@ export class ToolsController extends ListController<Tool> {
         if (open()) {
             form.error = why;
             form.connecting = false;
-        }
-    }
-
-    // createConnector creates the connector, with a name from its URL's host,
-    // or, when it's another connector's, the name with a number added
-    private async createConnector(meta: ConnectorMeta): Promise<Connector> {
-        const base = connectorName(meta.url);
-        for (let i = 1; ; i++) {
-            try {
-                return await createConnector(i === 1 ? base : `${base}-${i}`, meta);
-            } catch (error) {
-                if (!(error instanceof ApiError && error.code === 409) || i >= connectNames) {
-                    throw error;
-                }
-            }
         }
     }
 

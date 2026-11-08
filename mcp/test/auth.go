@@ -117,7 +117,7 @@ func (s *Server) Revoke() {
 func (a *auth) serve(base string, w http.ResponseWriter, r *http.Request) bool {
 	switch r.URL.Path {
 	case "/.well-known/oauth-protected-resource":
-		writeJSON(w, http.StatusOK, map[string]any{"resource": base, "authorization_servers": []string{base}})
+		writeJSON(w, http.StatusOK, map[string]any{"resource": base, "authorization_servers": []string{base}, "resource_name": ResourceName})
 	case "/.well-known/oauth-authorization-server":
 		writeJSON(w, http.StatusOK, map[string]any{
 			"issuer":                           base,

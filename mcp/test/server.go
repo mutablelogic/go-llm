@@ -50,6 +50,10 @@ type opt struct {
 const (
 	Name    = "test-server"
 	Version = "1.0"
+
+	// ResourceName is the server's name, in the metadata of how it's
+	// authorized, when it needs to be
+	ResourceName = "Test Resource"
 )
 
 ///////////////////////////////////////////////////////////////////////////////

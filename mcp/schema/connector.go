@@ -45,7 +45,7 @@ type ConnectorMeta struct {
 // couldn't be connected, or its session ended, which isn't stored, as it's
 // the process's
 type Connector struct {
-	Name string `json:"name" help:"Connector name, which is an identifier, starting with a letter, followed by letters, numbers, underscores or hyphens" example:"github"`
+	Name string `json:"name" help:"Connector name, which is an identifier, starting with a letter, followed by letters, numbers, underscores or hyphens, which is the server's own name, when it's created without one" example:"github" optional:""`
 	ConnectorMeta
 	Serial uint64 `json:"serial,omitempty" readonly:"" help:"Revision of the connector's definition, which changes each time it's changed" example:"1"`
 

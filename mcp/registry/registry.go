@@ -126,10 +126,22 @@ func (r *Registry) GetConnector(ctx context.Context, name string) (*schema.Conne
 }
 
 // CreateConnector creates the connector, and returns it, with its serial.
-// It's connected by Run. Returns ErrBadParameter when its name, or its fields,
-// aren't valid, and ErrConflict when there's a connector with its name.
+// It's connected by Run. One without a name is named after its server, as
+// it says, once it's connected to, or as the metadata of how it's
+// authorized says, when it needs to be, or else the host of its URL, as an
+// identifier, with a number, such as github-2, when that's another
+// connector's. Returns ErrBadParameter when its name, or its fields, aren't
+// valid, and ErrConflict when there's a connector with its name.
 func (r *Registry) CreateConnector(ctx context.Context, connector schema.Connector) (*schema.Connector, error) {
 	connector = connector.Definition()
+	if strings.TrimSpace(connector.Name) == "" {
+		return r.createNamed(ctx, connector)
+	}
+	return r.create(ctx, connector)
+}
+
+// create creates the connector, with its name
+func (r *Registry) create(ctx context.Context, connector schema.Connector) (*schema.Connector, error) {
 	connector.Serial = 0
 	if err := connector.Validate(); err != nil {
 		return nil, err

@@ -75,14 +75,8 @@ func (c *Client) Discover(ctx context.Context, resource string) (*Metadata, erro
 		resource = c.endpoint
 	}
 	result := new(Metadata)
-	for _, endpoint := range wellKnown(resource, ResourceMetadataPath) {
-		// A document which doesn't say which resource it's of, such as {},
-		// isn't its metadata, so the next is tried
-		var metadata ResourceMetadata
-		if err := c.metadata.DoWithContext(ctx, nil, &metadata, client.OptReqEndpoint(endpoint)); err == nil && metadata.Resource != "" {
-			result.Resource = metadata
-			break
-		}
+	if metadata, err := c.wellKnownResource(ctx, resource); err == nil {
+		result.Resource = *metadata
 	}
 	issuers := result.Resource.AuthorizationServers
 	if len(issuers) == 0 {
@@ -104,12 +98,11 @@ func (c *Client) DiscoverWithError(ctx context.Context, err error) (*Metadata, e
 	if endpoint == "" {
 		return c.Discover(ctx, "")
 	}
-	result := new(Metadata)
-	if err := c.metadata.DoWithContext(ctx, nil, &result.Resource, client.OptReqEndpoint(endpoint)); err != nil {
-		return nil, llm.ErrServiceUnavailable.Withf("resource metadata %q: %v", endpoint, err)
-	} else if result.Resource.Resource == "" {
-		return nil, llm.ErrServiceUnavailable.Withf("resource metadata %q has no resource", endpoint)
+	resource, err := c.resource(ctx, endpoint)
+	if err != nil {
+		return nil, err
 	}
+	result := &Metadata{Resource: *resource}
 	issuers := result.Resource.AuthorizationServers
 	if len(issuers) == 0 {
 		issuers = []string{origin(c.endpoint)}
@@ -117,8 +110,49 @@ func (c *Client) DiscoverWithError(ctx context.Context, err error) (*Metadata, e
 	return c.servers(ctx, result, issuers)
 }
 
+// DiscoverResource returns the metadata of the resource, alone, without
+// that of its authorization servers, such as for its name: from the URL of
+// its metadata the error has, when it's an AuthError which has one, or
+// otherwise at its well-known path, of the client's endpoint, with its
+// path, or without. Returns ErrNotFound when it has none.
+func (c *Client) DiscoverResource(ctx context.Context, err error) (*ResourceMetadata, error) {
+	if authErr := AsAuthError(err); authErr != nil {
+		if endpoint := strings.TrimSpace(authErr.Get("resource_metadata")); endpoint != "" {
+			return c.resource(ctx, endpoint)
+		}
+	}
+	return c.wellKnownResource(ctx, c.endpoint)
+}
+
 ///////////////////////////////////////////////////////////////////////////////
 // PRIVATE METHODS
+
+// resource returns the resource's metadata, at the URL, or
+// ErrServiceUnavailable, when it can't be got, or doesn't say which
+// resource it's of
+func (c *Client) resource(ctx context.Context, endpoint string) (*ResourceMetadata, error) {
+	var metadata ResourceMetadata
+	if err := c.metadata.DoWithContext(ctx, nil, &metadata, client.OptReqEndpoint(endpoint)); err != nil {
+		return nil, llm.ErrServiceUnavailable.Withf("resource metadata %q: %v", endpoint, err)
+	} else if metadata.Resource == "" {
+		return nil, llm.ErrServiceUnavailable.Withf("resource metadata %q has no resource", endpoint)
+	}
+	return &metadata, nil
+}
+
+// wellKnownResource returns the metadata of the resource at the URL, at
+// its well-known path, with its path, or without, or ErrNotFound, when
+// neither is its metadata
+func (c *Client) wellKnownResource(ctx context.Context, resource string) (*ResourceMetadata, error) {
+	for _, endpoint := range wellKnown(resource, ResourceMetadataPath) {
+		// A document which doesn't say which resource it's of, such as {},
+		// isn't its metadata, so the next is tried
+		if metadata, err := c.resource(ctx, endpoint); err == nil {
+			return metadata, nil
+		}
+	}
+	return nil, llm.ErrNotFound.Withf("no resource metadata for %q", resource)
+}
 
 // servers adds the metadata of each of the authorization servers, by their
 // issuers, which have it, and returns the result, or ErrNotFound, when none

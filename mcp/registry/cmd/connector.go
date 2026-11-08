@@ -50,8 +50,8 @@ type ConnectorClient struct {
 type ConnectorCreateCmd struct {
 	ConnectorPatterns
 	ConnectorClient
-	Name string `arg:"" name:"name" help:"Connector name, which is an identifier, such as github."`
 	URL  string `arg:"" name:"url" help:"URL of the MCP server, of its streamable HTTP, or SSE, transport, such as https://mcp.example.com/mcp."`
+	Name string `name:"name" help:"Connector name, which is an identifier, such as github, or the server's own name, when it's omitted."`
 }
 
 // ConnectorUpdateCmd updates a connector, whose patterns are replaced with
