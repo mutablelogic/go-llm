@@ -480,7 +480,7 @@ func (m *Messaging) received(ctx context.Context, logger *slog.Logger, provider 
 	} else if !ok {
 		logger.InfoContext(ctx, "message from a chat which isn't connected ignored", "provider", provider.Name(), "address", message.Address, "chat", message.Title)
 		return nil
-	} else if strings.TrimSpace(message.Text) == "" || m.chat == nil {
+	} else if (strings.TrimSpace(message.Text) == "" && len(message.Attachments) == 0) || m.chat == nil {
 		return nil
 	}
 	if !m.enqueue(ctx, logger, received{channel: channel, message: message}) {

@@ -491,3 +491,31 @@ func Test_Messaging_Files(t *testing.T) {
 		assert.Len(t, provider.messages("1"), 2)
 	})
 }
+
+func Test_Messaging_Attachments(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	provider := newFake("fake")
+	got := make(chan messaging.Message, 1)
+	m, err := messaging.New(messaging.NewStore(), messaging.WithProvider(provider), messaging.WithChat(func(_ context.Context, _ schema.Channel, message messaging.Message) error {
+		got <- message
+		return nil
+	}))
+	require.NoError(t, err)
+	go m.Run(ctx, nil)
+	link, _, err := m.Connect(ctx, uuid.New(), "")
+	require.NoError(t, err)
+	provider.incoming <- messaging.Message{Address: "1", Code: code(t, link)}
+
+	// A message with a file, and no text, such as a voice message, is sent
+	// to the session
+	voice := messaging.Attachment{Name: "voice.ogg", Type: "audio/ogg"}
+	provider.incoming <- messaging.Message{Address: "1", Attachments: []messaging.Attachment{voice}}
+	select {
+	case message := <-got:
+		require.Len(t, message.Attachments, 1)
+		assert.Equal(t, "voice.ogg", message.Attachments[0].Name)
+	case <-time.After(time.Second):
+		t.Fatal("a message with only a file wasn't sent to the session")
+	}
+}

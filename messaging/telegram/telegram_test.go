@@ -28,6 +28,7 @@ type bot struct {
 	uploads []uploaded
 	paths   []string
 	ids     int64
+	batch   int // The most updates it returns at once, or all of them
 }
 
 // uploaded is a file which was sent, with the method, and field, it was sent
@@ -40,6 +41,13 @@ func (b *bot) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	b.mu.Lock()
 	b.paths = append(b.paths, r.URL.Path)
 	b.mu.Unlock()
+
+	// A file, which is downloaded by its path, with the token
+	if path, ok := strings.CutPrefix(r.URL.Path, "/file/bot"+token+"/"); ok {
+		w.Header().Set("Content-Type", "application/octet-stream")
+		_, _ = w.Write([]byte("content of " + path))
+		return
+	}
 	method, ok := strings.CutPrefix(r.URL.Path, "/bot"+token+"/")
 	w.Header().Set("Content-Type", "application/json")
 	if !ok {
@@ -56,7 +64,7 @@ func (b *bot) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		b.mu.Lock()
 		var result []update
 		for _, u := range b.updates {
-			if u.ID >= req.Offset {
+			if u.ID >= req.Offset && (b.batch == 0 || len(result) < b.batch) {
 				result = append(result, u)
 			}
 		}
@@ -112,6 +120,10 @@ func (b *bot) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		id := b.ids
 		b.mu.Unlock()
 		_ = json.NewEncoder(w).Encode(response[message]{OK: true, Result: message{ID: id}})
+	case "getFile":
+		var req getFileRequest
+		_ = json.NewDecoder(r.Body).Decode(&req)
+		_ = json.NewEncoder(w).Encode(response[file]{OK: true, Result: file{FileID: req.FileID, FilePath: "files/" + req.FileID}})
 	case "sendChatAction":
 		_ = json.NewEncoder(w).Encode(response[bool]{OK: true, Result: true})
 	default:
@@ -340,4 +352,109 @@ func Test_Telegram_Kind(t *testing.T) {
 	} {
 		assert.Equal(t, c.want, kind(messaging.File{Type: c.mimeType, Size: c.size}), c.mimeType)
 	}
+}
+
+func Test_Telegram_Attachments(t *testing.T) {
+	david := &user{ID: 7, FirstName: "David"}
+	here := chat{ID: 7, Type: "private", FirstName: "David"}
+	b := &bot{updates: []update{
+		// A photo, in its sizes, with a caption
+		{ID: 1, Message: &message{ID: 1, From: david, Chat: here, Caption: "What's this?", Photo: []photoSize{
+			{FileID: "small", FileUniqueID: "u1", Width: 90, Height: 60, FileSize: 1000},
+			{FileID: "large", FileUniqueID: "u2", Width: 1280, Height: 853, FileSize: 90000},
+			{FileID: "medium", FileUniqueID: "u3", Width: 320, Height: 213, FileSize: 9000},
+		}}},
+		// A voice message, without text
+		{ID: 2, Message: &message{ID: 2, From: david, Chat: here, Voice: &media{FileID: "voice", FileUniqueID: "v1", MimeType: "audio/ogg", FileSize: 5000}}},
+		// An album of two photos, whose caption is on the second
+		{ID: 3, Message: &message{ID: 3, From: david, Chat: here, MediaGroupID: "album", Photo: []photoSize{{FileID: "a1", FileUniqueID: "a1", Width: 100, Height: 100}}}},
+		{ID: 4, Message: &message{ID: 4, From: david, Chat: here, MediaGroupID: "album", Caption: "Our trip", Photo: []photoSize{{FileID: "a2", FileUniqueID: "a2", Width: 100, Height: 100}}}},
+		// A video which is too large, a document, with its name, and one
+		// whose type Telegram doesn't know
+		{ID: 5, Message: &message{ID: 5, From: david, Chat: here, Video: &media{FileID: "film", FileUniqueID: "f1", FileName: "film.mp4", MimeType: "video/mp4", FileSize: 25 << 20}}},
+		{ID: 6, Message: &message{ID: 6, From: david, Chat: here, Document: &media{FileID: "doc", FileUniqueID: "d1", FileName: "report.pdf", MimeType: "application/pdf", FileSize: 3000}}},
+		{ID: 7, Message: &message{ID: 7, From: david, Chat: here, Document: &media{FileID: "notes", FileUniqueID: "n1", FileName: "notes.md", MimeType: "application/octet-stream", FileSize: 30}}},
+	}}
+	tg := newBot(t, b)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	var got []messaging.Message
+	require.NoError(t, tg.Receive(ctx, func(_ context.Context, m messaging.Message) error {
+		got = append(got, m)
+		if len(got) == 6 {
+			cancel()
+		}
+		return nil
+	}))
+	require.Len(t, got, 6, "the album is one message")
+	names := func(m messaging.Message) []string {
+		var result []string
+		for _, a := range m.Attachments {
+			result = append(result, a.Name+" "+a.Type)
+		}
+		return result
+	}
+
+	// The photo is its largest size, with its caption as the text, and
+	// says it was compressed
+	assert.Equal(t, "What's this?", got[0].Text)
+	assert.Equal(t, []string{"photo-u2.jpg image/jpeg"}, names(got[0]))
+	assert.Equal(t, int64(90000), got[0].Attachments[0].Size)
+	assert.Contains(t, got[0].Attachments[0].Description, "compressed")
+
+	// The voice message is Ogg, without text
+	assert.Empty(t, got[1].Text)
+	assert.Equal(t, []string{"voice-v1.ogg audio/ogg"}, names(got[1]))
+
+	// The album's photos are one message, with its caption
+	assert.Equal(t, "Our trip", got[2].Text)
+	assert.Equal(t, []string{"photo-a1.jpg image/jpeg", "photo-a2.jpg image/jpeg"}, names(got[2]))
+
+	// The video, which is too large to download, is unavailable, saying
+	// why, and nothing is sent to the chat, as it may not be connected
+	require.Len(t, got[3].Attachments, 1)
+	assert.Nil(t, got[3].Attachments[0].Open)
+	assert.Contains(t, got[3].Attachments[0].Unavailable, "too large (25.0 MB)")
+	assert.Empty(t, b.sent)
+
+	// The document keeps its name, and type, and one whose type Telegram
+	// doesn't know has none, so it's detected
+	assert.Equal(t, []string{"report.pdf application/pdf"}, names(got[4]))
+	assert.Equal(t, []string{"notes.md "}, names(got[5]))
+
+	// A file is downloaded as it's read, by its path, with the token
+	content, err := got[0].Attachments[0].Open(context.Background())
+	require.NoError(t, err)
+	data, err := io.ReadAll(content)
+	require.NoError(t, err)
+	require.NoError(t, content.Close())
+	assert.Equal(t, "content of files/large", string(data))
+	assert.Contains(t, b.paths, "/file/bot"+token+"/files/large")
+}
+
+func Test_Telegram_AlbumBetweenPolls(t *testing.T) {
+	david := &user{ID: 7, FirstName: "David"}
+	here := chat{ID: 7, Type: "private", FirstName: "David"}
+
+	// An album, whose messages come a poll at a time, and then text
+	b := &bot{batch: 1, updates: []update{
+		{ID: 1, Message: &message{ID: 1, From: david, Chat: here, MediaGroupID: "receipt", Photo: []photoSize{{FileID: "p1", FileUniqueID: "p1", Width: 10, Height: 10}}}},
+		{ID: 2, Message: &message{ID: 2, From: david, Chat: here, MediaGroupID: "receipt", Caption: "My receipt", Photo: []photoSize{{FileID: "p2", FileUniqueID: "p2", Width: 10, Height: 10}}}},
+		{ID: 3, Message: &message{ID: 3, From: david, Chat: here, MediaGroupID: "receipt", Photo: []photoSize{{FileID: "p3", FileUniqueID: "p3", Width: 10, Height: 10}}}},
+		{ID: 4, Message: &message{ID: 4, From: david, Chat: here, Text: "Thanks"}},
+	}}
+	tg := newBot(t, b)
+	ctx, cancel := context.WithCancel(context.Background())
+	var got []messaging.Message
+	require.NoError(t, tg.Receive(ctx, func(_ context.Context, m messaging.Message) error {
+		got = append(got, m)
+		if len(got) == 2 {
+			cancel()
+		}
+		return nil
+	}))
+	require.Len(t, got, 2)
+	assert.Equal(t, "My receipt", got[0].Text)
+	assert.Len(t, got[0].Attachments, 3, "the album is one message, though it came in three polls")
+	assert.Equal(t, "Thanks", got[1].Text)
 }
