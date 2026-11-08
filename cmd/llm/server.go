@@ -127,7 +127,7 @@ func (runner *RunServer) Run(ctx server.Cmd) error {
 	// documentation
 	runner.RunServer.Register(func(router *httprouter.Router) error {
 		router.Spec().AddTagGroup("UI", "OpenAPI", "UI")
-		return runner.Frontend.RegisterUI(ctx.Context(), ctx.Logger(), router, runner.RunServer.OpenAPI)
+		return runner.Frontend.RegisterUI(ctx.Context(), ctx.Logger(), router, runner.RunServer.OpenAPI, ctx.URL())
 	})
 	return runner.Broadcaster.WithBroadcaster(ctx, &runner.RunServer, func(b *broadcaster.Broadcaster) error {
 		return runner.Memory.WithMemory(ctx, &runner.RunServer, memories, func(mem *memory.Memory) error {

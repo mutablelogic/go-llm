@@ -41,12 +41,15 @@ export async function authorizeConnector(name: string): Promise<string> {
     return response.url;
 }
 
-// callbackURL returns the URL a server's sign-in sends the browser back to:
-// the API's callback, at this page's origin, which is the server's public
-// address, as the browser reaches it, such as through a proxy, which a
-// client registered beforehand is registered with
+// callbackURL returns the URL a server's sign-in sends the browser back to,
+// which a client registered beforehand is registered with: the API's
+// callback, at the server's public endpoint, when it has one, from its
+// configuration, or else at this page's origin
 export async function callbackURL(): Promise<string> {
-    const { prefix } = await config();
+    const { prefix, endpoint } = await config();
+    if (endpoint) {
+        return endpoint.replace(/\/$/, '') + '/mcp/callback';
+    }
     return new URL(prefix.replace(/\/$/, '') + '/mcp/callback', location.origin).href;
 }
 
