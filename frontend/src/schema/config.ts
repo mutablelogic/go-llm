@@ -10,4 +10,9 @@ export interface Config {
 
     // The path of the API's documentation, when the server serves it
     openapi?: string;
+
+    // The server's public endpoint, such as https://llm.example.com/api,
+    // when it was given its public name, such as that of a proxy it's
+    // behind, with --tls.name
+    endpoint?: string;
 }

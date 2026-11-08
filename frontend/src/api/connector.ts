@@ -1,6 +1,6 @@
 // The MCP connectors' API
 
-import { request } from './client';
+import { config, request } from './client';
 import type { Connector, ConnectorList, ConnectorMeta, ConnectorTemplateList } from '../schema/connector';
 
 // listConnectors returns the connectors, with their status
@@ -36,8 +36,21 @@ export function deleteConnector(name: string): Promise<Connector> {
 // returns the URL a person signs in at, which redirects back to the server,
 // at the browser's origin, once they have
 export async function authorizeConnector(name: string): Promise<string> {
-    const response = await request<{ url: string }>('POST', '/mcp/connector/' + encodeURIComponent(name) + '/authorize', { body: {} });
+    const redirect = await callbackURL();
+    const response = await request<{ url: string }>('POST', '/mcp/connector/' + encodeURIComponent(name) + '/authorize', { body: { redirect } });
     return response.url;
+}
+
+// callbackURL returns the URL a server's sign-in sends the browser back to,
+// which a client registered beforehand is registered with: the API's
+// callback, at the server's public endpoint, when it has one, from its
+// configuration, or else at this page's origin
+export async function callbackURL(): Promise<string> {
+    const { prefix, endpoint } = await config();
+    if (endpoint) {
+        return endpoint.replace(/\/$/, '') + '/mcp/callback';
+    }
+    return new URL(prefix.replace(/\/$/, '') + '/mcp/callback', location.origin).href;
 }
 
 // listTemplates returns the templates of the remote MCP servers which a
