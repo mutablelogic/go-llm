@@ -42,6 +42,13 @@ docker compose -f docker/compose.yaml --profile ollama up -d
 
 ### 2. Install the command-line tool
 
+The web UI is all you need to chat. The `llm` command is for working from the terminal, and for automation:
+
+- **Scripts, cron jobs and CI:** ask a model, transcribe a recording, or read a document, then use the output in a pipeline.
+- **Files from the shell:** attach them with `--attach`, or pipe text into commands such as `llm speak`.
+- **Setup:** add providers, connectors and agents from a script, so an installation can be set up again.
+- **Chat in the terminal,** which follows other clients of the same conversation.
+
 ```bash
 go install -tags client github.com/mutablelogic/go-llm/cmd/llm@latest
 ```
@@ -50,7 +57,7 @@ Or run `make client` in a clone, which builds `build/llm`. The tool connects to 
 
 ### 3. Add providers
 
-Add more providers with the CLI. An API key is given by the *name* of the server's environment variable, so the key itself is never stored or sent:
+Add more providers in the web UI, with **Add provider** on the Models page, or with the CLI. An API key is given by the *name* of the server's environment variable, so the key itself is never stored or sent:
 
 ```bash
 llm provider-create-ollama http://host.docker.internal:11434
