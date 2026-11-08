@@ -21,6 +21,7 @@ import { createConnector, deleteConnector, getConnector, listConnectors, updateC
 import { ApiError } from '../api/client';
 import { connectorName, type Connector, type ConnectorMeta } from '../schema/connector';
 import { ConnectorForm } from '../component/connector-form';
+import type { ConnectorAlerts } from '../component/connector-alerts';
 import { routeHref } from '../router';
 
 export interface ToolsViews {
@@ -30,6 +31,7 @@ export interface ToolsViews {
     view: ToolView | null;
     agent: AgentEditor | null;
     connector: ConnectorForm | null;
+    alerts: ConnectorAlerts | null;
 }
 
 // connectWait is how long a connector which is added is waited for, as the
@@ -356,6 +358,21 @@ export class ToolsController extends ListController<Tool> {
         return { count: shown.length, body: shown.slice(offset, offset + limit) };
     }
 
+    // connectorOf returns the connector of the namespace, or the connector
+    // with the name, when it isn't connected, so has no namespace
+    private connectorOf(namespace: string): Connector | undefined {
+        return this.connectors.find((connector) => connector.namespace === namespace)
+            ?? this.unconnected().find((connector) => connector.name === namespace);
+    }
+
+    // unconnected returns the connectors which aren't connected, so have no
+    // namespace, apart from those whose names are another namespace's, such
+    // as memory, so they aren't taken for it
+    private unconnected(): Connector[] {
+        const namespaces = new Set((this.namespaces ?? []).map((namespace) => namespace.name));
+        return this.connectors.filter((connector) => !connector.namespace && !namespaces.has(connector.name));
+    }
+
     // setNamespace shows the tools of the namespace, or every tool, from the
     // first page
     setNamespace(namespace?: string) {
@@ -383,10 +400,13 @@ export class ToolsController extends ListController<Tool> {
     }
 
     protected render() {
-        const { page, namespaces, table, view } = this.views;
+        const { page, alerts, namespaces, table, view } = this.views;
+        if (alerts) {
+            alerts.connectors = this.connectors;
+        }
         if (page) {
             page.namespace = this.namespace;
-            page.connector = this.namespace ? this.connectors.find((connector) => connector.namespace === this.namespace)?.name : undefined;
+            page.connector = this.namespace ? this.connectorOf(this.namespace)?.name : undefined;
         }
         if (namespaces) {
             namespaces.tiles = this.namespaces && [
@@ -394,6 +414,12 @@ export class ToolsController extends ListController<Tool> {
                 // A connector's namespace has its type as a badge, as a
                 // provider has, but built in ones, and the agents', don't
                 ...this.namespaces.map((namespace) => ({ value: namespace.name, label: namespace.name, badge: namespace.type === 'mcp' ? namespace.type : undefined, count: namespace.tools, title: namespace.description })),
+                // And a connector which isn't connected, which has no
+                // namespace, by its name, with why, as a provider which
+                // can't be reached is, so it can be edited, and deleted
+                ...this.unconnected().map((connector) => ({
+                    value: connector.name, label: connector.name, badge: 'mcp', count: 0, title: connector.url, error: connector.error,
+                })),
             ];
             namespaces.selected = this.namespace;
         }

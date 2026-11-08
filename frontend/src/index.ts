@@ -30,6 +30,7 @@ import './component/tool-table';
 import './component/tool-view';
 import './component/agent-editor';
 import './component/connector-form';
+import './component/connector-alerts';
 import './page/chat-page';
 import './page/models-page';
 import './page/tools-page';
@@ -108,6 +109,7 @@ const tools = new ToolsController({
     view: document.querySelector('llm-tool-view'),
     agent: document.querySelector('llm-agent-editor'),
     connector: document.querySelector('llm-connector-form'),
+    alerts: document.querySelector('llm-connector-alerts'),
 }, notifications);
 
 // Watch the server's changes, so the pages load what changed: sessions, as
