@@ -52,13 +52,13 @@ func New(opts ...Opt) (*Registry, error) {
 // PUBLIC METHODS - SERVERS
 
 // ListConnectors returns the connectors, in order of their names
-func (r *Registry) ListConnectors(ctx context.Context) ([]schema.Connector, error) {
+func (r *Registry) ListConnectors(ctx context.Context) (*schema.ConnectorList, error) {
 	connectors, err := r.store.List(ctx)
 	if err != nil {
 		return nil, err
 	}
 	slices.SortFunc(connectors, func(a, b schema.Connector) int { return strings.Compare(a.Name, b.Name) })
-	return connectors, nil
+	return &schema.ConnectorList{Count: uint(len(connectors)), Body: connectors}, nil
 }
 
 // GetConnector returns the connector with the name, or ErrNotFound when there's

@@ -1,0 +1,27 @@
+# MCP Connectors API
+
+## Connector Operations
+
+Connectors are remote MCP servers, which the assistant can connect to, such as for their tools. Each has a `name`, which is an identifier, of up to 64 letters, numbers, underscores or hyphens, starting with a letter, and the `url` of its server, which is an `http` or `https` URL, of its streamable HTTP transport, or its SSE transport. A server which runs as a command, over stdio, can't be a connector. Each connector has a `serial`, which changes each time it's changed.
+
+The connectors are kept in the server's store of them, so they're kept as the server restarts, when it has one, and are otherwise lost when it stops.
+
+### GET /mcp/connector
+
+List the connectors, in order of their names, with their `count`.
+
+### POST /mcp/connector
+
+Create a connector, with its `name` and `url`. Returns the created connector, with its `serial`. Returns 400 if the request body is invalid, the name isn't an identifier, or the URL isn't an `http` or `https` URL with a host, or 409 if a connector with that name exists already.
+
+### GET /mcp/connector/{name}
+
+Get a connector by name. Returns 404 if there's no connector with that name.
+
+### PATCH /mcp/connector/{name}
+
+Update a connector by name, replacing its `url`. Its name can't be changed. Returns the updated connector, with its new `serial`. Returns 400 if the request body is invalid, or the URL isn't an `http` or `https` URL with a host, 404 if there's no connector with that name, or 409 if it was changed as it was updated.
+
+### DELETE /mcp/connector/{name}
+
+Delete a connector by name. Returns the deleted connector. Returns 404 if there's no connector with that name, or 409 if it was changed as it was deleted.

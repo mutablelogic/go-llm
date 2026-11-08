@@ -67,9 +67,10 @@ func Test_Servers(t *testing.T) {
 	assert.Equal(t, uint64(1), created.Serial)
 	_, err = r.CreateConnector(ctx, schema.Connector{Name: "github", ConnectorMeta: schema.ConnectorMeta{URL: "https://mcp.example.com/github"}, Serial: 7})
 	require.NoError(t, err, "whatever its serial")
-	connectors, err := r.ListConnectors(ctx)
+	list, err := r.ListConnectors(ctx)
 	require.NoError(t, err)
-	assert.Equal(t, []string{"github", "search"}, names(connectors))
+	assert.Equal(t, uint(2), list.Count)
+	assert.Equal(t, []string{"github", "search"}, names(list.Body))
 
 	// But not twice, nor with a name which isn't an identifier, or a URL
 	// which isn't a remote connector's
@@ -118,9 +119,9 @@ func Test_Store(t *testing.T) {
 
 	two, err := registry.New(registry.WithStore(store))
 	require.NoError(t, err)
-	connectors, err := two.ListConnectors(ctx)
+	list, err := two.ListConnectors(ctx)
 	require.NoError(t, err)
-	assert.Equal(t, []string{"github"}, names(connectors))
+	assert.Equal(t, []string{"github"}, names(list.Body))
 	_, err = two.UpdateConnector(ctx, "github", schema.ConnectorMeta{URL: "https://mcp.example.com/v2"})
 	require.NoError(t, err)
 	got, err := one.GetConnector(ctx, "github")

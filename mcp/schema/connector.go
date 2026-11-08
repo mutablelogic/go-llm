@@ -27,6 +27,12 @@ type Connector struct {
 	Serial uint64 `json:"serial,omitempty" readonly:"" help:"Revision of the connector's definition, which changes each time it's changed" example:"1"`
 }
 
+// ConnectorList is a list of connectors, in order of their names
+type ConnectorList struct {
+	Count uint        `json:"count" help:"The number of connectors"`
+	Body  []Connector `json:"body,omitempty" help:"The connectors"`
+}
+
 ///////////////////////////////////////////////////////////////////////////////
 // PUBLIC METHODS
 
@@ -63,4 +69,8 @@ func (c Connector) String() string {
 
 func (m ConnectorMeta) String() string {
 	return types.Stringify(m)
+}
+
+func (l ConnectorList) String() string {
+	return types.Stringify(l)
 }
