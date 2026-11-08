@@ -31,8 +31,7 @@ func WithClientOpts(opts ...goclient.ClientOpt) Opt {
 }
 
 // WithName is the name, and version, of the client, which the server is
-// told, as it connects, rather than DefaultName, and the version of the
-// build. The version can be empty.
+// told, as it connects, which a client needs. The version can be empty.
 func WithName(name, version string) Opt {
 	return func(c *Client) error {
 		if name = strings.TrimSpace(name); name == "" {

@@ -8,7 +8,6 @@ import (
 	sdkmcp "github.com/modelcontextprotocol/go-sdk/mcp"
 	goclient "github.com/mutablelogic/go-client"
 	llm "github.com/mutablelogic/go-llm"
-	version "github.com/mutablelogic/go-server/pkg/version"
 )
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -23,7 +22,7 @@ type Client struct {
 	endpoint string
 
 	// The name, and version, of the client, which the server is told, as it
-	// connects
+	// connects, with WithName
 	implementation sdkmcp.Implementation
 
 	// The options of go-client, which are gathered as the options are
@@ -32,20 +31,14 @@ type Client struct {
 }
 
 ///////////////////////////////////////////////////////////////////////////////
-// GLOBALS
-
-// DefaultName is the name of the client, which the server is told, unless
-// it's given another, with WithName
-const DefaultName = "go-llm"
-
-///////////////////////////////////////////////////////////////////////////////
 // LIFECYCLE
 
 // New returns a client of the MCP server at the URL, such as
 // https://mcp.example.com/mcp, or one which ends /sse, of a server with the
-// SSE transport, with the options, such as go-client's, with
+// SSE transport, with the options: its name, and version, which the server
+// is told, with WithName, which is needed, and go-client's, with
 // WithClientOpts. It isn't connected. Returns ErrBadParameter when the URL
-// isn't an http, or https, URL with a host.
+// isn't an http, or https, URL with a host, or it has no name.
 func New(endpoint string, opts ...Opt) (*Client, error) {
 	u, err := url.Parse(strings.TrimSpace(endpoint))
 	if err != nil {
@@ -57,7 +50,7 @@ func New(endpoint string, opts ...Opt) (*Client, error) {
 	}
 
 	// Apply the options, which gather go-client's
-	c := &Client{endpoint: u.String(), implementation: sdkmcp.Implementation{Name: DefaultName, Version: version.Version()}}
+	c := &Client{endpoint: u.String()}
 	for _, opt := range opts {
 		if opt == nil {
 			continue
@@ -65,6 +58,9 @@ func New(endpoint string, opts ...Opt) (*Client, error) {
 		if err := opt(c); err != nil {
 			return nil, err
 		}
+	}
+	if c.implementation.Name == "" {
+		return nil, llm.ErrBadParameter.With("name is required, with WithName")
 	}
 
 	// Create go-client's client, for the server, with its options

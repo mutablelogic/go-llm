@@ -17,33 +17,32 @@ import (
 func Test_New(t *testing.T) {
 	t.Run("URL", func(t *testing.T) {
 		// A server is at an http, or https, URL, with a host
-		c, err := New(" https://mcp.example.com/mcp ")
+		c, err := New(" https://mcp.example.com/mcp ", WithName("test", ""))
 		require.NoError(t, err)
 		assert.Equal(t, "https://mcp.example.com/mcp", c.Endpoint())
 		assert.NotNil(t, c.Client)
 
 		// And not a command, or a path
 		for _, endpoint := range []string{"", "mcp.example.com", "/mcp", "stdio://server", "file:///usr/bin/server", "https:///mcp", "http://%zz"} {
-			_, err := New(endpoint)
+			_, err := New(endpoint, WithName("test", ""))
 			assert.ErrorIs(t, err, llm.ErrBadParameter, endpoint)
 		}
 	})
 
 	t.Run("Name", func(t *testing.T) {
-		// The server is told the client's name, which is go-llm, or another
-		c, err := New("https://mcp.example.com/mcp")
-		require.NoError(t, err)
-		assert.Equal(t, DefaultName, c.implementation.Name)
-		c, err = New("https://mcp.example.com/mcp", WithName(" assistant ", "1.2.3"))
+		// The server is told the client's name, and version, which it needs
+		c, err := New("https://mcp.example.com/mcp", WithName(" assistant ", " 1.2.3 "))
 		require.NoError(t, err)
 		assert.Equal(t, sdkmcp.Implementation{Name: "assistant", Version: "1.2.3"}, c.implementation)
+		_, err = New("https://mcp.example.com/mcp")
+		assert.ErrorIs(t, err, llm.ErrBadParameter, "without a name")
 		_, err = New("https://mcp.example.com/mcp", WithName(" ", "1.2.3"))
 		assert.ErrorIs(t, err, llm.ErrBadParameter)
 	})
 
 	t.Run("Nil", func(t *testing.T) {
 		// An option which is nil is ignored
-		_, err := New("https://mcp.example.com/mcp", nil)
+		_, err := New("https://mcp.example.com/mcp", nil, WithName("test", ""))
 		assert.NoError(t, err)
 	})
 }
@@ -56,7 +55,7 @@ func Test_Transports(t *testing.T) {
 		got = r.Header.Clone()
 	}))
 	t.Cleanup(server.Close)
-	c, err := New(server.URL+"/mcp", WithClientOpts(
+	c, err := New(server.URL+"/mcp", WithName("test", "1.0"), WithClientOpts(
 		goclient.OptHeader("X-Test", "yes"),
 		goclient.OptUserAgent("test-agent"),
 		goclient.OptTimeout(time.Second),
