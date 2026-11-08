@@ -42,7 +42,7 @@ type Marker struct {
 	Reason  string       `json:"reason" help:"Why the conversation was compacted: asked, when it was asked to be, or full, when its context was nearly full" enum:"asked,full" example:"asked"`
 	Status  MarkerStatus `json:"status" help:"Whether its summary is being written, was written, or couldn't be" enum:"pending,summarized,failed" example:"summarized"`
 	Summary string       `json:"summary,omitempty" help:"A summary of the conversation before it, which is sent to the model in its place"`
-	Title   string       `json:"title,omitempty" help:"A title for the conversation, as it is, which is its title, when it has none, or had the title of the marker before"`
+	Title   string       `json:"title,omitempty" help:"A title for the conversation, as it is, which is its title"`
 	Error   string       `json:"error,omitempty" help:"Why its summary couldn't be written"`
 }
 

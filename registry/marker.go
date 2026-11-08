@@ -63,7 +63,8 @@ var errNothingToCompact = llm.ErrBadParameter.With("there's nothing to compact, 
 // before it are kept, but aren't sent to its model, and returns it, without
 // its messages. A summary of them, and a title for the conversation, are
 // written in the background, by the compact agent, and added to the marker,
-// and the model is sent the summary in their place, once it's written.
+// and the model is sent the summary in their place, once it's written, and
+// the title is the session's.
 // Returns ErrNotFound when there's no session, ErrForbidden when it's an
 // event's, ErrBadParameter when it has no messages since it was last
 // compacted, and ErrServiceUnavailable when the registry has no session
@@ -133,9 +134,8 @@ func (r *Registry) addMarker(ctx context.Context, id uuid.UUID, marker providers
 
 // summarize writes the summary of the messages before the session's marker,
 // since the marker before it, with the compact agent, and the session's
-// model, and adds it to the marker, with a title for the conversation,
-// which is its title too, when it has none, or had the title of the marker
-// before, or marks it failed, saying why
+// model, and adds it to the marker, with a title for the conversation, as
+// it is now, which is its title too, or marks it failed, saying why
 func (r *Registry) summarize(ctx context.Context, id, markerID uuid.UUID) (err error) {
 	ctx, endSpan := otel.StartSpan(r.tracer, ctx, "llm.registry.Summarize",
 		attribute.String("arg.session", id.String()),
@@ -150,7 +150,7 @@ func (r *Registry) summarize(ctx context.Context, id, markerID uuid.UUID) (err e
 			return
 		}
 		marker.Status, marker.Summary, marker.Title = providerschema.MarkerSummarized, summary, title
-		if title != "" && (types.Value(session.Title) == "" || (previous != nil && previous.Title != "" && types.Value(session.Title) == previous.Title)) {
+		if title != "" {
 			session.Title = types.Ptr(title)
 		}
 	}))

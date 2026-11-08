@@ -132,7 +132,8 @@ func Test_CompactSession(t *testing.T) {
 func Test_CompactTitle(t *testing.T) {
 	ctx := context.Background()
 
-	// A title the person gave is kept, and one a marker gave is replaced
+	// The conversation's title is the summary's, each time it's compacted,
+	// whatever it was
 	r, _ := newCompacting(t, text("Hello"), summarized("A greeting.", "Greetings"), text("Again"), summarized("Two greetings.", "More greetings"))
 	session, err := r.CreateSession(ctx, schema.SessionMeta{Title: types.Ptr("My chat"), GeneratorMeta: schema.GeneratorMeta{Model: types.Ptr("model")}})
 	require.NoError(t, err)
@@ -150,16 +151,14 @@ func Test_CompactTitle(t *testing.T) {
 	compactNow("A greeting.")
 	got, err := r.GetSession(ctx, session.ID)
 	require.NoError(t, err)
-	assert.Equal(t, "My chat", types.Value(got.Title), "the person's title is kept")
+	assert.Equal(t, "Greetings", types.Value(got.Title), "the title it was given is replaced")
 
-	_, err = r.UpdateSession(ctx, session.ID, schema.SessionMeta{Title: types.Ptr("Greetings")})
-	require.NoError(t, err)
 	_, err = r.Chat(ctx, session.ID, []llm.Message{user(t, "Hi again")}, nil)
 	require.NoError(t, err)
 	compactNow("Two greetings.")
 	got, err = r.GetSession(ctx, session.ID)
 	require.NoError(t, err)
-	assert.Equal(t, "More greetings", types.Value(got.Title), "the title the marker before gave is replaced")
+	assert.Equal(t, "More greetings", types.Value(got.Title), "and again")
 }
 
 func Test_CompactFailed(t *testing.T) {
