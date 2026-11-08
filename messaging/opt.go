@@ -29,8 +29,10 @@ type opt struct {
 // ChatFunc sends the message, which was sent in the channel's chat, to the
 // channel's session, and returns once its model has replied, such as by
 // chatting in it. The reply is sent to the session's channels by Reply,
-// which the session calls with it.
-type ChatFunc func(ctx context.Context, channel schema.Channel, message Message) error
+// which the session calls with it. It calls the progress function with
+// each line which says what's happening, as it replies, such as what the
+// tools it calls are doing, which is shown in the chat.
+type ChatFunc func(ctx context.Context, channel schema.Channel, message Message, progress func(line string)) error
 
 // SessionFunc returns nil when the session with the identifier exists, or
 // ErrNotFound when it doesn't

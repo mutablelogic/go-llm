@@ -117,7 +117,7 @@ func newServerMessaging(ctx server.Cmd, tools *toolkit.Toolkit, sessions *atomic
 
 	// A message from a channel is chatted in its session, whose reply the
 	// registry sends to the session's channels
-	chat := func(ctx context.Context, channel schema.Channel, message messaging.Message) error {
+	chat := func(ctx context.Context, channel schema.Channel, message messaging.Message, progress func(string)) error {
 		r := sessions.Load()
 		if r == nil {
 			return llm.ErrServiceUnavailable.With("registry isn't running")
@@ -126,7 +126,7 @@ func newServerMessaging(ctx server.Cmd, tools *toolkit.Toolkit, sessions *atomic
 		if err != nil {
 			return err
 		}
-		_, err = r.Chat(ctx, channel.Session, []llm.Message{msg}, nil)
+		_, err = r.Chat(ctx, channel.Session, []llm.Message{msg}, progressStream(progress))
 		return err
 	}
 	opts = append([]messaging.Opt{messaging.WithTracer(ctx.Tracer()), messaging.WithProvider(bot), messaging.WithChat(chat)}, opts...)
@@ -165,7 +165,8 @@ func chatMessage(ctx context.Context, res *resource.Manager, session uuid.UUID, 
 			unavailable = append(unavailable, fmt.Sprintf("%s wasn't received, as %s", attachment.Name, reason))
 			continue
 		} else if res == nil {
-			break
+			unavailable = append(unavailable, fmt.Sprintf("%s wasn't received, as files can't be kept", attachment.Name))
+			continue
 		}
 		kept, err := keepAttachment(ctx, res, session, attachment)
 		if err != nil {
@@ -252,4 +253,24 @@ func isMedia(contentType string) bool {
 		return true
 	}
 	return false
+}
+
+// progressStream returns the function which a reply is streamed to, which
+// gives the progress function the lines the tools log, and their progress,
+// such as that an agent is replying, which say what's happening, rather than
+// the reply itself, which is sent once it's done
+func progressStream(progress func(string)) llm.GeneratorStreamFn {
+	if progress == nil {
+		return nil
+	}
+	return func(what llm.StreamType, text string) {
+		switch what {
+		case llm.StreamLog:
+			progress(text)
+		case llm.StreamProgress:
+			if message := strings.TrimSpace(llm.ParseProgress(text).Message); message != "" {
+				progress(message)
+			}
+		}
+	}
 }

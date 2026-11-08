@@ -93,7 +93,7 @@ func Test_Messaging_Connect(t *testing.T) {
 	defer cancel()
 	provider := newFake("fake")
 	chats := make(chan string, 4)
-	m, err := messaging.New(messaging.NewStore(), messaging.WithProvider(provider), messaging.WithChat(func(_ context.Context, channel schema.Channel, message messaging.Message) error {
+	m, err := messaging.New(messaging.NewStore(), messaging.WithProvider(provider), messaging.WithChat(func(_ context.Context, channel schema.Channel, message messaging.Message, _ func(string)) error {
 		chats <- channel.Session.String() + ":" + message.Text
 		return nil
 	}))
@@ -303,7 +303,7 @@ func Test_Messaging_DeletedSession(t *testing.T) {
 		}
 		return nil
 	}
-	m, err := messaging.New(messaging.NewStore(), messaging.WithProvider(provider), messaging.WithSessions(exists), messaging.WithChat(func(context.Context, schema.Channel, messaging.Message) error {
+	m, err := messaging.New(messaging.NewStore(), messaging.WithProvider(provider), messaging.WithSessions(exists), messaging.WithChat(func(context.Context, schema.Channel, messaging.Message, func(string)) error {
 		return llm.ErrNotFound.With("model not found")
 	}))
 	require.NoError(t, err)
@@ -498,7 +498,7 @@ func Test_Messaging_Attachments(t *testing.T) {
 	defer cancel()
 	provider := newFake("fake")
 	got := make(chan messaging.Message, 1)
-	m, err := messaging.New(messaging.NewStore(), messaging.WithProvider(provider), messaging.WithChat(func(_ context.Context, _ schema.Channel, message messaging.Message) error {
+	m, err := messaging.New(messaging.NewStore(), messaging.WithProvider(provider), messaging.WithChat(func(_ context.Context, _ schema.Channel, message messaging.Message, _ func(string)) error {
 		got <- message
 		return nil
 	}))

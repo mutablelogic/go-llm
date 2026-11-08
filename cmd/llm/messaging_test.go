@@ -194,3 +194,30 @@ func Test_ReplyFiles(t *testing.T) {
 	}}
 	assert.Equal(t, []string{"resource:///speech", "resource:///picture", "resource:///film"}, replyFiles(reply))
 }
+
+func Test_ProgressStream(t *testing.T) {
+	// The lines tools log, and their progress, are what's happening, and the
+	// reply, and thinking, aren't
+	var lines []string
+	stream := progressStream(func(line string) { lines = append(lines, line) })
+	stream(llm.StreamText, "Here's the answer")
+	stream(llm.StreamThinking, "Hmm")
+	stream(llm.StreamLog, "Transcribing the recording")
+	stream(llm.StreamProgress, llm.Progress{Progress: 1, Total: 3, Message: "The segment agent is replying"}.Text())
+	stream(llm.StreamProgress, llm.Progress{Progress: 2}.Text())
+	assert.Equal(t, []string{"Transcribing the recording", "The segment agent is replying"}, lines)
+	assert.Nil(t, progressStream(nil))
+}
+
+func Test_ChatMessageWithoutResources(t *testing.T) {
+	// Without resources, each file is a note that it wasn't received, rather
+	// than the first stopping the others
+	open := func(context.Context) (io.ReadCloser, error) { return io.NopCloser(strings.NewReader("x")), nil }
+	message, err := chatMessage(t.Context(), nil, uuid.New(), messaging.Message{Text: "Two files", Attachments: []messaging.Attachment{
+		{Name: "a.jpg", Open: open},
+		{Name: "b.pdf", Open: open},
+	}})
+	require.NoError(t, err)
+	assert.Contains(t, message.Text(), "a.jpg wasn't received, as files can't be kept")
+	assert.Contains(t, message.Text(), "b.pdf wasn't received, as files can't be kept")
+}
