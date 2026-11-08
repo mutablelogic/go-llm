@@ -57,8 +57,10 @@ func (r *Registry) serverName(ctx context.Context, meta schema.ConnectorMeta) st
 			return server.Name
 		}
 	case authclient.AsAuthError(err) != nil:
-		if metadata, err := c.DiscoverWithError(connectCtx, err); err == nil && metadata.Resource.ResourceName != "" {
-			return metadata.Resource.ResourceName
+		// Only its metadata is needed, not its authorization server's,
+		// which can't be got, without its name being lost
+		if metadata, err := c.DiscoverResource(connectCtx, err); err == nil && metadata.ResourceName != "" {
+			return metadata.ResourceName
 		}
 	default:
 		r.log().Debug("connector's server can't be connected, so it's named after its host", "url", meta.URL, "error", err.Error())
