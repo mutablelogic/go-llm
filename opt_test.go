@@ -189,7 +189,7 @@ func TestWithOpts(t *testing.T) {
 			"EmptyStopSequence":   llm.WithStopSequences("END", ""),
 			"InfPresencePenalty":  llm.WithPresencePenalty(math.Inf(1)),
 			"NaNFrequencyPenalty": llm.WithFrequencyPenalty(math.NaN()),
-			"UnknownEffort":       llm.WithThinkingEffort("max"),
+			"UnknownEffort":       llm.WithThinkingEffort("huge"),
 			"InvalidJSONSchema":   llm.WithJSONSchema(json.RawMessage(`{`)),
 			"UnknownToolChoice":   llm.WithToolChoice("required"),
 			"ZeroContextWindow":   llm.WithContextWindow(0),

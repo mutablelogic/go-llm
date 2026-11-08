@@ -312,6 +312,18 @@ func Test_Options(t *testing.T) {
 	r = request(t, newer, llm.WithOpt(llm.ThinkingKey, false), llm.WithOpt(llm.ThinkingEffortKey, "high"))
 	assert.Equal(t, "high", r.OutputConfig.Effort)
 
+	// An effort is the nearest which the model has, when it says which it
+	// has, and otherwise the effort
+	r = request(t, newer, llm.WithOpt(llm.ThinkingEffortKey, "max"))
+	assert.Equal(t, "max", r.OutputConfig.Effort)
+	levels := &Model{caps: modelCapabilities{Effort: effort{supported: supported{true}, Low: supported{true}, Medium: supported{true}, High: supported{true}}}}
+	levels.caps.Thinking.Supported, levels.caps.Thinking.Types.Adaptive.Supported = true, true
+	for want, ask := range map[string]string{"high": "max", "medium": "medium"} {
+		r = &messagesRequest{}
+		require.NoError(t, r.apply(levels, llm.WithOpt(llm.ThinkingEffortKey, ask)))
+		assert.Equal(t, want, r.OutputConfig.Effort, ask)
+	}
+
 	// An older model thinks only when it's asked to, within a budget, and has
 	// no effort
 	assert.Nil(t, request(t, older).Thinking)

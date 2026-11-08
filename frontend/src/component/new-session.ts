@@ -201,6 +201,8 @@ export class NewSession extends Panel<NewSessionForm> {
                                 <cds-select-item value="low">Low</cds-select-item>
                                 <cds-select-item value="medium">Medium</cds-select-item>
                                 <cds-select-item value="high">High</cds-select-item>
+                                <cds-select-item value="xhigh">Extra high</cds-select-item>
+                                <cds-select-item value="max">Max</cds-select-item>
                             </cds-select>
                         ` : ''}
                     ` : ''}

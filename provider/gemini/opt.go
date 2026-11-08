@@ -13,8 +13,9 @@ import (
 // GLOBALS
 
 // thinkingBudgets are the budgets of tokens Gemini 2.5 thinks within, for
-// each effort, where -1 is as much as it decides
-var thinkingBudgets = map[string]int{"low": 1024, "medium": 8192, "high": -1}
+// each effort, where -1 is as much as it decides, which is the most, so
+// "xhigh" and "max" are as "high"
+var thinkingBudgets = map[string]int{"low": 1024, "medium": 8192, "high": -1, "xhigh": -1, "max": -1}
 
 // minThinkingBudget is the least Gemini 2.5 Pro, which can't stop thinking,
 // thinks within
@@ -81,7 +82,7 @@ func (r *generateRequest) apply(model *Model, opts ...llm.Opt) error {
 			var effort string
 			if effort, err = llm.GetOpt[string](o, key); err == nil {
 				if _, ok := thinkingBudgets[effort]; !ok {
-					err = llm.ErrBadParameter.Withf("thinking effort %q isn't low, medium or high", effort)
+					err = llm.ErrBadParameter.Withf("thinking effort %q isn't one of %s", effort, strings.Join(llm.Efforts, ", "))
 				}
 			}
 		case llm.JSONSchemaKey:
@@ -177,7 +178,8 @@ func (m *Model) thinking(asked, think bool, effort string) (*thinkingConfig, err
 	case off:
 		config.ThinkingLevel = "LOW"
 	case effort != "":
-		config.ThinkingLevel = strings.ToUpper(effort)
+		// Its most is "high"
+		config.ThinkingLevel = strings.ToUpper(llm.MostEffort(effort, "high"))
 	}
 	return config, nil
 }
