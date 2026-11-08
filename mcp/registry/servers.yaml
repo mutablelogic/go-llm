@@ -101,6 +101,12 @@
   description: Scheduling, and posting, to social media platforms, with PostEverywhere's own MCP server
   url: https://mcp.posteverywhere.ai/mcp
 
+# Kensho's sign-in registers clients itself, so it needs no credentials,
+# and is always offered
+- name: Kensho kFinance
+  description: Financial data on companies, from S&P Global, such as their financials, prices and transcripts, with Kensho's own MCP server
+  url: https://kfinance.kensho.com/integrations/mcp
+
 # Lingviko's der die das needs no sign-in, so it needs no credentials, and
 # is always offered
 - name: der die das (Lingviko)

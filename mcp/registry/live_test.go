@@ -38,6 +38,7 @@ var liveServers = []struct {
 	{"https://mcp.pagerduty.com/mcp", "go-llm-test", "pagerduty-mcp-server"},
 	{"https://pidgeon.ai/api/mcp", "", "pidgeon"},
 	{"https://mcp.posteverywhere.ai/mcp", "", "mcp-posteverywhere"},
+	{"https://kfinance.kensho.com/integrations/mcp", "", "kfinance-kensho"},
 }
 
 func Test_AuthorizeLive(t *testing.T) {
