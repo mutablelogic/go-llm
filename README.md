@@ -76,7 +76,7 @@ llm models --capability speech_output       # models that speak
 
 ### 4. Ask, and chat
 
-A command's model is remembered until you give another:
+Chat in the web UI, with **New chat**, or with the CLI. With the CLI, a command's model is remembered until you give another:
 
 ```bash
 llm ask --model gpt-4o-mini "Explain a KV cache in two sentences"
@@ -97,7 +97,7 @@ llm translate --model whisper-1 interview.wav
 llm model-load ollama:llama3.2
 ```
 
-Or chat in a session, which go-llm keeps:
+Or chat in a session, which go-llm keeps, and which the web UI shows too:
 
 ```bash
 llm session-create --model ollama:llama3.2 --system "Be brief" --tools "weatherapi:*"
