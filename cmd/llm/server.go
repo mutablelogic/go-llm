@@ -241,10 +241,7 @@ func (runner *RunServer) withToolkit(ctx server.Cmd, b *broadcaster.Broadcaster,
 			}
 			replyCtx, cancel := context.WithTimeout(replyCtx, 2*time.Minute)
 			defer cancel()
-			out := messaging.Outgoing{Text: reply.Text}
-			for _, resource := range reply.Resources {
-				out.Files = append(out.Files, resource.URI)
-			}
+			out := messaging.Outgoing{Text: reply.Text, Files: replyFiles(reply)}
 			if err := m.Reply(replyCtx, session, out); err != nil {
 				ctx.Logger().ErrorContext(replyCtx, "reply not sent to channels", "session", session, "error", err.Error())
 			}

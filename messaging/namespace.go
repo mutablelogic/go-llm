@@ -75,7 +75,7 @@ type listOutput struct {
 }
 
 type sendInput struct {
-	Text     string   `json:"text,omitempty" help:"What to send, as Markdown, which is the caption of the first file, when it's an image" optional:""`
+	Text     string   `json:"text,omitempty" help:"What to send, as Markdown, which is the caption of the first file, when there are files" optional:""`
 	Files    []string `json:"files,omitempty" help:"The URIs of the conversation's files to send, such as resource:///<hash>, such as an image, or speech" optional:""`
 	Channels []string `json:"channels,omitempty" help:"The identifiers of the channels to send it to, or none, to send it to all of the conversation's channels" optional:""`
 }
@@ -187,7 +187,7 @@ func (t *listTool) Run(ctx context.Context, _ json.RawMessage) (any, error) {
 func (*sendTool) Name() string { return "send" }
 
 func (*sendTool) Description() string {
-	return "Sends a message, and the conversation's files, such as an image, or speech, to the chats connected to this conversation, such as on Telegram, which isn't your reply, as your replies, and the files you make with them, are sent there anyway. Returns, for each chat, the messages it was sent as, in order, each with its identifier, and whether it's text, a file, by its name, with the text as its caption, or a note in place of a file, and why anything wasn't sent."
+	return "Don't use this to reply: your replies, with the pictures and speech you make with them, are already sent to every chat connected to this conversation. Use it only for a message which isn't a reply, such as to one chat, or to send one of the conversation's files, such as a document, which isn't sent with a reply. It sends a message, and the conversation's files, to the chats connected to this conversation, such as on Telegram, with the text as the first file's caption. Returns, for each chat, the messages it was sent as, in order, each with its identifier, and whether it's text, a file, by its name, with the text as its caption, or a note in place of a file, and why anything wasn't sent."
 }
 
 func (*sendTool) InputSchema() *jsonschema.Schema {
@@ -332,7 +332,7 @@ const messagingPrompt = `# Messaging
 Chats on messaging services ({providers}) can be connected to this conversation, as channels, so the person can talk to you there, such as from their phone.
 
 - When the person asks to talk to you on one, connect it with ` + "`connect`" + `, and give them the link it returns, as it is, on a line of its own, which they open, or scan with their phone, as the web UI shows it as a QR code, and press Start.
-- Every reply you write in this conversation, with the files you make with it, such as a picture, or speech, is sent to each of its channels, wherever the message came from, so don't use ` + "`send`" + ` to reply.
+- Every reply you write in this conversation, with the pictures and speech you make with it, is sent to each of its channels, wherever the message came from, with your text as the caption of the first, so don't use ` + "`send`" + ` to reply, or you'll send it twice. Other files you make, such as transcripts, aren't sent, unless you send one with ` + "`send`" + `.
 - Use ` + "`send`" + ` only for a message which isn't a reply, such as to one channel only, or to send one of the conversation's files, by its URI.
 - Photos, documents and voice messages sent in a channel are the conversation's files, attached to the person's message. Text sent with them is their caption, which you're told, and is their description too, so treat it as being about them. When you can't hear a voice message, transcribe it with ` + "`llm:transcribe`" + `, and reply to what it says.
 - Photos sent in a channel are often compressed, which their files' descriptions say, so when small text in one, such as an address, matters, and is hard to read, ask the person to send it as a file, rather than guess. When a file wasn't received, such as when it's too large, say so.

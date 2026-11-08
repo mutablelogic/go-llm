@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"mime"
 	"net/url"
 	"path/filepath"
 	"strings"
@@ -211,4 +212,34 @@ func list(things []string) string {
 		return things[0]
 	}
 	return strings.Join(things[:len(things)-1], ", ") + " and " + things[len(things)-1]
+}
+
+// replyFiles returns the URIs of the files a reply made which are sent with
+// it to its session's channels, which are its media: pictures, audio, such
+// as speech, and video. Files which a model reads with, such as transcripts,
+// and text an image was read as, aren't, as they're how it worked out its
+// reply, rather than part of it, and the model sends one, when it means to,
+// with messaging's send tool.
+func replyFiles(reply registry.Reply) []string {
+	var files []string
+	for _, resource := range reply.Resources {
+		if isMedia(resource.Type) {
+			files = append(files, resource.URI)
+		}
+	}
+	return files
+}
+
+// isMedia returns whether the type is of media: an image, audio, or video
+func isMedia(contentType string) bool {
+	mediaType, _, err := mime.ParseMediaType(contentType)
+	if err != nil {
+		return false
+	}
+	kind, _, _ := strings.Cut(strings.ToLower(mediaType), "/")
+	switch kind {
+	case "image", "audio", "video":
+		return true
+	}
+	return false
 }

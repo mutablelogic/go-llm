@@ -16,8 +16,10 @@ import (
 	llm "github.com/mutablelogic/go-llm"
 	messaging "github.com/mutablelogic/go-llm/messaging"
 	schema "github.com/mutablelogic/go-llm/messaging/schema"
+	registry "github.com/mutablelogic/go-llm/registry"
 	resource "github.com/mutablelogic/go-llm/resource"
 	resourceschema "github.com/mutablelogic/go-llm/resource/schema"
+	toolschema "github.com/mutablelogic/go-llm/toolkit/schema"
 	types "github.com/mutablelogic/go-server/pkg/types"
 	assert "github.com/stretchr/testify/assert"
 	require "github.com/stretchr/testify/require"
@@ -171,4 +173,19 @@ func Test_ChatMessage(t *testing.T) {
 	message, err = chatMessage(ctx, nil, session, messaging.Message{Text: "Hello"})
 	require.NoError(t, err)
 	assert.Equal(t, "Hello", message.Text())
+}
+
+func Test_ReplyFiles(t *testing.T) {
+	// A reply's media are sent with it, and files a model reads with, such
+	// as a transcript, aren't
+	reply := registry.Reply{Text: "Here you are", Resources: []toolschema.ResourceLink{
+		{URI: "resource:///speech", Type: "audio/ogg"},
+		{URI: "resource:///transcript", Type: "text/plain; charset=utf-8"},
+		{URI: "resource:///picture", Type: "image/png"},
+		{URI: "resource:///scan", Type: "text/markdown"},
+		{URI: "resource:///film", Type: "video/mp4"},
+		{URI: "resource:///report", Type: "application/pdf"},
+		{URI: "resource:///unknown"},
+	}}
+	assert.Equal(t, []string{"resource:///speech", "resource:///picture", "resource:///film"}, replyFiles(reply))
 }

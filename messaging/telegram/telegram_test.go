@@ -279,7 +279,7 @@ func Test_Telegram_SendFile(t *testing.T) {
 	assert.Equal(t, []messaging.Sent{{ID: "1", File: "chart.png", Caption: true}}, sent)
 	// Ogg is a voice message, MP3 a track, and WAV a document
 	f, r = file("speech.ogg", "audio/ogg", "OGG")
-	_, err = tg.SendFile(ctx, "7", f, r, "")
+	_, err = tg.SendFile(ctx, "7", f, r, "Here's the *weather*")
 	require.NoError(t, err)
 	f, r = file("speech.mp3", "audio/mpeg", "MP3")
 	_, err = tg.SendFile(ctx, "7", f, r, "")
@@ -289,7 +289,7 @@ func Test_Telegram_SendFile(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, b.uploads, 4)
 	assert.Equal(t, uploaded{method: "sendPhoto", field: "photo", name: "chart.png", content: "PNG", chatID: "7", caption: "The <b>weather</b>", parseMode: "HTML"}, b.uploads[0])
-	assert.Equal(t, uploaded{method: "sendVoice", field: "voice", name: "speech.ogg", content: "OGG", chatID: "7"}, b.uploads[1])
+	assert.Equal(t, uploaded{method: "sendVoice", field: "voice", name: "speech.ogg", content: "OGG", chatID: "7", caption: "Here's the <i>weather</i>", parseMode: "HTML"}, b.uploads[1], "a voice message, with its caption")
 	assert.Equal(t, uploaded{method: "sendAudio", field: "audio", name: "speech.mp3", content: "MP3", chatID: "7"}, b.uploads[2])
 	assert.Equal(t, "sendDocument", b.uploads[3].method)
 	assert.Equal(t, "document", b.uploads[3].field)
