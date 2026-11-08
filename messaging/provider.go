@@ -104,7 +104,7 @@ type Outgoing struct {
 // it's detected from its content, its size, when it's known, what it is,
 // such as a photo which was compressed, and the function which opens it,
 // which is downloaded as it's read, which the caller closes, or why it
-// can't be, such as as it's too large, when it's unavailable
+// can't be, such as that it's too large, when it's unavailable
 type Attachment struct {
 	Name        string
 	Type        string

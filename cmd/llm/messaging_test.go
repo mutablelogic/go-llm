@@ -143,7 +143,7 @@ func Test_ChatMessage(t *testing.T) {
 	}}}})
 	assert.ErrorIs(t, err, llm.ErrNotFound)
 
-	// A file which wasn't received, such as as it's too large, is a note
+	// A file which wasn't received, such as one which is too large, is a note
 	// to the model, so it can say so, and a photo's description is kept
 	message, err = chatMessage(ctx, res, session, messaging.Message{Attachments: []messaging.Attachment{
 		{Name: "film.mp4", Unavailable: "it's too large (25.0 MB)"},
@@ -159,6 +159,11 @@ func Test_ChatMessage(t *testing.T) {
 	kept, err := res.Get(ctx, resourceschema.ResourceKey{Hash: hash, Session: &session})
 	require.NoError(t, err)
 	assert.Equal(t, "A photo, which Telegram compressed", kept.Description)
+
+	// One which can't be opened, without a reason, says it couldn't be
+	message, err = chatMessage(ctx, res, session, messaging.Message{Text: "Here", Attachments: []messaging.Attachment{{Name: "lost.jpg"}}})
+	require.NoError(t, err)
+	assert.Contains(t, message.Text(), "lost.jpg wasn't received, as it couldn't be downloaded")
 
 	// Text which isn't a caption isn't said to be one
 	message, err = chatMessage(ctx, res, session, messaging.Message{Text: "Look", Attachments: []messaging.Attachment{

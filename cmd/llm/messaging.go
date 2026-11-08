@@ -158,7 +158,11 @@ func chatMessage(ctx context.Context, res *resource.Manager, session uuid.UUID, 
 	var unavailable, names []string
 	for _, attachment := range message.Attachments {
 		if attachment.Unavailable != "" || attachment.Open == nil {
-			unavailable = append(unavailable, fmt.Sprintf("%s wasn't received, as %s", attachment.Name, attachment.Unavailable))
+			reason := strings.TrimSpace(attachment.Unavailable)
+			if reason == "" {
+				reason = "it couldn't be downloaded"
+			}
+			unavailable = append(unavailable, fmt.Sprintf("%s wasn't received, as %s", attachment.Name, reason))
 			continue
 		} else if res == nil {
 			break
@@ -186,7 +190,8 @@ func chatMessage(ctx context.Context, res *resource.Manager, session uuid.UUID, 
 		notes = append(notes, "The person's text is the caption of "+list(names)+", which they sent it with.")
 	}
 
-	// The files which weren't received, such as as they're too large, which
+	// The files which weren't received, such as those which are too large,
+	// which
 	// the model is told, so it can tell the person
 	if notes = append(notes, unavailable...); len(notes) > 0 {
 		content = append(content, providerschema.ContentBlock{Text: types.Ptr("<system-reminder>\n" + strings.Join(notes, "\n") + "\n</system-reminder>")})

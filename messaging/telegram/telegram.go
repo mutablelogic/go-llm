@@ -372,7 +372,7 @@ func (t *Telegram) toMessage(ctx context.Context, group []*message) (messaging.M
 		}
 		attachment := messaging.Attachment{Name: a.name(sent, number), Type: a.Type, Size: a.Size, Description: a.description(caption)}
 		if a.Size > maxDownload {
-			attachment.Unavailable = fmt.Sprintf("it's too large (%s), as a bot can only download files of up to 20 MB", megabytes(a.Size))
+			attachment.Unavailable = fmt.Sprintf("it's too large (%s), as a bot can only download files of up to %s", megabytes(a.Size), megabytes(maxDownload))
 		} else {
 			attachment.Open = t.opener(a.fileID)
 		}
@@ -427,7 +427,7 @@ func attachments(m *message) []attachment {
 	if len(m.Photo) > 0 {
 		largest := m.Photo[0]
 		for _, size := range m.Photo[1:] {
-			if size.Width*size.Height > largest.Width*largest.Height {
+			if int64(size.Width)*int64(size.Height) > int64(largest.Width)*int64(largest.Height) {
 				largest = size
 			}
 		}
