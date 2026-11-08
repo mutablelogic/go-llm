@@ -31,3 +31,11 @@ export function updateConnector(name: string, meta: ConnectorMeta): Promise<Conn
 export function deleteConnector(name: string): Promise<Connector> {
     return request<Connector>('DELETE', '/mcp/connector/' + encodeURIComponent(name));
 }
+
+// authorizeConnector starts signing in to the connector's server, and
+// returns the URL a person signs in at, which redirects back to the server,
+// at the browser's origin, once they have
+export async function authorizeConnector(name: string): Promise<string> {
+    const response = await request<{ url: string }>('POST', '/mcp/connector/' + encodeURIComponent(name) + '/authorize', { body: {} });
+    return response.url;
+}
