@@ -12,10 +12,13 @@ import (
 	// Packages
 	sdkmcp "github.com/modelcontextprotocol/go-sdk/mcp"
 	llm "github.com/mutablelogic/go-llm"
+	broadcaster "github.com/mutablelogic/go-llm/broadcaster"
+	eventschema "github.com/mutablelogic/go-llm/broadcaster/schema"
 	client "github.com/mutablelogic/go-llm/mcp/client"
 	schema "github.com/mutablelogic/go-llm/mcp/schema"
 	test "github.com/mutablelogic/go-llm/mcp/test"
 	toolkit "github.com/mutablelogic/go-llm/toolkit"
+	toolschema "github.com/mutablelogic/go-llm/toolkit/schema"
 	assert "github.com/stretchr/testify/assert"
 	require "github.com/stretchr/testify/require"
 )
@@ -253,4 +256,138 @@ func Test_Timeouts(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, tools, 1)
 	assert.Equal(t, 5*time.Minute, tools[0].Timeout())
+}
+
+// toolCount returns how many tools the toolkit has, in the namespace
+func toolCount(t *testing.T, tk *toolkit.Toolkit, namespace string) int {
+	t.Helper()
+	list, err := tk.ListTools(t.Context(), toolschema.ToolListRequest{Namespace: namespace})
+	require.NoError(t, err)
+	return len(list.Body)
+}
+
+// echoServer returns a mock server, with a tool which echoes
+func echoServer(t *testing.T) *test.Server {
+	t.Helper()
+	server := test.NewServer(t)
+	sdkmcp.AddTool(server.MCP, &sdkmcp.Tool{Name: "echo", Description: "Echo"}, func(context.Context, *sdkmcp.CallToolRequest, struct{}) (*sdkmcp.CallToolResult, any, error) {
+		return &sdkmcp.CallToolResult{}, nil, nil
+	})
+	return server
+}
+
+func Test_Stale(t *testing.T) {
+	// A definition which is older than the registry's, such as one read
+	// before it was updated, or deleted, isn't connected, but one which is
+	// created again, with its name, is
+	setInterval(t, &ConnectJitter, 10*time.Millisecond)
+	ctx := t.Context()
+	logger := slog.New(slog.DiscardHandler)
+	server := echoServer(t)
+	r, err := New()
+	require.NoError(t, err)
+	t.Cleanup(func() { assert.NoError(t, r.Close()) })
+	first, err := r.CreateConnector(ctx, schema.Connector{Name: "test", ConnectorMeta: schema.ConnectorMeta{URL: server.URL}})
+	require.NoError(t, err)
+	r.reconcile(ctx, logger)
+	_, err = r.UpdateConnector(ctx, "test", schema.ConnectorMeta{URL: server.URL + "/"})
+	require.NoError(t, err)
+	current := clientOf(r, "test")
+	require.True(t, current.Connected())
+
+	_, err = r.client(first.Definition())
+	assert.ErrorIs(t, err, llm.ErrConflict, "the definition before it was updated")
+	assert.Same(t, current, clientOf(r, "test"))
+	assert.True(t, current.Connected())
+
+	updated, err := r.GetConnector(ctx, "test")
+	require.NoError(t, err)
+	_, err = r.DeleteConnector(ctx, "test")
+	require.NoError(t, err)
+	_, err = r.client(updated.Definition())
+	assert.ErrorIs(t, err, llm.ErrNotFound, "the definition before it was deleted")
+	assert.Nil(t, clientOf(r, "test"))
+
+	again, err := r.CreateConnector(ctx, schema.Connector{Name: "test", ConnectorMeta: schema.ConnectorMeta{URL: server.URL}})
+	require.NoError(t, err)
+	assert.Greater(t, again.Serial, updated.Serial)
+	r.reconcile(ctx, logger)
+	require.NotNil(t, clientOf(r, "test"))
+	assert.True(t, clientOf(r, "test").Connected())
+}
+
+func Test_Displaced(t *testing.T) {
+	// A connected client, which another process's change displaces, is said
+	// to be disconnected, and its tools are cleared, as its new definition
+	// can't be connected
+	setInterval(t, &ConnectJitter, 10*time.Millisecond)
+	ctx := t.Context()
+	logger := slog.New(slog.DiscardHandler)
+	server := echoServer(t)
+	b := broadcaster.New()
+	ch := make(chan eventschema.Event, 16)
+	watchCtx, cancel := context.WithCancel(ctx)
+	done, err := b.Watch(watchCtx, ch)
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		cancel()
+		<-done
+	})
+	tk, err := toolkit.New(ctx)
+	require.NoError(t, err)
+	store := NewMemoryStore()
+	r, err := New(WithStore(store), WithToolkit(tk), WithBroadcaster(b), WithConnectTimeout(time.Second))
+	require.NoError(t, err)
+	t.Cleanup(func() { assert.NoError(t, r.Close()) })
+	created, err := r.CreateConnector(ctx, schema.Connector{Name: "test", ConnectorMeta: schema.ConnectorMeta{URL: server.URL}})
+	require.NoError(t, err)
+	r.reconcile(ctx, logger)
+	require.Equal(t, 1, toolCount(t, tk, "test"))
+	for len(ch) > 0 {
+		<-ch
+	}
+
+	// Another process changes it, to a server which can't be connected
+	changed := created.Definition()
+	changed.URL = "http://localhost:1/mcp"
+	_, err = store.Put(ctx, changed)
+	require.NoError(t, err)
+	r.reconcile(ctx, logger)
+	assert.Zero(t, toolCount(t, tk, "test"))
+	assert.True(t, tk.HasNamespace("test"))
+	var deleted bool
+	for len(ch) > 0 {
+		if event := <-ch; event.Action == eventschema.EventDelete && event.Row == "test" {
+			deleted = true
+		}
+	}
+	assert.True(t, deleted, "its disconnection is said")
+}
+
+func Test_NamespaceRetry(t *testing.T) {
+	// A connected client whose namespace hasn't its tools, such as when
+	// they couldn't be listed, as it was connected, has them listed again,
+	// as it's reconciled
+	setInterval(t, &ConnectJitter, 10*time.Millisecond)
+	ctx := t.Context()
+	logger := slog.New(slog.DiscardHandler)
+	server := echoServer(t)
+	tk, err := toolkit.New(ctx)
+	require.NoError(t, err)
+	r, err := New(WithToolkit(tk))
+	require.NoError(t, err)
+	t.Cleanup(func() { assert.NoError(t, r.Close()) })
+	_, err = r.CreateConnector(ctx, schema.Connector{Name: "test", ConnectorMeta: schema.ConnectorMeta{URL: server.URL}})
+	require.NoError(t, err)
+	r.reconcile(ctx, logger)
+	require.Equal(t, 1, toolCount(t, tk, "test"))
+	c := clientOf(r, "test")
+	r.mu.Lock()
+	ns := r.namespaces["test"]
+	r.mu.Unlock()
+	ns.Disconnect(c)
+	require.Zero(t, toolCount(t, tk, "test"))
+	require.True(t, c.Connected())
+	r.reconcile(ctx, logger)
+	assert.Equal(t, 1, toolCount(t, tk, "test"))
 }

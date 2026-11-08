@@ -63,6 +63,44 @@ func Test_MemoryStore(t *testing.T) {
 	assert.ErrorIs(t, err, llm.ErrConflict, "it was deleted")
 }
 
+func Test_MemoryStoreSerials(t *testing.T) {
+	// A serial isn't used again for a name, once its connector is deleted,
+	// so a change to one isn't made to another, created with its name
+	ctx := context.Background()
+	store := registry.NewMemoryStore()
+	first, err := store.Put(ctx, connector("search", "https://mcp.example.com/one"))
+	require.NoError(t, err)
+	require.NoError(t, store.Delete(ctx, "search", first.Serial))
+	second, err := store.Put(ctx, connector("search", "https://mcp.example.com/two"))
+	require.NoError(t, err)
+	assert.Equal(t, uint64(2), second.Serial)
+	_, err = store.Put(ctx, first)
+	assert.ErrorIs(t, err, llm.ErrConflict, "the first, as it was")
+	assert.ErrorIs(t, store.Delete(ctx, "search", first.Serial), llm.ErrConflict)
+
+	// And its patterns are its own, not those it was given, or returns
+	patterns := connector("patterns", "https://mcp.example.com")
+	patterns.Include = []string{"^a"}
+	put, err := store.Put(ctx, patterns)
+	require.NoError(t, err)
+	patterns.Include[0], put.Include[0] = "changed", "changed"
+	list, err := store.List(ctx)
+	require.NoError(t, err)
+	for _, c := range list {
+		if c.Name == "patterns" {
+			assert.Equal(t, []string{"^a"}, c.Include)
+			c.Include[0] = "changed"
+		}
+	}
+	list, err = store.List(ctx)
+	require.NoError(t, err)
+	for _, c := range list {
+		if c.Name == "patterns" {
+			assert.Equal(t, []string{"^a"}, c.Include)
+		}
+	}
+}
+
 func Test_Servers(t *testing.T) {
 	ctx := context.Background()
 	r, err := registry.New()

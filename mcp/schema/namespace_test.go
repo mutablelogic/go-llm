@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	// Packages
+	llm "github.com/mutablelogic/go-llm"
 	schema "github.com/mutablelogic/go-llm/mcp/schema"
 	llmregistry "github.com/mutablelogic/go-llm/registry"
 	toolschema "github.com/mutablelogic/go-llm/toolkit/schema"
@@ -35,7 +36,7 @@ func Test_Namespace(t *testing.T) {
 			"":                      schema.DefaultNamespace,
 			"123":                   schema.DefaultNamespace,
 			"!!!":                   schema.DefaultNamespace,
-			strings.Repeat("a", 70): strings.Repeat("a", 64),
+			strings.Repeat("a", 70): strings.Repeat("a", 24),
 		} {
 			got := schema.Namespace(name, nil)
 			assert.Equal(t, want, got, name)
@@ -71,10 +72,14 @@ func Test_Namespace(t *testing.T) {
 		assert.Equal(t, 5, calls)
 
 		// And one as long as it can be is shortened, so it still is
-		long := strings.Repeat("a", 64)
+		long := strings.Repeat("a", 24)
 		got = schema.Namespace(long, func(ns string) bool { return ns == long })
-		assert.Len(t, got, 64)
-		assert.Regexp(t, `^a{60}\d{4}$`, got)
+		assert.Len(t, got, 24)
+		assert.Regexp(t, `^a{20}\d{4}$`, got)
 		assert.True(t, valid(got))
+
+		// So a tool of 38 characters has a name a model can call it by
+		tool := strings.Repeat("t", 38)
+		assert.True(t, llm.IsToolName(toolschema.ModelToolName(got, tool)), toolschema.ModelToolName(got, tool))
 	})
 }

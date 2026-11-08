@@ -74,14 +74,9 @@ func (r *Registry) ensureNamespace(connector schema.Connector) *namespace.Namesp
 // connectNamespace lists the tools of the connector's server, which the
 // client is connected to, in its namespace, which are included by its
 // patterns, described by the server's title, or name, within its connect
-// timeout
-func (r *Registry) connectNamespace(name string, c *client.Client, server *sdkmcp.Implementation) {
-	r.mu.Lock()
-	connector := r.clients[name].connector
-	r.mu.Unlock()
-	if connector.Name == "" {
-		connector.Name = name
-	}
+// timeout, unless it's been connected for a later definition
+func (r *Registry) connectNamespace(c *client.Client, server *sdkmcp.Implementation, connector schema.Connector) {
+	name := connector.Name
 	ns := r.ensureNamespace(connector)
 	if ns == nil {
 		return
@@ -97,21 +92,22 @@ func (r *Registry) connectNamespace(name string, c *client.Client, server *sdkmc
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), r.connectTimeout)
 	defer cancel()
-	if err := ns.Connect(ctx, c, description, match); err != nil {
+	if err := ns.Connect(ctx, c, description, match, connector.Serial); err != nil {
 		r.log().WarnContext(ctx, "connector's tools not listed", "connector", name, "error", err.Error())
 		return
 	}
 	r.log().InfoContext(ctx, "connector's tools added", "connector", name, "namespace", ns.Name(), "tools", len(ns.Tools()))
 }
 
-// disconnectNamespace clears the tools of the connector's namespace, as its
-// server is disconnected, which it keeps, with no tools
-func (r *Registry) disconnectNamespace(name string) {
+// disconnectNamespace clears the tools of the connector's namespace, as the
+// client is disconnected from its server, which it keeps, with no tools,
+// unless they're another client's, such as one which replaced it
+func (r *Registry) disconnectNamespace(name string, c *client.Client) {
 	r.mu.Lock()
 	ns := r.namespaces[name]
 	r.mu.Unlock()
 	if ns != nil {
-		ns.Disconnect()
+		ns.Disconnect(c)
 	}
 }
 

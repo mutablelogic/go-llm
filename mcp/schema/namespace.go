@@ -19,8 +19,11 @@ const (
 	// which can be one
 	DefaultNamespace = "mcp"
 
-	// maxNamespace is the longest namespace, as it's an identifier
-	maxNamespace = 64
+	// maxNamespace is the longest namespace, digits included, which leaves
+	// room for its tools' names, as a model calls a tool by its namespace,
+	// two underscores, and its name, which is at most 64 characters, so a
+	// tool's name can be 38 characters
+	maxNamespace = 24
 
 	// namespaceDigits is how many random digits are added to a namespace
 	// which is taken
@@ -34,9 +37,10 @@ const (
 // name, in a toolkit: the name, without the characters an identifier can't
 // have, starting with a letter, without two underscores together, or one at
 // its end, which the toolkit's namespaces can't have, or DefaultNamespace,
-// when nothing's left of it. When it's AgentNamespace, or taken, such as by
-// a namespace in the toolkit, random digits are added to it, until it
-// isn't. The function which says whether a namespace is taken can be nil.
+// when nothing's left of it, and no longer than 24 characters, so its tools'
+// names fit what a model calls them. When it's AgentNamespace, or taken,
+// such as by a namespace in the toolkit, random digits are added to it,
+// within that, until it isn't. The function which says whether a namespace is taken can be nil.
 func Namespace(name string, taken func(string) bool) string {
 	base := sanitize(name)
 	if base == "" {
@@ -67,7 +71,7 @@ func Namespace(name string, taken func(string) bool) string {
 // sanitize returns the name, with only the characters an identifier can
 // have, which are ASCII letters, numbers, underscores and hyphens, starting
 // with a letter, without two underscores together, or one at its end, and
-// no longer than a namespace can be
+// no longer than a namespace can be, so its tools' names fit
 func sanitize(name string) string {
 	var b strings.Builder
 	for _, r := range name {

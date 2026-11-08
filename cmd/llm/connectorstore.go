@@ -35,8 +35,11 @@ var _ mcpregistry.Store = (*connectorStore)(nil)
 // GLOBALS
 
 const (
-	// connectorsKey is the key which the connectors are kept under
+	// connectorsKey is the key which the connectors are kept under, and
+	// serialsKey the key which the last serial of each name is, so one
+	// which was deleted isn't used again, once the server restarts
 	connectorsKey = "mcp.connectors"
+	serialsKey    = "mcp.serials"
 
 	// connectorsFile is the name of the file which the server keeps the
 	// connectors in, in the directory of the command's defaults
@@ -102,7 +105,14 @@ func (s *connectorStore) Put(_ context.Context, connector mcpschema.Connector) (
 	if connector.Serial != serial {
 		return mcpschema.Connector{}, llm.ErrConflict.Withf("connector %q is at serial %d, not %d", connector.Name, serial, connector.Serial)
 	}
-	connector.Serial = serial + 1
+
+	// Its serial is one more than the last of its name, which can be one
+	// which was deleted, so it isn't used again
+	serials, err := s.serials()
+	if err != nil {
+		return mcpschema.Connector{}, err
+	}
+	connector.Serial = max(serial, serials[connector.Name]) + 1
 	if err := s.write(append(list, connector)); err != nil {
 		return mcpschema.Connector{}, err
 	}
@@ -125,7 +135,43 @@ func (s *connectorStore) Delete(_ context.Context, name string, serial uint64) e
 	} else if list[i].Serial != serial {
 		return llm.ErrConflict.Withf("connector %q is at serial %d, not %d", name, list[i].Serial, serial)
 	}
+
+	// Its serial is kept, so it isn't used again for its name
+	serials, err := s.serials()
+	if err != nil {
+		return err
+	}
+	serials[name] = max(serials[name], serial)
+	if err := s.defaults.Set(serialsKey, serials); err != nil {
+		return err
+	}
 	return s.write(slices.Delete(list, i, i+1))
+}
+
+// serials returns the last serial of each name of a connector which was
+// deleted, or none. The caller holds the lock.
+func (s *connectorStore) serials() (map[string]uint64, error) {
+	var value any
+	if l, ok := s.defaults.(lookup); ok {
+		var err error
+		if value, err = l.Lookup(serialsKey); err != nil {
+			return nil, err
+		}
+	} else {
+		value = s.defaults.Get(serialsKey)
+	}
+	result := make(map[string]uint64)
+	if value == nil {
+		return result, nil
+	}
+	data, err := json.Marshal(value)
+	if err != nil {
+		return nil, err
+	}
+	if err := json.Unmarshal(data, &result); err != nil {
+		return nil, llm.ErrInternalServerError.Withf("%s: %v", serialsKey, err)
+	}
+	return result, nil
 }
 
 ///////////////////////////////////////////////////////////////////////////////

@@ -152,3 +152,45 @@ func Test_Connect(t *testing.T) {
 		assert.Error(t, err, "the status has why it ended")
 	})
 }
+
+func Test_ConnectUnlocked(t *testing.T) {
+	// A server which doesn't reply, as it's connected, doesn't keep the
+	// client's status from being asked for, nor another Connect from giving
+	// up, as its own context ends, and it's given up on, as it's
+	// disconnected
+	release := make(chan struct{})
+	hung := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		select {
+		case <-release:
+		case <-r.Context().Done():
+		}
+	}))
+	t.Cleanup(func() {
+		close(release)
+		hung.Close()
+	})
+	c, err := New(hung.URL)
+	require.NoError(t, err)
+	first := make(chan error, 1)
+	go func() { first <- c.Connect(context.Background()) }()
+	time.Sleep(50 * time.Millisecond)
+
+	start := time.Now()
+	assert.False(t, c.Connected())
+	_, err = c.Status()
+	assert.NoError(t, err)
+	assert.Less(t, time.Since(start), 50*time.Millisecond, "the status isn't kept waiting")
+
+	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
+	defer cancel()
+	assert.ErrorIs(t, c.Connect(ctx), context.DeadlineExceeded, "another Connect gives up, as its context ends")
+
+	require.NoError(t, c.Disconnect())
+	select {
+	case err := <-first:
+		assert.Error(t, err, "the connection is given up on, as it's disconnected")
+	case <-time.After(2 * time.Second):
+		t.Fatal("the connection wasn't given up on")
+	}
+	assert.False(t, c.Connected())
+}
