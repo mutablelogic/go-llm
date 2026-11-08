@@ -76,9 +76,10 @@ func (r *chatRequest) apply(opts ...llm.Opt) error {
 		}
 	}
 
-	// Thinking effort takes precedence, unless thinking is disabled
+	// Thinking effort takes precedence, unless thinking is disabled, and is
+	// no more than "high", which is Ollama's most
 	if effort, err := llm.GetOpt[string](o, llm.ThinkingEffortKey); err == nil && r.Think != false {
-		r.Think = effort
+		r.Think = llm.MostEffort(effort, "high")
 	}
 
 	// Return success

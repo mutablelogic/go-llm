@@ -45,7 +45,7 @@ const (
 
 	// Thinking
 	ThinkingKey       = "thinking"        // bool, enable or disable thinking
-	ThinkingEffortKey = "thinking_effort" // string, reasoning effort: "low", "medium" or "high"
+	ThinkingEffortKey = "thinking_effort" // string, reasoning effort: "low", "medium", "high", "xhigh" or "max"
 
 	// Output
 	JSONSchemaKey = "json_schema" // json.RawMessage, JSON schema the output conforms to
@@ -194,10 +194,12 @@ func WithThinking(value bool) Opt {
 	return WithOpt(ThinkingKey, value)
 }
 
-// WithThinkingEffort sets the reasoning effort: "low", "medium" or "high"
+// WithThinkingEffort sets the reasoning effort, which is one of Efforts:
+// "low", "medium", "high", "xhigh" or "max". A model which hasn't the
+// effort makes the nearest it has.
 func WithThinkingEffort(value string) Opt {
-	if !slices.Contains([]string{"low", "medium", "high"}, value) {
-		return withError(ErrBadParameter.Withf("thinking_effort %q must be low, medium or high", value))
+	if !slices.Contains(Efforts, value) {
+		return withError(ErrBadParameter.Withf("thinking_effort %q must be one of %s", value, strings.Join(Efforts, ", ")))
 	}
 	return WithOpt(ThinkingEffortKey, value)
 }

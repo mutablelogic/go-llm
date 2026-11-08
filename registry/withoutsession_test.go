@@ -457,6 +457,38 @@ func withoutDuration(usage llm.Usage) llm.Usage {
 	return usage
 }
 
+func Test_WithoutThinking(t *testing.T) {
+	ctx := context.Background()
+
+	// Thinking, and its effort, aren't sent to a model which is known not to
+	// think, rather than failing, and the other options are
+	p := newScripted(text("Hello"))
+	p.caps = llm.ModelCap{Thinking: types.Ptr(false)}
+	r, err := registry.New()
+	require.NoError(t, err)
+	require.NoError(t, r.Add("", p))
+	model, err := r.GetModel(ctx, "model")
+	require.NoError(t, err)
+	_, _, err = r.WithoutSession(ctx, model, []llm.Message{user(t, "Hi")}, nil, nil,
+		llm.WithThinking(true), llm.WithThinkingEffort("max"), llm.WithOpt(llm.MaxTokensKey, uint(100)))
+	require.NoError(t, err)
+	require.Len(t, p.asked, 1)
+	assert.Equal(t, []string{llm.MaxTokensKey}, p.asked[0].opts.Keys())
+
+	// But are, to a model which thinks, or isn't known not to
+	p = newScripted(text("Hello"))
+	r, err = registry.New()
+	require.NoError(t, err)
+	require.NoError(t, r.Add("", p))
+	model, err = r.GetModel(ctx, "model")
+	require.NoError(t, err)
+	_, _, err = r.WithoutSession(ctx, model, []llm.Message{user(t, "Hi")}, nil, nil, llm.WithThinking(true), llm.WithThinkingEffort("max"))
+	require.NoError(t, err)
+	require.Len(t, p.asked, 1)
+	assert.True(t, p.asked[0].opts.Has(llm.ThinkingKey))
+	assert.True(t, p.asked[0].opts.Has(llm.ThinkingEffortKey))
+}
+
 func Test_WithoutSampling(t *testing.T) {
 	ctx := context.Background()
 

@@ -186,7 +186,8 @@ func (r *ocrRequest) apply(opts ...llm.Opt) error {
 // know. Thinking turns DeepSeek's thinking mode on or off, and off is the
 // least reasoning effort of the model for OpenAI's own API, as not every
 // model can turn it off, and for Mistral's, "none", and on, "high", unless
-// there's an effort. Thinking isn't supported by other servers. OpenAI's models which can turn reasoning off
+// there's an effort. Thinking is ignored by other servers, which have no way
+// to say it, but an effort is sent. OpenAI's models which can turn reasoning off
 // have it off when there are tools, as Chat Completions only lets them call
 // tools without reasoning. The request's model should be set first.
 // Reference: https://platform.openai.com/docs/api-reference/chat/create
@@ -228,11 +229,9 @@ func (r *chatRequest) apply(server server, opts ...llm.Opt) error {
 				r.Messages = append([]chatMessage{{Role: "system", Content: prompt}}, r.Messages...)
 			}
 		case llm.ThinkingKey:
-			if server == serverOther {
-				err = llm.ErrBadParameter.Withf("option %q isn't supported by this server", key)
-			} else {
-				_, err = llm.GetOpt[bool](o, key)
-			}
+			// Ignored by other servers, which have no way to say it, as a
+			// conversation keeps its options as its model changes
+			_, err = llm.GetOpt[bool](o, key)
 		case llm.ThinkingEffortKey:
 			r.ReasoningEffort, err = llm.GetOpt[string](o, key)
 		case llm.JSONSchemaKey:

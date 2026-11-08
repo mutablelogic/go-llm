@@ -56,11 +56,6 @@ const (
 // yes and no are capabilities which a model has, or hasn't
 var yes, no = types.Ptr(true), types.Ptr(false)
 
-// efforts are the reasoning efforts which OpenAI-compatible servers have,
-// from the least to the most, so an effort a model doesn't have is the
-// nearest it has
-var efforts = []string{"none", "minimal", "low", "medium", "high", "xhigh", "max"}
-
 // modelCapabilities are the capabilities of the models of a server which it
 // doesn't report, by a regular expression of their names, of which the
 // first which matches is used, and which are set over those the server
@@ -308,30 +303,21 @@ func (m *Model) efforts() []string {
 }
 
 // effort returns the reasoning effort, or the nearest which the model has,
-// and the greater, when two are as near, such as "high" for "medium", when
-// it has "low" and "high", when the server reports its efforts. Otherwise,
-// or when the effort isn't known, it's the effort.
+// as llm.NearestEffort does, when the server reports its efforts, such as
+// DeepSeek. Otherwise, it's no more than "high", for OpenAI's own API, and
+// Mistral's, as not every model of theirs has more, and the effort, for
+// other servers.
 func (m *Model) effort(effort string) string {
-	levels := m.efforts()
-	want := slices.Index(efforts, effort)
-	if len(levels) == 0 || want < 0 || slices.Contains(levels, effort) {
-		return effort
+	if levels := m.efforts(); len(levels) > 0 {
+		return llm.NearestEffort(effort, levels...)
 	}
-	result, distance := effort, len(efforts)
-	for _, level := range levels {
-		i := slices.Index(efforts, level)
-		if i < 0 {
-			continue
-		}
-		d := i - want
-		if d < 0 {
-			d = -d
-		}
-		if d < distance || (d == distance && i > want) {
-			result, distance = level, d
+	if m.provider != nil {
+		switch m.provider.server() {
+		case serverOpenAI, serverMistral:
+			return llm.MostEffort(effort, "high")
 		}
 	}
-	return result
+	return effort
 }
 
 // OutputTokenLimit returns the model's maximum number of output tokens, for

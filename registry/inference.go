@@ -35,8 +35,10 @@ var _ llm.Speaker = (*Registry)(nil)
 // or the provider's error as providerErr does.
 // Returns ErrNotImplemented, without asking the provider, when the model is
 // known not to reply, or there are tools, and it's known not to call them,
-// or it's asked to think, and it's known not to, or the messages have
-// images, and it's known not to see them.
+// or the messages have images, and it's known not to see them. The options
+// a model is known not to take, such as thinking, for a model which doesn't
+// think, and the temperature, for one which doesn't take one, aren't sent,
+// as a session keeps its options as its model changes.
 func (r *Registry) WithoutSession(ctx context.Context, model llm.Model, messages []llm.Message, tools []llm.Tool, stream llm.GeneratorStreamFn, opts ...llm.Opt) (_ llm.Message, _ llm.Usage, err error) {
 	ctx, endSpan := otel.StartSpan(r.tracer, ctx, "llm.registry.WithoutSession",
 		attribute.String("arg.model", r.modelName(model)),
@@ -46,10 +48,10 @@ func (r *Registry) WithoutSession(ctx context.Context, model llm.Model, messages
 	generator, err := capability[llm.Generator](r, model, "generate messages")
 	if err != nil {
 		return nil, llm.Usage{}, err
-	} else if err := canGenerate(model, messages, tools, opts...); err != nil {
+	} else if err := canGenerate(model, messages, tools); err != nil {
 		return nil, llm.Usage{}, err
 	}
-	opts = withoutSampling(model, opts...)
+	opts = withoutSampling(model, withoutThinking(model, opts...)...)
 	start := time.Now()
 	reply, usage, err := generator.WithoutSession(ctx, model, messages, tools, stream, opts...)
 	usage = timed(usage, start)
@@ -238,20 +240,14 @@ func (r *Registry) Recognize(ctx context.Context, model llm.Model, resource llm.
 // PRIVATE FUNCTIONS
 
 // canGenerate returns ErrNotImplemented when the model is known not to
-// reply, or there are tools, and it's known not to call them, or it's asked
-// to think, with thinking on, or an effort, and it's known not to, or the
+// reply, or there are tools, and it's known not to call them, or the
 // messages have images, and it's known not to see them
-func canGenerate(model llm.Model, messages []llm.Message, tools []llm.Tool, opts ...llm.Opt) error {
+func canGenerate(model llm.Model, messages []llm.Message, tools []llm.Tool) error {
 	capabilities := model.Capabilities()
 	if err := can(model, capabilities.Chat, "generate messages"); err != nil {
 		return err
 	} else if len(tools) > 0 {
 		if err := can(model, capabilities.Tools, "call tools"); err != nil {
-			return err
-		}
-	}
-	if thinks(opts...) {
-		if err := can(model, capabilities.Thinking, "think"); err != nil {
 			return err
 		}
 	}
@@ -294,6 +290,29 @@ func can(model llm.Model, capability *bool, action string) error {
 	return nil
 }
 
+// withoutThinking returns the options, without thinking, and its effort,
+// when the model is known not to think, such as GPT-4.1, rather than fail,
+// as a session keeps its options as its model changes, so they're used
+// again when it's changed back, or the options, as they are, when they
+// can't be applied, so the provider says why
+func withoutThinking(model llm.Model, opts ...llm.Opt) []llm.Opt {
+	if thinking := model.Capabilities().Thinking; thinking == nil || *thinking {
+		return opts
+	}
+	o, err := llm.ApplyOpts(opts...)
+	if err != nil {
+		return opts
+	}
+	keys := []string{llm.ThinkingKey, llm.ThinkingEffortKey}
+	if !slices.ContainsFunc(keys, o.Has) {
+		return opts
+	}
+	for _, key := range keys {
+		o.Delete(key)
+	}
+	return []llm.Opt{o.Opt()}
+}
+
 // withoutSampling returns the options, without the sampling options, which
 // are the temperature, top_p and top_k, when the model is known not to take
 // a temperature, such as Claude's models, rather than fail, as a session
@@ -315,23 +334,6 @@ func withoutSampling(model llm.Model, opts ...llm.Opt) []llm.Opt {
 		o.Delete(key)
 	}
 	return []llm.Opt{o.Opt()}
-}
-
-// thinks returns true when the options ask the model to think, with
-// thinking on, or a reasoning effort. Options which aren't valid are left
-// to the provider.
-func thinks(opts ...llm.Opt) bool {
-	o, err := llm.ApplyOpts(opts...)
-	if err != nil {
-		return false
-	}
-	if thinking, err := llm.GetOpt[bool](o, llm.ThinkingKey); err == nil {
-		return thinking
-	} else if !errors.Is(err, llm.ErrNotFound) {
-		return false
-	}
-	effort, err := llm.GetOpt[string](o, llm.ThinkingEffortKey)
-	return err == nil && effort != "" && effort != "none"
 }
 
 // hasImage returns true when one of the messages has an image

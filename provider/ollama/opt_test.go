@@ -65,6 +65,10 @@ func TestApply(t *testing.T) {
 			"Effort":         {[]llm.Opt{llm.WithThinkingEffort("low")}, "low"},
 			"EnabledEffort":  {[]llm.Opt{llm.WithThinking(true), llm.WithThinkingEffort("high")}, "high"},
 			"DisabledEffort": {[]llm.Opt{llm.WithThinking(false), llm.WithThinkingEffort("high")}, false},
+			"XHighEffort":    {[]llm.Opt{llm.WithThinkingEffort("xhigh")}, "high"},
+			"MaxEffort":      {[]llm.Opt{llm.WithThinking(true), llm.WithThinkingEffort("max")}, "high"},
+			"DisabledXHigh":  {[]llm.Opt{llm.WithThinking(false), llm.WithThinkingEffort("xhigh")}, false},
+			"DisabledMax":    {[]llm.Opt{llm.WithThinking(false), llm.WithThinkingEffort("max")}, false},
 		} {
 			var r chatRequest
 			require.NoError(t, r.apply(test.opts...), name)

@@ -274,7 +274,7 @@ func Test_WithoutSession(t *testing.T) {
 	})
 
 	t.Run("BadOption", func(t *testing.T) {
-		for _, opt := range []llm.Opt{llm.WithTopK(10), llm.WithThinking(true), llm.WithKeepAlive(-1)} {
+		for _, opt := range []llm.Opt{llm.WithTopK(10), llm.WithKeepAlive(-1)} {
 			_, _, err := c.WithoutSession(ctx, model(t, "deepseek-chat"), messages, nil, nil, opt)
 			assert.ErrorIs(t, err, llm.ErrBadParameter)
 			assert.True(t, strings.Contains(err.Error(), "isn't supported"), err.Error())
