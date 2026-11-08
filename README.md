@@ -453,6 +453,13 @@ env -u OPENAI_API_KEY -u MISTRAL_API_KEY -u ANTHROPIC_API_KEY -u GEMINI_API_KEY 
   - pictures and files, both ways, as the session's files;
   - the channels in the web UI, beside the chat;
   - Slack.
+- **What each model takes**, in `llm:models`, so a model calling the `llm` tools needn't find out by trying, and failing:
+  - speech: its voices, such as Gemini's and OpenAI's, which are known, and ElevenLabs', which are listed, and kept, whether it takes instructions, and its formats;
+  - transcription: its formats, such as SRT and WebVTT, and whether it translates;
+  - OCR: what it reads, such as images, or PDFs;
+  - images: the aspect ratios it makes;
+  - and an option a model doesn't take is an error which says what it does take, such as the voices.
+- **Default models for each chat**: a model for each capability, such as speech, with its voice, transcription, OCR and images, set once for a chat, in the web UI's Advanced options, or by the assistant, which the `llm` tools use when they're given none, rather than the assistant keeping them in its memory, as `preferred_models`, and a new chat taking them from the last, or the server's defaults. A tool which is given none, when there's only one model which can, uses it.
 - **Scheduled runs in the chat**: when a heartbeat fires, its prompt goes to the chat's own model, marked as a scheduled run, with a short history of earlier runs, rather than only to the `event` agent.
 - **Scheduled agents**: agents which run on a schedule, as heartbeats do.
 - **Running Python** (experimental): a tool which runs Python a model writes, in WebAssembly, so it's sandboxed, without network access, with a file system of the session's files, by their names, which it reads, and to which what it writes, such as a chart, or a CSV, is kept, as the session's files.
