@@ -41,6 +41,7 @@ var liveServers = []struct {
 	{"https://kfinance.kensho.com/integrations/mcp", "", "kfinance-kensho"},
 	{"https://mcp.stripe.com", "", "mcp-stripe"},
 	{"https://mcp.workable.com/mcp", "", "mcp-workable"},
+	{"https://mcp.zoom.us/mcp/zoom/streamable", "go-llm-test", "mcp-zoom"},
 }
 
 func Test_AuthorizeLive(t *testing.T) {

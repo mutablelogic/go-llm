@@ -119,6 +119,12 @@
   description: Jobs, candidates, offers and employees in your Workable account, with Workable's own MCP server
   url: https://mcp.workable.com/mcp
 
+- name: Zoom
+  description: Meetings, recordings, transcripts and Team Chat, with Zoom's own MCP server
+  url: https://mcp.zoom.us/mcp/zoom/streamable
+  client_id_credential: ZOOM_CLIENT_ID
+  client_secret_credential: ZOOM_CLIENT_SECRET
+
 # Lingviko's der die das needs no sign-in, so it needs no credentials, and
 # is always offered
 - name: der die das (Lingviko)
