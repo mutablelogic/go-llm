@@ -448,6 +448,11 @@ env -u OPENAI_API_KEY -u MISTRAL_API_KEY -u ANTHROPIC_API_KEY -u GEMINI_API_KEY 
 
 - **MCP**: connectors to MCP servers, whose tools are added to the toolkit, each in its own namespace, so models can call them.
 - **Channels**: Telegram chats can be connected to a conversation (see [Messaging](#messaging)). Still to come:
+  - **locations**: a location, or a place, shared in a chat, told to the model, such as for the weather, or somewhere to eat, nearby, and setting the person's location, and time zone, in the memory, with a geocoder; live locations, as they move; and a tool which sends a place, as a pin on a map;
+  - **replies**: what a message replies to, such as one of the assistant's messages, or a voice message, told to the model, so "this one" means something;
+  - **groups**: who sent each message, so the model can tell people apart, and replying only when the assistant is mentioned, or replied to;
+  - **commands**, in Telegram's menu: `/new`, for a new conversation in the chat, `/stop`, to stop a reply, `/forget`, to forget the chat's messages, and `/status`, for its conversation, and model;
+  - **more of Telegram**: showing that a voice message is being recorded, or a photo sent, editing and deleting the assistant's own messages, by their identifiers, reactions, such as 👍 to say a message was seen, and buttons, such as to confirm something;
   - voice messages transcribed as they arrive, with the chat's default transcription model, rather than by the assistant;
   - the channels in the web UI, beside the chat;
   - Slack.
