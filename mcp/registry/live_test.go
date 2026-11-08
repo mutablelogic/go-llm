@@ -25,6 +25,23 @@ var liveServers = []struct {
 	{"https://api.githubcopilot.com/mcp/", "Iv1.go-llm-test", "github-mcp-server"},
 	{"https://mcp.asana.com/v2/mcp", "go-llm-test", "asana-mcp"},
 	{"https://mcp.notion.com/mcp", "", "notion-mcp-beta"},
+	{"https://mcp.airtable.com/mcp", "", "mcp-airtable"},
+	{"https://mcp.canva.com/mcp", "", "mcp-canva"},
+	{"https://mcp.datadoghq.com/v1/mcp", "", "mcp-datadoghq"},
+	{"https://mcp.grafana.com/mcp", "", "mcp-grafana"},
+	{"https://api.harvey.ai/hosted_mcp/mcp", "go-llm-test", "api-harvey"},
+	{"https://mcp.hubspot.com", "go-llm-test", "mcp-hubspot"},
+	{"https://mcp.indeed.com/claude/mcp", "", "mcp-indeed"},
+	{"https://mcp.intercom.com/mcp", "", "mcp-intercom"},
+	{"https://mcp.linear.app/mcp", "", "mcp-linear"},
+	{"https://mcp.miro.com/", "", "mcp-miro"},
+	{"https://mcp.pagerduty.com/mcp", "go-llm-test", "pagerduty-mcp-server"},
+	{"https://pidgeon.ai/api/mcp", "", "pidgeon"},
+	{"https://mcp.posteverywhere.ai/mcp", "", "mcp-posteverywhere"},
+	{"https://kfinance.kensho.com/integrations/mcp", "", "kfinance-kensho"},
+	{"https://mcp.stripe.com", "", "mcp-stripe"},
+	{"https://mcp.workable.com/mcp", "", "mcp-workable"},
+	{"https://mcp.zoom.us/mcp/zoom/streamable", "go-llm-test", "mcp-zoom"},
 }
 
 func Test_AuthorizeLive(t *testing.T) {

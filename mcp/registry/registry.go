@@ -42,6 +42,10 @@ type Registry struct {
 	// definition which was read before it was, isn't connected
 	removed map[string]uint64
 
+	// The templates of the servers which are offered, as connectors which
+	// can be added, whose credentials the credentials provider has
+	offered []schema.ConnectorTemplate
+
 	// The authorizations which are waited for, by their states, and the
 	// lock of the connectors' credentials, as their connectors are changed,
 	// so a sign-in which finishes as one is changed doesn't keep a
@@ -79,6 +83,18 @@ func New(opts ...Opt) (*Registry, error) {
 	if err := r.opt.apply(opts); err != nil {
 		return nil, err
 	}
+
+	// The servers which are offered are those whose credentials the
+	// credentials provider has, as it's created, from servers.yaml, unless
+	// there are others
+	templates := r.opt.templates
+	if templates == nil {
+		var err error
+		if templates, err = Templates(); err != nil {
+			return nil, err
+		}
+	}
+	r.offered = r.offer(context.Background(), templates)
 	return r, nil
 }
 

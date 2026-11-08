@@ -97,3 +97,14 @@ func (c *Client) Callback(ctx context.Context, query url.Values) (*schema.Connec
 	}
 	return &response, nil
 }
+
+// ListTemplates returns the templates of the remote MCP servers which a
+// connector can be added for, whose credentials the server has, in order
+// of their names
+func (c *Client) ListTemplates(ctx context.Context) (*schema.ConnectorTemplateList, error) {
+	var response schema.ConnectorTemplateList
+	if err := c.DoWithContext(ctx, client.NewRequestEx(http.MethodGet, types.ContentTypeJSON), &response, client.OptPath("mcp", "template")); err != nil {
+		return nil, err
+	}
+	return &response, nil
+}

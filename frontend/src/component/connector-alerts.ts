@@ -14,9 +14,10 @@ import '@carbon/web-components/es/components/notification/index.js';
 
 @customElement('llm-connector-alerts')
 export class ConnectorAlerts extends LitElement {
-    // The name of the event fired with the name of the connector, as its
-    // Sign in is clicked
+    // The names of the events fired with the name of the connector, as its
+    // Sign in, or Cancel, which forgets it, is clicked
     static readonly eventSignIn = 'llm-connector-alerts-sign-in';
+    static readonly eventCancel = 'llm-connector-alerts-cancel';
 
     // The connectors, of which those which aren't connected, and have an
     // error, have alerts
@@ -32,6 +33,13 @@ export class ConnectorAlerts extends LitElement {
             max-width: none;
             margin: 0 0 1rem;
         }
+
+        /* The notification's actions are side by side */
+        .actions {
+            display: flex;
+            align-items: center;
+            gap: 0.25rem;
+        }
     `;
 
     render() {
@@ -40,7 +48,10 @@ export class ConnectorAlerts extends LitElement {
         return html`${repeat(signIn, (connector) => connector.name, (connector) => html`
             <cds-actionable-notification kind="warning" inline low-contrast hide-close-button .hasFocus=${false}
                 title=${`${connector.name} needs you to sign in`} subtitle="Its server needs you to sign in, before its tools can be used">
-                <cds-actionable-notification-button slot="action" @click=${() => this.signIn(connector)}>Sign in</cds-actionable-notification-button>
+                <div slot="action" class="actions">
+                    <cds-actionable-notification-button kind="ghost" @click=${() => this.fire(ConnectorAlerts.eventSignIn, connector)}>Sign in</cds-actionable-notification-button>
+                    <cds-actionable-notification-button kind="ghost" @click=${() => this.fire(ConnectorAlerts.eventCancel, connector)}>Cancel</cds-actionable-notification-button>
+                </div>
             </cds-actionable-notification>
         `)}${repeat(down, (connector) => connector.name, (connector) => html`
             <cds-inline-notification kind="error" low-contrast hide-close-button
@@ -48,9 +59,10 @@ export class ConnectorAlerts extends LitElement {
         `)}`;
     }
 
-    // signIn fires the event, as the notification's Sign in is clicked
-    private signIn(connector: Connector) {
-        this.dispatchEvent(new CustomEvent(ConnectorAlerts.eventSignIn, { detail: connector.name, bubbles: true, composed: true }));
+    // fire fires the event, with the connector's name, as one of the
+    // notification's actions is clicked
+    private fire(name: string, connector: Connector) {
+        this.dispatchEvent(new CustomEvent(name, { detail: connector.name, bubbles: true, composed: true }));
     }
 }
 

@@ -9,6 +9,7 @@ import (
 	llm "github.com/mutablelogic/go-llm"
 	broadcaster "github.com/mutablelogic/go-llm/broadcaster"
 	mcpclient "github.com/mutablelogic/go-llm/mcp/client"
+	schema "github.com/mutablelogic/go-llm/mcp/schema"
 	toolkit "github.com/mutablelogic/go-llm/toolkit"
 )
 
@@ -25,7 +26,8 @@ type opt struct {
 	broadcaster         *broadcaster.Broadcaster
 	toolkit             *toolkit.Toolkit
 	clientopts          []mcpclient.Opt
-	name                string // The name the registry's servers are told, or none
+	name                string                     // The name the registry's servers are told, or none
+	templates           []schema.ConnectorTemplate // The servers which are offered, whose credentials the provider has
 
 	// How long a connector's server is waited for, as it's connected, and
 	// its tools are listed, and how long one of its tools has, or zero for
@@ -61,6 +63,7 @@ func (o *opt) defaults() {
 	o.toolTimeout = 0
 	o.clientopts = nil
 	o.name = ""
+	o.templates = nil
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -86,6 +89,22 @@ func WithCredentials(credentials Credentials) Opt {
 			return llm.ErrBadParameter.With("missing credentials")
 		}
 		o.credentials = credentials
+		return nil
+	}
+}
+
+// WithTemplates sets the templates of the remote MCP servers which are
+// offered, as connectors which can be added, rather than those of
+// Templates, or none, with none, of which those whose credentials the
+// credentials provider has, as the registry is created, are
+func WithTemplates(templates ...schema.ConnectorTemplate) Opt {
+	return func(o *opt) error {
+		for _, template := range templates {
+			if err := template.Validate(); err != nil {
+				return err
+			}
+		}
+		o.templates = append([]schema.ConnectorTemplate{}, templates...)
 		return nil
 	}
 }

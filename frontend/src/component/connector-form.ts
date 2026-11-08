@@ -9,7 +9,7 @@ import { keyed } from 'lit/directives/keyed.js';
 import { customElement, property, query, state } from 'lit/decorators.js';
 import { Panel } from './panel';
 import { config } from '../api/client';
-import { needsSignIn, type Connector, type ConnectorMeta } from '../schema/connector';
+import { needsSignIn, type Connector, type ConnectorMeta, type ConnectorTemplate } from '../schema/connector';
 
 // Carbon components
 import '@carbon/web-components/es/components/textarea/index.js';
@@ -19,9 +19,9 @@ import '@carbon/web-components/es/components/notification/inline-notification.js
 import './disclosure';
 import '@carbon/web-components/es/components/copy-button/index.js';
 
-// ConnectorFormItem is what the panel shows: a connector to add, or the
-// connector which is edited
-export type ConnectorFormItem = { mode: 'add' } | { mode: 'edit'; connector: Connector };
+// ConnectorFormItem is what the panel shows: a connector to add, from a
+// template, or a custom one, or the connector which is edited
+export type ConnectorFormItem = { mode: 'add'; template?: ConnectorTemplate } | { mode: 'edit'; connector: Connector };
 
 @customElement('llm-connector-form')
 export class ConnectorForm extends Panel<ConnectorFormItem> {
@@ -132,10 +132,16 @@ export class ConnectorForm extends Panel<ConnectorFormItem> {
     }
 
     protected renderTitle(item: ConnectorFormItem) {
-        return item.mode === 'add' ? 'Add custom connector' : `Edit ${item.connector.namespace ?? item.connector.name}`;
+        if (item.mode === 'add') {
+            return item.template ? `Add ${item.template.name}` : 'Add custom connector';
+        }
+        return `Edit ${item.connector.namespace ?? item.connector.name}`;
     }
 
     protected renderSubtitle(item: ConnectorFormItem) {
+        if (item.mode === 'add' && item.template) {
+            return item.template.description ?? `${item.template.name}'s server, whose tools the assistant can call, once it's connected`;
+        }
         return item.mode === 'add'
             ? "A server, by its URL, whose tools the assistant can call, once it's connected"
             : `The connector ${item.connector.name}, to ${item.connector.server?.name ?? item.connector.url}`;
@@ -154,30 +160,38 @@ export class ConnectorForm extends Panel<ConnectorFormItem> {
 
     protected renderBody(item: ConnectorFormItem) {
         const editing = item.mode === 'edit' ? item.connector : undefined;
+        // What the fields start with: the connector which is edited, or the
+        // template a connector's added from
+        const template = item.mode === 'add' ? item.template : undefined;
+        const fill: Partial<ConnectorTemplate> | undefined = editing ?? template;
 
         // The connector which is edited, whose server needs to be signed in
         // to, can be, as well as saved
         const editSignIn = editing && needsSignIn(editing) ? editing.name : undefined;
         return keyed(this.opened, html`
             <form @submit=${this.handleSubmit} @focusin=${this.clearError}>
-                <cds-text-input id="url" label="URL" placeholder="https://mcp.example.com/mcp" value=${editing?.url ?? ''}
-                    helper-text="The URL of the MCP server, of its streamable HTTP, or SSE, transport"></cds-text-input>
+                ${template ? nothing : html`
+                    <cds-text-input id="url" label="URL" placeholder="https://mcp.example.com/mcp" value=${fill?.url ?? ''}
+                        helper-text="The URL of the MCP server, of its streamable HTTP, or SSE, transport"></cds-text-input>
+                `}
                 <cds-textarea id="include" label="Include tools (optional)" rows="2" value=${(editing?.include ?? []).join('\n')}
                     helper-text="Regular expressions of the names of the tools to include, one a line, or every tool"></cds-textarea>
                 <cds-textarea id="exclude" label="Exclude tools (optional)" rows="2" value=${(editing?.exclude ?? []).join('\n')}
                     helper-text="Regular expressions of the names of the tools to exclude, one a line, such as signup"></cds-textarea>
-                <llm-disclosure label="Advanced">
+                ${template ? nothing : html`
+                    <llm-disclosure label="Advanced">
                         <p class="note">Some servers' sign-in, such as GitHub's, doesn't register clients itself, so you register one with it, with the redirect URL. Its ID and secret are kept by the server, such as in its environment variables, and you give their names here, rather than the ID and secret themselves.</p>
                         <div class="redirect">
                             <cds-text-input id="redirect" label="Redirect URL" readonly value=${this.redirect ?? ''}
                                 helper-text="Where the server's sign-in sends the browser back to"></cds-text-input>
                             <cds-copy-button feedback="Copied" @click=${this.copyRedirect}>Copy the redirect URL</cds-copy-button>
                         </div>
-                        <cds-text-input id="client-id" label="Client ID credential name (optional)" placeholder="GITHUB_CLIENT_ID" value=${editing?.client_id_credential ?? ''}
+                        <cds-text-input id="client-id" label="Client ID credential name (optional)" placeholder="GITHUB_CLIENT_ID" value=${fill?.client_id_credential ?? ''}
                             helper-text="The name of the server's credential, such as an environment variable, which holds the client's ID, not the ID itself"></cds-text-input>
-                        <cds-text-input id="client-secret" label="Client secret credential name (optional)" placeholder="GITHUB_CLIENT_SECRET" value=${editing?.client_secret_credential ?? ''}
+                        <cds-text-input id="client-secret" label="Client secret credential name (optional)" placeholder="GITHUB_CLIENT_SECRET" value=${fill?.client_secret_credential ?? ''}
                             helper-text="The name of the server's credential, such as an environment variable, which holds the client's secret, not the secret itself"></cds-text-input>
                     </llm-disclosure>
+                `}
                 ${this.error ? html`<cds-inline-notification kind="error" title=${editing ? "It couldn't be saved" : "It couldn't connect"} subtitle=${this.error} hide-close-button low-contrast></cds-inline-notification>` : nothing}
                 ${this.signIn ? html`<cds-inline-notification kind="info" title=${`Sign in to ${this.signIn}`} subtitle="The server needs you to sign in, in a new tab, before it connects. This panel carries on once you have." hide-close-button low-contrast></cds-inline-notification>` : nothing}
                 ${editSignIn ? html`<cds-inline-notification kind="warning" title=${`${editSignIn} needs you to sign in`} subtitle="Its server needs you to sign in, in a new tab, before its tools can be used. Signing in saves your changes first." hide-close-button low-contrast></cds-inline-notification>` : nothing}
@@ -214,7 +228,9 @@ export class ConnectorForm extends Panel<ConnectorFormItem> {
         if (this.connecting || this.signIn || !this.item) {
             return;
         }
-        const url = this.urlInput?.value.trim() ?? '';
+        // A template's URL is its own, as its panel has no URL field
+        const template = this.item.mode === 'add' ? this.item.template : undefined;
+        const url = (template ? template.url : this.urlInput?.value ?? '').trim();
         if (!url) {
             this.error = "The server's URL is needed";
             return;
@@ -223,8 +239,10 @@ export class ConnectorForm extends Panel<ConnectorFormItem> {
             url,
             include: lines(this.includeInput?.value),
             exclude: lines(this.excludeInput?.value),
-            client_id_credential: this.clientIdInput?.value.trim() || undefined,
-            client_secret_credential: this.clientSecretInput?.value.trim() || undefined,
+            // A template's credentials' names are its own, as its panel has
+            // no Advanced section
+            client_id_credential: (template ? template.client_id_credential : this.clientIdInput?.value.trim()) || undefined,
+            client_secret_credential: (template ? template.client_secret_credential : this.clientSecretInput?.value.trim()) || undefined,
         };
         for (const [what, name] of [['client ID', meta.client_id_credential], ['client secret', meta.client_secret_credential]]) {
             if (name && !credentialName.test(name)) {
