@@ -21,6 +21,12 @@
   description: Bases, tables, records and comments, with Airtable's own MCP server
   url: https://mcp.airtable.com/mcp
 
+- name: Harvey
+  description: Legal research, drafting and document review, with Harvey's hosted MCP server
+  url: https://api.harvey.ai/hosted_mcp/mcp
+  client_id_credential: HARVEY_CLIENT_ID
+  client_secret_credential: HARVEY_CLIENT_SECRET
+
 - name: Asana
   description: Tasks, projects, portfolios and goals, with Asana's own MCP server
   url: https://mcp.asana.com/v2/mcp
