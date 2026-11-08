@@ -25,12 +25,14 @@ RUN set -x \
     && install -m 0755 docker/entrypoint.sh build/entrypoint.sh
 
 # Copy the command to /usr/local/bin, on Debian, with the CA certificates
-# providers' APIs are called with, and gosu, which the entrypoint drops
-# privileges with, to the llm user, which the server runs as
+# providers' APIs are called with, gosu, which the entrypoint drops
+# privileges with, to the llm user, which the server runs as, and
+# opus-tools, whose opusenc encodes speech as voice notes, such as for
+# Telegram
 FROM --platform=${OS}/${ARCH} debian:trixie-slim
 ARG SOURCE
 RUN set -x && apt-get update -y \
-    && apt-get install -y --no-install-recommends ca-certificates gosu \
+    && apt-get install -y --no-install-recommends ca-certificates gosu opus-tools \
     && groupadd --system llm \
     && useradd --system --gid llm --no-create-home --shell /usr/sbin/nologin llm \
     && install -d -o llm -g llm /data \

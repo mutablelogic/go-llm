@@ -19,6 +19,7 @@ type opt struct {
 	ocrModel        string
 	transcribeModel string
 	resources       Resources
+	voiceNotes      VoiceNoteConverter
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -87,6 +88,20 @@ func WithResources(resources Resources) Opt {
 			return gollm.ErrBadParameter.With("missing resources")
 		}
 		o.resources = resources
+		return nil
+	}
+}
+
+// WithVoiceNoteConverter sets the converter of voice notes, such as one
+// which runs opusenc, which speech is converted with, when it's asked for
+// as a voice note, and its model can't speak one itself, without which it's
+// only one when the model can
+func WithVoiceNoteConverter(converter VoiceNoteConverter) Opt {
+	return func(o *opt) error {
+		if converter == nil {
+			return gollm.ErrBadParameter.With("missing voice note converter")
+		}
+		o.voiceNotes = converter
 		return nil
 	}
 }

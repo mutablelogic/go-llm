@@ -19,6 +19,7 @@ import (
 	heartbeat "github.com/mutablelogic/go-llm/heartbeat"
 	heartbeatcmd "github.com/mutablelogic/go-llm/heartbeat/cmd"
 	heartbeatschema "github.com/mutablelogic/go-llm/heartbeat/schema"
+	opusenc "github.com/mutablelogic/go-llm/internal/opusenc"
 	memory "github.com/mutablelogic/go-llm/memory"
 	memorycmd "github.com/mutablelogic/go-llm/memory/cmd"
 	messaging "github.com/mutablelogic/go-llm/messaging"
@@ -192,12 +193,21 @@ func (runner *RunServer) withToolkit(ctx server.Cmd, b *broadcaster.Broadcaster,
 		// transcribe speech, with the model the model which calls them gives,
 		// which the person chooses, and the model remembers, and whose
 		// resource tool lists a chat's files, and reads them, as Markdown
+		llmOpts := []llmtools.Opt{llmtools.WithResources(res)}
+		if converter, err := opusenc.New(""); err == nil {
+			// Speech is converted to a voice note, when it's asked for as
+			// one, and its model can't speak one
+			llmOpts = append(llmOpts, llmtools.WithVoiceNoteConverter(converter))
+			ctx.Logger().InfoContext(ctx.Context(), "voice notes are converted", "opusenc", converter.Path())
+		} else {
+			ctx.Logger().InfoContext(ctx.Context(), "voice notes are only spoken by models which can, without opusenc, of opus-tools")
+		}
 		ns, err := llmtools.New(func() llmtools.Models {
 			if r := events.Load(); r != nil {
 				return r
 			}
 			return nil
-		}, llmtools.WithResources(res))
+		}, llmOpts...)
 		if err != nil {
 			return err
 		}

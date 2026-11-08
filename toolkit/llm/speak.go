@@ -3,6 +3,7 @@ package llm
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"mime"
 	"path"
 	"strings"
@@ -23,9 +24,10 @@ import (
 // it
 type speak struct {
 	toolkit.Base
-	models ModelsFunc
-	model  string
-	voice  string
+	models     ModelsFunc
+	model      string
+	voice      string
+	voiceNotes VoiceNoteConverter
 }
 
 // speakInput is the input of the speak tool
@@ -36,6 +38,13 @@ type speakInput struct {
 	Model        string `json:"model,omitempty" help:"Model which speaks the text, by its name, such as ollama:phonon:latest, or the default, when it's omitted" optional:""`
 	Name         string `json:"name,omitempty" help:"Name of the audio's file, such as morning-briefing, which its format's extension is added to, or speech, when it's omitted" optional:""`
 	Title        string `json:"title,omitempty" help:"Title of the audio, for people, such as Ode to David, which it's shown, and played, with" optional:""`
+	Format       string `json:"format,omitempty" enum:"voice-note" help:"voice-note, for a voice note, such as for a chat on Telegram, which is Ogg Opus, or the model's own format, when it's omitted" optional:""`
+}
+
+// speakOutput is what the speak tool returns with the audio, when it isn't
+// in the format it was asked for
+type speakOutput struct {
+	Note string `json:"note"`
 }
 
 // named is a resource a tool returns, such as audio which was spoken, or
@@ -101,16 +110,77 @@ func (t *speak) Run(ctx context.Context, input json.RawMessage) (any, error) {
 	} else {
 		toolkit.Logf(ctx, "Speaking the text aloud")
 	}
-	spoken, usage, err := models.Speak(ctx, model, req.Text, opts...)
-	if err != nil {
-		return nil, err
+
+	// A voice note, which the model speaks, when it can, or which is
+	// encoded from what it speaks
+	var spoken gollm.Resource
+	var usage gollm.Usage
+	format := strings.TrimSpace(req.Format)
+	switch format {
+	case "":
+		if spoken, usage, err = models.Speak(ctx, model, req.Text, opts...); err != nil {
+			return nil, err
+		}
+	case VoiceNote:
+		var note string
+		if spoken, usage, note, err = t.voiceNote(ctx, models, model, req.Text, opts); err != nil {
+			return nil, err
+		} else if note != "" {
+			toolkit.SessionFromContext(ctx).Usage(usage)
+			return toolkit.Result{Value: speakOutput{Note: note}, Resources: []gollm.Resource{&named{Resource: spoken, name: audioName(req.Name, spoken.Type()), title: oneLine(req.Title)}}}, nil
+		}
+	default:
+		return nil, gollm.ErrBadParameter.Withf("format %q isn't %s", format, VoiceNote)
 	}
 	toolkit.SessionFromContext(ctx).Usage(usage)
 	return &named{Resource: spoken, name: audioName(req.Name, spoken.Type()), title: oneLine(req.Title)}, nil
 }
 
+// voiceNote speaks the text, with the model, as a voice note, which is Ogg
+// Opus: asked of the model, when it can speak one, and otherwise converted
+// from what it speaks, with the tool's converter, or, without one, or when
+// what it speaks can't be, as it is, with a note which says why it isn't a
+// voice note
+func (t *speak) voiceNote(ctx context.Context, models Models, model gollm.Model, text string, opts []gollm.Opt) (gollm.Resource, gollm.Usage, string, error) {
+	// The model's voice note, when it can speak one, such as OpenAI's
+	spoken, usage, err := models.Speak(ctx, model, text, append(opts, gollm.WithOpt(gollm.AudioFormatKey, "opus"))...)
+	if err == nil && isVoiceNote(spoken.Type()) {
+		return &voiceNoteResource{Resource: spoken}, usage, "", nil
+	} else if err != nil {
+		if ctx.Err() != nil {
+			return nil, gollm.Usage{}, "", err
+		}
+		// Its own format, which is encoded
+		if spoken, usage, err = models.Speak(ctx, model, text, opts...); err != nil {
+			return nil, gollm.Usage{}, "", err
+		}
+	}
+	if t.voiceNotes == nil {
+		return spoken, usage, "It isn't a voice note, as the model can't speak one, and the server can't encode one, without opusenc, of opus-tools", nil
+	}
+	toolkit.Logf(ctx, "Making it a voice note")
+	encoded, err := t.voiceNotes.Convert(ctx, spoken)
+	if errors.Is(err, gollm.ErrNotImplemented) {
+		return spoken, usage, "It isn't a voice note, as " + err.Error(), nil
+	} else if err != nil {
+		return nil, gollm.Usage{}, "", err
+	}
+	return encoded, usage, "", nil
+}
+
 ///////////////////////////////////////////////////////////////////////////////
 // PRIVATE METHODS
+
+// voiceNoteResource is a voice note a model spoke, which is Ogg, whatever
+// type it says, such as audio/opus
+type voiceNoteResource struct {
+	gollm.Resource
+}
+
+// Type returns the type of a voice note, which is Ogg
+func (*voiceNoteResource) Type() string {
+	return voiceNoteType
+}
 
 // Name returns the resource's name, with its format's extension
 func (n *named) Name() string {
@@ -139,6 +209,8 @@ func audioName(given, contentType string) string {
 			return name + ".mp3"
 		case "audio/l16":
 			return name + ".pcm"
+		case "audio/ogg", "audio/opus":
+			return name + ".ogg"
 		}
 		if exts, _ := mime.ExtensionsByType(mediaType); len(exts) > 0 {
 			return name + exts[0]

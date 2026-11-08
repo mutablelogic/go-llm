@@ -25,6 +25,8 @@ type models struct {
 	images     []gollm.Resource // The images it was last asked to change
 	noSegments bool             // Whether it never returns segments, as some models don't
 	text       string           // The transcript's text, when it's set
+	opus       string           // How it speaks Opus: "native", "reject", or, when it's empty, as WAV
+	spoken     int              // How many times it spoke
 }
 
 type model struct {
@@ -72,6 +74,15 @@ func (m *models) Speak(_ context.Context, _ gollm.Model, text string, opts ...go
 		return nil, gollm.Usage{}, err
 	}
 	m.opts = o
+	m.spoken++
+	if format, _ := gollm.GetOpt[string](o, gollm.AudioFormatKey); format == "opus" {
+		switch m.opus {
+		case "native":
+			return &providerschema.Resource{ResourceMeta: providerschema.ResourceMeta{ContentType: "audio/ogg", Data: []byte("OggS" + text)}}, gollm.Usage{}, nil
+		case "reject":
+			return nil, gollm.Usage{}, gollm.ErrBadParameter.Withf("audio format %q isn't wav or pcm", format)
+		}
+	}
 	return &providerschema.Resource{ResourceMeta: providerschema.ResourceMeta{ContentType: "audio/wav", Data: []byte(text)}}, gollm.Usage{}, nil
 }
 
