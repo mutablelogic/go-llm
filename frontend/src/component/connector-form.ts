@@ -8,6 +8,7 @@ import { css, html, nothing, type PropertyValues } from 'lit';
 import { keyed } from 'lit/directives/keyed.js';
 import { customElement, property, query, state } from 'lit/decorators.js';
 import { Panel } from './panel';
+import { config } from '../api/client';
 import { needsSignIn, type Connector, type ConnectorMeta } from '../schema/connector';
 
 // Carbon components
@@ -15,6 +16,8 @@ import '@carbon/web-components/es/components/textarea/index.js';
 import '@carbon/web-components/es/components/text-input/index.js';
 import '@carbon/web-components/es/components/button/index.js';
 import '@carbon/web-components/es/components/notification/inline-notification.js';
+import '@carbon/web-components/es/components/accordion/index.js';
+import '@carbon/web-components/es/components/copy-button/index.js';
 
 // ConnectorFormItem is what the panel shows: a connector to add, or the
 // connector which is edited
@@ -52,6 +55,12 @@ export class ConnectorForm extends Panel<ConnectorFormItem> {
     @state()
     private opened = 0;
 
+    // The URL the authorization server redirects back to, once a person has
+    // signed in, which a client which is registered beforehand, such as a
+    // GitHub OAuth app, is registered with
+    @state()
+    private redirect?: string;
+
     @query('cds-text-input#url')
     private urlInput?: HTMLElement & { value: string };
 
@@ -73,6 +82,28 @@ export class ConnectorForm extends Panel<ConnectorFormItem> {
             margin-bottom: 1.5rem;
         }
 
+        /* The advanced fields are spaced as the form is */
+        cds-accordion-item > * {
+            display: block;
+            margin-bottom: 1.5rem;
+        }
+
+        .note {
+            color: var(--cds-text-secondary);
+            font-size: 0.875rem;
+            line-height: 1.43;
+        }
+
+        .redirect {
+            display: flex;
+            align-items: flex-end;
+            gap: 0.25rem;
+        }
+
+        .redirect cds-text-input {
+            flex: 1;
+        }
+
         .footer {
             position: sticky;
             bottom: -1rem;
@@ -91,6 +122,17 @@ export class ConnectorForm extends Panel<ConnectorFormItem> {
             this.signIn = undefined;
         }
         super.willUpdate(changed);
+    }
+
+    // connectedCallback finds the redirect URL, from the API's prefix, at
+    // this page's origin, which the server's callback is beneath
+    connectedCallback() {
+        super.connectedCallback();
+        if (!this.redirect) {
+            void config().then(({ prefix }) => {
+                this.redirect = new URL(prefix.replace(/\/$/, '') + '/mcp/callback', location.origin).href;
+            }).catch(() => undefined);
+        }
     }
 
     protected current(): ConnectorFormItem | undefined {
@@ -122,10 +164,20 @@ export class ConnectorForm extends Panel<ConnectorFormItem> {
                     helper-text="Regular expressions of the names of the tools to include, one a line, or every tool"></cds-textarea>
                 <cds-textarea id="exclude" label="Exclude tools (optional)" rows="2" value=${(editing?.exclude ?? []).join('\n')}
                     helper-text="Regular expressions of the names of the tools to exclude, one a line, such as signup"></cds-textarea>
-                <cds-text-input id="client-id" label="Client ID credential (optional)" placeholder="GITHUB_CLIENT_ID" value=${editing?.client_id_credential ?? ''}
-                    helper-text="The name of the server's credential holding the client ID to sign in with, when the server's sign-in doesn't register one, as GitHub's doesn't"></cds-text-input>
-                <cds-text-input id="client-secret" label="Client secret credential (optional)" placeholder="GITHUB_CLIENT_SECRET" value=${editing?.client_secret_credential ?? ''}
-                    helper-text="The name of the server's credential holding the client's secret"></cds-text-input>
+                <cds-accordion>
+                    <cds-accordion-item title="Advanced" ?open=${!!editing?.client_id_credential}>
+                        <p class="note">Some servers' sign-in, such as GitHub's, doesn't register clients itself, so you register one with it, with the redirect URL, and give the names of the credentials holding its ID and secret, which the server reads, such as from its environment.</p>
+                        <div class="redirect">
+                            <cds-text-input id="redirect" label="Redirect URL" readonly value=${this.redirect ?? ''}
+                                helper-text="Where the server's sign-in sends the browser back to"></cds-text-input>
+                            <cds-copy-button feedback="Copied" @click=${this.copyRedirect}>Copy the redirect URL</cds-copy-button>
+                        </div>
+                        <cds-text-input id="client-id" label="Client ID credential (optional)" placeholder="GITHUB_CLIENT_ID" value=${editing?.client_id_credential ?? ''}
+                            helper-text="The name of the credential holding the client's ID"></cds-text-input>
+                        <cds-text-input id="client-secret" label="Client secret credential (optional)" placeholder="GITHUB_CLIENT_SECRET" value=${editing?.client_secret_credential ?? ''}
+                            helper-text="The name of the credential holding the client's secret"></cds-text-input>
+                    </cds-accordion-item>
+                </cds-accordion>
                 ${this.error ? html`<cds-inline-notification kind="error" title=${editing ? "It couldn't be saved" : "It couldn't connect"} subtitle=${this.error} hide-close-button low-contrast></cds-inline-notification>` : nothing}
                 ${this.signIn ? html`<cds-inline-notification kind="info" title=${`Sign in to ${this.signIn}`} subtitle="The server needs you to sign in, in a new tab, before it connects. This panel carries on once you have." hide-close-button low-contrast></cds-inline-notification>` : nothing}
                 ${editSignIn ? html`<cds-inline-notification kind="warning" title=${`${editSignIn} needs you to sign in`} subtitle="Its server needs you to sign in, in a new tab, before its tools can be used. Signing in saves your changes first." hide-close-button low-contrast></cds-inline-notification>` : nothing}
@@ -154,6 +206,13 @@ export class ConnectorForm extends Panel<ConnectorFormItem> {
         event.preventDefault();
         if (this.signIn) {
             this.dispatchEvent(new CustomEvent(ConnectorForm.eventSignIn, { detail: this.signIn }));
+        }
+    }
+
+    // copyRedirect copies the redirect URL
+    private copyRedirect() {
+        if (this.redirect) {
+            void navigator.clipboard?.writeText(this.redirect).catch(() => undefined);
         }
     }
 
