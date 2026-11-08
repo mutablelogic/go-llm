@@ -125,8 +125,9 @@ func authorizeHandlers(reg *registry.Registry, router *httprouter.Router, docume
 				op.Query(jsonschema.MustFor[callbackQuery]())
 				op.JSONResponse(http.StatusOK, jsonschema.MustFor[schema.Connector](), "The connector, which is authorized, when JSON is accepted, or else a page for a person")
 				op.ErrorResponse(http.StatusBadRequest, "It wasn't authorized, or its code couldn't be exchanged")
-				op.ErrorResponse(http.StatusNotFound, "No authorization is waited for, with the state")
-				for _, status := range []int{http.StatusOK, http.StatusBadRequest, http.StatusNotFound} {
+				op.ErrorResponse(http.StatusNotFound, "No authorization is waited for, with the state, or the connector was deleted")
+				op.ErrorResponse(http.StatusConflict, "The connector's server, or client, was changed as it was signed in to")
+				for _, status := range []int{http.StatusOK, http.StatusBadRequest, http.StatusNotFound, http.StatusConflict} {
 					op.Response(status, "text/html", "A page for a person, which says whether they're signed in")
 				}
 			})

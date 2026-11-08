@@ -14,6 +14,13 @@ import (
 )
 
 ///////////////////////////////////////////////////////////////////////////////
+// GLOBALS
+
+// credentialName is the pattern of a credential's name, such as
+// GITHUB_CLIENT_ID, as an environment variable's
+var credentialName = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
+
+///////////////////////////////////////////////////////////////////////////////
 // TYPES
 
 // ConnectorMeta are the fields of a connector which can be set
@@ -22,12 +29,12 @@ type ConnectorMeta struct {
 	Include []string `json:"include,omitempty" help:"Regular expressions of the names of its server's tools, prompts and resources which are included, or every one when there are none" example:"[\"^search_\"]" optional:""`
 	Exclude []string `json:"exclude,omitempty" help:"Regular expressions of the names of its server's tools, prompts and resources which are excluded" example:"[\"signup\"]" optional:""`
 
-	// The client its server is authorized as, when its authorization server
-	// doesn't register clients, such as GitHub's, and its secret, which is a
-	// credential's placeholder, such as ${GITHUB_CLIENT_SECRET}, which
-	// isn't returned
-	ClientID     string `json:"client_id,omitempty" help:"The identifier of the client its server is authorized as, when its authorization server doesn't register clients" example:"Iv1.abc123" optional:""`
-	ClientSecret string `json:"client_secret,omitempty" writeonly:"" help:"The client's secret, as a credential's placeholder, such as ${GITHUB_CLIENT_SECRET}, which isn't returned" optional:""`
+	// The names of the credentials of the client its server is authorized
+	// as, when its authorization server doesn't register clients, such as
+	// GitHub's, which the credentials provider has, so the client's
+	// identifier, and secret, themselves, aren't kept
+	ClientIDCredential     string `json:"client_id_credential,omitempty" help:"Name of the credential holding the identifier of the client its server is authorized as, when its authorization server doesn't register clients" example:"GITHUB_CLIENT_ID" optional:""`
+	ClientSecretCredential string `json:"client_secret_credential,omitempty" help:"Name of the credential holding the client's secret, when it has one" example:"GITHUB_CLIENT_SECRET" optional:""`
 }
 
 // Connector is a remote MCP server, as it's connected to: its name, its
@@ -65,10 +72,14 @@ const (
 )
 
 // Credential is how a connector's server is authorized, which is stored,
-// but isn't returned: its authorization server's endpoints, the client it
-// registered, the resource, and scopes, and the token, once it's signed in
+// but isn't returned: the URL of the server it's for, its authorization
+// server's endpoints, the client it registered, or the name of the
+// credential of the connector's own client, whose identifier, and secret,
+// aren't kept, the resource, and scopes, and the token, once it's signed in
 // to, which is refreshed, as it expires
 type Credential struct {
+	URL                   string        `json:"url"`
+	ClientCredential      string        `json:"client_credential,omitempty"`
 	Issuer                string        `json:"issuer"`
 	AuthorizationEndpoint string        `json:"authorization_endpoint"`
 	TokenEndpoint         string        `json:"token_endpoint"`
@@ -127,6 +138,14 @@ func (m ConnectorMeta) Validate() error {
 		return llm.ErrBadParameter.Withf("url %q isn't http, or https", m.URL)
 	} else if u.Hostname() == "" {
 		return llm.ErrBadParameter.Withf("url %q has no host", m.URL)
+	}
+	for _, name := range []string{m.ClientIDCredential, m.ClientSecretCredential} {
+		if name != "" && !credentialName.MatchString(name) {
+			return llm.ErrBadParameter.Withf("credential name %q isn't a name, such as GITHUB_CLIENT_ID", name)
+		}
+	}
+	if m.ClientSecretCredential != "" && m.ClientIDCredential == "" {
+		return llm.ErrBadParameter.With("a client's secret needs its identifier")
 	}
 	_, err = m.Matcher()
 	return err
