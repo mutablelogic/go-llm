@@ -410,13 +410,17 @@ export class ChatView extends LitElement {
             this.following = true;
         }
         // Earlier messages are asked for, when those which are loaded don't
-        // fill the conversation, so it can't be scrolled up to them
-        requestAnimationFrame(() => {
-            const el = this.conversation;
-            if (el && el.scrollHeight <= el.clientHeight + 200) {
-                this.handleScroll();
-            }
-        });
+        // fill the conversation, so it can't be scrolled up to them, once
+        // they change, rather than on every update, so a page which couldn't
+        // be loaded isn't asked for again, until it's scrolled to
+        if (changed.has('messages') || changed.has('offset')) {
+            requestAnimationFrame(() => {
+                const el = this.conversation;
+                if (el && el.scrollHeight <= el.clientHeight + 200) {
+                    this.handleScroll();
+                }
+            });
+        }
         if (this.anchor !== undefined && this.conversation) {
             this.conversation.scrollTop = this.conversation.scrollHeight - this.anchor;
             this.anchor = undefined;

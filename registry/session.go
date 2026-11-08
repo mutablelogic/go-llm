@@ -166,8 +166,10 @@ func (r *Registry) ListSessionMessages(ctx context.Context, id uuid.UUID, req sc
 	}
 	offset = min(offset, count)
 	body = body[offset:]
-	if req.Limit != nil {
-		body = body[:min(int(*req.Limit), len(body))]
+	if req.Limit != nil && *req.Limit < uint(len(body)) {
+		// Compared unsigned, so a limit which is more than an int doesn't
+		// overflow
+		body = body[:*req.Limit]
 	}
 	list := &schema.MessageList{MessageListRequest: req, Count: uint(count), Body: body}
 	list.Offset = offset

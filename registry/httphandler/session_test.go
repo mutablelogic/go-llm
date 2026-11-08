@@ -95,6 +95,9 @@ func Test_Sessions(t *testing.T) {
 		require.Equal(t, http.StatusOK, do(t, server, http.MethodGet, "llm/session/"+created.ID.String()+"/messages?offset=-100", nil, &all))
 		assert.Equal(t, 0, all.Offset, "from the start, when it's more than there are")
 		assert.Len(t, all.Body, 4)
+		var huge schema.MessageList
+		require.Equal(t, http.StatusOK, do(t, server, http.MethodGet, "llm/session/"+created.ID.String()+"/messages?limit=18446744073709551615", nil, &huge))
+		assert.Len(t, huge.Body, 4, "a limit which is more than an int is all of them")
 
 		// The context is the last marker, whose summary didn't fail, and the
 		// messages after it

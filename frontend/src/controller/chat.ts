@@ -72,6 +72,11 @@ export class ChatController {
     private first = 0;
     private earlierLoading = false;
 
+    // The generation of the messages, which is changed whenever they're
+    // replaced, rather than added to, such as when the conversation is
+    // forgotten, so a page which was asked for before then isn't added
+    private generation = 0;
+
     // The message whose details are shown
     private selected?: Message;
 
@@ -175,6 +180,7 @@ export class ChatController {
         this.session = this.sessions?.find((session) => session.id === id) ?? (id ? { id, serial: 0 } : undefined);
         this.messages = undefined;
         this.first = 0;
+        this.generation++;
         this.selected = undefined;
         this.render();
         if (id) {
@@ -274,10 +280,14 @@ export class ChatController {
         }
         this.earlierLoading = true;
         this.render();
+        const { generation, first } = this;
         try {
-            const offset = Math.max(0, this.first - ChatController.page);
-            const list = await listMessages(session.id, { offset, limit: this.first - offset });
-            if (this.session?.id === session.id && this.messages) {
+            const offset = Math.max(0, first - ChatController.page);
+            const list = await listMessages(session.id, { offset, limit: first - offset });
+
+            // Only added to the messages it was asked for, rather than those
+            // which replaced them, such as once the chat was forgotten
+            if (this.session?.id === session.id && this.messages && this.generation === generation && this.first === first) {
                 this.messages = [...(list.body ?? []), ...this.messages];
                 this.first = offset;
             }
@@ -311,17 +321,27 @@ export class ChatController {
                 // was forgotten, and otherwise those from the first which is
                 // loaded, which can change too, such as a marker, when its
                 // summary is written
+                // Those from the first are asked for again, when an earlier
+                // page was added as they were loaded, so it isn't dropped
                 const forgotten = (session.forgotten ?? 0) !== (this.session.forgotten ?? 0);
-                let list = this.messages && !forgotten
-                    ? await listMessages(id, { offset: this.first })
-                    : await listMessages(id, { offset: -ChatController.page });
-                if (list.count < this.first) {
-                    list = await listMessages(id, { offset: -ChatController.page });
+                let list;
+                for (let tries = 0; ; tries++) {
+                    const { generation, first } = this;
+                    list = this.messages && !forgotten
+                        ? await listMessages(id, { offset: first })
+                        : await listMessages(id, { offset: -ChatController.page });
+                    if (list.count < first) {
+                        list = await listMessages(id, { offset: -ChatController.page });
+                    }
+                    if (forgotten || !this.messages || tries >= 2 || (this.generation === generation && this.first === first)) {
+                        break;
+                    }
                 }
                 if (this.session?.id === id) {
                     this.session = session;
                     this.messages = list.body ?? [];
                     this.first = list.offset ?? 0;
+                    this.generation++;
                 }
             } else {
                 this.session = session;
