@@ -20,7 +20,7 @@ type namespace struct {
 	tools []llm.Tool
 }
 
-var _ toolkit.Namespace = namespace{}
+var _ toolkit.Namespace = (*namespace)(nil)
 
 ////////////////////////////////////////////////////////////////////////////////
 // GLOBALS
@@ -38,7 +38,7 @@ func New(apiKey string, opts ...client.ClientOpt) (toolkit.Namespace, error) {
 	if err != nil {
 		return nil, err
 	}
-	return namespace{
+	return &namespace{
 		tools: []llm.Tool{
 			&webSearch{client: client},
 			&webFetch{client: client},

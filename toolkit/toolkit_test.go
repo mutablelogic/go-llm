@@ -375,3 +375,31 @@ func TestNamespaceType(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, schema.NamespaceAgent, got.Type)
 }
+
+// valueNamespace is a namespace which is a value, which can't be compared,
+// as it has a slice
+type valueNamespace struct {
+	name  string
+	tools []llm.Tool
+}
+
+func (n valueNamespace) Name() string                                 { return n.name }
+func (n valueNamespace) Type() string                                 { return schema.NamespaceBuiltin }
+func (n valueNamespace) Description() string                          { return "" }
+func (n valueNamespace) SystemPrompt() string                         { return "" }
+func (n valueNamespace) Tools() []llm.Tool                            { return n.tools }
+func (n valueNamespace) Notify(func(eventschema.EventAction, string)) {}
+
+func TestRemoveValue(t *testing.T) {
+	// A namespace which is a value, which can't be compared, isn't removed,
+	// rather than panicking
+	ctx := context.Background()
+	tk, err := toolkit.New(ctx)
+	require.NoError(t, err)
+	ns := valueNamespace{name: "value", tools: []llm.Tool{tool{name: "one"}}}
+	require.NoError(t, tk.Add(ns))
+	assert.NotPanics(t, func() {
+		assert.ErrorIs(t, tk.Remove(ns), llm.ErrNotFound)
+	})
+	assert.True(t, tk.HasNamespace("value"))
+}

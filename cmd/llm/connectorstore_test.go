@@ -78,6 +78,21 @@ func Test_ConnectorStore(t *testing.T) {
 		assert.ErrorIs(t, err, llm.ErrBadParameter)
 	})
 
+	t.Run("Recreated", func(t *testing.T) {
+		// A serial isn't used again for a name, once its connector is
+		// deleted, even once the server restarts
+		path := filepath.Join(t.TempDir(), connectorsFile)
+		store := newStore(t, path)
+		first, err := store.Put(ctx, connector("search", "https://mcp.example.com/one", 0))
+		require.NoError(t, err)
+		require.NoError(t, store.Delete(ctx, "search", first.Serial))
+		second, err := newStore(t, path).Put(ctx, connector("search", "https://mcp.example.com/two", 0))
+		require.NoError(t, err)
+		assert.Equal(t, uint64(2), second.Serial)
+		_, err = newStore(t, path).Put(ctx, first)
+		assert.ErrorIs(t, err, llm.ErrConflict)
+	})
+
 	t.Run("Corrupt", func(t *testing.T) {
 		// A file which isn't JSON is an error, rather than having none
 		path := filepath.Join(t.TempDir(), connectorsFile)

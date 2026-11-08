@@ -2,12 +2,14 @@ package registry
 
 import (
 	"context"
+	"errors"
 	"log/slog"
 	"math/rand/v2"
 	"sync"
 	"time"
 
 	// Packages
+	llm "github.com/mutablelogic/go-llm"
 	eventschema "github.com/mutablelogic/go-llm/broadcaster/schema"
 	client "github.com/mutablelogic/go-llm/mcp/client"
 	schema "github.com/mutablelogic/go-llm/mcp/schema"
@@ -128,7 +130,7 @@ func (r *Registry) reconcile(ctx context.Context, logger *slog.Logger) {
 	}
 	r.mu.Unlock()
 	for _, name := range deleted {
-		r.forget(name)
+		r.forget(name, 0)
 		logger.InfoContext(ctx, "connector disconnected", "connector", name, "reason", "deleted")
 	}
 
@@ -140,10 +142,22 @@ func (r *Registry) reconcile(ctx context.Context, logger *slog.Logger) {
 	var connect []pending
 	for _, connector := range connectors {
 		c, err := r.client(connector)
-		if err != nil {
+		switch {
+		case errors.Is(err, llm.ErrConflict), errors.Is(err, llm.ErrNotFound):
+			// It was changed, or deleted, since it was read
+		case err != nil:
 			logger.ErrorContext(ctx, "connector has no client", "connector", connector.Name, "error", err.Error())
-		} else if !c.Connected() {
+		case !c.Connected():
 			connect = append(connect, pending{connector, c})
+		default:
+			// Its tools are listed again, when they couldn't be, as it was
+			// connected
+			r.mu.Lock()
+			ns := r.namespaces[connector.Name]
+			r.mu.Unlock()
+			if server, _ := c.Status(); ns != nil && server != nil && !ns.ConnectedTo(c) {
+				r.connectNamespace(c, server, connector)
+			}
 		}
 	}
 

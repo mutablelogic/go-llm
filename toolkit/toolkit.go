@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"maps"
+	"reflect"
 	"slices"
 	"strings"
 	"sync"
@@ -192,7 +193,7 @@ func (self *Toolkit) Remove(ns Namespace) error {
 		return llm.ErrBadParameter.With("missing namespace")
 	}
 	name := ns.Name()
-	if self.namespaces[name] != ns {
+	if !same(self.namespaces[name], ns) {
 		return llm.ErrNotFound.Withf("namespace %q", name)
 	}
 	delete(self.namespaces, name)
@@ -257,7 +258,7 @@ func (self *Toolkit) changed(ns Namespace, _ eventschema.EventAction, name strin
 	// changes which are told at once are applied in the order they're read
 	self.mu.Lock()
 	defer self.mu.Unlock()
-	if self.namespaces[ns.Name()] != ns {
+	if !same(self.namespaces[ns.Name()], ns) {
 		return
 	}
 	var tool llm.Tool
@@ -292,6 +293,20 @@ func (self *Toolkit) publish(action eventschema.EventAction, canonical string) {
 	if self.broadcaster != nil {
 		self.broadcaster.Publish(eventschema.Event{Action: action, Schema: EventSchema, Table: ToolTable, Row: canonical})
 	}
+}
+
+// same returns true when the namespaces are the same one, which they are
+// only when they're comparable, such as pointers, rather than panicking,
+// as comparing values which can't be does, such as a struct with a slice
+func same(a, b Namespace) bool {
+	if a == nil || b == nil {
+		return a == nil && b == nil
+	}
+	ta, tb := reflect.TypeOf(a), reflect.TypeOf(b)
+	if ta != tb || !ta.Comparable() {
+		return false
+	}
+	return a == b
 }
 
 // typeOf returns the namespace's type, which is schema.NamespaceBuiltin,

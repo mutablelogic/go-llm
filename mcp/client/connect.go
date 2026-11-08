@@ -13,6 +13,18 @@ import (
 )
 
 ///////////////////////////////////////////////////////////////////////////////
+// TYPES
+
+// attempt is a connection which is being made, which those which wait for
+// it are told the error of, once it's done, and which is cancelled, as the
+// client is disconnected
+type attempt struct {
+	done   chan struct{}
+	err    error
+	cancel context.CancelFunc
+}
+
+///////////////////////////////////////////////////////////////////////////////
 // GLOBALS
 
 // keepAlive is how often a connected server is pinged, so a session whose
@@ -33,47 +45,100 @@ var (
 // initialized, or at once, when it's connected. The context is the
 // connection's, as it's made, rather than the session's, which has its
 // own, so it lasts until it's disconnected, or the server closes it, as
-// SSE's stream lasts as long as the context it's connected with. Returns
+// SSE's stream lasts as long as the context it's connected with. It's
+// connected without the client's lock held, so its status can be asked for
+// as it is, and once at a time: a Connect as it's being connected waits for
+// it, and returns as it does, or as its own context is cancelled. Returns
 // ErrServiceUnavailable when it can't be connected, with each transport's
-// error, or the context's error, when it's cancelled.
+// error, or the context's error, when it's cancelled, or disconnected, as
+// it's connected.
 func (c *Client) Connect(ctx context.Context) error {
-	server, err := c.connect(ctx)
+	c.mu.Lock()
+	if c.session != nil {
+		c.mu.Unlock()
+		return nil
+	} else if a := c.dialing; a != nil {
+		// Wait for the connection which is being made
+		c.mu.Unlock()
+		select {
+		case <-a.done:
+			return a.err
+		case <-ctx.Done():
+			return ctx.Err()
+		}
+	}
+	dialCtx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	a := &attempt{done: make(chan struct{}), cancel: cancel}
+	c.dialing = a
+	c.mu.Unlock()
+
+	// Connect, without the lock held, and say it's connected, once it is
+	server, err := c.connect(dialCtx, a)
 	if server != nil && c.change != nil {
 		c.change(server, nil)
 	}
 	return err
 }
 
-// connect connects to the server, and returns it, as it said, when it's
-// connected now, rather than already, or the error
-func (c *Client) connect(ctx context.Context) (*sdkmcp.Implementation, error) {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	if c.session != nil {
-		return nil, nil
-	}
-
-	// Try each transport, in turn, unless the caller gave up
+// connect tries each transport, in turn, unless the caller gives up, or it's
+// disconnected, and keeps the session, when it's still the attempt which is
+// being made, and returns the server, as it said, or the error, which those
+// waiting for it are given
+func (c *Client) connect(ctx context.Context, a *attempt) (*sdkmcp.Implementation, error) {
 	var errs []error
 	for _, transport := range c.transports() {
 		session, cancel, err := c.dial(ctx, transport)
 		if err == nil {
-			c.session, c.err, c.cancel = session, nil, cancel
-			go c.wait(session)
-			go c.keepAlive(session)
-			server := &sdkmcp.Implementation{}
-			if result := session.InitializeResult(); result != nil && result.ServerInfo != nil {
-				server = result.ServerInfo
-			}
-			return server, nil
+			return c.keep(a, session, cancel)
 		} else if ctx.Err() != nil {
-			// The caller gave up, which says nothing of the server
-			return nil, ctx.Err()
+			// The caller gave up, or it was disconnected, which says nothing
+			// of the server
+			return nil, c.failed(a, ctx.Err(), false)
 		}
 		errs = append(errs, err)
 	}
-	c.err = llm.ErrServiceUnavailable.Withf("%s can't be connected to: %w", c.endpoint, errors.Join(errs...))
-	return nil, c.err
+	return nil, c.failed(a, llm.ErrServiceUnavailable.Withf("%s can't be connected to: %w", c.endpoint, errors.Join(errs...)), true)
+}
+
+// keep keeps the session, when the attempt is still the one which is
+// being made, and returns the server, as it said, or closes it, when it was
+// disconnected, as it was connected
+func (c *Client) keep(a *attempt, session *sdkmcp.ClientSession, cancel context.CancelFunc) (*sdkmcp.Implementation, error) {
+	c.mu.Lock()
+	if c.dialing != a {
+		c.mu.Unlock()
+		_ = session.Close()
+		cancel()
+		a.finish(llm.ErrServiceUnavailable.Withf("%s was disconnected, as it was connected", c.endpoint))
+		return nil, a.err
+	}
+	c.session, c.err, c.cancel, c.dialing = session, nil, cancel, nil
+	c.mu.Unlock()
+	a.finish(nil)
+	go c.wait(session)
+	go c.keepAlive(session)
+	server := &sdkmcp.Implementation{}
+	if result := session.InitializeResult(); result != nil && result.ServerInfo != nil {
+		server = result.ServerInfo
+	}
+	return server, nil
+}
+
+// failed ends the attempt, with the error, which is kept, as why it can't
+// be connected, when it's said to be, and it's still the attempt which is
+// being made, and returns it
+func (c *Client) failed(a *attempt, err error, keep bool) error {
+	c.mu.Lock()
+	if c.dialing == a {
+		c.dialing = nil
+		if keep {
+			c.err = err
+		}
+	}
+	c.mu.Unlock()
+	a.finish(err)
+	return err
 }
 
 // Disconnect closes the session, when it's connected, or does nothing when
@@ -82,6 +147,12 @@ func (c *Client) Disconnect() error {
 	c.mu.Lock()
 	session, cancel := c.session, c.cancel
 	c.session, c.err, c.cancel = nil, nil, nil
+	if a := c.dialing; a != nil {
+		// The connection which is being made is given up on, and closed,
+		// should it be connected
+		c.dialing = nil
+		a.cancel()
+	}
 	c.mu.Unlock()
 	if session == nil {
 		return nil
@@ -228,4 +299,10 @@ func (c *Client) wait(session *sdkmcp.ClientSession) {
 	if ended && c.change != nil {
 		c.change(nil, err)
 	}
+}
+
+// finish ends the attempt, with the error, or nil, once it's connected
+func (a *attempt) finish(err error) {
+	a.err = err
+	close(a.done)
 }

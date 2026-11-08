@@ -59,7 +59,7 @@ func connected(t *testing.T, c *client.Client, match func(string) bool, opts ...
 	t.Helper()
 	ns, err := namespace.New("test", "https://mcp.example.com", opts...)
 	require.NoError(t, err)
-	require.NoError(t, ns.Connect(t.Context(), c, "Test server", match))
+	require.NoError(t, ns.Connect(t.Context(), c, "Test server", match, 1))
 	return ns
 }
 
@@ -136,11 +136,13 @@ func Test_Connection(t *testing.T) {
 	})
 
 	c := connect(t, server)
-	require.NoError(t, ns.Connect(ctx, c, "", func(name string) bool { return name != "fail" }))
+	require.NoError(t, ns.Connect(ctx, c, "", func(name string) bool { return name != "fail" }, 1))
 	assert.Len(t, ns.Tools(), 2)
 	assert.Equal(t, "https://mcp.example.com", ns.Description(), "as the server said no title")
-	ns.Disconnect()
+	assert.True(t, ns.ConnectedTo(c))
+	ns.Disconnect(c)
 	assert.Empty(t, ns.Tools())
+	assert.False(t, ns.ConnectedTo(c))
 	mu.Lock()
 	assert.Equal(t, []string{"create echo", "create sum", "delete echo", "delete sum"}, events)
 	mu.Unlock()
@@ -149,11 +151,30 @@ func Test_Connection(t *testing.T) {
 	// without a name, or a client
 	unconnected, err := client.New(server.URL)
 	require.NoError(t, err)
-	assert.Error(t, ns.Connect(ctx, unconnected, "", nil))
+	assert.Error(t, ns.Connect(ctx, unconnected, "", nil, 2))
 	assert.Empty(t, ns.Tools())
-	assert.Error(t, ns.Connect(ctx, nil, "", nil))
+	assert.Error(t, ns.Connect(ctx, nil, "", nil, 2))
 	_, err = namespace.New("", "")
 	assert.Error(t, err)
+}
+
+func Test_Order(t *testing.T) {
+	// A connection for an older definition of its connector does nothing,
+	// once it's been connected for a later one, nor does disconnecting a
+	// client which isn't the one it's connected to
+	ctx := t.Context()
+	server := newServer(t)
+	first, second := connect(t, server), connect(t, server)
+	ns, err := namespace.New("test", "")
+	require.NoError(t, err)
+	require.NoError(t, ns.Connect(ctx, second, "", func(name string) bool { return name == "echo" }, 2))
+	require.NoError(t, ns.Connect(ctx, first, "", nil, 1))
+	assert.Len(t, ns.Tools(), 1, "with the later patterns")
+	assert.True(t, ns.ConnectedTo(second))
+	ns.Disconnect(first)
+	assert.Len(t, ns.Tools(), 1, "as it's connected to another")
+	ns.Disconnect(second)
+	assert.Empty(t, ns.Tools())
 }
 
 func Test_Timeout(t *testing.T) {

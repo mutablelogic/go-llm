@@ -38,6 +38,7 @@ type Client struct {
 	mu      sync.Mutex
 	session *sdkmcp.ClientSession
 	err     error
+	dialing *attempt // The connection which is being made, or nil
 
 	// Cancels the context of the session, which its transport, such as
 	// SSE's stream, lasts as long as, once it's disconnected, or it ends

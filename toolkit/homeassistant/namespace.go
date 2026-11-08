@@ -20,7 +20,7 @@ type namespace struct {
 	tools []llm.Tool
 }
 
-var _ toolkit.Namespace = namespace{}
+var _ toolkit.Namespace = (*namespace)(nil)
 
 ////////////////////////////////////////////////////////////////////////////////
 // GLOBALS
@@ -37,7 +37,7 @@ func New(endpoint, apiKey string, opts ...client.ClientOpt) (toolkit.Namespace, 
 	if err != nil {
 		return nil, err
 	}
-	return namespace{
+	return &namespace{
 		tools: []llm.Tool{
 			newQuery(client),
 			newControl(client),

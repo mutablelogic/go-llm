@@ -36,6 +36,7 @@ type Namespace struct {
 	description string
 	client      *client.Client    // The client, once it's connected, or nil
 	match       func(string) bool // Whether a tool is included, by its name
+	serial      uint64            // The serial of the connector, as it was connected
 	tools       []*tool
 	notify      func(eventschema.EventAction, string)
 }
@@ -121,8 +122,10 @@ func (ns *Namespace) Notify(fn func(eventschema.EventAction, string)) {
 // are included, by the match, which includes every one when it's nil, and
 // says each which was created, updated, or deleted, since they were last
 // listed, with the description, such as the server's title, when it isn't
-// empty. When they can't be listed, it has none, and that's the error.
-func (ns *Namespace) Connect(ctx context.Context, c *client.Client, description string, match func(string) bool) error {
+// empty, for the connector with the serial, unless it's been connected for
+// a later one, such as once its patterns changed, when it does nothing.
+// When they can't be listed, it has none, and that's the error.
+func (ns *Namespace) Connect(ctx context.Context, c *client.Client, description string, match func(string) bool, serial uint64) error {
 	if c == nil {
 		return llm.ErrBadParameter.With("missing client")
 	}
@@ -132,7 +135,12 @@ func (ns *Namespace) Connect(ctx context.Context, c *client.Client, description 
 	ns.changing.Lock()
 	defer ns.changing.Unlock()
 	ns.mu.Lock()
-	ns.client, ns.match = c, match
+	if serial < ns.serial {
+		// It's been connected for a later definition of its connector
+		ns.mu.Unlock()
+		return nil
+	}
+	ns.client, ns.match, ns.serial = c, match, serial
 	if description != "" {
 		ns.description = description
 	}
@@ -153,12 +161,27 @@ func (ns *Namespace) Refresh(ctx context.Context) error {
 	return ns.list(ctx)
 }
 
-// Disconnect clears the tools, as the server is disconnected, and says
-// each was deleted, so the namespace has none, until it's connected again
-func (ns *Namespace) Disconnect() {
+// Disconnect clears the tools, as the client is disconnected from its
+// server, and says each was deleted, so the namespace has none, until it's
+// connected again, unless it's connected with another client, such as one
+// which replaced it, when it does nothing
+func (ns *Namespace) Disconnect(c *client.Client) {
 	ns.changing.Lock()
 	defer ns.changing.Unlock()
-	ns.clear()
+	ns.mu.RLock()
+	other := ns.client != c
+	ns.mu.RUnlock()
+	if !other {
+		ns.clear()
+	}
+}
+
+// ConnectedTo returns true when the namespace has the tools of the server
+// the client is connected to
+func (ns *Namespace) ConnectedTo(c *client.Client) bool {
+	ns.mu.RLock()
+	defer ns.mu.RUnlock()
+	return c != nil && ns.client == c
 }
 
 ///////////////////////////////////////////////////////////////////////////////
