@@ -173,6 +173,11 @@ func (r *Registry) connect(ctx context.Context, logger *slog.Logger, connector s
 			logger.WarnContext(ctx, "connector not connected", "connector", connector.Name, "url", connector.URL, "error", err.Error())
 		}
 		return
+	} else if !r.current(connector.Name, c) {
+		// It was replaced, or forgotten, as it was connected, such as when
+		// the connector was updated, so it isn't left connected
+		_ = c.Disconnect()
+		return
 	}
 	server, _ := c.Status()
 	attrs := []any{"connector", connector.Name, "url", connector.URL}

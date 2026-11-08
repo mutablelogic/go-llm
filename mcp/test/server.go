@@ -91,7 +91,12 @@ func NewServer(t *testing.T, opts ...Opt) *Server {
 		}
 		handler.ServeHTTP(w, r)
 	}))
-	t.Cleanup(self.Close)
+	t.Cleanup(func() {
+		// Its clients' connections are closed first, as a connected client
+		// has a stream which lasts, which Close would wait for
+		self.CloseClientConnections()
+		self.Close()
+	})
 	return self
 }
 

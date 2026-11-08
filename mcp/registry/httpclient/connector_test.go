@@ -32,6 +32,7 @@ func Test_Connectors(t *testing.T) {
 	ctx := t.Context()
 	r, err := registry.New()
 	require.NoError(t, err)
+	t.Cleanup(func() { assert.NoError(t, r.Close()) })
 	server := test.NewServerFunc(t, func(router *httprouter.Router) error {
 		return httphandler.RegisterHandlers(r, router)
 	})
@@ -84,18 +85,22 @@ func Test_Connectors(t *testing.T) {
 	_, err = c.GetConnector(ctx, "missing")
 	assert.Equal(t, http.StatusNotFound, status(t, err))
 
-	// It's updated, and its serial changes
-	updated, err := c.UpdateConnector(ctx, "github", schema.ConnectorMeta{URL: "https://mcp.example.com/v2"})
+	// It's updated, once its server is connected, and its serial changes,
+	// but not with one which can't be
+	updated, err := c.UpdateConnector(ctx, "github", schema.ConnectorMeta{URL: mcp.URL})
 	require.NoError(t, err)
-	assert.Equal(t, "https://mcp.example.com/v2", updated.URL)
+	assert.Equal(t, mcp.URL, updated.URL)
 	assert.Equal(t, uint64(2), updated.Serial)
+	assert.True(t, updated.Connected)
+	_, err = c.UpdateConnector(ctx, "github", schema.ConnectorMeta{URL: "http://localhost:1/mcp"})
+	assert.Equal(t, http.StatusServiceUnavailable, status(t, err))
 	_, err = c.UpdateConnector(ctx, "github", schema.ConnectorMeta{URL: "ftp://mcp.example.com"})
 	assert.Equal(t, http.StatusBadRequest, status(t, err))
 
 	// And deleted
 	deleted, err := c.DeleteConnector(ctx, "github")
 	require.NoError(t, err)
-	assert.Equal(t, "https://mcp.example.com/v2", deleted.URL)
+	assert.Equal(t, mcp.URL, deleted.URL)
 	_, err = c.DeleteConnector(ctx, "github")
 	assert.Equal(t, http.StatusNotFound, status(t, err))
 }

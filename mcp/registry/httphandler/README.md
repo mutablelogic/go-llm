@@ -20,7 +20,7 @@ Get a connector by name. Returns 404 if there's no connector with that name.
 
 ### PATCH /mcp/connector/{name}
 
-Update a connector by name, replacing its `url`. Its name can't be changed. Returns the updated connector, with its new `serial`. Returns 400 if the request body is invalid, or the URL isn't an `http` or `https` URL with a host, 404 if there's no connector with that name, or 409 if it was changed as it was updated.
+Update a connector by name, replacing its `url`, once the server at the URL is connected to, so a URL which isn't a server's isn't kept, and the connector is left as it was. Its name can't be changed. Returns the updated connector, with its new `serial`, connected, and disconnects the server it was connected to before. Returns 400 if the request body is invalid, or the URL isn't an `http` or `https` URL with a host, 404 if there's no connector with that name, 409 if it was changed as it was updated, or 503 if the server at the URL can't be connected to.
 
 ### DELETE /mcp/connector/{name}
 

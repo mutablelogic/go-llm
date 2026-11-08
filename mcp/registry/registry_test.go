@@ -3,6 +3,8 @@ package registry_test
 import (
 	"context"
 	"encoding/json"
+	"net/http"
+	"net/http/httptest"
 	"testing"
 
 	// Packages
@@ -11,6 +13,7 @@ import (
 	eventschema "github.com/mutablelogic/go-llm/broadcaster/schema"
 	registry "github.com/mutablelogic/go-llm/mcp/registry"
 	schema "github.com/mutablelogic/go-llm/mcp/schema"
+	test "github.com/mutablelogic/go-llm/mcp/test"
 	assert "github.com/stretchr/testify/assert"
 	require "github.com/stretchr/testify/require"
 )
@@ -84,21 +87,35 @@ func Test_Servers(t *testing.T) {
 		assert.ErrorIs(t, err, llm.ErrBadParameter, s.String())
 	}
 
-	// A connector is got, and updated, which changes its serial
+	// A connector is got, and updated, once its server, as it is now, is
+	// connected, which changes its serial, and it's connected
 	got, err := r.GetConnector(ctx, "search")
 	require.NoError(t, err)
 	assert.Equal(t, created, got)
-	updated, err := r.UpdateConnector(ctx, "search", schema.ConnectorMeta{URL: "https://mcp.example.com/v2"})
+	server := test.NewServer(t)
+	updated, err := r.UpdateConnector(ctx, "search", schema.ConnectorMeta{URL: server.URL})
 	require.NoError(t, err)
-	assert.Equal(t, "https://mcp.example.com/v2", updated.URL)
+	t.Cleanup(func() { assert.NoError(t, r.Close()) })
+	assert.Equal(t, server.URL, updated.URL)
 	assert.Equal(t, uint64(2), updated.Serial)
+	assert.True(t, updated.Connected)
 	_, err = r.UpdateConnector(ctx, "search", schema.ConnectorMeta{URL: "ftp://mcp.example.com"})
 	assert.ErrorIs(t, err, llm.ErrBadParameter)
+
+	// But not with a server which can't be connected, when it's left as it
+	// was, and connected
+	notFound := httptest.NewServer(http.NotFoundHandler())
+	t.Cleanup(notFound.Close)
+	_, err = r.UpdateConnector(ctx, "search", schema.ConnectorMeta{URL: notFound.URL})
+	assert.ErrorIs(t, err, llm.ErrServiceUnavailable)
+	got, err = r.GetConnector(ctx, "search")
+	require.NoError(t, err)
+	assert.Equal(t, updated, got)
 
 	// And deleted
 	deleted, err := r.DeleteConnector(ctx, "search")
 	require.NoError(t, err)
-	assert.Equal(t, updated, deleted)
+	assert.Equal(t, updated.Definition(), *deleted, "and disconnected")
 	for _, err := range []error{
 		func() error { _, err := r.GetConnector(ctx, "search"); return err }(),
 		func() error { _, err := r.UpdateConnector(ctx, "search", updated.ConnectorMeta); return err }(),
@@ -124,11 +141,13 @@ func Test_Store(t *testing.T) {
 	list, err := two.ListConnectors(ctx)
 	require.NoError(t, err)
 	assert.Equal(t, []string{"github"}, names(list.Body))
-	_, err = two.UpdateConnector(ctx, "github", schema.ConnectorMeta{URL: "https://mcp.example.com/v2"})
+	server := test.NewServer(t)
+	_, err = two.UpdateConnector(ctx, "github", schema.ConnectorMeta{URL: server.URL})
 	require.NoError(t, err)
+	t.Cleanup(func() { assert.NoError(t, two.Close()) })
 	got, err := one.GetConnector(ctx, "github")
 	require.NoError(t, err)
-	assert.Equal(t, "https://mcp.example.com/v2", got.URL)
+	assert.Equal(t, server.URL, got.URL)
 
 	// Which has the connectors' definitions, without their status, which a
 	// request can't set
@@ -172,8 +191,10 @@ func Test_Events(t *testing.T) {
 	require.NoError(t, err)
 	_, err = r.CreateConnector(ctx, connector("github", "https://mcp.example.com/github"))
 	require.Error(t, err)
-	_, err = r.UpdateConnector(ctx, "github", schema.ConnectorMeta{URL: "https://mcp.example.com/v2"})
+	_, err = r.UpdateConnector(ctx, "github", schema.ConnectorMeta{URL: test.NewServer(t).URL})
 	require.NoError(t, err)
+	_, err = r.UpdateConnector(ctx, "github", schema.ConnectorMeta{URL: "https://mcp.example.com/v2"})
+	require.Error(t, err)
 	_, err = r.DeleteConnector(ctx, "github")
 	require.NoError(t, err)
 

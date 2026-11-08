@@ -118,12 +118,14 @@ func (r *Registry) CreateConnector(ctx context.Context, connector schema.Connect
 	return r.status(created), nil
 }
 
-// UpdateConnector replaces the fields of the connector with the name, and
-// returns it, with its new serial. Its server is disconnected, when it's
-// connected, and connected again by Run, as it is now.
-// Returns ErrNotFound when there's no connector with the name,
-// ErrBadParameter when the fields aren't valid, and ErrConflict when it was
-// changed as it was updated.
+// UpdateConnector replaces the fields of the connector with the name, once
+// its server, as it is now, is connected, within ConnectTimeout, so a URL
+// which isn't a server's isn't stored, and returns it, with its new serial,
+// and connected. Its server, as it was, is disconnected, once it's
+// replaced. Returns ErrNotFound when there's no connector with the name,
+// ErrBadParameter when the fields aren't valid, ErrServiceUnavailable when
+// its server, as it is now, can't be connected, when it's left as it was,
+// and ErrConflict when it was changed as it was updated.
 func (r *Registry) UpdateConnector(ctx context.Context, name string, meta schema.ConnectorMeta) (*schema.Connector, error) {
 	connector, err := r.get(ctx, name)
 	if err != nil {
@@ -133,14 +135,27 @@ func (r *Registry) UpdateConnector(ctx context.Context, name string, meta schema
 	connector = connector.Definition()
 	if err := connector.Validate(); err != nil {
 		return nil, err
-	} else if _, err := r.newClient(connector); err != nil {
-		return nil, err
 	}
-	updated, err := r.store.Put(ctx, connector)
+
+	// Connect to its server, as it is now, before it's stored
+	c, err := r.newClient(connector)
 	if err != nil {
 		return nil, err
 	}
-	r.forget(name)
+	connectCtx, cancel := context.WithTimeout(ctx, ConnectTimeout)
+	defer cancel()
+	if err := c.Connect(connectCtx); err != nil {
+		return nil, err
+	}
+
+	// Store it, and replace its client, as it was, with the one which is
+	// connected, or disconnect it, when it couldn't be stored
+	updated, err := r.store.Put(ctx, connector)
+	if err != nil {
+		_ = c.Disconnect()
+		return nil, err
+	}
+	r.replace(updated, c)
 	r.publish(eventschema.EventUpdate, updated)
 	return r.status(updated), nil
 }
@@ -201,6 +216,27 @@ func (r *Registry) client(connector schema.Connector) (*client.Client, error) {
 		_ = e.client.Disconnect()
 	}
 	return c, nil
+}
+
+// replace makes the client the connector's, as it is, and disconnects the
+// one it replaces
+func (r *Registry) replace(connector schema.Connector, c *client.Client) {
+	r.mu.Lock()
+	e, exists := r.clients[connector.Name]
+	r.clients[connector.Name] = entry{serial: connector.Serial, client: c}
+	r.mu.Unlock()
+	if exists && e.client != c {
+		_ = e.client.Disconnect()
+	}
+}
+
+// current returns true when the client is the connector's, which it isn't
+// once it's replaced, or forgotten
+func (r *Registry) current(name string, c *client.Client) bool {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	e, exists := r.clients[name]
+	return exists && e.client == c
 }
 
 // forget disconnects the client of the connector with the name, and

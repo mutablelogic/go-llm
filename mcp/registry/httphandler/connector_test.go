@@ -2,12 +2,14 @@ package httphandler_test
 
 import (
 	"net/http"
+	"net/http/httptest"
 	"testing"
 
 	// Packages
 	registry "github.com/mutablelogic/go-llm/mcp/registry"
 	httphandler "github.com/mutablelogic/go-llm/mcp/registry/httphandler"
 	schema "github.com/mutablelogic/go-llm/mcp/schema"
+	mcptest "github.com/mutablelogic/go-llm/mcp/test"
 	test "github.com/mutablelogic/go-llm/registry/test"
 	httprouter "github.com/mutablelogic/go-server/pkg/httprouter"
 	assert "github.com/stretchr/testify/assert"
@@ -17,6 +19,7 @@ import (
 func Test_Connectors(t *testing.T) {
 	r, err := registry.New()
 	require.NoError(t, err)
+	t.Cleanup(func() { assert.NoError(t, r.Close()) })
 	server := test.NewServerFunc(t, func(router *httprouter.Router) error {
 		return httphandler.RegisterHandlers(r, router)
 	})
@@ -62,12 +65,18 @@ func Test_Connectors(t *testing.T) {
 	})
 
 	t.Run("Update", func(t *testing.T) {
-		// A connector's URL is replaced, and its serial changes
+		// A connector's URL is replaced, once its server is connected, and
+		// its serial changes, but not with one which can't be
+		mcp := mcptest.NewServer(t)
 		var updated schema.Connector
-		require.Equal(t, http.StatusOK, server.JSON(t, http.MethodPatch, "mcp/connector/search", schema.ConnectorMeta{URL: "https://mcp.example.com/v2"}, &updated))
+		require.Equal(t, http.StatusOK, server.JSON(t, http.MethodPatch, "mcp/connector/search", schema.ConnectorMeta{URL: mcp.URL}, &updated))
 		assert.Equal(t, "search", updated.Name)
-		assert.Equal(t, "https://mcp.example.com/v2", updated.URL)
+		assert.Equal(t, mcp.URL, updated.URL)
 		assert.Equal(t, uint64(2), updated.Serial)
+		assert.True(t, updated.Connected)
+		notFound := httptest.NewServer(http.NotFoundHandler())
+		t.Cleanup(notFound.Close)
+		assert.Equal(t, http.StatusServiceUnavailable, server.JSON(t, http.MethodPatch, "mcp/connector/search", schema.ConnectorMeta{URL: notFound.URL}, nil))
 		assert.Equal(t, http.StatusBadRequest, server.JSON(t, http.MethodPatch, "mcp/connector/search", schema.ConnectorMeta{URL: "ftp://mcp.example.com"}, nil))
 		assert.Equal(t, http.StatusNotFound, server.JSON(t, http.MethodPatch, "mcp/connector/missing", schema.ConnectorMeta{URL: "https://mcp.example.com"}, nil))
 	})
@@ -75,7 +84,7 @@ func Test_Connectors(t *testing.T) {
 	t.Run("Delete", func(t *testing.T) {
 		var deleted schema.Connector
 		require.Equal(t, http.StatusOK, server.JSON(t, http.MethodDelete, "mcp/connector/search", nil, &deleted))
-		assert.Equal(t, "https://mcp.example.com/v2", deleted.URL)
+		assert.NotEqual(t, "https://mcp.example.com/search", deleted.URL)
 		assert.Equal(t, http.StatusNotFound, server.JSON(t, http.MethodGet, "mcp/connector/search", nil, nil))
 		assert.Equal(t, http.StatusNotFound, server.JSON(t, http.MethodDelete, "mcp/connector/search", nil, nil))
 		var list schema.ConnectorList

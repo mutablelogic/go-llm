@@ -101,6 +101,7 @@ func connectorHandlers(reg *registry.Registry, router *httprouter.Router, docume
 			op.ErrorResponse(http.StatusBadRequest, "Invalid request, or URL")
 			op.ErrorResponse(http.StatusNotFound, "Connector not found")
 			op.ErrorResponse(http.StatusConflict, "The connector was changed as it was updated")
+			op.ErrorResponse(http.StatusServiceUnavailable, "The server at the URL can't be connected to")
 		})
 
 		// DELETE
