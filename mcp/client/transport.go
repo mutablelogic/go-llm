@@ -35,7 +35,7 @@ var _ http.RoundTripper = (*sameOrigin)(nil)
 // streams of an MCP session last as long as it does, and are cancelled with
 // its context
 func (c *Client) httpClient() *http.Client {
-	httpClient := *c.Client.Client
+	httpClient := *c.Client.Client.Client
 	httpClient.Timeout = 0
 	origin := originOf(c.endpoint)
 	next := httpClient.Transport

@@ -72,7 +72,7 @@ func Test_Transports(t *testing.T) {
 	assert.Equal(t, server.URL+"/mcp", sse.Endpoint)
 	assert.Same(t, streamable.HTTPClient, sse.HTTPClient)
 	assert.Zero(t, streamable.HTTPClient.Timeout, "but not a session's, whose streams last")
-	assert.NotSame(t, c.Client.Client, streamable.HTTPClient, "a copy, so go-client's is unchanged")
+	assert.NotSame(t, c.Client.Client.Client, streamable.HTTPClient, "a copy, so go-client's is unchanged")
 
 	// Its requests have go-client's headers, and user agent
 	response, err := streamable.HTTPClient.Get(server.URL + "/mcp")
