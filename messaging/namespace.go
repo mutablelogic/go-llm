@@ -3,6 +3,7 @@ package messaging
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"strings"
 	"time"
 	"uuid"
@@ -79,8 +80,17 @@ type sendInput struct {
 	Channels []string `json:"channels,omitempty" help:"The identifiers of the channels to send it to, or none, to send it to all of the conversation's channels" optional:""`
 }
 
+// sendOutput is what was sent to each channel: its messages, in order, by
+// their identifiers, and what each was, and why something wasn't sent
 type sendOutput struct {
-	Sent []channelOutput `json:"sent"`
+	Sent []channelSent `json:"sent"`
+}
+
+type channelSent struct {
+	channelOutput
+	Count    int    `json:"count"`
+	Messages []Sent `json:"messages"`
+	Error    string `json:"error,omitempty"`
 }
 
 type disconnectInput struct {
@@ -177,7 +187,7 @@ func (t *listTool) Run(ctx context.Context, _ json.RawMessage) (any, error) {
 func (*sendTool) Name() string { return "send" }
 
 func (*sendTool) Description() string {
-	return "Sends a message, and the conversation's files, such as an image, or speech, to the chats connected to this conversation, such as on Telegram, which isn't your reply, as your replies, and the files you make with them, are sent there anyway."
+	return "Sends a message, and the conversation's files, such as an image, or speech, to the chats connected to this conversation, such as on Telegram, which isn't your reply, as your replies, and the files you make with them, are sent there anyway. Returns, for each chat, the messages it was sent as, in order, each with its identifier, and whether it's text, a file, by its name, with the text as its caption, or a note in place of a file, and why anything wasn't sent."
 }
 
 func (*sendTool) InputSchema() *jsonschema.Schema {
@@ -202,11 +212,32 @@ func (t *sendTool) Run(ctx context.Context, input json.RawMessage) (any, error) 
 		ids = append(ids, id)
 	}
 	toolkit.Logf(ctx, "Sending a message")
-	sent, err := t.messaging.Send(ctx, session, Outgoing{Text: req.Text, Files: req.Files}, ids...)
+	deliveries, err := t.messaging.Send(ctx, session, Outgoing{Text: req.Text, Files: req.Files}, ids...)
 	if err != nil {
 		return nil, err
 	}
-	return sendOutput{Sent: outputs(sent)}, nil
+
+	// What was sent to each, and why something wasn't, which is an error,
+	// when nothing was sent to any
+	result := sendOutput{Sent: make([]channelSent, 0, len(deliveries))}
+	var errs error
+	sent := 0
+	for _, delivery := range deliveries {
+		output := channelSent{channelOutput: output(delivery.Channel), Count: len(delivery.Messages), Messages: delivery.Messages}
+		if output.Messages == nil {
+			output.Messages = []Sent{}
+		}
+		if delivery.Err != nil {
+			output.Error = delivery.Err.Error()
+			errs = errors.Join(errs, delivery.Err)
+		}
+		sent += len(delivery.Messages)
+		result.Sent = append(result.Sent, output)
+	}
+	if sent == 0 && errs != nil {
+		return nil, errs
+	}
+	return result, nil
 }
 
 func (*disconnectTool) Name() string { return "disconnect" }
@@ -280,14 +311,19 @@ func decode(input json.RawMessage, v any) error {
 func outputs(channels []schema.Channel) []channelOutput {
 	result := make([]channelOutput, 0, len(channels))
 	for _, channel := range channels {
-		result = append(result, channelOutput{
-			ID:        channel.ID.String(),
-			Provider:  channel.Provider,
-			Chat:      channel.Title,
-			Connected: channel.Created.UTC().Format(time.RFC3339),
-		})
+		result = append(result, output(channel))
 	}
 	return result
+}
+
+// output returns the channel, as a model is told it
+func output(channel schema.Channel) channelOutput {
+	return channelOutput{
+		ID:        channel.ID.String(),
+		Provider:  channel.Provider,
+		Chat:      channel.Title,
+		Connected: channel.Created.UTC().Format(time.RFC3339),
+	}
 }
 
 // messagingPrompt is how the model uses channels, with the providers
