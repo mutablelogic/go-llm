@@ -12,7 +12,9 @@ import (
 	"sync"
 
 	// Packages
+	sdkmcp "github.com/modelcontextprotocol/go-sdk/mcp"
 	llm "github.com/mutablelogic/go-llm"
+	broadcaster "github.com/mutablelogic/go-llm/broadcaster"
 	eventschema "github.com/mutablelogic/go-llm/broadcaster/schema"
 	client "github.com/mutablelogic/go-llm/mcp/client"
 	schema "github.com/mutablelogic/go-llm/mcp/schema"
@@ -31,6 +33,11 @@ type Registry struct {
 
 	mu      sync.Mutex
 	clients map[string]entry
+
+	// The registry's own broadcaster, of the connectors' changes, as they're
+	// created, updated, or deleted, which Run watches, so it connects, or
+	// disconnects, them at once
+	events *broadcaster.Broadcaster
 }
 
 // entry is the client of a connector, and the serial of the definition it was
@@ -46,7 +53,7 @@ type entry struct {
 // New returns a registry, with the options, such as its store, with
 // WithStore, which keeps its connectors in memory otherwise
 func New(opts ...Opt) (*Registry, error) {
-	r := &Registry{clients: make(map[string]entry)}
+	r := &Registry{clients: make(map[string]entry), events: broadcaster.New()}
 	if err := r.opt.apply(opts); err != nil {
 		return nil, err
 	}
@@ -57,16 +64,13 @@ func New(opts ...Opt) (*Registry, error) {
 // stops, and returns their errors
 func (r *Registry) Close() error {
 	r.mu.Lock()
-	clients := make([]*client.Client, 0, len(r.clients))
-	for _, e := range r.clients {
-		clients = append(clients, e.client)
-	}
+	clients := r.clients
 	r.clients = make(map[string]entry)
 	r.mu.Unlock()
 
 	var errs []error
-	for _, c := range clients {
-		errs = append(errs, c.Disconnect())
+	for name, e := range clients {
+		errs = append(errs, r.disconnect(name, e))
 	}
 	return errors.Join(errs...)
 }
@@ -157,6 +161,10 @@ func (r *Registry) UpdateConnector(ctx context.Context, name string, meta schema
 	}
 	r.replace(updated, c)
 	r.publish(eventschema.EventUpdate, updated)
+	if server, _ := c.Status(); server != nil {
+		// It was connected before it was the connector's, so it's said now
+		r.connection(updated, server, nil)
+	}
 	return r.status(updated), nil
 }
 
@@ -219,7 +227,8 @@ func (r *Registry) client(connector schema.Connector) (*client.Client, error) {
 }
 
 // replace makes the client the connector's, as it is, and disconnects the
-// one it replaces
+// one it replaces, which isn't said, as the client which replaces it is
+// connected
 func (r *Registry) replace(connector schema.Connector, c *client.Client) {
 	r.mu.Lock()
 	e, exists := r.clients[connector.Name]
@@ -230,24 +239,46 @@ func (r *Registry) replace(connector schema.Connector, c *client.Client) {
 	}
 }
 
+// disconnect disconnects the client of the connector with the name, which
+// is no longer the connector's, and says it was, when it was connected
+func (r *Registry) disconnect(name string, e entry) error {
+	connected := e.client.Connected()
+	err := e.client.Disconnect()
+	if connected {
+		r.connection(schema.Connector{Name: name, Serial: e.serial}, nil, nil)
+	}
+	return err
+}
+
 // current returns true when the client is the connector's, which it isn't
 // once it's replaced, or forgotten
 func (r *Registry) current(name string, c *client.Client) bool {
+	_, ok := r.serial(name, c)
+	return ok
+}
+
+// serial returns the serial of the connector, as it is, whose client is
+// the client, or false when it isn't the connector's, such as once it's
+// replaced, or forgotten
+func (r *Registry) serial(name string, c *client.Client) (uint64, bool) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	e, exists := r.clients[name]
-	return exists && e.client == c
+	if !exists || e.client != c {
+		return 0, false
+	}
+	return e.serial, true
 }
 
 // forget disconnects the client of the connector with the name, and
-// forgets it, as the connector was changed, or deleted
+// forgets it, as the connector was deleted, or another process deleted it
 func (r *Registry) forget(name string) {
 	r.mu.Lock()
 	e, exists := r.clients[name]
 	delete(r.clients, name)
 	r.mu.Unlock()
 	if exists {
-		_ = e.client.Disconnect()
+		_ = r.disconnect(name, e)
 	}
 }
 
@@ -273,7 +304,7 @@ func (r *Registry) status(connector schema.Connector) *schema.Connector {
 	return &result
 }
 
-// publish publishes the change to the connector, with the registry's
+// publish publishes the change to the connector, with the registry's own
 // broadcaster, which Run watches, whose row is its name, and whose data is
 // its serial, unless it was deleted
 func (r *Registry) publish(action eventschema.EventAction, connector schema.Connector) {
@@ -283,10 +314,43 @@ func (r *Registry) publish(action eventschema.EventAction, connector schema.Conn
 			event.Data = data
 		}
 	}
+	r.events.Publish(event)
+}
+
+// connection publishes that the connector's server was connected, with
+// which server it is, as it said, or disconnected, with why, when it
+// wasn't disconnected, with the broadcaster the registry was given, when
+// it was, as a connector which is created, or deleted
+func (r *Registry) connection(connector schema.Connector, server *sdkmcp.Implementation, err error) {
+	if r.broadcaster == nil {
+		return
+	}
+	data := schema.ConnectorEvent{Serial: connector.Serial}
+	action := eventschema.EventDelete
+	if server != nil {
+		action = eventschema.EventCreate
+		data.Server = &schema.ConnectorServer{Name: server.Name, Version: server.Version}
+	} else if err != nil {
+		data.Error = err.Error()
+	}
+	event := eventschema.Event{Action: action, Schema: schema.Name, Table: schema.ConnectorTable, Row: connector.Name}
+	if raw, err := json.Marshal(data); err == nil {
+		event.Data = raw
+	}
 	r.broadcaster.Publish(event)
 }
 
-// newClient returns a client of the connector, with the registry's options
+// newClient returns a client of the connector, with the registry's options,
+// which says when it's connected, or disconnected, while it's the
+// connector's
 func (r *Registry) newClient(connector schema.Connector) (*client.Client, error) {
-	return client.New(connector.URL, r.clientopts...)
+	var c *client.Client
+	opts := append(slices.Clone(r.clientopts), client.WithChange(func(server *sdkmcp.Implementation, err error) {
+		if serial, ok := r.serial(connector.Name, c); ok {
+			r.connection(schema.Connector{Name: connector.Name, Serial: serial}, server, err)
+		}
+	}))
+	var err error
+	c, err = client.New(connector.URL, opts...)
+	return c, err
 }

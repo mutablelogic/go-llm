@@ -1,6 +1,7 @@
 package client
 
 import (
+	"context"
 	"net/url"
 	"strings"
 	"sync"
@@ -26,12 +27,19 @@ type Client struct {
 	// connects, with WithName
 	implementation sdkmcp.Implementation
 
+	// Called when it's connected, or disconnected, or nil
+	change ChangeFunc
+
 	// The session with the server, once it's connected, and the error of
 	// the last connection, or of the session, when it ended, which are held
 	// while it's connected, and disconnected
 	mu      sync.Mutex
 	session *sdkmcp.ClientSession
 	err     error
+
+	// Cancels the context of the session, which its transport, such as
+	// SSE's stream, lasts as long as, once it's disconnected, or it ends
+	cancel context.CancelFunc
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -68,6 +76,7 @@ func New(endpoint string, opts ...Opt) (*Client, error) {
 		Client:         httpClient,
 		endpoint:       u.String(),
 		implementation: sdkmcp.Implementation{Name: o.name, Version: o.version},
+		change:         o.change,
 	}, nil
 }
 

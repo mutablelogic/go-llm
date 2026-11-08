@@ -119,15 +119,15 @@ func Test_RunStops(t *testing.T) {
 
 func Test_RunAtOnce(t *testing.T) {
 	// A connector which is created, or updated, is connected at once, as
-	// the broadcaster says it changed, rather than once it's retried, and
-	// one which is deleted is disconnected, whichever broadcaster it is
+	// the registry's own broadcaster says it changed, rather than once it's
+	// retried, whether or not it's given one for its connections
 	setInterval(t, &registry.RetryInterval, time.Hour)
 	setInterval(t, &registry.ConnectJitter, 10*time.Millisecond)
 	ctx := t.Context()
 	server := test.NewServer(t)
 	for name, opts := range map[string][]registry.Opt{
-		"Own":    nil,
-		"Shared": {registry.WithBroadcaster(broadcaster.New())},
+		"Own":         nil,
+		"Connections": {registry.WithBroadcaster(broadcaster.New())},
 	} {
 		t.Run(name, func(t *testing.T) {
 			r, err := registry.New(opts...)

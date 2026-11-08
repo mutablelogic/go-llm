@@ -45,8 +45,8 @@ const (
 // PUBLIC METHODS
 
 // Run connects the connectors' servers, as it starts, and disconnects
-// those which are deleted, at once, as the registry's broadcaster publishes
-// that they're created, updated, or deleted, and every RetryInterval, for
+// those which are deleted, at once, as the registry's own broadcaster
+// publishes that they're created, updated, or deleted, and every RetryInterval, for
 // those which aren't connected, until the context is cancelled, when it
 // disconnects every one, and returns. What happens is logged, with the
 // logger, or isn't when it's nil.
@@ -63,7 +63,7 @@ func (r *Registry) Run(ctx context.Context, logger *slog.Logger) error {
 	// Watch the broadcaster, before the connectors are first reconciled, so
 	// no change is missed
 	events := make(chan eventschema.Event, eventBuffer)
-	done, err := r.broadcaster.Watch(ctx, events)
+	done, err := r.events.Watch(ctx, events)
 	if err != nil {
 		return err
 	}
@@ -79,8 +79,8 @@ func (r *Registry) Run(ctx context.Context, logger *slog.Logger) error {
 		case <-ctx.Done():
 			return nil
 		case <-done:
-			// The broadcaster stopped, such as when the server is stopping,
-			// so they're only reconciled every interval
+			// The broadcaster stopped, which the registry's own doesn't, but
+			// they're reconciled every interval, if it does
 			events, done = nil, nil
 			reconcile = false
 		case event := <-events:

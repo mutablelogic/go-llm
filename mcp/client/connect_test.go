@@ -103,6 +103,25 @@ func Test_Connect(t *testing.T) {
 		assert.NoError(t, err)
 	})
 
+	t.Run("Context", func(t *testing.T) {
+		// A session lasts after the context it was connected with is
+		// cancelled, with either transport, as SSE's stream would otherwise
+		// end with it
+		for name, opts := range map[string][]test.Opt{"Streamable": nil, "SSE": {test.WithSSE()}} {
+			t.Run(name, func(t *testing.T) {
+				server := test.NewServer(t, opts...)
+				c, err := New(server.URL)
+				require.NoError(t, err)
+				connectCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+				require.NoError(t, c.Connect(connectCtx))
+				cancel()
+				time.Sleep(100 * time.Millisecond)
+				assert.True(t, c.Connected())
+				require.NoError(t, c.Disconnect())
+			})
+		}
+	})
+
 	t.Run("KeepAlive", func(t *testing.T) {
 		// A server which replies to pings, even with what can't be decoded,
 		// such as [], stays connected

@@ -4,6 +4,8 @@
 
 Connectors are remote MCP servers, which the assistant can connect to, such as for their tools. Each has a `name`, which is an identifier, of up to 64 letters, numbers, underscores or hyphens, starting with a letter, and the `url` of its server, which is an `http` or `https` URL, of its streamable HTTP transport, or its SSE transport. A server which runs as a command, over stdio, can't be a connector. Each connector has a `serial`, which changes each time it's changed, and its status, which isn't stored, as it's the server's: whether its MCP server is `connected`, and when it is, the `server`'s `name` and `version`, as it said, or the `error` of why it couldn't be connected, or its session ended. A connector which is changed, or deleted, is disconnected.
 
+The server connects to a connector's MCP server as it's created, or as the server starts, and tries again every 30 seconds, when it can't be connected, or its session ends. Its events say when a connector's MCP server is connected, as a `create` of the `connector` table of the `mcp` schema, whose row is its name, with its `serial`, and the `server`'s `name` and `version`, and when it's disconnected, as a `delete`, with the `error` of why, when it wasn't disconnected, such as when its server closed the session.
+
 The connectors are kept in the server's store of them, so they're kept as the server restarts, when it has one, and are otherwise lost when it stops.
 
 ### GET /mcp/connector

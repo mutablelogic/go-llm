@@ -31,47 +31,67 @@ var (
 // Connect connects to the server, with the streamable HTTP transport, or
 // with SSE, when the server hasn't it, and returns once the session is
 // initialized, or at once, when it's connected. The context is the
-// connection's, as it's made, rather than the session's, which lasts until
-// it's disconnected, or the server closes it. Returns
+// connection's, as it's made, rather than the session's, which has its
+// own, so it lasts until it's disconnected, or the server closes it, as
+// SSE's stream lasts as long as the context it's connected with. Returns
 // ErrServiceUnavailable when it can't be connected, with each transport's
 // error, or the context's error, when it's cancelled.
 func (c *Client) Connect(ctx context.Context) error {
+	server, err := c.connect(ctx)
+	if server != nil && c.change != nil {
+		c.change(server, nil)
+	}
+	return err
+}
+
+// connect connects to the server, and returns it, as it said, when it's
+// connected now, rather than already, or the error
+func (c *Client) connect(ctx context.Context) (*sdkmcp.Implementation, error) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	if c.session != nil {
-		return nil
+		return nil, nil
 	}
 
 	// Try each transport, in turn, unless the caller gave up
 	var errs []error
 	for _, transport := range c.transports() {
-		session, err := sdkmcp.NewClient(&c.implementation, nil).Connect(ctx, transport, nil)
+		session, cancel, err := c.dial(ctx, transport)
 		if err == nil {
-			c.session, c.err = session, nil
+			c.session, c.err, c.cancel = session, nil, cancel
 			go c.wait(session)
 			go c.keepAlive(session)
-			return nil
+			server := &sdkmcp.Implementation{}
+			if result := session.InitializeResult(); result != nil && result.ServerInfo != nil {
+				server = result.ServerInfo
+			}
+			return server, nil
 		} else if ctx.Err() != nil {
 			// The caller gave up, which says nothing of the server
-			return ctx.Err()
+			return nil, ctx.Err()
 		}
 		errs = append(errs, err)
 	}
 	c.err = llm.ErrServiceUnavailable.Withf("%s can't be connected to: %w", c.endpoint, errors.Join(errs...))
-	return c.err
+	return nil, c.err
 }
 
 // Disconnect closes the session, when it's connected, or does nothing when
 // it isn't
 func (c *Client) Disconnect() error {
 	c.mu.Lock()
-	session := c.session
-	c.session, c.err = nil, nil
+	session, cancel := c.session, c.cancel
+	c.session, c.err, c.cancel = nil, nil, nil
 	c.mu.Unlock()
 	if session == nil {
 		return nil
 	}
-	return session.Close()
+	err := session.Close()
+	cancel()
+	if c.change != nil {
+		c.change(nil, nil)
+	}
+	return err
 }
 
 // Connected returns true when the client has a session with the server,
@@ -99,6 +119,29 @@ func (c *Client) Status() (*sdkmcp.Implementation, error) {
 
 ///////////////////////////////////////////////////////////////////////////////
 // PRIVATE METHODS
+
+// dial connects to the server with the transport, with a context of the
+// session's own, which lasts until it's cancelled, as it's disconnected,
+// or it ends, but which is cancelled as it's connected, when the context
+// is, so the caller can give up. Returns the session, and the function
+// which cancels its context.
+func (c *Client) dial(ctx context.Context, transport sdkmcp.Transport) (*sdkmcp.ClientSession, context.CancelFunc, error) {
+	sessionCtx, cancel := context.WithCancel(context.WithoutCancel(ctx))
+	stop := context.AfterFunc(ctx, cancel)
+	session, err := sdkmcp.NewClient(&c.implementation, nil).Connect(sessionCtx, transport, nil)
+	if !stop() {
+		// The caller gave up as it was connected
+		if err == nil {
+			_ = session.Close()
+		}
+		cancel()
+		return nil, nil, ctx.Err()
+	} else if err != nil {
+		cancel()
+		return nil, nil, err
+	}
+	return session, cancel, nil
+}
 
 // keepAlive pings the server, every keepAlive, until the session ends, and
 // closes it, once keepAliveFailures pings in a row get no reply, so it's
@@ -151,8 +194,8 @@ func replied(err error) bool {
 func (c *Client) wait(session *sdkmcp.ClientSession) {
 	err := session.Wait()
 	c.mu.Lock()
-	defer c.mu.Unlock()
-	if c.session == session {
+	ended := c.session == session
+	if ended {
 		switch {
 		case c.err != nil:
 			// Why, as the keep-alive closed it
@@ -160,6 +203,11 @@ func (c *Client) wait(session *sdkmcp.ClientSession) {
 		case err == nil:
 			err = llm.ErrServiceUnavailable.Withf("%s closed the session", c.endpoint)
 		}
-		c.session, c.err = nil, err
+		c.cancel()
+		c.session, c.err, c.cancel = nil, err, nil
+	}
+	c.mu.Unlock()
+	if ended && c.change != nil {
+		c.change(nil, err)
 	}
 }

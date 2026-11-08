@@ -43,10 +43,14 @@ type ConnectorServer struct {
 	Version string `json:"version,omitempty" help:"The server's version" example:"1.0.0"`
 }
 
-// ConnectorEvent is the data of an event of a connector which was created,
-// or updated: its new serial
+// ConnectorEvent is the data of an event of a connector: its serial, and,
+// when its server was connected, which server it is, as it said, or, when
+// it was disconnected, why, when it wasn't disconnected, such as when the
+// server closed the session
 type ConnectorEvent struct {
-	Serial uint64 `json:"serial" help:"The connector's serial, once it changed"`
+	Serial uint64           `json:"serial" help:"The connector's serial"`
+	Server *ConnectorServer `json:"server,omitempty" help:"The connector's server, as it said, once it's connected"`
+	Error  string           `json:"error,omitempty" help:"Why the connector's server was disconnected, when it wasn't disconnected"`
 }
 
 // ConnectorList is a list of connectors, in order of their names

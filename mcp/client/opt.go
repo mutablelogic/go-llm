@@ -4,6 +4,7 @@ import (
 	"strings"
 
 	// Packages
+	sdkmcp "github.com/modelcontextprotocol/go-sdk/mcp"
 	client "github.com/mutablelogic/go-client"
 	llm "github.com/mutablelogic/go-llm"
 	schema "github.com/mutablelogic/go-llm/mcp/schema"
@@ -22,7 +23,15 @@ type opt struct {
 
 	// The options of go-client, which apply to the client's requests
 	clientopts []client.ClientOpt
+
+	// Called when the client is connected, or disconnected, or nil
+	change ChangeFunc
 }
+
+// ChangeFunc is called, without a lock, when the client is connected, with
+// the server, as it said, or disconnected, with nil, and why, when it
+// wasn't disconnected, such as when the server closed the session
+type ChangeFunc func(server *sdkmcp.Implementation, err error)
 
 ///////////////////////////////////////////////////////////////////////////////
 // LIFECYCLE
@@ -45,6 +54,7 @@ func (o *opt) defaults() {
 	o.name = schema.DefaultName
 	o.version = schema.DefaultVersion
 	o.clientopts = nil
+	o.change = nil
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -59,6 +69,16 @@ func WithName(name, version string) Opt {
 			return llm.ErrBadParameter.With("name is required")
 		}
 		o.name, o.version = name, strings.TrimSpace(version)
+		return nil
+	}
+}
+
+// WithChange is called when the client is connected, or disconnected,
+// without a lock, which it isn't when a connection fails, or it's
+// disconnected when it isn't connected
+func WithChange(fn ChangeFunc) Opt {
+	return func(o *opt) error {
+		o.change = fn
 		return nil
 	}
 }
