@@ -41,8 +41,20 @@ func Test_Authorize(t *testing.T) {
 	// so, once it's connected to
 	var created schema.Connector
 	require.Equal(t, http.StatusCreated, server.JSON(t, http.MethodPost, "mcp/connector", schema.Connector{Name: "secure", ConnectorMeta: schema.ConnectorMeta{URL: mcp.URL}}, &created))
-	require.Equal(t, http.StatusOK, server.JSON(t, http.MethodPatch, "mcp/connector/secure", schema.ConnectorMeta{URL: mcp.URL}, &created))
-	assert.Equal(t, schema.AuthRequired, created.Auth)
+	require.Eventually(t, func() bool {
+		var got schema.Connector
+		return server.JSON(t, http.MethodGet, "mcp/connector/secure", nil, &got) == http.StatusOK && got.Auth == schema.AuthRequired
+	}, 5*time.Second, 10*time.Millisecond)
+
+	// And it's saved, with its URL as it was, without being connected to
+	// first, so it still needs to be
+	var saved schema.Connector
+	require.Equal(t, http.StatusOK, server.JSON(t, http.MethodPatch, "mcp/connector/secure", schema.ConnectorMeta{URL: mcp.URL, Include: []string{"echo"}}, &saved))
+	assert.Equal(t, []string{"echo"}, saved.Include)
+	require.Eventually(t, func() bool {
+		var got schema.Connector
+		return server.JSON(t, http.MethodGet, "mcp/connector/secure", nil, &got) == http.StatusOK && got.Auth == schema.AuthRequired
+	}, 5*time.Second, 10*time.Millisecond)
 
 	t.Run("Origin", func(t *testing.T) {
 		// Its callback is the API's, of the browser's origin, when the

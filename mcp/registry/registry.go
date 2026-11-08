@@ -163,9 +163,12 @@ func (r *Registry) create(ctx context.Context, connector schema.Connector) (*sch
 // its server, as it is now, is connected, within its connect timeout, so a URL
 // which isn't a server's isn't stored, and returns it, with its new serial,
 // and connected. Its server, as it was, is disconnected, once it's
-// replaced. One whose server is connected, at the same URL, such as when
-// only its patterns change, keeps its session, and has its tools added
-// again, with its patterns. Returns ErrNotFound when there's no connector with the name,
+// replaced. One whose URL, and client, are the same, such as when only its
+// patterns change, isn't connected first, as its server was already: it
+// keeps its session, when it's connected, and has its tools added again,
+// with its patterns, or is stored, and connected again, by Run, when it
+// isn't, so a server which has only one session at once, or needs to be
+// signed in to, isn't connected to twice. Returns ErrNotFound when there's no connector with the name,
 // ErrBadParameter when the fields aren't valid, ErrServiceUnavailable when
 // its server, as it is now, can't be connected, when it's left as it was,
 // and ErrConflict when it was changed as it was updated.
@@ -174,6 +177,7 @@ func (r *Registry) UpdateConnector(ctx context.Context, name string, meta schema
 	if err != nil {
 		return nil, err
 	}
+	before := connector
 	connector.ConnectorMeta = meta
 	connector = connector.Definition()
 	if err := connector.Validate(); err != nil {
@@ -182,14 +186,25 @@ func (r *Registry) UpdateConnector(ctx context.Context, name string, meta schema
 		return nil, err
 	}
 
-	// One whose server is connected, at the same URL, such as when only its
-	// patterns change, keeps its session, as some servers have only one at
-	// once, and has its tools added again
-	r.mu.Lock()
-	e, exists := r.clients[name]
-	r.mu.Unlock()
-	if exists && e.serial == connector.Serial && e.connector.URL == connector.URL && e.connector.ClientIDCredential == connector.ClientIDCredential && e.client.Connected() {
-		return r.update(ctx, connector, e.client)
+	// One whose URL, and client, are the same, such as when only its
+	// patterns change, isn't connected to first: it keeps its session, when
+	// it's connected, as some servers have only one at once, and has its
+	// tools added again, or it's stored, and connected again, by Run, as it
+	// is now, when it isn't, such as when it's being connected, or needs to
+	// be signed in to
+	if before.URL == connector.URL && before.ClientIDCredential == connector.ClientIDCredential {
+		r.mu.Lock()
+		e, exists := r.clients[name]
+		r.mu.Unlock()
+		if exists && e.serial == connector.Serial && e.client.Connected() {
+			return r.update(ctx, connector, e.client)
+		}
+		updated, err := r.store.Put(ctx, connector)
+		if err != nil {
+			return nil, err
+		}
+		r.reconnect(updated)
+		return r.status(updated), nil
 	}
 
 	// Otherwise connect to its server, as it is now, before it's stored
