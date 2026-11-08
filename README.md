@@ -3,16 +3,16 @@
 [![Go Reference](https://pkg.go.dev/badge/github.com/mutablelogic/go-llm.svg)](https://pkg.go.dev/github.com/mutablelogic/go-llm)
 [![License](https://img.shields.io/badge/license-Apache-blue.svg)](LICENSE)
 
-go-llm is a server, command-line tool and Go SDK that puts language and speech models from many providers behind one interface. Add providers such as Ollama, OpenAI, Anthropic, Google Gemini, Mistral, [go-whisper](https://github.com/mutablelogic/go-whisper) and ElevenLabs. Then ask any of their models to reply, call tools, run agents, embed, read documents, speak, and transcribe or translate speech. You can do all of this through the REST API, the web UI, the `llm` command (which includes a terminal chat), or from Go.
+go-llm is an application that puts language and speech models from many providers behind one interface, with a web UI, a command-line tool and a Go SDK. Add providers such as Ollama, OpenAI, Anthropic, Google Gemini, Mistral, [go-whisper](https://github.com/mutablelogic/go-whisper) and ElevenLabs. Then ask any of their models to reply, call tools, run agents, embed, read documents, speak, and transcribe or translate speech. You can do all of this through the REST API, the web UI, the `llm` command (which includes a terminal chat), or from Go.
 
 ## Quick Start
 
-### 1. Run the server, with Docker
+### 1. Run go-llm, with Docker
 
-The image has the server and its web UI, and keeps its data in the `/data` volume.
+The image has the application and its web UI, and keeps its data in the `/data` volume.
 
 > [!WARNING]
-> **Don't run the server on the internet.** It has no authentication yet, so anyone who can reach it can use your API keys, read your chats, memory and files, and run its tools. Publish its port on `localhost` only, as below, or put it behind a proxy that signs people in, or a VPN.
+> **Don't run go-llm on the internet.** It has no authentication yet, so anyone who can reach it can use your API keys, read your chats, memory and files, and run its tools. Publish its port on `localhost` only, as below, or put it behind a proxy that signs people in, or a VPN.
 
 ```bash
 docker run -d --name llm -p 127.0.0.1:8084:8084 -v llm:/data \
@@ -26,7 +26,7 @@ Then open [http://localhost:8084/](http://localhost:8084/):
 ![The web UI: the models of the providers, and a model's details](testdata/frontend.png)
 
 - **`host.docker.internal`** is the machine Docker runs on, such as for a local Ollama. Docker Desktop has it; on Linux add `--add-host=host.docker.internal:host-gateway`.
-- **On first start,** the server adds the Eliza provider (unless `NO_ELIZA` is set), and a provider for each of these that's set:
+- **On first start,** go-llm adds the Eliza provider (unless `NO_ELIZA` is set), and a provider for each of these that's set:
   - `OLLAMA_ADDR` and `GOWHISPER_ADDR`, as URLs;
   - `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `GEMINI_API_KEY`, `DEEPSEEK_API_KEY`, `MISTRAL_API_KEY` and `ELEVENLABS_API_KEY`.
 
@@ -89,7 +89,7 @@ llm translate --model whisper-1 interview.wav
 llm model-load ollama:llama3.2
 ```
 
-Or chat in a session, which the server keeps:
+Or chat in a session, which go-llm keeps:
 
 ```bash
 llm session-create --model ollama:llama3.2 --system "Be brief" --tools "weatherapi:*"
@@ -200,7 +200,7 @@ flowchart LR
     class Ollama,OpenAI,Anthropic,Gemini,Whisper,ElevenLabs,Eliza highlight
 ```
 
-- **CLI** ([cmd/llm](cmd/llm)): runs the server, and is its client, with a command for each operation and a terminal chat that follows other clients of the same session. It uses the Go client in [registry/httpclient](registry/httpclient).
+- **CLI** ([cmd/llm](cmd/llm)): runs the application, and is its client, with a command for each operation and a terminal chat that follows other clients of the same session. It uses the Go client in [registry/httpclient](registry/httpclient).
 - **Web UI** ([frontend](frontend)): chat, browse models and tools, and manage providers, connectors and agents. Built in with `make`.
 - **Registry** ([registry](registry)): finds a model by name, checks what it can do, and asks its provider. It keeps providers, sessions and agents, runs the agent loop, and publishes events. Sessions unchanged for 14 days (`--session.retention`) are deleted, unless a heartbeat keeps them.
 - **Toolkit** ([toolkit](toolkit)): the tools models can call, in namespaces such as `weatherapi`, with their logs and progress streamed.
@@ -213,13 +213,13 @@ flowchart LR
 - **Connectors** ([mcp](mcp)): remote MCP servers whose tools become a namespace of the toolkit. See [Connectors](#connectors).
 - **Providers** ([provider](provider)): each wraps a provider's API.
 
-The registry also works without the server, from your own Go program; see [examples](examples).
+The registry also works on its own, from your own Go program; see [examples](examples).
 
 ## Features
 
-- **Providers**: add, change and remove them while the server runs. Refer to a model by name, or by provider and name, such as `ollama:llama3.2:latest`.
+- **Providers**: add, change and remove them while go-llm runs. Refer to a model by name, or by provider and name, such as `ollama:llama3.2:latest`.
 - **Ask**: a reply to messages, with a system prompt, options, tools, and structured output, optionally streamed.
-- **Chat**: conversations the server keeps, with their model, system prompt, tools and options.
+- **Chat**: conversations go-llm keeps, with their model, system prompt, tools and options.
   - The model calls tools until it replies, and long chats are trimmed or compacted to fit.
   - Every client of a session sees new messages, and who's typing.
   - A chat can switch models, such as from Claude to Gemini and back.
@@ -376,7 +376,7 @@ The REST API is under `/api`, and `llm openapi` shows it as OpenAPI. Streaming o
 
 ## Go
 
-The packages work without the server:
+The packages work on their own, without the application:
 
 - [`llm`](https://pkg.go.dev/github.com/mutablelogic/go-llm): the interfaces of providers and models (`Generator`, `Embedder`, `Measurer`, `Recognizer`, `Transcriber`, `Speaker`, `Illustrator`, `Downloader`) and their options.
 - [`provider/...`](provider): a client for each provider.
