@@ -262,7 +262,7 @@ What a model can do depends on the model, as its provider reports it. Requests f
 
 ### Capabilities
 
-`llm models --capability`, `GET /llm/model?capability=` and the `llm:models` tool list models by capability. A capability the provider doesn't report isn't assumed.
+The web UI's Models page shows each model's capabilities as tags, and a model's panel says Yes, No or Unknown for each one. `llm models --capability`, `GET /llm/model?capability=` and the `llm:models` tool list models by capability. A capability the provider doesn't report isn't assumed.
 
 | Capability | Meaning |
 |------------|---------|
