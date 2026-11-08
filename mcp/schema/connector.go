@@ -139,9 +139,11 @@ func (m ConnectorMeta) Validate() error {
 	} else if u.Hostname() == "" {
 		return llm.ErrBadParameter.Withf("url %q has no host", m.URL)
 	}
-	for _, name := range []string{m.ClientIDCredential, m.ClientSecretCredential} {
+	// A credential's name which isn't one isn't repeated, as it may be the
+	// credential itself, such as a client's secret, given in its place
+	for what, name := range map[string]string{"client_id_credential": m.ClientIDCredential, "client_secret_credential": m.ClientSecretCredential} {
 		if name != "" && !credentialName.MatchString(name) {
-			return llm.ErrBadParameter.Withf("credential name %q isn't a name, such as GITHUB_CLIENT_ID", name)
+			return llm.ErrBadParameter.Withf("%s is the name of a credential, such as GITHUB_CLIENT_ID, rather than the credential itself", what)
 		}
 	}
 	if m.ClientSecretCredential != "" && m.ClientIDCredential == "" {

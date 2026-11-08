@@ -21,20 +21,6 @@ import (
 ///////////////////////////////////////////////////////////////////////////////
 // TYPES
 
-// AuthorizeRequest is the request to authorize a connector's server, with
-// the URL its authorization server redirects to, once a person has signed
-// in, which is the API's callback, of the request's origin, when it's
-// omitted
-type AuthorizeRequest struct {
-	Redirect string `json:"redirect,omitempty" help:"The URL the authorization server redirects to, once a person has signed in, which is the API's callback, of the request's origin, when it's omitted" format:"uri" optional:""`
-}
-
-// AuthorizeResponse is the URL a person signs in at, to authorize the
-// connector's server
-type AuthorizeResponse struct {
-	URL string `json:"url" help:"The URL a person signs in at, to authorize the connector's server" format:"uri" readonly:""`
-}
-
 // callbackQuery is the query the authorization server redirects to the
 // callback with
 type callbackQuery struct {
@@ -68,7 +54,7 @@ func authorizeHandlers(reg *registry.Registry, router *httprouter.Router, docume
 			// POST
 			path.Post(func(w http.ResponseWriter, r *http.Request) {
 				name := r.PathValue("name")
-				var req AuthorizeRequest
+				var req schema.AuthorizeRequest
 				if r.ContentLength != 0 {
 					if err := httprequest.Read(r, &req); err != nil {
 						httpresponse.Error(w, httpresponse.ErrBadRequest.Withf("%w", err))
@@ -87,13 +73,13 @@ func authorizeHandlers(reg *registry.Registry, router *httprouter.Router, docume
 				if authorizeURL, err := reg.Authorize(r.Context(), name, redirect); err != nil {
 					httpresponse.Error(w, llm.HTTPErr(err), name)
 				} else {
-					httpresponse.JSON(w, http.StatusOK, httprequest.Indent(r), AuthorizeResponse{URL: authorizeURL})
+					httpresponse.JSON(w, http.StatusOK, httprequest.Indent(r), schema.AuthorizeResponse{URL: authorizeURL})
 				}
 			}, func(op httprequest.PathOperation) {
 				op.Summary("Authorize Connector")
 				op.Description(documentation.Section(3, "POST /mcp/connector/{name}/authorize").Body)
-				op.RequestBody(jsonschema.MustFor[AuthorizeRequest]())
-				op.JSONResponse(http.StatusOK, jsonschema.MustFor[AuthorizeResponse](), "The URL a person signs in at")
+				op.RequestBody(jsonschema.MustFor[schema.AuthorizeRequest]())
+				op.JSONResponse(http.StatusOK, jsonschema.MustFor[schema.AuthorizeResponse](), "The URL a person signs in at")
 				op.ErrorResponse(http.StatusBadRequest, "Invalid redirect, or the request has no origin")
 				op.ErrorResponse(http.StatusNotFound, "Connector not found")
 				op.ErrorResponse(http.StatusNotImplemented, "Its authorization server doesn't register clients, and the connector has none")

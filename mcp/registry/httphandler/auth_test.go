@@ -67,20 +67,20 @@ func Test_Authorize(t *testing.T) {
 		require.NoError(t, err)
 		defer resp.Body.Close()
 		require.Equal(t, http.StatusOK, resp.StatusCode)
-		var authorize httphandler.AuthorizeResponse
+		var authorize schema.AuthorizeResponse
 		require.NoError(t, json.NewDecoder(resp.Body).Decode(&authorize))
 		assert.Equal(t, "https://llm.example.ts.net"+test.Prefix+registry.CallbackPath, query(t, authorize.URL, "redirect_uri"))
 
 		// But it's needed, when it has no origin
-		assert.Equal(t, http.StatusBadRequest, server.JSON(t, http.MethodPost, "mcp/connector/secure/authorize", httphandler.AuthorizeRequest{}, nil))
-		assert.Equal(t, http.StatusNotFound, server.JSON(t, http.MethodPost, "mcp/connector/missing/authorize", httphandler.AuthorizeRequest{Redirect: "http://localhost/cb"}, nil))
+		assert.Equal(t, http.StatusBadRequest, server.JSON(t, http.MethodPost, "mcp/connector/secure/authorize", schema.AuthorizeRequest{}, nil))
+		assert.Equal(t, http.StatusNotFound, server.JSON(t, http.MethodPost, "mcp/connector/missing/authorize", schema.AuthorizeRequest{Redirect: "http://localhost/cb"}, nil))
 	})
 
 	t.Run("Callback", func(t *testing.T) {
 		// It's authorized, with the redirect, and the callback connects it
 		callback := server.URL + test.Prefix + registry.CallbackPath
-		var authorize httphandler.AuthorizeResponse
-		require.Equal(t, http.StatusOK, server.JSON(t, http.MethodPost, "mcp/connector/secure/authorize", httphandler.AuthorizeRequest{Redirect: callback}, &authorize))
+		var authorize schema.AuthorizeResponse
+		require.Equal(t, http.StatusOK, server.JSON(t, http.MethodPost, "mcp/connector/secure/authorize", schema.AuthorizeRequest{Redirect: callback}, &authorize))
 		redirect, err := mcp.Approve(authorize.URL)
 		require.NoError(t, err)
 		u, err := url.Parse(redirect)
@@ -95,7 +95,7 @@ func Test_Authorize(t *testing.T) {
 
 		// But not twice, nor once a person says no
 		assert.Equal(t, http.StatusNotFound, server.JSON(t, http.MethodGet, "mcp/callback?"+u.RawQuery, nil, nil))
-		require.Equal(t, http.StatusOK, server.JSON(t, http.MethodPost, "mcp/connector/secure/authorize", httphandler.AuthorizeRequest{Redirect: callback}, &authorize))
+		require.Equal(t, http.StatusOK, server.JSON(t, http.MethodPost, "mcp/connector/secure/authorize", schema.AuthorizeRequest{Redirect: callback}, &authorize))
 		assert.Equal(t, http.StatusBadRequest, server.JSON(t, http.MethodGet, "mcp/callback?error=access_denied&state="+query(t, authorize.URL, "state"), nil, nil))
 	})
 

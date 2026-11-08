@@ -22,7 +22,7 @@ import '@carbon/web-components/es/components/textarea/index.js';
 import '@carbon/web-components/es/components/text-input/index.js';
 import '@carbon/web-components/es/components/button/index.js';
 import '@carbon/web-components/es/components/skeleton-text/index.js';
-import '@carbon/web-components/es/components/accordion/index.js';
+import './disclosure';
 
 // NewSessionForm is what the panel shows, which is always so, while it's open
 type NewSessionForm = true;
@@ -108,7 +108,7 @@ export class NewSession extends Panel<NewSessionForm> {
         }
 
         /* The advanced options, and the tools, are spaced as the form is */
-        cds-accordion-item > * {
+        llm-disclosure > * {
             display: block;
             margin-bottom: 1.5rem;
         }
@@ -185,8 +185,7 @@ export class NewSession extends Panel<NewSessionForm> {
                 </cds-select>
                 <cds-textarea label="System prompt" helper-text="Instructions for the assistant on how to act, such as 'be brief', 'set humour level to 90%', or 'respond in rhyme'" rows="3"
                     value=${this.session?.system ?? ''}></cds-textarea>
-                <cds-accordion>
-                <cds-accordion-item title="Advanced options" ?open=${!!this.session}>
+                <llm-disclosure label="Advanced options">
                 <div class="options">
                     ${thinks ? html`
                         <cds-select id="thinking" label-text="Thinking" value=${this.thinking}
@@ -217,8 +216,7 @@ export class NewSession extends Panel<NewSessionForm> {
                         <p class="note">Every tool is on, unless you turn it off. Without the <strong>llm</strong> tools, the assistant can't speak, make pictures, read scans or transcribe recordings, or read the chat's files; without <strong>memory</strong>, it doesn't remember you from one chat to the next; and without <strong>heartbeat</strong>, it can't set reminders, or do things on a schedule.</p>
                         <llm-tool-picker .tools=${this.tools} .described=${this.namespaces} .value=${this.startTools}></llm-tool-picker>
                     `}
-                </cds-accordion-item>
-                </cds-accordion>
+                </llm-disclosure>
                 <div class="footer">
                     <cds-button kind="primary" type="submit" ?disabled=${this.creating} @click=${this.handleSubmit}>${this.session ? 'Save' : 'Start chat'}</cds-button>
                 </div>
