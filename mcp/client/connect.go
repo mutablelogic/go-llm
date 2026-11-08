@@ -10,6 +10,7 @@ import (
 	jsonrpc "github.com/modelcontextprotocol/go-sdk/jsonrpc"
 	sdkmcp "github.com/modelcontextprotocol/go-sdk/mcp"
 	llm "github.com/mutablelogic/go-llm"
+	authclient "github.com/mutablelogic/go-llm/auth/httpclient"
 )
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -86,6 +87,7 @@ func (c *Client) Connect(ctx context.Context) error {
 // being made, and returns the server, as it said, or the error, which those
 // waiting for it are given
 func (c *Client) connect(ctx context.Context, a *attempt) (*sdkmcp.Implementation, error) {
+	c.challenge.Store(nil)
 	var errs []error
 	for _, transport := range c.transports() {
 		session, cancel, err := c.dial(ctx, transport)
@@ -97,6 +99,11 @@ func (c *Client) connect(ctx context.Context, a *attempt) (*sdkmcp.Implementatio
 			return nil, c.failed(a, ctx.Err(), false)
 		}
 		errs = append(errs, err)
+	}
+	// A server which said it isn't authorized needs to be, which its
+	// challenge, which the error wraps, says how
+	if challenge := c.challenge.Load(); challenge != nil {
+		return nil, c.failed(a, llm.ErrServiceUnavailable.Withf("%s needs to be authorized: %w", c.endpoint, challenge), true)
 	}
 	return nil, c.failed(a, llm.ErrServiceUnavailable.Withf("%s can't be connected to: %w", c.endpoint, errors.Join(errs...)), true)
 }
@@ -305,4 +312,17 @@ func (c *Client) wait(session *sdkmcp.ClientSession) {
 func (a *attempt) finish(err error) {
 	a.err = err
 	close(a.done)
+}
+
+// Challenge returns the challenge of the server, as its last request
+// wasn't authorized, such as as it was connected, which says how it's
+// authorized, or nil
+func (c *Client) Challenge() *authclient.AuthError {
+	return c.challenge.Load()
+}
+
+// Authorized returns true when the client's requests are authorized, with
+// a token
+func (c *Client) Authorized() bool {
+	return c.tokens != nil
 }

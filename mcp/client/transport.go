@@ -8,6 +8,7 @@ import (
 	// Packages
 	sdkmcp "github.com/modelcontextprotocol/go-sdk/mcp"
 	llm "github.com/mutablelogic/go-llm"
+	authclient "github.com/mutablelogic/go-llm/auth/httpclient"
 )
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -42,7 +43,7 @@ func (c *Client) httpClient() *http.Client {
 	if next == nil {
 		next = http.DefaultTransport
 	}
-	httpClient.Transport = &sameOrigin{origin: origin, next: next}
+	httpClient.Transport = &sameOrigin{origin: origin, next: &authorized{client: c, next: next}}
 	httpClient.CheckRedirect = func(req *http.Request, via []*http.Request) error {
 		if originOf(req.URL.String()) != origin {
 			return llm.ErrBadParameter.Withf("%s redirected to another origin, %s", c.endpoint, req.URL.Redacted())
@@ -64,6 +65,40 @@ func (c *Client) transports() []sdkmcp.Transport {
 		&sdkmcp.StreamableClientTransport{Endpoint: c.endpoint, HTTPClient: httpClient},
 		&sdkmcp.SSEClientTransport{Endpoint: c.endpoint, HTTPClient: httpClient},
 	}
+}
+
+// authorized is a transport which authorizes the requests to the server,
+// with the client's token, as a bearer token, when it has a source of one,
+// and keeps the challenge of a request which isn't authorized, so a
+// connection which fails says how it's authorized
+type authorized struct {
+	client *Client
+	next   http.RoundTripper
+}
+
+// RoundTrip authorizes the request, with the token, when there's one, and
+// keeps the challenge of its response, when it isn't authorized
+func (t *authorized) RoundTrip(req *http.Request) (*http.Response, error) {
+	if t.client.tokens != nil {
+		token, err := t.client.tokens.Token()
+		if err != nil {
+			if req.Body != nil {
+				_ = req.Body.Close()
+			}
+			return nil, llm.ErrServiceUnavailable.Withf("token: %v", err)
+		}
+		req = req.Clone(req.Context())
+		token.SetAuthHeader(req)
+	}
+	response, err := t.next.RoundTrip(req)
+	if err == nil && response.StatusCode == http.StatusUnauthorized {
+		if challenge := authclient.ParseChallenge(response.Header); challenge != nil {
+			t.client.challenge.Store(challenge)
+		} else {
+			t.client.challenge.Store(&authclient.AuthError{Scheme: "Bearer"})
+		}
+	}
+	return response, err
 }
 
 // RoundTrip sends the request, when it's to the origin, before the

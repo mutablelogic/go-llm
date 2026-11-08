@@ -10,6 +10,7 @@ import (
 
 	// Packages
 	llm "github.com/mutablelogic/go-llm"
+	authclient "github.com/mutablelogic/go-llm/auth/httpclient"
 	eventschema "github.com/mutablelogic/go-llm/broadcaster/schema"
 	client "github.com/mutablelogic/go-llm/mcp/client"
 	schema "github.com/mutablelogic/go-llm/mcp/schema"
@@ -194,6 +195,10 @@ func (r *Registry) connect(ctx context.Context, logger *slog.Logger, connector s
 	if err := c.Connect(connectCtx); err != nil {
 		if ctx.Err() == nil && (before == nil || before.Error() != err.Error()) {
 			logger.WarnContext(ctx, "connector not connected", "connector", connector.Name, "url", connector.URL, "error", err.Error())
+			if authclient.AsAuthError(err) != nil {
+				// Its server needs to be authorized, which is said, once
+				r.publishAuthRequired(connector.Name, c, err)
+			}
 		}
 		return
 	} else if !r.current(connector.Name, c) {

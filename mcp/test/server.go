@@ -28,6 +28,9 @@ type Server struct {
 
 	mu      sync.Mutex
 	headers []http.Header
+
+	// Its authorization server, when it needs to be authorized
+	auth *auth
 }
 
 // Opt is an option of a mock server
@@ -36,6 +39,7 @@ type Opt func(*opt)
 type opt struct {
 	sse  bool
 	ping json.RawMessage
+	auth bool
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -72,10 +76,17 @@ func NewServer(t *testing.T, opts ...Opt) *Server {
 
 	// Record the headers of each request, and serve it, or reply to a ping
 	// with the result, when it's given
+	if o.auth {
+		self.auth = newAuth()
+	}
 	self.Server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		self.mu.Lock()
 		self.headers = append(self.headers, r.Header.Clone())
 		self.mu.Unlock()
+		if self.auth != nil && !self.auth.serve(self.URL, w, r) {
+			// Its authorization server's, or not authorized
+			return
+		}
 		if o.ping != nil && r.Method == http.MethodPost {
 			body, _ := io.ReadAll(r.Body)
 			r.Body = io.NopCloser(bytes.NewReader(body))
@@ -117,6 +128,17 @@ func WithSSE() Opt {
 func WithPingResult(result string) Opt {
 	return func(o *opt) {
 		o.ping = json.RawMessage(result)
+	}
+}
+
+// WithAuth makes the server need to be authorized, with a bearer token,
+// which its own authorization server issues: its metadata, and the
+// resource's, are at their well-known paths, a client is registered, and a
+// code, which Approve gives, as a person would, is exchanged for a token,
+// with PKCE's S256, which is refreshed
+func WithAuth() Opt {
+	return func(o *opt) {
+		o.auth = true
 	}
 }
 

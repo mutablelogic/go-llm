@@ -8,6 +8,7 @@ import (
 	client "github.com/mutablelogic/go-client"
 	llm "github.com/mutablelogic/go-llm"
 	schema "github.com/mutablelogic/go-llm/mcp/schema"
+	oauth2 "golang.org/x/oauth2"
 )
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -29,6 +30,10 @@ type opt struct {
 
 	// Called when the server says its tools changed, or nil
 	toolsChanged func()
+
+	// The source of the token the server's requests are authorized with,
+	// which is refreshed, as it expires, or nil
+	tokens oauth2.TokenSource
 }
 
 // ChangeFunc is called, without a lock, when the client is connected, with
@@ -59,6 +64,7 @@ func (o *opt) defaults() {
 	o.clientopts = nil
 	o.change = nil
 	o.toolsChanged = nil
+	o.tokens = nil
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -95,6 +101,16 @@ func WithChange(fn ChangeFunc) Opt {
 func WithToolsChanged(fn func()) Opt {
 	return func(o *opt) error {
 		o.toolsChanged = fn
+		return nil
+	}
+}
+
+// WithTokenSource is the source of the token the server's requests are
+// authorized with, as a bearer token, such as one which is refreshed, as
+// it expires, which is only sent to the server's origin
+func WithTokenSource(tokens oauth2.TokenSource) Opt {
+	return func(o *opt) error {
+		o.tokens = tokens
 		return nil
 	}
 }

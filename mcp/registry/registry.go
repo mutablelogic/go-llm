@@ -16,6 +16,7 @@ import (
 	// Packages
 	sdkmcp "github.com/modelcontextprotocol/go-sdk/mcp"
 	llm "github.com/mutablelogic/go-llm"
+	authclient "github.com/mutablelogic/go-llm/auth/httpclient"
 	broadcaster "github.com/mutablelogic/go-llm/broadcaster"
 	eventschema "github.com/mutablelogic/go-llm/broadcaster/schema"
 	client "github.com/mutablelogic/go-llm/mcp/client"
@@ -40,6 +41,9 @@ type Registry struct {
 	// The serial of each connector which was deleted, as it was, so a
 	// definition which was read before it was, isn't connected
 	removed map[string]uint64
+
+	// The authorizations which are waited for, by their states
+	authorizations authorizations
 
 	// The namespaces of the connectors' servers' tools, in the toolkit, by
 	// the connectors' names, once they're connected, and the logger of what
@@ -125,6 +129,8 @@ func (r *Registry) CreateConnector(ctx context.Context, connector schema.Connect
 	connector.Serial = 0
 	if err := connector.Validate(); err != nil {
 		return nil, err
+	} else if _, _, err := r.clientCredentials(ctx, connector); err != nil {
+		return nil, err
 	} else if _, err := r.newClient(connector); err != nil {
 		return nil, err
 	}
@@ -152,9 +158,16 @@ func (r *Registry) UpdateConnector(ctx context.Context, name string, meta schema
 	if err != nil {
 		return nil, err
 	}
+	// Its client's secret is kept, unless there's another, as it isn't
+	// returned, so it can't be sent back
+	if meta.ClientSecret == "" && meta.ClientID == connector.ClientID {
+		meta.ClientSecret = connector.ClientSecret
+	}
 	connector.ConnectorMeta = meta
 	connector = connector.Definition()
 	if err := connector.Validate(); err != nil {
+		return nil, err
+	} else if _, _, err := r.clientCredentials(ctx, connector); err != nil {
 		return nil, err
 	}
 
@@ -175,8 +188,13 @@ func (r *Registry) UpdateConnector(ctx context.Context, name string, meta schema
 	}
 	connectCtx, cancel := context.WithTimeout(ctx, r.connectTimeout)
 	defer cancel()
+	needsAuth := false
 	if err := c.Connect(connectCtx); errors.Is(err, context.DeadlineExceeded) && ctx.Err() == nil {
 		return nil, llm.ErrServiceUnavailable.Withf("%s didn't reply within %v", connector.URL, r.connectTimeout)
+	} else if authclient.AsAuthError(err) != nil {
+		// A server which needs to be authorized is one, so it's stored, and
+		// said to need to be
+		needsAuth = true
 	} else if err != nil {
 		return nil, err
 	}
@@ -190,10 +208,12 @@ func (r *Registry) UpdateConnector(ctx context.Context, name string, meta schema
 	}
 	r.publish(eventschema.EventUpdate, updated)
 	if r.replace(updated, c) {
-		if server, _ := c.Status(); server != nil {
+		if server, err := c.Status(); server != nil {
 			// It was connected before it was the connector's, so it's said
 			// now
 			r.connected(updated, c, server)
+		} else if needsAuth {
+			r.publishAuthRequired(updated.Name, c, err)
 		}
 	}
 	return r.status(updated), nil
@@ -233,6 +253,9 @@ func (r *Registry) DeleteConnector(ctx context.Context, name string) (*schema.Co
 		return nil, err
 	}
 	r.forget(name, connector.Serial)
+	if err := r.credentials.DeleteCredential(ctx, name); err != nil {
+		r.log().WarnContext(ctx, "connector's credential not deleted", "connector", name, "error", err.Error())
+	}
 	r.publish(eventschema.EventDelete, connector)
 	result := connector.Definition()
 	return &result, nil
@@ -370,6 +393,7 @@ func (r *Registry) forget(name string, serial uint64) {
 // has one, for the connector as it is
 func (r *Registry) status(connector schema.Connector) *schema.Connector {
 	result := connector.Definition()
+	result.ClientSecret = ""
 	result.Namespace = r.namespaceOf(connector.Name)
 	r.mu.Lock()
 	e, exists := r.clients[connector.Name]
@@ -381,9 +405,15 @@ func (r *Registry) status(connector schema.Connector) *schema.Connector {
 	if server != nil {
 		result.Connected = true
 		result.Server = &schema.ConnectorServer{Name: server.Name, Version: server.Version}
+		if e.client.Authorized() {
+			result.Auth = schema.AuthAuthorized
+		}
 	}
 	if err != nil {
 		result.Error = err.Error()
+		if authclient.AsAuthError(err) != nil {
+			result.Auth = schema.AuthRequired
+		}
 	}
 	return &result
 }
@@ -406,6 +436,30 @@ func (r *Registry) publish(action eventschema.EventAction, connector schema.Conn
 func (r *Registry) connected(connector schema.Connector, c *client.Client, server *sdkmcp.Implementation) {
 	r.publishConnection(connector.Name, connector.Serial, server, nil)
 	r.connectNamespace(c, server, connector)
+}
+
+// publishAuthRequired publishes that the connector's server needs to be
+// authorized, as the client couldn't be connected, with why, as an update
+// of the connector, while it's the connector's client
+func (r *Registry) publishAuthRequired(name string, c *client.Client, err error) {
+	if r.broadcaster == nil {
+		return
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	e, exists := r.clients[name]
+	if !exists || e.client != c {
+		return
+	}
+	data := schema.ConnectorEvent{Serial: e.serial, Auth: schema.AuthRequired}
+	if err != nil {
+		data.Error = err.Error()
+	}
+	event := eventschema.Event{Action: eventschema.EventUpdate, Schema: schema.Name, Table: schema.ConnectorTable, Row: name}
+	if raw, err := json.Marshal(data); err == nil {
+		event.Data = raw
+	}
+	r.broadcaster.Publish(event)
 }
 
 // publishConnection publishes that the connector's server was connected,
@@ -461,6 +515,9 @@ func (r *Registry) newClient(connector schema.Connector) (*client.Client, error)
 			r.refreshNamespace(connector.Name)
 		}
 	}))
+	if tokens := r.tokenSource(connector); tokens != nil {
+		opts = append(opts, client.WithTokenSource(tokens))
+	}
 	var err error
 	c, err = client.New(connector.URL, opts...)
 	return c, err

@@ -14,6 +14,7 @@ import (
 	mcpschema "github.com/mutablelogic/go-llm/mcp/schema"
 	assert "github.com/stretchr/testify/assert"
 	require "github.com/stretchr/testify/require"
+	oauth2 "golang.org/x/oauth2"
 )
 
 func Test_ConnectorStore(t *testing.T) {
@@ -54,6 +55,42 @@ func Test_ConnectorStore(t *testing.T) {
 		info, err := os.Stat(path)
 		require.NoError(t, err)
 		assert.Equal(t, os.FileMode(0o600), info.Mode().Perm())
+	})
+
+	t.Run("Credentials", func(t *testing.T) {
+		// How a connector's server is authorized, such as its token, is kept
+		// in the file, beside the connectors, so another store of it has it
+		path := filepath.Join(t.TempDir(), connectorsFile)
+		file, err := newJSONFile(path)
+		require.NoError(t, err)
+		store, err := newConnectorStore(file)
+		require.NoError(t, err)
+		_, err = store.GetCredential(ctx, "github")
+		assert.ErrorIs(t, err, llm.ErrNotFound)
+		_, err = store.Put(ctx, connector("github", "https://mcp.example.com/github", 0))
+		require.NoError(t, err)
+		credential := mcpschema.Credential{Issuer: "https://github.com/login/oauth", ClientID: "client", RedirectURIs: []string{"http://localhost/cb"}, Token: &oauth2.Token{AccessToken: "access", RefreshToken: "refresh"}}
+		require.NoError(t, store.PutCredential(ctx, "github", credential))
+
+		file, err = newJSONFile(path)
+		require.NoError(t, err)
+		other, err := newConnectorStore(file)
+		require.NoError(t, err)
+		got, err := other.GetCredential(ctx, "github")
+		require.NoError(t, err)
+		assert.Equal(t, "client", got.ClientID)
+		assert.Equal(t, []string{"http://localhost/cb"}, got.RedirectURIs)
+		require.NotNil(t, got.Token)
+		assert.Equal(t, "refresh", got.Token.RefreshToken)
+		list, err := other.List(ctx)
+		require.NoError(t, err)
+		assert.Len(t, list, 1, "the connectors are kept beside it")
+
+		// And deleted
+		require.NoError(t, other.DeleteCredential(ctx, "github"))
+		require.NoError(t, other.DeleteCredential(ctx, "github"))
+		_, err = store.GetCredential(ctx, "github")
+		assert.ErrorIs(t, err, llm.ErrNotFound)
 	})
 
 	t.Run("Serials", func(t *testing.T) {

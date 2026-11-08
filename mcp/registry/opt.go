@@ -19,10 +19,13 @@ import (
 type Opt func(*opt) error
 
 type opt struct {
-	store       Store
-	broadcaster *broadcaster.Broadcaster
-	toolkit     *toolkit.Toolkit
-	clientopts  []mcpclient.Opt
+	store               Store
+	credentials         Credentials
+	credentialsProvider CredentialsProvider
+	broadcaster         *broadcaster.Broadcaster
+	toolkit             *toolkit.Toolkit
+	clientopts          []mcpclient.Opt
+	name                string // The name the registry's servers are told, or none
 
 	// How long a connector's server is waited for, as it's connected, and
 	// its tools are listed, and how long one of its tools has, or zero for
@@ -50,11 +53,14 @@ func (o *opt) apply(opts []Opt) error {
 
 func (o *opt) defaults() {
 	o.store = NewMemoryStore()
+	o.credentials = NewMemoryCredentials()
+	o.credentialsProvider = envCredentials{}
 	o.broadcaster = nil
 	o.toolkit = nil
 	o.connectTimeout = ConnectTimeout
 	o.toolTimeout = 0
 	o.clientopts = nil
+	o.name = ""
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -68,6 +74,34 @@ func WithStore(store Store) Opt {
 			return llm.ErrBadParameter.With("missing store")
 		}
 		o.store = store
+		return nil
+	}
+}
+
+// WithCredentials is where how each connector's server is authorized is
+// kept, such as with its store, in a file, rather than in memory
+func WithCredentials(credentials Credentials) Opt {
+	return func(o *opt) error {
+		if credentials == nil {
+			return llm.ErrBadParameter.With("missing credentials")
+		}
+		o.credentials = credentials
+		return nil
+	}
+}
+
+// WithCredentialsProvider sets the provider which expands credentials, such
+// as a connector's client secret, whose placeholders, such as
+// ${GITHUB_CLIENT_SECRET}, are replaced with the credentials they name, as
+// the provider registry's are. Without one, or with nil, the credentials
+// are environment variables.
+func WithCredentialsProvider(provider CredentialsProvider) Opt {
+	return func(o *opt) error {
+		if provider == nil {
+			o.credentialsProvider = envCredentials{}
+		} else {
+			o.credentialsProvider = provider
+		}
 		return nil
 	}
 }
@@ -144,6 +178,7 @@ func WithName(name, version string) Opt {
 			return llm.ErrBadParameter.With("name is required")
 		}
 		o.clientopts = append(o.clientopts, mcpclient.WithName(name, version))
+		o.name = strings.TrimSpace(name)
 		return nil
 	}
 }
