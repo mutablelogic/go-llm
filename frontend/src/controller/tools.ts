@@ -98,6 +98,7 @@ export class ToolsController extends ListController<Tool> {
         // to, in a new tab, from the panel, once it's added, or its alert
         views.connector?.addEventListener(ConnectorForm.eventSignIn, (e) => this.signIn((e as CustomEvent<string>).detail));
         views.alerts?.addEventListener(ConnectorAlerts.eventSignIn, (e) => this.signIn((e as CustomEvent<string>).detail));
+        views.alerts?.addEventListener(ConnectorAlerts.eventCancel, (e) => void this.deleteConnector((e as CustomEvent<string>).detail, true));
     }
 
     // signIn opens a tab, at once, as it's a click, which a browser blocks
@@ -177,9 +178,13 @@ export class ToolsController extends ListController<Tool> {
     }
 
     // deleteConnector deletes the connector, once it's confirmed, so its
-    // tools are removed, and shows every tool
-    private async deleteConnector(name: string) {
-        if (!confirm(`Delete the connector ${name}? Its tools can't be used afterwards.`)) {
+    // tools are removed, and shows every tool, or, when cancelling, one which
+    // was never signed in to, which is forgotten
+    private async deleteConnector(name: string, cancelling = false) {
+        const question = cancelling
+            ? `Cancel signing in to ${name}? The connector is removed, and can be added again.`
+            : `Delete the connector ${name}? Its tools can't be used afterwards.`;
+        if (!confirm(question)) {
             return;
         }
         try {
@@ -515,6 +520,7 @@ export class ToolsController extends ListController<Tool> {
                         count: namespace.tools,
                         title: namespace.description,
                         error: connector && needsSignIn(connector) ? 'Needs you to sign in' : connector && !connector.connected ? connector.error : undefined,
+                        status: connector && needsSignIn(connector) ? 'Unauthorized' : undefined,
                     };
                 }),
             ];

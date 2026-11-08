@@ -15,8 +15,9 @@ import '@carbon/web-components/es/components/tag/tag.js';
 // CountTile is a tile: its value, which is undefined for everything, its
 // label, its badge, its count, which is undefined when it isn't known, what
 // it is, which is shown when it's hovered, and why what it counts can't be
-// reached, when it can't, which is shown in place of its count, and when
-// it's hovered
+// reached, when it can't, which is shown when it's hovered, with a word in
+// place of its count, which is Unreachable, unless it's another, such as
+// Unauthorized
 export interface CountTile {
     value?: string;
     label: string;
@@ -24,6 +25,7 @@ export interface CountTile {
     count?: number;
     title?: string;
     error?: string;
+    status?: string;
 }
 
 @customElement('llm-count-filter')
@@ -146,7 +148,7 @@ export class CountFilter extends LitElement {
                 @click=${() => !pressed && this.dispatchEvent(new CustomEvent(CountFilter.eventSelect, { detail: tile.value }))}>
                 <span class="label"><span class="name">${tile.label}</span>${tile.badge ? html`<cds-tag size="sm" type=${pressed ? 'blue' : 'cool-gray'}>${tile.badge}</cds-tag>` : nothing}</span>
                 ${tile.error
-                    ? html`<span class="count error">Unreachable</span>`
+                    ? html`<span class="count error">${tile.status ?? 'Unreachable'}</span>`
                     : html`<span class="count ${tile.count ? '' : 'zero'}">${tile.count?.toLocaleString() ?? '–'}</span>`}
             </button>
         `;
