@@ -13,9 +13,19 @@ export function getSession(id: string, signal?: AbortSignal): Promise<Session> {
     return request<Session>('GET', '/llm/session/' + id, { signal });
 }
 
-// listMessages returns the session's messages, oldest first
-export function listMessages(id: string, signal?: AbortSignal): Promise<MessageList> {
-    return request<MessageList>('GET', `/llm/session/${id}/messages`, { signal });
+// listMessages returns the session's messages, oldest first, from the
+// offset, or, when it's negative, that many from the end, and at most the
+// limit of them, with the offset they start at, from the start, and how
+// many there are
+export function listMessages(id: string, page: { offset?: number; limit?: number } = {}, signal?: AbortSignal): Promise<MessageList> {
+    const query: Record<string, number> = {};
+    if (page.offset) {
+        query.offset = page.offset;
+    }
+    if (page.limit !== undefined) {
+        query.limit = page.limit;
+    }
+    return request<MessageList>('GET', `/llm/session/${id}/messages`, { query, signal });
 }
 
 // compactSession compacts the session: its context starts at a marker,

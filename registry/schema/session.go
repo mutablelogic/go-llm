@@ -79,13 +79,15 @@ type SessionList struct {
 // first, of a role, or every role, from the offset, and at most the limit of
 // them, or all of them, when there's no limit
 type MessageListRequest struct {
-	Role   string `json:"role,omitempty" help:"Returns only the messages of this role, such as user, assistant or tool" enum:"user,assistant,system,thinking,tool" example:"assistant" optional:""`
-	Offset uint   `json:"offset,omitempty" help:"Messages to skip" example:"0" optional:""`
-	Limit  *uint  `json:"limit,omitempty" help:"Most messages to return" example:"10" optional:""`
+	Role    string `json:"role,omitempty" help:"Returns only the messages of this role, such as user, assistant or tool" enum:"user,assistant,system,thinking,tool,context" example:"assistant" optional:""`
+	Context bool   `json:"context,omitempty" help:"Returns only the messages of the conversation's context, which a model is sent: its last marker, with the summary of what came before it, and the messages after it" optional:""`
+	Offset  int    `json:"offset,omitempty" help:"Messages to skip, or, when it's negative, how many from the end to start at, such as -50 for the last 50, which the list's offset is, from the start" example:"0" optional:""`
+	Limit   *uint  `json:"limit,omitempty" help:"Most messages to return" example:"10" optional:""`
 }
 
 // MessageList is a list of a session's messages, oldest first, and how many
-// there are, of the role
+// there are, of the role, or of its context, from the offset, which is from
+// the start, when the request's is from the end
 type MessageList struct {
 	MessageListRequest
 	Count uint                     `json:"count" help:"How many messages there are, of the role" example:"42"`
@@ -207,8 +209,11 @@ func (r MessageListRequest) Query() url.Values {
 	if r.Role != "" {
 		values.Set("role", r.Role)
 	}
-	if r.Offset > 0 {
-		values.Set("offset", strconv.FormatUint(uint64(r.Offset), 10))
+	if r.Context {
+		values.Set("context", "true")
+	}
+	if r.Offset != 0 {
+		values.Set("offset", strconv.Itoa(r.Offset))
 	}
 	if r.Limit != nil {
 		values.Set("limit", strconv.FormatUint(uint64(*r.Limit), 10))

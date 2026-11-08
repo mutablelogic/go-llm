@@ -82,6 +82,44 @@ func Test_Sessions(t *testing.T) {
 		require.Len(t, replies.Body, 1)
 		assert.Equal(t, "Still here", replies.Body[0].Text())
 
+		// A negative offset is from the end, and the list's offset is from
+		// the start, so the page before it can be asked for
+		var last schema.MessageList
+		require.Equal(t, http.StatusOK, do(t, server, http.MethodGet, "llm/session/"+created.ID.String()+"/messages?offset=-3&limit=2", nil, &last))
+		assert.Equal(t, uint(4), last.Count)
+		assert.Equal(t, 1, last.Offset)
+		require.Len(t, last.Body, 2)
+		assert.Equal(t, "Hello", last.Body[0].Text())
+		assert.Equal(t, "Again", last.Body[1].Text())
+		var all schema.MessageList
+		require.Equal(t, http.StatusOK, do(t, server, http.MethodGet, "llm/session/"+created.ID.String()+"/messages?offset=-100", nil, &all))
+		assert.Equal(t, 0, all.Offset, "from the start, when it's more than there are")
+		assert.Len(t, all.Body, 4)
+		var huge schema.MessageList
+		require.Equal(t, http.StatusOK, do(t, server, http.MethodGet, "llm/session/"+created.ID.String()+"/messages?limit=18446744073709551615", nil, &huge))
+		assert.Len(t, huge.Body, 4, "a limit which is more than an int is all of them")
+
+		// The context is the last marker, whose summary didn't fail, and the
+		// messages after it
+		marker := func(status providerschema.MarkerStatus) providerschema.Message {
+			return providerschema.Message{MessageMeta: providerschema.MessageMeta{Sender: providerschema.RoleContext, Content: []providerschema.ContentBlock{}}, Marker: &providerschema.Marker{ID: uuid.New(), Reason: "asked", Status: status}}
+		}
+		stored, err = store.Get(context.Background(), created.ID)
+		require.NoError(t, err)
+		stored.Messages = append(stored.Messages, marker(providerschema.MarkerSummarized), says("user", "After", 3), marker(providerschema.MarkerFailed), says("assistant", "Yes", 2))
+		_, err = store.Put(context.Background(), stored)
+		require.NoError(t, err)
+		var context_ schema.MessageList
+		require.Equal(t, http.StatusOK, do(t, server, http.MethodGet, "llm/session/"+created.ID.String()+"/messages?context=true", nil, &context_))
+		assert.Equal(t, uint(4), context_.Count)
+		require.Len(t, context_.Body, 4)
+		assert.Equal(t, providerschema.RoleContext, context_.Body[0].Role())
+		assert.Equal(t, "After", context_.Body[1].Text())
+		require.Equal(t, http.StatusOK, do(t, server, http.MethodGet, "llm/session/"+created.ID.String()+"/messages?context=true&offset=-1", nil, &context_))
+		require.Len(t, context_.Body, 1)
+		assert.Equal(t, "Yes", context_.Body[0].Text())
+		assert.Equal(t, 3, context_.Offset)
+
 		assert.Equal(t, http.StatusNotFound, do(t, server, http.MethodGet, "llm/session/"+uuid.New().String()+"/messages", nil, nil))
 		assert.Equal(t, http.StatusBadRequest, do(t, server, http.MethodGet, "llm/session/not-a-uuid/messages", nil, nil))
 		assert.Equal(t, http.StatusBadRequest, do(t, server, http.MethodGet, "llm/session/"+created.ID.String()+"/messages?limit=many", nil, nil))
