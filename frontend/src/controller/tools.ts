@@ -17,7 +17,7 @@ import type { CountFilter } from '../component/count-filter';
 import { AgentEditor, agentTemplate, type AgentEditorItem } from '../component/agent-editor';
 import { ToolsPage } from '../page/tools-page';
 import { deleteAgent, getAgent, getAgentYAML, saveAgentYAML } from '../api/agent';
-import { createConnector, deleteConnector, getConnector } from '../api/connector';
+import { createConnector, deleteConnector, getConnector, listConnectors, updateConnector } from '../api/connector';
 import { ApiError } from '../api/client';
 import { connectorName, type Connector, type ConnectorMeta } from '../schema/connector';
 import { ConnectorForm } from '../component/connector-form';
@@ -54,6 +54,10 @@ export class ToolsController extends ListController<Tool> {
     private namespaces?: Namespace[];
     private namespace?: string;
 
+    // The connectors, whose namespaces are those whose type is mcp, so the
+    // one of the namespace which is chosen is edited, and deleted
+    private connectors: Connector[] = [];
+
     // How many times the agent's panel has been opened, or closed, so an
     // agent which is loaded once it's been closed, or something else was
     // opened, isn't shown
@@ -80,7 +84,68 @@ export class ToolsController extends ListController<Tool> {
         // An MCP connector is added, and connected, whose tools are added
         views.page?.addEventListener(ToolsPage.eventAddConnector, () => this.showConnector());
         views.connector?.addEventListener(ConnectorForm.eventConnect, (e) => void this.addConnector((e as CustomEvent<ConnectorMeta>).detail));
+        views.connector?.addEventListener(ConnectorForm.eventSave, (e) => void this.saveConnector((e as CustomEvent<ConnectorMeta>).detail));
         views.connector?.addEventListener(Panel.eventClose, () => this.hideConnector());
+        views.page?.addEventListener(ToolsPage.eventEditConnector, (e) => this.editConnector((e as CustomEvent<string>).detail));
+        views.page?.addEventListener(ToolsPage.eventDeleteConnector, (e) => void this.deleteConnector((e as CustomEvent<string>).detail));
+    }
+
+    // editConnector opens the panel, to edit the connector, as it is
+    private editConnector(name: string) {
+        const connector = this.connectors.find((connector) => connector.name === name);
+        const form = this.views.connector;
+        if (connector && form) {
+            form.connecting = false;
+            form.error = undefined;
+            form.item = { mode: 'edit', connector };
+        }
+    }
+
+    // saveConnector updates the connector which is edited, and shows the
+    // tools of its namespace, as it is now, or says why it couldn't be, in
+    // the panel, when it's still editing it
+    private async saveConnector(meta: ConnectorMeta) {
+        const form = this.views.connector;
+        const item = form?.item;
+        if (!form || item?.mode !== 'edit') {
+            return;
+        }
+        form.connecting = true;
+        try {
+            const connector = await updateConnector(item.connector.name, meta);
+            this.notifications.push({ kind: 'success', title: `${connector.name} was saved` });
+            void this.refresh();
+            if (form.item === item) {
+                this.hideConnector();
+                if (connector.namespace && connector.namespace !== this.namespace) {
+                    location.hash = routeHref('tools', connector.namespace);
+                }
+            }
+        } catch (error) {
+            if (form.item === item) {
+                form.error = error instanceof Error ? error.message : String(error);
+            }
+        } finally {
+            if (form.item === item) {
+                form.connecting = false;
+            }
+        }
+    }
+
+    // deleteConnector deletes the connector, once it's confirmed, so its
+    // tools are removed, and shows every tool
+    private async deleteConnector(name: string) {
+        if (!confirm(`Delete the connector ${name}? Its tools can't be used afterwards.`)) {
+            return;
+        }
+        try {
+            await deleteConnector(name);
+            this.notifications.push({ kind: 'success', title: `${name} was deleted` });
+            location.hash = routeHref('tools');
+            void this.refresh();
+        } catch (error) {
+            this.notifications.error(`${name} couldn't be deleted`, error);
+        }
     }
 
     // showConnector opens the panel which adds an MCP connector
@@ -278,9 +343,14 @@ export class ToolsController extends ListController<Tool> {
     }
 
     protected async list(offset: number, limit: number): Promise<Page<Tool>> {
-        const [list, namespaces] = await Promise.all([listTools(), listNamespaces().catch(() => ({ count: 0, body: [] }))]);
+        const [list, namespaces, connectors] = await Promise.all([
+            listTools(),
+            listNamespaces().catch(() => ({ count: 0, body: [] })),
+            listConnectors().catch(() => ({ count: 0, body: [] })),
+        ]);
         const tools = list.body ?? [];
         this.namespaces = namespaces.body ?? [];
+        this.connectors = connectors.body ?? [];
         this.listeners.forEach((fn) => fn(tools, this.namespaces ?? []));
         const shown = this.namespace ? tools.filter((tool) => toolNamespace(tool) === this.namespace) : tools;
         return { count: shown.length, body: shown.slice(offset, offset + limit) };
@@ -316,6 +386,7 @@ export class ToolsController extends ListController<Tool> {
         const { page, namespaces, table, view } = this.views;
         if (page) {
             page.namespace = this.namespace;
+            page.connector = this.namespace ? this.connectors.find((connector) => connector.namespace === this.namespace)?.name : undefined;
         }
         if (namespaces) {
             namespaces.tiles = this.namespaces && [

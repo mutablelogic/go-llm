@@ -19,6 +19,13 @@ export function createConnector(name: string, meta: ConnectorMeta): Promise<Conn
     return request<Connector>('POST', '/mcp/connector', { body: { name, ...meta } });
 }
 
+// updateConnector replaces the connector's URL, and patterns, once the
+// server at the URL is connected to, unless it's the same, and connected,
+// when its tools are added again, with its patterns
+export function updateConnector(name: string, meta: ConnectorMeta): Promise<Connector> {
+    return request<Connector>('PATCH', '/mcp/connector/' + encodeURIComponent(name), { body: meta });
+}
+
 // deleteConnector deletes the connector, which is disconnected
 export function deleteConnector(name: string): Promise<Connector> {
     return request<Connector>('DELETE', '/mcp/connector/' + encodeURIComponent(name));
