@@ -94,7 +94,7 @@ func New(models ModelsFunc, opts ...Opt) (*Namespace, error) {
 		return nil, err
 	}
 	tools := []gollm.Tool{
-		&speak{models: models, model: o.speakModel, voice: o.speakVoice},
+		&speak{models: models, model: o.speakModel, voice: o.speakVoice, voiceNotes: o.voiceNotes},
 		&ocr{models: models, model: o.ocrModel},
 		&transcribe{models: models, model: o.transcribeModel},
 		&listModels{models: models},
