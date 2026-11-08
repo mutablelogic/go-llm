@@ -2,6 +2,7 @@ package registry_test
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"slices"
 	"strings"
@@ -69,7 +70,7 @@ func marker(t *testing.T, r *registry.Registry, id uuid.UUID) *providerschema.Ma
 
 func Test_CompactSession(t *testing.T) {
 	ctx := context.Background()
-	r, p := newCompacting(t, text("It's 4°C in Berlin"), summarized("David asked about Berlin's weather, which is 4°C.", "Berlin weather"), text("You're welcome"))
+	r, p := newCompacting(t, text("It's 4°C in Berlin"), summarized("David asked about Berlin's weather, which is 4°C.", "Berlin weather"), text("You're welcome"), summarized("David thanked the assistant.", "Thanks"))
 	session, err := r.CreateSession(ctx, schema.SessionMeta{GeneratorMeta: schema.GeneratorMeta{Model: types.Ptr("model"), System: types.Ptr("Be brief")}})
 	require.NoError(t, err)
 
@@ -120,9 +121,14 @@ func Test_CompactSession(t *testing.T) {
 	}
 	assert.Equal(t, []string{"user", "assistant", "context", "user", "assistant"}, roles)
 
-	// Compacting again, with no messages since, is nothing to compact
+	// Compacting again, while its summary is written, is a conflict, and,
+	// once it's written, with no messages since, is nothing to compact
 	_, err = r.CompactSession(ctx, session.ID)
 	require.NoError(t, err, "there are messages since")
+	require.Eventually(t, func() bool {
+		m := marker(t, r, session.ID)
+		return m != nil && m.Status == providerschema.MarkerSummarized && m.Summary == "David thanked the assistant."
+	}, 5*time.Second, 10*time.Millisecond)
 	_, err = r.CompactSession(ctx, session.ID)
 	assert.ErrorIs(t, err, llm.ErrBadParameter)
 	_, err = r.CompactSession(ctx, uuid.New())
@@ -282,4 +288,113 @@ func Test_CompactWithTools(t *testing.T) {
 		p.mu.Unlock()
 		assert.Equal(t, c.want, got, c.tools)
 	}
+}
+
+// withPendingMarker returns the session, with a marker whose summary is
+// pending, as when the server stopped as it was written, after its messages
+func withPendingMarker(t *testing.T, store *test.SessionStore, id uuid.UUID) uuid.UUID {
+	t.Helper()
+	ctx := context.Background()
+	session, err := store.Get(ctx, id)
+	require.NoError(t, err)
+	marker := providerschema.Marker{ID: uuid.New(), Reason: "asked", Status: providerschema.MarkerPending}
+	session.Messages = append(session.Messages, providerschema.Message{MessageMeta: providerschema.MessageMeta{Sender: providerschema.RoleContext, Content: []providerschema.ContentBlock{}}, Time: time.Now().UTC(), Marker: &marker})
+	_, err = store.Put(ctx, session)
+	require.NoError(t, err)
+	return marker.ID
+}
+
+func Test_CompactPending(t *testing.T) {
+	ctx := context.Background()
+	store := test.NewSessionStore()
+	r, err := registry.New(registry.WithToolkit(test.NewToolkit(t)), registry.WithAgentStore(test.NewAgentStore()), registry.WithSessionStore(store))
+	require.NoError(t, err)
+	require.NoError(t, r.Add("", newScripted(text("Hello"), summarized("A greeting.", "Greetings"))))
+	all, err := agents.All()
+	require.NoError(t, err)
+	for _, meta := range all {
+		_, _, err := r.CreateAgent(ctx, meta)
+		require.NoError(t, err)
+	}
+	session, err := r.CreateSession(ctx, schema.SessionMeta{GeneratorMeta: schema.GeneratorMeta{Model: types.Ptr("model")}})
+	require.NoError(t, err)
+	_, err = r.Chat(ctx, session.ID, []llm.Message{user(t, "Hi")}, nil)
+	require.NoError(t, err)
+	pending := withPendingMarker(t, store, session.ID)
+
+	// While its summary is being written, it isn't compacted again
+	done := r.Summarizing(pending)
+	_, err = r.CompactSession(ctx, session.ID)
+	assert.ErrorIs(t, err, llm.ErrConflict)
+	done()
+
+	// One which isn't being written, such as when the server stopped as it
+	// was, is written, rather than another marker added
+	_, err = r.CompactSession(ctx, session.ID)
+	require.NoError(t, err)
+	require.Eventually(t, func() bool {
+		m := marker(t, r, session.ID)
+		return m != nil && m.Status == providerschema.MarkerSummarized
+	}, 5*time.Second, 10*time.Millisecond)
+	assert.Equal(t, pending, marker(t, r, session.ID).ID)
+	list, err := r.ListSessionMessages(ctx, session.ID, schema.MessageListRequest{})
+	require.NoError(t, err)
+	assert.Len(t, list.Body, 3, "no other marker")
+}
+
+func Test_CompactFailedKeepsContext(t *testing.T) {
+	ctx := context.Background()
+
+	// A marker whose summary couldn't be written doesn't start the context,
+	// so the messages before it are still sent, and the next summary has
+	// them
+	r, p := newCompacting(t, text("Hello"))
+	session, err := r.CreateSession(ctx, schema.SessionMeta{GeneratorMeta: schema.GeneratorMeta{Model: types.Ptr("model")}})
+	require.NoError(t, err)
+	_, err = r.Chat(ctx, session.ID, []llm.Message{user(t, "Hi")}, nil)
+	require.NoError(t, err)
+	p.mu.Lock()
+	p.err = errors.New("the model is unavailable")
+	p.mu.Unlock()
+	_, err = r.CompactSession(ctx, session.ID)
+	require.NoError(t, err)
+	require.Eventually(t, func() bool {
+		m := marker(t, r, session.ID)
+		return m != nil && m.Status == providerschema.MarkerFailed
+	}, 5*time.Second, 10*time.Millisecond)
+	p.mu.Lock()
+	p.err = nil
+	p.replies = append(p.replies, text("Still here"), summarized("Hi, and still here.", "Hi"))
+	p.mu.Unlock()
+	_, err = r.Chat(ctx, session.ID, []llm.Message{user(t, "Are you?")}, nil)
+	require.NoError(t, err)
+	asked := p.asked[len(p.asked)-1]
+	require.Len(t, asked.messages, 3, "the messages before the failed marker, without it")
+	assert.Equal(t, "Hi", asked.messages[0].Text())
+
+	_, err = r.CompactSession(ctx, session.ID)
+	require.NoError(t, err)
+	require.Eventually(t, func() bool {
+		m := marker(t, r, session.ID)
+		return m != nil && m.Status == providerschema.MarkerSummarized
+	}, 5*time.Second, 10*time.Millisecond)
+	prompt := p.asked[len(p.asked)-1].messages[0].Text()
+	assert.Contains(t, prompt, "[user] Hi", "the summary has what came before the failed marker")
+	assert.Contains(t, prompt, "[user] Are you?")
+}
+
+func Test_CompactContextWindow(t *testing.T) {
+	ctx := context.Background()
+
+	// The context_window option, which is smaller than the model's limit, or
+	// is the only one, is the window a conversation fills
+	r, _ := newCompacting(t, text("Hello"), summarized("A greeting.", "Hello"))
+	session, err := r.CreateSession(ctx, schema.SessionMeta{GeneratorMeta: schema.GeneratorMeta{Model: types.Ptr("model"), Opt: map[string]json.RawMessage{"context_window": json.RawMessage("16")}}})
+	require.NoError(t, err)
+	_, err = r.Chat(ctx, session.ID, []llm.Message{user(t, "Hi")}, nil)
+	require.NoError(t, err)
+	require.Eventually(t, func() bool {
+		m := marker(t, r, session.ID)
+		return m != nil && m.Reason == "full"
+	}, 5*time.Second, 10*time.Millisecond)
 }

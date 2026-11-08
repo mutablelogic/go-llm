@@ -8,6 +8,7 @@ import (
 	"slices"
 	"strings"
 	"time"
+	"unicode/utf8"
 	"uuid"
 
 	// Packages
@@ -55,6 +56,14 @@ const summaryPrompt = "# Earlier in this conversation\n\nThe conversation was co
 // since it was last compacted
 var errNothingToCompact = llm.ErrBadParameter.With("there's nothing to compact, as there are no messages since it was last compacted")
 
+// errSummarizing is the error of a conversation whose last summary is still
+// being written, which isn't compacted again until it is
+var errSummarizing = llm.ErrConflict.With("its last summary is still being written")
+
+// errPending is returned by addMarker, when the session's last marker is
+// pending
+var errPending = errors.New("the last marker is pending")
+
 ///////////////////////////////////////////////////////////////////////////////
 // PUBLIC METHODS
 
@@ -81,44 +90,69 @@ func (r *Registry) CompactSession(ctx context.Context, id uuid.UUID) (_ *schema.
 // PRIVATE METHODS
 
 // compactSession adds a marker to the session, for the reason, and writes its
-// summary, in the background
+// summary, in the background, unless the summary of its last marker is
+// still being written, when it returns ErrConflict, or is pending, but
+// isn't being written, such as when the server stopped as it was, when it's
+// written again, rather than another marker added
 func (r *Registry) compactSession(ctx context.Context, id uuid.UUID, reason string) (*schema.Session, error) {
 	if r.sessionStore == nil {
 		return nil, errNoSessionStore
 	}
 	marker := providerschema.Marker{ID: uuid.New(), Reason: reason, Status: providerschema.MarkerPending}
 	var session schema.Session
+	var pending uuid.UUID
 	var err error
 	for attempt := 0; ; attempt++ {
-		session, err = r.addMarker(ctx, id, marker)
-		if !errors.Is(err, llm.ErrConflict) || attempt >= markerRetries {
+		session, pending, err = r.addMarker(ctx, id, marker)
+		if !errors.Is(err, llm.ErrConflict) || errors.Is(err, errPending) || attempt >= markerRetries {
 			break
 		}
 	}
-	if err != nil {
+	switch {
+	case errors.Is(err, errPending):
+		if !r.summarizeInBackground(ctx, id, pending) {
+			return nil, errSummarizing
+		}
+		return r.withoutMessages(session), nil
+	case err != nil:
 		return nil, err
 	}
-	go func() {
-		ctx := context.WithoutCancel(ctx)
-		if err := r.summarize(ctx, id, marker.ID); err != nil {
-			r.log().WarnContext(ctx, "conversation not summarised", "session", id, "error", err.Error())
-		}
-	}()
+	r.summarizeInBackground(ctx, id, marker.ID)
 	return r.withoutMessages(session), nil
 }
 
+// summarizeInBackground writes the summary of the session's marker, in a
+// goroutine of its own, logging why, when it isn't, and returns whether it
+// was started, which it isn't, when it's being written already
+func (r *Registry) summarizeInBackground(ctx context.Context, id, markerID uuid.UUID) bool {
+	if _, running := r.summarizing.LoadOrStore(markerID, struct{}{}); running {
+		return false
+	}
+	go func() {
+		defer r.summarizing.Delete(markerID)
+		ctx := context.WithoutCancel(ctx)
+		if err := r.summarize(ctx, id, markerID); err != nil {
+			r.log().WarnContext(ctx, "conversation not summarised", "session", id, "error", err.Error())
+		}
+	}()
+	return true
+}
+
 // addMarker adds the marker to the session's messages, and stores it, and
-// publishes that it changed
-func (r *Registry) addMarker(ctx context.Context, id uuid.UUID, marker providerschema.Marker) (schema.Session, error) {
+// publishes that it changed, unless the session's last marker is pending,
+// when it returns errPending, with that marker's identifier
+func (r *Registry) addMarker(ctx context.Context, id uuid.UUID, marker providerschema.Marker) (schema.Session, uuid.UUID, error) {
 	r.lifecycle.RLock()
 	defer r.lifecycle.RUnlock()
 	session, err := r.sessionStore.Get(ctx, id)
 	if err != nil {
-		return schema.Session{}, err
+		return schema.Session{}, uuid.Nil(), err
 	} else if session.Event {
-		return schema.Session{}, llm.ErrForbidden.Withf("session %q is an event's, which isn't compacted", id)
+		return schema.Session{}, uuid.Nil(), llm.ErrForbidden.Withf("session %q is an event's, which isn't compacted", id)
+	} else if i := lastMarker(session.Messages); i >= 0 && session.Messages[i].Marker.Status == providerschema.MarkerPending {
+		return session, session.Messages[i].Marker.ID, errPending
 	} else if after, _ := contextOf(session.Messages); len(after) == 0 {
-		return schema.Session{}, errNothingToCompact
+		return schema.Session{}, uuid.Nil(), errNothingToCompact
 	}
 	session.Messages = append(session.Messages, providerschema.Message{
 		MessageMeta: providerschema.MessageMeta{Sender: providerschema.RoleContext, Content: []providerschema.ContentBlock{}},
@@ -126,10 +160,10 @@ func (r *Registry) addMarker(ctx context.Context, id uuid.UUID, marker providers
 		Marker:      &marker,
 	})
 	if session, err = r.sessionStore.Put(ctx, session); err != nil {
-		return schema.Session{}, err
+		return schema.Session{}, uuid.Nil(), err
 	}
 	r.sessionChanged(eventschema.EventUpdate, session)
-	return session, nil
+	return session, uuid.Nil(), nil
 }
 
 // summarize writes the summary of the messages before the session's marker,
@@ -168,16 +202,18 @@ func (r *Registry) writeSummary(ctx context.Context, id, markerID uuid.UUID) (st
 	if end < 0 {
 		return "", "", llm.ErrNotFound.Withf("marker %q", markerID)
 	}
+	// Since the last marker which was summarised, so the messages after one
+	// whose summary couldn't be written are summarised now
 	start, previous := 0, ""
-	if i := lastMarker(session.Messages[:end]); i >= 0 {
+	if i := lastSummarized(session.Messages[:end]); i >= 0 {
 		start, previous = i+1, session.Messages[i].Marker.Summary
 	}
 
 	// The transcript, which fits the model's context, with room to spare
 	limit := transcriptChars
 	if model, err := r.GetModel(ctx, types.Value(session.Model)); err == nil {
-		if tokens := model.InputTokenLimit(); tokens != nil && *tokens > 0 {
-			limit = min(limit, int(*tokens)*charsPerToken/2)
+		if window := contextWindow(model, session.GeneratorMeta); window > 0 {
+			limit = min(limit, int(window)*charsPerToken/2)
 		}
 	}
 	input, err := json.Marshal(map[string]string{
@@ -248,18 +284,22 @@ func (r *Registry) compactIfFull(ctx context.Context, session schema.Session, us
 	if tokens == 0 || session.Event {
 		return
 	}
+	// A summary which is pending, but isn't being written, such as when the
+	// server stopped as it was, is written again, rather than another
+	// marker added
+	if i := lastMarker(session.Messages); i >= 0 && session.Messages[i].Marker.Status == providerschema.MarkerPending {
+		r.summarizeInBackground(ctx, session.ID, session.Messages[i].Marker.ID)
+		return
+	}
 	model, err := r.GetModel(ctx, types.Value(session.Model))
 	if err != nil {
 		return
 	}
-	limit := model.InputTokenLimit()
-	if limit == nil || *limit == 0 || float64(tokens) < compactThreshold*float64(*limit) {
+	window := contextWindow(model, session.GeneratorMeta)
+	if window == 0 || float64(tokens) < compactThreshold*float64(window) {
 		return
 	}
-	if i := lastMarker(session.Messages); i >= 0 && session.Messages[i].Marker.Status == providerschema.MarkerPending {
-		return
-	}
-	if _, err := r.compactSession(ctx, session.ID, "full"); err != nil && !errors.Is(err, errNothingToCompact) {
+	if _, err := r.compactSession(ctx, session.ID, "full"); err != nil && !errors.Is(err, errNothingToCompact) && !errors.Is(err, errSummarizing) {
 		r.log().WarnContext(ctx, "conversation not compacted", "session", session.ID, "error", err.Error())
 	}
 }
@@ -290,15 +330,64 @@ func compactTools(tools, namespaces []string) []string {
 // which are those after its last marker, and the summary of the messages
 // before it, once it's written
 func contextOf(messages []providerschema.Message) ([]providerschema.Message, string) {
-	i := lastMarker(messages)
+	// A marker whose summary couldn't be written doesn't start the context,
+	// so nothing before it is left out, which compacting it again summarises
+	i := len(messages) - 1
+	for ; i >= 0; i-- {
+		if marker := messages[i].Marker; marker != nil && marker.Status != providerschema.MarkerFailed {
+			break
+		}
+	}
 	if i < 0 {
-		return messages, ""
+		return withoutMarkers(messages), ""
 	}
 	summary := ""
 	if marker := messages[i].Marker; marker.Status == providerschema.MarkerSummarized {
 		summary = marker.Summary
 	}
-	return messages[i+1:], summary
+	return withoutMarkers(messages[i+1:]), summary
+}
+
+// withoutMarkers returns the messages without markers, such as those whose
+// summaries couldn't be written, which aren't sent to a model
+func withoutMarkers(messages []providerschema.Message) []providerschema.Message {
+	for _, message := range messages {
+		if message.Marker != nil {
+			result := make([]providerschema.Message, 0, len(messages))
+			for _, message := range messages {
+				if message.Marker == nil {
+					result = append(result, message)
+				}
+			}
+			return result
+		}
+	}
+	return messages
+}
+
+// lastSummarized returns the index of the last marker in the messages whose
+// summary was written, or -1
+func lastSummarized(messages []providerschema.Message) int {
+	for i := len(messages) - 1; i >= 0; i-- {
+		if marker := messages[i].Marker; marker != nil && marker.Status == providerschema.MarkerSummarized {
+			return i
+		}
+	}
+	return -1
+}
+
+// contextWindow returns the context of the model, in tokens, as a session
+// asks it, which is the smaller of its input token limit, and the session's
+// context_window option, as a request's is, or zero, when neither is known
+func contextWindow(model llm.Model, meta schema.GeneratorMeta) uint {
+	var window uint
+	if value, ok := meta.Opt[llm.ContextWindowKey]; ok {
+		_ = json.Unmarshal(value, &window)
+	}
+	if limit := model.InputTokenLimit(); limit != nil && *limit > 0 && (window == 0 || *limit < window) {
+		window = *limit
+	}
+	return window
 }
 
 // lastMarker returns the index of the last marker in the messages, or -1
@@ -362,9 +451,15 @@ func transcript(messages []providerschema.Message, limit int) string {
 		length += len(parts[start]) + 2
 	}
 	if start == len(parts) && start > 0 {
-		// The latest message alone is too long, so it's its end
-		runes := []rune(parts[start-1])
-		parts[start-1] = string(runes[max(len(runes)-limit, 0):])
+		// The latest message alone is too long, so it's its end, of at most
+		// the limit, in bytes, as the others are, from the start of a
+		// character
+		last := parts[start-1]
+		cut := max(len(last)-limit, 0)
+		for cut < len(last) && !utf8.RuneStart(last[cut]) {
+			cut++
+		}
+		parts[start-1] = last[cut:]
 		start--
 	}
 	result := strings.Join(parts[start:], "\n\n")

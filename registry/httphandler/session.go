@@ -217,6 +217,7 @@ func sessionCompactHandlers(reg *registry.Registry, router *httprouter.Router, d
 			op.ErrorResponse(http.StatusBadRequest, "An identifier which isn't a UUID, or no messages since it was last compacted")
 			op.ErrorResponse(http.StatusForbidden, "The session is an event's")
 			op.ErrorResponse(http.StatusNotFound, "Session not found")
+			op.ErrorResponse(http.StatusConflict, "Its last summary is still being written")
 			op.ErrorResponse(http.StatusServiceUnavailable, "The server has no session store")
 		})
 	})

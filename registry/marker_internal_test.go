@@ -3,6 +3,7 @@ package registry
 import (
 	"strings"
 	"testing"
+	"unicode/utf8"
 
 	// Packages
 	providerschema "github.com/mutablelogic/go-llm/provider/schema"
@@ -52,4 +53,10 @@ func Test_Transcript(t *testing.T) {
 	assert.NotContains(t, got, "weather?")
 	got = transcript([]providerschema.Message{text("user", strings.Repeat("a", 100)+"END")}, 20)
 	assert.True(t, strings.HasSuffix(got, "END"), got)
+
+	// at most the limit, in bytes, from the start of a character
+	got = transcript([]providerschema.Message{text("user", strings.Repeat("文", 100))}, 20)
+	assert.LessOrEqual(t, len(got), 20)
+	assert.True(t, utf8.ValidString(got), got)
+	assert.Equal(t, strings.Repeat("文", 6), got)
 }

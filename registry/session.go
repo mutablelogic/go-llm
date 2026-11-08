@@ -351,20 +351,25 @@ func (r *Registry) Chat(ctx context.Context, id uuid.UUID, messages []llm.Messag
 	}
 	earlier := session.Messages
 	stored, err := r.sessionStore.Put(ctx, withReply(session, earlier, nil, response))
-	if errors.Is(err, llm.ErrConflict) {
-		// Messages which were added to it as it replied, such as an event's
-		// outcome, which was delivered, follow the reply, which is stored
-		// again, unless it was changed otherwise, such as when its messages
-		// were forgotten, or how it's asked was changed, such as its model, or
-		// system prompt, though its title can be
+
+	// Messages which were added to it as it replied, such as an event's
+	// outcome, which was delivered, follow the reply, and a marker which was
+	// added comes before it, which is stored again, as often as it's changed
+	// so, up to so many times, unless it was changed otherwise, such as when
+	// its messages were forgotten, or how it's asked was changed, such as its
+	// model, or system prompt, though its title can be
+	for attempt := 0; errors.Is(err, llm.ErrConflict) && attempt < replyRetries; attempt++ {
 		latest, getErr := r.sessionStore.Get(ctx, id)
 		if getErr != nil {
 			return nil, getErr
-		} else if added, ok := addedAfter(earlier, latest.Messages); ok && latest.Forgotten == session.Forgotten && types.Stringify(latest.GeneratorMeta) == types.Stringify(session.GeneratorMeta) {
-			// The earlier messages, as they are now, such as with the summary
-			// of a marker, which was written as it replied
-			stored, err = r.sessionStore.Put(ctx, withReply(latest, latest.Messages[:len(earlier)], added, response))
 		}
+		added, ok := addedAfter(earlier, latest.Messages)
+		if !ok || latest.Forgotten != session.Forgotten || types.Stringify(latest.GeneratorMeta) != types.Stringify(session.GeneratorMeta) {
+			break
+		}
+		// The earlier messages, as they are now, such as with the summary of
+		// a marker, which was written as it replied
+		stored, err = r.sessionStore.Put(ctx, withReply(latest, latest.Messages[:len(earlier)], added, response))
 	}
 	if err != nil {
 		return nil, err
@@ -447,6 +452,10 @@ func addedAfter(earlier, messages []providerschema.Message) ([]providerschema.Me
 	}
 	return messages[len(earlier):], true
 }
+
+// replyRetries is how many times a reply is stored again, when its session
+// was changed as it was stored, such as when a marker's summary was written
+const replyRetries = 5
 
 // errNoSessionStore is the error of a session's method, when the registry
 // has no session store
