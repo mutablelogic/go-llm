@@ -1,6 +1,5 @@
 //go:build !client
 
-// Package cmd has the commands of the MCP connectors, such as the server's
 package cmd
 
 import (

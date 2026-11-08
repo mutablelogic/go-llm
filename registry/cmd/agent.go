@@ -20,11 +20,11 @@ import (
 // AgentCommands are the commands of agents, whose definitions are YAML, as
 // a file of an agent's definition is
 type AgentCommands struct {
-	AgentList   AgentListCmd   `cmd:"" name:"agents" help:"List the agents." group:"LLM TOOLS & AGENTS"`
-	AgentGet    AgentGetCmd    `cmd:"" name:"agent" help:"Print an agent's definition, as YAML." group:"LLM TOOLS & AGENTS"`
-	AgentCreate AgentCreateCmd `cmd:"" name:"agent-create" help:"Create an agent from a YAML file, or standard input." group:"LLM TOOLS & AGENTS"`
-	AgentUpdate AgentUpdateCmd `cmd:"" name:"agent-update" help:"Change an agent's definition. An empty value clears one, and --opt key=null removes an option." group:"LLM TOOLS & AGENTS"`
-	AgentDelete AgentDeleteCmd `cmd:"" name:"agent-delete" help:"Delete an agent, and print its definition, as YAML." group:"LLM TOOLS & AGENTS"`
+	AgentList   AgentListCmd   `cmd:"" name:"agents" help:"List the agents." group:"TOOLS & LLM AGENTS"`
+	AgentGet    AgentGetCmd    `cmd:"" name:"agent" help:"Print an agent's definition, as YAML." group:"TOOLS & LLM AGENTS"`
+	AgentCreate AgentCreateCmd `cmd:"" name:"agent-create" help:"Create an agent from a YAML file, or standard input." group:"TOOLS & LLM AGENTS"`
+	AgentUpdate AgentUpdateCmd `cmd:"" name:"agent-update" help:"Change an agent's definition. An empty value clears one, and --opt key=null removes an option." group:"TOOLS & LLM AGENTS"`
+	AgentDelete AgentDeleteCmd `cmd:"" name:"agent-delete" help:"Delete an agent, and print its definition, as YAML." group:"TOOLS & LLM AGENTS"`
 }
 
 // AgentListCmd lists the agents

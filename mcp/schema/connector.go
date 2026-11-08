@@ -6,6 +6,7 @@ import (
 
 	// Packages
 	llm "github.com/mutablelogic/go-llm"
+	tui "github.com/mutablelogic/go-server/pkg/tui"
 	types "github.com/mutablelogic/go-server/pkg/types"
 )
 
@@ -101,4 +102,45 @@ func (m ConnectorMeta) String() string {
 
 func (l ConnectorList) String() string {
 	return types.Stringify(l)
+}
+
+///////////////////////////////////////////////////////////////////////////////
+// TABLE
+
+func (c *Connector) Header() []string {
+	return []string{"Name", "Status", "Server", "URL"}
+}
+
+func (c *Connector) Width(col int) int {
+	return 0
+}
+
+func (c *Connector) Cell(col int) tui.CellText {
+	switch col {
+	case 0:
+		return c.Name
+	case 1:
+		// A connector whose server isn't connected shows why, when it knows
+		switch {
+		case c.Connected:
+			return "connected"
+		case c.Error != "":
+			// Its first line, as an error can have one for each transport
+			line, _, _ := strings.Cut(c.Error, "\n")
+			return line
+		default:
+			return "not connected"
+		}
+	case 2:
+		if c.Server == nil {
+			return ""
+		} else if c.Server.Version != "" {
+			return c.Server.Name + " " + c.Server.Version
+		}
+		return c.Server.Name
+	case 3:
+		return c.URL
+	default:
+		return ""
+	}
 }

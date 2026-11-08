@@ -22,10 +22,10 @@ import (
 // TYPES
 
 type ToolCommands struct {
-	Namespaces NamespaceListCmd `cmd:"" name:"namespaces" help:"List the namespaces of the tools, and what they're for." group:"LLM TOOLS & AGENTS"`
-	ToolList   ToolListCmd      `cmd:"" name:"tools" help:"List the tools and agents which models can call." group:"LLM TOOLS & AGENTS"`
-	ToolGet    ToolGetCmd       `cmd:"" name:"tool" help:"Get a tool or agent by name, with the JSON schema of its input." group:"LLM TOOLS & AGENTS"`
-	ToolCall   ToolCallCmd      `cmd:"" name:"call" help:"Call a tool or agent, and print its result." group:"LLM TOOLS & AGENTS"`
+	Namespaces NamespaceListCmd `cmd:"" name:"namespaces" help:"List the namespaces of the tools, and what they're for." group:"TOOLS & LLM AGENTS"`
+	ToolList   ToolListCmd      `cmd:"" name:"tools" help:"List the tools and agents which models can call." group:"TOOLS & LLM AGENTS"`
+	ToolGet    ToolGetCmd       `cmd:"" name:"tool" help:"Get a tool or agent by name, with the JSON schema of its input." group:"TOOLS & LLM AGENTS"`
+	ToolCall   ToolCallCmd      `cmd:"" name:"call" help:"Call a tool or agent, and print its result." group:"TOOLS & LLM AGENTS"`
 }
 
 type ToolListCmd struct {
