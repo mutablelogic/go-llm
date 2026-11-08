@@ -316,12 +316,26 @@ func Test_Options(t *testing.T) {
 	// has, and otherwise the effort
 	r = request(t, newer, llm.WithOpt(llm.ThinkingEffortKey, "max"))
 	assert.Equal(t, "max", r.OutputConfig.Effort)
-	levels := &Model{caps: modelCapabilities{Effort: effort{supported: supported{true}, Low: supported{true}, Medium: supported{true}, High: supported{true}}}}
-	levels.caps.Thinking.Supported, levels.caps.Thinking.Types.Adaptive.Supported = true, true
-	for want, ask := range map[string]string{"high": "max", "medium": "medium"} {
+	// as the Models API lists them, such as Claude Opus 4.6, which has max,
+	// but not xhigh, and Claude Opus 4.5, which has neither
+	withLevels := func(t *testing.T, levels string) *Model {
+		t.Helper()
+		var caps modelCapabilities
+		require.NoError(t, json.Unmarshal([]byte(`{"thinking":{"supported":true,"types":{"adaptive":{"supported":true}}},"effort":`+levels+`}`), &caps))
+		return &Model{caps: caps}
+	}
+	opus46 := withLevels(t, `{"supported":true,"low":{"supported":true},"medium":{"supported":true},"high":{"supported":true},"xhigh":{"supported":false},"max":{"supported":true}}`)
+	opus45 := withLevels(t, `{"supported":true,"low":{"supported":true},"medium":{"supported":true},"high":{"supported":true},"xhigh":{"supported":false},"max":{"supported":false}}`)
+	for _, test := range []struct {
+		model     *Model
+		ask, want string
+	}{
+		{opus46, "max", "max"}, {opus46, "xhigh", "max"}, {opus46, "high", "high"}, {opus46, "medium", "medium"},
+		{opus45, "max", "high"}, {opus45, "xhigh", "high"}, {opus45, "low", "low"},
+	} {
 		r = &messagesRequest{}
-		require.NoError(t, r.apply(levels, llm.WithOpt(llm.ThinkingEffortKey, ask)))
-		assert.Equal(t, want, r.OutputConfig.Effort, ask)
+		require.NoError(t, r.apply(test.model, llm.WithOpt(llm.ThinkingEffortKey, test.ask)))
+		assert.Equal(t, test.want, r.OutputConfig.Effort, test.ask)
 	}
 
 	// An older model thinks only when it's asked to, within a budget, and has
