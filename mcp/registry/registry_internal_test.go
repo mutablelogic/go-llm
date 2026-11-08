@@ -391,3 +391,27 @@ func Test_NamespaceRetry(t *testing.T) {
 	r.reconcile(ctx, logger)
 	assert.Equal(t, 1, toolCount(t, tk, "test"))
 }
+
+func Test_ReconnectOlder(t *testing.T) {
+	// A client of the same, or a newer, revision than the connector, which
+	// Run, or another update, connected since it was stored, is kept, and
+	// one of an older revision is disconnected, so it's connected again
+	r, err := New()
+	require.NoError(t, err)
+	t.Cleanup(func() { assert.NoError(t, r.Close()) })
+	connector := schema.Connector{Name: "search", ConnectorMeta: schema.ConnectorMeta{URL: "https://mcp.example.com/mcp"}, Serial: 2}
+	c, err := r.newClient(connector)
+	require.NoError(t, err)
+	for _, serial := range []uint64{2, 3} {
+		r.mu.Lock()
+		r.clients["search"] = entry{serial: serial, client: c, connector: connector}
+		r.mu.Unlock()
+		r.reconnectOlder(connector)
+		assert.Same(t, c, clientOf(r, "search"), "a client of revision %d is kept", serial)
+	}
+	r.mu.Lock()
+	r.clients["search"] = entry{serial: 1, client: c, connector: connector}
+	r.mu.Unlock()
+	r.reconnectOlder(connector)
+	assert.Nil(t, clientOf(r, "search"), "a client of an older revision isn't")
+}

@@ -355,3 +355,35 @@ func Test_CreateNamed(t *testing.T) {
 	_, err = r.CreateConnector(ctx, connector("", "stdio://server"))
 	assert.ErrorIs(t, err, llm.ErrBadParameter)
 }
+
+func Test_UpdateSameURL(t *testing.T) {
+	setInterval(t, &registry.RetryInterval, time.Hour)
+	ctx := t.Context()
+	r, err := registry.New()
+	require.NoError(t, err)
+	run(t, r)
+
+	// A connector whose server can't be connected is saved, with its URL as
+	// it was, as only its patterns change, without being connected to first
+	down := httptest.NewServer(http.NotFoundHandler())
+	t.Cleanup(down.Close)
+	_, err = r.CreateConnector(ctx, connector("down", down.URL))
+	require.NoError(t, err)
+	require.Eventually(t, func() bool { return status(t, r, "down").Error != "" }, 5*time.Second, 5*time.Millisecond)
+	updated, err := r.UpdateConnector(ctx, "down", schema.ConnectorMeta{URL: down.URL, Include: []string{"echo"}})
+	require.NoError(t, err)
+	assert.Equal(t, []string{"echo"}, updated.Include)
+	assert.Equal(t, uint64(2), updated.Serial)
+
+	// And connected again, as it is now, by Run
+	require.Eventually(t, func() bool {
+		s := status(t, r, "down")
+		return s.Serial == 2 && s.Error != ""
+	}, 5*time.Second, 5*time.Millisecond)
+
+	// But one whose URL is another, which can't be connected, isn't
+	other := httptest.NewServer(http.NotFoundHandler())
+	t.Cleanup(other.Close)
+	_, err = r.UpdateConnector(ctx, "down", schema.ConnectorMeta{URL: other.URL})
+	assert.ErrorIs(t, err, llm.ErrServiceUnavailable)
+}
