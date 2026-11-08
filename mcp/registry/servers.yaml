@@ -83,6 +83,18 @@
   description: Boards, sticky notes, diagrams and frames, with Miro's own MCP server
   url: https://mcp.miro.com/
 
+- name: PagerDuty
+  description: Incidents, services, schedules and on-call, with PagerDuty's hosted MCP server, of its US service region
+  url: https://mcp.pagerduty.com/mcp
+  client_id_credential: PAGERDUTY_CLIENT_ID
+  client_secret_credential: PAGERDUTY_CLIENT_SECRET
+
+# Pidgeon's sign-in registers clients itself, so it needs no credentials,
+# and is always offered
+- name: Pidgeon
+  description: Email inboxes for AI agents, which send, reply and wait for answers, with Pidgeon's own MCP server
+  url: https://pidgeon.ai/api/mcp
+
 # Lingviko's der die das needs no sign-in, so it needs no credentials, and
 # is always offered
 - name: der die das (Lingviko)

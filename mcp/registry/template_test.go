@@ -24,7 +24,7 @@ func Test_Templates(t *testing.T) {
 		for _, template := range templates {
 			names = append(names, template.Name)
 		}
-		assert.Subset(t, names, []string{"GitHub", "Airtable", "Asana", "Atlassian", "Canva", "Cloudflare", "Datadog", "der die das (Lingviko)", "Grafana", "Harvey", "HubSpot", "Indeed", "Intercom", "Linear", "Miro", "Notion"})
+		assert.Subset(t, names, []string{"GitHub", "Airtable", "Asana", "Atlassian", "Canva", "Cloudflare", "Datadog", "der die das (Lingviko)", "Grafana", "Harvey", "HubSpot", "Indeed", "Intercom", "Linear", "Miro", "Notion", "PagerDuty", "Pidgeon"})
 	})
 
 	t.Run("Offered", func(t *testing.T) {
