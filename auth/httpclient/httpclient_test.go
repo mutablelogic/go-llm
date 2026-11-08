@@ -117,6 +117,29 @@ func Test_Discover(t *testing.T) {
 		assert.ErrorIs(t, err, llm.ErrBadParameter, "which isn't an AuthError")
 	})
 
+	t.Run("Failures", func(t *testing.T) {
+		// An authorization server whose metadata fails, or isn't metadata,
+		// says why, rather than only that there's none
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			switch r.URL.Path {
+			case "/.well-known/oauth-authorization-server":
+				http.Error(w, "broken", http.StatusInternalServerError)
+			case "/.well-known/openid-configuration":
+				writeJSON(w, map[string]any{"issuer": "nothing useful"})
+			default:
+				http.NotFound(w, r)
+			}
+		}))
+		t.Cleanup(server.Close)
+		c, err := httpclient.New(server.URL + "/mcp")
+		require.NoError(t, err)
+		_, err = c.Discover(ctx, "")
+		assert.ErrorIs(t, err, llm.ErrNotFound)
+		assert.Contains(t, err.Error(), "500")
+		assert.Contains(t, err.Error(), "has no token_endpoint")
+		assert.NotContains(t, err.Error(), "404", "what's missing isn't a failure")
+	})
+
 	t.Run("Origin", func(t *testing.T) {
 		// A resource without metadata has its origin as its authorization
 		// server

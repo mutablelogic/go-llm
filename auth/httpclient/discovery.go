@@ -3,12 +3,15 @@ package httpclient
 import (
 	"context"
 	"errors"
+	"fmt"
+	"net/http"
 	"net/url"
 	"strings"
 
 	// Packages
 	client "github.com/mutablelogic/go-client"
 	llm "github.com/mutablelogic/go-llm"
+	httpresponse "github.com/mutablelogic/go-server/pkg/httpresponse"
 )
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -134,14 +137,21 @@ func (c *Client) servers(ctx context.Context, result *Metadata, issuers []string
 
 // server returns the authorization server's metadata, by its issuer, at
 // OAuth's well-known path, or OpenID Connect's, which says where a token is
-// got, or ErrNotFound, when it hasn't any
+// got, or ErrNotFound, when it hasn't any, with why each of its well-known
+// URLs which isn't missing, such as one which failed, or isn't metadata,
+// wasn't, so it's known why
 func (c *Client) server(ctx context.Context, issuer string) (*ServerMetadata, error) {
+	var errs []error
 	for _, path := range []string{OAuthMetadataPath, OIDCMetadataPath} {
 		for _, endpoint := range wellKnown(issuer, path) {
 			var metadata ServerMetadata
 			if err := c.DoWithContext(ctx, nil, &metadata, client.OptReqEndpoint(endpoint)); err != nil {
+				if !missing(err) {
+					errs = append(errs, fmt.Errorf("%s: %w", endpoint, err))
+				}
 				continue
 			} else if metadata.TokenEndpoint == "" {
+				errs = append(errs, fmt.Errorf("%s: has no token_endpoint", endpoint))
 				continue
 			}
 			if metadata.Issuer == "" {
@@ -150,7 +160,18 @@ func (c *Client) server(ctx context.Context, issuer string) (*ServerMetadata, er
 			return &metadata, nil
 		}
 	}
+	if len(errs) > 0 {
+		return nil, llm.ErrNotFound.Withf("authorization server %q has no metadata: %v", issuer, errors.Join(errs...))
+	}
 	return nil, llm.ErrNotFound.Withf("authorization server %q has no metadata", issuer)
+}
+
+// missing returns true when the error is that what was asked for isn't
+// there, which a well-known URL which isn't the one a server has is, so
+// it's tried at another, rather than said to have failed
+func missing(err error) bool {
+	var httpErr httpresponse.Err
+	return errors.As(err, &httpErr) && (httpErr == httpresponse.ErrNotFound || httpErr == httpresponse.Err(http.StatusMethodNotAllowed))
 }
 
 ///////////////////////////////////////////////////////////////////////////////
