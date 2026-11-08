@@ -159,6 +159,38 @@ func Test_Discover(t *testing.T) {
 		assert.ErrorIs(t, err, llm.ErrNotFound)
 	})
 
+	t.Run("NoServers", func(t *testing.T) {
+		// A resource whose authorization servers have no metadata has none,
+		// as an error, rather than metadata without them, from its
+		// challenge, or its well-known path, so a caller can rely on there
+		// being one, when there's no error
+		var server *httptest.Server
+		server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			switch r.URL.Path {
+			case "/mcp":
+				w.Header().Set("WWW-Authenticate", `Bearer resource_metadata="`+server.URL+`/.well-known/oauth-protected-resource/mcp"`)
+				w.WriteHeader(http.StatusUnauthorized)
+			case "/.well-known/oauth-protected-resource/mcp":
+				writeJSON(w, map[string]any{"resource": server.URL + "/mcp", "authorization_servers": []string{server.URL + "/missing", server.URL + "/gone"}})
+			default:
+				http.NotFound(w, r)
+			}
+		}))
+		t.Cleanup(server.Close)
+		c, err := httpclient.New(server.URL + "/mcp")
+		require.NoError(t, err)
+		challenge := c.DoAuthWithContext(ctx, client.MethodGet, nil)
+		require.NotNil(t, httpclient.AsAuthError(challenge))
+		for name, discover := range map[string]func() (*httpclient.Metadata, error){
+			"Challenge": func() (*httpclient.Metadata, error) { return c.DiscoverWithError(ctx, challenge) },
+			"WellKnown": func() (*httpclient.Metadata, error) { return c.Discover(ctx, "") },
+		} {
+			metadata, err := discover()
+			assert.ErrorIs(t, err, llm.ErrNotFound, name)
+			assert.Nil(t, metadata, name)
+		}
+	})
+
 	t.Run("NoMetadata", func(t *testing.T) {
 		// A resource without metadata, nor an authorization server, has none
 		server := httptest.NewServer(http.NotFoundHandler())
