@@ -179,15 +179,16 @@ export class ToolsController extends ListController<Tool> {
         }
         form.connecting = true;
         form.error = undefined;
+        const open = () => form.item === item;
         let connector: Connector | undefined;
+        let why: string;
         try {
             connector = await this.createConnector(meta);
-            const status = await this.waitConnected(connector.name, () => form.item === item);
-            if (form.item !== item) {
+            const status = await this.waitConnected(connector.name, open);
+            if (!open()) {
                 // The panel was closed, so the server keeps trying
                 return;
-            }
-            if (status?.connected) {
+            } else if (status.connected) {
                 this.notifications.push({ kind: 'success', title: `${status.server?.name ?? status.name} is connected` });
                 this.hideConnector();
                 void this.refresh();
@@ -196,16 +197,31 @@ export class ToolsController extends ListController<Tool> {
                 }
                 return;
             }
-            await deleteConnector(connector.name).catch(() => undefined);
-            form.error = status?.error ?? "It didn't connect in time";
+            why = status.error ?? "It didn't connect in time";
         } catch (error) {
-            if (form.item === item) {
-                form.error = error instanceof Error ? error.message : String(error);
+            // A request which was given up on, as it didn't return in time,
+            // didn't connect in time
+            why = error instanceof DOMException && error.name === 'TimeoutError'
+                ? "It didn't connect in time"
+                : error instanceof Error ? error.message : String(error);
+        }
+
+        // It couldn't be connected, so it's deleted, while the panel is open,
+        // so a URL which isn't an MCP server's isn't kept, and says when it
+        // couldn't be, so it's known it may still be stored
+        if (!open()) {
+            return;
+        }
+        if (connector) {
+            try {
+                await deleteConnector(connector.name);
+            } catch (error) {
+                why += `. The connector ${connector.name} couldn't be deleted, so it may still be stored: ${error instanceof Error ? error.message : String(error)}`;
             }
-        } finally {
-            if (form.item === item) {
-                form.connecting = false;
-            }
+        }
+        if (open()) {
+            form.error = why;
+            form.connecting = false;
         }
     }
 
@@ -225,25 +241,30 @@ export class ToolsController extends ListController<Tool> {
     }
 
     // waitConnected returns the connector, once the server has connected to
-    // it, or couldn't, or it's waited for connectWait, or undefined, when it's
-    // no longer waited for
-    private async waitConnected(name: string, waiting: () => boolean): Promise<Connector | undefined> {
+    // it, or couldn't, or it's waited for connectWait, which each request for
+    // it is within, too, so one which doesn't return doesn't keep it waiting,
+    // or as it was, once it's no longer waited for
+    private async waitConnected(name: string, waiting: () => boolean): Promise<Connector> {
         const deadline = Date.now() + connectWait;
-        let status = await getConnector(name);
-        while (!status.connected && !status.error && Date.now() < deadline) {
+        const get = () => getConnector(name, AbortSignal.timeout(Math.max(deadline - Date.now(), 1)));
+        let status = await get();
+        while (!status.connected && !status.error && Date.now() < deadline && waiting()) {
             await new Promise((resolve) => setTimeout(resolve, connectPoll));
-            if (!waiting()) {
-                return undefined;
+            if (!waiting() || Date.now() >= deadline) {
+                break;
             }
-            status = await getConnector(name);
+            status = await get();
         }
         return status;
     }
 
-    // close closes the tool which is shown, and the agent
+    // close closes the tool which is shown, the agent, and the connector's
+    // panel, such as when another page is shown, so it doesn't stay open
+    // over it, and a connection which is waited for is no longer
     close() {
         super.close();
         this.hideAgent();
+        this.hideConnector();
     }
 
     // select opens the tool, or, for an agent, its definition, to be edited
