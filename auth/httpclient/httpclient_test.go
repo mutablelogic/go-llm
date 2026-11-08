@@ -133,6 +133,32 @@ func Test_Discover(t *testing.T) {
 		})
 	}
 
+	t.Run("Resource", func(t *testing.T) {
+		// The resource's metadata, alone, is got, from the challenge, or at
+		// its well-known path, when its authorization server's metadata
+		// can't be, such as for its name
+		server := newServer(t, "missing")
+		c, err := httpclient.New(server.URL + "/mcp")
+		require.NoError(t, err)
+		challenge := c.DoAuthWithContext(ctx, client.MethodGet, nil)
+		require.NotNil(t, httpclient.AsAuthError(challenge))
+		_, err = c.DiscoverWithError(ctx, challenge)
+		assert.ErrorIs(t, err, llm.ErrNotFound, "its authorization server has no metadata")
+		for _, err := range []error{challenge, nil} {
+			resource, err := c.DiscoverResource(ctx, err)
+			require.NoError(t, err)
+			assert.Equal(t, server.URL+"/mcp", resource.Resource)
+		}
+
+		// But not when it has none
+		empty := httptest.NewServer(http.NotFoundHandler())
+		t.Cleanup(empty.Close)
+		c, err = httpclient.New(empty.URL + "/mcp")
+		require.NoError(t, err)
+		_, err = c.DiscoverResource(ctx, nil)
+		assert.ErrorIs(t, err, llm.ErrNotFound)
+	})
+
 	t.Run("NoMetadata", func(t *testing.T) {
 		// A resource without metadata, nor an authorization server, has none
 		server := httptest.NewServer(http.NotFoundHandler())

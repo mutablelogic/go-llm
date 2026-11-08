@@ -17,11 +17,10 @@ import type { CountFilter } from '../component/count-filter';
 import { AgentEditor, agentTemplate, type AgentEditorItem } from '../component/agent-editor';
 import { ToolsPage } from '../page/tools-page';
 import { deleteAgent, getAgent, getAgentYAML, saveAgentYAML } from '../api/agent';
-import { createConnector, deleteConnector, getConnector, listConnectors, updateConnector } from '../api/connector';
-import { ApiError } from '../api/client';
-import { connectorName, type Connector, type ConnectorMeta } from '../schema/connector';
+import { authorizeConnector, createConnector, deleteConnector, getConnector, listConnectors, updateConnector } from '../api/connector';
+import { needsSignIn, type Connector, type ConnectorMeta } from '../schema/connector';
 import { ConnectorForm } from '../component/connector-form';
-import type { ConnectorAlerts } from '../component/connector-alerts';
+import { ConnectorAlerts } from '../component/connector-alerts';
 import { routeHref } from '../router';
 
 export interface ToolsViews {
@@ -35,12 +34,12 @@ export interface ToolsViews {
 }
 
 // connectWait is how long a connector which is added is waited for, as the
-// server connects to it, and connectPoll how often it's asked whether it
-// has, and connectNames how many names, from its URL, are tried, when the
-// first is another connector's
+// server connects to it, and signInWait how long, once it needs to be
+// signed in to, as the person signs in, and connectPoll how often it's
+// asked whether it has
 const connectWait = 45_000;
+const signInWait = 10 * 60_000;
 const connectPoll = 500;
-const connectNames = 10;
 
 // agentNamespace is the namespace of the agents, as tools
 const agentNamespace = 'agent';
@@ -90,6 +89,35 @@ export class ToolsController extends ListController<Tool> {
         views.connector?.addEventListener(Panel.eventClose, () => this.hideConnector());
         views.page?.addEventListener(ToolsPage.eventEditConnector, (e) => this.editConnector((e as CustomEvent<string>).detail));
         views.page?.addEventListener(ToolsPage.eventDeleteConnector, (e) => void this.deleteConnector((e as CustomEvent<string>).detail));
+
+        // A connector's server, which needs to be signed in to, is signed in
+        // to, in a new tab, from the panel, once it's added, or its alert
+        views.connector?.addEventListener(ConnectorForm.eventSignIn, (e) => this.signIn((e as CustomEvent<string>).detail));
+        views.alerts?.addEventListener(ConnectorAlerts.eventSignIn, (e) => this.signIn((e as CustomEvent<string>).detail));
+    }
+
+    // signIn opens a tab, at once, as it's a click, which a browser blocks
+    // otherwise, and then at the URL the person signs in to the connector's
+    // server at, which redirects back to the server, which connects it, so
+    // its event shows it's connected
+    private signIn(name: string) {
+        void this.authorize(openTab(), name);
+    }
+
+    // authorize sends the tab to the URL the person signs in to the
+    // connector's server at, or closes it, and says why, when it can't be
+    private async authorize(tab: Window | null, name: string) {
+        try {
+            const url = await authorizeConnector(name);
+            if (tab && !tab.closed) {
+                tab.location.href = url;
+            } else {
+                window.open(url, '_blank', 'noopener');
+            }
+        } catch (error) {
+            tab?.close();
+            this.notifications.error(`${name} can't be signed in to`, error);
+        }
     }
 
     // editConnector opens the panel, to edit the connector, as it is
@@ -105,16 +133,25 @@ export class ToolsController extends ListController<Tool> {
 
     // saveConnector updates the connector which is edited, and shows the
     // tools of its namespace, as it is now, or says why it couldn't be, in
-    // the panel, when it's still editing it
+    // the panel, when it's still editing it. One which needs to be signed in
+    // to is signed in to, once it's saved, in a tab, which is opened at
+    // once, as it's a click, and the panel waits for it to be connected
     private async saveConnector(meta: ConnectorMeta) {
         const form = this.views.connector;
         const item = form?.item;
         if (!form || item?.mode !== 'edit') {
             return;
         }
+        const tab = needsSignIn(item.connector) ? openTab() : undefined;
         form.connecting = true;
         try {
             const connector = await updateConnector(item.connector.name, meta);
+            if (tab !== undefined && !connector.connected) {
+                void this.refresh();
+                await this.authorize(tab, connector.name);
+                return;
+            }
+            tab?.close();
             this.notifications.push({ kind: 'success', title: `${connector.name} was saved` });
             void this.refresh();
             if (form.item === item) {
@@ -124,6 +161,7 @@ export class ToolsController extends ListController<Tool> {
                 }
             }
         } catch (error) {
+            tab?.close();
             if (form.item === item) {
                 form.error = error instanceof Error ? error.message : String(error);
             }
@@ -156,6 +194,7 @@ export class ToolsController extends ListController<Tool> {
         if (form) {
             form.connecting = false;
             form.error = undefined;
+            form.signIn = undefined;
             form.item = { mode: 'add' };
         }
     }
@@ -183,8 +222,36 @@ export class ToolsController extends ListController<Tool> {
         let connector: Connector | undefined;
         let why: string;
         try {
-            connector = await this.createConnector(meta);
-            const status = await this.waitConnected(connector.name, open);
+            connector = await createConnector(meta);
+            let status = await this.waitConnected(connector.name, open, connectWait, false);
+
+            // One whose server needs to be signed in to is kept, and the
+            // panel says so, with Sign in, and waits for it to be connected,
+            // once the person has signed in, as its alert does, when the
+            // panel's closed, and isn't deleted, whatever happens as it's
+            // waited for
+            if (open() && needsSignIn(status)) {
+                form.connecting = false;
+                form.signIn = status.name;
+                void this.refresh();
+                try {
+                    status = await this.waitConnected(status.name, open, signInWait, true);
+                } catch (error) {
+                    if (open()) {
+                        form.signIn = undefined;
+                        form.error = `It couldn't be told whether you signed in, so it's kept, and can be signed in to from its alert: ${error instanceof Error ? error.message : String(error)}`;
+                    }
+                    return;
+                }
+                if (!open()) {
+                    return;
+                } else if (!status.connected) {
+                    form.signIn = undefined;
+                    form.error = status.error && !needsSignIn(status) ? status.error : "It wasn't signed in to in time, so it's kept, and can be signed in to from its alert";
+                    return;
+                }
+                form.signIn = undefined;
+            }
             if (!open()) {
                 // The panel was closed, so the server keeps trying
                 return;
@@ -225,30 +292,19 @@ export class ToolsController extends ListController<Tool> {
         }
     }
 
-    // createConnector creates the connector, with a name from its URL's host,
-    // or, when it's another connector's, the name with a number added
-    private async createConnector(meta: ConnectorMeta): Promise<Connector> {
-        const base = connectorName(meta.url);
-        for (let i = 1; ; i++) {
-            try {
-                return await createConnector(i === 1 ? base : `${base}-${i}`, meta);
-            } catch (error) {
-                if (!(error instanceof ApiError && error.code === 409) || i >= connectNames) {
-                    throw error;
-                }
-            }
-        }
-    }
-
     // waitConnected returns the connector, once the server has connected to
-    // it, or couldn't, or it's waited for connectWait, which each request for
-    // it is within, too, so one which doesn't return doesn't keep it waiting,
-    // or as it was, once it's no longer waited for
-    private async waitConnected(name: string, waiting: () => boolean): Promise<Connector> {
-        const deadline = Date.now() + connectWait;
+    // it, or couldn't, which includes when it needs to be signed in to, or
+    // it's waited for the time, which each request for it is within, too, so
+    // one which doesn't return doesn't keep it waiting, or as it was, once
+    // it's no longer waited for. While it's being signed in to, needing to be
+    // isn't why it couldn't connect, as the person signs in
+    private async waitConnected(name: string, waiting: () => boolean, wait: number, signingIn: boolean): Promise<Connector> {
+        const deadline = Date.now() + wait;
         const get = () => getConnector(name, AbortSignal.timeout(Math.max(deadline - Date.now(), 1)));
         let status = await get();
-        while (!status.connected && !status.error && Date.now() < deadline && waiting()) {
+        const done = (connector: Connector) => connector.connected
+            || (signingIn ? !needsSignIn(connector) && !!connector.error : !!connector.error || needsSignIn(connector));
+        while (!done(status) && Date.now() < deadline && waiting()) {
             await new Promise((resolve) => setTimeout(resolve, connectPoll));
             if (!waiting() || Date.now() >= deadline) {
                 break;
@@ -412,7 +468,22 @@ export class ToolsController extends ListController<Tool> {
     }
 
     protected render() {
-        const { page, alerts, namespaces, table, view } = this.views;
+        const { page, alerts, namespaces, table, view, connector: form } = this.views;
+
+        // The connector which is edited, which needed to be signed in to,
+        // and now is connected, such as once it's signed in to from its
+        // panel, is shown, with its tools
+        if (form?.item?.mode === 'edit' && needsSignIn(form.item.connector)) {
+            const name = form.item.connector.name;
+            const now = this.connectors.find((connector) => connector.name === name);
+            if (now?.connected) {
+                this.notifications.push({ kind: 'success', title: `${now.server?.name ?? now.name} is connected` });
+                this.hideConnector();
+                if (now.namespace && now.namespace !== this.namespace) {
+                    location.hash = routeHref('tools', now.namespace);
+                }
+            }
+        }
         if (alerts) {
             alerts.connectors = this.connectors;
         }
@@ -435,7 +506,7 @@ export class ToolsController extends ListController<Tool> {
                         badge: namespace.type === 'mcp' ? namespace.type : undefined,
                         count: namespace.tools,
                         title: namespace.description,
-                        error: connector && !connector.connected ? connector.error : undefined,
+                        error: connector && needsSignIn(connector) ? 'Needs you to sign in' : connector && !connector.connected ? connector.error : undefined,
                     };
                 }),
             ];
@@ -453,4 +524,15 @@ export class ToolsController extends ListController<Tool> {
             view.tool = this.selected;
         }
     }
+}
+
+// openTab opens a blank tab, at once, as a click opens it, which a browser
+// blocks once it's waited for a request, which the sign-in page is sent to,
+// once its URL is got, and which can't reach back to this page
+function openTab(): Window | null {
+    const tab = window.open('about:blank', '_blank');
+    if (tab) {
+        tab.opener = null;
+    }
+    return tab;
 }

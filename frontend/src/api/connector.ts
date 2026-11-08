@@ -13,10 +13,11 @@ export function getConnector(name: string, signal?: AbortSignal): Promise<Connec
     return request<Connector>('GET', '/mcp/connector/' + encodeURIComponent(name), { signal });
 }
 
-// createConnector creates a connector, with its name, which the server
-// connects to
-export function createConnector(name: string, meta: ConnectorMeta): Promise<Connector> {
-    return request<Connector>('POST', '/mcp/connector', { body: { name, ...meta } });
+// createConnector creates a connector, which the server connects to, and
+// names after its server, as it says, with a number added, when that's
+// another connector's
+export function createConnector(meta: ConnectorMeta): Promise<Connector> {
+    return request<Connector>('POST', '/mcp/connector', { body: meta });
 }
 
 // updateConnector replaces the connector's URL, and patterns, once the
@@ -29,4 +30,12 @@ export function updateConnector(name: string, meta: ConnectorMeta): Promise<Conn
 // deleteConnector deletes the connector, which is disconnected
 export function deleteConnector(name: string): Promise<Connector> {
     return request<Connector>('DELETE', '/mcp/connector/' + encodeURIComponent(name));
+}
+
+// authorizeConnector starts signing in to the connector's server, and
+// returns the URL a person signs in at, which redirects back to the server,
+// at the browser's origin, once they have
+export async function authorizeConnector(name: string): Promise<string> {
+    const response = await request<{ url: string }>('POST', '/mcp/connector/' + encodeURIComponent(name) + '/authorize', { body: {} });
+    return response.url;
 }

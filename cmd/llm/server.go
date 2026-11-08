@@ -180,7 +180,7 @@ func (runner *RunServer) Run(ctx server.Cmd) error {
 // the heartbeats, as well as the tools whose credentials are set, and a
 // registry, with the stores, which runs the heartbeats which fire, once
 // it's set to, and fires them
-func (runner *RunServer) withToolkit(ctx server.Cmd, b *broadcaster.Broadcaster, mem *memory.Memory, h *heartbeat.Heartbeats, res *resource.Manager, events *atomic.Pointer[registry.Registry], build registry.EventBuilder, store registry.ProviderStore, connectorStore mcpregistry.Store, sessions *sessionStore, agents *agentStore, outcomes *eventStore) error {
+func (runner *RunServer) withToolkit(ctx server.Cmd, b *broadcaster.Broadcaster, mem *memory.Memory, h *heartbeat.Heartbeats, res *resource.Manager, events *atomic.Pointer[registry.Registry], build registry.EventBuilder, store registry.ProviderStore, connectorStore *connectorStore, sessions *sessionStore, agents *agentStore, outcomes *eventStore) error {
 	return runner.Toolkit.WithToolkit(ctx, &runner.RunServer, func(tools *toolkit.Toolkit) error {
 		// The memory, whose system prompt has what's remembered, and whose
 		// tools remember it, and which, when a model can call them, has it
@@ -261,7 +261,7 @@ func (runner *RunServer) withToolkit(ctx server.Cmd, b *broadcaster.Broadcaster,
 		// and their resources will be added to the resources
 		return runner.Connector.WithConnectorRegistry(ctx, &runner.RunServer, b, func(connectors *mcpregistry.Registry) error {
 			return runner.withRegistry(ctx, b, mem, h, res, m, connectors, tools, events, build, store, sessions, agents, outcomes, replies)
-		}, mcpregistry.WithStore(connectorStore), mcpregistry.WithToolkit(tools))
+		}, mcpregistry.WithStore(connectorStore), mcpregistry.WithCredentials(connectorStore), mcpregistry.WithToolkit(tools))
 	}, toolkit.WithBroadcaster(b))
 }
 

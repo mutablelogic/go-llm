@@ -3,6 +3,7 @@ package httpclient
 import (
 	"context"
 	"net/http"
+	"net/url"
 
 	// Packages
 	client "github.com/mutablelogic/go-client"
@@ -65,6 +66,33 @@ func (c *Client) UpdateConnector(ctx context.Context, name string, meta schema.C
 func (c *Client) DeleteConnector(ctx context.Context, name string) (*schema.Connector, error) {
 	var response schema.Connector
 	if err := c.DoWithContext(ctx, client.NewRequestEx(http.MethodDelete, types.ContentTypeJSON), &response, client.OptPath("mcp", "connector", name)); err != nil {
+		return nil, err
+	}
+	return &response, nil
+}
+
+// Authorize starts signing in to the connector's server, and returns the
+// URL a person signs in at, which redirects to the redirect, once they have,
+// which is the API's callback, of the request's origin, when it's empty
+func (c *Client) Authorize(ctx context.Context, name, redirect string) (*schema.AuthorizeResponse, error) {
+	req, err := client.NewJSONRequestEx(http.MethodPost, schema.AuthorizeRequest{Redirect: redirect}, types.ContentTypeJSON)
+	if err != nil {
+		return nil, err
+	}
+	var response schema.AuthorizeResponse
+	if err := c.DoWithContext(ctx, req, &response, client.OptPath("mcp", "connector", name, "authorize")); err != nil {
+		return nil, err
+	}
+	return &response, nil
+}
+
+// Callback passes the query an authorization server redirected to a
+// loopback with, such as its state, and code, or error, on to the API's
+// callback, which exchanges the code for a token, and returns the
+// connector, which is connected with it
+func (c *Client) Callback(ctx context.Context, query url.Values) (*schema.Connector, error) {
+	var response schema.Connector
+	if err := c.DoWithContext(ctx, client.NewRequestEx(http.MethodGet, types.ContentTypeJSON), &response, client.OptPath("mcp", "callback"), client.OptQuery(query)); err != nil {
 		return nil, err
 	}
 	return &response, nil

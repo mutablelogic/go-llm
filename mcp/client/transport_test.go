@@ -1,6 +1,7 @@
 package client
 
 import (
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"sync"
@@ -9,8 +10,10 @@ import (
 
 	// Packages
 	client "github.com/mutablelogic/go-client"
+	authclient "github.com/mutablelogic/go-llm/auth/httpclient"
 	assert "github.com/stretchr/testify/assert"
 	require "github.com/stretchr/testify/require"
+	oauth2 "golang.org/x/oauth2"
 )
 
 // tokenServer returns a server which counts its requests, and those with
@@ -114,4 +117,36 @@ func Test_Options(t *testing.T) {
 		}
 		wg.Wait()
 	})
+}
+
+// tokenFunc is a source of tokens, which is a function
+type tokenFunc func() (*oauth2.Token, error)
+
+func (fn tokenFunc) Token() (*oauth2.Token, error) { return fn() }
+
+func Test_RejectedRefresh(t *testing.T) {
+	server, requests, _ := tokenServer(t, nil)
+
+	// A token whose refresh the authorization server rejects, such as one
+	// which was revoked, needs the server to be authorized again, so the
+	// connection says so, without a request to the server
+	rejected := tokenFunc(func() (*oauth2.Token, error) {
+		return nil, &oauth2.RetrieveError{Response: &http.Response{StatusCode: http.StatusBadRequest}, ErrorCode: "invalid_grant"}
+	})
+	c, err := New(server.URL+"/mcp", WithTokenSource(rejected))
+	require.NoError(t, err)
+	err = c.Connect(t.Context())
+	require.Error(t, err)
+	assert.NotNil(t, authclient.AsAuthError(err), "it needs to be authorized: %v", err)
+	assert.NotNil(t, c.Challenge())
+	assert.Zero(t, requests.Load())
+
+	// But not one which failed for another reason, such as a timeout,
+	// which is tried again
+	failed := tokenFunc(func() (*oauth2.Token, error) { return nil, errors.New("timeout") })
+	c, err = New(server.URL+"/mcp", WithTokenSource(failed))
+	require.NoError(t, err)
+	err = c.Connect(t.Context())
+	require.Error(t, err)
+	assert.Nil(t, authclient.AsAuthError(err), "it doesn't need to be authorized: %v", err)
 }

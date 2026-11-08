@@ -1,6 +1,7 @@
 package client
 
 import (
+	"errors"
 	"net/http"
 	"net/url"
 	"strings"
@@ -8,6 +9,8 @@ import (
 	// Packages
 	sdkmcp "github.com/modelcontextprotocol/go-sdk/mcp"
 	llm "github.com/mutablelogic/go-llm"
+	authclient "github.com/mutablelogic/go-llm/auth/httpclient"
+	oauth2 "golang.org/x/oauth2"
 )
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -42,7 +45,7 @@ func (c *Client) httpClient() *http.Client {
 	if next == nil {
 		next = http.DefaultTransport
 	}
-	httpClient.Transport = &sameOrigin{origin: origin, next: next}
+	httpClient.Transport = &sameOrigin{origin: origin, next: &authorized{client: c, next: next}}
 	httpClient.CheckRedirect = func(req *http.Request, via []*http.Request) error {
 		if originOf(req.URL.String()) != origin {
 			return llm.ErrBadParameter.Withf("%s redirected to another origin, %s", c.endpoint, req.URL.Redacted())
@@ -64,6 +67,46 @@ func (c *Client) transports() []sdkmcp.Transport {
 		&sdkmcp.StreamableClientTransport{Endpoint: c.endpoint, HTTPClient: httpClient},
 		&sdkmcp.SSEClientTransport{Endpoint: c.endpoint, HTTPClient: httpClient},
 	}
+}
+
+// authorized is a transport which authorizes the requests to the server,
+// with the client's token, as a bearer token, when it has a source of one,
+// and keeps the challenge of a request which isn't authorized, so a
+// connection which fails says how it's authorized
+type authorized struct {
+	client *Client
+	next   http.RoundTripper
+}
+
+// RoundTrip authorizes the request, with the token, when there's one, and
+// keeps the challenge of its response, when it isn't authorized
+func (t *authorized) RoundTrip(req *http.Request) (*http.Response, error) {
+	if t.client.tokens != nil {
+		token, err := t.client.tokens.Token()
+		if err != nil {
+			if req.Body != nil {
+				_ = req.Body.Close()
+			}
+			if rejected(err) {
+				// Its token can't be refreshed, as the authorization server
+				// rejected it, such as when it was revoked, so it needs to be
+				// authorized again, rather than tried again
+				t.client.challenge.Store(&authclient.AuthError{Scheme: "Bearer", Params: url.Values{"error": {"invalid_token"}, "error_description": {err.Error()}}})
+			}
+			return nil, llm.ErrServiceUnavailable.Withf("token: %v", err)
+		}
+		req = req.Clone(req.Context())
+		token.SetAuthHeader(req)
+	}
+	response, err := t.next.RoundTrip(req)
+	if err == nil && response.StatusCode == http.StatusUnauthorized {
+		if challenge := authclient.ParseChallenge(response.Header); challenge != nil {
+			t.client.challenge.Store(challenge)
+		} else {
+			t.client.challenge.Store(&authclient.AuthError{Scheme: "Bearer"})
+		}
+	}
+	return response, err
 }
 
 // RoundTrip sends the request, when it's to the origin, before the
@@ -100,4 +143,21 @@ func originOf(rawURL string) string {
 		}
 	}
 	return scheme + "://" + strings.ToLower(u.Hostname()) + ":" + port
+}
+
+// rejected returns true when the error is the authorization server's
+// rejection of a token's refresh, or of the client, which trying again
+// doesn't change, rather than one, such as a timeout, which it can
+func rejected(err error) bool {
+	var retrieve *oauth2.RetrieveError
+	if !errors.As(err, &retrieve) {
+		return false
+	}
+	switch retrieve.ErrorCode {
+	case "invalid_grant", "invalid_client", "unauthorized_client":
+		return true
+	case "":
+		return retrieve.Response != nil && (retrieve.Response.StatusCode == http.StatusBadRequest || retrieve.Response.StatusCode == http.StatusUnauthorized)
+	}
+	return false
 }

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -121,7 +122,7 @@ func Test_Servers(t *testing.T) {
 	// which isn't a remote connector's
 	_, err = r.CreateConnector(ctx, connector("search", "https://mcp.example.com/other"))
 	assert.ErrorIs(t, err, llm.ErrConflict)
-	for _, s := range []schema.Connector{connector("9lives", "https://mcp.example.com"), connector("", "https://mcp.example.com"), connector("local", "stdio://connector"), connector("local", "/usr/bin/connector"), connector("local", "https:///mcp"), connector("local", "https://:443/mcp")} {
+	for _, s := range []schema.Connector{connector("9lives", "https://mcp.example.com"), connector("local", "stdio://connector"), connector("local", "/usr/bin/connector"), connector("local", "https:///mcp"), connector("local", "https://:443/mcp")} {
 		_, err = r.CreateConnector(ctx, s)
 		assert.ErrorIs(t, err, llm.ErrBadParameter, s.String())
 	}
@@ -318,4 +319,39 @@ func Test_EventsClosed(t *testing.T) {
 	require.Len(t, events, 1)
 	assert.Equal(t, eventschema.EventDelete, events[0].Action)
 	assert.Equal(t, "one", events[0].Row)
+}
+
+func Test_CreateNamed(t *testing.T) {
+	setInterval(t, &registry.RetryInterval, time.Hour)
+	ctx := t.Context()
+	r, err := registry.New()
+	require.NoError(t, err)
+	t.Cleanup(func() { assert.NoError(t, r.Close()) })
+
+	// A connector without a name is named after its server, as it says,
+	// and with a number, when that's another connector's
+	server := test.NewServer(t)
+	created, err := r.CreateConnector(ctx, connector("", server.URL))
+	require.NoError(t, err)
+	assert.Equal(t, test.Name, created.Name)
+	created, err = r.CreateConnector(ctx, connector(" ", server.URL))
+	require.NoError(t, err)
+	assert.Equal(t, test.Name+"-2", created.Name)
+
+	// Or as the metadata of how it's authorized says, when it needs to be
+	secure := test.NewServer(t, test.WithAuth())
+	created, err = r.CreateConnector(ctx, connector("", secure.URL))
+	require.NoError(t, err)
+	assert.Equal(t, "test-resource", created.Name)
+
+	// Or the host of its URL, when it can't be connected
+	notFound := httptest.NewServer(http.NotFoundHandler())
+	t.Cleanup(notFound.Close)
+	created, err = r.CreateConnector(ctx, connector("", strings.Replace(notFound.URL, "127.0.0.1", "localhost", 1)))
+	require.NoError(t, err)
+	assert.Equal(t, "localhost", created.Name)
+
+	// But not with a URL which isn't a remote server's
+	_, err = r.CreateConnector(ctx, connector("", "stdio://server"))
+	assert.ErrorIs(t, err, llm.ErrBadParameter)
 }
