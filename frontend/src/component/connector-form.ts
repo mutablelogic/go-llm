@@ -27,6 +27,10 @@ export class ConnectorForm extends Panel<ConnectorFormItem> {
     static readonly eventConnect = 'llm-connector-form-connect';
     static readonly eventSave = 'llm-connector-form-save';
 
+    // The name of the event fired with the name of the connector which is
+    // added, as Sign in is clicked, once its server needs to be signed in to
+    static readonly eventSignIn = 'llm-connector-form-sign-in';
+
     // What's shown, which is undefined when the panel is closed
     @property({ attribute: false })
     item?: ConnectorFormItem;
@@ -37,6 +41,11 @@ export class ConnectorForm extends Panel<ConnectorFormItem> {
 
     @property({ attribute: false })
     error?: string;
+
+    // The name of the connector which was added, whose server needs to be
+    // signed in to, before it's connected, which is waited for
+    @property({ attribute: false })
+    signIn?: string;
 
     // How many times the panel has been opened, so its form is made again
     // each time
@@ -51,6 +60,12 @@ export class ConnectorForm extends Panel<ConnectorFormItem> {
 
     @query('cds-textarea#exclude')
     private excludeInput?: HTMLElement & { value: string };
+
+    @query('cds-text-input#client-id')
+    private clientIdInput?: HTMLElement & { value: string };
+
+    @query('cds-text-input#client-secret')
+    private clientSecretInput?: HTMLElement & { value: string };
 
     static styles = [Panel.styles, css`
         form > * {
@@ -73,6 +88,7 @@ export class ConnectorForm extends Panel<ConnectorFormItem> {
         if (changed.has('item') && this.item && changed.get('item') !== this.item) {
             this.opened++;
             this.error = undefined;
+            this.signIn = undefined;
         }
         super.willUpdate(changed);
     }
@@ -102,11 +118,18 @@ export class ConnectorForm extends Panel<ConnectorFormItem> {
                     helper-text="Regular expressions of the names of the tools to include, one a line, or every tool"></cds-textarea>
                 <cds-textarea id="exclude" label="Exclude tools (optional)" rows="2" value=${(editing?.exclude ?? []).join('\n')}
                     helper-text="Regular expressions of the names of the tools to exclude, one a line, such as signup"></cds-textarea>
+                <cds-text-input id="client-id" label="Client ID credential (optional)" placeholder="GITHUB_CLIENT_ID" value=${editing?.client_id_credential ?? ''}
+                    helper-text="The name of the server's credential holding the client ID to sign in with, when the server's sign-in doesn't register one, as GitHub's doesn't"></cds-text-input>
+                <cds-text-input id="client-secret" label="Client secret credential (optional)" placeholder="GITHUB_CLIENT_SECRET" value=${editing?.client_secret_credential ?? ''}
+                    helper-text="The name of the server's credential holding the client's secret"></cds-text-input>
                 ${this.error ? html`<cds-inline-notification kind="error" title=${editing ? "It couldn't be saved" : "It couldn't connect"} subtitle=${this.error} hide-close-button low-contrast></cds-inline-notification>` : nothing}
+                ${this.signIn ? html`<cds-inline-notification kind="info" title=${`Sign in to ${this.signIn}`} subtitle="The server needs you to sign in, in a new tab, before it connects. This panel carries on once you have." hide-close-button low-contrast></cds-inline-notification>` : nothing}
                 <div class="footer">
-                    <cds-button kind="primary" type="submit" ?disabled=${this.connecting} @click=${this.handleSubmit}>
-                        ${this.connecting ? busy : editing ? 'Save' : 'Connect'}
-                    </cds-button>
+                    ${this.signIn
+                        ? html`<cds-button kind="primary" type="button" @click=${this.handleSignIn}>Sign in</cds-button>`
+                        : html`<cds-button kind="primary" type="submit" ?disabled=${this.connecting} @click=${this.handleSubmit}>
+                            ${this.connecting ? busy : editing ? 'Save' : 'Connect'}
+                        </cds-button>`}
                 </div>
             </form>
         `);
@@ -120,9 +143,18 @@ export class ConnectorForm extends Panel<ConnectorFormItem> {
         }
     }
 
+    // handleSignIn fires the event, as Sign in is clicked, so a tab can be
+    // opened, as it's a click
+    private handleSignIn(event: Event) {
+        event.preventDefault();
+        if (this.signIn) {
+            this.dispatchEvent(new CustomEvent(ConnectorForm.eventSignIn, { detail: this.signIn }));
+        }
+    }
+
     private handleSubmit(event: Event) {
         event.preventDefault();
-        if (this.connecting || !this.item) {
+        if (this.connecting || this.signIn || !this.item) {
             return;
         }
         const url = this.urlInput?.value.trim() ?? '';
@@ -134,7 +166,13 @@ export class ConnectorForm extends Panel<ConnectorFormItem> {
             url,
             include: lines(this.includeInput?.value),
             exclude: lines(this.excludeInput?.value),
+            client_id_credential: this.clientIdInput?.value.trim() || undefined,
+            client_secret_credential: this.clientSecretInput?.value.trim() || undefined,
         };
+        if (meta.client_secret_credential && !meta.client_id_credential) {
+            this.error = "A client secret's credential needs a client ID's";
+            return;
+        }
         this.dispatchEvent(new CustomEvent(this.item.mode === 'edit' ? ConnectorForm.eventSave : ConnectorForm.eventConnect, { detail: meta }));
     }
 }
