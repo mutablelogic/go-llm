@@ -8,17 +8,19 @@ import (
 
 	// Packages
 	sdkmcp "github.com/modelcontextprotocol/go-sdk/mcp"
-	client "github.com/mutablelogic/go-client"
 	llm "github.com/mutablelogic/go-llm"
+	authclient "github.com/mutablelogic/go-llm/auth/httpclient"
 )
 
 ///////////////////////////////////////////////////////////////////////////////
 // TYPES
 
 // Client is a client of a remote MCP server, at its URL, whose requests are
-// made with go-client
+// made with the auth package's client, of go-client, so a server which
+// needs to be authorized says how, which Discover, and DiscoverWithError,
+// discover
 type Client struct {
-	*client.Client
+	*authclient.Client
 
 	// The URL of the server
 	endpoint string
@@ -70,10 +72,10 @@ func New(endpoint string, opts ...Opt) (*Client, error) {
 		return nil, err
 	}
 
-	// Create go-client's client, for the server, with its options, and its
+	// Create the client, for the server, with go-client's options, and its
 	// endpoint last, so an option can't change it, as the SDK's requests are
 	// to the URL
-	httpClient, err := client.New(append(o.clientopts, client.OptEndpoint(u.String()))...)
+	httpClient, err := authclient.New(u.String(), o.clientopts...)
 	if err != nil {
 		return nil, err
 	}
