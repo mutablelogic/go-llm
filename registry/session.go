@@ -1,7 +1,9 @@
 package registry
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"strings"
 	"uuid"
@@ -290,6 +292,7 @@ func (r *Registry) ForgetSessionMessages(ctx context.Context, id uuid.UUID) (_ *
 		return nil, err
 	}
 	session.Messages = nil
+	session.Forgotten++
 	session.Usage.Input, session.Usage.Output, session.Usage.Overhead = 0, 0, 0
 	if session, err = r.sessionStore.Put(ctx, session); err != nil {
 		return nil, err
@@ -354,7 +357,7 @@ func (r *Registry) Chat(ctx context.Context, id uuid.UUID, messages []llm.Messag
 		latest, getErr := r.sessionStore.Get(ctx, id)
 		if getErr != nil {
 			return nil, getErr
-		} else if added, ok := addedAfter(earlier, latest.Messages); ok && len(added) > 0 && latest.SessionMeta.String() == session.SessionMeta.String() {
+		} else if added, ok := addedAfter(earlier, latest.Messages); ok && len(added) > 0 && latest.Forgotten == session.Forgotten && latest.SessionMeta.String() == session.SessionMeta.String() {
 			stored, err = r.sessionStore.Put(ctx, withReply(latest, earlier, added, response))
 		}
 	}
@@ -394,14 +397,16 @@ func withReply(session schema.Session, earlier, added []providerschema.Message, 
 }
 
 // addedAfter returns the messages which follow the earlier messages, and
-// whether the messages are the earlier messages, as they were, followed by
-// them, rather than changed otherwise, such as when they were forgotten
+// whether the messages are the earlier messages, exactly as they were,
+// followed by them, rather than changed otherwise
 func addedAfter(earlier, messages []providerschema.Message) ([]providerschema.Message, bool) {
 	if len(messages) < len(earlier) {
 		return nil, false
 	}
 	for i := range earlier {
-		if earlier[i].Role() != messages[i].Role() || !earlier[i].Time.Equal(messages[i].Time) || earlier[i].Text() != messages[i].Text() {
+		a, errA := json.Marshal(earlier[i])
+		b, errB := json.Marshal(messages[i])
+		if errA != nil || errB != nil || !bytes.Equal(a, b) {
 			return nil, false
 		}
 	}

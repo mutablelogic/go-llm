@@ -2,9 +2,9 @@ package registry
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"net/url"
+	"slices"
 	"strings"
 	"time"
 	"uuid"
@@ -16,7 +16,6 @@ import (
 	providerschema "github.com/mutablelogic/go-llm/provider/schema"
 	schema "github.com/mutablelogic/go-llm/registry/schema"
 	resourceschema "github.com/mutablelogic/go-llm/resource/schema"
-	toolschema "github.com/mutablelogic/go-llm/toolkit/schema"
 	types "github.com/mutablelogic/go-server/pkg/types"
 	attribute "go.opentelemetry.io/otel/attribute"
 )
@@ -48,15 +47,23 @@ type delivery struct {
 	// retries is how many times it's added again, when the session changed
 	// as it was, such as when a chat's reply was stored
 	retries int
+
+	// retryEvery is how often the outcomes which are pending, which weren't
+	// delivered, are, and retain how long after they last changed they're
+	// tried
+	retryEvery time.Duration
+	retain     time.Duration
 }
 
 // defaultDelivery is how events' outcomes are delivered
 var defaultDelivery = delivery{
-	idle:      30 * time.Second,
-	maxWait:   10 * time.Minute,
-	alertWait: 30 * time.Second,
-	poll:      500 * time.Millisecond,
-	retries:   5,
+	idle:       30 * time.Second,
+	maxWait:    10 * time.Minute,
+	alertWait:  30 * time.Second,
+	poll:       500 * time.Millisecond,
+	retries:    5,
+	retryEvery: time.Minute,
+	retain:     24 * time.Hour,
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -64,13 +71,16 @@ var defaultDelivery = delivery{
 
 // deliver adds the event's outcome, which is to be told to the person, to
 // the session it's for, as the assistant's message, marked as the event's,
-// with the resources its run made, such as speech, copied to the session,
-// once the session has been idle for a while, or, for an alert, once it's
-// idle, so a chat's reply isn't refused, as its
-// session changed, and marks it delivered, and gives it to the replies
-// function, such as to send it to the session's channels, as a reply is.
-// It's called in a goroutine of its own, so the run doesn't wait for it.
-func (r *Registry) deliver(ctx context.Context, event schema.Event, run []providerschema.Message) (err error) {
+// with the resources its run made since it started, such as speech, copied
+// to the session, once the session has been idle for a while, or, for an
+// alert, once it's idle, so it doesn't interrupt a conversation, and gives
+// it to the replies function, such as to send it to the session's channels,
+// as a reply is, and marks it delivered. An outcome which is being
+// delivered isn't delivered again, at the same time, and one whose message
+// the session has already isn't added again, so a delivery which failed can
+// be tried again. It's called in a goroutine of its own, so the run doesn't
+// wait for it.
+func (r *Registry) deliver(ctx context.Context, event schema.Event, since time.Time) (err error) {
 	ctx, endSpan := otel.StartSpan(r.tracer, ctx, "llm.registry.DeliverEvent",
 		attribute.String("arg.event", event.ID.String()),
 		attribute.String("arg.session", event.Session.String()),
@@ -81,6 +91,11 @@ func (r *Registry) deliver(ctx context.Context, event schema.Event, run []provid
 	if event.Status != schema.EventPending || text == "" || event.Session == uuid.Nil() || r.sessionStore == nil {
 		return nil
 	}
+	if _, delivering := r.delivering.LoadOrStore(event.ID, struct{}{}); delivering {
+		return nil
+	}
+	defer r.delivering.Delete(event.ID)
+
 	message := providerschema.Message{
 		MessageMeta: providerschema.MessageMeta{
 			Sender:  "assistant",
@@ -92,18 +107,16 @@ func (r *Registry) deliver(ctx context.Context, event schema.Event, run []provid
 
 	// The resources the run made are the session's too, so the message can
 	// have them
-	if r.resources != nil && event.Run != uuid.Nil() {
-		for _, link := range madeResources(run) {
-			copied, err := r.resources.Copy(ctx, link.URI, event.Run, event.Session)
-			if err != nil {
-				return err
-			}
-			u, err := url.Parse(copied.URI())
-			if err != nil {
-				return err
-			}
-			message.Content = append(message.Content, providerschema.ContentBlock{Resource: &providerschema.Resource{ResourceMeta: providerschema.ResourceMeta{ContentType: copied.Type, URL: u}}})
+	made, err := r.copyRunResources(ctx, event, since)
+	if err != nil {
+		return err
+	}
+	for _, resource := range made {
+		u, err := url.Parse(resource.URI())
+		if err != nil {
+			return err
 		}
+		message.Content = append(message.Content, providerschema.ContentBlock{Resource: &providerschema.Resource{ResourceMeta: providerschema.ResourceMeta{ContentType: resource.Type, URL: u}}})
 	}
 
 	// Wait for the session to be idle, and add it, again, when the session
@@ -112,11 +125,12 @@ func (r *Registry) deliver(ctx context.Context, event schema.Event, run []provid
 	if event.Importance == schema.ImportanceAlert {
 		idle, maxWait = 0, r.delivery.alertWait
 	}
+	added := false
 	for attempt := 0; ; attempt++ {
 		if err := r.waitIdle(ctx, event.Session, idle, maxWait); err != nil {
 			return err
 		}
-		err = r.appendMessage(ctx, event.Session, message)
+		added, err = r.appendMessage(ctx, event.Session, message)
 		if !errors.Is(err, llm.ErrConflict) || attempt >= r.delivery.retries {
 			break
 		}
@@ -125,17 +139,55 @@ func (r *Registry) deliver(ctx context.Context, event schema.Event, run []provid
 		return err
 	}
 
-	// It's delivered, and the session's channels, and the like, are given
-	// it, as they're given a reply
-	if _, err := r.updateEvent(ctx, event.ID, func(e *schema.Event) {
-		e.Status = schema.EventDelivered
-	}); err != nil {
-		return err
-	}
-	if r.replies != nil {
+	// The session's channels, and the like, are given it, once it's added,
+	// as they're given a reply, and it's delivered
+	if added && r.replies != nil {
 		r.replies(ctx, event.Session, text)
 	}
-	return nil
+	_, err = r.updateEvent(ctx, event.ID, func(e *schema.Event) {
+		e.Status = schema.EventDelivered
+	})
+	return err
+}
+
+// deliverInBackground delivers the event's outcome, in a goroutine of its
+// own, logging why, when it isn't, so it's tried again
+func (r *Registry) deliverInBackground(ctx context.Context, event schema.Event, since time.Time) {
+	go func() {
+		if err := r.deliver(context.WithoutCancel(ctx), event, since); err != nil {
+			r.log().WarnContext(ctx, "event not delivered, which is tried again", "event", event.ID, "session", event.Session, "error", err.Error())
+		}
+	}()
+}
+
+// retryDeliveries delivers the outcomes which are pending, which weren't,
+// such as when their delivery failed, or the server stopped, which changed
+// within deliveryRetain, and aren't being delivered
+func (r *Registry) retryDeliveries(ctx context.Context) {
+	if r.eventStore == nil {
+		return
+	}
+	var pending []schema.Event
+	limit := uint(100)
+	for offset := uint(0); ; offset += limit {
+		page, err := r.ListEvents(ctx, schema.EventListRequest{Status: schema.EventPending, Offset: offset, Limit: &limit})
+		if err != nil {
+			r.log().ErrorContext(ctx, "pending events not listed", "error", err.Error())
+			return
+		}
+		pending = append(pending, page.Body...)
+		if uint(len(page.Body)) < limit {
+			break
+		}
+	}
+	for _, event := range pending {
+		if time.Since(event.Modified) > r.delivery.retain {
+			continue
+		} else if _, delivering := r.delivering.Load(event.ID); delivering {
+			continue
+		}
+		r.deliverInBackground(ctx, event, runStarted(event))
+	}
 }
 
 // waitIdle waits until the session has been idle, neither replying, nor
@@ -168,56 +220,85 @@ func (r *Registry) waitIdle(ctx context.Context, id uuid.UUID, idle, maxWait tim
 	}
 }
 
-// appendMessage adds the message to the session, with the time now, and
-// stores it, and publishes that it changed. Returns ErrNotFound when
-// there's no session, and ErrConflict when it changed as it was added.
-func (r *Registry) appendMessage(ctx context.Context, id uuid.UUID, message providerschema.Message) error {
+// appendMessage adds the message, which is an event's, to the session,
+// with the time now, unless the session has it already, and stores it, and
+// publishes that it changed, and returns whether it was added. Returns
+// ErrNotFound when there's no session, and ErrConflict when it changed as it
+// was added.
+func (r *Registry) appendMessage(ctx context.Context, id uuid.UUID, message providerschema.Message) (bool, error) {
 	r.lifecycle.RLock()
 	defer r.lifecycle.RUnlock()
 	session, err := r.sessionStore.Get(ctx, id)
 	if err != nil {
-		return err
+		return false, err
+	}
+	for _, other := range session.Messages {
+		if other.Event != nil && message.Event != nil && other.Event.ID == message.Event.ID {
+			return false, nil
+		}
 	}
 	message.Time = time.Now().UTC()
 	session.Messages = append(session.Messages, message)
 	if session, err = r.sessionStore.Put(ctx, session); err != nil {
-		return err
+		return false, err
 	}
 	r.sessionChanged(eventschema.EventUpdate, session)
-	return nil
+	return true, nil
+}
+
+// copyRunResources copies the resources of the event's run, which it made
+// since it started, to the session the event is for, and returns them, as
+// the session's, the first made first. They're the run's session's, rather
+// than those its messages refer to, so those agents it called made, and
+// those of results which were truncated, are included.
+func (r *Registry) copyRunResources(ctx context.Context, event schema.Event, since time.Time) ([]resourceschema.Resource, error) {
+	if r.resources == nil || event.Run == uuid.Nil() {
+		return nil, nil
+	}
+	var made []resourceschema.Resource
+	limit := uint(resourceschema.MaxListLimit)
+	for offset := uint(0); ; offset += limit {
+		page, err := r.resources.List(ctx, resourceschema.ResourceListRequest{Session: event.Run.String(), Offset: offset, Limit: &limit})
+		if err != nil {
+			return nil, err
+		}
+		for _, resource := range page.Body {
+			if !resource.Created.Before(since) {
+				made = append(made, resource)
+			}
+		}
+		if uint(len(page.Body)) < limit {
+			break
+		}
+	}
+	slices.SortFunc(made, func(a, b resourceschema.Resource) int {
+		if c := a.Created.Compare(b.Created); c != 0 {
+			return c
+		}
+		return strings.Compare(a.Hash, b.Hash)
+	})
+	copied := make([]resourceschema.Resource, 0, len(made))
+	for _, resource := range made {
+		resource, err := r.resources.Copy(ctx, resource.URI(), event.Run, event.Session)
+		if err != nil {
+			return nil, err
+		}
+		copied = append(copied, resource)
+	}
+	return copied, nil
 }
 
 ///////////////////////////////////////////////////////////////////////////////
 // PRIVATE FUNCTIONS
 
-// madeResources returns the resources which the messages of a run made, as
-// links, in the order they were made, once each: those the tools it called
-// returned, and those in its replies
-func madeResources(messages []providerschema.Message) []toolschema.ResourceLink {
-	var result []toolschema.ResourceLink
-	seen := make(map[string]bool)
-	add := func(link toolschema.ResourceLink) {
-		hash, err := resourceschema.ParseURI(link.URI)
-		if err != nil || seen[hash] {
-			return
-		}
-		seen[hash] = true
-		result = append(result, link)
+// runStarted returns when the event's run started, at the latest, which is
+// when it fired, or was due, or its outcome was created
+func runStarted(event schema.Event) time.Time {
+	switch {
+	case !event.Fired.IsZero():
+		return event.Fired
+	case !event.Scheduled.IsZero():
+		return event.Scheduled
 	}
-	for _, message := range messages {
-		for _, block := range message.Content {
-			switch {
-			case block.ToolResult != nil && !block.ToolResult.IsError:
-				var returned toolschema.ResourcesResult
-				if err := json.Unmarshal(block.ToolResult.Content, &returned); err == nil {
-					for _, link := range returned.Resources {
-						add(link)
-					}
-				}
-			case block.Resource != nil && block.Resource.URL != nil && message.Role() == "assistant":
-				add(toolschema.ResourceLink{URI: block.Resource.URL.String(), Type: block.Resource.ContentType})
-			}
-		}
-	}
-	return result
+	return event.Created
 }

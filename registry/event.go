@@ -6,13 +6,13 @@ import (
 	"errors"
 	"slices"
 	"strings"
+	"time"
 	"uuid"
 
 	// Packages
 	otel "github.com/mutablelogic/go-client/pkg/otel"
 	llm "github.com/mutablelogic/go-llm"
 	eventschema "github.com/mutablelogic/go-llm/broadcaster/schema"
-	providerschema "github.com/mutablelogic/go-llm/provider/schema"
 	schema "github.com/mutablelogic/go-llm/registry/schema"
 	toolschema "github.com/mutablelogic/go-llm/toolkit/schema"
 	types "github.com/mutablelogic/go-server/pkg/types"
@@ -106,6 +106,7 @@ func (r *Registry) runEvent(ctx context.Context, id uuid.UUID, req schema.RunEve
 	replied := r.replying(session.ID)
 	r.lifecycle.RUnlock()
 	defer replied()
+	started := time.Now()
 	run, err := r.RunAgent(withoutNamespaces(ctx, req.Without), agent, schema.RunAgentRequest{Input: req.Input, Session: session.ID, Tools: tools}, stream)
 	if err != nil {
 		return nil, err
@@ -158,9 +159,7 @@ func (r *Registry) runEvent(ctx context.Context, id uuid.UUID, req schema.RunEve
 	// session it's for, once it isn't replying, in the background, so the
 	// run doesn't wait for it
 	if event != nil && event.Status == schema.EventPending {
-		go func(event schema.Event, run []providerschema.Message) {
-			_ = r.deliver(context.WithoutCancel(ctx), event, run)
-		}(*event, run.Messages)
+		r.deliverInBackground(ctx, *event, started)
 	}
 	return &schema.RunEventResponse{Session: *session, Run: *run, Event: event}, nil
 }
