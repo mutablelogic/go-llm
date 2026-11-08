@@ -16,7 +16,7 @@ import '@carbon/web-components/es/components/textarea/index.js';
 import '@carbon/web-components/es/components/text-input/index.js';
 import '@carbon/web-components/es/components/button/index.js';
 import '@carbon/web-components/es/components/notification/inline-notification.js';
-import '@carbon/web-components/es/components/accordion/index.js';
+import './disclosure';
 import '@carbon/web-components/es/components/copy-button/index.js';
 
 // ConnectorFormItem is what the panel shows: a connector to add, or the
@@ -83,7 +83,7 @@ export class ConnectorForm extends Panel<ConnectorFormItem> {
         }
 
         /* The advanced fields are spaced as the form is */
-        cds-accordion-item > * {
+        llm-disclosure > * {
             display: block;
             margin-bottom: 1.5rem;
         }
@@ -164,8 +164,7 @@ export class ConnectorForm extends Panel<ConnectorFormItem> {
                     helper-text="Regular expressions of the names of the tools to include, one a line, or every tool"></cds-textarea>
                 <cds-textarea id="exclude" label="Exclude tools (optional)" rows="2" value=${(editing?.exclude ?? []).join('\n')}
                     helper-text="Regular expressions of the names of the tools to exclude, one a line, such as signup"></cds-textarea>
-                <cds-accordion>
-                    <cds-accordion-item title="Advanced">
+                <llm-disclosure label="Advanced">
                         <p class="note">Some servers' sign-in, such as GitHub's, doesn't register clients itself, so you register one with it, with the redirect URL, and give the names of the credentials holding its ID and secret, which the server reads, such as from its environment.</p>
                         <div class="redirect">
                             <cds-text-input id="redirect" label="Redirect URL" readonly value=${this.redirect ?? ''}
@@ -176,8 +175,7 @@ export class ConnectorForm extends Panel<ConnectorFormItem> {
                             helper-text="The name of the credential holding the client's ID"></cds-text-input>
                         <cds-text-input id="client-secret" label="Client secret credential (optional)" placeholder="GITHUB_CLIENT_SECRET" value=${editing?.client_secret_credential ?? ''}
                             helper-text="The name of the credential holding the client's secret"></cds-text-input>
-                    </cds-accordion-item>
-                </cds-accordion>
+                    </llm-disclosure>
                 ${this.error ? html`<cds-inline-notification kind="error" title=${editing ? "It couldn't be saved" : "It couldn't connect"} subtitle=${this.error} hide-close-button low-contrast></cds-inline-notification>` : nothing}
                 ${this.signIn ? html`<cds-inline-notification kind="info" title=${`Sign in to ${this.signIn}`} subtitle="The server needs you to sign in, in a new tab, before it connects. This panel carries on once you have." hide-close-button low-contrast></cds-inline-notification>` : nothing}
                 ${editSignIn ? html`<cds-inline-notification kind="warning" title=${`${editSignIn} needs you to sign in`} subtitle="Its server needs you to sign in, in a new tab, before its tools can be used. Signing in saves your changes first." hide-close-button low-contrast></cds-inline-notification>` : nothing}
