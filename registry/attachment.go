@@ -45,6 +45,10 @@ type Resources interface {
 	// resource with it, or the other session doesn't exist.
 	Copy(ctx context.Context, uri string, from, to uuid.UUID) (resourceschema.Resource, error)
 
+	// List returns the resources the request selects, such as a session's,
+	// a page at a time
+	List(ctx context.Context, req resourceschema.ResourceListRequest) (resourceschema.ResourceList, error)
+
 	// Create keeps the content, as it's read, as a resource, which is what
 	// the meta says, in its session, or on its own, and returns it, and
 	// whether it was created, rather than there being one with its content

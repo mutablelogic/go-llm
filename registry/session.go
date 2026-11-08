@@ -1,9 +1,12 @@
 package registry
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"strings"
+	"time"
 	"uuid"
 
 	// Packages
@@ -290,6 +293,7 @@ func (r *Registry) ForgetSessionMessages(ctx context.Context, id uuid.UUID) (_ *
 		return nil, err
 	}
 	session.Messages = nil
+	session.Forgotten++
 	session.Usage.Input, session.Usage.Output, session.Usage.Overhead = 0, 0, 0
 	if session, err = r.sessionStore.Put(ctx, session); err != nil {
 		return nil, err
@@ -340,6 +344,7 @@ func (r *Registry) Chat(ctx context.Context, id uuid.UUID, messages []llm.Messag
 
 	// Ask the session's model, and add what it adds to the session, with the
 	// usage
+	started := time.Now()
 	response, err := r.WithSession(ctx, session, messages, stream)
 	if err != nil {
 		return nil, err
@@ -354,7 +359,7 @@ func (r *Registry) Chat(ctx context.Context, id uuid.UUID, messages []llm.Messag
 		latest, getErr := r.sessionStore.Get(ctx, id)
 		if getErr != nil {
 			return nil, getErr
-		} else if added, ok := addedAfter(earlier, latest.Messages); ok && len(added) > 0 && latest.SessionMeta.String() == session.SessionMeta.String() {
+		} else if added, ok := addedAfter(earlier, latest.Messages); ok && len(added) > 0 && latest.Forgotten == session.Forgotten && latest.SessionMeta.String() == session.SessionMeta.String() {
 			stored, err = r.sessionStore.Put(ctx, withReply(latest, earlier, added, response))
 		}
 	}
@@ -367,7 +372,11 @@ func (r *Registry) Chat(ctx context.Context, id uuid.UUID, messages []llm.Messag
 	// The reply, which is the last message, when it's the model's
 	if r.replies != nil && len(response.Messages) > 0 {
 		if reply := response.Messages[len(response.Messages)-1]; reply.Role() == "assistant" {
-			r.replies(context.WithoutCancel(ctx), session.ID, Reply{Text: reply.Text(), Resources: madeResources(response.Messages)})
+			made, err := r.resourcesSince(ctx, session.ID, started, response.Messages)
+			if err != nil {
+				return nil, err
+			}
+			r.replies(context.WithoutCancel(ctx), session.ID, Reply{Text: reply.Text(), Resources: resourceLinks(made)})
 		}
 	}
 	return &schema.ChatResponse{ID: session.ID, Serial: session.Serial, SessionResponse: *response}, nil
@@ -394,14 +403,16 @@ func withReply(session schema.Session, earlier, added []providerschema.Message, 
 }
 
 // addedAfter returns the messages which follow the earlier messages, and
-// whether the messages are the earlier messages, as they were, followed by
-// them, rather than changed otherwise, such as when they were forgotten
+// whether the messages are the earlier messages, exactly as they were,
+// followed by them, rather than changed otherwise
 func addedAfter(earlier, messages []providerschema.Message) ([]providerschema.Message, bool) {
 	if len(messages) < len(earlier) {
 		return nil, false
 	}
 	for i := range earlier {
-		if earlier[i].Role() != messages[i].Role() || !earlier[i].Time.Equal(messages[i].Time) || earlier[i].Text() != messages[i].Text() {
+		a, errA := json.Marshal(earlier[i])
+		b, errB := json.Marshal(messages[i])
+		if errA != nil || errB != nil || !bytes.Equal(a, b) {
 			return nil, false
 		}
 	}
