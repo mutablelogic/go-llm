@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"sync/atomic"
 	"testing"
+	"uuid"
 
 	// Packages
 	llm "github.com/mutablelogic/go-llm"
@@ -141,4 +142,45 @@ func Test_SystemPromptsReadOnce(t *testing.T) {
 			assert.Equal(t, int32(1), reads.Load())
 		})
 	}
+}
+
+// sessional is a namespace which says more of the session, which it was
+// asked about
+type sessional struct {
+	toolkit.Namespace
+	asked []uuid.UUID
+}
+
+func (s *sessional) SessionPrompt(_ context.Context, session uuid.UUID) string {
+	s.asked = append(s.asked, session)
+	if session.String() == connected.String() {
+		return "  This conversation is connected.  "
+	}
+	return ""
+}
+
+var connected = uuid.New()
+
+func Test_SessionPrompt(t *testing.T) {
+	ctx := context.Background()
+	tk, err := toolkit.New(ctx)
+	require.NoError(t, err)
+	ns := &sessional{Namespace: toolkit.NewNamespace("messaging", "Chats can be connected.", tool{name: "send"})}
+	require.NoError(t, tk.Add(ns))
+
+	// Without a session, the namespace's prompt, as it is
+	prompts, err := tk.SystemPrompts(ctx, "messaging:*")
+	require.NoError(t, err)
+	assert.Equal(t, []string{"Chats can be connected."}, prompts)
+	assert.Empty(t, ns.asked)
+
+	// With one, what it says of the session is added, or not, when it says
+	// nothing
+	prompts, err = tk.SystemPrompts(toolkit.WithPromptSession(ctx, connected), "messaging:send")
+	require.NoError(t, err)
+	assert.Equal(t, []string{"Chats can be connected.\n\nThis conversation is connected."}, prompts)
+	prompts, err = tk.SystemPrompts(toolkit.WithPromptSession(ctx, uuid.New()), "*")
+	require.NoError(t, err)
+	assert.Equal(t, []string{"Chats can be connected."}, prompts)
+	assert.Len(t, ns.asked, 2)
 }

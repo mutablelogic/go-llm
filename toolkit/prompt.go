@@ -5,6 +5,7 @@ import (
 	"maps"
 	"slices"
 	"strings"
+	"uuid"
 
 	// Packages
 	otel "github.com/mutablelogic/go-client/pkg/otel"
@@ -19,7 +20,9 @@ import (
 // with the names, as Tools returns them, to add to the system prompt of a
 // model which can call them, in the order of the names, once each, without
 // those which are empty, or the same as one before. Each namespace's system
-// prompt is read once, as it can change, such as one which has the time. A namespace named by
+// prompt is read once, as it can change, such as one which has the time,
+// with what a SessionPrompter says of the session the context is for, which
+// WithPromptSession sets. A namespace named by
 // its name and "*", such as "memory:*", or by "*", has its system prompt,
 // even when it has no tools. Returns the same errors as Tools.
 func (self *Toolkit) SystemPrompts(ctx context.Context, names ...string) (_ []string, err error) {
@@ -77,6 +80,15 @@ func (self *Toolkit) SystemPrompts(ctx context.Context, names ...string) (_ []st
 				prompt = prompter.SystemPromptFor(nil)
 			} else {
 				prompt = prompter.SystemPromptFor(tools[namespace])
+			}
+		}
+		// What it says of the session the model is asked in, such as how to
+		// use what's connected to it
+		if prompter, ok := ns.(SessionPrompter); ok {
+			if session := promptSession(ctx); session != uuid.Nil() {
+				if more := strings.TrimSpace(prompter.SessionPrompt(ctx, session)); more != "" {
+					prompt = strings.TrimSpace(prompt) + "\n\n" + more
+				}
 			}
 		}
 		if prompt = strings.TrimSpace(prompt); prompt != "" && !slices.Contains(result, prompt) {

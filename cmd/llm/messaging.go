@@ -122,7 +122,7 @@ func newServerMessaging(ctx server.Cmd, tools *toolkit.Toolkit, sessions *atomic
 		if r == nil {
 			return llm.ErrServiceUnavailable.With("registry isn't running")
 		}
-		msg, err := chatMessage(ctx, res, channel.Session, message)
+		msg, err := chatMessage(ctx, res, channel, message)
 		if err != nil {
 			return err
 		}
@@ -153,7 +153,8 @@ func openFile(res *resource.Manager) messaging.OpenFunc {
 // message in its session: the files sent with it, such as photos, or voice
 // messages, which are kept as the session's files, as they're downloaded,
 // and attached to it, as the web UI attaches them, and its text
-func chatMessage(ctx context.Context, res *resource.Manager, session uuid.UUID, message messaging.Message) (*providerschema.Message, error) {
+func chatMessage(ctx context.Context, res *resource.Manager, channel schema.Channel, message messaging.Message) (*providerschema.Message, error) {
+	session := channel.Session
 	content := make([]providerschema.ContentBlock, 0, len(message.Attachments)+1)
 	var unavailable, names []string
 	for _, attachment := range message.Attachments {
@@ -186,7 +187,13 @@ func chatMessage(ctx context.Context, res *resource.Manager, session uuid.UUID, 
 
 	// The text which is the caption of the files, which was sent with them,
 	// rather than as a message of its own, which the model is told
+	// Where it was sent, and who sent it, so a model can tell the people of
+	// a group apart, and the text which is the caption of the files, which
+	// was sent with them, rather than as a message of its own
 	var notes []string
+	if where := origin(channel, message); where != "" {
+		notes = append(notes, where)
+	}
 	if text != "" && message.Caption && len(names) > 0 {
 		notes = append(notes, "The person's text is the caption of "+list(names)+", which they sent it with.")
 	}
@@ -273,4 +280,26 @@ func progressStream(progress func(string)) llm.GeneratorStreamFn {
 			}
 		}
 	}
+}
+
+// origin returns where the message was sent, and who sent it, such as Sent
+// on Telegram, in the chat "Family", by David, or nothing, when it isn't
+// known
+func origin(channel schema.Channel, message messaging.Message) string {
+	provider := strings.TrimSpace(channel.Provider)
+	if provider == "" {
+		return ""
+	}
+	where := "Sent on " + strings.ToUpper(provider[:1]) + provider[1:]
+	chat, from := strings.TrimSpace(message.Title), strings.TrimSpace(message.From)
+	if chat == "" {
+		chat = strings.TrimSpace(channel.Title)
+	}
+	if chat != "" && chat != from {
+		where += fmt.Sprintf(", in the chat %q", chat)
+	}
+	if from != "" {
+		where += ", by " + from
+	}
+	return where + "."
 }

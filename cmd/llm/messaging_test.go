@@ -108,7 +108,7 @@ func Test_ChatMessage(t *testing.T) {
 
 	// The files are kept as the session's, as they're downloaded, and
 	// attached to the message, before its text
-	message, err := chatMessage(ctx, res, session, messaging.Message{Text: " Our trip ", Caption: true, Attachments: []messaging.Attachment{
+	message, err := chatMessage(ctx, res, schema.Channel{ChannelMeta: schema.ChannelMeta{Session: session}}, messaging.Message{Text: " Our trip ", Caption: true, Attachments: []messaging.Attachment{
 		attachment("photo.jpg", "image/jpeg", "JPEG"),
 		attachment("voice.ogg", "audio/ogg", "OggS"),
 	}})
@@ -138,14 +138,14 @@ func Test_ChatMessage(t *testing.T) {
 	}
 
 	// A file which can't be downloaded is an error
-	_, err = chatMessage(ctx, res, session, messaging.Message{Attachments: []messaging.Attachment{{Name: "gone.jpg", Open: func(context.Context) (io.ReadCloser, error) {
+	_, err = chatMessage(ctx, res, schema.Channel{ChannelMeta: schema.ChannelMeta{Session: session}}, messaging.Message{Attachments: []messaging.Attachment{{Name: "gone.jpg", Open: func(context.Context) (io.ReadCloser, error) {
 		return nil, llm.ErrNotFound.With("telegram file")
 	}}}})
 	assert.ErrorIs(t, err, llm.ErrNotFound)
 
 	// A file which wasn't received, such as one which is too large, is a note
 	// to the model, so it can say so, and a photo's description is kept
-	message, err = chatMessage(ctx, res, session, messaging.Message{Attachments: []messaging.Attachment{
+	message, err = chatMessage(ctx, res, schema.Channel{ChannelMeta: schema.ChannelMeta{Session: session}}, messaging.Message{Attachments: []messaging.Attachment{
 		{Name: "film.mp4", Unavailable: "it's too large (25.0 MB)"},
 		{Name: "photo.jpg", Type: "image/jpeg", Description: "A photo, which Telegram compressed", Open: func(context.Context) (io.ReadCloser, error) {
 			return io.NopCloser(strings.NewReader("JPEG2")), nil
@@ -161,12 +161,12 @@ func Test_ChatMessage(t *testing.T) {
 	assert.Equal(t, "A photo, which Telegram compressed", kept.Description)
 
 	// One which can't be opened, without a reason, says it couldn't be
-	message, err = chatMessage(ctx, res, session, messaging.Message{Text: "Here", Attachments: []messaging.Attachment{{Name: "lost.jpg"}}})
+	message, err = chatMessage(ctx, res, schema.Channel{ChannelMeta: schema.ChannelMeta{Session: session}}, messaging.Message{Text: "Here", Attachments: []messaging.Attachment{{Name: "lost.jpg"}}})
 	require.NoError(t, err)
 	assert.Contains(t, message.Text(), "lost.jpg wasn't received, as it couldn't be downloaded")
 
 	// Text which isn't a caption isn't said to be one
-	message, err = chatMessage(ctx, res, session, messaging.Message{Text: "Look", Attachments: []messaging.Attachment{
+	message, err = chatMessage(ctx, res, schema.Channel{ChannelMeta: schema.ChannelMeta{Session: session}}, messaging.Message{Text: "Look", Attachments: []messaging.Attachment{
 		{Name: "a.jpg", Type: "image/jpeg", Open: func(context.Context) (io.ReadCloser, error) {
 			return io.NopCloser(strings.NewReader("JPEG3")), nil
 		}},
@@ -175,7 +175,7 @@ func Test_ChatMessage(t *testing.T) {
 	assert.NotContains(t, message.Text(), "caption")
 
 	// Text alone is the message
-	message, err = chatMessage(ctx, nil, session, messaging.Message{Text: "Hello"})
+	message, err = chatMessage(ctx, nil, schema.Channel{ChannelMeta: schema.ChannelMeta{Session: session}}, messaging.Message{Text: "Hello"})
 	require.NoError(t, err)
 	assert.Equal(t, "Hello", message.Text())
 }
@@ -213,11 +213,30 @@ func Test_ChatMessageWithoutResources(t *testing.T) {
 	// Without resources, each file is a note that it wasn't received, rather
 	// than the first stopping the others
 	open := func(context.Context) (io.ReadCloser, error) { return io.NopCloser(strings.NewReader("x")), nil }
-	message, err := chatMessage(t.Context(), nil, uuid.New(), messaging.Message{Text: "Two files", Attachments: []messaging.Attachment{
+	message, err := chatMessage(t.Context(), nil, schema.Channel{ChannelMeta: schema.ChannelMeta{Session: uuid.New()}}, messaging.Message{Text: "Two files", Attachments: []messaging.Attachment{
 		{Name: "a.jpg", Open: open},
 		{Name: "b.pdf", Open: open},
 	}})
 	require.NoError(t, err)
 	assert.Contains(t, message.Text(), "a.jpg wasn't received, as files can't be kept")
 	assert.Contains(t, message.Text(), "b.pdf wasn't received, as files can't be kept")
+}
+
+func Test_Origin(t *testing.T) {
+	// Where a message was sent, and who sent it, which, in a chat with one
+	// person, is the chat's name
+	telegram := func(title string) schema.Channel {
+		return schema.Channel{ChannelMeta: schema.ChannelMeta{Provider: "telegram", Title: title}}
+	}
+	assert.Equal(t, "Sent on Telegram, by David.", origin(telegram("David"), messaging.Message{Title: "David", From: "David"}))
+	assert.Equal(t, `Sent on Telegram, in the chat "Family", by Anne.`, origin(telegram("Family"), messaging.Message{Title: "Family", From: "Anne"}))
+	assert.Equal(t, `Sent on Telegram, in the chat "Family".`, origin(telegram("Family"), messaging.Message{}))
+	assert.Empty(t, origin(schema.Channel{}, messaging.Message{From: "David"}))
+
+	// and the session is told it, before what it says of the files
+	message, err := chatMessage(t.Context(), nil, telegram("Family"), messaging.Message{Title: "Family", From: "Anne", Text: "Who's cooking?"})
+	require.NoError(t, err)
+	require.Len(t, message.Content, 2)
+	assert.Equal(t, "Who's cooking?", types.Value(message.Content[0].Text))
+	assert.Equal(t, "<system-reminder>\nSent on Telegram, in the chat \"Family\", by Anne.\n</system-reminder>", types.Value(message.Content[1].Text))
 }

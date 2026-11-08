@@ -11,6 +11,7 @@ import (
 	llm "github.com/mutablelogic/go-llm"
 	providerschema "github.com/mutablelogic/go-llm/provider/schema"
 	schema "github.com/mutablelogic/go-llm/registry/schema"
+	toolkit "github.com/mutablelogic/go-llm/toolkit"
 	types "github.com/mutablelogic/go-server/pkg/types"
 	attribute "go.opentelemetry.io/otel/attribute"
 )
@@ -80,7 +81,9 @@ func (r *Registry) WithSession(ctx context.Context, session schema.Session, mess
 	}
 
 	// Ask the model, until it replies, running the tools it calls
-	model, loop, _, err := r.generatorLoop(ctx, meta, DefaultMaxIterations)
+	// The namespaces' system prompts are for the session, such as of what's
+	// connected to it
+	model, loop, _, err := r.generatorLoop(toolkit.WithPromptSession(ctx, session.ID), meta, DefaultMaxIterations)
 	if err != nil {
 		return nil, err
 	}
