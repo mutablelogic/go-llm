@@ -17,6 +17,11 @@ import type { CountFilter } from '../component/count-filter';
 import { AgentEditor, agentTemplate, type AgentEditorItem } from '../component/agent-editor';
 import { ToolsPage } from '../page/tools-page';
 import { deleteAgent, getAgent, getAgentYAML, saveAgentYAML } from '../api/agent';
+import { createConnector, deleteConnector, getConnector } from '../api/connector';
+import { ApiError } from '../api/client';
+import { connectorName, type Connector, type ConnectorMeta } from '../schema/connector';
+import { ConnectorForm } from '../component/connector-form';
+import { routeHref } from '../router';
 
 export interface ToolsViews {
     page: ToolsPage | null;
@@ -24,7 +29,16 @@ export interface ToolsViews {
     table: ToolTable | null;
     view: ToolView | null;
     agent: AgentEditor | null;
+    connector: ConnectorForm | null;
 }
+
+// connectWait is how long a connector which is added is waited for, as the
+// server connects to it, and connectPoll how often it's asked whether it
+// has, and connectNames how many names, from its URL, are tried, when the
+// first is another connector's
+const connectWait = 45_000;
+const connectPoll = 500;
+const connectNames = 10;
 
 // agentNamespace is the namespace of the agents, as tools
 const agentNamespace = 'agent';
@@ -62,6 +76,101 @@ export class ToolsController extends ListController<Tool> {
         views.agent?.addEventListener(AgentEditor.eventSave, (e) => void this.saveAgent((e as CustomEvent<string>).detail));
         views.agent?.addEventListener(AgentEditor.eventDelete, (e) => void this.deleteAgent((e as CustomEvent<string>).detail));
         views.agent?.addEventListener(Panel.eventClose, () => this.hideAgent());
+
+        // An MCP connector is added, and connected, whose tools are added
+        views.page?.addEventListener(ToolsPage.eventAddConnector, () => this.showConnector());
+        views.connector?.addEventListener(ConnectorForm.eventConnect, (e) => void this.addConnector((e as CustomEvent<ConnectorMeta>).detail));
+        views.connector?.addEventListener(Panel.eventClose, () => this.hideConnector());
+    }
+
+    // showConnector opens the panel which adds an MCP connector
+    private showConnector() {
+        const form = this.views.connector;
+        if (form) {
+            form.connecting = false;
+            form.error = undefined;
+            form.item = { mode: 'add' };
+        }
+    }
+
+    // hideConnector closes the panel which adds an MCP connector
+    private hideConnector() {
+        if (this.views.connector) {
+            this.views.connector.item = undefined;
+        }
+    }
+
+    // addConnector adds the connector, with a name from its URL's host, or another
+    // which isn't taken, and waits for the server to connect to it, when it
+    // shows its tools, or says why it couldn't, and deletes it, so a URL which
+    // isn't an MCP server's isn't kept, in the panel, when it's still open
+    private async addConnector(meta: ConnectorMeta) {
+        const form = this.views.connector;
+        const item = form?.item;
+        if (!form || !item) {
+            return;
+        }
+        form.connecting = true;
+        form.error = undefined;
+        let connector: Connector | undefined;
+        try {
+            connector = await this.createConnector(meta);
+            const status = await this.waitConnected(connector.name, () => form.item === item);
+            if (form.item !== item) {
+                // The panel was closed, so the server keeps trying
+                return;
+            }
+            if (status?.connected) {
+                this.notifications.push({ kind: 'success', title: `${status.server?.name ?? status.name} is connected` });
+                this.hideConnector();
+                void this.refresh();
+                if (status.namespace) {
+                    location.hash = routeHref('tools', status.namespace);
+                }
+                return;
+            }
+            await deleteConnector(connector.name).catch(() => undefined);
+            form.error = status?.error ?? "It didn't connect in time";
+        } catch (error) {
+            if (form.item === item) {
+                form.error = error instanceof Error ? error.message : String(error);
+            }
+        } finally {
+            if (form.item === item) {
+                form.connecting = false;
+            }
+        }
+    }
+
+    // createConnector creates the connector, with a name from its URL's host,
+    // or, when it's another connector's, the name with a number added
+    private async createConnector(meta: ConnectorMeta): Promise<Connector> {
+        const base = connectorName(meta.url);
+        for (let i = 1; ; i++) {
+            try {
+                return await createConnector(i === 1 ? base : `${base}-${i}`, meta);
+            } catch (error) {
+                if (!(error instanceof ApiError && error.code === 409) || i >= connectNames) {
+                    throw error;
+                }
+            }
+        }
+    }
+
+    // waitConnected returns the connector, once the server has connected to
+    // it, or couldn't, or it's waited for connectWait, or undefined, when it's
+    // no longer waited for
+    private async waitConnected(name: string, waiting: () => boolean): Promise<Connector | undefined> {
+        const deadline = Date.now() + connectWait;
+        let status = await getConnector(name);
+        while (!status.connected && !status.error && Date.now() < deadline) {
+            await new Promise((resolve) => setTimeout(resolve, connectPoll));
+            if (!waiting()) {
+                return undefined;
+            }
+            status = await getConnector(name);
+        }
+        return status;
     }
 
     // close closes the tool which is shown, and the agent

@@ -1,6 +1,7 @@
 // The page of the tools, and the agents, which models can call, with an
-// action which loads them again, and, when the agents are shown, one which
-// starts a new agent
+// action which adds an MCP connector, whose tools are added, when every
+// tool is shown, and, when the agents are shown, one which starts a new
+// agent
 
 import { html, nothing } from 'lit';
 import { customElement, property } from 'lit/decorators.js';
@@ -14,8 +15,10 @@ import '@carbon/web-components/es/components/button/index.js';
 
 @customElement('llm-tools-page')
 export class ToolsPage extends Page {
-    // The name of the event fired to start a new agent
+    // The names of the events fired to start a new agent, and to add an MCP
+    // connector
     static readonly eventNewAgent = 'llm-tools-page-new-agent';
+    static readonly eventAddConnector = 'llm-tools-page-add-connector';
 
     heading = 'Tools';
     description = 'The tools, and agents, which models can call';
@@ -36,6 +39,11 @@ export class ToolsPage extends Page {
                     New agent ${iconLoader(Add16, { slot: 'icon' })}
                 </cds-button>
             ` : nothing}
+            ${this.namespace ? nothing : html`
+                <cds-button kind="primary" size="md" @click=${() => this.dispatchEvent(new CustomEvent(ToolsPage.eventAddConnector))}>
+                    Add MCP connector ${iconLoader(Add16, { slot: 'icon' })}
+                </cds-button>
+            `}
         `;
     }
 }
