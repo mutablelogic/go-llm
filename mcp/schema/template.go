@@ -2,6 +2,9 @@ package schema
 
 import (
 	"strings"
+
+	// Packages
+	llm "github.com/mutablelogic/go-llm"
 )
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -29,6 +32,17 @@ type ConnectorTemplateList struct {
 
 ///////////////////////////////////////////////////////////////////////////////
 // PUBLIC METHODS
+
+// Validate returns ErrBadParameter when the template has no name, as it's
+// listed by it, or its URL, or the names of its credentials, aren't valid
+func (t ConnectorTemplate) Validate() error {
+	if strings.TrimSpace(t.Name) == "" {
+		return llm.ErrBadParameter.Withf("template of %q has no name", t.URL)
+	} else if err := t.Meta().Validate(); err != nil {
+		return llm.ErrBadParameter.Withf("template %q: %v", t.Name, err)
+	}
+	return nil
+}
 
 // Meta returns the fields of a connector of the template
 func (t ConnectorTemplate) Meta() ConnectorMeta {

@@ -44,10 +44,8 @@ func ParseTemplates(data []byte) ([]schema.ConnectorTemplate, error) {
 		return nil, llm.ErrBadParameter.Withf("templates: %v", err)
 	}
 	for _, template := range result {
-		if strings.TrimSpace(template.Name) == "" {
-			return nil, llm.ErrBadParameter.Withf("template of %q has no name", template.URL)
-		} else if err := template.Meta().Validate(); err != nil {
-			return nil, llm.ErrBadParameter.Withf("template %q: %v", template.Name, err)
+		if err := template.Validate(); err != nil {
+			return nil, err
 		}
 	}
 	return result, nil
@@ -84,15 +82,21 @@ func (r *Registry) ListTemplates(ctx context.Context) (*schema.ConnectorTemplate
 
 // sameURL returns the URL as it's compared, to say whether a connector is
 // of a template: without the space around it, with its scheme, and host, in
-// lower case, and without a slash at the end of its path
+// lower case, and without a slash at the end of its path, as it's escaped,
+// so an escaped slash, such as in /tenant%2Fid/mcp, isn't another
+// separator, and the URL another's
 func sameURL(rawURL string) string {
 	u, err := url.Parse(strings.TrimSpace(rawURL))
 	if err != nil {
 		return strings.TrimSpace(rawURL)
 	}
 	u.Scheme, u.Host = strings.ToLower(u.Scheme), strings.ToLower(u.Host)
-	u.Path = strings.TrimSuffix(u.Path, "/")
-	u.RawPath = ""
+	escaped := strings.TrimSuffix(u.EscapedPath(), "/")
+	path, err := url.PathUnescape(escaped)
+	if err != nil {
+		return strings.TrimSpace(rawURL)
+	}
+	u.Path, u.RawPath = path, escaped
 	return u.String()
 }
 

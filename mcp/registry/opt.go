@@ -100,8 +100,8 @@ func WithCredentials(credentials Credentials) Opt {
 func WithTemplates(templates ...schema.ConnectorTemplate) Opt {
 	return func(o *opt) error {
 		for _, template := range templates {
-			if err := template.Meta().Validate(); err != nil {
-				return llm.ErrBadParameter.Withf("template %q: %v", template.Name, err)
+			if err := template.Validate(); err != nil {
+				return err
 			}
 		}
 		o.templates = append([]schema.ConnectorTemplate{}, templates...)
