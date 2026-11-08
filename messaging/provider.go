@@ -2,7 +2,9 @@ package messaging
 
 import (
 	"context"
+	"io"
 	"time"
+	"uuid"
 )
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -38,6 +40,43 @@ type Typer interface {
 	// Typing shows that a reply is being written in the chat with the
 	// address, for a few seconds, or until a message is sent
 	Typing(ctx context.Context, address string) error
+}
+
+// FileSender is a provider which can send files, such as images, and
+// speech
+type FileSender interface {
+	// SendFile sends the file, whose content is read as it's sent, to the
+	// chat with the address, with the caption, which is Markdown, when it
+	// has one, under it, or before it, when it's too long to be its caption
+	SendFile(ctx context.Context, address string, file File, content io.Reader, caption string) error
+}
+
+// File is a session's file, which is sent to its channels
+type File struct {
+	// URI is the file's, such as resource:///<hash>
+	URI string
+
+	// Name is the file's name, such as speech.ogg
+	Name string
+
+	// Type is its MIME type, such as image/png
+	Type string
+
+	// Size is its size, in bytes
+	Size int64
+}
+
+// OpenFunc opens the session's file with the URI, and returns what it is,
+// and its content, which the caller closes. Returns ErrNotFound when the
+// session has no file with it.
+type OpenFunc func(ctx context.Context, session uuid.UUID, uri string) (File, io.ReadCloser, error)
+
+// Outgoing is what's sent to a session's channels: text, which is
+// Markdown, and the session's files, by their URIs, such as an image, or
+// speech
+type Outgoing struct {
+	Text  string
+	Files []string
 }
 
 // Message is a message sent to a provider, from a chat

@@ -5,8 +5,10 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"io"
 	"path/filepath"
 	"sync/atomic"
+	"uuid"
 
 	// Packages
 	llm "github.com/mutablelogic/go-llm"
@@ -15,6 +17,8 @@ import (
 	telegram "github.com/mutablelogic/go-llm/messaging/telegram"
 	providerschema "github.com/mutablelogic/go-llm/provider/schema"
 	registry "github.com/mutablelogic/go-llm/registry"
+	resource "github.com/mutablelogic/go-llm/resource"
+	resourceschema "github.com/mutablelogic/go-llm/resource/schema"
 	toolkit "github.com/mutablelogic/go-llm/toolkit"
 	server "github.com/mutablelogic/go-server"
 )
@@ -117,4 +121,20 @@ func newServerMessaging(ctx server.Cmd, tools *toolkit.Toolkit, sessions *atomic
 	}
 	opts = append([]messaging.Opt{messaging.WithTracer(ctx.Tracer()), messaging.WithProvider(bot), messaging.WithChat(chat)}, opts...)
 	return messaging.New(&channelStore{file: file}, opts...)
+}
+
+// openFile returns the function which opens a session's file, which is one
+// of the resources, by its URI, to send it to the session's channels
+func openFile(res *resource.Manager) messaging.OpenFunc {
+	return func(ctx context.Context, session uuid.UUID, uri string) (messaging.File, io.ReadCloser, error) {
+		hash, err := resourceschema.ParseURI(uri)
+		if err != nil {
+			return messaging.File{}, nil, err
+		}
+		r, content, err := res.Open(ctx, resourceschema.ResourceKey{Hash: hash, Session: &session})
+		if err != nil {
+			return messaging.File{}, nil, err
+		}
+		return messaging.File{URI: r.URI(), Name: r.Name, Type: r.Type, Size: r.Size}, content, nil
+	}
 }

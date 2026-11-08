@@ -23,6 +23,7 @@ type opt struct {
 	tracer      trace.Tracer
 	chat        ChatFunc
 	session     SessionFunc
+	open        OpenFunc
 }
 
 // ChatFunc sends the message, which was sent in the channel's chat, to the
@@ -105,6 +106,16 @@ func WithChat(fn ChatFunc) Opt {
 func WithSessions(fn SessionFunc) Opt {
 	return func(o *opt) error {
 		o.session = fn
+		return nil
+	}
+}
+
+// WithFiles sets the function which opens a session's files, so they're
+// sent to its channels, with its replies, by the providers which can send
+// files, without which only text is sent
+func WithFiles(fn OpenFunc) Opt {
+	return func(o *opt) error {
+		o.open = fn
 		return nil
 	}
 }

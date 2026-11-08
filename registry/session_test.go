@@ -319,15 +319,16 @@ func Test_Chat(t *testing.T) {
 	t.Run("Replies", func(t *testing.T) {
 		// Each reply which is stored is given to the function, with its
 		// session, and a reply which isn't stored isn't
-		type reply struct {
+		type replied struct {
 			session uuid.UUID
 			text    string
 		}
-		var got []reply
+		var got []replied
 		store := test.NewSessionStore()
-		r, err := registry.New(registry.WithSessionStore(store), registry.WithToolkit(test.NewToolkit(t)), registry.WithReplies(func(ctx context.Context, session uuid.UUID, text string) {
+		r, err := registry.New(registry.WithSessionStore(store), registry.WithToolkit(test.NewToolkit(t)), registry.WithReplies(func(ctx context.Context, session uuid.UUID, reply registry.Reply) {
 			assert.NoError(t, ctx.Err())
-			got = append(got, reply{session, text})
+			assert.Empty(t, reply.Resources)
+			got = append(got, replied{session, reply.Text})
 		}))
 		require.NoError(t, err)
 		require.NoError(t, r.Add("", newScripted(text("Hello"), text("Again"))))
@@ -342,7 +343,7 @@ func Test_Chat(t *testing.T) {
 		require.NoError(t, err)
 		_, err = r.Chat(ctx, session.ID, hi("Hi again"), nil)
 		require.NoError(t, err)
-		assert.Equal(t, []reply{{session.ID, "Hello"}, {session.ID, "Again"}}, got)
+		assert.Equal(t, []replied{{session.ID, "Hello"}, {session.ID, "Again"}}, got)
 
 		_, err = r.Chat(ctx, uuid.New(), hi("Nobody"), nil)
 		assert.ErrorIs(t, err, llm.ErrNotFound)

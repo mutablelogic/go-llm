@@ -5,6 +5,9 @@ package telegram
 
 import (
 	"context"
+	"fmt"
+	"io"
+	"mime"
 	"net/url"
 	"strconv"
 	"strings"
@@ -14,6 +17,7 @@ import (
 	// Packages
 	client "github.com/mutablelogic/go-client"
 	messaging "github.com/mutablelogic/go-llm/messaging"
+	types "github.com/mutablelogic/go-server/pkg/types"
 )
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -30,6 +34,7 @@ type Telegram struct {
 
 var _ messaging.Provider = (*Telegram)(nil)
 var _ messaging.Typer = (*Telegram)(nil)
+var _ messaging.FileSender = (*Telegram)(nil)
 
 ///////////////////////////////////////////////////////////////////////////////
 // GLOBALS
@@ -41,6 +46,16 @@ const (
 	// pollTimeout is how long, in seconds, a request for updates waits for
 	// one, before it returns none
 	pollTimeout = 30
+
+	// maxCaption is the most characters of a file's caption, which is less
+	// than Telegram's 1,024, as it counts some characters, such as emoji,
+	// as two
+	maxCaption = 1000
+
+	// maxUpload is the largest file a bot can send, and maxPhoto the
+	// largest image which is sent as a photo, rather than a document
+	maxUpload = 50 << 20
+	maxPhoto  = 10 << 20
 
 	// maxText is the most characters of a message, beyond which a text is
 	// sent as more than one, which is less than Telegram's 4,096, as it
@@ -131,6 +146,45 @@ func (t *Telegram) Send(ctx context.Context, address, text string) error {
 	return nil
 }
 
+// SendFile sends the file to the chat, as a photo, when it's an image
+// Telegram shows as one, a voice message, when it's Ogg, or Opus, audio,
+// a track, when it's MP3, or M4A, audio, and otherwise as a document, with
+// the caption, which is Markdown, under it, formatted, when it fits, or as
+// a message before it, when it doesn't. A file which is larger than a bot
+// can send is a note, with its name, instead.
+func (t *Telegram) SendFile(ctx context.Context, address string, file messaging.File, content io.Reader, caption string) error {
+	name := fileName(file)
+	if file.Size > maxUpload {
+		return t.Send(ctx, address, fmt.Sprintf("📎 %s is too large to send here (%s)", name, megabytes(file.Size)))
+	}
+
+	// The caption, as Telegram's HTML, when it's one message, which fits
+	parseMode := ""
+	if text := strings.TrimSpace(caption); text != "" {
+		if p := parts(text, maxCaption); len(p) == 1 {
+			caption, parseMode = p[0].html, "HTML"
+		} else {
+			if err := t.Send(ctx, address, text); err != nil {
+				return err
+			}
+			caption = ""
+		}
+	}
+	f := types.File{Path: name, Body: io.NopCloser(content), ContentType: file.Type}
+	var err error
+	switch kind(file) {
+	case "photo":
+		_, err = upload[message](ctx, t.client, "sendPhoto", sendPhotoRequest{ChatID: address, Photo: f, Caption: caption, ParseMode: parseMode})
+	case "voice":
+		_, err = upload[message](ctx, t.client, "sendVoice", sendVoiceRequest{ChatID: address, Voice: f, Caption: caption, ParseMode: parseMode})
+	case "audio":
+		_, err = upload[message](ctx, t.client, "sendAudio", sendAudioRequest{ChatID: address, Audio: f, Caption: caption, ParseMode: parseMode})
+	default:
+		_, err = upload[message](ctx, t.client, "sendDocument", sendDocumentRequest{ChatID: address, Document: f, Caption: caption, ParseMode: parseMode})
+	}
+	return err
+}
+
 // Typing shows "typing…" in the chat, for five seconds, or until a message
 // is sent
 func (t *Telegram) Typing(ctx context.Context, address string) error {
@@ -140,6 +194,43 @@ func (t *Telegram) Typing(ctx context.Context, address string) error {
 
 ///////////////////////////////////////////////////////////////////////////////
 // PRIVATE FUNCTIONS
+
+// kind returns how the file is sent: as a photo, a voice message, audio,
+// or a document
+func kind(file messaging.File) string {
+	mediaType, _, err := mime.ParseMediaType(file.Type)
+	if err != nil {
+		return "document"
+	}
+	switch mediaType {
+	case "image/jpeg", "image/png", "image/webp":
+		if file.Size <= maxPhoto {
+			return "photo"
+		}
+	case "audio/ogg", "audio/opus":
+		return "voice"
+	case "audio/mpeg", "audio/mp3", "audio/mp4", "audio/m4a", "audio/x-m4a":
+		return "audio"
+	}
+	return "document"
+}
+
+// fileName returns the file's name, or one of its type, such as file.png,
+// when it has none
+func fileName(file messaging.File) string {
+	if name := strings.TrimSpace(file.Name); name != "" {
+		return name
+	}
+	if extensions, _ := mime.ExtensionsByType(file.Type); len(extensions) > 0 {
+		return "file" + extensions[0]
+	}
+	return "file"
+}
+
+// megabytes returns the size, in megabytes, such as 61.2 MB
+func megabytes(size int64) string {
+	return fmt.Sprintf("%.1f MB", float64(size)/(1<<20))
+}
 
 // toMessage returns the message, as messaging has it, and whether it's one
 // a person sent, with text

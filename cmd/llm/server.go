@@ -209,7 +209,7 @@ func (runner *RunServer) withToolkit(ctx server.Cmd, b *broadcaster.Broadcaster,
 		// Messaging, when a provider's credentials are set, such as
 		// Telegram's, whose chats are connected to sessions, as channels,
 		// and whose tools connect them
-		m, err := newServerMessaging(ctx, tools, events, messaging.WithBroadcaster(b), messaging.WithSessions(func(ctx context.Context, id uuid.UUID) error {
+		m, err := newServerMessaging(ctx, tools, events, messaging.WithBroadcaster(b), messaging.WithFiles(openFile(res)), messaging.WithSessions(func(ctx context.Context, id uuid.UUID) error {
 			_, err := sessions.Get(ctx, id)
 			return err
 		}))
@@ -222,16 +222,20 @@ func (runner *RunServer) withToolkit(ctx server.Cmd, b *broadcaster.Broadcaster,
 			ctx.Logger().InfoContext(ctx.Context(), "tools added", "namespace", m.Name(), "tools", len(m.Tools()))
 		}
 
-		// Each reply in a session is sent to its channels, in the order
-		// they're replied, as the chat waits for it to be sent, for up to
-		// half a minute
-		replies := func(replyCtx context.Context, session uuid.UUID, text string) {
+		// Each reply in a session, with the files it made, is sent to its
+		// channels, in the order they're replied, as the chat waits for it to
+		// be sent, for up to two minutes, as files can take a while
+		replies := func(replyCtx context.Context, session uuid.UUID, reply registry.Reply) {
 			if m == nil {
 				return
 			}
-			replyCtx, cancel := context.WithTimeout(replyCtx, 30*time.Second)
+			replyCtx, cancel := context.WithTimeout(replyCtx, 2*time.Minute)
 			defer cancel()
-			if err := m.Reply(replyCtx, session, text); err != nil {
+			out := messaging.Outgoing{Text: reply.Text}
+			for _, resource := range reply.Resources {
+				out.Files = append(out.Files, resource.URI)
+			}
+			if err := m.Reply(replyCtx, session, out); err != nil {
 				ctx.Logger().ErrorContext(replyCtx, "reply not sent to channels", "session", session, "error", err.Error())
 			}
 		}

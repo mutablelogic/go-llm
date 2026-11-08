@@ -11,6 +11,7 @@ import (
 	llm "github.com/mutablelogic/go-llm"
 	broadcaster "github.com/mutablelogic/go-llm/broadcaster"
 	toolkit "github.com/mutablelogic/go-llm/toolkit"
+	toolschema "github.com/mutablelogic/go-llm/toolkit/schema"
 	trace "go.opentelemetry.io/otel/trace"
 )
 
@@ -50,9 +51,16 @@ type opt struct {
 	replies ReplyFunc
 }
 
-// ReplyFunc is called with the session, and the text of its model's reply,
-// once Chat has stored it
-type ReplyFunc func(ctx context.Context, session uuid.UUID, text string)
+// ReplyFunc is called with the session, and its model's reply, once Chat
+// has stored it, or an event's outcome, once it's delivered to it
+type ReplyFunc func(ctx context.Context, session uuid.UUID, reply Reply)
+
+// Reply is a reply in a session: its text, and the resources it made, such
+// as an image, or speech, which are the session's
+type Reply struct {
+	Text      string
+	Resources []toolschema.ResourceLink
+}
 
 ///////////////////////////////////////////////////////////////////////////////
 // LIFECYCLE
@@ -238,8 +246,9 @@ func WithTimes(zone func() *time.Location, namespaces ...string) Opt {
 	}
 }
 
-// WithReplies sets the function which is called with the text of each
-// reply which Chat adds to a session, once it's stored, such as to send it
+// WithReplies sets the function which is called with each reply which
+// Chat adds to a session, once it's stored, and each event's outcome which
+// is delivered to one, with its text, and the resources it made, such as to send it
 // to the session's channels, with a context which isn't cancelled when the
 // chat's is, so it can take longer than its request
 func WithReplies(fn ReplyFunc) Opt {

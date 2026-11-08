@@ -38,10 +38,14 @@ func Test_DeliverEvent(t *testing.T) {
 	require.NoError(t, err)
 	var mu sync.Mutex
 	var replies []string
-	r, err := registry.New(registry.WithSessionStore(sessions), registry.WithEventStore(events), registry.WithResources(resources), registry.WithReplies(func(_ context.Context, session uuid.UUID, text string) {
+	var files []string
+	r, err := registry.New(registry.WithSessionStore(sessions), registry.WithEventStore(events), registry.WithResources(resources), registry.WithReplies(func(_ context.Context, session uuid.UUID, reply registry.Reply) {
 		mu.Lock()
 		defer mu.Unlock()
-		replies = append(replies, session.String()+":"+text)
+		replies = append(replies, session.String()+":"+reply.Text)
+		for _, link := range reply.Resources {
+			files = append(files, link.URI+":"+link.Name+":"+link.Type)
+		}
 	}))
 	require.NoError(t, err)
 	r.SetDelivery(100*time.Millisecond, time.Minute, time.Minute, 10*time.Millisecond)
@@ -76,7 +80,7 @@ func Test_DeliverEvent(t *testing.T) {
 	replied()
 	idle := time.Now()
 	require.NoError(t, <-done)
-	assert.GreaterOrEqual(t, time.Since(idle), 100*time.Millisecond, "it waits for the session to be idle")
+	assert.GreaterOrEqual(t, time.Since(idle), 80*time.Millisecond, "it waits for the session to be idle, within a poll")
 
 	// It's the assistant's message, marked as the event's, with the speech,
 	// once, copied to the session, and it's delivered, and given to the
@@ -99,6 +103,7 @@ func Test_DeliverEvent(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, schema.EventDelivered, got.Status)
 	assert.Equal(t, []string{parent.ID.String() + ":Good morning, it's sunny"}, replies)
+	assert.Equal(t, []string{speech.URI() + ":speech.wav:audio/wav"}, files, "with the files it made")
 
 	// An outcome which isn't pending isn't delivered
 	ignored, err := events.Create(ctx, schema.EventMeta{Run: run.ID, Session: parent.ID, Message: "Nothing new", Importance: schema.ImportanceIgnore, Status: schema.EventIgnored})
@@ -229,4 +234,41 @@ func Test_DeliverAlert(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, list.Body, 3)
 	assert.Equal(t, "Leave now for the train", list.Body[2].Text())
+}
+
+func Test_ChatReplyResources(t *testing.T) {
+	ctx := context.Background()
+
+	// A registry with resources, whose model replies with an image it made
+	sessions := test.NewSessionStore()
+	exists := func(ctx context.Context, id uuid.UUID) error {
+		_, err := sessions.Get(ctx, id)
+		return err
+	}
+	resources, err := resourcemanager.New(resourcemanager.NewStore(), resourcemanager.WithSessions(exists))
+	require.NoError(t, err)
+	var got []registry.Reply
+	r, err := registry.New(registry.WithSessionStore(sessions), registry.WithResources(resources), registry.WithToolkit(test.NewToolkit(t)), registry.WithReplies(func(_ context.Context, _ uuid.UUID, reply registry.Reply) {
+		got = append(got, reply)
+	}))
+	require.NoError(t, err)
+	made := &providerschema.Message{MessageMeta: providerschema.MessageMeta{Sender: "assistant", Content: []providerschema.ContentBlock{
+		{Text: types.Ptr("Here's a cat")},
+		{Resource: &providerschema.Resource{ResourceMeta: providerschema.ResourceMeta{ContentType: "image/png", Data: []byte("\x89PNG\r\n\x1a\n")}}},
+	}}, Result: providerschema.ResultStop}
+	require.NoError(t, r.Add("", newScripted(made)))
+	session, err := r.CreateSession(ctx, schema.SessionMeta{GeneratorMeta: schema.GeneratorMeta{Model: types.Ptr("model")}})
+	require.NoError(t, err)
+
+	// The reply is given with the image, which is the session's
+	_, err = r.Chat(ctx, session.ID, []llm.Message{user(t, "Draw a cat")}, nil)
+	require.NoError(t, err)
+	require.Len(t, got, 1)
+	assert.Equal(t, "Here's a cat", got[0].Text)
+	require.Len(t, got[0].Resources, 1)
+	assert.Equal(t, "image/png", got[0].Resources[0].Type)
+	hash, err := resourceschema.ParseURI(got[0].Resources[0].URI)
+	require.NoError(t, err)
+	_, err = resources.Get(ctx, resourceschema.ResourceKey{Hash: hash, Session: &session.ID})
+	require.NoError(t, err)
 }

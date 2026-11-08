@@ -367,7 +367,7 @@ func (r *Registry) Chat(ctx context.Context, id uuid.UUID, messages []llm.Messag
 	// The reply, which is the last message, when it's the model's
 	if r.replies != nil && len(response.Messages) > 0 {
 		if reply := response.Messages[len(response.Messages)-1]; reply.Role() == "assistant" {
-			r.replies(context.WithoutCancel(ctx), session.ID, reply.Text())
+			r.replies(context.WithoutCancel(ctx), session.ID, Reply{Text: reply.Text(), Resources: madeResources(response.Messages)})
 		}
 	}
 	return &schema.ChatResponse{ID: session.ID, Serial: session.Serial, SessionResponse: *response}, nil

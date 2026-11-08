@@ -92,6 +92,7 @@ func (r *Registry) deliver(ctx context.Context, event schema.Event, run []provid
 
 	// The resources the run made are the session's too, so the message can
 	// have them
+	var made []toolschema.ResourceLink
 	if r.resources != nil && event.Run != uuid.Nil() {
 		for _, link := range madeResources(run) {
 			copied, err := r.resources.Copy(ctx, link.URI, event.Run, event.Session)
@@ -103,6 +104,7 @@ func (r *Registry) deliver(ctx context.Context, event schema.Event, run []provid
 				return err
 			}
 			message.Content = append(message.Content, providerschema.ContentBlock{Resource: &providerschema.Resource{ResourceMeta: providerschema.ResourceMeta{ContentType: copied.Type, URL: u}}})
+			made = append(made, toolschema.ResourceLink{URI: copied.URI(), Name: copied.Name, Title: copied.Description, Type: copied.Type, Size: copied.Size})
 		}
 	}
 
@@ -133,7 +135,7 @@ func (r *Registry) deliver(ctx context.Context, event schema.Event, run []provid
 		return err
 	}
 	if r.replies != nil {
-		r.replies(ctx, event.Session, text)
+		r.replies(ctx, event.Session, Reply{Text: text, Resources: made})
 	}
 	return nil
 }
