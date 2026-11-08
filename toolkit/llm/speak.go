@@ -124,6 +124,7 @@ func (t *speak) Run(ctx context.Context, input json.RawMessage) (any, error) {
 	case VoiceNote:
 		var note string
 		if spoken, usage, note, err = t.voiceNote(ctx, models, model, req.Text, opts); err != nil {
+			toolkit.SessionFromContext(ctx).Usage(usage)
 			return nil, err
 		} else if note != "" {
 			toolkit.SessionFromContext(ctx).Usage(usage)
@@ -138,22 +139,25 @@ func (t *speak) Run(ctx context.Context, input json.RawMessage) (any, error) {
 
 // voiceNote speaks the text, with the model, as a voice note, which is Ogg
 // Opus: asked of the model, when it can speak one, and otherwise converted
-// from what it speaks, with the tool's converter, or, without one, or when
-// what it speaks can't be, as it is, with a note which says why it isn't a
-// voice note
+// from what it speaks, when it rejects Opus, with the tool's converter, or,
+// without one, or when what it speaks can't be, as it is, with a note which
+// says why it isn't a voice note. Returns the usage of what was spoken,
+// with an error, when it was spoken, and couldn't be converted.
 func (t *speak) voiceNote(ctx context.Context, models Models, model gollm.Model, text string, opts []gollm.Opt) (gollm.Resource, gollm.Usage, string, error) {
 	// The model's voice note, when it can speak one, such as OpenAI's
 	spoken, usage, err := models.Speak(ctx, model, text, append(opts, gollm.WithOpt(gollm.AudioFormatKey, "opus"))...)
-	if err == nil && isVoiceNote(spoken.Type()) {
+	switch {
+	case err == nil && isVoiceNote(spoken.Type()):
 		return &voiceNoteResource{Resource: spoken}, usage, "", nil
-	} else if err != nil {
-		if ctx.Err() != nil {
-			return nil, gollm.Usage{}, "", err
-		}
-		// Its own format, which is encoded
+	case errors.Is(err, gollm.ErrBadParameter) || errors.Is(err, gollm.ErrNotImplemented):
+		// Its own format, which is converted, as it rejected Opus, rather
+		// than failed otherwise, such as when its provider is unavailable,
+		// which another request wouldn't change
 		if spoken, usage, err = models.Speak(ctx, model, text, opts...); err != nil {
 			return nil, gollm.Usage{}, "", err
 		}
+	case err != nil:
+		return nil, gollm.Usage{}, "", err
 	}
 	if t.voiceNotes == nil {
 		return spoken, usage, "It isn't a voice note, as the model can't speak one, and the server can't encode one, without opusenc, of opus-tools", nil
@@ -163,7 +167,8 @@ func (t *speak) voiceNote(ctx context.Context, models Models, model gollm.Model,
 	if errors.Is(err, gollm.ErrNotImplemented) {
 		return spoken, usage, "It isn't a voice note, as " + err.Error(), nil
 	} else if err != nil {
-		return nil, gollm.Usage{}, "", err
+		// The speech's usage, which was used, as it was spoken
+		return nil, usage, "", err
 	}
 	return encoded, usage, "", nil
 }

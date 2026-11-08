@@ -25,7 +25,8 @@ type models struct {
 	images     []gollm.Resource // The images it was last asked to change
 	noSegments bool             // Whether it never returns segments, as some models don't
 	text       string           // The transcript's text, when it's set
-	opus       string           // How it speaks Opus: "native", "reject", or, when it's empty, as WAV
+	opus       string           // How it speaks Opus: "native", "vorbis", "reject", "unavailable", or, when it's empty, as WAV
+	usage      gollm.Usage      // The usage of what it speaks
 	spoken     int              // How many times it spoke
 }
 
@@ -78,12 +79,16 @@ func (m *models) Speak(_ context.Context, _ gollm.Model, text string, opts ...go
 	if format, _ := gollm.GetOpt[string](o, gollm.AudioFormatKey); format == "opus" {
 		switch m.opus {
 		case "native":
-			return &providerschema.Resource{ResourceMeta: providerschema.ResourceMeta{ContentType: "audio/ogg", Data: []byte("OggS" + text)}}, gollm.Usage{}, nil
+			return &providerschema.Resource{ResourceMeta: providerschema.ResourceMeta{ContentType: "audio/ogg", Data: []byte("OggS" + text)}}, m.usage, nil
+		case "vorbis":
+			return &providerschema.Resource{ResourceMeta: providerschema.ResourceMeta{ContentType: "audio/ogg; codecs=vorbis", Data: []byte("OggS" + text)}}, m.usage, nil
 		case "reject":
 			return nil, gollm.Usage{}, gollm.ErrBadParameter.Withf("audio format %q isn't wav or pcm", format)
+		case "unavailable":
+			return nil, gollm.Usage{}, gollm.ErrServiceUnavailable.With("429 Too Many Requests")
 		}
 	}
-	return &providerschema.Resource{ResourceMeta: providerschema.ResourceMeta{ContentType: "audio/wav", Data: []byte(text)}}, gollm.Usage{}, nil
+	return &providerschema.Resource{ResourceMeta: providerschema.ResourceMeta{ContentType: "audio/wav", Data: []byte(text)}}, m.usage, nil
 }
 
 func (m *models) Illustrate(_ context.Context, _ gollm.Model, prompt string, images []gollm.Resource, opts ...gollm.Opt) ([]gollm.Resource, gollm.Usage, error) {

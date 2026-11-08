@@ -3,8 +3,11 @@ package llm_test
 import (
 	"context"
 	"encoding/json"
+	"errors"
+	"log/slog"
 	"strings"
 	"testing"
+	"uuid"
 
 	// Packages
 	gollm "github.com/mutablelogic/go-llm"
@@ -79,6 +82,40 @@ func Test_VoiceNote(t *testing.T) {
 		}
 	})
 
+	t.Run("Unavailable", func(t *testing.T) {
+		// A provider which fails, other than by rejecting Opus, such as when
+		// it's rate limited, isn't asked again
+		m, e := &models{opus: "unavailable"}, &encoder{}
+		_, err := speak(t, m, llm.WithVoiceNoteConverter(e)).Run(ctx, input)
+		assert.ErrorIs(t, err, gollm.ErrServiceUnavailable)
+		assert.Equal(t, 1, m.spoken)
+		assert.Empty(t, e.given)
+	})
+
+	t.Run("Vorbis", func(t *testing.T) {
+		// Ogg which isn't Opus, such as Vorbis, isn't a voice note, so it's
+		// converted, which this converter can't, so it says so
+		m, e := &models{opus: "vorbis"}, &encoder{}
+		result, err := speak(t, m, llm.WithVoiceNoteConverter(e)).Run(ctx, input)
+		require.NoError(t, err)
+		r, ok := result.(toolkit.Result)
+		require.True(t, ok)
+		assert.Equal(t, []string{"audio/ogg; codecs=vorbis:OggSHello"}, e.given)
+		note, err := json.Marshal(r.Value)
+		require.NoError(t, err)
+		assert.Contains(t, string(note), "isn't a voice note")
+	})
+
+	t.Run("Usage", func(t *testing.T) {
+		// The usage of what was spoken is the session's, when it can't be
+		// converted
+		m := &models{usage: gollm.Usage{InputTokens: 7, OutputTokens: 3}}
+		s := &usageSession{}
+		_, err := speak(t, m, llm.WithVoiceNoteConverter(failing{})).Run(toolkit.WithSession(ctx, s), input)
+		assert.ErrorContains(t, err, "opusenc crashed")
+		assert.Equal(t, gollm.Usage{InputTokens: 7, OutputTokens: 3}, s.usage)
+	})
+
 	t.Run("Without an encoder", func(t *testing.T) {
 		// Without an encoder, the model's own format is returned, with a
 		// note which says why
@@ -106,3 +143,20 @@ func Test_VoiceNote(t *testing.T) {
 		assert.ErrorIs(t, err, gollm.ErrBadParameter)
 	})
 }
+
+// failing is a converter which fails
+type failing struct{}
+
+func (failing) Convert(context.Context, gollm.Resource) (gollm.Resource, error) {
+	return nil, errors.New("opusenc crashed")
+}
+
+// usageSession is a session, which keeps the usage it's given
+type usageSession struct {
+	usage gollm.Usage
+}
+
+func (*usageSession) ID() uuid.UUID                     { return uuid.Nil() }
+func (*usageSession) Logger() *slog.Logger              { return slog.New(slog.DiscardHandler) }
+func (*usageSession) Progress(float64, float64, string) {}
+func (s *usageSession) Usage(usage gollm.Usage)         { s.usage = usage }

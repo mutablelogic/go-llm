@@ -36,14 +36,18 @@ const (
 // PRIVATE FUNCTIONS
 
 // isVoiceNote returns whether the audio of the type is a voice note, which
-// is Ogg, or Opus
+// is Ogg, or Opus, with the Opus codec, when its codecs are given, so Ogg
+// Vorbis isn't one
 func isVoiceNote(contentType string) bool {
-	mediaType, _, err := mime.ParseMediaType(contentType)
+	mediaType, params, err := mime.ParseMediaType(contentType)
 	if err != nil {
 		return false
 	}
 	switch strings.ToLower(mediaType) {
 	case "audio/ogg", "audio/opus":
+		if codecs := strings.TrimSpace(params["codecs"]); codecs != "" {
+			return strings.EqualFold(strings.Trim(codecs, `"`), "opus")
+		}
 		return true
 	}
 	return false
