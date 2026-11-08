@@ -60,7 +60,8 @@ type effort struct {
 }
 
 // levels returns the levels of effort the model has, from the least to the
-// most, or nil when it doesn't say, such as a model listed before they were
+// most, or nil when the Models API doesn't list them, such as when it only
+// says whether the model has effort, when the effort is sent as it is
 func (e effort) levels() []string {
 	var result []string
 	for _, level := range []struct {

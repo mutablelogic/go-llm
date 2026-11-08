@@ -21,9 +21,10 @@ var efforts = []string{"none", "minimal", "low", "medium", "high", "xhigh", "max
 
 // NearestEffort returns the reasoning effort, when it's one of the levels,
 // or otherwise the level which is nearest it, and the greater, when two are
-// as near, such as "high" for "medium", of "low" and "high". It's the effort
-// when there are no levels, or it isn't a known effort, such as "none",
-// "minimal", or one of Efforts.
+// as near, such as "high" for "medium", of "low" and "high". The known
+// efforts are those of Efforts, and "none" and "minimal", which are less
+// than "low", so "none" is "low", of "low" and "high". It's the effort when
+// there are no levels, or it isn't a known effort, such as "huge".
 func NearestEffort(effort string, levels ...string) string {
 	want := slices.Index(efforts, effort)
 	if len(levels) == 0 || want < 0 || slices.Contains(levels, effort) {
