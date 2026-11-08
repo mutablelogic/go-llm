@@ -1,5 +1,6 @@
 // A panel on the right of the page, which shows an item, with a title, a
-// subtitle and a body, which a subclass returns, over the page beneath the
+// subtitle and a body, which a subclass returns, and a footer, of its
+// actions, when it has any, over the page beneath the
 // header, which is darkened. It's open while it has an item, and fires an
 // event when it's closed, by its button, the escape key, or clicking the page
 // beside it.
@@ -90,6 +91,7 @@ export abstract class Panel<T> extends LitElement {
         }
 
         header {
+            flex-shrink: 0;
             display: flex;
             align-items: flex-start;
             gap: 0.5rem;
@@ -117,10 +119,25 @@ export abstract class Panel<T> extends LitElement {
             overflow-wrap: anywhere;
         }
 
+        /* The body scrolls, between the header, and the footer, which
+           don't */
         .body {
             flex: 1;
+            min-height: 0;
             overflow-y: auto;
             padding: 1rem;
+        }
+
+        /* The actions are at the bottom of the panel, side by side, and
+           wrap */
+        footer {
+            flex-shrink: 0;
+            display: flex;
+            flex-wrap: wrap;
+            gap: 1px;
+            padding: 1rem;
+            border-top: 1px solid var(--cds-border-subtle-01);
+            background: var(--cds-layer-01);
         }
 
         p {
@@ -178,6 +195,13 @@ export abstract class Panel<T> extends LitElement {
     protected abstract renderTitle(item: T): unknown;
     protected abstract renderSubtitle(item: T): unknown;
     protected abstract renderBody(item: T): unknown;
+
+    // renderFooter returns the actions of the item, such as Save, which are
+    // at the bottom of the panel, beneath its body, which scrolls, or
+    // nothing, when it has none
+    protected renderFooter(_item: T): unknown {
+        return nothing;
+    }
 
     connectedCallback() {
         super.connectedCallback();
@@ -270,6 +294,7 @@ export abstract class Panel<T> extends LitElement {
         if (item === undefined) {
             return nothing;
         }
+        const footer = this.renderFooter(item);
         return html`
             <div class="backdrop" @click=${this.close}></div>
             <div class="panel" role="dialog" aria-modal="true" aria-labelledby="title" tabindex="-1">
@@ -284,6 +309,7 @@ export abstract class Panel<T> extends LitElement {
                     </cds-icon-button>
                 </header>
                 <div class="body">${this.renderBody(item)}</div>
+                ${footer === nothing ? nothing : html`<footer>${footer}</footer>`}
             </div>
         `;
     }

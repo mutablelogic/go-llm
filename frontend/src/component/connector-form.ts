@@ -104,14 +104,6 @@ export class ConnectorForm extends Panel<ConnectorFormItem> {
             flex: 1;
         }
 
-        .footer {
-            position: sticky;
-            bottom: -1rem;
-            margin: 0 -1rem -1rem;
-            padding: 1rem;
-            background: var(--cds-layer-01);
-            border-top: 1px solid var(--cds-border-subtle-01);
-        }
     `];
 
     // willUpdate starts the form again, each time it opens
@@ -149,9 +141,19 @@ export class ConnectorForm extends Panel<ConnectorFormItem> {
             : `The connector ${item.connector.name}, to ${item.connector.server?.name ?? item.connector.url}`;
     }
 
-    protected renderBody(item: ConnectorFormItem) {
+    protected renderFooter(item: ConnectorFormItem) {
         const editing = item.mode === 'edit' ? item.connector : undefined;
         const busy = editing ? 'Saving…' : 'Connecting…';
+        if (this.signIn) {
+            return html`<cds-button kind="primary" type="button" @click=${this.handleSignIn}>Sign in</cds-button>`;
+        }
+        return html`<cds-button kind="primary" type="submit" ?disabled=${this.connecting} @click=${this.handleSubmit}>
+            ${this.connecting ? busy : editing && needsSignIn(editing) ? 'Sign in' : editing ? 'Save' : 'Connect'}
+        </cds-button>`;
+    }
+
+    protected renderBody(item: ConnectorFormItem) {
+        const editing = item.mode === 'edit' ? item.connector : undefined;
 
         // The connector which is edited, whose server needs to be signed in
         // to, can be, as well as saved
@@ -179,13 +181,6 @@ export class ConnectorForm extends Panel<ConnectorFormItem> {
                 ${this.error ? html`<cds-inline-notification kind="error" title=${editing ? "It couldn't be saved" : "It couldn't connect"} subtitle=${this.error} hide-close-button low-contrast></cds-inline-notification>` : nothing}
                 ${this.signIn ? html`<cds-inline-notification kind="info" title=${`Sign in to ${this.signIn}`} subtitle="The server needs you to sign in, in a new tab, before it connects. This panel carries on once you have." hide-close-button low-contrast></cds-inline-notification>` : nothing}
                 ${editSignIn ? html`<cds-inline-notification kind="warning" title=${`${editSignIn} needs you to sign in`} subtitle="Its server needs you to sign in, in a new tab, before its tools can be used. Signing in saves your changes first." hide-close-button low-contrast></cds-inline-notification>` : nothing}
-                <div class="footer">
-                    ${this.signIn
-                        ? html`<cds-button kind="primary" type="button" @click=${this.handleSignIn}>Sign in</cds-button>`
-                        : html`<cds-button kind="primary" type="submit" ?disabled=${this.connecting} @click=${this.handleSubmit}>
-                            ${this.connecting ? busy : editSignIn ? 'Sign in' : editing ? 'Save' : 'Connect'}
-                        </cds-button>`}
-                </div>
             </form>
         `);
     }

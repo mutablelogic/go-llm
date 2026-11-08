@@ -126,16 +126,6 @@ export class NewSession extends Panel<NewSessionForm> {
             gap: 1rem;
         }
 
-        /* The button which starts the chat stays at the bottom of the panel,
-           as the panel's body scrolls */
-        .footer {
-            position: sticky;
-            bottom: -1rem;
-            margin: 0 -1rem -1rem;
-            padding: 1rem;
-            background: var(--cds-layer-01);
-            border-top: 1px solid var(--cds-border-subtle-01);
-        }
     `];
 
     // willUpdate starts the form again, from the session's settings, or the
@@ -161,6 +151,15 @@ export class NewSession extends Panel<NewSessionForm> {
 
     protected renderSubtitle() {
         return this.session ? 'Its title, model, instructions, options and tools' : 'A conversation with your assistant';
+    }
+
+    // renderFooter returns Start chat, or Save, once there are models to
+    // chat with, as the body does, or nothing, while they're loading, or
+    // when there are none
+    protected renderFooter() {
+        return this.models?.length
+            ? html`<cds-button kind="primary" type="submit" ?disabled=${this.creating} @click=${this.handleSubmit}>${this.session ? 'Save' : 'Start chat'}</cds-button>`
+            : nothing;
     }
 
     protected renderBody() {
@@ -217,9 +216,6 @@ export class NewSession extends Panel<NewSessionForm> {
                         <llm-tool-picker .tools=${this.tools} .described=${this.namespaces} .value=${this.startTools}></llm-tool-picker>
                     `}
                 </llm-disclosure>
-                <div class="footer">
-                    <cds-button kind="primary" type="submit" ?disabled=${this.creating} @click=${this.handleSubmit}>${this.session ? 'Save' : 'Start chat'}</cds-button>
-                </div>
             </form>
         `);
     }

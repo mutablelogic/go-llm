@@ -113,11 +113,6 @@ export class AgentEditor extends Panel<AgentEditorItem> {
             color: var(--cds-text-secondary);
         }
 
-        .actions {
-            display: flex;
-            flex-wrap: wrap;
-            gap: 1px;
-        }
 
         cds-inline-notification {
             margin-bottom: 1rem;
@@ -152,6 +147,29 @@ export class AgentEditor extends Panel<AgentEditorItem> {
         return item.builtin ? 'A built-in agent, which can be copied' : `agent:${item.name}, as YAML`;
     }
 
+    protected renderFooter(item: AgentEditorItem) {
+        const builtin = item.mode === 'edit' && item.builtin;
+        return html`
+            ${builtin ? html`
+                <cds-button kind="primary" size="md" @click=${() => this.copy(item.name, item.yaml)}>
+                    Copy ${iconLoader(Copy16, { slot: 'icon' })}
+                </cds-button>
+            ` : html`
+                <cds-button kind="primary" size="md" ?disabled=${this.busy} @click=${this.save}>Save</cds-button>
+                ${item.mode === 'new' ? html`
+                    <cds-button kind="secondary" size="md" ?disabled=${this.busy} @click=${() => this.file?.click()}>
+                        Upload YAML ${iconLoader(Upload16, { slot: 'icon' })}
+                    </cds-button>
+                ` : html`
+                    <cds-button kind="danger" size="md" ?disabled=${this.busy}
+                        @click=${() => this.dispatchEvent(new CustomEvent(AgentEditor.eventDelete, { detail: item.name }))}>
+                        Delete ${iconLoader(TrashCan16, { slot: 'icon' })}
+                    </cds-button>
+                `}
+            `}
+        `;
+    }
+
     protected renderBody(item: AgentEditorItem) {
         const builtin = item.mode === 'edit' && item.builtin;
         return keyed(this.opened, html`
@@ -161,25 +179,6 @@ export class AgentEditor extends Panel<AgentEditorItem> {
             ` : nothing}
             <textarea spellcheck="false" wrap="off" aria-label="Definition, as YAML" ?readonly=${builtin || this.busy} .value=${item.yaml} @focus=${this.clearError} @input=${this.clearError}></textarea>
             ${this.error ? html`<cds-inline-notification kind="error" title="It couldn't be saved" subtitle=${this.error} hide-close-button low-contrast></cds-inline-notification>` : nothing}
-            <div class="actions">
-                ${builtin ? html`
-                    <cds-button kind="primary" size="md" @click=${() => this.copy(item.name, item.yaml)}>
-                        Copy ${iconLoader(Copy16, { slot: 'icon' })}
-                    </cds-button>
-                ` : html`
-                    <cds-button kind="primary" size="md" ?disabled=${this.busy} @click=${this.save}>Save</cds-button>
-                    ${item.mode === 'new' ? html`
-                        <cds-button kind="secondary" size="md" ?disabled=${this.busy} @click=${() => this.file?.click()}>
-                            Upload YAML ${iconLoader(Upload16, { slot: 'icon' })}
-                        </cds-button>
-                    ` : html`
-                        <cds-button kind="danger" size="md" ?disabled=${this.busy}
-                            @click=${() => this.dispatchEvent(new CustomEvent(AgentEditor.eventDelete, { detail: item.name }))}>
-                            Delete ${iconLoader(TrashCan16, { slot: 'icon' })}
-                        </cds-button>
-                    `}
-                `}
-            </div>
             <input type="file" accept=".yaml,.yml,application/yaml,text/yaml" @change=${this.upload}>
         `);
     }

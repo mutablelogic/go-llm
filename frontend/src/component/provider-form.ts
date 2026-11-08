@@ -71,14 +71,6 @@ export class ProviderForm extends Panel<ProviderFormItem> {
             margin-bottom: 1.5rem;
         }
 
-        .footer {
-            position: sticky;
-            bottom: -1rem;
-            margin: 0 -1rem -1rem;
-            padding: 1rem;
-            background: var(--cds-layer-01);
-            border-top: 1px solid var(--cds-border-subtle-01);
-        }
     `];
 
     // willUpdate starts the form again, from the preset, or the provider
@@ -105,6 +97,10 @@ export class ProviderForm extends Panel<ProviderFormItem> {
         return item.mode === 'add' ? 'A service, or a server of your own, which runs assistant models, and models which read, transcribe or embed' : `A provider of type ${item.provider.provider}`;
     }
 
+    protected renderFooter(item: ProviderFormItem) {
+        return html`<cds-button kind="primary" type="submit" ?disabled=${this.saving} @click=${this.handleSubmit}>${item.mode === 'edit' ? 'Save' : 'Add provider'}</cds-button>`;
+    }
+
     protected renderBody(item: ProviderFormItem) {
         const editing = item.mode === 'edit' ? item.provider : undefined;
         const preset = item.mode === 'add' ? presetOf(item.preset) : undefined;
@@ -124,9 +120,6 @@ export class ProviderForm extends Panel<ProviderFormItem> {
                 <cds-textarea id="include" label="Include models (optional)" rows="2" helper-text="Regular expressions of the names of the models to include, one a line, or every model" value=${(editing?.include ?? []).join('\n')}></cds-textarea>
                 <cds-textarea id="exclude" label="Exclude models (optional)" rows="2" helper-text="Regular expressions of the names of the models to exclude, one a line" value=${(editing?.exclude ?? []).join('\n')}></cds-textarea>
                 ${this.error ? html`<cds-inline-notification kind="error" title=${editing ? "It couldn't be saved" : "It couldn't be added"} subtitle=${this.error} hide-close-button low-contrast></cds-inline-notification>` : nothing}
-                <div class="footer">
-                    <cds-button kind="primary" type="submit" ?disabled=${this.saving} @click=${this.handleSubmit}>${editing ? 'Save' : 'Add provider'}</cds-button>
-                </div>
             </form>
         `);
     }

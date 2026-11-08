@@ -81,6 +81,10 @@ export class ModelLoad extends Panel<string> {
         return "It's downloaded, when it isn't stored already";
     }
 
+    protected renderFooter() {
+        return html`<cds-button kind="primary" type="submit" ?disabled=${this.loading} @click=${this.handleSubmit}>Load model</cds-button>`;
+    }
+
     protected renderBody() {
         const percent = this.progress?.percent;
         return keyed(this.opened, html`
@@ -92,7 +96,6 @@ export class ModelLoad extends Panel<string> {
                         helper-text=${percent === undefined ? '' : `${Math.round(percent)}%`}></cds-progress-bar>
                 ` : nothing}
                 ${this.error ? html`<cds-inline-notification kind="error" title="It couldn't be loaded" subtitle=${this.error} hide-close-button low-contrast></cds-inline-notification>` : nothing}
-                <cds-button kind="primary" type="submit" ?disabled=${this.loading} @click=${this.handleSubmit}>Load model</cds-button>
             </form>
         `);
     }
