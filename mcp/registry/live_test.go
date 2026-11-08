@@ -26,6 +26,7 @@ var liveServers = []struct {
 	{"https://mcp.asana.com/v2/mcp", "go-llm-test", "asana-mcp"},
 	{"https://mcp.notion.com/mcp", "", "notion-mcp-beta"},
 	{"https://mcp.airtable.com/mcp", "", "mcp-airtable"},
+	{"https://mcp.canva.com/mcp", "", "mcp-canva"},
 }
 
 func Test_AuthorizeLive(t *testing.T) {

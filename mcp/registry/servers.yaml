@@ -27,6 +27,18 @@
   client_id_credential: ASANA_CLIENT_ID
   client_secret_credential: ASANA_CLIENT_SECRET
 
+# Canva's sign-in registers clients itself, so it needs no credentials, and
+# is always offered
+- name: Canva
+  description: Designs, templates and brand assets, with Canva's own MCP server
+  url: https://mcp.canva.com/mcp
+
+# Cloudflare's sign-in registers clients itself, so it needs no credentials,
+# and is always offered
+- name: Cloudflare
+  description: Workers, KV, R2 and D1 in your Cloudflare account, with Cloudflare's Workers Bindings MCP server
+  url: https://bindings.mcp.cloudflare.com/mcp
+
 # Notion's sign-in registers clients itself, so it needs no credentials, and
 # is always offered
 - name: Notion
