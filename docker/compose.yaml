@@ -52,6 +52,22 @@ services:
       # Messaging, whose chats are connected to conversations, such as a
       # Telegram bot's, from BotFather
       TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
+      # The OAuth apps of the connectors whose sign-in doesn't register
+      # clients, which are offered under Add connector when they're set.
+      # Register the redirect URL the connector panel's Advanced section
+      # shows with each app.
+      GITHUB_CLIENT_ID: ${GITHUB_CLIENT_ID:-}
+      GITHUB_CLIENT_SECRET: ${GITHUB_CLIENT_SECRET:-}
+      ASANA_CLIENT_ID: ${ASANA_CLIENT_ID:-}
+      ASANA_CLIENT_SECRET: ${ASANA_CLIENT_SECRET:-}
+      HARVEY_CLIENT_ID: ${HARVEY_CLIENT_ID:-}
+      HARVEY_CLIENT_SECRET: ${HARVEY_CLIENT_SECRET:-}
+      HUBSPOT_CLIENT_ID: ${HUBSPOT_CLIENT_ID:-}
+      HUBSPOT_CLIENT_SECRET: ${HUBSPOT_CLIENT_SECRET:-}
+      PAGERDUTY_CLIENT_ID: ${PAGERDUTY_CLIENT_ID:-}
+      PAGERDUTY_CLIENT_SECRET: ${PAGERDUTY_CLIENT_SECRET:-}
+      ZOOM_CLIENT_ID: ${ZOOM_CLIENT_ID:-}
+      ZOOM_CLIENT_SECRET: ${ZOOM_CLIENT_SECRET:-}
     depends_on:
       # Ollama, when it's run, is started, and answers, first, so a new
       # installation can add it

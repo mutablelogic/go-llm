@@ -31,6 +31,7 @@ Then open [http://localhost:8084/](http://localhost:8084/):
   - `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `GEMINI_API_KEY`, `DEEPSEEK_API_KEY`, `MISTRAL_API_KEY` and `ELEVENLABS_API_KEY`.
 
   Keys are read from the environment when they're used, never stored.
+- **Connectors:** GitHub, Asana, Harvey, HubSpot, PagerDuty and Zoom are offered under **Add connector** when go-llm starts with your OAuth app's credentials for them, such as `GITHUB_CLIENT_ID` and `GITHUB_CLIENT_SECRET`. The other well-known connectors need none. See [Connectors](#connectors).
 - **`UID` and `GID`** set the user it runs as, such as the owner of a mounted `/data` directory.
 
 Or use Docker Compose. The [compose file](docker/compose.yaml) lists every variable the server reads, and its `ollama` profile adds an Ollama server. It publishes the port on `localhost` only, unless `LLM_BIND` says otherwise:
