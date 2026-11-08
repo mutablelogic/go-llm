@@ -39,6 +39,12 @@
   description: Workers, KV, R2 and D1 in your Cloudflare account, with Cloudflare's Workers Bindings MCP server
   url: https://bindings.mcp.cloudflare.com/mcp
 
+# Datadog's sign-in registers clients itself, so it needs no credentials,
+# and is always offered. It's of Datadog's US1 site.
+- name: Datadog
+  description: Logs, metrics, traces, monitors and incidents, with Datadog's own MCP server, of its US1 site
+  url: https://mcp.datadoghq.com/v1/mcp
+
 # Lingviko's der die das needs no sign-in, so it needs no credentials, and
 # is always offered
 - name: der die das (Lingviko)
