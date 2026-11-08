@@ -5,11 +5,8 @@ package main
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"path/filepath"
-	"strings"
 	"sync/atomic"
-	"uuid"
 
 	// Packages
 	llm "github.com/mutablelogic/go-llm"
@@ -18,7 +15,6 @@ import (
 	telegram "github.com/mutablelogic/go-llm/messaging/telegram"
 	providerschema "github.com/mutablelogic/go-llm/provider/schema"
 	registry "github.com/mutablelogic/go-llm/registry"
-	registryschema "github.com/mutablelogic/go-llm/registry/schema"
 	toolkit "github.com/mutablelogic/go-llm/toolkit"
 	server "github.com/mutablelogic/go-server"
 )
@@ -121,18 +117,4 @@ func newServerMessaging(ctx server.Cmd, tools *toolkit.Toolkit, sessions *atomic
 	}
 	opts = append([]messaging.Opt{messaging.WithTracer(ctx.Tracer()), messaging.WithProvider(bot), messaging.WithChat(chat)}, opts...)
 	return messaging.New(&channelStore{file: file}, opts...)
-}
-
-// deliverEvent sends the event's outcome to the channels of the session
-// it's for, when it's to be told to the person, rather than ignored, or
-// failed, and there's messaging, and returns whether it was sent to any
-func deliverEvent(ctx context.Context, m *messaging.Messaging, session uuid.UUID, event *registryschema.Event) (bool, error) {
-	if m == nil || event == nil || event.Status != registryschema.EventPending || strings.TrimSpace(event.Message) == "" {
-		return false, nil
-	}
-	sent, err := m.Send(ctx, session, event.Message)
-	if errors.Is(err, llm.ErrNotFound) {
-		return false, nil
-	}
-	return len(sent) > 0, err
 }

@@ -7,10 +7,12 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"reflect"
 	"slices"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"uuid"
 
 	// Packages
@@ -49,6 +51,15 @@ type Registry struct {
 	ready     chan struct{}
 	readyOnce sync.Once
 
+	// How events' outcomes are delivered, which tests change, and those
+	// which are being delivered, by their identifiers
+	delivery   delivery
+	delivering sync.Map
+
+	// The logger Run is given, which what runs in the background, such as
+	// delivering events, logs to
+	logger atomic.Pointer[slog.Logger]
+
 	// triggerMu is held to schedule an event which was triggered, so two of
 	// a source, at once, aren't both scheduled, and to change the outcomes
 	// of the events which are scheduled, by the sessions they run in, which
@@ -81,7 +92,7 @@ const separator = ":"
 // New returns a registry without providers, which are added with Add, with
 // the options, such as its tracer
 func New(opts ...Opt) (*Registry, error) {
-	r := &Registry{providers: make(map[string]*cached), ready: make(chan struct{}), triggered: make(map[uuid.UUID]uuid.UUID)}
+	r := &Registry{providers: make(map[string]*cached), ready: make(chan struct{}), triggered: make(map[uuid.UUID]uuid.UUID), delivery: defaultDelivery}
 	if err := r.opt.apply(opts); err != nil {
 		return nil, err
 	}
@@ -448,4 +459,13 @@ func each(entries []entry, fn func(int, entry)) {
 		})
 	}
 	wg.Wait()
+}
+
+// log returns the logger Run was given, or one which discards what's
+// logged, until it's run
+func (r *Registry) log() *slog.Logger {
+	if logger := r.logger.Load(); logger != nil {
+		return logger
+	}
+	return slog.New(slog.DiscardHandler)
 }

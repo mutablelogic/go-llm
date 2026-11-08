@@ -328,7 +328,11 @@ export class ChatController {
             }, pending.abort.signal);
             const added = response.messages ?? [];
             this.keepLogs(session.id, pending, added);
-            if (this.session?.id === session.id && this.messages && !pending.stale) {
+            // The reply is added to the messages which are loaded, unless
+            // the session changed otherwise, as it was stored once more
+            // than the reply, such as when an event's outcome was delivered
+            // to it as it replied, when its messages are loaded again
+            if (this.session?.id === session.id && this.messages && !pending.stale && response.serial === this.session.serial + 1) {
                 this.messages = [...this.messages, ...added];
                 this.session = { ...this.session, serial: response.serial };
             } else {

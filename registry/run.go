@@ -42,6 +42,7 @@ func (r *Registry) Run(ctx context.Context, logger *slog.Logger) error {
 	if logger == nil {
 		logger = slog.New(slog.DiscardHandler)
 	}
+	r.logger.Store(logger)
 
 	// The stored agents are tools, which a store which can't be read leaves
 	// without them, until they're changed
@@ -112,10 +113,18 @@ func (r *Registry) Run(ctx context.Context, logger *slog.Logger) error {
 		defer t.Stop()
 		retention = t.C
 	}
+
+	// The events' outcomes which are pending, which weren't delivered, such
+	// as when the server stopped, are, when it starts, and every so often
+	r.retryDeliveries(ctx)
+	deliveries := time.NewTicker(r.delivery.retryEvery)
+	defer deliveries.Stop()
 	for {
 		select {
 		case <-ctx.Done():
 			return nil
+		case <-deliveries.C:
+			r.retryDeliveries(ctx)
 		case <-retention:
 			r.deleteOldSessions(ctx, logger)
 		case err := <-storeDone:

@@ -6,6 +6,7 @@ import (
 	"errors"
 	"slices"
 	"strings"
+	"time"
 	"uuid"
 
 	// Packages
@@ -105,6 +106,7 @@ func (r *Registry) runEvent(ctx context.Context, id uuid.UUID, req schema.RunEve
 	replied := r.replying(session.ID)
 	r.lifecycle.RUnlock()
 	defer replied()
+	started := time.Now()
 	run, err := r.RunAgent(withoutNamespaces(ctx, req.Without), agent, schema.RunAgentRequest{Input: req.Input, Session: session.ID, Tools: tools}, stream)
 	if err != nil {
 		return nil, err
@@ -151,6 +153,13 @@ func (r *Registry) runEvent(ctx context.Context, id uuid.UUID, req schema.RunEve
 	}
 	if err != nil {
 		return nil, err
+	}
+
+	// An outcome which is to be told to the person is delivered to the
+	// session it's for, once it isn't replying, in the background, so the
+	// run doesn't wait for it
+	if event != nil && event.Status == schema.EventPending {
+		r.deliverInBackground(ctx, *event, started)
 	}
 	return &schema.RunEventResponse{Session: *session, Run: *run, Event: event}, nil
 }

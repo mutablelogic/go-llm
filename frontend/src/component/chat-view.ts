@@ -467,6 +467,12 @@ export class ChatView extends LitElement {
     // message they're kept by the position of
     private messageBubbles(message: Message, position: number): Bubble[] {
         const bubbles: Bubble[] = [];
+
+        // An event's outcome, such as a reminder, which was delivered to the
+        // chat, says which event it's of
+        if (message.event) {
+            bubbles.push({ kind: 'log', text: `⏰ ${message.event.title || 'A heartbeat'}` });
+        }
         for (const block of message.content) {
             const id = block.tool_result?.id;
             for (const line of (id && this.logs(id, position)) || []) {

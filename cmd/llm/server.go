@@ -131,7 +131,6 @@ func (runner *RunServer) Run(ctx server.Cmd) error {
 			// once the heartbeats are, as it has their tools, in a session of
 			// its own
 			var events atomic.Pointer[registry.Registry]
-			var channels atomic.Pointer[messaging.Messaging]
 			build := eventBuilder(mem.Details)
 			run := func(runCtx context.Context, fire heartbeatschema.FireEvent) error {
 				r := events.Load()
@@ -155,21 +154,13 @@ func (runner *RunServer) Run(ctx server.Cmd) error {
 					return err
 				}
 				ctx.Logger().InfoContext(runCtx, "heartbeat run", "heartbeat", fire.Heartbeat, "title", fire.Title, "session", response.Session.ID, "model", types.Value(response.Session.Model), "reply", string(response.Run.Reply))
-
-				// What it says, when it's to be told, is sent to the
-				// channels of the session it's for
-				if sent, err := deliverEvent(runCtx, channels.Load(), fire.Session, response.Event); err != nil {
-					ctx.Logger().ErrorContext(runCtx, "heartbeat not sent to channels", "heartbeat", fire.Heartbeat, "session", fire.Session, "error", err.Error())
-				} else if sent {
-					ctx.Logger().InfoContext(runCtx, "heartbeat sent to channels", "heartbeat", fire.Heartbeat, "session", fire.Session)
-				}
 				return nil
 			}
 			// The resources, which are in sessions which exist, or on their
 			// own, and the heartbeats, which are for sessions which exist
 			return runner.Resource.WithResources(ctx, &runner.RunServer, resources, func(res *resource.Manager) error {
 				return runner.Heartbeat.WithHeartbeats(ctx, &runner.RunServer, heartbeats, func(h *heartbeat.Heartbeats) error {
-					return runner.withToolkit(ctx, b, mem, h, res, &events, &channels, build, store, sessions, agents, outcomes)
+					return runner.withToolkit(ctx, b, mem, h, res, &events, build, store, sessions, agents, outcomes)
 				}, heartbeat.WithBroadcaster(b), heartbeat.WithZone(zone), heartbeat.WithRun(run), heartbeat.WithSessions(sessionExists))
 			}, resource.WithBroadcaster(b), resource.WithSessions(sessionExists))
 		}, memory.WithBroadcaster(b))
@@ -180,7 +171,7 @@ func (runner *RunServer) Run(ctx server.Cmd) error {
 // the heartbeats, as well as the tools whose credentials are set, and a
 // registry, with the stores, which runs the heartbeats which fire, once
 // it's set to, and fires them
-func (runner *RunServer) withToolkit(ctx server.Cmd, b *broadcaster.Broadcaster, mem *memory.Memory, h *heartbeat.Heartbeats, res *resource.Manager, events *atomic.Pointer[registry.Registry], channels *atomic.Pointer[messaging.Messaging], build registry.EventBuilder, store registry.ProviderStore, sessions *sessionStore, agents *agentStore, outcomes *eventStore) error {
+func (runner *RunServer) withToolkit(ctx server.Cmd, b *broadcaster.Broadcaster, mem *memory.Memory, h *heartbeat.Heartbeats, res *resource.Manager, events *atomic.Pointer[registry.Registry], build registry.EventBuilder, store registry.ProviderStore, sessions *sessionStore, agents *agentStore, outcomes *eventStore) error {
 	return runner.Toolkit.WithToolkit(ctx, &runner.RunServer, func(tools *toolkit.Toolkit) error {
 		// The memory, whose system prompt has what's remembered, and whose
 		// tools remember it, and which, when a model can call them, has it
@@ -228,7 +219,6 @@ func (runner *RunServer) withToolkit(ctx server.Cmd, b *broadcaster.Broadcaster,
 			if err := tools.Add(m); err != nil {
 				return err
 			}
-			channels.Store(m)
 			ctx.Logger().InfoContext(ctx.Context(), "tools added", "namespace", m.Name(), "tools", len(m.Tools()))
 		}
 

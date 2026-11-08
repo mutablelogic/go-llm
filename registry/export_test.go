@@ -3,7 +3,11 @@ package registry
 import (
 	"context"
 	"log/slog"
+	"time"
 	"uuid"
+
+	// Packages
+	schema "github.com/mutablelogic/go-llm/registry/schema"
 )
 
 // DeleteOldSessions deletes the sessions which haven't changed for longer
@@ -17,4 +21,30 @@ func (r *Registry) DeleteOldSessions(ctx context.Context) int {
 func (r *Registry) DeleteSessionAt(ctx context.Context, id uuid.UUID, serial uint64) error {
 	_, err := r.deleteSession(ctx, id, &serial)
 	return err
+}
+
+// Deliver delivers the event's outcome, with the resources its run made
+// since the time, as RunEvent does, in the background, and returns its error
+func (r *Registry) Deliver(ctx context.Context, event schema.Event, since time.Time) error {
+	return r.deliver(ctx, event, since)
+}
+
+// RetryDeliveries delivers the outcomes which are pending, which weren't,
+// as Run does, every so often
+func (r *Registry) RetryDeliveries(ctx context.Context) {
+	r.retryDeliveries(ctx)
+}
+
+// Replying sets the session replying, until the function it returns is
+// called
+func (r *Registry) Replying(id uuid.UUID) func() {
+	return r.replying(id)
+}
+
+// SetDelivery sets how long a session must be idle before an event's
+// outcome is delivered, how long a notification, and an alert, wait for it
+// at most, and how often it's looked at, before the registry delivers any
+func (r *Registry) SetDelivery(idle, maxWait, alertWait, poll time.Duration) {
+	r.delivery = defaultDelivery
+	r.delivery.idle, r.delivery.maxWait, r.delivery.alertWait, r.delivery.poll = idle, maxWait, alertWait, poll
 }

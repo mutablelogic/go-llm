@@ -3,6 +3,7 @@ package schema
 import (
 	"strings"
 	"time"
+	"uuid"
 
 	// Packages
 	llm "github.com/mutablelogic/go-llm"
@@ -28,6 +29,14 @@ type Message struct {
 	Tokens uint64     `json:"tokens,omitempty" help:"Token count attributed to this message" example:"12"`
 	Result ResultType `json:"result,omitempty" help:"Why the model stopped generating the message" enum:"stop,max_tokens,blocked,tool_call,error,other,max_iterations,max_context" example:"stop"`
 	Time   time.Time  `json:"time,omitzero" readonly:"" help:"When the message was added to the conversation, which the registry sets"`
+	Event  *Event     `json:"event,omitempty" readonly:"" help:"The event, such as a heartbeat, whose outcome the message is, which the registry delivers to the conversation it's for"`
+}
+
+// Event is the event, such as a heartbeat which fired, whose outcome a
+// message is
+type Event struct {
+	ID    uuid.UUID `json:"id" help:"The event's identifier" example:"0f8fad5b-d9cb-469f-a165-70867728950e"`
+	Title string    `json:"title,omitempty" help:"What the event is, such as a heartbeat's title" example:"Morning briefing"`
 }
 
 // ContentBlock represents a single piece of content within a message.
