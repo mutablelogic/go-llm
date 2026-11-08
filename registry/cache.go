@@ -158,10 +158,14 @@ func (c *cached) ping(ctx context.Context, maxAge time.Duration) error {
 		return err
 	}
 
-	// Ping the provider, and keep the result, from when the ping started
+	// Ping the provider, and keep the result, from when the ping started,
+	// unless the caller gave up on it, which says nothing of the provider,
+	// rather than it timing out
 	start := time.Now()
 	err := pingProvider(ctx, c.provider, PingTimeout)
-	c.setPing(start, err)
+	if ctx.Err() == nil {
+		c.setPing(start, err)
+	}
 	return err
 }
 
@@ -303,10 +307,16 @@ func (c *cached) refresh(ctx context.Context) (err error) {
 		}
 	}
 
-	// Keep the error of the listing, so the models are listed again
+	// Keep the error of the listing, so the models are listed again, and
+	// the provider isn't asked again for a while, unless the caller gave up
+	// on it, which says nothing of the provider, so it's asked again by the
+	// next request
 	start := time.Now()
 	_, generation := c.counts()
 	defer func() {
+		if err != nil && ctx.Err() != nil {
+			return
+		}
 		c.models.Lock()
 		defer c.models.Unlock()
 		c.listings++

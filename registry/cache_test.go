@@ -331,6 +331,39 @@ func Test_DownProvider(t *testing.T) {
 		}, time.Second, 5*time.Millisecond)
 	})
 
+	t.Run("Cancelled", func(t *testing.T) {
+		// A ping, or listing, which its caller gave up on says nothing of
+		// the provider, so it isn't thought down
+		cancelled, cancel := context.WithCancel(ctx)
+		cancel()
+		slow := &provider{name: "ollama", models: []string{"llama3.2"}}
+		slow.ping = func(ctx context.Context) error {
+			if slow.pings.Load() == 1 {
+				<-ctx.Done()
+				return ctx.Err()
+			}
+			return nil
+		}
+		r, err := newRegistry(slow)
+		require.NoError(t, err)
+		status, err := r.GetProvider(cancelled, "ollama")
+		require.NoError(t, err)
+		assert.NotEmpty(t, status.Error, "the caller's own request fails")
+		status, err = r.GetProvider(ctx, "ollama")
+		require.NoError(t, err)
+		assert.Empty(t, status.Error, "but the next is pinged again")
+		assert.Equal(t, int32(2), slow.pings.Load())
+
+		slow.err = context.Canceled
+		_, err = r.ListModels(cancelled)
+		assert.Error(t, err)
+		slow.err = nil
+		models, err := r.ListModels(ctx)
+		require.NoError(t, err)
+		assert.Len(t, models, 1, "and its models are listed again")
+		assert.Equal(t, int32(2), slow.lists.Load())
+	})
+
 	t.Run("Ping timeout", func(t *testing.T) {
 		// A ping waits for the provider's server for at most PingTimeout
 		setInterval(t, &registry.PingTimeout, 20*time.Millisecond)

@@ -144,7 +144,10 @@ func (r *Registry) createProvider(ctx context.Context, req schema.Provider, reac
 	if c == nil || c.provider != provider {
 		return nil, llm.ErrConflict.Withf("provider %q was replaced as it was added", name)
 	}
-	c.setPing(pingAt, pingErr)
+	if ctx.Err() == nil {
+		// Unless the caller gave up on the ping
+		c.setPing(pingAt, pingErr)
+	}
 	return describePing(ctx, entry{name: name, provider: provider, cache: c}), nil
 }
 
@@ -248,7 +251,10 @@ func (r *Registry) redefine(ctx context.Context, name string, existing *cached, 
 	if err := r.replace(name, existing, c); err != nil {
 		return nil, err
 	}
-	c.setPing(pingAt, pingErr)
+	if ctx.Err() == nil {
+		// Unless the caller gave up on the ping
+		c.setPing(pingAt, pingErr)
+	}
 	return describePing(ctx, entry{name: name, provider: provider, cache: c}), nil
 }
 
