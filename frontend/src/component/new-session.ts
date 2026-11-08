@@ -1,11 +1,12 @@
-// A panel which starts a new chat: its title, when it's given, its model, of those which aren't known
+// A panel which starts a new chat, without a title, which it's given, and
+// which compacting it changes, or edits one, with its title: its model, of those which aren't known
 // not to generate text, its system prompt, its options, which are the
 // model's own unless they're set, such as whether it thinks, and the tools
 // it can call, unless it's known not to call them. The button which starts
 // it stays at the bottom of the panel. It fires an event with the new
 // session's settings, when it's created.
 
-import { css, html, type PropertyValues } from 'lit';
+import { css, html, type PropertyValues, nothing } from 'lit';
 import { keyed } from 'lit/directives/keyed.js';
 import { customElement, property, query, state } from 'lit/decorators.js';
 import { Panel } from './panel';
@@ -174,8 +175,10 @@ export class NewSession extends Panel<NewSessionForm> {
         const opt = this.session?.opt ?? {};
         return keyed(this.opened, html`
             <form @submit=${this.handleSubmit}>
-                <cds-text-input id="title" label="Title (optional)" placeholder="Such as Trip to Lisbon" helper-text="What you want the chat to be about"
-                    value=${this.session?.title ?? ''}></cds-text-input>
+                ${this.session ? html`
+                    <cds-text-input id="title" label="Title" helper-text="What the chat is about, which it's given each time it's compacted"
+                        value=${this.session.title ?? ''}></cds-text-input>
+                ` : nothing}
                 <cds-select id="model" label-text="Assistant model" value=${chosen}
                     @cds-select-selected=${(e: CustomEvent<{ value: string }>) => { this.chosen = e.detail.value; }}>
                     ${this.models.map((model) => html`<cds-select-item value=${model.canonical}>${model.canonical}</cds-select-item>`)}
