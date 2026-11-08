@@ -3,6 +3,8 @@ package registry_test
 import (
 	"context"
 	"encoding/json"
+	"net/http"
+	"net/http/httptest"
 	"testing"
 	"time"
 
@@ -64,7 +66,8 @@ func Test_Toolkit(t *testing.T) {
 		// toolkit, in its namespace, which is its name, and they're called
 		_, err := r.CreateConnector(ctx, connector("search", server.URL))
 		require.NoError(t, err)
-		require.Eventually(t, func() bool { return status(t, r, "search").Namespace == "search" }, 5*time.Second, 5*time.Millisecond)
+		assert.Equal(t, "search", status(t, r, "search").Namespace, "which it has before it's connected")
+		require.Eventually(t, func() bool { return len(toolNames(t, tk, "search")) > 0 }, 5*time.Second, 5*time.Millisecond)
 		assert.Equal(t, []string{"search:echo"}, toolNames(t, tk, "search"))
 		list, err := tk.ListTools(ctx, toolschema.ToolListRequest{Type: toolschema.NamespaceMCP})
 		require.NoError(t, err)
@@ -81,8 +84,8 @@ func Test_Toolkit(t *testing.T) {
 		for _, name := range []string{"memory", "agent"} {
 			_, err := r.CreateConnector(ctx, connector(name, server.URL))
 			require.NoError(t, err)
-			require.Eventually(t, func() bool { return status(t, r, name).Namespace != "" }, 5*time.Second, 5*time.Millisecond)
 			namespace := status(t, r, name).Namespace
+			require.Eventually(t, func() bool { return len(toolNames(t, tk, namespace)) > 0 }, 5*time.Second, 5*time.Millisecond)
 			assert.Regexp(t, `^`+name+`\d{4}$`, namespace)
 			assert.Equal(t, []string{namespace + ":echo"}, toolNames(t, tk, namespace))
 		}
@@ -95,7 +98,7 @@ func Test_Toolkit(t *testing.T) {
 		created.Exclude = []string{"^echo$"}
 		_, err := r.CreateConnector(ctx, created)
 		require.NoError(t, err)
-		require.Eventually(t, func() bool { return status(t, r, "patterns").Namespace != "" }, 5*time.Second, 5*time.Millisecond)
+		require.Eventually(t, func() bool { return status(t, r, "patterns").Connected }, 5*time.Second, 5*time.Millisecond)
 		assert.Empty(t, toolNames(t, tk, "patterns"))
 		_, err = r.UpdateConnector(ctx, "patterns", schema.ConnectorMeta{URL: server.URL, Include: []string{"^ec"}})
 		require.NoError(t, err)
@@ -108,6 +111,42 @@ func Test_Toolkit(t *testing.T) {
 		bad.Include = []string{"("}
 		_, err = r.CreateConnector(ctx, bad)
 		assert.ErrorIs(t, err, llm.ErrBadParameter)
+	})
+
+	t.Run("Unreachable", func(t *testing.T) {
+		// One whose server can't be connected has its namespace, with no
+		// tools, so it can be seen, and edited, and deleted
+		notFound := httptest.NewServer(http.NotFoundHandler())
+		t.Cleanup(notFound.Close)
+		_, err := r.CreateConnector(ctx, connector("down", notFound.URL))
+		require.NoError(t, err)
+		assert.Equal(t, "down", status(t, r, "down").Namespace)
+		assert.True(t, tk.HasNamespace("down"))
+		require.Eventually(t, func() bool { return status(t, r, "down").Error != "" }, 5*time.Second, 5*time.Millisecond)
+		assert.Empty(t, toolNames(t, tk, "down"))
+		assert.True(t, tk.HasNamespace("down"))
+		_, err = r.DeleteConnector(ctx, "down")
+		require.NoError(t, err)
+		assert.False(t, tk.HasNamespace("down"))
+	})
+
+	t.Run("Disconnected", func(t *testing.T) {
+		// One whose server closes its session keeps its namespace, without
+		// its tools, until it's connected again
+		closing := test.NewServer(t, test.WithSSE())
+		sdkmcp.AddTool(closing.MCP, &sdkmcp.Tool{Name: "echo", Description: "Echo"}, func(context.Context, *sdkmcp.CallToolRequest, struct{}) (*sdkmcp.CallToolResult, any, error) {
+			return &sdkmcp.CallToolResult{}, nil, nil
+		})
+		_, err := r.CreateConnector(ctx, connector("closing", closing.URL))
+		require.NoError(t, err)
+		require.Eventually(t, func() bool { return len(toolNames(t, tk, "closing")) == 1 }, 5*time.Second, 5*time.Millisecond)
+		closing.CloseClientConnections()
+		closing.Close()
+		require.Eventually(t, func() bool { return len(toolNames(t, tk, "closing")) == 0 }, 5*time.Second, 5*time.Millisecond)
+		assert.True(t, tk.HasNamespace("closing"))
+		assert.Equal(t, "closing", status(t, r, "closing").Namespace)
+		_, err = r.DeleteConnector(ctx, "closing")
+		require.NoError(t, err)
 	})
 
 	t.Run("Changed", func(t *testing.T) {
@@ -160,7 +199,7 @@ func Test_ToolEvents(t *testing.T) {
 	}
 	_, err = r.CreateConnector(ctx, connector("search", server.URL))
 	require.NoError(t, err)
-	require.Eventually(t, func() bool { return status(t, r, "search").Namespace != "" }, 5*time.Second, 5*time.Millisecond)
+	require.Eventually(t, func() bool { return len(toolNames(t, tk, "search")) > 0 }, 5*time.Second, 5*time.Millisecond)
 	assert.Equal(t, []string{"create search:echo"}, tools())
 
 	// The server adds one tool, changes another, and removes it
@@ -179,4 +218,21 @@ func Test_ToolEvents(t *testing.T) {
 	_, err = r.DeleteConnector(ctx, "search")
 	require.NoError(t, err)
 	assert.Equal(t, []string{"delete search:echo"}, tools())
+}
+
+func Test_ToolkitRestart(t *testing.T) {
+	// A connector which is stored, as the registry runs, has its namespace,
+	// whether it's connected, or not
+	setInterval(t, &registry.ConnectJitter, 10*time.Millisecond)
+	ctx := t.Context()
+	store := registry.NewMemoryStore()
+	_, err := store.Put(ctx, connector("stored", "http://localhost:1/mcp"))
+	require.NoError(t, err)
+	tk, err := toolkit.New(ctx)
+	require.NoError(t, err)
+	r, err := registry.New(registry.WithStore(store), registry.WithToolkit(tk))
+	require.NoError(t, err)
+	run(t, r)
+	require.Eventually(t, func() bool { return tk.HasNamespace("stored") }, 5*time.Second, 5*time.Millisecond)
+	assert.Equal(t, "stored", status(t, r, "stored").Namespace)
 }

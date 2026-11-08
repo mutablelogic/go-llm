@@ -38,7 +38,7 @@ type Connector struct {
 	Connected bool             `json:"connected,omitempty" readonly:"" help:"Whether the connector's server is connected"`
 	Server    *ConnectorServer `json:"server,omitempty" readonly:"" help:"The connector's server, as it said, once it's connected"`
 	Error     string           `json:"error,omitempty" readonly:"" help:"Why the connector's server couldn't be connected, or its session ended"`
-	Namespace string           `json:"namespace,omitempty" readonly:"" help:"The namespace of its server's tools, in the toolkit, once it's connected" example:"github"`
+	Namespace string           `json:"namespace,omitempty" readonly:"" help:"The namespace of its server's tools, in the toolkit, which has none while it isn't connected" example:"github"`
 }
 
 // ConnectorServer is the name, and version, of a connector's server, as it

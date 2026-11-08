@@ -53,16 +53,25 @@ func connect(t *testing.T, server *test.Server, opts ...client.Opt) *client.Clie
 	return c
 }
 
+// connected returns a namespace, of the tools of the server the client is
+// connected to, which are included by the match
+func connected(t *testing.T, c *client.Client, match func(string) bool, opts ...namespace.Opt) *namespace.Namespace {
+	t.Helper()
+	ns, err := namespace.New("test", "https://mcp.example.com", opts...)
+	require.NoError(t, err)
+	require.NoError(t, ns.Connect(t.Context(), c, "Test server", match))
+	return ns
+}
+
 func Test_Namespace(t *testing.T) {
 	ctx := t.Context()
 	server := newServer(t)
-	ns, err := namespace.New(ctx, "test", "Test server", connect(t, server))
-	require.NoError(t, err)
+	ns := connected(t, connect(t, server), nil)
 
 	t.Run("Tools", func(t *testing.T) {
-		// The namespace has its name, and description, and the server's
-		// tools, in order of their names, with their descriptions, or
-		// titles, and input schemas
+		// The namespace has its name, and the server's title, as its
+		// description, and the server's tools, in order of their names, with
+		// their descriptions, or titles, and input schemas
 		assert.Equal(t, "test", ns.Name())
 		assert.Equal(t, "Test server", ns.Description())
 		tools := ns.Tools()
@@ -107,31 +116,52 @@ func Test_Namespace(t *testing.T) {
 	})
 }
 
-func Test_Match(t *testing.T) {
-	// Only the tools which are included are the namespace's
+func Test_Connection(t *testing.T) {
+	// A namespace has no tools, until it's connected, and none again, once
+	// it's disconnected, and says each was created, and deleted
 	ctx := t.Context()
 	server := newServer(t)
-	ns, err := namespace.New(ctx, "test", "", connect(t, server), namespace.WithMatch(func(name string) bool { return name != "fail" }))
+	ns, err := namespace.New("test", "https://mcp.example.com")
 	require.NoError(t, err)
-	tools := ns.Tools()
-	require.Len(t, tools, 2)
-	assert.Equal(t, "echo", tools[0].Name())
-	assert.Equal(t, "sum", tools[1].Name())
-	_, err = namespace.New(ctx, "test", "", connect(t, server), namespace.WithMatch(nil))
+	assert.Equal(t, "https://mcp.example.com", ns.Description())
+	assert.Empty(t, ns.Tools())
+	assert.Empty(t, ns.SystemPrompt())
+	require.NoError(t, ns.Refresh(ctx), "which does nothing")
+	var mu sync.Mutex
+	var events []string
+	ns.Notify(func(action eventschema.EventAction, name string) {
+		mu.Lock()
+		defer mu.Unlock()
+		events = append(events, string(action)+" "+name)
+	})
+
+	c := connect(t, server)
+	require.NoError(t, ns.Connect(ctx, c, "", func(name string) bool { return name != "fail" }))
+	assert.Len(t, ns.Tools(), 2)
+	assert.Equal(t, "https://mcp.example.com", ns.Description(), "as the server said no title")
+	ns.Disconnect()
+	assert.Empty(t, ns.Tools())
+	mu.Lock()
+	assert.Equal(t, []string{"create echo", "create sum", "delete echo", "delete sum"}, events)
+	mu.Unlock()
+
+	// But not with a client which isn't connected, when it has none, nor
+	// without a name, or a client
+	unconnected, err := client.New(server.URL)
+	require.NoError(t, err)
+	assert.Error(t, ns.Connect(ctx, unconnected, "", nil))
+	assert.Empty(t, ns.Tools())
+	assert.Error(t, ns.Connect(ctx, nil, "", nil))
+	_, err = namespace.New("", "")
 	assert.Error(t, err)
 }
 
 func Test_Timeout(t *testing.T) {
 	// A tool has the namespace's timeout, or none, for the toolkit's default
-	ctx := t.Context()
 	server := newServer(t)
-	ns, err := namespace.New(ctx, "test", "", connect(t, server))
-	require.NoError(t, err)
-	assert.Zero(t, ns.Tools()[0].Timeout())
-	ns, err = namespace.New(ctx, "test", "", connect(t, server), namespace.WithTimeout(time.Minute))
-	require.NoError(t, err)
-	assert.Equal(t, time.Minute, ns.Tools()[0].Timeout())
-	_, err = namespace.New(ctx, "test", "", connect(t, server), namespace.WithTimeout(-time.Minute))
+	assert.Zero(t, connected(t, connect(t, server), nil).Tools()[0].Timeout())
+	assert.Equal(t, time.Minute, connected(t, connect(t, server), nil, namespace.WithTimeout(time.Minute)).Tools()[0].Timeout())
+	_, err := namespace.New("test", "", namespace.WithTimeout(-time.Minute))
 	assert.Error(t, err)
 }
 
@@ -141,9 +171,7 @@ func Test_Refresh(t *testing.T) {
 	ctx := t.Context()
 	server := newServer(t)
 	changed := make(chan struct{}, 8)
-	c := connect(t, server, client.WithToolsChanged(func() { changed <- struct{}{} }))
-	ns, err := namespace.New(ctx, "test", "", c)
-	require.NoError(t, err)
+	ns := connected(t, connect(t, server, client.WithToolsChanged(func() { changed <- struct{}{} })), nil)
 	var mu sync.Mutex
 	var events []string
 	ns.Notify(func(action eventschema.EventAction, name string) {
@@ -170,18 +198,4 @@ func Test_Refresh(t *testing.T) {
 	defer mu.Unlock()
 	assert.Equal(t, []string{"update echo", "create new", "delete fail"}, events)
 	assert.Len(t, ns.Tools(), 3)
-}
-
-func Test_NotConnected(t *testing.T) {
-	// A client which isn't connected has no tools to list, nor is a
-	// namespace without a name, or a client
-	ctx := t.Context()
-	c, err := client.New(newServer(t).URL)
-	require.NoError(t, err)
-	_, err = namespace.New(ctx, "test", "", c)
-	assert.Error(t, err)
-	_, err = namespace.New(ctx, "", "", c)
-	assert.Error(t, err)
-	_, err = namespace.New(ctx, "test", "", nil)
-	assert.Error(t, err)
 }

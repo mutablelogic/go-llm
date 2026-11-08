@@ -23,65 +23,100 @@ const namespaceAttempts = 5
 ///////////////////////////////////////////////////////////////////////////////
 // PRIVATE METHODS
 
-// addNamespace adds the namespace of the tools of the connector's server,
-// which the client is connected to, to the toolkit, when the registry has
-// one, in place of the one it had, with the connector's name, as
-// schema.Namespace makes it, which isn't one of the toolkit's, described by
-// the server's title, or name, within its connect timeout
-func (r *Registry) addNamespace(name string, c *client.Client, server *sdkmcp.Implementation) {
+// ensureNamespace adds the namespace of the connector's tools to the
+// toolkit, when the registry has one, and it hasn't one already, which it
+// has as long as the connector exists, with no tools, until it's connected,
+// and whose name is the connector's, as schema.Namespace makes it, which
+// isn't one of the toolkit's, described by its URL, until its server says
+// its title. Returns it, or nil, when there's no toolkit, or it couldn't be
+// added.
+func (r *Registry) ensureNamespace(connector schema.Connector) *namespace.Namespace {
 	if r.toolkit == nil {
-		return
+		return nil
 	}
-	r.removeNamespace(name)
-	ctx, cancel := context.WithTimeout(context.Background(), r.connectTimeout)
-	defer cancel()
-	description := server.Title
-	if description == "" {
-		description = server.Name
-	}
-
-	// Its tools which are included, by the connector's patterns
 	r.mu.Lock()
-	meta := r.clients[name].connector.ConnectorMeta
+	ns, exists := r.namespaces[connector.Name]
 	r.mu.Unlock()
-	match, err := meta.Matcher()
-	if err != nil {
-		r.log().WarnContext(ctx, "connector's tools not added", "connector", name, "error", err.Error())
-		return
+	if exists {
+		return ns
 	}
 	for range namespaceAttempts {
-		ns, err := namespace.New(ctx, schema.Namespace(name, r.toolkit.HasNamespace), description, c, namespace.WithMatch(match), namespace.WithTimeout(r.toolTimeout))
+		ns, err := namespace.New(schema.Namespace(connector.Name, r.toolkit.HasNamespace), connector.URL, namespace.WithTimeout(r.toolTimeout))
 		if err != nil {
-			r.log().WarnContext(ctx, "connector's tools not listed", "connector", name, "error", err.Error())
-			return
+			r.log().Warn("connector's namespace not made", "connector", connector.Name, "error", err.Error())
+			return nil
 		} else if err := r.toolkit.Add(ns); errors.Is(err, llm.ErrConflict) {
 			// Another took its name, as it was made
 			continue
 		} else if err != nil {
-			r.log().WarnContext(ctx, "connector's tools not added", "connector", name, "namespace", ns.Name(), "error", err.Error())
-			return
+			r.log().Warn("connector's namespace not added", "connector", connector.Name, "namespace", ns.Name(), "error", err.Error())
+			return nil
 		}
 
-		// Keep it, unless the client was replaced, or disconnected, as it
-		// was added, when it's removed
+		// Keep it, unless another was kept, as it was added, when it's
+		// removed, and that's the connector's
 		r.mu.Lock()
-		current := r.clients[name].client == c && c.Connected()
-		if current {
-			r.namespaces[name] = ns
+		kept, exists := r.namespaces[connector.Name]
+		if !exists {
+			r.namespaces[connector.Name] = ns
 		}
 		r.mu.Unlock()
-		if !current {
+		if exists {
 			_ = r.toolkit.Remove(ns)
-			return
+			return kept
 		}
-		r.log().InfoContext(ctx, "connector's tools added", "connector", name, "namespace", ns.Name(), "tools", len(ns.Tools()))
-		return
+		return ns
 	}
-	r.log().WarnContext(ctx, "connector's tools not added, as their namespace was taken", "connector", name)
+	r.log().Warn("connector's namespace not added, as its name was taken", "connector", connector.Name)
+	return nil
 }
 
-// removeNamespace removes the namespace of the tools of the connector's
-// server from the toolkit, when it has one
+// connectNamespace lists the tools of the connector's server, which the
+// client is connected to, in its namespace, which are included by its
+// patterns, described by the server's title, or name, within its connect
+// timeout
+func (r *Registry) connectNamespace(name string, c *client.Client, server *sdkmcp.Implementation) {
+	r.mu.Lock()
+	connector := r.clients[name].connector
+	r.mu.Unlock()
+	if connector.Name == "" {
+		connector.Name = name
+	}
+	ns := r.ensureNamespace(connector)
+	if ns == nil {
+		return
+	}
+	match, err := connector.Matcher()
+	if err != nil {
+		r.log().Warn("connector's tools not listed", "connector", name, "error", err.Error())
+		return
+	}
+	description := server.Title
+	if description == "" {
+		description = server.Name
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), r.connectTimeout)
+	defer cancel()
+	if err := ns.Connect(ctx, c, description, match); err != nil {
+		r.log().WarnContext(ctx, "connector's tools not listed", "connector", name, "error", err.Error())
+		return
+	}
+	r.log().InfoContext(ctx, "connector's tools added", "connector", name, "namespace", ns.Name(), "tools", len(ns.Tools()))
+}
+
+// disconnectNamespace clears the tools of the connector's namespace, as its
+// server is disconnected, which it keeps, with no tools
+func (r *Registry) disconnectNamespace(name string) {
+	r.mu.Lock()
+	ns := r.namespaces[name]
+	r.mu.Unlock()
+	if ns != nil {
+		ns.Disconnect()
+	}
+}
+
+// removeNamespace removes the namespace of the connector's tools from the
+// toolkit, as the connector is deleted, when it has one
 func (r *Registry) removeNamespace(name string) {
 	r.mu.Lock()
 	ns, exists := r.namespaces[name]
@@ -110,8 +145,8 @@ func (r *Registry) refreshNamespace(name string) {
 	}()
 }
 
-// namespaceOf returns the name of the namespace of the tools of the
-// connector's server, or nothing, when it has none
+// namespaceOf returns the name of the namespace of the connector's tools,
+// or nothing, when it has none
 func (r *Registry) namespaceOf(name string) string {
 	r.mu.Lock()
 	defer r.mu.Unlock()
