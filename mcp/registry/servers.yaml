@@ -107,6 +107,12 @@
   description: Financial data on companies, from S&P Global, such as their financials, prices and transcripts, with Kensho's own MCP server
   url: https://kfinance.kensho.com/integrations/mcp
 
+# Stripe's sign-in registers clients itself, so it needs no credentials,
+# and is always offered
+- name: Stripe
+  description: Customers, payments, invoices, subscriptions and Stripe's documentation, with Stripe's own MCP server
+  url: https://mcp.stripe.com
+
 # Lingviko's der die das needs no sign-in, so it needs no credentials, and
 # is always offered
 - name: der die das (Lingviko)
