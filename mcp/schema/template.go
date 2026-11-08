@@ -1,11 +1,19 @@
 package schema
 
 import (
+	"regexp"
 	"strings"
 
 	// Packages
 	llm "github.com/mutablelogic/go-llm"
 )
+
+///////////////////////////////////////////////////////////////////////////////
+// GLOBALS
+
+// iconName is the pattern of a template's icon, which is the file name of
+// an SVG, or PNG, rather than a path, or URL
+var iconName = regexp.MustCompile(`^[a-z0-9][a-z0-9-]*\.(svg|png)$`)
 
 ///////////////////////////////////////////////////////////////////////////////
 // TYPES
@@ -21,6 +29,7 @@ type ConnectorTemplate struct {
 	URL                    string `json:"url" yaml:"url" help:"The URL of the server, of its streamable HTTP, or SSE, transport" example:"https://api.githubcopilot.com/mcp/"`
 	ClientIDCredential     string `json:"client_id_credential,omitempty" yaml:"client_id_credential" help:"Name of the credential holding the identifier of the client the server is signed in to with" example:"GITHUB_CLIENT_ID" optional:""`
 	ClientSecretCredential string `json:"client_secret_credential,omitempty" yaml:"client_secret_credential" help:"Name of the credential holding the client's secret" example:"GITHUB_CLIENT_SECRET" optional:""`
+	Icon                   string `json:"icon,omitempty" yaml:"icon" help:"The file name of the server's logo, among the web UI's connector icons, at icon/connector/" example:"github.svg" optional:""`
 }
 
 // ConnectorTemplateList is the templates of the connectors which can be
@@ -40,6 +49,8 @@ func (t ConnectorTemplate) Validate() error {
 		return llm.ErrBadParameter.Withf("template of %q has no name", t.URL)
 	} else if err := t.Meta().Validate(); err != nil {
 		return llm.ErrBadParameter.Withf("template %q: %v", t.Name, err)
+	} else if t.Icon != "" && !iconName.MatchString(t.Icon) {
+		return llm.ErrBadParameter.Withf("template %q: icon %q isn't the file name of an SVG, or PNG", t.Name, t.Icon)
 	}
 	return nil
 }

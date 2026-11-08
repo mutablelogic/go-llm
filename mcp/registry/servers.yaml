@@ -2,10 +2,13 @@
 # connector", in addition to a custom one, by their name, and URL, and the
 # names of the credentials of the client each is signed in to with, when its
 # sign-in doesn't register clients itself. One whose credentials the server
-# doesn't have, such as its environment variables, isn't offered.
+# doesn't have, such as its environment variables, isn't offered. Each icon
+# is the server's logo, in frontend/assets/dist/icon/connector: from Simple
+# Icons (CC0), in its brand's colour, or the brand's own site's.
 - name: GitHub
   description: Repositories, issues, pull requests and code search, with GitHub's own MCP server
   url: https://api.githubcopilot.com/mcp/
+  icon: github.svg
   client_id_credential: GITHUB_CLIENT_ID
   client_secret_credential: GITHUB_CLIENT_SECRET
 
@@ -14,22 +17,26 @@
 - name: Atlassian
   description: Jira issues and Confluence pages, with Atlassian's own MCP server
   url: https://mcp.atlassian.com/v1/mcp/authv2
+  icon: atlassian.svg
 
 # Airtable's sign-in registers clients itself, so it needs no credentials,
 # and is always offered
 - name: Airtable
   description: Bases, tables, records and comments, with Airtable's own MCP server
   url: https://mcp.airtable.com/mcp
+  icon: airtable.svg
 
 - name: Harvey
   description: Legal research, drafting and document review, with Harvey's hosted MCP server
   url: https://api.harvey.ai/hosted_mcp/mcp
+  icon: harvey.png
   client_id_credential: HARVEY_CLIENT_ID
   client_secret_credential: HARVEY_CLIENT_SECRET
 
 - name: Asana
   description: Tasks, projects, portfolios and goals, with Asana's own MCP server
   url: https://mcp.asana.com/v2/mcp
+  icon: asana.svg
   client_id_credential: ASANA_CLIENT_ID
   client_secret_credential: ASANA_CLIENT_SECRET
 
@@ -38,28 +45,33 @@
 - name: Canva
   description: Designs, templates and brand assets, with Canva's own MCP server
   url: https://mcp.canva.com/mcp
+  icon: canva.png
 
 # Cloudflare's sign-in registers clients itself, so it needs no credentials,
 # and is always offered
 - name: Cloudflare
   description: Workers, KV, R2 and D1 in your Cloudflare account, with Cloudflare's Workers Bindings MCP server
   url: https://bindings.mcp.cloudflare.com/mcp
+  icon: cloudflare.svg
 
 # Datadog's sign-in registers clients itself, so it needs no credentials,
 # and is always offered. It's of Datadog's US1 site.
 - name: Datadog
   description: Logs, metrics, traces, monitors and incidents, with Datadog's own MCP server, of its US1 site
   url: https://mcp.datadoghq.com/v1/mcp
+  icon: datadog.svg
 
 # Grafana's sign-in registers clients itself, so it needs no credentials,
 # and is always offered. It's Grafana's hosted server, of Grafana Cloud.
 - name: Grafana
   description: Dashboards, metrics, logs and alerts in Grafana Cloud, with Grafana's hosted MCP server
   url: https://mcp.grafana.com/mcp
+  icon: grafana.svg
 
 - name: HubSpot
   description: Contacts, companies, deals and tickets in your HubSpot CRM, with HubSpot's own MCP server
   url: https://mcp.hubspot.com
+  icon: hubspot.svg
   client_id_credential: HUBSPOT_CLIENT_ID
   client_secret_credential: HUBSPOT_CLIENT_SECRET
 
@@ -68,24 +80,29 @@
 - name: Indeed
   description: Searching jobs, and companies, and your job seeker profile, with Indeed's own MCP server
   url: https://mcp.indeed.com/claude/mcp
+  icon: indeed.svg
 
 - name: Intercom
   description: Conversations, contacts and help center articles, with Intercom's own MCP server
   url: https://mcp.intercom.com/mcp
+  icon: intercom.svg
 
 - name: Linear
   description: Issues, projects, cycles and comments, with Linear's own MCP server
   url: https://mcp.linear.app/mcp
+  icon: linear.svg
 
 # Miro's sign-in registers clients itself, so it needs no credentials, and
 # is always offered
 - name: Miro
   description: Boards, sticky notes, diagrams and frames, with Miro's own MCP server
   url: https://mcp.miro.com/
+  icon: miro.svg
 
 - name: PagerDuty
   description: Incidents, services, schedules and on-call, with PagerDuty's hosted MCP server, of its US service region
   url: https://mcp.pagerduty.com/mcp
+  icon: pagerduty.svg
   client_id_credential: PAGERDUTY_CLIENT_ID
   client_secret_credential: PAGERDUTY_CLIENT_SECRET
 
@@ -94,34 +111,40 @@
 - name: Pidgeon
   description: Email inboxes for AI agents, which send, reply and wait for answers, with Pidgeon's own MCP server
   url: https://pidgeon.ai/api/mcp
+  icon: pidgeon.svg
 
 # PostEverywhere's sign-in registers clients itself, so it needs no
 # credentials, and is always offered
 - name: PostEverywhere
   description: Scheduling, and posting, to social media platforms, with PostEverywhere's own MCP server
   url: https://mcp.posteverywhere.ai/mcp
+  icon: posteverywhere.svg
 
 # Kensho's sign-in registers clients itself, so it needs no credentials,
 # and is always offered
 - name: Kensho kFinance
   description: Financial data on companies, from S&P Global, such as their financials, prices and transcripts, with Kensho's own MCP server
   url: https://kfinance.kensho.com/integrations/mcp
+  icon: kensho.png
 
 # Stripe's sign-in registers clients itself, so it needs no credentials,
 # and is always offered
 - name: Stripe
   description: Customers, payments, invoices, subscriptions and Stripe's documentation, with Stripe's own MCP server
   url: https://mcp.stripe.com
+  icon: stripe.svg
 
 # Workable's sign-in registers clients itself, so it needs no credentials,
 # and is always offered
 - name: Workable
   description: Jobs, candidates, offers and employees in your Workable account, with Workable's own MCP server
   url: https://mcp.workable.com/mcp
+  icon: workable.svg
 
 - name: Zoom
   description: Meetings, recordings, transcripts and Team Chat, with Zoom's own MCP server
   url: https://mcp.zoom.us/mcp/zoom/streamable
+  icon: zoom.svg
   client_id_credential: ZOOM_CLIENT_ID
   client_secret_credential: ZOOM_CLIENT_SECRET
 
@@ -130,9 +153,11 @@
 - name: der die das (Lingviko)
   description: The genders of German nouns, from Wiktionary, and checking German text for wrong articles
   url: https://derdiedas.lingviko.com/mcp
+  icon: derdiedas.svg
 
 # Notion's sign-in registers clients itself, so it needs no credentials, and
 # is always offered
 - name: Notion
   description: Pages, databases and comments in your Notion workspace, with Notion's own MCP server
   url: https://mcp.notion.com/mcp
+  icon: notion.svg

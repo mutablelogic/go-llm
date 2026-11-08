@@ -9,7 +9,7 @@ import { keyed } from 'lit/directives/keyed.js';
 import { customElement, property, query, state } from 'lit/decorators.js';
 import { Panel } from './panel';
 import { callbackURL } from '../api/connector';
-import { needsSignIn, type Connector, type ConnectorMeta, type ConnectorTemplate } from '../schema/connector';
+import { connectorIcon, needsSignIn, type Connector, type ConnectorMeta, type ConnectorTemplate } from '../schema/connector';
 
 // Carbon components
 import '@carbon/web-components/es/components/textarea/index.js';
@@ -82,6 +82,20 @@ export class ConnectorForm extends Panel<ConnectorFormItem> {
             margin-bottom: 1.5rem;
         }
 
+        /* A connector's logo, beside its name, in the title, on a small
+           white tile, so a dark one is seen in the dark theme too */
+        img.brand {
+            box-sizing: border-box;
+            width: 1.5rem;
+            height: 1.5rem;
+            margin-right: 0.5rem;
+            padding: 2px;
+            border-radius: 4px;
+            background: #fff;
+            object-fit: contain;
+            vertical-align: -0.2rem;
+        }
+
         /* The advanced fields are spaced as the form is */
         llm-disclosure > * {
             display: block;
@@ -133,7 +147,11 @@ export class ConnectorForm extends Panel<ConnectorFormItem> {
 
     protected renderTitle(item: ConnectorFormItem) {
         if (item.mode === 'add') {
-            return item.template ? `Add ${item.template.name}` : 'Add custom connector';
+            const icon = item.template && connectorIcon(item.template);
+            if (item.template) {
+                return html`${icon ? html`<img class="brand" src=${icon} alt="">` : nothing}Add ${item.template.name}`;
+            }
+            return 'Add custom connector';
         }
         return `Edit ${item.connector.namespace ?? item.connector.name}`;
     }

@@ -3,7 +3,7 @@
 // its URL, when every tool is shown, and, when the agents are shown, an
 // action which starts a new agent
 
-import { html, nothing } from 'lit';
+import { css, html, nothing } from 'lit';
 import { customElement, property } from 'lit/decorators.js';
 import iconLoader from '@carbon/web-components/es/globals/internal/icon-loader.js';
 import ToolKit32 from '@carbon/icons/es/tool-kit/32.js';
@@ -11,7 +11,8 @@ import Add16 from '@carbon/icons/es/add/16.js';
 import Edit16 from '@carbon/icons/es/edit/16.js';
 import TrashCan16 from '@carbon/icons/es/trash-can/16.js';
 import { Page } from './page';
-import type { ConnectorTemplate } from '../schema/connector';
+import { connectorIcon, type ConnectorTemplate } from '../schema/connector';
+import LogoMCP16 from '@carbon/icons/es/logo--model-context-protocol/16.js';
 
 // Carbon components
 import '@carbon/web-components/es/components/button/index.js';
@@ -20,6 +21,20 @@ import '@carbon/web-components/es/components/menu/index.js';
 
 @customElement('llm-tools-page')
 export class ToolsPage extends Page {
+    // A connector's logo is on a small white tile, so a dark one, such as
+    // GitHub's, is seen in the dark theme too
+    static styles = [Page.styles, css`
+        img.brand {
+            box-sizing: border-box;
+            width: 1rem;
+            height: 1rem;
+            padding: 1px;
+            border-radius: 3px;
+            background: #fff;
+            object-fit: contain;
+        }
+    `];
+
     // The names of the events fired to start a new agent, to add a
     // connector, of the template which is the detail, or a custom one,
     // without one, and to edit,
@@ -70,11 +85,15 @@ export class ToolsPage extends Page {
                     <cds-menu size="md">
                         ${this.templates.map((template) => html`
                             <cds-menu-item label=${template.name}
-                                @click=${() => this.dispatchEvent(new CustomEvent<ConnectorTemplate | undefined>(ToolsPage.eventAddConnector, { detail: template }))}></cds-menu-item>
+                                @click=${() => this.dispatchEvent(new CustomEvent<ConnectorTemplate | undefined>(ToolsPage.eventAddConnector, { detail: template }))}>
+                                ${connectorIcon(template) ? html`<img slot="render-icon" class="brand" src=${connectorIcon(template)} alt="">` : iconLoader(LogoMCP16, { slot: 'render-icon' })}
+                            </cds-menu-item>
                         `)}
                         ${this.templates.length ? html`<cds-menu-item-divider></cds-menu-item-divider>` : nothing}
                         <cds-menu-item label="Custom connector"
-                            @click=${() => this.dispatchEvent(new CustomEvent<ConnectorTemplate | undefined>(ToolsPage.eventAddConnector, { detail: undefined }))}></cds-menu-item>
+                            @click=${() => this.dispatchEvent(new CustomEvent<ConnectorTemplate | undefined>(ToolsPage.eventAddConnector, { detail: undefined }))}>
+                            ${iconLoader(LogoMCP16, { slot: 'render-icon' })}
+                        </cds-menu-item>
                     </cds-menu>
                 </cds-menu-button>
             `}
