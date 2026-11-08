@@ -153,8 +153,11 @@ export class NewSession extends Panel<NewSessionForm> {
         return this.session ? 'Its title, model, instructions, options and tools' : 'A conversation with your assistant';
     }
 
+    // renderFooter returns Start chat, or Save, once there are models to
+    // chat with, as the body does, or nothing, while they're loading, or
+    // when there are none
     protected renderFooter() {
-        return this.models
+        return this.models?.length
             ? html`<cds-button kind="primary" type="submit" ?disabled=${this.creating} @click=${this.handleSubmit}>${this.session ? 'Save' : 'Start chat'}</cds-button>`
             : nothing;
     }
