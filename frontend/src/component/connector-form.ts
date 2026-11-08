@@ -165,7 +165,7 @@ export class ConnectorForm extends Panel<ConnectorFormItem> {
                 <cds-textarea id="exclude" label="Exclude tools (optional)" rows="2" value=${(editing?.exclude ?? []).join('\n')}
                     helper-text="Regular expressions of the names of the tools to exclude, one a line, such as signup"></cds-textarea>
                 <cds-accordion>
-                    <cds-accordion-item title="Advanced" ?open=${!!editing?.client_id_credential}>
+                    <cds-accordion-item title="Advanced">
                         <p class="note">Some servers' sign-in, such as GitHub's, doesn't register clients itself, so you register one with it, with the redirect URL, and give the names of the credentials holding its ID and secret, which the server reads, such as from its environment.</p>
                         <div class="redirect">
                             <cds-text-input id="redirect" label="Redirect URL" readonly value=${this.redirect ?? ''}

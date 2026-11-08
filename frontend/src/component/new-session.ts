@@ -186,7 +186,7 @@ export class NewSession extends Panel<NewSessionForm> {
                 <cds-textarea label="System prompt" helper-text="Instructions for the assistant on how to act, such as 'be brief', 'set humour level to 90%', or 'respond in rhyme'" rows="3"
                     value=${this.session?.system ?? ''}></cds-textarea>
                 <cds-accordion>
-                <cds-accordion-item title="Advanced options" ?open=${!!this.session}>
+                <cds-accordion-item title="Advanced options">
                 <div class="options">
                     ${thinks ? html`
                         <cds-select id="thinking" label-text="Thinking" value=${this.thinking}
