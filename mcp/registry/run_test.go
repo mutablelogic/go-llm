@@ -142,3 +142,24 @@ func Test_RunAtOnce(t *testing.T) {
 		})
 	}
 }
+
+func Test_ClientName(t *testing.T) {
+	// The name, and version, the registry is given are those its clients
+	// tell their servers, as they're connected
+	setInterval(t, &registry.ConnectJitter, 10*time.Millisecond)
+	ctx := t.Context()
+	server := test.NewServer(t)
+	r, err := registry.New(registry.WithName("llm", "1.2.3"))
+	require.NoError(t, err)
+	_, err = r.CreateConnector(ctx, connector("test", server.URL))
+	require.NoError(t, err)
+	run(t, r)
+	require.Eventually(t, func() bool { return status(t, r, "test").Connected }, 5*time.Second, 5*time.Millisecond)
+	var names []string
+	for session := range server.MCP.Sessions() {
+		if params := session.InitializeParams(); params != nil && params.ClientInfo != nil {
+			names = append(names, params.ClientInfo.Name+" "+params.ClientInfo.Version)
+		}
+	}
+	assert.Equal(t, []string{"llm 1.2.3"}, names)
+}
