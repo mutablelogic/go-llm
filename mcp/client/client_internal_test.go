@@ -10,6 +10,7 @@ import (
 	sdkmcp "github.com/modelcontextprotocol/go-sdk/mcp"
 	goclient "github.com/mutablelogic/go-client"
 	llm "github.com/mutablelogic/go-llm"
+	version "github.com/mutablelogic/go-server/pkg/version"
 	assert "github.com/stretchr/testify/assert"
 	require "github.com/stretchr/testify/require"
 )
@@ -30,12 +31,15 @@ func Test_New(t *testing.T) {
 	})
 
 	t.Run("Name", func(t *testing.T) {
-		// The server is told the client's name, and version, which it needs
-		c, err := New("https://mcp.example.com/mcp", WithName(" assistant ", " 1.2.3 "))
+		// The server is told the client's name, and version, which are
+		// go-llm's, or others
+		c, err := New("https://mcp.example.com/mcp")
+		require.NoError(t, err)
+		assert.Equal(t, "go-llm", c.implementation.Name)
+		assert.Equal(t, version.Version(), c.implementation.Version)
+		c, err = New("https://mcp.example.com/mcp", WithName(" assistant ", " 1.2.3 "))
 		require.NoError(t, err)
 		assert.Equal(t, sdkmcp.Implementation{Name: "assistant", Version: "1.2.3"}, c.implementation)
-		_, err = New("https://mcp.example.com/mcp")
-		assert.ErrorIs(t, err, llm.ErrBadParameter, "without a name")
 		_, err = New("https://mcp.example.com/mcp", WithName(" ", "1.2.3"))
 		assert.ErrorIs(t, err, llm.ErrBadParameter)
 	})

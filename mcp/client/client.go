@@ -31,10 +31,10 @@ type Client struct {
 
 // New returns a client of the MCP server at the URL, such as
 // https://mcp.example.com/mcp, or one which ends /sse, of a server with the
-// SSE transport, with the options: its name, and version, which the server
-// is told, with WithName, which is needed, and go-client's, with
-// WithClientOpts. It isn't connected. Returns ErrBadParameter when the URL
-// isn't an http, or https, URL with a host, or it has no name.
+// SSE transport, with the options, such as its name, and version, which the
+// server is told, with WithName, and go-client's, with WithClientOpts. It
+// isn't connected. Returns ErrBadParameter when the URL isn't an http, or
+// https, URL with a host.
 func New(endpoint string, opts ...Opt) (*Client, error) {
 	u, err := url.Parse(strings.TrimSpace(endpoint))
 	if err != nil {
@@ -49,8 +49,6 @@ func New(endpoint string, opts ...Opt) (*Client, error) {
 	var o opt
 	if err := o.apply(opts); err != nil {
 		return nil, err
-	} else if o.name == "" {
-		return nil, llm.ErrBadParameter.With("name is required, with WithName")
 	}
 
 	// Create go-client's client, for the server, with its options
