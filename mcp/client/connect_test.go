@@ -2,18 +2,42 @@ package client
 
 import (
 	"context"
+	"encoding/json"
+	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 	"time"
 
 	// Packages
+	jsonrpc "github.com/modelcontextprotocol/go-sdk/jsonrpc"
 	client "github.com/mutablelogic/go-client"
 	llm "github.com/mutablelogic/go-llm"
 	test "github.com/mutablelogic/go-llm/mcp/test"
 	assert "github.com/stretchr/testify/assert"
 	require "github.com/stretchr/testify/require"
 )
+
+// setKeepAlive sets how often a server is pinged, until the test ends
+func setKeepAlive(t *testing.T, value time.Duration) {
+	t.Helper()
+	before := keepAlive
+	keepAlive = value
+	t.Cleanup(func() { keepAlive = before })
+}
+
+func Test_Replied(t *testing.T) {
+	// A ping which a server replies to, even with an error, or with what
+	// can't be decoded, says it's there, but one which isn't replied to
+	// doesn't
+	var typeErr json.UnmarshalTypeError
+	assert.True(t, replied(nil))
+	assert.True(t, replied(fmt.Errorf("calling ping: %w", &typeErr)))
+	assert.True(t, replied(fmt.Errorf("calling ping: %w", &jsonrpc.Error{Code: -32601, Message: "method not found"})))
+	assert.False(t, replied(errors.New("connection refused")))
+	assert.False(t, replied(context.DeadlineExceeded))
+}
 
 func Test_Connect(t *testing.T) {
 	ctx := t.Context()
@@ -77,6 +101,23 @@ func Test_Connect(t *testing.T) {
 		assert.ErrorIs(t, c.Connect(cancelled), context.Canceled)
 		_, err = c.Status()
 		assert.NoError(t, err)
+	})
+
+	t.Run("KeepAlive", func(t *testing.T) {
+		// A server which replies to pings, even with what can't be decoded,
+		// such as [], stays connected
+		setKeepAlive(t, 10*time.Millisecond)
+		for name, opts := range map[string][]test.Opt{"Pong": nil, "Array": {test.WithPingResult("[]")}} {
+			t.Run(name, func(t *testing.T) {
+				server := test.NewServer(t, opts...)
+				c, err := New(server.URL)
+				require.NoError(t, err)
+				require.NoError(t, c.Connect(ctx))
+				time.Sleep(20 * keepAlive)
+				assert.True(t, c.Connected())
+				require.NoError(t, c.Disconnect())
+			})
+		}
 	})
 
 	t.Run("Closed", func(t *testing.T) {

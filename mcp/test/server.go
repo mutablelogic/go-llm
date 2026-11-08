@@ -3,6 +3,9 @@
 package test
 
 import (
+	"bytes"
+	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"sync"
@@ -31,7 +34,8 @@ type Server struct {
 type Opt func(*opt)
 
 type opt struct {
-	sse bool
+	sse  bool
+	ping json.RawMessage
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -66,11 +70,25 @@ func NewServer(t *testing.T, opts ...Opt) *Server {
 		handler = sdkmcp.NewStreamableHTTPHandler(getServer, nil)
 	}
 
-	// Record the headers of each request, and serve it
+	// Record the headers of each request, and serve it, or reply to a ping
+	// with the result, when it's given
 	self.Server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		self.mu.Lock()
 		self.headers = append(self.headers, r.Header.Clone())
 		self.mu.Unlock()
+		if o.ping != nil && r.Method == http.MethodPost {
+			body, _ := io.ReadAll(r.Body)
+			r.Body = io.NopCloser(bytes.NewReader(body))
+			var request struct {
+				ID     json.RawMessage `json:"id"`
+				Method string          `json:"method"`
+			}
+			if json.Unmarshal(body, &request) == nil && request.Method == "ping" {
+				w.Header().Set("Content-Type", "application/json")
+				json.NewEncoder(w).Encode(map[string]any{"jsonrpc": "2.0", "id": request.ID, "result": o.ping})
+				return
+			}
+		}
 		handler.ServeHTTP(w, r)
 	}))
 	t.Cleanup(self.Close)
@@ -85,6 +103,15 @@ func NewServer(t *testing.T, opts ...Opt) *Server {
 func WithSSE() Opt {
 	return func(o *opt) {
 		o.sse = true
+	}
+}
+
+// WithPingResult replies to a ping, with the streamable HTTP transport,
+// with the result, such as [], which some servers reply with, rather than
+// {}
+func WithPingResult(result string) Opt {
+	return func(o *opt) {
+		o.ping = json.RawMessage(result)
 	}
 }
 
