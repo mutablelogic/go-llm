@@ -358,19 +358,10 @@ export class ToolsController extends ListController<Tool> {
         return { count: shown.length, body: shown.slice(offset, offset + limit) };
     }
 
-    // connectorOf returns the connector of the namespace, or the connector
-    // with the name, when it isn't connected, so has no namespace
+    // connectorOf returns the connector of the namespace, which it has
+    // whether it's connected, or not
     private connectorOf(namespace: string): Connector | undefined {
-        return this.connectors.find((connector) => connector.namespace === namespace)
-            ?? this.unconnected().find((connector) => connector.name === namespace);
-    }
-
-    // unconnected returns the connectors which aren't connected, so have no
-    // namespace, apart from those whose names are another namespace's, such
-    // as memory, so they aren't taken for it
-    private unconnected(): Connector[] {
-        const namespaces = new Set((this.namespaces ?? []).map((namespace) => namespace.name));
-        return this.connectors.filter((connector) => !connector.namespace && !namespaces.has(connector.name));
+        return this.connectors.find((connector) => connector.namespace === namespace);
     }
 
     // setNamespace shows the tools of the namespace, or every tool, from the
@@ -412,14 +403,20 @@ export class ToolsController extends ListController<Tool> {
             namespaces.tiles = this.namespaces && [
                 { label: 'All', count: this.namespaces.reduce((sum, namespace) => sum + namespace.tools, 0) },
                 // A connector's namespace has its type as a badge, as a
-                // provider has, but built in ones, and the agents', don't
-                ...this.namespaces.map((namespace) => ({ value: namespace.name, label: namespace.name, badge: namespace.type === 'mcp' ? namespace.type : undefined, count: namespace.tools, title: namespace.description })),
-                // And a connector which isn't connected, which has no
-                // namespace, by its name, with why, as a provider which
-                // can't be reached is, so it can be edited, and deleted
-                ...this.unconnected().map((connector) => ({
-                    value: connector.name, label: connector.name, badge: 'mcp', count: 0, title: connector.url, error: connector.error,
-                })),
+                // provider has, but built in ones, and the agents', don't,
+                // and why it isn't connected, when it isn't, as a provider
+                // which can't be reached has
+                ...this.namespaces.map((namespace) => {
+                    const connector = namespace.type === 'mcp' ? this.connectorOf(namespace.name) : undefined;
+                    return {
+                        value: namespace.name,
+                        label: namespace.name,
+                        badge: namespace.type === 'mcp' ? namespace.type : undefined,
+                        count: namespace.tools,
+                        title: namespace.description,
+                        error: connector && !connector.connected ? connector.error : undefined,
+                    };
+                }),
             ];
             namespaces.selected = this.namespace;
         }
