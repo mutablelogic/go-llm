@@ -35,8 +35,9 @@ func Test_Templates(t *testing.T) {
 			{Name: "alpha", URL: "https://alpha.example.com/mcp"},
 			{Name: "Missing", URL: "https://missing.example.com/mcp", ClientIDCredential: "MISSING_ID"},
 			{Name: "Half", URL: "https://half.example.com/mcp", ClientIDCredential: "ZETA_ID", ClientSecretCredential: "HALF_SECRET"},
+			{Name: "Empty", URL: "https://empty.example.com/mcp", ClientIDCredential: "EMPTY_ID", ClientSecretCredential: "ZETA_SECRET"},
 		}
-		r, err := registry.New(registry.WithTemplates(templates...), registry.WithCredentialsProvider(secrets{"ZETA_ID": "id", "ZETA_SECRET": "secret"}))
+		r, err := registry.New(registry.WithTemplates(templates...), registry.WithCredentialsProvider(secrets{"ZETA_ID": "id", "ZETA_SECRET": "secret", "EMPTY_ID": ""}))
 		require.NoError(t, err)
 		list, err := r.ListTemplates(ctx)
 		require.NoError(t, err)

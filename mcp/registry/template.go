@@ -105,9 +105,14 @@ func sameURL(rawURL string) string {
 func (r *Registry) offer(ctx context.Context, templates []schema.ConnectorTemplate) []schema.ConnectorTemplate {
 	var result []schema.ConnectorTemplate
 	for _, template := range templates {
-		if _, _, err := r.clientCredentials(ctx, schema.Connector{ConnectorMeta: template.Meta()}); err == nil {
-			result = append(result, template)
+		// A credential which is empty, such as an environment variable which
+		// is set to nothing, as Docker Compose sets one which isn't given, isn't
+		// had, so its template isn't offered
+		id, secret, err := r.clientCredentials(ctx, schema.Connector{ConnectorMeta: template.Meta()})
+		if err != nil || (template.ClientIDCredential != "" && strings.TrimSpace(id) == "") || (template.ClientSecretCredential != "" && strings.TrimSpace(secret) == "") {
+			continue
 		}
+		result = append(result, template)
 	}
 	slices.SortFunc(result, func(a, b schema.ConnectorTemplate) int {
 		return cmp.Compare(strings.ToLower(a.Name), strings.ToLower(b.Name))
