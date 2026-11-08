@@ -39,6 +39,12 @@
   description: Workers, KV, R2 and D1 in your Cloudflare account, with Cloudflare's Workers Bindings MCP server
   url: https://bindings.mcp.cloudflare.com/mcp
 
+# Lingviko's der die das needs no sign-in, so it needs no credentials, and
+# is always offered
+- name: der die das (Lingviko)
+  description: The genders of German nouns, from Wiktionary, and checking German text for wrong articles
+  url: https://derdiedas.lingviko.com/mcp
+
 # Notion's sign-in registers clients itself, so it needs no credentials, and
 # is always offered
 - name: Notion
