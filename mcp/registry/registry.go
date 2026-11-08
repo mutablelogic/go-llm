@@ -203,7 +203,7 @@ func (r *Registry) UpdateConnector(ctx context.Context, name string, meta schema
 		if err != nil {
 			return nil, err
 		}
-		r.reconnect(updated)
+		r.reconnectOlder(updated)
 		return r.status(updated), nil
 	}
 
@@ -259,6 +259,24 @@ func (r *Registry) UpdateConnector(ctx context.Context, name string, meta schema
 		}
 	}
 	return r.status(updated), nil
+}
+
+// reconnectOlder disconnects the connector's client, when it's of an older
+// revision than the connector, so Run connects it again, as it is now, but
+// not one of the same, or a newer, revision, which Run, or another update,
+// may have connected since it was stored, so that session isn't ended
+func (r *Registry) reconnectOlder(connector schema.Connector) {
+	r.mu.Lock()
+	e, exists := r.clients[connector.Name]
+	older := exists && e.serial < connector.Serial
+	if older {
+		delete(r.clients, connector.Name)
+	}
+	r.mu.Unlock()
+	if older {
+		_ = r.disconnect(connector.Name, e)
+	}
+	r.publish(eventschema.EventUpdate, connector)
 }
 
 // update stores the connector, whose server the client is connected to, at
