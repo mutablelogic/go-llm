@@ -52,6 +52,13 @@ export interface ConnectorTemplate {
     url: string;
     client_id_credential?: string;
     client_secret_credential?: string;
+    icon?: string;
+}
+
+// connectorIcon returns the URL of the template's logo, among the web UI's
+// connector icons, or undefined, when it has none
+export function connectorIcon(template: ConnectorTemplate): string | undefined {
+    return template.icon ? 'icon/connector/' + encodeURIComponent(template.icon) : undefined;
 }
 
 // ConnectorTemplateList is the templates, and how many there are

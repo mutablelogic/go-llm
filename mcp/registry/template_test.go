@@ -1,6 +1,8 @@
 package registry_test
 
 import (
+	"os"
+	"path/filepath"
 	"testing"
 
 	// Packages
@@ -25,6 +27,14 @@ func Test_Templates(t *testing.T) {
 			names = append(names, template.Name)
 		}
 		assert.Subset(t, names, []string{"GitHub", "Airtable", "Asana", "Atlassian", "Canva", "Cloudflare", "Datadog", "der die das (Lingviko)", "Grafana", "Harvey", "HubSpot", "Indeed", "Intercom", "Kensho kFinance", "Linear", "Miro", "Notion", "PagerDuty", "Pidgeon", "PostEverywhere", "Stripe", "Workable", "Zoom"})
+
+		// And each has an icon, which is among the web UI's
+		for _, template := range templates {
+			if assert.NotEmpty(t, template.Icon, template.Name) {
+				_, err := os.Stat(filepath.Join("..", "..", "frontend", "assets", "dist", "icon", "connector", template.Icon))
+				assert.NoError(t, err, "the icon of %q", template.Name)
+			}
+		}
 	})
 
 	t.Run("Offered", func(t *testing.T) {
@@ -94,9 +104,12 @@ func Test_Templates(t *testing.T) {
 		// A template without a name, or with a URL which isn't a remote
 		// server's, isn't valid, as it's given, as it isn't in YAML
 		for name, template := range map[string]schema.ConnectorTemplate{
-			"URL":    {Name: "Local", URL: "stdio://server"},
-			"NoName": {URL: "https://example.com/mcp"},
-			"Spaces": {Name: "  ", URL: "https://example.com/mcp"},
+			"URL":        {Name: "Local", URL: "stdio://server"},
+			"NoName":     {URL: "https://example.com/mcp"},
+			"Spaces":     {Name: "  ", URL: "https://example.com/mcp"},
+			"IconPath":   {Name: "X", URL: "https://example.com/mcp", Icon: "../secret.svg"},
+			"IconURL":    {Name: "X", URL: "https://example.com/mcp", Icon: "https://example.com/x.svg"},
+			"IconFormat": {Name: "X", URL: "https://example.com/mcp", Icon: "x.gif"},
 		} {
 			_, err := registry.New(registry.WithTemplates(template))
 			assert.ErrorIs(t, err, llm.ErrBadParameter, name)
