@@ -165,16 +165,16 @@ export class ConnectorForm extends Panel<ConnectorFormItem> {
                 <cds-textarea id="exclude" label="Exclude tools (optional)" rows="2" value=${(editing?.exclude ?? []).join('\n')}
                     helper-text="Regular expressions of the names of the tools to exclude, one a line, such as signup"></cds-textarea>
                 <llm-disclosure label="Advanced">
-                        <p class="note">Some servers' sign-in, such as GitHub's, doesn't register clients itself, so you register one with it, with the redirect URL, and give the names of the credentials holding its ID and secret, which the server reads, such as from its environment.</p>
+                        <p class="note">Some servers' sign-in, such as GitHub's, doesn't register clients itself, so you register one with it, with the redirect URL. Its ID and secret are kept by the server, such as in its environment variables, and you give their names here, rather than the ID and secret themselves.</p>
                         <div class="redirect">
                             <cds-text-input id="redirect" label="Redirect URL" readonly value=${this.redirect ?? ''}
                                 helper-text="Where the server's sign-in sends the browser back to"></cds-text-input>
                             <cds-copy-button feedback="Copied" @click=${this.copyRedirect}>Copy the redirect URL</cds-copy-button>
                         </div>
-                        <cds-text-input id="client-id" label="Client ID credential (optional)" placeholder="GITHUB_CLIENT_ID" value=${editing?.client_id_credential ?? ''}
-                            helper-text="The name of the credential holding the client's ID"></cds-text-input>
-                        <cds-text-input id="client-secret" label="Client secret credential (optional)" placeholder="GITHUB_CLIENT_SECRET" value=${editing?.client_secret_credential ?? ''}
-                            helper-text="The name of the credential holding the client's secret"></cds-text-input>
+                        <cds-text-input id="client-id" label="Client ID credential name (optional)" placeholder="GITHUB_CLIENT_ID" value=${editing?.client_id_credential ?? ''}
+                            helper-text="The name of the server's credential, such as an environment variable, which holds the client's ID, not the ID itself"></cds-text-input>
+                        <cds-text-input id="client-secret" label="Client secret credential name (optional)" placeholder="GITHUB_CLIENT_SECRET" value=${editing?.client_secret_credential ?? ''}
+                            helper-text="The name of the server's credential, such as an environment variable, which holds the client's secret, not the secret itself"></cds-text-input>
                     </llm-disclosure>
                 ${this.error ? html`<cds-inline-notification kind="error" title=${editing ? "It couldn't be saved" : "It couldn't connect"} subtitle=${this.error} hide-close-button low-contrast></cds-inline-notification>` : nothing}
                 ${this.signIn ? html`<cds-inline-notification kind="info" title=${`Sign in to ${this.signIn}`} subtitle="The server needs you to sign in, in a new tab, before it connects. This panel carries on once you have." hide-close-button low-contrast></cds-inline-notification>` : nothing}
@@ -231,13 +231,23 @@ export class ConnectorForm extends Panel<ConnectorFormItem> {
             client_id_credential: this.clientIdInput?.value.trim() || undefined,
             client_secret_credential: this.clientSecretInput?.value.trim() || undefined,
         };
+        for (const [what, name] of [['client ID', meta.client_id_credential], ['client secret', meta.client_secret_credential]]) {
+            if (name && !credentialName.test(name)) {
+                this.error = `Give the name of the credential which holds the ${what}, such as ${what === 'client ID' ? 'GITHUB_CLIENT_ID' : 'GITHUB_CLIENT_SECRET'}, rather than the ${what} itself`;
+                return;
+            }
+        }
         if (meta.client_secret_credential && !meta.client_id_credential) {
-            this.error = "A client secret's credential needs a client ID's";
+            this.error = "A client secret's credential name needs a client ID's";
             return;
         }
         this.dispatchEvent(new CustomEvent(this.item.mode === 'edit' ? ConnectorForm.eventSave : ConnectorForm.eventConnect, { detail: meta }));
     }
 }
+
+// credentialName is the pattern of a credential's name, such as
+// GITHUB_CLIENT_ID, as an environment variable's, as the server's is
+const credentialName = /^[A-Za-z_][A-Za-z0-9_]*$/;
 
 // lines returns the lines of the text, without the space around them, apart
 // from those which are empty, or undefined, when there are none
