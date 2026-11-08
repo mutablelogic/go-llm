@@ -451,7 +451,22 @@ export class ToolsController extends ListController<Tool> {
     }
 
     protected render() {
-        const { page, alerts, namespaces, table, view } = this.views;
+        const { page, alerts, namespaces, table, view, connector: form } = this.views;
+
+        // The connector which is edited, which needed to be signed in to,
+        // and now is connected, such as once it's signed in to from its
+        // panel, is shown, with its tools
+        if (form?.item?.mode === 'edit' && needsSignIn(form.item.connector)) {
+            const name = form.item.connector.name;
+            const now = this.connectors.find((connector) => connector.name === name);
+            if (now?.connected) {
+                this.notifications.push({ kind: 'success', title: `${now.server?.name ?? now.name} is connected` });
+                this.hideConnector();
+                if (now.namespace && now.namespace !== this.namespace) {
+                    location.hash = routeHref('tools', now.namespace);
+                }
+            }
+        }
         if (alerts) {
             alerts.connectors = this.connectors;
         }

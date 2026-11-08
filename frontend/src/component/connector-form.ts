@@ -8,7 +8,7 @@ import { css, html, nothing, type PropertyValues } from 'lit';
 import { keyed } from 'lit/directives/keyed.js';
 import { customElement, property, query, state } from 'lit/decorators.js';
 import { Panel } from './panel';
-import type { Connector, ConnectorMeta } from '../schema/connector';
+import { needsSignIn, type Connector, type ConnectorMeta } from '../schema/connector';
 
 // Carbon components
 import '@carbon/web-components/es/components/textarea/index.js';
@@ -110,6 +110,10 @@ export class ConnectorForm extends Panel<ConnectorFormItem> {
     protected renderBody(item: ConnectorFormItem) {
         const editing = item.mode === 'edit' ? item.connector : undefined;
         const busy = editing ? 'Saving…' : 'Connecting…';
+
+        // The connector which is edited, whose server needs to be signed in
+        // to, can be, as well as saved
+        const editSignIn = editing && needsSignIn(editing) ? editing.name : undefined;
         return keyed(this.opened, html`
             <form @submit=${this.handleSubmit} @focusin=${this.clearError}>
                 <cds-text-input id="url" label="URL" placeholder="https://mcp.example.com/mcp" value=${editing?.url ?? ''}
@@ -124,12 +128,14 @@ export class ConnectorForm extends Panel<ConnectorFormItem> {
                     helper-text="The name of the server's credential holding the client's secret"></cds-text-input>
                 ${this.error ? html`<cds-inline-notification kind="error" title=${editing ? "It couldn't be saved" : "It couldn't connect"} subtitle=${this.error} hide-close-button low-contrast></cds-inline-notification>` : nothing}
                 ${this.signIn ? html`<cds-inline-notification kind="info" title=${`Sign in to ${this.signIn}`} subtitle="The server needs you to sign in, in a new tab, before it connects. This panel carries on once you have." hide-close-button low-contrast></cds-inline-notification>` : nothing}
+                ${editSignIn ? html`<cds-inline-notification kind="warning" title=${`${editSignIn} needs you to sign in`} subtitle="Its server needs you to sign in, in a new tab, before its tools can be used. Save your changes first, when there are any." hide-close-button low-contrast></cds-inline-notification>` : nothing}
                 <div class="footer">
                     ${this.signIn
                         ? html`<cds-button kind="primary" type="button" @click=${this.handleSignIn}>Sign in</cds-button>`
                         : html`<cds-button kind="primary" type="submit" ?disabled=${this.connecting} @click=${this.handleSubmit}>
                             ${this.connecting ? busy : editing ? 'Save' : 'Connect'}
-                        </cds-button>`}
+                        </cds-button>
+                        ${editSignIn ? html`<cds-button kind="secondary" type="button" ?disabled=${this.connecting} @click=${(event: Event) => this.handleEditSignIn(event, editSignIn)}>Sign in</cds-button>` : nothing}`}
                 </div>
             </form>
         `);
@@ -150,6 +156,13 @@ export class ConnectorForm extends Panel<ConnectorFormItem> {
         if (this.signIn) {
             this.dispatchEvent(new CustomEvent(ConnectorForm.eventSignIn, { detail: this.signIn }));
         }
+    }
+
+    // handleEditSignIn fires the event, as the edited connector's Sign in
+    // is clicked
+    private handleEditSignIn(event: Event, name: string) {
+        event.preventDefault();
+        this.dispatchEvent(new CustomEvent(ConnectorForm.eventSignIn, { detail: name }));
     }
 
     private handleSubmit(event: Event) {
