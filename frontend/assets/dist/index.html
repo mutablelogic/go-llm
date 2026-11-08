@@ -146,11 +146,13 @@
         </llm-models-page>
         <llm-tools-page id="tools-page" class="full" hidden>
             <div class="content">
+                <llm-connector-alerts></llm-connector-alerts>
                 <llm-count-filter id="namespace-filter" label="Filter by namespace"></llm-count-filter>
                 <llm-tool-table></llm-tool-table>
             </div>
             <llm-tool-view></llm-tool-view>
             <llm-agent-editor></llm-agent-editor>
+            <llm-connector-form></llm-connector-form>
         </llm-tools-page>
         <llm-not-found-page id="not-found-page" hidden></llm-not-found-page>
     </main>

@@ -29,6 +29,8 @@ import { ModelView } from './component/model-view';
 import './component/tool-table';
 import './component/tool-view';
 import './component/agent-editor';
+import './component/connector-form';
+import './component/connector-alerts';
 import './page/chat-page';
 import './page/models-page';
 import './page/tools-page';
@@ -106,11 +108,14 @@ const tools = new ToolsController({
     table: document.querySelector('llm-tool-table'),
     view: document.querySelector('llm-tool-view'),
     agent: document.querySelector('llm-agent-editor'),
+    connector: document.querySelector('llm-connector-form'),
+    alerts: document.querySelector('llm-connector-alerts'),
 }, notifications);
 
 // Watch the server's changes, so the pages load what changed: sessions, as
 // they're created, changed, replied to, or their status changes, the
-// providers, whose models change, the tools, and agents, the memory's
+// providers, whose models change, the tools, and agents, and connectors,
+// as they're connected, and disconnected, the memory's
 // details, which are the names of the person and the assistant, and the
 // heartbeats, which the UI calls reminders, and events' outcomes. Every
 // listener is called once the changes are watched, as they may have changed
@@ -119,6 +124,7 @@ const events = new EventsController(notifications)
     .on({ schema: 'llm', table: 'session' }, () => void chat.refresh())
     .on({ schema: 'llm', table: 'provider' }, () => void models.refresh())
     .on({ schema: 'llm', table: 'tool' }, () => void tools.refresh())
+    .on({ schema: 'mcp', table: 'connector' }, () => void tools.refresh())
     .on({ schema: 'resource', table: 'resource' }, (event) => {
         void resources.refresh();
 

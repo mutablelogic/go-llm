@@ -17,6 +17,12 @@ import type { CountFilter } from '../component/count-filter';
 import { AgentEditor, agentTemplate, type AgentEditorItem } from '../component/agent-editor';
 import { ToolsPage } from '../page/tools-page';
 import { deleteAgent, getAgent, getAgentYAML, saveAgentYAML } from '../api/agent';
+import { createConnector, deleteConnector, getConnector, listConnectors, updateConnector } from '../api/connector';
+import { ApiError } from '../api/client';
+import { connectorName, type Connector, type ConnectorMeta } from '../schema/connector';
+import { ConnectorForm } from '../component/connector-form';
+import type { ConnectorAlerts } from '../component/connector-alerts';
+import { routeHref } from '../router';
 
 export interface ToolsViews {
     page: ToolsPage | null;
@@ -24,7 +30,17 @@ export interface ToolsViews {
     table: ToolTable | null;
     view: ToolView | null;
     agent: AgentEditor | null;
+    connector: ConnectorForm | null;
+    alerts: ConnectorAlerts | null;
 }
+
+// connectWait is how long a connector which is added is waited for, as the
+// server connects to it, and connectPoll how often it's asked whether it
+// has, and connectNames how many names, from its URL, are tried, when the
+// first is another connector's
+const connectWait = 45_000;
+const connectPoll = 500;
+const connectNames = 10;
 
 // agentNamespace is the namespace of the agents, as tools
 const agentNamespace = 'agent';
@@ -39,6 +55,10 @@ export class ToolsController extends ListController<Tool> {
     // the namespace whose tools are shown, or none, for every tool
     private namespaces?: Namespace[];
     private namespace?: string;
+
+    // The connectors, whose namespaces are those whose type is mcp, so the
+    // one of the namespace which is chosen is edited, and deleted
+    private connectors: Connector[] = [];
 
     // How many times the agent's panel has been opened, or closed, so an
     // agent which is loaded once it's been closed, or something else was
@@ -62,12 +82,189 @@ export class ToolsController extends ListController<Tool> {
         views.agent?.addEventListener(AgentEditor.eventSave, (e) => void this.saveAgent((e as CustomEvent<string>).detail));
         views.agent?.addEventListener(AgentEditor.eventDelete, (e) => void this.deleteAgent((e as CustomEvent<string>).detail));
         views.agent?.addEventListener(Panel.eventClose, () => this.hideAgent());
+
+        // An MCP connector is added, and connected, whose tools are added
+        views.page?.addEventListener(ToolsPage.eventAddConnector, () => this.showConnector());
+        views.connector?.addEventListener(ConnectorForm.eventConnect, (e) => void this.addConnector((e as CustomEvent<ConnectorMeta>).detail));
+        views.connector?.addEventListener(ConnectorForm.eventSave, (e) => void this.saveConnector((e as CustomEvent<ConnectorMeta>).detail));
+        views.connector?.addEventListener(Panel.eventClose, () => this.hideConnector());
+        views.page?.addEventListener(ToolsPage.eventEditConnector, (e) => this.editConnector((e as CustomEvent<string>).detail));
+        views.page?.addEventListener(ToolsPage.eventDeleteConnector, (e) => void this.deleteConnector((e as CustomEvent<string>).detail));
     }
 
-    // close closes the tool which is shown, and the agent
+    // editConnector opens the panel, to edit the connector, as it is
+    private editConnector(name: string) {
+        const connector = this.connectors.find((connector) => connector.name === name);
+        const form = this.views.connector;
+        if (connector && form) {
+            form.connecting = false;
+            form.error = undefined;
+            form.item = { mode: 'edit', connector };
+        }
+    }
+
+    // saveConnector updates the connector which is edited, and shows the
+    // tools of its namespace, as it is now, or says why it couldn't be, in
+    // the panel, when it's still editing it
+    private async saveConnector(meta: ConnectorMeta) {
+        const form = this.views.connector;
+        const item = form?.item;
+        if (!form || item?.mode !== 'edit') {
+            return;
+        }
+        form.connecting = true;
+        try {
+            const connector = await updateConnector(item.connector.name, meta);
+            this.notifications.push({ kind: 'success', title: `${connector.name} was saved` });
+            void this.refresh();
+            if (form.item === item) {
+                this.hideConnector();
+                if (connector.namespace && connector.namespace !== this.namespace) {
+                    location.hash = routeHref('tools', connector.namespace);
+                }
+            }
+        } catch (error) {
+            if (form.item === item) {
+                form.error = error instanceof Error ? error.message : String(error);
+            }
+        } finally {
+            if (form.item === item) {
+                form.connecting = false;
+            }
+        }
+    }
+
+    // deleteConnector deletes the connector, once it's confirmed, so its
+    // tools are removed, and shows every tool
+    private async deleteConnector(name: string) {
+        if (!confirm(`Delete the connector ${name}? Its tools can't be used afterwards.`)) {
+            return;
+        }
+        try {
+            await deleteConnector(name);
+            this.notifications.push({ kind: 'success', title: `${name} was deleted` });
+            location.hash = routeHref('tools');
+            void this.refresh();
+        } catch (error) {
+            this.notifications.error(`${name} couldn't be deleted`, error);
+        }
+    }
+
+    // showConnector opens the panel which adds an MCP connector
+    private showConnector() {
+        const form = this.views.connector;
+        if (form) {
+            form.connecting = false;
+            form.error = undefined;
+            form.item = { mode: 'add' };
+        }
+    }
+
+    // hideConnector closes the panel which adds an MCP connector
+    private hideConnector() {
+        if (this.views.connector) {
+            this.views.connector.item = undefined;
+        }
+    }
+
+    // addConnector adds the connector, with a name from its URL's host, or another
+    // which isn't taken, and waits for the server to connect to it, when it
+    // shows its tools, or says why it couldn't, and deletes it, so a URL which
+    // isn't an MCP server's isn't kept, in the panel, when it's still open
+    private async addConnector(meta: ConnectorMeta) {
+        const form = this.views.connector;
+        const item = form?.item;
+        if (!form || !item) {
+            return;
+        }
+        form.connecting = true;
+        form.error = undefined;
+        const open = () => form.item === item;
+        let connector: Connector | undefined;
+        let why: string;
+        try {
+            connector = await this.createConnector(meta);
+            const status = await this.waitConnected(connector.name, open);
+            if (!open()) {
+                // The panel was closed, so the server keeps trying
+                return;
+            } else if (status.connected) {
+                this.notifications.push({ kind: 'success', title: `${status.server?.name ?? status.name} is connected` });
+                this.hideConnector();
+                void this.refresh();
+                if (status.namespace) {
+                    location.hash = routeHref('tools', status.namespace);
+                }
+                return;
+            }
+            why = status.error ?? "It didn't connect in time";
+        } catch (error) {
+            // A request which was given up on, as it didn't return in time,
+            // didn't connect in time
+            why = error instanceof DOMException && error.name === 'TimeoutError'
+                ? "It didn't connect in time"
+                : error instanceof Error ? error.message : String(error);
+        }
+
+        // It couldn't be connected, so it's deleted, while the panel is open,
+        // so a URL which isn't an MCP server's isn't kept, and says when it
+        // couldn't be, so it's known it may still be stored
+        if (!open()) {
+            return;
+        }
+        if (connector) {
+            try {
+                await deleteConnector(connector.name);
+            } catch (error) {
+                why += `. The connector ${connector.name} couldn't be deleted, so it may still be stored: ${error instanceof Error ? error.message : String(error)}`;
+            }
+        }
+        if (open()) {
+            form.error = why;
+            form.connecting = false;
+        }
+    }
+
+    // createConnector creates the connector, with a name from its URL's host,
+    // or, when it's another connector's, the name with a number added
+    private async createConnector(meta: ConnectorMeta): Promise<Connector> {
+        const base = connectorName(meta.url);
+        for (let i = 1; ; i++) {
+            try {
+                return await createConnector(i === 1 ? base : `${base}-${i}`, meta);
+            } catch (error) {
+                if (!(error instanceof ApiError && error.code === 409) || i >= connectNames) {
+                    throw error;
+                }
+            }
+        }
+    }
+
+    // waitConnected returns the connector, once the server has connected to
+    // it, or couldn't, or it's waited for connectWait, which each request for
+    // it is within, too, so one which doesn't return doesn't keep it waiting,
+    // or as it was, once it's no longer waited for
+    private async waitConnected(name: string, waiting: () => boolean): Promise<Connector> {
+        const deadline = Date.now() + connectWait;
+        const get = () => getConnector(name, AbortSignal.timeout(Math.max(deadline - Date.now(), 1)));
+        let status = await get();
+        while (!status.connected && !status.error && Date.now() < deadline && waiting()) {
+            await new Promise((resolve) => setTimeout(resolve, connectPoll));
+            if (!waiting() || Date.now() >= deadline) {
+                break;
+            }
+            status = await get();
+        }
+        return status;
+    }
+
+    // close closes the tool which is shown, the agent, and the connector's
+    // panel, such as when another page is shown, so it doesn't stay open
+    // over it, and a connection which is waited for is no longer
     close() {
         super.close();
         this.hideAgent();
+        this.hideConnector();
     }
 
     // select opens the tool, or, for an agent, its definition, to be edited
@@ -169,12 +366,23 @@ export class ToolsController extends ListController<Tool> {
     }
 
     protected async list(offset: number, limit: number): Promise<Page<Tool>> {
-        const [list, namespaces] = await Promise.all([listTools(), listNamespaces().catch(() => ({ count: 0, body: [] }))]);
+        const [list, namespaces, connectors] = await Promise.all([
+            listTools(),
+            listNamespaces().catch(() => ({ count: 0, body: [] })),
+            listConnectors().catch(() => ({ count: 0, body: [] })),
+        ]);
         const tools = list.body ?? [];
         this.namespaces = namespaces.body ?? [];
+        this.connectors = connectors.body ?? [];
         this.listeners.forEach((fn) => fn(tools, this.namespaces ?? []));
         const shown = this.namespace ? tools.filter((tool) => toolNamespace(tool) === this.namespace) : tools;
         return { count: shown.length, body: shown.slice(offset, offset + limit) };
+    }
+
+    // connectorOf returns the connector of the namespace, which it has
+    // whether it's connected, or not
+    private connectorOf(namespace: string): Connector | undefined {
+        return this.connectors.find((connector) => connector.namespace === namespace);
     }
 
     // setNamespace shows the tools of the namespace, or every tool, from the
@@ -204,14 +412,32 @@ export class ToolsController extends ListController<Tool> {
     }
 
     protected render() {
-        const { page, namespaces, table, view } = this.views;
+        const { page, alerts, namespaces, table, view } = this.views;
+        if (alerts) {
+            alerts.connectors = this.connectors;
+        }
         if (page) {
             page.namespace = this.namespace;
+            page.connector = this.namespace ? this.connectorOf(this.namespace)?.name : undefined;
         }
         if (namespaces) {
             namespaces.tiles = this.namespaces && [
                 { label: 'All', count: this.namespaces.reduce((sum, namespace) => sum + namespace.tools, 0) },
-                ...this.namespaces.map((namespace) => ({ value: namespace.name, label: namespace.name, count: namespace.tools, title: namespace.description })),
+                // A connector's namespace has its type as a badge, as a
+                // provider has, but built in ones, and the agents', don't,
+                // and why it isn't connected, when it isn't, as a provider
+                // which can't be reached has
+                ...this.namespaces.map((namespace) => {
+                    const connector = namespace.type === 'mcp' ? this.connectorOf(namespace.name) : undefined;
+                    return {
+                        value: namespace.name,
+                        label: namespace.name,
+                        badge: namespace.type === 'mcp' ? namespace.type : undefined,
+                        count: namespace.tools,
+                        title: namespace.description,
+                        error: connector && !connector.connected ? connector.error : undefined,
+                    };
+                }),
             ];
             namespaces.selected = this.namespace;
         }

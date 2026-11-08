@@ -1,0 +1,153 @@
+// A panel which adds a custom connector: the URL of a remote MCP server, and
+// the patterns of the names of its tools which are included, and excluded,
+// or edits one. It fires an event with them, as Connect, or Save, is
+// clicked, and shows that it's connecting, and why it couldn't connect, or
+// be saved, such as that the server can't be reached.
+
+import { css, html, nothing, type PropertyValues } from 'lit';
+import { keyed } from 'lit/directives/keyed.js';
+import { customElement, property, query, state } from 'lit/decorators.js';
+import { Panel } from './panel';
+import type { Connector, ConnectorMeta } from '../schema/connector';
+
+// Carbon components
+import '@carbon/web-components/es/components/textarea/index.js';
+import '@carbon/web-components/es/components/text-input/index.js';
+import '@carbon/web-components/es/components/button/index.js';
+import '@carbon/web-components/es/components/notification/inline-notification.js';
+
+// ConnectorFormItem is what the panel shows: a connector to add, or the
+// connector which is edited
+export type ConnectorFormItem = { mode: 'add' } | { mode: 'edit'; connector: Connector };
+
+@customElement('llm-connector-form')
+export class ConnectorForm extends Panel<ConnectorFormItem> {
+    // The names of the events fired with the connector to add, and with the
+    // changes to the connector which is edited
+    static readonly eventConnect = 'llm-connector-form-connect';
+    static readonly eventSave = 'llm-connector-form-save';
+
+    // What's shown, which is undefined when the panel is closed
+    @property({ attribute: false })
+    item?: ConnectorFormItem;
+
+    // Whether it's connecting, and why it couldn't, when it couldn't
+    @property({ type: Boolean })
+    connecting = false;
+
+    @property({ attribute: false })
+    error?: string;
+
+    // How many times the panel has been opened, so its form is made again
+    // each time
+    @state()
+    private opened = 0;
+
+    @query('cds-text-input#url')
+    private urlInput?: HTMLElement & { value: string };
+
+    @query('cds-textarea#include')
+    private includeInput?: HTMLElement & { value: string };
+
+    @query('cds-textarea#exclude')
+    private excludeInput?: HTMLElement & { value: string };
+
+    static styles = [Panel.styles, css`
+        form > * {
+            display: block;
+            margin-bottom: 1.5rem;
+        }
+
+        .footer {
+            position: sticky;
+            bottom: -1rem;
+            margin: 0 -1rem -1rem;
+            padding: 1rem;
+            background: var(--cds-layer-01);
+            border-top: 1px solid var(--cds-border-subtle-01);
+        }
+    `];
+
+    // willUpdate starts the form again, each time it opens
+    willUpdate(changed: PropertyValues<this>) {
+        if (changed.has('item') && this.item && changed.get('item') !== this.item) {
+            this.opened++;
+            this.error = undefined;
+        }
+        super.willUpdate(changed);
+    }
+
+    protected current(): ConnectorFormItem | undefined {
+        return this.item;
+    }
+
+    protected renderTitle(item: ConnectorFormItem) {
+        return item.mode === 'add' ? 'Add custom connector' : `Edit ${item.connector.namespace ?? item.connector.name}`;
+    }
+
+    protected renderSubtitle(item: ConnectorFormItem) {
+        return item.mode === 'add'
+            ? "A server, by its URL, whose tools the assistant can call, once it's connected"
+            : `The connector ${item.connector.name}, to ${item.connector.server?.name ?? item.connector.url}`;
+    }
+
+    protected renderBody(item: ConnectorFormItem) {
+        const editing = item.mode === 'edit' ? item.connector : undefined;
+        const busy = editing ? 'Saving…' : 'Connecting…';
+        return keyed(this.opened, html`
+            <form @submit=${this.handleSubmit} @focusin=${this.clearError}>
+                <cds-text-input id="url" label="URL" placeholder="https://mcp.example.com/mcp" value=${editing?.url ?? ''}
+                    helper-text="The URL of the MCP server, of its streamable HTTP, or SSE, transport"></cds-text-input>
+                <cds-textarea id="include" label="Include tools (optional)" rows="2" value=${(editing?.include ?? []).join('\n')}
+                    helper-text="Regular expressions of the names of the tools to include, one a line, or every tool"></cds-textarea>
+                <cds-textarea id="exclude" label="Exclude tools (optional)" rows="2" value=${(editing?.exclude ?? []).join('\n')}
+                    helper-text="Regular expressions of the names of the tools to exclude, one a line, such as signup"></cds-textarea>
+                ${this.error ? html`<cds-inline-notification kind="error" title=${editing ? "It couldn't be saved" : "It couldn't connect"} subtitle=${this.error} hide-close-button low-contrast></cds-inline-notification>` : nothing}
+                <div class="footer">
+                    <cds-button kind="primary" type="submit" ?disabled=${this.connecting} @click=${this.handleSubmit}>
+                        ${this.connecting ? busy : editing ? 'Save' : 'Connect'}
+                    </cds-button>
+                </div>
+            </form>
+        `);
+    }
+
+    // clearError clears why it couldn't connect, once a field is focused, so
+    // it's changed, apart from the button, which is focused as it's clicked
+    private clearError(event: FocusEvent) {
+        if (this.error && !(event.target instanceof Element && event.target.closest('cds-button'))) {
+            this.error = undefined;
+        }
+    }
+
+    private handleSubmit(event: Event) {
+        event.preventDefault();
+        if (this.connecting || !this.item) {
+            return;
+        }
+        const url = this.urlInput?.value.trim() ?? '';
+        if (!url) {
+            this.error = "The server's URL is needed";
+            return;
+        }
+        const meta: ConnectorMeta = {
+            url,
+            include: lines(this.includeInput?.value),
+            exclude: lines(this.excludeInput?.value),
+        };
+        this.dispatchEvent(new CustomEvent(this.item.mode === 'edit' ? ConnectorForm.eventSave : ConnectorForm.eventConnect, { detail: meta }));
+    }
+}
+
+// lines returns the lines of the text, without the space around them, apart
+// from those which are empty, or undefined, when there are none
+function lines(text?: string): string[] | undefined {
+    const result = (text ?? '').split('\n').map((line) => line.trim()).filter((line) => line !== '');
+    return result.length ? result : undefined;
+}
+
+declare global {
+    interface HTMLElementTagNameMap {
+        'llm-connector-form': ConnectorForm;
+    }
+}
