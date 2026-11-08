@@ -15,6 +15,9 @@ The image has the application and its web UI, and keeps its data in the `/data` 
 > **Don't run go-llm on the internet.** It has no authentication yet, so anyone who can reach it can use your API keys, read your chats, memory and files, and run its tools. Publish its port on `localhost` only, as below, or put it behind a proxy that signs people in, or a VPN.
 
 ```bash
+# A volume for go-llm's data, which is kept when the container is replaced
+docker volume create llm
+
 docker run -d --name llm -p 127.0.0.1:8084:8084 -v llm:/data \
   -e OLLAMA_ADDR=http://host.docker.internal:11434 \
   -e OPENAI_API_KEY \
