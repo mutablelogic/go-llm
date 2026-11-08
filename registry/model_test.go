@@ -267,14 +267,6 @@ func Test_Capabilities(t *testing.T) {
 				_, _, err := r.WithoutSession(ctx, m, hi, tools, nil)
 				return err
 			},
-			"think": func(m llm.Model) error {
-				_, _, err := r.WithoutSession(ctx, m, hi, nil, nil, llm.WithThinking(true))
-				return err
-			},
-			"think with an effort": func(m llm.Model) error {
-				_, _, err := r.WithoutSession(ctx, m, hi, nil, nil, llm.WithThinkingEffort("high"))
-				return err
-			},
 			"see images": func(m llm.Model) error {
 				_, _, err := r.WithoutSession(ctx, m, image, nil, nil)
 				return err
@@ -299,7 +291,7 @@ func Test_Capabilities(t *testing.T) {
 			home.called = nil
 			err := call(chat)
 			assert.ErrorIs(t, err, llm.ErrNotImplemented, name)
-			assert.ErrorContains(t, err, "can't "+strings.TrimSuffix(name, " with an effort"), name)
+			assert.ErrorContains(t, err, "can't "+name, name)
 			assert.Empty(t, home.called, name)
 			if name != "generate messages" {
 				assert.NoError(t, call(unknown), name)
@@ -307,11 +299,19 @@ func Test_Capabilities(t *testing.T) {
 			}
 		}
 
-		// But it replies, when it isn't asked to do what it can't
-		home.called = nil
-		_, _, err = r.WithoutSession(ctx, chat, hi, nil, nil, llm.WithThinking(false), llm.WithThinkingEffort("none"))
-		require.NoError(t, err)
-		assert.Equal(t, []string{"generate chat"}, home.called)
+		// But it replies, when it isn't asked to do what it can't, and when
+		// it's asked to think, which it isn't, as a session keeps its
+		// options as its model changes
+		for _, opts := range [][]llm.Opt{
+			{llm.WithThinking(false), llm.WithThinkingEffort("none")},
+			{llm.WithThinking(true)},
+			{llm.WithThinkingEffort("high")},
+		} {
+			home.called = nil
+			_, _, err = r.WithoutSession(ctx, chat, hi, nil, nil, opts...)
+			require.NoError(t, err)
+			assert.Equal(t, []string{"generate chat"}, home.called)
+		}
 	})
 
 	t.Run("NotInRegistry", func(t *testing.T) {

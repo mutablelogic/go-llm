@@ -180,10 +180,25 @@ func TestApply(t *testing.T) {
 	})
 
 	t.Run("Unsupported", func(t *testing.T) {
-		for _, opt := range []llm.Opt{llm.WithTopK(40), llm.WithThinking(true), llm.WithThinking(false), llm.WithKeepAlive(-1)} {
+		for _, opt := range []llm.Opt{llm.WithTopK(40), llm.WithKeepAlive(-1)} {
 			var r chatRequest
 			assert.ErrorIs(t, r.apply(serverOther, opt), llm.ErrBadParameter)
 		}
+	})
+
+	t.Run("OtherThinking", func(t *testing.T) {
+		// Another server has no way to say thinking, so it's ignored, as a
+		// conversation keeps its options as its model changes, but an
+		// effort is sent
+		for _, opts := range [][]llm.Opt{{llm.WithThinking(true)}, {llm.WithThinking(false)}} {
+			var r chatRequest
+			require.NoError(t, r.apply(serverOther, opts...))
+			assert.Nil(t, r.Thinking)
+			assert.Empty(t, r.ReasoningEffort)
+		}
+		var r chatRequest
+		require.NoError(t, r.apply(serverOther, llm.WithThinking(true), llm.WithThinkingEffort("high")))
+		assert.Equal(t, "high", r.ReasoningEffort)
 	})
 }
 
