@@ -28,6 +28,7 @@ var liveServers = []struct {
 	{"https://mcp.airtable.com/mcp", "", "mcp-airtable"},
 	{"https://mcp.canva.com/mcp", "", "mcp-canva"},
 	{"https://mcp.datadoghq.com/v1/mcp", "", "mcp-datadoghq"},
+	{"https://mcp.grafana.com/mcp", "", "mcp-grafana"},
 }
 
 func Test_AuthorizeLive(t *testing.T) {
