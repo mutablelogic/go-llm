@@ -54,21 +54,32 @@ func (envCredentials) Expand(_ context.Context, value string) (string, error) {
 ///////////////////////////////////////////////////////////////////////////////
 // PRIVATE METHODS
 
-// clientCredentials returns the identifier and secret of the connector's own client,
-// with their credentials expanded, or ErrBadParameter, when a credential
-// doesn't exist, so the connector isn't valid, as a provider's API key isn't
+// clientCredentials returns the identifier and secret of the connector's
+// own client, from the credentials provider, each time they're used, so
+// they aren't kept, or none, when it has none, or ErrBadParameter, when a
+// credential doesn't exist, so the connector isn't valid, as a provider's
+// API key isn't
 func (r *Registry) clientCredentials(ctx context.Context, connector schema.Connector) (string, string, error) {
-	id, err := r.credentialsProvider.Expand(ctx, connector.ClientID)
-	if errors.Is(err, llm.ErrNotFound) {
-		return "", "", llm.ErrBadParameter.Withf("client id: %v", err)
-	} else if err != nil {
+	id, err := r.credential(ctx, "client id", connector.ClientIDCredential)
+	if err != nil {
 		return "", "", err
 	}
-	secret, err := r.credentialsProvider.Expand(ctx, connector.ClientSecret)
-	if errors.Is(err, llm.ErrNotFound) {
-		return "", "", llm.ErrBadParameter.Withf("client secret: %v", err)
-	} else if err != nil {
+	secret, err := r.credential(ctx, "client secret", connector.ClientSecretCredential)
+	if err != nil {
 		return "", "", err
 	}
 	return id, secret, nil
+}
+
+// credential returns the credential with the name, from the credentials
+// provider, or none, when there's no name
+func (r *Registry) credential(ctx context.Context, what, name string) (string, error) {
+	if name == "" {
+		return "", nil
+	}
+	value, err := r.credentialsProvider.Expand(ctx, "${"+name+"}")
+	if errors.Is(err, llm.ErrNotFound) {
+		return "", llm.ErrBadParameter.Withf("%s: %v", what, err)
+	}
+	return value, err
 }

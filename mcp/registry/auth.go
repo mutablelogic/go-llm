@@ -5,6 +5,7 @@ import (
 	"crypto/rand"
 	"encoding/base64"
 	"errors"
+	"net/http"
 	"net/url"
 	"slices"
 	"strings"
@@ -104,13 +105,14 @@ func (r *Registry) Authorize(ctx context.Context, name, callback string) (string
 	// Its client, which is the connector's, when it has one, as its
 	// authorization server doesn't register clients, or is registered, with
 	// the callback, unless it is already, with the authorization server
-	credential := schema.Credential{Issuer: server.Issuer, AuthorizationEndpoint: server.AuthorizationEndpoint, TokenEndpoint: server.TokenEndpoint, Resource: resource, Scopes: scopes}
-	if connector.ClientID != "" {
-		id, _, err := r.clientCredentials(ctx, connector)
-		if err != nil {
+	credential := schema.Credential{URL: connector.URL, Issuer: server.Issuer, AuthorizationEndpoint: server.AuthorizationEndpoint, TokenEndpoint: server.TokenEndpoint, Resource: resource, Scopes: scopes}
+	if connector.ClientIDCredential != "" {
+		// Its identifier, and secret, aren't kept, but the name of their
+		// credential is, and they're got each time they're used
+		if _, _, err := r.clientCredentials(ctx, connector); err != nil {
 			return "", err
 		}
-		credential.ClientID, credential.RedirectURIs = id, []string{callback}
+		credential.ClientCredential, credential.RedirectURIs = connector.ClientIDCredential, []string{callback}
 		if existing, err := r.credentials.GetCredential(ctx, name); err == nil {
 			credential.Token = existing.Token
 		}
@@ -174,15 +176,30 @@ func (r *Registry) Callback(ctx context.Context, state, code, reason string) (*s
 		return nil, llm.ErrBadParameter.Withf("connector %q: the code couldn't be exchanged: %v", p.connector.Name, err)
 	}
 	credential.Token = token
-	if err := r.credentials.PutCredential(ctx, p.connector.Name, credential); err != nil {
-		return nil, err
-	}
 
-	// Connect its server again, with the token, unless it was deleted
+	// Keep it, unless the connector was deleted, or its server, or client,
+	// changed, as it was signed in to, so its token isn't another's
+	r.credentialsMu.Lock()
 	connector, err := r.get(ctx, p.connector.Name)
+	if err == nil {
+		r.mu.Lock()
+		removed, deleted := r.removed[connector.Name]
+		r.mu.Unlock()
+		switch {
+		case deleted && removed >= p.connector.Serial:
+			err = llm.ErrNotFound.Withf("connector %q was deleted, as it was signed in to", connector.Name)
+		case connector.URL != p.connector.URL || connector.ClientIDCredential != p.connector.ClientIDCredential:
+			err = llm.ErrConflict.Withf("connector %q was changed, as it was signed in to", connector.Name)
+		default:
+			err = r.credentials.PutCredential(ctx, connector.Name, credential)
+		}
+	}
+	r.credentialsMu.Unlock()
 	if err != nil {
 		return nil, err
 	}
+
+	// Connect its server again, with the token
 	r.reconnect(connector)
 	return r.status(connector), nil
 }
@@ -209,16 +226,27 @@ func (r *Registry) reconnect(connector schema.Connector) {
 // which is refreshed, as it expires, and stored, once it is, or nil, when
 // it has none
 func (r *Registry) tokenSource(connector schema.Connector) oauth2.TokenSource {
-	credential, err := r.credentials.GetCredential(context.Background(), connector.Name)
+	ctx := context.Background()
+	credential, err := r.credentials.GetCredential(ctx, connector.Name)
 	if err != nil || credential.Token == nil {
 		return nil
+	} else if credential.URL != connector.URL {
+		// It's another server's, whose token isn't sent to this one
+		return nil
+	} else if credential.ClientCredential != connector.ClientIDCredential {
+		// Or another client's
+		return nil
 	}
-	config, err := r.config(context.Background(), connector, *credential, "")
+	config, err := r.config(ctx, connector, *credential, "")
 	if err != nil {
 		r.log().Warn("connector's token can't be refreshed", "connector", connector.Name, "error", err.Error())
 		return nil
 	}
-	return &storedTokens{registry: r, name: connector.Name, last: credential.Token, source: config.TokenSource(context.Background(), credential.Token)}
+
+	// It's refreshed within the connect timeout, so a token endpoint which
+	// doesn't reply doesn't hold up the connector's requests
+	refreshCtx := context.WithValue(ctx, oauth2.HTTPClient, &http.Client{Timeout: r.connectTimeout})
+	return &storedTokens{registry: r, name: connector.Name, last: credential.Token, source: config.TokenSource(refreshCtx, credential.Token)}
 }
 
 // config returns the configuration of the authorization code grant, of the
@@ -226,17 +254,18 @@ func (r *Registry) tokenSource(connector schema.Connector) oauth2.TokenSource {
 // the connector's, as its credentials are expanded, when it has a client of
 // its own, or the one its authorization server registered, when it did
 func (r *Registry) config(ctx context.Context, connector schema.Connector, credential schema.Credential, redirect string) (*oauth2.Config, error) {
-	secret := credential.ClientSecret
-	if connector.ClientID != "" {
-		id, expanded, err := r.clientCredentials(ctx, connector)
-		if err != nil {
+	id, secret := credential.ClientID, credential.ClientSecret
+	if credential.ClientCredential != "" {
+		if credential.ClientCredential != connector.ClientIDCredential {
+			return nil, llm.ErrConflict.Withf("connector %q has another client", connector.Name)
+		}
+		var err error
+		if id, secret, err = r.clientCredentials(ctx, connector); err != nil {
 			return nil, err
-		} else if id == credential.ClientID {
-			secret = expanded
 		}
 	}
 	server := authclient.ServerMetadata{Issuer: credential.Issuer, AuthorizationEndpoint: credential.AuthorizationEndpoint, TokenEndpoint: credential.TokenEndpoint}
-	return server.Config(authclient.Registration{ClientID: credential.ClientID, ClientSecret: secret}, redirect, credential.Scopes...), nil
+	return server.Config(authclient.Registration{ClientID: id, ClientSecret: secret}, redirect, credential.Scopes...), nil
 }
 
 // clientName returns the name a client is registered with, which is the
@@ -294,26 +323,47 @@ type storedTokens struct {
 // Token returns the token, which is refreshed, as it expires, and stored,
 // once it is
 func (s *storedTokens) Token() (*oauth2.Token, error) {
+	// One at once, so a token which is refreshed is stored before another
+	// is compared with it
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	token, err := s.source.Token()
 	if err != nil {
 		return nil, err
+	} else if sameToken(s.last, token) {
+		return token, nil
 	}
-	s.mu.Lock()
-	changed := s.last == nil || s.last.AccessToken != token.AccessToken
-	s.last = token
-	s.mu.Unlock()
-	if changed {
-		ctx := context.Background()
-		if credential, err := s.registry.credentials.GetCredential(ctx, s.name); err == nil {
-			credential.Token = token
-			if err := s.registry.credentials.PutCredential(ctx, s.name, *credential); err != nil {
-				s.registry.log().Warn("connector's token not stored", "connector", s.name, "error", err.Error())
-			}
-		} else if !errors.Is(err, llm.ErrNotFound) {
+
+	// It's stored, and only once it is, is it the last, so one which
+	// couldn't be is stored again, as it's next returned
+	ctx := context.Background()
+	s.registry.credentialsMu.Lock()
+	defer s.registry.credentialsMu.Unlock()
+	credential, err := s.registry.credentials.GetCredential(ctx, s.name)
+	switch {
+	case errors.Is(err, llm.ErrNotFound):
+		// The connector's credential was deleted, so it isn't stored
+		s.last = token
+	case err != nil:
+		s.registry.log().Warn("connector's token not stored", "connector", s.name, "error", err.Error())
+	default:
+		credential.Token = token
+		if err := s.registry.credentials.PutCredential(ctx, s.name, *credential); err != nil {
 			s.registry.log().Warn("connector's token not stored", "connector", s.name, "error", err.Error())
+		} else {
+			s.last = token
 		}
 	}
 	return token, nil
+}
+
+// sameToken returns true when the tokens are the same, as they're stored:
+// their access, and refresh, tokens, and when they expire
+func sameToken(a, b *oauth2.Token) bool {
+	if a == nil || b == nil {
+		return a == b
+	}
+	return a.AccessToken == b.AccessToken && a.RefreshToken == b.RefreshToken && a.TokenType == b.TokenType && a.Expiry.Equal(b.Expiry)
 }
 
 ///////////////////////////////////////////////////////////////////////////////

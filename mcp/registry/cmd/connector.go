@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"cmp"
 	"context"
 	"fmt"
 	"os"
@@ -38,8 +39,17 @@ type ConnectorPatterns struct {
 	Exclude []string `name:"exclude" help:"Regular expressions of the names of the server's tools, prompts and resources which are excluded, such as signup."`
 }
 
+// ConnectorClient are the names of the credentials of the client a
+// connector's server is authorized as, when its authorization server
+// doesn't register clients, such as GitHub's
+type ConnectorClient struct {
+	ClientIDCredential     string `name:"client-id-credential" help:"Name of the credential holding the identifier of the client the server is authorized as, when its authorization server doesn't register clients, such as GITHUB_CLIENT_ID."`
+	ClientSecretCredential string `name:"client-secret-credential" help:"Name of the credential holding the client's secret, such as GITHUB_CLIENT_SECRET."`
+}
+
 type ConnectorCreateCmd struct {
 	ConnectorPatterns
+	ConnectorClient
 	URL  string `arg:"" name:"url" help:"URL of the MCP server, of its streamable HTTP, or SSE, transport, such as https://mcp.example.com/mcp."`
 	Name string `name:"name" help:"Connector name, which is an identifier, such as github, or the server's own name, when it's omitted."`
 }
@@ -49,8 +59,10 @@ type ConnectorCreateCmd struct {
 // unless one is given
 type ConnectorUpdateCmd struct {
 	ConnectorPatterns
-	Name string `arg:"" name:"name" help:"Connector name."`
-	URL  string `name:"url" help:"URL of the MCP server, which replaces it, or it's kept when it isn't given."`
+	Name                   string `arg:"" name:"name" help:"Connector name."`
+	URL                    string `name:"url" help:"URL of the MCP server, which replaces it, or it's kept when it isn't given."`
+	ClientIDCredential     string `name:"client-id-credential" help:"Name of the credential holding the identifier of the client the server is authorized as, which replaces it, or it's kept when it isn't given."`
+	ClientSecretCredential string `name:"client-secret-credential" help:"Name of the credential holding the client's secret, which replaces it, or it's kept when it isn't given."`
 }
 
 type ConnectorDeleteCmd struct {
@@ -95,7 +107,7 @@ func (cmd *ConnectorGetCmd) Run(ctx server.Cmd) error {
 // Run creates the connector, and prints it
 func (cmd *ConnectorCreateCmd) Run(ctx server.Cmd) error {
 	return withClient(ctx, "mcp.ConnectorCreateCmd", func(ctx context.Context, client *httpclient.Client) error {
-		connector, err := client.CreateConnector(ctx, schema.Connector{Name: cmd.Name, ConnectorMeta: schema.ConnectorMeta{URL: cmd.URL, Include: cmd.Include, Exclude: cmd.Exclude}})
+		connector, err := client.CreateConnector(ctx, schema.Connector{Name: cmd.Name, ConnectorMeta: schema.ConnectorMeta{URL: cmd.URL, Include: cmd.Include, Exclude: cmd.Exclude, ClientIDCredential: cmd.ClientIDCredential, ClientSecretCredential: cmd.ClientSecretCredential}})
 		if err != nil {
 			return err
 		}
@@ -107,15 +119,19 @@ func (cmd *ConnectorCreateCmd) Run(ctx server.Cmd) error {
 // Run updates the connector, and prints it
 func (cmd *ConnectorUpdateCmd) Run(ctx server.Cmd) error {
 	return withClient(ctx, "mcp.ConnectorUpdateCmd", func(ctx context.Context, client *httpclient.Client) error {
-		url := cmd.URL
-		if url == "" {
+		// Its URL, and the names of its client's credentials, are kept,
+		// unless they're given
+		meta := schema.ConnectorMeta{URL: cmd.URL, Include: cmd.Include, Exclude: cmd.Exclude, ClientIDCredential: cmd.ClientIDCredential, ClientSecretCredential: cmd.ClientSecretCredential}
+		if meta.URL == "" || meta.ClientIDCredential == "" || meta.ClientSecretCredential == "" {
 			existing, err := client.GetConnector(ctx, cmd.Name)
 			if err != nil {
 				return err
 			}
-			url = existing.URL
+			meta.URL = cmp.Or(meta.URL, existing.URL)
+			meta.ClientIDCredential = cmp.Or(meta.ClientIDCredential, existing.ClientIDCredential)
+			meta.ClientSecretCredential = cmp.Or(meta.ClientSecretCredential, existing.ClientSecretCredential)
 		}
-		connector, err := client.UpdateConnector(ctx, cmd.Name, schema.ConnectorMeta{URL: url, Include: cmd.Include, Exclude: cmd.Exclude})
+		connector, err := client.UpdateConnector(ctx, cmd.Name, meta)
 		if err != nil {
 			return err
 		}

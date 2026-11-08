@@ -42,8 +42,12 @@ type Registry struct {
 	// definition which was read before it was, isn't connected
 	removed map[string]uint64
 
-	// The authorizations which are waited for, by their states
+	// The authorizations which are waited for, by their states, and the
+	// lock of the connectors' credentials, as their connectors are changed,
+	// so a sign-in which finishes as one is changed doesn't keep a
+	// credential for it, as it was
 	authorizations authorizations
+	credentialsMu  sync.Mutex
 
 	// The namespaces of the connectors' servers' tools, in the toolkit, by
 	// the connectors' names, once they're connected, and the logger of what
@@ -170,11 +174,6 @@ func (r *Registry) UpdateConnector(ctx context.Context, name string, meta schema
 	if err != nil {
 		return nil, err
 	}
-	// Its client's secret is kept, unless there's another, as it isn't
-	// returned, so it can't be sent back
-	if meta.ClientSecret == "" && meta.ClientID == connector.ClientID {
-		meta.ClientSecret = connector.ClientSecret
-	}
 	connector.ConnectorMeta = meta
 	connector = connector.Definition()
 	if err := connector.Validate(); err != nil {
@@ -189,7 +188,7 @@ func (r *Registry) UpdateConnector(ctx context.Context, name string, meta schema
 	r.mu.Lock()
 	e, exists := r.clients[name]
 	r.mu.Unlock()
-	if exists && e.serial == connector.Serial && e.connector.URL == connector.URL && e.client.Connected() {
+	if exists && e.serial == connector.Serial && e.connector.URL == connector.URL && e.connector.ClientIDCredential == connector.ClientIDCredential && e.client.Connected() {
 		return r.update(ctx, connector, e.client)
 	}
 
@@ -212,8 +211,24 @@ func (r *Registry) UpdateConnector(ctx context.Context, name string, meta schema
 	}
 
 	// Store it, and replace its client, as it was, with the one which is
-	// connected, or disconnect it, when it couldn't be stored
+	// connected, or disconnect it, when it couldn't be stored. Its
+	// credential is deleted, as one, when its server, or client, is another,
+	// so its token isn't sent to another server, and a sign-in which
+	// finishes as it's updated doesn't keep one
+	r.credentialsMu.Lock()
+	previous, err := r.get(ctx, name)
+	if err != nil {
+		r.credentialsMu.Unlock()
+		_ = c.Disconnect()
+		return nil, err
+	}
 	updated, err := r.store.Put(ctx, connector)
+	if err == nil && (previous.URL != updated.URL || previous.ClientIDCredential != updated.ClientIDCredential) {
+		if err := r.credentials.DeleteCredential(ctx, name); err != nil {
+			r.log().WarnContext(ctx, "connector's credential not deleted", "connector", name, "error", err.Error())
+		}
+	}
+	r.credentialsMu.Unlock()
 	if err != nil {
 		_ = c.Disconnect()
 		return nil, err
@@ -258,16 +273,25 @@ func (r *Registry) update(ctx context.Context, connector schema.Connector, c *cl
 // ErrNotFound when there's no connector with the name, and ErrConflict when
 // it was changed as it was deleted.
 func (r *Registry) DeleteConnector(ctx context.Context, name string) (*schema.Connector, error) {
+	// It's deleted, with its credential, as one, so a sign-in which
+	// finishes as it's deleted doesn't keep a credential for it
+	r.credentialsMu.Lock()
 	connector, err := r.get(ctx, name)
 	if err != nil {
+		r.credentialsMu.Unlock()
 		return nil, err
 	} else if err := r.store.Delete(ctx, name, connector.Serial); err != nil {
+		r.credentialsMu.Unlock()
 		return nil, err
 	}
-	r.forget(name, connector.Serial)
 	if err := r.credentials.DeleteCredential(ctx, name); err != nil {
 		r.log().WarnContext(ctx, "connector's credential not deleted", "connector", name, "error", err.Error())
 	}
+	r.credentialsMu.Unlock()
+
+	// Its client is disconnected once the lock is released, as its token
+	// can be refreshed, and stored, as it's disconnected
+	r.forget(name, connector.Serial)
 	r.publish(eventschema.EventDelete, connector)
 	result := connector.Definition()
 	return &result, nil
@@ -343,7 +367,10 @@ func (r *Registry) replace(connector schema.Connector, c *client.Client) bool {
 	r.clients[connector.Name] = entry{serial: connector.Serial, client: c, connector: connector.Definition()}
 	r.mu.Unlock()
 	if exists && e.client != c {
+		// Its tools are cleared, unless they're another client's, as the
+		// client's change isn't said, once it's been replaced
 		_ = e.client.Disconnect()
+		r.disconnectNamespace(connector.Name, e.client)
 	}
 	return true
 }
@@ -405,7 +432,6 @@ func (r *Registry) forget(name string, serial uint64) {
 // has one, for the connector as it is
 func (r *Registry) status(connector schema.Connector) *schema.Connector {
 	result := connector.Definition()
-	result.ClientSecret = ""
 	result.Namespace = r.namespaceOf(connector.Name)
 	r.mu.Lock()
 	e, exists := r.clients[connector.Name]
