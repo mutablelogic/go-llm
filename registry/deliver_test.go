@@ -25,7 +25,6 @@ import (
 
 func Test_DeliverEvent(t *testing.T) {
 	ctx := context.Background()
-	defer registry.SetDeliverPoll(10 * time.Millisecond)()
 
 	// A registry with sessions, events, resources, and a function which is
 	// given each reply
@@ -45,6 +44,7 @@ func Test_DeliverEvent(t *testing.T) {
 		replies = append(replies, session.String()+":"+text)
 	}))
 	require.NoError(t, err)
+	r.SetDelivery(100*time.Millisecond, time.Minute, time.Minute, 10*time.Millisecond)
 	require.NoError(t, r.Add("", newScripted()))
 	meta := schema.SessionMeta{GeneratorMeta: schema.GeneratorMeta{Model: types.Ptr("model")}}
 	parent, err := r.CreateSession(ctx, meta)
@@ -64,16 +64,19 @@ func Test_DeliverEvent(t *testing.T) {
 	event, err := events.Create(ctx, schema.EventMeta{Run: run.ID, Session: parent.ID, Title: "Morning briefing", Message: "Good morning, it's sunny", Importance: schema.ImportanceNotify, Status: schema.EventPending})
 	require.NoError(t, err)
 
-	// While the session is replying, it waits
+	// While the session is replying, and until it's been idle for a while
+	// since, it waits
 	replied := r.Replying(parent.ID)
 	done := make(chan error, 1)
 	go func() { done <- r.Deliver(ctx, event, messages) }()
-	time.Sleep(100 * time.Millisecond)
+	time.Sleep(150 * time.Millisecond)
 	list, err := r.ListSessionMessages(ctx, parent.ID, schema.MessageListRequest{})
 	require.NoError(t, err)
 	assert.Zero(t, list.Count, "it waits for the reply")
 	replied()
+	idle := time.Now()
 	require.NoError(t, <-done)
+	assert.GreaterOrEqual(t, time.Since(idle), 100*time.Millisecond, "it waits for the session to be idle")
 
 	// It's the assistant's message, marked as the event's, with the speech,
 	// once, copied to the session, and it's delivered, and given to the
@@ -116,14 +119,13 @@ func Test_DeliverEvent(t *testing.T) {
 
 func Test_DeliverWhileReplying(t *testing.T) {
 	ctx := context.Background()
-	defer registry.SetDeliverPoll(5 * time.Millisecond)()
-	defer registry.SetDeliverWait(20 * time.Millisecond)()
 
 	// A session whose model takes a while to reply
 	sessions := test.NewSessionStore()
 	events := test.NewEventStore()
 	r, err := registry.New(registry.WithSessionStore(sessions), registry.WithEventStore(events), registry.WithToolkit(test.NewToolkit(t)))
 	require.NoError(t, err)
+	r.SetDelivery(time.Hour, 20*time.Millisecond, time.Minute, 5*time.Millisecond)
 	p := newScripted(text("Here's the answer"))
 	p.delay = 200 * time.Millisecond
 	require.NoError(t, r.Add("", p))
@@ -132,7 +134,8 @@ func Test_DeliverWhileReplying(t *testing.T) {
 	event, err := events.Create(ctx, schema.EventMeta{Run: uuid.New(), Session: session.ID, Title: "Reminder", Message: "Call Anne", Importance: schema.ImportanceNotify, Status: schema.EventPending})
 	require.NoError(t, err)
 
-	// An event's outcome, which stops waiting for the reply, is added as
+	// An event's outcome, which stops waiting for the session to be idle, is
+	// added as
 	// the model replies, and the reply is stored, after it, rather than
 	// refused, as its conversation is as it was
 	done := make(chan error, 1)
@@ -150,4 +153,80 @@ func Test_DeliverWhileReplying(t *testing.T) {
 	assert.Equal(t, "Here's the answer", list.Body[1].Text())
 	assert.Equal(t, "Call Anne", list.Body[2].Text())
 	assert.NotNil(t, list.Body[2].Event)
+}
+
+func Test_DeliverAfterIdle(t *testing.T) {
+	ctx := context.Background()
+
+	sessions := test.NewSessionStore()
+	events := test.NewEventStore()
+	r, err := registry.New(registry.WithSessionStore(sessions), registry.WithEventStore(events), registry.WithToolkit(test.NewToolkit(t)))
+	require.NoError(t, err)
+	r.SetDelivery(200*time.Millisecond, time.Minute, time.Minute, 5*time.Millisecond)
+	require.NoError(t, r.Add("", newScripted(text("Hello"))))
+	session, err := r.CreateSession(ctx, schema.SessionMeta{GeneratorMeta: schema.GeneratorMeta{Model: types.Ptr("model")}})
+	require.NoError(t, err)
+	event, err := events.Create(ctx, schema.EventMeta{Run: uuid.New(), Session: session.ID, Message: "Call Anne", Importance: schema.ImportanceNotify, Status: schema.EventPending})
+	require.NoError(t, err)
+
+	// A message which was just added, and someone typing, keep it waiting,
+	// until the session's been idle for long enough
+	_, err = r.Chat(ctx, session.ID, []llm.Message{user(t, "Hi")}, nil)
+	require.NoError(t, err)
+	start := time.Now()
+	done := make(chan error, 1)
+	go func() { done <- r.Deliver(ctx, event, nil) }()
+	time.Sleep(150 * time.Millisecond)
+	_, err = r.SetSessionStatus(ctx, session.ID, schema.SessionTyping)
+	require.NoError(t, err)
+	time.Sleep(50 * time.Millisecond)
+	_, err = r.SetSessionStatus(ctx, session.ID, schema.SessionIdle)
+	require.NoError(t, err)
+	typed := time.Now()
+	require.NoError(t, <-done)
+	assert.GreaterOrEqual(t, time.Since(typed), 180*time.Millisecond, "idle for long enough after typing, within a poll")
+	assert.GreaterOrEqual(t, time.Since(start), 380*time.Millisecond)
+	list, err := r.ListSessionMessages(ctx, session.ID, schema.MessageListRequest{})
+	require.NoError(t, err)
+	require.Len(t, list.Body, 3)
+	assert.Equal(t, "Call Anne", list.Body[2].Text())
+}
+
+func Test_DeliverAlert(t *testing.T) {
+	ctx := context.Background()
+	sessions := test.NewSessionStore()
+	events := test.NewEventStore()
+	r, err := registry.New(registry.WithSessionStore(sessions), registry.WithEventStore(events), registry.WithToolkit(test.NewToolkit(t)))
+	require.NoError(t, err)
+	r.SetDelivery(time.Hour, time.Hour, time.Minute, 5*time.Millisecond)
+	require.NoError(t, r.Add("", newScripted(text("Hello"))))
+	session, err := r.CreateSession(ctx, schema.SessionMeta{GeneratorMeta: schema.GeneratorMeta{Model: types.Ptr("model")}})
+	require.NoError(t, err)
+	_, err = r.Chat(ctx, session.ID, []llm.Message{user(t, "Hi")}, nil)
+	require.NoError(t, err)
+
+	// An alert doesn't wait for the session to have been idle for a while,
+	// only for its reply
+	alert, err := events.Create(ctx, schema.EventMeta{Run: uuid.New(), Session: session.ID, Message: "Leave now for the train", Importance: schema.ImportanceAlert, Status: schema.EventPending})
+	require.NoError(t, err)
+	replied := r.Replying(session.ID)
+	done := make(chan error, 1)
+	go func() { done <- r.Deliver(ctx, alert, nil) }()
+	time.Sleep(50 * time.Millisecond)
+	select {
+	case <-done:
+		t.Fatal("delivered as the session was replying")
+	default:
+	}
+	replied()
+	select {
+	case err := <-done:
+		require.NoError(t, err)
+	case <-time.After(time.Second):
+		t.Fatal("an alert waited for the session to have been idle")
+	}
+	list, err := r.ListSessionMessages(ctx, session.ID, schema.MessageListRequest{})
+	require.NoError(t, err)
+	require.Len(t, list.Body, 3)
+	assert.Equal(t, "Leave now for the train", list.Body[2].Text())
 }

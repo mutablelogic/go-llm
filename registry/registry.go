@@ -49,6 +49,9 @@ type Registry struct {
 	ready     chan struct{}
 	readyOnce sync.Once
 
+	// How events' outcomes are delivered, which tests change
+	delivery delivery
+
 	// triggerMu is held to schedule an event which was triggered, so two of
 	// a source, at once, aren't both scheduled, and to change the outcomes
 	// of the events which are scheduled, by the sessions they run in, which
@@ -81,7 +84,7 @@ const separator = ":"
 // New returns a registry without providers, which are added with Add, with
 // the options, such as its tracer
 func New(opts ...Opt) (*Registry, error) {
-	r := &Registry{providers: make(map[string]*cached), ready: make(chan struct{}), triggered: make(map[uuid.UUID]uuid.UUID)}
+	r := &Registry{providers: make(map[string]*cached), ready: make(chan struct{}), triggered: make(map[uuid.UUID]uuid.UUID), delivery: defaultDelivery}
 	if err := r.opt.apply(opts); err != nil {
 		return nil, err
 	}

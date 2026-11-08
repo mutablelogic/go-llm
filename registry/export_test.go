@@ -36,18 +36,9 @@ func (r *Registry) Replying(id uuid.UUID) func() {
 	return r.replying(id)
 }
 
-// SetDeliverPoll sets how often delivery looks whether a session is
-// replying, and returns a function which sets it back
-func SetDeliverPoll(d time.Duration) func() {
-	old := deliverPoll
-	deliverPoll = d
-	return func() { deliverPoll = old }
-}
-
-// SetDeliverWait sets how long delivery waits for a session to stop
-// replying, and returns a function which sets it back
-func SetDeliverWait(d time.Duration) func() {
-	old := deliverWait
-	deliverWait = d
-	return func() { deliverWait = old }
+// SetDelivery sets how long a session must be idle before an event's
+// outcome is delivered, how long a notification, and an alert, wait for it
+// at most, and how often it's looked at, before the registry delivers any
+func (r *Registry) SetDelivery(idle, maxWait, alertWait, poll time.Duration) {
+	r.delivery = delivery{idle: idle, maxWait: maxWait, alertWait: alertWait, poll: poll, retries: defaultDelivery.retries}
 }

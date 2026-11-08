@@ -24,19 +24,40 @@ import (
 ///////////////////////////////////////////////////////////////////////////////
 // GLOBALS
 
-var (
-	// deliverWait is how long an event's outcome waits for the session it's
-	// for to stop replying, before it's added anyway, which a chat's reply,
-	// stored after it, is added after
-	deliverWait = 30 * time.Second
+// delivery is how events' outcomes are delivered: how long the session
+// they're for must have been idle first, and how long they wait for it
+type delivery struct {
+	// idle is how long the session must have been idle, without a reply,
+	// someone typing, or a message, before a notification is added, so it
+	// doesn't interrupt a conversation
+	idle time.Duration
 
-	// deliverPoll is how often it looks whether the session is replying
-	deliverPoll = 500 * time.Millisecond
+	// maxWait is how long a notification waits, at most, for the session
+	// to be idle, before it's added anyway, which a chat's reply, stored
+	// after it, is added after
+	maxWait time.Duration
 
-	// deliverRetries is how many times it's added again, when the session
-	// changed as it was, such as when a chat's reply was stored
-	deliverRetries = 5
-)
+	// alertWait is how long an alert, which is added once the session is
+	// idle, without waiting for it to have been for a while, waits for it,
+	// at most, as acting late would cost the person something
+	alertWait time.Duration
+
+	// poll is how often it looks whether the session is idle
+	poll time.Duration
+
+	// retries is how many times it's added again, when the session changed
+	// as it was, such as when a chat's reply was stored
+	retries int
+}
+
+// defaultDelivery is how events' outcomes are delivered
+var defaultDelivery = delivery{
+	idle:      30 * time.Second,
+	maxWait:   10 * time.Minute,
+	alertWait: 30 * time.Second,
+	poll:      500 * time.Millisecond,
+	retries:   5,
+}
 
 ///////////////////////////////////////////////////////////////////////////////
 // PRIVATE METHODS
@@ -44,7 +65,8 @@ var (
 // deliver adds the event's outcome, which is to be told to the person, to
 // the session it's for, as the assistant's message, marked as the event's,
 // with the resources its run made, such as speech, copied to the session,
-// once the session isn't replying, so a chat's reply isn't refused, as its
+// once the session has been idle for a while, or, for an alert, once it's
+// idle, so a chat's reply isn't refused, as its
 // session changed, and marks it delivered, and gives it to the replies
 // function, such as to send it to the session's channels, as a reply is.
 // It's called in a goroutine of its own, so the run doesn't wait for it.
@@ -84,14 +106,18 @@ func (r *Registry) deliver(ctx context.Context, event schema.Event, run []provid
 		}
 	}
 
-	// Wait for the session to stop replying, and add it, again, when the
-	// session changed as it was added
+	// Wait for the session to be idle, and add it, again, when the session
+	// changed as it was added
+	idle, maxWait := r.delivery.idle, r.delivery.maxWait
+	if event.Importance == schema.ImportanceAlert {
+		idle, maxWait = 0, r.delivery.alertWait
+	}
 	for attempt := 0; ; attempt++ {
-		if err := r.waitIdle(ctx, event.Session); err != nil {
+		if err := r.waitIdle(ctx, event.Session, idle, maxWait); err != nil {
 			return err
 		}
 		err = r.appendMessage(ctx, event.Session, message)
-		if !errors.Is(err, llm.ErrConflict) || attempt >= deliverRetries {
+		if !errors.Is(err, llm.ErrConflict) || attempt >= r.delivery.retries {
 			break
 		}
 	}
@@ -112,18 +138,34 @@ func (r *Registry) deliver(ctx context.Context, event schema.Event, run []provid
 	return nil
 }
 
-// waitIdle waits until the session isn't replying, or for deliverWait, at
-// most, or until the context is cancelled, when it returns its error
-func (r *Registry) waitIdle(ctx context.Context, id uuid.UUID) error {
-	deadline := time.Now().Add(deliverWait)
-	for r.sessionStatus(id) == schema.SessionReplying && time.Now().Before(deadline) {
+// waitIdle waits until the session has been idle, neither replying, nor
+// with someone typing, for the time, since its last message, or since it
+// last wasn't idle, or until it's waited for the most time, or until the
+// context is cancelled, when it returns its error
+func (r *Registry) waitIdle(ctx context.Context, id uuid.UUID, idle, maxWait time.Duration) error {
+	start := time.Now()
+	since := start
+	if session, err := r.sessionStore.Get(ctx, id); err == nil && len(session.Messages) > 0 {
+		if last := session.Messages[len(session.Messages)-1].Time; !last.IsZero() && last.Before(start) {
+			since = last
+		}
+	}
+	for {
+		now := time.Now()
+		if r.sessionStatus(id) != schema.SessionIdle {
+			since = now
+		} else if now.Sub(since) >= idle {
+			return nil
+		}
+		if now.Sub(start) >= maxWait {
+			return nil
+		}
 		select {
 		case <-ctx.Done():
 			return ctx.Err()
-		case <-time.After(deliverPoll):
+		case <-time.After(r.delivery.poll):
 		}
 	}
-	return nil
 }
 
 // appendMessage adds the message to the session, with the time now, and

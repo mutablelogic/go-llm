@@ -266,6 +266,7 @@ func Test_EventOutcomes(t *testing.T) {
 	events := test.NewEventStore()
 	r, err := registry.New(registry.WithToolkit(test.NewToolkit(t)), registry.WithAgentStore(test.NewAgentStore()), registry.WithSessionStore(test.NewSessionStore()), registry.WithEventStore(events))
 	require.NoError(t, err)
+	r.SetDelivery(0, time.Minute, time.Minute, 10*time.Millisecond)
 	p := newScripted(respond("Call your mother", "alert"), respond("Nothing new", "ignore"))
 	require.NoError(t, r.Add("", p))
 	all, err := agents.All()
