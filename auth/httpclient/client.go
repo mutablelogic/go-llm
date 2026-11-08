@@ -19,6 +19,12 @@ import (
 type Client struct {
 	*client.Client
 	endpoint string
+
+	// The client of metadata, as it's discovered, which is go-client's,
+	// without the options, so its requests, which can be to another origin,
+	// such as an authorization server's, aren't sent the credentials, and
+	// headers, the resource's are
+	metadata *client.Client
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -33,7 +39,11 @@ func New(endpoint string, opts ...client.ClientOpt) (*Client, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &Client{Client: c, endpoint: endpoint}, nil
+	metadata, err := client.New(client.OptEndpoint(endpoint))
+	if err != nil {
+		return nil, err
+	}
+	return &Client{Client: c, endpoint: endpoint, metadata: metadata}, nil
 }
 
 ///////////////////////////////////////////////////////////////////////////////

@@ -76,8 +76,10 @@ func (c *Client) Discover(ctx context.Context, resource string) (*Metadata, erro
 	}
 	result := new(Metadata)
 	for _, endpoint := range wellKnown(resource, ResourceMetadataPath) {
+		// A document which doesn't say which resource it's of, such as {},
+		// isn't its metadata, so the next is tried
 		var metadata ResourceMetadata
-		if err := c.DoWithContext(ctx, nil, &metadata, client.OptReqEndpoint(endpoint)); err == nil {
+		if err := c.metadata.DoWithContext(ctx, nil, &metadata, client.OptReqEndpoint(endpoint)); err == nil && metadata.Resource != "" {
 			result.Resource = metadata
 			break
 		}
@@ -103,8 +105,10 @@ func (c *Client) DiscoverWithError(ctx context.Context, err error) (*Metadata, e
 		return c.Discover(ctx, "")
 	}
 	result := new(Metadata)
-	if err := c.DoWithContext(ctx, nil, &result.Resource, client.OptReqEndpoint(endpoint)); err != nil {
+	if err := c.metadata.DoWithContext(ctx, nil, &result.Resource, client.OptReqEndpoint(endpoint)); err != nil {
 		return nil, llm.ErrServiceUnavailable.Withf("resource metadata %q: %v", endpoint, err)
+	} else if result.Resource.Resource == "" {
+		return nil, llm.ErrServiceUnavailable.Withf("resource metadata %q has no resource", endpoint)
 	}
 	issuers := result.Resource.AuthorizationServers
 	if len(issuers) == 0 {
@@ -137,7 +141,8 @@ func (c *Client) servers(ctx context.Context, result *Metadata, issuers []string
 
 // server returns the authorization server's metadata, by its issuer, at
 // OAuth's well-known path, or OpenID Connect's, which says where a token is
-// got, or ErrNotFound, when it hasn't any, with why each of its well-known
+// got, and is of the issuer, as RFC 8414 has it, rather than another, such
+// as another tenant's, at the root, or ErrNotFound, when it hasn't any, with why each of its well-known
 // URLs which isn't missing, such as one which failed, or isn't metadata,
 // wasn't, so it's known why
 func (c *Client) server(ctx context.Context, issuer string) (*ServerMetadata, error) {
@@ -145,17 +150,18 @@ func (c *Client) server(ctx context.Context, issuer string) (*ServerMetadata, er
 	for _, path := range []string{OAuthMetadataPath, OIDCMetadataPath} {
 		for _, endpoint := range wellKnown(issuer, path) {
 			var metadata ServerMetadata
-			if err := c.DoWithContext(ctx, nil, &metadata, client.OptReqEndpoint(endpoint)); err != nil {
+			if err := c.metadata.DoWithContext(ctx, nil, &metadata, client.OptReqEndpoint(endpoint)); err != nil {
 				if !missing(err) {
 					errs = append(errs, fmt.Errorf("%s: %w", endpoint, err))
 				}
 				continue
+			} else if !sameIssuer(metadata.Issuer, issuer) {
+				// Another issuer's, such as another tenant's, at the root
+				errs = append(errs, fmt.Errorf("%s: is of the issuer %q, not %q", endpoint, metadata.Issuer, issuer))
+				continue
 			} else if metadata.TokenEndpoint == "" {
 				errs = append(errs, fmt.Errorf("%s: has no token_endpoint", endpoint))
 				continue
-			}
-			if metadata.Issuer == "" {
-				metadata.Issuer = issuer
 			}
 			return &metadata, nil
 		}
@@ -205,6 +211,14 @@ func wellKnown(raw, path string) []string {
 		}
 	}
 	return result
+}
+
+// sameIssuer returns true when the metadata's issuer is the issuer, which
+// it must be, apart from a slash at its end, which some servers add, or
+// leave out
+func sameIssuer(metadata, issuer string) bool {
+	metadata, issuer = strings.TrimRight(strings.TrimSpace(metadata), "/"), strings.TrimRight(strings.TrimSpace(issuer), "/")
+	return metadata != "" && metadata == issuer
 }
 
 // origin returns the URL's scheme, and host, or nothing, when it isn't one
