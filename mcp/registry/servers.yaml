@@ -113,6 +113,12 @@
   description: Customers, payments, invoices, subscriptions and Stripe's documentation, with Stripe's own MCP server
   url: https://mcp.stripe.com
 
+# Workable's sign-in registers clients itself, so it needs no credentials,
+# and is always offered
+- name: Workable
+  description: Jobs, candidates, offers and employees in your Workable account, with Workable's own MCP server
+  url: https://mcp.workable.com/mcp
+
 # Lingviko's der die das needs no sign-in, so it needs no credentials, and
 # is always offered
 - name: der die das (Lingviko)
