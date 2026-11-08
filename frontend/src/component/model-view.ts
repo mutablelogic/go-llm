@@ -38,12 +38,6 @@ export class ModelView extends Panel<Model> {
     busy = false;
 
     static styles = [Panel.styles, css`
-        /* The actions are side by side, and wrap */
-        .actions {
-            display: flex;
-            flex-wrap: wrap;
-            gap: 1px;
-        }
     `];
 
     protected current() {
@@ -58,26 +52,30 @@ export class ModelView extends Panel<Model> {
         return model.canonical;
     }
 
+    protected renderFooter(model: Model) {
+        if (cannot(model, 'chat') && !this.stored) {
+            return nothing;
+        }
+        return html`
+            ${cannot(model, 'chat') ? nothing : html`
+                <cds-button kind="primary" size="md"
+                    @click=${() => this.dispatchEvent(new CustomEvent(ModelView.eventChat, { detail: model.canonical }))}>
+                    New chat ${iconLoader(Chat16, { slot: 'icon' })}
+                </cds-button>
+            `}
+            ${this.stored ? html`
+                <cds-button kind="danger" size="md" ?disabled=${this.busy}
+                    @click=${() => this.dispatchEvent(new CustomEvent(ModelView.eventDelete, { detail: model.canonical }))}>
+                    Delete ${iconLoader(TrashCan16, { slot: 'icon' })}
+                </cds-button>
+            ` : nothing}
+        `;
+    }
+
     protected renderBody(model: Model) {
         const meta = Object.entries(model.meta ?? {});
         return html`
             ${model.description ? html`<p>${model.description}</p>` : nothing}
-            ${cannot(model, 'chat') && !this.stored ? nothing : html`
-                <p class="actions">
-                    ${cannot(model, 'chat') ? nothing : html`
-                        <cds-button kind="primary" size="md"
-                            @click=${() => this.dispatchEvent(new CustomEvent(ModelView.eventChat, { detail: model.canonical }))}>
-                            New chat ${iconLoader(Chat16, { slot: 'icon' })}
-                        </cds-button>
-                    `}
-                    ${this.stored ? html`
-                        <cds-button kind="danger" size="md" ?disabled=${this.busy}
-                            @click=${() => this.dispatchEvent(new CustomEvent(ModelView.eventDelete, { detail: model.canonical }))}>
-                            Delete ${iconLoader(TrashCan16, { slot: 'icon' })}
-                        </cds-button>
-                    ` : nothing}
-                </p>
-            `}
             <h3>Model</h3>
             <dl>
                 <dt>Provider</dt><dd>${model.provider}</dd>
