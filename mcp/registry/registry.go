@@ -52,8 +52,9 @@ type Registry struct {
 // entry is the client of a connector, and the serial of the definition it was
 // created with
 type entry struct {
-	serial uint64
-	client *client.Client
+	serial    uint64
+	client    *client.Client
+	connector schema.Connector
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -135,7 +136,9 @@ func (r *Registry) CreateConnector(ctx context.Context, connector schema.Connect
 // its server, as it is now, is connected, within ConnectTimeout, so a URL
 // which isn't a server's isn't stored, and returns it, with its new serial,
 // and connected. Its server, as it was, is disconnected, once it's
-// replaced. Returns ErrNotFound when there's no connector with the name,
+// replaced. One whose server is connected, at the same URL, such as when
+// only its patterns change, keeps its session, and has its tools added
+// again, with its patterns. Returns ErrNotFound when there's no connector with the name,
 // ErrBadParameter when the fields aren't valid, ErrServiceUnavailable when
 // its server, as it is now, can't be connected, when it's left as it was,
 // and ErrConflict when it was changed as it was updated.
@@ -150,14 +153,26 @@ func (r *Registry) UpdateConnector(ctx context.Context, name string, meta schema
 		return nil, err
 	}
 
-	// Connect to its server, as it is now, before it's stored
+	// One whose server is connected, at the same URL, such as when only its
+	// patterns change, keeps its session, as some servers have only one at
+	// once, and has its tools added again
+	r.mu.Lock()
+	e, exists := r.clients[name]
+	r.mu.Unlock()
+	if exists && e.serial == connector.Serial && e.connector.URL == connector.URL && e.client.Connected() {
+		return r.update(ctx, connector, e.client)
+	}
+
+	// Otherwise connect to its server, as it is now, before it's stored
 	c, err := r.newClient(connector)
 	if err != nil {
 		return nil, err
 	}
 	connectCtx, cancel := context.WithTimeout(ctx, ConnectTimeout)
 	defer cancel()
-	if err := c.Connect(connectCtx); err != nil {
+	if err := c.Connect(connectCtx); errors.Is(err, context.DeadlineExceeded) && ctx.Err() == nil {
+		return nil, llm.ErrServiceUnavailable.Withf("%s didn't reply within %v", connector.URL, ConnectTimeout)
+	} else if err != nil {
 		return nil, err
 	}
 
@@ -172,6 +187,26 @@ func (r *Registry) UpdateConnector(ctx context.Context, name string, meta schema
 	r.publish(eventschema.EventUpdate, updated)
 	if server, _ := c.Status(); server != nil {
 		// It was connected before it was the connector's, so it's said now
+		r.connection(updated, c, server, nil)
+	}
+	return r.status(updated), nil
+}
+
+// update stores the connector, whose server the client is connected to, at
+// its URL, as it was, and keeps the client, as it is now, and adds its
+// tools again, with its patterns
+func (r *Registry) update(ctx context.Context, connector schema.Connector, c *client.Client) (*schema.Connector, error) {
+	updated, err := r.store.Put(ctx, connector)
+	if err != nil {
+		return nil, err
+	}
+	r.mu.Lock()
+	if e, exists := r.clients[connector.Name]; exists && e.client == c {
+		r.clients[connector.Name] = entry{serial: updated.Serial, client: c, connector: updated.Definition()}
+	}
+	r.mu.Unlock()
+	r.publish(eventschema.EventUpdate, updated)
+	if server, _ := c.Status(); server != nil {
 		r.connection(updated, c, server, nil)
 	}
 	return r.status(updated), nil
@@ -227,7 +262,7 @@ func (r *Registry) client(connector schema.Connector) (*client.Client, error) {
 		r.mu.Unlock()
 		return nil, err
 	}
-	r.clients[connector.Name] = entry{serial: connector.Serial, client: c}
+	r.clients[connector.Name] = entry{serial: connector.Serial, client: c, connector: connector.Definition()}
 	r.mu.Unlock()
 	if exists {
 		_ = e.client.Disconnect()
@@ -241,7 +276,7 @@ func (r *Registry) client(connector schema.Connector) (*client.Client, error) {
 func (r *Registry) replace(connector schema.Connector, c *client.Client) {
 	r.mu.Lock()
 	e, exists := r.clients[connector.Name]
-	r.clients[connector.Name] = entry{serial: connector.Serial, client: c}
+	r.clients[connector.Name] = entry{serial: connector.Serial, client: c, connector: connector.Definition()}
 	r.mu.Unlock()
 	if exists && e.client != c {
 		_ = e.client.Disconnect()

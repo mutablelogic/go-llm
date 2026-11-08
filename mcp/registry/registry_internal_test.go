@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"net/http"
+	"net/http/httptest"
 	"testing"
 	"time"
 
@@ -164,4 +166,57 @@ func Test_Jitter(t *testing.T) {
 		r.reconcile(cancelled, logger)
 		assert.Less(t, time.Since(start), 5*time.Second)
 	})
+}
+
+func Test_UpdateKeepsSession(t *testing.T) {
+	// A connector whose patterns change, at the same URL, keeps its session,
+	// as some servers have one at once, but one whose URL changes doesn't
+	setInterval(t, &ConnectJitter, 10*time.Millisecond)
+	ctx := t.Context()
+	server := test.NewServer(t)
+	r, err := New()
+	require.NoError(t, err)
+	t.Cleanup(func() { assert.NoError(t, r.Close()) })
+	_, err = r.CreateConnector(ctx, schema.Connector{Name: "test", ConnectorMeta: schema.ConnectorMeta{URL: server.URL}})
+	require.NoError(t, err)
+	r.reconcile(ctx, slog.New(slog.DiscardHandler))
+	c := clientOf(r, "test")
+	require.True(t, c.Connected())
+
+	updated, err := r.UpdateConnector(ctx, "test", schema.ConnectorMeta{URL: server.URL, Exclude: []string{"secret"}})
+	require.NoError(t, err)
+	assert.True(t, updated.Connected)
+	assert.Equal(t, []string{"secret"}, updated.Exclude)
+	assert.Same(t, c, clientOf(r, "test"))
+	assert.True(t, c.Connected())
+
+	_, err = r.UpdateConnector(ctx, "test", schema.ConnectorMeta{URL: server.URL + "/"})
+	require.NoError(t, err)
+	assert.NotSame(t, c, clientOf(r, "test"))
+	assert.False(t, c.Connected())
+}
+
+func Test_UpdateTimeout(t *testing.T) {
+	// A server which doesn't reply, as it's connected, is unavailable
+	setInterval(t, &ConnectTimeout, 100*time.Millisecond)
+	ctx := t.Context()
+	release := make(chan struct{})
+	hung := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		select {
+		case <-release:
+		case <-r.Context().Done():
+		}
+	}))
+	t.Cleanup(func() {
+		close(release)
+		hung.Close()
+	})
+	r, err := New()
+	require.NoError(t, err)
+	_, err = r.CreateConnector(ctx, schema.Connector{Name: "test", ConnectorMeta: schema.ConnectorMeta{URL: "https://mcp.example.com"}})
+	require.NoError(t, err)
+	start := time.Now()
+	_, err = r.UpdateConnector(ctx, "test", schema.ConnectorMeta{URL: hung.URL})
+	assert.Less(t, time.Since(start), 2*time.Second, "and is said as soon as it times out")
+	assert.ErrorIs(t, err, llm.ErrServiceUnavailable)
 }

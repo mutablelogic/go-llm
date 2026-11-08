@@ -2,6 +2,8 @@ package schema
 
 import (
 	"net/url"
+	"regexp"
+	"slices"
 	"strings"
 
 	// Packages
@@ -15,7 +17,9 @@ import (
 
 // ConnectorMeta are the fields of a connector which can be set
 type ConnectorMeta struct {
-	URL string `json:"url" help:"The URL of the connector's MCP server, of its streamable HTTP, or SSE, transport" example:"https://mcp.example.com/mcp"`
+	URL     string   `json:"url" help:"The URL of the connector's MCP server, of its streamable HTTP, or SSE, transport" example:"https://mcp.example.com/mcp"`
+	Include []string `json:"include,omitempty" help:"Regular expressions of the names of its server's tools, prompts and resources which are included, or every one when there are none" example:"[\"^search_\"]" optional:""`
+	Exclude []string `json:"exclude,omitempty" help:"Regular expressions of the names of its server's tools, prompts and resources which are excluded" example:"[\"signup\"]" optional:""`
 }
 
 // Connector is a remote MCP server, as it's connected to: its name, its
@@ -91,7 +95,46 @@ func (m ConnectorMeta) Validate() error {
 	} else if u.Host == "" {
 		return llm.ErrBadParameter.Withf("url %q has no host", m.URL)
 	}
-	return nil
+	_, err = m.Matcher()
+	return err
+}
+
+// Matcher returns the function which says whether the name of one of the
+// server's tools, prompts or resources is included: it matches one of the
+// include patterns, or there are none, and none of the exclude patterns.
+// Returns ErrBadParameter when a pattern isn't a regular expression.
+func (m ConnectorMeta) Matcher() (func(string) bool, error) {
+	include, err := compile("include", m.Include)
+	if err != nil {
+		return nil, err
+	}
+	exclude, err := compile("exclude", m.Exclude)
+	if err != nil {
+		return nil, err
+	}
+	return func(name string) bool {
+		if len(include) > 0 && !slices.ContainsFunc(include, func(re *regexp.Regexp) bool { return re.MatchString(name) }) {
+			return false
+		}
+		return !slices.ContainsFunc(exclude, func(re *regexp.Regexp) bool { return re.MatchString(name) })
+	}, nil
+}
+
+///////////////////////////////////////////////////////////////////////////////
+// PRIVATE FUNCTIONS
+
+// compile returns the patterns, which are regular expressions, compiled, or
+// ErrBadParameter when one isn't valid
+func compile(field string, patterns []string) ([]*regexp.Regexp, error) {
+	result := make([]*regexp.Regexp, 0, len(patterns))
+	for _, pattern := range patterns {
+		re, err := regexp.Compile(pattern)
+		if err != nil {
+			return nil, llm.ErrBadParameter.Withf("%s pattern %q: %v", field, pattern, err)
+		}
+		result = append(result, re)
+	}
+	return result, nil
 }
 
 ///////////////////////////////////////////////////////////////////////////////

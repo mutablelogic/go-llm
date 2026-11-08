@@ -23,6 +23,7 @@ import (
 // server's, as they were last listed, which are listed again with Refresh,
 // such as when the server says they changed
 type Namespace struct {
+	opt
 	name        string
 	description string
 	client      *client.Client
@@ -39,17 +40,21 @@ var _ toolkit.Namespace = (*Namespace)(nil)
 
 // New returns the namespace, with the name, such as one schema.Namespace
 // returns, and the description, such as the server's title, of the tools
-// of the server the client is connected to, which are listed. Returns
+// of the server the client is connected to, which are listed, with the
+// options, such as which tools are included, with WithMatch. Returns
 // ErrBadParameter when the name is empty, or there's no client, and the
 // client's error, when its tools can't be listed, such as
 // ErrServiceUnavailable, when it isn't connected.
-func New(ctx context.Context, name, description string, c *client.Client) (*Namespace, error) {
+func New(ctx context.Context, name, description string, c *client.Client, opts ...Opt) (*Namespace, error) {
 	if name == "" {
 		return nil, llm.ErrBadParameter.With("missing namespace")
 	} else if c == nil {
 		return nil, llm.ErrBadParameter.With("missing client")
 	}
 	ns := &Namespace{name: name, description: description, client: c}
+	if err := ns.opt.apply(opts); err != nil {
+		return nil, err
+	}
 	if err := ns.Refresh(ctx); err != nil {
 		return nil, err
 	}
@@ -99,7 +104,8 @@ func (ns *Namespace) Notify(fn func(eventschema.EventAction, string)) {
 ///////////////////////////////////////////////////////////////////////////////
 // PUBLIC METHODS
 
-// Refresh lists the server's tools again, and calls the function Notify
+// Refresh lists the server's tools again, which are included, and calls the
+// function Notify
 // set, without the lock, with each which was created, updated, or deleted,
 // since they were last listed. When they can't be listed, they're as they
 // were, and that's the error.
@@ -110,7 +116,7 @@ func (ns *Namespace) Refresh(ctx context.Context) error {
 	}
 	tools := make([]*tool, 0, len(listed))
 	for _, t := range listed {
-		if t != nil && t.Name != "" {
+		if t != nil && t.Name != "" && ns.match(t.Name) {
 			tools = append(tools, newTool(t, ns.client))
 		}
 	}

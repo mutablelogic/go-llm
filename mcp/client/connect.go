@@ -122,29 +122,43 @@ func (c *Client) Status() (*sdkmcp.Implementation, error) {
 
 // dial connects to the server with the transport, with a context of the
 // session's own, which lasts until it's cancelled, as it's disconnected,
-// or it ends, but which is cancelled as it's connected, when the context
-// is, so the caller can give up. Returns the session, and the function
-// which cancels its context.
+// or it ends, and returns as soon as the context is cancelled, so the
+// caller can give up, rather than waiting for the attempt to end, which is
+// then closed, once it does. Returns the session, and the function which
+// cancels its context.
 func (c *Client) dial(ctx context.Context, transport sdkmcp.Transport) (*sdkmcp.ClientSession, context.CancelFunc, error) {
 	sessionCtx, cancel := context.WithCancel(context.WithoutCancel(ctx))
-	stop := context.AfterFunc(ctx, cancel)
 	var opts *sdkmcp.ClientOptions
 	if fn := c.toolsChanged; fn != nil {
 		opts = &sdkmcp.ClientOptions{ToolListChangedHandler: func(context.Context, *sdkmcp.ToolListChangedRequest) { fn() }}
 	}
-	session, err := sdkmcp.NewClient(&c.implementation, opts).Connect(sessionCtx, transport, nil)
-	if !stop() {
-		// The caller gave up as it was connected
-		if err == nil {
-			_ = session.Close()
-		}
-		cancel()
-		return nil, nil, ctx.Err()
-	} else if err != nil {
-		cancel()
-		return nil, nil, err
+	type result struct {
+		session *sdkmcp.ClientSession
+		err     error
 	}
-	return session, cancel, nil
+	done := make(chan result, 1)
+	go func() {
+		session, err := sdkmcp.NewClient(&c.implementation, opts).Connect(sessionCtx, transport, nil)
+		done <- result{session, err}
+	}()
+	select {
+	case r := <-done:
+		if r.err != nil {
+			cancel()
+			return nil, nil, r.err
+		}
+		return r.session, cancel, nil
+	case <-ctx.Done():
+		// The caller gave up, so the attempt is ended, and closed, when it
+		// was connected after all
+		cancel()
+		go func() {
+			if r := <-done; r.session != nil {
+				_ = r.session.Close()
+			}
+		}()
+		return nil, nil, ctx.Err()
+	}
 }
 
 // keepAlive pings the server, every keepAlive, until the session ends, and

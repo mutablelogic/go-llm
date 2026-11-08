@@ -84,6 +84,28 @@ func Test_Toolkit(t *testing.T) {
 		}
 	})
 
+	t.Run("Patterns", func(t *testing.T) {
+		// Only the tools which match its patterns are added, and they're
+		// added again, as its patterns are updated
+		created := connector("patterns", server.URL)
+		created.Exclude = []string{"^echo$"}
+		_, err := r.CreateConnector(ctx, created)
+		require.NoError(t, err)
+		require.Eventually(t, func() bool { return status(t, r, "patterns").Namespace != "" }, 5*time.Second, 5*time.Millisecond)
+		assert.Empty(t, toolNames(t, tk, "patterns"))
+		_, err = r.UpdateConnector(ctx, "patterns", schema.ConnectorMeta{URL: server.URL, Include: []string{"^ec"}})
+		require.NoError(t, err)
+		assert.Equal(t, []string{"patterns:echo"}, toolNames(t, tk, "patterns"))
+
+		// But not with a pattern which isn't one
+		_, err = r.UpdateConnector(ctx, "patterns", schema.ConnectorMeta{URL: server.URL, Include: []string{"("}})
+		assert.ErrorIs(t, err, llm.ErrBadParameter)
+		bad := connector("bad", server.URL)
+		bad.Include = []string{"("}
+		_, err = r.CreateConnector(ctx, bad)
+		assert.ErrorIs(t, err, llm.ErrBadParameter)
+	})
+
 	t.Run("Changed", func(t *testing.T) {
 		// A tool which the server adds is added, as it says its tools
 		// changed

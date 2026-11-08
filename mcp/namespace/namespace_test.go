@@ -105,6 +105,20 @@ func Test_Namespace(t *testing.T) {
 	})
 }
 
+func Test_Match(t *testing.T) {
+	// Only the tools which are included are the namespace's
+	ctx := t.Context()
+	server := newServer(t)
+	ns, err := namespace.New(ctx, "test", "", connect(t, server), namespace.WithMatch(func(name string) bool { return name != "fail" }))
+	require.NoError(t, err)
+	tools := ns.Tools()
+	require.Len(t, tools, 2)
+	assert.Equal(t, "echo", tools[0].Name())
+	assert.Equal(t, "sum", tools[1].Name())
+	_, err = namespace.New(ctx, "test", "", connect(t, server), namespace.WithMatch(nil))
+	assert.Error(t, err)
+}
+
 func Test_Refresh(t *testing.T) {
 	// The tools are listed again, as the server says they changed, and each
 	// which was created, updated, or deleted is said

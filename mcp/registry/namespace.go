@@ -39,8 +39,18 @@ func (r *Registry) addNamespace(name string, c *client.Client, server *sdkmcp.Im
 	if description == "" {
 		description = server.Name
 	}
+
+	// Its tools which are included, by the connector's patterns
+	r.mu.Lock()
+	meta := r.clients[name].connector.ConnectorMeta
+	r.mu.Unlock()
+	match, err := meta.Matcher()
+	if err != nil {
+		r.log().WarnContext(ctx, "connector's tools not added", "connector", name, "error", err.Error())
+		return
+	}
 	for range namespaceAttempts {
-		ns, err := namespace.New(ctx, schema.Namespace(name, r.toolkit.HasNamespace), description, c)
+		ns, err := namespace.New(ctx, schema.Namespace(name, r.toolkit.HasNamespace), description, c, namespace.WithMatch(match))
 		if err != nil {
 			r.log().WarnContext(ctx, "connector's tools not listed", "connector", name, "error", err.Error())
 			return
