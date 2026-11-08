@@ -87,6 +87,10 @@ export class ChatView extends LitElement {
     static readonly eventSend = ChatInput.eventSend;
     static readonly eventTyping = ChatInput.eventTyping;
     static readonly eventInfo = 'llm-chat-info';
+
+    // The name of the event fired as the conversation is scrolled up to its
+    // first message, which is loaded, when there are earlier ones
+    static readonly eventEarlier = 'llm-chat-earlier';
     static readonly eventAttach = ChatInput.eventAttach;
     static readonly eventDetach = ChatInput.eventDetach;
     static readonly eventUpload = ChatInput.eventUpload;
@@ -95,9 +99,17 @@ export class ChatView extends LitElement {
     @property({ attribute: false })
     session?: Session;
 
-    // Its messages, which are undefined while they're loading
+    // Its messages, which are undefined while they're loading, from the
+    // position of the first, of the session's, as earlier ones are loaded as
+    // it's scrolled up to them, and whether they're loading
     @property({ attribute: false })
     messages?: Message[];
+
+    @property({ attribute: false })
+    offset = 0;
+
+    @property({ attribute: false })
+    earlierLoading = false;
 
     // The lines tools logged, as replies were streamed, by the identifier of
     // a tool's result, which they're shown before, or the position of a
@@ -168,6 +180,10 @@ export class ChatView extends LitElement {
     // Whether the conversation was scrolled to its end, before it changed,
     // so it follows the reply, unless it was scrolled up to read
     private following = true;
+
+    // The distance of what's shown from the end of the conversation, as
+    // earlier messages are added, so it isn't moved by them
+    private anchor?: number;
 
     static styles = [markdownStyles, css`
         :host {
@@ -264,6 +280,13 @@ export class ChatView extends LitElement {
         }
 
         /* What tools log, and how they're getting on, between the bubbles */
+        .earlier {
+            margin: 0.5rem 0;
+            color: var(--cds-text-secondary);
+            font-size: 0.75rem;
+            text-align: center;
+        }
+
         .marker {
             margin: 1rem 0;
             color: var(--cds-text-secondary);
@@ -361,10 +384,24 @@ export class ChatView extends LitElement {
         this.input?.restore(text);
     }
 
-    willUpdate(_changed: PropertyValues<this>) {
+    willUpdate(changed: PropertyValues<this>) {
         const el = this.conversation;
         this.following = !el || el.scrollTop + el.clientHeight >= el.scrollHeight - 48;
+
+        // Earlier messages which are added keep what's shown where it is,
+        // by its distance from the end
+        const before = changed.get('offset') as number | undefined;
+        this.anchor = el && before !== undefined && this.offset < before && !changed.has('session') ? el.scrollHeight - el.scrollTop : undefined;
     }
+
+    // handleScroll asks for earlier messages, as the conversation is scrolled
+    // near its top, when there are any, and they aren't loading
+    private handleScroll = () => {
+        const el = this.conversation;
+        if (el && el.scrollTop < 200 && this.offset > 0 && !this.earlierLoading && this.messages) {
+            this.dispatchEvent(new CustomEvent(ChatView.eventEarlier));
+        }
+    };
 
     updated(changed: PropertyValues<this>) {
         // A session which is opened is shown from its end, once its bubbles
@@ -372,7 +409,22 @@ export class ChatView extends LitElement {
         if (changed.has('session') && changed.get('session')?.id !== this.session?.id) {
             this.following = true;
         }
-        if (this.following) {
+        // Earlier messages are asked for, when those which are loaded don't
+        // fill the conversation, so it can't be scrolled up to them, once
+        // they change, rather than on every update, so a page which couldn't
+        // be loaded isn't asked for again, until it's scrolled to
+        if (changed.has('messages') || changed.has('offset')) {
+            requestAnimationFrame(() => {
+                const el = this.conversation;
+                if (el && el.scrollHeight <= el.clientHeight + 200) {
+                    this.handleScroll();
+                }
+            });
+        }
+        if (this.anchor !== undefined && this.conversation) {
+            this.conversation.scrollTop = this.conversation.scrollHeight - this.anchor;
+            this.anchor = undefined;
+        } else if (this.following) {
             requestAnimationFrame(() => {
                 if (this.conversation) {
                     this.conversation.scrollTop = this.conversation.scrollHeight;
@@ -391,12 +443,12 @@ export class ChatView extends LitElement {
         // time it ran, and isn't chatted in
         if (this.session.event) {
             return html`
-                <div class="conversation">${this.renderConversation()}</div>
+                <div class="conversation" @scroll=${this.handleScroll}>${this.renderConversation()}</div>
                 <div class="event-note">This is an event's session: what a reminder did each time it fired. It isn't chatted in.</div>
             `;
         }
         return html`
-            <div class="conversation">${this.renderConversation()}</div>
+            <div class="conversation" @scroll=${this.handleScroll}>${this.renderConversation()}</div>
             <llm-chat-input ?disabled=${this.messages === undefined} ?busy=${this.question !== undefined} .attachments=${this.attachments} .uploading=${this.uploading}
                 @llm-chat-send=${(e: CustomEvent<string>) => this.dispatchEvent(new CustomEvent(ChatView.eventSend, { detail: e.detail }))}
                 @llm-chat-typing=${() => this.dispatchEvent(new CustomEvent(ChatView.eventTyping))}
@@ -413,7 +465,7 @@ export class ChatView extends LitElement {
         if (!this.messages) {
             return html`<cds-skeleton-text paragraph line-count="6"></cds-skeleton-text>`;
         }
-        const bubbles = this.messages.flatMap((message, position) => this.messageBubbles(message, position));
+        const bubbles = this.messages.flatMap((message, position) => this.messageBubbles(message, this.offset + position));
         if (this.question !== undefined) {
             bubbles.push(...this.questionAttachments.map((resource): Bubble => ({
                 kind: 'user',
@@ -429,7 +481,10 @@ export class ChatView extends LitElement {
             return html`<p class="empty">No messages yet. Ask a question to start the conversation.</p>`;
         }
         let speaker: 'user' | 'assistant' | undefined;
-        return html`<div class="messages">${bubbles.map((bubble) => {
+        const earlier = this.offset > 0
+            ? html`<div class="earlier">${this.earlierLoading ? 'Loading earlier messages…' : 'Scroll up for earlier messages'}</div>`
+            : nothing;
+        return html`${earlier}<div class="messages">${bubbles.map((bubble) => {
             if (bubble.kind === 'marker') {
                 // Whoever speaks next is named again, after the divider
                 speaker = undefined;

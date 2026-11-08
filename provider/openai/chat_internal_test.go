@@ -100,6 +100,39 @@ func TestToolLoop(t *testing.T) {
 	})
 }
 
+func TestEffortRequest(t *testing.T) {
+	// A request's effort is the nearest the model has, when the server lists
+	// its efforts, such as DeepSeek, and otherwise the effort
+	ctx := context.Background()
+	var asked map[string]any
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch r.URL.Path {
+		case "/v1/models":
+			w.Write([]byte(`{"object":"list","data":[{"id":"deepseek-flash","effort":{"supported_levels":["low","high","max"],"default_level":"high"}},{"id":"deepseek-chat"}]}`))
+		case "/v1/chat/completions":
+			asked = nil
+			json.NewDecoder(r.Body).Decode(&asked)
+			w.Write([]byte(`{"id":"1","choices":[{"index":0,"message":{"role":"assistant","content":"Hi"},"finish_reason":"stop"}],"usage":{"prompt_tokens":1,"completion_tokens":1}}`))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	t.Cleanup(server.Close)
+	c, err := New(server.URL+"/v1", "")
+	require.NoError(t, err)
+	user, err := schema.NewMessage("user", "Hi")
+	require.NoError(t, err)
+
+	for name, want := range map[string]string{"deepseek-flash": "high", "deepseek-chat": "medium"} {
+		model, err := c.GetModel(ctx, name)
+		require.NoError(t, err)
+		_, _, err = c.WithoutSession(ctx, model, []llm.Message{user}, nil, nil, llm.WithThinkingEffort("medium"))
+		require.NoError(t, err, name)
+		assert.Equal(t, want, asked["reasoning_effort"], name)
+	}
+}
+
 // A reply which didn't finish, as it was truncated or filtered, is so even
 // when it called tools, whose calls may be incomplete
 func Test_ChatResult(t *testing.T) {

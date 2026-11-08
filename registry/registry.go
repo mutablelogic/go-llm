@@ -252,7 +252,9 @@ func (r *Registry) Ping(ctx context.Context) (err error) {
 // models are cached, and are listed again, at once, when they're stale.
 // When a provider's models can't be listed, such as when it can't be
 // reached, and none are cached, the others' models are returned, with an
-// error saying which providers' couldn't be.
+// error saying which providers' couldn't be. A provider whose last ping, or
+// listing, failed within PingInterval isn't asked again, so its error is
+// returned without waiting for it.
 func (r *Registry) ListModels(ctx context.Context, providers ...string) (_ []llm.Model, err error) {
 	ctx, endSpan := otel.StartSpan(r.tracer, ctx, "llm.registry.ListModels",
 		attribute.StringSlice("arg.providers", providers),

@@ -42,6 +42,10 @@ export class ChatController {
     // The most sessions which are listed
     static readonly limit = 100;
 
+    // How many of a chat's messages are loaded at once: the latest, as it's
+    // opened, and then the page before, as it's scrolled up to
+    static readonly page = 50;
+
     // How often the server is told someone is still typing, which it
     // forgets after ten seconds
     static readonly typingInterval = 5000;
@@ -61,6 +65,17 @@ export class ChatController {
     private session?: Session;
     private messages?: Message[];
     private details: Details = {};
+
+    // The position of the first message which is loaded, of the session's
+    // messages, as the latest are loaded, and earlier ones as the
+    // conversation is scrolled up to them, and whether they're loading
+    private first = 0;
+    private earlierLoading = false;
+
+    // The generation of the messages, which is changed whenever they're
+    // replaced, rather than added to, such as when the conversation is
+    // forgotten, so a page which was asked for before then isn't added
+    private generation = 0;
 
     // The message whose details are shown
     private selected?: Message;
@@ -123,6 +138,7 @@ export class ChatController {
         views.list?.addEventListener(SessionList.eventDelete, () => void this.delete());
         views.list?.addEventListener(SessionList.eventEdit, () => void this.edit());
         views.list?.addEventListener(SessionList.eventCompact, () => void this.compact());
+        views.view?.addEventListener(ChatView.eventEarlier, () => void this.loadEarlier());
         views.create?.addEventListener(NewSession.eventSave, (e) => void this.save((e as CustomEvent<SessionMeta>).detail));
         views.view?.addEventListener(ChatView.eventSend, (e) => void this.send((e as CustomEvent<string>).detail));
         views.view?.addEventListener(ChatView.eventTyping, () => this.typing());
@@ -163,6 +179,8 @@ export class ChatController {
         }
         this.session = this.sessions?.find((session) => session.id === id) ?? (id ? { id, serial: 0 } : undefined);
         this.messages = undefined;
+        this.first = 0;
+        this.generation++;
         this.selected = undefined;
         this.render();
         if (id) {
@@ -252,6 +270,35 @@ export class ChatController {
         }
     }
 
+    // loadEarlier loads the page of messages before the first which is
+    // loaded, as the conversation is scrolled up to it, unless they're all
+    // loaded, or they're loading
+    private async loadEarlier() {
+        const session = this.session;
+        if (!session || !this.messages || this.first === 0 || this.earlierLoading) {
+            return;
+        }
+        this.earlierLoading = true;
+        this.render();
+        const { generation, first } = this;
+        try {
+            const offset = Math.max(0, first - ChatController.page);
+            const list = await listMessages(session.id, { offset, limit: first - offset });
+
+            // Only added to the messages it was asked for, rather than those
+            // which replaced them, such as once the chat was forgotten
+            if (this.session?.id === session.id && this.messages && this.generation === generation && this.first === first) {
+                this.messages = [...(list.body ?? []), ...this.messages];
+                this.first = offset;
+            }
+        } catch (error) {
+            this.notifications.error("Earlier messages couldn't be loaded", error);
+        } finally {
+            this.earlierLoading = false;
+            this.render();
+        }
+    }
+
     // load loads the session, and its messages, when it's changed since they
     // were loaded, or they weren't, or closes it, when it was deleted
     private async load(id: string) {
@@ -270,10 +317,31 @@ export class ChatController {
                 pending.stale = true;
                 this.session = { ...session, serial: this.session.serial };
             } else if (changed) {
-                const messages = (await listMessages(id)).body ?? [];
+                // The latest page, when none are loaded, or the conversation
+                // was forgotten, and otherwise those from the first which is
+                // loaded, which can change too, such as a marker, when its
+                // summary is written
+                // Those from the first are asked for again, when an earlier
+                // page was added as they were loaded, so it isn't dropped
+                const forgotten = (session.forgotten ?? 0) !== (this.session.forgotten ?? 0);
+                let list;
+                for (let tries = 0; ; tries++) {
+                    const { generation, first } = this;
+                    list = this.messages && !forgotten
+                        ? await listMessages(id, { offset: first })
+                        : await listMessages(id, { offset: -ChatController.page });
+                    if (list.count < first) {
+                        list = await listMessages(id, { offset: -ChatController.page });
+                    }
+                    if (forgotten || !this.messages || tries >= 2 || (this.generation === generation && this.first === first)) {
+                        break;
+                    }
+                }
                 if (this.session?.id === id) {
                     this.session = session;
-                    this.messages = messages;
+                    this.messages = list.body ?? [];
+                    this.first = list.offset ?? 0;
+                    this.generation++;
                 }
             } else {
                 this.session = session;
@@ -314,7 +382,7 @@ export class ChatController {
             content.push({ text });
         }
         const question = [...attachments.map((resource) => resourceName(resource)), text].filter(Boolean).join(', ');
-        const pending: Pending = { question: text, attachments, streamed: [], earlier: this.messages.length, stale: false, abort: new AbortController(), stopped: false };
+        const pending: Pending = { question: text, attachments, streamed: [], earlier: this.first + this.messages.length, stale: false, abort: new AbortController(), stopped: false };
         this.pending.set(session.id, pending);
         this.render();
         try {
@@ -647,6 +715,8 @@ export class ChatController {
         if (view) {
             view.session = this.session;
             view.messages = this.messages;
+            view.offset = this.first;
+            view.earlierLoading = this.earlierLoading;
             view.logs = (result, position) => this.session ? this.logs.get(logKey(this.session.id, result, position)) : undefined;
             view.selected = this.selected;
             view.details = this.details;

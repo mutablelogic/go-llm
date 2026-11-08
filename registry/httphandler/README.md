@@ -78,7 +78,7 @@ Get a session by its identifier, without its messages, which are listed with `GE
 
 ### GET /llm/session/{id}/messages
 
-List a session's messages, oldest first, each with its `tokens`. The `role` parameter returns only the messages of that role, such as `user`, `assistant` or `tool`, the `offset` parameter skips that many messages, and the `limit` parameter returns at most that many. The `count` is how many messages there are, of the role. Returns 400 if a parameter is invalid, or 404 if there is no session with that identifier.
+List a session's messages, oldest first, each with its `tokens`. The `role` parameter returns only the messages of that role, such as `user`, `assistant`, `tool`, or `context`, for its markers. The `context` parameter returns only the messages of the conversation's context, which its model is sent: its last marker, whose summary didn't fail, with the summary of what came before it, and the messages after it. The `offset` parameter skips that many messages, or, when it's negative, starts that many from the end, such as `-50`, for the last 50, and the `limit` parameter returns at most that many. The `count` is how many messages there are, of the role, or of the context, and the `offset` is where they start, from the start, so the page before the last 50 of 1,234 messages, whose `offset` is 1,184, is `offset=1134&limit=50`. Returns 400 if a parameter is invalid, or 404 if there is no session with that identifier.
 
 ### DELETE /llm/session/{id}/messages
 

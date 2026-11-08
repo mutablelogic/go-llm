@@ -348,6 +348,18 @@ func contextOf(messages []providerschema.Message) ([]providerschema.Message, str
 	return withoutMarkers(messages[i+1:]), summary
 }
 
+// contextStart returns the index of the first message of the conversation's
+// context, which is its last marker, whose summary didn't fail, or zero,
+// when it has none
+func contextStart(messages []providerschema.Message) int {
+	for i := len(messages) - 1; i >= 0; i-- {
+		if marker := messages[i].Marker; marker != nil && marker.Status != providerschema.MarkerFailed {
+			return i
+		}
+	}
+	return 0
+}
+
 // withoutMarkers returns the messages without markers, such as those whose
 // summaries couldn't be written, which aren't sent to a model
 func withoutMarkers(messages []providerschema.Message) []providerschema.Message {

@@ -7,6 +7,7 @@ import (
 	"strings"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	// Packages
 	registry "github.com/mutablelogic/go-llm/registry"
@@ -140,13 +141,15 @@ func Test_Providers(t *testing.T) {
 		require.Equal(t, http.StatusCreated, do(t, server, http.MethodPost, "llm/provider", schema.Provider{Name: "gone", Type: "ollama", URL: ollama.URL}, &provider))
 		ollama.Close()
 
-		// It's pinged again, rather than with the result of its last ping,
-		// which is used within the ping interval
+		// It's pinged again, in the background, once the result of its last
+		// ping, which is returned meanwhile, is older than the ping interval
 		interval := registry.PingInterval
 		registry.PingInterval = 0
 		defer func() { registry.PingInterval = interval }()
-		assert.Equal(t, http.StatusOK, do(t, server, http.MethodGet, "llm/provider/gone", nil, &provider))
-		assert.NotEmpty(t, provider.Error)
+		assert.Eventually(t, func() bool {
+			var provider schema.ProviderStatus
+			return do(t, server, http.MethodGet, "llm/provider/gone", nil, &provider) == http.StatusOK && provider.Error != ""
+		}, 5*time.Second, 10*time.Millisecond)
 	})
 
 	t.Run("Update", func(t *testing.T) {

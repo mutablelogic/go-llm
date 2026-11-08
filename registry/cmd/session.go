@@ -44,10 +44,11 @@ type SessionGetCmd struct {
 // SessionMsgsCmd lists the messages of a session, which is the default
 // session when there's no identifier, and is then the default
 type SessionMsgsCmd struct {
-	ID     uuid.UUID `arg:"" name:"id" optional:"" help:"Session identifier, which is a UUID, or the default session."`
-	Role   string    `name:"role" help:"List only the messages of this role, such as user, assistant or tool." optional:""`
-	Offset uint      `name:"offset" help:"Messages to skip." optional:""`
-	Limit  *uint     `name:"limit" help:"Most messages to list." optional:""`
+	ID      uuid.UUID `arg:"" name:"id" optional:"" help:"Session identifier, which is a UUID, or the default session."`
+	Role    string    `name:"role" help:"List only the messages of this role, such as user, assistant or tool." optional:""`
+	Context bool      `name:"context" help:"List only the messages of the conversation's context, from its last summary." optional:""`
+	Offset  int       `name:"offset" help:"Messages to skip, or, when it's negative, how many from the end to start at, such as -20 for the last 20." optional:""`
+	Limit   *uint     `name:"limit" help:"Most messages to list." optional:""`
 }
 
 // SessionCreateCmd creates a session with the settings which are given, and
@@ -140,7 +141,7 @@ func (cmd *SessionMsgsCmd) Run(ctx server.Cmd) error {
 		return err
 	}
 	return withClient(ctx, "llm.SessionMsgsCmd", func(reqctx context.Context, client *httpclient.Client) error {
-		list, err := client.ListSessionMessages(reqctx, id, schema.MessageListRequest{Role: cmd.Role, Offset: cmd.Offset, Limit: cmd.Limit})
+		list, err := client.ListSessionMessages(reqctx, id, schema.MessageListRequest{Role: cmd.Role, Context: cmd.Context, Offset: cmd.Offset, Limit: cmd.Limit})
 		if err != nil {
 			return err
 		}
@@ -158,7 +159,7 @@ func (cmd *SessionMsgsCmd) Run(ctx server.Cmd) error {
 		for _, message := range list.Body {
 			printMessage(message)
 		}
-		summary := tui.TableSummary("messages", list.Count, uint(len(list.Body)), uint64(cmd.Offset), nil)
+		summary := tui.TableSummary("messages", list.Count, uint(len(list.Body)), uint64(max(list.Offset, 0)), nil)
 		_, err = summary.Write(os.Stdout)
 		return err
 	})
