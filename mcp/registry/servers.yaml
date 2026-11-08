@@ -95,6 +95,12 @@
   description: Email inboxes for AI agents, which send, reply and wait for answers, with Pidgeon's own MCP server
   url: https://pidgeon.ai/api/mcp
 
+# PostEverywhere's sign-in registers clients itself, so it needs no
+# credentials, and is always offered
+- name: PostEverywhere
+  description: Scheduling, and posting, to social media platforms, with PostEverywhere's own MCP server
+  url: https://mcp.posteverywhere.ai/mcp
+
 # Lingviko's der die das needs no sign-in, so it needs no credentials, and
 # is always offered
 - name: der die das (Lingviko)
