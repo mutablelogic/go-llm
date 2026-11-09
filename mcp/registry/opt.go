@@ -7,6 +7,7 @@ import (
 	// Packages
 	client "github.com/mutablelogic/go-client"
 	llm "github.com/mutablelogic/go-llm"
+	env "github.com/mutablelogic/go-llm/auth/credentials/env"
 	broadcaster "github.com/mutablelogic/go-llm/broadcaster"
 	mcpclient "github.com/mutablelogic/go-llm/mcp/client"
 	schema "github.com/mutablelogic/go-llm/mcp/schema"
@@ -21,7 +22,7 @@ type Opt func(*opt) error
 
 type opt struct {
 	store               Store
-	credentials         Credentials
+	credentials         *memoryCredentials // Those the credentials provider can't keep
 	credentialsProvider CredentialsProvider
 	broadcaster         *broadcaster.Broadcaster
 	toolkit             *toolkit.Toolkit
@@ -55,8 +56,8 @@ func (o *opt) apply(opts []Opt) error {
 
 func (o *opt) defaults() {
 	o.store = NewMemoryStore()
-	o.credentials = NewMemoryCredentials()
-	o.credentialsProvider = envCredentials{}
+	o.credentials = newMemoryCredentials()
+	o.credentialsProvider = env.New()
 	o.broadcaster = nil
 	o.toolkit = nil
 	o.connectTimeout = ConnectTimeout
@@ -77,18 +78,6 @@ func WithStore(store Store) Opt {
 			return llm.ErrBadParameter.With("missing store")
 		}
 		o.store = store
-		return nil
-	}
-}
-
-// WithCredentials is where how each connector's server is authorized is
-// kept, such as with its store, in a file, rather than in memory
-func WithCredentials(credentials Credentials) Opt {
-	return func(o *opt) error {
-		if credentials == nil {
-			return llm.ErrBadParameter.With("missing credentials")
-		}
-		o.credentials = credentials
 		return nil
 	}
 }
@@ -117,7 +106,7 @@ func WithTemplates(templates ...schema.ConnectorTemplate) Opt {
 func WithCredentialsProvider(provider CredentialsProvider) Opt {
 	return func(o *opt) error {
 		if provider == nil {
-			o.credentialsProvider = envCredentials{}
+			o.credentialsProvider = env.New()
 		} else {
 			o.credentialsProvider = provider
 		}

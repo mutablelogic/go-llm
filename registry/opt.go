@@ -9,6 +9,7 @@ import (
 	// Packages
 	client "github.com/mutablelogic/go-client"
 	llm "github.com/mutablelogic/go-llm"
+	env "github.com/mutablelogic/go-llm/auth/credentials/env"
 	broadcaster "github.com/mutablelogic/go-llm/broadcaster"
 	toolkit "github.com/mutablelogic/go-llm/toolkit"
 	toolschema "github.com/mutablelogic/go-llm/toolkit/schema"
@@ -114,7 +115,7 @@ func (o *opt) apply(opts []Opt) error {
 
 func (o *opt) defaults() {
 	o.tracer = nil
-	o.credentials = envCredentials{}
+	o.credentials = env.New()
 	o.clientopts = nil
 	o.providerStore = nil
 	o.sessionStore = nil
@@ -327,12 +328,12 @@ func WithClientOpts(opts ...client.ClientOpt) Opt {
 // as the API key of a provider which is created, whose placeholders, such
 // as ${OPENAI_KEY}, are replaced with the credentials they name. Without
 // one, or with nil, the credentials are environment variables.
-func WithCredentialsProvider(credentials CredentialsProvider) Opt {
+func WithCredentialsProvider(provider CredentialsProvider) Opt {
 	return func(o *opt) error {
-		if credentials == nil {
-			o.credentials = envCredentials{}
+		if provider == nil {
+			o.credentials = env.New()
 		} else {
-			o.credentials = credentials
+			o.credentials = provider
 		}
 		return nil
 	}

@@ -313,7 +313,7 @@ Connectors are remote MCP servers whose tools your assistant can call. Each conn
   - A well-known server's connector, from **Add connector**, already has the names of those credentials.
   - A custom connector needs them: in the panel's **Advanced** section, or with `llm connector-create --client-id-credential GITHUB_CLIENT_ID --client-secret-credential GITHUB_CLIENT_SECRET <url>`.
 - **Behind a reverse proxy:** run the server with `--tls.name=<public host>`, so sign-in sends browsers back to the public address.
-- **Storage:** connectors and their tokens are kept in `connectors.json`. Only remote servers, over streamable HTTP or SSE, are supported.
+- **Storage:** connectors are kept in `connectors.json`, and their tokens in `credentials.json`. Only remote servers, over streamable HTTP or SSE, are supported.
 
 The API is documented in [mcp/registry/httphandler/README.md](mcp/registry/httphandler/README.md).
 
@@ -406,7 +406,7 @@ The packages work on their own, without the application:
 The registry is meant to be composed into a larger system. Its options plug in what that system has:
 
 - **`WithProviderStore`, `WithSessionStore`, `WithAgentStore`:** keep providers, sessions and agents in a store, such as a database. Each item has a serial, so a stale change is a conflict, and stores can watch for other servers' changes.
-- **`WithCredentialsProvider`:** expands an API key's placeholder, such as `${OPENAI_KEY}`, from the environment by default, or from a secrets manager.
+- **`WithCredentialsProvider`:** expands an API key's placeholder, such as `${OPENAI_KEY}`, from the environment by default, or from a secrets manager. It's a [`credentials.Provider`](auth/credentials), which the toolkit and the connectors take too, so a system shares one.
 - **`WithToolkit`:** the tools models can call.
 - **`WithBroadcaster`:** shares an event stream with other modules.
 - **`WithTracer`, `WithClientOpts`:** trace and configure requests to providers.

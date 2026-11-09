@@ -112,12 +112,17 @@ func TestAdd(t *testing.T) {
 type credentials struct{}
 
 // Get isn't used by the tests
-func (credentials) Get(context.Context, string) (json.RawMessage, error) {
-	return nil, llm.ErrNotImplemented
+func (credentials) Get(context.Context, string) (string, error) {
+	return "", llm.ErrNotImplemented
 }
 
 // Set isn't used by the tests
-func (credentials) Set(context.Context, string, json.RawMessage) error {
+func (credentials) Set(context.Context, string, string) error {
+	return llm.ErrNotImplemented
+}
+
+// Delete isn't used by the tests
+func (credentials) Delete(context.Context, string) error {
 	return llm.ErrNotImplemented
 }
 

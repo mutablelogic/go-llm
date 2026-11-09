@@ -4,13 +4,14 @@ import (
 	"context"
 	"encoding/json"
 	"net/url"
-	"os"
+	"sync"
 	"testing"
 	"time"
 
 	// Packages
 	sdkmcp "github.com/modelcontextprotocol/go-sdk/mcp"
 	llm "github.com/mutablelogic/go-llm"
+	credentials "github.com/mutablelogic/go-llm/auth/credentials"
 	broadcaster "github.com/mutablelogic/go-llm/broadcaster"
 	eventschema "github.com/mutablelogic/go-llm/broadcaster/schema"
 	registry "github.com/mutablelogic/go-llm/mcp/registry"
@@ -33,8 +34,8 @@ func Test_Authorize(t *testing.T) {
 	ch := watch(t, b)
 	tk, err := toolkit.New(ctx)
 	require.NoError(t, err)
-	credentials := registry.NewMemoryCredentials()
-	r, err := registry.New(registry.WithToolkit(tk), registry.WithBroadcaster(b), registry.WithCredentials(credentials), registry.WithName("test", "1.0"))
+	credentials := newSecrets(nil)
+	r, err := registry.New(registry.WithToolkit(tk), registry.WithBroadcaster(b), registry.WithCredentialsProvider(credentials), registry.WithName("test", "1.0"))
 	require.NoError(t, err)
 	run(t, r)
 
@@ -73,7 +74,7 @@ func Test_Authorize(t *testing.T) {
 	require.Eventually(t, func() bool { return status(t, r, "secure").Connected }, 5*time.Second, 5*time.Millisecond)
 	assert.Equal(t, schema.AuthAuthorized, status(t, r, "secure").Auth)
 	require.Eventually(t, func() bool { return toolCount(t, tk, "secure") == 1 }, 5*time.Second, 5*time.Millisecond)
-	credential, err := credentials.GetCredential(ctx, "secure")
+	credential, err := credentials.credential(t, "secure")
 	require.NoError(t, err)
 	assert.NotEmpty(t, credential.ClientID)
 	assert.Equal(t, []string{callback}, credential.RedirectURIs)
@@ -104,7 +105,7 @@ func Test_Authorize(t *testing.T) {
 	// Once it's deleted, its credential is
 	_, err = r.DeleteConnector(ctx, "secure")
 	require.NoError(t, err)
-	_, err = credentials.GetCredential(ctx, "secure")
+	_, err = credentials.credential(t, "secure")
 	assert.ErrorIs(t, err, llm.ErrNotFound)
 }
 
@@ -129,9 +130,9 @@ func Test_AuthorizeClient(t *testing.T) {
 	server := test.NewServer(t, test.WithAuth())
 	callback := "http://localhost:8084/api" + registry.CallbackPath
 	server.Client("fixed", "s3cret", callback)
-	credentials := registry.NewMemoryCredentials()
-	provider := secrets{}
-	r, err := registry.New(registry.WithCredentials(credentials), registry.WithCredentialsProvider(provider))
+	provider := newSecrets(nil)
+	credentials := provider
+	r, err := registry.New(registry.WithCredentialsProvider(provider))
 	require.NoError(t, err)
 	run(t, r)
 
@@ -151,7 +152,8 @@ func Test_AuthorizeClient(t *testing.T) {
 	assert.ErrorIs(t, err, llm.ErrBadParameter)
 
 	// Once they do, it's created, with their names
-	provider["CLIENT_ID"], provider["CLIENT_SECRET"] = "fixed", "s3cret"
+	provider.put("CLIENT_ID", "fixed")
+	provider.put("CLIENT_SECRET", "s3cret")
 	created, err := r.CreateConnector(ctx, c)
 	require.NoError(t, err)
 	assert.Equal(t, "CLIENT_ID", created.ClientIDCredential)
@@ -169,7 +171,7 @@ func Test_AuthorizeClient(t *testing.T) {
 	_, err = r.Callback(ctx, mustQuery(t, redirect, "state"), mustQuery(t, redirect, "code"), "")
 	require.NoError(t, err)
 	require.Eventually(t, func() bool { return status(t, r, "fixed").Connected }, 5*time.Second, 5*time.Millisecond)
-	credential, err := credentials.GetCredential(ctx, "fixed")
+	credential, err := credentials.credential(t, "fixed")
 	require.NoError(t, err)
 	assert.Equal(t, "CLIENT_ID", credential.ClientCredential)
 	assert.Empty(t, credential.ClientID, "its identifier isn't kept")
@@ -187,8 +189,8 @@ func Test_AuthorizeChanges(t *testing.T) {
 	})
 	tk, err := toolkit.New(ctx)
 	require.NoError(t, err)
-	credentials := registry.NewMemoryCredentials()
-	r, err := registry.New(registry.WithToolkit(tk), registry.WithCredentials(credentials))
+	credentials := newSecrets(nil)
+	r, err := registry.New(registry.WithToolkit(tk), registry.WithCredentialsProvider(credentials))
 	require.NoError(t, err)
 	run(t, r)
 	callback := "http://localhost:8084/api" + registry.CallbackPath
@@ -214,7 +216,7 @@ func Test_AuthorizeChanges(t *testing.T) {
 		require.NoError(t, err)
 		_, err = r.Callback(ctx, state, code, "")
 		assert.ErrorIs(t, err, llm.ErrNotFound)
-		_, err = credentials.GetCredential(ctx, "deleted")
+		_, err = credentials.credential(t, "deleted")
 		assert.ErrorIs(t, err, llm.ErrNotFound)
 	})
 
@@ -229,7 +231,7 @@ func Test_AuthorizeChanges(t *testing.T) {
 		require.NoError(t, err)
 		_, err = r.Callback(ctx, state, code, "")
 		assert.ErrorIs(t, err, llm.ErrConflict)
-		_, err = credentials.GetCredential(ctx, "changed")
+		_, err = credentials.credential(t, "changed")
 		assert.ErrorIs(t, err, llm.ErrNotFound)
 	})
 
@@ -251,24 +253,72 @@ func Test_AuthorizeChanges(t *testing.T) {
 		for _, header := range other.Headers() {
 			assert.Empty(t, header.Get("Authorization"), "its token isn't sent to another server")
 		}
-		_, err = credentials.GetCredential(ctx, "moved")
+		_, err = credentials.credential(t, "moved")
 		assert.ErrorIs(t, err, llm.ErrNotFound)
 		assert.Zero(t, toolCount(t, tk, "moved"), "the tools of the server it was connected to are cleared")
 	})
 
 }
 
-// secrets is a credentials provider, whose credentials are its own
-type secrets map[string]string
+// secrets is a credentials provider, whose credentials are its own, and
+// which keeps those which are set
+type secrets struct {
+	mu     sync.Mutex
+	values map[string]string
+}
 
-func (s secrets) Expand(_ context.Context, value string) (string, error) {
-	var err error
-	result := os.Expand(value, func(key string) string {
-		v, ok := s[key]
-		if !ok {
-			err = llm.ErrNotFound.Withf("credential %q isn't set", key)
-		}
-		return v
-	})
-	return result, err
+var _ registry.CredentialsProvider = (*secrets)(nil)
+
+// newSecrets returns a credentials provider with the credentials
+func newSecrets(values map[string]string) *secrets {
+	s := &secrets{values: make(map[string]string)}
+	for key, value := range values {
+		s.values[key] = value
+	}
+	return s
+}
+
+// put sets a credential
+func (s *secrets) put(key, value string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.values[key] = value
+}
+
+// credential returns how the connector's server is signed in to, as the
+// registry kept it, or ErrNotFound
+func (s *secrets) credential(t *testing.T, name string) (*schema.Credential, error) {
+	t.Helper()
+	value, err := s.Get(t.Context(), registry.CredentialKey(name))
+	if err != nil {
+		return nil, err
+	}
+	var credential schema.Credential
+	require.NoError(t, json.Unmarshal([]byte(value), &credential))
+	return &credential, nil
+}
+
+func (s *secrets) Get(_ context.Context, key string) (string, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if value, ok := s.values[key]; ok {
+		return value, nil
+	}
+	return "", llm.ErrNotFound.Withf("credential %q isn't set", key)
+}
+
+func (s *secrets) Set(_ context.Context, key, value string) error {
+	s.put(key, value)
+	return nil
+}
+
+func (s *secrets) Delete(_ context.Context, key string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	delete(s.values, key)
+	return nil
+}
+
+func (s *secrets) Expand(ctx context.Context, value string) (string, error) {
+	return credentials.Expand(ctx, s.Get, value)
 }

@@ -51,7 +51,7 @@ func Test_AuthorizeLive(t *testing.T) {
 		t.Skip("calls public MCP servers, and registers clients with them")
 	}
 	ctx := t.Context()
-	provider := secrets{"LIVE_CLIENT_ID": ""}
+	provider := newSecrets(map[string]string{"LIVE_CLIENT_ID": ""})
 	r, err := registry.New(registry.WithName("go-llm-test", ""), registry.WithCredentialsProvider(provider))
 	require.NoError(t, err)
 	for i, server := range liveServers {
@@ -59,7 +59,7 @@ func Test_AuthorizeLive(t *testing.T) {
 			name := fmt.Sprintf("live%d", i)
 			c := connector(name, server.url)
 			if server.clientID != "" {
-				provider["LIVE_CLIENT_ID"] = server.clientID
+				provider.put("LIVE_CLIENT_ID", server.clientID)
 				c.ClientIDCredential = "LIVE_CLIENT_ID"
 			}
 			_, err := r.CreateConnector(ctx, c)

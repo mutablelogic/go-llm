@@ -260,7 +260,7 @@ func (r *Registry) UpdateConnector(ctx context.Context, name string, meta schema
 	}
 	updated, err := r.store.Put(ctx, connector)
 	if err == nil && (previous.URL != updated.URL || previous.ClientIDCredential != updated.ClientIDCredential) {
-		if err := r.credentials.DeleteCredential(ctx, name); err != nil {
+		if err := r.deleteCredential(ctx, name); err != nil {
 			r.log().WarnContext(ctx, "connector's credential not deleted", "connector", name, "error", err.Error())
 		}
 	}
@@ -338,7 +338,7 @@ func (r *Registry) DeleteConnector(ctx context.Context, name string) (*schema.Co
 		r.credentialsMu.Unlock()
 		return nil, err
 	}
-	if err := r.credentials.DeleteCredential(ctx, name); err != nil {
+	if err := r.deleteCredential(ctx, name); err != nil {
 		r.log().WarnContext(ctx, "connector's credential not deleted", "connector", name, "error", err.Error())
 	}
 	r.credentialsMu.Unlock()

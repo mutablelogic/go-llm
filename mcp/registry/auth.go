@@ -117,10 +117,10 @@ func (r *Registry) Authorize(ctx context.Context, name, callback string) (string
 			return "", err
 		}
 		credential.ClientCredential, credential.RedirectURIs = connector.ClientIDCredential, []string{callback}
-		if existing, err := r.credentials.GetCredential(ctx, name); err == nil {
+		if existing, err := r.getCredential(ctx, name); err == nil {
 			credential.Token = existing.Token
 		}
-	} else if existing, err := r.credentials.GetCredential(ctx, name); err == nil && existing.Issuer == server.Issuer && existing.ClientID != "" && slices.Contains(existing.RedirectURIs, callback) {
+	} else if existing, err := r.getCredential(ctx, name); err == nil && existing.Issuer == server.Issuer && existing.ClientID != "" && slices.Contains(existing.RedirectURIs, callback) {
 		credential.ClientID, credential.ClientSecret, credential.RedirectURIs, credential.Token = existing.ClientID, existing.ClientSecret, existing.RedirectURIs, existing.Token
 	} else {
 		redirects := []string{callback}
@@ -195,7 +195,7 @@ func (r *Registry) Callback(ctx context.Context, state, code, reason string) (*s
 		case connector.URL != p.connector.URL || connector.ClientIDCredential != p.connector.ClientIDCredential:
 			err = llm.ErrConflict.Withf("connector %q was changed, as it was signed in to", connector.Name)
 		default:
-			err = r.credentials.PutCredential(ctx, connector.Name, credential)
+			err = r.putCredential(ctx, connector.Name, credential)
 		}
 	}
 	r.credentialsMu.Unlock()
@@ -231,7 +231,7 @@ func (r *Registry) reconnect(connector schema.Connector) {
 // it has none
 func (r *Registry) tokenSource(connector schema.Connector) oauth2.TokenSource {
 	ctx := context.Background()
-	credential, err := r.credentials.GetCredential(ctx, connector.Name)
+	credential, err := r.getCredential(ctx, connector.Name)
 	if err != nil || credential.Token == nil {
 		return nil
 	} else if credential.URL != connector.URL {
@@ -343,7 +343,7 @@ func (s *storedTokens) Token() (*oauth2.Token, error) {
 	ctx := context.Background()
 	s.registry.credentialsMu.Lock()
 	defer s.registry.credentialsMu.Unlock()
-	credential, err := s.registry.credentials.GetCredential(ctx, s.name)
+	credential, err := s.registry.getCredential(ctx, s.name)
 	switch {
 	case errors.Is(err, llm.ErrNotFound):
 		// The connector's credential was deleted, so it isn't stored
@@ -352,7 +352,7 @@ func (s *storedTokens) Token() (*oauth2.Token, error) {
 		s.registry.log().Warn("connector's token not stored", "connector", s.name, "error", err.Error())
 	default:
 		credential.Token = token
-		if err := s.registry.credentials.PutCredential(ctx, s.name, *credential); err != nil {
+		if err := s.registry.putCredential(ctx, s.name, *credential); err != nil {
 			s.registry.log().Warn("connector's token not stored", "connector", s.name, "error", err.Error())
 		} else {
 			s.last = token

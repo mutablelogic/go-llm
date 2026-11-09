@@ -12,6 +12,7 @@ import (
 
 	// Packages
 	llm "github.com/mutablelogic/go-llm"
+	credentials "github.com/mutablelogic/go-llm/auth/credentials"
 	mcpregistry "github.com/mutablelogic/go-llm/mcp/registry"
 	mcpschema "github.com/mutablelogic/go-llm/mcp/schema"
 	server "github.com/mutablelogic/go-server"
@@ -22,8 +23,8 @@ import (
 
 // connectorStore is a store of the MCP connectors in a file, as a list of
 // their definitions, with their serials, in order of their names, under one
-// key, so they're kept when the server restarts, and of how their servers
-// are authorized, such as their tokens, under another. It's safe to use
+// key, so they're kept when the server restarts. How their servers are
+// signed in to is kept by the credentials provider. It's safe to use
 // concurrently.
 type connectorStore struct {
 	mu       sync.Mutex
@@ -31,7 +32,6 @@ type connectorStore struct {
 }
 
 var _ mcpregistry.Store = (*connectorStore)(nil)
-var _ mcpregistry.Credentials = (*connectorStore)(nil)
 
 ///////////////////////////////////////////////////////////////////////////////
 // GLOBALS
@@ -43,13 +43,18 @@ const (
 	connectorsKey = "mcp.connectors"
 	serialsKey    = "mcp.serials"
 
-	// credentialsKey is the key which how each connector's server is
-	// authorized, such as its token, is kept under, by its name
+	// credentialsKey is the key which how each connector's server was
+	// signed in to, such as its token, was kept under, by its name, before
+	// the credentials provider kept it, which is moved to it once
 	credentialsKey = "mcp.credentials"
 
 	// connectorsFile is the name of the file which the server keeps the
 	// connectors in, in the directory of the command's defaults
 	connectorsFile = "connectors.json"
+
+	// credentialsFile is the name of the file which the server keeps
+	// credentials in, such as how connectors' servers are signed in to
+	credentialsFile = "credentials.json"
 )
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -180,57 +185,36 @@ func (s *connectorStore) serials() (map[string]uint64, error) {
 	return result, nil
 }
 
-// GetCredential returns how the connector's server is authorized, or
-// ErrNotFound when it has no credential
-func (s *connectorStore) GetCredential(_ context.Context, name string) (*mcpschema.Credential, error) {
+// MoveCredentials moves how each connector's server was signed in to, such
+// as its token, which was kept with the connectors, to the credentials
+// provider, under its key, so the connectors don't need to be signed in to
+// again, and removes them, or does nothing, when there are none
+func (s *connectorStore) MoveCredentials(ctx context.Context, provider credentials.Provider) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	credentials, err := s.credentials()
-	if err != nil {
-		return nil, err
-	}
-	credential, exists := credentials[name]
-	if !exists {
-		return nil, llm.ErrNotFound.Withf("connector %q has no credential", name)
-	}
-	return &credential, nil
-}
-
-// PutCredential sets how the connector's server is authorized
-func (s *connectorStore) PutCredential(_ context.Context, name string, credential mcpschema.Credential) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	credentials, err := s.credentials()
+	list, err := s.credentials()
 	if err != nil {
 		return err
-	}
-	credentials[name] = credential
-	return s.defaults.Set(credentialsKey, credentials)
-}
-
-// DeleteCredential deletes how the connector's server is authorized, or
-// does nothing when it has no credential
-func (s *connectorStore) DeleteCredential(_ context.Context, name string) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	credentials, err := s.credentials()
-	if err != nil {
-		return err
-	} else if _, exists := credentials[name]; !exists {
+	} else if len(list) == 0 {
 		return nil
 	}
-	delete(credentials, name)
-	if len(credentials) == 0 {
-		return s.defaults.Set(credentialsKey, nil)
+	for name, credential := range list {
+		data, err := json.Marshal(credential)
+		if err != nil {
+			return err
+		}
+		if err := provider.Set(ctx, mcpregistry.CredentialKey(name), string(data)); err != nil {
+			return err
+		}
 	}
-	return s.defaults.Set(credentialsKey, credentials)
+	return s.defaults.Set(credentialsKey, nil)
 }
 
 ///////////////////////////////////////////////////////////////////////////////
 // PRIVATE METHODS
 
 // credentials returns the credentials of the connectors, by their names,
-// or none. The caller holds the lock.
+// as they were kept with them, or none. The caller holds the lock.
 func (s *connectorStore) credentials() (map[string]mcpschema.Credential, error) {
 	var value any
 	if l, ok := s.defaults.(lookup); ok {
