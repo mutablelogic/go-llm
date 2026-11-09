@@ -31,6 +31,11 @@ func askHandlers(reg *registry.Registry, router *httprouter.Router, documentatio
 			} else if err := httprequest.Read(r, &req); err != nil {
 				httpresponse.Error(w, httpresponse.ErrBadRequest.Withf("%w", err))
 			} else {
+				// What the system says of a message is the server's, so a
+				// client's annotations are taken out
+				for i := range req.Messages {
+					req.Messages[i] = req.Messages[i].WithoutAnnotations()
+				}
 				respond(w, r, types.Value(req.Model), func(write streamWriteFn) (*schema.AskResponse, error) {
 					stream := streamWriter(write)
 					return reg.Ask(r.Context(), req, stream)

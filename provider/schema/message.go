@@ -80,6 +80,7 @@ type ContentBlock struct {
 	Resource   *Resource   `json:"attachment,omitempty" help:"Attachment content such as an image, document, or audio asset" example:"{\"type\":\"image/png\",\"url\":\"https://example.com/image.png\"}"`
 	ToolCall   *ToolCall   `json:"tool_call,omitempty" help:"Tool invocation requested by the model" example:"{\"id\":\"call_123\",\"name\":\"get_weather\",\"input\":{\"city\":\"London\"}}"`
 	ToolResult *ToolResult `json:"tool_result,omitempty" help:"Tool execution result returned to the model" example:"{\"id\":\"call_123\",\"name\":\"get_weather\",\"content\":{\"temperature_c\":18},\"is_error\":false}"`
+	Annotation *string     `json:"annotation,omitempty" readonly:"" help:"What the system says of the message, for the model, rather than the person, such as where it was sent, which the model is sent as a system reminder, and which only the server adds" example:"Sent on Telegram, by David."`
 }
 
 var _ llm.Message = (*MessageMeta)(nil)

@@ -24,7 +24,7 @@ import Video16 from '@carbon/icons/es/video/16.js';
 import PlayFilledAlt16 from '@carbon/icons/es/play--filled--alt/16.js';
 import { MediaPlayer, playable, type Media } from './media-player';
 import { resourceName, type Resource, resourceHash } from '../schema/resource';
-import { canonicalTool, isUser, type ContentBlock, type Marker, type Message, type Session } from '../schema/session';
+import { annotationOf, canonicalTool, isUser, type ContentBlock, type Marker, type Message, type Session } from '../schema/session';
 import { detailValue, type Details } from '../schema/memory';
 import { markdown, markdownStyles } from './markdown';
 import type { ChatKind } from './chat-bubble';
@@ -46,7 +46,10 @@ export interface Piece {
 // thinking, its text, whether its text is Markdown, and whether it's live,
 // as it's streamed, or a line which a tool logged, which isn't a bubble
 interface Bubble {
-    kind: ChatKind | 'log' | 'marker';
+    kind: ChatKind | 'log' | 'marker' | 'time';
+    // A log line which is what the system says of a message, which is on
+    // its side, such as the person's
+    side?: 'user' | 'assistant';
     marker?: Marker;
     label?: string;
     text: string;
@@ -343,6 +346,14 @@ export class ChatView extends LitElement {
             padding-left: 1rem;
         }
 
+        /* What the system says of the person's message, such as where it
+           was sent, is under it, on its side */
+        .log.user {
+            padding-left: 0;
+            padding-right: 1rem;
+            text-align: right;
+        }
+
         .empty {
             margin: 0;
             padding: 1.5rem 2rem;
@@ -465,7 +476,23 @@ export class ChatView extends LitElement {
         if (!this.messages) {
             return html`<cds-skeleton-text paragraph line-count="6"></cds-skeleton-text>`;
         }
-        const bubbles = this.messages.flatMap((message, position) => this.messageBubbles(message, this.offset + position));
+        // A divider says when the conversation was, before the first message,
+        // and each which starts another hour, in the person's time zone
+        const zone = timeZone(detailValue(this.details.timezone));
+        let hour: string | undefined;
+        const bubbles = this.messages.flatMap((message, position) => {
+            // A message which shows nothing, such as a system message, has
+            // no divider, and doesn't start an hour
+            const shown = this.messageBubbles(message, this.offset + position);
+            if (shown.length === 0) {
+                return [];
+            }
+            const when = message.time ? new Date(message.time) : undefined;
+            const key = when && !isNaN(when.getTime()) ? hourKey(when, zone) : undefined;
+            const divider: Bubble[] = key && key !== hour ? [{ kind: 'time', text: timeLabel(when!, zone) }] : [];
+            hour = key ?? hour;
+            return [...divider, ...shown];
+        });
         if (this.question !== undefined) {
             bubbles.push(...this.questionAttachments.map((resource): Bubble => ({
                 kind: 'user',
@@ -489,8 +516,13 @@ export class ChatView extends LitElement {
                 // Whoever speaks next is named again, after the divider
                 speaker = undefined;
                 return this.renderMarker(bubble.marker!);
+            } else if (bubble.kind === 'time') {
+                speaker = undefined;
+                return html`<div class="marker time"><div class="rule"><span>${bubble.text}</span></div></div>`;
             }
-            const from = bubble.kind === 'user' ? 'user' : 'assistant';
+            // A line which is what the system says of a message, such as
+            // where it was sent, is its side's, rather than the assistant's
+            const from = bubble.side ?? (bubble.kind === 'user' ? 'user' : 'assistant');
             const name = from !== speaker ? html`<div class="name ${from}">${from === 'user' ? this.userName() : this.assistantName()}</div>` : nothing;
             speaker = from;
             return html`${name}${this.renderBubble(bubble)}`;
@@ -524,7 +556,7 @@ export class ChatView extends LitElement {
 
     private renderBubble(bubble: Bubble) {
         if (bubble.kind === 'log') {
-            return html`<div class="log">${bubble.text}</div>`;
+            return html`<div class="log ${bubble.side ?? ''}">${bubble.text}</div>`;
         }
         const message = bubble.message;
         return html`
@@ -684,6 +716,13 @@ function bubblesOf(message: Message, attachmentName: AttachmentName): Bubble[] {
 
 function blockBubbles(kind: ChatKind, block: ContentBlock, attachmentName: AttachmentName): Bubble[] {
     const bubbles: Bubble[] = [];
+
+    // What the system says of the message, such as where it was sent, is a
+    // line under it, rather than what was said
+    const annotation = annotationOf(block);
+    if (annotation) {
+        return [{ kind: 'log', side: kind === 'user' ? 'user' : 'assistant', text: annotation }];
+    }
     if (block.thinking?.trim()) {
         bubbles.push({ kind: 'thinking', text: block.thinking.trim() });
     }
@@ -757,4 +796,65 @@ declare global {
     interface HTMLElementTagNameMap {
         'llm-chat-view': ChatView;
     }
+}
+
+// timeZone returns the time zone, such as Europe/Berlin, when the browser
+// knows it, or undefined, for the browser's own
+function timeZone(zone?: string): string | undefined {
+    if (!zone) {
+        return undefined;
+    }
+    try {
+        new Intl.DateTimeFormat(undefined, { timeZone: zone });
+        return zone;
+    } catch {
+        return undefined;
+    }
+}
+
+// hourKey returns the hour of the time, in the time zone, with the zone's
+// offset, such as 2026-11-09T14+01:00, so messages in the same hour have
+// the same key, and an hour which happens twice, as the clocks go back,
+// has two
+function hourKey(when: Date, zone?: string): string {
+    const parts = new Intl.DateTimeFormat('en-CA', { timeZone: zone, year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', hourCycle: 'h23', timeZoneName: 'longOffset' }).formatToParts(when);
+    const part = (type: string) => parts.find((p) => p.type === type)?.value ?? '';
+    return `${part('year')}-${part('month')}-${part('day')}T${part('hour')}${part('timeZoneName')}`;
+}
+
+// localDate returns the date of the time, in the time zone, such as
+// 2026-11-09
+function localDate(when: Date, zone?: string): string {
+    return new Intl.DateTimeFormat('en-CA', { timeZone: zone, year: 'numeric', month: '2-digit', day: '2-digit' }).format(when);
+}
+
+// dayBefore returns the date before the date, such as 2026-11-08 for
+// 2026-11-09, by the calendar, rather than a day of hours earlier, which
+// isn't yesterday as the clocks change
+function dayBefore(date: string): string {
+    const [year, month, day] = date.split('-').map(Number);
+    return new Date(Date.UTC(year, month - 1, day - 1)).toISOString().slice(0, 10);
+}
+
+// timeLabel returns what the divider before a message says of its hour, in
+// the time zone: Today, or Yesterday, or its day, and date, with its year,
+// when it isn't this year, and the hour, which is the time of the message,
+// in the time zone, with its minutes as 00, such as "Yesterday, 14:00"
+function timeLabel(when: Date, zone?: string): string {
+    const day = localDate(when, zone);
+    const today = localDate(new Date(), zone);
+    const hour = new Intl.DateTimeFormat(undefined, { timeZone: zone, hour: '2-digit', minute: '2-digit' })
+        .formatToParts(when)
+        .map((part) => part.type === 'minute' ? '00' : part.value)
+        .join('');
+    let date: string;
+    if (day === today) {
+        date = 'Today';
+    } else if (day === dayBefore(today)) {
+        date = 'Yesterday';
+    } else {
+        const sameYear = day.slice(0, 4) === today.slice(0, 4);
+        date = new Intl.DateTimeFormat(undefined, { timeZone: zone, weekday: 'long', day: 'numeric', month: 'long', year: sameYear ? undefined : 'numeric' }).format(when);
+    }
+    return `${date}, ${hour}`;
 }

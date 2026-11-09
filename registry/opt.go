@@ -50,6 +50,11 @@ type opt struct {
 	// session, such as to send it to the session's channels
 	replies ReplyFunc
 
+	// The function called with what the person sends a session, through the
+	// API, such as from the web UI, before its model replies, such as to send
+	// it to the session's own chats
+	prompts PromptFunc
+
 	// The namespaces whose tools, which a session has, the compact agent is
 	// given, as it summarises it, such as memory
 	compactTools []string
@@ -58,6 +63,30 @@ type opt struct {
 // ReplyFunc is called with the session, and its model's reply, once Chat
 // has stored it, or an event's outcome, once it's delivered to it
 type ReplyFunc func(ctx context.Context, session uuid.UUID, reply Reply)
+
+// PromptFunc is called with the session, and the messages the person sent
+// it, through the API, such as from the web UI, once they're valid, and
+// before its model replies, in a chat whose context ByPerson marks
+type PromptFunc func(ctx context.Context, session uuid.UUID, messages []llm.Message)
+
+// personKey is the key of the context's mark, that its chat's messages are
+// the person's, sent through the API
+type personKey struct{}
+
+// ByPerson returns the context of a chat whose messages the person sent
+// through the API, such as from the web UI, so they're passed to the
+// prompts function, once they're valid, rather than those which came from
+// elsewhere, such as one of the session's own chats, which they'd be sent
+// back to
+func ByPerson(ctx context.Context) context.Context {
+	return context.WithValue(ctx, personKey{}, true)
+}
+
+// byPerson returns true when ByPerson marks the context
+func byPerson(ctx context.Context) bool {
+	marked, _ := ctx.Value(personKey{}).(bool)
+	return marked
+}
 
 // Reply is a reply in a session: its text, and the resources it made, such
 // as an image, or speech, which are the session's
@@ -259,6 +288,17 @@ func WithTimes(zone func() *time.Location, namespaces ...string) Opt {
 func WithReplies(fn ReplyFunc) Opt {
 	return func(o *opt) error {
 		o.replies = fn
+		return nil
+	}
+}
+
+// WithPrompts sets the function called with what the person sends a
+// session, through the API, such as from the web UI, before its model
+// replies, such as to send it to the session's own chats, so they have both
+// sides of the conversation
+func WithPrompts(fn PromptFunc) Opt {
+	return func(o *opt) error {
+		o.prompts = fn
 		return nil
 	}
 }
