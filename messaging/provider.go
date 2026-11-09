@@ -34,6 +34,10 @@ type Provider interface {
 	// was sent as, in order, including those which were sent before an
 	// error
 	Send(ctx context.Context, address, text string) ([]Sent, error)
+
+	// Private returns true when the chat with the address is the person's
+	// own, rather than a group's, or a channel's, which others read
+	Private(address string) bool
 }
 
 // Typer is a provider which can show that a reply is being written, such

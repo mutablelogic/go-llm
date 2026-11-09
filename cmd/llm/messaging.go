@@ -201,8 +201,10 @@ func chatMessage(ctx context.Context, res *resource.Manager, channel schema.Chan
 	// The files which weren't received, such as those which are too large,
 	// which
 	// the model is told, so it can tell the person
+	// They're an annotation, which the model is sent as a system reminder,
+	// rather than text, so they aren't shown as what the person said
 	if notes = append(notes, unavailable...); len(notes) > 0 {
-		content = append(content, providerschema.ContentBlock{Text: types.Ptr("<system-reminder>\n" + strings.Join(notes, "\n") + "\n</system-reminder>")})
+		content = append(content, providerschema.NewAnnotation(strings.Join(notes, "\n")))
 	}
 	if len(content) == 0 {
 		return nil, llm.ErrBadParameter.With("the message has no text, and its files couldn't be kept")
@@ -302,4 +304,49 @@ func origin(channel schema.Channel, message messaging.Message) string {
 		where += ", by " + from
 	}
 	return where + "."
+}
+
+// mirrorPrompts returns the function which sends what the person sends a
+// session through the API, such as from the web UI, to the session's own
+// chats, such as their private Telegram chat, marked as theirs, as the bot
+// can't send it as them, so the chat has both sides of the conversation. It
+// waits for at most ten seconds, so the reply isn't held up, and what fails
+// is logged, rather than failing the chat.
+func mirrorPrompts(ctx server.Cmd, m *messaging.Messaging) registry.PromptFunc {
+	return func(promptCtx context.Context, session uuid.UUID, messages []llm.Message) {
+		if m == nil {
+			return
+		}
+		var lines []string
+		files := 0
+		for _, message := range messages {
+			if message.Role() != "user" {
+				continue
+			}
+			if text := strings.TrimSpace(message.Text()); text != "" {
+				lines = append(lines, text)
+			}
+			if meta := providerschema.MessageFrom(message); meta != nil {
+				for _, block := range meta.Content {
+					if block.Resource != nil {
+						files++
+					}
+				}
+			}
+		}
+		switch {
+		case files == 1:
+			lines = append(lines, "(with a file)")
+		case files > 1:
+			lines = append(lines, fmt.Sprintf("(with %d files)", files))
+		}
+		if len(lines) == 0 {
+			return
+		}
+		mirrorCtx, cancel := context.WithTimeout(context.WithoutCancel(promptCtx), 10*time.Second)
+		defer cancel()
+		if err := m.Mirror(mirrorCtx, session, messaging.Outgoing{Text: "💬 You: " + strings.Join(lines, "\n")}); err != nil {
+			ctx.Logger().WarnContext(mirrorCtx, "message not sent to the session's chats", "session", session, "error", err.Error())
+		}
+	}
 }
