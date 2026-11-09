@@ -7,6 +7,7 @@
 // listeners, such as the new chat's tool picker.
 
 import { getTool, listNamespaces, listTools } from '../api/tool';
+import { namespaceIcon } from '../component/namespace-icon';
 import iconLoader from '@carbon/web-components/es/globals/internal/icon-loader.js';
 import LogoMCP16 from '@carbon/icons/es/logo--model-context-protocol/16.js';
 import { ListController, type Page } from './list';
@@ -520,7 +521,7 @@ export class ToolsController extends ListController<Tool> {
                         label: namespace.name,
                         badge: namespace.type === 'mcp' ? namespace.type : undefined,
                         // A connector's logo, or MCP's, when it has none
-                        icon: namespace.type === 'mcp' ? connector?.icon ?? iconLoader(LogoMCP16) : undefined,
+                        icon: namespace.type === 'mcp' ? connector?.icon ?? iconLoader(LogoMCP16) : namespaceIcon(namespace.name),
                         count: namespace.tools,
                         title: namespace.description,
                         error: connector && needsSignIn(connector) ? 'Needs you to sign in' : connector && !connector.connected ? connector.error : undefined,
