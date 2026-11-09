@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	// Packages
+	sdkmcp "github.com/modelcontextprotocol/go-sdk/mcp"
 	llm "github.com/mutablelogic/go-llm"
 	schema "github.com/mutablelogic/go-llm/mcp/schema"
 	yaml "go.yaml.in/yaml/v3"
@@ -23,6 +24,14 @@ import (
 //
 //go:embed servers.yaml
 var servers []byte
+
+// TemplateIconPath is the path of a template's logo, among the web UI's
+// files, which its icon is the file name of
+const TemplateIconPath = "icon/connector/"
+
+// MaxIconSize is the largest data URL of an icon, which a server sends, as
+// it's connected, which a connector's status has
+const MaxIconSize = 64 * 1024
 
 ///////////////////////////////////////////////////////////////////////////////
 // PUBLIC FUNCTIONS
@@ -118,4 +127,37 @@ func (r *Registry) offer(ctx context.Context, templates []schema.ConnectorTempla
 		return cmp.Compare(strings.ToLower(a.Name), strings.ToLower(b.Name))
 	})
 	return result
+}
+
+// templateIcon returns the logo of the template of the connector's server,
+// by its URL, as a URL of the web UI's, or none, when it isn't a well-known
+// server's, or its template has none
+func (r *Registry) templateIcon(connector schema.Connector) string {
+	url := sameURL(connector.URL)
+	for _, template := range r.templates {
+		if template.Icon != "" && sameURL(template.URL) == url {
+			return TemplateIconPath + template.Icon
+		}
+	}
+	return ""
+}
+
+// serverIcon returns the icon the server sent, as it was connected, which
+// is a data URL of an image, rather than one elsewhere, which would be
+// fetched from the server's domain, preferring one for a light background,
+// as the web UI shows it on one, and none, when it sent none of them, or
+// they're too large
+func serverIcon(icons []sdkmcp.Icon) string {
+	var found string
+	for _, icon := range icons {
+		src := strings.TrimSpace(icon.Source)
+		if !strings.HasPrefix(strings.ToLower(src), "data:image/") || len(src) > MaxIconSize {
+			continue
+		} else if icon.Theme == "" || icon.Theme == "light" {
+			return src
+		} else if found == "" {
+			found = src
+		}
+	}
+	return found
 }

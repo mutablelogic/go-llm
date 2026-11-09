@@ -1,3 +1,8 @@
+import Api16 from '@carbon/icons/es/api/16.js';
+import Microphone16 from '@carbon/icons/es/microphone/16.js';
+import ChatBot16 from '@carbon/icons/es/chat-bot/16.js';
+import iconLoader from '@carbon/web-components/es/globals/internal/icon-loader.js';
+
 // The presets of providers which can be added, as the command-line tool's
 // provider-create commands are: each one's type, its name, unless another is
 // given, its URL, which is the type's default, when it's empty, whether its
@@ -67,4 +72,41 @@ function hostOf(url: string): string {
 // has none, as it isn't a brand's, such as a server of your own
 export function presetIcon(preset: Preset): string | undefined {
     return preset.icon ? 'icon/provider/' + encodeURIComponent(preset.icon) : undefined;
+}
+
+// providerIcon returns the logo of a provider, by its type, and, for the
+// openai type, which other services, and servers of your own, have too, by
+// the host of its URL, as a URL of the web UI's, or an icon of what it is,
+// such as a microphone, for go-whisper, or an API, for a server of your own
+export function providerIcon(provider: { provider: string; url?: string }): string | unknown {
+    const logo = (name: string) => 'icon/provider/' + name + '.svg';
+    switch (provider.provider) {
+    case 'ollama':
+    case 'anthropic':
+    case 'gemini':
+    case 'elevenlabs':
+        return logo(provider.provider);
+    case 'gowhisper':
+        return iconLoader(Microphone16);
+    case 'eliza':
+        return iconLoader(ChatBot16);
+    case 'openai': {
+        let host = '';
+        try {
+            host = provider.url ? new URL(provider.url).hostname.toLowerCase() : '';
+        } catch {
+            // Not a URL, which is a server of your own
+            host = '?';
+        }
+        if (host === '' || host === 'api.openai.com') {
+            return logo('openai');
+        } else if (host === 'mistral.ai' || host.endsWith('.mistral.ai')) {
+            return logo('mistral');
+        } else if (host === 'deepseek.com' || host.endsWith('.deepseek.com')) {
+            return logo('deepseek');
+        }
+        return iconLoader(Api16);
+    }
+    }
+    return iconLoader(Api16);
 }

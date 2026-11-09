@@ -46,6 +46,10 @@ type Registry struct {
 	// can be added, whose credentials the credentials provider has
 	offered []schema.ConnectorTemplate
 
+	// Every template, whether it's offered or not, whose logo a connector of
+	// its server has
+	templates []schema.ConnectorTemplate
+
 	// The authorizations which are waited for, by their states, and the
 	// lock of the connectors' credentials, as their connectors are changed,
 	// so a sign-in which finishes as one is changed doesn't keep a
@@ -94,6 +98,7 @@ func New(opts ...Opt) (*Registry, error) {
 			return nil, err
 		}
 	}
+	r.templates = templates
 	r.offered = r.offer(context.Background(), templates)
 	return r, nil
 }
@@ -482,6 +487,7 @@ func (r *Registry) forget(name string, serial uint64) {
 func (r *Registry) status(connector schema.Connector) *schema.Connector {
 	result := connector.Definition()
 	result.Namespace = r.namespaceOf(connector.Name)
+	result.Icon = r.templateIcon(connector)
 	r.mu.Lock()
 	e, exists := r.clients[connector.Name]
 	r.mu.Unlock()
@@ -492,6 +498,9 @@ func (r *Registry) status(connector schema.Connector) *schema.Connector {
 	if server != nil {
 		result.Connected = true
 		result.Server = &schema.ConnectorServer{Name: server.Name, Version: server.Version}
+		if result.Icon == "" {
+			result.Icon = serverIcon(server.Icons)
+		}
 		if e.client.Authorized() {
 			result.Auth = schema.AuthAuthorized
 		}

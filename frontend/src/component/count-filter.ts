@@ -26,6 +26,9 @@ export interface CountTile {
     title?: string;
     error?: string;
     status?: string;
+    // Its logo, before its label: a URL of an image, or an icon, such as
+    // Carbon's
+    icon?: string | unknown;
 }
 
 @customElement('llm-count-filter')
@@ -105,6 +108,25 @@ export class CountFilter extends LitElement {
             margin: 0;
         }
 
+        /* Its logo, on a small white tile, so a dark one is seen in the
+           dark theme too, or an icon */
+        .label img.brand {
+            flex: none;
+            box-sizing: border-box;
+            width: 1rem;
+            height: 1rem;
+            padding: 1px;
+            border-radius: 3px;
+            background: #fff;
+            object-fit: contain;
+        }
+
+        .label .icon {
+            flex: none;
+            display: inline-flex;
+            fill: currentColor;
+        }
+
         .count {
             font-size: var(--cds-heading-03-font-size, 1.25rem);
             font-variant-numeric: tabular-nums;
@@ -146,7 +168,7 @@ export class CountFilter extends LitElement {
         return html`
             <button type="button" aria-pressed=${pressed ? 'true' : 'false'} title=${tile.error ?? tile.title ?? nothing}
                 @click=${() => !pressed && this.dispatchEvent(new CustomEvent(CountFilter.eventSelect, { detail: tile.value }))}>
-                <span class="label"><span class="name">${tile.label}</span>${tile.badge ? html`<cds-tag size="sm" type=${pressed ? 'blue' : 'cool-gray'}>${tile.badge}</cds-tag>` : nothing}</span>
+                <span class="label">${tile.icon === undefined ? nothing : typeof tile.icon === 'string' ? html`<img class="brand" src=${tile.icon} alt="">` : html`<span class="icon">${tile.icon}</span>`}<span class="name">${tile.label}</span>${tile.badge ? html`<cds-tag size="sm" type=${pressed ? 'blue' : 'cool-gray'}>${tile.badge}</cds-tag>` : nothing}</span>
                 ${tile.error
                     ? html`<span class="count error">${tile.status ?? 'Unreachable'}</span>`
                     : html`<span class="count ${tile.count ? '' : 'zero'}">${tile.count?.toLocaleString() ?? '–'}</span>`}

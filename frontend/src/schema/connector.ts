@@ -14,6 +14,9 @@ export interface Connector {
     client_id_credential?: string;
     client_secret_credential?: string;
     auth?: 'required' | 'authorized';
+    // Its logo, as a URL: the web UI's own, for a well-known server, or a
+    // data URL its server sends
+    icon?: string;
     serial?: number;
     connected?: boolean;
     server?: { name: string; version?: string };

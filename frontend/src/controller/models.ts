@@ -5,6 +5,7 @@
 // again when the providers change
 
 import { deleteModel, getModel, listModels, loadModel } from '../api/model';
+import { providerIcon } from '../schema/preset';
 import { ModelLoad } from '../component/model-load';
 import { ModelView } from '../component/model-view';
 import { createProvider, deleteProvider, listProviders, updateProvider } from '../api/provider';
@@ -361,7 +362,7 @@ export class ModelsController extends ListController<Model> {
             const total = this.providers?.reduce((sum, provider) => sum + (provider.models ?? 0), 0);
             providers.tiles = this.providers && [
                 { label: 'All', count: total },
-                ...this.providers.map((provider) => ({ value: provider.name, label: provider.name, badge: provider.provider, count: provider.models, error: provider.error })),
+                ...this.providers.map((provider) => ({ value: provider.name, label: provider.name, icon: providerIcon(provider), badge: provider.provider, count: provider.models, error: provider.error })),
             ];
             providers.selected = this.provider;
         }
