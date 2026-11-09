@@ -470,11 +470,17 @@ export class ChatView extends LitElement {
         const zone = timeZone(detailValue(this.details.timezone));
         let hour: string | undefined;
         const bubbles = this.messages.flatMap((message, position) => {
+            // A message which shows nothing, such as a system message, has
+            // no divider, and doesn't start an hour
+            const shown = this.messageBubbles(message, this.offset + position);
+            if (shown.length === 0) {
+                return [];
+            }
             const when = message.time ? new Date(message.time) : undefined;
             const key = when && !isNaN(when.getTime()) ? hourKey(when, zone) : undefined;
             const divider: Bubble[] = key && key !== hour ? [{ kind: 'time', text: timeLabel(when!, zone) }] : [];
             hour = key ?? hour;
-            return [...divider, ...this.messageBubbles(message, this.offset + position)];
+            return [...divider, ...shown];
         });
         if (this.question !== undefined) {
             bubbles.push(...this.questionAttachments.map((resource): Bubble => ({
@@ -786,40 +792,49 @@ function timeZone(zone?: string): string | undefined {
     }
 }
 
-// hourKey returns the hour of the time, in the time zone, such as
-// 2026-11-09T14, so messages in the same hour have the same key
+// hourKey returns the hour of the time, in the time zone, with the zone's
+// offset, such as 2026-11-09T14+01:00, so messages in the same hour have
+// the same key, and an hour which happens twice, as the clocks go back,
+// has two
 function hourKey(when: Date, zone?: string): string {
-    const parts = new Intl.DateTimeFormat('en-CA', { timeZone: zone, year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', hourCycle: 'h23' }).formatToParts(when);
+    const parts = new Intl.DateTimeFormat('en-CA', { timeZone: zone, year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', hourCycle: 'h23', timeZoneName: 'longOffset' }).formatToParts(when);
     const part = (type: string) => parts.find((p) => p.type === type)?.value ?? '';
-    return `${part('year')}-${part('month')}-${part('day')}T${part('hour')}`;
+    return `${part('year')}-${part('month')}-${part('day')}T${part('hour')}${part('timeZoneName')}`;
+}
+
+// localDate returns the date of the time, in the time zone, such as
+// 2026-11-09
+function localDate(when: Date, zone?: string): string {
+    return new Intl.DateTimeFormat('en-CA', { timeZone: zone, year: 'numeric', month: '2-digit', day: '2-digit' }).format(when);
+}
+
+// dayBefore returns the date before the date, such as 2026-11-08 for
+// 2026-11-09, by the calendar, rather than a day of hours earlier, which
+// isn't yesterday as the clocks change
+function dayBefore(date: string): string {
+    const [year, month, day] = date.split('-').map(Number);
+    return new Date(Date.UTC(year, month - 1, day - 1)).toISOString().slice(0, 10);
 }
 
 // timeLabel returns what the divider before a message says of its hour, in
 // the time zone: Today, or Yesterday, or its day, and date, with its year,
-// when it isn't this year, and the hour, such as "Yesterday, 14:00"
+// when it isn't this year, and the hour, which is the time of the message,
+// in the time zone, with its minutes as 00, such as "Yesterday, 14:00"
 function timeLabel(when: Date, zone?: string): string {
-    const day = (date: Date) => hourKey(date, zone).slice(0, 10);
-    const now = new Date();
-    const yesterday = new Date(now.getTime() - 24 * 60 * 60 * 1000);
-    const hour = new Intl.DateTimeFormat(undefined, { timeZone: zone, hour: '2-digit', minute: '2-digit' }).format(alignedHour(when, zone));
+    const day = localDate(when, zone);
+    const today = localDate(new Date(), zone);
+    const hour = new Intl.DateTimeFormat(undefined, { timeZone: zone, hour: '2-digit', minute: '2-digit' })
+        .formatToParts(when)
+        .map((part) => part.type === 'minute' ? '00' : part.value)
+        .join('');
     let date: string;
-    if (day(when) === day(now)) {
+    if (day === today) {
         date = 'Today';
-    } else if (day(when) === day(yesterday)) {
+    } else if (day === dayBefore(today)) {
         date = 'Yesterday';
     } else {
-        const sameYear = day(when).slice(0, 4) === day(now).slice(0, 4);
+        const sameYear = day.slice(0, 4) === today.slice(0, 4);
         date = new Intl.DateTimeFormat(undefined, { timeZone: zone, weekday: 'long', day: 'numeric', month: 'long', year: sameYear ? undefined : 'numeric' }).format(when);
     }
     return `${date}, ${hour}`;
-}
-
-// alignedHour returns the start of the time's hour, in the time zone, which
-// is the time, less its minutes and seconds there, as a time zone's offset
-// can be a part of an hour, such as India's
-function alignedHour(when: Date, zone?: string): Date {
-    const parts = new Intl.DateTimeFormat('en-CA', { timeZone: zone, minute: '2-digit', second: '2-digit', hourCycle: 'h23' }).formatToParts(when);
-    const minutes = Number(parts.find((p) => p.type === 'minute')?.value ?? 0);
-    const seconds = Number(parts.find((p) => p.type === 'second')?.value ?? 0);
-    return new Date(when.getTime() - (minutes * 60 + seconds) * 1000 - when.getMilliseconds());
 }
