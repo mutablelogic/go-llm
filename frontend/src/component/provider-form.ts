@@ -11,7 +11,7 @@ import { keyed } from 'lit/directives/keyed.js';
 import { customElement, property, query, state } from 'lit/decorators.js';
 import { Panel } from './panel';
 import type { Provider, ProviderMeta } from '../schema/provider';
-import { asksURL, presetOf } from '../schema/preset';
+import { asksURL, presetIcon, presetOf } from '../schema/preset';
 
 // Carbon components
 import '@carbon/web-components/es/components/select/index.js';
@@ -66,6 +66,20 @@ export class ProviderForm extends Panel<ProviderFormItem> {
     private excludeInput?: HTMLElement & { value: string };
 
     static styles = [Panel.styles, css`
+        /* A provider's logo, beside its name, in the title, on a small
+           white tile, so a dark one is seen in the dark theme too */
+        img.brand {
+            box-sizing: border-box;
+            width: 1.5rem;
+            height: 1.5rem;
+            margin-right: 0.5rem;
+            padding: 2px;
+            border-radius: 4px;
+            background: #fff;
+            object-fit: contain;
+            vertical-align: -0.2rem;
+        }
+
         form > * {
             display: block;
             margin-bottom: 1.5rem;
@@ -90,7 +104,12 @@ export class ProviderForm extends Panel<ProviderFormItem> {
     }
 
     protected renderTitle(item: ProviderFormItem) {
-        return item.mode === 'add' ? `Add ${presetOf(item.preset).label} provider` : `Edit ${item.provider.name}`;
+        if (item.mode === 'add') {
+            const preset = presetOf(item.preset);
+            const icon = presetIcon(preset);
+            return html`${icon ? html`<img class="brand" src=${icon} alt="">` : nothing}Add ${preset.label} provider`;
+        }
+        return `Edit ${item.provider.name}`;
     }
 
     protected renderSubtitle(item: ProviderFormItem) {

@@ -13,18 +13,21 @@ export interface Preset {
     askURL: boolean;
     urlLabel?: string;
     credential: 'required' | 'optional' | 'none';
+    // The file name of the provider's logo, among the web UI's provider
+    // icons, at icon/provider/, when it's a brand's
+    icon?: string;
 }
 
 export const presets: Preset[] = [
-    { id: 'ollama', label: 'Ollama', type: 'ollama', name: 'ollama', url: 'http://localhost:11434', askURL: true, urlLabel: 'URL of the Ollama server', credential: 'optional' },
+    { id: 'ollama', label: 'Ollama', type: 'ollama', name: 'ollama', url: 'http://localhost:11434', askURL: true, urlLabel: 'URL of the Ollama server', credential: 'optional', icon: 'ollama.svg' },
     { id: 'compatible', label: 'OpenAI-compatible', type: 'openai', name: '', url: 'http://localhost:1234/v1', askURL: true, urlLabel: 'URL of the server, such as LM Studio or vLLM', credential: 'optional' },
-    { id: 'openai', label: 'OpenAI', type: 'openai', name: 'openai', url: '', askURL: false, credential: 'required' },
-    { id: 'mistral', label: 'Mistral', type: 'openai', name: 'mistral', url: 'https://api.mistral.ai/v1', askURL: false, credential: 'required' },
-    { id: 'anthropic', label: 'Anthropic', type: 'anthropic', name: 'anthropic', url: '', askURL: false, credential: 'required' },
-    { id: 'gemini', label: 'Google Gemini', type: 'gemini', name: 'gemini', url: '', askURL: false, credential: 'required' },
-    { id: 'deepseek', label: 'DeepSeek', type: 'openai', name: 'deepseek', url: 'https://api.deepseek.com', askURL: false, credential: 'required' },
+    { id: 'openai', label: 'OpenAI', type: 'openai', name: 'openai', url: '', askURL: false, credential: 'required', icon: 'openai.svg' },
+    { id: 'mistral', label: 'Mistral', type: 'openai', name: 'mistral', url: 'https://api.mistral.ai/v1', askURL: false, credential: 'required', icon: 'mistral.svg' },
+    { id: 'anthropic', label: 'Anthropic', type: 'anthropic', name: 'anthropic', url: '', askURL: false, credential: 'required', icon: 'anthropic.svg' },
+    { id: 'gemini', label: 'Google Gemini', type: 'gemini', name: 'gemini', url: '', askURL: false, credential: 'required', icon: 'gemini.svg' },
+    { id: 'deepseek', label: 'DeepSeek', type: 'openai', name: 'deepseek', url: 'https://api.deepseek.com', askURL: false, credential: 'required', icon: 'deepseek.svg' },
     { id: 'gowhisper', label: 'go-whisper', type: 'gowhisper', name: 'gowhisper', url: 'http://localhost:8081', askURL: true, urlLabel: 'URL of the go-whisper server', credential: 'none' },
-    { id: 'elevenlabs', label: 'ElevenLabs', type: 'elevenlabs', name: 'elevenlabs', url: '', askURL: false, credential: 'required' },
+    { id: 'elevenlabs', label: 'ElevenLabs', type: 'elevenlabs', name: 'elevenlabs', url: '', askURL: false, credential: 'required', icon: 'elevenlabs.svg' },
     { id: 'eliza', label: 'Eliza, for testing', type: 'eliza', name: 'eliza', url: '', askURL: false, credential: 'none' },
 ];
 
@@ -58,4 +61,10 @@ function hostOf(url: string): string {
     } catch {
         return '';
     }
+}
+
+// presetIcon returns the URL of the preset's logo, or undefined, when it
+// has none, as it isn't a brand's, such as a server of your own
+export function presetIcon(preset: Preset): string | undefined {
+    return preset.icon ? 'icon/provider/' + encodeURIComponent(preset.icon) : undefined;
 }
