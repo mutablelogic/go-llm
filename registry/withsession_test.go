@@ -338,6 +338,24 @@ func Test_ToolSystemPrompts(t *testing.T) {
 		assert.ErrorIs(t, err, llm.ErrNotFound)
 	})
 
+	t.Run("Annotation", func(t *testing.T) {
+		// What the system says of a message, such as where it was sent, is
+		// sent to the model as a system reminder
+		p := newScripted(text("Hello"))
+		message := &providerschema.Message{MessageMeta: providerschema.MessageMeta{Sender: "user", Content: []providerschema.ContentBlock{
+			{Text: types.Ptr("Hi")}, providerschema.NewAnnotation("Sent on Telegram, by Anne."),
+		}}}
+		_, err := newRegistry(t, p).WithSession(ctx, newSession(schema.GeneratorMeta{Model: types.Ptr("model")}), []llm.Message{message}, nil)
+		require.NoError(t, err)
+		require.NotEmpty(t, p.asked)
+		sent := p.asked[0].messages
+		require.NotEmpty(t, sent)
+		last, ok := sent[len(sent)-1].(*providerschema.Message)
+		require.True(t, ok)
+		assert.Equal(t, "Hi\n<system-reminder>\nSent on Telegram, by Anne.\n</system-reminder>", last.Text())
+		assert.NotNil(t, message.Content[1].Annotation, "the stored message keeps its annotation")
+	})
+
 	t.Run("NamespaceWithoutTools", func(t *testing.T) {
 		// A namespace without tools, named by its name and "*", has its
 		// system prompt, though the model has no tools of it

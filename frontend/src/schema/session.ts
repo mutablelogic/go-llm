@@ -41,6 +41,9 @@ export interface ToolResult {
 export interface ContentBlock {
     text?: string;
     thinking?: string;
+    // What the system says of the message, for the model, rather than the
+    // person, such as where it was sent
+    annotation?: string;
     attachment?: { type?: string; url?: string };
     tool_call?: ToolCall;
     tool_result?: ToolResult;
@@ -174,4 +177,20 @@ export function sessionTokens(session: Session): number {
 export function canonicalTool(name: string): string {
     const separator = name.indexOf('__');
     return separator < 0 ? name : name.slice(0, separator) + ':' + name.slice(separator + 2);
+}
+
+// reminderText is a text block which is all one system reminder, as a
+// message's annotation was stored before annotations, such as
+// <system-reminder>Sent on Telegram</system-reminder>
+const reminderText = /^\s*<system-reminder>\s*([\s\S]*?)\s*<\/system-reminder>\s*$/;
+
+// annotationOf returns what the system says of a message, in the content
+// block, which is its annotation, or a text block which is all a system
+// reminder, as one was stored before annotations, or undefined
+export function annotationOf(block: ContentBlock): string | undefined {
+    if (block.annotation?.trim()) {
+        return block.annotation.trim();
+    }
+    const match = block.text?.match(reminderText);
+    return match ? match[1] : undefined;
 }
