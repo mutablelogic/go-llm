@@ -80,7 +80,7 @@ llm provider-create-mistral --api-key-credential MISTRAL_API_KEY
 llm provider-create-deepseek --api-key-credential DEEPSEEK_API_KEY
 llm provider-create-gowhisper http://host.docker.internal:8081
 llm provider-create-elevenlabs --api-key-credential ELEVENLABS_API_KEY
-llm provider-create-eliza                   # a mock chatbot, for testing
+llm provider-create-eliza                   # a mock chatbot, for testing, when NO_ELIZA skipped it at first start
 
 llm providers
 llm models
