@@ -37,10 +37,14 @@ Then open [http://localhost:8084/](http://localhost:8084/):
 - **Connectors:** GitHub, Asana, Harvey, HubSpot, PagerDuty and Zoom are offered under **Add connector** when go-llm starts with your OAuth app's credentials for them, such as `GITHUB_CLIENT_ID` and `GITHUB_CLIENT_SECRET`. The other well-known connectors need none. See [Connectors](#connectors).
 - **`UID` and `GID`** set the user it runs as, such as the owner of a mounted `/data` directory.
 
-Or use Docker Compose. The [compose file](docker/compose.yaml) lists every variable the server reads, and its `ollama` profile adds an Ollama server. Set `OLLAMA_ADDR` too, so go-llm adds that server as a provider. The port is published on `localhost` only, unless `LLM_BIND` says otherwise:
+Or use Docker Compose. The [compose file](docker/compose.yaml) lists every variable the server reads. The port is published on `localhost` only, unless `LLM_BIND` says otherwise. Two profiles add servers whose models go-llm can use:
+
+- **`ollama`:** an Ollama server. Set `OLLAMA_ADDR` too, so go-llm adds it as a provider.
+- **`whisper`:** a [go-whisper](https://github.com/mutablelogic/go-whisper) server, which transcribes speech, such as Telegram voice messages. Set `GOWHISPER_ADDR` too.
 
 ```bash
-OLLAMA_ADDR=http://ollama:11434 docker compose -f docker/compose.yaml --profile ollama up -d
+OLLAMA_ADDR=http://ollama:11434 GOWHISPER_ADDR=http://whisper:8081 \
+  docker compose -f docker/compose.yaml --profile ollama --profile whisper up -d
 ```
 
 ### 2. Install the command-line tool
@@ -380,7 +384,21 @@ Connect chats on messaging services to a conversation, so you can talk to your a
 
 - **Formatting:** Markdown is converted to Telegram's: headings become bold, lists get bullets, and tables are monospaced. Long replies are split between paragraphs.
 - **Files:** pictures and speech a reply makes are sent with it, with the reply as the caption. Images go as photos, Ogg audio as voice messages, MP3 and M4A as tracks, and anything else as documents, up to 50 MB. Other files, such as transcripts, are only sent with `messaging:send`.
-- **Voice:** in a conversation with channels, the assistant is told to speak in `voice-note` format and to transcribe voice messages it can't hear.
+- **Voice:** in a conversation with channels, the assistant is told to speak in `voice-note` format and to transcribe voice messages it can't hear. See [Voice notes](#voice-notes).
+
+### Voice notes
+
+To talk to your assistant by voice, it needs a model that speaks and one that transcribes. With the compose file's `ollama` and `whisper` profiles, these run locally. Download them once:
+
+```bash
+llm model-load ollama:phonon:latest          # speaks
+llm model-load gowhisper:ggml-medium-q5_0    # transcribes
+```
+
+- **Tell the assistant which to use,** such as "speak with `ollama:phonon:latest`, and transcribe with `gowhisper:ggml-medium-q5_0`". It remembers.
+- **Speaking:** replies are sent as Ogg voice notes. Models that can't make them need `opusenc`, which the Docker image includes.
+- **Transcribing:** `ggml-medium-q5_0` runs on small machines, such as a Jetson Nano, but can mishear names. `ggml-large-v3-turbo-q5_0` hears them better, on a faster machine.
+- **Other models:** `llm models --capability speech_output` lists the models that speak, such as OpenAI's and Gemini's. OpenAI, Gemini, Mistral and ElevenLabs also transcribe.
 
 ### Files you send
 
