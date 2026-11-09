@@ -21,6 +21,7 @@ type editor struct {
 }
 
 func (*editor) Name() string                                                        { return "fake" }
+func (*editor) Private(string) bool                                                 { return true }
 func (*editor) Link(string) string                                                  { return "" }
 func (*editor) Receive(context.Context, func(context.Context, Message) error) error { return nil }
 

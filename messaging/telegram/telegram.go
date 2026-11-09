@@ -108,6 +108,13 @@ func (t *Telegram) Link(code string) string {
 	return "https://t.me/" + url.PathEscape(t.username) + "?start=" + url.QueryEscape(code)
 }
 
+// Private returns true when the chat is a person's own, as a private chat's
+// identifier is the person's, which is positive, and a group's, a
+// supergroup's, or a channel's, is negative
+func (t *Telegram) Private(address string) bool {
+	return address != "" && !strings.HasPrefix(strings.TrimSpace(address), "-")
+}
+
 // Receive calls the function with each message people send the bot, until
 // the context is cancelled, when it returns nil, or updates can't be read.
 // Messages from bots, and without text, are skipped. A message is received

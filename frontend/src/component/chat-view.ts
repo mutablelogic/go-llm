@@ -24,7 +24,7 @@ import Video16 from '@carbon/icons/es/video/16.js';
 import PlayFilledAlt16 from '@carbon/icons/es/play--filled--alt/16.js';
 import { MediaPlayer, playable, type Media } from './media-player';
 import { resourceName, type Resource, resourceHash } from '../schema/resource';
-import { canonicalTool, isUser, type ContentBlock, type Marker, type Message, type Session } from '../schema/session';
+import { annotationOf, canonicalTool, isUser, type ContentBlock, type Marker, type Message, type Session } from '../schema/session';
 import { detailValue, type Details } from '../schema/memory';
 import { markdown, markdownStyles } from './markdown';
 import type { ChatKind } from './chat-bubble';
@@ -47,6 +47,9 @@ export interface Piece {
 // as it's streamed, or a line which a tool logged, which isn't a bubble
 interface Bubble {
     kind: ChatKind | 'log' | 'marker';
+    // A log line which is what the system says of a message, which is on
+    // its side, such as the person's
+    side?: 'user' | 'assistant';
     marker?: Marker;
     label?: string;
     text: string;
@@ -343,6 +346,14 @@ export class ChatView extends LitElement {
             padding-left: 1rem;
         }
 
+        /* What the system says of the person's message, such as where it
+           was sent, is under it, on its side */
+        .log.user {
+            padding-left: 0;
+            padding-right: 1rem;
+            text-align: right;
+        }
+
         .empty {
             margin: 0;
             padding: 1.5rem 2rem;
@@ -524,7 +535,7 @@ export class ChatView extends LitElement {
 
     private renderBubble(bubble: Bubble) {
         if (bubble.kind === 'log') {
-            return html`<div class="log">${bubble.text}</div>`;
+            return html`<div class="log ${bubble.side ?? ''}">${bubble.text}</div>`;
         }
         const message = bubble.message;
         return html`
@@ -684,6 +695,13 @@ function bubblesOf(message: Message, attachmentName: AttachmentName): Bubble[] {
 
 function blockBubbles(kind: ChatKind, block: ContentBlock, attachmentName: AttachmentName): Bubble[] {
     const bubbles: Bubble[] = [];
+
+    // What the system says of the message, such as where it was sent, is a
+    // line under it, rather than what was said
+    const annotation = annotationOf(block);
+    if (annotation) {
+        return [{ kind: 'log', side: kind === 'user' ? 'user' : 'assistant', text: annotation }];
+    }
     if (block.thinking?.trim()) {
         bubbles.push({ kind: 'thinking', text: block.thinking.trim() });
     }

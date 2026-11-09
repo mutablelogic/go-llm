@@ -354,6 +354,34 @@ func (m *Messaging) Reply(ctx context.Context, session uuid.UUID, out Outgoing) 
 	return err
 }
 
+// Mirror sends what the person sent the session from elsewhere, such as
+// the web UI, to its channels which are the person's own chats, rather than
+// groups, which others read, so a private chat has both sides of the
+// conversation, and does nothing when it has none
+func (m *Messaging) Mirror(ctx context.Context, session uuid.UUID, out Outgoing) error {
+	if strings.TrimSpace(out.Text) == "" && len(out.Files) == 0 {
+		return nil
+	}
+	channels, err := m.List(ctx, session)
+	if err != nil {
+		return err
+	}
+	var ids []uuid.UUID
+	for _, channel := range channels {
+		if provider, ok := m.providers[channel.Provider]; ok && provider.Private(channel.Address) {
+			ids = append(ids, channel.ID)
+		}
+	}
+	if len(ids) == 0 {
+		return nil
+	}
+	deliveries, err := m.Send(ctx, session, out, ids...)
+	for _, delivery := range deliveries {
+		err = errors.Join(err, delivery.Err)
+	}
+	return err
+}
+
 // Run receives the messages sent to each provider, which are sent to their
 // channel's session, until the context is cancelled, when it returns nil.
 // A message which connects a chat connects it, and one from a chat which

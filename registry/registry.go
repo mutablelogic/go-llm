@@ -177,6 +177,12 @@ func (r *Registry) EventStore() EventStore {
 }
 
 // Toolkit returns the toolkit of the tools which the registry's models can
+// Prompts returns the function called with what the person sends a
+// session, through the API, before its model replies, or nil
+func (r *Registry) Prompts() PromptFunc {
+	return r.prompts
+}
+
 // call, or nil when it has none
 func (r *Registry) Toolkit() *toolkit.Toolkit {
 	return r.toolkit

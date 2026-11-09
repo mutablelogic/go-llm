@@ -353,6 +353,8 @@ Connect chats on messaging services to a conversation, so you can talk to your a
 ### Channels
 
 - **Both ways:** what you say on Telegram goes to the conversation. Every reply, and every heartbeat outcome worth telling you, goes to all its channels.
+- **Your other messages:** what you send from the web UI or the CLI also appears in your own chat, marked "💬 You:", so it has both sides of the conversation. It isn't sent to groups.
+- **Where it was sent:** in the web UI, a Telegram message shows where it was sent, and who sent it, in a grey line under it.
 - **More than one:** a conversation can have several chats, such as yours and a group's. A chat belongs to one conversation, so connecting it again moves it.
 - **Groups:** everyone in a connected group can talk to the assistant and see what it remembers about you. Only connect groups whose people you'd tell.
 - **Who said it:** each message says where it came from and who sent it, so the assistant can tell people apart.
