@@ -123,13 +123,18 @@ func sessionGetUpdateDeleteHandlers(reg *registry.Registry, router *httprouter.R
 			} else if err := httprequest.Read(r, &req); err != nil {
 				httpresponse.Error(w, httpresponse.ErrBadRequest.Withf("%w", err))
 			} else {
+				// What the system says of a message is the server's, so a
+				// client's annotations are taken out
 				messages := make([]llm.Message, len(req.Messages))
 				for i := range req.Messages {
-					messages[i] = &providerschema.Message{MessageMeta: req.Messages[i]}
+					messages[i] = &providerschema.Message{MessageMeta: req.Messages[i].WithoutAnnotations()}
 				}
 				respond(w, r, id.String(), func(write streamWriteFn) (*schema.ChatResponse, error) {
+					// What the person sent is passed on, such as to the
+					// session's own chats, once it's valid, and before its
+					// model replies
 					stream := streamWriter(write)
-					return reg.Chat(r.Context(), id, messages, stream)
+					return reg.Chat(registry.ByPerson(r.Context()), id, messages, stream)
 				})
 			}
 		}, func(op httprequest.PathOperation) {

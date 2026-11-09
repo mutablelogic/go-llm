@@ -13,6 +13,7 @@ import (
 	// Packages
 	otel "github.com/mutablelogic/go-client/pkg/otel"
 	llm "github.com/mutablelogic/go-llm"
+	providerschema "github.com/mutablelogic/go-llm/provider/schema"
 	attribute "go.opentelemetry.io/otel/attribute"
 )
 
@@ -52,6 +53,10 @@ func (r *Registry) WithoutSession(ctx context.Context, model llm.Model, messages
 		return nil, llm.Usage{}, err
 	}
 	opts = withoutSampling(model, withoutThinking(model, opts...)...)
+
+	// What the system says of the messages, such as where one was sent, is
+	// sent as text, in a system reminder, as providers have no annotations
+	messages = providerschema.AnnotationsAsText(messages)
 	start := time.Now()
 	reply, usage, err := generator.WithoutSession(ctx, model, messages, tools, stream, opts...)
 	usage = timed(usage, start)
