@@ -3,7 +3,7 @@
 [![Go Reference](https://pkg.go.dev/badge/github.com/mutablelogic/go-llm.svg)](https://pkg.go.dev/github.com/mutablelogic/go-llm)
 [![License](https://img.shields.io/badge/license-Apache-blue.svg)](LICENSE)
 
-go-llm is an application that puts language and speech models from many providers behind one interface, with a web UI, a command-line tool and a Go SDK. Add providers such as Ollama, OpenAI, Anthropic, Google Gemini, Mistral, [go-whisper](https://github.com/mutablelogic/go-whisper) and ElevenLabs. Then ask any of their models to reply, call tools, run agents, embed, read documents, speak, and transcribe or translate speech. Connect remote MCP servers, such as GitHub, Linear or Notion, so your assistant can use their tools too. You can do all of this through the REST API, the web UI, the `llm` command (which includes a terminal chat), or from Go.
+go-llm is an application that puts language and speech models from many providers behind one interface, with a web UI, a command-line tool and a Go SDK. Add providers such as Ollama, OpenAI, Anthropic, Google Gemini, Mistral, [go-whisper](https://github.com/mutablelogic/go-whisper) and ElevenLabs. Then ask any of their models to reply, call tools, search the web, set reminders, run agents, embed, read documents, speak, and transcribe or translate speech. Connect remote MCP servers, such as GitHub, Linear or Notion, so your assistant can use their tools too. You can do all of this through the REST API, the web UI, the `llm` command (which includes a terminal chat), or from Go.
 
 ## Quick Start
 
@@ -37,10 +37,14 @@ Then open [http://localhost:8084/](http://localhost:8084/):
 - **Connectors:** GitHub, Asana, Harvey, HubSpot, PagerDuty and Zoom are offered under **Add connector** when go-llm starts with your OAuth app's credentials for them, such as `GITHUB_CLIENT_ID` and `GITHUB_CLIENT_SECRET`. The other well-known connectors need none. See [Connectors](#connectors).
 - **`UID` and `GID`** set the user it runs as, such as the owner of a mounted `/data` directory.
 
-Or use Docker Compose. The [compose file](docker/compose.yaml) lists every variable the server reads, and its `ollama` profile adds an Ollama server. Set `OLLAMA_ADDR` too, so go-llm adds that server as a provider. The port is published on `localhost` only, unless `LLM_BIND` says otherwise:
+Or use Docker Compose. The [compose file](docker/compose.yaml) lists every variable the server reads. The port is published on `localhost` only, unless `LLM_BIND` says otherwise. Two profiles add servers whose models go-llm can use:
+
+- **`ollama`:** an Ollama server. Set `OLLAMA_ADDR` too, so go-llm adds it as a provider.
+- **`whisper`:** a [go-whisper](https://github.com/mutablelogic/go-whisper) server, which transcribes speech, such as Telegram voice messages. Set `GOWHISPER_ADDR` too.
 
 ```bash
-OLLAMA_ADDR=http://ollama:11434 docker compose -f docker/compose.yaml --profile ollama up -d
+OLLAMA_ADDR=http://ollama:11434 GOWHISPER_ADDR=http://whisper:8081 \
+  docker compose -f docker/compose.yaml --profile ollama --profile whisper up -d
 ```
 
 ### 2. Install the command-line tool
@@ -56,11 +60,16 @@ The web UI is all you need to chat. The `llm` command is for working from the te
 go install -tags client github.com/mutablelogic/go-llm/cmd/llm@latest
 ```
 
+It needs Go 1.21 or later. go.mod asks for Go 1.27.2, which Go downloads itself, unless `GOTOOLCHAIN=local` is set.
+
 Or run `make client` in a clone, which builds `build/llm`. The tool connects to `localhost:8084`, or the server at `--http.addr` or `LLM_ADDR`, such as `LLM_ADDR=nas.local:8084`.
 
 ### 3. Add providers
 
-Add more providers in the web UI, with **Add provider** on the Models page, or with the CLI. An API key is given by the *name* of the server's environment variable, so the key itself is never stored or sent:
+Add more providers in the web UI, with **Add provider** on the Models page, or with the CLI:
+
+- **API keys** are given by the *name* of the server's environment variable, so the key itself is never stored or sent.
+- **URLs** are as the server sees them, not the machine running `llm`. `host.docker.internal` is for a server in Docker; without Docker, use `http://localhost:11434`.
 
 ```bash
 llm provider-create-ollama http://host.docker.internal:11434
@@ -68,8 +77,10 @@ llm provider-create-openai --api-key-credential OPENAI_API_KEY
 llm provider-create-anthropic --api-key-credential ANTHROPIC_API_KEY
 llm provider-create-gemini --api-key-credential GEMINI_API_KEY
 llm provider-create-mistral --api-key-credential MISTRAL_API_KEY
+llm provider-create-deepseek --api-key-credential DEEPSEEK_API_KEY
 llm provider-create-gowhisper http://host.docker.internal:8081
 llm provider-create-elevenlabs --api-key-credential ELEVENLABS_API_KEY
+llm provider-create-eliza                   # a mock chatbot, for testing, when NO_ELIZA skipped it at first start
 
 llm providers
 llm models
@@ -90,7 +101,7 @@ llm ask --model gpt-4o -a chart.png -a notes.md "Do these agree?"
 
 # Upload a file once, and refer to it by its URI
 llm resource-create report.pdf
-llm chat -a resource:///<hash> "What does this say?"
+llm ask -a resource:///<hash> "What does this say?"
 
 llm embed --model mistral-embed "A cat asleep in the sun"
 llm ocr --model mistral-ocr-latest report.pdf
@@ -110,6 +121,13 @@ llm session-messages
 llm sessions
 ```
 
+Connect a session to Telegram, to chat from your phone. Set `TELEGRAM_BOT_TOKEN`, give the session the `messaging` tools, and ask. You get a link to open, or a QR code in the web UI. See [Messaging](#messaging):
+
+```bash
+llm session-create --model ollama:llama3.2 --tools "messaging:*"
+llm chat "Let's talk on Telegram"
+```
+
 ### Without Docker
 
 ```bash
@@ -117,7 +135,10 @@ go install github.com/mutablelogic/go-llm/cmd/llm@latest
 llm run
 ```
 
-The server listens on `localhost:8084` and keeps its data in your cache directory. Installed this way it serves the API without the web UI; `make` in a clone builds both, with npm, into `build/llm`.
+The server listens on `localhost:8084` and keeps its data in your cache directory.
+
+- **No web UI:** installed this way, it serves only the API, under `/api`, so `http://localhost:8084/` says "not found". Use the CLI, or the API.
+- **With the web UI:** run `make` in a clone, which builds both, with npm, into `build/llm`.
 
 ## Architecture
 
@@ -218,7 +239,7 @@ flowchart LR
 - **Memory** ([memory](memory)): what every session knows about the person and the assistant, such as names, location and time zone, plus memories kept under keys. Each message is sent to the model with its time, in the person's time zone, rather than putting the time in the system prompt, so prompts can be cached.
 - **Heartbeats** ([heartbeat](heartbeat)): prompts that fire once or on a schedule, such as reminders or a morning briefing, in the person's time zone.
 - **Compaction** ([registry](registry)): keeps a long conversation within its model's context. Earlier messages are summarized by the built-in `compact` agent, which also updates memories and the title. It happens on request, or automatically above 80% of the context.
-- **Events** ([registry](registry)): what happens when a heartbeat fires, or a trigger arrives at `POST /llm/event`. The `event` agent decides whether to alert, notify or ignore. Worth-telling outcomes are delivered into the conversation once it's idle, and to its channels.
+- **Events** ([registry](registry)): what happens when a heartbeat fires, or a trigger arrives at `POST /api/llm/event`. The `event` agent decides whether to alert, notify or ignore. Worth-telling outcomes are delivered into the conversation once it's idle, and to its channels.
 - **Resources** ([resource](resource)): uploaded content, such as images, documents and audio, kept once by SHA-256 and referred to as `resource:///<hash>`.
 - **Agents**: named prompts with a model, tools and input and reply schemas, which models call as tools in the `agent` namespace. The [agents](agents) folder has the built-in ones.
 - **Connectors** ([mcp](mcp)): remote MCP servers whose tools become a namespace of the toolkit. See [Connectors](#connectors).
@@ -265,7 +286,7 @@ What a model can do depends on the model, as its provider reports it. Requests f
 
 ### Capabilities
 
-The web UI's Models page shows each model's capabilities as tags, and a model's panel says Yes, No or Unknown for each one. `llm models --capability`, `GET /llm/model?capability=` and the `llm:models` tool list models by capability. A capability the provider doesn't report isn't assumed.
+The web UI's Models page shows each model's capabilities as tags, and a model's panel says Yes, No or Unknown for each one. `llm models --capability`, `GET /api/llm/model?capability=` and the `llm:models` tool list models by capability. A capability the provider doesn't report isn't assumed.
 
 | Capability | Meaning |
 |------------|---------|
@@ -370,7 +391,21 @@ Connect chats on messaging services to a conversation, so you can talk to your a
 
 - **Formatting:** Markdown is converted to Telegram's: headings become bold, lists get bullets, and tables are monospaced. Long replies are split between paragraphs.
 - **Files:** pictures and speech a reply makes are sent with it, with the reply as the caption. Images go as photos, Ogg audio as voice messages, MP3 and M4A as tracks, and anything else as documents, up to 50 MB. Other files, such as transcripts, are only sent with `messaging:send`.
-- **Voice:** in a conversation with channels, the assistant is told to speak in `voice-note` format and to transcribe voice messages it can't hear.
+- **Voice:** in a conversation with channels, the assistant is told to speak in `voice-note` format and to transcribe voice messages it can't hear. See [Voice notes](#voice-notes).
+
+### Voice notes
+
+To talk to your assistant by voice, it needs a model that speaks and one that transcribes. With the compose file's `ollama` and `whisper` profiles, these run locally. Download them once:
+
+```bash
+llm model-load ollama:phonon:latest          # speaks
+llm model-load gowhisper:ggml-medium-q5_0    # transcribes
+```
+
+- **Tell the assistant which to use,** such as "speak with `ollama:phonon:latest`, and transcribe with `gowhisper:ggml-medium-q5_0`". It remembers.
+- **Speaking:** replies are sent as Ogg voice notes. Models that can't make them need `opusenc`, which the Docker image includes.
+- **Transcribing:** `ggml-medium-q5_0` runs on small machines, such as a Jetson Nano, but can mishear names. `ggml-large-v3-turbo-q5_0` hears them better, on a faster machine.
+- **Other models:** `llm models --capability speech_output` lists the models that speak, such as OpenAI's and Gemini's. OpenAI, Gemini, Mistral and ElevenLabs also transcribe.
 
 ### Files you send
 
