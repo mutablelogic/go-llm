@@ -2,7 +2,7 @@
 // add a provider, when every provider's are shown, or edit, and delete, the
 // one which is chosen, and load them again
 
-import { html, nothing } from 'lit';
+import { css, html, nothing } from 'lit';
 import { customElement, property } from 'lit/decorators.js';
 import iconLoader from '@carbon/web-components/es/globals/internal/icon-loader.js';
 import MachineLearningModel32 from '@carbon/icons/es/machine-learning-model/32.js';
@@ -10,7 +10,10 @@ import Edit16 from '@carbon/icons/es/edit/16.js';
 import TrashCan16 from '@carbon/icons/es/trash-can/16.js';
 import Download16 from '@carbon/icons/es/download/16.js';
 import { Page } from './page';
-import { presets } from '../schema/preset';
+import { presetIcon, presets, type Preset } from '../schema/preset';
+import Api16 from '@carbon/icons/es/api/16.js';
+import Microphone16 from '@carbon/icons/es/microphone/16.js';
+import ChatBot16 from '@carbon/icons/es/chat-bot/16.js';
 
 // Carbon components
 import '@carbon/web-components/es/components/button/index.js';
@@ -19,6 +22,20 @@ import '@carbon/web-components/es/components/menu/index.js';
 
 @customElement('llm-models-page')
 export class ModelsPage extends Page {
+    // A provider's logo is on a small white tile, so a dark one, such as
+    // OpenAI's, is seen in the dark theme too
+    static styles = [Page.styles, css`
+        img.brand {
+            box-sizing: border-box;
+            width: 1rem;
+            height: 1rem;
+            padding: 1px;
+            border-radius: 3px;
+            background: #fff;
+            object-fit: contain;
+        }
+    `];
+
     // The names of the events fired to add a provider, of the preset which is
     // the detail, and to edit, and delete, the one which is chosen
     static readonly eventAdd = 'llm-models-page-add';
@@ -64,12 +81,32 @@ export class ModelsPage extends Page {
                     <cds-menu size="md">
                         ${presets.map((preset) => html`
                             <cds-menu-item label=${preset.label}
-                                @click=${() => this.dispatchEvent(new CustomEvent(ModelsPage.eventAdd, { detail: preset.id }))}></cds-menu-item>
+                                @click=${() => this.dispatchEvent(new CustomEvent(ModelsPage.eventAdd, { detail: preset.id }))}>
+                                ${menuIcon(preset)}
+                            </cds-menu-item>
                         `)}
                     </cds-menu>
                 </cds-menu-button>
             `}
         `;
+    }
+}
+
+// menuIcon returns the icon of the preset in the menu which adds a
+// provider: its brand's logo, or an icon of what it is, such as a server
+// with an OpenAI-compatible API, or speech, or a chatbot
+function menuIcon(preset: Preset) {
+    const icon = presetIcon(preset);
+    if (icon) {
+        return html`<img slot="render-icon" class="brand" src=${icon} alt="">`;
+    }
+    switch (preset.id) {
+    case 'gowhisper':
+        return iconLoader(Microphone16, { slot: 'render-icon' });
+    case 'eliza':
+        return iconLoader(ChatBot16, { slot: 'render-icon' });
+    default:
+        return iconLoader(Api16, { slot: 'render-icon' });
     }
 }
 
