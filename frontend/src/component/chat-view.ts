@@ -501,7 +501,9 @@ export class ChatView extends LitElement {
                 speaker = undefined;
                 return this.renderMarker(bubble.marker!);
             }
-            const from = bubble.kind === 'user' ? 'user' : 'assistant';
+            // A line which is what the system says of a message, such as
+            // where it was sent, is its side's, rather than the assistant's
+            const from = bubble.side ?? (bubble.kind === 'user' ? 'user' : 'assistant');
             const name = from !== speaker ? html`<div class="name ${from}">${from === 'user' ? this.userName() : this.assistantName()}</div>` : nothing;
             speaker = from;
             return html`${name}${this.renderBubble(bubble)}`;

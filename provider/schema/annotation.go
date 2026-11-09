@@ -25,8 +25,8 @@ func NewAnnotation(text string) ContentBlock {
 func AnnotationsAsText(messages []llm.Message) []llm.Message {
 	var result []llm.Message
 	for i, message := range messages {
-		m, ok := message.(*Message)
-		if !ok || !m.hasAnnotation() {
+		meta, ok := metaOf(message)
+		if !ok || !meta.hasAnnotation() {
 			if result != nil {
 				result = append(result, message)
 			}
@@ -35,9 +35,14 @@ func AnnotationsAsText(messages []llm.Message) []llm.Message {
 		if result == nil {
 			result = append(make([]llm.Message, 0, len(messages)), messages[:i]...)
 		}
-		copied := *m
-		copied.Content = make([]ContentBlock, len(m.Content))
-		for j, block := range m.Content {
+		copied := Message{MessageMeta: meta}
+		if m, ok := message.(*Message); ok {
+			copied = *m
+		} else if m, ok := message.(Message); ok {
+			copied = m
+		}
+		copied.Content = make([]ContentBlock, len(meta.Content))
+		for j, block := range meta.Content {
 			if block.Annotation != nil {
 				block = ContentBlock{Text: types.Ptr("<" + reminder.Tag + ">\n" + reminder.Strip(*block.Annotation) + "\n</" + reminder.Tag + ">")}
 			}
@@ -84,6 +89,26 @@ func (m MessageMeta) Annotations() string {
 
 ///////////////////////////////////////////////////////////////////////////////
 // PRIVATE METHODS
+
+// metaOf returns the message's fields, when it's one of the schema's
+// messages, as a message, or its fields, by value, or by pointer
+func metaOf(message llm.Message) (MessageMeta, bool) {
+	switch m := message.(type) {
+	case *Message:
+		if m != nil {
+			return m.MessageMeta, true
+		}
+	case Message:
+		return m.MessageMeta, true
+	case *MessageMeta:
+		if m != nil {
+			return *m, true
+		}
+	case MessageMeta:
+		return m, true
+	}
+	return MessageMeta{}, false
+}
 
 // hasAnnotation returns true when the message has an annotation
 func (m MessageMeta) hasAnnotation() bool {

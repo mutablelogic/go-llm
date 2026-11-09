@@ -40,6 +40,21 @@ func Test_Annotations(t *testing.T) {
 		assert.Equal(t, messages[:1], schema.AnnotationsAsText(messages[:1]), "messages without annotations are returned as they are")
 	})
 
+	t.Run("Forms", func(t *testing.T) {
+		// A message, by value, and its fields, by value, or by pointer, have
+		// their annotations sent too
+		for name, message := range map[string]llm.Message{
+			"Message":      *annotated,
+			"MessageMeta":  annotated.MessageMeta,
+			"*MessageMeta": &annotated.MessageMeta,
+		} {
+			sent := schema.AnnotationsAsText([]llm.Message{message})
+			require.Len(t, sent, 1, name)
+			assert.Contains(t, sent[0].Text(), "<system-reminder>\nSent on Telegram, by David.\n</system-reminder>", name)
+		}
+		assert.NotNil(t, annotated.Content[1].Annotation, "the message isn't changed")
+	})
+
 	t.Run("Without", func(t *testing.T) {
 		// A client's annotations are taken out
 		meta := annotated.WithoutAnnotations()

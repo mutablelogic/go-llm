@@ -144,3 +144,26 @@ func (e *slowEditor) Send(ctx context.Context, address, text string) ([]Sent, er
 	<-e.release
 	return e.editor.Send(ctx, address, text)
 }
+
+func Test_RLockContext(t *testing.T) {
+	// The lock which keeps the channels from being changed is waited for no
+	// longer than the context lets it be, and is let go of, once it's taken,
+	// when it's been given up on
+	m := &Messaging{}
+	m.sending.Lock()
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Millisecond)
+	defer cancel()
+	assert.ErrorIs(t, m.rlockContext(ctx), context.DeadlineExceeded)
+	m.sending.Unlock()
+	assert.Eventually(t, func() bool {
+		if m.sending.TryLock() {
+			m.sending.Unlock()
+			return true
+		}
+		return false
+	}, time.Second, 5*time.Millisecond, "the lock it took later is let go of")
+
+	// And it's taken when it's free
+	require.NoError(t, m.rlockContext(context.Background()))
+	m.sending.RUnlock()
+}

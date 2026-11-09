@@ -16,6 +16,7 @@ import (
 	types "github.com/mutablelogic/go-server/pkg/types"
 	assert "github.com/stretchr/testify/assert"
 	require "github.com/stretchr/testify/require"
+	"strings"
 	"sync"
 )
 
@@ -320,6 +321,13 @@ func Test_ChatAnnotations(t *testing.T) {
 	require.NotEmpty(t, messages.Body)
 	assert.Empty(t, messages.Body[0].Annotations(), "a client's annotation isn't kept")
 	assert.Equal(t, "Hello", messages.Body[0].Text())
+	// But not a request which isn't valid, such as one whose attachment
+	// isn't there, which isn't added to the session either
+	missing := map[string]any{"messages": []map[string]any{{"role": "user", "content": []map[string]any{
+		{"text": "Look"},
+		{"attachment": map[string]any{"url": "resource:///" + strings.Repeat("0", 64)}},
+	}}}}
+	assert.NotEqual(t, http.StatusOK, do(t, server, http.MethodPost, "llm/session/"+session.ID.String(), missing, nil))
 	mu.Lock()
 	defer mu.Unlock()
 	assert.Equal(t, []string{session.ID.String() + ": Hello"}, prompted)
