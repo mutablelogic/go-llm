@@ -55,6 +55,7 @@ type Connector struct {
 	Error     string           `json:"error,omitempty" readonly:"" help:"Why the connector's server couldn't be connected, or its session ended"`
 	Namespace string           `json:"namespace,omitempty" readonly:"" help:"The namespace of its server's tools, in the toolkit, which has none while it isn't connected" example:"github"`
 	Auth      string           `json:"auth,omitempty" readonly:"" help:"Whether its server needs to be authorized, which is required, until it's signed in to, or is authorized, once it is" enum:"required,authorized" example:"required"`
+	Icon      string           `json:"icon,omitempty" readonly:"" help:"The connector's logo, as a URL: the web UI's own, under icon/connector/, for a well-known server, or a data URL its server sends, once it's connected, rather than one elsewhere, which isn't fetched" example:"icon/connector/github.svg"`
 }
 
 // ConnectorServer is the name, and version, of a connector's server, as it
@@ -114,7 +115,7 @@ type ConnectorList struct {
 // Definition returns the connector without its status, which is what's
 // stored
 func (c Connector) Definition() Connector {
-	c.Connected, c.Server, c.Error, c.Namespace, c.Auth = false, nil, "", "", ""
+	c.Connected, c.Server, c.Error, c.Namespace, c.Auth, c.Icon = false, nil, "", "", "", ""
 	return c
 }
 

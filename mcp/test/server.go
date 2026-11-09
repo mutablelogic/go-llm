@@ -37,9 +37,10 @@ type Server struct {
 type Opt func(*opt)
 
 type opt struct {
-	sse  bool
-	ping json.RawMessage
-	auth bool
+	sse   bool
+	ping  json.RawMessage
+	auth  bool
+	icons []sdkmcp.Icon
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -69,7 +70,7 @@ func NewServer(t *testing.T, opts ...Opt) *Server {
 	}
 
 	// The MCP server, and its transport's handler
-	self := &Server{MCP: sdkmcp.NewServer(&sdkmcp.Implementation{Name: Name, Version: Version}, nil)}
+	self := &Server{MCP: sdkmcp.NewServer(&sdkmcp.Implementation{Name: Name, Version: Version, Icons: o.icons}, nil)}
 	getServer := func(*http.Request) *sdkmcp.Server { return self.MCP }
 	var handler http.Handler
 	if o.sse {
@@ -132,6 +133,13 @@ func WithSSE() Opt {
 func WithPingResult(result string) Opt {
 	return func(o *opt) {
 		o.ping = json.RawMessage(result)
+	}
+}
+
+// WithIcons makes the server send the icons, as it's connected to
+func WithIcons(icons ...sdkmcp.Icon) Opt {
+	return func(o *opt) {
+		o.icons = icons
 	}
 }
 

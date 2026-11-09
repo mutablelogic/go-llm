@@ -4,11 +4,14 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
 	// Packages
+	sdkmcp "github.com/modelcontextprotocol/go-sdk/mcp"
 	llm "github.com/mutablelogic/go-llm"
 	registry "github.com/mutablelogic/go-llm/mcp/registry"
 	schema "github.com/mutablelogic/go-llm/mcp/schema"
+	test "github.com/mutablelogic/go-llm/mcp/test"
 	assert "github.com/stretchr/testify/assert"
 	require "github.com/stretchr/testify/require"
 )
@@ -124,4 +127,41 @@ func Test_Templates(t *testing.T) {
 			assert.ErrorIs(t, err, llm.ErrBadParameter, name)
 		}
 	})
+}
+
+func Test_ConnectorIcon(t *testing.T) {
+	setInterval(t, &registry.RetryInterval, time.Hour)
+	setInterval(t, &registry.ConnectJitter, 10*time.Millisecond)
+	ctx := t.Context()
+	logo := "data:image/svg+xml;base64,PHN2Zy8+"
+	dark := "data:image/png;base64,iVBORw0KGgo="
+	plain := test.NewServer(t)
+	icons := test.NewServer(t, test.WithIcons(
+		sdkmcp.Icon{Source: "https://example.com/logo.svg"},
+		sdkmcp.Icon{Source: dark, Theme: "dark"},
+		sdkmcp.Icon{Source: logo, Theme: "light"},
+	))
+	elsewhere := test.NewServer(t, test.WithIcons(sdkmcp.Icon{Source: "https://example.com/logo.svg"}))
+	r, err := registry.New(registry.WithTemplates(schema.ConnectorTemplate{Name: "Plain", URL: plain.URL + "/", Icon: "plain.svg"}))
+	require.NoError(t, err)
+	run(t, r)
+	for name, url := range map[string]string{"plain": plain.URL, "icons": icons.URL, "elsewhere": elsewhere.URL} {
+		_, err := r.CreateConnector(ctx, connector(name, url))
+		require.NoError(t, err)
+	}
+	for _, name := range []string{"plain", "icons", "elsewhere"} {
+		require.Eventually(t, func() bool { return status(t, r, name).Connected }, 5*time.Second, 5*time.Millisecond, name)
+	}
+
+	// A well-known server's is the web UI's, by its URL, whether it's
+	// connected or not, and another's is the data URL its server sends,
+	// for a light background, rather than one elsewhere, which isn't fetched
+	assert.Equal(t, registry.TemplateIconPath+"plain.svg", status(t, r, "plain").Icon)
+	assert.Equal(t, logo, status(t, r, "icons").Icon)
+	assert.Empty(t, status(t, r, "elsewhere").Icon)
+
+	// And a connector's definition has none
+	got, err := r.GetConnector(ctx, "icons")
+	require.NoError(t, err)
+	assert.Empty(t, got.Definition().Icon)
 }
