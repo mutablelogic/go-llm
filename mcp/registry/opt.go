@@ -22,7 +22,7 @@ type Opt func(*opt) error
 
 type opt struct {
 	store               Store
-	credentials         Credentials
+	credentials         *memoryCredentials // Those the credentials provider can't keep
 	credentialsProvider CredentialsProvider
 	broadcaster         *broadcaster.Broadcaster
 	toolkit             *toolkit.Toolkit
@@ -56,7 +56,7 @@ func (o *opt) apply(opts []Opt) error {
 
 func (o *opt) defaults() {
 	o.store = NewMemoryStore()
-	o.credentials = NewMemoryCredentials()
+	o.credentials = newMemoryCredentials()
 	o.credentialsProvider = env.New()
 	o.broadcaster = nil
 	o.toolkit = nil
@@ -78,18 +78,6 @@ func WithStore(store Store) Opt {
 			return llm.ErrBadParameter.With("missing store")
 		}
 		o.store = store
-		return nil
-	}
-}
-
-// WithCredentials is where how each connector's server is authorized is
-// kept, such as with its store, in a file, rather than in memory
-func WithCredentials(credentials Credentials) Opt {
-	return func(o *opt) error {
-		if credentials == nil {
-			return llm.ErrBadParameter.With("missing credentials")
-		}
-		o.credentials = credentials
 		return nil
 	}
 }

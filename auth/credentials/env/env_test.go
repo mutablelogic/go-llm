@@ -37,3 +37,20 @@ func Test_Env(t *testing.T) {
 	assert.Contains(t, err.Error(), "GO_LLM_TEST_MISSING")
 	assert.Contains(t, err.Error(), "GO_LLM_TEST_GONE")
 }
+
+func Test_EnvGetSet(t *testing.T) {
+	ctx := t.Context()
+	t.Setenv("GO_LLM_TEST_KEY", "secret")
+	provider := env.New()
+
+	// A variable is got, and one which isn't set is ErrNotFound
+	value, err := provider.Get(ctx, "GO_LLM_TEST_KEY")
+	require.NoError(t, err)
+	assert.Equal(t, "secret", value)
+	_, err = provider.Get(ctx, "GO_LLM_TEST_MISSING")
+	assert.ErrorIs(t, err, llm.ErrNotFound)
+
+	// Credentials can't be kept
+	assert.ErrorIs(t, provider.Set(ctx, "GO_LLM_TEST_KEY", "other"), llm.ErrNotImplemented)
+	assert.ErrorIs(t, provider.Delete(ctx, "GO_LLM_TEST_KEY"), llm.ErrNotImplemented)
+}

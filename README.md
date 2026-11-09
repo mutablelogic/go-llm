@@ -313,7 +313,7 @@ Connectors are remote MCP servers whose tools your assistant can call. Each conn
   - A well-known server's connector, from **Add connector**, already has the names of those credentials.
   - A custom connector needs them: in the panel's **Advanced** section, or with `llm connector-create --client-id-credential GITHUB_CLIENT_ID --client-secret-credential GITHUB_CLIENT_SECRET <url>`.
 - **Behind a reverse proxy:** run the server with `--tls.name=<public host>`, so sign-in sends browsers back to the public address.
-- **Storage:** connectors and their tokens are kept in `connectors.json`. Only remote servers, over streamable HTTP or SSE, are supported.
+- **Storage:** connectors are kept in `connectors.json`, and their tokens in `credentials.json`. Only remote servers, over streamable HTTP or SSE, are supported.
 
 The API is documented in [mcp/registry/httphandler/README.md](mcp/registry/httphandler/README.md).
 

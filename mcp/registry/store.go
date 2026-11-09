@@ -37,38 +37,20 @@ type Store interface {
 	Delete(ctx context.Context, name string, serial uint64) error
 }
 
-// Credentials has how each connector's server is authorized, by the
-// connector's name, which are secrets, so they're kept apart from its
-// definition, and aren't returned by the API
-type Credentials interface {
-	// GetCredential returns the connector's credential, or ErrNotFound,
-	// when it has none
-	GetCredential(ctx context.Context, name string) (*schema.Credential, error)
-
-	// PutCredential sets the connector's credential
-	PutCredential(ctx context.Context, name string, credential schema.Credential) error
-
-	// DeleteCredential deletes the connector's credential, or does nothing,
-	// when it has none
-	DeleteCredential(ctx context.Context, name string) error
-}
-
-// memoryCredentials is credentials in memory, which aren't kept once the
-// process ends, which are the registry's, unless it's given others
+// memoryCredentials is how each connector's server is authorized, in
+// memory, which is kept when the credentials provider can't keep it, such
+// as env's, so it isn't kept once the process ends
 type memoryCredentials struct {
 	mu          sync.Mutex
 	credentials map[string]schema.Credential
 }
 
-var _ Credentials = (*memoryCredentials)(nil)
-
-// NewMemoryCredentials returns credentials in memory, which aren't kept
-// once the process ends
-func NewMemoryCredentials() Credentials {
+// newMemoryCredentials returns credentials in memory
+func newMemoryCredentials() *memoryCredentials {
 	return &memoryCredentials{credentials: make(map[string]schema.Credential)}
 }
 
-func (s *memoryCredentials) GetCredential(_ context.Context, name string) (*schema.Credential, error) {
+func (s *memoryCredentials) get(name string) (*schema.Credential, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	credential, exists := s.credentials[name]
@@ -80,20 +62,18 @@ func (s *memoryCredentials) GetCredential(_ context.Context, name string) (*sche
 	return &credential, nil
 }
 
-func (s *memoryCredentials) PutCredential(_ context.Context, name string, credential schema.Credential) error {
+func (s *memoryCredentials) put(name string, credential schema.Credential) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	credential.RedirectURIs = slices.Clone(credential.RedirectURIs)
 	credential.Scopes = slices.Clone(credential.Scopes)
 	s.credentials[name] = credential
-	return nil
 }
 
-func (s *memoryCredentials) DeleteCredential(_ context.Context, name string) error {
+func (s *memoryCredentials) delete(name string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	delete(s.credentials, name)
-	return nil
 }
 
 // memoryStore is a store of connectors in memory, which aren't kept once the
