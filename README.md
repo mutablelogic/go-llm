@@ -121,6 +121,13 @@ llm session-messages
 llm sessions
 ```
 
+Connect a session to Telegram, to chat from your phone. Set `TELEGRAM_BOT_TOKEN`, give the session the `messaging` tools, and ask. You get a link to open, or a QR code in the web UI. See [Messaging](#messaging):
+
+```bash
+llm session-create --model ollama:llama3.2 --tools "messaging:*"
+llm chat "Let's talk on Telegram"
+```
+
 ### Without Docker
 
 ```bash
