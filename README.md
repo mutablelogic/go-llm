@@ -56,11 +56,16 @@ The web UI is all you need to chat. The `llm` command is for working from the te
 go install -tags client github.com/mutablelogic/go-llm/cmd/llm@latest
 ```
 
+It needs Go 1.21 or later. go.mod asks for Go 1.27.2, which Go downloads itself, unless `GOTOOLCHAIN=local` is set.
+
 Or run `make client` in a clone, which builds `build/llm`. The tool connects to `localhost:8084`, or the server at `--http.addr` or `LLM_ADDR`, such as `LLM_ADDR=nas.local:8084`.
 
 ### 3. Add providers
 
-Add more providers in the web UI, with **Add provider** on the Models page, or with the CLI. An API key is given by the *name* of the server's environment variable, so the key itself is never stored or sent:
+Add more providers in the web UI, with **Add provider** on the Models page, or with the CLI:
+
+- **API keys** are given by the *name* of the server's environment variable, so the key itself is never stored or sent.
+- **URLs** are as the server sees them, not the machine running `llm`. `host.docker.internal` is for a server in Docker; without Docker, use `http://localhost:11434`.
 
 ```bash
 llm provider-create-ollama http://host.docker.internal:11434
@@ -68,8 +73,10 @@ llm provider-create-openai --api-key-credential OPENAI_API_KEY
 llm provider-create-anthropic --api-key-credential ANTHROPIC_API_KEY
 llm provider-create-gemini --api-key-credential GEMINI_API_KEY
 llm provider-create-mistral --api-key-credential MISTRAL_API_KEY
+llm provider-create-deepseek --api-key-credential DEEPSEEK_API_KEY
 llm provider-create-gowhisper http://host.docker.internal:8081
 llm provider-create-elevenlabs --api-key-credential ELEVENLABS_API_KEY
+llm provider-create-eliza                   # a mock chatbot, for testing
 
 llm providers
 llm models
@@ -90,7 +97,7 @@ llm ask --model gpt-4o -a chart.png -a notes.md "Do these agree?"
 
 # Upload a file once, and refer to it by its URI
 llm resource-create report.pdf
-llm chat -a resource:///<hash> "What does this say?"
+llm ask -a resource:///<hash> "What does this say?"
 
 llm embed --model mistral-embed "A cat asleep in the sun"
 llm ocr --model mistral-ocr-latest report.pdf
@@ -117,7 +124,10 @@ go install github.com/mutablelogic/go-llm/cmd/llm@latest
 llm run
 ```
 
-The server listens on `localhost:8084` and keeps its data in your cache directory. Installed this way it serves the API without the web UI; `make` in a clone builds both, with npm, into `build/llm`.
+The server listens on `localhost:8084` and keeps its data in your cache directory.
+
+- **No web UI:** installed this way, it serves only the API, under `/api`, so `http://localhost:8084/` says "not found". Use the CLI, or the API.
+- **With the web UI:** run `make` in a clone, which builds both, with npm, into `build/llm`.
 
 ## Architecture
 
@@ -218,7 +228,7 @@ flowchart LR
 - **Memory** ([memory](memory)): what every session knows about the person and the assistant, such as names, location and time zone, plus memories kept under keys. Each message is sent to the model with its time, in the person's time zone, rather than putting the time in the system prompt, so prompts can be cached.
 - **Heartbeats** ([heartbeat](heartbeat)): prompts that fire once or on a schedule, such as reminders or a morning briefing, in the person's time zone.
 - **Compaction** ([registry](registry)): keeps a long conversation within its model's context. Earlier messages are summarized by the built-in `compact` agent, which also updates memories and the title. It happens on request, or automatically above 80% of the context.
-- **Events** ([registry](registry)): what happens when a heartbeat fires, or a trigger arrives at `POST /llm/event`. The `event` agent decides whether to alert, notify or ignore. Worth-telling outcomes are delivered into the conversation once it's idle, and to its channels.
+- **Events** ([registry](registry)): what happens when a heartbeat fires, or a trigger arrives at `POST /api/llm/event`. The `event` agent decides whether to alert, notify or ignore. Worth-telling outcomes are delivered into the conversation once it's idle, and to its channels.
 - **Resources** ([resource](resource)): uploaded content, such as images, documents and audio, kept once by SHA-256 and referred to as `resource:///<hash>`.
 - **Agents**: named prompts with a model, tools and input and reply schemas, which models call as tools in the `agent` namespace. The [agents](agents) folder has the built-in ones.
 - **Connectors** ([mcp](mcp)): remote MCP servers whose tools become a namespace of the toolkit. See [Connectors](#connectors).
@@ -265,7 +275,7 @@ What a model can do depends on the model, as its provider reports it. Requests f
 
 ### Capabilities
 
-The web UI's Models page shows each model's capabilities as tags, and a model's panel says Yes, No or Unknown for each one. `llm models --capability`, `GET /llm/model?capability=` and the `llm:models` tool list models by capability. A capability the provider doesn't report isn't assumed.
+The web UI's Models page shows each model's capabilities as tags, and a model's panel says Yes, No or Unknown for each one. `llm models --capability`, `GET /api/llm/model?capability=` and the `llm:models` tool list models by capability. A capability the provider doesn't report isn't assumed.
 
 | Capability | Meaning |
 |------------|---------|
