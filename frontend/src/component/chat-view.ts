@@ -46,7 +46,7 @@ export interface Piece {
 // thinking, its text, whether its text is Markdown, and whether it's live,
 // as it's streamed, or a line which a tool logged, which isn't a bubble
 interface Bubble {
-    kind: ChatKind | 'log' | 'marker';
+    kind: ChatKind | 'log' | 'marker' | 'time';
     marker?: Marker;
     label?: string;
     text: string;
@@ -465,7 +465,17 @@ export class ChatView extends LitElement {
         if (!this.messages) {
             return html`<cds-skeleton-text paragraph line-count="6"></cds-skeleton-text>`;
         }
-        const bubbles = this.messages.flatMap((message, position) => this.messageBubbles(message, this.offset + position));
+        // A divider says when the conversation was, before the first message,
+        // and each which starts another hour, in the person's time zone
+        const zone = timeZone(detailValue(this.details.timezone));
+        let hour: string | undefined;
+        const bubbles = this.messages.flatMap((message, position) => {
+            const when = message.time ? new Date(message.time) : undefined;
+            const key = when && !isNaN(when.getTime()) ? hourKey(when, zone) : undefined;
+            const divider: Bubble[] = key && key !== hour ? [{ kind: 'time', text: timeLabel(when!, zone) }] : [];
+            hour = key ?? hour;
+            return [...divider, ...this.messageBubbles(message, this.offset + position)];
+        });
         if (this.question !== undefined) {
             bubbles.push(...this.questionAttachments.map((resource): Bubble => ({
                 kind: 'user',
@@ -489,6 +499,9 @@ export class ChatView extends LitElement {
                 // Whoever speaks next is named again, after the divider
                 speaker = undefined;
                 return this.renderMarker(bubble.marker!);
+            } else if (bubble.kind === 'time') {
+                speaker = undefined;
+                return html`<div class="marker time"><div class="rule"><span>${bubble.text}</span></div></div>`;
             }
             const from = bubble.kind === 'user' ? 'user' : 'assistant';
             const name = from !== speaker ? html`<div class="name ${from}">${from === 'user' ? this.userName() : this.assistantName()}</div>` : nothing;
@@ -757,4 +770,56 @@ declare global {
     interface HTMLElementTagNameMap {
         'llm-chat-view': ChatView;
     }
+}
+
+// timeZone returns the time zone, such as Europe/Berlin, when the browser
+// knows it, or undefined, for the browser's own
+function timeZone(zone?: string): string | undefined {
+    if (!zone) {
+        return undefined;
+    }
+    try {
+        new Intl.DateTimeFormat(undefined, { timeZone: zone });
+        return zone;
+    } catch {
+        return undefined;
+    }
+}
+
+// hourKey returns the hour of the time, in the time zone, such as
+// 2026-11-09T14, so messages in the same hour have the same key
+function hourKey(when: Date, zone?: string): string {
+    const parts = new Intl.DateTimeFormat('en-CA', { timeZone: zone, year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', hourCycle: 'h23' }).formatToParts(when);
+    const part = (type: string) => parts.find((p) => p.type === type)?.value ?? '';
+    return `${part('year')}-${part('month')}-${part('day')}T${part('hour')}`;
+}
+
+// timeLabel returns what the divider before a message says of its hour, in
+// the time zone: Today, or Yesterday, or its day, and date, with its year,
+// when it isn't this year, and the hour, such as "Yesterday, 14:00"
+function timeLabel(when: Date, zone?: string): string {
+    const day = (date: Date) => hourKey(date, zone).slice(0, 10);
+    const now = new Date();
+    const yesterday = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+    const hour = new Intl.DateTimeFormat(undefined, { timeZone: zone, hour: '2-digit', minute: '2-digit' }).format(alignedHour(when, zone));
+    let date: string;
+    if (day(when) === day(now)) {
+        date = 'Today';
+    } else if (day(when) === day(yesterday)) {
+        date = 'Yesterday';
+    } else {
+        const sameYear = day(when).slice(0, 4) === day(now).slice(0, 4);
+        date = new Intl.DateTimeFormat(undefined, { timeZone: zone, weekday: 'long', day: 'numeric', month: 'long', year: sameYear ? undefined : 'numeric' }).format(when);
+    }
+    return `${date}, ${hour}`;
+}
+
+// alignedHour returns the start of the time's hour, in the time zone, which
+// is the time, less its minutes and seconds there, as a time zone's offset
+// can be a part of an hour, such as India's
+function alignedHour(when: Date, zone?: string): Date {
+    const parts = new Intl.DateTimeFormat('en-CA', { timeZone: zone, minute: '2-digit', second: '2-digit', hourCycle: 'h23' }).formatToParts(when);
+    const minutes = Number(parts.find((p) => p.type === 'minute')?.value ?? 0);
+    const seconds = Number(parts.find((p) => p.type === 'second')?.value ?? 0);
+    return new Date(when.getTime() - (minutes * 60 + seconds) * 1000 - when.getMilliseconds());
 }
