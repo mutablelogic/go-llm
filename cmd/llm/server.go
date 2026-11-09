@@ -13,9 +13,10 @@ import (
 	// Packages
 	llm "github.com/mutablelogic/go-llm"
 	agents "github.com/mutablelogic/go-llm/agents"
+	credentials "github.com/mutablelogic/go-llm/auth/credentials"
+	env "github.com/mutablelogic/go-llm/auth/credentials/env"
 	broadcaster "github.com/mutablelogic/go-llm/broadcaster"
 	broadcastercmd "github.com/mutablelogic/go-llm/broadcaster/cmd"
-	credentials "github.com/mutablelogic/go-llm/credentials"
 	frontendcmd "github.com/mutablelogic/go-llm/frontend/cmd"
 	heartbeat "github.com/mutablelogic/go-llm/heartbeat"
 	heartbeatcmd "github.com/mutablelogic/go-llm/heartbeat/cmd"
@@ -185,7 +186,7 @@ func (runner *RunServer) withToolkit(ctx server.Cmd, b *broadcaster.Broadcaster,
 	// One provider of credentials, such as API keys, and connectors'
 	// clients' secrets, which are environment variables, is shared by the
 	// toolkit, the connectors and the registry
-	creds := credentials.Env()
+	creds := env.New()
 	return runner.Toolkit.WithToolkit(ctx, &runner.RunServer, func(tools *toolkit.Toolkit) error {
 		// The memory, whose system prompt has what's remembered, and whose
 		// tools remember it, and which, when a model can call them, has it

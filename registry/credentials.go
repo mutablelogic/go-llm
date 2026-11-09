@@ -2,7 +2,7 @@ package registry
 
 import (
 	// Packages
-	credentials "github.com/mutablelogic/go-llm/credentials"
+	credentials "github.com/mutablelogic/go-llm/auth/credentials"
 )
 
 ///////////////////////////////////////////////////////////////////////////////

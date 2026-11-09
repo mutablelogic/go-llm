@@ -9,8 +9,8 @@ import (
 	// Packages
 	client "github.com/mutablelogic/go-client"
 	llm "github.com/mutablelogic/go-llm"
+	env "github.com/mutablelogic/go-llm/auth/credentials/env"
 	broadcaster "github.com/mutablelogic/go-llm/broadcaster"
-	credentials "github.com/mutablelogic/go-llm/credentials"
 	toolkit "github.com/mutablelogic/go-llm/toolkit"
 	toolschema "github.com/mutablelogic/go-llm/toolkit/schema"
 	trace "go.opentelemetry.io/otel/trace"
@@ -115,7 +115,7 @@ func (o *opt) apply(opts []Opt) error {
 
 func (o *opt) defaults() {
 	o.tracer = nil
-	o.credentials = credentials.Env()
+	o.credentials = env.New()
 	o.clientopts = nil
 	o.providerStore = nil
 	o.sessionStore = nil
@@ -331,7 +331,7 @@ func WithClientOpts(opts ...client.ClientOpt) Opt {
 func WithCredentialsProvider(provider CredentialsProvider) Opt {
 	return func(o *opt) error {
 		if provider == nil {
-			o.credentials = credentials.Env()
+			o.credentials = env.New()
 		} else {
 			o.credentials = provider
 		}

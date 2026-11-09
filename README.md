@@ -406,7 +406,7 @@ The packages work on their own, without the application:
 The registry is meant to be composed into a larger system. Its options plug in what that system has:
 
 - **`WithProviderStore`, `WithSessionStore`, `WithAgentStore`:** keep providers, sessions and agents in a store, such as a database. Each item has a serial, so a stale change is a conflict, and stores can watch for other servers' changes.
-- **`WithCredentialsProvider`:** expands an API key's placeholder, such as `${OPENAI_KEY}`, from the environment by default, or from a secrets manager. It's a [`credentials.Provider`](credentials), which the toolkit and the connectors take too, so a system shares one.
+- **`WithCredentialsProvider`:** expands an API key's placeholder, such as `${OPENAI_KEY}`, from the environment by default, or from a secrets manager. It's a [`credentials.Provider`](auth/credentials), which the toolkit and the connectors take too, so a system shares one.
 - **`WithToolkit`:** the tools models can call.
 - **`WithBroadcaster`:** shares an event stream with other modules.
 - **`WithTracer`, `WithClientOpts`:** trace and configure requests to providers.

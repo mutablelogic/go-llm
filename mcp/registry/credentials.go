@@ -6,7 +6,7 @@ import (
 
 	// Packages
 	llm "github.com/mutablelogic/go-llm"
-	credentials "github.com/mutablelogic/go-llm/credentials"
+	credentials "github.com/mutablelogic/go-llm/auth/credentials"
 	schema "github.com/mutablelogic/go-llm/mcp/schema"
 )
 
