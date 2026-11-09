@@ -8,6 +8,7 @@ import (
 	client "github.com/mutablelogic/go-client"
 	llm "github.com/mutablelogic/go-llm"
 	broadcaster "github.com/mutablelogic/go-llm/broadcaster"
+	credentials "github.com/mutablelogic/go-llm/credentials"
 	mcpclient "github.com/mutablelogic/go-llm/mcp/client"
 	schema "github.com/mutablelogic/go-llm/mcp/schema"
 	toolkit "github.com/mutablelogic/go-llm/toolkit"
@@ -56,7 +57,7 @@ func (o *opt) apply(opts []Opt) error {
 func (o *opt) defaults() {
 	o.store = NewMemoryStore()
 	o.credentials = NewMemoryCredentials()
-	o.credentialsProvider = envCredentials{}
+	o.credentialsProvider = credentials.Env()
 	o.broadcaster = nil
 	o.toolkit = nil
 	o.connectTimeout = ConnectTimeout
@@ -117,7 +118,7 @@ func WithTemplates(templates ...schema.ConnectorTemplate) Opt {
 func WithCredentialsProvider(provider CredentialsProvider) Opt {
 	return func(o *opt) error {
 		if provider == nil {
-			o.credentialsProvider = envCredentials{}
+			o.credentialsProvider = credentials.Env()
 		} else {
 			o.credentialsProvider = provider
 		}

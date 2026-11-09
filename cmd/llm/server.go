@@ -15,6 +15,7 @@ import (
 	agents "github.com/mutablelogic/go-llm/agents"
 	broadcaster "github.com/mutablelogic/go-llm/broadcaster"
 	broadcastercmd "github.com/mutablelogic/go-llm/broadcaster/cmd"
+	credentials "github.com/mutablelogic/go-llm/credentials"
 	frontendcmd "github.com/mutablelogic/go-llm/frontend/cmd"
 	heartbeat "github.com/mutablelogic/go-llm/heartbeat"
 	heartbeatcmd "github.com/mutablelogic/go-llm/heartbeat/cmd"
@@ -181,6 +182,10 @@ func (runner *RunServer) Run(ctx server.Cmd) error {
 // registry, with the stores, which runs the heartbeats which fire, once
 // it's set to, and fires them
 func (runner *RunServer) withToolkit(ctx server.Cmd, b *broadcaster.Broadcaster, mem *memory.Memory, h *heartbeat.Heartbeats, res *resource.Manager, events *atomic.Pointer[registry.Registry], build registry.EventBuilder, store registry.ProviderStore, connectorStore *connectorStore, sessions *sessionStore, agents *agentStore, outcomes *eventStore) error {
+	// One provider of credentials, such as API keys, and connectors'
+	// clients' secrets, which are environment variables, is shared by the
+	// toolkit, the connectors and the registry
+	creds := credentials.Env()
 	return runner.Toolkit.WithToolkit(ctx, &runner.RunServer, func(tools *toolkit.Toolkit) error {
 		// The memory, whose system prompt has what's remembered, and whose
 		// tools remember it, and which, when a model can call them, has it
@@ -260,16 +265,16 @@ func (runner *RunServer) withToolkit(ctx server.Cmd, b *broadcaster.Broadcaster,
 		// the toolkit, each in a namespace of its own, as it's connected,
 		// and their resources will be added to the resources
 		return runner.Connector.WithConnectorRegistry(ctx, &runner.RunServer, b, func(connectors *mcpregistry.Registry) error {
-			return runner.withRegistry(ctx, b, mem, h, res, m, connectors, tools, events, build, store, sessions, agents, outcomes, replies)
-		}, mcpregistry.WithStore(connectorStore), mcpregistry.WithCredentials(connectorStore), mcpregistry.WithToolkit(tools))
-	}, toolkit.WithBroadcaster(b))
+			return runner.withRegistry(ctx, b, mem, h, res, m, connectors, tools, events, build, store, sessions, agents, outcomes, replies, creds)
+		}, mcpregistry.WithStore(connectorStore), mcpregistry.WithCredentials(connectorStore), mcpregistry.WithCredentialsProvider(creds), mcpregistry.WithToolkit(tools))
+	}, toolkit.WithBroadcaster(b), toolkit.WithCredentialsProvider(creds))
 }
 
 // withRegistry runs the server, with the registry, which has the stores,
 // and the toolkit, and runs the heartbeats which fire, and the messaging's
 // chats, the resources' cleaning, the connectors, and the broadcaster,
 // until any stops
-func (runner *RunServer) withRegistry(ctx server.Cmd, b *broadcaster.Broadcaster, mem *memory.Memory, h *heartbeat.Heartbeats, res *resource.Manager, m *messaging.Messaging, connectors *mcpregistry.Registry, tools *toolkit.Toolkit, events *atomic.Pointer[registry.Registry], build registry.EventBuilder, store registry.ProviderStore, sessions *sessionStore, agents *agentStore, outcomes *eventStore, replies registry.ReplyFunc) error {
+func (runner *RunServer) withRegistry(ctx server.Cmd, b *broadcaster.Broadcaster, mem *memory.Memory, h *heartbeat.Heartbeats, res *resource.Manager, m *messaging.Messaging, connectors *mcpregistry.Registry, tools *toolkit.Toolkit, events *atomic.Pointer[registry.Registry], build registry.EventBuilder, store registry.ProviderStore, sessions *sessionStore, agents *agentStore, outcomes *eventStore, replies registry.ReplyFunc, creds credentials.Provider) error {
 	return runner.Registry.WithRegistry(ctx, &runner.RunServer, func(r *registry.Registry) error {
 		// The example agents, as they are, before the server starts
 		createAgents(ctx, r)
@@ -324,7 +329,7 @@ func (runner *RunServer) withRegistry(ctx server.Cmd, b *broadcaster.Broadcaster
 			return runner.RunServer.Run(ctx.WithContext(runCtx))
 		})
 		return group.Wait()
-	}, registry.WithBroadcaster(b), registry.WithProviderStore(store), registry.WithSessionStore(sessions), registry.WithAgentStore(agents), registry.WithEventStore(outcomes), registry.WithEventBuilder(build), registry.WithToolkit(tools), registry.WithResources(res), registry.WithTimes(func() *time.Location { return mem.Details().Zone() }, memory.Name), registry.WithReplies(replies), registry.WithPrompts(mirrorPrompts(ctx, m)), registry.WithCompactTools(memory.Name), runner.Session.Opt(hasHeartbeats(h)))
+	}, registry.WithBroadcaster(b), registry.WithProviderStore(store), registry.WithSessionStore(sessions), registry.WithAgentStore(agents), registry.WithEventStore(outcomes), registry.WithEventBuilder(build), registry.WithToolkit(tools), registry.WithResources(res), registry.WithTimes(func() *time.Location { return mem.Details().Zone() }, memory.Name), registry.WithReplies(replies), registry.WithPrompts(mirrorPrompts(ctx, m)), registry.WithCredentialsProvider(creds), registry.WithCompactTools(memory.Name), runner.Session.Opt(hasHeartbeats(h)))
 }
 
 // hasHeartbeats returns the function which says whether a session is kept,

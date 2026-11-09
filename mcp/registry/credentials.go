@@ -3,53 +3,21 @@ package registry
 import (
 	"context"
 	"errors"
-	"os"
 
 	// Packages
 	llm "github.com/mutablelogic/go-llm"
+	credentials "github.com/mutablelogic/go-llm/credentials"
 	schema "github.com/mutablelogic/go-llm/mcp/schema"
 )
 
 ///////////////////////////////////////////////////////////////////////////////
 // INTERFACES
 
-// CredentialsProvider expands credentials, such as a connector's client
+// CredentialsProvider expands credentials, such as a connector's client's
 // secret, whose placeholders, such as ${GITHUB_CLIENT_SECRET}, are replaced
-// with the credentials they name, as a provider's API key's are
-type CredentialsProvider interface {
-	// Expand returns the value with each placeholder replaced with its
-	// credential, or an error when a credential doesn't exist
-	Expand(ctx context.Context, value string) (string, error)
-}
-
-///////////////////////////////////////////////////////////////////////////////
-// TYPES
-
-// envCredentials is the credentials provider when there's none, whose
-// credentials are environment variables
-type envCredentials struct{}
-
-var _ CredentialsProvider = envCredentials{}
-
-///////////////////////////////////////////////////////////////////////////////
-// PUBLIC METHODS
-
-// Expand replaces each placeholder with the environment variable it names,
-// which must be set
-func (envCredentials) Expand(_ context.Context, value string) (string, error) {
-	var err error
-	result := os.Expand(value, func(key string) string {
-		v, ok := os.LookupEnv(key)
-		if !ok {
-			err = errors.Join(err, llm.ErrNotFound.Withf("credential %q isn't set", key))
-		}
-		return v
-	})
-	if err != nil {
-		return "", err
-	}
-	return result, nil
-}
+// with the credentials they name. It's the credentials package's Provider,
+// so one provider is shared by the registry, the toolkit and the connectors.
+type CredentialsProvider = credentials.Provider
 
 ///////////////////////////////////////////////////////////////////////////////
 // PRIVATE METHODS
