@@ -254,3 +254,26 @@ func TestToolsRun(t *testing.T) {
 	require.NoError(t, err)
 	assert.Nil(t, result)
 }
+
+func TestToolsUnexpanded(t *testing.T) {
+	// The event and compact agents, which only the server runs, aren't in
+	// "*", or builtin:*, but are tools, which can be named on their own
+	tk, err := toolkit.New(t.Context())
+	require.NoError(t, err)
+	require.NoError(t, tk.Add(toolkit.NewNamespace("builtin", "", echoTool{name: "event"}, echoTool{name: "compact"}, echoTool{name: "translate"})))
+	require.NoError(t, tk.Add(toolkit.NewNamespace("other", "", echoTool{name: "event"})))
+	names := func(patterns ...string) []string {
+		t.Helper()
+		tools, err := tk.Tools(t.Context(), patterns...)
+		require.NoError(t, err)
+		var result []string
+		for _, tool := range tools {
+			result = append(result, tool.Name())
+		}
+		return result
+	}
+	assert.Equal(t, []string{"builtin__translate", "other__event"}, names("*"))
+	assert.Equal(t, []string{"builtin__translate"}, names("builtin:*"))
+	assert.Equal(t, []string{"builtin__event"}, names("builtin:event"))
+	assert.Equal(t, []string{"other__event"}, names("other:*"), "only the builtin namespace's")
+}
