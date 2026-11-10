@@ -103,7 +103,7 @@ export class ChatPage extends Page {
                                 <cds-menu-item label="Preferences" @click=${fire(ChatPage.eventPreferences)}></cds-menu-item>
                                 <cds-menu-item label="Tasks" @click=${fire(ChatPage.eventTasks)}></cds-menu-item>
                             `}
-                            <cds-menu-item label=${this.event ? 'Compact memory' : 'Summarise'} @click=${fire(ChatPage.eventCompact)}></cds-menu-item>
+                            <cds-menu-item label=${this.event ? 'Compact memory' : 'Summarize'} @click=${fire(ChatPage.eventCompact)}></cds-menu-item>
                             <cds-menu-item-divider></cds-menu-item-divider>
                             <cds-menu-item kind="danger" label=${this.event ? 'Delete memory' : 'Delete'} ?disabled=${!this.deletable} @click=${fire(ChatPage.eventDelete)}></cds-menu-item>
                         </cds-menu>
