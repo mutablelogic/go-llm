@@ -9,8 +9,9 @@
 #   {"message":"It's 4°C and cloudy in Berlin today, ...","importance":"notify"}
 #
 # Its context is put in a <system-reminder> block, which the server builds,
-# and takes out of the title and prompt. It's built in, so models can call
-# it too, as builtin:event, as the server's agents are trusted.
+# and takes out of the title and prompt. It's a tool, builtin:event, but only
+# the server runs it, as it gives it what it trusts, so it isn't in * or
+# builtin:*, which give models their tools.
 #
 # It has no model, or tools, so it's run with the model of the session it's
 # run from, which, when a heartbeat fires, is the model of the conversation

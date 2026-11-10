@@ -19,6 +19,19 @@ import (
 )
 
 ////////////////////////////////////////////////////////////////////////////////
+// GLOBALS
+
+// unexpanded are the tools which "*", and their namespace's "*", don't
+// include, as only the server runs them: the event agent, which it gives
+// what it trusts, and the compact agent, which summarises a conversation as
+// it's compacted. They're still tools, which can be named, and called, on
+// their own.
+var unexpanded = map[string]bool{
+	"builtin:event":   true,
+	"builtin:compact": true,
+}
+
+////////////////////////////////////////////////////////////////////////////////
 // PUBLIC METHODS
 
 // GetTool returns the tool with the name, which is its canonical name, such
@@ -142,14 +155,17 @@ func (self *Toolkit) ToolNames(ctx context.Context, names ...string) (_ []string
 
 // lookupAll returns the tools with the name, which is "*" for all the tools,
 // or a namespace and "*" for all the tools in the namespace, in order of
-// canonical name, or otherwise the one tool with the name
+// canonical name, apart from those which aren't expanded, or otherwise the
+// one tool with the name
 func (self *Toolkit) lookupAll(name string) ([]entry, error) {
 	if name == "*" {
 		self.mu.RLock()
 		defer self.mu.RUnlock()
 		result := make([]entry, 0, len(self.tools))
 		for _, canonical := range slices.Sorted(maps.Keys(self.tools)) {
-			result = append(result, self.tools[canonical])
+			if !unexpanded[canonical] {
+				result = append(result, self.tools[canonical])
+			}
 		}
 		return result, nil
 	}
@@ -169,7 +185,7 @@ func (self *Toolkit) lookupAll(name string) ([]entry, error) {
 	}
 	var result []entry
 	for _, canonical := range slices.Sorted(maps.Keys(self.tools)) {
-		if entry := self.tools[canonical]; entry.namespace == namespace {
+		if entry := self.tools[canonical]; entry.namespace == namespace && !unexpanded[canonical] {
 			result = append(result, entry)
 		}
 	}

@@ -10,9 +10,9 @@
 #
 #   {"summary":"David asked about the weather in Berlin ...","title":"Berlin weather, and trip plans"}
 #
-# It's built in, so models can call it too, as builtin:compact. It has no
-# model, so it's run with the model of the conversation it summarises, or of
-# the conversation which calls it, unless one is chosen for it.
+# It's a tool, builtin:compact, but only the server runs it, so it isn't in
+# * or builtin:*, which give models their tools. It has no model, so it's run
+# with the model of the conversation it summarises, unless one is chosen.
 name: compact
 
 # No tools of its own: an agent's tools aren't those of the conversation
