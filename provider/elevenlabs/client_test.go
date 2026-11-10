@@ -189,7 +189,7 @@ func Test_Client(t *testing.T) {
 		require.NoError(t, err)
 		_, _, err = c.Speak(ctx, scribe, "Hello")
 		assert.ErrorIs(t, err, llm.ErrNotImplemented)
-		_, _, err = c.ListVoices(ctx, scribe)
+		_, err = c.ListVoices(ctx, scribe)
 		assert.ErrorIs(t, err, llm.ErrNotImplemented)
 	})
 
@@ -281,9 +281,10 @@ func Test_LiveVoices(t *testing.T) {
 	ctx := context.Background()
 	model, err := c.GetModel(ctx, "eleven_multilingual_v2")
 	require.NoError(t, err)
-	voices, next, err := c.ListVoices(ctx, model)
+	list, err := c.ListVoices(ctx, model)
 	require.NoError(t, err)
-	assert.Empty(t, next)
+	assert.Empty(t, list.Next)
+	voices := list.Body
 	require.NotEmpty(t, voices, "ElevenLabs' own voices, at least")
 	for _, voice := range voices {
 		assert.NotEmpty(t, voice.ID)
@@ -292,14 +293,16 @@ func Test_LiveVoices(t *testing.T) {
 	}
 
 	// A page at a time
-	page, next, err := c.ListVoices(ctx, model, llm.WithLimit(5))
+	page, err := c.ListVoices(ctx, model, llm.WithLimit(5))
 	require.NoError(t, err)
-	assert.Len(t, page, min(5, len(voices)))
+	assert.Len(t, page.Body, min(5, len(voices)))
+	assert.Equal(t, uint(len(voices)), page.Count, "how many there are")
+	next := page.Next
 	if len(voices) > 5 {
 		assert.NotEmpty(t, next)
-		page, _, err = c.ListVoices(ctx, model, llm.WithLimit(5), llm.WithPageToken(next))
+		page, err = c.ListVoices(ctx, model, llm.WithLimit(5), llm.WithPageToken(next))
 		require.NoError(t, err)
-		assert.Equal(t, voices[5].ID, page[0].ID)
+		assert.Equal(t, voices[5].ID, page.Body[0].ID)
 	}
 }
 

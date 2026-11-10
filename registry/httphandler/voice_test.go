@@ -51,12 +51,14 @@ func Test_ListVoices(t *testing.T) {
 	require.Equal(t, http.StatusOK, do(t, server, http.MethodGet, "llm/model/phonon:latest/voice", nil, &list))
 	assert.Equal(t, "ollama:phonon:latest", list.Model)
 	assert.Len(t, list.Body, 30)
+	assert.Equal(t, uint(30), list.Count)
 	assert.Empty(t, list.Next)
 
 	// A page at a time
 	require.Equal(t, http.StatusOK, do(t, server, http.MethodGet, "llm/model/phonon:latest/voice?limit=10", nil, &list))
 	require.Len(t, list.Body, 10)
-	assert.Equal(t, "10", list.Next)
+	assert.Equal(t, uint(30), list.Count, "of every page")
+	assert.NotEmpty(t, list.Next)
 	next := list.Next
 	list = schema.VoiceList{}
 	require.Equal(t, http.StatusOK, do(t, server, http.MethodGet, "llm/model/phonon:latest/voice?limit=25&next="+next, nil, &list))
@@ -72,11 +74,13 @@ func Test_ListVoices(t *testing.T) {
 	list = schema.VoiceList{}
 	require.Equal(t, http.StatusOK, do(t, server, http.MethodGet, "llm/model/phonon:latest/voice?voice=voice+2&limit=5", nil, &list))
 	assert.Len(t, list.Body, 5)
-	assert.Equal(t, "5", list.Next)
+	assert.Equal(t, uint(11), list.Count, "how many it finds")
+	assert.NotEmpty(t, list.Next)
 
 	// A token which isn't one, a model which doesn't speak, and one which
 	// isn't there
 	assert.Equal(t, http.StatusBadRequest, do(t, server, http.MethodGet, "llm/model/phonon:latest/voice?next=nonsense", nil, nil))
+	assert.Equal(t, http.StatusBadRequest, do(t, server, http.MethodGet, "llm/model/phonon:latest/voice?next=10", nil, nil), "an offset isn't a token")
 	assert.Equal(t, http.StatusNotImplemented, do(t, server, http.MethodGet, "llm/model/"+eliza.ModelName+"/voice", nil, nil))
 	assert.Equal(t, http.StatusNotFound, do(t, server, http.MethodGet, "llm/model/missing/voice", nil, nil))
 }

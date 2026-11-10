@@ -203,11 +203,13 @@ func (cmd *ModelVoicesCmd) Run(ctx server.Cmd) error {
 		}
 		switch {
 		case voices.Next != "":
-			fmt.Printf("More voices, with --next %q\n", voices.Next)
+			fmt.Printf("%d of %d voices: the next, with --next %q\n", len(rows), voices.Count, voices.Next)
 		case len(rows) == 0 && cmd.Next != "":
 			fmt.Println("No more voices")
 		case len(rows) == 0:
 			fmt.Println("No voices")
+		case cmd.Next == "":
+			fmt.Printf("%d voices\n", voices.Count)
 		}
 		return nil
 	})

@@ -247,21 +247,19 @@ func listVoices(r *http.Request, reg *registry.Registry, name string, req schema
 
 	// A search is of all the voices, which are then paged, as a provider
 	// pages its voices, rather than those it finds
-	var voices []llm.Voice
-	var next string
+	var voices *llm.VoiceList
 	if search := strings.TrimSpace(req.Voice); search != "" {
-		all, _, err := reg.ListVoices(r.Context(), model)
+		all, err := reg.ListVoices(r.Context(), model)
 		if err != nil {
 			return nil, err
 		}
-		voices, next, err = llm.Paged(llm.FindVoices(all, search), opts...)
-		if err != nil {
+		if voices, err = llm.PagedVoices(llm.FindVoices(all.Body, search), opts...); err != nil {
 			return nil, err
 		}
-	} else if voices, next, err = reg.ListVoices(r.Context(), model, opts...); err != nil {
+	} else if voices, err = reg.ListVoices(r.Context(), model, opts...); err != nil {
 		return nil, err
 	}
-	return &schema.VoiceList{Model: reg.Model(model).Canonical, Voice: strings.TrimSpace(req.Voice), Body: voices, Next: next}, nil
+	return &schema.VoiceList{Model: reg.Model(model).Canonical, Voice: strings.TrimSpace(req.Voice), Body: voices.Body, Count: voices.Count, Next: voices.Next}, nil
 }
 
 // unloadModel unloads the model with the name, or alias, or provider and

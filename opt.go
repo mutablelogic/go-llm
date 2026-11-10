@@ -2,6 +2,7 @@ package llm
 
 import (
 	"bytes"
+	"encoding/base64"
 	"encoding/json"
 	"maps"
 	"math"
@@ -488,8 +489,8 @@ func withError(err error) Opt {
 // Paged returns the page of the items, which the page token (PageTokenKey)
 // says, or the first, with at most the limit of them (LimitKey), or all of
 // them, and the token of the next page, which is empty, after the last. A
-// token is the offset of its page, which isn't to be relied on, as a
-// provider which pages its own list has its own tokens. Returns
+// token is opaque, as a provider which pages its own list has its own
+// tokens, so it's passed back as it is, rather than worked out. Returns
 // ErrBadParameter for a token which isn't one, or any other option.
 func Paged[T any](items []T, opts ...Opt) ([]T, string, error) {
 	o, err := ApplyOpts(opts...)
@@ -503,8 +504,8 @@ func Paged[T any](items []T, opts ...Opt) ([]T, string, error) {
 		case PageTokenKey:
 			var token string
 			if token, err = GetOpt[string](o, key); err == nil && token != "" {
-				if offset, err = strconv.ParseUint(token, 10, 0); err != nil {
-					err = ErrBadParameter.Withf("page token %q isn't one", token)
+				if offset, err = parsePageToken(token); err != nil {
+					err = ErrBadParameter.Withf("page token %q isn't one: pass back the next token of the page before, as it is", token)
 				}
 			}
 		case LimitKey:
@@ -520,7 +521,29 @@ func Paged[T any](items []T, opts ...Opt) ([]T, string, error) {
 	end := start + min(limit, uint(len(items))-start)
 	next := ""
 	if end < uint(len(items)) {
-		next = strconv.FormatUint(uint64(end), 10)
+		next = pageToken(uint64(end))
 	}
 	return items[start:end], next, nil
+}
+
+// pageTokenPrefix starts the text of a page token, which is its offset, so
+// one which isn't is told apart
+const pageTokenPrefix = "page:"
+
+// pageToken returns the opaque token of the page from the offset
+func pageToken(offset uint64) string {
+	return base64.RawURLEncoding.EncodeToString([]byte(pageTokenPrefix + strconv.FormatUint(offset, 10)))
+}
+
+// parsePageToken returns the offset of the page which the token is for
+func parsePageToken(token string) (uint64, error) {
+	data, err := base64.RawURLEncoding.DecodeString(token)
+	if err != nil {
+		return 0, err
+	}
+	text, ok := strings.CutPrefix(string(data), pageTokenPrefix)
+	if !ok {
+		return 0, ErrBadParameter
+	}
+	return strconv.ParseUint(text, 10, 0)
 }

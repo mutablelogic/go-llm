@@ -38,8 +38,9 @@ type Models interface {
 	Speak(ctx context.Context, model gollm.Model, text string, opts ...gollm.Opt) (gollm.Resource, gollm.Usage, error)
 
 	// ListVoices returns the voices the model speaks in, or none, when its
-	// provider can't say, a page at a time, with the token of the next page
-	ListVoices(ctx context.Context, model gollm.Model, opts ...gollm.Opt) ([]gollm.Voice, string, error)
+	// provider can't say, a page at a time, with how many there are, and the
+	// token of the next page
+	ListVoices(ctx context.Context, model gollm.Model, opts ...gollm.Opt) (*gollm.VoiceList, error)
 
 	// Illustrate returns the images the model makes from the prompt, or by
 	// changing, or combining, the images

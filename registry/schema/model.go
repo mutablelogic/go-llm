@@ -77,13 +77,14 @@ type VoiceListRequest struct {
 }
 
 // VoiceList is a model's voices, by its canonical name, which a request
-// selects, in the order its provider lists them, and the token of the next
-// page, when there are more
+// selects, in the order its provider lists them, with how many there are,
+// and the token of the next page, when there are more
 type VoiceList struct {
 	Model string      `json:"model" help:"The model, by its canonical name" example:"elevenlabs:eleven_v4_turbo"`
 	Voice string      `json:"voice,omitempty" help:"Part of the title, or ID, of the voices, as it was asked for" example:"matilda"`
 	Body  []llm.Voice `json:"body,omitempty" help:"The voices, each chosen by its id, or its title"`
-	Next  string      `json:"next,omitempty" help:"The token of the next page of the voices, when there are more" example:"25"`
+	Count uint        `json:"count" help:"How many voices there are, which the request selects, of every page" example:"23"`
+	Next  string      `json:"next,omitempty" help:"The opaque token of the next page of the voices, which is given back as it is, when there are more" example:"cGFnZToyNQ"`
 }
 
 // VoiceRow is a voice, as a row of a table

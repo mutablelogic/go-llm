@@ -38,16 +38,16 @@ var (
 // OpenAI-compatible servers, which don't say. They're
 // optimized for English. Returns ErrNotImplemented for a model which
 // doesn't speak.
-func (c *Client) ListVoices(_ context.Context, model llm.Model, opts ...llm.Opt) ([]llm.Voice, string, error) {
+func (c *Client) ListVoices(_ context.Context, model llm.Model, opts ...llm.Opt) (*llm.VoiceList, error) {
 	m, ok := model.(*Model)
 	if !ok || m.provider != c {
-		return nil, "", llm.ErrBadParameter.With("not a model of this provider")
+		return nil, llm.ErrBadParameter.With("not a model of this provider")
 	}
 	switch speaks := m.Capabilities().SpeechOutput; {
 	case speaks != nil && !*speaks:
-		return nil, "", llm.ErrNotImplemented.Withf("%s doesn't speak", m.Name())
+		return nil, llm.ErrNotImplemented.Withf("%s doesn't speak", m.Name())
 	case speaks == nil || c.server() != serverOpenAI:
-		return llm.Paged([]llm.Voice(nil), opts...)
+		return llm.PagedVoices(nil, opts...)
 	}
 	names := voices
 	if reOlderSpeech.MatchString(m.Name()) {
@@ -61,5 +61,5 @@ func (c *Client) ListVoices(_ context.Context, model llm.Model, opts ...llm.Opt)
 		}
 		result = append(result, voice)
 	}
-	return llm.Paged(result, opts...)
+	return llm.PagedVoices(result, opts...)
 }
