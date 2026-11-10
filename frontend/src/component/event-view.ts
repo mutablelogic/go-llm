@@ -187,7 +187,8 @@ export class EventView extends Panel<string> {
             margin: 0 0 0.25rem;
         }
 
-        .title {
+        /* A row's title, which isn't .title, the panel's heading's */
+        .row-title {
             font-weight: 600;
             margin-bottom: 0.25rem;
         }
@@ -285,7 +286,7 @@ export class EventView extends Panel<string> {
                                     </div>
                                 </td>
                                 <td>
-                                    <div class="title">${heartbeat.title}</div>
+                                    <div class="row-title">${heartbeat.title}</div>
                                     ${this.collapsible(heartbeat.id, heartbeat.prompt.length > longPrompt, html`<div class="prompt">${heartbeat.prompt}</div>`)}
                                 </td>
                                 <td class="status"><cds-tag size="sm" type=${type}>${status}</cds-tag></td>
@@ -326,7 +327,7 @@ export class EventView extends Panel<string> {
                     <tr>
                         <td class="when" title=${formatTime(when)}>${formatWhen(when)}</td>
                         <td>
-                            ${outcome.title ? html`<div class="title">${outcome.title}</div>` : nothing}
+                            ${outcome.title ? html`<div class="row-title">${outcome.title}</div>` : nothing}
                             ${this.collapsible(outcome.id, message.length > longMessage || message.includes('!['), html`<div class="markdown">${markdown(message)}</div>`, 'message')}
                         </td>
                         <td class="status">
