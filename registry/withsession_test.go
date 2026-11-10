@@ -310,7 +310,7 @@ func Test_ToolSystemPrompts(t *testing.T) {
 		meta := schema.GeneratorMeta{Model: types.Ptr("model"), System: types.Ptr("Be brief"), Tools: []string{"weather:*", "news:headlines"}}
 		_, err := newRegistry(t, p).WithSession(ctx, newSession(meta), hi, nil)
 		require.NoError(t, err)
-		assert.Equal(t, "Be brief\n\nUse metric units.\n\nCite the source.", system(t, p))
+		assert.Equal(t, "Be brief\n\nUse metric units.\n\nCite the source.\n\n"+registry.ShortenedResultsPrompt, system(t, p))
 	})
 
 	t.Run("NoSystem", func(t *testing.T) {
@@ -318,7 +318,7 @@ func Test_ToolSystemPrompts(t *testing.T) {
 		meta := schema.GeneratorMeta{Model: types.Ptr("model"), Tools: []string{"news:*"}}
 		_, err := newRegistry(t, p).WithSession(ctx, newSession(meta), hi, nil)
 		require.NoError(t, err)
-		assert.Equal(t, "Cite the source.", system(t, p))
+		assert.Equal(t, "Cite the source.\n\n"+registry.ShortenedResultsPrompt, system(t, p))
 	})
 
 	t.Run("Schema", func(t *testing.T) {
@@ -326,7 +326,7 @@ func Test_ToolSystemPrompts(t *testing.T) {
 		meta := schema.GeneratorMeta{Model: types.Ptr("model"), System: types.Ptr("Be brief"), Tools: []string{"news:*"}, Schema: json.RawMessage(`{"type":"string"}`)}
 		_, err := newRegistry(t, p).WithSession(ctx, newSession(meta), hi, nil)
 		require.NoError(t, err)
-		assert.Equal(t, "Be brief\n\nCite the source.\n\n"+toolkit.RespondPrompt, system(t, p))
+		assert.Equal(t, "Be brief\n\nCite the source.\n\n"+registry.ShortenedResultsPrompt+"\n\n"+toolkit.RespondPrompt, system(t, p))
 	})
 
 	t.Run("Ask", func(t *testing.T) {
@@ -336,7 +336,7 @@ func Test_ToolSystemPrompts(t *testing.T) {
 		req.Tools = []string{"weather:current"}
 		_, err := newRegistry(t, p).Ask(ctx, req, nil)
 		require.NoError(t, err)
-		assert.Equal(t, "Be brief\n\nUse metric units.", system(t, p))
+		assert.Equal(t, "Be brief\n\nUse metric units.\n\n"+registry.ShortenedResultsPrompt, system(t, p))
 	})
 
 	t.Run("Unavailable", func(t *testing.T) {
@@ -347,7 +347,7 @@ func Test_ToolSystemPrompts(t *testing.T) {
 		meta := schema.GeneratorMeta{Model: types.Ptr("model"), System: types.Ptr("Be brief"), Tools: []string{"gone:*", "weather:*", "news:missing"}}
 		_, err := newRegistry(t, p).WithSession(ctx, newSession(meta), hi, nil)
 		require.NoError(t, err)
-		assert.Equal(t, "Be brief\n\nUse metric units.", system(t, p))
+		assert.Equal(t, "Be brief\n\nUse metric units.\n\n"+registry.ShortenedResultsPrompt, system(t, p))
 		require.NotEmpty(t, p.asked)
 
 		// But a request, which names its tools, fails, when one isn't

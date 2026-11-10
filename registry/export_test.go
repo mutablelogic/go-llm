@@ -10,6 +10,10 @@ import (
 	schema "github.com/mutablelogic/go-llm/registry/schema"
 )
 
+// ShortenedResultsPrompt is what a model with tools is told about results
+// which are shortened to fit its context
+const ShortenedResultsPrompt = shortenedResultsPrompt
+
 // DeleteOldSessions deletes the sessions which haven't changed for longer
 // than they're kept, as Run does, and returns how many it deleted
 func (r *Registry) DeleteOldSessions(ctx context.Context) int {

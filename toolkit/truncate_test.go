@@ -85,7 +85,7 @@ func Test_TruncateResult(t *testing.T) {
 		require.NoError(t, json.Unmarshal(truncated, &values))
 		require.Greater(t, len(values), 2)
 		assert.Equal(t, json.Number("0"), json.Number(fmt.Sprint(values[0])))
-		assert.Regexp(t, `^…\[\d+ more items\]$`, values[len(values)-1])
+		assert.Regexp(t, `^…\[left out: \d+ more items\]$`, values[len(values)-1])
 	})
 
 	t.Run("Object", func(t *testing.T) {
@@ -104,7 +104,7 @@ func Test_TruncateResult(t *testing.T) {
 		}
 		truncated := truncate(t, "{"+strings.Join(members, ",")+"}", 100)
 		assert.True(t, strings.HasPrefix(string(truncated), `{"key0000":0,"key0001":1,`), string(truncated))
-		assert.Regexp(t, `,"…":"\[\d+ more keys\]"\}$`, string(truncated))
+		assert.Regexp(t, `,"…":"\[left out: \d+ more keys\]"\}$`, string(truncated))
 	})
 
 	t.Run("Nested", func(t *testing.T) {
@@ -131,7 +131,7 @@ func Test_TruncateResult(t *testing.T) {
 		require.NoError(t, json.Unmarshal(truncated, &values))
 		require.Greater(t, len(values), 1)
 		assert.Equal(t, "abcdefghij", values[0])
-		assert.Regexp(t, `^…\[\d+ more items\]$`, values[len(values)-1])
+		assert.Regexp(t, `^…\[left out: \d+ more items\]$`, values[len(values)-1])
 	})
 
 	t.Run("ShortItems", func(t *testing.T) {
