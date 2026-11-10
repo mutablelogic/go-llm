@@ -57,12 +57,16 @@ func (p *prompt) Name() string { return p.name }
 // Title returns the prompt's title, for people, or none
 func (p *prompt) Title() string { return strings.TrimSpace(p.p.Title) }
 
-// Description returns what the prompt is for
+// promptAgent is what a model which calls a prompt is told it is, so it
+// expects the reply of the model which is asked it, rather than its text
+const promptAgent = "This is an agent: it asks a model the server's prompt, with the input, and returns the model's reply, rather than the prompt's text."
+
+// Description returns what the prompt is for, and that it's an agent
 func (p *prompt) Description() string {
-	if description := strings.TrimSpace(p.p.Description); description != "" {
-		return description
+	if description := firstOf(p.p.Description, p.Title()); description != "" {
+		return strings.TrimRight(description, ". ") + ". " + promptAgent
 	}
-	return p.Title()
+	return promptAgent
 }
 
 // InputSchema returns the schema of the prompt's arguments, as an object of

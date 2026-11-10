@@ -83,7 +83,7 @@ func Test_Prompts(t *testing.T) {
 		args := agents["args_prompt"]
 		require.NotNil(t, args)
 		assert.Equal(t, "Arguments Prompt", args.Title())
-		assert.Equal(t, "The weather in a city", args.Description())
+		assert.Equal(t, "The weather in a city. "+"This is an agent: it asks a model the server's prompt, with the input, and returns the model's reply, rather than the prompt's text.", args.Description(), "which says it's an agent")
 		input, err := json.Marshal(args.InputSchema())
 		require.NoError(t, err)
 		assert.JSONEq(t, `{"type":"object","properties":{"city":{"type":"string","description":"Name of the city"},"state":{"type":"string","description":"State"}},"required":["city"]}`, string(input))
