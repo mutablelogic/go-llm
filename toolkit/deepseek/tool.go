@@ -36,8 +36,9 @@ var _ llm.Tool = (*webFetch)(nil)
 const (
 	// defaultCount is the number of search results when it isn't set, and
 	// maxCount the most, which DeepSeek allows more than, as each is a
-	// summary of a page, and a model reads them all
-	defaultCount = 5
+	// summary of a page, of about 3,000 characters, and a model reads them
+	// all
+	defaultCount = 3
 	maxCount     = 10
 
 	// maxQuery is the most characters of a query, and of the person's

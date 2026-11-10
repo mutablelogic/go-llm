@@ -13,7 +13,7 @@ import (
 // SearchRequest is a request to search the web
 type SearchRequest struct {
 	Query    string  `json:"query" help:"Search query, of at most 128 characters. It can use site:example.com and -site:example.com, lang:en, after:2025-01-01 and before:2025-12-31, -word, and \"exact phrase\"."`
-	Count    int     `json:"count,omitempty" help:"Maximum number of results to return (1-10)" min:"1" max:"10" default:"5"`
+	Count    int     `json:"count,omitempty" help:"Maximum number of results to return (1-10)" min:"1" max:"10" default:"3"`
 	Question *string `json:"ori_question,omitempty" help:"The person's question, in their words, of at most 128 characters, which helps the search understand the query" optional:""`
 }
 

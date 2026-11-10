@@ -107,7 +107,7 @@ func TestNew(t *testing.T) {
 		require.NotNil(t, count.Maximum)
 		assert.Equal(t, float64(1), *count.Minimum)
 		assert.Equal(t, float64(10), *count.Maximum)
-		assert.JSONEq(t, `5`, string(count.Default))
+		assert.JSONEq(t, `3`, string(count.Default))
 	})
 }
 
@@ -148,7 +148,7 @@ func TestRun(t *testing.T) {
 	})
 
 	t.Run("SearchDefaults", func(t *testing.T) {
-		// Without a count, five results, and without a question, or an empty
+		// Without a count, three results, and without a question, or an empty
 		// one, none is sent
 		tools, requests := newTools(t)
 		for _, input := range []string{`{"query":"deepseek"}`, `{"query":"deepseek","ori_question":" "}`} {
@@ -157,7 +157,7 @@ func TestRun(t *testing.T) {
 		}
 		require.Len(t, *requests, 2)
 		for _, request := range *requests {
-			assert.Equal(t, map[string]any{"query": "deepseek", "count": float64(5)}, request.body)
+			assert.Equal(t, map[string]any{"query": "deepseek", "count": float64(3)}, request.body)
 		}
 	})
 
