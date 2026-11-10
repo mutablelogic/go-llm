@@ -821,7 +821,7 @@ func Test_AgentLoopContext(t *testing.T) {
 		assert.LessOrEqual(t, tokens(results[0]), 2625)
 		assert.Greater(t, tokens(results[0]), 2000)
 		if assert.Len(t, lines, 1) {
-			assert.Regexp(t, `^result truncated bytes=100002 to_bytes=\d+ limit_tokens=2625$`, lines[0])
+			assert.Regexp(t, `^Shortened the tool's result from 98 KB to \d+ KB, to fit the conversation's memory window$`, lines[0])
 		}
 	})
 

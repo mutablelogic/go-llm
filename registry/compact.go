@@ -265,7 +265,11 @@ func (h *history) truncateResults(ctx context.Context, limit uint, session func(
 			} else if bytes.Equal(content, result.Content) {
 				continue
 			}
-			session(result.Name).Logger().Info("result truncated", "bytes", len(result.Content), "to_bytes", len(content), "limit_tokens", limit)
+			// What's said in the conversation, and the numbers, for the
+			// trace, which aren't
+			logger := session(result.Name).Logger()
+			logger.Info(fmt.Sprintf("Shortened the tool's result from %s to %s, to fit the conversation's memory window", byteSize(len(result.Content)), byteSize(len(content))))
+			logger.Debug("result truncated", "bytes", len(result.Content), "to_bytes", len(content), "limit_tokens", limit)
 			result.Content = content
 			message.Content[j].ToolResult = &result
 			changed = true
@@ -470,4 +474,16 @@ func schemaMessage(message llm.Message) (*providerschema.Message, bool) {
 		return &providerschema.Message{MessageMeta: m}, true
 	}
 	return nil, false
+}
+
+// byteSize returns a size, for people, such as 512 bytes, 30 KB or 1.5 MB,
+// in units of 1024
+func byteSize(n int) string {
+	switch {
+	case n < 1024:
+		return fmt.Sprintf("%d bytes", n)
+	case n < 1024*1024:
+		return fmt.Sprintf("%d KB", (n+512)/1024)
+	}
+	return fmt.Sprintf("%.1f MB", float64(n)/(1024*1024))
 }
