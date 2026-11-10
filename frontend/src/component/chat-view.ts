@@ -539,7 +539,7 @@ export class ChatView extends LitElement {
             : marker.status === 'failed'
             ? "The messages above couldn't be summarised"
             : marker.reason === 'full'
-            ? 'The chat was full, so the messages above were summarised'
+            ? 'The conversation memory was full, so the messages above were summarised'
             : 'The messages above were summarised';
         return html`
             <div class="marker">
