@@ -61,6 +61,16 @@ prompt: |
   {{ .text }}
 `;
 
+// defaultModel is the select's value for the default model, rather than
+// empty, which the select takes as nothing chosen, so it shows nothing
+const defaultModel = 'default';
+
+// modelValue returns the model which the select's value is, which is empty
+// for the default
+function modelValue(value: string | undefined): string {
+    return !value || value === defaultModel ? '' : value;
+}
+
 // modelLine is a definition's model, at the top level, rather than in a
 // comment, or nested
 const modelLine = /^model:[ \t]*(.*?)[ \t]*$/m;
@@ -233,12 +243,12 @@ export class AgentEditor extends Panel<AgentEditorItem> {
     // of the models, such as one which was typed, is shown as it is.
     private renderModel(item: AgentEditorItem) {
         const models = item.models ?? [];
-        const chosen = modelOf(item.yaml) ?? '';
+        const chosen = modelOf(item.yaml);
         const options = chosen && !models.includes(chosen) ? [chosen, ...models] : models;
         return html`
-            <cds-select id="model" label-text="Model" helper-text="Default is the model of the chat it's run from" value=${chosen} ?disabled=${this.busy}
-                @cds-select-selected=${(e: CustomEvent<{ value: string }>) => this.chooseModel(e.detail.value)}>
-                <cds-select-item value="">Default</cds-select-item>
+            <cds-select id="model" label-text="Model" helper-text="Default is the model of the chat it's run from" value=${chosen ?? defaultModel} ?disabled=${this.busy}
+                @cds-select-selected=${(e: CustomEvent<{ value: string }>) => this.chooseModel(modelValue(e.detail.value))}>
+                <cds-select-item value=${defaultModel}>Default</cds-select-item>
                 ${options.map((model) => html`<cds-select-item value=${model}>${model}</cds-select-item>`)}
             </cds-select>
         `;
@@ -258,7 +268,7 @@ export class AgentEditor extends Panel<AgentEditorItem> {
     private edited() {
         this.clearError();
         if (this.modelSelect && this.editor) {
-            this.modelSelect.value = modelOf(this.editor.value) ?? '';
+            this.modelSelect.value = modelOf(this.editor.value) ?? defaultModel;
         }
     }
 
@@ -292,7 +302,7 @@ export class AgentEditor extends Panel<AgentEditorItem> {
     // empty for the default
     private saveModel(name: string) {
         if (!this.busy) {
-            this.dispatchEvent(new CustomEvent<AgentModel>(AgentEditor.eventModel, { detail: { name, model: this.modelSelect?.value ?? '' } }));
+            this.dispatchEvent(new CustomEvent<AgentModel>(AgentEditor.eventModel, { detail: { name, model: modelValue(this.modelSelect?.value) } }));
         }
     }
 
