@@ -258,7 +258,7 @@ export class NewSession extends Panel<NewSessionForm> {
                     ${this.models.map((model) => html`<cds-select-item value=${model.canonical}>${model.canonical}</cds-select-item>`)}
                 </cds-select>
                 <div>
-                    <cds-slider id="context" label-text=${`Context window: ${this.windowLabel(limit)}`}
+                    <cds-slider id="context" label-text=${`Memory window: ${this.windowLabel(limit)}`}
                         min=${String(Math.log2(Math.min(minWindow, windowTop(limit))))} max=${String(top)} step="0.01"
                         .value=${live(String(windowPosition(this.contextWindow, limit)))} hide-text-input
                         .formatLabel=${(position: number) => (position >= top - 0.005 ? (limit ? tokens(limit) : 'Default') : tokens(windowOf(position)))}
