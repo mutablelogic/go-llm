@@ -126,11 +126,7 @@ func newServerMessaging(ctx server.Cmd, tools *toolkit.Toolkit, sessions *atomic
 		if err != nil {
 			return err
 		}
-		session, err := r.GetSession(ctx, channel.Session)
-		if err != nil {
-			return err
-		}
-		_, err = r.Chat(ctx, channel.Session, []llm.Message{msg}, progressStream(progress, session.Traced()))
+		_, err = r.Chat(ctx, channel.Session, []llm.Message{msg}, progressStream(progress))
 		return err
 	}
 	opts = append([]messaging.Opt{messaging.WithTracer(ctx.Tracer()), messaging.WithProvider(bot), messaging.WithChat(chat)}, opts...)
@@ -269,34 +265,21 @@ func isMedia(contentType string) bool {
 }
 
 // progressStream returns the function which a reply is streamed to, which
-// gives the progress function what's happening, rather than the reply
-// itself, which is sent once it's done. When the session is traced, that's
-// the lines the tools log, and their progress, such as that an agent is
-// replying, and that the model is thinking. When it isn't, it's only that
-// the model is thinking, as it thinks, and calls tools, until it replies.
-func progressStream(progress func(string), trace bool) llm.GeneratorStreamFn {
+// gives the progress function the lines the tools log, and their progress,
+// such as that an agent is replying, and that the model is thinking, which
+// say what's happening, rather than the reply itself, which is sent once
+// it's done, whether or not the session is traced
+func progressStream(progress func(string)) llm.GeneratorStreamFn {
 	if progress == nil {
 		return nil
-	}
-	last := ""
-	say := func(text string) {
-		if trace || text != last {
-			last = text
-			progress(text)
-		}
 	}
 	return func(what llm.StreamType, text string) {
 		switch what {
 		case llm.StreamLog:
-			if !trace {
-				text = registry.ThinkingLog
-			}
-			say(text)
+			progress(text)
 		case llm.StreamProgress:
-			if !trace {
-				say(registry.ThinkingLog)
-			} else if message := strings.TrimSpace(llm.ParseProgress(text).Message); message != "" {
-				say(message)
+			if message := strings.TrimSpace(llm.ParseProgress(text).Message); message != "" {
+				progress(message)
 			}
 		}
 	}
