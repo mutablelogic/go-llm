@@ -511,7 +511,7 @@ export class ChatController {
         const memory = sessionMemory(session, limit);
         if (memory) {
             // How full its memory is, marked when it's nearly full, which
-            // the Edit menu summarises
+            // the Conversation menu summarises
             const nearlyFull = (sessionMemoryPercent(session, limit) ?? 0) >= memoryWarning;
             parts.push(html`<span class="memory">${memory}${nearlyFull ? html`<span class="nearly-full" title="Nearly full. Older messages will be summarised automatically.">${iconLoader(WarningAlt16)}</span>` : nothing}</span>`);
         }

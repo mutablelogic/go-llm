@@ -84,7 +84,7 @@ const chat = new ChatController({
 // The outcomes of the events of the chat which is open, such as heartbeats
 // which fired, in a panel, which its Events action opens
 const outcomes = new OutcomesController(document.querySelector('llm-event-view'), notifications);
-// It's opened by the Edit menu's Tasks
+// It's opened by the Conversation menu's Tasks
 const openOutcomes = () => {
     const session = chat.sessionID();
     if (session) {
@@ -144,7 +144,7 @@ const events = new EventsController(notifications)
     .on({ schema: 'llm', table: 'event' }, (event) => {
         void outcomes.refresh();
 
-        // Edit is marked for a few seconds, when an event for the chat which
+        // The Conversation menu is marked for a few seconds, when an event for the chat which
         // is open is created
         const session = (event?.data as { session?: string } | undefined)?.session;
         if (event?.action === 'create' && session && session === chat.sessionID()) {
