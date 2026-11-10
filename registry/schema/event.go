@@ -40,6 +40,7 @@ type EventMeta struct {
 	Run        uuid.UUID       `json:"run" help:"Identifier of the session the event ran in, which has what it did" example:"3b241101-e2bb-4255-8caf-4136c566a962"`
 	Session    uuid.UUID       `json:"session" help:"Identifier of the session the event is for, which its message is delivered to" example:"9a6c0b4e-1d2f-4c3b-8e7a-5f6d4c3b2a10"`
 	Source     string          `json:"source,omitempty" help:"What the event is from, such as inbox, when it was triggered, rather than a heartbeat" example:"inbox"`
+	Heartbeat  bool            `json:"heartbeat,omitempty" help:"Whether the event is a heartbeat which fired, on its schedule"`
 	Title      string          `json:"title,omitempty" help:"What the event is for" example:"Morning briefing"`
 	Message    string          `json:"message,omitempty" help:"What the person is told, or, when it's ignored, why, or, when it failed, the error, which it has once it's run" example:"It's 4°C and cloudy in Berlin today"`
 	Importance EventImportance `json:"importance,omitempty" help:"How important the message is, once it's run" enum:"ignore,notify,alert" example:"notify"`

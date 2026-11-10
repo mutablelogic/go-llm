@@ -79,3 +79,8 @@ func ContextSummary(messages []providerschema.Message) string {
 	_, summary := contextOf(messages)
 	return summary
 }
+
+// EventOrigin returns what the system says of an event's message
+func EventOrigin(event schema.Event) string {
+	return eventOrigin(event)
+}

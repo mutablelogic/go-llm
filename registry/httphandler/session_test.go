@@ -2,6 +2,7 @@ package httphandler_test
 
 import (
 	"net/http"
+	"strings"
 	"testing"
 	"uuid"
 
@@ -309,4 +310,30 @@ func Test_ChatAnnotations(t *testing.T) {
 	require.NotEmpty(t, messages.Body)
 	assert.Empty(t, messages.Body[0].Annotations(), "a client's annotation isn't kept")
 	assert.Equal(t, "Hello", messages.Body[0].Text())
+}
+
+func Test_ChatAnnotation(t *testing.T) {
+	// The request's annotation, such as where it was sent from, is the last
+	// message's
+	provider, err := eliza.New()
+	require.NoError(t, err)
+	server := test.NewServer(t, test.NewRegistry(t, []llm.Provider{provider}, registry.WithSessionStore(test.NewSessionStore())))
+
+	var session schema.Session
+	require.Equal(t, http.StatusCreated, do(t, server, http.MethodPost, "llm/session", map[string]any{"model": eliza.ModelName}, &session))
+	request := map[string]any{
+		"messages":   []map[string]any{{"role": "user", "content": []map[string]any{{"text": "Hello"}}}},
+		"annotation": " Sent from the web UI. ",
+	}
+	require.Equal(t, http.StatusOK, do(t, server, http.MethodPost, "llm/session/"+session.ID.String(), request, nil))
+
+	var messages schema.MessageList
+	require.Equal(t, http.StatusOK, do(t, server, http.MethodGet, "llm/session/"+session.ID.String()+"/messages", nil, &messages))
+	require.NotEmpty(t, messages.Body)
+	assert.Equal(t, "Sent from the web UI.", messages.Body[0].Annotations())
+	assert.Equal(t, "Hello", messages.Body[0].Text())
+
+	// One which is too long isn't
+	request["annotation"] = strings.Repeat("x", schema.AnnotationLimit+1)
+	assert.Equal(t, http.StatusBadRequest, do(t, server, http.MethodPost, "llm/session/"+session.ID.String(), request, nil))
 }

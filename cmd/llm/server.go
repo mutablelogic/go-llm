@@ -173,6 +173,7 @@ func (runner *RunServer) Run(ctx server.Cmd) error {
 				if err != nil {
 					return err
 				}
+				req.Heartbeat = true
 				response, err := r.RunEvent(runCtx, fire.Heartbeat, req, nil)
 				if err != nil {
 					return err

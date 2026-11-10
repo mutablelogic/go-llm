@@ -115,6 +115,10 @@ type (
 ///////////////////////////////////////////////////////////////////////////////
 // GLOBALS
 
+// annotation is what the model is told of a message sent in the chat, which
+// is where it was sent from
+const annotation = "Sent from the command line."
+
 var (
 	youStyle     = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("12"))
 	modelStyle   = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("10"))
@@ -492,7 +496,7 @@ func (m *model) ask() tea.Cmd {
 	// Update changes.
 	ctx, client, id, send, asked := m.ctx, m.client, m.session.ID, m.send, len(m.session.Messages)-1
 	return func() tea.Msg {
-		response, err := client.Chat(ctx, id, schema.ChatRequest{Messages: []providerschema.MessageMeta{question}}, func(what llm.StreamType, text string) {
+		response, err := client.Chat(ctx, id, schema.ChatRequest{Messages: []providerschema.MessageMeta{question}, Annotation: annotation}, func(what llm.StreamType, text string) {
 			send(streamMsg{what, text})
 		})
 		return replyMsg{response: response, err: err, asked: asked, question: text}

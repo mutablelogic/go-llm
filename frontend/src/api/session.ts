@@ -65,6 +65,10 @@ export interface ChatStream {
     onProgress?: (progress: Progress) => void;
 }
 
+// annotation is what the model is told of a message sent from the web UI,
+// which is where it was sent from
+const annotation = 'Sent from the web UI.';
+
 // chat adds the message to the session, and returns what was added, which
 // is its model's reply, and the results of the tools it called, as it's
 // streamed. It throws the error of an error event.
@@ -93,7 +97,7 @@ export async function chat(id: string, message: Message, stream: ChatStream, sig
                 error = piece.error;
                 break;
         }
-    }, { body: { messages: [message] }, signal });
+    }, { body: { messages: [message], annotation }, signal });
     if (error !== undefined) {
         throw new Error(error);
     } else if (!response) {

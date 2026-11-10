@@ -63,7 +63,7 @@ func Test_DeliverEvent(t *testing.T) {
 	started := time.Now()
 	speech, _, err := resources.Create(ctx, resourceschema.ResourceMeta{Name: "speech.wav", Type: "audio/wav", Session: &run.ID}, strings.NewReader("RIFF"))
 	require.NoError(t, err)
-	event, err := events.Create(ctx, schema.EventMeta{Run: run.ID, Session: parent.ID, Title: "Morning briefing", Message: "Good morning, it's sunny", Importance: schema.ImportanceNotify, Status: schema.EventPending})
+	event, err := events.Create(ctx, schema.EventMeta{Run: run.ID, Session: parent.ID, Title: "Morning briefing", Heartbeat: true, Message: "Good morning, it's sunny", Importance: schema.ImportanceNotify, Status: schema.EventPending})
 	require.NoError(t, err)
 
 	// While the session is replying, and until it's been idle for a while
@@ -92,10 +92,11 @@ func Test_DeliverEvent(t *testing.T) {
 	assert.Equal(t, "assistant", message.Role())
 	assert.Equal(t, "Good morning, it's sunny", message.Text())
 	assert.Equal(t, &providerschema.Event{ID: event.ID, Title: "Morning briefing"}, message.Event)
-	require.Len(t, message.Content, 2)
+	require.Len(t, message.Content, 3)
 	require.NotNil(t, message.Content[1].Resource)
 	assert.Equal(t, speech.URI(), message.Content[1].Resource.URL.String())
 	assert.Equal(t, "audio/wav", message.Content[1].Resource.ContentType)
+	assert.Equal(t, `Sent by the task "Morning briefing", which ran on schedule.`, message.Annotations(), "it says which task sent it")
 	copied, err := resources.Get(ctx, resourceschema.ResourceKey{Hash: speech.Hash, Session: &parent.ID})
 	require.NoError(t, err)
 	assert.Equal(t, "speech.wav", copied.Name)
@@ -362,4 +363,11 @@ func Test_ForgottenDuringReply(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, list.Body, 1)
 	assert.Equal(t, "Call Anne", list.Body[0].Text())
+}
+
+func Test_EventOrigin(t *testing.T) {
+	assert.Equal(t, `Sent by the task "Morning briefing", which ran on schedule.`, registry.EventOrigin(schema.Event{EventMeta: schema.EventMeta{Title: "Morning briefing", Heartbeat: true}}))
+	assert.Equal(t, `Sent by the task "New mail", which inbox triggered.`, registry.EventOrigin(schema.Event{EventMeta: schema.EventMeta{Title: "New mail", Source: "inbox"}}))
+	assert.Equal(t, `Sent by the task "Event".`, registry.EventOrigin(schema.Event{EventMeta: schema.EventMeta{Title: "Event"}}), "one triggered without a source doesn't say why it ran")
+	assert.Equal(t, "Sent by a task.", registry.EventOrigin(schema.Event{}))
 }

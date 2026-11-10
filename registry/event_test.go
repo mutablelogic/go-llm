@@ -262,7 +262,7 @@ func Test_EventOutcomes(t *testing.T) {
 	// message, what it's for, and when it was due, and fired
 	event := uuid.New()
 	fired := time.Date(2026, 11, 6, 18, 0, 5, 0, time.UTC)
-	response, err := r.RunEvent(ctx, event, schema.RunEventRequest{Session: parent.ID, Input: input, Title: "Call", Scheduled: fired.Add(-5 * time.Second), Fired: fired}, nil)
+	response, err := r.RunEvent(ctx, event, schema.RunEventRequest{Session: parent.ID, Input: input, Title: "Call", Scheduled: fired.Add(-5 * time.Second), Fired: fired, Heartbeat: true}, nil)
 	require.NoError(t, err)
 	require.NotNil(t, response.Event)
 	pending := *response.Event
@@ -273,6 +273,7 @@ func Test_EventOutcomes(t *testing.T) {
 	assert.Equal(t, schema.ImportanceAlert, pending.Importance)
 	assert.Equal(t, schema.EventPending, pending.Status)
 	assert.Equal(t, fired, pending.Fired)
+	assert.True(t, pending.Heartbeat, "it's a heartbeat's")
 
 	// and it's delivered to the session it's for, as the assistant's
 	// message, marked as the event's
@@ -287,6 +288,7 @@ func Test_EventOutcomes(t *testing.T) {
 	assert.Equal(t, "assistant", delivered.Role())
 	assert.Equal(t, "Call your mother", delivered.Text())
 	assert.Equal(t, &providerschema.Event{ID: pending.ID, Title: "Call"}, delivered.Event)
+	assert.Equal(t, `Sent by the task "Call", which ran on schedule.`, delivered.Annotations())
 	assert.False(t, delivered.Time.IsZero())
 
 	// One which isn't is ignored
