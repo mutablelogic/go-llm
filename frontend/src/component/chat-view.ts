@@ -181,9 +181,16 @@ export class ChatView extends LitElement {
     @query('llm-chat-input')
     private input?: ChatInput;
 
-    // Whether the conversation was scrolled to its end, before it changed,
-    // so it follows the reply, unless it was scrolled up to read
+    // Whether the conversation follows its end, as it grows, which it does
+    // until it's scrolled up to read, and again once it's scrolled back down,
+    // or a message is added, by the person, or the assistant
     private following = true;
+
+    // What's observed, as it grows, such as as a bubble's Markdown, or an
+    // image, is laid out, after the conversation is updated, so the end is
+    // followed, as it does
+    private resized = new ResizeObserver(() => this.follow());
+    private observed?: Element;
 
     // The distance of what's shown from the end of the conversation, as
     // earlier messages are added, so it isn't moved by them
@@ -398,7 +405,18 @@ export class ChatView extends LitElement {
 
     willUpdate(changed: PropertyValues<this>) {
         const el = this.conversation;
-        this.following = !el || el.scrollTop + el.clientHeight >= el.scrollHeight - 48;
+
+        // A message which is added, a question which is sent, or a reply
+        // which starts, is followed, wherever the conversation was scrolled,
+        // but not earlier messages, which are added at its start, as it's
+        // scrolled up to them
+        const count = (changed.get('messages') as Message[] | undefined)?.length;
+        const earlier = changed.has('offset') && this.offset < ((changed.get('offset') as number | undefined) ?? this.offset);
+        if ((changed.has('messages') && !earlier && count !== undefined && (this.messages?.length ?? 0) > count)
+            || (changed.has('question') && this.question !== undefined && changed.get('question') === undefined)
+            || (changed.has('streamed') && this.streamed.length > 0 && ((changed.get('streamed') as Piece[] | undefined)?.length ?? 0) === 0)) {
+            this.following = true;
+        }
 
         // Earlier messages which are added keep what's shown where it is,
         // by its distance from the end
@@ -410,6 +428,12 @@ export class ChatView extends LitElement {
     // near its top, when there are any, and they aren't loading
     private handleScroll = () => {
         const el = this.conversation;
+
+        // It follows its end, once it's scrolled to it, and not, once it's
+        // scrolled up from it
+        if (el) {
+            this.following = el.scrollTop + el.clientHeight >= el.scrollHeight - 48;
+        }
         if (el && el.scrollTop < 200 && this.offset > 0 && !this.earlierLoading && this.messages) {
             this.dispatchEvent(new CustomEvent(ChatView.eventEarlier));
         }
@@ -433,15 +457,33 @@ export class ChatView extends LitElement {
                 }
             });
         }
+        // What grows is observed, which is made again, as a session opens
+        const messages = this.renderRoot.querySelector('.messages') ?? undefined;
+        if (messages !== this.observed) {
+            this.resized.disconnect();
+            this.observed = messages;
+            if (messages) {
+                this.resized.observe(messages);
+            }
+        }
         if (this.anchor !== undefined && this.conversation) {
             this.conversation.scrollTop = this.conversation.scrollHeight - this.anchor;
             this.anchor = undefined;
-        } else if (this.following) {
-            requestAnimationFrame(() => {
-                if (this.conversation) {
-                    this.conversation.scrollTop = this.conversation.scrollHeight;
-                }
-            });
+        } else {
+            requestAnimationFrame(() => this.follow());
+        }
+    }
+
+    disconnectedCallback() {
+        super.disconnectedCallback();
+        this.resized.disconnect();
+        this.observed = undefined;
+    }
+
+    // follow scrolls the conversation to its end, when it follows it
+    private follow() {
+        if (this.following && this.conversation) {
+            this.conversation.scrollTop = this.conversation.scrollHeight;
         }
     }
 
