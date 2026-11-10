@@ -47,10 +47,22 @@ func Test_SessionFlags(t *testing.T) {
 		assert.Nil(t, meta.Tools)
 		assert.Nil(t, meta.Opt)
 		assert.Nil(t, meta.Schema)
+		assert.Nil(t, meta.Trace)
 
 		data, err := json.Marshal(meta)
 		require.NoError(t, err)
 		assert.JSONEq(t, `{}`, string(data))
+	})
+
+	t.Run("Trace", func(t *testing.T) {
+		// Whether it's traced is set on, or off, as it's given
+		cmds := parseSession(t, "session-create", "--model", "ollama:llama3.2", "--trace")
+		assert.Equal(t, types.Ptr(true), cmds.SessionCreate.Trace)
+		cmds = parseSession(t, "session-update", uuid.New().String(), "--no-trace")
+		assert.Equal(t, types.Ptr(false), cmds.SessionUpdate.Trace)
+		data, err := json.Marshal(cmds.SessionUpdate.SessionMeta)
+		require.NoError(t, err)
+		assert.JSONEq(t, `{"trace":false}`, string(data))
 	})
 
 	t.Run("UpdateClear", func(t *testing.T) {

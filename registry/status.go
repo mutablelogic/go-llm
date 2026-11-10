@@ -25,16 +25,22 @@ type statuses struct {
 	sessions map[uuid.UUID]*status
 }
 
-// status is a session's status: how many replies its model is making, and
-// when someone is typing, the timer which makes it idle, unless they say
-// they're typing again
+// status is a session's status: how many replies its model is making,
+// whether it's thinking, as it replies, and when someone is typing, the
+// timer which makes it idle, unless they say they're typing again
 type status struct {
 	replying int
+	thinking bool
 	typing   *time.Timer
 }
 
 ///////////////////////////////////////////////////////////////////////////////
 // GLOBALS
+
+// ThinkingLog is the line which is logged to a chat's stream as its model
+// starts thinking, before it writes its reply, so a client can say so,
+// whether or not it shows the model's thinking
+const ThinkingLog = "Thinking"
 
 // TypingTimeout is how long a session is typing, after a client last says
 // someone is, before it's idle, so a client which goes away doesn't leave
@@ -127,9 +133,51 @@ func (r *Registry) replying(id uuid.UUID) func() {
 		once.Do(func() {
 			r.changeStatus(id, func(s *status) {
 				s.replying--
+				if s.replying == 0 {
+					s.thinking = false
+				}
 			})
 		})
 	}
+}
+
+// thinkingStream returns the function which streams to the stream, as the
+// model of the session with the identifier replies, which sets the session
+// thinking, once its model starts thinking, and logs ThinkingLog to the
+// stream, as it starts. It's thinking, as it calls tools, and thinks again,
+// until it writes its reply, when it's replying. It returns nil when the
+// stream is nil, so a reply which isn't streamed isn't.
+func (r *Registry) thinkingStream(id uuid.UUID, stream llm.GeneratorStreamFn) llm.GeneratorStreamFn {
+	if stream == nil {
+		return nil
+	}
+	return func(what llm.StreamType, text string) {
+		switch what {
+		case llm.StreamThinking:
+			if r.setThinking(id, true) {
+				stream(llm.StreamLog, ThinkingLog)
+			}
+		case llm.StreamText:
+			r.setThinking(id, false)
+		}
+		stream(what, text)
+	}
+}
+
+// setThinking sets whether the model of the session with the identifier is
+// thinking, as it replies, and publishes its status, when it changes, and
+// returns whether it changed. A session which isn't replying isn't.
+func (r *Registry) setThinking(id uuid.UUID, thinking bool) bool {
+	if id == uuid.Nil() {
+		return false
+	}
+	changed := false
+	r.changeStatus(id, func(s *status) {
+		if s.replying > 0 && s.thinking != thinking {
+			s.thinking, changed = thinking, true
+		}
+	})
+	return changed
 }
 
 // forgetStatus forgets the status of the session with the identifier, as it
@@ -191,12 +239,15 @@ func (r *Registry) withoutMessages(session schema.Session) *schema.Session {
 ///////////////////////////////////////////////////////////////////////////////
 // PRIVATE FUNCTIONS
 
-// value returns the status, which is replying, while the model is replying,
-// typing, while someone is, or idle, which a session without one is
+// value returns the status, which is thinking, while the model is thinking
+// as it replies, replying, while the model is replying, typing, while
+// someone is, or idle, which a session without one is
 func (s *status) value() schema.SessionStatus {
 	switch {
 	case s == nil:
 		return schema.SessionIdle
+	case s.replying > 0 && s.thinking:
+		return schema.SessionThinking
 	case s.replying > 0:
 		return schema.SessionReplying
 	case s.typing != nil:

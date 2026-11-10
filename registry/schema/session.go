@@ -26,6 +26,11 @@ type SessionMeta struct {
 
 	GeneratorMeta
 
+	// Trace is whether the session's clients show its model's thinking,
+	// the tools it calls, and their results, in the conversation, as
+	// they're streamed. They're always stored, either way.
+	Trace *bool `json:"trace,omitempty" name:"trace" help:"Whether clients show the model's thinking, the tools it calls, and their results, in the conversation, which are always stored" negatable:"" optional:""`
+
 	// Event is whether the session is an event's, such as a heartbeat's,
 	// which the registry runs it in, so it isn't chatted in. It's set by the
 	// registry, rather than by its API, which ignores it.
@@ -166,18 +171,28 @@ func (s SessionResponse) String() string {
 // IsZero returns true when the settings set nothing, so as an update, they
 // change nothing
 func (s SessionMeta) IsZero() bool {
-	return s.Title == nil && s.GeneratorMeta.IsZero()
+	return s.Title == nil && s.Trace == nil && s.GeneratorMeta.IsZero()
 }
 
 // Merge returns the settings, changed by those of the update: its title,
-// when it's set, which empty clears, and the rest, as GeneratorMeta.Merge
-// does. Whether it's an event's isn't changed, as the registry sets it.
+// when it's set, which empty clears, whether it's traced, when that's set,
+// and the rest, as GeneratorMeta.Merge does. Whether it's an event's isn't
+// changed, as the registry sets it.
 func (s SessionMeta) Merge(update SessionMeta) SessionMeta {
-	title := s.Title
+	title, trace := s.Title, s.Trace
 	if update.Title != nil {
 		title = trimmed(update.Title)
 	}
-	return SessionMeta{Title: title, GeneratorMeta: s.GeneratorMeta.Merge(update.GeneratorMeta), Event: s.Event}
+	if update.Trace != nil {
+		trace = types.Ptr(*update.Trace)
+	}
+	return SessionMeta{Title: title, GeneratorMeta: s.GeneratorMeta.Merge(update.GeneratorMeta), Trace: trace, Event: s.Event}
+}
+
+// Traced returns whether the session's clients show its model's thinking,
+// the tools it calls, and their results, which they don't, unless it's set
+func (s SessionMeta) Traced() bool {
+	return types.Value(s.Trace)
 }
 
 // trimmed returns the text, without the space around it, or nil, when it's

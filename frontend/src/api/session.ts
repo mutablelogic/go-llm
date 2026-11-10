@@ -52,7 +52,7 @@ export function deleteSession(id: string): Promise<Session> {
 }
 
 // setStatus says someone is typing in the session, or has stopped
-export function setStatus(id: string, status: Exclude<SessionStatus, 'replying'>): Promise<Session> {
+export function setStatus(id: string, status: Exclude<SessionStatus, 'replying' | 'thinking'>): Promise<Session> {
     return request<Session>('PUT', `/llm/session/${id}/status`, { body: { status } });
 }
 

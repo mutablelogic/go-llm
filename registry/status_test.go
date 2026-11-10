@@ -10,9 +10,11 @@ import (
 	// Packages
 	llm "github.com/mutablelogic/go-llm"
 	eventschema "github.com/mutablelogic/go-llm/broadcaster/schema"
+	providerschema "github.com/mutablelogic/go-llm/provider/schema"
 	registry "github.com/mutablelogic/go-llm/registry"
 	schema "github.com/mutablelogic/go-llm/registry/schema"
 	test "github.com/mutablelogic/go-llm/registry/test"
+	toolkit "github.com/mutablelogic/go-llm/toolkit"
 	types "github.com/mutablelogic/go-server/pkg/types"
 	assert "github.com/stretchr/testify/assert"
 	require "github.com/stretchr/testify/require"
@@ -252,4 +254,88 @@ func Test_SessionEvents(t *testing.T) {
 		stop()
 		require.NoError(t, <-running)
 	})
+}
+
+func Test_SessionThinking(t *testing.T) {
+	// A session is thinking, once its model starts thinking, which is logged
+	// to the stream, once, as it calls tools, and thinks again, until it
+	// writes its reply, when it's replying, and idle once it has replied
+	ctx := context.Background()
+	tk, err := toolkit.New(ctx)
+	require.NoError(t, err)
+	require.NoError(t, tk.Add(toolkit.NewNamespace("weather", "", namedEcho{name: "current"})))
+	r, err := registry.New(registry.WithSessionStore(test.NewSessionStore()), registry.WithToolkit(tk))
+	require.NoError(t, err)
+	first := call("weather:current", `{"city":"Berlin"}`)
+	first.Content = append([]providerschema.ContentBlock{{Thinking: types.Ptr("Hmm")}}, first.Content...)
+	second := text("Sunny")
+	second.Content = append([]providerschema.ContentBlock{{Thinking: types.Ptr("Again")}}, second.Content...)
+	require.NoError(t, r.Add("", newScripted(first, second)))
+	session, err := r.CreateSession(ctx, schema.SessionMeta{GeneratorMeta: schema.GeneratorMeta{Model: types.Ptr("model"), Tools: []string{"weather:*"}}})
+	require.NoError(t, err)
+	ch := watch(t, r)
+
+	type streamed struct {
+		what   llm.StreamType
+		text   string
+		status schema.SessionStatus
+	}
+	var got []streamed
+	_, err = r.Chat(ctx, session.ID, []llm.Message{user(t, "Weather?")}, func(what llm.StreamType, text string) {
+		current, err := r.GetSession(ctx, session.ID)
+		require.NoError(t, err)
+		got = append(got, streamed{what, text, current.Status})
+	})
+	require.NoError(t, err)
+	assert.Equal(t, []streamed{
+		{llm.StreamLog, registry.ThinkingLog, schema.SessionThinking},
+		{llm.StreamThinking, "Hmm", schema.SessionThinking},
+		{llm.StreamThinking, "\n\nAgain", schema.SessionThinking}, // after a blank line, as it's another turn
+		{llm.StreamText, "Sunny", schema.SessionReplying},
+	}, got)
+
+	// Its status changes are published, and it's idle once it has replied
+	var statuses []schema.SessionStatus
+	for _, event := range events(ch) {
+		var data schema.SessionEvent
+		if event.Table == registry.SessionTable && json.Unmarshal(event.Data, &data) == nil && data.Status != "" {
+			statuses = append(statuses, data.Status)
+		}
+	}
+	assert.Equal(t, []schema.SessionStatus{schema.SessionReplying, schema.SessionThinking, schema.SessionReplying, schema.SessionIdle}, statuses)
+	current, err := r.GetSession(ctx, session.ID)
+	require.NoError(t, err)
+	assert.Equal(t, schema.SessionIdle, current.Status)
+
+	// A client can't set it thinking
+	_, err = r.SetSessionStatus(ctx, session.ID, schema.SessionThinking)
+	assert.ErrorIs(t, err, llm.ErrBadParameter)
+}
+
+func Test_SessionTrace(t *testing.T) {
+	// Whether a session is traced is set as it's created, changed as it's
+	// updated, and kept, as its other settings are
+	ctx := context.Background()
+	r, err := registry.New(registry.WithSessionStore(test.NewSessionStore()))
+	require.NoError(t, err)
+	require.NoError(t, r.Add("", newScripted()))
+	session, err := r.CreateSession(ctx, schema.SessionMeta{GeneratorMeta: schema.GeneratorMeta{Model: types.Ptr("model")}})
+	require.NoError(t, err)
+	assert.Nil(t, session.Trace)
+	assert.False(t, session.Traced(), "it isn't traced, unless it's set")
+
+	traced, err := r.CreateSession(ctx, schema.SessionMeta{Trace: types.Ptr(true), GeneratorMeta: schema.GeneratorMeta{Model: types.Ptr("model")}})
+	require.NoError(t, err)
+	assert.True(t, traced.Traced())
+
+	updated, err := r.UpdateSession(ctx, traced.ID, schema.SessionMeta{Title: types.Ptr("Weather")})
+	require.NoError(t, err)
+	assert.True(t, updated.Traced(), "it's kept, as another setting changes")
+	updated, err = r.UpdateSession(ctx, traced.ID, schema.SessionMeta{Trace: types.Ptr(false)})
+	require.NoError(t, err)
+	assert.False(t, updated.Traced())
+	require.NotNil(t, updated.Trace, "it's set off, rather than unset")
+	got, err := r.GetSession(ctx, traced.ID)
+	require.NoError(t, err)
+	assert.False(t, got.Traced(), "it's stored")
 }

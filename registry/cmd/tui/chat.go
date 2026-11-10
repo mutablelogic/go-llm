@@ -702,6 +702,8 @@ func (m *model) status() string {
 		parts = append(parts, fmt.Sprintf("%d tokens", tokens))
 	}
 	switch {
+	case m.session.Status == schema.SessionThinking:
+		parts = append(parts, "thinking…")
 	case m.waiting || m.session.Status == schema.SessionReplying:
 		parts = append(parts, "replying…")
 	case m.session.Status == schema.SessionTyping:

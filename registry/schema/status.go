@@ -12,7 +12,8 @@ import (
 // TYPES
 
 // SessionStatus is who's doing what in a session: someone is typing a
-// message, its model is replying to one, or neither, when it's idle
+// message, its model is replying to one, or thinking, as it replies, or
+// neither, when it's idle
 type SessionStatus string
 
 // SessionStatusRequest sets a session's status, which a client sets to
@@ -36,6 +37,7 @@ const (
 	SessionIdle     SessionStatus = "idle"     // Neither typing nor replying
 	SessionTyping   SessionStatus = "typing"   // Someone is typing a message
 	SessionReplying SessionStatus = "replying" // The model is replying
+	SessionThinking SessionStatus = "thinking" // The model is thinking, as it replies
 )
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -63,7 +65,7 @@ func (s *SessionStatus) UnmarshalJSON(data []byte) error {
 		return err
 	}
 	switch status := SessionStatus(value); status {
-	case SessionIdle, SessionTyping, SessionReplying:
+	case SessionIdle, SessionTyping, SessionReplying, SessionThinking:
 		*s = status
 	default:
 		return fmt.Errorf("unknown session status: %q", value)

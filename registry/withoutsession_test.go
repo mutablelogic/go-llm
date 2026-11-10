@@ -94,6 +94,11 @@ func (s *scripted) WithoutSession(_ context.Context, _ llm.Model, messages []llm
 	s.mu.Unlock()
 	if stream != nil {
 		time.Sleep(s.delay)
+		for _, block := range reply.Content {
+			if block.Thinking != nil {
+				stream(llm.StreamThinking, *block.Thinking)
+			}
+		}
 		if text := reply.Text(); text != "" {
 			stream(llm.StreamText, text)
 		}

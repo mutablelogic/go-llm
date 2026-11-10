@@ -177,7 +177,7 @@ export class SessionList extends LitElement {
 
     private renderSession(session: Session) {
         const tokens = sessionTokens(session);
-        const status = session.status === 'replying' ? 'replying…' : session.status === 'typing' ? 'typing…' : '';
+        const status = session.status === 'thinking' ? 'thinking…' : session.status === 'replying' ? 'replying…' : session.status === 'typing' ? 'typing…' : '';
         const when = session.modified ?? session.created;
         const selected = session.id === this.selected;
         return html`
@@ -214,7 +214,7 @@ export class SessionList extends LitElement {
                     ${action(SessionList.eventEdit, 'Edit chat', Edit16)}
                     ${action(SessionList.eventCompact, 'Compact chat: summarise its earlier messages, which are kept, but no longer sent', ShrinkScreen16)}
                 `}
-                ${session.status === 'replying'
+                ${session.status === 'replying' || session.status === 'thinking'
                     ? action(SessionList.eventDelete, "It can't be deleted while it's replying", TrashCan16, false, true)
                     : action(SessionList.eventDelete, 'Delete chat', TrashCan16)}
             </div>

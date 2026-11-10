@@ -363,9 +363,10 @@ func (r *Registry) Chat(ctx context.Context, id uuid.UUID, messages []llm.Messag
 	defer replied()
 
 	// Ask the session's model, and add what it adds to the session, with the
-	// usage
+	// usage. It's thinking, as its model thinks, which is logged to the
+	// stream.
 	started := time.Now()
-	response, err := r.WithSession(ctx, session, messages, stream)
+	response, err := r.WithSession(ctx, session, messages, r.thinkingStream(id, stream))
 	if err != nil {
 		return nil, err
 	}
