@@ -27,10 +27,34 @@ import '@carbon/web-components/es/components/skeleton-text/index.js';
 import '@carbon/web-components/es/components/slider/index.js';
 import './disclosure';
 
-// windows are the context windows which can be chosen, in tokens, each
-// twice the last, from 16K, as fewer is too few for an assistant with tools,
-// after which the slider's last step is the model's own
-const windows = [16, 32, 64, 128, 256, 512, 1024, 2048].map((k) => k * 1024);
+// The context windows which can be chosen, in tokens, from 16K, as fewer is
+// too few for an assistant with tools, to the model's limit, when it's
+// known, or 2M, which is the model's own. The slider is the logarithm of the
+// window, so each doubling is as far as the last.
+const minWindow = 16 * 1024;
+const maxWindow = 2 * 1024 * 1024;
+
+// windowTop returns the most the slider has, the model's limit, when it's
+// known, at which the model's own is chosen
+function windowTop(limit?: number): number {
+    return limit ?? maxWindow;
+}
+
+// windowOf returns the window at the slider's position, in whole thousands
+// of tokens, 1024 each, so it's 16K, 37K, or 128K
+function windowOf(position: number): number {
+    return Math.max(1, Math.round(2 ** position / 1024)) * 1024;
+}
+
+// windowPosition returns the slider's position for the window, which is the
+// top, for the model's own, or one as large as its limit
+function windowPosition(window: number | undefined, limit?: number): number {
+    const top = windowTop(limit);
+    if (!window || window >= top) {
+        return Math.log2(top);
+    }
+    return Math.max(Math.log2(Math.min(minWindow, top)), Math.log2(window));
+}
 
 // tokens returns a number of tokens, such as 128K, or 1M, in powers of two
 // when it's one, as the windows are, or otherwise thousands, as a model's
@@ -46,28 +70,6 @@ function tokens(n: number): string {
     return `${Math.round(n / 1000)}K`;
 }
 
-// windowSteps returns the context windows of the slider's steps, before its
-// last, which is the model's own: those smaller than the model's limit, when
-// it's known, so its most is the slider's
-function windowSteps(limit?: number): number[] {
-    return limit ? windows.filter((window) => window < limit) : windows;
-}
-
-// windowStep returns the slider's step for the context window, which is the
-// nearest, by its logarithm, or the last, for the model's own, or one which
-// is as large as the model's limit, or more
-function windowStep(steps: number[], window?: number, limit?: number): number {
-    if (!window || (limit && window >= limit) || steps.length === 0) {
-        return steps.length;
-    }
-    let step = 0;
-    for (let i = 1; i < steps.length; i++) {
-        if (Math.abs(Math.log2(steps[i] / window)) < Math.abs(Math.log2(steps[step] / window))) {
-            step = i;
-        }
-    }
-    return step;
-}
 
 // NewSessionForm is what the panel shows, which is always so, while it's open
 type NewSessionForm = true;
@@ -228,7 +230,7 @@ export class NewSession extends Panel<NewSessionForm> {
         const thinks = !cannot(model, 'thinking');
         const opt = this.session?.opt ?? {};
         const limit = model?.input_token_limit || undefined;
-        const steps = windowSteps(limit);
+        const top = Math.log2(windowTop(limit));
         return keyed(this.opened, html`
             <form @submit=${this.handleSubmit}>
                 ${this.session ? html`
@@ -269,9 +271,11 @@ export class NewSession extends Panel<NewSessionForm> {
                 </div>
                 <div>
                     <cds-slider id="context" label-text=${`Context window: ${this.windowLabel(limit)}`}
-                        min="0" max=${String(steps.length)} step="1" .value=${live(String(windowStep(steps, this.contextWindow, limit)))} hide-text-input
-                        .formatMinText=${() => (steps.length > 0 ? tokens(steps[0]) : this.windowLabel(limit))} .formatMaxText=${() => (limit ? tokens(limit) : 'Default')}
-                        @cds-slider-changed=${(e: CustomEvent<{ value: number }>) => this.chooseWindow(Number(e.detail.value), steps, limit)}></cds-slider>
+                        min=${String(Math.log2(Math.min(minWindow, windowTop(limit))))} max=${String(top)} step="0.01"
+                        .value=${live(String(windowPosition(this.contextWindow, limit)))} hide-text-input
+                        .formatLabel=${(position: number) => (position >= top - 0.005 ? (limit ? tokens(limit) : 'Default') : tokens(windowOf(position)))}
+                        .formatMinText=${() => tokens(Math.min(minWindow, windowTop(limit)))} .formatMaxText=${() => (limit ? tokens(limit) : 'Default')}
+                        @cds-slider-changed=${(e: CustomEvent<{ value: number }>) => this.chooseWindow(Number(e.detail.value), limit)}></cds-slider>
                     <p class="note">${this.windowNote(model)}</p>
                 </div>
                 ${cannot(model, 'tools')
@@ -285,13 +289,14 @@ export class NewSession extends Panel<NewSessionForm> {
         `);
     }
 
-    // chooseWindow sets the context window from the slider's step, keeping
-    // the one which was set, when the step is still its nearest, such as one
-    // set from the command line, which isn't a step
-    private chooseWindow(step: number, steps: number[], limit?: number) {
-        if (step !== windowStep(steps, this.contextWindow, limit)) {
-            this.contextWindow = step >= steps.length ? undefined : steps[step];
+    // chooseWindow sets the context window from the slider's position, or
+    // the model's own, at its top, keeping the one which was set, such as
+    // one from the command line, when the slider hasn't moved
+    private chooseWindow(position: number, limit?: number) {
+        if (Math.abs(position - windowPosition(this.contextWindow, limit)) < 0.005) {
+            return;
         }
+        this.contextWindow = position >= Math.log2(windowTop(limit)) - 0.005 ? undefined : windowOf(position);
     }
 
     // windowLabel returns the context window, as the model is asked with
