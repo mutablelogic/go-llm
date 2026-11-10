@@ -107,7 +107,7 @@ export abstract class Panel<T> extends LitElement {
         h2 {
             margin: 0;
             font-size: var(--cds-heading-03-font-size, 1.25rem);
-            font-weight: var(--cds-heading-03-font-weight, 400);
+            font-weight: 600;
             line-height: var(--cds-heading-03-line-height, 1.4);
             overflow-wrap: anywhere;
         }
@@ -125,6 +125,15 @@ export abstract class Panel<T> extends LitElement {
         header .icon svg, header .icon img {
             width: 2.5rem;
             height: 2.5rem;
+        }
+
+        /* A logo is on white, as brands' logos are drawn for it */
+        header .icon img {
+            box-sizing: border-box;
+            padding: 3px;
+            border-radius: 4px;
+            background: #fff;
+            object-fit: contain;
         }
 
         .subtitle {

@@ -9,6 +9,8 @@ import { keyed } from 'lit/directives/keyed.js';
 import { customElement, property, query, state } from 'lit/decorators.js';
 import { Panel } from './panel';
 import { callbackURL } from '../api/connector';
+import LogoMCP16 from '@carbon/icons/es/logo--model-context-protocol/16.js';
+import iconLoader from '@carbon/web-components/es/globals/internal/icon-loader.js';
 import { connectorIcon, needsSignIn, type Connector, type ConnectorMeta, type ConnectorTemplate } from '../schema/connector';
 
 // Carbon components
@@ -82,19 +84,6 @@ export class ConnectorForm extends Panel<ConnectorFormItem> {
             margin-bottom: 1.5rem;
         }
 
-        /* A connector's logo, beside its name, in the title, on a small
-           white tile, so a dark one is seen in the dark theme too */
-        img.brand {
-            box-sizing: border-box;
-            width: 1.5rem;
-            height: 1.5rem;
-            margin-right: 0.5rem;
-            padding: 2px;
-            border-radius: 4px;
-            background: #fff;
-            object-fit: contain;
-            vertical-align: -0.2rem;
-        }
 
         /* The advanced fields are spaced as the form is */
         llm-disclosure > * {
@@ -145,13 +134,16 @@ export class ConnectorForm extends Panel<ConnectorFormItem> {
         return this.item;
     }
 
+    // renderIcon returns the connector's logo: its template's, to add one,
+    // or the one its status has, to edit it, or MCP's, when it has none
+    protected renderIcon(item: ConnectorFormItem) {
+        const icon = item.mode === 'add' ? item.template && connectorIcon(item.template) : item.connector.icon;
+        return icon || iconLoader(LogoMCP16);
+    }
+
     protected renderTitle(item: ConnectorFormItem) {
         if (item.mode === 'add') {
-            const icon = item.template && connectorIcon(item.template);
-            if (item.template) {
-                return html`${icon ? html`<img class="brand" src=${icon} alt="">` : nothing}Add ${item.template.name}`;
-            }
-            return 'Add custom connector';
+            return item.template ? `Add ${item.template.name}` : 'Add custom connector';
         }
         return `Edit ${item.connector.namespace ?? item.connector.name}`;
     }
