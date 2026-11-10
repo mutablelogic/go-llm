@@ -270,3 +270,42 @@ func TestGetPages(t *testing.T) {
 		assert.Error(t, err)
 	})
 }
+
+func Test_Paged(t *testing.T) {
+	items := []int{0, 1, 2, 3, 4}
+
+	// Every one, without a limit
+	page, next, err := llm.Paged(items)
+	require.NoError(t, err)
+	assert.Equal(t, items, page)
+	assert.Empty(t, next)
+
+	// A page at a time, with the token of the next
+	page, next, err = llm.Paged(items, llm.WithLimit(2))
+	require.NoError(t, err)
+	assert.Equal(t, []int{0, 1}, page)
+	assert.Equal(t, "2", next)
+	page, next, err = llm.Paged(items, llm.WithLimit(2), llm.WithPageToken(next))
+	require.NoError(t, err)
+	assert.Equal(t, []int{2, 3}, page)
+	page, next, err = llm.Paged(items, llm.WithLimit(2), llm.WithPageToken(next))
+	require.NoError(t, err)
+	assert.Equal(t, []int{4}, page)
+	assert.Empty(t, next)
+
+	// Past the end, nothing, and no limit is none
+	page, next, err = llm.Paged(items, llm.WithPageToken("9"))
+	require.NoError(t, err)
+	assert.Empty(t, page)
+	assert.Empty(t, next)
+	page, next, err = llm.Paged(items, llm.WithLimit(0))
+	require.NoError(t, err)
+	assert.Empty(t, page)
+	assert.Equal(t, "0", next)
+
+	// A token which isn't one, and an option which isn't for a list
+	_, _, err = llm.Paged(items, llm.WithPageToken("next"))
+	assert.ErrorIs(t, err, llm.ErrBadParameter)
+	_, _, err = llm.Paged(items, llm.WithTemperature(0.5))
+	assert.ErrorIs(t, err, llm.ErrBadParameter)
+}

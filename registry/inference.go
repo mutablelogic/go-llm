@@ -26,7 +26,6 @@ var _ llm.Generator = (*Registry)(nil)
 var _ llm.Embedder = (*Registry)(nil)
 var _ llm.Transcriber = (*Registry)(nil)
 var _ llm.Recognizer = (*Registry)(nil)
-var _ llm.Speaker = (*Registry)(nil)
 
 ///////////////////////////////////////////////////////////////////////////////
 // PUBLIC METHODS

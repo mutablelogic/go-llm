@@ -32,16 +32,16 @@ var voices = []struct{ name, style string }{
 // prebuilt voices, which it documents, each with its style. The model
 // detects the language it's to speak. Returns ErrNotImplemented for a model
 // which doesn't speak.
-func (c *Client) ListVoices(_ context.Context, model llm.Model) ([]llm.Voice, error) {
+func (c *Client) ListVoices(_ context.Context, model llm.Model, opts ...llm.Opt) ([]llm.Voice, string, error) {
 	m, ok := model.(*Model)
 	if !ok || m.provider != c {
-		return nil, llm.ErrBadParameter.With("not a model of this provider")
+		return nil, "", llm.ErrBadParameter.With("not a model of this provider")
 	} else if !m.speaks() {
-		return nil, llm.ErrNotImplemented.Withf("%s doesn't speak", m.Name())
+		return nil, "", llm.ErrNotImplemented.Withf("%s doesn't speak", m.Name())
 	}
 	result := make([]llm.Voice, 0, len(voices))
 	for _, voice := range voices {
 		result = append(result, llm.Voice{ID: voice.name, Title: voice.name, Description: voice.style})
 	}
-	return result, nil
+	return llm.Paged(result, opts...)
 }

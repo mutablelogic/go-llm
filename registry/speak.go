@@ -7,10 +7,13 @@ import (
 	// Packages
 	otel "github.com/mutablelogic/go-client/pkg/otel"
 	llm "github.com/mutablelogic/go-llm"
-	schema "github.com/mutablelogic/go-llm/registry/schema"
-	types "github.com/mutablelogic/go-server/pkg/types"
 	attribute "go.opentelemetry.io/otel/attribute"
 )
+
+///////////////////////////////////////////////////////////////////////////////
+// TYPES
+
+var _ llm.Speaker = (*Registry)(nil)
 
 ///////////////////////////////////////////////////////////////////////////////
 // PUBLIC METHODS
@@ -43,9 +46,10 @@ func (r *Registry) Speak(ctx context.Context, model llm.Model, text string, opts
 
 // ListVoices returns the voices the model speaks in, from the model's
 // provider, which must be in the registry, and speak text, or none, when the
-// provider can't say. Returns ErrNotImplemented when the model is known not
+// provider can't say, a page at a time, as the options say, with the token
+// of the next page. Returns ErrNotImplemented when the model is known not
 // to speak, and the provider's error as providerErr does.
-func (r *Registry) ListVoices(ctx context.Context, model llm.Model) (_ []llm.Voice, err error) {
+func (r *Registry) ListVoices(ctx context.Context, model llm.Model, opts ...llm.Opt) (_ []llm.Voice, _ string, err error) {
 	ctx, endSpan := otel.StartSpan(r.tracer, ctx, "llm.registry.ListVoices",
 		attribute.String("arg.model", r.modelName(model)),
 	)
@@ -53,43 +57,13 @@ func (r *Registry) ListVoices(ctx context.Context, model llm.Model) (_ []llm.Voi
 
 	speaker, err := capability[llm.Speaker](r, model, "speak text")
 	if err != nil {
-		return nil, err
+		return nil, "", err
 	} else if err := can(model, model.Capabilities().SpeechOutput, "speak text"); err != nil {
-		return nil, err
+		return nil, "", err
 	}
-	voices, err := speaker.ListVoices(ctx, model)
+	voices, next, err := speaker.ListVoices(ctx, model, opts...)
 	if err != nil {
-		return nil, providerErr(err)
+		return nil, "", providerErr(err)
 	}
-	return voices, nil
-}
-
-// ListModelVoices returns the voices the model with the name speaks in,
-// from the offset, and at most the limit of them, with how many there are,
-// as ListVoices returns them. Returns ErrNotFound when there's no model
-// with the name.
-func (r *Registry) ListModelVoices(ctx context.Context, name string, req schema.VoiceListRequest) (_ *schema.VoiceList, err error) {
-	ctx, endSpan := otel.StartSpan(r.tracer, ctx, "llm.registry.ListModelVoices",
-		attribute.String("arg.name", name),
-		attribute.String("arg.req", types.Stringify(req)),
-	)
-	defer func() { endSpan(err) }()
-
-	model, err := r.GetModel(ctx, name)
-	if err != nil {
-		return nil, err
-	}
-	voices, err := r.ListVoices(ctx, model)
-	if err != nil {
-		return nil, err
-	}
-	count := uint(len(voices))
-	offset := min(req.Offset, count)
-	body := voices[offset:]
-	if req.Limit != nil && *req.Limit < uint(len(body)) {
-		body = body[:*req.Limit]
-	}
-	list := &schema.VoiceList{VoiceListRequest: req, Model: r.modelName(model), Count: count, Body: body}
-	list.Offset = offset
-	return list, nil
+	return voices, next, nil
 }

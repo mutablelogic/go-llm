@@ -3,6 +3,7 @@ package llm
 import (
 	"context"
 	"encoding/json"
+	"slices"
 	"strings"
 
 	// Packages
@@ -26,6 +27,8 @@ type listModels struct {
 type modelsInput struct {
 	Capabilities []string `json:"capabilities,omitempty" help:"Capabilities which the models must have, every one of them: chat, tools, thinking, image_input, audio_input, video_input, document_input, image_output, speech_output, embedding, ocr, transcription or translation, or none, for every model" optional:""`
 	Provider     string   `json:"provider,omitempty" help:"Provider whose models are listed, by its name, such as ollama, or every provider's, when it's omitted" optional:""`
+	Model        string   `json:"model,omitempty" help:"The one model which is listed, by its name, such as ollama:phonon:latest, or every model, when it's omitted" optional:""`
+	VoicesNext   string   `json:"voices_next,omitempty" help:"The next page of the model's voices, which the voices_next of the page before says, with the model" optional:""`
 }
 
 // modelsOutput is the models, and how many there are
@@ -36,16 +39,23 @@ type modelsOutput struct {
 
 // modelOutput is a model: its name, by which it's given to a tool, what it
 // is, what it can do, and how many tokens it takes, and returns, when that's
-// known
+// known, and, when models which speak are asked for, the voices it speaks
+// in, when its provider says
 type modelOutput struct {
-	Name         string   `json:"name"`
-	Description  string   `json:"description,omitempty"`
-	Capabilities []string `json:"capabilities,omitempty"`
-	InputTokens  *uint    `json:"input_tokens,omitempty"`
-	OutputTokens *uint    `json:"output_tokens,omitempty"`
+	Name         string        `json:"name"`
+	Description  string        `json:"description,omitempty"`
+	Capabilities []string      `json:"capabilities,omitempty"`
+	InputTokens  *uint         `json:"input_tokens,omitempty"`
+	OutputTokens *uint         `json:"output_tokens,omitempty"`
+	Voices       []gollm.Voice `json:"voices,omitempty"`
+	VoicesNext   string        `json:"voices_next,omitempty"`
 }
 
 var _ gollm.Tool = (*listModels)(nil)
+
+// voicesPage is the most voices of a model which are listed at once, as
+// there can be many, such as an ElevenLabs account's
+const voicesPage = 25
 
 // ability is what a model with each capability can do, as it's said
 var ability = map[string]string{
@@ -72,7 +82,7 @@ func (*listModels) Name() string {
 }
 
 func (*listModels) Description() string {
-	return "Lists the models which have every one of the capabilities, such as ocr, transcription, speech_output, image_input, which is seeing images, or image_output, which is making them, with their names, which are given to the tools which ask them, such as ocr, transcribe and speak, or to an agent, so the right model for the task is chosen. A capability which isn't known for a model isn't listed."
+	return "Lists the models which have every one of the capabilities, such as ocr, transcription, speech_output, image_input, which is seeing images, or image_output, which is making them, with their names, which are given to the tools which ask them, such as ocr, transcribe and speak, or to an agent, so the right model for the task is chosen. A capability which isn't known for a model isn't listed. With speech_output, each model has the voices it speaks in, when its provider says, each with the id the speak tool is given, a page at a time: when there are more, its voices_next is given back, with the model, for the next page."
 }
 
 func (*listModels) InputSchema() *jsonschema.Schema {
@@ -92,6 +102,8 @@ func (t *listModels) Run(ctx context.Context, input json.RawMessage) (any, error
 	// rather than that a provider can't be reached
 	if err := gollm.ValidCapabilities(req.Capabilities...); err != nil {
 		return nil, err
+	} else if req.VoicesNext != "" && strings.TrimSpace(req.Model) == "" {
+		return nil, gollm.ErrBadParameter.With("voices_next is the next page of a model's voices, so the model is needed too")
 	}
 	m := t.models()
 	if m == nil {
@@ -116,15 +128,38 @@ func (t *listModels) Run(ctx context.Context, input json.RawMessage) (any, error
 	if err != nil {
 		return nil, err
 	}
+	if name := strings.TrimSpace(req.Model); name != "" {
+		list = slices.DeleteFunc(list, func(model gollm.Model) bool {
+			return m.Name(model) != name && model.Name() != name
+		})
+	}
+	// With the voices of models which speak, when they're asked for, or
+	// their next page is, a page at a time, as there can be many. A model
+	// whose voices can't be listed is listed without them, apart from one
+	// whose next page is asked for, which is said to be.
+	voices := slices.Contains(req.Capabilities, "speech_output") || req.VoicesNext != ""
 	result := modelsOutput{Count: len(list), Models: make([]modelOutput, 0, len(list))}
 	for _, model := range list {
-		result.Models = append(result.Models, modelOutput{
+		output := modelOutput{
 			Name:         m.Name(model),
 			Description:  model.Description(),
 			Capabilities: model.Capabilities().Names(),
 			InputTokens:  model.InputTokenLimit(),
 			OutputTokens: model.OutputTokenLimit(),
-		})
+		}
+		if voices {
+			opts := []gollm.Opt{gollm.WithLimit(voicesPage)}
+			if req.VoicesNext != "" {
+				opts = append(opts, gollm.WithPageToken(req.VoicesNext))
+			}
+			list, next, err := m.ListVoices(ctx, model, opts...)
+			if err != nil && req.VoicesNext != "" {
+				return nil, err
+			} else if err == nil {
+				output.Voices, output.VoicesNext = list, next
+			}
+		}
+		result.Models = append(result.Models, output)
 	}
 	return result, nil
 }

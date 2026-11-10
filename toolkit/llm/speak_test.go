@@ -3,6 +3,7 @@ package llm_test
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -89,6 +90,17 @@ func (m *models) Speak(_ context.Context, _ gollm.Model, text string, opts ...go
 		}
 	}
 	return &providerschema.Resource{ResourceMeta: providerschema.ResourceMeta{ContentType: "audio/wav", Data: []byte(text)}}, m.usage, nil
+}
+
+func (m *models) ListVoices(_ context.Context, model gollm.Model, opts ...gollm.Opt) ([]gollm.Voice, string, error) {
+	if model.Name() != "phonon" {
+		return nil, "", gollm.ErrNotImplemented.Withf("%s doesn't speak", model.Name())
+	}
+	voices := make([]gollm.Voice, 30)
+	for i := range voices {
+		voices[i] = gollm.Voice{ID: fmt.Sprintf("voice-%d", i), Title: fmt.Sprintf("Voice %d", i)}
+	}
+	return gollm.Paged(voices, opts...)
 }
 
 func (m *models) Illustrate(_ context.Context, _ gollm.Model, prompt string, images []gollm.Resource, opts ...gollm.Opt) ([]gollm.Resource, gollm.Usage, error) {
@@ -314,6 +326,41 @@ func Test_Models(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, float64(0), output["count"])
 	assert.Equal(t, []any{}, output["models"])
+
+	// Models which speak have their voices, when they're asked for, a page
+	// at a time, and not otherwise, as there can be many
+	output, err = run(`{"capabilities":["speech_output"]}`)
+	require.NoError(t, err)
+	assert.Equal(t, []string{"fake:phonon"}, names(output))
+	phonon := output["models"].([]any)[0].(map[string]any)
+	require.Len(t, phonon["voices"], 25)
+	assert.Equal(t, map[string]any{"id": "voice-0", "title": "Voice 0"}, phonon["voices"].([]any)[0])
+	assert.Equal(t, "25", phonon["voices_next"])
+	output, err = run(`{}`)
+	require.NoError(t, err)
+	for _, m := range output["models"].([]any) {
+		assert.NotContains(t, m.(map[string]any), "voices")
+	}
+
+	// The next page of a model's voices, which is the last
+	output, err = run(`{"model":"fake:phonon","voices_next":"25"}`)
+	require.NoError(t, err)
+	phonon = output["models"].([]any)[0].(map[string]any)
+	require.Len(t, phonon["voices"], 5)
+	assert.Equal(t, map[string]any{"id": "voice-25", "title": "Voice 25"}, phonon["voices"].([]any)[0])
+	assert.NotContains(t, phonon, "voices_next")
+
+	// A model by its name, the next page without a model, a token which
+	// isn't one, and the next page of a model which doesn't speak
+	output, err = run(`{"model":"fake:reader"}`)
+	require.NoError(t, err)
+	assert.Equal(t, []string{"fake:reader"}, names(output))
+	_, err = run(`{"voices_next":"25"}`)
+	assert.ErrorIs(t, err, gollm.ErrBadParameter)
+	_, err = run(`{"model":"fake:phonon","voices_next":"nonsense"}`)
+	assert.ErrorIs(t, err, gollm.ErrBadParameter)
+	_, err = run(`{"model":"fake:chat","voices_next":"25"}`)
+	assert.ErrorIs(t, err, gollm.ErrNotImplemented)
 
 	// A capability which isn't one, a provider which isn't there, and no
 	// models yet

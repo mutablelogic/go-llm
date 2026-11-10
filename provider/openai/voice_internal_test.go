@@ -17,7 +17,7 @@ func Test_ListVoices(t *testing.T) {
 
 	// OpenAI's newer speech models speak in its voices, of which it
 	// recommends marin and cedar
-	voices, err := c.ListVoices(ctx, c.Model("gpt-4o-mini-tts"))
+	voices, _, err := c.ListVoices(ctx, c.Model("gpt-4o-mini-tts"))
 	require.NoError(t, err)
 	require.Len(t, voices, 13)
 	assert.Equal(t, llm.Voice{ID: "alloy", Title: "Alloy"}, voices[0])
@@ -25,25 +25,25 @@ func Test_ListVoices(t *testing.T) {
 
 	// and tts-1 and tts-1-hd in fewer
 	for _, name := range []string{"tts-1", "tts-1-hd"} {
-		voices, err := c.ListVoices(ctx, c.Model(name))
+		voices, _, err := c.ListVoices(ctx, c.Model(name))
 		require.NoError(t, err)
 		assert.Len(t, voices, 9, name)
 	}
 
 	// A model which doesn't speak has none
-	_, err = c.ListVoices(ctx, c.Model("whisper-1"))
+	_, _, err = c.ListVoices(ctx, c.Model("whisper-1"))
 	assert.NoError(t, err, "whisper-1 isn't known not to speak")
-	_, err = c.ListVoices(ctx, c.Model("text-embedding-3-small"))
+	_, _, err = c.ListVoices(ctx, c.Model("text-embedding-3-small"))
 	assert.NoError(t, err)
 
 	// Another OpenAI-compatible server doesn't say
 	other, err := New("http://localhost:8000/v1", "")
 	require.NoError(t, err)
-	voices, err = other.ListVoices(ctx, other.Model("kokoro"))
+	voices, _, err = other.ListVoices(ctx, other.Model("kokoro"))
 	require.NoError(t, err)
 	assert.Empty(t, voices)
 
 	// A model of another client isn't listed
-	_, err = other.ListVoices(ctx, c.Model("tts-1"))
+	_, _, err = other.ListVoices(ctx, c.Model("tts-1"))
 	assert.ErrorIs(t, err, llm.ErrBadParameter)
 }

@@ -11,14 +11,12 @@ import (
 	// Packages
 	llm "github.com/mutablelogic/go-llm"
 	ollama "github.com/mutablelogic/go-llm/provider/ollama"
-	schema "github.com/mutablelogic/go-llm/registry/schema"
 	test "github.com/mutablelogic/go-llm/registry/test"
-	types "github.com/mutablelogic/go-server/pkg/types"
 	assert "github.com/stretchr/testify/assert"
 	require "github.com/stretchr/testify/require"
 )
 
-func Test_ListModelVoices(t *testing.T) {
+func Test_ListVoices(t *testing.T) {
 	// An Ollama server with a speech model, which has five voices, and a
 	// model which doesn't speak
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -43,29 +41,33 @@ func Test_ListModelVoices(t *testing.T) {
 	r := test.NewRegistry(t, []llm.Provider{provider})
 	ctx := context.Background()
 
-	// Every voice, and how many there are
-	list, err := r.ListModelVoices(ctx, "phonon:latest", schema.VoiceListRequest{})
+	model, err := r.GetModel(ctx, "phonon:latest")
 	require.NoError(t, err)
-	assert.Equal(t, "ollama:phonon:latest", list.Model)
-	assert.Equal(t, uint(5), list.Count)
-	require.Len(t, list.Body, 5)
-	assert.Equal(t, llm.Voice{ID: "Alfie", Title: "Alfie"}, list.Body[0])
 
-	// From an offset, and at most a limit of them
-	list, err = r.ListModelVoices(ctx, "phonon:latest", schema.VoiceListRequest{Offset: 1, Limit: types.Ptr(uint(2))})
+	// Every voice
+	voices, next, err := r.ListVoices(ctx, model)
 	require.NoError(t, err)
-	assert.Equal(t, uint(5), list.Count)
-	assert.Equal(t, []string{"Bryony", "Cara"}, ids(list.Body))
-	list, err = r.ListModelVoices(ctx, "phonon:latest", schema.VoiceListRequest{Offset: 9})
-	require.NoError(t, err)
-	assert.Equal(t, uint(5), list.Offset)
-	assert.Empty(t, list.Body)
+	require.Len(t, voices, 5)
+	assert.Equal(t, llm.Voice{ID: "Alfie", Title: "Alfie"}, voices[0])
+	assert.Empty(t, next)
 
-	// A model which doesn't speak, or isn't there
-	_, err = r.ListModelVoices(ctx, "llama3.2:latest", schema.VoiceListRequest{})
+	// A page at a time
+	voices, next, err = r.ListVoices(ctx, model, llm.WithLimit(2))
+	require.NoError(t, err)
+	assert.Equal(t, []string{"Alfie", "Bryony"}, ids(voices))
+	voices, next, err = r.ListVoices(ctx, model, llm.WithLimit(2), llm.WithPageToken(next))
+	require.NoError(t, err)
+	assert.Equal(t, []string{"Cara", "Dev"}, ids(voices))
+	voices, next, err = r.ListVoices(ctx, model, llm.WithLimit(2), llm.WithPageToken(next))
+	require.NoError(t, err)
+	assert.Equal(t, []string{"Eve"}, ids(voices))
+	assert.Empty(t, next)
+
+	// A model which doesn't speak
+	llama, err := r.GetModel(ctx, "llama3.2:latest")
+	require.NoError(t, err)
+	_, _, err = r.ListVoices(ctx, llama)
 	assert.ErrorIs(t, err, llm.ErrNotImplemented)
-	_, err = r.ListModelVoices(ctx, "missing:latest", schema.VoiceListRequest{})
-	assert.ErrorIs(t, err, llm.ErrNotFound)
 }
 
 // ids returns the voices' identifiers

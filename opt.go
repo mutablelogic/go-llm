@@ -86,10 +86,14 @@ const (
 	ImageSizeKey   = "image_size"   // string, size of the images made, such as "1K", "2K" or "4K"
 
 	// Speech
-	VoiceKey        = "voice"        // string, voice the text is spoken in, by its name
+	VoiceKey        = "voice"        // string, voice the text is spoken in, by its identifier
 	AudioFormatKey  = "audio_format" // string, format of the speech, such as "wav", "mp3" or "pcm"
 	SpeedKey        = "speed"        // float64, how fast the text is spoken, where 1 is normal
 	InstructionsKey = "instructions" // string, how the text is spoken, such as "calmly
+
+	// Lists, such as of a model's voices
+	PageTokenKey = "page_token" // string, the page of a list to return, which the page before says is next
+	LimitKey     = "limit"      // uint, the most of a list to return
 )
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -302,6 +306,17 @@ func WithDimensions(value uint) Opt {
 	return WithOpt(DimensionsKey, value)
 }
 
+// WithPageToken sets the page of a list, such as of a model's voices, to
+// return, which the page before says is next
+func WithPageToken(value string) Opt {
+	return WithOpt(PageTokenKey, value)
+}
+
+// WithLimit sets the most of a list, such as of a model's voices, to return
+func WithLimit(value uint) Opt {
+	return WithOpt(LimitKey, value)
+}
+
 // WithPages sets the pages of a document to recognize, numbered from zero
 func WithPages(values ...uint) Opt {
 	if len(values) == 0 {
@@ -468,4 +483,44 @@ func withError(err error) Opt {
 	return func(*Opts) error {
 		return err
 	}
+}
+
+// Paged returns the page of the items, which the page token (PageTokenKey)
+// says, or the first, with at most the limit of them (LimitKey), or all of
+// them, and the token of the next page, which is empty, after the last. A
+// token is the offset of its page, which isn't to be relied on, as a
+// provider which pages its own list has its own tokens. Returns
+// ErrBadParameter for a token which isn't one, or any other option.
+func Paged[T any](items []T, opts ...Opt) ([]T, string, error) {
+	o, err := ApplyOpts(opts...)
+	if err != nil {
+		return nil, "", err
+	}
+	var offset uint64
+	limit := uint(len(items))
+	for _, key := range o.Keys() {
+		switch key {
+		case PageTokenKey:
+			var token string
+			if token, err = GetOpt[string](o, key); err == nil && token != "" {
+				if offset, err = strconv.ParseUint(token, 10, 0); err != nil {
+					err = ErrBadParameter.Withf("page token %q isn't one", token)
+				}
+			}
+		case LimitKey:
+			limit, err = GetOpt[uint](o, key)
+		default:
+			err = ErrBadParameter.Withf("option %q isn't supported for a list", key)
+		}
+		if err != nil {
+			return nil, "", err
+		}
+	}
+	start := min(uint(offset), uint(len(items)))
+	end := start + min(limit, uint(len(items))-start)
+	next := ""
+	if end < uint(len(items)) {
+		next = strconv.FormatUint(uint64(end), 10)
+	}
+	return items[start:end], next, nil
 }
