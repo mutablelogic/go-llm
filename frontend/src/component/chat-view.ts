@@ -668,17 +668,24 @@ export class ChatView extends LitElement {
     private streamedBubbles(): Bubble[] {
         const bubbles: Bubble[] = [];
         const traced = this.traced();
+        // Thinking which isn't shown still ends the bubble before it, so
+        // the text of the model's next turn, after it, is a bubble of its
+        // own, rather than joined to the text before, as the line between
+        // the turns can be at the start of the thinking
+        let split = false;
         for (const piece of this.streamed) {
             if (piece.what === 'thinking' && !traced) {
+                split = true;
                 continue;
             }
             const last = bubbles[bubbles.length - 1];
             const kind = piece.what === 'text' ? 'assistant' : piece.what === 'thinking' ? 'thinking' : 'log';
-            if (last && last.kind === kind && kind !== 'log') {
+            if (last && last.kind === kind && kind !== 'log' && !split) {
                 last.text += piece.text;
             } else {
-                bubbles.push({ kind, text: piece.text, markdown: kind === 'assistant' });
+                bubbles.push({ kind, text: piece.text.replace(/^\n+/, ''), markdown: kind === 'assistant' });
             }
+            split = false;
         }
         const live = [...bubbles].reverse().find((bubble) => bubble.kind !== 'log');
         if (live) {
