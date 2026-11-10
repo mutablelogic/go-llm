@@ -150,19 +150,19 @@ export class NewSession extends Panel<NewSessionForm> {
     }
 
     protected renderTitle() {
-        return this.session ? 'Edit chat' : 'New chat';
+        return this.session ? 'Edit conversation' : 'New conversation';
     }
 
     protected renderSubtitle() {
         return this.session ? 'Its title, model, instructions, options, tools and tracing' : 'A conversation with your assistant';
     }
 
-    // renderFooter returns Start chat, or Save, once there are models to
+    // renderFooter returns Start conversation, or Save, once there are models to
     // chat with, as the body does, or nothing, while they're loading, or
     // when there are none
     protected renderFooter() {
         return this.models?.length
-            ? html`<cds-button kind="primary" type="submit" ?disabled=${this.creating} @click=${this.handleSubmit}>${this.session ? 'Save' : 'Start chat'}</cds-button>`
+            ? html`<cds-button kind="primary" type="submit" ?disabled=${this.creating} @click=${this.handleSubmit}>${this.session ? 'Save' : 'Start conversation'}</cds-button>`
             : nothing;
     }
 
@@ -179,7 +179,7 @@ export class NewSession extends Panel<NewSessionForm> {
         return keyed(this.opened, html`
             <form @submit=${this.handleSubmit}>
                 ${this.session ? html`
-                    <cds-text-input id="title" label="Title" helper-text="What the chat is about, which it's given each time it's compacted"
+                    <cds-text-input id="title" label="Title" helper-text="What the conversation is about, which it's given each time it's compacted"
                         value=${this.session.title ?? ''}></cds-text-input>
                 ` : nothing}
                 <cds-select id="model" label-text="Assistant model" value=${chosen}
@@ -189,7 +189,7 @@ export class NewSession extends Panel<NewSessionForm> {
                 <cds-textarea label="System prompt" helper-text="Instructions for the assistant on how to act, such as 'be brief', 'set humour level to 90%', or 'respond in rhyme'" rows="3"
                     value=${this.session?.system ?? ''}></cds-textarea>
                 <llm-disclosure label="Advanced options">
-                <cds-checkbox id="trace" ?checked=${this.session?.trace === true}>Trace: show the assistant's thinking, and the tools it calls, in the chat</cds-checkbox>
+                <cds-checkbox id="trace" ?checked=${this.session?.trace === true}>Trace: show the assistant's thinking, and the tools it calls, in the conversation</cds-checkbox>
                 <div class="options">
                     ${thinks ? html`
                         <cds-select id="thinking" label-text="Thinking" value=${this.thinking}
@@ -217,7 +217,7 @@ export class NewSession extends Panel<NewSessionForm> {
                 ${cannot(model, 'tools')
                     ? ''
                     : html`
-                        <p class="note">Every tool is on, unless you turn it off. Without the <strong>llm</strong> tools, the assistant can't speak, make pictures, read scans or transcribe recordings, or read the chat's files; without <strong>memory</strong>, it doesn't remember you from one chat to the next; and without <strong>heartbeat</strong>, it can't set reminders, or do things on a schedule.</p>
+                        <p class="note">Every tool is on, unless you turn it off. Without the <strong>llm</strong> tools, the assistant can't speak, make pictures, read scans or transcribe recordings, or read the conversation's files; without <strong>memory</strong>, it doesn't remember you from one conversation to the next; and without <strong>heartbeat</strong>, it can't set reminders, or do things on a schedule.</p>
                         <llm-tool-picker .tools=${this.tools} .described=${this.namespaces} .value=${this.startTools}></llm-tool-picker>
                     `}
                 </llm-disclosure>
