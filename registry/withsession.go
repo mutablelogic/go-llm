@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"maps"
 	"strings"
 
 	// Packages
@@ -122,13 +123,32 @@ func (r *Registry) WithSession(ctx context.Context, session schema.Session, mess
 // reply, as the respond tool, when there is one, whose instruction follows
 // them, and whether there is one. The model is asked at most the
 // iterations, unless the max_iterations option says otherwise. When skip is
-// true, as for a session, its tools which aren't available are skipped.
+// true, as for a session, its tools which aren't available are skipped, and
+// none are, when the model is known not to call tools.
 func (r *Registry) generatorLoop(ctx context.Context, meta schema.GeneratorMeta, iterations uint, skip bool) (llm.Model, *agentLoop, bool, error) {
 	result, err := meta.JSONSchema()
 	if err != nil {
 		return nil, nil, false, err
 	}
 	hasSchema := result != nil
+	model, err := r.GetModel(ctx, strings.TrimSpace(types.Value(meta.Model)))
+	if err != nil {
+		return nil, nil, false, err
+	}
+
+	// A session keeps the tools which were chosen, whatever its model, and
+	// a model which is known not to call tools is asked without them, or a
+	// tool choice, which needs them, of a copy of its options, so they're
+	// there again when it's changed to one which does
+	if skip {
+		if can := model.Capabilities().Tools; can != nil && !*can {
+			meta.Tools = nil
+			if _, exists := meta.Opt[llm.ToolChoiceKey]; exists {
+				meta.Opt = maps.Clone(meta.Opt)
+				delete(meta.Opt, llm.ToolChoiceKey)
+			}
+		}
+	}
 	tools, prompts, err := r.askTools(ctx, meta, hasSchema, skip)
 	if err != nil {
 		return nil, nil, false, err
@@ -140,10 +160,6 @@ func (r *Registry) generatorLoop(ctx context.Context, meta schema.GeneratorMeta,
 	opts = append([]llm.Opt{llm.WithMaxIterations(iterations)}, opts...)
 	if hasSchema {
 		opts = append(opts, llm.WithJSONSchema(meta.Schema))
-	}
-	model, err := r.GetModel(ctx, strings.TrimSpace(types.Value(meta.Model)))
-	if err != nil {
-		return nil, nil, false, err
 	}
 	loop, err := newAgentLoop(tools, prompts, opts...)
 	if err != nil {

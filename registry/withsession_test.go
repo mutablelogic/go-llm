@@ -92,6 +92,25 @@ func Test_WithSession(t *testing.T) {
 		assert.Equal(t, llm.Usage{InputTokens: 20, OutputTokens: 10}, withoutDuration(response.Usage.Usage))
 	})
 
+	t.Run("ModelWithoutTools", func(t *testing.T) {
+		// A model which is known not to call tools is asked without the
+		// session's tools, which the session keeps
+		p := newScripted(text("Hello"))
+		p.caps = llm.ModelCap{Tools: types.Ptr(false)}
+		r := newAskRegistry(t, p)
+		withTools := meta
+		withTools.Tools = []string{"test:echo"}
+		withTools.Opt = map[string]json.RawMessage{llm.ToolChoiceKey: json.RawMessage(`"auto"`)}
+		session := newSession(withTools)
+		_, err := r.WithSession(ctx, session, hi, nil)
+		require.NoError(t, err)
+		require.Len(t, p.asked, 1)
+		assert.Empty(t, p.asked[0].tools)
+		assert.False(t, p.asked[0].opts.Has(llm.ToolChoiceKey), "nor a tool choice, which needs tools")
+		assert.Equal(t, []string{"test:echo"}, session.Tools)
+		assert.JSONEq(t, `"auto"`, string(session.Opt[llm.ToolChoiceKey]), "which the session keeps")
+	})
+
 	t.Run("Schema", func(t *testing.T) {
 		// With a schema, the reply is the result, as JSON, when its result is
 		// stop
