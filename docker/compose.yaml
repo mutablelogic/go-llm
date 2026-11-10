@@ -51,7 +51,8 @@ services:
       # The tools, which are added when their credentials are set.
       # OLLAMA_API_KEY is for Ollama's cloud service, whose web search, and
       # fetch, are the tools, rather than for the Ollama provider, which
-      # OLLAMA_ADDR adds, and needs no key.
+      # OLLAMA_ADDR adds, and needs no key. DEEPSEEK_API_KEY, above, also
+      # adds DeepSeek's web search and fetch.
       WEATHERAPI_API_KEY: ${WEATHERAPI_API_KEY:-}
       NEWSAPI_API_KEY: ${NEWSAPI_API_KEY:-}
       OLLAMA_API_KEY: ${OLLAMA_API_KEY:-}
