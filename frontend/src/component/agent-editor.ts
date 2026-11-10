@@ -20,10 +20,10 @@ import '@carbon/web-components/es/components/select/index.js';
 import '@carbon/web-components/es/components/notification/inline-notification.js';
 
 // AgentEditorItem is what the panel shows: a new agent, from its definition,
-// or the agent with the name, its description, which is the panel's
-// subtitle, its definition, and whether it's built in, when its model, which
+// or the agent with the name, its title and description, which are the
+// panel's title and subtitle, its definition, and whether it's built in, when its model, which
 // is all of it which can be changed, can be chosen from the models
-export type AgentEditorItem = { mode: 'new'; yaml: string } | { mode: 'edit'; name: string; description?: string; yaml: string; builtin: boolean; model?: string; models?: string[] };
+export type AgentEditorItem = { mode: 'new'; yaml: string } | { mode: 'edit'; name: string; title?: string; description?: string; yaml: string; builtin: boolean; model?: string; models?: string[] };
 
 // AgentModel is the model chosen for a built-in agent, by its name, which
 // is empty for the model of the session it's run from
@@ -151,7 +151,7 @@ export class AgentEditor extends Panel<AgentEditorItem> {
     }
 
     protected renderTitle(item: AgentEditorItem) {
-        return item.mode === 'new' ? 'New agent' : item.name;
+        return item.mode === 'new' ? 'New agent' : item.title?.trim() || item.name;
     }
 
     protected renderSubtitle(item: AgentEditorItem) {
