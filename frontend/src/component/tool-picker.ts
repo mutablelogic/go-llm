@@ -214,9 +214,15 @@ export class ToolPicker extends LitElement {
         return new Map([...groups].sort(([a], [b]) => a.localeCompare(b)));
     }
 
-    // groupNamespaces returns the namespaces of the group, which have tools
+    // groupNamespaces returns the namespaces of the group, which have tools,
+    // and, for the agents' group, both of its namespaces, even when one has
+    // none yet, so agents made later are chosen too
     private groupNamespaces(group: string): string[] {
-        return [...this.namespaces().keys()].filter((namespace) => groupOf(namespace) === group);
+        const namespaces = new Set([...this.namespaces().keys()].filter((namespace) => groupOf(namespace) === group));
+        if (group === 'agent') {
+            namespaces.add('agent').add('builtin');
+        }
+        return [...namespaces].sort();
     }
 
     // about returns what the namespace's tools are for, when it says
