@@ -211,12 +211,12 @@ export class SessionList extends LitElement {
             <div class="actions">
                 ${session.event ? nothing : html`
                     ${action(SessionList.eventEvents, 'Events', Notification16, this.alerted)}
-                    ${action(SessionList.eventEdit, 'Edit chat', Edit16)}
-                    ${action(SessionList.eventCompact, 'Compact chat: summarise its earlier messages, which are kept, but no longer sent', ShrinkScreen16)}
+                    ${action(SessionList.eventEdit, 'Edit conversation', Edit16)}
+                    ${action(SessionList.eventCompact, 'Compact conversation: summarise its earlier messages, which are kept, but no longer sent', ShrinkScreen16)}
                 `}
                 ${session.status === 'replying' || session.status === 'thinking'
                     ? action(SessionList.eventDelete, "It can't be deleted while it's replying", TrashCan16, false, true)
-                    : action(SessionList.eventDelete, 'Delete chat', TrashCan16)}
+                    : action(SessionList.eventDelete, 'Delete conversation', TrashCan16)}
             </div>
         `;
     }

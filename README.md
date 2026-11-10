@@ -90,7 +90,7 @@ llm models --capability speech_output       # models that speak
 
 ### 4. Ask, and chat
 
-Chat in the web UI, with **New chat**, or with the CLI. With the CLI, a command's model is remembered until you give another:
+Chat in the web UI, with **Add conversation** on the Conversations page, or with the CLI. With the CLI, a command's model is remembered until you give another:
 
 ```bash
 llm ask --model gpt-4o-mini "Explain a KV cache in two sentences"
