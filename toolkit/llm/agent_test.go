@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"sort"
+	"strings"
 	"testing"
 
 	// Packages
@@ -38,8 +39,15 @@ func (a *agents) ListAgents(_ context.Context, req registryschema.AgentListReque
 	return list, nil
 }
 
-func (a *agents) GetAgent(_ context.Context, name string) (*registryschema.Agent, error) {
-	if agent, ok := a.byName[name]; ok {
+// GetAgent resolves a name as the registry does: a bare one, or one with
+// the agent's namespace
+func (a *agents) GetAgent(_ context.Context, ref string) (*registryschema.Agent, error) {
+	name := ref
+	namespace, bare, qualified := strings.Cut(ref, ":")
+	if qualified {
+		name = bare
+	}
+	if agent, ok := a.byName[name]; ok && (!qualified || agent.Namespace() == namespace) {
 		return &agent, nil
 	}
 	return nil, llm.ErrNotFound.Withf("agent %q", name)
@@ -64,6 +72,8 @@ func Test_Agent(t *testing.T) {
 	add := func(meta registryschema.AgentMeta) { store.byName[meta.Name] = registryschema.Agent{AgentMeta: meta} }
 	add(registryschema.AgentMeta{PromptMeta: registryschema.PromptMeta{Name: "summarize", Title: types.Ptr("Summarize")}, GeneratorMeta: registryschema.GeneratorMeta{Model: types.Ptr("eliza")}})
 	add(registryschema.AgentMeta{PromptMeta: registryschema.PromptMeta{Name: "translate", Builtin: types.Ptr(true)}})
+	add(registryschema.AgentMeta{PromptMeta: registryschema.PromptMeta{Name: "compact", Builtin: types.Ptr(true)}})
+	add(registryschema.AgentMeta{PromptMeta: registryschema.PromptMeta{Name: "event", Builtin: types.Ptr(true)}})
 	add(registryschema.AgentMeta{PromptMeta: registryschema.PromptMeta{Name: "review_pr", Origin: "github"}})
 	add(registryschema.AgentMeta{PromptMeta: registryschema.PromptMeta{Name: "weather"}})
 
@@ -91,19 +101,23 @@ func Test_Agent(t *testing.T) {
 	assert.ErrorIs(t, err, llm.ErrBadParameter)
 
 	t.Run("List", func(t *testing.T) {
-		// Every page, but only the agent namespace
+		// Every page, of the agent namespace, and the built-in agents chats
+		// call, but not the server's own, or connectors' prompts
 		result, err := run(`{"action":"list"}`)
 		require.NoError(t, err)
 		data, err := json.Marshal(result)
 		require.NoError(t, err)
 		var list []map[string]any
 		require.NoError(t, json.Unmarshal(data, &list))
-		require.Len(t, list, 2)
-		assert.Equal(t, "summarize", list[0]["name"])
-		assert.Equal(t, "agent:summarize", list[0]["tool"])
+		var tools []string
+		for _, agent := range list {
+			tools = append(tools, agent["tool"].(string))
+		}
+		assert.Equal(t, []string{"agent:summarize", "builtin:translate", "agent:weather"}, tools)
+		assert.Equal(t, "agent", list[0]["namespace"])
 		assert.Equal(t, "Summarize", list[0]["title"])
 		assert.Equal(t, "eliza", list[0]["model"])
-		assert.Equal(t, "weather", list[1]["name"])
+		assert.Equal(t, "builtin", list[1]["namespace"])
 	})
 
 	t.Run("Get", func(t *testing.T) {
@@ -113,8 +127,13 @@ func Test_Agent(t *testing.T) {
 		require.True(t, ok)
 		assert.Equal(t, "summarize", meta.Name)
 
-		_, err = run(`{"action":"get","name":"translate"}`)
-		assert.ErrorIs(t, err, llm.ErrForbidden, "a built-in agent")
+		result, err = run(`{"action":"get","name":"translate"}`)
+		require.NoError(t, err, "a built-in agent")
+		assert.Equal(t, "translate", result.(registryschema.AgentMeta).Name)
+		_, err = run(`{"action":"get","name":"builtin:translate"}`)
+		require.NoError(t, err)
+		_, err = run(`{"action":"get","name":"compact"}`)
+		assert.ErrorIs(t, err, llm.ErrForbidden, "only the server runs it")
 		_, err = run(`{"action":"get","name":"review_pr"}`)
 		assert.ErrorIs(t, err, llm.ErrForbidden, "a connector's prompt")
 		_, err = run(`{"action":"get","name":"missing"}`)

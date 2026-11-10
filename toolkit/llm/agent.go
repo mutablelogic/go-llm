@@ -58,6 +58,7 @@ type agentInput struct {
 // agentSummary is an agent, as it's listed
 type agentSummary struct {
 	Name        string `json:"name"`
+	Namespace   string `json:"namespace"`
 	Tool        string `json:"tool"`
 	Title       string `json:"title,omitempty"`
 	Description string `json:"description,omitempty"`
@@ -72,7 +73,7 @@ func (*agentTool) Name() string {
 }
 
 func (*agentTool) Description() string {
-	return "Lists, gets, creates and updates the agents which can be changed, in the agent namespace, each of which is a tool, agent:<name>, which asks a model its prompt, with its input, and replies. Built-in agents, and connectors' prompts, aren't these, and can't be changed. An agent which is created, or updated, is a tool from the next message."
+	return "Lists, gets, creates and updates agents, each of which is a tool, such as agent:<name>, which asks a model its prompt, with its input, and replies. It lists and gets the agents of the agent namespace, which it can create and update, and the built-in ones, of the builtin namespace, which can't be changed. Connectors' prompts aren't these. An agent which is created, or updated, is a tool from the next message."
 }
 
 func (*agentTool) InputSchema() *jsonschema.Schema {
@@ -91,16 +92,22 @@ func (t *agentTool) Run(ctx context.Context, input json.RawMessage) (any, error)
 	if agents == nil {
 		return nil, gollm.ErrServiceUnavailable.With("there are no agents yet")
 	}
-	name := strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(req.Name), registryschema.AgentNamespace+":"))
+	ref := strings.TrimSpace(req.Name)
+	name := strings.TrimSpace(strings.TrimPrefix(ref, registryschema.AgentNamespace+":"))
 	switch strings.TrimSpace(req.Action) {
 	case "list":
 		return listAgents(ctx, agents)
 	case "get":
-		agent, err := ownAgent(ctx, agents, name)
+		if ref == "" {
+			return nil, gollm.ErrBadParameter.With("missing agent name")
+		}
+		agent, err := agents.GetAgent(ctx, ref)
 		if err != nil {
 			return nil, err
+		} else if !listed(agent) {
+			return nil, gollm.ErrForbidden.Withf("agent %q is in the %s namespace, which isn't listed", ref, agent.Namespace())
 		}
-		toolkit.Logf(ctx, "Getting agent %s", name)
+		toolkit.Logf(ctx, "Getting agent %s", ref)
 		return agent.AgentMeta, nil
 	case "create":
 		if name == "" {
@@ -165,7 +172,7 @@ func (req agentInput) meta(name string) (registryschema.AgentMeta, error) {
 	return meta, nil
 }
 
-// listAgents returns the agents of the agent namespace, every page of them
+// listAgents returns the agents which are listed, every page of them
 func listAgents(ctx context.Context, agents Agents) ([]agentSummary, error) {
 	result := []agentSummary{}
 	for offset := uint(0); ; {
@@ -174,7 +181,7 @@ func listAgents(ctx context.Context, agents Agents) ([]agentSummary, error) {
 			return nil, err
 		}
 		for i := range list.Body {
-			if list.Body[i].Namespace() == registryschema.AgentNamespace {
+			if listed(&list.Body[i]) {
 				result = append(result, summaryOf(&list.Body[i]))
 			}
 		}
@@ -183,6 +190,19 @@ func listAgents(ctx context.Context, agents Agents) ([]agentSummary, error) {
 			return result, nil
 		}
 	}
+}
+
+// listed returns true for an agent of the agent namespace, or a built-in
+// one which chats can call, rather than the ones only the server runs, such
+// as builtin:event
+func listed(agent *registryschema.Agent) bool {
+	switch namespace := agent.Namespace(); namespace {
+	case registryschema.AgentNamespace:
+		return true
+	case registryschema.BuiltinNamespace:
+		return !toolkit.Unexpanded(namespace + ":" + agent.Name)
+	}
+	return false
 }
 
 // ownAgent returns the agent with the name, of the agent namespace, or
@@ -204,7 +224,8 @@ func ownAgent(ctx context.Context, agents Agents, name string) (*registryschema.
 func summaryOf(agent *registryschema.Agent) agentSummary {
 	return agentSummary{
 		Name:        agent.Name,
-		Tool:        registryschema.AgentNamespace + ":" + agent.Name,
+		Namespace:   agent.Namespace(),
+		Tool:        agent.Namespace() + ":" + agent.Name,
 		Title:       types.Value(agent.Title),
 		Description: types.Value(agent.Description),
 		Model:       types.Value(agent.Model),

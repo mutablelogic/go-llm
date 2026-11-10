@@ -244,7 +244,7 @@ flowchart LR
 - **Compaction** ([registry](registry)): keeps a long conversation within its model's context. Earlier messages are summarized by the built-in `compact` agent, which also updates memories and the title. It happens on request, or automatically above 80% of the context.
 - **Events** ([registry](registry)): what happens when a heartbeat fires, or a trigger arrives at `POST /api/llm/event`. The `event` agent decides whether to alert, notify or ignore. Worth-telling outcomes are delivered into the conversation once it's idle, and to its channels.
 - **Resources** ([resource](resource)): uploaded content, such as images, documents and audio, kept once by SHA-256 and referred to as `resource:///<hash>`.
-- **Agents**: named prompts with a model, tools and input and reply schemas, which models call as tools. Yours are in the `agent` namespace, such as `agent:segment`. The built-in ones, in the [agents](agents) folder, are in `builtin`, such as `builtin:translate`, and only their model can be changed. In a chat, the `llm:agent` tool lists, gets, creates and updates yours.
+- **Agents**: named prompts with a model, tools and input and reply schemas, which models call as tools. Yours are in the `agent` namespace, such as `agent:segment`. The built-in ones, in the [agents](agents) folder, are in `builtin`, such as `builtin:translate`, and only their model can be changed. In a chat, the `llm:agent` tool lists and gets yours and the built-in ones, and creates and updates yours.
 - **Connectors** ([mcp](mcp)): remote MCP servers whose tools become a namespace of the toolkit. See [Connectors](#connectors).
 - **Providers** ([provider](provider)): each wraps a provider's API.
 
