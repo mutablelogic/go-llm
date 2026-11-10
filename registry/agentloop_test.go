@@ -833,6 +833,27 @@ func Test_AgentLoopContext(t *testing.T) {
 		require.Len(t, results, 1)
 		assert.LessOrEqual(t, tokens(results[0]), 1305)
 		assert.Greater(t, tokens(results[0]), 1000)
+
+		// The model is asked with its own limit, rather than the option
+		require.NotEmpty(t, p.asked)
+		for _, asked := range p.asked {
+			window, err := llm.GetOpt[uint](asked.opts, llm.ContextWindowKey)
+			require.NoError(t, err)
+			assert.Equal(t, uint(2000), window)
+		}
+	})
+
+	t.Run("WithinLimit", func(t *testing.T) {
+		// A window smaller than the model's limit is asked as it is
+		p := newScripted(bigs(1), text("Done"))
+		p.input = types.Ptr(uint(8000))
+		run(t, p, llm.WithContextWindow(4000))
+		require.NotEmpty(t, p.asked)
+		for _, asked := range p.asked {
+			window, err := llm.GetOpt[uint](asked.opts, llm.ContextWindowKey)
+			require.NoError(t, err)
+			assert.Equal(t, uint(4000), window)
+		}
 	})
 
 	t.Run("Shared", func(t *testing.T) {

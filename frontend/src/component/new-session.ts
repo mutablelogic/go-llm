@@ -8,6 +8,7 @@
 
 import { css, html, type PropertyValues, nothing } from 'lit';
 import { keyed } from 'lit/directives/keyed.js';
+import { live } from 'lit/directives/live.js';
 import { customElement, property, query, state } from 'lit/decorators.js';
 import { Panel } from './panel';
 import { cannot, type Model } from '../schema/model';
@@ -23,7 +24,52 @@ import '@carbon/web-components/es/components/text-input/index.js';
 import '@carbon/web-components/es/components/button/index.js';
 import '@carbon/web-components/es/components/checkbox/index.js';
 import '@carbon/web-components/es/components/skeleton-text/index.js';
+import '@carbon/web-components/es/components/slider/index.js';
 import './disclosure';
+
+// The context windows which can be chosen, in tokens, from 16K, as fewer is
+// too few for an assistant with tools, to the model's limit, when it's
+// known, or 2M, which is the model's own. The slider is the logarithm of the
+// window, so each doubling is as far as the last.
+const minWindow = 16 * 1024;
+const maxWindow = 2 * 1024 * 1024;
+
+// windowTop returns the most the slider has, the model's limit, when it's
+// known, at which the model's own is chosen
+function windowTop(limit?: number): number {
+    return limit ?? maxWindow;
+}
+
+// windowOf returns the window at the slider's position, in whole thousands
+// of tokens, 1024 each, so it's 16K, 37K, or 128K
+function windowOf(position: number): number {
+    return Math.max(1, Math.round(2 ** position / 1024)) * 1024;
+}
+
+// windowPosition returns the slider's position for the window, which is the
+// top, for the model's own, or one as large as its limit
+function windowPosition(window: number | undefined, limit?: number): number {
+    const top = windowTop(limit);
+    if (!window || window >= top) {
+        return Math.log2(top);
+    }
+    return Math.max(Math.log2(Math.min(minWindow, top)), Math.log2(window));
+}
+
+// tokens returns a number of tokens, such as 128K, or 1M, in powers of two
+// when it's one, as the windows are, or otherwise thousands, as a model's
+// limit, such as 200,000, may be
+function tokens(n: number): string {
+    if (n >= 1024 * 1024 && n % (1024 * 1024) === 0) {
+        return `${n / (1024 * 1024)}M`;
+    } else if (n % 1024 === 0) {
+        return `${n / 1024}K`;
+    } else if (n >= 1000000) {
+        return `${Number((n / 1000000).toFixed(1))}M`;
+    }
+    return `${Math.round(n / 1000)}K`;
+}
+
 
 // NewSessionForm is what the panel shows, which is always so, while it's open
 type NewSessionForm = true;
@@ -81,6 +127,12 @@ export class NewSession extends Panel<NewSessionForm> {
     @property({ attribute: false })
     thinking = 'default';
 
+    // The context window the session asks for, in tokens, or undefined, for
+    // the model's own, which is kept as it is, whatever its model, as the
+    // registry asks a model with no more than it can have
+    @state()
+    private contextWindow?: number;
+
     @query('cds-select#model')
     private select?: HTMLElement & { value: string };
 
@@ -108,26 +160,42 @@ export class NewSession extends Panel<NewSessionForm> {
     static styles = [Panel.styles, css`
         form > * {
             display: block;
-            margin-bottom: 1.5rem;
+            margin-bottom: 2rem;
         }
 
         /* The advanced options, and the tools, are spaced as the form is */
         llm-disclosure > * {
             display: block;
-            margin-bottom: 1.5rem;
+            margin-bottom: 2rem;
         }
 
+        llm-disclosure > *:first-child {
+            margin-top: 1rem;
+        }
+
+        /* Each control's label stands out from what it says about itself,
+           in the text's colour, and larger, which Carbon's labels take from
+           these */
+        cds-select, cds-text-input, cds-textarea, cds-slider, llm-tool-picker {
+            --cds-text-secondary: var(--cds-text-primary);
+            --cds-label-01-font-size: 0.875rem;
+            --cds-label-01-letter-spacing: 0.16px;
+        }
+
+        /* A note is helper text, as Carbon's controls have */
         .note {
-            color: var(--cds-text-secondary);
-            font-size: 0.875rem;
-            line-height: 1.43;
+            margin: 0.25rem 0 0;
+            color: var(--cds-text-helper);
+            font-size: 0.75rem;
+            line-height: 1.33;
+            letter-spacing: 0.32px;
         }
 
         /* The options are side by side, when there's room */
         .options {
             display: grid;
             grid-template-columns: repeat(auto-fill, minmax(8rem, 1fr));
-            gap: 1rem;
+            gap: 1.5rem;
         }
 
     `];
@@ -140,6 +208,7 @@ export class NewSession extends Panel<NewSessionForm> {
             this.opened++;
             this.chosen = this.session?.model;
             this.thinking = opt.thinking === true ? 'true' : opt.thinking === false ? 'false' : 'default';
+            this.contextWindow = typeof opt.context_window === 'number' && opt.context_window > 0 ? opt.context_window : undefined;
             this.startTools = this.session ? [...(this.session.tools ?? [])] : ['*'];
         }
         super.willUpdate(changed);
@@ -154,7 +223,7 @@ export class NewSession extends Panel<NewSessionForm> {
     }
 
     protected renderSubtitle() {
-        return this.session ? 'Its title, model, instructions, options, tools and tracing' : 'A conversation with your assistant';
+        return this.session ? 'Preferences for how the conversation works' : 'A conversation with your assistant';
     }
 
     // renderFooter returns Start conversation, or Save, once there are models to
@@ -176,17 +245,28 @@ export class NewSession extends Panel<NewSessionForm> {
         const model = this.models.find((model) => model.canonical === chosen);
         const thinks = !cannot(model, 'thinking');
         const opt = this.session?.opt ?? {};
+        const limit = model?.input_token_limit || undefined;
+        const top = Math.log2(windowTop(limit));
         return keyed(this.opened, html`
             <form @submit=${this.handleSubmit}>
                 ${this.session ? html`
-                    <cds-text-input id="title" label="Title" helper-text="What the conversation is about, which it's given each time it's compacted"
+                    <cds-text-input id="title" label="Title"
                         value=${this.session.title ?? ''}></cds-text-input>
                 ` : nothing}
                 <cds-select id="model" label-text="Assistant model" value=${chosen}
                     @cds-select-selected=${(e: CustomEvent<{ value: string }>) => { this.chosen = e.detail.value; }}>
                     ${this.models.map((model) => html`<cds-select-item value=${model.canonical}>${model.canonical}</cds-select-item>`)}
                 </cds-select>
-                <cds-textarea label="System prompt" helper-text="Instructions for the assistant on how to act, such as 'be brief', 'set humour level to 90%', or 'respond in rhyme'" rows="3"
+                <div>
+                    <cds-slider id="context" label-text=${`Memory window: ${this.windowLabel(limit)}`}
+                        min=${String(Math.log2(Math.min(minWindow, windowTop(limit))))} max=${String(top)} step="0.01"
+                        .value=${live(String(windowPosition(this.contextWindow, limit)))} hide-text-input
+                        .formatLabel=${(position: number) => (position >= top - 0.005 ? (limit ? tokens(limit) : 'Default') : tokens(windowOf(position)))}
+                        .formatMinText=${() => tokens(Math.min(minWindow, windowTop(limit)))} .formatMaxText=${() => (limit ? tokens(limit) : 'Default')}
+                        @cds-slider-changed=${(e: CustomEvent<{ value: number }>) => this.chooseWindow(Number(e.detail.value), limit)}></cds-slider>
+                    <p class="note">${this.windowNote(model)}</p>
+                </div>
+                <cds-textarea label="Assistant instructions" helper-text="How the assistant acts, such as 'be brief', 'set humour level to 90%', or 'respond in rhyme'" rows="3"
                     value=${this.session?.system ?? ''}></cds-textarea>
                 <llm-disclosure label="Advanced options">
                 <cds-checkbox id="trace" ?checked=${this.session?.trace === true}>Trace: show the assistant's thinking, and the tools it calls, in the conversation</cds-checkbox>
@@ -217,12 +297,39 @@ export class NewSession extends Panel<NewSessionForm> {
                 ${cannot(model, 'tools')
                     ? ''
                     : html`
-                        <p class="note">Every tool is on, unless you turn it off. Without the <strong>llm</strong> tools, the assistant can't speak, make pictures, read scans or transcribe recordings, or read the conversation's files; without <strong>memory</strong>, it doesn't remember you from one conversation to the next; and without <strong>heartbeat</strong>, it can't set reminders, or do things on a schedule.</p>
-                        <llm-tool-picker .tools=${this.tools} .described=${this.namespaces} .value=${this.startTools}></llm-tool-picker>
+                        <llm-tool-picker .tools=${this.tools} .described=${this.namespaces} .value=${this.startTools}>
+                            Every tool is on, unless you turn it off. Without the <strong>llm</strong> tools, the assistant can't speak, make pictures, read scans or transcribe recordings, or read the conversation's files; without <strong>memory</strong>, it doesn't remember you from one conversation to the next; and without <strong>heartbeat</strong>, it can't set reminders, or do things on a schedule.
+                        </llm-tool-picker>
                     `}
                 </llm-disclosure>
             </form>
         `);
+    }
+
+    // chooseWindow sets the context window from the slider's position, or
+    // the model's own, at its top, keeping the one which was set, such as
+    // one from the command line, when the slider hasn't moved
+    private chooseWindow(position: number, limit?: number) {
+        if (Math.abs(position - windowPosition(this.contextWindow, limit)) < 0.005) {
+            return;
+        }
+        this.contextWindow = position >= Math.log2(windowTop(limit)) - 0.005 ? undefined : windowOf(position);
+    }
+
+    // windowLabel returns the context window, as the model is asked with
+    // it: what's chosen, or the model's most, when it's more, or none is
+    private windowLabel(limit?: number): string {
+        if (this.contextWindow && (!limit || this.contextWindow < limit)) {
+            return `${tokens(this.contextWindow)} tokens`;
+        }
+        return limit ? `${tokens(limit)} tokens, the most this model takes` : 'Default';
+    }
+
+    // windowNote says a smaller context window is quicker, and that the
+    // model's most is its own, when it isn't known
+    private windowNote(model?: Model): string {
+        const note = 'A smaller window is quicker, costs less, and compacts the conversation sooner.';
+        return model?.input_token_limit ? note : `${note} This model doesn't say how many tokens it takes.`;
     }
 
     private handleSubmit(event: Event) {
@@ -247,6 +354,9 @@ export class NewSession extends Panel<NewSessionForm> {
         const temperature = parseFloat(this.temperature?.value ?? '');
         if (Number.isFinite(temperature)) {
             opt.temperature = temperature;
+        }
+        if (this.contextWindow) {
+            opt.context_window = this.contextWindow;
         }
 
         // A new chat has what's set, and the session which is edited what's
@@ -290,7 +400,7 @@ export class NewSession extends Panel<NewSessionForm> {
             changes.trace = trace;
         }
         const changed: Record<string, unknown> = {};
-        for (const key of ['thinking', 'thinking_effort', 'temperature']) {
+        for (const key of ['thinking', 'thinking_effort', 'temperature', 'context_window']) {
             const before = session.opt?.[key];
             if (opt[key] !== before) {
                 changed[key] = key in opt ? opt[key] : null;

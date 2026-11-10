@@ -296,7 +296,7 @@ func (r *Registry) iterate(ctx context.Context, model llm.Model, loop *agentLoop
 	if span != nil {
 		span.SetAttributes(attribute.Int("arg.messages", len(conversation)))
 	}
-	reply, usage, err := r.WithoutSession(ctx, model, conversation, loop.tools, replies.Next(), loop.opts...)
+	reply, usage, err := r.WithoutSession(ctx, model, conversation, loop.tools, replies.Next(), loop.modelOpts(model)...)
 	if err != nil {
 		return nil, llm.Usage{}, false, err
 	}
@@ -520,6 +520,17 @@ func (l *agentLoop) window(model llm.Model) (uint, bool) {
 		window = *limit
 	}
 	return window, window > 0
+}
+
+// modelOpts returns the options the model is asked with, whose context
+// window, when it's set, is no more than the model's input token limit, when
+// it's known, so a session keeps the window it chose, as its model changes,
+// and each model is asked with what it can have
+func (l *agentLoop) modelOpts(model llm.Model) []llm.Opt {
+	if window, ok := l.window(model); ok && l.contextWindow > 0 && window < l.contextWindow {
+		return append(slices.Clone(l.opts), llm.WithContextWindow(window))
+	}
+	return l.opts
 }
 
 // overhead returns an estimate of the tokens of what's sent to the model
