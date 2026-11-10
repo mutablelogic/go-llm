@@ -24,6 +24,7 @@ type ProviderCommands struct {
 	ProviderUpdate           ProviderUpdateCmd           `cmd:"" name:"provider-update" help:"Update a provider's URL, patterns or API key." group:"LLM PROVIDERS"`
 	ProviderDelete           ProviderDeleteCmd           `cmd:"" name:"provider-delete" help:"Delete a provider by name." group:"LLM PROVIDERS"`
 	ProviderCreateOllama     ProviderCreateOllamaCmd     `cmd:"" name:"provider-create-ollama" help:"Create an Ollama provider." group:"LLM PROVIDERS"`
+	ProviderCreateLMStudio   ProviderCreateLMStudioCmd   `cmd:"" name:"provider-create-lmstudio" help:"Create an LM Studio provider, for the models on your own computer." group:"LLM PROVIDERS"`
 	ProviderCreateEliza      ProviderCreateElizaCmd      `cmd:"" name:"provider-create-eliza" help:"Create an Eliza provider, for testing." group:"LLM PROVIDERS"`
 	ProviderCreateGoWhisper  ProviderCreateGoWhisperCmd  `cmd:"" name:"provider-create-gowhisper" help:"Create a go-whisper provider, which transcribes speech with whisper.cpp models." group:"LLM PROVIDERS"`
 	ProviderCreateElevenLabs ProviderCreateElevenLabsCmd `cmd:"" name:"provider-create-elevenlabs" help:"Create an ElevenLabs provider, which transcribes speech." group:"LLM PROVIDERS"`
@@ -67,6 +68,15 @@ type ProviderCreateOllamaCmd struct {
 	Name             string `name:"name" default:"ollama" help:"Provider name."`
 	URL              string `arg:"" name:"url" help:"URL of the Ollama server, such as localhost:11434."`
 	APIKeyCredential string `name:"api-key-credential" help:"Name of the credential holding an API key, which is sent as a bearer token, such as for a server behind an authenticating proxy."`
+}
+
+// ProviderCreateLMStudioCmd creates a provider for an LM Studio server, whose
+// API token is needed only when LM Studio is told to need one
+type ProviderCreateLMStudioCmd struct {
+	ProviderModels
+	Name             string `name:"name" default:"lmstudio" help:"Provider name."`
+	URL              string `arg:"" name:"url" optional:"" help:"URL of the LM Studio server, such as localhost:1234, which is the default."`
+	APIKeyCredential string `name:"api-key-credential" help:"Name of the credential holding an API token, when LM Studio needs one."`
 }
 
 // ProviderCreateGoWhisperCmd creates a provider for a go-whisper server,
@@ -203,6 +213,17 @@ func (cmd *ProviderCreateOllamaCmd) Run(ctx server.Cmd) error {
 	return createProvider(ctx, "llm.ProviderCreateOllamaCmd", schema.Provider{
 		Name:    cmd.Name,
 		Type:    llm.Ollama,
+		Include: cmd.Include,
+		Exclude: cmd.Exclude,
+		URL:     cmd.URL,
+		APIKey:  placeholder(cmd.APIKeyCredential),
+	})
+}
+
+func (cmd *ProviderCreateLMStudioCmd) Run(ctx server.Cmd) error {
+	return createProvider(ctx, "llm.ProviderCreateLMStudioCmd", schema.Provider{
+		Name:    cmd.Name,
+		Type:    llm.LMStudio,
 		Include: cmd.Include,
 		Exclude: cmd.Exclude,
 		URL:     cmd.URL,

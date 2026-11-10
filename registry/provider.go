@@ -15,6 +15,7 @@ import (
 	eliza "github.com/mutablelogic/go-llm/provider/eliza"
 	gemini "github.com/mutablelogic/go-llm/provider/gemini"
 	gowhisper "github.com/mutablelogic/go-llm/provider/gowhisper"
+	lmstudio "github.com/mutablelogic/go-llm/provider/lmstudio"
 	ollama "github.com/mutablelogic/go-llm/provider/ollama"
 	openai "github.com/mutablelogic/go-llm/provider/openai"
 	schema "github.com/mutablelogic/go-llm/registry/schema"
@@ -297,6 +298,8 @@ func (r *Registry) newProvider(ctx context.Context, req schema.Provider) (string
 			clientOpts = append(clientOpts, client.OptReqToken(client.Token{Scheme: client.Bearer, Value: apiKey}))
 		}
 		provider, err = ollama.New(req.URL, clientOpts...)
+	case llm.LMStudio:
+		provider, err = lmstudio.New(req.URL, apiKey, clientOpts...)
 	case llm.Anthropic:
 		if apiKey == "" {
 			return "", nil, nil, llm.ErrBadParameter.With("anthropic needs an API key")
