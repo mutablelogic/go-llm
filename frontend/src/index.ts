@@ -46,6 +46,7 @@ import { NotificationController } from './controller/notifications';
 import { OutcomesController } from './controller/outcomes';
 import { StorageController } from './controller/storage';
 import { ResourcesController } from './controller/resources';
+import { ChatPage } from './page/chat-page';
 import { SessionList } from './component/session-list';
 import { Router, routeHref } from './router';
 
@@ -84,12 +85,15 @@ const chat = new ChatController({
 // The outcomes of the events of the chat which is open, such as heartbeats
 // which fired, in a panel, which its Events action opens
 const outcomes = new OutcomesController(document.querySelector('llm-event-view'), notifications);
-document.querySelector('llm-session-list')?.addEventListener(SessionList.eventEvents, () => {
+// It's opened by the list's Events action, or the page's Tasks
+const openOutcomes = () => {
     const session = chat.sessionID();
     if (session) {
         outcomes.open(session);
     }
-});
+};
+document.querySelector('llm-session-list')?.addEventListener(SessionList.eventEvents, openOutcomes);
+document.querySelector('llm-chat-page')?.addEventListener(ChatPage.eventTasks, openOutcomes);
 
 // The models, and the tools, each in a table, with the one which is clicked
 // in a panel

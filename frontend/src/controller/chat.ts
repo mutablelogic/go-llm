@@ -140,6 +140,8 @@ export class ChatController {
             location.hash = routeHref('chat', (e as CustomEvent<Session>).detail.id);
         });
         views.page?.addEventListener(ChatPage.eventNew, () => void this.newChat());
+        views.page?.addEventListener(ChatPage.eventPreferences, () => void this.edit());
+        views.page?.addEventListener(ChatPage.eventDelete, () => void this.delete());
         views.view?.addEventListener(Welcome.eventNew, () => void this.newChat());
         views.view?.addEventListener(Welcome.eventProvider, () => {
             location.hash = routeHref('models');
@@ -511,9 +513,9 @@ export class ChatController {
         const memory = sessionMemory(session, limit);
         if (memory) {
             // How full its memory is, marked when it's nearly full, and the
-            // button which compacts it, beside it, unless it's an event's
+            // button which compacts it, beside it
             const nearlyFull = (sessionMemoryPercent(session, limit) ?? 0) >= memoryWarning;
-            parts.push(html`<span class="memory">${memory}${nearlyFull ? html`<span class="nearly-full" title="Its memory is nearly full, so its earlier messages are summarised soon">${iconLoader(WarningAlt16)}</span>` : nothing}${session.event ? nothing : html`<button class="compact" type="button" title="Compact: summarise its earlier messages, which are kept, but no longer sent" aria-label="Compact the conversation" @click=${() => void this.compact()}>${iconLoader(ShrinkScreen16)}</button>`}</span>`);
+            parts.push(html`<span class="memory">${memory}${nearlyFull ? html`<span class="nearly-full" title="Its memory is nearly full, so its earlier messages are summarised soon">${iconLoader(WarningAlt16)}</span>` : nothing}${html`<button class="compact" type="button" title="Compact: summarise its earlier messages, which are kept, but no longer sent" aria-label="Compact the conversation" @click=${() => void this.compact()}>${iconLoader(ShrinkScreen16)}</button>`}</span>`);
         }
         if (session.status === 'thinking') {
             parts.push('thinking…');
@@ -737,6 +739,9 @@ export class ChatController {
         if (page) {
             page.heading = this.session?.title || this.session?.model || 'Conversations';
             page.description = this.describe();
+            page.open = this.session !== undefined;
+            page.event = this.session?.event === true;
+            page.deletable = !(this.session?.status === 'replying' || this.session?.status === 'thinking' || (this.session && this.pending.has(this.session.id)));
         }
         if (details) {
             details.message = this.selected;
