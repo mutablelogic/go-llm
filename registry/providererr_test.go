@@ -33,6 +33,13 @@ func Test_ProviderErr(t *testing.T) {
 	assert.Contains(t, credits.Error(), "run out of credits")
 	assert.Contains(t, credits.Error(), "quota_exceeded")
 
+	// A provider which says it's out of credits with 429, as OpenAI does,
+	// isn't to be tried again in a moment
+	quota := registry.ProviderErr(httpresponse.Err(429).With(`Too Many Requests: {"error":{"message":"You exceeded your current quota.","type":"insufficient_quota","code":"insufficient_quota"}}`))
+	assert.Contains(t, quota.Error(), "run out of credits")
+	assert.NotContains(t, quota.Error(), "try again in a moment")
+	assert.Contains(t, quota.Error(), "You exceeded your current quota.")
+
 	// A request which isn't valid, an llm error, and another error, are as
 	// they were
 	assert.ErrorIs(t, registry.ProviderErr(httpresponse.Err(400).With("Bad Request")), llm.ErrBadParameter)

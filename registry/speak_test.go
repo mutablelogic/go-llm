@@ -84,6 +84,7 @@ func Test_SpeakVoiceName(t *testing.T) {
 	// An Ollama server with a speech model, which has voices, and speaks in
 	// the one it's asked to
 	var spoken string
+	voices := `["Alfie","Matilda - Knowledgable, Professional","Sam","sam"]`
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		body, _ := io.ReadAll(r.Body)
 		switch r.URL.Path {
@@ -92,7 +93,7 @@ func Test_SpeakVoiceName(t *testing.T) {
 			_, _ = io.WriteString(w, `{"models":[{"name":"phonon:latest"}]}`)
 		case "/api/show":
 			w.Header().Set("Content-Type", "application/json")
-			_, _ = io.WriteString(w, `{"capabilities":["speech"],"voices":["Alfie","Matilda - Knowledgable, Professional","Sam","sam"]}`)
+			_, _ = io.WriteString(w, `{"capabilities":["speech"],"voices":`+voices+`}`)
 		case "/v1/audio/speech":
 			var req struct {
 				Voice string `json:"voice"`
@@ -130,4 +131,18 @@ func Test_SpeakVoiceName(t *testing.T) {
 	_, _, err = r.Speak(ctx, model, "Hello", llm.WithOpt(llm.VoiceKey, "SAM"))
 	assert.ErrorIs(t, err, llm.ErrBadParameter)
 	assert.Contains(t, err.Error(), "Sam (Sam), sam (sam)")
+
+	// A provider which is replaced, with its name, such as with another
+	// account, has voices of its own, rather than the one's before
+	voices = `["Alfred"]`
+	_, err = r.Remove("ollama")
+	require.NoError(t, err)
+	replaced, err := ollama.New(server.URL + "/api")
+	require.NoError(t, err)
+	require.NoError(t, r.Add("ollama", replaced))
+	model, err = r.GetModel(ctx, "phonon:latest")
+	require.NoError(t, err)
+	_, _, err = r.Speak(ctx, model, "Hello", llm.WithOpt(llm.VoiceKey, "alfred"))
+	require.NoError(t, err)
+	assert.Equal(t, "Alfred", spoken)
 }

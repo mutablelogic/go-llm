@@ -82,6 +82,14 @@ func (r *Registry) ListVoices(ctx context.Context, model llm.Model, opts ...llm.
 // name
 const voicesTTL = time.Minute
 
+// voicesKey is a model's, of a provider, which is the provider itself,
+// rather than its name, so a provider which is replaced, with its name,
+// such as with another account, has voices of its own
+type voicesKey struct {
+	provider llm.Provider
+	model    string
+}
+
 // cachedVoices is a model's voices, and when they were listed
 type cachedVoices struct {
 	voices []llm.Voice
@@ -133,7 +141,7 @@ func (r *Registry) withVoiceID(ctx context.Context, speaker llm.Speaker, model l
 // modelVoices returns the model's voices, which are kept for voicesTTL, or
 // none, when they can't be listed
 func (r *Registry) modelVoices(ctx context.Context, speaker llm.Speaker, model llm.Model) []llm.Voice {
-	key := r.modelName(model)
+	key := voicesKey{provider: model.Provider().Self(), model: model.Name()}
 	if cached, ok := r.voices.Load(key); ok && time.Since(cached.(cachedVoices).at) < voicesTTL {
 		return cached.(cachedVoices).voices
 	}

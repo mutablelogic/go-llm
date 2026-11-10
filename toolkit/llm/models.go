@@ -28,7 +28,7 @@ type modelsInput struct {
 	Capabilities []string `json:"capabilities,omitempty" help:"Capabilities which the models must have, every one of them: chat, tools, thinking, image_input, audio_input, video_input, document_input, image_output, speech_output, embedding, ocr, transcription or translation, or none, for every model" optional:""`
 	Provider     string   `json:"provider,omitempty" help:"Provider whose models are listed, by its name, such as ollama, or every provider's, when it's omitted" optional:""`
 	Model        string   `json:"model,omitempty" help:"The one model which is listed, by its name, such as ollama:phonon:latest, or every model, when it's omitted" optional:""`
-	VoicesNext   string   `json:"voices_next,omitempty" help:"The next page of the model's voices, which the voices_next of the page before says, with the model" optional:""`
+	VoicesNext   string   `json:"voices_next,omitempty" help:"The next page of the model's voices, which the voices_next of the page before says, with the model, and the voice, when there's one" optional:""`
 	Voice        string   `json:"voice,omitempty" help:"Part of the name, or id, of the model's voices to find, ignoring case, such as matilda, with the model" optional:""`
 }
 
@@ -172,7 +172,7 @@ func (t *listModels) Run(ctx context.Context, input json.RawMessage) (any, error
 
 // voices returns the model's voices, a page at a time, from the page the
 // token says, or those whose title, or id, has the search, ignoring case,
-// which are all its voices, at most a page of them
+// a page at a time, with the token of the next, when there are more
 func (t *listModels) voices(ctx context.Context, m Models, model gollm.Model, search, token string) ([]gollm.Voice, string, error) {
 	if search == "" {
 		opts := []gollm.Opt{gollm.WithLimit(voicesPage)}
@@ -188,7 +188,11 @@ func (t *listModels) voices(ctx context.Context, m Models, model gollm.Model, se
 	found := slices.DeleteFunc(all, func(voice gollm.Voice) bool {
 		return !strings.Contains(strings.ToLower(voice.Title), search) && !strings.Contains(strings.ToLower(voice.ID), search)
 	})
-	return found[:min(len(found), voicesPage)], "", nil
+	opts := []gollm.Opt{gollm.WithLimit(voicesPage)}
+	if token != "" {
+		opts = append(opts, gollm.WithPageToken(token))
+	}
+	return gollm.Paged(found, opts...)
 }
 
 // abilities returns what models with the capabilities can do, as it's said,

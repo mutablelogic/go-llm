@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"mime"
 	"net/http"
 	"slices"
@@ -253,7 +254,11 @@ func providerErr(err error) error {
 	if !ok {
 		return llm.ErrServiceUnavailable.Withf("%w", err)
 	}
-	message := providerMessage(err)
+	message, code := providerMessage(err)
+	switch {
+	case status == http.StatusPaymentRequired || (status == http.StatusTooManyRequests && isQuota(code)):
+		return llm.ErrServiceUnavailable.Withf("the provider's account has run out of credits, or its quota, so it won't work when it's tried again, until they're added (%s)", message)
+	}
 	switch status {
 	case http.StatusBadRequest, http.StatusRequestEntityTooLarge, http.StatusUnprocessableEntity:
 		return llm.ErrBadParameter.Withf("%w", err)
@@ -261,23 +266,23 @@ func providerErr(err error) error {
 		return llm.ErrServiceUnavailable.Withf("the provider is busy, as there were too many requests at once, or lately: try again in a moment, one at a time (%s)", message)
 	case http.StatusUnauthorized, http.StatusForbidden:
 		return llm.ErrServiceUnavailable.Withf("the provider refused it, so it won't work when it's tried again as it is: don't try it again, unless what it says is changed, such as what's asked for, or the provider's credentials (%s)", message)
-	case http.StatusPaymentRequired:
-		return llm.ErrServiceUnavailable.Withf("the provider's account has run out of credits, or its quota, so it won't work when it's tried again, until they're added (%s)", message)
 	}
 	return llm.ErrServiceUnavailable.Withf("%w", err)
 }
 
-// providerMessage returns the message of the provider's error, from the
-// JSON of its response, such as ElevenLabs' detail.message, or OpenAI's
-// error.message, or the error, without its response, when it has none
-func providerMessage(err error) string {
+// providerMessage returns the message, and the code, of the provider's
+// error, from the JSON of its response, such as ElevenLabs' detail.message,
+// and detail.code, or OpenAI's error.message, and error.code, or the error,
+// without its response, when it has none
+func providerMessage(err error) (string, string) {
 	text := err.Error()
 	i := strings.Index(text, "{")
 	if i < 0 {
-		return strings.TrimSpace(text)
+		return strings.TrimSpace(text), ""
 	}
 	var body struct {
 		Message string          `json:"message"`
+		Code    any             `json:"code"`
 		Detail  json.RawMessage `json:"detail"`
 		Error   json.RawMessage `json:"error"`
 	}
@@ -285,19 +290,39 @@ func providerMessage(err error) string {
 		for _, raw := range []json.RawMessage{body.Detail, body.Error} {
 			var nested struct {
 				Message string `json:"message"`
+				Code    any    `json:"code"`
+				Type    string `json:"type"`
+				Status  string `json:"status"`
 			}
 			var plain string
 			if json.Unmarshal(raw, &nested) == nil && nested.Message != "" {
-				return nested.Message
+				return nested.Message, strings.Join([]string{codeText(nested.Code), nested.Type, nested.Status}, " ")
 			} else if json.Unmarshal(raw, &plain) == nil && plain != "" {
-				return plain
+				return plain, ""
 			}
 		}
 		if body.Message != "" {
-			return body.Message
+			return body.Message, codeText(body.Code)
 		}
 	}
-	return strings.TrimRight(strings.TrimSpace(text[:i]), ":")
+	return strings.TrimRight(strings.TrimSpace(text[:i]), ":"), ""
+}
+
+// codeText returns a provider's error code, which may be a string, or a
+// number, as text, or empty, when there's none
+func codeText(code any) string {
+	if code == nil {
+		return ""
+	}
+	return fmt.Sprint(code)
+}
+
+// isQuota returns whether the provider's error code says the account has
+// run out of credits, or its quota, such as OpenAI's insufficient_quota,
+// which it says with 429, as it does when it's busy
+func isQuota(code string) bool {
+	code = strings.ToLower(code)
+	return strings.Contains(code, "quota") || strings.Contains(code, "credit") || strings.Contains(code, "billing")
 }
 
 // can returns ErrNotImplemented when the capability is known to be false,

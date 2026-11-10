@@ -60,8 +60,8 @@ type Registry struct {
 	// The markers whose summaries are being written, by their identifiers
 	summarizing sync.Map
 
-	// The voices of models which speak, by their names, which are kept for
-	// voicesTTL, to find a voice by its name
+	// The voices of models which speak, by their providers, and names, which
+	// are kept for voicesTTL, to find a voice by its name
 	voices sync.Map
 
 	// The logger Run is given, which what runs in the background, such as
