@@ -97,7 +97,7 @@ export class ChatPage extends Page {
         return html`
             ${this.open ? html`
                 <span class="edit">
-                    <cds-menu-button label="Conversation" kind="tertiary" size="md" menu-alignment="bottom-end">
+                    <cds-menu-button label=${this.event ? 'Task' : 'Conversation'} kind="tertiary" size="md" menu-alignment="bottom-end">
                         <cds-menu>
                             ${this.event ? nothing : html`
                                 <cds-menu-item label="Preferences" @click=${fire(ChatPage.eventPreferences)}></cds-menu-item>
