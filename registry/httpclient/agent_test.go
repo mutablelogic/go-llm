@@ -25,7 +25,7 @@ import (
 // OpenAPI specification when the test ends
 func newAgentClient(t *testing.T) *httpclient.Client {
 	t.Helper()
-	provider, err := eliza.New()
+	provider, err := eliza.New(eliza.WithTools())
 	require.NoError(t, err)
 	server := test.NewServer(t, test.NewRegistry(t, []llm.Provider{provider}, registry.WithAgentStore(test.NewAgentStore())))
 	client, err := httpclient.New(server.URL + test.Prefix)

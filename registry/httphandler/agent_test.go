@@ -41,7 +41,7 @@ schema:
 `
 
 func Test_Agents(t *testing.T) {
-	provider, err := eliza.New()
+	provider, err := eliza.New(eliza.WithTools())
 	require.NoError(t, err)
 	server := test.NewServer(t, test.NewRegistry(t, []llm.Provider{provider}, registry.WithAgentStore(test.NewAgentStore())))
 
@@ -94,7 +94,7 @@ func Test_Agents(t *testing.T) {
 }
 
 func Test_GetAgent(t *testing.T) {
-	provider, err := eliza.New()
+	provider, err := eliza.New(eliza.WithTools())
 	require.NoError(t, err)
 	server := test.NewServer(t, test.NewRegistry(t, []llm.Provider{provider}, registry.WithAgentStore(test.NewAgentStore())))
 	status, body := server.DoWithContentType(t, http.MethodPost, "llm/agent", types.ContentTypeYAML, segmentYAML)
@@ -155,7 +155,7 @@ func Test_GetAgent(t *testing.T) {
 }
 
 func Test_ListUpdateDeleteAgents(t *testing.T) {
-	provider, err := eliza.New()
+	provider, err := eliza.New(eliza.WithTools())
 	require.NoError(t, err)
 	server := test.NewServer(t, test.NewRegistry(t, []llm.Provider{provider}, registry.WithAgentStore(test.NewAgentStore())))
 	for _, name := range []string{"summarize", "segment", "translate"} {
@@ -243,7 +243,7 @@ func mustJSON(t *testing.T, v any) string {
 func Test_BuiltinAgent(t *testing.T) {
 	// A client can't make an agent built in, and a built-in agent, which the
 	// server created, can't be replaced, changed or deleted, which is 403
-	provider, err := eliza.New()
+	provider, err := eliza.New(eliza.WithTools())
 	require.NoError(t, err)
 	agents := test.NewAgentStore()
 	r := test.NewRegistry(t, []llm.Provider{provider}, registry.WithAgentStore(agents))
@@ -262,4 +262,59 @@ func Test_BuiltinAgent(t *testing.T) {
 	var got schema.Agent
 	require.Equal(t, http.StatusOK, do(t, server, http.MethodGet, "llm/agent/shipped", nil, &got))
 	assert.True(t, types.Value(got.Builtin))
+
+	// It's in the builtin namespace, so it's found by that, and not by the
+	// agent namespace's
+	require.Equal(t, http.StatusOK, do(t, server, http.MethodGet, "llm/agent/builtin:shipped", nil, &got))
+	assert.Equal(t, "shipped", got.Name)
+	assert.Equal(t, http.StatusNotFound, do(t, server, http.MethodGet, "llm/agent/agent:shipped", nil, nil))
+	require.Equal(t, http.StatusOK, do(t, server, http.MethodGet, "llm/agent/builtin%3Ashipped", nil, &got), "as a client escapes it")
+	assert.Equal(t, http.StatusNotFound, do(t, server, http.MethodGet, "llm/agent/builtin:mine", nil, nil))
+
+	// Its model, and only its model, can be changed
+	require.Equal(t, http.StatusOK, do(t, server, http.MethodPatch, "llm/agent/builtin:shipped", map[string]any{"model": eliza.ModelName}, &got))
+	require.NotNil(t, got.Model)
+	model := *got.Model
+	assert.Contains(t, model, eliza.ModelName)
+	assert.Equal(t, http.StatusForbidden, do(t, server, http.MethodPatch, "llm/agent/shipped", map[string]any{"model": eliza.ModelName, "prompt": "Changed"}, nil))
+
+	// And it's kept, as the server creates it again, with a new prompt
+	_, _, err = r.CreateAgent(t.Context(), schema.AgentMeta{PromptMeta: schema.PromptMeta{Name: "shipped", Prompt: types.Ptr("Hello again"), Builtin: types.Ptr(true)}})
+	require.NoError(t, err)
+	require.Equal(t, http.StatusOK, do(t, server, http.MethodGet, "llm/agent/shipped", nil, &got))
+	assert.Equal(t, "Hello again", types.Value(got.Prompt))
+	assert.Equal(t, model, types.Value(got.Model), "the model chosen for it is kept")
+
+	// An agent which an older server stored as an ordinary agent, with a
+	// model, keeps it, as the server creates it again, built in
+	require.Equal(t, http.StatusCreated, do(t, server, http.MethodPost, "llm/agent", map[string]any{"name": "legacy", "prompt": "Hello", "model": eliza.ModelName}, nil))
+	_, _, err = r.CreateAgent(t.Context(), schema.AgentMeta{PromptMeta: schema.PromptMeta{Name: "legacy", Prompt: types.Ptr("Hello"), Builtin: types.Ptr(true)}})
+	require.NoError(t, err)
+	var legacy schema.Agent
+	require.Equal(t, http.StatusOK, do(t, server, http.MethodGet, "llm/agent/builtin:legacy", nil, &legacy))
+	assert.True(t, types.Value(legacy.Builtin))
+	assert.Equal(t, model, types.Value(legacy.Model), "the model it had is kept")
+
+	// Its model can be cleared, so it's the default again
+	var cleared schema.Agent
+	require.Equal(t, http.StatusOK, do(t, server, http.MethodPatch, "llm/agent/shipped", map[string]any{"model": ""}, &cleared))
+	assert.Nil(t, cleared.Model)
+}
+
+func Test_AgentModelTools(t *testing.T) {
+	// An agent's model must call tools, as an agent replies with its schema
+	// by calling one, so one which can't, such as Eliza's, is a bad request,
+	// as it's created, or updated, built in or not
+	provider, err := eliza.New()
+	require.NoError(t, err)
+	r := test.NewRegistry(t, []llm.Provider{provider}, registry.WithAgentStore(test.NewAgentStore()))
+	server := test.NewServer(t, r)
+
+	assert.Equal(t, http.StatusBadRequest, do(t, server, http.MethodPost, "llm/agent", map[string]any{"name": "mine", "prompt": "Hello", "model": eliza.ModelName}, nil))
+	require.Equal(t, http.StatusCreated, do(t, server, http.MethodPost, "llm/agent", map[string]any{"name": "mine", "prompt": "Hello"}, nil), "without a model, it's run with the session's")
+	assert.Equal(t, http.StatusBadRequest, do(t, server, http.MethodPatch, "llm/agent/mine", map[string]any{"model": eliza.ModelName}, nil))
+
+	_, _, err = r.CreateAgent(t.Context(), schema.AgentMeta{PromptMeta: schema.PromptMeta{Name: "shipped", Prompt: types.Ptr("Hello"), Builtin: types.Ptr(true)}})
+	require.NoError(t, err)
+	assert.Equal(t, http.StatusBadRequest, do(t, server, http.MethodPatch, "llm/agent/builtin:shipped", map[string]any{"model": eliza.ModelName}, nil))
 }

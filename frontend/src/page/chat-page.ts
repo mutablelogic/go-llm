@@ -21,7 +21,7 @@ export class ChatPage extends Page {
     // The name of the event fired to start a new chat
     static readonly eventNew = 'llm-chat-page-new';
 
-    heading = 'Chat';
+    heading = 'Conversations';
 
     protected renderIcon(): unknown {
         return iconLoader(Chat32);
@@ -30,7 +30,7 @@ export class ChatPage extends Page {
     protected renderActions(): unknown {
         return html`
             <cds-button kind="primary" size="md" @click=${() => this.dispatchEvent(new CustomEvent(ChatPage.eventNew))}>
-                New chat ${iconLoader(Add16, { slot: 'icon' })}
+                Add conversation ${iconLoader(Add16, { slot: 'icon' })}
             </cds-button>
         `;
     }

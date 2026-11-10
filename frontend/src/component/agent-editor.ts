@@ -16,11 +16,21 @@ import TrashCan16 from '@carbon/icons/es/trash-can/16.js';
 
 // Carbon components
 import '@carbon/web-components/es/components/button/index.js';
+import '@carbon/web-components/es/components/select/index.js';
 import '@carbon/web-components/es/components/notification/inline-notification.js';
 
 // AgentEditorItem is what the panel shows: a new agent, from its definition,
-// or the agent with the name, and its definition, and whether it's built in
-export type AgentEditorItem = { mode: 'new'; yaml: string } | { mode: 'edit'; name: string; yaml: string; builtin: boolean };
+// or the agent with the name, its title and description, which are the
+// panel's title and subtitle, its definition, and whether it's built in, when its model, which
+// is all of it which can be changed, can be chosen from the models
+export type AgentEditorItem = { mode: 'new'; yaml: string; models?: string[] } | { mode: 'edit'; name: string; title?: string; description?: string; yaml: string; builtin: boolean; model?: string; models?: string[] };
+
+// AgentModel is the model chosen for a built-in agent, by its name, which
+// is empty for the model of the session it's run from
+export interface AgentModel {
+    name: string;
+    model: string;
+}
 
 // agentTemplate is the definition a new agent starts from
 export const agentTemplate = `# An agent, which models call as a tool, in the agent namespace, as
@@ -51,12 +61,51 @@ prompt: |
   {{ .text }}
 `;
 
+// defaultModel is the select's value for the default model, rather than
+// empty, which the select takes as nothing chosen, so it shows nothing
+const defaultModel = 'default';
+
+// modelValue returns the model which the select's value is, which is empty
+// for the default
+function modelValue(value: string | undefined): string {
+    return !value || value === defaultModel ? '' : value;
+}
+
+// modelLine is a definition's model, at the top level, rather than in a
+// comment, or nested
+const modelLine = /^model:[ \t]*(.*?)[ \t]*$/m;
+
+// modelOf returns the model of the definition, as YAML, or undefined, when
+// it has none, without quotes
+export function modelOf(yaml: string): string | undefined {
+    const value = modelLine.exec(yaml)?.[1]?.replace(/\s+#.*$/, '').replace(/^(['"])(.*)\1$/, '$2').trim();
+    return value || undefined;
+}
+
+// withModel returns the definition, as YAML, with the model, which replaces
+// its model, or follows its name, when it has none, or without its model,
+// when it's empty, for the default
+export function withModel(yaml: string, model: string): string {
+    if (!model) {
+        return yaml.replace(/^model:.*(\r?\n|$)/m, '');
+    } else if (modelLine.test(yaml)) {
+        return yaml.replace(modelLine, `model: ${model}`);
+    }
+    const name = /^name:.*$/m.exec(yaml);
+    if (!name) {
+        return `model: ${model}\n${yaml}`;
+    }
+    const end = name.index + name[0].length;
+    return `${yaml.slice(0, end)}\nmodel: ${model}${yaml.slice(end)}`;
+}
+
 @customElement('llm-agent-editor')
 export class AgentEditor extends Panel<AgentEditorItem> {
     // The names of the events fired to save the definition, which is the
     // detail, and to delete the agent, whose name is the detail
     static readonly eventSave = 'llm-agent-editor-save';
     static readonly eventDelete = 'llm-agent-editor-delete';
+    static readonly eventModel = 'llm-agent-editor-model';
 
     // What's shown, which is undefined when the panel is closed
     @property({ attribute: false })
@@ -79,6 +128,9 @@ export class AgentEditor extends Panel<AgentEditorItem> {
 
     @query('input[type=file]')
     private file?: HTMLInputElement;
+
+    @query('cds-select#model')
+    private modelSelect?: HTMLElement & { value: string };
 
     static styles = [Panel.styles, css`
         /* The panel is wider than others, for the definition */
@@ -137,21 +189,22 @@ export class AgentEditor extends Panel<AgentEditorItem> {
     }
 
     protected renderTitle(item: AgentEditorItem) {
-        return item.mode === 'new' ? 'New agent' : item.name;
+        return item.mode === 'new' ? 'New agent' : item.title?.trim() || item.name;
     }
 
     protected renderSubtitle(item: AgentEditorItem) {
         if (item.mode === 'new') {
             return "Its definition, as YAML, or a file of one, which is uploaded";
         }
-        return item.builtin ? 'A built-in agent, which can be copied' : `agent:${item.name}, as YAML`;
+        return item.description?.trim() || `${item.builtin ? 'builtin' : 'agent'}:${item.name}`;
     }
 
     protected renderFooter(item: AgentEditorItem) {
         const builtin = item.mode === 'edit' && item.builtin;
         return html`
             ${builtin ? html`
-                <cds-button kind="primary" size="md" @click=${() => this.copy(item.name, item.yaml)}>
+                <cds-button kind="primary" size="md" ?disabled=${this.busy} @click=${() => this.saveModel(item.name)}>Save</cds-button>
+                <cds-button kind="secondary" size="md" ?disabled=${this.busy} @click=${() => this.copy(item.name, this.editor?.value ?? item.yaml)}>
                     Copy ${iconLoader(Copy16, { slot: 'icon' })}
                 </cds-button>
             ` : html`
@@ -175,12 +228,48 @@ export class AgentEditor extends Panel<AgentEditorItem> {
         return keyed(this.opened, html`
             ${builtin ? html`
                 <cds-inline-notification kind="info" title="Built in" hide-close-button low-contrast
-                    subtitle="The server creates this agent as it ships each time it starts, so it can't be changed, or deleted. Copy it, under another name, to change it."></cds-inline-notification>
+                    subtitle="The server creates this agent as it ships each time it starts, keeping the model chosen for it, which is all of it which can be changed, and it can't be deleted. Copy it, under another name, to change the rest."></cds-inline-notification>
             ` : nothing}
-            <textarea spellcheck="false" wrap="off" aria-label="Definition, as YAML" ?readonly=${builtin || this.busy} .value=${item.yaml} @focus=${this.clearError} @input=${this.clearError}></textarea>
+            ${this.renderModel(item)}
+            <textarea spellcheck="false" wrap="off" aria-label="Definition, as YAML" ?readonly=${builtin || this.busy} .value=${item.yaml} @focus=${this.clearError} @input=${this.edited}></textarea>
             ${this.error ? html`<cds-inline-notification kind="error" title="It couldn't be saved" subtitle=${this.error} hide-close-button low-contrast></cds-inline-notification>` : nothing}
             <input type="file" accept=".yaml,.yml,application/yaml,text/yaml" @change=${this.upload}>
         `);
+    }
+
+    // renderModel returns the model, which is chosen from the models, or the
+    // default, which sets the model in the definition, which, when it's
+    // edited, sets the model, so they're the same. A model which isn't one
+    // of the models, such as one which was typed, is shown as it is.
+    private renderModel(item: AgentEditorItem) {
+        const models = item.models ?? [];
+        const chosen = modelOf(item.yaml);
+        const options = chosen && !models.includes(chosen) ? [chosen, ...models] : models;
+        return html`
+            <cds-select id="model" label-text="Model" helper-text="Default is the model of the chat it's run from" value=${chosen ?? defaultModel} ?disabled=${this.busy}
+                @cds-select-selected=${(e: CustomEvent<{ value: string }>) => this.chooseModel(modelValue(e.detail.value))}>
+                <cds-select-item value=${defaultModel}>Default</cds-select-item>
+                ${options.map((model) => html`<cds-select-item value=${model}>${model}</cds-select-item>`)}
+            </cds-select>
+        `;
+    }
+
+    // chooseModel sets the model in the definition, or removes it, for the
+    // default
+    private chooseModel(model: string) {
+        if (this.editor) {
+            this.editor.value = withModel(this.editor.value, model);
+        }
+        this.clearError();
+    }
+
+    // edited clears why it couldn't be saved, and sets the model, as the
+    // definition says, once it's changed
+    private edited() {
+        this.clearError();
+        if (this.modelSelect && this.editor) {
+            this.modelSelect.value = modelOf(this.editor.value) ?? defaultModel;
+        }
     }
 
     // clearError clears why it couldn't be saved, once the definition is
@@ -195,7 +284,7 @@ export class AgentEditor extends Panel<AgentEditorItem> {
     // under another name
     private copy(name: string, yaml: string) {
         const copied = yaml.replace(/^name:\s*.*$/m, `name: ${name}_copy`);
-        this.item = { mode: 'new', yaml: copied };
+        this.item = { mode: 'new', yaml: copied, models: this.item?.models };
     }
 
     // upload puts the file which is chosen in the editor, to be saved
@@ -206,7 +295,15 @@ export class AgentEditor extends Panel<AgentEditorItem> {
         }
         this.editor.value = await file.text();
         this.file!.value = '';
-        this.clearError();
+        this.edited();
+    }
+
+    // saveModel fires the event to set the built-in agent's model, which is
+    // empty for the default
+    private saveModel(name: string) {
+        if (!this.busy) {
+            this.dispatchEvent(new CustomEvent<AgentModel>(AgentEditor.eventModel, { detail: { name, model: modelValue(this.modelSelect?.value) } }));
+        }
     }
 
     private save() {

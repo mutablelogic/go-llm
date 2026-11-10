@@ -85,9 +85,16 @@ func (self *Toolkit) ListNamespaces(ctx context.Context) (_ *schema.NamespaceLis
 ////////////////////////////////////////////////////////////////////////////////
 // PRIVATE METHODS
 
+// AgentTool is a tool which can say it's an agent, which asks a model to do
+// what it does, rather than doing it itself, such as the registry's agents,
+// whatever namespace it's in
+type AgentTool interface {
+	IsAgent() bool
+}
+
 // wire returns the tool in the wire format, with its namespace's type, its
-// title, when it has one, and its schemas as JSON. A schema which can't be
-// encoded is left out.
+// title, when it has one, whether it's an agent, and its schemas as JSON. A
+// schema which can't be encoded is left out.
 func (e entry) wire(typ string) *schema.Tool {
 	tool := &schema.Tool{
 		Name:        e.tool.Name(),
@@ -98,6 +105,9 @@ func (e entry) wire(typ string) *schema.Tool {
 		Output:      marshalSchema(e.tool.OutputSchema()),
 	}
 	tool.Title = e.tool.Title()
+	if agent, ok := e.tool.(AgentTool); ok {
+		tool.Agent = agent.IsAgent()
+	}
 	return tool
 }
 

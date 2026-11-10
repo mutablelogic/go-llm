@@ -4,6 +4,7 @@ import (
 	"cmp"
 	"context"
 	"encoding/json"
+	"fmt"
 	"slices"
 	"strings"
 	"sync"
@@ -27,6 +28,7 @@ import (
 // agent__segment, so a model can ask an agent to do something. Its tools
 // change as the agents do, which it tells the toolkit.
 type agentNamespace struct {
+	name   string // The namespace, which is its agents'
 	mu     sync.RWMutex
 	tools  map[string]*agentTool
 	notify func(eventschema.EventAction, string)
@@ -51,12 +53,16 @@ var _ llm.Tool = (*agentTool)(nil)
 
 const (
 	// AgentNamespace is the name of the namespace of the toolkit's tools
-	// which are the registry's agents
-	AgentNamespace = "agent"
+	// which are the agents which people, and chats, create
+	AgentNamespace = schema.AgentNamespace
 
-	// agentPrompt is the system prompt of the agent namespace, which says
+	// BuiltinNamespace is the name of the namespace of the toolkit's tools
+	// which are the server's own agents, which are built in
+	BuiltinNamespace = schema.BuiltinNamespace
+
+	// agentPrompt is the system prompt of an agents' namespace, which says
 	// how to use its tools
-	agentPrompt = "The tools in the agent namespace are agents: each asks a model to do what its description says, with its own instructions, and returns its reply. Call one to delegate a task it does."
+	agentPrompt = "The tools in the %s namespace are agents: each asks a model to do what its description says, with its own instructions, and returns its reply. Call one to delegate a task it does."
 )
 
 // resourceInput is what's said of a property of an agent's input which is
@@ -69,17 +75,17 @@ var emptyInput = jsonschema.MustFor[struct{}]()
 ///////////////////////////////////////////////////////////////////////////////
 // LIFECYCLE
 
-// newAgentNamespace returns the namespace of the registry's agents, which
-// has none
-func newAgentNamespace() *agentNamespace {
-	return &agentNamespace{tools: make(map[string]*agentTool)}
+// newAgentNamespace returns the namespace, with the name, of the
+// registry's agents of that namespace, which has none
+func newAgentNamespace(name string) *agentNamespace {
+	return &agentNamespace{name: name, tools: make(map[string]*agentTool)}
 }
 
 ///////////////////////////////////////////////////////////////////////////////
 // NAMESPACE
 
 func (n *agentNamespace) Name() string {
-	return AgentNamespace
+	return n.name
 }
 
 // Type returns that the namespace's tools are the agents
@@ -87,13 +93,16 @@ func (n *agentNamespace) Type() string {
 	return toolschema.NamespaceAgent
 }
 
-// Description returns what the agent namespace is
+// Description returns what the namespace's agents are
 func (n *agentNamespace) Description() string {
+	if n.name == BuiltinNamespace {
+		return "The server's own agents, which each ask a model to do a task, with their own instructions, and tools, and reply"
+	}
 	return "Agents, which each ask a model to do a task, with their own instructions, and tools, and reply"
 }
 
 func (n *agentNamespace) SystemPrompt() string {
-	return agentPrompt
+	return fmt.Sprintf(agentPrompt, n.name)
 }
 
 // Tools returns the agents, as tools, in order of their names
@@ -121,12 +130,8 @@ func (n *agentNamespace) Notify(fn func(eventschema.EventAction, string)) {
 
 // set adds the agent, as a tool, or replaces it, and tells the toolkit. An
 // agent whose input, or schema, isn't valid, which the registry doesn't
-// store, or which is internal, as only the server runs it, isn't a tool.
+// store, isn't a tool.
 func (n *agentNamespace) set(r *Registry, agent schema.Agent) {
-	if types.Value(agent.Internal) {
-		n.remove(agent.Name)
-		return
-	}
 	tool, err := newAgentTool(r, agent)
 	if err != nil {
 		n.remove(agent.Name)
@@ -162,6 +167,11 @@ func (n *agentNamespace) remove(name string) {
 
 ///////////////////////////////////////////////////////////////////////////////
 // TOOL
+
+// IsAgent returns true, as the tool is an agent
+func (*agentTool) IsAgent() bool {
+	return true
+}
 
 // newAgentTool returns the agent, as a tool, or an error when its input, or
 // the schema of its reply, isn't valid
@@ -263,7 +273,7 @@ func (t *agentTool) Timeout() time.Duration {
 func (t *agentTool) Run(ctx context.Context, input json.RawMessage) (any, error) {
 	session := toolkit.SessionFromContext(ctx)
 	req := schema.RunAgentRequest{Input: input, Session: session.ID()}
-	response, err := t.registry.runAgent(ctx, t.agent.Name, req, agentStream(t.agent.Name, session), true)
+	response, err := t.registry.RunAgent(ctx, t.agent.Name, req, agentStream(t.agent.Name, session))
 	if err != nil {
 		return nil, err
 	}

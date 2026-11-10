@@ -1,7 +1,7 @@
 # An agent which translates text into another language, which the llm
 # server creates when it starts, and which is run, as a tool, with:
 #
-#   llm call agent:translate '{"text":"Guten Morgen"}'
+#   llm call builtin:translate '{"text":"Guten Morgen"}'
 #
 # which replies with the translation, into English, unless another language
 # is asked for, and the two-letter code of the language the text is in, as:
@@ -9,11 +9,11 @@
 #   {"text":"Good morning","language":"de"}
 #
 # It has no model, so it's run with the model of the session it's run from,
-# such as a chat whose tools include agent:*. The llm server creates it when
-# it starts, as it is here, so to run it with a model of its own, copy it,
-# with another name, and a model, such as:
+# such as a chat whose tools include builtin:*. The llm server creates it when
+# it starts, as it is here, keeping the model chosen for it, which is all of
+# it which can be changed, such as with:
 #
-#   model: ollama:llama3.2
+#   llm agent-update builtin:translate --model ollama:llama3.2
 name: translate
 title: Translate text
 description: |

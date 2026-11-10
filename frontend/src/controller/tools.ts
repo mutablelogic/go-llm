@@ -12,14 +12,16 @@ import iconLoader from '@carbon/web-components/es/globals/internal/icon-loader.j
 import LogoMCP16 from '@carbon/icons/es/logo--model-context-protocol/16.js';
 import { ListController, type Page } from './list';
 import { toolNamespace, type Namespace, type Tool } from '../schema/tool';
+import { cannot } from '../schema/model';
+import { listModels } from '../api/model';
 import type { NotificationController } from './notifications';
 import { ToolTable } from '../component/tool-table';
 import { Panel } from '../component/panel';
 import type { ToolView } from '../component/tool-view';
 import type { CountFilter } from '../component/count-filter';
-import { AgentEditor, agentTemplate, type AgentEditorItem } from '../component/agent-editor';
+import { AgentEditor, agentTemplate, type AgentEditorItem, type AgentModel } from '../component/agent-editor';
 import { ToolsPage } from '../page/tools-page';
-import { deleteAgent, getAgent, getAgentYAML, saveAgentYAML } from '../api/agent';
+import { deleteAgent, getAgent, getAgentYAML, saveAgentYAML, updateAgentModel } from '../api/agent';
 import { authorizeConnector, createConnector, deleteConnector, getConnector, listConnectors, listTemplates, updateConnector } from '../api/connector';
 import { needsSignIn, type Connector, type ConnectorMeta, type ConnectorTemplate } from '../schema/connector';
 import { ConnectorForm } from '../component/connector-form';
@@ -44,8 +46,6 @@ const connectWait = 45_000;
 const signInWait = 10 * 60_000;
 const connectPoll = 500;
 
-// agentNamespace is the namespace of the agents, as tools
-const agentNamespace = 'agent';
 
 export class ToolsController extends ListController<Tool> {
     private readonly views: ToolsViews;
@@ -81,12 +81,10 @@ export class ToolsController extends ListController<Tool> {
 
         // An agent is edited, from a new definition, or as it is, and saved,
         // or deleted
-        views.page?.addEventListener(ToolsPage.eventNewAgent, () => {
-            this.agentGeneration++;
-            this.showAgent({ mode: 'new', yaml: agentTemplate });
-        });
+        views.page?.addEventListener(ToolsPage.eventNewAgent, () => void this.newAgent());
         views.agent?.addEventListener(AgentEditor.eventSave, (e) => void this.saveAgent((e as CustomEvent<string>).detail));
         views.agent?.addEventListener(AgentEditor.eventDelete, (e) => void this.deleteAgent((e as CustomEvent<string>).detail));
+        views.agent?.addEventListener(AgentEditor.eventModel, (e) => void this.saveAgentModel((e as CustomEvent<AgentModel>).detail));
         views.agent?.addEventListener(Panel.eventClose, () => this.hideAgent());
 
         // An MCP connector is added, and connected, whose tools are added
@@ -339,22 +337,27 @@ export class ToolsController extends ListController<Tool> {
     // select opens the tool, or, for an agent, its definition, to be edited
     private select(tool: Tool) {
         this.agentGeneration++;
-        if (toolNamespace(tool) === agentNamespace) {
-            void this.openAgent(tool.name);
+        if (tool.agent) {
+            // An agent, of the agent namespace, or a built-in one, by its
+            // name in its namespace, such as builtin:translate
+            void this.openAgent(tool.canonical);
         } else {
             this.open(tool);
         }
     }
 
     // openAgent opens the definition of the agent with the name, as YAML, and
-    // whether it's built in, unless the panel was closed, or something else
-    // was opened, while it was loaded
+    // whether it's built in, when its model can be chosen from the models
+    // which chat, unless the panel was closed, or something else was opened,
+    // while it was loaded
     private async openAgent(name: string) {
         const generation = this.agentGeneration;
         try {
             const [agent, yaml] = await Promise.all([getAgent(name), getAgentYAML(name)]);
+            const builtin = agent.builtin === true;
+            const models = await this.chatModels();
             if (generation === this.agentGeneration) {
-                this.showAgent({ mode: 'edit', name: agent.name, yaml, builtin: agent.builtin === true });
+                this.showAgent({ mode: 'edit', name: agent.name, title: agent.title, description: agent.description, yaml, builtin, model: agent.model, models });
             }
         } catch (error) {
             if (generation === this.agentGeneration) {
@@ -409,6 +412,57 @@ export class ToolsController extends ListController<Tool> {
         }
     }
 
+    // newAgent opens a new agent, from the template, whose model can be
+    // chosen from the models which chat, unless something else was opened
+    // while they were loaded
+    private async newAgent() {
+        const generation = ++this.agentGeneration;
+        const models = await this.chatModels();
+        if (generation === this.agentGeneration) {
+            this.showAgent({ mode: 'new', yaml: agentTemplate, models });
+        }
+    }
+
+    // chatModels returns the canonical names of the models which chat, and
+    // call tools, as an agent replies with its schema by calling one, which
+    // an agent's model is chosen from, or none, when they can't be listed. A
+    // model which isn't known not to is one of them.
+    private async chatModels(): Promise<string[]> {
+        try {
+            const list = await listModels();
+            return (list.body ?? []).filter((model) => !cannot(model, 'chat') && !cannot(model, 'tools')).map((model) => model.canonical);
+        } catch {
+            return [];
+        }
+    }
+
+    // saveAgentModel sets the built-in agent's model, or clears it, so it's
+    // the default, and closes the panel, when it's still showing the agent,
+    // or says why it couldn't, in the panel
+    private async saveAgentModel({ name, model }: AgentModel) {
+        const panel = this.views.agent;
+        const item = panel?.item;
+        if (!panel || !item) {
+            return;
+        }
+        panel.busy = true;
+        try {
+            await updateAgentModel(`builtin:${name}`, model);
+            this.notifications.push({ kind: 'success', title: `${name} was saved` });
+            if (panel.item === item) {
+                this.hideAgent();
+            }
+        } catch (error) {
+            if (panel.item === item) {
+                panel.error = error instanceof Error ? error.message : String(error);
+            }
+        } finally {
+            if (panel.item === item) {
+                panel.busy = false;
+            }
+        }
+    }
+
     // deleteAgent deletes the agent, once it's confirmed, and loads the tools
     // again, and closes the panel, when it's still showing the agent
     private async deleteAgent(name: string) {
@@ -446,7 +500,7 @@ export class ToolsController extends ListController<Tool> {
         this.namespaces = namespaces.body ?? [];
         this.connectors = connectors.body ?? [];
         this.listeners.forEach((fn) => fn(tools, this.namespaces ?? []));
-        const shown = this.namespace ? tools.filter((tool) => toolNamespace(tool) === this.namespace) : tools;
+        const shown = this.namespace ? tools.filter((tool) => inNamespace(tool, this.namespace!)) : tools;
         return { count: shown.length, body: shown.slice(offset, offset + limit) };
     }
 
@@ -514,7 +568,7 @@ export class ToolsController extends ListController<Tool> {
                 // provider has, but built in ones, and the agents', don't,
                 // and why it isn't connected, when it isn't, as a provider
                 // which can't be reached has
-                ...this.namespaces.map((namespace) => {
+                ...mergeAgents(this.namespaces).map((namespace) => {
                     const connector = namespace.type === 'mcp' ? this.connectorOf(namespace.name) : undefined;
                     return {
                         value: namespace.name,
@@ -554,4 +608,37 @@ function openTab(): Window | null {
         tab.opener = null;
     }
     return tab;
+}
+
+// agentNamespaces are the namespaces of the agents, which the page shows as
+// one, agent: those which people, and chats, make, and the server's own,
+// which are built in
+const agentNamespaces = ['agent', 'builtin'];
+
+// mergeAgents returns the namespaces, with the agents' as one, agent, where
+// the first of them is, whose tools are both's, so the built-in agents are
+// with the rest
+function mergeAgents(namespaces: Namespace[]): Namespace[] {
+    const agents = namespaces.filter((namespace) => agentNamespaces.includes(namespace.name));
+    if (agents.length === 0) {
+        return namespaces;
+    }
+    const own = agents.find((namespace) => namespace.name === 'agent') ?? agents[0];
+    const merged: Namespace = { ...own, name: 'agent', type: 'agent', tools: agents.reduce((sum, namespace) => sum + namespace.tools, 0) };
+    const result: Namespace[] = [];
+    for (const namespace of namespaces) {
+        if (!agentNamespaces.includes(namespace.name)) {
+            result.push(namespace);
+        } else if (!result.includes(merged)) {
+            result.push(merged);
+        }
+    }
+    return result;
+}
+
+// inNamespace returns whether the tool is in the namespace, as the page
+// shows it, where the agent namespace has the built-in agents too
+function inNamespace(tool: Tool, namespace: string): boolean {
+    const own = toolNamespace(tool);
+    return namespace === 'agent' ? agentNamespaces.includes(own) : own === namespace;
 }

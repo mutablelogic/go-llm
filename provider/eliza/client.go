@@ -25,6 +25,7 @@ import (
 type Client struct {
 	languages map[string]*Language // keyed by model name
 	seed      int64
+	tools     bool // Whether its models say they call tools, which they don't
 }
 
 // Opt is an option for creating the eliza client
@@ -65,6 +66,15 @@ func New(opts ...Opt) (*Client, error) {
 func WithSeed(seed int64) Opt {
 	return func(c *Client) error {
 		c.seed = seed
+		return nil
+	}
+}
+
+// WithTools makes its models say they call tools, though they never do, for
+// testing what needs a model which does, such as an agent's
+func WithTools() Opt {
+	return func(c *Client) error {
+		c.tools = true
 		return nil
 	}
 }

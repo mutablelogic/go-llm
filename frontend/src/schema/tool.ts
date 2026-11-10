@@ -13,6 +13,9 @@ export interface Tool {
     canonical: string;
     type: NamespaceType;
     title?: string;
+    // Whether it's an agent, which asks a model to do what it does, whatever
+    // its namespace
+    agent?: boolean;
     description?: string;
     input?: unknown;
     output?: unknown;

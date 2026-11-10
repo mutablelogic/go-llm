@@ -11,9 +11,11 @@ import (
 // GLOBALS
 
 const (
-	// AgentNamespace is the namespace of the registry's agents, which a
-	// connector's namespace can't be, as the registry's AgentNamespace is
-	AgentNamespace = "agent"
+	// AgentNamespace and BuiltinNamespace are the namespaces of the
+	// registry's agents, which a connector's namespace can't be, as the
+	// registry's are
+	AgentNamespace   = "agent"
+	BuiltinNamespace = "builtin"
 
 	// DefaultNamespace is a connector's namespace, when its name has nothing
 	// which can be one
@@ -38,7 +40,8 @@ const (
 // have, starting with a letter, without two underscores together, or one at
 // its end, which the toolkit's namespaces can't have, or DefaultNamespace,
 // when nothing's left of it, and no longer than 24 characters, so its tools'
-// names fit what a model calls them. When it's AgentNamespace, or taken,
+// names fit what a model calls them. When it's AgentNamespace, or
+// BuiltinNamespace, or taken,
 // such as by a namespace in the toolkit, random digits are added to it,
 // within that, until it isn't. The function which says whether a namespace is taken can be nil.
 func Namespace(name string, taken func(string) bool) string {
@@ -47,7 +50,7 @@ func Namespace(name string, taken func(string) bool) string {
 		base = DefaultNamespace
 	}
 	clashes := func(namespace string) bool {
-		return strings.EqualFold(namespace, AgentNamespace) || (taken != nil && taken(namespace))
+		return strings.EqualFold(namespace, AgentNamespace) || strings.EqualFold(namespace, BuiltinNamespace) || (taken != nil && taken(namespace))
 	}
 	if !clashes(base) {
 		return base

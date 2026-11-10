@@ -3,15 +3,17 @@
 
 import { ApiError, config, request } from './client';
 
-// Agent is an agent, by its name, and whether it's built in, so it can't be
-// changed, or deleted, and internal, so it isn't a tool
+// Agent is an agent, by its name, and whether it's built in, so only its
+// model can be changed, and it can't be deleted
 export interface Agent {
     name: string;
     title?: string;
     description?: string;
     serial?: number;
     builtin?: boolean;
-    internal?: boolean;
+    // Its model, or none, for the model of the session it's run from, which
+    // is all of a built-in agent which can be changed
+    model?: string;
 }
 
 // yamlType is the content type of an agent's definition, as YAML
@@ -45,6 +47,13 @@ export async function saveAgentYAML(yaml: string): Promise<Agent> {
         throw await apiError(response);
     }
     return response.json() as Promise<Agent>;
+}
+
+// updateAgentModel sets the model of the agent with the name, such as a
+// built-in agent's, or clears it, with an empty one, so it's run with the
+// model of the session it's run from
+export function updateAgentModel(name: string, model: string): Promise<Agent> {
+    return request<Agent>('PATCH', '/llm/agent/' + encodeURIComponent(name), { body: { model } });
 }
 
 // deleteAgent deletes the agent with the name

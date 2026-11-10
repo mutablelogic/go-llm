@@ -86,12 +86,13 @@ func (m *Model) OutputTokenLimit() *uint {
 }
 
 // Capabilities returns that eliza replies to messages, and thinks, with
-// WithThinking, without tools, and does nothing else. Each capability is its
+// WithThinking, without tools, unless its client was made WithTools, and
+// does nothing else. Each capability is its
 // own value, so it can be changed without changing the others.
 func (m *Model) Capabilities() llm.ModelCap {
 	return llm.ModelCap{
 		Chat:          types.Ptr(true),
-		Tools:         types.Ptr(false),
+		Tools:         types.Ptr(m.provider != nil && m.provider.tools),
 		Thinking:      types.Ptr(true),
 		ImageInput:    types.Ptr(false),
 		AudioInput:    types.Ptr(false),

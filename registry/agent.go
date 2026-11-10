@@ -70,7 +70,7 @@ var errNoAgentStore = llm.ErrServiceUnavailable.With("the registry has no agent 
 // errBuiltinAgent returns the error of changing, or deleting, a built-in
 // agent, which the server creates as it is each time it starts
 func errBuiltinAgent(name string) error {
-	return llm.ErrForbidden.Withf("agent %q is built in, so it can't be changed, or deleted, but it can be copied under another name", name)
+	return llm.ErrForbidden.Withf("agent %q is built in, so only its model can be changed, and it can't be deleted, but it can be copied under another name", name)
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -87,7 +87,8 @@ func errBuiltinAgent(name string) error {
 // object, and its prompt a Go template, which is executed with the input. Its
 // model, when it has one, is the registry's, by its canonical name, and its
 // tools are the toolkit's, by their canonical names, as a session's are. It
-// needn't have a model, as one can be given when it's run. Returns
+// needn't have a model, as one can be given when it's run, but one it has
+// must call tools, unless that isn't known. Returns
 // ErrBadParameter when the definition isn't valid, ErrNotFound when the
 // model isn't the registry's, or a tool isn't the toolkit's, ErrConflict
 // when the agent was changed as it was replaced, or a name is ambiguous, and
@@ -111,6 +112,12 @@ func (r *Registry) CreateAgent(ctx context.Context, meta schema.AgentMeta) (_ *s
 	// The agent with the name, which is replaced, when it's changed, or
 	// it's created
 	existing, err := r.agentStore.Get(ctx, meta.Name)
+	if err == nil && types.Value(meta.Builtin) && meta.Model == nil {
+		// A built-in agent which the server creates again keeps the model
+		// which was chosen for it, unless the server's has one, as does one
+		// which an older server stored as an ordinary agent
+		meta.Model = existing.Model
+	}
 	switch {
 	case errors.Is(err, llm.ErrNotFound):
 		existing, err = r.agentStore.Create(ctx, meta)
@@ -156,7 +163,7 @@ func (r *Registry) GetAgent(ctx context.Context, name string) (_ *schema.Agent, 
 	if r.agentStore == nil {
 		return nil, errNoAgentStore
 	}
-	agent, err := r.agentStore.Get(ctx, name)
+	agent, err := r.storedAgent(ctx, name)
 	if err != nil {
 		return nil, err
 	}
@@ -202,18 +209,18 @@ func (r *Registry) UpdateAgent(ctx context.Context, name string, meta schema.Age
 
 	if r.agentStore == nil {
 		return nil, errNoAgentStore
-	} else if meta.Name != "" && meta.Name != name {
-		return nil, llm.ErrBadParameter.Withf("agent %q can't be renamed %q", name, meta.Name)
 	} else if meta.IsZero() {
 		return nil, llm.ErrBadParameter.With("nothing to update")
 	}
 	r.agentsMu.Lock()
 	defer r.agentsMu.Unlock()
-	agent, err := r.agentStore.Get(ctx, name)
+	agent, err := r.storedAgent(ctx, name)
 	if err != nil {
 		return nil, err
-	} else if types.Value(agent.Builtin) {
-		return nil, errBuiltinAgent(name)
+	} else if meta.Name != "" && meta.Name != agent.Name {
+		return nil, llm.ErrBadParameter.Withf("agent %q can't be renamed %q", agent.Name, meta.Name)
+	} else if types.Value(agent.Builtin) && !onlyModel(meta) {
+		return nil, errBuiltinAgent(agent.Name)
 	}
 	if agent.AgentMeta, err = r.validAgentMeta(ctx, agent.AgentMeta.Merge(meta), meta); err != nil {
 		return nil, err
@@ -240,16 +247,16 @@ func (r *Registry) DeleteAgent(ctx context.Context, name string) (_ *schema.Agen
 	}
 	r.agentsMu.Lock()
 	defer r.agentsMu.Unlock()
-	agent, err := r.agentStore.Get(ctx, name)
+	agent, err := r.storedAgent(ctx, name)
 	if err != nil {
 		return nil, err
 	} else if types.Value(agent.Builtin) {
-		return nil, errBuiltinAgent(name)
-	} else if err := r.agentStore.Delete(ctx, name, agent.Serial); err != nil {
+		return nil, errBuiltinAgent(agent.Name)
+	} else if err := r.agentStore.Delete(ctx, agent.Name, agent.Serial); err != nil {
 		return nil, err
 	}
-	if r.agents != nil {
-		r.agents.remove(name)
+	if ns := r.agentNamespaceOf(agent); ns != nil {
+		ns.remove(agent.Name)
 	}
 	return &agent, nil
 }
@@ -276,16 +283,6 @@ func (r *Registry) DeleteAgent(ctx context.Context, name string) (_ *schema.Agen
 // nor has the session it's run from, and ErrServiceUnavailable when the
 // registry has no agent store, and the errors of WithSession.
 func (r *Registry) RunAgent(ctx context.Context, name string, req schema.RunAgentRequest, stream llm.GeneratorStreamFn) (_ *schema.RunAgentResponse, err error) {
-	return r.runAgent(ctx, name, req, stream, false)
-}
-
-///////////////////////////////////////////////////////////////////////////////
-// PRIVATE METHODS
-
-// runAgent runs the agent, as RunAgent does, or, when a model calls it as a
-// tool, returns ErrNotFound when it's internal, as only the server runs it,
-// such as when it was made internal while the model had it as a tool
-func (r *Registry) runAgent(ctx context.Context, name string, req schema.RunAgentRequest, stream llm.GeneratorStreamFn, asTool bool) (_ *schema.RunAgentResponse, err error) {
 	ctx, endSpan := otel.StartSpan(r.tracer, ctx, "llm.registry.RunAgent",
 		attribute.String("arg.name", name),
 		attribute.String("arg.req", req.String()),
@@ -300,11 +297,9 @@ func (r *Registry) runAgent(ctx context.Context, name string, req schema.RunAgen
 	} else if depth := uint(len(chain.running)) + 1; depth > chain.depth() {
 		return nil, llm.ErrForbidden.Withf("agent %q can't run in %s, as at most %d agents run in one another, which max_depth sets", name, strings.Join(chain.running, " → "), chain.depth())
 	}
-	agent, err := r.agentStore.Get(ctx, name)
+	agent, err := r.storedAgent(ctx, name)
 	if err != nil {
 		return nil, err
-	} else if asTool && types.Value(agent.Internal) {
-		return nil, llm.ErrNotFound.Withf("agent %q isn't a tool", name)
 	}
 
 	// The message to its model, which is its prompt, executed with the input,
@@ -495,12 +490,69 @@ func validAgentName(name string) bool {
 ///////////////////////////////////////////////////////////////////////////////
 // PRIVATE METHODS
 
-// agentChanged makes the agent, as it's stored, a tool, or replaces it, when
-// the registry has a toolkit
+// agentChanged makes the agent, as it's stored, a tool, in its namespace,
+// or replaces it, when the registry has a toolkit, and removes it from the
+// other, such as when an agent which wasn't built in is now
 func (r *Registry) agentChanged(agent schema.Agent) {
-	if r.agents != nil {
-		r.agents.set(r, agent)
+	for _, ns := range []*agentNamespace{r.agents, r.builtins} {
+		switch {
+		case ns == nil:
+		case ns.name == agent.Namespace():
+			ns.set(r, agent)
+		default:
+			ns.remove(agent.Name)
+		}
 	}
+}
+
+// agentNamespaceOf returns the namespace of the agent's tool, or nil, when
+// the registry has no toolkit
+func (r *Registry) agentNamespaceOf(agent schema.Agent) *agentNamespace {
+	if agent.Namespace() == BuiltinNamespace {
+		return r.builtins
+	}
+	return r.agents
+}
+
+// storedAgent returns the agent which the name refers to, which is its name,
+// or its name in its namespace, such as builtin:translate, or agent:segment.
+// Returns ErrNotFound when there's none, or it isn't in the namespace.
+func (r *Registry) storedAgent(ctx context.Context, ref string) (schema.Agent, error) {
+	name := ref
+	namespace, bare, qualified := strings.Cut(ref, ":")
+	if qualified {
+		name = bare
+	}
+	agent, err := r.agentStore.Get(ctx, name)
+	if err != nil {
+		return schema.Agent{}, err
+	} else if qualified && namespace != agent.Namespace() {
+		return schema.Agent{}, llm.ErrNotFound.Withf("agent %q not found", ref)
+	}
+	return agent, nil
+}
+
+// agentModel returns ErrBadParameter when the model is known not to call
+// tools, as an agent replies with its schema by calling one, and calls its
+// own, or nil, when it has no model, or does, or it isn't known
+func (r *Registry) agentModel(ctx context.Context, name *string) error {
+	if name == nil {
+		return nil
+	}
+	model, err := r.GetModel(ctx, *name)
+	if err != nil {
+		return err
+	} else if tools := model.Capabilities().Tools; tools != nil && !*tools {
+		return llm.ErrBadParameter.Withf("model %q can't call tools, which an agent's model must", *name)
+	}
+	return nil
+}
+
+// onlyModel returns true when the update changes only the model, which is
+// all of a built-in agent which can be
+func onlyModel(meta schema.AgentMeta) bool {
+	meta.Name, meta.Model = "", nil
+	return meta.IsZero()
 }
 
 // loadAgents makes the stored agents tools, when the registry has a
@@ -544,6 +596,8 @@ func (r *Registry) validAgentMeta(ctx context.Context, meta, change schema.Agent
 	}
 	if change.Model != nil {
 		if meta.Model, err = r.canonicalModel(ctx, meta.Model); err != nil {
+			return meta, err
+		} else if err = r.agentModel(ctx, meta.Model); err != nil {
 			return meta, err
 		}
 	}

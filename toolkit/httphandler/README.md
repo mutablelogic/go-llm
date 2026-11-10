@@ -10,7 +10,7 @@ List the namespaces, in order of name, with each namespace's `type`, its `descri
 
 ### GET /llm/tool
 
-List the tools, in order of canonical name, with each tool's description, and the JSON schemas of its input and output. The `namespace` parameter returns only the tools in that namespace, such as `weatherapi`, and the `type` parameter only those whose namespaces are of that type, such as `mcp`. `count` is the number of tools. Returns 400 if a parameter is invalid, such as a `namespace` which isn't an identifier.
+List the tools, in order of canonical name, with each tool's description, the JSON schemas of its input and output, and `agent`, which is true when it's an agent, which asks a model to do what it does, whatever its namespace. The `namespace` parameter returns only the tools in that namespace, such as `weatherapi`, and the `type` parameter only those whose namespaces are of that type, such as `mcp`. `count` is the number of tools. Returns 400 if a parameter is invalid, such as a `namespace` which isn't an identifier.
 
 ### GET /llm/tool/{name}
 

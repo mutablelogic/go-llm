@@ -93,12 +93,14 @@ func Test_RunEvent(t *testing.T) {
 	assert.Equal(t, p.asked[0].messages[0].Text(), messages.Body[0].Text())
 	assert.NotZero(t, response.Session.Usage.InputTokens)
 
-	// The event agent is internal, so it isn't a tool which models can call,
-	// as other agents are
-	_, err = tk.ToolNames(ctx, "agent:event")
-	assert.ErrorIs(t, err, llm.ErrNotFound)
-	_, err = tk.ToolNames(ctx, "agent:translate")
+	// The event agent is built in, as the other built-in agents are, so it's
+	// a tool, in the builtin namespace, which models can call
+	_, err = tk.ToolNames(ctx, "builtin:event")
 	assert.NoError(t, err)
+	_, err = tk.ToolNames(ctx, "builtin:translate")
+	assert.NoError(t, err)
+	_, err = tk.ToolNames(ctx, "agent:translate")
+	assert.ErrorIs(t, err, llm.ErrNotFound, "it isn't in the agent namespace")
 
 	// And then it's the same session, which has each run, and keeps its
 	// title, when the event has none
@@ -151,28 +153,6 @@ func Test_RunEvent(t *testing.T) {
 		}
 	}
 	assert.True(t, helped, "the helper was run")
-
-	// An agent made internal, with nothing else changed, isn't a tool, and,
-	// made not internal, is one again
-	_, err = r.UpdateAgent(ctx, "helper", schema.AgentMeta{PromptMeta: schema.PromptMeta{Internal: types.Ptr(true)}})
-	require.NoError(t, err)
-	_, err = tk.ToolNames(ctx, "agent:helper")
-	assert.ErrorIs(t, err, llm.ErrNotFound)
-	_, err = r.UpdateAgent(ctx, "helper", schema.AgentMeta{PromptMeta: schema.PromptMeta{Internal: types.Ptr(false)}})
-	require.NoError(t, err)
-	_, err = tk.ToolNames(ctx, "agent:helper")
-	assert.NoError(t, err)
-
-	// A tool which a model had before the agent was made internal isn't run
-	held, err := tk.Tools(ctx, "agent:helper")
-	require.NoError(t, err)
-	require.Len(t, held, 1)
-	_, err = r.UpdateAgent(ctx, "helper", schema.AgentMeta{PromptMeta: schema.PromptMeta{Internal: types.Ptr(true)}})
-	require.NoError(t, err)
-	_, err = held[0].Run(ctx, json.RawMessage(`{}`))
-	assert.ErrorIs(t, err, llm.ErrNotFound)
-	_, err = r.UpdateAgent(ctx, "helper", schema.AgentMeta{PromptMeta: schema.PromptMeta{Internal: types.Ptr(false)}})
-	require.NoError(t, err)
 
 	// A run isn't stored, when the session's messages are forgotten as it
 	// runs, as a chat's reply isn't

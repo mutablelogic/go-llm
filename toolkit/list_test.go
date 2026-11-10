@@ -61,3 +61,28 @@ func TestListToolsTitle(t *testing.T) {
 	}
 	assert.Equal(t, map[string]string{"titled": "Echo its input", "plain": ""}, titles)
 }
+
+type agentTool struct {
+	echoTool
+	agent bool
+}
+
+func (t agentTool) IsAgent() bool {
+	return t.agent
+}
+
+func TestListToolsAgent(t *testing.T) {
+	// A tool which says it's an agent is listed as one, whatever its
+	// namespace, and one which says it isn't, or says nothing, isn't
+	tk, err := toolkit.New(t.Context())
+	require.NoError(t, err)
+	require.NoError(t, tk.Add(toolkit.NewNamespace("test", "", agentTool{echoTool{name: "agent"}, true}, agentTool{echoTool{name: "not"}, false}, echoTool{name: "plain"})))
+
+	list, err := tk.ListTools(t.Context(), schema.ToolListRequest{})
+	require.NoError(t, err)
+	agents := map[string]bool{}
+	for _, tool := range list.Body {
+		agents[tool.Name] = tool.Agent
+	}
+	assert.Equal(t, map[string]bool{"agent": true, "not": false, "plain": false}, agents)
+}

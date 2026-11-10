@@ -19,6 +19,7 @@ type Tool struct {
 	Canonical   string          `json:"canonical" readonly:"" help:"Namespace and tool name, separated by a colon, which refers to the tool unambiguously" example:"weatherapi:current"`
 	Type        string          `json:"type" readonly:"" help:"Where the tool is from, as its namespace is: built in, an MCP server, or the agents" enum:"builtin,mcp,agent" example:"builtin"`
 	Title       string          `json:"title,omitempty" readonly:"" help:"Title of the tool, for people, which only some tools, such as agents, have" example:"Segment the transcript of an episode"`
+	Agent       bool            `json:"agent,omitempty" readonly:"" help:"Whether the tool is an agent, which asks a model to do what it does, rather than doing it itself, whatever its namespace"`
 	Description string          `json:"description,omitempty" readonly:"" help:"Description of the tool" example:"Get current weather conditions for a location"`
 	Input       json.RawMessage `json:"input,omitempty" readonly:"" help:"JSON schema of the tool's input"`
 	Output      json.RawMessage `json:"output,omitempty" readonly:"" help:"JSON schema of the tool's output, if it has one"`
