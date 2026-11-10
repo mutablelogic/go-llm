@@ -190,6 +190,18 @@ export function sessionWindow(session: Session, limit?: number): number | undefi
     return windows.length > 0 ? Math.min(...windows) : undefined;
 }
 
+// memoryWarning is how full a session's memory is, in percent, from which
+// it's said to be nearly full, as the registry compacts it from there
+export const memoryWarning = 80;
+
+// sessionMemoryPercent returns how full the session's memory window is, in
+// percent, or undefined, when its window, or its tokens, aren't known
+export function sessionMemoryPercent(session: Session, limit?: number): number | undefined {
+    const tokens = sessionTokens(session);
+    const window = sessionWindow(session, limit);
+    return tokens && window ? (100 * tokens) / window : undefined;
+}
+
 // sessionMemory returns how full the session's memory window is, such as
 // "38% full", or "Full", or its tokens, when its window isn't known, or an
 // empty string, when it has none

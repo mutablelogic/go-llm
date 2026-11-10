@@ -10,14 +10,14 @@
 
 import { LitElement, css, html, nothing } from 'lit';
 import { customElement, property } from 'lit/decorators.js';
-import { sessionMemory, type Session } from '../schema/session';
+import { memoryWarning, sessionMemory, sessionMemoryPercent, type Session } from '../schema/session';
 import { formatAgo, formatTime } from '../format';
 import { MinuteController } from './minute';
 import iconLoader from '@carbon/web-components/es/globals/internal/icon-loader.js';
 import TrashCan16 from '@carbon/icons/es/trash-can/16.js';
 import Edit16 from '@carbon/icons/es/edit/16.js';
 import Notification16 from '@carbon/icons/es/notification/16.js';
-import ShrinkScreen16 from '@carbon/icons/es/shrink-screen/16.js';
+import WarningAlt16 from '@carbon/icons/es/warning--alt/16.js';
 
 // Carbon components
 import '@carbon/web-components/es/components/skeleton-text/index.js';
@@ -34,7 +34,6 @@ export class SessionList extends LitElement {
     // open, whose detail is the session
     static readonly eventEvents = 'llm-session-events';
     static readonly eventEdit = 'llm-session-edit';
-    static readonly eventCompact = 'llm-session-compact';
     static readonly eventDelete = 'llm-session-delete';
 
     // The sessions, which are undefined while they're loading
@@ -138,6 +137,14 @@ export class SessionList extends LitElement {
             white-space: nowrap;
         }
 
+        /* A small mark that the memory is nearly full, in the text's colour,
+           so it's seen, but isn't loud */
+        .nearly-full svg {
+            margin-left: 0.25rem;
+            vertical-align: -3px;
+            fill: currentColor;
+        }
+
         .secondary {
             display: block;
             margin-top: 0.125rem;
@@ -181,7 +188,9 @@ export class SessionList extends LitElement {
     }
 
     private renderSession(session: Session) {
-        const memory = sessionMemory(session, session.model ? this.limits.get(session.model) : undefined);
+        const limit = session.model ? this.limits.get(session.model) : undefined;
+        const memory = sessionMemory(session, limit);
+        const nearlyFull = (sessionMemoryPercent(session, limit) ?? 0) >= memoryWarning;
         const status = session.status === 'thinking' ? 'thinking…' : session.status === 'replying' ? 'replying…' : session.status === 'typing' ? 'typing…' : '';
         const when = session.modified ?? session.created;
         const selected = session.id === this.selected;
@@ -192,7 +201,7 @@ export class SessionList extends LitElement {
                     <span class="model">${session.title || session.model || 'No model'}${session.event ? html` <cds-tag size="sm" type="purple">event</cds-tag>` : nothing}</span>
                     <span class="secondary" title=${formatTime(when)}>
                         ${session.title && session.model ? html`${session.model} · ` : nothing}${status ? html`<span class="status">${status}</span>` : formatAgo(when)}
-                        ${memory ? html` · ${memory}` : nothing}
+                        ${memory ? html` · ${memory}` : nothing}${nearlyFull ? html`<span class="nearly-full" title="Its memory is nearly full, so its earlier messages are summarised soon">${iconLoader(WarningAlt16)}</span>` : nothing}
                     </span>
                 </button>
                 ${selected ? this.renderActions(session) : nothing}
@@ -217,7 +226,6 @@ export class SessionList extends LitElement {
                 ${session.event ? nothing : html`
                     ${action(SessionList.eventEvents, 'Events', Notification16, this.alerted)}
                     ${action(SessionList.eventEdit, 'Edit conversation', Edit16)}
-                    ${action(SessionList.eventCompact, 'Compact conversation: summarise its earlier messages, which are kept, but no longer sent', ShrinkScreen16)}
                 `}
                 ${session.status === 'replying' || session.status === 'thinking'
                     ? action(SessionList.eventDelete, "It can't be deleted while it's replying", TrashCan16, false, true)

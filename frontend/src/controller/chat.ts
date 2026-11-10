@@ -11,10 +11,14 @@
 import { chat, createSession, deleteSession, getSession, listMessages, listSessions, setStatus, updateSession, compactSession } from '../api/session';
 import { getDetails } from '../api/memory';
 import { listModels } from '../api/model';
+import ShrinkScreen16 from '@carbon/icons/es/shrink-screen/16.js';
+import WarningAlt16 from '@carbon/icons/es/warning--alt/16.js';
+import iconLoader from '@carbon/web-components/es/globals/internal/icon-loader.js';
+import { html, nothing } from 'lit';
 import { cannot, type Model } from '../schema/model';
 import { ApiError, config } from '../api/client';
 import { routeHref } from '../router';
-import { isUser, sessionMemory, thinkingLog, type ContentBlock, type Message, type Session, type SessionMeta } from '../schema/session';
+import { isUser, memoryWarning, sessionMemory, sessionMemoryPercent, thinkingLog, type ContentBlock, type Message, type Session, type SessionMeta } from '../schema/session';
 import type { Details } from '../schema/memory';
 import type { NotificationController } from './notifications';
 import type { StorageController } from './storage';
@@ -142,7 +146,6 @@ export class ChatController {
         });
         views.list?.addEventListener(SessionList.eventDelete, () => void this.delete());
         views.list?.addEventListener(SessionList.eventEdit, () => void this.edit());
-        views.list?.addEventListener(SessionList.eventCompact, () => void this.compact());
         views.view?.addEventListener(ChatView.eventEarlier, () => void this.loadEarlier());
         views.create?.addEventListener(NewSession.eventSave, (e) => void this.save((e as CustomEvent<SessionMeta>).detail));
         views.view?.addEventListener(ChatView.eventSend, (e) => void this.send((e as CustomEvent<string>).detail));
@@ -494,19 +497,23 @@ export class ChatController {
     // heading: its model, when the heading is its title, how full its
     // memory is, and whether someone is typing, or its model is
     // replying, or how to start one, when none is
-    private describe(): string {
+    private describe(): unknown {
         const session = this.session;
         if (!session) {
             return 'Choose a conversation, or start a new one';
         }
         // The model, when the heading is the title, rather than the model
-        const parts: string[] = [];
+        const parts: unknown[] = [];
         if (session.title && session.model) {
             parts.push(session.model);
         }
-        const memory = sessionMemory(session, session.model ? this.limits.get(session.model) : undefined);
+        const limit = session.model ? this.limits.get(session.model) : undefined;
+        const memory = sessionMemory(session, limit);
         if (memory) {
-            parts.push(memory);
+            // How full its memory is, marked when it's nearly full, and the
+            // button which compacts it, beside it, unless it's an event's
+            const nearlyFull = (sessionMemoryPercent(session, limit) ?? 0) >= memoryWarning;
+            parts.push(html`<span class="memory">${memory}${nearlyFull ? html`<span class="nearly-full" title="Its memory is nearly full, so its earlier messages are summarised soon">${iconLoader(WarningAlt16)}</span>` : nothing}${session.event ? nothing : html`<button class="compact" type="button" title="Compact: summarise its earlier messages, which are kept, but no longer sent" aria-label="Compact the conversation" @click=${() => void this.compact()}>${iconLoader(ShrinkScreen16)}</button>`}</span>`);
         }
         if (session.status === 'thinking') {
             parts.push('thinking…');
@@ -515,7 +522,7 @@ export class ChatController {
         } else if (session.status === 'typing') {
             parts.push('typing…');
         }
-        return parts.join(' · ');
+        return parts.map((part, i) => html`${i > 0 ? ' · ' : nothing}${part}`);
     }
 
     // add adds a piece of the reply, as it's streamed

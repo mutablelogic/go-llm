@@ -13,8 +13,9 @@ export class Page extends LitElement {
     @property()
     heading = '';
 
-    @property()
-    description = '';
+    // The description is text, or a template, such as with an icon
+    @property({ attribute: false })
+    description: unknown = '';
 
     static styles: CSSResultGroup = css`
         :host {
@@ -69,6 +70,33 @@ export class Page extends LitElement {
             color: var(--llm-heading-secondary, var(--cds-text-secondary));
             font-size: var(--cds-body-compact-01-font-size, 0.875rem);
             line-height: var(--cds-body-compact-01-line-height, 1.28572);
+        }
+
+        /* In a description, an icon, such as that a conversation's memory is
+           nearly full, and a small button beside it, such as to compact it,
+           are in its colour, so they're seen, but aren't loud */
+        p svg {
+            vertical-align: -3px;
+            fill: currentColor;
+        }
+
+        p .nearly-full {
+            margin-left: 0.25rem;
+        }
+
+        p button {
+            margin: 0 0 0 0.375rem;
+            padding: 0;
+            border: none;
+            background: none;
+            color: inherit;
+            line-height: 1;
+            cursor: pointer;
+            opacity: 0.8;
+        }
+
+        p button:hover, p button:focus-visible {
+            opacity: 1;
         }
     `;
 
