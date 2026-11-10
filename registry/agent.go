@@ -55,6 +55,22 @@ type AgentStore interface {
 	Delete(ctx context.Context, name string, serial uint64) error
 }
 
+// AgentSource has agents which aren't stored, by their namespace, such as a
+// connector's MCP prompts, which RunAgent runs as it runs the stored ones,
+// with their messages in place of a prompt, and which can't be changed, or
+// deleted
+type AgentSource interface {
+	// SourceAgent returns the definition of the agent with the name, in the
+	// namespace, with its namespace as its origin. Returns ErrNotFound when
+	// there's none.
+	SourceAgent(ctx context.Context, namespace, name string) (schema.AgentMeta, error)
+
+	// SourceMessages returns the messages the agent with the name, in the
+	// namespace, sends its model, with the input, which is a JSON object.
+	// Returns ErrBadParameter when the input isn't valid.
+	SourceMessages(ctx context.Context, namespace, name string, input json.RawMessage) ([]llm.Message, error)
+}
+
 ///////////////////////////////////////////////////////////////////////////////
 // GLOBALS
 
@@ -66,6 +82,12 @@ const DefaultMaxDepth = 3
 // errNoAgentStore is the error of an agent's method, when the registry has
 // no agent store
 var errNoAgentStore = llm.ErrServiceUnavailable.With("the registry has no agent store")
+
+// errSourceAgent returns the error of changing, or deleting, an agent which
+// isn't stored, but comes from elsewhere, such as a connector's prompt
+func errSourceAgent(name, namespace string) error {
+	return llm.ErrForbidden.Withf("agent %q comes from %q, so it can't be changed, or deleted, but it can be copied under another name", name, namespace)
+}
 
 // errBuiltinAgent returns the error of changing, or deleting, a built-in
 // agent, which the server creates as it is each time it starts
@@ -106,6 +128,7 @@ func (r *Registry) CreateAgent(ctx context.Context, meta schema.AgentMeta) (_ *s
 	} else if meta, err = r.validAgentMeta(ctx, meta, meta); err != nil {
 		return nil, false, err
 	}
+	meta.Origin = "" // Only agents which aren't stored have an origin
 	r.agentsMu.Lock()
 	defer r.agentsMu.Unlock()
 
@@ -219,6 +242,8 @@ func (r *Registry) UpdateAgent(ctx context.Context, name string, meta schema.Age
 		return nil, err
 	} else if meta.Name != "" && meta.Name != agent.Name {
 		return nil, llm.ErrBadParameter.Withf("agent %q can't be renamed %q", agent.Name, meta.Name)
+	} else if agent.Origin != "" {
+		return nil, errSourceAgent(agent.Name, agent.Origin)
 	} else if types.Value(agent.Builtin) && !onlyModel(meta) {
 		return nil, errBuiltinAgent(agent.Name)
 	}
@@ -250,6 +275,8 @@ func (r *Registry) DeleteAgent(ctx context.Context, name string) (_ *schema.Agen
 	agent, err := r.storedAgent(ctx, name)
 	if err != nil {
 		return nil, err
+	} else if agent.Origin != "" {
+		return nil, errSourceAgent(agent.Name, agent.Origin)
 	} else if types.Value(agent.Builtin) {
 		return nil, errBuiltinAgent(agent.Name)
 	} else if err := r.agentStore.Delete(ctx, agent.Name, agent.Serial); err != nil {
@@ -302,12 +329,24 @@ func (r *Registry) RunAgent(ctx context.Context, name string, req schema.RunAgen
 		return nil, err
 	}
 
-	// The message to its model, which is its prompt, executed with the input,
-	// which is validated, with the text of the files its input refers to, in
-	// the session it's run from, or on their own
-	message, err := agent.MessageWith(req.Input, r.agentReader(ctx, req.Session))
-	if err != nil {
-		return nil, err
+	// The messages to its model, which are its source's, with the input, or
+	// its prompt, executed with the input, which is validated, with the text
+	// of the files its input refers to, in the session it's run from, or on
+	// their own
+	var messages []llm.Message
+	if agent.Origin != "" {
+		if messages, err = r.agentSource.SourceMessages(ctx, agent.Origin, agent.Name, req.Input); err != nil {
+			return nil, err
+		}
+	} else {
+		message, err := agent.MessageWith(req.Input, r.agentReader(ctx, req.Session))
+		if err != nil {
+			return nil, err
+		}
+		messages = []llm.Message{&providerschema.Message{MessageMeta: providerschema.MessageMeta{
+			Sender:  "user",
+			Content: []providerschema.ContentBlock{{Text: types.Ptr(message)}},
+		}}}
 	}
 
 	// Its model, or the model of the session it's run from
@@ -347,11 +386,7 @@ func (r *Registry) RunAgent(ctx context.Context, name string, req schema.RunAgen
 	// without its history, so the agents its tools run are run from it too,
 	// and which runs the tools it calls, until it replies
 	session := schema.Session{ID: req.Session, SessionMeta: schema.SessionMeta{GeneratorMeta: meta}}
-	prompt := &providerschema.Message{MessageMeta: providerschema.MessageMeta{
-		Sender:  "user",
-		Content: []providerschema.ContentBlock{{Text: types.Ptr(message)}},
-	}}
-	response, err := r.WithSession(ctx, session, []llm.Message{prompt}, stream)
+	response, err := r.WithSession(ctx, session, messages, stream)
 	if err != nil {
 		return nil, err
 	}
@@ -522,6 +557,20 @@ func (r *Registry) storedAgent(ctx context.Context, ref string) (schema.Agent, e
 	namespace, bare, qualified := strings.Cut(ref, ":")
 	if qualified {
 		name = bare
+	}
+
+	// An agent in another namespace, such as a connector's, is its
+	// source's, which isn't stored
+	if qualified && namespace != AgentNamespace && namespace != BuiltinNamespace {
+		if r.agentSource == nil {
+			return schema.Agent{}, llm.ErrNotFound.Withf("agent %q not found", ref)
+		}
+		meta, err := r.agentSource.SourceAgent(ctx, namespace, name)
+		if err != nil {
+			return schema.Agent{}, err
+		}
+		meta.Origin = namespace
+		return schema.Agent{AgentMeta: meta}, nil
 	}
 	agent, err := r.agentStore.Get(ctx, name)
 	if err != nil {

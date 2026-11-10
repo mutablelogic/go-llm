@@ -210,7 +210,10 @@ func (c *Client) dial(ctx context.Context, transport sdkmcp.Transport) (*sdkmcp.
 	sessionCtx, cancel := context.WithCancel(context.WithoutCancel(ctx))
 	var opts *sdkmcp.ClientOptions
 	if fn := c.toolsChanged; fn != nil {
-		opts = &sdkmcp.ClientOptions{ToolListChangedHandler: func(context.Context, *sdkmcp.ToolListChangedRequest) { fn() }}
+		opts = &sdkmcp.ClientOptions{
+			ToolListChangedHandler:   func(context.Context, *sdkmcp.ToolListChangedRequest) { fn() },
+			PromptListChangedHandler: func(context.Context, *sdkmcp.PromptListChangedRequest) { fn() },
+		}
 	}
 	type result struct {
 		session *sdkmcp.ClientSession

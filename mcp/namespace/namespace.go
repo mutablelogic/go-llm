@@ -38,6 +38,7 @@ type Namespace struct {
 	match       func(string) bool // Whether a tool is included, by its name
 	serial      uint64            // The serial of the connector, as it was connected
 	tools       []*tool
+	prompts     []*prompt // Its server's prompts, as agents, by their names
 	notify      func(eventschema.EventAction, string)
 }
 
@@ -94,16 +95,65 @@ func (ns *Namespace) SystemPrompt() string {
 	return c.Instructions()
 }
 
-// Tools returns the server's tools, as they were last listed, in order of
-// their names, or none, while it isn't connected
+// Tools returns the server's tools, and its prompts, as agents, as they
+// were last listed, in order of their names, or none, while it isn't
+// connected
 func (ns *Namespace) Tools() []llm.Tool {
 	ns.mu.RLock()
 	defer ns.mu.RUnlock()
-	result := make([]llm.Tool, 0, len(ns.tools))
+	result := make([]llm.Tool, 0, len(ns.tools)+len(ns.prompts))
 	for _, t := range ns.tools {
 		result = append(result, t)
 	}
+	for _, p := range ns.prompts {
+		result = append(result, p)
+	}
+	slices.SortFunc(result, func(a, b llm.Tool) int { return compare(a.Name(), b.Name()) })
 	return result
+}
+
+// Prompt returns the server's prompt, by its name as an agent, such as
+// args_prompt, as it was last listed, or ErrNotFound, when there's none,
+// such as while it isn't connected
+func (ns *Namespace) Prompt(name string) (*sdkmcp.Prompt, error) {
+	ns.mu.RLock()
+	defer ns.mu.RUnlock()
+	for _, p := range ns.prompts {
+		if p.name == name {
+			return p.p, nil
+		}
+	}
+	return nil, llm.ErrNotFound.Withf("agent %q not found in %q", name, ns.name)
+}
+
+// PromptMessages returns the messages of the server's prompt, by its name as
+// an agent, with the input, which is a JSON object of its arguments, as a
+// model is sent them. Returns ErrNotFound when there's no prompt, or it
+// isn't connected, and ErrBadParameter when the input isn't valid.
+func (ns *Namespace) PromptMessages(ctx context.Context, name string, input json.RawMessage) ([]llm.Message, error) {
+	p, err := ns.Prompt(name)
+	if err != nil {
+		return nil, err
+	}
+	ns.mu.RLock()
+	c := ns.client
+	ns.mu.RUnlock()
+	if c == nil {
+		return nil, llm.ErrNotFound.Withf("agent %q not found in %q", name, ns.name)
+	}
+	arguments, err := promptArguments(p, input)
+	if err != nil {
+		return nil, err
+	}
+	result, err := c.GetPrompt(ctx, p.Name, arguments)
+	if err != nil {
+		return nil, err
+	}
+	messages := promptMessages(result)
+	if len(messages) == 0 {
+		return nil, llm.ErrBadParameter.Withf("prompt %q has no messages", p.Name)
+	}
+	return messages, nil
 }
 
 // Notify sets the function which is called, once the namespace is added to
@@ -207,16 +257,70 @@ func (ns *Namespace) list(ctx context.Context) error {
 		}
 	}
 	slices.SortFunc(tools, func(a, b *tool) int { return compare(a.Name(), b.Name()) })
+	prompts, err := ns.listPrompts(ctx, c, match, tools)
+	if err != nil {
+		return err
+	}
 	ns.replace(tools)
+	ns.replacePrompts(prompts)
 	return nil
 }
 
-// clear forgets the client, and the tools. The caller holds changing.
+// listPrompts returns the prompts of the server, as agents, which are
+// included, by the match, of their names as agents, apart from those whose
+// names are taken, by a tool, or another prompt, or none, when they aren't
+// agents
+func (ns *Namespace) listPrompts(ctx context.Context, c *client.Client, match func(string) bool, tools []*tool) ([]*prompt, error) {
+	if ns.run == nil {
+		return nil, nil
+	}
+	listed, err := c.ListPrompts(ctx)
+	if err != nil {
+		return nil, err
+	}
+	taken := make(map[string]bool, len(tools))
+	for _, t := range tools {
+		taken[t.Name()] = true
+	}
+	var result []*prompt
+	for _, p := range listed {
+		if p == nil {
+			continue
+		}
+		name := promptName(p.Name)
+		if name == "" || taken[name] || !match(name) {
+			continue
+		}
+		taken[name] = true
+		result = append(result, newPrompt(p, ns.name, name, ns.run))
+	}
+	slices.SortFunc(result, func(a, b *prompt) int { return compare(a.name, b.name) })
+	return result, nil
+}
+
+// clear forgets the client, the tools, and the prompts. The caller holds
+// changing.
 func (ns *Namespace) clear() {
 	ns.mu.Lock()
 	ns.client = nil
 	ns.mu.Unlock()
 	ns.replace(nil)
+	ns.replacePrompts(nil)
+}
+
+// replacePrompts replaces the prompts, and calls the function Notify set,
+// without the lock, with each which was created, updated, or deleted
+func (ns *Namespace) replacePrompts(prompts []*prompt) {
+	ns.mu.Lock()
+	changes := diffPrompts(ns.prompts, prompts)
+	ns.prompts = prompts
+	notify := ns.notify
+	ns.mu.Unlock()
+	if notify != nil {
+		for _, change := range changes {
+			notify(change.action, change.name)
+		}
+	}
 }
 
 // replace replaces the tools, and calls the function Notify set, without
@@ -266,6 +370,40 @@ func diff(before, after []*tool) []change {
 		}
 	}
 	return result
+}
+
+// diffPrompts returns the prompts which were created, updated, or deleted,
+// by their names as agents
+func diffPrompts(before, after []*prompt) []change {
+	old := make(map[string]*prompt, len(before))
+	for _, p := range before {
+		old[p.name] = p
+	}
+	var result []change
+	for _, p := range after {
+		if prev, exists := old[p.name]; !exists {
+			result = append(result, change{eventschema.EventCreate, p.name})
+		} else if !samePrompt(prev.p, p.p) {
+			result = append(result, change{eventschema.EventUpdate, p.name})
+		}
+		delete(old, p.name)
+	}
+	for _, p := range before {
+		if _, exists := old[p.name]; exists {
+			result = append(result, change{eventschema.EventDelete, p.name})
+		}
+	}
+	return result
+}
+
+// samePrompt returns true when the prompts are the same, as JSON
+func samePrompt(a, b *sdkmcp.Prompt) bool {
+	x, err := json.Marshal(a)
+	if err != nil {
+		return false
+	}
+	y, err := json.Marshal(b)
+	return err == nil && string(x) == string(y)
 }
 
 // sameTool returns true when the tools have the same definition, as JSON

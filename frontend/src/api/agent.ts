@@ -11,6 +11,9 @@ export interface Agent {
     description?: string;
     serial?: number;
     builtin?: boolean;
+    // The namespace it comes from, such as a connector's, when it isn't
+    // stored, so it can't be changed, or deleted
+    namespace?: string;
     // Its model, or none, for the model of the session it's run from, which
     // is all of a built-in agent which can be changed
     model?: string;

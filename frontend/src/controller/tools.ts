@@ -357,7 +357,7 @@ export class ToolsController extends ListController<Tool> {
             const builtin = agent.builtin === true;
             const models = await this.chatModels();
             if (generation === this.agentGeneration) {
-                this.showAgent({ mode: 'edit', name: agent.name, title: agent.title, description: agent.description, yaml, builtin, model: agent.model, models });
+                this.showAgent({ mode: 'edit', name: agent.name, title: agent.title, description: agent.description, yaml, builtin, origin: agent.namespace, model: agent.model, models });
             }
         } catch (error) {
             if (generation === this.agentGeneration) {

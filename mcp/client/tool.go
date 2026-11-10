@@ -61,6 +61,37 @@ func (c *Client) CallTool(ctx context.Context, name string, arguments json.RawMe
 	return session.CallTool(ctx, params)
 }
 
+// ListPrompts returns the server's prompts, every page of them, or none,
+// when it doesn't say it has any. Returns ErrServiceUnavailable when it
+// isn't connected.
+func (c *Client) ListPrompts(ctx context.Context) ([]*sdkmcp.Prompt, error) {
+	session, err := c.connected()
+	if err != nil {
+		return nil, err
+	}
+	if result := session.InitializeResult(); result == nil || result.Capabilities == nil || result.Capabilities.Prompts == nil {
+		return nil, nil
+	}
+	var result []*sdkmcp.Prompt
+	for prompt, err := range session.Prompts(ctx, nil) {
+		if err != nil {
+			return nil, err
+		}
+		result = append(result, prompt)
+	}
+	return result, nil
+}
+
+// GetPrompt returns the messages of the server's prompt with the name, with
+// its arguments. Returns ErrServiceUnavailable when it isn't connected.
+func (c *Client) GetPrompt(ctx context.Context, name string, arguments map[string]string) (*sdkmcp.GetPromptResult, error) {
+	session, err := c.connected()
+	if err != nil {
+		return nil, err
+	}
+	return session.GetPrompt(ctx, &sdkmcp.GetPromptParams{Name: name, Arguments: arguments})
+}
+
 ///////////////////////////////////////////////////////////////////////////////
 // PRIVATE METHODS
 

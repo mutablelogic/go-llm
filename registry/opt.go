@@ -29,6 +29,7 @@ type opt struct {
 	providerStore ProviderStore
 	sessionStore  SessionStore
 	agentStore    AgentStore
+	agentSource   AgentSource // Agents which aren't stored, such as connectors' prompts
 	eventStore    EventStore
 	eventBuilder  EventBuilder
 	maxEvents     uint
@@ -152,6 +153,16 @@ func WithAgentStore(store AgentStore) Opt {
 			return llm.ErrBadParameter.With("missing agent store")
 		}
 		o.agentStore = store
+		return nil
+	}
+}
+
+// WithAgentSource sets where the agents which aren't stored come from, by
+// their namespaces, such as connectors' MCP prompts, which are run, as tools
+// and by RunAgent, as the stored agents are
+func WithAgentSource(source AgentSource) Opt {
+	return func(o *opt) error {
+		o.agentSource = source
 		return nil
 	}
 }

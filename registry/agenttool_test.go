@@ -487,3 +487,65 @@ func Test_AgentNamespaces(t *testing.T) {
 	assert.True(t, agents["builtin:translate"])
 	assert.True(t, agents["agent:segment"])
 }
+
+// promptSource is an agent source, of one agent, review, in the github
+// namespace, whose message is its input's text
+type promptSource struct{}
+
+func (promptSource) SourceAgent(_ context.Context, namespace, name string) (schema.AgentMeta, error) {
+	if namespace != "github" || name != "review" {
+		return schema.AgentMeta{}, llm.ErrNotFound.Withf("agent %q not found", name)
+	}
+	return schema.AgentMeta{PromptMeta: schema.PromptMeta{Name: name, Title: types.Ptr("Review a pull request"), Origin: namespace}}, nil
+}
+
+func (promptSource) SourceMessages(_ context.Context, _, _ string, input json.RawMessage) ([]llm.Message, error) {
+	var in struct{ Text string }
+	if err := json.Unmarshal(input, &in); err != nil || in.Text == "" {
+		return nil, llm.ErrBadParameter.With("missing text")
+	}
+	return []llm.Message{&providerschema.Message{MessageMeta: providerschema.MessageMeta{Sender: "user", Content: []providerschema.ContentBlock{{Text: types.Ptr(in.Text)}}}}}, nil
+}
+
+func Test_AgentSource(t *testing.T) {
+	// An agent from a source, such as a connector's prompt, runs as the
+	// stored agents do, with its messages, and the model of the session it's
+	// run from, and can be got, but not changed, or deleted
+	ctx := t.Context()
+	p := newScripted(text("Looks good"))
+	r, err := registry.New(registry.WithSessionStore(test.NewSessionStore()), registry.WithAgentStore(test.NewAgentStore()), registry.WithAgentSource(promptSource{}))
+	require.NoError(t, err)
+	require.NoError(t, r.Add("", p))
+	session, err := r.CreateSession(ctx, schema.SessionMeta{GeneratorMeta: schema.GeneratorMeta{Model: types.Ptr("model")}})
+	require.NoError(t, err)
+
+	response, err := r.RunAgent(ctx, "github:review", schema.RunAgentRequest{Input: json.RawMessage(`{"text":"Review #42"}`), Session: session.ID}, nil)
+	require.NoError(t, err)
+	require.Len(t, p.asked, 1)
+	assert.Equal(t, "Review #42", p.asked[0].messages[0].Text())
+	assert.JSONEq(t, `"Looks good"`, string(response.Reply))
+	assert.Equal(t, "review", response.Name)
+
+	agent, err := r.GetAgent(ctx, "github:review")
+	require.NoError(t, err)
+	assert.Equal(t, "github", agent.Origin)
+	assert.Equal(t, "github", agent.Namespace())
+	_, err = r.UpdateAgent(ctx, "github:review", schema.AgentMeta{PromptMeta: schema.PromptMeta{Title: types.Ptr("Mine")}})
+	assert.ErrorIs(t, err, llm.ErrForbidden)
+	_, err = r.DeleteAgent(ctx, "github:review")
+	assert.ErrorIs(t, err, llm.ErrForbidden)
+
+	// Its input is the source's to check, and an agent it hasn't isn't found
+	_, err = r.RunAgent(ctx, "github:review", schema.RunAgentRequest{Input: json.RawMessage(`{}`), Session: session.ID}, nil)
+	assert.ErrorIs(t, err, llm.ErrBadParameter)
+	_, err = r.GetAgent(ctx, "github:missing")
+	assert.ErrorIs(t, err, llm.ErrNotFound)
+	_, err = r.GetAgent(ctx, "linear:review")
+	assert.ErrorIs(t, err, llm.ErrNotFound)
+
+	// An agent which is created can't say it comes from elsewhere
+	created, _, err := r.CreateAgent(ctx, schema.AgentMeta{PromptMeta: schema.PromptMeta{Name: "mine", Prompt: types.Ptr("Hello"), Origin: "github"}})
+	require.NoError(t, err)
+	assert.Empty(t, created.Origin)
+	assert.Equal(t, schema.AgentNamespace, created.Namespace())
+}

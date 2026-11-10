@@ -4,6 +4,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"sync/atomic"
@@ -275,8 +276,21 @@ func (runner *RunServer) withToolkit(ctx server.Cmd, b *broadcaster.Broadcaster,
 		// and their resources will be added to the resources
 		return runner.Connector.WithConnectorRegistry(ctx, &runner.RunServer, b, func(connectors *mcpregistry.Registry) error {
 			return runner.withRegistry(ctx, b, mem, h, res, m, connectors, tools, events, build, store, sessions, agents, outcomes, replies, creds)
-		}, mcpregistry.WithStore(connectorStore), mcpregistry.WithCredentialsProvider(creds), mcpregistry.WithToolkit(tools))
+		}, mcpregistry.WithStore(connectorStore), mcpregistry.WithCredentialsProvider(creds), mcpregistry.WithToolkit(tools), mcpregistry.WithAgents(runAgentTool(events)))
 	}, toolkit.WithBroadcaster(b), toolkit.WithCredentialsProvider(creds))
+}
+
+// runAgentTool returns the function which runs a connector's MCP prompt,
+// as an agent, as the registry runs its agents as tools, once the registry
+// is made, which is after the connectors, or ErrServiceUnavailable, before
+func runAgentTool(events *atomic.Pointer[registry.Registry]) func(context.Context, string, json.RawMessage) (any, error) {
+	return func(ctx context.Context, name string, input json.RawMessage) (any, error) {
+		r := events.Load()
+		if r == nil {
+			return nil, llm.ErrServiceUnavailable.With("registry isn't running")
+		}
+		return r.RunAgentTool(ctx, name, input)
+	}
 }
 
 // withRegistry runs the server, with the registry, which has the stores,
@@ -338,7 +352,7 @@ func (runner *RunServer) withRegistry(ctx server.Cmd, b *broadcaster.Broadcaster
 			return runner.RunServer.Run(ctx.WithContext(runCtx))
 		})
 		return group.Wait()
-	}, registry.WithBroadcaster(b), registry.WithProviderStore(store), registry.WithSessionStore(sessions), registry.WithAgentStore(agents), registry.WithEventStore(outcomes), registry.WithEventBuilder(build), registry.WithToolkit(tools), registry.WithResources(res), registry.WithTimes(func() *time.Location { return mem.Details().Zone() }, memory.Name), registry.WithReplies(replies), registry.WithCredentialsProvider(creds), registry.WithCompactTools(memory.Name), runner.Session.Opt(hasHeartbeats(h)))
+	}, registry.WithBroadcaster(b), registry.WithProviderStore(store), registry.WithSessionStore(sessions), registry.WithAgentStore(agents), registry.WithEventStore(outcomes), registry.WithEventBuilder(build), registry.WithToolkit(tools), registry.WithResources(res), registry.WithTimes(func() *time.Location { return mem.Details().Zone() }, memory.Name), registry.WithReplies(replies), registry.WithCredentialsProvider(creds), registry.WithCompactTools(memory.Name), registry.WithAgentSource(connectors), runner.Session.Opt(hasHeartbeats(h)))
 }
 
 // hasHeartbeats returns the function which says whether a session is kept,
