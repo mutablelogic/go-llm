@@ -77,7 +77,7 @@ export class ToolsPage extends Page {
             ` : nothing}
             ${agents ? html`
                 <cds-button kind="primary" size="md" @click=${() => this.dispatchEvent(new CustomEvent(ToolsPage.eventNewAgent))}>
-                    New agent ${iconLoader(Add16, { slot: 'icon' })}
+                    Add agent ${iconLoader(Add16, { slot: 'icon' })}
                 </cds-button>
             ` : nothing}
             ${this.namespace ? nothing : html`
