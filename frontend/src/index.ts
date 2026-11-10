@@ -46,6 +46,7 @@ import { NotificationController } from './controller/notifications';
 import { OutcomesController } from './controller/outcomes';
 import { StorageController } from './controller/storage';
 import { ResourcesController } from './controller/resources';
+import { DictationController } from './controller/dictation';
 import { ChatPage } from './page/chat-page';
 import { Router, routeHref } from './router';
 
@@ -80,6 +81,10 @@ const chat = new ChatController({
     create: document.querySelector('llm-new-session'),
     details: document.querySelector('llm-message-view'),
 }, notifications, storage, resources);
+
+// Dictation of a message, into the chat's box, when the browser recognises
+// speech
+new DictationController(document.querySelector('llm-chat-view'), notifications);
 
 // The outcomes of the events of the chat which is open, such as heartbeats
 // which fired, in a panel, which its Events action opens
