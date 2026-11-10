@@ -335,7 +335,7 @@ export class NewSession extends Panel<NewSessionForm> {
     // windowNote says a smaller context window is quicker, and that the
     // model's most is its own, when it isn't known
     private windowNote(model?: Model): string {
-        const note = 'A smaller window is quicker, costs less, and compacts the conversation sooner.';
+        const note = 'A smaller window is quicker, costs less, and summarises the conversation sooner.';
         return model?.input_token_limit ? note : `${note} This model doesn't say how many tokens it takes.`;
     }
 

@@ -511,9 +511,9 @@ export class ChatController {
         const memory = sessionMemory(session, limit);
         if (memory) {
             // How full its memory is, marked when it's nearly full, which
-            // the Edit menu compacts
+            // the Edit menu summarises
             const nearlyFull = (sessionMemoryPercent(session, limit) ?? 0) >= memoryWarning;
-            parts.push(html`<span class="memory">${memory}${nearlyFull ? html`<span class="nearly-full" title="Its memory is nearly full, so its earlier messages are summarised soon">${iconLoader(WarningAlt16)}</span>` : nothing}</span>`);
+            parts.push(html`<span class="memory">${memory}${nearlyFull ? html`<span class="nearly-full" title="Nearly full. Older messages will be summarised automatically.">${iconLoader(WarningAlt16)}</span>` : nothing}</span>`);
         }
         if (session.status === 'thinking') {
             parts.push('thinking…');
@@ -607,9 +607,9 @@ export class ChatController {
         }
         try {
             await compactSession(session.id);
-            this.notifications.push({ kind: 'info', title: 'Compacting the conversation', subtitle: 'Its earlier messages are being summarised' });
+            this.notifications.push({ kind: 'info', title: 'Summarising the conversation', subtitle: 'Its earlier messages are kept, but replaced with a summary' });
         } catch (error) {
-            this.notifications.error("The conversation couldn't be compacted", error);
+            this.notifications.error("The conversation couldn't be summarised", error);
         }
     }
 

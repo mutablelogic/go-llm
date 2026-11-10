@@ -163,7 +163,7 @@ export class SessionList extends LitElement {
                     <span class="model">${session.title || session.model || 'No model'}${session.event ? html` <cds-tag size="sm" type="purple">event</cds-tag>` : nothing}</span>
                     <span class="secondary" title=${formatTime(when)}>
                         ${session.title && session.model ? html`${session.model} · ` : nothing}${status ? html`<span class="status">${status}</span>` : formatAgo(when)}
-                        ${memory ? html` · ${memory}` : nothing}${nearlyFull ? html`<span class="nearly-full" title="Its memory is nearly full, so its earlier messages are summarised soon">${iconLoader(WarningAlt16)}</span>` : nothing}
+                        ${memory ? html` · ${memory}` : nothing}${nearlyFull ? html`<span class="nearly-full" title="Nearly full. Older messages will be summarised automatically.">${iconLoader(WarningAlt16)}</span>` : nothing}
                     </span>
                 </button>
             </li>

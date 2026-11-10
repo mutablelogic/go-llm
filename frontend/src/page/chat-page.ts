@@ -3,7 +3,7 @@
 // it has a title, the tokens of its conversation, and whether someone is
 // typing, or its model is replying, and whose actions are Add, which starts
 // a new chat, and Edit, a menu of the open one's tasks, and preferences,
-// compacting it, and deleting it.
+// summarising it, and deleting it.
 // Beneath it
 // is the list of chats, with the actions of the one which is open, beside
 // its conversation.
@@ -24,7 +24,7 @@ import '@carbon/web-components/es/components/menu/index.js';
 export class ChatPage extends Page {
     // The names of the events fired by its actions: to start a new chat,
     // and, of the Edit menu, for the one which is open, to show its tasks,
-    // its preferences, to compact it, or to delete it
+    // its preferences, to summarise it, or to delete it
     static readonly eventNew = 'llm-chat-page-new';
     static readonly eventTasks = 'llm-chat-page-tasks';
     static readonly eventPreferences = 'llm-chat-page-preferences';
@@ -96,7 +96,7 @@ export class ChatPage extends Page {
                                 <cds-menu-item label="Tasks" @click=${fire(ChatPage.eventTasks)}></cds-menu-item>
                                 <cds-menu-item label="Conversation preferences" @click=${fire(ChatPage.eventPreferences)}></cds-menu-item>
                             `}
-                            <cds-menu-item label="Compact conversation" @click=${fire(ChatPage.eventCompact)}></cds-menu-item>
+                            <cds-menu-item label="Summarise conversation" @click=${fire(ChatPage.eventCompact)}></cds-menu-item>
                             <cds-menu-item-divider></cds-menu-item-divider>
                             <cds-menu-item kind="danger" label="Delete conversation" ?disabled=${!this.deletable} @click=${fire(ChatPage.eventDelete)}></cds-menu-item>
                         </cds-menu>
