@@ -303,3 +303,72 @@ func Test_WithoutFrontMatter(t *testing.T) {
 		assert.Equal(t, want, withoutFrontMatter(in), in)
 	}
 }
+
+func Test_ReasoningOpts(t *testing.T) {
+	model := func(r *reasoning) *Model {
+		return &Model{data: apiModel{Type: typeLLM, Capabilities: &capabilities{Reasoning: r}}}
+	}
+	onOff := model(&reasoning{Allowed: []string{"off", "on"}, Default: "on"})
+	offOn := model(&reasoning{Allowed: []string{"off", "on"}, Default: "off"})
+	onlyOn := model(&reasoning{Allowed: []string{"on"}, Default: "on"})
+	efforts := model(&reasoning{Allowed: []string{"off", "low", "medium", "high"}, Default: "off"})
+	plain := model(nil)
+
+	effort := func(t *testing.T, m *Model, opts ...llm.Opt) any {
+		t.Helper()
+		result, err := m.reasoningOpts(opts)
+		require.NoError(t, err)
+		o, err := llm.ApplyOpts(result...)
+		require.NoError(t, err)
+		return o.Get(llm.ThinkingEffortKey)
+	}
+	tests := []struct {
+		name  string
+		model *Model
+		opts  []llm.Opt
+		want  any
+	}{
+		{"OnOff/Off", onOff, []llm.Opt{llm.WithThinking(false)}, "none"},
+		{"OnOff/On", onOff, []llm.Opt{llm.WithThinking(true)}, ""},
+		{"OnOff/Effort", onOff, []llm.Opt{llm.WithThinkingEffort("high")}, ""},
+		{"OnOff/Nothing", onOff, nil, ""},
+		{"OffOn/On", offOn, []llm.Opt{llm.WithThinking(true)}, "medium"},
+		{"OffOn/Effort", offOn, []llm.Opt{llm.WithThinkingEffort("low")}, "medium"},
+		{"OffOn/Nothing", offOn, nil, ""},
+		{"OnlyOn/Off", onlyOn, []llm.Opt{llm.WithThinking(false)}, ""},
+		{"Efforts/On", efforts, []llm.Opt{llm.WithThinking(true)}, "medium"},
+		{"Efforts/Max", efforts, []llm.Opt{llm.WithThinkingEffort("max")}, "high"},
+		{"Efforts/Low", efforts, []llm.Opt{llm.WithThinking(true), llm.WithThinkingEffort("low")}, "low"},
+		{"Efforts/Off", efforts, []llm.Opt{llm.WithThinking(false), llm.WithThinkingEffort("high")}, "none"},
+		{"Efforts/Nothing", efforts, nil, ""},
+		{"Plain/Effort", plain, []llm.Opt{llm.WithThinkingEffort("high")}, "high"},
+		{"Plain/Nothing", plain, nil, nil},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			assert.Equal(t, test.want, effort(t, test.model, test.opts...))
+		})
+	}
+
+	// A model which only has reasoning off doesn't think
+	assert.False(t, types.Value(model(&reasoning{Allowed: []string{"off"}}).Capabilities().Thinking))
+	assert.True(t, types.Value(onlyOn.Capabilities().Thinking))
+}
+
+func Test_WithoutSessionReasoning(t *testing.T) {
+	// Thinking off is sent as reasoning_effort none, for Gemma, which can
+	// turn it off
+	f, c := newFake(t)
+	ctx := context.Background()
+	model, err := c.GetModel(ctx, "google/gemma-4-12b-qat")
+	require.NoError(t, err)
+	message := &providerschema.Message{MessageMeta: providerschema.MessageMeta{Sender: "user", Content: []providerschema.ContentBlock{{Text: types.Ptr("Hi")}}}}
+	_, _, err = c.WithoutSession(ctx, model, []llm.Message{message}, nil, nil, llm.WithThinking(false))
+	require.NoError(t, err)
+	assert.Equal(t, "none", f.chat["reasoning_effort"])
+
+	// and thinking on is its own
+	_, _, err = c.WithoutSession(ctx, model, []llm.Message{message}, nil, nil, llm.WithThinking(true))
+	require.NoError(t, err)
+	assert.NotContains(t, f.chat, "reasoning_effort")
+}

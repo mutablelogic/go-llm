@@ -97,6 +97,24 @@ func Test_Live(t *testing.T) {
 		assert.Equal(t, "get_weather", reply.ToolCalls()[0].Name)
 		assert.Contains(t, string(reply.ToolCalls()[0].Input), "Berlin")
 		assert.NotZero(t, usage.InputTokens)
+
+		// It thinks, unless thinking is off
+		thought := func(reply llm.Message) bool {
+			for _, block := range reply.(*providerschema.Message).Content {
+				if block.Thinking != nil && *block.Thinking != "" {
+					return true
+				}
+			}
+			return false
+		}
+		question := []llm.Message{message("What is 17*23? Answer with just the number.")}
+		reply, _, err = c.WithoutSession(ctx, model, question, nil, nil, llm.WithThinking(true))
+		require.NoError(t, err)
+		assert.True(t, thought(reply), "it thinks")
+		reply, _, err = c.WithoutSession(ctx, model, question, nil, nil, llm.WithThinking(false))
+		require.NoError(t, err)
+		assert.False(t, thought(reply), "it doesn't think")
+		assert.Contains(t, reply.Text(), "391")
 	})
 
 	t.Run("Recognize", func(t *testing.T) {

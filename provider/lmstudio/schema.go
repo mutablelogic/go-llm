@@ -33,9 +33,17 @@ type loadedInstance struct {
 
 // capabilities is what a model can do, as LM Studio reports it
 type capabilities struct {
-	Vision    bool            `json:"vision"`
-	ToolUse   bool            `json:"trained_for_tool_use"`
-	Reasoning json.RawMessage `json:"reasoning,omitempty"`
+	Vision    bool       `json:"vision"`
+	ToolUse   bool       `json:"trained_for_tool_use"`
+	Reasoning *reasoning `json:"reasoning,omitempty"`
+}
+
+// reasoning is how a model reasons: the settings it allows, such as "off"
+// and "on", or "low", "medium" and "high", and the one it reasons with,
+// unless it's asked otherwise
+type reasoning struct {
+	Allowed []string `json:"allowed_options,omitempty"`
+	Default string   `json:"default,omitempty"`
 }
 
 // listModelsResponse is the response of listing the models
@@ -69,6 +77,9 @@ const (
 	downloadFailed      = "failed"
 	downloadDone        = "already_downloaded"
 )
+
+// reasoningOff is the reasoning setting of a model which doesn't reason
+const reasoningOff = "off"
 
 // The types of models
 const (

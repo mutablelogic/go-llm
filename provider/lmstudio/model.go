@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"maps"
+	"slices"
 	"strings"
 	"time"
 
@@ -108,7 +109,7 @@ func (m *Model) Capabilities() llm.ModelCap {
 		result := llm.ModelCap{Chat: yes, Temperature: yes, Embedding: no, AudioInput: no, VideoInput: no, DocumentInput: no}
 		if c := m.data.Capabilities; c != nil {
 			result.Tools, result.ImageInput = types.Ptr(c.ToolUse), types.Ptr(c.Vision)
-			result.Thinking = types.Ptr(len(c.Reasoning) > 0 && string(c.Reasoning) != "null")
+			result.Thinking = types.Ptr(c.Reasoning.thinks())
 		}
 
 		// A model recognizes text when it's an OCR model, by its name, and
@@ -174,4 +175,71 @@ func (c *Client) listModels(ctx context.Context) ([]apiModel, error) {
 		return nil, err
 	}
 	return response.Models, nil
+}
+
+///////////////////////////////////////////////////////////////////////////////
+// REASONING
+
+// thinks returns whether a model with the reasoning reasons, which it does
+// unless its only setting is "off"
+func (r *reasoning) thinks() bool {
+	return r != nil && (len(r.Allowed) == 0 || slices.ContainsFunc(r.Allowed, func(option string) bool { return option != reasoningOff }))
+}
+
+// efforts returns the efforts the reasoning allows, such as "low", "medium"
+// and "high", which a model whose reasoning is only "off" and "on" hasn't
+func (r *reasoning) efforts() []string {
+	if r == nil {
+		return nil
+	}
+	return slices.DeleteFunc(slices.Clone(r.Allowed), func(option string) bool {
+		return !slices.Contains(llm.Efforts, option)
+	})
+}
+
+// reasoningOpts returns the options, with the thinking, and its effort, as
+// LM Studio's OpenAI-compatible API is asked for them, as its
+// reasoning_effort, for the model's reasoning:
+//   - thinking off is "none", when the model can turn it off, or its own;
+//   - an effort is the nearest the model has, or, for a model which only
+//     turns its reasoning off and on, which an effort doesn't change,
+//     "medium", when it doesn't think unless it's asked, or its own;
+//   - thinking on, without an effort, is "medium", or the nearest, when it
+//     doesn't think unless it's asked, or its own.
+//
+// Thinking is ignored by a model which doesn't reason, and an effort is
+// passed on.
+func (m *Model) reasoningOpts(opts []llm.Opt) ([]llm.Opt, error) {
+	var r *reasoning
+	if m.data.Capabilities != nil {
+		r = m.data.Capabilities.Reasoning
+	}
+	if r == nil {
+		return opts, nil
+	}
+	o, err := llm.ApplyOpts(opts...)
+	if err != nil {
+		return nil, err
+	}
+	thinking, err := llm.GetOpt[bool](o, llm.ThinkingKey)
+	asked := err == nil
+	effort, _ := llm.GetOpt[string](o, llm.ThinkingEffortKey)
+	efforts := r.efforts()
+	switch {
+	case asked && !thinking && slices.Contains(r.Allowed, reasoningOff):
+		effort = "none"
+	case asked && !thinking:
+		effort = ""
+	case effort == "" && (!asked || r.Default != reasoningOff):
+		// Its own reasoning, unless it's asked to think, and doesn't
+	case effort == "":
+		effort = llm.NearestEffort("medium", efforts...)
+	case len(efforts) > 0:
+		effort = llm.NearestEffort(effort, efforts...)
+	case r.Default == reasoningOff:
+		effort = "medium"
+	default:
+		effort = ""
+	}
+	return append(slices.Clone(opts), llm.WithOpt(llm.ThinkingEffortKey, effort)), nil
 }

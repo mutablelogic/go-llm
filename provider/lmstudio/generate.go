@@ -18,12 +18,15 @@ var _ llm.Embedder = (*Client)(nil)
 
 // WithoutSession returns the model's reply to the messages, which must be
 // for a model of this client, and the tokens used, with LM Studio's
-// OpenAI-compatible Chat Completions API, as the OpenAI provider does. A
-// model which isn't loaded is loaded as it's asked, when LM Studio is set to
+// OpenAI-compatible Chat Completions API, as the OpenAI provider does, with
+// its thinking, and its effort, as the model reasons. A model which isn't loaded is loaded as it's asked, when LM Studio is set to
 // load models as they're needed.
 func (c *Client) WithoutSession(ctx context.Context, model llm.Model, messages []llm.Message, tools []llm.Tool, stream llm.GeneratorStreamFn, opts ...llm.Opt) (llm.Message, llm.Usage, error) {
 	compatible, err := c.compatible(model)
 	if err != nil {
+		return nil, llm.Usage{}, err
+	}
+	if opts, err = model.(*Model).reasoningOpts(opts); err != nil {
 		return nil, llm.Usage{}, err
 	}
 	return c.openai.WithoutSession(ctx, compatible, messages, tools, stream, opts...)
