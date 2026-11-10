@@ -8,16 +8,15 @@
 #
 #   {"message":"It's 4°C and cloudy in Berlin today, ...","importance":"notify"}
 #
-# It's internal, so only the server runs it, rather than models calling it
-# as a tool, as its context is trusted: it's put in a <system-reminder>
-# block, which the server builds, and takes out of the title and prompt.
+# Its context is put in a <system-reminder> block, which the server builds,
+# and takes out of the title and prompt. It's built in, so models can call
+# it too, as builtin:event, as the server's agents are trusted.
 #
 # It has no model, or tools, so it's run with the model of the session it's
 # run from, which, when a heartbeat fires, is the model of the conversation
 # the heartbeat was scheduled in, and with that conversation's tools, apart
 # from the heartbeats', so an event doesn't schedule events.
 name: event
-internal: true
 title: Carry out an event
 description: |
   Carries out an event, such as a reminder, or a briefing, which was

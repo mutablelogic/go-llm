@@ -3,15 +3,14 @@
 
 import { ApiError, config, request } from './client';
 
-// Agent is an agent, by its name, and whether it's built in, so it can't be
-// changed, or deleted, and internal, so it isn't a tool
+// Agent is an agent, by its name, and whether it's built in, so only its
+// model can be changed, and it can't be deleted
 export interface Agent {
     name: string;
     title?: string;
     description?: string;
     serial?: number;
     builtin?: boolean;
-    internal?: boolean;
     // Its model, or none, for the model of the session it's run from, which
     // is all of a built-in agent which can be changed
     model?: string;

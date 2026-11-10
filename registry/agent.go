@@ -281,16 +281,6 @@ func (r *Registry) DeleteAgent(ctx context.Context, name string) (_ *schema.Agen
 // nor has the session it's run from, and ErrServiceUnavailable when the
 // registry has no agent store, and the errors of WithSession.
 func (r *Registry) RunAgent(ctx context.Context, name string, req schema.RunAgentRequest, stream llm.GeneratorStreamFn) (_ *schema.RunAgentResponse, err error) {
-	return r.runAgent(ctx, name, req, stream, false)
-}
-
-///////////////////////////////////////////////////////////////////////////////
-// PRIVATE METHODS
-
-// runAgent runs the agent, as RunAgent does, or, when a model calls it as a
-// tool, returns ErrNotFound when it's internal, as only the server runs it,
-// such as when it was made internal while the model had it as a tool
-func (r *Registry) runAgent(ctx context.Context, name string, req schema.RunAgentRequest, stream llm.GeneratorStreamFn, asTool bool) (_ *schema.RunAgentResponse, err error) {
 	ctx, endSpan := otel.StartSpan(r.tracer, ctx, "llm.registry.RunAgent",
 		attribute.String("arg.name", name),
 		attribute.String("arg.req", req.String()),
@@ -308,8 +298,6 @@ func (r *Registry) runAgent(ctx context.Context, name string, req schema.RunAgen
 	agent, err := r.storedAgent(ctx, name)
 	if err != nil {
 		return nil, err
-	} else if asTool && types.Value(agent.Internal) {
-		return nil, llm.ErrNotFound.Withf("agent %q isn't a tool", name)
 	}
 
 	// The message to its model, which is its prompt, executed with the input,

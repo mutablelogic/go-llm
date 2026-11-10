@@ -130,12 +130,8 @@ func (n *agentNamespace) Notify(fn func(eventschema.EventAction, string)) {
 
 // set adds the agent, as a tool, or replaces it, and tells the toolkit. An
 // agent whose input, or schema, isn't valid, which the registry doesn't
-// store, or which is internal, as only the server runs it, isn't a tool.
+// store, isn't a tool.
 func (n *agentNamespace) set(r *Registry, agent schema.Agent) {
-	if types.Value(agent.Internal) {
-		n.remove(agent.Name)
-		return
-	}
 	tool, err := newAgentTool(r, agent)
 	if err != nil {
 		n.remove(agent.Name)
@@ -277,7 +273,7 @@ func (t *agentTool) Timeout() time.Duration {
 func (t *agentTool) Run(ctx context.Context, input json.RawMessage) (any, error) {
 	session := toolkit.SessionFromContext(ctx)
 	req := schema.RunAgentRequest{Input: input, Session: session.ID()}
-	response, err := t.registry.runAgent(ctx, t.agent.Name, req, agentStream(t.agent.Name, session), true)
+	response, err := t.registry.RunAgent(ctx, t.agent.Name, req, agentStream(t.agent.Name, session))
 	if err != nil {
 		return nil, err
 	}

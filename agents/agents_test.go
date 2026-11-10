@@ -112,7 +112,6 @@ func Test_Event(t *testing.T) {
 	assert.Error(t, err, "the prompt is required")
 	_, err = meta.Message(json.RawMessage(`{"title":"Call","prompt":"Remind David"}`))
 	assert.Error(t, err, "the context is required, so the time is known")
-	assert.True(t, types.Value(meta.Internal), "only the server runs it")
 	assert.Empty(t, meta.Tools)
 	assert.Nil(t, meta.Model)
 

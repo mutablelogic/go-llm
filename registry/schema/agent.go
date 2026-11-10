@@ -37,7 +37,6 @@ type PromptMeta struct {
 	Description *string         `json:"description,omitempty" help:"What the agent does, for people, and models which call it as a tool" example:"Segments a transcript into its sections" optional:""`
 	Input       json.RawMessage `json:"input,omitempty" help:"JSON schema of the input, which is an object, whose properties the prompt uses" example:"{\"type\":\"object\",\"properties\":{\"transcript\":{\"type\":\"string\"}}}" optional:""`
 	Prompt      *string         `json:"prompt,omitempty" help:"Go template of the message to the model, executed with the input" example:"Segment this transcript: {{ .transcript }}" optional:""`
-	Internal    *bool           `json:"internal,omitempty" help:"Whether only the server runs the agent, such as for an event, as its input is trusted, so it isn't a tool which models can call" optional:""`
 	Timeout     *string         `json:"timeout,omitempty" help:"Most time the agent has, when a model calls it as a tool, such as 2m, or 90s, rather than the time a tool has by default" example:"2m" optional:""`
 	Builtin     *bool           `json:"builtin,omitempty" readonly:"" help:"Whether the agent is one the server has, which it creates as it is each time it starts, keeping the model chosen for it, which is all of it that can be changed, and which can't be deleted, but can be copied under another name"`
 }
@@ -149,13 +148,12 @@ func (r AgentList) String() string {
 // IsZero returns true when the prompt sets nothing, apart from its name, so
 // as an update, it changes nothing
 func (p PromptMeta) IsZero() bool {
-	return p.Title == nil && p.Description == nil && p.Prompt == nil && p.Internal == nil && p.Timeout == nil && len(bytes.TrimSpace(p.Input)) == 0
+	return p.Title == nil && p.Description == nil && p.Prompt == nil && p.Timeout == nil && len(bytes.TrimSpace(p.Input)) == 0
 }
 
 // Merge returns the prompt, changed by the update: its title, description
 // and prompt, and timeout, when they're set, which empty clears, its input,
-// when it's set, which null clears, and whether it's internal, when it's
-// set. The name
+// when it's set, which null clears. The name
 // isn't changed. What the update doesn't set is kept.
 func (p PromptMeta) Merge(update PromptMeta) PromptMeta {
 	result := p
@@ -171,9 +169,6 @@ func (p PromptMeta) Merge(update PromptMeta) PromptMeta {
 	result.Description = merge(p.Description, update.Description)
 	result.Prompt = merge(p.Prompt, update.Prompt)
 	result.Timeout = merge(p.Timeout, update.Timeout)
-	if update.Internal != nil {
-		result.Internal = types.Ptr(*update.Internal)
-	}
 	if input := bytes.TrimSpace(update.Input); len(input) > 0 {
 		if string(input) == "null" {
 			result.Input = nil
