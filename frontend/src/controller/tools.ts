@@ -491,7 +491,7 @@ export class ToolsController extends ListController<Tool> {
         this.namespaces = namespaces.body ?? [];
         this.connectors = connectors.body ?? [];
         this.listeners.forEach((fn) => fn(tools, this.namespaces ?? []));
-        const shown = this.namespace ? tools.filter((tool) => toolNamespace(tool) === this.namespace) : tools;
+        const shown = this.namespace ? tools.filter((tool) => inNamespace(tool, this.namespace!)) : tools;
         return { count: shown.length, body: shown.slice(offset, offset + limit) };
     }
 
@@ -559,7 +559,7 @@ export class ToolsController extends ListController<Tool> {
                 // provider has, but built in ones, and the agents', don't,
                 // and why it isn't connected, when it isn't, as a provider
                 // which can't be reached has
-                ...this.namespaces.map((namespace) => {
+                ...mergeAgents(this.namespaces).map((namespace) => {
                     const connector = namespace.type === 'mcp' ? this.connectorOf(namespace.name) : undefined;
                     return {
                         value: namespace.name,
@@ -599,4 +599,37 @@ function openTab(): Window | null {
         tab.opener = null;
     }
     return tab;
+}
+
+// agentNamespaces are the namespaces of the agents, which the page shows as
+// one, agent: those which people, and chats, make, and the server's own,
+// which are built in
+const agentNamespaces = ['agent', 'builtin'];
+
+// mergeAgents returns the namespaces, with the agents' as one, agent, where
+// the first of them is, whose tools are both's, so the built-in agents are
+// with the rest
+function mergeAgents(namespaces: Namespace[]): Namespace[] {
+    const agents = namespaces.filter((namespace) => agentNamespaces.includes(namespace.name));
+    if (agents.length === 0) {
+        return namespaces;
+    }
+    const own = agents.find((namespace) => namespace.name === 'agent') ?? agents[0];
+    const merged: Namespace = { ...own, name: 'agent', type: 'agent', tools: agents.reduce((sum, namespace) => sum + namespace.tools, 0) };
+    const result: Namespace[] = [];
+    for (const namespace of namespaces) {
+        if (!agentNamespaces.includes(namespace.name)) {
+            result.push(namespace);
+        } else if (!result.includes(merged)) {
+            result.push(merged);
+        }
+    }
+    return result;
+}
+
+// inNamespace returns whether the tool is in the namespace, as the page
+// shows it, where the agent namespace has the built-in agents too
+function inNamespace(tool: Tool, namespace: string): boolean {
+    const own = toolNamespace(tool);
+    return namespace === 'agent' ? agentNamespaces.includes(own) : own === namespace;
 }
