@@ -30,6 +30,8 @@ type fake struct {
 	unloaded []string
 	chat     map[string]any
 	reply    string
+	lists    int  // lists of models since the download completed
+	listed   bool // whether the downloaded model is listed
 }
 
 func newFake(t *testing.T) (*fake, *Client) {
@@ -64,11 +66,18 @@ func (f *fake) serve(w http.ResponseWriter, r *http.Request) {
 	reply := func(v any) { _ = json.NewEncoder(w).Encode(v) }
 	switch r.Method + " " + r.URL.Path {
 	case "GET /api/v1/models":
+		// The downloaded model is listed a while after its download
+		// completes, as LM Studio's is
+		if f.listed {
+			if f.lists++; f.lists == 2 {
+				f.models = append(f.models, map[string]any{"type": "llm", "key": "new/model", "loaded_instances": []any{}})
+			}
+		}
 		reply(map[string]any{"models": f.models})
 	case "POST /api/v1/models/download":
 		reply(map[string]any{"job_id": "job-1", "status": "downloading", "total_size_bytes": 100})
 	case "GET /api/v1/models/download/status/job-1":
-		f.models = append(f.models, map[string]any{"type": "llm", "key": "new/model", "loaded_instances": []any{}})
+		f.listed = true
 		reply(map[string]any{"job_id": "job-1", "status": "completed", "total_size_bytes": 100, "downloaded_bytes": 100})
 	case "POST /api/v1/models/load":
 		for _, model := range f.models {
@@ -185,6 +194,12 @@ func Test_LoadModel(t *testing.T) {
 	assert.Equal(t, "new/model", model.Name())
 	assert.Equal(t, []string{"downloading", "completed", "loading", "loaded"}, statuses)
 	assert.Contains(t, f.asked, "GET /api/v1/models/download/status/job-1")
+
+	// One which isn't listed, once it's downloaded, isn't found
+	listWait = 30 * time.Millisecond
+	f.listed, f.lists = false, 0
+	_, err = c.LoadModel(ctx, "other/model", nil)
+	assert.ErrorIs(t, err, llm.ErrNotFound)
 
 	_, err = c.LoadModel(ctx, " ", nil)
 	assert.ErrorIs(t, err, llm.ErrBadParameter)

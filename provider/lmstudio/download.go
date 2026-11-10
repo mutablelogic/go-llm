@@ -19,8 +19,13 @@ var _ llm.Downloader = (*Client)(nil)
 ///////////////////////////////////////////////////////////////////////////////
 // GLOBALS
 
-// downloadPoll is how often a download's status is asked for
-var downloadPoll = time.Second
+// downloadPoll is how often a download's status is asked for, and, once
+// it's downloaded, whether it's listed, for at most listWait, as LM Studio
+// lists a model a while after its download completes
+var (
+	downloadPoll = time.Second
+	listWait     = 30 * time.Second
+)
 
 ///////////////////////////////////////////////////////////////////////////////
 // PUBLIC METHODS
@@ -48,7 +53,7 @@ func (c *Client) LoadModel(ctx context.Context, name string, progress llm.Downlo
 		if err := c.download(ctx, name, progress); err != nil {
 			return nil, err
 		}
-		if model, err = c.GetModel(ctx, name); errors.Is(err, llm.ErrNotFound) {
+		if model, err = c.waitListed(ctx, name); errors.Is(err, llm.ErrNotFound) {
 			return nil, llm.ErrNotFound.Withf("model %q was downloaded, but isn't listed by that name", name)
 		}
 	}
@@ -107,6 +112,24 @@ func (c *Client) DeleteModel(context.Context, llm.Model) error {
 
 ///////////////////////////////////////////////////////////////////////////////
 // PRIVATE METHODS
+
+// waitListed returns the model with the name, once it's listed, which LM
+// Studio does a while after it's downloaded, or ErrNotFound, when it isn't
+// listed within listWait
+func (c *Client) waitListed(ctx context.Context, name string) (llm.Model, error) {
+	deadline := time.Now().Add(listWait)
+	for {
+		model, err := c.GetModel(ctx, name)
+		if !errors.Is(err, llm.ErrNotFound) || time.Now().After(deadline) {
+			return model, err
+		}
+		select {
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		case <-time.After(downloadPoll):
+		}
+	}
+}
 
 // download downloads the model with the name, and waits for it to be
 // downloaded, calling the progress function with how it's getting on
