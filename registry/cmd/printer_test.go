@@ -36,9 +36,9 @@ func Test_StreamPrinter(t *testing.T) {
 	})
 
 	t.Run("Markdown", func(t *testing.T) {
-		// The thinking is shown as "Thinking…", and the text is printed as
-		// it is, and then replaced, from the row it started on, with the
-		// text rendered as markdown
+		// The thinking is shown as "Thinking…", which is cleared as the text
+		// starts, and the text is printed as it is, and then replaced, from
+		// the row it started on, with the text rendered as markdown
 		p, buf := newTestPrinter(80, 24)
 		p.print(llm.StreamThinking, "The user says weather")
 		p.print(llm.StreamThinking, " again")
@@ -47,25 +47,27 @@ func Test_StreamPrinter(t *testing.T) {
 		out := buf.String()
 		assert.NotContains(t, out, "The user says")
 		assert.Equal(t, 1, strings.Count(out, thinkingLine))
-		replaced := strings.Index(out, "\x1b[J")
+		assert.True(t, strings.HasPrefix(out, "\x1b[2m"+thinkingLine+"\x1b[0m\n\r\x1b[1A\x1b[J**Sunny**"), "it's cleared as the text starts")
+		replaced := strings.LastIndex(out, "\x1b[J")
 		assert.Greater(t, replaced, strings.Index(out, "**Sunny**"))
-		// Thinking…, a blank line, and two lines of text, are four rows
-		assert.Contains(t, out, "\r\x1b[3A\x1b[J[**Sunny**\nand warm]\n")
+		// The two lines of text are two rows
+		assert.Contains(t, out, "\r\x1b[1A\x1b[J[**Sunny**\nand warm]\n")
 		assert.True(t, strings.HasSuffix(out, "]\n"))
 	})
 
 	t.Run("ServerThinking", func(t *testing.T) {
-		// The server's line that the model is thinking stands in for the
-		// printer's own, so it's said once, and kept
+		// The server's line that the model is thinking is the printer's own,
+		// said once, and replaced, with the text, rather than kept
 		p, buf := newTestPrinter(80, 24)
 		p.print(llm.StreamLog, schema.ThinkingLog)
 		p.print(llm.StreamThinking, "Hmm")
 		p.print(llm.StreamText, "Sunny")
 		p.End()
 		out := buf.String()
-		assert.NotContains(t, out, thinkingLine)
-		assert.Equal(t, 1, strings.Count(out, schema.ThinkingLog))
+		assert.Equal(t, 1, strings.Count(out, thinkingLine))
+		assert.NotContains(t, out, "\x1b[2m"+schema.ThinkingLog+"\x1b[0m", "the server's line isn't kept, as it is")
 		assert.NotContains(t, out, "Hmm")
+		assert.True(t, strings.HasSuffix(out, "\x1b[J[Sunny]\n"), "it's replaced with the text, from the row it started on")
 	})
 
 	t.Run("Logs", func(t *testing.T) {
@@ -114,6 +116,26 @@ func Test_StreamPrinterEdges(t *testing.T) {
 		p.End()
 		assert.NotContains(t, buf.String(), "\x1b[J")
 		assert.Equal(t, "\t12345\n", buf.String())
+
+		// But "Thinking…" before it is cleared, as the text starts, so it
+		// isn't kept, though the text isn't replaced
+		p, buf = newTestPrinter(10, 24)
+		p.print(llm.StreamLog, schema.ThinkingLog)
+		p.print(llm.StreamText, "\t12345")
+		p.End()
+		assert.Equal(t, "\x1b[2m"+thinkingLine+"\x1b[0m\n\r\x1b[1A\x1b[J\t12345\n", buf.String())
+	})
+
+	t.Run("TallAfterThinking", func(t *testing.T) {
+		// And so is "Thinking…" before text which is taller than the
+		// terminal, which isn't replaced
+		p, buf := newTestPrinter(10, 3)
+		p.print(llm.StreamThinking, "Hmm")
+		p.print(llm.StreamText, "a\nb\nc\nd\n")
+		p.End()
+		out := buf.String()
+		assert.True(t, strings.HasPrefix(out, "\x1b[2m"+thinkingLine+"\x1b[0m\n\r\x1b[1A\x1b[Ja\nb"), out)
+		assert.Equal(t, 1, strings.Count(out, "\x1b[J"), "only Thinking… is cleared")
 	})
 }
 
