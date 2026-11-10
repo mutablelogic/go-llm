@@ -330,7 +330,7 @@ func Test_Ask(t *testing.T) {
 		assert.Equal(t, "Done", response.Message.Text())
 		require.Len(t, p.asked, 1)
 		require.Len(t, p.asked[0].messages, 4)
-		assert.Contains(t, string(p.asked[0].messages[2].ToolResults()[0].Content), "was removed")
+		assert.Contains(t, string(p.asked[0].messages[2].ToolResults()[0].Content), "[removed, to fit the model's context")
 		assert.Greater(t, len(req.Messages[2].Content[0].ToolResult.Content), 20_000)
 	})
 

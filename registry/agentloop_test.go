@@ -821,7 +821,7 @@ func Test_AgentLoopContext(t *testing.T) {
 		assert.LessOrEqual(t, tokens(results[0]), 2625)
 		assert.Greater(t, tokens(results[0]), 2000)
 		if assert.Len(t, lines, 1) {
-			assert.Regexp(t, `^result truncated bytes=100002 to_bytes=\d+ limit_tokens=2625$`, lines[0])
+			assert.Regexp(t, `^Shortened the tool's result from 98 KB to \d+ KB, to fit the conversation's memory window$`, lines[0])
 		}
 	})
 
@@ -925,7 +925,7 @@ func Test_AgentLoopCompact(t *testing.T) {
 		old := providerschema.NewToolResult("old", "echo", big)
 		messages := []llm.Message{
 			schemaMessage("user", textBlock("First")),
-			schemaMessage("assistant", providerschema.ContentBlock{ToolCall: &providerschema.ToolCall{ID: "old", Name: "echo"}}),
+			schemaMessage("assistant", providerschema.ContentBlock{ToolCall: &providerschema.ToolCall{ID: "old", Name: "echo", Input: json.RawMessage(`{"issue": 243}`)}}),
 			schemaMessage("tool", old),
 			schemaMessage("user", textBlock("Second")),
 		}
@@ -937,7 +937,12 @@ func Test_AgentLoopCompact(t *testing.T) {
 		assert.Equal(t, providerschema.ResultStop, added[0].Result)
 		require.Len(t, p.asked, 1)
 		require.Len(t, p.asked[0].messages, 4)
-		assert.Contains(t, string(p.asked[0].messages[2].ToolResults()[0].Content), "was removed")
+
+		// The note says what the result was of, the tool, and its input, so
+		// the model can call it again
+		var note string
+		require.NoError(t, json.Unmarshal(p.asked[0].messages[2].ToolResults()[0].Content, &note))
+		assert.Regexp(t, `^\[removed, to fit the model's context: the result of echo, with \{"issue": 243\}, of \d+ KB\. Call the tool again to see it, when calling it again only reads\.\]$`, note)
 
 		// The caller's message isn't changed
 		assert.Len(t, messages[2].ToolResults()[0].Content, len(old.ToolResult.Content))
@@ -1021,7 +1026,7 @@ func Test_AgentLoopCompact(t *testing.T) {
 		require.Len(t, p.asked, 1)
 		sent := p.asked[0].messages
 		require.Len(t, sent, 6)
-		assert.Contains(t, string(sent[2].ToolResults()[0].Content), "was removed")
+		assert.Contains(t, string(sent[2].ToolResults()[0].Content), "[removed, to fit the model's context")
 		assert.Contains(t, string(sent[5].ToolResults()[0].Content), "more characters]")
 		assert.Less(t, len(sent[5].ToolResults()[0].Content), 4*2640)
 	})
@@ -1044,7 +1049,7 @@ func Test_AgentLoopCompact(t *testing.T) {
 		// It's removed when the second is sent, which is truncated
 		third := p.asked[2].messages
 		require.Len(t, third, 5)
-		assert.Contains(t, string(third[2].ToolResults()[0].Content), "was removed")
+		assert.Contains(t, string(third[2].ToolResults()[0].Content), "[removed, to fit the model's context")
 		assert.Contains(t, string(third[4].ToolResults()[0].Content), "more characters]")
 
 		// The results are returned as they were first sent
