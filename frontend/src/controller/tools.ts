@@ -81,10 +81,7 @@ export class ToolsController extends ListController<Tool> {
 
         // An agent is edited, from a new definition, or as it is, and saved,
         // or deleted
-        views.page?.addEventListener(ToolsPage.eventNewAgent, () => {
-            this.agentGeneration++;
-            this.showAgent({ mode: 'new', yaml: agentTemplate });
-        });
+        views.page?.addEventListener(ToolsPage.eventNewAgent, () => void this.newAgent());
         views.agent?.addEventListener(AgentEditor.eventSave, (e) => void this.saveAgent((e as CustomEvent<string>).detail));
         views.agent?.addEventListener(AgentEditor.eventDelete, (e) => void this.deleteAgent((e as CustomEvent<string>).detail));
         views.agent?.addEventListener(AgentEditor.eventModel, (e) => void this.saveAgentModel((e as CustomEvent<AgentModel>).detail));
@@ -358,7 +355,7 @@ export class ToolsController extends ListController<Tool> {
         try {
             const [agent, yaml] = await Promise.all([getAgent(name), getAgentYAML(name)]);
             const builtin = agent.builtin === true;
-            const models = builtin ? await this.chatModels() : undefined;
+            const models = await this.chatModels();
             if (generation === this.agentGeneration) {
                 this.showAgent({ mode: 'edit', name: agent.name, title: agent.title, description: agent.description, yaml, builtin, model: agent.model, models });
             }
@@ -415,9 +412,19 @@ export class ToolsController extends ListController<Tool> {
         }
     }
 
+    // newAgent opens a new agent, from the template, whose model can be
+    // chosen from the models which chat, unless something else was opened
+    // while they were loaded
+    private async newAgent() {
+        const generation = ++this.agentGeneration;
+        const models = await this.chatModels();
+        if (generation === this.agentGeneration) {
+            this.showAgent({ mode: 'new', yaml: agentTemplate, models });
+        }
+    }
+
     // chatModels returns the canonical names of the models which chat, which
-    // a built-in agent's model is chosen from, or none, when they can't be
-    // listed
+    // an agent's model is chosen from, or none, when they can't be listed
     private async chatModels(): Promise<string[]> {
         try {
             const list = await listModels();
