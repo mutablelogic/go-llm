@@ -222,7 +222,7 @@ export class ResourcesController {
                 this.panel.resources = [];
                 this.panel.count = 0;
             }
-            this.notifications.error("The chat's files couldn't be loaded", error);
+            this.notifications.error("The conversation's files couldn't be loaded", error);
         } finally {
             if (this.loading === loading) {
                 this.loading = undefined;
@@ -263,7 +263,7 @@ export class ResourcesController {
     // removes it from the next message
     private async delete(resource: Resource) {
         const session = this.session;
-        if (!session || !confirm(`Delete ${resource.name || 'this file'} from the chat?`)) {
+        if (!session || !confirm(`Delete ${resource.name || 'this file'} from the conversation?`)) {
             return;
         }
         try {

@@ -170,7 +170,7 @@ export class SessionList extends LitElement {
         if (!this.sessions) {
             return html`<div class="empty"><cds-skeleton-text paragraph line-count="4"></cds-skeleton-text></div>`;
         } else if (this.sessions.length === 0) {
-            return html`<div class="empty">No chats yet</div>`;
+            return html`<div class="empty">No conversations yet</div>`;
         }
         return html`<ul>${this.sessions.map((session) => this.renderSession(session))}</ul>`;
     }

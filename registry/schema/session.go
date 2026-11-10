@@ -190,9 +190,10 @@ func (s SessionMeta) Merge(update SessionMeta) SessionMeta {
 }
 
 // Traced returns whether the session's clients show its model's thinking,
-// the tools it calls, and their results, which they don't, unless it's set
+// the tools it calls, and their results, which they don't, unless it's set,
+// or it's an event's, which is only read, to see what the event did
 func (s SessionMeta) Traced() bool {
-	return types.Value(s.Trace)
+	return s.Event || types.Value(s.Trace)
 }
 
 // trimmed returns the text, without the space around it, or nil, when it's

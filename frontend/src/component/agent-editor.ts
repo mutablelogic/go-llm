@@ -9,6 +9,7 @@ import { css, html, nothing, type PropertyValues } from 'lit';
 import { keyed } from 'lit/directives/keyed.js';
 import { customElement, property, query, state } from 'lit/decorators.js';
 import { Panel } from './panel';
+import { namespaceIcon } from './namespace-icon';
 import iconLoader from '@carbon/web-components/es/globals/internal/icon-loader.js';
 import Upload16 from '@carbon/icons/es/upload/16.js';
 import Copy16 from '@carbon/icons/es/copy/16.js';
@@ -188,6 +189,10 @@ export class AgentEditor extends Panel<AgentEditorItem> {
         return this.item;
     }
 
+    protected renderIcon(item: AgentEditorItem) {
+        return namespaceIcon('agent');
+    }
+
     protected renderTitle(item: AgentEditorItem) {
         return item.mode === 'new' ? 'New agent' : item.title?.trim() || item.name;
     }
@@ -233,7 +238,7 @@ export class AgentEditor extends Panel<AgentEditorItem> {
         if (origin) {
             return keyed(this.opened, html`
                 <cds-inline-notification kind="info" title="From ${origin}" hide-close-button low-contrast
-                    subtitle="This agent is the ${origin} connector's prompt, whose text its server has, so it runs with the model of the chat it's run from, and can't be changed, or deleted."></cds-inline-notification>
+                    subtitle="This agent is the ${origin} connector's prompt, whose text its server has, so it runs with the model of the conversation it's run from, and can't be changed, or deleted."></cds-inline-notification>
                 <textarea spellcheck="false" wrap="off" aria-label="Definition, as YAML" readonly .value=${item.yaml}></textarea>
             `);
         }
@@ -259,7 +264,7 @@ export class AgentEditor extends Panel<AgentEditorItem> {
         const chosen = modelOf(item.yaml);
         const options = chosen && !models.includes(chosen) ? [chosen, ...models] : models;
         return html`
-            <cds-select id="model" label-text="Model" helper-text="Default is the model of the chat it's run from" value=${chosen ?? defaultModel} ?disabled=${this.busy}
+            <cds-select id="model" label-text="Model" helper-text="Default is the model of the conversation it's run from" value=${chosen ?? defaultModel} ?disabled=${this.busy}
                 @cds-select-selected=${(e: CustomEvent<{ value: string }>) => this.chooseModel(modelValue(e.detail.value))}>
                 <cds-select-item value=${defaultModel}>Default</cds-select-item>
                 ${options.map((model) => html`<cds-select-item value=${model}>${model}</cds-select-item>`)}

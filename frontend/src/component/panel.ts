@@ -107,9 +107,33 @@ export abstract class Panel<T> extends LitElement {
         h2 {
             margin: 0;
             font-size: var(--cds-heading-03-font-size, 1.25rem);
-            font-weight: var(--cds-heading-03-font-weight, 400);
+            font-weight: 600;
             line-height: var(--cds-heading-03-line-height, 1.4);
             overflow-wrap: anywhere;
+        }
+
+        /* The icon beside the title, and its subtitle, as tall as they are
+           together, in the icons' colour */
+        header .icon {
+            display: flex;
+            flex: none;
+            align-self: center;
+            margin-right: 0.25rem;
+            color: var(--cds-icon-secondary);
+        }
+
+        header .icon svg, header .icon img {
+            width: 2.5rem;
+            height: 2.5rem;
+        }
+
+        /* A logo is on white, as brands' logos are drawn for it */
+        header .icon img {
+            box-sizing: border-box;
+            padding: 3px;
+            border-radius: 4px;
+            background: #fff;
+            object-fit: contain;
         }
 
         .subtitle {
@@ -192,6 +216,22 @@ export abstract class Panel<T> extends LitElement {
 
     // renderTitle, renderSubtitle and renderBody return the item's title, the
     // subtitle beneath it, and the body of the panel
+    // renderIcon returns the icon before the panel's title, such as that of
+    // the button which opens it, or nothing, for none
+    protected renderIcon(_item: T): unknown {
+        return nothing;
+    }
+
+    // icon returns the panel's icon, for its title, which is a logo's URL,
+    // or an icon, or nothing
+    private icon(item: T) {
+        const icon = this.renderIcon(item);
+        if (icon === nothing || icon === undefined || icon === null || icon === '') {
+            return nothing;
+        }
+        return html`<span class="icon" aria-hidden="true">${typeof icon === 'string' ? html`<img src=${icon} alt="">` : icon}</span>`;
+    }
+
     protected abstract renderTitle(item: T): unknown;
     protected abstract renderSubtitle(item: T): unknown;
     protected abstract renderBody(item: T): unknown;
@@ -299,6 +339,7 @@ export abstract class Panel<T> extends LitElement {
             <div class="backdrop" @click=${this.close}></div>
             <div class="panel" role="dialog" aria-modal="true" aria-labelledby="title" tabindex="-1">
                 <header>
+                    ${this.icon(item)}
                     <div class="title">
                         <h2 id="title">${this.renderTitle(item)}</h2>
                         <div class="subtitle">${this.renderSubtitle(item)}</div>

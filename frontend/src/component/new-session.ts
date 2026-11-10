@@ -11,6 +11,9 @@ import { keyed } from 'lit/directives/keyed.js';
 import { live } from 'lit/directives/live.js';
 import { customElement, property, query, state } from 'lit/decorators.js';
 import { Panel } from './panel';
+import iconLoader from '@carbon/web-components/es/globals/internal/icon-loader.js';
+import Chat16 from '@carbon/icons/es/chat/16.js';
+import Edit16 from '@carbon/icons/es/edit/16.js';
 import { cannot, type Model } from '../schema/model';
 import type { Namespace, Tool } from '../schema/tool';
 import type { ToolPicker } from './tool-picker';
@@ -216,6 +219,10 @@ export class NewSession extends Panel<NewSessionForm> {
 
     protected current(): NewSessionForm | undefined {
         return this.visible ? true : undefined;
+    }
+
+    protected renderIcon() {
+        return iconLoader(this.session ? Edit16 : Chat16);
     }
 
     protected renderTitle() {

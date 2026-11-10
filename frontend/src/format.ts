@@ -32,6 +32,23 @@ export function formatTime(value?: string): string {
     return value ? new Date(value).toLocaleString() : '';
 }
 
+// formatWhen returns an RFC 3339 time, as it is locally, in a few words:
+// Today, Tomorrow, or Yesterday, or a short date, with the year when it
+// isn't this year, and the time, without seconds, such as "Tomorrow, 08:00"
+// or "Sat 8 Nov, 09:20", or an empty string when there's none
+export function formatWhen(value?: string, now: Date = new Date()): string {
+    if (!value) {
+        return '';
+    }
+    const when = new Date(value);
+    const day = (d: Date) => new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
+    const days = Math.round((day(when) - day(now)) / 86400000);
+    const time = when.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
+    const date = days === 0 ? 'Today' : days === 1 ? 'Tomorrow' : days === -1 ? 'Yesterday'
+        : when.toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'short', year: when.getFullYear() === now.getFullYear() ? undefined : 'numeric' });
+    return `${date}, ${time}`;
+}
+
 // The units of sizes, in bytes, from smallest to largest
 const sizeUnits = ['B', 'KB', 'MB', 'GB', 'TB'];
 
@@ -103,6 +120,23 @@ export function describeSchedule(schedule: string): string {
         }
     }
 
+    // At a minute past some hours, every day, such as every two hours from
+    // eight in the morning, or at a few times
+    if (day === '*' && month === '*' && weekday === '*') {
+        const hours = hourList(hour);
+        const m = number(minute, 59);
+        if (hours && hours.length > 1 && m !== undefined) {
+            const time = (h: number) => `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+            const step = hours[1] - hours[0];
+            if (hours.every((h, i) => i === 0 || h - hours[i - 1] === step)) {
+                return `Every ${step === 1 ? 'hour' : `${step} hours`}, from ${time(hours[0])} to ${time(hours[hours.length - 1])}`;
+            } else if (hours.length <= 4) {
+                const times = hours.map(time);
+                return `Every day at ${times.slice(0, -1).join(', ')} and ${times[times.length - 1]}`;
+            }
+        }
+    }
+
     // At a time, on the days which are described
     const h = number(hour, 23);
     const m = number(minute, 59);
@@ -127,6 +161,29 @@ export function describeSchedule(schedule: string): string {
     const names = days.map((d) => weekdays[d]);
     const list = names.length === 1 ? names[0] : `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}`;
     return `${list} ${at}`;
+}
+
+// hourList returns the hours of the field, in order, of a list, such as
+// 8,10,12, a range, such as 8-18, or a range with a step, such as 8-22/2,
+// or undefined, when it's none of these, or an hour isn't one
+function hourList(field: string): number[] | undefined {
+    const hours = new Set<number>();
+    for (const part of field.split(',')) {
+        const match = /^(\d+)(?:-(\d+)(?:\/(\d+))?)?$/.exec(part);
+        if (!match) {
+            return undefined;
+        }
+        const from = Number(match[1]);
+        const to = match[2] !== undefined ? Number(match[2]) : from;
+        const step = match[3] !== undefined ? Number(match[3]) : 1;
+        if (from > 23 || to > 23 || to < from || step < 1) {
+            return undefined;
+        }
+        for (let h = from; h <= to; h += step) {
+            hours.add(h);
+        }
+    }
+    return [...hours].sort((a, b) => a - b);
 }
 
 // interval returns how many apart the values of the field are, of those
