@@ -123,6 +123,17 @@ export class ToolPicker extends LitElement {
             padding: 0 0 0.5rem 4.25rem;
         }
 
+        /* A tool's checkbox, and its badge, after its name, on one line */
+        .tool {
+            display: flex;
+            align-items: center;
+            gap: 0.25rem;
+        }
+
+        .tool cds-tag {
+            margin: 0;
+        }
+
         .description {
             display: block;
             margin: -0.25rem 0 0.25rem 1.625rem;
@@ -162,9 +173,11 @@ export class ToolPicker extends LitElement {
                         ${expanded ? html`<ul class="tools">
                             ${tools.map((tool) => html`
                                 <li>
-                                    <cds-checkbox .checked=${live(this.toolChosen(tool))}
-                                        @cds-checkbox-changed=${(e: Event) => this.toggleTool(e, tool)}>${tool.name}</cds-checkbox>
-                                    ${tool.agent ? html`<cds-tag size="sm" type="purple">Agent</cds-tag>` : nothing}
+                                    <div class="tool">
+                                        <cds-checkbox .checked=${live(this.toolChosen(tool))}
+                                            @cds-checkbox-changed=${(e: Event) => this.toggleTool(e, tool)}>${tool.name}</cds-checkbox>
+                                        ${tool.agent ? html`<cds-tag size="sm" type="purple">Agent</cds-tag>` : nothing}
+                                    </div>
                                     ${tool.description ? html`<span class="description" title=${tool.description}>${tool.description.replace(/\s+/g, ' ').trim()}</span>` : nothing}
                                 </li>
                             `)}
