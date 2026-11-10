@@ -131,21 +131,13 @@ type Speaker interface {
 	Speak(context.Context, Model, string, ...Opt) (Resource, Usage, error)
 }
 
-// Voicer is an interface for providers which list the voices their models
-// speak in, such as ElevenLabs, whose voices are its account's
-type Voicer interface {
-	// ListVoices returns the voices, by their names, in the order the
-	// provider lists them
-	ListVoices(context.Context) ([]Voice, error)
-}
-
-// Voice is a voice a model speaks in, by its name, which a voice is chosen
-// by, with its provider's identifier, when it has one of its own, and what's
-// known of it, such as its language, accent and gender, and the models it
-// suits best, when the provider says
+// Voice is a voice a model speaks in, which is chosen by its identifier,
+// such as ElevenLabs' voice ID, or OpenAI's "alloy", with its title, for
+// people, and what's known of it, such as its language, accent and gender,
+// and the models it suits best, when the provider says
 type Voice struct {
-	Name        string   `json:"name" help:"Name of the voice, which it's chosen by" example:"Rachel"`
-	ID          string   `json:"id,omitempty" help:"The provider's identifier of the voice, when it has one of its own" example:"21m00Tcm4TlvDq8ikWAM"`
+	ID          string   `json:"id" help:"Identifier of the voice, which it's chosen by" example:"21m00Tcm4TlvDq8ikWAM"`
+	Title       string   `json:"title,omitempty" help:"Title of the voice, for people" example:"Rachel"`
 	Description string   `json:"description,omitempty" help:"What the voice is like" example:"Matter-of-fact, personable woman. Great for conversational use cases."`
 	Category    string   `json:"category,omitempty" help:"What sort of voice it is, as the provider says, such as premade, cloned or generated" example:"premade"`
 	Gender      string   `json:"gender,omitempty" help:"Gender of the voice, as the provider labels it" example:"female"`

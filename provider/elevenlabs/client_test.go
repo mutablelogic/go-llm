@@ -196,8 +196,8 @@ func Test_LiveVoices(t *testing.T) {
 	require.NoError(t, err)
 	require.NotEmpty(t, voices, "ElevenLabs' own voices, at least")
 	for _, voice := range voices {
-		assert.NotEmpty(t, voice.Name)
 		assert.NotEmpty(t, voice.ID)
-		t.Logf("%s (%s): %s, %s, %s, %v", voice.Name, voice.Category, voice.Gender, voice.Age, voice.Accent, voice.Languages)
+		assert.NotEmpty(t, voice.Title)
+		t.Logf("%s %s (%s): %s, %s, %s, %v", voice.ID, voice.Title, voice.Category, voice.Gender, voice.Age, voice.Accent, voice.Languages)
 	}
 }

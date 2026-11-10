@@ -15,8 +15,6 @@ import (
 ///////////////////////////////////////////////////////////////////////////////
 // TYPES
 
-var _ llm.Voicer = (*Client)(nil)
-
 // voicesResponse is a page of the account's voices
 type voicesResponse struct {
 	Voices    []apiVoice `json:"voices"`
@@ -57,8 +55,9 @@ const (
 
 // ListVoices returns the account's voices, which are ElevenLabs' own, and
 // those the account has cloned, designed, or added from the voice library,
-// with what ElevenLabs says of each, such as its accent, gender and age,
-// the languages it's verified to speak, and the models it suits best
+// each by its voice ID, which it's chosen by, with its name, as its title,
+// and what ElevenLabs says of it, such as its accent, gender and age, the
+// languages it's verified to speak, and the models it suits best
 func (c *Client) ListVoices(ctx context.Context) ([]llm.Voice, error) {
 	var result []llm.Voice
 	token := ""
@@ -106,16 +105,16 @@ func (c *Client) v2Path(segments ...string) []any {
 	return path
 }
 
-// voice returns the voice, with its labels, which are in lower case, and
-// the languages it's verified to speak, by their locales, such as en-US, or
-// their languages, once each
+// voice returns the voice, by its ID, with its name, as its title, its
+// labels, and the languages it's verified to speak, by their locales, such
+// as en-US, or their languages, once each
 func (v apiVoice) voice() llm.Voice {
 	label := func(key string) string {
 		return strings.TrimSpace(v.Labels[key])
 	}
 	voice := llm.Voice{
-		Name:     strings.TrimSpace(v.Name),
 		ID:       v.ID,
+		Title:    strings.TrimSpace(v.Name),
 		Category: v.Category,
 		Gender:   label("gender"),
 		Age:      label("age"),
@@ -141,9 +140,6 @@ func (v apiVoice) voice() llm.Voice {
 		if language != "" && !slices.Contains(voice.Languages, language) {
 			voice.Languages = append(voice.Languages, language)
 		}
-	}
-	if voice.Name == "" {
-		voice.Name = v.ID
 	}
 	return voice
 }

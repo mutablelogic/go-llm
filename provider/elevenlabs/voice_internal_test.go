@@ -39,11 +39,11 @@ func Test_ListVoices(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, []llm.Voice{
 		{
-			Name: "Rachel", ID: "21m00Tcm4TlvDq8ikWAM", Category: "premade",
+			ID: "21m00Tcm4TlvDq8ikWAM", Title: "Rachel", Category: "premade",
 			Description: "Matter-of-fact, personable woman.", Gender: "female", Age: "young", Accent: "american", UseCase: "conversational",
 			Languages: []string{"en-US", "de"}, Models: []string{"eleven_multilingual_v2", "eleven_flash_v2_5"}, Preview: "https://example.com/rachel.mp3",
 		},
-		{Name: "My clone", ID: "abc", Category: "cloned", Description: "warm", Language: "de"},
+		{ID: "abc", Title: "My clone", Category: "cloned", Description: "warm", Language: "de"},
 	}, voices)
 	assert.Equal(t, []string{
 		"/v2/voices?include_total_count=false&page_size=100",
