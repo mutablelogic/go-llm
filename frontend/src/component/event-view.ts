@@ -29,6 +29,18 @@ const statusTypes: Record<string, string> = {
     delivered: 'green',
     ignored: 'cool-gray',
 };
+// reminderStatus returns what's become of a reminder, and its tag's colour:
+// recurring, on a schedule, upcoming, once, before it fires, or completed,
+// once it has, and won't again
+function reminderStatus(heartbeat: Heartbeat): [string, string] {
+    if (heartbeat.schedule) {
+        return ['Recurring', 'cyan'];
+    } else if (heartbeat.next) {
+        return ['Upcoming', 'blue'];
+    }
+    return ['Completed', 'green'];
+}
+
 const importanceTypes: Record<string, string> = {
     alert: 'red',
     notify: 'teal',
@@ -97,6 +109,14 @@ export class EventView extends Panel<string> {
             white-space: nowrap;
             color: var(--cds-text-secondary);
             font-size: 0.75rem;
+        }
+
+        /* A reminder's schedule, under when it fires next, wraps, so the
+           column is as narrow as the time is */
+        td.when .schedule {
+            margin-top: 0.25rem;
+            white-space: normal;
+            max-width: 9rem;
         }
 
         td.status cds-tag {
@@ -186,18 +206,23 @@ export class EventView extends Panel<string> {
                 <h3>Reminders</h3>
                 ${this.heartbeats.length === 0 ? html`<p class="empty">None are scheduled. Ask in the conversation for a reminder, or a briefing, to schedule one.</p>` : html`
                     <table>
-                        <thead><tr><th>Reminder</th><th>When</th><th></th></tr></thead>
+                        <thead><tr><th>When</th><th>Reminder</th><th>Status</th><th></th></tr></thead>
                         <tbody>${this.heartbeats.map((heartbeat) => html`
                             <tr>
+                                <td class="when">
+                                    <div>${heartbeat.next ? formatTime(heartbeat.next) : heartbeat.fired ? `Fired ${formatTime(heartbeat.fired)}` : ''}</div>
+                                    <div class="schedule">
+                                        ${heartbeat.schedule
+                                            ? html`<span title=${heartbeat.schedule}>${describeSchedule(heartbeat.schedule)}</span>${heartbeat.timezone ? html` (${heartbeat.timezone})` : nothing}`
+                                            : html`Once`}
+                                    </div>
+                                </td>
                                 <td>
                                     <div class="title">${heartbeat.title}</div>
                                     <div class="secondary">${heartbeat.prompt}</div>
                                 </td>
-                                <td class="when">
-                                    ${heartbeat.schedule
-                                        ? html`<span title=${heartbeat.schedule}>${describeSchedule(heartbeat.schedule)}</span>${heartbeat.timezone ? html` (${heartbeat.timezone})` : nothing}`
-                                        : html`Once`}
-                                    <div>${heartbeat.next ? `Next ${formatTime(heartbeat.next)}` : heartbeat.fired ? `Fired ${formatTime(heartbeat.fired)}` : ''}</div>
+                                <td class="status">
+                                    <cds-tag size="sm" type=${reminderStatus(heartbeat)[1]}>${reminderStatus(heartbeat)[0]}</cds-tag>
                                 </td>
                                 <td class="action">
                                     <cds-icon-button kind="ghost" size="sm" align="left" ?disabled=${this.deleting.has(heartbeat.id)}
