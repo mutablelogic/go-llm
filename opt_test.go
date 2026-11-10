@@ -280,11 +280,12 @@ func Test_Paged(t *testing.T) {
 	assert.Equal(t, items, page)
 	assert.Empty(t, next)
 
-	// A page at a time, with the token of the next
+	// A page at a time, with the opaque token of the next
 	page, next, err = llm.Paged(items, llm.WithLimit(2))
 	require.NoError(t, err)
 	assert.Equal(t, []int{0, 1}, page)
-	assert.Equal(t, "2", next)
+	assert.NotEmpty(t, next)
+	assert.NotEqual(t, "2", next, "a token, rather than an offset")
 	page, next, err = llm.Paged(items, llm.WithLimit(2), llm.WithPageToken(next))
 	require.NoError(t, err)
 	assert.Equal(t, []int{2, 3}, page)
@@ -293,19 +294,33 @@ func Test_Paged(t *testing.T) {
 	assert.Equal(t, []int{4}, page)
 	assert.Empty(t, next)
 
-	// Past the end, nothing, and no limit is none
-	page, next, err = llm.Paged(items, llm.WithPageToken("9"))
-	require.NoError(t, err)
-	assert.Empty(t, page)
-	assert.Empty(t, next)
+	// No limit is none, with the token of the same page
 	page, next, err = llm.Paged(items, llm.WithLimit(0))
 	require.NoError(t, err)
 	assert.Empty(t, page)
-	assert.Equal(t, "0", next)
+	assert.NotEmpty(t, next)
+	page, _, err = llm.Paged(items, llm.WithLimit(1), llm.WithPageToken(next))
+	require.NoError(t, err)
+	assert.Equal(t, []int{0}, page)
 
-	// A token which isn't one, and an option which isn't for a list
-	_, _, err = llm.Paged(items, llm.WithPageToken("next"))
-	assert.ErrorIs(t, err, llm.ErrBadParameter)
+	// A token which isn't one, such as an offset, and an option which isn't
+	// for a list
+	for _, token := range []string{"next", "2", "cGFnZTp4"} {
+		_, _, err = llm.Paged(items, llm.WithPageToken(token))
+		assert.ErrorIs(t, err, llm.ErrBadParameter, token)
+	}
 	_, _, err = llm.Paged(items, llm.WithTemperature(0.5))
 	assert.ErrorIs(t, err, llm.ErrBadParameter)
+}
+
+func Test_PagedVoices(t *testing.T) {
+	voices := []llm.Voice{{ID: "a"}, {ID: "b"}, {ID: "c"}}
+	list, err := llm.PagedVoices(voices, llm.WithLimit(2))
+	require.NoError(t, err)
+	assert.Len(t, list.Body, 2)
+	assert.Equal(t, uint(3), list.Count)
+	assert.NotEmpty(t, list.Next)
+	list, err = llm.PagedVoices(voices, llm.WithPageToken("nonsense"))
+	assert.ErrorIs(t, err, llm.ErrBadParameter)
+	assert.Nil(t, list)
 }

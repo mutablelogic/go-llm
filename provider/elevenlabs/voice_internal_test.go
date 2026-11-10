@@ -37,9 +37,10 @@ func Test_ListVoices(t *testing.T) {
 	require.NoError(t, err)
 
 	model := c.speechModel(apiModel{ID: "eleven_multilingual_v2", Speaks: true})
-	voices, next, err := c.ListVoices(context.Background(), model)
+	voices, err := c.ListVoices(context.Background(), model)
 	require.NoError(t, err)
-	assert.Empty(t, next)
+	assert.Empty(t, voices.Next)
+	assert.Equal(t, uint(2), voices.Count)
 	assert.Equal(t, []llm.Voice{
 		{
 			ID: "21m00Tcm4TlvDq8ikWAM", Title: "Rachel", Category: "premade",
@@ -47,7 +48,7 @@ func Test_ListVoices(t *testing.T) {
 			Languages: []string{"en-US", "de"}, Recommended: types.Ptr(true), Preview: "https://example.com/rachel.mp3",
 		},
 		{ID: "abc", Title: "My clone", Category: "cloned", Description: "warm", Language: "de"},
-	}, voices)
+	}, voices.Body)
 	assert.Equal(t, []string{
 		"/v2/voices?include_total_count=false&page_size=100",
 		"/v2/voices?include_total_count=false&next_page_token=page-2&page_size=100",
@@ -57,30 +58,32 @@ func Test_ListVoices(t *testing.T) {
 	// it's recommended for a model when it's of the best quality with it,
 	// isn't when it's of the best quality with others, and isn't known when
 	// ElevenLabs doesn't say
-	voices, _, err = c.ListVoices(context.Background(), c.speechModel(apiModel{ID: "eleven_flash_v2_5", Speaks: true}))
+	voices, err = c.ListVoices(context.Background(), c.speechModel(apiModel{ID: "eleven_flash_v2_5", Speaks: true}))
 	require.NoError(t, err)
-	assert.Equal(t, []string{"en-US"}, voices[0].Languages)
-	assert.Equal(t, types.Ptr(true), voices[0].Recommended)
-	assert.Nil(t, voices[1].Recommended)
-	voices, _, err = c.ListVoices(context.Background(), c.speechModel(apiModel{ID: "eleven_v4_turbo", Speaks: true}))
+	assert.Equal(t, []string{"en-US"}, voices.Body[0].Languages)
+	assert.Equal(t, types.Ptr(true), voices.Body[0].Recommended)
+	assert.Nil(t, voices.Body[1].Recommended)
+	voices, err = c.ListVoices(context.Background(), c.speechModel(apiModel{ID: "eleven_v4_turbo", Speaks: true}))
 	require.NoError(t, err)
-	assert.Equal(t, types.Ptr(false), voices[0].Recommended)
+	assert.Equal(t, types.Ptr(false), voices.Body[0].Recommended)
 
-	// A page at a time, with ElevenLabs' token
+	// A page at a time, with ElevenLabs' token, and how many there are,
+	// which it's asked for
 	asked = nil
-	voices, next, err = c.ListVoices(context.Background(), model, llm.WithLimit(1))
+	voices, err = c.ListVoices(context.Background(), model, llm.WithLimit(1))
 	require.NoError(t, err)
-	require.Len(t, voices, 1)
-	assert.Equal(t, "page-2", next)
-	voices, next, err = c.ListVoices(context.Background(), model, llm.WithLimit(1), llm.WithPageToken(next))
+	require.Len(t, voices.Body, 1)
+	assert.Equal(t, uint(2), voices.Count)
+	assert.Equal(t, "page-2", voices.Next)
+	voices, err = c.ListVoices(context.Background(), model, llm.WithLimit(1), llm.WithPageToken(voices.Next))
 	require.NoError(t, err)
-	assert.Equal(t, "abc", voices[0].ID)
-	assert.Empty(t, next)
+	assert.Equal(t, "abc", voices.Body[0].ID)
+	assert.Empty(t, voices.Next)
 	assert.Equal(t, []string{
-		"/v2/voices?include_total_count=false&page_size=1",
-		"/v2/voices?include_total_count=false&next_page_token=page-2&page_size=1",
+		"/v2/voices?include_total_count=true&page_size=1",
+		"/v2/voices?include_total_count=true&next_page_token=page-2&page_size=1",
 	}, asked)
-	_, _, err = c.ListVoices(context.Background(), model, llm.WithOpt(llm.VoiceKey, "x"))
+	_, err = c.ListVoices(context.Background(), model, llm.WithOpt(llm.VoiceKey, "x"))
 	assert.ErrorIs(t, err, llm.ErrBadParameter)
 }
 

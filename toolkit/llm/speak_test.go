@@ -92,15 +92,15 @@ func (m *models) Speak(_ context.Context, _ gollm.Model, text string, opts ...go
 	return &providerschema.Resource{ResourceMeta: providerschema.ResourceMeta{ContentType: "audio/wav", Data: []byte(text)}}, m.usage, nil
 }
 
-func (m *models) ListVoices(_ context.Context, model gollm.Model, opts ...gollm.Opt) ([]gollm.Voice, string, error) {
+func (m *models) ListVoices(_ context.Context, model gollm.Model, opts ...gollm.Opt) (*gollm.VoiceList, error) {
 	if model.Name() != "phonon" {
-		return nil, "", gollm.ErrNotImplemented.Withf("%s doesn't speak", model.Name())
+		return nil, gollm.ErrNotImplemented.Withf("%s doesn't speak", model.Name())
 	}
 	voices := make([]gollm.Voice, 30)
 	for i := range voices {
 		voices[i] = gollm.Voice{ID: fmt.Sprintf("voice-%d", i), Title: fmt.Sprintf("Voice %d", i)}
 	}
-	return gollm.Paged(voices, opts...)
+	return gollm.PagedVoices(voices, opts...)
 }
 
 func (m *models) Illustrate(_ context.Context, _ gollm.Model, prompt string, images []gollm.Resource, opts ...gollm.Opt) ([]gollm.Resource, gollm.Usage, error) {
@@ -340,7 +340,9 @@ func Test_Models(t *testing.T) {
 	phonon := output["models"].([]any)[0].(map[string]any)
 	require.Len(t, phonon["voices"], 25)
 	assert.Equal(t, map[string]any{"id": "voice-0", "title": "Voice 0"}, phonon["voices"].([]any)[0])
-	assert.Equal(t, "25", phonon["voices_next"])
+	assert.Equal(t, float64(30), phonon["voices_count"], "how many there are")
+	next := phonon["voices_next"].(string)
+	assert.NotEqual(t, "25", next, "an opaque token, rather than an offset")
 	output, err = run(`{}`)
 	require.NoError(t, err)
 	for _, m := range output["models"].([]any) {
@@ -348,7 +350,7 @@ func Test_Models(t *testing.T) {
 	}
 
 	// The next page of a model's voices, which is the last
-	output, err = run(`{"model":"fake:phonon","voices_next":"25"}`)
+	output, err = run(`{"model":"fake:phonon","voices_next":"` + next + `"}`)
 	require.NoError(t, err)
 	phonon = output["models"].([]any)[0].(map[string]any)
 	require.Len(t, phonon["voices"], 5)
@@ -360,7 +362,7 @@ func Test_Models(t *testing.T) {
 	output, err = run(`{"model":"fake:reader"}`)
 	require.NoError(t, err)
 	assert.Equal(t, []string{"fake:reader"}, names(output))
-	_, err = run(`{"voices_next":"25"}`)
+	_, err = run(`{"voices_next":"` + next + `"}`)
 	assert.ErrorIs(t, err, gollm.ErrBadParameter)
 	_, err = run(`{"voice":"alfie"}`)
 	assert.ErrorIs(t, err, gollm.ErrBadParameter)
@@ -370,14 +372,15 @@ func Test_Models(t *testing.T) {
 	require.NoError(t, err)
 	phonon = output["models"].([]any)[0].(map[string]any)
 	assert.Len(t, phonon["voices"], 11, "Voice 2, and Voice 20 to 29")
+	assert.Equal(t, float64(11), phonon["voices_count"], "how many it finds")
 	assert.NotContains(t, phonon, "voices_next")
 	// A search which finds more than a page, a page at a time
 	output, err = run(`{"model":"fake:phonon","voice":"voice"}`)
 	require.NoError(t, err)
 	phonon = output["models"].([]any)[0].(map[string]any)
 	require.Len(t, phonon["voices"], 25)
-	assert.Equal(t, "25", phonon["voices_next"])
-	output, err = run(`{"model":"fake:phonon","voice":"voice","voices_next":"25"}`)
+	next = phonon["voices_next"].(string)
+	output, err = run(`{"model":"fake:phonon","voice":"voice","voices_next":"` + next + `"}`)
 	require.NoError(t, err)
 	phonon = output["models"].([]any)[0].(map[string]any)
 	require.Len(t, phonon["voices"], 5)
@@ -388,7 +391,9 @@ func Test_Models(t *testing.T) {
 	assert.NotContains(t, output["models"].([]any)[0].(map[string]any), "voices")
 	_, err = run(`{"model":"fake:phonon","voices_next":"nonsense"}`)
 	assert.ErrorIs(t, err, gollm.ErrBadParameter)
-	_, err = run(`{"model":"fake:chat","voices_next":"25"}`)
+	_, err = run(`{"model":"fake:phonon","voices_next":"25"}`)
+	assert.ErrorIs(t, err, gollm.ErrBadParameter, "an offset isn't a token")
+	_, err = run(`{"model":"fake:chat","voices_next":"` + next + `"}`)
 	assert.ErrorIs(t, err, gollm.ErrNotImplemented)
 
 	// A capability which isn't one, a provider which isn't there, and no

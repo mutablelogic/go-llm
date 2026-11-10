@@ -20,6 +20,7 @@ import (
 type voicesResponse struct {
 	Voices    []apiVoice `json:"voices"`
 	HasMore   bool       `json:"has_more"`
+	Count     int        `json:"total_count,omitempty"` // -1, when it isn't asked for
 	NextToken *string    `json:"next_page_token,omitempty"`
 }
 
@@ -65,16 +66,16 @@ const (
 // ElevenLabs' token of the next page, and otherwise all of them. Returns
 // ErrNotImplemented for a model which doesn't speak, and ErrBadParameter for
 // an option which isn't supported.
-func (c *Client) ListVoices(ctx context.Context, model llm.Model, opts ...llm.Opt) ([]llm.Voice, string, error) {
+func (c *Client) ListVoices(ctx context.Context, model llm.Model, opts ...llm.Opt) (*llm.VoiceList, error) {
 	m, ok := model.(*Model)
 	if !ok || m.provider != c {
-		return nil, "", llm.ErrBadParameter.With("not a model of this provider")
+		return nil, llm.ErrBadParameter.With("not a model of this provider")
 	} else if m.speech == nil {
-		return nil, "", llm.ErrNotImplemented.Withf("%s doesn't speak", m.Name())
+		return nil, llm.ErrNotImplemented.Withf("%s doesn't speak", m.Name())
 	}
 	o, err := llm.ApplyOpts(opts...)
 	if err != nil {
-		return nil, "", err
+		return nil, err
 	}
 	var token string
 	var limit uint
@@ -88,24 +89,32 @@ func (c *Client) ListVoices(ctx context.Context, model llm.Model, opts ...llm.Op
 			err = llm.ErrBadParameter.Withf("option %q isn't supported for a list", key)
 		}
 		if err != nil {
-			return nil, "", err
+			return nil, err
 		}
 	}
 	if !o.Has(llm.LimitKey) {
 		voices, err := c.voices(ctx, token, m.Name())
-		return voices, "", err
-	} else if limit == 0 {
-		return nil, token, nil
+		if err != nil {
+			return nil, err
+		}
+		return &llm.VoiceList{Body: voices, Count: uint(len(voices))}, nil
 	}
-	page, err := c.voicesPage(ctx, token, min(limit, voicesPageSize))
+
+	// A page, with how many there are, which ElevenLabs says, when it's
+	// asked to, as a snapshot, or at least those of the page
+	page, err := c.voicesPage(ctx, token, max(1, min(limit, voicesPageSize)), true)
 	if err != nil {
-		return nil, "", err
+		return nil, err
 	}
 	voices := make([]llm.Voice, 0, len(page.Voices))
-	for _, voice := range page.Voices {
+	for _, voice := range page.Voices[:min(uint(len(page.Voices)), limit)] {
 		voices = append(voices, voice.voice(m.Name()))
 	}
-	return voices, page.next(token), nil
+	next := page.next(token)
+	if limit == 0 {
+		next = token
+	}
+	return &llm.VoiceList{Body: voices, Count: uint(max(page.Count, len(page.Voices))), Next: next}, nil
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -123,7 +132,7 @@ func (c *Client) accountVoices(ctx context.Context) ([]llm.Voice, error) {
 func (c *Client) voices(ctx context.Context, token, model string) ([]llm.Voice, error) {
 	var result []llm.Voice
 	for range voicesPages {
-		page, err := c.voicesPage(ctx, token, voicesPageSize)
+		page, err := c.voicesPage(ctx, token, voicesPageSize, false)
 		if err != nil {
 			return nil, err
 		}
@@ -138,9 +147,10 @@ func (c *Client) voices(ctx context.Context, token, model string) ([]llm.Voice, 
 }
 
 // voicesPage returns the page of the account's voices the token says, or the
-// first, of at most the size
-func (c *Client) voicesPage(ctx context.Context, token string, size uint) (*voicesResponse, error) {
-	query := url.Values{"page_size": {strconv.FormatUint(uint64(size), 10)}, "include_total_count": {"false"}}
+// first, of at most the size, with how many there are, when it's asked for,
+// which has a cost for ElevenLabs
+func (c *Client) voicesPage(ctx context.Context, token string, size uint, count bool) (*voicesResponse, error) {
+	query := url.Values{"page_size": {strconv.FormatUint(uint64(size), 10)}, "include_total_count": {strconv.FormatBool(count)}}
 	if token != "" {
 		query.Set("next_page_token", token)
 	}

@@ -35,6 +35,7 @@ func modelHandlers(r *registry.Registry, router *httprouter.Router, documentatio
 		modelListHandlers(r, router, documentation),
 		modelGetHandlers(r, router, documentation),
 		modelUnloadHandlers(r, router, documentation),
+		modelVoiceHandlers(r, router, documentation),
 	)
 }
 
@@ -195,6 +196,70 @@ func modelUnloadHandlers(reg *registry.Registry, router *httprouter.Router, docu
 			op.ErrorResponse(http.StatusServiceUnavailable, "The model couldn't be unloaded, or a provider which could have it can't be reached")
 		})
 	})
+}
+
+// modelVoiceHandlers registers the path which lists a model's voices
+func modelVoiceHandlers(reg *registry.Registry, router *httprouter.Router, documentation *openapi.MarkdownDoc) error {
+	return router.Register("llm/model/{name}/voice", jsonschema.MustFor[modelName](), func(path httprequest.PathItem) {
+		path.Tag("Models")
+
+		// GET
+		path.Get(func(w http.ResponseWriter, r *http.Request) {
+			name := r.PathValue("name")
+			var req schema.VoiceListRequest
+			if err := httprequest.Query(r.URL.Query(), &req); err != nil {
+				httpresponse.Error(w, httpresponse.ErrBadRequest.With(err.Error()))
+			} else if list, err := listVoices(r, reg, name, req); err != nil {
+				httpresponse.Error(w, llm.HTTPErr(err), name)
+			} else {
+				httpresponse.JSON(w, http.StatusOK, httprequest.Indent(r), list)
+			}
+		}, func(op httprequest.PathOperation) {
+			op.Summary("List Voices")
+			op.Description(documentation.Section(3, "GET /llm/model/{name}/voice").Body)
+			op.Query(jsonschema.MustFor[schema.VoiceListRequest]())
+			op.JSONResponse(http.StatusOK, jsonschema.MustFor[schema.VoiceList](), "The model's voices, and the token of the next page")
+			op.ErrorResponse(http.StatusBadRequest, "Invalid request, such as a limit which isn't a number, or a page token which isn't one")
+			op.ErrorResponse(http.StatusNotFound, "Model not found")
+			op.ErrorResponse(http.StatusConflict, "More than one provider has the model, so its provider is needed")
+			op.ErrorResponse(http.StatusNotImplemented, "The model doesn't speak, or its provider can't speak text")
+			op.ErrorResponse(http.StatusServiceUnavailable, "The voices couldn't be listed, or a provider which could have the model can't be reached")
+		})
+	})
+}
+
+// listVoices returns the voices of the model with the name, or alias, or
+// provider and name, which the request selects: those whose title, or ID,
+// has the voice, at most the limit of them, from the page the token says,
+// with the token of the next page
+func listVoices(r *http.Request, reg *registry.Registry, name string, req schema.VoiceListRequest) (*schema.VoiceList, error) {
+	model, err := reg.GetModel(r.Context(), name)
+	if err != nil {
+		return nil, err
+	}
+	var opts []llm.Opt
+	if req.Limit != nil {
+		opts = append(opts, llm.WithLimit(*req.Limit))
+	}
+	if req.Next != "" {
+		opts = append(opts, llm.WithPageToken(req.Next))
+	}
+
+	// A search is of all the voices, which are then paged, as a provider
+	// pages its voices, rather than those it finds
+	var voices *llm.VoiceList
+	if search := strings.TrimSpace(req.Voice); search != "" {
+		all, err := reg.ListVoices(r.Context(), model)
+		if err != nil {
+			return nil, err
+		}
+		if voices, err = llm.PagedVoices(llm.FindVoices(all.Body, search), opts...); err != nil {
+			return nil, err
+		}
+	} else if voices, err = reg.ListVoices(r.Context(), model, opts...); err != nil {
+		return nil, err
+	}
+	return &schema.VoiceList{Model: reg.Model(model).Canonical, Voice: strings.TrimSpace(req.Voice), Body: voices.Body, Count: voices.Count, Next: voices.Next}, nil
 }
 
 // unloadModel unloads the model with the name, or alias, or provider and

@@ -33,11 +33,11 @@ func Test_ListVoices(t *testing.T) {
 	require.NoError(t, err)
 	ctx := context.Background()
 
-	voices, _, err := c.ListVoices(ctx, &Model{provider: c, data: apiModel{Name: "phonon:latest"}})
+	voices, err := c.ListVoices(ctx, &Model{provider: c, data: apiModel{Name: "phonon:latest"}})
 	require.NoError(t, err)
-	assert.Equal(t, []llm.Voice{{ID: "Alfie", Title: "Alfie"}, {ID: "Bryony", Title: "Bryony"}}, voices)
+	assert.Equal(t, &llm.VoiceList{Body: []llm.Voice{{ID: "Alfie", Title: "Alfie"}, {ID: "Bryony", Title: "Bryony"}}, Count: 2}, voices)
 
 	// A model which doesn't speak has none
-	_, _, err = c.ListVoices(ctx, &Model{provider: c, data: apiModel{Name: "llama3.2:latest"}})
+	_, err = c.ListVoices(ctx, &Model{provider: c, data: apiModel{Name: "llama3.2:latest"}})
 	assert.ErrorIs(t, err, llm.ErrNotImplemented)
 }

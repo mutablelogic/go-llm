@@ -53,10 +53,10 @@ func (r *Registry) Speak(ctx context.Context, model llm.Model, text string, opts
 
 // ListVoices returns the voices the model speaks in, from the model's
 // provider, which must be in the registry, and speak text, or none, when the
-// provider can't say, a page at a time, as the options say, with the token
-// of the next page. Returns ErrNotImplemented when the model is known not
+// provider can't say, a page at a time, as the options say, with how many
+// there are, and the token of the next page. Returns ErrNotImplemented when the model is known not
 // to speak, and the provider's error as providerErr does.
-func (r *Registry) ListVoices(ctx context.Context, model llm.Model, opts ...llm.Opt) (_ []llm.Voice, _ string, err error) {
+func (r *Registry) ListVoices(ctx context.Context, model llm.Model, opts ...llm.Opt) (_ *llm.VoiceList, err error) {
 	ctx, endSpan := otel.StartSpan(r.tracer, ctx, "llm.registry.ListVoices",
 		attribute.String("arg.model", r.modelName(model)),
 	)
@@ -64,15 +64,15 @@ func (r *Registry) ListVoices(ctx context.Context, model llm.Model, opts ...llm.
 
 	speaker, err := capability[llm.Speaker](r, model, "speak text")
 	if err != nil {
-		return nil, "", err
+		return nil, err
 	} else if err := can(model, model.Capabilities().SpeechOutput, "speak text"); err != nil {
-		return nil, "", err
+		return nil, err
 	}
-	voices, next, err := speaker.ListVoices(ctx, model, opts...)
+	voices, err := speaker.ListVoices(ctx, model, opts...)
 	if err != nil {
-		return nil, "", providerErr(err)
+		return nil, providerErr(err)
 	}
-	return voices, next, nil
+	return voices, nil
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -145,10 +145,10 @@ func (r *Registry) modelVoices(ctx context.Context, speaker llm.Speaker, model l
 	if cached, ok := r.voices.Load(key); ok && time.Since(cached.(cachedVoices).at) < voicesTTL {
 		return cached.(cachedVoices).voices
 	}
-	voices, _, err := speaker.ListVoices(ctx, model)
+	voices, err := speaker.ListVoices(ctx, model)
 	if err != nil {
 		return nil
 	}
-	r.voices.Store(key, cachedVoices{voices: voices, at: time.Now()})
-	return voices
+	r.voices.Store(key, cachedVoices{voices: voices.Body, at: time.Now()})
+	return voices.Body
 }

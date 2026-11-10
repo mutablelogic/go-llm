@@ -46,28 +46,30 @@ func Test_ListVoices(t *testing.T) {
 	require.NoError(t, err)
 
 	// Every voice
-	voices, next, err := r.ListVoices(ctx, model)
+	voices, err := r.ListVoices(ctx, model)
 	require.NoError(t, err)
-	require.Len(t, voices, 5)
-	assert.Equal(t, llm.Voice{ID: "Alfie", Title: "Alfie"}, voices[0])
-	assert.Empty(t, next)
+	require.Len(t, voices.Body, 5)
+	assert.Equal(t, uint(5), voices.Count)
+	assert.Equal(t, llm.Voice{ID: "Alfie", Title: "Alfie"}, voices.Body[0])
+	assert.Empty(t, voices.Next)
 
-	// A page at a time
-	voices, next, err = r.ListVoices(ctx, model, llm.WithLimit(2))
+	// A page at a time, with how many there are
+	voices, err = r.ListVoices(ctx, model, llm.WithLimit(2))
 	require.NoError(t, err)
-	assert.Equal(t, []string{"Alfie", "Bryony"}, ids(voices))
-	voices, next, err = r.ListVoices(ctx, model, llm.WithLimit(2), llm.WithPageToken(next))
+	assert.Equal(t, []string{"Alfie", "Bryony"}, ids(voices.Body))
+	assert.Equal(t, uint(5), voices.Count)
+	voices, err = r.ListVoices(ctx, model, llm.WithLimit(2), llm.WithPageToken(voices.Next))
 	require.NoError(t, err)
-	assert.Equal(t, []string{"Cara", "Dev"}, ids(voices))
-	voices, next, err = r.ListVoices(ctx, model, llm.WithLimit(2), llm.WithPageToken(next))
+	assert.Equal(t, []string{"Cara", "Dev"}, ids(voices.Body))
+	voices, err = r.ListVoices(ctx, model, llm.WithLimit(2), llm.WithPageToken(voices.Next))
 	require.NoError(t, err)
-	assert.Equal(t, []string{"Eve"}, ids(voices))
-	assert.Empty(t, next)
+	assert.Equal(t, []string{"Eve"}, ids(voices.Body))
+	assert.Empty(t, voices.Next)
 
 	// A model which doesn't speak
 	llama, err := r.GetModel(ctx, "llama3.2:latest")
 	require.NoError(t, err)
-	_, _, err = r.ListVoices(ctx, llama)
+	_, err = r.ListVoices(ctx, llama)
 	assert.ErrorIs(t, err, llm.ErrNotImplemented)
 }
 

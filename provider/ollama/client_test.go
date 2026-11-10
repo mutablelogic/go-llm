@@ -138,8 +138,8 @@ func Test_ListVoices_Live(t *testing.T) {
 	if err != nil {
 		t.Skipf("%s isn't available: %v", name, err)
 	}
-	voices, _, err := c.ListVoices(context.Background(), model)
+	voices, err := c.ListVoices(context.Background(), model)
 	require.NoError(t, err)
-	require.NotEmpty(t, voices)
-	t.Logf("%d voices, such as %v", len(voices), voices[0])
+	require.NotEmpty(t, voices.Body)
+	t.Logf("%d voices, such as %v", voices.Count, voices.Body[0])
 }

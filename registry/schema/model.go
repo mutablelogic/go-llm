@@ -67,6 +67,31 @@ type ModelList struct {
 	Body  []*Model `json:"body,omitempty"`
 }
 
+// VoiceListRequest selects a model's voices: those whose title, or ID, has
+// the voice, ignoring case, at most a limit of them, from the page a token
+// says, which the page before says is next
+type VoiceListRequest struct {
+	Voice string `json:"voice,omitempty" name:"voice" help:"Part of the title, or ID, of the voices, ignoring case, such as matilda" optional:""`
+	Limit *uint  `json:"limit,omitempty" name:"limit" help:"Most voices to return, or all of them" optional:""`
+	Next  string `json:"next,omitempty" name:"next" help:"The page of the voices, which the page before says is next" optional:""`
+}
+
+// VoiceList is a model's voices, by its canonical name, which a request
+// selects, in the order its provider lists them, with how many there are,
+// and the token of the next page, when there are more
+type VoiceList struct {
+	Model string      `json:"model" help:"The model, by its canonical name" example:"elevenlabs:eleven_v4_turbo"`
+	Voice string      `json:"voice,omitempty" help:"Part of the title, or ID, of the voices, as it was asked for" example:"matilda"`
+	Body  []llm.Voice `json:"body,omitempty" help:"The voices, each chosen by its id, or its title"`
+	Count uint        `json:"count" help:"How many voices there are, which the request selects, of every page" example:"23"`
+	Next  string      `json:"next,omitempty" help:"The opaque token of the next page of the voices, which is given back as it is, when there are more" example:"cGFnZToyNQ"`
+}
+
+// VoiceRow is a voice, as a row of a table
+type VoiceRow struct {
+	llm.Voice
+}
+
 ///////////////////////////////////////////////////////////////////////////////
 // GLOBALS
 
@@ -171,4 +196,65 @@ func tokens(limit *uint) string {
 		return ""
 	}
 	return strconv.FormatUint(uint64(*limit), 10)
+}
+
+// Query returns the request as the query of a URL
+func (r VoiceListRequest) Query() url.Values {
+	values := url.Values{}
+	if voice := strings.TrimSpace(r.Voice); voice != "" {
+		values.Set("voice", voice)
+	}
+	if r.Limit != nil {
+		values.Set("limit", strconv.FormatUint(uint64(*r.Limit), 10))
+	}
+	if r.Next != "" {
+		values.Set("next", r.Next)
+	}
+	return values
+}
+
+func (l VoiceList) String() string {
+	return types.Stringify(l)
+}
+
+func (VoiceRow) Header() []string {
+	return []string{"ID", "Title", "Description", "Gender", "Age", "Accent", "Languages", "Recommended"}
+}
+
+func (VoiceRow) Width(int) int {
+	return 0
+}
+
+func (v VoiceRow) Cell(col int) tui.CellText {
+	switch col {
+	case 0:
+		return v.ID
+	case 1:
+		return v.Title
+	case 2:
+		return v.Description
+	case 3:
+		return v.Gender
+	case 4:
+		return v.Age
+	case 5:
+		return v.Accent
+	case 6:
+		languages := v.Languages
+		if len(languages) == 0 && v.Language != "" {
+			languages = []string{v.Language}
+		}
+		return strings.Join(languages, ", ")
+	case 7:
+		switch {
+		case v.Recommended == nil:
+			return ""
+		case *v.Recommended:
+			return "yes"
+		default:
+			return "no"
+		}
+	default:
+		return ""
+	}
 }
