@@ -163,6 +163,7 @@ func (r *Registry) addMarker(ctx context.Context, id uuid.UUID, marker providers
 		Time:        time.Now().UTC(),
 		Marker:      &marker,
 	})
+	recountContext(&session)
 	if session, err = r.sessionStore.Put(ctx, session); err != nil {
 		return schema.Session{}, uuid.Nil(), err
 	}
@@ -321,6 +322,7 @@ func (r *Registry) updateMarker(ctx context.Context, id, markerID uuid.UUID, fn 
 			marker := *session.Messages[i].Marker
 			fn(&session, &marker, previous)
 			session.Messages[i].Marker = &marker
+			recountContext(&session)
 			if session, err = r.sessionStore.Put(ctx, session); err != nil {
 				return err
 			}
@@ -381,6 +383,36 @@ func compactTools(tools, namespaces []string) []string {
 	}
 	slices.Sort(result)
 	return slices.Compact(result)
+}
+
+// recountContext sets the tokens of the session's conversation to those of
+// its context, as it is now, such as once a marker is added, or its summary
+// is written, or fails, so how full its memory is changes then, rather than
+// with its next reply: the tokens of the messages after its marker, the
+// replies' as output, and the rest, with its summary, as input. The tokens
+// of what's sent with them, such as the system prompt, are kept, and those
+// of a conversation whose tokens aren't known aren't set.
+func recountContext(session *schema.Session) {
+	if session.Usage.Input+session.Usage.Output+session.Usage.Overhead == 0 {
+		return
+	}
+	messages, summary := contextOf(session.Messages)
+	var input, output uint
+	if summary != "" {
+		input = uint(len(summaryPrompt)+len(summary)) / charsPerToken
+	}
+	for _, message := range messages {
+		tokens := uint(message.Tokens)
+		if tokens == 0 {
+			tokens = uint(len(message.Text())) / charsPerToken
+		}
+		if message.Role() == "assistant" {
+			output += tokens
+		} else {
+			input += tokens
+		}
+	}
+	session.Usage.Input, session.Usage.Output = input, output
 }
 
 // contextOf returns the messages of a conversation which are its context,

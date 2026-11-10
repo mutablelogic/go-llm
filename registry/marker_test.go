@@ -468,3 +468,40 @@ func Test_CompactContextWindow(t *testing.T) {
 		return m != nil && m.Reason == "full"
 	}, 5*time.Second, 10*time.Millisecond)
 }
+
+func Test_RecountContext(t *testing.T) {
+	message := func(role, text string, tokens uint64) providerschema.Message {
+		return providerschema.Message{MessageMeta: providerschema.MessageMeta{Sender: role, Content: []providerschema.ContentBlock{{Text: types.Ptr(text)}}}, Tokens: tokens}
+	}
+	contextMarker := func(status providerschema.MarkerStatus, summary string) providerschema.Message {
+		return providerschema.Message{MessageMeta: providerschema.MessageMeta{Sender: providerschema.RoleContext}, Marker: &providerschema.Marker{ID: uuid.New(), Status: status, Summary: summary}}
+	}
+	full := schema.SessionUsage{Input: 900, Output: 100, Overhead: 50}
+	earlier := []providerschema.Message{message("user", "What's the weather?", 400), message("assistant", "It's sunny", 600)}
+
+	// Once a marker is added, its context is the messages after it, of
+	// which there are none, yet
+	session := schema.Session{Messages: append(slices.Clone(earlier), contextMarker(providerschema.MarkerPending, "")), Usage: full}
+	registry.RecountContext(&session)
+	assert.Equal(t, schema.SessionUsage{Overhead: 50}, session.Usage, "what's sent with the messages is kept")
+
+	// Once its summary is written, it's the summary, and the messages after
+	// it, the replies as output
+	summary := strings.Repeat("x", 300)
+	session = schema.Session{Messages: append(slices.Clone(earlier), contextMarker(providerschema.MarkerSummarized, summary), message("user", "Thanks", 5), message("assistant", "You're welcome", 7)), Usage: full}
+	registry.RecountContext(&session)
+	assert.Equal(t, uint(7), session.Usage.Output)
+	assert.Greater(t, session.Usage.Input, uint(5+100), "with the summary")
+	assert.Less(t, session.Usage.Input, uint(900))
+
+	// One whose summary failed doesn't start the context, so it's the
+	// conversation, as it was
+	session = schema.Session{Messages: append(slices.Clone(earlier), contextMarker(providerschema.MarkerFailed, "")), Usage: full}
+	registry.RecountContext(&session)
+	assert.Equal(t, schema.SessionUsage{Input: 400, Output: 600, Overhead: 50}, session.Usage)
+
+	// A conversation whose tokens aren't known isn't changed
+	session = schema.Session{Messages: earlier}
+	registry.RecountContext(&session)
+	assert.Zero(t, session.Usage)
+}

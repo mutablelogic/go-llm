@@ -59,3 +59,9 @@ func (r *Registry) Summarizing(marker uuid.UUID) func() {
 	r.summarizing.Store(marker, struct{}{})
 	return func() { r.summarizing.Delete(marker) }
 }
+
+// RecountContext sets the tokens of the session's conversation to those of
+// its context
+func RecountContext(session *schema.Session) {
+	recountContext(session)
+}
