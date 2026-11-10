@@ -59,7 +59,7 @@ func (p *prompt) Title() string { return strings.TrimSpace(p.p.Title) }
 
 // promptAgent is what a model which calls a prompt is told it is, so it
 // expects the reply of the model which is asked it, rather than its text
-const promptAgent = "This is an agent: it asks a model the server's prompt, with the input, and returns the model's reply, rather than the prompt's text."
+const promptAgent = "This is an agent: it asks a model the server's prompt, with the input, and returns the model's reply, rather than the prompt's text. " + toolkit.AgentCall
 
 // Description returns what the prompt is for, and that it's an agent
 func (p *prompt) Description() string {

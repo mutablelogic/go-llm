@@ -233,14 +233,15 @@ func (t *agentTool) Title() string {
 }
 
 // Description returns what the agent does, or its title, or that it's an
-// agent, when it has neither
+// agent, when it has neither, and that each call is new
 func (t *agentTool) Description() string {
-	if description := types.Value(t.agent.Description); description != "" {
-		return description
+	description := "The agent " + t.agent.Name
+	if value := types.Value(t.agent.Description); value != "" {
+		description = value
 	} else if title := types.Value(t.agent.Title); title != "" {
-		return title
+		description = title
 	}
-	return "The agent " + t.agent.Name
+	return strings.TrimRight(strings.TrimSpace(description), ". ") + ". " + toolkit.AgentCall
 }
 
 // InputSchema returns the agent's input, or an empty object, when it has

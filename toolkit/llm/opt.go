@@ -19,6 +19,7 @@ type opt struct {
 	ocrModel        string
 	transcribeModel string
 	resources       Resources
+	agents          AgentsFunc
 	voiceNotes      VoiceNoteConverter
 }
 
@@ -88,6 +89,19 @@ func WithResources(resources Resources) Opt {
 			return gollm.ErrBadParameter.With("missing resources")
 		}
 		o.resources = resources
+		return nil
+	}
+}
+
+// WithAgents adds the agent tool, which lists, gets, creates, and updates
+// the agents of the agent namespace, of the function's agents, such as the
+// registry's, once it's made
+func WithAgents(agents AgentsFunc) Opt {
+	return func(o *opt) error {
+		if agents == nil {
+			return gollm.ErrBadParameter.With("missing agents")
+		}
+		o.agents = agents
 		return nil
 	}
 }

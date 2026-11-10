@@ -216,7 +216,14 @@ func (runner *RunServer) withToolkit(ctx server.Cmd, b *broadcaster.Broadcaster,
 		// transcribe speech, with the model the model which calls them gives,
 		// which the person chooses, and the model remembers, and whose
 		// resource tool lists a chat's files, and reads them, as Markdown
-		llmOpts := []llmtools.Opt{llmtools.WithResources(res)}
+		llmOpts := []llmtools.Opt{llmtools.WithResources(res), llmtools.WithAgents(func() llmtools.Agents {
+			// The agent tool lists, gets, creates and updates the agents of
+			// the agent namespace, once the registry is made
+			if r := events.Load(); r != nil {
+				return r
+			}
+			return nil
+		})}
 		if converter, err := opusenc.New(""); err == nil {
 			// Speech is converted to a voice note, when it's asked for as
 			// one, and its model can't speak one

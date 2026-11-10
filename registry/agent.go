@@ -162,6 +162,36 @@ func (r *Registry) CreateAgent(ctx context.Context, meta schema.AgentMeta) (_ *s
 	return &existing, created, nil
 }
 
+// InsertAgent creates an agent with the definition, and returns it, as
+// CreateAgent does, but never replaces one: it returns ErrConflict when
+// there's an agent with its name, built-in or not, so of two which are
+// created at once, with one name, only one is
+func (r *Registry) InsertAgent(ctx context.Context, meta schema.AgentMeta) (_ *schema.Agent, err error) {
+	ctx, endSpan := otel.StartSpan(r.tracer, ctx, "llm.registry.InsertAgent",
+		attribute.String("arg.meta", meta.String()),
+	)
+	defer func() { endSpan(err) }()
+
+	if r.agentStore == nil {
+		return nil, errNoAgentStore
+	} else if !validAgentName(meta.Name) {
+		return nil, llm.ErrBadParameter.Withf("invalid agent name %q, which must be an identifier, without two underscores, or starting or ending with one", meta.Name)
+	} else if meta, err = r.validAgentMeta(ctx, meta, meta); err != nil {
+		return nil, err
+	}
+	meta.Origin = "" // Only agents which aren't stored have an origin
+	r.agentsMu.Lock()
+	defer r.agentsMu.Unlock()
+	agent, err := r.agentStore.Create(ctx, meta)
+	if errors.Is(err, llm.ErrConflict) {
+		return nil, llm.ErrConflict.Withf("agent %q exists", meta.Name)
+	} else if err != nil {
+		return nil, err
+	}
+	r.agentChanged(agent)
+	return &agent, nil
+}
+
 // sameAgentMeta returns true when the definitions are the same, as JSON
 func sameAgentMeta(a, b schema.AgentMeta) bool {
 	x, err := json.Marshal(a)

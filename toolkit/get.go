@@ -31,6 +31,13 @@ var unexpanded = map[string]bool{
 	"builtin:compact": true,
 }
 
+// Unexpanded returns true when "*", and its namespace's "*", don't include
+// the tool with the canonical name, as only the server runs it, such as
+// "builtin:event"
+func Unexpanded(name string) bool {
+	return unexpanded[name]
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 // PUBLIC METHODS
 

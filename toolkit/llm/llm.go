@@ -104,6 +104,9 @@ func New(models ModelsFunc, opts ...Opt) (*Namespace, error) {
 	if o.resources != nil {
 		tools = append(tools, &resourceTool{resources: o.resources})
 	}
+	if o.agents != nil {
+		tools = append(tools, &agentTool{agents: o.agents})
+	}
 	return &Namespace{tools: tools}, nil
 }
 
