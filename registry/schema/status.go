@@ -37,7 +37,7 @@ const (
 	SessionIdle     SessionStatus = "idle"     // Neither typing nor replying
 	SessionTyping   SessionStatus = "typing"   // Someone is typing a message
 	SessionReplying SessionStatus = "replying" // The model is replying
-	SessionThinking SessionStatus = "thinking" // The model is thinking, as it replies
+	SessionThinking SessionStatus = "thinking" // The model is thinking, or its tools are running, as it replies
 )
 
 ///////////////////////////////////////////////////////////////////////////////

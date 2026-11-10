@@ -6,7 +6,7 @@ Events are changes, which are streamed to a client as they happen. Each event ha
 
 The registry's providers are the `provider` table, whose rows are the providers' names: a provider is created or deleted, or updated when whether it can be reached changes, when it's pinged, or its models change, when they're listed again, such as after a model is loaded or deleted.
 
-The registry's sessions are the `session` table, whose rows are the sessions' identifiers: a session is created or deleted, or updated when its settings are, or messages are added to it, when its `data` is its new `serial`, such as `{"serial":3}`, so a client which has that serial has seen the change. A session is also updated when its status changes, when its `data` is its `status`, such as `{"status":"replying"}`: `typing` when a client says someone is typing a message, `thinking` from when a model starts thinking until it writes its reply, `replying` while a model replies, and `idle` otherwise.
+The registry's sessions are the `session` table, whose rows are the sessions' identifiers: a session is created or deleted, or updated when its settings are, or messages are added to it, when its `data` is its new `serial`, such as `{"serial":3}`, so a client which has that serial has seen the change. A session is also updated when its status changes, when its `data` is its `status`, such as `{"status":"replying"}`: `typing` when a client says someone is typing a message, `thinking` while a model thinks, or its tools run, `replying` while a model writes its reply, and `idle` otherwise.
 
 ### GET /events
 

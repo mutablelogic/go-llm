@@ -51,7 +51,7 @@ type Session struct {
 	Messages  []providerschema.Message `json:"messages,omitzero" help:"Messages of the conversation, each with its tokens, as it's stored, which are listed on their own"`
 	Forgotten uint64                   `json:"forgotten,omitempty" readonly:"" help:"How many times the session's messages were forgotten, which the registry counts, so a reply to a conversation which was forgotten isn't stored" example:"1"`
 	Usage     SessionUsage             `json:"usage,omitzero" help:"Tokens used by every request to the model, and of the conversation, as of the last"`
-	Status    SessionStatus            `json:"status,omitempty" readonly:"" help:"Who's doing what in the session, which is typing, replying or idle, which the registry sets, and isn't stored" enum:"idle,typing,replying" example:"idle"`
+	Status    SessionStatus            `json:"status,omitempty" readonly:"" help:"Who's doing what in the session, which is typing, thinking, replying or idle, which the registry sets, and isn't stored" enum:"idle,typing,thinking,replying" example:"idle"`
 }
 
 // SessionUsage is the tokens used by requests to a model, and the tokens of

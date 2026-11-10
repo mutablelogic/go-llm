@@ -107,7 +107,9 @@ func (r *Registry) runEvent(ctx context.Context, id uuid.UUID, req schema.RunEve
 	r.lifecycle.RUnlock()
 	defer replied()
 	started := time.Now()
-	run, err := r.RunAgent(withoutNamespaces(ctx, req.Without), agent, schema.RunAgentRequest{Input: req.Input, Session: session.ID, Tools: tools}, r.thinkingStream(session.ID, stream))
+	runCtx, runStream, thought := r.thinkingStream(withoutNamespaces(ctx, req.Without), session.ID, stream)
+	run, err := r.RunAgent(runCtx, agent, schema.RunAgentRequest{Input: req.Input, Session: session.ID, Tools: tools}, runStream)
+	thought()
 	if err != nil {
 		return nil, err
 	}

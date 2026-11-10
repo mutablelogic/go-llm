@@ -257,59 +257,105 @@ func Test_SessionEvents(t *testing.T) {
 }
 
 func Test_SessionThinking(t *testing.T) {
-	// A session is thinking, once its model starts thinking, which is logged
-	// to the stream, once, as it calls tools, and thinks again, until it
-	// writes its reply, when it's replying, and idle once it has replied
+	// A reply is thinking as its model thinks, and as its tools run, and
+	// replying as it writes text, and "Thinking" is logged to its stream,
+	// once, the first time it's thinking
 	ctx := context.Background()
-	tk, err := toolkit.New(ctx)
-	require.NoError(t, err)
-	require.NoError(t, tk.Add(toolkit.NewNamespace("weather", "", namedEcho{name: "current"})))
-	r, err := registry.New(registry.WithSessionStore(test.NewSessionStore()), registry.WithToolkit(tk))
-	require.NoError(t, err)
-	first := call("weather:current", `{"city":"Berlin"}`)
-	first.Content = append([]providerschema.ContentBlock{{Thinking: types.Ptr("Hmm")}}, first.Content...)
-	second := text("Sunny")
-	second.Content = append([]providerschema.ContentBlock{{Thinking: types.Ptr("Again")}}, second.Content...)
-	require.NoError(t, r.Add("", newScripted(first, second)))
-	session, err := r.CreateSession(ctx, schema.SessionMeta{GeneratorMeta: schema.GeneratorMeta{Model: types.Ptr("model"), Tools: []string{"weather:*"}}})
-	require.NoError(t, err)
-	ch := watch(t, r)
-
 	type streamed struct {
 		what   llm.StreamType
 		text   string
 		status schema.SessionStatus
 	}
-	var got []streamed
-	_, err = r.Chat(ctx, session.ID, []llm.Message{user(t, "Weather?")}, func(what llm.StreamType, text string) {
+	thinking := func(thought string, reply *providerschema.Message) *providerschema.Message {
+		reply.Content = append([]providerschema.ContentBlock{{Thinking: types.Ptr(thought)}}, reply.Content...)
+		return reply
+	}
+	withText := func(text string, reply *providerschema.Message) *providerschema.Message {
+		reply.Content = append([]providerschema.ContentBlock{{Text: types.Ptr(text)}}, reply.Content...)
+		return reply
+	}
+	run := func(t *testing.T, replies ...*providerschema.Message) ([]streamed, []schema.SessionStatus) {
+		t.Helper()
+		tk, err := toolkit.New(ctx)
+		require.NoError(t, err)
+		require.NoError(t, tk.Add(toolkit.NewNamespace("weather", "", namedEcho{name: "current"})))
+		r, err := registry.New(registry.WithSessionStore(test.NewSessionStore()), registry.WithToolkit(tk))
+		require.NoError(t, err)
+		require.NoError(t, r.Add("", newScripted(replies...)))
+		session, err := r.CreateSession(ctx, schema.SessionMeta{GeneratorMeta: schema.GeneratorMeta{Model: types.Ptr("model"), Tools: []string{"weather:*"}}})
+		require.NoError(t, err)
+		ch := watch(t, r)
+		var got []streamed
+		_, err = r.Chat(ctx, session.ID, []llm.Message{user(t, "Weather?")}, func(what llm.StreamType, text string) {
+			current, err := r.GetSession(ctx, session.ID)
+			require.NoError(t, err)
+			got = append(got, streamed{what, text, current.Status})
+			if current.Status == schema.SessionThinking {
+				// It can't be deleted as it's thinking, as it can't as it's
+				// replying
+				_, err := r.DeleteSession(ctx, session.ID)
+				assert.ErrorIs(t, err, llm.ErrConflict)
+			}
+		})
+		require.NoError(t, err)
+		var statuses []schema.SessionStatus
+		for _, event := range events(ch) {
+			var data schema.SessionEvent
+			if event.Table == registry.SessionTable && json.Unmarshal(event.Data, &data) == nil && data.Status != "" {
+				statuses = append(statuses, data.Status)
+			}
+		}
 		current, err := r.GetSession(ctx, session.ID)
 		require.NoError(t, err)
-		got = append(got, streamed{what, text, current.Status})
-	})
-	require.NoError(t, err)
-	assert.Equal(t, []streamed{
-		{llm.StreamLog, registry.ThinkingLog, schema.SessionThinking},
-		{llm.StreamThinking, "Hmm", schema.SessionThinking},
-		{llm.StreamThinking, "\n\nAgain", schema.SessionThinking}, // after a blank line, as it's another turn
-		{llm.StreamText, "Sunny", schema.SessionReplying},
-	}, got)
+		assert.Equal(t, schema.SessionIdle, current.Status)
 
-	// Its status changes are published, and it's idle once it has replied
-	var statuses []schema.SessionStatus
-	for _, event := range events(ch) {
-		var data schema.SessionEvent
-		if event.Table == registry.SessionTable && json.Unmarshal(event.Data, &data) == nil && data.Status != "" {
-			statuses = append(statuses, data.Status)
-		}
+		// A client can't set it thinking
+		_, err = r.SetSessionStatus(ctx, session.ID, schema.SessionThinking)
+		assert.ErrorIs(t, err, llm.ErrBadParameter)
+		return got, statuses
 	}
-	assert.Equal(t, []schema.SessionStatus{schema.SessionReplying, schema.SessionThinking, schema.SessionReplying, schema.SessionIdle}, statuses)
-	current, err := r.GetSession(ctx, session.ID)
-	require.NoError(t, err)
-	assert.Equal(t, schema.SessionIdle, current.Status)
 
-	// A client can't set it thinking
-	_, err = r.SetSessionStatus(ctx, session.ID, schema.SessionThinking)
-	assert.ErrorIs(t, err, llm.ErrBadParameter)
+	t.Run("ThinkToolThinkReply", func(t *testing.T) {
+		// Thinking, as it thinks, calls a tool, and thinks again, until it
+		// writes its reply
+		got, statuses := run(t, thinking("Hmm", call("weather:current", `{"city":"Berlin"}`)), thinking("Again", text("Sunny")))
+		assert.Equal(t, []streamed{
+			{llm.StreamLog, registry.ThinkingLog, schema.SessionThinking},
+			{llm.StreamThinking, "Hmm", schema.SessionThinking},
+			{llm.StreamThinking, "\n\nAgain", schema.SessionThinking}, // after a blank line, as it's another turn
+			{llm.StreamText, "Sunny", schema.SessionReplying},
+		}, got)
+		assert.Equal(t, []schema.SessionStatus{schema.SessionReplying, schema.SessionThinking, schema.SessionReplying, schema.SessionIdle}, statuses)
+	})
+
+	t.Run("TextBeforeTools", func(t *testing.T) {
+		// Text before it calls a tool is replying, and it's thinking again as
+		// the tool runs, but "Thinking" is logged once
+		got, statuses := run(t, thinking("Hmm", withText("Let me look.", call("weather:current", `{"city":"Berlin"}`))), thinking("Again", text("Sunny")))
+		var logs int
+		for _, s := range got {
+			if s.what == llm.StreamLog && s.text == registry.ThinkingLog {
+				logs++
+			}
+		}
+		assert.Equal(t, 1, logs)
+		assert.Equal(t, []schema.SessionStatus{
+			schema.SessionReplying, schema.SessionThinking, schema.SessionReplying, schema.SessionThinking, schema.SessionReplying, schema.SessionIdle,
+		}, statuses)
+		assert.Equal(t, schema.SessionThinking, got[len(got)-2].status, "it's thinking, as it thinks again")
+		assert.Equal(t, streamed{llm.StreamText, "Sunny", schema.SessionReplying}, got[len(got)-1])
+	})
+
+	t.Run("ToolsWithoutThinking", func(t *testing.T) {
+		// A model which calls tools without thinking is thinking as they
+		// run, which is logged, until it replies
+		got, statuses := run(t, call("weather:current", `{"city":"Berlin"}`), text("Sunny"))
+		assert.Equal(t, []streamed{
+			{llm.StreamLog, registry.ThinkingLog, schema.SessionThinking},
+			{llm.StreamText, "Sunny", schema.SessionReplying},
+		}, got)
+		assert.Equal(t, []schema.SessionStatus{schema.SessionReplying, schema.SessionThinking, schema.SessionReplying, schema.SessionIdle}, statuses)
+	})
 }
 
 func Test_SessionTrace(t *testing.T) {

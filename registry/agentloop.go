@@ -383,7 +383,9 @@ func (r *Registry) iterate(ctx context.Context, model llm.Model, loop *agentLoop
 
 	// Run the tools, each in its session, whose resources, which they
 	// return, are kept, as resources of the loop's session, and ask the model
-	// again with their results, which are compacted, if they don't fit
+	// again with their results, which are compacted, if they don't fit. The
+	// reply is thinking, as they run.
+	toolsRunning(ctx)
 	toolCtx := ctx
 	if store := r.toolStore(loop.session); store != nil {
 		toolCtx = toolkit.WithStore(toolkit.WithResolver(ctx, r.toolResolver(loop.session)), store)
