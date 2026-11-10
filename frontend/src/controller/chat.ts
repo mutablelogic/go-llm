@@ -700,7 +700,7 @@ export class ChatController {
     private render() {
         const { page, list, view, details } = this.views;
         if (page) {
-            page.heading = this.session?.title || this.session?.model || 'Chat';
+            page.heading = this.session?.title || this.session?.model || 'Conversations';
             page.description = this.describe();
         }
         if (details) {

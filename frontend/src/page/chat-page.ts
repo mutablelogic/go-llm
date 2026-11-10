@@ -21,7 +21,7 @@ export class ChatPage extends Page {
     // The name of the event fired to start a new chat
     static readonly eventNew = 'llm-chat-page-new';
 
-    heading = 'Chat';
+    heading = 'Conversations';
 
     protected renderIcon(): unknown {
         return iconLoader(Chat32);
