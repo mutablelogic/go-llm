@@ -37,6 +37,11 @@ import './disclosure';
 const minWindow = 16 * 1024;
 const maxWindow = 2 * 1024 * 1024;
 
+// newWindow is the memory window a new conversation starts with, 250K tokens,
+// rather than the model's own, which can be far more, so it's quicker, costs
+// less, and is summarised sooner, which the person can change
+const newWindow = 250 * 1024;
+
 // windowTop returns the most the slider has, the model's limit, when it's
 // known, at which the model's own is chosen
 function windowTop(limit?: number): number {
@@ -211,7 +216,7 @@ export class NewSession extends Panel<NewSessionForm> {
             this.opened++;
             this.chosen = this.session?.model;
             this.thinking = opt.thinking === true ? 'true' : opt.thinking === false ? 'false' : 'default';
-            this.contextWindow = typeof opt.context_window === 'number' && opt.context_window > 0 ? opt.context_window : undefined;
+            this.contextWindow = !this.session ? newWindow : typeof opt.context_window === 'number' && opt.context_window > 0 ? opt.context_window : undefined;
             this.startTools = this.session ? [...(this.session.tools ?? [])] : ['*'];
         }
         super.willUpdate(changed);
