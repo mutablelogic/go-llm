@@ -656,10 +656,11 @@ export class ChatView extends LitElement {
     }
 
     // traced returns whether the chat shows its model's thinking, the tools
-    // it calls, and their results, as its session's trace says, which are
-    // kept, either way
+    // it calls, and their results, as its session's trace says, or always,
+    // for an event's, which is only read, to see what the event did, as the
+    // registry's Traced does; they're kept, either way
     private traced(): boolean {
-        return this.session?.trace === true;
+        return this.session?.trace === true || this.session?.event === true;
     }
 
     // streamedBubbles returns the bubbles of the reply, as it's streamed: its

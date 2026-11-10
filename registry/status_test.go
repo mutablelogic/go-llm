@@ -384,4 +384,9 @@ func Test_SessionTrace(t *testing.T) {
 	got, err := r.GetSession(ctx, traced.ID)
 	require.NoError(t, err)
 	assert.False(t, got.Traced(), "it's stored")
+
+	// An event's session is always traced, as it's only read, to see what
+	// the event did
+	assert.True(t, schema.SessionMeta{Event: true}.Traced())
+	assert.True(t, schema.SessionMeta{Event: true, Trace: types.Ptr(false)}.Traced())
 }
