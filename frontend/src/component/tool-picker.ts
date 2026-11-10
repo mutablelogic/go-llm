@@ -159,12 +159,12 @@ export class ToolPicker extends LitElement {
 
     render() {
         if (!this.tools) {
-            return html`<div class="label">Tools</div><cds-skeleton-text paragraph line-count="3"></cds-skeleton-text>`;
+            return html`<div class="label">Assistant toolkit</div><cds-skeleton-text paragraph line-count="3"></cds-skeleton-text>`;
         }
         const groups = this.groups();
         const any = this.value.length > 0;
         return html`
-            <div class="label">Tools</div>
+            <div class="label">Assistant toolkit</div>
             <div class="helper"><slot></slot></div>
             <cds-checkbox .checked=${live(this.everything())} .indeterminate=${live(!this.everything() && any)}
                 @cds-checkbox-changed=${(e: Event) => this.toggleEverything(e)}>Every tool, and agent</cds-checkbox>
