@@ -71,7 +71,7 @@ func (s *scripted) ListModels(context.Context) ([]llm.Model, error) {
 	return result, nil
 }
 
-func (s *scripted) WithoutSession(_ context.Context, _ llm.Model, messages []llm.Message, tools []llm.Tool, stream llm.GeneratorStreamFn, opts ...llm.Opt) (llm.Message, llm.Usage, error) {
+func (s *scripted) WithoutSession(ctx context.Context, _ llm.Model, messages []llm.Message, tools []llm.Tool, stream llm.GeneratorStreamFn, opts ...llm.Opt) (llm.Message, llm.Usage, error) {
 	o, err := llm.ApplyOpts(opts...)
 	if err != nil {
 		return nil, llm.Usage{}, err
@@ -92,8 +92,16 @@ func (s *scripted) WithoutSession(_ context.Context, _ llm.Model, messages []llm
 	reply := s.replies[0]
 	s.replies = s.replies[1:]
 	s.mu.Unlock()
+
+	// It waits, as a model would, until it's cancelled, as a request is
+	if s.delay > 0 {
+		select {
+		case <-time.After(s.delay):
+		case <-ctx.Done():
+			return nil, llm.Usage{}, ctx.Err()
+		}
+	}
 	if stream != nil {
-		time.Sleep(s.delay)
 		for _, block := range reply.Content {
 			if block.Thinking != nil {
 				stream(llm.StreamThinking, *block.Thinking)

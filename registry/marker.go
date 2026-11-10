@@ -29,6 +29,12 @@ const (
 	// it's compacted
 	DefaultCompactAgent = "compact"
 
+	// DefaultSummaryTimeout is the most time a summary has to be written,
+	// when the compact agent has no timeout of its own, after which its
+	// marker is failed, rather than left pending, as when its model's
+	// request hangs
+	DefaultSummaryTimeout = 5 * time.Minute
+
 	// compactThreshold is how much of its model's context a conversation
 	// fills, as of a reply, before it's compacted, automatically
 	compactThreshold = 0.8
@@ -177,7 +183,15 @@ func (r *Registry) summarize(ctx context.Context, id, markerID uuid.UUID) (err e
 	)
 	defer func() { endSpan(err) }()
 
-	summary, title, err := r.writeSummary(ctx, id, markerID)
+	// The summary is written in the compact agent's time, or the default,
+	// so one whose model's request hangs is failed, rather than pending
+	timeout := r.summaryTimeout(ctx)
+	writing, cancel := context.WithTimeout(ctx, timeout)
+	summary, title, err := r.writeSummary(writing, id, markerID)
+	cancel()
+	if errors.Is(err, context.DeadlineExceeded) {
+		err = llm.ErrInternalServerError.Withf("the summary wasn't written within %v", timeout)
+	}
 	return errors.Join(err, r.updateMarker(ctx, id, markerID, func(session *schema.Session, marker *providerschema.Marker, previous *providerschema.Marker) {
 		if err != nil {
 			marker.Status, marker.Error = providerschema.MarkerFailed, err.Error()
@@ -188,6 +202,51 @@ func (r *Registry) summarize(ctx context.Context, id, markerID uuid.UUID) (err e
 			session.Title = types.Ptr(title)
 		}
 	}))
+}
+
+// summaryTimeout returns the most time a summary has to be written, which is
+// the compact agent's timeout, or DefaultSummaryTimeout, when it has none
+func (r *Registry) summaryTimeout(ctx context.Context) time.Duration {
+	if agent, err := r.GetAgent(ctx, DefaultCompactAgent); err == nil {
+		if timeout, err := agent.ToolTimeout(); err == nil && timeout > 0 {
+			return timeout
+		}
+	}
+	return DefaultSummaryTimeout
+}
+
+// resumeSummaries writes the summaries of the sessions whose last marker is
+// pending, as when the server stopped as they were written, when it starts,
+// rather than leaving them pending until the session is next replied in.
+// Returns how many were started.
+func (r *Registry) resumeSummaries(ctx context.Context) int {
+	if r.sessionStore == nil {
+		return 0
+	}
+	list, err := r.sessionStore.List(ctx, schema.SessionListRequest{})
+	if err != nil {
+		r.log().ErrorContext(ctx, "listing sessions to summarise", "error", err.Error())
+		return 0
+	}
+	var started int
+	for _, listed := range list.Body {
+		if ctx.Err() != nil {
+			break
+		}
+		session, err := r.sessionStore.Get(ctx, listed.ID)
+		if err != nil {
+			continue
+		}
+		if i := lastMarker(session.Messages); i >= 0 && session.Messages[i].Marker.Status == providerschema.MarkerPending {
+			if r.summarizeInBackground(ctx, session.ID, session.Messages[i].Marker.ID) {
+				started++
+			}
+		}
+	}
+	if started > 0 {
+		r.log().InfoContext(ctx, "summarising conversations which were left pending", "count", started)
+	}
+	return started
 }
 
 // writeSummary runs the compact agent, with the transcript of the
