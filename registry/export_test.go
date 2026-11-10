@@ -84,3 +84,8 @@ func ContextSummary(messages []providerschema.Message) string {
 func EventOrigin(event schema.Event) string {
 	return eventOrigin(event)
 }
+
+// ProviderErr returns the provider's error, as an llm error, in words
+func ProviderErr(err error) error {
+	return providerErr(err)
+}
