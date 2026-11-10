@@ -39,7 +39,7 @@ func (s *stubServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		w.Write([]byte(`[{"model_id":"eleven_v3","name":"Eleven v3","description":"Our most expressive model.","can_do_text_to_speech":true,"maximum_text_length_per_request":20,"languages":[{"language_id":"en","name":"English"},{"language_id":"de","name":"German"}]},
 			{"model_id":"eleven_english_sts_v2","name":"Eleven English v2","can_do_text_to_speech":false,"can_do_voice_conversion":true}]`))
 	case r.URL.Path == "/v2/voices":
-		w.Write([]byte(`{"voices":[{"voice_id":"JBFqnCBsd6RMkjVDRZzb","name":"George - Warm, Captivating Storyteller","category":"premade"},{"voice_id":"hpp4J3VqNfWAUOO0d1Us","name":"Bella - Professional, Bright, Warm","category":"premade"}],"has_more":false}`))
+		w.Write([]byte(`{"voices":[{"voice_id":"JBFqnCBsd6RMkjVDRZzb","name":"George - Warm, Captivating Storyteller","category":"premade"},{"voice_id":"hpp4J3VqNfWAUOO0d1Us","name":"Bella - Professional, Bright, Warm","category":"premade"},{"voice_id":"Nar0000000000000000a","name":"ProfessionalNarrator","category":"cloned"}],"has_more":false}`))
 	case strings.HasPrefix(r.URL.Path, "/v1/text-to-speech/"):
 		var body map[string]any
 		_ = json.NewDecoder(r.Body).Decode(&body)
@@ -157,6 +157,16 @@ func Test_Client(t *testing.T) {
 		stub.Unlock()
 		_, _, err = c.Speak(ctx, model, "Hello", llm.WithOpt(llm.VoiceKey, "hpp4J3VqNfWAUOO0d1Us"))
 		require.NoError(t, err)
+
+		// A title which is shaped like an ID is a title, and an ID which
+		// isn't the account's, such as a library voice's, is passed on
+		for voice, want := range map[string]string{"ProfessionalNarrator": "Nar0000000000000000a", "LibraryVoice00000000": "LibraryVoice00000000"} {
+			_, _, err = c.Speak(ctx, model, "Hello", llm.WithOpt(llm.VoiceKey, voice))
+			require.NoError(t, err)
+			stub.Lock()
+			assert.Equal(t, want, stub.speech["voice"], voice)
+			stub.Unlock()
+		}
 
 		// PCM, raw, which is audio/L16, or in WAV
 		audio, _, err = c.Speak(ctx, model, "Hello", llm.WithOpt(llm.AudioFormatKey, "wav"))

@@ -34,6 +34,12 @@ type Client struct {
 	speechMu sync.Mutex
 	speech   []apiModel
 	listed   time.Time
+
+	// The account's voices, and when they were listed, which are kept for
+	// voicesTTL, to find a voice by its title
+	voicesMu sync.Mutex
+	cached   []llm.Voice
+	voicesAt time.Time
 }
 
 var _ llm.Provider = (*Client)(nil)

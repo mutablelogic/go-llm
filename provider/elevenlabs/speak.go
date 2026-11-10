@@ -8,6 +8,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"time"
 	"unicode/utf8"
 
 	// Packages
@@ -70,9 +71,13 @@ var audioFormats = map[string]audioFormat{
 	"wav":  {"pcm_24000", "", 24000},
 }
 
-// reVoiceID matches a voice's ID, such as "JBFqnCBsd6RMkjVDRZzb", rather than
-// its title, such as "George"
+// reVoiceID matches the shape of a voice's ID, such as
+// "JBFqnCBsd6RMkjVDRZzb", which a voice which isn't the account's is passed
+// on by, and voicesTTL is how long the account's voices are kept, to find
+// one by its title
 var reVoiceID = regexp.MustCompile(`^[A-Za-z0-9]{20}$`)
+
+const voicesTTL = time.Minute
 
 ///////////////////////////////////////////////////////////////////////////////
 // PUBLIC METHODS
@@ -165,35 +170,56 @@ func (c *Client) Speak(ctx context.Context, model llm.Model, text string, opts .
 ///////////////////////////////////////////////////////////////////////////////
 // PRIVATE METHODS
 
-// voiceID returns the ID of the voice, which is the name, when it's an ID,
-// or the voice whose title is the name, or starts with it, before a
-// description, such as "George" for "George - Warm, Captivating
-// Storyteller", ignoring case, of the account's voices. Returns
-// ErrBadParameter when there's none, or more than one.
+// voiceID returns the ID of the voice, which is the name, when it's the ID
+// of one of the account's voices, or the voice whose title is the name, or
+// starts with it, before a description, such as "George" for "George - Warm,
+// Captivating Storyteller", ignoring case, or the name, when it's none of
+// them, but is shaped like an ID, such as a voice of the library, which
+// ElevenLabs says, when it isn't one. A title which is shaped like an ID,
+// such as "ProfessionalNarrator", is a title. Returns ErrBadParameter when
+// there's none, or more than one.
 func (c *Client) voiceID(ctx context.Context, name string) (string, error) {
-	if reVoiceID.MatchString(name) {
-		return name, nil
-	}
-	voices, err := c.accountVoices(ctx)
+	voices, err := c.cachedVoices(ctx)
 	if err != nil {
 		return "", err
 	}
 	var found []string
 	for _, voice := range voices {
+		if voice.ID == name {
+			return voice.ID, nil
+		}
 		title := strings.TrimSpace(voice.Title)
 		short, _, _ := strings.Cut(title, " - ")
 		if strings.EqualFold(title, name) || strings.EqualFold(strings.TrimSpace(short), name) {
 			found = append(found, voice.ID)
 		}
 	}
-	switch len(found) {
-	case 1:
+	switch {
+	case len(found) == 1:
 		return found[0], nil
-	case 0:
-		return "", llm.ErrBadParameter.Withf("voice %q isn't one of the account's: list them with the models tool, with speech_output", name)
-	default:
+	case len(found) > 1:
 		return "", llm.ErrBadParameter.Withf("voice %q is more than one of the account's: give its id", name)
+	case reVoiceID.MatchString(name):
+		return name, nil
+	default:
+		return "", llm.ErrBadParameter.Withf("voice %q isn't one of the account's: list them with the models tool, with speech_output", name)
 	}
+}
+
+// cachedVoices returns the account's voices, which are kept for voicesTTL,
+// so a voice is found by its title without listing them each time it speaks
+func (c *Client) cachedVoices(ctx context.Context) ([]llm.Voice, error) {
+	c.voicesMu.Lock()
+	defer c.voicesMu.Unlock()
+	if !c.voicesAt.IsZero() && time.Since(c.voicesAt) < voicesTTL {
+		return c.cached, nil
+	}
+	voices, err := c.accountVoices(ctx)
+	if err != nil {
+		return nil, err
+	}
+	c.cached, c.voicesAt = voices, time.Now()
+	return voices, nil
 }
 
 ///////////////////////////////////////////////////////////////////////////////
