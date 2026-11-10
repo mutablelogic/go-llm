@@ -8,6 +8,7 @@
 
 import { css, html, type PropertyValues, nothing } from 'lit';
 import { keyed } from 'lit/directives/keyed.js';
+import { live } from 'lit/directives/live.js';
 import { customElement, property, query, state } from 'lit/decorators.js';
 import { Panel } from './panel';
 import { cannot, type Model } from '../schema/model';
@@ -45,15 +46,23 @@ function tokens(n: number): string {
     return `${Math.round(n / 1000)}K`;
 }
 
+// windowSteps returns the context windows of the slider's steps, before its
+// last, which is the model's own: those smaller than the model's limit, when
+// it's known, so its most is the slider's
+function windowSteps(limit?: number): number[] {
+    return limit ? windows.filter((window) => window < limit) : windows;
+}
+
 // windowStep returns the slider's step for the context window, which is the
-// nearest, by its logarithm, or the last, for the model's own
-function windowStep(window?: number): number {
-    if (!window) {
-        return windows.length;
+// nearest, by its logarithm, or the last, for the model's own, or one which
+// is as large as the model's limit, or more
+function windowStep(steps: number[], window?: number, limit?: number): number {
+    if (!window || (limit && window >= limit) || steps.length === 0) {
+        return steps.length;
     }
     let step = 0;
-    for (let i = 1; i < windows.length; i++) {
-        if (Math.abs(Math.log2(windows[i] / window)) < Math.abs(Math.log2(windows[step] / window))) {
+    for (let i = 1; i < steps.length; i++) {
+        if (Math.abs(Math.log2(steps[i] / window)) < Math.abs(Math.log2(steps[step] / window))) {
             step = i;
         }
     }
@@ -218,6 +227,8 @@ export class NewSession extends Panel<NewSessionForm> {
         const model = this.models.find((model) => model.canonical === chosen);
         const thinks = !cannot(model, 'thinking');
         const opt = this.session?.opt ?? {};
+        const limit = model?.input_token_limit || undefined;
+        const steps = windowSteps(limit);
         return keyed(this.opened, html`
             <form @submit=${this.handleSubmit}>
                 ${this.session ? html`
@@ -257,10 +268,10 @@ export class NewSession extends Panel<NewSessionForm> {
                     `}
                 </div>
                 <div>
-                    <cds-slider id="context" label-text=${`Context window: ${this.contextWindow ? `${tokens(this.contextWindow)} tokens` : 'Default'}`}
-                        min="0" max=${String(windows.length)} step="1" value=${String(windowStep(this.contextWindow))} hide-text-input
-                        .formatMinText=${() => tokens(windows[0])} .formatMaxText=${() => 'Default'}
-                        @cds-slider-changed=${(e: CustomEvent<{ value: number }>) => this.chooseWindow(Number(e.detail.value))}></cds-slider>
+                    <cds-slider id="context" label-text=${`Context window: ${this.windowLabel(limit)}`}
+                        min="0" max=${String(steps.length)} step="1" .value=${live(String(windowStep(steps, this.contextWindow, limit)))} hide-text-input
+                        .formatMinText=${() => (steps.length > 0 ? tokens(steps[0]) : this.windowLabel(limit))} .formatMaxText=${() => (limit ? tokens(limit) : 'Default')}
+                        @cds-slider-changed=${(e: CustomEvent<{ value: number }>) => this.chooseWindow(Number(e.detail.value), steps, limit)}></cds-slider>
                     <p class="note">${this.windowNote(model)}</p>
                 </div>
                 ${cannot(model, 'tools')
@@ -277,23 +288,26 @@ export class NewSession extends Panel<NewSessionForm> {
     // chooseWindow sets the context window from the slider's step, keeping
     // the one which was set, when the step is still its nearest, such as one
     // set from the command line, which isn't a step
-    private chooseWindow(step: number) {
-        if (step !== windowStep(this.contextWindow)) {
-            this.contextWindow = step >= windows.length ? undefined : windows[step];
+    private chooseWindow(step: number, steps: number[], limit?: number) {
+        if (step !== windowStep(steps, this.contextWindow, limit)) {
+            this.contextWindow = step >= steps.length ? undefined : steps[step];
         }
     }
 
-    // windowNote says the context window is smaller, so compaction happens
-    // sooner, and what the model can have, when it's known
-    private windowNote(model?: Model): string {
-        const limit = model?.input_token_limit;
-        const note = 'A smaller window is quicker, costs less, and compacts the conversation sooner.';
-        if (!limit) {
-            return `${note} This model doesn't say how many tokens it takes.`;
-        } else if (this.contextWindow && this.contextWindow > limit) {
-            return `${note} This model takes up to ${tokens(limit)} tokens, so it's asked with that.`;
+    // windowLabel returns the context window, as the model is asked with
+    // it: what's chosen, or the model's most, when it's more, or none is
+    private windowLabel(limit?: number): string {
+        if (this.contextWindow && (!limit || this.contextWindow < limit)) {
+            return `${tokens(this.contextWindow)} tokens`;
         }
-        return `${note} This model takes up to ${tokens(limit)} tokens.`;
+        return limit ? `${tokens(limit)} tokens, the most this model takes` : 'Default';
+    }
+
+    // windowNote says a smaller context window is quicker, and that the
+    // model's most is its own, when it isn't known
+    private windowNote(model?: Model): string {
+        const note = 'A smaller window is quicker, costs less, and compacts the conversation sooner.';
+        return model?.input_token_limit ? note : `${note} This model doesn't say how many tokens it takes.`;
     }
 
     private handleSubmit(event: Event) {
