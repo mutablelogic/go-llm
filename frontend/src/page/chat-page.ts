@@ -54,9 +54,16 @@ export class ChatPage extends Page {
     private alertTimer?: ReturnType<typeof setTimeout>;
 
     static styles = [Page.styles, css`
-        /* Edit, marked with a dot, as an event was just created */
+        /* Edit, marked with a dot, as an event was just created. It's the
+           tertiary button of Carbon's dark theme, white, as the heading is
+           dark, rather than the light theme's blue */
         .edit {
             position: relative;
+            --cds-button-tertiary: #ffffff;
+            --cds-button-tertiary-hover: #ffffff;
+            --cds-button-tertiary-active: #c6c6c6;
+            --cds-button-focus-color: #ffffff;
+            --cds-text-inverse: #161616;
         }
 
         .edit .dot {

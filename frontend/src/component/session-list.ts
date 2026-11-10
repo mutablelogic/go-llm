@@ -91,12 +91,24 @@ export class SessionList extends LitElement {
             outline-offset: -2px;
         }
 
+        /* The title, cut short when it's long, and beside it, an event's
+           badge, which isn't */
         .model {
-            display: block;
+            display: flex;
+            align-items: center;
+            gap: 0.25rem;
             font-size: 0.875rem;
+            white-space: nowrap;
+        }
+
+        .model .name {
+            min-width: 0;
             overflow: hidden;
             text-overflow: ellipsis;
-            white-space: nowrap;
+        }
+
+        .model cds-tag {
+            flex: none;
         }
 
         /* A small mark that the memory is nearly full, in the text's colour,
@@ -160,7 +172,7 @@ export class SessionList extends LitElement {
             <li class=${selected ? 'selected' : ''}>
                 <button class="session" type="button" aria-current=${selected ? 'true' : 'false'}
                     @click=${() => this.dispatchEvent(new CustomEvent(SessionList.eventSelect, { detail: session }))}>
-                    <span class="model">${session.title || session.model || 'No model'}${session.event ? html` <cds-tag size="sm" type="purple">event</cds-tag>` : nothing}</span>
+                    <span class="model"><span class="name">${session.title || session.model || 'No model'}</span>${session.event ? html`<cds-tag size="sm" type="purple">event</cds-tag>` : nothing}</span>
                     <span class="secondary" title=${formatTime(when)}>
                         ${session.title && session.model ? html`${session.model} · ` : nothing}${status ? html`<span class="status">${status}</span>` : formatAgo(when)}
                         ${memory ? html` · ${memory}` : nothing}${nearlyFull ? html`<span class="nearly-full" title="Nearly full. Older messages will be summarised automatically.">${iconLoader(WarningAlt16)}</span>` : nothing}
