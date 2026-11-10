@@ -284,7 +284,7 @@ The registry also works on its own, from your own Go program; see [examples](exa
 | `openai` | [Mistral](https://mistral.ai), at `https://api.mistral.ai/v1` | ✅ | ✅ | ✅ | ✅ | | | | |
 | `openai` | [DeepSeek](https://www.deepseek.com), and other OpenAI-compatible servers | ✅ | | | | | | | |
 | `gowhisper` | [go-whisper](https://github.com/mutablelogic/go-whisper) | | | | ✅ | ✅ | | | Download, delete |
-| `elevenlabs` | [ElevenLabs](https://elevenlabs.io) | | | | ✅ | | | | |
+| `elevenlabs` | [ElevenLabs](https://elevenlabs.io), in the account's voices | | | | ✅ | | ✅ | | |
 | `eliza` | A mock of Weizenbaum's 1966 chatbot, for testing | ✅ | | | | | | | |
 
 What a model can do depends on the model, as its provider reports it. Requests for something a model is known not to do are rejected before they're sent.
@@ -420,7 +420,7 @@ llm model-load gowhisper:ggml-medium-q5_0    # transcribes
 - **Tell the assistant which to use,** such as "speak with `ollama:phonon:latest`, and transcribe with `gowhisper:ggml-medium-q5_0`". It remembers.
 - **Speaking:** replies are sent as Ogg voice notes. Models that can't make them need `opusenc`, which the Docker image includes.
 - **Transcribing:** `ggml-medium-q5_0` runs on small machines, such as a Jetson Nano, but can mishear names. `ggml-large-v3-turbo-q5_0` hears them better, on a faster machine.
-- **Other models:** `llm models --capability speech_output` lists the models that speak, such as OpenAI's and Gemini's. OpenAI, Gemini, Mistral and ElevenLabs also transcribe.
+- **Other models:** `llm models --capability speech_output` lists the models that speak, such as OpenAI's, Gemini's and ElevenLabs'. ElevenLabs' voice notes are Opus already, so they aren't converted. OpenAI, Gemini, Mistral and ElevenLabs also transcribe.
 
 ### Files you send
 
@@ -496,7 +496,7 @@ Live tests check that a provider's API accepts what go-llm sends. They're mostly
 | `ANTHROPIC_API_KEY` | `provider/anthropic` | Replies with tools, thinking and structured output, and token counts | Yes |
 | `GEMINI_API_KEY` | `provider/gemini` | Model listing and token counts (free), embeddings, and a tool call | Yes, apart from listing and counting |
 | `ANTHROPIC_API_KEY` and `GEMINI_API_KEY` | `provider/gemini` | `Test_LiveSwitch`: a chat that switches between Claude and Gemini | Yes |
-| `ELEVENLABS_API_KEY` | `provider/elevenlabs` | Transcription with speakers, and the account's voices (free) | Yes, apart from voices |
+| `ELEVENLABS_API_KEY` | `provider/elevenlabs` | Transcription with speakers, the account's voices (free), and, with `ELEVENLABS_SPEAK`, a word spoken as a voice note | Yes, apart from voices |
 | `OLLAMA_ADDR` | `provider/ollama` | Models, embeddings and OCR, with `embeddinggemma-2` and `deepseek-ocr` pulled, and `phonon`'s voices | No |
 | `GOWHISPER_ADDR` | `provider/gowhisper` | Models and transcription, with `ggml-medium-q5_0` | No |
 | `LMSTUDIO_ADDR` | `provider/lmstudio` | Loads `google/gemma-4-12b-qat` for a tool call, `text-embedding-nomic-embed-text-v1.5` to embed, and `allenai/olmocr-2-7b`, when it's stored, for OCR, and unloads them | No |
@@ -546,7 +546,6 @@ env -u OPENAI_API_KEY -u MISTRAL_API_KEY -u ANTHROPIC_API_KEY -u GEMINI_API_KEY 
 
 ### Providers
 
-- **ElevenLabs' voices** for text to speech.
 - **OpenAI's images** with `gpt-image`.
 - **OpenAI's Responses API**, so the newest models can think while calling tools.
 - **OpenAI's token limits**, which need checking.
