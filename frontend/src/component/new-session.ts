@@ -250,7 +250,7 @@ export class NewSession extends Panel<NewSessionForm> {
         return keyed(this.opened, html`
             <form @submit=${this.handleSubmit}>
                 ${this.session ? html`
-                    <cds-text-input id="title" label="Title" helper-text="What the conversation is about, which it's given each time it's compacted"
+                    <cds-text-input id="title" label="Title"
                         value=${this.session.title ?? ''}></cds-text-input>
                 ` : nothing}
                 <cds-select id="model" label-text="Assistant model" value=${chosen}
