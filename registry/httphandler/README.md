@@ -8,7 +8,8 @@ The types are:
 
 - `ollama`: an Ollama server. A `url` without a scheme, such as `localhost`, uses `http` and Ollama's port, 11434.
 - `gowhisper`: a [go-whisper](https://github.com/mutablelogic/go-whisper) server, whose whisper.cpp models transcribe speech, and which downloads and deletes them, without an `api_key`. A `url` without a scheme, such as `localhost`, uses `http` and go-whisper's port, 8081, and one without a path uses `/api/whisper`. Only go-whisper's own models are listed, not those of the services it forwards to.
-- `openai`: OpenAI, which is the default `url`, or a server with an OpenAI-compatible API, such as DeepSeek, Mistral (`https://api.mistral.ai/v1`), vLLM or LM Studio.
+- `lmstudio`: an [LM Studio](https://lmstudio.ai) server, on your own computer, whose models reply, call tools and embed, and which downloads, loads and unloads them, but can't delete them. The `url` is its OpenAI-compatible API's, such as `http://localhost:1234/v1`, the default, or the server's, without a path. Its `api_key` is needed only when LM Studio is told to need one. A model's input token limit is the context it was loaded with, or the most it can have, when it isn't loaded.
+- `openai`: OpenAI, which is the default `url`, or a server with an OpenAI-compatible API, such as DeepSeek, Mistral (`https://api.mistral.ai/v1`) or vLLM.
 - `anthropic`: Anthropic, which is the default `url`, whose Claude models reply, with an API key, which it needs, and is sent in its `x-api-key` header.
 - `gemini`: Google's Gemini API, which is the default `url`, whose models reply, and embed, with an API key, which it needs, and is sent in its `x-goog-api-key` header, rather than in the URL. A `url` without a path uses `/v1beta`.
 - `elevenlabs`: ElevenLabs, which is the default `url`, whose Scribe models transcribe speech, with an API key, which it needs, and is sent in its `xi-api-key` header, rather than as a bearer token.

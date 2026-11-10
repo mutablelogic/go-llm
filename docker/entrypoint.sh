@@ -34,7 +34,7 @@ fi
 
 # A new installation runs the server, and, once it answers, adds the Eliza
 # provider, unless NO_ELIZA is set, and those whose variables are set:
-# OLLAMA_ADDR and GOWHISPER_ADDR, as their URLs, and OPENAI_API_KEY,
+# OLLAMA_ADDR, LMSTUDIO_ADDR and GOWHISPER_ADDR, as their URLs, and OPENAI_API_KEY,
 # ANTHROPIC_API_KEY, DEEPSEEK_API_KEY, MISTRAL_API_KEY and ELEVENLABS_API_KEY, by the names of
 # their credentials, which are read when they're used, so the keys aren't
 # stored. One which can't be added, such as one which can't be reached, is
@@ -117,6 +117,7 @@ add() {
 if [ "${TRIES}" -gt 0 ] && [ -z "${STOPPING}" ]; then
     [ -z "${NO_ELIZA}" ] && add provider-create-eliza
     [ -n "${OLLAMA_ADDR}" ] && add provider-create-ollama "${OLLAMA_ADDR}"
+    [ -n "${LMSTUDIO_ADDR}" ] && add provider-create-lmstudio "${LMSTUDIO_ADDR}"
     [ -n "${GOWHISPER_ADDR}" ] && add provider-create-gowhisper "${GOWHISPER_ADDR}"
     [ -n "${OPENAI_API_KEY}" ] && add provider-create-openai --api-key-credential OPENAI_API_KEY
     [ -n "${ANTHROPIC_API_KEY}" ] && add provider-create-anthropic --api-key-credential ANTHROPIC_API_KEY

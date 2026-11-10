@@ -381,6 +381,14 @@ func (c *Client) ListModels(ctx context.Context) ([]llm.Model, error) {
 	return result, nil
 }
 
+// Model returns the client's model with the name, which isn't checked
+// against the models the server lists, for a provider which is built on the
+// client, and lists its models itself, such as LM Studio's, so the model is
+// one this client can be asked with
+func (c *Client) Model(name string) llm.Model {
+	return &Model{provider: c, data: apiModel{ID: name, Fields: map[string]json.RawMessage{}}}
+}
+
 // GetModel returns the model with the given name. The model is found in the
 // list of models, rather than retrieved by name, as not every OpenAI-compatible
 // server can retrieve a single model, and model names can contain "/".
