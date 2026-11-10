@@ -35,8 +35,10 @@ func Test_ListVoices(t *testing.T) {
 	c, err := New(server.URL+"/v1", "key")
 	require.NoError(t, err)
 
-	voices, err := c.ListVoices(context.Background())
+	model := c.speechModel(apiModel{ID: "eleven_multilingual_v2", Speaks: true})
+	voices, next, err := c.ListVoices(context.Background(), model)
 	require.NoError(t, err)
+	assert.Empty(t, next)
 	assert.Equal(t, []llm.Voice{
 		{
 			ID: "21m00Tcm4TlvDq8ikWAM", Title: "Rachel", Category: "premade",
@@ -49,6 +51,28 @@ func Test_ListVoices(t *testing.T) {
 		"/v2/voices?include_total_count=false&page_size=100",
 		"/v2/voices?include_total_count=false&next_page_token=page-2&page_size=100",
 	}, asked, "each page, with the token of the one before")
+
+	// The languages are those it's verified to speak with the model
+	voices, _, err = c.ListVoices(context.Background(), c.speechModel(apiModel{ID: "eleven_flash_v2_5", Speaks: true}))
+	require.NoError(t, err)
+	assert.Equal(t, []string{"en-US"}, voices[0].Languages)
+
+	// A page at a time, with ElevenLabs' token
+	asked = nil
+	voices, next, err = c.ListVoices(context.Background(), model, llm.WithLimit(1))
+	require.NoError(t, err)
+	require.Len(t, voices, 1)
+	assert.Equal(t, "page-2", next)
+	voices, next, err = c.ListVoices(context.Background(), model, llm.WithLimit(1), llm.WithPageToken(next))
+	require.NoError(t, err)
+	assert.Equal(t, "abc", voices[0].ID)
+	assert.Empty(t, next)
+	assert.Equal(t, []string{
+		"/v2/voices?include_total_count=false&page_size=1",
+		"/v2/voices?include_total_count=false&next_page_token=page-2&page_size=1",
+	}, asked)
+	_, _, err = c.ListVoices(context.Background(), model, llm.WithOpt(llm.VoiceKey, "x"))
+	assert.ErrorIs(t, err, llm.ErrBadParameter)
 }
 
 func Test_V2Path(t *testing.T) {

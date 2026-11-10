@@ -1,7 +1,8 @@
 /*
 elevenlabs implements an API client for ElevenLabs, whose Scribe models
-transcribe speech.
-https://elevenlabs.io/docs/api-reference/speech-to-text/convert
+transcribe speech, and whose other models speak text, in the account's
+voices.
+https://elevenlabs.io/docs/api-reference
 */
 package elevenlabs
 
@@ -27,6 +28,18 @@ type Client struct {
 	mu       sync.Mutex
 	lastPing time.Time
 	pingErr  error
+
+	// The models which speak, and when they were listed, which are kept for
+	// PingInterval
+	speechMu sync.Mutex
+	speech   []apiModel
+	listed   time.Time
+
+	// The account's voices, and when they were listed, which are kept for
+	// voicesTTL, to find a voice by its title
+	voicesMu sync.Mutex
+	cached   []llm.Voice
+	voicesAt time.Time
 }
 
 var _ llm.Provider = (*Client)(nil)

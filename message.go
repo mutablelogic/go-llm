@@ -45,13 +45,14 @@ type Usage struct {
 	ReasoningTokens uint `json:"reasoning_tokens,omitempty" help:"Of the output tokens, those of reasoning which isn't returned" example:"0"`
 	Pages           uint `json:"pages,omitempty" help:"Pages of documents and images whose text was recognized" example:"0"`
 	Seconds         uint `json:"seconds,omitempty" help:"Seconds of audio transcribed, or translated, for providers which charge by the second" example:"0"`
+	Characters      uint `json:"characters,omitempty" help:"Characters spoken, as the provider counts them, for providers which charge by the character, such as ElevenLabs" example:"0"`
 
 	// Duration is how long it took, which is the time from when it started
 	// to when it ended, rather than the sum of what ran at once
 	Duration time.Duration `json:"duration,omitempty" help:"How long it took, in nanoseconds" example:"1500000000"`
 }
 
-// Add returns the tokens, pages, seconds and durations of both usages, as
+// Add returns the tokens, pages, seconds, characters and durations of both usages, as
 // when one follows the other
 func (u Usage) Add(other Usage) Usage {
 	return Usage{
@@ -61,6 +62,7 @@ func (u Usage) Add(other Usage) Usage {
 		ReasoningTokens: u.ReasoningTokens + other.ReasoningTokens,
 		Pages:           u.Pages + other.Pages,
 		Seconds:         u.Seconds + other.Seconds,
+		Characters:      u.Characters + other.Characters,
 		Duration:        u.Duration + other.Duration,
 	}
 }
