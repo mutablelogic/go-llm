@@ -288,4 +288,5 @@ const (
 	ElevenLabs = "elevenlabs"
 	Anthropic  = "anthropic"
 	Gemini     = "gemini"
+	LMStudio   = "lmstudio"
 )

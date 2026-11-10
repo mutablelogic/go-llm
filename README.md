@@ -3,7 +3,7 @@
 [![Go Reference](https://pkg.go.dev/badge/github.com/mutablelogic/go-llm.svg)](https://pkg.go.dev/github.com/mutablelogic/go-llm)
 [![License](https://img.shields.io/badge/license-Apache-blue.svg)](LICENSE)
 
-go-llm is an application that puts language and speech models from many providers behind one interface, with a web UI, a command-line tool and a Go SDK. Add providers such as Ollama, OpenAI, Anthropic, Google Gemini, Mistral, [go-whisper](https://github.com/mutablelogic/go-whisper) and ElevenLabs. Then ask any of their models to reply, call tools, search the web, set reminders, run agents, embed, read documents, speak, and transcribe or translate speech. Connect remote MCP servers, such as GitHub, Linear or Notion, so your assistant can use their tools too. You can do all of this through the REST API, the web UI, the `llm` command (which includes a terminal chat), or from Go.
+go-llm is an application that puts language and speech models from many providers behind one interface, with a web UI, a command-line tool and a Go SDK. Add providers such as Ollama, LM Studio, OpenAI, Anthropic, Google Gemini, Mistral, [go-whisper](https://github.com/mutablelogic/go-whisper) and ElevenLabs. Then ask any of their models to reply, call tools, search the web, set reminders, run agents, embed, read documents, speak, and transcribe or translate speech. Connect remote MCP servers, such as GitHub, Linear or Notion, so your assistant can use their tools too. You can do all of this through the REST API, the web UI, the `llm` command (which includes a terminal chat), or from Go.
 
 ## Quick Start
 
@@ -30,7 +30,7 @@ Then open [http://localhost:8084/](http://localhost:8084/):
 
 - **`host.docker.internal`** is the machine Docker runs on, such as for a local Ollama. Docker Desktop has it; on Linux add `--add-host=host.docker.internal:host-gateway`.
 - **On first start,** go-llm adds the Eliza provider (unless `NO_ELIZA` is set), and a provider for each of these that's set:
-  - `OLLAMA_ADDR` and `GOWHISPER_ADDR`, as URLs;
+  - `OLLAMA_ADDR`, `LMSTUDIO_ADDR` and `GOWHISPER_ADDR`, as URLs;
   - `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `GEMINI_API_KEY`, `DEEPSEEK_API_KEY`, `MISTRAL_API_KEY` and `ELEVENLABS_API_KEY`.
 
   Keys are read from the environment when they're used, never stored.
@@ -73,6 +73,7 @@ Add more providers in the web UI, with **Add provider** on the Models page, or w
 
 ```bash
 llm provider-create-ollama http://host.docker.internal:11434
+llm provider-create-lmstudio http://host.docker.internal:1234/v1
 llm provider-create-openai --api-key-credential OPENAI_API_KEY
 llm provider-create-anthropic --api-key-credential ANTHROPIC_API_KEY
 llm provider-create-gemini --api-key-credential GEMINI_API_KEY
@@ -262,7 +263,7 @@ The registry also works on its own, from your own Go program; see [examples](exa
   - Attachments a model can't take become notes it can pass to a tool, such as `llm:transcribe`.
 - **Agents**: prompts with their own model, tools and schemas, kept as YAML or JSON, that models call as tools, nested as deep as needed.
 - **Embed, OCR, speak, illustrate, transcribe and translate**: vectors; document text as Markdown; speech in a chosen voice; images from Gemini's Nano Banana models; and transcripts with speakers, or as subtitles.
-- **Models**: download, delete and unload them where the provider stores them, such as Ollama and go-whisper, and list them by [capability](#capabilities).
+- **Models**: download, delete and unload them where the provider stores them, such as Ollama, LM Studio and go-whisper, and list them by [capability](#capabilities).
 - **Tools**: Home Assistant, NewsAPI, WeatherAPI, Ollama's and DeepSeek's web search, and any remote MCP server through [connectors](#connectors).
 - **Memory**: facts about the person and the assistant, and memories with versions, kept as files you can edit.
 - **Resources**: uploaded or generated files, streamed to and from the store, kept once, and downloadable in ranges.
@@ -276,6 +277,7 @@ The registry also works on its own, from your own Go program; see [examples](exa
 | Type | Provider | Generate | Embed | OCR | Transcribe | Translate | Speak | Images | Models |
 |------|----------|:--------:|:-----:|:---:|:----------:|:---------:|:-----:|:------:|--------|
 | `ollama` | [Ollama](https://ollama.com) | ✅ | ✅ | ✅ (images) | | | ✅ (phonon) | | Download, delete, unload |
+| `lmstudio` | [LM Studio](https://lmstudio.ai) | ✅ | ✅ | ✅ (images, olmOCR) | | | | | Download, load, unload |
 | `openai` | [OpenAI](https://platform.openai.com) | ✅ | ✅ | | ✅ | ✅ (whisper) | ✅ (tts) | | |
 | `anthropic` | [Anthropic](https://www.anthropic.com), with exact token counts | ✅ | | | | | | | |
 | `gemini` | [Google Gemini](https://ai.google.dev), with exact token counts | ✅ | ✅ (text, images, audio, PDFs) | | ✅ | | ✅ (tts) | ✅ (Nano Banana) | |
@@ -308,7 +310,7 @@ The web UI's Models page shows each model's capabilities as tags, and a model's 
 | Group | Commands |
 |-------|----------|
 | Server | `run`, `openapi` |
-| Providers | `providers`, `provider`, `provider-create-ollama`, `provider-create-openai`, `provider-create-anthropic`, `provider-create-gemini`, `provider-create-mistral`, `provider-create-deepseek`, `provider-create-gowhisper`, `provider-create-elevenlabs`, `provider-create-eliza`, `provider-update`, `provider-delete` |
+| Providers | `providers`, `provider`, `provider-create-ollama`, `provider-create-lmstudio`, `provider-create-openai`, `provider-create-anthropic`, `provider-create-gemini`, `provider-create-mistral`, `provider-create-deepseek`, `provider-create-gowhisper`, `provider-create-elevenlabs`, `provider-create-eliza`, `provider-update`, `provider-delete` |
 | Models | `models`, `model`, `model-load`, `model-delete`, `model-unload` |
 | Sessions | `sessions`, `session`, `session-messages`, `session-create`, `session-update`, `session-forget`, `session-compact`, `session-delete` |
 | Inference | `ask`, `chat`, `embed`, `ocr`, `transcribe`, `translate`, `speak`, `illustrate` |
@@ -495,6 +497,7 @@ Live tests check that a provider's API accepts what go-llm sends. They're mostly
 | `ELEVENLABS_API_KEY` | `provider/elevenlabs` | Transcription with speakers, and the account's voices (free) | Yes, apart from voices |
 | `OLLAMA_ADDR` | `provider/ollama` | Models, embeddings and OCR, with `embeddinggemma-2` and `deepseek-ocr` pulled | No |
 | `GOWHISPER_ADDR` | `provider/gowhisper` | Models and transcription, with `ggml-medium-q5_0` | No |
+| `LMSTUDIO_ADDR` | `provider/lmstudio` | Loads `google/gemma-4-12b-qat` for a tool call, `text-embedding-nomic-embed-text-v1.5` to embed, and `allenai/olmocr-2-7b`, when it's stored, for OCR, and unloads them | No |
 
 Model names can be changed with variables such as `OPENAI_MODEL` and `OLLAMA_OCR_MODEL`. Run one provider's live tests with `-count=1 -v`:
 
@@ -541,7 +544,6 @@ env -u OPENAI_API_KEY -u MISTRAL_API_KEY -u ANTHROPIC_API_KEY -u GEMINI_API_KEY 
 
 ### Providers
 
-- **LM Studio**, with its own model management API.
 - **ElevenLabs' voices** for text to speech.
 - **OpenAI's images** with `gpt-image`.
 - **OpenAI's Responses API**, so the newest models can think while calling tools.

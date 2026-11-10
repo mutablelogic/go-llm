@@ -20,6 +20,7 @@ import '@carbon/web-components/es/components/notification/inline-notification.js
 // examples are a model's name, for each type of provider, as a hint
 const examples: Record<string, string> = {
     ollama: 'Such as llama3.2:latest, or qwen3:8b, from ollama.com/library',
+    lmstudio: 'Such as google/gemma-4-12b-qat, from lmstudio.ai/models, or a Hugging Face link',
     gowhisper: 'Such as ggml-medium-q5_0, or ggml-large-v3-turbo',
 };
 
