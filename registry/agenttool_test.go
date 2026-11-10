@@ -68,7 +68,7 @@ func Test_AgentTools(t *testing.T) {
 		assert.Equal(t, []string{"agent:segment"}, tools(t, tk))
 		tool, err := tk.GetTool(ctx, "agent:segment")
 		require.NoError(t, err)
-		assert.Equal(t, "Segments a transcript into its sections", tool.Description)
+		assert.Equal(t, "Segments a transcript into its sections. "+toolkit.AgentCall, tool.Description)
 		assert.JSONEq(t, `{"type":"object","properties":{"transcript":{"type":"string"}}}`, string(tool.Input))
 		assert.JSONEq(t, `{"type":"object"}`, string(tool.Output))
 
@@ -76,7 +76,7 @@ func Test_AgentTools(t *testing.T) {
 		require.NoError(t, err)
 		tool, err = tk.GetTool(ctx, "agent:segment")
 		require.NoError(t, err)
-		assert.Equal(t, "Segment a transcript", tool.Description, "its title, without a description")
+		assert.Equal(t, "Segment a transcript. "+toolkit.AgentCall, tool.Description, "its title, without a description")
 
 		_, err = r.DeleteAgent(ctx, "segment")
 		require.NoError(t, err)
@@ -126,7 +126,7 @@ func Test_AgentTools(t *testing.T) {
 		require.NoError(t, err)
 		tool, err := tk.GetTool(ctx, "agent:empty")
 		require.NoError(t, err)
-		assert.Equal(t, "The agent empty", tool.Description)
+		assert.Equal(t, "The agent empty. "+toolkit.AgentCall, tool.Description)
 		var input map[string]any
 		require.NoError(t, json.Unmarshal(tool.Input, &input))
 		assert.Equal(t, "object", input["type"])
@@ -181,7 +181,7 @@ func Test_AgentTools(t *testing.T) {
 		require.NoError(t, err)
 		tool, err := tk.GetTool(ctx, "agent:segment")
 		require.NoError(t, err)
-		assert.Equal(t, types.Value(agent.Description), tool.Description)
+		assert.Equal(t, strings.TrimRight(types.Value(agent.Description), ". ")+". "+toolkit.AgentCall, tool.Description)
 		assert.Equal(t, []string{"agent:segment"}, tools(t, tk))
 	})
 

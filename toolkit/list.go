@@ -85,6 +85,10 @@ func (self *Toolkit) ListNamespaces(ctx context.Context) (_ *schema.NamespaceLis
 ////////////////////////////////////////////////////////////////////////////////
 // PRIVATE METHODS
 
+// AgentCall is what a model which calls an agent is told, so it gives the
+// agent what it needs, as an agent doesn't see the conversation
+const AgentCall = "Each call is new: it doesn't see this conversation, or earlier calls, so give it what it needs in its input."
+
 // AgentTool is a tool which can say it's an agent, which asks a model to do
 // what it does, rather than doing it itself, such as the registry's agents,
 // whatever namespace it's in
