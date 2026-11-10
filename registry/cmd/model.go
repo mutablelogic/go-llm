@@ -25,6 +25,7 @@ type ModelCommands struct {
 	ModelLoad   ModelLoadCmd   `cmd:"" name:"model-load" help:"Load a model, downloading it when needed, and make it the default." group:"LLM MODELS"`
 	ModelDelete ModelDeleteCmd `cmd:"" name:"model-delete" help:"Delete a model, with a provider which deletes models, such as Ollama." group:"LLM MODELS"`
 	ModelUnload ModelUnloadCmd `cmd:"" name:"model-unload" help:"Unload a model from memory, keeping it stored." group:"LLM MODELS"`
+	ModelVoices ModelVoicesCmd `cmd:"" name:"model-voices" help:"List the voices a model speaks in, which speak chooses from, by their IDs, or titles." group:"LLM MODELS"`
 }
 
 type ModelListCmd struct {
@@ -47,6 +48,11 @@ type ModelDeleteCmd struct {
 
 type ModelUnloadCmd struct {
 	Name string `arg:"" name:"name" help:"Model name, or alias, or provider and model name separated by a colon, such as ollama:gemma:latest."`
+}
+
+type ModelVoicesCmd struct {
+	Name string `arg:"" name:"name" help:"Model name, or alias, or provider and model name separated by a colon, such as elevenlabs:eleven_v4_turbo."`
+	schema.VoiceListRequest
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -168,6 +174,40 @@ func (cmd *ModelUnloadCmd) Run(ctx server.Cmd) error {
 			fmt.Println(model)
 		} else {
 			fmt.Println("Unloaded model", model.Canonical)
+		}
+		return nil
+	})
+}
+
+// Run lists the model's voices, as a table, with the token of the next
+// page, when there are more
+func (cmd *ModelVoicesCmd) Run(ctx server.Cmd) error {
+	width := ctx.IsTerm()
+	debug := ctx.IsDebug()
+	return withClient(ctx, "llm.ModelVoicesCmd", func(ctx context.Context, client *httpclient.Client) error {
+		voices, err := client.ListVoices(ctx, cmd.Name, cmd.VoiceListRequest)
+		if err != nil {
+			return err
+		}
+		if debug {
+			fmt.Println(voices)
+			return nil
+		}
+		rows := make([]schema.VoiceRow, 0, len(voices.Body))
+		for _, voice := range voices.Body {
+			rows = append(rows, schema.VoiceRow{Voice: voice})
+		}
+		table := tui.TableFor[schema.VoiceRow](tui.SetWidth(width))
+		if _, err := table.Write(os.Stdout, rows...); err != nil {
+			return err
+		}
+		switch {
+		case voices.Next != "":
+			fmt.Printf("More voices, with --next %q\n", voices.Next)
+		case len(rows) == 0 && cmd.Next != "":
+			fmt.Println("No more voices")
+		case len(rows) == 0:
+			fmt.Println("No voices")
 		}
 		return nil
 	})

@@ -313,7 +313,7 @@ The web UI's Models page shows each model's capabilities as tags, and a model's 
 |-------|----------|
 | Server | `run`, `openapi` |
 | Providers | `providers`, `provider`, `provider-create-ollama`, `provider-create-lmstudio`, `provider-create-openai`, `provider-create-anthropic`, `provider-create-gemini`, `provider-create-mistral`, `provider-create-deepseek`, `provider-create-gowhisper`, `provider-create-elevenlabs`, `provider-create-eliza`, `provider-update`, `provider-delete` |
-| Models | `models`, `model`, `model-load`, `model-delete`, `model-unload` |
+| Models | `models`, `model`, `model-load`, `model-delete`, `model-unload`, `model-voices` |
 | Sessions | `sessions`, `session`, `session-messages`, `session-create`, `session-update`, `session-forget`, `session-compact`, `session-delete` |
 | Inference | `ask`, `chat`, `embed`, `ocr`, `transcribe`, `translate`, `speak`, `illustrate` |
 | Tools and agents | `namespaces`, `tools`, `tool`, `call`, `agents`, `agent`, `agent-create`, `agent-update`, `agent-delete` |

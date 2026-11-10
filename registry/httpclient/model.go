@@ -92,6 +92,21 @@ func (c *Client) UnloadModel(ctx context.Context, name string) (*schema.Model, e
 	return &response, nil
 }
 
+// ListVoices returns the voices of the model with the name, or alias, or
+// provider and name, such as elevenlabs:eleven_v4_turbo, which the request
+// selects, with the token of the next page, when there are more. The name is
+// one segment of the path, so a "/" in it is escaped.
+func (c *Client) ListVoices(ctx context.Context, name string, req schema.VoiceListRequest) (*schema.VoiceList, error) {
+	if strings.TrimSpace(name) == "" {
+		return nil, llm.ErrBadParameter.With("model name is required")
+	}
+	var response schema.VoiceList
+	if err := c.DoWithContext(ctx, client.MethodGet, &response, client.OptPath("llm", "model", name, "voice"), client.OptQuery(req.Query())); err != nil {
+		return nil, err
+	}
+	return &response, nil
+}
+
 ///////////////////////////////////////////////////////////////////////////////
 // PRIVATE METHODS
 

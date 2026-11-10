@@ -185,9 +185,7 @@ func (t *listModels) voices(ctx context.Context, m Models, model gollm.Model, se
 	if err != nil {
 		return nil, "", err
 	}
-	found := slices.DeleteFunc(all, func(voice gollm.Voice) bool {
-		return !strings.Contains(strings.ToLower(voice.Title), search) && !strings.Contains(strings.ToLower(voice.ID), search)
-	})
+	found := gollm.FindVoices(all, search)
 	opts := []gollm.Opt{gollm.WithLimit(voicesPage)}
 	if token != "" {
 		opts = append(opts, gollm.WithPageToken(token))
