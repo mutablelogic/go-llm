@@ -89,15 +89,6 @@ func (r *Registry) WithSession(ctx context.Context, session schema.Session, mess
 	}
 	loop.session = session.ID
 
-	// What the person sent, through the API, is passed on, such as to the
-	// session's own chats, once it's valid, and before the model replies
-	if r.prompts != nil && byPerson(ctx) {
-		prompt := make([]llm.Message, len(added))
-		for i := range added {
-			prompt[i] = &added[i]
-		}
-		r.prompts(ctx, session.ID, prompt)
-	}
 	h, usage, err := r.agentLoop(ctx, model, conversation, added, loop, stream)
 	if err != nil {
 		return nil, err

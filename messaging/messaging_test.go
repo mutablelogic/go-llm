@@ -46,7 +46,6 @@ func (f *fake) Link(code string) string { return "https://example.com/" + f.name
 
 // Private chats, of the fake, are those whose addresses don't start with
 // a hyphen, as Telegram's are
-func (f *fake) Private(address string) bool { return !strings.HasPrefix(address, "-") }
 
 func (f *fake) Receive(ctx context.Context, fn func(context.Context, messaging.Message) error) error {
 	for {
@@ -187,35 +186,6 @@ func Test_Messaging_Reply(t *testing.T) {
 	channels, err = m.List(ctx, uuid.Nil())
 	require.NoError(t, err)
 	assert.Empty(t, channels)
-}
-
-func Test_Messaging_Mirror(t *testing.T) {
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-	provider := newFake("fake")
-	m, err := messaging.New(messaging.NewStore(), messaging.WithProvider(provider))
-	require.NoError(t, err)
-	go m.Run(ctx, nil)
-
-	// The person's own chat, and a group's, connected to one session
-	id := uuid.New()
-	for _, address := range []string{"1", "-100"} {
-		link, _, err := m.Connect(ctx, id, "fake")
-		require.NoError(t, err)
-		provider.incoming <- messaging.Message{Address: address, Code: code(t, link)}
-	}
-	require.Eventually(t, func() bool {
-		return len(provider.messages("1")) == 1 && len(provider.messages("-100")) == 1
-	}, time.Second, 10*time.Millisecond)
-
-	// What the person sent from elsewhere goes to their own chat, but not
-	// the group's, which others read, and a session without channels, or
-	// nothing to send, is fine
-	require.NoError(t, m.Mirror(ctx, id, messaging.Outgoing{Text: "💬 You: Hello"}))
-	require.NoError(t, m.Mirror(ctx, uuid.New(), messaging.Outgoing{Text: "Nobody hears this"}))
-	require.NoError(t, m.Mirror(ctx, id, messaging.Outgoing{Text: " "}))
-	assert.Equal(t, []string{"💬 You: Hello"}, provider.messages("1")[1:])
-	assert.Len(t, provider.messages("-100"), 1, "the group isn't sent it")
 }
 
 func Test_Messaging_Move(t *testing.T) {
