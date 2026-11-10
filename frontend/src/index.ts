@@ -84,7 +84,7 @@ const chat = new ChatController({
 
 // Dictation of a message, into the chat's box, when the browser recognises
 // speech
-new DictationController(document.querySelector('llm-chat-view'), notifications);
+const dictation = new DictationController(document.querySelector('llm-chat-view'), notifications);
 
 // The outcomes of the events of the chat which is open, such as heartbeats
 // which fired, in a panel, which its Events action opens
@@ -233,6 +233,10 @@ const router = new Router(document.querySelector<HTMLElement>('#not-found-page')
         void tools.refresh();
     })
     .listen((route) => {
+        // Dictation stops, as the page, or the chat, changes, so what's said
+        // isn't put in another's box
+        dictation.stop();
+
         // A page's panels are closed, once it isn't shown, so they don't stay
         // open over the page which is
         if (route.page !== 'chat') {

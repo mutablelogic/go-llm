@@ -18,6 +18,10 @@ export class DictateButton extends LitElement {
     // out of the chat's box, to the dictation controller
     static readonly eventToggle = 'llm-dictate-toggle';
 
+    // The name of the event fired to stop dictating, such as when the box is
+    // typed in, which bubbles out of the chat's box, to the controller
+    static readonly eventStop = 'llm-dictate-stop';
+
     // Whether it's listening, as the person speaks
     @property({ type: Boolean, reflect: true })
     listening = false;

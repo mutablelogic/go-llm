@@ -4,7 +4,7 @@
 // The words which are still being recognised are shown, and replaced, until
 // they're final. It's started, and stopped, by the box's microphone button,
 // which isn't shown when the browser can't recognise speech, and stops when
-// the message is sent. Chrome sends the speech to Google to recognise it.
+// the message is sent, it's typed in, or the page, or the chat, changes. Chrome sends the speech to Google to recognise it.
 
 import { ChatView } from '../component/chat-view';
 import { DictateButton } from '../component/dictate-button';
@@ -64,6 +64,7 @@ export class DictationController {
         view.dictation = true;
         view.addEventListener(DictateButton.eventToggle, () => this.toggle());
         view.addEventListener(ChatView.eventSend, () => this.stop());
+        view.addEventListener(DictateButton.eventStop, () => this.stop());
     }
 
     // supported returns whether the browser recognises speech
@@ -90,11 +91,20 @@ export class DictationController {
         recognition.lang = document.documentElement.lang || navigator.language;
         recognition.continuous = true;
         recognition.interimResults = true;
+        // The results which are newly final are kept, in turn, and then all
+        // those which are still being recognised are shown, together, in
+        // place of those before, or none, when there are none
         recognition.onresult = (event) => {
-            for (let i = event.resultIndex; i < event.results.length; i++) {
+            const interim: string[] = [];
+            for (let i = 0; i < event.results.length; i++) {
                 const result = event.results[i];
-                this.view?.dictate(result[0].transcript, result.isFinal);
+                if (!result.isFinal) {
+                    interim.push(result[0].transcript.trim());
+                } else if (i >= event.resultIndex) {
+                    this.view?.dictate(result[0].transcript, true);
+                }
             }
+            this.view?.dictate(interim.filter((text) => text).join(' '), false);
         };
         recognition.onerror = (event) => {
             const message = errors[event.error];
@@ -119,14 +129,19 @@ export class DictationController {
         }
     }
 
-    // stop stops dictating, keeping what was recognised
+    // stop stops dictating, keeping what's shown, as it was recognised, and
+    // ignoring what the browser recognises after, which it can, as it stops,
+    // so it isn't shown twice, or in a box which has been sent, or changed
     stop() {
         const recognition = this.recognition;
         if (!recognition) {
             return;
         }
         this.recognition = undefined;
-        recognition.stop();
+        recognition.onresult = null;
+        recognition.onerror = null;
+        recognition.onend = null;
+        recognition.abort();
         this.view?.dictated();
     }
 }

@@ -19,7 +19,7 @@ import Send16 from '@carbon/icons/es/send/16.js';
 import Add16 from '@carbon/icons/es/add/16.js';
 import Close16 from '@carbon/icons/es/close/16.js';
 import { hasFiles } from './resource-panel';
-import './dictate-button';
+import { DictateButton } from './dictate-button';
 import { resourceName, type Resource } from '../schema/resource';
 
 // Carbon components
@@ -319,7 +319,8 @@ export class ChatInput extends LitElement {
         const end = start + piece.length;
         textarea.setSelectionRange(end, end);
         this.dictating = final ? { start: end, length: 0 } : { start, length: piece.length };
-        this.handleInput();
+        this.resize();
+        this.dispatchEvent(new CustomEvent(ChatInput.eventTyping));
     }
 
     // dictated ends the dictation, keeping what was recognised, so the next
@@ -329,8 +330,13 @@ export class ChatInput extends LitElement {
     }
 
     // handleInput grows the box to its text, and fires the event that
-    // someone is typing
+    // someone is typing. Typing ends a dictation, so what's still being
+    // recognised doesn't replace what's typed.
     private handleInput() {
+        if (this.dictating) {
+            this.dictating = undefined;
+            this.dispatchEvent(new CustomEvent(DictateButton.eventStop, { bubbles: true, composed: true }));
+        }
         this.resize();
         this.dispatchEvent(new CustomEvent(ChatInput.eventTyping));
     }
