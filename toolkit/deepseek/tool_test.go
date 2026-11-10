@@ -208,12 +208,19 @@ func TestRun(t *testing.T) {
 			assert.Nil(t, result, name)
 		}
 
-		// A query of 128 characters, of more bytes, is allowed
+		// A query of 128 characters, and a URL of 8,192, of more bytes, are
+		// allowed, and one character more isn't
 		_, err := tools["search"].Run(ctx, json.RawMessage(`{"query":"`+strings.Repeat("ß", 128)+`"}`))
 		require.NoError(t, err)
+		prefix := "https://example.com/"
+		path := strings.Repeat("页", 8192-len(prefix))
+		_, err = tools["fetch"].Run(ctx, json.RawMessage(`{"url":"`+prefix+path+`"}`))
+		require.NoError(t, err)
+		_, err = tools["fetch"].Run(ctx, json.RawMessage(`{"url":"`+prefix+path+`页"}`))
+		assert.ErrorIs(t, err, llm.ErrBadParameter)
 
 		// Invalid input isn't sent to DeepSeek, so it isn't billed
-		assert.Len(t, *requests, 1)
+		assert.Len(t, *requests, 2)
 	})
 
 	t.Run("Cancelled", func(t *testing.T) {

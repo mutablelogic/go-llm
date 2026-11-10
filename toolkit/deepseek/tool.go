@@ -45,7 +45,7 @@ const (
 	// question, which DeepSeek accepts
 	maxQuery = 128
 
-	// maxURL is the longest URL which DeepSeek fetches
+	// maxURL is the most characters of a URL which DeepSeek fetches
 	maxURL = 8192
 )
 
@@ -128,7 +128,7 @@ func (f *webFetch) Run(ctx context.Context, input json.RawMessage) (any, error) 
 	// a username or password, which DeepSeek refuses
 	if req.URL = strings.TrimSpace(req.URL); req.URL == "" {
 		return nil, llm.ErrBadParameter.With("url is required")
-	} else if len(req.URL) > maxURL {
+	} else if utf8.RuneCountInString(req.URL) > maxURL {
 		return nil, llm.ErrBadParameter.Withf("url must be at most %d characters", maxURL)
 	} else if u, err := url.Parse(req.URL); err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" || u.User != nil {
 		return nil, llm.ErrBadParameter.Withf("url %q must be an http or https URL, with a host, and without a username or password", req.URL)
