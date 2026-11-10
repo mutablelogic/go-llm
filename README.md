@@ -277,7 +277,7 @@ The registry also works on its own, from your own Go program; see [examples](exa
 | Type | Provider | Generate | Embed | OCR | Transcribe | Translate | Speak | Images | Models |
 |------|----------|:--------:|:-----:|:---:|:----------:|:---------:|:-----:|:------:|--------|
 | `ollama` | [Ollama](https://ollama.com) | ✅ | ✅ | ✅ (images) | | | ✅ (phonon) | | Download, delete, unload |
-| `lmstudio` | [LM Studio](https://lmstudio.ai) | ✅ | ✅ | | | | | | Download, load, unload |
+| `lmstudio` | [LM Studio](https://lmstudio.ai) | ✅ | ✅ | ✅ (images, olmOCR) | | | | | Download, load, unload |
 | `openai` | [OpenAI](https://platform.openai.com) | ✅ | ✅ | | ✅ | ✅ (whisper) | ✅ (tts) | | |
 | `anthropic` | [Anthropic](https://www.anthropic.com), with exact token counts | ✅ | | | | | | | |
 | `gemini` | [Google Gemini](https://ai.google.dev), with exact token counts | ✅ | ✅ (text, images, audio, PDFs) | | ✅ | | ✅ (tts) | ✅ (Nano Banana) | |
@@ -497,7 +497,7 @@ Live tests check that a provider's API accepts what go-llm sends. They're mostly
 | `ELEVENLABS_API_KEY` | `provider/elevenlabs` | Transcription with speakers | Yes |
 | `OLLAMA_ADDR` | `provider/ollama` | Models, embeddings and OCR, with `embeddinggemma-2` and `deepseek-ocr` pulled | No |
 | `GOWHISPER_ADDR` | `provider/gowhisper` | Models and transcription, with `ggml-medium-q5_0` | No |
-| `LMSTUDIO_ADDR` | `provider/lmstudio` | Loads `google/gemma-4-12b-qat` for a tool call, and `text-embedding-nomic-embed-text-v1.5` to embed, and unloads them | No |
+| `LMSTUDIO_ADDR` | `provider/lmstudio` | Loads `google/gemma-4-12b-qat` for a tool call, `text-embedding-nomic-embed-text-v1.5` to embed, and `allenai/olmocr-2-7b`, when it's stored, for OCR, and unloads them | No |
 
 Model names can be changed with variables such as `OPENAI_MODEL` and `OLLAMA_OCR_MODEL`. Run one provider's live tests with `-count=1 -v`:
 

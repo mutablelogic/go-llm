@@ -29,6 +29,7 @@ type fake struct {
 	asked    []string
 	unloaded []string
 	chat     map[string]any
+	reply    string
 }
 
 func newFake(t *testing.T) (*fake, *Client) {
@@ -38,6 +39,7 @@ func newFake(t *testing.T) (*fake, *Client) {
 			"size_bytes": 7151067268, "loaded_instances": []any{}, "max_context_length": 262144,
 			"capabilities": map[string]any{"vision": true, "trained_for_tool_use": true, "reasoning": map[string]any{"allowed_options": []string{"off", "on"}, "default": "on"}},
 		},
+		{"type": "llm", "key": "allenai/olmocr-2-7b", "loaded_instances": []any{}, "capabilities": map[string]any{"vision": true, "trained_for_tool_use": false}},
 		{"type": "embedding", "key": "text-embedding-nomic-embed-text-v1.5", "display_name": "Nomic Embed Text v1.5", "loaded_instances": []any{}, "max_context_length": 2048},
 		{
 			"type": "llm", "key": "qwen/qwen3-4b", "display_name": "Qwen3 4B", "max_context_length": 32768,
@@ -80,8 +82,12 @@ func (f *fake) serve(w http.ResponseWriter, r *http.Request) {
 		reply(map[string]any{"instance_id": body["instance_id"]})
 	case "POST /v1/chat/completions":
 		f.chat = body
+		content := "Hello"
+		if f.reply != "" {
+			content = f.reply
+		}
 		reply(map[string]any{
-			"choices": []any{map[string]any{"index": 0, "message": map[string]any{"role": "assistant", "content": "Hello"}, "finish_reason": "stop"}},
+			"choices": []any{map[string]any{"index": 0, "message": map[string]any{"role": "assistant", "content": content}, "finish_reason": "stop"}},
 			"usage":   map[string]any{"prompt_tokens": 5, "completion_tokens": 1, "total_tokens": 6},
 		})
 	default:
@@ -119,7 +125,7 @@ func Test_ListModels(t *testing.T) {
 	_, c := newFake(t)
 	models, err := c.ListModels(context.Background())
 	require.NoError(t, err)
-	require.Len(t, models, 3)
+	require.Len(t, models, 4)
 
 	// A language model, with what it can do, and the most context it can
 	// have, as it isn't loaded
@@ -133,13 +139,17 @@ func Test_ListModels(t *testing.T) {
 	assert.Contains(t, gemma.Meta(), "publisher")
 	assert.NotContains(t, gemma.Meta(), "key")
 
-	// An embedding model
-	assert.Equal(t, "embedding", models[1].Capabilities().String())
+	// An OCR model, by its name, and an embedding model
+	assert.Equal(t, "chat, image_input, ocr", models[1].Capabilities().String())
+	assert.Nil(t, gemma.Capabilities().OCR, "a model which sees images may read text")
+	assert.Equal(t, "embedding", models[2].Capabilities().String())
 
-	// A model which is loaded has the context it was loaded with
-	qwen := models[2]
+	// A model which is loaded has the context it was loaded with, and one
+	// which doesn't see images doesn't recognize text
+	qwen := models[3]
 	assert.Equal(t, uint(4096), types.Value(qwen.InputTokenLimit()))
 	assert.Equal(t, "chat", qwen.Capabilities().String())
+	assert.False(t, types.Value(qwen.Capabilities().OCR))
 
 	_, err = c.GetModel(context.Background(), "missing")
 	assert.ErrorIs(t, err, llm.ErrNotFound)
@@ -215,4 +225,66 @@ func Test_WithoutSession(t *testing.T) {
 	_, other := newFake(t)
 	_, _, err = other.WithoutSession(ctx, model, []llm.Message{message}, nil, nil)
 	assert.ErrorIs(t, err, llm.ErrBadParameter)
+}
+
+func Test_Recognize(t *testing.T) {
+	f, c := newFake(t)
+	ctx := context.Background()
+	image := &providerschema.Resource{ResourceMeta: providerschema.ResourceMeta{ContentType: "image/png", Data: []byte("\x89PNG")}}
+
+	// olmOCR is asked with its prompt, then the image, at no temperature,
+	// and its front matter is taken out
+	olmocr, err := c.GetModel(ctx, "allenai/olmocr-2-7b")
+	require.NoError(t, err)
+	f.reply = "---\nprimary_language: en\nis_rotation_valid: true\nrotation_correction: 0\nis_table: false\nis_diagram: false\n---\n# Invoice\n\nTotal: 42"
+	document, usage, err := c.Recognize(ctx, olmocr, image)
+	require.NoError(t, err)
+	require.Len(t, document.Pages, 1)
+	assert.Equal(t, "# Invoice\n\nTotal: 42", document.Pages[0].Text)
+	assert.Equal(t, uint(1), usage.Pages)
+	assert.Equal(t, float64(0), f.chat["temperature"])
+	messages := f.chat["messages"].([]any)
+	require.Len(t, messages, 1)
+	content := messages[0].(map[string]any)["content"].([]any)
+	require.Len(t, content, 2)
+	assert.Contains(t, content[0].(map[string]any)["text"], "Attached is one page of a document")
+	assert.Equal(t, "image_url", content[1].(map[string]any)["type"])
+
+	// Its tables are HTML, and it doesn't recognize regions
+	_, _, err = c.Recognize(ctx, olmocr, image, llm.WithTableFormat("html"))
+	assert.NoError(t, err)
+	_, _, err = c.Recognize(ctx, olmocr, image, llm.WithTableFormat("markdown"))
+	assert.ErrorIs(t, err, llm.ErrBadParameter)
+	_, _, err = c.Recognize(ctx, olmocr, image, llm.WithRegions(true))
+	assert.ErrorIs(t, err, llm.ErrBadParameter)
+	_, _, err = c.Recognize(ctx, olmocr, image, llm.WithPages(1))
+	assert.ErrorIs(t, err, llm.ErrBadParameter)
+
+	// Another model which sees images is asked to convert it to Markdown,
+	// and its text is kept, as it is
+	gemma, err := c.GetModel(ctx, "google/gemma-4-12b-qat")
+	require.NoError(t, err)
+	f.reply = "---\n\nA rule, not front matter"
+	document, _, err = c.Recognize(ctx, gemma, image)
+	require.NoError(t, err)
+	assert.Equal(t, "---\n\nA rule, not front matter", document.Pages[0].Text)
+	content = f.chat["messages"].([]any)[0].(map[string]any)["content"].([]any)
+	assert.Equal(t, recognizePrompt, content[0].(map[string]any)["text"])
+
+	// A PDF isn't recognized
+	_, _, err = c.Recognize(ctx, olmocr, &providerschema.Resource{ResourceMeta: providerschema.ResourceMeta{ContentType: "application/pdf", Data: []byte("%PDF")}})
+	assert.ErrorIs(t, err, llm.ErrBadParameter)
+}
+
+func Test_WithoutFrontMatter(t *testing.T) {
+	for in, want := range map[string]string{
+		"---\nprimary_language: en\n---\nText": "Text",
+		"\n---\nprimary_language: en\n---\n":   "",
+		"---\nprimary_language: en\n---":       "",
+		"Text\n---\nMore":                      "Text\n---\nMore",
+		"---\nno end":                          "---\nno end",
+		"----\nnot front matter\n---\n":        "----\nnot front matter\n---\n",
+	} {
+		assert.Equal(t, want, withoutFrontMatter(in), in)
+	}
 }

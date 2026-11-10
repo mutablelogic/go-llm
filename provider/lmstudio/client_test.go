@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"os"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -22,12 +23,14 @@ import (
 
 // The live tests ask the LM Studio server at LMSTUDIO_ADDR, such as
 // "http://localhost:1234/v1", and are skipped without it. They load the
-// models, LMSTUDIO_MODEL, which calls tools, and LMSTUDIO_EMBED, which
-// embeds, and unload them.
+// models, LMSTUDIO_MODEL, which calls tools, LMSTUDIO_EMBED, which embeds,
+// and LMSTUDIO_OCR_MODEL, which recognizes text, when it's stored, and unload
+// them.
 var (
 	lmstudioAddr  = os.Getenv("LMSTUDIO_ADDR")
 	lmstudioModel = envOr("LMSTUDIO_MODEL", "google/gemma-4-12b-qat")
 	lmstudioEmbed = envOr("LMSTUDIO_EMBED", "text-embedding-nomic-embed-text-v1.5")
+	lmstudioOCR   = envOr("LMSTUDIO_OCR_MODEL", "allenai/olmocr-2-7b")
 )
 
 func envOr(key, value string) string {
@@ -94,6 +97,29 @@ func Test_Live(t *testing.T) {
 		assert.Equal(t, "get_weather", reply.ToolCalls()[0].Name)
 		assert.Contains(t, string(reply.ToolCalls()[0].Input), "Berlin")
 		assert.NotZero(t, usage.InputTokens)
+	})
+
+	t.Run("Recognize", func(t *testing.T) {
+		// The OCR model is only loaded when it's stored, as it isn't
+		// downloaded for a test
+		if _, err := c.GetModel(ctx, lmstudioOCR); err != nil {
+			t.Skipf("%s isn't stored: %v", lmstudioOCR, err)
+		}
+		model, err := c.LoadModel(ctx, lmstudioOCR, nil)
+		require.NoError(t, err)
+		t.Cleanup(func() { assert.NoError(t, c.UnloadModel(context.Background(), model)) })
+		assert.True(t, types.Value(model.Capabilities().OCR))
+
+		data, err := os.ReadFile(filepath.Join("..", "..", "testdata", "ocr.png"))
+		require.NoError(t, err)
+		image := &providerschema.Resource{ResourceMeta: providerschema.ResourceMeta{ContentType: "image/png", Data: data}}
+		document, usage, err := c.Recognize(ctx, model, image)
+		require.NoError(t, err)
+		require.Len(t, document.Pages, 1)
+		t.Logf("%q, %+v", document.Pages[0].Text, usage)
+		assert.Contains(t, document.Pages[0].Text, "Hello, World")
+		assert.NotContains(t, document.Pages[0].Text, "primary_language", "without its front matter")
+		assert.Equal(t, uint(1), usage.Pages)
 	})
 
 	t.Run("Embed", func(t *testing.T) {

@@ -96,8 +96,9 @@ func (m *Model) OutputTokenLimit() *uint {
 }
 
 // Capabilities returns what the model can do: a language model replies, and
-// calls tools, when it was trained to, sees images, when it has vision, and
-// thinks, when it reasons, and an embedding model embeds. A model which
+// calls tools, when it was trained to, sees images, when it has vision,
+// thinks, when it reasons, and recognizes text, when it's an OCR model, such
+// as olmOCR, and an embedding model embeds. A model which
 // replies is only sent images, as the chat completions API which it replies
 // with has no audio, video, or documents.
 func (m *Model) Capabilities() llm.ModelCap {
@@ -108,6 +109,16 @@ func (m *Model) Capabilities() llm.ModelCap {
 		if c := m.data.Capabilities; c != nil {
 			result.Tools, result.ImageInput = types.Ptr(c.ToolUse), types.Ptr(c.Vision)
 			result.Thinking = types.Ptr(len(c.Reasoning) > 0 && string(c.Reasoning) != "null")
+		}
+
+		// A model recognizes text when it's an OCR model, by its name, and
+		// doesn't when it doesn't see images, and isn't known otherwise, as
+		// a model which sees images can read text in them, but not as well
+		switch {
+		case findOCRModel(m.data.Key) != nil:
+			result.OCR, result.ImageInput = yes, yes
+		case result.ImageInput != nil && !*result.ImageInput:
+			result.OCR = no
 		}
 		return result
 	case typeEmbedding:
