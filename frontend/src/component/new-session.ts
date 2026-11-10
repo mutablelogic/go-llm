@@ -23,7 +23,42 @@ import '@carbon/web-components/es/components/text-input/index.js';
 import '@carbon/web-components/es/components/button/index.js';
 import '@carbon/web-components/es/components/checkbox/index.js';
 import '@carbon/web-components/es/components/skeleton-text/index.js';
+import '@carbon/web-components/es/components/slider/index.js';
 import './disclosure';
+
+// windows are the context windows which can be chosen, in tokens, each
+// twice the last, from 16K, as fewer is too few for an assistant with tools,
+// after which the slider's last step is the model's own
+const windows = [16, 32, 64, 128, 256, 512, 1024, 2048].map((k) => k * 1024);
+
+// tokens returns a number of tokens, such as 128K, or 1M, in powers of two
+// when it's one, as the windows are, or otherwise thousands, as a model's
+// limit, such as 200,000, may be
+function tokens(n: number): string {
+    if (n >= 1024 * 1024 && n % (1024 * 1024) === 0) {
+        return `${n / (1024 * 1024)}M`;
+    } else if (n % 1024 === 0) {
+        return `${n / 1024}K`;
+    } else if (n >= 1000000) {
+        return `${Number((n / 1000000).toFixed(1))}M`;
+    }
+    return `${Math.round(n / 1000)}K`;
+}
+
+// windowStep returns the slider's step for the context window, which is the
+// nearest, by its logarithm, or the last, for the model's own
+function windowStep(window?: number): number {
+    if (!window) {
+        return windows.length;
+    }
+    let step = 0;
+    for (let i = 1; i < windows.length; i++) {
+        if (Math.abs(Math.log2(windows[i] / window)) < Math.abs(Math.log2(windows[step] / window))) {
+            step = i;
+        }
+    }
+    return step;
+}
 
 // NewSessionForm is what the panel shows, which is always so, while it's open
 type NewSessionForm = true;
@@ -80,6 +115,12 @@ export class NewSession extends Panel<NewSessionForm> {
     // its effort isn't asked for when it doesn't
     @property({ attribute: false })
     thinking = 'default';
+
+    // The context window the session asks for, in tokens, or undefined, for
+    // the model's own, which is kept as it is, whatever its model, as the
+    // registry asks a model with no more than it can have
+    @state()
+    private contextWindow?: number;
 
     @query('cds-select#model')
     private select?: HTMLElement & { value: string };
@@ -140,6 +181,7 @@ export class NewSession extends Panel<NewSessionForm> {
             this.opened++;
             this.chosen = this.session?.model;
             this.thinking = opt.thinking === true ? 'true' : opt.thinking === false ? 'false' : 'default';
+            this.contextWindow = typeof opt.context_window === 'number' && opt.context_window > 0 ? opt.context_window : undefined;
             this.startTools = this.session ? [...(this.session.tools ?? [])] : ['*'];
         }
         super.willUpdate(changed);
@@ -214,6 +256,13 @@ export class NewSession extends Panel<NewSessionForm> {
                             value=${typeof opt.temperature === 'number' ? String(opt.temperature) : ''}></cds-text-input>
                     `}
                 </div>
+                <div>
+                    <cds-slider id="context" label-text=${`Context window: ${this.contextWindow ? `${tokens(this.contextWindow)} tokens` : 'Default'}`}
+                        min="0" max=${String(windows.length)} step="1" value=${String(windowStep(this.contextWindow))} hide-text-input
+                        .formatMinText=${() => tokens(windows[0])} .formatMaxText=${() => 'Default'}
+                        @cds-slider-changed=${(e: CustomEvent<{ value: number }>) => this.chooseWindow(Number(e.detail.value))}></cds-slider>
+                    <p class="note">${this.windowNote(model)}</p>
+                </div>
                 ${cannot(model, 'tools')
                     ? ''
                     : html`
@@ -223,6 +272,28 @@ export class NewSession extends Panel<NewSessionForm> {
                 </llm-disclosure>
             </form>
         `);
+    }
+
+    // chooseWindow sets the context window from the slider's step, keeping
+    // the one which was set, when the step is still its nearest, such as one
+    // set from the command line, which isn't a step
+    private chooseWindow(step: number) {
+        if (step !== windowStep(this.contextWindow)) {
+            this.contextWindow = step >= windows.length ? undefined : windows[step];
+        }
+    }
+
+    // windowNote says the context window is smaller, so compaction happens
+    // sooner, and what the model can have, when it's known
+    private windowNote(model?: Model): string {
+        const limit = model?.input_token_limit;
+        const note = 'A smaller window is quicker, costs less, and compacts the conversation sooner.';
+        if (!limit) {
+            return `${note} This model doesn't say how many tokens it takes.`;
+        } else if (this.contextWindow && this.contextWindow > limit) {
+            return `${note} This model takes up to ${tokens(limit)} tokens, so it's asked with that.`;
+        }
+        return `${note} This model takes up to ${tokens(limit)} tokens.`;
     }
 
     private handleSubmit(event: Event) {
@@ -247,6 +318,9 @@ export class NewSession extends Panel<NewSessionForm> {
         const temperature = parseFloat(this.temperature?.value ?? '');
         if (Number.isFinite(temperature)) {
             opt.temperature = temperature;
+        }
+        if (this.contextWindow) {
+            opt.context_window = this.contextWindow;
         }
 
         // A new chat has what's set, and the session which is edited what's
@@ -290,7 +364,7 @@ export class NewSession extends Panel<NewSessionForm> {
             changes.trace = trace;
         }
         const changed: Record<string, unknown> = {};
-        for (const key of ['thinking', 'thinking_effort', 'temperature']) {
+        for (const key of ['thinking', 'thinking_effort', 'temperature', 'context_window']) {
             const before = session.opt?.[key];
             if (opt[key] !== before) {
                 changed[key] = key in opt ? opt[key] : null;
