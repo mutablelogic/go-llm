@@ -178,7 +178,7 @@ func (n node) write(buf *bytes.Buffer, chars, items int) {
 			parts[i] = item.encode(chars, items)
 		}
 		writeItems(buf, '[', ']', parts, items, func(more int) []byte {
-			return encodeString(fmt.Sprintf("…[%d more items]", more))
+			return encodeString(fmt.Sprintf("…[left out: %d more items]", more))
 		})
 	case kindObject:
 		parts := make([][]byte, len(n.items))
@@ -186,7 +186,7 @@ func (n node) write(buf *bytes.Buffer, chars, items int) {
 			parts[i] = append(append(encodeString(n.keys[i]), ':'), item.encode(chars, items)...)
 		}
 		writeItems(buf, '{', '}', parts, items, func(more int) []byte {
-			return append(append(encodeString(truncateKey), ':'), encodeString(fmt.Sprintf("[%d more keys]", more))...)
+			return append(append(encodeString(truncateKey), ':'), encodeString(fmt.Sprintf("[left out: %d more keys]", more))...)
 		})
 	}
 }
@@ -302,7 +302,7 @@ func truncateString(text string, chars int) string {
 		_, size := utf8.DecodeRuneInString(text[end:])
 		end += size
 	}
-	if truncated := text[:end] + fmt.Sprintf("…[truncated, %d more characters]", utf8.RuneCountInString(text[end:])); len(truncated) < len(text) {
+	if truncated := text[:end] + fmt.Sprintf("…[left out: %d more characters]", utf8.RuneCountInString(text[end:])); len(truncated) < len(text) {
 		return truncated
 	}
 	return text
