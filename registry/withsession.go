@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"maps"
 	"strings"
 
 	// Packages
@@ -136,11 +137,16 @@ func (r *Registry) generatorLoop(ctx context.Context, meta schema.GeneratorMeta,
 	}
 
 	// A session keeps the tools which were chosen, whatever its model, and
-	// a model which is known not to call tools is asked without them, so
-	// they're there again when it's changed to one which does
+	// a model which is known not to call tools is asked without them, or a
+	// tool choice, which needs them, of a copy of its options, so they're
+	// there again when it's changed to one which does
 	if skip {
 		if can := model.Capabilities().Tools; can != nil && !*can {
 			meta.Tools = nil
+			if _, exists := meta.Opt[llm.ToolChoiceKey]; exists {
+				meta.Opt = maps.Clone(meta.Opt)
+				delete(meta.Opt, llm.ToolChoiceKey)
+			}
 		}
 	}
 	tools, prompts, err := r.askTools(ctx, meta, hasSchema, skip)

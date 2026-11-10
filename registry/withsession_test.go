@@ -100,12 +100,15 @@ func Test_WithSession(t *testing.T) {
 		r := newAskRegistry(t, p)
 		withTools := meta
 		withTools.Tools = []string{"test:echo"}
+		withTools.Opt = map[string]json.RawMessage{llm.ToolChoiceKey: json.RawMessage(`"auto"`)}
 		session := newSession(withTools)
 		_, err := r.WithSession(ctx, session, hi, nil)
 		require.NoError(t, err)
 		require.Len(t, p.asked, 1)
 		assert.Empty(t, p.asked[0].tools)
+		assert.False(t, p.asked[0].opts.Has(llm.ToolChoiceKey), "nor a tool choice, which needs tools")
 		assert.Equal(t, []string{"test:echo"}, session.Tools)
+		assert.JSONEq(t, `"auto"`, string(session.Opt[llm.ToolChoiceKey]), "which the session keeps")
 	})
 
 	t.Run("Schema", func(t *testing.T) {
