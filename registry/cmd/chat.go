@@ -77,7 +77,7 @@ func (cmd *ChatCmd) Run(ctx server.Cmd) error {
 			if err != nil {
 				return err
 			}
-			return chattui.Chat(reqctx, chatClient{client, events, memory}, id, debug)
+			return chattui.Chat(reqctx, chatClient{client, events, memory}, id)
 		}); err != nil {
 			return err
 		}

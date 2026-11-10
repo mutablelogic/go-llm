@@ -7,6 +7,7 @@ import (
 
 	// Packages
 	llm "github.com/mutablelogic/go-llm"
+	schema "github.com/mutablelogic/go-llm/registry/schema"
 	assert "github.com/stretchr/testify/assert"
 )
 
@@ -51,6 +52,20 @@ func Test_StreamPrinter(t *testing.T) {
 		// Thinking…, a blank line, and two lines of text, are four rows
 		assert.Contains(t, out, "\r\x1b[3A\x1b[J[**Sunny**\nand warm]\n")
 		assert.True(t, strings.HasSuffix(out, "]\n"))
+	})
+
+	t.Run("ServerThinking", func(t *testing.T) {
+		// The server's line that the model is thinking stands in for the
+		// printer's own, so it's said once, and kept
+		p, buf := newTestPrinter(80, 24)
+		p.print(llm.StreamLog, schema.ThinkingLog)
+		p.print(llm.StreamThinking, "Hmm")
+		p.print(llm.StreamText, "Sunny")
+		p.End()
+		out := buf.String()
+		assert.NotContains(t, out, thinkingLine)
+		assert.Equal(t, 1, strings.Count(out, schema.ThinkingLog))
+		assert.NotContains(t, out, "Hmm")
 	})
 
 	t.Run("Logs", func(t *testing.T) {

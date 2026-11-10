@@ -275,6 +275,7 @@ type streamPrinter struct {
 	live     strings.Builder     // What's printed which is to be replaced
 	text     strings.Builder     // The text which replaces it, rendered as markdown
 	thinking bool                // Whether "Thinking…" is printed, which is replaced
+	thought  bool                // Whether the server said the model is thinking, so "Thinking…" isn't printed
 	progress bool                // Whether a tool's progress is printed, on a line which is replaced
 	last     llm.StreamType      // What was printed last
 	trailing string              // The last piece of text which was printed
@@ -360,11 +361,16 @@ func (p *streamPrinter) print(what llm.StreamType, text string) {
 		p.write(what, text, false)
 	case what == llm.StreamThinking:
 		// That the model is thinking, once, which is replaced
-		if !p.thinking {
+		if !p.thinking && !p.thought {
 			p.thinking = true
 			p.write(what, "\x1b[2m"+thinkingLine+"\x1b[0m\n", true)
 		}
 	case what == llm.StreamLog:
+		// The server's line that the model is thinking stands in for the
+		// printer's own, which isn't printed after it
+		if strings.TrimSpace(text) == schema.ThinkingLog {
+			p.thought = true
+		}
 		// What's printed before it is replaced first, so it's kept after it,
 		// and it's on a line of its own, even when what's before it isn't
 		// replaced

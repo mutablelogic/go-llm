@@ -647,20 +647,31 @@ export class ChatView extends LitElement {
                 bubbles.push({ kind: 'log', text: line });
             }
         }
-        bubbles.push(...bubblesOf(message, this.attachmentName));
+        bubbles.push(...bubblesOf(message, this.attachmentName, this.traced()));
         for (const line of this.logs(undefined, position) ?? []) {
             bubbles.push({ kind: 'log', text: line });
         }
         return bubbles;
     }
 
+    // traced returns whether the chat shows its model's thinking, the tools
+    // it calls, and their results, as its session's trace says, which are
+    // kept, either way
+    private traced(): boolean {
+        return this.session?.trace === true;
+    }
+
     // streamedBubbles returns the bubbles of the reply, as it's streamed: its
-    // text, and its thinking, joined while they follow each other, the lines
-    // tools logged, and how a tool is getting on, of which the last bubble
-    // is live, or an ellipsis, until there's something
+    // text, and its thinking, when it's traced, joined while they follow each
+    // other, the lines tools logged, and how a tool is getting on, of which
+    // the last bubble is live, or an ellipsis, until there's something
     private streamedBubbles(): Bubble[] {
         const bubbles: Bubble[] = [];
+        const traced = this.traced();
         for (const piece of this.streamed) {
+            if (piece.what === 'thinking' && !traced) {
+                continue;
+            }
             const last = bubbles[bubbles.length - 1];
             const kind = piece.what === 'text' ? 'assistant' : piece.what === 'thinking' ? 'thinking' : 'log';
             if (last && last.kind === kind && kind !== 'log') {
@@ -696,25 +707,26 @@ export class ChatView extends LitElement {
 }
 
 // bubblesOf returns the bubbles of a message: the person's text, the
-// assistant's text, as Markdown, its thinking, and the tools it called, and
-// their results, as thinking, by the tools' canonical names, such as
-// weatherapi:current, and why a reply stopped, when it didn't finish. A
-// system message isn't shown.
-function bubblesOf(message: Message, attachmentName: AttachmentName): Bubble[] {
+// assistant's text, as Markdown, and, when the chat is traced, its thinking,
+// and the tools it called, and their results, as thinking, by the tools'
+// canonical names, such as weatherapi:current, and why a reply stopped,
+// when it didn't finish. What a tool made, such as speech, is shown either
+// way. A system message isn't shown.
+function bubblesOf(message: Message, attachmentName: AttachmentName, traced: boolean): Bubble[] {
     if (message.role === 'system') {
         return [];
     } else if (message.marker) {
         return [{ kind: 'marker', text: '', marker: message.marker, message }];
     }
     const kind: ChatKind = isUser(message) ? 'user' : 'assistant';
-    const bubbles = message.content.flatMap((block) => blockBubbles(kind, block, attachmentName)).map((bubble) => ({ ...bubble, message }));
+    const bubbles = message.content.flatMap((block) => blockBubbles(kind, block, attachmentName, traced)).map((bubble) => ({ ...bubble, message }));
     if (message.result && !['stop', 'tool_call'].includes(message.result)) {
         bubbles.push({ kind: 'thinking', label: `The reply stopped: ${message.result}`, text: '', message });
     }
     return bubbles;
 }
 
-function blockBubbles(kind: ChatKind, block: ContentBlock, attachmentName: AttachmentName): Bubble[] {
+function blockBubbles(kind: ChatKind, block: ContentBlock, attachmentName: AttachmentName, traced: boolean): Bubble[] {
     const bubbles: Bubble[] = [];
 
     // What the system says of the message, such as where it was sent, is a
@@ -723,7 +735,7 @@ function blockBubbles(kind: ChatKind, block: ContentBlock, attachmentName: Attac
     if (annotation) {
         return [{ kind: 'log', side: kind === 'user' ? 'user' : 'assistant', text: annotation }];
     }
-    if (block.thinking?.trim()) {
+    if (traced && block.thinking?.trim()) {
         bubbles.push({ kind: 'thinking', text: block.thinking.trim() });
     }
     if (block.text?.trim()) {
@@ -740,12 +752,14 @@ function blockBubbles(kind: ChatKind, block: ContentBlock, attachmentName: Attac
             bubbles.push({ kind, text: name, attachment: { name, type, url } });
         }
     }
-    if (block.tool_call) {
+    if (traced && block.tool_call) {
         bubbles.push({ kind: 'thinking', label: `Called ${canonicalTool(block.tool_call.name)}`, text: json(block.tool_call.input) });
     }
     if (block.tool_result) {
         const name = canonicalTool(block.tool_result.name ?? 'the tool');
-        bubbles.push({ kind: 'thinking', label: block.tool_result.is_error ? `${name} failed` : `Result of ${name}`, text: json(block.tool_result.content) });
+        if (traced) {
+            bubbles.push({ kind: 'thinking', label: block.tool_result.is_error ? `${name} failed` : `Result of ${name}`, text: json(block.tool_result.content) });
+        }
 
         // The resources it returned, such as speech, after it, so they're
         // played, or shown, rather than in its result, which is collapsed

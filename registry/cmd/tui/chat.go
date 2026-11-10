@@ -50,7 +50,6 @@ type Client interface {
 type model struct {
 	ctx      context.Context
 	client   Client
-	debug    bool // Whether the model's thinking, and the tools it calls, are shown
 	session  *schema.Session
 	details  memoryschema.Details // The memory's details, such as the names of the person and the assistant
 	changes  uint64               // How many changes to the details have been applied, so a reload which they happened during is done again
@@ -153,9 +152,6 @@ var (
 	watchRetryMax = time.Minute
 	watchSettled  = time.Second
 
-	// thinking is shown for the model's thinking, unless debugging
-	thinking = "Thinking…"
-
 	// typingInterval is how often the server is told someone is typing, as
 	// they type, which is within the server's TypingTimeout, of 10 seconds
 	typingInterval = 5 * time.Second
@@ -167,11 +163,12 @@ var (
 // Chat runs the interface to chat in the session with the identifier, until
 // it's quit, with escape or control-c: its messages are shown, and what's
 // typed is sent, with enter, and the model's reply is shown as it's
-// generated, with that it's thinking, or, when debugging, its thinking,
-// and the tools it calls, and their results. The changes which others make to the session, such as in
+// generated, with the lines its tools log, such as that it's thinking, and,
+// when the session is traced, its thinking, and the tools it calls, and
+// their results. The changes which others make to the session, such as in
 // another window, are shown as they're made, and whether someone is typing,
 // or the model is replying, and the server is told when someone is typing.
-func Chat(parent context.Context, client Client, id uuid.UUID, debug bool) error {
+func Chat(parent context.Context, client Client, id uuid.UUID) error {
 	// A reply which is being waited for is cancelled when the interface is
 	// quit, so the server doesn't go on with it
 	ctx, cancel := context.WithCancel(parent)
@@ -191,7 +188,7 @@ func Chat(parent context.Context, client Client, id uuid.UUID, debug bool) error
 	input.ShowLineNumbers = false
 	input.SetHeight(inputHeight)
 	input.Focus()
-	m := &model{ctx: ctx, client: client, debug: debug, session: session, history: viewport.New(80, 20), input: input}
+	m := &model{ctx: ctx, client: client, session: session, history: viewport.New(80, 20), input: input}
 
 	// The names of the person and the assistant, which aren't known, when
 	// the server has no memory
@@ -556,8 +553,8 @@ func (m *model) render() {
 			switch {
 			case g.what == llm.StreamText:
 				b.WriteString(m.body(lipgloss.NewStyle(), text) + "\n")
-			case g.what == llm.StreamThinking && !m.debug:
-				b.WriteString(m.body(dimStyle, thinking) + "\n")
+			case g.what == llm.StreamThinking && !m.traced():
+				// The server logs that it's thinking, which is shown
 			default:
 				b.WriteString(m.body(dimStyle, text) + "\n")
 			}
@@ -597,10 +594,10 @@ func (m *model) renderLogs(b *strings.Builder, key string) {
 }
 
 // renderMessage renders a message: from the user, as it is, and from the
-// model, its text, as markdown, and that it thought, or, when debugging,
-// its thinking, dimmed, and the tools it called, and the results of tools,
-// in a line each, by their canonical names. A message which has nothing to
-// show isn't shown.
+// model, its text, as markdown, and, when the session is traced, its
+// thinking, dimmed, and the tools it called, and the results of tools, in a
+// line each, by their canonical names. A message which has nothing to show
+// isn't shown.
 func (m *model) renderMessage(b *strings.Builder, message providerschema.Message) {
 	switch message.Role() {
 	case "user":
@@ -608,19 +605,13 @@ func (m *model) renderMessage(b *strings.Builder, message providerschema.Message
 		b.WriteString(m.body(lipgloss.NewStyle(), message.Text()) + "\n\n")
 	case "assistant":
 		var body strings.Builder
-		thought := false
 		for _, block := range message.Content {
 			switch {
-			case block.Thinking != nil && strings.TrimSpace(*block.Thinking) != "":
-				if m.debug {
-					body.WriteString(m.body(dimStyle, strings.TrimSpace(*block.Thinking)) + "\n")
-				} else if !thought {
-					body.WriteString(m.body(dimStyle, thinking) + "\n")
-				}
-				thought = true
+			case block.Thinking != nil && strings.TrimSpace(*block.Thinking) != "" && m.traced():
+				body.WriteString(m.body(dimStyle, strings.TrimSpace(*block.Thinking)) + "\n")
 			case block.Text != nil && strings.TrimSpace(*block.Text) != "":
 				body.WriteString(m.markdown(*block.Text))
-			case block.ToolCall != nil && m.debug:
+			case block.ToolCall != nil && m.traced():
 				name := m.toolName(block.ToolCall.Name)
 				body.WriteString(m.body(toolStyle, fmt.Sprintf("→ %s(%s)", name, oneLine(string(block.ToolCall.Input), m.width/2))) + "\n")
 			}
@@ -633,7 +624,7 @@ func (m *model) renderMessage(b *strings.Builder, message providerschema.Message
 			b.WriteString(body.String() + "\n")
 		}
 	case "tool":
-		if !m.debug {
+		if !m.traced() {
 			return
 		}
 		for _, result := range message.ToolResults() {
@@ -642,6 +633,12 @@ func (m *model) renderMessage(b *strings.Builder, message providerschema.Message
 		}
 		b.WriteString("\n")
 	}
+}
+
+// traced returns whether the session's model's thinking, the tools it calls,
+// and their results, are shown, as its trace says
+func (m *model) traced() bool {
+	return m.session != nil && m.session.Traced()
 }
 
 // toolName returns the canonical name of the tool which a model calls by the

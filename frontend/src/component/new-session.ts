@@ -21,6 +21,7 @@ import '@carbon/web-components/es/components/select/index.js';
 import '@carbon/web-components/es/components/textarea/index.js';
 import '@carbon/web-components/es/components/text-input/index.js';
 import '@carbon/web-components/es/components/button/index.js';
+import '@carbon/web-components/es/components/checkbox/index.js';
 import '@carbon/web-components/es/components/skeleton-text/index.js';
 import './disclosure';
 
@@ -89,6 +90,9 @@ export class NewSession extends Panel<NewSessionForm> {
     @query('cds-select#effort')
     private effort?: HTMLElement & { value: string };
 
+    @query('cds-checkbox#trace')
+    private traceBox?: HTMLElement & { checked: boolean };
+
     @query('cds-text-input#temperature')
     private temperature?: HTMLElement & { value: string };
 
@@ -150,7 +154,7 @@ export class NewSession extends Panel<NewSessionForm> {
     }
 
     protected renderSubtitle() {
-        return this.session ? 'Its title, model, instructions, options and tools' : 'A conversation with your assistant';
+        return this.session ? 'Its title, model, instructions, options, tools and tracing' : 'A conversation with your assistant';
     }
 
     // renderFooter returns Start chat, or Save, once there are models to
@@ -185,6 +189,7 @@ export class NewSession extends Panel<NewSessionForm> {
                 <cds-textarea label="System prompt" helper-text="Instructions for the assistant on how to act, such as 'be brief', 'set humour level to 90%', or 'respond in rhyme'" rows="3"
                     value=${this.session?.system ?? ''}></cds-textarea>
                 <llm-disclosure label="Advanced options">
+                <cds-checkbox id="trace" ?checked=${this.session?.trace === true}>Trace: show the assistant's thinking, and the tools it calls, in the chat</cds-checkbox>
                 <div class="options">
                     ${thinks ? html`
                         <cds-select id="thinking" label-text="Thinking" value=${this.thinking}
@@ -229,6 +234,7 @@ export class NewSession extends Panel<NewSessionForm> {
         const title = this.titleInput?.value.trim() ?? '';
         const system = this.system?.value.trim() ?? '';
         const tools = cannot(model, 'tools') ? [] : this.picker?.value ?? [];
+        const trace = this.traceBox?.checked === true;
 
         // The options which are set, rather than the model's own
         const opt: Record<string, unknown> = {};
@@ -261,6 +267,9 @@ export class NewSession extends Panel<NewSessionForm> {
             if (tools.length > 0) {
                 meta.tools = tools;
             }
+            if (trace) {
+                meta.trace = true;
+            }
             this.dispatchEvent(new CustomEvent(NewSession.eventCreate, { detail: meta }));
             return;
         }
@@ -276,6 +285,9 @@ export class NewSession extends Panel<NewSessionForm> {
         }
         if ([...tools].sort().join() !== [...(session.tools ?? [])].sort().join()) {
             changes.tools = tools;
+        }
+        if (trace !== (session.trace === true)) {
+            changes.trace = trace;
         }
         const changed: Record<string, unknown> = {};
         for (const key of ['thinking', 'thinking_effort', 'temperature']) {
