@@ -266,7 +266,7 @@ export class NewSession extends Panel<NewSessionForm> {
                         @cds-slider-changed=${(e: CustomEvent<{ value: number }>) => this.chooseWindow(Number(e.detail.value), limit)}></cds-slider>
                     <p class="note">${this.windowNote(model)}</p>
                 </div>
-                <cds-textarea label="System prompt" helper-text="Instructions for the assistant on how to act, such as 'be brief', 'set humour level to 90%', or 'respond in rhyme'" rows="3"
+                <cds-textarea label="Assistant instructions" helper-text="How the assistant acts, such as 'be brief', 'set humour level to 90%', or 'respond in rhyme'" rows="3"
                     value=${this.session?.system ?? ''}></cds-textarea>
                 <llm-disclosure label="Advanced options">
                 <cds-checkbox id="trace" ?checked=${this.session?.trace === true}>Trace: show the assistant's thinking, and the tools it calls, in the conversation</cds-checkbox>
