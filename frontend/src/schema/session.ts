@@ -81,7 +81,7 @@ export interface MessageEvent {
 
 // SessionStatus is whether someone is typing in a session, or its model is
 // replying, or neither
-export type SessionStatus = 'idle' | 'typing' | 'replying';
+export type SessionStatus = 'idle' | 'typing' | 'replying' | 'thinking';
 
 // Session is a conversation with a model, without its messages, which are
 // listed on their own

@@ -26,6 +26,11 @@ type SessionMeta struct {
 
 	GeneratorMeta
 
+	// Trace is whether the session's clients show its model's thinking,
+	// the tools it calls, and their results, in the conversation, as
+	// they're streamed. They're always stored, either way.
+	Trace *bool `json:"trace,omitempty" name:"trace" help:"Whether clients show the model's thinking, the tools it calls, and their results, in the conversation, which are always stored" negatable:"" optional:""`
+
 	// Event is whether the session is an event's, such as a heartbeat's,
 	// which the registry runs it in, so it isn't chatted in. It's set by the
 	// registry, rather than by its API, which ignores it.
@@ -46,7 +51,7 @@ type Session struct {
 	Messages  []providerschema.Message `json:"messages,omitzero" help:"Messages of the conversation, each with its tokens, as it's stored, which are listed on their own"`
 	Forgotten uint64                   `json:"forgotten,omitempty" readonly:"" help:"How many times the session's messages were forgotten, which the registry counts, so a reply to a conversation which was forgotten isn't stored" example:"1"`
 	Usage     SessionUsage             `json:"usage,omitzero" help:"Tokens used by every request to the model, and of the conversation, as of the last"`
-	Status    SessionStatus            `json:"status,omitempty" readonly:"" help:"Who's doing what in the session, which is typing, replying or idle, which the registry sets, and isn't stored" enum:"idle,typing,replying" example:"idle"`
+	Status    SessionStatus            `json:"status,omitempty" readonly:"" help:"Who's doing what in the session, which is typing, thinking, replying or idle, which the registry sets, and isn't stored" enum:"idle,typing,thinking,replying" example:"idle"`
 }
 
 // SessionUsage is the tokens used by requests to a model, and the tokens of
@@ -166,18 +171,28 @@ func (s SessionResponse) String() string {
 // IsZero returns true when the settings set nothing, so as an update, they
 // change nothing
 func (s SessionMeta) IsZero() bool {
-	return s.Title == nil && s.GeneratorMeta.IsZero()
+	return s.Title == nil && s.Trace == nil && s.GeneratorMeta.IsZero()
 }
 
 // Merge returns the settings, changed by those of the update: its title,
-// when it's set, which empty clears, and the rest, as GeneratorMeta.Merge
-// does. Whether it's an event's isn't changed, as the registry sets it.
+// when it's set, which empty clears, whether it's traced, when that's set,
+// and the rest, as GeneratorMeta.Merge does. Whether it's an event's isn't
+// changed, as the registry sets it.
 func (s SessionMeta) Merge(update SessionMeta) SessionMeta {
-	title := s.Title
+	title, trace := s.Title, s.Trace
 	if update.Title != nil {
 		title = trimmed(update.Title)
 	}
-	return SessionMeta{Title: title, GeneratorMeta: s.GeneratorMeta.Merge(update.GeneratorMeta), Event: s.Event}
+	if update.Trace != nil {
+		trace = types.Ptr(*update.Trace)
+	}
+	return SessionMeta{Title: title, GeneratorMeta: s.GeneratorMeta.Merge(update.GeneratorMeta), Trace: trace, Event: s.Event}
+}
+
+// Traced returns whether the session's clients show its model's thinking,
+// the tools it calls, and their results, which they don't, unless it's set
+func (s SessionMeta) Traced() bool {
+	return types.Value(s.Trace)
 }
 
 // trimmed returns the text, without the space around it, or nil, when it's

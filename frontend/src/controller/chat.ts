@@ -480,7 +480,9 @@ export class ChatController {
         if (tokens) {
             parts.push(`${tokens.toLocaleString()} tokens`);
         }
-        if (this.pending.has(session.id) || session.status === 'replying') {
+        if (session.status === 'thinking') {
+            parts.push('thinking…');
+        } else if (this.pending.has(session.id) || session.status === 'replying') {
             parts.push('replying…');
         } else if (session.status === 'typing') {
             parts.push('typing…');

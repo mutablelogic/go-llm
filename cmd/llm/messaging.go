@@ -266,8 +266,9 @@ func isMedia(contentType string) bool {
 
 // progressStream returns the function which a reply is streamed to, which
 // gives the progress function the lines the tools log, and their progress,
-// such as that an agent is replying, which say what's happening, rather than
-// the reply itself, which is sent once it's done
+// such as that an agent is replying, and that the model is thinking, which
+// say what's happening, rather than the reply itself, which is sent once
+// it's done, whether or not the session is traced
 func progressStream(progress func(string)) llm.GeneratorStreamFn {
 	if progress == nil {
 		return nil

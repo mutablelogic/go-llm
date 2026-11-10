@@ -281,7 +281,7 @@ func (r *Registry) deleteSession(ctx context.Context, id uuid.UUID, serial *uint
 		return nil, err
 	} else if serial != nil && session.Serial != *serial {
 		return nil, llm.ErrConflict.Withf("session %q was changed", id)
-	} else if r.sessionStatus(id) == schema.SessionReplying {
+	} else if r.isReplying(id) {
 		return nil, llm.ErrConflict.Withf("session %q is replying, so it can't be deleted until it has", id)
 	} else if err := r.sessionStore.Delete(ctx, id, session.Serial); err != nil {
 		return nil, err
@@ -363,9 +363,12 @@ func (r *Registry) Chat(ctx context.Context, id uuid.UUID, messages []llm.Messag
 	defer replied()
 
 	// Ask the session's model, and add what it adds to the session, with the
-	// usage
+	// usage. It's thinking, as its model thinks, which is logged to the
+	// stream.
 	started := time.Now()
-	response, err := r.WithSession(ctx, session, messages, stream)
+	replyCtx, replyStream, thought := r.thinkingStream(ctx, id, stream)
+	response, err := r.WithSession(replyCtx, session, messages, replyStream)
+	thought()
 	if err != nil {
 		return nil, err
 	}

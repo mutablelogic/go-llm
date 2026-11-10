@@ -196,16 +196,18 @@ func Test_ReplyFiles(t *testing.T) {
 }
 
 func Test_ProgressStream(t *testing.T) {
-	// The lines tools log, and their progress, are what's happening, and the
-	// reply, and thinking, aren't
+	// The lines tools log, and their progress, are what's happening, as is
+	// that the model is thinking, which the registry logs, and the reply,
+	// and the thinking itself, aren't
 	var lines []string
 	stream := progressStream(func(line string) { lines = append(lines, line) })
 	stream(llm.StreamText, "Here's the answer")
+	stream(llm.StreamLog, registry.ThinkingLog)
 	stream(llm.StreamThinking, "Hmm")
 	stream(llm.StreamLog, "Transcribing the recording")
 	stream(llm.StreamProgress, llm.Progress{Progress: 1, Total: 3, Message: "The segment agent is replying"}.Text())
 	stream(llm.StreamProgress, llm.Progress{Progress: 2}.Text())
-	assert.Equal(t, []string{"Transcribing the recording", "The segment agent is replying"}, lines)
+	assert.Equal(t, []string{registry.ThinkingLog, "Transcribing the recording", "The segment agent is replying"}, lines)
 	assert.Nil(t, progressStream(nil))
 }
 

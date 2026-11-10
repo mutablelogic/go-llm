@@ -25,16 +25,22 @@ type statuses struct {
 	sessions map[uuid.UUID]*status
 }
 
-// status is a session's status: how many replies its model is making, and
-// when someone is typing, the timer which makes it idle, unless they say
-// they're typing again
+// status is a session's status: how many replies its model is making, how
+// many of them are thinking, and when someone is typing, the timer which
+// makes it idle, unless they say they're typing again
 type status struct {
 	replying int
+	thinking int
 	typing   *time.Timer
 }
 
 ///////////////////////////////////////////////////////////////////////////////
 // GLOBALS
+
+// ThinkingLog is the line which is logged to a chat's stream, once, the
+// first time its model thinks, or its tools run, so a client can say so,
+// whether or not it shows the model's thinking
+const ThinkingLog = "Thinking"
 
 // TypingTimeout is how long a session is typing, after a client last says
 // someone is, before it's idle, so a client which goes away doesn't leave
@@ -78,6 +84,15 @@ func (r *Registry) SetSessionStatus(ctx context.Context, id uuid.UUID, value sch
 
 ///////////////////////////////////////////////////////////////////////////////
 // PRIVATE METHODS
+
+// isReplying returns whether the model of the session with the identifier
+// is replying, or thinking, as it replies
+func (r *Registry) isReplying(id uuid.UUID) bool {
+	r.statuses.mu.Lock()
+	defer r.statuses.mu.Unlock()
+	s := r.statuses.sessions[id]
+	return s != nil && s.replying > 0
+}
 
 // sessionStatus returns the status of the session with the identifier
 func (r *Registry) sessionStatus(id uuid.UUID) schema.SessionStatus {
@@ -130,6 +145,85 @@ func (r *Registry) replying(id uuid.UUID) func() {
 			})
 		})
 	}
+}
+
+// replyStatus is whether one of a session's replies is thinking: from when
+// its model starts thinking, or its tools start, until it writes text, and
+// thinking again as its tools run, as a session can have more than one reply
+// at once, and whether it has logged ThinkingLog, which it does once
+type replyStatus struct {
+	r        *Registry
+	id       uuid.UUID
+	stream   llm.GeneratorStreamFn
+	mu       sync.Mutex
+	thinking bool
+	logged   bool
+	done     bool
+}
+
+// replyStatusKey is the key of a reply's status in its context, which the
+// agent loop sets thinking, as its tools run
+type replyStatusKey struct{}
+
+// thinkingStream returns the context, and the function which streams to the
+// stream, of a reply of the session with the identifier, whose status is
+// thinking as its model thinks, and as its tools run, until it writes text,
+// when it's replying, and which logs ThinkingLog to the stream, the first
+// time it is, and the function which says it has replied, which must be
+// called. A reply which isn't streamed isn't, and its stream is nil.
+func (r *Registry) thinkingStream(ctx context.Context, id uuid.UUID, stream llm.GeneratorStreamFn) (context.Context, llm.GeneratorStreamFn, func()) {
+	if stream == nil || id == uuid.Nil() {
+		return ctx, stream, func() {}
+	}
+	reply := &replyStatus{r: r, id: id, stream: stream}
+	return context.WithValue(ctx, replyStatusKey{}, reply), func(what llm.StreamType, text string) {
+		switch what {
+		case llm.StreamThinking:
+			reply.think(true)
+		case llm.StreamText:
+			reply.think(false)
+		}
+		stream(what, text)
+	}, func() { reply.finish() }
+}
+
+// toolsRunning sets the reply of the context thinking, as the tools its
+// model called run, or does nothing, when it has none
+func toolsRunning(ctx context.Context) {
+	if reply, ok := ctx.Value(replyStatusKey{}).(*replyStatus); ok {
+		reply.think(true)
+	}
+}
+
+// think sets whether the reply is thinking, which changes the session's
+// count of its replies which are thinking, and logs ThinkingLog, the first
+// time it's thinking
+func (s *replyStatus) think(thinking bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.done || s.thinking == thinking {
+		return
+	}
+	s.thinking = thinking
+	s.r.changeStatus(s.id, func(status *status) {
+		if thinking {
+			status.thinking++
+		} else if status.thinking > 0 {
+			status.thinking--
+		}
+	})
+	if thinking && !s.logged {
+		s.logged = true
+		s.stream(llm.StreamLog, ThinkingLog)
+	}
+}
+
+// finish says the reply has replied, so it isn't thinking
+func (s *replyStatus) finish() {
+	s.think(false)
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.done = true
 }
 
 // forgetStatus forgets the status of the session with the identifier, as it
@@ -191,12 +285,15 @@ func (r *Registry) withoutMessages(session schema.Session) *schema.Session {
 ///////////////////////////////////////////////////////////////////////////////
 // PRIVATE FUNCTIONS
 
-// value returns the status, which is replying, while the model is replying,
-// typing, while someone is, or idle, which a session without one is
+// value returns the status, which is thinking, while the model is thinking
+// as it replies, replying, while the model is replying, typing, while
+// someone is, or idle, which a session without one is
 func (s *status) value() schema.SessionStatus {
 	switch {
 	case s == nil:
 		return schema.SessionIdle
+	case s.replying > 0 && s.thinking > 0:
+		return schema.SessionThinking
 	case s.replying > 0:
 		return schema.SessionReplying
 	case s.typing != nil:
