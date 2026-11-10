@@ -44,7 +44,7 @@ export class ModelsPage extends Page {
     static readonly eventLoad = 'llm-models-page-load';
 
     heading = 'Models';
-    description = 'The models of the providers, and what they can do';
+    description = 'The models that run the assistants';
 
     // The provider which is chosen, whose models are shown, which can be
     // edited, and deleted, or none, for every provider's

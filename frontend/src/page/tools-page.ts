@@ -45,7 +45,7 @@ export class ToolsPage extends Page {
     static readonly eventDeleteConnector = 'llm-tools-page-delete-connector';
 
     heading = 'Tools';
-    description = 'The tools, and agents, which models can call';
+    description = 'The tools and agents that the assistant uses';
 
     // The namespace whose tools are shown, or none, for every tool, and the
     // name of its connector, when it's a connector's
