@@ -778,9 +778,23 @@ function bubblesOf(message: Message, attachmentName: AttachmentName, traced: boo
     const kind: ChatKind = isUser(message) ? 'user' : 'assistant';
     const bubbles = message.content.flatMap((block) => blockBubbles(kind, block, attachmentName, traced)).map((bubble) => ({ ...bubble, message }));
     if (message.result && !['stop', 'tool_call'].includes(message.result)) {
-        bubbles.push({ kind: 'thinking', label: `The reply stopped: ${message.result}`, text: '', message });
+        bubbles.push({ kind: 'thinking', label: stoppedLabel(message.result), text: '', message });
     }
     return bubbles;
+}
+
+// stoppedLabel returns why a reply stopped, before it finished, in words, as
+// the conversation says it, or its result, when it isn't known
+function stoppedLabel(result: string): string {
+    const labels: Record<string, string> = {
+        max_context: "The reply stopped: the conversation didn't fit in its memory",
+        max_tokens: 'The reply stopped: it reached the most it can say at once',
+        max_iterations: 'The reply stopped: it called tools too many times',
+        blocked: 'The reply was blocked by the provider',
+        error: 'The reply stopped, with an error',
+        other: "The reply stopped, for a reason the provider didn't give",
+    };
+    return labels[result] ?? `The reply stopped: ${result}`;
 }
 
 function blockBubbles(kind: ChatKind, block: ContentBlock, attachmentName: AttachmentName, traced: boolean): Bubble[] {

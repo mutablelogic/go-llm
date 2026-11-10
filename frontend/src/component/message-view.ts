@@ -76,6 +76,8 @@ function stopped(result: string): string {
         tool_call: 'It called a tool',
         error: 'An error',
         max_iterations: 'It called tools too many times',
+        max_context: "The conversation didn't fit in its memory",
+        other: "For a reason the provider didn't give",
     };
     return results[result] ?? result;
 }
