@@ -125,3 +125,21 @@ func Test_Ping_Unreachable(t *testing.T) {
 	require.NoError(t, err)
 	assert.Error(t, c.Ping(context.Background()))
 }
+
+func Test_ListVoices_Live(t *testing.T) {
+	// The voices of the speech model in OLLAMA_SPEECH_MODEL, or phonon, which
+	// Ollama shows, when it's pulled
+	c := requireClient(t)
+	name := os.Getenv("OLLAMA_SPEECH_MODEL")
+	if name == "" {
+		name = "phonon:latest"
+	}
+	model, err := c.GetModel(context.Background(), name)
+	if err != nil {
+		t.Skipf("%s isn't available: %v", name, err)
+	}
+	voices, _, err := c.ListVoices(context.Background(), model)
+	require.NoError(t, err)
+	require.NotEmpty(t, voices)
+	t.Logf("%d voices, such as %v", len(voices), voices[0])
+}

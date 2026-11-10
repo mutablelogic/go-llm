@@ -222,8 +222,14 @@ func (m *Model) reasoningOpts(opts []llm.Opt) ([]llm.Opt, error) {
 		return nil, err
 	}
 	thinking, err := llm.GetOpt[bool](o, llm.ThinkingKey)
+	if err != nil && o.Has(llm.ThinkingKey) {
+		return nil, err
+	}
 	asked := err == nil
-	effort, _ := llm.GetOpt[string](o, llm.ThinkingEffortKey)
+	effort, err := llm.GetOpt[string](o, llm.ThinkingEffortKey)
+	if err != nil && o.Has(llm.ThinkingEffortKey) {
+		return nil, err
+	}
 	efforts := r.efforts()
 	switch {
 	case asked && !thinking && slices.Contains(r.Allowed, reasoningOff):

@@ -289,6 +289,8 @@ The registry also works on its own, from your own Go program; see [examples](exa
 
 What a model can do depends on the model, as its provider reports it. Requests for something a model is known not to do are rejected before they're sent.
 
+OpenAI's speech models (`tts-1`, `tts-1-hd` and `gpt-4o-mini-tts`) shut down on 6 January 2027. Their replacement only speaks through OpenAI's Realtime API, which go-llm doesn't use yet (#286).
+
 ### Capabilities
 
 The web UI's Models page shows each model's capabilities as tags, and a model's panel says Yes, No or Unknown for each one. `llm models --capability`, `GET /api/llm/model?capability=` and the `llm:models` tool list models by capability. A capability the provider doesn't report isn't assumed.
@@ -495,7 +497,7 @@ Live tests check that a provider's API accepts what go-llm sends. They're mostly
 | `GEMINI_API_KEY` | `provider/gemini` | Model listing and token counts (free), embeddings, and a tool call | Yes, apart from listing and counting |
 | `ANTHROPIC_API_KEY` and `GEMINI_API_KEY` | `provider/gemini` | `Test_LiveSwitch`: a chat that switches between Claude and Gemini | Yes |
 | `ELEVENLABS_API_KEY` | `provider/elevenlabs` | Transcription with speakers, and the account's voices (free) | Yes, apart from voices |
-| `OLLAMA_ADDR` | `provider/ollama` | Models, embeddings and OCR, with `embeddinggemma-2` and `deepseek-ocr` pulled | No |
+| `OLLAMA_ADDR` | `provider/ollama` | Models, embeddings and OCR, with `embeddinggemma-2` and `deepseek-ocr` pulled, and `phonon`'s voices | No |
 | `GOWHISPER_ADDR` | `provider/gowhisper` | Models and transcription, with `ggml-medium-q5_0` | No |
 | `LMSTUDIO_ADDR` | `provider/lmstudio` | Loads `google/gemma-4-12b-qat` for a tool call, `text-embedding-nomic-embed-text-v1.5` to embed, and `allenai/olmocr-2-7b`, when it's stored, for OCR, and unloads them | No |
 
@@ -548,6 +550,7 @@ env -u OPENAI_API_KEY -u MISTRAL_API_KEY -u ANTHROPIC_API_KEY -u GEMINI_API_KEY 
 - **OpenAI's images** with `gpt-image`.
 - **OpenAI's Responses API**, so the newest models can think while calling tools.
 - **OpenAI's token limits**, which need checking.
+- **OpenAI's Realtime API**, to speak once its speech models shut down (#286).
 
 ### Improvements
 

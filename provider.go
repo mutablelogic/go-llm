@@ -129,6 +129,16 @@ type Speaker interface {
 	// spoken (InstructionsKey), for a model which takes them. Options which
 	// the provider doesn't support are rejected.
 	Speak(context.Context, Model, string, ...Opt) (Resource, Usage, error)
+
+	// ListVoices returns the voices the model speaks in, which one is chosen
+	// from by its identifier (VoiceKey), in the order the provider lists
+	// them, or none, when the provider can't say, and any voice is passed
+	// on, and the token of the next page, which is empty, after the last.
+	// The options can return at most a limit of them (LimitKey), from the
+	// page a token says (PageTokenKey). Returns ErrNotImplemented for a
+	// model which doesn't speak, and ErrBadParameter for an option which
+	// isn't supported.
+	ListVoices(context.Context, Model, ...Opt) ([]Voice, string, error)
 }
 
 // Voice is a voice a model speaks in, which is chosen by its identifier,
