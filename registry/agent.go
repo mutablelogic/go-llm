@@ -87,7 +87,8 @@ func errBuiltinAgent(name string) error {
 // object, and its prompt a Go template, which is executed with the input. Its
 // model, when it has one, is the registry's, by its canonical name, and its
 // tools are the toolkit's, by their canonical names, as a session's are. It
-// needn't have a model, as one can be given when it's run. Returns
+// needn't have a model, as one can be given when it's run, but one it has
+// must call tools, unless that isn't known. Returns
 // ErrBadParameter when the definition isn't valid, ErrNotFound when the
 // model isn't the registry's, or a tool isn't the toolkit's, ErrConflict
 // when the agent was changed as it was replaced, or a name is ambiguous, and
@@ -531,6 +532,22 @@ func (r *Registry) storedAgent(ctx context.Context, ref string) (schema.Agent, e
 	return agent, nil
 }
 
+// agentModel returns ErrBadParameter when the model is known not to call
+// tools, as an agent replies with its schema by calling one, and calls its
+// own, or nil, when it has no model, or does, or it isn't known
+func (r *Registry) agentModel(ctx context.Context, name *string) error {
+	if name == nil {
+		return nil
+	}
+	model, err := r.GetModel(ctx, *name)
+	if err != nil {
+		return err
+	} else if tools := model.Capabilities().Tools; tools != nil && !*tools {
+		return llm.ErrBadParameter.Withf("model %q can't call tools, which an agent's model must", *name)
+	}
+	return nil
+}
+
 // onlyModel returns true when the update changes only the model, which is
 // all of a built-in agent which can be
 func onlyModel(meta schema.AgentMeta) bool {
@@ -579,6 +596,8 @@ func (r *Registry) validAgentMeta(ctx context.Context, meta, change schema.Agent
 	}
 	if change.Model != nil {
 		if meta.Model, err = r.canonicalModel(ctx, meta.Model); err != nil {
+			return meta, err
+		} else if err = r.agentModel(ctx, meta.Model); err != nil {
 			return meta, err
 		}
 	}
