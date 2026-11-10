@@ -236,3 +236,47 @@ func Test_ToolkitRestart(t *testing.T) {
 	require.Eventually(t, func() bool { return tk.HasNamespace("stored") }, 5*time.Second, 5*time.Millisecond)
 	assert.Equal(t, "stored", status(t, r, "stored").Namespace)
 }
+
+func Test_PromptsChanged(t *testing.T) {
+	// A connector's prompts are agents, in its namespace, which are added,
+	// and removed, as its server says its prompts changed
+	setInterval(t, &registry.RetryInterval, 20*time.Millisecond)
+	setInterval(t, &registry.ConnectJitter, 10*time.Millisecond)
+	ctx := t.Context()
+	tk, err := toolkit.New(ctx)
+	require.NoError(t, err)
+	runAgent := func(context.Context, string, json.RawMessage) (any, error) { return "ran", nil }
+	r, err := registry.New(registry.WithToolkit(tk), registry.WithAgents(runAgent))
+	require.NoError(t, err)
+	server := toolServer(t)
+	prompt := func(name string) (*sdkmcp.Prompt, sdkmcp.PromptHandler) {
+		return &sdkmcp.Prompt{Name: name, Description: "A prompt"}, func(context.Context, *sdkmcp.GetPromptRequest) (*sdkmcp.GetPromptResult, error) {
+			return &sdkmcp.GetPromptResult{Messages: []*sdkmcp.PromptMessage{{Role: "user", Content: &sdkmcp.TextContent{Text: name}}}}, nil
+		}
+	}
+	server.MCP.AddPrompt(prompt("first"))
+	run(t, r)
+	_, err = r.CreateConnector(ctx, connector("prompts", server.URL))
+	require.NoError(t, err)
+	require.Eventually(t, func() bool { return len(toolNames(t, tk, "prompts")) == 2 }, 5*time.Second, 5*time.Millisecond)
+	assert.Equal(t, []string{"prompts:echo", "prompts:first"}, toolNames(t, tk, "prompts"))
+
+	// One the server adds is an agent, by its name as an identifier, which
+	// the registry's source has, and one it removes isn't
+	server.MCP.AddPrompt(prompt("second-one"))
+	require.Eventually(t, func() bool { return len(toolNames(t, tk, "prompts")) == 3 }, 5*time.Second, 5*time.Millisecond)
+	assert.Contains(t, toolNames(t, tk, "prompts"), "prompts:second_one")
+	meta, err := r.SourceAgent(ctx, "prompts", "second_one")
+	require.NoError(t, err)
+	assert.Equal(t, "prompts", meta.Origin)
+	messages, err := r.SourceMessages(ctx, "prompts", "second_one", nil)
+	require.NoError(t, err)
+	require.Len(t, messages, 1)
+	assert.Equal(t, "second-one", messages[0].Text(), "by its name on its server")
+
+	server.MCP.RemovePrompts("first")
+	require.Eventually(t, func() bool { return len(toolNames(t, tk, "prompts")) == 2 }, 5*time.Second, 5*time.Millisecond)
+	assert.Equal(t, []string{"prompts:echo", "prompts:second_one"}, toolNames(t, tk, "prompts"))
+	_, err = r.SourceAgent(ctx, "prompts", "first")
+	assert.ErrorIs(t, err, llm.ErrNotFound)
+}
