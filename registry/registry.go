@@ -36,6 +36,7 @@ type Registry struct {
 	providers map[string]*cached
 	statuses  statuses
 	agents    *agentNamespace
+	builtins  *agentNamespace // The server's own agents, as tools
 
 	// agentsMu is held to change an agent, in its store, and its tool, so
 	// the tools are changed in the order the agents are, as are the agents
@@ -101,12 +102,16 @@ func New(opts ...Opt) (*Registry, error) {
 	}
 	r.eventSlots = make(chan struct{}, r.maxEvents)
 
-	// With a toolkit, and agents, the agents are tools, in a namespace of
-	// their own, which Run adds the stored agents to
+	// With a toolkit, and agents, the agents are tools, in the namespaces of
+	// their own, the server's own, which are built in, and the rest, which
+	// Run adds the stored agents to
 	if r.toolkit != nil && r.agentStore != nil {
-		r.agents = newAgentNamespace()
-		if err := r.toolkit.Add(r.agents); err != nil {
-			return nil, err
+		r.agents = newAgentNamespace(AgentNamespace)
+		r.builtins = newAgentNamespace(BuiltinNamespace)
+		for _, ns := range []*agentNamespace{r.agents, r.builtins} {
+			if err := r.toolkit.Add(ns); err != nil {
+				return nil, err
+			}
 		}
 	}
 	return r, nil

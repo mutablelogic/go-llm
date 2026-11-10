@@ -262,4 +262,31 @@ func Test_BuiltinAgent(t *testing.T) {
 	var got schema.Agent
 	require.Equal(t, http.StatusOK, do(t, server, http.MethodGet, "llm/agent/shipped", nil, &got))
 	assert.True(t, types.Value(got.Builtin))
+
+	// It's in the builtin namespace, so it's found by that, and not by the
+	// agent namespace's
+	require.Equal(t, http.StatusOK, do(t, server, http.MethodGet, "llm/agent/builtin:shipped", nil, &got))
+	assert.Equal(t, "shipped", got.Name)
+	assert.Equal(t, http.StatusNotFound, do(t, server, http.MethodGet, "llm/agent/agent:shipped", nil, nil))
+	require.Equal(t, http.StatusOK, do(t, server, http.MethodGet, "llm/agent/builtin%3Ashipped", nil, &got), "as a client escapes it")
+	assert.Equal(t, http.StatusNotFound, do(t, server, http.MethodGet, "llm/agent/builtin:mine", nil, nil))
+
+	// Its model, and only its model, can be changed
+	require.Equal(t, http.StatusOK, do(t, server, http.MethodPatch, "llm/agent/builtin:shipped", map[string]any{"model": eliza.ModelName}, &got))
+	require.NotNil(t, got.Model)
+	model := *got.Model
+	assert.Contains(t, model, eliza.ModelName)
+	assert.Equal(t, http.StatusForbidden, do(t, server, http.MethodPatch, "llm/agent/shipped", map[string]any{"model": eliza.ModelName, "prompt": "Changed"}, nil))
+
+	// And it's kept, as the server creates it again, with a new prompt
+	_, _, err = r.CreateAgent(t.Context(), schema.AgentMeta{PromptMeta: schema.PromptMeta{Name: "shipped", Prompt: types.Ptr("Hello again"), Builtin: types.Ptr(true)}})
+	require.NoError(t, err)
+	require.Equal(t, http.StatusOK, do(t, server, http.MethodGet, "llm/agent/shipped", nil, &got))
+	assert.Equal(t, "Hello again", types.Value(got.Prompt))
+	assert.Equal(t, model, types.Value(got.Model), "the model chosen for it is kept")
+
+	// Its model can be cleared, so it's the default again
+	var cleared schema.Agent
+	require.Equal(t, http.StatusOK, do(t, server, http.MethodPatch, "llm/agent/shipped", map[string]any{"model": ""}, &cleared))
+	assert.Nil(t, cleared.Model)
 }

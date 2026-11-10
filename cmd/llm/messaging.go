@@ -306,4 +306,3 @@ func origin(channel schema.Channel, message messaging.Message) string {
 	}
 	return where + "."
 }
-

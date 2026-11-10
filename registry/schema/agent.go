@@ -39,7 +39,24 @@ type PromptMeta struct {
 	Prompt      *string         `json:"prompt,omitempty" help:"Go template of the message to the model, executed with the input" example:"Segment this transcript: {{ .transcript }}" optional:""`
 	Internal    *bool           `json:"internal,omitempty" help:"Whether only the server runs the agent, such as for an event, as its input is trusted, so it isn't a tool which models can call" optional:""`
 	Timeout     *string         `json:"timeout,omitempty" help:"Most time the agent has, when a model calls it as a tool, such as 2m, or 90s, rather than the time a tool has by default" example:"2m" optional:""`
-	Builtin     *bool           `json:"builtin,omitempty" readonly:"" help:"Whether the agent is one the server has, which it creates as it is each time it starts, so it can't be changed, or deleted, but can be copied under another name"`
+	Builtin     *bool           `json:"builtin,omitempty" readonly:"" help:"Whether the agent is one the server has, which it creates as it is each time it starts, keeping the model chosen for it, which is all of it that can be changed, and which can't be deleted, but can be copied under another name"`
+}
+
+// The namespaces of agents, which are their tools' namespaces too: the
+// server's own, which are built in, and those which people, and chats,
+// create
+const (
+	BuiltinNamespace = "builtin"
+	AgentNamespace   = "agent"
+)
+
+// Namespace returns the namespace of the agent, which is its tool's: builtin,
+// for the server's own, or agent
+func (p PromptMeta) Namespace() string {
+	if p.Builtin != nil && *p.Builtin {
+		return BuiltinNamespace
+	}
+	return AgentNamespace
 }
 
 // AgentMeta is an agent's definition: its prompt, and how a model is asked

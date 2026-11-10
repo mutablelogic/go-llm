@@ -29,6 +29,7 @@ const news = ['M16 6h3a1 1 0 0 1 1 1v11a2 2 0 0 1 -4 0v-13a1 1 0 0 0 -1 -1h-10a1
 export function namespaceIcon(name: string): string | unknown {
     switch (name) {
     case 'agent':
+    case 'builtin':
         return tabler(spy);
     case 'heartbeat':
         return iconLoader(Favorite16);

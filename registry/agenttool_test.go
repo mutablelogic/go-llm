@@ -443,3 +443,35 @@ func Test_AgentResources(t *testing.T) {
 	_, err = tk.CallTool(inChat, "agent:cues", json.RawMessage(`{"transcript":"Text, which isn't subtitles"}`))
 	assert.ErrorIs(t, err, llm.ErrBadParameter)
 }
+
+func Test_AgentNamespaces(t *testing.T) {
+	// An agent which is built in is a tool in the builtin namespace, and one
+	// which isn't in the agent namespace, and one which becomes built in,
+	// as an older server's copy of a built-in agent does, moves from one to
+	// the other
+	ctx := t.Context()
+	tk, err := toolkit.New(ctx)
+	require.NoError(t, err)
+	r, err := registry.New(registry.WithToolkit(tk), registry.WithAgentStore(test.NewAgentStore()))
+	require.NoError(t, err)
+	_, _, err = r.CreateAgent(ctx, schema.AgentMeta{PromptMeta: schema.PromptMeta{Name: "translate", Prompt: types.Ptr("Translate")}})
+	require.NoError(t, err)
+	_, err = tk.ToolNames(ctx, "agent:translate")
+	require.NoError(t, err)
+
+	_, _, err = r.CreateAgent(ctx, schema.AgentMeta{PromptMeta: schema.PromptMeta{Name: "translate", Prompt: types.Ptr("Translate"), Builtin: types.Ptr(true)}})
+	require.NoError(t, err)
+	_, err = tk.ToolNames(ctx, "builtin:translate")
+	assert.NoError(t, err)
+	_, err = tk.ToolNames(ctx, "agent:translate")
+	assert.ErrorIs(t, err, llm.ErrNotFound)
+
+	// It runs by its name, or its name in its namespace, but not another's
+	got, err := r.GetAgent(ctx, "builtin:translate")
+	require.NoError(t, err)
+	assert.Equal(t, schema.BuiltinNamespace, got.Namespace())
+	_, err = r.GetAgent(ctx, "agent:translate")
+	assert.ErrorIs(t, err, llm.ErrNotFound)
+	_, err = r.DeleteAgent(ctx, "builtin:translate")
+	assert.ErrorIs(t, err, llm.ErrForbidden)
+}

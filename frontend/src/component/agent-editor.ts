@@ -16,11 +16,21 @@ import TrashCan16 from '@carbon/icons/es/trash-can/16.js';
 
 // Carbon components
 import '@carbon/web-components/es/components/button/index.js';
+import '@carbon/web-components/es/components/select/index.js';
 import '@carbon/web-components/es/components/notification/inline-notification.js';
 
 // AgentEditorItem is what the panel shows: a new agent, from its definition,
-// or the agent with the name, and its definition, and whether it's built in
-export type AgentEditorItem = { mode: 'new'; yaml: string } | { mode: 'edit'; name: string; yaml: string; builtin: boolean };
+// or the agent with the name, and its definition, and whether it's built in,
+// when its model, which is all of it which can be changed, can be chosen
+// from the models
+export type AgentEditorItem = { mode: 'new'; yaml: string } | { mode: 'edit'; name: string; yaml: string; builtin: boolean; model?: string; models?: string[] };
+
+// AgentModel is the model chosen for a built-in agent, by its name, which
+// is empty for the model of the session it's run from
+export interface AgentModel {
+    name: string;
+    model: string;
+}
 
 // agentTemplate is the definition a new agent starts from
 export const agentTemplate = `# An agent, which models call as a tool, in the agent namespace, as
@@ -57,6 +67,7 @@ export class AgentEditor extends Panel<AgentEditorItem> {
     // detail, and to delete the agent, whose name is the detail
     static readonly eventSave = 'llm-agent-editor-save';
     static readonly eventDelete = 'llm-agent-editor-delete';
+    static readonly eventModel = 'llm-agent-editor-model';
 
     // What's shown, which is undefined when the panel is closed
     @property({ attribute: false })
@@ -79,6 +90,9 @@ export class AgentEditor extends Panel<AgentEditorItem> {
 
     @query('input[type=file]')
     private file?: HTMLInputElement;
+
+    @query('cds-select#model')
+    private modelSelect?: HTMLElement & { value: string };
 
     static styles = [Panel.styles, css`
         /* The panel is wider than others, for the definition */
@@ -144,14 +158,15 @@ export class AgentEditor extends Panel<AgentEditorItem> {
         if (item.mode === 'new') {
             return "Its definition, as YAML, or a file of one, which is uploaded";
         }
-        return item.builtin ? 'A built-in agent, which can be copied' : `agent:${item.name}, as YAML`;
+        return item.builtin ? `builtin:${item.name}, whose model can be chosen, and which can be copied` : `agent:${item.name}, as YAML`;
     }
 
     protected renderFooter(item: AgentEditorItem) {
         const builtin = item.mode === 'edit' && item.builtin;
         return html`
             ${builtin ? html`
-                <cds-button kind="primary" size="md" @click=${() => this.copy(item.name, item.yaml)}>
+                <cds-button kind="primary" size="md" ?disabled=${this.busy} @click=${() => this.saveModel(item.name)}>Save</cds-button>
+                <cds-button kind="secondary" size="md" @click=${() => this.copy(item.name, item.yaml)}>
                     Copy ${iconLoader(Copy16, { slot: 'icon' })}
                 </cds-button>
             ` : html`
@@ -175,7 +190,11 @@ export class AgentEditor extends Panel<AgentEditorItem> {
         return keyed(this.opened, html`
             ${builtin ? html`
                 <cds-inline-notification kind="info" title="Built in" hide-close-button low-contrast
-                    subtitle="The server creates this agent as it ships each time it starts, so it can't be changed, or deleted. Copy it, under another name, to change it."></cds-inline-notification>
+                    subtitle="The server creates this agent as it ships each time it starts, keeping the model chosen for it, which is all of it which can be changed, and it can't be deleted. Copy it, under another name, to change the rest."></cds-inline-notification>
+                <cds-select id="model" label-text="Model" helper-text="Default is the model of the chat it's run from" value=${item.mode === 'edit' ? item.model ?? '' : ''} ?disabled=${this.busy}>
+                    <cds-select-item value="">Default</cds-select-item>
+                    ${(item.mode === 'edit' ? item.models ?? [] : []).map((model) => html`<cds-select-item value=${model}>${model}</cds-select-item>`)}
+                </cds-select>
             ` : nothing}
             <textarea spellcheck="false" wrap="off" aria-label="Definition, as YAML" ?readonly=${builtin || this.busy} .value=${item.yaml} @focus=${this.clearError} @input=${this.clearError}></textarea>
             ${this.error ? html`<cds-inline-notification kind="error" title="It couldn't be saved" subtitle=${this.error} hide-close-button low-contrast></cds-inline-notification>` : nothing}
@@ -207,6 +226,14 @@ export class AgentEditor extends Panel<AgentEditorItem> {
         this.editor.value = await file.text();
         this.file!.value = '';
         this.clearError();
+    }
+
+    // saveModel fires the event to set the built-in agent's model, which is
+    // empty for the default
+    private saveModel(name: string) {
+        if (!this.busy) {
+            this.dispatchEvent(new CustomEvent<AgentModel>(AgentEditor.eventModel, { detail: { name, model: this.modelSelect?.value ?? '' } }));
+        }
     }
 
     private save() {

@@ -94,11 +94,13 @@ func Test_RunEvent(t *testing.T) {
 	assert.NotZero(t, response.Session.Usage.InputTokens)
 
 	// The event agent is internal, so it isn't a tool which models can call,
-	// as other agents are
-	_, err = tk.ToolNames(ctx, "agent:event")
+	// as other agents are, which are built in, so in the builtin namespace
+	_, err = tk.ToolNames(ctx, "builtin:event")
 	assert.ErrorIs(t, err, llm.ErrNotFound)
-	_, err = tk.ToolNames(ctx, "agent:translate")
+	_, err = tk.ToolNames(ctx, "builtin:translate")
 	assert.NoError(t, err)
+	_, err = tk.ToolNames(ctx, "agent:translate")
+	assert.ErrorIs(t, err, llm.ErrNotFound, "it isn't in the agent namespace")
 
 	// And then it's the same session, which has each run, and keeps its
 	// title, when the event has none

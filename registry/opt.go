@@ -51,7 +51,6 @@ type opt struct {
 	// session, such as to send it to the session's channels
 	replies ReplyFunc
 
-
 	// The namespaces whose tools, which a session has, the compact agent is
 	// given, as it summarises it, such as memory
 	compactTools []string
