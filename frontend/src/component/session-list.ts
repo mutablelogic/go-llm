@@ -172,7 +172,7 @@ export class SessionList extends LitElement {
             <li class=${selected ? 'selected' : ''}>
                 <button class="session" type="button" aria-current=${selected ? 'true' : 'false'}
                     @click=${() => this.dispatchEvent(new CustomEvent(SessionList.eventSelect, { detail: session }))}>
-                    <span class="model"><span class="name">${session.title || session.model || 'No model'}</span>${session.event ? html`<cds-tag size="sm" type="purple">event</cds-tag>` : nothing}</span>
+                    <span class="model"><span class="name">${session.title || session.model || 'No model'}</span>${session.event ? html`<cds-tag size="sm" type="purple">task</cds-tag>` : nothing}</span>
                     <span class="secondary" title=${formatTime(when)}>
                         ${session.title && session.model ? html`${session.model} · ` : nothing}${status ? html`<span class="status">${status}</span>` : formatAgo(when)}
                         ${memory ? html` · ${memory}` : nothing}${nearlyFull ? html`<span class="nearly-full" title="Nearly full. Older messages will be summarised automatically.">${iconLoader(WarningAlt16)}</span>` : nothing}
