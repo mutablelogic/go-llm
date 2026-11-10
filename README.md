@@ -492,7 +492,7 @@ Live tests check that a provider's API accepts what go-llm sends. They're mostly
 | `ANTHROPIC_API_KEY` | `provider/anthropic` | Replies with tools, thinking and structured output, and token counts | Yes |
 | `GEMINI_API_KEY` | `provider/gemini` | Model listing and token counts (free), embeddings, and a tool call | Yes, apart from listing and counting |
 | `ANTHROPIC_API_KEY` and `GEMINI_API_KEY` | `provider/gemini` | `Test_LiveSwitch`: a chat that switches between Claude and Gemini | Yes |
-| `ELEVENLABS_API_KEY` | `provider/elevenlabs` | Transcription with speakers | Yes |
+| `ELEVENLABS_API_KEY` | `provider/elevenlabs` | Transcription with speakers, and the account's voices (free) | Yes, apart from voices |
 | `OLLAMA_ADDR` | `provider/ollama` | Models, embeddings and OCR, with `embeddinggemma-2` and `deepseek-ocr` pulled | No |
 | `GOWHISPER_ADDR` | `provider/gowhisper` | Models and transcription, with `ggml-medium-q5_0` | No |
 

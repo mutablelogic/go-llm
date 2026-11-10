@@ -182,3 +182,22 @@ func Test_Live(t *testing.T) {
 	}
 	assert.Positive(t, usage.Seconds)
 }
+
+func Test_LiveVoices(t *testing.T) {
+	// The account's voices, with the key in ELEVENLABS_API_KEY, which isn't
+	// billed, and is skipped with -short
+	key := os.Getenv("ELEVENLABS_API_KEY")
+	if key == "" || testing.Short() {
+		t.Skip("ELEVENLABS_API_KEY isn't set, or -short")
+	}
+	c, err := elevenlabs.New("", key)
+	require.NoError(t, err)
+	voices, err := c.ListVoices(context.Background())
+	require.NoError(t, err)
+	require.NotEmpty(t, voices, "ElevenLabs' own voices, at least")
+	for _, voice := range voices {
+		assert.NotEmpty(t, voice.Name)
+		assert.NotEmpty(t, voice.ID)
+		t.Logf("%s (%s): %s, %s, %s, %v", voice.Name, voice.Category, voice.Gender, voice.Age, voice.Accent, voice.Languages)
+	}
+}
