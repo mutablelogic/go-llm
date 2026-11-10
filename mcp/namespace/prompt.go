@@ -112,7 +112,8 @@ func promptInput(p *sdkmcp.Prompt) *jsonschema.Schema {
 
 // promptArguments returns the input, as the prompt's arguments, which are
 // strings, of which a value which isn't one is its JSON, or ErrBadParameter
-// when it isn't an object, or one which is required isn't given
+// when it isn't an object, or one which is required isn't given, whatever
+// its value, which is the server's to judge
 func promptArguments(p *sdkmcp.Prompt, input json.RawMessage) (map[string]string, error) {
 	values := map[string]any{}
 	if text := strings.TrimSpace(string(input)); text != "" && text != "null" {
@@ -135,7 +136,7 @@ func promptArguments(p *sdkmcp.Prompt, input json.RawMessage) (map[string]string
 		}
 	}
 	for _, argument := range p.Arguments {
-		if argument != nil && argument.Required && strings.TrimSpace(result[argument.Name]) == "" {
+		if _, given := result[argument.Name]; argument != nil && argument.Required && !given {
 			return nil, llm.ErrBadParameter.Withf("prompt %q needs argument %q", p.Name, argument.Name)
 		}
 	}

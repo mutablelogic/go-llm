@@ -43,7 +43,7 @@ type textFunc func(context.Context, providerschema.Resource) (string, bool)
 type historyEntry struct {
 	message llm.Message
 	tokens  uint
-	pinned  bool // Never dropped: a system message, or the latest user message
+	pinned  bool // Never dropped: a system message, a new message, or the latest user message
 	latest  bool // Of the latest turn: the latest reply, and the results of the tools it called
 	removed bool // Its tools' results have been removed
 	added   int  // The index of the message in the messages the loop adds, or -1
@@ -89,10 +89,11 @@ const (
 // newHistory returns the conversation of the caller's messages, none of
 // which can be nil, followed by the new messages, which are the first the
 // loop adds, and returns, each with its tokens, when it has them, or measured, with the tokens of what's sent with them, which are estimated
-// until a model has been sent them. The system messages, and the latest
-// user message, are never dropped, and, when the messages end with the
-// results of tools, they're the latest turn, with the reply which called
-// them.
+// until a model has been sent them. The system messages, the new messages,
+// such as all of an agent's prompt, and the latest user message, are never
+// dropped, so a conversation they don't fit in isn't sent, rather than
+// having part of them dropped, and, when the messages end with the results
+// of tools, they're the latest turn, with the reply which called them.
 func newHistory(ctx context.Context, messages []llm.Message, fresh []providerschema.Message, overhead uint, measure toolkit.MeasureFn, text textFunc, zone *time.Location) (*history, error) {
 	h := &history{entries: make([]historyEntry, 0, len(messages)+len(fresh)), overhead: overhead, measure: measure, text: text, zone: zone}
 	for i, message := range messages {
@@ -118,7 +119,7 @@ func newHistory(ctx context.Context, messages []llm.Message, fresh []providersch
 		}
 		message.Tokens = uint64(tokens)
 		h.added = append(h.added, message)
-		h.entries = append(h.entries, historyEntry{message: &message, tokens: tokens + h.timeTokens(&message), pinned: message.Role() == "system", added: len(h.added) - 1})
+		h.entries = append(h.entries, historyEntry{message: &message, tokens: tokens + h.timeTokens(&message), pinned: true, added: len(h.added) - 1})
 	}
 
 	// The latest user message, which isn't the results of tools

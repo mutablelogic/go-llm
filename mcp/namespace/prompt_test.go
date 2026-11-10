@@ -108,6 +108,9 @@ func Test_Prompts(t *testing.T) {
 		assert.Equal(t, "What's the weather in 42?", messages[0].Text())
 		_, err = ns.PromptMessages(ctx, "args_prompt", json.RawMessage(`{"state":"Texas"}`))
 		assert.ErrorIs(t, err, llm.ErrBadParameter)
+		messages, err = ns.PromptMessages(ctx, "args_prompt", json.RawMessage(`{"city":""}`))
+		require.NoError(t, err, "an empty value is given, which is the server's to judge")
+		assert.Equal(t, "What's the weather in ?", messages[0].Text())
 		_, err = ns.PromptMessages(ctx, "args_prompt", json.RawMessage(`[]`))
 		assert.ErrorIs(t, err, llm.ErrBadParameter)
 		_, err = ns.PromptMessages(ctx, "args-prompt", nil)
@@ -147,4 +150,20 @@ func Test_Prompts(t *testing.T) {
 		_, err = ns.Prompt("args_prompt")
 		assert.NoError(t, err)
 	})
+}
+
+func Test_PromptsOnly(t *testing.T) {
+	// A server which has prompts, but no tools, so it says it has none, has
+	// its prompts as agents
+	server := test.NewServer(t)
+	server.MCP.AddPrompt(&sdkmcp.Prompt{Name: "only", Description: "The only prompt"}, func(context.Context, *sdkmcp.GetPromptRequest) (*sdkmcp.GetPromptResult, error) {
+		return &sdkmcp.GetPromptResult{Messages: []*sdkmcp.PromptMessage{{Role: "user", Content: &sdkmcp.TextContent{Text: "Hello"}}}}, nil
+	})
+	run := func(context.Context, string, json.RawMessage) (any, error) { return "ran", nil }
+	ns := connected(t, connect(t, server), nil, namespace.WithAgents(run))
+	var names []string
+	for _, tool := range ns.Tools() {
+		names = append(names, tool.Name())
+	}
+	assert.Equal(t, []string{"only"}, names)
 }

@@ -25,12 +25,16 @@ func (c *Client) Instructions() string {
 	return ""
 }
 
-// ListTools returns the server's tools, every page of them. Returns
+// ListTools returns the server's tools, every page of them, or none, when
+// it doesn't say it has any, such as one which only has prompts. Returns
 // ErrServiceUnavailable when it isn't connected.
 func (c *Client) ListTools(ctx context.Context) ([]*sdkmcp.Tool, error) {
 	session, err := c.connected()
 	if err != nil {
 		return nil, err
+	}
+	if result := session.InitializeResult(); result == nil || result.Capabilities == nil || result.Capabilities.Tools == nil {
+		return nil, nil
 	}
 	var result []*sdkmcp.Tool
 	for tool, err := range session.Tools(ctx, nil) {
