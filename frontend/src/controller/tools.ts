@@ -423,12 +423,14 @@ export class ToolsController extends ListController<Tool> {
         }
     }
 
-    // chatModels returns the canonical names of the models which chat, which
-    // an agent's model is chosen from, or none, when they can't be listed
+    // chatModels returns the canonical names of the models which chat, and
+    // call tools, as an agent replies with its schema by calling one, which
+    // an agent's model is chosen from, or none, when they can't be listed. A
+    // model which isn't known not to is one of them.
     private async chatModels(): Promise<string[]> {
         try {
             const list = await listModels();
-            return (list.body ?? []).filter((model) => !cannot(model, 'chat')).map((model) => model.canonical);
+            return (list.body ?? []).filter((model) => !cannot(model, 'chat') && !cannot(model, 'tools')).map((model) => model.canonical);
         } catch {
             return [];
         }
