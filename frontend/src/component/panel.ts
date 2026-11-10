@@ -112,18 +112,19 @@ export abstract class Panel<T> extends LitElement {
             overflow-wrap: anywhere;
         }
 
-        /* The icon before the title, as large as its text, in the icons'
-           colour */
-        h2 .icon {
-            display: inline-flex;
-            vertical-align: -0.2em;
-            margin-right: 0.5rem;
+        /* The icon beside the title, and its subtitle, as tall as they are
+           together, in the icons' colour */
+        header .icon {
+            display: flex;
+            flex: none;
+            align-self: center;
+            margin-right: 0.25rem;
             color: var(--cds-icon-secondary);
         }
 
-        h2 .icon svg, h2 .icon img {
-            width: 1.25rem;
-            height: 1.25rem;
+        header .icon svg, header .icon img {
+            width: 2.5rem;
+            height: 2.5rem;
         }
 
         .subtitle {
@@ -329,8 +330,9 @@ export abstract class Panel<T> extends LitElement {
             <div class="backdrop" @click=${this.close}></div>
             <div class="panel" role="dialog" aria-modal="true" aria-labelledby="title" tabindex="-1">
                 <header>
+                    ${this.icon(item)}
                     <div class="title">
-                        <h2 id="title">${this.icon(item)}${this.renderTitle(item)}</h2>
+                        <h2 id="title">${this.renderTitle(item)}</h2>
                         <div class="subtitle">${this.renderSubtitle(item)}</div>
                     </div>
                     <cds-icon-button kind="ghost" size="md" align="left" @click=${this.close}>
