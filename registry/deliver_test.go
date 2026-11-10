@@ -63,7 +63,7 @@ func Test_DeliverEvent(t *testing.T) {
 	started := time.Now()
 	speech, _, err := resources.Create(ctx, resourceschema.ResourceMeta{Name: "speech.wav", Type: "audio/wav", Session: &run.ID}, strings.NewReader("RIFF"))
 	require.NoError(t, err)
-	event, err := events.Create(ctx, schema.EventMeta{Run: run.ID, Session: parent.ID, Title: "Morning briefing", Message: "Good morning, it's sunny", Importance: schema.ImportanceNotify, Status: schema.EventPending})
+	event, err := events.Create(ctx, schema.EventMeta{Run: run.ID, Session: parent.ID, Title: "Morning briefing", Heartbeat: true, Message: "Good morning, it's sunny", Importance: schema.ImportanceNotify, Status: schema.EventPending})
 	require.NoError(t, err)
 
 	// While the session is replying, and until it's been idle for a while
@@ -366,7 +366,8 @@ func Test_ForgottenDuringReply(t *testing.T) {
 }
 
 func Test_EventOrigin(t *testing.T) {
-	assert.Equal(t, `Sent by the task "Morning briefing", which ran on schedule.`, registry.EventOrigin(schema.Event{EventMeta: schema.EventMeta{Title: "Morning briefing"}}))
+	assert.Equal(t, `Sent by the task "Morning briefing", which ran on schedule.`, registry.EventOrigin(schema.Event{EventMeta: schema.EventMeta{Title: "Morning briefing", Heartbeat: true}}))
 	assert.Equal(t, `Sent by the task "New mail", which inbox triggered.`, registry.EventOrigin(schema.Event{EventMeta: schema.EventMeta{Title: "New mail", Source: "inbox"}}))
-	assert.Equal(t, "Sent by a task, which ran on schedule.", registry.EventOrigin(schema.Event{}))
+	assert.Equal(t, `Sent by the task "Event".`, registry.EventOrigin(schema.Event{EventMeta: schema.EventMeta{Title: "Event"}}), "one triggered without a source doesn't say why it ran")
+	assert.Equal(t, "Sent by a task.", registry.EventOrigin(schema.Event{}))
 }

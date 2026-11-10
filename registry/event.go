@@ -146,6 +146,7 @@ func (r *Registry) runEvent(ctx context.Context, id uuid.UUID, req schema.RunEve
 			Run:        session.ID,
 			Session:    req.Session,
 			Title:      req.Title,
+			Heartbeat:  req.Heartbeat,
 			Message:    message,
 			Importance: importance,
 			Status:     importance.Status(),
