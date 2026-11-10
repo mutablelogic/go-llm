@@ -124,13 +124,8 @@ func (c *Client) DeleteModel(context.Context, llm.Model) error {
 // PRIVATE METHODS
 
 // waitListed returns the model which was downloaded by the name, once it's
-// listed, which LM Studio does a while after it's downloaded, or
-// ErrNotFound, when it isn't listed within listWait. It's the model with the
-// name, as its key, or else the one model which wasn't listed before it was
-// downloaded, or else the one whose key is the name of the Hugging Face
-// repository the name links to, such as qwen3-4b for
-// https://huggingface.co/lmstudio-community/Qwen3-4B-GGUF, when it was
-// downloaded already.
+// listed, which LM Studio does a while after it's downloaded, as findModel
+// finds it, or ErrNotFound, when it isn't listed within listWait
 func (c *Client) waitListed(ctx context.Context, name string, before map[string]bool) (llm.Model, error) {
 	deadline := time.Now().Add(listWait)
 	for {
@@ -201,37 +196,39 @@ func (c *Client) download(ctx context.Context, name string, progress llm.Downloa
 // PRIVATE FUNCTIONS
 
 // findModel returns the model with the name, as its key, or, with the keys
-// of the models before one was downloaded, the one model which is new, or,
-// for a name which is a link, the one whose key is the name of the Hugging
-// Face repository it links to, or nil
+// of the models before one was downloaded, the one model which is new, and
+// whose key is for the same model as the name, such as qwen3-4b, for
+// qwen/qwen3-4b, or for a link to a Hugging Face repository, Qwen3-4B-GGUF,
+// or, for a name which is a link, the one model of the repository, which
+// was downloaded already, or nil. A model which is new, but for another
+// model, such as one another download added, isn't the one, so it's waited
+// for.
 func findModel(models []apiModel, name string, before map[string]bool) *apiModel {
 	for i := range models {
 		if models[i].Key == name {
 			return &models[i]
 		}
 	}
-	if before == nil {
+	repo := repoName(name)
+	if before == nil || repo == "" {
 		return nil
 	}
-	var found []int
-	for i := range models {
-		if !before[models[i].Key] {
-			found = append(found, i)
-		}
-	}
-	if len(found) == 1 {
-		return &models[found[0]]
-	}
-	if repo := repoName(name); repo != "" && strings.Contains(name, "://") {
-		found = found[:0]
+	match := func(new bool) *apiModel {
+		var found []int
 		for i := range models {
-			if repoName(models[i].Key) == repo {
+			if (!new || !before[models[i].Key]) && repoName(models[i].Key) == repo {
 				found = append(found, i)
 			}
 		}
 		if len(found) == 1 {
 			return &models[found[0]]
 		}
+		return nil
+	}
+	if model := match(true); model != nil {
+		return model
+	} else if strings.Contains(name, "://") {
+		return match(false)
 	}
 	return nil
 }

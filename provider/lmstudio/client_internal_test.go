@@ -351,6 +351,12 @@ func Test_ReasoningOpts(t *testing.T) {
 		})
 	}
 
+	// An effort, or thinking, which isn't one, isn't replaced
+	_, err := efforts.reasoningOpts([]llm.Opt{llm.WithOpt(llm.ThinkingEffortKey, 3)})
+	assert.ErrorIs(t, err, llm.ErrBadParameter)
+	_, err = onOff.reasoningOpts([]llm.Opt{llm.WithOpt(llm.ThinkingKey, "yes")})
+	assert.ErrorIs(t, err, llm.ErrBadParameter)
+
 	// A model which only has reasoning off doesn't think
 	assert.False(t, types.Value(model(&reasoning{Allowed: []string{"off"}}).Capabilities().Thinking))
 	assert.True(t, types.Value(onlyOn.Capabilities().Thinking))
@@ -388,12 +394,19 @@ func Test_FindModel(t *testing.T) {
 	assert.Equal(t, "qwen3-4b", key(findModel(models, "qwen3-4b", nil)))
 	assert.Empty(t, key(findModel(models, "https://huggingface.co/lmstudio-community/Qwen3-4B-GGUF", nil)), "only by its key, before it's downloaded")
 
-	// The one which is new, once it's downloaded, whatever its key
+	// The one which is new, once it's downloaded, for the same model
 	withNew := append(slices.Clone(models), apiModel{Key: "lmstudio-community/new-7b"})
 	assert.Equal(t, "lmstudio-community/new-7b", key(findModel(withNew, "https://huggingface.co/lmstudio-community/New-7B-GGUF", before)))
+	assert.Equal(t, "lmstudio-community/new-7b", key(findModel(withNew, "someone/new-7b", before)))
 
-	// One which was downloaded already, by the repository a link is to
-	assert.Equal(t, "qwen3-4b", key(findModel(models, "https://huggingface.co/lmstudio-community/Qwen3-4B-GGUF", before)))
+	// but not one for another model, which another download added, which
+	// is waited for
+	assert.Empty(t, key(findModel(withNew, "https://huggingface.co/someone/Other-9B-GGUF", before)))
+	assert.Empty(t, key(findModel(withNew, "someone/other-9b", before)))
+
+	// One which was downloaded already, by the repository a link is to,
+	// even when another download added a model
+	assert.Equal(t, "qwen3-4b", key(findModel(withNew, "https://huggingface.co/lmstudio-community/Qwen3-4B-GGUF", before)))
 	assert.Equal(t, "qwen3-4b", key(findModel(models, "https://huggingface.co/lmstudio-community/Qwen3-4B-GGUF/", before)))
 
 	// but not by a name which isn't a link, which may be listed later
@@ -405,7 +418,7 @@ func Test_LoadModelLink(t *testing.T) {
 	// A model downloaded by a Hugging Face link is loaded by its key
 	downloadPoll, listWait = 10*time.Millisecond, time.Second
 	f, c := newFake(t)
-	model, err := c.LoadModel(context.Background(), "https://huggingface.co/someone/New-Model-GGUF", nil)
+	model, err := c.LoadModel(context.Background(), "https://huggingface.co/someone/Model-GGUF", nil)
 	require.NoError(t, err)
 	assert.Equal(t, "new/model", model.Name())
 	assert.True(t, model.(*Model).Loaded())

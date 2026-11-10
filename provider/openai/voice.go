@@ -33,16 +33,19 @@ var (
 
 // ListVoices returns the voices the model speaks in, which are OpenAI's
 // fixed voices, which it documents, or fewer, for tts-1 and tts-1-hd, or
-// none, for other OpenAI-compatible servers, which don't say. They're
+// none, for a model which isn't known to speak, and for other
+// OpenAI-compatible servers, which don't say. They're
 // optimized for English. Returns ErrNotImplemented for a model which
 // doesn't speak.
 func (c *Client) ListVoices(_ context.Context, model llm.Model, opts ...llm.Opt) ([]llm.Voice, string, error) {
 	m, ok := model.(*Model)
 	if !ok || m.provider != c {
 		return nil, "", llm.ErrBadParameter.With("not a model of this provider")
-	} else if speaks := m.Capabilities().SpeechOutput; speaks != nil && !*speaks {
+	}
+	switch speaks := m.Capabilities().SpeechOutput; {
+	case speaks != nil && !*speaks:
 		return nil, "", llm.ErrNotImplemented.Withf("%s doesn't speak", m.Name())
-	} else if c.server() != serverOpenAI {
+	case speaks == nil || c.server() != serverOpenAI:
 		return llm.Paged([]llm.Voice(nil), opts...)
 	}
 	names := voices

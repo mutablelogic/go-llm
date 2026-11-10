@@ -30,11 +30,12 @@ func Test_ListVoices(t *testing.T) {
 		assert.Len(t, voices, 9, name)
 	}
 
-	// A model which doesn't speak has none
-	_, _, err = c.ListVoices(ctx, c.Model("whisper-1"))
-	assert.NoError(t, err, "whisper-1 isn't known not to speak")
-	_, _, err = c.ListVoices(ctx, c.Model("text-embedding-3-small"))
-	assert.NoError(t, err)
+	// A model which isn't known to speak has none
+	for _, name := range []string{"whisper-1", "text-embedding-3-small", "gpt-4o"} {
+		voices, _, err := c.ListVoices(ctx, c.Model(name))
+		require.NoError(t, err, name)
+		assert.Empty(t, voices, name)
+	}
 
 	// Another OpenAI-compatible server doesn't say
 	other, err := New("http://localhost:8000/v1", "")
