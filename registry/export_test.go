@@ -7,6 +7,7 @@ import (
 	"uuid"
 
 	// Packages
+	providerschema "github.com/mutablelogic/go-llm/provider/schema"
 	schema "github.com/mutablelogic/go-llm/registry/schema"
 )
 
@@ -62,6 +63,19 @@ func (r *Registry) Summarizing(marker uuid.UUID) func() {
 
 // RecountContext sets the tokens of the session's conversation to those of
 // its context
-func RecountContext(session *schema.Session) {
-	recountContext(session)
+func RecountContext(session *schema.Session, before string) {
+	recountContext(session, before)
+}
+
+// SummaryTokens returns about how many tokens a summary is, in the system
+// prompt
+func SummaryTokens(summary string) uint {
+	return summaryTokens(summary)
+}
+
+// ContextSummary returns the summary of the messages before a conversation's
+// context
+func ContextSummary(messages []providerschema.Message) string {
+	_, summary := contextOf(messages)
+	return summary
 }

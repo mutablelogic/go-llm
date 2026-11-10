@@ -476,32 +476,69 @@ func Test_RecountContext(t *testing.T) {
 	contextMarker := func(status providerschema.MarkerStatus, summary string) providerschema.Message {
 		return providerschema.Message{MessageMeta: providerschema.MessageMeta{Sender: providerschema.RoleContext}, Marker: &providerschema.Marker{ID: uuid.New(), Status: status, Summary: summary}}
 	}
-	full := schema.SessionUsage{Input: 900, Output: 100, Overhead: 50}
+	asked := llm.Usage{InputTokens: 2000, OutputTokens: 700}
 	earlier := []providerschema.Message{message("user", "What's the weather?", 400), message("assistant", "It's sunny", 600)}
 
-	// Once a marker is added, its context is the messages after it, of
-	// which there are none, yet
-	session := schema.Session{Messages: append(slices.Clone(earlier), contextMarker(providerschema.MarkerPending, "")), Usage: full}
-	registry.RecountContext(&session)
-	assert.Equal(t, schema.SessionUsage{Overhead: 50}, session.Usage, "what's sent with the messages is kept")
+	// recount changes the last marker to the status, and summary, and
+	// recounts the tokens, from those of the context before
+	recount := func(session *schema.Session, status providerschema.MarkerStatus, summary string) {
+		before := registry.ContextSummary(session.Messages)
+		marker := *session.Messages[len(session.Messages)-1].Marker
+		marker.Status, marker.Summary = status, summary
+		session.Messages[len(session.Messages)-1].Marker = &marker
+		registry.RecountContext(session, before)
+	}
 
-	// Once its summary is written, it's the summary, and the messages after
-	// it, the replies as output
-	summary := strings.Repeat("x", 300)
-	session = schema.Session{Messages: append(slices.Clone(earlier), contextMarker(providerschema.MarkerSummarized, summary), message("user", "Thanks", 5), message("assistant", "You're welcome", 7)), Usage: full}
-	registry.RecountContext(&session)
-	assert.Equal(t, uint(7), session.Usage.Output)
-	assert.Greater(t, session.Usage.Input, uint(5+100), "with the summary")
-	assert.Less(t, session.Usage.Input, uint(900))
+	t.Run("Summarized", func(t *testing.T) {
+		// With nothing sent with the messages, once a marker is added, its
+		// context is the messages after it, of which there are none, yet
+		session := schema.Session{Messages: slices.Clone(earlier), Usage: schema.SessionUsage{Usage: asked, Input: 400, Output: 600}}
+		session.Messages = append(session.Messages, contextMarker(providerschema.MarkerPending, ""))
+		registry.RecountContext(&session, "")
+		assert.Equal(t, schema.SessionUsage{Usage: asked}, session.Usage)
 
-	// One whose summary failed doesn't start the context, so it's the
-	// conversation, as it was
-	session = schema.Session{Messages: append(slices.Clone(earlier), contextMarker(providerschema.MarkerFailed, "")), Usage: full}
-	registry.RecountContext(&session)
-	assert.Equal(t, schema.SessionUsage{Input: 400, Output: 600, Overhead: 50}, session.Usage)
+		// and once its summary is written, it's the summary, which is sent
+		// with the messages, in the system prompt
+		recount(&session, providerschema.MarkerSummarized, "Sunny")
+		assert.Equal(t, schema.SessionUsage{Usage: asked, Overhead: registry.SummaryTokens("Sunny")}, session.Usage)
+	})
 
-	// A conversation whose tokens aren't known isn't changed
-	session = schema.Session{Messages: earlier}
-	registry.RecountContext(&session)
-	assert.Zero(t, session.Usage)
+	t.Run("Failed", func(t *testing.T) {
+		// One whose summary failed doesn't start the context, so it's the
+		// conversation, as it was
+		session := schema.Session{Messages: slices.Clone(earlier), Usage: schema.SessionUsage{Usage: asked, Input: 400, Output: 600}}
+		session.Messages = append(session.Messages, contextMarker(providerschema.MarkerPending, ""))
+		registry.RecountContext(&session, "")
+		recount(&session, providerschema.MarkerFailed, "")
+		assert.Equal(t, schema.SessionUsage{Usage: asked, Input: 400, Output: 600}, session.Usage)
+	})
+
+	t.Run("Again", func(t *testing.T) {
+		// After a reply with an earlier summary, which was sent in the
+		// system prompt, so it's in what's sent with the messages, the
+		// earlier summary is swapped for the summary
+		old := strings.Repeat("x", 3000)
+		overhead := 50 + registry.SummaryTokens(old)
+		messages := []providerschema.Message{earlier[0], contextMarker(providerschema.MarkerSummarized, old), message("user", "Thanks", 5), message("assistant", "You're welcome", 7)}
+		session := schema.Session{Messages: slices.Clone(messages), Usage: schema.SessionUsage{Usage: asked, Input: 5, Output: 7, Overhead: overhead}}
+		session.Messages = append(session.Messages, contextMarker(providerschema.MarkerPending, ""))
+		registry.RecountContext(&session, old)
+		assert.Equal(t, schema.SessionUsage{Usage: asked, Overhead: 50}, session.Usage, "the earlier summary isn't sent")
+		recount(&session, providerschema.MarkerSummarized, "Thanked")
+		assert.Equal(t, schema.SessionUsage{Usage: asked, Overhead: 50 + registry.SummaryTokens("Thanked")}, session.Usage, "the summary is sent once")
+
+		// and when it fails, the earlier summary is sent again, once
+		session = schema.Session{Messages: slices.Clone(messages), Usage: schema.SessionUsage{Usage: asked, Input: 5, Output: 7, Overhead: overhead}}
+		session.Messages = append(session.Messages, contextMarker(providerschema.MarkerPending, ""))
+		registry.RecountContext(&session, old)
+		recount(&session, providerschema.MarkerFailed, "")
+		assert.Equal(t, schema.SessionUsage{Usage: asked, Input: 5, Output: 7, Overhead: overhead}, session.Usage)
+	})
+
+	t.Run("Unknown", func(t *testing.T) {
+		// A session whose model hasn't been asked isn't changed
+		session := schema.Session{Messages: earlier}
+		registry.RecountContext(&session, "")
+		assert.Zero(t, session.Usage)
+	})
 }
