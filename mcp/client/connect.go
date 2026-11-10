@@ -124,7 +124,9 @@ func (c *Client) keep(a *attempt, session *sdkmcp.ClientSession, cancel context.
 	c.mu.Unlock()
 	a.finish(nil)
 	go c.wait(session)
-	go c.keepAlive(session)
+	// The interval is read as the session is connected, rather than by the
+	// goroutine, so a change to it, such as a test's, isn't a race
+	go c.keepAlive(session, keepAlive)
 	server := &sdkmcp.Implementation{}
 	if result := session.InitializeResult(); result != nil && result.ServerInfo != nil {
 		server = result.ServerInfo
@@ -239,17 +241,17 @@ func (c *Client) dial(ctx context.Context, transport sdkmcp.Transport) (*sdkmcp.
 	}
 }
 
-// keepAlive pings the server, every keepAlive, until the session ends, and
+// keepAlive pings the server, every interval, until the session ends, and
 // closes it, once keepAliveFailures pings in a row get no reply, so it's
 // connected again. A server which replies, even with an error, or with
 // what can't be decoded, is there.
-func (c *Client) keepAlive(session *sdkmcp.ClientSession) {
+func (c *Client) keepAlive(session *sdkmcp.ClientSession, interval time.Duration) {
 	ended := make(chan struct{})
 	go func() {
 		_ = session.Wait()
 		close(ended)
 	}()
-	ticker := time.NewTicker(keepAlive)
+	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
 	for failures := 0; ; {
 		select {
@@ -257,7 +259,7 @@ func (c *Client) keepAlive(session *sdkmcp.ClientSession) {
 			return
 		case <-ticker.C:
 		}
-		ctx, cancel := context.WithTimeout(context.Background(), keepAlive/2)
+		ctx, cancel := context.WithTimeout(context.Background(), interval/2)
 		err := session.Ping(ctx, nil)
 		cancel()
 		if replied(err) {

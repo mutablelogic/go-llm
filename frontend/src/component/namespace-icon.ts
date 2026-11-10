@@ -32,6 +32,8 @@ export function namespaceIcon(name: string): string | unknown {
         return tabler(spy);
     case 'heartbeat':
         return iconLoader(Favorite16);
+    case 'deepseek':
+        return 'icon/provider/deepseek.svg';
     case 'homeassistant':
         return 'icon/namespace/homeassistant.svg';
     case 'llm':

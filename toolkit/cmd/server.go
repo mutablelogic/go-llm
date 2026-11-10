@@ -8,6 +8,7 @@ import (
 	// Packages
 	client "github.com/mutablelogic/go-client"
 	toolkit "github.com/mutablelogic/go-llm/toolkit"
+	deepseek "github.com/mutablelogic/go-llm/toolkit/deepseek"
 	homeassistant "github.com/mutablelogic/go-llm/toolkit/homeassistant"
 	httphandler "github.com/mutablelogic/go-llm/toolkit/httphandler"
 	newsapi "github.com/mutablelogic/go-llm/toolkit/newsapi"
@@ -36,6 +37,11 @@ const (
 	// OllamaCredential is the key of the credential holding the Ollama API
 	// key, which adds the web search and fetch tools
 	OllamaCredential = "OLLAMA_API_KEY"
+
+	// DeepSeekCredential is the key of the credential holding the DeepSeek
+	// API key, which adds the web search and fetch tools, and is the key of
+	// DeepSeek's models
+	DeepSeekCredential = "DEEPSEEK_API_KEY"
 
 	// NewsAPICredential is the key of the credential holding the NewsAPI key,
 	// which adds the news tools
@@ -108,6 +114,7 @@ func AddTools(ctx server.Cmd, tools *toolkit.Toolkit) error {
 	return errors.Join(
 		addNamespace(ctx, tools, weatherapi.Name, WeatherAPICredential, weatherapi.New),
 		addNamespace(ctx, tools, ollama.Name, OllamaCredential, ollama.New),
+		addNamespace(ctx, tools, deepseek.Name, DeepSeekCredential, deepseek.New),
 		addNamespace(ctx, tools, newsapi.Name, NewsAPICredential, newsapi.New),
 		addHomeAssistantTools(ctx, tools),
 	)

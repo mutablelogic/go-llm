@@ -196,7 +196,7 @@ flowchart LR
         HA["Home Assistant"]
         News["NewsAPI"]
         Weather["WeatherAPI"]
-        Search["Ollama web search"]
+        Search["Ollama and DeepSeek web search"]
         Remote["Remote MCP servers"]
     end
 
@@ -260,7 +260,7 @@ The registry also works on its own, from your own Go program; see [examples](exa
 - **Agents**: prompts with their own model, tools and schemas, kept as YAML or JSON, that models call as tools, nested as deep as needed.
 - **Embed, OCR, speak, illustrate, transcribe and translate**: vectors; document text as Markdown; speech in a chosen voice; images from Gemini's Nano Banana models; and transcripts with speakers, or as subtitles.
 - **Models**: download, delete and unload them where the provider stores them, such as Ollama and go-whisper, and list them by [capability](#capabilities).
-- **Tools**: Home Assistant, NewsAPI, WeatherAPI, Ollama's web search, and any remote MCP server through [connectors](#connectors).
+- **Tools**: Home Assistant, NewsAPI, WeatherAPI, Ollama's and DeepSeek's web search, and any remote MCP server through [connectors](#connectors).
 - **Memory**: facts about the person and the assistant, and memories with versions, kept as files you can edit.
 - **Resources**: uploaded or generated files, streamed to and from the store, kept once, and downloadable in ranges.
 - **Heartbeats**: scheduled prompts with cron expressions, which follow the person's time zone and survive restarts.
@@ -351,10 +351,17 @@ Tools are added when their credentials or settings are present:
 | `newsapi` | News articles, headlines and sources | `NEWSAPI_API_KEY`, from [newsapi.org](https://newsapi.org/register) |
 | `homeassistant` | Query, search and control smart home devices | `HOMEASSISTANT_URL`, `HOMEASSISTANT_API_KEY` |
 | `ollama` | Web search and fetch, with Ollama's cloud | `OLLAMA_API_KEY`, from [ollama.com](https://ollama.com/settings/keys) |
+| `deepseek` | Web search and fetch, with DeepSeek's | `DEEPSEEK_API_KEY`, from [platform.deepseek.com](https://platform.deepseek.com/api_keys), the same key as its models |
 | `messaging` | `connect`, `list`, `send` and `disconnect` chats, such as on Telegram. See [Messaging](#messaging) | `TELEGRAM_BOT_TOKEN`, from [BotFather](https://t.me/BotFather) |
 | *a connector's* | The tools of a remote MCP server. See [Connectors](#connectors) | A connector |
 
 Give a model tools by name (`weatherapi:current`), by namespace (`weatherapi:*`), or all of them (`*`).
+
+Web search costs money:
+
+- **Ollama:** free up to a monthly quota, then charged. Once the quota is used up, its calls fail.
+- **DeepSeek:** charged per search and per fetch, about $0.75 per 1,000 successful calls. Calls that fail or find nothing aren't charged.
+- **Choosing:** with both keys set, both namespaces are added. Give a chat one of them, such as `deepseek:*`, to choose which it uses.
 
 Notes on the `llm` tools:
 
