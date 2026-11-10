@@ -10,6 +10,7 @@ import (
 	// Packages
 	client "github.com/mutablelogic/go-client"
 	llm "github.com/mutablelogic/go-llm"
+	types "github.com/mutablelogic/go-server/pkg/types"
 )
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -59,8 +60,8 @@ const (
 // own, and those the account has cloned, designed, or added from the voice
 // library, each by its voice ID, which it's chosen by, with its name, as its
 // title, and what ElevenLabs says of it, such as its accent, gender and age,
-// the languages it's verified to speak with the model, and the models it
-// suits best. With a limit, they're a page at a time, of at most 100, with
+// the languages it's verified to speak with the model, and whether it's
+// recommended for it, which it is when it's of the best quality with it. With a limit, they're a page at a time, of at most 100, with
 // ElevenLabs' token of the next page, and otherwise all of them. Returns
 // ErrNotImplemented for a model which doesn't speak, and ErrBadParameter for
 // an option which isn't supported.
@@ -197,7 +198,12 @@ func (v apiVoice) voice(model string) llm.Voice {
 		Accent:   label("accent"),
 		Language: label("language"),
 		UseCase:  label("use_case"),
-		Models:   v.Models,
+	}
+	// It's recommended for the model when it's of the best quality with it,
+	// and isn't when it's of the best quality with others, and otherwise
+	// isn't known, as ElevenLabs doesn't say
+	if model != "" && len(v.Models) > 0 {
+		voice.Recommended = types.Ptr(slices.Contains(v.Models, model))
 	}
 	if v.Description != nil {
 		voice.Description = strings.TrimSpace(*v.Description)

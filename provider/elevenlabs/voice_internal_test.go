@@ -8,6 +8,7 @@ import (
 
 	// Packages
 	llm "github.com/mutablelogic/go-llm"
+	types "github.com/mutablelogic/go-server/pkg/types"
 	assert "github.com/stretchr/testify/assert"
 	require "github.com/stretchr/testify/require"
 )
@@ -43,7 +44,7 @@ func Test_ListVoices(t *testing.T) {
 		{
 			ID: "21m00Tcm4TlvDq8ikWAM", Title: "Rachel", Category: "premade",
 			Description: "Matter-of-fact, personable woman.", Gender: "female", Age: "young", Accent: "american", UseCase: "conversational",
-			Languages: []string{"en-US", "de"}, Models: []string{"eleven_multilingual_v2", "eleven_flash_v2_5"}, Preview: "https://example.com/rachel.mp3",
+			Languages: []string{"en-US", "de"}, Recommended: types.Ptr(true), Preview: "https://example.com/rachel.mp3",
 		},
 		{ID: "abc", Title: "My clone", Category: "cloned", Description: "warm", Language: "de"},
 	}, voices)
@@ -52,10 +53,18 @@ func Test_ListVoices(t *testing.T) {
 		"/v2/voices?include_total_count=false&next_page_token=page-2&page_size=100",
 	}, asked, "each page, with the token of the one before")
 
-	// The languages are those it's verified to speak with the model
+	// The languages are those it's verified to speak with the model, and
+	// it's recommended for a model when it's of the best quality with it,
+	// isn't when it's of the best quality with others, and isn't known when
+	// ElevenLabs doesn't say
 	voices, _, err = c.ListVoices(context.Background(), c.speechModel(apiModel{ID: "eleven_flash_v2_5", Speaks: true}))
 	require.NoError(t, err)
 	assert.Equal(t, []string{"en-US"}, voices[0].Languages)
+	assert.Equal(t, types.Ptr(true), voices[0].Recommended)
+	assert.Nil(t, voices[1].Recommended)
+	voices, _, err = c.ListVoices(context.Background(), c.speechModel(apiModel{ID: "eleven_v4_turbo", Speaks: true}))
+	require.NoError(t, err)
+	assert.Equal(t, types.Ptr(false), voices[0].Recommended)
 
 	// A page at a time, with ElevenLabs' token
 	asked = nil

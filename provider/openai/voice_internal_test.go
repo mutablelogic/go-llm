@@ -6,6 +6,7 @@ import (
 
 	// Packages
 	llm "github.com/mutablelogic/go-llm"
+	types "github.com/mutablelogic/go-server/pkg/types"
 	assert "github.com/stretchr/testify/assert"
 	require "github.com/stretchr/testify/require"
 )
@@ -21,7 +22,7 @@ func Test_ListVoices(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, voices, 13)
 	assert.Equal(t, llm.Voice{ID: "alloy", Title: "Alloy"}, voices[0])
-	assert.Equal(t, llm.Voice{ID: "marin", Title: "Marin", Description: "Recommended, for the best quality"}, voices[11])
+	assert.Equal(t, llm.Voice{ID: "marin", Title: "Marin", Description: "OpenAI's best quality", Recommended: types.Ptr(true)}, voices[11])
 
 	// and tts-1 and tts-1-hd in fewer
 	for _, name := range []string{"tts-1", "tts-1-hd"} {

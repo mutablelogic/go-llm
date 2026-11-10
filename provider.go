@@ -144,7 +144,8 @@ type Speaker interface {
 // Voice is a voice a model speaks in, which is chosen by its identifier,
 // such as ElevenLabs' voice ID, or OpenAI's "alloy", with its title, for
 // people, and what's known of it, such as its language, accent and gender,
-// and the models it suits best, when the provider says
+// and whether the provider recommends it for the model, when it says. What
+// isn't known is left out, rather than guessed.
 type Voice struct {
 	ID          string   `json:"id" help:"Identifier of the voice, which it's chosen by" example:"21m00Tcm4TlvDq8ikWAM"`
 	Title       string   `json:"title,omitempty" help:"Title of the voice, for people" example:"Rachel"`
@@ -156,7 +157,7 @@ type Voice struct {
 	Language    string   `json:"language,omitempty" help:"Language of the voice, as the provider labels it, such as en" example:"en"`
 	Languages   []string `json:"languages,omitempty" help:"Languages the voice is verified to speak, such as en-US, when the provider says" example:"[\"en-US\",\"de-DE\"]"`
 	UseCase     string   `json:"use_case,omitempty" help:"What the voice is for, as the provider labels it" example:"conversational"`
-	Models      []string `json:"models,omitempty" help:"Models the voice suits best, when the provider says" example:"[\"eleven_multilingual_v2\"]"`
+	Recommended *bool    `json:"recommended,omitempty" help:"Whether the provider recommends the voice for the model, such as for its best quality, when it says, which isn't whether the model speaks in it, as it speaks in each of its voices" example:"true"`
 	Preview     string   `json:"preview,omitempty" help:"URL of a sample of the voice" example:"https://example.com/rachel.mp3"`
 }
 

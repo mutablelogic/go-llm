@@ -33,12 +33,12 @@ type speak struct {
 // speakInput is the input of the speak tool
 type speakInput struct {
 	Text         string `json:"text" help:"The text to speak, as it's said, without Markdown"`
-	Voice        string `json:"voice,omitempty" help:"Voice to speak in, by its id, which the models tool lists, with speech_output, which the person chose, and is remembered with the model, or the model's own voice, when it's omitted" optional:""`
+	Voice        string `json:"voice,omitempty" help:"Voice to speak in, by its id, or its name, such as Matilda, which the models tool lists, with speech_output and the model, which the person chose, and is remembered with the model, or the model's own voice, when it's omitted" optional:""`
 	Instructions string `json:"instructions,omitempty" help:"How the text is spoken, such as calmly, or cheerfully, for a model which takes them" optional:""`
 	Model        string `json:"model,omitempty" help:"Model which speaks the text, by its name, such as ollama:phonon:latest, or the default, when it's omitted" optional:""`
 	Name         string `json:"name,omitempty" help:"Name of the audio's file, such as morning-briefing, which its format's extension is added to, or speech, when it's omitted" optional:""`
 	Title        string `json:"title,omitempty" help:"Title of the audio, for people, such as Ode to David, which it's shown, and played, with" optional:""`
-	Format       string `json:"format,omitempty" enum:"voice-note" help:"voice-note, for a voice note, such as for a chat on Telegram, which is Ogg Opus, or the model's own format, when it's omitted" optional:""`
+	Format       string `json:"format,omitempty" enum:"voice-note" help:"voice-note, for a voice note, which is Ogg Opus, which is to be given whenever the person is writing on Telegram, as the annotation of their message says, or the model's own format, when it's omitted" optional:""`
 }
 
 // speakOutput is what the speak tool returns with the audio, when it isn't

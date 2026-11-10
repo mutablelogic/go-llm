@@ -60,6 +60,10 @@ type Registry struct {
 	// The markers whose summaries are being written, by their identifiers
 	summarizing sync.Map
 
+	// The voices of models which speak, by their providers, and names, which
+	// are kept for voicesTTL, to find a voice by its name
+	voices sync.Map
+
 	// The logger Run is given, which what runs in the background, such as
 	// delivering events, logs to
 	logger atomic.Pointer[slog.Logger]

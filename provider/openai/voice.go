@@ -8,6 +8,7 @@ import (
 
 	// Packages
 	llm "github.com/mutablelogic/go-llm"
+	types "github.com/mutablelogic/go-server/pkg/types"
 )
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -56,7 +57,7 @@ func (c *Client) ListVoices(_ context.Context, model llm.Model, opts ...llm.Opt)
 	for _, name := range names {
 		voice := llm.Voice{ID: name, Title: strings.ToUpper(name[:1]) + name[1:]}
 		if slices.Contains(bestVoices, name) {
-			voice.Description = "Recommended, for the best quality"
+			voice.Recommended, voice.Description = types.Ptr(true), "OpenAI's best quality"
 		}
 		result = append(result, voice)
 	}

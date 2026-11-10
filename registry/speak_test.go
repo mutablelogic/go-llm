@@ -2,6 +2,7 @@ package registry_test
 
 import (
 	"context"
+	"encoding/json"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -77,4 +78,71 @@ func ids(voices []llm.Voice) []string {
 		result[i] = voice.ID
 	}
 	return result
+}
+
+func Test_SpeakVoiceName(t *testing.T) {
+	// An Ollama server with a speech model, which has voices, and speaks in
+	// the one it's asked to
+	var spoken string
+	voices := `["Alfie","Matilda - Knowledgable, Professional","Sam","sam"]`
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		switch r.URL.Path {
+		case "/api/tags":
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = io.WriteString(w, `{"models":[{"name":"phonon:latest"}]}`)
+		case "/api/show":
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = io.WriteString(w, `{"capabilities":["speech"],"voices":`+voices+`}`)
+		case "/v1/audio/speech":
+			var req struct {
+				Voice string `json:"voice"`
+			}
+			_ = json.Unmarshal(body, &req)
+			spoken = req.Voice
+			w.Header().Set("Content-Type", "audio/wav")
+			_, _ = io.WriteString(w, "RIFF....WAVE")
+		default:
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	t.Cleanup(server.Close)
+	provider, err := ollama.New(server.URL + "/api")
+	require.NoError(t, err)
+	r := test.NewRegistry(t, []llm.Provider{provider})
+	ctx := context.Background()
+	model, err := r.GetModel(ctx, "phonon:latest")
+	require.NoError(t, err)
+
+	// By its ID, its name, ignoring case, or the start of its title
+	for voice, want := range map[string]string{
+		"Alfie":   "Alfie",
+		"alfie":   "Alfie",
+		"matilda": "Matilda - Knowledgable, Professional",
+		"Sam":     "Sam",
+		"Nobody":  "Nobody",
+	} {
+		_, _, err := r.Speak(ctx, model, "Hello", llm.WithOpt(llm.VoiceKey, voice))
+		require.NoError(t, err, voice)
+		assert.Equal(t, want, spoken, voice)
+	}
+
+	// A name which is more than one of them, which says which
+	_, _, err = r.Speak(ctx, model, "Hello", llm.WithOpt(llm.VoiceKey, "SAM"))
+	assert.ErrorIs(t, err, llm.ErrBadParameter)
+	assert.Contains(t, err.Error(), "Sam (Sam), sam (sam)")
+
+	// A provider which is replaced, with its name, such as with another
+	// account, has voices of its own, rather than the one's before
+	voices = `["Alfred"]`
+	_, err = r.Remove("ollama")
+	require.NoError(t, err)
+	replaced, err := ollama.New(server.URL + "/api")
+	require.NoError(t, err)
+	require.NoError(t, r.Add("ollama", replaced))
+	model, err = r.GetModel(ctx, "phonon:latest")
+	require.NoError(t, err)
+	_, _, err = r.Speak(ctx, model, "Hello", llm.WithOpt(llm.VoiceKey, "alfred"))
+	require.NoError(t, err)
+	assert.Equal(t, "Alfred", spoken)
 }
