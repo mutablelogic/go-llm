@@ -131,6 +131,25 @@ type Speaker interface {
 	Speak(context.Context, Model, string, ...Opt) (Resource, Usage, error)
 }
 
+// Voice is a voice a model speaks in, which is chosen by its identifier,
+// such as ElevenLabs' voice ID, or OpenAI's "alloy", with its title, for
+// people, and what's known of it, such as its language, accent and gender,
+// and the models it suits best, when the provider says
+type Voice struct {
+	ID          string   `json:"id" help:"Identifier of the voice, which it's chosen by" example:"21m00Tcm4TlvDq8ikWAM"`
+	Title       string   `json:"title,omitempty" help:"Title of the voice, for people" example:"Rachel"`
+	Description string   `json:"description,omitempty" help:"What the voice is like" example:"Matter-of-fact, personable woman. Great for conversational use cases."`
+	Category    string   `json:"category,omitempty" help:"What sort of voice it is, as the provider says, such as premade, cloned or generated" example:"premade"`
+	Gender      string   `json:"gender,omitempty" help:"Gender of the voice, as the provider labels it" example:"female"`
+	Age         string   `json:"age,omitempty" help:"Age of the voice, as the provider labels it" example:"young"`
+	Accent      string   `json:"accent,omitempty" help:"Accent of the voice, as the provider labels it" example:"american"`
+	Language    string   `json:"language,omitempty" help:"Language of the voice, as the provider labels it, such as en" example:"en"`
+	Languages   []string `json:"languages,omitempty" help:"Languages the voice is verified to speak, such as en-US, when the provider says" example:"[\"en-US\",\"de-DE\"]"`
+	UseCase     string   `json:"use_case,omitempty" help:"What the voice is for, as the provider labels it" example:"conversational"`
+	Models      []string `json:"models,omitempty" help:"Models the voice suits best, when the provider says" example:"[\"eleven_multilingual_v2\"]"`
+	Preview     string   `json:"preview,omitempty" help:"URL of a sample of the voice" example:"https://example.com/rachel.mp3"`
+}
+
 // Illustrator is an interface for providers whose models make images
 type Illustrator interface {
 	// Illustrate returns the images the model makes from the prompt, or,
