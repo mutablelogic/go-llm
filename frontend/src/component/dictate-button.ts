@@ -1,5 +1,6 @@
 // A button which starts dictating a message, with the browser's speech
-// recognition, and stops it, which is filled while it's listening. It fires
+// recognition, and stops it, which is secondary, as the attach button is, and
+// primary, and filled, while it's listening. It fires
 // an event, which the dictation controller starts, or stops, dictation for.
 
 import { LitElement, html } from 'lit';
@@ -27,7 +28,7 @@ export class DictateButton extends LitElement {
     render() {
         const label = this.listening ? 'Stop dictating' : 'Dictate';
         return html`
-            <cds-icon-button kind=${this.listening ? 'primary' : 'ghost'} size="md" align="top" ?disabled=${this.disabled}
+            <cds-icon-button kind=${this.listening ? 'primary' : 'secondary'} size="md" align="top" ?disabled=${this.disabled}
                 aria-pressed=${String(this.listening)}
                 @click=${() => this.dispatchEvent(new CustomEvent(DictateButton.eventToggle, { bubbles: true, composed: true }))}>
                 ${iconLoader(this.listening ? MicrophoneFilled16 : Microphone16, { slot: 'icon' })}
