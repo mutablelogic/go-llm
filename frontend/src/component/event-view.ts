@@ -182,7 +182,7 @@ export class EventView extends Panel<string> {
     }
 
     protected renderSubtitle() {
-        return 'The tasks your assistant performs on schedule';
+        return 'The events your assistant runs on schedule';
     }
 
     protected renderBody() {
