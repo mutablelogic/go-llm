@@ -25,7 +25,8 @@ export interface Preset {
 
 export const presets: Preset[] = [
     { id: 'ollama', label: 'Ollama', type: 'ollama', name: 'ollama', url: 'http://localhost:11434', askURL: true, urlLabel: 'URL of the Ollama server', credential: 'optional', icon: 'ollama.svg' },
-    { id: 'compatible', label: 'OpenAI-compatible', type: 'openai', name: '', url: 'http://localhost:1234/v1', askURL: true, urlLabel: 'URL of the server, such as LM Studio or vLLM', credential: 'optional' },
+    { id: 'lmstudio', label: 'LM Studio', type: 'lmstudio', name: 'lmstudio', url: 'http://localhost:1234/v1', askURL: true, urlLabel: 'URL of the LM Studio server', credential: 'optional', icon: 'lmstudio.svg' },
+    { id: 'compatible', label: 'OpenAI-compatible', type: 'openai', name: '', url: 'http://localhost:8000/v1', askURL: true, urlLabel: 'URL of the server, such as vLLM or llama.cpp', credential: 'optional' },
     { id: 'openai', label: 'OpenAI', type: 'openai', name: 'openai', url: '', askURL: false, credential: 'required', icon: 'openai.svg' },
     { id: 'mistral', label: 'Mistral', type: 'openai', name: 'mistral', url: 'https://api.mistral.ai/v1', askURL: false, credential: 'required', icon: 'mistral.svg' },
     { id: 'anthropic', label: 'Anthropic', type: 'anthropic', name: 'anthropic', url: '', askURL: false, credential: 'required', icon: 'anthropic.svg' },
@@ -51,6 +52,7 @@ export function presetOf(id?: string): Preset {
 export function asksURL(type: string, url?: string): boolean {
     switch (type) {
     case 'ollama':
+    case 'lmstudio':
     case 'gowhisper':
         return true;
     case 'openai':
@@ -82,6 +84,7 @@ export function providerIcon(provider: { provider: string; url?: string }): stri
     const logo = (name: string) => 'icon/provider/' + name + '.svg';
     switch (provider.provider) {
     case 'ollama':
+    case 'lmstudio':
     case 'anthropic':
     case 'gemini':
     case 'elevenlabs':

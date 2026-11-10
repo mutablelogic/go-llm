@@ -10,6 +10,7 @@
 # and a provider for each of these which is set:
 #
 #   OLLAMA_ADDR, which is http://ollama:11434 for the ollama profile
+#   LMSTUDIO_ADDR, such as http://host.docker.internal:1234/v1
 #   GOWHISPER_ADDR, which is http://whisper:8081 for the whisper profile
 #   OPENAI_API_KEY and the other keys, which are read when they're used,
 #   rather than stored
@@ -41,6 +42,7 @@ services:
       # LLM providers of a new installation
       NO_ELIZA: ${NO_ELIZA:-}
       OLLAMA_ADDR: ${OLLAMA_ADDR:-}
+      LMSTUDIO_ADDR: ${LMSTUDIO_ADDR:-}
       GOWHISPER_ADDR: ${GOWHISPER_ADDR:-}
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}

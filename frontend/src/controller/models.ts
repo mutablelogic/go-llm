@@ -377,7 +377,10 @@ export class ModelsController extends ListController<Model> {
         }
         if (view) {
             view.model = this.selected;
-            view.stored = this.providers?.find((provider) => provider.name === this.selected?.provider)?.downloader === true;
+            // A model can be deleted when its provider stores models,
+            // apart from LM Studio's, whose API doesn't delete them
+            const provider = this.providers?.find((provider) => provider.name === this.selected?.provider);
+            view.stored = provider?.downloader === true && provider.provider !== 'lmstudio';
         }
     }
 }
