@@ -20,10 +20,10 @@ import '@carbon/web-components/es/components/select/index.js';
 import '@carbon/web-components/es/components/notification/inline-notification.js';
 
 // AgentEditorItem is what the panel shows: a new agent, from its definition,
-// or the agent with the name, and its definition, and whether it's built in,
-// when its model, which is all of it which can be changed, can be chosen
-// from the models
-export type AgentEditorItem = { mode: 'new'; yaml: string } | { mode: 'edit'; name: string; yaml: string; builtin: boolean; model?: string; models?: string[] };
+// or the agent with the name, its description, which is the panel's
+// subtitle, its definition, and whether it's built in, when its model, which
+// is all of it which can be changed, can be chosen from the models
+export type AgentEditorItem = { mode: 'new'; yaml: string } | { mode: 'edit'; name: string; description?: string; yaml: string; builtin: boolean; model?: string; models?: string[] };
 
 // AgentModel is the model chosen for a built-in agent, by its name, which
 // is empty for the model of the session it's run from
@@ -158,7 +158,7 @@ export class AgentEditor extends Panel<AgentEditorItem> {
         if (item.mode === 'new') {
             return "Its definition, as YAML, or a file of one, which is uploaded";
         }
-        return item.builtin ? `builtin:${item.name}, whose model can be chosen, and which can be copied` : `agent:${item.name}, as YAML`;
+        return item.description?.trim() || `${item.builtin ? 'builtin' : 'agent'}:${item.name}`;
     }
 
     protected renderFooter(item: AgentEditorItem) {

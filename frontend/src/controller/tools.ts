@@ -360,7 +360,7 @@ export class ToolsController extends ListController<Tool> {
             const builtin = agent.builtin === true;
             const models = builtin ? await this.chatModels() : undefined;
             if (generation === this.agentGeneration) {
-                this.showAgent({ mode: 'edit', name: agent.name, yaml, builtin, model: agent.model, models });
+                this.showAgent({ mode: 'edit', name: agent.name, description: agent.description, yaml, builtin, model: agent.model, models });
             }
         } catch (error) {
             if (generation === this.agentGeneration) {
