@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -371,4 +372,42 @@ func Test_WithoutSessionReasoning(t *testing.T) {
 	_, _, err = c.WithoutSession(ctx, model, []llm.Message{message}, nil, nil, llm.WithThinking(true))
 	require.NoError(t, err)
 	assert.NotContains(t, f.chat, "reasoning_effort")
+}
+
+func Test_FindModel(t *testing.T) {
+	models := []apiModel{{Key: "google/gemma-4-12b-qat"}, {Key: "qwen3-4b"}, {Key: "other/model"}}
+	before := map[string]bool{"google/gemma-4-12b-qat": true, "qwen3-4b": true, "other/model": true}
+	key := func(data *apiModel) string {
+		if data == nil {
+			return ""
+		}
+		return data.Key
+	}
+
+	// By its key
+	assert.Equal(t, "qwen3-4b", key(findModel(models, "qwen3-4b", nil)))
+	assert.Empty(t, key(findModel(models, "https://huggingface.co/lmstudio-community/Qwen3-4B-GGUF", nil)), "only by its key, before it's downloaded")
+
+	// The one which is new, once it's downloaded, whatever its key
+	withNew := append(slices.Clone(models), apiModel{Key: "lmstudio-community/new-7b"})
+	assert.Equal(t, "lmstudio-community/new-7b", key(findModel(withNew, "https://huggingface.co/lmstudio-community/New-7B-GGUF", before)))
+
+	// One which was downloaded already, by the repository a link is to
+	assert.Equal(t, "qwen3-4b", key(findModel(models, "https://huggingface.co/lmstudio-community/Qwen3-4B-GGUF", before)))
+	assert.Equal(t, "qwen3-4b", key(findModel(models, "https://huggingface.co/lmstudio-community/Qwen3-4B-GGUF/", before)))
+
+	// but not by a name which isn't a link, which may be listed later
+	assert.Empty(t, key(findModel(models, "lmstudio-community/qwen3-4b", before)))
+	assert.Empty(t, key(findModel(models, "https://huggingface.co/someone/missing-GGUF", before)))
+}
+
+func Test_LoadModelLink(t *testing.T) {
+	// A model downloaded by a Hugging Face link is loaded by its key
+	downloadPoll, listWait = 10*time.Millisecond, time.Second
+	f, c := newFake(t)
+	model, err := c.LoadModel(context.Background(), "https://huggingface.co/someone/New-Model-GGUF", nil)
+	require.NoError(t, err)
+	assert.Equal(t, "new/model", model.Name())
+	assert.True(t, model.(*Model).Loaded())
+	assert.Contains(t, f.asked, "POST /api/v1/models/load")
 }
