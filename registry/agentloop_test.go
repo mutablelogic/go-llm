@@ -388,7 +388,7 @@ func Test_AgentLoopSchema(t *testing.T) {
 		require.Len(t, p.asked, 1)
 		assert.Equal(t, []string{"echo", toolkit.RespondName}, p.asked[0].tools)
 		system, _ := llm.GetOpt[string](p.asked[0].opts, llm.SystemPromptKey)
-		assert.Equal(t, "Be brief\n\n"+toolkit.RespondPrompt, system)
+		assert.Equal(t, "Be brief\n\n"+registry.ShortenedResultsPrompt+"\n\n"+toolkit.RespondPrompt, system)
 		assert.False(t, p.asked[0].opts.Has(llm.JSONSchemaKey))
 	})
 
@@ -406,7 +406,7 @@ func Test_AgentLoopSchema(t *testing.T) {
 		}
 		assert.JSONEq(t, `{"city":"Berlin"}`, added[0].Text())
 		system, _ := llm.GetOpt[string](p.asked[0].opts, llm.SystemPromptKey)
-		assert.Equal(t, toolkit.RespondPrompt, system)
+		assert.Equal(t, registry.ShortenedResultsPrompt+"\n\n"+toolkit.RespondPrompt, system)
 	})
 
 	t.Run("Tools", func(t *testing.T) {
@@ -1159,24 +1159,24 @@ func Test_AgentLoopSystemPrompts(t *testing.T) {
 
 	t.Run("Tools", func(t *testing.T) {
 		system := run(t, newScripted(text("Hello")), toolsOf(t, "weather:*", "news:headlines"), llm.WithSystemPrompt("Be brief"))
-		assert.Equal(t, "Be brief\n\nUse metric units.\n\nCite the source.", system)
+		assert.Equal(t, "Be brief\n\nUse metric units.\n\nCite the source.\n\n"+registry.ShortenedResultsPrompt, system)
 	})
 
 	t.Run("NoSystem", func(t *testing.T) {
 		system := run(t, newScripted(text("Hello")), toolsOf(t, "news:headlines"))
-		assert.Equal(t, "Cite the source.", system)
+		assert.Equal(t, "Cite the source.\n\n"+registry.ShortenedResultsPrompt, system)
 	})
 
 	t.Run("OtherTools", func(t *testing.T) {
 		// A tool which isn't the toolkit's has no system prompt
 		system := run(t, newScripted(text("Hello")), []llm.Tool{echoTool{}}, llm.WithSystemPrompt("Be brief"))
-		assert.Equal(t, "Be brief", system)
+		assert.Equal(t, "Be brief\n\n"+registry.ShortenedResultsPrompt, system)
 	})
 
 	t.Run("Schema", func(t *testing.T) {
 		system := run(t, newScripted(call(toolkit.RespondName, `{"result":"ok"}`)), toolsOf(t, "news:*"),
 			llm.WithSystemPrompt("Be brief"), llm.WithJSONSchema(json.RawMessage(`{"type":"string"}`)))
-		assert.Equal(t, "Be brief\n\nCite the source.\n\n"+toolkit.RespondPrompt, system)
+		assert.Equal(t, "Be brief\n\nCite the source.\n\n"+registry.ShortenedResultsPrompt+"\n\n"+toolkit.RespondPrompt, system)
 	})
 }
 
@@ -1228,7 +1228,7 @@ func Test_AgentLoopToolPromptsOnce(t *testing.T) {
 
 	t.Run("Once", func(t *testing.T) {
 		system, reads := run(t, llm.WithSystemPrompt("Be brief"))
-		assert.Equal(t, "Be brief\n\nRead 1 times.", system)
+		assert.Equal(t, "Be brief\n\nRead 1 times.\n\n"+registry.ShortenedResultsPrompt, system)
 		assert.Equal(t, int32(1), reads)
 	})
 

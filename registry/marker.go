@@ -153,8 +153,6 @@ func (r *Registry) addMarker(ctx context.Context, id uuid.UUID, marker providers
 	session, err := r.sessionStore.Get(ctx, id)
 	if err != nil {
 		return schema.Session{}, uuid.Nil(), err
-	} else if session.Event {
-		return schema.Session{}, uuid.Nil(), llm.ErrForbidden.Withf("session %q is an event's, which isn't compacted", id)
 	} else if i := lastMarker(session.Messages); i >= 0 && session.Messages[i].Marker.Status == providerschema.MarkerPending {
 		return session, session.Messages[i].Marker.ID, errPending
 	} else if after, _ := contextOf(session.Messages); len(after) == 0 {

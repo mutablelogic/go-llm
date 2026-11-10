@@ -46,7 +46,7 @@ import { NotificationController } from './controller/notifications';
 import { OutcomesController } from './controller/outcomes';
 import { StorageController } from './controller/storage';
 import { ResourcesController } from './controller/resources';
-import { SessionList } from './component/session-list';
+import { ChatPage } from './page/chat-page';
 import { Router, routeHref } from './router';
 
 // Errors, and other notifications, are shown as toasts
@@ -84,12 +84,14 @@ const chat = new ChatController({
 // The outcomes of the events of the chat which is open, such as heartbeats
 // which fired, in a panel, which its Events action opens
 const outcomes = new OutcomesController(document.querySelector('llm-event-view'), notifications);
-document.querySelector('llm-session-list')?.addEventListener(SessionList.eventEvents, () => {
+// It's opened by the Conversation menu's Tasks
+const openOutcomes = () => {
     const session = chat.sessionID();
     if (session) {
         outcomes.open(session);
     }
-});
+};
+document.querySelector('llm-chat-page')?.addEventListener(ChatPage.eventTasks, openOutcomes);
 
 // The models, and the tools, each in a table, with the one which is clicked
 // in a panel
@@ -122,7 +124,10 @@ const tools = new ToolsController({
 // before then.
 const events = new EventsController(notifications)
     .on({ schema: 'llm', table: 'session' }, () => void chat.refresh())
-    .on({ schema: 'llm', table: 'provider' }, () => void models.refresh())
+    .on({ schema: 'llm', table: 'provider' }, () => {
+        void models.refresh();
+        void chat.refreshModels();
+    })
     .on({ schema: 'llm', table: 'tool' }, () => void tools.refresh())
     .on({ schema: 'mcp', table: 'connector' }, () => void tools.refresh())
     .on({ schema: 'resource', table: 'resource' }, (event) => {
@@ -139,11 +144,11 @@ const events = new EventsController(notifications)
     .on({ schema: 'llm', table: 'event' }, (event) => {
         void outcomes.refresh();
 
-        // The Events action of the chat which is open is red for a few
-        // seconds, when an event for it is created
+        // The Conversation menu is marked for a few seconds, when an event for the chat which
+        // is open is created
         const session = (event?.data as { session?: string } | undefined)?.session;
         if (event?.action === 'create' && session && session === chat.sessionID()) {
-            document.querySelector('llm-session-list')?.alert();
+            document.querySelector('llm-chat-page')?.alert();
         }
     })
     .onShutdown(() => chat.stopReplies())
@@ -208,6 +213,7 @@ document.addEventListener(MediaPlayer.eventDeleted, (e) => {
 events.start();
 void models.load();
 void tools.load();
+void chat.refreshModels();
 
 // Show the page of the location, such as #chat/<id>, and mark its link in
 // the side navigation as active

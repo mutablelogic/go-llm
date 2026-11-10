@@ -676,6 +676,10 @@ func newAgentLoop(tools []llm.Tool, prompts []string, opts ...llm.Opt) (*agentLo
 	// has no tools, and isn't told how to use them
 	if choice, _ := llm.GetOpt[string](o, llm.ToolChoiceKey); choice == "none" {
 		prompts = nil
+	} else if len(tools) > 0 {
+		// With tools, the model is told how a result which is shortened to
+		// fit its context reads, once, rather than in each result
+		prompts = append(slices.Clip(prompts), shortenedResultsPrompt)
 	}
 	system, _ := llm.GetOpt[string](o, llm.SystemPromptKey)
 	system = systemPrompt(system, prompts)
@@ -707,6 +711,12 @@ func newAgentLoop(tools []llm.Tool, prompts []string, opts ...llm.Opt) (*agentLo
 	loop.opts = []llm.Opt{o.Opt(), llm.WithSystemPrompt(respondSystemPrompt(system))}
 	return loop, nil
 }
+
+// shortenedResultsPrompt is what a model with tools is told about results
+// which are shortened to fit its context: what's left out is marked, it
+// can't be seen, so it isn't guessed, and a tool which only reads can be
+// asked for less, but one which changes something isn't called again
+const shortenedResultsPrompt = "A tool's result may be shortened to fit your context. A mark such as …[left out: 12 more items] shows where, and what's left out can't be seen. Don't guess what it said. When you need it, and the tool only reads, call it again for less, such as fewer results, or one page. Never repeat a call which changes something, such as one which sends, creates or deletes, to see its result: look it up with a tool which only reads, when there is one."
 
 // toolTimeout returns the tool_timeout option, which is a duration, or a
 // string such as "30s", which is more than zero
