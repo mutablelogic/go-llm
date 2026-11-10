@@ -174,13 +174,6 @@ func Test_Telegram_New(t *testing.T) {
 	assert.Equal(t, "https://t.me/ada_bot?start=abc-_1", tg.Link("abc-_1"))
 	assert.Equal(t, []string{"/bot" + token + "/getMe"}, b.paths)
 
-	// A person's own chat has a positive identifier, and a group's, or a
-	// channel's, a negative one
-	assert.True(t, tg.Private("123456789"))
-	assert.False(t, tg.Private("-100123456789"))
-	assert.False(t, tg.Private("-987654"))
-	assert.False(t, tg.Private(""))
-
 	// A wrong token is an error, which doesn't have it
 	server := httptest.NewServer(b)
 	defer server.Close()

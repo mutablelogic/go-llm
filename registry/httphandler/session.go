@@ -130,11 +130,8 @@ func sessionGetUpdateDeleteHandlers(reg *registry.Registry, router *httprouter.R
 					messages[i] = &providerschema.Message{MessageMeta: req.Messages[i].WithoutAnnotations()}
 				}
 				respond(w, r, id.String(), func(write streamWriteFn) (*schema.ChatResponse, error) {
-					// What the person sent is passed on, such as to the
-					// session's own chats, once it's valid, and before its
-					// model replies
 					stream := streamWriter(write)
-					return reg.Chat(registry.ByPerson(r.Context()), id, messages, stream)
+					return reg.Chat(r.Context(), id, messages, stream)
 				})
 			}
 		}, func(op httprequest.PathOperation) {

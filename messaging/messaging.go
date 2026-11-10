@@ -361,64 +361,6 @@ func (m *Messaging) Reply(ctx context.Context, session uuid.UUID, out Outgoing) 
 	return err
 }
 
-// Mirror sends what the person sent the session from elsewhere, such as
-// the web UI, to its channels which are the person's own chats, rather than
-// groups, which others read, so a private chat has both sides of the
-// conversation, and does nothing when it has none
-func (m *Messaging) Mirror(ctx context.Context, session uuid.UUID, out Outgoing) error {
-	if strings.TrimSpace(out.Text) == "" && len(out.Files) == 0 {
-		return nil
-	}
-	channels, err := m.List(ctx, session)
-	if err != nil {
-		return err
-	}
-	var ids []uuid.UUID
-	for _, channel := range channels {
-		if provider, ok := m.providers[channel.Provider]; ok && provider.Private(channel.Address) {
-			ids = append(ids, channel.ID)
-		}
-	}
-	if len(ids) == 0 {
-		return nil
-	}
-
-	// The lock which keeps the channels from being changed is waited for no
-	// longer than the context lets it be, such as while a reply's files are
-	// sent, as a channel is disconnected, so it doesn't hold up the reply,
-	// and it isn't sent once it's been given up on, after the reply
-	if err := m.rlockContext(ctx); err != nil {
-		return err
-	}
-	defer m.sending.RUnlock()
-	deliveries, err := m.sendLocked(ctx, session, out, ids...)
-	for _, delivery := range deliveries {
-		err = errors.Join(err, delivery.Err)
-	}
-	return err
-}
-
-// rlockContext takes the lock which keeps the channels from being changed,
-// as a reader, or returns the context's error, when it's done first, when
-// the lock, which is taken later, is let go of at once
-func (m *Messaging) rlockContext(ctx context.Context) error {
-	locked := make(chan struct{})
-	go func() {
-		m.sending.RLock()
-		close(locked)
-	}()
-	select {
-	case <-locked:
-		return nil
-	case <-ctx.Done():
-		go func() {
-			<-locked
-			m.sending.RUnlock()
-		}()
-		return ctx.Err()
-	}
-}
-
 // Run receives the messages sent to each provider, which are sent to their
 // channel's session, until the context is cancelled, when it returns nil.
 // A message which connects a chat connects it, and one from a chat which

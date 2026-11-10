@@ -16,8 +16,6 @@ import (
 	types "github.com/mutablelogic/go-server/pkg/types"
 	assert "github.com/stretchr/testify/assert"
 	require "github.com/stretchr/testify/require"
-	"strings"
-	"sync"
 )
 
 func Test_Sessions(t *testing.T) {
@@ -293,20 +291,10 @@ func Test_Chat(t *testing.T) {
 
 func Test_ChatAnnotations(t *testing.T) {
 	// What the system says of a message is the server's, so a client's
-	// annotation isn't kept, and what the person sends is passed on, such as
-	// to the session's own chats, before its model replies
+	// annotation isn't kept
 	provider, err := eliza.New()
 	require.NoError(t, err)
-	var mu sync.Mutex
-	var prompted []string
-	prompts := func(_ context.Context, session uuid.UUID, messages []llm.Message) {
-		mu.Lock()
-		defer mu.Unlock()
-		for _, message := range messages {
-			prompted = append(prompted, session.String()+": "+message.Text())
-		}
-	}
-	server := test.NewServer(t, test.NewRegistry(t, []llm.Provider{provider}, registry.WithSessionStore(test.NewSessionStore()), registry.WithPrompts(prompts)))
+	server := test.NewServer(t, test.NewRegistry(t, []llm.Provider{provider}, registry.WithSessionStore(test.NewSessionStore())))
 
 	var session schema.Session
 	require.Equal(t, http.StatusCreated, do(t, server, http.MethodPost, "llm/session", map[string]any{"model": eliza.ModelName}, &session))
@@ -321,14 +309,4 @@ func Test_ChatAnnotations(t *testing.T) {
 	require.NotEmpty(t, messages.Body)
 	assert.Empty(t, messages.Body[0].Annotations(), "a client's annotation isn't kept")
 	assert.Equal(t, "Hello", messages.Body[0].Text())
-	// But not a request which isn't valid, such as one whose attachment
-	// isn't there, which isn't added to the session either
-	missing := map[string]any{"messages": []map[string]any{{"role": "user", "content": []map[string]any{
-		{"text": "Look"},
-		{"attachment": map[string]any{"url": "resource:///" + strings.Repeat("0", 64)}},
-	}}}}
-	assert.NotEqual(t, http.StatusOK, do(t, server, http.MethodPost, "llm/session/"+session.ID.String(), missing, nil))
-	mu.Lock()
-	defer mu.Unlock()
-	assert.Equal(t, []string{session.ID.String() + ": Hello"}, prompted)
 }
