@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"reflect"
 	"slices"
+	"strings"
 	"time"
 
 	// Packages
@@ -211,6 +212,7 @@ func (h *history) add(ctx context.Context, step []providerschema.Message, usage 
 // Returns how many messages' results were removed.
 func (h *history) removeResults(ctx context.Context, budget uint) (int, error) {
 	var removed int
+	calls := h.toolCalls()
 	for i := range h.entries {
 		if h.size() <= budget {
 			break
@@ -226,7 +228,7 @@ func (h *history) removeResults(ctx context.Context, budget uint) (int, error) {
 				continue
 			}
 			result := *block.ToolResult
-			result.Content, _ = json.Marshal(fmt.Sprintf("[the result, of %d bytes, was removed, to fit the model's context]", len(result.Content)))
+			result.Content, _ = json.Marshal(removedNote(result, calls[result.ID]))
 			message.Content[j].ToolResult = &result
 		}
 		tokens, err := h.measureMessage(ctx, message)
@@ -475,6 +477,48 @@ func schemaMessage(message llm.Message) (*providerschema.Message, bool) {
 	}
 	return nil, false
 }
+
+// toolCalls returns the calls of the tools, in the messages, by their
+// identifiers, so a result which is removed can say what it was of
+func (h *history) toolCalls() map[string]*providerschema.ToolCall {
+	calls := make(map[string]*providerschema.ToolCall)
+	for _, entry := range h.entries {
+		message, ok := schemaMessage(entry.message)
+		if !ok {
+			continue
+		}
+		for _, block := range message.Content {
+			if block.ToolCall != nil && block.ToolCall.ID != "" {
+				calls[block.ToolCall.ID] = block.ToolCall
+			}
+		}
+	}
+	return calls
+}
+
+// removedNote returns what's left of a tool's result which is removed: what
+// it was the result of, the tool, and its input, when its call is known, as
+// it was asked, so the model knows what it was, and can ask for it again
+func removedNote(result providerschema.ToolResult, call *providerschema.ToolCall) string {
+	of := "the tool"
+	if call != nil {
+		input := strings.Join(strings.Fields(string(call.Input)), " ")
+		if runes := []rune(input); len(runes) > maxNoteInput {
+			input = string(runes[:maxNoteInput]) + "…"
+		}
+		of = fmt.Sprintf("%s, with %s", call.Name, input)
+		if input == "" || input == "{}" || input == "null" {
+			of = call.Name
+		}
+	} else if result.Name != "" {
+		of = result.Name
+	}
+	return fmt.Sprintf("[removed, to fit the model's context: the result of %s, of %s. Call the tool again to see it, when calling it again only reads.]", of, byteSize(len(result.Content)))
+}
+
+// maxNoteInput is the most of a tool's input, in characters, which the note
+// of its removed result says
+const maxNoteInput = 200
 
 // byteSize returns a size, for people, such as 512 bytes, 30 KB or 1.5 MB,
 // in units of 1024
