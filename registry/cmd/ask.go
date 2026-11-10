@@ -276,6 +276,8 @@ type streamPrinter struct {
 	text     strings.Builder     // The text which replaces it, rendered as markdown
 	thinking bool                // Whether "Thinking…" is printed, which is replaced
 	thought  bool                // Whether the server said the model is thinking, so "Thinking…" isn't printed
+	pending  string              // "Thinking…", as it was printed, while it's all that's to be replaced
+	before   [2]string           // What was printed last, and its last piece, before "Thinking…"
 	progress bool                // Whether a tool's progress is printed, on a line which is replaced
 	last     llm.StreamType      // What was printed last
 	trailing string              // The last piece of text which was printed
@@ -361,18 +363,14 @@ func (p *streamPrinter) print(what llm.StreamType, text string) {
 		p.write(what, text, false)
 	case what == llm.StreamThinking:
 		// That the model is thinking, once, which is replaced
-		if !p.thinking && !p.thought {
-			p.thinking = true
-			p.write(what, "\x1b[2m"+thinkingLine+"\x1b[0m\n", true)
+		if !p.thought {
+			p.printThinking()
 		}
 	case what == llm.StreamLog && strings.TrimSpace(text) == schema.ThinkingLog:
 		// The server's line that the model is thinking is the printer's own,
 		// which is replaced, once, rather than kept
 		p.thought = true
-		if !p.thinking {
-			p.thinking = true
-			p.write(llm.StreamThinking, "\x1b[2m"+thinkingLine+"\x1b[0m\n", true)
-		}
+		p.printThinking()
 	case what == llm.StreamLog:
 		// What's printed before it is replaced first, so it's kept after it,
 		// and it's on a line of its own, even when what's before it isn't
@@ -384,9 +382,53 @@ func (p *streamPrinter) print(what llm.StreamType, text string) {
 		}
 		p.write(what, line, false)
 	default:
+		// "Thinking…" is cleared as the text starts, so it isn't kept, when
+		// the text can't be replaced, such as when it has tabs, or is taller
+		// than the terminal
+		p.clearThinking()
 		p.text.WriteString(text)
 		p.write(what, text, true)
 	}
+}
+
+// printThinking prints "Thinking…", once, to be replaced by the text which
+// follows it, or cleared, as it starts
+func (p *streamPrinter) printThinking() {
+	if p.thinking {
+		return
+	}
+	p.thinking = true
+	p.before = [2]string{string(p.last), p.trailing}
+	start := p.live.Len()
+	p.write(llm.StreamThinking, "\x1b[2m"+thinkingLine+"\x1b[0m\n", true)
+	if start == 0 {
+		p.pending = p.live.String()
+	}
+}
+
+// clearThinking clears "Thinking…", from the row it was printed on, when
+// it's all that's to be replaced, and what was printed before it is last
+// again, so the text follows it as it would have
+func (p *streamPrinter) clearThinking() {
+	pending := p.pending
+	p.pending = ""
+	if pending == "" || p.live.String() != pending {
+		return
+	}
+	p.erase(pending)
+	p.live.Reset()
+	p.thinking = false
+	p.last, p.trailing = llm.StreamType(p.before[0]), p.before[1]
+}
+
+// erase clears the rows which the text was printed on, from the first, as
+// the cursor is at the end of it
+func (p *streamPrinter) erase(text string) {
+	fmt.Fprint(p.w, "\r")
+	if rows := rowsOf(text, p.width); rows > 1 {
+		fmt.Fprintf(p.w, "\x1b[%dA", rows-1)
+	}
+	fmt.Fprint(p.w, "\x1b[J")
 }
 
 // printProgress prints the tool's progress, dimmed, on a line of its own,
@@ -439,6 +481,7 @@ func (p *streamPrinter) replace() {
 		p.live.Reset()
 		p.text.Reset()
 		p.thinking = false
+		p.pending = ""
 	}()
 	if p.render == nil || p.live.Len() == 0 {
 		return
