@@ -38,7 +38,7 @@ type speakInput struct {
 	Model        string `json:"model,omitempty" help:"Model which speaks the text, by its name, such as ollama:phonon:latest, or the default, when it's omitted" optional:""`
 	Name         string `json:"name,omitempty" help:"Name of the audio's file, such as morning-briefing, which its format's extension is added to, or speech, when it's omitted" optional:""`
 	Title        string `json:"title,omitempty" help:"Title of the audio, for people, such as Ode to David, which it's shown, and played, with" optional:""`
-	Format       string `json:"format,omitempty" enum:"voice-note" help:"voice-note, for a voice note, such as for a chat on Telegram, which is Ogg Opus, or the model's own format, when it's omitted" optional:""`
+	Format       string `json:"format,omitempty" enum:"voice-note" help:"voice-note, for a voice note, which is Ogg Opus, which is to be given whenever the person is writing on Telegram, as the annotation of their message says, or the model's own format, when it's omitted" optional:""`
 }
 
 // speakOutput is what the speak tool returns with the audio, when it isn't
