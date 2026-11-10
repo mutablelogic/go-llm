@@ -67,6 +67,22 @@ type ModelList struct {
 	Body  []*Model `json:"body,omitempty"`
 }
 
+// VoiceListRequest selects a model's voices: from an offset, and at most a
+// limit of them
+type VoiceListRequest struct {
+	Offset uint  `json:"offset,omitempty" help:"Voices to skip" example:"0" optional:""`
+	Limit  *uint `json:"limit,omitempty" help:"Most voices to return" example:"10" optional:""`
+}
+
+// VoiceList is the voices a request selects, of the model, by its
+// canonical name, in the order its provider lists them, and how many it has
+type VoiceList struct {
+	VoiceListRequest
+	Model string      `json:"model" help:"The model, by its canonical name" example:"openai:gpt-4o-mini-tts"`
+	Count uint        `json:"count" help:"How many voices the model has" example:"13"`
+	Body  []llm.Voice `json:"body,omitempty" help:"The voices, each chosen by its id"`
+}
+
 ///////////////////////////////////////////////////////////////////////////////
 // GLOBALS
 
@@ -171,4 +187,16 @@ func tokens(limit *uint) string {
 		return ""
 	}
 	return strconv.FormatUint(uint64(*limit), 10)
+}
+
+// Query returns the request as the query of a URL
+func (r VoiceListRequest) Query() url.Values {
+	values := url.Values{}
+	if r.Offset > 0 {
+		values.Set("offset", strconv.FormatUint(uint64(r.Offset), 10))
+	}
+	if r.Limit != nil {
+		values.Set("limit", strconv.FormatUint(uint64(*r.Limit), 10))
+	}
+	return values
 }

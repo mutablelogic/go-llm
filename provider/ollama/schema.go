@@ -21,6 +21,7 @@ type apiModel struct {
 	Details      apiModelDetails            `json:"details"`
 	Capabilities []string                   `json:"capabilities,omitempty"`
 	Info         map[string]json.RawMessage `json:"model_info,omitempty"`
+	Voices       []string                   `json:"voices,omitempty"`
 }
 
 // apiModelDetails is the "details" object within apiModel.

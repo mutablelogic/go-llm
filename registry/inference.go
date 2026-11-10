@@ -153,32 +153,6 @@ func (r *Registry) Translate(ctx context.Context, model llm.Model, audio llm.Res
 	return transcript, usage, nil
 }
 
-// Speak returns the text, spoken, as audio, from the model's provider,
-// which must be in the registry, and speak text. Returns ErrNotImplemented
-// when the model is known not to speak, and the provider's error as
-// providerErr does.
-func (r *Registry) Speak(ctx context.Context, model llm.Model, text string, opts ...llm.Opt) (_ llm.Resource, _ llm.Usage, err error) {
-	ctx, endSpan := otel.StartSpan(r.tracer, ctx, "llm.registry.Speak",
-		attribute.String("arg.model", r.modelName(model)),
-		attribute.Int("arg.text", len(text)),
-	)
-	defer func() { endSpan(err) }()
-
-	speaker, err := capability[llm.Speaker](r, model, "speak text")
-	if err != nil {
-		return nil, llm.Usage{}, err
-	} else if err := can(model, model.Capabilities().SpeechOutput, "speak text"); err != nil {
-		return nil, llm.Usage{}, err
-	}
-	start := time.Now()
-	audio, usage, err := speaker.Speak(ctx, model, text, opts...)
-	usage = timed(usage, start)
-	if err != nil {
-		return nil, llm.Usage{}, providerErr(err)
-	}
-	return audio, usage, nil
-}
-
 // Illustrate returns the images the model makes from the prompt, or by
 // changing, or combining, the images, which can refer to resources, by
 // their URIs, as the prompt says, from the model's provider, which must be
