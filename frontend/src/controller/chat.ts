@@ -11,7 +11,6 @@
 import { chat, createSession, deleteSession, getSession, listMessages, listSessions, setStatus, updateSession, compactSession } from '../api/session';
 import { getDetails } from '../api/memory';
 import { listModels } from '../api/model';
-import ShrinkScreen16 from '@carbon/icons/es/shrink-screen/16.js';
 import WarningAlt16 from '@carbon/icons/es/warning--alt/16.js';
 import iconLoader from '@carbon/web-components/es/globals/internal/icon-loader.js';
 import { html, nothing } from 'lit';
@@ -141,13 +140,12 @@ export class ChatController {
         });
         views.page?.addEventListener(ChatPage.eventNew, () => void this.newChat());
         views.page?.addEventListener(ChatPage.eventPreferences, () => void this.edit());
+        views.page?.addEventListener(ChatPage.eventCompact, () => void this.compact());
         views.page?.addEventListener(ChatPage.eventDelete, () => void this.delete());
         views.view?.addEventListener(Welcome.eventNew, () => void this.newChat());
         views.view?.addEventListener(Welcome.eventProvider, () => {
             location.hash = routeHref('models');
         });
-        views.list?.addEventListener(SessionList.eventDelete, () => void this.delete());
-        views.list?.addEventListener(SessionList.eventEdit, () => void this.edit());
         views.view?.addEventListener(ChatView.eventEarlier, () => void this.loadEarlier());
         views.create?.addEventListener(NewSession.eventSave, (e) => void this.save((e as CustomEvent<SessionMeta>).detail));
         views.view?.addEventListener(ChatView.eventSend, (e) => void this.send((e as CustomEvent<string>).detail));
@@ -512,10 +510,10 @@ export class ChatController {
         const limit = session.model ? this.limits.get(session.model) : undefined;
         const memory = sessionMemory(session, limit);
         if (memory) {
-            // How full its memory is, marked when it's nearly full, and the
-            // button which compacts it, beside it
+            // How full its memory is, marked when it's nearly full, which
+            // the Edit menu compacts
             const nearlyFull = (sessionMemoryPercent(session, limit) ?? 0) >= memoryWarning;
-            parts.push(html`<span class="memory">${memory}${nearlyFull ? html`<span class="nearly-full" title="Its memory is nearly full, so its earlier messages are summarised soon">${iconLoader(WarningAlt16)}</span>` : nothing}${html`<button class="compact" type="button" title="Compact: summarise its earlier messages, which are kept, but no longer sent" aria-label="Compact the conversation" @click=${() => void this.compact()}>${iconLoader(ShrinkScreen16)}</button>`}</span>`);
+            parts.push(html`<span class="memory">${memory}${nearlyFull ? html`<span class="nearly-full" title="Its memory is nearly full, so its earlier messages are summarised soon">${iconLoader(WarningAlt16)}</span>` : nothing}</span>`);
         }
         if (session.status === 'thinking') {
             parts.push('thinking…');

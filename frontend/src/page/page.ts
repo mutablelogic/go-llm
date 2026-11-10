@@ -73,8 +73,7 @@ export class Page extends LitElement {
         }
 
         /* In a description, an icon, such as that a conversation's memory is
-           nearly full, and a small button beside it, such as to compact it,
-           are in its colour, so they're seen, but aren't loud */
+           nearly full, is in its colour, so it's seen, but isn't loud */
         p svg {
             vertical-align: -3px;
             fill: currentColor;
@@ -84,20 +83,6 @@ export class Page extends LitElement {
             margin-left: 0.25rem;
         }
 
-        p button {
-            margin: 0 0 0 0.375rem;
-            padding: 0;
-            border: none;
-            background: none;
-            color: inherit;
-            line-height: 1;
-            cursor: pointer;
-            opacity: 0.8;
-        }
-
-        p button:hover, p button:focus-visible {
-            opacity: 1;
-        }
     `;
 
     render() {

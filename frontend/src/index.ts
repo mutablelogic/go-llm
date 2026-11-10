@@ -47,7 +47,6 @@ import { OutcomesController } from './controller/outcomes';
 import { StorageController } from './controller/storage';
 import { ResourcesController } from './controller/resources';
 import { ChatPage } from './page/chat-page';
-import { SessionList } from './component/session-list';
 import { Router, routeHref } from './router';
 
 // Errors, and other notifications, are shown as toasts
@@ -85,14 +84,13 @@ const chat = new ChatController({
 // The outcomes of the events of the chat which is open, such as heartbeats
 // which fired, in a panel, which its Events action opens
 const outcomes = new OutcomesController(document.querySelector('llm-event-view'), notifications);
-// It's opened by the list's Events action, or the page's Tasks
+// It's opened by the Edit menu's Tasks
 const openOutcomes = () => {
     const session = chat.sessionID();
     if (session) {
         outcomes.open(session);
     }
 };
-document.querySelector('llm-session-list')?.addEventListener(SessionList.eventEvents, openOutcomes);
 document.querySelector('llm-chat-page')?.addEventListener(ChatPage.eventTasks, openOutcomes);
 
 // The models, and the tools, each in a table, with the one which is clicked
@@ -146,11 +144,11 @@ const events = new EventsController(notifications)
     .on({ schema: 'llm', table: 'event' }, (event) => {
         void outcomes.refresh();
 
-        // The Events action of the chat which is open is red for a few
-        // seconds, when an event for it is created
+        // Edit is marked for a few seconds, when an event for the chat which
+        // is open is created
         const session = (event?.data as { session?: string } | undefined)?.session;
         if (event?.action === 'create' && session && session === chat.sessionID()) {
-            document.querySelector('llm-session-list')?.alert();
+            document.querySelector('llm-chat-page')?.alert();
         }
     })
     .onShutdown(() => chat.stopReplies())

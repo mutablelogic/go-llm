@@ -14,15 +14,11 @@ import { memoryWarning, sessionMemory, sessionMemoryPercent, type Session } from
 import { formatAgo, formatTime } from '../format';
 import { MinuteController } from './minute';
 import iconLoader from '@carbon/web-components/es/globals/internal/icon-loader.js';
-import TrashCan16 from '@carbon/icons/es/trash-can/16.js';
-import Edit16 from '@carbon/icons/es/edit/16.js';
-import Notification16 from '@carbon/icons/es/notification/16.js';
 import WarningAlt16 from '@carbon/icons/es/warning--alt/16.js';
 
 // Carbon components
 import '@carbon/web-components/es/components/skeleton-text/index.js';
 import '@carbon/web-components/es/components/tag/tag.js';
-import '@carbon/web-components/es/components/icon-button/index.js';
 
 @customElement('llm-session-list')
 export class SessionList extends LitElement {
@@ -30,11 +26,6 @@ export class SessionList extends LitElement {
     // is the session
     static readonly eventSelect = 'llm-session-select';
 
-    // The names of the events fired by the actions of the session which is
-    // open, whose detail is the session
-    static readonly eventEvents = 'llm-session-events';
-    static readonly eventEdit = 'llm-session-edit';
-    static readonly eventDelete = 'llm-session-delete';
 
     // The sessions, which are undefined while they're loading
     @property({ attribute: false })
@@ -52,25 +43,6 @@ export class SessionList extends LitElement {
     // Whether the server can't be reached
     @property({ type: Boolean, reflect: true })
     unavailable = false;
-
-    // Whether the Events action is red, as an event for the session which is
-    // open was just created, which it is for a few seconds
-    @property({ type: Boolean })
-    alerted = false;
-
-    // How long the Events action is red, and the timer which ends it
-    static readonly alertDuration = 5000;
-    private alertTimer?: ReturnType<typeof setTimeout>;
-
-    // alert makes the Events action red, for a few seconds, as an event for
-    // the session which is open was just created
-    alert() {
-        this.alerted = true;
-        clearTimeout(this.alertTimer);
-        this.alertTimer = setTimeout(() => {
-            this.alerted = false;
-        }, SessionList.alertDuration);
-    }
 
     static styles = css`
         :host {
@@ -117,16 +89,6 @@ export class SessionList extends LitElement {
         button.session:focus-visible {
             outline: 2px solid var(--cds-focus);
             outline-offset: -2px;
-        }
-
-        .actions {
-            display: flex;
-            flex-shrink: 0;
-            padding-right: 0.25rem;
-        }
-
-        .alerted {
-            color: var(--cds-support-error);
         }
 
         .model {
@@ -204,35 +166,10 @@ export class SessionList extends LitElement {
                         ${memory ? html` · ${memory}` : nothing}${nearlyFull ? html`<span class="nearly-full" title="Its memory is nearly full, so its earlier messages are summarised soon">${iconLoader(WarningAlt16)}</span>` : nothing}
                     </span>
                 </button>
-                ${selected ? this.renderActions(session) : nothing}
             </li>
         `;
     }
 
-    // renderActions returns the actions of the session which is open: its
-    // events, which are red as one was just created, editing it, and
-    // deleting it, unless it's replying, of which an event's session has only
-    // deleting it
-    private renderActions(session: Session) {
-        const action = (name: string, label: string, icon: unknown, alerted = false, disabled = false) => html`
-            <cds-icon-button kind="ghost" size="sm" align="bottom-end" ?disabled=${disabled}
-                @click=${() => this.dispatchEvent(new CustomEvent(name, { detail: session }))}>
-                <span slot="icon" class=${alerted ? 'alerted' : ''}>${iconLoader(icon as never)}</span>
-                <span slot="tooltip-content">${label}</span>
-            </cds-icon-button>
-        `;
-        return html`
-            <div class="actions">
-                ${session.event ? nothing : html`
-                    ${action(SessionList.eventEvents, 'Events', Notification16, this.alerted)}
-                    ${action(SessionList.eventEdit, 'Edit conversation', Edit16)}
-                `}
-                ${session.status === 'replying' || session.status === 'thinking'
-                    ? action(SessionList.eventDelete, "It can't be deleted while it's replying", TrashCan16, false, true)
-                    : action(SessionList.eventDelete, 'Delete conversation', TrashCan16)}
-            </div>
-        `;
-    }
 }
 
 declare global {
