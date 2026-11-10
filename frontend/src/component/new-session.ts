@@ -340,7 +340,9 @@ export class NewSession extends Panel<NewSessionForm> {
         const model = this.models?.find((model) => model.canonical === this.select?.value);
         const title = this.titleInput?.value.trim() ?? '';
         const system = this.system?.value.trim() ?? '';
-        const tools = cannot(model, 'tools') ? [] : this.picker?.value ?? [];
+        // Without the picker, as the model can't call tools, the tools are
+        // as they were, so they're there again with a model which can
+        const tools = this.picker?.value ?? this.startTools;
         const trace = this.traceBox?.checked === true;
 
         // The options which are set, rather than the model's own
