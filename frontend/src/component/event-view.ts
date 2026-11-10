@@ -162,7 +162,7 @@ export class EventView extends Panel<string> {
     }
 
     protected renderSubtitle() {
-        return "This chat's reminders, and what your assistant replied to them, and to other events";
+        return "This conversation's reminders, and what your assistant replied to them, and to other events";
     }
 
     protected renderBody() {
@@ -184,7 +184,7 @@ export class EventView extends Panel<string> {
         return html`
             <section>
                 <h3>Reminders</h3>
-                ${this.heartbeats.length === 0 ? html`<p class="empty">None are scheduled. Ask in the chat for a reminder, or a briefing, to schedule one.</p>` : html`
+                ${this.heartbeats.length === 0 ? html`<p class="empty">None are scheduled. Ask in the conversation for a reminder, or a briefing, to schedule one.</p>` : html`
                     <table>
                         <thead><tr><th>Reminder</th><th>When</th><th></th></tr></thead>
                         <tbody>${this.heartbeats.map((heartbeat) => html`
@@ -222,7 +222,7 @@ export class EventView extends Panel<string> {
         } else if (!this.outcomes) {
             return html`<cds-skeleton-text paragraph line-count="4"></cds-skeleton-text>`;
         } else if (this.outcomes.length === 0) {
-            return html`<p class="empty">No events yet. When a reminder scheduled in this chat fires, your assistant's reply is shown here.</p>`;
+            return html`<p class="empty">No events yet. When a reminder scheduled in this conversation fires, your assistant's reply is shown here.</p>`;
         }
         return html`
             <table>

@@ -78,7 +78,7 @@ export class OutcomesController {
                 return;
             }
             this.view.error = error instanceof Error ? error.message : String(error);
-            this.notifications.error("The chat's events couldn't be loaded", error);
+            this.notifications.error("The conversation's events couldn't be loaded", error);
         }
     }
 

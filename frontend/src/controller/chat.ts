@@ -203,7 +203,7 @@ export class ChatController {
             this.sessions = (await listSessions(0, ChatController.limit)).body ?? [];
         } catch (error) {
             this.sessions ??= [];
-            this.notifications.error("Chats couldn't be loaded", error);
+            this.notifications.error("Conversations couldn't be loaded", error);
         }
         if (this.sessions.length === 0) {
             void this.loadWelcome();
@@ -353,10 +353,10 @@ export class ChatController {
                 this.storage.delete('chat', id);
             }
             if (error instanceof ApiError && error.code === 404) {
-                this.notifications.push({ kind: 'info', title: 'The chat was deleted' });
+                this.notifications.push({ kind: 'info', title: 'The conversation was deleted' });
                 location.hash = routeHref('chat');
             } else {
-                this.notifications.error("The chat couldn't be loaded", error);
+                this.notifications.error("The conversation couldn't be loaded", error);
             }
         }
         this.render();
@@ -413,7 +413,7 @@ export class ChatController {
                 // The server is stopping, so the reply was stopped, and the
                 // question is put back, in its chat, now, when it's open, or
                 // once it's opened, to send once the server is back
-                this.notifications.push({ kind: 'info', title: 'The reply was stopped', subtitle: 'The server is stopping, so your question is back in its chat, to send again once it is back' });
+                this.notifications.push({ kind: 'info', title: 'The reply was stopped', subtitle: 'The server is stopping, so your question is back in its conversation, to send again once it is back' });
                 if (this.session?.id === session.id) {
                     this.views.view?.restore(text);
                 } else if (text) {
@@ -425,7 +425,7 @@ export class ChatController {
                 this.views.view?.restore(text);
                 this.resources.attach(session.id, attachments);
             } else {
-                this.notifications.push({ kind: 'error', title: "A question in another chat couldn't be sent", subtitle: `${error instanceof Error ? error.message : String(error)}: ${question}` });
+                this.notifications.push({ kind: 'error', title: "A question in another conversation couldn't be sent", subtitle: `${error instanceof Error ? error.message : String(error)}: ${question}` });
                 this.resources.attach(session.id, attachments);
             }
             pending.stale = true;
@@ -472,7 +472,7 @@ export class ChatController {
     private describe(): string {
         const session = this.session;
         if (!session) {
-            return 'Choose a chat, or start a new one';
+            return 'Choose a conversation, or start a new one';
         }
         // The model, when the heading is the title, rather than the model
         const parts: string[] = [];
@@ -575,9 +575,9 @@ export class ChatController {
         }
         try {
             await compactSession(session.id);
-            this.notifications.push({ kind: 'info', title: 'Compacting the chat', subtitle: 'Its earlier messages are being summarised' });
+            this.notifications.push({ kind: 'info', title: 'Compacting the conversation', subtitle: 'Its earlier messages are being summarised' });
         } catch (error) {
-            this.notifications.error("The chat couldn't be compacted", error);
+            this.notifications.error("The conversation couldn't be compacted", error);
         }
     }
 
@@ -633,7 +633,7 @@ export class ChatController {
             this.render();
             void this.refresh();
         } catch (error) {
-            this.notifications.error("The chat couldn't be changed", error);
+            this.notifications.error("The conversation couldn't be changed", error);
             if (create) {
                 create.creating = false;
             }
@@ -665,7 +665,7 @@ export class ChatController {
             this.sessions = [session, ...(this.sessions ?? [])];
             location.hash = routeHref('chat', session.id);
         } catch (error) {
-            this.notifications.error("The chat couldn't be started", error);
+            this.notifications.error("The conversation couldn't be started", error);
             if (create) {
                 create.creating = false;
             }
@@ -675,7 +675,7 @@ export class ChatController {
     // delete deletes the session which is open, once it's confirmed
     private async delete() {
         const session = this.session;
-        if (!session || !confirm('Delete this chat, and its messages?')) {
+        if (!session || !confirm('Delete this conversation, and its messages?')) {
             return;
         }
         try {
@@ -685,7 +685,7 @@ export class ChatController {
             this.sessions = this.sessions?.filter((other) => other.id !== session.id);
             location.hash = routeHref('chat');
         } catch (error) {
-            this.notifications.error("The chat couldn't be deleted", error);
+            this.notifications.error("The conversation couldn't be deleted", error);
         }
     }
 

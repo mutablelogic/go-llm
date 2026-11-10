@@ -179,7 +179,7 @@ export class ResourcePanel extends Panel<string> {
         if (!this.resources) {
             return html`<cds-skeleton-text paragraph line-count="4"></cds-skeleton-text>`;
         } else if (this.resources.length === 0) {
-            return html`<p class="none">This chat has no files yet.</p>`;
+            return html`<p class="none">This conversation has no files yet.</p>`;
         }
         return html`
             <h3>${this.count === 1 ? '1 file' : `${this.count.toLocaleString()} files`}</h3>

@@ -449,7 +449,7 @@ export class ChatView extends LitElement {
         if (!this.session) {
             return this.welcome
                 ? html`<llm-welcome .providers=${this.welcome.providers} .models=${this.welcome.models}></llm-welcome>`
-                : html`<div class="none">Choose a chat, or start a new one</div>`;
+                : html`<div class="none">Choose a conversation, or start a new one</div>`;
         }
         // An event's session, such as a heartbeat's, has what it did each
         // time it ran, and isn't chatted in
