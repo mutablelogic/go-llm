@@ -1,9 +1,9 @@
 package llm
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
-	"errors"
 	"strings"
 
 	// Packages
@@ -22,7 +22,7 @@ import (
 type Agents interface {
 	ListAgents(ctx context.Context, req registryschema.AgentListRequest) (*registryschema.AgentList, error)
 	GetAgent(ctx context.Context, name string) (*registryschema.Agent, error)
-	CreateAgent(ctx context.Context, meta registryschema.AgentMeta) (*registryschema.Agent, bool, error)
+	InsertAgent(ctx context.Context, meta registryschema.AgentMeta) (*registryschema.Agent, error)
 	UpdateAgent(ctx context.Context, name string, meta registryschema.AgentMeta) (*registryschema.Agent, error)
 }
 
@@ -43,16 +43,16 @@ var _ gollm.Tool = (*agentTool)(nil)
 // agentInput is what the agent tool is asked to do: list the agents, get
 // one, create one, or update one, with the fields to set
 type agentInput struct {
-	Action      string         `json:"action" enum:"list,get,create,update" help:"list the agents which can be changed, get one, by its name, create one, or update one, with the fields to change"`
-	Name        string         `json:"name,omitempty" help:"Name of the agent, an identifier, such as summarize_inbox, which it's called by, as a tool, agent:<name>, for get, create and update" optional:""`
-	Title       *string        `json:"title,omitempty" help:"Title of the agent, for people" optional:""`
-	Description *string        `json:"description,omitempty" help:"What the agent does, for people, and the models which call it as a tool" optional:""`
-	Input       map[string]any `json:"input,omitempty" help:"JSON schema of the agent's input, an object, whose properties its prompt uses, such as {\"type\":\"object\",\"properties\":{\"text\":{\"type\":\"string\"}},\"required\":[\"text\"]}" optional:""`
-	Prompt      *string        `json:"prompt,omitempty" help:"Go template of the message to the agent's model, executed with its input, such as Summarise this: {{ .text }}" optional:""`
-	System      *string        `json:"system,omitempty" help:"System prompt of the agent's model, such as how it acts" optional:""`
-	Model       *string        `json:"model,omitempty" help:"Model of the agent, which must call tools, or none, for the model of the conversation which calls it, as llm:models lists them" optional:""`
-	Tools       []string       `json:"tools,omitempty" help:"Tools the agent calls, such as weatherapi:*, or none" optional:""`
-	Schema      map[string]any `json:"schema,omitempty" help:"JSON schema of the agent's reply, or text when it's omitted" optional:""`
+	Action      string          `json:"action" enum:"list,get,create,update" help:"list the agents which can be changed, get one, by its name, create one, or update one, with the fields to change"`
+	Name        string          `json:"name,omitempty" help:"Name of the agent, an identifier, such as summarize_inbox, which it's called by, as a tool, agent:<name>, for get, create and update" optional:""`
+	Title       *string         `json:"title,omitempty" help:"Title of the agent, for people" optional:""`
+	Description *string         `json:"description,omitempty" help:"What the agent does, for people, and the models which call it as a tool" optional:""`
+	Input       *map[string]any `json:"input,omitempty" help:"JSON schema of the agent's input, an object, whose properties its prompt uses, such as {\"type\":\"object\",\"properties\":{\"text\":{\"type\":\"string\"}},\"required\":[\"text\"]}, or null, to remove it, in an update" optional:""`
+	Prompt      *string         `json:"prompt,omitempty" help:"Go template of the message to the agent's model, executed with its input, such as Summarise this: {{ .text }}" optional:""`
+	System      *string         `json:"system,omitempty" help:"System prompt of the agent's model, such as how it acts" optional:""`
+	Model       *string         `json:"model,omitempty" help:"Model of the agent, which must call tools, or none, for the model of the conversation which calls it, as llm:models lists them" optional:""`
+	Tools       []string        `json:"tools,omitempty" help:"Tools the agent calls, such as weatherapi:*, or none" optional:""`
+	Schema      *map[string]any `json:"schema,omitempty" help:"JSON schema of the agent's reply, which is text without one, or null, to remove it, in an update" optional:""`
 }
 
 // agentSummary is an agent, as it's listed
@@ -83,8 +83,11 @@ func (*agentTool) InputSchema() *jsonschema.Schema {
 // Run does what the input asks, of the agents of the agent namespace
 func (t *agentTool) Run(ctx context.Context, input json.RawMessage) (any, error) {
 	var req agentInput
+	var fields map[string]json.RawMessage
 	if len(input) > 0 {
 		if err := json.Unmarshal(input, &req); err != nil {
+			return nil, gollm.ErrBadParameter.With(err.Error())
+		} else if err := json.Unmarshal(input, &fields); err != nil {
 			return nil, gollm.ErrBadParameter.With(err.Error())
 		}
 	}
@@ -114,17 +117,9 @@ func (t *agentTool) Run(ctx context.Context, input json.RawMessage) (any, error)
 			return nil, gollm.ErrBadParameter.With("an agent needs a name")
 		} else if strings.Contains(name, ":") {
 			return nil, gollm.ErrForbidden.Withf("agents are only created in the %s namespace, so %q can't be", registryschema.AgentNamespace, name)
-		} else if _, err := agents.GetAgent(ctx, name); err == nil {
-			return nil, gollm.ErrConflict.Withf("agent %q exists, so it's updated, rather than created", name)
-		} else if !errors.Is(err, gollm.ErrNotFound) {
-			return nil, err
 		}
 		toolkit.Logf(ctx, "Creating agent %s", name)
-		meta, err := req.meta(name)
-		if err != nil {
-			return nil, err
-		}
-		agent, _, err := agents.CreateAgent(ctx, meta)
+		agent, err := agents.InsertAgent(ctx, req.meta(name, fields, false))
 		if err != nil {
 			return nil, err
 		}
@@ -134,11 +129,7 @@ func (t *agentTool) Run(ctx context.Context, input json.RawMessage) (any, error)
 			return nil, err
 		}
 		toolkit.Logf(ctx, "Updating agent %s", name)
-		meta, err := req.meta("")
-		if err != nil {
-			return nil, err
-		}
-		agent, err := agents.UpdateAgent(ctx, name, meta)
+		agent, err := agents.UpdateAgent(ctx, name, req.meta("", fields, true))
 		if err != nil {
 			return nil, err
 		}
@@ -151,25 +142,22 @@ func (t *agentTool) Run(ctx context.Context, input json.RawMessage) (any, error)
 // PRIVATE METHODS
 
 // meta returns the definition the input sets, with the name, when it has
-// one, which an update hasn't
-func (req agentInput) meta(name string) (registryschema.AgentMeta, error) {
+// one, which an update hasn't. The schemas are the input's own JSON, so
+// null, which removes one in an update, isn't taken as leaving it out; in
+// a create, null is none.
+func (req agentInput) meta(name string, fields map[string]json.RawMessage, update bool) registryschema.AgentMeta {
 	var meta registryschema.AgentMeta
 	meta.Name, meta.Title, meta.Description, meta.Prompt = name, req.Title, req.Description, req.Prompt
 	meta.System, meta.Model, meta.Tools = req.System, req.Model, req.Tools
-	for _, field := range []struct {
-		schema map[string]any
-		raw    *json.RawMessage
-	}{{req.Input, &meta.Input}, {req.Schema, &meta.Schema}} {
-		if field.schema == nil {
-			continue
+	schema := func(key string) json.RawMessage {
+		raw := bytes.TrimSpace(fields[key])
+		if len(raw) == 0 || (!update && string(raw) == "null") {
+			return nil
 		}
-		data, err := json.Marshal(field.schema)
-		if err != nil {
-			return meta, gollm.ErrBadParameter.With(err.Error())
-		}
-		*field.raw = data
+		return raw
 	}
-	return meta, nil
+	meta.Input, meta.Schema = schema("input"), schema("schema")
+	return meta
 }
 
 // listAgents returns the agents which are listed, every page of them

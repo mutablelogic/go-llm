@@ -3,6 +3,9 @@ package registry_test
 import (
 	"context"
 	"encoding/json"
+	"errors"
+	"sync"
+	"sync/atomic"
 	"testing"
 
 	// Packages
@@ -265,5 +268,38 @@ func Test_Agents(t *testing.T) {
 		assert.ErrorIs(t, err, llm.ErrServiceUnavailable)
 		_, err = r.DeleteAgent(ctx, "segment")
 		assert.ErrorIs(t, err, llm.ErrServiceUnavailable)
+	})
+
+	t.Run("Insert", func(t *testing.T) {
+		// Inserting never replaces: of many at once, with one name, only one
+		// is created
+		r, store := newRegistry(t)
+		var wg sync.WaitGroup
+		var created, conflicts atomic.Int32
+		for i := 0; i < 8; i++ {
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				_, err := r.InsertAgent(ctx, segment())
+				switch {
+				case err == nil:
+					created.Add(1)
+				case errors.Is(err, llm.ErrConflict):
+					conflicts.Add(1)
+				}
+			}()
+		}
+		wg.Wait()
+		assert.Equal(t, int32(1), created.Load())
+		assert.Equal(t, int32(7), conflicts.Load())
+		agent, err := store.Get(ctx, "segment")
+		require.NoError(t, err)
+		assert.Equal(t, uint64(1), agent.Serial, "it wasn't replaced")
+
+		// Its definition is checked, as it's created
+		bad := segment()
+		bad.Name = "bad__name"
+		_, err = r.InsertAgent(ctx, bad)
+		assert.ErrorIs(t, err, llm.ErrBadParameter)
 	})
 }

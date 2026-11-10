@@ -53,10 +53,13 @@ func (a *agents) GetAgent(_ context.Context, ref string) (*registryschema.Agent,
 	return nil, llm.ErrNotFound.Withf("agent %q", name)
 }
 
-func (a *agents) CreateAgent(_ context.Context, meta registryschema.AgentMeta) (*registryschema.Agent, bool, error) {
+func (a *agents) InsertAgent(_ context.Context, meta registryschema.AgentMeta) (*registryschema.Agent, error) {
+	if _, exists := a.byName[meta.Name]; exists {
+		return nil, llm.ErrConflict.Withf("agent %q exists", meta.Name)
+	}
 	agent := registryschema.Agent{AgentMeta: meta}
 	a.byName[meta.Name] = agent
-	return &agent, true, nil
+	return &agent, nil
 }
 
 func (a *agents) UpdateAgent(_ context.Context, name string, meta registryschema.AgentMeta) (*registryschema.Agent, error) {
@@ -150,6 +153,12 @@ func Test_Agent(t *testing.T) {
 		assert.Equal(t, "A haiku about {{ .topic }}", types.Value(haiku.Prompt))
 		assert.Equal(t, []string{"weatherapi:*"}, haiku.Tools)
 		assert.JSONEq(t, `{"type":"object","properties":{"topic":{"type":"string"}}}`, string(haiku.Input))
+		assert.Nil(t, haiku.Schema)
+
+		// Null, in a create, is none
+		_, err = run(`{"action":"create","name":"limerick","prompt":"A limerick","schema":null}`)
+		require.NoError(t, err)
+		assert.Nil(t, store.byName["limerick"].Schema)
 
 		_, err = run(`{"action":"create","name":"summarize","prompt":"x"}`)
 		assert.ErrorIs(t, err, llm.ErrConflict, "it exists, so it's updated")
@@ -166,6 +175,17 @@ func Test_Agent(t *testing.T) {
 		assert.Equal(t, "Be brief", types.Value(summarize.System))
 		assert.Equal(t, "Summarize", types.Value(summarize.Title), "fields not given are kept")
 		assert.Equal(t, "eliza", types.Value(summarize.Model))
+
+		// Null removes a schema, which leaving it out doesn't
+		_, err = run(`{"action":"update","name":"summarize","schema":{"type":"object"},"input":{"type":"object"}}`)
+		require.NoError(t, err)
+		_, err = run(`{"action":"update","name":"summarize","prompt":"Summarise"}`)
+		require.NoError(t, err)
+		assert.JSONEq(t, `{"type":"object"}`, string(store.byName["summarize"].Schema), "it's kept")
+		_, err = run(`{"action":"update","name":"summarize","schema":null}`)
+		require.NoError(t, err)
+		assert.Nil(t, store.byName["summarize"].Schema, "it's removed")
+		assert.JSONEq(t, `{"type":"object"}`, string(store.byName["summarize"].Input), "the other is kept")
 
 		_, err = run(`{"action":"update","name":"translate","model":"eliza"}`)
 		assert.ErrorIs(t, err, llm.ErrForbidden)
