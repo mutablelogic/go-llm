@@ -182,7 +182,7 @@ export class EventView extends Panel<string> {
     }
 
     protected renderSubtitle() {
-        return "This conversation's reminders, and what your assistant replied to them, and to other events";
+        return 'The tasks your assistant performs on schedule';
     }
 
     protected renderBody() {
