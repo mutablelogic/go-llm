@@ -38,9 +38,8 @@ type status struct {
 // GLOBALS
 
 // ThinkingLog is the line which is logged to a chat's stream, once, the
-// first time its model thinks, or its tools run, so a client can say so,
-// whether or not it shows the model's thinking
-const ThinkingLog = "Thinking"
+// first time its model thinks, or its tools run, as schema.ThinkingLog
+const ThinkingLog = schema.ThinkingLog
 
 // TypingTimeout is how long a session is typing, after a client last says
 // someone is, before it's idle, so a client which goes away doesn't leave

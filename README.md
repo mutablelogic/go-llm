@@ -119,7 +119,10 @@ llm chat                                        # in the terminal
 llm chat "Will it rain in Berlin tomorrow?"     # once
 llm session-messages
 llm sessions
+llm session-update --trace                      # show its thinking, and the tools it calls
 ```
+
+A chat shows what the tools log, and that the model is thinking. Its thinking, and the tools it calls and their results, are shown only when it's traced, in the terminal and the web UI. They're always kept.
 
 Connect a session to Telegram, to chat from your phone. Set `TELEGRAM_BOT_TOKEN`, give the session the `messaging` tools, and ask. You get a link to open, or a QR code in the web UI. See [Messaging](#messaging):
 

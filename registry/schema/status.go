@@ -33,6 +33,11 @@ type SessionEvent struct {
 ///////////////////////////////////////////////////////////////////////////////
 // GLOBALS
 
+// ThinkingLog is the line which is logged to a chat's stream, once, the
+// first time its model thinks, or its tools run, so a client can say so,
+// whether or not it shows the model's thinking
+const ThinkingLog = "Thinking"
+
 const (
 	SessionIdle     SessionStatus = "idle"     // Neither typing nor replying
 	SessionTyping   SessionStatus = "typing"   // Someone is typing a message

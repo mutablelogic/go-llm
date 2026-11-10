@@ -98,6 +98,9 @@ export interface Session {
     tools?: string[];
     opt?: Record<string, unknown>;
     schema?: unknown;
+    // Whether the chat shows the model's thinking, the tools it calls, and
+    // their results, which are always kept
+    trace?: boolean;
     usage?: SessionUsage;
     status?: SessionStatus;
     // Whether it's an event's session, such as a heartbeat's, which only the
@@ -113,6 +116,7 @@ export interface SessionMeta {
     system?: string;
     tools?: string[];
     opt?: Record<string, unknown>;
+    trace?: boolean;
 }
 
 // SessionList is a page of the sessions, and how many there are

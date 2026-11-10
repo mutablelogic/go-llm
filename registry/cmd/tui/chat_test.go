@@ -234,7 +234,7 @@ func Test_Wrap(t *testing.T) {
 		{MessageMeta: providerschema.MessageMeta{Sender: "user", Content: []providerschema.ContentBlock{{Text: types.Ptr(long)}}}},
 	}})
 	m.Update(tea.WindowSizeMsg{Width: 40, Height: 100})
-	m.debug = true
+	m.session.Trace = types.Ptr(true)
 	m.waiting = true
 	m.Update(streamMsg{llm.StreamThinking, "Thinking " + long})
 	m.Update(streamMsg{llm.StreamText, "Text " + long})
@@ -429,7 +429,7 @@ func Test_Logs(t *testing.T) {
 	// shown before the tools' results, once the reply is complete
 	id := uuid.New()
 	m, _ := newTestModel(fakeClient{}, &schema.Session{ID: id})
-	m.debug = true
+	m.session.Trace = types.Ptr(true)
 	m.waiting = true
 	m.session.Messages = append(m.session.Messages, providerschema.Message{MessageMeta: providerschema.MessageMeta{Sender: "user", Content: []providerschema.ContentBlock{{Text: types.Ptr("Lights on")}}}})
 	m.Update(streamMsg{llm.StreamLog, "call_service: Calling service domain=light service=turn_on"})
@@ -447,10 +447,10 @@ func Test_Logs(t *testing.T) {
 	assert.Less(t, logged, strings.Index(view, "← call_service"))
 }
 
-func Test_Debug(t *testing.T) {
-	// Without debugging, the model's thinking is shown as that it thought,
-	// and the tools it calls, and their results, aren't shown, and with it,
-	// they're shown, by their canonical names
+func Test_Trace(t *testing.T) {
+	// Untraced, the model's thinking, the tools it calls, and their results,
+	// aren't shown, though the server's line that it's thinking is, and
+	// traced, they're shown, by their canonical names
 	thought := providerschema.Message{MessageMeta: providerschema.MessageMeta{Sender: "assistant", Content: []providerschema.ContentBlock{
 		{Thinking: types.Ptr("Secret reasoning")},
 		{ToolCall: &providerschema.ToolCall{Name: "homeassistant__call_service", Input: json.RawMessage(`{}`)}},
@@ -463,16 +463,18 @@ func Test_Debug(t *testing.T) {
 
 	m, _ := newTestModel(fakeClient{}, session)
 	view := m.history.View()
-	assert.Contains(t, view, "Thinking…")
+	assert.NotContains(t, view, "Thinking")
 	assert.NotContains(t, view, "Secret reasoning")
 	assert.NotContains(t, view, "call_service")
 	assert.Contains(t, view, "The lamp is off")
 	m.waiting = true
+	m.Update(streamMsg{llm.StreamLog, schema.ThinkingLog})
 	m.Update(streamMsg{llm.StreamThinking, "Streamed reasoning"})
 	assert.NotContains(t, m.history.View(), "Streamed reasoning")
+	assert.Equal(t, 1, strings.Count(m.history.View(), "Thinking"), "the server's line, once, without one of its own")
 
 	m, _ = newTestModel(fakeClient{}, session)
-	m.debug = true
+	m.session.Trace = types.Ptr(true)
 	m.render()
 	view = m.history.View()
 	assert.Contains(t, view, "Secret reasoning")
@@ -551,7 +553,7 @@ func Test_LogsReloaded(t *testing.T) {
 	result := providerschema.Message{MessageMeta: providerschema.MessageMeta{Sender: "tool", Content: []providerschema.ContentBlock{{ToolResult: &providerschema.ToolResult{ID: "call-1", Name: "call_service", Content: json.RawMessage(`[]`)}}}}}
 	reply := says("assistant", "Done")
 	m, _ := newTestModel(fakeClient{}, &schema.Session{ID: id, Serial: 1})
-	m.debug = true
+	m.session.Trace = types.Ptr(true)
 	m.waiting = true
 	m.session.Messages = []providerschema.Message{question}
 	m.Update(streamMsg{llm.StreamLog, "Asking Home Assistant to turn on the lights"})
@@ -560,7 +562,7 @@ func Test_LogsReloaded(t *testing.T) {
 	}}})
 
 	// Another window's turn is before this one, when it's loaded again
-	m.Update(loadedMsg{session: &schema.Session{ID: id, Serial: 3, Messages: []providerschema.Message{
+	m.Update(loadedMsg{session: &schema.Session{ID: id, Serial: 3, SessionMeta: schema.SessionMeta{Trace: types.Ptr(true)}, Messages: []providerschema.Message{
 		says("user", "Elsewhere"), says("assistant", "Hello from elsewhere"), question, call, result, reply,
 	}}})
 	view := m.history.View()
@@ -658,7 +660,7 @@ func Test_StatusFollowsSession(t *testing.T) {
 func Test_Indent(t *testing.T) {
 	// What's under a label is indented, and wrapped to fit the window
 	long := strings.Repeat("word ", 40)
-	m, _ := newTestModel(fakeClient{}, &schema.Session{ID: uuid.New(), Messages: []providerschema.Message{
+	m, _ := newTestModel(fakeClient{}, &schema.Session{ID: uuid.New(), SessionMeta: schema.SessionMeta{Trace: types.Ptr(true)}, Messages: []providerschema.Message{
 		{MessageMeta: providerschema.MessageMeta{Sender: "user", Content: []providerschema.ContentBlock{{Text: types.Ptr(long)}}}},
 		{MessageMeta: providerschema.MessageMeta{Sender: "assistant", Content: []providerschema.ContentBlock{{Thinking: types.Ptr("Hmm")}, {Text: types.Ptr("Hi")}}}},
 	}})
@@ -666,7 +668,7 @@ func Test_Indent(t *testing.T) {
 	m.render()
 	content := m.history.View()
 	assert.Contains(t, content, "\n  word word")
-	assert.Contains(t, content, "\n  "+thinking)
+	assert.Contains(t, content, "\n  Hmm")
 	assert.Contains(t, content, "\n  Remembering your name: David")
 	for _, line := range strings.Split(content, "\n") {
 		assert.LessOrEqual(t, lipgloss.Width(line), 80, line)
