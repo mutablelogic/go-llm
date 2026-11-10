@@ -213,6 +213,7 @@ document.addEventListener(MediaPlayer.eventDeleted, (e) => {
 events.start();
 void models.load();
 void tools.load();
+void chat.refreshModels();
 
 // Show the page of the location, such as #chat/<id>, and mark its link in
 // the side navigation as active

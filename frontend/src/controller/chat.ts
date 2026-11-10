@@ -206,9 +206,6 @@ export class ChatController {
     // its messages, when it's changed, unless a reply is waited for, when
     // it's loaded once the reply is stored
     async refresh() {
-        if (this.limits.size === 0) {
-            void this.refreshModels();
-        }
         try {
             this.sessions = (await listSessions(0, ChatController.limit)).body ?? [];
         } catch (error) {
@@ -224,9 +221,10 @@ export class ChatController {
         this.render();
     }
 
-    // refreshModels loads the models' input token limits again, such as
-    // when a provider changes, which isn't said, when they can't be loaded,
-    // as the tokens are shown instead
+    // refreshModels loads the models' input token limits, as the page loads,
+    // and again as a provider changes. When they can't be loaded, they're
+    // forgotten, so the tokens are shown, rather than how full the memory
+    // is, by limits which may be out of date
     async refreshModels() {
         try {
             const limits = new Map<string, number>();
@@ -238,7 +236,8 @@ export class ChatController {
             this.limits = limits;
             this.render();
         } catch {
-            // The tokens are shown, rather than how full the memory is
+            this.limits = new Map();
+            this.render();
         }
     }
 

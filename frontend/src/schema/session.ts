@@ -214,8 +214,12 @@ export function sessionMemory(session: Session, limit?: number): string {
     if (!window) {
         return `${tokens.toLocaleString()} tokens`;
     }
-    const percent = Math.round((100 * tokens) / window);
-    return percent >= 100 ? 'Memory full' : `Memory ${Math.max(percent, 1)}% full`;
+    // Full only once it's reached its window, so a rounded 100% isn't, and
+    // at least 1%, so a conversation which has started doesn't look empty
+    if (tokens >= window) {
+        return 'Memory full';
+    }
+    return `Memory ${Math.min(Math.max(Math.round((100 * tokens) / window), 1), 99)}% full`;
 }
 
 // canonicalTool returns the canonical name of a tool, from its name for a
