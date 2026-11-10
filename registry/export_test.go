@@ -59,3 +59,8 @@ func (r *Registry) Summarizing(marker uuid.UUID) func() {
 	r.summarizing.Store(marker, struct{}{})
 	return func() { r.summarizing.Delete(marker) }
 }
+
+// EventOrigin returns what the system says of an event's message
+func EventOrigin(event schema.Event) string {
+	return eventOrigin(event)
+}

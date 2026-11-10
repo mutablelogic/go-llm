@@ -716,6 +716,7 @@ type RunEventRequest struct {
 	Title     string    `json:"title,omitempty" help:"What the event is for" example:"Morning briefing" optional:""`
 	Scheduled time.Time `json:"scheduled,omitzero" help:"When the event was due" optional:""`
 	Fired     time.Time `json:"fired,omitzero" help:"When the event fired" optional:""`
+	Heartbeat bool      `json:"heartbeat,omitempty" help:"Whether the event is a heartbeat which fired, on its schedule, which its outcome says" optional:""`
 }
 
 // RunEventResponse is the session the event ran in, and what the agent which
