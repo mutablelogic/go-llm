@@ -160,26 +160,42 @@ export class NewSession extends Panel<NewSessionForm> {
     static styles = [Panel.styles, css`
         form > * {
             display: block;
-            margin-bottom: 1.5rem;
+            margin-bottom: 2rem;
         }
 
         /* The advanced options, and the tools, are spaced as the form is */
         llm-disclosure > * {
             display: block;
-            margin-bottom: 1.5rem;
+            margin-bottom: 2rem;
         }
 
+        llm-disclosure > *:first-child {
+            margin-top: 1rem;
+        }
+
+        /* Each control's label stands out from what it says about itself,
+           in the text's colour, and larger, which Carbon's labels take from
+           these */
+        cds-select, cds-text-input, cds-textarea, cds-slider, llm-tool-picker {
+            --cds-text-secondary: var(--cds-text-primary);
+            --cds-label-01-font-size: 0.875rem;
+            --cds-label-01-letter-spacing: 0.16px;
+        }
+
+        /* A note is helper text, as Carbon's controls have */
         .note {
-            color: var(--cds-text-secondary);
-            font-size: 0.875rem;
-            line-height: 1.43;
+            margin: 0.25rem 0 0;
+            color: var(--cds-text-helper);
+            font-size: 0.75rem;
+            line-height: 1.33;
+            letter-spacing: 0.32px;
         }
 
         /* The options are side by side, when there's room */
         .options {
             display: grid;
             grid-template-columns: repeat(auto-fill, minmax(8rem, 1fr));
-            gap: 1rem;
+            gap: 1.5rem;
         }
 
     `];
@@ -281,8 +297,9 @@ export class NewSession extends Panel<NewSessionForm> {
                 ${cannot(model, 'tools')
                     ? ''
                     : html`
-                        <p class="note">Every tool is on, unless you turn it off. Without the <strong>llm</strong> tools, the assistant can't speak, make pictures, read scans or transcribe recordings, or read the conversation's files; without <strong>memory</strong>, it doesn't remember you from one conversation to the next; and without <strong>heartbeat</strong>, it can't set reminders, or do things on a schedule.</p>
-                        <llm-tool-picker .tools=${this.tools} .described=${this.namespaces} .value=${this.startTools}></llm-tool-picker>
+                        <llm-tool-picker .tools=${this.tools} .described=${this.namespaces} .value=${this.startTools}>
+                            Every tool is on, unless you turn it off. Without the <strong>llm</strong> tools, the assistant can't speak, make pictures, read scans or transcribe recordings, or read the conversation's files; without <strong>memory</strong>, it doesn't remember you from one conversation to the next; and without <strong>heartbeat</strong>, it can't set reminders, or do things on a schedule.
+                        </llm-tool-picker>
                     `}
                 </llm-disclosure>
             </form>

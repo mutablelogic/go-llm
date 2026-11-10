@@ -55,10 +55,22 @@ export class ToolPicker extends LitElement {
             display: block;
         }
 
+        /* The label is as Carbon's controls' are, which take the same
+           variables, and what's slotted is its helper text */
         .label {
             margin-bottom: 0.5rem;
             color: var(--cds-text-secondary);
+            font-size: var(--cds-label-01-font-size, 0.75rem);
+            letter-spacing: var(--cds-label-01-letter-spacing, 0.32px);
+            line-height: 1rem;
+        }
+
+        .helper {
+            margin-bottom: 1rem;
+            color: var(--cds-text-helper);
             font-size: 0.75rem;
+            line-height: 1.33;
+            letter-spacing: 0.32px;
         }
 
         ul {
@@ -153,6 +165,7 @@ export class ToolPicker extends LitElement {
         const any = this.value.length > 0;
         return html`
             <div class="label">Tools</div>
+            <div class="helper"><slot></slot></div>
             <cds-checkbox .checked=${live(this.everything())} .indeterminate=${live(!this.everything() && any)}
                 @cds-checkbox-changed=${(e: Event) => this.toggleEverything(e)}>Every tool, and agent</cds-checkbox>
             <ul>
