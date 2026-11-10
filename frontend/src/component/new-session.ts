@@ -223,7 +223,7 @@ export class NewSession extends Panel<NewSessionForm> {
     }
 
     protected renderSubtitle() {
-        return this.session ? 'Its title, model, instructions, options, tools and tracing' : 'A conversation with your assistant';
+        return this.session ? 'Preferences for how the conversation works' : 'A conversation with your assistant';
     }
 
     // renderFooter returns Start conversation, or Save, once there are models to
