@@ -285,6 +285,16 @@ func Test_BuiltinAgent(t *testing.T) {
 	assert.Equal(t, "Hello again", types.Value(got.Prompt))
 	assert.Equal(t, model, types.Value(got.Model), "the model chosen for it is kept")
 
+	// An agent which an older server stored as an ordinary agent, with a
+	// model, keeps it, as the server creates it again, built in
+	require.Equal(t, http.StatusCreated, do(t, server, http.MethodPost, "llm/agent", map[string]any{"name": "legacy", "prompt": "Hello", "model": eliza.ModelName}, nil))
+	_, _, err = r.CreateAgent(t.Context(), schema.AgentMeta{PromptMeta: schema.PromptMeta{Name: "legacy", Prompt: types.Ptr("Hello"), Builtin: types.Ptr(true)}})
+	require.NoError(t, err)
+	var legacy schema.Agent
+	require.Equal(t, http.StatusOK, do(t, server, http.MethodGet, "llm/agent/builtin:legacy", nil, &legacy))
+	assert.True(t, types.Value(legacy.Builtin))
+	assert.Equal(t, model, types.Value(legacy.Model), "the model it had is kept")
+
 	// Its model can be cleared, so it's the default again
 	var cleared schema.Agent
 	require.Equal(t, http.StatusOK, do(t, server, http.MethodPatch, "llm/agent/shipped", map[string]any{"model": ""}, &cleared))

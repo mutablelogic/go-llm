@@ -111,9 +111,10 @@ func (r *Registry) CreateAgent(ctx context.Context, meta schema.AgentMeta) (_ *s
 	// The agent with the name, which is replaced, when it's changed, or
 	// it's created
 	existing, err := r.agentStore.Get(ctx, meta.Name)
-	if err == nil && types.Value(existing.Builtin) && types.Value(meta.Builtin) && meta.Model == nil {
+	if err == nil && types.Value(meta.Builtin) && meta.Model == nil {
 		// A built-in agent which the server creates again keeps the model
-		// which was chosen for it, unless the server's has one
+		// which was chosen for it, unless the server's has one, as does one
+		// which an older server stored as an ordinary agent
 		meta.Model = existing.Model
 	}
 	switch {

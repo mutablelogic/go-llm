@@ -204,7 +204,7 @@ export class AgentEditor extends Panel<AgentEditorItem> {
         return html`
             ${builtin ? html`
                 <cds-button kind="primary" size="md" ?disabled=${this.busy} @click=${() => this.saveModel(item.name)}>Save</cds-button>
-                <cds-button kind="secondary" size="md" @click=${() => this.copy(item.name, this.editor?.value ?? item.yaml)}>
+                <cds-button kind="secondary" size="md" ?disabled=${this.busy} @click=${() => this.copy(item.name, this.editor?.value ?? item.yaml)}>
                     Copy ${iconLoader(Copy16, { slot: 'icon' })}
                 </cds-button>
             ` : html`
