@@ -32,6 +32,23 @@ export function formatTime(value?: string): string {
     return value ? new Date(value).toLocaleString() : '';
 }
 
+// formatWhen returns an RFC 3339 time, as it is locally, in a few words:
+// Today, Tomorrow, or Yesterday, or a short date, with the year when it
+// isn't this year, and the time, without seconds, such as "Tomorrow, 08:00"
+// or "Sat 8 Nov, 09:20", or an empty string when there's none
+export function formatWhen(value?: string, now: Date = new Date()): string {
+    if (!value) {
+        return '';
+    }
+    const when = new Date(value);
+    const day = (d: Date) => new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
+    const days = Math.round((day(when) - day(now)) / 86400000);
+    const time = when.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
+    const date = days === 0 ? 'Today' : days === 1 ? 'Tomorrow' : days === -1 ? 'Yesterday'
+        : when.toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'short', year: when.getFullYear() === now.getFullYear() ? undefined : 'numeric' });
+    return `${date}, ${time}`;
+}
+
 // The units of sizes, in bytes, from smallest to largest
 const sizeUnits = ['B', 'KB', 'MB', 'GB', 'TB'];
 
