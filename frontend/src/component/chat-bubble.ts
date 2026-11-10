@@ -136,6 +136,7 @@ export class ChatBubble extends LitElement {
             color: inherit;
             font: inherit;
             font-style: normal;
+            text-align: left;
             cursor: pointer;
         }
 
