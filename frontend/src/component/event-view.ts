@@ -8,6 +8,7 @@
 import { css, html, nothing } from 'lit';
 import { customElement, property, state } from 'lit/decorators.js';
 import { Panel } from './panel';
+import Notification16 from '@carbon/icons/es/notification/16.js';
 import { markdown, markdownStyles } from './markdown';
 import { describeSchedule, formatTime, formatWhen } from '../format';
 import type { EventOutcome } from '../schema/outcome';
@@ -238,6 +239,10 @@ export class EventView extends Panel<string> {
 
     protected current() {
         return this.session;
+    }
+
+    protected renderIcon() {
+        return iconLoader(Notification16);
     }
 
     protected renderTitle() {

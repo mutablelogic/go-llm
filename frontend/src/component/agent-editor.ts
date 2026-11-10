@@ -9,6 +9,7 @@ import { css, html, nothing, type PropertyValues } from 'lit';
 import { keyed } from 'lit/directives/keyed.js';
 import { customElement, property, query, state } from 'lit/decorators.js';
 import { Panel } from './panel';
+import { namespaceIcon } from './namespace-icon';
 import iconLoader from '@carbon/web-components/es/globals/internal/icon-loader.js';
 import Upload16 from '@carbon/icons/es/upload/16.js';
 import Copy16 from '@carbon/icons/es/copy/16.js';
@@ -186,6 +187,10 @@ export class AgentEditor extends Panel<AgentEditorItem> {
 
     protected current() {
         return this.item;
+    }
+
+    protected renderIcon(item: AgentEditorItem) {
+        return namespaceIcon('agent');
     }
 
     protected renderTitle(item: AgentEditorItem) {

@@ -4,6 +4,10 @@
 import { css, html, nothing } from 'lit';
 import { customElement, property } from 'lit/decorators.js';
 import { Panel } from './panel';
+import iconLoader from '@carbon/web-components/es/globals/internal/icon-loader.js';
+import ToolKit16 from '@carbon/icons/es/tool-kit/16.js';
+import { namespaceIcon } from './namespace-icon';
+import { toolNamespace } from '../schema/tool';
 import type { Tool } from '../schema/tool';
 
 @customElement('llm-tool-view')
@@ -27,6 +31,10 @@ export class ToolView extends Panel<Tool> {
 
     protected current() {
         return this.tool;
+    }
+
+    protected renderIcon(tool: Tool) {
+        return namespaceIcon(toolNamespace(tool)) ?? iconLoader(ToolKit16);
     }
 
     protected renderTitle(tool: Tool) {

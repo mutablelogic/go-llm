@@ -16,6 +16,7 @@ import PlayFilledAlt16 from '@carbon/icons/es/play--filled--alt/16.js';
 import { playable } from './media-player';
 import TrashCan16 from '@carbon/icons/es/trash-can/16.js';
 import { Panel } from './panel';
+import Folder16 from '@carbon/icons/es/folder/16.js';
 import { resourceName, resourceTitle, type Resource } from '../schema/resource';
 import { formatAgo, formatSize } from '../format';
 
@@ -148,6 +149,10 @@ export class ResourcePanel extends Panel<string> {
 
     protected current() {
         return this.session;
+    }
+
+    protected renderIcon() {
+        return iconLoader(Folder16);
     }
 
     protected renderTitle() {

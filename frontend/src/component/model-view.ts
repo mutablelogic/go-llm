@@ -6,6 +6,7 @@
 import { css, html, nothing } from 'lit';
 import { customElement, property } from 'lit/decorators.js';
 import { Panel, formatValue } from './panel';
+import MachineLearningModel16 from '@carbon/icons/es/machine-learning-model/16.js';
 import { capabilityLabel, capabilityNames, cannot, type Model } from '../schema/model';
 import iconLoader from '@carbon/web-components/es/globals/internal/icon-loader.js';
 import Chat16 from '@carbon/icons/es/chat/16.js';
@@ -42,6 +43,10 @@ export class ModelView extends Panel<Model> {
 
     protected current() {
         return this.model;
+    }
+
+    protected renderIcon(model: Model) {
+        return iconLoader(MachineLearningModel16);
     }
 
     protected renderTitle(model: Model) {

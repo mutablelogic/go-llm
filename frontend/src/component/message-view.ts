@@ -7,6 +7,8 @@ import { customElement, property } from 'lit/decorators.js';
 import { canonicalTool, type Message, type Usage } from '../schema/session';
 import { formatDuration } from '../format';
 import { Panel } from './panel';
+import iconLoader from '@carbon/web-components/es/globals/internal/icon-loader.js';
+import Information16 from '@carbon/icons/es/information/16.js';
 
 @customElement('llm-message-view')
 export class MessageView extends Panel<Message> {
@@ -20,6 +22,10 @@ export class MessageView extends Panel<Message> {
 
     protected current() {
         return this.message;
+    }
+
+    protected renderIcon() {
+        return iconLoader(Information16);
     }
 
     protected renderTitle() {

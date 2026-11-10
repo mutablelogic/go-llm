@@ -7,6 +7,8 @@ import { css, html, nothing, type PropertyValues } from 'lit';
 import { keyed } from 'lit/directives/keyed.js';
 import { customElement, property, query, state } from 'lit/decorators.js';
 import { Panel } from './panel';
+import iconLoader from '@carbon/web-components/es/globals/internal/icon-loader.js';
+import Download16 from '@carbon/icons/es/download/16.js';
 import type { LoadProgress } from '../api/model';
 
 // Carbon components
@@ -71,6 +73,10 @@ export class ModelLoad extends Panel<string> {
 
     protected current() {
         return this.provider;
+    }
+
+    protected renderIcon(provider: string) {
+        return iconLoader(Download16);
     }
 
     protected renderTitle(provider: string) {
