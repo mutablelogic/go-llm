@@ -116,10 +116,11 @@ export class ToolTable extends LitElement {
         return html`
             <cds-table-row ?data-selected=${tool.canonical === this.selected} @click=${() => this.fire(ToolTable.eventSelect, tool)}>
                 <cds-table-cell>
-                    <cds-tag size="sm" type=${namespace === 'agent' ? 'purple' : 'cool-gray'}>${namespace}</cds-tag>
+                    <cds-tag size="sm" type="cool-gray">${namespace}</cds-tag>
                 </cds-table-cell>
                 <cds-table-cell>
                     <button class="open" type="button">${tool.name}</button>
+                    ${tool.agent ? html`<cds-tag size="sm" type="purple">Agent</cds-tag>` : nothing}
                 </cds-table-cell>
                 <cds-table-cell>
                     ${title ? html`<span class="title">${title}</span>` : nothing}

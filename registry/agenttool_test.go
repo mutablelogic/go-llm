@@ -474,4 +474,16 @@ func Test_AgentNamespaces(t *testing.T) {
 	assert.ErrorIs(t, err, llm.ErrNotFound)
 	_, err = r.DeleteAgent(ctx, "builtin:translate")
 	assert.ErrorIs(t, err, llm.ErrForbidden)
+
+	// Its tool, in either namespace, is listed as an agent
+	_, _, err = r.CreateAgent(ctx, schema.AgentMeta{PromptMeta: schema.PromptMeta{Name: "segment", Prompt: types.Ptr("Segment")}})
+	require.NoError(t, err)
+	list, err := tk.ListTools(ctx, toolschema.ToolListRequest{})
+	require.NoError(t, err)
+	agents := map[string]bool{}
+	for _, tool := range list.Body {
+		agents[tool.Canonical] = tool.Agent
+	}
+	assert.True(t, agents["builtin:translate"])
+	assert.True(t, agents["agent:segment"])
 }

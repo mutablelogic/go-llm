@@ -172,6 +172,11 @@ func (n *agentNamespace) remove(name string) {
 ///////////////////////////////////////////////////////////////////////////////
 // TOOL
 
+// IsAgent returns true, as the tool is an agent
+func (*agentTool) IsAgent() bool {
+	return true
+}
+
 // newAgentTool returns the agent, as a tool, or an error when its input, or
 // the schema of its reply, isn't valid
 func newAgentTool(r *Registry, agent schema.Agent) (*agentTool, error) {

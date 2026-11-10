@@ -340,7 +340,7 @@ export class ToolsController extends ListController<Tool> {
     // select opens the tool, or, for an agent, its definition, to be edited
     private select(tool: Tool) {
         this.agentGeneration++;
-        if (tool.type === 'agent') {
+        if (tool.agent) {
             // An agent, of the agent namespace, or a built-in one, by its
             // name in its namespace, such as builtin:translate
             void this.openAgent(tool.canonical);
