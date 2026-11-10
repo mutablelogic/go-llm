@@ -114,6 +114,9 @@ func (r *Registry) Run(ctx context.Context, logger *slog.Logger) error {
 		retention = t.C
 	}
 
+	// The summaries which were pending, as the server stopped, are written
+	r.resumeSummaries(ctx)
+
 	// The events' outcomes which are pending, which weren't delivered, such
 	// as when the server stopped, are, when it starts, and every so often
 	r.retryDeliveries(ctx)

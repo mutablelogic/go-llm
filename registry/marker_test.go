@@ -68,6 +68,55 @@ func marker(t *testing.T, r *registry.Registry, id uuid.UUID) *providerschema.Ma
 	return nil
 }
 
+func Test_SummaryTimeout(t *testing.T) {
+	// A summary which isn't written in the compact agent's time, as its
+	// model's request hangs, is failed, saying so, rather than left pending
+	ctx := context.Background()
+	r, p := newCompacting(t, text("It's 4°C in Berlin"), summarized("Too late", "Late"))
+	compact, err := r.GetAgent(ctx, registry.DefaultCompactAgent)
+	require.NoError(t, err)
+	meta := compact.AgentMeta
+	meta.Timeout = types.Ptr("50ms")
+	_, _, err = r.CreateAgent(ctx, meta)
+	require.NoError(t, err)
+
+	session, err := r.CreateSession(ctx, schema.SessionMeta{GeneratorMeta: schema.GeneratorMeta{Model: types.Ptr("model")}})
+	require.NoError(t, err)
+	_, err = r.Chat(ctx, session.ID, []llm.Message{user(t, "What's the weather in Berlin?")}, nil)
+	require.NoError(t, err)
+	p.delay = time.Second
+	_, err = r.CompactSession(ctx, session.ID)
+	require.NoError(t, err)
+	require.Eventually(t, func() bool {
+		m := marker(t, r, session.ID)
+		return m != nil && m.Status == providerschema.MarkerFailed
+	}, 5*time.Second, 10*time.Millisecond)
+	assert.Contains(t, marker(t, r, session.ID).Error, "wasn't written within 50ms")
+}
+
+func Test_ResumeSummaries(t *testing.T) {
+	// A session whose last marker is pending, as the server stopped as its
+	// summary was written, is summarised when the registry runs
+	ctx := context.Background()
+	store := test.NewSessionStore()
+	r, _ := newCompactingWith(t, []registry.Opt{registry.WithSessionStore(store)}, summarized("David said hello.", "Hello"))
+	session, err := store.Create(ctx, uuid.New(), schema.SessionMeta{GeneratorMeta: schema.GeneratorMeta{Model: types.Ptr("model")}})
+	require.NoError(t, err)
+	session.Messages = []providerschema.Message{says("user", "Hello", 10), says("assistant", "Hi", 10),
+		{MessageMeta: providerschema.MessageMeta{Sender: providerschema.RoleContext, Content: []providerschema.ContentBlock{}}, Marker: &providerschema.Marker{ID: uuid.New(), Reason: "asked", Status: providerschema.MarkerPending}}}
+	_, err = store.Put(ctx, session)
+	require.NoError(t, err)
+
+	running, cancel := context.WithCancel(ctx)
+	defer cancel()
+	go func() { _ = r.Run(running, nil) }()
+	require.Eventually(t, func() bool {
+		m := marker(t, r, session.ID)
+		return m != nil && m.Status == providerschema.MarkerSummarized
+	}, 5*time.Second, 10*time.Millisecond)
+	assert.Equal(t, "David said hello.", marker(t, r, session.ID).Summary)
+}
+
 func Test_CompactEventSession(t *testing.T) {
 	// An event's session is compacted when it's asked to be, as another is,
 	// though it isn't compacted on its own, as it fills
