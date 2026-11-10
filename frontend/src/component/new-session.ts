@@ -241,8 +241,6 @@ export class NewSession extends Panel<NewSessionForm> {
                     @cds-select-selected=${(e: CustomEvent<{ value: string }>) => { this.chosen = e.detail.value; }}>
                     ${this.models.map((model) => html`<cds-select-item value=${model.canonical}>${model.canonical}</cds-select-item>`)}
                 </cds-select>
-                <cds-textarea label="System prompt" helper-text="Instructions for the assistant on how to act, such as 'be brief', 'set humour level to 90%', or 'respond in rhyme'" rows="3"
-                    value=${this.session?.system ?? ''}></cds-textarea>
                 <div>
                     <cds-slider id="context" label-text=${`Context window: ${this.windowLabel(limit)}`}
                         min=${String(Math.log2(Math.min(minWindow, windowTop(limit))))} max=${String(top)} step="0.01"
@@ -252,6 +250,8 @@ export class NewSession extends Panel<NewSessionForm> {
                         @cds-slider-changed=${(e: CustomEvent<{ value: number }>) => this.chooseWindow(Number(e.detail.value), limit)}></cds-slider>
                     <p class="note">${this.windowNote(model)}</p>
                 </div>
+                <cds-textarea label="System prompt" helper-text="Instructions for the assistant on how to act, such as 'be brief', 'set humour level to 90%', or 'respond in rhyme'" rows="3"
+                    value=${this.session?.system ?? ''}></cds-textarea>
                 <llm-disclosure label="Advanced options">
                 <cds-checkbox id="trace" ?checked=${this.session?.trace === true}>Trace: show the assistant's thinking, and the tools it calls, in the conversation</cds-checkbox>
                 <div class="options">
