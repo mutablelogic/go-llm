@@ -14,8 +14,20 @@ import ChevronRight16 from '@carbon/icons/es/chevron--right/16.js';
 import { live } from 'lit/directives/live.js';
 import { toolNamespace, type Namespace, type Tool } from '../schema/tool';
 
+// hidden are the tools which aren't chosen, as only the server runs them,
+// which the toolkit leaves out of * and builtin:* too
+const hidden = new Set(['builtin:event', 'builtin:compact']);
+
+// groupOf returns the group a namespace is shown in, which is agent for the
+// agents' namespaces, those which people make, and the server's own, so
+// they're chosen together, or otherwise the namespace
+function groupOf(namespace: string): string {
+    return namespace === 'builtin' ? 'agent' : namespace;
+}
+
 // Carbon components
 import '@carbon/web-components/es/components/checkbox/index.js';
+import '@carbon/web-components/es/components/tag/index.js';
 import '@carbon/web-components/es/components/skeleton-text/index.js';
 
 @customElement('llm-tool-picker')
@@ -126,14 +138,14 @@ export class ToolPicker extends LitElement {
         if (!this.tools) {
             return html`<div class="label">Tools</div><cds-skeleton-text paragraph line-count="3"></cds-skeleton-text>`;
         }
-        const namespaces = this.namespaces();
+        const groups = this.groups();
         const any = this.value.length > 0;
         return html`
             <div class="label">Tools</div>
             <cds-checkbox .checked=${live(this.everything())} .indeterminate=${live(!this.everything() && any)}
                 @cds-checkbox-changed=${(e: Event) => this.toggleEverything(e)}>Every tool, and agent</cds-checkbox>
             <ul>
-                ${[...namespaces].map(([namespace, tools]) => {
+                ${[...groups].map(([namespace, tools]) => {
                     const expanded = this.expanded.has(namespace);
                     const chosen = tools.filter((tool) => this.toolChosen(tool)).length;
                     return html`
@@ -141,9 +153,9 @@ export class ToolPicker extends LitElement {
                         <div class="namespace">
                             <button class="expand" type="button" aria-expanded=${String(expanded)} aria-label=${`Show the tools of ${namespace}`}
                                 @click=${() => this.toggleExpanded(namespace)}>${iconLoader(ChevronRight16)}</button>
-                            <cds-checkbox .checked=${live(this.namespaceChosen(namespace))}
-                                .indeterminate=${live(!this.namespaceChosen(namespace) && chosen > 0)}
-                                @cds-checkbox-changed=${(e: Event) => this.toggleNamespace(e, namespace)}>${namespace}</cds-checkbox>
+                            <cds-checkbox .checked=${live(this.groupChosen(namespace))}
+                                .indeterminate=${live(!this.groupChosen(namespace) && chosen > 0)}
+                                @cds-checkbox-changed=${(e: Event) => this.toggleGroup(e, namespace)}>${namespace}</cds-checkbox>
                             <span class="count">${chosen} of ${tools.length}</span>
                         </div>
                         ${this.about(namespace) ? html`<span class="about">${this.about(namespace)}</span>` : nothing}
@@ -152,6 +164,7 @@ export class ToolPicker extends LitElement {
                                 <li>
                                     <cds-checkbox .checked=${live(this.toolChosen(tool))}
                                         @cds-checkbox-changed=${(e: Event) => this.toggleTool(e, tool)}>${tool.name}</cds-checkbox>
+                                    ${tool.agent ? html`<cds-tag size="sm" type="purple">Agent</cds-tag>` : nothing}
                                     ${tool.description ? html`<span class="description" title=${tool.description}>${tool.description.replace(/\s+/g, ' ').trim()}</span>` : nothing}
                                 </li>
                             `)}
@@ -163,15 +176,34 @@ export class ToolPicker extends LitElement {
         `;
     }
 
-    // namespaces returns the tools by their namespaces, in order of their
-    // namespaces' names
+    // namespaces returns the tools which can be chosen, by their namespaces,
+    // in order of their namespaces' names, which are what's chosen
     private namespaces(): Map<string, Tool[]> {
         const namespaces = new Map<string, Tool[]>();
         for (const tool of [...(this.tools ?? [])].sort((a, b) => a.canonical.localeCompare(b.canonical))) {
+            if (hidden.has(tool.canonical)) {
+                continue;
+            }
             const namespace = toolNamespace(tool);
             namespaces.set(namespace, [...(namespaces.get(namespace) ?? []), tool]);
         }
         return namespaces;
+    }
+
+    // groups returns the tools which can be chosen, by the groups they're
+    // shown in, in order of their names, with the agents' namespaces as one
+    private groups(): Map<string, Tool[]> {
+        const groups = new Map<string, Tool[]>();
+        for (const [namespace, tools] of this.namespaces()) {
+            const group = groupOf(namespace);
+            groups.set(group, [...(groups.get(group) ?? []), ...tools]);
+        }
+        return new Map([...groups].sort(([a], [b]) => a.localeCompare(b)));
+    }
+
+    // groupNamespaces returns the namespaces of the group, which have tools
+    private groupNamespaces(group: string): string[] {
+        return [...this.namespaces().keys()].filter((namespace) => groupOf(namespace) === group);
     }
 
     // about returns what the namespace's tools are for, when it says
@@ -196,6 +228,12 @@ export class ToolPicker extends LitElement {
         return this.everything() || this.value.includes(`${namespace}:*`);
     }
 
+    // groupChosen returns whether every namespace of the group is chosen
+    private groupChosen(group: string): boolean {
+        const namespaces = this.groupNamespaces(group);
+        return namespaces.length > 0 && namespaces.every((namespace) => this.namespaceChosen(namespace));
+    }
+
     private toolChosen(tool: Tool): boolean {
         return this.namespaceChosen(toolNamespace(tool)) || this.value.includes(tool.canonical);
     }
@@ -206,17 +244,19 @@ export class ToolPicker extends LitElement {
         this.choose(this.everything() ? [] : ['*']);
     }
 
-    // toggleNamespace chooses every tool in the namespace, or none of them,
-    // keeping the other namespaces as they were, when every tool was chosen
-    private toggleNamespace(event: Event, namespace: string) {
+    // toggleGroup chooses every tool in the group's namespaces, or none of
+    // them, keeping the other namespaces as they were, when every tool was
+    // chosen
+    private toggleGroup(event: Event, group: string) {
         event.stopPropagation();
         const namespaces = [...this.namespaces().keys()];
         let value = this.everything() ? namespaces.map((name) => `${name}:*`) : [...this.value];
-        if (this.namespaceChosen(namespace)) {
-            value = value.filter((name) => name !== `${namespace}:*`);
-        } else {
+        const chosen = this.groupChosen(group);
+        for (const namespace of this.groupNamespaces(group)) {
             value = value.filter((name) => !name.startsWith(`${namespace}:`));
-            value.push(`${namespace}:*`);
+            if (!chosen) {
+                value.push(`${namespace}:*`);
+            }
         }
         this.choose(value);
     }

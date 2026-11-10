@@ -60,7 +60,7 @@ export class ModelView extends Panel<Model> {
             ${cannot(model, 'chat') ? nothing : html`
                 <cds-button kind="primary" size="md"
                     @click=${() => this.dispatchEvent(new CustomEvent(ModelView.eventChat, { detail: model.canonical }))}>
-                    New chat ${iconLoader(Chat16, { slot: 'icon' })}
+                    New conversation ${iconLoader(Chat16, { slot: 'icon' })}
                 </cds-button>
             `}
             ${this.stored ? html`
