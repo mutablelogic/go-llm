@@ -79,6 +79,10 @@ export interface MessageEvent {
     title?: string;
 }
 
+// thinkingLog is the line the server logs as the model starts thinking,
+// which is only shown while it is, before its reply's text
+export const thinkingLog = 'Thinking';
+
 // SessionStatus is whether someone is typing in a session, or its model is
 // replying, or neither
 export type SessionStatus = 'idle' | 'typing' | 'replying' | 'thinking';

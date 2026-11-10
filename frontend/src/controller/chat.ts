@@ -14,7 +14,7 @@ import { listModels } from '../api/model';
 import { cannot, type Model } from '../schema/model';
 import { ApiError, config } from '../api/client';
 import { routeHref } from '../router';
-import { isUser, sessionTokens, type ContentBlock, type Message, type Session, type SessionMeta } from '../schema/session';
+import { isUser, sessionTokens, thinkingLog, type ContentBlock, type Message, type Session, type SessionMeta } from '../schema/session';
 import type { Details } from '../schema/memory';
 import type { NotificationController } from './notifications';
 import type { StorageController } from './storage';
@@ -29,6 +29,7 @@ import type { Provider } from '../schema/provider';
 import type { MessageView } from '../component/message-view';
 import { Panel } from '../component/panel';
 import { ChatPage } from '../page/chat-page';
+
 
 export interface ChatViews {
     page: ChatPage | null;
@@ -443,7 +444,9 @@ export class ChatController {
     // the result of the first tool it called, or else the position of its
     // last message, of the messages which were added after the earlier ones
     private keepLogs(id: string, pending: Pending, added: Message[]) {
-        const lines = pending.streamed.filter((piece) => piece.what === 'log').map((piece) => piece.text.trim());
+        // That the model was thinking is only said while it is, so it isn't
+        // kept with the reply
+        const lines = pending.streamed.filter((piece) => piece.what === 'log' && piece.text.trim() !== thinkingLog).map((piece) => piece.text.trim());
         if (lines.length === 0) {
             return;
         }

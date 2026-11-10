@@ -55,17 +55,18 @@ func Test_StreamPrinter(t *testing.T) {
 	})
 
 	t.Run("ServerThinking", func(t *testing.T) {
-		// The server's line that the model is thinking stands in for the
-		// printer's own, so it's said once, and kept
+		// The server's line that the model is thinking is the printer's own,
+		// said once, and replaced, with the text, rather than kept
 		p, buf := newTestPrinter(80, 24)
 		p.print(llm.StreamLog, schema.ThinkingLog)
 		p.print(llm.StreamThinking, "Hmm")
 		p.print(llm.StreamText, "Sunny")
 		p.End()
 		out := buf.String()
-		assert.NotContains(t, out, thinkingLine)
-		assert.Equal(t, 1, strings.Count(out, schema.ThinkingLog))
+		assert.Equal(t, 1, strings.Count(out, thinkingLine))
+		assert.NotContains(t, out, "\x1b[2m"+schema.ThinkingLog+"\x1b[0m", "the server's line isn't kept, as it is")
 		assert.NotContains(t, out, "Hmm")
+		assert.True(t, strings.HasSuffix(out, "\x1b[J[Sunny]\n"), "it's replaced with the text, from the row it started on")
 	})
 
 	t.Run("Logs", func(t *testing.T) {

@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"strconv"
+	"slices"
 	"strings"
 	"time"
 	"uuid"
@@ -506,8 +507,10 @@ func (m *model) ask() tea.Cmd {
 func (m *model) keepLogs(streamed []*group, asked int, added []providerschema.Message) {
 	var lines []string
 	for _, g := range streamed {
-		if g.what == llm.StreamLog {
-			lines = append(lines, strings.TrimSpace(g.text.String()))
+		// That the model was thinking is only said while it is, so it isn't
+		// kept with the reply
+		if line := strings.TrimSpace(g.text.String()); g.what == llm.StreamLog && line != schema.ThinkingLog {
+			lines = append(lines, line)
 		}
 	}
 	if len(lines) == 0 {
@@ -548,9 +551,13 @@ func (m *model) render() {
 	m.renderLogs(&b, positionKey(len(m.session.Messages)))
 	if len(m.streamed) > 0 {
 		m.label(&b, "assistant")
+		// That the model is thinking, which the server logs, is only shown
+		// until its reply's text starts
+		replying := slices.ContainsFunc(m.streamed, func(g *group) bool { return g.what == llm.StreamText })
 		for _, g := range m.streamed {
 			text := strings.Trim(g.text.String(), "\n")
 			switch {
+			case g.what == llm.StreamLog && replying && text == schema.ThinkingLog:
 			case g.what == llm.StreamText:
 				b.WriteString(m.body(lipgloss.NewStyle(), text) + "\n")
 			case g.what == llm.StreamThinking && !m.traced():

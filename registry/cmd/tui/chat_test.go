@@ -473,6 +473,12 @@ func Test_Trace(t *testing.T) {
 	assert.NotContains(t, m.history.View(), "Streamed reasoning")
 	assert.Equal(t, 1, strings.Count(m.history.View(), "Thinking"), "the server's line, once, without one of its own")
 
+	// And it's gone, once the reply's text starts, and isn't kept with it
+	m.Update(streamMsg{llm.StreamText, "The lamp is off"})
+	assert.NotContains(t, m.history.View(), "Thinking")
+	m.Update(replyMsg{asked: len(session.Messages), response: &schema.ChatResponse{ID: session.ID, Serial: 2, SessionResponse: schema.SessionResponse{Messages: []providerschema.Message{reply}}}})
+	assert.NotContains(t, m.history.View(), "Thinking", "it isn't kept with the reply")
+
 	m, _ = newTestModel(fakeClient{}, session)
 	m.session.Trace = types.Ptr(true)
 	m.render()

@@ -34,6 +34,7 @@ import './chat-input';
 
 // Carbon components
 import '@carbon/web-components/es/components/skeleton-text/index.js';
+import { thinkingLog } from '../schema/session';
 
 // Piece is a part of a reply as it's streamed: its text, its thinking, or a
 // line a tool logged
@@ -673,7 +674,13 @@ export class ChatView extends LitElement {
         // own, rather than joined to the text before, as the line between
         // the turns can be at the start of the thinking
         let split = false;
+        // That the model is thinking, which the server logs, is only shown
+        // until its reply's text starts
+        const replying = this.streamed.some((piece) => piece.what === 'text');
         for (const piece of this.streamed) {
+            if (piece.what === 'log' && replying && piece.text.trim() === thinkingLog) {
+                continue;
+            }
             if (piece.what === 'thinking' && !traced) {
                 split = true;
                 continue;

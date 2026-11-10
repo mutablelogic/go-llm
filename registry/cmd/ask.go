@@ -365,12 +365,15 @@ func (p *streamPrinter) print(what llm.StreamType, text string) {
 			p.thinking = true
 			p.write(what, "\x1b[2m"+thinkingLine+"\x1b[0m\n", true)
 		}
-	case what == llm.StreamLog:
-		// The server's line that the model is thinking stands in for the
-		// printer's own, which isn't printed after it
-		if strings.TrimSpace(text) == schema.ThinkingLog {
-			p.thought = true
+	case what == llm.StreamLog && strings.TrimSpace(text) == schema.ThinkingLog:
+		// The server's line that the model is thinking is the printer's own,
+		// which is replaced, once, rather than kept
+		p.thought = true
+		if !p.thinking {
+			p.thinking = true
+			p.write(llm.StreamThinking, "\x1b[2m"+thinkingLine+"\x1b[0m\n", true)
 		}
+	case what == llm.StreamLog:
 		// What's printed before it is replaced first, so it's kept after it,
 		// and it's on a line of its own, even when what's before it isn't
 		// replaced
