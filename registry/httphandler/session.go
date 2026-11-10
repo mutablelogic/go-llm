@@ -3,6 +3,8 @@ package httphandler
 import (
 	"errors"
 	"net/http"
+	"slices"
+	"strings"
 	"uuid"
 
 	// Packages
@@ -122,12 +124,19 @@ func sessionGetUpdateDeleteHandlers(reg *registry.Registry, router *httprouter.R
 				httpresponse.Error(w, err)
 			} else if err := httprequest.Read(r, &req); err != nil {
 				httpresponse.Error(w, httpresponse.ErrBadRequest.Withf("%w", err))
+			} else if annotation := strings.TrimSpace(req.Annotation); len(annotation) > schema.AnnotationLimit {
+				httpresponse.Error(w, httpresponse.ErrBadRequest.Withf("the annotation is longer than %d bytes", schema.AnnotationLimit))
 			} else {
-				// What the system says of a message is the server's, so a
-				// client's annotations are taken out
+				// A message's annotation blocks are taken out, and the
+				// request's annotation, such as where it was sent, is the
+				// last message's, so it's what the client says of it
 				messages := make([]llm.Message, len(req.Messages))
 				for i := range req.Messages {
-					messages[i] = &providerschema.Message{MessageMeta: req.Messages[i].WithoutAnnotations()}
+					meta := req.Messages[i].WithoutAnnotations()
+					if annotation != "" && i == len(req.Messages)-1 {
+						meta.Content = append(slices.Clone(meta.Content), providerschema.NewAnnotation(annotation))
+					}
+					messages[i] = &providerschema.Message{MessageMeta: meta}
 				}
 				respond(w, r, id.String(), func(write streamWriteFn) (*schema.ChatResponse, error) {
 					stream := streamWriter(write)

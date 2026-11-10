@@ -30,6 +30,13 @@ import (
 )
 
 ///////////////////////////////////////////////////////////////////////////////
+// GLOBALS
+
+// cliAnnotation is what the model is told of a message sent with the
+// command, which is where it was sent from
+const cliAnnotation = "Sent from the command line."
+
+///////////////////////////////////////////////////////////////////////////////
 // TYPES
 
 // ChatCmd asks a session's model a question, in the session, which keeps the
@@ -109,7 +116,8 @@ func (cmd *ChatCmd) Run(ctx server.Cmd) error {
 		hasSchema := len(bytes.TrimSpace(session.Schema)) > 0
 		printer := newStreamPrinter(debug || !cmd.Stream || hasSchema, width)
 		response, err := client.Chat(reqctx, id, schema.ChatRequest{
-			Messages: []providerschema.MessageMeta{message.MessageMeta},
+			Messages:   []providerschema.MessageMeta{message.MessageMeta},
+			Annotation: cliAnnotation,
 		}, printer.Stream())
 		printer.End()
 		if err != nil {

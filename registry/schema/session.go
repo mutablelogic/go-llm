@@ -101,8 +101,12 @@ type MessageList struct {
 
 // ChatRequest is the messages to add to a session, which its model replies to
 type ChatRequest struct {
-	Messages []providerschema.MessageMeta `json:"messages" help:"Messages to add to the session, such as a question, which the session's model replies to"`
+	Messages   []providerschema.MessageMeta `json:"messages" help:"Messages to add to the session, such as a question, which the session's model replies to"`
+	Annotation string                       `json:"annotation,omitempty" help:"What the client says of the messages, such as where they were sent, which is the last message's annotation, which the model is sent as a system reminder" example:"Sent from the web UI." optional:""`
 }
+
+// AnnotationLimit is the most bytes a chat request's annotation can have
+const AnnotationLimit = 1024
 
 // ChatResponse is what was added to a session, which is stored, with its
 // identifier, and its serial, as it was stored

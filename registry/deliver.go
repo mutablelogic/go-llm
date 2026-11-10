@@ -3,6 +3,7 @@ package registry
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net/url"
 	"slices"
 	"strings"
@@ -120,6 +121,10 @@ func (r *Registry) deliver(ctx context.Context, event schema.Event, since time.T
 		message.Content = append(message.Content, providerschema.ContentBlock{Resource: &providerschema.Resource{ResourceMeta: providerschema.ResourceMeta{ContentType: resource.Type, URL: u}}})
 	}
 
+	// What the system says of it is the task which sent it, and why it ran,
+	// so the model can tell it from its replies to the person
+	message.Content = append(message.Content, providerschema.NewAnnotation(eventOrigin(event)))
+
 	// Wait for the session to be idle, and add it, again, when the session
 	// changed as it was added
 	idle, maxWait := r.delivery.idle, r.delivery.maxWait
@@ -150,6 +155,20 @@ func (r *Registry) deliver(ctx context.Context, event schema.Event, since time.T
 		e.Status = schema.EventDelivered
 	})
 	return err
+}
+
+// eventOrigin returns what the system says of the event's message, which is
+// the task which sent it, and why it ran: on schedule, as a heartbeat, or as
+// its source triggered it
+func eventOrigin(event schema.Event) string {
+	task := "a task"
+	if title := strings.TrimSpace(event.Title); title != "" {
+		task = fmt.Sprintf("the task %q", title)
+	}
+	if source := strings.TrimSpace(event.Source); source != "" {
+		return fmt.Sprintf("Sent by %s, which %s triggered.", task, source)
+	}
+	return "Sent by " + task + ", which ran on schedule."
 }
 
 // deliverInBackground delivers the event's outcome, in a goroutine of its
