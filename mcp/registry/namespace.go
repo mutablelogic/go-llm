@@ -41,7 +41,7 @@ func (r *Registry) ensureNamespace(connector schema.Connector) *namespace.Namesp
 		return ns
 	}
 	for range namespaceAttempts {
-		ns, err := namespace.New(schema.Namespace(connector.Name, r.toolkit.HasNamespace), connector.URL, namespace.WithTimeout(r.toolTimeout))
+		ns, err := namespace.New(schema.Namespace(connector.Name, r.toolkit.HasNamespace), connector.URL, namespace.WithTimeout(r.toolTimeout), namespace.WithAgents(r.runAgent))
 		if err != nil {
 			r.log().Warn("connector's namespace not made", "connector", connector.Name, "error", err.Error())
 			return nil

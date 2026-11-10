@@ -96,8 +96,8 @@ func WithChange(fn ChangeFunc) Opt {
 	}
 }
 
-// WithToolsChanged is called when the server says its tools changed, so
-// they're listed again, without a lock
+// WithToolsChanged is called when the server says its tools, or its
+// prompts, changed, so they're listed again, without a lock
 func WithToolsChanged(fn func()) Opt {
 	return func(o *opt) error {
 		o.toolsChanged = fn

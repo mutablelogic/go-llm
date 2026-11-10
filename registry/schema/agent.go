@@ -38,6 +38,7 @@ type PromptMeta struct {
 	Input       json.RawMessage `json:"input,omitempty" help:"JSON schema of the input, which is an object, whose properties the prompt uses" example:"{\"type\":\"object\",\"properties\":{\"transcript\":{\"type\":\"string\"}}}" optional:""`
 	Prompt      *string         `json:"prompt,omitempty" help:"Go template of the message to the model, executed with the input" example:"Segment this transcript: {{ .transcript }}" optional:""`
 	Timeout     *string         `json:"timeout,omitempty" help:"Most time the agent has, when a model calls it as a tool, such as 2m, or 90s, rather than the time a tool has by default" example:"2m" optional:""`
+	Origin      string          `json:"namespace,omitempty" readonly:"" help:"Namespace of the agent, when it isn't stored, but comes from elsewhere, such as a connector's MCP prompt, which can't be changed, or deleted" example:"github"`
 	Builtin     *bool           `json:"builtin,omitempty" readonly:"" help:"Whether the agent is one the server has, which it creates as it is each time it starts, keeping the model chosen for it, which is all of it that can be changed, and which can't be deleted, but can be copied under another name"`
 }
 
@@ -49,10 +50,14 @@ const (
 	AgentNamespace   = "agent"
 )
 
-// Namespace returns the namespace of the agent, which is its tool's: builtin,
-// for the server's own, or agent
+// Namespace returns the namespace of the agent, which is its tool's: the one
+// it comes from, when it isn't stored, such as a connector's, builtin, for
+// the server's own, or agent
 func (p PromptMeta) Namespace() string {
-	if p.Builtin != nil && *p.Builtin {
+	switch {
+	case p.Origin != "":
+		return p.Origin
+	case p.Builtin != nil && *p.Builtin:
 		return BuiltinNamespace
 	}
 	return AgentNamespace

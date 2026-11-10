@@ -23,7 +23,7 @@ import '@carbon/web-components/es/components/notification/inline-notification.js
 // or the agent with the name, its title and description, which are the
 // panel's title and subtitle, its definition, and whether it's built in, when its model, which
 // is all of it which can be changed, can be chosen from the models
-export type AgentEditorItem = { mode: 'new'; yaml: string; models?: string[] } | { mode: 'edit'; name: string; title?: string; description?: string; yaml: string; builtin: boolean; model?: string; models?: string[] };
+export type AgentEditorItem = { mode: 'new'; yaml: string; models?: string[] } | { mode: 'edit'; name: string; title?: string; description?: string; yaml: string; builtin: boolean; origin?: string; model?: string; models?: string[] };
 
 // AgentModel is the model chosen for a built-in agent, by its name, which
 // is empty for the model of the session it's run from
@@ -196,11 +196,16 @@ export class AgentEditor extends Panel<AgentEditorItem> {
         if (item.mode === 'new') {
             return "Its definition, as YAML, or a file of one, which is uploaded";
         }
-        return item.description?.trim() || `${item.builtin ? 'builtin' : 'agent'}:${item.name}`;
+        return item.description?.trim() || `${item.origin ?? (item.builtin ? 'builtin' : 'agent')}:${item.name}`;
     }
 
     protected renderFooter(item: AgentEditorItem) {
         const builtin = item.mode === 'edit' && item.builtin;
+        if (item.mode === 'edit' && item.origin) {
+            // An agent which comes from elsewhere, such as a connector's
+            // prompt, whose text is its server's, is only shown
+            return nothing;
+        }
         return html`
             ${builtin ? html`
                 <cds-button kind="primary" size="md" ?disabled=${this.busy} @click=${() => this.saveModel(item.name)}>Save</cds-button>
@@ -224,6 +229,14 @@ export class AgentEditor extends Panel<AgentEditorItem> {
     }
 
     protected renderBody(item: AgentEditorItem) {
+        const origin = item.mode === 'edit' ? item.origin : undefined;
+        if (origin) {
+            return keyed(this.opened, html`
+                <cds-inline-notification kind="info" title="From ${origin}" hide-close-button low-contrast
+                    subtitle="This agent is the ${origin} connector's prompt, whose text its server has, so it runs with the model of the chat it's run from, and can't be changed, or deleted."></cds-inline-notification>
+                <textarea spellcheck="false" wrap="off" aria-label="Definition, as YAML" readonly .value=${item.yaml}></textarea>
+            `);
+        }
         const builtin = item.mode === 'edit' && item.builtin;
         return keyed(this.opened, html`
             ${builtin ? html`

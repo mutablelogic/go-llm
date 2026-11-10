@@ -10,6 +10,7 @@ import (
 	env "github.com/mutablelogic/go-llm/auth/credentials/env"
 	broadcaster "github.com/mutablelogic/go-llm/broadcaster"
 	mcpclient "github.com/mutablelogic/go-llm/mcp/client"
+	namespace "github.com/mutablelogic/go-llm/mcp/namespace"
 	schema "github.com/mutablelogic/go-llm/mcp/schema"
 	toolkit "github.com/mutablelogic/go-llm/toolkit"
 )
@@ -35,6 +36,7 @@ type opt struct {
 	// the toolkit's default
 	connectTimeout time.Duration
 	toolTimeout    time.Duration
+	runAgent       namespace.RunFunc // How connectors' prompts are run, as agents, or nil, when they aren't
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -151,6 +153,16 @@ func WithConnectTimeout(timeout time.Duration) Opt {
 			return llm.ErrBadParameter.Withf("connect timeout %v isn't positive", timeout)
 		}
 		o.connectTimeout = timeout
+		return nil
+	}
+}
+
+// WithAgents makes connectors' MCP prompts agents, which are tools in their
+// namespaces, beside their tools, run with the function, as the registry
+// runs its agents, such as its RunAgentTool. Without it, they aren't.
+func WithAgents(run namespace.RunFunc) Opt {
+	return func(o *opt) error {
+		o.runAgent = run
 		return nil
 	}
 }

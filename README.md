@@ -331,6 +331,8 @@ Run `llm <command> --help` for its flags. Model options are given with `--opt`, 
 
 Connectors are remote MCP servers whose tools your assistant can call. Each connector's tools are a namespace of their own, such as `linear:list_issues`.
 
+- **Prompts are agents:** a server's MCP prompts are agents in its namespace, such as `github:review_pr`, beside its tools. They run with the model of the chat that calls them, and can't be changed or deleted. A prompt's name becomes an identifier, so `review-pr` is `review_pr`.
+
 - **Adding one:** in the web UI, use **Add connector** on the Tools page. It lists well-known servers such as GitHub, Linear, Notion and Stripe, plus **Custom connector** for any URL. From the CLI, run `llm connector-create <url>`.
 - **Signing in:** if the server needs sign-in, you'll get a **Sign in** button, or the CLI opens your browser. The server keeps the token and refreshes it.
 - **Your own client:** some servers, such as GitHub's, don't register clients themselves. For those, set your OAuth app's ID and secret in the server's environment, such as `GITHUB_CLIENT_ID` and `GITHUB_CLIENT_SECRET`, and register the redirect URL that the connector panel's Advanced section shows with your app.

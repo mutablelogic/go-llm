@@ -271,9 +271,19 @@ func (t *agentTool) Timeout() time.Duration {
 // their progress, are its own, and that it's thinking, or replying, is its
 // progress, so they're streamed, as it runs, however deep it is.
 func (t *agentTool) Run(ctx context.Context, input json.RawMessage) (any, error) {
+	return t.registry.RunAgentTool(ctx, t.agent.Name, input)
+}
+
+// RunAgentTool runs the agent with the name, or its name in its namespace,
+// such as a connector's prompt, as a tool which a model called, with the
+// input, as an agent's tool does: from the session of the model which
+// called it, when there's one, with what it streams as the tool's progress,
+// and the tokens it used as the tool's, and returns its reply, or an error,
+// which says how it stopped, when its reply isn't complete
+func (r *Registry) RunAgentTool(ctx context.Context, name string, input json.RawMessage) (any, error) {
 	session := toolkit.SessionFromContext(ctx)
 	req := schema.RunAgentRequest{Input: input, Session: session.ID()}
-	response, err := t.registry.RunAgent(ctx, t.agent.Name, req, agentStream(t.agent.Name, session))
+	response, err := r.RunAgent(ctx, name, req, agentStream(name, session))
 	if err != nil {
 		return nil, err
 	}
@@ -281,7 +291,7 @@ func (t *agentTool) Run(ctx context.Context, input json.RawMessage) (any, error)
 	// The tokens it used are the tool's, which its result has, even when it
 	// didn't finish
 	session.Usage(response.Usage.Usage)
-	if err := agentFinished(t.agent.Name, response.Messages); err != nil {
+	if err := agentFinished(name, response.Messages); err != nil {
 		return nil, err
 	}
 	return response.Reply, nil
