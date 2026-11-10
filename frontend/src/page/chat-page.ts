@@ -30,7 +30,7 @@ export class ChatPage extends Page {
     protected renderActions(): unknown {
         return html`
             <cds-button kind="primary" size="md" @click=${() => this.dispatchEvent(new CustomEvent(ChatPage.eventNew))}>
-                Add new conversation ${iconLoader(Add16, { slot: 'icon' })}
+                Add conversation ${iconLoader(Add16, { slot: 'icon' })}
             </cds-button>
         `;
     }
