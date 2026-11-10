@@ -46,6 +46,7 @@ import { NotificationController } from './controller/notifications';
 import { OutcomesController } from './controller/outcomes';
 import { StorageController } from './controller/storage';
 import { ResourcesController } from './controller/resources';
+import { DictationController } from './controller/dictation';
 import { ChatPage } from './page/chat-page';
 import { Router, routeHref } from './router';
 
@@ -80,6 +81,10 @@ const chat = new ChatController({
     create: document.querySelector('llm-new-session'),
     details: document.querySelector('llm-message-view'),
 }, notifications, storage, resources);
+
+// Dictation of a message, into the chat's box, when the browser recognises
+// speech
+const dictation = new DictationController(document.querySelector('llm-chat-view'), notifications);
 
 // The outcomes of the events of the chat which is open, such as heartbeats
 // which fired, in a panel, which its Events action opens
@@ -228,6 +233,10 @@ const router = new Router(document.querySelector<HTMLElement>('#not-found-page')
         void tools.refresh();
     })
     .listen((route) => {
+        // Dictation stops, as the page, or the chat, changes, so what's said
+        // isn't put in another's box
+        dictation.stop();
+
         // A page's panels are closed, once it isn't shown, so they don't stay
         // open over the page which is
         if (route.page !== 'chat') {

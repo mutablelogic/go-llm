@@ -181,6 +181,14 @@ export class ChatView extends LitElement {
     @query('llm-chat-input')
     private input?: ChatInput;
 
+    // Whether a message can be dictated, as the browser recognises speech,
+    // and whether it's being dictated, which the dictation controller sets
+    @property({ type: Boolean })
+    dictation = false;
+
+    @property({ type: Boolean })
+    listening = false;
+
     // Whether the conversation follows its end, as it grows, which it does
     // until it's scrolled up to read, and again once it's scrolled back down,
     // or a message is added, by the person, or the assistant
@@ -403,6 +411,18 @@ export class ChatView extends LitElement {
         this.input?.restore(text);
     }
 
+    // dictate puts the words which are recognised in the box, as they're
+    // spoken, which are final, or are still being recognised
+    dictate(text: string, final: boolean) {
+        this.input?.dictate(text, final);
+    }
+
+    // dictated ends the dictation, keeping what was recognised
+    dictated() {
+        this.listening = false;
+        this.input?.dictated();
+    }
+
     willUpdate(changed: PropertyValues<this>) {
         const el = this.conversation;
 
@@ -504,6 +524,7 @@ export class ChatView extends LitElement {
         return html`
             <div class="conversation" @scroll=${this.handleScroll}>${this.renderConversation()}</div>
             <llm-chat-input ?disabled=${this.messages === undefined} ?busy=${this.question !== undefined} .attachments=${this.attachments} .uploading=${this.uploading}
+                ?dictation=${this.dictation} ?listening=${this.listening}
                 @llm-chat-send=${(e: CustomEvent<string>) => this.dispatchEvent(new CustomEvent(ChatView.eventSend, { detail: e.detail }))}
                 @llm-chat-typing=${() => this.dispatchEvent(new CustomEvent(ChatView.eventTyping))}
                 @llm-chat-attach=${() => this.dispatchEvent(new CustomEvent(ChatView.eventAttach))}

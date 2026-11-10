@@ -8,7 +8,9 @@
 // removed, and files which are dropped on it, or pasted, fire an event to
 // upload them, and attach them, which is shown while they upload, when the
 // message can't be sent. A message with attachments can be sent without
-// text.
+// text. With dictation, which the browser can do, a microphone button, before
+// the send button, dictates the message into the box, which the dictation
+// controller does.
 
 import { LitElement, css, html, nothing } from 'lit';
 import { customElement, property, query } from 'lit/decorators.js';
@@ -17,6 +19,7 @@ import Send16 from '@carbon/icons/es/send/16.js';
 import Add16 from '@carbon/icons/es/add/16.js';
 import Close16 from '@carbon/icons/es/close/16.js';
 import { hasFiles } from './resource-panel';
+import { DictateButton } from './dictate-button';
 import { resourceName, type Resource } from '../schema/resource';
 
 // Carbon components
@@ -64,6 +67,19 @@ export class ChatInput extends LitElement {
     // Whether files are dragged over the box
     @property({ type: Boolean, reflect: true })
     dragging = false;
+
+    // Whether the message can be dictated, as the browser recognises speech,
+    // and whether it's being dictated
+    @property({ type: Boolean })
+    dictation = false;
+
+    @property({ type: Boolean })
+    listening = false;
+
+    // Where the text which is being dictated starts in the box, and how
+    // long the words which are still being recognised are, which are
+    // replaced as they're recognised
+    private dictating?: { start: number; length: number };
 
     // The placeholder, shown while the box is empty
     @property()
@@ -209,6 +225,7 @@ export class ChatInput extends LitElement {
                 </cds-icon-button>
                 <textarea rows="1" aria-label="Message" placeholder=${this.placeholder} ?disabled=${this.disabled}
                     @input=${this.handleInput} @keydown=${this.handleKeydown} @paste=${this.handlePaste}></textarea>
+                ${this.dictation ? html`<llm-dictate-button ?listening=${this.listening} ?disabled=${this.disabled}></llm-dictate-button>` : nothing}
                 <cds-button kind="primary" size="md" ?disabled=${this.disabled || this.busy || this.uploading > 0} @click=${this.send}>
                     Send ${iconLoader(Send16, { slot: 'icon' })}
                 </cds-button>
@@ -281,9 +298,45 @@ export class ChatInput extends LitElement {
         }
     }
 
+    // dictate puts the words which are recognised at the end of the box:
+    // those which are final are kept, and those
+    // which are still being recognised replace the ones before them, so the
+    // box shows what's been said so far. Words are separated from the text
+    // before them by a space.
+    dictate(text: string, final: boolean) {
+        const textarea = this.textarea;
+        if (!textarea) {
+            return;
+        }
+        if (!this.dictating) {
+            this.dictating = { start: textarea.value.length, length: 0 };
+        }
+        const { start, length } = this.dictating;
+        const before = textarea.value.slice(0, start);
+        const words = text.trim();
+        const piece = words && before && !/\s$/.test(before) ? ' ' + words : words;
+        textarea.value = before + piece + textarea.value.slice(start + length);
+        const end = start + piece.length;
+        textarea.setSelectionRange(end, end);
+        this.dictating = final ? { start: end, length: 0 } : { start, length: piece.length };
+        this.resize();
+        this.dispatchEvent(new CustomEvent(ChatInput.eventTyping));
+    }
+
+    // dictated ends the dictation, keeping what was recognised, so the next
+    // is at the end of the box, as it's left
+    dictated() {
+        this.dictating = undefined;
+    }
+
     // handleInput grows the box to its text, and fires the event that
-    // someone is typing
+    // someone is typing. Typing ends a dictation, so what's still being
+    // recognised doesn't replace what's typed.
     private handleInput() {
+        if (this.dictating) {
+            this.dictating = undefined;
+            this.dispatchEvent(new CustomEvent(DictateButton.eventStop, { bubbles: true, composed: true }));
+        }
         this.resize();
         this.dispatchEvent(new CustomEvent(ChatInput.eventTyping));
     }
@@ -296,6 +349,7 @@ export class ChatInput extends LitElement {
             return;
         }
         this.dispatchEvent(new CustomEvent(ChatInput.eventSend, { detail: text }));
+        this.dictating = undefined;
         this.textarea.value = '';
         this.resize();
     }
