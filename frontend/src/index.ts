@@ -122,7 +122,10 @@ const tools = new ToolsController({
 // before then.
 const events = new EventsController(notifications)
     .on({ schema: 'llm', table: 'session' }, () => void chat.refresh())
-    .on({ schema: 'llm', table: 'provider' }, () => void models.refresh())
+    .on({ schema: 'llm', table: 'provider' }, () => {
+        void models.refresh();
+        void chat.refreshModels();
+    })
     .on({ schema: 'llm', table: 'tool' }, () => void tools.refresh())
     .on({ schema: 'mcp', table: 'connector' }, () => void tools.refresh())
     .on({ schema: 'resource', table: 'resource' }, (event) => {

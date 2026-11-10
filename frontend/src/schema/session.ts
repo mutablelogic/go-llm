@@ -180,6 +180,32 @@ export function sessionTokens(session: Session): number {
     return (usage.input ?? 0) + (usage.output ?? 0) + (usage.overhead ?? 0);
 }
 
+// sessionWindow returns the session's memory window, in tokens, as the
+// registry asks its model with it: the smaller of its context_window option,
+// and its model's input token limit, or undefined, when neither is known
+export function sessionWindow(session: Session, limit?: number): number | undefined {
+    const option = session.opt?.context_window;
+    const windows = [typeof option === 'number' && option > 0 ? option : undefined, limit && limit > 0 ? limit : undefined]
+        .filter((window): window is number => window !== undefined);
+    return windows.length > 0 ? Math.min(...windows) : undefined;
+}
+
+// sessionMemory returns how full the session's memory window is, such as
+// "38% full", or "Full", or its tokens, when its window isn't known, or an
+// empty string, when it has none
+export function sessionMemory(session: Session, limit?: number): string {
+    const tokens = sessionTokens(session);
+    if (!tokens) {
+        return '';
+    }
+    const window = sessionWindow(session, limit);
+    if (!window) {
+        return `${tokens.toLocaleString()} tokens`;
+    }
+    const percent = Math.round((100 * tokens) / window);
+    return percent >= 100 ? 'Memory full' : `Memory ${Math.max(percent, 1)}% full`;
+}
+
 // canonicalTool returns the canonical name of a tool, from its name for a
 // model, such as weatherapi:current for weatherapi__current
 export function canonicalTool(name: string): string {

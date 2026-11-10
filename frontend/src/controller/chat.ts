@@ -14,7 +14,7 @@ import { listModels } from '../api/model';
 import { cannot, type Model } from '../schema/model';
 import { ApiError, config } from '../api/client';
 import { routeHref } from '../router';
-import { isUser, sessionTokens, thinkingLog, type ContentBlock, type Message, type Session, type SessionMeta } from '../schema/session';
+import { isUser, sessionMemory, thinkingLog, type ContentBlock, type Message, type Session, type SessionMeta } from '../schema/session';
 import type { Details } from '../schema/memory';
 import type { NotificationController } from './notifications';
 import type { StorageController } from './storage';
@@ -63,6 +63,10 @@ export class ChatController {
     // The providers, and models, which the welcome shows, when there are no
     // chats, which are loaded once there are none
     private welcome?: { providers?: Provider[]; models?: Model[] };
+
+    // The input token limits of the models, by their canonical names, so a
+    // conversation says how full its memory is
+    private limits: ReadonlyMap<string, number> = new Map();
     private session?: Session;
     private messages?: Message[];
     private details: Details = {};
@@ -199,6 +203,9 @@ export class ChatController {
     // its messages, when it's changed, unless a reply is waited for, when
     // it's loaded once the reply is stored
     async refresh() {
+        if (this.limits.size === 0) {
+            void this.refreshModels();
+        }
         try {
             this.sessions = (await listSessions(0, ChatController.limit)).body ?? [];
         } catch (error) {
@@ -212,6 +219,24 @@ export class ChatController {
             await this.load(this.session.id);
         }
         this.render();
+    }
+
+    // refreshModels loads the models' input token limits again, such as
+    // when a provider changes, which isn't said, when they can't be loaded,
+    // as the tokens are shown instead
+    async refreshModels() {
+        try {
+            const limits = new Map<string, number>();
+            for (const model of (await listModels()).body ?? []) {
+                if (model.input_token_limit) {
+                    limits.set(model.canonical, model.input_token_limit);
+                }
+            }
+            this.limits = limits;
+            this.render();
+        } catch {
+            // The tokens are shown, rather than how full the memory is
+        }
     }
 
     // loadWelcome loads the providers, and models, which the welcome shows,
@@ -466,8 +491,8 @@ export class ChatController {
     }
 
     // describe returns what's said of the chat which is open, beneath its
-    // heading: its model, when the heading is its title, the tokens of its
-    // conversation, and whether someone is typing, or its model is
+    // heading: its model, when the heading is its title, how full its
+    // memory is, and whether someone is typing, or its model is
     // replying, or how to start one, when none is
     private describe(): string {
         const session = this.session;
@@ -479,9 +504,9 @@ export class ChatController {
         if (session.title && session.model) {
             parts.push(session.model);
         }
-        const tokens = sessionTokens(session);
-        if (tokens) {
-            parts.push(`${tokens.toLocaleString()} tokens`);
+        const memory = sessionMemory(session, session.model ? this.limits.get(session.model) : undefined);
+        if (memory) {
+            parts.push(memory);
         }
         if (session.status === 'thinking') {
             parts.push('thinking…');
@@ -714,6 +739,7 @@ export class ChatController {
         }
         if (list) {
             list.sessions = this.listed();
+            list.limits = this.limits;
             list.selected = this.session?.id;
             list.unavailable = this.unavailable;
         }

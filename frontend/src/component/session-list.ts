@@ -10,7 +10,7 @@
 
 import { LitElement, css, html, nothing } from 'lit';
 import { customElement, property } from 'lit/decorators.js';
-import { sessionTokens, type Session } from '../schema/session';
+import { sessionMemory, type Session } from '../schema/session';
 import { formatAgo, formatTime } from '../format';
 import { MinuteController } from './minute';
 import iconLoader from '@carbon/web-components/es/globals/internal/icon-loader.js';
@@ -40,6 +40,11 @@ export class SessionList extends LitElement {
     // The sessions, which are undefined while they're loading
     @property({ attribute: false })
     sessions?: Session[];
+
+    // The input token limits of the models, by their canonical names, so a
+    // session says how full its memory is
+    @property({ attribute: false })
+    limits: ReadonlyMap<string, number> = new Map();
 
     // The identifier of the session which is open
     @property({ attribute: false })
@@ -176,7 +181,7 @@ export class SessionList extends LitElement {
     }
 
     private renderSession(session: Session) {
-        const tokens = sessionTokens(session);
+        const memory = sessionMemory(session, session.model ? this.limits.get(session.model) : undefined);
         const status = session.status === 'thinking' ? 'thinking…' : session.status === 'replying' ? 'replying…' : session.status === 'typing' ? 'typing…' : '';
         const when = session.modified ?? session.created;
         const selected = session.id === this.selected;
@@ -187,7 +192,7 @@ export class SessionList extends LitElement {
                     <span class="model">${session.title || session.model || 'No model'}${session.event ? html` <cds-tag size="sm" type="purple">event</cds-tag>` : nothing}</span>
                     <span class="secondary" title=${formatTime(when)}>
                         ${session.title && session.model ? html`${session.model} · ` : nothing}${status ? html`<span class="status">${status}</span>` : formatAgo(when)}
-                        ${tokens ? html` · ${tokens.toLocaleString()} tokens` : nothing}
+                        ${memory ? html` · ${memory}` : nothing}
                     </span>
                 </button>
                 ${selected ? this.renderActions(session) : nothing}
