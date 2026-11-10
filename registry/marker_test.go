@@ -68,6 +68,27 @@ func marker(t *testing.T, r *registry.Registry, id uuid.UUID) *providerschema.Ma
 	return nil
 }
 
+func Test_CompactEventSession(t *testing.T) {
+	// An event's session is compacted when it's asked to be, as another is,
+	// though it isn't compacted on its own, as it fills
+	ctx := context.Background()
+	store := test.NewSessionStore()
+	r, _ := newCompactingWith(t, []registry.Opt{registry.WithSessionStore(store)}, summarized("The heartbeat checked the mail.", "Mail check"))
+	session, err := store.Create(ctx, uuid.New(), schema.SessionMeta{Event: true, GeneratorMeta: schema.GeneratorMeta{Model: types.Ptr("model")}})
+	require.NoError(t, err)
+	session.Messages = []providerschema.Message{says("user", "Check the mail", 10), says("assistant", "Nothing new", 10)}
+	_, err = store.Put(ctx, session)
+	require.NoError(t, err)
+
+	_, err = r.CompactSession(ctx, session.ID)
+	require.NoError(t, err)
+	require.Eventually(t, func() bool {
+		m := marker(t, r, session.ID)
+		return m != nil && m.Status == providerschema.MarkerSummarized
+	}, 5*time.Second, 10*time.Millisecond)
+	assert.Equal(t, "The heartbeat checked the mail.", marker(t, r, session.ID).Summary)
+}
+
 func Test_CompactSession(t *testing.T) {
 	ctx := context.Background()
 	r, p := newCompacting(t, text("It's 4°C in Berlin"), summarized("David asked about Berlin's weather, which is 4°C.", "Berlin weather"), text("You're welcome"), summarized("David thanked the assistant.", "Thanks"))

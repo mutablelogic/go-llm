@@ -11,10 +11,13 @@
 import { chat, createSession, deleteSession, getSession, listMessages, listSessions, setStatus, updateSession, compactSession } from '../api/session';
 import { getDetails } from '../api/memory';
 import { listModels } from '../api/model';
+import WarningAlt16 from '@carbon/icons/es/warning--alt/16.js';
+import iconLoader from '@carbon/web-components/es/globals/internal/icon-loader.js';
+import { html, nothing } from 'lit';
 import { cannot, type Model } from '../schema/model';
 import { ApiError, config } from '../api/client';
 import { routeHref } from '../router';
-import { isUser, sessionTokens, thinkingLog, type ContentBlock, type Message, type Session, type SessionMeta } from '../schema/session';
+import { isUser, memoryWarning, sessionMemory, sessionMemoryPercent, thinkingLog, type ContentBlock, type Message, type Session, type SessionMeta } from '../schema/session';
 import type { Details } from '../schema/memory';
 import type { NotificationController } from './notifications';
 import type { StorageController } from './storage';
@@ -63,6 +66,10 @@ export class ChatController {
     // The providers, and models, which the welcome shows, when there are no
     // chats, which are loaded once there are none
     private welcome?: { providers?: Provider[]; models?: Model[] };
+
+    // The input token limits of the models, by their canonical names, so a
+    // conversation says how full its memory is
+    private limits: ReadonlyMap<string, number> = new Map();
     private session?: Session;
     private messages?: Message[];
     private details: Details = {};
@@ -132,13 +139,13 @@ export class ChatController {
             location.hash = routeHref('chat', (e as CustomEvent<Session>).detail.id);
         });
         views.page?.addEventListener(ChatPage.eventNew, () => void this.newChat());
+        views.page?.addEventListener(ChatPage.eventPreferences, () => void this.edit());
+        views.page?.addEventListener(ChatPage.eventCompact, () => void this.compact());
+        views.page?.addEventListener(ChatPage.eventDelete, () => void this.delete());
         views.view?.addEventListener(Welcome.eventNew, () => void this.newChat());
         views.view?.addEventListener(Welcome.eventProvider, () => {
             location.hash = routeHref('models');
         });
-        views.list?.addEventListener(SessionList.eventDelete, () => void this.delete());
-        views.list?.addEventListener(SessionList.eventEdit, () => void this.edit());
-        views.list?.addEventListener(SessionList.eventCompact, () => void this.compact());
         views.view?.addEventListener(ChatView.eventEarlier, () => void this.loadEarlier());
         views.create?.addEventListener(NewSession.eventSave, (e) => void this.save((e as CustomEvent<SessionMeta>).detail));
         views.view?.addEventListener(ChatView.eventSend, (e) => void this.send((e as CustomEvent<string>).detail));
@@ -212,6 +219,26 @@ export class ChatController {
             await this.load(this.session.id);
         }
         this.render();
+    }
+
+    // refreshModels loads the models' input token limits, as the page loads,
+    // and again as a provider changes. When they can't be loaded, they're
+    // forgotten, so the tokens are shown, rather than how full the memory
+    // is, by limits which may be out of date
+    async refreshModels() {
+        try {
+            const limits = new Map<string, number>();
+            for (const model of (await listModels()).body ?? []) {
+                if (model.input_token_limit) {
+                    limits.set(model.canonical, model.input_token_limit);
+                }
+            }
+            this.limits = limits;
+            this.render();
+        } catch {
+            this.limits = new Map();
+            this.render();
+        }
     }
 
     // loadWelcome loads the providers, and models, which the welcome shows,
@@ -466,22 +493,26 @@ export class ChatController {
     }
 
     // describe returns what's said of the chat which is open, beneath its
-    // heading: its model, when the heading is its title, the tokens of its
-    // conversation, and whether someone is typing, or its model is
+    // heading: its model, when the heading is its title, how full its
+    // memory is, and whether someone is typing, or its model is
     // replying, or how to start one, when none is
-    private describe(): string {
+    private describe(): unknown {
         const session = this.session;
         if (!session) {
             return 'Choose a conversation, or start a new one';
         }
         // The model, when the heading is the title, rather than the model
-        const parts: string[] = [];
+        const parts: unknown[] = [];
         if (session.title && session.model) {
             parts.push(session.model);
         }
-        const tokens = sessionTokens(session);
-        if (tokens) {
-            parts.push(`${tokens.toLocaleString()} tokens`);
+        const limit = session.model ? this.limits.get(session.model) : undefined;
+        const memory = sessionMemory(session, limit);
+        if (memory) {
+            // How full its memory is, marked when it's nearly full, which
+            // the Conversation menu summarises
+            const nearlyFull = (sessionMemoryPercent(session, limit) ?? 0) >= memoryWarning;
+            parts.push(html`<span class="memory">${memory}${nearlyFull ? html`<span class="nearly-full" title="Nearly full. Older messages will be summarised automatically.">${iconLoader(WarningAlt16)}</span>` : nothing}</span>`);
         }
         if (session.status === 'thinking') {
             parts.push('thinking…');
@@ -490,7 +521,7 @@ export class ChatController {
         } else if (session.status === 'typing') {
             parts.push('typing…');
         }
-        return parts.join(' · ');
+        return parts.map((part, i) => html`${i > 0 ? ' · ' : nothing}${part}`);
     }
 
     // add adds a piece of the reply, as it's streamed
@@ -575,9 +606,9 @@ export class ChatController {
         }
         try {
             await compactSession(session.id);
-            this.notifications.push({ kind: 'info', title: 'Compacting the conversation', subtitle: 'Its earlier messages are being summarised' });
+            this.notifications.push({ kind: 'info', title: 'Summarising the conversation', subtitle: 'Its earlier messages are kept, but replaced with a summary' });
         } catch (error) {
-            this.notifications.error("The conversation couldn't be compacted", error);
+            this.notifications.error("The conversation couldn't be summarised", error);
         }
     }
 
@@ -705,6 +736,9 @@ export class ChatController {
         if (page) {
             page.heading = this.session?.title || this.session?.model || 'Conversations';
             page.description = this.describe();
+            page.open = this.session !== undefined;
+            page.event = this.session?.event === true;
+            page.deletable = !(this.session?.status === 'replying' || this.session?.status === 'thinking' || (this.session && this.pending.has(this.session.id)));
         }
         if (details) {
             details.message = this.selected;
@@ -714,6 +748,7 @@ export class ChatController {
         }
         if (list) {
             list.sessions = this.listed();
+            list.limits = this.limits;
             list.selected = this.session?.id;
             list.unavailable = this.unavailable;
         }

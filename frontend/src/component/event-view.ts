@@ -246,7 +246,7 @@ export class EventView extends Panel<string> {
     }
 
     protected renderTitle() {
-        return 'Events';
+        return 'Tasks';
     }
 
     protected renderSubtitle() {
