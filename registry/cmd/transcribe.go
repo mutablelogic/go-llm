@@ -33,7 +33,7 @@ type TranscribeCmd struct {
 type TranslateCmd struct {
 	File   string                     `arg:"" name:"file" help:"The audio, whose speech, in any language, is translated into English, or a resource, by its URI, resource:///<hash>."`
 	Model  string                     `name:"model" help:"Model name, or provider and model name separated by a colon, such as openai:whisper-1. Defaults to the model last used for translating speech." optional:""`
-	Opt    map[string]json.RawMessage `name:"opt" help:"Options, by key, such as segments=true, which can be given more than once." optional:""`
+	Opt    map[string]json.RawMessage `name:"opt" help:"Options, by key, such as segments=true, or language=de, the language the speech is in, for go-whisper's models, which can be given more than once." optional:""`
 	Stream bool                       `name:"stream" negatable:"" default:"true" help:"Print the transcript as it's translated, or with --no-stream, once it's complete."`
 	Format string                     `name:"format" enum:"text,srt,vtt" default:"text" help:"Print the transcript as text, or its segments, or as subtitles, in SRT or WebVTT format, which are its segments, as cues, ending after a silence (${enum})."`
 }

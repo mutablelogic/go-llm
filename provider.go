@@ -109,7 +109,9 @@ type Transcriber interface {
 
 	// Translate returns the speech in the audio, in any language, as English
 	// text, with its segments, as Transcribe does, whose language is "en",
-	// and the seconds and tokens used
+	// and the seconds and tokens used. The language WithLanguage sets is the
+	// language the audio is in, which it's translated from, which a provider
+	// which can't be told it, such as OpenAI's, rejects.
 	Translate(context.Context, Model, Resource, TranscriberStreamFn, ...Opt) (Transcript, Usage, error)
 }
 

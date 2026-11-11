@@ -19,16 +19,22 @@ func Test_TranscribeApply(t *testing.T) {
 		assert.Equal(t, "fr", r.Language)
 		assert.Equal(t, 0.2, *r.Temperature)
 		assert.Equal(t, transcribeOptions{language: "fr", segments: true}, options)
+
+		// And a translation's language, which it's translated from
+		var translation transcribeRequest
+		_, err = translation.apply("ggml-medium-q5_0", true, llm.WithLanguage("de"))
+		require.NoError(t, err)
+		assert.Equal(t, "de", translation.Language)
 	})
 
 	t.Run("Errors", func(t *testing.T) {
-		// A translation has no language, a language is a code, speakers
-		// aren't distinguished, and other options aren't valid
+		// A language is a code, speakers aren't distinguished, and other
+		// options aren't valid
 		for _, test := range []struct {
 			translate bool
 			opt       llm.Opt
 		}{
-			{true, llm.WithLanguage("fr")},
+			{true, llm.WithOpt(llm.LanguageKey, json.RawMessage(`"German"`))},
 			{false, llm.WithOpt(llm.LanguageKey, json.RawMessage(`"French"`))},
 			{false, llm.WithSpeakers(true)},
 			{false, llm.WithDimensions(3)},
