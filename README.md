@@ -2,6 +2,7 @@
 
 [![Go Reference](https://pkg.go.dev/badge/github.com/mutablelogic/go-llm.svg)](https://pkg.go.dev/github.com/mutablelogic/go-llm)
 [![License](https://img.shields.io/badge/license-Apache-blue.svg)](LICENSE)
+[![Manual](https://img.shields.io/badge/manual-GitBook-blue?logo=gitbook&logoColor=white)](https://djthorpe.gitbook.io/go-llm)
 
 go-llm is an application that puts language and speech models from many providers behind one interface, with a web UI, a command-line tool and a Go SDK. Add providers such as Ollama, LM Studio, OpenAI, Anthropic, Google Gemini, Mistral, [go-whisper](https://github.com/mutablelogic/go-whisper) and ElevenLabs. Then ask any of their models to reply, call tools, search the web, set reminders, run agents, embed, read documents, speak, and transcribe or translate speech. Connect remote MCP servers, such as GitHub, Linear or Notion, so your assistant can use their tools too. You can do all of this through the REST API, the web UI, the `llm` command (which includes a terminal chat), or from Go.
 
