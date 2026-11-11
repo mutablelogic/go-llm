@@ -1,0 +1,15 @@
+$schema: https://api.gitbook.com/gitbook-docs.yaml
+# GitBook's Git Sync, with docs as the project directory: the site is one
+# space, whose pages are this directory, with README.md as its first page,
+# and SUMMARY.md as its table of contents
+site:
+  title: go-llm
+  structure:
+    - type: space
+      key: space-docs
+      title: go-llm
+      path: docs
+      default: true
+      content:
+        directory: ./
+        language: en
