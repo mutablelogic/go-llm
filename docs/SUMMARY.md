@@ -2,6 +2,7 @@
 
 * [Introduction](README.md)
 * [Features](features.md)
+* [Installation](installation.md)
 * [Getting Started](getting-started.md)
 * [Conversations and Tasks](conversations-and-tasks.md)
 * [Workspaces](workspaces.md)
