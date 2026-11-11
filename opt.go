@@ -342,7 +342,8 @@ func WithRegions(value bool) Opt {
 }
 
 // WithLanguage sets the language the speech in audio is in, as an ISO 639-1
-// code, such as "en", rather than it being detected
+// code, such as "en", rather than it being detected, to transcribe it, or
+// to translate it from, into English
 func WithLanguage(value string) Opt {
 	if len(value) != 2 || strings.ToLower(value) != value {
 		return withError(ErrBadParameter.Withf("language %q must be an ISO 639-1 code, such as \"en\"", value))

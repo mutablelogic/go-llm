@@ -388,6 +388,14 @@ func Test_Transcribe(t *testing.T) {
 		transcript, _, err := c.Translate(ctx, model, audio, nil)
 		require.NoError(t, err)
 		assert.Equal(t, "en", transcript.Language)
+		assert.NotContains(t, fields(), "language")
+
+		// And the language it's in, which it's translated from, is sent,
+		// and the translation is in English
+		transcript, _, err = c.Translate(ctx, model, audio, nil, llm.WithLanguage("fr"))
+		require.NoError(t, err)
+		assert.Equal(t, "en", transcript.Language)
+		assert.Equal(t, "fr", fields()["language"])
 		english, err := c.LoadModel(ctx, "ggml-tiny.en", nil)
 		require.NoError(t, err)
 		_, _, err = c.Translate(ctx, english, audio, nil)

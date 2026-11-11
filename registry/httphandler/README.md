@@ -221,4 +221,4 @@ OpenAI's models, such as `whisper-1` and `gpt-4o-transcribe`, Mistral's, such as
 
 ### POST /llm/translate
 
-Ask a model for the speech in audio, in any language, as English text, as transcribing does, whose `language` is `en`, and which has no `language` option. It's streamed as transcribing is, once it's translated, as `whisper-1` doesn't stream. Only OpenAI's `whisper-1` translates speech. Returns the same as transcribing does, and 501 if the model's provider can't translate speech, such as Mistral, or the model is known not to.
+Ask a model for the speech in audio, in any language, as English text, as transcribing does, whose `language` is `en`. Its `language` option is the language the speech is in, which it's translated from, rather than detected, which only go-whisper's models take. It's streamed as transcribing is, once it's translated, as `whisper-1` doesn't stream. OpenAI's `whisper-1`, and go-whisper's multilingual models, translate speech. Returns the same as transcribing does, and 501 if the model's provider can't translate speech, such as Mistral, or the model is known not to.

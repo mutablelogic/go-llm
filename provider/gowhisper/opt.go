@@ -21,7 +21,8 @@ type transcribeOptions struct {
 
 // apply sets the options on the request to transcribe, or translate, with
 // the model, or returns an error if any option isn't valid or isn't
-// supported. A translation is into English, so it has no language. Speakers
+// supported. The language is the language the audio is in, which a
+// translation is from, into English, rather than it being detected. Speakers
 // aren't distinguished, as a model which diarizes, such as
 // "ggml-small.en-tdrz", only knows when the speaker changes, not who it is.
 func (r *transcribeRequest) apply(model string, translate bool, opts ...llm.Opt) (transcribeOptions, error) {
@@ -34,9 +35,7 @@ func (r *transcribeRequest) apply(model string, translate bool, opts ...llm.Opt)
 		var err error
 		switch key {
 		case llm.LanguageKey:
-			if translate {
-				err = llm.ErrBadParameter.Withf("option %q: a translation is into english", key)
-			} else if options.language, err = llm.GetOpt[string](o, key); err == nil {
+			if options.language, err = llm.GetOpt[string](o, key); err == nil {
 				// The language is checked as WithLanguage checks it, as it
 				// can be set with WithOpt, such as from a request
 				if _, err = llm.ApplyOpts(llm.WithLanguage(options.language)); err == nil {
