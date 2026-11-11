@@ -289,7 +289,7 @@ The registry also works on its own, from your own Go program; see [examples](exa
 
 What a model can do depends on the model, as its provider reports it. Requests for something a model is known not to do are rejected before they're sent.
 
-OpenAI's speech models (`tts-1`, `tts-1-hd` and `gpt-4o-mini-tts`) shut down on 6 January 2027. Their replacement only speaks through OpenAI's Realtime API, which go-llm doesn't use yet (#286).
+OpenAI's speech models (`tts-1`, `tts-1-hd` and `gpt-4o-mini-tts`) shut down on 6 January 2027. Their replacement only speaks through OpenAI's Realtime API, which go-llm doesn't use yet ([#286](https://github.com/mutablelogic/go-llm/issues/286)).
 
 ### Capabilities
 
@@ -516,46 +516,11 @@ env -u OPENAI_API_KEY -u MISTRAL_API_KEY -u ANTHROPIC_API_KEY -u GEMINI_API_KEY 
 
 ## Roadmap
 
-### Sessions
+What's planned is in the [issue list](https://github.com/mutablelogic/go-llm/issues), by milestone:
 
-- **A model for summaries:** a cheaper model writes compaction summaries, rather than the session's own.
-
-### Agents and tools
-
-- **Connectors:** MCP prompts and resources, as well as tools.
-- **Channels**, beyond what Telegram does now:
-  - **locations:** shared places told to the model, setting the person's location and time zone, and sending places as map pins;
-  - **replies:** what a message replies to, so "this one" means something;
-  - **groups:** replying only when the assistant is mentioned or replied to;
-  - **commands:** `/new`, `/stop`, `/forget` and `/status` in Telegram's menu;
-  - **more of Telegram:** recording indicators, editing and deleting the assistant's messages, reactions, and buttons;
-  - **voice messages** transcribed as they arrive, with the chat's default model;
-  - channels in the web UI, and Slack.
-- **What each model takes,** in `llm:models`: voices, formats, what OCR reads, and image aspect ratios, with errors that say what's accepted.
-- **Default models for each chat:** a model per capability, set once in a chat, rather than kept in memory.
-- **Scheduled runs in the chat:** a heartbeat's prompt goes to the chat's own model, with recent runs, rather than only to the `event` agent.
-- **Scheduled agents:** agents that run on a schedule.
-- **Running Python** (experimental): a sandboxed WebAssembly tool that reads and writes the session's files.
-
-### Server
-
-- **Authentication and authorization** across the API, web UI, CLI, connectors and channels: sign-in with OIDC or API tokens, and roles or scopes for what each person or client can do.
-- **A database, and more than one server:** shared providers, sessions, agents, memory, heartbeats and resources.
-- **External volumes for resources:** mount folders, such as from your own filesystem, so their files are resources the assistant can read.
-- **Usage:** account for each session's use, in tokens, time or cost.
-
-### Providers
-
-- **OpenAI's images** with `gpt-image`.
-- **OpenAI's Responses API**, so the newest models can think while calling tools.
-- **OpenAI's token limits**, which need checking.
-- **OpenAI's Realtime API**, to speak once its speech models shut down (#286).
-
-### Improvements
-
-- **OCR:** `glm-ocr` with Ollama; PDFs with Ollama's image models, page by page; and images inside documents.
-- **Speech:** speakers with go-whisper's diarizing model; live transcription over a WebSocket; translation with models that hear audio, such as Voxtral Small; and subtitle lengths.
-- **Files:** UTF-16 text ([#192](https://github.com/mutablelogic/go-llm/issues/192)); audio and video metadata; and Markdown parts that end at a heading or paragraph ([go-metadata#20](https://github.com/mutablelogic/go-metadata/issues/20)).
+- **[1.6](https://github.com/mutablelogic/go-llm/milestone/3): Make it work.**
+- **[1.7](https://github.com/mutablelogic/go-llm/milestone/2): Add authentication and a workspace,** with sign-in, API keys and webhooks, and a Workspace of resources, files and connectors' resources.
+- **[1.8](https://github.com/mutablelogic/go-llm/milestone/1): Assistant capabilities and permissions,** such as channels, scheduled agents, more speech and OCR, and approval before the assistant acts.
 
 ## License
 
