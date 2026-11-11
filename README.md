@@ -33,14 +33,15 @@ llm models
 llm ask --model gpt-4o-mini "Explain a KV cache in two sentences"
 ```
 
-See [Getting Started](https://djthorpe.gitbook.io/go-llm/getting-started) for Docker Compose, adding providers, and running without Docker.
+See [Installation](https://djthorpe.gitbook.io/go-llm/installation) for Docker Compose, and running without Docker, and [Getting Started](https://djthorpe.gitbook.io/go-llm/getting-started) for adding providers.
 
 ## Documentation
 
 The [manual](https://djthorpe.gitbook.io/go-llm) has:
 
 - [Features](https://djthorpe.gitbook.io/go-llm/features): what go-llm does.
-- [Getting Started](https://djthorpe.gitbook.io/go-llm/getting-started): running it, the command line, and its commands.
+- [Installation](https://djthorpe.gitbook.io/go-llm/installation): running it, and installing the command line.
+- [Getting Started](https://djthorpe.gitbook.io/go-llm/getting-started): providers, a first conversation, and the commands.
 - [Conversations and Tasks](https://djthorpe.gitbook.io/go-llm/conversations-and-tasks): chat, memory, and scheduled tasks.
 - [Workspaces](https://djthorpe.gitbook.io/go-llm/workspaces): files, and the planned Workspace.
 - [Models and Providers](https://djthorpe.gitbook.io/go-llm/models-and-providers): providers, capabilities and voices.

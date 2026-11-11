@@ -16,7 +16,8 @@ go-llm puts language and speech models from many providers behind one interface,
 ## Where to start
 
 - [Features](features.md): what go-llm does.
-- [Getting Started](getting-started.md): run it with Docker, and add providers.
+- [Installation](installation.md): run it with Docker, and install the command line.
+- [Getting Started](getting-started.md): add providers, and start a conversation.
 - [Conversations and Tasks](conversations-and-tasks.md): chat, memory, and scheduled tasks.
 
 The source is at [github.com/mutablelogic/go-llm](https://github.com/mutablelogic/go-llm), under the Apache License 2.0.
