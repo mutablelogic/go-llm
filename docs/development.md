@@ -45,6 +45,8 @@ The billed tests use the cheapest models, and cost a fraction of a cent, but `ma
 
 ## Using the packages
 
+The Go API reference is at [pkg.go.dev/github.com/mutablelogic/go-llm](https://pkg.go.dev/github.com/mutablelogic/go-llm).
+
 The registry is meant to be composed into a larger system. Its options plug in what that system has, such as stores for providers, conversations and agents, a credentials provider, a toolkit, a broadcaster, and a tracer.
 
 The [examples](https://github.com/mutablelogic/go-llm/tree/main/examples) use the packages directly, with Ollama (`OLLAMA_ADDR`), OpenAI (`OPENAI_API_KEY`), or Eliza:

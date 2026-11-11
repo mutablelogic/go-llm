@@ -23,7 +23,7 @@ Each part is documented beside its handlers:
 
 ## Go
 
-The packages work on their own, without the application. See [Development](development.md).
+The Go API reference is at [pkg.go.dev/github.com/mutablelogic/go-llm](https://pkg.go.dev/github.com/mutablelogic/go-llm). The packages work on their own, without the application. See [Development](development.md).
 
 - [`llm`](https://pkg.go.dev/github.com/mutablelogic/go-llm): the interfaces of providers and models, and their options.
 - [`registry/httpclient`](https://pkg.go.dev/github.com/mutablelogic/go-llm/registry/httpclient): a Go client of the API, which the `llm` command uses.
