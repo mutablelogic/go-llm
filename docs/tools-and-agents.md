@@ -27,6 +27,7 @@ Tools are what models call, in namespaces, such as `weatherapi:current`. A conve
 - **`llm:transcribe`, `llm:ocr` and `llm:illustrate`** transcribe speech, read documents, and make images.
 - **`llm:resource`** lists and reads the conversation's files. See [Workspaces](workspaces.md).
 - **`llm:agent`** lists, gets, creates and updates agents.
+- **Files they make:** speech and images are kept as the conversation's files. OCR text is kept only when a `name` or `title` is given. A transcript is kept when a `format`, `name` or `title` is given, or it's longer than 8 KB, when only its start is returned, and the rest is read with `llm:resource`.
 
 ## Connectors
 

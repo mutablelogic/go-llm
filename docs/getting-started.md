@@ -79,6 +79,30 @@ llm chat "Will it rain in Berlin tomorrow?"     # once
 
 Or chat in the web UI, with **Add conversation**. See [Conversations and Tasks](conversations-and-tasks.md).
 
+## Commands
+
+| Group | Commands |
+|-------|----------|
+| Server | `run`, `openapi` |
+| Providers | `providers`, `provider`, `provider-create-ollama`, `provider-create-lmstudio`, `provider-create-openai`, `provider-create-anthropic`, `provider-create-gemini`, `provider-create-mistral`, `provider-create-deepseek`, `provider-create-gowhisper`, `provider-create-elevenlabs`, `provider-create-eliza`, `provider-update`, `provider-delete` |
+| Models | `models`, `model`, `model-load`, `model-delete`, `model-unload`, `model-voices` |
+| Sessions | `sessions`, `session`, `session-messages`, `session-create`, `session-update`, `session-forget`, `session-compact`, `session-delete` |
+| Inference | `ask`, `chat`, `embed`, `ocr`, `transcribe`, `translate`, `speak`, `illustrate` |
+| Tools and agents | `namespaces`, `tools`, `tool`, `call`, `agents`, `agent`, `agent-create`, `agent-update`, `agent-delete` |
+| Connectors | `connectors`, `connector`, `connector-create`, `connector-update`, `connector-delete` |
+| Memory | `details`, `detail-set`, `detail-forget`, `memories`, `memory`, `memory-remember`, `memory-forget` |
+| Heartbeats | `heartbeats`, `heartbeat`, `heartbeat-create`, `heartbeat-update`, `heartbeat-delete` |
+| Resources | `resources`, `resource`, `resource-create`, `resource-get`, `resource-delete` |
+| Events | `events` |
+
+Run `llm <command> --help` for its flags. Model options are given with `--opt`, such as `--opt temperature=0.2`. These options control the agent loop rather than the model:
+
+| Option | Default | Meaning |
+|--------|---------|---------|
+| `max_iterations` | 10, or 3 for `ask` | How many times the model is asked before it must reply |
+| `max_depth` | 3 | How deeply agents can call agents |
+| `tool_timeout` | `30s` | How long a tool has to return |
+
 ## Without Docker
 
 ```bash
