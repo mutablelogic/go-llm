@@ -37,10 +37,11 @@ type Server struct {
 type Opt func(*opt)
 
 type opt struct {
-	sse   bool
-	ping  json.RawMessage
-	auth  bool
-	icons []sdkmcp.Icon
+	sse      bool
+	ping     json.RawMessage
+	auth     bool
+	lifetime int
+	icons    []sdkmcp.Icon
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -83,6 +84,9 @@ func NewServer(t *testing.T, opts ...Opt) *Server {
 	// with the result, when it's given
 	if o.auth {
 		self.auth = newAuth()
+		if o.lifetime > 0 {
+			self.auth.lifetime = o.lifetime
+		}
 	}
 	self.Server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		self.mu.Lock()
@@ -151,6 +155,16 @@ func WithIcons(icons ...sdkmcp.Icon) Opt {
 func WithAuth() Opt {
 	return func(o *opt) {
 		o.auth = true
+	}
+}
+
+// /////////////////////////////////////////////////////////////////////////////
+// WithTokenLifetime makes the tokens the server issues, when it needs to
+// be authorized, last the seconds, such as 5, which is so short that a
+// client refreshes them before they're used
+func WithTokenLifetime(seconds int) Opt {
+	return func(o *opt) {
+		o.lifetime = seconds
 	}
 }
 

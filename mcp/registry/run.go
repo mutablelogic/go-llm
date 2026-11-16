@@ -9,8 +9,8 @@ import (
 	"time"
 
 	// Packages
+	authclient "github.com/mutablelogic/go-auth/auth/httpclient"
 	llm "github.com/mutablelogic/go-llm"
-	authclient "github.com/mutablelogic/go-llm/auth/httpclient"
 	eventschema "github.com/mutablelogic/go-llm/broadcaster/schema"
 	client "github.com/mutablelogic/go-llm/mcp/client"
 	schema "github.com/mutablelogic/go-llm/mcp/schema"

@@ -5,8 +5,8 @@ import (
 	"errors"
 
 	// Packages
+	authclient "github.com/mutablelogic/go-auth/auth/httpclient"
 	llm "github.com/mutablelogic/go-llm"
-	authclient "github.com/mutablelogic/go-llm/auth/httpclient"
 	schema "github.com/mutablelogic/go-llm/mcp/schema"
 )
 

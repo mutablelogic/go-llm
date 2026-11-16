@@ -109,6 +109,49 @@ func Test_Authorize(t *testing.T) {
 	assert.ErrorIs(t, err, llm.ErrNotFound)
 }
 
+func Test_AuthorizeRefresh(t *testing.T) {
+	// A token which expires at once is refreshed, with its resource, as
+	// it's used, and stored
+	setInterval(t, &registry.RetryInterval, time.Hour)
+	setInterval(t, &registry.ConnectJitter, 10*time.Millisecond)
+	ctx := t.Context()
+	server := test.NewServer(t, test.WithAuth(), test.WithTokenLifetime(5))
+	sdkmcp.AddTool(server.MCP, &sdkmcp.Tool{Name: "echo", Description: "Echo"}, func(context.Context, *sdkmcp.CallToolRequest, struct{}) (*sdkmcp.CallToolResult, any, error) {
+		return &sdkmcp.CallToolResult{}, nil, nil
+	})
+	tk, err := toolkit.New(ctx)
+	require.NoError(t, err)
+	credentials := newSecrets(nil)
+	r, err := registry.New(registry.WithToolkit(tk), registry.WithCredentialsProvider(credentials), registry.WithName("test", "1.0"))
+	require.NoError(t, err)
+	run(t, r)
+	_, err = r.CreateConnector(ctx, connector("secure", server.URL))
+	require.NoError(t, err)
+	require.Eventually(t, func() bool { return status(t, r, "secure").Auth == schema.AuthRequired }, 5*time.Second, 5*time.Millisecond)
+
+	callback := "http://localhost:8084/api" + registry.CallbackPath
+	authorizeURL, err := r.Authorize(ctx, "secure", callback)
+	require.NoError(t, err)
+	redirect, err := server.Approve(authorizeURL)
+	require.NoError(t, err)
+	to, err := url.Parse(redirect)
+	require.NoError(t, err)
+	exchanged, err := r.Callback(ctx, to.Query().Get("state"), to.Query().Get("code"), "")
+	require.NoError(t, err)
+	require.NotNil(t, exchanged)
+	first, err := credentials.credential(t, "secure")
+	require.NoError(t, err)
+
+	// It's connected, with a refreshed token, which is stored
+	require.Eventually(t, func() bool { return status(t, r, "secure").Connected }, 5*time.Second, 5*time.Millisecond)
+	assert.Equal(t, schema.AuthAuthorized, status(t, r, "secure").Auth)
+	assert.Positive(t, server.Refreshed())
+	require.Eventually(t, func() bool {
+		credential, err := credentials.credential(t, "secure")
+		return err == nil && credential.Token != nil && credential.Token.AccessToken != first.Token.AccessToken
+	}, 5*time.Second, 5*time.Millisecond)
+}
+
 // toolCount returns how many tools the toolkit has, in the namespace
 func toolCount(t *testing.T, tk *toolkit.Toolkit, namespace string) int {
 	t.Helper()

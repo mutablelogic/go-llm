@@ -5,7 +5,6 @@ import (
 	"crypto/rand"
 	"encoding/base64"
 	"errors"
-	"net/http"
 	"net/url"
 	"slices"
 	"strings"
@@ -13,8 +12,8 @@ import (
 	"time"
 
 	// Packages
+	authclient "github.com/mutablelogic/go-auth/auth/httpclient"
 	llm "github.com/mutablelogic/go-llm"
-	authclient "github.com/mutablelogic/go-llm/auth/httpclient"
 	eventschema "github.com/mutablelogic/go-llm/broadcaster/schema"
 	schema "github.com/mutablelogic/go-llm/mcp/schema"
 	oauth2 "golang.org/x/oauth2"
@@ -241,16 +240,28 @@ func (r *Registry) tokenSource(connector schema.Connector) oauth2.TokenSource {
 		// Or another client's
 		return nil
 	}
-	config, err := r.config(ctx, connector, *credential, "")
+	id, secret, err := r.clientOf(ctx, connector, *credential)
+	if err != nil {
+		r.log().Warn("connector's token can't be refreshed", "connector", connector.Name, "error", err.Error())
+		return nil
+	}
+	c, err := authclient.New(connector.URL)
 	if err != nil {
 		r.log().Warn("connector's token can't be refreshed", "connector", connector.Name, "error", err.Error())
 		return nil
 	}
 
-	// It's refreshed within the connect timeout, so a token endpoint which
-	// doesn't reply doesn't hold up the connector's requests
-	refreshCtx := context.WithValue(ctx, oauth2.HTTPClient, &http.Client{Timeout: r.connectTimeout})
-	return &storedTokens{registry: r, name: connector.Name, last: credential.Token, source: config.TokenSource(refreshCtx, credential.Token)}
+	// It's refreshed with its resource, which oauth2's token source doesn't
+	// send, so an authorization server which binds tokens to their
+	// resources refreshes it
+	grant := &authclient.Grant{
+		Server:   authclient.ServerMetadata{Issuer: credential.Issuer, AuthorizationEndpoint: credential.AuthorizationEndpoint, TokenEndpoint: credential.TokenEndpoint},
+		Client:   authclient.Registration{ClientID: id, ClientSecret: secret},
+		Resource: credential.Resource,
+		Scopes:   credential.Scopes,
+		Token:    credential.Token,
+	}
+	return &storedTokens{registry: r, name: connector.Name, last: credential.Token, source: c.TokenSource(ctx, grant, nil)}
 }
 
 // config returns the configuration of the authorization code grant, of the
@@ -258,18 +269,24 @@ func (r *Registry) tokenSource(connector schema.Connector) oauth2.TokenSource {
 // the connector's, as its credentials are expanded, when it has a client of
 // its own, or the one its authorization server registered, when it did
 func (r *Registry) config(ctx context.Context, connector schema.Connector, credential schema.Credential, redirect string) (*oauth2.Config, error) {
-	id, secret := credential.ClientID, credential.ClientSecret
-	if credential.ClientCredential != "" {
-		if credential.ClientCredential != connector.ClientIDCredential {
-			return nil, llm.ErrConflict.Withf("connector %q has another client", connector.Name)
-		}
-		var err error
-		if id, secret, err = r.clientCredentials(ctx, connector); err != nil {
-			return nil, err
-		}
+	id, secret, err := r.clientOf(ctx, connector, credential)
+	if err != nil {
+		return nil, err
 	}
 	server := authclient.ServerMetadata{Issuer: credential.Issuer, AuthorizationEndpoint: credential.AuthorizationEndpoint, TokenEndpoint: credential.TokenEndpoint}
 	return server.Config(authclient.Registration{ClientID: id, ClientSecret: secret}, redirect, credential.Scopes...), nil
+}
+
+// clientOf returns the ID and secret of the client of the connector's
+// credential: the connector's, as its credentials are expanded, when it has
+// a client of its own, or the one its authorization server registered
+func (r *Registry) clientOf(ctx context.Context, connector schema.Connector, credential schema.Credential) (string, string, error) {
+	if credential.ClientCredential == "" {
+		return credential.ClientID, credential.ClientSecret, nil
+	} else if credential.ClientCredential != connector.ClientIDCredential {
+		return "", "", llm.ErrConflict.Withf("connector %q has another client", connector.Name)
+	}
+	return r.clientCredentials(ctx, connector)
 }
 
 // clientName returns the name a client is registered with, which is the
