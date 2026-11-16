@@ -9,7 +9,7 @@ require (
 	github.com/charmbracelet/lipgloss v1.1.1-0.20250404203927-76690c660834
 	github.com/charmbracelet/x/ansi v0.11.9
 	github.com/modelcontextprotocol/go-sdk v1.8.0
-	github.com/mutablelogic/go-auth v0.0.14
+	github.com/mutablelogic/go-auth v0.0.15
 	github.com/mutablelogic/go-client v1.4.14
 	github.com/mutablelogic/go-metadata v1.1.1
 	github.com/mutablelogic/go-server v1.8.13
@@ -100,5 +100,3 @@ require (
 	google.golang.org/protobuf v1.36.12 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
-
-replace github.com/mutablelogic/go-auth => ../go-auth
