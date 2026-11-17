@@ -32,7 +32,7 @@ type WorkspaceGetCmd struct {
 }
 
 type WorkspaceResourceCmd struct {
-	Name string `arg:"" name:"name" help:"Name of the workspace, which is its namespace's."`
+	Name string `arg:"" name:"name" help:"Name of the workspace, which is its namespace's, and, after a slash, the folder to list, such as files/TV."`
 	schema.ListRequest
 }
 
@@ -79,8 +79,9 @@ func (cmd *WorkspaceGetCmd) Run(ctx server.Cmd) error {
 // cursor of the next, when there is one
 func (cmd *WorkspaceResourceCmd) Run(ctx server.Cmd) error {
 	width, debug := ctx.IsTerm(), ctx.IsDebug()
+	name, req := splitName(cmd.Name, cmd.ListRequest)
 	return withClient(ctx, "llm.WorkspaceResourceCmd", func(ctx context.Context, client *httpclient.Client) error {
-		list, err := client.ListResources(ctx, cmd.Name, cmd.ListRequest)
+		list, err := client.ListResources(ctx, name, req)
 		if err != nil {
 			return err
 		} else if debug {
@@ -131,6 +132,23 @@ func (cmd *WorkspaceReadCmd) Run(ctx server.Cmd) (err error) {
 
 ///////////////////////////////////////////////////////////////////////////////
 // PRIVATE FUNCTIONS
+
+// splitName returns the workspace's name, and the request, whose folder is
+// the one after the name, and a slash, such as files/TV, with the request's
+// own, under it, as the name of a workspace has no slash
+func splitName(arg string, req schema.ListRequest) (string, schema.ListRequest) {
+	name, folder, ok := strings.Cut(arg, "/")
+	if !ok {
+		return arg, req
+	}
+	if folder = strings.Trim(folder, "/"); folder != "" {
+		if path := strings.Trim(req.Path, "/"); path != "" {
+			folder += "/" + path
+		}
+		req.Path = folder
+	}
+	return name, req
+}
 
 // shellQuote returns the text quoted for a POSIX shell, in single quotes,
 // in which nothing is expanded, with each single quote it has closing them,
