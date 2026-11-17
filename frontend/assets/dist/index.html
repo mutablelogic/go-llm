@@ -95,10 +95,11 @@
             }
         }
 
-        /* A workspace's folder, as a breadcrumb, above its table, and its
-           tags, in its header */
-        .workspace-path {
-            margin-bottom: 1rem;
+        /* A workspace's resources fill the page, beneath its header, and
+           scroll */
+        .full > .workspace-files {
+            flex: 1;
+            min-height: 0;
         }
 
         /* A workspace which is a tree has its folders on the left, which
