@@ -65,6 +65,11 @@ type ConnectorServer struct {
 	Version string `json:"version,omitempty" help:"The server's version" example:"1.0.0"`
 }
 
+// MaxConnectorName is the most characters a connector's name has, so the
+// key its sign-in is kept under, with a prefix, is an identifier, as
+// go-auth's credential keys are, of at most 64 characters
+const MaxConnectorName = 60
+
 // The values of a connector's Auth: its server needs to be authorized, or
 // is
 const (
@@ -124,6 +129,8 @@ func (c Connector) Definition() Connector {
 func (c Connector) Validate() error {
 	if !types.IsIdentifier(c.Name) {
 		return llm.ErrBadParameter.Withf("connector name %q isn't an identifier", c.Name)
+	} else if len(c.Name) > MaxConnectorName {
+		return llm.ErrBadParameter.Withf("connector name %q is more than %d characters", c.Name, MaxConnectorName)
 	}
 	return c.ConnectorMeta.Validate()
 }

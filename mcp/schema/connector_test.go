@@ -1,6 +1,7 @@
 package schema_test
 
 import (
+	"strings"
 	"testing"
 
 	// Packages
@@ -42,4 +43,15 @@ func Test_Matcher(t *testing.T) {
 		assert.ErrorIs(t, m.Validate(), llm.ErrBadParameter)
 	}
 	assert.NoError(t, meta([]string{"^a"}, []string{"b$"}).Validate())
+}
+
+func Test_ConnectorNameLength(t *testing.T) {
+	// A connector's name is an identifier, of at most 60 characters, so the
+	// key its sign-in is kept under is one, too
+	connector := func(name string) schema.Connector {
+		return schema.Connector{Name: name, ConnectorMeta: schema.ConnectorMeta{URL: "https://mcp.example.com/mcp"}}
+	}
+	assert.NoError(t, connector("a"+strings.Repeat("b", schema.MaxConnectorName-1)).Validate())
+	assert.ErrorIs(t, connector("a"+strings.Repeat("b", schema.MaxConnectorName)).Validate(), llm.ErrBadParameter)
+	assert.ErrorIs(t, connector("1a").Validate(), llm.ErrBadParameter)
 }

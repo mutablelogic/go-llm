@@ -3,15 +3,17 @@ package registry_test
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/url"
+	"os"
 	"sync"
 	"testing"
 	"time"
 
 	// Packages
 	sdkmcp "github.com/modelcontextprotocol/go-sdk/mcp"
+	goauth "github.com/mutablelogic/go-auth"
 	llm "github.com/mutablelogic/go-llm"
-	credentials "github.com/mutablelogic/go-llm/auth/credentials"
 	broadcaster "github.com/mutablelogic/go-llm/broadcaster"
 	eventschema "github.com/mutablelogic/go-llm/broadcaster/schema"
 	registry "github.com/mutablelogic/go-llm/mcp/registry"
@@ -106,7 +108,7 @@ func Test_Authorize(t *testing.T) {
 	_, err = r.DeleteConnector(ctx, "secure")
 	require.NoError(t, err)
 	_, err = credentials.credential(t, "secure")
-	assert.ErrorIs(t, err, llm.ErrNotFound)
+	assert.ErrorIs(t, err, goauth.ErrNotFound)
 }
 
 func Test_AuthorizeRefresh(t *testing.T) {
@@ -293,7 +295,7 @@ func Test_AuthorizeChanges(t *testing.T) {
 		_, err = r.Callback(ctx, state, code, "")
 		assert.ErrorIs(t, err, llm.ErrNotFound)
 		_, err = credentials.credential(t, "deleted")
-		assert.ErrorIs(t, err, llm.ErrNotFound)
+		assert.ErrorIs(t, err, goauth.ErrNotFound)
 	})
 
 	t.Run("Changed", func(t *testing.T) {
@@ -308,7 +310,7 @@ func Test_AuthorizeChanges(t *testing.T) {
 		_, err = r.Callback(ctx, state, code, "")
 		assert.ErrorIs(t, err, llm.ErrConflict)
 		_, err = credentials.credential(t, "changed")
-		assert.ErrorIs(t, err, llm.ErrNotFound)
+		assert.ErrorIs(t, err, goauth.ErrNotFound)
 	})
 
 	t.Run("Moved", func(t *testing.T) {
@@ -330,7 +332,7 @@ func Test_AuthorizeChanges(t *testing.T) {
 			assert.Empty(t, header.Get("Authorization"), "its token isn't sent to another server")
 		}
 		_, err = credentials.credential(t, "moved")
-		assert.ErrorIs(t, err, llm.ErrNotFound)
+		assert.ErrorIs(t, err, goauth.ErrNotFound)
 		assert.Zero(t, toolCount(t, tk, "moved"), "the tools of the server it was connected to are cleared")
 	})
 
@@ -370,31 +372,52 @@ func (s *secrets) credential(t *testing.T, name string) (*schema.Credential, err
 		return nil, err
 	}
 	var credential schema.Credential
-	require.NoError(t, json.Unmarshal([]byte(value), &credential))
+	require.NoError(t, json.Unmarshal(value, &credential))
 	return &credential, nil
 }
 
-func (s *secrets) Get(_ context.Context, key string) (string, error) {
+// Get returns the credential, as JSON: as it was set, or a string
+func (s *secrets) Get(_ context.Context, key string) (json.RawMessage, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if value, ok := s.values[key]; ok {
-		return value, nil
+	value, ok := s.values[key]
+	if !ok {
+		return nil, goauth.ErrNotFound.Withf("credential %q isn't set", key)
+	} else if json.Valid([]byte(value)) {
+		return json.RawMessage(value), nil
 	}
-	return "", llm.ErrNotFound.Withf("credential %q isn't set", key)
+	return json.Marshal(value)
 }
 
-func (s *secrets) Set(_ context.Context, key, value string) error {
-	s.put(key, value)
+func (s *secrets) Set(_ context.Context, key string, value json.RawMessage) error {
+	s.put(key, string(value))
 	return nil
 }
 
 func (s *secrets) Delete(_ context.Context, key string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if _, ok := s.values[key]; !ok {
+		return goauth.ErrNotFound.Withf("credential %q isn't set", key)
+	}
 	delete(s.values, key)
 	return nil
 }
 
-func (s *secrets) Expand(ctx context.Context, value string) (string, error) {
-	return credentials.Expand(ctx, s.Get, value)
+// Expand replaces each placeholder with its credential, as it was put
+func (s *secrets) Expand(_ context.Context, value string) (string, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	var err error
+	result := os.Expand(value, func(key string) string {
+		v, ok := s.values[key]
+		if !ok {
+			err = errors.Join(err, goauth.ErrNotFound.Withf("credential %q isn't set", key))
+		}
+		return v
+	})
+	if err != nil {
+		return "", err
+	}
+	return result, nil
 }

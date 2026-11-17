@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	// Packages
+	goauth "github.com/mutablelogic/go-auth"
 	client "github.com/mutablelogic/go-client"
 	llm "github.com/mutablelogic/go-llm"
 	broadcaster "github.com/mutablelogic/go-llm/broadcaster"
@@ -112,18 +113,18 @@ func TestAdd(t *testing.T) {
 type credentials struct{}
 
 // Get isn't used by the tests
-func (credentials) Get(context.Context, string) (string, error) {
-	return "", llm.ErrNotImplemented
+func (credentials) Get(context.Context, string) (json.RawMessage, error) {
+	return nil, goauth.ErrNotImplemented
 }
 
 // Set isn't used by the tests
-func (credentials) Set(context.Context, string, string) error {
-	return llm.ErrNotImplemented
+func (credentials) Set(context.Context, string, json.RawMessage) error {
+	return goauth.ErrNotImplemented
 }
 
 // Delete isn't used by the tests
 func (credentials) Delete(context.Context, string) error {
-	return llm.ErrNotImplemented
+	return goauth.ErrNotImplemented
 }
 
 func (credentials) Expand(_ context.Context, value string) (string, error) {
@@ -133,7 +134,7 @@ func (credentials) Expand(_ context.Context, value string) (string, error) {
 	case "${empty_key}":
 		return " ", nil
 	}
-	return "", llm.ErrNotFound.Withf("credential %q", value)
+	return "", goauth.ErrNotFound.Withf("credential %q", value)
 }
 
 func TestCredential(t *testing.T) {
