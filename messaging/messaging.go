@@ -721,7 +721,7 @@ func (m *Messaging) send(ctx context.Context, channel schema.Channel, out Outgoi
 			if name == "" {
 				name = file.URL
 			}
-			links = append(links, fmt.Sprintf("[%s](%s)", name, file.URL))
+			links = append(links, fmt.Sprintf("[%s](%s)", markdownLabel(name), file.URL))
 			continue
 		}
 		// The text is the first file's caption, under it, such as a
@@ -743,7 +743,7 @@ func (m *Messaging) send(ctx context.Context, channel schema.Channel, out Outgoi
 	// The text, when none of the files could be opened, or was sent, and
 	// the links to those which are sent as them
 	if len(links) > 0 {
-		text = strings.TrimSpace(text + "\n\n" + strings.Join(links, "\n"))
+		text = strings.TrimSpace(text + "\n\n" + strings.Join(links, "\n\n"))
 	}
 	if text != "" {
 		sent, err := provider.Send(ctx, channel.Address, text)
@@ -751,6 +751,20 @@ func (m *Messaging) send(ctx context.Context, channel schema.Channel, out Outgoi
 		errs = errors.Join(errs, err)
 	}
 	return result, errs
+}
+
+// markdownLabel returns the text, on one line, with Markdown's characters
+// escaped, so it's a link's label, as it is, such as a file's name
+func markdownLabel(text string) string {
+	text = strings.Join(strings.Fields(text), " ")
+	var b strings.Builder
+	for _, r := range text {
+		if strings.ContainsRune("\\`*_[]<>", r) {
+			b.WriteByte('\\')
+		}
+		b.WriteRune(r)
+	}
+	return b.String()
 }
 
 // load loads the channels from the store, once. The caller holds the lock.

@@ -29,6 +29,13 @@ export function resourceURI(resource: Resource): string {
 
 // resourceHash returns the hash of a resource's URI, resource:///<hash>, or
 // resource://<hash>, as it was before, or undefined, when it isn't one
+// isWorkspaceURI returns true for a workspace's resource's URI, such as
+// resource://files/Movies/Blade%20Runner.mp4, which is read from its workspace
+export function isWorkspaceURI(uri: string): boolean {
+    return /^resource:\/\/[^/]+\/./.test(uri.trim());
+}
+
+// resourceHash returns the hash of a resource:///<hash> URI, or undefined
 export function resourceHash(uri: string): string | undefined {
     const match = uri.trim().match(/^resource:\/\/\/?([0-9a-fA-F]{64})$/);
     return match ? match[1].toLowerCase() : undefined;

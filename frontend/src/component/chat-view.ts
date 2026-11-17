@@ -23,7 +23,7 @@ import Music16 from '@carbon/icons/es/music/16.js';
 import Video16 from '@carbon/icons/es/video/16.js';
 import PlayFilledAlt16 from '@carbon/icons/es/play--filled--alt/16.js';
 import { MediaPlayer, playable, type Media } from './media-player';
-import { resourceName, type Resource, resourceHash } from '../schema/resource';
+import { isWorkspaceURI, resourceName, type Resource, resourceHash } from '../schema/resource';
 
 // eventWorkspaceOpen is fired, with a workspace's resource's URI, by a link
 // to it, to show it in its panel, as the Workspaces module's eventOpen
@@ -893,7 +893,7 @@ function resultResources(content: unknown): { uri: string; name?: string; title?
         return [];
     }
     return resources.filter((resource): resource is { uri: string; name?: string; title?: string; type?: string } =>
-        typeof resource?.uri === 'string' && resourceHash(resource.uri) !== undefined);
+        typeof resource?.uri === 'string' && (resourceHash(resource.uri) !== undefined || isWorkspaceURI(resource.uri)));
 }
 
 // attachmentIcon returns the icon of an attachment of the type: an image,
