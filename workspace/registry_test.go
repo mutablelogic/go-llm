@@ -1,10 +1,13 @@
 package workspace_test
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
+	"log/slog"
 	"maps"
 	"slices"
+	"sync"
 	"testing"
 	"time"
 
@@ -238,4 +241,65 @@ func (e ending) Watch(ctx context.Context, ch chan<- schema.Change) error {
 	case <-ctx.Done():
 		return nil
 	}
+}
+
+// running is a workspace which says when it runs, and stops
+type running struct {
+	empty
+	started, stopped chan string
+}
+
+func (w running) Run(ctx context.Context, logger *slog.Logger) error {
+	w.started <- "run"
+	<-ctx.Done()
+	w.stopped <- "stop"
+	return nil
+}
+
+func Test_Run(t *testing.T) {
+	// A Runner runs while the registry does, from when it's added, until
+	// it's removed, and a workspace which is added, or removed, is logged
+	var log safeBuffer
+	logger := slog.New(slog.NewTextHandler(&log, nil))
+	r, err := workspace.New()
+	require.NoError(t, err)
+	before := running{started: make(chan string, 1), stopped: make(chan string, 1)}
+	require.NoError(t, r.Add("before", before))
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	go func() { done <- r.Run(ctx, logger) }()
+	assert.Equal(t, "run", <-before.started, "one added before it runs")
+
+	after := running{started: make(chan string, 1), stopped: make(chan string, 1)}
+	require.NoError(t, r.Add("after", after))
+	assert.Equal(t, "run", <-after.started, "one added as it runs")
+	_, err = r.Remove("after")
+	require.NoError(t, err)
+	assert.Equal(t, "stop", <-after.stopped, "once it's removed")
+	assert.ErrorIs(t, r.Run(context.Background(), logger), llm.ErrConflict, "it's running")
+
+	cancel()
+	require.NoError(t, <-done)
+	assert.Equal(t, "stop", <-before.stopped, "once it stops")
+	assert.Contains(t, log.String(), `msg="workspace added" workspace=before`)
+	assert.Contains(t, log.String(), `msg="workspace added" workspace=after`)
+	assert.Contains(t, log.String(), `msg="workspace removed" workspace=after`)
+}
+
+// safeBuffer is a buffer which is written, and read, concurrently
+type safeBuffer struct {
+	mu  sync.Mutex
+	buf bytes.Buffer
+}
+
+func (b *safeBuffer) Write(p []byte) (int, error) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.buf.Write(p)
+}
+
+func (b *safeBuffer) String() string {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.buf.String()
 }

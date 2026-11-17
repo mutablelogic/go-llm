@@ -292,7 +292,7 @@ func (runner *RunServer) withToolkit(ctx server.Cmd, b *broadcaster.Broadcaster,
 		// the toolkit, each in a namespace of its own, as it's connected,
 		// and their resources will be added to the resources
 		return runner.Connector.WithConnectorRegistry(ctx, &runner.RunServer, b, func(connectors *mcpregistry.Registry) error {
-			return runner.withRegistry(ctx, b, mem, h, res, m, connectors, tools, events, build, store, sessions, agents, outcomes, replies, creds)
+			return runner.withRegistry(ctx, b, workspaces, mem, h, res, m, connectors, tools, events, build, store, sessions, agents, outcomes, replies, creds)
 		}, mcpregistry.WithStore(connectorStore), mcpregistry.WithCredentialsProvider(creds), mcpregistry.WithToolkit(tools), mcpregistry.WithAgents(runAgentTool(events)))
 	}, toolkit.WithBroadcaster(b), toolkit.WithCredentialsProvider(creds), toolkit.WithWorkspaces(workspaces))
 }
@@ -312,9 +312,9 @@ func runAgentTool(events *atomic.Pointer[registry.Registry]) func(context.Contex
 
 // withRegistry runs the server, with the registry, which has the stores,
 // and the toolkit, and runs the heartbeats which fire, and the messaging's
-// chats, the resources' cleaning, the connectors, and the broadcaster,
-// until any stops
-func (runner *RunServer) withRegistry(ctx server.Cmd, b *broadcaster.Broadcaster, mem *memory.Memory, h *heartbeat.Heartbeats, res *resource.Manager, m *messaging.Messaging, connectors *mcpregistry.Registry, tools *toolkit.Toolkit, events *atomic.Pointer[registry.Registry], build registry.EventBuilder, store registry.ProviderStore, sessions *sessionStore, agents *agentStore, outcomes *eventStore, replies registry.ReplyFunc, creds credential.CredentialProvider) error {
+// chats, the resources' cleaning, the connectors, the workspaces, and the
+// broadcaster, until any stops
+func (runner *RunServer) withRegistry(ctx server.Cmd, b *broadcaster.Broadcaster, workspaces *workspace.Registry, mem *memory.Memory, h *heartbeat.Heartbeats, res *resource.Manager, m *messaging.Messaging, connectors *mcpregistry.Registry, tools *toolkit.Toolkit, events *atomic.Pointer[registry.Registry], build registry.EventBuilder, store registry.ProviderStore, sessions *sessionStore, agents *agentStore, outcomes *eventStore, replies registry.ReplyFunc, creds credential.CredentialProvider) error {
 	return runner.Registry.WithRegistry(ctx, &runner.RunServer, func(r *registry.Registry) error {
 		// The example agents, as they are, before the server starts
 		createAgents(ctx, r)
@@ -364,6 +364,11 @@ func (runner *RunServer) withRegistry(ctx server.Cmd, b *broadcaster.Broadcaster
 			// The connectors' servers are connected, as they're created,
 			// and disconnected, as they're deleted
 			return connectors.Run(runCtx, ctx.Logger())
+		})
+		group.Go(func() error {
+			// The workspaces which work, such as loading their folders, do,
+			// as they're added, until they're removed
+			return workspaces.Run(runCtx, ctx.Logger())
 		})
 		group.Go(func() error {
 			return runner.RunServer.Run(ctx.WithContext(runCtx))
