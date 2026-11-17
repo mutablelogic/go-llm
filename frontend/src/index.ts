@@ -126,6 +126,10 @@ document.addEventListener(MediaPlayer.eventDeleted, (e) => {
     document.querySelector('llm-media-player')?.deleted(hash, session);
 });
 
+// The player stops when the server says it's stopping, as the media it
+// streams would keep it from stopping, until it's played
+changes.onShutdown(() => document.querySelector('llm-media-player')?.stop());
+
 // Show the page of the location, such as #chat/<id>, which is active in
 // the sidebar, as it is, or by its first parameter, too, such as
 // #workspace/<name>, whose page in the sidebar is workspace/<name>, and
