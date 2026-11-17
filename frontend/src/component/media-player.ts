@@ -189,8 +189,24 @@ export class MediaPlayer extends LitElement {
     }
 
     // close stops what's played, and hides the player
+    // stop stops playing, and hides the player, such as when the server is
+    // stopping, whose request of the media, which can be streamed for as
+    // long as it plays, is closed, so it doesn't keep the server from
+    // stopping
+    stop() {
+        this.close();
+    }
+
+    // close stops playing, and closes the media's request, as the browser
+    // can keep it open while the element is paused, or until it's
+    // collected, once it's removed, and hides the player
     private close() {
-        this.element?.pause();
+        const element = this.element;
+        if (element) {
+            element.pause();
+            element.removeAttribute('src');
+            element.load();
+        }
         this.media = undefined;
         this.unavailable = false;
     }
