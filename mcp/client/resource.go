@@ -48,3 +48,18 @@ func (c *Client) ReadResource(ctx context.Context, uri string) (*sdkmcp.ReadReso
 	}
 	return session.ReadResource(ctx, &sdkmcp.ReadResourceParams{URI: uri})
 }
+
+// HasExperimental returns true when the server says it has the experimental
+// capability with the name, such as a workspace's
+func (c *Client) HasExperimental(name string) bool {
+	session, err := c.connected()
+	if err != nil {
+		return false
+	}
+	result := session.InitializeResult()
+	if result == nil || result.Capabilities == nil {
+		return false
+	}
+	_, exists := result.Capabilities.Experimental[name]
+	return exists
+}

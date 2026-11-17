@@ -28,6 +28,7 @@ func Test_Client(t *testing.T) {
 	require.NoError(t, c.Connect(ctx))
 	t.Cleanup(func() { assert.NoError(t, c.Disconnect()) })
 
+	assert.False(t, c.HasExperimental(schema.Capability), "it isn't a workspace")
 	ws, err := workspace.NewClient("notes", c)
 	require.NoError(t, err)
 	assert.Equal(t, "notes", ws.Name())
