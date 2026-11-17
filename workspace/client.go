@@ -70,7 +70,7 @@ func (w *clientWorkspace) List(ctx context.Context, req schema.ListRequest) (*sc
 	if err != nil {
 		return nil, err
 	}
-	response := &schema.ListResponse{Body: make([]schema.ResourceMeta, 0, len(result.Resources)), Next: result.NextCursor}
+	response := &schema.ListResponse{Body: make([]schema.ResourceMeta, 0, len(result.Resources)), Next: result.NextCursor, Count: schema.CountOf(result)}
 	for _, resource := range result.Resources {
 		if resource != nil {
 			response.Body = append(response.Body, schema.ResourceMetaOf(resource))

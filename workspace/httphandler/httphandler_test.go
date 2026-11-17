@@ -86,7 +86,7 @@ func Test_Workspaces(t *testing.T) {
 		require.Equal(t, http.StatusOK, get(t, server, "/llm/workspace/notes/resource", &list))
 		require.Len(t, list.Body, 2)
 		assert.True(t, list.Body[0].IsFolder())
-		assert.Equal(t, "more", list.Next)
+		assert.NotEmpty(t, list.Next, "an opaque cursor")
 
 		list = schema.ListResponse{}
 		require.Equal(t, http.StatusOK, get(t, server, "/llm/workspace/notes/resource?path=2026&limit=10", &list))

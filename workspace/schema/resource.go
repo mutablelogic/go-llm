@@ -47,6 +47,10 @@ type ListResponse struct {
 
 	// Next is the cursor of the next page, or empty, when there isn't one
 	Next string `json:"next,omitempty"`
+
+	// Count is how many there are, of every page, when the workspace knows,
+	// or nil
+	Count *uint64 `json:"count,omitempty"`
 }
 
 // ResourceMeta is a folder, or a resource, of a workspace, as it's listed:

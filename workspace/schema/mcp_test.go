@@ -98,3 +98,17 @@ func Test_Query(t *testing.T) {
 	assert.Empty(t, schema.ListRequest{}.Query())
 	assert.Equal(t, "   ", schema.ListRequest{Path: "   "}.Query().Get("path"), "a folder whose name is spaces")
 }
+
+func Test_CountOf(t *testing.T) {
+	// A count which isn't one isn't known, and zero is
+	result := func(value any) *sdkmcp.ListResourcesResult {
+		return &sdkmcp.ListResourcesResult{Meta: sdkmcp.Meta{schema.MetaCount: value}}
+	}
+	for _, value := range []any{-1, 1.5, "unknown", true} {
+		assert.Nil(t, schema.CountOf(result(value)), value)
+	}
+	require.NotNil(t, schema.CountOf(result(0)))
+	assert.Equal(t, uint64(0), *schema.CountOf(result(0)))
+	assert.Equal(t, uint64(16), *schema.CountOf(result(float64(16))), "as JSON decodes it")
+	assert.Nil(t, schema.CountOf(&sdkmcp.ListResourcesResult{}))
+}

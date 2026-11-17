@@ -71,7 +71,8 @@ func (f files) List(_ context.Context, req schema.ListRequest) (*schema.ListResp
 	if req.Limit > 0 && start+int(req.Limit) < end {
 		end = start + int(req.Limit)
 	}
-	response := &schema.ListResponse{Body: all[start:end]}
+	count := uint64(len(all))
+	response := &schema.ListResponse{Body: all[start:end], Count: &count}
 	if end < len(all) {
 		response.Next = strconv.Itoa(end)
 	}
@@ -166,6 +167,8 @@ func Test_Workspace(t *testing.T) {
 		list, err := ws.List(ctx, schema.ListRequest{Recursive: true, Limit: 2})
 		require.NoError(t, err)
 		assert.Len(t, list.Body, 2)
+		require.NotNil(t, list.Count, "how many there are, of every page, over MCP")
+		assert.Equal(t, uint64(5), *list.Count)
 		require.NotEmpty(t, list.Next)
 		next, err := ws.List(ctx, schema.ListRequest{Recursive: true, Limit: 2, Cursor: list.Next})
 		require.NoError(t, err)

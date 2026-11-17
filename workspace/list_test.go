@@ -1,0 +1,161 @@
+package workspace_test
+
+import (
+	"context"
+	"fmt"
+	"testing"
+
+	// Packages
+	llm "github.com/mutablelogic/go-llm"
+	workspace "github.com/mutablelogic/go-llm/workspace"
+	schema "github.com/mutablelogic/go-llm/workspace/schema"
+	assert "github.com/stretchr/testify/assert"
+	require "github.com/stretchr/testify/require"
+)
+
+// unlimited is a workspace which ignores the limit, as an MCP server which
+// isn't a workspace's does: its pages are of 4, whose cursor is the page
+type unlimited struct{}
+
+func (unlimited) List(_ context.Context, req schema.ListRequest) (*schema.ListResponse, error) {
+	page := 0
+	if req.Cursor != "" {
+		fmt.Sscanf(req.Cursor, "page%d", &page)
+	}
+	result := &schema.ListResponse{}
+	for i := range 4 {
+		n := page*4 + i
+		result.Body = append(result.Body, schema.ResourceMeta{URI: fmt.Sprintf("ui://server/%d", n), Name: fmt.Sprint(n)})
+	}
+	if page < 2 {
+		result.Next = fmt.Sprintf("page%d", page+1)
+	}
+	return result, nil
+}
+
+func Test_ListLimit(t *testing.T) {
+	// The limit is kept, whether the workspace keeps it, or not, a page at a
+	// time, which continues where the last ended, with an opaque cursor,
+	// and each has its path
+	ctx := context.Background()
+	r, err := workspace.New()
+	require.NoError(t, err)
+	require.NoError(t, r.Add("server", unlimited{}))
+	require.NoError(t, r.Add("other", unlimited{}))
+
+	var names []string
+	req := schema.ListRequest{Limit: 3}
+	for {
+		list, err := r.ListResources(ctx, "server", req)
+		require.NoError(t, err)
+		assert.LessOrEqual(t, len(list.Body), 3)
+		for _, resource := range list.Body {
+			names = append(names, resource.Name)
+			assert.Equal(t, "ui://server/"+resource.Name, resource.Path, "its URI, after the workspace")
+		}
+		if list.Next == "" {
+			break
+		}
+		assert.NotContains(t, list.Next, "page", "an opaque cursor")
+		req.Cursor = list.Next
+	}
+	assert.Equal(t, []string{"0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11"}, names, "each once, in order")
+
+	// Without a limit, a page is the workspace's
+	list, err := r.ListResources(ctx, "server", schema.ListRequest{})
+	require.NoError(t, err)
+	assert.Len(t, list.Body, 4)
+
+	// A cursor which isn't the registry's, or is another workspace's, isn't
+	// valid
+	_, err = r.ListResources(ctx, "server", schema.ListRequest{Cursor: "page1"})
+	assert.ErrorIs(t, err, llm.ErrBadParameter)
+	first, err := r.ListResources(ctx, "server", schema.ListRequest{Limit: 2})
+	require.NoError(t, err)
+	_, err = r.ListResources(ctx, "other", schema.ListRequest{Cursor: first.Next})
+	assert.ErrorIs(t, err, llm.ErrBadParameter)
+
+	// Or another listing's, of another folder, recursion, or type
+	for _, other := range []schema.ListRequest{
+		{Path: "notes", Cursor: first.Next},
+		{Recursive: true, Cursor: first.Next},
+		{Type: schema.FolderType, Cursor: first.Next},
+	} {
+		_, err = r.ListResources(ctx, "server", other)
+		assert.ErrorIs(t, err, llm.ErrBadParameter, other)
+	}
+
+	// The same listing, with another limit, is the same listing
+	_, err = r.ListResources(ctx, "server", schema.ListRequest{Limit: 5, Cursor: first.Next})
+	assert.NoError(t, err)
+}
+
+// overfull is a workspace which returns one more than the limit, of 10,
+// whose cursor is the index of the next, and whose count is all of them,
+// half of which are folders
+type overfull struct{}
+
+func (overfull) List(_ context.Context, req schema.ListRequest) (*schema.ListResponse, error) {
+	start := 0
+	if req.Cursor != "" {
+		fmt.Sscanf(req.Cursor, "%d", &start)
+	}
+	limit := int(req.Limit)
+	if limit == 0 {
+		limit = 4
+	}
+	end := min(start+limit+1, 10)
+	count := uint64(10)
+	result := &schema.ListResponse{Count: &count}
+	for n := start; n < end; n++ {
+		r := schema.ResourceMeta{URI: fmt.Sprintf("ui://server/%d", n), Name: fmt.Sprint(n)}
+		if n%2 == 0 {
+			r.Type = schema.FolderType
+		}
+		result.Body = append(result.Body, r)
+	}
+	if end < 10 {
+		result.Next = fmt.Sprint(end)
+	}
+	return result, nil
+}
+
+func Test_ListLimitChanges(t *testing.T) {
+	// A page which is resumed with another limit, or none, has each once,
+	// in order, as it's fetched with the limit it was
+	ctx := context.Background()
+	r, err := workspace.New()
+	require.NoError(t, err)
+	require.NoError(t, r.Add("server", overfull{}))
+
+	var names []string
+	req := schema.ListRequest{}
+	for i, limit := range []uint{3, 1, 0, 2, 5, 1, 4, 3} {
+		req.Limit = limit
+		list, err := r.ListResources(ctx, "server", req)
+		require.NoError(t, err, i)
+		for _, resource := range list.Body {
+			names = append(names, resource.Name)
+		}
+		if list.Next == "" {
+			break
+		}
+		req.Cursor = list.Next
+	}
+	assert.Equal(t, []string{"0", "1", "2", "3", "4", "5", "6", "7", "8", "9"}, names)
+}
+
+func Test_ListCount(t *testing.T) {
+	// The workspace's count, unless those of another type were left out
+	ctx := context.Background()
+	r, err := workspace.New()
+	require.NoError(t, err)
+	require.NoError(t, r.Add("server", overfull{}))
+	list, err := r.ListResources(ctx, "server", schema.ListRequest{Limit: 3})
+	require.NoError(t, err)
+	require.NotNil(t, list.Count)
+	assert.Equal(t, uint64(10), *list.Count)
+	list, err = r.ListResources(ctx, "server", schema.ListRequest{Limit: 3, Type: schema.FolderType})
+	require.NoError(t, err)
+	assert.Nil(t, list.Count, "of every type, so it isn't said")
+}
