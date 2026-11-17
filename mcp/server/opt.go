@@ -7,6 +7,7 @@ import (
 	// Packages
 	llm "github.com/mutablelogic/go-llm"
 	schema "github.com/mutablelogic/go-llm/mcp/schema"
+	workspace "github.com/mutablelogic/go-llm/workspace"
 	trace "go.opentelemetry.io/otel/trace"
 )
 
@@ -29,6 +30,9 @@ type opt struct {
 
 	// The tracer of the tools' calls, or nil
 	tracer trace.Tracer
+
+	// The workspace whose resources are served, or nil
+	workspace workspace.Workspace
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -77,6 +81,21 @@ func WithKeepAlive(interval time.Duration) Opt {
 			return llm.ErrBadParameter.Withf("keep alive %v is negative", interval)
 		}
 		o.keepAlive = interval
+		return nil
+	}
+}
+
+// WithWorkspace serves the workspace's resources, as well as the
+// namespace's tools: resources/list lists its folders and resources, by
+// the folder in the request's _meta, and resources/read reads them, when
+// it's a workspace.Reader, and the server says it's a workspace, with the
+// experimental capability schema.Capability
+func WithWorkspace(ws workspace.Workspace) Opt {
+	return func(o *opt) error {
+		if ws == nil {
+			return llm.ErrBadParameter.With("missing workspace")
+		}
+		o.workspace = ws
 		return nil
 	}
 }

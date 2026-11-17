@@ -55,13 +55,7 @@ func New(ns toolkit.Namespace, opts ...Opt) (*Server, error) {
 		Instructions: ns.SystemPrompt(),
 		Logger:       s.logger,
 		KeepAlive:    s.keepAlive,
-		// It has tools, which change, even while it has none, so a client
-		// which connects while it has none lists them once it's told they
-		// changed, and it logs, as the SDK's servers do
-		Capabilities: &sdkmcp.ServerCapabilities{
-			Logging: &sdkmcp.LoggingCapabilities{},
-			Tools:   &sdkmcp.ToolCapabilities{ListChanged: true},
-		},
+		Capabilities: s.capabilities(),
 	})
 
 	// Its tools are the namespace's, as they are now, each time they're
@@ -69,8 +63,17 @@ func New(ns toolkit.Namespace, opts ...Opt) (*Server, error) {
 	// or while it isn't, isn't served
 	s.server.AddReceivingMiddleware(func(next sdkmcp.MethodHandler) sdkmcp.MethodHandler {
 		return func(ctx context.Context, method string, req sdkmcp.Request) (sdkmcp.Result, error) {
-			if method == "tools/list" || method == "tools/call" {
+			switch method {
+			case "tools/list", "tools/call":
 				s.sync()
+			case "resources/list":
+				if s.workspace != nil {
+					return s.listResources(ctx, req)
+				}
+			case "resources/read":
+				if s.workspace != nil {
+					return s.readResource(ctx, req)
+				}
 			}
 			return next(ctx, method, req)
 		}
