@@ -9,6 +9,7 @@ import (
 	"reflect"
 	"slices"
 	"sync"
+	"time"
 
 	// Packages
 	llm "github.com/mutablelogic/go-llm"
@@ -52,6 +53,10 @@ const (
 	// WorkspaceTable is the table of the events of the workspaces which
 	// are added, and removed, whose rows are their names
 	WorkspaceTable = "workspace"
+
+	// WatchTimeout is how long Add waits for a workspace which is a Watcher
+	// to say it's watching, before it's said to be added
+	WatchTimeout = 5 * time.Second
 
 	// ResourceTable is the table of the events of the workspaces' folders,
 	// and resources, which change, whose rows are the workspaces' names,
@@ -98,14 +103,20 @@ func (r *Registry) Add(name string, ws Workspace) error {
 		return llm.ErrConflict.Withf("workspace %q already exists", name)
 	}
 	r.workspaces[name] = ws
-	r.publish(eventschema.EventCreate, WorkspaceTable, name, nil)
 
-	// Publish its changes, when it says them
+	// Publish its changes, when it says them, once it's watching, so a
+	// change after it's said to be added isn't missed
 	if watcher, ok := ws.(Watcher); ok && r.broadcaster != nil {
 		ctx, cancel := context.WithCancel(r.ctx)
 		r.watches[name] = cancel
-		go r.watch(ctx, name, watcher)
+		ready := make(chan struct{})
+		go r.watch(ctx, name, watcher, ready)
+		select {
+		case <-ready:
+		case <-time.After(WatchTimeout):
+		}
 	}
+	r.publish(eventschema.EventCreate, WorkspaceTable, name, nil)
 	return nil
 }
 
@@ -219,26 +230,50 @@ func (r *Registry) All() iter.Seq2[string, Workspace] {
 
 // watch publishes the workspace's changes, until the context is cancelled,
 // as it's removed, or the registry is closed
-func (r *Registry) watch(ctx context.Context, name string, watcher Watcher) {
+func (r *Registry) watch(ctx context.Context, name string, watcher Watcher, ready chan struct{}) {
 	ch := make(chan schema.Change, 16)
 	done := make(chan error, 1)
 	go func() { done <- watcher.Watch(ctx, ch) }()
+
+	// The first change says it's watching, which isn't published
+	watching := func() {
+		if ready != nil {
+			close(ready)
+			ready = nil
+		}
+	}
+	defer watching()
+	publish := func(change schema.Change) {
+		if ready != nil {
+			watching()
+			return
+		}
+		data, err := json.Marshal(ResourceEvent{URI: change.URI})
+		if err != nil {
+			return
+		}
+		r.mu.RLock()
+		defer r.mu.RUnlock()
+		if ctx.Err() == nil {
+			// It's still in the registry, as it isn't removed while the lock
+			// is held, and its watch is cancelled once it is
+			r.publish(change.Action, ResourceTable, name, data)
+		}
+	}
 	for {
 		select {
 		case change := <-ch:
-			data, err := json.Marshal(ResourceEvent{URI: change.URI})
-			if err != nil {
-				continue
-			}
-			r.mu.RLock()
-			if ctx.Err() == nil {
-				// It's still in the registry, as it isn't removed while the
-				// lock is held, and its watch is cancelled once it is
-				r.publish(change.Action, ResourceTable, name, data)
-			}
-			r.mu.RUnlock()
+			publish(change)
 		case <-done:
-			return
+			// The changes it said before it ended are published
+			for {
+				select {
+				case change := <-ch:
+					publish(change)
+				default:
+					return
+				}
+			}
 		}
 	}
 }

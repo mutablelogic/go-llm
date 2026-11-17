@@ -47,7 +47,8 @@ type Watcher interface {
 	// returns nil, or it fails. Each is waited for the channel to receive,
 	// so none is missed, and the channel is read until the context is
 	// cancelled. A change without a URI says the workspace changed, but not
-	// where, so it's listed again.
+	// where, so it's listed again, which it sends first, once it's watching,
+	// so a change after that isn't missed.
 	Watch(ctx context.Context, ch chan<- schema.Change) error
 }
 

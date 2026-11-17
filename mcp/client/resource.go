@@ -90,8 +90,10 @@ func (c *Client) Unsubscribe(ctx context.Context, uri string) error {
 // WatchResources sends the URI of each of the server's resources which is
 // updated, which it was subscribed to, and an empty URI when the server says
 // its list of resources changed, so it's listed again, to the channel,
-// until the context is cancelled, when it returns nil. Each is waited for
-// the channel to receive. Returns ErrBadParameter when there's no channel.
+// until the context is cancelled, when it returns nil. It sends an empty
+// URI first, once it's watching, so a change after that isn't missed. Each
+// is waited for the channel to receive. Returns ErrBadParameter when
+// there's no channel.
 func (c *Client) WatchResources(ctx context.Context, ch chan<- string) error {
 	if ch == nil {
 		return llm.ErrBadParameter.With("missing channel")
@@ -103,6 +105,12 @@ func (c *Client) WatchResources(ctx context.Context, ch chan<- string) error {
 	}
 	c.resources.watches[w] = struct{}{}
 	c.resources.mu.Unlock()
+
+	// It's watching, which is said
+	select {
+	case ch <- "":
+	case <-ctx.Done():
+	}
 	<-ctx.Done()
 	c.resources.mu.Lock()
 	delete(c.resources.watches, w)

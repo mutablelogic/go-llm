@@ -125,6 +125,12 @@ type changing struct {
 }
 
 func (c changing) Watch(ctx context.Context, ch chan<- schema.Change) error {
+	// It's watching, which is said first
+	select {
+	case ch <- schema.Change{Action: eventschema.EventUpdate}:
+	case <-ctx.Done():
+		return nil
+	}
 	for {
 		select {
 		case change := <-c.changes:
@@ -189,4 +195,47 @@ func Test_RemoveIf(t *testing.T) {
 	assert.False(t, r.RemoveIf("notes", second), "another workspace")
 	assert.True(t, r.RemoveIf("notes", first))
 	assert.False(t, r.RemoveIf("notes", first), "once it's removed")
+}
+
+func Test_EventsReady(t *testing.T) {
+	// Once Add returns, the workspace is watched, so a change it says then
+	// is published, and one it said before its watch ended is, too
+	b := broadcaster.New()
+	events := make(chan eventschema.Event, 16)
+	watchCtx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	_, err := b.Watch(watchCtx, events)
+	require.NoError(t, err)
+	r, err := workspace.New(workspace.WithBroadcaster(b))
+	require.NoError(t, err)
+	defer r.Close()
+	ws := ending{changes: make(chan schema.Change, 1)}
+	require.NoError(t, r.Add("notes", ws))
+	assert.Equal(t, workspace.WorkspaceTable, (<-events).Table)
+	ws.changes <- schema.Change{Action: eventschema.EventUpdate, URI: "file:///a.md"}
+	select {
+	case event := <-events:
+		assert.Equal(t, workspace.ResourceTable, event.Table)
+		assert.JSONEq(t, `{"uri":"file:///a.md"}`, string(event.Data))
+	case <-time.After(5 * time.Second):
+		t.Fatal("the change wasn't published")
+	}
+}
+
+// ending is a workspace which says it's watching, and then one change, and
+// ends its watch at once, with the change still queued
+type ending struct {
+	empty
+	changes chan schema.Change
+}
+
+func (e ending) Watch(ctx context.Context, ch chan<- schema.Change) error {
+	ch <- schema.Change{Action: eventschema.EventUpdate}
+	select {
+	case change := <-e.changes:
+		ch <- change
+		return llm.ErrServiceUnavailable.With("it ended")
+	case <-ctx.Done():
+		return nil
+	}
 }

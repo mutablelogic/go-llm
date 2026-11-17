@@ -114,11 +114,18 @@ func (s *Server) Run(ctx context.Context) error {
 		go func() { done <- watcher.Watch(ctx, changes) }()
 	}
 	s.sync()
+	watching := false
 	for {
 		select {
 		case <-ch:
 			s.sync()
 		case change := <-changes:
+			// The first change says the workspace is watching, which isn't
+			// told
+			if !watching {
+				watching = true
+				continue
+			}
 			s.changed(ctx, change)
 		case err := <-done:
 			return err

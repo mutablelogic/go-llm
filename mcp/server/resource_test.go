@@ -174,6 +174,12 @@ type watched struct {
 }
 
 func (w *watched) Watch(ctx context.Context, ch chan<- schema.Change) error {
+	// It's watching, which is said first
+	select {
+	case ch <- schema.Change{Action: eventschema.EventUpdate}:
+	case <-ctx.Done():
+		return nil
+	}
 	for {
 		select {
 		case change := <-w.changes:
@@ -215,6 +221,12 @@ func Test_WorkspaceWatch(t *testing.T) {
 	watchCtx, stop := context.WithCancel(ctx)
 	defer stop()
 	go func() { _ = watcher.Watch(watchCtx, changes) }()
+	select {
+	case change := <-changes:
+		assert.Equal(t, schema.Change{Action: eventschema.EventUpdate}, change, "it's watching")
+	case <-time.After(5 * time.Second):
+		t.Fatal("the watch didn't start")
+	}
 	require.NoError(t, c.Subscribe(ctx, "file:///notes/a.md"))
 
 	// say says the change until the client is told, as its subscription, and
