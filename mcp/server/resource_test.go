@@ -14,12 +14,12 @@ import (
 
 	// Packages
 	llm "github.com/mutablelogic/go-llm"
-	eventschema "github.com/mutablelogic/go-llm/broadcaster/schema"
 	client "github.com/mutablelogic/go-llm/mcp/client"
 	server "github.com/mutablelogic/go-llm/mcp/server"
 	providerschema "github.com/mutablelogic/go-llm/provider/schema"
 	workspace "github.com/mutablelogic/go-llm/workspace"
 	schema "github.com/mutablelogic/go-llm/workspace/schema"
+	eventschema "github.com/mutablelogic/go-server/broadcaster/schema"
 	assert "github.com/stretchr/testify/assert"
 	require "github.com/stretchr/testify/require"
 )
@@ -343,7 +343,7 @@ type watched struct {
 func (w *watched) WatchResources(ctx context.Context, ch chan<- schema.Change) error {
 	// It's watching, which is said first
 	select {
-	case ch <- schema.Change{Action: eventschema.EventUpdate}:
+	case ch <- schema.Change{Action: eventschema.ChangeUpdate}:
 	case <-ctx.Done():
 		return nil
 	}
@@ -390,7 +390,7 @@ func Test_WorkspaceWatch(t *testing.T) {
 	go func() { _ = watcher.WatchResources(watchCtx, changes) }()
 	select {
 	case change := <-changes:
-		assert.Equal(t, schema.Change{Action: eventschema.EventUpdate}, change, "it's watching")
+		assert.Equal(t, schema.Change{Action: eventschema.ChangeUpdate}, change, "it's watching")
 	case <-time.After(5 * time.Second):
 		t.Fatal("the watch didn't start")
 	}
@@ -405,7 +405,7 @@ func Test_WorkspaceWatch(t *testing.T) {
 			source.changes <- change
 			select {
 			case got := <-changes:
-				if got.URI == "" && change.Action == eventschema.EventUpdate && change.URI != "" {
+				if got.URI == "" && change.Action == eventschema.ChangeUpdate && change.URI != "" {
 					// The list changed, as the server started watching
 					continue
 				}
@@ -419,13 +419,13 @@ func Test_WorkspaceWatch(t *testing.T) {
 	}
 
 	// Updated, as it was subscribed to
-	assert.Equal(t, schema.Change{Action: eventschema.EventUpdate, URI: "file:///notes/a.md"}, say(schema.Change{Action: eventschema.EventUpdate, URI: "file:///notes/a.md"}))
+	assert.Equal(t, schema.Change{Action: eventschema.ChangeUpdate, URI: "file:///notes/a.md"}, say(schema.Change{Action: eventschema.ChangeUpdate, URI: "file:///notes/a.md"}))
 
 	// Created, which is that the list changed, without a URI, as MCP says
 	for len(changes) > 0 {
 		<-changes
 	}
-	assert.Equal(t, schema.Change{Action: eventschema.EventUpdate}, say(schema.Change{Action: eventschema.EventCreate, URI: "file:///notes/b.md"}))
+	assert.Equal(t, schema.Change{Action: eventschema.ChangeUpdate}, say(schema.Change{Action: eventschema.ChangeCreate, URI: "file:///notes/b.md"}))
 
 	// The placeholder which says so isn't listed
 	list, err := ws.List(ctx, schema.ListRequest{Recursive: true})
@@ -478,13 +478,13 @@ func Test_WorkspaceSubscribe(t *testing.T) {
 	require.NoError(t, downstream.(workspace.Subscriber).Subscribe(ctx, "file:///notes/a.md"))
 	deadline := time.After(5 * time.Second)
 	for {
-		source.changes <- schema.Change{Action: eventschema.EventUpdate, URI: "file:///notes/a.md"}
+		source.changes <- schema.Change{Action: eventschema.ChangeUpdate, URI: "file:///notes/a.md"}
 		select {
 		case change := <-changes:
 			if change.URI == "" {
 				continue
 			}
-			assert.Equal(t, schema.Change{Action: eventschema.EventUpdate, URI: "file:///notes/a.md"}, change)
+			assert.Equal(t, schema.Change{Action: eventschema.ChangeUpdate, URI: "file:///notes/a.md"}, change)
 			return
 		case <-time.After(50 * time.Millisecond):
 		case <-deadline:

@@ -14,10 +14,10 @@ import (
 	// Packages
 	sdkmcp "github.com/modelcontextprotocol/go-sdk/mcp"
 	llm "github.com/mutablelogic/go-llm"
-	eventschema "github.com/mutablelogic/go-llm/broadcaster/schema"
 	toolkit "github.com/mutablelogic/go-llm/toolkit"
 	workspace "github.com/mutablelogic/go-llm/workspace"
 	schema "github.com/mutablelogic/go-llm/workspace/schema"
+	eventschema "github.com/mutablelogic/go-server/broadcaster/schema"
 )
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -117,7 +117,7 @@ func New(ns toolkit.Namespace, opts ...Opt) (*Server, error) {
 func (s *Server) Run(ctx context.Context) error {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
-	ch := make(chan eventschema.Event, 16)
+	ch := make(chan eventschema.Change, 16)
 	done := make(chan error, 2)
 	go func() { done <- s.ns.Watch(ctx, ch) }()
 

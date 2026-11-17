@@ -9,11 +9,11 @@ import (
 
 	// Packages
 	llm "github.com/mutablelogic/go-llm"
-	eventschema "github.com/mutablelogic/go-llm/broadcaster/schema"
 	reminder "github.com/mutablelogic/go-llm/internal/reminder"
 	schema "github.com/mutablelogic/go-llm/memory/schema"
 	toolkit "github.com/mutablelogic/go-llm/toolkit"
 	toolschema "github.com/mutablelogic/go-llm/toolkit/schema"
+	eventschema "github.com/mutablelogic/go-server/broadcaster/schema"
 )
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -57,7 +57,7 @@ func (m *Memory) SystemPromptFor(tools []string) string {
 func (*Memory) Type() string { return toolschema.NamespaceBuiltin }
 
 // Watch sends the namespace's tools, which don't change
-func (ns *Memory) Watch(ctx context.Context, ch chan<- eventschema.Event) error {
+func (ns *Memory) Watch(ctx context.Context, ch chan<- eventschema.Change) error {
 	return toolkit.WatchTools(ctx, ch, ns.Tools())
 }
 

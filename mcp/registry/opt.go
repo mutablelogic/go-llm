@@ -8,11 +8,11 @@ import (
 	env "github.com/mutablelogic/go-auth/credential/env"
 	client "github.com/mutablelogic/go-client"
 	llm "github.com/mutablelogic/go-llm"
-	broadcaster "github.com/mutablelogic/go-llm/broadcaster"
 	mcpclient "github.com/mutablelogic/go-llm/mcp/client"
 	namespace "github.com/mutablelogic/go-llm/mcp/namespace"
 	schema "github.com/mutablelogic/go-llm/mcp/schema"
 	toolkit "github.com/mutablelogic/go-llm/toolkit"
+	broadcaster "github.com/mutablelogic/go-server/broadcaster"
 )
 
 ///////////////////////////////////////////////////////////////////////////////

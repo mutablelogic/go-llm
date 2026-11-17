@@ -9,8 +9,8 @@ import (
 	// Packages
 	otel "github.com/mutablelogic/go-client/pkg/otel"
 	llm "github.com/mutablelogic/go-llm"
-	eventschema "github.com/mutablelogic/go-llm/broadcaster/schema"
 	schema "github.com/mutablelogic/go-llm/registry/schema"
+	eventschema "github.com/mutablelogic/go-server/broadcaster/schema"
 	attribute "go.opentelemetry.io/otel/attribute"
 )
 
@@ -259,15 +259,15 @@ func (r *Registry) changeStatus(id uuid.UUID, fn func(*status)) {
 		r.statuses.sessions[id] = s
 	}
 	if before != after {
-		r.publish(eventschema.EventUpdate, SessionTable, id.String(), schema.SessionEvent{Status: after})
+		r.publish(eventschema.ChangeUpdate, SessionTable, id.String(), schema.SessionEvent{Status: after})
 	}
 }
 
 // sessionChanged publishes that the session was created, updated or
 // deleted, with its serial, unless it was deleted
-func (r *Registry) sessionChanged(action eventschema.EventAction, session schema.Session) {
+func (r *Registry) sessionChanged(action eventschema.ChangeAction, session schema.Session) {
 	var data any
-	if action != eventschema.EventDelete {
+	if action != eventschema.ChangeDelete {
 		data = schema.SessionEvent{Serial: session.Serial}
 	}
 	r.publish(action, SessionTable, session.ID.String(), data)

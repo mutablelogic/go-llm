@@ -13,11 +13,11 @@ import (
 	gofiler "github.com/mutablelogic/go-filer"
 	filerfs "github.com/mutablelogic/go-filer/filer/fs"
 	llm "github.com/mutablelogic/go-llm"
-	eventschema "github.com/mutablelogic/go-llm/broadcaster/schema"
 	namespace "github.com/mutablelogic/go-llm/mcp/namespace"
 	workspace "github.com/mutablelogic/go-llm/workspace"
 	filer "github.com/mutablelogic/go-llm/workspace/filer"
 	schema "github.com/mutablelogic/go-llm/workspace/schema"
+	eventschema "github.com/mutablelogic/go-server/broadcaster/schema"
 	require "github.com/stretchr/testify/require"
 )
 
@@ -60,7 +60,7 @@ func Test_FilerNamespace(t *testing.T) {
 		case change := <-changes:
 			// An edit is an update, or, as macOS's FSEvents may say, the
 			// file was created
-			if change.URI == "file:///a.md" && (change.Action == eventschema.EventUpdate || change.Action == eventschema.EventCreate) {
+			if change.URI == "file:///a.md" && (change.Action == eventschema.ChangeUpdate || change.Action == eventschema.ChangeCreate) {
 				return
 			}
 		case <-deadline:

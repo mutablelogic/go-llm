@@ -10,9 +10,9 @@ import (
 	env "github.com/mutablelogic/go-auth/credential/env"
 	client "github.com/mutablelogic/go-client"
 	llm "github.com/mutablelogic/go-llm"
-	broadcaster "github.com/mutablelogic/go-llm/broadcaster"
 	toolkit "github.com/mutablelogic/go-llm/toolkit"
 	toolschema "github.com/mutablelogic/go-llm/toolkit/schema"
+	broadcaster "github.com/mutablelogic/go-server/broadcaster"
 	trace "go.opentelemetry.io/otel/trace"
 )
 

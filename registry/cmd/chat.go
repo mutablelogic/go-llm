@@ -16,8 +16,6 @@ import (
 
 	// Packages
 	llm "github.com/mutablelogic/go-llm"
-	eventclient "github.com/mutablelogic/go-llm/broadcaster/httpclient"
-	eventschema "github.com/mutablelogic/go-llm/broadcaster/schema"
 	memoryclient "github.com/mutablelogic/go-llm/memory/httpclient"
 	memoryschema "github.com/mutablelogic/go-llm/memory/schema"
 	providerschema "github.com/mutablelogic/go-llm/provider/schema"
@@ -27,6 +25,8 @@ import (
 	resourceclient "github.com/mutablelogic/go-llm/resource/httpclient"
 	resourceschema "github.com/mutablelogic/go-llm/resource/schema"
 	server "github.com/mutablelogic/go-server"
+	eventclient "github.com/mutablelogic/go-server/broadcaster/httpclient"
+	eventschema "github.com/mutablelogic/go-server/broadcaster/schema"
 )
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -158,9 +158,9 @@ func (cmd *ChatCmd) Run(ctx server.Cmd) error {
 ///////////////////////////////////////////////////////////////////////////////
 // PRIVATE METHODS
 
-// WatchEvents watches the server's events, such as the changes to sessions
-func (c chatClient) WatchEvents(ctx context.Context, fn func(eventschema.Event) error) error {
-	return c.events.WatchEvents(ctx, fn)
+// WatchChanges watches the server's changes, such as to sessions
+func (c chatClient) WatchChanges(ctx context.Context, fn func(eventschema.Change) error) error {
+	return c.events.WatchChanges(ctx, eventschema.ChangeFilter{}, fn)
 }
 
 // GetDetails returns the memory's details, such as the names of the person

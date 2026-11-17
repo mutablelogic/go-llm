@@ -8,11 +8,11 @@ import (
 
 	// Packages
 	llm "github.com/mutablelogic/go-llm"
-	broadcaster "github.com/mutablelogic/go-llm/broadcaster"
-	eventschema "github.com/mutablelogic/go-llm/broadcaster/schema"
 	memory "github.com/mutablelogic/go-llm/memory"
 	schema "github.com/mutablelogic/go-llm/memory/schema"
 	toolkit "github.com/mutablelogic/go-llm/toolkit"
+	broadcaster "github.com/mutablelogic/go-server/broadcaster"
+	eventschema "github.com/mutablelogic/go-server/broadcaster/schema"
 	types "github.com/mutablelogic/go-server/pkg/types"
 	assert "github.com/stretchr/testify/assert"
 	require "github.com/stretchr/testify/require"
@@ -21,9 +21,9 @@ import (
 func Test_Memories(t *testing.T) {
 	ctx := t.Context()
 	b := broadcaster.New()
-	ch := make(chan eventschema.Event, 16)
+	ch := make(chan eventschema.Change, 16)
 	watchCtx, cancel := context.WithCancel(ctx)
-	done, err := b.Watch(watchCtx, ch)
+	done, err := b.Watch(watchCtx, eventschema.ChangeFilter{}, ch)
 	require.NoError(t, err)
 	defer func() {
 		cancel()
@@ -113,22 +113,22 @@ func Test_Memories(t *testing.T) {
 	assert.ErrorIs(t, err, llm.ErrNotFound)
 
 	// The changes, as events
-	var events []eventschema.Event
+	var events []eventschema.Change
 	for len(ch) > 0 {
 		events = append(events, <-ch)
 	}
-	event := func(action eventschema.EventAction, key, data string) eventschema.Event {
-		event := eventschema.Event{Action: action, Schema: "memory", Table: memory.MemoryTable, Row: key}
+	event := func(action eventschema.ChangeAction, key, data string) eventschema.Change {
+		event := eventschema.Change{Action: action, Schema: "memory", Table: memory.MemoryTable, Row: key}
 		if data != "" {
 			event.Data = json.RawMessage(data)
 		}
 		return event
 	}
-	assert.Equal(t, []eventschema.Event{
-		event(eventschema.EventCreate, "kitchen_lights", `{"version":"`+v1+`"}`),
-		event(eventschema.EventUpdate, "kitchen_lights", `{"version":"`+v2+`"}`),
-		event(eventschema.EventCreate, "units", `{"version":"`+schema.MemoryMeta{Description: "Units the person prefers", Body: "Metric, and Celsius"}.Hash()+`"}`),
-		event(eventschema.EventDelete, "units", ""),
+	assert.Equal(t, []eventschema.Change{
+		event(eventschema.ChangeCreate, "kitchen_lights", `{"version":"`+v1+`"}`),
+		event(eventschema.ChangeUpdate, "kitchen_lights", `{"version":"`+v2+`"}`),
+		event(eventschema.ChangeCreate, "units", `{"version":"`+schema.MemoryMeta{Description: "Units the person prefers", Body: "Metric, and Celsius"}.Hash()+`"}`),
+		event(eventschema.ChangeDelete, "units", ""),
 	}, events)
 }
 

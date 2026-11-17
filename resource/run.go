@@ -10,8 +10,8 @@ import (
 
 	// Packages
 	llm "github.com/mutablelogic/go-llm"
-	eventschema "github.com/mutablelogic/go-llm/broadcaster/schema"
 	schema "github.com/mutablelogic/go-llm/resource/schema"
+	eventschema "github.com/mutablelogic/go-server/broadcaster/schema"
 )
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -53,8 +53,8 @@ func (r *Manager) Run(ctx context.Context, logger *slog.Logger) error {
 	// reads as they're sent, and queues, until they're deleted
 	var deleted sessionQueue
 	if r.broadcaster != nil {
-		events := make(chan eventschema.Event, eventBuffer)
-		if done, err := r.broadcaster.Watch(ctx, events); err != nil {
+		events := make(chan eventschema.Change, eventBuffer)
+		if done, err := r.broadcaster.Watch(ctx, eventschema.ChangeFilter{Schema: sessionSchema, Table: sessionTable, Action: eventschema.ChangeDelete}, events); err != nil {
 			logger.WarnContext(ctx, "resources of deleted sessions won't be deleted, until they're cleaned", "error", err.Error())
 		} else {
 			go deleted.read(events, done)
@@ -116,7 +116,7 @@ func (r *Manager) Clean(ctx context.Context, logger *slog.Logger) {
 		} else if err != nil {
 			logger.ErrorContext(ctx, "resource not deleted", "resource", resource.Key().String(), "error", err.Error())
 		} else {
-			r.publish(eventschema.EventDelete, resource)
+			r.publish(eventschema.ChangeDelete, resource)
 			deleted++
 		}
 	}
@@ -200,13 +200,13 @@ type sessionQueue struct {
 
 // read queues the sessions of the events which are deleted, until the watch
 // ends
-func (q *sessionQueue) read(events <-chan eventschema.Event, done <-chan error) {
+func (q *sessionQueue) read(events <-chan eventschema.Change, done <-chan error) {
 	for {
 		select {
 		case <-done:
 			return
 		case event := <-events:
-			if event.Schema != sessionSchema || event.Table != sessionTable || event.Action != eventschema.EventDelete {
+			if event.Schema != sessionSchema || event.Table != sessionTable || event.Action != eventschema.ChangeDelete {
 				continue
 			}
 			if session, err := uuid.Parse(event.Row); err == nil {

@@ -11,10 +11,10 @@ import (
 	goauth "github.com/mutablelogic/go-auth"
 	client "github.com/mutablelogic/go-client"
 	llm "github.com/mutablelogic/go-llm"
-	broadcaster "github.com/mutablelogic/go-llm/broadcaster"
-	eventschema "github.com/mutablelogic/go-llm/broadcaster/schema"
 	toolkit "github.com/mutablelogic/go-llm/toolkit"
 	schema "github.com/mutablelogic/go-llm/toolkit/schema"
+	broadcaster "github.com/mutablelogic/go-server/broadcaster"
+	eventschema "github.com/mutablelogic/go-server/broadcaster/schema"
 	jsonschema "github.com/mutablelogic/go-server/pkg/jsonschema"
 	assert "github.com/stretchr/testify/assert"
 	require "github.com/stretchr/testify/require"
@@ -302,9 +302,9 @@ func TestRemove(t *testing.T) {
 
 	// A namespace is removed, with its tools, which are said to be deleted
 	b := broadcaster.New()
-	ch := make(chan eventschema.Event, 16)
+	ch := make(chan eventschema.Change, 16)
 	watchCtx, cancel := context.WithCancel(ctx)
-	done, err := b.Watch(watchCtx, ch)
+	done, err := b.Watch(watchCtx, eventschema.ChangeFilter{}, ch)
 	require.NoError(t, err)
 	defer func() {
 		cancel()
@@ -325,7 +325,7 @@ func TestRemove(t *testing.T) {
 	var deleted []string
 	for len(ch) > 0 {
 		event := <-ch
-		assert.Equal(t, eventschema.EventDelete, event.Action)
+		assert.Equal(t, eventschema.ChangeDelete, event.Action)
 		deleted = append(deleted, event.Row)
 	}
 	assert.Equal(t, []string{"a:y", "a:z"}, deleted)
@@ -396,7 +396,7 @@ func (n valueNamespace) SystemPrompt() string { return "" }
 func (n valueNamespace) Tools() []llm.Tool    { return n.tools }
 
 // Watch sends the namespace's tools, which don't change
-func (n valueNamespace) Watch(ctx context.Context, ch chan<- eventschema.Event) error {
+func (n valueNamespace) Watch(ctx context.Context, ch chan<- eventschema.Change) error {
 	return toolkit.WatchTools(ctx, ch, n.Tools())
 }
 

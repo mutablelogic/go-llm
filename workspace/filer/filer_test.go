@@ -12,11 +12,11 @@ import (
 	gofiler "github.com/mutablelogic/go-filer"
 	filerfs "github.com/mutablelogic/go-filer/filer/fs"
 	llm "github.com/mutablelogic/go-llm"
-	eventschema "github.com/mutablelogic/go-llm/broadcaster/schema"
 	client "github.com/mutablelogic/go-llm/mcp/client"
 	workspace "github.com/mutablelogic/go-llm/workspace"
 	filer "github.com/mutablelogic/go-llm/workspace/filer"
 	schema "github.com/mutablelogic/go-llm/workspace/schema"
+	eventschema "github.com/mutablelogic/go-server/broadcaster/schema"
 	assert "github.com/stretchr/testify/assert"
 	require "github.com/stretchr/testify/require"
 )
@@ -173,7 +173,7 @@ func Test_Watch(t *testing.T) {
 	go func() { done <- ws.WatchResources(watchCtx, changes) }()
 	select {
 	case change := <-changes:
-		assert.Equal(t, schema.Change{Action: eventschema.EventUpdate}, change, "it's watching")
+		assert.Equal(t, schema.Change{Action: eventschema.ChangeUpdate}, change, "it's watching")
 	case err := <-done:
 		// A backend which can't watch, such as on macOS without cgo, says so
 		require.ErrorIs(t, err, llm.ErrNotImplemented)
@@ -189,7 +189,7 @@ wait:
 		select {
 		case change := <-changes:
 			if change.URI == "file:///a.md" {
-				assert.Contains(t, []eventschema.EventAction{eventschema.EventCreate, eventschema.EventUpdate}, change.Action)
+				assert.Contains(t, []eventschema.ChangeAction{eventschema.ChangeCreate, eventschema.ChangeUpdate}, change.Action)
 				break wait
 			}
 		case <-deadline:
@@ -199,7 +199,7 @@ wait:
 
 	// A folder which is created, and deleted, is said to be, by its URI
 	require.NoError(t, os.Mkdir(filepath.Join(dir, "notes"), 0o700))
-	waitFor := func(action eventschema.EventAction) {
+	waitFor := func(action eventschema.ChangeAction) {
 		t.Helper()
 		deadline := time.After(10 * time.Second)
 		for {
@@ -213,9 +213,9 @@ wait:
 			}
 		}
 	}
-	waitFor(eventschema.EventCreate)
+	waitFor(eventschema.ChangeCreate)
 	require.NoError(t, os.Remove(filepath.Join(dir, "notes")))
-	waitFor(eventschema.EventDelete)
+	waitFor(eventschema.ChangeDelete)
 	cancel()
 	require.NoError(t, <-done)
 }

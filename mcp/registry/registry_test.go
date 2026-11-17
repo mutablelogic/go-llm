@@ -11,11 +11,11 @@ import (
 
 	// Packages
 	llm "github.com/mutablelogic/go-llm"
-	broadcaster "github.com/mutablelogic/go-llm/broadcaster"
-	eventschema "github.com/mutablelogic/go-llm/broadcaster/schema"
 	registry "github.com/mutablelogic/go-llm/mcp/registry"
 	schema "github.com/mutablelogic/go-llm/mcp/schema"
 	test "github.com/mutablelogic/go-llm/mcp/test"
+	broadcaster "github.com/mutablelogic/go-server/broadcaster"
+	eventschema "github.com/mutablelogic/go-server/broadcaster/schema"
 	assert "github.com/stretchr/testify/assert"
 	require "github.com/stretchr/testify/require"
 )
@@ -211,11 +211,11 @@ func Test_Store(t *testing.T) {
 
 // watch returns the events which the broadcaster publishes, as they're
 // published, until the test ends
-func watch(t *testing.T, b *broadcaster.Broadcaster) chan eventschema.Event {
+func watch(t *testing.T, b *broadcaster.Broadcaster) chan eventschema.Change {
 	t.Helper()
-	ch := make(chan eventschema.Event, 16)
+	ch := make(chan eventschema.Change, 16)
 	ctx, cancel := context.WithCancel(context.Background())
-	done, err := b.Watch(ctx, ch)
+	done, err := b.Watch(ctx, eventschema.ChangeFilter{}, ch)
 	require.NoError(t, err)
 	t.Cleanup(func() {
 		cancel()
@@ -226,8 +226,8 @@ func watch(t *testing.T, b *broadcaster.Broadcaster) chan eventschema.Event {
 
 // published returns the events which were published, until none are, for a
 // while
-func published(ch chan eventschema.Event) []eventschema.Event {
-	var events []eventschema.Event
+func published(ch chan eventschema.Change) []eventschema.Change {
+	var events []eventschema.Change
 	for {
 		select {
 		case event := <-ch:
@@ -251,8 +251,8 @@ func Test_Events(t *testing.T) {
 	ch := watch(t, b)
 	r, err := registry.New(registry.WithBroadcaster(b))
 	require.NoError(t, err)
-	event := func(action eventschema.EventAction, data string) eventschema.Event {
-		return eventschema.Event{Action: action, Schema: schema.Name, Table: schema.ConnectorTable, Row: "github", Data: json.RawMessage(data)}
+	event := func(action eventschema.ChangeAction, data string) eventschema.Change {
+		return eventschema.Change{Action: action, Schema: schema.Name, Table: schema.ConnectorTable, Row: "github", Data: json.RawMessage(data)}
 	}
 	connected := `{"serial":2,"server":{"name":"` + test.Name + `","version":"` + test.Version + `"}}`
 
@@ -268,19 +268,19 @@ func Test_Events(t *testing.T) {
 	require.NoError(t, err)
 	_, err = r.UpdateConnector(ctx, "github", schema.ConnectorMeta{URL: "http://localhost:1/mcp"})
 	require.Error(t, err)
-	assert.Equal(t, []eventschema.Event{event(eventschema.EventCreate, connected)}, published(ch))
+	assert.Equal(t, []eventschema.Change{event(eventschema.ChangeCreate, connected)}, published(ch))
 
 	// Updated again, which is said as it's connected, and not as the one it
 	// replaces is disconnected
 	_, err = r.UpdateConnector(ctx, "github", schema.ConnectorMeta{URL: server.URL + "/"})
 	require.NoError(t, err)
 	again := `{"serial":3,"server":{"name":"` + test.Name + `","version":"` + test.Version + `"}}`
-	assert.Equal(t, []eventschema.Event{event(eventschema.EventCreate, again)}, published(ch))
+	assert.Equal(t, []eventschema.Change{event(eventschema.ChangeCreate, again)}, published(ch))
 
 	// Deleted, and disconnected
 	_, err = r.DeleteConnector(ctx, "github")
 	require.NoError(t, err)
-	assert.Equal(t, []eventschema.Event{event(eventschema.EventDelete, `{"serial":3}`)}, published(ch))
+	assert.Equal(t, []eventschema.Change{event(eventschema.ChangeDelete, `{"serial":3}`)}, published(ch))
 }
 
 func Test_EventsClosed(t *testing.T) {
@@ -307,7 +307,7 @@ func Test_EventsClosed(t *testing.T) {
 	other.CloseClientConnections()
 	events := published(ch)
 	require.Len(t, events, 1)
-	assert.Equal(t, eventschema.EventDelete, events[0].Action)
+	assert.Equal(t, eventschema.ChangeDelete, events[0].Action)
 	assert.Equal(t, "two", events[0].Row)
 	var data schema.ConnectorEvent
 	require.NoError(t, json.Unmarshal(events[0].Data, &data))
@@ -317,7 +317,7 @@ func Test_EventsClosed(t *testing.T) {
 	require.NoError(t, r.Close())
 	events = published(ch)
 	require.Len(t, events, 1)
-	assert.Equal(t, eventschema.EventDelete, events[0].Action)
+	assert.Equal(t, eventschema.ChangeDelete, events[0].Action)
 	assert.Equal(t, "one", events[0].Row)
 }
 

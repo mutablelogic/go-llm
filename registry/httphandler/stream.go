@@ -6,7 +6,6 @@ import (
 
 	// Packages
 	llm "github.com/mutablelogic/go-llm"
-	deadline "github.com/mutablelogic/go-llm/internal/deadline"
 	schema "github.com/mutablelogic/go-llm/registry/schema"
 	httprequest "github.com/mutablelogic/go-server/pkg/httprequest"
 	httpresponse "github.com/mutablelogic/go-server/pkg/httpresponse"
@@ -46,7 +45,7 @@ func respond[T any](w http.ResponseWriter, r *http.Request, name string, fn func
 		httpresponse.Error(w, httpresponse.ErrBadRequest.With(err.Error()))
 		return
 	}
-	dw, err := deadline.New(w, streamWriteTimeout)
+	dw, err := httpresponse.NewDeadlineWriter(w, streamWriteTimeout)
 	if err != nil {
 		httpresponse.Error(w, httpresponse.ErrInternalError.With(err.Error()))
 		return

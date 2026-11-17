@@ -11,9 +11,9 @@ import (
 	// Packages
 	otel "github.com/mutablelogic/go-client/pkg/otel"
 	llm "github.com/mutablelogic/go-llm"
-	eventschema "github.com/mutablelogic/go-llm/broadcaster/schema"
 	schema "github.com/mutablelogic/go-llm/heartbeat/schema"
 	registry "github.com/mutablelogic/go-llm/registry"
+	eventschema "github.com/mutablelogic/go-server/broadcaster/schema"
 	attribute "go.opentelemetry.io/otel/attribute"
 )
 
@@ -64,8 +64,8 @@ func (h *Heartbeats) Run(ctx context.Context, logger *slog.Logger) error {
 	// queues, until they're deleted
 	var deleted sessionQueue
 	if h.broadcaster != nil {
-		events := make(chan eventschema.Event, eventBuffer)
-		if done, err := h.broadcaster.Watch(ctx, events); err != nil {
+		events := make(chan eventschema.Change, eventBuffer)
+		if done, err := h.broadcaster.Watch(ctx, eventschema.ChangeFilter{Schema: registry.EventSchema, Table: registry.SessionTable, Action: eventschema.ChangeDelete}, events); err != nil {
 			logger.WarnContext(ctx, "heartbeats of deleted sessions won't be deleted, until they're due", "error", err.Error())
 		} else {
 			go deleted.read(events, done)
@@ -151,7 +151,7 @@ func (h *Heartbeats) fire(ctx context.Context, logger *slog.Logger, id uuid.UUID
 	case err != nil:
 		return err
 	}
-	h.publish(eventschema.EventUpdate, heartbeat)
+	h.publish(eventschema.ChangeUpdate, heartbeat)
 	if h.run != nil {
 		event := schema.FireEvent{
 			Heartbeat: heartbeat.ID,
@@ -198,7 +198,7 @@ func (h *Heartbeats) cleanup(ctx context.Context, logger *slog.Logger, heartbeat
 			logger.ErrorContext(ctx, "heartbeat not deleted", "heartbeat", heartbeat.ID, "title", heartbeat.Title, "error", err.Error())
 			kept = append(kept, heartbeat)
 		default:
-			h.publish(eventschema.EventDelete, deletedHeartbeat)
+			h.publish(eventschema.ChangeDelete, deletedHeartbeat)
 			deleted++
 		}
 	}
@@ -240,13 +240,13 @@ type sessionQueue struct {
 
 // read queues the sessions of the events which are deleted, until the watch
 // ends
-func (q *sessionQueue) read(events <-chan eventschema.Event, done <-chan error) {
+func (q *sessionQueue) read(events <-chan eventschema.Change, done <-chan error) {
 	for {
 		select {
 		case <-done:
 			return
 		case event := <-events:
-			if event.Schema != registry.EventSchema || event.Table != registry.SessionTable || event.Action != eventschema.EventDelete {
+			if event.Schema != registry.EventSchema || event.Table != registry.SessionTable || event.Action != eventschema.ChangeDelete {
 				continue
 			}
 			if session, err := uuid.Parse(event.Row); err == nil {

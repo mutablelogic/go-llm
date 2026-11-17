@@ -15,8 +15,6 @@ import (
 	credential "github.com/mutablelogic/go-auth/credential"
 	llm "github.com/mutablelogic/go-llm"
 	agents "github.com/mutablelogic/go-llm/agents"
-	broadcaster "github.com/mutablelogic/go-llm/broadcaster"
-	broadcastercmd "github.com/mutablelogic/go-llm/broadcaster/cmd"
 	frontendcmd "github.com/mutablelogic/go-llm/frontend/cmd"
 	heartbeat "github.com/mutablelogic/go-llm/heartbeat"
 	heartbeatcmd "github.com/mutablelogic/go-llm/heartbeat/cmd"
@@ -39,6 +37,9 @@ import (
 	workspacecmd "github.com/mutablelogic/go-llm/workspace/cmd"
 	filer "github.com/mutablelogic/go-llm/workspace/filer"
 	server "github.com/mutablelogic/go-server"
+	broadcaster "github.com/mutablelogic/go-server/broadcaster"
+	broadcastercmd "github.com/mutablelogic/go-server/broadcaster/cmd"
+	broadcasterhandler "github.com/mutablelogic/go-server/broadcaster/httphandler"
 	servercmd "github.com/mutablelogic/go-server/pkg/cmd"
 	httprouter "github.com/mutablelogic/go-server/pkg/httprouter"
 	types "github.com/mutablelogic/go-server/pkg/types"
@@ -148,6 +149,12 @@ func (runner *RunServer) Run(ctx server.Cmd) error {
 		return runner.Frontend.RegisterUI(ctx.Context(), ctx.Logger(), router, runner.RunServer.OpenAPI, ctx.URL())
 	})
 	return runner.Broadcaster.WithBroadcaster(ctx, &runner.RunServer, func(b *broadcaster.Broadcaster) error {
+		// The broadcaster's changes are in the "LLM" group, as Redoc doesn't
+		// show a tag outside a group
+		runner.RunServer.Register(func(router *httprouter.Router) error {
+			router.Spec().AddTagGroup(llm.TagGroup, broadcasterhandler.Tag)
+			return nil
+		})
 		return runner.Memory.WithMemory(ctx, &runner.RunServer, memories, func(mem *memory.Memory) error {
 			// The heartbeats' schedules follow the person's time zone, as the
 			// memory has it

@@ -11,10 +11,10 @@ import (
 
 	// Packages
 	llm "github.com/mutablelogic/go-llm"
-	eventschema "github.com/mutablelogic/go-llm/broadcaster/schema"
 	schema "github.com/mutablelogic/go-llm/heartbeat/schema"
 	toolkit "github.com/mutablelogic/go-llm/toolkit"
 	toolschema "github.com/mutablelogic/go-llm/toolkit/schema"
+	eventschema "github.com/mutablelogic/go-server/broadcaster/schema"
 	jsonschema "github.com/mutablelogic/go-server/pkg/jsonschema"
 	types "github.com/mutablelogic/go-server/pkg/types"
 )
@@ -96,7 +96,7 @@ func (h *Heartbeats) SystemPrompt() string {
 func (*Heartbeats) Type() string { return toolschema.NamespaceBuiltin }
 
 // Watch sends the namespace's tools, which don't change
-func (ns *Heartbeats) Watch(ctx context.Context, ch chan<- eventschema.Event) error {
+func (ns *Heartbeats) Watch(ctx context.Context, ch chan<- eventschema.Change) error {
 	return toolkit.WatchTools(ctx, ch, ns.Tools())
 }
 

@@ -5,8 +5,8 @@ import (
 	"encoding/json"
 
 	// Packages
-	broadcaster "github.com/mutablelogic/go-llm/broadcaster"
-	schema "github.com/mutablelogic/go-llm/broadcaster/schema"
+	broadcaster "github.com/mutablelogic/go-server/broadcaster"
+	schema "github.com/mutablelogic/go-server/broadcaster/schema"
 )
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -35,14 +35,14 @@ func (r *Registry) Broadcaster() *broadcaster.Broadcaster {
 	return r.broadcaster
 }
 
-// Watch sends the registry's broadcaster's events to the channel, as the
-// broadcaster's Watch does. The registry's events are of providers: when one
+// Watch sends the registry's broadcaster's changes which match the filter
+// to the channel, as the broadcaster's Watch does. The registry's events are of providers: when one
 // is created, or deleted, and updated, when whether it can be reached
 // changes, or its models do, and of sessions: when one is created, deleted,
 // or updated, as its settings change, messages are added to it, or its
 // status changes. A broadcaster which others share sends their events too.
-func (r *Registry) Watch(ctx context.Context, ch chan<- schema.Event) (<-chan error, error) {
-	return r.broadcaster.Watch(ctx, ch)
+func (r *Registry) Watch(ctx context.Context, filter schema.ChangeFilter, ch chan<- schema.Change) (<-chan error, error) {
+	return r.broadcaster.Watch(ctx, filter, ch)
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -52,8 +52,8 @@ func (r *Registry) Watch(ctx context.Context, ch chan<- schema.Event) (<-chan er
 // there is any, which is JSON. It's called under the registry's lock, for
 // providers, so the events are in the order of the changes, and never waits,
 // so the lock isn't held for long.
-func (r *Registry) publish(action schema.EventAction, table, row string, data any) {
-	event := schema.Event{Action: action, Schema: EventSchema, Table: table, Row: row}
+func (r *Registry) publish(action schema.ChangeAction, table, row string, data any) {
+	event := schema.Change{Action: action, Schema: EventSchema, Table: table, Row: row}
 	if data != nil {
 		if raw, err := json.Marshal(data); err == nil {
 			event.Data = raw
@@ -64,18 +64,18 @@ func (r *Registry) publish(action schema.EventAction, table, row string, data an
 
 // created publishes that the provider with the name was created
 func (r *Registry) created(name string) {
-	r.publish(schema.EventCreate, ProviderTable, name, nil)
+	r.publish(schema.ChangeCreate, ProviderTable, name, nil)
 }
 
 // replaced publishes that the provider with the name was updated, as it
 // was replaced
 func (r *Registry) replaced(name string) {
-	r.publish(schema.EventUpdate, ProviderTable, name, nil)
+	r.publish(schema.ChangeUpdate, ProviderTable, name, nil)
 }
 
 // deleted publishes that the provider with the name was deleted
 func (r *Registry) deleted(name string) {
-	r.publish(schema.EventDelete, ProviderTable, name, nil)
+	r.publish(schema.ChangeDelete, ProviderTable, name, nil)
 }
 
 // updated publishes that the provider with the name was updated, when it's
@@ -86,6 +86,6 @@ func (r *Registry) updated(name string, c *cached) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 	if r.providers[name] == c {
-		r.publish(schema.EventUpdate, ProviderTable, name, nil)
+		r.publish(schema.ChangeUpdate, ProviderTable, name, nil)
 	}
 }

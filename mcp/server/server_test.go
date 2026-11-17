@@ -11,13 +11,13 @@ import (
 	// Packages
 	sdkmcp "github.com/modelcontextprotocol/go-sdk/mcp"
 	llm "github.com/mutablelogic/go-llm"
-	eventschema "github.com/mutablelogic/go-llm/broadcaster/schema"
 	client "github.com/mutablelogic/go-llm/mcp/client"
 	namespace "github.com/mutablelogic/go-llm/mcp/namespace"
 	server "github.com/mutablelogic/go-llm/mcp/server"
 	providerschema "github.com/mutablelogic/go-llm/provider/schema"
 	toolkit "github.com/mutablelogic/go-llm/toolkit"
 	toolschema "github.com/mutablelogic/go-llm/toolkit/schema"
+	eventschema "github.com/mutablelogic/go-server/broadcaster/schema"
 	jsonschema "github.com/mutablelogic/go-server/pkg/jsonschema"
 	assert "github.com/stretchr/testify/assert"
 	require "github.com/stretchr/testify/require"
@@ -44,7 +44,7 @@ func (n *tools) Tools() []llm.Tool {
 	return append([]llm.Tool(nil), n.tools...)
 }
 
-func (n *tools) Watch(ctx context.Context, ch chan<- eventschema.Event) error {
+func (n *tools) Watch(ctx context.Context, ch chan<- eventschema.Change) error {
 	return n.watchers.Watch(ctx, ch, n.Tools)
 }
 
@@ -53,7 +53,7 @@ func (n *tools) add(tool llm.Tool) {
 	n.mu.Lock()
 	n.tools = append(n.tools, tool)
 	n.mu.Unlock()
-	n.watchers.Changed(eventschema.EventCreate, tool.Name())
+	n.watchers.Changed(eventschema.ChangeCreate, tool.Name())
 }
 
 // echo returns its text, or fails, when it's "fail"

@@ -14,12 +14,12 @@ import (
 	sdkmcp "github.com/modelcontextprotocol/go-sdk/mcp"
 	goauth "github.com/mutablelogic/go-auth"
 	llm "github.com/mutablelogic/go-llm"
-	broadcaster "github.com/mutablelogic/go-llm/broadcaster"
-	eventschema "github.com/mutablelogic/go-llm/broadcaster/schema"
 	registry "github.com/mutablelogic/go-llm/mcp/registry"
 	schema "github.com/mutablelogic/go-llm/mcp/schema"
 	test "github.com/mutablelogic/go-llm/mcp/test"
 	toolkit "github.com/mutablelogic/go-llm/toolkit"
+	broadcaster "github.com/mutablelogic/go-server/broadcaster"
+	eventschema "github.com/mutablelogic/go-server/broadcaster/schema"
 	assert "github.com/stretchr/testify/assert"
 	require "github.com/stretchr/testify/require"
 )
@@ -50,7 +50,7 @@ func Test_Authorize(t *testing.T) {
 	var required bool
 	for _, event := range published(ch) {
 		var data schema.ConnectorEvent
-		if event.Action == eventschema.EventUpdate && event.Row == "secure" && json.Unmarshal(event.Data, &data) == nil && data.Auth == schema.AuthRequired {
+		if event.Action == eventschema.ChangeUpdate && event.Row == "secure" && json.Unmarshal(event.Data, &data) == nil && data.Auth == schema.AuthRequired {
 			required = true
 		}
 	}

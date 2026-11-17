@@ -6,7 +6,7 @@ import (
 
 	// Packages
 	llm "github.com/mutablelogic/go-llm"
-	eventschema "github.com/mutablelogic/go-llm/broadcaster/schema"
+	eventschema "github.com/mutablelogic/go-server/broadcaster/schema"
 )
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -25,7 +25,7 @@ type Watchers struct {
 // until its context is cancelled
 type watch struct {
 	ctx context.Context
-	ch  chan<- eventschema.Event
+	ch  chan<- eventschema.Change
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -34,20 +34,20 @@ type watch struct {
 // ToolEvent returns the event of the namespace's tool with the name, such
 // as "current", rather than its canonical name, which was created, updated,
 // or deleted, as the action says, which a namespace's Watch sends
-func ToolEvent(action eventschema.EventAction, name string) eventschema.Event {
-	return eventschema.Event{Action: action, Schema: EventSchema, Table: ToolTable, Row: name}
+func ToolEvent(action eventschema.ChangeAction, name string) eventschema.Change {
+	return eventschema.Change{Action: action, Schema: EventSchema, Table: ToolTable, Row: name}
 }
 
 // WatchTools is the Watch of a namespace whose tools don't change: it sends
 // that each of the tools was created, and blocks until the context is
 // cancelled, and returns nil, or returns ErrBadParameter when there's no
 // channel
-func WatchTools(ctx context.Context, ch chan<- eventschema.Event, tools []llm.Tool) error {
+func WatchTools(ctx context.Context, ch chan<- eventschema.Change, tools []llm.Tool) error {
 	if ch == nil {
 		return llm.ErrBadParameter.With("missing channel")
 	}
 	for _, tool := range tools {
-		if tool != nil && !send(ctx, ch, ToolEvent(eventschema.EventCreate, tool.Name())) {
+		if tool != nil && !send(ctx, ch, ToolEvent(eventschema.ChangeCreate, tool.Name())) {
 			return nil
 		}
 	}
@@ -67,7 +67,7 @@ func WatchTools(ctx context.Context, ch chan<- eventschema.Event, tools []llm.To
 // rather than how it changed. Each is waited for the channel to receive,
 // so none is missed, and the channel is read until the context is
 // cancelled. Returns ErrBadParameter when there's no channel.
-func (w *Watchers) Watch(ctx context.Context, ch chan<- eventschema.Event, tools func() []llm.Tool) error {
+func (w *Watchers) Watch(ctx context.Context, ch chan<- eventschema.Change, tools func() []llm.Tool) error {
 	if ch == nil {
 		return llm.ErrBadParameter.With("missing channel")
 	}
@@ -89,7 +89,7 @@ func (w *Watchers) Watch(ctx context.Context, ch chan<- eventschema.Event, tools
 	// Send the tools, as they are, and wait until it's cancelled
 	if tools != nil {
 		for _, tool := range tools() {
-			if tool != nil && !send(ctx, ch, ToolEvent(eventschema.EventCreate, tool.Name())) {
+			if tool != nil && !send(ctx, ch, ToolEvent(eventschema.ChangeCreate, tool.Name())) {
 				return nil
 			}
 		}
@@ -102,7 +102,7 @@ func (w *Watchers) Watch(ctx context.Context, ch chan<- eventschema.Event, tools
 // deleted, as the action says, to each watch, which it waits for, until it's
 // received, or the watch is cancelled. It's called without the namespace's
 // lock held, as a watch reads its tools.
-func (w *Watchers) Changed(action eventschema.EventAction, name string) {
+func (w *Watchers) Changed(action eventschema.ChangeAction, name string) {
 	w.mu.Lock()
 	watches := make([]*watch, 0, len(w.watches))
 	for entry := range w.watches {
@@ -120,7 +120,7 @@ func (w *Watchers) Changed(action eventschema.EventAction, name string) {
 
 // send sends the event to the channel, and returns true, or returns false,
 // when the context is cancelled first
-func send(ctx context.Context, ch chan<- eventschema.Event, event eventschema.Event) bool {
+func send(ctx context.Context, ch chan<- eventschema.Change, event eventschema.Change) bool {
 	select {
 	case ch <- event:
 		return true

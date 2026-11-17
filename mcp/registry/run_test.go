@@ -8,10 +8,10 @@ import (
 	"time"
 
 	// Packages
-	broadcaster "github.com/mutablelogic/go-llm/broadcaster"
 	registry "github.com/mutablelogic/go-llm/mcp/registry"
 	schema "github.com/mutablelogic/go-llm/mcp/schema"
 	test "github.com/mutablelogic/go-llm/mcp/test"
+	broadcaster "github.com/mutablelogic/go-server/broadcaster"
 	assert "github.com/stretchr/testify/assert"
 	require "github.com/stretchr/testify/require"
 )

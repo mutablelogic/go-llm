@@ -12,9 +12,9 @@ import (
 	jsonrpc "github.com/modelcontextprotocol/go-sdk/jsonrpc"
 	sdkmcp "github.com/modelcontextprotocol/go-sdk/mcp"
 	llm "github.com/mutablelogic/go-llm"
-	eventschema "github.com/mutablelogic/go-llm/broadcaster/schema"
 	client "github.com/mutablelogic/go-llm/mcp/client"
 	schema "github.com/mutablelogic/go-llm/workspace/schema"
+	eventschema "github.com/mutablelogic/go-server/broadcaster/schema"
 )
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -141,7 +141,7 @@ func (w *clientWorkspace) WatchResources(ctx context.Context, ch chan<- schema.C
 		select {
 		case uri := <-uris:
 			select {
-			case ch <- schema.Change{Action: eventschema.EventUpdate, URI: uri}:
+			case ch <- schema.Change{Action: eventschema.ChangeUpdate, URI: uri}:
 			case <-ctx.Done():
 			}
 		case err := <-done:

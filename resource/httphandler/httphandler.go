@@ -13,7 +13,6 @@ import (
 
 	// Packages
 	llm "github.com/mutablelogic/go-llm"
-	taggroup "github.com/mutablelogic/go-llm/internal/taggroup"
 	resource "github.com/mutablelogic/go-llm/resource"
 	schema "github.com/mutablelogic/go-llm/resource/schema"
 	httprequest "github.com/mutablelogic/go-server/pkg/httprequest"
@@ -59,7 +58,7 @@ var errNoContent = llm.ErrBadParameter.With("missing content, which is the reque
 func RegisterHandlers(manager *resource.Manager, router *httprouter.Router) error {
 	documentation := openapi.ParseMarkdown(readme)
 	router.Spec().AddTag(Tag, documentation.Section(2, "Resource Operations").Body)
-	taggroup.Add(router.Spec(), taggroup.LLM, Tag)
+	router.Spec().AddTagGroup(llm.TagGroup, Tag)
 	return errors.Join(
 		resourcesHandler(manager, router, documentation),
 		resourceHandler(manager, router, documentation),

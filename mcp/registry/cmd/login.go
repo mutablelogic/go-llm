@@ -18,11 +18,11 @@ import (
 	"time"
 
 	// Packages
-	broadcaster "github.com/mutablelogic/go-llm/broadcaster/httpclient"
-	eventschema "github.com/mutablelogic/go-llm/broadcaster/schema"
 	httpclient "github.com/mutablelogic/go-llm/mcp/registry/httpclient"
 	schema "github.com/mutablelogic/go-llm/mcp/schema"
 	server "github.com/mutablelogic/go-server"
+	broadcaster "github.com/mutablelogic/go-server/broadcaster/httpclient"
+	eventschema "github.com/mutablelogic/go-server/broadcaster/schema"
 )
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -89,7 +89,7 @@ func waitConnected(ctx server.Cmd, parent context.Context, client *httpclient.Cl
 	// signed in to, are watched, so it's asked about at once
 	changed := make(chan struct{}, 1)
 	go func() {
-		_ = events.WatchEvents(waitCtx, func(event eventschema.Event) error {
+		_ = events.WatchChanges(waitCtx, eventschema.ChangeFilter{Schema: schema.Name, Table: schema.ConnectorTable}, func(event eventschema.Change) error {
 			if event.Schema == schema.Name && event.Table == schema.ConnectorTable && event.Row == name {
 				select {
 				case changed <- struct{}{}:

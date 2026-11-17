@@ -9,10 +9,10 @@ import (
 
 	// Packages
 	llm "github.com/mutablelogic/go-llm"
-	eventschema "github.com/mutablelogic/go-llm/broadcaster/schema"
 	eliza "github.com/mutablelogic/go-llm/provider/eliza"
 	registry "github.com/mutablelogic/go-llm/registry"
 	schema "github.com/mutablelogic/go-llm/registry/schema"
+	eventschema "github.com/mutablelogic/go-server/broadcaster/schema"
 	assert "github.com/stretchr/testify/assert"
 	require "github.com/stretchr/testify/require"
 )
@@ -45,10 +45,10 @@ func Test_UpdateProvider(t *testing.T) {
 		assert.Empty(t, provider.Exclude)
 		_, err = r.GetModel(ctx, "chat:eliza-1966-de")
 		require.NoError(t, err)
-		assert.Equal(t, []eventschema.Event{
-			{Action: eventschema.EventCreate, Schema: registry.EventSchema, Table: registry.ProviderTable, Row: "chat"},
-			{Action: eventschema.EventUpdate, Schema: registry.EventSchema, Table: registry.ProviderTable, Row: "chat"},
-			{Action: eventschema.EventUpdate, Schema: registry.EventSchema, Table: registry.ProviderTable, Row: "chat"},
+		assert.Equal(t, []eventschema.Change{
+			{Action: eventschema.ChangeCreate, Schema: registry.EventSchema, Table: registry.ProviderTable, Row: "chat"},
+			{Action: eventschema.ChangeUpdate, Schema: registry.EventSchema, Table: registry.ProviderTable, Row: "chat"},
+			{Action: eventschema.ChangeUpdate, Schema: registry.EventSchema, Table: registry.ProviderTable, Row: "chat"},
 		}, events(ch))
 	})
 

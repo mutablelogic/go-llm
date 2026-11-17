@@ -9,11 +9,11 @@ import (
 
 	// Packages
 	llm "github.com/mutablelogic/go-llm"
-	broadcaster "github.com/mutablelogic/go-llm/broadcaster"
-	eventschema "github.com/mutablelogic/go-llm/broadcaster/schema"
 	heartbeat "github.com/mutablelogic/go-llm/heartbeat"
 	schema "github.com/mutablelogic/go-llm/heartbeat/schema"
 	registry "github.com/mutablelogic/go-llm/registry"
+	broadcaster "github.com/mutablelogic/go-server/broadcaster"
+	eventschema "github.com/mutablelogic/go-server/broadcaster/schema"
 	types "github.com/mutablelogic/go-server/pkg/types"
 	assert "github.com/stretchr/testify/assert"
 	require "github.com/stretchr/testify/require"
@@ -291,7 +291,7 @@ func Test_DeleteSession(t *testing.T) {
 	done := make(chan error)
 	go func() { done <- h.Run(ctx, nil) }()
 	require.Eventually(t, func() bool {
-		b.Publish(eventschema.Event{Action: eventschema.EventDelete, Schema: registry.EventSchema, Table: registry.SessionTable, Row: session.String()})
+		b.Publish(eventschema.Change{Action: eventschema.ChangeDelete, Schema: registry.EventSchema, Table: registry.SessionTable, Row: session.String()})
 		list, err := h.List(t.Context(), schema.HeartbeatListRequest{})
 		return err == nil && list.Count == 1
 	}, time.Second, 10*time.Millisecond)

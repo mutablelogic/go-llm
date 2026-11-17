@@ -20,11 +20,11 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	lipgloss "github.com/charmbracelet/lipgloss"
 	llm "github.com/mutablelogic/go-llm"
-	eventschema "github.com/mutablelogic/go-llm/broadcaster/schema"
 	memoryschema "github.com/mutablelogic/go-llm/memory/schema"
 	providerschema "github.com/mutablelogic/go-llm/provider/schema"
 	schema "github.com/mutablelogic/go-llm/registry/schema"
 	toolschema "github.com/mutablelogic/go-llm/toolkit/schema"
+	eventschema "github.com/mutablelogic/go-server/broadcaster/schema"
 	servertui "github.com/mutablelogic/go-server/pkg/tui"
 	types "github.com/mutablelogic/go-server/pkg/types"
 )
@@ -42,7 +42,7 @@ type Client interface {
 	ListSessionMessages(ctx context.Context, id uuid.UUID, req schema.MessageListRequest) (*schema.MessageList, error)
 	Chat(ctx context.Context, id uuid.UUID, req schema.ChatRequest, stream llm.GeneratorStreamFn) (*schema.ChatResponse, error)
 	SetSessionStatus(ctx context.Context, id uuid.UUID, status schema.SessionStatus) (*schema.Session, error)
-	WatchEvents(ctx context.Context, fn func(eventschema.Event) error) error
+	WatchChanges(ctx context.Context, fn func(eventschema.Change) error) error
 }
 
 // model is the interface's state: the session, its messages, what's being
@@ -94,8 +94,8 @@ type (
 		asked    int    // The messages before the question
 		question string // The question, which is typed again when it isn't sent
 	}
-	eventMsg   eventschema.Event // A change to the session
-	detailMsg  eventschema.Event // A change to the memory's details
+	eventMsg   eventschema.Change // A change to the session
+	detailMsg  eventschema.Change // A change to the memory's details
 	detailsMsg struct {
 		details *memoryschema.Details
 		err     error
@@ -247,10 +247,10 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.input, cmd = m.input.Update(msg)
 		return m, tea.Batch(cmd, m.typing())
 	case eventMsg:
-		return m, m.changed(eventschema.Event(msg))
+		return m, m.changed(eventschema.Change(msg))
 	case detailMsg:
 		m.changes++
-		m.detailChanged(eventschema.Event(msg))
+		m.detailChanged(eventschema.Change(msg))
 		m.render()
 		return m, nil
 	case detailsMsg:
@@ -366,13 +366,13 @@ func (m *model) View() string {
 // change is a new serial, which this window hasn't seen, such as a reply in
 // another window, and shows its status, when it's changed, or that it's
 // gone, when it's deleted
-func (m *model) changed(event eventschema.Event) tea.Cmd {
+func (m *model) changed(event eventschema.Change) tea.Cmd {
 	switch event.Action {
-	case eventschema.EventDelete:
+	case eventschema.ChangeDelete:
 		m.err = errors.New("the session was deleted")
 		m.render()
 		return nil
-	case eventschema.EventUpdate:
+	case eventschema.ChangeUpdate:
 		var data schema.SessionEvent
 		if err := json.Unmarshal(event.Data, &data); err != nil {
 			return nil
@@ -399,13 +399,13 @@ func (m *model) changed(event eventschema.Event) tea.Cmd {
 
 // detailChanged changes the detail of the event, which is forgotten, when
 // it's deleted
-func (m *model) detailChanged(event eventschema.Event) {
+func (m *model) detailChanged(event eventschema.Change) {
 	field, err := memoryschema.ParseField(event.Row)
 	if err != nil {
 		return
 	}
 	var detail *memoryschema.Detail
-	if event.Action != eventschema.EventDelete {
+	if event.Action != eventschema.ChangeDelete {
 		detail = new(memoryschema.Detail)
 		if err := json.Unmarshal(event.Data, detail); err != nil {
 			return
@@ -744,7 +744,7 @@ func watch(ctx context.Context, client Client, id uuid.UUID, events chan<- tea.M
 		// An attempt which lasts watchSettled is taken to be watching
 		done := make(chan error, 1)
 		go func() {
-			done <- client.WatchEvents(ctx, func(event eventschema.Event) error {
+			done <- client.WatchChanges(ctx, func(event eventschema.Change) error {
 				switch {
 				case event.Schema == eventSchema && event.Table == sessionTable && event.Row == id.String():
 					send(eventMsg(event))

@@ -11,9 +11,9 @@ import (
 	// Packages
 	authclient "github.com/mutablelogic/go-auth/auth/httpclient"
 	llm "github.com/mutablelogic/go-llm"
-	eventschema "github.com/mutablelogic/go-llm/broadcaster/schema"
 	client "github.com/mutablelogic/go-llm/mcp/client"
 	schema "github.com/mutablelogic/go-llm/mcp/schema"
+	eventschema "github.com/mutablelogic/go-server/broadcaster/schema"
 )
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -67,8 +67,8 @@ func (r *Registry) Run(ctx context.Context, logger *slog.Logger) error {
 
 	// Watch the broadcaster, before the connectors are first reconciled, so
 	// no change is missed
-	events := make(chan eventschema.Event, eventBuffer)
-	done, err := r.events.Watch(ctx, events)
+	events := make(chan eventschema.Change, eventBuffer)
+	done, err := r.events.Watch(ctx, eventschema.ChangeFilter{Schema: schema.Name, Table: schema.ConnectorTable}, events)
 	if err != nil {
 		return err
 	}

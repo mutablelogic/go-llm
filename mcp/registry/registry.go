@@ -17,11 +17,11 @@ import (
 	sdkmcp "github.com/modelcontextprotocol/go-sdk/mcp"
 	authclient "github.com/mutablelogic/go-auth/auth/httpclient"
 	llm "github.com/mutablelogic/go-llm"
-	broadcaster "github.com/mutablelogic/go-llm/broadcaster"
-	eventschema "github.com/mutablelogic/go-llm/broadcaster/schema"
 	client "github.com/mutablelogic/go-llm/mcp/client"
 	namespace "github.com/mutablelogic/go-llm/mcp/namespace"
 	schema "github.com/mutablelogic/go-llm/mcp/schema"
+	broadcaster "github.com/mutablelogic/go-server/broadcaster"
+	eventschema "github.com/mutablelogic/go-server/broadcaster/schema"
 )
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -175,7 +175,7 @@ func (r *Registry) create(ctx context.Context, connector schema.Connector) (*sch
 	if err != nil {
 		return nil, err
 	}
-	r.publish(eventschema.EventCreate, created)
+	r.publish(eventschema.ChangeCreate, created)
 	r.ensureNamespace(created)
 	return r.status(created), nil
 }
@@ -269,7 +269,7 @@ func (r *Registry) UpdateConnector(ctx context.Context, name string, meta schema
 		_ = c.Disconnect()
 		return nil, err
 	}
-	r.publish(eventschema.EventUpdate, updated)
+	r.publish(eventschema.ChangeUpdate, updated)
 	if r.replace(updated, c) {
 		if server, err := c.Status(); server != nil {
 			// It was connected before it was the connector's, so it's said
@@ -297,7 +297,7 @@ func (r *Registry) reconnectOlder(connector schema.Connector) {
 	if older {
 		_ = r.disconnect(connector.Name, e)
 	}
-	r.publish(eventschema.EventUpdate, connector)
+	r.publish(eventschema.ChangeUpdate, connector)
 }
 
 // update stores the connector, whose server the client is connected to, at
@@ -315,7 +315,7 @@ func (r *Registry) update(ctx context.Context, connector schema.Connector, c *cl
 		r.clients[connector.Name] = entry{serial: updated.Serial, client: c, connector: updated.Definition()}
 	}
 	r.mu.Unlock()
-	r.publish(eventschema.EventUpdate, updated)
+	r.publish(eventschema.ChangeUpdate, updated)
 	if server, _ := c.Status(); kept && server != nil {
 		r.connected(updated, c, server)
 	}
@@ -346,7 +346,7 @@ func (r *Registry) DeleteConnector(ctx context.Context, name string) (*schema.Co
 	// Its client is disconnected once the lock is released, as its token
 	// can be refreshed, and stored, as it's disconnected
 	r.forget(name, connector.Serial)
-	r.publish(eventschema.EventDelete, connector)
+	r.publish(eventschema.ChangeDelete, connector)
 	result := connector.Definition()
 	return &result, nil
 }
@@ -517,9 +517,9 @@ func (r *Registry) status(connector schema.Connector) *schema.Connector {
 // publish publishes the change to the connector, with the registry's own
 // broadcaster, which Run watches, whose row is its name, and whose data is
 // its serial, unless it was deleted
-func (r *Registry) publish(action eventschema.EventAction, connector schema.Connector) {
-	event := eventschema.Event{Action: action, Schema: schema.Name, Table: schema.ConnectorTable, Row: connector.Name}
-	if action != eventschema.EventDelete {
+func (r *Registry) publish(action eventschema.ChangeAction, connector schema.Connector) {
+	event := eventschema.Change{Action: action, Schema: schema.Name, Table: schema.ConnectorTable, Row: connector.Name}
+	if action != eventschema.ChangeDelete {
 		if data, err := json.Marshal(schema.ConnectorEvent{Serial: connector.Serial}); err == nil {
 			event.Data = data
 		}
@@ -551,7 +551,7 @@ func (r *Registry) publishAuthRequired(name string, c *client.Client, err error)
 	if err != nil {
 		data.Error = err.Error()
 	}
-	event := eventschema.Event{Action: eventschema.EventUpdate, Schema: schema.Name, Table: schema.ConnectorTable, Row: name}
+	event := eventschema.Change{Action: eventschema.ChangeUpdate, Schema: schema.Name, Table: schema.ConnectorTable, Row: name}
 	if raw, err := json.Marshal(data); err == nil {
 		event.Data = raw
 	}
@@ -569,14 +569,14 @@ func (r *Registry) publishConnection(name string, serial uint64, server *sdkmcp.
 	}
 	connector := schema.Connector{Name: name, Serial: serial}
 	data := schema.ConnectorEvent{Serial: connector.Serial}
-	action := eventschema.EventDelete
+	action := eventschema.ChangeDelete
 	if server != nil {
-		action = eventschema.EventCreate
+		action = eventschema.ChangeCreate
 		data.Server = &schema.ConnectorServer{Name: server.Name, Version: server.Version}
 	} else if err != nil {
 		data.Error = err.Error()
 	}
-	event := eventschema.Event{Action: action, Schema: schema.Name, Table: schema.ConnectorTable, Row: connector.Name}
+	event := eventschema.Change{Action: action, Schema: schema.Name, Table: schema.ConnectorTable, Row: connector.Name}
 	if raw, err := json.Marshal(data); err == nil {
 		event.Data = raw
 	}

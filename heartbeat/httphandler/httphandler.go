@@ -12,7 +12,6 @@ import (
 	llm "github.com/mutablelogic/go-llm"
 	heartbeat "github.com/mutablelogic/go-llm/heartbeat"
 	schema "github.com/mutablelogic/go-llm/heartbeat/schema"
-	taggroup "github.com/mutablelogic/go-llm/internal/taggroup"
 	httprequest "github.com/mutablelogic/go-server/pkg/httprequest"
 	httpresponse "github.com/mutablelogic/go-server/pkg/httpresponse"
 	httprouter "github.com/mutablelogic/go-server/pkg/httprouter"
@@ -45,7 +44,7 @@ const Tag = "Heartbeats"
 func RegisterHandlers(h *heartbeat.Heartbeats, router *httprouter.Router) error {
 	documentation := openapi.ParseMarkdown(readme)
 	router.Spec().AddTag(Tag, documentation.Section(2, "Heartbeat Operations").Body)
-	taggroup.Add(router.Spec(), taggroup.LLM, Tag)
+	router.Spec().AddTagGroup(llm.TagGroup, Tag)
 	return errors.Join(
 		heartbeatsHandler(h, router, documentation),
 		heartbeatHandler(h, router, documentation),

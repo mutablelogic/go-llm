@@ -12,9 +12,9 @@ import (
 
 	// Packages
 	llm "github.com/mutablelogic/go-llm"
-	broadcaster "github.com/mutablelogic/go-llm/broadcaster"
-	eventschema "github.com/mutablelogic/go-llm/broadcaster/schema"
 	schema "github.com/mutablelogic/go-llm/resource/schema"
+	broadcaster "github.com/mutablelogic/go-server/broadcaster"
+	eventschema "github.com/mutablelogic/go-server/broadcaster/schema"
 	types "github.com/mutablelogic/go-server/pkg/types"
 	assert "github.com/stretchr/testify/assert"
 	require "github.com/stretchr/testify/require"
@@ -184,8 +184,8 @@ func Test_Delete(t *testing.T) {
 	r, _, store := newManager(t, one, two)
 	b := broadcaster.New()
 	r.broadcaster = b
-	events := make(chan eventschema.Event, 10)
-	_, err := b.Watch(ctx, events)
+	events := make(chan eventschema.Change, 10)
+	_, err := b.Watch(ctx, eventschema.ChangeFilter{}, events)
 	require.NoError(t, err)
 
 	first, _, err := r.Create(ctx, schema.ResourceMeta{Session: &one}, strings.NewReader("shared"))
@@ -224,13 +224,13 @@ func Test_Delete(t *testing.T) {
 	assert.Empty(t, contents)
 
 	// Each change was published, with its session
-	var actions []eventschema.EventAction
+	var actions []eventschema.ChangeAction
 	for len(events) > 0 {
 		event := <-events
 		assert.Equal(t, schema.Name, event.Schema)
 		actions = append(actions, event.Action)
 	}
-	assert.Equal(t, []eventschema.EventAction{eventschema.EventCreate, eventschema.EventCreate, eventschema.EventCreate, eventschema.EventDelete, eventschema.EventDelete, eventschema.EventDelete}, actions)
+	assert.Equal(t, []eventschema.ChangeAction{eventschema.ChangeCreate, eventschema.ChangeCreate, eventschema.ChangeCreate, eventschema.ChangeDelete, eventschema.ChangeDelete, eventschema.ChangeDelete}, actions)
 }
 
 func Test_Clean(t *testing.T) {
@@ -293,7 +293,7 @@ func Test_Run(t *testing.T) {
 	done := make(chan error)
 	go func() { done <- r.Run(ctx, nil) }()
 	require.Eventually(t, func() bool {
-		b.Publish(eventschema.Event{Action: eventschema.EventDelete, Schema: sessionSchema, Table: sessionTable, Row: session.String()})
+		b.Publish(eventschema.Change{Action: eventschema.ChangeDelete, Schema: sessionSchema, Table: sessionTable, Row: session.String()})
 		list, err := store.List(ctx)
 		return err == nil && len(list) == 0
 	}, 5*time.Second, 50*time.Millisecond)

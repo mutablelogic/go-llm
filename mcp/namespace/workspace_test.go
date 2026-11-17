@@ -10,7 +10,6 @@ import (
 	// Packages
 	sdkmcp "github.com/modelcontextprotocol/go-sdk/mcp"
 	llm "github.com/mutablelogic/go-llm"
-	eventschema "github.com/mutablelogic/go-llm/broadcaster/schema"
 	client "github.com/mutablelogic/go-llm/mcp/client"
 	namespace "github.com/mutablelogic/go-llm/mcp/namespace"
 	server "github.com/mutablelogic/go-llm/mcp/server"
@@ -18,6 +17,7 @@ import (
 	toolschema "github.com/mutablelogic/go-llm/toolkit/schema"
 	workspace "github.com/mutablelogic/go-llm/workspace"
 	schema "github.com/mutablelogic/go-llm/workspace/schema"
+	eventschema "github.com/mutablelogic/go-server/broadcaster/schema"
 	assert "github.com/stretchr/testify/assert"
 	require "github.com/stretchr/testify/require"
 )
@@ -34,7 +34,7 @@ func (served) List(context.Context, schema.ListRequest) (*schema.ListResponse, e
 
 func (s served) WatchResources(ctx context.Context, ch chan<- schema.Change) error {
 	select {
-	case ch <- schema.Change{Action: eventschema.EventUpdate}:
+	case ch <- schema.Change{Action: eventschema.ChangeUpdate}:
 	case <-ctx.Done():
 		return nil
 	}
@@ -60,7 +60,7 @@ func (noTools) Description() string  { return "Files" }
 func (noTools) SystemPrompt() string { return "" }
 func (noTools) Type() string         { return toolschema.NamespaceBuiltin }
 func (noTools) Tools() []llm.Tool    { return nil }
-func (noTools) Watch(ctx context.Context, ch chan<- eventschema.Event) error {
+func (noTools) Watch(ctx context.Context, ch chan<- eventschema.Change) error {
 	return toolkit.WatchTools(ctx, ch, nil)
 }
 
@@ -93,7 +93,7 @@ func Test_WatchResources(t *testing.T) {
 	watchCtx, cancel := context.WithCancel(ctx)
 	watched := make(chan error, 1)
 	go func() { watched <- ns.WatchResources(watchCtx, changes) }()
-	listAgain := schema.Change{Action: eventschema.EventUpdate}
+	listAgain := schema.Change{Action: eventschema.ChangeUpdate}
 	assert.Equal(t, listAgain, <-changes, "it's watching")
 
 	// It's subscribed to, before it's connected, and once it is, it lists
@@ -106,10 +106,10 @@ func Test_WatchResources(t *testing.T) {
 		// It's told of an update said once it lists again, as it's
 		// subscribed, and watching, by then
 		t.Helper()
-		source.changes <- schema.Change{Action: eventschema.EventUpdate, URI: uri}
+		source.changes <- schema.Change{Action: eventschema.ChangeUpdate, URI: uri}
 		select {
 		case change := <-changes:
-			assert.Equal(t, schema.Change{Action: eventschema.EventUpdate, URI: uri}, change)
+			assert.Equal(t, schema.Change{Action: eventschema.ChangeUpdate, URI: uri}, change)
 		case <-time.After(5 * time.Second):
 			t.Fatalf("not told it was updated, %s", phase)
 		}
@@ -124,7 +124,7 @@ func Test_WatchResources(t *testing.T) {
 
 	// Unsubscribed, it isn't told
 	require.NoError(t, ns.Unsubscribe(ctx, uri))
-	source.changes <- schema.Change{Action: eventschema.EventUpdate, URI: uri}
+	source.changes <- schema.Change{Action: eventschema.ChangeUpdate, URI: uri}
 	select {
 	case change := <-changes:
 		t.Fatalf("told of %v, once unsubscribed", change)

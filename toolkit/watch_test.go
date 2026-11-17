@@ -7,8 +7,8 @@ import (
 
 	// Packages
 	llm "github.com/mutablelogic/go-llm"
-	eventschema "github.com/mutablelogic/go-llm/broadcaster/schema"
 	toolkit "github.com/mutablelogic/go-llm/toolkit"
+	eventschema "github.com/mutablelogic/go-server/broadcaster/schema"
 	assert "github.com/stretchr/testify/assert"
 	require "github.com/stretchr/testify/require"
 )
@@ -19,28 +19,28 @@ func TestWatchers(t *testing.T) {
 	// cancelled
 	var w toolkit.Watchers
 	tools := func() []llm.Tool { return []llm.Tool{echoTool{name: "first"}} }
-	start := func() (chan eventschema.Event, context.CancelFunc, chan error) {
-		ch := make(chan eventschema.Event)
+	start := func() (chan eventschema.Change, context.CancelFunc, chan error) {
+		ch := make(chan eventschema.Change)
 		ctx, cancel := context.WithCancel(context.Background())
 		done := make(chan error, 1)
 		go func() { done <- w.Watch(ctx, ch, tools) }()
 		return ch, cancel, done
 	}
-	receive := func(ch chan eventschema.Event) eventschema.Event {
+	receive := func(ch chan eventschema.Change) eventschema.Change {
 		t.Helper()
 		select {
 		case event := <-ch:
 			return event
 		case <-time.After(5 * time.Second):
 			t.Fatal("no event")
-			return eventschema.Event{}
+			return eventschema.Change{}
 		}
 	}
 	// both receives an event from each channel, in whichever order they're
 	// sent
-	both := func(a, b chan eventschema.Event) (eventschema.Event, eventschema.Event) {
+	both := func(a, b chan eventschema.Change) (eventschema.Change, eventschema.Change) {
 		t.Helper()
-		var x, y eventschema.Event
+		var x, y eventschema.Change
 		for range 2 {
 			select {
 			case x = <-a:
@@ -54,20 +54,20 @@ func TestWatchers(t *testing.T) {
 	a, cancelA, doneA := start()
 	b, cancelB, doneB := start()
 	x, y := both(a, b)
-	assert.Equal(t, toolkit.ToolEvent(eventschema.EventCreate, "first"), x)
-	assert.Equal(t, toolkit.ToolEvent(eventschema.EventCreate, "first"), y)
+	assert.Equal(t, toolkit.ToolEvent(eventschema.ChangeCreate, "first"), x)
+	assert.Equal(t, toolkit.ToolEvent(eventschema.ChangeCreate, "first"), y)
 
 	// A change is waited for each watch to receive
-	go w.Changed(eventschema.EventCreate, "second")
+	go w.Changed(eventschema.ChangeCreate, "second")
 	x, y = both(a, b)
-	assert.Equal(t, toolkit.ToolEvent(eventschema.EventCreate, "second"), x)
-	assert.Equal(t, toolkit.ToolEvent(eventschema.EventCreate, "second"), y)
+	assert.Equal(t, toolkit.ToolEvent(eventschema.ChangeCreate, "second"), x)
+	assert.Equal(t, toolkit.ToolEvent(eventschema.ChangeCreate, "second"), y)
 
 	// Once a watch is cancelled, it returns, and isn't waited for
 	cancelA()
 	require.NoError(t, <-doneA)
-	go w.Changed(eventschema.EventDelete, "second")
-	assert.Equal(t, toolkit.ToolEvent(eventschema.EventDelete, "second"), receive(b))
+	go w.Changed(eventschema.ChangeDelete, "second")
+	assert.Equal(t, toolkit.ToolEvent(eventschema.ChangeDelete, "second"), receive(b))
 	cancelB()
 	require.NoError(t, <-doneB)
 
@@ -78,12 +78,12 @@ func TestWatchers(t *testing.T) {
 
 func TestWatchTools(t *testing.T) {
 	// A namespace whose tools don't change sends them, and waits
-	ch := make(chan eventschema.Event, 2)
+	ch := make(chan eventschema.Change, 2)
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan error, 1)
 	go func() { done <- toolkit.WatchTools(ctx, ch, []llm.Tool{echoTool{name: "a"}, echoTool{name: "b"}}) }()
-	assert.Equal(t, toolkit.ToolEvent(eventschema.EventCreate, "a"), <-ch)
-	assert.Equal(t, toolkit.ToolEvent(eventschema.EventCreate, "b"), <-ch)
+	assert.Equal(t, toolkit.ToolEvent(eventschema.ChangeCreate, "a"), <-ch)
+	assert.Equal(t, toolkit.ToolEvent(eventschema.ChangeCreate, "b"), <-ch)
 	cancel()
 	require.NoError(t, <-done)
 }

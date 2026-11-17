@@ -11,9 +11,9 @@ import (
 	jsonrpc "github.com/modelcontextprotocol/go-sdk/jsonrpc"
 	sdkmcp "github.com/modelcontextprotocol/go-sdk/mcp"
 	llm "github.com/mutablelogic/go-llm"
-	eventschema "github.com/mutablelogic/go-llm/broadcaster/schema"
 	workspace "github.com/mutablelogic/go-llm/workspace"
 	schema "github.com/mutablelogic/go-llm/workspace/schema"
+	eventschema "github.com/mutablelogic/go-server/broadcaster/schema"
 	types "github.com/mutablelogic/go-server/pkg/types"
 )
 
@@ -99,7 +99,7 @@ func (s *Server) unsubscribe() func(context.Context, *sdkmcp.UnsubscribeRequest)
 // updated, to those which subscribed to it, and one which is created, or
 // deleted, or a change without a URI, that the list changed, to all of them
 func (s *Server) changed(ctx context.Context, change schema.Change) {
-	if change.URI != "" && change.Action == eventschema.EventUpdate {
+	if change.URI != "" && change.Action == eventschema.ChangeUpdate {
 		if err := s.server.ResourceUpdated(ctx, &sdkmcp.ResourceUpdatedNotificationParams{URI: change.URI}); err != nil {
 			s.logger.Warn("resource update isn't sent", "uri", change.URI, "error", err.Error())
 		}

@@ -10,8 +10,8 @@ import (
 	// Packages
 	otel "github.com/mutablelogic/go-client/pkg/otel"
 	llm "github.com/mutablelogic/go-llm"
-	eventschema "github.com/mutablelogic/go-llm/broadcaster/schema"
 	schema "github.com/mutablelogic/go-llm/registry/schema"
+	eventschema "github.com/mutablelogic/go-server/broadcaster/schema"
 	attribute "go.opentelemetry.io/otel/attribute"
 )
 
@@ -136,7 +136,7 @@ func (r *Registry) DeleteEvent(ctx context.Context, id uuid.UUID) (_ *schema.Eve
 	} else if err := r.eventStore.Delete(ctx, id, event.Serial); err != nil {
 		return nil, err
 	}
-	r.eventChanged(eventschema.EventDelete, event)
+	r.eventChanged(eventschema.ChangeDelete, event)
 	return &event, nil
 }
 
@@ -153,16 +153,16 @@ func (r *Registry) createEvent(ctx context.Context, meta schema.EventMeta) (*sch
 	if err != nil {
 		return nil, err
 	}
-	r.eventChanged(eventschema.EventCreate, event)
+	r.eventChanged(eventschema.ChangeCreate, event)
 	return &event, nil
 }
 
 // eventChanged publishes that the event's outcome was created, updated or
 // deleted, with the session it's for, and its serial, and status, unless it
 // was deleted
-func (r *Registry) eventChanged(action eventschema.EventAction, event schema.Event) {
+func (r *Registry) eventChanged(action eventschema.ChangeAction, event schema.Event) {
 	data := schema.EventChange{Session: event.Session}
-	if action != eventschema.EventDelete {
+	if action != eventschema.ChangeDelete {
 		data.Serial, data.Status = event.Serial, event.Status
 	}
 	r.publish(action, EventTable, event.ID.String(), data)
@@ -308,7 +308,7 @@ func (r *Registry) updateEvent(ctx context.Context, id uuid.UUID, fn func(*schem
 	if event, err = r.eventStore.Put(ctx, event); err != nil {
 		return nil, err
 	}
-	r.eventChanged(eventschema.EventUpdate, event)
+	r.eventChanged(eventschema.ChangeUpdate, event)
 	return &event, nil
 }
 

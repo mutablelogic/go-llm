@@ -13,11 +13,11 @@ import (
 	// Packages
 	otel "github.com/mutablelogic/go-client/pkg/otel"
 	llm "github.com/mutablelogic/go-llm"
-	eventschema "github.com/mutablelogic/go-llm/broadcaster/schema"
 	providerschema "github.com/mutablelogic/go-llm/provider/schema"
 	schema "github.com/mutablelogic/go-llm/registry/schema"
 	resourceschema "github.com/mutablelogic/go-llm/resource/schema"
 	toolschema "github.com/mutablelogic/go-llm/toolkit/schema"
+	eventschema "github.com/mutablelogic/go-server/broadcaster/schema"
 	types "github.com/mutablelogic/go-server/pkg/types"
 	attribute "go.opentelemetry.io/otel/attribute"
 )
@@ -267,7 +267,7 @@ func (r *Registry) appendMessage(ctx context.Context, id uuid.UUID, message prov
 	if session, err = r.sessionStore.Put(ctx, session); err != nil {
 		return false, err
 	}
-	r.sessionChanged(eventschema.EventUpdate, session)
+	r.sessionChanged(eventschema.ChangeUpdate, session)
 	return true, nil
 }
 
