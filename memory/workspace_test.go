@@ -167,3 +167,13 @@ func Test_Workspace(t *testing.T) {
 		assert.NotEmpty(t, list.Body)
 	})
 }
+
+func Test_WorkspaceNotFound(t *testing.T) {
+	// A memory which isn't is said to be, by its URI
+	ctx := t.Context()
+	m, err := memory.New(ctx, memory.NewStore())
+	require.NoError(t, err)
+	_, err = m.Read(ctx, "memory:///memories/details.md")
+	require.ErrorIs(t, err, llm.ErrNotFound)
+	assert.EqualError(t, err, "not found: memory:///memories/details.md")
+}

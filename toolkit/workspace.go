@@ -52,8 +52,8 @@ type ListWorkspaceRequest struct {
 type ReadWorkspaceRequest struct {
 	URI    string `json:"uri" help:"The resource's URI, as it's listed, resource://<workspace>/<uri>"`
 	Format string `json:"format,omitempty" enum:"raw,markdown" help:"Without it, as its type is: an image, audio, or video, as raw, and anything else as markdown, or raw, when it has none. raw, for its content as it is, up to 10 MiB: text as its text, and anything else, such as an image, or audio, as a file which is sent to the model, which sees, or hears it. markdown, for its text, as a Markdown document, a part at a time, such as of a PDF, or an Office document, whose YAML front matter has its metadata, and the offset of the next part"`
-	Offset uint64 `json:"offset,omitempty" help:"As Markdown, the byte of its Markdown the part starts at, which is a part's next"`
-	Limit  uint64 `json:"limit,omitempty" help:"As Markdown, the most bytes of its Markdown which are read"`
+	Offset uint64 `json:"offset,omitempty" help:"As Markdown, or raw text, the byte the part starts at, which is a part's next"`
+	Limit  uint64 `json:"limit,omitempty" help:"As Markdown, or raw text, the most bytes which are read"`
 }
 
 // WorkspaceMeta is a workspace, as the list tool lists it: its name, and
@@ -251,17 +251,17 @@ func (t *readWorkspace) Run(ctx context.Context, input json.RawMessage) (any, er
 		// sees, or hears, and otherwise its text, as Markdown, or, when it
 		// has none, as it is
 		if media(resource.Type()) {
-			return readRaw(ctx, req.URI, resource)
+			return readRaw(ctx, req.URI, resource, req.Offset, req.Limit)
 		}
 		part, err := workspace.ReadMarkdown(ctx, resource, req.Offset, req.Limit)
 		if errors.Is(err, llm.ErrNotImplemented) {
-			return readRaw(ctx, req.URI, resource)
+			return readRaw(ctx, req.URI, resource, req.Offset, req.Limit)
 		} else if err != nil {
 			return nil, err
 		}
 		return part.Document(), nil
 	case "raw":
-		return readRaw(ctx, req.URI, resource)
+		return readRaw(ctx, req.URI, resource, req.Offset, req.Limit)
 	case "markdown":
 		part, err := workspace.ReadMarkdown(ctx, resource, req.Offset, req.Limit)
 		if err != nil {
@@ -292,8 +292,13 @@ func media(contentType string) bool {
 // model is sent as a file, which it sees, or hears, up to MaxRawSize, which,
 // when its size isn't known, is read, to find out. Returns ErrBadParameter
 // when it's larger, which says what's read instead.
-func readRaw(ctx context.Context, uri string, resource llm.Resource) (any, error) {
+func readRaw(ctx context.Context, uri string, resource llm.Resource, offset, limit uint64) (any, error) {
 	text := textual(resource.Type())
+	if text {
+		if part, err := readText(ctx, resource, offset, limit); err != nil || part != nil {
+			return part, err
+		}
+	}
 	tooLarge := func(size string) error {
 		if text {
 			return llm.ErrBadParameter.Withf("%s is %s, more than the %d bytes which are read raw, so read it as Markdown, a part at a time, from an offset, with the markdown format", uri, size, MaxRawSize)
@@ -328,6 +333,77 @@ func readRaw(ctx context.Context, uri string, resource llm.Resource) (any, error
 		return string(data), nil
 	}
 	return &readResource{Resource: resource, data: data}, nil
+}
+
+// readText returns a part of the text, from the byte at the offset, of at
+// most the limit, or the default, of Markdown's, in whole characters, as a
+// document, whose front matter has its offset, the offset of the next part,
+// when there's more, and the length of the text, when it's known, or nil,
+// when it isn't text, as it isn't UTF-8. Returns ErrBadParameter when the
+// offset is beyond its end.
+func readText(ctx context.Context, resource llm.Resource, offset, limit uint64) (any, error) {
+	if limit == 0 {
+		limit = workspace.DefaultMarkdownLimit
+	}
+	limit = min(limit, workspace.MaxMarkdownLimit)
+	read, err := resource.Read(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	// The part, and a byte more, so there's more, from the offset, which is
+	// sought, or read past
+	var data []byte
+	if err := read(ctx, func(r io.Reader) error {
+		if offset > 0 {
+			if seeker, ok := r.(io.Seeker); ok {
+				if _, err := seeker.Seek(int64(offset), io.SeekStart); err != nil {
+					return err
+				}
+			} else if _, err := io.CopyN(io.Discard, r, int64(offset)); err != nil && !errors.Is(err, io.EOF) {
+				return err
+			}
+		}
+		var err error
+		data, err = io.ReadAll(io.LimitReader(r, int64(limit)+1))
+		return err
+	}); err != nil {
+		return nil, err
+	}
+	size, sized := llm.ContentLength(resource)
+	if offset > 0 && ((sized && int64(offset) >= size) || (!sized && len(data) == 0)) {
+		return nil, llm.ErrBadParameter.Withf("offset %d is beyond the end of the text, at %d", offset, size)
+	}
+
+	// In whole characters
+	start := 0
+	for offset > 0 && start < len(data) && start < utf8.UTFMax && !utf8.RuneStart(data[start]) {
+		start++
+	}
+	more := uint64(len(data)) > limit
+	end := len(data)
+	if more {
+		end = int(limit)
+		for end > start && !utf8.RuneStart(data[end]) {
+			end--
+		}
+	}
+	if !utf8.Valid(data[start:end]) {
+		return nil, nil
+	}
+	part := workspaceschema.Markdown{URI: resource.URI(), Type: resource.Type(), Body: string(data[start:end]), Offset: offset + uint64(start)}
+	if more {
+		next := offset + uint64(end)
+		part.Next = &next
+	}
+	if sized {
+		length := uint64(size)
+		part.Length = &length
+	} else if !more {
+		length := offset + uint64(end)
+		part.Length = &length
+	}
+	return part.Document(), nil
 }
 
 // textual returns true when the type is text's, which is read as its text

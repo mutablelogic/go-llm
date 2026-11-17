@@ -2,6 +2,7 @@ package toolkit_test
 
 import (
 	"context"
+	"fmt"
 	"encoding/json"
 	"strings"
 	"testing"
@@ -119,10 +120,25 @@ func TestWorkspaces(t *testing.T) {
 		var text string
 		require.NoError(t, json.Unmarshal(result, &text), string(result))
 		assert.Contains(t, text, "# Note")
-		// Raw, text is its text
+		// Raw, text is its text, a part at a time
 		result, err = tk.CallTool(ctx, "workspace:read", json.RawMessage(`{"uri":"file:///note.md","format":"raw"}`))
 		require.NoError(t, err)
-		assert.JSONEq(t, `"# Note"`, string(result))
+		require.NoError(t, json.Unmarshal(result, &text))
+		assert.Contains(t, text, "\n# Note\n")
+		assert.Contains(t, text, "length: 6\n")
+		assert.NotContains(t, text, "next:", "all of it")
+		result, err = tk.CallTool(ctx, "workspace:read", json.RawMessage(`{"uri":"file:///note.md","format":"raw","limit":3}`))
+		require.NoError(t, err)
+		require.NoError(t, json.Unmarshal(result, &text))
+		assert.Contains(t, text, "next: 3\n")
+		assert.Contains(t, text, "\n# N\n")
+		result, err = tk.CallTool(ctx, "workspace:read", json.RawMessage(`{"uri":"file:///note.md","format":"raw","offset":3}`))
+		require.NoError(t, err)
+		require.NoError(t, json.Unmarshal(result, &text))
+		assert.Contains(t, text, "offset: 3\n")
+		assert.Contains(t, text, "\note\n")
+		_, err = tk.CallTool(ctx, "workspace:read", json.RawMessage(`{"uri":"file:///note.md","format":"raw","offset":60}`))
+		assert.ErrorIs(t, err, llm.ErrBadParameter, "beyond its end")
 		_, err = tk.CallTool(ctx, "workspace:read", json.RawMessage(`{"uri":"file:///missing.md"}`))
 		assert.ErrorIs(t, err, llm.ErrNotFound)
 
@@ -147,8 +163,12 @@ func TestWorkspaces(t *testing.T) {
 		}
 		_, err = tk.CallTool(ctx, "workspace:read", json.RawMessage(`{"uri":"file:///song.mp3"}`))
 		assert.ErrorContains(t, err, "llm:transcribe")
-		_, err = tk.CallTool(ctx, "workspace:read", json.RawMessage(`{"uri":"file:///big.txt","format":"raw"}`))
-		assert.ErrorContains(t, err, "markdown format")
+		// Raw, a text larger than is sent at once is a part at a time
+		result, err = tk.CallTool(ctx, "workspace:read", json.RawMessage(`{"uri":"file:///big.txt","format":"raw"}`))
+		require.NoError(t, err)
+		require.NoError(t, json.Unmarshal(result, &text))
+		assert.Contains(t, text, "next: 16384\n")
+		assert.Contains(t, text, fmt.Sprintf("length: %d\n", toolkit.MaxRawSize+1))
 		result, err = tk.CallTool(ctx, "workspace:read", json.RawMessage(`{"uri":"file:///unsized-small.bin"}`))
 		require.NoError(t, err)
 		assert.Contains(t, string(result), "application/octet-stream")

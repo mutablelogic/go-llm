@@ -2,6 +2,7 @@ package memory
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"slices"
 	"strconv"
@@ -152,10 +153,12 @@ func (m *Memory) Read(ctx context.Context, uri string) (llm.Resource, error) {
 	}
 	key, ok := strings.CutPrefix(uri, MemoriesURI)
 	if !ok || !strings.HasSuffix(key, ".md") {
-		return nil, llm.ErrNotFound.Withf("no resource %q", uri)
+		return nil, llm.ErrNotFound.With(uri)
 	}
 	memory, err := m.GetMemory(ctx, strings.TrimSuffix(key, ".md"))
-	if err != nil {
+	if errors.Is(err, llm.ErrNotFound) {
+		return nil, llm.ErrNotFound.With(uri)
+	} else if err != nil {
 		return nil, err
 	}
 	return memoryDocument(memory), nil

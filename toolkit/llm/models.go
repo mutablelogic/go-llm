@@ -187,7 +187,11 @@ func (t *listModels) voices(ctx context.Context, m Models, model gollm.Model, se
 	if err != nil {
 		return nil, err
 	}
-	return gollm.PagedVoices(gollm.FindVoices(all.Body, search), opts...)
+	found := gollm.FindVoices(all.Body, search)
+	if len(found) == 0 {
+		return nil, gollm.ErrNotFound.Withf("no voice of %s matches %q", m.Name(model), search)
+	}
+	return gollm.PagedVoices(found, opts...)
 }
 
 // abilities returns what models with the capabilities can do, as it's said,
