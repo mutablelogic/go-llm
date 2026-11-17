@@ -5,6 +5,7 @@ import './fonts.css';
 // go-server's shell: the header, and the sidebar of the modules' pages, the
 // server's status, below them, and the notifications
 import { ChangesController } from '@mutablelogic/go-server/broadcaster';
+import { config } from './api/client';
 import { ConfigController, configClient, getConfig } from '@mutablelogic/go-server/config';
 import '@mutablelogic/go-server/config/view';
 import { NavController } from '@mutablelogic/go-server/nav';
@@ -64,7 +65,14 @@ const read = await getConfig().catch((error) => {
     notifications.error("The configuration couldn't be read", error);
     return undefined;
 });
-const changes = new ChangesController(configClient(read ?? { prefix: '/api' }))
+const changes = new ChangesController(read ? configClient(read) : {
+    // Without the configuration, the API's prefix is read as each stream
+    // is opened, until it's read, so a server with another prefix, which
+    // couldn't be reached when the page was loaded, is watched once it can
+    // be, as the stream is opened again
+    base: '',
+    fetch: async (input, init) => fetch((await config()).prefix + String(input), init),
+})
     .onError((error) => notifications.error("Changes couldn't be watched", error));
 const status = document.querySelector('gs-server-status');
 if (status) {
