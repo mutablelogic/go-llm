@@ -9,6 +9,7 @@ import (
 	"reflect"
 	"slices"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	// Packages
@@ -34,6 +35,9 @@ type Registry struct {
 	ctx     context.Context
 	cancel  context.CancelFunc
 	watches map[string]context.CancelFunc
+
+	// Whether it runs
+	running atomic.Bool
 }
 
 // ResourceEvent is the data of an event of a workspace's folders, and

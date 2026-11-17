@@ -1,10 +1,14 @@
 package workspace_test
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
+	"log/slog"
 	"maps"
 	"slices"
+	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -238,4 +242,52 @@ func (e ending) Watch(ctx context.Context, ch chan<- schema.Change) error {
 	case <-ctx.Done():
 		return nil
 	}
+}
+
+func Test_Run(t *testing.T) {
+	// Run logs the workspaces which are added, and removed, as they're
+	// published, until it's cancelled
+	var log safeBuffer
+	logger := slog.New(slog.NewTextHandler(&log, nil))
+	b := broadcaster.New()
+	r, err := workspace.New(workspace.WithBroadcaster(b))
+	require.NoError(t, err)
+	defer r.Close()
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	assert.False(t, r.Running())
+	go func() { done <- r.Run(ctx, logger) }()
+	require.Eventually(t, r.Running, 5*time.Second, time.Millisecond)
+	assert.ErrorIs(t, r.Run(context.Background(), logger), llm.ErrConflict, "it's running")
+
+	// Once it's watching, which it is, soon after it's running
+	require.Eventually(t, func() bool {
+		require.NoError(t, r.Add("notes", empty{}))
+		_, err := r.Remove("notes")
+		require.NoError(t, err)
+		return strings.Contains(log.String(), `msg="workspace removed" workspace=notes`)
+	}, 5*time.Second, 10*time.Millisecond)
+	assert.Contains(t, log.String(), `msg="workspace added" workspace=notes`)
+
+	cancel()
+	require.NoError(t, <-done)
+	assert.False(t, r.Running())
+}
+
+// safeBuffer is a buffer which is written, and read, concurrently
+type safeBuffer struct {
+	mu  sync.Mutex
+	buf bytes.Buffer
+}
+
+func (b *safeBuffer) Write(p []byte) (int, error) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.buf.Write(p)
+}
+
+func (b *safeBuffer) String() string {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.buf.String()
 }
