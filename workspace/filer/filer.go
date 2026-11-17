@@ -79,7 +79,7 @@ func New(name string, filer gofiler.Filer) (*Workspace, error) {
 
 // List returns a page of the folders, and files, in the folder, or under
 // it, in the order of their paths, from the cursor, which is the path of the
-// last one of the page before
+// last one of the page before, or, for a file's path, the file
 func (w *Workspace) List(ctx context.Context, req schema.ListRequest) (*schema.ListResponse, error) {
 	limit := req.Limit
 	if limit == 0 {
@@ -106,8 +106,9 @@ func (w *Workspace) List(ctx context.Context, req schema.ListRequest) (*schema.L
 			return result, nil
 		} else if err != nil {
 			return nil, llmError(err)
-		} else if obj == nil || obj.Path == folder {
-			// The folder isn't in itself
+		} else if obj == nil || (obj.IsDir && obj.Path == folder) {
+			// A folder isn't in itself, but a file, which is listed by its
+			// path, is
 			continue
 		} else if uint(len(result.Body)) == limit {
 			result.Next = last
