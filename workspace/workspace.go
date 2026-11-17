@@ -38,9 +38,9 @@ type Workspace interface {
 type Reader interface {
 	Workspace
 
-	// Read returns the resource, or artwork, with the URI, as a resource, or
-	// its artwork, has it, whose content is read as it's read. Returns
-	// ErrNotFound when there's none, and ErrBadParameter for a folder,
-	// which has no content.
+	// Read returns the resource, or artwork, with the URI which a listed
+	// resource, or its artwork, has, whose content is read as it's read.
+	// Returns ErrNotFound when there's none, and ErrBadParameter for a
+	// folder, which has no content.
 	Read(ctx context.Context, uri string) (llm.Resource, error)
 }
