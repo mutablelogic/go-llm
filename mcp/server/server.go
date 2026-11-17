@@ -15,6 +15,8 @@ import (
 	llm "github.com/mutablelogic/go-llm"
 	eventschema "github.com/mutablelogic/go-llm/broadcaster/schema"
 	toolkit "github.com/mutablelogic/go-llm/toolkit"
+	workspace "github.com/mutablelogic/go-llm/workspace"
+	schema "github.com/mutablelogic/go-llm/workspace/schema"
 )
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -56,6 +58,10 @@ func New(ns toolkit.Namespace, opts ...Opt) (*Server, error) {
 		Logger:       s.logger,
 		KeepAlive:    s.keepAlive,
 		Capabilities: s.capabilities(),
+		// With a workspace which changes, a client subscribes to its
+		// resources, which the SDK keeps, so it's told they're updated
+		SubscribeHandler:   s.subscribe(),
+		UnsubscribeHandler: s.unsubscribe(),
 	})
 
 	// Its tools are the namespace's, as they are now, each time they're
@@ -90,14 +96,24 @@ func New(ns toolkit.Namespace, opts ...Opt) (*Server, error) {
 // namespace's watch fails, when it returns its error. Its tools are also
 // the namespace's as they're listed, or called, whether it runs or not.
 func (s *Server) Run(ctx context.Context) error {
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
 	ch := make(chan eventschema.Event, 16)
-	done := make(chan error, 1)
+	done := make(chan error, 2)
 	go func() { done <- s.ns.Watch(ctx, ch) }()
+
+	// Follow the workspace's changes, too, when it says them
+	changes := make(chan schema.Change, 16)
+	if watcher, ok := s.workspace.(workspace.Watcher); ok {
+		go func() { done <- watcher.Watch(ctx, changes) }()
+	}
 	s.sync()
 	for {
 		select {
 		case <-ch:
 			s.sync()
+		case change := <-changes:
+			s.changed(ctx, change)
 		case err := <-done:
 			return err
 		}

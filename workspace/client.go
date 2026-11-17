@@ -7,6 +7,7 @@ import (
 
 	// Packages
 	llm "github.com/mutablelogic/go-llm"
+	eventschema "github.com/mutablelogic/go-llm/broadcaster/schema"
 	client "github.com/mutablelogic/go-llm/mcp/client"
 	schema "github.com/mutablelogic/go-llm/workspace/schema"
 )
@@ -27,6 +28,7 @@ type contents struct {
 }
 
 var _ Reader = (*clientWorkspace)(nil)
+var _ Watcher = (*clientWorkspace)(nil)
 var _ llm.Resource = (*contents)(nil)
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -83,6 +85,30 @@ func (w *clientWorkspace) Read(ctx context.Context, uri string) (llm.Resource, e
 		uri = c.URI
 	}
 	return &contents{uri: uri, name: path.Base(strings.TrimSuffix(uri, "/")), mimeType: c.MIMEType, data: data}, nil
+}
+
+// Watch sends the server's resources which are updated, which were
+// subscribed to, with the client's Subscribe, and, without a URI, that its
+// resources changed, when it says its list did, until the context is
+// cancelled, when it returns nil
+func (w *clientWorkspace) Watch(ctx context.Context, ch chan<- schema.Change) error {
+	if ch == nil {
+		return llm.ErrBadParameter.With("missing channel")
+	}
+	uris := make(chan string)
+	done := make(chan error, 1)
+	go func() { done <- w.client.WatchResources(ctx, uris) }()
+	for {
+		select {
+		case uri := <-uris:
+			select {
+			case ch <- schema.Change{Action: eventschema.EventUpdate, URI: uri}:
+			case <-ctx.Done():
+			}
+		case err := <-done:
+			return err
+		}
+	}
 }
 
 ///////////////////////////////////////////////////////////////////////////////

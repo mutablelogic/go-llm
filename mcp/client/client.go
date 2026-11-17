@@ -36,6 +36,9 @@ type Client struct {
 	change       ChangeFunc
 	toolsChanged func()
 
+	// The watches of the server's resources
+	resources resourceWatches
+
 	// The source of the token its requests are authorized with, or nil, and
 	// the challenge of the last request which wasn't authorized, or nil
 	tokens    oauth2.TokenSource
