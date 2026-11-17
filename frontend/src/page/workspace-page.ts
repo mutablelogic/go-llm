@@ -17,9 +17,12 @@ import FolderDetails32 from '@carbon/icons/es/folder--details/32.js';
 import iconLoader from '@carbon/web-components/es/globals/internal/icon-loader.js';
 import '@carbon/web-components/es/components/tag/index.js';
 import '../component/folder-tree';
+import '../component/markdown-view';
+import '@carbon/web-components/es/components/loading/index.js';
 import { formatSize, formatWhen } from '../format';
 import { routeHref } from '../router';
 import { isFolder, type ResourceMeta, type Workspace } from '../schema/workspace';
+import type { MarkdownPart } from '../api/workspace';
 
 @customElement('llm-workspace-page')
 export class WorkspacePage extends LitElement {
@@ -122,7 +125,7 @@ export class WorkspacePage extends LitElement {
         if (!file) {
             return nothing;
         }
-        const { item, url, artwork } = file;
+        const { item, url, artwork, loading, markdown } = file;
         // Its title, and type, are the panel's header, so its name is only
         // said when its title is another
         const details: [string, unknown][] = [
@@ -144,6 +147,12 @@ export class WorkspacePage extends LitElement {
                     <dl>
                         ${item.meta.map((meta) => html`<dt>${meta.ns}:${meta.key}</dt><dd>${meta.text}</dd>`)}
                     </dl>
+                ` : nothing}
+                ${loading ? html`<cds-loading small inactive-text="Loading" class="preview-loading"></cds-loading>` : nothing}
+                ${markdown?.body.trim() ? html`
+                    <h3>Preview</h3>
+                    <llm-markdown-view class="preview-markdown" .text=${markdown.body}></llm-markdown-view>
+                    ${markdown.more ? html`<p class="preview-more">The rest isn't shown. Open the file for all of it.</p>` : nothing}
                 ` : nothing}
                 ${artwork.length ? html`
                     <h3>Artwork</h3>
@@ -192,6 +201,8 @@ export interface FileDetail {
     item: ResourceMeta;
     url: string;
     artwork: { key: string; type?: string; url: string }[];
+    loading?: boolean;
+    markdown?: MarkdownPart;
 }
 
 declare global {

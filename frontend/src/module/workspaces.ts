@@ -6,11 +6,15 @@
 import { ListController, type Page, type Sort } from '@mutablelogic/go-server/list';
 import { PanelController, type PanelAction } from '@mutablelogic/go-server/panel';
 import { MediaPlayer } from '../component/media-player';
-import { contentURL, listFolder, listWorkspaces } from '../api/workspace';
+import { contentURL, listFolder, listWorkspaces, readMarkdown } from '../api/workspace';
 import { WorkspacePage, type FileDetail } from '../page/workspace-page';
 import { routeHref } from '../router';
 import { FolderType, isFolder, type ResourceMeta, type Workspace } from '../schema/workspace';
 import { addPage, Section, type App } from './app';
+
+// MaxPreview is the most bytes of a file's Markdown which are shown in its
+// panel
+const MaxPreview = 64 * 1024;
 
 // MaxListed is the most folders, and resources, of a folder which are
 // listed, as they're sorted, and paged, in the browser, as a workspace's
@@ -95,8 +99,23 @@ export function workspacesModule(app: App): void {
         );
         panel.setHeader({ title, subtitle: item.type });
         panel.setActions(actions);
-        page.file = { item, url, artwork };
-        panel.open(page.file);
+        // Its Markdown, which is read once it's shown, unless it's an
+        // image, audio, or video, which are shown, or played, as they are
+        const previewed = !/^(image|audio|video)\//.test(item.type ?? '');
+        const file = { item, url, artwork, loading: previewed };
+        page.file = file;
+        panel.open(file);
+        if (previewed) {
+            let markdown;
+            try {
+                markdown = await readMarkdown(workspace, item.uri, MaxPreview);
+            } catch {
+                // The file is shown without its Markdown
+            }
+            if (page.file === file) {
+                page.file = { ...file, loading: false, markdown };
+            }
+        }
     };
 
     // A folder which is opened is shown, and a file in the panel
