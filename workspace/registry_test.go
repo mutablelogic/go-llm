@@ -179,3 +179,14 @@ func Test_Events(t *testing.T) {
 	_, err = workspace.New(workspace.WithBroadcaster(nil))
 	assert.ErrorIs(t, err, llm.ErrBadParameter)
 }
+
+func Test_RemoveIf(t *testing.T) {
+	// A workspace is removed only when it's the one with the name
+	r, err := workspace.New()
+	require.NoError(t, err)
+	first, second := &sometimes{available: true}, &sometimes{available: true}
+	require.NoError(t, r.Add("notes", first))
+	assert.False(t, r.RemoveIf("notes", second), "another workspace")
+	assert.True(t, r.RemoveIf("notes", first))
+	assert.False(t, r.RemoveIf("notes", first), "once it's removed")
+}

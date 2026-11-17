@@ -90,10 +90,10 @@ func (self *Toolkit) addWorkspace(ns Namespace) error {
 }
 
 // removeWorkspace removes the namespace from the toolkit's workspaces, when
-// it's one of them
+// it's one of them, rather than a workspace which replaced it, by its name
 func (self *Toolkit) removeWorkspace(ns Namespace) {
-	if _, ok := ns.(workspace.Workspace); ok && self.workspaces != nil {
-		_, _ = self.workspaces.Remove(ns.Name())
+	if ws, ok := ns.(workspace.Workspace); ok && self.workspaces != nil {
+		self.workspaces.RemoveIf(ns.Name(), ws)
 	}
 }
 
@@ -109,7 +109,7 @@ func (self *Toolkit) withWorkspaces(ctx context.Context) context.Context {
 	return WithResolver(ctx, func(ctx context.Context, uris ...string) ([]llm.Resource, error) {
 		if next != nil {
 			resources, err := next(ctx, uris...)
-			if err == nil || (!errors.Is(err, llm.ErrNotFound) && !errors.Is(err, llm.ErrNotImplemented) && !errors.Is(err, llm.ErrBadParameter)) {
+			if err == nil || !fallback(err) {
 				return resources, err
 			}
 		}
@@ -129,8 +129,12 @@ func (self *Toolkit) withWorkspaces(ctx context.Context) context.Context {
 // when there's one, which has it, or otherwise from a workspace
 func (self *Toolkit) resolveWorkspace(ctx context.Context, next ResolveFunc, uri string) (llm.Resource, error) {
 	if next != nil {
-		if resources, err := next(ctx, uri); err == nil && len(resources) == 1 {
+		resources, err := next(ctx, uri)
+		if err == nil && len(resources) == 1 {
 			return resources[0], nil
+		} else if err != nil && !fallback(err) {
+			// It failed, rather than not having it, which is said
+			return nil, err
 		}
 	}
 	return self.workspaces.Resolve(ctx, uri)
@@ -225,6 +229,13 @@ func (t *readWorkspace) Run(ctx context.Context, input json.RawMessage) (any, er
 
 ///////////////////////////////////////////////////////////////////////////////
 // PRIVATE FUNCTIONS
+
+// fallback returns true when the resolve function's error is that it
+// doesn't have a resource, rather than that it failed, so the workspaces
+// are tried
+func fallback(err error) bool {
+	return errors.Is(err, llm.ErrNotFound) || errors.Is(err, llm.ErrNotImplemented) || errors.Is(err, llm.ErrBadParameter)
+}
 
 // unmarshalInput decodes the tool's input, which may be empty
 func unmarshalInput(input json.RawMessage, v any) error {
