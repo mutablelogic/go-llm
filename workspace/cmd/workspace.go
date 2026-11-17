@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"strings"
 
 	// Packages
 	httpclient "github.com/mutablelogic/go-llm/workspace/httpclient"
@@ -90,7 +91,7 @@ func (cmd *WorkspaceResourceCmd) Run(ctx server.Cmd) error {
 			return err
 		}
 		if list.Next != "" {
-			fmt.Fprintf(os.Stderr, "More with --cursor=%q\n", list.Next)
+			fmt.Fprintf(os.Stderr, "More with --cursor=%s\n", shellQuote(list.Next))
 		}
 		return nil
 	})
@@ -126,4 +127,14 @@ func (cmd *WorkspaceReadCmd) Run(ctx server.Cmd) (err error) {
 		_, err := client.ReadResource(ctx, name, req, w)
 		return err
 	})
+}
+
+///////////////////////////////////////////////////////////////////////////////
+// PRIVATE FUNCTIONS
+
+// shellQuote returns the text quoted for a POSIX shell, in single quotes,
+// in which nothing is expanded, with each single quote it has closing them,
+// escaped, and opening them again, so it's pasted as it is
+func shellQuote(text string) string {
+	return "'" + strings.ReplaceAll(text, "'", `'\''`) + "'"
 }
