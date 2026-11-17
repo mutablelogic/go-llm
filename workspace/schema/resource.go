@@ -4,6 +4,9 @@ package schema
 
 import (
 	"encoding/json"
+	"net/url"
+	"strconv"
+	"strings"
 	"time"
 
 	// Packages
@@ -146,4 +149,23 @@ func MetaOf(md []metadata.Metadata) []Meta {
 		result = append(result, Meta{NS: m.NS(), Key: m.Key(), Text: text, Value: value})
 	}
 	return result
+}
+
+// Query returns the request as the query of a URL, without its fields which
+// aren't set
+func (r ListRequest) Query() url.Values {
+	q := url.Values{}
+	if path := strings.TrimSpace(r.Path); path != "" {
+		q.Set("path", path)
+	}
+	if r.Recursive {
+		q.Set("recursive", "true")
+	}
+	if cursor := strings.TrimSpace(r.Cursor); cursor != "" {
+		q.Set("cursor", cursor)
+	}
+	if r.Limit > 0 {
+		q.Set("limit", strconv.FormatUint(uint64(r.Limit), 10))
+	}
+	return q
 }
