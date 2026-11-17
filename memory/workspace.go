@@ -3,8 +3,10 @@ package memory
 import (
 	"context"
 	"fmt"
+	"slices"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	// Packages
@@ -18,6 +20,15 @@ import (
 
 ///////////////////////////////////////////////////////////////////////////////
 // TYPES
+
+// watch is a watch of the memory's workspace: the changes which haven't
+// been sent, by URI, in the order they happened, and a signal that there
+// are more
+type watch struct {
+	mu      sync.Mutex
+	pending []workspaceschema.Change
+	signal  chan struct{}
+}
 
 // document is a resource of the memory's workspace, as Markdown
 type document struct {
@@ -69,49 +80,51 @@ func (m *Memory) List(ctx context.Context, req workspaceschema.ListRequest) (*wo
 		return nil, llm.ErrNotFound.Withf("no folder %q", req.Path)
 	}
 
-	// The details, and the folder, at the top, and the memories in the
+	// The details, and the folder, at the top, and then the memories, in the
 	// folder, or under the top
-	var all []workspaceschema.ResourceMeta
+	top := 0
 	if path == "" {
-		details := m.detailsDocument()
-		all = append(all,
-			workspaceschema.ResourceMeta{URI: DetailsURI, Name: details.name, Title: "Details", Description: "The details of the person, and the assistant", Type: markdownType, Size: int64(len(details.data))},
-			workspaceschema.ResourceMeta{URI: MemoriesURI, Name: memoriesFolder, Title: "Memories", Type: workspaceschema.FolderType},
-		)
+		top = 2
 	}
+	var memories []schema.Memory
 	if path == memoriesFolder || req.Recursive {
-		memories, err := m.store.ListMemories(ctx, "")
-		if err != nil {
+		var err error
+		if memories, err = m.store.ListMemories(ctx, ""); err != nil {
 			return nil, err
 		}
-		for _, memory := range memories {
-			memory.Version = memory.Hash()
-			// When it was changed, or remembered, when it hasn't been since
-			doc := memoryDocument(memory)
-			modified := memory.Modified
-			if modified.IsZero() {
-				modified = memory.Created
-			}
-			all = append(all, workspaceschema.ResourceMeta{URI: doc.uri, Name: doc.name, Title: memory.Key, Description: memory.Description, Type: markdownType, Size: int64(len(doc.data)), Modified: modified})
-		}
 	}
+	total := top + len(memories)
 
-	// A page of them, from the cursor
+	// A page of them, from the cursor, of at most the limit, which is
+	// clamped before it's an int, so a large one isn't negative
 	start := 0
 	if req.Cursor != "" {
 		n, err := strconv.Atoi(req.Cursor)
 		if err != nil || n < 0 {
 			return nil, llm.ErrBadParameter.Withf("cursor %q isn't valid", req.Cursor)
 		}
-		start = min(n, len(all))
+		start = min(n, total)
 	}
-	limit := int(schema.MemoryListMax)
-	if req.Limit > 0 {
-		limit = min(int(req.Limit), limit)
+	limit := uint(schema.MemoryListMax)
+	if req.Limit > 0 && req.Limit < limit {
+		limit = req.Limit
 	}
-	end := min(start+limit, len(all))
-	response := &workspaceschema.ListResponse{Body: all[start:end]}
-	if end < len(all) {
+	end := min(start+int(limit), total)
+
+	// Only the page's memories are rendered, for their sizes
+	response := &workspaceschema.ListResponse{Body: make([]workspaceschema.ResourceMeta, 0, end-start)}
+	for i := start; i < end; i++ {
+		switch {
+		case i == 0 && top > 0:
+			details := m.detailsDocument()
+			response.Body = append(response.Body, workspaceschema.ResourceMeta{URI: DetailsURI, Name: details.name, Title: "Details", Description: "The details of the person, and the assistant", Type: markdownType, Size: int64(len(details.data))})
+		case i == 1 && top > 1:
+			response.Body = append(response.Body, workspaceschema.ResourceMeta{URI: MemoriesURI, Name: memoriesFolder, Title: "Memories", Type: workspaceschema.FolderType})
+		default:
+			response.Body = append(response.Body, memoryMeta(memories[i-top]))
+		}
+	}
+	if end < total {
 		response.Next = strconv.Itoa(end)
 	}
 	return response, nil
@@ -138,21 +151,27 @@ func (m *Memory) Read(ctx context.Context, uri string) (llm.Resource, error) {
 }
 
 // WatchResources sends the details, and memories, which change, to the
-// channel, as the memory publishes them to its broadcaster, until the
-// context is cancelled, when it returns nil. It sends a change without a
-// URI first, once it's watching. Returns ErrNotImplemented when the memory
-// has no broadcaster.
+// channel, until the context is cancelled, when it returns nil. It sends a
+// change without a URI first, once it's watching. Changes which happen
+// while one is sent are kept, by URI, so none is missed, however slowly
+// they're received.
 func (m *Memory) WatchResources(ctx context.Context, ch chan<- workspaceschema.Change) error {
 	if ch == nil {
 		return llm.ErrBadParameter.With("missing channel")
-	} else if m.broadcaster == nil {
-		return llm.ErrNotImplemented.With("the memory has no broadcaster")
 	}
-	events := make(chan eventschema.Event, 16)
-	done, err := m.broadcaster.Watch(ctx, events)
-	if err != nil {
-		return err
+	w := &watch{signal: make(chan struct{}, 1)}
+	m.watchMu.Lock()
+	if m.watches == nil {
+		m.watches = make(map[*watch]struct{})
 	}
+	m.watches[w] = struct{}{}
+	m.watchMu.Unlock()
+	defer func() {
+		m.watchMu.Lock()
+		delete(m.watches, w)
+		m.watchMu.Unlock()
+	}()
+
 	send := func(change workspaceschema.Change) bool {
 		select {
 		case ch <- change:
@@ -166,15 +185,12 @@ func (m *Memory) WatchResources(ctx context.Context, ch chan<- workspaceschema.C
 	}
 	for {
 		select {
-		case event := <-events:
-			if change, ok := changeOf(event); ok && !send(change) {
-				return nil
+		case <-w.signal:
+			for _, change := range w.take() {
+				if !send(change) {
+					return nil
+				}
 			}
-		case err := <-done:
-			if ctx.Err() != nil {
-				return nil
-			}
-			return err
 		case <-ctx.Done():
 			return nil
 		}
@@ -195,6 +211,46 @@ func (d *document) Read(context.Context) (llm.ReadFunc, error) {
 
 ///////////////////////////////////////////////////////////////////////////////
 // PRIVATE METHODS
+
+// notify tells each watch of the workspace of the change, without waiting
+// for it
+func (m *Memory) notify(change workspaceschema.Change) {
+	m.watchMu.Lock()
+	defer m.watchMu.Unlock()
+	for w := range m.watches {
+		w.add(change)
+	}
+}
+
+// add keeps the change, as the latest of its URI's, unless it was created,
+// and is updated, which is that it was created, and signals there are
+// changes
+func (w *watch) add(change workspaceschema.Change) {
+	w.mu.Lock()
+	i := slices.IndexFunc(w.pending, func(c workspaceschema.Change) bool { return c.URI == change.URI })
+	switch {
+	case i < 0:
+		w.pending = append(w.pending, change)
+	case w.pending[i].Action == eventschema.EventCreate && change.Action == eventschema.EventUpdate:
+	default:
+		w.pending[i] = change
+	}
+	w.mu.Unlock()
+	select {
+	case w.signal <- struct{}{}:
+	default:
+	}
+}
+
+// take returns the changes which haven't been sent, which are then
+// forgotten
+func (w *watch) take() []workspaceschema.Change {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	pending := w.pending
+	w.pending = nil
+	return pending
+}
 
 // detailsDocument returns the details as a Markdown document: each which is
 // known, or which the person declined to say
@@ -244,8 +300,7 @@ func memoryDocument(memory schema.Memory) *document {
 		b.WriteString(body)
 		b.WriteString("\n")
 	}
-	name := memory.Key + ".md"
-	return &document{uri: MemoriesURI + name, name: name, data: []byte(b.String())}
+	return &document{uri: memoryURI(memory.Key), name: memory.Key + ".md", data: []byte(b.String())}
 }
 
 // title returns the field's name, as a title, such as Timezone
@@ -257,18 +312,21 @@ func title(field schema.Field) string {
 	return strings.ToUpper(name[:1]) + name[1:]
 }
 
-// changeOf returns the memory's event as a change of its workspace: a
-// memory which is created, updated, or deleted, or the details, which are
-// updated, as one is
-func changeOf(event eventschema.Event) (workspaceschema.Change, bool) {
-	if event.Schema != Name {
-		return workspaceschema.Change{}, false
+// memoryURI returns the URI of the memory with the key, in the memory's
+// workspace
+func memoryURI(key string) string {
+	return MemoriesURI + key + ".md"
+}
+
+// memoryMeta returns the memory, as its workspace lists it: its document's
+// URI, name, and size, its key, its description, and when it was changed,
+// or remembered, when it hasn't been since
+func memoryMeta(memory schema.Memory) workspaceschema.ResourceMeta {
+	memory.Version = memory.Hash()
+	doc := memoryDocument(memory)
+	modified := memory.Modified
+	if modified.IsZero() {
+		modified = memory.Created
 	}
-	switch event.Table {
-	case MemoryTable:
-		return workspaceschema.Change{Action: event.Action, URI: MemoriesURI + event.Row + ".md"}, true
-	case DetailTable:
-		return workspaceschema.Change{Action: eventschema.EventUpdate, URI: DetailsURI}, true
-	}
-	return workspaceschema.Change{}, false
+	return workspaceschema.ResourceMeta{URI: doc.uri, Name: doc.name, Title: memory.Key, Description: memory.Description, Type: markdownType, Size: int64(len(doc.data)), Modified: modified}
 }
