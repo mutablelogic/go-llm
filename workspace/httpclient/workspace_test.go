@@ -84,6 +84,12 @@ func Test_Client(t *testing.T) {
 		assert.Equal(t, "resource://notes/file:///2026/b.md", list.Body[0].URI)
 		assert.Equal(t, req, asked)
 
+		// With spaces, as they are
+		req = schema.ListRequest{Path: " my notes ", Cursor: " opaque= "}
+		_, err = c.ListResources(ctx, "notes", req)
+		require.NoError(t, err)
+		assert.Equal(t, req, asked, "as they are, with their spaces")
+
 		_, err = c.ListResources(ctx, "missing", schema.ListRequest{})
 		assert.Equal(t, http.StatusNotFound, status(t, err))
 	})

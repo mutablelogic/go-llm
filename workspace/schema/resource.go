@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"net/url"
 	"strconv"
-	"strings"
 	"time"
 
 	// Packages
@@ -152,17 +151,18 @@ func MetaOf(md []metadata.Metadata) []Meta {
 }
 
 // Query returns the request as the query of a URL, without its fields which
-// aren't set
+// aren't set, and with its folder, and cursor, as they are, as a folder's
+// name can have spaces, and a cursor is the workspace's own
 func (r ListRequest) Query() url.Values {
 	q := url.Values{}
-	if path := strings.TrimSpace(r.Path); path != "" {
-		q.Set("path", path)
+	if r.Path != "" {
+		q.Set("path", r.Path)
 	}
 	if r.Recursive {
 		q.Set("recursive", "true")
 	}
-	if cursor := strings.TrimSpace(r.Cursor); cursor != "" {
-		q.Set("cursor", cursor)
+	if r.Cursor != "" {
+		q.Set("cursor", r.Cursor)
 	}
 	if r.Limit > 0 {
 		q.Set("limit", strconv.FormatUint(uint64(r.Limit), 10))
