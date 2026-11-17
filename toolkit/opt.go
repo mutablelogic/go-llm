@@ -6,6 +6,7 @@ import (
 	client "github.com/mutablelogic/go-client"
 	llm "github.com/mutablelogic/go-llm"
 	broadcaster "github.com/mutablelogic/go-llm/broadcaster"
+	workspace "github.com/mutablelogic/go-llm/workspace"
 	trace "go.opentelemetry.io/otel/trace"
 )
 
@@ -20,6 +21,7 @@ type opt struct {
 	clientopts  []client.ClientOpt
 	credentials CredentialsProvider
 	broadcaster *broadcaster.Broadcaster
+	workspaces  *workspace.Registry
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -44,10 +46,26 @@ func (o *opt) defaults() {
 	o.clientopts = nil
 	o.credentials = env.New()
 	o.broadcaster = nil
+	o.workspaces = nil
 }
 
 ////////////////////////////////////////////////////////////////////////////////
 // OPTIONS
+
+// WithWorkspaces gives the toolkit the registry of workspaces, which it
+// adds the namespaces which are workspaces, such as MCP servers', to, by
+// their names, as they're added, and removes them from, as they're removed.
+// The toolkit has the workspace namespace, whose tools list, and read, the
+// workspaces, and its tools read the resources they're given from them.
+func WithWorkspaces(registry *workspace.Registry) Opt {
+	return func(o *opt) error {
+		if registry == nil {
+			return llm.ErrBadParameter.With("missing workspaces")
+		}
+		o.workspaces = registry
+		return nil
+	}
+}
 
 // WithBroadcaster sets the broadcaster which the toolkit publishes the
 // changes to its tools to, as they're added, and as a namespace's tools are

@@ -149,6 +149,13 @@ func New(ctx context.Context, opts ...Opt) (_ *Toolkit, err error) {
 	_, endSpan := otel.StartSpan(self.tracer, ctx, "llm.toolkit.New")
 	defer func() { endSpan(err) }()
 
+	// With workspaces, it has the tools which list, and read, them
+	if self.workspaces != nil {
+		if err := self.Add(newWorkspaceNamespace(self)); err != nil {
+			return nil, err
+		}
+	}
+
 	// Return success
 	return self, nil
 }
@@ -189,6 +196,12 @@ func (self *Toolkit) Add(ns Namespace) error {
 		entries[tool.Name()] = entry
 	}
 
+	// A namespace which is a workspace is one of the toolkit's workspaces,
+	// too, by its name
+	if err := self.addWorkspace(ns); err != nil {
+		return err
+	}
+
 	// Add the namespace and its tools, which are created, and be told when
 	// its tools change
 	self.namespaces[namespace] = ns
@@ -219,6 +232,7 @@ func (self *Toolkit) Remove(ns Namespace) error {
 		return llm.ErrNotFound.Withf("namespace %q", name)
 	}
 	delete(self.namespaces, name)
+	self.removeWorkspace(ns)
 	if cancel, exists := self.watches[name]; exists {
 		cancel()
 		delete(self.watches, name)

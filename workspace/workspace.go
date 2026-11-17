@@ -51,6 +51,16 @@ type Watcher interface {
 	Watch(ctx context.Context, ch chan<- schema.Change) error
 }
 
+// Available is a workspace which is one only some of the time, such as an
+// MCP server's namespace, which is while it's connected to a server which
+// says it's a workspace. A registry has it only while it's available.
+type Available interface {
+	Workspace
+
+	// Available returns true when it's a workspace, now
+	Available() bool
+}
+
 // Subscriber is a watcher which says a resource is updated only once it's
 // subscribed to, such as an MCP server's, which a server of it subscribes
 // to, as its own clients do

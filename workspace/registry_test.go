@@ -2,6 +2,8 @@ package workspace_test
 
 import (
 	"context"
+	"maps"
+	"slices"
 	"testing"
 
 	// Packages
@@ -78,4 +80,43 @@ func Test_Read(t *testing.T) {
 	assert.ErrorIs(t, err, llm.ErrNotImplemented)
 	_, err = r.Read(ctx, "missing", "file:///note.md")
 	assert.ErrorIs(t, err, llm.ErrNotFound)
+}
+
+// sometimes is a workspace which is one only while it's available
+type sometimes struct {
+	readable
+	available bool
+}
+
+func (s *sometimes) Available() bool { return s.available }
+
+func Test_Available(t *testing.T) {
+	// A workspace which isn't available isn't listed, or used, until it is,
+	// and Resolve reads from any workspace which has the resource
+	ctx := context.Background()
+	r := workspace.New()
+	ws := &sometimes{}
+	require.NoError(t, r.Add("notes", ws))
+	assert.Empty(t, slices.Collect(maps.Keys(maps.Collect(r.All()))))
+	assert.ErrorIs(t, r.With("notes", func(workspace.Workspace) error { return nil }), llm.ErrNotFound)
+	_, err := r.Resolve(ctx, "file:///note.md")
+	assert.ErrorIs(t, err, llm.ErrNotFound)
+
+	ws.available = true
+	require.NoError(t, r.With("notes", func(workspace.Workspace) error { return nil }))
+	resource, err := r.Resolve(ctx, "file:///note.md")
+	require.NoError(t, err)
+	assert.Equal(t, "text/markdown", resource.Type())
+	_, err = r.Resolve(ctx, "file:///other.md")
+	assert.ErrorIs(t, err, llm.ErrNotFound)
+}
+
+func Test_RemoveIf(t *testing.T) {
+	// A workspace is removed only when it's the one with the name
+	r := workspace.New()
+	first, second := &sometimes{available: true}, &sometimes{available: true}
+	require.NoError(t, r.Add("notes", first))
+	assert.False(t, r.RemoveIf("notes", second), "another workspace")
+	assert.True(t, r.RemoveIf("notes", first))
+	assert.False(t, r.RemoveIf("notes", first), "once it's removed")
 }

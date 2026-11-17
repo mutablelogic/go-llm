@@ -8,11 +8,13 @@ import (
 
 	// Packages
 	sdkmcp "github.com/modelcontextprotocol/go-sdk/mcp"
+	llm "github.com/mutablelogic/go-llm"
 	eventschema "github.com/mutablelogic/go-llm/broadcaster/schema"
 	client "github.com/mutablelogic/go-llm/mcp/client"
 	namespace "github.com/mutablelogic/go-llm/mcp/namespace"
 	test "github.com/mutablelogic/go-llm/mcp/test"
 	toolkit "github.com/mutablelogic/go-llm/toolkit"
+	workspace "github.com/mutablelogic/go-llm/workspace"
 	assert "github.com/stretchr/testify/assert"
 	require "github.com/stretchr/testify/require"
 )
@@ -259,4 +261,33 @@ func Test_Reconnect(t *testing.T) {
 	require.NoError(t, first.Disconnect())
 	_, err = ns.Tools()[0].Run(ctx, json.RawMessage(`{"text":"hi"}`))
 	assert.NoError(t, err)
+}
+
+func Test_Workspace(t *testing.T) {
+	// A namespace is a workspace while it's connected to a server with
+	// resources, which a toolkit with workspaces lists, and reads
+	ctx := t.Context()
+	server := newServer(t)
+	server.MCP.AddResource(&sdkmcp.Resource{URI: "file:///a.md", Name: "a.md", MIMEType: "text/markdown"}, func(_ context.Context, req *sdkmcp.ReadResourceRequest) (*sdkmcp.ReadResourceResult, error) {
+		return &sdkmcp.ReadResourceResult{Contents: []*sdkmcp.ResourceContents{{URI: req.Params.URI, MIMEType: "text/markdown", Text: "# A"}}}, nil
+	})
+	registry := workspace.New()
+	tk, err := toolkit.New(ctx, toolkit.WithWorkspaces(registry))
+	require.NoError(t, err)
+	ns, err := namespace.New("test", "")
+	require.NoError(t, err)
+	require.NoError(t, tk.Add(ns))
+	assert.False(t, ns.Available(), "until it's connected")
+	assert.Error(t, registry.With("test", func(workspace.Workspace) error { return nil }))
+
+	require.NoError(t, ns.Connect(ctx, connect(t, server), "", nil, 1))
+	assert.True(t, ns.Available())
+	result, err := tk.CallTool(ctx, "workspace:list", json.RawMessage(`{"workspace":"test"}`))
+	require.NoError(t, err)
+	assert.Contains(t, string(result), "file:///a.md")
+	resource, err := registry.Read(ctx, "test", "file:///a.md")
+	require.NoError(t, err)
+	data, err := llm.ReadAll(ctx, resource)
+	require.NoError(t, err)
+	assert.Equal(t, "# A", string(data))
 }
