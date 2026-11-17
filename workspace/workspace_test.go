@@ -25,12 +25,12 @@ func (m meta) Bytes() []byte      { return []byte(m.text) }
 func (m meta) Image() image.Image { return nil }
 func (m meta) Any() any           { return m.value }
 
-func Test_Entry(t *testing.T) {
-	// An entry is a folder, when its type says so, and is listed as JSON,
+func Test_ResourceMeta(t *testing.T) {
+	// A resource is a folder, when its type says so, and is listed as JSON,
 	// with its metadata as text, and as JSON, and its artwork by URI
-	folder := workspace.Entry{URI: "file:///notes/2026/", Name: "2026", Type: workspace.FolderType}
+	folder := workspace.ResourceMeta{URI: "file:///notes/2026/", Name: "2026", Type: workspace.FolderType}
 	assert.True(t, folder.IsFolder())
-	note := workspace.Entry{
+	note := workspace.ResourceMeta{
 		URI:     "file:///notes/2026/meeting.md",
 		Name:    "meeting.md",
 		Type:    "text/markdown",
@@ -52,7 +52,7 @@ func Test_Entry(t *testing.T) {
 }
 
 func Test_MetaOf(t *testing.T) {
-	// go-metadata's metadata is an entry's, as text, and as JSON, apart from
+	// go-metadata's metadata is a resource's, as text, and as JSON, apart from
 	// its artwork, and a value which can't be JSON is its text
 	md := []metadata.Metadata{
 		meta{ns: "exif", key: "ISOSpeedRatings", text: "400", value: 400},
