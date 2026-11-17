@@ -47,8 +47,9 @@ func (w Workspace) Cell(col int) tui.CellText {
 }
 
 // Features returns what the workspace does, besides listing its folders and
-// resources: read, when its resources' content is read, by their URIs, and
-// watch, when its changes are followed, and published, now
+// resources: read, when its resources' content is read, by their URIs,
+// watch, when its changes are followed, and published, now, and tree, when
+// its folders are listed on their own, so they're shown as a tree
 func (w Workspace) Features() []string {
 	var result []string
 	if w.Read {
@@ -56,6 +57,9 @@ func (w Workspace) Features() []string {
 	}
 	if w.Watch {
 		result = append(result, "watch")
+	}
+	if w.Tree {
+		result = append(result, "tree")
 	}
 	return result
 }

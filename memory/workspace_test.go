@@ -60,6 +60,20 @@ func Test_Workspace(t *testing.T) {
 		assert.ErrorIs(t, err, llm.ErrNotFound)
 	})
 
+	t.Run("Tree", func(t *testing.T) {
+		// Its folder is listed on its own, with its path, which it's
+		// listed by
+		var tree workspace.Tree = m
+		assert.True(t, tree.Tree())
+		list, err := m.List(ctx, workspaceschema.ListRequest{Recursive: true, Type: workspaceschema.FolderType})
+		require.NoError(t, err)
+		assert.Equal(t, []string{memory.MemoriesURI}, uris(list))
+		assert.Equal(t, "memories", list.Body[0].Path)
+		list, err = m.List(ctx, workspaceschema.ListRequest{Path: list.Body[0].Path})
+		require.NoError(t, err)
+		assert.Equal(t, "memories/kitchen_lights.md", list.Body[0].Path)
+	})
+
 	t.Run("Read", func(t *testing.T) {
 		resource, err := m.Read(ctx, memory.DetailsURI)
 		require.NoError(t, err)

@@ -424,6 +424,12 @@ func (r *Registry) ListResources(ctx context.Context, name string, req schema.Li
 		return nil, err
 	}
 
+	// Only those of the type, as a workspace can list them all, as an MCP
+	// server which isn't a workspace's does
+	if req.Type != "" {
+		result.Body = slices.DeleteFunc(result.Body, func(r schema.ResourceMeta) bool { return r.Type != req.Type })
+	}
+
 	// Their URIs, and their artwork's, are the workspace's
 	for i := range result.Body {
 		resource := &result.Body[i]
@@ -442,6 +448,9 @@ func (r *Registry) workspaceOf(name string, ws Workspace) schema.Workspace {
 	_, reader := ws.(Reader)
 	_, watched := r.watches[name]
 	result := schema.Workspace{Name: name, Read: reader, Watch: watched}
+	if t, ok := ws.(Tree); ok {
+		result.Tree = t.Tree()
+	}
 	if d, ok := ws.(Describer); ok {
 		result.Title, result.Description, result.Version = d.Title(), d.Description(), d.Version()
 	}

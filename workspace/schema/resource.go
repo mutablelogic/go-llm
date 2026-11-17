@@ -33,6 +33,10 @@ type ListRequest struct {
 	// Limit is the most folders and resources which are returned, or zero, for the
 	// workspace's own page size
 	Limit uint `json:"limit,omitempty" help:"Most folders and resources to return, or zero, for the workspace's own page size" optional:""`
+
+	// Type is the type of the folders, or resources, which are listed, such
+	// as FolderType, for its folders alone, or empty, for all of them
+	Type string `json:"type,omitempty" help:"Only the folders, or resources, of the type, such as inode/directory, for the folders alone, or all of them" optional:""`
 }
 
 // ListResponse is a page of a workspace's folders and resources, and the
@@ -63,6 +67,11 @@ type ResourceMeta struct {
 	// Type is the MIME type of the resource's content, or FolderType, for a
 	// folder, or nothing, when it isn't known
 	Type string `json:"type,omitempty"`
+
+	// Path is the resource's path, under the workspace's top, such as
+	// notes/2026, which a folder is listed by, or nothing, when it isn't
+	// known
+	Path string `json:"path,omitempty"`
 
 	// Size is the length of the resource's content, in bytes, or zero, when
 	// it isn't known
@@ -166,6 +175,9 @@ func (r ListRequest) Query() url.Values {
 	}
 	if r.Limit > 0 {
 		q.Set("limit", strconv.FormatUint(uint64(r.Limit), 10))
+	}
+	if r.Type != "" {
+		q.Set("type", r.Type)
 	}
 	return q
 }

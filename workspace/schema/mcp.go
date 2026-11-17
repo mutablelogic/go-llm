@@ -27,6 +27,12 @@ const (
 	MetaPath      = MetaPrefix + "path"
 	MetaRecursive = MetaPrefix + "recursive"
 	MetaLimit     = MetaPrefix + "limit"
+	MetaType      = MetaPrefix + "type"
+
+	// CapabilityTree is the key of the workspace capability, whose value is
+	// true when its folders are listed on their own, by their type, and
+	// have their paths, so they're shown as a tree
+	CapabilityTree = "tree"
 
 	// The keys of the _meta of a resource: its metadata, and artwork
 	MetaMeta    = MetaPrefix + "meta"
@@ -59,6 +65,9 @@ func (r ListRequest) MCP() *sdkmcp.ListResourcesParams {
 	if r.Limit > 0 {
 		meta[MetaLimit] = r.Limit
 	}
+	if r.Type != "" {
+		meta[MetaType] = r.Type
+	}
 	if len(meta) > 0 {
 		params.Meta = meta
 	}
@@ -86,6 +95,9 @@ func (r ResourceMeta) MCP() *sdkmcp.Resource {
 	if len(r.Artwork) > 0 {
 		meta[MetaArtwork] = r.Artwork
 	}
+	if r.Path != "" {
+		meta[MetaPath] = r.Path
+	}
 	if len(meta) > 0 {
 		resource.Meta = meta
 	}
@@ -107,6 +119,7 @@ func ListRequestOf(params *sdkmcp.ListResourcesParams) ListRequest {
 	decode(params.Meta[MetaPath], &req.Path)
 	decode(params.Meta[MetaRecursive], &req.Recursive)
 	decode(params.Meta[MetaLimit], &req.Limit)
+	decode(params.Meta[MetaType], &req.Type)
 	return req
 }
 
@@ -132,6 +145,7 @@ func ResourceMetaOf(resource *sdkmcp.Resource) ResourceMeta {
 	}
 	decode(resource.Meta[MetaMeta], &r.Meta)
 	decode(resource.Meta[MetaArtwork], &r.Artwork)
+	decode(resource.Meta[MetaPath], &r.Path)
 	return r
 }
 

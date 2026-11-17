@@ -24,7 +24,7 @@ func roundTrip[T any](t *testing.T, v *T) *T {
 
 func Test_ListRequestMCP(t *testing.T) {
 	// A request is sent with its folder, recursion, and limit, in _meta
-	req := schema.ListRequest{Path: "notes/2026", Recursive: true, Cursor: "c1", Limit: 50}
+	req := schema.ListRequest{Path: "notes/2026", Recursive: true, Cursor: "c1", Limit: 50, Type: schema.FolderType}
 	params := req.MCP()
 	assert.Equal(t, "c1", params.Cursor)
 	assert.Equal(t, req, schema.ListRequestOf(roundTrip(t, params)))
@@ -39,6 +39,7 @@ func Test_ResourceMetaMCP(t *testing.T) {
 	// A resource is sent with its modified time, metadata, and artwork
 	r := schema.ResourceMeta{
 		URI:      "file:///notes/meeting.md",
+		Path:     "notes/meeting.md",
 		Name:     "meeting.md",
 		Title:    "Meeting",
 		Type:     "text/markdown",
@@ -87,8 +88,9 @@ meta:
 func Test_Query(t *testing.T) {
 	// A request's folder, and cursor, are as they are, with their spaces,
 	// and fields which aren't set are left out
-	req := schema.ListRequest{Path: " my notes ", Recursive: true, Cursor: " opaque= ", Limit: 5}
+	req := schema.ListRequest{Path: " my notes ", Recursive: true, Cursor: " opaque= ", Limit: 5, Type: schema.FolderType}
 	q := req.Query()
+	assert.Equal(t, schema.FolderType, q.Get("type"))
 	assert.Equal(t, " my notes ", q.Get("path"))
 	assert.Equal(t, "true", q.Get("recursive"))
 	assert.Equal(t, " opaque= ", q.Get("cursor"))

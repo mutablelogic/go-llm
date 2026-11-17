@@ -55,6 +55,7 @@ type object struct {
 var _ workspace.Reader = (*Workspace)(nil)
 var _ workspace.Watcher = (*Workspace)(nil)
 var _ workspace.Rooted = (*Workspace)(nil)
+var _ workspace.Tree = (*Workspace)(nil)
 var _ llm.Sized = (*object)(nil)
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -118,20 +119,23 @@ func (w *Workspace) List(ctx context.Context, req schema.ListRequest) (*schema.L
 			// A folder isn't in itself, but a file, which is listed by its
 			// path, is
 			continue
+		}
+		// A folder is known as one, whether it's listed, or not, so it's
+		// said to be deleted as a folder
+		if obj.IsDir {
+			w.folders.Store(strings.TrimSuffix(obj.Path, "/"), true)
+		}
+		resource := resourceOf(obj)
+		if req.Type != "" && resource.Type != req.Type {
+			// It isn't of the type, but the page continues after it
+			last = cursorOf(obj)
+			continue
 		} else if uint(len(result.Body)) == limit {
 			result.Next = last
 			return result, nil
 		}
-		// The cursor of a folder is its path, and a slash, as the backend
-		// orders a folder, before what's in it
-		last = obj.Path
-		if obj.IsDir {
-			w.folders.Store(strings.TrimSuffix(obj.Path, "/"), true)
-			if !strings.HasSuffix(last, "/") {
-				last += "/"
-			}
-		}
-		result.Body = append(result.Body, resourceOf(obj))
+		last = cursorOf(obj)
+		result.Body = append(result.Body, resource)
 	}
 }
 
@@ -160,6 +164,10 @@ func (w *Workspace) Read(ctx context.Context, uri string) (llm.Resource, error) 
 	}
 	return resource, nil
 }
+
+// Tree returns true, as its folders are listed on their own, by their
+// type, and have their paths
+func (w *Workspace) Tree() bool { return true }
 
 // Root returns the root of the folders', and files', URIs, file:///
 func (w *Workspace) Root() string { return uriPrefix + "/" }
@@ -286,12 +294,22 @@ func pathOf(uri string) (string, bool) {
 	return p, true
 }
 
+// cursorOf returns the cursor after the object: its path, and, for a
+// folder, a slash, as the backend orders a folder before what's in it
+func cursorOf(obj *filerschema.Object) string {
+	if obj.IsDir && !strings.HasSuffix(obj.Path, "/") {
+		return obj.Path + "/"
+	}
+	return obj.Path
+}
+
 // resourceOf returns the object as a workspace's resource: its URI, name,
 // type, which is a folder's, for one, size, when it was modified, and its
 // metadata
 func resourceOf(obj *filerschema.Object) schema.ResourceMeta {
 	r := schema.ResourceMeta{
 		URI:      uriOf(obj.Path, obj.IsDir),
+		Path:     strings.Trim(obj.Path, "/"),
 		Name:     path.Base(obj.Path),
 		Type:     obj.ContentType,
 		Modified: obj.ModTime,

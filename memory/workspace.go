@@ -40,6 +40,7 @@ var _ workspace.Reader = (*Memory)(nil)
 var _ workspace.Watcher = (*Memory)(nil)
 var _ workspace.Describer = (*Memory)(nil)
 var _ workspace.Rooted = (*Memory)(nil)
+var _ workspace.Tree = (*Memory)(nil)
 var _ llm.Sized = (*document)(nil)
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -68,6 +69,10 @@ func (*Memory) Title() string { return "Memory" }
 // Root returns the root of the URIs of the memory's workspace, memory:///
 func (*Memory) Root() string { return "memory:///" }
 
+// Tree returns true, as its folder is listed on its own, by its type, and
+// has its path
+func (*Memory) Tree() bool { return true }
+
 // Version returns nothing, as the memory has no version of its own
 func (*Memory) Version() string { return "" }
 
@@ -81,19 +86,23 @@ func (m *Memory) List(ctx context.Context, req workspaceschema.ListRequest) (*wo
 	}
 
 	// The details, and the folder, at the top, and then the memories, in the
-	// folder, or under the top
-	top := 0
-	if path == "" {
-		top = 2
+	// folder, or under the top, of the type, when it's said
+	of := func(t string) bool { return req.Type == "" || req.Type == t }
+	var top []int // 0 is the details, and 1 the folder
+	if path == "" && of(markdownType) {
+		top = append(top, 0)
+	}
+	if path == "" && of(workspaceschema.FolderType) {
+		top = append(top, 1)
 	}
 	var memories []schema.Memory
-	if path == memoriesFolder || req.Recursive {
+	if (path == memoriesFolder || req.Recursive) && of(markdownType) {
 		var err error
 		if memories, err = m.store.ListMemories(ctx, ""); err != nil {
 			return nil, err
 		}
 	}
-	total := top + len(memories)
+	total := len(top) + len(memories)
 
 	// A page of them, from the cursor, of at most the limit, which is
 	// clamped before it's an int, so a large one isn't negative
@@ -115,13 +124,13 @@ func (m *Memory) List(ctx context.Context, req workspaceschema.ListRequest) (*wo
 	response := &workspaceschema.ListResponse{Body: make([]workspaceschema.ResourceMeta, 0, end-start)}
 	for i := start; i < end; i++ {
 		switch {
-		case i == 0 && top > 0:
+		case i < len(top) && top[i] == 0:
 			details := m.detailsDocument()
-			response.Body = append(response.Body, workspaceschema.ResourceMeta{URI: DetailsURI, Name: details.name, Title: "Details", Description: "The details of the person, and the assistant", Type: markdownType, Size: int64(len(details.data))})
-		case i == 1 && top > 1:
-			response.Body = append(response.Body, workspaceschema.ResourceMeta{URI: MemoriesURI, Name: memoriesFolder, Title: "Memories", Type: workspaceschema.FolderType})
+			response.Body = append(response.Body, workspaceschema.ResourceMeta{URI: DetailsURI, Path: details.name, Name: details.name, Title: "Details", Description: "The details of the person, and the assistant", Type: markdownType, Size: int64(len(details.data))})
+		case i < len(top):
+			response.Body = append(response.Body, workspaceschema.ResourceMeta{URI: MemoriesURI, Path: memoriesFolder, Name: memoriesFolder, Title: "Memories", Type: workspaceschema.FolderType})
 		default:
-			response.Body = append(response.Body, memoryMeta(memories[i-top]))
+			response.Body = append(response.Body, memoryMeta(memories[i-len(top)]))
 		}
 	}
 	if end < total {
@@ -328,5 +337,5 @@ func memoryMeta(memory schema.Memory) workspaceschema.ResourceMeta {
 	if modified.IsZero() {
 		modified = memory.Created
 	}
-	return workspaceschema.ResourceMeta{URI: doc.uri, Name: doc.name, Title: memory.Key, Description: memory.Description, Type: markdownType, Size: int64(len(doc.data)), Modified: modified}
+	return workspaceschema.ResourceMeta{URI: doc.uri, Path: memoriesFolder + "/" + doc.name, Name: doc.name, Title: memory.Key, Description: memory.Description, Type: markdownType, Size: int64(len(doc.data)), Modified: modified}
 }

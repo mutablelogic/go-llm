@@ -37,6 +37,7 @@ type contents struct {
 var _ Reader = (*clientWorkspace)(nil)
 var _ Subscriber = (*clientWorkspace)(nil)
 var _ Rooted = (*clientWorkspace)(nil)
+var _ Tree = (*clientWorkspace)(nil)
 var _ llm.Resource = (*contents)(nil)
 
 // rootTimeout is how long the server's resource templates are waited for,
@@ -76,6 +77,19 @@ func (w *clientWorkspace) List(ctx context.Context, req schema.ListRequest) (*sc
 		}
 	}
 	return response, nil
+}
+
+// Tree returns true when the server says its folders are listed on their
+// own, in its workspace capability
+func (w *clientWorkspace) Tree() bool {
+	return IsTree(w.client)
+}
+
+// IsTree returns true when the client's server says its folders are listed
+// on their own, in its workspace capability
+func IsTree(c *client.Client) bool {
+	tree, _ := c.Experimental(schema.Capability)[schema.CapabilityTree].(bool)
+	return tree
 }
 
 // Root returns the root of the server's resources' URIs, of its resource
