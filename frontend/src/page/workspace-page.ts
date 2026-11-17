@@ -38,11 +38,14 @@ export class WorkspacePage extends LitElement {
     @property({ type: Boolean })
     missing = false;
 
-    // The workspace's folders, every one under its top, with their paths,
-    // which are shown as a tree, beside the files of the folder which is
-    // shown, when it's a tree
+    // The workspace's folders, by the folder they're in, as they're loaded,
+    // with their paths, which are shown as a tree, beside the files of the
+    // folder which is shown, when it's a tree, and the function which loads
+    // the folders of a folder, which is expanded
     @property({ attribute: false })
-    folders: ResourceMeta[] = [];
+    folders = new Map<string, ResourceMeta[]>();
+
+    expand?: (folder: string) => void;
 
     @property({ type: Boolean, reflect: true })
     tree = false;
@@ -81,8 +84,8 @@ export class WorkspacePage extends LitElement {
             <div class=${this.tree ? 'workspace-split' : 'content'}>
                 ${this.missing ? html`<p>There's no workspace ${this.name}, or it isn't available now.</p>` : this.tree ? html`
                     <nav class="workspace-tree" aria-label="Folders">
-                        <cds-tree-view hide-label label="Folders" size="sm" @cds-tree-node-selected=${this.selected}>
-                            ${this.node({ name: workspace?.title || this.name, path: '', children: folderTree(this.folders) })}
+                        <cds-tree-view hide-label label="Folders" size="sm" @cds-tree-node-selected=${this.selected} @cds-tree-node-toggled=${this.toggled}>
+                            ${this.node(workspace?.title || this.name, '')}
                         </cds-tree-view>
                     </nav>
                     <div class="workspace-files">
@@ -108,18 +111,32 @@ export class WorkspacePage extends LitElement {
         `;
     }
 
-    // node renders a folder of the tree, and the folders in it, which is
-    // selected when it's shown, and expanded when it, or a folder in it, is
-    private node(folder: FolderNode): unknown {
+    // node renders a folder of the tree, and the folders in it, once
+    // they're loaded, or else a placeholder, so it can be expanded, which
+    // loads them. It's selected when it's shown, and expanded when it, or a
+    // folder in it, is.
+    private node(name: string, path: string): unknown {
         const shown = this.path.join('/');
-        const open = folder.path === '' || shown === folder.path || shown.startsWith(folder.path + '/');
+        const open = path === '' || shown === path || shown.startsWith(path + '/');
+        const children = this.folders.get(path);
         return html`
-            <cds-tree-node label=${folder.name} data-path=${folder.path} ?selected=${shown === folder.path} ?active=${shown === folder.path} ?is-expanded=${open}>
+            <cds-tree-node label=${name} data-path=${path} ?selected=${shown === path} ?active=${shown === path} ?is-expanded=${open}>
                 ${iconLoader(Folder16, { slot: 'icon' })}
-                ${folder.children.map((child) => this.node(child))}
+                ${children === undefined
+                    ? html`<cds-tree-node label="Loading…" disabled></cds-tree-node>`
+                    : sortedFolders(children).map((folder) => this.node(folder.title || folder.name, folderPath(folder, path)))}
             </cds-tree-node>
         `;
     }
+
+    // toggled loads the folders of a folder which is expanded
+    private readonly toggled = (event: Event) => {
+        const { expanded } = (event as CustomEvent<{ expanded?: boolean }>).detail ?? {};
+        const path = (event.target as HTMLElement | null)?.closest('cds-tree-node')?.getAttribute('data-path');
+        if (expanded && path !== null && path !== undefined) {
+            this.expand?.(path);
+        }
+    };
 
     // selected shows the folder of the tree which is selected
     private readonly selected = (event: Event) => {
@@ -147,32 +164,16 @@ export class WorkspacePage extends LitElement {
     }
 }
 
-// FolderNode is a folder of the tree: its name, its path, and the folders
-// in it
-interface FolderNode {
-    name: string;
-    path: string;
-    children: FolderNode[];
+// sortedFolders returns the folders, in order of their names
+function sortedFolders(folders: ResourceMeta[]): ResourceMeta[] {
+    return [...folders].sort((a, b) => (a.title || a.name).localeCompare(b.title || b.name, undefined, { numeric: true, sensitivity: 'base' }));
 }
 
-// folderTree returns the folders, by their paths, as a tree, in order of
-// their names, of which a folder whose parent isn't listed is at the top
-function folderTree(folders: ResourceMeta[]): FolderNode[] {
-    const byPath = new Map<string, FolderNode>();
-    const top: FolderNode[] = [];
-    const paths = folders.map((folder) => (folder.path ?? '').replace(/^\/+|\/+$/g, '')).filter((path) => path);
-    for (const path of [...new Set(paths)].sort()) {
-        const node: FolderNode = { name: path.split('/').pop() ?? path, path, children: [] };
-        byPath.set(path, node);
-        const parent = byPath.get(path.split('/').slice(0, -1).join('/'));
-        (parent ? parent.children : top).push(node);
-    }
-    const sort = (nodes: FolderNode[]) => {
-        nodes.sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' }));
-        nodes.forEach((node) => sort(node.children));
-    };
-    sort(top);
-    return top;
+// folderPath returns the folder's path, under the workspace's top, or, when
+// it hasn't one, its name, in the folder it's in
+function folderPath(folder: ResourceMeta, parent: string): string {
+    const path = (folder.path ?? '').replace(/^\/+|\/+$/g, '');
+    return path || (parent ? `${parent}/${folder.name}` : folder.name);
 }
 
 declare global {

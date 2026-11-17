@@ -79,45 +79,64 @@ export function workspacesModule(app: App): void {
         })));
         show();
     };
-    // The folders of a workspace which is a tree, every one under its top,
-    // which, when it has any, are shown as a tree, beside the files of the
-    // folder which is shown, or else its folders, and files, are listed
-    // together. They're loaded again as they change.
-    let folders = '';
-    const loadFolders = async () => {
-        const workspace = page.workspace;
-        const wanted = workspace?.tree ? workspace.name : '';
-        if (!wanted) {
-            folders = '';
-            page.folders = [];
-            page.tree = false;
-            return;
-        }
+    // The folders of a workspace which is a tree, by the folder they're in,
+    // which are loaded a folder at a time: the top, and those of the folder
+    // which is shown, and of each folder it's in, and of a folder which is
+    // expanded. When its top has any, they're shown as a tree, beside the
+    // files of the folder which is shown, or else its folders, and files,
+    // are listed together. Those which are loaded are loaded again as they
+    // change.
+    let foldersOf = '';
+    let folders = new Map<string, ResourceMeta[]>();
+    const loadFolder = async (folder: string) => {
+        const workspace = foldersOf;
         try {
-            const { items } = await listFolder(wanted, '', MaxListed, { recursive: true, type: FolderType });
-            if (wanted !== name) {
+            const { items } = await listFolder(workspace, folder, MaxListed, { type: FolderType });
+            if (workspace !== foldersOf) {
                 return;
             }
-            const tree = items.length > 0;
-            const changed = tree !== page.tree;
-            folders = wanted;
-            page.folders = items;
-            page.tree = tree;
-            if (changed) {
+            folders = new Map(folders).set(folder, items);
+            page.folders = folders;
+            if (folder === '' && page.tree !== items.length > 0) {
+                page.tree = items.length > 0;
                 void controller.refresh();
             }
         } catch (error) {
             app.notifications.error("The folders couldn't be loaded", error);
         }
     };
-    app.changes.on({ schema: 'workspace', table: 'resource' }, () => void loadFolders());
+    const loadFolders = (all: boolean) => {
+        const wanted = page.workspace?.tree ? name : '';
+        if (wanted !== foldersOf) {
+            foldersOf = wanted;
+            folders = new Map();
+            page.folders = folders;
+            page.tree = false;
+        }
+        if (!wanted) {
+            return;
+        }
+        // The top, and each folder the folder which is shown is in, and it,
+        // or, as they change, every one which is loaded
+        const wantedFolders = new Set(path.map((_, i) => path.slice(0, i + 1).join('/')));
+        wantedFolders.add('');
+        for (const folder of all ? folders.keys() : wantedFolders) {
+            if (all || !folders.has(folder)) {
+                void loadFolder(folder);
+            }
+        }
+    };
+    page.expand = (folder) => {
+        if (!folders.has(folder)) {
+            void loadFolder(folder);
+        }
+    };
+    app.changes.on({ schema: 'workspace', table: 'resource' }, () => loadFolders(true));
 
     const show = () => {
         page.workspace = workspaces.find((workspace) => workspace.name === name);
         page.missing = !!name && !page.workspace;
-        if (folders !== (page.workspace?.tree ? name : '')) {
-            void loadFolders();
-        }
+        loadFolders(false);
 
         // Its page is active in the sidebar, once it's there, as the
         // workspaces can be loaded after it's routed to
