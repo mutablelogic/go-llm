@@ -6,6 +6,7 @@ import (
 
 	// Packages
 	llm "github.com/mutablelogic/go-llm"
+	providerschema "github.com/mutablelogic/go-llm/provider/schema"
 	workspace "github.com/mutablelogic/go-llm/workspace"
 	assert "github.com/stretchr/testify/assert"
 	require "github.com/stretchr/testify/require"
@@ -47,5 +48,35 @@ func Test_Registry(t *testing.T) {
 	_, err = r.Get("notes")
 	assert.ErrorIs(t, err, llm.ErrNotFound)
 	_, err = r.Remove("notes")
+	assert.ErrorIs(t, err, llm.ErrNotFound)
+}
+
+// readable is a workspace whose one resource is read
+type readable struct{ empty }
+
+func (readable) Read(_ context.Context, uri string) (llm.Resource, error) {
+	if uri != "file:///note.md" {
+		return nil, llm.ErrNotFound.With(uri)
+	}
+	return &providerschema.Resource{ResourceMeta: providerschema.ResourceMeta{ContentType: "text/markdown", Data: []byte("# Note")}}, nil
+}
+
+func Test_Read(t *testing.T) {
+	// A workspace which is a Reader is read, by URI, and one which isn't
+	// isn't
+	ctx := context.Background()
+	r := workspace.New()
+	require.NoError(t, r.Add(empty{"empty"}))
+	require.NoError(t, r.Add(readable{empty{"notes"}}))
+	resource, err := r.Read(ctx, "notes", "file:///note.md")
+	require.NoError(t, err)
+	data, err := llm.ReadAll(ctx, resource)
+	require.NoError(t, err)
+	assert.Equal(t, "# Note", string(data))
+	_, err = r.Read(ctx, "notes", "file:///other.md")
+	assert.ErrorIs(t, err, llm.ErrNotFound)
+	_, err = r.Read(ctx, "empty", "file:///note.md")
+	assert.ErrorIs(t, err, llm.ErrNotImplemented)
+	_, err = r.Read(ctx, "missing", "file:///note.md")
 	assert.ErrorIs(t, err, llm.ErrNotFound)
 }

@@ -9,6 +9,7 @@ import (
 	"time"
 
 	// Packages
+	llm "github.com/mutablelogic/go-llm"
 	metadata "github.com/mutablelogic/go-metadata"
 )
 
@@ -32,6 +33,18 @@ type Workspace interface {
 	// so its pages don't overlap. A folder is an entry whose type is
 	// FolderType, so a tree is made of what's listed.
 	List(ctx context.Context, req ListRequest) (*ListResponse, error)
+}
+
+// Reader is a workspace whose resources, and artwork, are read, by their
+// URIs, which a workspace doesn't need to be
+type Reader interface {
+	Workspace
+
+	// Read returns the resource, or artwork, with the URI, as an entry, or
+	// its artwork, has it, whose content is read as it's read. Returns
+	// ErrNotFound when there's none, and ErrBadParameter for a folder,
+	// which has no content.
+	Read(ctx context.Context, uri string) (llm.Resource, error)
 }
 
 ///////////////////////////////////////////////////////////////////////////////

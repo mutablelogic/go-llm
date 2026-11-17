@@ -1,6 +1,7 @@
 package workspace
 
 import (
+	"context"
 	"maps"
 	"slices"
 	"sync"
@@ -74,6 +75,21 @@ func (r *Registry) Get(name string) (Workspace, error) {
 		return nil, llm.ErrNotFound.Withf("workspace %q", name)
 	}
 	return ws, nil
+}
+
+// Read returns the resource, or artwork, with the URI, of the workspace with
+// the name. Returns ErrNotFound when there's no workspace with the name, and
+// ErrNotImplemented when it isn't a Reader, so its resources aren't read.
+func (r *Registry) Read(ctx context.Context, name, uri string) (llm.Resource, error) {
+	ws, err := r.Get(name)
+	if err != nil {
+		return nil, err
+	}
+	reader, ok := ws.(Reader)
+	if !ok {
+		return nil, llm.ErrNotImplemented.Withf("workspace %q doesn't read its resources", name)
+	}
+	return reader.Read(ctx, uri)
 }
 
 // Workspaces returns the workspaces, in order of their names
