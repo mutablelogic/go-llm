@@ -34,7 +34,7 @@ type Registry struct {
 	// of each, by name
 	ctx     context.Context
 	cancel  context.CancelFunc
-	watches map[string]context.CancelFunc
+	watches map[string]*watch
 
 	// Whether it runs
 	running atomic.Bool
@@ -45,6 +45,11 @@ type Registry struct {
 // when it isn't known which
 type ResourceEvent struct {
 	URI string `json:"uri,omitempty"`
+}
+
+// watch is a workspace's watch, while it's watched
+type watch struct {
+	cancel context.CancelFunc
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -74,7 +79,7 @@ const (
 // New returns a registry, with no workspaces, with the options, such as
 // the broadcaster its changes are published to, with WithBroadcaster
 func New(opts ...Opt) (*Registry, error) {
-	r := &Registry{workspaces: make(map[string]Workspace), watches: make(map[string]context.CancelFunc)}
+	r := &Registry{workspaces: make(map[string]Workspace), watches: make(map[string]*watch)}
 	if err := r.opt.apply(opts); err != nil {
 		return nil, err
 	}
@@ -112,9 +117,10 @@ func (r *Registry) Add(name string, ws Workspace) error {
 	// change after it's said to be added isn't missed
 	if watcher, ok := ws.(Watcher); ok && r.broadcaster != nil {
 		ctx, cancel := context.WithCancel(r.ctx)
-		r.watches[name] = cancel
+		w := &watch{cancel: cancel}
+		r.watches[name] = w
 		ready := make(chan struct{})
-		go r.watch(ctx, name, watcher, ready)
+		go r.watch(ctx, name, w, watcher, ready)
 		select {
 		case <-ready:
 		case <-time.After(WatchTimeout):
@@ -153,8 +159,8 @@ func (r *Registry) RemoveIf(name string, ws Workspace) bool {
 // publishes that it was removed. The caller holds the lock.
 func (r *Registry) remove(name string) {
 	delete(r.workspaces, name)
-	if cancel, exists := r.watches[name]; exists {
-		cancel()
+	if w, exists := r.watches[name]; exists {
+		w.cancel()
 		delete(r.watches, name)
 	}
 	r.publish(eventschema.EventDelete, WorkspaceTable, name, nil)
@@ -173,18 +179,23 @@ func (r *Registry) With(name string, fn func(Workspace) error) error {
 	return fn(ws)
 }
 
-// Resolve returns the resource, or artwork, with the URI, of whichever of
-// the workspaces, in order of their names, which read their resources, has
-// it. Returns ErrNotFound when none has it.
+// Resolve returns the resource, or artwork, with the URI, which is a
+// workspace's, resource://<workspace>/<uri>, which is read from it, or its
+// own URI, which is read from whichever of the workspaces, in order of their
+// names, which read their resources, has it. Its URI is the workspace's.
+// Returns ErrNotFound when none has it.
 func (r *Registry) Resolve(ctx context.Context, uri string) (llm.Resource, error) {
-	for _, ws := range r.All() {
+	if name, original, ok := schema.ParseURI(uri); ok {
+		return r.Read(ctx, name, original)
+	}
+	for name, ws := range r.All() {
 		reader, ok := ws.(Reader)
 		if !ok {
 			continue
 		}
 		resource, err := reader.Read(ctx, uri)
 		if err == nil {
-			return resource, nil
+			return withURI(resource, schema.URIOf(name, uri)), nil
 		} else if !errors.Is(err, llm.ErrNotFound) && !errors.Is(err, llm.ErrBadParameter) {
 			return nil, err
 		}
@@ -192,10 +203,18 @@ func (r *Registry) Resolve(ctx context.Context, uri string) (llm.Resource, error
 	return nil, llm.ErrNotFound.Withf("resource %q isn't in a workspace", uri)
 }
 
-// Read returns the resource, or artwork, with the URI, of the workspace with
-// the name. Returns ErrNotFound when there's no workspace with the name, and
+// Read returns the resource, or artwork, with the URI, which is the
+// workspace's, resource://<workspace>/<uri>, or its own, of the workspace
+// with the name, whose URI is the workspace's. Returns ErrNotFound when
+// there's no workspace with the name, or the URI is another's, and
 // ErrNotImplemented when it isn't a Reader, so its resources aren't read.
 func (r *Registry) Read(ctx context.Context, name, uri string) (resource llm.Resource, err error) {
+	if workspace, original, ok := schema.ParseURI(uri); ok {
+		if workspace != name {
+			return nil, llm.ErrNotFound.Withf("resource %q isn't in workspace %q", uri, name)
+		}
+		uri = original
+	}
 	err = r.With(name, func(ws Workspace) error {
 		reader, ok := ws.(Reader)
 		if !ok {
@@ -204,7 +223,10 @@ func (r *Registry) Read(ctx context.Context, name, uri string) (resource llm.Res
 		resource, err = reader.Read(ctx, uri)
 		return err
 	})
-	return resource, err
+	if err != nil {
+		return nil, err
+	}
+	return withURI(resource, schema.URIOf(name, uri)), nil
 }
 
 // All returns the workspaces which are available, by their names, in order of their names, as
@@ -234,10 +256,22 @@ func (r *Registry) All() iter.Seq2[string, Workspace] {
 
 // watch publishes the workspace's changes, until the context is cancelled,
 // as it's removed, or the registry is closed
-func (r *Registry) watch(ctx context.Context, name string, watcher Watcher, ready chan struct{}) {
+func (r *Registry) watch(ctx context.Context, name string, w *watch, watcher Watcher, ready chan struct{}) {
 	ch := make(chan schema.Change, 16)
 	done := make(chan error, 1)
 	go func() { done <- watcher.Watch(ctx, ch) }()
+
+	// Once it ends, such as when it fails, or the registry is closed, it
+	// isn't watched, unless it's been watched again since. This is done
+	// after it says it's watching, below, as Add waits for that, with the
+	// lock held.
+	defer func() {
+		r.mu.Lock()
+		defer r.mu.Unlock()
+		if r.watches[name] == w {
+			delete(r.watches, name)
+		}
+	}()
 
 	// The first change says it's watching, which isn't published
 	watching := func() {
@@ -252,7 +286,11 @@ func (r *Registry) watch(ctx context.Context, name string, watcher Watcher, read
 			watching()
 			return
 		}
-		data, err := json.Marshal(ResourceEvent{URI: change.URI})
+		uri := change.URI
+		if uri != "" {
+			uri = schema.URIOf(name, uri)
+		}
+		data, err := json.Marshal(ResourceEvent{URI: uri})
 		if err != nil {
 			return
 		}
@@ -314,4 +352,62 @@ func same(a, b Workspace) (result bool) {
 		}
 	}()
 	return a == b
+}
+
+// ListWorkspaces returns the workspaces which are available, in order of
+// their names, with whether each reads its resources, and is watched now
+func (r *Registry) ListWorkspaces() *schema.WorkspaceList {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	result := &schema.WorkspaceList{Body: []schema.Workspace{}}
+	for _, name := range slices.Sorted(maps.Keys(r.workspaces)) {
+		if ws := r.workspaces[name]; available(ws) {
+			result.Body = append(result.Body, r.workspaceOf(name, ws))
+		}
+	}
+	result.Count = uint(len(result.Body))
+	return result
+}
+
+// GetWorkspace returns the workspace with the name, with whether it reads
+// its resources, and is watched. Returns ErrNotFound when there's none.
+func (r *Registry) GetWorkspace(name string) (result *schema.Workspace, err error) {
+	err = r.With(name, func(ws Workspace) error {
+		w := r.workspaceOf(name, ws)
+		result = &w
+		return nil
+	})
+	return result, err
+}
+
+// ListResources returns a page of the folders, and resources, of the
+// workspace with the name, whose URIs, and their artwork's, are the
+// workspace's, resource://<workspace>/<uri>. Returns ErrNotFound when there's none.
+func (r *Registry) ListResources(ctx context.Context, name string, req schema.ListRequest) (result *schema.ListResponse, err error) {
+	err = r.With(name, func(ws Workspace) error {
+		result, err = ws.List(ctx, req)
+		return err
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	// Their URIs, and their artwork's, are the workspace's
+	for i := range result.Body {
+		resource := &result.Body[i]
+		resource.URI = schema.URIOf(name, resource.URI)
+		for j := range resource.Artwork {
+			resource.Artwork[j].URI = schema.URIOf(name, resource.Artwork[j].URI)
+		}
+	}
+	return result, nil
+}
+
+// workspaceOf returns the workspace, as it's listed: whether it reads its
+// resources, and whether the registry watches it now, which it does with a
+// broadcaster, until its watch ends. The caller holds the lock.
+func (r *Registry) workspaceOf(name string, ws Workspace) schema.Workspace {
+	_, reader := ws.(Reader)
+	_, watched := r.watches[name]
+	return schema.Workspace{Name: name, Read: reader, Watch: watched}
 }

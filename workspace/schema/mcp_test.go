@@ -55,3 +55,31 @@ func Test_ResourceMetaMCP(t *testing.T) {
 	plain := &sdkmcp.Resource{URI: "file:///a.txt", Name: "a.txt", MIMEType: "text/plain"}
 	assert.Equal(t, schema.ResourceMeta{URI: "file:///a.txt", Name: "a.txt", Type: "text/plain"}, schema.ResourceMetaOf(plain))
 }
+
+func Test_Document(t *testing.T) {
+	// A part is a Markdown document, with YAML front matter
+	next := uint64(16384)
+	doc := schema.Markdown{
+		URI:  "resource://github/ui://github/get-me",
+		Type: "text/html",
+		Body: "# Hello\n",
+		Next: &next,
+		Meta: map[string]string{"dc:title": "Profile", "dc:language": "en"},
+	}.Document()
+	assert.Equal(t, `---
+uri: "resource://github/ui://github/get-me"
+type: "text/html"
+offset: 0
+next: 16384
+meta:
+  "dc:language": "en"
+  "dc:title": "Profile"
+---
+
+# Hello
+`, doc)
+
+	// Without text, it's only its front matter, with its note
+	doc = schema.Markdown{URI: "file:///a.html", Note: "No text"}.Document()
+	assert.Equal(t, "---\nuri: \"file:///a.html\"\noffset: 0\nnote: \"No text\"\n---\n", doc)
+}

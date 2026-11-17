@@ -21,6 +21,9 @@ const (
 	// ToolsAndAgents is the tag of the toolkit's tools and the registry's
 	// agents, which models call
 	ToolsAndAgents = "Tools & Agents"
+
+	// Workspaces is the tag of the workspaces, and their resources
+	Workspaces = "Workspaces"
 )
 
 ///////////////////////////////////////////////////////////////////////////////

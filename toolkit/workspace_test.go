@@ -3,6 +3,7 @@ package toolkit_test
 import (
 	"context"
 	"encoding/json"
+	"strings"
 	"testing"
 
 	// Packages
@@ -83,15 +84,32 @@ func TestWorkspaces(t *testing.T) {
 		assert.JSONEq(t, `[{"name":"notes","description":"My notes"}]`, string(result))
 		result, err = tk.CallTool(ctx, "workspace:list", json.RawMessage(`{"workspace":"notes"}`))
 		require.NoError(t, err)
-		assert.JSONEq(t, `{"body":[{"uri":"file:///note.md","name":"note.md","type":"text/markdown"}]}`, string(result))
+		assert.JSONEq(t, `{"body":[{"uri":"resource://notes/file:///note.md","name":"note.md","type":"text/markdown"}]}`, string(result), "the workspace's URI")
 	})
 
 	t.Run("Read", func(t *testing.T) {
-		result, err := tk.CallTool(ctx, "workspace:read", json.RawMessage(`{"workspace":"notes","uri":"file:///note.md"}`))
+		result, err := tk.CallTool(ctx, "workspace:read", json.RawMessage(`{"uri":"file:///note.md"}`))
 		require.NoError(t, err)
 		assert.Contains(t, string(result), "text/markdown")
 		_, err = tk.CallTool(ctx, "workspace:read", json.RawMessage(`{"uri":"file:///missing.md"}`))
 		assert.ErrorIs(t, err, llm.ErrNotFound)
+
+		// By the workspace's URI, as it's listed, without the workspace
+		result, err = tk.CallTool(ctx, "workspace:read", json.RawMessage(`{"uri":"resource://notes/file:///note.md"}`))
+		require.NoError(t, err)
+		assert.Contains(t, string(result), "text/markdown")
+		_, err = tk.CallTool(ctx, "workspace:read", json.RawMessage(`{"uri":"resource://other/file:///note.md"}`))
+		assert.ErrorIs(t, err, llm.ErrNotFound, "another workspace")
+
+		// As Markdown
+		result, err = tk.CallTool(ctx, "workspace:read", json.RawMessage(`{"uri":"resource://notes/file:///note.md","format":"markdown"}`))
+		require.NoError(t, err)
+		var doc string
+		require.NoError(t, json.Unmarshal(result, &doc))
+		assert.True(t, strings.HasPrefix(doc, "---\nuri: \"resource://notes/file:///note.md\"\n"), doc)
+		assert.Contains(t, doc, "# Note")
+		_, err = tk.CallTool(ctx, "workspace:read", json.RawMessage(`{"uri":"resource://notes/file:///note.md","format":"pdf"}`))
+		assert.ErrorIs(t, err, llm.ErrBadParameter)
 	})
 
 	t.Run("Resolve", func(t *testing.T) {

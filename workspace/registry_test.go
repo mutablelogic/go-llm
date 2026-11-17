@@ -118,6 +118,14 @@ func Test_Available(t *testing.T) {
 	resource, err := r.Resolve(ctx, "file:///note.md")
 	require.NoError(t, err)
 	assert.Equal(t, "text/markdown", resource.Type())
+	assert.Equal(t, "resource://notes/file:///note.md", resource.URI(), "the workspace's URI")
+	resource, err = r.Resolve(ctx, "resource://notes/file:///note.md")
+	require.NoError(t, err)
+	data, err := llm.ReadAll(ctx, resource)
+	require.NoError(t, err)
+	assert.Equal(t, "# Note", string(data), "read by the workspace's URI")
+	_, err = r.Read(ctx, "notes", "resource://other/file:///note.md")
+	assert.ErrorIs(t, err, llm.ErrNotFound, "another workspace's")
 	_, err = r.Resolve(ctx, "file:///other.md")
 	assert.ErrorIs(t, err, llm.ErrNotFound)
 }
@@ -178,7 +186,7 @@ func Test_Events(t *testing.T) {
 	assert.Equal(t, eventschema.Event{Action: eventschema.EventCreate, Schema: workspace.EventSchema, Table: workspace.WorkspaceTable, Row: "notes"}, next())
 
 	ws.changes <- schema.Change{Action: eventschema.EventUpdate, URI: "file:///a.md"}
-	assert.Equal(t, eventschema.Event{Action: eventschema.EventUpdate, Schema: workspace.EventSchema, Table: workspace.ResourceTable, Row: "notes", Data: json.RawMessage(`{"uri":"file:///a.md"}`)}, next())
+	assert.Equal(t, eventschema.Event{Action: eventschema.EventUpdate, Schema: workspace.EventSchema, Table: workspace.ResourceTable, Row: "notes", Data: json.RawMessage(`{"uri":"resource://notes/file:///a.md"}`)}, next(), "with the workspace's URI")
 	ws.changes <- schema.Change{Action: eventschema.EventUpdate}
 	assert.Equal(t, eventschema.Event{Action: eventschema.EventUpdate, Schema: workspace.EventSchema, Table: workspace.ResourceTable, Row: "notes", Data: json.RawMessage(`{}`)}, next())
 
@@ -220,7 +228,7 @@ func Test_EventsReady(t *testing.T) {
 	select {
 	case event := <-events:
 		assert.Equal(t, workspace.ResourceTable, event.Table)
-		assert.JSONEq(t, `{"uri":"file:///a.md"}`, string(event.Data))
+		assert.JSONEq(t, `{"uri":"resource://notes/file:///a.md"}`, string(event.Data))
 	case <-time.After(5 * time.Second):
 		t.Fatal("the change wasn't published")
 	}
@@ -290,4 +298,36 @@ func (b *safeBuffer) String() string {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	return b.buf.String()
+}
+
+func Test_Watched(t *testing.T) {
+	// A workspace is said to be watched only while the registry watches it:
+	// with a broadcaster, until its watch ends
+	watched := func(r *workspace.Registry, name string) bool {
+		t.Helper()
+		ws, err := r.GetWorkspace(name)
+		require.NoError(t, err)
+		return ws.Watch
+	}
+
+	// Without a broadcaster, a Watcher isn't watched
+	r, err := workspace.New()
+	require.NoError(t, err)
+	require.NoError(t, r.Add("notes", changing{changes: make(chan schema.Change)}))
+	assert.False(t, watched(r, "notes"))
+
+	// With one, it is, until its watch ends, such as when it fails
+	r, err = workspace.New(workspace.WithBroadcaster(broadcaster.New()))
+	require.NoError(t, err)
+	defer r.Close()
+	require.NoError(t, r.Add("notes", changing{changes: make(chan schema.Change)}))
+	assert.True(t, watched(r, "notes"))
+	assert.True(t, r.ListWorkspaces().Body[0].Watch)
+	ending := ending{changes: make(chan schema.Change, 1)}
+	require.NoError(t, r.Add("ending", ending))
+	ending.changes <- schema.Change{Action: eventschema.EventUpdate, URI: "file:///a.md"}
+	require.Eventually(t, func() bool { return !watched(r, "ending") }, 5*time.Second, time.Millisecond)
+	assert.True(t, watched(r, "notes"))
+	require.NoError(t, r.Close())
+	require.Eventually(t, func() bool { return !watched(r, "notes") }, 5*time.Second, time.Millisecond, "once it's closed")
 }

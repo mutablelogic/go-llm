@@ -46,8 +46,10 @@ type ListWorkspaceRequest struct {
 
 // ReadWorkspaceRequest is the input of the workspace's read tool
 type ReadWorkspaceRequest struct {
-	Workspace string `json:"workspace,omitempty" help:"The workspace the resource is in, or empty to find it in any workspace"`
-	URI       string `json:"uri" help:"The resource's URI, as it's listed"`
+	URI    string `json:"uri" help:"The resource's URI, as it's listed, resource://<workspace>/<uri>"`
+	Format string `json:"format,omitempty" enum:"raw,markdown" help:"raw, for the resource as it is, which is the default, or markdown, for its text, as a Markdown document, a part at a time, such as of a PDF, or an Office document, whose YAML front matter has its metadata, and the offset of the next part"`
+	Offset uint64 `json:"offset,omitempty" help:"With markdown, the byte of its Markdown the part starts at, which is a part's next"`
+	Limit  uint64 `json:"limit,omitempty" help:"With markdown, the most bytes of its Markdown which are read"`
 }
 
 // WorkspaceMeta is a workspace, as the list tool lists it: its name, and
@@ -194,12 +196,7 @@ func (t *listWorkspace) Run(ctx context.Context, input json.RawMessage) (any, er
 		}
 		return result, nil
 	}
-	var result *workspaceschema.ListResponse
-	err := registry.With(req.Workspace, func(ws workspace.Workspace) (err error) {
-		result, err = ws.List(ctx, req.ListRequest)
-		return err
-	})
-	return result, err
+	return registry.ListResources(ctx, req.Workspace, req.ListRequest)
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -207,13 +204,14 @@ func (t *listWorkspace) Run(ctx context.Context, input json.RawMessage) (any, er
 
 func (*readWorkspace) Name() string { return "read" }
 func (*readWorkspace) Description() string {
-	return "Read a resource of a workspace, such as a note or file, by its URI, as it's listed"
+	return "Read a resource of a workspace, such as a note or file, by its URI, as it's listed: as it is, or, with the markdown format, its text, as Markdown, a part at a time"
 }
 func (*readWorkspace) InputSchema() *jsonschema.Schema {
 	return jsonschema.MustFor[ReadWorkspaceRequest]()
 }
 
-// Run reads the resource, from its workspace, or any which has it
+// Run reads the resource, from the workspace its URI says, or, for its own
+// URI, whichever has it
 func (t *readWorkspace) Run(ctx context.Context, input json.RawMessage) (any, error) {
 	var req ReadWorkspaceRequest
 	if err := unmarshalInput(input, &req); err != nil {
@@ -221,10 +219,22 @@ func (t *readWorkspace) Run(ctx context.Context, input json.RawMessage) (any, er
 	} else if strings.TrimSpace(req.URI) == "" {
 		return nil, llm.ErrBadParameter.With("missing uri")
 	}
-	if strings.TrimSpace(req.Workspace) == "" {
-		return t.toolkit.workspaces.Resolve(ctx, req.URI)
+	resource, err := t.toolkit.workspaces.Resolve(ctx, req.URI)
+	if err != nil {
+		return nil, err
 	}
-	return t.toolkit.workspaces.Read(ctx, req.Workspace, req.URI)
+	switch format := strings.ToLower(strings.TrimSpace(req.Format)); format {
+	case "", "raw":
+		return resource, nil
+	case "markdown":
+		part, err := workspace.ReadMarkdown(ctx, resource, req.Offset, req.Limit)
+		if err != nil {
+			return nil, err
+		}
+		return part.Document(), nil
+	default:
+		return nil, llm.ErrBadParameter.Withf("unknown format %q, which isn't raw or markdown", req.Format)
+	}
 }
 
 ///////////////////////////////////////////////////////////////////////////////
