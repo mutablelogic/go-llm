@@ -34,20 +34,21 @@ func Test_Registry(t *testing.T) {
 	assert.ErrorIs(t, r.Add(nil), llm.ErrBadParameter)
 
 	// They're got, and listed, in order of their names
-	ws, err := r.Get("notes")
-	require.NoError(t, err)
-	assert.Equal(t, "notes", ws.Name())
+	require.NoError(t, r.With("notes", func(ws workspace.Workspace) error {
+		assert.Equal(t, "notes", ws.Name())
+		return nil
+	}))
+	assert.ErrorIs(t, r.With("notes", func(workspace.Workspace) error { return llm.ErrConflict }), llm.ErrConflict, "its error")
 	var names []string
-	for _, ws := range r.Workspaces() {
+	for ws := range r.All() {
 		names = append(names, ws.Name())
 	}
 	assert.Equal(t, []string{"files", "notes"}, names)
 
 	// And removed
-	_, err = r.Remove("notes")
+	_, err := r.Remove("notes")
 	require.NoError(t, err)
-	_, err = r.Get("notes")
-	assert.ErrorIs(t, err, llm.ErrNotFound)
+	assert.ErrorIs(t, r.With("notes", func(workspace.Workspace) error { return nil }), llm.ErrNotFound)
 	_, err = r.Remove("notes")
 	assert.ErrorIs(t, err, llm.ErrNotFound)
 }
