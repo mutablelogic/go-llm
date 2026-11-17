@@ -36,12 +36,18 @@ export function listResources(name: string, path: string, cursor?: string, limit
 export async function listFolder(name: string, path: string, most: number, options: ListOptions = {}, signal?: AbortSignal): Promise<{ items: ResourceMeta[]; more: boolean }> {
     const items: ResourceMeta[] = [];
     let cursor: string | undefined;
+    let more = false;
     do {
+        // A server which isn't a workspace's can return more than the limit,
+        // so each page is cut to what's left
         const page = await listResources(name, path, cursor, Math.min(1000, most - items.length), options, signal);
-        items.push(...(page.body ?? []));
+        const body = page.body ?? [];
+        const left = most - items.length;
+        items.push(...body.slice(0, left));
+        more = body.length > left;
         cursor = page.next;
     } while (cursor && items.length < most);
-    return { items, more: !!cursor };
+    return { items, more: more || !!cursor };
 }
 
 // contentURL returns the URL of the content of the workspace's resource,

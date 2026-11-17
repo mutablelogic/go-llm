@@ -25,16 +25,30 @@ export function workspacesModule(app: App): void {
     // folders first, and paged
     let name = '';
     let path: string[] = [];
+    // The folder is read once, and its snapshot paged, and sorted, without
+    // reading it again, until it's another folder, or it's listed again with
+    // the same page, and sort, which is the controller refreshing it, as it
+    // changed, or the server can be reached again
+    let snapshot: { key: string; items: ResourceMeta[] } | undefined;
+    let lastList = '';
     const controller = new ListController<ResourceMeta>({
         name: 'Files',
         list: async (offset, limit, sort) => {
             if (!name) {
                 return { count: 0, body: [] };
             }
-            const { items, more } = await listFolder(name, path.join('/'), MaxListed);
-            if (more) {
-                app.notifications.push({ kind: 'warning', title: `Only the first ${MaxListed} are listed`, subtitle: 'The folder has more' });
+            const key = `${name}/${path.join('/')}`;
+            const call = JSON.stringify([key, offset, limit, sort]);
+            const again = call === lastList;
+            lastList = call;
+            if (!snapshot || snapshot.key !== key || again) {
+                const { items, more } = await listFolder(name, path.join('/'), MaxListed);
+                if (more) {
+                    app.notifications.push({ kind: 'warning', title: `Only the first ${MaxListed} are listed`, subtitle: 'The folder has more' });
+                }
+                snapshot = { key, items };
             }
+            const items = snapshot.items;
             // With a tree, the folders are in it, and the files beside it
             return pageOf(page.tree ? items.filter((item) => !isFolder(item)) : items, offset, limit, sort);
         },
@@ -144,7 +158,14 @@ export function workspacesModule(app: App): void {
             app.nav.setActive(`workspace/${name}`);
         }
     };
-    app.changes.on({ schema: 'workspace', table: 'workspace' }, () => void refresh());
+    // As they're added, and removed, and as a connector's is available, or
+    // isn't, as it's connected, and disconnected, and says its resources
+    // changed, as it's ready
+    app.changes.on([
+        { schema: 'workspace', table: 'workspace' },
+        { schema: 'workspace', table: 'resource' },
+        { schema: 'mcp', table: 'connector' },
+    ], () => void refresh());
 
     // Its route is the workspace, and the folder, which is listed again when
     // it changes
