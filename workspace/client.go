@@ -80,8 +80,10 @@ func (w *clientWorkspace) Read(ctx context.Context, uri string) (llm.Resource, e
 	if err != nil {
 		return nil, err
 	}
+	// It's all of it, when it isn't a chunk, or it's as large as its size,
+	// or, when its size isn't known, it's smaller than a chunk
 	name := path.Base(strings.TrimSuffix(info.uri, "/"))
-	if info.size <= int64(len(data)) {
+	if !info.chunks || (info.size >= 0 && info.size <= int64(len(data))) || (info.size < 0 && len(data) < ChunkSize) {
 		return &contents{uri: info.uri, name: name, mimeType: info.mimeType, data: data}, nil
 	}
 

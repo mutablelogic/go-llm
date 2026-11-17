@@ -15,11 +15,14 @@ import (
 // TYPES
 
 // chunked is a resource's content, which an MCP server which is a
-// workspace returns a chunk at a time, as it's read, from the first chunk
+// workspace returns a chunk at a time, as it's read, from the first chunk,
+// whose size is -1, when the server doesn't know it, when it's read until
+// a chunk is empty
 type chunked struct {
 	client              *client.Client
 	uri, name, mimeType string
 	size                int64
+	chunks              bool // Whether the server returns chunks
 	first               []byte
 }
 
@@ -70,9 +73,10 @@ func (c *chunked) Read(context.Context) (llm.ReadFunc, error) {
 // Read reads from the chunk which has the offset, fetching it when it
 // isn't the last fetched
 func (r *chunkReader) Read(p []byte) (int, error) {
+	size := r.resource.size
 	if len(p) == 0 {
 		return 0, nil
-	} else if r.offset >= r.resource.size {
+	} else if size >= 0 && r.offset >= size {
 		return 0, io.EOF
 	}
 	if r.offset < r.start || r.offset >= r.start+int64(len(r.chunk)) {
@@ -80,7 +84,12 @@ func (r *chunkReader) Read(p []byte) (int, error) {
 			return 0, err
 		}
 	}
-	n := copy(p, r.chunk[r.offset-r.start:])
+	// No more than its size, as it was, should it have grown since
+	chunk := r.chunk[r.offset-r.start:]
+	if size >= 0 {
+		chunk = chunk[:min(int64(len(chunk)), size-r.offset)]
+	}
+	n := copy(p, chunk)
 	r.offset += int64(n)
 	return n, nil
 }
@@ -93,6 +102,9 @@ func (r *chunkReader) Seek(offset int64, whence int) (int64, error) {
 	case io.SeekCurrent:
 		offset += r.offset
 	case io.SeekEnd:
+		if r.resource.size < 0 {
+			return 0, errors.New("seek: size isn't known")
+		}
 		offset += r.resource.size
 	default:
 		return 0, errors.New("seek: invalid whence")
@@ -104,12 +116,15 @@ func (r *chunkReader) Seek(offset int64, whence int) (int64, error) {
 	return offset, nil
 }
 
-// fetch fetches the chunk from the offset. Returns ErrUnexpectedEOF when
-// it's empty, before the end of the content, as the content changed.
+// fetch fetches the chunk from the offset. Returns EOF when it's empty,
+// and its size isn't known, and ErrUnexpectedEOF when it's empty, before
+// the end of the content, as the content changed.
 func (r *chunkReader) fetch() error {
 	data, _, err := readChunk(r.ctx, r.resource.client, r.resource.uri, r.offset)
 	if err != nil {
 		return err
+	} else if len(data) == 0 && r.resource.size < 0 {
+		return io.EOF
 	} else if len(data) == 0 {
 		return io.ErrUnexpectedEOF
 	}
@@ -121,9 +136,9 @@ func (r *chunkReader) fetch() error {
 // PRIVATE FUNCTIONS
 
 // readChunk reads the chunk of the resource's content from the offset, and
-// returns it, and its URI and type, and the size of all of it, which is -1
-// when the server doesn't say, as one which isn't a workspace doesn't, and
-// returns all of it
+// returns it, and its URI and type, whether it's a chunk, and the size of
+// all of it, which is -1 when the server doesn't say, as one which isn't a
+// workspace doesn't, and returns all of it, or doesn't know it
 func readChunk(ctx context.Context, c *client.Client, uri string, offset int64) ([]byte, *chunked, error) {
 	result, err := c.ReadResourceParams(ctx, schema.ReadParams(uri, offset, ChunkSize))
 	if err != nil {
@@ -140,6 +155,7 @@ func readChunk(ctx context.Context, c *client.Client, uri string, offset int64) 
 	if content.URI != "" {
 		info.uri = content.URI
 	}
+	info.chunks = schema.ChunkOf(result)
 	if size, ok := schema.SizeOf(result); ok {
 		info.size = size
 	}

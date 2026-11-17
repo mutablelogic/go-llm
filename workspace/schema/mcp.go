@@ -34,7 +34,8 @@ const (
 
 	// The keys of the _meta of resources/read: the byte of the content to
 	// read from, and the most bytes to read, so a large resource is read in
-	// chunks, and, of its result, the size of the whole content, which a
+	// chunks, and, of its result, the offset of the chunk, which says it's
+	// one, and the size of the whole content, when it's known, which a
 	// server which isn't a workspace ignores, and leaves out
 	MetaOffset = MetaPrefix + "offset"
 	MetaLength = MetaPrefix + "length"
@@ -171,6 +172,13 @@ func ReadRangeOf(params *sdkmcp.ReadResourceParams) (offset, length int64, ok bo
 		return 0, 0, false
 	}
 	return offset, length, true
+}
+
+// ChunkOf returns true when the result is a chunk of the resource's
+// content, as a workspace's server returns, which may be all of it, or
+// false, when it's all of it, as a server which isn't a workspace returns
+func ChunkOf(result *sdkmcp.ReadResourceResult) bool {
+	return result != nil && result.Meta[MetaOffset] != nil
 }
 
 // SizeOf returns the size of the whole content of the resource, which a

@@ -1,12 +1,14 @@
 package server_test
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"io"
 	"slices"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -81,11 +83,36 @@ type gone struct{ providerschema.Resource }
 
 func (gone) Read(context.Context) (llm.ReadFunc, error) { return nil, llm.ErrNotFound.With("gone") }
 
+// unsized is a resource whose size isn't known
+type unsized struct{ data []byte }
+
+func (unsized) URI() string         { return "" }
+func (unsized) Name() string        { return "" }
+func (unsized) Description() string { return "" }
+func (unsized) Type() string        { return "text/markdown" }
+func (u unsized) Read(context.Context) (llm.ReadFunc, error) {
+	return llm.ReadBytes(u.data), nil
+}
+
+// grown is how many times a growing file was read, which is larger, each
+// time after the first, than its size, as it was
+var grown atomic.Int64
+
 // Read reads a file, by its URI, of which gone.md is found, but its content
-// isn't
+// isn't, and a file under unsized/ is one whose size isn't known, and one
+// under growing/ grows each time it's read
 func (f files) Read(_ context.Context, uri string) (llm.Resource, error) {
 	if uri == "file:///gone.md" {
 		return gone{}, nil
+	} else if p, ok := strings.CutPrefix(uri, "file:///unsized/"); ok {
+		return unsized{data: []byte(f[p])}, nil
+	} else if p, ok := strings.CutPrefix(uri, "file:///growing/"); ok {
+		data := []byte(f[p])
+		size := int64(len(data))
+		if grown.Add(1) > 1 {
+			data = append(data, bytes.Repeat([]byte("+"), 4*1024*1024)...)
+		}
+		return &sizedAs{Resource: providerschema.Resource{ResourceMeta: providerschema.ResourceMeta{ContentType: "text/markdown", Data: data}}, size: size}, nil
 	}
 	text, exists := f[strings.TrimPrefix(uri, "file:///")]
 	if !exists {
@@ -225,6 +252,33 @@ func Test_WorkspaceChunks(t *testing.T) {
 		}))
 	})
 
+	t.Run("Unsized", func(t *testing.T) {
+		// Its size isn't known, so it's read until a chunk is empty
+		resource, err := ws.Read(ctx, "file:///unsized/big.md")
+		require.NoError(t, err)
+		_, ok := llm.ContentLength(resource)
+		assert.False(t, ok)
+		data, err := llm.ReadAll(ctx, resource)
+		require.NoError(t, err)
+		assert.Equal(t, big.String(), string(data))
+		resource, err = ws.Read(ctx, "file:///unsized/small.md")
+		require.NoError(t, err)
+		data, err = llm.ReadAll(ctx, resource)
+		require.NoError(t, err)
+		assert.Equal(t, "# Small", string(data))
+	})
+
+	t.Run("Growing", func(t *testing.T) {
+		// It's no larger than its size, as it was, should it grow
+		grown.Store(0)
+		resource, err := ws.Read(ctx, "file:///growing/big.md")
+		require.NoError(t, err)
+		data, err := llm.ReadAll(ctx, resource)
+		require.NoError(t, err)
+		assert.Equal(t, big.Len(), len(data))
+		assert.Equal(t, big.String(), string(data))
+	})
+
 	t.Run("All", func(t *testing.T) {
 		_, err := c.ReadResource(ctx, "file:///big.md")
 		require.Error(t, err)
@@ -233,6 +287,15 @@ func Test_WorkspaceChunks(t *testing.T) {
 		assert.NoError(t, err, "the session is still open")
 	})
 }
+
+// sizedAs is a resource whose size is as it was, which its content may be
+// larger than
+type sizedAs struct {
+	providerschema.Resource
+	size int64
+}
+
+func (s *sizedAs) ContentLength() int64 { return s.size }
 
 // watched is a workspace of files, whose changes are said
 type watched struct {

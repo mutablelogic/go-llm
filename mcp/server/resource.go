@@ -178,8 +178,9 @@ func (s *Server) readResource(ctx context.Context, req sdkmcp.Request) (sdkmcp.R
 	if chunked {
 		length = min(length, MaxChunk)
 		if data, err = readChunk(ctx, resource, offset, length); err == nil {
+			result.Meta = sdkmcp.Meta{schema.MetaOffset: offset}
 			if size, ok := llm.ContentLength(resource); ok {
-				result.Meta = sdkmcp.Meta{schema.MetaSize: size}
+				result.Meta[schema.MetaSize] = size
 			}
 		}
 	} else if size, ok := llm.ContentLength(resource); ok && size > MaxChunk {
