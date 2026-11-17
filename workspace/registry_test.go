@@ -8,6 +8,7 @@ import (
 	llm "github.com/mutablelogic/go-llm"
 	providerschema "github.com/mutablelogic/go-llm/provider/schema"
 	workspace "github.com/mutablelogic/go-llm/workspace"
+	schema "github.com/mutablelogic/go-llm/workspace/schema"
 	assert "github.com/stretchr/testify/assert"
 	require "github.com/stretchr/testify/require"
 )
@@ -18,8 +19,8 @@ type empty struct{ name string }
 func (w empty) Name() string        { return w.name }
 func (w empty) Title() string       { return "Empty" }
 func (w empty) Description() string { return "A workspace with no resources" }
-func (w empty) List(context.Context, workspace.ListRequest) (*workspace.ListResponse, error) {
-	return &workspace.ListResponse{}, nil
+func (w empty) List(context.Context, schema.ListRequest) (*schema.ListResponse, error) {
+	return &schema.ListResponse{}, nil
 }
 
 func Test_Registry(t *testing.T) {

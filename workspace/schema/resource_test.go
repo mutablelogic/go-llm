@@ -1,4 +1,4 @@
-package workspace_test
+package schema_test
 
 import (
 	"encoding/json"
@@ -6,7 +6,7 @@ import (
 	"testing"
 
 	// Packages
-	workspace "github.com/mutablelogic/go-llm/workspace"
+	schema "github.com/mutablelogic/go-llm/workspace/schema"
 	metadata "github.com/mutablelogic/go-metadata"
 	assert "github.com/stretchr/testify/assert"
 	require "github.com/stretchr/testify/require"
@@ -28,15 +28,15 @@ func (m meta) Any() any           { return m.value }
 func Test_ResourceMeta(t *testing.T) {
 	// A resource is a folder, when its type says so, and is listed as JSON,
 	// with its metadata as text, and as JSON, and its artwork by URI
-	folder := workspace.ResourceMeta{URI: "file:///notes/2026/", Name: "2026", Type: workspace.FolderType}
+	folder := schema.ResourceMeta{URI: "file:///notes/2026/", Name: "2026", Type: schema.FolderType}
 	assert.True(t, folder.IsFolder())
-	note := workspace.ResourceMeta{
+	note := schema.ResourceMeta{
 		URI:     "file:///notes/2026/meeting.md",
 		Name:    "meeting.md",
 		Type:    "text/markdown",
 		Size:    42,
-		Meta:    []workspace.Meta{{NS: "markdown", Key: "tags", Text: "work,planning", Value: json.RawMessage(`["work","planning"]`)}},
-		Artwork: []workspace.Artwork{{Key: "thumbnail", Type: "image/jpeg", URI: "artwork:///abc"}},
+		Meta:    []schema.Meta{{NS: "markdown", Key: "tags", Text: "work,planning", Value: json.RawMessage(`["work","planning"]`)}},
+		Artwork: []schema.Artwork{{Key: "thumbnail", Type: "image/jpeg", URI: "artwork:///abc"}},
 	}
 	assert.False(t, note.IsFolder())
 	data, err := json.Marshal(note)
@@ -60,8 +60,8 @@ func Test_MetaOf(t *testing.T) {
 		meta{ns: "id3", key: "Artist", text: "Someone", value: func() {}},
 		nil,
 	}
-	assert.Equal(t, []workspace.Meta{
+	assert.Equal(t, []schema.Meta{
 		{NS: "exif", Key: "ISOSpeedRatings", Text: "400", Value: json.RawMessage(`400`)},
 		{NS: "id3", Key: "Artist", Text: "Someone", Value: json.RawMessage(`"Someone"`)},
-	}, workspace.MetaOf(md))
+	}, schema.MetaOf(md))
 }
