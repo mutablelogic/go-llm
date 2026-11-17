@@ -431,16 +431,7 @@ func (s *nulScanner) Read(p []byte) (int, error) {
 // as a Word document, which can have NULs, and isn't text, though it can be
 // read as Markdown
 func textType(contentType string) bool {
-	mediatype, _, _ := mime.ParseMediaType(contentType)
-	switch {
-	case strings.HasPrefix(mediatype, "text/"), strings.HasSuffix(mediatype, "+json"), strings.HasSuffix(mediatype, "+xml"):
-		return true
-	}
-	switch mediatype {
-	case "application/json", "application/xml", "application/x-subrip", "application/javascript", "application/x-yaml", "application/yaml", "application/toml", "application/x-sh", "application/sql", "application/x-ndjson":
-		return true
-	}
-	return false
+	return toolkit.TextType(contentType)
 }
 
 // notTextFor returns the note of a file, of the type, which can't be read

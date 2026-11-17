@@ -33,7 +33,11 @@ const (
 	// when it isn't said, and MaxMarkdownLimit the most, so a part doesn't
 	// fill a model's context
 	DefaultMarkdownLimit = 16 * 1024
-	MaxMarkdownLimit     = 64 * 1024
+
+	// MaxLengthSize is the largest resource whose first part has the length
+	// of all of its Markdown, which converts all of it
+	MaxLengthSize    = 4 * 1024 * 1024
+	MaxMarkdownLimit = 64 * 1024
 
 	// NoTextNote is the note of a resource which has no text, though it's
 	// read as Markdown, such as a page which its scripts render, as an MCP
@@ -100,18 +104,28 @@ func ReadMarkdown(ctx context.Context, resource llm.Resource, offset, limit uint
 	var meta []metadata.Metadata
 	if err := read(ctx, func(r io.Reader) error {
 		var err error
-		_, meta, err = metadata.Extract(ctx, namedReader{Reader: r, name: resource.Name()},
+		opts := []metadata.Option{
 			metadata.WithContentType(mediatype),
 			metadata.WithNamespace(markdownNamespaces...),
 			metadata.WithRange(fmt.Sprintf("%d:%d", offset, offset+limit)),
-		)
+		}
+		// The first part has the length of all of the Markdown, so how much
+		// there is is known, which converts all of it, once, when it isn't
+		// larger than MaxLengthSize, so a large resource, such as one which
+		// is read from an MCP server, a chunk at a time, isn't read whole for
+		// its first part. Its last part has it.
+		if size, ok := llm.ContentLength(resource); offset == 0 && ok && size <= MaxLengthSize {
+			opts = append(opts, metadata.WithLength())
+		}
+		_, meta, err = metadata.Extract(ctx, namedReader{Reader: r, name: resource.Name()}, opts...)
 		return err
 	}); err != nil {
 		switch {
 		case errors.Is(err, metadata.ErrNotImplemented):
 			return nil, llm.ErrNotImplemented.Withf("no Markdown of type %q", mediatype)
 		case errors.Is(err, metadata.ErrBadParameter):
-			return nil, llm.ErrBadParameter.With(err.Error())
+			// Its reason, without go-metadata's kind, which is the same
+			return nil, llm.ErrBadParameter.With(strings.TrimPrefix(err.Error(), metadata.ErrBadParameter.Error()+": "))
 		default:
 			return nil, err
 		}
@@ -144,7 +158,16 @@ func ReadMarkdown(ctx context.Context, resource llm.Resource, offset, limit uint
 			if value, ok := entry.Any().(uint64); ok {
 				result.Next = &value
 			}
+		case entry.Key() == "length":
+			if value, ok := entry.Any().(uint64); ok {
+				result.Length = &value
+			}
 		}
+	}
+	if hasBody && result.Next == nil && result.Length == nil {
+		// The last part, whose end is the Markdown's
+		length := result.Offset + uint64(len(result.Body))
+		result.Length = &length
 	}
 	if !hasBody {
 		return nil, llm.ErrNotImplemented.Withf("no Markdown of type %q", mediatype)

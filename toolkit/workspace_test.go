@@ -3,6 +3,7 @@ package toolkit_test
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"strings"
 	"testing"
 
@@ -53,6 +54,14 @@ func (notes) Read(_ context.Context, uri string) (llm.Resource, error) {
 		return unsized{data: make([]byte, toolkit.MaxRawSize+1)}, nil
 	case "file:///unsized-small.bin":
 		return unsized{data: []byte("small")}, nil
+	case "file:///big.txt":
+		return &providerschema.Resource{ResourceMeta: providerschema.ResourceMeta{ContentType: "text/plain", Data: make([]byte, toolkit.MaxRawSize+1)}}, nil
+	case "file:///big.pdf":
+		return &providerschema.Resource{ResourceMeta: providerschema.ResourceMeta{ContentType: "application/pdf", Data: make([]byte, toolkit.MaxRawSize+1)}}, nil
+	case "file:///cafe.txt":
+		return &providerschema.Resource{ResourceMeta: providerschema.ResourceMeta{ContentType: "text/plain; charset=windows-1252", Data: []byte("caf\xe9")}}, nil
+	case "file:///song.mp3":
+		return &providerschema.Resource{ResourceMeta: providerschema.ResourceMeta{ContentType: "audio/mpeg", Data: make([]byte, toolkit.MaxRawSize+1)}}, nil
 	}
 	if uri != "file:///note.md" {
 		return nil, llm.ErrNotFound.With(uri)
@@ -115,26 +124,64 @@ func TestWorkspaces(t *testing.T) {
 		var text string
 		require.NoError(t, json.Unmarshal(result, &text), string(result))
 		assert.Contains(t, text, "# Note")
+		// Raw, text is its text, a part at a time
 		result, err = tk.CallTool(ctx, "workspace:read", json.RawMessage(`{"uri":"file:///note.md","format":"raw"}`))
 		require.NoError(t, err)
-		assert.Contains(t, string(result), "text/markdown")
+		require.NoError(t, json.Unmarshal(result, &text))
+		assert.Contains(t, text, "\n# Note\n")
+		assert.Contains(t, text, "length: 6\n")
+		assert.NotContains(t, text, "next:", "all of it")
+		result, err = tk.CallTool(ctx, "workspace:read", json.RawMessage(`{"uri":"file:///note.md","format":"raw","limit":3}`))
+		require.NoError(t, err)
+		require.NoError(t, json.Unmarshal(result, &text))
+		assert.Contains(t, text, "next: 3\n")
+		assert.Contains(t, text, "\n# N\n")
+		result, err = tk.CallTool(ctx, "workspace:read", json.RawMessage(`{"uri":"file:///note.md","format":"raw","offset":3}`))
+		require.NoError(t, err)
+		require.NoError(t, json.Unmarshal(result, &text))
+		assert.Contains(t, text, "offset: 3\n")
+		assert.Contains(t, text, "\note\n")
+		_, err = tk.CallTool(ctx, "workspace:read", json.RawMessage(`{"uri":"file:///note.md","format":"raw","offset":60}`))
+		assert.ErrorIs(t, err, llm.ErrBadParameter, "beyond its end")
 		_, err = tk.CallTool(ctx, "workspace:read", json.RawMessage(`{"uri":"file:///missing.md"}`))
 		assert.ErrorIs(t, err, llm.ErrNotFound)
 
 		// By the workspace's URI, as it's listed, without the workspace
 		result, err = tk.CallTool(ctx, "workspace:read", json.RawMessage(`{"uri":"resource://notes/file:///note.md"}`))
 		require.NoError(t, err)
-		assert.Contains(t, string(result), "text/markdown")
+		assert.Contains(t, string(result), "# Note")
 		_, err = tk.CallTool(ctx, "workspace:read", json.RawMessage(`{"uri":"resource://other/file:///note.md"}`))
 		assert.ErrorIs(t, err, llm.ErrNotFound, "another workspace")
 
 		// Not when it's larger than is read raw, whether its size is known,
 		// or not, unless it's smaller
+		// Not when it's larger than is read raw, whether its size is known,
+		// or not, which says what's read instead: for a file without text,
+		// its metadata, and, for audio, its speech, and, for text, its
+		// Markdown
 		for _, uri := range []string{"file:///big.bin", "file:///unsized.bin"} {
 			_, err = tk.CallTool(ctx, "workspace:read", json.RawMessage(`{"uri":"`+uri+`"}`))
 			assert.ErrorIs(t, err, llm.ErrBadParameter, uri)
-			assert.ErrorContains(t, err, "markdown format", uri)
+			assert.ErrorContains(t, err, "workspace:list", uri)
 		}
+		_, err = tk.CallTool(ctx, "workspace:read", json.RawMessage(`{"uri":"file:///song.mp3"}`))
+		assert.ErrorContains(t, err, "llm:transcribe")
+
+		// A large document, whose text can be read as Markdown, says so
+		_, err = tk.CallTool(ctx, "workspace:read", json.RawMessage(`{"uri":"file:///big.pdf","format":"raw"}`))
+		assert.ErrorContains(t, err, "markdown format")
+
+		// Text in another charset is decoded
+		result, err = tk.CallTool(ctx, "workspace:read", json.RawMessage(`{"uri":"file:///cafe.txt","format":"raw"}`))
+		require.NoError(t, err)
+		require.NoError(t, json.Unmarshal(result, &text))
+		assert.Contains(t, text, "\ncafé\n")
+		// Raw, a text larger than is sent at once is a part at a time
+		result, err = tk.CallTool(ctx, "workspace:read", json.RawMessage(`{"uri":"file:///big.txt","format":"raw"}`))
+		require.NoError(t, err)
+		require.NoError(t, json.Unmarshal(result, &text))
+		assert.Contains(t, text, "next: 16384\n")
+		assert.Contains(t, text, fmt.Sprintf("length: %d\n", toolkit.MaxRawSize+1))
 		result, err = tk.CallTool(ctx, "workspace:read", json.RawMessage(`{"uri":"file:///unsized-small.bin"}`))
 		require.NoError(t, err)
 		assert.Contains(t, string(result), "application/octet-stream")
@@ -191,4 +238,31 @@ func (both) InputSchema() *jsonschema.Schema { return nil }
 func (both) Run(ctx context.Context, _ json.RawMessage) (any, error) {
 	_, err := toolkit.Resources(ctx, "session:///a", "file:///note.md")
 	return nil, err
+}
+
+func TestWorkspacePrompt(t *testing.T) {
+	// The instructions say how to list, page, read, and that there's no
+	// search
+	ctx := context.Background()
+	registry, err := workspace.New()
+	require.NoError(t, err)
+	tk, err := toolkit.New(ctx, toolkit.WithWorkspaces(registry))
+	require.NoError(t, err)
+	prompts, err := tk.SystemPrompts(ctx, toolkit.WorkspaceNamespace+":*")
+	require.NoError(t, err)
+	prompt := strings.Join(prompts, "\n")
+	for _, want := range []string{"by its path", "not its uri", "cursor", "unchanged", "offset", "length", "llm:transcribe", "no search", "which one you read"} {
+		assert.Contains(t, prompt, want)
+	}
+}
+
+func TestTextType(t *testing.T) {
+	// Text, including subtitles, is text, and an image, such as an SVG,
+	// whose type is XML's too, isn't
+	for _, contentType := range []string{"text/plain", "text/markdown; charset=utf-8", "application/json", "application/x-subrip", "application/ld+json", "application/xml"} {
+		assert.True(t, toolkit.TextType(contentType), contentType)
+	}
+	for _, contentType := range []string{"image/svg+xml", "image/png", "audio/mpeg", "video/mp4", "application/pdf", "application/octet-stream"} {
+		assert.False(t, toolkit.TextType(contentType), contentType)
+	}
 }

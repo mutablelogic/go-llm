@@ -21,6 +21,7 @@ type Markdown struct {
 	Body   string            `json:"body" help:"The part's Markdown"`
 	Offset uint64            `json:"offset" help:"The byte of the Markdown the part starts at"`
 	Next   *uint64           `json:"next,omitempty" help:"The offset of the next part, or none, at the end"`
+	Length *uint64           `json:"length,omitempty" help:"The length of all of the Markdown, in bytes, which the offsets are of, with the first part, and the last"`
 	Meta   map[string]string `json:"meta,omitempty" help:"The resource's metadata, with the first part, by namespace and key, such as dc:title"`
 	Note   string            `json:"note,omitempty" help:"Why the part has no text, such as a page which is rendered by its scripts"`
 }
@@ -41,6 +42,9 @@ func (m Markdown) Document() string {
 	fmt.Fprintf(&b, "offset: %d\n", m.Offset)
 	if m.Next != nil {
 		fmt.Fprintf(&b, "next: %d\n", *m.Next)
+	}
+	if m.Length != nil {
+		fmt.Fprintf(&b, "length: %d\n", *m.Length)
 	}
 	if m.Note != "" {
 		fmt.Fprintf(&b, "note: %s\n", quote(m.Note))

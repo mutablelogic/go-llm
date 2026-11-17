@@ -152,11 +152,11 @@ func (w *Workspace) Read(ctx context.Context, uri string) (llm.Resource, error) 
 	if err != nil {
 		// A folder can't be read, which is said, rather than why it can't
 		if folder, err := w.filer.GetObject(ctx, filerschema.GetObjectRequest{ObjectKey: key}); err == nil && folder.IsDir {
-			return nil, llm.ErrBadParameter.Withf("%s is a folder", uri)
+			return nil, llm.ErrBadParameter.Withf("%s is a folder: list it, with the path %q, rather than read it", uri, strings.Trim(p, "/"))
 		}
 		return nil, llmError(err)
 	} else if obj.IsDir {
-		return nil, llm.ErrBadParameter.Withf("%s is a folder", uri)
+		return nil, llm.ErrBadParameter.Withf("%s is a folder: list it, with the path %q, rather than read it", uri, strings.Trim(p, "/"))
 	}
 	resource := &object{uri: uriOf(obj.Path, false), name: path.Base(obj.Path), mimeType: obj.ContentType, size: -1, read: read}
 	if obj.Size != nil {

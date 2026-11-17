@@ -20,7 +20,7 @@ import (
 type ListRequest struct {
 	// Path is the folder whose folders and resources are listed, such as
 	// "notes/2026", or empty, for the workspace's top
-	Path string `json:"path,omitempty" help:"The folder whose folders and resources are listed, or empty, for the top" optional:""`
+	Path string `json:"path,omitempty" help:"The folder whose folders and resources are listed, by its path, as it's listed, not its uri, or empty, for the top" optional:""`
 
 	// Recursive lists every folder and resource under the folder, rather
 	// than only those in it
@@ -28,7 +28,7 @@ type ListRequest struct {
 
 	// Cursor is where the list continues from, which is a response's Next,
 	// or empty, to start
-	Cursor string `json:"cursor,omitempty" help:"Where the list continues from, which is a response's next, or empty, to start" optional:""`
+	Cursor string `json:"cursor,omitempty" help:"Where the list continues from: a response's next, unchanged, with the same path, recursive and type, or empty, to start" optional:""`
 
 	// Limit is the most folders and resources which are returned, or zero, for the
 	// workspace's own page size

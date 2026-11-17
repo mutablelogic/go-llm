@@ -95,6 +95,7 @@ func Test_Workspace(t *testing.T) {
 		assert.ErrorIs(t, err, llm.ErrNotFound)
 		_, err = m.Read(ctx, memory.MemoriesURI)
 		assert.ErrorIs(t, err, llm.ErrBadParameter)
+		assert.ErrorContains(t, err, `list it, with the path "memories"`)
 	})
 
 	t.Run("Watch", func(t *testing.T) {
@@ -165,4 +166,14 @@ func Test_Workspace(t *testing.T) {
 		require.NoError(t, err)
 		assert.NotEmpty(t, list.Body)
 	})
+}
+
+func Test_WorkspaceNotFound(t *testing.T) {
+	// A memory which isn't is said to be, by its URI
+	ctx := t.Context()
+	m, err := memory.New(ctx, memory.NewStore())
+	require.NoError(t, err)
+	_, err = m.Read(ctx, "memory:///memories/details.md")
+	require.ErrorIs(t, err, llm.ErrNotFound)
+	assert.EqualError(t, err, "not found: memory:///memories/details.md")
 }

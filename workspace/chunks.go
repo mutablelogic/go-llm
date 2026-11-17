@@ -142,7 +142,7 @@ func (r *chunkReader) fetch() error {
 func readChunk(ctx context.Context, c *client.Client, uri string, offset int64) ([]byte, *chunked, error) {
 	result, err := c.ReadResourceParams(ctx, schema.ReadParams(uri, offset, ChunkSize))
 	if err != nil {
-		return nil, nil, notFound(err)
+		return nil, nil, notFound(err, uri)
 	} else if len(result.Contents) == 0 || result.Contents[0] == nil {
 		return nil, nil, llm.ErrNotFound.Withf("resource %q has no contents", uri)
 	}
