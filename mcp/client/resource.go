@@ -2,9 +2,11 @@ package client
 
 import (
 	"context"
+	"sync"
 
 	// Packages
 	sdkmcp "github.com/modelcontextprotocol/go-sdk/mcp"
+	llm "github.com/mutablelogic/go-llm"
 )
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -62,4 +64,81 @@ func (c *Client) HasExperimental(name string) bool {
 	}
 	_, exists := result.Capabilities.Experimental[name]
 	return exists
+}
+
+// Subscribe asks the server to say when the resource with the URI is
+// updated, which WatchResources sends. Returns ErrServiceUnavailable when it
+// isn't connected.
+func (c *Client) Subscribe(ctx context.Context, uri string) error {
+	session, err := c.connected()
+	if err != nil {
+		return err
+	}
+	return session.Subscribe(ctx, &sdkmcp.SubscribeParams{URI: uri})
+}
+
+// Unsubscribe asks the server to stop saying when the resource with the URI
+// is updated. Returns ErrServiceUnavailable when it isn't connected.
+func (c *Client) Unsubscribe(ctx context.Context, uri string) error {
+	session, err := c.connected()
+	if err != nil {
+		return err
+	}
+	return session.Unsubscribe(ctx, &sdkmcp.UnsubscribeParams{URI: uri})
+}
+
+// WatchResources sends the URI of each of the server's resources which is
+// updated, which it was subscribed to, and an empty URI when the server says
+// its list of resources changed, so it's listed again, to the channel,
+// until the context is cancelled, when it returns nil. Each is waited for
+// the channel to receive. Returns ErrBadParameter when there's no channel.
+func (c *Client) WatchResources(ctx context.Context, ch chan<- string) error {
+	if ch == nil {
+		return llm.ErrBadParameter.With("missing channel")
+	}
+	w := &resourceWatch{ctx: ctx, ch: ch}
+	c.resources.mu.Lock()
+	if c.resources.watches == nil {
+		c.resources.watches = make(map[*resourceWatch]struct{})
+	}
+	c.resources.watches[w] = struct{}{}
+	c.resources.mu.Unlock()
+	<-ctx.Done()
+	c.resources.mu.Lock()
+	delete(c.resources.watches, w)
+	c.resources.mu.Unlock()
+	return nil
+}
+
+///////////////////////////////////////////////////////////////////////////////
+// RESOURCE WATCHES
+
+// resourceWatches are the watches of a server's resources
+type resourceWatches struct {
+	mu      sync.Mutex
+	watches map[*resourceWatch]struct{}
+}
+
+// resourceWatch is a channel which is sent the URIs of resources which
+// change, until its context is cancelled
+type resourceWatch struct {
+	ctx context.Context
+	ch  chan<- string
+}
+
+// changed sends the URI to each watch, which it waits for, until it's
+// received, or the watch is cancelled
+func (w *resourceWatches) changed(uri string) {
+	w.mu.Lock()
+	watches := make([]*resourceWatch, 0, len(w.watches))
+	for watch := range w.watches {
+		watches = append(watches, watch)
+	}
+	w.mu.Unlock()
+	for _, watch := range watches {
+		select {
+		case watch.ch <- uri:
+		case <-watch.ctx.Done():
+		}
+	}
 }

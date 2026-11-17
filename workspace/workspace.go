@@ -36,3 +36,30 @@ type Reader interface {
 	// folder, which has no content.
 	Read(ctx context.Context, uri string) (llm.Resource, error)
 }
+
+// Watcher is a workspace whose folders, and resources, change, which it
+// says, which a workspace doesn't need to be
+type Watcher interface {
+	Workspace
+
+	// Watch sends each folder, and resource, which is created, updated, or
+	// deleted, to the channel, until the context is cancelled, when it
+	// returns nil, or it fails. Each is waited for the channel to receive,
+	// so none is missed, and the channel is read until the context is
+	// cancelled. A change without a URI says the workspace changed, but not
+	// where, so it's listed again.
+	Watch(ctx context.Context, ch chan<- schema.Change) error
+}
+
+// Subscriber is a watcher which says a resource is updated only once it's
+// subscribed to, such as an MCP server's, which a server of it subscribes
+// to, as its own clients do
+type Subscriber interface {
+	Watcher
+
+	// Subscribe asks for the resource with the URI's updates
+	Subscribe(ctx context.Context, uri string) error
+
+	// Unsubscribe stops asking for the resource with the URI's updates
+	Unsubscribe(ctx context.Context, uri string) error
+}

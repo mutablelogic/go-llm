@@ -222,12 +222,21 @@ func (c *Client) Status() (*sdkmcp.Implementation, error) {
 // cancels its context.
 func (c *Client) dial(ctx context.Context, transport sdkmcp.Transport) (*sdkmcp.ClientSession, context.CancelFunc, error) {
 	sessionCtx, cancel := context.WithCancel(context.WithoutCancel(ctx))
-	var opts *sdkmcp.ClientOptions
+	// The server's resources which change are sent to the watches of them,
+	// and its tools, and prompts, which do are said
+	opts := &sdkmcp.ClientOptions{
+		ResourceUpdatedHandler: func(_ context.Context, req *sdkmcp.ResourceUpdatedNotificationRequest) {
+			if req.Params != nil && req.Params.URI != "" {
+				c.resources.changed(req.Params.URI)
+			}
+		},
+		ResourceListChangedHandler: func(context.Context, *sdkmcp.ResourceListChangedRequest) {
+			c.resources.changed("")
+		},
+	}
 	if fn := c.toolsChanged; fn != nil {
-		opts = &sdkmcp.ClientOptions{
-			ToolListChangedHandler:   func(context.Context, *sdkmcp.ToolListChangedRequest) { fn() },
-			PromptListChangedHandler: func(context.Context, *sdkmcp.PromptListChangedRequest) { fn() },
-		}
+		opts.ToolListChangedHandler = func(context.Context, *sdkmcp.ToolListChangedRequest) { fn() }
+		opts.PromptListChangedHandler = func(context.Context, *sdkmcp.PromptListChangedRequest) { fn() }
 	}
 	type result struct {
 		session *sdkmcp.ClientSession

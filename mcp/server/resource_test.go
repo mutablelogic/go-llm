@@ -7,9 +7,11 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	// Packages
 	llm "github.com/mutablelogic/go-llm"
+	eventschema "github.com/mutablelogic/go-llm/broadcaster/schema"
 	client "github.com/mutablelogic/go-llm/mcp/client"
 	server "github.com/mutablelogic/go-llm/mcp/server"
 	providerschema "github.com/mutablelogic/go-llm/provider/schema"
@@ -163,4 +165,147 @@ func Test_Workspace(t *testing.T) {
 		_, err = ws.Read(ctx, "file:///gone.md")
 		assert.ErrorIs(t, err, llm.ErrNotFound, "as is one whose content is gone")
 	})
+}
+
+// watched is a workspace of files, whose changes are said
+type watched struct {
+	files
+	changes chan schema.Change
+}
+
+func (w *watched) Watch(ctx context.Context, ch chan<- schema.Change) error {
+	for {
+		select {
+		case change := <-w.changes:
+			select {
+			case ch <- change:
+			case <-ctx.Done():
+				return nil
+			}
+		case <-ctx.Done():
+			return nil
+		}
+	}
+}
+
+func Test_WorkspaceWatch(t *testing.T) {
+	// A client is told a resource it subscribed to is updated, and that the
+	// list changed, when one's created
+	ctx := t.Context()
+	source := &watched{files: files{"notes/a.md": "# A"}, changes: make(chan schema.Change)}
+	srv, err := server.New(&tools{}, server.WithWorkspace(source))
+	require.NoError(t, err)
+	runCtx, cancel := context.WithCancel(ctx)
+	done := make(chan error, 1)
+	go func() { done <- srv.Run(runCtx) }()
+	t.Cleanup(func() {
+		cancel()
+		assert.NoError(t, <-done)
+	})
+
+	c, err := client.New("memory://files", client.WithTransport(srv.InMemoryTransport))
+	require.NoError(t, err)
+	require.NoError(t, c.Connect(ctx))
+	t.Cleanup(func() { assert.NoError(t, c.Disconnect()) })
+	ws, err := workspace.NewClient(c)
+	require.NoError(t, err)
+	watcher, ok := ws.(workspace.Watcher)
+	require.True(t, ok)
+	changes := make(chan schema.Change, 4)
+	watchCtx, stop := context.WithCancel(ctx)
+	defer stop()
+	go func() { _ = watcher.Watch(watchCtx, changes) }()
+	require.NoError(t, c.Subscribe(ctx, "file:///notes/a.md"))
+
+	// say says the change until the client is told, as its subscription, and
+	// its listening for the list's changes, start as it's connected
+	say := func(change schema.Change) schema.Change {
+		t.Helper()
+		deadline := time.After(5 * time.Second)
+		for {
+			source.changes <- change
+			select {
+			case got := <-changes:
+				return got
+			case <-time.After(50 * time.Millisecond):
+			case <-deadline:
+				t.Fatal("no change")
+				return schema.Change{}
+			}
+		}
+	}
+
+	// Updated, as it was subscribed to
+	assert.Equal(t, schema.Change{Action: eventschema.EventUpdate, URI: "file:///notes/a.md"}, say(schema.Change{Action: eventschema.EventUpdate, URI: "file:///notes/a.md"}))
+
+	// Created, which is that the list changed, without a URI, as MCP says
+	for len(changes) > 0 {
+		<-changes
+	}
+	assert.Equal(t, schema.Change{Action: eventschema.EventUpdate}, say(schema.Change{Action: eventschema.EventCreate, URI: "file:///notes/b.md"}))
+
+	// The placeholder which says so isn't listed
+	list, err := ws.List(ctx, schema.ListRequest{Recursive: true})
+	require.NoError(t, err)
+	for _, r := range list.Body {
+		assert.NotContains(t, r.URI, "list-changed")
+	}
+}
+
+func Test_WorkspaceSubscribe(t *testing.T) {
+	// A workspace of an MCP server, which is served again, is subscribed
+	// to, as the second server's clients subscribe, so they're told it's
+	// updated
+	ctx := t.Context()
+	run := func(srv *server.Server) {
+		runCtx, cancel := context.WithCancel(ctx)
+		done := make(chan error, 1)
+		go func() { done <- srv.Run(runCtx) }()
+		t.Cleanup(func() {
+			cancel()
+			assert.NoError(t, <-done)
+		})
+	}
+	connectTo := func(srv *server.Server) *client.Client {
+		c, err := client.New("memory://files", client.WithTransport(srv.InMemoryTransport))
+		require.NoError(t, err)
+		require.NoError(t, c.Connect(ctx))
+		t.Cleanup(func() { assert.NoError(t, c.Disconnect()) })
+		return c
+	}
+
+	// The first server, and the second, which serves the first's workspace
+	source := &watched{files: files{"notes/a.md": "# A"}, changes: make(chan schema.Change)}
+	first, err := server.New(&tools{}, server.WithWorkspace(source))
+	require.NoError(t, err)
+	run(first)
+	upstream, err := workspace.NewClient(connectTo(first))
+	require.NoError(t, err)
+	second, err := server.New(&tools{}, server.WithWorkspace(upstream))
+	require.NoError(t, err)
+	run(second)
+
+	// A client of the second subscribes, and is told of an update
+	downstream, err := workspace.NewClient(connectTo(second))
+	require.NoError(t, err)
+	changes := make(chan schema.Change, 4)
+	watchCtx, stop := context.WithCancel(ctx)
+	defer stop()
+	go func() { _ = downstream.(workspace.Watcher).Watch(watchCtx, changes) }()
+	require.NoError(t, downstream.(workspace.Subscriber).Subscribe(ctx, "file:///notes/a.md"))
+	deadline := time.After(5 * time.Second)
+	for {
+		source.changes <- schema.Change{Action: eventschema.EventUpdate, URI: "file:///notes/a.md"}
+		select {
+		case change := <-changes:
+			if change.URI == "" {
+				continue
+			}
+			assert.Equal(t, schema.Change{Action: eventschema.EventUpdate, URI: "file:///notes/a.md"}, change)
+			return
+		case <-time.After(50 * time.Millisecond):
+		case <-deadline:
+			t.Fatal("the update didn't reach the second server's client")
+		}
+	}
 }
