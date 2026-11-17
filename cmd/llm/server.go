@@ -5,6 +5,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"io"
 	"os"
 	"path/filepath"
 	"sync/atomic"
@@ -271,9 +272,14 @@ func (runner *RunServer) withToolkit(ctx server.Cmd, b *broadcaster.Broadcaster,
 		// Telegram's, whose chats are connected to sessions, as channels,
 		// and whose tools connect them. A workspace's file is sent to a
 		// chat as a link to it, on the server's public https endpoint, when
-		// it has one.
-		endpoint := config.PublicEndpoint(ctx.URL())
-		m, err := newServerMessaging(ctx, tools, events, res, func() *time.Location { return mem.Details().Zone() }, messaging.WithBroadcaster(b), messaging.WithFiles(openFile(res, workspaces, endpoint)), messaging.WithLinks(func(text string) string { return linkWorkspaceFiles(text, endpoint) }), messaging.WithSessions(func(ctx context.Context, id uuid.UUID) error {
+		// it has one. It's read as each is sent, as the server's URL, such as
+		// https://<--tls.name>/api, is only set once it's listening, which is
+		// after this, and is the listen address, http://..., until then.
+		endpoint := func() string { return config.PublicEndpoint(ctx.URL()) }
+		files := func(fctx context.Context, session uuid.UUID, uri string) (messaging.File, io.ReadCloser, error) {
+			return openFile(res, workspaces, endpoint())(fctx, session, uri)
+		}
+		m, err := newServerMessaging(ctx, tools, events, res, func() *time.Location { return mem.Details().Zone() }, messaging.WithBroadcaster(b), messaging.WithFiles(files), messaging.WithLinks(func(text string) string { return linkWorkspaceFiles(text, endpoint()) }), messaging.WithSessions(func(ctx context.Context, id uuid.UUID) error {
 			_, err := sessions.Get(ctx, id)
 			return err
 		}))
