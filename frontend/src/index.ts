@@ -39,6 +39,7 @@ import './component/connector-alerts';
 import './page/chat-page';
 import './page/models-page';
 import './page/tools-page';
+import './page/workspace-page';
 
 // Controllers, and the modules, each of which adds its pages
 import { StorageController } from './controller/storage';
@@ -47,6 +48,7 @@ import type { App } from './module/app';
 import { chatModule } from './module/chat';
 import { modelsModule } from './module/models';
 import { toolsModule } from './module/tools';
+import { workspacesModule } from './module/workspaces';
 
 // Errors, and other notifications, are shown as toasts
 const notifications = new NotificationController();
@@ -87,6 +89,7 @@ const app: App = { nav, router, root: document.querySelector('main')!, notificat
 const { chat } = chatModule(app);
 const models = modelsModule(app);
 const tools = toolsModule(app);
+workspacesModule(app);
 
 // The panel which starts a new chat chooses its tools from them, as they are
 tools.onChange((all, namespaces) => {
@@ -116,6 +119,11 @@ document.addEventListener(MediaPlayer.eventDeleted, (e) => {
 });
 
 // Show the page of the location, such as #chat/<id>, which is active in
-// the sidebar, and follow the server's changes
-router.onRoute((route) => nav.setActive(route.page)).start();
+// the sidebar, as it is, or by its first parameter, too, such as
+// #workspace/<name>, whose page in the sidebar is workspace/<name>, and
+// follow the server's changes
+router.onRoute((route) => {
+    const sub = route.params.length ? `${route.page}/${route.params[0]}` : undefined;
+    nav.setActive(sub && nav.current.pages.some((page) => page.id === sub) ? sub : route.page);
+}).start();
 changes.start();
