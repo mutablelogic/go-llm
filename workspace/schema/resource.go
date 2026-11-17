@@ -176,6 +176,9 @@ func (r ListRequest) Query() url.Values {
 	if r.Limit > 0 {
 		q.Set("limit", strconv.FormatUint(uint64(r.Limit), 10))
 	}
+	if r.Type != "" {
+		q.Set("type", r.Type)
+	}
 	return q
 }
 

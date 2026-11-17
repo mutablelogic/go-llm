@@ -88,8 +88,9 @@ meta:
 func Test_Query(t *testing.T) {
 	// A request's folder, and cursor, are as they are, with their spaces,
 	// and fields which aren't set are left out
-	req := schema.ListRequest{Path: " my notes ", Recursive: true, Cursor: " opaque= ", Limit: 5}
+	req := schema.ListRequest{Path: " my notes ", Recursive: true, Cursor: " opaque= ", Limit: 5, Type: schema.FolderType}
 	q := req.Query()
+	assert.Equal(t, schema.FolderType, q.Get("type"))
 	assert.Equal(t, " my notes ", q.Get("path"))
 	assert.Equal(t, "true", q.Get("recursive"))
 	assert.Equal(t, " opaque= ", q.Get("cursor"))

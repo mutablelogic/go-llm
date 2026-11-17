@@ -301,3 +301,20 @@ func Test_Tree(t *testing.T) {
 	assert.Equal(t, []string{"file:///a/b/c/", "file:///a/b/y.md"}, uris(list))
 	assert.Equal(t, "a/b/y.md", list.Body[1].Path)
 }
+
+func Test_FilteredFolderDeleted(t *testing.T) {
+	// A folder which is passed over, as only files are listed, is still
+	// said to be deleted as a folder
+	ctx := t.Context()
+	dir := t.TempDir()
+	require.NoError(t, os.MkdirAll(filepath.Join(dir, "notes"), 0o700))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "a.md"), []byte("#"), 0o600))
+	ws, err := filer.New("code", backend(t, dir))
+	require.NoError(t, err)
+	list, err := ws.List(ctx, schema.ListRequest{Type: "text/markdown; charset=utf-8"})
+	require.NoError(t, err)
+	for _, r := range list.Body {
+		assert.False(t, r.IsFolder())
+	}
+	assert.Equal(t, "file:///notes/", filer.DeletedURI(ws, "/notes"))
+}

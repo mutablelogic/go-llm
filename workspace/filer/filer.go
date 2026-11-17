@@ -120,6 +120,11 @@ func (w *Workspace) List(ctx context.Context, req schema.ListRequest) (*schema.L
 			// path, is
 			continue
 		}
+		// A folder is known as one, whether it's listed, or not, so it's
+		// said to be deleted as a folder
+		if obj.IsDir {
+			w.folders.Store(strings.TrimSuffix(obj.Path, "/"), true)
+		}
 		resource := resourceOf(obj)
 		if req.Type != "" && resource.Type != req.Type {
 			// It isn't of the type, but the page continues after it
@@ -130,9 +135,6 @@ func (w *Workspace) List(ctx context.Context, req schema.ListRequest) (*schema.L
 			return result, nil
 		}
 		last = cursorOf(obj)
-		if obj.IsDir {
-			w.folders.Store(strings.TrimSuffix(obj.Path, "/"), true)
-		}
 		result.Body = append(result.Body, resource)
 	}
 }
