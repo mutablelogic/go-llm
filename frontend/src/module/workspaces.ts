@@ -7,7 +7,7 @@ import { ListController, type Page, type Sort } from '@mutablelogic/go-server/li
 import { contentURL, listFolder, listWorkspaces } from '../api/workspace';
 import { WorkspacePage } from '../page/workspace-page';
 import { routeHref } from '../router';
-import { isFolder, type ResourceMeta, type Workspace } from '../schema/workspace';
+import { FolderType, isFolder, type ResourceMeta, type Workspace } from '../schema/workspace';
 import { addPage, Section, type App } from './app';
 
 // MaxListed is the most folders, and resources, of a folder which are
@@ -35,7 +35,8 @@ export function workspacesModule(app: App): void {
             if (more) {
                 app.notifications.push({ kind: 'warning', title: `Only the first ${MaxListed} are listed`, subtitle: 'The folder has more' });
             }
-            return pageOf(items, offset, limit, sort);
+            // With a tree, the folders are in it, and the files beside it
+            return pageOf(page.tree ? items.filter((item) => !isFolder(item)) : items, offset, limit, sort);
         },
         same: (a, b) => a.uri === b.uri,
         notifications: app.notifications,
@@ -78,9 +79,45 @@ export function workspacesModule(app: App): void {
         })));
         show();
     };
+    // The folders of a workspace which is a tree, every one under its top,
+    // which, when it has any, are shown as a tree, beside the files of the
+    // folder which is shown, or else its folders, and files, are listed
+    // together. They're loaded again as they change.
+    let folders = '';
+    const loadFolders = async () => {
+        const workspace = page.workspace;
+        const wanted = workspace?.tree ? workspace.name : '';
+        if (!wanted) {
+            folders = '';
+            page.folders = [];
+            page.tree = false;
+            return;
+        }
+        try {
+            const { items } = await listFolder(wanted, '', MaxListed, { recursive: true, type: FolderType });
+            if (wanted !== name) {
+                return;
+            }
+            const tree = items.length > 0;
+            const changed = tree !== page.tree;
+            folders = wanted;
+            page.folders = items;
+            page.tree = tree;
+            if (changed) {
+                void controller.refresh();
+            }
+        } catch (error) {
+            app.notifications.error("The folders couldn't be loaded", error);
+        }
+    };
+    app.changes.on({ schema: 'workspace', table: 'resource' }, () => void loadFolders());
+
     const show = () => {
         page.workspace = workspaces.find((workspace) => workspace.name === name);
         page.missing = !!name && !page.workspace;
+        if (folders !== (page.workspace?.tree ? name : '')) {
+            void loadFolders();
+        }
 
         // Its page is active in the sidebar, once it's there, as the
         // workspaces can be loaded after it's routed to

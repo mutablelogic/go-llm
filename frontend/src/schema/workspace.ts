@@ -10,6 +10,7 @@ export interface Workspace {
     version?: string;
     read?: boolean;
     watch?: boolean;
+    tree?: boolean;
 }
 
 // WorkspaceList is the workspaces, in order of their names
@@ -21,6 +22,7 @@ export interface WorkspaceList {
 // ResourceMeta is a folder, or a resource, of a workspace, as it's listed
 export interface ResourceMeta {
     uri: string;
+    path?: string;
     name: string;
     title?: string;
     description?: string;
