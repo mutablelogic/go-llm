@@ -447,6 +447,22 @@ func Test_Messaging_Files(t *testing.T) {
 		assert.Contains(t, messages[1], "[film.mkv](https://example.com/api/llm/workspace/files/content?uri=film)")
 	})
 
+	t.Run("Links", func(t *testing.T) {
+		// The text's links, such as the send tool's, are as WithLinks
+		// changes them
+		provider := &fileFake{fake: newFake("fake")}
+		m, err := messaging.New(messaging.NewStore(), messaging.WithProvider(provider), messaging.WithFiles(open), messaging.WithLinks(func(text string) string {
+			return strings.ReplaceAll(text, "resource://files/film.mkv", "https://example.com/film")
+		}))
+		require.NoError(t, err)
+		connect(t, m, provider.fake)
+		_, err = m.Send(ctx, id, messaging.Outgoing{Text: "Watch [the film](resource://files/film.mkv)"})
+		require.NoError(t, err)
+		messages := provider.messages("1")
+		require.Len(t, messages, 2)
+		assert.Contains(t, messages[1], "[the film](https://example.com/film)")
+	})
+
 	t.Run("Voice caption", func(t *testing.T) {
 		// The text is the caption of the first file, whatever it is, such
 		// as a voice message, and a file which can't be opened is an error,

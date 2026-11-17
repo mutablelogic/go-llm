@@ -273,7 +273,7 @@ func (runner *RunServer) withToolkit(ctx server.Cmd, b *broadcaster.Broadcaster,
 		// chat as a link to it, on the server's public https endpoint, when
 		// it has one.
 		endpoint := config.PublicEndpoint(ctx.URL())
-		m, err := newServerMessaging(ctx, tools, events, res, func() *time.Location { return mem.Details().Zone() }, messaging.WithBroadcaster(b), messaging.WithFiles(openFile(res, workspaces, endpoint)), messaging.WithSessions(func(ctx context.Context, id uuid.UUID) error {
+		m, err := newServerMessaging(ctx, tools, events, res, func() *time.Location { return mem.Details().Zone() }, messaging.WithBroadcaster(b), messaging.WithFiles(openFile(res, workspaces, endpoint)), messaging.WithLinks(func(text string) string { return linkWorkspaceFiles(text, endpoint) }), messaging.WithSessions(func(ctx context.Context, id uuid.UUID) error {
 			_, err := sessions.Get(ctx, id)
 			return err
 		}))
@@ -295,7 +295,7 @@ func (runner *RunServer) withToolkit(ctx server.Cmd, b *broadcaster.Broadcaster,
 			}
 			replyCtx, cancel := context.WithTimeout(replyCtx, 2*time.Minute)
 			defer cancel()
-			out := messaging.Outgoing{Text: linkWorkspaceFiles(reply.Text, endpoint), Files: replyFiles(reply)}
+			out := messaging.Outgoing{Text: reply.Text, Files: replyFiles(reply)}
 			if err := m.Reply(replyCtx, session, out); err != nil {
 				ctx.Logger().ErrorContext(replyCtx, "reply not sent to channels", "session", session, "error", err.Error())
 			}

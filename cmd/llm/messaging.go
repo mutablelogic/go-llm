@@ -275,22 +275,23 @@ func list(things []string) string {
 
 // workspaceLink matches a Markdown link to a workspace's resource, such as
 // [Blade Runner](resource://files/Movies/Blade%20Runner.mp4)
-var workspaceLink = regexp.MustCompile(`\]\((resource://[^/)\s]+/[^)\s]+)\)`)
+var workspaceLink = regexp.MustCompile(`\[([^\]]*)\]\((resource://[^/)\s]+/[^)\s]+)\)`)
 
 // linkWorkspaceFiles returns the text, whose links to a workspace's
 // resources are to their content, on the server's public endpoint, so a
-// chat opens them, or as it is, when there's no endpoint
+// chat opens them, or, without one, their text, as a chat can't open them
 func linkWorkspaceFiles(text, endpoint string) string {
-	if endpoint == "" {
-		return text
-	}
 	return workspaceLink.ReplaceAllStringFunc(text, func(link string) string {
-		uri := workspaceLink.FindStringSubmatch(link)[1]
+		uri := workspaceLink.FindStringSubmatch(link)[2]
 		name, _, ok := workspaceschema.ParseURI(uri)
 		if !ok {
 			return link
 		}
-		return "](" + workspaceContentURL(endpoint, name, uri) + ")"
+		label := workspaceLink.FindStringSubmatch(link)[1]
+		if endpoint == "" {
+			return label
+		}
+		return "[" + label + "](" + workspaceContentURL(endpoint, name, uri) + ")"
 	})
 }
 

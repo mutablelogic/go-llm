@@ -48,6 +48,7 @@ type Messaging struct {
 	chat        ChatFunc
 	session     SessionFunc
 	open        OpenFunc
+	links       LinkFunc
 	now         func() time.Time
 
 	// sending is held, shared, as messages are sent to channels, and to
@@ -162,6 +163,7 @@ func New(store Store, opts ...Opt) (*Messaging, error) {
 		chat:        o.chat,
 		session:     o.session,
 		open:        o.open,
+		links:       o.links,
 		now:         time.Now,
 		codes:       make(map[string]pairing),
 		queues:      make(map[uuid.UUID]chan received),
@@ -690,6 +692,9 @@ func (m *Messaging) send(ctx context.Context, channel schema.Channel, out Outgoi
 		return nil, llm.ErrNotFound.Withf("messaging provider %q, of channel %q, isn't set up", channel.Provider, channel.ID)
 	}
 	text := strings.TrimSpace(out.Text)
+	if m.links != nil {
+		text = strings.TrimSpace(m.links(text))
+	}
 	sender, ok := provider.(FileSender)
 	if !ok || m.open == nil || len(out.Files) == 0 {
 		if text == "" {

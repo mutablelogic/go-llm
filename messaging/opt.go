@@ -24,6 +24,7 @@ type opt struct {
 	chat        ChatFunc
 	session     SessionFunc
 	open        OpenFunc
+	links       LinkFunc
 }
 
 // ChatFunc sends the message, which was sent in the channel's chat, to the
@@ -108,6 +109,20 @@ func WithChat(fn ChatFunc) Opt {
 func WithSessions(fn SessionFunc) Opt {
 	return func(o *opt) error {
 		o.session = fn
+		return nil
+	}
+}
+
+// LinkFunc returns the text which is sent to a chat, with its links which a
+// chat can't open, such as to a workspace's files, as links it can, such as
+// to the server's https endpoint, or their text, without one
+type LinkFunc func(text string) string
+
+// WithLinks sets the function which changes the links of the text which is
+// sent to a chat, such as a reply's, or the send tool's, so they open
+func WithLinks(fn LinkFunc) Opt {
+	return func(o *opt) error {
+		o.links = fn
 		return nil
 	}
 }

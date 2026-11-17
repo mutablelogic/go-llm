@@ -345,7 +345,7 @@ func fileName(file messaging.File) string {
 
 // megabytes returns the size, in megabytes, such as 61.2 MB
 func megabytes(size int64) string {
-	return fmt.Sprintf("%.1f MB", float64(size)/(1<<20))
+	return fmt.Sprintf("%.1f MiB", float64(size)/(1<<20))
 }
 
 // toMessage returns the message, as messaging has it, and whether it's one

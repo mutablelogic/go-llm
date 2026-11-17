@@ -297,5 +297,5 @@ func Test_LinkWorkspaceFiles(t *testing.T) {
 	// server's endpoint, and others, and without one, are as they are
 	text := "Here: [Blade Runner](resource://files/Movies/Blade%20Runner.mp4), and [speech](resource:///abc)."
 	assert.Equal(t, "Here: [Blade Runner](https://example.com/api/llm/workspace/files/content?uri=resource%3A%2F%2Ffiles%2FMovies%2FBlade%2520Runner.mp4), and [speech](resource:///abc).", linkWorkspaceFiles(text, "https://example.com/api"))
-	assert.Equal(t, text, linkWorkspaceFiles(text, ""))
+	assert.Equal(t, "Here: Blade Runner, and [speech](resource:///abc).", linkWorkspaceFiles(text, ""), "a chat can't open it, without an endpoint")
 }
