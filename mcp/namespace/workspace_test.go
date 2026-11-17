@@ -106,12 +106,21 @@ func Test_WatchResources(t *testing.T) {
 		// It's told of an update said once it lists again, as it's
 		// subscribed, and watching, by then
 		t.Helper()
+		// A list again before it, such as the server's, as it starts
+		// watching, which the SDK says a moment later, isn't it.
 		source.changes <- schema.Change{Action: eventschema.ChangeUpdate, URI: uri}
-		select {
-		case change := <-changes:
-			assert.Equal(t, schema.Change{Action: eventschema.ChangeUpdate, URI: uri}, change)
-		case <-time.After(5 * time.Second):
-			t.Fatalf("not told it was updated, %s", phase)
+		timeout := time.After(5 * time.Second)
+		for {
+			select {
+			case change := <-changes:
+				if change == listAgain {
+					continue
+				}
+				assert.Equal(t, schema.Change{Action: eventschema.ChangeUpdate, URI: uri}, change)
+			case <-timeout:
+				t.Fatalf("not told it was updated, %s", phase)
+			}
+			return
 		}
 	}
 	updated("connected")
