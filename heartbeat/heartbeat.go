@@ -37,6 +37,8 @@ import (
 // as Run runs. It's safe to use concurrently, and by more than one server,
 // which share a store, so a heartbeat fires on only one of them.
 type Heartbeats struct {
+	toolsOnce   sync.Once  // Makes the tools once, so they're the same values
+	tools       []llm.Tool // The tools, once they're made
 	store       Store
 	broadcaster *broadcaster.Broadcaster
 	tracer      trace.Tracer

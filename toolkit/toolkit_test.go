@@ -389,12 +389,16 @@ type valueNamespace struct {
 	tools []llm.Tool
 }
 
-func (n valueNamespace) Name() string                                 { return n.name }
-func (n valueNamespace) Type() string                                 { return schema.NamespaceBuiltin }
-func (n valueNamespace) Description() string                          { return "" }
-func (n valueNamespace) SystemPrompt() string                         { return "" }
-func (n valueNamespace) Tools() []llm.Tool                            { return n.tools }
-func (n valueNamespace) Notify(func(eventschema.EventAction, string)) {}
+func (n valueNamespace) Name() string         { return n.name }
+func (n valueNamespace) Type() string         { return schema.NamespaceBuiltin }
+func (n valueNamespace) Description() string  { return "" }
+func (n valueNamespace) SystemPrompt() string { return "" }
+func (n valueNamespace) Tools() []llm.Tool    { return n.tools }
+
+// Watch sends the namespace's tools, which don't change
+func (n valueNamespace) Watch(ctx context.Context, ch chan<- eventschema.Event) error {
+	return toolkit.WatchTools(ctx, ch, n.Tools())
+}
 
 func TestRemoveValue(t *testing.T) {
 	// A namespace which is a value, which can't be compared, isn't removed,

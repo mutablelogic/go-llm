@@ -166,8 +166,9 @@ func (self *Toolkit) ToolNames(ctx context.Context, names ...string) (_ []string
 // one tool with the name
 func (self *Toolkit) lookupAll(name string) ([]entry, error) {
 	if name == "*" {
-		self.mu.RLock()
-		defer self.mu.RUnlock()
+		self.mu.Lock()
+		defer self.mu.Unlock()
+		self.current()
 		result := make([]entry, 0, len(self.tools))
 		for _, canonical := range slices.Sorted(maps.Keys(self.tools)) {
 			if !unexpanded[canonical] {
@@ -185,8 +186,9 @@ func (self *Toolkit) lookupAll(name string) ([]entry, error) {
 		return []entry{tool}, nil
 	}
 
-	self.mu.RLock()
-	defer self.mu.RUnlock()
+	self.mu.Lock()
+	defer self.mu.Unlock()
+	self.current()
 	if _, exists := self.namespaces[namespace]; !exists {
 		return nil, llm.ErrNotFound.Withf("namespace %q", namespace)
 	}
@@ -202,8 +204,9 @@ func (self *Toolkit) lookupAll(name string) ([]entry, error) {
 // lookup returns the tool with the name, which is its canonical name, or its
 // name without a namespace, which must be the name of only one tool
 func (self *Toolkit) lookup(name string) (entry, error) {
-	self.mu.RLock()
-	defer self.mu.RUnlock()
+	self.mu.Lock()
+	defer self.mu.Unlock()
+	self.current()
 
 	// A canonical name refers to one tool
 	if strings.Contains(name, schema.ToolSeparator) {

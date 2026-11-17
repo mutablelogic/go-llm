@@ -39,6 +39,9 @@ type Toolkit struct {
 
 	// The tools, by canonical name
 	tools map[string]entry
+
+	// The cancels of the watches of the namespaces' tools, by name
+	watches map[string]context.CancelFunc
 }
 
 // Namespace is a namespace of tools: its name, which is an identifier, a line
@@ -56,14 +59,22 @@ type Namespace interface {
 
 	Description() string
 	SystemPrompt() string
+
+	// Tools returns the namespace's tools, as they are now, which are the
+	// same values, for those which haven't changed, so a toolkit can tell
+	// which did
 	Tools() []llm.Tool
 
-	// Notify sets the function which the namespace calls, once it's added to
-	// a toolkit, when one of its tools is created, updated, or deleted, with
-	// the action, and the tool's name, after Tools returns it as it is. A
-	// namespace whose tools don't change, once it's added, doesn't call it.
-	// It's called without the namespace's lock held, as Tools is called.
-	Notify(func(action eventschema.EventAction, name string))
+	// Watch sends the changes to the namespace's tools to the channel, as
+	// events whose rows are the tools' names, such as "current", until the
+	// context is cancelled, when it returns. It first sends
+	// that each of its tools was created, once it's watching, so a change
+	// before then isn't missed. An event says which tool to read, with
+	// Tools, as it is now, so events can be in any order. It's watched more
+	// than once at a time, such as by a toolkit and an MCP server. Watchers
+	// does this for a namespace whose tools change, and WatchTools for one
+	// whose tools don't.
+	Watch(ctx context.Context, ch chan<- eventschema.Event) error
 }
 
 // ToolPrompter is a namespace whose system prompt depends on which of its
@@ -118,6 +129,7 @@ func New(ctx context.Context, opts ...Opt) (_ *Toolkit, err error) {
 	self := &Toolkit{
 		namespaces: make(map[string]Namespace),
 		tools:      make(map[string]entry),
+		watches:    make(map[string]context.CancelFunc),
 	}
 
 	// Apply options
@@ -176,9 +188,9 @@ func (self *Toolkit) Add(ns Namespace) error {
 		self.tools[schema.CanonicalToolName(namespace, name)] = entry
 		self.publish(eventschema.EventCreate, schema.CanonicalToolName(namespace, name))
 	}
-	ns.Notify(func(action eventschema.EventAction, name string) {
-		self.changed(ns, action, name)
-	})
+	ctx, cancel := context.WithCancel(context.Background())
+	self.watches[namespace] = cancel
+	go self.watch(ctx, ns)
 
 	// Return success
 	return nil
@@ -199,6 +211,10 @@ func (self *Toolkit) Remove(ns Namespace) error {
 		return llm.ErrNotFound.Withf("namespace %q", name)
 	}
 	delete(self.namespaces, name)
+	if cancel, exists := self.watches[name]; exists {
+		cancel()
+		delete(self.watches, name)
+	}
 	for _, canonical := range slices.Sorted(maps.Keys(self.tools)) {
 		if self.tools[canonical].namespace == name {
 			delete(self.tools, canonical)
@@ -250,43 +266,88 @@ func (self *Toolkit) ClientOpts() []client.ClientOpt {
 ////////////////////////////////////////////////////////////////////////////////
 // PRIVATE METHODS
 
-// changed changes the tool with the name, in the namespace, to the tool as
-// the namespace's Tools returns it now, whatever the action, so changes
-// which are told out of order end as the namespace is, and publishes the
-// change: the tool is created, or updated, or, when Tools doesn't return it,
-// or it isn't valid, so it can't be called, deleted.
-func (self *Toolkit) changed(ns Namespace, _ eventschema.EventAction, name string) {
-	canonical := schema.CanonicalToolName(ns.Name(), name)
+// watch watches the namespace's tools, until the context is cancelled, as
+// the namespace is removed, and changes each which changes. When the watch
+// fails, the namespace's tools are as they were.
+func (self *Toolkit) watch(ctx context.Context, ns Namespace) {
+	ch := make(chan eventschema.Event, 16)
+	done := make(chan error, 1)
+	go func() { done <- ns.Watch(ctx, ch) }()
+	for {
+		select {
+		case event := <-ch:
+			self.changed(ns, event.Action, event.Row)
+		case <-done:
+			return
+		}
+	}
+}
 
-	// The tool, as it is now, is read, and applied, under the lock, so
-	// changes which are told at once are applied in the order they're read
+// changed changes the namespace's tools to those its Tools returns now,
+// when it's told the tool with the name changed, and publishes that it was
+// updated, when it was
+func (self *Toolkit) changed(ns Namespace, action eventschema.EventAction, name string) {
 	self.mu.Lock()
 	defer self.mu.Unlock()
 	if !same(self.namespaces[ns.Name()], ns) {
 		return
 	}
-	var tool llm.Tool
-	for _, t := range ns.Tools() {
-		if t != nil && t.Name() == name {
-			tool = t
-			break
-		}
+	updated := ""
+	if action == eventschema.EventUpdate {
+		updated = name
 	}
-	_, existed := self.tools[canonical]
-	if tool != nil {
-		if entry, err := newEntry(ns.Name(), tool); err == nil {
-			self.tools[canonical] = entry
-			if existed {
-				self.publish(eventschema.EventUpdate, canonical)
-			} else {
-				self.publish(eventschema.EventCreate, canonical)
+	self.sync(ns, updated)
+}
+
+// current changes each namespace's tools to those its Tools returns now, so
+// a tool is called, or listed, as it is, as soon as it's changed, rather
+// than once its change is watched. The caller holds the lock.
+func (self *Toolkit) current() {
+	for _, name := range slices.Sorted(maps.Keys(self.namespaces)) {
+		self.sync(self.namespaces[name], "")
+	}
+}
+
+// sync changes the namespace's tools to those its Tools returns now, and
+// publishes each which is created, updated, or deleted. A tool is updated
+// when it's another value than it was, as Tools returns the same value for
+// a tool which didn't change, or, when it can't be compared, when the
+// namespace says it was, by its name. One which isn't valid, so can't be
+// called, isn't there. The caller holds the lock.
+func (self *Toolkit) sync(ns Namespace, updated string) {
+	namespace := ns.Name()
+	seen := make(map[string]bool)
+	for _, tool := range ns.Tools() {
+		if tool == nil || seen[schema.CanonicalToolName(namespace, tool.Name())] {
+			continue
+		}
+		canonical := schema.CanonicalToolName(namespace, tool.Name())
+		seen[canonical] = true
+		existing, existed := self.tools[canonical]
+		if existed {
+			if same, ok := sameTool(existing.tool, tool); same || (!ok && tool.Name() != updated) {
+				continue
 			}
-			return
+		}
+		entry, err := newEntry(namespace, tool)
+		switch {
+		case err != nil && existed:
+			delete(self.tools, canonical)
+			self.publish(eventschema.EventDelete, canonical)
+		case err != nil:
+		case existed:
+			self.tools[canonical] = entry
+			self.publish(eventschema.EventUpdate, canonical)
+		default:
+			self.tools[canonical] = entry
+			self.publish(eventschema.EventCreate, canonical)
 		}
 	}
-	if existed {
-		delete(self.tools, canonical)
-		self.publish(eventschema.EventDelete, canonical)
+	for _, canonical := range slices.Sorted(maps.Keys(self.tools)) {
+		if self.tools[canonical].namespace == namespace && !seen[canonical] {
+			delete(self.tools, canonical)
+			self.publish(eventschema.EventDelete, canonical)
+		}
 	}
 }
 
@@ -311,6 +372,25 @@ func same(a, b Namespace) bool {
 		return false
 	}
 	return a == b
+}
+
+// sameTool returns whether the tools are the same one, which they are
+// when they're equal values, and whether that can be told, which it can't
+// for values which can't be compared, such as a struct with a slice, or an
+// interface whose value is one
+func sameTool(a, b llm.Tool) (same, ok bool) {
+	ta, tb := reflect.TypeOf(a), reflect.TypeOf(b)
+	if ta == nil || tb == nil || !ta.Comparable() || !tb.Comparable() {
+		return false, false
+	} else if ta != tb {
+		return false, true
+	}
+	defer func() {
+		if recover() != nil {
+			same, ok = false, false
+		}
+	}()
+	return a == b, true
 }
 
 // typeOf returns the namespace's type, which is schema.NamespaceBuiltin,
@@ -391,8 +471,10 @@ func (n namespace) Tools() []llm.Tool {
 	return n.tools
 }
 
-// Notify does nothing, as the namespace's tools don't change
 // Type returns that the namespace's tools are built in
 func (namespace) Type() string { return schema.NamespaceBuiltin }
 
-func (namespace) Notify(func(eventschema.EventAction, string)) {}
+// Watch sends the namespace's tools, which don't change
+func (n namespace) Watch(ctx context.Context, ch chan<- eventschema.Event) error {
+	return WatchTools(ctx, ch, n.tools)
+}

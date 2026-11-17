@@ -1,6 +1,7 @@
 package deepseek
 
 import (
+	"context"
 	"slices"
 
 	// Packages
@@ -68,8 +69,10 @@ func (namespace) SystemPrompt() string {
 // Type returns that the namespace's tools are built in
 func (namespace) Type() string { return toolschema.NamespaceBuiltin }
 
-// Notify does nothing, as the namespace's tools don't change
-func (namespace) Notify(func(eventschema.EventAction, string)) {}
+// Watch sends the namespace's tools, which don't change
+func (ns *namespace) Watch(ctx context.Context, ch chan<- eventschema.Event) error {
+	return toolkit.WatchTools(ctx, ch, ns.Tools())
+}
 
 func (n namespace) Tools() []llm.Tool {
 	return slices.Clone(n.tools)

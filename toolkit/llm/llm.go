@@ -138,8 +138,10 @@ func (n *Namespace) Tools() []gollm.Tool {
 	return n.tools
 }
 
-// Notify does nothing, as the tools don't change
 // Type returns that the namespace's tools are built in
 func (*Namespace) Type() string { return toolschema.NamespaceBuiltin }
 
-func (*Namespace) Notify(func(eventschema.EventAction, string)) {}
+// Watch sends the namespace's tools, which don't change
+func (ns *Namespace) Watch(ctx context.Context, ch chan<- eventschema.Event) error {
+	return toolkit.WatchTools(ctx, ch, ns.Tools())
+}
