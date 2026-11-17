@@ -47,6 +47,8 @@ func Test_Workspace(t *testing.T) {
 		list, err = m.List(ctx, workspaceschema.ListRequest{Path: "memories"})
 		require.NoError(t, err)
 		assert.Equal(t, []string{"memory:///memories/kitchen_lights.md"}, uris(list))
+		require.NotNil(t, list.Count, "how many there are")
+		assert.Equal(t, uint64(1), *list.Count)
 		assert.Equal(t, "The kitchen's lights", list.Body[0].Description)
 		assert.False(t, list.Body[0].Modified.IsZero(), "when it was remembered, as it hasn't changed")
 		list, err = m.List(ctx, workspaceschema.ListRequest{Recursive: true, Limit: 2})

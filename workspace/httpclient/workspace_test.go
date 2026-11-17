@@ -97,14 +97,21 @@ func Test_Client(t *testing.T) {
 		require.NotEmpty(t, list.Next)
 		assert.NotContains(t, list.Next, "more", "the cursor is opaque")
 
-		// With the folder, recursion, cursor and limit, as the workspace is
-		// asked, with its own cursor
-		req := schema.ListRequest{Path: "2026", Recursive: true, Cursor: list.Next, Limit: 10}
+		// The next page, of the same listing, as the workspace is asked, with
+		// its own cursor, and not of another listing
+		next := list.Next
+		_, err = c.ListResources(ctx, "notes", schema.ListRequest{Cursor: next})
+		require.NoError(t, err)
+		assert.Equal(t, schema.ListRequest{Cursor: "more"}, asked)
+		_, err = c.ListResources(ctx, "notes", schema.ListRequest{Path: "2026", Cursor: next})
+		assert.Error(t, err, "another folder's cursor")
+
+		// With the folder, recursion and limit, as the workspace is asked
+		req := schema.ListRequest{Path: "2026", Recursive: true, Limit: 10}
 		list, err = c.ListResources(ctx, "notes", req)
 		require.NoError(t, err)
 		require.Len(t, list.Body, 1)
 		assert.Equal(t, "resource://notes/file:///2026/b.md", list.Body[0].URI)
-		req.Cursor = "more"
 		assert.Equal(t, req, asked)
 
 		// A cursor which isn't one is said to be

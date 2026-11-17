@@ -74,4 +74,18 @@ func Test_ListLimit(t *testing.T) {
 	require.NoError(t, err)
 	_, err = r.ListResources(ctx, "other", schema.ListRequest{Cursor: first.Next})
 	assert.ErrorIs(t, err, llm.ErrBadParameter)
+
+	// Or another listing's, of another folder, recursion, or type
+	for _, other := range []schema.ListRequest{
+		{Path: "notes", Cursor: first.Next},
+		{Recursive: true, Cursor: first.Next},
+		{Type: schema.FolderType, Cursor: first.Next},
+	} {
+		_, err = r.ListResources(ctx, "server", other)
+		assert.ErrorIs(t, err, llm.ErrBadParameter, other)
+	}
+
+	// The same listing, with another limit, is the same listing
+	_, err = r.ListResources(ctx, "server", schema.ListRequest{Limit: 5, Cursor: first.Next})
+	assert.NoError(t, err)
 }

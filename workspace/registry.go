@@ -418,7 +418,7 @@ func (r *Registry) ListResources(ctx context.Context, name string, req schema.Li
 
 	// The cursor is the registry's, of the workspace's page, and how many
 	// of it were returned already
-	page, err := cursorOf(name, req.Cursor)
+	page, err := cursorOf(name, req)
 	if err != nil {
 		return nil, err
 	}
@@ -452,11 +452,14 @@ func (r *Registry) ListResources(ctx context.Context, name string, req schema.Li
 		switch {
 		case i < len(list.Body):
 			// The rest of this page is next
-			page = listCursor{Workspace: name, Cursor: page.Cursor, Skip: i}
+			page = listCursorOf(name, req, page.Cursor, i)
 		case list.Next != "":
-			page = listCursor{Workspace: name, Cursor: list.Next}
+			page = listCursorOf(name, req, list.Next, 0)
 		default:
 			page = listCursor{}
+		}
+		if result.Count == nil && list.Count != nil {
+			result.Count = list.Count
 		}
 		if page.Workspace == "" || req.Limit == 0 || uint(len(result.Body)) == req.Limit || pages >= maxListPages {
 			break
@@ -501,12 +504,22 @@ func (r *Registry) workspaceOf(name string, ws Workspace) schema.Workspace {
 // to fill a page of the limit, of the type
 const maxListPages = 10
 
-// listCursor is the registry's cursor of a workspace's list: its name, its
-// cursor of the page, and how many of the page were returned already
+// listCursor is the registry's cursor of a workspace's list: its name, the
+// listing's folder, whether it's recursive, and its type, its cursor of the
+// page, and how many of the page were returned already
 type listCursor struct {
 	Workspace string `json:"w"`
+	Path      string `json:"p,omitempty"`
+	Recursive bool   `json:"r,omitempty"`
+	Type      string `json:"t,omitempty"`
 	Cursor    string `json:"c,omitempty"`
 	Skip      int    `json:"s,omitempty"`
+}
+
+// listCursorOf returns the cursor of the listing, of the workspace with the
+// name, of its page, from the skip
+func listCursorOf(name string, req schema.ListRequest, cursor string, skip int) listCursor {
+	return listCursor{Workspace: name, Path: strings.Trim(req.Path, "/"), Recursive: req.Recursive, Type: req.Type, Cursor: cursor, Skip: skip}
 }
 
 // listCursorPrefix is the prefix of a cursor, which is opaque
@@ -518,12 +531,14 @@ func (c listCursor) String() string {
 	return listCursorPrefix + base64.RawURLEncoding.EncodeToString(data)
 }
 
-// cursorOf returns the cursor of the workspace with the name, or the start,
-// when it's empty. Returns ErrBadParameter when it isn't a cursor the
-// registry returned, or it's another workspace's.
-func cursorOf(name, cursor string) (listCursor, error) {
+// cursorOf returns the cursor of the request's listing, of the workspace
+// with the name, or its start, when it has none. Returns ErrBadParameter
+// when it isn't a cursor the registry returned, or it's another workspace's,
+// or another listing's, of another folder, recursion, or type.
+func cursorOf(name string, req schema.ListRequest) (listCursor, error) {
+	cursor := req.Cursor
 	if cursor == "" {
-		return listCursor{Workspace: name}, nil
+		return listCursorOf(name, req, "", 0), nil
 	}
 	bad := llm.ErrBadParameter.Withf("cursor %q isn't valid: pass a response's next, as it is", cursor)
 	encoded, ok := strings.CutPrefix(cursor, listCursorPrefix)
@@ -539,6 +554,15 @@ func cursorOf(name, cursor string) (listCursor, error) {
 		return listCursor{}, bad
 	} else if result.Workspace != name {
 		return listCursor{}, llm.ErrBadParameter.Withf("cursor is workspace %q's, not %q's", result.Workspace, name)
+	}
+	want := listCursorOf(name, req, result.Cursor, result.Skip)
+	switch {
+	case result.Path != want.Path:
+		return listCursor{}, llm.ErrBadParameter.Withf("cursor is of path %q, not %q: pass the path it was listed with", result.Path, want.Path)
+	case result.Recursive != want.Recursive:
+		return listCursor{}, llm.ErrBadParameter.Withf("cursor is of a listing whose recursive is %v, not %v: pass the recursive it was listed with", result.Recursive, want.Recursive)
+	case result.Type != want.Type:
+		return listCursor{}, llm.ErrBadParameter.Withf("cursor is of type %q, not %q: pass the type it was listed with", result.Type, want.Type)
 	}
 	return result, nil
 }

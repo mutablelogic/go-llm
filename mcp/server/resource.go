@@ -147,6 +147,9 @@ func (s *Server) listResources(ctx context.Context, req sdkmcp.Request) (sdkmcp.
 		return nil, err
 	}
 	result := &sdkmcp.ListResourcesResult{Resources: make([]*sdkmcp.Resource, 0, len(list.Body)), NextCursor: list.Next}
+	if list.Count != nil {
+		result.Meta = sdkmcp.Meta{schema.MetaCount: *list.Count}
+	}
 	for _, r := range list.Body {
 		result.Resources = append(result.Resources, r.MCP())
 	}

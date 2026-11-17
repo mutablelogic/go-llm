@@ -136,6 +136,8 @@ func (m *Memory) List(ctx context.Context, req workspaceschema.ListRequest) (*wo
 	if end < total {
 		response.Next = strconv.Itoa(end)
 	}
+	count := uint64(total)
+	response.Count = &count
 	return response, nil
 }
 

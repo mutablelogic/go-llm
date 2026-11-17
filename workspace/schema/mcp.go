@@ -29,6 +29,10 @@ const (
 	MetaLimit     = MetaPrefix + "limit"
 	MetaType      = MetaPrefix + "type"
 
+	// MetaCount is the key of the _meta of the result of resources/list,
+	// which is how many there are, of every page, when the workspace knows
+	MetaCount = MetaPrefix + "count"
+
 	// CapabilityTree is the key of the workspace capability, whose value is
 	// true when its folders are listed on their own, by their type, and
 	// have their paths, so they're shown as a tree
@@ -193,6 +197,17 @@ func ReadRangeOf(params *sdkmcp.ReadResourceParams) (offset, length int64, ok bo
 // false, when it's all of it, as a server which isn't a workspace returns
 func ChunkOf(result *sdkmcp.ReadResourceResult) bool {
 	return result != nil && result.Meta[MetaOffset] != nil
+}
+
+// CountOf returns how many resources there are, of every page, which the
+// result of resources/list says, or nil, when it doesn't
+func CountOf(result *sdkmcp.ListResourcesResult) *uint64 {
+	if result == nil || result.Meta[MetaCount] == nil {
+		return nil
+	}
+	var count uint64
+	decode(result.Meta[MetaCount], &count)
+	return &count
 }
 
 // SizeOf returns the size of the whole content of the resource, which a
