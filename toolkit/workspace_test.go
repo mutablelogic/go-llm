@@ -206,3 +206,19 @@ func (both) Run(ctx context.Context, _ json.RawMessage) (any, error) {
 	_, err := toolkit.Resources(ctx, "session:///a", "file:///note.md")
 	return nil, err
 }
+
+func TestWorkspacePrompt(t *testing.T) {
+	// The instructions say how to list, page, read, and that there's no
+	// search
+	ctx := context.Background()
+	registry, err := workspace.New()
+	require.NoError(t, err)
+	tk, err := toolkit.New(ctx, toolkit.WithWorkspaces(registry))
+	require.NoError(t, err)
+	prompts, err := tk.SystemPrompts(ctx, toolkit.WorkspaceNamespace+":*")
+	require.NoError(t, err)
+	prompt := strings.Join(prompts, "\n")
+	for _, want := range []string{"by its path", "not its uri", "cursor", "unchanged", "offset", "length", "llm:transcribe", "no search", "which one you read"} {
+		assert.Contains(t, prompt, want)
+	}
+}

@@ -173,7 +173,13 @@ func (*workspaceNamespace) Description() string {
 	return "Workspaces: folders and resources, such as notes and files"
 }
 func (*workspaceNamespace) SystemPrompt() string {
-	return "Workspaces have folders and resources, such as notes and files. List the workspaces, then a workspace's folders, and read a resource by its URI, as it's listed."
+	return "Workspaces hold folders and resources, such as notes and files. " +
+		"workspace:list shows the workspaces, and, with a workspace, its folders and resources: list under a folder by its path, from the listing, not its uri, which is for reading. " +
+		"Long listings page: pass a response's next back as cursor, unchanged, with the same path, recursive and type; count, when it's there, is how many there are. type filters, such as inode/directory for folders alone. " +
+		"workspace:read reads a resource by its uri: a document's text, as Markdown, a part at a time, whose front matter has its length; pass a part's next back as offset, until a part has none. " +
+		"An image, audio or video comes back as a file, which you see, or hear; one too large for that has no text, and its speech is for llm:transcribe, not reading. " +
+		"There's no search yet: to find something, walk the folders, and don't say you searched. " +
+		"When more than one workspace could hold what you want, say which one you read."
 }
 func (n *workspaceNamespace) Tools() []llm.Tool { return n.tools }
 func (n *workspaceNamespace) Watch(ctx context.Context, ch chan<- eventschema.Change) error {
@@ -185,7 +191,7 @@ func (n *workspaceNamespace) Watch(ctx context.Context, ch chan<- eventschema.Ch
 
 func (*listWorkspace) Name() string { return "list" }
 func (*listWorkspace) Description() string {
-	return "List the workspaces, without a workspace, or a workspace's folders and resources, in a folder, or under it, a page at a time"
+	return "List the workspaces, without a workspace, or a workspace's folders and resources, in a folder, by its path, from the listing, or under it, a page at a time, whose next is passed back as cursor"
 }
 func (*listWorkspace) InputSchema() *jsonschema.Schema {
 	return jsonschema.MustFor[ListWorkspaceRequest]()
