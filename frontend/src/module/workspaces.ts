@@ -4,8 +4,10 @@
 // #workspace/<name>/<folder>/…
 
 import { ListController, type Page, type Sort } from '@mutablelogic/go-server/list';
+import { PanelController, type PanelAction } from '@mutablelogic/go-server/panel';
+import { MediaPlayer } from '../component/media-player';
 import { contentURL, listFolder, listWorkspaces } from '../api/workspace';
-import { WorkspacePage } from '../page/workspace-page';
+import { WorkspacePage, type FileDetail } from '../page/workspace-page';
 import { routeHref } from '../router';
 import { FolderType, isFolder, type ResourceMeta, type Workspace } from '../schema/workspace';
 import { addPage, Section, type App } from './app';
@@ -61,8 +63,43 @@ export function workspacesModule(app: App): void {
     });
     page.controller = controller;
 
-    // A folder which is opened is shown, and a resource's content is opened
-    // in another tab
+    // A file is shown in a panel: what it is, its metadata, and its
+    // artwork, and its content is opened in another tab, downloaded, or, when
+    // it's audio, or video, played in the sidebar's player
+    const panel = new PanelController<FileDetail>();
+    page.panel = panel;
+    const showFile = async (item: ResourceMeta) => {
+        const workspace = name;
+        const [url, download, artwork] = await Promise.all([
+            contentURL(workspace, item.uri),
+            contentURL(workspace, item.uri, true),
+            Promise.all((item.artwork ?? []).map(async (art) => ({ ...art, url: await contentURL(workspace, art.uri) }))),
+        ]);
+        if (workspace !== name) {
+            return;
+        }
+        const title = item.title || item.name;
+        const playable = /^(audio|video)\//.test(item.type ?? '');
+        const actions: PanelAction[] = [];
+        if (playable) {
+            actions.push({
+                label: 'Play',
+                kind: 'primary',
+                close: false,
+                run: () => document.dispatchEvent(new CustomEvent(MediaPlayer.eventPlay, { detail: { url, name: title, type: item.type } })),
+            });
+        }
+        actions.push(
+            { label: 'Open', kind: playable ? 'secondary' : 'primary', close: false, run: () => window.open(url, '_blank', 'noopener') },
+            { label: 'Download', kind: 'secondary', close: false, run: () => save(download, item.name) },
+        );
+        panel.setHeader({ title, subtitle: item.type });
+        panel.setActions(actions);
+        page.file = { item, url, artwork };
+        panel.open(page.file);
+    };
+
+    // A folder which is opened is shown, and a file in the panel
     controller.subscribe((state) => {
         const item = state.selected;
         if (!item) {
@@ -72,7 +109,7 @@ export function workspacesModule(app: App): void {
         if (isFolder(item)) {
             location.hash = routeHref('workspace', name, ...path, item.name);
         } else {
-            void contentURL(name, item.uri).then((url) => window.open(url, '_blank', 'noopener'));
+            void showFile(item);
         }
     });
 
@@ -178,9 +215,19 @@ export function workspacesModule(app: App): void {
         page.path = path;
         show();
         if (changed) {
+            panel.close();
             void controller.reset();
         }
     });
+}
+
+// save saves the content at the URL, which is an attachment, as the file
+// with the name
+function save(url: string, name: string) {
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = name;
+    link.click();
 }
 
 // pageOf returns the page of the items, at the offset, of at most the limit,
