@@ -92,7 +92,9 @@ export function chatModule(app: App): ChatModule {
     // Its page, in the sidebar, and its route, whose parameter is the chat
     // which is open
     app.nav.setModule('chat', Section, [{ id: 'chat', label: 'Conversations', href: '#chat' }]);
-    app.router.add('chat', page, (route) => void chat.open(route.params[0] || undefined));
+    // A page which isn't found shows Conversations, whose parameters aren't
+    // a chat's
+    app.router.add('chat', page, (route) => void chat.open(route.page === 'chat' ? route.params[0] || undefined : undefined));
     app.router.onRoute((route) => {
         // Dictation stops, as the page, or the chat, changes, so what's said
         // isn't put in another's box, and its panels are closed, once it
