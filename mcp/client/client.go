@@ -39,6 +39,7 @@ type Client struct {
 	// The source of the token its requests are authorized with, or nil, and
 	// the challenge of the last request which wasn't authorized, or nil
 	tokens    oauth2.TokenSource
+	transport TransportFunc // Makes the transport of each connection, or nil
 	challenge atomic.Pointer[authclient.AuthError]
 
 	// The session with the server, once it's connected, and the error of
@@ -61,22 +62,36 @@ type Client struct {
 // https://mcp.example.com/mcp, or one which ends /sse, of a server with the
 // SSE transport, with the options, such as its name, and version, which the
 // server is told, with WithName, and go-client's, with WithClientOpts. It
-// isn't connected, until Connect is called. Returns ErrBadParameter when
-// the URL isn't an http, or https, URL with a host.
+// isn't connected, until Connect is called. With WithTransport, it's
+// connected with the transport, and the URL is any which names the server,
+// such as memory://weatherapi. Returns ErrBadParameter when the URL isn't
+// an http, or https, URL with a host, or, with a transport, has no scheme.
 func New(endpoint string, opts ...Opt) (*Client, error) {
-	u, err := url.Parse(strings.TrimSpace(endpoint))
-	if err != nil {
-		return nil, llm.ErrBadParameter.Withf("url %q: %v", endpoint, err)
-	} else if u.Scheme != "http" && u.Scheme != "https" {
-		return nil, llm.ErrBadParameter.Withf("url %q isn't http, or https", endpoint)
-	} else if u.Hostname() == "" {
-		return nil, llm.ErrBadParameter.Withf("url %q has no host", endpoint)
-	}
-
 	// Apply the options
 	var o opt
 	if err := o.apply(opts); err != nil {
 		return nil, err
+	}
+
+	// Check the URL
+	u, err := url.Parse(strings.TrimSpace(endpoint))
+	if err != nil {
+		return nil, llm.ErrBadParameter.Withf("url %q: %v", endpoint, err)
+	} else if o.transport != nil {
+		if u.Scheme == "" {
+			return nil, llm.ErrBadParameter.Withf("url %q has no scheme", endpoint)
+		}
+		return &Client{
+			endpoint:       u.String(),
+			implementation: sdkmcp.Implementation{Name: o.name, Version: o.version},
+			change:         o.change,
+			toolsChanged:   o.toolsChanged,
+			transport:      o.transport,
+		}, nil
+	} else if u.Scheme != "http" && u.Scheme != "https" {
+		return nil, llm.ErrBadParameter.Withf("url %q isn't http, or https", endpoint)
+	} else if u.Hostname() == "" {
+		return nil, llm.ErrBadParameter.Withf("url %q has no host", endpoint)
 	}
 
 	// Create the client, for the server, with go-client's options, and its
