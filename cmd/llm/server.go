@@ -198,7 +198,7 @@ func (runner *RunServer) Run(ctx server.Cmd) error {
 func (runner *RunServer) withWorkspace(ctx server.Cmd, b *broadcaster.Broadcaster, mem *memory.Memory, h *heartbeat.Heartbeats, res *resource.Manager, events *atomic.Pointer[registry.Registry], build registry.EventBuilder, store registry.ProviderStore, connectorStore *connectorStore, creds credential.CredentialProvider, sessions *sessionStore, agents *agentStore, outcomes *eventStore) error {
 	return runner.Workspace.WithWorkspaces(ctx, &runner.RunServer, func(workspaces *workspace.Registry) error {
 		return runner.withToolkit(ctx, b, workspaces, mem, h, res, events, build, store, connectorStore, creds, sessions, agents, outcomes)
-	}, workspace.WithBroadcaster(b))
+	}, workspace.WithBroadcaster(b), workspace.WithTracer(ctx.Tracer()))
 }
 
 // withToolkit runs the server, with a toolkit, which has the memory, and

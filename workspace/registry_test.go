@@ -21,6 +21,8 @@ import (
 	schema "github.com/mutablelogic/go-llm/workspace/schema"
 	assert "github.com/stretchr/testify/assert"
 	require "github.com/stretchr/testify/require"
+	sdktrace "go.opentelemetry.io/otel/sdk/trace"
+	tracetest "go.opentelemetry.io/otel/sdk/trace/tracetest"
 )
 
 // empty is a workspace with no resources
@@ -300,12 +302,60 @@ func (b *safeBuffer) String() string {
 	return b.buf.String()
 }
 
+func Test_Spans(t *testing.T) {
+	// The registry's operations are traced, with their arguments
+	ctx := context.Background()
+	recorder := tracetest.NewSpanRecorder()
+	tracer := sdktrace.NewTracerProvider(sdktrace.WithSpanProcessor(recorder)).Tracer("test")
+	r, err := workspace.New(workspace.WithTracer(tracer))
+	require.NoError(t, err)
+	require.NoError(t, r.Add("notes", readable{}))
+
+	attrs := func(name string) map[string]string {
+		t.Helper()
+		for _, span := range recorder.Ended() {
+			if span.Name() == name {
+				result := map[string]string{}
+				for _, kv := range span.Attributes() {
+					result[string(kv.Key)] = kv.Value.Emit()
+				}
+				return result
+			}
+		}
+		t.Fatalf("no span %q", name)
+		return nil
+	}
+
+	r.ListWorkspaces(ctx)
+	attrs("llm.workspace.ListWorkspaces")
+	_, err = r.GetWorkspace(ctx, "notes")
+	require.NoError(t, err)
+	assert.Equal(t, "notes", attrs("llm.workspace.GetWorkspace")["arg.name"])
+	_, err = r.ListResources(ctx, "notes", schema.ListRequest{Path: "2026"})
+	require.NoError(t, err)
+	assert.Equal(t, "notes", attrs("llm.workspace.ListResources")["arg.name"])
+	assert.Contains(t, attrs("llm.workspace.ListResources")["arg.req"], "2026")
+	_, err = r.Resolve(ctx, "resource://notes/file:///note.md")
+	require.NoError(t, err)
+	assert.Equal(t, "resource://notes/file:///note.md", attrs("llm.workspace.Resolve")["arg.uri"])
+	assert.Equal(t, "file:///note.md", attrs("llm.workspace.Read")["arg.uri"])
+
+	// As is one which isn't the workspace's URI, which each workspace is
+	// asked for, with its name
+	recorder.Reset()
+	_, err = r.Resolve(ctx, "file:///note.md")
+	require.NoError(t, err)
+	assert.Equal(t, "file:///note.md", attrs("llm.workspace.Resolve")["arg.uri"])
+	assert.Equal(t, "notes", attrs("llm.workspace.Read")["arg.name"])
+	assert.Equal(t, "file:///note.md", attrs("llm.workspace.Read")["arg.uri"])
+}
+
 func Test_Watched(t *testing.T) {
 	// A workspace is said to be watched only while the registry watches it:
 	// with a broadcaster, until its watch ends
 	watched := func(r *workspace.Registry, name string) bool {
 		t.Helper()
-		ws, err := r.GetWorkspace(name)
+		ws, err := r.GetWorkspace(context.Background(), name)
 		require.NoError(t, err)
 		return ws.Watch
 	}
@@ -322,7 +372,7 @@ func Test_Watched(t *testing.T) {
 	defer r.Close()
 	require.NoError(t, r.Add("notes", changing{changes: make(chan schema.Change)}))
 	assert.True(t, watched(r, "notes"))
-	assert.True(t, r.ListWorkspaces().Body[0].Watch)
+	assert.True(t, r.ListWorkspaces(context.Background()).Body[0].Watch)
 	ending := ending{changes: make(chan schema.Change, 1)}
 	require.NoError(t, r.Add("ending", ending))
 	ending.changes <- schema.Change{Action: eventschema.EventUpdate, URI: "file:///a.md"}

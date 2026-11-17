@@ -4,6 +4,8 @@ package schema
 
 import (
 	"encoding/json"
+	"net/url"
+	"strconv"
 	"time"
 
 	// Packages
@@ -146,4 +148,24 @@ func MetaOf(md []metadata.Metadata) []Meta {
 		result = append(result, Meta{NS: m.NS(), Key: m.Key(), Text: text, Value: value})
 	}
 	return result
+}
+
+// Query returns the request as the query of a URL, without its fields which
+// aren't set, and with its folder, and cursor, as they are, as a folder's
+// name can have spaces, and a cursor is the workspace's own
+func (r ListRequest) Query() url.Values {
+	q := url.Values{}
+	if r.Path != "" {
+		q.Set("path", r.Path)
+	}
+	if r.Recursive {
+		q.Set("recursive", "true")
+	}
+	if r.Cursor != "" {
+		q.Set("cursor", r.Cursor)
+	}
+	if r.Limit > 0 {
+		q.Set("limit", strconv.FormatUint(uint64(r.Limit), 10))
+	}
+	return q
 }

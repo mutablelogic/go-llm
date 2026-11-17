@@ -13,10 +13,12 @@ import (
 	"time"
 
 	// Packages
+	otel "github.com/mutablelogic/go-client/pkg/otel"
 	llm "github.com/mutablelogic/go-llm"
 	eventschema "github.com/mutablelogic/go-llm/broadcaster/schema"
 	schema "github.com/mutablelogic/go-llm/workspace/schema"
 	types "github.com/mutablelogic/go-server/pkg/types"
+	attribute "go.opentelemetry.io/otel/attribute"
 )
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -184,18 +186,23 @@ func (r *Registry) With(name string, fn func(Workspace) error) error {
 // own URI, which is read from whichever of the workspaces, in order of their
 // names, which read their resources, has it. Its URI is the workspace's.
 // Returns ErrNotFound when none has it.
-func (r *Registry) Resolve(ctx context.Context, uri string) (llm.Resource, error) {
+func (r *Registry) Resolve(ctx context.Context, uri string) (_ llm.Resource, err error) {
+	ctx, endSpan := otel.StartSpan(r.tracer, ctx, "llm.workspace.Resolve",
+		attribute.String("arg.uri", uri),
+	)
+	defer func() { endSpan(err) }()
+
 	if name, original, ok := schema.ParseURI(uri); ok {
 		return r.Read(ctx, name, original)
 	}
 	for name, ws := range r.All() {
-		reader, ok := ws.(Reader)
-		if !ok {
+		if _, ok := ws.(Reader); !ok {
 			continue
 		}
-		resource, err := reader.Read(ctx, uri)
+		// Each is read as Read does, so it's traced, with its workspace
+		resource, err := r.Read(ctx, name, uri)
 		if err == nil {
-			return withURI(resource, schema.URIOf(name, uri)), nil
+			return resource, nil
 		} else if !errors.Is(err, llm.ErrNotFound) && !errors.Is(err, llm.ErrBadParameter) {
 			return nil, err
 		}
@@ -209,6 +216,12 @@ func (r *Registry) Resolve(ctx context.Context, uri string) (llm.Resource, error
 // there's no workspace with the name, or the URI is another's, and
 // ErrNotImplemented when it isn't a Reader, so its resources aren't read.
 func (r *Registry) Read(ctx context.Context, name, uri string) (resource llm.Resource, err error) {
+	ctx, endSpan := otel.StartSpan(r.tracer, ctx, "llm.workspace.Read",
+		attribute.String("arg.name", name),
+		attribute.String("arg.uri", uri),
+	)
+	defer func() { endSpan(err) }()
+
 	if workspace, original, ok := schema.ParseURI(uri); ok {
 		if workspace != name {
 			return nil, llm.ErrNotFound.Withf("resource %q isn't in workspace %q", uri, name)
@@ -356,7 +369,10 @@ func same(a, b Workspace) (result bool) {
 
 // ListWorkspaces returns the workspaces which are available, in order of
 // their names, with whether each reads its resources, and is watched now
-func (r *Registry) ListWorkspaces() *schema.WorkspaceList {
+func (r *Registry) ListWorkspaces(ctx context.Context) *schema.WorkspaceList {
+	_, endSpan := otel.StartSpan(r.tracer, ctx, "llm.workspace.ListWorkspaces")
+	defer func() { endSpan(nil) }()
+
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 	result := &schema.WorkspaceList{Body: []schema.Workspace{}}
@@ -371,7 +387,12 @@ func (r *Registry) ListWorkspaces() *schema.WorkspaceList {
 
 // GetWorkspace returns the workspace with the name, with whether it reads
 // its resources, and is watched. Returns ErrNotFound when there's none.
-func (r *Registry) GetWorkspace(name string) (result *schema.Workspace, err error) {
+func (r *Registry) GetWorkspace(ctx context.Context, name string) (result *schema.Workspace, err error) {
+	_, endSpan := otel.StartSpan(r.tracer, ctx, "llm.workspace.GetWorkspace",
+		attribute.String("arg.name", name),
+	)
+	defer func() { endSpan(err) }()
+
 	err = r.With(name, func(ws Workspace) error {
 		w := r.workspaceOf(name, ws)
 		result = &w
@@ -384,6 +405,12 @@ func (r *Registry) GetWorkspace(name string) (result *schema.Workspace, err erro
 // workspace with the name, whose URIs, and their artwork's, are the
 // workspace's, resource://<workspace>/<uri>. Returns ErrNotFound when there's none.
 func (r *Registry) ListResources(ctx context.Context, name string, req schema.ListRequest) (result *schema.ListResponse, err error) {
+	ctx, endSpan := otel.StartSpan(r.tracer, ctx, "llm.workspace.ListResources",
+		attribute.String("arg.name", name),
+		attribute.String("arg.req", types.Stringify(req)),
+	)
+	defer func() { endSpan(err) }()
+
 	err = r.With(name, func(ws Workspace) error {
 		result, err = ws.List(ctx, req)
 		return err
