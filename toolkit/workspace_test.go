@@ -99,6 +99,19 @@ func TestWorkspaces(t *testing.T) {
 		assert.Contains(t, string(result), "text/markdown")
 		_, err = tk.CallTool(ctx, "workspace:read", json.RawMessage(`{"uri":"resource://other/file:///note.md"}`))
 		assert.ErrorIs(t, err, llm.ErrNotFound, "another workspace")
+
+		// As Markdown
+		result, err = tk.CallTool(ctx, "workspace:read", json.RawMessage(`{"uri":"resource://notes/file:///note.md","format":"markdown"}`))
+		require.NoError(t, err)
+		var part struct {
+			URI  string `json:"uri"`
+			Body string `json:"body"`
+		}
+		require.NoError(t, json.Unmarshal(result, &part))
+		assert.Equal(t, "resource://notes/file:///note.md", part.URI)
+		assert.Contains(t, part.Body, "Note")
+		_, err = tk.CallTool(ctx, "workspace:read", json.RawMessage(`{"uri":"resource://notes/file:///note.md","format":"pdf"}`))
+		assert.ErrorIs(t, err, llm.ErrBadParameter)
 	})
 
 	t.Run("Resolve", func(t *testing.T) {
