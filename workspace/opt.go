@@ -4,6 +4,7 @@ import (
 	// Packages
 	llm "github.com/mutablelogic/go-llm"
 	broadcaster "github.com/mutablelogic/go-llm/broadcaster"
+	trace "go.opentelemetry.io/otel/trace"
 )
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -15,6 +16,9 @@ type Opt func(*opt) error
 type opt struct {
 	// The broadcaster the registry's changes are published to, or nil
 	broadcaster *broadcaster.Broadcaster
+
+	// The tracer of the registry's operations, or nil
+	tracer trace.Tracer
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -31,6 +35,15 @@ func (o *opt) apply(opts []Opt) error {
 
 ///////////////////////////////////////////////////////////////////////////////
 // OPTIONS
+
+// WithTracer traces the registry's operations, such as listing, and reading,
+// its workspaces' resources
+func WithTracer(tracer trace.Tracer) Opt {
+	return func(o *opt) error {
+		o.tracer = tracer
+		return nil
+	}
+}
 
 // WithBroadcaster publishes the registry's changes: a workspace which is
 // added, or removed, in WorkspaceTable, whose row is its name, and the
