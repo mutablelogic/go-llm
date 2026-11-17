@@ -39,7 +39,7 @@ type Namespace struct {
 	serial      uint64            // The serial of the connector, as it was connected
 	tools       []*tool
 	prompts     []*prompt // Its server's prompts, as agents, by their names
-	notify      func(eventschema.EventAction, string)
+	watchers    toolkit.Watchers
 }
 
 var _ toolkit.Namespace = (*Namespace)(nil)
@@ -156,13 +156,11 @@ func (ns *Namespace) PromptMessages(ctx context.Context, name string, input json
 	return messages, nil
 }
 
-// Notify sets the function which is called, once the namespace is added to
-// a toolkit, when one of its tools is created, updated, or deleted, as
-// they're listed again, or cleared
-func (ns *Namespace) Notify(fn func(eventschema.EventAction, string)) {
-	ns.mu.Lock()
-	defer ns.mu.Unlock()
-	ns.notify = fn
+// Watch sends the changes to the namespace's tools, as they're listed again,
+// or cleared, to the channel, until the context is cancelled, as
+// toolkit.Namespace says
+func (ns *Namespace) Watch(ctx context.Context, ch chan<- eventschema.Event) error {
+	return ns.watchers.Watch(ctx, ch, ns.Tools)
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -308,33 +306,28 @@ func (ns *Namespace) clear() {
 	ns.replacePrompts(nil)
 }
 
-// replacePrompts replaces the prompts, and calls the function Notify set,
-// without the lock, with each which was created, updated, or deleted
+// replacePrompts replaces the prompts, and tells the watches, without the
+// lock, with each which was created, updated, or deleted
 func (ns *Namespace) replacePrompts(prompts []*prompt) {
 	ns.mu.Lock()
 	changes := diffPrompts(ns.prompts, prompts)
+	prompts = keep(ns.prompts, prompts, func(p *prompt) string { return p.name }, changes)
 	ns.prompts = prompts
-	notify := ns.notify
 	ns.mu.Unlock()
-	if notify != nil {
-		for _, change := range changes {
-			notify(change.action, change.name)
-		}
+	for _, change := range changes {
+		ns.watchers.Changed(change.action, change.name)
 	}
 }
 
-// replace replaces the tools, and calls the function Notify set, without
-// the lock, with each which was created, updated, or deleted
+// replace replaces the tools, and tells the watches, without the lock, with each which was created, updated, or deleted
 func (ns *Namespace) replace(tools []*tool) {
 	ns.mu.Lock()
 	changes := diff(ns.tools, tools)
+	tools = keep(ns.tools, tools, (*tool).Name, changes)
 	ns.tools = tools
-	notify := ns.notify
 	ns.mu.Unlock()
-	if notify != nil {
-		for _, change := range changes {
-			notify(change.action, change.name)
-		}
+	for _, change := range changes {
+		ns.watchers.Changed(change.action, change.name)
 	}
 }
 
@@ -359,7 +352,10 @@ func diff(before, after []*tool) []change {
 	for _, t := range after {
 		if prev, exists := old[t.Name()]; !exists {
 			result = append(result, change{eventschema.EventCreate, t.Name()})
-		} else if !sameTool(prev.t, t.t) {
+		} else if !sameTool(prev.t, t.t) || prev.client != t.client {
+			// It's another definition, or is called with another client,
+			// such as once the namespace is connected again, so its value
+			// is the new one
 			result = append(result, change{eventschema.EventUpdate, t.Name()})
 		}
 		delete(old, t.Name())
@@ -368,6 +364,29 @@ func diff(before, after []*tool) []change {
 		if _, exists := old[t.Name()]; exists {
 			result = append(result, change{eventschema.EventDelete, t.Name()})
 		}
+	}
+	return result
+}
+
+// keep returns the values after, with those which didn't change, as the
+// changes say, replaced with the values before, so the namespace's Tools
+// returns the same value for a tool which didn't change, as a toolkit
+// expects
+func keep[T any](before, after []T, name func(T) string, changes []change) []T {
+	changed := make(map[string]bool, len(changes))
+	for _, c := range changes {
+		changed[c.name] = true
+	}
+	old := make(map[string]T, len(before))
+	for _, v := range before {
+		old[name(v)] = v
+	}
+	result := make([]T, len(after))
+	for i, v := range after {
+		if prev, exists := old[name(v)]; exists && !changed[name(v)] {
+			v = prev
+		}
+		result[i] = v
 	}
 	return result
 }

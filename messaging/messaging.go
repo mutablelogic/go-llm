@@ -38,6 +38,8 @@ import (
 // concurrently, by one server, as a provider's messages are received by
 // one.
 type Messaging struct {
+	toolsOnce   sync.Once  // Makes the tools once, so they're the same values
+	tools       []llm.Tool // The tools, once they're made
 	store       Store
 	providers   map[string]Provider
 	broadcaster *broadcaster.Broadcaster

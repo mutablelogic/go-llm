@@ -99,11 +99,21 @@ func (self *Toolkit) AvailableTools(ctx context.Context, names ...string) (_ []l
 // resolve returns the tools with the names, as with Tools, and when skip is
 // true, skips a name which isn't found, and returns the names skipped
 func (self *Toolkit) resolve(names []string, skip bool) ([]llm.Tool, []string, error) {
+	// The namespaces are read once, for all the names
+	self.mu.Lock()
+	self.currentFor(names...)
+	lookups := make([][]entry, len(names))
+	errs := make([]error, len(names))
+	for i, name := range names {
+		lookups[i], errs[i] = self.lookupAllLocked(strings.TrimSpace(name))
+	}
+	self.mu.Unlock()
+
 	result := make([]llm.Tool, 0, len(names))
 	seen := make(map[string]string, len(names))
 	var skipped []string
-	for _, name := range names {
-		entries, err := self.lookupAll(strings.TrimSpace(name))
+	for i, name := range names {
+		entries, err := lookups[i], errs[i]
 		if skip && errors.Is(err, llm.ErrNotFound) {
 			skipped = append(skipped, name)
 			continue
@@ -163,11 +173,50 @@ func (self *Toolkit) ToolNames(ctx context.Context, names ...string) (_ []string
 // lookupAll returns the tools with the name, which is "*" for all the tools,
 // or a namespace and "*" for all the tools in the namespace, in order of
 // canonical name, apart from those which aren't expanded, or otherwise the
-// one tool with the name
+// one tool with the name, as the namespaces it needs return them now
 func (self *Toolkit) lookupAll(name string) ([]entry, error) {
+	self.mu.Lock()
+	defer self.mu.Unlock()
+	self.currentFor(name)
+	return self.lookupAllLocked(name)
+}
+
+// lookup returns the tool with the name, which is its canonical name, or its
+// name without a namespace, which must be the name of only one tool, as the
+// namespaces it needs return it now
+func (self *Toolkit) lookup(name string) (entry, error) {
+	self.mu.Lock()
+	defer self.mu.Unlock()
+	self.currentFor(name)
+	return self.lookupLocked(name)
+}
+
+// currentFor changes the tools of the namespaces the names need, as they
+// are now, once each: the namespace of a canonical name, or of a namespace
+// and "*", or every namespace, for "*", or a name without a namespace. The
+// caller holds the lock.
+func (self *Toolkit) currentFor(names ...string) {
+	namespaces := make(map[string]bool, len(names))
+	for _, name := range names {
+		name = strings.TrimSpace(name)
+		if namespace, ok := strings.CutSuffix(name, schema.ToolSeparator+"*"); ok {
+			namespaces[namespace] = true
+		} else if namespace, _, ok := strings.Cut(name, schema.ToolSeparator); ok {
+			namespaces[namespace] = true
+		} else {
+			self.current()
+			return
+		}
+	}
+	for _, namespace := range slices.Sorted(maps.Keys(namespaces)) {
+		self.currentNamespace(namespace)
+	}
+}
+
+// lookupAllLocked returns the tools with the name, as lookupAll does, as
+// the toolkit has them. The caller holds the lock.
+func (self *Toolkit) lookupAllLocked(name string) ([]entry, error) {
 	if name == "*" {
-		self.mu.RLock()
-		defer self.mu.RUnlock()
 		result := make([]entry, 0, len(self.tools))
 		for _, canonical := range slices.Sorted(maps.Keys(self.tools)) {
 			if !unexpanded[canonical] {
@@ -178,33 +227,27 @@ func (self *Toolkit) lookupAll(name string) ([]entry, error) {
 	}
 	namespace, ok := strings.CutSuffix(name, schema.ToolSeparator+"*")
 	if !ok {
-		tool, err := self.lookup(name)
+		tool, err := self.lookupLocked(name)
 		if err != nil {
 			return nil, err
 		}
 		return []entry{tool}, nil
 	}
-
-	self.mu.RLock()
-	defer self.mu.RUnlock()
 	if _, exists := self.namespaces[namespace]; !exists {
 		return nil, llm.ErrNotFound.Withf("namespace %q", namespace)
 	}
 	var result []entry
-	for _, canonical := range slices.Sorted(maps.Keys(self.tools)) {
-		if entry := self.tools[canonical]; entry.namespace == namespace && !unexpanded[canonical] {
-			result = append(result, entry)
+	for _, canonical := range slices.Sorted(maps.Keys(self.index[namespace])) {
+		if !unexpanded[canonical] {
+			result = append(result, self.tools[canonical])
 		}
 	}
 	return result, nil
 }
 
-// lookup returns the tool with the name, which is its canonical name, or its
-// name without a namespace, which must be the name of only one tool
-func (self *Toolkit) lookup(name string) (entry, error) {
-	self.mu.RLock()
-	defer self.mu.RUnlock()
-
+// lookupLocked returns the tool with the name, as lookup does, as the
+// toolkit has it. The caller holds the lock.
+func (self *Toolkit) lookupLocked(name string) (entry, error) {
 	// A canonical name refers to one tool
 	if strings.Contains(name, schema.ToolSeparator) {
 		if entry, exists := self.tools[name]; exists {

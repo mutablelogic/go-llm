@@ -1,6 +1,7 @@
 package client
 
 import (
+	"context"
 	"strings"
 
 	// Packages
@@ -34,7 +35,16 @@ type opt struct {
 	// The source of the token the server's requests are authorized with,
 	// which is refreshed, as it expires, or nil
 	tokens oauth2.TokenSource
+
+	// Makes the transport of each connection, rather than the server's URL,
+	// or nil
+	transport TransportFunc
 }
+
+// TransportFunc returns a new transport to the server, for each time it's
+// connected, such as one which is in memory, to a server in the same
+// process, with Server.InMemoryTransport
+type TransportFunc func(context.Context) (sdkmcp.Transport, error)
 
 // ChangeFunc is called, without a lock, when the client is connected, with
 // the server, as it said, or disconnected, with nil, and why, when it
@@ -65,6 +75,7 @@ func (o *opt) defaults() {
 	o.change = nil
 	o.toolsChanged = nil
 	o.tokens = nil
+	o.transport = nil
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -111,6 +122,20 @@ func WithToolsChanged(fn func()) Opt {
 func WithTokenSource(tokens oauth2.TokenSource) Opt {
 	return func(o *opt) error {
 		o.tokens = tokens
+		return nil
+	}
+}
+
+// WithTransport connects to the server with the transport the function
+// returns, each time it's connected, rather than its URL, which is then
+// any URL which names it, such as memory://weatherapi. Its requests aren't
+// authorized, nor are go-client's options applied to them.
+func WithTransport(fn TransportFunc) Opt {
+	return func(o *opt) error {
+		if fn == nil {
+			return llm.ErrBadParameter.With("missing transport")
+		}
+		o.transport = fn
 		return nil
 	}
 }

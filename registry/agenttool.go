@@ -28,10 +28,10 @@ import (
 // agent__segment, so a model can ask an agent to do something. Its tools
 // change as the agents do, which it tells the toolkit.
 type agentNamespace struct {
-	name   string // The namespace, which is its agents'
-	mu     sync.RWMutex
-	tools  map[string]*agentTool
-	notify func(eventschema.EventAction, string)
+	name     string // The namespace, which is its agents'
+	mu       sync.RWMutex
+	tools    map[string]*agentTool
+	watchers toolkit.Watchers
 }
 
 // agentTool is an agent, as a tool: its name, and what it does, which are
@@ -117,12 +117,10 @@ func (n *agentNamespace) Tools() []llm.Tool {
 	return result
 }
 
-// Notify sets the function which is called when an agent is created,
-// updated or deleted
-func (n *agentNamespace) Notify(fn func(eventschema.EventAction, string)) {
-	n.mu.Lock()
-	defer n.mu.Unlock()
-	n.notify = fn
+// Watch sends that an agent was created, updated or deleted, to the
+// channel, until the context is cancelled, as toolkit.Namespace says
+func (n *agentNamespace) Watch(ctx context.Context, ch chan<- eventschema.Event) error {
+	return n.watchers.Watch(ctx, ch, n.Tools)
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -140,16 +138,13 @@ func (n *agentNamespace) set(r *Registry, agent schema.Agent) {
 	n.mu.Lock()
 	_, exists := n.tools[agent.Name]
 	n.tools[agent.Name] = tool
-	notify := n.notify
 	n.mu.Unlock()
 
-	// The toolkit is told without the lock, as it reads the tools
-	if notify != nil {
-		if exists {
-			notify(eventschema.EventUpdate, agent.Name)
-		} else {
-			notify(eventschema.EventCreate, agent.Name)
-		}
+	// The watches are told without the lock, as they read the tools
+	if exists {
+		n.watchers.Changed(eventschema.EventUpdate, agent.Name)
+	} else {
+		n.watchers.Changed(eventschema.EventCreate, agent.Name)
 	}
 }
 
@@ -158,10 +153,9 @@ func (n *agentNamespace) remove(name string) {
 	n.mu.Lock()
 	_, exists := n.tools[name]
 	delete(n.tools, name)
-	notify := n.notify
 	n.mu.Unlock()
-	if exists && notify != nil {
-		notify(eventschema.EventDelete, name)
+	if exists {
+		n.watchers.Changed(eventschema.EventDelete, name)
 	}
 }
 

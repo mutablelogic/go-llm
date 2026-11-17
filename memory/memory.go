@@ -64,6 +64,8 @@ type Memory struct {
 	tracer      trace.Tracer
 	details     schema.Details
 	now         func() time.Time
+	toolsOnce   sync.Once  // Makes the tools once, so they're the same values
+	tools       []llm.Tool // The tools, once they're made
 }
 
 ///////////////////////////////////////////////////////////////////////////////
