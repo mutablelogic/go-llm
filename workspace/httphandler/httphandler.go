@@ -1,7 +1,6 @@
 package httphandler
 
 import (
-	"bytes"
 	"context"
 	"crypto/sha256"
 	_ "embed"
@@ -37,6 +36,11 @@ type workspaceName struct {
 
 //go:embed README.md
 var readme []byte
+
+// MaxHashed is the largest content which is read, and hashed, for its
+// entity tag, before it's written. Larger content is written as it's read,
+// without one, in ranges, when it can seek.
+const MaxHashed = 8 * 1024 * 1024
 
 ///////////////////////////////////////////////////////////////////////////////
 // LIFECYCLE
@@ -122,10 +126,18 @@ func contentHandlers(workspaces *workspace.Registry, router *httprouter.Router, 
 			name := r.PathValue("name")
 			if err := httprequest.Query(r.URL.Query(), &req); err != nil {
 				httpresponse.Error(w, httpresponse.ErrBadRequest.With(err.Error()))
-			} else if binary, body, err := read(r.Context(), workspaces, name, req); err != nil {
+			} else if binary, content, err := read(r.Context(), workspaces, name, req); err != nil {
 				httpresponse.Error(w, llm.HTTPErr(err), req.URI)
 			} else {
-				_ = binary.Write(w, r, body)
+				// The content is written as it's read, so an error is
+				// responded with, unless it's being written
+				writing := false
+				if err := content(r.Context(), func(body io.Reader) error {
+					writing = true
+					return binary.Write(w, r, body)
+				}); err != nil && !writing {
+					httpresponse.Error(w, llm.HTTPErr(err), req.URI)
+				}
 			}
 		}, func(op httprequest.PathOperation) {
 			op.Summary("Read Resource")
@@ -146,10 +158,11 @@ func contentHandlers(workspaces *workspace.Registry, router *httprouter.Router, 
 // PRIVATE FUNCTIONS
 
 // read reads the workspace's resource, as it is, or as a Markdown document,
-// and returns how it's written, and its content, whose entity tag is the
+// and returns how it's written, and its content. Its entity tag is the
 // SHA-256 of its content, as a workspace's resource has none of its own, so
-// a request for it, again, which has it, isn't sent it
-func read(ctx context.Context, workspaces *workspace.Registry, name string, req schema.ReadRequest) (httpresponse.Binary, io.Reader, error) {
+// a request for it, again, which has it, isn't sent it, unless it's larger
+// than MaxHashed, when it's read as it's written, without one.
+func read(ctx context.Context, workspaces *workspace.Registry, name string, req schema.ReadRequest) (httpresponse.Binary, llm.ReadFunc, error) {
 	if strings.TrimSpace(req.URI) == "" {
 		return httpresponse.Binary{}, nil, llm.ErrBadParameter.With("missing uri")
 	}
@@ -164,10 +177,18 @@ func read(ctx context.Context, workspaces *workspace.Registry, name string, req 
 	var data []byte
 	switch strings.ToLower(strings.TrimSpace(req.Format)) {
 	case "", "raw":
+		binary.ContentType = resource.Type()
+		if size, ok := llm.ContentLength(resource); ok && size > MaxHashed {
+			content, err := resource.Read(ctx)
+			if err != nil {
+				return httpresponse.Binary{}, nil, err
+			}
+			binary.Size = types.Ptr(size)
+			return binary, content, nil
+		}
 		if data, err = llm.ReadAll(ctx, resource); err != nil {
 			return httpresponse.Binary{}, nil, err
 		}
-		binary.ContentType = resource.Type()
 	case "markdown":
 		part, err := workspace.ReadMarkdown(ctx, resource, req.Offset, req.Limit)
 		if err != nil {
@@ -182,5 +203,5 @@ func read(ctx context.Context, workspaces *workspace.Registry, name string, req 
 	}
 	sum := sha256.Sum256(data)
 	binary.ETag, binary.Size = hex.EncodeToString(sum[:]), types.Ptr(int64(len(data)))
-	return binary, bytes.NewReader(data), nil
+	return binary, llm.ReadBytes(data), nil
 }

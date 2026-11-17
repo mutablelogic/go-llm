@@ -5,10 +5,14 @@ package cmd
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"path/filepath"
 	"strings"
+	"sync"
+	"time"
 
 	// Packages
+	sdkmcp "github.com/modelcontextprotocol/go-sdk/mcp"
 	gofiler "github.com/mutablelogic/go-filer"
 	filerfs "github.com/mutablelogic/go-filer/filer/fs"
 	client "github.com/mutablelogic/go-llm/mcp/client"
@@ -52,7 +56,8 @@ const (
 
 // WithFiler serves the folder, when its path is set, as an MCP server of its
 // files, with the command's version, which its client is connected to, in
-// memory, and whose namespace is added to the toolkit, so it's a workspace,
+// memory, and connected again, should the server close its session, and
+// whose namespace is added to the toolkit, so it's a workspace,
 // and calls the function with the server, which it runs, or nil, when
 // its path isn't set. Once the function returns, the namespace is removed,
 // and the client disconnected.
@@ -84,21 +89,18 @@ func (flags FilerFlags) WithFiler(ctx server.Cmd, tools *toolkit.Toolkit, fn fun
 		return err
 	}
 
-	// Its client, in memory, and the namespace of its server, as the
-	// connectors' are, which is a workspace, in the toolkit
-	c, err := client.New("memory://"+FilerName, client.WithTransport(srv.InMemoryTransport), client.WithName(ctx.Name(), ctx.Version()))
-	if err != nil {
-		return err
-	} else if err := c.Connect(ctx.Context()); err != nil {
-		return err
-	}
-	defer c.Disconnect()
+	// Its namespace, which is a workspace, in the toolkit, connected to its
+	// server with a client, in memory, as the connectors' are, which is
+	// connected again, should the server close its session
 	ns, err := namespace.New(FilerName, description)
 	if err != nil {
 		return err
-	} else if err := ns.Connect(ctx.Context(), c, description, nil, 1); err != nil {
+	}
+	disconnect, err := connectFiler(ctx.Context(), ctx.Logger(), ns, description, srv.InMemoryTransport, client.WithName(ctx.Name(), ctx.Version()))
+	if err != nil {
 		return err
 	}
+	defer disconnect()
 	files := &filerNamespace{Namespace: ns, workspace: srv.Workspace()}
 	if err := tools.Add(files); err != nil {
 		return err
@@ -108,6 +110,78 @@ func (flags FilerFlags) WithFiler(ctx server.Cmd, tools *toolkit.Toolkit, fn fun
 
 	// Call the function with the server
 	return fn(srv)
+}
+
+///////////////////////////////////////////////////////////////////////////////
+// PRIVATE FUNCTIONS
+
+// reconnectDelay is how long it waits before the client is connected again,
+// once the server closed its session, or it couldn't be connected
+var reconnectDelay = time.Second
+
+// connectFiler connects the namespace to the server, with a client, of the
+// transport, and connects them again, should the server close its session,
+// until the function it returns is called, which disconnects them
+func connectFiler(ctx context.Context, logger *slog.Logger, ns *namespace.Namespace, description string, transport client.TransportFunc, opts ...client.Opt) (func(), error) {
+	var c *client.Client
+	closed := make(chan error, 1)
+	c, err := client.New("memory://"+FilerName, append(opts, client.WithTransport(transport), client.WithChange(func(server *sdkmcp.Implementation, err error) {
+		if server == nil && err != nil {
+			// The server closed the session, so the namespace has no tools,
+			// until it's connected again
+			ns.Disconnect(c)
+			select {
+			case closed <- err:
+			default:
+			}
+		}
+	}))...)
+	if err != nil {
+		return nil, err
+	}
+	var serial uint64 = 1
+	if err := c.Connect(ctx); err != nil {
+		return nil, err
+	} else if err := ns.Connect(ctx, c, description, nil, serial); err != nil {
+		_ = c.Disconnect()
+		return nil, err
+	}
+
+	// Connect again, once it's closed, until it's disconnected
+	ctx, cancel := context.WithCancel(ctx)
+	var wg sync.WaitGroup
+	wg.Go(func() {
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case err := <-closed:
+				logger.WarnContext(ctx, "workspace disconnected", "namespace", FilerName, "error", err)
+			}
+			for {
+				select {
+				case <-ctx.Done():
+					return
+				case <-time.After(reconnectDelay):
+				}
+				serial++
+				if err := c.Connect(ctx); err != nil {
+					logger.WarnContext(ctx, "workspace not connected", "namespace", FilerName, "error", err)
+				} else if err := ns.Connect(ctx, c, description, nil, serial); err != nil {
+					logger.WarnContext(ctx, "workspace not connected", "namespace", FilerName, "error", err)
+					_ = c.Disconnect()
+				} else {
+					logger.InfoContext(ctx, "workspace connected", "namespace", FilerName)
+					break
+				}
+			}
+		}
+	})
+	return func() {
+		cancel()
+		wg.Wait()
+		_ = c.Disconnect()
+	}, nil
 }
 
 ///////////////////////////////////////////////////////////////////////////////

@@ -70,24 +70,26 @@ func (w *clientWorkspace) List(ctx context.Context, req schema.ListRequest) (*sc
 }
 
 // Read returns the server's resource, or artwork, with the URI, as its
-// first contents are, which are text, or data. Returns ErrNotFound when the
-// server returns no contents.
+// first contents are, which are text, or data, a chunk at a time, as it's
+// read, when the server is a workspace, and it's larger than a chunk.
+// Returns ErrNotFound when the server returns no contents.
 func (w *clientWorkspace) Read(ctx context.Context, uri string) (llm.Resource, error) {
-	result, err := w.client.ReadResource(ctx, uri)
+	// The first chunk, which is all of it, when it's small, or the server
+	// isn't a workspace, which returns all of it, without its size
+	data, info, err := readChunk(ctx, w.client, uri, 0)
 	if err != nil {
-		return nil, notFound(err)
-	} else if len(result.Contents) == 0 || result.Contents[0] == nil {
-		return nil, llm.ErrNotFound.Withf("resource %q has no contents", uri)
+		return nil, err
 	}
-	c := result.Contents[0]
-	data := c.Blob
-	if data == nil {
-		data = []byte(c.Text)
+	// It's all of it, when it isn't a chunk, or it's as large as its size,
+	// or, when its size isn't known, it's smaller than a chunk
+	name := path.Base(strings.TrimSuffix(info.uri, "/"))
+	if !info.chunks || (info.size >= 0 && info.size <= int64(len(data))) || (info.size < 0 && len(data) < ChunkSize) {
+		return &contents{uri: info.uri, name: name, mimeType: info.mimeType, data: data}, nil
 	}
-	if c.URI != "" {
-		uri = c.URI
-	}
-	return &contents{uri: uri, name: path.Base(strings.TrimSuffix(uri, "/")), mimeType: c.MIMEType, data: data}, nil
+
+	// Otherwise the others are read as they're read
+	info.name, info.first = name, data
+	return info, nil
 }
 
 // Subscribe asks the server for the resource with the URI's updates

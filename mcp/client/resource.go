@@ -129,3 +129,14 @@ func (w *resourceWatches) changed(uri string) {
 		}
 	}
 }
+
+// ReadResourceParams returns the contents of the server's resource, as the
+// params ask, such as a chunk of it, in their _meta. Returns
+// ErrServiceUnavailable when it isn't connected.
+func (c *Client) ReadResourceParams(ctx context.Context, params *sdkmcp.ReadResourceParams) (*sdkmcp.ReadResourceResult, error) {
+	session, err := c.connected()
+	if err != nil {
+		return nil, err
+	}
+	return session.ReadResource(ctx, params)
+}
