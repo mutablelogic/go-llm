@@ -120,7 +120,7 @@ export class WorkspacePage extends LitElement {
         const open = path === '' || shown === path || shown.startsWith(path + '/');
         const children = this.folders.get(path);
         return html`
-            <cds-tree-node label=${name} data-path=${path} ?selected=${shown === path} ?active=${shown === path} ?is-expanded=${open}>
+            <cds-tree-node label=${name} title=${name} data-path=${path} ?selected=${shown === path} ?active=${shown === path} ?is-expanded=${open}>
                 ${iconLoader(Folder16, { slot: 'icon' })}
                 ${children === undefined
                     ? html`<cds-tree-node label="Loading…" disabled></cds-tree-node>`

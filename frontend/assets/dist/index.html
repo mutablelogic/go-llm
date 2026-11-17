@@ -113,13 +113,20 @@
 
         .workspace-tree {
             overflow: auto;
-            padding: 1rem 0;
+            background: var(--cds-layer-01, #f4f4f4);
             border-right: 1px solid var(--cds-border-subtle);
+        }
+
+        /* A folder's name is one line, which scrolls, rather than wraps,
+           and it's clicked, as Carbon's styles only say for their own
+           elements' class */
+        .workspace-tree cds-tree-node {
+            cursor: pointer;
+            white-space: nowrap;
         }
 
         .workspace-files {
             overflow-y: auto;
-            padding: 2rem;
         }
 
         @media (max-width: 42rem) {
