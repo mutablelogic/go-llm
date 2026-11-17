@@ -70,7 +70,7 @@ func WithLogger(logger *slog.Logger) Opt {
 }
 
 // WithKeepAlive pings each client at the interval, and closes its session,
-// when it doesn't reply, rather than never
+// when it doesn't reply
 func WithKeepAlive(interval time.Duration) Opt {
 	return func(o *opt) error {
 		if interval < 0 {
