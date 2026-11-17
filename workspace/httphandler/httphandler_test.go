@@ -78,7 +78,7 @@ func Test_Workspaces(t *testing.T) {
 		list = schema.ListResponse{}
 		require.Equal(t, http.StatusOK, get(t, server, "/llm/workspace/notes/resource?path=2026&limit=10", &list))
 		require.Len(t, list.Body, 1)
-		assert.Equal(t, "file:///2026/b.md", list.Body[0].URI)
+		assert.Equal(t, "resource://notes/file:///2026/b.md", list.Body[0].URI, "the workspace's URI")
 		assert.Equal(t, http.StatusNotFound, get(t, server, "/llm/workspace/missing/resource", nil))
 		assert.Equal(t, http.StatusBadRequest, get(t, server, "/llm/workspace/notes/resource?limit=x", nil))
 	})

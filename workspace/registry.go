@@ -173,18 +173,23 @@ func (r *Registry) With(name string, fn func(Workspace) error) error {
 	return fn(ws)
 }
 
-// Resolve returns the resource, or artwork, with the URI, of whichever of
-// the workspaces, in order of their names, which read their resources, has
-// it. Returns ErrNotFound when none has it.
+// Resolve returns the resource, or artwork, with the URI, which is a
+// workspace's, resource://<workspace>/<uri>, which is read from it, or its
+// own URI, which is read from whichever of the workspaces, in order of their
+// names, which read their resources, has it. Its URI is the workspace's.
+// Returns ErrNotFound when none has it.
 func (r *Registry) Resolve(ctx context.Context, uri string) (llm.Resource, error) {
-	for _, ws := range r.All() {
+	if name, original, ok := schema.ParseURI(uri); ok {
+		return r.Read(ctx, name, original)
+	}
+	for name, ws := range r.All() {
 		reader, ok := ws.(Reader)
 		if !ok {
 			continue
 		}
 		resource, err := reader.Read(ctx, uri)
 		if err == nil {
-			return resource, nil
+			return withURI(resource, schema.URIOf(name, uri)), nil
 		} else if !errors.Is(err, llm.ErrNotFound) && !errors.Is(err, llm.ErrBadParameter) {
 			return nil, err
 		}
@@ -192,10 +197,18 @@ func (r *Registry) Resolve(ctx context.Context, uri string) (llm.Resource, error
 	return nil, llm.ErrNotFound.Withf("resource %q isn't in a workspace", uri)
 }
 
-// Read returns the resource, or artwork, with the URI, of the workspace with
-// the name. Returns ErrNotFound when there's no workspace with the name, and
+// Read returns the resource, or artwork, with the URI, which is the
+// workspace's, resource://<workspace>/<uri>, or its own, of the workspace
+// with the name, whose URI is the workspace's. Returns ErrNotFound when
+// there's no workspace with the name, or the URI is another's, and
 // ErrNotImplemented when it isn't a Reader, so its resources aren't read.
 func (r *Registry) Read(ctx context.Context, name, uri string) (resource llm.Resource, err error) {
+	if workspace, original, ok := schema.ParseURI(uri); ok {
+		if workspace != name {
+			return nil, llm.ErrNotFound.Withf("resource %q isn't in workspace %q", uri, name)
+		}
+		uri = original
+	}
 	err = r.With(name, func(ws Workspace) error {
 		reader, ok := ws.(Reader)
 		if !ok {
@@ -204,7 +217,10 @@ func (r *Registry) Read(ctx context.Context, name, uri string) (resource llm.Res
 		resource, err = reader.Read(ctx, uri)
 		return err
 	})
-	return resource, err
+	if err != nil {
+		return nil, err
+	}
+	return withURI(resource, schema.URIOf(name, uri)), nil
 }
 
 // All returns the workspaces which are available, by their names, in order of their names, as
@@ -252,7 +268,11 @@ func (r *Registry) watch(ctx context.Context, name string, watcher Watcher, read
 			watching()
 			return
 		}
-		data, err := json.Marshal(ResourceEvent{URI: change.URI})
+		uri := change.URI
+		if uri != "" {
+			uri = schema.URIOf(name, uri)
+		}
+		data, err := json.Marshal(ResourceEvent{URI: uri})
 		if err != nil {
 			return
 		}
@@ -339,13 +359,26 @@ func (r *Registry) GetWorkspace(name string) (result *schema.Workspace, err erro
 }
 
 // ListResources returns a page of the folders, and resources, of the
-// workspace with the name. Returns ErrNotFound when there's none.
+// workspace with the name, whose URIs, and their artwork's, are the
+// workspace's, resource://<workspace>/<uri>. Returns ErrNotFound when there's none.
 func (r *Registry) ListResources(ctx context.Context, name string, req schema.ListRequest) (result *schema.ListResponse, err error) {
 	err = r.With(name, func(ws Workspace) error {
 		result, err = ws.List(ctx, req)
 		return err
 	})
-	return result, err
+	if err != nil {
+		return nil, err
+	}
+
+	// Their URIs, and their artwork's, are the workspace's
+	for i := range result.Body {
+		resource := &result.Body[i]
+		resource.URI = schema.URIOf(name, resource.URI)
+		for j := range resource.Artwork {
+			resource.Artwork[j].URI = schema.URIOf(name, resource.Artwork[j].URI)
+		}
+	}
+	return result, nil
 }
 
 // workspaceOf returns the workspace, as it's listed

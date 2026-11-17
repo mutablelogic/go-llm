@@ -118,6 +118,14 @@ func Test_Available(t *testing.T) {
 	resource, err := r.Resolve(ctx, "file:///note.md")
 	require.NoError(t, err)
 	assert.Equal(t, "text/markdown", resource.Type())
+	assert.Equal(t, "resource://notes/file:///note.md", resource.URI(), "the workspace's URI")
+	resource, err = r.Resolve(ctx, "resource://notes/file:///note.md")
+	require.NoError(t, err)
+	data, err := llm.ReadAll(ctx, resource)
+	require.NoError(t, err)
+	assert.Equal(t, "# Note", string(data), "read by the workspace's URI")
+	_, err = r.Read(ctx, "notes", "resource://other/file:///note.md")
+	assert.ErrorIs(t, err, llm.ErrNotFound, "another workspace's")
 	_, err = r.Resolve(ctx, "file:///other.md")
 	assert.ErrorIs(t, err, llm.ErrNotFound)
 }
@@ -178,7 +186,7 @@ func Test_Events(t *testing.T) {
 	assert.Equal(t, eventschema.Event{Action: eventschema.EventCreate, Schema: workspace.EventSchema, Table: workspace.WorkspaceTable, Row: "notes"}, next())
 
 	ws.changes <- schema.Change{Action: eventschema.EventUpdate, URI: "file:///a.md"}
-	assert.Equal(t, eventschema.Event{Action: eventschema.EventUpdate, Schema: workspace.EventSchema, Table: workspace.ResourceTable, Row: "notes", Data: json.RawMessage(`{"uri":"file:///a.md"}`)}, next())
+	assert.Equal(t, eventschema.Event{Action: eventschema.EventUpdate, Schema: workspace.EventSchema, Table: workspace.ResourceTable, Row: "notes", Data: json.RawMessage(`{"uri":"resource://notes/file:///a.md"}`)}, next(), "with the workspace's URI")
 	ws.changes <- schema.Change{Action: eventschema.EventUpdate}
 	assert.Equal(t, eventschema.Event{Action: eventschema.EventUpdate, Schema: workspace.EventSchema, Table: workspace.ResourceTable, Row: "notes", Data: json.RawMessage(`{}`)}, next())
 
@@ -220,7 +228,7 @@ func Test_EventsReady(t *testing.T) {
 	select {
 	case event := <-events:
 		assert.Equal(t, workspace.ResourceTable, event.Table)
-		assert.JSONEq(t, `{"uri":"file:///a.md"}`, string(event.Data))
+		assert.JSONEq(t, `{"uri":"resource://notes/file:///a.md"}`, string(event.Data))
 	case <-time.After(5 * time.Second):
 		t.Fatal("the change wasn't published")
 	}

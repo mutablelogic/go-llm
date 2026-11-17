@@ -83,7 +83,7 @@ func TestWorkspaces(t *testing.T) {
 		assert.JSONEq(t, `[{"name":"notes","description":"My notes"}]`, string(result))
 		result, err = tk.CallTool(ctx, "workspace:list", json.RawMessage(`{"workspace":"notes"}`))
 		require.NoError(t, err)
-		assert.JSONEq(t, `{"body":[{"uri":"file:///note.md","name":"note.md","type":"text/markdown"}]}`, string(result))
+		assert.JSONEq(t, `{"body":[{"uri":"resource://notes/file:///note.md","name":"note.md","type":"text/markdown"}]}`, string(result), "the workspace's URI")
 	})
 
 	t.Run("Read", func(t *testing.T) {
@@ -92,6 +92,13 @@ func TestWorkspaces(t *testing.T) {
 		assert.Contains(t, string(result), "text/markdown")
 		_, err = tk.CallTool(ctx, "workspace:read", json.RawMessage(`{"uri":"file:///missing.md"}`))
 		assert.ErrorIs(t, err, llm.ErrNotFound)
+
+		// By the workspace's URI, as it's listed, without the workspace
+		result, err = tk.CallTool(ctx, "workspace:read", json.RawMessage(`{"uri":"resource://notes/file:///note.md"}`))
+		require.NoError(t, err)
+		assert.Contains(t, string(result), "text/markdown")
+		_, err = tk.CallTool(ctx, "workspace:read", json.RawMessage(`{"uri":"resource://other/file:///note.md"}`))
+		assert.ErrorIs(t, err, llm.ErrNotFound, "another workspace")
 	})
 
 	t.Run("Resolve", func(t *testing.T) {

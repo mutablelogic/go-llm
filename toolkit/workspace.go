@@ -47,7 +47,7 @@ type ListWorkspaceRequest struct {
 // ReadWorkspaceRequest is the input of the workspace's read tool
 type ReadWorkspaceRequest struct {
 	Workspace string `json:"workspace,omitempty" help:"The workspace the resource is in, or empty to find it in any workspace"`
-	URI       string `json:"uri" help:"The resource's URI, as it's listed"`
+	URI       string `json:"uri" help:"The resource's URI, as it's listed, resource://<workspace>/<uri>"`
 }
 
 // WorkspaceMeta is a workspace, as the list tool lists it: its name, and
@@ -194,12 +194,7 @@ func (t *listWorkspace) Run(ctx context.Context, input json.RawMessage) (any, er
 		}
 		return result, nil
 	}
-	var result *workspaceschema.ListResponse
-	err := registry.With(req.Workspace, func(ws workspace.Workspace) (err error) {
-		result, err = ws.List(ctx, req.ListRequest)
-		return err
-	})
-	return result, err
+	return registry.ListResources(ctx, req.Workspace, req.ListRequest)
 }
 
 ///////////////////////////////////////////////////////////////////////////////
