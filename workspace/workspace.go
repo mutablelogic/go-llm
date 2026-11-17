@@ -5,9 +5,11 @@ package workspace
 
 import (
 	"context"
+	"encoding/json"
+	"time"
 
 	// Packages
-	llm "github.com/mutablelogic/go-llm"
+	metadata "github.com/mutablelogic/go-metadata"
 )
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -27,8 +29,8 @@ type Workspace interface {
 
 	// List returns the workspace's folders and resources, in a folder, or
 	// under it, a page at a time, in an order which is the same each time,
-	// so its pages don't overlap. A folder is a resource whose type is
-	// FolderType, as NewFolder's is, so a tree is made of what's listed.
+	// so its pages don't overlap. A folder is an entry whose type is
+	// FolderType, so a tree is made of what's listed.
 	List(ctx context.Context, req ListRequest) (*ListResponse, error)
 }
 
@@ -50,7 +52,7 @@ type ListRequest struct {
 	// or empty, to start
 	Cursor string `json:"cursor,omitempty"`
 
-	// Limit is the most resources which are returned, or zero, for the
+	// Limit is the most entries which are returned, or zero, for the
 	// workspace's own page size
 	Limit uint `json:"limit,omitempty"`
 }
@@ -58,54 +60,114 @@ type ListRequest struct {
 // ListResponse is a page of a workspace's folders and resources, and the
 // cursor of the next page
 type ListResponse struct {
-	// Resources are the page's folders, whose type is FolderType, and
-	// resources
-	Resources []llm.Resource `json:"-"`
+	// Body is the page's folders and resources
+	Body []Entry `json:"body"`
 
 	// Next is the cursor of the next page, or empty, when there isn't one
 	Next string `json:"next,omitempty"`
 }
 
-// folder is a folder of a workspace, as it's listed: a resource whose type
-// is FolderType, which has no content of its own
-type folder struct {
-	uri, name, description string
+// Entry is a folder, or a resource, of a workspace, as it's listed: what it
+// is, rather than its content
+type Entry struct {
+	// URI is the entry's URI, such as file:///notes/2026/meeting.md
+	URI string `json:"uri"`
+
+	// Name is the entry's name, such as meeting.md
+	Name string `json:"name"`
+
+	// Title is the entry's title, for people, or nothing
+	Title string `json:"title,omitempty"`
+
+	// Description is what the entry is, or nothing
+	Description string `json:"description,omitempty"`
+
+	// Type is the MIME type of the resource's content, or FolderType, for a
+	// folder, or nothing, when it isn't known
+	Type string `json:"type,omitempty"`
+
+	// Size is the length of the resource's content, in bytes, or zero, when
+	// it isn't known
+	Size int64 `json:"size,omitempty"`
+
+	// Modified is when the entry was last changed, or zero, when it isn't
+	// known
+	Modified time.Time `json:"modified,omitzero"`
+
+	// Meta is the entry's metadata, of which a key can have more than one
+	// value
+	Meta []Meta `json:"meta,omitempty"`
+
+	// Artwork is the entry's images, such as its cover, or thumbnail
+	Artwork []Artwork `json:"artwork,omitempty"`
 }
 
-var _ llm.Resource = (*folder)(nil)
+// Meta is a value of an entry's metadata, by its namespace and key, such as
+// exif:DateTimeOriginal, as text, to show, and as JSON
+type Meta struct {
+	// NS is the namespace of the key, such as exif
+	NS string `json:"ns"`
+
+	// Key is the key, in the namespace, such as DateTimeOriginal
+	Key string `json:"key"`
+
+	// Text is the value, as text, to show
+	Text string `json:"text"`
+
+	// Value is the value, as JSON, such as a number, a date, or a list
+	Value json.RawMessage `json:"value,omitempty"`
+}
+
+// Artwork is an image of an entry, with what it is, such as its cover, or
+// a thumbnail, which is read by its URI
+type Artwork struct {
+	// Key is what the image is, such as cover, or thumbnail, as go-metadata's
+	// artwork keys are
+	Key string `json:"key"`
+
+	// Type is the image's MIME type, such as image/jpeg
+	Type string `json:"type,omitempty"`
+
+	// Width and Height are the image's size, in pixels, or zero, when it
+	// isn't known
+	Width  int `json:"width,omitempty"`
+	Height int `json:"height,omitempty"`
+
+	// URI is where the image is read from
+	URI string `json:"uri"`
+}
 
 ///////////////////////////////////////////////////////////////////////////////
 // GLOBALS
 
-// FolderType is the type of a folder, which is listed as a resource, as
-// it's the MIME type of a directory
+// FolderType is the type of a folder, which is listed as an entry, as it's
+// the MIME type of a directory
 const FolderType = "inode/directory"
 
 ///////////////////////////////////////////////////////////////////////////////
 // PUBLIC FUNCTIONS
 
-// NewFolder returns a folder, as it's listed: a resource with the URI, such
-// as file:///notes/2026/, the name, such as "2026", and the description, or
-// none, whose type is FolderType, and which has no content of its own
-func NewFolder(uri, name, description string) llm.Resource {
-	return &folder{uri: uri, name: name, description: description}
+// IsFolder returns true when the entry is a folder, as its type says
+func (e Entry) IsFolder() bool {
+	return e.Type == FolderType
 }
 
-// IsFolder returns true when the resource is a folder, as its type says
-func IsFolder(r llm.Resource) bool {
-	return r != nil && r.Type() == FolderType
-}
-
-///////////////////////////////////////////////////////////////////////////////
-// FOLDER
-
-func (f *folder) URI() string         { return f.uri }
-func (f *folder) Name() string        { return f.name }
-func (f *folder) Description() string { return f.description }
-func (f *folder) Type() string        { return FolderType }
-
-// Read returns ErrBadParameter, as a folder has no content: its folders and
-// resources are listed
-func (f *folder) Read(context.Context) (llm.ReadFunc, error) {
-	return nil, llm.ErrBadParameter.Withf("%s is a folder", f.uri)
+// MetaOf returns go-metadata's metadata as an entry's, apart from its
+// artwork, whose images are the entry's Artwork, with its value as text,
+// and as JSON, which is the text, as a JSON string, when its value can't be
+// encoded as JSON
+func MetaOf(md []metadata.Metadata) []Meta {
+	result := make([]Meta, 0, len(md))
+	for _, m := range md {
+		if m == nil || m.NS() == metadata.ArtworkNamespace {
+			continue
+		}
+		text := m.Value()
+		value, err := json.Marshal(m.Any())
+		if err != nil {
+			value, _ = json.Marshal(text)
+		}
+		result = append(result, Meta{NS: m.NS(), Key: m.Key(), Text: text, Value: value})
+	}
+	return result
 }
