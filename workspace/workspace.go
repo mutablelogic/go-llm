@@ -42,14 +42,14 @@ type Reader interface {
 type Watcher interface {
 	Workspace
 
-	// Watch sends each folder, and resource, which is created, updated, or
+	// WatchResources sends each folder, and resource, which is created, updated, or
 	// deleted, to the channel, until the context is cancelled, when it
 	// returns nil, or it fails. Each is waited for the channel to receive,
 	// so none is missed, and the channel is read until the context is
 	// cancelled. A change without a URI says the workspace changed, but not
 	// where, so it's listed again, which it sends first, once it's watching,
 	// so a change after that isn't missed.
-	Watch(ctx context.Context, ch chan<- schema.Change) error
+	WatchResources(ctx context.Context, ch chan<- schema.Change) error
 }
 
 // Available is a workspace which is one only some of the time, such as an

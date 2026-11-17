@@ -173,7 +173,7 @@ type watched struct {
 	changes chan schema.Change
 }
 
-func (w *watched) Watch(ctx context.Context, ch chan<- schema.Change) error {
+func (w *watched) WatchResources(ctx context.Context, ch chan<- schema.Change) error {
 	// It's watching, which is said first
 	select {
 	case ch <- schema.Change{Action: eventschema.EventUpdate}:
@@ -220,7 +220,7 @@ func Test_WorkspaceWatch(t *testing.T) {
 	changes := make(chan schema.Change, 4)
 	watchCtx, stop := context.WithCancel(ctx)
 	defer stop()
-	go func() { _ = watcher.Watch(watchCtx, changes) }()
+	go func() { _ = watcher.WatchResources(watchCtx, changes) }()
 	select {
 	case change := <-changes:
 		assert.Equal(t, schema.Change{Action: eventschema.EventUpdate}, change, "it's watching")
@@ -303,7 +303,7 @@ func Test_WorkspaceSubscribe(t *testing.T) {
 	changes := make(chan schema.Change, 4)
 	watchCtx, stop := context.WithCancel(ctx)
 	defer stop()
-	go func() { _ = downstream.(workspace.Watcher).Watch(watchCtx, changes) }()
+	go func() { _ = downstream.(workspace.Watcher).WatchResources(watchCtx, changes) }()
 	require.NoError(t, downstream.(workspace.Subscriber).Subscribe(ctx, "file:///notes/a.md"))
 	deadline := time.After(5 * time.Second)
 	for {

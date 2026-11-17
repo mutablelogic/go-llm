@@ -101,11 +101,11 @@ func (w *clientWorkspace) Unsubscribe(ctx context.Context, uri string) error {
 	return w.client.Unsubscribe(ctx, uri)
 }
 
-// Watch sends the server's resources which are updated, which were
+// WatchResources sends the server's resources which are updated, which were
 // subscribed to, with Subscribe, and, without a URI, that its
 // resources changed, when it says its list did, until the context is
 // cancelled, when it returns nil
-func (w *clientWorkspace) Watch(ctx context.Context, ch chan<- schema.Change) error {
+func (w *clientWorkspace) WatchResources(ctx context.Context, ch chan<- schema.Change) error {
 	if ch == nil {
 		return llm.ErrBadParameter.With("missing channel")
 	}

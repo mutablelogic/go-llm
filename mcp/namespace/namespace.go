@@ -40,6 +40,12 @@ type Namespace struct {
 	tools       []*tool
 	prompts     []*prompt // Its server's prompts, as agents, by their names
 	watchers    toolkit.Watchers
+
+	// Closed, and replaced, when the client changes, so a watch of its
+	// resources follows the client which is connected, and the URIs of the
+	// resources which are subscribed to, which each client is
+	clientChanged chan struct{}
+	subscribed    map[string]bool
 }
 
 var _ toolkit.Namespace = (*Namespace)(nil)
@@ -56,7 +62,7 @@ func New(name, description string, opts ...Opt) (*Namespace, error) {
 	if name == "" {
 		return nil, llm.ErrBadParameter.With("missing namespace")
 	}
-	ns := &Namespace{name: name, description: description}
+	ns := &Namespace{name: name, description: description, clientChanged: make(chan struct{}), subscribed: make(map[string]bool)}
 	if err := ns.opt.apply(opts); err != nil {
 		return nil, err
 	}
@@ -188,7 +194,8 @@ func (ns *Namespace) Connect(ctx context.Context, c *client.Client, description 
 		ns.mu.Unlock()
 		return nil
 	}
-	ns.client, ns.match, ns.serial = c, match, serial
+	ns.setClient(c)
+	ns.match, ns.serial = match, serial
 	if description != "" {
 		ns.description = description
 	}
@@ -296,11 +303,22 @@ func (ns *Namespace) listPrompts(ctx context.Context, c *client.Client, match fu
 	return result, nil
 }
 
+// setClient sets the client, and, when it's another, says it changed. The
+// caller holds the lock.
+func (ns *Namespace) setClient(c *client.Client) {
+	if ns.client == c {
+		return
+	}
+	ns.client = c
+	close(ns.clientChanged)
+	ns.clientChanged = make(chan struct{})
+}
+
 // clear forgets the client, the tools, and the prompts. The caller holds
 // changing.
 func (ns *Namespace) clear() {
 	ns.mu.Lock()
-	ns.client = nil
+	ns.setClient(nil)
 	ns.mu.Unlock()
 	ns.replace(nil)
 	ns.replacePrompts(nil)
