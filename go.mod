@@ -3,7 +3,7 @@ module github.com/mutablelogic/go-llm
 go 1.27.2
 
 require (
-	github.com/alecthomas/kong v1.16.1
+	github.com/alecthomas/kong v1.17.0
 	github.com/charmbracelet/bubbles v1.0.0
 	github.com/charmbracelet/bubbletea v1.3.10
 	github.com/charmbracelet/lipgloss v1.1.1-0.20250404203927-76690c660834
@@ -11,6 +11,7 @@ require (
 	github.com/modelcontextprotocol/go-sdk v1.8.0
 	github.com/mutablelogic/go-auth v0.0.17
 	github.com/mutablelogic/go-client v1.4.14
+	github.com/mutablelogic/go-filer v0.3.2
 	github.com/mutablelogic/go-metadata v1.1.1
 	github.com/mutablelogic/go-server v1.8.13
 	github.com/stretchr/testify v1.12.1
