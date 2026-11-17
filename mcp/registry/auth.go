@@ -12,6 +12,7 @@ import (
 	"time"
 
 	// Packages
+	goauth "github.com/mutablelogic/go-auth"
 	authclient "github.com/mutablelogic/go-auth/auth/httpclient"
 	llm "github.com/mutablelogic/go-llm"
 	eventschema "github.com/mutablelogic/go-llm/broadcaster/schema"
@@ -130,7 +131,7 @@ func (r *Registry) Authorize(ctx context.Context, name, callback string) (string
 		}
 		registration, err := c.Register(discoverCtx, server, r.clientName(), redirects, scopes...)
 		if err != nil {
-			return "", err
+			return "", llmError(err)
 		}
 		credential.ClientID, credential.ClientSecret, credential.RedirectURIs = registration.ClientID, registration.ClientSecret, registration.RedirectURIs
 	}
@@ -287,6 +288,33 @@ func (r *Registry) clientOf(ctx context.Context, connector schema.Connector, cre
 		return "", "", llm.ErrConflict.Withf("connector %q has another client", connector.Name)
 	}
 	return r.clientCredentials(ctx, connector)
+}
+
+// llmError returns go-auth's error as the llm error of its kind, with its
+// reason, so it's mapped to its HTTP status, as the registry's errors are,
+// or the error, when it isn't go-auth's
+func llmError(err error) error {
+	var kind goauth.Err
+	if !errors.As(err, &kind) {
+		return err
+	}
+	reason := strings.TrimPrefix(err.Error(), kind.Error()+": ")
+	switch kind {
+	case goauth.ErrNotFound:
+		return llm.ErrNotFound.With(reason)
+	case goauth.ErrBadParameter:
+		return llm.ErrBadParameter.With(reason)
+	case goauth.ErrNotImplemented:
+		return llm.ErrNotImplemented.With(reason)
+	case goauth.ErrConflict:
+		return llm.ErrConflict.With(reason)
+	case goauth.ErrServiceUnavailable:
+		return llm.ErrServiceUnavailable.With(reason)
+	case goauth.ErrForbidden, goauth.ErrInvalidProvider:
+		return llm.ErrForbidden.With(reason)
+	default:
+		return llm.ErrInternalServerError.With(reason)
+	}
 }
 
 // clientName returns the name a client is registered with, which is the
