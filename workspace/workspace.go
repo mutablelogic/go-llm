@@ -50,3 +50,16 @@ type Watcher interface {
 	// where, so it's listed again.
 	Watch(ctx context.Context, ch chan<- schema.Change) error
 }
+
+// Subscriber is a watcher which says a resource is updated only once it's
+// subscribed to, such as an MCP server's, which a server of it subscribes
+// to, as its own clients do
+type Subscriber interface {
+	Watcher
+
+	// Subscribe asks for the resource with the URI's updates
+	Subscribe(ctx context.Context, uri string) error
+
+	// Unsubscribe stops asking for the resource with the URI's updates
+	Unsubscribe(ctx context.Context, uri string) error
+}

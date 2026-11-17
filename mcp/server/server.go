@@ -33,6 +33,12 @@ type Server struct {
 	// them, so a tool which changed is served again
 	mu    sync.Mutex
 	tools map[string]llm.Tool
+
+	// How many of the server's subscriptions there are to each resource of
+	// a workspace which is subscribed to, as it's subscribed to once, while
+	// any of them are
+	subscribing   sync.Mutex
+	subscriptions map[string]int
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -45,7 +51,7 @@ func New(ns toolkit.Namespace, opts ...Opt) (*Server, error) {
 	if ns == nil {
 		return nil, llm.ErrBadParameter.With("missing namespace")
 	}
-	s := &Server{ns: ns, tools: make(map[string]llm.Tool)}
+	s := &Server{ns: ns, tools: make(map[string]llm.Tool), subscriptions: make(map[string]int)}
 	if err := s.opt.apply(opts); err != nil {
 		return nil, err
 	}
