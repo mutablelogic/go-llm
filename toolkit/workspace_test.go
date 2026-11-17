@@ -2,8 +2,8 @@ package toolkit_test
 
 import (
 	"context"
-	"fmt"
 	"encoding/json"
+	"fmt"
 	"strings"
 	"testing"
 
