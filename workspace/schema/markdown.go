@@ -14,4 +14,5 @@ type Markdown struct {
 	Offset uint64            `json:"offset" help:"The byte of the Markdown the part starts at"`
 	Next   *uint64           `json:"next,omitempty" help:"The offset of the next part, or none, at the end"`
 	Meta   map[string]string `json:"meta,omitempty" help:"The resource's metadata, with the first part, by namespace and key, such as dc:title"`
+	Note   string            `json:"note,omitempty" help:"Why the part has no text, such as a page which is rendered by its scripts"`
 }

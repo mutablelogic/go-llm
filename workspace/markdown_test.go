@@ -40,6 +40,16 @@ func Test_ReadMarkdown(t *testing.T) {
 		assert.Equal(t, *first.Next, second.Offset)
 	})
 
+	t.Run("NoText", func(t *testing.T) {
+		// A page which its scripts render has its metadata, and a note
+		page := `<!DOCTYPE html><html lang="en"><head><title>Profile</title></head><body><div id="root"></div><script>render()</script></body></html>`
+		part, err := workspace.ReadMarkdown(ctx, text("text/html", page), 0, 0)
+		require.NoError(t, err)
+		assert.Empty(t, strings.TrimSpace(part.Body))
+		assert.Equal(t, workspace.NoTextNote, part.Note)
+		assert.Equal(t, "Profile", part.Meta["dc:title"])
+	})
+
 	t.Run("NotText", func(t *testing.T) {
 		_, err := workspace.ReadMarkdown(ctx, text("audio/mpeg", "\xff\xfb"), 0, 0)
 		assert.ErrorIs(t, err, llm.ErrNotImplemented)

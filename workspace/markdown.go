@@ -35,6 +35,11 @@ const (
 	DefaultMarkdownLimit = 16 * 1024
 	MaxMarkdownLimit     = 64 * 1024
 
+	// NoTextNote is the note of a resource which has no text, though it's
+	// read as Markdown, such as a page which its scripts render, as an MCP
+	// app's is, of which only its metadata is returned
+	NoTextNote = "The resource has no text, such as a page which is rendered by its scripts, so only its metadata is returned. Read it raw for its content."
+
 	// maxMetaValue is the longest value of a resource's metadata which is
 	// returned with its Markdown
 	maxMetaValue = 512
@@ -145,6 +150,8 @@ func ReadMarkdown(ctx context.Context, resource llm.Resource, offset, limit uint
 		return nil, llm.ErrNotImplemented.Withf("no Markdown of type %q", mediatype)
 	} else if strings.ContainsRune(result.Body, 0) {
 		return nil, llm.ErrNotImplemented.Withf("no Markdown, as the resource of type %q isn't text", mediatype)
+	} else if strings.TrimSpace(result.Body) == "" && offset == 0 {
+		result.Note = NoTextNote
 	}
 	return result, nil
 }
