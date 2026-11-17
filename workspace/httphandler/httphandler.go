@@ -37,11 +37,6 @@ type workspaceName struct {
 //go:embed README.md
 var readme []byte
 
-// MaxHashed is the largest content which is read, and hashed, for its
-// entity tag, before it's written. Larger content is written as it's read,
-// without one, in ranges, when it can seek.
-const MaxHashed = 8 * 1024 * 1024
-
 ///////////////////////////////////////////////////////////////////////////////
 // LIFECYCLE
 
@@ -157,11 +152,10 @@ func contentHandlers(workspaces *workspace.Registry, router *httprouter.Router, 
 ///////////////////////////////////////////////////////////////////////////////
 // PRIVATE FUNCTIONS
 
-// read reads the workspace's resource, as it is, or as a Markdown document,
-// and returns how it's written, and its content. Its entity tag is the
-// SHA-256 of its content, as a workspace's resource has none of its own, so
-// a request for it, again, which has it, isn't sent it, unless it's larger
-// than MaxHashed, when it's read as it's written, without one.
+// read reads the workspace's resource, as it is, which is written as it's
+// read, in ranges, when it can seek, or as a Markdown document, whose entity
+// tag is the SHA-256 of its content, so a request for it, again, which has
+// it, isn't sent it, and returns how it's written, and its content
 func read(ctx context.Context, workspaces *workspace.Registry, name string, req schema.ReadRequest) (httpresponse.Binary, llm.ReadFunc, error) {
 	if strings.TrimSpace(req.URI) == "" {
 		return httpresponse.Binary{}, nil, llm.ErrBadParameter.With("missing uri")
@@ -178,17 +172,14 @@ func read(ctx context.Context, workspaces *workspace.Registry, name string, req 
 	switch strings.ToLower(strings.TrimSpace(req.Format)) {
 	case "", "raw":
 		binary.ContentType = resource.Type()
-		if size, ok := llm.ContentLength(resource); ok && size > MaxHashed {
-			content, err := resource.Read(ctx)
-			if err != nil {
-				return httpresponse.Binary{}, nil, err
-			}
-			binary.Size = types.Ptr(size)
-			return binary, content, nil
-		}
-		if data, err = llm.ReadAll(ctx, resource); err != nil {
+		content, err := resource.Read(ctx)
+		if err != nil {
 			return httpresponse.Binary{}, nil, err
 		}
+		if size, ok := llm.ContentLength(resource); ok {
+			binary.Size = types.Ptr(size)
+		}
+		return binary, content, nil
 	case "markdown":
 		part, err := workspace.ReadMarkdown(ctx, resource, req.Offset, req.Limit)
 		if err != nil {

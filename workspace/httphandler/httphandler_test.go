@@ -36,8 +36,8 @@ func (notes) List(_ context.Context, req schema.ListRequest) (*schema.ListRespon
 	}, Next: "more"}, nil
 }
 
-// big is the content of big.bin, which is larger than is hashed
-var big = strings.Repeat("0123456789", httphandler.MaxHashed/10+1)
+// big is the content of big.bin, which is large
+var big = strings.Repeat("0123456789", 1024*1024)
 
 func (notes) Read(_ context.Context, uri string) (llm.Resource, error) {
 	if uri == "file:///big.bin" {
@@ -128,12 +128,7 @@ func Test_Content(t *testing.T) {
 		require.Equal(t, http.StatusOK, resp.StatusCode)
 		assert.Equal(t, "text/markdown", resp.Header.Get("Content-Type"))
 		assert.Equal(t, "# A\n\nHello", body)
-		etag := resp.Header.Get("ETag")
-		require.NotEmpty(t, etag)
-
-		// Not again, when it's not modified
-		resp, _ = request(t, server, path, map[string]string{"If-None-Match": etag})
-		assert.Equal(t, http.StatusNotModified, resp.StatusCode)
+		assert.Empty(t, resp.Header.Get("ETag"), "it's written as it's read")
 
 		// In ranges
 		resp, body = request(t, server, path, map[string]string{"Range": "bytes=0-2"})
@@ -142,8 +137,7 @@ func Test_Content(t *testing.T) {
 	})
 
 	t.Run("Large", func(t *testing.T) {
-		// Large content is written as it's read, without an entity tag,
-		// and in ranges
+		// Large content is written as it's read, in ranges
 		path := "/llm/workspace/notes/content?uri=" + url.QueryEscape("resource://notes/file:///big.bin")
 		resp, body := request(t, server, path, nil)
 		require.Equal(t, http.StatusOK, resp.StatusCode)
@@ -161,6 +155,12 @@ func Test_Content(t *testing.T) {
 		assert.True(t, strings.HasPrefix(resp.Header.Get("Content-Type"), "text/markdown"))
 		assert.True(t, strings.HasPrefix(body, "---\nuri: \"resource://notes/file:///a.md\"\n"), body)
 		assert.Contains(t, body, "Hello")
+
+		// Not again, when it's not modified
+		etag := resp.Header.Get("ETag")
+		require.NotEmpty(t, etag)
+		resp, _ = request(t, server, path+"&format=markdown", map[string]string{"If-None-Match": etag})
+		assert.Equal(t, http.StatusNotModified, resp.StatusCode)
 	})
 
 	t.Run("Errors", func(t *testing.T) {
