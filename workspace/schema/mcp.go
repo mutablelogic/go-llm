@@ -205,8 +205,15 @@ func CountOf(result *sdkmcp.ListResourcesResult) *uint64 {
 	if result == nil || result.Meta[MetaCount] == nil {
 		return nil
 	}
+	data, err := json.Marshal(result.Meta[MetaCount])
+	if err != nil {
+		return nil
+	}
 	var count uint64
-	decode(result.Meta[MetaCount], &count)
+	if err := json.Unmarshal(data, &count); err != nil {
+		// It isn't a count, such as -1, 1.5, or "unknown"
+		return nil
+	}
 	return &count
 }
 

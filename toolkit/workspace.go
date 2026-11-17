@@ -51,7 +51,7 @@ type ListWorkspaceRequest struct {
 // ReadWorkspaceRequest is the input of the workspace's read tool
 type ReadWorkspaceRequest struct {
 	URI    string `json:"uri" help:"The resource's URI, as it's listed, resource://<workspace>/<uri>"`
-	Format string `json:"format,omitempty" enum:"raw,markdown" help:"Without it, as its type is: an image, audio, or video, as raw, and anything else as markdown, or raw, when it has none. raw, for its content as it is, up to 10 MiB: text as its text, and anything else, such as an image, or audio, as a file which is sent to the model, which sees, or hears it. markdown, for its text, as a Markdown document, a part at a time, such as of a PDF, or an Office document, whose YAML front matter has its metadata, and the offset of the next part"`
+	Format string `json:"format,omitempty" enum:"raw,markdown" help:"Without it, as its type is: an image, audio, or video, as raw, and anything else as markdown, or raw, when it has none. raw, for its content as it is: text as its text, a part at a time, and anything else, such as an image, or audio, up to 10 MiB, as a file, whose link other tools are given, such as llm:transcribe. markdown, for its text, as a Markdown document, a part at a time, such as of a PDF, or an Office document, whose YAML front matter has its metadata, and the offset of the next part"`
 	Offset uint64 `json:"offset,omitempty" help:"As Markdown, or raw text, the byte the part starts at, which is a part's next"`
 	Limit  uint64 `json:"limit,omitempty" help:"As Markdown, or raw text, the most bytes which are read"`
 }
@@ -177,7 +177,7 @@ func (*workspaceNamespace) SystemPrompt() string {
 		"workspace:list shows the workspaces, and, with a workspace, its folders and resources: list under a folder by its path, from the listing, not its uri, which is for reading. " +
 		"Long listings page: pass a response's next back as cursor, unchanged, with the same path, recursive and type; count, when it's there, is how many there are. type filters, such as inode/directory for folders alone. " +
 		"workspace:read reads a resource by its uri: a document's text, as Markdown, a part at a time, whose front matter has its length; pass a part's next back as offset, until a part has none. " +
-		"An image, audio or video comes back as a file, which you see, or hear; one too large for that has no text, and its speech is for llm:transcribe, not reading. " +
+		"An image, audio or video comes back as a file, whose link you give other tools, such as llm:transcribe, for its speech, rather than reading it. " +
 		"There's no search yet: to find something, walk the folders, and don't say you searched. " +
 		"When more than one workspace could hold what you want, say which one you read."
 }
@@ -247,9 +247,9 @@ func (t *readWorkspace) Run(ctx context.Context, input json.RawMessage) (any, er
 	}
 	switch format := strings.ToLower(strings.TrimSpace(req.Format)); format {
 	case "":
-		// As its type is: an image, audio, or video, as it is, which a model
-		// sees, or hears, and otherwise its text, as Markdown, or, when it
-		// has none, as it is
+		// As its type is: an image, audio, or video, as it is, as a file,
+		// whose link other tools are given, and otherwise its text, as
+		// Markdown, or, when it has none, as it is
 		if media(resource.Type()) {
 			return readRaw(ctx, req.URI, resource, req.Offset, req.Limit)
 		}
