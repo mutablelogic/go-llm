@@ -19,7 +19,7 @@ import (
 type WorkspaceCommands struct {
 	Workspaces WorkspaceListCmd     `cmd:"" name:"workspaces" help:"List the workspaces, such as MCP connectors with resources." group:"WORKSPACES"`
 	Workspace  WorkspaceGetCmd      `cmd:"" name:"workspace" help:"Get a workspace by name." group:"WORKSPACES"`
-	Resources  WorkspaceResourceCmd `cmd:"" name:"workspace-resources" help:"List a workspace's folders and resources, in a folder, or under it, with --recursive, a page at a time." group:"WORKSPACES"`
+	Resources  WorkspaceResourceCmd `cmd:"" name:"workspace-list" help:"List a workspace's folders and resources, in a folder, or under it, with --recursive, a page at a time." group:"WORKSPACES"`
 }
 
 type WorkspaceListCmd struct{}
