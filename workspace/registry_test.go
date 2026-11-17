@@ -49,3 +49,15 @@ func Test_Registry(t *testing.T) {
 	_, err = r.Remove("notes")
 	assert.ErrorIs(t, err, llm.ErrNotFound)
 }
+
+func Test_Folder(t *testing.T) {
+	// A folder is listed as a resource, whose type says it's a folder, and
+	// which has no content
+	folder := workspace.NewFolder("file:///notes/2026/", "2026", "This year's notes")
+	assert.True(t, workspace.IsFolder(folder))
+	assert.Equal(t, workspace.FolderType, folder.Type())
+	assert.Equal(t, "2026", folder.Name())
+	_, err := folder.Read(context.Background())
+	assert.ErrorIs(t, err, llm.ErrBadParameter)
+	assert.False(t, workspace.IsFolder(nil))
+}
