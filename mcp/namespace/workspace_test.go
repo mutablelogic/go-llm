@@ -99,35 +99,34 @@ func Test_WatchResources(t *testing.T) {
 	require.NoError(t, ns.Subscribe(ctx, uri))
 	require.NoError(t, ns.Connect(ctx, connectTo(), "", nil, 1))
 	assert.Equal(t, listAgain, <-changes, "as it's connected")
-	updated := func() {
+	updated := func(phase string) {
+		// It's told of an update said once it lists again, as it's
+		// subscribed, and watching, by then
 		t.Helper()
-		deadline := time.After(5 * time.Second)
-		for {
-			// Said until it's told, as its subscription starts as it's
-			// connected
-			source.changes <- schema.Change{Action: eventschema.EventUpdate, URI: uri}
-			select {
-			case change := <-changes:
-				if change.URI == "" {
-					continue
-				}
-				assert.Equal(t, schema.Change{Action: eventschema.EventUpdate, URI: uri}, change)
-				return
-			case <-time.After(50 * time.Millisecond):
-			case <-deadline:
-				t.Fatal("not told it was updated")
-			}
+		source.changes <- schema.Change{Action: eventschema.EventUpdate, URI: uri}
+		select {
+		case change := <-changes:
+			assert.Equal(t, schema.Change{Action: eventschema.EventUpdate, URI: uri}, change)
+		case <-time.After(5 * time.Second):
+			t.Fatalf("not told it was updated, %s", phase)
 		}
 	}
-	updated()
+	updated("connected")
 
 	// Connected with another client, it lists again, and the new client is
 	// subscribed to it
 	require.NoError(t, ns.Connect(ctx, connectTo(), "", nil, 2))
-	for len(changes) > 0 {
-		<-changes
+	assert.Equal(t, listAgain, <-changes, "as it's connected again")
+	updated("connected again")
+
+	// Unsubscribed, it isn't told
+	require.NoError(t, ns.Unsubscribe(ctx, uri))
+	source.changes <- schema.Change{Action: eventschema.EventUpdate, URI: uri}
+	select {
+	case change := <-changes:
+		t.Fatalf("told of %v, once unsubscribed", change)
+	case <-time.After(100 * time.Millisecond):
 	}
-	updated()
 
 	cancel()
 	require.NoError(t, <-watched)

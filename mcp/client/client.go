@@ -36,8 +36,10 @@ type Client struct {
 	change       ChangeFunc
 	toolsChanged func()
 
-	// The watches of the server's resources
-	resources resourceWatches
+	// The watches of the server's resources, and the subscriptions to
+	// them, which it acknowledged
+	resources     resourceWatches
+	subscriptions subscriptions
 
 	// The source of the token its requests are authorized with, or nil, and
 	// the challenge of the last request which wasn't authorized, or nil
