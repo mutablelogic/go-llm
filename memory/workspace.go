@@ -82,8 +82,13 @@ func (m *Memory) List(ctx context.Context, req workspaceschema.ListRequest) (*wo
 		}
 		for _, memory := range memories {
 			memory.Version = memory.Hash()
+			// When it was changed, or remembered, when it hasn't been since
 			doc := memoryDocument(memory)
-			all = append(all, workspaceschema.ResourceMeta{URI: doc.uri, Name: doc.name, Title: memory.Key, Description: memory.Description, Type: markdownType, Size: int64(len(doc.data)), Modified: memory.Modified})
+			modified := memory.Modified
+			if modified.IsZero() {
+				modified = memory.Created
+			}
+			all = append(all, workspaceschema.ResourceMeta{URI: doc.uri, Name: doc.name, Title: memory.Key, Description: memory.Description, Type: markdownType, Size: int64(len(doc.data)), Modified: modified})
 		}
 	}
 
