@@ -3,9 +3,12 @@ package server
 import (
 	"context"
 	"errors"
+	"fmt"
+	"io"
 	"strings"
 
 	// Packages
+	jsonrpc "github.com/modelcontextprotocol/go-sdk/jsonrpc"
 	sdkmcp "github.com/modelcontextprotocol/go-sdk/mcp"
 	llm "github.com/mutablelogic/go-llm"
 	eventschema "github.com/mutablelogic/go-llm/broadcaster/schema"
@@ -119,6 +122,11 @@ func (s *Server) listChanged() {
 ///////////////////////////////////////////////////////////////////////////////
 // GLOBALS
 
+// MaxChunk is the most bytes of a resource's content which are read at
+// once, as a chunk, as its JSON-RPC frame, in base64, is at most the SDK's
+// DefaultMaxLineLength
+const MaxChunk = 8 * 1024 * 1024
+
 // listChangedURI is the URI of the placeholder which says the list of
 // resources changed, which is never listed, or read
 const listChangedURI = "go-llm-workspace:///list-changed"
@@ -161,17 +169,75 @@ func (s *Server) readResource(ctx context.Context, req sdkmcp.Request) (sdkmcp.R
 	} else if err != nil {
 		return nil, err
 	}
-	data, err := llm.ReadAll(ctx, resource)
+
+	// A chunk of it, as the request's _meta asks, with the size of all of
+	// it, so a large resource is read a chunk at a time, or all of it
+	result := &sdkmcp.ReadResourceResult{}
+	offset, length, chunked := schema.ReadRangeOf(r.Params)
+	var data []byte
+	if chunked {
+		length = min(length, MaxChunk)
+		if data, err = readChunk(ctx, resource, offset, length); err == nil {
+			if size, ok := llm.ContentLength(resource); ok {
+				result.Meta = sdkmcp.Meta{schema.MetaSize: size}
+			}
+		}
+	} else if size, ok := llm.ContentLength(resource); ok && size > MaxChunk {
+		return nil, tooLarge(uri, size)
+	} else if data, err = llm.ReadAll(ctx, resource); err == nil && int64(len(data)) > MaxChunk {
+		return nil, tooLarge(uri, int64(len(data)))
+	}
 	if errors.Is(err, llm.ErrNotFound) {
 		return nil, sdkmcp.ResourceNotFoundError(uri)
 	} else if err != nil {
 		return nil, err
 	}
+
+	// A chunk is its data, as it can end in the middle of a character, and
+	// all of it is text, when it's text
 	contents := &sdkmcp.ResourceContents{URI: uri, MIMEType: resource.Type()}
-	if mimeType := resource.Type(); strings.HasPrefix(mimeType, "text/") || mimeType == types.ContentTypeJSON {
+	if mimeType := resource.Type(); !chunked && (strings.HasPrefix(mimeType, "text/") || mimeType == types.ContentTypeJSON) {
 		contents.Text = string(data)
 	} else {
 		contents.Blob = data
 	}
-	return &sdkmcp.ReadResourceResult{Contents: []*sdkmcp.ResourceContents{contents}}, nil
+	result.Contents = []*sdkmcp.ResourceContents{contents}
+	return result, nil
+}
+
+// tooLarge returns the error of a read of all of a resource which is larger
+// than a chunk, whose JSON-RPC frame would be larger than the SDK reads,
+// which closes the session, so it's read a chunk at a time
+func tooLarge(uri string, size int64) error {
+	return &jsonrpc.Error{
+		Code:    jsonrpc.CodeInvalidParams,
+		Message: fmt.Sprintf("resource %q is %d bytes, which is more than %d bytes, so read it in chunks, with the %q and %q of the request's _meta", uri, size, MaxChunk, schema.MetaOffset, schema.MetaLength),
+	}
+}
+
+// readChunk reads the chunk of the resource's content from the offset, of
+// at most the length, seeking to it, when its reader can, or reading past
+// it, when it can't. The chunk is empty, beyond the end of its content.
+func readChunk(ctx context.Context, resource llm.Resource, offset, length int64) ([]byte, error) {
+	read, err := resource.Read(ctx)
+	if err != nil {
+		return nil, err
+	}
+	var data []byte
+	err = read(ctx, func(r io.Reader) error {
+		if seeker, ok := r.(io.Seeker); ok {
+			if _, err := seeker.Seek(offset, io.SeekStart); err != nil {
+				return err
+			}
+		} else if _, err := io.CopyN(io.Discard, r, offset); err != nil && !errors.Is(err, io.EOF) {
+			return err
+		}
+		var err error
+		data, err = io.ReadAll(io.LimitReader(r, length))
+		return err
+	})
+	if data == nil {
+		data = []byte{}
+	}
+	return data, err
 }

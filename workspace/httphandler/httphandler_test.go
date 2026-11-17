@@ -6,6 +6,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -35,8 +36,13 @@ func (notes) List(_ context.Context, req schema.ListRequest) (*schema.ListRespon
 	}, Next: "more"}, nil
 }
 
+// big is the content of big.bin, which is larger than is hashed
+var big = strings.Repeat("0123456789", httphandler.MaxHashed/10+1)
+
 func (notes) Read(_ context.Context, uri string) (llm.Resource, error) {
-	if uri != "file:///a.md" {
+	if uri == "file:///big.bin" {
+		return &providerschema.Resource{ResourceMeta: providerschema.ResourceMeta{ContentType: "application/octet-stream", Data: []byte(big)}}, nil
+	} else if uri != "file:///a.md" {
 		return nil, llm.ErrNotFound.With(uri)
 	}
 	return &providerschema.Resource{ResourceMeta: providerschema.ResourceMeta{ContentType: "text/markdown", Data: []byte("# A\n\nHello")}}, nil
@@ -133,6 +139,20 @@ func Test_Content(t *testing.T) {
 		resp, body = request(t, server, path, map[string]string{"Range": "bytes=0-2"})
 		assert.Equal(t, http.StatusPartialContent, resp.StatusCode)
 		assert.Equal(t, "# A", body)
+	})
+
+	t.Run("Large", func(t *testing.T) {
+		// Large content is written as it's read, without an entity tag,
+		// and in ranges
+		path := "/llm/workspace/notes/content?uri=" + url.QueryEscape("resource://notes/file:///big.bin")
+		resp, body := request(t, server, path, nil)
+		require.Equal(t, http.StatusOK, resp.StatusCode)
+		assert.Empty(t, resp.Header.Get("ETag"))
+		assert.Equal(t, strconv.Itoa(len(big)), resp.Header.Get("Content-Length"))
+		assert.Equal(t, big, body)
+		resp, body = request(t, server, path, map[string]string{"Range": "bytes=-5"})
+		assert.Equal(t, http.StatusPartialContent, resp.StatusCode)
+		assert.Equal(t, big[len(big)-5:], body)
 	})
 
 	t.Run("Markdown", func(t *testing.T) {

@@ -3,6 +3,7 @@ package server_test
 import (
 	"context"
 	"encoding/json"
+	"io"
 	"slices"
 	"strconv"
 	"strings"
@@ -164,6 +165,72 @@ func Test_Workspace(t *testing.T) {
 		assert.ErrorIs(t, err, llm.ErrNotFound, "MCP's error is ErrNotFound")
 		_, err = ws.Read(ctx, "file:///gone.md")
 		assert.ErrorIs(t, err, llm.ErrNotFound, "as is one whose content is gone")
+	})
+}
+
+func Test_WorkspaceChunks(t *testing.T) {
+	// A resource larger than a chunk is read a chunk at a time, and seeks,
+	// and reading all of it at once is refused, rather than closing the
+	// session
+	ctx := t.Context()
+	var big strings.Builder
+	for i := 0; big.Len() < server.MaxChunk+server.MaxChunk/2; i++ {
+		big.WriteString(strconv.Itoa(i))
+		big.WriteByte('\n')
+	}
+	source := files{"big.md": big.String(), "small.md": "# Small"}
+	srv, err := server.New(&tools{}, server.WithWorkspace(source))
+	require.NoError(t, err)
+	c, err := client.New("memory://files", client.WithTransport(srv.InMemoryTransport))
+	require.NoError(t, err)
+	require.NoError(t, c.Connect(ctx))
+	t.Cleanup(func() { assert.NoError(t, c.Disconnect()) })
+	ws, err := workspace.NewClient(c)
+	require.NoError(t, err)
+
+	t.Run("Small", func(t *testing.T) {
+		resource, err := ws.Read(ctx, "file:///small.md")
+		require.NoError(t, err)
+		data, err := llm.ReadAll(ctx, resource)
+		require.NoError(t, err)
+		assert.Equal(t, "# Small", string(data))
+	})
+
+	t.Run("Chunks", func(t *testing.T) {
+		resource, err := ws.Read(ctx, "file:///big.md")
+		require.NoError(t, err)
+		size, ok := llm.ContentLength(resource)
+		require.True(t, ok)
+		assert.Equal(t, int64(big.Len()), size)
+		data, err := llm.ReadAll(ctx, resource)
+		require.NoError(t, err)
+		assert.Equal(t, big.String(), string(data))
+	})
+
+	t.Run("Seek", func(t *testing.T) {
+		resource, err := ws.Read(ctx, "file:///big.md")
+		require.NoError(t, err)
+		read, err := resource.Read(ctx)
+		require.NoError(t, err)
+		require.NoError(t, read(ctx, func(r io.Reader) error {
+			seeker, ok := r.(io.Seeker)
+			require.True(t, ok)
+			offset := int64(big.Len() - 100)
+			_, err := seeker.Seek(offset, io.SeekStart)
+			require.NoError(t, err)
+			data, err := io.ReadAll(r)
+			require.NoError(t, err)
+			assert.Equal(t, big.String()[offset:], string(data))
+			return nil
+		}))
+	})
+
+	t.Run("All", func(t *testing.T) {
+		_, err := c.ReadResource(ctx, "file:///big.md")
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "read it in chunks")
+		_, err = c.ReadResource(ctx, "file:///small.md")
+		assert.NoError(t, err, "the session is still open")
 	})
 }
 

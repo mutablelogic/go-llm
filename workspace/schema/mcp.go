@@ -31,6 +31,14 @@ const (
 	// The keys of the _meta of a resource: its metadata, and artwork
 	MetaMeta    = MetaPrefix + "meta"
 	MetaArtwork = MetaPrefix + "artwork"
+
+	// The keys of the _meta of resources/read: the byte of the content to
+	// read from, and the most bytes to read, so a large resource is read in
+	// chunks, and, of its result, the size of the whole content, which a
+	// server which isn't a workspace ignores, and leaves out
+	MetaOffset = MetaPrefix + "offset"
+	MetaLength = MetaPrefix + "length"
+	MetaSize   = MetaPrefix + "size"
 )
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -141,4 +149,38 @@ func decode(from any, to any) {
 		return
 	}
 	_ = json.Unmarshal(data, to)
+}
+
+// ReadParams returns the params of resources/read of the resource with the
+// URI, of the chunk of its content from the offset, of at most the length,
+// in its _meta
+func ReadParams(uri string, offset, length int64) *sdkmcp.ReadResourceParams {
+	return &sdkmcp.ReadResourceParams{URI: uri, Meta: sdkmcp.Meta{MetaOffset: offset, MetaLength: length}}
+}
+
+// ReadRangeOf returns the offset, and length, of the chunk the params of
+// resources/read ask for, and true, or false, when they ask for the whole
+// content, as a client which isn't a workspace's does
+func ReadRangeOf(params *sdkmcp.ReadResourceParams) (offset, length int64, ok bool) {
+	if params == nil || params.Meta[MetaLength] == nil {
+		return 0, 0, false
+	}
+	decode(params.Meta[MetaOffset], &offset)
+	decode(params.Meta[MetaLength], &length)
+	if offset < 0 || length <= 0 {
+		return 0, 0, false
+	}
+	return offset, length, true
+}
+
+// SizeOf returns the size of the whole content of the resource, which a
+// chunk of it is, and true, or false, when the result doesn't say, as a
+// server which isn't a workspace's doesn't
+func SizeOf(result *sdkmcp.ReadResourceResult) (int64, bool) {
+	if result == nil || result.Meta[MetaSize] == nil {
+		return 0, false
+	}
+	var size int64 = -1
+	decode(result.Meta[MetaSize], &size)
+	return size, size >= 0
 }
