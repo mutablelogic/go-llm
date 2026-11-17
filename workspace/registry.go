@@ -2,6 +2,7 @@ package workspace
 
 import (
 	"context"
+	"errors"
 	"iter"
 	"maps"
 	"slices"
@@ -72,10 +73,29 @@ func (r *Registry) With(name string, fn func(Workspace) error) error {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 	ws, exists := r.workspaces[name]
-	if !exists {
+	if !exists || !available(ws) {
 		return llm.ErrNotFound.Withf("workspace %q", name)
 	}
 	return fn(ws)
+}
+
+// Resolve returns the resource, or artwork, with the URI, of whichever of
+// the workspaces, in order of their names, which read their resources, has
+// it. Returns ErrNotFound when none has it.
+func (r *Registry) Resolve(ctx context.Context, uri string) (llm.Resource, error) {
+	for _, ws := range r.All() {
+		reader, ok := ws.(Reader)
+		if !ok {
+			continue
+		}
+		resource, err := reader.Read(ctx, uri)
+		if err == nil {
+			return resource, nil
+		} else if !errors.Is(err, llm.ErrNotFound) && !errors.Is(err, llm.ErrBadParameter) {
+			return nil, err
+		}
+	}
+	return nil, llm.ErrNotFound.Withf("resource %q isn't in a workspace", uri)
 }
 
 // Read returns the resource, or artwork, with the URI, of the workspace with
@@ -93,16 +113,18 @@ func (r *Registry) Read(ctx context.Context, name, uri string) (resource llm.Res
 	return resource, err
 }
 
-// All returns the workspaces, by their names, in order of their names, as
+// All returns the workspaces which are available, by their names, in order of their names, as
 // they were when it's ranged over, which can add, or remove, workspaces,
 // as it ranges
 func (r *Registry) All() iter.Seq2[string, Workspace] {
 	return func(yield func(string, Workspace) bool) {
 		r.mu.RLock()
-		names := slices.Sorted(maps.Keys(r.workspaces))
-		workspaces := make([]Workspace, 0, len(names))
-		for _, name := range names {
-			workspaces = append(workspaces, r.workspaces[name])
+		var names []string
+		var workspaces []Workspace
+		for _, name := range slices.Sorted(maps.Keys(r.workspaces)) {
+			if ws := r.workspaces[name]; available(ws) {
+				names, workspaces = append(names, name), append(workspaces, ws)
+			}
 		}
 		r.mu.RUnlock()
 		for i, ws := range workspaces {
@@ -111,4 +133,16 @@ func (r *Registry) All() iter.Seq2[string, Workspace] {
 			}
 		}
 	}
+}
+
+///////////////////////////////////////////////////////////////////////////////
+// PRIVATE FUNCTIONS
+
+// available returns true when the workspace is one now, which it is, unless
+// it says it isn't
+func available(ws Workspace) bool {
+	if a, ok := ws.(Available); ok {
+		return a.Available()
+	}
+	return true
 }

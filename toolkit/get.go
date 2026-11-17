@@ -131,7 +131,7 @@ func (self *Toolkit) resolve(names []string, skip bool) ([]llm.Tool, []string, e
 				return nil, nil, llm.ErrBadParameter.Withf("tool %q: name %q isn't valid, or is too long", canonical, name)
 			}
 			seen[name] = canonical
-			result = append(result, namedTool{entry: entry, name: name, tracer: self.tracer})
+			result = append(result, namedTool{entry: entry, name: name, tracer: self.tracer, toolkit: self})
 		}
 	}
 	return result, skipped, nil
@@ -280,9 +280,10 @@ func (self *Toolkit) lookupLocked(name string) (entry, error) {
 // namedTool is a tool with a new name, which is run as it's called with
 // CallTool, so its input is validated, and its result is JSON
 type namedTool struct {
-	entry  entry
-	name   string
-	tracer trace.Tracer
+	entry   entry
+	name    string
+	tracer  trace.Tracer
+	toolkit *Toolkit
 }
 
 var _ llm.Tool = namedTool{}
@@ -333,7 +334,7 @@ func (t namedTool) Run(ctx context.Context, input json.RawMessage) (_ any, err e
 	)
 	defer func() { endSpan(err) }()
 
-	result, err := t.entry.call(ctx, input)
+	result, err := t.entry.call(t.toolkit.withWorkspaces(ctx), input)
 	if err != nil || result == nil {
 		return nil, err
 	}

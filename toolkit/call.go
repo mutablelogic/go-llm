@@ -37,7 +37,7 @@ func (self *Toolkit) CallTool(ctx context.Context, name string, input json.RawMe
 	if err != nil {
 		return nil, err
 	}
-	return entry.call(ctx, input)
+	return entry.call(self.withWorkspaces(ctx), input)
 }
 
 ////////////////////////////////////////////////////////////////////////////////
