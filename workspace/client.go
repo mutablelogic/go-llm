@@ -172,7 +172,7 @@ func (w *clientWorkspace) WatchResources(ctx context.Context, ch chan<- schema.C
 func notFound(err error, uri string) error {
 	var wire *jsonrpc.Error
 	if errors.As(err, &wire) && wire.Code == sdkmcp.CodeResourceNotFound {
-		return llm.ErrNotFound.Withf("no resource %s", uri)
+		return llm.ErrNotFound.With(uri)
 	}
 	return err
 }

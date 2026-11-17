@@ -40,12 +40,11 @@ func Test_ReadMarkdown(t *testing.T) {
 		require.NoError(t, err)
 		assert.Equal(t, *first.Next, second.Offset)
 
-		// With the content's size, which isn't the Markdown's, and, with the
-		// last part, the Markdown's length, which the offsets are of
-		require.NotNil(t, first.ContentSize)
-		assert.Equal(t, int64(len(long)), *first.ContentSize)
-		assert.Contains(t, first.Document(), "content_size: 2800\n")
-		assert.Nil(t, first.Length, "not until the last part")
+		// The first part has the length of all of the Markdown, which the
+		// offsets are of, as the last does
+		require.NotNil(t, first.Length, "with the first part")
+		assert.Contains(t, first.Document(), fmt.Sprintf("length: %d\n", *first.Length))
+		assert.NotContains(t, first.Document(), "content_size")
 		part := second
 		for part.Next != nil {
 			part, err = workspace.ReadMarkdown(ctx, text("text/plain", long), *part.Next, 1000)
@@ -53,6 +52,7 @@ func Test_ReadMarkdown(t *testing.T) {
 		}
 		require.NotNil(t, part.Length)
 		assert.Equal(t, part.Offset+uint64(len(part.Body)), *part.Length)
+		assert.Equal(t, *first.Length, *part.Length, "the first part's length is where the last ends")
 		assert.Contains(t, part.Document(), fmt.Sprintf("length: %d\n", *part.Length))
 
 		// An offset beyond its end says so, once

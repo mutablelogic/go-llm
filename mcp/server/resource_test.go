@@ -193,7 +193,7 @@ func Test_Workspace(t *testing.T) {
 		assert.Equal(t, "text/markdown", resource.Type())
 		_, err = ws.Read(ctx, "file:///missing.md")
 		assert.ErrorIs(t, err, llm.ErrNotFound, "MCP's error is ErrNotFound")
-		assert.ErrorContains(t, err, "no resource file:///missing.md", "by its URI")
+		assert.EqualError(t, err, "not found: file:///missing.md", "by its URI")
 		assert.NotContains(t, err.Error(), "resources/read", "without MCP's call")
 		_, err = ws.Read(ctx, "file:///gone.md")
 		assert.ErrorIs(t, err, llm.ErrNotFound, "as is one whose content is gone")

@@ -16,15 +16,14 @@ import (
 // left out at its end, and, with the first part, its metadata, by namespace
 // and key, such as dc:title
 type Markdown struct {
-	URI         string            `json:"uri" help:"URI of the resource"`
-	Type        string            `json:"type,omitempty" help:"MIME type of the resource"`
-	Body        string            `json:"body" help:"The part's Markdown"`
-	Offset      uint64            `json:"offset" help:"The byte of the Markdown the part starts at"`
-	Next        *uint64           `json:"next,omitempty" help:"The offset of the next part, or none, at the end"`
-	ContentSize *int64            `json:"content_size,omitempty" help:"The size of the resource's content, in bytes, when it's known, which isn't its Markdown's, which the offsets are of, so the parts are read by next"`
-	Length      *uint64           `json:"length,omitempty" help:"The length of the Markdown, in bytes, which the offsets are of, with the last part"`
-	Meta        map[string]string `json:"meta,omitempty" help:"The resource's metadata, with the first part, by namespace and key, such as dc:title"`
-	Note        string            `json:"note,omitempty" help:"Why the part has no text, such as a page which is rendered by its scripts"`
+	URI    string            `json:"uri" help:"URI of the resource"`
+	Type   string            `json:"type,omitempty" help:"MIME type of the resource"`
+	Body   string            `json:"body" help:"The part's Markdown"`
+	Offset uint64            `json:"offset" help:"The byte of the Markdown the part starts at"`
+	Next   *uint64           `json:"next,omitempty" help:"The offset of the next part, or none, at the end"`
+	Length *uint64           `json:"length,omitempty" help:"The length of all of the Markdown, in bytes, which the offsets are of, with the first part, and the last"`
+	Meta   map[string]string `json:"meta,omitempty" help:"The resource's metadata, with the first part, by namespace and key, such as dc:title"`
+	Note   string            `json:"note,omitempty" help:"Why the part has no text, such as a page which is rendered by its scripts"`
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -46,9 +45,6 @@ func (m Markdown) Document() string {
 	}
 	if m.Length != nil {
 		fmt.Fprintf(&b, "length: %d\n", *m.Length)
-	}
-	if m.ContentSize != nil {
-		fmt.Fprintf(&b, "content_size: %d\n", *m.ContentSize)
 	}
 	if m.Note != "" {
 		fmt.Fprintf(&b, "note: %s\n", quote(m.Note))

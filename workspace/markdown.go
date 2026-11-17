@@ -100,11 +100,17 @@ func ReadMarkdown(ctx context.Context, resource llm.Resource, offset, limit uint
 	var meta []metadata.Metadata
 	if err := read(ctx, func(r io.Reader) error {
 		var err error
-		_, meta, err = metadata.Extract(ctx, namedReader{Reader: r, name: resource.Name()},
+		opts := []metadata.Option{
 			metadata.WithContentType(mediatype),
 			metadata.WithNamespace(markdownNamespaces...),
 			metadata.WithRange(fmt.Sprintf("%d:%d", offset, offset+limit)),
-		)
+		}
+		// The first part has the length of all of the Markdown, so how much
+		// there is is known, which converts all of it, once
+		if offset == 0 {
+			opts = append(opts, metadata.WithLength())
+		}
+		_, meta, err = metadata.Extract(ctx, namedReader{Reader: r, name: resource.Name()}, opts...)
 		return err
 	}); err != nil {
 		switch {
@@ -122,9 +128,6 @@ func ReadMarkdown(ctx context.Context, resource llm.Resource, offset, limit uint
 	// resource's metadata, with the first part, apart from what's read next,
 	// which is go-metadata's
 	result := &schema.Markdown{URI: resource.URI(), Type: resource.Type(), Offset: offset}
-	if size, ok := llm.ContentLength(resource); ok {
-		result.ContentSize = &size
-	}
 	var hasBody bool
 	for _, entry := range meta {
 		switch {
@@ -148,9 +151,13 @@ func ReadMarkdown(ctx context.Context, resource llm.Resource, offset, limit uint
 			if value, ok := entry.Any().(uint64); ok {
 				result.Next = &value
 			}
+		case entry.Key() == "length":
+			if value, ok := entry.Any().(uint64); ok {
+				result.Length = &value
+			}
 		}
 	}
-	if hasBody && result.Next == nil {
+	if hasBody && result.Next == nil && result.Length == nil {
 		// The last part, whose end is the Markdown's
 		length := result.Offset + uint64(len(result.Body))
 		result.Length = &length
