@@ -15,6 +15,7 @@ import (
 	client "github.com/mutablelogic/go-llm/mcp/client"
 	toolkit "github.com/mutablelogic/go-llm/toolkit"
 	toolschema "github.com/mutablelogic/go-llm/toolkit/schema"
+	workspaceschema "github.com/mutablelogic/go-llm/workspace/schema"
 )
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -46,6 +47,8 @@ type Namespace struct {
 	// resources which are subscribed to, which each client is
 	clientChanged chan struct{}
 	subscribed    map[string]bool
+	root          string         // The root of its server's resources, of its templates
+	rootClient    *client.Client // The client the root was listed with
 
 	// Held while the resources are subscribed to, or unsubscribed from,
 	// with their servers, so an unsubscribe isn't undone by subscribing a
@@ -273,6 +276,20 @@ func (ns *Namespace) list(ctx context.Context) error {
 	}
 	ns.replace(tools)
 	ns.replacePrompts(prompts)
+
+	// The root of its resources, of its resource templates, which it may
+	// have none of. When they can't be listed, it's as it was, with the
+	// same client, so its resources' URIs stay as they were listed, or none,
+	// with another
+	templates, err := c.ListResourceTemplates(ctx)
+	ns.mu.Lock()
+	switch {
+	case err == nil:
+		ns.root, ns.rootClient = workspaceschema.RootOf(templates), c
+	case ns.rootClient != c:
+		ns.root, ns.rootClient = "", nil
+	}
+	ns.mu.Unlock()
 	return nil
 }
 
@@ -324,6 +341,7 @@ func (ns *Namespace) setClient(c *client.Client) {
 func (ns *Namespace) clear() {
 	ns.mu.Lock()
 	ns.setClient(nil)
+	ns.root, ns.rootClient = "", nil
 	ns.mu.Unlock()
 	ns.replace(nil)
 	ns.replacePrompts(nil)

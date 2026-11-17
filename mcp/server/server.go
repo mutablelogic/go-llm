@@ -91,6 +91,18 @@ func New(ns toolkit.Namespace, opts ...Opt) (*Server, error) {
 			return next(ctx, method, req)
 		}
 	})
+	// A workspace whose resources are under a root says so, with a resource
+	// template of it, such as file:///{+path}, which is read as its other
+	// resources are, above
+	if rooted, ok := s.workspace.(workspace.Rooted); ok && rooted.Root() != "" {
+		s.server.AddResourceTemplate(&sdkmcp.ResourceTemplate{
+			URITemplate: schema.RootTemplate(rooted.Root()),
+			Name:        ns.Name(),
+			Title:       ns.Description(),
+		}, func(_ context.Context, req *sdkmcp.ReadResourceRequest) (*sdkmcp.ReadResourceResult, error) {
+			return nil, sdkmcp.ResourceNotFoundError(req.Params.URI)
+		})
+	}
 	s.sync()
 	return s, nil
 }

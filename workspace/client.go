@@ -5,6 +5,8 @@ import (
 	"errors"
 	"path"
 	"strings"
+	"sync"
+	"time"
 
 	// Packages
 	jsonrpc "github.com/modelcontextprotocol/go-sdk/jsonrpc"
@@ -21,7 +23,9 @@ import (
 // clientWorkspace is a workspace which is an MCP server's resources, which
 // are listed, and read, with its client
 type clientWorkspace struct {
-	client *client.Client
+	client   *client.Client
+	rootOnce sync.Once
+	root     string
 }
 
 // contents is a resource's content, as an MCP server returned it
@@ -32,7 +36,12 @@ type contents struct {
 
 var _ Reader = (*clientWorkspace)(nil)
 var _ Subscriber = (*clientWorkspace)(nil)
+var _ Rooted = (*clientWorkspace)(nil)
 var _ llm.Resource = (*contents)(nil)
+
+// rootTimeout is how long the server's resource templates are waited for,
+// to find its root
+const rootTimeout = 10 * time.Second
 
 ///////////////////////////////////////////////////////////////////////////////
 // LIFECYCLE
@@ -67,6 +76,20 @@ func (w *clientWorkspace) List(ctx context.Context, req schema.ListRequest) (*sc
 		}
 	}
 	return response, nil
+}
+
+// Root returns the root of the server's resources' URIs, of its resource
+// template which is one, such as file:///{+path}, which is listed once, or
+// nothing, when it has none
+func (w *clientWorkspace) Root() string {
+	w.rootOnce.Do(func() {
+		ctx, cancel := context.WithTimeout(context.Background(), rootTimeout)
+		defer cancel()
+		if templates, err := w.client.ListResourceTemplates(ctx); err == nil {
+			w.root = schema.RootOf(templates)
+		}
+	})
+	return w.root
 }
 
 // Read returns the server's resource, or artwork, with the URI, as its

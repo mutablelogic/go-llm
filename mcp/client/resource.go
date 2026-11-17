@@ -41,6 +41,26 @@ func (c *Client) ListResources(ctx context.Context, params *sdkmcp.ListResources
 	return session.ListResources(ctx, params)
 }
 
+// ListResourceTemplates returns the server's resource templates, of each
+// page, or none, when it doesn't say it has resources. Returns
+// ErrServiceUnavailable when it isn't connected.
+func (c *Client) ListResourceTemplates(ctx context.Context) ([]*sdkmcp.ResourceTemplate, error) {
+	session, err := c.connected()
+	if err != nil {
+		return nil, err
+	} else if !c.HasResources() {
+		return nil, nil
+	}
+	var result []*sdkmcp.ResourceTemplate
+	for template, err := range session.ResourceTemplates(ctx, nil) {
+		if err != nil {
+			return nil, err
+		}
+		result = append(result, template)
+	}
+	return result, nil
+}
+
 // ReadResource returns the contents of the server's resource with the URI.
 // Returns ErrServiceUnavailable when it isn't connected.
 func (c *Client) ReadResource(ctx context.Context, uri string) (*sdkmcp.ReadResourceResult, error) {

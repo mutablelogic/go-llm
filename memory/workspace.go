@@ -39,6 +39,7 @@ type document struct {
 var _ workspace.Reader = (*Memory)(nil)
 var _ workspace.Watcher = (*Memory)(nil)
 var _ workspace.Describer = (*Memory)(nil)
+var _ workspace.Rooted = (*Memory)(nil)
 var _ llm.Sized = (*document)(nil)
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -63,6 +64,9 @@ const (
 
 // Title returns the title of the memory's workspace
 func (*Memory) Title() string { return "Memory" }
+
+// Root returns the root of the URIs of the memory's workspace, memory:///
+func (*Memory) Root() string { return "memory:///" }
 
 // Version returns nothing, as the memory has no version of its own
 func (*Memory) Version() string { return "" }

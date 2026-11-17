@@ -2,10 +2,13 @@ package namespace_test
 
 import (
 	"context"
+	"errors"
+	"sync/atomic"
 	"testing"
 	"time"
 
 	// Packages
+	sdkmcp "github.com/modelcontextprotocol/go-sdk/mcp"
 	llm "github.com/mutablelogic/go-llm"
 	eventschema "github.com/mutablelogic/go-llm/broadcaster/schema"
 	client "github.com/mutablelogic/go-llm/mcp/client"
@@ -130,4 +133,67 @@ func Test_WatchResources(t *testing.T) {
 
 	cancel()
 	require.NoError(t, <-watched)
+}
+
+// rootedServed is a workspace whose resources are under file:///
+type rootedServed struct{ served }
+
+func (rootedServed) Root() string { return "file:///" }
+
+func Test_Root(t *testing.T) {
+	// A namespace's root is its server's, of its resource template, while
+	// it's connected
+	ctx := t.Context()
+	srv, err := server.New(noTools{}, server.WithWorkspace(rootedServed{served{changes: make(chan schema.Change)}}))
+	require.NoError(t, err)
+	c, err := client.New("memory://files", client.WithTransport(srv.InMemoryTransport))
+	require.NoError(t, err)
+	require.NoError(t, c.Connect(ctx))
+	t.Cleanup(func() { _ = c.Disconnect() })
+
+	ns, err := namespace.New("files", "")
+	require.NoError(t, err)
+	var _ workspace.Rooted = ns
+	assert.Empty(t, ns.Root(), "not connected")
+	require.NoError(t, ns.Connect(ctx, c, "", nil, 1))
+	assert.Equal(t, "file:///", ns.Root())
+	ns.Disconnect(c)
+	assert.Empty(t, ns.Root(), "disconnected")
+}
+
+func Test_RootRefreshFails(t *testing.T) {
+	// A root which was listed is kept, when its templates can't be listed
+	// again, with the same client
+	ctx := t.Context()
+	srv := sdkmcp.NewServer(&sdkmcp.Implementation{Name: "files", Version: "1"}, nil)
+	srv.AddResourceTemplate(&sdkmcp.ResourceTemplate{URITemplate: "file:///{+path}", Name: "files"}, func(_ context.Context, req *sdkmcp.ReadResourceRequest) (*sdkmcp.ReadResourceResult, error) {
+		return nil, sdkmcp.ResourceNotFoundError(req.Params.URI)
+	})
+	var fail atomic.Bool
+	srv.AddReceivingMiddleware(func(next sdkmcp.MethodHandler) sdkmcp.MethodHandler {
+		return func(ctx context.Context, method string, req sdkmcp.Request) (sdkmcp.Result, error) {
+			if method == "resources/templates/list" && fail.Load() {
+				return nil, errors.New("templates aren't listed")
+			}
+			return next(ctx, method, req)
+		}
+	})
+	c, err := client.New("memory://files", client.WithTransport(func(ctx context.Context) (sdkmcp.Transport, error) {
+		clientTransport, serverTransport := sdkmcp.NewInMemoryTransports()
+		if _, err := srv.Connect(ctx, serverTransport, nil); err != nil {
+			return nil, err
+		}
+		return clientTransport, nil
+	}))
+	require.NoError(t, err)
+	require.NoError(t, c.Connect(ctx))
+	t.Cleanup(func() { _ = c.Disconnect() })
+
+	ns, err := namespace.New("files", "")
+	require.NoError(t, err)
+	require.NoError(t, ns.Connect(ctx, c, "", nil, 1))
+	require.Equal(t, "file:///", ns.Root())
+	fail.Store(true)
+	require.NoError(t, ns.Refresh(ctx))
+	assert.Equal(t, "file:///", ns.Root(), "as it was")
 }

@@ -19,6 +19,7 @@ var _ workspace.Reader = (*Namespace)(nil)
 var _ workspace.Available = (*Namespace)(nil)
 var _ workspace.Describer = (*Namespace)(nil)
 var _ workspace.Subscriber = (*Namespace)(nil)
+var _ workspace.Rooted = (*Namespace)(nil)
 
 ///////////////////////////////////////////////////////////////////////////////
 // PUBLIC METHODS
@@ -109,6 +110,15 @@ func (ns *Namespace) Unsubscribe(ctx context.Context, uri string) error {
 		return nil
 	}
 	return c.Unsubscribe(ctx, uri)
+}
+
+// Root returns the root of the server's resources' URIs, of its resource
+// template which is one, such as file:///{+path}, or nothing, when it has
+// none, or isn't connected
+func (ns *Namespace) Root() string {
+	ns.mu.RLock()
+	defer ns.mu.RUnlock()
+	return ns.root
 }
 
 // Title returns the title of the server the namespace is connected to, or
