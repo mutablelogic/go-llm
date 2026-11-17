@@ -40,3 +40,24 @@ func Test_SplitName(t *testing.T) {
 	_, req = splitName("files", schema.ListRequest{Path: "TV"})
 	assert.Equal(t, "TV", req.Path, "the request's, as it is")
 }
+
+func Test_Indent(t *testing.T) {
+	// A recursive listing is a tree, indented under each folder
+	folder := func(uri string) schema.ResourceMeta { return schema.ResourceMeta{URI: uri, Type: schema.FolderType} }
+	file := func(uri string) schema.ResourceMeta { return schema.ResourceMeta{URI: uri, Type: "video/x-matroska"} }
+	rows := indent([]schema.ResourceMeta{
+		folder("resource://files/file:///TV/MobLand/Season 1/"),
+		file("resource://files/file:///TV/MobLand/Season 1/E01.mkv"),
+		folder("resource://files/file:///TV/MobLand/Season 1/Extras/"),
+		file("resource://files/file:///TV/MobLand/Season 1/Extras/a.mkv"),
+		file("resource://files/file:///TV/MobLand/Season 1/E02.mkv"),
+		folder("resource://files/file:///TV/MobLand/Season 2/"),
+		file("resource://files/file:///TV/MobLand/Season 2/E01.mkv"),
+		file("resource://files/file:///TV/MobLand/notes.md"),
+	})
+	var depths []int
+	for _, r := range rows {
+		depths = append(depths, r.depth)
+	}
+	assert.Equal(t, []int{0, 1, 1, 2, 1, 0, 1, 0}, depths)
+}

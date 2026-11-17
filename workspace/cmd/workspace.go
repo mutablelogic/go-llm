@@ -88,7 +88,7 @@ func (cmd *WorkspaceResourceCmd) Run(ctx server.Cmd) error {
 			fmt.Println(list)
 			return nil
 		}
-		if _, err := tui.TableFor[schema.ResourceMeta](tui.SetWidth(width)).Write(os.Stdout, list.Body...); err != nil {
+		if _, err := tui.TableFor[indented](tui.SetWidth(width)).Write(os.Stdout, indent(list.Body)...); err != nil {
 			return err
 		}
 		if list.Next != "" {
@@ -132,6 +132,39 @@ func (cmd *WorkspaceReadCmd) Run(ctx server.Cmd) (err error) {
 
 ///////////////////////////////////////////////////////////////////////////////
 // PRIVATE FUNCTIONS
+
+// indented is a folder, or resource, as it's listed, whose name is indented
+// by how deep it is, under the folders listed before it
+type indented struct {
+	schema.ResourceMeta
+	depth int
+}
+
+// Cell returns the resource's cell, whose name is indented
+func (r indented) Cell(col int) tui.CellText {
+	if col == 0 {
+		return strings.Repeat("  ", r.depth) + fmt.Sprint(r.ResourceMeta.Cell(0))
+	}
+	return r.ResourceMeta.Cell(col)
+}
+
+// indent returns the folders, and resources, each indented under the folder
+// before it, whose URI its own starts with, as a folder's ends with a slash,
+// so a recursive listing is a tree
+func indent(resources []schema.ResourceMeta) []indented {
+	result := make([]indented, 0, len(resources))
+	var folders []string
+	for _, r := range resources {
+		for len(folders) > 0 && !strings.HasPrefix(r.URI, folders[len(folders)-1]) {
+			folders = folders[:len(folders)-1]
+		}
+		result = append(result, indented{ResourceMeta: r, depth: len(folders)})
+		if r.IsFolder() && strings.HasSuffix(r.URI, "/") {
+			folders = append(folders, r.URI)
+		}
+	}
+	return result
+}
 
 // splitName returns the workspace's name, and the request, whose folder is
 // the one after the name, and a slash, such as files/TV, with the request's
