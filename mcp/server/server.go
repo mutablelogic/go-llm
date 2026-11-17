@@ -55,12 +55,27 @@ func New(ns toolkit.Namespace, opts ...Opt) (*Server, error) {
 		Instructions: ns.SystemPrompt(),
 		Logger:       s.logger,
 		KeepAlive:    s.keepAlive,
+		// It has tools, which change, even while it has none, so a client
+		// which connects while it has none lists them once it's told they
+		// changed, and it logs, as the SDK's servers do
+		Capabilities: &sdkmcp.ServerCapabilities{
+			Logging: &sdkmcp.LoggingCapabilities{},
+			Tools:   &sdkmcp.ToolCapabilities{ListChanged: true},
+		},
 	})
-	for _, tool := range ns.Tools() {
-		if tool != nil {
-			s.sync(tool.Name())
+
+	// Its tools are the namespace's, as they are now, each time they're
+	// listed, or called, so one which was removed, before it was watched,
+	// or while it isn't, isn't served
+	s.server.AddReceivingMiddleware(func(next sdkmcp.MethodHandler) sdkmcp.MethodHandler {
+		return func(ctx context.Context, method string, req sdkmcp.Request) (sdkmcp.Result, error) {
+			if method == "tools/list" || method == "tools/call" {
+				s.sync()
+			}
+			return next(ctx, method, req)
 		}
-	}
+	})
+	s.sync()
 	return s, nil
 }
 
@@ -69,15 +84,17 @@ func New(ns toolkit.Namespace, opts ...Opt) (*Server, error) {
 
 // Run follows the namespace's tools, as they change, so its clients are
 // told, until the context is cancelled, when it returns nil, or the
-// namespace's watch fails, when it returns its error
+// namespace's watch fails, when it returns its error. Its tools are also
+// the namespace's as they're listed, or called, whether it runs or not.
 func (s *Server) Run(ctx context.Context) error {
 	ch := make(chan eventschema.Event, 16)
 	done := make(chan error, 1)
 	go func() { done <- s.ns.Watch(ctx, ch) }()
+	s.sync()
 	for {
 		select {
-		case event := <-ch:
-			s.sync(event.Row)
+		case <-ch:
+			s.sync()
 		case err := <-done:
 			return err
 		}
@@ -108,35 +125,42 @@ func (s *Server) InMemoryTransport(ctx context.Context) (sdkmcp.Transport, error
 ///////////////////////////////////////////////////////////////////////////////
 // PRIVATE METHODS
 
-// sync serves the namespace's tool with the name, as Tools returns it now,
-// or, when it doesn't, stops serving it, and does nothing when it's as it
-// was, so the clients are told only of changes
-func (s *Server) sync(name string) {
-	var tool llm.Tool
-	for _, t := range s.ns.Tools() {
-		if t != nil && t.Name() == name {
-			tool = t
-			break
+// sync serves the namespace's tools, as Tools returns them now, and stops
+// serving those it doesn't, and does nothing for those which are as they
+// were, so the clients are told only of changes
+func (s *Server) sync() {
+	current := make(map[string]llm.Tool)
+	for _, tool := range s.ns.Tools() {
+		if tool != nil {
+			if _, exists := current[tool.Name()]; !exists {
+				current[tool.Name()] = tool
+			}
 		}
 	}
 
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	served, exists := s.tools[name]
-	switch {
-	case tool == nil && exists:
-		delete(s.tools, name)
-		s.server.RemoveTools(name)
-	case tool == nil:
-	case exists && same(served, tool):
-	default:
+	var removed []string
+	for name := range s.tools {
+		if _, exists := current[name]; !exists {
+			removed = append(removed, name)
+			delete(s.tools, name)
+		}
+	}
+	if len(removed) > 0 {
+		s.server.RemoveTools(removed...)
+	}
+	for name, tool := range current {
+		if served, exists := s.tools[name]; exists && same(served, tool) {
+			continue
+		}
 		if err := s.add(tool); err != nil {
 			s.logger.Warn("tool isn't served", "namespace", s.ns.Name(), "tool", name, "error", err.Error())
-			if exists {
+			if _, exists := s.tools[name]; exists {
 				delete(s.tools, name)
 				s.server.RemoveTools(name)
 			}
-			return
+			continue
 		}
 		s.tools[name] = tool
 	}

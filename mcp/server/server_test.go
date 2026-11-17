@@ -187,3 +187,102 @@ func Test_Resources(t *testing.T) {
 	assert.Equal(t, "image/png", img.MIMEType)
 	assert.Equal(t, []byte("png"), img.Data)
 }
+
+// slow is a tool which ignores its context, and takes a second
+type slow struct{ toolkit.Base }
+
+func (*slow) Name() string                    { return "slow" }
+func (*slow) Description() string             { return "Slow" }
+func (*slow) InputSchema() *jsonschema.Schema { return nil }
+func (*slow) Timeout() time.Duration          { return 50 * time.Millisecond }
+func (*slow) Run(context.Context, json.RawMessage) (any, error) {
+	time.Sleep(time.Second)
+	return "late", nil
+}
+
+// none returns no value, as empty JSON, with an inline text resource
+type none struct{ toolkit.Base }
+
+func (*none) Name() string                    { return "none" }
+func (*none) Description() string             { return "None" }
+func (*none) InputSchema() *jsonschema.Schema { return nil }
+func (*none) Run(context.Context, json.RawMessage) (any, error) {
+	text := &providerschema.Resource{ResourceMeta: providerschema.ResourceMeta{ContentType: "text/plain", Data: []byte("hi")}}
+	return toolkit.Result{Value: json.RawMessage(nil), Resources: []llm.Resource{text}}, nil
+}
+
+// connectTo returns a client connected to the server, in memory
+func connectTo(t *testing.T, srv *server.Server) *client.Client {
+	t.Helper()
+	c, err := client.New("memory://test", client.WithTransport(srv.InMemoryTransport))
+	require.NoError(t, err)
+	require.NoError(t, c.Connect(t.Context()))
+	t.Cleanup(func() { assert.NoError(t, c.Disconnect()) })
+	return c
+}
+
+func Test_Review(t *testing.T) {
+	ctx := t.Context()
+
+	t.Run("Empty", func(t *testing.T) {
+		// A client which connects while there are no tools lists them once
+		// there are
+		source := &tools{}
+		srv, err := server.New(source)
+		require.NoError(t, err)
+		c := connectTo(t, srv)
+		list, err := c.ListTools(ctx)
+		require.NoError(t, err)
+		assert.Empty(t, list)
+		source.add(&echo{name: "echo"})
+		list, err = c.ListTools(ctx)
+		require.NoError(t, err)
+		assert.Len(t, list, 1)
+	})
+
+	t.Run("Removed", func(t *testing.T) {
+		// A tool which is removed, while it isn't watched, isn't served
+		source := &tools{tools: []llm.Tool{&echo{name: "echo"}, &echo{name: "shout"}}}
+		srv, err := server.New(source)
+		require.NoError(t, err)
+		source.mu.Lock()
+		source.tools = source.tools[:1]
+		source.mu.Unlock()
+		c := connectTo(t, srv)
+		list, err := c.ListTools(ctx)
+		require.NoError(t, err)
+		require.Len(t, list, 1)
+		assert.Equal(t, "echo", list[0].Name)
+		result, err := c.CallTool(ctx, "shout", json.RawMessage(`{"text":"hi"}`))
+		if err == nil {
+			assert.True(t, result.IsError)
+		}
+	})
+
+	t.Run("Timeout", func(t *testing.T) {
+		// A tool which doesn't stop, once its time is up, is an error, then
+		srv, err := server.New(&tools{tools: []llm.Tool{&slow{}}})
+		require.NoError(t, err)
+		c := connectTo(t, srv)
+		start := time.Now()
+		result, err := c.CallTool(ctx, "slow", nil)
+		require.NoError(t, err)
+		assert.True(t, result.IsError)
+		assert.Less(t, time.Since(start), 500*time.Millisecond)
+	})
+
+	t.Run("Inline", func(t *testing.T) {
+		// Empty JSON is no value, and an inline resource has a URI
+		srv, err := server.New(&tools{tools: []llm.Tool{&none{}}})
+		require.NoError(t, err)
+		c := connectTo(t, srv)
+		result, err := c.CallTool(ctx, "none", nil)
+		require.NoError(t, err)
+		require.False(t, result.IsError)
+		require.Len(t, result.Content, 1)
+		embedded, ok := result.Content[0].(*sdkmcp.EmbeddedResource)
+		require.True(t, ok)
+		assert.Regexp(t, `^resource:///[0-9a-f]{64}$`, embedded.Resource.URI)
+		assert.Equal(t, "hi", embedded.Resource.Text)
+	})
+}

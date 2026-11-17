@@ -2,9 +2,12 @@ package server
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"net/url"
 	"strings"
 	"uuid"
 
@@ -47,13 +50,6 @@ func (s *Server) handler(tool llm.Tool) sdkmcp.ToolHandler {
 		)
 		defer func() { endSpan(err) }()
 
-		// A tool which panics is an error, rather than the server's end
-		defer func() {
-			if r := recover(); r != nil {
-				result, err = errorResult(fmt.Errorf("tool %q panicked: %v", tool.Name(), r)), nil
-			}
-		}()
-
 		// Check the input, as a toolkit does
 		var input json.RawMessage
 		var token any
@@ -72,11 +68,35 @@ func (s *Server) handler(tool llm.Tool) sdkmcp.ToolHandler {
 			defer cancel()
 		}
 		ctx = toolkit.WithSession(ctx, &session{ctx: ctx, req: req, token: token, logger: s.logger.With("namespace", s.ns.Name(), "tool", tool.Name())})
-		value, err := tool.Run(ctx, input)
-		if err != nil {
-			return errorResult(err), nil
+
+		// The tool runs in a worker, so a tool which doesn't stop once its
+		// context is done, or its time is up, doesn't hold the call, and
+		// its result is left out, as is a panic, which is its error
+		type outcome struct {
+			result *sdkmcp.CallToolResult
+			err    error
 		}
-		return resultOf(ctx, tool, value)
+		done := make(chan outcome, 1)
+		go func() {
+			defer func() {
+				if r := recover(); r != nil {
+					done <- outcome{result: errorResult(fmt.Errorf("tool %q panicked: %v", tool.Name(), r))}
+				}
+			}()
+			value, err := tool.Run(ctx, input)
+			if err != nil {
+				done <- outcome{result: errorResult(err)}
+				return
+			}
+			result, err := resultOf(ctx, tool, value)
+			done <- outcome{result: result, err: err}
+		}()
+		select {
+		case o := <-done:
+			return o.result, o.err
+		case <-ctx.Done():
+			return errorResult(fmt.Errorf("tool %q: %w", tool.Name(), ctx.Err())), nil
+		}
 	}
 }
 
@@ -167,7 +187,7 @@ func resultOf(ctx context.Context, tool llm.Tool, value any) (*sdkmcp.CallToolRe
 		resources, value = v.Resources, v.Value
 	}
 
-	// The value, as JSON
+	// The value, as JSON, of which raw JSON which is empty is none
 	if value != nil {
 		data, ok := value.(json.RawMessage)
 		if !ok {
@@ -175,7 +195,7 @@ func resultOf(ctx context.Context, tool llm.Tool, value any) (*sdkmcp.CallToolRe
 			if data, err = json.Marshal(value); err != nil {
 				return nil, llm.ErrInternalServerError.Withf("tool %q: %v", tool.Name(), err)
 			}
-		} else if !json.Valid(data) {
+		} else if len(data) > 0 && !json.Valid(data) {
 			return nil, llm.ErrInternalServerError.Withf("tool %q: result isn't valid JSON", tool.Name())
 		}
 		if len(data) > 0 {
@@ -201,7 +221,9 @@ func resultOf(ctx context.Context, tool llm.Tool, value any) (*sdkmcp.CallToolRe
 }
 
 // contentOf returns the resource as content: an image, audio, or otherwise
-// an embedded resource, as text, when it's text, or its data
+// an embedded resource, as text, when it's text, or its data, whose URI is
+// the resource's, or, for one which has none, as its content is inline,
+// resource:///<sha256> of its content, as MCP's needs one which is absolute
 func contentOf(ctx context.Context, resource llm.Resource) (sdkmcp.Content, error) {
 	data, err := llm.ReadAll(ctx, resource)
 	if err != nil {
@@ -214,7 +236,12 @@ func contentOf(ctx context.Context, resource llm.Resource) (sdkmcp.Content, erro
 	case strings.HasPrefix(mimeType, "audio/"):
 		return &sdkmcp.AudioContent{Data: data, MIMEType: mimeType}, nil
 	}
-	contents := &sdkmcp.ResourceContents{URI: resource.URI(), MIMEType: mimeType}
+	uri := resource.URI()
+	if u, err := url.Parse(uri); err != nil || !u.IsAbs() {
+		sum := sha256.Sum256(data)
+		uri = "resource:///" + hex.EncodeToString(sum[:])
+	}
+	contents := &sdkmcp.ResourceContents{URI: uri, MIMEType: mimeType}
 	if strings.HasPrefix(mimeType, "text/") || mimeType == types.ContentTypeJSON {
 		contents.Text = string(data)
 	} else {

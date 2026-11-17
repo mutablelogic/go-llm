@@ -12,6 +12,7 @@ import (
 
 	// Packages
 	jsonrpc "github.com/modelcontextprotocol/go-sdk/jsonrpc"
+	sdkmcp "github.com/modelcontextprotocol/go-sdk/mcp"
 	client "github.com/mutablelogic/go-client"
 	llm "github.com/mutablelogic/go-llm"
 	test "github.com/mutablelogic/go-llm/mcp/test"
@@ -97,6 +98,16 @@ func Test_Connect(t *testing.T) {
 		cancelled, cancel := context.WithCancel(ctx)
 		cancel()
 		c, err = New(notFound.URL)
+		require.NoError(t, err)
+		assert.ErrorIs(t, c.Connect(cancelled), context.Canceled)
+		_, err = c.Status()
+		assert.NoError(t, err)
+
+		// Including while its transport is made
+		c, err = New("memory://test", WithTransport(func(ctx context.Context) (sdkmcp.Transport, error) {
+			<-ctx.Done()
+			return nil, ctx.Err()
+		}))
 		require.NoError(t, err)
 		assert.ErrorIs(t, c.Connect(cancelled), context.Canceled)
 		_, err = c.Status()

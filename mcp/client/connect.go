@@ -91,7 +91,11 @@ func (c *Client) connect(ctx context.Context, a *attempt) (*sdkmcp.Implementatio
 	var transports []sdkmcp.Transport
 	if c.transport != nil {
 		transport, err := c.transport(ctx)
-		if err != nil {
+		if err != nil && ctx.Err() != nil {
+			// The caller gave up, or it was disconnected, which says nothing
+			// of the server
+			return nil, c.failed(a, ctx.Err(), false)
+		} else if err != nil {
 			return nil, c.failed(a, llm.ErrServiceUnavailable.Withf("%s can't be connected to: %w", c.endpoint, err), true)
 		}
 		transports = []sdkmcp.Transport{transport}
