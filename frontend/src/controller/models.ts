@@ -17,7 +17,7 @@ import type { CountFilter } from '../component/count-filter';
 import type { ProviderAlerts } from '../component/provider-alerts';
 import { ListController, type Page } from './list';
 import type { Model } from '../schema/model';
-import type { NotificationController } from './notifications';
+import type { NotificationController } from '@mutablelogic/go-server/notification';
 import { ModelTable } from '../component/model-table';
 import { Panel } from '../component/panel';
 

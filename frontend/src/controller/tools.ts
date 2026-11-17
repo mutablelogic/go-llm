@@ -14,7 +14,7 @@ import { ListController, type Page } from './list';
 import { toolNamespace, type Namespace, type Tool } from '../schema/tool';
 import { cannot } from '../schema/model';
 import { listModels } from '../api/model';
-import type { NotificationController } from './notifications';
+import type { NotificationController } from '@mutablelogic/go-server/notification';
 import { ToolTable } from '../component/tool-table';
 import { Panel } from '../component/panel';
 import type { ToolView } from '../component/tool-view';

@@ -9,7 +9,7 @@ import { deleteHeartbeat, listHeartbeats } from '../api/heartbeat';
 import { EventView } from '../component/event-view';
 import type { Heartbeat } from '../schema/heartbeat';
 import { Panel } from '../component/panel';
-import type { NotificationController } from './notifications';
+import type { NotificationController } from '@mutablelogic/go-server/notification';
 
 export class OutcomesController {
     // The most outcomes which are shown

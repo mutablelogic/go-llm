@@ -21,14 +21,6 @@
             padding: calc(3rem + 2rem) 2rem 2rem;
         }
 
-        /* The notifications are stacked at the top right, below the header */
-        #notifications {
-            position: fixed;
-            top: calc(3rem + 1rem);
-            right: 1rem;
-            z-index: 9000;
-        }
-
         /* A notification's link, such as to the chat a heartbeat is for, which
            is on the toast's dark background */
         .notification-link {
@@ -37,10 +29,18 @@
             color: var(--cds-link-inverse, #78a9ff);
         }
 
-        /* The side navigation's items scroll above its footer, which is at
-           its bottom, rather than beneath it (see llm-side-nav-footer) */
+        /* The server's status is at the bottom of the side navigation, and
+           its items scroll above it, rather than beneath it */
         cds-side-nav-items {
             margin-bottom: calc(3rem + 1px);
+        }
+
+        gs-server-status {
+            position: absolute;
+            right: 0;
+            bottom: 0;
+            left: 0;
+            border-top: 1px solid var(--cds-border-subtle);
         }
 
         /* And above the player, while something is played */
@@ -104,61 +104,21 @@
 </head>
 
 <body class="cds--white">
+    <!-- The header, and the sidebar of the modules' pages, with the player,
+         while something is played, and the server's status, at its bottom -->
     <div class="cds--g100">
-        <cds-header aria-label="llm">
-            <cds-header-menu-button button-label-active="Close menu"
-                button-label-inactive="Open menu"></cds-header-menu-button>
-            <cds-header-name href="#" prefix="go">llm</cds-header-name>
-        </cds-header>
-
-        <cds-side-nav aria-label="Side navigation" collapse-mode="responsive">
-            <cds-side-nav-items>
-                <cds-side-nav-link href="#chat">Conversations</cds-side-nav-link>
-                <cds-side-nav-link href="#models">Models</cds-side-nav-link>
-                <cds-side-nav-link href="#tools">Tools</cds-side-nav-link>
-            </cds-side-nav-items>
+        <gs-header></gs-header>
+        <gs-side-nav>
             <llm-media-player></llm-media-player>
-            <llm-side-nav-footer></llm-side-nav-footer>
-        </cds-side-nav>
+            <gs-server-status></gs-server-status>
+        </gs-side-nav>
     </div>
 
-    <!-- The pages, of which the router shows the one the location selects -->
-    <main id="main-content">
-        <llm-chat-page id="chat-page" class="full">
-            <div class="chat">
-                <llm-session-list></llm-session-list>
-                <llm-chat-view></llm-chat-view>
-            </div>
-            <llm-new-session></llm-new-session>
-            <llm-message-view></llm-message-view>
-            <llm-resource-panel></llm-resource-panel>
-            <llm-event-view></llm-event-view>
-        </llm-chat-page>
-        <llm-models-page id="models-page" class="full" hidden>
-            <div class="content">
-                <llm-provider-alerts></llm-provider-alerts>
-                <llm-count-filter id="provider-filter" label="Filter by provider"></llm-count-filter>
-                <llm-model-table></llm-model-table>
-            </div>
-            <llm-model-view></llm-model-view>
-            <llm-provider-form></llm-provider-form>
-            <llm-model-load></llm-model-load>
-        </llm-models-page>
-        <llm-tools-page id="tools-page" class="full" hidden>
-            <div class="content">
-                <llm-connector-alerts></llm-connector-alerts>
-                <llm-count-filter id="namespace-filter" label="Filter by namespace"></llm-count-filter>
-                <llm-tool-table></llm-tool-table>
-            </div>
-            <llm-tool-view></llm-tool-view>
-            <llm-agent-editor></llm-agent-editor>
-            <llm-connector-form></llm-connector-form>
-        </llm-tools-page>
-        <llm-not-found-page id="not-found-page" hidden></llm-not-found-page>
-    </main>
+    <!-- The modules' pages, which they add, of which the router shows the
+         one the location selects -->
+    <main id="main-content"></main>
 
-    <!-- The notifications, which the notification controller shows -->
-    <div id="notifications" aria-live="polite"></div>
+    <gs-notifications></gs-notifications>
 </body>
 
 </html>

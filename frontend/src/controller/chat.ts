@@ -19,7 +19,7 @@ import { ApiError, config } from '../api/client';
 import { routeHref } from '../router';
 import { isUser, memoryWarning, sessionMemory, sessionMemoryPercent, thinkingLog, type ContentBlock, type Message, type Session, type SessionMeta } from '../schema/session';
 import type { Details } from '../schema/memory';
-import type { NotificationController } from './notifications';
+import type { NotificationController } from '@mutablelogic/go-server/notification';
 import type { StorageController } from './storage';
 import type { ResourcesController } from './resources';
 import { resourceHash, resourceName, resourceURI, type Resource } from '../schema/resource';

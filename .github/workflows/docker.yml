@@ -73,6 +73,10 @@ jobs:
             OS=linux
             ARCH=${{ matrix.arch }}
             SOURCE=${{ github.server_url }}/${{ github.repository }}
+          # The web UI's @mutablelogic packages are installed from GitHub
+          # Packages, with the workflow's token
+          secrets: |
+            github_token=${{ secrets.GITHUB_TOKEN }}
           # The layers are cached for each architecture, including the
           # builder's, so the modules are only downloaded again when they
           # change. They're cached in the registry, rather than in GitHub

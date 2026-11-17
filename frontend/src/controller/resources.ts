@@ -6,7 +6,7 @@
 
 import { contentURL, createResource, deleteResource, listResources } from '../api/resource';
 import { resourceHash, resourceName, resourceTitle, type Resource } from '../schema/resource';
-import type { NotificationController } from './notifications';
+import type { NotificationController } from '@mutablelogic/go-server/notification';
 import { ResourcePanel } from '../component/resource-panel';
 import { Panel } from '../component/panel';
 import { MediaPlayer, type Media } from '../component/media-player';

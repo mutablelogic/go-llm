@@ -1,10 +1,10 @@
 # Frontend
 
-The web UI, which the server embeds and serves from its root, with the API under its prefix, such as `/api`: **Chat**, to chat in sessions, **Models**, the models of the providers, and **Tools**, the tools and agents which models can call. It's written in TypeScript, with [Lit](https://lit.dev/) and [Carbon's web components](https://web-components.carbondesignsystem.com/), and built with esbuild.
+The web UI, which the server embeds and serves from its root, with the API under its prefix, such as `/api`: **Conversations**, to chat in sessions, **Models**, the models of the providers, and **Tools**, the tools and agents which models can call. It's written in TypeScript, with [Lit](https://lit.dev/) and [Carbon's web components](https://web-components.carbondesignsystem.com/), on [go-server's frontend package](https://github.com/mutablelogic/go-server/tree/main/frontend), and built with esbuild.
 
 ## Building
 
-`make frontend` installs the dependencies from `package-lock.json`, checks the types with `tsc`, and builds the UI into `build/frontend`:
+`make frontend` installs the dependencies from `package-lock.json`, checks the types with `tsc`, and builds the UI into `build/frontend`. `@mutablelogic/go-server` is on GitHub Packages, so it needs `GITHUB_TOKEN`, with `read:packages`, such as `GITHUB_TOKEN=$(gh auth token) make`. `make docker` passes it to the build as a secret, which isn't kept in the image.
 
 - `build/frontend/dist` is the UI: `index.html` and its icon, from `assets/dist`, and `index.js` and `index.css`, bundled from `src`, with the IBM Plex fonts.
 - `build/frontend/embed.go` is copied from `assets/embed.go`. It's the `github.com/mutablelogic/go-llm/build/frontend` package, which embeds `dist`.
@@ -19,24 +19,23 @@ The server imports that package only when it's built with the `frontend` tag, wh
 
 | Path | What it is |
 |---|---|
-| `assets/dist/index.html` | The page: the header, the side navigation, and the pages, of which one is shown |
-| `src/index.ts` | Loads the components and pages, starts the controllers, watches the server's events, and starts the router |
-| `src/router.ts` | Shows the page of the location's hash, such as `#chat/<id>`, and hides the others |
-| `src/api/` | Requests the API, beneath the prefix in `config.json`, or streams its server-sent events, such as a reply, or the server's changes |
-| `src/controller/events.ts` | Keeps watching the server's changes, and calls the listeners of the tables which change, such as `llm` `session`, which load what changed |
-| `src/controller/notifications.ts` | Shows notifications as toasts, such as when the server can't be reached |
+| `assets/dist/index.html` | The page: go-server's header, and sidebar, with the media player and the server's status, the modules' pages, in `<main>`, and the notifications |
+| `src/index.ts` | Reads the configuration, makes go-server's navigation, router, changes and notifications controllers, adds the modules, and starts the router and the changes |
+| `src/module/` | The modules, Conversations, Models and Tools, each of which adds its page, its link in the sidebar, its route, and its controllers, and follows the changes which it shows |
+| `src/router.ts` | `routeHref`, the link to a page, such as `#chat/<id>` |
+| `src/api/` | Requests the API, beneath the prefix in `config.json`, or streams its server-sent events, such as a reply |
 | `src/controller/list.ts` | `ListController`, which loads a page of a list, such as the models, and shows it in a table, and the item which is clicked in a panel |
 | `src/controller/chat.ts` | The chats: the sessions, the conversation of the one which is open, which loads again when it changes, such as when another window replies, sending a question, and streaming its reply, saying someone is typing, and starting, and deleting, chats |
 | `src/controller/models.ts`, `tools.ts` | The models, and the tools, in their tables, and the one which is clicked in a panel |
 | `src/schema/` | The types of the API's JSON |
 | `src/page/` | The pages, which extend `Page`, with a heading and a description |
-| `src/component/` | The components which pages are made of: the session list, the chat view, which renders replies as Markdown, sanitized, the new chat panel, the model and tool tables, and their panels, as `Panel`'s are, and the side navigation's footer |
+| `src/component/` | The components which pages are made of: the session list, the chat view, which renders replies as Markdown, sanitized, the new chat panel, the model and tool tables, and their panels, as `Panel`'s are, and the media player |
 
-The elements are named `llm-…`.
+The elements are named `llm-…`, and go-server's `gs-…`.
 
-## Adding a page
+## Adding a module
 
-1. Add the page in `src/page`, extending `Page`, and import it in `src/index.ts`.
-2. Add its element to `<main>` in `assets/dist/index.html`, hidden, and a link to it, such as `#models`, in the side navigation.
-3. Add it to the router in `src/index.ts`, with the function which loads it when it's shown, if it has one.
-4. When what it shows changes, add a listener to the events controller in `src/index.ts`, such as `events.on({ schema: 'llm', table: 'provider' }, …)`, which loads it again. The registry publishes changes to the `llm` schema's `provider` and `session` tables, the toolkit to its `tool` table, and the memory to the `memory` schema's `detail` and `memory` tables.
+1. Add its page in `src/page`, extending `Page`, and import it in `src/index.ts`.
+2. Add the module in `src/module`, as a function of the `App`, which adds its page with `addPage`, its link to the sidebar with `app.nav.setModule(name, Section, pages)`, and its route with `app.router.add`.
+3. When what it shows changes, it follows the changes with `app.changes.on({ schema, table }, …)`, which loads it again. The tables are in [Changes](../docs/changes.md).
+4. Add it in `src/index.ts`.

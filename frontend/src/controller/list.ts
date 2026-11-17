@@ -8,7 +8,7 @@
 // a notification says why.
 
 import { ApiError } from '../api/client';
-import type { NotificationController } from './notifications';
+import type { NotificationController } from '@mutablelogic/go-server/notification';
 
 // Page is a page of a list, with the number of items in the list
 export interface Page<T> {

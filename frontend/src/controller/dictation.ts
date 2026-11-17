@@ -8,7 +8,7 @@
 
 import { ChatView } from '../component/chat-view';
 import { DictateButton } from '../component/dictate-button';
-import type { NotificationController } from './notifications';
+import type { NotificationController } from '@mutablelogic/go-server/notification';
 
 // The browser's speech recognition, which the DOM's types don't have
 interface Recognition extends EventTarget {
