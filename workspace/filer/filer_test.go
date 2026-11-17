@@ -115,6 +115,43 @@ func Test_Workspace(t *testing.T) {
 	})
 }
 
+func Test_Encoding(t *testing.T) {
+	// URIs are percent-encoded, and read, encoded, or as they're typed
+	ctx := t.Context()
+	dir := t.TempDir()
+	require.NoError(t, os.MkdirAll(filepath.Join(dir, "a b"), 0o700))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "a b", "report #1%.md"), []byte("# R"), 0o600))
+	ws, err := filer.New("code", backend(t, dir))
+	require.NoError(t, err)
+
+	list, err := ws.List(ctx, schema.ListRequest{Recursive: true})
+	require.NoError(t, err)
+	assert.Equal(t, []string{"file:///a%20b/", "file:///a%20b/report%20%231%25.md"}, uris(list))
+	for _, uri := range []string{"file:///a%20b/report%20%231%25.md", "file:///a b/report #1%.md"} {
+		resource, err := ws.Read(ctx, uri)
+		require.NoError(t, err, uri)
+		assert.Equal(t, "file:///a%20b/report%20%231%25.md", resource.URI())
+		data, err := llm.ReadAll(ctx, resource)
+		require.NoError(t, err)
+		assert.Equal(t, "# R", string(data))
+	}
+}
+
+func Test_ReadGone(t *testing.T) {
+	// A file which is deleted after it's found, but before it's read, isn't
+	// found
+	ctx := t.Context()
+	dir := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "a.md"), []byte("# A"), 0o600))
+	ws, err := filer.New("code", backend(t, dir))
+	require.NoError(t, err)
+	resource, err := ws.Read(ctx, "file:///a.md")
+	require.NoError(t, err)
+	require.NoError(t, os.Remove(filepath.Join(dir, "a.md")))
+	_, err = llm.ReadAll(ctx, resource)
+	assert.ErrorIs(t, err, llm.ErrNotFound)
+}
+
 func Test_Watch(t *testing.T) {
 	// A file which is created is said to be, once it's watching
 	ctx := t.Context()
@@ -138,19 +175,40 @@ func Test_Watch(t *testing.T) {
 
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "a.md"), []byte("# A"), 0o600))
 	deadline := time.After(10 * time.Second)
+wait:
 	for {
 		select {
 		case change := <-changes:
 			if change.URI == "file:///a.md" {
 				assert.Contains(t, []eventschema.EventAction{eventschema.EventCreate, eventschema.EventUpdate}, change.Action)
-				cancel()
-				require.NoError(t, <-done)
-				return
+				break wait
 			}
 		case <-deadline:
 			t.Fatal("not told the file was created")
 		}
 	}
+
+	// A folder which is created, and deleted, is said to be, by its URI
+	require.NoError(t, os.Mkdir(filepath.Join(dir, "notes"), 0o700))
+	waitFor := func(action eventschema.EventAction) {
+		t.Helper()
+		deadline := time.After(10 * time.Second)
+		for {
+			select {
+			case change := <-changes:
+				if change.URI == "file:///notes/" && change.Action == action {
+					return
+				}
+			case <-deadline:
+				t.Fatalf("not told the folder was %v", action)
+			}
+		}
+	}
+	waitFor(eventschema.EventCreate)
+	require.NoError(t, os.Remove(filepath.Join(dir, "notes")))
+	waitFor(eventschema.EventDelete)
+	cancel()
+	require.NoError(t, <-done)
 }
 
 func Test_Server(t *testing.T) {
