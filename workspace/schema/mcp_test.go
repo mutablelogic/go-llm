@@ -24,7 +24,7 @@ func roundTrip[T any](t *testing.T, v *T) *T {
 
 func Test_ListRequestMCP(t *testing.T) {
 	// A request is sent with its folder, recursion, and limit, in _meta
-	req := schema.ListRequest{Path: "notes/2026", Recursive: true, Cursor: "c1", Limit: 50}
+	req := schema.ListRequest{Path: "notes/2026", Recursive: true, Cursor: "c1", Limit: 50, Type: schema.FolderType}
 	params := req.MCP()
 	assert.Equal(t, "c1", params.Cursor)
 	assert.Equal(t, req, schema.ListRequestOf(roundTrip(t, params)))
@@ -39,6 +39,7 @@ func Test_ResourceMetaMCP(t *testing.T) {
 	// A resource is sent with its modified time, metadata, and artwork
 	r := schema.ResourceMeta{
 		URI:      "file:///notes/meeting.md",
+		Path:     "notes/meeting.md",
 		Name:     "meeting.md",
 		Title:    "Meeting",
 		Type:     "text/markdown",

@@ -297,6 +297,50 @@ type sizedAs struct {
 
 func (s *sizedAs) ContentLength() int64 { return s.size }
 
+// treeFiles is a workspace of files, whose folders are listed on their own
+type treeFiles struct{ files }
+
+func (treeFiles) Tree() bool { return true }
+
+func Test_WorkspaceTree(t *testing.T) {
+	// A workspace which is a tree says so, in its capability, and its
+	// folders are listed on their own, as the registry filters them, too
+	ctx := t.Context()
+	srv, err := server.New(&tools{}, server.WithWorkspace(treeFiles{files{"readme.md": "#", "notes/a.md": "#"}}))
+	require.NoError(t, err)
+	c, err := client.New("memory://files", client.WithTransport(srv.InMemoryTransport))
+	require.NoError(t, err)
+	require.NoError(t, c.Connect(ctx))
+	t.Cleanup(func() { assert.NoError(t, c.Disconnect()) })
+	ws, err := workspace.NewClient(c)
+	require.NoError(t, err)
+	tree, ok := ws.(workspace.Tree)
+	require.True(t, ok)
+	assert.True(t, tree.Tree())
+
+	registry, err := workspace.New()
+	require.NoError(t, err)
+	require.NoError(t, registry.Add("files", ws))
+	list, err := registry.ListResources(ctx, "files", schema.ListRequest{Type: schema.FolderType})
+	require.NoError(t, err)
+	require.Len(t, list.Body, 1)
+	assert.True(t, list.Body[0].IsFolder())
+	got, err := registry.GetWorkspace(ctx, "files")
+	require.NoError(t, err)
+	assert.True(t, got.Tree)
+
+	// A workspace which isn't a tree doesn't say so
+	plain, err := server.New(&tools{}, server.WithWorkspace(files{}))
+	require.NoError(t, err)
+	c2, err := client.New("memory://plain", client.WithTransport(plain.InMemoryTransport))
+	require.NoError(t, err)
+	require.NoError(t, c2.Connect(ctx))
+	t.Cleanup(func() { assert.NoError(t, c2.Disconnect()) })
+	ws, err = workspace.NewClient(c2)
+	require.NoError(t, err)
+	assert.False(t, ws.(workspace.Tree).Tree())
+}
+
 // rootedFiles is a workspace of files, whose resources are under file:///
 type rootedFiles struct{ files }
 

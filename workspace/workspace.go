@@ -79,6 +79,15 @@ type Subscriber interface {
 // description, and version, such as an MCP connector's namespace, whose
 // title, and version, are its server's, and whose description is its
 // namespace's, which a workspace doesn't need to be
+// Tree is a workspace whose folders are listed on their own, by their type,
+// FolderType, and have their paths, so they're shown as a tree
+type Tree interface {
+	Workspace
+
+	// Tree returns true when its folders are listed on their own, now
+	Tree() bool
+}
+
 // Rooted is a workspace whose resources' URIs are under a root, such as
 // file:///, which a registry leaves out of their URIs, such as
 // resource://files/notes/a.md, of file:///notes/a.md

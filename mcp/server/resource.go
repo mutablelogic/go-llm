@@ -32,7 +32,11 @@ func (s *Server) capabilities() *sdkmcp.ServerCapabilities {
 	}
 	if s.workspace != nil {
 		caps.Resources = &sdkmcp.ResourceCapabilities{}
-		caps.Experimental = map[string]any{schema.Capability: map[string]any{}}
+		features := map[string]any{}
+		if t, ok := s.workspace.(workspace.Tree); ok && t.Tree() {
+			features[schema.CapabilityTree] = true
+		}
+		caps.Experimental = map[string]any{schema.Capability: features}
 	}
 	if _, ok := s.workspace.(workspace.Watcher); ok {
 		caps.Resources.ListChanged, caps.Resources.Subscribe = true, true

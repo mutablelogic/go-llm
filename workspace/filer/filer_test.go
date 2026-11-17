@@ -264,3 +264,40 @@ func Test_Server(t *testing.T) {
 	_, err = filer.NewServer("not a name", "", backend(t, dir))
 	assert.ErrorIs(t, err, llm.ErrBadParameter)
 }
+
+func Test_Tree(t *testing.T) {
+	// Its folders are listed on their own, under a folder, a page at a time,
+	// with their paths, which they're listed by
+	ctx := t.Context()
+	dir := t.TempDir()
+	for _, p := range []string{"a/x.md", "a/b/y.md", "a/b/c/z.md", "d/w.md", "top.md"} {
+		require.NoError(t, os.MkdirAll(filepath.Join(dir, filepath.Dir(p)), 0o700))
+		require.NoError(t, os.WriteFile(filepath.Join(dir, p), []byte("#"), 0o600))
+	}
+	ws, err := filer.New("code", backend(t, dir))
+	require.NoError(t, err)
+	var tree workspace.Tree = ws
+	assert.True(t, tree.Tree())
+
+	var paths []string
+	req := schema.ListRequest{Recursive: true, Type: schema.FolderType, Limit: 2}
+	for {
+		list, err := ws.List(ctx, req)
+		require.NoError(t, err)
+		for _, r := range list.Body {
+			assert.True(t, r.IsFolder(), r.URI)
+			paths = append(paths, r.Path)
+		}
+		if list.Next == "" {
+			break
+		}
+		req.Cursor = list.Next
+	}
+	assert.Equal(t, []string{"a", "a/b", "a/b/c", "d"}, paths)
+
+	// A folder is listed by its path
+	list, err := ws.List(ctx, schema.ListRequest{Path: "a/b"})
+	require.NoError(t, err)
+	assert.Equal(t, []string{"file:///a/b/c/", "file:///a/b/y.md"}, uris(list))
+	assert.Equal(t, "a/b/y.md", list.Body[1].Path)
+}

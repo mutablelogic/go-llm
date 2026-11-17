@@ -20,6 +20,7 @@ var _ workspace.Available = (*Namespace)(nil)
 var _ workspace.Describer = (*Namespace)(nil)
 var _ workspace.Subscriber = (*Namespace)(nil)
 var _ workspace.Rooted = (*Namespace)(nil)
+var _ workspace.Tree = (*Namespace)(nil)
 
 ///////////////////////////////////////////////////////////////////////////////
 // PUBLIC METHODS
@@ -110,6 +111,13 @@ func (ns *Namespace) Unsubscribe(ctx context.Context, uri string) error {
 		return nil
 	}
 	return c.Unsubscribe(ctx, uri)
+}
+
+// Tree returns true when the server the namespace is connected to says its
+// folders are listed on their own, or false, when it isn't connected
+func (ns *Namespace) Tree() bool {
+	c := ns.current()
+	return c != nil && workspace.IsTree(c)
 }
 
 // Root returns the root of the server's resources' URIs, of its resource

@@ -12,6 +12,7 @@ type Workspace struct {
 	Version     string `json:"version,omitempty" help:"Version of the workspace, such as its MCP server's"`
 	Read        bool   `json:"read,omitempty" help:"Whether its resources' content is read, by their URIs, rather than only listed"`
 	Watch       bool   `json:"watch,omitempty" help:"Whether its changes are followed, and published as events, now"`
+	Tree        bool   `json:"tree,omitempty" help:"Whether its folders are listed on their own, by their type, inode/directory, and have their paths, so they're shown as a tree"`
 }
 
 // WorkspaceList is the workspaces, in order of their names, and how many
