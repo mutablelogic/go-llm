@@ -6,7 +6,9 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"mime"
 	"strings"
+	"unicode/utf8"
 
 	// Packages
 	llm "github.com/mutablelogic/go-llm"
@@ -49,7 +51,7 @@ type ListWorkspaceRequest struct {
 // ReadWorkspaceRequest is the input of the workspace's read tool
 type ReadWorkspaceRequest struct {
 	URI    string `json:"uri" help:"The resource's URI, as it's listed, resource://<workspace>/<uri>"`
-	Format string `json:"format,omitempty" enum:"raw,markdown" help:"Without it, as its type is: an image, audio, or video, as it is, and anything else as Markdown, or as it is, when it has none. raw, for the resource as it is, up to 10 MiB, or markdown, for its text, as a Markdown document, a part at a time, such as of a PDF, or an Office document, whose YAML front matter has its metadata, and the offset of the next part"`
+	Format string `json:"format,omitempty" enum:"raw,markdown" help:"Without it, as its type is: an image, audio, or video, as raw, and anything else as markdown, or raw, when it has none. raw, for its content as it is, up to 10 MiB: text as its text, and anything else, such as an image, or audio, as a file which is sent to the model, which sees, or hears it. markdown, for its text, as a Markdown document, a part at a time, such as of a PDF, or an Office document, whose YAML front matter has its metadata, and the offset of the next part"`
 	Offset uint64 `json:"offset,omitempty" help:"As Markdown, the byte of its Markdown the part starts at, which is a part's next"`
 	Limit  uint64 `json:"limit,omitempty" help:"As Markdown, the most bytes of its Markdown which are read"`
 }
@@ -279,22 +281,30 @@ func media(contentType string) bool {
 	return false
 }
 
-// readRaw returns the resource, as it is, when it's no larger than
-// MaxRawSize, which, when its size isn't known, is read, to find out.
-// Returns ErrBadParameter when it's larger, which says to read it with the
-// markdown format.
-func readRaw(ctx context.Context, uri string, resource llm.Resource) (llm.Resource, error) {
+// readRaw returns the resource's content, as it is: text, as its text, and
+// anything else, such as an image, or audio, as the resource, which the
+// model is sent as a file, which it sees, or hears, up to MaxRawSize, which,
+// when its size isn't known, is read, to find out. Returns ErrBadParameter
+// when it's larger, which says what's read instead.
+func readRaw(ctx context.Context, uri string, resource llm.Resource) (any, error) {
+	text := textual(resource.Type())
 	tooLarge := func(size string) error {
-		return llm.ErrBadParameter.Withf("%s is %s, which is more than the %d bytes which are read raw, so read it with the markdown format, a part at a time", uri, size, MaxRawSize)
-	}
-	if size, ok := llm.ContentLength(resource); ok {
-		if size > MaxRawSize {
-			return nil, tooLarge(fmt.Sprintf("%d bytes", size))
+		if text {
+			return llm.ErrBadParameter.Withf("%s is %s, more than the %d bytes which are read raw, so read it as Markdown, a part at a time, from an offset, with the markdown format", uri, size, MaxRawSize)
 		}
+		advice := "its metadata is listed by workspace:list"
+		if media(resource.Type()) && !strings.HasPrefix(strings.ToLower(resource.Type()), "image/") {
+			advice += ", and its speech is transcribed by llm:transcribe"
+		}
+		return llm.ErrBadParameter.Withf("%s is %s of %s, more than the %d bytes which are sent as a file, and it has no text: %s", uri, size, resource.Type(), MaxRawSize, advice)
+	}
+	if size, ok := llm.ContentLength(resource); ok && size > MaxRawSize {
+		return nil, tooLarge(fmt.Sprintf("%d bytes", size))
+	} else if ok && !text {
 		return resource, nil
 	}
 
-	// Its size isn't known, so it's read, as far as is more than it can be
+	// Its content, as far as is more than it can be
 	read, err := resource.Read(ctx)
 	if err != nil {
 		return nil, err
@@ -308,7 +318,28 @@ func readRaw(ctx context.Context, uri string, resource llm.Resource) (llm.Resour
 	} else if len(data) > MaxRawSize {
 		return nil, tooLarge("larger")
 	}
+	if text && utf8.Valid(data) {
+		return string(data), nil
+	}
 	return &readResource{Resource: resource, data: data}, nil
+}
+
+// textual returns true when the type is text's, which is read as its text
+func textual(contentType string) bool {
+	mediatype, _, err := mime.ParseMediaType(contentType)
+	if err != nil {
+		return false
+	}
+	switch {
+	case strings.HasPrefix(mediatype, "text/"):
+		return true
+	case mediatype == "application/json", mediatype == "application/xml", mediatype == "application/yaml",
+		mediatype == "application/x-yaml", mediatype == "application/javascript", mediatype == "application/toml":
+		return true
+	case strings.HasSuffix(mediatype, "+json"), strings.HasSuffix(mediatype, "+xml"):
+		return true
+	}
+	return false
 }
 
 // fallback returns true when the resolve function's error is that it

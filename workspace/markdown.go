@@ -111,7 +111,8 @@ func ReadMarkdown(ctx context.Context, resource llm.Resource, offset, limit uint
 		case errors.Is(err, metadata.ErrNotImplemented):
 			return nil, llm.ErrNotImplemented.Withf("no Markdown of type %q", mediatype)
 		case errors.Is(err, metadata.ErrBadParameter):
-			return nil, llm.ErrBadParameter.With(err.Error())
+			// Its reason, without go-metadata's kind, which is the same
+			return nil, llm.ErrBadParameter.With(strings.TrimPrefix(err.Error(), metadata.ErrBadParameter.Error()+": "))
 		default:
 			return nil, err
 		}
@@ -121,6 +122,9 @@ func ReadMarkdown(ctx context.Context, resource llm.Resource, offset, limit uint
 	// resource's metadata, with the first part, apart from what's read next,
 	// which is go-metadata's
 	result := &schema.Markdown{URI: resource.URI(), Type: resource.Type(), Offset: offset}
+	if size, ok := llm.ContentLength(resource); ok {
+		result.Size = &size
+	}
 	var hasBody bool
 	for _, entry := range meta {
 		switch {

@@ -53,6 +53,10 @@ func (notes) Read(_ context.Context, uri string) (llm.Resource, error) {
 		return unsized{data: make([]byte, toolkit.MaxRawSize+1)}, nil
 	case "file:///unsized-small.bin":
 		return unsized{data: []byte("small")}, nil
+	case "file:///big.txt":
+		return &providerschema.Resource{ResourceMeta: providerschema.ResourceMeta{ContentType: "text/plain", Data: make([]byte, toolkit.MaxRawSize+1)}}, nil
+	case "file:///song.mp3":
+		return &providerschema.Resource{ResourceMeta: providerschema.ResourceMeta{ContentType: "audio/mpeg", Data: make([]byte, toolkit.MaxRawSize+1)}}, nil
 	}
 	if uri != "file:///note.md" {
 		return nil, llm.ErrNotFound.With(uri)
@@ -115,26 +119,36 @@ func TestWorkspaces(t *testing.T) {
 		var text string
 		require.NoError(t, json.Unmarshal(result, &text), string(result))
 		assert.Contains(t, text, "# Note")
+		// Raw, text is its text
 		result, err = tk.CallTool(ctx, "workspace:read", json.RawMessage(`{"uri":"file:///note.md","format":"raw"}`))
 		require.NoError(t, err)
-		assert.Contains(t, string(result), "text/markdown")
+		assert.JSONEq(t, `"# Note"`, string(result))
 		_, err = tk.CallTool(ctx, "workspace:read", json.RawMessage(`{"uri":"file:///missing.md"}`))
 		assert.ErrorIs(t, err, llm.ErrNotFound)
 
 		// By the workspace's URI, as it's listed, without the workspace
 		result, err = tk.CallTool(ctx, "workspace:read", json.RawMessage(`{"uri":"resource://notes/file:///note.md"}`))
 		require.NoError(t, err)
-		assert.Contains(t, string(result), "text/markdown")
+		assert.Contains(t, string(result), "# Note")
 		_, err = tk.CallTool(ctx, "workspace:read", json.RawMessage(`{"uri":"resource://other/file:///note.md"}`))
 		assert.ErrorIs(t, err, llm.ErrNotFound, "another workspace")
 
 		// Not when it's larger than is read raw, whether its size is known,
 		// or not, unless it's smaller
+		// Not when it's larger than is read raw, whether its size is known,
+		// or not, which says what's read instead: for a file without text,
+		// its metadata, and, for audio, its speech, and, for text, its
+		// Markdown
 		for _, uri := range []string{"file:///big.bin", "file:///unsized.bin"} {
 			_, err = tk.CallTool(ctx, "workspace:read", json.RawMessage(`{"uri":"`+uri+`"}`))
 			assert.ErrorIs(t, err, llm.ErrBadParameter, uri)
-			assert.ErrorContains(t, err, "markdown format", uri)
+			assert.ErrorContains(t, err, "workspace:list", uri)
+			assert.NotContains(t, err.Error(), "markdown", uri)
 		}
+		_, err = tk.CallTool(ctx, "workspace:read", json.RawMessage(`{"uri":"file:///song.mp3"}`))
+		assert.ErrorContains(t, err, "llm:transcribe")
+		_, err = tk.CallTool(ctx, "workspace:read", json.RawMessage(`{"uri":"file:///big.txt","format":"raw"}`))
+		assert.ErrorContains(t, err, "markdown format")
 		result, err = tk.CallTool(ctx, "workspace:read", json.RawMessage(`{"uri":"file:///unsized-small.bin"}`))
 		require.NoError(t, err)
 		assert.Contains(t, string(result), "application/octet-stream")

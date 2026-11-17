@@ -169,10 +169,10 @@ func (w *clientWorkspace) WatchResources(ctx context.Context, ch chan<- schema.C
 
 // notFound returns MCP's resource not found error as one which is
 // ErrNotFound, as well as itself, as a Reader's is, or the error, as it is
-func notFound(err error) error {
+func notFound(err error, uri string) error {
 	var wire *jsonrpc.Error
 	if errors.As(err, &wire) && wire.Code == sdkmcp.CodeResourceNotFound {
-		return llm.ErrNotFound.Withf("%w", err)
+		return llm.ErrNotFound.Withf("no resource %s", uri)
 	}
 	return err
 }

@@ -38,6 +38,16 @@ func Test_ReadMarkdown(t *testing.T) {
 		second, err := workspace.ReadMarkdown(ctx, text("text/plain", long), *first.Next, 100)
 		require.NoError(t, err)
 		assert.Equal(t, *first.Next, second.Offset)
+
+		// With the resource's size, so how much is left is known
+		require.NotNil(t, first.Size)
+		assert.Equal(t, int64(len(long)), *first.Size)
+		assert.Contains(t, first.Document(), "size: 2800\n")
+
+		// An offset beyond its end says so, once
+		_, err = workspace.ReadMarkdown(ctx, text("text/plain", long), 100000, 100)
+		require.ErrorIs(t, err, llm.ErrBadParameter)
+		assert.Equal(t, 1, strings.Count(err.Error(), "bad parameter"), err.Error())
 	})
 
 	t.Run("NoText", func(t *testing.T) {
