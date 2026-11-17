@@ -352,7 +352,10 @@ func diff(before, after []*tool) []change {
 	for _, t := range after {
 		if prev, exists := old[t.Name()]; !exists {
 			result = append(result, change{eventschema.EventCreate, t.Name()})
-		} else if !sameTool(prev.t, t.t) {
+		} else if !sameTool(prev.t, t.t) || prev.client != t.client {
+			// It's another definition, or is called with another client,
+			// such as once the namespace is connected again, so its value
+			// is the new one
 			result = append(result, change{eventschema.EventUpdate, t.Name()})
 		}
 		delete(old, t.Name())
