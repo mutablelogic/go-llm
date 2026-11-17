@@ -1,6 +1,7 @@
 // The page of a workspace: its header, with its title, what it has, and
-// what it does, the folder which is shown, as a breadcrumb, and the folder's
-// folders, and resources, in a table, which fills the page
+// what it does, and its resources, in a table, which fills the page, or,
+// when it's a tree, its folders, as a tree, beside the files of the folder
+// which is shown
 
 import { LitElement, html, nothing } from 'lit';
 import { customElement, property } from 'lit/decorators.js';
@@ -12,7 +13,6 @@ import Folder16 from '@carbon/icons/es/folder/16.js';
 import Document16 from '@carbon/icons/es/document/16.js';
 import FolderDetails32 from '@carbon/icons/es/folder--details/32.js';
 import iconLoader from '@carbon/web-components/es/globals/internal/icon-loader.js';
-import '@carbon/web-components/es/components/breadcrumb/index.js';
 import '@carbon/web-components/es/components/tag/index.js';
 import '@carbon/web-components/es/components/tree-view/index.js';
 import { formatSize, formatWhen } from '../format';
@@ -81,8 +81,10 @@ export class WorkspacePage extends LitElement {
                 .heading=${workspace?.title || this.name}
                 .icon=${FolderDetails32}
                 .details=${this.details(workspace)}></gs-page-header>
-            <div class=${this.tree ? 'workspace-split' : 'content'}>
-                ${this.missing ? html`<p>There's no workspace ${this.name}, or it isn't available now.</p>` : this.tree ? html`
+            ${this.missing ? html`
+                <div class="content"><p>There's no workspace ${this.name}, or it isn't available now.</p></div>
+            ` : this.tree ? html`
+                <div class="workspace-split">
                     <nav class="workspace-tree" aria-label="Folders">
                         <cds-tree-view hide-label label="Folders" size="sm" @cds-tree-node-selected=${this.selected} @cds-tree-node-toggled=${this.toggled}>
                             ${this.node(workspace?.title || this.name, '')}
@@ -93,21 +95,14 @@ export class WorkspacePage extends LitElement {
                             .itemKey=${(item: ResourceMeta) => item.uri}
                             empty="This folder has no files"></gs-table>
                     </div>
-                ` : html`
-                    <cds-breadcrumb no-trailing-slash class="workspace-path">
-                        ${[this.name, ...this.path].map((folder, i, all) => html`
-                            <cds-breadcrumb-item>
-                                ${i === all.length - 1
-                                    ? html`<cds-breadcrumb-link is-currentpage>${i === 0 ? (workspace?.title || folder) : folder}</cds-breadcrumb-link>`
-                                    : html`<cds-breadcrumb-link href=${routeHref('workspace', this.name, ...this.path.slice(0, i))}>${i === 0 ? (workspace?.title || folder) : folder}</cds-breadcrumb-link>`}
-                            </cds-breadcrumb-item>
-                        `)}
-                    </cds-breadcrumb>
+                </div>
+            ` : html`
+                <div class="workspace-files">
                     <gs-table .controller=${this.controller} .columns=${this.columns}
                         .itemKey=${(item: ResourceMeta) => item.uri}
-                        empty="This folder is empty"></gs-table>
-                `}
-            </div>
+                        empty="This workspace has no resources"></gs-table>
+                </div>
+            `}
         `;
     }
 
