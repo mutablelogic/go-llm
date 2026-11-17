@@ -398,13 +398,17 @@ func Test_Messaging_Files(t *testing.T) {
 	// The session's files
 	id := uuid.New()
 	files := map[string]messaging.File{
-		"resource:///image": {URI: "resource:///image", Name: "chart.png", Type: "image/png"},
-		"resource:///audio": {URI: "resource:///audio", Name: "speech.ogg", Type: "audio/ogg"},
+		"resource:///image":         {URI: "resource:///image", Name: "chart.png", Type: "image/png"},
+		"resource:///audio":         {URI: "resource:///audio", Name: "speech.ogg", Type: "audio/ogg"},
+		"resource://files/film.mkv": {URI: "resource://files/film.mkv", Name: "film.mkv", Type: "video/x-matroska", URL: "https://example.com/api/llm/workspace/files/content?uri=film"},
 	}
 	open := func(_ context.Context, session uuid.UUID, uri string) (messaging.File, io.ReadCloser, error) {
 		file, ok := files[uri]
 		if !ok || session != id {
 			return messaging.File{}, nil, llm.ErrNotFound.Withf("file %q", uri)
+		}
+		if file.URL != "" {
+			return file, nil, nil
 		}
 		return file, io.NopCloser(strings.NewReader(file.Name)), nil
 	}
@@ -426,6 +430,37 @@ func Test_Messaging_Files(t *testing.T) {
 		require.NoError(t, m.Reply(ctx, id, messaging.Outgoing{Text: "Here it is", Files: []string{"resource:///image", "resource:///audio"}}))
 		assert.Len(t, provider.messages("1"), 1, "no message, other than the one it was connected with")
 		assert.Equal(t, []string{"1:chart.png:chart.png:Here it is", "1:speech.ogg:speech.ogg:"}, provider.files)
+	})
+
+	t.Run("Link", func(t *testing.T) {
+		// A file with a link is sent as it, in the text, rather than
+		// uploaded, after the others
+		provider := &fileFake{fake: newFake("fake")}
+		m, err := messaging.New(messaging.NewStore(), messaging.WithProvider(provider), messaging.WithFiles(open))
+		require.NoError(t, err)
+		connect(t, m, provider.fake)
+		require.NoError(t, m.Reply(ctx, id, messaging.Outgoing{Text: "Here it is", Files: []string{"resource://files/film.mkv"}}))
+		assert.Empty(t, provider.files, "not uploaded")
+		messages := provider.messages("1")
+		require.Len(t, messages, 2)
+		assert.Contains(t, messages[1], "Here it is")
+		assert.Contains(t, messages[1], "[film.mkv](https://example.com/api/llm/workspace/files/content?uri=film)")
+	})
+
+	t.Run("Links", func(t *testing.T) {
+		// The text's links, such as the send tool's, are as WithLinks
+		// changes them
+		provider := &fileFake{fake: newFake("fake")}
+		m, err := messaging.New(messaging.NewStore(), messaging.WithProvider(provider), messaging.WithFiles(open), messaging.WithLinks(func(text string) string {
+			return strings.ReplaceAll(text, "resource://files/film.mkv", "https://example.com/film")
+		}))
+		require.NoError(t, err)
+		connect(t, m, provider.fake)
+		_, err = m.Send(ctx, id, messaging.Outgoing{Text: "Watch [the film](resource://files/film.mkv)"})
+		require.NoError(t, err)
+		messages := provider.messages("1")
+		require.Len(t, messages, 2)
+		assert.Contains(t, messages[1], "[the film](https://example.com/film)")
 	})
 
 	t.Run("Voice caption", func(t *testing.T) {

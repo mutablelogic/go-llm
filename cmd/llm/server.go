@@ -40,6 +40,7 @@ import (
 	broadcaster "github.com/mutablelogic/go-server/broadcaster"
 	broadcastercmd "github.com/mutablelogic/go-server/broadcaster/cmd"
 	broadcasterhandler "github.com/mutablelogic/go-server/broadcaster/httphandler"
+	config "github.com/mutablelogic/go-server/config"
 	servercmd "github.com/mutablelogic/go-server/pkg/cmd"
 	httprouter "github.com/mutablelogic/go-server/pkg/httprouter"
 	types "github.com/mutablelogic/go-server/pkg/types"
@@ -268,8 +269,11 @@ func (runner *RunServer) withToolkit(ctx server.Cmd, b *broadcaster.Broadcaster,
 
 		// Messaging, when a provider's credentials are set, such as
 		// Telegram's, whose chats are connected to sessions, as channels,
-		// and whose tools connect them
-		m, err := newServerMessaging(ctx, tools, events, res, func() *time.Location { return mem.Details().Zone() }, messaging.WithBroadcaster(b), messaging.WithFiles(openFile(res)), messaging.WithSessions(func(ctx context.Context, id uuid.UUID) error {
+		// and whose tools connect them. A workspace's file is sent to a
+		// chat as a link to it, on the server's public https endpoint, when
+		// it has one.
+		endpoint := config.PublicEndpoint(ctx.URL())
+		m, err := newServerMessaging(ctx, tools, events, res, func() *time.Location { return mem.Details().Zone() }, messaging.WithBroadcaster(b), messaging.WithFiles(openFile(res, workspaces, endpoint)), messaging.WithLinks(func(text string) string { return linkWorkspaceFiles(text, endpoint) }), messaging.WithSessions(func(ctx context.Context, id uuid.UUID) error {
 			_, err := sessions.Get(ctx, id)
 			return err
 		}))

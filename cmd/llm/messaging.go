@@ -10,6 +10,7 @@ import (
 	"mime"
 	"net/url"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"sync/atomic"
 	"time"
@@ -25,6 +26,8 @@ import (
 	resource "github.com/mutablelogic/go-llm/resource"
 	resourceschema "github.com/mutablelogic/go-llm/resource/schema"
 	toolkit "github.com/mutablelogic/go-llm/toolkit"
+	workspace "github.com/mutablelogic/go-llm/workspace"
+	workspaceschema "github.com/mutablelogic/go-llm/workspace/schema"
 	server "github.com/mutablelogic/go-server"
 	types "github.com/mutablelogic/go-server/pkg/types"
 )
@@ -134,9 +137,15 @@ func newServerMessaging(ctx server.Cmd, tools *toolkit.Toolkit, sessions *atomic
 }
 
 // openFile returns the function which opens a session's file, which is one
-// of the resources, by its URI, to send it to the session's channels
-func openFile(res *resource.Manager) messaging.OpenFunc {
+// of the resources, by its URI, or a file of a workspace, to send it to the
+// session's channels. A workspace's file is a link to its content, on the
+// server's public endpoint, when it has one, as it can be larger than a chat
+// takes, such as a film, or else it's opened from its workspace.
+func openFile(res *resource.Manager, workspaces *workspace.Registry, endpoint string) messaging.OpenFunc {
 	return func(ctx context.Context, session uuid.UUID, uri string) (messaging.File, io.ReadCloser, error) {
+		if name, _, ok := workspaceschema.ParseURI(uri); ok && workspaces != nil {
+			return openWorkspaceFile(ctx, workspaces, endpoint, name, uri)
+		}
 		hash, err := resourceschema.ParseURI(uri)
 		if err != nil {
 			return messaging.File{}, nil, err
@@ -147,6 +156,36 @@ func openFile(res *resource.Manager) messaging.OpenFunc {
 		}
 		return messaging.File{URI: r.URI(), Name: r.Name, Type: r.Type, Size: r.Size}, content, nil
 	}
+}
+
+// openWorkspaceFile returns the workspace's file, with the URI, as a link to
+// its content, on the endpoint, when there's one, or else its content,
+// which is read as it's sent
+func openWorkspaceFile(ctx context.Context, workspaces *workspace.Registry, endpoint, name, uri string) (messaging.File, io.ReadCloser, error) {
+	resource, err := workspaces.Resolve(ctx, uri)
+	if err != nil {
+		return messaging.File{}, nil, err
+	}
+	file := messaging.File{URI: uri, Name: resource.Name(), Type: resource.Type()}
+	if size, ok := llm.ContentLength(resource); ok {
+		file.Size = size
+	}
+	if endpoint != "" {
+		file.URL = workspaceContentURL(endpoint, name, uri)
+		return file, nil, nil
+	}
+	read, err := resource.Read(ctx)
+	if err != nil {
+		return messaging.File{}, nil, err
+	}
+	reader, writer := io.Pipe()
+	go func() {
+		writer.CloseWithError(read(ctx, func(r io.Reader) error {
+			_, err := io.Copy(writer, r)
+			return err
+		}))
+	}()
+	return file, reader, nil
 }
 
 // chatMessage returns the message from a channel's chat, as the person's
@@ -232,6 +271,34 @@ func list(things []string) string {
 		return things[0]
 	}
 	return strings.Join(things[:len(things)-1], ", ") + " and " + things[len(things)-1]
+}
+
+// workspaceLink matches a Markdown link to a workspace's resource, such as
+// [Blade Runner](resource://files/Movies/Blade%20Runner.mp4)
+var workspaceLink = regexp.MustCompile(`\[([^\]]*)\]\((resource://[^/)\s]+/[^)\s]+)\)`)
+
+// linkWorkspaceFiles returns the text, whose links to a workspace's
+// resources are to their content, on the server's public endpoint, so a
+// chat opens them, or, without one, their text, as a chat can't open them
+func linkWorkspaceFiles(text, endpoint string) string {
+	return workspaceLink.ReplaceAllStringFunc(text, func(link string) string {
+		uri := workspaceLink.FindStringSubmatch(link)[2]
+		name, _, ok := workspaceschema.ParseURI(uri)
+		if !ok {
+			return link
+		}
+		label := workspaceLink.FindStringSubmatch(link)[1]
+		if endpoint == "" {
+			return label
+		}
+		return "[" + label + "](" + workspaceContentURL(endpoint, name, uri) + ")"
+	})
+}
+
+// workspaceContentURL returns the URL of the content of the workspace's
+// resource, with the URI, on the endpoint
+func workspaceContentURL(endpoint, name, uri string) string {
+	return endpoint + "/llm/workspace/" + url.PathEscape(name) + "/content?" + url.Values{"uri": {uri}}.Encode()
 }
 
 // replyFiles returns the URIs of the files a reply made which are sent with

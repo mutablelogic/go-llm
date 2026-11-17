@@ -179,6 +179,7 @@ func (*workspaceNamespace) SystemPrompt() string {
 		"Long listings page: pass a response's next back as cursor, unchanged, with the same path, recursive and type; count, when it's there, is how many there are. type filters, such as inode/directory for folders alone. " +
 		"workspace:read reads a resource by its uri: a document's text, as Markdown, a part at a time, whose front matter has its length; pass a part's next back as offset, until a part has none. " +
 		"An image, audio or video comes back as a file, which isn't sent to you as it is, but as a link, which you give other tools: llm:ocr for an image's text, and llm:transcribe for speech. " +
+		"To give the person a file, such as a film, link its uri in your reply, such as [Blade Runner](resource://files/Movies/Blade%20Runner.mp4), which they open, or play, as it's streamed, whatever its size, and which a chat is sent as a link; sending it to a chat uploads it, which a chat can be too small for, such as Telegram's 50 MB. " +
 		"There's no search yet: to find something, walk the folders, and don't say you searched. " +
 		"When more than one workspace could hold what you want, say which one you read."
 }
@@ -295,6 +296,13 @@ func media(contentType string) bool {
 // when it's larger, which says what's read instead.
 func readRaw(ctx context.Context, uri string, resource llm.Resource, offset, limit uint64) (any, error) {
 	text := textual(resource.Type())
+
+	// When the tool's resources are kept, as they are in a chat, a file
+	// which isn't text is linked to, by its URI, which is a workspace's,
+	// rather than read, whatever its size
+	if !text && storeFrom(ctx) != nil {
+		return resource, nil
+	}
 	if text {
 		if part, err := readText(ctx, resource, offset, limit); err != nil || part != nil {
 			return part, err

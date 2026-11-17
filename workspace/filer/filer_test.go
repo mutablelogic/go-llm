@@ -261,6 +261,12 @@ func Test_Server(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "# A", string(data))
 
+	// A file's name, from its URI, isn't escaped
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "notes", "Come To Daddy.md"), []byte("# C"), 0o600))
+	resource, err = ws.Read(ctx, "file:///notes/Come%20To%20Daddy.md")
+	require.NoError(t, err)
+	assert.Equal(t, "Come To Daddy.md", resource.Name())
+
 	_, err = filer.NewServer("not a name", "", backend(t, dir))
 	assert.ErrorIs(t, err, llm.ErrBadParameter)
 }

@@ -16,10 +16,13 @@ import (
 	llm "github.com/mutablelogic/go-llm"
 	messaging "github.com/mutablelogic/go-llm/messaging"
 	schema "github.com/mutablelogic/go-llm/messaging/schema"
+	providerschema "github.com/mutablelogic/go-llm/provider/schema"
 	registry "github.com/mutablelogic/go-llm/registry"
 	resource "github.com/mutablelogic/go-llm/resource"
 	resourceschema "github.com/mutablelogic/go-llm/resource/schema"
 	toolschema "github.com/mutablelogic/go-llm/toolkit/schema"
+	workspace "github.com/mutablelogic/go-llm/workspace"
+	workspaceschema "github.com/mutablelogic/go-llm/workspace/schema"
 	types "github.com/mutablelogic/go-server/pkg/types"
 	assert "github.com/stretchr/testify/assert"
 	require "github.com/stretchr/testify/require"
@@ -73,7 +76,7 @@ func Test_OpenFile(t *testing.T) {
 	require.NoError(t, err)
 
 	// The session's file is opened, with what it is
-	open := openFile(res)
+	open := openFile(res, nil, "")
 	file, content, err := open(ctx, session, made.URI())
 	require.NoError(t, err)
 	defer content.Close()
@@ -245,4 +248,54 @@ func Test_Origin(t *testing.T) {
 	assert.Nil(t, message.Content[1].Text)
 	assert.Equal(t, `Sent on Telegram, in the chat "Family", by Anne.`, types.Value(message.Content[1].Annotation))
 	assert.Equal(t, "Who's cooking?", message.Text())
+}
+
+// films is a workspace of a film, which is read as it is
+type films struct{}
+
+func (films) List(context.Context, workspaceschema.ListRequest) (*workspaceschema.ListResponse, error) {
+	return &workspaceschema.ListResponse{}, nil
+}
+
+func (films) Read(_ context.Context, uri string) (llm.Resource, error) {
+	if uri != "file:///film.mkv" {
+		return nil, llm.ErrNotFound.With(uri)
+	}
+	return &providerschema.Resource{ResourceMeta: providerschema.ResourceMeta{ContentType: "video/x-matroska", Data: []byte("MKV")}}, nil
+}
+
+func Test_OpenWorkspaceFile(t *testing.T) {
+	// A workspace's file is a link to its content, on the server's endpoint,
+	// or, without one, its content, from its workspace
+	ctx := t.Context()
+	workspaces, err := workspace.New()
+	require.NoError(t, err)
+	require.NoError(t, workspaces.Add("files", films{}))
+	uri := "resource://files/file:///film.mkv"
+
+	file, content, err := openFile(nil, workspaces, "https://example.com/api")(ctx, uuid.New(), uri)
+	require.NoError(t, err)
+	assert.Nil(t, content)
+	assert.Equal(t, "https://example.com/api/llm/workspace/files/content?uri=resource%3A%2F%2Ffiles%2Ffile%3A%2F%2F%2Ffilm.mkv", file.URL)
+	assert.Equal(t, int64(3), file.Size)
+
+	file, content, err = openFile(nil, workspaces, "")(ctx, uuid.New(), uri)
+	require.NoError(t, err)
+	assert.Empty(t, file.URL)
+	require.NotNil(t, content)
+	defer content.Close()
+	data, err := io.ReadAll(content)
+	require.NoError(t, err)
+	assert.Equal(t, "MKV", string(data))
+
+	_, _, err = openFile(nil, workspaces, "https://example.com/api")(ctx, uuid.New(), "resource://files/file:///other.mkv")
+	assert.ErrorIs(t, err, llm.ErrNotFound)
+}
+
+func Test_LinkWorkspaceFiles(t *testing.T) {
+	// A reply's links to a workspace's files are https links, on the
+	// server's endpoint, and others, and without one, are as they are
+	text := "Here: [Blade Runner](resource://files/Movies/Blade%20Runner.mp4), and [speech](resource:///abc)."
+	assert.Equal(t, "Here: [Blade Runner](https://example.com/api/llm/workspace/files/content?uri=resource%3A%2F%2Ffiles%2FMovies%2FBlade%2520Runner.mp4), and [speech](resource:///abc).", linkWorkspaceFiles(text, "https://example.com/api"))
+	assert.Equal(t, "Here: Blade Runner, and [speech](resource:///abc).", linkWorkspaceFiles(text, ""), "a chat can't open it, without an endpoint")
 }

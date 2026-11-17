@@ -11,6 +11,7 @@ import (
 	"context"
 	"crypto/rand"
 	"errors"
+	"fmt"
 	"io"
 	"log/slog"
 	"slices"
@@ -47,6 +48,7 @@ type Messaging struct {
 	chat        ChatFunc
 	session     SessionFunc
 	open        OpenFunc
+	links       LinkFunc
 	now         func() time.Time
 
 	// sending is held, shared, as messages are sent to channels, and to
@@ -161,6 +163,7 @@ func New(store Store, opts ...Opt) (*Messaging, error) {
 		chat:        o.chat,
 		session:     o.session,
 		open:        o.open,
+		links:       o.links,
 		now:         time.Now,
 		codes:       make(map[string]pairing),
 		queues:      make(map[uuid.UUID]chan received),
@@ -689,6 +692,9 @@ func (m *Messaging) send(ctx context.Context, channel schema.Channel, out Outgoi
 		return nil, llm.ErrNotFound.Withf("messaging provider %q, of channel %q, isn't set up", channel.Provider, channel.ID)
 	}
 	text := strings.TrimSpace(out.Text)
+	if m.links != nil {
+		text = strings.TrimSpace(m.links(text))
+	}
 	sender, ok := provider.(FileSender)
 	if !ok || m.open == nil || len(out.Files) == 0 {
 		if text == "" {
@@ -698,13 +704,26 @@ func (m *Messaging) send(ctx context.Context, channel schema.Channel, out Outgoi
 	}
 	var result []Sent
 	var errs error
+	var links []string
 	for _, uri := range out.Files {
 		file, content, err := m.open(ctx, channel.Session, uri)
 		if err != nil {
 			errs = errors.Join(errs, err)
 			continue
 		}
-		content.Close()
+		if content != nil {
+			content.Close()
+		}
+
+		// A file with a link is sent as it, in the text
+		if file.URL != "" {
+			name := file.Name
+			if name == "" {
+				name = file.URL
+			}
+			links = append(links, fmt.Sprintf("[%s](%s)", markdownLabel(name), file.URL))
+			continue
+		}
 		// The text is the first file's caption, under it, such as a
 		// picture's, or a voice message's, which the provider sends before
 		// it, when it's too long to be one
@@ -721,13 +740,31 @@ func (m *Messaging) send(ctx context.Context, channel schema.Channel, out Outgoi
 		errs = errors.Join(errs, err)
 	}
 
-	// The text, when none of the files could be opened
+	// The text, when none of the files could be opened, or was sent, and
+	// the links to those which are sent as them
+	if len(links) > 0 {
+		text = strings.TrimSpace(text + "\n\n" + strings.Join(links, "\n\n"))
+	}
 	if text != "" {
 		sent, err := provider.Send(ctx, channel.Address, text)
 		result = append(result, sent...)
 		errs = errors.Join(errs, err)
 	}
 	return result, errs
+}
+
+// markdownLabel returns the text, on one line, with Markdown's characters
+// escaped, so it's a link's label, as it is, such as a file's name
+func markdownLabel(text string) string {
+	text = strings.Join(strings.Fields(text), " ")
+	var b strings.Builder
+	for _, r := range text {
+		if strings.ContainsRune("\\`*_[]<>", r) {
+			b.WriteByte('\\')
+		}
+		b.WriteRune(r)
+	}
+	return b.String()
 }
 
 // load loads the channels from the store, once. The caller holds the lock.

@@ -18,6 +18,7 @@ import (
 	resourceschema "github.com/mutablelogic/go-llm/resource/schema"
 	toolkit "github.com/mutablelogic/go-llm/toolkit"
 	toolschema "github.com/mutablelogic/go-llm/toolkit/schema"
+	workspaceschema "github.com/mutablelogic/go-llm/workspace/schema"
 	types "github.com/mutablelogic/go-server/pkg/types"
 )
 
@@ -271,6 +272,16 @@ func (r *Registry) toolStore(session uuid.UUID) toolkit.StoreFunc {
 		return nil
 	}
 	return func(ctx context.Context, resource llm.Resource) (toolschema.ResourceLink, error) {
+		// A workspace's resource, such as a file of a folder, is linked to,
+		// by its URI, rather than copied, as it's read from its workspace,
+		// whatever its size
+		if _, _, ok := workspaceschema.ParseURI(resource.URI()); ok {
+			link := toolschema.ResourceLink{URI: resource.URI(), Name: resource.Name(), Title: resource.Description(), Type: resource.Type()}
+			if size, ok := llm.ContentLength(resource); ok {
+				link.Size = size
+			}
+			return link, nil
+		}
 		meta := resourceschema.ResourceMeta{Name: resource.Name(), Description: resource.Description(), Type: resource.Type()}
 		if session != uuid.Nil() {
 			meta.Session = &session
@@ -343,6 +354,15 @@ type renamed struct {
 // Name returns the resource's name
 func (r renamed) Name() string {
 	return r.name
+}
+
+// ContentLength returns the resource's size, as it is, or -1, when it
+// isn't known
+func (r renamed) ContentLength() int64 {
+	if size, ok := llm.ContentLength(r.Resource); ok {
+		return size
+	}
+	return -1
 }
 
 // madeName returns the name of what a model made, of the type, such as

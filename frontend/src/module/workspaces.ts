@@ -23,7 +23,18 @@ const MaxListed = 5000;
 
 // workspacesModule adds the workspaces' page to the app, and each workspace
 // to the sidebar, as they're added, and removed
-export function workspacesModule(app: App): void {
+// WorkspacesModule is what the other modules use of the Workspaces module
+export interface WorkspacesModule {
+    // openResource shows a workspace's resource, by its URI, such as
+    // resource://files/Movies/Blade%20Runner.mp4, in its folder, in its panel
+    openResource(uri: string): void;
+}
+
+// eventOpen is fired, with a workspace's resource's URI, by a link to it,
+// such as in a chat, to show it in its panel
+export const eventOpen = 'llm-workspace-open';
+
+export function workspacesModule(app: App): WorkspacesModule {
     const page = addPage<WorkspacePage>(app, 'llm-workspace-page', 'workspace-page', '');
     let workspaces: Workspace[] = [];
 
@@ -237,7 +248,61 @@ export function workspacesModule(app: App): void {
             panel.close();
             void controller.reset();
         }
+        void openPending();
     });
+
+    // A resource which is opened, by its URI, is shown in its folder, and
+    // then in the panel, once the folder is, as it's routed to
+    let pending: string | undefined;
+    const openPending = async () => {
+        const uri = pending;
+        pending = undefined;
+        if (!uri || !name) {
+            return;
+        }
+        // What it is, from its folder, when it's there, or else its URI
+        let item: ResourceMeta | undefined;
+        try {
+            const { items } = await listFolder(name, path.join('/'), MaxListed);
+            item = items.find((candidate) => candidate.uri === uri);
+        } catch {
+            // It's shown by its URI
+        }
+        const base = uri.replace(/\/+$/, '').split('/').pop() ?? uri;
+        let label = base;
+        try {
+            label = decodeURIComponent(base);
+        } catch {
+            // As it is
+        }
+        if (!item || !isFolder(item)) {
+            void showFile(item ?? { uri, name: label });
+        }
+    };
+    return {
+        openResource(uri: string) {
+            const match = uri.trim().match(/^resource:\/\/([^/]+)\/(.+)$/);
+            if (!match) {
+                return;
+            }
+            const workspace = decodeURIComponent(match[1]);
+            let rest = match[2];
+            try {
+                rest = decodeURIComponent(rest);
+            } catch {
+                // As it is
+            }
+            // Its folder is its path's, under its workspace's root, or, for
+            // its own URI, which isn't a path, the top
+            const folders = rest.includes('://') ? [] : rest.split('/').slice(0, -1);
+            pending = uri.trim();
+            if (!page.hidden && workspace === name && folders.join('/') === path.join('/')) {
+                void openPending();
+            } else {
+                location.hash = routeHref('workspace', workspace, ...folders);
+            }
+        },
+    };
 }
 
 // save saves the content at the URL, which is an attachment, as the file

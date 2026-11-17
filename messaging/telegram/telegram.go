@@ -218,11 +218,11 @@ func (t *Telegram) SendFile(ctx context.Context, address string, file messaging.
 				return result, err
 			}
 		}
-		note, err := call[message](ctx, t.client, "sendMessage", sendMessageRequest{ChatID: address, Text: fmt.Sprintf("📎 %s is too large to send here (%s)", name, megabytes(file.Size))})
+		note, err := call[message](ctx, t.client, "sendMessage", sendMessageRequest{ChatID: address, Text: fmt.Sprintf("📎 %s is too large to send here (%s, more than the %s a bot can send)", name, megabytes(file.Size), megabytes(maxUpload))})
 		if err != nil {
 			return result, err
 		}
-		return append(result, messaging.Sent{ID: messageID(note), File: name, Note: "too large to send, so this is a note in its place"}), nil
+		return append(result, messaging.Sent{ID: messageID(note), File: name, Note: fmt.Sprintf("too large to send: it's %s, more than the %s a Telegram bot can send, so this is a note in its place; link to it in your reply instead", megabytes(file.Size), megabytes(maxUpload))}), nil
 	}
 
 	// The caption, as Telegram's HTML, when it's one message, which fits, or
@@ -345,7 +345,7 @@ func fileName(file messaging.File) string {
 
 // megabytes returns the size, in megabytes, such as 61.2 MB
 func megabytes(size int64) string {
-	return fmt.Sprintf("%.1f MB", float64(size)/(1<<20))
+	return fmt.Sprintf("%.1f MiB", float64(size)/(1<<20))
 }
 
 // toMessage returns the message, as messaging has it, and whether it's one

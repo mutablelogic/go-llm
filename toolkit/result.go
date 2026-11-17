@@ -26,7 +26,10 @@ type Result struct {
 
 // StoreFunc keeps a resource which a tool returned, such as in the session
 // the tool runs in, and returns a link to it, which the tool's result has,
-// rather than its content
+// rather than its content. A workspace's resource, whose URI is
+// resource://<workspace>/<path>, is kept by its URI, without reading it, as
+// workspace:read returns one, whatever its size, without reading it, when
+// there's a store.
 type StoreFunc func(context.Context, llm.Resource) (schema.ResourceLink, error)
 
 // storeKey is the key of the store function in a context

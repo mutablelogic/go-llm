@@ -532,12 +532,23 @@ export class ChatController {
     }
 
     // contentURL returns the URL of the content of the resource with the
-    // URI, resource:///<hash>, in the chat which is open, which the browser
+    // URI, resource:///<hash>, in the chat which is open, or of a
+    // workspace's, resource://<workspace>/<path>, which the browser
     // plays, shows, or downloads, or undefined, until the configuration is
     // read
     private contentURL(uri: string): string | undefined {
+        if (this.prefix === undefined) {
+            return undefined;
+        }
+
+        // A workspace's file, resource://<workspace>/<path>, which is read
+        // from its workspace, rather than copied to the chat, such as a film
+        const workspace = uri.trim().match(/^resource:\/\/([^/]+)\/./);
+        if (workspace) {
+            return `${this.prefix}/llm/workspace/${encodeURIComponent(workspace[1])}/content?uri=${encodeURIComponent(uri.trim())}`;
+        }
         const hash = resourceHash(uri) ?? '';
-        if (this.prefix === undefined || !this.session || !/^[0-9a-f]{64}$/.test(hash)) {
+        if (!this.session || !/^[0-9a-f]{64}$/.test(hash)) {
             return undefined;
         }
         return `${this.prefix}/resource/${hash}/content?session=${encodeURIComponent(this.session.id)}`;

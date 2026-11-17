@@ -12,6 +12,7 @@ import (
 	providerschema "github.com/mutablelogic/go-llm/provider/schema"
 	toolkit "github.com/mutablelogic/go-llm/toolkit"
 	schema "github.com/mutablelogic/go-llm/toolkit/schema"
+	toolschema "github.com/mutablelogic/go-llm/toolkit/schema"
 	workspace "github.com/mutablelogic/go-llm/workspace"
 	workspaceschema "github.com/mutablelogic/go-llm/workspace/schema"
 	eventschema "github.com/mutablelogic/go-server/broadcaster/schema"
@@ -166,6 +167,18 @@ func TestWorkspaces(t *testing.T) {
 		}
 		_, err = tk.CallTool(ctx, "workspace:read", json.RawMessage(`{"uri":"file:///song.mp3"}`))
 		assert.ErrorContains(t, err, "llm:transcribe")
+
+		// When the tool's resources are kept, as in a chat, it's linked to,
+		// rather than read, whatever its size
+		var kept []string
+		stored := toolkit.WithStore(ctx, func(_ context.Context, resource llm.Resource) (toolschema.ResourceLink, error) {
+			kept = append(kept, resource.URI())
+			return toolschema.ResourceLink{URI: resource.URI(), Type: resource.Type()}, nil
+		})
+		result, err = tk.CallTool(stored, "workspace:read", json.RawMessage(`{"uri":"resource://notes/file:///song.mp3"}`))
+		require.NoError(t, err)
+		assert.Contains(t, string(result), "resource://notes/file:///song.mp3")
+		assert.Equal(t, []string{"resource://notes/file:///song.mp3"}, kept)
 
 		// A large document, whose text can be read as Markdown, says so
 		_, err = tk.CallTool(ctx, "workspace:read", json.RawMessage(`{"uri":"file:///big.pdf","format":"raw"}`))

@@ -143,3 +143,10 @@ func (e *slowEditor) Send(ctx context.Context, address, text string) ([]Sent, er
 	<-e.release
 	return e.editor.Send(ctx, address, text)
 }
+
+func Test_MarkdownLabel(t *testing.T) {
+	// A name is a link's label, as it is, on one line
+	assert.Equal(t, "film.mkv", markdownLabel("film.mkv"))
+	assert.Equal(t, `film\].mp4`, markdownLabel("film].mp4"))
+	assert.Equal(t, `\[x\](https://evil) a\_b`, markdownLabel("[x](https://evil)\na_b"))
+}
