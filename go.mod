@@ -12,7 +12,7 @@ require (
 	github.com/mutablelogic/go-auth v0.0.17
 	github.com/mutablelogic/go-client v1.4.14
 	github.com/mutablelogic/go-filer v0.3.2
-	github.com/mutablelogic/go-metadata v1.1.1
+	github.com/mutablelogic/go-metadata v1.1.2
 	github.com/mutablelogic/go-server v1.8.13
 	github.com/stretchr/testify v1.12.1
 	github.com/yuin/goldmark v1.8.6

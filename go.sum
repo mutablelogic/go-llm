@@ -144,8 +144,8 @@ github.com/mutablelogic/go-filer v0.3.2 h1:PHGVfc6bAxvnaPVwK9CmJESbzs9KaRzR6fVFa
 github.com/mutablelogic/go-filer v0.3.2/go.mod h1:oo+NfOykM6Vw1/Ej2m2Zl3BK7rraUkquxXcGK0Dn6Ww=
 github.com/mutablelogic/go-media v1.11.4 h1:U1yIHMW/Apc/cHSeagkTuwcnPkYtI9Gk/zsD9o4VVlw=
 github.com/mutablelogic/go-media v1.11.4/go.mod h1:YsHBSCO3JV782+JNDmn1nyLgm5r2BSi1J2/kbHxJtKI=
-github.com/mutablelogic/go-metadata v1.1.1 h1:SC85sV1Frp36vGcoihWLwAYl5RNYzxOD7wWH+9bLEuw=
-github.com/mutablelogic/go-metadata v1.1.1/go.mod h1:oAK6X11F4kt0GTfhGuYxrSVk5XUgJBP1w/dJkidBzps=
+github.com/mutablelogic/go-metadata v1.1.2 h1:bc7wI1ONkf/pXITFXbDUoU2uZMhFFc9/MfLARiHtIZg=
+github.com/mutablelogic/go-metadata v1.1.2/go.mod h1:oAK6X11F4kt0GTfhGuYxrSVk5XUgJBP1w/dJkidBzps=
 github.com/mutablelogic/go-server v1.8.13 h1:spZNL6Q9QwRb/R+oNtEfH8MaQr8D+Od6FTJojE+ZxDk=
 github.com/mutablelogic/go-server v1.8.13/go.mod h1:DW4VbzzqehnccxhQvsihpGtbPZmVeACwwS+n2/NjHgE=
 github.com/mutablelogic/go-tokenizer v0.0.3 h1:6oaa80TaAl+nVpd+M9QhlJPbP7y5/thq4d0dKjreiLs=
