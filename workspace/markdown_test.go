@@ -61,6 +61,16 @@ func Test_ReadMarkdown(t *testing.T) {
 		assert.Equal(t, 1, strings.Count(err.Error(), "bad parameter"), err.Error())
 	})
 
+	t.Run("LargeLength", func(t *testing.T) {
+		// A resource larger than MaxLengthSize isn't converted whole for its
+		// first part, which has no length
+		large := strings.Repeat("Hello, world.\n", workspace.MaxLengthSize/14+1)
+		part, err := workspace.ReadMarkdown(ctx, text("text/plain", large), 0, 100)
+		require.NoError(t, err)
+		require.NotNil(t, part.Next)
+		assert.Nil(t, part.Length)
+	})
+
 	t.Run("NoText", func(t *testing.T) {
 		// A page which its scripts render has its metadata, and a note
 		page := `<!DOCTYPE html><html lang="en"><head><title>Profile</title></head><body><div id="root"></div><script>render()</script></body></html>`
