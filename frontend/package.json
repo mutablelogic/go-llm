@@ -12,7 +12,7 @@
         "@carbon/web-components": "^2.65.0",
         "@ibm/plex-mono": "^2.5.0",
         "@ibm/plex-sans": "^1.1.0",
-        "@mutablelogic/go-server": "^1.8.13",
+        "@mutablelogic/go-server": "^1.8.14",
         "dompurify": "^3.4.17",
         "lit": "^3.0.0",
         "marked": "^18.1.3",
