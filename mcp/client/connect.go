@@ -244,7 +244,9 @@ func (c *Client) dial(ctx context.Context, transport sdkmcp.Transport) (*sdkmcp.
 	}
 	done := make(chan result, 1)
 	go func() {
-		session, err := sdkmcp.NewClient(&c.implementation, opts).Connect(sessionCtx, transport, nil)
+		client := sdkmcp.NewClient(&c.implementation, opts)
+		client.AddReceivingMiddleware(c.subscriptions.acknowledged)
+		session, err := client.Connect(sessionCtx, transport, nil)
 		done <- result{session, err}
 	}()
 	select {
@@ -331,6 +333,7 @@ func (c *Client) wait(session *sdkmcp.ClientSession) {
 		c.session, c.err, c.cancel = nil, err, nil
 	}
 	c.mu.Unlock()
+	c.subscriptions.forgetSession(session)
 	if ended && c.change != nil {
 		c.change(nil, err)
 	}

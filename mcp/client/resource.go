@@ -66,27 +66,6 @@ func (c *Client) HasExperimental(name string) bool {
 	return exists
 }
 
-// Subscribe asks the server to say when the resource with the URI is
-// updated, which WatchResources sends. Returns ErrServiceUnavailable when it
-// isn't connected.
-func (c *Client) Subscribe(ctx context.Context, uri string) error {
-	session, err := c.connected()
-	if err != nil {
-		return err
-	}
-	return session.Subscribe(ctx, &sdkmcp.SubscribeParams{URI: uri})
-}
-
-// Unsubscribe asks the server to stop saying when the resource with the URI
-// is updated. Returns ErrServiceUnavailable when it isn't connected.
-func (c *Client) Unsubscribe(ctx context.Context, uri string) error {
-	session, err := c.connected()
-	if err != nil {
-		return err
-	}
-	return session.Unsubscribe(ctx, &sdkmcp.UnsubscribeParams{URI: uri})
-}
-
 // WatchResources sends the URI of each of the server's resources which is
 // updated, which it was subscribed to, and an empty URI when the server says
 // its list of resources changed, so it's listed again, to the channel,

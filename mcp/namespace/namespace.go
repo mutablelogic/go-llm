@@ -46,6 +46,11 @@ type Namespace struct {
 	// resources which are subscribed to, which each client is
 	clientChanged chan struct{}
 	subscribed    map[string]bool
+
+	// Held while the resources are subscribed to, or unsubscribed from,
+	// with their servers, so an unsubscribe isn't undone by subscribing a
+	// client which is connected again to those which were subscribed to
+	subscribing sync.Mutex
 }
 
 var _ toolkit.Namespace = (*Namespace)(nil)
