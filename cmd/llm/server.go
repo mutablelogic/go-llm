@@ -56,6 +56,7 @@ type CLI struct {
 	Heartbeat   heartbeatcmd.ClientCommands   `embed:""`
 	Resource    resourcecmd.ClientCommands    `embed:""`
 	Connector   mcpcmd.ClientCommands         `embed:""`
+	Workspace   workspacecmd.ClientCommands   `embed:""`
 }
 
 type ServerCommands struct {

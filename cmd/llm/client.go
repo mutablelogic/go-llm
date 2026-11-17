@@ -11,6 +11,7 @@ import (
 	registrycmd "github.com/mutablelogic/go-llm/registry/cmd"
 	resourcecmd "github.com/mutablelogic/go-llm/resource/cmd"
 	toolkitcmd "github.com/mutablelogic/go-llm/toolkit/cmd"
+	workspacecmd "github.com/mutablelogic/go-llm/workspace/cmd"
 )
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -27,4 +28,5 @@ type CLI struct {
 	Heartbeat   heartbeatcmd.ClientCommands   `embed:""`
 	Resource    resourcecmd.ClientCommands    `embed:""`
 	Connector   mcpcmd.ClientCommands         `embed:""`
+	Workspace   workspacecmd.ClientCommands   `embed:""`
 }
